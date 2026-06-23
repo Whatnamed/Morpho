@@ -1,0 +1,407 @@
+import type { MorphoWorkspace } from "./types";
+
+export const nightrailWorkspace: MorphoWorkspace = {
+  schemaVersion: 1,
+  project: {
+    id: "project-nightrail",
+    title: "夜航 / Nightrail",
+    subtitle: "为独居老人的夜间起身与卫浴路径设计一套低施工、非医疗化的连续辅助系统。",
+    currentFocus: "direction_visual_development"
+  },
+  objects: {
+    "file-course-brief": {
+      id: "file-course-brief",
+      type: "file",
+      title: "课程要求.pdf",
+      summary: "夜间居家安全与低施工改造方向的课程任务说明。",
+      createdBy: "user",
+      fileKind: "pdf",
+      sourceLabel: "用户导入"
+    },
+    "file-path-references": {
+      id: "file-path-references",
+      type: "file",
+      title: "夜间起身路径参考 · 6 张",
+      summary: "床边、过道、门口、卫浴转角的动作路径参考。",
+      createdBy: "user",
+      fileKind: "imageSet",
+      sourceLabel: "用户导入"
+    },
+    "research-night-path": {
+      id: "research-night-path",
+      type: "research",
+      title: "研究与分析",
+      summary: "基于课程要求与路径参考形成的候选理解。",
+      createdBy: "ai",
+      findings: ["夜间动作不是单点站立，而是床边、过道、转角与卫浴入口之间的连续转移。"],
+      opportunities: ["把低位导光和触摸导向合并为一条安静的居家轨道。"],
+      constraints: ["租住和老房场景不适合大面积开墙、布线或重型五金。"],
+      openQuestions: ["如何在不产生医院感的前提下给出可信支撑？"]
+    },
+    "insight-continuous-support": {
+      id: "insight-continuous-support",
+      type: "insight",
+      title: "连续支持比单点扶手更符合真实动作路径",
+      summary: "夜间起身的风险集中在路径转换，不只在卫浴内。",
+      createdBy: "user"
+    },
+    "insight-nonmedical": {
+      id: "insight-nonmedical",
+      type: "insight",
+      title: "安全产品需要降低“医疗器械感”",
+      summary: "居家接受度来自家具感和低干扰，而不是显眼的辅助器械语言。",
+      createdBy: "user"
+    },
+    "insight-low-construction": {
+      id: "insight-low-construction",
+      type: "insight",
+      title: "租住 / 老房场景不适合大施工",
+      summary: "低施工安装是方向成立的基础约束。",
+      createdBy: "user"
+    },
+    "definition-current": {
+      id: "definition-current",
+      type: "designDefinition",
+      title: "当前设计定义",
+      summary: "把已保留结论收束为后续方向与视觉发展的共同依据。",
+      createdBy: "user",
+      problem: "让独居老人从床边到卫浴的最后几米更容易辨认、扶持与转身。",
+      principles: ["低施工", "连续支撑", "低干扰照明", "居家语气"],
+      avoid: ["医院感", "复杂电子交互", "厚重外露五金"]
+    },
+    "direction-soft-rail": {
+      id: "direction-soft-rail",
+      type: "conceptDirection",
+      title: "方向 A：柔光轨道",
+      summary: "把低位导光、可触摸导向与隐蔽支撑整合为连续墙面轨道。",
+      createdBy: "ai",
+      status: "primary",
+      keywords: ["连续轨道", "低位柔光", "隐蔽支撑"]
+    },
+    "direction-support-island": {
+      id: "direction-support-island",
+      type: "conceptDirection",
+      title: "方向 B：家具化支撑岛",
+      summary: "把局部支撑隐藏在床边和门口的家具化节点中。",
+      createdBy: "ai",
+      status: "alternative",
+      keywords: ["家具节点", "柔性扶持", "局部介入"]
+    },
+    "direction-soft-guide": {
+      id: "direction-soft-guide",
+      type: "conceptDirection",
+      title: "方向 C：软性引导带",
+      summary: "用织物和软性材料做轻量引导，但支撑可信度不足。",
+      createdBy: "ai",
+      status: "eliminated",
+      keywords: ["软性材料", "触摸提示", "支撑不足"]
+    },
+    "image-path-reference": {
+      id: "image-path-reference",
+      type: "image",
+      title: "夜间过道参考",
+      summary: "普通卧室通向卫浴的低照度路径。",
+      createdBy: "user",
+      role: "reference",
+      imageVariant: "path"
+    },
+    "image-soft-rail-preview": {
+      id: "image-soft-rail-preview",
+      type: "image",
+      title: "柔光轨道预览",
+      summary: "方向 A 的早期视觉预览。",
+      createdBy: "ai",
+      role: "preview",
+      imageVariant: "rail",
+      directionId: "direction-soft-rail"
+    },
+    "image-soft-rail-v2": {
+      id: "image-soft-rail-v2",
+      type: "image",
+      title: "柔光轨道 v2",
+      summary: "当前主方向的核心产品图，作为后续相关生成的默认一致性基线。",
+      createdBy: "ai",
+      role: "main",
+      imageVariant: "rail",
+      directionId: "direction-soft-rail",
+      isDefaultReference: true
+    },
+    "image-rail-detail": {
+      id: "image-rail-detail",
+      type: "image",
+      title: "转角连接与触感截面",
+      summary: "围绕柔光轨道 v2 衍生的细节图。",
+      createdBy: "ai",
+      role: "detail",
+      imageVariant: "detail",
+      directionId: "direction-soft-rail"
+    },
+    "image-night-scenario": {
+      id: "image-night-scenario",
+      type: "image",
+      title: "夜间使用场景",
+      summary: "老人从卧室走向卫浴时的低位柔光路径表达。",
+      createdBy: "ai",
+      role: "scenario",
+      imageVariant: "scenario",
+      directionId: "direction-soft-rail"
+    },
+    "image-cmf-board": {
+      id: "image-cmf-board",
+      type: "image",
+      title: "CMF 小板",
+      summary: "暖灰、砂岩、深橄榄、柔光白的材质基线。",
+      createdBy: "ai",
+      role: "cmf",
+      imageVariant: "cmf",
+      directionId: "direction-soft-rail"
+    },
+    "image-support-island-preview": {
+      id: "image-support-island-preview",
+      type: "image",
+      title: "家具化支撑岛预览",
+      summary: "方向 B 的备选预览图。",
+      createdBy: "ai",
+      role: "preview",
+      imageVariant: "supportIsland",
+      directionId: "direction-support-island"
+    },
+    "image-soft-guide-preview": {
+      id: "image-soft-guide-preview",
+      type: "image",
+      title: "软性引导带预览",
+      summary: "方向 C 的已淘汰预览图，保留作为历史判断依据。",
+      createdBy: "ai",
+      role: "preview",
+      imageVariant: "softGuide",
+      directionId: "direction-soft-guide"
+    },
+    "delivery-board-a1": {
+      id: "delivery-board-a1",
+      type: "delivery",
+      title: "A1 展板 · 核心方案",
+      summary: "整理核心方案、主图、细节引用和图注，不承担最终排版。",
+      createdBy: "user",
+      format: "board",
+      references: ["image-soft-rail-v2", "image-rail-detail"],
+      gaps: [{ id: "gap-install-diagram", label: "待补：安装逻辑示意" }]
+    },
+    "delivery-ppt-six": {
+      id: "delivery-ppt-six",
+      type: "delivery",
+      title: "6 页汇报 PPT",
+      summary: "准备页面主题与素材清单，后续带到外部工具精排。",
+      createdBy: "user",
+      format: "presentation",
+      references: ["image-soft-rail-v2", "image-night-scenario"],
+      gaps: [{ id: "gap-night-scene", label: "待补：夜间使用场景" }]
+    }
+  },
+  relations: [
+    {
+      id: "rel-research-course",
+      kind: "source",
+      fromObjectId: "file-course-brief",
+      toObjectId: "research-night-path",
+      note: "课程要求参与了研究与分析。"
+    },
+    {
+      id: "rel-research-path",
+      kind: "source",
+      fromObjectId: "file-path-references",
+      toObjectId: "research-night-path",
+      note: "路径参考参与了研究与分析。"
+    },
+    {
+      id: "rel-insight-definition",
+      kind: "supports",
+      fromObjectId: "insight-continuous-support",
+      toObjectId: "definition-current",
+      note: "关键结论进入当前设计定义。"
+    },
+    {
+      id: "rel-direction-definition",
+      kind: "supports",
+      fromObjectId: "definition-current",
+      toObjectId: "direction-soft-rail",
+      note: "主方向基于当前设计定义继续发展。"
+    },
+    {
+      id: "rel-preview-direction",
+      kind: "belongsToDirection",
+      fromObjectId: "image-soft-rail-preview",
+      toObjectId: "direction-soft-rail",
+      note: "预览图属于方向 A。"
+    },
+    {
+      id: "rel-v2-version",
+      kind: "version",
+      fromObjectId: "image-soft-rail-preview",
+      toObjectId: "image-soft-rail-v2",
+      note: "柔光轨道 v2 从预览图继续发展。"
+    },
+    {
+      id: "rel-v2-default",
+      kind: "defaultReference",
+      fromObjectId: "image-soft-rail-v2",
+      toObjectId: "direction-soft-rail",
+      note: "柔光轨道 v2 是后续默认参考。"
+    },
+    {
+      id: "rel-detail-version",
+      kind: "version",
+      fromObjectId: "image-soft-rail-v2",
+      toObjectId: "image-rail-detail",
+      note: "细节图从默认参考衍生。"
+    },
+    {
+      id: "rel-scenario-version",
+      kind: "version",
+      fromObjectId: "image-soft-rail-v2",
+      toObjectId: "image-night-scenario",
+      note: "场景图从默认参考衍生。"
+    },
+    {
+      id: "rel-board-main-ref",
+      kind: "deliveryReference",
+      fromObjectId: "image-soft-rail-v2",
+      toObjectId: "delivery-board-a1",
+      note: "主图作为交付模块的稳定引用。"
+    }
+  ],
+  canvas: {
+    view: { x: -760, y: -160, zoom: 0.72 },
+    instances: [
+      {
+        id: "canvas-file-course",
+        objectId: "file-course-brief",
+        position: { x: 60, y: 210 },
+        size: { w: 220, h: 132 }
+      },
+      {
+        id: "canvas-file-path",
+        objectId: "file-path-references",
+        position: { x: 72, y: 405 },
+        size: { w: 260, h: 170 }
+      },
+      {
+        id: "canvas-research",
+        objectId: "research-night-path",
+        position: { x: 390, y: 230 },
+        size: { w: 310, h: 300 }
+      },
+      {
+        id: "canvas-insight-support",
+        objectId: "insight-continuous-support",
+        position: { x: 410, y: 590 },
+        size: { w: 260, h: 112 }
+      },
+      {
+        id: "canvas-insight-nonmedical",
+        objectId: "insight-nonmedical",
+        position: { x: 700, y: 610 },
+        size: { w: 250, h: 112 }
+      },
+      {
+        id: "canvas-insight-low",
+        objectId: "insight-low-construction",
+        position: { x: 700, y: 745 },
+        size: { w: 250, h: 112 }
+      },
+      {
+        id: "canvas-definition",
+        objectId: "definition-current",
+        position: { x: 820, y: 245 },
+        size: { w: 340, h: 330 }
+      },
+      {
+        id: "canvas-direction-a",
+        objectId: "direction-soft-rail",
+        position: { x: 1240, y: 250 },
+        size: { w: 270, h: 184 }
+      },
+      {
+        id: "canvas-direction-b",
+        objectId: "direction-support-island",
+        position: { x: 1210, y: 570 },
+        size: { w: 248, h: 168 }
+      },
+      {
+        id: "canvas-direction-c",
+        objectId: "direction-soft-guide",
+        position: { x: 1200, y: 790 },
+        size: { w: 248, h: 168 }
+      },
+      {
+        id: "canvas-image-reference",
+        objectId: "image-path-reference",
+        position: { x: 1020, y: 60 },
+        size: { w: 245, h: 178 }
+      },
+      {
+        id: "canvas-image-preview-a",
+        objectId: "image-soft-rail-preview",
+        position: { x: 1540, y: 245 },
+        size: { w: 230, h: 178 }
+      },
+      {
+        id: "canvas-image-main",
+        objectId: "image-soft-rail-v2",
+        position: { x: 1820, y: 220 },
+        size: { w: 360, h: 290 }
+      },
+      {
+        id: "canvas-image-detail",
+        objectId: "image-rail-detail",
+        position: { x: 2235, y: 196 },
+        size: { w: 235, h: 188 }
+      },
+      {
+        id: "canvas-image-scenario",
+        objectId: "image-night-scenario",
+        position: { x: 2220, y: 440 },
+        size: { w: 250, h: 192 }
+      },
+      {
+        id: "canvas-image-cmf",
+        objectId: "image-cmf-board",
+        position: { x: 1820, y: 560 },
+        size: { w: 275, h: 195 }
+      },
+      {
+        id: "canvas-image-b",
+        objectId: "image-support-island-preview",
+        position: { x: 1505, y: 570 },
+        size: { w: 220, h: 172 }
+      },
+      {
+        id: "canvas-image-c",
+        objectId: "image-soft-guide-preview",
+        position: { x: 1490, y: 790 },
+        size: { w: 220, h: 172 }
+      },
+      {
+        id: "canvas-delivery-board",
+        objectId: "delivery-board-a1",
+        position: { x: 2630, y: 245 },
+        size: { w: 330, h: 320 }
+      },
+      {
+        id: "canvas-delivery-ppt",
+        objectId: "delivery-ppt-six",
+        position: { x: 2630, y: 620 },
+        size: { w: 310, h: 230 }
+      }
+    ]
+  },
+  ai: {
+    messages: [
+      {
+        id: "ai-msg-1",
+        role: "assistant",
+        body:
+          "柔光轨道 v2 已经把低位导向、隐蔽支撑和暖光氛围合在同一条路线里。下一步可以继续优化转角连接，或补一张夜间使用场景。"
+      }
+    ]
+  }
+};

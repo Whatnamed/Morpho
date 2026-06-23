@@ -1,0 +1,160 @@
+"use client";
+
+import { ChevronLeft, Send, Sparkles } from "lucide-react";
+
+import type { MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
+import type { Suggestion } from "../workspaceUi";
+
+type AiConversationPanelProps = {
+  workspace: MorphoWorkspace;
+  selectedObjects: MorphoObject[];
+  suggestions: Suggestion[];
+  draft: string;
+  isOpen: boolean;
+  isLocalEditMode: boolean;
+  showReferenceConfirm: boolean;
+  showFailure: boolean;
+  onToggleOpen: () => void;
+  onDraftChange: (draft: string) => void;
+  onSuggestionClick: (suggestion: Suggestion) => void;
+  onRunLocalEdit: () => void;
+  onReferenceConfirm: () => void;
+  onFailureRetry: () => void;
+};
+
+export function AiConversationPanel({
+  workspace,
+  selectedObjects,
+  suggestions,
+  draft,
+  isOpen,
+  isLocalEditMode,
+  showReferenceConfirm,
+  showFailure,
+  onToggleOpen,
+  onDraftChange,
+  onSuggestionClick,
+  onRunLocalEdit,
+  onReferenceConfirm,
+  onFailureRetry
+}: AiConversationPanelProps) {
+  return (
+    <>
+      <section className={`ai-panel ${isOpen ? "" : "collapsed"}`} aria-label="AI 对话">
+        <div className="ai-top">
+          <div className="ai-title">
+            <div className="ai-mark">
+              <Sparkles size={16} />
+            </div>
+            <div>
+              <strong>对话</strong>
+              <span>连续 AI 工作面</span>
+            </div>
+          </div>
+          <button className="icon-button" type="button" aria-label="收起 AI 面板" onClick={onToggleOpen}>
+            <ChevronLeft size={16} />
+          </button>
+        </div>
+
+        <div className="ai-scroll">
+          <div className="conversation-title">当前语境</div>
+          <div className="context-tags">
+            {selectedObjects.length === 0 ? (
+              <span className="context-tag">未选择对象</span>
+            ) : (
+              selectedObjects.map((object) => (
+                <span className="context-tag" key={object.id}>
+                  正在讨论 · {object.title}
+                </span>
+              ))
+            )}
+          </div>
+
+          {workspace.ai.messages.map((message) => (
+            <div className="ai-message" key={message.id}>
+              <p>{message.body}</p>
+            </div>
+          ))}
+
+          <div className="suggestions">
+            {suggestions.map((suggestion) => (
+              <button
+                className="suggestion-chip"
+                type="button"
+                key={suggestion.label}
+                onClick={() => onSuggestionClick(suggestion)}
+              >
+                {suggestion.label}
+              </button>
+            ))}
+          </div>
+
+          {showReferenceConfirm ? (
+            <div className="confirm-card">
+              <strong>替换后续默认参考</strong>
+              <p>
+                用当前图替换后续默认参考。之后相关生成会默认延续它的比例、轨道结构、材质和柔光基线；已有图和交付内容不会被替换。
+              </p>
+              <div className="confirm-actions">
+                <button className="brand-button" type="button" onClick={onReferenceConfirm}>
+                  只替换默认参考
+                </button>
+                <button className="plain-button" type="button" onClick={onReferenceConfirm}>
+                  替换并标记直接延展素材待复核
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {showFailure ? (
+            <div className="failure-card">
+              <strong>这次修改没有完成</strong>
+              <p>原图与修改要求已保留。可以重试、修改后重试，或取消并保留原图。</p>
+              <div className="failure-actions">
+                <button className="plain-button" type="button" onClick={onFailureRetry}>
+                  重试
+                </button>
+                <button className="plain-button" type="button" onClick={onFailureRetry}>
+                  修改后重试
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="ai-input-wrap">
+          <div className="mode-row">
+            <span>建议只会填入输入框，不会自动发送。</span>
+            <div className="mode-toggle" aria-label="执行模式">
+              <span className={isLocalEditMode ? "" : "active"}>先确认</span>
+              <span className={isLocalEditMode ? "active" : ""}>自动执行</span>
+            </div>
+          </div>
+          <div className="ai-input">
+            <textarea
+              rows={2}
+              value={draft}
+              onChange={(event) => onDraftChange(event.currentTarget.value)}
+              placeholder="描述你想继续发展的内容…"
+            />
+            <button
+              className="send-button"
+              type="button"
+              aria-label={isLocalEditMode ? "执行局部修改" : "发送"}
+              onClick={isLocalEditMode ? onRunLocalEdit : undefined}
+            >
+              <Send size={15} />
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <button className="ai-toggle" type="button" aria-label={isOpen ? "收起 AI" : "打开 AI"} onClick={onToggleOpen}>
+        <div className="toggle-icon">
+          <Sparkles size={16} />
+        </div>
+        <span>{isOpen ? "收起 AI" : "打开 AI"}</span>
+      </button>
+    </>
+  );
+}
