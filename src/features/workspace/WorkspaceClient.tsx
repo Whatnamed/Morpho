@@ -1,8 +1,10 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import type { AssetRecord } from "@/domain/morpho/types";
+import { importAssetBackedObjects, importTextObject, importUrlObject } from "@/domain/morpho/imports";
 import {
   addLocalModificationVariants,
   assembleAiContext,
@@ -21,7 +23,9 @@ import { OverlayDrawers } from "./components/OverlayDrawers";
 import { TopControls } from "./components/TopControls";
 import { usePersistentWorkspace } from "./usePersistentWorkspace";
 import { compactObjectList, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
-import type { FocusArea } from "./tldraw/MorphoCanvas";
+import { indexedDbBlobStore, getAssetObjectUrl } from "@/infrastructure/assets/indexedDbAssetStore";
+import { saveBlobAsLocalAsset } from "@/infrastructure/assets/localAssetWorkflow";
+import type { CanvasImportRequest, FocusArea } from "./tldraw/MorphoCanvas";
 
 const MorphoCanvas = dynamic(() => import("./tldraw/MorphoCanvas").then((mod) => mod.MorphoCanvas), {
   ssr: false,
@@ -46,6 +50,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [localEditObjectId, setLocalEditObjectId] = useState<string | null>(null);
   const [showReferenceConfirm, setShowReferenceConfirm] = useState(false);
   const [showFailure, setShowFailure] = useState(false);
+  const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
+  const assetUrlsRef = useRef<Record<string, string>>({});
   const [focusRequest, setFocusRequest] = useState<FocusRequest>({ area: "visual", nonce: 0 });
 
   const selectedObjects = useMemo(
@@ -70,9 +76,137 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setActiveDrawer(null);
   }, []);
 
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadAssetUrls() {
+      const imageAssets = Object.values(workspace.assets).filter(
+        (asset) => asset.sourceType === "originalImage" || asset.sourceType === "aiGeneratedImage"
+      );
+      const entries = await Promise.all(
+        imageAssets.map(async (asset) => {
+          try {
+            const url = await getAssetObjectUrl(asset.storageKey);
+            return url ? ([asset.id, url] as const) : null;
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      if (isCancelled) {
+        return;
+      }
+
+      const nextAssetUrls = Object.fromEntries(
+        entries.filter((entry): entry is readonly [string, string] => Boolean(entry))
+      );
+      Object.values(assetUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
+      assetUrlsRef.current = nextAssetUrls;
+      setAssetUrls(nextAssetUrls);
+    }
+
+    void loadAssetUrls();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [workspace.assets]);
+
+  const handleSelectionChange = useCallback(
+    (objectIds: string[]) => {
+      setSelectedObjectIds(objectIds);
+      setWorkspace((current) => {
+        if (current.ui.lastSelectionIds.join("|") === objectIds.join("|")) {
+          return current;
+        }
+
+        return {
+          ...current,
+          ui: {
+            ...current.ui,
+            lastSelectionIds: objectIds
+          }
+        };
+      });
+    },
+    [setWorkspace]
+  );
+
   const handleInstancesChange = useCallback(
     (instances: CanvasInstance[]) => {
       setWorkspace((current) => updateWorkspaceInstances(current, instances));
+    },
+    [setWorkspace]
+  );
+
+  const handleImportRequest = useCallback(
+    async (request: CanvasImportRequest) => {
+      const successfulAssets: AssetRecord[] = [];
+      const failureReasons: string[] = [];
+
+      for (const file of request.files ?? []) {
+        const sourceType = file.type.startsWith("image/") ? "originalImage" : "originalFile";
+        const saved = await saveBlobAsLocalAsset(indexedDbBlobStore, file, sourceType);
+        if (saved.status === "ok") {
+          successfulAssets.push(saved.asset);
+        } else {
+          failureReasons.push(`${file.name}: ${saved.reason}`);
+        }
+      }
+
+      let nextSelection: string[] = [];
+      setWorkspace((current) => {
+        let next = current;
+
+        if (successfulAssets.length > 0) {
+          const imported = importAssetBackedObjects(next, {
+            assets: successfulAssets,
+            position: request.position
+          });
+          next = imported.workspace;
+          nextSelection = imported.objectIds;
+        } else if (request.url) {
+          const imported = importUrlObject(next, {
+            url: request.url,
+            position: request.position
+          });
+          next = imported.workspace;
+          nextSelection = imported.objectIds;
+        } else if (request.text) {
+          const imported = importTextObject(next, {
+            text: request.text,
+            position: request.position
+          });
+          next = imported.workspace;
+          nextSelection = imported.objectIds;
+        }
+
+        if (failureReasons.length === 0) {
+          return next;
+        }
+
+        return {
+          ...next,
+          ai: {
+            ...next.ai,
+            messages: [
+              ...next.ai.messages,
+              {
+                id: `ai-import-error-${Date.now()}`,
+                role: "assistant",
+                body: `有 ${failureReasons.length} 个资产没有导入成功：${failureReasons.join("；")}`,
+                status: "failed",
+                createdAt: new Date().toISOString()
+              }
+            ]
+          }
+        };
+      });
+
+      if (nextSelection.length > 0) {
+        setSelectedObjectIds(nextSelection);
+      }
     },
     [setWorkspace]
   );
@@ -216,13 +350,24 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       <MorphoCanvas
         workspace={workspace}
         annotatedObjectId={localEditObjectId}
+        assetUrls={assetUrls}
         focusRequest={focusRequest}
-        onSelectionChange={setSelectedObjectIds}
+        onSelectionChange={handleSelectionChange}
         onInstancesChange={handleInstancesChange}
+        onImportRequest={handleImportRequest}
       />
 
       <TopControls
         projectTitle={workspace.project.title}
+        onImportFiles={(files) =>
+          handleImportRequest({
+            files,
+            position: {
+              x: workspace.canvas.view.x + 160,
+              y: workspace.canvas.view.y + 160
+            }
+          })
+        }
         onSearch={() => setActiveDrawer("search")}
         onFocusOverview={() => focusArea("overview")}
       />

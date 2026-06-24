@@ -32,6 +32,7 @@ type MorphoShapeProps = {
   imageVariant?: string;
   isDefaultReference?: boolean;
   isBeingLocallyEdited?: boolean;
+  assetUrl?: string;
 };
 
 declare module "@tldraw/tlschema" {
@@ -53,6 +54,9 @@ export class MorphoShapeUtil extends BaseBoxShapeUtil<MorphoShape> {
     morphoType: T.literalEnum(
       "image",
       "file",
+      "text",
+      "link",
+      "imageCollection",
       "research",
       "insight",
       "designDefinition",
@@ -65,7 +69,8 @@ export class MorphoShapeUtil extends BaseBoxShapeUtil<MorphoShape> {
     details: T.arrayOf(T.string),
     imageVariant: T.string.optional(),
     isDefaultReference: T.boolean.optional(),
-    isBeingLocallyEdited: T.boolean.optional()
+    isBeingLocallyEdited: T.boolean.optional(),
+    assetUrl: T.string.optional()
   };
 
   override canBind() {
@@ -127,7 +132,11 @@ export function isMorphoShape(shape: TLShape): shape is MorphoShape {
   return shape.type === MORPHO_SHAPE_TYPE;
 }
 
-export function createMorphoShapePartial(instance: CanvasInstance, object: MorphoObject): TLShapePartial<MorphoShape> {
+export function createMorphoShapePartial(
+  instance: CanvasInstance,
+  object: MorphoObject,
+  assetUrl?: string
+): TLShapePartial<MorphoShape> {
   return {
     id: createShapeId(instance.id),
     type: MORPHO_SHAPE_TYPE,
@@ -135,12 +144,12 @@ export function createMorphoShapePartial(instance: CanvasInstance, object: Morph
     y: instance.position.y,
     opacity: object.type === "conceptDirection" && object.status === "eliminated" ? 0.68 : 1,
     props: {
-      ...getMorphoShapeProps(instance, object)
+      ...getMorphoShapeProps(instance, object, assetUrl)
     }
   };
 }
 
-export function getMorphoShapeProps(instance: CanvasInstance, object: MorphoObject): MorphoShapeProps {
+export function getMorphoShapeProps(instance: CanvasInstance, object: MorphoObject, assetUrl?: string): MorphoShapeProps {
   return {
     w: instance.size.w,
     h: instance.size.h,
@@ -152,7 +161,8 @@ export function getMorphoShapeProps(instance: CanvasInstance, object: MorphoObje
     label: getObjectTypeLabel(object),
     details: getDetails(object),
     imageVariant: object.type === "image" ? object.imageVariant : undefined,
-    isDefaultReference: object.type === "image" ? object.isDefaultReference : undefined
+    isDefaultReference: object.type === "image" ? object.isDefaultReference : undefined,
+    assetUrl
   };
 }
 
@@ -169,6 +179,12 @@ function getDetails(object: MorphoObject): string[] {
       return [`核心问题：${object.problem}`, `原则：${object.principles.join(" / ")}`, `避免项：${object.avoid.join(" / ")}`];
     case "conceptDirection":
       return [object.summary, `关键词：${object.keywords.join(" / ")}`];
+    case "text":
+      return [object.body];
+    case "link":
+      return [object.url, object.description ?? object.summary];
+    case "imageCollection":
+      return [object.summary, `成员：${object.memberObjectIds.length} 张`];
     case "delivery":
       return [object.summary, ...object.gaps.map((gap) => gap.label)];
     default:
@@ -190,7 +206,15 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
   if (props.morphoType === "image") {
     return (
       <article className={classes}>
-        <div className="morpho-image-visual">{renderVisual(props.imageVariant)}</div>
+        <div className="morpho-image-visual">
+          {props.assetUrl ? (
+            // Blob URLs come from browser-local IndexedDB and cannot be optimized by next/image.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={props.assetUrl} alt="" />
+          ) : (
+            renderVisual(props.imageVariant)
+          )}
+        </div>
         {props.isBeingLocallyEdited ? (
           <div className="edit-annotation">
             <span />
@@ -206,7 +230,7 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
     );
   }
 
-  if (props.morphoType === "research" || props.morphoType === "designDefinition") {
+  if (props.morphoType === "research" || props.morphoType === "designDefinition" || props.morphoType === "text") {
     return (
       <article className={classes}>
         <RoleLabel label={props.label} />

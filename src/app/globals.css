@@ -1158,6 +1158,13 @@ input:focus-visible {
   display: block;
 }
 
+.morpho-image-visual img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
 .morpho-image-caption {
   height: 74px;
   padding: 10px 12px 11px;

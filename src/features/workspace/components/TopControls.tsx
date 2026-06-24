@@ -1,14 +1,18 @@
 "use client";
 
 import { Archive, Download, Import, Search, SquareDashedMousePointer } from "lucide-react";
+import { useRef } from "react";
 
 type TopControlsProps = {
   projectTitle: string;
+  onImportFiles: (files: File[]) => void;
   onSearch: () => void;
   onFocusOverview: () => void;
 };
 
-export function TopControls({ projectTitle, onSearch, onFocusOverview }: TopControlsProps) {
+export function TopControls({ projectTitle, onImportFiles, onSearch, onFocusOverview }: TopControlsProps) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   return (
     <>
       <div className="floating-cluster top-left">
@@ -32,7 +36,20 @@ export function TopControls({ projectTitle, onSearch, onFocusOverview }: TopCont
         >
           <SquareDashedMousePointer size={16} />
         </button>
-        <button className="plain-button" type="button">
+        <input
+          ref={fileInputRef}
+          className="sr-only"
+          type="file"
+          multiple
+          onChange={(event) => {
+            const files = Array.from(event.currentTarget.files ?? []);
+            if (files.length > 0) {
+              onImportFiles(files);
+            }
+            event.currentTarget.value = "";
+          }}
+        />
+        <button className="plain-button" type="button" onClick={() => fileInputRef.current?.click()}>
           <Import size={14} />
           导入
         </button>

@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, type ClipboardEvent, type DragEvent } from "react";
 import { Tldraw, type Editor, type TLShapeId } from "tldraw";
 
-import type { CanvasInstance, MorphoWorkspace } from "@/domain/morpho/types";
+import type { CanvasInstance, CanvasPoint, MorphoWorkspace } from "@/domain/morpho/types";
 import { getRenderableCanvasInstances } from "@/domain/morpho/workspace";
 import {
   MORPHO_SHAPE_TYPE,
@@ -24,9 +24,18 @@ type FocusRequest = {
 type MorphoCanvasProps = {
   workspace: MorphoWorkspace;
   annotatedObjectId: string | null;
+  assetUrls: Record<string, string>;
   focusRequest: FocusRequest;
   onSelectionChange: (objectIds: string[]) => void;
   onInstancesChange: (instances: CanvasInstance[]) => void;
+  onImportRequest: (request: CanvasImportRequest) => void;
+};
+
+export type CanvasImportRequest = {
+  position: CanvasPoint;
+  files?: File[];
+  text?: string;
+  url?: string;
 };
 
 const shapeUtils = [MorphoShapeUtil];
@@ -42,9 +51,11 @@ const focusBounds: Record<FocusArea, { x: number; y: number; w: number; h: numbe
 export function MorphoCanvas({
   workspace,
   annotatedObjectId,
+  assetUrls,
   focusRequest,
   onSelectionChange,
-  onInstancesChange
+  onInstancesChange,
+  onImportRequest
 }: MorphoCanvasProps) {
   const editorRef = useRef<Editor | null>(null);
   const lastSelectionRef = useRef("");
@@ -98,13 +109,14 @@ export function MorphoCanvas({
         }
 
         const existing = shapesByInstance.get(instance.id);
+        const assetUrl = object.type === "image" && object.assetId ? assetUrls[object.assetId] : undefined;
         if (!existing) {
-          toCreate.push(createMorphoShapePartial(instance, object));
+          toCreate.push(createMorphoShapePartial(instance, object, assetUrl));
         } else {
           toUpdate.push({
             ...existing,
             props: {
-              ...getMorphoShapeProps(instance, object),
+              ...getMorphoShapeProps(instance, object, assetUrl),
               isBeingLocallyEdited: object.id === annotatedObjectId
             }
           });
@@ -123,7 +135,73 @@ export function MorphoCanvas({
         editor.deleteShapes(toDelete.map((shape) => shape.id));
       }
     },
-    [annotatedObjectId, workspace]
+    [annotatedObjectId, assetUrls, workspace]
+  );
+
+  const getPagePoint = useCallback((clientX: number, clientY: number): CanvasPoint => {
+    const editor = editorRef.current;
+    if (!editor) {
+      return {
+        x: workspace.canvas.view.x,
+        y: workspace.canvas.view.y
+      };
+    }
+
+    const point = editor.screenToPage({ x: clientX, y: clientY });
+    return { x: point.x, y: point.y };
+  }, [workspace.canvas.view.x, workspace.canvas.view.y]);
+
+  const handleDropCapture = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      const files = Array.from(event.dataTransfer.files);
+      const url = event.dataTransfer.getData("text/uri-list") || getUrlFromText(event.dataTransfer.getData("text/plain"));
+      const text = files.length === 0 && !url ? event.dataTransfer.getData("text/plain") : "";
+
+      if (files.length === 0 && !url && !text.trim()) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      onImportRequest({
+        position: getPagePoint(event.clientX, event.clientY),
+        files,
+        url: url || undefined,
+        text: text.trim() || undefined
+      });
+    },
+    [getPagePoint, onImportRequest]
+  );
+
+  const handlePasteCapture = useCallback(
+    (event: ClipboardEvent<HTMLDivElement>) => {
+      if (isEditableEventTarget(event.target)) {
+        return;
+      }
+
+      const files = Array.from(event.clipboardData.files);
+      const text = event.clipboardData.getData("text/plain");
+      const url = getUrlFromText(text);
+
+      if (files.length === 0 && !text.trim()) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      const editor = editorRef.current;
+      const point = editor?.inputs.getCurrentPagePoint() ?? {
+        x: workspace.canvas.view.x + 160,
+        y: workspace.canvas.view.y + 160
+      };
+      onImportRequest({
+        position: { x: point.x, y: point.y },
+        files,
+        url: url || undefined,
+        text: files.length === 0 && !url ? text.trim() : undefined
+      });
+    },
+    [onImportRequest, workspace.canvas.view.x, workspace.canvas.view.y]
   );
 
   useEffect(() => {
@@ -150,7 +228,12 @@ export function MorphoCanvas({
   }, [focusRequest]);
 
   return (
-    <div className="workspace-canvas">
+    <div
+      className="workspace-canvas"
+      onDragOverCapture={(event) => event.preventDefault()}
+      onDropCapture={handleDropCapture}
+      onPasteCapture={handlePasteCapture}
+    >
       <Tldraw
         hideUi
         autoFocus
@@ -173,6 +256,27 @@ export function MorphoCanvas({
       />
     </div>
   );
+}
+
+function getUrlFromText(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    return new URL(trimmed).href;
+  } catch {
+    return "";
+  }
+}
+
+function isEditableEventTarget(target: EventTarget): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return target.tagName === "TEXTAREA" || target.tagName === "INPUT" || target.isContentEditable;
 }
 
 export function getShapeIdForInstance(instanceId: string): TLShapeId {
