@@ -5,7 +5,13 @@ import { useCallback, useMemo, useState } from "react";
 
 import {
   addLocalModificationVariants,
-  createAiDraftFromSuggestion
+  assembleAiContext,
+  createAiDraftFromSuggestion,
+  deleteObject,
+  eliminateDirection,
+  hideObject,
+  restoreObject,
+  setDefaultReference
 } from "@/domain/morpho/workspace";
 import type { CanvasInstance, MorphoWorkspace } from "@/domain/morpho/types";
 import { AiConversationPanel } from "./components/AiConversationPanel";
@@ -28,7 +34,7 @@ type FocusRequest = {
 };
 
 export function WorkspaceClient() {
-  const [workspace, setWorkspace] = usePersistentWorkspace();
+  const [workspace, setWorkspace, persistenceState] = usePersistentWorkspace();
   const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>(["image-soft-rail-v2"]);
   const [aiDraft, setAiDraft] = useState("");
   const [aiOpen, setAiOpen] = useState(true);
@@ -44,6 +50,16 @@ export function WorkspaceClient() {
   );
 
   const suggestions = useMemo(() => getSuggestionsForSelection(selectedObjects), [selectedObjects]);
+  const aiContext = useMemo(
+    () =>
+      assembleAiContext(workspace, {
+        draft: aiDraft,
+        selectedObjectIds,
+        explicitObjectIds: [],
+        task: "visualDevelopment"
+      }),
+    [aiDraft, selectedObjectIds, workspace]
+  );
 
   const focusArea = useCallback((area: FocusArea) => {
     setFocusRequest((current) => ({ area, nonce: current.nonce + 1 }));
@@ -113,9 +129,83 @@ export function WorkspaceClient() {
   }, []);
 
   const handleReferenceConfirm = useCallback(() => {
+    const target = selectedObjects.find((object) => object.type === "image");
+    if (target) {
+      setWorkspace((current) =>
+        setDefaultReference(current, target.id, {
+          reason: "用户在默认参考确认卡中明确替换后续默认参考。"
+        })
+      );
+    }
+
     setShowReferenceConfirm(false);
     setAiDraft("");
-  }, []);
+  }, [selectedObjects, setWorkspace]);
+
+  const handleHideSelected = useCallback(() => {
+    if (!selectedObjects[0]) {
+      return;
+    }
+
+    const objectId = selectedObjects[0].id;
+    setWorkspace((current) => hideObject(current, objectId));
+    setSelectedObjectIds((current) => current.filter((selectedId) => selectedId !== objectId));
+    setLocalEditObjectId((current) => (current === objectId ? null : current));
+  }, [selectedObjects, setWorkspace]);
+
+  const handleRestoreObject = useCallback(
+    (objectId: string) => {
+      setWorkspace((current) => restoreObject(current, objectId));
+      setSelectedObjectIds([objectId]);
+      setActiveDrawer(null);
+      focusArea("overview");
+    },
+    [focusArea, setWorkspace]
+  );
+
+  const handleDeleteSelected = useCallback(() => {
+    if (!selectedObjects[0]) {
+      return;
+    }
+
+    const objectId = selectedObjects[0].id;
+    setWorkspace((current) => {
+      const result = deleteObject(current, objectId);
+      if (result.status === "updated") {
+        return result.workspace;
+      }
+
+      const shouldDelete =
+        typeof window !== "undefined" &&
+        window.confirm(`删除会移除实时关系，但不会改写已存在的交付引用快照。\n\n${result.reasons.join("\n")}`);
+
+      if (!shouldDelete) {
+        return current;
+      }
+
+      const confirmed = deleteObject(current, objectId, {
+        confirmed: true,
+        reason: "用户确认删除该对象。"
+      });
+
+      return confirmed.workspace;
+    });
+    setSelectedObjectIds((current) => current.filter((selectedId) => selectedId !== objectId));
+    setLocalEditObjectId((current) => (current === objectId ? null : current));
+  }, [selectedObjects, setWorkspace]);
+
+  const handleEliminateDirection = useCallback(() => {
+    const target = selectedObjects.find((object) => object.type === "conceptDirection");
+    if (!target) {
+      return;
+    }
+
+    setWorkspace((current) =>
+      eliminateDirection(current, target.id, {
+        reason: "用户在底部详情栏明确淘汰该方向。"
+      })
+    );
+  }, [selectedObjects, setWorkspace]);
 
   return (
     <main className="workspace">
@@ -138,6 +228,7 @@ export function WorkspaceClient() {
         workspace={workspace}
         onClose={() => setActiveDrawer(null)}
         onFocusArea={focusArea}
+        onRestoreObject={handleRestoreObject}
       />
 
       <AiConversationPanel
@@ -149,6 +240,10 @@ export function WorkspaceClient() {
         isLocalEditMode={Boolean(localEditObjectId)}
         showReferenceConfirm={showReferenceConfirm}
         showFailure={showFailure}
+        contextWarning={
+          aiContext.defaultReferenceStatus.status === "hidden" ? aiContext.defaultReferenceStatus.message : undefined
+        }
+        migrationError={persistenceState.migrationError}
         onToggleOpen={() => setAiOpen((open) => !open)}
         onDraftChange={setAiDraft}
         onSuggestionClick={handleSuggestionClick}
@@ -160,9 +255,13 @@ export function WorkspaceClient() {
       <BottomDetailBar
         selectedObjects={selectedObjects}
         relations={workspace.relations}
+        decisionRecords={workspace.decisionRecords}
         onAskAi={handleAskAi}
         onLocalEdit={handleLocalEdit}
         onReferenceIntent={handleReferenceIntent}
+        onHide={handleHideSelected}
+        onDelete={handleDeleteSelected}
+        onEliminateDirection={handleEliminateDirection}
       />
     </main>
   );

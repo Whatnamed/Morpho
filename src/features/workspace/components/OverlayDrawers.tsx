@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { X } from "lucide-react";
 
-import type { MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
+import type { DeliveryReference, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
 import type { DrawerMode } from "./LeftRail";
 import { getObjectTypeLabel } from "../workspaceUi";
 
@@ -11,6 +12,7 @@ type OverlayDrawersProps = {
   workspace: MorphoWorkspace;
   onClose: () => void;
   onFocusArea: (area: "research" | "definition" | "visual" | "delivery" | "overview") => void;
+  onRestoreObject: (objectId: string) => void;
 };
 
 const mapItems = [
@@ -20,7 +22,9 @@ const mapItems = [
   { label: "交付准备", area: "delivery" as const }
 ];
 
-export function OverlayDrawers({ mode, workspace, onClose, onFocusArea }: OverlayDrawersProps) {
+export function OverlayDrawers({ mode, workspace, onClose, onFocusArea, onRestoreObject }: OverlayDrawersProps) {
+  const [query, setQuery] = useState("暖光");
+
   if (mode === "map") {
     return (
       <section className="project-map" aria-label="项目地图">
@@ -43,7 +47,7 @@ export function OverlayDrawers({ mode, workspace, onClose, onFocusArea }: Overla
 
   if (mode === "assets") {
     const assets = Object.values(workspace.objects).filter(
-      (object) => object.type === "image" || object.type === "file"
+      (object) => object.visibility === "active" && (object.type === "image" || object.type === "file")
     );
 
     return (
@@ -62,44 +66,46 @@ export function OverlayDrawers({ mode, workspace, onClose, onFocusArea }: Overla
   }
 
   if (mode === "hidden") {
+    const hiddenObjects = Object.values(workspace.objects).filter((object) => object.visibility === "hidden");
+
     return (
       <Drawer title="已隐藏内容" onClose={onClose}>
-        <p className="drawer-muted">隐藏内容没有被删除，也不会作为 AI 默认输入。这里先保留恢复入口的产品边界。</p>
-        <div className="asset-list">
-          <div className="asset-row">
-            <div className="asset-thumb" />
-            <div>
-              <strong>旧版扶手参考</strong>
-              <span>已隐藏 · 可恢复并定位</span>
-            </div>
-          </div>
-        </div>
+        <p className="drawer-muted">隐藏内容没有被删除，也不会作为 AI 默认输入。恢复后才会重新出现在画布中。</p>
+        {hiddenObjects.length > 0 ? (
+          <ObjectRows objects={hiddenObjects} onObjectAction={onRestoreObject} actionLabel="恢复并定位" />
+        ) : (
+          <p className="drawer-muted">当前没有隐藏对象。</p>
+        )}
       </Drawer>
     );
   }
 
   if (mode === "search") {
-    const results = Object.values(workspace.objects).filter((object) =>
-      `${object.title} ${object.summary}`.includes("暖") || `${object.title} ${object.summary}`.includes("柔光")
-    );
+    const objectResults = searchObjects(Object.values(workspace.objects), query);
+    const deliveryReferenceResults = searchDeliveryReferences(Object.values(workspace.deliveryReferences), query);
 
     return (
       <section className="search-layer" aria-label="项目内搜索">
         <div className="search-head">
           <div>
             <div className="search-title">项目内搜索</div>
-            <div className="drawer-muted">示例关键词：暖光</div>
+            <div className="drawer-muted">搜索画布对象、隐藏对象和交付引用快照</div>
           </div>
           <button className="icon-button" type="button" aria-label="关闭搜索" onClick={onClose}>
             <X size={16} />
           </button>
         </div>
-        <input className="search-input" defaultValue="暖光" aria-label="搜索关键词" />
+        <input
+          className="search-input"
+          value={query}
+          aria-label="搜索关键词"
+          onChange={(event) => setQuery(event.currentTarget.value)}
+        />
         <div className="search-results">
           <div className="result-group-title">画布内容</div>
-          <ObjectRows objects={results.slice(0, 4)} rowClassName="result-row" />
+          <ObjectRows objects={objectResults.slice(0, 6)} rowClassName="result-row" />
           <div className="result-group-title">交付引用</div>
-          <ObjectRows objects={Object.values(workspace.objects).filter((object) => object.type === "delivery")} rowClassName="result-row" />
+          <DeliveryReferenceRows references={deliveryReferenceResults.slice(0, 5)} />
         </div>
       </section>
     );
@@ -122,7 +128,17 @@ function Drawer({ title, children, onClose }: { title: string; children: React.R
   );
 }
 
-function ObjectRows({ objects, rowClassName = "asset-row" }: { objects: MorphoObject[]; rowClassName?: string }) {
+function ObjectRows({
+  objects,
+  rowClassName = "asset-row",
+  onObjectAction,
+  actionLabel
+}: {
+  objects: MorphoObject[];
+  rowClassName?: string;
+  onObjectAction?: (objectId: string) => void;
+  actionLabel?: string;
+}) {
   return (
     <div className="asset-list">
       {objects.map((object) => (
@@ -130,10 +146,71 @@ function ObjectRows({ objects, rowClassName = "asset-row" }: { objects: MorphoOb
           <div className="asset-thumb" />
           <div>
             <strong>{object.title}</strong>
-            <span>{getObjectTypeLabel(object)} · 定位 / 查看来源 / 查看用于哪里</span>
+            <span>
+              {getObjectTypeLabel(object)}
+              {object.visibility === "hidden" ? " · 已隐藏" : ""} · 定位 / 查看来源 / 查看用于哪里
+            </span>
+            {onObjectAction ? (
+              <button className="plain-button" type="button" onClick={() => onObjectAction(object.id)}>
+                {actionLabel}
+              </button>
+            ) : null}
           </div>
         </div>
       ))}
     </div>
+  );
+}
+
+function DeliveryReferenceRows({ references }: { references: DeliveryReference[] }) {
+  if (references.length === 0) {
+    return <p className="drawer-muted">没有匹配的交付引用。</p>;
+  }
+
+  return (
+    <div className="asset-list">
+      {references.map((reference) => (
+        <div className="result-row" key={reference.id}>
+          <div className="asset-thumb" />
+          <div>
+            <strong>{reference.snapshot.title}</strong>
+            <span>{reference.snapshot.caption ?? reference.snapshot.summary ?? "交付引用快照"}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function searchObjects(objects: MorphoObject[], query: string): MorphoObject[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return objects.slice(0, 8);
+  }
+
+  return objects.filter((object) =>
+    [object.title, object.summary, object.type, object.visibility, getObjectTypeLabel(object)]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedQuery)
+  );
+}
+
+function searchDeliveryReferences(references: DeliveryReference[], query: string): DeliveryReference[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return references;
+  }
+
+  return references.filter((reference) =>
+    [
+      reference.snapshot.title,
+      reference.snapshot.summary ?? "",
+      reference.snapshot.caption ?? "",
+      reference.snapshot.sourceType
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedQuery)
   );
 }

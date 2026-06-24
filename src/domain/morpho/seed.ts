@@ -1,14 +1,32 @@
-import type { MorphoWorkspace } from "./types";
+import type { MorphoObject, MorphoObjectId, MorphoWorkspace, ObjectVisibility } from "./types";
+
+type SeedObject = MorphoObject extends infer ObjectUnion
+  ? ObjectUnion extends MorphoObject
+    ? Omit<ObjectUnion, "visibility"> & { visibility?: ObjectVisibility }
+    : never
+  : never;
+
+function withActiveVisibility(objects: Record<MorphoObjectId, SeedObject>): Record<MorphoObjectId, MorphoObject> {
+  return Object.fromEntries(
+    Object.entries(objects).map(([id, object]) => [
+      id,
+      {
+        ...object,
+        visibility: object.visibility ?? "active"
+      } as MorphoObject
+    ])
+  );
+}
 
 export const nightrailWorkspace: MorphoWorkspace = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   project: {
     id: "project-nightrail",
     title: "夜航 / Nightrail",
     subtitle: "为独居老人的夜间起身与卫浴路径设计一套低施工、非医疗化的连续辅助系统。",
     currentFocus: "direction_visual_development"
   },
-  objects: {
+  objects: withActiveVisibility({
     "file-course-brief": {
       id: "file-course-brief",
       type: "file",
@@ -183,7 +201,7 @@ export const nightrailWorkspace: MorphoWorkspace = {
       summary: "整理核心方案、主图、细节引用和图注，不承担最终排版。",
       createdBy: "user",
       format: "board",
-      references: ["image-soft-rail-v2", "image-rail-detail"],
+      references: ["delivery-ref-board-main", "delivery-ref-board-detail"],
       gaps: [{ id: "gap-install-diagram", label: "待补：安装逻辑示意" }]
     },
     "delivery-ppt-six": {
@@ -193,10 +211,69 @@ export const nightrailWorkspace: MorphoWorkspace = {
       summary: "准备页面主题与素材清单，后续带到外部工具精排。",
       createdBy: "user",
       format: "presentation",
-      references: ["image-soft-rail-v2", "image-night-scenario"],
+      references: ["delivery-ref-ppt-main", "delivery-ref-ppt-scenario"],
       gaps: [{ id: "gap-night-scene", label: "待补：夜间使用场景" }]
     }
+  }),
+  deliveryReferences: {
+    "delivery-ref-board-main": {
+      id: "delivery-ref-board-main",
+      sourceObjectId: "image-soft-rail-v2",
+      createdAt: "2026-06-23T00:00:00.000Z",
+      snapshot: {
+        sourceType: "image",
+        title: "柔光轨道 v2",
+        summary: "当前主方向的核心产品图，作为后续相关生成的默认一致性基线。",
+        caption: "主图作为 A1 展板核心方案图。",
+        previewAsset: {
+          alt: "柔光轨道 v2 的交付引用快照"
+        }
+      }
+    },
+    "delivery-ref-board-detail": {
+      id: "delivery-ref-board-detail",
+      sourceObjectId: "image-rail-detail",
+      createdAt: "2026-06-23T00:00:00.000Z",
+      snapshot: {
+        sourceType: "image",
+        title: "转角连接与触感截面",
+        summary: "围绕柔光轨道 v2 衍生的细节图。",
+        caption: "说明转角连接和触感截面。",
+        previewAsset: {
+          alt: "转角连接与触感截面的交付引用快照"
+        }
+      }
+    },
+    "delivery-ref-ppt-main": {
+      id: "delivery-ref-ppt-main",
+      sourceObjectId: "image-soft-rail-v2",
+      createdAt: "2026-06-23T00:00:00.000Z",
+      snapshot: {
+        sourceType: "image",
+        title: "柔光轨道 v2",
+        summary: "当前主方向的核心产品图，作为后续相关生成的默认一致性基线。",
+        caption: "汇报 PPT 的核心产品图。",
+        previewAsset: {
+          alt: "柔光轨道 v2 的 PPT 引用快照"
+        }
+      }
+    },
+    "delivery-ref-ppt-scenario": {
+      id: "delivery-ref-ppt-scenario",
+      sourceObjectId: "image-night-scenario",
+      createdAt: "2026-06-23T00:00:00.000Z",
+      snapshot: {
+        sourceType: "image",
+        title: "夜间使用场景",
+        summary: "老人从卧室走向卫浴时的低位柔光路径表达。",
+        caption: "夜间路径中的使用情境。",
+        previewAsset: {
+          alt: "夜间使用场景的 PPT 引用快照"
+        }
+      }
+    }
   },
+  decisionRecords: [],
   relations: [
     {
       id: "rel-research-course",

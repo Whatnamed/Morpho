@@ -41,3 +41,29 @@ Reason: the app needs recognizable icon buttons without adding a large UI compon
 Decision: use `eslint@^9.39.0` with `eslint-config-next@16.2.9`.
 
 Reason: `eslint@10.5.0` installed by `latest` triggered a runtime incompatibility in the React rule stack used by `eslint-config-next`. ESLint 9 satisfies Next's peer dependency and lint runs successfully.
+
+## 2026-06-23: Use Schema Version 2 for Core Workspace Semantics
+
+Decision: move the local workspace data model to schema version `2`.
+
+Reason: Morpho needs structural separation between visibility, deletion, direction state, default references, and delivery references before adding more project-entry, import, AI, or export behavior.
+
+Implemented fields include object `visibility`, `deliveryReferences`, and scoped `decisionRecords`.
+
+## 2026-06-23: Keep Decision Records Semantic
+
+Decision: `DecisionRecord` is not a universal operation log.
+
+Reason: hidden and restore actions are temporary workspace operations and should not pollute the object's decision history. Decision records are reserved for project-level decisions such as default-reference changes, direction status changes, delivery-reference changes, and reasoned deletion.
+
+## 2026-06-23: Snapshot Delivery References
+
+Decision: delivery modules store `DeliveryReference` IDs, and each delivery reference stores a display snapshot.
+
+Reason: delivery content must remain stable when its source object is renamed, hidden, deleted, replaced by a new default reference, or continued into a new version.
+
+## 2026-06-23: Preserve Raw localStorage on Migration Failure
+
+Decision: localStorage migration is pure, and failed migration does not overwrite stored raw data.
+
+Reason: localStorage is temporary, but it already represents real local project state. Future database or sync migration should follow the same rule: migration failure must be recoverable and must not silently reset project data to seed content.

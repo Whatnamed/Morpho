@@ -3,21 +3,35 @@ import type { MorphoWorkspace } from "@/domain/morpho/types";
 
 const STORAGE_KEY = "morpho.workspace.nightrail.v1";
 
-export function loadWorkspaceFromLocalStorage(): MorphoWorkspace {
+export type WorkspaceLoadResult = {
+  workspace: MorphoWorkspace;
+  migrationError?: string;
+};
+
+export function loadWorkspaceFromLocalStorage(): WorkspaceLoadResult {
   if (typeof window === "undefined") {
-    return createInitialWorkspace();
+    return { workspace: createInitialWorkspace() };
   }
 
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) {
-    return createInitialWorkspace();
+    return { workspace: createInitialWorkspace() };
   }
 
-  try {
-    return parseWorkspace(raw);
-  } catch {
-    return createInitialWorkspace();
+  const result = parseWorkspace(raw);
+
+  if (result.status === "ok") {
+    if (result.didMigrate) {
+      window.localStorage.setItem(STORAGE_KEY, serializeWorkspace(result.workspace));
+    }
+
+    return { workspace: result.workspace };
   }
+
+  return {
+    workspace: createInitialWorkspace(),
+    migrationError: result.reason
+  };
 }
 
 export function saveWorkspaceToLocalStorage(workspace: MorphoWorkspace): void {

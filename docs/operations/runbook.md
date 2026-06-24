@@ -35,7 +35,7 @@ Current expected results:
 
 - `lint`: ESLint completes with no reported problems.
 - `typecheck`: `tsc --noEmit` completes.
-- `test`: Vitest runs `src/domain/morpho/workspace.test.ts`.
+- `test`: Vitest runs `src/domain/morpho/workspace.test.ts`, including schema migration, hidden/delete/default-reference, delivery-reference snapshot, and AI context boundary tests.
 - `build`: `next build` completes and prerenders `/`.
 
 ## Current Persistence
@@ -45,6 +45,10 @@ The browser stores the workspace under:
 ```text
 morpho.workspace.nightrail.v1
 ```
+
+The storage key is retained for migration compatibility. The stored workspace data is schema version `2`.
+
+Schema version `1` data is migrated automatically. Migration success writes schema `2` back to the same key. Migration failure keeps the old raw localStorage value and shows a warning in the AI panel while displaying the seeded `夜航 / Nightrail` workspace.
 
 Clearing localStorage resets the app to the seeded `夜航 / Nightrail` workspace.
 

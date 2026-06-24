@@ -9,11 +9,16 @@ import {
 } from "@/infrastructure/persistence/localWorkspaceStore";
 
 export function usePersistentWorkspace() {
-  const [workspace, setWorkspace] = useState<MorphoWorkspace>(() => loadWorkspaceFromLocalStorage());
+  const [loadResult] = useState(() => loadWorkspaceFromLocalStorage());
+  const [workspace, setWorkspace] = useState<MorphoWorkspace>(loadResult.workspace);
 
   useEffect(() => {
-    saveWorkspaceToLocalStorage(workspace);
-  }, [workspace]);
+    if (loadResult.migrationError) {
+      return;
+    }
 
-  return [workspace, setWorkspace] as const;
+    saveWorkspaceToLocalStorage(workspace);
+  }, [loadResult.migrationError, workspace]);
+
+  return [workspace, setWorkspace, { migrationError: loadResult.migrationError }] as const;
 }

@@ -155,5 +155,7 @@ export function getSuggestionsForSelection(objects: MorphoObject[]): Suggestion[
 }
 
 export function compactObjectList(objects: Record<MorphoObjectId, MorphoObject>, ids: MorphoObjectId[]) {
-  return ids.map((id) => objects[id]).filter((object): object is MorphoObject => Boolean(object));
+  return ids
+    .map((id) => objects[id])
+    .filter((object): object is MorphoObject => Boolean(object) && object.visibility === "active");
 }

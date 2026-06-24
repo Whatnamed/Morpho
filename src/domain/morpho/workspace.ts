@@ -2,11 +2,49 @@ import { nightrailWorkspace } from "./seed";
 import type {
   AiDraftResult,
   AiSuggestionInput,
+  AssembleAiContextInput,
+  AssembledAiContext,
+  CanvasInstance,
   CanvasInstanceId,
   CanvasPoint,
+  ConceptDirectionObject,
+  DeliveryObject,
+  DeliveryReference,
+  DeliveryReferenceId,
+  ImageObject,
+  MorphoObject,
+  MorphoObjectId,
+  MorphoObjectType,
   MorphoRelation,
-  MorphoWorkspace
+  MorphoWorkspace,
+  ObjectSnapshot,
+  WorkspaceMigrationResult
 } from "./types";
+
+const DEFAULT_REFERENCE_HIDDEN_MESSAGE = "当前后续默认参考已隐藏，请先恢复或替换后再用于相关生成。";
+
+export type DeleteObjectResult =
+  | {
+      status: "updated";
+      workspace: MorphoWorkspace;
+    }
+  | {
+      status: "requiresConfirmation";
+      workspace: MorphoWorkspace;
+      reasons: string[];
+    };
+
+export type CreateDeliveryReferenceResult =
+  | {
+      status: "updated";
+      workspace: MorphoWorkspace;
+      deliveryReferenceId: DeliveryReferenceId;
+    }
+  | {
+      status: "blocked";
+      workspace: MorphoWorkspace;
+      reason: string;
+    };
 
 export function createInitialWorkspace(): MorphoWorkspace {
   return structuredClone(nightrailWorkspace);
@@ -54,18 +92,378 @@ export function createAiDraftFromSuggestion(
   };
 }
 
+export function hideObject(workspace: MorphoWorkspace, objectId: MorphoObjectId): MorphoWorkspace {
+  const object = workspace.objects[objectId];
+
+  if (!object || object.visibility === "hidden") {
+    return workspace;
+  }
+
+  return {
+    ...workspace,
+    objects: {
+      ...workspace.objects,
+      [objectId]: {
+        ...object,
+        visibility: "hidden"
+      }
+    }
+  };
+}
+
+export function restoreObject(workspace: MorphoWorkspace, objectId: MorphoObjectId): MorphoWorkspace {
+  const object = workspace.objects[objectId];
+
+  if (!object || object.visibility === "active") {
+    return workspace;
+  }
+
+  return {
+    ...workspace,
+    objects: {
+      ...workspace.objects,
+      [objectId]: {
+        ...object,
+        visibility: "active"
+      }
+    }
+  };
+}
+
+export function getRenderableCanvasInstances(workspace: MorphoWorkspace): CanvasInstance[] {
+  return workspace.canvas.instances.filter((instance) => workspace.objects[instance.objectId]?.visibility === "active");
+}
+
+export function assembleAiContext(workspace: MorphoWorkspace, input: AssembleAiContextInput): AssembledAiContext {
+  const objectIds = new Set<MorphoObjectId>();
+
+  for (const objectId of [...input.selectedObjectIds, ...input.explicitObjectIds]) {
+    if (workspace.objects[objectId]?.visibility === "active") {
+      objectIds.add(objectId);
+    }
+  }
+
+  const defaultReference = findDefaultReference(workspace);
+
+  if (input.task === "visualDevelopment") {
+    if (!defaultReference) {
+      return {
+        draft: input.draft,
+        objectIds: [...objectIds],
+        defaultReferenceStatus: {
+          status: "missing",
+          message: "当前没有后续默认参考；本次只使用当前选择和输入。"
+        }
+      };
+    }
+
+    if (defaultReference.visibility === "hidden") {
+      return {
+        draft: input.draft,
+        objectIds: [...objectIds],
+        defaultReferenceStatus: {
+          status: "hidden",
+          objectId: defaultReference.id,
+          message: DEFAULT_REFERENCE_HIDDEN_MESSAGE
+        }
+      };
+    }
+
+    objectIds.add(defaultReference.id);
+    return {
+      draft: input.draft,
+      objectIds: [...objectIds],
+      defaultReferenceStatus: {
+        status: "available",
+        objectId: defaultReference.id
+      }
+    };
+  }
+
+  return {
+    draft: input.draft,
+    objectIds: [...objectIds],
+    defaultReferenceStatus: {
+      status: "notRelevant"
+    }
+  };
+}
+
+export function deleteObject(
+  workspace: MorphoWorkspace,
+  objectId: MorphoObjectId,
+  options: { confirmed?: boolean; reason?: string } = {}
+): DeleteObjectResult {
+  const object = workspace.objects[objectId];
+
+  if (!object) {
+    return {
+      status: "updated",
+      workspace
+    };
+  }
+
+  const reasons = getDeleteConfirmationReasons(workspace, object);
+
+  if (reasons.length > 0 && !options.confirmed) {
+    return {
+      status: "requiresConfirmation",
+      workspace,
+      reasons
+    };
+  }
+
+  const objects = omitRecordKey(workspace.objects, objectId);
+  const relations = workspace.relations.filter(
+    (relation) => relation.fromObjectId !== objectId && relation.toObjectId !== objectId
+  );
+  const canvasInstances = workspace.canvas.instances.filter((instance) => instance.objectId !== objectId);
+  const decisionRecords = options.reason
+    ? [
+        ...workspace.decisionRecords,
+        {
+          id: makeDecisionId(workspace, "deleteObject", objectId),
+          kind: "deleteObject" as const,
+          createdAt: new Date().toISOString(),
+          summary: `删除 ${object.title}`,
+          reason: options.reason,
+          objectSnapshot: snapshotObject(object),
+          relatedObjectIds: []
+        }
+      ]
+    : workspace.decisionRecords;
+
+  return {
+    status: "updated",
+    workspace: {
+      ...workspace,
+      objects,
+      relations,
+      decisionRecords,
+      canvas: {
+        ...workspace.canvas,
+        instances: canvasInstances
+      }
+    }
+  };
+}
+
+export function eliminateDirection(
+  workspace: MorphoWorkspace,
+  objectId: MorphoObjectId,
+  options: { reason: string }
+): MorphoWorkspace {
+  const object = workspace.objects[objectId];
+
+  if (!object || object.type !== "conceptDirection") {
+    return workspace;
+  }
+
+  const updatedDirection: ConceptDirectionObject = {
+    ...object,
+    status: "eliminated"
+  };
+
+  return {
+    ...workspace,
+    objects: {
+      ...workspace.objects,
+      [objectId]: updatedDirection
+    },
+    decisionRecords: [
+      ...workspace.decisionRecords,
+      {
+        id: makeDecisionId(workspace, "setDirectionStatus", objectId),
+        kind: "setDirectionStatus",
+        createdAt: new Date().toISOString(),
+        summary: `淘汰方向：${object.title}`,
+        reason: options.reason,
+        objectSnapshot: snapshotObject(object),
+        relatedObjectIds: [objectId]
+      }
+    ]
+  };
+}
+
+export function setDefaultReference(
+  workspace: MorphoWorkspace,
+  objectId: MorphoObjectId,
+  options: { reason: string }
+): MorphoWorkspace {
+  const object = workspace.objects[objectId];
+
+  if (!object || object.type !== "image" || object.visibility !== "active") {
+    return workspace;
+  }
+
+  const objects = Object.fromEntries(
+    Object.entries(workspace.objects).map(([entryId, entry]) => {
+      if (entry.type !== "image") {
+        return [entryId, entry];
+      }
+
+      return [
+        entryId,
+        {
+          ...entry,
+          isDefaultReference: entry.id === objectId
+        } satisfies ImageObject
+      ];
+    })
+  ) as Record<MorphoObjectId, MorphoObject>;
+
+  const relationsWithoutDefault = workspace.relations.filter((relation) => relation.kind !== "defaultReference");
+  const defaultReferenceRelation: MorphoRelation | null = object.directionId
+    ? {
+        id: `rel-${objectId}-default`,
+        kind: "defaultReference",
+        fromObjectId: objectId,
+        toObjectId: object.directionId,
+        note: `${object.title} 是后续默认参考。`
+      }
+    : null;
+
+  return {
+    ...workspace,
+    objects,
+    relations: defaultReferenceRelation ? [...relationsWithoutDefault, defaultReferenceRelation] : relationsWithoutDefault,
+    decisionRecords: [
+      ...workspace.decisionRecords,
+      {
+        id: makeDecisionId(workspace, "setDefaultReference", objectId),
+        kind: "setDefaultReference",
+        createdAt: new Date().toISOString(),
+        summary: `设为后续默认参考：${object.title}`,
+        reason: options.reason,
+        objectSnapshot: snapshotObject(object),
+        relatedObjectIds: [objectId]
+      }
+    ]
+  };
+}
+
+export function createDeliveryReference(
+  workspace: MorphoWorkspace,
+  input: {
+    deliveryObjectId: MorphoObjectId;
+    sourceObjectId: MorphoObjectId;
+    caption: string;
+  }
+): CreateDeliveryReferenceResult {
+  const deliveryObject = workspace.objects[input.deliveryObjectId];
+  const sourceObject = workspace.objects[input.sourceObjectId];
+
+  if (!deliveryObject || deliveryObject.type !== "delivery") {
+    return {
+      status: "blocked",
+      workspace,
+      reason: "交付模块不存在。"
+    };
+  }
+
+  if (!sourceObject) {
+    return {
+      status: "blocked",
+      workspace,
+      reason: "来源对象不存在。"
+    };
+  }
+
+  const deliveryReferenceId = getAvailableDeliveryReferenceId(
+    workspace,
+    makeDeliveryReferenceId(deliveryObject.id, sourceObject.id)
+  );
+  const deliveryReference: DeliveryReference = {
+    id: deliveryReferenceId,
+    sourceObjectId: sourceObject.id,
+    createdAt: new Date().toISOString(),
+    snapshot: createDeliveryReferenceSnapshot(sourceObject, input.caption)
+  };
+  const updatedDeliveryObject: DeliveryObject = {
+    ...deliveryObject,
+    references: [...deliveryObject.references, deliveryReferenceId]
+  };
+
+  return {
+    status: "updated",
+    deliveryReferenceId,
+    workspace: {
+      ...workspace,
+      objects: {
+        ...workspace.objects,
+        [deliveryObject.id]: updatedDeliveryObject
+      },
+      deliveryReferences: {
+        ...workspace.deliveryReferences,
+        [deliveryReferenceId]: deliveryReference
+      },
+      decisionRecords: [
+        ...workspace.decisionRecords,
+        {
+          id: makeDecisionId(workspace, "createDeliveryReference", deliveryReferenceId),
+          kind: "createDeliveryReference",
+          createdAt: new Date().toISOString(),
+          summary: `创建交付引用：${sourceObject.title}`,
+          objectSnapshot: snapshotObject(sourceObject),
+          relatedObjectIds: [sourceObject.id, deliveryObject.id]
+        }
+      ]
+    }
+  };
+}
+
 export function serializeWorkspace(workspace: MorphoWorkspace): string {
   return JSON.stringify(workspace);
 }
 
-export function parseWorkspace(raw: string): MorphoWorkspace {
-  const parsed = JSON.parse(raw) as MorphoWorkspace;
+export function parseWorkspace(raw: string): WorkspaceMigrationResult {
+  try {
+    return migrateWorkspaceToCurrentSchema(JSON.parse(raw) as unknown);
+  } catch {
+    return {
+      status: "failed",
+      reason: "Stored Morpho workspace is not valid JSON."
+    };
+  }
+}
 
-  if (parsed.schemaVersion !== 1) {
-    throw new Error("Unsupported Morpho workspace schema version.");
+export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrationResult {
+  if (!isRecord(value)) {
+    return {
+      status: "failed",
+      reason: "Stored Morpho workspace is not an object."
+    };
   }
 
-  return parsed;
+  if (value.schemaVersion === 2) {
+    return {
+      status: "ok",
+      workspace: structuredClone(value) as MorphoWorkspace,
+      didMigrate: false
+    };
+  }
+
+  if (value.schemaVersion !== 1) {
+    return {
+      status: "failed",
+      reason: "Unsupported Morpho workspace schema version."
+    };
+  }
+
+  const migrated = migrateV1Workspace(value);
+
+  if (!migrated) {
+    return {
+      status: "failed",
+      reason: "Stored Morpho workspace is missing required v1 fields."
+    };
+  }
+
+  return {
+    status: "ok",
+    workspace: migrated,
+    didMigrate: true
+  };
 }
 
 export function addLocalModificationVariants(workspace: MorphoWorkspace, sourceObjectId: string): MorphoWorkspace {
@@ -110,6 +508,7 @@ export function addLocalModificationVariants(workspace: MorphoWorkspace, sourceO
         title: "柔光轨道 v3 · 转角一体化",
         summary: "保留整体比例与柔光轨道语言，减少转角连接件的外露五金感。",
         createdBy: "ai",
+        visibility: "active",
         role: "detail",
         imageVariant: "detail",
         directionId: sourceObject.directionId
@@ -120,6 +519,7 @@ export function addLocalModificationVariants(workspace: MorphoWorkspace, sourceO
         title: "柔光轨道 v3 · 隐蔽固定",
         summary: "在同一产品路线下尝试更安静的安装与固定表达。",
         createdBy: "ai",
+        visibility: "active",
         role: "detail",
         imageVariant: "rail",
         directionId: sourceObject.directionId
@@ -162,4 +562,159 @@ export function addLocalModificationVariants(workspace: MorphoWorkspace, sourceO
       ]
     }
   };
+}
+
+function migrateV1Workspace(value: Record<string, unknown>): MorphoWorkspace | null {
+  if (!isRecord(value.project) || !isRecord(value.objects) || !Array.isArray(value.relations) || !isRecord(value.canvas)) {
+    return null;
+  }
+
+  const sourceObjects = value.objects;
+  const migratedObjects: Record<MorphoObjectId, MorphoObject> = {};
+  const deliveryReferences: Record<DeliveryReferenceId, DeliveryReference> = {};
+
+  for (const [objectId, rawObject] of Object.entries(sourceObjects)) {
+    if (!isRecord(rawObject) || typeof rawObject.type !== "string") {
+      return null;
+    }
+
+    const visibility = rawObject.visibility === "hidden" ? "hidden" : "active";
+
+    if (rawObject.type === "delivery") {
+      const sourceIds = getStringArray(rawObject.references);
+      const references = sourceIds.map((sourceObjectId) => makeDeliveryReferenceId(objectId, sourceObjectId));
+      migratedObjects[objectId] = {
+        ...rawObject,
+        visibility,
+        references
+      } as DeliveryObject;
+      continue;
+    }
+
+    migratedObjects[objectId] = {
+      ...rawObject,
+      visibility
+    } as MorphoObject;
+  }
+
+  for (const [objectId, rawObject] of Object.entries(sourceObjects)) {
+    if (!isRecord(rawObject) || rawObject.type !== "delivery") {
+      continue;
+    }
+
+    for (const sourceObjectId of getStringArray(rawObject.references)) {
+      const sourceObject = migratedObjects[sourceObjectId];
+      if (!sourceObject) {
+        continue;
+      }
+
+      const deliveryReferenceId = makeDeliveryReferenceId(objectId, sourceObjectId);
+      deliveryReferences[deliveryReferenceId] = {
+        id: deliveryReferenceId,
+        sourceObjectId,
+        createdAt: "2026-06-23T00:00:00.000Z",
+        snapshot: createDeliveryReferenceSnapshot(sourceObject, sourceObject.summary)
+      };
+    }
+  }
+
+  return {
+    ...(structuredClone(value) as Omit<MorphoWorkspace, "schemaVersion" | "objects" | "deliveryReferences" | "decisionRecords">),
+    schemaVersion: 2,
+    objects: migratedObjects,
+    deliveryReferences,
+    decisionRecords: []
+  };
+}
+
+function findDefaultReference(workspace: MorphoWorkspace): ImageObject | null {
+  for (const object of Object.values(workspace.objects)) {
+    if (object.type === "image" && object.isDefaultReference) {
+      return object;
+    }
+  }
+
+  return null;
+}
+
+function getDeleteConfirmationReasons(workspace: MorphoWorkspace, object: MorphoObject): string[] {
+  const reasons: string[] = [];
+
+  if (object.type === "image" && object.isDefaultReference) {
+    reasons.push("对象是当前后续默认参考。");
+  }
+
+  const hasActiveRelation = workspace.relations.some((relation) => {
+    if (relation.fromObjectId !== object.id && relation.toObjectId !== object.id) {
+      return false;
+    }
+
+    const otherObjectId = relation.fromObjectId === object.id ? relation.toObjectId : relation.fromObjectId;
+    return workspace.objects[otherObjectId]?.visibility === "active";
+  });
+
+  if (hasActiveRelation) {
+    reasons.push("对象仍被活动关系引用。");
+  }
+
+  return reasons;
+}
+
+function snapshotObject(object: MorphoObject): ObjectSnapshot {
+  return {
+    id: object.id,
+    type: object.type,
+    title: object.title
+  };
+}
+
+function createDeliveryReferenceSnapshot(object: MorphoObject, caption: string) {
+  return {
+    sourceType: object.type,
+    title: object.title,
+    summary: object.summary,
+    caption,
+    previewAsset:
+      object.type === "image"
+        ? {
+            alt: `${object.title} 的交付引用快照`
+          }
+        : undefined
+  };
+}
+
+function makeDeliveryReferenceId(deliveryObjectId: MorphoObjectId, sourceObjectId: MorphoObjectId): DeliveryReferenceId {
+  return `delivery-ref-${deliveryObjectId}-${sourceObjectId}`;
+}
+
+function getAvailableDeliveryReferenceId(
+  workspace: MorphoWorkspace,
+  preferredId: DeliveryReferenceId
+): DeliveryReferenceId {
+  if (!workspace.deliveryReferences[preferredId]) {
+    return preferredId;
+  }
+
+  let suffix = 2;
+  while (workspace.deliveryReferences[`${preferredId}-${suffix}`]) {
+    suffix += 1;
+  }
+
+  return `${preferredId}-${suffix}`;
+}
+
+function makeDecisionId(workspace: MorphoWorkspace, kind: string, objectId: string): string {
+  return `decision-${kind}-${objectId}-${workspace.decisionRecords.length + 1}`;
+}
+
+function getStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function omitRecordKey<T>(record: Record<string, T>, key: string): Record<string, T> {
+  return Object.fromEntries(Object.entries(record).filter(([entryKey]) => entryKey !== key));
 }

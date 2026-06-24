@@ -14,6 +14,8 @@ type AiConversationPanelProps = {
   isLocalEditMode: boolean;
   showReferenceConfirm: boolean;
   showFailure: boolean;
+  contextWarning?: string;
+  migrationError?: string;
   onToggleOpen: () => void;
   onDraftChange: (draft: string) => void;
   onSuggestionClick: (suggestion: Suggestion) => void;
@@ -31,6 +33,8 @@ export function AiConversationPanel({
   isLocalEditMode,
   showReferenceConfirm,
   showFailure,
+  contextWarning,
+  migrationError,
   onToggleOpen,
   onDraftChange,
   onSuggestionClick,
@@ -88,6 +92,20 @@ export function AiConversationPanel({
               </button>
             ))}
           </div>
+
+          {migrationError ? (
+            <div className="failure-card">
+              <strong>本地项目数据暂未覆盖</strong>
+              <p>旧数据迁移失败：{migrationError} 当前显示的是安全示例工作台，原始本地数据仍保留在浏览器中。</p>
+            </div>
+          ) : null}
+
+          {contextWarning ? (
+            <div className="failure-card">
+              <strong>默认参考未进入本次语境</strong>
+              <p>{contextWarning}</p>
+            </div>
+          ) : null}
 
           {showReferenceConfirm ? (
             <div className="confirm-card">

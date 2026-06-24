@@ -1,17 +1,21 @@
 "use client";
 
-import { GitBranch, Info, MessageSquareText, PenLine, Sparkles } from "lucide-react";
+import { Ban, EyeOff, GitBranch, Info, MessageSquareText, PenLine, Sparkles, Trash2 } from "lucide-react";
 import { useState } from "react";
 
-import type { MorphoObject, MorphoRelation } from "@/domain/morpho/types";
+import type { DecisionRecord, MorphoObject, MorphoRelation } from "@/domain/morpho/types";
 import { getObjectTypeLabel } from "../workspaceUi";
 
 type BottomDetailBarProps = {
   selectedObjects: MorphoObject[];
   relations: MorphoRelation[];
+  decisionRecords: DecisionRecord[];
   onAskAi: () => void;
   onLocalEdit: () => void;
   onReferenceIntent: () => void;
+  onHide: () => void;
+  onDelete: () => void;
+  onEliminateDirection: () => void;
 };
 
 const tabs = ["信息", "来源", "版本", "关联", "决策"] as const;
@@ -20,9 +24,13 @@ type DetailTab = (typeof tabs)[number];
 export function BottomDetailBar({
   selectedObjects,
   relations,
+  decisionRecords,
   onAskAi,
   onLocalEdit,
-  onReferenceIntent
+  onReferenceIntent,
+  onHide,
+  onDelete,
+  onEliminateDirection
 }: BottomDetailBarProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>("信息");
 
@@ -33,6 +41,9 @@ export function BottomDetailBar({
   const primary = selectedObjects[0];
   const related = relations.filter(
     (relation) => relation.fromObjectId === primary.id || relation.toObjectId === primary.id
+  );
+  const relatedDecisions = decisionRecords.filter(
+    (record) => record.objectSnapshot?.id === primary.id || record.relatedObjectIds.includes(primary.id)
   );
 
   return (
@@ -50,7 +61,9 @@ export function BottomDetailBar({
             </button>
           ))}
         </div>
-        <div className="detail-content">{renderDetail(activeTab, primary, related, selectedObjects.length)}</div>
+        <div className="detail-content">
+          {renderDetail(activeTab, primary, related, relatedDecisions, selectedObjects.length)}
+        </div>
       </div>
 
       <div className="detail-bar" aria-label="选中对象操作">
@@ -69,6 +82,20 @@ export function BottomDetailBar({
             <GitBranch size={15} />
             直接关系
           </button>
+          <button className="detail-action" type="button" onClick={onHide}>
+            <EyeOff size={15} />
+            隐藏
+          </button>
+          <button className="detail-action" type="button" onClick={onDelete}>
+            <Trash2 size={15} />
+            删除
+          </button>
+          {primary.type === "conceptDirection" && primary.status !== "eliminated" ? (
+            <button className="detail-action" type="button" onClick={onEliminateDirection}>
+              <Ban size={15} />
+              淘汰方向
+            </button>
+          ) : null}
           {primary.type === "image" ? (
             <>
               <button className="detail-action" type="button" onClick={onLocalEdit}>
@@ -87,7 +114,13 @@ export function BottomDetailBar({
   );
 }
 
-function renderDetail(tab: DetailTab, object: MorphoObject, relations: MorphoRelation[], selectedCount: number) {
+function renderDetail(
+  tab: DetailTab,
+  object: MorphoObject,
+  relations: MorphoRelation[],
+  decisionRecords: DecisionRecord[],
+  selectedCount: number
+) {
   if (selectedCount > 1) {
     return "多选仅作为当前 AI 输入和局部操作范围，不会改变这些对象的阶段语义或关系。";
   }
@@ -116,5 +149,7 @@ function renderDetail(tab: DetailTab, object: MorphoObject, relations: MorphoRel
     return relations.length > 0 ? relations.map((relation) => relation.note).join(" ") : "没有直接关联。";
   }
 
-  return "关键决定需要用户明确确认；AI 不会因为选择对象而自动改变主方向、默认参考或交付引用。";
+  return decisionRecords.length > 0
+    ? decisionRecords.map((record) => `${record.summary}${record.reason ? `：${record.reason}` : ""}`).join(" ")
+    : "关键决定需要用户明确确认；AI 不会因为选择对象而自动改变主方向、默认参考或交付引用。";
 }

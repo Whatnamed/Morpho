@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { Tldraw, type Editor, type TLShapeId } from "tldraw";
 
 import type { CanvasInstance, MorphoWorkspace } from "@/domain/morpho/types";
+import { getRenderableCanvasInstances } from "@/domain/morpho/workspace";
 import {
   MORPHO_SHAPE_TYPE,
   MorphoShapeUtil,
@@ -84,10 +85,13 @@ export function MorphoCanvas({
     (editor: Editor) => {
       const shapes = editor.getCurrentPageShapes().filter(isMorphoShape);
       const shapesByInstance = new Map(shapes.map((shape) => [shape.props.instanceId, shape]));
+      const renderableInstances = getRenderableCanvasInstances(workspace);
+      const renderableInstanceIds = new Set(renderableInstances.map((instance) => instance.id));
       const toCreate = [];
       const toUpdate: MorphoShape[] = [];
+      const toDelete = shapes.filter((shape) => !renderableInstanceIds.has(shape.props.instanceId));
 
-      for (const instance of workspace.canvas.instances) {
+      for (const instance of renderableInstances) {
         const object = workspace.objects[instance.objectId];
         if (!object) {
           continue;
@@ -113,6 +117,10 @@ export function MorphoCanvas({
 
       if (toUpdate.length > 0) {
         editor.updateShapes(toUpdate);
+      }
+
+      if (toDelete.length > 0) {
+        editor.deleteShapes(toDelete.map((shape) => shape.id));
       }
     },
     [annotatedObjectId, workspace]

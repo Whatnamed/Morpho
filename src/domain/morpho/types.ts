@@ -1,6 +1,8 @@
 export type MorphoObjectId = string;
 export type CanvasInstanceId = string;
 export type MorphoRelationId = string;
+export type DeliveryReferenceId = string;
+export type DecisionRecordId = string;
 
 export type MorphoObjectType =
   | "image"
@@ -10,6 +12,8 @@ export type MorphoObjectType =
   | "designDefinition"
   | "conceptDirection"
   | "delivery";
+
+export type ObjectVisibility = "active" | "hidden";
 
 export type ImageRole =
   | "reference"
@@ -33,6 +37,7 @@ export type MorphoObjectBase = {
   title: string;
   summary: string;
   createdBy: "user" | "ai";
+  visibility: ObjectVisibility;
 };
 
 export type ImageObject = MorphoObjectBase & {
@@ -80,7 +85,7 @@ export type DeliveryObject = MorphoObjectBase & {
   type: "delivery";
   format: "board" | "presentation";
   gaps: DeliveryGap[];
-  references: MorphoObjectId[];
+  references: DeliveryReferenceId[];
 };
 
 export type MorphoObject =
@@ -131,6 +136,48 @@ export type MorphoRelation = {
   note: string;
 };
 
+export type DeliveryReferenceSnapshot = {
+  sourceType: MorphoObjectType;
+  title: string;
+  summary?: string;
+  caption?: string;
+  previewAsset?: {
+    url?: string;
+    alt: string;
+  };
+};
+
+export type DeliveryReference = {
+  id: DeliveryReferenceId;
+  sourceObjectId?: MorphoObjectId;
+  createdAt: string;
+  snapshot: DeliveryReferenceSnapshot;
+};
+
+export type DecisionKind =
+  | "setDefaultReference"
+  | "setDirectionStatus"
+  | "createDeliveryReference"
+  | "replaceDeliveryReference"
+  | "removeDeliveryReference"
+  | "deleteObject";
+
+export type ObjectSnapshot = {
+  id: MorphoObjectId;
+  type: MorphoObjectType;
+  title: string;
+};
+
+export type DecisionRecord = {
+  id: DecisionRecordId;
+  kind: DecisionKind;
+  createdAt: string;
+  summary: string;
+  reason?: string;
+  objectSnapshot?: ObjectSnapshot;
+  relatedObjectIds: MorphoObjectId[];
+};
+
 export type AiMessage = {
   id: string;
   role: "assistant" | "user";
@@ -138,7 +185,7 @@ export type AiMessage = {
 };
 
 export type MorphoWorkspace = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   project: {
     id: string;
     title: string;
@@ -147,6 +194,8 @@ export type MorphoWorkspace = {
   };
   objects: Record<MorphoObjectId, MorphoObject>;
   relations: MorphoRelation[];
+  deliveryReferences: Record<DeliveryReferenceId, DeliveryReference>;
+  decisionRecords: DecisionRecord[];
   canvas: {
     view: CanvasView;
     instances: CanvasInstance[];
@@ -166,3 +215,47 @@ export type AiDraftResult = {
   draft: string;
   contextObjectIds: MorphoObjectId[];
 };
+
+export type AiContextTask = "general" | "visualDevelopment" | "deliveryPreparation";
+
+export type AiDefaultReferenceStatus =
+  | {
+      status: "available";
+      objectId: MorphoObjectId;
+    }
+  | {
+      status: "hidden";
+      objectId: MorphoObjectId;
+      message: string;
+    }
+  | {
+      status: "missing";
+      message: string;
+    }
+  | {
+      status: "notRelevant";
+    };
+
+export type AssembleAiContextInput = {
+  draft: string;
+  selectedObjectIds: MorphoObjectId[];
+  explicitObjectIds: MorphoObjectId[];
+  task: AiContextTask;
+};
+
+export type AssembledAiContext = {
+  draft: string;
+  objectIds: MorphoObjectId[];
+  defaultReferenceStatus: AiDefaultReferenceStatus;
+};
+
+export type WorkspaceMigrationResult =
+  | {
+      status: "ok";
+      workspace: MorphoWorkspace;
+      didMigrate: boolean;
+    }
+  | {
+      status: "failed";
+      reason: string;
+    };

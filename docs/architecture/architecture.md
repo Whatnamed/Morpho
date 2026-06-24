@@ -22,6 +22,15 @@ Canvas rendering is separated from Morpho domain state:
 - Canvas placement lives in `canvas.instances`.
 - tldraw custom shapes store `objectId` and `instanceId` only as a rendering bridge.
 - Moving a tldraw shape updates canvas instance position; it does not change object type, status, relation, direction state, default reference, or delivery inclusion.
+- tldraw only renders canvas instances whose source object exists and has `visibility: "active"`.
+- Hiding an object changes object visibility only; deleting an object removes the object, live relations, and canvas instances.
+
+Structured workspace data is currently schema version `2`:
+
+- Objects carry `visibility: "active" | "hidden"`.
+- Delivery modules reference `DeliveryReference` IDs, not live source object IDs.
+- Delivery references store display snapshots so source changes, hiding, deletion, or new versions do not silently mutate delivery content.
+- Decision records are limited to project-level semantic decisions such as default-reference changes, direction status decisions, delivery-reference changes, and reasoned deletion.
 
 AI UI is currently simulated:
 
@@ -32,7 +41,9 @@ AI UI is currently simulated:
 
 Persistence is local only:
 
-- Morpho workspace data is serialized to `localStorage` with schema version `1`.
+- Morpho workspace data is serialized to `localStorage` with schema version `2`.
+- Stored schema version `1` data is migrated through a pure migration function.
+- A successful migration is written back to localStorage; a failed migration keeps the old raw localStorage value and shows a recovery warning instead of silently replacing it with seed data.
 - tldraw store persistence is not used separately; shapes are rebuilt from the persisted Morpho workspace.
 
 ## Implemented UI Surfaces
