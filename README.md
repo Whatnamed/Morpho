@@ -1,67 +1,114 @@
 # Morpho
 
-Morpho is an AI-assisted concept-development workspace for product and industrial designers.
+Morpho 是一个面向产品与工业设计概念发展的 AI 辅助工作台。
 
-It brings research materials, design definition, concept directions, image development, project context, and delivery preparation into one continuous canvas-based project space.
+它把资料、研究、关键结论、设计定义、概念方向、图像发展、项目上下文和交付准备放在同一个连续画布项目空间中，而不是拆成一组互不相干的页面、流程节点或文档。
 
-## Current status
+## English Summary
 
-Active development.
+Morpho is an AI-assisted concept-development workspace for product and industrial designers. It brings research materials, design definition, concept directions, image development, project context, and delivery preparation into one continuous canvas-based project space.
 
-The project currently has confirmed product rules, UI behavior specifications, a light-mode design system, and a visual workspace anchor. The application architecture and production implementation are being established in this repository.
+## 当前状态
 
-## What Morpho is for
+当前仓库已经建立正式 Next.js + TypeScript 工程基础，并实现了一个可运行的桌面端工作台：
 
-* Start from a sentence, image, file, link, sketch, or existing design material
-* Organize research and candidate analysis on a continuous canvas
-* Preserve key conclusions and apply a current design definition
-* Develop concept directions and images without rigid stage gates
-* Continue, modify, compare, derive, and reference visual work
-* Prepare delivery content without replacing professional layout tools
-* Preserve project relationships, versions, decisions, and reusable context
+- 主导性的连续 tldraw 画布；
+- 浮动顶部控件、左侧窄工具轨、右下连续 AI 对话面板；
+- 选中对象后出现的底部详情栏；
+- Morpho 领域对象、画布实例、本地持久化和语义状态边界；
+- `schemaVersion: 2` 的语义数据底座，包括隐藏、删除、淘汰、后续默认参考、交付稳定引用和安全迁移。
 
-## What Morpho is not
+## Morpho 用来做什么
 
-* A generic project-management dashboard
-* A node workflow editor
-* A Figma, PPT, CAD, engineering, BOM, or PLM replacement
-* A model-control console
-* A mandatory linear six-step process
+- 从一句话、图片、文件、链接、草图或已有设计材料开始项目；
+- 在连续画布上组织资料、研究与候选分析；
+- 保留关键结论，并形成当前有效设计定义；
+- 发展概念方向和图像，而不是被线性阶段强制闯关；
+- 对任意图像继续发展、局部修改、比较、衍生或作为参考；
+- 准备交付内容，但不替代 Figma、Keynote、PPT、CAD 或专业排版工具；
+- 保留项目关系、版本、决策、交付引用和可复用上下文。
 
-## Documentation map
+## Morpho 不是
 
-### Product rules
+- 通用项目管理 Dashboard；
+- 节点工作流编辑器；
+- Figma、PPT、CAD、工程、BOM 或 PLM 替代品；
+- 模型控制台；
+- 强制线性的六步流程。
 
-* [`docs/product/`](docs/product/) — current product definition and behavior rules
-* Start with [`README_本次更新说明.md`](docs/product/README_本次更新说明.md)
-* `00–05` define rule precedence, product flow, canvas objects, AI behavior, state and memory, and project assets / import / archive
+## 技术栈
 
-### Design rules
+- Next.js App Router
+- React
+- TypeScript
+- tldraw
+- Vitest
+- ESLint
 
-* [`docs/design/Morpho_UI_原型设计说明_v1.md`](docs/design/Morpho_UI_原型设计说明_v1.md)
-* [`docs/design/Morpho_Light_Design_System_v1_CN_EN.md`](docs/design/Morpho_Light_Design_System_v1_CN_EN.md)
-* [`docs/design/references/morpho_workspace_anchor_v2.html`](docs/design/references/morpho_workspace_anchor_v2.html)
+当前没有实现后端 API、数据库、登录、云存储、真实 AI 调用、多人协作或部署自动化。
 
-### Engineering documentation
+## 本地开发
 
-* [`docs/architecture/`](docs/architecture/) — current implementation architecture and confirmed technical decisions
-* [`docs/operations/`](docs/operations/) — actual setup, run, test, build, and deployment instructions
+使用仓库内 `.npmrc` 指定的 registry。
 
-## Development
+```bash
+npm.cmd install
+npm.cmd run dev -- --hostname 127.0.0.1 --port 3000
+```
 
-Development commands will be added to `docs/operations/runbook.md` after the application scaffold and runtime are established.
+本地访问：
 
-## Project instructions
+```text
+http://127.0.0.1:3000
+```
 
-All coding agents must read [`AGENTS.md`](AGENTS.md) before changing the repository.
+常用检查：
 
-For Claude Code, [`CLAUDE.md`](CLAUDE.md) imports the same shared instructions.
+```bash
+npm.cmd run lint
+npm.cmd run typecheck
+npm.cmd test
+npm.cmd run build
+```
 
-## Demo project
+完整运行说明见 [`docs/operations/runbook.md`](docs/operations/runbook.md)。
 
-The official demo project is:
+## 文档地图
 
-> 夜航 / Nightrail
+### 产品规则
+
+- [`docs/product/README_本次更新说明.md`](docs/product/README_本次更新说明.md)
+- [`docs/product/00_Morpho_v3_规则继承、覆盖与完整性账本.md`](docs/product/00_Morpho_v3_规则继承、覆盖与完整性账本.md)
+- [`docs/product/01_Morpho_产品定义与总体流程.md`](docs/product/01_Morpho_产品定义与总体流程.md)
+- [`docs/product/02_Morpho_工作台、画布与对象规则.md`](docs/product/02_Morpho_工作台、画布与对象规则.md)
+- [`docs/product/03_Morpho_AI工作流程、阶段Context与连续性机制.md`](docs/product/03_Morpho_AI工作流程、阶段Context与连续性机制.md)
+- [`docs/product/04_Morpho_状态、版本、项目记录与记忆.md`](docs/product/04_Morpho_状态、版本、项目记录与记忆.md)
+- [`docs/product/05_Morpho_项目入口、资产、搜索、导入与归档.md`](docs/product/05_Morpho_项目入口、资产、搜索、导入与归档.md)
+
+### 设计规则
+
+- [`docs/design/README.md`](docs/design/README.md)
+- [`docs/design/Morpho_UI_原型设计说明_v1.md`](docs/design/Morpho_UI_原型设计说明_v1.md)
+- [`docs/design/Morpho_Light_Design_System_v1_CN_EN.md`](docs/design/Morpho_Light_Design_System_v1_CN_EN.md)
+- [`docs/design/references/morpho_workspace_anchor_v2.html`](docs/design/references/morpho_workspace_anchor_v2.html)
+
+### 工程文档
+
+- [`docs/architecture/architecture.md`](docs/architecture/architecture.md)
+- [`docs/architecture/decisions.md`](docs/architecture/decisions.md)
+- [`docs/operations/runbook.md`](docs/operations/runbook.md)
+
+## 官方示例项目
+
+当前官方 demo 项目是：
+
+> 夜航 / Nightrail  
 > 为独居老人的夜间起身与卫浴路径设计一套低施工、非医疗化的连续辅助系统。
 
-Do not treat historical prototype content such as `Nightfield`, “安静的仪器”, or compact tactical-light concepts as official Morpho product content.
+不要把历史原型内容，例如 `Nightfield`、“安静的仪器”、战术工具或 compact tactical-light 方案，当成 Morpho 当前正式产品内容。
+
+## Agent 指令
+
+所有编码 Agent 在修改仓库前必须先阅读 [`AGENTS.md`](AGENTS.md)。
+
+Claude Code 可通过 [`CLAUDE.md`](CLAUDE.md) 读取同一套共享指令。
