@@ -8,19 +8,41 @@ Use the repository `.npmrc` registry setting.
 npm.cmd install
 ```
 
+## Environment
+
+Copy `.env.example` to `.env.local` for local AI provider calls. Do not commit `.env.local`.
+
+Text chat through MiMo:
+
+```text
+MORPHO_AI_PROVIDER=mimo
+MORPHO_MIMO_API_KEY=
+MORPHO_MIMO_MODEL=
+MORPHO_MIMO_BASE_URL=
+```
+
+Image generation through GrsAI:
+
+```text
+MORPHO_GRS_API_KEY=
+MORPHO_GRS_BASE_URL=
+MORPHO_GRS_IMAGE_MODEL=
+```
+
+Without these variables, the app still runs locally, but provider routes return clear configuration errors instead of fake AI results.
+
 ## Development Server
 
 ```bash
 npm.cmd run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
-Expected local URL:
+Expected local URLs:
 
 ```text
-http://127.0.0.1:3000
+http://127.0.0.1:3000/
+http://127.0.0.1:3000/projects/project-nightrail
 ```
-
-In the current Codex shell, long-lived background startup could not be kept alive because PowerShell `Start-Process` fails on duplicated `Path` / `PATH` environment keys and shell-spawned background jobs are cleaned up when the tool command exits. A temporary dev server was started in-process and verified with HTTP `200`.
 
 ## Checks
 
@@ -31,36 +53,63 @@ npm.cmd test
 npm.cmd run build
 ```
 
-Current expected results:
+Expected results:
 
 - `lint`: ESLint completes with no reported problems.
 - `typecheck`: `tsc --noEmit` completes.
-- `test`: Vitest runs `src/domain/morpho/workspace.test.ts`, including schema migration, hidden/delete/default-reference, delivery-reference snapshot, and AI context boundary tests.
-- `build`: `next build` completes and prerenders `/`.
+- `test`: Vitest runs domain, persistence, import, query, MiMo, and GrsAI tests.
+- `build`: `next build` completes and prerenders static pages/routes where applicable.
 
-## Current Persistence
+## Current Local Persistence
 
-The browser stores the workspace under:
+Project catalog:
+
+```text
+morpho.projects.catalog.v1
+```
+
+Per-project workspace:
+
+```text
+morpho.project.${projectId}.workspace.v1
+```
+
+Legacy single-project key read for migration:
 
 ```text
 morpho.workspace.nightrail.v1
 ```
 
-The storage key is retained for migration compatibility. The stored workspace data is schema version `2`.
+Structured workspace data is schema version `3`. v1/v2 workspace data is migrated through pure migration functions. Migration success writes the new project workspace and catalog. Migration failure preserves old raw data and shows a recoverable warning instead of silently resetting to seed data.
 
-Schema version `1` data is migrated automatically. Migration success writes schema `2` back to the same key. Migration failure keeps the old raw localStorage value and shows a warning in the AI panel while displaying the seeded `夜航 / Nightrail` workspace.
+Binary assets are stored in IndexedDB:
 
-Clearing localStorage resets the app to the seeded `夜航 / Nightrail` workspace.
+```text
+database: morpho-assets-v1
+store: asset-blobs
+```
+
+Workspace JSON stores only asset metadata and `assetId` references, not base64 file contents.
+
+## Current Routes
+
+```text
+/                         project homepage
+/projects/[projectId]     project workspace
+/api/ai/chat              MiMo text chat proxy
+/api/ai/image             GrsAI image generation proxy
+```
 
 ## Not Implemented
 
 The current code does not include:
 
-- backend APIs;
 - Supabase or any other database;
 - authentication;
 - cloud file storage;
-- real AI/model calls;
 - multiplayer sync;
+- PDF/PPT/Word parsing;
+- automatic web crawling;
+- model routing UI;
 - export package generation;
 - deployment automation.

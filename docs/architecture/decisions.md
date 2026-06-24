@@ -4,9 +4,9 @@
 
 Decision: use `next`, `react`, and `react-dom` for the formal application foundation.
 
-Reason: the current task asks for a stable Next.js + TypeScript application in the existing project root. The App Router gives a production-oriented structure without introducing a separate temporary project.
+Reason: Morpho needs a production-oriented TypeScript application in the existing project root without creating a temporary project.
 
-Current scope: one static app route with a client-side workspace. No server actions, route handlers, backend API, deployment, or auth are implemented.
+Current scope: App Router pages and route handlers run in one application. No separate backend service is implemented.
 
 ## 2026-06-23: Use tldraw as the Canvas SDK
 
@@ -16,19 +16,11 @@ Reason: Morpho needs pan, zoom, selection, and extensible canvas object renderin
 
 Boundary: canvas coordinates are stored only as visual placement in `canvas.instances`. Domain semantics remain in Morpho objects and relations.
 
-## 2026-06-23: Use localStorage for Initial Local Persistence
-
-Decision: persist the current workspace to browser `localStorage`.
-
-Reason: the current scope requires refresh recovery without a real backend, Supabase, login, cloud storage, or AI key.
-
-Boundary: this is a local persistence adapter, not the future storage model. It can be replaced by a database or sync layer without moving domain types into UI components.
-
 ## 2026-06-23: Use Vitest for Domain Boundary Tests
 
-Decision: use `vitest` for deterministic domain tests.
+Decision: use `vitest` for deterministic tests.
 
-Reason: Morpho product rules require automated tests for object relations, state changes, and AI action boundaries. The first tests cover canvas movement and AI suggestion draft behavior.
+Reason: Morpho product rules require automated tests for object relations, state changes, delivery references, AI context boundaries, persistence migration, provider adapters, and import behavior.
 
 ## 2026-06-23: Use lucide-react for Interface Icons
 
@@ -44,9 +36,9 @@ Reason: `eslint@10.5.0` installed by `latest` triggered a runtime incompatibilit
 
 ## 2026-06-23: Use Schema Version 2 for Core Workspace Semantics
 
-Decision: move the local workspace data model to schema version `2`.
+Decision: introduce visibility, delivery references, and scoped decision records.
 
-Reason: Morpho needs structural separation between visibility, deletion, direction state, default references, and delivery references before adding more project-entry, import, AI, or export behavior.
+Reason: Morpho needs structural separation between visibility, deletion, direction state, default references, and delivery references before adding project entry, import, AI, or export behavior.
 
 Implemented fields include object `visibility`, `deliveryReferences`, and scoped `decisionRecords`.
 
@@ -54,7 +46,7 @@ Implemented fields include object `visibility`, `deliveryReferences`, and scoped
 
 Decision: `DecisionRecord` is not a universal operation log.
 
-Reason: hidden and restore actions are temporary workspace operations and should not pollute the object's decision history. Decision records are reserved for project-level decisions such as default-reference changes, direction status changes, delivery-reference changes, and reasoned deletion.
+Reason: hidden and restore actions are temporary workspace operations and should not pollute decision history. Decision records are reserved for project-level decisions such as default-reference changes, direction status changes, delivery-reference changes, and reasoned deletion.
 
 ## 2026-06-23: Snapshot Delivery References
 
@@ -67,3 +59,43 @@ Reason: delivery content must remain stable when its source object is renamed, h
 Decision: localStorage migration is pure, and failed migration does not overwrite stored raw data.
 
 Reason: localStorage is temporary, but it already represents real local project state. Future database or sync migration should follow the same rule: migration failure must be recoverable and must not silently reset project data to seed content.
+
+## 2026-06-24: Use Schema Version 3 for Local Projects and Assets
+
+Decision: upgrade workspace data to `schemaVersion: 3`.
+
+Reason: Milestone 2 needs multi-project local persistence, asset records, text/link/image collection objects, persisted UI state, and extended AI messages while preserving v2 semantic boundaries.
+
+Implemented fields include `workspace.assets`, `workspace.ui`, `TextObject`, `LinkObject`, and `ImageCollectionObject`.
+
+## 2026-06-24: Use localStorage for Project Catalog and Workspace JSON
+
+Decision: store the local project catalog and each workspace JSON document in localStorage.
+
+Reason: the current product is local-first and must run without Supabase, authentication, cloud storage, or a configured backend database.
+
+Boundary: localStorage stores structured project state only. Binary assets are stored separately in IndexedDB.
+
+## 2026-06-24: Use IndexedDB for Local Binary Assets
+
+Decision: store imported and generated binary files as Blobs in native IndexedDB.
+
+Reason: images, PDFs, and other files must survive refresh without putting base64 payloads in localStorage.
+
+Boundary: current code records asset metadata and Blob storage keys but does not implement garbage collection.
+
+## 2026-06-24: Use Server-Side MiMo Adapter for Text Chat
+
+Decision: implement `/api/ai/chat` as a server-side route that reads `MORPHO_MIMO_*` and calls MiMo through an OpenAI-compatible streaming adapter.
+
+Reason: API keys must not appear in browser code, localStorage, logs, or `NEXT_PUBLIC_*` variables.
+
+Boundary: MiMo can return text analysis, suggestions, and drafts only. It cannot directly mutate Morpho project state.
+
+## 2026-06-24: Use Server-Side GrsAI Adapter for Image Generation
+
+Decision: implement `/api/ai/image` as a server-side route that reads `MORPHO_GRS_*`, calls GrsAI `POST /v1/api/generate`, polls `GET /v1/api/result?id=...` when required, downloads the remote result, and returns image bytes to the browser.
+
+Reason: image generation needs a real provider path while keeping keys server-only and preserving local-first asset storage.
+
+Boundary: generated images are saved by the browser as new IndexedDB assets and new Morpho image objects. The source image, default reference, version chain, and delivery references are not overwritten.

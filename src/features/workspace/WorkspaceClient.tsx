@@ -4,9 +4,9 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { AiContextTask, AssetRecord, MorphoObject } from "@/domain/morpho/types";
+import { createGeneratedImageFromAsset } from "@/domain/morpho/generation";
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "@/domain/morpho/imports";
 import {
-  addLocalModificationVariants,
   assembleAiContext,
   createAiDraftFromSuggestion,
   deleteObject,
@@ -43,6 +43,13 @@ type WorkspaceClientProps = {
   projectId: string;
 };
 
+type ImageTaskState = "preparing" | "submitting" | "waiting" | "downloading" | "succeeded" | "failed" | "cancelled";
+
+type ImageTaskStatus = {
+  state: ImageTaskState;
+  message: string;
+};
+
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [workspace, setWorkspace, persistenceState] = usePersistentWorkspace(projectId);
   const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>(() => workspace.ui.lastSelectionIds);
@@ -54,6 +61,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [showFailure, setShowFailure] = useState(false);
   const [contextWarning, setContextWarning] = useState<string | undefined>();
   const [isAiStreaming, setIsAiStreaming] = useState(false);
+  const [imageTaskStatus, setImageTaskStatus] = useState<ImageTaskStatus | null>(null);
   const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
   const assetUrlsRef = useRef<Record<string, string>>({});
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -65,6 +73,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   );
 
   const suggestions = useMemo(() => getSuggestionsForSelection(selectedObjects), [selectedObjects]);
+  const isImageTaskMode = useMemo(
+    () => Boolean(localEditObjectId) || shouldUseGrsImageTask(aiDraft, selectedObjects),
+    [aiDraft, localEditObjectId, selectedObjects]
+  );
   const focusArea = useCallback((area: FocusArea) => {
     setFocusRequest((current) => ({ area, nonce: current.nonce + 1 }));
     setActiveDrawer(null);
@@ -349,16 +361,127 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setAiDraft("保留整体比例与柔光轨道语言，把转角连接件做得更一体化、少一些外露五金感。");
   }, [selectedObjects]);
 
-  const handleRunLocalEdit = useCallback(() => {
-    if (!localEditObjectId) {
+  const handleRunLocalEdit = useCallback(async () => {
+    const draft = aiDraft.trim();
+    const explicitImageId = localEditObjectId ?? selectedObjects.find((object) => object.type === "image")?.id;
+    if (!draft || !explicitImageId || isAiStreaming) {
       return;
     }
 
-    setWorkspace((current) => addLocalModificationVariants(current, localEditObjectId));
+    const context = assembleAiContext(workspace, {
+      draft,
+      selectedObjectIds,
+      explicitObjectIds: [explicitImageId],
+      task: "visualDevelopment"
+    });
+    setContextWarning(
+      context.defaultReferenceStatus.status === "hidden" ? context.defaultReferenceStatus.message : undefined
+    );
+
+    const now = new Date().toISOString();
+    const userMessageId = `ai-user-image-${Date.now()}`;
+    const assistantMessageId = `ai-assistant-image-${Date.now()}`;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setIsAiStreaming(true);
+    setImageTaskStatus({ state: "preparing", message: "正在准备本次图像任务的最小参考。" });
     setShowFailure(false);
-    setLocalEditObjectId(null);
     setAiDraft("");
-  }, [localEditObjectId, setWorkspace]);
+    setAiOpen(true);
+    setWorkspace((current) => ({
+      ...current,
+      ai: {
+        ...current.ai,
+        messages: [
+          ...current.ai.messages,
+          { id: userMessageId, role: "user", body: draft, createdAt: now, contextObjectIds: context.objectIds },
+          {
+            id: assistantMessageId,
+            role: "assistant",
+            body: "图像任务准备中：会创建新图像对象，不会覆盖来源图、默认参考或交付引用。",
+            createdAt: now,
+            status: "streaming",
+            contextObjectIds: context.objectIds
+          }
+        ]
+      }
+    }));
+
+    try {
+      const referenceImages = await collectImageReferenceDataUrls(workspace, context.objectIds, controller.signal);
+      const sourceObjectIds = referenceImages.sourceObjectIds.length > 0 ? referenceImages.sourceObjectIds : [explicitImageId];
+      const pixelNote =
+        referenceImages.images.length === 0
+          ? "本次没有可读取的本地图片像素，仅基于对象标题、摘要和你的描述请求 GrsAI。"
+          : `本次会发送 ${referenceImages.images.length} 张明确参考图像。`;
+
+      setWorkspace((current) => updateAiMessage(current, assistantMessageId, `图像任务提交中：${pixelNote}`, "streaming"));
+      setImageTaskStatus({ state: "submitting", message: "正在提交 GrsAI 图像生成请求。" });
+
+      const responsePromise = fetch("/api/ai/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: draft,
+          images: referenceImages.images,
+          aspectRatio: "4:3",
+          imageSize: "1024x768",
+          replyType: "url"
+        }),
+        signal: controller.signal
+      });
+
+      setImageTaskStatus({ state: "waiting", message: "GrsAI 正在生成或返回结果。" });
+      const response = await responsePromise;
+
+      if (!response.ok) {
+        const failure = await readErrorResponse(response);
+        throw new Error(failure);
+      }
+
+      setImageTaskStatus({ state: "downloading", message: "正在保存生成结果到本地资产库。" });
+      const mimeType = response.headers.get("Content-Type") ?? "image/png";
+      const blob = await response.blob();
+      const file = new File([blob], makeGeneratedImageFileName(mimeType), { type: mimeType });
+      const saved = await saveBlobAsLocalAsset(indexedDbBlobStore, file, "aiGeneratedImage");
+      if (saved.status === "failed") {
+        throw new Error(saved.reason);
+      }
+
+      const createdObjectId = `image-generated-${saved.asset.id}`;
+      setWorkspace((current) => {
+        const generated = createGeneratedImageFromAsset(current, {
+          asset: saved.asset,
+          prompt: draft,
+          sourceObjectIds
+        });
+
+        return updateAiMessage(
+          generated.workspace,
+          assistantMessageId,
+          "GrsAI 已返回图像结果。已保存为独立本地资产，并在来源图附近创建新的图像对象；来源图、版本链、默认参考和交付引用没有被替换。",
+          "done"
+        );
+      });
+      setSelectedObjectIds([createdObjectId]);
+      setFocusRequest((current) => ({ objectId: createdObjectId, nonce: current.nonce + 1 }));
+      setLocalEditObjectId(null);
+      setImageTaskStatus({ state: "succeeded", message: "图像结果已保存，并创建为新的画布对象。" });
+    } catch (error) {
+      const isCancelled = error instanceof DOMException && error.name === "AbortError";
+      const message = isCancelled
+        ? "图像任务已取消。原输入、来源对象和已有结果已保留。"
+        : error instanceof Error
+          ? error.message
+          : "GrsAI 图像任务失败。";
+      setAiDraft(draft);
+      setImageTaskStatus({ state: isCancelled ? "cancelled" : "failed", message });
+      setWorkspace((current) => updateAiMessage(current, assistantMessageId, message, "failed"));
+    } finally {
+      abortControllerRef.current = null;
+      setIsAiStreaming(false);
+    }
+  }, [aiDraft, isAiStreaming, localEditObjectId, selectedObjectIds, selectedObjects, setWorkspace, workspace]);
 
   const handleReferenceIntent = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "image");
@@ -495,10 +618,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         suggestions={suggestions}
         draft={aiDraft}
         isOpen={aiOpen}
-        isLocalEditMode={Boolean(localEditObjectId)}
+        isLocalEditMode={isImageTaskMode}
         isStreaming={isAiStreaming}
         pendingConfirmation={pendingConfirmation}
         showFailure={showFailure}
+        imageTaskStatus={imageTaskStatus}
         contextWarning={contextWarning}
         migrationError={persistenceState.migrationError}
         onToggleOpen={() => setAiOpen((open) => !open)}
@@ -590,6 +714,14 @@ function inferAiContextTask(draft: string, selectedObjects: MorphoObject[]): AiC
   return "general";
 }
 
+function shouldUseGrsImageTask(draft: string, selectedObjects: MorphoObject[]): boolean {
+  if (!selectedObjects.some((object) => object.type === "image")) {
+    return false;
+  }
+
+  return /生成|继续发展|局部修改|使用场景|多参考|变体|角度|场景|cmf|细节|新视觉|出图|图像任务/.test(draft.toLowerCase());
+}
+
 function summarizeDefaultReferenceStatus(status: ReturnType<typeof assembleAiContext>["defaultReferenceStatus"]): string {
   switch (status.status) {
     case "available":
@@ -638,6 +770,81 @@ async function readErrorResponse(response: Response): Promise<string> {
   }
 
   return response.statusText || "AI 请求失败。";
+}
+
+async function collectImageReferenceDataUrls(
+  workspace: MorphoWorkspace,
+  objectIds: string[],
+  signal: AbortSignal
+): Promise<{
+  images: string[];
+  sourceObjectIds: string[];
+  missingPixelObjectIds: string[];
+}> {
+  const sourceObjectIds: string[] = [];
+  const missingPixelObjectIds: string[] = [];
+  const images: string[] = [];
+
+  for (const objectId of objectIds) {
+    if (signal.aborted || images.length >= 4) {
+      break;
+    }
+
+    const object = workspace.objects[objectId];
+    if (!object || object.type !== "image" || object.visibility !== "active") {
+      continue;
+    }
+
+    if (!sourceObjectIds.includes(object.id)) {
+      sourceObjectIds.push(object.id);
+    }
+
+    if (!object.assetId) {
+      missingPixelObjectIds.push(object.id);
+      continue;
+    }
+
+    const asset = workspace.assets[object.assetId];
+    if (!asset) {
+      missingPixelObjectIds.push(object.id);
+      continue;
+    }
+
+    const blob = await indexedDbBlobStore.get(asset.storageKey);
+    if (!blob) {
+      missingPixelObjectIds.push(object.id);
+      continue;
+    }
+
+    images.push(await blobToDataUrl(blob));
+  }
+
+  if (signal.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+
+  return { images, sourceObjectIds, missingPixelObjectIds };
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+
+      reject(new Error("图片参考转换失败。"));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("图片参考读取失败。"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function makeGeneratedImageFileName(mimeType: string): string {
+  const extension = mimeType.includes("jpeg") ? "jpg" : mimeType.includes("webp") ? "webp" : "png";
+  return `grs-result-${Date.now()}.${extension}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -28,6 +28,10 @@ type AiConversationPanelProps = {
   isStreaming: boolean;
   pendingConfirmation: PendingAiConfirmation | null;
   showFailure: boolean;
+  imageTaskStatus?: {
+    state: "preparing" | "submitting" | "waiting" | "downloading" | "succeeded" | "failed" | "cancelled";
+    message: string;
+  } | null;
   contextWarning?: string;
   migrationError?: string;
   onToggleOpen: () => void;
@@ -51,6 +55,7 @@ export function AiConversationPanel({
   isStreaming,
   pendingConfirmation,
   showFailure,
+  imageTaskStatus,
   contextWarning,
   migrationError,
   onToggleOpen,
@@ -128,6 +133,13 @@ export function AiConversationPanel({
             </div>
           ) : null}
 
+          {imageTaskStatus ? (
+            <div className="failure-card">
+              <strong>图像任务 · {formatImageTaskState(imageTaskStatus.state)}</strong>
+              <p>{imageTaskStatus.message}</p>
+            </div>
+          ) : null}
+
           {pendingConfirmation ? (
             <div className="confirm-card">
               <strong>{pendingConfirmation.kind === "deleteObject" ? "确认删除对象" : "替换后续默认参考"}</strong>
@@ -170,10 +182,10 @@ export function AiConversationPanel({
 
         <div className="ai-input-wrap">
           <div className="mode-row">
-            <span>建议只会填入输入框，不会自动发送。</span>
+            <span>建议只会填入输入框；发送后才会执行当前任务。</span>
             <div className="mode-toggle" aria-label="执行模式">
-              <span className={isLocalEditMode ? "" : "active"}>先确认</span>
-              <span className={isLocalEditMode ? "active" : ""}>自动执行</span>
+              <span className={isLocalEditMode ? "" : "active"}>文本对话</span>
+              <span className={isLocalEditMode ? "active" : ""}>图像任务</span>
             </div>
           </div>
           <div className="ai-input">
@@ -203,4 +215,23 @@ export function AiConversationPanel({
       </button>
     </>
   );
+}
+
+function formatImageTaskState(state: NonNullable<AiConversationPanelProps["imageTaskStatus"]>["state"]): string {
+  switch (state) {
+    case "preparing":
+      return "准备中";
+    case "submitting":
+      return "提交中";
+    case "waiting":
+      return "等待结果";
+    case "downloading":
+      return "保存中";
+    case "succeeded":
+      return "已完成";
+    case "failed":
+      return "失败";
+    case "cancelled":
+      return "已取消";
+  }
 }

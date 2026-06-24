@@ -12,11 +12,15 @@ Morpho is an AI-assisted concept-development workspace for product and industria
 
 当前仓库已经建立正式 Next.js + TypeScript 工程基础，并实现了一个可运行的桌面端工作台：
 
+- `/` 项目首页：新建、继续最近、搜索和打开本地项目；
+- `/projects/[projectId]` 项目工作台；
 - 主导性的连续 tldraw 画布；
 - 浮动顶部控件、左侧窄工具轨、右下连续 AI 对话面板；
 - 选中对象后出现的底部详情栏；
-- Morpho 领域对象、画布实例、本地持久化和语义状态边界；
-- `schemaVersion: 2` 的语义数据底座，包括隐藏、删除、淘汰、后续默认参考、交付稳定引用和安全迁移。
+- Morpho 领域对象、画布实例、资产、项目 catalog、本地持久化和语义状态边界；
+- `schemaVersion: 3` 的 local-first 数据底座，包括隐藏、删除、淘汰、后续默认参考、交付稳定引用、安全迁移、IndexedDB 二进制资产和连续 AI 消息；
+- 服务端 MiMo 流式文本聊天 route；
+- 服务端 GrsAI 图像生成 route，成功结果会保存为新的本地资产和新的图像对象。
 
 ## Morpho 用来做什么
 
@@ -45,7 +49,7 @@ Morpho is an AI-assisted concept-development workspace for product and industria
 - Vitest
 - ESLint
 
-当前没有实现后端 API、数据库、登录、云存储、真实 AI 调用、多人协作或部署自动化。
+当前没有实现数据库、登录、云存储、多人协作、复杂文档解析、导出或部署自动化。
 
 ## 本地开发
 
@@ -60,7 +64,23 @@ npm.cmd run dev -- --hostname 127.0.0.1 --port 3000
 
 ```text
 http://127.0.0.1:3000
+http://127.0.0.1:3000/projects/project-nightrail
 ```
+
+如需真实 AI 调用，复制 `.env.example` 为 `.env.local` 并填写服务端变量：
+
+```text
+MORPHO_AI_PROVIDER=mimo
+MORPHO_MIMO_API_KEY=
+MORPHO_MIMO_MODEL=
+MORPHO_MIMO_BASE_URL=
+
+MORPHO_GRS_API_KEY=
+MORPHO_GRS_BASE_URL=
+MORPHO_GRS_IMAGE_MODEL=
+```
+
+不要把真实 Key 放进客户端代码、`NEXT_PUBLIC_*`、localStorage、日志或 Git 提交。
 
 常用检查：
 

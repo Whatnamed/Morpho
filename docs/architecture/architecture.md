@@ -2,63 +2,117 @@
 
 ## Current Runtime
 
-Morpho is currently a single Next.js App Router application in this repository root.
+Morpho is a single Next.js App Router application in this repository root.
 
-The implemented workspace is client-side React on top of a static Next route:
+Implemented routes:
 
-- `src/app/layout.tsx` imports global styles and tldraw CSS.
-- `src/app/page.tsx` renders the Morpho workspace.
+- `/` renders the local project homepage.
+- `/projects/[projectId]` renders the Morpho workspace for one local project.
+- `/api/ai/chat` proxies server-side MiMo streaming chat.
+- `/api/ai/image` proxies server-side GrsAI image generation and returns the generated image bytes.
+
+Important module boundaries:
+
+- `src/app/` owns Next.js routes.
+- `src/features/projects/` owns the local project homepage UI.
 - `src/features/workspace/` owns the visible workbench experience.
-- `src/domain/morpho/` owns product-domain types, seed data, and deterministic domain actions.
-- `src/infrastructure/persistence/` owns browser localStorage access.
+- `src/domain/morpho/` owns product-domain types, seed data, deterministic domain actions, import helpers, generation helpers, and queries.
+- `src/infrastructure/persistence/` owns browser localStorage project catalog and workspace access.
+- `src/infrastructure/assets/` owns browser IndexedDB Blob storage and asset-save workflow.
+- `src/server/ai/` owns MiMo provider config, request validation, context conversion, and streaming normalization.
+- `src/server/image/` owns GrsAI provider config, request validation, bounded polling, and remote image download.
 
-No backend API, database, authentication, object storage, cloud sync, or real AI provider is implemented yet.
+No database, authentication, cloud object storage, Supabase, multiplayer sync, export pipeline, or deployment automation is implemented.
 
-## Key Boundaries
+## Data Model
+
+Structured workspace data is schema version `3`.
+
+Current workspace state includes:
+
+- stable Morpho domain objects in `workspace.objects`;
+- binary or link metadata in `workspace.assets`;
+- stable delivery snapshots in `workspace.deliveryReferences`;
+- scoped semantic decisions in `workspace.decisionRecords`;
+- visual-only canvas instances in `workspace.canvas.instances`;
+- persisted workspace UI state in `workspace.ui`;
+- continuous AI messages in `workspace.ai.messages`.
 
 Canvas rendering is separated from Morpho domain state:
 
 - Morpho objects are stable domain records in `src/domain/morpho/types.ts`.
-- Canvas placement lives in `canvas.instances`.
+- Canvas placement lives only in `canvas.instances`.
 - tldraw custom shapes store `objectId` and `instanceId` only as a rendering bridge.
-- Moving a tldraw shape updates canvas instance position; it does not change object type, status, relation, direction state, default reference, or delivery inclusion.
-- tldraw only renders canvas instances whose source object exists and has `visibility: "active"`.
-- Hiding an object changes object visibility only; deleting an object removes the object, live relations, and canvas instances.
+- Moving a shape updates canvas instance position; it does not change object type, status, relation, direction state, default reference, or delivery inclusion.
+- tldraw renders only canvas instances whose source object exists and has `visibility: "active"`.
 
-Structured workspace data is currently schema version `2`:
+Semantic boundaries retained from schema v2:
 
-- Objects carry `visibility: "active" | "hidden"`.
-- Delivery modules reference `DeliveryReference` IDs, not live source object IDs.
-- Delivery references store display snapshots so source changes, hiding, deletion, or new versions do not silently mutate delivery content.
-- Decision records are limited to project-level semantic decisions such as default-reference changes, direction status decisions, delivery-reference changes, and reasoned deletion.
+- hide, delete, and eliminate remain different operations;
+- delivery modules reference `DeliveryReference` IDs, not live source object IDs;
+- delivery references store independent display snapshots;
+- decision records are limited to project-level semantic decisions;
+- default reference changes do not rewrite old images, version chains, or delivery references.
 
-AI UI is currently simulated:
+## Local-First Persistence
 
-- The right panel is a continuous conversation surface.
-- Selection suggestions fill an editable draft input.
-- Suggestions do not automatically send, generate, or mutate project state.
-- The local modification simulation creates new image objects only after the user presses the send/execute button in local edit mode.
+Project catalog and structured workspace JSON use localStorage:
 
-Persistence is local only:
+- catalog key: `morpho.projects.catalog.v1`;
+- workspace key: `morpho.project.${projectId}.workspace.v1`;
+- legacy single-project key `morpho.workspace.nightrail.v1` is read for migration only.
 
-- Morpho workspace data is serialized to `localStorage` with schema version `2`.
-- Stored schema version `1` data is migrated through a pure migration function.
-- A successful migration is written back to localStorage; a failed migration keeps the old raw localStorage value and shows a recovery warning instead of silently replacing it with seed data.
-- tldraw store persistence is not used separately; shapes are rebuilt from the persisted Morpho workspace.
+Binary files are not stored in localStorage. Imported images/files and generated image results are saved as Blobs in IndexedDB:
 
-## Implemented UI Surfaces
+- database: `morpho-assets-v1`;
+- object store: `asset-blobs`;
+- workspace objects reference assets by `assetId`;
+- assets contain filename, MIME type, size, creation time, storage key, and source type.
 
-- Full-screen tldraw canvas with custom Morpho object shapes.
-- Floating top controls.
-- Narrow floating left rail.
-- AI conversation panel over the lower-right canvas area.
-- Always-available AI expand/collapse trigger.
-- Bottom detail surface that appears only for selected objects.
-- Project map, asset, hidden-content, and search overlays.
+The current code does not implement asset garbage collection. Deleting a canvas object does not delete Blob data.
+
+## Import, Search, Assets, Hidden
+
+Implemented import paths:
+
+- paste image to image object;
+- paste text to editable text object;
+- drag/drop files to image or file objects;
+- drag/drop URL to link object;
+- top import button to current viewport area.
+
+Asset panel and search are real workspace queries:
+
+- assets list imported images, files, links, generated images, and future document extracts;
+- search covers object titles/text, filenames, URLs/domains, concept/research/definition text, and delivery reference snapshots;
+- hidden objects can be found and restored, but hidden objects are not included in default AI context.
+
+## AI Providers
+
+Text chat:
+
+- Browser calls `/api/ai/chat`.
+- The route reads `MORPHO_MIMO_*` only on the server.
+- MiMo is called through an OpenAI-compatible streaming chat adapter.
+- The browser receives normalized plain text stream chunks.
+
+Image generation:
+
+- Browser calls `/api/ai/image`.
+- The route reads `MORPHO_GRS_*` only on the server.
+- GrsAI uses `POST /v1/api/generate` and, when needed, bounded polling on `GET /v1/api/result?id=...`.
+- The server downloads the final remote result URL and returns image bytes to the browser.
+- The browser stores the returned image Blob in IndexedDB and creates a new `ImageObject` plus canvas instance.
+
+AI boundary:
+
+- AI can reply, analyze, suggest, and generate editable text or image results.
+- AI does not directly mutate domain state such as deletion, hidden state, direction status, default reference, delivery references, or project memory.
+- Image generation always creates a new image object and never overwrites a source image.
 
 ## Demo Project
 
-The seed workspace uses the official demo content:
+The seeded migrated project remains the official demo:
 
 - `夜航 / Nightrail`
 - Main direction: `方向 A：柔光轨道`
