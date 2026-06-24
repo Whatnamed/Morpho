@@ -33,9 +33,13 @@ type FocusRequest = {
   nonce: number;
 };
 
-export function WorkspaceClient() {
-  const [workspace, setWorkspace, persistenceState] = usePersistentWorkspace();
-  const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>(["image-soft-rail-v2"]);
+type WorkspaceClientProps = {
+  projectId: string;
+};
+
+export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
+  const [workspace, setWorkspace, persistenceState] = usePersistentWorkspace(projectId);
+  const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>(() => workspace.ui.lastSelectionIds);
   const [aiDraft, setAiDraft] = useState("");
   const [aiOpen, setAiOpen] = useState(true);
   const [activeDrawer, setActiveDrawer] = useState<DrawerMode>(null);

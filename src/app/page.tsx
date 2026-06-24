@@ -1,5 +1,5 @@
-import { WorkspaceClient } from "@/features/workspace/WorkspaceClient";
+import { ProjectHomeClient } from "@/features/projects/ProjectHomeClient";
 
 export default function HomePage() {
-  return <WorkspaceClient />;
+  return <ProjectHomeClient />;
 }
