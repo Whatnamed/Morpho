@@ -7,6 +7,7 @@ describe("MiMo text route request conversion", () => {
     const prompt = buildMorphoSystemPrompt({
       draft: "分析这张图",
       task: "general",
+      taskMode: "chatAnalysis",
       messages: [],
       objectSummaries: [
         {

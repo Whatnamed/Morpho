@@ -2,7 +2,7 @@
 
 import { ChevronLeft, Send, Sparkles } from "lucide-react";
 
-import type { MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
+import type { AiTaskMode, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 import {
   GRS_IMAGE_ASPECT_RATIOS,
@@ -22,6 +22,11 @@ export type PendingAiConfirmation =
       targetObjectId: string;
       targetTitle: string;
       reasons: string[];
+    }
+  | {
+      kind: "applyResearchProposal";
+      proposalId: string;
+      targetTitle: string;
     };
 
 type AiConversationPanelProps = {
@@ -31,6 +36,8 @@ type AiConversationPanelProps = {
   draft: string;
   isOpen: boolean;
   isLocalEditMode: boolean;
+  taskMode: AiTaskMode;
+  recommendedTaskMode: AiTaskMode;
   isStreaming: boolean;
   imageGenerationSettings: ImageGenerationSettings;
   imageGenerationModelOptions: ImageGenerationModelOption[];
@@ -44,6 +51,7 @@ type AiConversationPanelProps = {
   migrationError?: string;
   onToggleOpen: () => void;
   onDraftChange: (draft: string) => void;
+  onTaskModeChange: (taskMode: AiTaskMode) => void;
   onImageGenerationSettingsChange: (patch: {
     modelId?: string;
     aspectRatio?: GrsImageAspectRatio;
@@ -65,6 +73,8 @@ export function AiConversationPanel({
   draft,
   isOpen,
   isLocalEditMode,
+  taskMode,
+  recommendedTaskMode,
   isStreaming,
   imageGenerationSettings,
   imageGenerationModelOptions,
@@ -75,6 +85,7 @@ export function AiConversationPanel({
   migrationError,
   onToggleOpen,
   onDraftChange,
+  onTaskModeChange,
   onImageGenerationSettingsChange,
   onSuggestionClick,
   onSendMessage,
@@ -158,11 +169,21 @@ export function AiConversationPanel({
 
           {pendingConfirmation ? (
             <div className="confirm-card">
-              <strong>{pendingConfirmation.kind === "deleteObject" ? "确认删除对象" : "替换后续默认参考"}</strong>
+              <strong>
+                {pendingConfirmation.kind === "deleteObject"
+                  ? "确认删除对象"
+                  : pendingConfirmation.kind === "applyResearchProposal"
+                    ? "保存研究与分析"
+                    : "替换后续默认参考"}
+              </strong>
               {pendingConfirmation.kind === "deleteObject" ? (
                 <p>
                   将删除“{pendingConfirmation.targetTitle}”。它会从活动对象和画布实例中移除，并清理实时关系；不会改写已存在的交付引用快照和决策快照。
                   {pendingConfirmation.reasons.length > 0 ? ` 需要确认：${pendingConfirmation.reasons.join(" ")}` : ""}
+                </p>
+              ) : pendingConfirmation.kind === "applyResearchProposal" ? (
+                <p>
+                  将“{pendingConfirmation.targetTitle}”保存为正式研究与分析对象，并创建来源关系；不会自动写入长期项目记忆、设计定义、方向状态或关键结论。
                 </p>
               ) : (
                 <p>
@@ -171,7 +192,11 @@ export function AiConversationPanel({
               )}
               <div className="confirm-actions">
                 <button className="brand-button" type="button" onClick={onConfirmPending}>
-                  {pendingConfirmation.kind === "deleteObject" ? "确认删除" : "只替换默认参考"}
+                  {pendingConfirmation.kind === "deleteObject"
+                    ? "确认删除"
+                    : pendingConfirmation.kind === "applyResearchProposal"
+                      ? "保存为研究与分析"
+                      : "只替换默认参考"}
                 </button>
                 <button className="plain-button" type="button" onClick={onCancelPending}>
                   取消
@@ -198,10 +223,32 @@ export function AiConversationPanel({
 
         <div className="ai-input-wrap">
           <div className="mode-row">
-            <span>建议只会填入输入框；发送后才会执行当前任务。</span>
+            <span>
+              当前任务：{formatTaskMode(taskMode)}
+              {recommendedTaskMode !== taskMode ? ` · 建议 ${formatTaskMode(recommendedTaskMode)}` : ""}
+            </span>
             <div className="mode-toggle" aria-label="执行模式">
-              <span className={isLocalEditMode ? "" : "active"}>文本对话</span>
-              <span className={isLocalEditMode ? "active" : ""}>图像任务</span>
+              <button
+                type="button"
+                className={taskMode === "chatAnalysis" ? "active" : ""}
+                onClick={() => onTaskModeChange("chatAnalysis")}
+              >
+                对话与分析
+              </button>
+              <button
+                type="button"
+                className={taskMode === "imageGeneration" ? "active" : ""}
+                onClick={() => onTaskModeChange("imageGeneration")}
+              >
+                图像生成
+              </button>
+              <button
+                type="button"
+                className={taskMode === "researchOperation" ? "active" : ""}
+                onClick={() => onTaskModeChange("researchOperation")}
+              >
+                研究任务
+              </button>
             </div>
           </div>
           {isLocalEditMode ? (
@@ -285,6 +332,17 @@ export function AiConversationPanel({
       </button>
     </>
   );
+}
+
+function formatTaskMode(mode: AiTaskMode): string {
+  switch (mode) {
+    case "chatAnalysis":
+      return "对话与分析";
+    case "imageGeneration":
+      return "图像生成";
+    case "researchOperation":
+      return "研究任务";
+  }
 }
 
 function formatCapabilities(capabilities: ImageGenerationSettings["capabilities"]): string {

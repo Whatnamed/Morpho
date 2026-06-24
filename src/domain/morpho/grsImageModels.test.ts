@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getDefaultGrsImageModel,
   getSelectableGrsImageModels,
+  getExecutableGrsImageModels,
   resolveGrsImageModelSettings
 } from "./grsImageModels";
 
@@ -23,6 +24,14 @@ describe("GrsAI image model catalog", () => {
     expect(selectableIds).not.toContain("gpt-5.5");
     expect(selectableIds).not.toContain("gpt-5.4");
     expect(selectableIds).not.toContain("gemini-3-flash");
+  });
+
+  it("keeps documented-only models out of executable UI options until smoke verified", () => {
+    const executableIds = getExecutableGrsImageModels().map((model) => model.id);
+
+    expect(executableIds).toContain("nano-banana-fast");
+    expect(executableIds).not.toContain("gpt-image-2");
+    expect(getDefaultGrsImageModel().capabilityStatus).toBe("smokeTestVerified");
   });
 
   it("normalizes supported size options per model without inventing unsupported controls", () => {

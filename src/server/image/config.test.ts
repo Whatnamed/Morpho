@@ -7,7 +7,8 @@ describe("GrsAI image config", () => {
     const result = loadGrsImageConfig({
       MORPHO_GRS_API_KEY: "secret",
       MORPHO_GRS_BASE_URL: "https://grs.example",
-      MORPHO_GRS_IMAGE_MODEL: "image-model"
+      MORPHO_GRS_DEFAULT_MODEL: "nano-banana-fast",
+      MORPHO_GRS_IMAGE_MODEL: "legacy-image-model"
     });
 
     expect(result).toEqual({
@@ -15,7 +16,24 @@ describe("GrsAI image config", () => {
       config: {
         apiKey: "secret",
         baseUrl: "https://grs.example",
-        model: "image-model"
+        model: "nano-banana-fast"
+      }
+    });
+  });
+
+  it("keeps legacy image model env as a fallback when the default model variable is empty", () => {
+    const result = loadGrsImageConfig({
+      MORPHO_GRS_API_KEY: "secret",
+      MORPHO_GRS_BASE_URL: "https://grs.example",
+      MORPHO_GRS_IMAGE_MODEL: "legacy-image-model"
+    });
+
+    expect(result).toEqual({
+      status: "ok",
+      config: {
+        apiKey: "secret",
+        baseUrl: "https://grs.example",
+        model: "legacy-image-model"
       }
     });
   });

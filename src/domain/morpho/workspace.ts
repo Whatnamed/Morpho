@@ -23,10 +23,14 @@ import type {
 } from "./types";
 
 const DEFAULT_REFERENCE_HIDDEN_MESSAGE = "当前后续默认参考已隐藏，请先恢复或替换后再用于相关生成。";
-const CURRENT_SCHEMA_VERSION = 3;
+const CURRENT_SCHEMA_VERSION = 4;
 
-type LegacyWorkspaceV2 = Omit<MorphoWorkspace, "schemaVersion" | "assets" | "ui"> & {
+type LegacyWorkspaceV2 = Omit<MorphoWorkspace, "schemaVersion" | "assets" | "ui" | "operations" | "artifactProposals" | "citationSnapshots"> & {
   schemaVersion: 2;
+};
+
+type LegacyWorkspaceV3 = Omit<MorphoWorkspace, "schemaVersion" | "operations" | "artifactProposals" | "citationSnapshots"> & {
+  schemaVersion: 3;
 };
 
 export type DeleteObjectResult =
@@ -75,6 +79,9 @@ export function createBlankWorkspace(projectId: string): MorphoWorkspace {
     relations: [],
     deliveryReferences: {},
     decisionRecords: [],
+    operations: {},
+    artifactProposals: {},
+    citationSnapshots: {},
     canvas: {
       view: { x: 0, y: 0, zoom: 1 },
       instances: []
@@ -484,6 +491,14 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
     };
   }
 
+  if (value.schemaVersion === 3) {
+    return {
+      status: "ok",
+      workspace: migrateV3Workspace(value as LegacyWorkspaceV3),
+      didMigrate: true
+    };
+  }
+
   if (value.schemaVersion === 2) {
     return {
       status: "ok",
@@ -593,6 +608,9 @@ function migrateV2Workspace(value: LegacyWorkspaceV2 | Record<string, unknown>):
     },
     objects: cloned.objects,
     assets: createLegacyAssetRecords(cloned.objects),
+    operations: {},
+    artifactProposals: {},
+    citationSnapshots: {},
     ui: {
       activeDrawer: null,
       aiOpen: true,
@@ -602,13 +620,32 @@ function migrateV2Workspace(value: LegacyWorkspaceV2 | Record<string, unknown>):
   };
 }
 
+function migrateV3Workspace(value: LegacyWorkspaceV3 | Record<string, unknown>): MorphoWorkspace {
+  const cloned = structuredClone(value) as LegacyWorkspaceV3;
+  return normalizeV4Workspace({
+    ...cloned,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    operations: {},
+    artifactProposals: {},
+    citationSnapshots: {}
+  });
+}
+
 function normalizeV3Workspace(value: Record<string, unknown>): MorphoWorkspace {
+  return normalizeV4Workspace(value);
+}
+
+function normalizeV4Workspace(value: Record<string, unknown>): MorphoWorkspace {
   const cloned = structuredClone(value) as MorphoWorkspace;
   const canvasView = cloned.ui?.canvasView ?? cloned.canvas.view;
 
   return {
     ...cloned,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     assets: cloned.assets ?? {},
+    operations: cloned.operations ?? {},
+    artifactProposals: cloned.artifactProposals ?? {},
+    citationSnapshots: cloned.citationSnapshots ?? {},
     ui: {
       activeDrawer: cloned.ui?.activeDrawer ?? null,
       aiOpen: cloned.ui?.aiOpen ?? true,

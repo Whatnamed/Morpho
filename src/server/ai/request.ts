@@ -18,6 +18,7 @@ export type AiRouteAttachmentSummary = {
 export type AiRouteRequest = {
   draft: string;
   task: string;
+  taskMode: "chatAnalysis" | "imageGeneration" | "researchOperation";
   messages: Array<{
     role: "user" | "assistant";
     body: string;
@@ -61,6 +62,7 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
     value: {
       draft: value.draft,
       task: typeof value.task === "string" ? value.task : "general",
+      taskMode: isTaskMode(value.taskMode) ? value.taskMode : "chatAnalysis",
       messages,
       objectSummaries,
       attachments,
@@ -90,6 +92,7 @@ export function buildMorphoSystemPrompt(request: AiRouteRequest): string {
     "你是 Morpho 的连续工作台 AI，只能回复文本、分析、提出建议和生成可编辑草稿。",
     "你不能直接创建、删除、隐藏对象，不能更改方向状态，不能替换默认参考，不能创建交付引用，不能写入项目记忆。",
     `本次任务类型：${request.task}`,
+    `本次执行模式：${request.taskMode}`,
     request.defaultReferenceStatus ? `默认参考状态：${request.defaultReferenceStatus}` : "",
     "本次可用对象摘要：",
     objectLines,
@@ -137,6 +140,10 @@ function normalizeAttachmentSummary(value: AiRouteAttachmentSummary): AiRouteAtt
     mimeType: value.mimeType,
     status: value.status
   };
+}
+
+function isTaskMode(value: unknown): value is AiRouteRequest["taskMode"] {
+  return value === "chatAnalysis" || value === "imageGeneration" || value === "researchOperation";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

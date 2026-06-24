@@ -11,7 +11,7 @@ export type AiConfigResult =
       reason: string;
     };
 
-export function loadAiConfig(env: NodeJS.ProcessEnv): AiConfigResult {
+export function loadAiConfig(env: Partial<NodeJS.ProcessEnv>): AiConfigResult {
   const provider = env.MORPHO_AI_PROVIDER ?? "mimo";
   if (provider !== "mimo") {
     return {
@@ -20,14 +20,17 @@ export function loadAiConfig(env: NodeJS.ProcessEnv): AiConfigResult {
     };
   }
 
-  const apiKey = env.MORPHO_MIMO_API_KEY;
-  const model = env.MORPHO_MIMO_MODEL;
   const baseUrl = env.MORPHO_MIMO_BASE_URL;
+  const apiKeys = getMiMoApiKeys(env);
+  const textModel = env.MORPHO_MIMO_TEXT_MODEL || "mimo-v2.5-pro";
+  const multimodalModel = env.MORPHO_MIMO_MULTIMODAL_MODEL || "mimo-v2.5";
+  const webSearchEnabled = env.MORPHO_MIMO_WEB_SEARCH_ENABLED === "true";
 
-  if (!apiKey || !model || !baseUrl) {
+  if (apiKeys.length === 0 || !baseUrl) {
     return {
       status: "failed",
-      reason: "MiMo 配置缺失：请在 .env.local 设置 MORPHO_MIMO_API_KEY、MORPHO_MIMO_MODEL 和 MORPHO_MIMO_BASE_URL。"
+      reason:
+        "MiMo 配置缺失：请在 .env.local 设置 MORPHO_MIMO_API_KEYS（或 MORPHO_MIMO_API_KEY）和 MORPHO_MIMO_BASE_URL。"
     };
   }
 
@@ -35,9 +38,29 @@ export function loadAiConfig(env: NodeJS.ProcessEnv): AiConfigResult {
     status: "ok",
     provider: "mimo",
     config: {
-      apiKey,
-      model,
-      baseUrl
+      apiKeys,
+      textModel,
+      multimodalModel,
+      baseUrl,
+      webSearchEnabled
     }
   };
+}
+
+function getMiMoApiKeys(env: Partial<NodeJS.ProcessEnv>): string[] {
+  const plural = splitKeys(env.MORPHO_MIMO_API_KEYS);
+  if (plural.length > 0) {
+    return plural;
+  }
+
+  return splitKeys(env.MORPHO_MIMO_API_KEY);
+}
+
+function splitKeys(value: string | undefined): string[] {
+  return value
+    ? value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
 }

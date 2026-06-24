@@ -28,7 +28,8 @@ export async function POST(request: Request) {
     const stream = await streamMiMoChat(config.config, {
       messages: buildProviderMessages(validated.value),
       systemPrompt: buildMorphoSystemPrompt(validated.value),
-      stream: true
+      stream: true,
+      capability: validated.value.task === "visualUnderstanding" ? "multimodal" : "text"
     });
 
     return new Response(stream, {

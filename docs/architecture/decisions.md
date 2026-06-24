@@ -140,6 +140,14 @@ Reason: Research and image-generation tasks need input snapshots, recoverable st
 
 Boundary: Operation records store status, summaries, proposals, citation snapshots, and IndexedDB artifact references. They do not store raw webpages, large extracted documents, provider raw responses, API keys, response headers, or hidden provider diagnostics in localStorage.
 
+## 2026-06-25: Use Schema Version 4 for Operation State
+
+Decision: upgrade workspace data to `schemaVersion: 4`.
+
+Reason: Operation records, artifact proposals, and citation snapshots need stable local-first containers that migrate safely from v3 project data.
+
+Boundary: schema v4 does not introduce a backend job queue. Browser refresh marks unfinished operations interrupted instead of pretending they continue on a server.
+
 ## 2026-06-25: Make Task Mode the Execution Authority
 
 Decision: user-send `taskMode` controls whether a request is chat/analysis, image generation, or research operation.

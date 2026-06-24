@@ -1,16 +1,22 @@
 import type { MiMoConfig, ProviderChatInput, ProviderRequest } from "./types";
+import { createMiMoKeyPool } from "./keyPool";
 
 export function createMiMoChatRequest(config: MiMoConfig, input: ProviderChatInput): ProviderRequest {
+  return createMiMoChatRequestWithKey(config, input, config.apiKeys[0] ?? "");
+}
+
+function createMiMoChatRequestWithKey(config: MiMoConfig, input: ProviderChatInput, apiKey: string): ProviderRequest {
   const baseUrl = config.baseUrl.replace(/\/$/, "");
+  const model = input.capability === "multimodal" ? config.multimodalModel : config.textModel;
 
   return {
     url: `${baseUrl}/chat/completions`,
     headers: {
-      Authorization: `Bearer ${config.apiKey}`,
+      "api-key": apiKey,
       "Content-Type": "application/json"
     },
     body: {
-      model: config.model,
+      model,
       messages: [{ role: "system", content: input.systemPrompt }, ...input.messages],
       stream: input.stream
     }
@@ -18,12 +24,41 @@ export function createMiMoChatRequest(config: MiMoConfig, input: ProviderChatInp
 }
 
 export async function streamMiMoChat(config: MiMoConfig, input: ProviderChatInput): Promise<ReadableStream<Uint8Array>> {
-  const providerRequest = createMiMoChatRequest(config, input);
-  const response = await fetch(providerRequest.url, {
-    method: "POST",
-    headers: providerRequest.headers,
-    body: JSON.stringify(providerRequest.body)
-  });
+  const keyPool = createMiMoKeyPool(config.apiKeys);
+  let providerRequest = createMiMoChatRequestWithKey(config, input, keyPool.current());
+  let response: Response;
+
+  try {
+    response = await fetch(providerRequest.url, {
+      method: "POST",
+      headers: providerRequest.headers,
+      body: JSON.stringify(providerRequest.body)
+    });
+  } catch (error) {
+    const next = keyPool.nextAfterFailure({ kind: "network" });
+    if (next.status === "stop") {
+      throw error;
+    }
+
+    providerRequest = createMiMoChatRequestWithKey(config, input, next.apiKey);
+    response = await fetch(providerRequest.url, {
+      method: "POST",
+      headers: providerRequest.headers,
+      body: JSON.stringify(providerRequest.body)
+    });
+  }
+
+  if (!response.ok) {
+    const next = keyPool.nextAfterFailure({ status: response.status });
+    if (next.status === "retry") {
+      providerRequest = createMiMoChatRequestWithKey(config, input, next.apiKey);
+      response = await fetch(providerRequest.url, {
+        method: "POST",
+        headers: providerRequest.headers,
+        body: JSON.stringify(providerRequest.body)
+      });
+    }
+  }
 
   if (!response.ok || !response.body) {
     throw new Error(`MiMo provider returned ${response.status}`);

@@ -3,10 +3,19 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { AiContextTask, AssetRecord, MorphoObject } from "@/domain/morpho/types";
+import type { AiContextTask, AiTaskMode, AssetRecord, MorphoObject } from "@/domain/morpho/types";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 import { createGeneratedImageFromAsset } from "@/domain/morpho/generation";
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "@/domain/morpho/imports";
+import {
+  applyResearchAnalysisProposal,
+  completeImageGenerationOperation,
+  createImageGenerationOperation,
+  createResearchOperation,
+  failImageGenerationOperation,
+  markImageGenerationOperationSubmitted,
+  recordResearchAnalysisProposal
+} from "@/domain/operations/operations";
 import {
   assembleAiContext,
   createAiDraftFromSuggestion,
@@ -27,7 +36,7 @@ import { usePersistentWorkspace } from "./usePersistentWorkspace";
 import { compactObjectList, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
 import { indexedDbBlobStore, getAssetObjectUrl } from "@/infrastructure/assets/indexedDbAssetStore";
 import { readImageBlobDimensions, saveBlobAsLocalAsset } from "@/infrastructure/assets/localAssetWorkflow";
-import { shouldUseGrsImageTask } from "./aiTaskRouting";
+import { recommendAiTaskMode, resolveTaskModeForSend } from "./aiTaskRouting";
 import {
   getDefaultImageGenerationSettings,
   getImageGenerationModelOptions,
@@ -63,6 +72,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [workspace, setWorkspace, persistenceState] = usePersistentWorkspace(projectId);
   const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>(() => workspace.ui.lastSelectionIds);
   const [aiDraft, setAiDraft] = useState("");
+  const [taskMode, setTaskMode] = useState<AiTaskMode>("chatAnalysis");
   const [aiOpen, setAiOpen] = useState(true);
   const [activeDrawer, setActiveDrawer] = useState<DrawerMode>(null);
   const [localEditObjectId, setLocalEditObjectId] = useState<string | null>(null);
@@ -86,10 +96,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   );
 
   const suggestions = useMemo(() => getSuggestionsForSelection(selectedObjects), [selectedObjects]);
-  const isImageTaskMode = useMemo(
-    () => Boolean(localEditObjectId) || shouldUseGrsImageTask(aiDraft, selectedObjects.map((object) => object.type)),
-    [aiDraft, localEditObjectId, selectedObjects]
+  const recommendedTaskMode = useMemo(
+    () => recommendAiTaskMode(aiDraft, selectedObjects.map((object) => object.type)),
+    [aiDraft, selectedObjects]
   );
+  const isImageTaskMode = taskMode === "imageGeneration";
   const imageGenerationModelOptions = useMemo(() => getImageGenerationModelOptions(), []);
   const inferredImageAspectRatio = useMemo(
     () => inferGenerationAspectRatio(workspace, selectedObjectIds),
@@ -123,6 +134,22 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     },
     [imageGenerationAspectMode, inferredImageAspectRatio]
   );
+
+  useEffect(() => {
+    if (!activeDrawer) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActiveDrawer(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeDrawer]);
+
   const focusArea = useCallback((area: FocusArea) => {
     setFocusRequest((current) => ({ area, nonce: current.nonce + 1 }));
     setActiveDrawer(null);
@@ -174,6 +201,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const handleSelectionChange = useCallback(
     (objectIds: string[]) => {
       setSelectedObjectIds(objectIds);
+      if (objectIds.length === 0) {
+        setActiveDrawer(null);
+      }
       setWorkspace((current) => {
         if (current.ui.lastSelectionIds.join("|") === objectIds.join("|")) {
           return current;
@@ -271,9 +301,143 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [setWorkspace]
   );
 
+  const handleRunResearchOperation = useCallback(
+    async (draft: string) => {
+      const context = assembleAiContext(workspace, {
+        draft,
+        selectedObjectIds,
+        explicitObjectIds: [],
+        task: "research"
+      });
+      const created = createResearchOperation(workspace, {
+        userInput: draft,
+        selectedObjectIds: context.objectIds,
+        allowWebSearch: false
+      });
+      const operationId = created.operation.id;
+      const now = new Date().toISOString();
+      const userMessageId = `ai-user-research-${Date.now()}`;
+      const assistantMessageId = `ai-assistant-research-${Date.now()}`;
+      const controller = new AbortController();
+      const objectSummaries = makeObjectSummaries(workspace, context.objectIds);
+
+      abortControllerRef.current = controller;
+      setIsAiStreaming(true);
+      setAiDraft("");
+      setAiOpen(true);
+      setWorkspace(() => ({
+        ...created.workspace,
+        ai: {
+          ...created.workspace.ai,
+          messages: [
+            ...created.workspace.ai.messages,
+            {
+              id: userMessageId,
+              role: "user",
+              body: draft,
+              createdAt: now,
+              contextObjectIds: context.objectIds,
+              taskMode: "researchOperation"
+            },
+            {
+              id: assistantMessageId,
+              role: "assistant",
+              body: "研究任务已开始：正在整理本地输入快照。本轮未启用联网搜索。",
+              createdAt: now,
+              status: "streaming",
+              contextObjectIds: context.objectIds,
+              taskMode: "researchOperation",
+              operationId
+            }
+          ]
+        }
+      }));
+
+      try {
+        const response = await fetch("/api/ai/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            draft,
+            task: "research",
+            taskMode: "researchOperation",
+            messages: workspace.ai.messages.map((message) => ({ role: message.role, body: message.body })),
+            objectSummaries,
+            attachments: [],
+            defaultReferenceStatus: "notRelevant"
+          }),
+          signal: controller.signal
+        });
+
+        if (!response.ok || !response.body) {
+          const failure = await readErrorResponse(response);
+          throw new Error(failure);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let assistantBody = "";
+        let isDone = false;
+        while (!isDone) {
+          const result = await reader.read();
+          isDone = result.done;
+          if (result.value) {
+            assistantBody += decoder.decode(result.value, { stream: !isDone });
+            setWorkspace((current) => updateAiMessage(current, assistantMessageId, assistantBody, "streaming"));
+          }
+        }
+
+        const proposalTitle = `${workspace.project.title} · 研究与分析草案`;
+        const proposalId = `proposal-research-${operationId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        setWorkspace((current) => {
+          const proposed = recordResearchAnalysisProposal(
+            updateAiMessage(current, assistantMessageId, assistantBody || "MiMo 没有返回可显示文本。", "done"),
+            {
+              proposalId,
+              operationId,
+              title: proposalTitle,
+              summary: assistantBody || "基于当前本地资料形成的研究分析草案。",
+              findings: [assistantBody || "本轮未得到可展示的模型文本。"],
+              opportunities: [],
+              constraints: [],
+              openQuestions: [],
+              sourceObjectIds: context.objectIds,
+              citations: []
+            }
+          );
+          return proposed.workspace;
+        });
+        setPendingConfirmation({
+          kind: "applyResearchProposal",
+          proposalId,
+          targetTitle: proposalTitle
+        });
+      } catch (error) {
+        const isCancelled = error instanceof DOMException && error.name === "AbortError";
+        const message = isCancelled
+          ? "研究任务已取消。原输入、选择和已完成步骤已保留。"
+          : error instanceof Error
+            ? error.message
+            : "研究任务失败。";
+        setAiDraft(draft);
+        setWorkspace((current) => updateAiMessage(current, assistantMessageId, message, "failed"));
+      } finally {
+        abortControllerRef.current = null;
+        setIsAiStreaming(false);
+      }
+    },
+    [selectedObjectIds, setWorkspace, workspace]
+  );
+
   const handleSendAiMessage = useCallback(async () => {
     const draft = aiDraft.trim();
     if (!draft || isAiStreaming) {
+      return;
+    }
+
+    const executionTaskMode = resolveTaskModeForSend({ currentTaskMode: taskMode, recommendedTaskMode });
+    if (executionTaskMode === "researchOperation") {
+      await handleRunResearchOperation(draft);
       return;
     }
 
@@ -291,15 +455,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const now = new Date().toISOString();
     const userMessageId = `ai-user-${Date.now()}`;
     const assistantMessageId = `ai-assistant-${Date.now()}`;
-    const objectSummaries = context.objectIds
-      .map((objectId) => workspace.objects[objectId])
-      .filter((object): object is MorphoObject => Boolean(object))
-      .map((object) => ({
-        id: object.id,
-        type: object.type,
-        title: object.title,
-        summary: object.summary
-      }));
+    const objectSummaries = makeObjectSummaries(workspace, context.objectIds);
     const controller = new AbortController();
     abortControllerRef.current = controller;
     setIsAiStreaming(true);
@@ -311,8 +467,24 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         ...current.ai,
         messages: [
           ...current.ai.messages,
-          { id: userMessageId, role: "user", body: draft, createdAt: now, contextObjectIds: context.objectIds },
-          { id: assistantMessageId, role: "assistant", body: "", createdAt: now, status: "streaming", contextObjectIds: context.objectIds }
+          {
+            id: userMessageId,
+            role: "user",
+            body: draft,
+            createdAt: now,
+            contextObjectIds: context.objectIds,
+            taskMode: executionTaskMode,
+            recommendedTaskMode
+          },
+          {
+            id: assistantMessageId,
+            role: "assistant",
+            body: "",
+            createdAt: now,
+            status: "streaming",
+            contextObjectIds: context.objectIds,
+            taskMode: executionTaskMode
+          }
         ]
       }
     }));
@@ -324,8 +496,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         body: JSON.stringify({
           draft,
           task,
+          taskMode: executionTaskMode,
           messages: workspace.ai.messages.map((message) => ({ role: message.role, body: message.body })),
           objectSummaries,
+          attachments: [],
           defaultReferenceStatus: summarizeDefaultReferenceStatus(context.defaultReferenceStatus)
         }),
         signal: controller.signal
@@ -363,7 +537,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       abortControllerRef.current = null;
       setIsAiStreaming(false);
     }
-  }, [aiDraft, isAiStreaming, selectedObjectIds, selectedObjects, setWorkspace, workspace]);
+  }, [
+    aiDraft,
+    handleRunResearchOperation,
+    isAiStreaming,
+    recommendedTaskMode,
+    selectedObjectIds,
+    selectedObjects,
+    setWorkspace,
+    taskMode,
+    workspace
+  ]);
 
   const handleCancelAiRequest = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -393,6 +577,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const handleAskAi = useCallback(() => {
     setAiOpen(true);
+    setTaskMode("chatAnalysis");
     if (selectedObjects[0]) {
       setAiDraft(`请基于“${selectedObjects[0].title}”继续分析下一步。`);
     }
@@ -405,6 +590,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
 
     setAiOpen(true);
+    setTaskMode("imageGeneration");
     setLocalEditObjectId(target.id);
     setAiDraft("保留整体比例与柔光轨道语言，把转角连接件做得更一体化、少一些外露五金感。");
   }, [selectedObjects]);
@@ -427,6 +613,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     );
 
     const now = new Date().toISOString();
+    const operationId = `operation-image-${Date.now()}`;
+    const clientRequestId = `client-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const userMessageId = `ai-user-image-${Date.now()}`;
     const assistantMessageId = `ai-assistant-image-${Date.now()}`;
     const controller = new AbortController();
@@ -436,24 +624,51 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setShowFailure(false);
     setAiDraft("");
     setAiOpen(true);
-    setWorkspace((current) => ({
-      ...current,
-      ai: {
-        ...current.ai,
+    setWorkspace((current) => {
+      const operationCreated = createImageGenerationOperation(current, {
+        operationId,
+        clientRequestId,
+        prompt: draft,
+        selectedObjectIds: context.objectIds,
+        imagePixels: false,
+        modelId: effectiveImageGenerationSettings.modelId,
+        modelLabel: effectiveImageGenerationSettings.modelLabel,
+        aspectRatio: effectiveImageGenerationSettings.aspectRatio,
+        sizeOption: effectiveImageGenerationSettings.sizeOption,
+        referenceObjectIds: context.objectIds,
+        directionObjectId: undefined
+      });
+
+      return {
+        ...operationCreated.workspace,
+        ai: {
+          ...operationCreated.workspace.ai,
         messages: [
-          ...current.ai.messages,
-          { id: userMessageId, role: "user", body: draft, createdAt: now, contextObjectIds: context.objectIds },
+          ...operationCreated.workspace.ai.messages,
+          {
+            id: userMessageId,
+            role: "user",
+            body: draft,
+            createdAt: now,
+            contextObjectIds: context.objectIds,
+            taskMode: "imageGeneration"
+          },
           {
             id: assistantMessageId,
             role: "assistant",
             body: "图像任务准备中：会创建新图像对象，不会覆盖来源图、默认参考或交付引用。",
             createdAt: now,
             status: "streaming",
-            contextObjectIds: context.objectIds
+            contextObjectIds: context.objectIds,
+            taskMode: "imageGeneration",
+            operationId
           }
         ]
       }
-    }));
+      };
+    });
+
+    let providerTaskId: string | undefined;
 
     try {
       const referenceImages = await collectImageReferenceDataUrls(workspace, context.objectIds, controller.signal);
@@ -464,7 +679,18 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           ? "本次没有可读取的本地图片像素，仅基于对象标题、摘要和你的描述请求 GrsAI。"
           : `本次会发送 ${referenceImages.images.length} 张明确参考图像。`;
 
-      setWorkspace((current) => updateAiMessage(current, assistantMessageId, `图像任务提交中：${pixelNote}`, "streaming"));
+      setWorkspace((current) =>
+        updateAiMessage(
+          markImageGenerationOperationSubmitted(current, {
+            operationId,
+            referenceObjectIds: sourceObjectIds,
+            imagePixels: referenceImages.images.length > 0
+          }),
+          assistantMessageId,
+          `图像任务提交中：${pixelNote}`,
+          "streaming"
+        )
+      );
       setImageTaskStatus({ state: "submitting", message: "正在提交 GrsAI 图像生成请求。" });
 
       const responsePromise = fetch("/api/ai/image", {
@@ -477,13 +703,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           aspectRatio: effectiveImageGenerationSettings.aspectRatio,
           sizeOption: effectiveImageGenerationSettings.sizeOption,
           referenceObjectIds: sourceObjectIds,
-          directionObjectId
+          directionObjectId,
+          operationId,
+          clientRequestId
         }),
         signal: controller.signal
       });
 
       setImageTaskStatus({ state: "waiting", message: "GrsAI 正在生成或返回结果。" });
       const response = await responsePromise;
+      providerTaskId = response.headers.get("X-Morpho-Provider-Task-Id") || undefined;
 
       if (!response.ok) {
         const failure = await readErrorResponse(response);
@@ -513,14 +742,23 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             prompt: draft,
             referenceObjectIds: sourceObjectIds,
             directionId: directionObjectId,
+            operationId,
+            clientRequestId,
+            providerTaskId,
             createdAt: new Date().toISOString()
           },
           sourceObjectIds,
           directionObjectId
         });
 
+        const completed = completeImageGenerationOperation(generated.workspace, {
+          operationId,
+          providerTaskId,
+          resultObjectId: generated.createdObjectId
+        });
+
         return updateAiMessage(
-          generated.workspace,
+          completed,
           assistantMessageId,
           "GrsAI 已返回图像结果。已保存为独立本地资产，并在画布上创建新的图像对象；来源图、版本链、默认参考和交付引用没有被替换。",
           "done"
@@ -539,7 +777,19 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           : "GrsAI 图像任务失败。";
       setAiDraft(draft);
       setImageTaskStatus({ state: isCancelled ? "cancelled" : "failed", message });
-      setWorkspace((current) => updateAiMessage(current, assistantMessageId, message, "failed"));
+      setWorkspace((current) =>
+        updateAiMessage(
+          failImageGenerationOperation(current, {
+            operationId,
+            status: isCancelled ? "cancelled" : error instanceof TypeError ? "interrupted" : "failed",
+            reason: message,
+            providerTaskId
+          }),
+          assistantMessageId,
+          message,
+          "failed"
+        )
+      );
     } finally {
       abortControllerRef.current = null;
       setIsAiStreaming(false);
@@ -585,6 +835,26 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
+    if (pendingConfirmation.kind === "applyResearchProposal") {
+      const result = applyResearchAnalysisProposal(workspace, pendingConfirmation.proposalId, {
+        position: {
+          x: workspace.canvas.view.x + 220,
+          y: workspace.canvas.view.y + 180
+        }
+      });
+
+      if (result.status === "updated") {
+        setWorkspace(result.workspace);
+        setSelectedObjectIds([result.researchObject.id]);
+        setFocusRequest((current) => ({ objectId: result.researchObject.id, nonce: current.nonce + 1 }));
+      }
+
+      setPendingConfirmation(null);
+      setAiDraft("");
+      setTaskMode("chatAnalysis");
+      return;
+    }
+
     setWorkspace((current) => {
       const result = deleteObject(current, pendingConfirmation.targetObjectId, {
         confirmed: true,
@@ -597,7 +867,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setLocalEditObjectId((current) => (current === pendingConfirmation.targetObjectId ? null : current));
     setPendingConfirmation(null);
     setAiDraft("");
-  }, [pendingConfirmation, setWorkspace]);
+  }, [pendingConfirmation, setWorkspace, workspace]);
 
   const handleHideSelected = useCallback(() => {
     if (!selectedObjects[0]) {
@@ -691,6 +961,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         draft={aiDraft}
         isOpen={aiOpen}
         isLocalEditMode={isImageTaskMode}
+        taskMode={taskMode}
+        recommendedTaskMode={recommendedTaskMode}
         isStreaming={isAiStreaming}
         imageGenerationSettings={effectiveImageGenerationSettings}
         imageGenerationModelOptions={imageGenerationModelOptions}
@@ -701,6 +973,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         migrationError={persistenceState.migrationError}
         onToggleOpen={() => setAiOpen((open) => !open)}
         onDraftChange={setAiDraft}
+        onTaskModeChange={setTaskMode}
         onImageGenerationSettingsChange={updateImageGenerationSettings}
         onSuggestionClick={handleSuggestionClick}
         onSendMessage={handleSendAiMessage}
@@ -782,11 +1055,19 @@ function inferAiContextTask(draft: string, selectedObjects: MorphoObject[]): AiC
     return "research";
   }
 
-  if (/生成|继续|发展|局部|场景|cmf|角度|细节|参考|图像|图片/.test(text) || selectedObjects.some((object) => object.type === "image")) {
-    return "visualDevelopment";
-  }
-
   return "general";
+}
+
+function makeObjectSummaries(workspace: MorphoWorkspace, objectIds: string[]) {
+  return objectIds
+    .map((objectId) => workspace.objects[objectId])
+    .filter((object): object is MorphoObject => Boolean(object))
+    .map((object) => ({
+      id: object.id,
+      type: object.type,
+      title: object.title,
+      summary: object.summary
+    }));
 }
 
 function summarizeDefaultReferenceStatus(status: ReturnType<typeof assembleAiContext>["defaultReferenceStatus"]): string {

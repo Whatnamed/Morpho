@@ -50,7 +50,9 @@ export function validateGrsImageRouteRequest(value: unknown): GrsImageRouteValid
       aspectRatio,
       sizeOption: resolvedSettings.sizeOption,
       referenceObjectIds: stringArray(value.referenceObjectIds),
-      directionObjectId: stringValue(value.directionObjectId)
+      directionObjectId: stringValue(value.directionObjectId),
+      operationId: stringValue(value.operationId),
+      clientRequestId: stringValue(value.clientRequestId)
     }
   };
 }

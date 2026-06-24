@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type ClipboardEvent, type DragEvent } from "react";
-import { Tldraw, type Editor, type TLShapeId } from "tldraw";
+import { useCallback, useEffect, useRef, type ClipboardEvent, type DragEvent, type WheelEvent } from "react";
+import { Tldraw, Vec, type Editor, type TLShapeId } from "tldraw";
 
 import type { CanvasInstance, CanvasPoint, MorphoWorkspace } from "@/domain/morpho/types";
 import { getRenderableCanvasInstances } from "@/domain/morpho/workspace";
@@ -205,6 +205,22 @@ export function MorphoCanvas({
     [onImportRequest, workspace.canvas.view.x, workspace.canvas.view.y]
   );
 
+  const handleWheelCapture = useCallback((event: WheelEvent<HTMLDivElement>) => {
+    const editor = editorRef.current;
+    if (!editor) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    const point = new Vec(event.clientX, event.clientY);
+    if (event.deltaY > 0) {
+      editor.zoomOut(point, { immediate: true });
+    } else {
+      editor.zoomIn(point, { immediate: true });
+    }
+  }, []);
+
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) {
@@ -247,6 +263,7 @@ export function MorphoCanvas({
       onDragOverCapture={(event) => event.preventDefault()}
       onDropCapture={handleDropCapture}
       onPasteCapture={handlePasteCapture}
+      onWheelCapture={handleWheelCapture}
     >
       <Tldraw
         hideUi

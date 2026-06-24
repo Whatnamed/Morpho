@@ -15,6 +15,8 @@ export type GrsGenerateInput = {
   sizeOption?: string;
   referenceObjectIds: string[];
   directionObjectId?: string;
+  operationId?: string;
+  clientRequestId?: string;
 };
 
 export type GrsGenerateRequest = {
@@ -35,6 +37,7 @@ export type GrsImageResult =
       status: "ok";
       blob: Blob;
       mimeType: string;
+      providerTaskId?: string;
     }
   | {
       status: "failed";
@@ -111,7 +114,7 @@ export async function resolveGrsImageResult(
   }
 
   const generatePayload = await readJson(generateResponse.response);
-  const immediate = await resolvePayload(fetchImpl, generatePayload, signal);
+  const immediate = await resolvePayload(fetchImpl, generatePayload, signal, extractTaskId(generatePayload));
   if (immediate.status !== "pending") {
     return immediate;
   }
@@ -142,7 +145,7 @@ export async function resolveGrsImageResult(
     }
 
     const resultPayload = await readJson(resultResponse.response);
-    const resolved = await resolvePayload(fetchImpl, resultPayload, signal);
+    const resolved = await resolvePayload(fetchImpl, resultPayload, signal, taskId);
     if (resolved.status !== "pending") {
       return resolved;
     }
@@ -158,7 +161,8 @@ export async function resolveGrsImageResult(
 async function resolvePayload(
   fetchImpl: typeof fetch,
   payload: unknown,
-  signal: AbortSignal | undefined
+  signal: AbortSignal | undefined,
+  providerTaskId: string | undefined
 ): Promise<GrsImageResult | { status: "pending" }> {
   const status = extractStatus(payload);
   if (isFailureStatus(status)) {
@@ -167,7 +171,7 @@ async function resolvePayload(
 
   const imageUrl = extractImageUrl(payload);
   if (imageUrl) {
-    return downloadImage(fetchImpl, imageUrl, signal);
+    return downloadImage(fetchImpl, imageUrl, signal, providerTaskId);
   }
 
   if (isPendingStatus(status) || extractTaskId(payload)) {
@@ -180,7 +184,8 @@ async function resolvePayload(
 async function downloadImage(
   fetchImpl: typeof fetch,
   imageUrl: string,
-  signal: AbortSignal | undefined
+  signal: AbortSignal | undefined,
+  providerTaskId: string | undefined
 ): Promise<GrsImageResult> {
   const response = await safeFetch(fetchImpl, imageUrl, { method: "GET", signal });
 
@@ -200,7 +205,8 @@ async function downloadImage(
   return {
     status: "ok",
     blob,
-    mimeType: response.response.headers.get("Content-Type") ?? (blob.type || "image/png")
+    mimeType: response.response.headers.get("Content-Type") ?? (blob.type || "image/png"),
+    providerTaskId
   };
 }
 

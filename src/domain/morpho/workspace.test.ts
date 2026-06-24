@@ -16,14 +16,17 @@ import {
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "./imports";
 
 describe("Morpho workspace domain boundaries", () => {
-  it("creates a blank schema v3 project without depending on Nightrail seed object ids", () => {
+  it("creates a blank schema v4 project without depending on Nightrail seed object ids", () => {
     const workspace = createBlankWorkspace("project-empty-local");
 
-    expect(workspace.schemaVersion).toBe(3);
+    expect(workspace.schemaVersion).toBe(4);
     expect(workspace.project.id).toBe("project-empty-local");
     expect(workspace.objects["image-soft-rail-v2"]).toBeUndefined();
     expect(workspace.canvas.instances).toEqual([]);
     expect(workspace.assets).toEqual({});
+    expect(workspace.operations).toEqual({});
+    expect(workspace.artifactProposals).toEqual({});
+    expect(workspace.citationSnapshots).toEqual({});
   });
 
   it("moves a canvas instance without changing object type, status, or relations", () => {
@@ -294,9 +297,12 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.status).toBe("ok");
     expect(legacyWorkspace).toEqual(before);
     if (result.status === "ok") {
-      expect(result.workspace.schemaVersion).toBe(3);
+      expect(result.workspace.schemaVersion).toBe(4);
       expect(result.workspace.objects["image-a"]?.visibility).toBe("active");
       expect(result.workspace.assets).toBeDefined();
+      expect(result.workspace.operations).toEqual({});
+      expect(result.workspace.artifactProposals).toEqual({});
+      expect(result.workspace.citationSnapshots).toEqual({});
       expect(Object.values(result.workspace.deliveryReferences)).toHaveLength(1);
       expect(result.workspace.objects["delivery-a"]?.type).toBe("delivery");
       const deliveryObject = result.workspace.objects["delivery-a"];

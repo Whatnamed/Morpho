@@ -1,21 +1,39 @@
-export function shouldUseGrsImageTask(draft: string, selectedObjectTypes: readonly string[]): boolean {
-  const text = draft.toLowerCase();
-  const hasVisualNoun = /图|图像|图片|视觉|场景|cmf|细节|角度|预览|效果图|渲染|造型|材质/.test(text);
-  const hasGenerativeVerb = /生成|出图|继续发展|发展|延展|衍生|变体|修改|局部修改/.test(text);
-  const hasExplicitVisualAction = /继续发展|局部修改|使用场景|多参考|变体|角度|场景|cmf|细节|新视觉|出图|图像任务|预览图|效果图/.test(
-    text
-  );
-  const hasGenerativeIntent = hasExplicitVisualAction || (hasGenerativeVerb && hasVisualNoun);
+import type { AiTaskMode } from "@/domain/morpho/types";
 
-  if (!hasGenerativeIntent) {
-    return false;
+export type ResolveTaskModeInput = {
+  currentTaskMode: AiTaskMode;
+  recommendedTaskMode: AiTaskMode;
+};
+
+const EXPLICIT_IMAGE_GENERATION_PATTERN =
+  /继续发展(?:这张|图像|图片)?|生成(?:一张|新的|场景|角度|cmf|细节|预览|效果图|新视觉|视觉方案)|出图|图像生成|图像任务|使用场景图|场景图|角度图|cmf图|细节图/i;
+const GENERIC_TEXT_GENERATION_PATTERN = /生成(?:一段|一份|文案|说明|文字|摘要|标题|图注|交付说明)/i;
+const IMAGE_ANALYSIS_PATTERN = /分析这张图|比较这(?:两|几)张图|提取.*形态|形态语言|视觉分析|看图|图片.*问题/i;
+const RESEARCH_PATTERN = /调研|研究|整理研究|联网补充|补充来源|查资料|搜索资料|基于已选资料/i;
+
+export function recommendAiTaskMode(draft: string, selectedObjectTypes: readonly string[]): AiTaskMode {
+  void selectedObjectTypes;
+  const text = draft.trim();
+
+  if (!text) {
+    return "chatAnalysis";
   }
 
-  if (selectedObjectTypes.length === 0) {
-    return true;
+  if (RESEARCH_PATTERN.test(text)) {
+    return "researchOperation";
   }
 
-  return selectedObjectTypes.some((type) =>
-    ["image", "conceptDirection", "designDefinition", "text", "research", "insight", "link", "file"].includes(type)
-  );
+  if (IMAGE_ANALYSIS_PATTERN.test(text)) {
+    return "chatAnalysis";
+  }
+
+  if (!GENERIC_TEXT_GENERATION_PATTERN.test(text) && EXPLICIT_IMAGE_GENERATION_PATTERN.test(text)) {
+    return "imageGeneration";
+  }
+
+  return "chatAnalysis";
+}
+
+export function resolveTaskModeForSend(input: ResolveTaskModeInput): AiTaskMode {
+  return input.currentTaskMode;
 }

@@ -6,15 +6,18 @@ export type ProviderChatMessage = {
 };
 
 export type MiMoConfig = {
-  apiKey: string;
-  model: string;
+  apiKeys: string[];
+  textModel: string;
+  multimodalModel: string;
   baseUrl: string;
+  webSearchEnabled: boolean;
 };
 
 export type ProviderChatInput = {
   messages: ProviderChatMessage[];
   systemPrompt: string;
   stream: boolean;
+  capability: "text" | "multimodal";
 };
 
 export type ProviderRequest = {

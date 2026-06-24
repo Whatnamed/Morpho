@@ -26,7 +26,7 @@ No database, authentication, cloud object storage, Supabase, multiplayer sync, e
 
 ## Data Model
 
-Structured workspace data is schema version `3`. Milestone 3 will upgrade this to the next schema version when Operation records and proposals are persisted.
+Structured workspace data is schema version `4`.
 
 Current workspace state includes:
 
@@ -37,8 +37,11 @@ Current workspace state includes:
 - visual-only canvas instances in `workspace.canvas.instances`;
 - persisted workspace UI state in `workspace.ui`;
 - continuous AI messages in `workspace.ai.messages`.
+- lightweight Operation records in `workspace.operations`;
+- Artifact Proposal records in `workspace.artifactProposals`;
+- citation snapshots in `workspace.citationSnapshots`.
 
-Milestone 3 Operation persistence is intentionally lightweight:
+Operation persistence is intentionally lightweight:
 
 - workspace JSON stores operation status, summaries, input snapshots, proposal records, citation snapshots, and IndexedDB artifact references;
 - workspace JSON does not store raw webpages, large extracted document content, page preview binaries, provider raw responses, API keys, or response headers;

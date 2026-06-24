@@ -41,7 +41,9 @@ export async function POST(request: Request) {
       headers: {
         "Content-Type": result.mimeType,
         "Cache-Control": "no-store",
-        "X-Morpho-Image-Provider": "grsai"
+        "X-Morpho-Image-Provider": "grsai",
+        "X-Morpho-Client-Request-Id": validated.value.clientRequestId ?? "",
+        "X-Morpho-Provider-Task-Id": result.providerTaskId ?? ""
       }
     });
   } catch {

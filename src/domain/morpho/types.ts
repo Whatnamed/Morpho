@@ -1,9 +1,12 @@
+import type { ArtifactProposal, OperationRecord, SourceCitation } from "../operations/types";
+
 export type MorphoObjectId = string;
 export type CanvasInstanceId = string;
 export type MorphoRelationId = string;
 export type DeliveryReferenceId = string;
 export type DecisionRecordId = string;
 export type AssetId = string;
+export type AiTaskMode = "chatAnalysis" | "imageGeneration" | "researchOperation";
 
 export type MorphoObjectType =
   | "image"
@@ -77,6 +80,9 @@ export type ImageObject = MorphoObjectBase & {
 };
 
 export type ImageGenerationMetadata = {
+  operationId?: string;
+  clientRequestId?: string;
+  providerTaskId?: string;
   modelId: string;
   modelLabel: string;
   aspectRatio: string;
@@ -252,11 +258,15 @@ export type AiMessage = {
   createdAt?: string;
   status?: "streaming" | "done" | "failed";
   contextObjectIds?: MorphoObjectId[];
+  taskMode?: AiTaskMode;
+  recommendedTaskMode?: AiTaskMode;
+  operationId?: string;
+  proposalId?: string;
   error?: string;
 };
 
 export type MorphoWorkspace = {
-  schemaVersion: 3;
+  schemaVersion: 4;
   project: {
     id: string;
     title: string;
@@ -272,6 +282,9 @@ export type MorphoWorkspace = {
   relations: MorphoRelation[];
   deliveryReferences: Record<DeliveryReferenceId, DeliveryReference>;
   decisionRecords: DecisionRecord[];
+  operations: Record<string, OperationRecord>;
+  artifactProposals: Record<string, ArtifactProposal>;
+  citationSnapshots: Record<string, SourceCitation>;
   canvas: {
     view: CanvasView;
     instances: CanvasInstance[];

@@ -6,7 +6,7 @@ import type {
 import {
   GRS_IMAGE_ASPECT_RATIOS,
   getDefaultGrsImageModel,
-  getSelectableGrsImageModels,
+  getExecutableGrsImageModels,
   resolveGrsImageModelSettings
 } from "../../domain/morpho/grsImageModels";
 import type { MorphoWorkspace } from "../../domain/morpho/types";
@@ -66,7 +66,7 @@ export function resolveGenerationSettings(input: {
 }
 
 export function getImageGenerationModelOptions(): ImageGenerationModelOption[] {
-  return getSelectableGrsImageModels().map((model) => ({
+  return getExecutableGrsImageModels().map((model) => ({
     id: model.id,
     label: model.label,
     points: model.points,

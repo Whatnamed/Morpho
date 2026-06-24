@@ -19,7 +19,7 @@ function withActiveVisibility(objects: Record<MorphoObjectId, SeedObject>): Reco
 }
 
 export const nightrailWorkspace: MorphoWorkspace = {
-  schemaVersion: 3,
+  schemaVersion: 4,
   project: {
     id: "project-nightrail",
     title: "夜航 / Nightrail",
@@ -30,6 +30,9 @@ export const nightrailWorkspace: MorphoWorkspace = {
     lastOpenedAt: "2026-06-23T00:00:00.000Z"
   },
   assets: {},
+  operations: {},
+  artifactProposals: {},
+  citationSnapshots: {},
   objects: withActiveVisibility({
     "file-course-brief": {
       id: "file-course-brief",

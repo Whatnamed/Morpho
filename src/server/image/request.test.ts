@@ -17,7 +17,8 @@ describe("GrsAI image route request validation", () => {
       aspectRatio: "3:4",
       sizeOption: "4K",
       referenceObjectIds: ["image-a"],
-      directionObjectId: "direction-a"
+      directionObjectId: "direction-a",
+      clientRequestId: "client-request-a"
     });
 
     expect(result.status).toBe("ok");
@@ -29,6 +30,7 @@ describe("GrsAI image route request validation", () => {
       expect(result.value.sizeOption).toBe("4K");
       expect(result.value.referenceObjectIds).toEqual(["image-a"]);
       expect(result.value.directionObjectId).toBe("direction-a");
+      expect(result.value.clientRequestId).toBe("client-request-a");
     }
   });
 
