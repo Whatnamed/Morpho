@@ -37,6 +37,32 @@ describe("MiMo AI config", () => {
     }
   });
 
+  it("does not treat the legacy secondary key as a primary key by itself", () => {
+    const result = loadAiConfig({
+      MORPHO_MIMO_API_KEY_2: "second-legacy-key",
+      MORPHO_MIMO_BASE_URL: "https://mimo.example/v1"
+    });
+
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") {
+      expect(result.reason).not.toContain("second-legacy-key");
+    }
+  });
+
+  it("prefers the explicit multimodal model variable over the old model variable", () => {
+    const result = loadAiConfig({
+      MORPHO_MIMO_API_KEY: "legacy-key",
+      MORPHO_MIMO_BASE_URL: "https://mimo.example/v1",
+      MORPHO_MIMO_MULTIMODAL_MODEL: "new-vision-model",
+      MORPHO_MIMO_MODEL: "old-vision-model"
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.config.multimodalModel).toBe("new-vision-model");
+    }
+  });
+
   it("uses the old MORPHO_MIMO_MODEL only as multimodal model fallback", () => {
     const result = loadAiConfig({
       MORPHO_MIMO_API_KEY: "legacy-key",

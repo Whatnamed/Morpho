@@ -53,7 +53,12 @@ function getMiMoApiKeys(env: Partial<NodeJS.ProcessEnv>): string[] {
     return plural;
   }
 
-  return [...splitKeys(env.MORPHO_MIMO_API_KEY), ...splitKeys(env.MORPHO_MIMO_API_KEY_2)];
+  const primary = splitKeys(env.MORPHO_MIMO_API_KEY);
+  if (primary.length === 0) {
+    return [];
+  }
+
+  return [...primary, ...splitKeys(env.MORPHO_MIMO_API_KEY_2)];
 }
 
 function splitKeys(value: string | undefined): string[] {

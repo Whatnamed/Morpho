@@ -16,8 +16,9 @@ export function calculateAnchoredZoom(input: AnchoredZoomInput): CanvasView {
   const deltaClamp = input.deltaClamp ?? 80;
   const sensitivity = input.sensitivity ?? 0.0007;
   const zoomDelta = Math.max(-deltaClamp, Math.min(deltaClamp, input.deltaY));
-  const targetZoom = clamp(input.camera.zoom * Math.exp(-zoomDelta * sensitivity), minZoom, maxZoom);
-  const ratio = targetZoom / input.camera.zoom;
+  const currentZoom = Number.isFinite(input.camera.zoom) && input.camera.zoom > 0 ? input.camera.zoom : 1;
+  const targetZoom = clamp(currentZoom * Math.exp(-zoomDelta * sensitivity), minZoom, maxZoom);
+  const ratio = currentZoom / targetZoom;
 
   return {
     x: (input.camera.x + input.anchorPagePoint.x) * ratio - input.anchorPagePoint.x,
