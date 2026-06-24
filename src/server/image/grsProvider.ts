@@ -1,4 +1,5 @@
 import { getGrsRequestProfile } from "./profile";
+import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 
 export type GrsImageConfig = {
   apiKey: string;
@@ -7,11 +8,13 @@ export type GrsImageConfig = {
 };
 
 export type GrsGenerateInput = {
+  modelId: string;
   prompt: string;
   images: string[];
-  aspectRatio: string;
-  imageSize: string;
-  replyType: string;
+  aspectRatio: GrsImageAspectRatio;
+  sizeOption?: string;
+  referenceObjectIds: string[];
+  directionObjectId?: string;
 };
 
 export type GrsGenerateRequest = {
@@ -22,7 +25,7 @@ export type GrsGenerateRequest = {
     prompt: string;
     images: string[];
     aspectRatio: string;
-    imageSize: string;
+    imageSize?: string;
     replyType: string;
   };
 };
@@ -54,7 +57,22 @@ const DEFAULT_POLL_DELAY_MS = 1500;
 
 export function createGrsGenerateRequest(config: GrsImageConfig, input: GrsGenerateInput): GrsGenerateRequest {
   const baseUrl = config.baseUrl.replace(/\/$/, "");
-  const profile = getGrsRequestProfile(config.model);
+  const profile = getGrsRequestProfile({
+    modelId: input.modelId || config.model,
+    aspectRatio: input.aspectRatio,
+    sizeOption: input.sizeOption
+  });
+  const body: GrsGenerateRequest["body"] = {
+    model: profile.modelId,
+    prompt: input.prompt,
+    images: input.images,
+    aspectRatio: profile.aspectRatio,
+    replyType: profile.replyType
+  };
+
+  if (profile.imageSize) {
+    body.imageSize = profile.imageSize;
+  }
 
   return {
     url: `${baseUrl}/v1/api/generate`,
@@ -62,14 +80,7 @@ export function createGrsGenerateRequest(config: GrsImageConfig, input: GrsGener
       Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json"
     },
-    body: {
-      model: config.model,
-      prompt: input.prompt,
-      images: input.images,
-      aspectRatio: input.aspectRatio,
-      imageSize: profile.imageSize,
-      replyType: profile.replyType
-    }
+    body
   };
 }
 

@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { AiContextTask, AssetRecord, MorphoObject } from "@/domain/morpho/types";
+import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 import { createGeneratedImageFromAsset } from "@/domain/morpho/generation";
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "@/domain/morpho/imports";
 import {
@@ -25,8 +26,15 @@ import { TopControls } from "./components/TopControls";
 import { usePersistentWorkspace } from "./usePersistentWorkspace";
 import { compactObjectList, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
 import { indexedDbBlobStore, getAssetObjectUrl } from "@/infrastructure/assets/indexedDbAssetStore";
-import { saveBlobAsLocalAsset } from "@/infrastructure/assets/localAssetWorkflow";
+import { readImageBlobDimensions, saveBlobAsLocalAsset } from "@/infrastructure/assets/localAssetWorkflow";
 import { shouldUseGrsImageTask } from "./aiTaskRouting";
+import {
+  getDefaultImageGenerationSettings,
+  getImageGenerationModelOptions,
+  inferGenerationAspectRatio,
+  resolveGenerationSettings,
+  type ImageGenerationSettings
+} from "./imageGenerationSettings";
 import type { CanvasImportRequest, FocusArea } from "./tldraw/MorphoCanvas";
 
 const MorphoCanvas = dynamic(() => import("./tldraw/MorphoCanvas").then((mod) => mod.MorphoCanvas), {
@@ -63,6 +71,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [contextWarning, setContextWarning] = useState<string | undefined>();
   const [isAiStreaming, setIsAiStreaming] = useState(false);
   const [imageTaskStatus, setImageTaskStatus] = useState<ImageTaskStatus | null>(null);
+  const [imageGenerationSettings, setImageGenerationSettings] = useState<ImageGenerationSettings>(() =>
+    getDefaultImageGenerationSettings()
+  );
+  const [imageGenerationAspectMode, setImageGenerationAspectMode] = useState<"auto" | "manual">("auto");
   const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
   const assetUrlsRef = useRef<Record<string, string>>({});
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -77,6 +89,39 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const isImageTaskMode = useMemo(
     () => Boolean(localEditObjectId) || shouldUseGrsImageTask(aiDraft, selectedObjects.map((object) => object.type)),
     [aiDraft, localEditObjectId, selectedObjects]
+  );
+  const imageGenerationModelOptions = useMemo(() => getImageGenerationModelOptions(), []);
+  const inferredImageAspectRatio = useMemo(
+    () => inferGenerationAspectRatio(workspace, selectedObjectIds),
+    [selectedObjectIds, workspace]
+  );
+  const effectiveImageGenerationSettings = useMemo(
+    () =>
+      imageGenerationAspectMode === "auto"
+        ? {
+            ...imageGenerationSettings,
+            aspectRatio: inferredImageAspectRatio
+          }
+        : imageGenerationSettings,
+    [imageGenerationAspectMode, imageGenerationSettings, inferredImageAspectRatio]
+  );
+
+  const updateImageGenerationSettings = useCallback(
+    (patch: { modelId?: string; aspectRatio?: GrsImageAspectRatio; sizeOption?: string }) => {
+      if (patch.aspectRatio) {
+        setImageGenerationAspectMode("manual");
+      }
+
+      setImageGenerationSettings((current) =>
+        resolveGenerationSettings({
+          modelId: patch.modelId ?? current.modelId,
+          sizeOption: patch.sizeOption ?? current.sizeOption,
+          aspectRatio:
+            patch.aspectRatio ?? (imageGenerationAspectMode === "auto" ? inferredImageAspectRatio : current.aspectRatio)
+        })
+      );
+    },
+    [imageGenerationAspectMode, inferredImageAspectRatio]
   );
   const focusArea = useCallback((area: FocusArea) => {
     setFocusRequest((current) => ({ area, nonce: current.nonce + 1 }));
@@ -160,7 +205,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
       for (const file of request.files ?? []) {
         const sourceType = file.type.startsWith("image/") ? "originalImage" : "originalFile";
-        const saved = await saveBlobAsLocalAsset(indexedDbBlobStore, file, sourceType);
+        const saved = await saveBlobAsLocalAsset(indexedDbBlobStore, file, sourceType, {
+          readImageDimensions: readImageBlobDimensions
+        });
         if (saved.status === "ok") {
           successfulAssets.push(saved.asset);
         } else {
@@ -424,9 +471,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          modelId: effectiveImageGenerationSettings.modelId,
           prompt: draft,
           images: referenceImages.images,
-          aspectRatio: "4:3"
+          aspectRatio: effectiveImageGenerationSettings.aspectRatio,
+          sizeOption: effectiveImageGenerationSettings.sizeOption,
+          referenceObjectIds: sourceObjectIds,
+          directionObjectId
         }),
         signal: controller.signal
       });
@@ -443,7 +494,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       const mimeType = response.headers.get("Content-Type") ?? "image/png";
       const blob = await response.blob();
       const file = new File([blob], makeGeneratedImageFileName(mimeType), { type: mimeType });
-      const saved = await saveBlobAsLocalAsset(indexedDbBlobStore, file, "aiGeneratedImage");
+      const saved = await saveBlobAsLocalAsset(indexedDbBlobStore, file, "aiGeneratedImage", {
+        readImageDimensions: readImageBlobDimensions
+      });
       if (saved.status === "failed") {
         throw new Error(saved.reason);
       }
@@ -452,7 +505,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setWorkspace((current) => {
         const generated = createGeneratedImageFromAsset(current, {
           asset: saved.asset,
-          prompt: draft,
+          generation: {
+            modelId: effectiveImageGenerationSettings.modelId,
+            modelLabel: effectiveImageGenerationSettings.modelLabel,
+            aspectRatio: effectiveImageGenerationSettings.aspectRatio,
+            sizeOption: effectiveImageGenerationSettings.sizeOption,
+            prompt: draft,
+            referenceObjectIds: sourceObjectIds,
+            directionId: directionObjectId,
+            createdAt: new Date().toISOString()
+          },
           sourceObjectIds,
           directionObjectId
         });
@@ -482,7 +544,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       abortControllerRef.current = null;
       setIsAiStreaming(false);
     }
-  }, [aiDraft, isAiStreaming, localEditObjectId, selectedObjectIds, selectedObjects, setWorkspace, workspace]);
+  }, [
+    aiDraft,
+    effectiveImageGenerationSettings,
+    isAiStreaming,
+    localEditObjectId,
+    selectedObjectIds,
+    selectedObjects,
+    setWorkspace,
+    workspace
+  ]);
 
   const handleReferenceIntent = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "image");
@@ -621,6 +692,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         isOpen={aiOpen}
         isLocalEditMode={isImageTaskMode}
         isStreaming={isAiStreaming}
+        imageGenerationSettings={effectiveImageGenerationSettings}
+        imageGenerationModelOptions={imageGenerationModelOptions}
         pendingConfirmation={pendingConfirmation}
         showFailure={showFailure}
         imageTaskStatus={imageTaskStatus}
@@ -628,6 +701,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         migrationError={persistenceState.migrationError}
         onToggleOpen={() => setAiOpen((open) => !open)}
         onDraftChange={setAiDraft}
+        onImageGenerationSettingsChange={updateImageGenerationSettings}
         onSuggestionClick={handleSuggestionClick}
         onSendMessage={handleSendAiMessage}
         onCancelRequest={handleCancelAiRequest}

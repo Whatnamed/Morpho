@@ -684,6 +684,51 @@ input:focus-visible {
   color: var(--text-primary);
 }
 
+.image-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(76px, 0.7fr) minmax(70px, 0.6fr);
+  gap: 8px;
+  margin-bottom: 9px;
+  padding: 9px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.image-settings label {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.image-settings select {
+  min-width: 0;
+  width: 100%;
+  height: 30px;
+  border: 1px solid rgba(78, 68, 58, 0.16);
+  border-radius: 7px;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-size: 11px;
+}
+
+.image-settings select:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.image-settings-note {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
 .ai-input {
   display: flex;
   align-items: flex-end;
@@ -878,6 +923,13 @@ input:focus-visible {
 
 .detail-content strong {
   color: var(--text-primary);
+}
+
+.detail-meta {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
 }
 
 .icon {

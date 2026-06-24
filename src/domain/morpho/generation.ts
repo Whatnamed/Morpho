@@ -1,8 +1,9 @@
-import type { AssetRecord, ImageObject, MorphoRelation, MorphoWorkspace } from "./types";
+import { getImageCanvasSize } from "./imageSizing";
+import type { AssetRecord, ImageGenerationMetadata, ImageObject, MorphoRelation, MorphoWorkspace } from "./types";
 
 export type CreateGeneratedImageInput = {
   asset: AssetRecord;
-  prompt: string;
+  generation: ImageGenerationMetadata;
   sourceObjectIds: string[];
   directionObjectId?: string;
 };
@@ -40,13 +41,17 @@ export function createGeneratedImageFromAsset(
     id: objectId,
     type: "image",
     title: "GrsAI 生成结果",
-    summary: input.prompt,
+    summary: input.generation.prompt,
     createdBy: "ai",
     visibility: "active",
     role: "preview",
     imageVariant: "rail",
     assetId: input.asset.id,
-    directionId
+    directionId,
+    generation: {
+      ...input.generation,
+      directionId
+    }
   };
   const relations: MorphoRelation[] = [];
   for (const sourceImage of sourceImages) {
@@ -114,7 +119,11 @@ export function createGeneratedImageFromAsset(
                   x: workspace.canvas.view.x + 180,
                   y: workspace.canvas.view.y + 180
                 },
-            size: { w: 270, h: 210 }
+            size: getImageCanvasSize({
+              width: input.asset.width,
+              height: input.asset.height,
+              aspectRatio: input.asset.aspectRatio
+            })
           }
         ]
       },

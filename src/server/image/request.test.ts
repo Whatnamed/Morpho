@@ -4,37 +4,50 @@ import { validateGrsImageRouteRequest } from "./request";
 
 describe("GrsAI image route request validation", () => {
   it("normalizes nano-banana-2 requests to the native GrsAI profile", () => {
-    const result = validateGrsImageRouteRequest(
-      {
-        prompt: "继续发展转角细节",
-        images: ["data:image/png;base64,a", "data:image/png;base64,b", "data:image/png;base64,c", "data:image/png;base64,d", "data:image/png;base64,e"]
-      },
-      { model: "nano-banana-2" }
-    );
+    const result = validateGrsImageRouteRequest({
+      modelId: "nano-banana-2",
+      prompt: "继续发展转角细节",
+      images: [
+        "data:image/png;base64,a",
+        "data:image/png;base64,b",
+        "data:image/png;base64,c",
+        "data:image/png;base64,d",
+        "data:image/png;base64,e"
+      ],
+      aspectRatio: "3:4",
+      sizeOption: "4K",
+      referenceObjectIds: ["image-a"],
+      directionObjectId: "direction-a"
+    });
 
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
+      expect(result.value.modelId).toBe("nano-banana-2");
       expect(result.value.prompt).toBe("继续发展转角细节");
       expect(result.value.images).toHaveLength(4);
-      expect(result.value.aspectRatio).toBe("4:3");
-      expect(result.value.imageSize).toBe("1K");
-      expect(result.value.replyType).toBe("json");
+      expect(result.value.aspectRatio).toBe("3:4");
+      expect(result.value.sizeOption).toBe("4K");
+      expect(result.value.referenceObjectIds).toEqual(["image-a"]);
+      expect(result.value.directionObjectId).toBe("direction-a");
     }
   });
 
-  it("keeps gpt-image-2 on its own request profile", () => {
-    const result = validateGrsImageRouteRequest(
-      {
-        prompt: "继续发展转角细节"
-      },
-      { model: "gpt-image-2" }
-    );
+  it("falls back to the cheapest available model when the client omits modelId", () => {
+    const result = validateGrsImageRouteRequest({
+      prompt: "生成一张夜间使用场景",
+      aspectRatio: "1:1"
+    });
 
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
-      expect(result.value.imageSize).toBe("1024x768");
-      expect(result.value.replyType).toBe("url");
+      expect(result.value.modelId).toBe("nano-banana-fast");
+      expect(result.value.sizeOption).toBeUndefined();
     }
+  });
+
+  it("rejects unknown or maintenance model ids before calling GrsAI", () => {
+    expect(validateGrsImageRouteRequest({ modelId: "gpt-image-2-vip", prompt: "test" }).status).toBe("failed");
+    expect(validateGrsImageRouteRequest({ modelId: "gpt-5.5", prompt: "test" }).status).toBe("failed");
   });
 
   it("rejects empty prompts before calling GrsAI", () => {

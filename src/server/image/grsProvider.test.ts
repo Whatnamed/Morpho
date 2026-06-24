@@ -3,53 +3,82 @@ import { describe, expect, it } from "vitest";
 import { createGrsGenerateRequest, resolveGrsImageResult } from "./grsProvider";
 
 describe("GrsAI image provider adapter", () => {
-  it("keeps the API key in headers and sends the documented image generation payload", () => {
+  it("keeps the API key in headers and sends a client-selected model without secrets in the body", () => {
     const request = createGrsGenerateRequest(
       {
         apiKey: "secret-grs-key",
         baseUrl: "https://grs.example",
-        model: "image-model"
+        model: "nano-banana-fast"
       },
       {
+        modelId: "nano-banana-fast",
         prompt: "生成低施工夜间扶手方案",
         images: ["data:image/png;base64,aaa"],
         aspectRatio: "4:3",
-        imageSize: "1024x768",
-        replyType: "url"
+        referenceObjectIds: []
       }
     );
 
     expect(request.url).toBe("https://grs.example/v1/api/generate");
     expect(request.headers.Authorization).toBe("Bearer secret-grs-key");
     expect(request.body).toMatchObject({
-      model: "image-model",
+      model: "nano-banana-fast",
       prompt: "生成低施工夜间扶手方案",
       images: ["data:image/png;base64,aaa"],
       aspectRatio: "4:3",
-      imageSize: "1024x768",
-      replyType: "url"
+      replyType: "json"
     });
+    expect(request.body).not.toHaveProperty("imageSize");
     expect(JSON.stringify(request.body)).not.toContain("secret-grs-key");
   });
 
-  it("does not mix gpt-image-2 dimensions into nano-banana-2 requests", () => {
+  it("sends nano-banana-2 with imageSize 1K and json reply type", () => {
     const request = createGrsGenerateRequest(
       {
         apiKey: "secret-grs-key",
         baseUrl: "https://grs.example",
-        model: "nano-banana-2"
+        model: "nano-banana-fast"
       },
       {
+        modelId: "nano-banana-2",
         prompt: "生成低施工夜间扶手方案",
         images: [],
         aspectRatio: "4:3",
-        imageSize: "1024x768",
-        replyType: "url"
+        referenceObjectIds: []
       }
     );
 
-    expect(request.body.imageSize).toBe("1K");
-    expect(request.body.replyType).toBe("json");
+    expect(request.body).toMatchObject({
+      model: "nano-banana-2",
+      aspectRatio: "4:3",
+      imageSize: "1K",
+      replyType: "json"
+    });
+  });
+
+  it("keeps gpt-image-2 on the documented pixel aspect-ratio profile without imageSize", () => {
+    const request = createGrsGenerateRequest(
+      {
+        apiKey: "secret-grs-key",
+        baseUrl: "https://grs.example",
+        model: "nano-banana-fast"
+      },
+      {
+        modelId: "gpt-image-2",
+        prompt: "生成方图",
+        images: [],
+        aspectRatio: "1:1",
+        sizeOption: "1K",
+        referenceObjectIds: []
+      }
+    );
+
+    expect(request.body).toMatchObject({
+      model: "gpt-image-2",
+      aspectRatio: "1024x1024",
+      replyType: "json"
+    });
+    expect(request.body).not.toHaveProperty("imageSize");
   });
 
   it("downloads a successful result URL from the GrsAI result list", async () => {
@@ -69,14 +98,14 @@ describe("GrsAI image provider adapter", () => {
       {
         apiKey: "key",
         baseUrl: "https://grs.example",
-        model: "image-model"
+        model: "nano-banana-fast"
       },
       {
+        modelId: "nano-banana-fast",
         prompt: "test",
         images: [],
         aspectRatio: "4:3",
-        imageSize: "1024x768",
-        replyType: "url"
+        referenceObjectIds: []
       },
       { fetchImpl, maxPolls: 1, pollDelayMs: 0 }
     );
@@ -104,14 +133,14 @@ describe("GrsAI image provider adapter", () => {
       {
         apiKey: "key",
         baseUrl: "https://grs.example",
-        model: "image-model"
+        model: "nano-banana-fast"
       },
       {
+        modelId: "nano-banana-fast",
         prompt: "test",
         images: [],
         aspectRatio: "4:3",
-        imageSize: "1024x768",
-        replyType: "url"
+        referenceObjectIds: []
       },
       { fetchImpl, maxPolls: 2, pollDelayMs: 0 }
     );
@@ -134,14 +163,14 @@ describe("GrsAI image provider adapter", () => {
       {
         apiKey: "key",
         baseUrl: "https://grs.example",
-        model: "image-model"
+        model: "nano-banana-fast"
       },
       {
+        modelId: "nano-banana-fast",
         prompt: "test",
         images: [],
         aspectRatio: "4:3",
-        imageSize: "1024x768",
-        replyType: "url"
+        referenceObjectIds: []
       },
       { fetchImpl, maxPolls: 1, pollDelayMs: 0 }
     );

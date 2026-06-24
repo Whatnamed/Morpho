@@ -29,7 +29,15 @@ MORPHO_GRS_BASE_URL=
 MORPHO_GRS_IMAGE_MODEL=
 ```
 
-The server chooses the GrsAI request profile from `MORPHO_GRS_IMAGE_MODEL`. Current implemented profiles include `nano-banana-2` (`imageSize: "1K"`, `replyType: "json"`) and `gpt-image-2` (separate `1024x768` / `url` profile).
+The browser image-task UI sends a selected model ID, aspect ratio, and optional size option to `/api/ai/image`. The route still requires the server-only GrsAI key, base URL, and environment model variable to be configured, but the provider request body is normalized on the server.
+
+Current implemented behavior:
+
+- default image model in the UI: `nano-banana-fast`;
+- selectable image models come from `src/domain/morpho/grsImageModels.ts`;
+- `nano-banana-*` profiles send `replyType: "json"` and send `imageSize` only when the selected model supports a size option;
+- `gpt-image-2` sends pixel-style `aspectRatio`, `replyType: "json"`, and no `imageSize`;
+- generated image assets store intrinsic width, height, and aspect ratio when the browser can read them.
 
 Without these variables, the app still runs locally, but provider routes return clear configuration errors instead of fake AI results.
 
@@ -112,6 +120,6 @@ The current code does not include:
 - multiplayer sync;
 - PDF/PPT/Word parsing;
 - automatic web crawling;
-- model routing UI;
+- dynamic provider model-list fetching;
 - export package generation;
 - deployment automation.

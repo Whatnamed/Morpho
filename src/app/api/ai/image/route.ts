@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: config.reason }, { status: 503 });
   }
 
-  const validated = validateGrsImageRouteRequest(body, { model: config.config.model });
+  const validated = validateGrsImageRouteRequest(body);
   if (validated.status === "failed") {
     return NextResponse.json({ error: validated.reason }, { status: 400 });
   }

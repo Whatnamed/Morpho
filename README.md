@@ -20,9 +20,9 @@ Morpho is an AI-assisted concept-development workspace for product and industria
 - Morpho 领域对象、画布实例、资产、项目 catalog、本地持久化和语义状态边界；
 - `schemaVersion: 3` 的 local-first 数据底座，包括隐藏、删除、淘汰、后续默认参考、交付稳定引用、安全迁移、IndexedDB 二进制资产和连续 AI 消息；
 - 服务端 MiMo 流式文本聊天 route；
-- 服务端 GrsAI 图像生成 route，成功结果会保存为新的本地资产和新的图像对象。
+- 服务端 GrsAI 图像生成 route，图像任务可选择模型、比例和支持的规格；成功结果会保存为新的本地资产和新的图像对象。
 
-当前 MiMo 文本聊天尚不发送图片像素；图片相关文本回复只能基于对象标题、摘要和用户描述。GrsAI 图像生成按服务端模型 profile 组装请求，其中 `nano-banana-2` 使用 `imageSize: "1K"` 与 `replyType: "json"`。
+当前 MiMo 文本聊天尚不发送图片像素；图片相关文本回复只能基于对象标题、摘要和用户描述。GrsAI 图像生成按静态模型 catalog 和服务端 profile 组装请求，默认模型为 `nano-banana-fast`；`nano-banana-*` 与 `gpt-image-2` 请求字段分开处理，不混用 `imageSize`。
 
 ## Morpho 用来做什么
 

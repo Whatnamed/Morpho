@@ -3,6 +3,12 @@
 import { ChevronLeft, Send, Sparkles } from "lucide-react";
 
 import type { MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
+import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
+import {
+  GRS_IMAGE_ASPECT_RATIOS,
+  type ImageGenerationModelOption,
+  type ImageGenerationSettings
+} from "../imageGenerationSettings";
 import type { Suggestion } from "../workspaceUi";
 
 export type PendingAiConfirmation =
@@ -26,6 +32,8 @@ type AiConversationPanelProps = {
   isOpen: boolean;
   isLocalEditMode: boolean;
   isStreaming: boolean;
+  imageGenerationSettings: ImageGenerationSettings;
+  imageGenerationModelOptions: ImageGenerationModelOption[];
   pendingConfirmation: PendingAiConfirmation | null;
   showFailure: boolean;
   imageTaskStatus?: {
@@ -36,6 +44,11 @@ type AiConversationPanelProps = {
   migrationError?: string;
   onToggleOpen: () => void;
   onDraftChange: (draft: string) => void;
+  onImageGenerationSettingsChange: (patch: {
+    modelId?: string;
+    aspectRatio?: GrsImageAspectRatio;
+    sizeOption?: string;
+  }) => void;
   onSuggestionClick: (suggestion: Suggestion) => void;
   onSendMessage: () => void;
   onCancelRequest: () => void;
@@ -53,6 +66,8 @@ export function AiConversationPanel({
   isOpen,
   isLocalEditMode,
   isStreaming,
+  imageGenerationSettings,
+  imageGenerationModelOptions,
   pendingConfirmation,
   showFailure,
   imageTaskStatus,
@@ -60,6 +75,7 @@ export function AiConversationPanel({
   migrationError,
   onToggleOpen,
   onDraftChange,
+  onImageGenerationSettingsChange,
   onSuggestionClick,
   onSendMessage,
   onCancelRequest,
@@ -188,6 +204,60 @@ export function AiConversationPanel({
               <span className={isLocalEditMode ? "active" : ""}>图像任务</span>
             </div>
           </div>
+          {isLocalEditMode ? (
+            <div className="image-settings" aria-label="图像生成设置">
+              <label>
+                <span>模型</span>
+                <select
+                  value={imageGenerationSettings.modelId}
+                  onChange={(event) => onImageGenerationSettingsChange({ modelId: event.currentTarget.value })}
+                >
+                  {imageGenerationModelOptions.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.label} · {model.points} 积分/次
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>比例</span>
+                <select
+                  value={imageGenerationSettings.aspectRatio}
+                  onChange={(event) =>
+                    onImageGenerationSettingsChange({
+                      aspectRatio: event.currentTarget.value as GrsImageAspectRatio
+                    })
+                  }
+                >
+                  {GRS_IMAGE_ASPECT_RATIOS.map((ratio) => (
+                    <option key={ratio} value={ratio}>
+                      {ratio}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {imageGenerationSettings.sizeOptions.length > 0 ? (
+                <label>
+                  <span>规格</span>
+                  <select
+                    value={imageGenerationSettings.sizeOption}
+                    disabled={imageGenerationSettings.sizeOptions.length === 1}
+                    onChange={(event) => onImageGenerationSettingsChange({ sizeOption: event.currentTarget.value })}
+                  >
+                    {imageGenerationSettings.sizeOptions.map((sizeOption) => (
+                      <option key={sizeOption} value={sizeOption}>
+                        {sizeOption}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              <div className="image-settings-note">
+                <span>{formatCapabilities(imageGenerationSettings.capabilities)}</span>
+                <span>费用以服务商控制台为准</span>
+              </div>
+            </div>
+          ) : null}
           <div className="ai-input">
             <textarea
               rows={2}
@@ -215,6 +285,19 @@ export function AiConversationPanel({
       </button>
     </>
   );
+}
+
+function formatCapabilities(capabilities: ImageGenerationSettings["capabilities"]): string {
+  const labels = capabilities.map((capability) => {
+    switch (capability) {
+      case "textToImage":
+        return "文生图";
+      case "imageToImage":
+        return "图生图";
+    }
+  });
+
+  return labels.join(" / ");
 }
 
 function formatImageTaskState(state: NonNullable<AiConversationPanelProps["imageTaskStatus"]>["state"]): string {

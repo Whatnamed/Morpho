@@ -19,6 +19,23 @@ describe("local asset workflow", () => {
     expect(await store.get(result.asset.storageKey)).toBeInstanceOf(Blob);
   });
 
+  it("records intrinsic image dimensions when they can be read before saving", async () => {
+    const store = createMemoryBlobStore();
+    const file = new File(["image-bytes"], "wide.png", { type: "image/png" });
+
+    const result = await saveBlobAsLocalAsset(store, file, "originalImage", {
+      readImageDimensions: async () => ({ width: 1920, height: 1080, aspectRatio: 16 / 9 })
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") {
+      throw new Error("Expected asset save to succeed.");
+    }
+    expect(result.asset.width).toBe(1920);
+    expect(result.asset.height).toBe(1080);
+    expect(result.asset.aspectRatio).toBe(16 / 9);
+  });
+
   it("reports storage failure without pretending the import succeeded", async () => {
     const store: BlobStore = {
       async put() {

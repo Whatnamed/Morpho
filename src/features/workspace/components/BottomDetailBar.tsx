@@ -129,6 +129,13 @@ function renderDetail(
     return (
       <>
         <strong>{getObjectTypeLabel(object)}</strong> · {object.summary}
+        {object.type === "image" && object.generation ? (
+          <span className="detail-meta">
+            生成：{object.generation.modelLabel} · {object.generation.aspectRatio}
+            {object.generation.sizeOption ? ` · ${object.generation.sizeOption}` : ""} ·{" "}
+            {object.generation.createdAt.slice(0, 10)}
+          </span>
+        ) : null}
       </>
     );
   }

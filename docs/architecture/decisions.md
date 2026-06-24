@@ -102,11 +102,27 @@ Boundary: generated images are saved by the browser as new IndexedDB assets and 
 
 ## 2026-06-24: Keep GrsAI Model Request Profiles Separate
 
-Decision: GrsAI request defaults are selected by server-side model profile.
+Decision: GrsAI request defaults are selected by server-side model profile and a client-safe static image model catalog.
 
-Reason: native `nano-banana-2` and `gpt-image-2` do not use the same request shape. `nano-banana-2` uses `imageSize: "1K"` and `replyType: "json"`, while `gpt-image-2` remains on its own profile.
+Reason: native `nano-banana-*` and `gpt-image-2` do not use the same request shape. `nano-banana-2` uses `imageSize: "1K"` and `replyType: "json"`, while `gpt-image-2` uses pixel-style `aspectRatio`, `replyType: "json"`, and no `imageSize`.
 
-Boundary: browser code does not hard-code model-specific image-size or reply-type parameters. The server adapter normalizes requests before calling GrsAI.
+Boundary: browser code does not expose API keys or base URL, and it does not build provider-private request bodies. The image task UI sends only model ID, aspect ratio, optional size option, prompt, and explicit references. The server adapter normalizes requests before calling GrsAI.
+
+## 2026-06-24: Default GrsAI Image Model to `nano-banana-fast`
+
+Decision: use a static GrsAI image model catalog and default to `nano-banana-fast`.
+
+Reason: the current provider documentation does not expose a model-list endpoint for Morpho to consume, and the supplied provider model list marks `nano-banana-fast` as the lowest-point available image model. Maintenance and text/recognition models are not exposed in the image-generation selector.
+
+Boundary: model points are displayed as provider points only. Morpho does not present RMB price estimates as authoritative; the UI says fees are subject to the provider console.
+
+## 2026-06-24: Store Intrinsic Image Dimensions and Generation Metadata
+
+Decision: store optional `width`, `height`, and `aspectRatio` on `AssetRecord`, and store generation metadata on generated image objects.
+
+Reason: generated and imported images need consistent canvas sizing without cropping, and generated results must remain traceable to the chosen model, prompt, ratio, size option, references, and direction.
+
+Boundary: metadata is shown in the bottom detail surface, not stacked on canvas cards. The selected model, ratio, and size option affect only the current generation request and are not written into project memory or default reference state.
 
 ## 2026-06-24: Keep MiMo Text Chat Metadata-Only for Images
 

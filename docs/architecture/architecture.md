@@ -67,7 +67,7 @@ Binary files are not stored in localStorage. Imported images/files and generated
 - database: `morpho-assets-v1`;
 - object store: `asset-blobs`;
 - workspace objects reference assets by `assetId`;
-- assets contain filename, MIME type, size, creation time, storage key, and source type.
+- assets contain filename, MIME type, size, creation time, storage key, source type, and optional intrinsic image dimensions.
 
 The current code does not implement asset garbage collection. Deleting a canvas object does not delete Blob data.
 
@@ -101,9 +101,13 @@ Image generation:
 - Browser calls `/api/ai/image`.
 - The route reads `MORPHO_GRS_*` only on the server.
 - GrsAI uses `POST /v1/api/generate` and, when needed, bounded polling on `GET /v1/api/result?id=...`.
-- GrsAI request parameters are selected by server-side model profile. `nano-banana-2` uses `imageSize: "1K"` and `replyType: "json"`; `gpt-image-2` keeps its separate profile so provider parameters are not mixed.
+- GrsAI image models are exposed through a static, client-safe catalog. The current default is `nano-banana-fast`, the lowest-point available image model in the catalog.
+- The right-side image task UI lets the user choose model, aspect ratio, and model-supported size option for the current request only.
+- GrsAI request parameters are selected by server-side model profile. `nano-banana-*` models send `replyType: "json"` and send `imageSize` only when the selected model supports a size option; `gpt-image-2` sends pixel-style `aspectRatio`, `replyType: "json"`, and no `imageSize`.
 - The server downloads the final remote result URL and returns image bytes to the browser.
 - The browser stores the returned image Blob in IndexedDB and creates a new `ImageObject` plus canvas instance.
+- Imported and generated images share the same canvas size helper, using intrinsic asset dimensions when available and `contain` display semantics on the canvas.
+- Generated `ImageObject` records include generation metadata: model id, model label, aspect ratio, optional size option, prompt, reference object IDs, optional direction ID, and creation time.
 - Visual generation can start from selected images, concept directions, design definitions, or a text prompt. Source/version relations are created only when image sources are present; selected concept directions create `belongsToDirection`.
 
 AI boundary:

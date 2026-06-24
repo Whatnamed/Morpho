@@ -1,31 +1,43 @@
+import type { GrsImageAspectRatio, GrsImageSizeOption } from "../../domain/morpho/grsImageModels";
+import { resolveGrsImageModelSettings } from "../../domain/morpho/grsImageModels";
+
 export type GrsRequestProfile = {
-  kind: "nanoBanana" | "gptImage" | "default";
-  imageSize: string;
-  replyType: string;
+  family: "nanoBanana" | "gptImage2";
+  modelId: string;
+  imageSize?: GrsImageSizeOption;
+  replyType: "json";
+  aspectRatio: string;
 };
 
-export function getGrsRequestProfile(model: string): GrsRequestProfile {
-  const normalizedModel = model.toLowerCase();
+const GPT_IMAGE_2_ASPECT_RATIO_MAP: Record<GrsImageAspectRatio, string> = {
+  "1:1": "1024x1024",
+  "4:3": "1024x768",
+  "3:4": "768x1024",
+  "16:9": "1024x576",
+  "9:16": "576x1024"
+};
 
-  if (normalizedModel.includes("nano-banana")) {
-    return {
-      kind: "nanoBanana",
-      imageSize: "1K",
-      replyType: "json"
-    };
-  }
+export function getGrsRequestProfile(input: {
+  modelId?: string;
+  aspectRatio: GrsImageAspectRatio;
+  sizeOption?: string;
+}): GrsRequestProfile {
+  const resolved = resolveGrsImageModelSettings(input.modelId, input.sizeOption);
 
-  if (normalizedModel.includes("gpt-image-2")) {
+  if (resolved.model.family === "gptImage2") {
     return {
-      kind: "gptImage",
-      imageSize: "1024x768",
-      replyType: "url"
+      family: "gptImage2",
+      modelId: resolved.model.id,
+      replyType: "json",
+      aspectRatio: GPT_IMAGE_2_ASPECT_RATIO_MAP[input.aspectRatio]
     };
   }
 
   return {
-    kind: "default",
-    imageSize: "1024x768",
-    replyType: "url"
+    family: "nanoBanana",
+    modelId: resolved.model.id,
+    imageSize: resolved.sizeOption,
+    replyType: "json",
+    aspectRatio: input.aspectRatio
   };
 }

@@ -43,6 +43,9 @@ export type AssetRecord = {
   createdAt: string;
   storageKey: string;
   sourceType: AssetSourceType;
+  width?: number;
+  height?: number;
+  aspectRatio?: number;
   url?: string;
   domain?: string;
 };
@@ -70,6 +73,18 @@ export type ImageObject = MorphoObjectBase & {
   assetId?: AssetId;
   directionId?: MorphoObjectId;
   isDefaultReference?: boolean;
+  generation?: ImageGenerationMetadata;
+};
+
+export type ImageGenerationMetadata = {
+  modelId: string;
+  modelLabel: string;
+  aspectRatio: string;
+  sizeOption?: string;
+  prompt: string;
+  referenceObjectIds: MorphoObjectId[];
+  directionId?: MorphoObjectId;
+  createdAt: string;
 };
 
 export type FileObject = MorphoObjectBase & {

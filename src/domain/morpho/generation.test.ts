@@ -18,7 +18,14 @@ describe("Morpho image generation domain helpers", () => {
         storageKey: "blob:asset-generated-a",
         sourceType: "aiGeneratedImage"
       },
-      prompt: "继续发展转角连接细节",
+      generation: {
+        modelId: "nano-banana-fast",
+        modelLabel: "nano-banana-fast",
+        aspectRatio: "4:3",
+        prompt: "继续发展转角连接细节",
+        referenceObjectIds: ["image-soft-rail-v2"],
+        createdAt: "2026-06-24T00:00:00.000Z"
+      },
       sourceObjectIds: ["image-soft-rail-v2"]
     });
 
@@ -30,6 +37,12 @@ describe("Morpho image generation domain helpers", () => {
     if (createdObject?.type === "image") {
       expect(createdObject.assetId).toBe("asset-generated-a");
       expect(createdObject.directionId).toBe("direction-soft-rail");
+      expect(createdObject.generation).toMatchObject({
+        modelId: "nano-banana-fast",
+        aspectRatio: "4:3",
+        prompt: "继续发展转角连接细节",
+        referenceObjectIds: ["image-soft-rail-v2"]
+      });
     }
     expect(
       result.workspace.relations.some(
@@ -61,7 +74,15 @@ describe("Morpho image generation domain helpers", () => {
         storageKey: "blob:asset-generated-direction",
         sourceType: "aiGeneratedImage"
       },
-      prompt: "基于方向 A 生成新的场景预览",
+      generation: {
+        modelId: "nano-banana-fast",
+        modelLabel: "nano-banana-fast",
+        aspectRatio: "1:1",
+        prompt: "基于方向 A 生成新的场景预览",
+        referenceObjectIds: [],
+        directionId: "direction-soft-rail",
+        createdAt: "2026-06-24T00:00:00.000Z"
+      },
       sourceObjectIds: [],
       directionObjectId: "direction-soft-rail"
     });
@@ -70,14 +91,46 @@ describe("Morpho image generation domain helpers", () => {
     expect(createdObject?.type).toBe("image");
     if (createdObject?.type === "image") {
       expect(createdObject.directionId).toBe("direction-soft-rail");
+      expect(createdObject.generation?.directionId).toBe("direction-soft-rail");
     }
     expect(
       result.workspace.relations.some(
         (relation) => relation.kind === "belongsToDirection" && relation.toObjectId === "direction-soft-rail"
       )
     ).toBe(true);
-    expect(result.workspace.relations.some((relation) => relation.kind === "version")).toBe(
-      workspace.relations.some((relation) => relation.kind === "version")
+    expect(result.workspace.relations.filter((relation) => relation.kind === "version")).toEqual(
+      workspace.relations.filter((relation) => relation.kind === "version")
     );
+  });
+
+  it("sizes generated image instances from intrinsic asset dimensions", () => {
+    const workspace = createInitialWorkspace();
+    const result = createGeneratedImageFromAsset(workspace, {
+      asset: {
+        id: "asset-generated-wide",
+        fileName: "wide-result.png",
+        mimeType: "image/png",
+        size: 4096,
+        createdAt: "2026-06-24T00:00:00.000Z",
+        storageKey: "blob:asset-generated-wide",
+        sourceType: "aiGeneratedImage",
+        width: 1920,
+        height: 1080,
+        aspectRatio: 16 / 9
+      },
+      generation: {
+        modelId: "nano-banana-fast",
+        modelLabel: "nano-banana-fast",
+        aspectRatio: "16:9",
+        prompt: "生成宽幅场景图",
+        referenceObjectIds: [],
+        createdAt: "2026-06-24T00:00:00.000Z"
+      },
+      sourceObjectIds: []
+    });
+
+    const instance = result.workspace.canvas.instances.find((item) => item.objectId === result.createdObjectId);
+
+    expect(instance?.size).toEqual({ w: 320, h: 180 });
   });
 });

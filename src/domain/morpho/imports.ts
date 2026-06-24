@@ -10,6 +10,7 @@ import type {
   MorphoWorkspace,
   TextObject
 } from "./types";
+import { getImageCanvasSize } from "./imageSizing";
 
 type ImportResult = {
   workspace: MorphoWorkspace;
@@ -189,7 +190,7 @@ function addObjectsToCanvas(workspace: MorphoWorkspace, objects: MorphoObject[],
         x: position.x + (index % 3) * 280,
         y: position.y + Math.floor(index / 3) * 230
       },
-      size: defaultSizeForObject(object)
+      size: defaultSizeForObject(workspace, object)
     });
   });
 
@@ -218,9 +219,14 @@ function parseUrl(value: string): URL | null {
   }
 }
 
-function defaultSizeForObject(object: MorphoObject) {
+function defaultSizeForObject(workspace: MorphoWorkspace, object: MorphoObject) {
   if (object.type === "image") {
-    return { w: 245, h: 178 };
+    const asset = object.assetId ? workspace.assets[object.assetId] : undefined;
+    return getImageCanvasSize({
+      width: asset?.width,
+      height: asset?.height,
+      aspectRatio: asset?.aspectRatio
+    });
   }
 
   if (object.type === "imageCollection") {
