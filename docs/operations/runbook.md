@@ -29,6 +29,8 @@ MORPHO_GRS_BASE_URL=
 MORPHO_GRS_IMAGE_MODEL=
 ```
 
+The server chooses the GrsAI request profile from `MORPHO_GRS_IMAGE_MODEL`. Current implemented profiles include `nano-banana-2` (`imageSize: "1K"`, `replyType: "json"`) and `gpt-image-2` (separate `1024x768` / `url` profile).
+
 Without these variables, the app still runs locally, but provider routes return clear configuration errors instead of fake AI results.
 
 ## Development Server

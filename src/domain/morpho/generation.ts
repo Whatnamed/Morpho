@@ -4,6 +4,7 @@ export type CreateGeneratedImageInput = {
   asset: AssetRecord;
   prompt: string;
   sourceObjectIds: string[];
+  directionObjectId?: string;
 };
 
 export type CreateGeneratedImageResult = {
@@ -17,6 +18,9 @@ export function createGeneratedImageFromAsset(
 ): CreateGeneratedImageResult {
   const primarySourceId = input.sourceObjectIds[0];
   const primarySource = primarySourceId ? workspace.objects[primarySourceId] : undefined;
+  const sourceImages = input.sourceObjectIds
+    .map((objectId) => workspace.objects[objectId])
+    .filter((object): object is ImageObject => Boolean(object) && object.type === "image");
   const sourceInstance = primarySourceId
     ? workspace.canvas.instances.find((instance) => instance.objectId === primarySourceId)
     : undefined;
@@ -25,7 +29,13 @@ export function createGeneratedImageFromAsset(
     Object.fromEntries(workspace.canvas.instances.map((instance) => [instance.id, instance])),
     `canvas-${objectId}`
   );
-  const directionId = primarySource?.type === "image" ? primarySource.directionId : undefined;
+  const explicitDirection = input.directionObjectId ? workspace.objects[input.directionObjectId] : undefined;
+  const directionId =
+    explicitDirection?.type === "conceptDirection"
+      ? explicitDirection.id
+      : primarySource?.type === "image"
+        ? primarySource.directionId
+        : undefined;
   const generatedImage: ImageObject = {
     id: objectId,
     type: "image",
@@ -38,30 +48,29 @@ export function createGeneratedImageFromAsset(
     assetId: input.asset.id,
     directionId
   };
-  const relations: MorphoRelation[] = primarySourceId
-    ? [
-        {
-          id: nextAvailableId(
-            Object.fromEntries(workspace.relations.map((relation) => [relation.id, relation])),
-            `rel-${primarySourceId}-${objectId}-source`
-          ),
-          kind: "source",
-          fromObjectId: primarySourceId,
-          toObjectId: objectId,
-          note: "GrsAI 视觉发展使用该图作为本次明确来源。"
-        },
-        {
-          id: nextAvailableId(
-            Object.fromEntries(workspace.relations.map((relation) => [relation.id, relation])),
-            `rel-${primarySourceId}-${objectId}-version`
-          ),
-          kind: "version",
-          fromObjectId: primarySourceId,
-          toObjectId: objectId,
-          note: "GrsAI 视觉发展创建的新对象，来源图不被覆盖。"
-        }
-      ]
-    : [];
+  const relations: MorphoRelation[] = [];
+  for (const sourceImage of sourceImages) {
+    relations.push({
+      id: nextAvailableId(
+        Object.fromEntries([...workspace.relations, ...relations].map((relation) => [relation.id, relation])),
+        `rel-${sourceImage.id}-${objectId}-source`
+      ),
+      kind: "source",
+      fromObjectId: sourceImage.id,
+      toObjectId: objectId,
+      note: "GrsAI 视觉发展使用该图作为本次明确来源。"
+    });
+    relations.push({
+      id: nextAvailableId(
+        Object.fromEntries([...workspace.relations, ...relations].map((relation) => [relation.id, relation])),
+        `rel-${sourceImage.id}-${objectId}-version`
+      ),
+      kind: "version",
+      fromObjectId: sourceImage.id,
+      toObjectId: objectId,
+      note: "GrsAI 视觉发展创建的新对象，来源图不被覆盖。"
+    });
+  }
 
   if (directionId) {
     relations.push({

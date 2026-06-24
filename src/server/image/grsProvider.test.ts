@@ -32,6 +32,26 @@ describe("GrsAI image provider adapter", () => {
     expect(JSON.stringify(request.body)).not.toContain("secret-grs-key");
   });
 
+  it("does not mix gpt-image-2 dimensions into nano-banana-2 requests", () => {
+    const request = createGrsGenerateRequest(
+      {
+        apiKey: "secret-grs-key",
+        baseUrl: "https://grs.example",
+        model: "nano-banana-2"
+      },
+      {
+        prompt: "生成低施工夜间扶手方案",
+        images: [],
+        aspectRatio: "4:3",
+        imageSize: "1024x768",
+        replyType: "url"
+      }
+    );
+
+    expect(request.body.imageSize).toBe("1K");
+    expect(request.body.replyType).toBe("json");
+  });
+
   it("downloads a successful result URL from the GrsAI result list", async () => {
     const fetchImpl: typeof fetch = async (input) => {
       const url = String(input);

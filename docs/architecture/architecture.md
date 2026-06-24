@@ -101,14 +101,18 @@ Image generation:
 - Browser calls `/api/ai/image`.
 - The route reads `MORPHO_GRS_*` only on the server.
 - GrsAI uses `POST /v1/api/generate` and, when needed, bounded polling on `GET /v1/api/result?id=...`.
+- GrsAI request parameters are selected by server-side model profile. `nano-banana-2` uses `imageSize: "1K"` and `replyType: "json"`; `gpt-image-2` keeps its separate profile so provider parameters are not mixed.
 - The server downloads the final remote result URL and returns image bytes to the browser.
 - The browser stores the returned image Blob in IndexedDB and creates a new `ImageObject` plus canvas instance.
+- Visual generation can start from selected images, concept directions, design definitions, or a text prompt. Source/version relations are created only when image sources are present; selected concept directions create `belongsToDirection`.
 
 AI boundary:
 
 - AI can reply, analyze, suggest, and generate editable text or image results.
 - AI does not directly mutate domain state such as deletion, hidden state, direction status, default reference, delivery references, or project memory.
 - Image generation always creates a new image object and never overwrites a source image.
+- The current MiMo text chat route does not send image pixels. Until MiMo official visual input is implemented, image discussion in the text route is based only on object metadata and user descriptions.
+- `src/server/ai/request.ts` has a metadata-only attachment summary boundary reserved for future visual attachment conversion.
 
 ## Demo Project
 

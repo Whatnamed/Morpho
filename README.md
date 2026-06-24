@@ -22,6 +22,8 @@ Morpho is an AI-assisted concept-development workspace for product and industria
 - 服务端 MiMo 流式文本聊天 route；
 - 服务端 GrsAI 图像生成 route，成功结果会保存为新的本地资产和新的图像对象。
 
+当前 MiMo 文本聊天尚不发送图片像素；图片相关文本回复只能基于对象标题、摘要和用户描述。GrsAI 图像生成按服务端模型 profile 组装请求，其中 `nano-banana-2` 使用 `imageSize: "1K"` 与 `replyType: "json"`。
+
 ## Morpho 用来做什么
 
 - 从一句话、图片、文件、链接、草图或已有设计材料开始项目；

@@ -14,14 +14,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "请求不是有效 JSON。" }, { status: 400 });
   }
 
-  const validated = validateGrsImageRouteRequest(body);
-  if (validated.status === "failed") {
-    return NextResponse.json({ error: validated.reason }, { status: 400 });
-  }
-
   const config = loadGrsImageConfig(process.env);
   if (config.status === "failed") {
     return NextResponse.json({ error: config.reason }, { status: 503 });
+  }
+
+  const validated = validateGrsImageRouteRequest(body, { model: config.config.model });
+  if (validated.status === "failed") {
+    return NextResponse.json({ error: validated.reason }, { status: 400 });
   }
 
   try {

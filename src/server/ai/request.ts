@@ -7,6 +7,14 @@ export type AiRouteObjectSummary = {
   summary: string;
 };
 
+export type AiRouteAttachmentSummary = {
+  id: string;
+  kind: "image";
+  objectId: string;
+  mimeType: string;
+  status: "metadataOnly";
+};
+
 export type AiRouteRequest = {
   draft: string;
   task: string;
@@ -15,6 +23,7 @@ export type AiRouteRequest = {
     body: string;
   }>;
   objectSummaries: AiRouteObjectSummary[];
+  attachments: AiRouteAttachmentSummary[];
   defaultReferenceStatus?: string;
 };
 
@@ -43,6 +52,9 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
   const objectSummaries = Array.isArray(value.objectSummaries)
     ? value.objectSummaries.filter(isObjectSummary).slice(0, 8)
     : [];
+  const attachments = Array.isArray(value.attachments)
+    ? value.attachments.filter(isAttachmentSummary).map(normalizeAttachmentSummary).slice(0, 8)
+    : [];
 
   return {
     status: "ok",
@@ -51,6 +63,7 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
       task: typeof value.task === "string" ? value.task : "general",
       messages,
       objectSummaries,
+      attachments,
       defaultReferenceStatus: typeof value.defaultReferenceStatus === "string" ? value.defaultReferenceStatus : undefined
     }
   };
@@ -80,7 +93,8 @@ export function buildMorphoSystemPrompt(request: AiRouteRequest): string {
     request.defaultReferenceStatus ? `默认参考状态：${request.defaultReferenceStatus}` : "",
     "本次可用对象摘要：",
     objectLines,
-    "如果没有收到图片像素，请明确说明本次只基于标题、摘要和用户描述。"
+    "当前 MiMo 文本聊天尚未发送图片像素，只接收对象标题、摘要和用户文字。",
+    "在 MiMo 官方视觉输入接入前，不能声称已经完成真实图像视觉分析；如果讨论图片，只能说明本次基于元数据和用户描述。"
   ]
     .filter(Boolean)
     .join("\n");
@@ -102,6 +116,27 @@ function isObjectSummary(value: unknown): value is AiRouteObjectSummary {
     typeof value.title === "string" &&
     typeof value.summary === "string"
   );
+}
+
+function isAttachmentSummary(value: unknown): value is AiRouteAttachmentSummary {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    value.kind === "image" &&
+    typeof value.objectId === "string" &&
+    typeof value.mimeType === "string" &&
+    value.status === "metadataOnly"
+  );
+}
+
+function normalizeAttachmentSummary(value: AiRouteAttachmentSummary): AiRouteAttachmentSummary {
+  return {
+    id: value.id,
+    kind: value.kind,
+    objectId: value.objectId,
+    mimeType: value.mimeType,
+    status: value.status
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

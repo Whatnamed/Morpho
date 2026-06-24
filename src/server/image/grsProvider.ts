@@ -1,3 +1,5 @@
+import { getGrsRequestProfile } from "./profile";
+
 export type GrsImageConfig = {
   apiKey: string;
   baseUrl: string;
@@ -52,6 +54,7 @@ const DEFAULT_POLL_DELAY_MS = 1500;
 
 export function createGrsGenerateRequest(config: GrsImageConfig, input: GrsGenerateInput): GrsGenerateRequest {
   const baseUrl = config.baseUrl.replace(/\/$/, "");
+  const profile = getGrsRequestProfile(config.model);
 
   return {
     url: `${baseUrl}/v1/api/generate`,
@@ -64,8 +67,8 @@ export function createGrsGenerateRequest(config: GrsImageConfig, input: GrsGener
       prompt: input.prompt,
       images: input.images,
       aspectRatio: input.aspectRatio,
-      imageSize: input.imageSize,
-      replyType: input.replyType
+      imageSize: profile.imageSize,
+      replyType: profile.replyType
     }
   };
 }

@@ -26,6 +26,7 @@ import { usePersistentWorkspace } from "./usePersistentWorkspace";
 import { compactObjectList, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
 import { indexedDbBlobStore, getAssetObjectUrl } from "@/infrastructure/assets/indexedDbAssetStore";
 import { saveBlobAsLocalAsset } from "@/infrastructure/assets/localAssetWorkflow";
+import { shouldUseGrsImageTask } from "./aiTaskRouting";
 import type { CanvasImportRequest, FocusArea } from "./tldraw/MorphoCanvas";
 
 const MorphoCanvas = dynamic(() => import("./tldraw/MorphoCanvas").then((mod) => mod.MorphoCanvas), {
@@ -74,7 +75,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const suggestions = useMemo(() => getSuggestionsForSelection(selectedObjects), [selectedObjects]);
   const isImageTaskMode = useMemo(
-    () => Boolean(localEditObjectId) || shouldUseGrsImageTask(aiDraft, selectedObjects),
+    () => Boolean(localEditObjectId) || shouldUseGrsImageTask(aiDraft, selectedObjects.map((object) => object.type)),
     [aiDraft, localEditObjectId, selectedObjects]
   );
   const focusArea = useCallback((area: FocusArea) => {
@@ -364,14 +365,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const handleRunLocalEdit = useCallback(async () => {
     const draft = aiDraft.trim();
     const explicitImageId = localEditObjectId ?? selectedObjects.find((object) => object.type === "image")?.id;
-    if (!draft || !explicitImageId || isAiStreaming) {
+    if (!draft || isAiStreaming) {
       return;
     }
 
     const context = assembleAiContext(workspace, {
       draft,
       selectedObjectIds,
-      explicitObjectIds: [explicitImageId],
+      explicitObjectIds: explicitImageId ? [explicitImageId] : [],
       task: "visualDevelopment"
     });
     setContextWarning(
@@ -409,7 +410,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
     try {
       const referenceImages = await collectImageReferenceDataUrls(workspace, context.objectIds, controller.signal);
-      const sourceObjectIds = referenceImages.sourceObjectIds.length > 0 ? referenceImages.sourceObjectIds : [explicitImageId];
+      const sourceObjectIds = referenceImages.sourceObjectIds;
+      const directionObjectId = findGenerationDirectionId(workspace, selectedObjects, sourceObjectIds);
       const pixelNote =
         referenceImages.images.length === 0
           ? "本次没有可读取的本地图片像素，仅基于对象标题、摘要和你的描述请求 GrsAI。"
@@ -424,9 +426,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         body: JSON.stringify({
           prompt: draft,
           images: referenceImages.images,
-          aspectRatio: "4:3",
-          imageSize: "1024x768",
-          replyType: "url"
+          aspectRatio: "4:3"
         }),
         signal: controller.signal
       });
@@ -453,13 +453,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         const generated = createGeneratedImageFromAsset(current, {
           asset: saved.asset,
           prompt: draft,
-          sourceObjectIds
+          sourceObjectIds,
+          directionObjectId
         });
 
         return updateAiMessage(
           generated.workspace,
           assistantMessageId,
-          "GrsAI 已返回图像结果。已保存为独立本地资产，并在来源图附近创建新的图像对象；来源图、版本链、默认参考和交付引用没有被替换。",
+          "GrsAI 已返回图像结果。已保存为独立本地资产，并在画布上创建新的图像对象；来源图、版本链、默认参考和交付引用没有被替换。",
           "done"
         );
       });
@@ -714,14 +715,6 @@ function inferAiContextTask(draft: string, selectedObjects: MorphoObject[]): AiC
   return "general";
 }
 
-function shouldUseGrsImageTask(draft: string, selectedObjects: MorphoObject[]): boolean {
-  if (!selectedObjects.some((object) => object.type === "image")) {
-    return false;
-  }
-
-  return /生成|继续发展|局部修改|使用场景|多参考|变体|角度|场景|cmf|细节|新视觉|出图|图像任务/.test(draft.toLowerCase());
-}
-
 function summarizeDefaultReferenceStatus(status: ReturnType<typeof assembleAiContext>["defaultReferenceStatus"]): string {
   switch (status.status) {
     case "available":
@@ -845,6 +838,26 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 function makeGeneratedImageFileName(mimeType: string): string {
   const extension = mimeType.includes("jpeg") ? "jpg" : mimeType.includes("webp") ? "webp" : "png";
   return `grs-result-${Date.now()}.${extension}`;
+}
+
+function findGenerationDirectionId(
+  workspace: MorphoWorkspace,
+  selectedObjects: MorphoObject[],
+  sourceObjectIds: string[]
+): string | undefined {
+  const selectedDirection = selectedObjects.find((object) => object.type === "conceptDirection");
+  if (selectedDirection) {
+    return selectedDirection.id;
+  }
+
+  for (const sourceObjectId of sourceObjectIds) {
+    const sourceObject = workspace.objects[sourceObjectId];
+    if (sourceObject?.type === "image" && sourceObject.directionId) {
+      return sourceObject.directionId;
+    }
+  }
+
+  return undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

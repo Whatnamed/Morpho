@@ -1,4 +1,5 @@
 import type { GrsGenerateInput } from "./grsProvider";
+import { getGrsRequestProfile } from "./profile";
 
 export type GrsImageRouteValidationResult =
   | {
@@ -12,7 +13,10 @@ export type GrsImageRouteValidationResult =
 
 const MAX_REFERENCE_IMAGES = 4;
 
-export function validateGrsImageRouteRequest(value: unknown): GrsImageRouteValidationResult {
+export function validateGrsImageRouteRequest(
+  value: unknown,
+  options: { model?: string } = {}
+): GrsImageRouteValidationResult {
   if (!isRecord(value)) {
     return { status: "failed", reason: "请求格式无效。" };
   }
@@ -25,14 +29,16 @@ export function validateGrsImageRouteRequest(value: unknown): GrsImageRouteValid
     ? value.images.filter((image): image is string => typeof image === "string" && image.length > 0).slice(0, MAX_REFERENCE_IMAGES)
     : [];
 
+  const profile = getGrsRequestProfile(options.model ?? "");
+
   return {
     status: "ok",
     value: {
       prompt: value.prompt.trim(),
       images,
       aspectRatio: typeof value.aspectRatio === "string" && value.aspectRatio ? value.aspectRatio : "4:3",
-      imageSize: typeof value.imageSize === "string" && value.imageSize ? value.imageSize : "1024x768",
-      replyType: typeof value.replyType === "string" && value.replyType ? value.replyType : "url"
+      imageSize: profile.imageSize,
+      replyType: profile.replyType
     }
   };
 }

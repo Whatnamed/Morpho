@@ -99,3 +99,19 @@ Decision: implement `/api/ai/image` as a server-side route that reads `MORPHO_GR
 Reason: image generation needs a real provider path while keeping keys server-only and preserving local-first asset storage.
 
 Boundary: generated images are saved by the browser as new IndexedDB assets and new Morpho image objects. The source image, default reference, version chain, and delivery references are not overwritten.
+
+## 2026-06-24: Keep GrsAI Model Request Profiles Separate
+
+Decision: GrsAI request defaults are selected by server-side model profile.
+
+Reason: native `nano-banana-2` and `gpt-image-2` do not use the same request shape. `nano-banana-2` uses `imageSize: "1K"` and `replyType: "json"`, while `gpt-image-2` remains on its own profile.
+
+Boundary: browser code does not hard-code model-specific image-size or reply-type parameters. The server adapter normalizes requests before calling GrsAI.
+
+## 2026-06-24: Keep MiMo Text Chat Metadata-Only for Images
+
+Decision: the MiMo text chat route explicitly does not send image pixels yet.
+
+Reason: until MiMo official visual input support is implemented in the provider adapter, Morpho must not present text chat as true image analysis.
+
+Boundary: image objects can appear as metadata summaries in MiMo context. A sanitized attachment summary boundary exists for future visual-input conversion, but the current MiMo provider messages remain text-only.
