@@ -26,7 +26,7 @@ No database, authentication, cloud object storage, Supabase, multiplayer sync, e
 
 ## Data Model
 
-Structured workspace data is schema version `3`.
+Structured workspace data is schema version `3`. Milestone 3 will upgrade this to the next schema version when Operation records and proposals are persisted.
 
 Current workspace state includes:
 
@@ -37,6 +37,12 @@ Current workspace state includes:
 - visual-only canvas instances in `workspace.canvas.instances`;
 - persisted workspace UI state in `workspace.ui`;
 - continuous AI messages in `workspace.ai.messages`.
+
+Milestone 3 Operation persistence is intentionally lightweight:
+
+- workspace JSON stores operation status, summaries, input snapshots, proposal records, citation snapshots, and IndexedDB artifact references;
+- workspace JSON does not store raw webpages, large extracted document content, page preview binaries, provider raw responses, API keys, or response headers;
+- interrupted operations are recoverable as local state, but they are not treated as background server jobs after refresh.
 
 Canvas rendering is separated from Morpho domain state:
 
@@ -95,6 +101,8 @@ Text chat:
 - The route reads `MORPHO_MIMO_*` only on the server.
 - MiMo is called through an OpenAI-compatible streaming chat adapter.
 - The browser receives normalized plain text stream chunks.
+- Milestone 3 task routing uses explicit `taskMode` from the user send action. Regex and suggestion chips may recommend a task mode, but they are not execution authority.
+- MiMo image-pixel input and web search remain capability-gated until their official wire format and citation shape are verified.
 
 Image generation:
 
@@ -108,6 +116,7 @@ Image generation:
 - The browser stores the returned image Blob in IndexedDB and creates a new `ImageObject` plus canvas instance.
 - Imported and generated images share the same canvas size helper, using intrinsic asset dimensions when available and `contain` display semantics on the canvas.
 - Generated `ImageObject` records include generation metadata: model id, model label, aspect ratio, optional size option, prompt, reference object IDs, optional direction ID, and creation time.
+- Image generation operations persist `operationId`, `clientRequestId`, optional provider task ID, status, prompt, references, model/profile, and timing. Uncertain network responses are not automatically resubmitted.
 - Visual generation can start from selected images, concept directions, design definitions, or a text prompt. Source/version relations are created only when image sources are present; selected concept directions create `belongsToDirection`.
 
 AI boundary:

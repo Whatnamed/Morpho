@@ -16,20 +16,34 @@ Text chat through MiMo:
 
 ```text
 MORPHO_AI_PROVIDER=mimo
+MORPHO_MIMO_API_KEYS=
 MORPHO_MIMO_API_KEY=
-MORPHO_MIMO_MODEL=
-MORPHO_MIMO_BASE_URL=
+MORPHO_MIMO_BASE_URL=https://api.xiaomimimo.com/v1
+MORPHO_MIMO_TEXT_MODEL=mimo-v2.5-pro
+MORPHO_MIMO_MULTIMODAL_MODEL=mimo-v2.5
+MORPHO_MIMO_WEB_SEARCH_ENABLED=false
 ```
+
+`MORPHO_MIMO_API_KEYS` is a comma-separated primary/fallback key list. The singular `MORPHO_MIMO_API_KEY` remains a compatibility fallback only when the plural variable is empty.
 
 Image generation through GrsAI:
 
 ```text
 MORPHO_GRS_API_KEY=
-MORPHO_GRS_BASE_URL=
+MORPHO_GRS_BASE_URL=https://grsaiapi.com
+MORPHO_GRS_DEFAULT_MODEL=nano-banana-fast
 MORPHO_GRS_IMAGE_MODEL=
 ```
 
-The browser image-task UI sends a selected model ID, aspect ratio, and optional size option to `/api/ai/image`. The route still requires the server-only GrsAI key, base URL, and environment model variable to be configured, but the provider request body is normalized on the server.
+`MORPHO_GRS_DEFAULT_MODEL` is the current default image model variable. `MORPHO_GRS_IMAGE_MODEL` remains a legacy fallback for existing local environments.
+
+Paid provider smoke tests are disabled unless explicitly enabled:
+
+```text
+MORPHO_ALLOW_PAID_SMOKE_TESTS=false
+```
+
+The browser image-task UI sends a selected model ID, aspect ratio, optional size option, and client request ID to `/api/ai/image`. The route still requires server-only GrsAI config, but the provider request body is normalized on the server.
 
 Current implemented behavior:
 
@@ -38,6 +52,9 @@ Current implemented behavior:
 - `nano-banana-*` profiles send `replyType: "json"` and send `imageSize` only when the selected model supports a size option;
 - `gpt-image-2` sends pixel-style `aspectRatio`, `replyType: "json"`, and no `imageSize`;
 - generated image assets store intrinsic width, height, and aspect ratio when the browser can read them.
+- image generation operations store operation IDs and client request IDs; uncertain network responses are not automatically resubmitted.
+
+Milestone 3 Operation records are local-first and lightweight. Workspace JSON stores operation status, summaries, proposals, citation snapshots, and IndexedDB artifact references. It does not store raw webpages, large extracted files, page previews, provider raw responses, API keys, or response headers.
 
 Without these variables, the app still runs locally, but provider routes return clear configuration errors instead of fake AI results.
 

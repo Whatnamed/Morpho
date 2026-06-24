@@ -371,6 +371,20 @@ URL 默认作为链接对象保留。系统不假定所有链接都能稳定抓�
 
 ## 6. 输出、完整项目归档与可恢复备份
 
+### 6.0 Operation artifact 与恢复边界
+
+Milestone 3 后，可恢复备份还需要保留 Operation / Proposal 的轻量结构化状态、citation snapshot 和 IndexedDB artifact 引用。备份不能只导出 workspace JSON，也不能把大型原始工具结果直接塞进 localStorage。
+
+未来可恢复导出应同时收集：
+
+```text
+workspace JSON
+IndexedDB 中仍被引用的二进制资产
+Operation / Proposal 关联的 artifact 引用
+```
+
+原始网页正文、大型文档提取内容、页面预览和 provider 原始响应体不作为 workspace JSON 内容保存。需要保留时，应作为独立 artifact 存储并由结构化状态引用。
+
 Morpho 保留三类不同的“带出项目”方式。它们不能混用。
 
 ### 6.1 导出最终成果

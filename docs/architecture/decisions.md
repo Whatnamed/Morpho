@@ -131,3 +131,27 @@ Decision: the MiMo text chat route explicitly does not send image pixels yet.
 Reason: until MiMo official visual input support is implemented in the provider adapter, Morpho must not present text chat as true image analysis.
 
 Boundary: image objects can appear as metadata summaries in MiMo context. A sanitized attachment summary boundary exists for future visual-input conversion, but the current MiMo provider messages remain text-only.
+
+## 2026-06-25: Add Controlled AI Operation Runtime
+
+Decision: introduce a local-first Operation Runtime for finite, auditable AI workflows.
+
+Reason: Research and image-generation tasks need input snapshots, recoverable status, citation snapshots, and user-confirmed proposals without turning Morpho into an unbounded autonomous agent.
+
+Boundary: Operation records store status, summaries, proposals, citation snapshots, and IndexedDB artifact references. They do not store raw webpages, large extracted documents, provider raw responses, API keys, response headers, or hidden provider diagnostics in localStorage.
+
+## 2026-06-25: Make Task Mode the Execution Authority
+
+Decision: user-send `taskMode` controls whether a request is chat/analysis, image generation, or research operation.
+
+Reason: selected images and broad text regexes previously risked routing ordinary questions into GrsAI image generation.
+
+Boundary: regexes, selected object types, and suggestion chips may set a recommended task mode, but they cannot silently change the execution path.
+
+## 2026-06-25: Gate Provider Capabilities by Verification
+
+Decision: GrsAI model profiles and MiMo optional capabilities carry verification status.
+
+Reason: provider model lists, image-to-image support, multi-reference behavior, visual input formats, web-search tools, and citation response shapes must not be presented as reliable until documented and smoke-test verified.
+
+Boundary: `nano-banana-fast` remains the low-cost default candidate, but only verified capabilities are exposed as executable UI options. MiMo web search is not marked implemented until request and citation formats are verified.

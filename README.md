@@ -24,6 +24,8 @@ Morpho is an AI-assisted concept-development workspace for product and industria
 
 当前 MiMo 文本聊天尚不发送图片像素；图片相关文本回复只能基于对象标题、摘要和用户描述。GrsAI 图像生成按静态模型 catalog 和服务端 profile 组装请求，默认模型为 `nano-banana-fast`；`nano-banana-*` 与 `gpt-image-2` 请求字段分开处理，不混用 `imageSize`。
 
+Milestone 3 开始引入受控 AI Operation Runtime。Operation 只保存轻量状态、输入快照、Proposal、citation snapshot 和 IndexedDB artifact 引用；Research Operation 不实现无限自主 Agent Loop，保存研究草案前必须由用户确认。
+
 ## Morpho 用来做什么
 
 - 从一句话、图片、文件、链接、草图或已有设计材料开始项目；
@@ -73,13 +75,19 @@ http://127.0.0.1:3000/projects/project-nightrail
 
 ```text
 MORPHO_AI_PROVIDER=mimo
+MORPHO_MIMO_API_KEYS=
 MORPHO_MIMO_API_KEY=
-MORPHO_MIMO_MODEL=
-MORPHO_MIMO_BASE_URL=
+MORPHO_MIMO_BASE_URL=https://api.xiaomimimo.com/v1
+MORPHO_MIMO_TEXT_MODEL=mimo-v2.5-pro
+MORPHO_MIMO_MULTIMODAL_MODEL=mimo-v2.5
+MORPHO_MIMO_WEB_SEARCH_ENABLED=false
 
 MORPHO_GRS_API_KEY=
-MORPHO_GRS_BASE_URL=
+MORPHO_GRS_BASE_URL=https://grsaiapi.com
+MORPHO_GRS_DEFAULT_MODEL=nano-banana-fast
 MORPHO_GRS_IMAGE_MODEL=
+
+MORPHO_ALLOW_PAID_SMOKE_TESTS=false
 ```
 
 不要把真实 Key 放进客户端代码、`NEXT_PUBLIC_*`、localStorage、日志或 Git 提交。

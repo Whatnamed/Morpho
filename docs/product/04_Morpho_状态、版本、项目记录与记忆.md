@@ -564,6 +564,27 @@ related_objects:
 
 这个例子用于固定信息职责和归档可读性；它不等于产品已决定必须把文件直接保存在用户本地某个目录，也不锁定字段名、存储方式或数据库结构。
 
+### 9.1 Operation Log 不是项目记忆
+
+Operation Log、聊天记录、ResearchObject、阶段记录和长期项目记忆不是同一种东西。
+
+```text
+普通聊天
+→ 只保存聊天
+
+Operation 执行
+→ 保存 Operation 状态、输入快照、步骤摘要、工具结果摘要和 citation snapshot
+
+用户保存 ResearchAnalysisProposal
+→ 创建 ResearchObject
+→ 创建来源关系
+→ 更新调研阶段记录引用
+```
+
+保存 ResearchAnalysisProposal 不会自动生成或改写长期项目记忆、设计定义、方向状态或关键结论。只有用户明确将某条结论保留为长期依据时，后续才可通过独立确认路径创建 InsightObject 或更新稳定项目记忆。
+
+Operation / Proposal 数据保持轻量。原始网页正文、大型文件提取内容、页面预览和原始 provider/tool 结果不进入 localStorage；需要长期保存的大型 artifact 应通过 IndexedDB 或未来等价本地 artifact 存储引用。
+
 ---
 
 ## 10. 关系、引用与可追溯性
