@@ -1,5 +1,6 @@
 "use client";
 
+import type { KeyboardEvent, ReactNode } from "react";
 import { ChevronLeft, Send, Sparkles } from "lucide-react";
 
 import type { AiTaskMode, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
@@ -129,7 +130,7 @@ export function AiConversationPanel({
 
           {workspace.ai.messages.map((message) => (
             <div className="ai-message" key={message.id}>
-              <p>{message.body}</p>
+              <MarkdownContent body={message.body} />
             </div>
           ))}
 
@@ -310,6 +311,21 @@ export function AiConversationPanel({
               rows={2}
               value={draft}
               onChange={(event) => onDraftChange(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (shouldSubmitFromTextarea(event)) {
+                  event.preventDefault();
+                  if (isStreaming) {
+                    return;
+                  }
+
+                  if (isLocalEditMode) {
+                    onRunLocalEdit();
+                    return;
+                  }
+
+                  onSendMessage();
+                }
+              }}
               placeholder="描述你想继续发展的内容…"
             />
             <button
@@ -343,6 +359,200 @@ function formatTaskMode(mode: AiTaskMode): string {
     case "researchOperation":
       return "研究任务";
   }
+}
+
+function MarkdownContent({ body }: { body: string }) {
+  const blocks = parseMarkdownBlocks(body);
+
+  if (blocks.length === 0) {
+    return <p className="markdown-paragraph" />;
+  }
+
+  return (
+    <div className="markdown-message">
+      {blocks.map((block, index) => {
+        switch (block.kind) {
+          case "heading": {
+            const HeadingTag = `h${Math.min(block.level + 2, 5)}` as "h3" | "h4" | "h5";
+            return <HeadingTag key={index}>{renderInlineMarkdown(block.text)}</HeadingTag>;
+          }
+          case "list": {
+            const ListTag = block.ordered ? "ol" : "ul";
+            return (
+              <ListTag key={index}>
+                {block.items.map((item, itemIndex) => (
+                  <li key={itemIndex}>{renderInlineMarkdown(item)}</li>
+                ))}
+              </ListTag>
+            );
+          }
+          case "table":
+            return (
+              <div className="markdown-table-wrap" key={index}>
+                <table className="markdown-table">
+                  <thead>
+                    <tr>
+                      {block.headers.map((header, headerIndex) => (
+                        <th key={headerIndex}>{renderInlineMarkdown(header)}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {block.rows.map((row, rowIndex) => (
+                      <tr key={rowIndex}>
+                        {block.headers.map((_, cellIndex) => (
+                          <td key={cellIndex}>{renderInlineMarkdown(row[cellIndex] ?? "")}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          case "paragraph":
+            return (
+              <p className="markdown-paragraph" key={index}>
+                {renderInlineMarkdown(block.text)}
+              </p>
+            );
+        }
+      })}
+    </div>
+  );
+}
+
+type MarkdownBlock =
+  | { kind: "heading"; level: number; text: string }
+  | { kind: "paragraph"; text: string }
+  | { kind: "list"; ordered: boolean; items: string[] }
+  | { kind: "table"; headers: string[]; rows: string[][] };
+
+export function parseMarkdownBlocks(body: string): MarkdownBlock[] {
+  const lines = body.replace(/\r\n/g, "\n").split("\n");
+  const blocks: MarkdownBlock[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index].trim();
+    if (!line) {
+      index += 1;
+      continue;
+    }
+
+    const heading = /^(#{1,4})\s+(.+)$/.exec(line);
+    if (heading) {
+      blocks.push({ kind: "heading", level: heading[1].length, text: heading[2].trim() });
+      index += 1;
+      continue;
+    }
+
+    if (isMarkdownTableStart(lines, index)) {
+      const headers = splitMarkdownTableRow(lines[index]);
+      const rows: string[][] = [];
+      index += 2;
+      while (index < lines.length && lines[index].includes("|") && lines[index].trim()) {
+        rows.push(splitMarkdownTableRow(lines[index]));
+        index += 1;
+      }
+      blocks.push({ kind: "table", headers, rows });
+      continue;
+    }
+
+    const unordered = /^[-*]\s+(.+)$/.exec(line);
+    const ordered = /^\d+[.)]\s+(.+)$/.exec(line);
+    if (unordered || ordered) {
+      const orderedList = Boolean(ordered);
+      const items: string[] = [];
+      while (index < lines.length) {
+        const current = lines[index].trim();
+        const match = orderedList ? /^\d+[.)]\s+(.+)$/.exec(current) : /^[-*]\s+(.+)$/.exec(current);
+        if (!match) {
+          break;
+        }
+        items.push(match[1].trim());
+        index += 1;
+      }
+      blocks.push({ kind: "list", ordered: orderedList, items });
+      continue;
+    }
+
+    const paragraphLines: string[] = [];
+    while (index < lines.length) {
+      const current = lines[index].trim();
+      if (
+        !current ||
+        /^(#{1,4})\s+/.test(current) ||
+        /^[-*]\s+/.test(current) ||
+        /^\d+[.)]\s+/.test(current) ||
+        isMarkdownTableStart(lines, index)
+      ) {
+        break;
+      }
+      paragraphLines.push(current);
+      index += 1;
+    }
+    blocks.push({ kind: "paragraph", text: paragraphLines.join(" ") });
+  }
+
+  return blocks;
+}
+
+function isMarkdownTableStart(lines: string[], index: number): boolean {
+  return Boolean(
+    lines[index]?.includes("|") &&
+      lines[index + 1] &&
+      /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[index + 1])
+  );
+}
+
+function splitMarkdownTableRow(row: string): string[] {
+  return row
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function renderInlineMarkdown(text: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+
+    const token = match[0];
+    if (token.startsWith("**")) {
+      parts.push(<strong key={parts.length}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith("`")) {
+      parts.push(<code key={parts.length}>{token.slice(1, -1)}</code>);
+    } else {
+      const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(token);
+      if (link) {
+        parts.push(
+          <a key={parts.length} href={link[2]} target="_blank" rel="noreferrer">
+            {link[1]}
+          </a>
+        );
+      }
+    }
+
+    lastIndex = match.index + token.length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts;
+}
+
+function shouldSubmitFromTextarea(event: KeyboardEvent<HTMLTextAreaElement>): boolean {
+  return event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing;
 }
 
 function formatCapabilities(capabilities: ImageGenerationSettings["capabilities"]): string {

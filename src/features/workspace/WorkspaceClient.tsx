@@ -150,6 +150,27 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [activeDrawer]);
 
+  useEffect(() => {
+    if (!activeDrawer) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof Element)) {
+        return;
+      }
+
+      if (event.target.closest(".left-rail, .project-map, .side-drawer, .search-layer")) {
+        return;
+      }
+
+      setActiveDrawer(null);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [activeDrawer]);
+
   const focusArea = useCallback((area: FocusArea) => {
     setFocusRequest((current) => ({ area, nonce: current.nonce + 1 }));
     setActiveDrawer(null);

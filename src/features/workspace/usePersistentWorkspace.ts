@@ -41,17 +41,31 @@ function loadWorkspace(projectId: string): PersistentWorkspaceLoadResult {
 }
 
 export function usePersistentWorkspace(projectId: string) {
-  const [loadResult] = useState(() => loadWorkspace(projectId));
-  const [workspace, setWorkspace] = useState<MorphoWorkspace>(loadResult.workspace);
+  const [loadResult, setLoadResult] = useState<PersistentWorkspaceLoadResult>(() => ({
+    workspace: createBlankWorkspace(projectId)
+  }));
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [workspace, setWorkspace] = useState<MorphoWorkspace>(() => createBlankWorkspace(projectId));
 
   useEffect(() => {
-    if (loadResult.migrationError || typeof window === "undefined") {
+    const timeoutId = window.setTimeout(() => {
+      const loaded = loadWorkspace(projectId);
+      setLoadResult(loaded);
+      setWorkspace(loaded.workspace);
+      setHasLoaded(true);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!hasLoaded || loadResult.migrationError || typeof window === "undefined") {
       return;
     }
 
     saveProjectWorkspace(window.localStorage, workspace);
     upsertProjectSummary(window.localStorage, workspace);
-  }, [loadResult.migrationError, workspace]);
+  }, [hasLoaded, loadResult.migrationError, workspace]);
 
   return [workspace, setWorkspace, { migrationError: loadResult.migrationError }] as const;
 }

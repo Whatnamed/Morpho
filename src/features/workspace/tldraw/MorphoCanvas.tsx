@@ -40,6 +40,8 @@ export type CanvasImportRequest = {
 };
 
 const shapeUtils = [MorphoShapeUtil];
+const MIN_WHEEL_ZOOM = 0.12;
+const MAX_WHEEL_ZOOM = 2.4;
 
 const focusBounds: Record<FocusArea, { x: number; y: number; w: number; h: number; zoom: number }> = {
   overview: { x: 0, y: 30, w: 3050, h: 900, zoom: 0.34 },
@@ -213,12 +215,14 @@ export function MorphoCanvas({
 
     event.preventDefault();
     event.stopPropagation();
-    const point = new Vec(event.clientX, event.clientY);
-    if (event.deltaY > 0) {
-      editor.zoomOut(point, { immediate: true });
-    } else {
-      editor.zoomIn(point, { immediate: true });
-    }
+    const pagePoint = editor.screenToPage({ x: event.clientX, y: event.clientY });
+    const camera = editor.getCamera();
+    const zoomDelta = Math.max(-80, Math.min(80, event.deltaY));
+    const targetZoom = Math.max(MIN_WHEEL_ZOOM, Math.min(MAX_WHEEL_ZOOM, camera.z * Math.exp(-zoomDelta * 0.0018)));
+    const ratio = targetZoom / camera.z;
+    editor.setCamera(new Vec((camera.x + pagePoint.x) * ratio - pagePoint.x, (camera.y + pagePoint.y) * ratio - pagePoint.y, targetZoom), {
+      immediate: true
+    });
   }, []);
 
   useEffect(() => {
