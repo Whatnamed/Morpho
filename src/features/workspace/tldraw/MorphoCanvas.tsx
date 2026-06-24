@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, type ClipboardEvent, type DragEvent, type WheelEvent } from "react";
 import { Tldraw, Vec, type Editor, type TLShapeId } from "tldraw";
 
-import type { CanvasInstance, CanvasPoint, MorphoWorkspace } from "@/domain/morpho/types";
+import { calculateAnchoredZoom } from "@/domain/morpho/canvasCamera";
+import type { CanvasInstance, CanvasPoint, CanvasView, MorphoWorkspace } from "@/domain/morpho/types";
 import { getRenderableCanvasInstances } from "@/domain/morpho/workspace";
 import {
   MORPHO_SHAPE_TYPE,
@@ -29,6 +30,7 @@ type MorphoCanvasProps = {
   focusRequest: FocusRequest;
   onSelectionChange: (objectIds: string[]) => void;
   onInstancesChange: (instances: CanvasInstance[]) => void;
+  onViewChange: (view: CanvasView) => void;
   onImportRequest: (request: CanvasImportRequest) => void;
 };
 
@@ -58,11 +60,27 @@ export function MorphoCanvas({
   focusRequest,
   onSelectionChange,
   onInstancesChange,
+  onViewChange,
   onImportRequest
 }: MorphoCanvasProps) {
   const editorRef = useRef<Editor | null>(null);
   const lastSelectionRef = useRef("");
   const lastInstancesRef = useRef("");
+  const viewPersistTimerRef = useRef<number | null>(null);
+
+  const scheduleViewPersist = useCallback(
+    (view: CanvasView) => {
+      if (viewPersistTimerRef.current !== null) {
+        window.clearTimeout(viewPersistTimerRef.current);
+      }
+
+      viewPersistTimerRef.current = window.setTimeout(() => {
+        onViewChange(view);
+        viewPersistTimerRef.current = null;
+      }, 280);
+    },
+    [onViewChange]
+  );
 
   const syncFromEditor = useCallback(
     (editor: Editor) => {
@@ -217,13 +235,18 @@ export function MorphoCanvas({
     event.stopPropagation();
     const pagePoint = editor.screenToPage({ x: event.clientX, y: event.clientY });
     const camera = editor.getCamera();
-    const zoomDelta = Math.max(-80, Math.min(80, event.deltaY));
-    const targetZoom = Math.max(MIN_WHEEL_ZOOM, Math.min(MAX_WHEEL_ZOOM, camera.z * Math.exp(-zoomDelta * 0.0018)));
-    const ratio = targetZoom / camera.z;
-    editor.setCamera(new Vec((camera.x + pagePoint.x) * ratio - pagePoint.x, (camera.y + pagePoint.y) * ratio - pagePoint.y, targetZoom), {
+    const nextView = calculateAnchoredZoom({
+      camera: { x: camera.x, y: camera.y, zoom: camera.z },
+      anchorPagePoint: { x: pagePoint.x, y: pagePoint.y },
+      deltaY: event.deltaY,
+      minZoom: MIN_WHEEL_ZOOM,
+      maxZoom: MAX_WHEEL_ZOOM
+    });
+    editor.setCamera(new Vec(nextView.x, nextView.y, nextView.zoom), {
       immediate: true
     });
-  }, []);
+    scheduleViewPersist(nextView);
+  }, [scheduleViewPersist]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -247,6 +270,10 @@ export function MorphoCanvas({
         editor.zoomToSelection({
           animation: { duration: 360 }
         });
+        window.setTimeout(() => {
+          const camera = editor.getCamera();
+          scheduleViewPersist({ x: camera.x, y: camera.y, zoom: camera.z });
+        }, 420);
       }
       return;
     }
@@ -258,8 +285,20 @@ export function MorphoCanvas({
         inset: 120,
         targetZoom: bounds.zoom
       });
+      window.setTimeout(() => {
+        const camera = editor.getCamera();
+        scheduleViewPersist({ x: camera.x, y: camera.y, zoom: camera.z });
+      }, 420);
     }
-  }, [focusRequest]);
+  }, [focusRequest, scheduleViewPersist]);
+
+  useEffect(() => {
+    return () => {
+      if (viewPersistTimerRef.current !== null) {
+        window.clearTimeout(viewPersistTimerRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div

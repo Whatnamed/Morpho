@@ -29,12 +29,14 @@ export async function POST(request: Request) {
       messages: buildProviderMessages(validated.value),
       systemPrompt: buildMorphoSystemPrompt(validated.value),
       stream: true,
-      capability: validated.value.task === "visualUnderstanding" ? "multimodal" : "text"
+      capability: validated.value.attachments.some((attachment) => attachment.status === "ready") ? "multimodal" : "text",
+      webSearch: config.config.webSearchEnabled ? validated.value.webSearch : undefined,
+      signal: request.signal
     });
 
     return new Response(stream, {
       headers: {
-        "Content-Type": "text/plain; charset=utf-8",
+        "Content-Type": "application/x-ndjson; charset=utf-8",
         "Cache-Control": "no-store"
       }
     });

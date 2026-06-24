@@ -148,6 +148,31 @@ export function createResearchOperation(
   };
 }
 
+export function getActiveOperation(workspace: MorphoWorkspace): OperationRecord | undefined {
+  return Object.values(workspace.operations).find((operation) => isActiveOperationStatus(operation.status));
+}
+
+export function canStartOperation(workspace: MorphoWorkspace):
+  | {
+      status: "ok";
+    }
+  | {
+      status: "blocked";
+      operation: OperationRecord;
+      reason: string;
+    } {
+  const active = getActiveOperation(workspace);
+  if (!active) {
+    return { status: "ok" };
+  }
+
+  return {
+    status: "blocked",
+    operation: active,
+    reason: "当前项目已有一个未完成的 Operation，请先取消或处理后再开始新的任务。"
+  };
+}
+
 export function createImageGenerationOperation(
   workspace: MorphoWorkspace,
   input: CreateImageGenerationOperationInput

@@ -24,7 +24,16 @@ MORPHO_MIMO_MULTIMODAL_MODEL=mimo-v2.5
 MORPHO_MIMO_WEB_SEARCH_ENABLED=false
 ```
 
-`MORPHO_MIMO_API_KEYS` is a comma-separated primary/fallback key list. The singular `MORPHO_MIMO_API_KEY` remains a compatibility fallback only when the plural variable is empty.
+`MORPHO_MIMO_API_KEYS` is a comma-separated primary/fallback key list. The singular `MORPHO_MIMO_API_KEY` remains a compatibility fallback only when the plural variable is empty. Existing local environments may still use `MORPHO_MIMO_API_KEY_2` and `MORPHO_MIMO_MODEL`; both are read as compatibility fallbacks, but new setups should use `MORPHO_MIMO_API_KEYS` and `MORPHO_MIMO_MULTIMODAL_MODEL`.
+
+MiMo chat behavior:
+
+- ordinary text uses `MORPHO_MIMO_TEXT_MODEL`;
+- explicit image-understanding requests with selected active images use `MORPHO_MIMO_MULTIMODAL_MODEL`;
+- image input is limited to selected active IndexedDB image assets, max 3 images, resized to max side 1600px and compressed toward 1.5MB each;
+- hidden images, unselected images, default references, and whole-canvas screenshots are not sent by default;
+- web search is requested only when the user asks for search/verification/current/source information and `MORPHO_MIMO_WEB_SEARCH_ENABLED=true`;
+- source links are shown only when MiMo returns citation/annotation fields.
 
 Image generation through GrsAI:
 
@@ -56,6 +65,8 @@ Current implemented behavior:
 
 Milestone 3 Operation records are local-first and lightweight. Workspace JSON stores operation status, summaries, proposals, citation snapshots, and IndexedDB artifact references. It does not store raw webpages, large extracted files, page previews, provider raw responses, API keys, or response headers.
 
+Only one active Operation is allowed per project. Browser reload marks unfinished operations as `interrupted` and keeps the input snapshot and retryable state; it does not pretend a background job continued.
+
 Without these variables, the app still runs locally, but provider routes return clear configuration errors instead of fake AI results.
 
 ## Development Server
@@ -86,6 +97,8 @@ Expected results:
 - `typecheck`: `tsc --noEmit` completes.
 - `test`: Vitest runs domain, persistence, import, query, MiMo, and GrsAI tests.
 - `build`: `next build` completes and prerenders static pages/routes where applicable.
+
+Manual provider smoke checks are separate from the default command set and should be run only with real `.env.local` keys and `MORPHO_ALLOW_PAID_SMOKE_TESTS=true`. Do not print keys, key counts, key suffixes, provider raw headers, or provider raw error bodies while testing.
 
 ## Current Local Persistence
 

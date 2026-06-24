@@ -131,6 +131,25 @@ export function AiConversationPanel({
           {workspace.ai.messages.map((message) => (
             <div className="ai-message" key={message.id}>
               <MarkdownContent body={message.body} />
+              {message.citationIds && message.citationIds.length > 0 ? (
+                <div className="citation-list" aria-label="来源引用">
+                  {message.citationIds
+                    .map((citationId) => workspace.citationSnapshots[citationId])
+                    .filter((citation) => Boolean(citation))
+                    .map((citation) => (
+                      <a
+                        className="citation-link"
+                        href={citation.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        key={citation.id}
+                      >
+                        <span>{citation.title}</span>
+                        {citation.domain ? <small>{citation.domain}</small> : null}
+                      </a>
+                    ))}
+                </div>
+              ) : null}
             </div>
           ))}
 

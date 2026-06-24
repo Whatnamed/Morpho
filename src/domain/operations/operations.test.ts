@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createBlankWorkspace } from "../morpho/workspace";
 import {
   applyResearchAnalysisProposal,
+  canStartOperation,
   completeImageGenerationOperation,
   createImageGenerationOperation,
   createResearchOperation,
@@ -39,6 +40,22 @@ describe("Morpho Operation Runtime", () => {
 
     expect(Object.values(interrupted.operations)[0]?.status).toBe("interrupted");
     expect(Object.values(interrupted.operations)[0]?.retryable).toBe(true);
+  });
+
+  it("blocks a second operation while one is active", () => {
+    const created = createResearchOperation(createBlankWorkspace("project-op"), {
+      userInput: "调研已选资料",
+      selectedObjectIds: [],
+      allowWebSearch: false
+    }).workspace;
+
+    const gate = canStartOperation(created);
+
+    expect(gate.status).toBe("blocked");
+    if (gate.status === "blocked") {
+      expect(gate.operation.status).toBe("queued");
+      expect(gate.reason).toContain("未完成");
+    }
   });
 
   it("records a research proposal without directly creating a ResearchObject", () => {

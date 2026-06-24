@@ -25,6 +25,7 @@ describe("MiMo AI config", () => {
   it("falls back to the legacy singular key only when plural keys are empty", () => {
     const result = loadAiConfig({
       MORPHO_MIMO_API_KEY: "legacy-key",
+      MORPHO_MIMO_API_KEY_2: "second-legacy-key",
       MORPHO_MIMO_BASE_URL: "https://mimo.example/v1",
       MORPHO_MIMO_TEXT_MODEL: "mimo-text",
       MORPHO_MIMO_MULTIMODAL_MODEL: "mimo-vision"
@@ -32,7 +33,22 @@ describe("MiMo AI config", () => {
 
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
-      expect(result.config.apiKeys).toEqual(["legacy-key"]);
+      expect(result.config.apiKeys).toEqual(["legacy-key", "second-legacy-key"]);
+    }
+  });
+
+  it("uses the old MORPHO_MIMO_MODEL only as multimodal model fallback", () => {
+    const result = loadAiConfig({
+      MORPHO_MIMO_API_KEY: "legacy-key",
+      MORPHO_MIMO_BASE_URL: "https://mimo.example/v1",
+      MORPHO_MIMO_TEXT_MODEL: "mimo-text",
+      MORPHO_MIMO_MODEL: "old-vision-model"
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.config.textModel).toBe("mimo-text");
+      expect(result.config.multimodalModel).toBe("old-vision-model");
     }
   });
 

@@ -23,7 +23,7 @@ export function loadAiConfig(env: Partial<NodeJS.ProcessEnv>): AiConfigResult {
   const baseUrl = env.MORPHO_MIMO_BASE_URL;
   const apiKeys = getMiMoApiKeys(env);
   const textModel = env.MORPHO_MIMO_TEXT_MODEL || "mimo-v2.5-pro";
-  const multimodalModel = env.MORPHO_MIMO_MULTIMODAL_MODEL || "mimo-v2.5";
+  const multimodalModel = env.MORPHO_MIMO_MULTIMODAL_MODEL || env.MORPHO_MIMO_MODEL || "mimo-v2.5";
   const webSearchEnabled = env.MORPHO_MIMO_WEB_SEARCH_ENABLED === "true";
 
   if (apiKeys.length === 0 || !baseUrl) {
@@ -53,7 +53,7 @@ function getMiMoApiKeys(env: Partial<NodeJS.ProcessEnv>): string[] {
     return plural;
   }
 
-  return splitKeys(env.MORPHO_MIMO_API_KEY);
+  return [...splitKeys(env.MORPHO_MIMO_API_KEY), ...splitKeys(env.MORPHO_MIMO_API_KEY_2)];
 }
 
 function splitKeys(value: string | undefined): string[] {

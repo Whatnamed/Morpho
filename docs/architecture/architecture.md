@@ -54,6 +54,7 @@ Canvas rendering is separated from Morpho domain state:
 - tldraw custom shapes store `objectId` and `instanceId` only as a rendering bridge.
 - Moving a shape updates canvas instance position; it does not change object type, status, relation, direction state, default reference, or delivery inclusion.
 - tldraw renders only canvas instances whose source object exists and has `visibility: "active"`.
+- Custom wheel zoom anchors around the mouse page point and persists the final camera view with debounce to `workspace.canvas.view` and `workspace.ui.canvasView`; zoom/pan state remains visual workspace UI state.
 
 Semantic boundaries retained from schema v2:
 
@@ -102,10 +103,14 @@ Text chat:
 
 - Browser calls `/api/ai/chat`.
 - The route reads `MORPHO_MIMO_*` only on the server.
-- MiMo is called through an OpenAI-compatible streaming chat adapter.
-- The browser receives normalized plain text stream chunks.
+- MiMo is called through an OpenAI-compatible streaming chat adapter using the server-side `api-key` header.
+- The browser receives normalized NDJSON stream events: `delta`, `citations`, `done`, and `error`.
 - Milestone 3 task routing uses explicit `taskMode` from the user send action. Regex and suggestion chips may recommend a task mode, but they are not execution authority.
-- MiMo image-pixel input and web search remain capability-gated until their official wire format and citation shape are verified.
+- For `chatAnalysis` and `researchOperation`, explicit image-understanding requests can send up to 3 selected active image assets. The browser reads and compresses those images from IndexedDB, and the server sends them as OpenAI-compatible `image_url` content to the configured multimodal model.
+- Hidden images, unselected old images, default references, and whole-canvas screenshots are not sent by default.
+- MiMo web search is requested only when the browser sends explicit search/verification intent and `MORPHO_MIMO_WEB_SEARCH_ENABLED=true`. The server adds one native `web_search` tool request with `max_keyword <= 2` and `limit <= 3`.
+- Citation snapshots are created only from provider citation/annotation fields. Morpho does not fabricate sources from normal assistant text.
+- `MORPHO_MIMO_API_KEYS` is preferred over `MORPHO_MIMO_API_KEY`; legacy `MORPHO_MIMO_API_KEY_2` and `MORPHO_MIMO_MODEL` are read only as compatibility fallbacks.
 
 Image generation:
 
@@ -127,8 +132,8 @@ AI boundary:
 - AI can reply, analyze, suggest, and generate editable text or image results.
 - AI does not directly mutate domain state such as deletion, hidden state, direction status, default reference, delivery references, or project memory.
 - Image generation always creates a new image object and never overwrites a source image.
-- The current MiMo text chat route does not send image pixels. Until MiMo official visual input is implemented, image discussion in the text route is based only on object metadata and user descriptions.
-- `src/server/ai/request.ts` has a metadata-only attachment summary boundary reserved for future visual attachment conversion.
+- MiMo visual input is explicit and bounded: selected active images only, at most 3, compressed before upload, and never stored as Base64 in workspace/localStorage.
+- If image read/compression fails, the chat falls back to object metadata and user text and tells the user that pixels were not sent.
 
 ## Demo Project
 

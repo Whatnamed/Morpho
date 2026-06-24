@@ -262,6 +262,7 @@ export type AiMessage = {
   recommendedTaskMode?: AiTaskMode;
   operationId?: string;
   proposalId?: string;
+  citationIds?: string[];
   error?: string;
 };
 

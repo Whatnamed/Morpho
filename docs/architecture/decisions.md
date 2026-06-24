@@ -130,7 +130,7 @@ Decision: the MiMo text chat route explicitly does not send image pixels yet.
 
 Reason: until MiMo official visual input support is implemented in the provider adapter, Morpho must not present text chat as true image analysis.
 
-Boundary: image objects can appear as metadata summaries in MiMo context. A sanitized attachment summary boundary exists for future visual-input conversion, but the current MiMo provider messages remain text-only.
+Boundary: this was the Milestone 2 boundary. It is superseded for explicit image-understanding requests by the 2026-06-25 decision below; ordinary chat without image-understanding intent still remains metadata-only.
 
 ## 2026-06-25: Add Controlled AI Operation Runtime
 
@@ -162,4 +162,28 @@ Decision: GrsAI model profiles and MiMo optional capabilities carry verification
 
 Reason: provider model lists, image-to-image support, multi-reference behavior, visual input formats, web-search tools, and citation response shapes must not be presented as reliable until documented and smoke-test verified.
 
-Boundary: `nano-banana-fast` remains the low-cost default candidate, but only verified capabilities are exposed as executable UI options. MiMo web search is not marked implemented until request and citation formats are verified.
+Boundary: `nano-banana-fast` remains the low-cost default candidate, but only verified capabilities are exposed as executable UI options. MiMo web search request wiring and citation parsing are implemented, but paid smoke tests are still manual and disabled by default.
+
+## 2026-06-25: Add Explicit MiMo Visual Input and Citation Events
+
+Decision: `/api/ai/chat` now supports selected-image visual input and normalized citation events.
+
+Reason: M3.2 needs real image understanding and source display without turning ordinary chat into implicit multimodal analysis or exposing local assets broadly.
+
+Boundary: only `chatAnalysis` and `researchOperation` may send image pixels, only when the user text clearly asks to analyze/compare/extract visual information, and only for selected active image objects. The browser reads and compresses up to 3 IndexedDB image Blobs; Base64 data is sent only in the request and is never stored in workspace/localStorage. The server uses the configured multimodal MiMo model and OpenAI-compatible `image_url` message parts.
+
+## 2026-06-25: Use Provider Citation Snapshots Only
+
+Decision: MiMo stream normalization emits `delta`, `citations`, `done`, and `error` events. Chat messages and Research Proposals persist citation snapshot IDs when provider citation fields are present.
+
+Reason: Morpho must show sources for online-assisted work, but it must not fabricate citations from plain assistant text.
+
+Boundary: web search is sent only when user intent requests search/verification/current information and `MORPHO_MIMO_WEB_SEARCH_ENABLED=true`. The server adds one native `web_search` request with bounded parameters. If the provider returns no citation annotations, Morpho records no source list and local analysis still continues.
+
+## 2026-06-25: Persist Anchored Canvas Camera
+
+Decision: custom wheel zoom is calculated around the cursor page point and the final camera is debounced into workspace state.
+
+Reason: the canvas should zoom predictably and restore the user’s last view after refresh without writing workspace state on every wheel event.
+
+Boundary: camera persistence remains view/UI state. It does not affect object semantics, relationships, direction state, default reference, or delivery inclusion.

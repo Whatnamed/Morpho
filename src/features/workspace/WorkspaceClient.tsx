@@ -8,6 +8,7 @@ import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 import { createGeneratedImageFromAsset } from "@/domain/morpho/generation";
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "@/domain/morpho/imports";
 import {
+  canStartOperation,
   applyResearchAnalysisProposal,
   completeImageGenerationOperation,
   createImageGenerationOperation,
@@ -26,6 +27,7 @@ import {
   setDefaultReference
 } from "@/domain/morpho/workspace";
 import type { CanvasInstance, MorphoWorkspace } from "@/domain/morpho/types";
+import type { ProviderCitation } from "@/server/ai/types";
 import { AiConversationPanel } from "./components/AiConversationPanel";
 import type { PendingAiConfirmation } from "./components/AiConversationPanel";
 import { BottomDetailBar } from "./components/BottomDetailBar";
@@ -37,6 +39,7 @@ import { compactObjectList, getSuggestionsForSelection, type Suggestion } from "
 import { indexedDbBlobStore, getAssetObjectUrl } from "@/infrastructure/assets/indexedDbAssetStore";
 import { readImageBlobDimensions, saveBlobAsLocalAsset } from "@/infrastructure/assets/localAssetWorkflow";
 import { recommendAiTaskMode, resolveTaskModeForSend } from "./aiTaskRouting";
+import { buildWebSearchOptions, collectMiMoImageAttachments, shouldAttachImagesForMiMo } from "./aiAttachments";
 import {
   getDefaultImageGenerationSettings,
   getImageGenerationModelOptions,
@@ -249,6 +252,36 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [setWorkspace]
   );
 
+  const handleCanvasViewChange = useCallback(
+    (view: MorphoWorkspace["canvas"]["view"]) => {
+      setWorkspace((current) => {
+        if (
+          current.canvas.view.x === view.x &&
+          current.canvas.view.y === view.y &&
+          current.canvas.view.zoom === view.zoom &&
+          current.ui.canvasView.x === view.x &&
+          current.ui.canvasView.y === view.y &&
+          current.ui.canvasView.zoom === view.zoom
+        ) {
+          return current;
+        }
+
+        return {
+          ...current,
+          canvas: {
+            ...current.canvas,
+            view
+          },
+          ui: {
+            ...current.ui,
+            canvasView: view
+          }
+        };
+      });
+    },
+    [setWorkspace]
+  );
+
   const handleImportRequest = useCallback(
     async (request: CanvasImportRequest) => {
       const successfulAssets: AssetRecord[] = [];
@@ -324,6 +357,29 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const handleRunResearchOperation = useCallback(
     async (draft: string) => {
+      const operationGate = canStartOperation(workspace);
+      if (operationGate.status === "blocked") {
+        setAiDraft(draft);
+        setWorkspace((current) => ({
+          ...current,
+          ai: {
+            ...current.ai,
+            messages: [
+              ...current.ai.messages,
+              {
+                id: `ai-operation-blocked-${Date.now()}`,
+                role: "assistant",
+                body: `${operationGate.reason} 当前未完成任务：${operationGate.operation.userInput}`,
+                status: "failed",
+                createdAt: new Date().toISOString(),
+                operationId: operationGate.operation.id
+              }
+            ]
+          }
+        }));
+        return;
+      }
+
       const context = assembleAiContext(workspace, {
         draft,
         selectedObjectIds,
@@ -341,6 +397,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       const assistantMessageId = `ai-assistant-research-${Date.now()}`;
       const controller = new AbortController();
       const objectSummaries = makeObjectSummaries(workspace, context.objectIds);
+      const webSearch = buildWebSearchOptions({ draft, taskMode: "researchOperation" });
 
       abortControllerRef.current = controller;
       setIsAiStreaming(true);
@@ -360,12 +417,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               contextObjectIds: context.objectIds,
               taskMode: "researchOperation"
             },
-            {
-              id: assistantMessageId,
-              role: "assistant",
-              body: "研究任务已开始：正在整理本地输入快照。本轮未启用联网搜索。",
-              createdAt: now,
-              status: "streaming",
+              {
+                id: assistantMessageId,
+                role: "assistant",
+                body: webSearch
+                  ? "研究任务已开始：正在整理本地输入快照，并准备一次已授权的联网补充。"
+                  : "研究任务已开始：正在整理本地输入快照。本轮未启用联网搜索。",
+                createdAt: now,
+                status: "streaming",
               contextObjectIds: context.objectIds,
               taskMode: "researchOperation",
               operationId
@@ -375,6 +434,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }));
 
       try {
+        const attachmentResult = shouldAttachImagesForMiMo({
+          draft,
+          taskMode: "researchOperation",
+          selectedObjects
+        })
+          ? await collectMiMoImageAttachments(workspace, context.objectIds, controller.signal)
+          : { attachments: [], skippedObjectIds: [], warning: undefined };
         const response = await fetch("/api/ai/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -384,7 +450,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             taskMode: "researchOperation",
             messages: workspace.ai.messages.map((message) => ({ role: message.role, body: message.body })),
             objectSummaries,
-            attachments: [],
+            attachments: attachmentResult.attachments,
+            webSearch,
             defaultReferenceStatus: "notRelevant"
           }),
           signal: controller.signal
@@ -395,18 +462,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           throw new Error(failure);
         }
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let assistantBody = "";
-        let isDone = false;
-        while (!isDone) {
-          const result = await reader.read();
-          isDone = result.done;
-          if (result.value) {
-            assistantBody += decoder.decode(result.value, { stream: !isDone });
-            setWorkspace((current) => updateAiMessage(current, assistantMessageId, assistantBody, "streaming"));
-          }
-        }
+        const streamResult = await readAiEventStream(response.body, (assistantBody) => {
+          setWorkspace((current) => updateAiMessage(current, assistantMessageId, assistantBody, "streaming"));
+        });
+        const assistantBody = [attachmentResult.warning, streamResult.text].filter(Boolean).join("\n\n");
 
         const proposalTitle = `${workspace.project.title} · 研究与分析草案`;
         const proposalId = `proposal-research-${operationId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -423,10 +482,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               constraints: [],
               openQuestions: [],
               sourceObjectIds: context.objectIds,
-              citations: []
+              citations: streamResult.citations
             }
           );
-          return proposed.workspace;
+          return updateAiMessage(proposed.workspace, assistantMessageId, assistantBody || "MiMo 没有返回可显示文本。", "done", {
+            citationIds: proposed.proposal.citationIds
+          });
         });
         setPendingConfirmation({
           kind: "applyResearchProposal",
@@ -447,7 +508,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         setIsAiStreaming(false);
       }
     },
-    [selectedObjectIds, setWorkspace, workspace]
+    [selectedObjectIds, selectedObjects, setWorkspace, workspace]
   );
 
   const handleSendAiMessage = useCallback(async () => {
@@ -478,6 +539,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const assistantMessageId = `ai-assistant-${Date.now()}`;
     const objectSummaries = makeObjectSummaries(workspace, context.objectIds);
     const controller = new AbortController();
+    const webSearch = buildWebSearchOptions({ draft, taskMode: executionTaskMode });
     abortControllerRef.current = controller;
     setIsAiStreaming(true);
     setAiDraft("");
@@ -511,6 +573,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }));
 
     try {
+      const attachmentResult = shouldAttachImagesForMiMo({
+        draft,
+        taskMode: executionTaskMode,
+        selectedObjects
+      })
+        ? await collectMiMoImageAttachments(workspace, context.objectIds, controller.signal)
+        : { attachments: [], skippedObjectIds: [], warning: undefined };
       const response = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -520,7 +589,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           taskMode: executionTaskMode,
           messages: workspace.ai.messages.map((message) => ({ role: message.role, body: message.body })),
           objectSummaries,
-          attachments: [],
+          attachments: attachmentResult.attachments,
+          webSearch,
           defaultReferenceStatus: summarizeDefaultReferenceStatus(context.defaultReferenceStatus)
         }),
         signal: controller.signal
@@ -531,20 +601,23 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         throw new Error(failure);
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let assistantBody = "";
-      let isDone = false;
-      while (!isDone) {
-        const result = await reader.read();
-        isDone = result.done;
-        if (result.value) {
-          assistantBody += decoder.decode(result.value, { stream: !isDone });
-          setWorkspace((current) => updateAiMessage(current, assistantMessageId, assistantBody, "streaming"));
-        }
-      }
+      const streamResult = await readAiEventStream(response.body, (assistantBody) => {
+        setWorkspace((current) => updateAiMessage(current, assistantMessageId, assistantBody, "streaming"));
+      });
+      const assistantBody = [attachmentResult.warning, streamResult.text].filter(Boolean).join("\n\n");
 
-      setWorkspace((current) => updateAiMessage(current, assistantMessageId, assistantBody || "MiMo 没有返回可显示文本。", "done"));
+      setWorkspace((current) => {
+        const withMessage = updateAiMessage(current, assistantMessageId, assistantBody || "MiMo 没有返回可显示文本。", "done");
+        if (streamResult.citations.length === 0) {
+          return withMessage;
+        }
+
+        return storeMessageCitations(withMessage, {
+          messageId: assistantMessageId,
+          operationId: assistantMessageId,
+          citations: streamResult.citations
+        });
+      });
     } catch (error) {
       const isCancelled = error instanceof DOMException && error.name === "AbortError";
       const message = isCancelled
@@ -636,6 +709,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const now = new Date().toISOString();
     const operationId = `operation-image-${Date.now()}`;
     const clientRequestId = `client-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const initialDirectionObjectId = selectedObjects.find((object) => object.type === "conceptDirection")?.id;
     const userMessageId = `ai-user-image-${Date.now()}`;
     const assistantMessageId = `ai-assistant-image-${Date.now()}`;
     const controller = new AbortController();
@@ -657,7 +731,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         aspectRatio: effectiveImageGenerationSettings.aspectRatio,
         sizeOption: effectiveImageGenerationSettings.sizeOption,
         referenceObjectIds: context.objectIds,
-        directionObjectId: undefined
+        directionObjectId: initialDirectionObjectId
       });
 
       return {
@@ -948,6 +1022,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         focusRequest={focusRequest}
         onSelectionChange={handleSelectionChange}
         onInstancesChange={handleInstancesChange}
+        onViewChange={handleCanvasViewChange}
         onImportRequest={handleImportRequest}
       />
 
@@ -1108,7 +1183,8 @@ function updateAiMessage(
   workspace: MorphoWorkspace,
   messageId: string,
   body: string,
-  status: "streaming" | "done" | "failed"
+  status: "streaming" | "done" | "failed",
+  options: { citationIds?: string[] } = {}
 ): MorphoWorkspace {
   return {
     ...workspace,
@@ -1120,12 +1196,196 @@ function updateAiMessage(
               ...message,
               body,
               status,
+              citationIds: options.citationIds ?? message.citationIds,
               error: status === "failed" ? body : undefined
             }
           : message
       )
     }
   };
+}
+
+function storeMessageCitations(
+  workspace: MorphoWorkspace,
+  input: {
+    messageId: string;
+    operationId: string;
+    citations: ProviderCitation[];
+  }
+): MorphoWorkspace {
+  const now = new Date().toISOString();
+  const citationEntries = input.citations.map((citation, index) => {
+    const id = getAvailableCitationId(workspace, `${input.messageId}-citation-${index + 1}`);
+    return {
+      id,
+      operationId: input.operationId,
+      title: citation.title,
+      url: citation.url,
+      domain: citation.domain ?? domainFromUrl(citation.url),
+      snippet: citation.snippet,
+      retrievedAt: now
+    };
+  });
+
+  return updateAiMessage(
+    {
+      ...workspace,
+      citationSnapshots: {
+        ...workspace.citationSnapshots,
+        ...Object.fromEntries(citationEntries.map((citation) => [citation.id, citation]))
+      }
+    },
+    input.messageId,
+    workspace.ai.messages.find((message) => message.id === input.messageId)?.body ?? "",
+    "done",
+    {
+      citationIds: citationEntries.map((citation) => citation.id)
+    }
+  );
+}
+
+async function readAiEventStream(
+  body: ReadableStream<Uint8Array>,
+  onDelta: (body: string) => void
+): Promise<{ text: string; citations: ProviderCitation[] }> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let assistantBody = "";
+  const citations: ProviderCitation[] = [];
+  let isDone = false;
+
+  while (!isDone) {
+    const result = await reader.read();
+    isDone = result.done;
+    if (result.value) {
+      buffer += decoder.decode(result.value, { stream: !isDone });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const event = parseAiStreamEvent(line);
+        if (!event) {
+          continue;
+        }
+
+        if (event.type === "delta") {
+          assistantBody += event.text;
+          onDelta(assistantBody);
+        } else if (event.type === "citations") {
+          citations.push(...event.citations);
+        } else if (event.type === "error") {
+          throw new Error(event.message);
+        }
+      }
+    }
+  }
+
+  if (buffer.trim()) {
+    const event = parseAiStreamEvent(buffer);
+    if (event?.type === "delta") {
+      assistantBody += event.text;
+      onDelta(assistantBody);
+    } else if (event?.type === "citations") {
+      citations.push(...event.citations);
+    }
+  }
+
+  return { text: assistantBody, citations: dedupeCitations(citations) };
+}
+
+type AiStreamEvent =
+  | {
+      type: "delta";
+      text: string;
+    }
+  | {
+      type: "citations";
+      citations: ProviderCitation[];
+    }
+  | {
+      type: "done";
+    }
+  | {
+      type: "error";
+      message: string;
+    };
+
+function parseAiStreamEvent(line: string): AiStreamEvent | null {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!isRecord(parsed) || typeof parsed.type !== "string") {
+      return { type: "delta", text: trimmed };
+    }
+
+    if (parsed.type === "delta" && typeof parsed.text === "string") {
+      return { type: "delta", text: parsed.text };
+    }
+
+    if (parsed.type === "citations" && Array.isArray(parsed.citations)) {
+      return {
+        type: "citations",
+        citations: parsed.citations.filter(isProviderCitation)
+      };
+    }
+
+    if (parsed.type === "done") {
+      return { type: "done" };
+    }
+
+    if (parsed.type === "error" && typeof parsed.message === "string") {
+      return { type: "error", message: parsed.message };
+    }
+  } catch {
+    return { type: "delta", text: trimmed };
+  }
+
+  return null;
+}
+
+function isProviderCitation(value: unknown): value is ProviderCitation {
+  return isRecord(value) && typeof value.title === "string";
+}
+
+function dedupeCitations(citations: ProviderCitation[]): ProviderCitation[] {
+  const seen = new Set<string>();
+  return citations.filter((citation) => {
+    const key = citation.url ?? `${citation.title}:${citation.snippet ?? ""}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function getAvailableCitationId(workspace: MorphoWorkspace, preferredId: string): string {
+  if (!workspace.citationSnapshots[preferredId]) {
+    return preferredId;
+  }
+
+  let suffix = 2;
+  while (workspace.citationSnapshots[`${preferredId}-${suffix}`]) {
+    suffix += 1;
+  }
+  return `${preferredId}-${suffix}`;
+}
+
+function domainFromUrl(url: string | undefined): string | undefined {
+  if (!url) {
+    return undefined;
+  }
+
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return undefined;
+  }
 }
 
 async function readErrorResponse(response: Response): Promise<string> {

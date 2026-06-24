@@ -1,4 +1,4 @@
-import type { ProviderChatMessage } from "./types";
+import type { ProviderChatMessage, ProviderWebSearchOptions } from "./types";
 
 export type AiRouteObjectSummary = {
   id: string;
@@ -15,6 +15,20 @@ export type AiRouteAttachmentSummary = {
   status: "metadataOnly";
 };
 
+export type AiRouteImageAttachment = {
+  id: string;
+  kind: "image";
+  objectId: string;
+  mimeType: string;
+  dataUrl: string;
+  width?: number;
+  height?: number;
+  byteSize?: number;
+  status: "ready";
+};
+
+export type AiRouteAttachment = AiRouteAttachmentSummary | AiRouteImageAttachment;
+
 export type AiRouteRequest = {
   draft: string;
   task: string;
@@ -24,7 +38,8 @@ export type AiRouteRequest = {
     body: string;
   }>;
   objectSummaries: AiRouteObjectSummary[];
-  attachments: AiRouteAttachmentSummary[];
+  attachments: AiRouteAttachment[];
+  webSearch?: ProviderWebSearchOptions;
   defaultReferenceStatus?: string;
 };
 
@@ -53,19 +68,22 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
   const objectSummaries = Array.isArray(value.objectSummaries)
     ? value.objectSummaries.filter(isObjectSummary).slice(0, 8)
     : [];
+  const taskMode = isTaskMode(value.taskMode) ? value.taskMode : "chatAnalysis";
   const attachments = Array.isArray(value.attachments)
-    ? value.attachments.filter(isAttachmentSummary).map(normalizeAttachmentSummary).slice(0, 8)
+    ? value.attachments.filter(isAttachment).map(normalizeAttachment).slice(0, taskMode === "imageGeneration" ? 0 : 3)
     : [];
+  const webSearch = normalizeWebSearch(value.webSearch, taskMode);
 
   return {
     status: "ok",
     value: {
       draft: value.draft,
       task: typeof value.task === "string" ? value.task : "general",
-      taskMode: isTaskMode(value.taskMode) ? value.taskMode : "chatAnalysis",
+      taskMode,
       messages,
       objectSummaries,
       attachments,
+      webSearch,
       defaultReferenceStatus: typeof value.defaultReferenceStatus === "string" ? value.defaultReferenceStatus : undefined
     }
   };
@@ -76,8 +94,24 @@ export function buildProviderMessages(request: AiRouteRequest): ProviderChatMess
     role: message.role,
     content: message.body
   }));
+  const readyImages = request.attachments.filter((attachment): attachment is AiRouteImageAttachment => attachment.status === "ready");
+  const userContent =
+    readyImages.length > 0
+      ? [
+          {
+            type: "text" as const,
+            text: request.draft
+          },
+          ...readyImages.map((attachment) => ({
+            type: "image_url" as const,
+            image_url: {
+              url: attachment.dataUrl
+            }
+          }))
+        ]
+      : request.draft;
 
-  return [...history, { role: "user", content: request.draft }];
+  return [...history, { role: "user", content: userContent }];
 }
 
 export function buildMorphoSystemPrompt(request: AiRouteRequest): string {
@@ -96,8 +130,10 @@ export function buildMorphoSystemPrompt(request: AiRouteRequest): string {
     request.defaultReferenceStatus ? `默认参考状态：${request.defaultReferenceStatus}` : "",
     "本次可用对象摘要：",
     objectLines,
-    "当前 MiMo 文本聊天尚未发送图片像素，只接收对象标题、摘要和用户文字。",
-    "在 MiMo 官方视觉输入接入前，不能声称已经完成真实图像视觉分析；如果讨论图片，只能说明本次基于元数据和用户描述。"
+    buildAttachmentCapabilityLine(request),
+    request.webSearch?.enabled
+      ? `本次已授权一次 MiMo web_search 补充：max_keyword=${request.webSearch.maxKeyword}, limit=${request.webSearch.limit}, force_search=${request.webSearch.forceSearch}。只可引用 provider 返回的 URL citation，不得编造来源。`
+      : "本次未启用联网搜索；不得编造外部来源或把普通模型文本当作 citation。"
   ]
     .filter(Boolean)
     .join("\n");
@@ -121,6 +157,10 @@ function isObjectSummary(value: unknown): value is AiRouteObjectSummary {
   );
 }
 
+function isAttachment(value: unknown): value is AiRouteAttachment {
+  return isAttachmentSummary(value) || isImageAttachment(value);
+}
+
 function isAttachmentSummary(value: unknown): value is AiRouteAttachmentSummary {
   return (
     isRecord(value) &&
@@ -128,11 +168,38 @@ function isAttachmentSummary(value: unknown): value is AiRouteAttachmentSummary 
     value.kind === "image" &&
     typeof value.objectId === "string" &&
     typeof value.mimeType === "string" &&
-    value.status === "metadataOnly"
+      value.status === "metadataOnly"
   );
 }
 
-function normalizeAttachmentSummary(value: AiRouteAttachmentSummary): AiRouteAttachmentSummary {
+function isImageAttachment(value: unknown): value is AiRouteImageAttachment {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    value.kind === "image" &&
+    typeof value.objectId === "string" &&
+    typeof value.mimeType === "string" &&
+    value.status === "ready" &&
+    typeof value.dataUrl === "string" &&
+    /^data:image\/(?:png|jpeg|jpg|webp);base64,/i.test(value.dataUrl)
+  );
+}
+
+function normalizeAttachment(value: AiRouteAttachment): AiRouteAttachment {
+  if (value.status === "ready") {
+    return {
+      id: value.id,
+      kind: "image",
+      objectId: value.objectId,
+      mimeType: value.mimeType,
+      dataUrl: value.dataUrl,
+      width: typeof value.width === "number" ? value.width : undefined,
+      height: typeof value.height === "number" ? value.height : undefined,
+      byteSize: typeof value.byteSize === "number" ? value.byteSize : undefined,
+      status: "ready"
+    };
+  }
+
   return {
     id: value.id,
     kind: value.kind,
@@ -140,6 +207,36 @@ function normalizeAttachmentSummary(value: AiRouteAttachmentSummary): AiRouteAtt
     mimeType: value.mimeType,
     status: value.status
   };
+}
+
+function normalizeWebSearch(value: unknown, taskMode: AiRouteRequest["taskMode"]): ProviderWebSearchOptions | undefined {
+  if (taskMode === "imageGeneration" || !isRecord(value) || value.enabled !== true) {
+    return undefined;
+  }
+
+  return {
+    enabled: true,
+    maxKeyword: clampInteger(value.maxKeyword, 1, 2, 2),
+    forceSearch: value.forceSearch === true,
+    limit: clampInteger(value.limit, 1, 3, 3)
+  };
+}
+
+function clampInteger(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.max(min, Math.min(max, Math.trunc(value)));
+}
+
+function buildAttachmentCapabilityLine(request: AiRouteRequest): string {
+  const readyImages = request.attachments.filter((attachment) => attachment.status === "ready");
+  if (readyImages.length > 0) {
+    return `本次已发送 ${readyImages.length} 张用户明确选择的图片像素，使用 MiMo OpenAI-compatible image_url 输入。只分析这些图片，不读取隐藏对象、未选旧图或整张画布。`;
+  }
+
+  return "本次没有发送图片像素；如讨论图片，只能基于对象标题、摘要和用户描述，不能声称完成真实视觉分析。";
 }
 
 function isTaskMode(value: unknown): value is AiRouteRequest["taskMode"] {

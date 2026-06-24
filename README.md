@@ -19,10 +19,10 @@ Morpho is an AI-assisted concept-development workspace for product and industria
 - 选中对象后出现的底部详情栏；
 - Morpho 领域对象、画布实例、资产、项目 catalog、本地持久化和语义状态边界；
 - `schemaVersion: 4` 的 local-first 数据底座，包括隐藏、删除、淘汰、后续默认参考、交付稳定引用、安全迁移、IndexedDB 二进制资产、连续 AI 消息和轻量 Operation / Proposal 状态；
-- 服务端 MiMo 流式文本聊天 route；
+- 服务端 MiMo 流式聊天 route，支持普通文本、显式选中图片的视觉理解输入，以及受控 web search citation 事件；
 - 服务端 GrsAI 图像生成 route，图像任务可选择模型、比例和支持的规格；成功结果会保存为新的本地资产和新的图像对象。
 
-当前 MiMo 文本聊天尚不发送图片像素；图片相关文本回复只能基于对象标题、摘要和用户描述。GrsAI 图像生成按静态模型 catalog 和服务端 profile 组装请求，默认模型为 `nano-banana-fast`；`nano-banana-*` 与 `gpt-image-2` 请求字段分开处理，不混用 `imageSize`。
+当前 MiMo 只有在用户以 `对话与分析` 或 `研究任务` 发送明确看图/分析图片意图时，才会读取本地 IndexedDB 中被显式选中的 active 图片，压缩后通过服务端 `image_url` 输入发送；普通聊天即使选中图片也不会发送像素。web search 只在用户明确要求联网、搜索、核实、来源或当前信息，且 `MORPHO_MIMO_WEB_SEARCH_ENABLED=true` 时请求；来源列表只展示 provider 返回的 citation，不从模型正文猜测。GrsAI 图像生成按静态模型 catalog 和服务端 profile 组装请求，默认模型为 `nano-banana-fast`；`nano-banana-*` 与 `gpt-image-2` 请求字段分开处理，不混用 `imageSize`。
 
 Milestone 3 开始引入受控 AI Operation Runtime。Operation 只保存轻量状态、输入快照、Proposal、citation snapshot 和 IndexedDB artifact 引用；Research Operation 不实现无限自主 Agent Loop，保存研究草案前必须由用户确认。
 
@@ -91,6 +91,8 @@ MORPHO_ALLOW_PAID_SMOKE_TESTS=false
 ```
 
 不要把真实 Key 放进客户端代码、`NEXT_PUBLIC_*`、localStorage、日志或 Git 提交。
+
+`MORPHO_MIMO_API_KEYS` 是推荐的多 key 配置。旧的 `MORPHO_MIMO_API_KEY_2` 和 `MORPHO_MIMO_MODEL` 仍被兼容读取，但新环境应迁移到 plural key 与 `MORPHO_MIMO_MULTIMODAL_MODEL`。
 
 常用检查：
 

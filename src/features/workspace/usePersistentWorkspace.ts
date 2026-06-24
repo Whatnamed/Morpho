@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 import { createBlankWorkspace } from "@/domain/morpho/workspace";
+import { interruptActiveOperations } from "@/domain/operations/operations";
 import {
   initializeLocalProjectCatalog,
   loadProjectWorkspace,
@@ -31,7 +32,7 @@ function loadWorkspace(projectId: string): PersistentWorkspaceLoadResult {
 
   const loaded = loadProjectWorkspace(window.localStorage, projectId);
   if (loaded.status === "ok") {
-    return { workspace: loaded.workspace };
+    return { workspace: interruptActiveOperations(loaded.workspace, "browserReload") };
   }
 
   return {

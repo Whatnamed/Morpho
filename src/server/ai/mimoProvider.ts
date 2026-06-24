@@ -1,4 +1,4 @@
-import type { MiMoConfig, ProviderChatInput, ProviderRequest } from "./types";
+import type { MiMoConfig, ProviderChatInput, ProviderCitation, ProviderRequest, ProviderStreamEvent } from "./types";
 import { createMiMoKeyPool } from "./keyPool";
 
 export function createMiMoChatRequest(config: MiMoConfig, input: ProviderChatInput): ProviderRequest {
@@ -18,7 +18,20 @@ function createMiMoChatRequestWithKey(config: MiMoConfig, input: ProviderChatInp
     body: {
       model,
       messages: [{ role: "system", content: input.systemPrompt }, ...input.messages],
-      stream: input.stream
+      stream: input.stream,
+      thinking: {
+        type: "disabled"
+      },
+      tools: input.webSearch?.enabled
+        ? [
+            {
+              type: "web_search",
+              max_keyword: input.webSearch.maxKeyword,
+              force_search: input.webSearch.forceSearch,
+              limit: input.webSearch.limit
+            }
+          ]
+        : undefined
     }
   };
 }
@@ -32,9 +45,14 @@ export async function streamMiMoChat(config: MiMoConfig, input: ProviderChatInpu
     response = await fetch(providerRequest.url, {
       method: "POST",
       headers: providerRequest.headers,
-      body: JSON.stringify(providerRequest.body)
+      body: JSON.stringify(providerRequest.body),
+      signal: input.signal
     });
   } catch (error) {
+    if (input.signal?.aborted) {
+      throw error;
+    }
+
     const next = keyPool.nextAfterFailure({ kind: "network" });
     if (next.status === "stop") {
       throw error;
@@ -44,7 +62,8 @@ export async function streamMiMoChat(config: MiMoConfig, input: ProviderChatInpu
     response = await fetch(providerRequest.url, {
       method: "POST",
       headers: providerRequest.headers,
-      body: JSON.stringify(providerRequest.body)
+      body: JSON.stringify(providerRequest.body),
+      signal: input.signal
     });
   }
 
@@ -55,7 +74,8 @@ export async function streamMiMoChat(config: MiMoConfig, input: ProviderChatInpu
       response = await fetch(providerRequest.url, {
         method: "POST",
         headers: providerRequest.headers,
-        body: JSON.stringify(providerRequest.body)
+        body: JSON.stringify(providerRequest.body),
+        signal: input.signal
       });
     }
   }
@@ -64,7 +84,7 @@ export async function streamMiMoChat(config: MiMoConfig, input: ProviderChatInpu
     throw new Error(`MiMo provider returned ${response.status}`);
   }
 
-  return response.body.pipeThrough(createOpenAiCompatibleTextTransform());
+  return response.body.pipeThrough(createOpenAiCompatibleEventTransform());
 }
 
 export function createOpenAiCompatibleTextTransform(): TransformStream<Uint8Array, Uint8Array> {
@@ -90,8 +110,60 @@ export function createOpenAiCompatibleTextTransform(): TransformStream<Uint8Arra
   });
 }
 
+export function createOpenAiCompatibleEventTransform(): TransformStream<Uint8Array, Uint8Array> {
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffer = "";
+  const seenCitations = new Set<string>();
+
+  return new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      buffer += decoder.decode(chunk, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const event of parseOpenAiCompatibleSseEvents(lines.join("\n"))) {
+        if (event.type === "citations") {
+          const fresh = event.citations.filter((citation) => {
+            const key = citation.url ?? `${citation.title}:${citation.snippet ?? ""}`;
+            if (seenCitations.has(key)) {
+              return false;
+            }
+            seenCitations.add(key);
+            return true;
+          });
+          if (fresh.length === 0) {
+            continue;
+          }
+          controller.enqueue(encoder.encode(`${JSON.stringify({ type: "citations", citations: fresh })}\n`));
+          continue;
+        }
+
+        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+      }
+    },
+    flush(controller) {
+      for (const event of parseOpenAiCompatibleSseEvents(buffer)) {
+        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+      }
+      controller.enqueue(encoder.encode(`${JSON.stringify({ type: "done" })}\n`));
+    }
+  });
+}
+
 export function parseOpenAiCompatibleSse(text: string): string[] {
   const tokens: string[] = [];
+  for (const event of parseOpenAiCompatibleSseEvents(text)) {
+    if (event.type === "delta") {
+      tokens.push(event.text);
+    }
+  }
+
+  return tokens;
+}
+
+export function parseOpenAiCompatibleSseEvents(text: string): ProviderStreamEvent[] {
+  const events: ProviderStreamEvent[] = [];
   for (const line of text.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed.startsWith("data:")) {
@@ -107,14 +179,18 @@ export function parseOpenAiCompatibleSse(text: string): string[] {
       const parsed = JSON.parse(payload) as unknown;
       const content = extractStreamingContent(parsed);
       if (content) {
-        tokens.push(content);
+        events.push({ type: "delta", text: content });
+      }
+      const citations = extractCitations(parsed);
+      if (citations.length > 0) {
+        events.push({ type: "citations", citations });
       }
     } catch {
       // Ignore malformed provider chunks; the final route error handles transport failures.
     }
   }
 
-  return tokens;
+  return events;
 }
 
 function extractStreamingContent(value: unknown): string {
@@ -128,6 +204,77 @@ function extractStreamingContent(value: unknown): string {
   }
 
   return typeof firstChoice.delta.content === "string" ? firstChoice.delta.content : "";
+}
+
+export function extractCitations(value: unknown): ProviderCitation[] {
+  const candidates: ProviderCitation[] = [];
+  visitRecords(value, (record) => {
+    if (typeof record.url === "string" && looksLikeHttpUrl(record.url)) {
+      candidates.push(normalizeCitationRecord(record));
+      return;
+    }
+
+    const urlCitation = record.url_citation;
+    if (isRecord(urlCitation) && typeof urlCitation.url === "string" && looksLikeHttpUrl(urlCitation.url)) {
+      candidates.push(normalizeCitationRecord(urlCitation));
+    }
+  });
+
+  const seen = new Set<string>();
+  return candidates.filter((citation) => {
+    const key = citation.url ?? `${citation.title}:${citation.snippet ?? ""}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function visitRecords(value: unknown, visitor: (record: Record<string, unknown>) => void): void {
+  if (Array.isArray(value)) {
+    value.forEach((item) => visitRecords(item, visitor));
+    return;
+  }
+
+  if (!isRecord(value)) {
+    return;
+  }
+
+  visitor(value);
+  Object.values(value).forEach((item) => visitRecords(item, visitor));
+}
+
+function normalizeCitationRecord(record: Record<string, unknown>): ProviderCitation {
+  const url = typeof record.url === "string" ? record.url : undefined;
+  const title =
+    stringFromUnknown(record.title) ??
+    stringFromUnknown(record.name) ??
+    stringFromUnknown(record.site_name) ??
+    (url ? domainFromUrl(url) : undefined) ??
+    "未命名来源";
+  return {
+    title,
+    url,
+    domain: stringFromUnknown(record.domain) ?? (url ? domainFromUrl(url) : undefined),
+    snippet: stringFromUnknown(record.snippet) ?? stringFromUnknown(record.content) ?? stringFromUnknown(record.text)
+  };
+}
+
+function stringFromUnknown(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function looksLikeHttpUrl(value: string): boolean {
+  return value.startsWith("http://") || value.startsWith("https://");
+}
+
+function domainFromUrl(url: string): string | undefined {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return undefined;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
