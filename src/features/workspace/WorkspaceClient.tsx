@@ -17,6 +17,7 @@ import {
 } from "@/domain/morpho/workspace";
 import type { CanvasInstance, MorphoWorkspace } from "@/domain/morpho/types";
 import { AiConversationPanel } from "./components/AiConversationPanel";
+import type { PendingAiConfirmation } from "./components/AiConversationPanel";
 import { BottomDetailBar } from "./components/BottomDetailBar";
 import { LeftRail, type DrawerMode } from "./components/LeftRail";
 import { OverlayDrawers } from "./components/OverlayDrawers";
@@ -33,7 +34,8 @@ const MorphoCanvas = dynamic(() => import("./tldraw/MorphoCanvas").then((mod) =>
 });
 
 type FocusRequest = {
-  area: FocusArea;
+  area?: FocusArea;
+  objectId?: string;
   nonce: number;
 };
 
@@ -48,7 +50,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [aiOpen, setAiOpen] = useState(true);
   const [activeDrawer, setActiveDrawer] = useState<DrawerMode>(null);
   const [localEditObjectId, setLocalEditObjectId] = useState<string | null>(null);
-  const [showReferenceConfirm, setShowReferenceConfirm] = useState(false);
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingAiConfirmation | null>(null);
   const [showFailure, setShowFailure] = useState(false);
   const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
   const assetUrlsRef = useRef<Record<string, string>>({});
@@ -73,6 +75,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const focusArea = useCallback((area: FocusArea) => {
     setFocusRequest((current) => ({ area, nonce: current.nonce + 1 }));
+    setActiveDrawer(null);
+  }, []);
+
+  const focusObject = useCallback((objectId: string) => {
+    setSelectedObjectIds([objectId]);
+    setFocusRequest((current) => ({ objectId, nonce: current.nonce + 1 }));
     setActiveDrawer(null);
   }, []);
 
@@ -219,13 +227,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       });
       setAiDraft(result.draft);
 
-      if (suggestion.label === "局部修改" && selectedObjects[0]?.type === "image") {
-        setLocalEditObjectId(selectedObjects[0].id);
-        setShowFailure(true);
-      }
-
       if (suggestion.label === "设为后续默认参考") {
-        setShowReferenceConfirm(true);
+        const target = selectedObjects.find((object) => object.type === "image");
+        if (target) {
+          setPendingConfirmation({
+            kind: "setDefaultReference",
+            targetObjectId: target.id,
+            targetTitle: target.title
+          });
+        }
       }
     },
     [selectedObjectIds, selectedObjects, workspace]
@@ -246,7 +256,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
     setAiOpen(true);
     setLocalEditObjectId(target.id);
-    setShowFailure(true);
     setAiDraft("保留整体比例与柔光轨道语言，把转角连接件做得更一体化、少一些外露五金感。");
   }, [selectedObjects]);
 
@@ -262,23 +271,48 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   }, [localEditObjectId, setWorkspace]);
 
   const handleReferenceIntent = useCallback(() => {
-    setAiOpen(true);
-    setShowReferenceConfirm(true);
-  }, []);
-
-  const handleReferenceConfirm = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "image");
-    if (target) {
+    if (!target) {
+      return;
+    }
+
+    setAiOpen(true);
+    setPendingConfirmation({
+      kind: "setDefaultReference",
+      targetObjectId: target.id,
+      targetTitle: target.title
+    });
+  }, [selectedObjects]);
+
+  const handleConfirmPending = useCallback(() => {
+    if (!pendingConfirmation) {
+      return;
+    }
+
+    if (pendingConfirmation.kind === "setDefaultReference") {
       setWorkspace((current) =>
-        setDefaultReference(current, target.id, {
+        setDefaultReference(current, pendingConfirmation.targetObjectId, {
           reason: "用户在默认参考确认卡中明确替换后续默认参考。"
         })
       );
+      setPendingConfirmation(null);
+      setAiDraft("");
+      return;
     }
 
-    setShowReferenceConfirm(false);
+    setWorkspace((current) => {
+      const result = deleteObject(current, pendingConfirmation.targetObjectId, {
+        confirmed: true,
+        reason: "用户在确认卡中确认删除该对象。"
+      });
+
+      return result.workspace;
+    });
+    setSelectedObjectIds((current) => current.filter((selectedId) => selectedId !== pendingConfirmation.targetObjectId));
+    setLocalEditObjectId((current) => (current === pendingConfirmation.targetObjectId ? null : current));
+    setPendingConfirmation(null);
     setAiDraft("");
-  }, [selectedObjects, setWorkspace]);
+  }, [pendingConfirmation, setWorkspace]);
 
   const handleHideSelected = useCallback(() => {
     if (!selectedObjects[0]) {
@@ -296,9 +330,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setWorkspace((current) => restoreObject(current, objectId));
       setSelectedObjectIds([objectId]);
       setActiveDrawer(null);
-      focusArea("overview");
+      focusObject(objectId);
     },
-    [focusArea, setWorkspace]
+    [focusObject, setWorkspace]
   );
 
   const handleDeleteSelected = useCallback(() => {
@@ -307,30 +341,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
 
     const objectId = selectedObjects[0].id;
-    setWorkspace((current) => {
-      const result = deleteObject(current, objectId);
-      if (result.status === "updated") {
-        return result.workspace;
-      }
-
-      const shouldDelete =
-        typeof window !== "undefined" &&
-        window.confirm(`删除会移除实时关系，但不会改写已存在的交付引用快照。\n\n${result.reasons.join("\n")}`);
-
-      if (!shouldDelete) {
-        return current;
-      }
-
-      const confirmed = deleteObject(current, objectId, {
-        confirmed: true,
-        reason: "用户确认删除该对象。"
-      });
-
-      return confirmed.workspace;
+    const result = deleteObject(workspace, objectId);
+    setPendingConfirmation({
+      kind: "deleteObject",
+      targetObjectId: objectId,
+      targetTitle: selectedObjects[0].title,
+      reasons: result.status === "requiresConfirmation" ? result.reasons : []
     });
-    setSelectedObjectIds((current) => current.filter((selectedId) => selectedId !== objectId));
-    setLocalEditObjectId((current) => (current === objectId ? null : current));
-  }, [selectedObjects, setWorkspace]);
+  }, [selectedObjects, workspace]);
 
   const handleEliminateDirection = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "conceptDirection");
@@ -378,6 +396,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onClose={() => setActiveDrawer(null)}
         onFocusArea={focusArea}
         onRestoreObject={handleRestoreObject}
+        onLocateObject={focusObject}
       />
 
       <AiConversationPanel
@@ -387,7 +406,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         draft={aiDraft}
         isOpen={aiOpen}
         isLocalEditMode={Boolean(localEditObjectId)}
-        showReferenceConfirm={showReferenceConfirm}
+        pendingConfirmation={pendingConfirmation}
         showFailure={showFailure}
         contextWarning={
           aiContext.defaultReferenceStatus.status === "hidden" ? aiContext.defaultReferenceStatus.message : undefined
@@ -397,7 +416,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onDraftChange={setAiDraft}
         onSuggestionClick={handleSuggestionClick}
         onRunLocalEdit={handleRunLocalEdit}
-        onReferenceConfirm={handleReferenceConfirm}
+        onConfirmPending={handleConfirmPending}
+        onCancelPending={() => setPendingConfirmation(null)}
         onFailureRetry={() => setShowFailure(false)}
       />
 

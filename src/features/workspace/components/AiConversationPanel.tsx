@@ -5,6 +5,19 @@ import { ChevronLeft, Send, Sparkles } from "lucide-react";
 import type { MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
 import type { Suggestion } from "../workspaceUi";
 
+export type PendingAiConfirmation =
+  | {
+      kind: "setDefaultReference";
+      targetObjectId: string;
+      targetTitle: string;
+    }
+  | {
+      kind: "deleteObject";
+      targetObjectId: string;
+      targetTitle: string;
+      reasons: string[];
+    };
+
 type AiConversationPanelProps = {
   workspace: MorphoWorkspace;
   selectedObjects: MorphoObject[];
@@ -12,7 +25,7 @@ type AiConversationPanelProps = {
   draft: string;
   isOpen: boolean;
   isLocalEditMode: boolean;
-  showReferenceConfirm: boolean;
+  pendingConfirmation: PendingAiConfirmation | null;
   showFailure: boolean;
   contextWarning?: string;
   migrationError?: string;
@@ -20,7 +33,8 @@ type AiConversationPanelProps = {
   onDraftChange: (draft: string) => void;
   onSuggestionClick: (suggestion: Suggestion) => void;
   onRunLocalEdit: () => void;
-  onReferenceConfirm: () => void;
+  onConfirmPending: () => void;
+  onCancelPending: () => void;
   onFailureRetry: () => void;
 };
 
@@ -31,7 +45,7 @@ export function AiConversationPanel({
   draft,
   isOpen,
   isLocalEditMode,
-  showReferenceConfirm,
+  pendingConfirmation,
   showFailure,
   contextWarning,
   migrationError,
@@ -39,7 +53,8 @@ export function AiConversationPanel({
   onDraftChange,
   onSuggestionClick,
   onRunLocalEdit,
-  onReferenceConfirm,
+  onConfirmPending,
+  onCancelPending,
   onFailureRetry
 }: AiConversationPanelProps) {
   return (
@@ -107,18 +122,25 @@ export function AiConversationPanel({
             </div>
           ) : null}
 
-          {showReferenceConfirm ? (
+          {pendingConfirmation ? (
             <div className="confirm-card">
-              <strong>替换后续默认参考</strong>
-              <p>
-                用当前图替换后续默认参考。之后相关生成会默认延续它的比例、轨道结构、材质和柔光基线；已有图和交付内容不会被替换。
-              </p>
+              <strong>{pendingConfirmation.kind === "deleteObject" ? "确认删除对象" : "替换后续默认参考"}</strong>
+              {pendingConfirmation.kind === "deleteObject" ? (
+                <p>
+                  将删除“{pendingConfirmation.targetTitle}”。它会从活动对象和画布实例中移除，并清理实时关系；不会改写已存在的交付引用快照和决策快照。
+                  {pendingConfirmation.reasons.length > 0 ? ` 需要确认：${pendingConfirmation.reasons.join(" ")}` : ""}
+                </p>
+              ) : (
+                <p>
+                  用“{pendingConfirmation.targetTitle}”替换后续默认参考。之后相关生成会默认延续它的比例、结构、材质和视觉基线；已有图和交付内容不会被替换。
+                </p>
+              )}
               <div className="confirm-actions">
-                <button className="brand-button" type="button" onClick={onReferenceConfirm}>
-                  只替换默认参考
+                <button className="brand-button" type="button" onClick={onConfirmPending}>
+                  {pendingConfirmation.kind === "deleteObject" ? "确认删除" : "只替换默认参考"}
                 </button>
-                <button className="plain-button" type="button" onClick={onReferenceConfirm}>
-                  替换并标记直接延展素材待复核
+                <button className="plain-button" type="button" onClick={onCancelPending}>
+                  取消
                 </button>
               </div>
             </div>

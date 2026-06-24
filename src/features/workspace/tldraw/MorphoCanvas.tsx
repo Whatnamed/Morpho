@@ -17,7 +17,8 @@ import {
 export type FocusArea = "overview" | "research" | "definition" | "visual" | "delivery";
 
 type FocusRequest = {
-  area: FocusArea;
+  area?: FocusArea;
+  objectId?: string;
   nonce: number;
 };
 
@@ -219,12 +220,25 @@ export function MorphoCanvas({
       return;
     }
 
-    const bounds = focusBounds[focusRequest.area];
-    editor.zoomToBounds(bounds, {
-      animation: { duration: 360 },
-      inset: 120,
-      targetZoom: bounds.zoom
-    });
+    if (focusRequest.objectId) {
+      const shape = editor.getCurrentPageShapes().filter(isMorphoShape).find((candidate) => candidate.props.objectId === focusRequest.objectId);
+      if (shape) {
+        editor.select(shape.id);
+        editor.zoomToSelection({
+          animation: { duration: 360 }
+        });
+      }
+      return;
+    }
+
+    if (focusRequest.area) {
+      const bounds = focusBounds[focusRequest.area];
+      editor.zoomToBounds(bounds, {
+        animation: { duration: 360 },
+        inset: 120,
+        targetZoom: bounds.zoom
+      });
+    }
   }, [focusRequest]);
 
   return (

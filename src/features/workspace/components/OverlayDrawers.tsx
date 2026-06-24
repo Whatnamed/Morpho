@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 
-import type { DeliveryReference, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
+import type { MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
+import { getWorkspaceAssetItems, searchWorkspace, type WorkspaceAssetItem } from "@/domain/morpho/queries";
 import type { DrawerMode } from "./LeftRail";
 import { getObjectTypeLabel } from "../workspaceUi";
 
@@ -13,6 +14,7 @@ type OverlayDrawersProps = {
   onClose: () => void;
   onFocusArea: (area: "research" | "definition" | "visual" | "delivery" | "overview") => void;
   onRestoreObject: (objectId: string) => void;
+  onLocateObject: (objectId: string) => void;
 };
 
 const mapItems = [
@@ -22,8 +24,9 @@ const mapItems = [
   { label: "交付准备", area: "delivery" as const }
 ];
 
-export function OverlayDrawers({ mode, workspace, onClose, onFocusArea, onRestoreObject }: OverlayDrawersProps) {
+export function OverlayDrawers({ mode, workspace, onClose, onFocusArea, onRestoreObject, onLocateObject }: OverlayDrawersProps) {
   const [query, setQuery] = useState("暖光");
+  const [assetFilter, setAssetFilter] = useState("全部");
 
   if (mode === "map") {
     return (
@@ -46,21 +49,24 @@ export function OverlayDrawers({ mode, workspace, onClose, onFocusArea, onRestor
   }
 
   if (mode === "assets") {
-    const assets = Object.values(workspace.objects).filter(
-      (object) => object.visibility === "active" && (object.type === "image" || object.type === "file")
-    );
+    const assets = getWorkspaceAssetItems(workspace).filter((item) => matchesAssetFilter(item, assetFilter));
 
     return (
       <Drawer title="资产" onClose={onClose}>
         <p className="drawer-muted">只显示原始资料、文件与 AI 生成图片；方向、结论和设计定义仍留在画布中。</p>
         <div className="drawer-filter-row" aria-label="资产筛选">
           {["全部", "原始资料", "生成结果", "文档", "已用于交付"].map((filter, index) => (
-            <button className={`filter-chip ${index === 0 ? "active" : ""}`} type="button" key={filter}>
+            <button
+              className={`filter-chip ${assetFilter === filter || (index === 0 && assetFilter === "") ? "active" : ""}`}
+              type="button"
+              key={filter}
+              onClick={() => setAssetFilter(filter)}
+            >
               {filter}
             </button>
           ))}
         </div>
-        <ObjectRows objects={assets.slice(0, 8)} />
+        <AssetRows items={assets.slice(0, 10)} onLocateObject={onLocateObject} />
       </Drawer>
     );
   }
@@ -81,8 +87,9 @@ export function OverlayDrawers({ mode, workspace, onClose, onFocusArea, onRestor
   }
 
   if (mode === "search") {
-    const objectResults = searchObjects(Object.values(workspace.objects), query);
-    const deliveryReferenceResults = searchDeliveryReferences(Object.values(workspace.deliveryReferences), query);
+    const searchResults = searchWorkspace(workspace, query);
+    const objectResults = searchResults.filter((result) => result.kind === "object");
+    const deliveryReferenceResults = searchResults.filter((result) => result.kind === "deliveryReference");
 
     return (
       <section className="search-layer" aria-label="项目内搜索">
@@ -103,15 +110,52 @@ export function OverlayDrawers({ mode, workspace, onClose, onFocusArea, onRestor
         />
         <div className="search-results">
           <div className="result-group-title">画布内容</div>
-          <ObjectRows objects={objectResults.slice(0, 6)} rowClassName="result-row" />
+          <SearchRows results={objectResults.slice(0, 8)} onLocateObject={onLocateObject} />
           <div className="result-group-title">交付引用</div>
-          <DeliveryReferenceRows references={deliveryReferenceResults.slice(0, 5)} />
+          <SearchRows results={deliveryReferenceResults.slice(0, 5)} onLocateObject={onLocateObject} />
         </div>
       </section>
     );
   }
 
   return null;
+}
+
+function AssetRows({
+  items,
+  onLocateObject
+}: {
+  items: WorkspaceAssetItem[];
+  onLocateObject: (objectId: string) => void;
+}) {
+  if (items.length === 0) {
+    return <p className="drawer-muted">当前没有符合筛选的资产。</p>;
+  }
+
+  return (
+    <div className="asset-list">
+      {items.map((item) => {
+        const firstObject = item.objects[0];
+        return (
+          <div className="asset-row" key={item.asset.id}>
+            <div className="asset-thumb" />
+            <div>
+              <strong>{item.asset.fileName}</strong>
+              <span>
+                {assetSourceLabel(item.asset.sourceType)} · {item.asset.mimeType}
+                {item.usedInDeliveryReferenceIds.length > 0 ? " · 已用于交付" : ""} · 定位已有画布实例 / 拖入可创建新实例
+              </span>
+              {firstObject ? (
+                <button className="plain-button" type="button" onClick={() => onLocateObject(firstObject.id)}>
+                  定位
+                </button>
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function Drawer({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
@@ -162,19 +206,33 @@ function ObjectRows({
   );
 }
 
-function DeliveryReferenceRows({ references }: { references: DeliveryReference[] }) {
-  if (references.length === 0) {
-    return <p className="drawer-muted">没有匹配的交付引用。</p>;
+function SearchRows({
+  results,
+  onLocateObject
+}: {
+  results: ReturnType<typeof searchWorkspace>;
+  onLocateObject: (objectId: string) => void;
+}) {
+  if (results.length === 0) {
+    return <p className="drawer-muted">没有匹配结果。</p>;
   }
 
   return (
     <div className="asset-list">
-      {references.map((reference) => (
-        <div className="result-row" key={reference.id}>
+      {results.map((result) => (
+        <div className="result-row" key={result.kind === "object" ? result.objectId : result.referenceId}>
           <div className="asset-thumb" />
           <div>
-            <strong>{reference.snapshot.title}</strong>
-            <span>{reference.snapshot.caption ?? reference.snapshot.summary ?? "交付引用快照"}</span>
+            <strong>{result.title}</strong>
+            <span>
+              {result.summary}
+              {result.hidden ? " · 已隐藏" : ""} · 查看来源 / 查看版本 / 查看用于哪里
+            </span>
+            {result.kind === "object" ? (
+              <button className="plain-button" type="button" onClick={() => onLocateObject(result.objectId)}>
+                定位
+              </button>
+            ) : null}
           </div>
         </div>
       ))}
@@ -182,35 +240,37 @@ function DeliveryReferenceRows({ references }: { references: DeliveryReference[]
   );
 }
 
-function searchObjects(objects: MorphoObject[], query: string): MorphoObject[] {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return objects.slice(0, 8);
+function matchesAssetFilter(item: WorkspaceAssetItem, filter: string): boolean {
+  if (filter === "全部" || filter === "") {
+    return true;
   }
 
-  return objects.filter((object) =>
-    [object.title, object.summary, object.type, object.visibility, getObjectTypeLabel(object)]
-      .join(" ")
-      .toLowerCase()
-      .includes(normalizedQuery)
-  );
+  if (filter === "原始资料") {
+    return item.asset.sourceType === "originalImage" || item.asset.sourceType === "originalFile" || item.asset.sourceType === "originalLink";
+  }
+
+  if (filter === "生成结果") {
+    return item.asset.sourceType === "aiGeneratedImage";
+  }
+
+  if (filter === "文档") {
+    return item.asset.sourceType === "originalFile" || item.asset.sourceType === "documentExtract";
+  }
+
+  return item.usedInDeliveryReferenceIds.length > 0;
 }
 
-function searchDeliveryReferences(references: DeliveryReference[], query: string): DeliveryReference[] {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return references;
+function assetSourceLabel(sourceType: WorkspaceAssetItem["asset"]["sourceType"]): string {
+  switch (sourceType) {
+    case "originalImage":
+      return "原始图片";
+    case "originalFile":
+      return "原始文件";
+    case "originalLink":
+      return "原始链接";
+    case "aiGeneratedImage":
+      return "生成图片";
+    case "documentExtract":
+      return "文档提取";
   }
-
-  return references.filter((reference) =>
-    [
-      reference.snapshot.title,
-      reference.snapshot.summary ?? "",
-      reference.snapshot.caption ?? "",
-      reference.snapshot.sourceType
-    ]
-      .join(" ")
-      .toLowerCase()
-      .includes(normalizedQuery)
-  );
 }
