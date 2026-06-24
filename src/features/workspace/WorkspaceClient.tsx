@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { AssetRecord } from "@/domain/morpho/types";
+import type { AiContextTask, AssetRecord, MorphoObject } from "@/domain/morpho/types";
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "@/domain/morpho/imports";
 import {
   addLocalModificationVariants,
@@ -52,8 +52,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [localEditObjectId, setLocalEditObjectId] = useState<string | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingAiConfirmation | null>(null);
   const [showFailure, setShowFailure] = useState(false);
+  const [contextWarning, setContextWarning] = useState<string | undefined>();
+  const [isAiStreaming, setIsAiStreaming] = useState(false);
   const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
   const assetUrlsRef = useRef<Record<string, string>>({});
+  const abortControllerRef = useRef<AbortController | null>(null);
   const [focusRequest, setFocusRequest] = useState<FocusRequest>({ area: "visual", nonce: 0 });
 
   const selectedObjects = useMemo(
@@ -62,17 +65,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   );
 
   const suggestions = useMemo(() => getSuggestionsForSelection(selectedObjects), [selectedObjects]);
-  const aiContext = useMemo(
-    () =>
-      assembleAiContext(workspace, {
-        draft: aiDraft,
-        selectedObjectIds,
-        explicitObjectIds: [],
-        task: "visualDevelopment"
-      }),
-    [aiDraft, selectedObjectIds, workspace]
-  );
-
   const focusArea = useCallback((area: FocusArea) => {
     setFocusRequest((current) => ({ area, nonce: current.nonce + 1 }));
     setActiveDrawer(null);
@@ -218,6 +210,104 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     },
     [setWorkspace]
   );
+
+  const handleSendAiMessage = useCallback(async () => {
+    const draft = aiDraft.trim();
+    if (!draft || isAiStreaming) {
+      return;
+    }
+
+    const task = inferAiContextTask(draft, selectedObjects);
+    const context = assembleAiContext(workspace, {
+      draft,
+      selectedObjectIds,
+      explicitObjectIds: [],
+      task
+    });
+    setContextWarning(
+      context.defaultReferenceStatus.status === "hidden" ? context.defaultReferenceStatus.message : undefined
+    );
+
+    const now = new Date().toISOString();
+    const userMessageId = `ai-user-${Date.now()}`;
+    const assistantMessageId = `ai-assistant-${Date.now()}`;
+    const objectSummaries = context.objectIds
+      .map((objectId) => workspace.objects[objectId])
+      .filter((object): object is MorphoObject => Boolean(object))
+      .map((object) => ({
+        id: object.id,
+        type: object.type,
+        title: object.title,
+        summary: object.summary
+      }));
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setIsAiStreaming(true);
+    setAiDraft("");
+    setAiOpen(true);
+    setWorkspace((current) => ({
+      ...current,
+      ai: {
+        ...current.ai,
+        messages: [
+          ...current.ai.messages,
+          { id: userMessageId, role: "user", body: draft, createdAt: now, contextObjectIds: context.objectIds },
+          { id: assistantMessageId, role: "assistant", body: "", createdAt: now, status: "streaming", contextObjectIds: context.objectIds }
+        ]
+      }
+    }));
+
+    try {
+      const response = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          draft,
+          task,
+          messages: workspace.ai.messages.map((message) => ({ role: message.role, body: message.body })),
+          objectSummaries,
+          defaultReferenceStatus: summarizeDefaultReferenceStatus(context.defaultReferenceStatus)
+        }),
+        signal: controller.signal
+      });
+
+      if (!response.ok || !response.body) {
+        const failure = await readErrorResponse(response);
+        throw new Error(failure);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let assistantBody = "";
+      let isDone = false;
+      while (!isDone) {
+        const result = await reader.read();
+        isDone = result.done;
+        if (result.value) {
+          assistantBody += decoder.decode(result.value, { stream: !isDone });
+          setWorkspace((current) => updateAiMessage(current, assistantMessageId, assistantBody, "streaming"));
+        }
+      }
+
+      setWorkspace((current) => updateAiMessage(current, assistantMessageId, assistantBody || "MiMo 没有返回可显示文本。", "done"));
+    } catch (error) {
+      const isCancelled = error instanceof DOMException && error.name === "AbortError";
+      const message = isCancelled
+        ? "当前请求已取消。原输入、选择和上下文已保留。"
+        : error instanceof Error
+          ? error.message
+          : "AI 请求失败。";
+      setAiDraft(draft);
+      setWorkspace((current) => updateAiMessage(current, assistantMessageId, message, "failed"));
+    } finally {
+      abortControllerRef.current = null;
+      setIsAiStreaming(false);
+    }
+  }, [aiDraft, isAiStreaming, selectedObjectIds, selectedObjects, setWorkspace, workspace]);
+
+  const handleCancelAiRequest = useCallback(() => {
+    abortControllerRef.current?.abort();
+  }, []);
 
   const handleSuggestionClick = useCallback(
     (suggestion: Suggestion) => {
@@ -406,15 +496,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         draft={aiDraft}
         isOpen={aiOpen}
         isLocalEditMode={Boolean(localEditObjectId)}
+        isStreaming={isAiStreaming}
         pendingConfirmation={pendingConfirmation}
         showFailure={showFailure}
-        contextWarning={
-          aiContext.defaultReferenceStatus.status === "hidden" ? aiContext.defaultReferenceStatus.message : undefined
-        }
+        contextWarning={contextWarning}
         migrationError={persistenceState.migrationError}
         onToggleOpen={() => setAiOpen((open) => !open)}
         onDraftChange={setAiDraft}
         onSuggestionClick={handleSuggestionClick}
+        onSendMessage={handleSendAiMessage}
+        onCancelRequest={handleCancelAiRequest}
         onRunLocalEdit={handleRunLocalEdit}
         onConfirmPending={handleConfirmPending}
         onCancelPending={() => setPendingConfirmation(null)}
@@ -475,4 +566,80 @@ function updateWorkspaceInstances(workspace: MorphoWorkspace, instances: CanvasI
       instances: nextInstances
     }
   };
+}
+
+function inferAiContextTask(draft: string, selectedObjects: MorphoObject[]): AiContextTask {
+  const text = draft.toLowerCase();
+
+  if (/交付|展板|ppt|作品集|图注|说明/.test(text)) {
+    return "deliveryPreparation";
+  }
+
+  if (/定义|原则|边界|问题/.test(text) || selectedObjects.some((object) => object.type === "designDefinition")) {
+    return "designDefinition";
+  }
+
+  if (/调研|研究|资料|限制|发现|约束/.test(text) || selectedObjects.some((object) => object.type === "research" || object.type === "file" || object.type === "link")) {
+    return "research";
+  }
+
+  if (/生成|继续|发展|局部|场景|cmf|角度|细节|参考|图像|图片/.test(text) || selectedObjects.some((object) => object.type === "image")) {
+    return "visualDevelopment";
+  }
+
+  return "general";
+}
+
+function summarizeDefaultReferenceStatus(status: ReturnType<typeof assembleAiContext>["defaultReferenceStatus"]): string {
+  switch (status.status) {
+    case "available":
+      return `available:${status.objectId}`;
+    case "hidden":
+      return `hidden:${status.objectId}:${status.message}`;
+    case "missing":
+      return `missing:${status.message}`;
+    case "notRelevant":
+      return "notRelevant";
+  }
+}
+
+function updateAiMessage(
+  workspace: MorphoWorkspace,
+  messageId: string,
+  body: string,
+  status: "streaming" | "done" | "failed"
+): MorphoWorkspace {
+  return {
+    ...workspace,
+    ai: {
+      ...workspace.ai,
+      messages: workspace.ai.messages.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              body,
+              status,
+              error: status === "failed" ? body : undefined
+            }
+          : message
+      )
+    }
+  };
+}
+
+async function readErrorResponse(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as unknown;
+    if (isRecord(payload) && typeof payload.error === "string") {
+      return payload.error;
+    }
+  } catch {
+    // Fall through to status text.
+  }
+
+  return response.statusText || "AI 请求失败。";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -25,6 +25,7 @@ type AiConversationPanelProps = {
   draft: string;
   isOpen: boolean;
   isLocalEditMode: boolean;
+  isStreaming: boolean;
   pendingConfirmation: PendingAiConfirmation | null;
   showFailure: boolean;
   contextWarning?: string;
@@ -32,6 +33,8 @@ type AiConversationPanelProps = {
   onToggleOpen: () => void;
   onDraftChange: (draft: string) => void;
   onSuggestionClick: (suggestion: Suggestion) => void;
+  onSendMessage: () => void;
+  onCancelRequest: () => void;
   onRunLocalEdit: () => void;
   onConfirmPending: () => void;
   onCancelPending: () => void;
@@ -45,6 +48,7 @@ export function AiConversationPanel({
   draft,
   isOpen,
   isLocalEditMode,
+  isStreaming,
   pendingConfirmation,
   showFailure,
   contextWarning,
@@ -52,6 +56,8 @@ export function AiConversationPanel({
   onToggleOpen,
   onDraftChange,
   onSuggestionClick,
+  onSendMessage,
+  onCancelRequest,
   onRunLocalEdit,
   onConfirmPending,
   onCancelPending,
@@ -180,8 +186,8 @@ export function AiConversationPanel({
             <button
               className="send-button"
               type="button"
-              aria-label={isLocalEditMode ? "执行局部修改" : "发送"}
-              onClick={isLocalEditMode ? onRunLocalEdit : undefined}
+              aria-label={isStreaming ? "取消当前请求" : isLocalEditMode ? "执行图像任务" : "发送"}
+              onClick={isStreaming ? onCancelRequest : isLocalEditMode ? onRunLocalEdit : onSendMessage}
             >
               <Send size={15} />
             </button>
