@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   assembleAiContext,
   createAiDraftFromSuggestion,
+  createBlankWorkspace,
   createDeliveryReference,
   createInitialWorkspace,
   deleteObject,
@@ -12,8 +13,19 @@ import {
   setDefaultReference,
   updateCanvasInstancePosition
 } from "./workspace";
+import { importAssetBackedObjects, importTextObject, importUrlObject } from "./imports";
 
 describe("Morpho workspace domain boundaries", () => {
+  it("creates a blank schema v3 project without depending on Nightrail seed object ids", () => {
+    const workspace = createBlankWorkspace("project-empty-local");
+
+    expect(workspace.schemaVersion).toBe(3);
+    expect(workspace.project.id).toBe("project-empty-local");
+    expect(workspace.objects["image-soft-rail-v2"]).toBeUndefined();
+    expect(workspace.canvas.instances).toEqual([]);
+    expect(workspace.assets).toEqual({});
+  });
+
   it("moves a canvas instance without changing object type, status, or relations", () => {
     const workspace = createInitialWorkspace();
     const instance = workspace.canvas.instances[0];
@@ -175,6 +187,66 @@ describe("Morpho workspace domain boundaries", () => {
     expect(updated.decisionRecords.at(-1)?.kind).toBe("setDefaultReference");
   });
 
+  it("does not include the default reference in non-visual AI context", () => {
+    const workspace = createInitialWorkspace();
+
+    const context = assembleAiContext(workspace, {
+      draft: "帮我整理当前项目的交付缺口。",
+      selectedObjectIds: [],
+      explicitObjectIds: [],
+      task: "deliveryPreparation"
+    });
+
+    expect(context.objectIds).not.toContain("image-soft-rail-v2");
+    expect(context.defaultReferenceStatus).toEqual({ status: "notRelevant" });
+  });
+
+  it("imports text, URL, image, and file inputs as explicit typed objects with asset references", () => {
+    const workspace = createBlankWorkspace("project-imports");
+    const withText = importTextObject(workspace, {
+      text: "低施工、夜间起身、柔光路径。",
+      position: { x: 120, y: 140 }
+    }).workspace;
+    const withUrl = importUrlObject(withText, {
+      url: "https://example.com/night-path",
+      title: "夜间路径资料",
+      position: { x: 360, y: 140 }
+    }).workspace;
+    const imported = importAssetBackedObjects(withUrl, {
+      assets: [
+        {
+          id: "asset-image-a",
+          fileName: "reference.png",
+          mimeType: "image/png",
+          size: 1234,
+          createdAt: "2026-06-24T00:00:00.000Z",
+          storageKey: "blob:asset-image-a",
+          sourceType: "originalImage"
+        },
+        {
+          id: "asset-file-a",
+          fileName: "brief.pdf",
+          mimeType: "application/pdf",
+          size: 4321,
+          createdAt: "2026-06-24T00:00:00.000Z",
+          storageKey: "blob:asset-file-a",
+          sourceType: "originalFile"
+        }
+      ],
+      position: { x: 120, y: 360 }
+    });
+
+    const objects = Object.values(imported.workspace.objects);
+    expect(objects.some((object) => object.type === "text" && object.body === "低施工、夜间起身、柔光路径。")).toBe(
+      true
+    );
+    expect(objects.some((object) => object.type === "link" && object.domain === "example.com")).toBe(true);
+    expect(objects.some((object) => object.type === "image" && object.assetId === "asset-image-a")).toBe(true);
+    expect(objects.some((object) => object.type === "file" && object.assetId === "asset-file-a")).toBe(true);
+    expect(imported.workspace.assets["asset-image-a"]?.sourceType).toBe("originalImage");
+    expect(imported.workspace.assets["asset-file-a"]?.sourceType).toBe("originalFile");
+  });
+
   it("migrates v1 workspace data to schema v2 without mutating the source object", () => {
     const legacyWorkspace = {
       schemaVersion: 1,
@@ -222,8 +294,9 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.status).toBe("ok");
     expect(legacyWorkspace).toEqual(before);
     if (result.status === "ok") {
-      expect(result.workspace.schemaVersion).toBe(2);
+      expect(result.workspace.schemaVersion).toBe(3);
       expect(result.workspace.objects["image-a"]?.visibility).toBe("active");
+      expect(result.workspace.assets).toBeDefined();
       expect(Object.values(result.workspace.deliveryReferences)).toHaveLength(1);
       expect(result.workspace.objects["delivery-a"]?.type).toBe("delivery");
       const deliveryObject = result.workspace.objects["delivery-a"];

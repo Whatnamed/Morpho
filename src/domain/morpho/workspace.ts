@@ -4,6 +4,7 @@ import type {
   AiSuggestionInput,
   AssembleAiContextInput,
   AssembledAiContext,
+  AssetRecord,
   CanvasInstance,
   CanvasInstanceId,
   CanvasPoint,
@@ -22,6 +23,11 @@ import type {
 } from "./types";
 
 const DEFAULT_REFERENCE_HIDDEN_MESSAGE = "当前后续默认参考已隐藏，请先恢复或替换后再用于相关生成。";
+const CURRENT_SCHEMA_VERSION = 3;
+
+type LegacyWorkspaceV2 = Omit<MorphoWorkspace, "schemaVersion" | "assets" | "ui"> & {
+  schemaVersion: 2;
+};
 
 export type DeleteObjectResult =
   | {
@@ -48,6 +54,41 @@ export type CreateDeliveryReferenceResult =
 
 export function createInitialWorkspace(): MorphoWorkspace {
   return structuredClone(nightrailWorkspace);
+}
+
+export function createBlankWorkspace(projectId: string): MorphoWorkspace {
+  const now = new Date().toISOString();
+
+  return {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    project: {
+      id: projectId,
+      title: "未命名项目",
+      subtitle: "从一句话、图片、文件或链接开始。",
+      currentFocus: "research",
+      createdAt: now,
+      updatedAt: now,
+      lastOpenedAt: now
+    },
+    objects: {},
+    assets: {},
+    relations: [],
+    deliveryReferences: {},
+    decisionRecords: [],
+    canvas: {
+      view: { x: 0, y: 0, zoom: 1 },
+      instances: []
+    },
+    ai: {
+      messages: []
+    },
+    ui: {
+      activeDrawer: null,
+      aiOpen: true,
+      lastSelectionIds: [],
+      canvasView: { x: 0, y: 0, zoom: 1 }
+    }
+  };
 }
 
 export function updateCanvasInstancePosition(
@@ -435,11 +476,19 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
     };
   }
 
+  if (value.schemaVersion === CURRENT_SCHEMA_VERSION) {
+    return {
+      status: "ok",
+      workspace: normalizeV3Workspace(value),
+      didMigrate: false
+    };
+  }
+
   if (value.schemaVersion === 2) {
     return {
       status: "ok",
-      workspace: structuredClone(value) as MorphoWorkspace,
-      didMigrate: false
+      workspace: migrateV2Workspace(value as LegacyWorkspaceV2),
+      didMigrate: true
     };
   }
 
@@ -461,7 +510,7 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
 
   return {
     status: "ok",
-    workspace: migrated,
+    workspace: migrateV2Workspace(migrated),
     didMigrate: true
   };
 }
@@ -564,7 +613,7 @@ export function addLocalModificationVariants(workspace: MorphoWorkspace, sourceO
   };
 }
 
-function migrateV1Workspace(value: Record<string, unknown>): MorphoWorkspace | null {
+function migrateV1Workspace(value: Record<string, unknown>): LegacyWorkspaceV2 | null {
   if (!isRecord(value.project) || !isRecord(value.objects) || !Array.isArray(value.relations) || !isRecord(value.canvas)) {
     return null;
   }
@@ -625,6 +674,75 @@ function migrateV1Workspace(value: Record<string, unknown>): MorphoWorkspace | n
     deliveryReferences,
     decisionRecords: []
   };
+}
+
+function migrateV2Workspace(value: LegacyWorkspaceV2 | Record<string, unknown>): MorphoWorkspace {
+  const cloned = structuredClone(value) as LegacyWorkspaceV2;
+  const canvasView = cloned.canvas?.view ?? { x: 0, y: 0, zoom: 1 };
+
+  return {
+    ...cloned,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    project: {
+      ...cloned.project,
+      createdAt: cloned.project.createdAt ?? "2026-06-23T00:00:00.000Z",
+      updatedAt: cloned.project.updatedAt ?? "2026-06-23T00:00:00.000Z",
+      lastOpenedAt: cloned.project.lastOpenedAt ?? cloned.project.updatedAt ?? "2026-06-23T00:00:00.000Z"
+    },
+    objects: cloned.objects,
+    assets: createLegacyAssetRecords(cloned.objects),
+    ui: {
+      activeDrawer: null,
+      aiOpen: true,
+      lastSelectionIds: [],
+      canvasView
+    }
+  };
+}
+
+function normalizeV3Workspace(value: Record<string, unknown>): MorphoWorkspace {
+  const cloned = structuredClone(value) as MorphoWorkspace;
+  const canvasView = cloned.ui?.canvasView ?? cloned.canvas.view;
+
+  return {
+    ...cloned,
+    assets: cloned.assets ?? {},
+    ui: {
+      activeDrawer: cloned.ui?.activeDrawer ?? null,
+      aiOpen: cloned.ui?.aiOpen ?? true,
+      lastSelectionIds: cloned.ui?.lastSelectionIds ?? [],
+      canvasView
+    }
+  };
+}
+
+function createLegacyAssetRecords(objects: Record<MorphoObjectId, MorphoObject>): Record<string, AssetRecord> {
+  const assets: Record<string, AssetRecord> = {};
+
+  for (const object of Object.values(objects)) {
+    if (object.type !== "image" && object.type !== "file" && object.type !== "link") {
+      continue;
+    }
+
+    const assetId = "assetId" in object ? object.assetId : undefined;
+    if (!assetId) {
+      continue;
+    }
+
+    assets[assetId] = {
+      id: assetId,
+      fileName: object.type === "file" ? object.fileName ?? object.title : object.title,
+      mimeType: object.type === "image" ? "image/*" : object.type === "file" ? object.mimeType ?? "application/octet-stream" : "text/uri-list",
+      size: object.type === "file" ? object.size ?? 0 : 0,
+      createdAt: object.createdBy === "ai" ? "2026-06-23T00:00:00.000Z" : "2026-06-23T00:00:00.000Z",
+      storageKey: `legacy:${assetId}`,
+      sourceType: object.type === "image" && object.createdBy === "ai" ? "aiGeneratedImage" : object.type === "link" ? "originalLink" : object.type === "image" ? "originalImage" : "originalFile",
+      url: object.type === "link" ? object.url : undefined,
+      domain: object.type === "link" ? object.domain : undefined
+    };
+  }
+
+  return assets;
 }
 
 function findDefaultReference(workspace: MorphoWorkspace): ImageObject | null {

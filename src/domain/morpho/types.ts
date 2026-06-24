@@ -3,10 +3,14 @@ export type CanvasInstanceId = string;
 export type MorphoRelationId = string;
 export type DeliveryReferenceId = string;
 export type DecisionRecordId = string;
+export type AssetId = string;
 
 export type MorphoObjectType =
   | "image"
   | "file"
+  | "text"
+  | "link"
+  | "imageCollection"
   | "research"
   | "insight"
   | "designDefinition"
@@ -23,6 +27,25 @@ export type ImageRole =
   | "cmf"
   | "detail"
   | "diagram";
+
+export type AssetSourceType =
+  | "originalImage"
+  | "originalFile"
+  | "originalLink"
+  | "aiGeneratedImage"
+  | "documentExtract";
+
+export type AssetRecord = {
+  id: AssetId;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
+  storageKey: string;
+  sourceType: AssetSourceType;
+  url?: string;
+  domain?: string;
+};
 
 export type ConceptDirectionStatus = "pendingPreview" | "primary" | "alternative" | "eliminated" | "needsReview";
 
@@ -44,6 +67,7 @@ export type ImageObject = MorphoObjectBase & {
   type: "image";
   role: ImageRole;
   imageVariant: "path" | "rail" | "detail" | "scenario" | "cmf" | "supportIsland" | "softGuide";
+  assetId?: AssetId;
   directionId?: MorphoObjectId;
   isDefaultReference?: boolean;
 };
@@ -52,6 +76,31 @@ export type FileObject = MorphoObjectBase & {
   type: "file";
   fileKind: "pdf" | "imageSet" | "document";
   sourceLabel: string;
+  assetId?: AssetId;
+  fileName?: string;
+  mimeType?: string;
+  size?: number;
+  parseStatus?: "unparsed";
+};
+
+export type TextObject = MorphoObjectBase & {
+  type: "text";
+  body: string;
+};
+
+export type LinkObject = MorphoObjectBase & {
+  type: "link";
+  url: string;
+  domain: string;
+  editableTitle?: string;
+  description?: string;
+  assetId?: AssetId;
+};
+
+export type ImageCollectionObject = MorphoObjectBase & {
+  type: "imageCollection";
+  memberObjectIds: MorphoObjectId[];
+  expanded: boolean;
 };
 
 export type ResearchObject = MorphoObjectBase & {
@@ -91,6 +140,9 @@ export type DeliveryObject = MorphoObjectBase & {
 export type MorphoObject =
   | ImageObject
   | FileObject
+  | TextObject
+  | LinkObject
+  | ImageCollectionObject
   | ResearchObject
   | InsightObject
   | DesignDefinitionObject
@@ -182,17 +234,26 @@ export type AiMessage = {
   id: string;
   role: "assistant" | "user";
   body: string;
+  createdAt?: string;
+  status?: "streaming" | "done" | "failed";
+  contextObjectIds?: MorphoObjectId[];
+  error?: string;
 };
 
 export type MorphoWorkspace = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   project: {
     id: string;
     title: string;
     subtitle: string;
     currentFocus: "direction_visual_development" | "research" | "design_definition" | "delivery_preparation";
+    createdAt?: string;
+    updatedAt?: string;
+    lastOpenedAt?: string;
+    coverAssetId?: AssetId;
   };
   objects: Record<MorphoObjectId, MorphoObject>;
+  assets: Record<AssetId, AssetRecord>;
   relations: MorphoRelation[];
   deliveryReferences: Record<DeliveryReferenceId, DeliveryReference>;
   decisionRecords: DecisionRecord[];
@@ -202,6 +263,12 @@ export type MorphoWorkspace = {
   };
   ai: {
     messages: AiMessage[];
+  };
+  ui: {
+    activeDrawer: "map" | "assets" | "hidden" | "search" | null;
+    aiOpen: boolean;
+    lastSelectionIds: MorphoObjectId[];
+    canvasView: CanvasView;
   };
 };
 
@@ -216,7 +283,7 @@ export type AiDraftResult = {
   contextObjectIds: MorphoObjectId[];
 };
 
-export type AiContextTask = "general" | "visualDevelopment" | "deliveryPreparation";
+export type AiContextTask = "general" | "research" | "designDefinition" | "visualDevelopment" | "deliveryPreparation";
 
 export type AiDefaultReferenceStatus =
   | {

@@ -11,6 +11,12 @@ export function getObjectTypeLabel(object: MorphoObject): string {
       return object.isDefaultReference ? "后续默认参考" : imageRoleLabel(object.role);
     case "file":
       return object.fileKind === "imageSet" ? "资料合集" : "文件";
+    case "text":
+      return "文本";
+    case "link":
+      return "链接";
+    case "imageCollection":
+      return "图片合集";
     case "research":
       return "研究与分析";
     case "insight":
@@ -114,6 +120,27 @@ export function getSuggestionsForSelection(objects: MorphoObject[]): Suggestion[
         {
           label: "提取项目限制",
           prompt: `从“${object.title}”中提取会影响夜航方案的现实限制。`
+        }
+      ];
+    case "text":
+      return [
+        {
+          label: "整理为说明",
+          prompt: `整理“${object.title}”中的可用信息，提取对当前项目有帮助的线索。`
+        }
+      ];
+    case "link":
+      return [
+        {
+          label: "说明来源价值",
+          prompt: `基于链接“${object.title}”的标题和摘要，说明它可能支持当前项目的哪些判断。`
+        }
+      ];
+    case "imageCollection":
+      return [
+        {
+          label: "比较合集成员",
+          prompt: `比较“${object.title}”中的图片成员，找出共同线索和差异。`
         }
       ];
     case "research":

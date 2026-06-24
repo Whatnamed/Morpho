@@ -19,13 +19,17 @@ function withActiveVisibility(objects: Record<MorphoObjectId, SeedObject>): Reco
 }
 
 export const nightrailWorkspace: MorphoWorkspace = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   project: {
     id: "project-nightrail",
     title: "夜航 / Nightrail",
     subtitle: "为独居老人的夜间起身与卫浴路径设计一套低施工、非医疗化的连续辅助系统。",
-    currentFocus: "direction_visual_development"
+    currentFocus: "direction_visual_development",
+    createdAt: "2026-06-23T00:00:00.000Z",
+    updatedAt: "2026-06-23T00:00:00.000Z",
+    lastOpenedAt: "2026-06-23T00:00:00.000Z"
   },
+  assets: {},
   objects: withActiveVisibility({
     "file-course-brief": {
       id: "file-course-brief",
@@ -480,5 +484,11 @@ export const nightrailWorkspace: MorphoWorkspace = {
           "柔光轨道 v2 已经把低位导向、隐蔽支撑和暖光氛围合在同一条路线里。下一步可以继续优化转角连接，或补一张夜间使用场景。"
       }
     ]
+  },
+  ui: {
+    activeDrawer: null,
+    aiOpen: true,
+    lastSelectionIds: ["image-soft-rail-v2"],
+    canvasView: { x: -760, y: -160, zoom: 0.72 }
   }
 };
