@@ -148,6 +148,22 @@ Reason: Operation records, artifact proposals, and citation snapshots need stabl
 
 Boundary: schema v4 does not introduce a backend job queue. Browser refresh marks unfinished operations interrupted instead of pretending they continue on a server.
 
+## 2026-06-25: Use Schema Version 5 for Semantic Working State and Revisioned Design Loop
+
+Decision: upgrade workspace data to `schemaVersion: 5`.
+
+Reason: M4 semantic work needs first-class key conclusions, revisioned design definitions, revisioned concept directions, direction lineage, lightweight visual branches, and a rebuildable working-state index that can drive AI context and stage snapshots without turning canvas layout into business state.
+
+Boundary: `workingState` and `stageRecords` are derived and stored for fast local reads, but they are not the sole source of truth. Authority remains with formal objects, revisions, relations, and decision records. Schema v5 still does not introduce PDF runtime, delivery-plan runtime, or archive export.
+
+## 2026-06-25: Treat Image Role Changes as Visual-Development Decisions
+
+Decision: image role changes go through the `setImageRole` domain action and write a `setImageRole` decision record.
+
+Reason: M4 visual development needs images to carry explicit roles such as scene visual, CMF study, detail study, structure diagram, and delivery asset without inferring those roles from canvas position or proximity.
+
+Boundary: changing an image role does not set a default reference, does not move the image into a direction, does not hide other images, and does not create a new version. Direction assignment and image generation remain separate actions.
+
 ## 2026-06-25: Make Task Mode the Execution Authority
 
 Decision: user-send `taskMode` controls whether a request is chat/analysis, image generation, or research operation.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type ClipboardEvent, type DragEvent, type WheelEvent } from "react";
+import { useCallback, useEffect, useRef, type ClipboardEvent, type DragEvent } from "react";
 import { Tldraw, Vec, type Editor, type TLShapeId } from "tldraw";
 
 import { calculateAnchoredZoom } from "@/domain/morpho/canvasCamera";
@@ -64,6 +64,7 @@ export function MorphoCanvas({
   onImportRequest
 }: MorphoCanvasProps) {
   const editorRef = useRef<Editor | null>(null);
+  const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const lastSelectionRef = useRef("");
   const lastInstancesRef = useRef("");
   const viewPersistTimerRef = useRef<number | null>(null);
@@ -225,7 +226,7 @@ export function MorphoCanvas({
     [onImportRequest, workspace.canvas.view.x, workspace.canvas.view.y]
   );
 
-  const handleWheelCapture = useCallback((event: WheelEvent<HTMLDivElement>) => {
+  const handleCanvasWheel = useCallback((event: WheelEvent) => {
     const editor = editorRef.current;
     if (!editor) {
       return;
@@ -233,6 +234,7 @@ export function MorphoCanvas({
 
     event.preventDefault();
     event.stopPropagation();
+    event.stopImmediatePropagation();
     const pagePoint = editor.screenToPage({ x: event.clientX, y: event.clientY });
     const camera = editor.getCamera();
     const nextView = calculateAnchoredZoom({
@@ -247,6 +249,24 @@ export function MorphoCanvas({
     });
     scheduleViewPersist(nextView);
   }, [scheduleViewPersist]);
+
+  useEffect(() => {
+    const host = canvasHostRef.current;
+    if (!host) {
+      return;
+    }
+
+    host.addEventListener("wheel", handleCanvasWheel, {
+      capture: true,
+      passive: false
+    });
+
+    return () => {
+      host.removeEventListener("wheel", handleCanvasWheel, {
+        capture: true
+      });
+    };
+  }, [handleCanvasWheel]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -302,11 +322,11 @@ export function MorphoCanvas({
 
   return (
     <div
+      ref={canvasHostRef}
       className="workspace-canvas"
       onDragOverCapture={(event) => event.preventDefault()}
       onDropCapture={handleDropCapture}
       onPasteCapture={handlePasteCapture}
-      onWheelCapture={handleWheelCapture}
     >
       <Tldraw
         hideUi

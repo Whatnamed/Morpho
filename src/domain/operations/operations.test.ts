@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { createBlankWorkspace } from "../morpho/workspace";
+import { createBlankWorkspace, createInitialWorkspace } from "../morpho/workspace";
 import {
+  applyConceptDirectionProposal,
+  applyDesignDefinitionProposal,
   applyResearchAnalysisProposal,
   canStartOperation,
   completeImageGenerationOperation,
@@ -11,6 +13,8 @@ import {
   failImageGenerationOperation,
   interruptActiveOperations,
   markImageGenerationOperationSubmitted,
+  recordConceptDirectionProposal,
+  recordDesignDefinitionProposal,
   recordResearchAnalysisProposal
 } from "./operations";
 
@@ -333,5 +337,232 @@ describe("Morpho Operation Runtime", () => {
     };
 
     expect(detectResearchSourceChanges(changed, created.operation.id)).toContain("来源已变化");
+  });
+
+  it("applies a design definition proposal as a new revision on the current definition object", () => {
+    const workspace = createInitialWorkspace();
+    const currentDefinition =
+      workspace.objects["definition-current"]?.type === "designDefinition"
+        ? workspace.objects["definition-current"]
+        : undefined;
+    const proposed = recordDesignDefinitionProposal(workspace, {
+      proposalId: "proposal-definition-revision",
+      title: "当前设计定义 v2",
+      summary: "在连续支撑基础上收紧转角与触感边界。",
+      projectGoal: "让独居老人夜间起身路径更可辨认、更可扶持、更不打扰家居氛围。",
+      targetUsers: ["独居老人"],
+      primaryScenarios: ["床边起身", "转角转身", "进入卫浴"],
+      coreProblem: "把连续支撑做得更可信，同时保持居家语气。",
+      designPrinciples: ["低施工", "连续支撑", "柔和触感"],
+      constraints: ["避免医院感", "不依赖重施工"],
+      avoidDirections: ["厚重器械感"],
+      opportunities: ["把转角和触感做成同一套轨道语言"],
+      openQuestions: ["转角连接是否需要更明确的触感变化？"],
+      sourceObjectIds: ["insight-continuous-support", "insight-nonmedical"],
+      citations: [],
+      basedOnDesignDefinitionId: "definition-current",
+      basedOnRevisionId: currentDefinition?.currentRevisionId,
+      changeNote: "把当前定义收紧为更明确的连续支撑边界。"
+    });
+
+    const applied = applyDesignDefinitionProposal(proposed.workspace, proposed.proposal.id);
+
+    expect(applied.status).toBe("updated");
+    if (applied.status === "updated") {
+      expect(applied.designDefinitionObject.id).toBe("definition-current");
+      expect(applied.designDefinitionObject.currentRevisionId).toBe(applied.revision.id);
+      expect(applied.designDefinitionObject.revisionIds).toHaveLength(2);
+      expect(applied.revision.previousRevisionId).toBe("definition-revision-current-1");
+      expect(applied.workspace.artifactProposals[proposed.proposal.id]).toMatchObject({
+        status: "applied",
+        appliedObjectId: "definition-current"
+      });
+      expect(applied.workspace.workingState.currentDesignDefinitionId).toBe("definition-current");
+      expect(applied.workspace.decisionRecords.at(-1)?.kind).toBe("applyDesignDefinition");
+    }
+  });
+
+  it("blocks a design definition proposal when its base revision has been superseded", () => {
+    const workspace = createInitialWorkspace();
+    const currentDefinition =
+      workspace.objects["definition-current"]?.type === "designDefinition"
+        ? workspace.objects["definition-current"]
+        : undefined;
+    const proposed = recordDesignDefinitionProposal(workspace, {
+      proposalId: "proposal-definition-stale-base",
+      title: "当前设计定义 v2",
+      summary: "在连续支撑基础上收紧转角与触感边界。",
+      projectGoal: "让独居老人夜间起身路径更可辨识、更可扶持、更不打扰家居氛围。",
+      targetUsers: ["独居老人"],
+      primaryScenarios: ["床边起身", "转角转身", "进入卫生间"],
+      coreProblem: "把连续支撑做得更可确认，同时保持居家语气。",
+      designPrinciples: ["低施工", "连续支撑", "柔和触感"],
+      constraints: ["避免医院感", "不依赖重施工"],
+      avoidDirections: ["厚重器械感"],
+      opportunities: ["把转角和触感做成同一套轨道语言"],
+      openQuestions: ["转角连接是否需要更明确的触感变化？"],
+      sourceObjectIds: ["insight-continuous-support", "insight-nonmedical"],
+      citations: [],
+      basedOnDesignDefinitionId: "definition-current",
+      basedOnRevisionId: currentDefinition?.currentRevisionId,
+      changeNote: "把当前定义收紧为更明确的连续支撑边界。"
+    });
+    if (!currentDefinition) {
+      throw new Error("Expected seed workspace to include current design definition.");
+    }
+    const revisionCount = Object.keys(proposed.workspace.designDefinitionRevisions).length;
+    const staleWorkspace = {
+      ...proposed.workspace,
+      objects: {
+        ...proposed.workspace.objects,
+        "definition-current": {
+          ...currentDefinition,
+          currentRevisionId: "definition-revision-current-2"
+        }
+      }
+    };
+
+    const applied = applyDesignDefinitionProposal(staleWorkspace, proposed.proposal.id);
+
+    expect(applied.status).toBe("blocked");
+    if (applied.status === "blocked") {
+      expect(applied.reason).toContain("版本");
+      expect(applied.workspace.artifactProposals[proposed.proposal.id]).toMatchObject({
+        reviewState: "baseSuperseded",
+        status: "pending"
+      });
+      expect(applied.workspace.objects["definition-current"]?.type).toBe("designDefinition");
+      expect(Object.keys(applied.workspace.designDefinitionRevisions)).toHaveLength(revisionCount);
+    }
+  });
+
+  it("applies a concept direction proposal as pending-preview directions with lineage records", () => {
+    const workspace = createInitialWorkspace();
+    const basedOnRevisionId =
+      workspace.objects["definition-current"]?.type === "designDefinition"
+        ? workspace.objects["definition-current"].currentRevisionId
+        : undefined;
+    const proposed = recordConceptDirectionProposal(workspace, {
+      proposalId: "proposal-direction-batch",
+      title: "夜航概念方向组",
+      summary: "围绕当前设计定义提出两条并行方向。",
+      sourceObjectIds: ["definition-current", "insight-continuous-support"],
+      citations: [],
+      basedOnDesignDefinitionId: "definition-current",
+      basedOnRevisionId,
+      directions: [
+        {
+          title: "方向 D：轨道扶持壁带",
+          summary: "把扶持与导光做成更薄的壁带。",
+          conceptStatement: "在不增加器械感的前提下，把轨道进一步压薄并强化触感。",
+          keywords: ["薄壁带", "连续触感"],
+          strategy: "沿用主方向，但压缩结构厚度。",
+          differentiators: ["更轻", "更贴墙"],
+          visualSignals: ["细窄光带", "贴墙截面"],
+          risks: ["触感不够明确"],
+          openQuestions: ["是否会削弱支撑可信度？"],
+          basedOnDirectionId: "direction-soft-rail",
+          lineageKind: "splitFromDirection"
+        },
+        {
+          title: "方向 E：门口支撑拱带",
+          summary: "把重点支撑集中在门口与转角。",
+          conceptStatement: "用更聚焦的支撑节点处理高风险转角区域。",
+          keywords: ["转角支撑", "门口节点"],
+          strategy: "集中强化转角与门口，不覆盖全路径。",
+          differentiators: ["更聚焦", "节点明确"],
+          visualSignals: ["拱形扶持", "门口亮点"],
+          risks: ["连续性不足"],
+          openQuestions: ["如何避免只剩单点扶手逻辑？"]
+        }
+      ]
+    });
+
+    const applied = applyConceptDirectionProposal(proposed.workspace, proposed.proposal.id, {
+      position: { x: 1480, y: 980 }
+    });
+
+    expect(applied.status).toBe("updated");
+    if (applied.status === "updated") {
+      expect(applied.directions).toHaveLength(2);
+      expect(applied.directions.every((direction) => direction.status === "pendingPreview")).toBe(true);
+      expect(applied.workspace.directionLineage).toContainEqual(
+        expect.objectContaining({
+          kind: "splitFromDirection",
+          fromDirectionId: "direction-soft-rail"
+        })
+      );
+      expect(applied.workspace.relations).toContainEqual(
+        expect.objectContaining({
+          kind: "supports",
+          fromObjectId: "definition-current"
+        })
+      );
+      expect(applied.workspace.artifactProposals[proposed.proposal.id]).toMatchObject({
+        status: "applied"
+      });
+      expect(applied.workspace.workingState.primaryDirectionId).toBe("direction-soft-rail");
+      expect(applied.workspace.decisionRecords.at(-1)?.kind).toBe("applyConceptDirection");
+    }
+  });
+
+  it("blocks a concept direction proposal when a source object has been hidden", () => {
+    const workspace = createInitialWorkspace();
+    const basedOnRevisionId =
+      workspace.objects["definition-current"]?.type === "designDefinition"
+        ? workspace.objects["definition-current"].currentRevisionId
+        : undefined;
+    const proposed = recordConceptDirectionProposal(workspace, {
+      proposalId: "proposal-direction-hidden-source",
+      title: "夜航概念方向组",
+      summary: "围绕当前设计定义提出两条并行方向。",
+      sourceObjectIds: ["insight-continuous-support", "insight-nonmedical"],
+      citations: [],
+      basedOnDesignDefinitionId: "definition-current",
+      basedOnRevisionId,
+      directions: [
+        {
+          title: "方向 D：轨道扶持墙带",
+          summary: "把扶持与导向做成更薄的墙带。",
+          conceptStatement: "在不增加器械感的前提下，让路径更连续。",
+          keywords: ["轨道", "扶持"],
+          strategy: "压缩结构厚度。",
+          differentiators: ["更轻", "更贴墙"],
+          visualSignals: ["细窄光带"],
+          risks: ["触感不够明确"],
+          openQuestions: ["是否会削弱支撑感？"]
+        }
+      ]
+    });
+    const sourceObject = proposed.workspace.objects["insight-continuous-support"];
+    if (!sourceObject) {
+      throw new Error("Expected seed workspace to include source object.");
+    }
+    const canvasInstanceCount = proposed.workspace.canvas.instances.length;
+    const hiddenWorkspace = {
+      ...proposed.workspace,
+      objects: {
+        ...proposed.workspace.objects,
+        "insight-continuous-support": {
+          ...sourceObject,
+          visibility: "hidden" as const
+        }
+      }
+    };
+
+    const applied = applyConceptDirectionProposal(hiddenWorkspace, proposed.proposal.id, {
+      position: { x: 1480, y: 980 }
+    });
+
+    expect(applied.status).toBe("blocked");
+    if (applied.status === "blocked") {
+      expect(applied.reason).toContain("来源");
+      expect(applied.workspace.artifactProposals[proposed.proposal.id]).toMatchObject({
+        reviewState: "sourceChanged",
+        status: "pending"
+      });
+      expect(applied.workspace.objects["direction-soft-rail"]?.type).toBe("conceptDirection");
+      expect(applied.workspace.canvas.instances).toHaveLength(canvasInstanceCount);
+    }
   });
 });

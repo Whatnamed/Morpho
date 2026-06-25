@@ -26,7 +26,7 @@ No database, authentication, cloud object storage, Supabase, multiplayer sync, e
 
 ## Data Model
 
-Structured workspace data is schema version `4`.
+Structured workspace data is schema version `5`.
 
 Current workspace state includes:
 
@@ -40,6 +40,12 @@ Current workspace state includes:
 - lightweight Operation records in `workspace.operations`;
 - Artifact Proposal records in `workspace.artifactProposals`;
 - citation snapshots in `workspace.citationSnapshots`.
+- revisioned design definitions in `workspace.designDefinitionRevisions`;
+- revisioned concept directions in `workspace.directionRevisions`;
+- direction lineage records in `workspace.directionLineage`;
+- lightweight visual branch records in `workspace.visualBranches`;
+- derived working state in `workspace.workingState`;
+- current stage snapshots in `workspace.stageRecords`.
 
 Operation persistence is intentionally lightweight:
 
@@ -63,6 +69,16 @@ Semantic boundaries retained from schema v2:
 - delivery references store independent display snapshots;
 - decision records are limited to project-level semantic decisions;
 - default reference changes do not rewrite old images, version chains, or delivery references.
+
+Schema v5 semantic additions:
+
+- `keyConclusion` is a first-class Morpho object, separate from research objects and design definitions;
+- design definitions are revisioned, but only one definition is current effective at a time;
+- concept directions are revisioned and lineage-aware; they are not treated as a kanban lane or workflow step;
+- image roles are explicit `ImageObject.role` values and can be changed through a traceable user decision;
+- visual-development stage snapshots include active images assigned to concept directions, not only the direction objects themselves;
+- `ProjectWorkingState` is stored as a derived, rebuildable index for current effective state and AI context assembly;
+- `StageRecord` stores the current stage snapshot, not an append-only operation log.
 
 ## Local-First Persistence
 

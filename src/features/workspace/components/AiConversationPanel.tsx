@@ -25,9 +25,33 @@ export type PendingAiConfirmation =
       reasons: string[];
     }
   | {
+      kind: "createKeyConclusion";
+      sourceObjectId: string;
+      sourceTitle: string;
+      conclusionTitle: string;
+      body: string;
+      summary: string;
+      citationIds: string[];
+      confidence: "supported" | "partial" | "needsVerification";
+      state?: "active" | "needsVerification";
+      note: string;
+    }
+  | {
       kind: "applyResearchProposal";
       proposalId: string;
       targetTitle: string;
+    }
+  | {
+      kind: "applyDesignDefinitionProposal";
+      proposalId: string;
+      targetTitle: string;
+      basedOnTitle?: string;
+    }
+  | {
+      kind: "applyConceptDirectionProposal";
+      proposalId: string;
+      targetTitle: string;
+      directionCount: number;
     };
 
 type AiConversationPanelProps = {
@@ -96,6 +120,10 @@ export function AiConversationPanel({
   onCancelPending,
   onFailureRetry
 }: AiConversationPanelProps) {
+  const confirmationTitle = pendingConfirmation ? getPendingConfirmationTitle(pendingConfirmation) : null;
+  const confirmationBody = pendingConfirmation ? getPendingConfirmationBody(pendingConfirmation) : null;
+  const confirmationActionLabel = pendingConfirmation ? getPendingConfirmationActionLabel(pendingConfirmation) : null;
+
   return (
     <>
       <section className={`ai-panel ${isOpen ? "" : "collapsed"}`} aria-label="AI 对话">
@@ -169,7 +197,9 @@ export function AiConversationPanel({
           {migrationError ? (
             <div className="failure-card">
               <strong>本地项目数据暂未覆盖</strong>
-              <p>旧数据迁移失败：{migrationError} 当前显示的是安全示例工作台，原始本地数据仍保留在浏览器中。</p>
+              <p>
+                旧数据迁移失败：{migrationError}。当前显示的是安全示例工作台，原始本地数据仍保留在浏览器中。
+              </p>
             </div>
           ) : null}
 
@@ -187,36 +217,13 @@ export function AiConversationPanel({
             </div>
           ) : null}
 
-          {pendingConfirmation ? (
+          {pendingConfirmation && confirmationTitle && confirmationBody && confirmationActionLabel ? (
             <div className="confirm-card">
-              <strong>
-                {pendingConfirmation.kind === "deleteObject"
-                  ? "确认删除对象"
-                  : pendingConfirmation.kind === "applyResearchProposal"
-                    ? "保存研究与分析"
-                    : "替换后续默认参考"}
-              </strong>
-              {pendingConfirmation.kind === "deleteObject" ? (
-                <p>
-                  将删除“{pendingConfirmation.targetTitle}”。它会从活动对象和画布实例中移除，并清理实时关系；不会改写已存在的交付引用快照和决策快照。
-                  {pendingConfirmation.reasons.length > 0 ? ` 需要确认：${pendingConfirmation.reasons.join(" ")}` : ""}
-                </p>
-              ) : pendingConfirmation.kind === "applyResearchProposal" ? (
-                <p>
-                  将“{pendingConfirmation.targetTitle}”保存为正式研究与分析对象，并创建来源关系；不会自动写入长期项目记忆、设计定义、方向状态或关键结论。
-                </p>
-              ) : (
-                <p>
-                  用“{pendingConfirmation.targetTitle}”替换后续默认参考。之后相关生成会默认延续它的比例、结构、材质和视觉基线；已有图和交付内容不会被替换。
-                </p>
-              )}
+              <strong>{confirmationTitle}</strong>
+              <p>{confirmationBody}</p>
               <div className="confirm-actions">
                 <button className="brand-button" type="button" onClick={onConfirmPending}>
-                  {pendingConfirmation.kind === "deleteObject"
-                    ? "确认删除"
-                    : pendingConfirmation.kind === "applyResearchProposal"
-                      ? "保存为研究与分析"
-                      : "只替换默认参考"}
+                  {confirmationActionLabel}
                 </button>
                 <button className="plain-button" type="button" onClick={onCancelPending}>
                   取消
@@ -228,7 +235,7 @@ export function AiConversationPanel({
           {showFailure ? (
             <div className="failure-card">
               <strong>这次修改没有完成</strong>
-              <p>原图与修改要求已保留。可以重试、修改后重试，或取消并保留原图。</p>
+              <p>原图和修改要求已保留。可以重试、修改后重试，或取消并保留原图。</p>
               <div className="failure-actions">
                 <button className="plain-button" type="button" onClick={onFailureRetry}>
                   重试
@@ -271,6 +278,7 @@ export function AiConversationPanel({
               </button>
             </div>
           </div>
+
           {isLocalEditMode ? (
             <div className="image-settings" aria-label="图像生成设置">
               <label>
@@ -325,6 +333,7 @@ export function AiConversationPanel({
               </div>
             </div>
           ) : null}
+
           <div className="ai-input">
             <textarea
               rows={2}
@@ -367,6 +376,62 @@ export function AiConversationPanel({
       </button>
     </>
   );
+}
+
+function getPendingConfirmationTitle(confirmation: PendingAiConfirmation): string {
+  switch (confirmation.kind) {
+    case "setDefaultReference":
+      return "替换后续默认参考";
+    case "deleteObject":
+      return "确认删除对象";
+    case "createKeyConclusion":
+      return "保存关键结论";
+    case "applyResearchProposal":
+      return "保存研究与分析";
+    case "applyDesignDefinitionProposal":
+      return "应用设计定义草案";
+    case "applyConceptDirectionProposal":
+      return "保存概念方向";
+  }
+}
+
+function getPendingConfirmationBody(confirmation: PendingAiConfirmation): string {
+  switch (confirmation.kind) {
+    case "setDefaultReference":
+      return `用“${confirmation.targetTitle}”替换后续默认参考。之后相关生成会默认延续它的比例、结构、材质和视觉基线；已有图片、版本链和交付内容不会被替换。`;
+    case "deleteObject": {
+      const reasonText =
+        confirmation.reasons.length > 0 ? ` 需要确认：${confirmation.reasons.join(" ")}` : "";
+      return `将删除“${confirmation.targetTitle}”。它会从活动对象和画布实例中移除，并清理实时关系；已有交付引用快照和决策快照不会被改写。${reasonText}`;
+    }
+    case "createKeyConclusion":
+      return `将从“${confirmation.sourceTitle}”保存一条用户确认的关键结论：“${confirmation.conclusionTitle}”。它会创建新的关键结论对象、来源关系和决策记录；不会自动改写设计定义、概念方向、默认参考、交付引用或长期项目记忆。`;
+    case "applyResearchProposal":
+      return `将“${confirmation.targetTitle}”保存为正式研究与分析对象，并建立来源关系；不会自动写入长期项目记忆、设计定义、方向状态或关键结论。`;
+    case "applyDesignDefinitionProposal":
+      return confirmation.basedOnTitle
+        ? `将“${confirmation.targetTitle}”应用为新的设计定义修订，并保留基于“${confirmation.basedOnTitle}”继续演化的版本关系；不会自动变更方向状态、默认参考或交付引用。`
+        : `将“${confirmation.targetTitle}”应用为当前有效设计定义，并创建可追溯修订记录；不会自动变更方向状态、默认参考或交付引用。`;
+    case "applyConceptDirectionProposal":
+      return `将保存 ${confirmation.directionCount} 个概念方向到画布与项目状态中，并保留可比较、可淘汰、可恢复的方向关系；不会自动设为主方向或改写默认参考。`;
+  }
+}
+
+function getPendingConfirmationActionLabel(confirmation: PendingAiConfirmation): string {
+  switch (confirmation.kind) {
+    case "setDefaultReference":
+      return "只替换默认参考";
+    case "deleteObject":
+      return "确认删除";
+    case "createKeyConclusion":
+      return "确认保存结论";
+    case "applyResearchProposal":
+      return "保存为研究与分析";
+    case "applyDesignDefinitionProposal":
+      return "应用设计定义";
+    case "applyConceptDirectionProposal":
+      return "保存概念方向";
+  }
 }
 
 function formatTaskMode(mode: AiTaskMode): string {

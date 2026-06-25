@@ -6,6 +6,15 @@ export type MorphoRelationId = string;
 export type DeliveryReferenceId = string;
 export type DecisionRecordId = string;
 export type AssetId = string;
+export type DesignDefinitionRevisionId = string;
+export type DirectionRevisionId = string;
+export type DirectionLineageId = string;
+export type VisualBranchId = string;
+export type StageRecordKind =
+  | "research"
+  | "designDefinition"
+  | "directionVisualDevelopment"
+  | "deliveryPreparation";
 export type AiTaskMode = "chatAnalysis" | "imageGeneration" | "researchOperation";
 
 export type MorphoObjectType =
@@ -15,7 +24,7 @@ export type MorphoObjectType =
   | "link"
   | "imageCollection"
   | "research"
-  | "insight"
+  | "keyConclusion"
   | "designDefinition"
   | "conceptDirection"
   | "delivery";
@@ -29,7 +38,15 @@ export type ImageRole =
   | "scenario"
   | "cmf"
   | "detail"
-  | "diagram";
+  | "diagram"
+  | "conceptImage"
+  | "primaryVisual"
+  | "sceneVisual"
+  | "cmfStudy"
+  | "detailStudy"
+  | "structureDiagram"
+  | "interactionDiagram"
+  | "deliveryAsset";
 
 export type AssetSourceType =
   | "originalImage"
@@ -55,6 +72,8 @@ export type AssetRecord = {
 
 export type ConceptDirectionStatus = "pendingPreview" | "primary" | "alternative" | "eliminated" | "needsReview";
 
+export type KeyConclusionState = "active" | "needsVerification" | "superseded" | "archived";
+
 export type DeliveryGap = {
   id: string;
   label: string;
@@ -67,6 +86,8 @@ export type MorphoObjectBase = {
   summary: string;
   createdBy: "user" | "ai";
   visibility: ObjectVisibility;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type ImageObject = MorphoObjectBase & {
@@ -75,6 +96,7 @@ export type ImageObject = MorphoObjectBase & {
   imageVariant: "path" | "rail" | "detail" | "scenario" | "cmf" | "supportIsland" | "softGuide";
   assetId?: AssetId;
   directionId?: MorphoObjectId;
+  visualBranchId?: VisualBranchId;
   isDefaultReference?: boolean;
   generation?: ImageGenerationMetadata;
 };
@@ -140,9 +162,16 @@ export type ResearchObject = MorphoObjectBase & {
   };
 };
 
-export type InsightObject = MorphoObjectBase & {
-  type: "insight";
-  insightState?: "needsValidation" | "superseded";
+export type KeyConclusionObject = MorphoObjectBase & {
+  type: "keyConclusion";
+  body: string;
+  state: KeyConclusionState;
+  confidence: ResearchEvidence["confidence"];
+  sourceObjectIds: MorphoObjectId[];
+  citationIds: string[];
+  confirmedAt: string;
+  supersededById?: MorphoObjectId;
+  note?: string;
 };
 
 export type DesignDefinitionObject = MorphoObjectBase & {
@@ -150,13 +179,18 @@ export type DesignDefinitionObject = MorphoObjectBase & {
   problem: string;
   principles: string[];
   avoid: string[];
-  revisionState?: "draftRevision";
+  currentRevisionId: DesignDefinitionRevisionId;
+  revisionIds: DesignDefinitionRevisionId[];
+  isCurrentEffective: boolean;
 };
 
 export type ConceptDirectionObject = MorphoObjectBase & {
   type: "conceptDirection";
   status: ConceptDirectionStatus;
   keywords: string[];
+  currentRevisionId: DirectionRevisionId;
+  revisionIds: DirectionRevisionId[];
+  lineageRootId: MorphoObjectId;
 };
 
 export type DeliveryObject = MorphoObjectBase & {
@@ -173,7 +207,7 @@ export type MorphoObject =
   | LinkObject
   | ImageCollectionObject
   | ResearchObject
-  | InsightObject
+  | KeyConclusionObject
   | DesignDefinitionObject
   | ConceptDirectionObject
   | DeliveryObject;
@@ -204,7 +238,9 @@ export type CanvasView = {
 export type RelationKind =
   | "source"
   | "supports"
+  | "supportsConclusion"
   | "belongsToDirection"
+  | "usesReference"
   | "version"
   | "defaultReference"
   | "deliveryReference";
@@ -236,8 +272,12 @@ export type DeliveryReference = {
 };
 
 export type DecisionKind =
+  | "createKeyConclusion"
+  | "applyDesignDefinition"
+  | "applyConceptDirection"
   | "setDefaultReference"
   | "setDirectionStatus"
+  | "setImageRole"
   | "createDeliveryReference"
   | "replaceDeliveryReference"
   | "removeDeliveryReference"
@@ -274,8 +314,103 @@ export type AiMessage = {
   error?: string;
 };
 
+export type DesignDefinitionRevision = {
+  id: DesignDefinitionRevisionId;
+  designDefinitionId: MorphoObjectId;
+  revisionNumber: number;
+  title: string;
+  summary: string;
+  projectGoal: string;
+  targetUsers: string[];
+  primaryScenarios: string[];
+  coreProblem: string;
+  designPrinciples: string[];
+  constraints: string[];
+  avoidDirections: string[];
+  opportunities: string[];
+  openQuestions: string[];
+  sourceObjectIds: MorphoObjectId[];
+  citationIds: string[];
+  createdAt: string;
+  previousRevisionId?: DesignDefinitionRevisionId;
+  changeNote?: string;
+  isCurrent: boolean;
+};
+
+export type ConceptDirectionRevision = {
+  id: DirectionRevisionId;
+  directionId: MorphoObjectId;
+  revisionNumber: number;
+  title: string;
+  summary: string;
+  conceptStatement: string;
+  keywords: string[];
+  strategy: string;
+  differentiators: string[];
+  visualSignals: string[];
+  risks: string[];
+  openQuestions: string[];
+  sourceObjectIds: MorphoObjectId[];
+  citationIds: string[];
+  basedOnDefinitionRevisionId?: DesignDefinitionRevisionId;
+  createdAt: string;
+  previousRevisionId?: DirectionRevisionId;
+  changeNote?: string;
+  isCurrent: boolean;
+};
+
+export type DirectionLineageKind =
+  | "derivedFromDirection"
+  | "splitFromDirection"
+  | "mergedFromDirection"
+  | "supersedesDirection";
+
+export type DirectionLineageRecord = {
+  id: DirectionLineageId;
+  kind: DirectionLineageKind;
+  fromDirectionId: MorphoObjectId;
+  toDirectionId: MorphoObjectId;
+  createdAt: string;
+  note: string;
+};
+
+export type VisualBranchRecord = {
+  id: VisualBranchId;
+  directionId: MorphoObjectId;
+  label: string;
+  rootObjectId?: MorphoObjectId;
+  createdAt: string;
+  archivedAt?: string;
+};
+
+export type ProjectWorkingState = {
+  currentDesignDefinitionId?: MorphoObjectId;
+  primaryDirectionId?: MorphoObjectId;
+  alternativeDirectionIds: MorphoObjectId[];
+  eliminatedDirectionIds: MorphoObjectId[];
+  activeKeyConclusionIds: MorphoObjectId[];
+  currentDefaultReferenceId?: MorphoObjectId;
+  directionReferenceIds: Record<MorphoObjectId, MorphoObjectId[]>;
+  recentResearchObjectIds: MorphoObjectId[];
+  openQuestionIds: MorphoObjectId[];
+  derivedFromRevision: string;
+  lastReconciledAt: string;
+};
+
+export type StageRecord = {
+  kind: StageRecordKind;
+  goal: string;
+  currentStatus: "empty" | "active" | "pending" | "ready";
+  savedObjectIds: MorphoObjectId[];
+  decisionIds: DecisionRecordId[];
+  constraints: string[];
+  openQuestions: string[];
+  nextSuggestion: string;
+  updatedAt: string;
+};
+
 export type MorphoWorkspace = {
-  schemaVersion: 4;
+  schemaVersion: 5;
   project: {
     id: string;
     title: string;
@@ -294,6 +429,12 @@ export type MorphoWorkspace = {
   operations: Record<string, OperationRecord>;
   artifactProposals: Record<string, ArtifactProposal>;
   citationSnapshots: Record<string, SourceCitation>;
+  designDefinitionRevisions: Record<DesignDefinitionRevisionId, DesignDefinitionRevision>;
+  directionRevisions: Record<DirectionRevisionId, ConceptDirectionRevision>;
+  directionLineage: DirectionLineageRecord[];
+  visualBranches: Record<VisualBranchId, VisualBranchRecord>;
+  workingState: ProjectWorkingState;
+  stageRecords: Record<StageRecordKind, StageRecord>;
   canvas: {
     view: CanvasView;
     instances: CanvasInstance[];
@@ -320,7 +461,14 @@ export type AiDraftResult = {
   contextObjectIds: MorphoObjectId[];
 };
 
-export type AiContextTask = "general" | "research" | "designDefinition" | "visualDevelopment" | "deliveryPreparation";
+export type AiContextTask =
+  | "general"
+  | "research"
+  | "designDefinition"
+  | "conceptDirection"
+  | "visualDevelopment"
+  | "comparison"
+  | "deliveryPreparation";
 
 export type AiDefaultReferenceStatus =
   | {

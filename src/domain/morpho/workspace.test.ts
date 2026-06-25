@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   assembleAiContext,
+  createKeyConclusion,
   createAiDraftFromSuggestion,
   createBlankWorkspace,
   createDeliveryReference,
@@ -10,16 +11,18 @@ import {
   getRenderableCanvasInstances,
   hideObject,
   migrateWorkspaceToCurrentSchema,
+  setConceptDirectionStatus,
   setDefaultReference,
+  setImageRole,
   updateCanvasInstancePosition
 } from "./workspace";
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "./imports";
 
 describe("Morpho workspace domain boundaries", () => {
-  it("creates a blank schema v4 project without depending on Nightrail seed object ids", () => {
+  it("creates a blank schema v5 project without depending on Nightrail seed object ids", () => {
     const workspace = createBlankWorkspace("project-empty-local");
 
-    expect(workspace.schemaVersion).toBe(4);
+    expect(workspace.schemaVersion).toBe(5);
     expect(workspace.project.id).toBe("project-empty-local");
     expect(workspace.objects["image-soft-rail-v2"]).toBeUndefined();
     expect(workspace.canvas.instances).toEqual([]);
@@ -59,6 +62,44 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.workspace).toBe(workspace);
     expect(result.draft).toBe("继续发展这张图，保留低位导向与暖光氛围。");
     expect(result.contextObjectIds).toEqual([selectedObjectId]);
+  });
+
+  it("creates a key conclusion with source relations and updates derived project state", () => {
+    const workspace = importTextObject(createBlankWorkspace("project-key-conclusion"), {
+      text: "夜间起身时需要连续、低干扰的导向，不应只依赖单点扶手。",
+      position: { x: 120, y: 140 }
+    }).workspace;
+    const sourceObject = Object.values(workspace.objects).find((object) => object.type === "text");
+
+    expect(sourceObject).toBeDefined();
+    if (!sourceObject || sourceObject.type !== "text") {
+      throw new Error("Expected imported text object.");
+    }
+
+    const result = createKeyConclusion(workspace, {
+      title: "连续支撑优先于单点扶手",
+      summary: "夜间起身路径需要连续导向与支撑。",
+      body: sourceObject.body,
+      sourceObjectIds: [sourceObject.id],
+      confidence: "needsVerification",
+      state: "needsVerification",
+      note: "用户从文本输入中明确保留该结论。",
+      position: { x: 360, y: 180 }
+    });
+
+    expect(result.workspace.objects[result.keyConclusion.id]?.type).toBe("keyConclusion");
+    expect(
+      result.workspace.relations.some(
+        (relation) =>
+          relation.kind === "supportsConclusion" &&
+          relation.fromObjectId === sourceObject.id &&
+          relation.toObjectId === result.keyConclusion.id
+      )
+    ).toBe(true);
+    expect(result.workspace.workingState.activeKeyConclusionIds).not.toContain(result.keyConclusion.id);
+    expect(result.workspace.workingState.openQuestionIds).toContain(result.keyConclusion.id);
+    expect(result.workspace.stageRecords.research.savedObjectIds).toContain(result.keyConclusion.id);
+    expect(result.workspace.decisionRecords.at(-1)?.kind).toBe("createKeyConclusion");
   });
 
   it("hides objects without deleting objects, relations, or creating decision records", () => {
@@ -166,7 +207,7 @@ describe("Morpho workspace domain boundaries", () => {
 
     expect(deleted.status).toBe("updated");
     expect(deleted.workspace.deliveryReferences[created.deliveryReferenceId].snapshot.title).toBe(
-      "连续支持比单点扶手更符合真实动作路径"
+      "连续支撑比单点扶手更符合真实动作路径"
     );
     expect(deleted.workspace.deliveryReferences[created.deliveryReferenceId].snapshot.caption).toBe(
       "交付摘要：连续支持比单点扶手更符合真实动作路径。"
@@ -188,6 +229,71 @@ describe("Morpho workspace domain boundaries", () => {
     expect(defaultImages.map((object) => object.id)).toEqual(["image-night-scenario"]);
     expect(updated.deliveryReferences).toEqual(deliveryReferenceBefore);
     expect(updated.decisionRecords.at(-1)?.kind).toBe("setDefaultReference");
+  });
+
+  it("keeps exactly one primary direction when promoting another direction", () => {
+    const workspace = createInitialWorkspace();
+    const alternativeDirection = Object.values(workspace.objects).find(
+      (object) => object.type === "conceptDirection" && object.status === "alternative"
+    );
+    const currentPrimary = Object.values(workspace.objects).find(
+      (object) => object.type === "conceptDirection" && object.status === "primary"
+    );
+
+    expect(alternativeDirection).toBeDefined();
+    expect(currentPrimary).toBeDefined();
+    if (!alternativeDirection || alternativeDirection.type !== "conceptDirection") {
+      throw new Error("Expected alternative direction.");
+    }
+    if (!currentPrimary || currentPrimary.type !== "conceptDirection") {
+      throw new Error("Expected current primary direction.");
+    }
+
+    const updated = setConceptDirectionStatus(
+      workspace,
+      alternativeDirection.id,
+      "primary",
+      "用户明确将备选方向提升为主方向。"
+    );
+
+    const primaryDirections = Object.values(updated.objects).filter(
+      (object) => object.type === "conceptDirection" && object.status === "primary"
+    );
+
+    expect(primaryDirections.map((direction) => direction.id)).toEqual([alternativeDirection.id]);
+    expect(updated.objects[currentPrimary.id]).toMatchObject({
+      id: currentPrimary.id,
+      type: "conceptDirection",
+      status: "alternative"
+    });
+    expect(updated.workingState.primaryDirectionId).toBe(alternativeDirection.id);
+    expect(updated.decisionRecords.at(-1)?.kind).toBe("setDirectionStatus");
+  });
+
+  it("changes an image role as a traceable visual-development decision without replacing references", () => {
+    const workspace = createInitialWorkspace();
+    const source = workspace.objects["image-night-scenario"];
+    if (!source || source.type !== "image") {
+      throw new Error("Expected seed image.");
+    }
+    const relationCount = workspace.relations.length;
+
+    const updated = setImageRole(workspace, source.id, "sceneVisual", {
+      reason: "用户明确将该图标记为使用场景视觉。"
+    });
+    const image = updated.objects[source.id];
+    const decision = updated.decisionRecords.at(-1);
+
+    expect(image).toMatchObject({
+      id: source.id,
+      type: "image",
+      role: "sceneVisual"
+    });
+    expect(image?.type === "image" ? image.isDefaultReference : undefined).toBe(source.isDefaultReference);
+    expect(updated.relations).toHaveLength(relationCount);
+    expect(decision?.kind).toBe("setImageRole");
+    expect(updated.stageRecords.directionVisualDevelopment.decisionIds).toContain(decision?.id);
+    expect(updated.stageRecords.directionVisualDevelopment.savedObjectIds).toContain(source.id);
   });
 
   it("does not include the default reference in non-visual AI context", () => {
@@ -250,7 +356,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(imported.workspace.assets["asset-file-a"]?.sourceType).toBe("originalFile");
   });
 
-  it("migrates v1 workspace data to schema v2 without mutating the source object", () => {
+  it("migrates v1 workspace data to schema v5 without mutating the source object", () => {
     const legacyWorkspace = {
       schemaVersion: 1,
       project: {
@@ -297,7 +403,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.status).toBe("ok");
     expect(legacyWorkspace).toEqual(before);
     if (result.status === "ok") {
-      expect(result.workspace.schemaVersion).toBe(4);
+      expect(result.workspace.schemaVersion).toBe(5);
       expect(result.workspace.objects["image-a"]?.visibility).toBe("active");
       expect(result.workspace.assets).toBeDefined();
       expect(result.workspace.operations).toEqual({});

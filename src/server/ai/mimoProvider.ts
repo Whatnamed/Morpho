@@ -1,5 +1,6 @@
 import type { MiMoConfig, ProviderChatInput, ProviderCitation, ProviderRequest, ProviderStreamEvent } from "./types";
-import { createMiMoKeyPool } from "./keyPool";
+import { MiMoProviderError } from "./errors";
+import { classifyMiMoFailure, createMiMoKeyPool } from "./keyPool";
 
 export function createMiMoChatRequest(config: MiMoConfig, input: ProviderChatInput): ProviderRequest {
   return createMiMoChatRequestWithKey(config, input, config.apiKeys[0] ?? "");
@@ -80,8 +81,12 @@ export async function streamMiMoChat(config: MiMoConfig, input: ProviderChatInpu
     }
   }
 
-  if (!response.ok || !response.body) {
-    throw new Error(`MiMo provider returned ${response.status}`);
+  if (!response.ok) {
+    throw new MiMoProviderError(classifyMiMoFailure({ status: response.status }), response.status);
+  }
+
+  if (!response.body) {
+    throw new MiMoProviderError("temporaryFailure", response.status);
   }
 
   return response.body.pipeThrough(createOpenAiCompatibleEventTransform());

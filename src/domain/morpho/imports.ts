@@ -10,6 +10,7 @@ import type {
   MorphoWorkspace,
   TextObject
 } from "./types";
+import { reconcileWorkspaceDerivedState } from "./derivedState";
 import { getImageCanvasSize } from "./imageSizing";
 
 type ImportResult = {
@@ -195,7 +196,7 @@ function addObjectsToCanvas(workspace: MorphoWorkspace, objects: MorphoObject[],
   });
 
   return {
-    workspace: {
+    workspace: reconcileWorkspaceDerivedState({
       ...workspace,
       objects: nextObjects,
       canvas: {
@@ -206,7 +207,7 @@ function addObjectsToCanvas(workspace: MorphoWorkspace, objects: MorphoObject[],
         ...workspace.ui,
         lastSelectionIds: objectIds
       }
-    },
+    }),
     objectIds
   };
 }

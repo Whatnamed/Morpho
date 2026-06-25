@@ -1,0 +1,1439 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Morpho M3 — Operation Runtime 交互原型</title>
+  <style>
+    :root {
+      --canvas: #F7F5F1;
+      --surface: #FCFBF8;
+      --surface-raised: #FFFFFF;
+      --surface-muted: #F0ECE6;
+      --surface-selected: #EEF1F1;
+      --text-primary: #211F1B;
+      --text-secondary: #69625A;
+      --text-muted: #978F86;
+      --border-subtle: #E4DED6;
+      --border-strong: #D4CCC2;
+      --accent-brand: #8E4C24;
+      --accent-brand-hover: #78401F;
+      --accent-brand-soft: #EEE0D4;
+      --accent-select: #6D7F88;
+      --accent-select-soft: #E4EAEB;
+      --selection-halo: rgba(109,127,136,.18);
+      --selection-route: rgba(109,127,136,.06);
+      --relationship-line: rgba(109,127,136,.42);
+      --success: #4E6B52;
+      --success-soft: #E8EDE8;
+      --warning: #8A6834;
+      --warning-soft: #F1E9DA;
+      --danger: #A6453A;
+      --danger-soft: #F2E4E1;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --radius-xl: 18px;
+      --shadow-panel: 0 6px 24px rgba(30,24,18,.05);
+      --shadow-popover: 0 12px 36px rgba(30,24,18,.08);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body {
+      color: var(--text-primary);
+      background: var(--canvas);
+      font-family: Geist, Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
+      user-select: none;
+    }
+    button, textarea, input { font: inherit; }
+    button { -webkit-tap-highlight-color: transparent; }
+
+    .app { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+
+    /* ───────────────────────────── Canvas */
+    .canvas-viewport {
+      position: absolute; inset: 0; overflow: hidden;
+      background:
+        radial-gradient(circle at 16% 13%, rgba(255,255,255,.86), transparent 25%),
+        radial-gradient(circle at 82% 76%, rgba(237,230,221,.48), transparent 28%),
+        var(--canvas);
+      cursor: default; touch-action: none;
+    }
+    .canvas-world {
+      position: absolute; left: 0; top: 0;
+      width: 1920px; height: 1280px;
+      transform-origin: 0 0; will-change: transform;
+      background-image:
+        linear-gradient(rgba(77,66,54,.026) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(77,66,54,.026) 1px, transparent 1px);
+      background-size: 48px 48px;
+    }
+
+    /* ───────────────────────────── Shared controls */
+    .icon {
+      width: 16px; height: 16px; fill: none; stroke: currentColor;
+      stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto;
+    }
+    .top-cluster {
+      position: fixed; z-index: 30; top: 22px; min-height: 42px;
+      display: flex; align-items: center; gap: 10px; padding: 7px 9px;
+      background: rgba(252,251,248,.78); border: 1px solid rgba(78,68,58,.08);
+      backdrop-filter: blur(18px); box-shadow: 0 3px 16px rgba(30,24,18,.025);
+      border-radius: 12px;
+    }
+    .top-left { left: 24px; }
+    .top-right { right: 24px; }
+    .wordmark { padding: 0 5px 0 2px; font-size: 20px; font-weight: 600; letter-spacing: -.055em; }
+    .project-name {
+      display: flex; align-items: center; gap: 7px; padding: 0 8px 0 10px;
+      border-left: 1px solid var(--border-subtle); font-size: 12px; color: var(--text-secondary); line-height: 1.2;
+    }
+    .project-name strong { color: var(--text-primary); font-weight: 550; }
+    .project-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-brand); }
+    .cluster-divider { width: 1px; height: 20px; background: var(--border-subtle); }
+    .icon-btn, .plain-btn, .brand-btn {
+      border: 0; background: transparent; color: var(--text-secondary);
+      height: 28px; padding: 0 8px; border-radius: 7px; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      transition: background .16s ease, color .16s ease, transform .16s ease;
+    }
+    .icon-btn { width: 30px; padding: 0; }
+    .icon-btn:hover, .plain-btn:hover { color: var(--text-primary); background: var(--surface-muted); }
+    .plain-btn { font-size: 11px; font-weight: 500; }
+    .brand-btn {
+      background: var(--accent-brand); color: #fff; padding: 0 11px;
+      font-size: 11px; font-weight: 600; letter-spacing: .02em;
+    }
+    .brand-btn:hover { background: var(--accent-brand-hover); }
+    .icon-btn:active, .plain-btn:active, .brand-btn:active { transform: scale(.97); }
+
+    /* ───────────────────────────── Left rail */
+    .left-rail {
+      position: fixed; z-index: 35; left: 25px; top: 92px; width: 48px;
+      display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 8px 7px 9px;
+      border: 1px solid rgba(78,68,58,.08); background: rgba(252,251,248,.74);
+      backdrop-filter: blur(16px); box-shadow: var(--shadow-panel); border-radius: 15px;
+    }
+    .rail-btn {
+      position: relative; border: 0; width: 34px; height: 34px; border-radius: 9px;
+      background: transparent; color: var(--text-secondary); cursor: pointer;
+      display: grid; place-items: center; transition: .16s ease;
+    }
+    .rail-btn:hover { background: var(--surface-muted); color: var(--text-primary); }
+    .rail-btn.active { background: var(--accent-brand-soft); color: var(--accent-brand); }
+    .rail-btn.create {
+      margin-bottom: 6px; border-radius: 50%; background: var(--surface-raised);
+      color: var(--accent-brand); border: 1px solid var(--border-strong);
+      box-shadow: 0 4px 12px rgba(30,24,18,.06);
+    }
+    .rail-separator { width: 24px; height: 1px; margin: 4px 0; background: var(--border-subtle); }
+    .tooltip {
+      position: absolute; left: calc(100% + 10px); top: 50%; transform: translate(-4px,-50%);
+      white-space: nowrap; pointer-events: none; padding: 7px 8px; border-radius: 7px;
+      color: #fff; background: var(--text-primary); opacity: 0; font-size: 10px;
+      letter-spacing: .02em; transition: .16s ease;
+    }
+    .rail-btn:hover .tooltip { opacity: 1; transform: translate(0,-50%); }
+
+    /* ───────────────────────────── Left drawer */
+    .left-drawer {
+      position: fixed; z-index: 34; left: 83px; top: 92px; width: 232px;
+      max-height: calc(100vh - 130px); overflow: auto;
+      padding: 14px; border: 1px solid rgba(78,68,58,.1); border-radius: 12px;
+      background: rgba(252,251,248,.96); box-shadow: var(--shadow-popover); backdrop-filter: blur(20px);
+      opacity: 0; visibility: hidden; transform: translateX(-7px) scale(.98); transition: .18s ease;
+    }
+    .left-drawer.visible { opacity: 1; visibility: visible; transform: translateX(0) scale(1); }
+    .drawer-title { padding: 3px 5px 10px; font-size: 10px; font-weight: 600; color: var(--text-muted); letter-spacing: .08em; text-transform: uppercase; }
+    .drawer-item {
+      width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      border: 0; background: transparent; color: var(--text-secondary); border-radius: 8px; padding: 10px 9px;
+      font-size: 12px; text-align: left; cursor: pointer; transition: .15s ease;
+    }
+    .drawer-item:hover { background: var(--surface-muted); color: var(--text-primary); }
+    .drawer-item.active { background: var(--accent-brand-soft); color: var(--accent-brand); }
+    .drawer-item small { font-size: 10px; color: var(--text-muted); }
+    .drawer-rule { height: 1px; background: var(--border-subtle); margin: 7px 4px; }
+    .drawer-hint { margin-top: 10px; padding: 9px 10px; border-radius: 8px; background: var(--surface-muted); font-size: 10px; line-height: 1.5; color: var(--text-muted); }
+
+    /* ───────────────────────────── Canvas objects */
+    .section-landmark {
+      position: absolute; font-size: 11px; font-weight: 600; color: var(--text-muted);
+      letter-spacing: .11em; text-transform: uppercase; user-select: none;
+    }
+    .section-landmark::after {
+      content: ""; display: inline-block; vertical-align: middle; transform: translateY(-1px);
+      width: 34px; height: 1px; margin-left: 10px; background: var(--border-strong);
+    }
+    .route-wash {
+      position: absolute; border-radius: 70px;
+      background: linear-gradient(90deg, transparent 0%, var(--selection-route) 28%, var(--selection-route) 74%, transparent 100%);
+      opacity: 0; pointer-events: none; transition: opacity .22s ease;
+    }
+    .route-wash.visible { opacity: 1; }
+
+    .canvas-object {
+      position: absolute; cursor: pointer; outline: none;
+      transition: opacity .18s ease, filter .18s ease;
+    }
+    .canvas-object.quiet { opacity: .58; }
+    .canvas-object.quiet:hover { opacity: 1; }
+    .object-surface {
+      background: rgba(252,251,248,.88); border: 1px solid var(--border-subtle);
+      box-shadow: 0 3px 14px rgba(30,24,18,.03);
+      transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+    }
+    .canvas-object:hover .object-surface { box-shadow: 0 8px 20px rgba(30,24,18,.06); transform: translateY(-1px); }
+    .canvas-object.selected .object-surface {
+      border-color: var(--accent-select);
+      box-shadow: 0 0 0 2px var(--selection-halo), 0 8px 24px rgba(30,24,18,.07);
+    }
+    .canvas-object.multi-selected .object-surface {
+      border-color: var(--accent-select);
+      box-shadow: 0 0 0 2px var(--selection-halo);
+    }
+    .fade-unrelated .canvas-object:not(.selected):not(.multi-selected):not(.direct-related) { opacity: .42; }
+
+    .role-label {
+      display: inline-flex; align-items: center; gap: 6px; font-size: 10px; line-height: 1;
+      font-weight: 600; letter-spacing: .06em; color: var(--text-muted); text-transform: uppercase;
+    }
+    .role-label .tiny-line { width: 14px; height: 1px; background: currentColor; opacity: .7; }
+    .mini-meta { margin-top: 4px; font-size: 11px; color: var(--text-muted); line-height: 1.45; }
+    .object-title { font-size: 13px; line-height: 1.35; font-weight: 560; letter-spacing: -.01em; }
+
+    /* Image tiles — ratio-aware, contain, no crop */
+    .image-tile {
+      background: var(--surface-raised); border: 1px solid var(--border-subtle);
+      box-shadow: 0 4px 18px rgba(30,24,18,.04); border-radius: 10px; overflow: hidden;
+    }
+    .image-box { overflow: hidden; background: #e6e3de; display: flex; align-items: center; justify-content: center; }
+    .image-box svg { width: 100%; height: 100%; display: block; }
+    .image-info { padding: 11px 12px 12px; }
+    .image-info .object-title { margin-top: 7px; font-size: 12px; }
+
+    /* ratio variants — true proportions, contain */
+    .ratio-landscape .image-box { width: 260px; height: 178px; }
+    .ratio-portrait  .image-box { width: 168px; height: 224px; }
+    .ratio-square    .image-box { width: 196px; height: 196px; }
+    .ratio-landscape .image-info { width: 260px; }
+    .ratio-portrait  .image-info { width: 168px; }
+    .ratio-square    .image-info { width: 196px; }
+
+    /* oversized cap / undersized floor handled by max-width on tile wrapper */
+    .image-tile.large .image-box { width: 320px; height: 219px; }
+    .image-tile.large .image-info { width: 320px; }
+
+    .badge {
+      position: absolute; z-index: 2; top: -11px; left: 14px; height: 22px; padding: 0 8px;
+      display: inline-flex; align-items: center; gap: 5px; border-radius: 999px;
+      color: var(--accent-select); background: var(--accent-select-soft);
+      border: 1px solid rgba(109,127,136,.26); font-size: 10px; font-weight: 600;
+    }
+    .badge .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-select); }
+    .badge.brand { color: var(--accent-brand); background: var(--accent-brand-soft); border-color: rgba(142,76,36,.26); }
+    .badge.brand .dot { background: var(--accent-brand); }
+    .badge.muted { color: var(--text-muted); background: var(--surface-muted); border-color: var(--border-subtle); }
+    .badge.muted .dot { background: var(--text-muted); }
+
+    /* file / text card — distinct from image tiles */
+    .file-card {
+      width: 210px; padding: 14px 15px; border-radius: 8px;
+      background: rgba(252,251,248,.82); border: 1px solid var(--border-subtle);
+      box-shadow: 0 3px 12px rgba(30,24,18,.025);
+    }
+    .file-card .file-icon { width: 30px; height: 30px; border-radius: 7px; background: var(--surface-muted); display: grid; place-items: center; color: var(--text-secondary); margin-bottom: 9px; }
+    .file-card .object-title { font-size: 12px; }
+    .file-card .mini-meta { margin-top: 3px; }
+
+    /* link card */
+    .link-card {
+      width: 224px; padding: 14px 15px; border-radius: 8px;
+      background: rgba(252,251,248,.82); border: 1px solid var(--border-subtle);
+      box-shadow: 0 3px 12px rgba(30,24,18,.025);
+    }
+    .link-card .link-row { display: flex; align-items: center; gap: 8px; }
+    .link-card .link-favicon { width: 22px; height: 22px; border-radius: 5px; background: var(--accent-select-soft); color: var(--accent-select); display: grid; place-items: center; flex: 0 0 auto; }
+    .link-card .link-domain { font-size: 10px; color: var(--text-muted); }
+    .link-card .object-title { margin-top: 9px; font-size: 12px; line-height: 1.4; }
+    .link-card .mini-meta { margin-top: 4px; }
+
+    /* research object */
+    .research-obj {
+      width: 268px; padding: 18px 20px 19px; border-radius: 8px;
+      background: rgba(255,254,251,.86); border: 1px solid var(--border-subtle);
+      box-shadow: 0 4px 18px rgba(30,24,18,.03);
+    }
+    .research-obj .object-title { margin: 9px 0 8px; font-size: 15px; line-height: 1.35; font-weight: 500; }
+    .research-obj p { margin: 0; font-size: 11px; line-height: 1.6; color: var(--text-secondary); }
+    .research-obj .research-section { margin-top: 12px; }
+    .research-obj .research-section-label { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 5px; }
+    .research-obj .research-section p { font-size: 11px; }
+
+    /* definition */
+    .definition {
+      width: 300px; padding: 22px 24px 23px; border-radius: 3px;
+      background: rgba(255,254,251,.84); border-left: 2px solid var(--accent-brand);
+      box-shadow: 0 4px 18px rgba(30,24,18,.035);
+    }
+    .definition .definition-title { margin: 12px 0 13px; font-size: 17px; line-height: 1.38; letter-spacing: -.025em; font-weight: 500; }
+    .definition p { margin: 0; font-size: 12px; line-height: 1.65; color: var(--text-secondary); }
+    .definition-list { display: grid; gap: 9px; margin-top: 16px; }
+    .definition-list div { display: flex; gap: 8px; font-size: 11px; color: var(--text-secondary); line-height: 1.4; }
+    .definition-list i { width: 5px; height: 5px; margin-top: 5px; border-radius: 50%; background: var(--accent-brand); flex: 0 0 auto; }
+
+    /* direction */
+    .direction {
+      width: 240px; padding: 16px 18px 18px; border-radius: 8px;
+      background: rgba(252,251,248,.75); border: 1px solid var(--border-subtle); box-shadow: 0 3px 14px rgba(30,24,18,.025);
+    }
+    .direction h4 { margin: 9px 0 8px; font-size: 15px; line-height: 1.3; font-weight: 500; letter-spacing: -.022em; }
+    .direction p { margin: 0; font-size: 12px; line-height: 1.6; color: var(--text-secondary); }
+    .keywords { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+    .keywords span { padding-bottom: 3px; border-bottom: 1px solid var(--border-subtle); font-size: 10px; color: var(--text-secondary); }
+
+    /* newly generated image — appears right of source, distinct */
+    .canvas-object.newly-generated .object-surface {
+      animation: fadeUp .4s ease both;
+    }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* ───────────────────────────── AI panel */
+    .ai-panel {
+      position: fixed; z-index: 40; right: 28px; bottom: 84px; width: 442px; height: min(62vh, 580px);
+      display: flex; flex-direction: column; overflow: hidden; border-radius: 19px;
+      background: rgba(252,251,248,.94); border: 1px solid rgba(78,68,58,.12);
+      backdrop-filter: blur(22px); box-shadow: var(--shadow-popover);
+      transition: transform .27s cubic-bezier(.2,.7,.2,1), opacity .2s ease, visibility .2s ease;
+    }
+    .ai-panel.hidden { transform: translateY(18px) scale(.97); opacity: 0; visibility: hidden; pointer-events: none; }
+    .ai-top { display: flex; align-items: center; justify-content: space-between; padding: 15px 18px 14px; border-bottom: 1px solid rgba(78,68,58,.1); }
+    .ai-title { display: flex; align-items: center; gap: 10px; }
+    .ai-mark { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; color: var(--accent-brand); background: var(--accent-brand-soft); }
+    .ai-title strong { display: block; font-size: 12px; font-weight: 600; }
+    .ai-title span { display: block; margin-top: 3px; font-size: 10px; color: var(--text-muted); }
+    .ai-close { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+    .ai-close:hover { background: var(--surface-muted); color: var(--text-primary); }
+
+    /* task mode bar */
+    .task-mode-bar { display: flex; align-items: center; gap: 6px; padding: 9px 14px 10px; border-bottom: 1px solid rgba(78,68,58,.07); }
+    .mode-chip {
+      padding: 5px 9px; border: 1px solid var(--border-subtle); border-radius: 7px; background: transparent;
+      color: var(--text-secondary); font-size: 10px; font-weight: 500; cursor: pointer; transition: .15s ease;
+    }
+    .mode-chip:hover { background: var(--surface-muted); color: var(--text-primary); }
+    .mode-chip.active { background: var(--accent-brand-soft); color: var(--accent-brand); border-color: rgba(142,76,36,.22); }
+    .mode-spacer { flex: 1; }
+    .context-tag {
+      display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 6px;
+      background: var(--accent-select-soft); color: var(--accent-select); font-size: 10px; font-weight: 500;
+    }
+    .context-tag .ctx-x { width: 13px; height: 13px; display: grid; place-items: center; border-radius: 3px; cursor: pointer; opacity: .6; }
+    .context-tag .ctx-x:hover { opacity: 1; background: rgba(109,127,136,.16); }
+
+    .ai-scroll { flex: 1; overflow: auto; padding: 16px 18px; }
+    .conversation-title { font-size: 10px; font-weight: 600; color: var(--text-muted); letter-spacing: .07em; text-transform: uppercase; margin-bottom: 10px; }
+    .kbd { display: inline-block; margin-left: 6px; padding: 2px 4px; border: 1px solid var(--border-subtle); border-radius: 4px; font-size: 9px; color: var(--text-muted); }
+
+    .ai-message { margin-top: 12px; padding: 13px 15px; border: 1px solid rgba(78,68,58,.08); border-radius: 12px 12px 12px 4px; background: rgba(255,255,255,.72); }
+    .ai-message:first-of-type { margin-top: 0; }
+    .ai-message p { margin: 0; font-size: 13px; line-height: 1.62; color: var(--text-primary); }
+    .ai-message p + p { margin-top: 9px; color: var(--text-secondary); }
+    .ai-message .msg-label { font-size: 10px; font-weight: 600; color: var(--text-muted); letter-spacing: .05em; text-transform: uppercase; margin-bottom: 7px; display: block; }
+
+    .user-message { margin-top: 12px; padding: 11px 14px; border-radius: 12px 12px 4px 12px; background: var(--accent-brand-soft); color: var(--text-primary); font-size: 13px; line-height: 1.55; align-self: flex-end; margin-left: 32px; }
+
+    .suggestions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+    .suggestion { padding: 7px 9px; border: 1px solid var(--border-subtle); border-radius: 7px; background: transparent; color: var(--text-secondary); font-size: 10px; cursor: pointer; transition: .15s ease; }
+    .suggestion:hover { background: var(--surface-muted); color: var(--text-primary); }
+
+    /* image generation settings */
+    .gen-settings { margin-top: 12px; padding: 14px 15px; border: 1px solid var(--border-subtle); border-radius: 10px; background: rgba(255,255,255,.6); }
+    .gen-row { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; }
+    .gen-row:last-child { margin-bottom: 0; }
+    .gen-label { font-size: 10px; font-weight: 600; color: var(--text-muted); letter-spacing: .04em; width: 64px; flex: 0 0 auto; }
+    .gen-options { display: flex; flex-wrap: wrap; gap: 5px; flex: 1; }
+    .gen-opt { padding: 4px 8px; border: 1px solid var(--border-subtle); border-radius: 6px; background: transparent; color: var(--text-secondary); font-size: 10px; cursor: pointer; transition: .14s ease; }
+    .gen-opt:hover { background: var(--surface-muted); color: var(--text-primary); }
+    .gen-opt.active { background: var(--accent-select-soft); color: var(--accent-select); border-color: rgba(109,127,136,.26); }
+    .gen-opt.disabled { opacity: .4; cursor: not-allowed; }
+    .ref-count { font-size: 10px; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 5px; }
+    .ref-count .ref-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-select); }
+
+    /* operation progress */
+    .operation-card { margin-top: 12px; padding: 15px 16px; border: 1px solid var(--border-subtle); border-radius: 12px; background: rgba(255,255,255,.7); }
+    .op-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+    .op-title { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+    .op-status { font-size: 10px; font-weight: 500; padding: 3px 7px; border-radius: 5px; }
+    .op-status.running { background: var(--accent-select-soft); color: var(--accent-select); }
+    .op-status.done { background: var(--success-soft); color: var(--success); }
+    .op-status.failed { background: var(--danger-soft); color: var(--danger); }
+    .op-status.cancelled { background: var(--surface-muted); color: var(--text-muted); }
+    .op-steps { display: grid; gap: 7px; }
+    .op-step { display: flex; align-items: flex-start; gap: 9px; font-size: 11px; line-height: 1.5; color: var(--text-secondary); }
+    .op-step .step-icon { width: 15px; height: 15px; border-radius: 50%; flex: 0 0 auto; margin-top: 1px; display: grid; place-items: center; }
+    .op-step.done .step-icon { background: var(--success); color: #fff; }
+    .op-step.running .step-icon { background: var(--accent-select); color: #fff; }
+    .op-step.pending .step-icon { background: var(--surface-muted); border: 1px solid var(--border-subtle); }
+    .op-step.failed .step-icon { background: var(--danger); color: #fff; }
+    .op-step.done { color: var(--text-secondary); }
+    .op-step.running { color: var(--text-primary); font-weight: 500; }
+    .op-step.pending { color: var(--text-muted); }
+    .op-step.failed { color: var(--danger); }
+    .op-step .step-icon svg { width: 9px; height: 9px; }
+    .op-step.running .step-icon { animation: pulse 1.4s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
+
+    .op-footer { margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .op-net-status { font-size: 10px; color: var(--text-muted); display: inline-flex; align-items: center; gap: 5px; }
+    .op-net-status .net-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+    .op-net-status.online .net-dot { background: var(--success); }
+    .op-net-status.online { color: var(--success); }
+    .op-actions { display: flex; gap: 6px; }
+    .op-btn { padding: 5px 10px; border: 1px solid var(--border-subtle); border-radius: 6px; background: transparent; color: var(--text-secondary); font-size: 10px; cursor: pointer; transition: .14s ease; }
+    .op-btn:hover { background: var(--surface-muted); color: var(--text-primary); }
+    .op-btn.brand { background: var(--accent-brand); color: #fff; border-color: var(--accent-brand); }
+    .op-btn.brand:hover { background: var(--accent-brand-hover); }
+    .op-btn.danger { color: var(--danger); }
+    .op-btn.danger:hover { background: var(--danger-soft); }
+
+    /* draft card (ArtifactProposal) */
+    .draft-card { margin-top: 12px; border: 1px solid var(--border-strong); border-radius: 14px; background: rgba(255,254,251,.92); overflow: hidden; }
+    .draft-header { padding: 15px 17px 14px; border-bottom: 1px solid var(--border-subtle); background: var(--accent-brand-soft); }
+    .draft-header .draft-label { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-brand); display: flex; align-items: center; gap: 6px; }
+    .draft-header .draft-label .draft-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-brand); }
+    .draft-header h3 { margin: 8px 0 5px; font-size: 15px; line-height: 1.35; font-weight: 600; letter-spacing: -.015em; }
+    .draft-header p { margin: 0; font-size: 11px; line-height: 1.55; color: var(--text-secondary); }
+    .draft-body { padding: 14px 17px 6px; }
+    .draft-section { margin-bottom: 13px; }
+    .draft-section-label { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
+    .draft-section ul { margin: 0; padding-left: 14px; }
+    .draft-section li { font-size: 11px; line-height: 1.6; color: var(--text-secondary); margin-bottom: 3px; }
+    .draft-section li strong { color: var(--text-primary); font-weight: 500; }
+    .draft-sources { padding: 12px 17px 14px; border-top: 1px solid var(--border-subtle); background: rgba(247,245,241,.5); }
+    .source-item { display: flex; gap: 9px; padding: 8px 0; border-bottom: 1px solid var(--border-subtle); }
+    .source-item:last-child { border-bottom: 0; }
+    .source-type { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; flex: 0 0 auto; font-size: 9px; font-weight: 600; }
+    .source-type.image { background: var(--accent-select-soft); color: var(--accent-select); }
+    .source-type.text { background: var(--warning-soft); color: var(--warning); }
+    .source-type.link { background: var(--accent-brand-soft); color: var(--accent-brand); }
+    .source-meta { flex: 1; min-width: 0; }
+    .source-title { font-size: 11px; font-weight: 500; color: var(--text-primary); line-height: 1.35; }
+    .source-domain { font-size: 9px; color: var(--text-muted); margin-top: 2px; }
+    .source-snippet { font-size: 10px; color: var(--text-secondary); line-height: 1.5; margin-top: 4px; }
+    .draft-actions { display: flex; gap: 7px; padding: 13px 17px 15px; border-top: 1px solid var(--border-subtle); flex-wrap: wrap; }
+    .draft-btn { padding: 7px 11px; border: 1px solid var(--border-subtle); border-radius: 7px; background: transparent; color: var(--text-secondary); font-size: 10px; font-weight: 500; cursor: pointer; transition: .14s ease; }
+    .draft-btn:hover { background: var(--surface-muted); color: var(--text-primary); }
+    .draft-btn.primary { background: var(--accent-brand); color: #fff; border-color: var(--accent-brand); }
+    .draft-btn.primary:hover { background: var(--accent-brand-hover); }
+    .draft-btn.ghost { color: var(--text-muted); }
+    .draft-saved-note { padding: 11px 17px 14px; font-size: 10px; color: var(--success); display: flex; align-items: center; gap: 6px; background: var(--success-soft); }
+
+    /* error / cancel states */
+    .state-card { margin-top: 12px; padding: 14px 15px; border-radius: 11px; border: 1px solid; }
+    .state-card.failed { border-color: rgba(166,69,58,.3); background: var(--danger-soft); }
+    .state-card.cancelled { border-color: var(--border-strong); background: var(--surface-muted); }
+    .state-card.changed { border-color: rgba(138,104,52,.3); background: var(--warning-soft); }
+    .state-card .state-label { font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+    .state-card.failed .state-label { color: var(--danger); }
+    .state-card.cancelled .state-label { color: var(--text-muted); }
+    .state-card.changed .state-label { color: var(--warning); }
+    .state-card p { margin: 0 0 4px; font-size: 11px; line-height: 1.6; color: var(--text-secondary); }
+    .state-card .preserved { margin-top: 9px; padding-top: 9px; border-top: 1px solid rgba(78,68,58,.1); font-size: 10px; color: var(--text-muted); }
+    .state-card .preserved strong { color: var(--text-secondary); }
+
+    /* input area */
+    .ai-input-wrap { padding: 12px 13px 13px; border-top: 1px solid rgba(78,68,58,.1); }
+    .ai-input { display: flex; align-items: flex-end; gap: 9px; padding: 8px 8px 8px 12px; border: 1px solid var(--border-strong); border-radius: 10px; background: rgba(255,255,255,.74); transition: border-color .16s ease; }
+    .ai-input:focus-within { border-color: var(--accent-select); }
+    .ai-input textarea { flex: 1; min-height: 23px; max-height: 80px; resize: none; border: 0; outline: 0; background: transparent; color: var(--text-primary); font-size: 12px; line-height: 1.45; }
+    .ai-input textarea::placeholder { color: var(--text-muted); }
+    .send-btn { width: 29px; height: 29px; display: grid; place-items: center; border: 0; border-radius: 7px; background: var(--accent-brand); color: #fff; cursor: pointer; transition: .14s ease; }
+    .send-btn:hover { background: var(--accent-brand-hover); }
+    .input-hint { margin-top: 7px; font-size: 9px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+    .input-hint .hint-mode { padding: 2px 6px; border-radius: 4px; background: var(--surface-muted); color: var(--text-secondary); font-weight: 500; }
+
+    .ai-toggle {
+      position: fixed; z-index: 43; right: 28px; bottom: 28px; height: 42px;
+      display: inline-flex; align-items: center; gap: 9px; padding: 7px 11px 7px 8px;
+      border: 1px solid rgba(78,68,58,.12); border-radius: 999px; background: rgba(252,251,248,.94);
+      color: var(--text-primary); box-shadow: var(--shadow-panel); cursor: pointer; transition: .16s ease;
+    }
+    .ai-toggle:hover { background: var(--surface-raised); transform: translateY(-1px); }
+    .toggle-icon { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; color: var(--accent-brand); background: var(--accent-brand-soft); }
+    .ai-toggle span { font-size: 11px; font-weight: 550; }
+
+    /* ───────────────────────────── Detail bar */
+    .detail-bar {
+      position: fixed; z-index: 38; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(8px);
+      display: flex; align-items: center; gap: 14px; padding: 8px 9px 8px 11px;
+      border: 1px solid rgba(78,68,58,.12); border-radius: 12px; background: rgba(252,251,248,.9);
+      backdrop-filter: blur(18px); box-shadow: var(--shadow-panel);
+      opacity: 0; visibility: hidden; transition: opacity .18s ease, visibility .18s ease, transform .18s ease;
+    }
+    .detail-bar.visible { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
+    .detail-object { display: flex; align-items: center; gap: 8px; padding-right: 13px; border-right: 1px solid var(--border-subtle); max-width: 220px; }
+    .detail-icon { width: 23px; height: 23px; display: grid; place-items: center; border-radius: 6px; color: var(--accent-select); background: var(--accent-select-soft); flex: 0 0 auto; }
+    .detail-object span { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .detail-count { font-size: 10px; color: var(--text-muted); margin-left: 2px; }
+    .detail-action { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border: 0; border-radius: 7px; background: transparent; color: var(--text-secondary); font-size: 10px; cursor: pointer; transition: .14s ease; }
+    .detail-action:hover { background: var(--surface-muted); color: var(--text-primary); }
+    .detail-action.brand { padding: 7px 10px; background: var(--accent-brand); color: #fff; }
+    .detail-action.brand:hover { background: var(--accent-brand-hover); }
+
+    /* ───────────────────────────── Scenario switcher (demo nav) */
+    .scenario-bar {
+      position: fixed; z-index: 45; left: 50%; top: 22px; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 4px; padding: 6px 7px;
+      border: 1px solid rgba(78,68,58,.12); border-radius: 11px; background: rgba(252,251,248,.92);
+      backdrop-filter: blur(18px); box-shadow: var(--shadow-panel);
+    }
+    .scenario-label { font-size: 9px; font-weight: 600; color: var(--text-muted); letter-spacing: .06em; text-transform: uppercase; padding: 0 8px 0 5px; }
+    .scen-btn {
+      padding: 5px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary);
+      font-size: 10px; font-weight: 500; cursor: pointer; transition: .14s ease; white-space: nowrap;
+    }
+    .scen-btn:hover { background: var(--surface-muted); color: var(--text-primary); }
+    .scen-btn.active { background: var(--accent-brand); color: #fff; }
+    .scen-num { font-size: 8px; opacity: .6; margin-right: 3px; }
+
+    .view-toast {
+      position: fixed; z-index: 50; left: 50%; top: 76px; transform: translate(-50%,-8px); pointer-events: none;
+      padding: 8px 11px; border: 1px solid rgba(78,68,58,.1); border-radius: 8px; background: rgba(252,251,248,.94);
+      box-shadow: var(--shadow-panel); font-size: 11px; color: var(--text-secondary); opacity: 0; transition: .2s ease;
+    }
+    .view-toast.visible { opacity: 1; transform: translate(-50%,0); }
+
+    /* scrollbar */
+    .ai-scroll::-webkit-scrollbar, .left-drawer::-webkit-scrollbar { width: 6px; }
+    .ai-scroll::-webkit-scrollbar-thumb, .left-drawer::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+    .ai-scroll::-webkit-scrollbar-track, .left-drawer::-webkit-scrollbar-track { background: transparent; }
+
+    @media (max-width: 1100px) {
+      .scenario-bar { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <!-- ───────────────────────────── Canvas -->
+    <div class="canvas-viewport" id="canvasViewport" aria-label="Morpho 画布">
+      <div class="canvas-world" id="canvasWorld">
+        <div class="section-landmark" style="left:150px; top:150px">调研</div>
+        <div class="section-landmark" style="left:600px; top:150px">设计定义</div>
+        <div class="section-landmark" style="left:980px; top:150px">方向与视觉发展</div>
+        <div class="section-landmark" style="left:1500px; top:150px">交付准备</div>
+        <div class="route-wash" id="routeWash" style="left:990px; top:300px; width:560px; height:380px"></div>
+
+        <!-- 调研对象 -->
+        <article class="canvas-object" data-object="ref-image-1" style="left:158px;top:240px" tabindex="0">
+          <div class="image-tile ratio-landscape object-surface">
+            <div class="image-box">
+              <!-- 夜间起身路径参考 -->
+              <svg viewBox="0 0 260 178" preserveAspectRatio="xMidYMid meet" role="img" aria-label="夜间起身路径参考">
+                <defs>
+                  <linearGradient id="hallBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3A352E"/><stop offset="100%" stop-color="#1E1B17"/></linearGradient>
+                  <linearGradient id="floorGlow" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#E8C896" stop-opacity=".7"/><stop offset="100%" stop-color="#C99A5E" stop-opacity=".15"/></linearGradient>
+                  <radialGradient id="warmLight" cx=".5" cy=".5" r=".5"><stop offset="0%" stop-color="#F4D9A8" stop-opacity=".5"/><stop offset="100%" stop-color="#F4D9A8" stop-opacity="0"/></radialGradient>
+                </defs>
+                <rect width="260" height="178" fill="url(#hallBg)"/>
+                <path d="M0 120 L260 120 L260 178 L0 178Z" fill="#2A2620"/>
+                <path d="M30 120 L230 120 L210 178 L50 178Z" fill="url(#floorGlow)"/>
+                <ellipse cx="130" cy="150" rx="90" ry="20" fill="url(#warmLight)"/>
+                <path d="M40 122 L220 122" stroke="#E8C896" stroke-width="2" stroke-opacity=".5" stroke-linecap="round"/>
+                <rect x="20" y="40" width="3" height="80" fill="#5C5448"/>
+                <rect x="237" y="40" width="3" height="80" fill="#5C5448"/>
+                <rect x="100" y="55" width="60" height="75" fill="#1A1814" stroke="#4A4338" stroke-width="1"/>
+                <rect x="103" y="58" width="54" height="69" fill="#252118"/>
+                <circle cx="130" cy="92" r="4" fill="#E8C896" opacity=".4"/>
+              </svg>
+            </div>
+            <div class="image-info">
+              <div class="role-label"><span class="tiny-line"></span>路径参考</div>
+              <div class="object-title">夜间起身路径 · 卧室至卫浴</div>
+              <div class="mini-meta">参考图 · 暖光环境</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="canvas-object" data-object="ref-image-2" style="left:440px;top:262px" tabindex="0">
+          <div class="image-tile ratio-square object-surface">
+            <div class="image-box">
+              <!-- 现有扶手产品参考 -->
+              <svg viewBox="0 0 196 196" preserveAspectRatio="xMidYMid meet" role="img" aria-label="现有扶手产品参考">
+                <defs>
+                  <linearGradient id="wallBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#E8E2D6"/><stop offset="100%" stop-color="#D4CDBE"/></linearGradient>
+                  <linearGradient id="railMetal" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#B8B2A6"/><stop offset="50%" stop-color="#8A8478"/><stop offset="100%" stop-color="#6E685C"/></linearGradient>
+                </defs>
+                <rect width="196" height="196" fill="url(#wallBg)"/>
+                <rect x="0" y="0" width="196" height="196" fill="#000" opacity=".03"/>
+                <rect x="20" y="80" width="156" height="14" rx="7" fill="url(#railMetal)"/>
+                <rect x="20" y="80" width="156" height="3" rx="1.5" fill="#D8D2C6" opacity=".6"/>
+                <circle cx="30" cy="87" r="5" fill="#5E584C"/>
+                <circle cx="166" cy="87" r="5" fill="#5E584C"/>
+                <rect x="44" y="120" width="108" height="10" rx="5" fill="url(#railMetal)" opacity=".8"/>
+                <circle cx="50" cy="125" r="4" fill="#5E584C"/>
+                <circle cx="146" cy="125" r="4" fill="#5E584C"/>
+                <text x="98" y="170" text-anchor="middle" font-size="8" fill="#978F86" font-family="sans-serif">不锈钢管 · 墙面固定</text>
+              </svg>
+            </div>
+            <div class="image-info">
+              <div class="role-label"><span class="tiny-line"></span>产品参考</div>
+              <div class="object-title">现有扶手产品</div>
+              <div class="mini-meta">医疗器械感强</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="canvas-object" data-object="text-material" style="left:158px;top:460px" tabindex="0">
+          <div class="file-card object-surface">
+            <div class="file-icon">
+              <svg class="icon" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M7 4h10v16H7z"></path><path d="M10 8h4M10 12h4M10 16h2"></path></svg>
+            </div>
+            <div class="role-label"><span class="tiny-line"></span>文字资料</div>
+            <div class="object-title" style="margin-top:6px">课程要求.pdf</div>
+            <div class="mini-meta">PDF · 2 页 · 已提取文字</div>
+          </div>
+        </article>
+
+        <article class="canvas-object" data-object="link-material" style="left:400px;top:470px" tabindex="0">
+          <div class="link-card object-surface">
+            <div class="link-row">
+              <div class="link-favicon"><svg class="icon" viewBox="0 0 24 24" style="width:12px;height:12px"><path d="M9 15l6-6"></path><path d="M11 6l1-1a4 4 0 0 1 6 6l-1 1"></path><path d="M13 18l-1 1a4 4 0 0 1-6-6l1-1"></path></svg></div>
+              <div><div class="object-title" style="margin:0">适老化卫浴设计指南</div><div class="link-domain">design-aging.org</div></div>
+            </div>
+            <div class="mini-meta">链接 · 已抓取摘要</div>
+          </div>
+        </article>
+
+        <article class="canvas-object" data-object="research-saved" style="left:660px;top:440px;display:none" tabindex="0">
+          <div class="research-obj object-surface">
+            <div class="role-label"><span class="tiny-line"></span>研究与分析</div>
+            <div class="object-title">夜间起身路径与扶持需求调研</div>
+            <p>独居老人夜间起身主要依赖记忆路径，单点扶手无法覆盖转身与门框过渡。</p>
+            <div class="research-section">
+              <div class="research-section-label">主要发现</div>
+              <p>连续低位引导比单点扶手更符合真实起身动作路径。</p>
+            </div>
+          </div>
+        </article>
+
+        <!-- 设计定义 -->
+        <article class="canvas-object" data-object="definition" style="left:610px;top:240px" tabindex="0">
+          <div class="definition object-surface">
+            <div class="role-label"><span class="tiny-line"></span>设计定义</div>
+            <div class="definition-title">让独居老人从床边到卫浴的最后几米更容易辨认、扶持与转身。</div>
+            <p>核心问题：夜间起身路径缺乏连续支持，现有扶手医疗器械感过强。</p>
+            <div class="definition-list">
+              <div><i></i><span>低施工、可适配租住与老房场景</span></div>
+              <div><i></i><span>连续支撑，而非单点扶手</span></div>
+              <div><i></i><span>低干扰照明，居家语气</span></div>
+            </div>
+          </div>
+        </article>
+
+        <!-- 方向与视觉发展 -->
+        <article class="canvas-object" data-object="direction-a" style="left:990px;top:240px" tabindex="0">
+          <div class="direction object-surface">
+            <div class="role-label"><span class="tiny-line"></span>概念方向 A</div>
+            <h4>柔光轨道</h4>
+            <p>将低位柔光、可触摸导向与隐蔽支撑融入墙面，形成连续辅助路径。</p>
+            <div class="keywords"><span>连续引导</span><span>低位柔光</span><span>家居感</span></div>
+          </div>
+        </article>
+
+        <article class="canvas-object" data-object="main-image" style="left:1000px;top:430px" tabindex="0">
+          <div class="badge brand"><span class="dot"></span>主图</div>
+          <div class="image-tile ratio-landscape large object-surface">
+            <div class="image-box">
+              <!-- 柔光轨道 v2 主视觉 -->
+              <svg viewBox="0 0 320 219" preserveAspectRatio="xMidYMid meet" role="img" aria-label="柔光轨道 v2">
+                <defs>
+                  <linearGradient id="wallMain" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#F0EBE0"/><stop offset="100%" stop-color="#E0D9CB"/></linearGradient>
+                  <linearGradient id="trackBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#6B7268"/><stop offset="50%" stop-color="#4E564E"/><stop offset="100%" stop-color="#3A4138"/></linearGradient>
+                  <linearGradient id="trackGlow" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#F4D9A8" stop-opacity=".85"/><stop offset="100%" stop-color="#E8C896" stop-opacity=".2"/></linearGradient>
+                  <filter id="softShadow"><feGaussianBlur in="SourceAlpha" stdDeviation="3"/><feOffset dx="0" dy="4"/><feComponentTransfer><feFuncA type="linear" slope=".18"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                </defs>
+                <rect width="320" height="219" fill="url(#wallMain)"/>
+                <rect x="0" y="140" width="320" height="79" fill="#D4CDBE" opacity=".5"/>
+                <g filter="url(#softShadow)">
+                  <rect x="30" y="95" width="260" height="22" rx="11" fill="url(#trackBody)"/>
+                  <rect x="30" y="95" width="260" height="4" rx="2" fill="#7A8278" opacity=".7"/>
+                  <rect x="40" y="108" width="240" height="6" rx="3" fill="url(#trackGlow)"/>
+                  <ellipse cx="160" cy="125" rx="120" ry="14" fill="#F4D9A8" opacity=".25"/>
+                  <rect x="148" y="88" width="24" height="10" rx="3" fill="#3A4138"/>
+                  <circle cx="160" cy="93" r="3" fill="#E8C896" opacity=".6"/>
+                </g>
+                <rect x="30" y="150" width="260" height="1" fill="#C4BDAE"/>
+                <text x="160" y="200" text-anchor="middle" font-size="9" fill="#978F86" font-family="sans-serif">柔光轨道 v2 · 低位连续引导</text>
+              </svg>
+            </div>
+            <div class="image-info">
+              <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+                <div>
+                  <div class="object-title">柔光轨道 v2</div>
+                  <div class="mini-meta">来自方向 A · 主视觉</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="canvas-object" data-object="detail-image" style="left:1360px;top:440px" tabindex="0">
+          <div class="image-tile ratio-square object-surface">
+            <div class="image-box">
+              <!-- 转角连接件细节 -->
+              <svg viewBox="0 0 196 196" preserveAspectRatio="xMidYMid meet" role="img" aria-label="转角连接件">
+                <defs>
+                  <linearGradient id="cornerBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#E8E2D6"/><stop offset="100%" stop-color="#D6CFC0"/></linearGradient>
+                  <linearGradient id="cornerMetal" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#5E655C"/><stop offset="50%" stop-color="#4A5148"/><stop offset="100%" stop-color="#363C34"/></linearGradient>
+                </defs>
+                <rect width="196" height="196" fill="url(#cornerBg)"/>
+                <g transform="translate(98 98)">
+                  <path d="M-50 -10 L50 -10 L50 10 L10 10 L10 50 L-10 50 L-10 -10Z" fill="url(#cornerMetal)"/>
+                  <path d="M-50 -10 L50 -10" stroke="#7A8278" stroke-width="2" opacity=".6"/>
+                  <path d="M-10 -10 L-10 50" stroke="#7A8278" stroke-width="2" opacity=".6"/>
+                  <circle cx="-30" cy="0" r="3" fill="#2A3028"/>
+                  <circle cx="30" cy="0" r="3" fill="#2A3028"/>
+                  <circle cx="0" cy="30" r="3" fill="#2A3028"/>
+                  <rect x="-46" y="-6" width="92" height="3" rx="1.5" fill="#F4D9A8" opacity=".7"/>
+                  <rect x="-6" y="-6" width="3" height="50" rx="1.5" fill="#F4D9A8" opacity=".7"/>
+                </g>
+                <text x="98" y="180" text-anchor="middle" font-size="8" fill="#978F86" font-family="sans-serif">转角连接件 · 一体化</text>
+              </svg>
+            </div>
+            <div class="image-info">
+              <div class="role-label"><span class="tiny-line"></span>细节</div>
+              <div class="object-title">转角连接件</div>
+              <div class="mini-meta">一体化 · 减少外露五金</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="canvas-object" data-object="scene-image" style="left:1360px;top:680px" tabindex="0">
+          <div class="image-tile ratio-portrait object-surface">
+            <div class="image-box">
+              <!-- 触觉导向截面 竖图 -->
+              <svg viewBox="0 0 168 224" preserveAspectRatio="xMidYMid meet" role="img" aria-label="触觉导向截面">
+                <defs>
+                  <linearGradient id="sectionBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#F0EBE0"/><stop offset="100%" stop-color="#E0D9CB"/></linearGradient>
+                  <linearGradient id="sectionBody" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#5E655C"/><stop offset="100%" stop-color="#3A4138"/></linearGradient>
+                </defs>
+                <rect width="168" height="224" fill="url(#sectionBg)"/>
+                <g transform="translate(84 112)">
+                  <rect x="-50" y="-70" width="100" height="140" fill="none" stroke="#C4BDAE" stroke-width="1" stroke-dasharray="3 3"/>
+                  <path d="M-40 -60 L40 -60 L40 60 L-40 60Z" fill="url(#sectionBody)"/>
+                  <path d="M-40 -60 L40 -60" stroke="#7A8278" stroke-width="1.5"/>
+                  <rect x="-40" y="-60" width="100" height="8" fill="#4A5148"/>
+                  <rect x="-36" y="-54" width="92" height="3" rx="1.5" fill="#F4D9A8" opacity=".8"/>
+                  <circle cx="-25" cy="-30" r="2" fill="#2A3028"/>
+                  <circle cx="25" cy="-30" r="2" fill="#2A3028"/>
+                  <circle cx="-25" cy="30" r="2" fill="#2A3028"/>
+                  <circle cx="25" cy="30" r="2" fill="#2A3028"/>
+                  <path d="M-30 0 L30 0" stroke="#F4D9A8" stroke-width="1" opacity=".4"/>
+                </g>
+                <text x="84" y="210" text-anchor="middle" font-size="8" fill="#978F86" font-family="sans-serif">触觉导向截面</text>
+              </svg>
+            </div>
+            <div class="image-info">
+              <div class="role-label"><span class="tiny-line"></span>截面</div>
+              <div class="object-title">触觉导向截面</div>
+              <div class="mini-meta">可触摸引导槽</div>
+            </div>
+          </div>
+        </article>
+
+        <!-- 新生成的图（场景2完成后出现） -->
+        <article class="canvas-object newly-generated" data-object="generated-image" style="left:1000px;top:680px;display:none" tabindex="0">
+          <div class="image-tile ratio-landscape object-surface">
+            <div class="image-box">
+              <svg viewBox="0 0 260 178" preserveAspectRatio="xMidYMid meet" role="img" aria-label="新生成的场景图">
+                <defs>
+                  <linearGradient id="sceneBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4A4338"/><stop offset="100%" stop-color="#2A2620"/></linearGradient>
+                  <radialGradient id="sceneGlow" cx=".4" cy=".6" r=".5"><stop offset="0%" stop-color="#F4D9A8" stop-opacity=".4"/><stop offset="100%" stop-color="#F4D9A8" stop-opacity="0"/></radialGradient>
+                </defs>
+                <rect width="260" height="178" fill="url(#sceneBg)"/>
+                <ellipse cx="104" cy="120" rx="80" ry="30" fill="url(#sceneGlow)"/>
+                <rect x="20" y="100" width="220" height="6" rx="3" fill="#4E564E"/>
+                <rect x="24" y="104" width="212" height="3" rx="1.5" fill="#F4D9A8" opacity=".6"/>
+                <rect x="0" y="130" width="260" height="48" fill="#1E1B17"/>
+                <rect x="40" y="50" width="3" height="60" fill="#5C5448"/>
+                <rect x="90" y="55" width="50" height="55" fill="#1A1814" stroke="#3A352E"/>
+                <text x="130" y="166" text-anchor="middle" font-size="8" fill="#978F86" font-family="sans-serif">夜间使用场景 · 新生成</text>
+              </svg>
+            </div>
+            <div class="image-info">
+              <div class="role-label"><span class="tiny-line"></span>场景</div>
+              <div class="object-title">夜间使用场景</div>
+              <div class="mini-meta">基于柔光轨道 v2 生成</div>
+            </div>
+          </div>
+        </article>
+
+      </div>
+    </div>
+
+    <!-- ───────────────────────────── Top clusters -->
+    <div class="top-cluster top-left">
+      <div class="wordmark">Morpho</div>
+      <div class="project-name"><span class="project-dot"></span><strong>夜航</strong><span>· 夜间卫浴辅助系统</span></div>
+    </div>
+    <div class="top-cluster top-right">
+      <button class="icon-btn" aria-label="搜索" title="搜索">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4.2 4.2"></path></svg>
+      </button>
+      <button class="icon-btn" aria-label="视图" title="视图">
+        <svg class="icon" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6"></rect><rect x="14" y="4" width="6" height="6"></rect><rect x="4" y="14" width="6" height="6"></rect><rect x="14" y="14" width="6" height="6"></rect></svg>
+      </button>
+      <div class="cluster-divider"></div>
+      <button class="plain-btn">导入</button>
+      <button class="brand-btn">输出</button>
+    </div>
+
+    <!-- ───────────────────────────── Scenario switcher -->
+    <div class="scenario-bar" id="scenarioBar">
+      <span class="scenario-label">原型情景</span>
+      <button class="scen-btn active" data-scen="1"><span class="scen-num">01</span>默认对话与分析</button>
+      <button class="scen-btn" data-scen="2"><span class="scen-num">02</span>图像生成</button>
+      <button class="scen-btn" data-scen="3"><span class="scen-num">03</span>研究任务</button>
+      <button class="scen-btn" data-scen="4"><span class="scen-num">04</span>草案确认</button>
+      <button class="scen-btn" data-scen="5"><span class="scen-num">05</span>失败与中断</button>
+      <button class="scen-btn" data-scen="6"><span class="scen-num">06</span>抽屉与比例</button>
+    </div>
+
+    <!-- ───────────────────────────── Left rail -->
+    <aside class="left-rail" aria-label="工作台导航">
+      <button class="rail-btn create" aria-label="添加到画布">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
+        <span class="tooltip">添加到画布</span>
+      </button>
+      <button class="rail-btn active" id="mapTrigger" aria-label="项目地图">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M5 7.5 12 4l7 3.5L12 11 5 7.5Z"></path><path d="M5 12.5 12 16l7-3.5"></path><path d="M5 17 12 20l7-3"></path></svg>
+        <span class="tooltip">项目地图</span>
+      </button>
+      <button class="rail-btn" aria-label="资产">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M5 7h14v12H5z"></path><path d="M8 7V4h8v3"></path><path d="M8 12h8"></path></svg>
+        <span class="tooltip">资产</span>
+      </button>
+      <button class="rail-btn" aria-label="已隐藏内容">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M3 3l18 18"></path><path d="M9.8 5.2A10.5 10.5 0 0 1 12 5c5.5 0 9 5.8 9 7s-1.1 2.3-2.8 3.6"></path><path d="M6.2 6.2C4.1 7.8 3 10.1 3 12c0 1.2 3.5 7 9 7 1.4 0 2.6-.3 3.6-.8"></path><path d="M9.7 9.7A3 3 0 0 0 14.3 14.3"></path></svg>
+        <span class="tooltip">已隐藏内容</span>
+      </button>
+    </aside>
+
+    <!-- ───────────────────────────── Left drawer -->
+    <section class="left-drawer" id="leftDrawer" aria-label="项目地图">
+      <div class="drawer-title">项目地图</div>
+      <button class="drawer-item" data-target="research">调研 <small>↗</small></button>
+      <button class="drawer-item active" data-target="definition">设计定义 <small>↗</small></button>
+      <button class="drawer-item" data-target="visual">方向与视觉发展 <small>↗</small></button>
+      <div class="drawer-rule"></div>
+      <button class="drawer-item" data-target="delivery">交付准备 <small>↗</small></button>
+      <div class="drawer-hint">点击当前入口或画布空白可收起抽屉。按 Esc 也可收起。</div>
+    </section>
+
+    <!-- ───────────────────────────── AI panel -->
+    <section class="ai-panel" id="aiPanel" aria-label="AI 助手">
+      <div class="ai-top">
+        <div class="ai-title">
+          <div class="ai-mark">
+            <svg class="icon" viewBox="0 0 24 24"><path d="m12 3 1.5 5.4L19 10l-5.5 1.6L12 17l-1.5-5.4L5 10l5.5-1.6L12 3Z"></path></svg>
+          </div>
+          <div><strong>对话</strong><span id="aiSubtitle">方向与视觉发展</span></div>
+        </div>
+        <button class="ai-close" id="closeAI" aria-label="收起">
+          <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"></path></svg>
+        </button>
+      </div>
+      <div class="task-mode-bar" id="taskModeBar">
+        <button class="mode-chip active" data-mode="chat">对话与分析</button>
+        <button class="mode-chip" data-mode="image">图像生成</button>
+        <button class="mode-chip" data-mode="research">研究任务</button>
+        <div class="mode-spacer"></div>
+        <span class="context-tag" id="contextTag">柔光轨道 v2 <span class="ctx-x" id="ctxX"><svg class="icon" viewBox="0 0 24 24" style="width:10px;height:10px"><path d="m6 6 12 12M18 6 6 18"></path></svg></span></span>
+      </div>
+      <div class="ai-scroll" id="aiScroll">
+        <!-- dynamic content injected by JS -->
+      </div>
+      <div class="ai-input-wrap">
+        <div class="ai-input">
+          <textarea id="aiInput" rows="1" placeholder="描述你想继续发展的内容…"></textarea>
+          <button class="send-btn" id="sendBtn" aria-label="发送">
+            <svg class="icon" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="m4 4 16 8-16 8 3-8-3-8Z"></path></svg>
+          </button>
+        </div>
+        <div class="input-hint" id="inputHint">
+          <span class="hint-mode" id="hintMode">对话与分析</span>
+          <span>建议只填入输入框，不会自动发送</span>
+        </div>
+      </div>
+    </section>
+
+    <button class="ai-toggle" id="aiToggle" aria-label="收起 AI 助手">
+      <div class="toggle-icon">
+        <svg class="icon" viewBox="0 0 24 24"><path d="m12 3 1.5 5.4L19 10l-5.5 1.6L12 17l-1.5-5.4L5 10l5.5-1.6L12 3Z"></path></svg>
+      </div>
+      <span id="aiToggleLabel">收起 AI</span>
+    </button>
+
+    <!-- ───────────────────────────── Detail bar -->
+    <div class="detail-bar" id="detailBar">
+      <div class="detail-object">
+        <div class="detail-icon"><svg class="icon" viewBox="0 0 24 24" style="width:14px;height:14px"><rect x="4" y="5" width="16" height="14" rx="1"></rect><circle cx="9" cy="10" r="1.5"></circle><path d="m7 17 3-3 3 2 4-4"></path></svg></div>
+        <span id="detailTitle">柔光轨道 v2</span>
+      </div>
+      <button class="detail-action" id="detailContinue">
+        <svg class="icon" viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M5 12a7 7 0 1 0 2-5"></path><path d="M5 5v5h5"></path></svg>
+        继续发展图像
+      </button>
+      <button class="detail-action" id="detailResearch">
+        <svg class="icon" viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M4 4h16v16H4z"></path><path d="M8 8h8M8 12h8M8 16h5"></path></svg>
+        调研已选资料
+      </button>
+      <button class="detail-action brand" id="detailAskAI">
+        <svg class="icon" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="m12 3 1.5 5.4L19 10l-5.5 1.6L12 17l-1.5-5.4L5 10l5.5-1.6L12 3Z"></path></svg>
+        询问 AI
+      </button>
+    </div>
+
+    <div class="view-toast" id="viewToast"></div>
+  </div>
+
+  <script>
+    // ───────────────────────────── State
+    const app = document.getElementById('app');
+    const viewport = document.getElementById('canvasViewport');
+    const world = document.getElementById('canvasWorld');
+    const aiScroll = document.getElementById('aiScroll');
+    const aiInput = document.getElementById('aiInput');
+    const aiPanel = document.getElementById('aiPanel');
+    const aiToggle = document.getElementById('aiToggle');
+    const aiToggleLabel = document.getElementById('aiToggleLabel');
+    const closeAI = document.getElementById('closeAI');
+    const detailBar = document.getElementById('detailBar');
+    const detailTitle = document.getElementById('detailTitle');
+    const leftDrawer = document.getElementById('leftDrawer');
+    const mapTrigger = document.getElementById('mapTrigger');
+    const contextTag = document.getElementById('contextTag');
+    const taskModeBar = document.getElementById('taskModeBar');
+    const hintMode = document.getElementById('hintMode');
+    const aiSubtitle = document.getElementById('aiSubtitle');
+    const toast = document.getElementById('viewToast');
+    const objects = [...document.querySelectorAll('.canvas-object')];
+    const routeWash = document.getElementById('routeWash');
+
+    let currentMode = 'chat';
+    let currentScenario = 1;
+    let operationTimer = null;
+
+    const modeLabels = { chat: '对话与分析', image: '图像生成', research: '研究任务' };
+
+    // ───────────────────────────── Camera
+    let camera = { x: -140, y: -40, scale: 0.78 };
+    function renderCamera() {
+      world.style.transform = `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})`;
+    }
+    function animateCamera(toX, toY, toScale) {
+      const start = { ...camera };
+      const duration = 420;
+      const t0 = performance.now();
+      function tick(now) {
+        const p = Math.min(1, (now - t0) / duration);
+        const ease = 1 - Math.pow(1 - p, 3);
+        camera.x = start.x + (toX - start.x) * ease;
+        camera.y = start.y + (toY - start.y) * ease;
+        camera.scale = start.scale + (toScale - start.scale) * ease;
+        renderCamera();
+        if (p < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    }
+    function focusWorldPoint(x, y, scale = 0.8) {
+      const rect = viewport.getBoundingClientRect();
+      animateCamera(rect.width * 0.42 - x * scale, rect.height * 0.42 - y * scale, scale);
+    }
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('visible');
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => toast.classList.remove('visible'), 1400);
+    }
+
+    // ───────────────────────────── Selection
+    function clearSelection() {
+      objects.forEach(o => o.classList.remove('selected', 'multi-selected', 'direct-related'));
+      app.classList.remove('fade-unrelated');
+      routeWash.classList.remove('visible');
+      detailBar.classList.remove('visible');
+    }
+    function selectObject(target, multi = false) {
+      if (!multi) {
+        objects.forEach(o => o.classList.remove('selected', 'multi-selected'));
+      }
+      target.classList.add(multi ? 'multi-selected' : 'selected');
+      const title = target.querySelector('.object-title');
+      detailTitle.textContent = title ? title.textContent : '已选对象';
+      detailBar.classList.add('visible');
+    }
+    function selectMulti(targets) {
+      objects.forEach(o => o.classList.remove('selected', 'multi-selected'));
+      targets.forEach(t => t.classList.add('multi-selected'));
+      detailTitle.innerHTML = `已选 ${targets.length} 项资料<span class="detail-count"> · 调研</span>`;
+      detailBar.classList.add('visible');
+    }
+
+    objects.forEach(obj => {
+      obj.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (currentScenario === 3 || currentScenario === 5) return; // controlled by scenario
+        selectObject(obj);
+      });
+    });
+
+    viewport.addEventListener('click', (e) => {
+      if (!e.target.closest('.canvas-object') && !e.target.closest('.ai-panel') && !e.target.closest('.left-drawer') && !e.target.closest('.left-rail') && !e.target.closest('.top-cluster') && !e.target.closest('.scenario-bar')) {
+        clearSelection();
+        if (leftDrawer.classList.contains('visible')) closeDrawer();
+      }
+    });
+
+    // ───────────────────────────── Drawer
+    function openDrawer() {
+      leftDrawer.classList.add('visible');
+      mapTrigger.classList.add('active');
+    }
+    function closeDrawer() {
+      leftDrawer.classList.remove('visible');
+      mapTrigger.classList.remove('active');
+    }
+    function toggleDrawer() {
+      if (leftDrawer.classList.contains('visible')) closeDrawer();
+      else openDrawer();
+    }
+    mapTrigger.addEventListener('click', (e) => { e.stopPropagation(); toggleDrawer(); });
+    leftDrawer.addEventListener('click', (e) => e.stopPropagation());
+    document.querySelectorAll('.drawer-item').forEach(item => {
+      item.addEventListener('click', () => {
+        document.querySelectorAll('.drawer-item').forEach(el => el.classList.remove('active'));
+        item.classList.add('active');
+        const targets = { research: { x: 300, y: 350 }, definition: { x: 760, y: 380 }, visual: { x: 1180, y: 480 }, delivery: { x: 1560, y: 400 } };
+        const t = targets[item.dataset.target];
+        if (t) focusWorldPoint(t.x, t.y, 0.78);
+        showToast('已定位到 ' + item.textContent.trim().replace('↗', ''));
+      });
+    });
+
+    // ───────────────────────────── Keyboard
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeDrawer();
+        if (document.activeElement === aiInput) aiInput.blur();
+      }
+    });
+
+    // ───────────────────────────── AI panel toggle
+    function setAI(open) {
+      aiPanel.classList.toggle('hidden', !open);
+      aiToggleLabel.textContent = open ? '收起 AI' : '打开 AI';
+    }
+    aiToggle.addEventListener('click', () => setAI(aiPanel.classList.contains('hidden')));
+    closeAI.addEventListener('click', () => setAI(false));
+
+    // ───────────────────────────── Mode switching
+    function setMode(mode) {
+      currentMode = mode;
+      document.querySelectorAll('.mode-chip').forEach(c => c.classList.toggle('active', c.dataset.mode === mode));
+      hintMode.textContent = modeLabels[mode];
+    }
+    document.querySelectorAll('.mode-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        setMode(chip.dataset.mode);
+        if (chip.dataset.mode === 'image') renderScenario(2);
+        if (chip.dataset.mode === 'research') renderScenario(3);
+        if (chip.dataset.mode === 'chat') renderScenario(1);
+      });
+    });
+
+    // ───────────────────────────── Suggestions fill input only
+    aiScroll.addEventListener('click', (e) => {
+      const sug = e.target.closest('.suggestion');
+      if (sug) {
+        aiInput.value = sug.dataset.fill || sug.textContent;
+        aiInput.focus();
+        return;
+      }
+      const genOpt = e.target.closest('.gen-opt');
+      if (genOpt && !genOpt.classList.contains('disabled')) {
+        genOpt.parentElement.querySelectorAll('.gen-opt').forEach(o => o.classList.remove('active'));
+        genOpt.classList.add('active');
+        return;
+      }
+      const draftSave = e.target.closest('#draftSave');
+      if (draftSave) { handleDraftSave(); return; }
+      const draftDiscard = e.target.closest('#draftDiscard');
+      if (draftDiscard) { handleDraftDiscard(); return; }
+      const opCancel = e.target.closest('#opCancel');
+      if (opCancel) { handleOpCancel(); return; }
+      const opRetry = e.target.closest('#opRetry');
+      if (opRetry) { handleOpRetry(); return; }
+      const failRetry = e.target.closest('#failRetry');
+      if (failRetry) { showToast('已重新提交，正在重试…'); renderScenario(3); return; }
+    });
+
+    // ───────────────────────────── Scenario content builders
+    function el(tag, cls, html) {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (html) e.innerHTML = html;
+      return e;
+    }
+
+    function buildScenario1() {
+      aiScroll.innerHTML = '';
+      aiScroll.appendChild(el('div', 'conversation-title', '当前语境 <span class="kbd">柔光轨道 v2</span>'));
+      aiScroll.appendChild(el('div', 'ai-message',
+        '<p>这张方案的柔光轨道语言已比较稳定：低位连续引导、暖光氛围和家居感都成立。</p>' +
+        '<p>现在是<strong>对话与分析</strong>模式。你可以让我分析这张图，或切换到<strong>图像生成</strong>继续发展。</p>'
+      ));
+      aiScroll.appendChild(el('div', 'suggestions',
+        '<button class="suggestion" data-fill="分析这张图的构图、材质语言和柔光氛围，说明可以继续发展的部分。">分析这张图</button>' +
+        '<button class="suggestion" data-fill="保留当前轨道结构，继续优化转角连接件的过渡。">继续发展</button>' +
+        '<button class="suggestion" data-fill="比较柔光轨道 v2 与现有扶手产品在居家感上的差异。">比较差异</button>'
+      ));
+      aiInput.value = '';
+      aiInput.setAttribute('placeholder', '描述你想分析或继续发展的内容…');
+    }
+
+    function buildScenario2() {
+      aiScroll.innerHTML = '';
+      aiScroll.appendChild(el('div', 'conversation-title', '图像生成 · 进行中'));
+      aiScroll.appendChild(el('div', 'user-message', '基于柔光轨道 v2 生成夜间使用场景，保持当前产品结构和材质语言。'));
+      aiScroll.appendChild(el('div', 'gen-settings',
+        '<div class="gen-row"><span class="gen-label">生成类型</span><div class="gen-options">' +
+        '<button class="gen-opt active">继续发展</button><button class="gen-opt">新角度</button><button class="gen-opt">场景</button><button class="gen-opt">CMF</button><button class="gen-opt">细节</button></div></div>' +
+        '<div class="gen-row"><span class="gen-label">模型级别</span><div class="gen-options">' +
+        '<button class="gen-opt">快速草图</button><button class="gen-opt active">平衡生成</button></div></div>' +
+        '<div class="gen-row"><span class="gen-label">比例</span><div class="gen-options">' +
+        '<button class="gen-opt active">横</button><button class="gen-opt">竖</button><button class="gen-opt">方</button></div></div>' +
+        '<div class="gen-row"><span class="gen-label">清晰度</span><div class="gen-options">' +
+        '<button class="gen-opt active">标准</button><button class="gen-opt disabled">高清晰（不可用）</button></div></div>' +
+        '<div class="gen-row"><span class="gen-label">参考图</span><div class="gen-options"><span class="ref-count"><span class="ref-dot"></span>当前 1 张参考图</span></div></div>'
+      ));
+      // operation progress for image generation
+      aiScroll.appendChild(buildImageOperation());
+      aiInput.value = '';
+      aiInput.setAttribute('placeholder', '补充生成要求，或直接发送…');
+    }
+
+    function buildImageOperation() {
+      const card = el('div', 'operation-card');
+      card.innerHTML =
+        '<div class="op-header"><div class="op-title">图像生成 · 夜间使用场景</div><div class="op-status running">生成中</div></div>' +
+        '<div class="op-steps">' +
+        '<div class="op-step done"><span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 12 5 5 9-11"/></svg></span>准备参考图</div>' +
+        '<div class="op-step done"><span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 12 5 5 9-11"/></svg></span>提交生成</div>' +
+        '<div class="op-step running"><span class="step-icon"></span>等待结果</div>' +
+        '<div class="op-step pending"><span class="step-icon"></span>保存到项目</div>' +
+        '</div>' +
+        '<div class="op-footer"><span class="op-net-status"><span class="net-dot"></span>平衡生成 · 横图</span>' +
+        '<div class="op-actions"><button class="op-btn" id="opCancel">取消</button></div></div>';
+      return card;
+    }
+
+    function buildScenario3() {
+      aiScroll.innerHTML = '';
+      aiScroll.appendChild(el('div', 'conversation-title', '研究任务 · 进行中'));
+      aiScroll.appendChild(el('div', 'user-message', '基于这些资料整理一轮前期调研，必要时补充来源。'));
+      const card = el('div', 'operation-card');
+      card.innerHTML =
+        '<div class="op-header"><div class="op-title">研究任务 · 前期调研</div><div class="op-status running">进行中</div></div>' +
+        '<div class="op-steps">' +
+        '<div class="op-step done"><span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 12 5 5 9-11"/></svg></span>正在整理已选资料（2 图 · 1 文 · 1 链接）</div>' +
+        '<div class="op-step done"><span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 12 5 5 9-11"/></svg></span>正在阅读 2 张参考图</div>' +
+        '<div class="op-step running"><span class="step-icon"></span>正在归纳本地材料中的问题线索</div>' +
+        '<div class="op-step pending"><span class="step-icon"></span>正在补充联网来源（仅在已授权状态）</div>' +
+        '<div class="op-step pending"><span class="step-icon"></span>正在整理发现、机会点与待验证问题</div>' +
+        '<div class="op-step pending"><span class="step-icon"></span>研究分析草案已准备</div>' +
+        '</div>' +
+        '<div class="op-footer"><span class="op-net-status"><span class="net-dot"></span>本次未联网</span>' +
+        '<div class="op-actions"><button class="op-btn" id="opCancel">取消任务</button></div></div>';
+      aiScroll.appendChild(card);
+      aiScroll.appendChild(el('div', 'ai-message', '<p style="font-size:11px;color:var(--text-muted)">任务进度嵌在连续对话中。完成后草案会出现在这里，不会自动写入画布。</p>'));
+      aiInput.value = '';
+      aiInput.setAttribute('placeholder', '任务进行中，可随时取消…');
+    }
+
+    function buildScenario4() {
+      aiScroll.innerHTML = '';
+      aiScroll.appendChild(el('div', 'conversation-title', '研究任务 · 草案已准备'));
+      const draft = el('div', 'draft-card');
+      draft.innerHTML =
+        '<div class="draft-header"><div class="draft-label"><span class="draft-dot"></span>研究分析草案 · 未保存</div>' +
+        '<h3>夜间起身路径与扶持需求的前期调研</h3>' +
+        '<p>独居老人夜间起身主要依赖记忆路径，单点扶手无法覆盖转身与门框过渡。</p></div>' +
+        '<div class="draft-body">' +
+        '<div class="draft-section"><div class="draft-section-label">主要发现</div><ul>' +
+        '<li><strong>连续支持优于单点扶手</strong>：真实起身路径包含转身、门框过渡，单点扶手留有盲区。</li>' +
+        '<li><strong>医疗器械感降低使用意愿</strong>：现有扶手产品视觉语言过于临床，与家居环境冲突。</li>' +
+        '<li><strong>老房与租住场景限制施工</strong>：大施工方案不适用多数目标用户。</li></ul></div>' +
+        '<div class="draft-section"><div class="draft-section-label">机会点</div><ul>' +
+        '<li>将柔光、导向与支撑整合为一条连续低位轨道。</li>' +
+        '<li>用家居材质语言弱化产品存在感。</li></ul></div>' +
+        '<div class="draft-section"><div class="draft-section-label">限制 / 约束</div><ul>' +
+        '<li>墙面承重与安装方式需适配老房。</li>' +
+        '<li>柔光亮度需避免影响夜间睡眠。</li></ul></div>' +
+        '<div class="draft-section"><div class="draft-section-label">待验证问题</div><ul>' +
+        '<li>转角连接处是否能承受侧向拉力？</li>' +
+        '<li>触觉导向槽的辨识度是否足够？</li></ul></div>' +
+        '</div>' +
+        '<div class="draft-sources"><div class="draft-section-label" style="margin-bottom:4px">来源条目</div>' +
+        '<div class="source-item"><div class="source-type image">图</div><div class="source-meta"><div class="source-title">夜间起身路径 · 卧室至卫浴</div><div class="source-domain">本地资料 · 参考图</div><div class="source-snippet">「暖光环境下的过道，墙面无连续引导」</div></div></div>' +
+        '<div class="source-item"><div class="source-type image">图</div><div class="source-meta"><div class="source-title">现有扶手产品</div><div class="source-domain">本地资料 · 参考图</div><div class="source-snippet">「不锈钢管 · 墙面固定 · 医疗器械感强」</div></div></div>' +
+        '<div class="source-item"><div class="source-type text">文</div><div class="source-meta"><div class="source-title">课程要求.pdf</div><div class="source-domain">本地资料 · 文字</div><div class="source-snippet">「低施工、非医疗化、连续辅助系统」</div></div></div>' +
+        '<div class="source-item"><div class="source-type link">链</div><div class="source-meta"><div class="source-title">适老化卫浴设计指南</div><div class="source-domain">design-aging.org</div><div class="source-snippet">「连续引导比单点扶持更安全」</div></div></div>' +
+        '</div>' +
+        '<div class="draft-actions">' +
+        '<button class="draft-btn primary" id="draftSave">保存为研究与分析</button>' +
+        '<button class="draft-btn">继续追问</button>' +
+        '<button class="draft-btn">修改研究范围</button>' +
+        '<button class="draft-btn ghost" id="draftDiscard">放弃草案</button>' +
+        '</div>';
+      aiScroll.appendChild(draft);
+      aiInput.value = '';
+      aiInput.setAttribute('placeholder', '可继续追问草案中的内容…');
+    }
+
+    function buildScenario5() {
+      aiScroll.innerHTML = '';
+      aiScroll.appendChild(el('div', 'conversation-title', '失败 · 取消 · 来源变化'));
+      // failed
+      aiScroll.appendChild(el('div', 'state-card failed',
+        '<div class="state-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16v.5"/></svg>任务失败</div>' +
+        '<p>研究任务在「归纳问题线索」步骤未完成。已读取的 2 张参考图和本地材料仍保留。</p>' +
+        '<div class="preserved"><strong>已保留：</strong>已选资料 · 已读取内容 · 你的输入<br><strong>未完成：</strong>联网补充 · 草案整理</div>'
+      ));
+      aiScroll.appendChild(el('div', 'op-actions', '<button class="op-btn brand" id="failRetry" style="margin-top:8px">重试任务</button><button class="op-btn" style="margin-top:8px">修改后重试</button>'));
+      // cancelled
+      aiScroll.appendChild(el('div', 'state-card cancelled',
+        '<div class="state-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></svg>用户取消</div>' +
+        '<p>你取消了图像生成任务。原图与修改要求已保留，不会丢失。</p>' +
+        '<div class="preserved"><strong>已保留：</strong>柔光轨道 v2 · 生成要求<br><strong>未完成：</strong>等待结果 · 保存到项目</div>'
+      ));
+      // source changed
+      aiScroll.appendChild(el('div', 'state-card changed',
+        '<div class="state-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17v.5"/><circle cx="12" cy="12" r="9"/></svg>来源资料发生变化</div>' +
+        '<p>任务执行期间，你移除了「现有扶手产品」参考图。已归纳的部分发现仍可用，但建议重新检查来源。</p>' +
+        '<div class="preserved"><strong>建议：</strong>重新检查来源后再重试<br><strong>可重试：</strong>是 · 将使用当前选中的资料</div>'
+      ));
+      aiInput.value = '';
+      aiInput.setAttribute('placeholder', '可重新提交任务或修改资料…');
+    }
+
+    function buildScenario6() {
+      aiScroll.innerHTML = '';
+      aiScroll.appendChild(el('div', 'conversation-title', '画布与抽屉交互'));
+      aiScroll.appendChild(el('div', 'ai-message',
+        '<p>这个情景展示画布对象的不同比例与左侧抽屉的关闭逻辑。</p>' +
+        '<p>画布中有三种比例的图片：<strong>横图</strong>（柔光轨道 v2）、<strong>竖图</strong>（触觉导向截面）、<strong>接近方图</strong>（转角连接件）。它们全部按真实比例显示，不裁切。</p>'
+      ));
+      aiScroll.appendChild(el('div', 'suggestions',
+        '<button class="suggestion" data-fill="点击左侧 rail 的「项目地图」可展开抽屉，再点一次收起。">查看抽屉规则</button>' +
+        '<button class="suggestion" data-fill="点击画布空白会收起抽屉并清除选择，右侧聊天不会关闭。">查看空白点击</button>' +
+        '<button class="suggestion" data-fill="按 Esc 可随时收起抽屉。">查看 Esc 规则</button>'
+      ));
+      aiInput.value = '';
+      aiInput.setAttribute('placeholder', '描述你想继续发展的内容…');
+    }
+
+    // ───────────────────────────── Draft save / discard
+    function handleDraftSave() {
+      const research = document.querySelector('[data-object="research-saved"]');
+      research.style.display = '';
+      research.classList.add('newly-generated');
+      const draft = aiScroll.querySelector('.draft-card');
+      if (draft) {
+        draft.querySelector('.draft-actions').innerHTML = '<div class="draft-saved-note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 5 5 9-11"/></svg>已保存为研究与分析 · 对象已出现在画布相关资料附近</div>';
+      }
+      showToast('已保存为研究与分析');
+      focusWorldPoint(720, 480, 0.82);
+    }
+    function handleDraftDiscard() {
+      aiScroll.innerHTML = '';
+      aiScroll.appendChild(el('div', 'ai-message', '<p>已放弃草案。草案不会被写入画布，你的已选资料和输入仍保留。</p>'));
+      showToast('已放弃草案');
+    }
+    function handleOpCancel() {
+      if (operationTimer) { clearTimeout(operationTimer); operationTimer = null; }
+      aiScroll.innerHTML = '';
+      aiScroll.appendChild(el('div', 'state-card cancelled',
+        '<div class="state-label">用户取消</div>' +
+        '<p>任务已取消。已完成的步骤和已选资料仍保留。</p>' +
+        '<div class="preserved"><strong>已保留：</strong>已选资料 · 已读取内容<br><strong>可重试：</strong>是</div>'
+      ));
+      showToast('任务已取消');
+    }
+    function handleOpRetry() {
+      renderScenario(3);
+      showToast('已重新提交任务');
+    }
+
+    // ───────────────────────────── Scenario renderer
+    function renderScenario(n) {
+      currentScenario = n;
+      clearSelection();
+      document.querySelectorAll('.scen-btn').forEach(b => b.classList.toggle('active', b.dataset.scen == n));
+      // reset generated image visibility
+      document.querySelector('[data-object="generated-image"]').style.display = 'none';
+      document.querySelector('[data-object="research-saved"]').style.display = 'none';
+      closeDrawer();
+
+      if (n === 1) {
+        setMode('chat');
+        contextTag.style.display = '';
+        contextTag.firstChild.textContent = '柔光轨道 v2 ';
+        aiSubtitle.textContent = '方向与视觉发展';
+        buildScenario1();
+        const main = document.querySelector('[data-object="main-image"]');
+        selectObject(main);
+        focusWorldPoint(1160, 540, 0.8);
+      } else if (n === 2) {
+        setMode('image');
+        contextTag.style.display = '';
+        contextTag.firstChild.textContent = '柔光轨道 v2 ';
+        aiSubtitle.textContent = '图像生成';
+        buildScenario2();
+        const main = document.querySelector('[data-object="main-image"]');
+        selectObject(main);
+        focusWorldPoint(1160, 540, 0.8);
+        // simulate completion after a moment
+        if (operationTimer) clearTimeout(operationTimer);
+        operationTimer = setTimeout(() => {
+          if (currentScenario !== 2) return;
+          const genImg = document.querySelector('[data-object="generated-image"]');
+          genImg.style.display = '';
+          const status = aiScroll.querySelector('.op-status');
+          if (status) { status.textContent = '已完成'; status.className = 'op-status done'; }
+          aiScroll.querySelectorAll('.op-step').forEach(s => {
+            s.classList.remove('running', 'pending');
+            s.classList.add('done');
+            s.querySelector('.step-icon').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 12 5 5 9-11"/></svg>';
+          });
+          const footer = aiScroll.querySelector('.op-footer');
+          if (footer) footer.innerHTML = '<span class="op-net-status online"><span class="net-dot"></span>已保存到项目</span><div class="op-actions"><button class="op-btn">查看新图</button></div>';
+          showToast('生成完成 · 新图已出现在来源图右侧');
+        }, 3600);
+      } else if (n === 3) {
+        setMode('research');
+        contextTag.style.display = '';
+        contextTag.firstChild.textContent = '2 图 · 1 文 · 1 链接 ';
+        aiSubtitle.textContent = '研究任务';
+        buildScenario3();
+        const targets = [
+          document.querySelector('[data-object="ref-image-1"]'),
+          document.querySelector('[data-object="ref-image-2"]'),
+          document.querySelector('[data-object="text-material"]'),
+          document.querySelector('[data-object="link-material"]')
+        ];
+        selectMulti(targets);
+        focusWorldPoint(420, 400, 0.72);
+        // simulate progress
+        if (operationTimer) clearTimeout(operationTimer);
+        let step = 2;
+        operationTimer = setInterval(() => {
+          if (currentScenario !== 3) { clearInterval(operationTimer); return; }
+          step++;
+          const steps = aiScroll.querySelectorAll('.op-step');
+          if (step < steps.length) {
+            steps[step - 1].classList.remove('running');
+            steps[step - 1].classList.add('done');
+            steps[step - 1].querySelector('.step-icon').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 12 5 5 9-11"/></svg>';
+            steps[step].classList.remove('pending');
+            steps[step].classList.add('running');
+            if (step === 3) {
+              const net = aiScroll.querySelector('.op-net-status');
+              if (net) { net.classList.add('online'); net.innerHTML = '<span class="net-dot"></span>已补充来源'; }
+            }
+          } else {
+            clearInterval(operationTimer);
+            steps[steps.length - 1].classList.remove('running');
+            steps[steps.length - 1].classList.add('done');
+            steps[steps.length - 1].querySelector('.step-icon').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 12 5 5 9-11"/></svg>';
+            const status = aiScroll.querySelector('.op-status');
+            if (status) { status.textContent = '草案已准备'; status.className = 'op-status done'; }
+            showToast('研究分析草案已准备 · 查看');
+            setTimeout(() => { if (currentScenario === 3) renderScenario(4); }, 1200);
+          }
+        }, 1800);
+      } else if (n === 4) {
+        setMode('research');
+        contextTag.style.display = '';
+        contextTag.firstChild.textContent = '2 图 · 1 文 · 1 链接 ';
+        aiSubtitle.textContent = '研究任务 · 草案';
+        buildScenario4();
+        const targets = [
+          document.querySelector('[data-object="ref-image-1"]'),
+          document.querySelector('[data-object="ref-image-2"]'),
+          document.querySelector('[data-object="text-material"]'),
+          document.querySelector('[data-object="link-material"]')
+        ];
+        selectMulti(targets);
+        focusWorldPoint(420, 400, 0.72);
+      } else if (n === 5) {
+        setMode('research');
+        contextTag.style.display = '';
+        contextTag.firstChild.textContent = '研究任务 ';
+        aiSubtitle.textContent = '失败与中断';
+        buildScenario5();
+        focusWorldPoint(420, 400, 0.72);
+      } else if (n === 6) {
+        setMode('chat');
+        contextTag.style.display = 'none';
+        aiSubtitle.textContent = '画布与抽屉';
+        buildScenario6();
+        openDrawer();
+        focusWorldPoint(1180, 540, 0.76);
+      }
+    }
+
+    // ───────────────────────────── Scenario buttons
+    document.querySelectorAll('.scen-btn').forEach(btn => {
+      btn.addEventListener('click', () => renderScenario(parseInt(btn.dataset.scen)));
+    });
+
+    // ───────────────────────────── Detail bar actions
+    document.getElementById('detailContinue').addEventListener('click', () => renderScenario(2));
+    document.getElementById('detailResearch').addEventListener('click', () => renderScenario(3));
+    document.getElementById('detailAskAI').addEventListener('click', () => { setAI(true); aiInput.focus(); });
+
+    // ───────────────────────────── Send button (simulated)
+    document.getElementById('sendBtn').addEventListener('click', () => {
+      if (!aiInput.value.trim()) return;
+      if (currentMode === 'image') { renderScenario(2); return; }
+      if (currentMode === 'research') { renderScenario(3); return; }
+      // chat: append user message
+      const msg = el('div', 'user-message', aiInput.value);
+      aiScroll.appendChild(msg);
+      aiInput.value = '';
+      aiScroll.scrollTop = aiScroll.scrollHeight;
+      setTimeout(() => {
+        const reply = el('div', 'ai-message', '<p>这是对话与分析模式的模拟回复。在真实环境中，AI 会根据当前选中对象和你的问题进行分析，不会自动切换到图像生成。</p>');
+        aiScroll.appendChild(reply);
+        aiScroll.scrollTop = aiScroll.scrollHeight;
+      }, 600);
+    });
+
+    // ───────────────────────────── Context tag remove
+    document.getElementById('ctxX').addEventListener('click', () => {
+      contextTag.style.display = 'none';
+      showToast('已移除当前对象 Context');
+    });
+
+    // ───────────────────────────── Init
+    renderCamera();
+    renderScenario(1);
+  </script>
+</body>
+</html>

@@ -98,7 +98,7 @@ function matchesDeliveryReference(reference: DeliveryReference, normalizedQuery:
 function getSearchableObjectText(object: MorphoObject): string {
   switch (object.type) {
     case "image":
-      return [object.title, object.summary, object.role].join(" ");
+      return [object.title, object.summary, object.role, object.directionId ?? "", object.visualBranchId ?? ""].join(" ");
     case "file":
       return [object.title, object.summary, object.fileName ?? "", object.mimeType ?? "", object.sourceLabel].join(" ");
     case "text":
@@ -118,8 +118,8 @@ function getSearchableObjectText(object: MorphoObject): string {
         object.constraints.join(" "),
         object.openQuestions.join(" ")
       ].join(" ");
-    case "insight":
-      return [object.title, object.summary, object.insightState ?? ""].join(" ");
+    case "keyConclusion":
+      return [object.title, object.summary, object.body, object.state, object.note ?? ""].join(" ");
     case "designDefinition":
       return [object.title, object.summary, object.problem, object.principles.join(" "), object.avoid.join(" ")].join(" ");
     case "conceptDirection":

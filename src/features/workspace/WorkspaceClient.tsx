@@ -3,11 +3,13 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { AiContextTask, AiTaskMode, AssetRecord, MorphoObject } from "@/domain/morpho/types";
+import type { AiContextTask, AiTaskMode, AssetRecord, ImageRole, MorphoObject } from "@/domain/morpho/types";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 import { createGeneratedImageFromAsset } from "@/domain/morpho/generation";
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "@/domain/morpho/imports";
 import {
+  applyConceptDirectionProposal,
+  applyDesignDefinitionProposal,
   canStartOperation,
   applyResearchAnalysisProposal,
   completeImageGenerationOperation,
@@ -16,17 +18,24 @@ import {
   detectResearchSourceChanges,
   failImageGenerationOperation,
   markImageGenerationOperationSubmitted,
+  recordConceptDirectionProposal,
+  recordDesignDefinitionProposal,
   recordResearchAnalysisProposal
 } from "@/domain/operations/operations";
+import { parseConceptDirectionProposalPayload } from "@/domain/operations/conceptDirectionProposal";
+import { parseDesignDefinitionProposalPayload } from "@/domain/operations/designDefinitionProposal";
 import { parseResearchAnalysisProposalPayload } from "@/domain/operations/researchProposal";
 import {
   assembleAiContext,
+  createKeyConclusion,
   createAiDraftFromSuggestion,
   deleteObject,
   eliminateDirection,
   hideObject,
   restoreObject,
-  setDefaultReference
+  setConceptDirectionStatus,
+  setDefaultReference,
+  setImageRole
 } from "@/domain/morpho/workspace";
 import type { CanvasInstance, MorphoWorkspace } from "@/domain/morpho/types";
 import type { ProviderCitation } from "@/server/ai/types";
@@ -628,19 +637,107 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         setWorkspace((current) => updateAiMessage(current, assistantMessageId, assistantBody, "streaming"));
       });
       const assistantBody = [attachmentResult.warning, streamResult.text].filter(Boolean).join("\n\n");
+      const resolvedAssistantBody = assistantBody || "MiMo 没有返回可显示文本。";
+      const designDefinitionProposal =
+        task === "designDefinition" ? parseDesignDefinitionProposalPayload(streamResult.text) : null;
+      const conceptDirectionProposal =
+        task === "conceptDirection" ? parseConceptDirectionProposalPayload(streamResult.text) : null;
+      const designDefinitionProposalId =
+        designDefinitionProposal?.status === "ok"
+          ? `proposal-definition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+          : null;
+      const conceptDirectionProposalId =
+        conceptDirectionProposal?.status === "ok"
+          ? `proposal-direction-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+          : null;
+      const currentDesignDefinitionId = workspace.workingState.currentDesignDefinitionId;
+      const currentDesignDefinitionObject = currentDesignDefinitionId
+        ? workspace.objects[currentDesignDefinitionId]
+        : undefined;
+      const currentDesignDefinitionTitle =
+        currentDesignDefinitionObject?.type === "designDefinition" ? currentDesignDefinitionObject.title : undefined;
+      const pendingConfirmationFromResponse: PendingAiConfirmation | null =
+        designDefinitionProposal?.status === "ok" && designDefinitionProposalId
+          ? {
+              kind: "applyDesignDefinitionProposal",
+              proposalId: designDefinitionProposalId,
+              targetTitle: designDefinitionProposal.proposal.title,
+              basedOnTitle: currentDesignDefinitionTitle
+            }
+          : conceptDirectionProposal?.status === "ok" && conceptDirectionProposalId
+            ? {
+                kind: "applyConceptDirectionProposal",
+                proposalId: conceptDirectionProposalId,
+                targetTitle: conceptDirectionProposal.proposal.title,
+                directionCount: conceptDirectionProposal.proposal.directions.length
+              }
+            : null;
 
       setWorkspace((current) => {
-        const withMessage = updateAiMessage(current, assistantMessageId, assistantBody || "MiMo 没有返回可显示文本。", "done");
-        if (streamResult.citations.length === 0) {
-          return withMessage;
+        let nextWorkspace = updateAiMessage(current, assistantMessageId, resolvedAssistantBody, "done");
+        if (streamResult.citations.length > 0) {
+          nextWorkspace = storeMessageCitations(nextWorkspace, {
+            messageId: assistantMessageId,
+            operationId: assistantMessageId,
+            citations: streamResult.citations
+          });
         }
 
-        return storeMessageCitations(withMessage, {
-          messageId: assistantMessageId,
-          operationId: assistantMessageId,
-          citations: streamResult.citations
-        });
+        if (designDefinitionProposal?.status === "ok" && designDefinitionProposalId) {
+          const currentDefinitionId = nextWorkspace.workingState.currentDesignDefinitionId;
+          const currentDefinitionObject = currentDefinitionId ? nextWorkspace.objects[currentDefinitionId] : undefined;
+          const currentDefinition =
+            currentDefinitionObject?.type === "designDefinition" ? currentDefinitionObject : undefined;
+          const proposed = recordDesignDefinitionProposal(nextWorkspace, {
+            proposalId: designDefinitionProposalId,
+            title: designDefinitionProposal.proposal.title,
+            summary: designDefinitionProposal.proposal.summary,
+            projectGoal: designDefinitionProposal.proposal.projectGoal,
+            targetUsers: designDefinitionProposal.proposal.targetUsers,
+            primaryScenarios: designDefinitionProposal.proposal.primaryScenarios,
+            coreProblem: designDefinitionProposal.proposal.coreProblem,
+            designPrinciples: designDefinitionProposal.proposal.designPrinciples,
+            constraints: designDefinitionProposal.proposal.constraints,
+            avoidDirections: designDefinitionProposal.proposal.avoidDirections,
+            opportunities: designDefinitionProposal.proposal.opportunities,
+            openQuestions: designDefinitionProposal.proposal.openQuestions,
+            changeNote: designDefinitionProposal.proposal.changeNote,
+            sourceObjectIds: context.objectIds,
+            citations: streamResult.citations,
+            basedOnDesignDefinitionId: currentDefinition?.id,
+            basedOnRevisionId: currentDefinition?.currentRevisionId
+          });
+          nextWorkspace = updateAiMessage(proposed.workspace, assistantMessageId, resolvedAssistantBody, "done", {
+            citationIds: proposed.proposal.citationIds
+          });
+        } else if (conceptDirectionProposal?.status === "ok" && conceptDirectionProposalId) {
+          const basedOnDefinitionId = nextWorkspace.workingState.currentDesignDefinitionId;
+          const basedOnDefinitionObject = basedOnDefinitionId ? nextWorkspace.objects[basedOnDefinitionId] : undefined;
+          const proposed = recordConceptDirectionProposal(nextWorkspace, {
+            proposalId: conceptDirectionProposalId,
+            title: conceptDirectionProposal.proposal.title,
+            summary: conceptDirectionProposal.proposal.summary,
+            directions: conceptDirectionProposal.proposal.directions,
+            sourceObjectIds: context.objectIds,
+            citations: streamResult.citations,
+            basedOnDesignDefinitionId:
+              basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.id : undefined,
+            basedOnRevisionId:
+              basedOnDefinitionObject?.type === "designDefinition"
+                ? basedOnDefinitionObject.currentRevisionId
+                : undefined
+          });
+          nextWorkspace = updateAiMessage(proposed.workspace, assistantMessageId, resolvedAssistantBody, "done", {
+            citationIds: proposed.proposal.citationIds
+          });
+        }
+
+        return nextWorkspace;
       });
+
+      if (pendingConfirmationFromResponse) {
+        setPendingConfirmation(pendingConfirmationFromResponse);
+      }
     } catch (error) {
       const isCancelled = error instanceof DOMException && error.name === "AbortError";
       const message = isCancelled
@@ -677,19 +774,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         suggestion: suggestion.prompt
       });
       setAiDraft(result.draft);
-
-      if (suggestion.label === "设为后续默认参考") {
-        const target = selectedObjects.find((object) => object.type === "image");
-        if (target) {
-          setPendingConfirmation({
-            kind: "setDefaultReference",
-            targetObjectId: target.id,
-            targetTitle: target.title
-          });
-        }
-      }
     },
-    [selectedObjectIds, selectedObjects, workspace]
+    [selectedObjectIds, workspace]
   );
 
   const handleAskAi = useCallback(() => {
@@ -953,6 +1039,31 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
+    if (pendingConfirmation.kind === "createKeyConclusion") {
+      const result = createKeyConclusion(workspace, {
+        title: pendingConfirmation.conclusionTitle,
+        body: pendingConfirmation.body,
+        summary: pendingConfirmation.summary,
+        sourceObjectIds: [pendingConfirmation.sourceObjectId],
+        citationIds: pendingConfirmation.citationIds,
+        confidence: pendingConfirmation.confidence,
+        state: pendingConfirmation.state,
+        note: pendingConfirmation.note,
+        position: {
+          x: workspace.canvas.view.x + 240,
+          y: workspace.canvas.view.y + 180
+        }
+      });
+
+      setWorkspace(result.workspace);
+      setSelectedObjectIds([result.keyConclusion.id]);
+      setFocusRequest((current) => ({ objectId: result.keyConclusion.id, nonce: current.nonce + 1 }));
+      setPendingConfirmation(null);
+      setAiDraft("");
+      setTaskMode("chatAnalysis");
+      return;
+    }
+
     if (pendingConfirmation.kind === "applyResearchProposal") {
       const result = applyResearchAnalysisProposal(workspace, pendingConfirmation.proposalId, {
         position: {
@@ -965,6 +1076,68 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         setWorkspace(result.workspace);
         setSelectedObjectIds([result.researchObject.id]);
         setFocusRequest((current) => ({ objectId: result.researchObject.id, nonce: current.nonce + 1 }));
+      } else {
+        setWorkspace(
+          appendAiAssistantFailureMessage(
+            result.workspace,
+            "research-operation-failed",
+            `${result.reason} 请重新整理来源后再确认。`,
+            pendingConfirmation.proposalId
+          )
+        );
+      }
+
+      setPendingConfirmation(null);
+      setAiDraft("");
+      setTaskMode("chatAnalysis");
+      return;
+    }
+
+    if (pendingConfirmation.kind === "applyDesignDefinitionProposal") {
+      const result = applyDesignDefinitionProposal(workspace, pendingConfirmation.proposalId);
+      if (result.status === "updated") {
+        setWorkspace(result.workspace);
+        setSelectedObjectIds([result.designDefinitionObject.id]);
+        setFocusRequest((current) => ({ objectId: result.designDefinitionObject.id, nonce: current.nonce + 1 }));
+      } else {
+        setWorkspace(
+          appendAiAssistantFailureMessage(
+            result.workspace,
+            "design-definition-failed",
+            `${result.reason} 请复核后再确认。`,
+            pendingConfirmation.proposalId
+          )
+        );
+      }
+
+      setPendingConfirmation(null);
+      setAiDraft("");
+      setTaskMode("chatAnalysis");
+      return;
+    }
+
+    if (pendingConfirmation.kind === "applyConceptDirectionProposal") {
+      const result = applyConceptDirectionProposal(workspace, pendingConfirmation.proposalId, {
+        position: {
+          x: workspace.canvas.view.x + 260,
+          y: workspace.canvas.view.y + 220
+        }
+      });
+      if (result.status === "updated") {
+        setWorkspace(result.workspace);
+        setSelectedObjectIds(result.directions.map((direction) => direction.id));
+        if (result.directions[0]) {
+          setFocusRequest((current) => ({ objectId: result.directions[0].id, nonce: current.nonce + 1 }));
+        }
+      } else {
+        setWorkspace(
+          appendAiAssistantFailureMessage(
+            result.workspace,
+            "concept-direction-failed",
+            `${result.reason} 请复核后再确认。`,
+            pendingConfirmation.proposalId
+          )
+        );
       }
 
       setPendingConfirmation(null);
@@ -1035,6 +1208,81 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       })
     );
   }, [selectedObjects, setWorkspace]);
+
+  const handleSetDirectionPrimary = useCallback(() => {
+    const target = selectedObjects.find((object) => object.type === "conceptDirection");
+    if (!target) {
+      return;
+    }
+
+    setWorkspace((current) =>
+      setConceptDirectionStatus(current, target.id, "primary", "用户在底部详情栏明确将该方向设为主方向。")
+    );
+  }, [selectedObjects, setWorkspace]);
+
+  const handleSetDirectionAlternative = useCallback(() => {
+    const target = selectedObjects.find((object) => object.type === "conceptDirection");
+    if (!target) {
+      return;
+    }
+
+    setWorkspace((current) =>
+      setConceptDirectionStatus(current, target.id, "alternative", "用户在底部详情栏明确将该方向转为备选方向。")
+    );
+  }, [selectedObjects, setWorkspace]);
+
+  const handleRestoreDirectionAsAlternative = useCallback(() => {
+    const target = selectedObjects.find((object) => object.type === "conceptDirection");
+    if (!target) {
+      return;
+    }
+
+    setWorkspace((current) =>
+      setConceptDirectionStatus(current, target.id, "alternative", "用户将已淘汰方向恢复为备选方向。")
+    );
+  }, [selectedObjects, setWorkspace]);
+
+  const handleSaveKeyConclusion = useCallback(() => {
+    const target = selectedObjects[0];
+    if (!target) {
+      return;
+    }
+
+    const draft = buildKeyConclusionDraftFromObject(target);
+    if (!draft) {
+      return;
+    }
+
+    setAiOpen(true);
+    setPendingConfirmation({
+      kind: "createKeyConclusion",
+      sourceObjectId: target.id,
+      sourceTitle: target.title,
+      conclusionTitle: draft.title,
+      body: draft.body,
+      summary: draft.summary,
+      citationIds: getObjectCitationIds(target),
+      confidence: draft.confidence,
+      state: draft.state,
+      note: draft.note
+    });
+  }, [selectedObjects]);
+
+  const handleSetImageRole = useCallback(
+    (role: ImageRole) => {
+      const target = selectedObjects.find((object) => object.type === "image");
+      if (!target) {
+        return;
+      }
+
+      setWorkspace((current) =>
+        setImageRole(current, target.id, role, {
+          reason: `用户在底部详情栏明确将图片角色标记为 ${role}。`
+        })
+      );
+    },
+    [selectedObjects, setWorkspace]
+  );
 
   return (
     <main className="workspace">
@@ -1113,6 +1361,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onHide={handleHideSelected}
         onDelete={handleDeleteSelected}
         onEliminateDirection={handleEliminateDirection}
+        onSetDirectionPrimary={handleSetDirectionPrimary}
+        onSetDirectionAlternative={handleSetDirectionAlternative}
+        onRestoreDirectionAsAlternative={handleRestoreDirectionAsAlternative}
+        onSaveKeyConclusion={handleSaveKeyConclusion}
+        onSetImageRole={handleSetImageRole}
       />
     </main>
   );
@@ -1166,11 +1419,25 @@ function inferAiContextTask(draft: string, selectedObjects: MorphoObject[]): AiC
     return "deliveryPreparation";
   }
 
+  if (/比较|对比|compare/.test(text) && selectedObjects.length > 1) {
+    return "comparison";
+  }
+
   if (/定义|原则|边界|问题/.test(text) || selectedObjects.some((object) => object.type === "designDefinition")) {
     return "designDefinition";
   }
 
-  if (/调研|研究|资料|限制|发现|约束/.test(text) || selectedObjects.some((object) => object.type === "research" || object.type === "file" || object.type === "link")) {
+  if (
+    /方向|概念|方案|路线|分支|预览|变体/.test(text) ||
+    selectedObjects.some((object) => object.type === "conceptDirection")
+  ) {
+    return "conceptDirection";
+  }
+
+  if (
+    /调研|研究|资料|限制|发现|约束/.test(text) ||
+    selectedObjects.some((object) => object.type === "research" || object.type === "file" || object.type === "link")
+  ) {
     return "research";
   }
 
@@ -1224,6 +1491,31 @@ function updateAiMessage(
             }
           : message
       )
+    }
+  };
+}
+
+function appendAiAssistantFailureMessage(
+  workspace: MorphoWorkspace,
+  prefix: string,
+  body: string,
+  proposalId?: string
+): MorphoWorkspace {
+  return {
+    ...workspace,
+    ai: {
+      ...workspace.ai,
+      messages: [
+        ...workspace.ai.messages,
+        {
+          id: `${prefix}-${Date.now()}`,
+          role: "assistant",
+          body,
+          status: "failed",
+          createdAt: new Date().toISOString(),
+          proposalId
+        }
+      ]
     }
   };
 }
@@ -1517,6 +1809,107 @@ function findGenerationDirectionId(
   }
 
   return undefined;
+}
+
+function buildKeyConclusionDraftFromObject(object: MorphoObject):
+  | {
+      title: string;
+      body: string;
+      summary: string;
+      confidence: "supported" | "partial" | "needsVerification";
+      state?: "active" | "needsVerification";
+      note: string;
+    }
+  | null {
+  switch (object.type) {
+    case "research": {
+      const primaryClaim =
+        object.findings[0] ??
+        object.opportunities[0] ??
+        object.constraints[0] ??
+        object.openQuestions[0] ??
+        object.summary;
+      return {
+        title: truncateForTitle(primaryClaim || object.title, "关键结论"),
+        summary: primaryClaim || object.summary,
+        body: buildResearchConclusionBody(object),
+        confidence: inferResearchConfidence(object),
+        state: inferResearchConfidence(object) === "needsVerification" ? "needsVerification" : "active",
+        note: `用户从研究对象“${object.title}”中明确保留关键结论。`
+      };
+    }
+    case "text":
+      return {
+        title: truncateForTitle(object.title || object.summary, "关键结论"),
+        summary: object.summary,
+        body: object.body,
+        confidence: "needsVerification",
+        state: "needsVerification",
+        note: `用户从文本对象“${object.title}”中保留关键结论，后续仍需复核。`
+      };
+    case "link":
+      return {
+        title: truncateForTitle(object.editableTitle || object.title, "关键结论"),
+        summary: object.summary,
+        body: [object.description, object.summary, object.url].filter(Boolean).join("\n\n"),
+        confidence: "needsVerification",
+        state: "needsVerification",
+        note: `用户从链接对象“${object.title}”中保留关键结论，后续仍需复核来源有效性。`
+      };
+    case "file":
+      return {
+        title: truncateForTitle(object.title, "关键结论"),
+        summary: object.summary,
+        body: [object.summary, object.fileName, object.mimeType].filter(Boolean).join("\n\n"),
+        confidence: "needsVerification",
+        state: "needsVerification",
+        note: `用户从文件对象“${object.title}”中保留关键结论，后续仍需复核原始资料。`
+      };
+    default:
+      return null;
+  }
+}
+
+function buildResearchConclusionBody(object: Extract<MorphoObject, { type: "research" }>): string {
+  const lines = [
+    object.summary,
+    object.findings[0] ? `发现：${object.findings[0]}` : undefined,
+    object.opportunities[0] ? `机会：${object.opportunities[0]}` : undefined,
+    object.constraints[0] ? `约束：${object.constraints[0]}` : undefined,
+    object.openQuestions[0] ? `待验证：${object.openQuestions[0]}` : undefined
+  ].filter(Boolean);
+
+  return lines.join("\n");
+}
+
+function inferResearchConfidence(object: Extract<MorphoObject, { type: "research" }>): "supported" | "partial" | "needsVerification" {
+  const confidences = object.evidence?.map((item) => item.confidence) ?? [];
+  if (confidences.includes("needsVerification")) {
+    return "needsVerification";
+  }
+
+  if (confidences.includes("partial") || confidences.length === 0) {
+    return "partial";
+  }
+
+  return "supported";
+}
+
+function getObjectCitationIds(object: MorphoObject): string[] {
+  if (object.type === "research") {
+    return [...(object.provenance?.citationIds ?? [])];
+  }
+
+  return [];
+}
+
+function truncateForTitle(input: string, fallback: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return fallback;
+  }
+
+  return trimmed.length > 28 ? `${trimmed.slice(0, 28)}…` : trimmed;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

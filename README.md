@@ -18,7 +18,7 @@ Morpho is an AI-assisted concept-development workspace for product and industria
 - 浮动顶部控件、左侧窄工具轨、右下连续 AI 对话面板；
 - 选中对象后出现的底部详情栏；
 - Morpho 领域对象、画布实例、资产、项目 catalog、本地持久化和语义状态边界；
-- `schemaVersion: 4` 的 local-first 数据底座，包括隐藏、删除、淘汰、后续默认参考、交付稳定引用、安全迁移、IndexedDB 二进制资产、连续 AI 消息和轻量 Operation / Proposal 状态；
+- `schemaVersion: 5` 的 local-first 数据底座，包括隐藏、删除、淘汰、后续默认参考、交付稳定引用、安全迁移、IndexedDB 二进制资产、连续 AI 消息、轻量 Operation / Proposal 状态，以及关键结论、修订式设计定义、修订式概念方向、图片角色和可重建工作状态；
 - 服务端 MiMo 流式聊天 route，支持普通文本、显式选中图片的视觉理解输入，以及受控 web search citation 事件；
 - 服务端 GrsAI 图像生成 route，图像任务可选择模型、比例和支持的规格；成功结果会保存为新的本地资产和新的图像对象。
 

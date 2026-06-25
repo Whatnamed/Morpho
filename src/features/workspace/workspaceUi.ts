@@ -10,7 +10,7 @@ export function getObjectTypeLabel(object: MorphoObject): string {
     case "image":
       return object.isDefaultReference ? "后续默认参考" : imageRoleLabel(object.role);
     case "file":
-      return object.fileKind === "imageSet" ? "资料合集" : "文件";
+      return object.fileKind === "imageSet" ? "资料集合" : "文件";
     case "text":
       return "文本";
     case "link":
@@ -19,7 +19,7 @@ export function getObjectTypeLabel(object: MorphoObject): string {
       return "图片合集";
     case "research":
       return "研究与分析";
-    case "insight":
+    case "keyConclusion":
       return "关键结论";
     case "designDefinition":
       return "设计定义";
@@ -27,6 +27,8 @@ export function getObjectTypeLabel(object: MorphoObject): string {
       return directionStatusLabel(object.status);
     case "delivery":
       return "交付准备";
+    default:
+      return "对象";
   }
 }
 
@@ -46,6 +48,22 @@ export function imageRoleLabel(role: ImageRole): string {
       return "细节";
     case "diagram":
       return "设计示意";
+    case "conceptImage":
+      return "概念图";
+    case "primaryVisual":
+      return "主视觉";
+    case "sceneVisual":
+      return "场景视觉";
+    case "cmfStudy":
+      return "CMF 研究";
+    case "detailStudy":
+      return "细节研究";
+    case "structureDiagram":
+      return "结构示意";
+    case "interactionDiagram":
+      return "交互示意";
+    case "deliveryAsset":
+      return "交付素材";
     default:
       return "图片";
   }
@@ -54,15 +72,15 @@ export function imageRoleLabel(role: ImageRole): string {
 export function directionStatusLabel(status: string): string {
   switch (status) {
     case "pendingPreview":
-      return "待预览";
+      return "待预览方向";
     case "primary":
       return "主方向";
     case "alternative":
-      return "备选";
+      return "备选方向";
     case "eliminated":
-      return "已淘汰";
+      return "已淘汰方向";
     case "needsReview":
-      return "待复核";
+      return "待复核方向";
     default:
       return "方向";
   }
@@ -76,108 +94,143 @@ export function getSuggestionsForSelection(objects: MorphoObject[]): Suggestion[
   if (objects.length > 1) {
     return [
       {
-        label: "比较这些方案",
-        prompt: "比较这些对象在连续支撑、居家感和安装复杂度上的差异，并说明各自适合继续发展的部分。"
+        label: "比较这些对象",
+        prompt: "比较这些对象在当前项目中的价值、差异和风险，并说明下一步最值得继续发展的部分。"
       },
       {
-        label: "找共同线索",
-        prompt: "从这些对象里找出共同线索，说明哪些内容可以成为后续方向的稳定依据。"
+        label: "提炼共同线索",
+        prompt: "从这些对象里提炼共同线索，说明哪些内容可以成为更稳定的项目依据。"
       },
       {
-        label: "作为多参考生成",
-        prompt: "把这些对象作为多参考，生成一组保持低施工与居家语气的新视觉方向。"
+        label: "生成多参考方向",
+        prompt: "把这些对象作为明确参考，生成几条有差异的后续方向建议，但不要自动改项目状态。"
       }
     ];
   }
 
   const [object] = objects;
+
   switch (object.type) {
     case "image":
       return [
         {
           label: "继续发展",
-          prompt: `基于“${object.title}”继续发展，保留低位导向与暖光氛围。`
+          prompt: `基于“${object.title}”继续发展，保留当前结构语言和整体气质。`
         },
         {
           label: "局部修改",
-          prompt: "保留整体比例与柔光轨道语言，把转角连接件做得更一体化、少一些外露五金感。"
+          prompt: `保留“${object.title}”的整体比例和主要结构，只调整局部细节，让它更完整。`
         },
         {
           label: "生成使用场景",
-          prompt: `基于“${object.title}”生成夜间使用场景，保持普通居家空间和低干扰照明。`
+          prompt: `基于“${object.title}”生成一个更真实的使用场景，但不要改变这个对象的项目状态。`
         },
         {
           label: "设为后续默认参考",
-          prompt: `将“${object.title}”设为后续默认参考，但不要替换已有图或交付引用。`
+          prompt: `将“${object.title}”设为后续默认参考，但不要替换已有图片、版本链或交付引用。`
         }
       ];
     case "file":
       return [
         {
-          label: "读取并整理要求",
-          prompt: `读取“${object.title}”，整理项目要求、限制和需要确认的问题。`
+          label: "整理资料重点",
+          prompt: `基于“${object.title}”整理当前可用的资料重点、限制和待确认问题。`
         },
         {
-          label: "提取项目限制",
-          prompt: `从“${object.title}”中提取会影响夜航方案的现实限制。`
+          label: "补充研究问题",
+          prompt: `围绕“${object.title}”补充下一轮研究最值得验证的问题。`
         }
       ];
     case "text":
       return [
         {
-          label: "整理为说明",
-          prompt: `整理“${object.title}”中的可用信息，提取对当前项目有帮助的线索。`
+          label: "整理为研究依据",
+          prompt: `把“${object.title}”整理成更清晰的研究依据或项目输入。`
+        },
+        {
+          label: "形成设计定义",
+          prompt: `基于“${object.title}”形成一版可确认的设计定义草案。`
         }
       ];
     case "link":
       return [
         {
           label: "说明来源价值",
-          prompt: `基于链接“${object.title}”的标题和摘要，说明它可能支持当前项目的哪些判断。`
+          prompt: `结合“${object.title}”的标题、链接和摘要，说明它对当前项目的价值与边界。`
+        },
+        {
+          label: "补充可验证信息",
+          prompt: `围绕“${object.title}”补充当前最需要验证的信息，但不要自动写入项目事实。`
         }
       ];
     case "imageCollection":
       return [
         {
           label: "比较合集成员",
-          prompt: `比较“${object.title}”中的图片成员，找出共同线索和差异。`
+          prompt: `比较“${object.title}”中的成员，找出共性、差异和可以继续发展的部分。`
         }
       ];
     case "research":
       return [
         {
           label: "保留关键结论",
-          prompt: "从这份研究与分析里挑出值得保留为关键结论的内容，并说明证据边界。"
+          prompt: `从“${object.title}”中提炼值得保留为关键结论的内容，并说明证据边界。`
         },
         {
-          label: "继续补资料",
-          prompt: "指出这份研究与分析还缺哪些居家路径资料。"
+          label: "形成设计定义",
+          prompt: `基于“${object.title}”以及当前已有依据，形成一版设计定义草案。`
+        },
+        {
+          label: "生成多个方向",
+          prompt: `基于“${object.title}”以及当前设计定义，提出几个真正有差异的概念方向草案。`
         }
       ];
-    case "insight":
+    case "keyConclusion":
+      return [
+        {
+          label: "形成设计定义",
+          prompt: `基于“${object.title}”以及当前已确认结论，形成一版设计定义草案。`
+        },
+        {
+          label: "生成方向草案",
+          prompt: `基于“${object.title}”以及当前设计定义，提出几个概念方向草案。`
+        }
+      ];
     case "designDefinition":
+      return [
+        {
+          label: "检查定义缺口",
+          prompt: `检查“${object.title}”目前还缺哪些约束、边界或待验证问题。`
+        },
+        {
+          label: "生成方向草案",
+          prompt: `基于“${object.title}”提出几个策略差异清楚的概念方向草案。`
+        }
+      ];
     case "conceptDirection":
       return [
         {
-          label: "生成预览",
-          prompt: `基于“${object.title}”生成有差异的方向预览，不要自动设为主方向。`
+          label: "继续发展这个方向",
+          prompt: `围绕“${object.title}”继续发展，说明它最值得保留和最需要修正的部分。`
         },
         {
-          label: "检查关系",
-          prompt: `检查“${object.title}”和当前设计定义、主方向之间的关系。`
+          label: "比较与当前定义",
+          prompt: `比较“${object.title}”与当前设计定义的契合点、偏离点和下一步建议。`
         }
       ];
     case "delivery":
       return [
         {
           label: "检查交付缺口",
-          prompt: `检查“${object.title}”目前还缺哪些素材、图注和说明。`
+          prompt: `检查“${object.title}”还缺哪些内容、说明或引用。`
         },
         {
-          label: "整理本页内容",
-          prompt: `整理“${object.title}”的内容结构，但不要做最终展板排版。`
+          label: "整理交付结构",
+          prompt: `整理“${object.title}”的内容结构，但不要做最终排版。`
         }
       ];
+    default:
+      return [];
   }
 }
 

@@ -69,14 +69,13 @@ describe("workspace MiMo attachment planning", () => {
     });
   });
 
-  it("offers web search to chat and research modes while keeping image generation isolated", () => {
-    expect(buildWebSearchOptions({ draft: "ordinary question", taskMode: "chatAnalysis" })).toEqual({
-      enabled: true,
-      forceSearch: false
-    });
+  it("offers web search only for explicit search or verification intent", () => {
+    expect(buildWebSearchOptions({ draft: "ordinary question", taskMode: "chatAnalysis" })).toBeUndefined();
     expect(buildWebSearchOptions({ draft: "please verify latest source", taskMode: "researchOperation" })).toEqual({
       enabled: true,
-      forceSearch: true
+      forceSearch: true,
+      maxKeyword: 2,
+      limit: 3
     });
     expect(buildWebSearchOptions({ draft: "please verify latest source", taskMode: "imageGeneration" })).toBeUndefined();
   });

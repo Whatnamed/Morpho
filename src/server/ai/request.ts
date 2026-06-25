@@ -137,14 +137,7 @@ export function buildMorphoSystemPrompt(request: AiRouteRequest): string {
     objectLines,
     buildAttachmentCapabilityLine(request),
     buildWebSearchCapabilityLine(request),
-    request.taskMode === "researchOperation"
-      ? [
-          "如果本次研究结果足够结构化，请在普通回答后附加一个 fenced JSON block，且只使用以下顶层字段：",
-          "morphoResearchProposal: { title, summary, findings, opportunities, constraints, openQuestions, evidence }。",
-          "evidence 每项包含 claim、sourceObjectIds、citationUrls、confidence，其中 confidence 为 supported、partial 或 needsVerification。",
-          "如果无法可靠结构化，不要输出该 JSON block。"
-        ].join("\n")
-      : ""
+    buildStructuredProposalInstruction(request)
   ]
     .filter(Boolean)
     .join("\n");
@@ -167,6 +160,38 @@ function buildWebSearchCapabilityLine(request: AiRouteRequest): string {
   }
 
   return `本次可使用 MiMo web_search 工具。只有当外部事实、当前信息、来源验证、案例补充或研究依据会明显提升回答时才联网；普通创意讨论、改写和不依赖外部事实的视觉发散不要联网。force_search=${request.webSearch.forceSearch}。只可引用 provider 返回的 URL citation，不得编造来源。`;
+}
+
+function buildStructuredProposalInstruction(request: AiRouteRequest): string {
+  if (request.taskMode === "researchOperation") {
+    return [
+      "如果本次研究结果足够结构化，请在普通回答后附加一个 fenced JSON block，且只使用以下顶层字段：",
+      "morphoResearchProposal: { title, summary, findings, opportunities, constraints, openQuestions, evidence }。",
+      "evidence 每项包含 claim、sourceObjectIds、citationUrls、confidence，其中 confidence 为 supported、partial 或 needsVerification。",
+      "如果无法可靠结构化，不要输出该 JSON block。"
+    ].join("\n");
+  }
+
+  if (request.task === "designDefinition") {
+    return [
+      "如果你已经形成可保存的设计定义草案，请在普通回答后附加一个 fenced JSON block，且只使用以下顶层字段：",
+      "morphoDesignDefinitionProposal: { title, summary, projectGoal, targetUsers, primaryScenarios, coreProblem, designPrinciples, constraints, avoidDirections, opportunities, openQuestions, changeNote }。",
+      "不要自动声明已应用该定义；这只是候选草案。",
+      "如果无法可靠结构化，不要输出该 JSON block。"
+    ].join("\n");
+  }
+
+  if (request.task === "conceptDirection") {
+    return [
+      "如果你已经形成可保存的概念方向草案，请在普通回答后附加一个 fenced JSON block，且只使用以下顶层字段：",
+      "morphoConceptDirectionProposal: { title, summary, directions }。",
+      "directions 为数组，每项包含 title, summary, conceptStatement, keywords, strategy, differentiators, visualSignals, risks, openQuestions，可选 basedOnDirectionId, lineageKind。",
+      "不要自动指定主方向；新方向默认只是待预览候选。",
+      "如果无法可靠结构化，不要输出该 JSON block。"
+    ].join("\n");
+  }
+
+  return "";
 }
 
 function isMessage(value: unknown): value is AiRouteRequest["messages"][number] {

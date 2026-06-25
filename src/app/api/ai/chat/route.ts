@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { loadAiConfig } from "@/server/ai/config";
+import { getMiMoRouteErrorMessage } from "@/server/ai/errors";
 import { streamMiMoChat } from "@/server/ai/mimoProvider";
 import { buildMorphoSystemPrompt, buildProviderMessages, validateAiRouteRequest } from "@/server/ai/request";
 
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
         "Cache-Control": "no-store"
       }
     });
-  } catch {
-    return NextResponse.json({ error: "MiMo 请求失败，请检查网络、模型配置或稍后重试。" }, { status: 502 });
+  } catch (error) {
+    return NextResponse.json({ error: getMiMoRouteErrorMessage(error) }, { status: 502 });
   }
 }

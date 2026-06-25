@@ -63,15 +63,24 @@ export function buildWebSearchOptions(input: {
   | {
       enabled: true;
       forceSearch: boolean;
+      maxKeyword: number;
+      limit: number;
     }
   | undefined {
   if (input.taskMode === "imageGeneration") {
     return undefined;
   }
 
+  const forceSearch = FORCED_WEB_SEARCH_PATTERN.test(input.draft);
+  if (!forceSearch) {
+    return undefined;
+  }
+
   return {
     enabled: true,
-    forceSearch: FORCED_WEB_SEARCH_PATTERN.test(input.draft)
+    forceSearch,
+    maxKeyword: 2,
+    limit: 3
   };
 }
 

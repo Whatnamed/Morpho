@@ -70,11 +70,27 @@ export type ResearchEvidence = {
   confidence: "supported" | "partial" | "needsVerification";
 };
 
-export type ResearchAnalysisProposal = {
+export type ProposalStatus = "pending" | "applied" | "rejected" | "expired";
+
+export type ProposalReviewState = "ready" | "sourceChanged" | "baseSuperseded" | "targetUnavailable";
+
+export type ArtifactProposalBase = {
   id: ArtifactProposalId;
+  type: "researchAnalysis" | "designDefinition" | "conceptDirection" | "deliveryPlan";
+  operationId?: OperationId;
+  status: ProposalStatus;
+  reviewState?: ProposalReviewState;
+  sourceObjectIds: OperationObjectId[];
+  citationIds: SourceCitationId[];
+  createdAt: string;
+  appliedObjectId?: OperationObjectId;
+  rejectedReason?: string;
+  userNote?: string;
+};
+
+export type ResearchAnalysisProposal = ArtifactProposalBase & {
   type: "researchAnalysis";
   operationId: OperationId;
-  status: "pending" | "applied" | "rejected" | "expired";
   title: string;
   summary: string;
   findings: string[];
@@ -82,14 +98,68 @@ export type ResearchAnalysisProposal = {
   constraints: string[];
   openQuestions: string[];
   evidence: ResearchEvidence[];
-  sourceObjectIds: OperationObjectId[];
-  citationIds: SourceCitationId[];
   sourceChangedWarning?: string;
-  createdAt: string;
-  appliedObjectId?: OperationObjectId;
 };
 
-export type ArtifactProposal = ResearchAnalysisProposal;
+export type DesignDefinitionProposal = ArtifactProposalBase & {
+  type: "designDefinition";
+  title: string;
+  summary: string;
+  projectGoal: string;
+  targetUsers: string[];
+  primaryScenarios: string[];
+  coreProblem: string;
+  designPrinciples: string[];
+  constraints: string[];
+  avoidDirections: string[];
+  opportunities: string[];
+  openQuestions: string[];
+  basedOnDesignDefinitionId?: OperationObjectId;
+  basedOnRevisionId?: string;
+  changeNote?: string;
+};
+
+export type ConceptDirectionDraft = {
+  title: string;
+  summary: string;
+  conceptStatement: string;
+  keywords: string[];
+  strategy: string;
+  differentiators: string[];
+  visualSignals: string[];
+  risks: string[];
+  openQuestions: string[];
+  basedOnDirectionId?: OperationObjectId;
+  lineageKind?: "derivedFromDirection" | "splitFromDirection" | "mergedFromDirection" | "supersedesDirection";
+};
+
+export type ConceptDirectionProposal = ArtifactProposalBase & {
+  type: "conceptDirection";
+  title: string;
+  summary: string;
+  directions: ConceptDirectionDraft[];
+  basedOnDesignDefinitionId?: OperationObjectId;
+  basedOnRevisionId?: string;
+};
+
+export type DeliveryPlanProposal = ArtifactProposalBase & {
+  type: "deliveryPlan";
+  title: string;
+  summary: string;
+  items: Array<{
+    title: string;
+    purpose: string;
+    contentType: string;
+    sourceObjectIds: OperationObjectId[];
+    missingReason?: string;
+  }>;
+};
+
+export type ArtifactProposal =
+  | ResearchAnalysisProposal
+  | DesignDefinitionProposal
+  | ConceptDirectionProposal
+  | DeliveryPlanProposal;
 
 export type ImageGenerationOperationMetadata = {
   clientRequestId: string;

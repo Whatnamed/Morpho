@@ -1,3 +1,4 @@
+import { reconcileWorkspaceDerivedState } from "./derivedState";
 import { getImageCanvasSize } from "./imageSizing";
 import type { AssetRecord, ImageGenerationMetadata, ImageObject, MorphoRelation, MorphoWorkspace } from "./types";
 
@@ -92,7 +93,7 @@ export function createGeneratedImageFromAsset(
 
   return {
     createdObjectId: objectId,
-    workspace: {
+    workspace: reconcileWorkspaceDerivedState({
       ...workspace,
       assets: {
         ...workspace.assets,
@@ -131,7 +132,7 @@ export function createGeneratedImageFromAsset(
         ...workspace.ui,
         lastSelectionIds: [objectId]
       }
-    }
+    })
   };
 }
 

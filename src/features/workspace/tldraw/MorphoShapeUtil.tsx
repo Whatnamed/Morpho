@@ -58,7 +58,7 @@ export class MorphoShapeUtil extends BaseBoxShapeUtil<MorphoShape> {
       "link",
       "imageCollection",
       "research",
-      "insight",
+      "keyConclusion",
       "designDefinition",
       "conceptDirection",
       "delivery"
@@ -87,7 +87,7 @@ export class MorphoShapeUtil extends BaseBoxShapeUtil<MorphoShape> {
       h: 180,
       objectId: "",
       instanceId: "",
-      morphoType: "insight",
+      morphoType: "keyConclusion",
       title: "",
       summary: "",
       label: "",
@@ -170,11 +170,13 @@ function getDetails(object: MorphoObject): string[] {
   switch (object.type) {
     case "research":
       return [
-        `发现：${object.findings[0]}`,
-        `机会：${object.opportunities[0]}`,
-        `约束：${object.constraints[0]}`,
-        `待验证：${object.openQuestions[0]}`
+        `发现：${object.findings[0] ?? "待补充"}`,
+        `机会：${object.opportunities[0] ?? "待补充"}`,
+        `约束：${object.constraints[0] ?? "待补充"}`,
+        `待验证：${object.openQuestions[0] ?? "待补充"}`
       ];
+    case "keyConclusion":
+      return [object.body, `状态：${object.state}`, `置信度：${object.confidence}`];
     case "designDefinition":
       return [`核心问题：${object.problem}`, `原则：${object.principles.join(" / ")}`, `避免项：${object.avoid.join(" / ")}`];
     case "conceptDirection":
@@ -230,7 +232,12 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
     );
   }
 
-  if (props.morphoType === "research" || props.morphoType === "designDefinition" || props.morphoType === "text") {
+  if (
+    props.morphoType === "research" ||
+    props.morphoType === "designDefinition" ||
+    props.morphoType === "keyConclusion" ||
+    props.morphoType === "text"
+  ) {
     return (
       <article className={classes}>
         <RoleLabel label={props.label} />
@@ -363,7 +370,15 @@ function renderVisual(variant?: string) {
       <rect y="170" width="340" height="60" fill="#D2C7BA" />
       <path d="M42 137h166c32 0 54-20 54-52v-26" fill="none" stroke="#52604F" strokeWidth="22" strokeLinecap="round" />
       <path d="M42 137h166c32 0 54-20 54-52v-26" fill="none" stroke="#FFE0A0" strokeWidth="5" strokeLinecap="round" />
-      <path d="M42 138h166c32 0 54-20 54-52v-26" fill="none" stroke="#FFD37A" strokeWidth="13" strokeLinecap="round" opacity=".35" filter="url(#softGlow)" />
+      <path
+        d="M42 138h166c32 0 54-20 54-52v-26"
+        fill="none"
+        stroke="#FFD37A"
+        strokeWidth="13"
+        strokeLinecap="round"
+        opacity=".35"
+        filter="url(#softGlow)"
+      />
       <rect x="48" y="146" width="136" height="12" rx="6" fill="#8A7A67" opacity=".32" />
       <circle cx="263" cy="60" r="13" fill="#F9E1AA" opacity=".9" />
     </svg>

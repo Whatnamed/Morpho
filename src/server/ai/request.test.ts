@@ -167,4 +167,32 @@ describe("MiMo chat route request conversion", () => {
       }
     });
   });
+
+  it("asks for a structured design definition proposal only for designDefinition tasks", () => {
+    const prompt = buildMorphoSystemPrompt({
+      draft: "整理当前设计定义",
+      task: "designDefinition",
+      taskMode: "chatAnalysis",
+      messages: [],
+      objectSummaries: [],
+      attachments: []
+    });
+
+    expect(prompt).toContain("morphoDesignDefinitionProposal");
+    expect(prompt).toContain("不要自动声明已应用该定义");
+  });
+
+  it("asks for a structured concept direction proposal only for conceptDirection tasks", () => {
+    const prompt = buildMorphoSystemPrompt({
+      draft: "提出几个概念方向",
+      task: "conceptDirection",
+      taskMode: "chatAnalysis",
+      messages: [],
+      objectSummaries: [],
+      attachments: []
+    });
+
+    expect(prompt).toContain("morphoConceptDirectionProposal");
+    expect(prompt).toContain("不要自动指定主方向");
+  });
 });
