@@ -33,7 +33,7 @@ export type PendingAiConfirmation =
     }
   | {
       kind: "createKeyConclusion";
-      sourceObjectId: string;
+      sourceObjectIds: string[];
       sourceTitle: string;
       conclusionTitle: string;
       body: string;
@@ -114,6 +114,7 @@ type AiConversationPanelProps = {
     proposalId: string,
     input: Pick<ConceptDirectionProposal, "title" | "summary" | "directions">
   ) => void;
+  onUpdatePendingKeyConclusion: (patch: Partial<Extract<PendingAiConfirmation, { kind: "createKeyConclusion" }>>) => void;
   onConfirmPending: () => void;
   onCancelPending: () => void;
   onFailureRetry: () => void;
@@ -156,6 +157,7 @@ export function AiConversationPanel({
   onSaveResearchProposalDraft,
   onSaveDesignDefinitionProposalDraft,
   onSaveConceptDirectionProposalDraft,
+  onUpdatePendingKeyConclusion,
   onConfirmPending,
   onCancelPending,
   onFailureRetry
@@ -275,6 +277,37 @@ export function AiConversationPanel({
             <div className="confirm-card">
               <strong>{confirmationTitle}</strong>
               <p>{confirmationBody}</p>
+              {pendingConfirmation.kind === "createKeyConclusion" ? (
+                <div className="confirm-editor" aria-label="关键结论草稿编辑">
+                  <label>
+                    <span>标题</span>
+                    <input
+                      value={pendingConfirmation.conclusionTitle}
+                      onChange={(event) => onUpdatePendingKeyConclusion({ conclusionTitle: event.currentTarget.value })}
+                    />
+                  </label>
+                  <label>
+                    <span>正文</span>
+                    <textarea
+                      rows={4}
+                      value={pendingConfirmation.body}
+                      onChange={(event) => onUpdatePendingKeyConclusion({ body: event.currentTarget.value })}
+                    />
+                  </label>
+                  <label>
+                    <span>备注</span>
+                    <textarea
+                      rows={2}
+                      value={pendingConfirmation.note}
+                      onChange={(event) => onUpdatePendingKeyConclusion({ note: event.currentTarget.value })}
+                    />
+                  </label>
+                  <span className="confirm-meta">
+                    来源：{pendingConfirmation.sourceObjectIds.join("、") || "无"} · 引用：
+                    {pendingConfirmation.citationIds.join("、") || "无"} · 置信度：{pendingConfirmation.confidence}
+                  </span>
+                </div>
+              ) : null}
               <div className="confirm-actions">
                 <button className="brand-button" type="button" onClick={onConfirmPending}>
                   {confirmationActionLabel}

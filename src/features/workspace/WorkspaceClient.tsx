@@ -32,6 +32,7 @@ import { parseDesignDefinitionProposalPayload } from "@/domain/operations/design
 import { parseResearchAnalysisProposalPayload } from "@/domain/operations/researchProposal";
 import {
   assembleAiContext,
+  buildKeyConclusionDraftFromResearchSource,
   createKeyConclusion,
   createAiDraftFromSuggestion,
   deleteObject,
@@ -40,6 +41,7 @@ import {
   restoreObject,
   setConceptDirectionStatus,
   setDefaultReference,
+  setKeyConclusionState,
   setImageRole
 } from "@/domain/morpho/workspace";
 import type { CanvasInstance, MorphoWorkspace } from "@/domain/morpho/types";
@@ -123,6 +125,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const selectedObjects = useMemo(
     () => compactObjectList(workspace.objects, selectedObjectIds),
     [selectedObjectIds, workspace.objects]
+  );
+  const keyConclusionCandidates = useMemo(
+    () =>
+      Object.values(workspace.objects).filter(
+        (object): object is Extract<MorphoObject, { type: "keyConclusion" }> =>
+          object.type === "keyConclusion" && object.visibility === "active"
+      ),
+    [workspace.objects]
   );
 
   const suggestions = useMemo(() => getSuggestionsForSelection(selectedObjects), [selectedObjects]);
@@ -1259,7 +1269,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         title: pendingConfirmation.conclusionTitle,
         body: pendingConfirmation.body,
         summary: pendingConfirmation.summary,
-        sourceObjectIds: [pendingConfirmation.sourceObjectId],
+        sourceObjectIds: pendingConfirmation.sourceObjectIds,
         citationIds: pendingConfirmation.citationIds,
         confidence: pendingConfirmation.confidence,
         state: pendingConfirmation.state,
@@ -1375,31 +1385,83 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     );
   }, [selectedObjects, setWorkspace]);
 
-  const handleSaveKeyConclusion = useCallback(() => {
-    const target = selectedObjects[0];
-    if (!target) {
-      return;
-    }
+  const handleSaveKeyConclusionFromResearchItem = useCallback(
+    (input: { researchObjectId: string; sourceKind: "finding" | "opportunity" | "constraint" | "openQuestion" | "evidence"; index: number }) => {
+      const research = workspace.objects[input.researchObjectId];
+      if (!research || research.type !== "research") {
+        return;
+      }
 
-    const draft = buildKeyConclusionDraftFromObject(target);
-    if (!draft) {
-      return;
-    }
+      const draftResult = buildKeyConclusionDraftFromResearchSource(workspace, input.researchObjectId, {
+        kind: input.sourceKind,
+        index: input.index
+      });
+      if (draftResult.status !== "ready") {
+        setAiOpen(true);
+        setAiDraft(draftResult.reason);
+        return;
+      }
 
+      setAiOpen(true);
+      setTaskMode("chatAnalysis");
+      setPendingConfirmation({
+        kind: "createKeyConclusion",
+        sourceObjectIds: draftResult.draft.sourceObjectIds,
+        sourceTitle: research.title,
+        conclusionTitle: draftResult.draft.title,
+        body: draftResult.draft.body,
+        summary: draftResult.draft.summary,
+        citationIds: draftResult.draft.citationIds,
+        confidence: draftResult.draft.confidence,
+        state: draftResult.draft.state,
+        note: draftResult.draft.note
+      });
+    },
+    [workspace]
+  );
+
+  const handleCopyItemToDraft = useCallback((text: string) => {
     setAiOpen(true);
-    setPendingConfirmation({
-      kind: "createKeyConclusion",
-      sourceObjectId: target.id,
-      sourceTitle: target.title,
-      conclusionTitle: draft.title,
-      body: draft.body,
-      summary: draft.summary,
-      citationIds: getObjectCitationIds(target),
-      confidence: draft.confidence,
-      state: draft.state,
-      note: draft.note
-    });
-  }, [selectedObjects]);
+    setTaskMode("chatAnalysis");
+    setWorkIntent("discussion");
+    setAiDraft(text);
+  }, []);
+
+  const handleContinueQuestion = useCallback((text: string) => {
+    setAiOpen(true);
+    setTaskMode("chatAnalysis");
+    setWorkIntent("discussion");
+    setAiDraft(`请继续追问：${text}`);
+  }, []);
+
+  const handleSetKeyConclusionState = useCallback(
+    (keyConclusionId: string, nextState: "active" | "needsVerification" | "superseded" | "archived", supersededById?: string) => {
+      setWorkspace((current) => {
+        const result = setKeyConclusionState(current, keyConclusionId, nextState, {
+          supersededById,
+          reason: "用户在底部详情栏中明确修改关键结论状态。"
+        });
+        return result.workspace;
+      });
+    },
+    [setWorkspace]
+  );
+
+  const handleUpdatePendingKeyConclusion = useCallback(
+    (patch: Partial<Extract<PendingAiConfirmation, { kind: "createKeyConclusion" }>>) => {
+      setPendingConfirmation((current) => {
+        if (!current || current.kind !== "createKeyConclusion") {
+          return current;
+        }
+
+        return {
+          ...current,
+          ...patch
+        };
+      });
+    },
+    []
+  );
 
   const handleSetImageRole = useCallback(
     (role: ImageRole) => {
@@ -1491,6 +1553,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onSaveResearchProposalDraft={handleSaveResearchProposalDraft}
         onSaveDesignDefinitionProposalDraft={handleSaveDesignDefinitionProposalDraft}
         onSaveConceptDirectionProposalDraft={handleSaveConceptDirectionProposalDraft}
+        onUpdatePendingKeyConclusion={handleUpdatePendingKeyConclusion}
         onConfirmPending={handleConfirmPending}
         onCancelPending={() => setPendingConfirmation(null)}
         onFailureRetry={() => setShowFailure(false)}
@@ -1509,7 +1572,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onSetDirectionPrimary={handleSetDirectionPrimary}
         onSetDirectionAlternative={handleSetDirectionAlternative}
         onRestoreDirectionAsAlternative={handleRestoreDirectionAsAlternative}
-        onSaveKeyConclusion={handleSaveKeyConclusion}
+        keyConclusionCandidates={keyConclusionCandidates}
+        onSaveKeyConclusionFromResearchItem={handleSaveKeyConclusionFromResearchItem}
+        onCopyItemToDraft={handleCopyItemToDraft}
+        onContinueQuestion={handleContinueQuestion}
+        onSetKeyConclusionState={handleSetKeyConclusionState}
         onSetImageRole={handleSetImageRole}
       />
     </main>

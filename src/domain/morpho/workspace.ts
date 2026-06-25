@@ -61,6 +61,47 @@ export type CreateKeyConclusionResult = {
   keyConclusion: KeyConclusionObject;
 };
 
+export type ResearchKeyConclusionSource =
+  | {
+      kind: "finding" | "opportunity" | "constraint" | "openQuestion";
+      index: number;
+    }
+  | {
+      kind: "evidence";
+      index: number;
+    };
+
+export type KeyConclusionDraftFromResearchResult =
+  | {
+      status: "ready";
+      draft: {
+        title: string;
+        body: string;
+        summary: string;
+        sourceObjectIds: MorphoObjectId[];
+        citationIds: string[];
+        confidence: KeyConclusionObject["confidence"];
+        state?: "active" | "needsVerification";
+        note: string;
+      };
+    }
+  | {
+      status: "blocked";
+      reason: string;
+    };
+
+export type SetKeyConclusionStateResult =
+  | {
+      status: "updated";
+      workspace: MorphoWorkspace;
+      keyConclusion: KeyConclusionObject;
+    }
+  | {
+      status: "blocked";
+      workspace: MorphoWorkspace;
+      reason: string;
+    };
+
 export function createInitialWorkspace(): MorphoWorkspace {
   return reconcileWorkspaceDerivedState(structuredClone(nightrailWorkspace));
 }
@@ -586,6 +627,184 @@ export function createKeyConclusion(
     workspace: nextWorkspace,
     keyConclusion
   };
+}
+
+export function buildKeyConclusionDraftFromResearchSource(
+  workspace: MorphoWorkspace,
+  researchObjectId: MorphoObjectId,
+  source: ResearchKeyConclusionSource
+): KeyConclusionDraftFromResearchResult {
+  const research = workspace.objects[researchObjectId];
+  if (!research || research.type !== "research") {
+    return {
+      status: "blocked",
+      reason: "研究对象不存在。"
+    };
+  }
+
+  if (source.kind === "evidence") {
+    const evidence = research.evidence?.[source.index];
+    if (!evidence) {
+      return {
+        status: "blocked",
+        reason: "指定证据不存在。"
+      };
+    }
+
+    return {
+      status: "ready",
+      draft: {
+        title: truncateForTitle(evidence.claim, "关键结论"),
+        summary: evidence.claim,
+        body: evidence.claim,
+        sourceObjectIds: evidence.sourceObjectIds.filter((sourceObjectId) => Boolean(workspace.objects[sourceObjectId])),
+        citationIds: [...evidence.citationIds],
+        confidence: evidence.confidence,
+        state: evidence.confidence === "needsVerification" ? "needsVerification" : "active",
+        note: `用户从研究对象“${research.title}”的第 ${source.index + 1} 条证据中保留关键结论。`
+      }
+    };
+  }
+
+  const content = getResearchListItem(research, source.kind, source.index);
+  if (!content) {
+    return {
+      status: "blocked",
+      reason: "指定研究条目不存在。"
+    };
+  }
+
+  const confidence = source.kind === "openQuestion" ? "needsVerification" : "partial";
+
+  return {
+    status: "ready",
+    draft: {
+      title: truncateForTitle(content, "关键结论"),
+      summary: content,
+      body: content,
+      sourceObjectIds: [research.id],
+      citationIds: [...(research.provenance?.citationIds ?? [])],
+      confidence,
+      state: confidence === "needsVerification" ? "needsVerification" : "active",
+      note: `用户从研究对象“${research.title}”的${formatResearchSourceKind(source.kind)}第 ${
+        source.index + 1
+      }条中保留关键结论。`
+    }
+  };
+}
+
+export function setKeyConclusionState(
+  workspace: MorphoWorkspace,
+  objectId: MorphoObjectId,
+  nextState: KeyConclusionObject["state"],
+  options: {
+    reason?: string;
+    supersededById?: MorphoObjectId;
+  } = {}
+): SetKeyConclusionStateResult {
+  const target = workspace.objects[objectId];
+  if (!target || target.type !== "keyConclusion") {
+    return {
+      status: "blocked",
+      workspace,
+      reason: "目标关键结论不存在。"
+    };
+  }
+
+  if (nextState === "superseded") {
+    if (!options.supersededById) {
+      return {
+        status: "blocked",
+        workspace,
+        reason: "将关键结论标记为已替代时，必须提供 supersededById。"
+      };
+    }
+
+    const replacement = workspace.objects[options.supersededById];
+    if (!replacement || replacement.type !== "keyConclusion" || replacement.id === target.id) {
+      return {
+        status: "blocked",
+        workspace,
+        reason: "supersededById 必须指向另一个关键结论对象。"
+      };
+    }
+  }
+
+  const now = new Date().toISOString();
+  const updatedConclusion: KeyConclusionObject = {
+    ...target,
+    state: nextState,
+    supersededById: nextState === "superseded" ? options.supersededById : undefined,
+    updatedAt: now
+  };
+
+  const nextWorkspace = reconcileWorkspaceDerivedState({
+    ...workspace,
+    objects: {
+      ...workspace.objects,
+      [target.id]: updatedConclusion
+    },
+    decisionRecords: [
+      ...workspace.decisionRecords,
+      {
+        id: makeDecisionId(workspace, "setKeyConclusionState", target.id),
+        kind: "setKeyConclusionState",
+        createdAt: now,
+        summary: `更新关键结论状态：${target.title} → ${nextState}`,
+        reason: options.reason,
+        objectSnapshot: snapshotObject(updatedConclusion),
+        relatedObjectIds:
+          nextState === "superseded" && options.supersededById
+            ? [target.id, options.supersededById]
+            : [target.id]
+      }
+    ]
+  });
+
+  return {
+    status: "updated",
+    workspace: nextWorkspace,
+    keyConclusion: nextWorkspace.objects[target.id] as KeyConclusionObject
+  };
+}
+
+function getResearchListItem(
+  research: Extract<MorphoObject, { type: "research" }>,
+  kind: Exclude<ResearchKeyConclusionSource["kind"], "evidence">,
+  index: number
+): string | undefined {
+  switch (kind) {
+    case "finding":
+      return research.findings[index];
+    case "opportunity":
+      return research.opportunities[index];
+    case "constraint":
+      return research.constraints[index];
+    case "openQuestion":
+      return research.openQuestions[index];
+  }
+}
+
+function formatResearchSourceKind(kind: Exclude<ResearchKeyConclusionSource["kind"], "evidence">): string {
+  switch (kind) {
+    case "finding":
+      return "发现";
+    case "opportunity":
+      return "机会点";
+    case "constraint":
+      return "约束";
+    case "openQuestion":
+      return "待验证问题";
+  }
+}
+
+function truncateForTitle(input: string, fallback: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return fallback;
+  }
+
+  return trimmed.length > 28 ? `${trimmed.slice(0, 28)}...` : trimmed;
 }
 
 export function createDeliveryReference(

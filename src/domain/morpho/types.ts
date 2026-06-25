@@ -283,6 +283,7 @@ export type DeliveryReference = {
 
 export type DecisionKind =
   | "createKeyConclusion"
+  | "setKeyConclusionState"
   | "applyDesignDefinition"
   | "applyConceptDirection"
   | "setDefaultReference"

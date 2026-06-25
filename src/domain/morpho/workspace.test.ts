@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   assembleAiContext,
+  buildKeyConclusionDraftFromResearchSource,
   createKeyConclusion,
   createAiDraftFromSuggestion,
   createBlankWorkspace,
@@ -13,6 +14,7 @@ import {
   migrateWorkspaceToCurrentSchema,
   setConceptDirectionStatus,
   setDefaultReference,
+  setKeyConclusionState,
   setImageRole,
   updateCanvasInstancePosition
 } from "./workspace";
@@ -100,6 +102,127 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.workspace.workingState.openQuestionIds).toContain(result.keyConclusion.id);
     expect(result.workspace.stageRecords.research.savedObjectIds).toContain(result.keyConclusion.id);
     expect(result.workspace.decisionRecords.at(-1)?.kind).toBe("createKeyConclusion");
+  });
+
+  it("builds key conclusion drafts from exact research items and evidence bindings", () => {
+    const workspace = createInitialWorkspace();
+    const research = workspace.objects["research-night-path"];
+    if (!research || research.type !== "research") {
+      throw new Error("Expected seed research object.");
+    }
+
+    const enrichedWorkspace = {
+      ...workspace,
+      objects: {
+        ...workspace.objects,
+        "research-night-path": {
+          ...research,
+          findings: [...research.findings, "第二条发现：夜间转向点比终点扶手更需要连续导向。"],
+          evidence: [
+            {
+              claim: "证据 A：连续导向优先于单点支撑。",
+              sourceObjectIds: ["research-night-path", "file-course-brief"],
+              citationIds: ["citation-research-a"],
+              confidence: "supported" as const
+            },
+            {
+              claim: "证据 B：转角区域需要更柔和的触达线索。",
+              sourceObjectIds: ["file-path-references"],
+              citationIds: ["citation-research-b"],
+              confidence: "needsVerification" as const
+            }
+          ]
+        }
+      }
+    };
+
+    const findingDraft = buildKeyConclusionDraftFromResearchSource(enrichedWorkspace, "research-night-path", {
+      kind: "finding",
+      index: 1
+    });
+    expect(findingDraft.status).toBe("ready");
+    if (findingDraft.status !== "ready") {
+      throw new Error("Expected finding draft to be ready.");
+    }
+    expect(findingDraft.draft.summary).toBe("第二条发现：夜间转向点比终点扶手更需要连续导向。");
+    expect(findingDraft.draft.body).toBe("第二条发现：夜间转向点比终点扶手更需要连续导向。");
+    expect(findingDraft.draft.sourceObjectIds).toEqual(["research-night-path"]);
+    expect(findingDraft.draft.citationIds).toEqual([]);
+
+    const evidenceDraft = buildKeyConclusionDraftFromResearchSource(enrichedWorkspace, "research-night-path", {
+      kind: "evidence",
+      index: 1
+    });
+    expect(evidenceDraft.status).toBe("ready");
+    if (evidenceDraft.status !== "ready") {
+      throw new Error("Expected evidence draft to be ready.");
+    }
+    expect(evidenceDraft.draft.summary).toBe("证据 B：转角区域需要更柔和的触达线索。");
+    expect(evidenceDraft.draft.sourceObjectIds).toEqual(["file-path-references"]);
+    expect(evidenceDraft.draft.citationIds).toEqual(["citation-research-b"]);
+    expect(evidenceDraft.draft.confidence).toBe("needsVerification");
+    expect(evidenceDraft.draft.state).toBe("needsVerification");
+  });
+
+  it("reconciles active key conclusions when their state changes", () => {
+    const workspace = createInitialWorkspace();
+
+    const needsVerification = setKeyConclusionState(workspace, "insight-continuous-support", "needsVerification", {
+      reason: "需要复核该结论是否仍然成立。"
+    });
+    expect(needsVerification.status).toBe("updated");
+    if (needsVerification.status !== "updated") {
+      throw new Error("Expected key conclusion state update.");
+    }
+    expect(needsVerification.workspace.objects["insight-continuous-support"]).toMatchObject({
+      state: "needsVerification"
+    });
+    expect(needsVerification.workspace.workingState.activeKeyConclusionIds).not.toContain("insight-continuous-support");
+
+    const superseded = setKeyConclusionState(
+      needsVerification.workspace,
+      "insight-continuous-support",
+      "superseded",
+      {
+        supersededById: "insight-nonmedical",
+        reason: "已有更新结论替代。"
+      }
+    );
+    expect(superseded.status).toBe("updated");
+    if (superseded.status !== "updated") {
+      throw new Error("Expected superseded update.");
+    }
+    expect(superseded.workspace.objects["insight-continuous-support"]).toMatchObject({
+      state: "superseded",
+      supersededById: "insight-nonmedical"
+    });
+    expect(superseded.workspace.workingState.activeKeyConclusionIds).not.toContain("insight-continuous-support");
+
+    const restored = setKeyConclusionState(superseded.workspace, "insight-continuous-support", "active", {
+      reason: "重新确认该结论依然成立。"
+    });
+    expect(restored.status).toBe("updated");
+    if (restored.status !== "updated") {
+      throw new Error("Expected restore update.");
+    }
+    expect(restored.workspace.objects["insight-continuous-support"]).toMatchObject({
+      state: "active",
+      supersededById: undefined
+    });
+    expect(restored.workspace.workingState.activeKeyConclusionIds).toContain("insight-continuous-support");
+  });
+
+  it("blocks superseded state changes when the replacement key conclusion is missing", () => {
+    const workspace = createInitialWorkspace();
+
+    const result = setKeyConclusionState(workspace, "insight-continuous-support", "superseded");
+
+    expect(result.status).toBe("blocked");
+    if (result.status !== "blocked") {
+      throw new Error("Expected superseded update to be blocked.");
+    }
+    expect(result.reason).toContain("supersededById");
+    expect(result.workspace).toBe(workspace);
   });
 
   it("hides objects without deleting objects, relations, or creating decision records", () => {
