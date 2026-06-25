@@ -21,7 +21,7 @@ MORPHO_MIMO_API_KEY=
 MORPHO_MIMO_BASE_URL=https://api.xiaomimimo.com/v1
 MORPHO_MIMO_TEXT_MODEL=mimo-v2.5-pro
 MORPHO_MIMO_MULTIMODAL_MODEL=mimo-v2.5
-MORPHO_MIMO_WEB_SEARCH_ENABLED=false
+MORPHO_MIMO_WEB_SEARCH_ENABLED=true
 ```
 
 `MORPHO_MIMO_API_KEYS` is a comma-separated primary/fallback key list. The singular `MORPHO_MIMO_API_KEY` remains a compatibility fallback only when the plural variable is empty. Existing local environments may still use `MORPHO_MIMO_API_KEY_2` and `MORPHO_MIMO_MODEL`; both are read as compatibility fallbacks, but new setups should use `MORPHO_MIMO_API_KEYS` and `MORPHO_MIMO_MULTIMODAL_MODEL`.
@@ -29,10 +29,10 @@ MORPHO_MIMO_WEB_SEARCH_ENABLED=false
 MiMo chat behavior:
 
 - ordinary text uses `MORPHO_MIMO_TEXT_MODEL`;
-- explicit image-understanding requests with selected active images use `MORPHO_MIMO_MULTIMODAL_MODEL`;
-- image input is limited to selected active IndexedDB image assets, max 3 images, resized to max side 1600px and compressed toward 1.5MB each;
+- selected active images in chat/research use `MORPHO_MIMO_MULTIMODAL_MODEL`;
+- image input is limited to selected active IndexedDB image assets. Small selections are sent as individual compressed images; larger selections are packed into one or more contact sheets so every selected image is represented without exposing a user-facing upload count limit;
 - hidden images, unselected images, default references, and whole-canvas screenshots are not sent by default;
-- web search is requested only when the user asks for search/verification/current/source information and `MORPHO_MIMO_WEB_SEARCH_ENABLED=true`;
+- when `MORPHO_MIMO_WEB_SEARCH_ENABLED=true`, chat/research requests provide MiMo native `web_search` and the model decides whether to use it. Image generation never receives web search tools;
 - source links are shown only when MiMo returns citation/annotation fields.
 
 Image generation through GrsAI:

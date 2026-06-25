@@ -178,7 +178,7 @@ Decision: MiMo stream normalization emits `delta`, `citations`, `done`, and `err
 
 Reason: Morpho must show sources for online-assisted work, but it must not fabricate citations from plain assistant text.
 
-Boundary: web search is sent only when user intent requests search/verification/current information and `MORPHO_MIMO_WEB_SEARCH_ENABLED=true`. The server adds one native `web_search` request with bounded parameters. If the provider returns no citation annotations, Morpho records no source list and local analysis still continues.
+Boundary: when `MORPHO_MIMO_WEB_SEARCH_ENABLED=true`, chat/research requests provide MiMo native `web_search` and let the model decide whether to use it. `imageGeneration` never receives web search tools. If the provider returns no citation annotations, Morpho records no source list and local analysis still continues.
 
 ## 2026-06-25: Persist Anchored Canvas Camera
 
@@ -187,3 +187,19 @@ Decision: custom wheel zoom is calculated around the cursor page point and the f
 Reason: the canvas should zoom predictably and restore the user’s last view after refresh without writing workspace state on every wheel event.
 
 Boundary: camera persistence remains view/UI state. It does not affect object semantics, relationships, direction state, default reference, or delivery inclusion.
+
+## 2026-06-25: Use Adaptive MiMo Visual Input Packs
+
+Decision: selected active images in chat/research are packed into MiMo attachments adaptively. Small selections are sent as individual compressed images; larger selections are represented by generated contact sheets that cover all selected images.
+
+Reason: Morpho should not expose a user-facing maximum image count for analysis, and it must not silently drop selected references.
+
+Boundary: only selected active image assets are read. Hidden images, unselected old images, default references, whole-canvas screenshots, Base64 payloads, and contact sheet binaries are not stored in workspace/localStorage.
+
+## 2026-06-25: Let MiMo Decide Whether to Use Web Search
+
+Decision: when server configuration enables MiMo web search, chat/research requests provide the native `web_search` tool and let the model decide whether the current request needs external verification or source supplementation.
+
+Reason: online assistance should support the current analysis without adding a separate user-facing research configuration flow.
+
+Boundary: `imageGeneration` never receives web search tools. Morpho only persists provider citation snapshots and never fabricates sources from assistant prose.

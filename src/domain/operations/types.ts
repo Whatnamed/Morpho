@@ -27,6 +27,7 @@ export type OperationInputSnapshot = {
     type: string;
     title: string;
     summary: string;
+    body?: string;
   }>;
 };
 
@@ -62,6 +63,13 @@ export type SourceCitation = {
   retrievedAt: string;
 };
 
+export type ResearchEvidence = {
+  claim: string;
+  sourceObjectIds: OperationObjectId[];
+  citationIds: SourceCitationId[];
+  confidence: "supported" | "partial" | "needsVerification";
+};
+
 export type ResearchAnalysisProposal = {
   id: ArtifactProposalId;
   type: "researchAnalysis";
@@ -73,6 +81,7 @@ export type ResearchAnalysisProposal = {
   opportunities: string[];
   constraints: string[];
   openQuestions: string[];
+  evidence: ResearchEvidence[];
   sourceObjectIds: OperationObjectId[];
   citationIds: SourceCitationId[];
   sourceChangedWarning?: string;

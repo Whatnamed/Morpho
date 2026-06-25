@@ -7,6 +7,7 @@ import {
   completeImageGenerationOperation,
   createImageGenerationOperation,
   createResearchOperation,
+  detectResearchSourceChanges,
   failImageGenerationOperation,
   interruptActiveOperations,
   markImageGenerationOperationSubmitted,
@@ -226,5 +227,111 @@ describe("Morpho Operation Runtime", () => {
         clientRequestId: "client-request-interrupted"
       }
     });
+  });
+
+  it("persists research evidence and provenance when applying a proposal", () => {
+    const workspace = {
+      ...createBlankWorkspace("project-op"),
+      objects: {
+        "text-source": {
+          id: "text-source",
+          type: "text" as const,
+          title: "Source",
+          summary: "Original summary",
+          body: "Original body",
+          createdBy: "user" as const,
+          visibility: "active" as const
+        }
+      }
+    };
+    const created = createResearchOperation(workspace, {
+      userInput: "research selected materials",
+      selectedObjectIds: ["text-source"],
+      allowWebSearch: true
+    });
+    const proposed = recordResearchAnalysisProposal(created.workspace, {
+      operationId: created.operation.id,
+      title: "Structured research",
+      summary: "Structured summary.",
+      findings: ["Finding A"],
+      opportunities: ["Opportunity A"],
+      constraints: ["Constraint A"],
+      openQuestions: ["Question A"],
+      evidence: [
+        {
+          claim: "Finding A",
+          sourceObjectIds: ["text-source"],
+          citationUrls: ["https://example.com/source"],
+          confidence: "partial"
+        }
+      ],
+      sourceObjectIds: ["text-source"],
+      citations: [
+        {
+          title: "Source citation",
+          url: "https://example.com/source",
+          domain: "example.com"
+        }
+      ]
+    });
+
+    const applied = applyResearchAnalysisProposal(proposed.workspace, proposed.proposal.id, {
+      position: { x: 100, y: 120 }
+    });
+
+    expect(applied.status).toBe("updated");
+    if (applied.status === "updated") {
+      expect(applied.researchObject.evidence).toEqual([
+        {
+          claim: "Finding A",
+          sourceObjectIds: ["text-source"],
+          citationIds: proposed.proposal.citationIds,
+          confidence: "partial"
+        }
+      ]);
+      expect(applied.researchObject.provenance).toEqual({
+        operationId: created.operation.id,
+        proposalId: proposed.proposal.id,
+        sourceObjectIds: ["text-source"],
+        citationIds: proposed.proposal.citationIds,
+        didUseWebSearch: true
+      });
+    }
+  });
+
+  it("detects changed research sources before saving a proposal", () => {
+    const workspace = {
+      ...createBlankWorkspace("project-op"),
+      objects: {
+        "text-source": {
+          id: "text-source",
+          type: "text" as const,
+          title: "Source",
+          summary: "Original summary",
+          body: "Original body",
+          createdBy: "user" as const,
+          visibility: "active" as const
+        }
+      }
+    };
+    const created = createResearchOperation(workspace, {
+      userInput: "research selected materials",
+      selectedObjectIds: ["text-source"],
+      allowWebSearch: true
+    });
+    const changed = {
+      ...created.workspace,
+      objects: {
+        ...created.workspace.objects,
+        "text-source": {
+          ...created.workspace.objects["text-source"],
+          summary: "Changed summary",
+          body: "Changed body",
+          visibility: "hidden" as const
+        }
+      }
+    };
+
+    expect(detectResearchSourceChanges(changed, created.operation.id)).toContain("来源已变化");
   });
 });

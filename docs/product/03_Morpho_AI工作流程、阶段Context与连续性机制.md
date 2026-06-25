@@ -306,7 +306,11 @@ Compare 是任意 Context 中可发起的局部比较操作，不是固定区域
 
 Operation 中断或刷新后，不得假装任务仍在后台运行。系统保留输入快照、已完成步骤和已取得引用，将未完成任务标记为“已中断”，等待用户明确重试或取消。
 
-MiMo 视觉输入和 MiMo web search 都必须以官方协议和真实验证为准。未验证前，系统只能保留能力边界和降级提示，不能声称已经完成真实看图或联网检索。
+MiMo 视觉输入和 MiMo web search 都必须以官方协议和真实验证为准。当前实现中，chatAnalysis 与 researchOperation 可发送显式选中的 active 图片像素；图片较多时系统可自动生成总览图覆盖全部选中资料，不向用户暴露图片数量限制，也不静默丢弃参考。隐藏图片、未选旧图和整张画布不默认进入输入。
+
+当 `MORPHO_MIMO_WEB_SEARCH_ENABLED=true` 时，chatAnalysis 与 researchOperation 可向 MiMo 提供原生 web_search 工具，由模型判断是否需要联网验证、补充案例、查找当前信息或提供外部来源。普通创意发散、文字改写和不依赖外部事实的视觉讨论不应主动联网。imageGeneration 永不启用 web_search。
+
+聊天、ResearchAnalysisProposal 和正式 ResearchObject 只能展示 provider 返回的真实 citation snapshot；不得从普通模型文本里猜测或伪造来源。
 
 ---
 

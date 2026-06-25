@@ -10,7 +10,7 @@ import {
 } from "./aiAttachments";
 
 describe("workspace MiMo attachment planning", () => {
-  it("selects only active image assets and limits hidden/unreadable images", () => {
+  it("selects all active image assets without silently truncating hidden or unreadable images", () => {
     const workspace = withImages(createBlankWorkspace("project-test"));
 
     expect(
@@ -21,32 +21,33 @@ describe("workspace MiMo attachment planning", () => {
         "image-active-b",
         "image-missing-asset",
         "image-active-c",
-        "image-active-d"
+        "image-active-d",
+        "image-active-e"
       ])
-    ).toEqual(["image-active-a", "image-active-b", "image-active-c"]);
+    ).toEqual(["image-active-a", "image-active-b", "image-active-c", "image-active-d", "image-active-e"]);
   });
 
-  it("requires explicit image-understanding intent before sending pixels to MiMo", () => {
+  it("uses selected active images for chat and research, but never for image generation chat route", () => {
     const workspace = withImages(createBlankWorkspace("project-test"));
     const selectedObjects = ["image-active-a"].map((id) => workspace.objects[id]);
 
     expect(
       shouldAttachImagesForMiMo({
-        draft: "你好，继续聊一下项目",
-        taskMode: "chatAnalysis",
-        selectedObjects
-      })
-    ).toBe(false);
-    expect(
-      shouldAttachImagesForMiMo({
-        draft: "分析这张图的比例和结构问题",
+        draft: "hello",
         taskMode: "chatAnalysis",
         selectedObjects
       })
     ).toBe(true);
     expect(
       shouldAttachImagesForMiMo({
-        draft: "分析这张图的比例和结构问题",
+        draft: "research these materials",
+        taskMode: "researchOperation",
+        selectedObjects
+      })
+    ).toBe(true);
+    expect(
+      shouldAttachImagesForMiMo({
+        draft: "generate a new image",
         taskMode: "imageGeneration",
         selectedObjects
       })
@@ -68,15 +69,16 @@ describe("workspace MiMo attachment planning", () => {
     });
   });
 
-  it("keeps web search explicit and disabled for image generation", () => {
-    expect(buildWebSearchOptions({ draft: "请联网核实这个案例来源", taskMode: "researchOperation" })).toEqual({
+  it("offers web search to chat and research modes while keeping image generation isolated", () => {
+    expect(buildWebSearchOptions({ draft: "ordinary question", taskMode: "chatAnalysis" })).toEqual({
       enabled: true,
-      maxKeyword: 2,
-      forceSearch: true,
-      limit: 3
+      forceSearch: false
     });
-    expect(buildWebSearchOptions({ draft: "请联网核实这个案例来源", taskMode: "imageGeneration" })).toBeUndefined();
-    expect(buildWebSearchOptions({ draft: "普通解释一下", taskMode: "chatAnalysis" })).toBeUndefined();
+    expect(buildWebSearchOptions({ draft: "please verify latest source", taskMode: "researchOperation" })).toEqual({
+      enabled: true,
+      forceSearch: true
+    });
+    expect(buildWebSearchOptions({ draft: "please verify latest source", taskMode: "imageGeneration" })).toBeUndefined();
   });
 });
 
@@ -88,6 +90,7 @@ function withImages(workspace: MorphoWorkspace): MorphoWorkspace {
       "asset-active-b": imageAsset("asset-active-b"),
       "asset-active-c": imageAsset("asset-active-c"),
       "asset-active-d": imageAsset("asset-active-d"),
+      "asset-active-e": imageAsset("asset-active-e"),
       "asset-hidden": imageAsset("asset-hidden")
     },
     objects: {
@@ -95,13 +98,14 @@ function withImages(workspace: MorphoWorkspace): MorphoWorkspace {
       "image-active-b": imageObject("image-active-b", "asset-active-b", "active"),
       "image-active-c": imageObject("image-active-c", "asset-active-c", "active"),
       "image-active-d": imageObject("image-active-d", "asset-active-d", "active"),
+      "image-active-e": imageObject("image-active-e", "asset-active-e", "active"),
       "image-hidden": imageObject("image-hidden", "asset-hidden", "hidden"),
       "image-missing-asset": imageObject("image-missing-asset", "asset-missing", "active"),
       "text-a": {
         id: "text-a",
         type: "text",
-        title: "文字",
-        summary: "文字对象",
+        title: "Text",
+        summary: "Text object",
         createdBy: "user",
         visibility: "active",
         body: "hello"

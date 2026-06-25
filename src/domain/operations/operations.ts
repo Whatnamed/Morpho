@@ -3,6 +3,7 @@ import type {
   ImageGenerationOperationMetadata,
   OperationRecord,
   OperationStatus,
+  ResearchEvidence,
   ResearchAnalysisProposal,
   SourceCitation
 } from "./types";
@@ -27,6 +28,12 @@ export type RecordResearchProposalInput = {
   opportunities: string[];
   constraints: string[];
   openQuestions: string[];
+  evidence?: Array<{
+    claim: string;
+    sourceObjectIds: string[];
+    citationUrls: string[];
+    confidence: ResearchEvidence["confidence"];
+  }>;
   sourceObjectIds: string[];
   citations: Array<{
     title: string;
@@ -96,7 +103,8 @@ export function createResearchOperation(
       id: object.id,
       type: object.type,
       title: object.title,
-      summary: object.summary
+      summary: object.summary,
+      body: "body" in object && typeof object.body === "string" ? object.body : undefined
     }));
   const operation: OperationRecord = {
     id: operationId,
@@ -185,7 +193,8 @@ export function createImageGenerationOperation(
       id: object.id,
       type: object.type,
       title: object.title,
-      summary: object.summary
+      summary: object.summary,
+      body: "body" in object && typeof object.body === "string" ? object.body : undefined
     }));
   const operation: OperationRecord = {
     id: input.operationId,
@@ -463,6 +472,13 @@ export function recordResearchAnalysisProposal(
       retrievedAt: now
     };
   });
+  const citationIdByUrl = new Map(citationEntries.filter((citation) => citation.url).map((citation) => [citation.url, citation.id]));
+  const evidence: ResearchEvidence[] = (input.evidence ?? []).map((item) => ({
+    claim: item.claim,
+    sourceObjectIds: item.sourceObjectIds.filter((sourceObjectId) => input.sourceObjectIds.includes(sourceObjectId)),
+    citationIds: item.citationUrls.map((url) => citationIdByUrl.get(url)).filter((id): id is string => Boolean(id)),
+    confidence: item.confidence
+  }));
   const proposal: ResearchAnalysisProposal = {
     id: proposalId,
     type: "researchAnalysis",
@@ -474,6 +490,7 @@ export function recordResearchAnalysisProposal(
     opportunities: [...input.opportunities],
     constraints: [...input.constraints],
     openQuestions: [...input.openQuestions],
+    evidence,
     sourceObjectIds: [...input.sourceObjectIds],
     citationIds: citationEntries.map((citation) => citation.id),
     sourceChangedWarning: input.sourceChangedWarning,
@@ -557,7 +574,15 @@ export function applyResearchAnalysisProposal(
     findings: [...proposal.findings],
     opportunities: [...proposal.opportunities],
     constraints: [...proposal.constraints],
-    openQuestions: [...proposal.openQuestions]
+    openQuestions: [...proposal.openQuestions],
+    evidence: [...proposal.evidence],
+    provenance: {
+      operationId: proposal.operationId,
+      proposalId: proposal.id,
+      sourceObjectIds: [...proposal.sourceObjectIds],
+      citationIds: [...proposal.citationIds],
+      didUseWebSearch: proposal.citationIds.length > 0
+    }
   };
   const relations: MorphoRelation[] = proposal.sourceObjectIds
     .filter((sourceObjectId) => Boolean(workspace.objects[sourceObjectId]))
@@ -622,6 +647,36 @@ export function applyResearchAnalysisProposal(
       }
     }
   };
+}
+
+export function detectResearchSourceChanges(workspace: MorphoWorkspace, operationId: string): string | undefined {
+  const operation = workspace.operations[operationId];
+  if (!operation) {
+    return undefined;
+  }
+
+  const changed: string[] = [];
+  for (const snapshot of operation.inputSnapshot.objectSnapshots) {
+    const current = workspace.objects[snapshot.id];
+    if (!current) {
+      changed.push(`${snapshot.title} 已被删除`);
+      continue;
+    }
+
+    if (current.visibility === "hidden") {
+      changed.push(`${snapshot.title} 已被隐藏`);
+    }
+
+    if (current.title !== snapshot.title || current.summary !== snapshot.summary) {
+      changed.push(`${snapshot.title} 的标题或摘要已变化`);
+    }
+
+    if (snapshot.body !== undefined && (!("body" in current) || current.body !== snapshot.body)) {
+      changed.push(`${snapshot.title} 的正文可能已变化`);
+    }
+  }
+
+  return changed.length > 0 ? `来源已变化，保存前请复核：${changed.join("；")}` : undefined;
 }
 
 function relationsBefore(index: number, sourceObjectIds: string[], objectId: string): MorphoRelation[] {

@@ -106,9 +106,9 @@ Text chat:
 - MiMo is called through an OpenAI-compatible streaming chat adapter using the server-side `api-key` header.
 - The browser receives normalized NDJSON stream events: `delta`, `citations`, `done`, and `error`.
 - Milestone 3 task routing uses explicit `taskMode` from the user send action. Regex and suggestion chips may recommend a task mode, but they are not execution authority.
-- For `chatAnalysis` and `researchOperation`, explicit image-understanding requests can send up to 3 selected active image assets. The browser reads and compresses those images from IndexedDB, and the server sends them as OpenAI-compatible `image_url` content to the configured multimodal model.
+- For `chatAnalysis` and `researchOperation`, selected active image assets are read from IndexedDB and sent through an adaptive visual input pack. Small selections are sent as individual compressed images; larger selections are represented by one or more generated contact sheets so every selected image participates without a user-visible image count limit. The server sends the resulting images as OpenAI-compatible `image_url` content to the configured multimodal model.
 - Hidden images, unselected old images, default references, and whole-canvas screenshots are not sent by default.
-- MiMo web search is requested only when the browser sends explicit search/verification intent and `MORPHO_MIMO_WEB_SEARCH_ENABLED=true`. The server adds one native `web_search` tool request with `max_keyword <= 2` and `limit <= 3`.
+- When `MORPHO_MIMO_WEB_SEARCH_ENABLED=true`, `chatAnalysis` and `researchOperation` provide MiMo native `web_search` to the model. The model decides whether the current request needs external verification or source supplementation. `imageGeneration` never receives web search tools.
 - Citation snapshots are created only from provider citation/annotation fields. Morpho does not fabricate sources from normal assistant text.
 - `MORPHO_MIMO_API_KEYS` is preferred over `MORPHO_MIMO_API_KEY`; legacy `MORPHO_MIMO_API_KEY_2` and `MORPHO_MIMO_MODEL` are read only as compatibility fallbacks.
 
@@ -132,7 +132,7 @@ AI boundary:
 - AI can reply, analyze, suggest, and generate editable text or image results.
 - AI does not directly mutate domain state such as deletion, hidden state, direction status, default reference, delivery references, or project memory.
 - Image generation always creates a new image object and never overwrites a source image.
-- MiMo visual input is explicit and bounded: selected active images only, at most 3, compressed before upload, and never stored as Base64 in workspace/localStorage.
+- MiMo visual input is explicit and bounded by selected active images only. It is adaptively compressed or packed into contact sheets before upload, and never stored as Base64 in workspace/localStorage.
 - If image read/compression fails, the chat falls back to object metadata and user text and tells the user that pixels were not sent.
 
 ## Demo Project

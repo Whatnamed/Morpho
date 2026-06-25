@@ -1,4 +1,4 @@
-import type { ArtifactProposal, OperationRecord, SourceCitation } from "../operations/types";
+import type { ArtifactProposal, OperationRecord, ResearchEvidence, SourceCitation } from "../operations/types";
 
 export type MorphoObjectId = string;
 export type CanvasInstanceId = string;
@@ -130,6 +130,14 @@ export type ResearchObject = MorphoObjectBase & {
   opportunities: string[];
   constraints: string[];
   openQuestions: string[];
+  evidence?: ResearchEvidence[];
+  provenance?: {
+    operationId: string;
+    proposalId: string;
+    sourceObjectIds: MorphoObjectId[];
+    citationIds: string[];
+    didUseWebSearch: boolean;
+  };
 };
 
 export type InsightObject = MorphoObjectBase & {

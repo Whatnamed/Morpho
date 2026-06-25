@@ -7,7 +7,7 @@
 
 > **v3.1 原型前更新（2026-06-22）**：本轮将对象选择建议、确定性下一步建议、连续视觉发展、可选默认参考、交付准备边界、失败 / 重开体验正式写入正文并同步校验。
 
-> **Milestone 3 工程补充（2026-06-25）**：AI Operation Runtime 是对 03 / 04 / 05 的工程实现补充，不覆盖既有产品规则。Operation 是受控、有限步骤的工作流，不是无限自主 Agent Loop；Proposal 必须经用户确认后才可成为正式领域对象；联网搜索和真实视觉输入只有在官方协议与 smoke test 被验证后才可标记为已实现。
+> **Milestone 3 工程补充（2026-06-25）**：AI Operation Runtime 是对 03 / 04 / 05 的工程实现补充，不覆盖既有产品规则。Operation 是受控、有限步骤的工作流，不是无限自主 Agent Loop；Proposal 必须经用户确认后才可成为正式领域对象。M3.2 中，chat / research 可使用真实选中图片输入和 MiMo 原生 web_search；联网由模型在工具可用时判断是否需要，imageGeneration 永不启用联网工具。Citation 只来自 provider 返回的真实来源快照。
 
 ---
 

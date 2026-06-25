@@ -22,17 +22,17 @@ function createMiMoChatRequestWithKey(config: MiMoConfig, input: ProviderChatInp
       thinking: {
         type: "disabled"
       },
-      tools: input.webSearch?.enabled
-        ? [
-            {
-              type: "web_search",
-              max_keyword: input.webSearch.maxKeyword,
-              force_search: input.webSearch.forceSearch,
-              limit: input.webSearch.limit
-            }
-          ]
-        : undefined
+      tools: input.webSearch?.enabled ? [buildWebSearchTool(input.webSearch)] : undefined
     }
+  };
+}
+
+function buildWebSearchTool(webSearch: NonNullable<ProviderChatInput["webSearch"]>) {
+  return {
+    type: "web_search" as const,
+    ...(typeof webSearch.maxKeyword === "number" ? { max_keyword: webSearch.maxKeyword } : {}),
+    force_search: webSearch.forceSearch,
+    ...(typeof webSearch.limit === "number" ? { limit: webSearch.limit } : {})
   };
 }
 

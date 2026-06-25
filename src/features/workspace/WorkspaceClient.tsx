@@ -13,10 +13,12 @@ import {
   completeImageGenerationOperation,
   createImageGenerationOperation,
   createResearchOperation,
+  detectResearchSourceChanges,
   failImageGenerationOperation,
   markImageGenerationOperationSubmitted,
   recordResearchAnalysisProposal
 } from "@/domain/operations/operations";
+import { parseResearchAnalysisProposalPayload } from "@/domain/operations/researchProposal";
 import {
   assembleAiContext,
   createAiDraftFromSuggestion,
@@ -386,10 +388,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         explicitObjectIds: [],
         task: "research"
       });
+      const webSearch = buildWebSearchOptions({ draft, taskMode: "researchOperation" });
       const created = createResearchOperation(workspace, {
         userInput: draft,
         selectedObjectIds: context.objectIds,
-        allowWebSearch: false
+        allowWebSearch: Boolean(webSearch)
       });
       const operationId = created.operation.id;
       const now = new Date().toISOString();
@@ -397,7 +400,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       const assistantMessageId = `ai-assistant-research-${Date.now()}`;
       const controller = new AbortController();
       const objectSummaries = makeObjectSummaries(workspace, context.objectIds);
-      const webSearch = buildWebSearchOptions({ draft, taskMode: "researchOperation" });
 
       abortControllerRef.current = controller;
       setIsAiStreaming(true);
@@ -467,7 +469,26 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         });
         const assistantBody = [attachmentResult.warning, streamResult.text].filter(Boolean).join("\n\n");
 
-        const proposalTitle = `${workspace.project.title} · 研究与分析草案`;
+        const parsedProposal = parseResearchAnalysisProposalPayload(streamResult.text);
+        if (parsedProposal.status === "failed") {
+          const fallbackBody = [
+            assistantBody || "MiMo 没有返回可显示文本。",
+            "本次研究结果未能整理为可保存草案；你可以继续追问、补充要求或重试研究任务。"
+          ].join("\n\n");
+          setWorkspace((current) => {
+            const withMessage = updateAiMessage(current, assistantMessageId, fallbackBody, "done");
+            return streamResult.citations.length > 0
+              ? storeMessageCitations(withMessage, {
+                  messageId: assistantMessageId,
+                  operationId,
+                  citations: streamResult.citations
+                })
+              : withMessage;
+          });
+          return;
+        }
+
+        const proposalTitle = parsedProposal.proposal.title;
         const proposalId = `proposal-research-${operationId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         setWorkspace((current) => {
           const proposed = recordResearchAnalysisProposal(
@@ -475,14 +496,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             {
               proposalId,
               operationId,
-              title: proposalTitle,
-              summary: assistantBody || "基于当前本地资料形成的研究分析草案。",
-              findings: [assistantBody || "本轮未得到可展示的模型文本。"],
-              opportunities: [],
-              constraints: [],
-              openQuestions: [],
+              title: parsedProposal.proposal.title,
+              summary: parsedProposal.proposal.summary,
+              findings: parsedProposal.proposal.findings,
+              opportunities: parsedProposal.proposal.opportunities,
+              constraints: parsedProposal.proposal.constraints,
+              openQuestions: parsedProposal.proposal.openQuestions,
+              evidence: parsedProposal.proposal.evidence,
               sourceObjectIds: context.objectIds,
-              citations: streamResult.citations
+              citations: streamResult.citations,
+              sourceChangedWarning: detectResearchSourceChanges(current, operationId)
             }
           );
           return updateAiMessage(proposed.workspace, assistantMessageId, assistantBody || "MiMo 没有返回可显示文本。", "done", {

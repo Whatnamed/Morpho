@@ -42,7 +42,7 @@ describe("MiMo provider adapter", () => {
     expect(request.body.model).toBe("mimo-vision");
   });
 
-  it("adds native web_search tool params when authorized", () => {
+  it("adds native web_search tool when available without user-visible limits", () => {
     const request = createMiMoChatRequest({
       apiKeys: ["secret-key"],
       baseUrl: "https://mimo.example/v1",
@@ -56,18 +56,14 @@ describe("MiMo provider adapter", () => {
       capability: "text",
       webSearch: {
         enabled: true,
-        maxKeyword: 2,
-        forceSearch: true,
-        limit: 3
+        forceSearch: true
       }
     });
 
     expect(request.body.tools).toEqual([
       {
         type: "web_search",
-        max_keyword: 2,
-        force_search: true,
-        limit: 3
+        force_search: true
       }
     ]);
   });

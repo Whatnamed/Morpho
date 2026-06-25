@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { buildMorphoSystemPrompt, buildProviderMessages, validateAiRouteRequest } from "./request";
 
-describe("MiMo text route request conversion", () => {
+describe("MiMo chat route request conversion", () => {
   it("states when no image pixels are sent", () => {
     const prompt = buildMorphoSystemPrompt({
-      draft: "分析这张图",
+      draft: "Analyze this image",
       task: "general",
       taskMode: "chatAnalysis",
       messages: [],
@@ -13,8 +13,8 @@ describe("MiMo text route request conversion", () => {
         {
           id: "image-a",
           type: "image",
-          title: "参考图",
-          summary: "一张本地导入图片"
+          title: "Reference image",
+          summary: "A local imported image."
         }
       ],
       defaultReferenceStatus: "notRelevant",
@@ -33,9 +33,9 @@ describe("MiMo text route request conversion", () => {
     expect(prompt).toContain("不能声称完成真实视觉分析");
   });
 
-  it("keeps a sanitized future attachment boundary out of provider messages", () => {
+  it("keeps a sanitized attachment boundary out of provider messages", () => {
     const result = validateAiRouteRequest({
-      draft: "分析这张图",
+      draft: "Analyze this image",
       messages: [],
       objectSummaries: [],
       attachments: [
@@ -43,7 +43,9 @@ describe("MiMo text route request conversion", () => {
           id: "asset-a",
           kind: "image",
           objectId: "image-a",
+          objectIds: ["image-a"],
           mimeType: "image/png",
+          representation: "single",
           status: "metadataOnly",
           apiKey: "must-not-survive"
         }
@@ -58,7 +60,9 @@ describe("MiMo text route request conversion", () => {
           id: "asset-a",
           kind: "image",
           objectId: "image-a",
+          objectIds: ["image-a"],
           mimeType: "image/png",
+          representation: "single",
           status: "metadataOnly"
         }
       ]);
@@ -67,7 +71,7 @@ describe("MiMo text route request conversion", () => {
 
   it("converts ready image attachments to OpenAI-compatible image_url parts", () => {
     const messages = buildProviderMessages({
-      draft: "分析这张图",
+      draft: "Analyze this image",
       task: "general",
       taskMode: "chatAnalysis",
       messages: [],
@@ -77,31 +81,63 @@ describe("MiMo text route request conversion", () => {
           id: "asset-a",
           kind: "image",
           objectId: "image-a",
+          objectIds: ["image-a"],
           mimeType: "image/jpeg",
           dataUrl: "data:image/jpeg;base64,abc123",
+          representation: "single",
           status: "ready"
         }
       ]
     });
 
     expect(messages[0]?.content).toEqual([
-      { type: "text", text: "分析这张图" },
+      { type: "text", text: "Analyze this image" },
       { type: "image_url", image_url: { url: "data:image/jpeg;base64,abc123" } }
     ]);
   });
 
+  it("keeps contact sheet metadata for diagnostics without sending it as text", () => {
+    const result = validateAiRouteRequest({
+      draft: "Compare these images",
+      taskMode: "chatAnalysis",
+      messages: [],
+      objectSummaries: [],
+      attachments: [
+        {
+          id: "sheet-a",
+          kind: "image",
+          objectId: "image-a",
+          objectIds: ["image-a", "image-b", "image-c", "image-d"],
+          mimeType: "image/jpeg",
+          dataUrl: "data:image/jpeg;base64,abc123",
+          representation: "contactSheet",
+          status: "ready"
+        }
+      ]
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.value.attachments[0]).toMatchObject({
+        representation: "contactSheet",
+        objectIds: ["image-a", "image-b", "image-c", "image-d"]
+      });
+      expect(buildMorphoSystemPrompt(result.value)).toContain("自动生成的总览图");
+    }
+  });
+
   it("normalizes web search options only for non-image modes", () => {
     const result = validateAiRouteRequest({
-      draft: "请联网核实这个案例来源",
+      draft: "Verify the latest source",
       taskMode: "researchOperation",
       messages: [],
       objectSummaries: [],
       attachments: [],
       webSearch: {
         enabled: true,
-        maxKeyword: 9,
-        limit: 8,
-        forceSearch: true
+        forceSearch: true,
+        maxKeyword: 99,
+        limit: 99
       }
     });
 
@@ -109,10 +145,26 @@ describe("MiMo text route request conversion", () => {
     if (result.status === "ok") {
       expect(result.value.webSearch).toEqual({
         enabled: true,
-        maxKeyword: 2,
-        limit: 3,
-        forceSearch: true
+        forceSearch: true,
+        maxKeyword: 8,
+        limit: 10
       });
     }
+
+    expect(
+      validateAiRouteRequest({
+        draft: "Generate image",
+        taskMode: "imageGeneration",
+        messages: [],
+        objectSummaries: [],
+        attachments: [],
+        webSearch: { enabled: true, forceSearch: true }
+      })
+    ).toMatchObject({
+      status: "ok",
+      value: {
+        webSearch: undefined
+      }
+    });
   });
 });

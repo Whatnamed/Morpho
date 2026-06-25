@@ -38,9 +38,9 @@ export type ProviderChatInput = {
 
 export type ProviderWebSearchOptions = {
   enabled: boolean;
-  maxKeyword: number;
+  maxKeyword?: number;
   forceSearch: boolean;
-  limit: number;
+  limit?: number;
 };
 
 export type ProviderCitation = {
@@ -79,9 +79,9 @@ export type ProviderRequest = {
     };
     tools?: Array<{
       type: "web_search";
-      max_keyword: number;
+      max_keyword?: number;
       force_search: boolean;
-      limit: number;
+      limit?: number;
     }>;
   };
 };

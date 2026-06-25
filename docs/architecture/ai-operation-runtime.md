@@ -11,7 +11,7 @@ Research Operation 第一版最多执行：
 ```text
 输入快照
 → 本地资料收集
-→ 可选且已授权的一次联网补充
+→ 可选的一次 MiMo 原生联网补充（由模型在已启用工具时自行判断）
 → 有限模型综合
 → ResearchAnalysisProposal
 → 用户确认保存
@@ -84,7 +84,7 @@ Operation 返回 Proposal 前，如果关键来源对象被删除、隐藏或内
 
 服务端 Provider 工具负责调用 MiMo / GrsAI，并只读取服务端环境变量。浏览器请求不得携带 API Key、Base URL 或 provider 私密配置。
 
-MiMo web search 不是默认能力。只有用户明确授权，且 `MORPHO_MIMO_WEB_SEARCH_ENABLED=true`，并且官方请求格式与 citation 返回结构已经验证后，才可标记为联网搜索已实现。
+MiMo web search 不是独立调研产品。当 `MORPHO_MIMO_WEB_SEARCH_ENABLED=true` 且 taskMode 为 `chatAnalysis` 或 `researchOperation` 时，服务端可向 MiMo 提供原生 `web_search` 工具，由模型判断是否需要联网。`imageGeneration` 永不提供 web search。Morpho 仍只保存 provider 返回的 citation snapshot，不保存网页正文或原始工具结果。
 
 ## 6. Proposal 与正式对象
 
