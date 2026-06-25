@@ -3,25 +3,30 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { AiContextTask, AiTaskMode, AssetRecord, ImageRole, MorphoObject } from "@/domain/morpho/types";
+import type { AiTaskMode, AiWorkIntent, AssetRecord, ImageRole, MorphoObject } from "@/domain/morpho/types";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 import { createGeneratedImageFromAsset } from "@/domain/morpho/generation";
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "@/domain/morpho/imports";
 import {
   applyConceptDirectionProposal,
   applyDesignDefinitionProposal,
-  canStartOperation,
   applyResearchAnalysisProposal,
+  canStartOperation,
   completeImageGenerationOperation,
   createImageGenerationOperation,
   createResearchOperation,
   detectResearchSourceChanges,
   failImageGenerationOperation,
   markImageGenerationOperationSubmitted,
+  rejectArtifactProposal,
   recordConceptDirectionProposal,
   recordDesignDefinitionProposal,
-  recordResearchAnalysisProposal
+  recordResearchAnalysisProposal,
+  updateConceptDirectionProposalDraft,
+  updateDesignDefinitionProposalDraft,
+  updateResearchAnalysisProposalDraft
 } from "@/domain/operations/operations";
+import type { ArtifactProposal } from "@/domain/operations/types";
 import { parseConceptDirectionProposalPayload } from "@/domain/operations/conceptDirectionProposal";
 import { parseDesignDefinitionProposalPayload } from "@/domain/operations/designDefinitionProposal";
 import { parseResearchAnalysisProposalPayload } from "@/domain/operations/researchProposal";
@@ -49,7 +54,16 @@ import { usePersistentWorkspace } from "./usePersistentWorkspace";
 import { compactObjectList, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
 import { indexedDbBlobStore, getAssetObjectUrl } from "@/infrastructure/assets/indexedDbAssetStore";
 import { readImageBlobDimensions, saveBlobAsLocalAsset } from "@/infrastructure/assets/localAssetWorkflow";
-import { recommendAiTaskMode, resolveTaskModeForSend } from "./aiTaskRouting";
+import {
+  expectsConceptDirectionProposal,
+  expectsDesignDefinitionProposal,
+  getAvailableAiWorkIntents,
+  recommendAiTaskMode,
+  recommendAiWorkIntent,
+  resolveAiContextTask,
+  resolveTaskModeForSend,
+  resolveWorkIntentForSend
+} from "./aiTaskRouting";
 import { buildWebSearchOptions, collectMiMoImageAttachments, shouldAttachImagesForMiMo } from "./aiAttachments";
 import {
   getDefaultImageGenerationSettings,
@@ -87,10 +101,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>(() => workspace.ui.lastSelectionIds);
   const [aiDraft, setAiDraft] = useState("");
   const [taskMode, setTaskMode] = useState<AiTaskMode>("chatAnalysis");
+  const [workIntent, setWorkIntent] = useState<AiWorkIntent>(() => workspace.ui.workIntent);
   const [aiOpen, setAiOpen] = useState(true);
   const [activeDrawer, setActiveDrawer] = useState<DrawerMode>(null);
   const [localEditObjectId, setLocalEditObjectId] = useState<string | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingAiConfirmation | null>(null);
+  const [activeProposalId, setActiveProposalId] = useState<string | null>(null);
   const [showFailure, setShowFailure] = useState(false);
   const [contextWarning, setContextWarning] = useState<string | undefined>();
   const [isAiStreaming, setIsAiStreaming] = useState(false);
@@ -114,6 +130,37 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     () => recommendAiTaskMode(aiDraft, selectedObjects.map((object) => object.type)),
     [aiDraft, selectedObjects]
   );
+  const recommendedWorkIntent = useMemo(
+    () =>
+      recommendAiWorkIntent({
+        draft: aiDraft,
+        selectedObjects,
+        hasCurrentDesignDefinition: Boolean(workspace.workingState.currentDesignDefinitionId)
+      }),
+    [aiDraft, selectedObjects, workspace.workingState.currentDesignDefinitionId]
+  );
+  const availableWorkIntents = useMemo(
+    () =>
+      getAvailableAiWorkIntents({
+        taskMode,
+        selectedObjects,
+        hasCurrentDesignDefinition: Boolean(workspace.workingState.currentDesignDefinitionId)
+      }),
+    [selectedObjects, taskMode, workspace.workingState.currentDesignDefinitionId]
+  );
+  const activeProposal = useMemo(() => {
+    const selectedProposal =
+      activeProposalId && workspace.artifactProposals[activeProposalId]?.status === "pending"
+        ? workspace.artifactProposals[activeProposalId]
+        : undefined;
+    if (selectedProposal) {
+      return selectedProposal;
+    }
+
+    return Object.values(workspace.artifactProposals)
+      .filter((proposal) => proposal.status === "pending")
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+  }, [activeProposalId, workspace.artifactProposals]);
   const isImageTaskMode = taskMode === "imageGeneration";
   const imageGenerationModelOptions = useMemo(() => getImageGenerationModelOptions(), []);
   const inferredImageAspectRatio = useMemo(
@@ -131,6 +178,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [imageGenerationAspectMode, imageGenerationSettings, inferredImageAspectRatio]
   );
 
+  useEffect(() => {
+    setWorkIntent(workspace.ui.workIntent);
+  }, [workspace.ui.workIntent]);
+
   const updateImageGenerationSettings = useCallback(
     (patch: { modelId?: string; aspectRatio?: GrsImageAspectRatio; sizeOption?: string }) => {
       if (patch.aspectRatio) {
@@ -147,6 +198,26 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       );
     },
     [imageGenerationAspectMode, inferredImageAspectRatio]
+  );
+
+  const handleWorkIntentChange = useCallback(
+    (nextWorkIntent: AiWorkIntent) => {
+      setWorkIntent(nextWorkIntent);
+      setWorkspace((current) => {
+        if (current.ui.workIntent === nextWorkIntent) {
+          return current;
+        }
+
+        return {
+          ...current,
+          ui: {
+            ...current.ui,
+            workIntent: nextWorkIntent
+          }
+        };
+      });
+    },
+    [setWorkspace]
   );
 
   useEffect(() => {
@@ -497,7 +568,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           return;
         }
 
-        const proposalTitle = parsedProposal.proposal.title;
         const proposalId = `proposal-research-${operationId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         setWorkspace((current) => {
           const proposed = recordResearchAnalysisProposal(
@@ -521,11 +591,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             citationIds: proposed.proposal.citationIds
           });
         });
-        setPendingConfirmation({
-          kind: "applyResearchProposal",
-          proposalId,
-          targetTitle: proposalTitle
-        });
+        setActiveProposalId(proposalId);
+        setPendingConfirmation(null);
       } catch (error) {
         const isCancelled = error instanceof DOMException && error.name === "AbortError";
         const message = isCancelled
@@ -550,12 +617,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
 
     const executionTaskMode = resolveTaskModeForSend({ currentTaskMode: taskMode, recommendedTaskMode });
+    const executionWorkIntent = resolveWorkIntentForSend({
+      currentWorkIntent: executionTaskMode === "chatAnalysis" ? workIntent : "discussion",
+      recommendedWorkIntent
+    });
     if (executionTaskMode === "researchOperation") {
       await handleRunResearchOperation(draft);
       return;
     }
 
-    const task = inferAiContextTask(draft, selectedObjects);
+    const task = resolveAiContextTask(executionTaskMode, executionWorkIntent);
     const context = assembleAiContext(workspace, {
       draft,
       selectedObjectIds,
@@ -589,7 +660,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             createdAt: now,
             contextObjectIds: context.objectIds,
             taskMode: executionTaskMode,
-            recommendedTaskMode
+            recommendedTaskMode,
+            workIntent: executionWorkIntent,
+            recommendedWorkIntent
           },
           {
             id: assistantMessageId,
@@ -598,7 +671,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             createdAt: now,
             status: "streaming",
             contextObjectIds: context.objectIds,
-            taskMode: executionTaskMode
+            taskMode: executionTaskMode,
+            workIntent: executionWorkIntent
           }
         ]
       }
@@ -619,6 +693,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           draft,
           task,
           taskMode: executionTaskMode,
+          workIntent: executionWorkIntent,
           messages: workspace.ai.messages.map((message) => ({ role: message.role, body: message.body })),
           objectSummaries,
           attachments: attachmentResult.attachments,
@@ -638,10 +713,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       });
       const assistantBody = [attachmentResult.warning, streamResult.text].filter(Boolean).join("\n\n");
       const resolvedAssistantBody = assistantBody || "MiMo 没有返回可显示文本。";
-      const designDefinitionProposal =
-        task === "designDefinition" ? parseDesignDefinitionProposalPayload(streamResult.text) : null;
-      const conceptDirectionProposal =
-        task === "conceptDirection" ? parseConceptDirectionProposalPayload(streamResult.text) : null;
+      const designDefinitionProposal = expectsDesignDefinitionProposal(executionWorkIntent)
+        ? parseDesignDefinitionProposalPayload(streamResult.text)
+        : null;
+      const conceptDirectionProposal = expectsConceptDirectionProposal(executionWorkIntent)
+        ? parseConceptDirectionProposalPayload(streamResult.text)
+        : null;
       const designDefinitionProposalId =
         designDefinitionProposal?.status === "ok"
           ? `proposal-definition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -650,28 +727,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         conceptDirectionProposal?.status === "ok"
           ? `proposal-direction-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
           : null;
-      const currentDesignDefinitionId = workspace.workingState.currentDesignDefinitionId;
-      const currentDesignDefinitionObject = currentDesignDefinitionId
-        ? workspace.objects[currentDesignDefinitionId]
-        : undefined;
-      const currentDesignDefinitionTitle =
-        currentDesignDefinitionObject?.type === "designDefinition" ? currentDesignDefinitionObject.title : undefined;
-      const pendingConfirmationFromResponse: PendingAiConfirmation | null =
-        designDefinitionProposal?.status === "ok" && designDefinitionProposalId
-          ? {
-              kind: "applyDesignDefinitionProposal",
-              proposalId: designDefinitionProposalId,
-              targetTitle: designDefinitionProposal.proposal.title,
-              basedOnTitle: currentDesignDefinitionTitle
-            }
-          : conceptDirectionProposal?.status === "ok" && conceptDirectionProposalId
-            ? {
-                kind: "applyConceptDirectionProposal",
-                proposalId: conceptDirectionProposalId,
-                targetTitle: conceptDirectionProposal.proposal.title,
-                directionCount: conceptDirectionProposal.proposal.directions.length
-              }
-            : null;
 
       setWorkspace((current) => {
         let nextWorkspace = updateAiMessage(current, assistantMessageId, resolvedAssistantBody, "done");
@@ -690,6 +745,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             currentDefinitionObject?.type === "designDefinition" ? currentDefinitionObject : undefined;
           const proposed = recordDesignDefinitionProposal(nextWorkspace, {
             proposalId: designDefinitionProposalId,
+            workIntent: executionWorkIntent,
             title: designDefinitionProposal.proposal.title,
             summary: designDefinitionProposal.proposal.summary,
             projectGoal: designDefinitionProposal.proposal.projectGoal,
@@ -715,6 +771,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           const basedOnDefinitionObject = basedOnDefinitionId ? nextWorkspace.objects[basedOnDefinitionId] : undefined;
           const proposed = recordConceptDirectionProposal(nextWorkspace, {
             proposalId: conceptDirectionProposalId,
+            workIntent: executionWorkIntent,
             title: conceptDirectionProposal.proposal.title,
             summary: conceptDirectionProposal.proposal.summary,
             directions: conceptDirectionProposal.proposal.directions,
@@ -735,8 +792,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return nextWorkspace;
       });
 
-      if (pendingConfirmationFromResponse) {
-        setPendingConfirmation(pendingConfirmationFromResponse);
+      if (designDefinitionProposalId || conceptDirectionProposalId) {
+        setActiveProposalId(designDefinitionProposalId ?? conceptDirectionProposalId);
+        setPendingConfirmation(null);
       }
     } catch (error) {
       const isCancelled = error instanceof DOMException && error.name === "AbortError";
@@ -756,10 +814,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     handleRunResearchOperation,
     isAiStreaming,
     recommendedTaskMode,
+    recommendedWorkIntent,
     selectedObjectIds,
     selectedObjects,
     setWorkspace,
     taskMode,
+    workIntent,
     workspace
   ]);
 
@@ -774,17 +834,21 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         suggestion: suggestion.prompt
       });
       setAiDraft(result.draft);
+      if (suggestion.workIntent) {
+        handleWorkIntentChange(suggestion.workIntent);
+      }
     },
-    [selectedObjectIds, workspace]
+    [handleWorkIntentChange, selectedObjectIds, workspace]
   );
 
   const handleAskAi = useCallback(() => {
     setAiOpen(true);
     setTaskMode("chatAnalysis");
+    handleWorkIntentChange("discussion");
     if (selectedObjects[0]) {
       setAiDraft(`请基于“${selectedObjects[0].title}”继续分析下一步。`);
     }
-  }, [selectedObjects]);
+  }, [handleWorkIntentChange, selectedObjects]);
 
   const handleLocalEdit = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "image");
@@ -1009,6 +1073,157 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     workspace
   ]);
 
+  const handleApplyProposal = useCallback(() => {
+    if (!activeProposal) {
+      return;
+    }
+
+    if (activeProposal.type === "researchAnalysis") {
+      const result = applyResearchAnalysisProposal(workspace, activeProposal.id, {
+        position: {
+          x: workspace.canvas.view.x + 220,
+          y: workspace.canvas.view.y + 180
+        }
+      });
+
+      if (result.status === "updated") {
+        setWorkspace(result.workspace);
+        setSelectedObjectIds([result.researchObject.id]);
+        setFocusRequest((current) => ({ objectId: result.researchObject.id, nonce: current.nonce + 1 }));
+        setActiveProposalId(null);
+      } else {
+        setWorkspace(
+          appendAiAssistantFailureMessage(
+            result.workspace,
+            "research-proposal-failed",
+            `${result.reason} 请重新整理来源后再确认。`,
+            activeProposal.id
+          )
+        );
+      }
+
+      setAiDraft("");
+      setTaskMode("chatAnalysis");
+      return;
+    }
+
+    if (activeProposal.type === "designDefinition") {
+      const result = applyDesignDefinitionProposal(workspace, activeProposal.id);
+      if (result.status === "updated") {
+        setWorkspace(result.workspace);
+        setSelectedObjectIds([result.designDefinitionObject.id]);
+        setFocusRequest((current) => ({ objectId: result.designDefinitionObject.id, nonce: current.nonce + 1 }));
+        setActiveProposalId(null);
+      } else {
+        setWorkspace(
+          appendAiAssistantFailureMessage(
+            result.workspace,
+            "design-definition-proposal-failed",
+            `${result.reason} 请复核后再确认。`,
+            activeProposal.id
+          )
+        );
+      }
+
+      setAiDraft("");
+      setTaskMode("chatAnalysis");
+      return;
+    }
+
+    if (activeProposal.type === "conceptDirection") {
+      const result = applyConceptDirectionProposal(workspace, activeProposal.id, {
+        position: {
+          x: workspace.canvas.view.x + 260,
+          y: workspace.canvas.view.y + 220
+        }
+      });
+      if (result.status === "updated") {
+        setWorkspace(result.workspace);
+        setSelectedObjectIds(result.directions.map((direction) => direction.id));
+        if (result.directions[0]) {
+          setFocusRequest((current) => ({ objectId: result.directions[0].id, nonce: current.nonce + 1 }));
+        }
+        setActiveProposalId(null);
+      } else {
+        setWorkspace(
+          appendAiAssistantFailureMessage(
+            result.workspace,
+            "concept-direction-proposal-failed",
+            `${result.reason} 请复核后再确认。`,
+            activeProposal.id
+          )
+        );
+      }
+
+      setAiDraft("");
+      setTaskMode("chatAnalysis");
+    }
+  }, [activeProposal, setWorkspace, workspace]);
+
+  const handleRejectProposal = useCallback(
+    (proposalId: string) => {
+      setWorkspace((current) => rejectArtifactProposal(current, proposalId, "用户明确放弃当前草案。"));
+      setActiveProposalId((current) => (current === proposalId ? null : current));
+    },
+    [setWorkspace]
+  );
+
+  const handleSaveResearchProposalDraft = useCallback(
+    (proposalId: string, input: Parameters<typeof updateResearchAnalysisProposalDraft>[2]) => {
+      setWorkspace((current) => updateResearchAnalysisProposalDraft(current, proposalId, input));
+      setActiveProposalId(proposalId);
+    },
+    [setWorkspace]
+  );
+
+  const handleSaveDesignDefinitionProposalDraft = useCallback(
+    (proposalId: string, input: Parameters<typeof updateDesignDefinitionProposalDraft>[2]) => {
+      setWorkspace((current) => updateDesignDefinitionProposalDraft(current, proposalId, input));
+      setActiveProposalId(proposalId);
+    },
+    [setWorkspace]
+  );
+
+  const handleSaveConceptDirectionProposalDraft = useCallback(
+    (proposalId: string, input: Parameters<typeof updateConceptDirectionProposalDraft>[2]) => {
+      setWorkspace((current) => updateConceptDirectionProposalDraft(current, proposalId, input));
+      setActiveProposalId(proposalId);
+    },
+    [setWorkspace]
+  );
+
+  const handleContinueProposalDiscussion = useCallback(
+    (proposalId: string) => {
+      const proposal = workspace.artifactProposals[proposalId];
+      if (!proposal || proposal.status !== "pending") {
+        return;
+      }
+
+      setAiOpen(true);
+      setTaskMode("chatAnalysis");
+      handleWorkIntentChange(proposal.workIntent ?? "discussion");
+      setActiveProposalId(proposalId);
+      setAiDraft(buildProposalDiscussionDraft(proposal));
+    },
+    [handleWorkIntentChange, workspace.artifactProposals]
+  );
+
+  const handleRegenerateProposal = useCallback(
+    (proposalId: string) => {
+      const proposal = workspace.artifactProposals[proposalId];
+      if (!proposal || proposal.status !== "pending") {
+        return;
+      }
+
+      setAiOpen(true);
+      setTaskMode("chatAnalysis");
+      handleWorkIntentChange(proposal.workIntent ?? "discussion");
+      setActiveProposalId(proposalId);
+      setAiDraft(buildProposalRegenerationDraft(proposal));
+    },
+    [handleWorkIntentChange, workspace.artifactProposals]
+  );
+
   const handleReferenceIntent = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "image");
     if (!target) {
@@ -1058,88 +1273,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setWorkspace(result.workspace);
       setSelectedObjectIds([result.keyConclusion.id]);
       setFocusRequest((current) => ({ objectId: result.keyConclusion.id, nonce: current.nonce + 1 }));
-      setPendingConfirmation(null);
-      setAiDraft("");
-      setTaskMode("chatAnalysis");
-      return;
-    }
-
-    if (pendingConfirmation.kind === "applyResearchProposal") {
-      const result = applyResearchAnalysisProposal(workspace, pendingConfirmation.proposalId, {
-        position: {
-          x: workspace.canvas.view.x + 220,
-          y: workspace.canvas.view.y + 180
-        }
-      });
-
-      if (result.status === "updated") {
-        setWorkspace(result.workspace);
-        setSelectedObjectIds([result.researchObject.id]);
-        setFocusRequest((current) => ({ objectId: result.researchObject.id, nonce: current.nonce + 1 }));
-      } else {
-        setWorkspace(
-          appendAiAssistantFailureMessage(
-            result.workspace,
-            "research-operation-failed",
-            `${result.reason} 请重新整理来源后再确认。`,
-            pendingConfirmation.proposalId
-          )
-        );
-      }
-
-      setPendingConfirmation(null);
-      setAiDraft("");
-      setTaskMode("chatAnalysis");
-      return;
-    }
-
-    if (pendingConfirmation.kind === "applyDesignDefinitionProposal") {
-      const result = applyDesignDefinitionProposal(workspace, pendingConfirmation.proposalId);
-      if (result.status === "updated") {
-        setWorkspace(result.workspace);
-        setSelectedObjectIds([result.designDefinitionObject.id]);
-        setFocusRequest((current) => ({ objectId: result.designDefinitionObject.id, nonce: current.nonce + 1 }));
-      } else {
-        setWorkspace(
-          appendAiAssistantFailureMessage(
-            result.workspace,
-            "design-definition-failed",
-            `${result.reason} 请复核后再确认。`,
-            pendingConfirmation.proposalId
-          )
-        );
-      }
-
-      setPendingConfirmation(null);
-      setAiDraft("");
-      setTaskMode("chatAnalysis");
-      return;
-    }
-
-    if (pendingConfirmation.kind === "applyConceptDirectionProposal") {
-      const result = applyConceptDirectionProposal(workspace, pendingConfirmation.proposalId, {
-        position: {
-          x: workspace.canvas.view.x + 260,
-          y: workspace.canvas.view.y + 220
-        }
-      });
-      if (result.status === "updated") {
-        setWorkspace(result.workspace);
-        setSelectedObjectIds(result.directions.map((direction) => direction.id));
-        if (result.directions[0]) {
-          setFocusRequest((current) => ({ objectId: result.directions[0].id, nonce: current.nonce + 1 }));
-        }
-      } else {
-        setWorkspace(
-          appendAiAssistantFailureMessage(
-            result.workspace,
-            "concept-direction-failed",
-            `${result.reason} 请复核后再确认。`,
-            pendingConfirmation.proposalId
-          )
-        );
-      }
-
       setPendingConfirmation(null);
       setAiDraft("");
       setTaskMode("chatAnalysis");
@@ -1330,6 +1463,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         isLocalEditMode={isImageTaskMode}
         taskMode={taskMode}
         recommendedTaskMode={recommendedTaskMode}
+        workIntent={workIntent}
+        recommendedWorkIntent={recommendedWorkIntent}
+        availableWorkIntents={availableWorkIntents}
+        activeProposal={activeProposal}
         isStreaming={isAiStreaming}
         imageGenerationSettings={effectiveImageGenerationSettings}
         imageGenerationModelOptions={imageGenerationModelOptions}
@@ -1341,11 +1478,19 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onToggleOpen={() => setAiOpen((open) => !open)}
         onDraftChange={setAiDraft}
         onTaskModeChange={setTaskMode}
+        onWorkIntentChange={handleWorkIntentChange}
         onImageGenerationSettingsChange={updateImageGenerationSettings}
         onSuggestionClick={handleSuggestionClick}
         onSendMessage={handleSendAiMessage}
         onCancelRequest={handleCancelAiRequest}
         onRunLocalEdit={handleRunLocalEdit}
+        onApplyProposal={handleApplyProposal}
+        onRejectProposal={handleRejectProposal}
+        onContinueProposalDiscussion={handleContinueProposalDiscussion}
+        onRegenerateProposal={handleRegenerateProposal}
+        onSaveResearchProposalDraft={handleSaveResearchProposalDraft}
+        onSaveDesignDefinitionProposalDraft={handleSaveDesignDefinitionProposalDraft}
+        onSaveConceptDirectionProposalDraft={handleSaveConceptDirectionProposalDraft}
         onConfirmPending={handleConfirmPending}
         onCancelPending={() => setPendingConfirmation(null)}
         onFailureRetry={() => setShowFailure(false)}
@@ -1412,36 +1557,30 @@ function updateWorkspaceInstances(workspace: MorphoWorkspace, instances: CanvasI
   };
 }
 
-function inferAiContextTask(draft: string, selectedObjects: MorphoObject[]): AiContextTask {
-  const text = draft.toLowerCase();
-
-  if (/交付|展板|ppt|作品集|图注|说明/.test(text)) {
-    return "deliveryPreparation";
+function buildProposalDiscussionDraft(proposal: ArtifactProposal): string {
+  switch (proposal.type) {
+    case "researchAnalysis":
+      return `继续围绕这份研究与分析草案讨论，重点复核：${proposal.title}。请指出最需要补强的发现、约束和待确认问题。`;
+    case "designDefinition":
+      return `继续围绕这份设计定义草案讨论，重点复核：${proposal.title}。请指出哪些原则、边界或场景还不够稳。`;
+    case "conceptDirection":
+      return `继续围绕这份概念方向草案讨论，重点复核：${proposal.title}。请指出哪些方向值得保留、拆分或合并。`;
+    case "deliveryPlan":
+      return `继续围绕这份交付草案讨论，重点复核：${proposal.title}。请指出缺口和需要补充的来源。`;
   }
+}
 
-  if (/比较|对比|compare/.test(text) && selectedObjects.length > 1) {
-    return "comparison";
+function buildProposalRegenerationDraft(proposal: ArtifactProposal): string {
+  switch (proposal.type) {
+    case "researchAnalysis":
+      return `请基于当前来源重新生成这份研究与分析草案，并明确哪些发现更稳、哪些仍待验证。当前草案标题：${proposal.title}。`;
+    case "designDefinition":
+      return `请基于当前来源重新生成一版设计定义草案，保持目标和边界清楚，不要直接应用。当前草案标题：${proposal.title}。`;
+    case "conceptDirection":
+      return `请基于当前设计定义和来源重新生成一版概念方向草案，保留方向差异，不要自动设为主方向。当前草案标题：${proposal.title}。`;
+    case "deliveryPlan":
+      return `请基于当前来源重新生成一版交付草案，明确缺口和引用来源。当前草案标题：${proposal.title}。`;
   }
-
-  if (/定义|原则|边界|问题/.test(text) || selectedObjects.some((object) => object.type === "designDefinition")) {
-    return "designDefinition";
-  }
-
-  if (
-    /方向|概念|方案|路线|分支|预览|变体/.test(text) ||
-    selectedObjects.some((object) => object.type === "conceptDirection")
-  ) {
-    return "conceptDirection";
-  }
-
-  if (
-    /调研|研究|资料|限制|发现|约束/.test(text) ||
-    selectedObjects.some((object) => object.type === "research" || object.type === "file" || object.type === "link")
-  ) {
-    return "research";
-  }
-
-  return "general";
 }
 
 function makeObjectSummaries(workspace: MorphoWorkspace, objectIds: string[]) {

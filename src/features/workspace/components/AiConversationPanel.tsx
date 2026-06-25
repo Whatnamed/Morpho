@@ -3,13 +3,20 @@
 import type { KeyboardEvent, ReactNode } from "react";
 import { ChevronLeft, Send, Sparkles } from "lucide-react";
 
-import type { AiTaskMode, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
+import type { AiTaskMode, AiWorkIntent, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
+import type {
+  ArtifactProposal,
+  ConceptDirectionProposal,
+  DesignDefinitionProposal,
+  ResearchAnalysisProposal
+} from "@/domain/operations/types";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 import {
   GRS_IMAGE_ASPECT_RATIOS,
   type ImageGenerationModelOption,
   type ImageGenerationSettings
 } from "../imageGenerationSettings";
+import { ProposalDraftCard } from "./ProposalDraftCard";
 import type { Suggestion } from "../workspaceUi";
 
 export type PendingAiConfirmation =
@@ -35,23 +42,6 @@ export type PendingAiConfirmation =
       confidence: "supported" | "partial" | "needsVerification";
       state?: "active" | "needsVerification";
       note: string;
-    }
-  | {
-      kind: "applyResearchProposal";
-      proposalId: string;
-      targetTitle: string;
-    }
-  | {
-      kind: "applyDesignDefinitionProposal";
-      proposalId: string;
-      targetTitle: string;
-      basedOnTitle?: string;
-    }
-  | {
-      kind: "applyConceptDirectionProposal";
-      proposalId: string;
-      targetTitle: string;
-      directionCount: number;
     };
 
 type AiConversationPanelProps = {
@@ -63,6 +53,10 @@ type AiConversationPanelProps = {
   isLocalEditMode: boolean;
   taskMode: AiTaskMode;
   recommendedTaskMode: AiTaskMode;
+  workIntent: AiWorkIntent;
+  recommendedWorkIntent: AiWorkIntent;
+  availableWorkIntents: AiWorkIntent[];
+  activeProposal?: ArtifactProposal;
   isStreaming: boolean;
   imageGenerationSettings: ImageGenerationSettings;
   imageGenerationModelOptions: ImageGenerationModelOption[];
@@ -77,6 +71,7 @@ type AiConversationPanelProps = {
   onToggleOpen: () => void;
   onDraftChange: (draft: string) => void;
   onTaskModeChange: (taskMode: AiTaskMode) => void;
+  onWorkIntentChange: (workIntent: AiWorkIntent) => void;
   onImageGenerationSettingsChange: (patch: {
     modelId?: string;
     aspectRatio?: GrsImageAspectRatio;
@@ -86,6 +81,39 @@ type AiConversationPanelProps = {
   onSendMessage: () => void;
   onCancelRequest: () => void;
   onRunLocalEdit: () => void;
+  onApplyProposal: () => void;
+  onRejectProposal: (proposalId: string) => void;
+  onContinueProposalDiscussion: (proposalId: string) => void;
+  onRegenerateProposal: (proposalId: string) => void;
+  onSaveResearchProposalDraft: (
+    proposalId: string,
+    input: Pick<
+      ResearchAnalysisProposal,
+      "title" | "summary" | "findings" | "opportunities" | "constraints" | "openQuestions" | "evidence"
+    >
+  ) => void;
+  onSaveDesignDefinitionProposalDraft: (
+    proposalId: string,
+    input: Pick<
+      DesignDefinitionProposal,
+      | "title"
+      | "summary"
+      | "projectGoal"
+      | "targetUsers"
+      | "primaryScenarios"
+      | "coreProblem"
+      | "designPrinciples"
+      | "constraints"
+      | "avoidDirections"
+      | "opportunities"
+      | "openQuestions"
+      | "changeNote"
+    >
+  ) => void;
+  onSaveConceptDirectionProposalDraft: (
+    proposalId: string,
+    input: Pick<ConceptDirectionProposal, "title" | "summary" | "directions">
+  ) => void;
   onConfirmPending: () => void;
   onCancelPending: () => void;
   onFailureRetry: () => void;
@@ -100,6 +128,10 @@ export function AiConversationPanel({
   isLocalEditMode,
   taskMode,
   recommendedTaskMode,
+  workIntent,
+  recommendedWorkIntent,
+  availableWorkIntents,
+  activeProposal,
   isStreaming,
   imageGenerationSettings,
   imageGenerationModelOptions,
@@ -111,11 +143,19 @@ export function AiConversationPanel({
   onToggleOpen,
   onDraftChange,
   onTaskModeChange,
+  onWorkIntentChange,
   onImageGenerationSettingsChange,
   onSuggestionClick,
   onSendMessage,
   onCancelRequest,
   onRunLocalEdit,
+  onApplyProposal,
+  onRejectProposal,
+  onContinueProposalDiscussion,
+  onRegenerateProposal,
+  onSaveResearchProposalDraft,
+  onSaveDesignDefinitionProposalDraft,
+  onSaveConceptDirectionProposalDraft,
   onConfirmPending,
   onCancelPending,
   onFailureRetry
@@ -217,6 +257,20 @@ export function AiConversationPanel({
             </div>
           ) : null}
 
+          {activeProposal ? (
+            <ProposalDraftCard
+              workspace={workspace}
+              proposal={activeProposal}
+              onApply={onApplyProposal}
+              onReject={onRejectProposal}
+              onContinueDiscussion={onContinueProposalDiscussion}
+              onRegenerate={onRegenerateProposal}
+              onSaveResearchDraft={onSaveResearchProposalDraft}
+              onSaveDesignDefinitionDraft={onSaveDesignDefinitionProposalDraft}
+              onSaveConceptDirectionDraft={onSaveConceptDirectionProposalDraft}
+            />
+          ) : null}
+
           {pendingConfirmation && confirmationTitle && confirmationBody && confirmationActionLabel ? (
             <div className="confirm-card">
               <strong>{confirmationTitle}</strong>
@@ -278,6 +332,27 @@ export function AiConversationPanel({
               </button>
             </div>
           </div>
+
+          {taskMode === "chatAnalysis" ? (
+            <div className="mode-row mode-row-secondary">
+              <span>
+                当前工作意图：{formatWorkIntent(workIntent)}
+                {recommendedWorkIntent !== workIntent ? ` · 建议 ${formatWorkIntent(recommendedWorkIntent)}` : ""}
+              </span>
+              <div className="mode-toggle intent-toggle" aria-label="工作意图">
+                {availableWorkIntents.map((intent) => (
+                  <button
+                    key={intent}
+                    type="button"
+                    className={workIntent === intent ? "active" : ""}
+                    onClick={() => onWorkIntentChange(intent)}
+                  >
+                    {formatWorkIntent(intent)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {isLocalEditMode ? (
             <div className="image-settings" aria-label="图像生成设置">
@@ -386,12 +461,6 @@ function getPendingConfirmationTitle(confirmation: PendingAiConfirmation): strin
       return "确认删除对象";
     case "createKeyConclusion":
       return "保存关键结论";
-    case "applyResearchProposal":
-      return "保存研究与分析";
-    case "applyDesignDefinitionProposal":
-      return "应用设计定义草案";
-    case "applyConceptDirectionProposal":
-      return "保存概念方向";
   }
 }
 
@@ -406,14 +475,6 @@ function getPendingConfirmationBody(confirmation: PendingAiConfirmation): string
     }
     case "createKeyConclusion":
       return `将从“${confirmation.sourceTitle}”保存一条用户确认的关键结论：“${confirmation.conclusionTitle}”。它会创建新的关键结论对象、来源关系和决策记录；不会自动改写设计定义、概念方向、默认参考、交付引用或长期项目记忆。`;
-    case "applyResearchProposal":
-      return `将“${confirmation.targetTitle}”保存为正式研究与分析对象，并建立来源关系；不会自动写入长期项目记忆、设计定义、方向状态或关键结论。`;
-    case "applyDesignDefinitionProposal":
-      return confirmation.basedOnTitle
-        ? `将“${confirmation.targetTitle}”应用为新的设计定义修订，并保留基于“${confirmation.basedOnTitle}”继续演化的版本关系；不会自动变更方向状态、默认参考或交付引用。`
-        : `将“${confirmation.targetTitle}”应用为当前有效设计定义，并创建可追溯修订记录；不会自动变更方向状态、默认参考或交付引用。`;
-    case "applyConceptDirectionProposal":
-      return `将保存 ${confirmation.directionCount} 个概念方向到画布与项目状态中，并保留可比较、可淘汰、可恢复的方向关系；不会自动设为主方向或改写默认参考。`;
   }
 }
 
@@ -425,12 +486,6 @@ function getPendingConfirmationActionLabel(confirmation: PendingAiConfirmation):
       return "确认删除";
     case "createKeyConclusion":
       return "确认保存结论";
-    case "applyResearchProposal":
-      return "保存为研究与分析";
-    case "applyDesignDefinitionProposal":
-      return "应用设计定义";
-    case "applyConceptDirectionProposal":
-      return "保存概念方向";
   }
 }
 
@@ -442,6 +497,28 @@ function formatTaskMode(mode: AiTaskMode): string {
       return "图像生成";
     case "researchOperation":
       return "研究任务";
+  }
+}
+
+function formatWorkIntent(intent: AiWorkIntent): string {
+  switch (intent) {
+    case "comparison":
+      return "比较";
+    case "createDesignDefinition":
+      return "创建设计定义";
+    case "reviseDesignDefinition":
+      return "修订设计定义";
+    case "createConceptDirections":
+      return "创建概念方向";
+    case "reviseConceptDirection":
+      return "修订概念方向";
+    case "splitConceptDirection":
+      return "拆分方向";
+    case "mergeConceptDirections":
+      return "合并方向";
+    case "discussion":
+    default:
+      return "讨论";
   }
 }
 

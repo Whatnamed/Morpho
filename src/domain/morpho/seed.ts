@@ -709,7 +709,8 @@ const baseWorkspace: MorphoWorkspace = {
     activeDrawer: null,
     aiOpen: true,
     lastSelectionIds: ["image-soft-rail-v2"],
-    canvasView: { x: -760, y: -160, zoom: 0.72 }
+    canvasView: { x: -760, y: -160, zoom: 0.72 },
+    workIntent: "discussion"
   }
 };
 

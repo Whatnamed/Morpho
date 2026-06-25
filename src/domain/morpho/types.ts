@@ -17,6 +17,16 @@ export type StageRecordKind =
   | "deliveryPreparation";
 export type AiTaskMode = "chatAnalysis" | "imageGeneration" | "researchOperation";
 
+export type AiWorkIntent =
+  | "discussion"
+  | "comparison"
+  | "createDesignDefinition"
+  | "reviseDesignDefinition"
+  | "createConceptDirections"
+  | "reviseConceptDirection"
+  | "splitConceptDirection"
+  | "mergeConceptDirections";
+
 export type MorphoObjectType =
   | "image"
   | "file"
@@ -308,6 +318,8 @@ export type AiMessage = {
   contextObjectIds?: MorphoObjectId[];
   taskMode?: AiTaskMode;
   recommendedTaskMode?: AiTaskMode;
+  workIntent?: AiWorkIntent;
+  recommendedWorkIntent?: AiWorkIntent;
   operationId?: string;
   proposalId?: string;
   citationIds?: string[];
@@ -447,6 +459,7 @@ export type MorphoWorkspace = {
     aiOpen: boolean;
     lastSelectionIds: MorphoObjectId[];
     canvasView: CanvasView;
+    workIntent: AiWorkIntent;
   };
 };
 

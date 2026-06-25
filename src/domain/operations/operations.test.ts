@@ -15,7 +15,9 @@ import {
   markImageGenerationOperationSubmitted,
   recordConceptDirectionProposal,
   recordDesignDefinitionProposal,
-  recordResearchAnalysisProposal
+  recordResearchAnalysisProposal,
+  rejectArtifactProposal,
+  updateResearchAnalysisProposalDraft
 } from "./operations";
 
 describe("Morpho Operation Runtime", () => {
@@ -85,6 +87,104 @@ describe("Morpho Operation Runtime", () => {
     expect(Object.values(proposed.workspace.objects)).toHaveLength(0);
     expect(proposed.proposal.status).toBe("pending");
     expect(proposed.workspace.artifactProposals[proposed.proposal.id]).toEqual(proposed.proposal);
+  });
+
+  it("updates a pending research proposal draft without mutating formal objects", () => {
+    const workspace = {
+      ...createBlankWorkspace("project-op"),
+      objects: {
+        "text-source": {
+          id: "text-source",
+          type: "text" as const,
+          title: "原始资料",
+          summary: "原始摘要",
+          body: "原始正文",
+          createdBy: "user" as const,
+          visibility: "active" as const
+        }
+      }
+    };
+    const created = createResearchOperation(workspace, {
+      userInput: "基于资料形成研究草案",
+      selectedObjectIds: ["text-source"],
+      allowWebSearch: false
+    });
+    const proposed = recordResearchAnalysisProposal(created.workspace, {
+      proposalId: "proposal-research-editable",
+      operationId: created.operation.id,
+      title: "研究草案",
+      summary: "原始摘要",
+      findings: ["发现 A"],
+      opportunities: ["机会 A"],
+      constraints: ["约束 A"],
+      openQuestions: ["问题 A"],
+      evidence: [
+        {
+          claim: "发现 A",
+          sourceObjectIds: ["text-source"],
+          citationUrls: [],
+          confidence: "partial"
+        }
+      ],
+      sourceObjectIds: ["text-source"],
+      citations: []
+    });
+
+    const updated = updateResearchAnalysisProposalDraft(proposed.workspace, proposed.proposal.id, {
+      title: "研究草案 v2",
+      summary: "更新后的摘要",
+      findings: ["发现 B"],
+      opportunities: ["机会 B"],
+      constraints: ["约束 B"],
+      openQuestions: ["问题 B"],
+      evidence: [
+        {
+          claim: "发现 B",
+          sourceObjectIds: ["text-source"],
+          citationIds: [],
+          confidence: "supported"
+        }
+      ]
+    });
+
+    expect(updated.objects).toEqual(proposed.workspace.objects);
+    expect(updated.artifactProposals[proposed.proposal.id]).toMatchObject({
+      title: "研究草案 v2",
+      summary: "更新后的摘要",
+      findings: ["发现 B"],
+      opportunities: ["机会 B"],
+      constraints: ["约束 B"],
+      openQuestions: ["问题 B"],
+      status: "pending"
+    });
+  });
+
+  it("marks a pending proposal rejected without touching formal objects", () => {
+    const created = createResearchOperation(createBlankWorkspace("project-op"), {
+      userInput: "research selected materials",
+      selectedObjectIds: [],
+      allowWebSearch: false
+    });
+    const proposed = recordResearchAnalysisProposal(created.workspace, {
+      proposalId: "proposal-research-reject",
+      operationId: created.operation.id,
+      title: "Research proposal",
+      summary: "Summary",
+      findings: ["Finding"],
+      opportunities: [],
+      constraints: [],
+      openQuestions: [],
+      sourceObjectIds: [],
+      citations: []
+    });
+
+    const rejected = rejectArtifactProposal(proposed.workspace, proposed.proposal.id, "用户明确放弃当前草案。");
+
+    expect(rejected.objects).toEqual(proposed.workspace.objects);
+    expect(rejected.artifactProposals[proposed.proposal.id]).toMatchObject({
+      status: "rejected",
+      rejectedReason: "用户明确放弃当前草案。"
+    });
   });
 
   it("uses a caller-provided research proposal id when it is available", () => {

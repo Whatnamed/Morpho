@@ -104,7 +104,8 @@ export function createBlankWorkspace(projectId: string): MorphoWorkspace {
       activeDrawer: null,
       aiOpen: true,
       lastSelectionIds: [],
-      canvasView: { x: 0, y: 0, zoom: 1 }
+      canvasView: { x: 0, y: 0, zoom: 1 },
+      workIntent: "discussion"
     }
   });
 }
@@ -826,7 +827,8 @@ function migrateV2WorkspaceToV4(value: Record<string, unknown>): Record<string, 
       activeDrawer: null,
       aiOpen: true,
       lastSelectionIds: [],
-      canvasView
+      canvasView,
+      workIntent: "discussion"
     }
   };
 }
@@ -1017,7 +1019,8 @@ function migrateV4Workspace(value: Record<string, unknown>): MorphoWorkspace {
       activeDrawer: null,
       aiOpen: true,
       lastSelectionIds: [],
-      canvasView: { x: 0, y: 0, zoom: 1 }
+      canvasView: { x: 0, y: 0, zoom: 1 },
+      workIntent: "discussion"
     }
   };
 
@@ -1064,7 +1067,8 @@ function normalizeV5Workspace(value: Record<string, unknown>): MorphoWorkspace {
       activeDrawer: cloned.ui?.activeDrawer ?? null,
       aiOpen: cloned.ui?.aiOpen ?? true,
       lastSelectionIds: cloned.ui?.lastSelectionIds ?? [],
-      canvasView
+      canvasView,
+      workIntent: cloned.ui?.workIntent ?? "discussion"
     }
   });
 }

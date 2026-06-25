@@ -762,6 +762,147 @@ input:focus-visible {
   margin-top: 12px;
 }
 
+.proposal-card {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.proposal-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.proposal-card-header strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 680;
+  line-height: 1.4;
+}
+
+.proposal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.proposal-review-state {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.proposal-help-text {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.proposal-citations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.proposal-citation-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: rgba(250, 247, 241, 0.72);
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.proposal-citation-pill.muted {
+  color: var(--text-muted);
+}
+
+.proposal-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.proposal-field {
+  display: grid;
+  gap: 5px;
+}
+
+.proposal-field span,
+.proposal-subsection strong,
+.proposal-direction-row strong {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.proposal-field input,
+.proposal-field textarea,
+.proposal-evidence-row textarea,
+.proposal-evidence-row select {
+  width: 100%;
+  border: 1px solid rgba(78, 68, 58, 0.14);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.proposal-field input,
+.proposal-evidence-row select {
+  min-height: 34px;
+  padding: 8px 10px;
+}
+
+.proposal-field textarea,
+.proposal-evidence-row textarea {
+  min-height: 72px;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
+.proposal-subsection,
+.proposal-direction-row,
+.proposal-evidence-row {
+  display: grid;
+  gap: 8px;
+}
+
+.proposal-direction-row,
+.proposal-evidence-row {
+  padding: 10px;
+  border: 1px solid rgba(78, 68, 58, 0.08);
+  border-radius: 10px;
+  background: rgba(252, 251, 248, 0.74);
+}
+
+.proposal-evidence-row small {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.proposal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .ai-input-wrap {
   padding: 13px;
   border-top: 1px solid rgba(78, 68, 58, 0.1);
@@ -775,6 +916,10 @@ input:focus-visible {
   margin-bottom: 9px;
   color: var(--text-muted);
   font-size: 10px;
+}
+
+.mode-row-secondary {
+  align-items: flex-start;
 }
 
 .mode-toggle {
@@ -801,6 +946,12 @@ input:focus-visible {
 .mode-toggle button.active {
   background: var(--surface-muted);
   color: var(--text-primary);
+}
+
+.intent-toggle {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 100%;
 }
 
 .image-settings {

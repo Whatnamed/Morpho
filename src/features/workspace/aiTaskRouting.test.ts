@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { recommendAiTaskMode, resolveTaskModeForSend } from "./aiTaskRouting";
+import {
+  expectsConceptDirectionProposal,
+  expectsDesignDefinitionProposal,
+  getAvailableAiWorkIntents,
+  recommendAiTaskMode,
+  recommendAiWorkIntent,
+  resolveAiContextTask,
+  resolveTaskModeForSend,
+  resolveWorkIntentForSend
+} from "./aiTaskRouting";
 
 describe("workspace AI task routing", () => {
   it("recommends image generation for explicit generation prompts without making selection mandatory", () => {
@@ -34,5 +43,65 @@ describe("workspace AI task routing", () => {
         recommendedTaskMode: "chatAnalysis"
       })
     ).toBe("imageGeneration");
+  });
+
+  it("recommends work intent without turning recommendation into execution authority", () => {
+    expect(
+      recommendAiWorkIntent({
+        draft: "基于当前结论形成一版设计定义草案",
+        selectedObjects: [{ type: "keyConclusion" }],
+        hasCurrentDesignDefinition: false
+      })
+    ).toBe("createDesignDefinition");
+
+    expect(
+      recommendAiWorkIntent({
+        draft: "比较这两个方向",
+        selectedObjects: [{ type: "conceptDirection" }, { type: "conceptDirection" }],
+        hasCurrentDesignDefinition: true
+      })
+    ).toBe("comparison");
+
+    expect(
+      resolveWorkIntentForSend({
+        currentWorkIntent: "discussion",
+        recommendedWorkIntent: "createDesignDefinition"
+      })
+    ).toBe("discussion");
+  });
+
+  it("returns only applicable work intents for chat analysis", () => {
+    expect(
+      getAvailableAiWorkIntents({
+        taskMode: "chatAnalysis",
+        selectedObjects: [{ type: "conceptDirection" }],
+        hasCurrentDesignDefinition: true
+      })
+    ).toEqual(
+      expect.arrayContaining([
+        "discussion",
+        "reviseDesignDefinition",
+        "createConceptDirections",
+        "reviseConceptDirection",
+        "splitConceptDirection"
+      ])
+    );
+
+    expect(
+      getAvailableAiWorkIntents({
+        taskMode: "imageGeneration",
+        selectedObjects: [{ type: "conceptDirection" }],
+        hasCurrentDesignDefinition: true
+      })
+    ).toEqual(["discussion"]);
+  });
+
+  it("maps explicit work intent to context task and proposal expectations", () => {
+    expect(resolveAiContextTask("chatAnalysis", "createDesignDefinition")).toBe("designDefinition");
+    expect(resolveAiContextTask("chatAnalysis", "mergeConceptDirections")).toBe("conceptDirection");
+    expect(resolveAiContextTask("imageGeneration", "discussion")).toBe("visualDevelopment");
+    expect(expectsDesignDefinitionProposal("reviseDesignDefinition")).toBe(true);
+    expect(expectsConceptDirectionProposal("splitConceptDirection")).toBe(true);
+    expect(expectsConceptDirectionProposal("discussion")).toBe(false);
   });
 });

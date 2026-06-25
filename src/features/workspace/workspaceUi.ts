@@ -1,8 +1,9 @@
-import type { ImageRole, MorphoObject, MorphoObjectId } from "@/domain/morpho/types";
+import type { AiWorkIntent, ImageRole, MorphoObject, MorphoObjectId } from "@/domain/morpho/types";
 
 export type Suggestion = {
   label: string;
   prompt: string;
+  workIntent?: AiWorkIntent;
 };
 
 export function getObjectTypeLabel(object: MorphoObject): string {
@@ -95,7 +96,8 @@ export function getSuggestionsForSelection(objects: MorphoObject[]): Suggestion[
     return [
       {
         label: "比较这些对象",
-        prompt: "比较这些对象在当前项目中的价值、差异和风险，并说明下一步最值得继续发展的部分。"
+        prompt: "比较这些对象在当前项目中的价值、差异和风险，并说明下一步最值得继续发展的部分。",
+        workIntent: "comparison"
       },
       {
         label: "提炼共同线索",
@@ -103,7 +105,8 @@ export function getSuggestionsForSelection(objects: MorphoObject[]): Suggestion[
       },
       {
         label: "生成多参考方向",
-        prompt: "把这些对象作为明确参考，生成几条有差异的后续方向建议，但不要自动改项目状态。"
+        prompt: "把这些对象作为明确参考，生成几条有差异的后续方向建议，但不要自动改项目状态。",
+        workIntent: "createConceptDirections"
       }
     ];
   }
@@ -149,7 +152,8 @@ export function getSuggestionsForSelection(objects: MorphoObject[]): Suggestion[
         },
         {
           label: "形成设计定义",
-          prompt: `基于“${object.title}”形成一版可确认的设计定义草案。`
+          prompt: `基于“${object.title}”形成一版可确认的设计定义草案。`,
+          workIntent: "createDesignDefinition"
         }
       ];
     case "link":
@@ -178,44 +182,52 @@ export function getSuggestionsForSelection(objects: MorphoObject[]): Suggestion[
         },
         {
           label: "形成设计定义",
-          prompt: `基于“${object.title}”以及当前已有依据，形成一版设计定义草案。`
+          prompt: `基于“${object.title}”以及当前已有依据，形成一版设计定义草案。`,
+          workIntent: "createDesignDefinition"
         },
         {
           label: "生成多个方向",
-          prompt: `基于“${object.title}”以及当前设计定义，提出几个真正有差异的概念方向草案。`
+          prompt: `基于“${object.title}”以及当前设计定义，提出几个真正有差异的概念方向草案。`,
+          workIntent: "createConceptDirections"
         }
       ];
     case "keyConclusion":
       return [
         {
           label: "形成设计定义",
-          prompt: `基于“${object.title}”以及当前已确认结论，形成一版设计定义草案。`
+          prompt: `基于“${object.title}”以及当前已确认结论，形成一版设计定义草案。`,
+          workIntent: "createDesignDefinition"
         },
         {
           label: "生成方向草案",
-          prompt: `基于“${object.title}”以及当前设计定义，提出几个概念方向草案。`
+          prompt: `基于“${object.title}”以及当前设计定义，提出几个概念方向草案。`,
+          workIntent: "createConceptDirections"
         }
       ];
     case "designDefinition":
       return [
         {
           label: "检查定义缺口",
-          prompt: `检查“${object.title}”目前还缺哪些约束、边界或待验证问题。`
+          prompt: `检查“${object.title}”目前还缺哪些约束、边界或待验证问题。`,
+          workIntent: "reviseDesignDefinition"
         },
         {
           label: "生成方向草案",
-          prompt: `基于“${object.title}”提出几个策略差异清楚的概念方向草案。`
+          prompt: `基于“${object.title}”提出几个策略差异清楚的概念方向草案。`,
+          workIntent: "createConceptDirections"
         }
       ];
     case "conceptDirection":
       return [
         {
           label: "继续发展这个方向",
-          prompt: `围绕“${object.title}”继续发展，说明它最值得保留和最需要修正的部分。`
+          prompt: `围绕“${object.title}”继续发展，说明它最值得保留和最需要修正的部分。`,
+          workIntent: "reviseConceptDirection"
         },
         {
           label: "比较与当前定义",
-          prompt: `比较“${object.title}”与当前设计定义的契合点、偏离点和下一步建议。`
+          prompt: `比较“${object.title}”与当前设计定义的契合点、偏离点和下一步建议。`,
+          workIntent: "comparison"
         }
       ];
     case "delivery":

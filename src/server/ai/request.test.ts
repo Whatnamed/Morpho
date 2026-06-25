@@ -8,6 +8,7 @@ describe("MiMo chat route request conversion", () => {
       draft: "Analyze this image",
       task: "general",
       taskMode: "chatAnalysis",
+      workIntent: "discussion",
       messages: [],
       objectSummaries: [
         {
@@ -74,6 +75,7 @@ describe("MiMo chat route request conversion", () => {
       draft: "Analyze this image",
       task: "general",
       taskMode: "chatAnalysis",
+      workIntent: "discussion",
       messages: [],
       objectSummaries: [],
       attachments: [
@@ -130,6 +132,7 @@ describe("MiMo chat route request conversion", () => {
     const result = validateAiRouteRequest({
       draft: "Verify the latest source",
       taskMode: "researchOperation",
+      workIntent: "discussion",
       messages: [],
       objectSummaries: [],
       attachments: [],
@@ -173,6 +176,7 @@ describe("MiMo chat route request conversion", () => {
       draft: "整理当前设计定义",
       task: "designDefinition",
       taskMode: "chatAnalysis",
+      workIntent: "createDesignDefinition",
       messages: [],
       objectSummaries: [],
       attachments: []
@@ -187,6 +191,7 @@ describe("MiMo chat route request conversion", () => {
       draft: "提出几个概念方向",
       task: "conceptDirection",
       taskMode: "chatAnalysis",
+      workIntent: "createConceptDirections",
       messages: [],
       objectSummaries: [],
       attachments: []
@@ -194,5 +199,21 @@ describe("MiMo chat route request conversion", () => {
 
     expect(prompt).toContain("morphoConceptDirectionProposal");
     expect(prompt).toContain("不要自动指定主方向");
+  });
+
+  it("does not ask for proposal JSON during ordinary discussion even when task stays general", () => {
+    const prompt = buildMorphoSystemPrompt({
+      draft: "继续讨论这条研究线索的风险",
+      task: "general",
+      taskMode: "chatAnalysis",
+      workIntent: "discussion",
+      messages: [],
+      objectSummaries: [],
+      attachments: []
+    });
+
+    expect(prompt).not.toContain("morphoDesignDefinitionProposal");
+    expect(prompt).not.toContain("morphoConceptDirectionProposal");
+    expect(prompt).toContain("本次工作意图");
   });
 });

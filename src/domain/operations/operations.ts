@@ -34,6 +34,7 @@ export type CreateResearchOperationResult = {
 export type RecordResearchProposalInput = {
   proposalId?: string;
   operationId: string;
+  workIntent?: ResearchAnalysisProposal["workIntent"];
   title: string;
   summary: string;
   findings: string[];
@@ -64,6 +65,7 @@ export type RecordResearchProposalResult = {
 export type RecordDesignDefinitionProposalInput = {
   proposalId?: string;
   operationId?: string;
+  workIntent?: DesignDefinitionProposal["workIntent"];
   title: string;
   summary: string;
   projectGoal: string;
@@ -108,6 +110,7 @@ export type ApplyDesignDefinitionProposalResult =
 export type RecordConceptDirectionProposalInput = {
   proposalId?: string;
   operationId?: string;
+  workIntent?: ConceptDirectionProposal["workIntent"];
   title: string;
   summary: string;
   directions: ConceptDirectionProposal["directions"];
@@ -562,6 +565,7 @@ export function recordResearchAnalysisProposal(
     id: proposalId,
     type: "researchAnalysis",
     operationId: input.operationId,
+    workIntent: input.workIntent,
     status: "pending",
     title: input.title,
     summary: input.summary,
@@ -631,6 +635,7 @@ export function recordDesignDefinitionProposal(
     id: proposalId,
     type: "designDefinition",
     operationId: input.operationId,
+    workIntent: input.workIntent,
     status: "pending",
     reviewState: "ready",
     sourceObjectIds: [...input.sourceObjectIds],
@@ -850,6 +855,7 @@ export function recordConceptDirectionProposal(
     id: proposalId,
     type: "conceptDirection",
     operationId: input.operationId,
+    workIntent: input.workIntent,
     status: "pending",
     reviewState: "ready",
     sourceObjectIds: [...input.sourceObjectIds],
@@ -1176,6 +1182,143 @@ export function applyResearchAnalysisProposal(
         lastSelectionIds: [objectId]
       }
     })
+  };
+}
+
+export function updateResearchAnalysisProposalDraft(
+  workspace: MorphoWorkspace,
+  proposalId: string,
+  input: Pick<
+    ResearchAnalysisProposal,
+    "title" | "summary" | "findings" | "opportunities" | "constraints" | "openQuestions" | "evidence"
+  >
+): MorphoWorkspace {
+  const proposal = workspace.artifactProposals[proposalId];
+  if (!proposal || proposal.type !== "researchAnalysis" || proposal.status !== "pending") {
+    return workspace;
+  }
+
+  return {
+    ...workspace,
+    artifactProposals: {
+      ...workspace.artifactProposals,
+      [proposalId]: {
+        ...proposal,
+        title: input.title,
+        summary: input.summary,
+        findings: [...input.findings],
+        opportunities: [...input.opportunities],
+        constraints: [...input.constraints],
+        openQuestions: [...input.openQuestions],
+        evidence: input.evidence.map((item) => ({
+          claim: item.claim,
+          confidence: item.confidence,
+          citationIds: [...item.citationIds],
+          sourceObjectIds: [...item.sourceObjectIds]
+        }))
+      }
+    }
+  };
+}
+
+export function updateDesignDefinitionProposalDraft(
+  workspace: MorphoWorkspace,
+  proposalId: string,
+  input: Pick<
+    DesignDefinitionProposal,
+    | "title"
+    | "summary"
+    | "projectGoal"
+    | "targetUsers"
+    | "primaryScenarios"
+    | "coreProblem"
+    | "designPrinciples"
+    | "constraints"
+    | "avoidDirections"
+    | "opportunities"
+    | "openQuestions"
+    | "changeNote"
+  >
+): MorphoWorkspace {
+  const proposal = workspace.artifactProposals[proposalId];
+  if (!proposal || proposal.type !== "designDefinition" || proposal.status !== "pending") {
+    return workspace;
+  }
+
+  return {
+    ...workspace,
+    artifactProposals: {
+      ...workspace.artifactProposals,
+      [proposalId]: {
+        ...proposal,
+        title: input.title,
+        summary: input.summary,
+        projectGoal: input.projectGoal,
+        targetUsers: [...input.targetUsers],
+        primaryScenarios: [...input.primaryScenarios],
+        coreProblem: input.coreProblem,
+        designPrinciples: [...input.designPrinciples],
+        constraints: [...input.constraints],
+        avoidDirections: [...input.avoidDirections],
+        opportunities: [...input.opportunities],
+        openQuestions: [...input.openQuestions],
+        changeNote: input.changeNote
+      }
+    }
+  };
+}
+
+export function updateConceptDirectionProposalDraft(
+  workspace: MorphoWorkspace,
+  proposalId: string,
+  input: Pick<ConceptDirectionProposal, "title" | "summary" | "directions">
+): MorphoWorkspace {
+  const proposal = workspace.artifactProposals[proposalId];
+  if (!proposal || proposal.type !== "conceptDirection" || proposal.status !== "pending") {
+    return workspace;
+  }
+
+  return {
+    ...workspace,
+    artifactProposals: {
+      ...workspace.artifactProposals,
+      [proposalId]: {
+        ...proposal,
+        title: input.title,
+        summary: input.summary,
+        directions: input.directions.map((direction) => ({
+          ...direction,
+          keywords: [...direction.keywords],
+          differentiators: [...direction.differentiators],
+          visualSignals: [...direction.visualSignals],
+          risks: [...direction.risks],
+          openQuestions: [...direction.openQuestions]
+        }))
+      }
+    }
+  };
+}
+
+export function rejectArtifactProposal(
+  workspace: MorphoWorkspace,
+  proposalId: string,
+  rejectedReason: string
+): MorphoWorkspace {
+  const proposal = workspace.artifactProposals[proposalId];
+  if (!proposal || proposal.status !== "pending") {
+    return workspace;
+  }
+
+  return {
+    ...workspace,
+    artifactProposals: {
+      ...workspace.artifactProposals,
+      [proposalId]: {
+        ...proposal,
+        status: "rejected",
+        rejectedReason
+      }
+    }
   };
 }
 

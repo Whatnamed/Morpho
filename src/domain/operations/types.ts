@@ -1,3 +1,5 @@
+import type { AiWorkIntent } from "../morpho/types";
+
 export type OperationId = string;
 export type ArtifactProposalId = string;
 export type SourceCitationId = string;
@@ -78,6 +80,7 @@ export type ArtifactProposalBase = {
   id: ArtifactProposalId;
   type: "researchAnalysis" | "designDefinition" | "conceptDirection" | "deliveryPlan";
   operationId?: OperationId;
+  workIntent?: AiWorkIntent;
   status: ProposalStatus;
   reviewState?: ProposalReviewState;
   sourceObjectIds: OperationObjectId[];

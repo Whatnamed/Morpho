@@ -1,3 +1,5 @@
+import type { AiWorkIntent } from "@/domain/morpho/types";
+
 import type { ProviderChatMessage, ProviderWebSearchOptions } from "./types";
 
 export type AiRouteObjectSummary = {
@@ -39,6 +41,7 @@ export type AiRouteRequest = {
   draft: string;
   task: string;
   taskMode: "chatAnalysis" | "imageGeneration" | "researchOperation";
+  workIntent?: AiWorkIntent;
   messages: Array<{
     role: "user" | "assistant";
     body: string;
@@ -85,6 +88,7 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
       draft: value.draft,
       task: typeof value.task === "string" ? value.task : "general",
       taskMode,
+      workIntent: isWorkIntent(value.workIntent) ? value.workIntent : "discussion",
       messages,
       objectSummaries,
       attachments,
@@ -132,6 +136,7 @@ export function buildMorphoSystemPrompt(request: AiRouteRequest): string {
     "你不能直接创建、删除、隐藏对象，不能更改方向状态，不能替换默认参考，不能创建交付引用，不能写入项目记忆。",
     `本次任务类型：${request.task}`,
     `本次执行模式：${request.taskMode}`,
+    `本次工作意图：${request.workIntent ?? "discussion"}`,
     request.defaultReferenceStatus ? `默认参考状态：${request.defaultReferenceStatus}` : "",
     "本次可用对象摘要：",
     objectLines,
@@ -172,7 +177,7 @@ function buildStructuredProposalInstruction(request: AiRouteRequest): string {
     ].join("\n");
   }
 
-  if (request.task === "designDefinition") {
+  if (request.workIntent === "createDesignDefinition" || request.workIntent === "reviseDesignDefinition") {
     return [
       "如果你已经形成可保存的设计定义草案，请在普通回答后附加一个 fenced JSON block，且只使用以下顶层字段：",
       "morphoDesignDefinitionProposal: { title, summary, projectGoal, targetUsers, primaryScenarios, coreProblem, designPrinciples, constraints, avoidDirections, opportunities, openQuestions, changeNote }。",
@@ -181,7 +186,12 @@ function buildStructuredProposalInstruction(request: AiRouteRequest): string {
     ].join("\n");
   }
 
-  if (request.task === "conceptDirection") {
+  if (
+    request.workIntent === "createConceptDirections" ||
+    request.workIntent === "reviseConceptDirection" ||
+    request.workIntent === "splitConceptDirection" ||
+    request.workIntent === "mergeConceptDirections"
+  ) {
     return [
       "如果你已经形成可保存的概念方向草案，请在普通回答后附加一个 fenced JSON block，且只使用以下顶层字段：",
       "morphoConceptDirectionProposal: { title, summary, directions }。",
@@ -291,6 +301,19 @@ function clampInteger(value: unknown, min: number, max: number, fallback: number
 
 function isTaskMode(value: unknown): value is AiRouteRequest["taskMode"] {
   return value === "chatAnalysis" || value === "imageGeneration" || value === "researchOperation";
+}
+
+function isWorkIntent(value: unknown): value is AiWorkIntent {
+  return (
+    value === "discussion" ||
+    value === "comparison" ||
+    value === "createDesignDefinition" ||
+    value === "reviseDesignDefinition" ||
+    value === "createConceptDirections" ||
+    value === "reviseConceptDirection" ||
+    value === "splitConceptDirection" ||
+    value === "mergeConceptDirections"
+  );
 }
 
 function isOptionalStringArray(value: unknown): value is string[] | undefined {
