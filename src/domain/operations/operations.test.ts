@@ -482,6 +482,41 @@ describe("Morpho Operation Runtime", () => {
     }
   });
 
+  it("applies a design definition proposal as a first definition when no current definition exists", () => {
+    const workspace = createBlankWorkspace("project-op");
+    const proposed = recordDesignDefinitionProposal(workspace, {
+      proposalId: "proposal-definition-initial",
+      title: "首版夜航设计定义",
+      summary: "把夜间起身支撑与柔和路径提示合并为一套居家连续语言。",
+      projectGoal: "让夜间起身、转角与入卫浴路径更安全，同时保持居家感。",
+      targetUsers: ["独居老人"],
+      primaryScenarios: ["床边起身", "进入卫浴"],
+      coreProblem: "如何在不增加器械感的情况下建立连续且可信的夜间支撑。",
+      designPrinciples: ["连续支撑", "柔和导向", "低施工介入"],
+      constraints: ["避免医院感", "尽量不依赖重施工"],
+      avoidDirections: ["厚重医疗器械语言"],
+      opportunities: ["把扶持、导向与照明整合为一套连续界面"],
+      openQuestions: ["转角区域是否需要更明确的触感变化？"],
+      sourceObjectIds: [],
+      citations: []
+    });
+
+    const applied = applyDesignDefinitionProposal(proposed.workspace, proposed.proposal.id);
+
+    expect(applied.status).toBe("updated");
+    if (applied.status === "updated") {
+      expect(applied.designDefinitionObject.id).toBe(`design-definition-${proposed.proposal.id}`);
+      expect(applied.designDefinitionObject.revisionIds).toEqual([applied.revision.id]);
+      expect(applied.revision.revisionNumber).toBe(1);
+      expect(applied.revision.previousRevisionId).toBeUndefined();
+      expect(applied.workspace.workingState.currentDesignDefinitionId).toBe(applied.designDefinitionObject.id);
+      expect(applied.workspace.artifactProposals[proposed.proposal.id]).toMatchObject({
+        status: "applied",
+        appliedObjectId: applied.designDefinitionObject.id
+      });
+    }
+  });
+
   it("blocks a design definition proposal when its base revision has been superseded", () => {
     const workspace = createInitialWorkspace();
     const currentDefinition =

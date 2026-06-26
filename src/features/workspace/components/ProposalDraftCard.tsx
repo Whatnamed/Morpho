@@ -77,6 +77,9 @@ export function ProposalDraftCard({
       </div>
 
       <p className="proposal-help-text">{proposalReviewStateMessage(proposal.reviewState)}</p>
+      {proposalTargetMessage(workspace, proposal) ? (
+        <p className="proposal-help-text">{proposalTargetMessage(workspace, proposal)}</p>
+      ) : null}
       <div className="proposal-citations">
         {proposal.citationIds.length > 0 ? (
           proposal.citationIds
@@ -454,17 +457,35 @@ function proposalEditorKey(proposal: ArtifactProposal): string {
   return `${proposal.id}:${JSON.stringify(proposal)}`;
 }
 
-function proposalTypeLabel(proposal: ArtifactProposal): string {
+export function proposalTypeLabel(proposal: ArtifactProposal): string {
   switch (proposal.type) {
     case "researchAnalysis":
       return "研究与分析草案";
     case "designDefinition":
-      return "设计定义草案";
+      return proposal.workIntent === "reviseDesignDefinition" ? "设计定义修订草案" : "设计定义草案";
     case "conceptDirection":
       return "概念方向草案";
     case "deliveryPlan":
       return "交付草案";
   }
+}
+
+export function proposalTargetMessage(workspace: MorphoWorkspace, proposal: ArtifactProposal): string | undefined {
+  if (proposal.type === "designDefinition") {
+    if (proposal.workIntent === "reviseDesignDefinition" && proposal.basedOnDesignDefinitionId) {
+      const target = workspace.objects[proposal.basedOnDesignDefinitionId];
+      if (target?.type === "designDefinition") {
+        return `应用后会替换当前设计定义“${target.title}”的有效内容，并保留旧修订可回看。`;
+      }
+      return "应用后会替换当前设计定义的有效内容，并保留旧修订可回看。";
+    }
+
+    if (proposal.workIntent === "createDesignDefinition") {
+      return "应用后会创建首版当前设计定义，成为后续方向生成的默认依据。";
+    }
+  }
+
+  return undefined;
 }
 
 function proposalIntentLabel(intent: ArtifactProposal["workIntent"]): string {

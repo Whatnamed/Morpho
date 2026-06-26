@@ -19,6 +19,8 @@ import {
   updateCanvasInstancePosition
 } from "./workspace";
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "./imports";
+import { recordDesignDefinitionProposal } from "../operations/operations";
+import { hasPendingDesignDefinitionRevisionProposal } from "./derivedState";
 
 describe("Morpho workspace domain boundaries", () => {
   it("creates a blank schema v5 project without depending on Nightrail seed object ids", () => {
@@ -223,6 +225,59 @@ describe("Morpho workspace domain boundaries", () => {
     }
     expect(result.reason).toContain("supersededById");
     expect(result.workspace).toBe(workspace);
+  });
+
+  it("detects a pending revision proposal on the current design definition", () => {
+    const workspace = createInitialWorkspace();
+    const currentDefinition =
+      workspace.objects["definition-current"]?.type === "designDefinition"
+        ? workspace.objects["definition-current"]
+        : undefined;
+    const proposed = recordDesignDefinitionProposal(workspace, {
+      proposalId: "proposal-definition-revision-pending",
+      title: "当前设计定义 v2",
+      summary: "收紧连续支撑与触感边界。",
+      projectGoal: "保持居家感的同时提升夜间路径支撑可信度。",
+      targetUsers: ["独居老人"],
+      primaryScenarios: ["床边起身", "进入卫浴"],
+      coreProblem: "如何在不增加器械感的前提下强化连续支撑。",
+      designPrinciples: ["连续支撑", "柔和触感"],
+      constraints: ["避免医院感"],
+      avoidDirections: ["厚重器械感"],
+      opportunities: ["统一转角与触感语言"],
+      openQuestions: ["转角连接是否需要更明显的触感差异？"],
+      sourceObjectIds: ["insight-continuous-support"],
+      citations: [],
+      basedOnDesignDefinitionId: "definition-current",
+      basedOnRevisionId: currentDefinition?.currentRevisionId,
+      workIntent: "reviseDesignDefinition",
+      changeNote: "收紧连续支撑边界。"
+    });
+
+    expect(hasPendingDesignDefinitionRevisionProposal(proposed.workspace, "definition-current")).toBe(true);
+  });
+
+  it("does not treat create-definition proposals as revision drafts on the current definition", () => {
+    const workspace = createInitialWorkspace();
+    const proposed = recordDesignDefinitionProposal(workspace, {
+      proposalId: "proposal-definition-create-pending",
+      title: "首版设计定义草案",
+      summary: "一份与当前定义无关的首版草案。",
+      projectGoal: "测试首版创建语义。",
+      targetUsers: ["测试用户"],
+      primaryScenarios: ["测试场景"],
+      coreProblem: "测试问题。",
+      designPrinciples: ["测试原则"],
+      constraints: [],
+      avoidDirections: [],
+      opportunities: [],
+      openQuestions: [],
+      sourceObjectIds: [],
+      citations: [],
+      workIntent: "createDesignDefinition"
+    });
+
+    expect(hasPendingDesignDefinitionRevisionProposal(proposed.workspace, "definition-current")).toBe(false);
   });
 
   it("hides objects without deleting objects, relations, or creating decision records", () => {

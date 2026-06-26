@@ -14,7 +14,8 @@ import {
   type TLShapePartial
 } from "tldraw";
 
-import type { CanvasInstance, MorphoObject, MorphoObjectType } from "@/domain/morpho/types";
+import type { CanvasInstance, MorphoObject, MorphoObjectType, MorphoWorkspace } from "../../../domain/morpho/types";
+import { hasPendingDesignDefinitionRevisionProposal } from "../../../domain/morpho/derivedState";
 import { getObjectTypeLabel } from "../workspaceUi";
 
 export const MORPHO_SHAPE_TYPE = "morpho-object";
@@ -135,7 +136,8 @@ export function isMorphoShape(shape: TLShape): shape is MorphoShape {
 export function createMorphoShapePartial(
   instance: CanvasInstance,
   object: MorphoObject,
-  assetUrl?: string
+  assetUrl?: string,
+  workspace?: MorphoWorkspace
 ): TLShapePartial<MorphoShape> {
   return {
     id: createShapeId(instance.id),
@@ -144,12 +146,17 @@ export function createMorphoShapePartial(
     y: instance.position.y,
     opacity: object.type === "conceptDirection" && object.status === "eliminated" ? 0.68 : 1,
     props: {
-      ...getMorphoShapeProps(instance, object, assetUrl)
+      ...getMorphoShapeProps(instance, object, assetUrl, workspace)
     }
   };
 }
 
-export function getMorphoShapeProps(instance: CanvasInstance, object: MorphoObject, assetUrl?: string): MorphoShapeProps {
+export function getMorphoShapeProps(
+  instance: CanvasInstance,
+  object: MorphoObject,
+  assetUrl?: string,
+  workspace?: MorphoWorkspace
+): MorphoShapeProps {
   return {
     w: instance.size.w,
     h: instance.size.h,
@@ -159,14 +166,14 @@ export function getMorphoShapeProps(instance: CanvasInstance, object: MorphoObje
     title: object.title,
     summary: object.summary,
     label: getObjectTypeLabel(object),
-    details: getDetails(object),
+    details: getDetails(object, workspace),
     imageVariant: object.type === "image" ? object.imageVariant : undefined,
     isDefaultReference: object.type === "image" ? object.isDefaultReference : undefined,
     assetUrl
   };
 }
 
-function getDetails(object: MorphoObject): string[] {
+function getDetails(object: MorphoObject, workspace?: MorphoWorkspace): string[] {
   switch (object.type) {
     case "research":
       return [
@@ -177,8 +184,13 @@ function getDetails(object: MorphoObject): string[] {
       ];
     case "keyConclusion":
       return [object.body, `状态：${object.state}`, `置信度：${object.confidence}`];
-    case "designDefinition":
-      return [`核心问题：${object.problem}`, `原则：${object.principles.join(" / ")}`, `避免项：${object.avoid.join(" / ")}`];
+    case "designDefinition": {
+      const details = [`核心问题：${object.problem}`, `原则：${object.principles.join(" / ")}`, `避免项：${object.avoid.join(" / ")}`];
+      if (workspace && hasPendingDesignDefinitionRevisionProposal(workspace, object.id)) {
+        details.push("有修订草稿");
+      }
+      return details;
+    }
     case "conceptDirection":
       return [object.summary, `关键词：${object.keywords.join(" / ")}`];
     case "text":

@@ -6,6 +6,10 @@ export type Suggestion = {
   workIntent?: AiWorkIntent;
 };
 
+type SuggestionContext = {
+  hasCurrentDesignDefinition?: boolean;
+};
+
 export function getObjectTypeLabel(object: MorphoObject): string {
   switch (object.type) {
     case "image":
@@ -87,7 +91,12 @@ export function directionStatusLabel(status: string): string {
   }
 }
 
-export function getSuggestionsForSelection(objects: MorphoObject[]): Suggestion[] {
+export function getSuggestionsForSelection(objects: MorphoObject[], context: SuggestionContext = {}): Suggestion[] {
+  const revisesCurrentDesignDefinition = Boolean(context.hasCurrentDesignDefinition);
+  const designDefinitionIntent: AiWorkIntent = revisesCurrentDesignDefinition
+    ? "reviseDesignDefinition"
+    : "createDesignDefinition";
+
   if (objects.length === 0) {
     return [];
   }
@@ -151,9 +160,11 @@ export function getSuggestionsForSelection(objects: MorphoObject[]): Suggestion[
           prompt: `把“${object.title}”整理成更清晰的研究依据或项目输入。`
         },
         {
-          label: "形成设计定义",
-          prompt: `基于“${object.title}”形成一版可确认的设计定义草案。`,
-          workIntent: "createDesignDefinition"
+          label: revisesCurrentDesignDefinition ? "继续修改定义" : "形成设计定义",
+          prompt: revisesCurrentDesignDefinition
+            ? `基于“${object.title}”以及当前设计定义，形成一版设计定义修订草案。`
+            : `基于“${object.title}”形成一版可确认的设计定义草案。`,
+          workIntent: designDefinitionIntent
         }
       ];
     case "link":
@@ -181,9 +192,11 @@ export function getSuggestionsForSelection(objects: MorphoObject[]): Suggestion[
           prompt: `从“${object.title}”中提炼值得保留为关键结论的内容，并说明证据边界。`
         },
         {
-          label: "形成设计定义",
-          prompt: `基于“${object.title}”以及当前已有依据，形成一版设计定义草案。`,
-          workIntent: "createDesignDefinition"
+          label: revisesCurrentDesignDefinition ? "继续修改定义" : "形成设计定义",
+          prompt: revisesCurrentDesignDefinition
+            ? `基于“${object.title}”以及当前已有定义依据，形成一版设计定义修订草案。`
+            : `基于“${object.title}”以及当前已有依据，形成一版设计定义草案。`,
+          workIntent: designDefinitionIntent
         },
         {
           label: "生成多个方向",
@@ -194,9 +207,11 @@ export function getSuggestionsForSelection(objects: MorphoObject[]): Suggestion[
     case "keyConclusion":
       return [
         {
-          label: "形成设计定义",
-          prompt: `基于“${object.title}”以及当前已确认结论，形成一版设计定义草案。`,
-          workIntent: "createDesignDefinition"
+          label: revisesCurrentDesignDefinition ? "继续修改定义" : "形成设计定义",
+          prompt: revisesCurrentDesignDefinition
+            ? `基于“${object.title}”以及当前已确认结论，形成一版设计定义修订草案。`
+            : `基于“${object.title}”以及当前已确认结论，形成一版设计定义草案。`,
+          workIntent: designDefinitionIntent
         },
         {
           label: "生成方向草案",

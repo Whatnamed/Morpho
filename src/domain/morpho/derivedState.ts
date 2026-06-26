@@ -202,6 +202,23 @@ export function getCurrentDesignDefinitionRevision(
   return workspace.designDefinitionRevisions[object.currentRevisionId];
 }
 
+export function hasPendingDesignDefinitionRevisionProposal(
+  workspace: MorphoWorkspace,
+  designDefinitionId: MorphoObjectId | undefined
+): boolean {
+  if (!designDefinitionId) {
+    return false;
+  }
+
+  return Object.values(workspace.artifactProposals).some(
+    (proposal) =>
+      proposal.type === "designDefinition" &&
+      proposal.status === "pending" &&
+      proposal.workIntent === "reviseDesignDefinition" &&
+      proposal.basedOnDesignDefinitionId === designDefinitionId
+  );
+}
+
 function createStageRecord(kind: StageRecordKind, now: string): StageRecord {
   return {
     kind,

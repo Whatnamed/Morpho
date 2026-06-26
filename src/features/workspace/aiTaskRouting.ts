@@ -89,7 +89,7 @@ export function recommendAiWorkIntent(input: RecommendAiWorkIntentInput): AiWork
   }
 
   if (DESIGN_DEFINITION_PATTERN.test(text)) {
-    if (input.hasCurrentDesignDefinition && REVISE_PATTERN.test(text)) {
+    if (input.hasCurrentDesignDefinition) {
       return "reviseDesignDefinition";
     }
 

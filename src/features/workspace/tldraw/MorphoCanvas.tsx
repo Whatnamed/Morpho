@@ -133,12 +133,12 @@ export function MorphoCanvas({
         const existing = shapesByInstance.get(instance.id);
         const assetUrl = object.type === "image" && object.assetId ? assetUrls[object.assetId] : undefined;
         if (!existing) {
-          toCreate.push(createMorphoShapePartial(instance, object, assetUrl));
+          toCreate.push(createMorphoShapePartial(instance, object, assetUrl, workspace));
         } else {
           toUpdate.push({
             ...existing,
             props: {
-              ...getMorphoShapeProps(instance, object, assetUrl),
+              ...getMorphoShapeProps(instance, object, assetUrl, workspace),
               isBeingLocallyEdited: object.id === annotatedObjectId
             }
           });

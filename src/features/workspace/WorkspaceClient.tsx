@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { AiTaskMode, AiWorkIntent, AssetRecord, ImageRole, MorphoObject } from "@/domain/morpho/types";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
+import { hasPendingDesignDefinitionRevisionProposal } from "@/domain/morpho/derivedState";
 import { createGeneratedImageFromAsset } from "@/domain/morpho/generation";
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "@/domain/morpho/imports";
 import {
@@ -66,6 +67,7 @@ import {
   resolveTaskModeForSend,
   resolveWorkIntentForSend
 } from "./aiTaskRouting";
+import { buildProposalDiscussionDraft, buildProposalRegenerationDraft } from "./proposalFollowupPrompts";
 import { buildWebSearchOptions, collectMiMoImageAttachments, shouldAttachImagesForMiMo } from "./aiAttachments";
 import {
   getDefaultImageGenerationSettings,
@@ -134,8 +136,21 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       ),
     [workspace.objects]
   );
+  const hasPendingDesignDefinitionRevisionDraft = useMemo(
+    () =>
+      selectedObjects.length === 1 &&
+      selectedObjects[0].type === "designDefinition" &&
+      hasPendingDesignDefinitionRevisionProposal(workspace, selectedObjects[0].id),
+    [selectedObjects, workspace]
+  );
 
-  const suggestions = useMemo(() => getSuggestionsForSelection(selectedObjects), [selectedObjects]);
+  const suggestions = useMemo(
+    () =>
+      getSuggestionsForSelection(selectedObjects, {
+        hasCurrentDesignDefinition: Boolean(workspace.workingState.currentDesignDefinitionId)
+      }),
+    [selectedObjects, workspace.workingState.currentDesignDefinitionId]
+  );
   const recommendedTaskMode = useMemo(
     () => recommendAiTaskMode(aiDraft, selectedObjects.map((object) => object.type)),
     [aiDraft, selectedObjects]
@@ -1561,6 +1576,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
       <BottomDetailBar
         selectedObjects={selectedObjects}
+        hasPendingDesignDefinitionRevisionDraft={hasPendingDesignDefinitionRevisionDraft}
         relations={workspace.relations}
         decisionRecords={workspace.decisionRecords}
         onAskAi={handleAskAi}
@@ -1622,32 +1638,6 @@ function updateWorkspaceInstances(workspace: MorphoWorkspace, instances: CanvasI
       instances: nextInstances
     }
   };
-}
-
-function buildProposalDiscussionDraft(proposal: ArtifactProposal): string {
-  switch (proposal.type) {
-    case "researchAnalysis":
-      return `继续围绕这份研究与分析草案讨论，重点复核：${proposal.title}。请指出最需要补强的发现、约束和待确认问题。`;
-    case "designDefinition":
-      return `继续围绕这份设计定义草案讨论，重点复核：${proposal.title}。请指出哪些原则、边界或场景还不够稳。`;
-    case "conceptDirection":
-      return `继续围绕这份概念方向草案讨论，重点复核：${proposal.title}。请指出哪些方向值得保留、拆分或合并。`;
-    case "deliveryPlan":
-      return `继续围绕这份交付草案讨论，重点复核：${proposal.title}。请指出缺口和需要补充的来源。`;
-  }
-}
-
-function buildProposalRegenerationDraft(proposal: ArtifactProposal): string {
-  switch (proposal.type) {
-    case "researchAnalysis":
-      return `请基于当前来源重新生成这份研究与分析草案，并明确哪些发现更稳、哪些仍待验证。当前草案标题：${proposal.title}。`;
-    case "designDefinition":
-      return `请基于当前来源重新生成一版设计定义草案，保持目标和边界清楚，不要直接应用。当前草案标题：${proposal.title}。`;
-    case "conceptDirection":
-      return `请基于当前设计定义和来源重新生成一版概念方向草案，保留方向差异，不要自动设为主方向。当前草案标题：${proposal.title}。`;
-    case "deliveryPlan":
-      return `请基于当前来源重新生成一版交付草案，明确缺口和引用来源。当前草案标题：${proposal.title}。`;
-  }
 }
 
 function makeObjectSummaries(workspace: MorphoWorkspace, objectIds: string[]) {

@@ -29,6 +29,7 @@ type ResearchSourceKind = "finding" | "opportunity" | "constraint" | "openQuesti
 
 type BottomDetailBarProps = {
   selectedObjects: MorphoObject[];
+  hasPendingDesignDefinitionRevisionDraft: boolean;
   keyConclusionCandidates: KeyConclusionObject[];
   relations: MorphoRelation[];
   decisionRecords: DecisionRecord[];
@@ -77,8 +78,22 @@ const imageRoleOptions: ImageRole[] = [
   "diagram"
 ];
 
+export function buildDesignDefinitionInfoMeta(hasPendingDesignDefinitionRevisionDraft: boolean): string | undefined {
+  return hasPendingDesignDefinitionRevisionDraft ? "有修订草稿" : undefined;
+}
+
+export function buildDesignDefinitionVersionDetail(
+  revisionCount: number,
+  hasPendingDesignDefinitionRevisionDraft: boolean
+): string {
+  return hasPendingDesignDefinitionRevisionDraft
+    ? `当前设计定义共有 ${revisionCount} 个修订，当前有修订草稿待应用。`
+    : `当前设计定义共有 ${revisionCount} 个修订。`;
+}
+
 export function BottomDetailBar({
   selectedObjects,
+  hasPendingDesignDefinitionRevisionDraft,
   keyConclusionCandidates,
   relations,
   decisionRecords,
@@ -135,6 +150,7 @@ export function BottomDetailBar({
             relations: related,
             decisionRecords: relatedDecisions,
             selectedCount: selectedObjects.length,
+            hasPendingDesignDefinitionRevisionDraft,
             keyConclusionCandidates,
             supersededById,
             setSupersededById,
@@ -328,6 +344,7 @@ function renderDetail(input: {
   relations: MorphoRelation[];
   decisionRecords: DecisionRecord[];
   selectedCount: number;
+  hasPendingDesignDefinitionRevisionDraft: boolean;
   keyConclusionCandidates: KeyConclusionObject[];
   supersededById: string;
   setSupersededById: (value: string) => void;
@@ -335,7 +352,7 @@ function renderDetail(input: {
   onCopyItemToDraft: BottomDetailBarProps["onCopyItemToDraft"];
   onContinueQuestion: BottomDetailBarProps["onContinueQuestion"];
 }) {
-  const { tab, object, relations, decisionRecords, selectedCount } = input;
+  const { tab, object, relations, decisionRecords, selectedCount, hasPendingDesignDefinitionRevisionDraft } = input;
   if (selectedCount > 1) {
     return "多选当前只作为 AI 输入与局部比较范围，不会因为同时选中就自动改变对象语义、方向状态或交付关系。";
   }
@@ -376,8 +393,8 @@ function renderDetail(input: {
             {object.generation.createdAt.slice(0, 10)}
           </span>
         ) : null}
-        {object.type === "designDefinition" ? (
-          <span className="detail-meta">当前修订：{object.currentRevisionId}</span>
+        {object.type === "designDefinition" && buildDesignDefinitionInfoMeta(hasPendingDesignDefinitionRevisionDraft) ? (
+          <span className="detail-meta">{buildDesignDefinitionInfoMeta(hasPendingDesignDefinitionRevisionDraft)}</span>
         ) : null}
       </>
     );
@@ -394,7 +411,7 @@ function renderDetail(input: {
 
   if (tab === "版本") {
     if (object.type === "designDefinition") {
-      return `当前设计定义共有 ${object.revisionIds.length} 个修订，当前有效修订为 ${object.currentRevisionId}。`;
+      return buildDesignDefinitionVersionDetail(object.revisionIds.length, hasPendingDesignDefinitionRevisionDraft);
     }
 
     if (object.type === "conceptDirection") {

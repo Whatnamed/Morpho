@@ -56,6 +56,14 @@ describe("workspace AI task routing", () => {
 
     expect(
       recommendAiWorkIntent({
+        draft: "基于当前结论形成一版设计定义草案",
+        selectedObjects: [{ type: "keyConclusion" }],
+        hasCurrentDesignDefinition: true
+      })
+    ).toBe("reviseDesignDefinition");
+
+    expect(
+      recommendAiWorkIntent({
         draft: "比较这两个方向",
         selectedObjects: [{ type: "conceptDirection" }, { type: "conceptDirection" }],
         hasCurrentDesignDefinition: true
