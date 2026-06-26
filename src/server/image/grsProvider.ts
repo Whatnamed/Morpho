@@ -110,7 +110,21 @@ export async function resolveGrsImageResult(
   }
 
   if (!generateResponse.response.ok) {
-    return { status: "failed", reason: `GrsAI generate returned ${generateResponse.response.status}.` };
+    // Try to extract detailed error message from GrsAI response
+    let detail = "";
+    try {
+      const errorBody = await generateResponse.response.text();
+      if (errorBody) {
+        const parsed = JSON.parse(errorBody);
+        detail = parsed.message || parsed.error || parsed.msg || errorBody.substring(0, 200);
+      }
+    } catch {
+      // Ignore parse errors
+    }
+    const reason = detail
+      ? `GrsAI generate returned ${generateResponse.response.status}: ${detail}`
+      : `GrsAI generate returned ${generateResponse.response.status}.`;
+    return { status: "failed", reason };
   }
 
   const generatePayload = await readJson(generateResponse.response);
