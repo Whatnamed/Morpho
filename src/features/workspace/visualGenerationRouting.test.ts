@@ -1,9 +1,29 @@
 import { describe, expect, it } from "vitest";
 
 import { createInitialWorkspace } from "../../domain/morpho/workspace";
-import { resolveVisualGenerationTarget } from "./visualGenerationRouting";
+import { classifyVisualGenerationIntent, resolveVisualGenerationTarget } from "./visualGenerationRouting";
 
 describe("visual generation routing", () => {
+  it("classifies selected concept directions plus preview wording as direction preview generation", () => {
+    const workspace = createInitialWorkspace();
+    const direction = workspace.objects["direction-soft-rail"];
+    if (!direction) {
+      throw new Error("Expected seed direction.");
+    }
+
+    expect(classifyVisualGenerationIntent("给每个方向生成一张概念预览图", [direction])).toBe("directionPreview");
+  });
+
+  it("classifies selected images plus iteration wording as visual development", () => {
+    const workspace = createInitialWorkspace();
+    const image = workspace.objects["image-soft-rail-v2"];
+    if (!image) {
+      throw new Error("Expected seed image.");
+    }
+
+    expect(classifyVisualGenerationIntent("保留这张图的气质，继续生成夜间场景图", [image])).toBe("visualDevelopment");
+  });
+
   it("inherits direction and visual branch from a selected source image", () => {
     const workspace = createInitialWorkspace();
     const source = workspace.objects["image-rail-detail"];

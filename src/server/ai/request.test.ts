@@ -98,6 +98,32 @@ describe("MiMo chat route request conversion", () => {
     ]);
   });
 
+  it("adds selected document extracts to provider user content without treating them as citations", () => {
+    const messages = buildProviderMessages({
+      draft: "基于资料做研究",
+      task: "research",
+      taskMode: "researchOperation",
+      workIntent: "discussion",
+      messages: [],
+      objectSummaries: [],
+      attachments: [],
+      documentExtracts: [
+        {
+          objectId: "file-a",
+          title: "真实资料",
+          fileName: "brief.txt",
+          text: "夜间起身路径风险",
+          charCount: 8,
+          truncated: false
+        }
+      ]
+    });
+
+    expect(messages[0]?.content).toContain("local project sources");
+    expect(messages[0]?.content).toContain("file-a / 真实资料 / brief.txt");
+    expect(messages[0]?.content).toContain("夜间起身路径风险");
+  });
+
   it("keeps contact sheet metadata for diagnostics without sending it as text", () => {
     const result = validateAiRouteRequest({
       draft: "Compare these images",
@@ -199,6 +225,35 @@ describe("MiMo chat route request conversion", () => {
 
     expect(prompt).toContain("morphoConceptDirectionProposal");
     expect(prompt).toContain("不要自动指定主方向");
+  });
+
+  it("asks for a structured visual generation plan in image generation mode", () => {
+    const prompt = buildMorphoSystemPrompt({
+      draft: "给每个方向生成一张预览图",
+      task: "directionPreview",
+      taskMode: "imageGeneration",
+      workIntent: "discussion",
+      messages: [],
+      objectSummaries: [],
+      attachments: [],
+      webSearch: { enabled: true, forceSearch: true }
+    });
+
+    expect(prompt).toContain("morphoVisualGenerationPlan");
+    expect(prompt).toContain("只负责形成受控图像生成计划");
+    expect(validateAiRouteRequest({
+      draft: "给每个方向生成一张预览图",
+      taskMode: "imageGeneration",
+      messages: [],
+      objectSummaries: [],
+      attachments: [],
+      webSearch: { enabled: true, forceSearch: true }
+    })).toMatchObject({
+      status: "ok",
+      value: {
+        webSearch: undefined
+      }
+    });
   });
 
   it("does not ask for proposal JSON during ordinary discussion even when task stays general", () => {

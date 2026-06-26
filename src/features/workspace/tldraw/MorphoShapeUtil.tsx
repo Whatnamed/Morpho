@@ -33,6 +33,7 @@ type MorphoShapeProps = {
   imageVariant?: string;
   isDefaultReference?: boolean;
   isBeingLocallyEdited?: boolean;
+  isInDesignTrace?: boolean;
   assetUrl?: string;
 };
 
@@ -71,6 +72,7 @@ export class MorphoShapeUtil extends BaseBoxShapeUtil<MorphoShape> {
     imageVariant: T.string.optional(),
     isDefaultReference: T.boolean.optional(),
     isBeingLocallyEdited: T.boolean.optional(),
+    isInDesignTrace: T.boolean.optional(),
     assetUrl: T.string.optional()
   };
 
@@ -137,7 +139,8 @@ export function createMorphoShapePartial(
   instance: CanvasInstance,
   object: MorphoObject,
   assetUrl?: string,
-  workspace?: MorphoWorkspace
+  workspace?: MorphoWorkspace,
+  isInDesignTrace = false
 ): TLShapePartial<MorphoShape> {
   return {
     id: createShapeId(instance.id),
@@ -146,7 +149,8 @@ export function createMorphoShapePartial(
     y: instance.position.y,
     opacity: object.type === "conceptDirection" && object.status === "eliminated" ? 0.68 : 1,
     props: {
-      ...getMorphoShapeProps(instance, object, assetUrl, workspace)
+      ...getMorphoShapeProps(instance, object, assetUrl, workspace),
+      isInDesignTrace
     }
   };
 }
@@ -212,7 +216,8 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
     "morpho-object",
     `morpho-object-${props.morphoType}`,
     props.isDefaultReference ? "is-default-reference" : "",
-    props.isBeingLocallyEdited ? "is-local-editing" : ""
+    props.isBeingLocallyEdited ? "is-local-editing" : "",
+    props.isInDesignTrace ? "is-design-trace" : ""
   ]
     .filter(Boolean)
     .join(" ");

@@ -429,7 +429,7 @@ v3 全部写完后，必须逐项检查。任何一项未通过，都不能宣�
 
 ---
 
-## 附：M4.1-B 当前实现补记
+## 附：M4.1-B / M4.2 当前实现补记
 
 当前工程实现已补齐以下 M4 语义闭环，作为后续规则解释的实现基线：
 
@@ -438,6 +438,9 @@ v3 全部写完后，必须逐项检查。任何一项未通过，都不能宣�
 - Proposal 来源复核：使用语义快照和 ProposalReviewDetails 区分 sourceChanged、baseSuperseded、targetUnavailable；标题、摘要和画布变化不触发来源变化。
 - 概念方向生命周期：create / revise / split / merge 均有独立应用语义；merge 保留多父 lineage；父方向不因 split / merge 自动淘汰。
 - VisualBranch：方向内轻量记录，不是 MorphoObject；可创建、改名、归档、恢复；归档不删除图片或关系。
-- AI Runtime：研究、生图、设计定义和方向草案统一经过 active Operation gate；taskMode 仍只决定聊天 / 生图 / 研究执行链，workIntent 决定聊天内语义目标。
+- AI Runtime：研究、生图、设计定义和方向草案统一经过 active Operation gate；用户手动选择的 taskMode 优先，默认对话状态可根据自然语言推荐路由到研究 / 生图 / 语义 Proposal 执行链，workIntent 决定聊天内语义目标。
+- M4.2 真实资料入口：导入的文本、Markdown、文本层 PDF 与 PPTX 可生成本地 documentExtract 资产；提取文本不进入 workspace JSON，不等同网络 citation。
+- M4.2 视觉预览：方向预览和视觉迭代先生成结构化视觉计划，验证方向、分支、来源和角色后再逐项生成图片；生成结果只新增图片对象，不替换旧图片、默认参考或交付引用。
+- M4.2 设计链路：链路摘要与画布 overlay 为只读计算结果，不写入项目状态，也不从画布位置推断业务语义。
 
 这份账本本身不替代 v3 正文；它负责保证 v3 正文不会再次无声遗漏已确认内容。

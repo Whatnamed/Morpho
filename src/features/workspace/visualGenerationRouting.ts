@@ -1,5 +1,7 @@
 import type { MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
 
+export type VisualGenerationIntent = "directionPreview" | "visualDevelopment";
+
 export type VisualGenerationTargetResult =
   | {
       status: "ready";
@@ -10,6 +12,28 @@ export type VisualGenerationTargetResult =
       status: "blocked";
       reason: string;
     };
+
+const DIRECTION_PREVIEW_PATTERN = /方向.*(?:预览|出图|图片|图像|效果图)|(?:每个|每条|各).{0,8}方向.*(?:图|预览)|生成.*(?:方向|概念).*(?:图|预览)/i;
+const VISUAL_DEVELOPMENT_PATTERN = /继续|迭代|保留|借鉴|参考|场景|cmf|材质|颜色|细节|局部|出图|生成.*(?:场景图|细节图|cmf图|角度图)/i;
+
+export function classifyVisualGenerationIntent(
+  draft: string,
+  selectedObjects: readonly MorphoObject[]
+): VisualGenerationIntent | null {
+  const text = draft.trim();
+  const selectedDirections = selectedObjects.filter((object) => object.type === "conceptDirection");
+  const selectedImages = selectedObjects.filter((object) => object.type === "image");
+
+  if (selectedDirections.length > 0 && selectedDirections.length <= 3 && DIRECTION_PREVIEW_PATTERN.test(text)) {
+    return "directionPreview";
+  }
+
+  if (selectedImages.length > 0 && VISUAL_DEVELOPMENT_PATTERN.test(text)) {
+    return "visualDevelopment";
+  }
+
+  return null;
+}
 
 export function resolveVisualGenerationTarget(
   workspace: MorphoWorkspace,

@@ -1,6 +1,14 @@
 import { reconcileWorkspaceDerivedState } from "./derivedState";
 import { getImageCanvasSize } from "./imageSizing";
-import type { AssetRecord, ImageGenerationMetadata, ImageObject, MorphoRelation, MorphoWorkspace } from "./types";
+import type {
+  AssetRecord,
+  CanvasPoint,
+  ImageGenerationMetadata,
+  ImageObject,
+  ImageRole,
+  MorphoRelation,
+  MorphoWorkspace
+} from "./types";
 
 export type CreateGeneratedImageInput = {
   asset: AssetRecord;
@@ -8,6 +16,10 @@ export type CreateGeneratedImageInput = {
   sourceObjectIds: string[];
   directionObjectId?: string;
   visualBranchId?: string;
+  title?: string;
+  summary?: string;
+  role?: ImageRole;
+  position?: CanvasPoint;
 };
 
 export type CreateGeneratedImageResult = {
@@ -26,6 +38,9 @@ export function createGeneratedImageFromAsset(
     .filter((object): object is ImageObject => Boolean(object) && object.type === "image");
   const sourceInstance = primarySourceId
     ? workspace.canvas.instances.find((instance) => instance.objectId === primarySourceId)
+    : undefined;
+  const directionInstance = input.directionObjectId
+    ? workspace.canvas.instances.find((instance) => instance.objectId === input.directionObjectId)
     : undefined;
   const objectId = nextAvailableId(workspace.objects, `image-generated-${input.asset.id}`);
   const canvasInstanceId = nextAvailableId(
@@ -54,11 +69,11 @@ export function createGeneratedImageFromAsset(
   const generatedImage: ImageObject = {
     id: objectId,
     type: "image",
-    title: "GrsAI 生成结果",
-    summary: input.generation.prompt,
+    title: input.title ?? input.generation.title ?? "GrsAI 生成结果",
+    summary: input.summary ?? input.generation.purpose ?? input.generation.prompt,
     createdBy: "ai",
     visibility: "active",
-    role: "preview",
+    role: input.role ?? input.generation.role ?? "preview",
     imageVariant: "rail",
     assetId: input.asset.id,
     directionId,
@@ -126,11 +141,18 @@ export function createGeneratedImageFromAsset(
           {
             id: canvasInstanceId,
             objectId,
-            position: sourceInstance
+            position: input.position
+              ? input.position
+              : sourceInstance
               ? {
                   x: sourceInstance.position.x + sourceInstance.size.w + 92,
                   y: sourceInstance.position.y
                 }
+              : directionInstance
+                ? {
+                    x: directionInstance.position.x,
+                    y: directionInstance.position.y + directionInstance.size.h + 72
+                  }
               : {
                   x: workspace.canvas.view.x + 180,
                   y: workspace.canvas.view.y + 180

@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type ClipboardEvent, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from "react";
 import { Tldraw, Vec, type Editor, type TLShapeId } from "tldraw";
 
 import { calculateAnchoredZoom } from "@/domain/morpho/canvasCamera";
+import type { DesignTraceEdge } from "@/domain/morpho/designTrace";
 import type { CanvasInstance, CanvasPoint, CanvasView, MorphoWorkspace } from "@/domain/morpho/types";
 import { getRenderableCanvasInstances } from "@/domain/morpho/workspace";
 import {
@@ -26,6 +27,8 @@ type FocusRequest = {
 type MorphoCanvasProps = {
   workspace: MorphoWorkspace;
   annotatedObjectId: string | null;
+  traceObjectIds: string[];
+  traceEdges: DesignTraceEdge[];
   assetUrls: Record<string, string>;
   focusRequest: FocusRequest;
   onSelectionChange: (objectIds: string[]) => void;
@@ -53,9 +56,23 @@ const focusBounds: Record<FocusArea, { x: number; y: number; w: number; h: numbe
   delivery: { x: 2520, y: 190, w: 520, h: 760, zoom: 0.72 }
 };
 
+type TraceOverlayNode = {
+  objectId: string;
+  x: number;
+  y: number;
+};
+
+type TraceOverlayEdge = {
+  key: string;
+  from: TraceOverlayNode;
+  to: TraceOverlayNode;
+};
+
 export function MorphoCanvas({
   workspace,
   annotatedObjectId,
+  traceObjectIds,
+  traceEdges,
   assetUrls,
   focusRequest,
   onSelectionChange,
@@ -68,6 +85,42 @@ export function MorphoCanvas({
   const lastSelectionRef = useRef("");
   const lastInstancesRef = useRef("");
   const viewPersistTimerRef = useRef<number | null>(null);
+  const [liveView, setLiveView] = useState<CanvasView>(workspace.canvas.view);
+  const traceOverlayEdges = useMemo(() => {
+    if (traceObjectIds.length === 0 || traceEdges.length === 0) {
+      return [];
+    }
+
+    const traceObjectIdSet = new Set(traceObjectIds);
+    const instanceByObjectId = new Map(workspace.canvas.instances.map((instance) => [instance.objectId, instance]));
+    const nodeByObjectId = new Map<string, TraceOverlayNode>();
+    for (const objectId of traceObjectIdSet) {
+      const instance = instanceByObjectId.get(objectId);
+      if (!instance) {
+        continue;
+      }
+
+      nodeByObjectId.set(objectId, {
+        objectId,
+        x: (instance.position.x + instance.size.w / 2) * liveView.zoom + liveView.x,
+        y: (instance.position.y + instance.size.h / 2) * liveView.zoom + liveView.y
+      });
+    }
+
+    return traceEdges
+      .map((edge, index) => {
+        const from = nodeByObjectId.get(edge.fromObjectId);
+        const to = nodeByObjectId.get(edge.toObjectId);
+        return from && to
+          ? {
+              key: `${edge.kind}-${edge.fromObjectId}-${edge.toObjectId}-${index}`,
+              from,
+              to
+            }
+          : null;
+      })
+      .filter((edge): edge is TraceOverlayEdge => Boolean(edge));
+  }, [liveView, traceEdges, traceObjectIds, workspace.canvas.instances]);
 
   const scheduleViewPersist = useCallback(
     (view: CanvasView) => {
@@ -110,6 +163,8 @@ export function MorphoCanvas({
         lastInstancesRef.current = instancesKey;
         onInstancesChange(movedInstances);
       }
+      const camera = editor.getCamera();
+      setLiveView({ x: camera.x, y: camera.y, zoom: camera.z });
     },
     [onInstancesChange, onSelectionChange]
   );
@@ -133,13 +188,14 @@ export function MorphoCanvas({
         const existing = shapesByInstance.get(instance.id);
         const assetUrl = object.type === "image" && object.assetId ? assetUrls[object.assetId] : undefined;
         if (!existing) {
-          toCreate.push(createMorphoShapePartial(instance, object, assetUrl, workspace));
+          toCreate.push(createMorphoShapePartial(instance, object, assetUrl, workspace, traceObjectIds.includes(object.id)));
         } else {
           toUpdate.push({
             ...existing,
             props: {
               ...getMorphoShapeProps(instance, object, assetUrl, workspace),
-              isBeingLocallyEdited: object.id === annotatedObjectId
+              isBeingLocallyEdited: object.id === annotatedObjectId,
+              isInDesignTrace: traceObjectIds.includes(object.id)
             }
           });
         }
@@ -157,7 +213,7 @@ export function MorphoCanvas({
         editor.deleteShapes(toDelete.map((shape) => shape.id));
       }
     },
-    [annotatedObjectId, assetUrls, workspace]
+    [annotatedObjectId, assetUrls, traceObjectIds, workspace]
   );
 
   const getPagePoint = useCallback((clientX: number, clientY: number): CanvasPoint => {
@@ -247,6 +303,7 @@ export function MorphoCanvas({
     editor.setCamera(new Vec(nextView.x, nextView.y, nextView.zoom), {
       immediate: true
     });
+    setLiveView(nextView);
     scheduleViewPersist(nextView);
   }, [scheduleViewPersist]);
 
@@ -337,6 +394,7 @@ export function MorphoCanvas({
           editorRef.current = editor;
           syncWorkspaceToEditor(editor);
           editor.setCamera({ x: workspace.canvas.view.x, y: workspace.canvas.view.y, z: workspace.canvas.view.zoom });
+          setLiveView(workspace.canvas.view);
 
           const cleanup = editor.store.listen(() => {
             syncFromEditor(editor);
@@ -348,6 +406,19 @@ export function MorphoCanvas({
           };
         }}
       />
+      {traceOverlayEdges.length > 0 ? (
+        <svg className="design-trace-overlay" aria-hidden="true">
+          {traceOverlayEdges.map((edge) => (
+            <line
+              key={edge.key}
+              x1={edge.from.x}
+              y1={edge.from.y}
+              x2={edge.to.x}
+              y2={edge.to.y}
+            />
+          ))}
+        </svg>
+      ) : null}
     </div>
   );
 }

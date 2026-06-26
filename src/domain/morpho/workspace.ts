@@ -19,6 +19,8 @@ import type {
   DesignDefinitionObject,
   DesignDefinitionRevision,
   DirectionRevisionId,
+  FileObject,
+  FileParseStatus,
   ImageObject,
   ImageRole,
   KeyConclusionObject,
@@ -33,7 +35,7 @@ import type {
 } from "./types";
 
 const DEFAULT_REFERENCE_HIDDEN_MESSAGE = "当前后续默认参考已隐藏，请先恢复或替换后再用于相关生成。";
-const CURRENT_SCHEMA_VERSION = 6;
+const CURRENT_SCHEMA_VERSION = 7;
 
 export type DeleteObjectResult =
   | {
@@ -248,6 +250,101 @@ export function restoreObject(workspace: MorphoWorkspace, objectId: MorphoObject
 
 export function getRenderableCanvasInstances(workspace: MorphoWorkspace): CanvasInstance[] {
   return workspace.canvas.instances.filter((instance) => workspace.objects[instance.objectId]?.visibility === "active");
+}
+
+export function markFileObjectParsing(workspace: MorphoWorkspace, objectId: MorphoObjectId): MorphoWorkspace {
+  const object = workspace.objects[objectId];
+  if (!object || object.type !== "file") {
+    return workspace;
+  }
+
+  return {
+    ...workspace,
+    objects: {
+      ...workspace.objects,
+      [objectId]: {
+        ...object,
+        parseStatus: "parsing",
+        parseError: undefined,
+        updatedAt: new Date().toISOString()
+      }
+    }
+  };
+}
+
+export function attachDocumentExtractToFileObject(
+  workspace: MorphoWorkspace,
+  input: {
+    fileObjectId: MorphoObjectId;
+    extractAsset: AssetRecord;
+    extractedCharCount: number;
+    extractedPageCount?: number;
+    parsedAt?: string;
+  }
+): MorphoWorkspace {
+  const object = workspace.objects[input.fileObjectId];
+  if (!object || object.type !== "file") {
+    return workspace;
+  }
+
+  const parsedAt = input.parsedAt ?? new Date().toISOString();
+  const updatedFile: FileObject = {
+    ...object,
+    summary: `${object.mimeType || "未知类型"} · ${formatFileSize(object.size ?? 0)} · 已解析 ${input.extractedCharCount} 字符${
+      input.extractedPageCount ? ` · ${input.extractedPageCount} 页/张` : ""
+    }`,
+    parseStatus: "parsed",
+    extractedAssetId: input.extractAsset.id,
+    extractedCharCount: input.extractedCharCount,
+    extractedPageCount: input.extractedPageCount,
+    parsedAt,
+    parseError: undefined,
+    updatedAt: parsedAt
+  };
+
+  return {
+    ...workspace,
+    assets: {
+      ...workspace.assets,
+      [input.extractAsset.id]: input.extractAsset
+    },
+    objects: {
+      ...workspace.objects,
+      [input.fileObjectId]: updatedFile
+    }
+  };
+}
+
+export function markFileObjectParseFailed(
+  workspace: MorphoWorkspace,
+  input: {
+    fileObjectId: MorphoObjectId;
+    reason: string;
+    parsedAt?: string;
+  }
+): MorphoWorkspace {
+  const object = workspace.objects[input.fileObjectId];
+  if (!object || object.type !== "file") {
+    return workspace;
+  }
+
+  const parsedAt = input.parsedAt ?? new Date().toISOString();
+  const updatedFile: FileObject = {
+    ...object,
+    summary: `${object.mimeType || "未知类型"} · ${formatFileSize(object.size ?? 0)} · 解析失败`,
+    parseStatus: "failed",
+    parseError: input.reason,
+    parsedAt,
+    updatedAt: parsedAt
+  };
+
+  return {
+    ...workspace,
+    objects: {
+      ...workspace.objects,
+      [input.fileObjectId]: updatedFile
+    }
+  };
 }
 
 export function assembleAiContext(workspace: MorphoWorkspace, input: AssembleAiContextInput): AssembledAiContext {
@@ -1117,15 +1214,26 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
   if (value.schemaVersion === CURRENT_SCHEMA_VERSION) {
     return {
       status: "ok",
-      workspace: normalizeV6Workspace(value),
+      workspace: normalizeV7Workspace(value),
       didMigrate: false
+    };
+  }
+
+  if (value.schemaVersion === 6) {
+    return {
+      status: "ok",
+      workspace: normalizeV7Workspace({
+        ...(structuredClone(value) as Record<string, unknown>),
+        schemaVersion: CURRENT_SCHEMA_VERSION
+      }),
+      didMigrate: true
     };
   }
 
   if (value.schemaVersion === 5) {
     return {
       status: "ok",
-      workspace: normalizeV6Workspace({
+      workspace: normalizeV7Workspace({
         ...(structuredClone(value) as Record<string, unknown>),
         schemaVersion: CURRENT_SCHEMA_VERSION
       }),
@@ -1468,14 +1576,14 @@ function migrateV4Workspace(value: Record<string, unknown>): MorphoWorkspace {
     }
   };
 
-  return reconcileWorkspaceDerivedState(normalizeV6Workspace(normalized));
+  return reconcileWorkspaceDerivedState(normalizeV7Workspace(normalized));
 }
 
-function normalizeV6Workspace(value: Record<string, unknown>): MorphoWorkspace {
+function normalizeV7Workspace(value: Record<string, unknown>): MorphoWorkspace {
   const cloned = structuredClone(value) as Partial<MorphoWorkspace>;
   const now = new Date().toISOString();
   const canvasView = cloned.ui?.canvasView ?? cloned.canvas?.view ?? { x: 0, y: 0, zoom: 1 };
-  const objects = normalizeObjectImageRoles(cloned.objects ?? {});
+  const objects = normalizeObjectsForSchemaV7(cloned.objects ?? {});
 
   return reconcileWorkspaceDerivedState({
     schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -1559,9 +1667,20 @@ function createLegacyAssetRecords(objects: Record<MorphoObjectId, MorphoObject>)
   return assets;
 }
 
-function normalizeObjectImageRoles(objects: Record<MorphoObjectId, MorphoObject>): Record<MorphoObjectId, MorphoObject> {
+function normalizeObjectsForSchemaV7(objects: Record<MorphoObjectId, MorphoObject>): Record<MorphoObjectId, MorphoObject> {
   return Object.fromEntries(
     Object.entries(objects).map(([objectId, object]) => {
+      if (object.type === "file") {
+        return [
+          objectId,
+          {
+            ...object,
+            parseStatus: normalizeFileParseStatus(object.parseStatus),
+            parseError: object.parseStatus === "failed" ? object.parseError : undefined
+          }
+        ];
+      }
+
       if (object.type !== "image") {
         return [objectId, object];
       }
@@ -1575,6 +1694,18 @@ function normalizeObjectImageRoles(objects: Record<MorphoObjectId, MorphoObject>
       ];
     })
   );
+}
+
+function normalizeFileParseStatus(value: unknown): FileParseStatus {
+  switch (value) {
+    case "parsing":
+    case "parsed":
+    case "failed":
+    case "unparsed":
+      return value;
+    default:
+      return "unparsed";
+  }
 }
 
 function normalizeImageRole(value: unknown): ImageRole {
@@ -1725,6 +1856,18 @@ function buildSemanticFingerprint(object: MorphoObject): string {
 
 function stableStringify(value: unknown): string {
   return JSON.stringify(value);
+}
+
+function formatFileSize(size: number): string {
+  if (size < 1024) {
+    return `${size} B`;
+  }
+
+  if (size < 1024 * 1024) {
+    return `${Math.round(size / 102.4) / 10} KB`;
+  }
+
+  return `${Math.round(size / 1024 / 102.4) / 10} MB`;
 }
 
 function findDefaultReference(workspace: MorphoWorkspace): ImageObject | null {

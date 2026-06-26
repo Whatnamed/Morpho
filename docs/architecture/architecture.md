@@ -26,7 +26,7 @@ No database, authentication, cloud object storage, Supabase, multiplayer sync, e
 
 ## Data Model
 
-Structured workspace data is schema version `6`.
+Structured workspace data is schema version `7`.
 
 Current workspace state includes:
 
@@ -50,7 +50,7 @@ Current workspace state includes:
 Operation persistence is intentionally lightweight:
 
 - workspace JSON stores operation status, summaries, input snapshots, proposal records, citation snapshots, and IndexedDB artifact references;
-- workspace JSON does not store raw webpages, large extracted document content, page preview binaries, provider raw responses, API keys, or response headers;
+- workspace JSON does not store raw webpages, full document extracts, page preview binaries, provider raw responses, API keys, or response headers;
 - interrupted operations are recoverable as local state, but they are not treated as background server jobs after refresh.
 
 Canvas rendering is separated from Morpho domain state:
@@ -84,6 +84,15 @@ Schema v6 semantic additions:
 - `ProjectWorkingState` is stored as a derived, rebuildable index for current effective state and AI context assembly;
 - `StageRecord` stores the current stage snapshot, not an append-only operation log.
 
+Schema v7 and M4.2 additions:
+
+- imported parseable files track `FileObject.parseStatus`, `extractedAssetId`, extracted character count, optional page count, parse timestamp, and parse errors;
+- local document extracts are saved as IndexedDB `documentExtract` assets and are loaded into AI requests only when their source file object is selected and parsed;
+- research operations combine selected file extracts, selected image visual input packs, workspace context, and optional MiMo web search. A valid research proposal is recorded for audit and then applied into a `ResearchObject` canvas card automatically;
+- default AI routing can adopt recommended research, image-generation, design-definition, or concept-direction execution paths when the user has not manually selected an overriding mode;
+- visual generation asks MiMo for a structured visual plan, validates that plan against selected sources and direction ownership, then calls GrsAI once per plan item. Each successful result becomes a new image object with generation metadata and direction/branch/source relations; partial failures remain attached to the image-generation Operation;
+- design-chain tracing is computed on demand from objects, relations, revisions, visual branches, generation metadata, and decision records. The bottom detail surface shows the trace summary and the canvas draws a temporary overlay between traced objects without writing workspace state.
+
 ## Local-First Persistence
 
 Project catalog and structured workspace JSON use localStorage:
@@ -111,6 +120,13 @@ Implemented import paths:
 - drag/drop URL to link object;
 - top import button to current viewport area.
 
+Parseable imported files are extracted locally after import:
+
+- Markdown and plain text are copied into bounded text extracts;
+- text-layer PDFs are extracted with `pdfjs-dist`;
+- PPTX slide text is extracted with `fflate`;
+- unsupported or failed parses leave the original file object imported and marked with a parse error.
+
 Asset panel and search are real workspace queries:
 
 - assets list imported images, files, links, generated images, and future document extracts;
@@ -125,8 +141,9 @@ Text chat:
 - The route reads `MORPHO_MIMO_*` only on the server.
 - MiMo is called through an OpenAI-compatible streaming chat adapter using the server-side `api-key` header.
 - The browser receives normalized NDJSON stream events: `delta`, `citations`, `done`, and `error`.
-- Milestone 3 task routing uses explicit `taskMode` from the user send action. Regex and suggestion chips may recommend a task mode, but they are not execution authority.
+- Task routing uses manual user selection as execution authority, while the default discussion/chat state can adopt recommended research, image-generation, design-definition, or concept-direction execution paths automatically.
 - For `chatAnalysis` and `researchOperation`, selected active image assets are read from IndexedDB and sent through an adaptive visual input pack. Small selections are sent as individual compressed images; larger selections are represented by one or more generated contact sheets so every selected image participates without a user-visible image count limit. The server sends the resulting images as OpenAI-compatible `image_url` content to the configured multimodal model.
+- For `chatAnalysis` and `researchOperation`, selected parsed file objects can send bounded local `documentExtract` text to MiMo. These extracts are identified as local object sources, not as network citations.
 - Hidden images, unselected old images, default references, and whole-canvas screenshots are not sent by default.
 - When `MORPHO_MIMO_WEB_SEARCH_ENABLED=true`, `chatAnalysis` and `researchOperation` provide MiMo native `web_search` to the model. The model decides whether the current request needs external verification or source supplementation. `imageGeneration` never receives web search tools.
 - Citation snapshots are created only from provider citation/annotation fields. Morpho does not fabricate sources from normal assistant text.
@@ -146,13 +163,17 @@ Image generation:
 - Generated `ImageObject` records include generation metadata: model id, model label, aspect ratio, optional size option, prompt, reference object IDs, optional direction ID, and creation time.
 - Image generation operations persist `operationId`, `clientRequestId`, optional provider task ID, status, prompt, references, model/profile, and timing. Uncertain network responses are not automatically resubmitted.
 - Visual generation can start from selected images, concept directions, design definitions, or a text prompt. Source/version relations are created only when image sources are present; selected concept directions create `belongsToDirection`.
+- Direction-preview and visual-development generation first compile a MiMo `morphoVisualGenerationPlan`. The browser validates object IDs, direction/branch scope, source mix, result count, and visual role before making GrsAI image calls.
+- Operation metadata stores the visual plan, created result object IDs, and per-item failures so a partial multi-image run remains inspectable.
 
 AI boundary:
 
 - AI can reply, analyze, suggest, and generate editable text or image results.
 - AI does not directly mutate domain state such as deletion, hidden state, direction status, default reference, delivery references, or project memory.
 - Image generation always creates a new image object and never overwrites a source image.
+- Research operation output can auto-create a research card, but it does not auto-apply key conclusions, design definitions, concept directions, direction status, default references, or delivery decisions.
 - MiMo visual input is explicit and bounded by selected active images only. It is adaptively compressed or packed into contact sheets before upload, and never stored as Base64 in workspace/localStorage.
+- Local document extracts are bounded context inputs, are not stored in workspace JSON, and are never presented as provider citations.
 - If image read/compression fails, the chat falls back to object metadata and user text and tells the user that pixels were not sent.
 
 ## Demo Project

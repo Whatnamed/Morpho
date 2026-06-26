@@ -32,6 +32,7 @@ MiMo chat behavior:
 - selected active images in chat/research use `MORPHO_MIMO_MULTIMODAL_MODEL`;
 - image input is limited to selected active IndexedDB image assets. Small selections are sent as individual compressed images; larger selections are packed into one or more contact sheets so every selected image is represented without exposing a user-facing upload count limit;
 - hidden images, unselected images, default references, and whole-canvas screenshots are not sent by default;
+- selected parsed file objects can send bounded local `documentExtract` text to MiMo for chat/research context. Extracts are local sources, not provider citations;
 - when `MORPHO_MIMO_WEB_SEARCH_ENABLED=true`, chat/research requests provide MiMo native `web_search` and the model decides whether to use it. Image generation never receives web search tools;
 - source links are shown only when MiMo returns citation/annotation fields.
 
@@ -62,10 +63,13 @@ Current implemented behavior:
 - `gpt-image-2` sends pixel-style `aspectRatio`, `replyType: "json"`, and no `imageSize`;
 - generated image assets store intrinsic width, height, and aspect ratio when the browser can read them.
 - image generation operations store operation IDs and client request IDs; uncertain network responses are not automatically resubmitted.
+- direction-preview and visual-development generation first ask MiMo for a structured visual plan, validate selected source/direction scope locally, and then call GrsAI once per plan item.
 
 Milestone 3 Operation records are local-first and lightweight. Workspace JSON stores operation status, summaries, proposals, citation snapshots, and IndexedDB artifact references. It does not store raw webpages, large extracted files, page previews, provider raw responses, API keys, or response headers.
 
 Only one active Operation is allowed per project. Browser reload marks unfinished operations as `interrupted` and keeps the input snapshot and retryable state; it does not pretend a background job continued.
+
+Research operations can read selected parsed file extracts, selected image pixels, current workspace semantic context, and optional provider web search. A valid research result is recorded and applied into a research card automatically. Key conclusions, design definitions, concept directions, default references, direction status, and delivery decisions still require their own explicit proposal/application paths.
 
 Without these variables, the app still runs locally, but provider routes return clear configuration errors instead of fake AI results.
 
@@ -120,7 +124,7 @@ Legacy single-project key read for migration:
 morpho.workspace.nightrail.v1
 ```
 
-Structured workspace data is schema version `6`. v1/v2/v3/v4/v5 workspace data is migrated through pure migration functions. v6 normalizes image roles to `reference`, `preview`, `conceptImage`, `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, `structureDiagram`, `interactionDiagram`, and `deliveryAsset`; old `main`, `scenario`, `cmf`, `detail`, and `diagram` values are migration-only inputs. Migration success writes the new project workspace and catalog. Migration failure preserves old raw data and shows a recoverable warning instead of silently resetting to seed data.
+Structured workspace data is schema version `7`. v1/v2/v3/v4/v5/v6 workspace data is migrated through pure migration functions. v6 normalizes image roles to `reference`, `preview`, `conceptImage`, `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, `structureDiagram`, `interactionDiagram`, and `deliveryAsset`; old `main`, `scenario`, `cmf`, `detail`, and `diagram` values are migration-only inputs. v7 adds parse metadata to file objects and stores extracted document text as separate IndexedDB assets. Migration success writes the new project workspace and catalog. Migration failure preserves old raw data and shows a recoverable warning instead of silently resetting to seed data.
 
 Binary assets are stored in IndexedDB:
 
@@ -130,6 +134,12 @@ store: asset-blobs
 ```
 
 Workspace JSON stores only asset metadata and `assetId` references, not base64 file contents.
+
+Local document extraction:
+
+- supported: Markdown, plain text, text-layer PDF, and PPTX slide text;
+- unsupported or expected to fail clearly: scanned PDFs without text layers, legacy `.ppt`, DOC/DOCX, OCR, embedded image extraction, layout reconstruction, and table fidelity;
+- parsed text is capped before being stored as a `documentExtract` asset, and each AI request applies additional per-file and total context caps.
 
 ## Current Routes
 
@@ -148,8 +158,8 @@ The current code does not include:
 - authentication;
 - cloud file storage;
 - multiplayer sync;
-- PDF/PPT/Word parsing;
 - automatic web crawling;
+- OCR, legacy `.ppt`, DOC/DOCX parsing, and faithful document-layout reconstruction;
 - dynamic provider model-list fetching;
 - export package generation;
 - deployment automation.

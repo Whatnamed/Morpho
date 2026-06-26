@@ -27,6 +27,7 @@ import type {
   VisualBranchRecord,
   ResearchObject
 } from "@/domain/morpho/types";
+import type { DesignTraceResult } from "@/domain/morpho/designTrace";
 import { getObjectTypeLabel, imageRoleLabel } from "../workspaceUi";
 
 type ResearchSourceKind = "finding" | "opportunity" | "constraint" | "openQuestion" | "evidence";
@@ -39,6 +40,9 @@ type BottomDetailBarProps = {
   directionLineage: DirectionLineageRecord[];
   visualBranches: Record<string, VisualBranchRecord>;
   decisionRecords: DecisionRecord[];
+  activeDesignTrace: DesignTraceResult | null;
+  isDesignTraceActive: boolean;
+  onToggleDesignTrace: () => void;
   onAskAi: () => void;
   onReviseDirection: () => void;
   onSplitDirection: () => void;
@@ -125,6 +129,9 @@ export function BottomDetailBar({
   directionLineage,
   visualBranches,
   decisionRecords,
+  activeDesignTrace,
+  isDesignTraceActive,
+  onToggleDesignTrace,
   onAskAi,
   onReviseDirection,
   onSplitDirection,
@@ -206,6 +213,7 @@ export function BottomDetailBar({
             onArchiveVisualBranch,
             onRestoreVisualBranch
           })}
+          {activeDesignTrace ? <DesignTraceSummary trace={activeDesignTrace} /> : null}
         </div>
       </div>
 
@@ -223,9 +231,9 @@ export function BottomDetailBar({
             询问 AI
           </button>
 
-          <button className="detail-action" type="button">
+          <button className={`detail-action ${isDesignTraceActive ? "brand" : ""}`} type="button" onClick={onToggleDesignTrace}>
             <GitBranch size={15} />
-            直接关系
+            {isDesignTraceActive ? "关闭设计链路" : "查看设计链路"}
           </button>
 
           <button className="detail-action" type="button" onClick={onHide}>
@@ -485,6 +493,32 @@ function VisualBranchRows({
           </div>
         </div>
       ))}
+    </section>
+  );
+}
+
+function DesignTraceSummary({ trace }: { trace: DesignTraceResult }) {
+  return (
+    <section className="design-trace-summary" aria-label="设计链路摘要">
+      <h4>设计链路</h4>
+      <div className="design-trace-stats">
+        <span>{trace.objectIds.length} 个对象</span>
+        <span>{trace.edges.length} 条关系</span>
+        <span>{trace.decisions.length} 条决策</span>
+        {trace.truncated ? <span>已按深度截断</span> : null}
+      </div>
+      <ol>
+        {trace.orderedSummary.slice(0, 8).map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ol>
+      {trace.decisions.length > 0 ? (
+        <div className="design-trace-decisions">
+          {trace.decisions.slice(0, 4).map((decision) => (
+            <span key={decision.id}>{decision.summary}</span>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }

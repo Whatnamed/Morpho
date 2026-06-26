@@ -29,13 +29,13 @@ describe("workspace AI task routing", () => {
     expect(recommendAiTaskMode("解释一下这个文件标题是什么意思", ["file"])).toBe("chatAnalysis");
   });
 
-  it("uses current task mode as the only execution authority", () => {
+  it("auto-routes from the default chat mode while respecting explicit manual modes", () => {
     expect(
       resolveTaskModeForSend({
         currentTaskMode: "chatAnalysis",
         recommendedTaskMode: "imageGeneration"
       })
-    ).toBe("chatAnalysis");
+    ).toBe("imageGeneration");
 
     expect(
       resolveTaskModeForSend({
@@ -45,7 +45,7 @@ describe("workspace AI task routing", () => {
     ).toBe("imageGeneration");
   });
 
-  it("recommends work intent without turning recommendation into execution authority", () => {
+  it("auto-routes work intent from default discussion while respecting manual intent", () => {
     expect(
       recommendAiWorkIntent({
         draft: "基于当前结论形成一版设计定义草案",
@@ -75,7 +75,14 @@ describe("workspace AI task routing", () => {
         currentWorkIntent: "discussion",
         recommendedWorkIntent: "createDesignDefinition"
       })
-    ).toBe("discussion");
+    ).toBe("createDesignDefinition");
+
+    expect(
+      resolveWorkIntentForSend({
+        currentWorkIntent: "comparison",
+        recommendedWorkIntent: "createDesignDefinition"
+      })
+    ).toBe("comparison");
   });
 
   it("returns only applicable work intents for chat analysis", () => {
