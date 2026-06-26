@@ -955,37 +955,33 @@ export function applyConceptDirectionProposal(
   const nextInstances = [...workspace.canvas.instances];
   const nextDirectionRevisions = { ...workspace.directionRevisions };
   const nextLineage = [...workspace.directionLineage];
-  const createdDirections: ConceptDirectionObject[] = [];
-
-  for (const [index, draft] of proposal.directions.entries()) {
-    const directionId = nextRecordId(nextObjects, `direction-${proposal.id}-${index + 1}`);
-    const revisionId = nextRecordId(nextDirectionRevisions, `direction-revision-${directionId}-1`);
-    const sourceDirection =
-      draft.basedOnDirectionId && nextObjects[draft.basedOnDirectionId]?.type === "conceptDirection"
-        ? nextObjects[draft.basedOnDirectionId]
-        : undefined;
-    const lineageRootId =
-      sourceDirection?.type === "conceptDirection" ? sourceDirection.lineageRootId : directionId;
-    const directionObject: ConceptDirectionObject = {
-      id: directionId,
-      type: "conceptDirection",
-      title: draft.title,
-      summary: draft.summary,
-      createdBy: "ai",
-      visibility: "active",
-      status: "pendingPreview",
-      keywords: [...draft.keywords],
-      currentRevisionId: revisionId,
-      revisionIds: [revisionId],
-      lineageRootId,
-      createdAt: now,
-      updatedAt: now
+  const appliedDirections: ConceptDirectionObject[] = [];
+  const applicationMode = proposal.applicationMode;
+  const targetObject = proposal.targetDirectionId ? nextObjects[proposal.targetDirectionId] : undefined;
+  const targetDirection = targetObject?.type === "conceptDirection" ? targetObject : undefined;
+  const parentDirections = proposal.parentDirectionIds
+    .map((parentId) => nextObjects[parentId])
+    .filter((object): object is ConceptDirectionObject => object?.type === "conceptDirection");
+  const applicationValidation = validateConceptDirectionApplication(proposal, targetDirection, parentDirections);
+  if (applicationValidation) {
+    return {
+      status: "blocked",
+      workspace,
+      reason: applicationValidation
     };
-    nextObjects[directionId] = directionObject;
+  }
+
+  const createRevisionFromDraft = (
+    directionId: string,
+    revisionNumber: number,
+    draft: ConceptDirectionProposal["directions"][number],
+    previousRevisionId?: string
+  ) => {
+    const revisionId = nextRecordId(nextDirectionRevisions, `direction-revision-${directionId}-${revisionNumber}`);
     nextDirectionRevisions[revisionId] = {
       id: revisionId,
       directionId,
-      revisionNumber: 1,
+      revisionNumber,
       title: draft.title,
       summary: draft.summary,
       conceptStatement: draft.conceptStatement,
@@ -999,8 +995,13 @@ export function applyConceptDirectionProposal(
       citationIds: [...proposal.citationIds],
       basedOnDefinitionRevisionId: proposal.basedOnRevisionId,
       createdAt: now,
+      previousRevisionId,
       isCurrent: true
     };
+    return revisionId;
+  };
+
+  const addCanvasInstance = (directionId: string, index: number) => {
     nextInstances.push({
       id: nextRecordId(
         Object.fromEntries(nextInstances.map((instance) => [instance.id, instance])),
@@ -1013,46 +1014,157 @@ export function applyConceptDirectionProposal(
       },
       size: { w: 270, h: 184 }
     });
+  };
 
-    if (proposal.basedOnDesignDefinitionId && workspace.objects[proposal.basedOnDesignDefinitionId]) {
-      nextRelations.push({
-        id: nextRecordId(
-          Object.fromEntries(nextRelations.map((relation) => [relation.id, relation])),
-          `rel-${proposal.basedOnDesignDefinitionId}-${directionId}-supports`
-        ),
-        kind: "supports",
-        fromObjectId: proposal.basedOnDesignDefinitionId,
-        toObjectId: directionId,
-        note: "该方向基于当前设计定义草案保存。"
-      });
+  const addDefinitionSupportRelation = (directionId: string) => {
+    if (!proposal.basedOnDesignDefinitionId || !workspace.objects[proposal.basedOnDesignDefinitionId]) {
+      return;
     }
 
-    if (draft.basedOnDirectionId && draft.lineageKind && workspace.objects[draft.basedOnDirectionId]) {
+    if (
+      nextRelations.some(
+        (relation) =>
+          relation.kind === "supports" &&
+          relation.fromObjectId === proposal.basedOnDesignDefinitionId &&
+          relation.toObjectId === directionId
+      )
+    ) {
+      return;
+    }
+
+    nextRelations.push({
+      id: nextRecordId(
+        Object.fromEntries(nextRelations.map((relation) => [relation.id, relation])),
+        `rel-${proposal.basedOnDesignDefinitionId}-${directionId}-supports`
+      ),
+      kind: "supports",
+      fromObjectId: proposal.basedOnDesignDefinitionId,
+      toObjectId: directionId,
+      note: "该方向基于当前设计定义草案保存。"
+    });
+  };
+
+  const createDirectionFromDraft = (
+    draft: ConceptDirectionProposal["directions"][number],
+    index: number,
+    lineageRootIdFactory: (directionId: string) => string
+  ) => {
+    const directionId = nextRecordId(nextObjects, `direction-${proposal.id}-${index + 1}`);
+    const revisionId = createRevisionFromDraft(directionId, 1, draft);
+    const directionObject: ConceptDirectionObject = {
+      id: directionId,
+      type: "conceptDirection",
+      title: draft.title,
+      summary: draft.summary,
+      createdBy: "ai",
+      visibility: "active",
+      status: "pendingPreview",
+      keywords: [...draft.keywords],
+      currentRevisionId: revisionId,
+      revisionIds: [revisionId],
+      lineageRootId: lineageRootIdFactory(directionId),
+      createdAt: now,
+      updatedAt: now
+    };
+    nextObjects[directionId] = directionObject;
+    addCanvasInstance(directionId, index);
+    addDefinitionSupportRelation(directionId);
+    appliedDirections.push(directionObject);
+    return directionObject;
+  };
+
+  const addDirectionLineage = (
+    kind: ConceptDirectionProposal["directions"][number]["lineageKind"],
+    fromDirectionId: string,
+    toDirectionId: string,
+    note: string
+  ) => {
+    if (!kind) {
+      return;
+    }
+
+    nextLineage.push({
+      id: nextRecordId(
+        Object.fromEntries(nextLineage.map((record) => [record.id, record])),
+        `direction-lineage-${fromDirectionId}-${toDirectionId}`
+      ),
+      kind,
+      fromDirectionId,
+      toDirectionId,
+      createdAt: now,
+      note
+    });
+  };
+
+  if (applicationMode === "revise" && targetDirection) {
+    const draft = proposal.directions[0];
+    const previousRevisionId = targetDirection.currentRevisionId;
+    const previousRevision = nextDirectionRevisions[previousRevisionId];
+    for (const revision of Object.values(nextDirectionRevisions)) {
+      if (revision.directionId === targetDirection.id) {
+        revision.isCurrent = false;
+      }
+    }
+    const revisionId = createRevisionFromDraft(
+      targetDirection.id,
+      (previousRevision?.revisionNumber ?? targetDirection.revisionIds.length) + 1,
+      draft,
+      previousRevisionId
+    );
+    const revisedDirection: ConceptDirectionObject = {
+      ...targetDirection,
+      title: draft.title,
+      summary: draft.summary,
+      keywords: [...draft.keywords],
+      currentRevisionId: revisionId,
+      revisionIds: [...targetDirection.revisionIds, revisionId],
+      updatedAt: now
+    };
+    nextObjects[targetDirection.id] = revisedDirection;
+    addDefinitionSupportRelation(targetDirection.id);
+    appliedDirections.push(revisedDirection);
+  } else if (applicationMode === "split" && parentDirections[0]) {
+    const parentDirection = parentDirections[0];
+    for (const [index, draft] of proposal.directions.entries()) {
+      const directionObject = createDirectionFromDraft(draft, index, () => parentDirection.lineageRootId);
+      addDirectionLineage(
+        "splitFromDirection",
+        parentDirection.id,
+        directionObject.id,
+        `${draft.title} 由“${parentDirection.title}”拆分而来。`
+      );
+    }
+  } else if (applicationMode === "merge") {
+    const draft = proposal.directions[0];
+    const directionObject = createDirectionFromDraft(draft, 0, (directionId) => directionId);
+    for (const parentDirection of parentDirections) {
       nextLineage.push({
         id: nextRecordId(
           Object.fromEntries(nextLineage.map((record) => [record.id, record])),
-          `direction-lineage-${draft.basedOnDirectionId}-${directionId}`
+          `direction-lineage-${parentDirection.id}-${directionObject.id}`
         ),
-        kind: draft.lineageKind,
-        fromDirectionId: draft.basedOnDirectionId,
-        toDirectionId: directionId,
+        kind: "mergedFromDirection",
+        fromDirectionId: parentDirection.id,
+        toDirectionId: directionObject.id,
         createdAt: now,
-        note: `${draft.title} 由已存在方向延展而来。`
+        note: `${draft.title} 合并了“${parentDirection.title}”。`
       });
     }
-
-    createdDirections.push(directionObject);
+  } else {
+    for (const [index, draft] of proposal.directions.entries()) {
+      createDirectionFromDraft(draft, index, (directionId) => directionId);
+    }
   }
 
   const appliedProposal: ConceptDirectionProposal = {
     ...proposal,
     status: "applied",
-    appliedObjectId: createdDirections[0]?.id
+    appliedObjectId: appliedDirections[0]?.id
   };
 
   return {
     status: "updated",
-    directions: createdDirections,
+    directions: appliedDirections,
     workspace: reconcileWorkspaceDerivedState({
       ...workspace,
       objects: nextObjects,
@@ -1069,15 +1181,19 @@ export function applyConceptDirectionProposal(
           id: `decision-apply-concept-direction-${workspace.decisionRecords.length + 1}`,
           kind: "applyConceptDirection",
           createdAt: now,
-          summary: `保存概念方向：${proposal.title}`,
-          objectSnapshot: createdDirections[0]
+          summary: buildConceptDirectionDecisionSummary(proposal),
+          objectSnapshot: appliedDirections[0]
             ? {
-                id: createdDirections[0].id,
+                id: appliedDirections[0].id,
                 type: "conceptDirection",
-                title: createdDirections[0].title
+                title: appliedDirections[0].title
               }
             : undefined,
-          relatedObjectIds: createdDirections.map((direction) => direction.id)
+          relatedObjectIds: [
+            ...appliedDirections.map((direction) => direction.id),
+            ...proposal.parentDirectionIds,
+            ...(proposal.targetDirectionId ? [proposal.targetDirectionId] : [])
+          ]
         }
       ],
       canvas: {
@@ -1086,7 +1202,7 @@ export function applyConceptDirectionProposal(
       },
       ui: {
         ...workspace.ui,
-        lastSelectionIds: createdDirections.map((direction) => direction.id)
+        lastSelectionIds: appliedDirections.map((direction) => direction.id)
       }
     })
   };
@@ -1483,6 +1599,59 @@ function evaluateConceptDirectionProposalReviewState(
   }
 
   return null;
+}
+
+function validateConceptDirectionApplication(
+  proposal: ConceptDirectionProposal,
+  targetDirection: ConceptDirectionObject | undefined,
+  parentDirections: ConceptDirectionObject[]
+): string | null {
+  switch (proposal.applicationMode) {
+    case "revise":
+      if (!proposal.targetDirectionId || !targetDirection) {
+        return "修订方向草案缺少可用的目标方向。";
+      }
+      if (proposal.parentDirectionIds.length > 0 || proposal.directions.length !== 1) {
+        return "修订方向草案必须只包含一个修订目标和一条修订内容。";
+      }
+      return null;
+    case "split":
+      if (proposal.targetDirectionId || proposal.parentDirectionIds.length !== 1 || parentDirections.length !== 1) {
+        return "拆分方向草案必须且只能引用一个可用的原方向。";
+      }
+      if (proposal.directions.length < 2) {
+        return "拆分方向草案至少需要两条新方向。";
+      }
+      return null;
+    case "merge":
+      if (proposal.targetDirectionId || proposal.parentDirectionIds.length < 2 || parentDirections.length < 2) {
+        return "合并方向草案至少需要两个可用的父方向。";
+      }
+      if (proposal.directions.length !== 1) {
+        return "合并方向草案必须只生成一个新方向。";
+      }
+      return null;
+    case "create":
+    default:
+      if (proposal.targetDirectionId || proposal.parentDirectionIds.length > 0) {
+        return "新建方向草案不能带修订目标或父方向。";
+      }
+      return null;
+  }
+}
+
+function buildConceptDirectionDecisionSummary(proposal: ConceptDirectionProposal): string {
+  switch (proposal.applicationMode) {
+    case "revise":
+      return `修订概念方向：${proposal.title}`;
+    case "split":
+      return `拆分概念方向：${proposal.title}`;
+    case "merge":
+      return `合并概念方向：${proposal.title}`;
+    case "create":
+    default:
+      return `保存概念方向：${proposal.title}`;
+  }
 }
 
 function resolveBaseDesignDefinition(

@@ -27,7 +27,7 @@ import {
   updateDesignDefinitionProposalDraft,
   updateResearchAnalysisProposalDraft
 } from "@/domain/operations/operations";
-import type { ArtifactProposal } from "@/domain/operations/types";
+import type { ArtifactProposal, ConceptDirectionProposal } from "@/domain/operations/types";
 import { parseConceptDirectionProposalPayload } from "@/domain/operations/conceptDirectionProposal";
 import { parseDesignDefinitionProposalPayload } from "@/domain/operations/designDefinitionProposal";
 import { parseResearchAnalysisProposalPayload } from "@/domain/operations/researchProposal";
@@ -794,9 +794,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         } else if (conceptDirectionProposal?.status === "ok" && conceptDirectionProposalId) {
           const basedOnDefinitionId = nextWorkspace.workingState.currentDesignDefinitionId;
           const basedOnDefinitionObject = basedOnDefinitionId ? nextWorkspace.objects[basedOnDefinitionId] : undefined;
+          const applicationScope = resolveConceptDirectionApplicationScope(
+            nextWorkspace,
+            selectedObjectIds,
+            executionWorkIntent
+          );
           const proposed = recordConceptDirectionProposal(nextWorkspace, {
             proposalId: conceptDirectionProposalId,
             workIntent: executionWorkIntent,
+            applicationMode: applicationScope.applicationMode,
+            targetDirectionId: applicationScope.targetDirectionId,
+            parentDirectionIds: applicationScope.parentDirectionIds,
             title: conceptDirectionProposal.proposal.title,
             summary: conceptDirectionProposal.proposal.summary,
             directions: conceptDirectionProposal.proposal.directions,
@@ -873,6 +881,42 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     if (selectedObjects[0]) {
       setAiDraft(`请基于“${selectedObjects[0].title}”继续分析下一步。`);
     }
+  }, [handleWorkIntentChange, selectedObjects]);
+
+  const handleReviseDirectionIntent = useCallback(() => {
+    const target = selectedObjects.find((object) => object.type === "conceptDirection");
+    if (!target) {
+      return;
+    }
+
+    setAiOpen(true);
+    setTaskMode("chatAnalysis");
+    handleWorkIntentChange("reviseConceptDirection");
+    setAiDraft(`请基于“${target.title}”的当前修订，生成一份修订当前方向的草案；应用后必须复用同一个方向对象，不要创建新方向。`);
+  }, [handleWorkIntentChange, selectedObjects]);
+
+  const handleSplitDirectionIntent = useCallback(() => {
+    const target = selectedObjects.find((object) => object.type === "conceptDirection");
+    if (!target) {
+      return;
+    }
+
+    setAiOpen(true);
+    setTaskMode("chatAnalysis");
+    handleWorkIntentChange("splitConceptDirection");
+    setAiDraft(`请把“${target.title}”拆分成两条或更多可比较的概念方向草案；不要淘汰、隐藏或替换原方向。`);
+  }, [handleWorkIntentChange, selectedObjects]);
+
+  const handleMergeDirectionsIntent = useCallback(() => {
+    const directions = selectedObjects.filter((object) => object.type === "conceptDirection");
+    if (directions.length < 2) {
+      return;
+    }
+
+    setAiOpen(true);
+    setTaskMode("chatAnalysis");
+    handleWorkIntentChange("mergeConceptDirections");
+    setAiDraft(`请把这些已选方向合并成一个新的概念方向草案：${directions.map((direction) => direction.title).join("、")}。父方向必须保留，不要自动淘汰或隐藏。`);
   }, [handleWorkIntentChange, selectedObjects]);
 
   const handleLocalEdit = useCallback(() => {
@@ -1361,10 +1405,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     if (!target) {
       return;
     }
+    const reason = window.prompt("请输入或编辑淘汰理由。淘汰不会隐藏、删除方向，也不会移除图片、修订或 lineage。", "");
+    const trimmedReason = reason?.trim();
+    if (!trimmedReason) {
+      return;
+    }
 
     setWorkspace((current) =>
       eliminateDirection(current, target.id, {
-        reason: "用户在底部详情栏明确淘汰该方向。"
+        reason: trimmedReason
       })
     );
   }, [selectedObjects, setWorkspace]);
@@ -1580,8 +1629,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         selectedObjects={selectedObjects}
         hasPendingDesignDefinitionRevisionDraft={hasPendingDesignDefinitionRevisionDraft}
         relations={workspace.relations}
+        directionLineage={workspace.directionLineage}
         decisionRecords={workspace.decisionRecords}
         onAskAi={handleAskAi}
+        onReviseDirection={handleReviseDirectionIntent}
+        onSplitDirection={handleSplitDirectionIntent}
+        onMergeDirections={handleMergeDirectionsIntent}
         onLocalEdit={handleLocalEdit}
         onReferenceIntent={handleReferenceIntent}
         onHide={handleHideSelected}
@@ -1640,6 +1693,41 @@ function updateWorkspaceInstances(workspace: MorphoWorkspace, instances: CanvasI
       instances: nextInstances
     }
   };
+}
+
+function resolveConceptDirectionApplicationScope(
+  workspace: MorphoWorkspace,
+  selectedObjectIds: string[],
+  workIntent: AiWorkIntent
+): Pick<ConceptDirectionProposal, "applicationMode" | "targetDirectionId" | "parentDirectionIds"> {
+  const selectedDirectionIds = selectedObjectIds.filter(
+    (objectId) => workspace.objects[objectId]?.type === "conceptDirection"
+  );
+
+  switch (workIntent) {
+    case "reviseConceptDirection":
+      return {
+        applicationMode: "revise",
+        targetDirectionId: selectedDirectionIds.length === 1 ? selectedDirectionIds[0] : undefined,
+        parentDirectionIds: []
+      };
+    case "splitConceptDirection":
+      return {
+        applicationMode: "split",
+        parentDirectionIds: selectedDirectionIds.length === 1 ? [selectedDirectionIds[0] as string] : []
+      };
+    case "mergeConceptDirections":
+      return {
+        applicationMode: "merge",
+        parentDirectionIds: selectedDirectionIds.length >= 2 ? selectedDirectionIds : []
+      };
+    case "createConceptDirections":
+    default:
+      return {
+        applicationMode: "create",
+        parentDirectionIds: []
+      };
+  }
 }
 
 function makeObjectSummaries(workspace: MorphoWorkspace, objectIds: string[]) {

@@ -711,7 +711,7 @@ describe("Morpho Operation Runtime", () => {
     }
   });
 
-  it("applies a concept direction proposal as pending-preview directions with lineage records", () => {
+  it("applies a create concept direction proposal as pending-preview directions without lineage", () => {
     const workspace = createInitialWorkspace();
     const basedOnRevisionId =
       workspace.objects["definition-current"]?.type === "designDefinition"
@@ -735,9 +735,7 @@ describe("Morpho Operation Runtime", () => {
           differentiators: ["更轻", "更贴墙"],
           visualSignals: ["细窄光带", "贴墙截面"],
           risks: ["触感不够明确"],
-          openQuestions: ["是否会削弱支撑可信度？"],
-          basedOnDirectionId: "direction-soft-rail",
-          lineageKind: "splitFromDirection"
+          openQuestions: ["是否会削弱支撑可信度？"]
         },
         {
           title: "方向 E：门口支撑拱带",
@@ -761,12 +759,7 @@ describe("Morpho Operation Runtime", () => {
     if (applied.status === "updated") {
       expect(applied.directions).toHaveLength(2);
       expect(applied.directions.every((direction) => direction.status === "pendingPreview")).toBe(true);
-      expect(applied.workspace.directionLineage).toContainEqual(
-        expect.objectContaining({
-          kind: "splitFromDirection",
-          fromDirectionId: "direction-soft-rail"
-        })
-      );
+      expect(applied.workspace.directionLineage).toHaveLength(workspace.directionLineage.length);
       expect(applied.workspace.relations).toContainEqual(
         expect.objectContaining({
           kind: "supports",
@@ -778,6 +771,192 @@ describe("Morpho Operation Runtime", () => {
       });
       expect(applied.workspace.workingState.primaryDirectionId).toBe("direction-soft-rail");
       expect(applied.workspace.decisionRecords.at(-1)?.kind).toBe("applyConceptDirection");
+    }
+  });
+
+  it("revises a concept direction in place without creating a new direction or lineage", () => {
+    const workspace = createInitialWorkspace();
+    const target = workspace.objects["direction-soft-rail"];
+    if (!target || target.type !== "conceptDirection") {
+      throw new Error("Expected seed direction.");
+    }
+    const previousRevision = workspace.directionRevisions[target.currentRevisionId];
+    const proposed = recordConceptDirectionProposal(workspace, {
+      proposalId: "proposal-direction-revise",
+      workIntent: "reviseConceptDirection",
+      applicationMode: "revise",
+      targetDirectionId: target.id,
+      title: "修订柔光轨道",
+      summary: "把主方向收紧为更轻的连续触感语言。",
+      sourceObjectIds: ["definition-current", target.id],
+      citations: [],
+      basedOnDesignDefinitionId: "definition-current",
+      basedOnRevisionId:
+        workspace.objects["definition-current"]?.type === "designDefinition"
+          ? workspace.objects["definition-current"].currentRevisionId
+          : undefined,
+      directions: [
+        {
+          title: "方向 A：轻薄柔光轨道",
+          summary: "在原方向上压薄体量并强化手部触感。",
+          conceptStatement: "以连续低位轨道保持路径安全，同时减少装置感。",
+          keywords: ["轻薄轨道", "连续触感"],
+          strategy: "保留连续路线，降低截面厚度。",
+          differentiators: ["更轻", "更弱器械感"],
+          visualSignals: ["薄截面", "暖色低位光"],
+          risks: ["支撑感可能不足"],
+          openQuestions: ["触感与结构强度如何平衡？"]
+        }
+      ]
+    });
+
+    const applied = applyConceptDirectionProposal(proposed.workspace, proposed.proposal.id, {
+      position: { x: 1480, y: 980 }
+    });
+
+    expect(applied.status).toBe("updated");
+    if (applied.status === "updated") {
+      const revised = applied.workspace.objects[target.id];
+      expect(applied.directions.map((direction) => direction.id)).toEqual([target.id]);
+      expect(revised).toMatchObject({
+        id: target.id,
+        type: "conceptDirection",
+        title: "方向 A：轻薄柔光轨道",
+        summary: "在原方向上压薄体量并强化手部触感。",
+        keywords: ["轻薄轨道", "连续触感"]
+      });
+      expect(revised?.type === "conceptDirection" ? revised.revisionIds : []).toHaveLength(target.revisionIds.length + 1);
+      expect(applied.workspace.directionRevisions[target.currentRevisionId]).toMatchObject({
+        id: target.currentRevisionId,
+        isCurrent: false
+      });
+      const currentRevisionId = revised?.type === "conceptDirection" ? revised.currentRevisionId : "";
+      expect(applied.workspace.directionRevisions[currentRevisionId]).toMatchObject({
+        revisionNumber: (previousRevision?.revisionNumber ?? 1) + 1,
+        previousRevisionId: target.currentRevisionId,
+        isCurrent: true
+      });
+      expect(applied.workspace.directionLineage).toHaveLength(workspace.directionLineage.length);
+    }
+  });
+
+  it("splits one concept direction into child directions without eliminating the parent", () => {
+    const workspace = createInitialWorkspace();
+    const parent = workspace.objects["direction-soft-rail"];
+    if (!parent || parent.type !== "conceptDirection") {
+      throw new Error("Expected seed direction.");
+    }
+    const proposed = recordConceptDirectionProposal(workspace, {
+      proposalId: "proposal-direction-split",
+      workIntent: "splitConceptDirection",
+      applicationMode: "split",
+      parentDirectionIds: [parent.id],
+      title: "拆分柔光轨道",
+      summary: "把主方向拆成两条可比较路线。",
+      sourceObjectIds: ["definition-current", parent.id],
+      citations: [],
+      basedOnDesignDefinitionId: "definition-current",
+      basedOnRevisionId:
+        workspace.objects["definition-current"]?.type === "designDefinition"
+          ? workspace.objects["definition-current"].currentRevisionId
+          : undefined,
+      directions: [
+        {
+          title: "方向 A1：薄壁连续轨",
+          summary: "强调墙面连续触摸。",
+          conceptStatement: "用更薄的墙面轨道提供连续安全感。",
+          keywords: ["薄壁", "连续"],
+          strategy: "沿墙展开。",
+          differentiators: ["更轻"],
+          visualSignals: ["细长截面"],
+          risks: ["触感弱"],
+          openQuestions: ["如何保证握持？"]
+        },
+        {
+          title: "方向 A2：节点扶持轨",
+          summary: "强调关键节点扶持。",
+          conceptStatement: "保留低位导向，把支撑集中到风险节点。",
+          keywords: ["节点", "扶持"],
+          strategy: "重点强化转角。",
+          differentiators: ["更聚焦"],
+          visualSignals: ["节点亮点"],
+          risks: ["连续性弱"],
+          openQuestions: ["节点间如何衔接？"]
+        }
+      ]
+    });
+
+    const applied = applyConceptDirectionProposal(proposed.workspace, proposed.proposal.id, {
+      position: { x: 1480, y: 980 }
+    });
+
+    expect(applied.status).toBe("updated");
+    if (applied.status === "updated") {
+      expect(applied.directions).toHaveLength(2);
+      expect(applied.workspace.objects[parent.id]).toMatchObject({ id: parent.id, status: parent.status });
+      expect(applied.directions.map((direction) => direction.lineageRootId)).toEqual([parent.lineageRootId, parent.lineageRootId]);
+      const splitLineage = applied.workspace.directionLineage.filter(
+        (record) => record.kind === "splitFromDirection" && record.fromDirectionId === parent.id
+      );
+      expect(splitLineage).toHaveLength(2);
+      expect(splitLineage.map((record) => record.toDirectionId).sort()).toEqual(
+        applied.directions.map((direction) => direction.id).sort()
+      );
+    }
+  });
+
+  it("merges multiple concept directions into one new direction with all parent lineage preserved", () => {
+    const workspace = createInitialWorkspace();
+    const parentIds = ["direction-soft-rail", "direction-support-island"];
+    const proposed = recordConceptDirectionProposal(workspace, {
+      proposalId: "proposal-direction-merge",
+      workIntent: "mergeConceptDirections",
+      applicationMode: "merge",
+      parentDirectionIds: parentIds,
+      title: "合并方向 A/B",
+      summary: "把连续导光和家具化支撑合并成一个新方向。",
+      sourceObjectIds: ["definition-current", ...parentIds],
+      citations: [],
+      basedOnDesignDefinitionId: "definition-current",
+      basedOnRevisionId:
+        workspace.objects["definition-current"]?.type === "designDefinition"
+          ? workspace.objects["definition-current"].currentRevisionId
+          : undefined,
+      directions: [
+        {
+          title: "方向 AB：家具化柔光支撑轨",
+          summary: "把低位导光与家具化支撑统一。",
+          conceptStatement: "用家具化节点承接连续轨道，形成更温和的安全路径。",
+          keywords: ["家具化", "柔光支撑"],
+          strategy: "轨道提供连续性，节点提供支撑可信度。",
+          differentiators: ["连续且可信"],
+          visualSignals: ["木质节点", "低位光带"],
+          risks: ["系统复杂度增加"],
+          openQuestions: ["节点密度如何控制？"]
+        }
+      ]
+    });
+
+    const applied = applyConceptDirectionProposal(proposed.workspace, proposed.proposal.id, {
+      position: { x: 1480, y: 980 }
+    });
+
+    expect(applied.status).toBe("updated");
+    if (applied.status === "updated") {
+      expect(applied.directions).toHaveLength(1);
+      const merged = applied.directions[0];
+      expect(merged?.lineageRootId).toBe(merged?.id);
+      for (const parentId of parentIds) {
+        expect(applied.workspace.objects[parentId]).toMatchObject({
+          id: parentId,
+          type: "conceptDirection",
+          status: workspace.objects[parentId]?.type === "conceptDirection" ? workspace.objects[parentId].status : undefined
+        });
+      }
+      const mergeLineage = applied.workspace.directionLineage.filter(
+        (record) => record.kind === "mergedFromDirection" && record.toDirectionId === merged?.id
+      );
+      expect(mergeLineage.map((record) => record.fromDirectionId).sort()).toEqual([...parentIds].sort());
     }
   });
 

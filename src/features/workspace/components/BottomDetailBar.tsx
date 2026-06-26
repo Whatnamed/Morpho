@@ -5,6 +5,8 @@ import {
   EyeOff,
   Flag,
   GitBranch,
+  GitMerge,
+  History,
   Info,
   ListChecks,
   MessageSquareText,
@@ -17,6 +19,7 @@ import { useState } from "react";
 
 import type {
   DecisionRecord,
+  DirectionLineageRecord,
   ImageRole,
   KeyConclusionObject,
   MorphoObject,
@@ -32,8 +35,12 @@ type BottomDetailBarProps = {
   hasPendingDesignDefinitionRevisionDraft: boolean;
   keyConclusionCandidates: KeyConclusionObject[];
   relations: MorphoRelation[];
+  directionLineage: DirectionLineageRecord[];
   decisionRecords: DecisionRecord[];
   onAskAi: () => void;
+  onReviseDirection: () => void;
+  onSplitDirection: () => void;
+  onMergeDirections: () => void;
   onLocalEdit: () => void;
   onReferenceIntent: () => void;
   onHide: () => void;
@@ -86,13 +93,33 @@ export function buildDesignDefinitionVersionDetail(
     : `当前设计定义共有 ${revisionCount} 个修订。`;
 }
 
+export function buildConceptDirectionVersionDetail(revisionIds: string[], currentRevisionId: string): string {
+  return `当前方向共有 ${revisionIds.length} 个修订，当前修订为 ${currentRevisionId}。`;
+}
+
+export function buildConceptDirectionLineageDetail(
+  directionId: string,
+  directionLineage: DirectionLineageRecord[]
+): string {
+  const records = directionLineage.filter(
+    (record) => record.fromDirectionId === directionId || record.toDirectionId === directionId
+  );
+  return records.length > 0
+    ? records.map((record) => `${record.kind}：${record.note}`).join(" ")
+    : "当前方向没有已记录的 lineage。";
+}
+
 export function BottomDetailBar({
   selectedObjects,
   hasPendingDesignDefinitionRevisionDraft,
   keyConclusionCandidates,
   relations,
+  directionLineage,
   decisionRecords,
   onAskAi,
+  onReviseDirection,
+  onSplitDirection,
+  onMergeDirections,
   onLocalEdit,
   onReferenceIntent,
   onHide,
@@ -122,6 +149,8 @@ export function BottomDetailBar({
     (record) => record.objectSnapshot?.id === primary.id || record.relatedObjectIds.includes(primary.id)
   );
   const showDirectionActions = primary.type === "conceptDirection" && selectedObjects.length === 1;
+  const selectedDirections = selectedObjects.filter((object) => object.type === "conceptDirection");
+  const showMergeDirectionsAction = selectedDirections.length >= 2 && selectedDirections.length === selectedObjects.length;
 
   return (
     <>
@@ -144,6 +173,7 @@ export function BottomDetailBar({
             object: primary,
             relations: related,
             decisionRecords: relatedDecisions,
+            directionLineage,
             selectedCount: selectedObjects.length,
             hasPendingDesignDefinitionRevisionDraft,
             keyConclusionCandidates,
@@ -189,6 +219,34 @@ export function BottomDetailBar({
             <button className="detail-action" type="button" onClick={onSetDirectionPrimary}>
               <Flag size={15} />
               设为主方向
+            </button>
+          ) : null}
+
+          {showDirectionActions ? (
+            <>
+              <button className="detail-action" type="button" onClick={onReviseDirection}>
+                <PenLine size={15} />
+                修订方向
+              </button>
+              <button className="detail-action" type="button" onClick={onSplitDirection}>
+                <GitBranch size={15} />
+                拆分方向
+              </button>
+              <button className="detail-action" type="button" onClick={() => setActiveTab("版本")}>
+                <History size={15} />
+                查看修订历史
+              </button>
+              <button className="detail-action" type="button" onClick={() => setActiveTab("关联")}>
+                <GitMerge size={15} />
+                查看 lineage
+              </button>
+            </>
+          ) : null}
+
+          {showMergeDirectionsAction ? (
+            <button className="detail-action" type="button" onClick={onMergeDirections}>
+              <GitMerge size={15} />
+              合并已选方向
             </button>
           ) : null}
 
@@ -338,6 +396,7 @@ function renderDetail(input: {
   object: MorphoObject;
   relations: MorphoRelation[];
   decisionRecords: DecisionRecord[];
+  directionLineage: DirectionLineageRecord[];
   selectedCount: number;
   hasPendingDesignDefinitionRevisionDraft: boolean;
   keyConclusionCandidates: KeyConclusionObject[];
@@ -347,7 +406,15 @@ function renderDetail(input: {
   onCopyItemToDraft: BottomDetailBarProps["onCopyItemToDraft"];
   onContinueQuestion: BottomDetailBarProps["onContinueQuestion"];
 }) {
-  const { tab, object, relations, decisionRecords, selectedCount, hasPendingDesignDefinitionRevisionDraft } = input;
+  const {
+    tab,
+    object,
+    relations,
+    directionLineage,
+    decisionRecords,
+    selectedCount,
+    hasPendingDesignDefinitionRevisionDraft
+  } = input;
   if (selectedCount > 1) {
     return "多选当前只作为 AI 输入与局部比较范围，不会因为同时选中就自动改变对象语义、方向状态或交付关系。";
   }
@@ -410,7 +477,7 @@ function renderDetail(input: {
     }
 
     if (object.type === "conceptDirection") {
-      return `当前方向共有 ${object.revisionIds.length} 个修订，当前修订为 ${object.currentRevisionId}。`;
+      return buildConceptDirectionVersionDetail(object.revisionIds, object.currentRevisionId);
     }
 
     const versions = relations.filter((relation) => relation.kind === "version");
@@ -418,6 +485,12 @@ function renderDetail(input: {
   }
 
   if (tab === "关联") {
+    if (object.type === "conceptDirection") {
+      const relationDetail = relations.length > 0 ? relations.map((relation) => relation.note).join(" ") : "";
+      const lineageDetail = buildConceptDirectionLineageDetail(object.id, directionLineage);
+      return [relationDetail, lineageDetail].filter(Boolean).join(" ");
+    }
+
     return relations.length > 0 ? relations.map((relation) => relation.note).join(" ") : "当前没有直接关联。";
   }
 

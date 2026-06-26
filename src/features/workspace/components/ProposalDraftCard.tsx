@@ -494,7 +494,38 @@ export function proposalTargetMessage(workspace: MorphoWorkspace, proposal: Arti
     }
   }
 
+  if (proposal.type === "conceptDirection") {
+    switch (proposal.applicationMode) {
+      case "revise": {
+        const target = proposal.targetDirectionId ? workspace.objects[proposal.targetDirectionId] : undefined;
+        if (target?.type === "conceptDirection") {
+          return `本次操作：修订方向。修订目标：${target.title}（当前修订 ${target.currentRevisionId}）。`;
+        }
+        return "本次操作：修订方向。修订目标当前不可用，应用前需要重新生成或调整草案。";
+      }
+      case "split": {
+        const parentTitle = formatDirectionTitles(workspace, proposal.parentDirectionIds);
+        return `本次操作：拆分方向。拆分来源：${parentTitle || "当前原方向不可用"}。`;
+      }
+      case "merge": {
+        const parentTitle = formatDirectionTitles(workspace, proposal.parentDirectionIds);
+        return `本次操作：合并方向。合并来源：${parentTitle || "当前父方向不可用"}。`;
+      }
+      case "create":
+      default:
+        return "本次操作：新建方向。应用后会创建新的概念方向，不会自动设为主方向。";
+    }
+  }
+
   return undefined;
+}
+
+function formatDirectionTitles(workspace: MorphoWorkspace, directionIds: string[]): string {
+  return directionIds
+    .map((directionId) => workspace.objects[directionId])
+    .filter((object) => object?.type === "conceptDirection")
+    .map((object) => object.title)
+    .join("、");
 }
 
 function proposalIntentLabel(intent: ArtifactProposal["workIntent"]): string {
