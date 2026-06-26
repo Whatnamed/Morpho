@@ -14,6 +14,7 @@ import {
   applyResearchAnalysisProposal,
   canStartOperation,
   completeImageGenerationOperation,
+  createArtifactProposalOperation,
   createImageGenerationOperation,
   createResearchOperation,
   detectResearchSourceChanges,
@@ -27,7 +28,7 @@ import {
   updateDesignDefinitionProposalDraft,
   updateResearchAnalysisProposalDraft
 } from "@/domain/operations/operations";
-import type { ArtifactProposal, ConceptDirectionProposal } from "@/domain/operations/types";
+import type { ArtifactProposal, ConceptDirectionProposal, OperationRecord } from "@/domain/operations/types";
 import { parseConceptDirectionProposalPayload } from "@/domain/operations/conceptDirectionProposal";
 import { parseDesignDefinitionProposalPayload } from "@/domain/operations/designDefinitionProposal";
 import { parseResearchAnalysisProposalPayload } from "@/domain/operations/researchProposal";
@@ -665,6 +666,27 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       explicitObjectIds: [],
       task
     });
+    const shouldCreateSemanticOperation =
+      expectsDesignDefinitionProposal(executionWorkIntent) || expectsConceptDirectionProposal(executionWorkIntent);
+    const semanticOperationGate = shouldCreateSemanticOperation ? canStartOperation(workspace) : { status: "ok" as const };
+    if (semanticOperationGate.status === "blocked") {
+      setAiDraft(draft);
+      setWorkspace((current) => appendOperationBlockedMessage(current, semanticOperationGate.operation, semanticOperationGate.reason));
+      return;
+    }
+    const semanticOperationId = shouldCreateSemanticOperation
+      ? `operation-${task}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      : undefined;
+    const semanticOperationCreated =
+      semanticOperationId && (task === "designDefinition" || task === "conceptDirection")
+        ? createArtifactProposalOperation(workspace, {
+            operationId: semanticOperationId,
+            type: task,
+            userInput: draft,
+            selectedObjectIds: context.objectIds,
+            workIntent: executionWorkIntent
+          })
+        : undefined;
     setContextWarning(
       context.defaultReferenceStatus.status === "hidden" ? context.defaultReferenceStatus.message : undefined
     );
@@ -679,12 +701,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setIsAiStreaming(true);
     setAiDraft("");
     setAiOpen(true);
-    setWorkspace((current) => ({
-      ...current,
+    setWorkspace((current) => {
+      const operationWorkspace = semanticOperationCreated ? semanticOperationCreated.workspace : current;
+      return {
+        ...operationWorkspace,
       ai: {
-        ...current.ai,
+        ...operationWorkspace.ai,
         messages: [
-          ...current.ai.messages,
+          ...operationWorkspace.ai.messages,
           {
             id: userMessageId,
             role: "user",
@@ -708,7 +732,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           }
         ]
       }
-    }));
+      };
+    });
 
     try {
       const attachmentResult = shouldAttachImagesForMiMo({
@@ -792,6 +817,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             changeNote: designDefinitionProposal.proposal.changeNote,
             sourceObjectIds: context.objectIds,
             citations: streamResult.citations,
+            operationId: semanticOperationId,
             basedOnDesignDefinitionId: currentDefinition?.id,
             basedOnRevisionId: currentDefinition?.currentRevisionId
           });
@@ -817,6 +843,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             directions: conceptDirectionProposal.proposal.directions,
             sourceObjectIds: context.objectIds,
             citations: streamResult.citations,
+            operationId: semanticOperationId,
             basedOnDesignDefinitionId:
               basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.id : undefined,
             basedOnRevisionId:
@@ -1050,6 +1077,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const draft = aiDraft.trim();
     const explicitImageId = localEditObjectId ?? selectedObjects.find((object) => object.type === "image")?.id;
     if (!draft || isAiStreaming) {
+      return;
+    }
+
+    const operationGate = canStartOperation(workspace);
+    if (operationGate.status === "blocked") {
+      setAiDraft(draft);
+      setImageTaskStatus({ state: "failed", message: operationGate.reason });
+      setWorkspace((current) => appendOperationBlockedMessage(current, operationGate.operation, operationGate.reason));
       return;
     }
 
@@ -1872,6 +1907,30 @@ function resolveConceptDirectionApplicationScope(
         parentDirectionIds: []
       };
   }
+}
+
+function appendOperationBlockedMessage(
+  workspace: MorphoWorkspace,
+  operation: OperationRecord,
+  reason: string
+): MorphoWorkspace {
+  return {
+    ...workspace,
+    ai: {
+      ...workspace.ai,
+      messages: [
+        ...workspace.ai.messages,
+        {
+          id: `ai-operation-blocked-${Date.now()}`,
+          role: "assistant",
+          body: `${reason} 当前未完成任务：${operation.userInput}（${operation.status}）。`,
+          status: "failed",
+          createdAt: new Date().toISOString(),
+          operationId: operation.id
+        }
+      ]
+    }
+  };
 }
 
 function makeObjectSummaries(workspace: MorphoWorkspace, objectIds: string[]) {

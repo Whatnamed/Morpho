@@ -29,6 +29,14 @@ export type CreateResearchOperationInput = {
   allowWebSearch: boolean;
 };
 
+export type CreateArtifactProposalOperationInput = {
+  operationId?: string;
+  type: "designDefinition" | "conceptDirection";
+  userInput: string;
+  selectedObjectIds: string[];
+  workIntent?: string;
+};
+
 export type CreateResearchOperationResult = {
   workspace: MorphoWorkspace;
   operation: OperationRecord;
@@ -241,6 +249,80 @@ export function createResearchOperation(
         id: `${operationId}-event-created`,
         createdAt: now,
         summary: "研究任务已创建。"
+      }
+    ],
+    sourceIds: [...input.selectedObjectIds],
+    proposalIds: [],
+    retryable: true
+  };
+
+  return {
+    operation,
+    workspace: {
+      ...workspace,
+      operations: {
+        ...workspace.operations,
+        [operation.id]: operation
+      }
+    }
+  };
+}
+
+export function createArtifactProposalOperation(
+  workspace: MorphoWorkspace,
+  input: CreateArtifactProposalOperationInput
+): { workspace: MorphoWorkspace; operation: OperationRecord } {
+  const now = new Date().toISOString();
+  const operationId = input.operationId ?? nextRecordId(workspace.operations, `operation-${input.type}-${Date.now()}`);
+  const objectSnapshots = input.selectedObjectIds
+    .map((objectId) => workspace.objects[objectId])
+    .filter((object) => Boolean(object))
+    .map((object) => ({
+      id: object.id,
+      type: object.type,
+      title: object.title,
+      summary: object.summary,
+      body: "body" in object && typeof object.body === "string" ? object.body : undefined
+    }));
+  const operation: OperationRecord = {
+    id: operationId,
+    type: input.type,
+    projectId: workspace.project.id,
+    createdAt: now,
+    updatedAt: now,
+    status: "running",
+    userInput: input.userInput,
+    inputSnapshot: {
+      userInput: input.userInput,
+      selectedObjectIds: [...input.selectedObjectIds],
+      sourceSnapshots: buildSourceSemanticSnapshots(workspace, input.selectedObjectIds),
+      objectSnapshots
+    },
+    allowedCapabilities: {
+      webSearch: false,
+      imagePixels: false
+    },
+    steps: [
+      {
+        id: `${operationId}-step-input`,
+        kind: "inputSnapshot",
+        status: "succeeded",
+        summary: "已保存本次语义草案任务的输入快照。",
+        createdAt: now
+      },
+      {
+        id: `${operationId}-step-model`,
+        kind: "modelSynthesis",
+        status: "succeeded",
+        summary: "已进入模型综合阶段，等待草案生成结果。",
+        createdAt: now
+      }
+    ],
+    events: [
+      {
+        id: `${operationId}-event-created`,
+        createdAt: now,
+        summary: "语义草案任务已创建。"
       }
     ],
     sourceIds: [...input.selectedObjectIds],
@@ -671,11 +753,20 @@ export function recordDesignDefinitionProposal(
     basedOnRevisionId: input.basedOnRevisionId,
     changeNote: input.changeNote
   };
+  const updatedOperation = input.operationId
+    ? markProposalOperationWaitingForUser(workspace.operations[input.operationId], proposal.id, now, "设计定义草案已准备，等待用户确认应用。")
+    : undefined;
 
   return {
     proposal,
     workspace: {
       ...workspace,
+      operations: updatedOperation
+        ? {
+            ...workspace.operations,
+            [updatedOperation.id]: updatedOperation
+          }
+        : workspace.operations,
       artifactProposals: {
         ...workspace.artifactProposals,
         [proposal.id]: proposal
@@ -829,6 +920,7 @@ export function applyDesignDefinitionProposal(
       objects: nextObjects,
       relations: nextRelations,
       designDefinitionRevisions: nextRevisions,
+      operations: markProposalOperationFinal(workspace.operations, proposal.operationId, "succeeded", now, "设计定义草案已应用。"),
       artifactProposals: {
         ...workspace.artifactProposals,
         [proposal.id]: appliedProposal
@@ -894,11 +986,20 @@ export function recordConceptDirectionProposal(
     basedOnDesignDefinitionId: input.basedOnDesignDefinitionId,
     basedOnRevisionId: input.basedOnRevisionId
   };
+  const updatedOperation = input.operationId
+    ? markProposalOperationWaitingForUser(workspace.operations[input.operationId], proposal.id, now, "概念方向草案已准备，等待用户确认应用。")
+    : undefined;
 
   return {
     proposal,
     workspace: {
       ...workspace,
+      operations: updatedOperation
+        ? {
+            ...workspace.operations,
+            [updatedOperation.id]: updatedOperation
+          }
+        : workspace.operations,
       artifactProposals: {
         ...workspace.artifactProposals,
         [proposal.id]: proposal
@@ -1172,6 +1273,7 @@ export function applyConceptDirectionProposal(
       relations: nextRelations,
       directionRevisions: nextDirectionRevisions,
       directionLineage: nextLineage,
+      operations: markProposalOperationFinal(workspace.operations, proposal.operationId, "succeeded", now, "概念方向草案已应用。"),
       artifactProposals: {
         ...workspace.artifactProposals,
         [proposal.id]: appliedProposal
@@ -1463,7 +1565,14 @@ export function rejectArtifactProposal(
         status: "rejected",
         rejectedReason
       }
-    }
+    },
+    operations: markProposalOperationFinal(
+      workspace.operations,
+      proposal.operationId,
+      "cancelled",
+      new Date().toISOString(),
+      rejectedReason
+    )
   };
 }
 
@@ -1692,6 +1801,75 @@ function updateProposalReviewState(
         reviewState,
         reviewDetails
       }
+    }
+  };
+}
+
+function markProposalOperationWaitingForUser(
+  operation: OperationRecord | undefined,
+  proposalId: string,
+  now: string,
+  summary: string
+): OperationRecord | undefined {
+  if (!operation) {
+    return undefined;
+  }
+
+  return {
+    ...operation,
+    status: "waiting_for_user",
+    updatedAt: now,
+    proposalIds: operation.proposalIds.includes(proposalId)
+      ? operation.proposalIds
+      : [...operation.proposalIds, proposalId],
+    steps: [
+      ...operation.steps,
+      {
+        id: `${operation.id}-step-proposal-${operation.steps.length + 1}`,
+        kind: "proposal",
+        status: "succeeded",
+        summary,
+        createdAt: now
+      }
+    ],
+    events: [
+      ...operation.events,
+      {
+        id: `${operation.id}-event-waiting-${operation.events.length + 1}`,
+        createdAt: now,
+        summary
+      }
+    ]
+  };
+}
+
+function markProposalOperationFinal(
+  operations: Record<string, OperationRecord>,
+  operationId: string | undefined,
+  status: Extract<OperationRecord["status"], "succeeded" | "cancelled">,
+  now: string,
+  summary: string
+): Record<string, OperationRecord> {
+  if (!operationId || !operations[operationId]) {
+    return operations;
+  }
+
+  const operation = operations[operationId];
+  return {
+    ...operations,
+    [operationId]: {
+      ...operation,
+      status,
+      updatedAt: now,
+      retryable: false,
+      events: [
+        ...operation.events,
+        {
+          id: `${operation.id}-event-${status}-${operation.events.length + 1}`,
+          createdAt: now,
+          summary
+        }
+      ]
     }
   };
 }

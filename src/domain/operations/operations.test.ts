@@ -8,6 +8,7 @@ import {
   canStartOperation,
   completeImageGenerationOperation,
   createImageGenerationOperation,
+  createArtifactProposalOperation,
   createResearchOperation,
   detectResearchSourceChanges,
   failImageGenerationOperation,
@@ -437,6 +438,86 @@ describe("Morpho Operation Runtime", () => {
     };
 
     expect(detectResearchSourceChanges(changed, created.operation.id)).toContain("来源对象已被隐藏");
+  });
+
+  it("keeps design-definition proposal operations waiting for user and blocks unrelated operations", () => {
+    const workspace = createInitialWorkspace();
+    const operationCreated = createArtifactProposalOperation(workspace, {
+      operationId: "operation-definition-create",
+      type: "designDefinition",
+      userInput: "生成设计定义",
+      selectedObjectIds: ["research-night-path"],
+      workIntent: "createDesignDefinition"
+    });
+    const proposed = recordDesignDefinitionProposal(operationCreated.workspace, {
+      operationId: operationCreated.operation.id,
+      workIntent: "createDesignDefinition",
+      title: "夜航设计定义",
+      summary: "收束当前设计定义。",
+      projectGoal: "降低夜间路径风险。",
+      targetUsers: ["老人"],
+      primaryScenarios: ["夜间起身"],
+      coreProblem: "夜间转移缺少连续导向。",
+      designPrinciples: ["低干扰"],
+      constraints: ["低施工"],
+      avoidDirections: ["医疗化"],
+      opportunities: ["连续低位导向"],
+      openQuestions: ["如何保证触感？"],
+      sourceObjectIds: ["research-night-path"],
+      citations: []
+    });
+
+    expect(proposed.workspace.operations[operationCreated.operation.id]).toMatchObject({
+      type: "designDefinition",
+      status: "waiting_for_user",
+      proposalIds: [proposed.proposal.id]
+    });
+    expect(canStartOperation(proposed.workspace)).toMatchObject({
+      status: "blocked"
+    });
+
+    const applied = applyDesignDefinitionProposal(proposed.workspace, proposed.proposal.id);
+    expect(applied.status).toBe("updated");
+    if (applied.status === "updated") {
+      expect(applied.workspace.operations[operationCreated.operation.id]?.status).toBe("succeeded");
+    }
+  });
+
+  it("cancels a waiting proposal operation when the proposal is rejected", () => {
+    const workspace = createInitialWorkspace();
+    const operationCreated = createArtifactProposalOperation(workspace, {
+      operationId: "operation-direction-create",
+      type: "conceptDirection",
+      userInput: "生成方向",
+      selectedObjectIds: ["definition-current"],
+      workIntent: "createConceptDirections"
+    });
+    const proposed = recordConceptDirectionProposal(operationCreated.workspace, {
+      operationId: operationCreated.operation.id,
+      workIntent: "createConceptDirections",
+      title: "方向草案",
+      summary: "生成一条方向。",
+      sourceObjectIds: ["definition-current"],
+      citations: [],
+      directions: [
+        {
+          title: "方向 D",
+          summary: "更轻的轨道。",
+          conceptStatement: "用连续低位轨道降低风险。",
+          keywords: ["轨道"],
+          strategy: "低位连续。",
+          differentiators: ["低干扰"],
+          visualSignals: ["暖光"],
+          risks: ["触感不足"],
+          openQuestions: ["如何安装？"]
+        }
+      ]
+    });
+
+    const rejected = rejectArtifactProposal(proposed.workspace, proposed.proposal.id, "用户放弃。");
+
+    expect(rejected.artifactProposals[proposed.proposal.id]?.status).toBe("rejected");
+    expect(rejected.operations[operationCreated.operation.id]?.status).toBe("cancelled");
   });
 
   it("does not treat source title or summary edits as semantic source changes", () => {
