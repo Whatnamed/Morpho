@@ -16,6 +16,9 @@ import {
   markImageGenerationOperationSubmitted,
   recordConceptDirectionProposal,
   recordDesignDefinitionProposal,
+  recordImageGenerationPlan,
+  recordImageGenerationOperationItemFailure,
+  recordImageGenerationOperationResult,
   recordResearchAnalysisProposal,
   rejectArtifactProposal,
   updateResearchAnalysisProposalDraft
@@ -299,6 +302,71 @@ describe("Morpho Operation Runtime", () => {
       },
       allowedCapabilities: {
         imagePixels: true
+      }
+    });
+  });
+
+  it("persists visual generation plan, multiple results, and partial item failures", () => {
+    const created = createImageGenerationOperation(createBlankWorkspace("project-op"), {
+      operationId: "operation-image-plan",
+      clientRequestId: "client-request-plan",
+      prompt: "给每个方向生成预览图",
+      selectedObjectIds: ["direction-a", "direction-b"],
+      imagePixels: false,
+      modelId: "nano-banana-fast",
+      modelLabel: "nano-banana-fast",
+      aspectRatio: "1:1",
+      referenceObjectIds: ["direction-a", "direction-b"]
+    });
+    const planned = recordImageGenerationPlan(created.workspace, {
+      operationId: "operation-image-plan",
+      plan: {
+        kind: "directionPreview",
+        items: [
+          {
+            id: "item-a",
+            targetDirectionId: "direction-a",
+            title: "方向 A",
+            purpose: "首版预览",
+            prompt: "生成方向 A",
+            referenceObjectIds: ["direction-a"],
+            role: "conceptImage"
+          },
+          {
+            id: "item-b",
+            targetDirectionId: "direction-b",
+            title: "方向 B",
+            purpose: "首版预览",
+            prompt: "生成方向 B",
+            referenceObjectIds: ["direction-b"],
+            role: "conceptImage"
+          }
+        ]
+      }
+    });
+    const withResultA = recordImageGenerationOperationResult(planned, {
+      operationId: "operation-image-plan",
+      providerTaskId: "provider-task-a",
+      resultObjectId: "image-a"
+    });
+    const withFailure = recordImageGenerationOperationItemFailure(withResultA, {
+      operationId: "operation-image-plan",
+      planItemId: "item-b",
+      reason: "provider failed"
+    });
+
+    expect(withFailure.operations["operation-image-plan"]).toMatchObject({
+      imageGeneration: {
+        plan: {
+          kind: "directionPreview"
+        },
+        resultObjectIds: ["image-a"],
+        failedItems: [
+          {
+            planItemId: "item-b",
+            reason: "provider failed"
+          }
+        ]
       }
     });
   });

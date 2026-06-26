@@ -1,4 +1,4 @@
-import type { ArtifactProposal, OperationRecord, ResearchEvidence, SourceCitation } from "../operations/types";
+import type { ArtifactProposal, OperationRecord, ResearchEvidence, SourceCitation, VisualGenerationPlan } from "../operations/types";
 
 export type MorphoObjectId = string;
 export type CanvasInstanceId = string;
@@ -60,6 +60,8 @@ export type AssetSourceType =
   | "aiGeneratedImage"
   | "documentExtract";
 
+export type FileParseStatus = "unparsed" | "parsing" | "parsed" | "failed";
+
 export type AssetRecord = {
   id: AssetId;
   fileName: string;
@@ -118,6 +120,10 @@ export type ImageGenerationMetadata = {
   referenceObjectIds: MorphoObjectId[];
   directionId?: MorphoObjectId;
   visualBranchId?: VisualBranchId;
+  title?: string;
+  purpose?: string;
+  role?: ImageRole;
+  visualPlan?: VisualGenerationPlan;
   createdAt: string;
 };
 
@@ -129,7 +135,12 @@ export type FileObject = MorphoObjectBase & {
   fileName?: string;
   mimeType?: string;
   size?: number;
-  parseStatus?: "unparsed";
+  parseStatus?: FileParseStatus;
+  extractedAssetId?: AssetId;
+  extractedCharCount?: number;
+  extractedPageCount?: number;
+  parsedAt?: string;
+  parseError?: string;
 };
 
 export type TextObject = MorphoObjectBase & {
@@ -420,7 +431,7 @@ export type StageRecord = {
 };
 
 export type MorphoWorkspace = {
-  schemaVersion: 6;
+  schemaVersion: 7;
   project: {
     id: string;
     title: string;

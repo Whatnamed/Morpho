@@ -1,4 +1,4 @@
-import type { AiWorkIntent } from "../morpho/types";
+import type { AiWorkIntent, ImageRole } from "../morpho/types";
 
 export type OperationId = string;
 export type ArtifactProposalId = string;
@@ -41,6 +41,7 @@ export type OperationStep = {
     | "localCollection"
     | "webSearch"
     | "modelSynthesis"
+    | "visualPlan"
     | "proposal"
     | "providerSubmit"
     | "providerWait"
@@ -191,6 +192,22 @@ export type ArtifactProposal =
   | ConceptDirectionProposal
   | DeliveryPlanProposal;
 
+export type VisualGenerationPlanItem = {
+  id: string;
+  targetDirectionId?: OperationObjectId;
+  visualBranchId?: OperationObjectId;
+  title: string;
+  purpose: string;
+  prompt: string;
+  referenceObjectIds: OperationObjectId[];
+  role: ImageRole;
+};
+
+export type VisualGenerationPlan = {
+  kind: "directionPreview" | "visualDevelopment";
+  items: VisualGenerationPlanItem[];
+};
+
 export type ImageGenerationOperationMetadata = {
   clientRequestId: string;
   providerTaskId?: string;
@@ -202,6 +219,12 @@ export type ImageGenerationOperationMetadata = {
   directionObjectId?: OperationObjectId;
   visualBranchId?: OperationObjectId;
   resultObjectId?: OperationObjectId;
+  resultObjectIds?: OperationObjectId[];
+  plan?: VisualGenerationPlan;
+  failedItems?: Array<{
+    planItemId: string;
+    reason: string;
+  }>;
 };
 
 export type OperationRecord = {

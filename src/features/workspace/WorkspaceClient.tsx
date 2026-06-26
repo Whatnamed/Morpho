@@ -6,7 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AiTaskMode, AiWorkIntent, AssetRecord, ImageRole, MorphoObject } from "@/domain/morpho/types";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 import { hasPendingDesignDefinitionRevisionProposal } from "@/domain/morpho/derivedState";
+import { traceDesignChain, type DesignTraceResult } from "@/domain/morpho/designTrace";
 import { createGeneratedImageFromAsset } from "@/domain/morpho/generation";
+import { createDocumentExtractFile, parseDocumentFile, shouldAttemptDocumentParse } from "@/domain/morpho/documentParsing";
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "@/domain/morpho/imports";
 import {
   applyConceptDirectionProposal,
@@ -23,18 +25,26 @@ import {
   rejectArtifactProposal,
   recordConceptDirectionProposal,
   recordDesignDefinitionProposal,
+  recordImageGenerationPlan,
+  recordImageGenerationOperationItemFailure,
+  recordImageGenerationOperationResult,
   recordResearchAnalysisProposal,
   updateConceptDirectionProposalDraft,
   updateDesignDefinitionProposalDraft,
   updateResearchAnalysisProposalDraft
 } from "@/domain/operations/operations";
-import type { ArtifactProposal, ConceptDirectionProposal, OperationRecord } from "@/domain/operations/types";
+import type { ArtifactProposal, ConceptDirectionProposal, OperationRecord, VisualGenerationPlanItem } from "@/domain/operations/types";
 import { parseConceptDirectionProposalPayload } from "@/domain/operations/conceptDirectionProposal";
 import { parseDesignDefinitionProposalPayload } from "@/domain/operations/designDefinitionProposal";
 import { parseResearchAnalysisProposalPayload } from "@/domain/operations/researchProposal";
 import {
+  parseVisualGenerationPlanPayload,
+  validateVisualGenerationPlan
+} from "@/domain/operations/visualGenerationPlan";
+import {
   assembleAiContext,
   archiveVisualBranch,
+  attachDocumentExtractToFileObject,
   assignImageToVisualBranch,
   buildKeyConclusionDraftFromResearchSource,
   createKeyConclusion,
@@ -43,6 +53,8 @@ import {
   eliminateDirection,
   createVisualBranch,
   hideObject,
+  markFileObjectParseFailed,
+  markFileObjectParsing,
   removeImageFromVisualBranch,
   renameVisualBranch,
   restoreObject,
@@ -76,7 +88,12 @@ import {
 } from "./aiTaskRouting";
 import { buildProposalDiscussionDraft, buildProposalRegenerationDraft } from "./proposalFollowupPrompts";
 import { buildWebSearchOptions, collectMiMoImageAttachments, shouldAttachImagesForMiMo } from "./aiAttachments";
-import { resolveVisualGenerationTarget } from "./visualGenerationRouting";
+import { collectDocumentExtractsForAi } from "./documentContext";
+import {
+  classifyVisualGenerationIntent,
+  resolveVisualGenerationTarget,
+  type VisualGenerationIntent
+} from "./visualGenerationRouting";
 import {
   getDefaultImageGenerationSettings,
   getImageGenerationModelOptions,
@@ -119,6 +136,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [localEditObjectId, setLocalEditObjectId] = useState<string | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingAiConfirmation | null>(null);
   const [activeProposalId, setActiveProposalId] = useState<string | null>(null);
+  const [traceStartObjectId, setTraceStartObjectId] = useState<string | null>(null);
   const [showFailure, setShowFailure] = useState(false);
   const [contextWarning, setContextWarning] = useState<string | undefined>();
   const [isAiStreaming, setIsAiStreaming] = useState(false);
@@ -400,6 +418,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const handleImportRequest = useCallback(
     async (request: CanvasImportRequest) => {
       const successfulAssets: AssetRecord[] = [];
+      const successfulAssetFiles: Array<{ asset: AssetRecord; file: File }> = [];
       const failureReasons: string[] = [];
 
       for (const file of request.files ?? []) {
@@ -409,12 +428,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         });
         if (saved.status === "ok") {
           successfulAssets.push(saved.asset);
+          successfulAssetFiles.push({ asset: saved.asset, file });
         } else {
           failureReasons.push(`${file.name}: ${saved.reason}`);
         }
       }
 
       let nextSelection: string[] = [];
+      let parseTargets: Array<{ objectId: string; file: File }> = [];
       setWorkspace((current) => {
         let next = current;
 
@@ -425,6 +446,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           });
           next = imported.workspace;
           nextSelection = imported.objectIds;
+          const fileByAssetId = new Map(successfulAssetFiles.map((entry) => [entry.asset.id, entry.file]));
+          parseTargets = imported.objectIds
+            .map((objectId) => next.objects[objectId])
+            .filter((object) => object?.type === "file")
+            .map((object) => ({
+              objectId: object.id,
+              file: object.assetId ? fileByAssetId.get(object.assetId) : undefined
+            }))
+            .filter((target): target is { objectId: string; file: File } => Boolean(target.file));
         } else if (request.url) {
           const imported = importUrlObject(next, {
             url: request.url,
@@ -466,9 +496,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       if (nextSelection.length > 0) {
         setSelectedObjectIds(nextSelection);
       }
+
+      if (parseTargets.length > 0) {
+        void parseImportedDocuments(parseTargets, setWorkspace);
+      }
     },
     [setWorkspace]
   );
+  const activeDesignTrace = useMemo<DesignTraceResult | null>(() => {
+    if (!traceStartObjectId || !workspace.objects[traceStartObjectId]) {
+      return null;
+    }
+
+    return traceDesignChain(workspace, traceStartObjectId);
+  }, [traceStartObjectId, workspace]);
 
   const handleRunResearchOperation = useCallback(
     async (draft: string) => {
@@ -556,6 +597,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         })
           ? await collectMiMoImageAttachments(workspace, context.objectIds, controller.signal)
           : { attachments: [], skippedObjectIds: [], warning: undefined };
+        const documentResult = await collectDocumentExtractsForAi(
+          workspace,
+          context.objectIds,
+          indexedDbBlobStore,
+          controller.signal
+        );
         const response = await fetch("/api/ai/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -566,6 +613,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             messages: workspace.ai.messages.map((message) => ({ role: message.role, body: message.body })),
             objectSummaries,
             attachments: attachmentResult.attachments,
+            documentExtracts: documentResult.extracts,
             webSearch,
             defaultReferenceStatus: "notRelevant"
           }),
@@ -580,7 +628,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         const streamResult = await readAiEventStream(response.body, (assistantBody) => {
           setWorkspace((current) => updateAiMessage(current, assistantMessageId, assistantBody, "streaming"));
         });
-        const assistantBody = [attachmentResult.warning, streamResult.text].filter(Boolean).join("\n\n");
+        const assistantBody = [attachmentResult.warning, documentResult.warning, streamResult.text]
+          .filter(Boolean)
+          .join("\n\n");
 
         const parsedProposal = parseResearchAnalysisProposalPayload(streamResult.text);
         if (parsedProposal.status === "failed") {
@@ -602,6 +652,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }
 
         const proposalId = `proposal-research-${operationId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        let appliedResearchObjectId: string | undefined;
         setWorkspace((current) => {
           const proposed = recordResearchAnalysisProposal(
             updateAiMessage(current, assistantMessageId, assistantBody || "MiMo 没有返回可显示文本。", "done"),
@@ -620,11 +671,47 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               sourceChangedWarning: detectResearchSourceChanges(current, operationId)
             }
           );
-          return updateAiMessage(proposed.workspace, assistantMessageId, assistantBody || "MiMo 没有返回可显示文本。", "done", {
-            citationIds: proposed.proposal.citationIds
+
+          const applied = applyResearchAnalysisProposal(proposed.workspace, proposed.proposal.id, {
+            position: getPlacementNearObjects(proposed.workspace, context.objectIds, {
+              x: proposed.workspace.canvas.view.x + 220,
+              y: proposed.workspace.canvas.view.y + 180
+            })
           });
+
+          if (applied.status === "updated") {
+            appliedResearchObjectId = applied.researchObject.id;
+            return updateAiMessage(
+              applied.workspace,
+              assistantMessageId,
+              [
+                assistantBody || "MiMo 没有返回可显示文本。",
+                `已识别为：研究任务。已自动创建研究卡「${applied.researchObject.title}」，来源对象 ${
+                  context.objectIds.length
+                } 个，${webSearch ? "已允许联网补充" : "未启用联网搜索"}。`
+              ].join("\n\n"),
+              "done",
+              {
+                citationIds: proposed.proposal.citationIds
+              }
+            );
+          }
+
+          return updateAiMessage(
+            proposed.workspace,
+            assistantMessageId,
+            [assistantBody || "MiMo 没有返回可显示文本。", `${applied.reason} 研究卡未自动创建。`].join("\n\n"),
+            "failed",
+            {
+              citationIds: proposed.proposal.citationIds
+            }
+          );
         });
-        setActiveProposalId(proposalId);
+        if (appliedResearchObjectId) {
+          setSelectedObjectIds([appliedResearchObjectId]);
+          setFocusRequest((current) => ({ objectId: appliedResearchObjectId, nonce: current.nonce + 1 }));
+        }
+        setActiveProposalId(null);
         setPendingConfirmation(null);
       } catch (error) {
         const isCancelled = error instanceof DOMException && error.name === "AbortError";
@@ -643,6 +730,373 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [selectedObjectIds, selectedObjects, setWorkspace, workspace]
   );
 
+  const handleRunVisualGenerationOperation = useCallback(
+    async (draft: string) => {
+      const intent = classifyVisualGenerationIntent(draft, selectedObjects);
+      if (!intent) {
+        setAiDraft(draft);
+        setImageTaskStatus({
+          state: "failed",
+          message: "没有识别到明确的方向预览或图片视觉迭代目标。请先选择 1-3 个方向，或选择要继续发展的图片。"
+        });
+        setWorkspace((current) =>
+          appendAiAssistantFailureMessage(
+            current,
+            "image-generation-intent-blocked",
+            "已识别到图像生成措辞，但缺少明确目标：请选择 1-3 个概念方向生成首张预览，或选择图片做视觉迭代。",
+            undefined
+          )
+        );
+        return;
+      }
+
+      const operationGate = canStartOperation(workspace);
+      if (operationGate.status === "blocked") {
+        setAiDraft(draft);
+        setImageTaskStatus({ state: "failed", message: operationGate.reason });
+        setWorkspace((current) => appendOperationBlockedMessage(current, operationGate.operation, operationGate.reason));
+        return;
+      }
+
+      const selectedDirectionIds = selectedObjects
+        .filter((object) => object.type === "conceptDirection")
+        .map((object) => object.id);
+      const selectedImageIds = selectedObjects.filter((object) => object.type === "image").map((object) => object.id);
+      if (intent === "directionPreview" && (selectedDirectionIds.length === 0 || selectedDirectionIds.length > 3)) {
+        const message = "方向预览首版一次只支持选择 1-3 个概念方向。";
+        setAiDraft(draft);
+        setImageTaskStatus({ state: "failed", message });
+        setWorkspace((current) => appendAiAssistantFailureMessage(current, "direction-preview-blocked", message, undefined));
+        return;
+      }
+
+      const initialVisualTarget =
+        intent === "visualDevelopment"
+          ? resolveVisualGenerationTarget(workspace, selectedObjects, selectedObjectIds)
+          : { status: "ready" as const };
+      if (initialVisualTarget.status === "blocked") {
+        setContextWarning(initialVisualTarget.reason);
+        setImageTaskStatus({ state: "failed", message: initialVisualTarget.reason });
+        return;
+      }
+
+      const context = assembleAiContext(workspace, {
+        draft,
+        selectedObjectIds,
+        explicitObjectIds: [],
+        task: "visualDevelopment",
+        visualTargetDirectionId: initialVisualTarget.directionId,
+        visualBranchId: initialVisualTarget.visualBranchId
+      });
+      const operationId = `operation-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const clientRequestId = `client-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const now = new Date().toISOString();
+      const userMessageId = `ai-user-image-${Date.now()}`;
+      const assistantMessageId = `ai-assistant-image-${Date.now()}`;
+      const controller = new AbortController();
+      const objectSummaries = makeObjectSummaries(workspace, context.objectIds);
+      abortControllerRef.current = controller;
+      setIsAiStreaming(true);
+      setAiDraft("");
+      setAiOpen(true);
+      setShowFailure(false);
+      setImageTaskStatus({
+        state: "preparing",
+        message:
+          intent === "directionPreview"
+            ? `已识别为：方向预览生成。将先规划 ${selectedDirectionIds.length} 张首版预览，再顺序生成。`
+            : "已识别为：图片视觉迭代。将先规划视觉目标，再生成新图片。"
+      });
+      setWorkspace((current) => {
+        const operationCreated = createImageGenerationOperation(current, {
+          operationId,
+          clientRequestId,
+          prompt: draft,
+          selectedObjectIds: context.objectIds,
+          imagePixels: false,
+          modelId: effectiveImageGenerationSettings.modelId,
+          modelLabel: effectiveImageGenerationSettings.modelLabel,
+          aspectRatio: effectiveImageGenerationSettings.aspectRatio,
+          sizeOption: effectiveImageGenerationSettings.sizeOption,
+          referenceObjectIds: context.objectIds,
+          directionObjectId: initialVisualTarget.directionId,
+          visualBranchId: initialVisualTarget.visualBranchId
+        });
+
+        return {
+          ...operationCreated.workspace,
+          ai: {
+            ...operationCreated.workspace.ai,
+            messages: [
+              ...operationCreated.workspace.ai.messages,
+              {
+                id: userMessageId,
+                role: "user",
+                body: draft,
+                createdAt: now,
+                contextObjectIds: context.objectIds,
+                taskMode: "imageGeneration"
+              },
+              {
+                id: assistantMessageId,
+                role: "assistant",
+                body:
+                  intent === "directionPreview"
+                    ? `已识别为：方向预览生成。目标 ${selectedDirectionIds.length} 个方向，每个方向默认 1 张首版概念预览；不会覆盖已有图片。`
+                    : "已识别为：图片视觉迭代。会创建新图像对象，不覆盖来源图、默认参考或交付引用。",
+                createdAt: now,
+                status: "streaming",
+                contextObjectIds: context.objectIds,
+                taskMode: "imageGeneration",
+                operationId
+              }
+            ]
+          }
+        };
+      });
+
+      const createdObjectIds: string[] = [];
+      const failedItems: string[] = [];
+      let lastProviderTaskId: string | undefined;
+
+      try {
+        const planResponse = await fetch("/api/ai/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            draft,
+            task: intent,
+            taskMode: "imageGeneration",
+            workIntent: "discussion",
+            messages: workspace.ai.messages.map((message) => ({ role: message.role, body: message.body })),
+            objectSummaries,
+            attachments: [],
+            documentExtracts: [],
+            defaultReferenceStatus: summarizeDefaultReferenceStatus(context.defaultReferenceStatus)
+          }),
+          signal: controller.signal
+        });
+
+        if (!planResponse.ok || !planResponse.body) {
+          const failure = await readErrorResponse(planResponse);
+          throw new Error(failure);
+        }
+
+        const planStream = await readAiEventStream(planResponse.body, (assistantBody) => {
+          setWorkspace((current) => updateAiMessage(current, assistantMessageId, assistantBody, "streaming"));
+        });
+        const parsedPlan = parseVisualGenerationPlanPayload(planStream.text);
+        if (parsedPlan.status === "failed") {
+          throw new Error(parsedPlan.reason);
+        }
+        if (parsedPlan.plan.kind !== intent) {
+          throw new Error("MiMo 返回的视觉计划类型与当前识别任务不一致。");
+        }
+
+        const validatedPlan = validateVisualGenerationPlan(workspace, {
+          plan: parsedPlan.plan,
+          allowedObjectIds: context.objectIds,
+          selectedDirectionIds,
+          selectedImageIds
+        });
+        if (validatedPlan.status === "blocked") {
+          throw new Error(validatedPlan.reason);
+        }
+
+        setWorkspace((current) =>
+          updateAiMessage(
+            recordImageGenerationPlan(current, {
+              operationId,
+              plan: validatedPlan.plan
+            }),
+            assistantMessageId,
+            `MiMo 已形成受控视觉计划：${validatedPlan.plan.items.length} 项。接下来将顺序生成，当前模型 ${effectiveImageGenerationSettings.modelLabel}，不会覆盖来源图。`,
+            "streaming"
+          )
+        );
+
+        for (const [index, item] of validatedPlan.plan.items.entries()) {
+          try {
+            setImageTaskStatus({
+              state: "submitting",
+              message: `正在生成 ${index + 1}/${validatedPlan.plan.items.length}：${item.title}`
+            });
+            setWorkspace((current) =>
+              updateAiMessage(
+                current,
+                assistantMessageId,
+                `生成 ${index + 1}/${validatedPlan.plan.items.length}：${item.title}`,
+                "streaming"
+              )
+            );
+
+            const referenceImages = await collectImageReferenceDataUrls(workspace, item.referenceObjectIds, controller.signal);
+            setWorkspace((current) =>
+              markImageGenerationOperationSubmitted(current, {
+                operationId,
+                referenceObjectIds: item.referenceObjectIds,
+                imagePixels: referenceImages.images.length > 0
+              })
+            );
+
+            const imageResponse = await fetch("/api/ai/image", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                modelId: effectiveImageGenerationSettings.modelId,
+                prompt: item.prompt,
+                images: referenceImages.images,
+                aspectRatio: effectiveImageGenerationSettings.aspectRatio,
+                sizeOption: effectiveImageGenerationSettings.sizeOption,
+                referenceObjectIds: item.referenceObjectIds,
+                directionObjectId: item.targetDirectionId,
+                visualBranchId: item.visualBranchId,
+                operationId,
+                clientRequestId
+              }),
+              signal: controller.signal
+            });
+            lastProviderTaskId = imageResponse.headers.get("X-Morpho-Provider-Task-Id") || lastProviderTaskId;
+
+            if (!imageResponse.ok) {
+              const failure = await readErrorResponse(imageResponse);
+              throw new Error(failure);
+            }
+
+            setImageTaskStatus({
+              state: "downloading",
+              message: `正在保存 ${index + 1}/${validatedPlan.plan.items.length}：${item.title}`
+            });
+            const mimeType = imageResponse.headers.get("Content-Type") ?? "image/png";
+            const blob = await imageResponse.blob();
+            const file = new File([blob], makeGeneratedImageFileName(mimeType), { type: mimeType });
+            const saved = await saveBlobAsLocalAsset(indexedDbBlobStore, file, "aiGeneratedImage", {
+              readImageDimensions: readImageBlobDimensions
+            });
+            if (saved.status === "failed") {
+              throw new Error(saved.reason);
+            }
+
+            let createdObjectId = "";
+            setWorkspace((current) => {
+              const generated = createGeneratedImageFromAsset(current, {
+                asset: saved.asset,
+                generation: {
+                  modelId: effectiveImageGenerationSettings.modelId,
+                  modelLabel: effectiveImageGenerationSettings.modelLabel,
+                  aspectRatio: effectiveImageGenerationSettings.aspectRatio,
+                  sizeOption: effectiveImageGenerationSettings.sizeOption,
+                  prompt: item.prompt,
+                  referenceObjectIds: item.referenceObjectIds,
+                  directionId: item.targetDirectionId,
+                  visualBranchId: item.visualBranchId,
+                  operationId,
+                  clientRequestId,
+                  providerTaskId: lastProviderTaskId,
+                  title: item.title,
+                  purpose: item.purpose,
+                  role: item.role,
+                  visualPlan: validatedPlan.plan,
+                  createdAt: new Date().toISOString()
+                },
+                sourceObjectIds: referenceImages.sourceObjectIds,
+                directionObjectId: item.targetDirectionId,
+                visualBranchId: item.visualBranchId,
+                title: item.title,
+                summary: item.purpose,
+                role: item.role,
+                position: getGeneratedImagePlacement(current, item, index)
+              });
+              createdObjectId = generated.createdObjectId;
+              return recordImageGenerationOperationResult(generated.workspace, {
+                operationId,
+                providerTaskId: lastProviderTaskId,
+                resultObjectId: generated.createdObjectId
+              });
+            });
+            if (createdObjectId) {
+              createdObjectIds.push(createdObjectId);
+            }
+          } catch (itemError) {
+            const itemMessage = itemError instanceof Error ? itemError.message : "图像计划项生成失败。";
+            failedItems.push(`${item.title}: ${itemMessage}`);
+            setWorkspace((current) =>
+              recordImageGenerationOperationItemFailure(current, {
+                operationId,
+                planItemId: item.id,
+                reason: itemMessage
+              })
+            );
+          }
+        }
+
+        if (createdObjectIds.length === 0) {
+          throw new Error(failedItems[0] ?? "所有图像计划项都生成失败。");
+        }
+
+        const lastCreatedObjectId = createdObjectIds.at(-1) ?? createdObjectIds[0];
+        setWorkspace((current) =>
+          updateAiMessage(
+            completeImageGenerationOperation(current, {
+              operationId,
+              providerTaskId: lastProviderTaskId,
+              resultObjectId: lastCreatedObjectId
+            }),
+            assistantMessageId,
+            [
+              `图像任务完成：成功 ${createdObjectIds.length} 张，失败 ${failedItems.length} 项。`,
+              intent === "directionPreview"
+                ? "每张首版预览已绑定对应方向，角色为概念图；没有自动设置主方向或默认参考。"
+                : "新图已写入来源、版本、方向和视觉分支关系；来源图没有被覆盖。",
+              failedItems.length > 0 ? `失败项：${failedItems.join("；")}` : ""
+            ]
+              .filter(Boolean)
+              .join("\n\n"),
+            "done"
+          )
+        );
+        setSelectedObjectIds(createdObjectIds);
+        setFocusRequest((current) => ({ objectId: lastCreatedObjectId, nonce: current.nonce + 1 }));
+        setImageTaskStatus({
+          state: "succeeded",
+          message: `已保存 ${createdObjectIds.length} 张新图像。`
+        });
+      } catch (error) {
+        const isCancelled = error instanceof DOMException && error.name === "AbortError";
+        const message = isCancelled
+          ? "图像任务已取消。原输入、来源对象和已有结果已保留。"
+          : error instanceof Error
+            ? error.message
+            : "图像任务失败。";
+        setAiDraft(draft);
+        setImageTaskStatus({ state: isCancelled ? "cancelled" : "failed", message });
+        setWorkspace((current) =>
+          updateAiMessage(
+            failImageGenerationOperation(current, {
+              operationId,
+              status: isCancelled ? "cancelled" : "failed",
+              reason: message,
+              providerTaskId: lastProviderTaskId
+            }),
+            assistantMessageId,
+            message,
+            "failed"
+          )
+        );
+      } finally {
+        abortControllerRef.current = null;
+        setIsAiStreaming(false);
+      }
+    },
+    [
+      effectiveImageGenerationSettings,
+      selectedObjectIds,
+      selectedObjects,
+      setWorkspace,
+      workspace
+    ]
+  );
+
   const handleSendAiMessage = useCallback(async () => {
     const draft = aiDraft.trim();
     if (!draft || isAiStreaming) {
@@ -656,6 +1110,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     });
     if (executionTaskMode === "researchOperation") {
       await handleRunResearchOperation(draft);
+      return;
+    }
+
+    if (executionTaskMode === "imageGeneration") {
+      await handleRunVisualGenerationOperation(draft);
       return;
     }
 
@@ -743,6 +1202,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       })
         ? await collectMiMoImageAttachments(workspace, context.objectIds, controller.signal)
         : { attachments: [], skippedObjectIds: [], warning: undefined };
+      const documentResult = await collectDocumentExtractsForAi(
+        workspace,
+        context.objectIds,
+        indexedDbBlobStore,
+        controller.signal
+      );
       const response = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -754,6 +1219,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           messages: workspace.ai.messages.map((message) => ({ role: message.role, body: message.body })),
           objectSummaries,
           attachments: attachmentResult.attachments,
+          documentExtracts: documentResult.extracts,
           webSearch,
           defaultReferenceStatus: summarizeDefaultReferenceStatus(context.defaultReferenceStatus)
         }),
@@ -768,7 +1234,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       const streamResult = await readAiEventStream(response.body, (assistantBody) => {
         setWorkspace((current) => updateAiMessage(current, assistantMessageId, assistantBody, "streaming"));
       });
-      const assistantBody = [attachmentResult.warning, streamResult.text].filter(Boolean).join("\n\n");
+      const assistantBody = [attachmentResult.warning, documentResult.warning, streamResult.text]
+        .filter(Boolean)
+        .join("\n\n");
       const resolvedAssistantBody = assistantBody || "MiMo 没有返回可显示文本。";
       const designDefinitionProposal = expectsDesignDefinitionProposal(executionWorkIntent)
         ? parseDesignDefinitionProposalPayload(streamResult.text)
@@ -879,6 +1347,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   }, [
     aiDraft,
     handleRunResearchOperation,
+    handleRunVisualGenerationOperation,
     isAiStreaming,
     recommendedTaskMode,
     recommendedWorkIntent,
@@ -916,6 +1385,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setAiDraft(`请基于“${selectedObjects[0].title}”继续分析下一步。`);
     }
   }, [handleWorkIntentChange, selectedObjects]);
+
+  const handleToggleDesignTrace = useCallback(() => {
+    const target = selectedObjects[0];
+    if (!target) {
+      return;
+    }
+
+    setTraceStartObjectId((current) => (current === target.id ? null : target.id));
+  }, [selectedObjects]);
 
   const handleReviseDirectionIntent = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "conceptDirection");
@@ -1722,6 +2200,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       <MorphoCanvas
         workspace={workspace}
         annotatedObjectId={localEditObjectId}
+        traceObjectIds={activeDesignTrace?.objectIds ?? []}
+        traceEdges={activeDesignTrace?.edges ?? []}
         assetUrls={assetUrls}
         focusRequest={focusRequest}
         onSelectionChange={handleSelectionChange}
@@ -1804,6 +2284,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         directionLineage={workspace.directionLineage}
         visualBranches={workspace.visualBranches}
         decisionRecords={workspace.decisionRecords}
+        activeDesignTrace={activeDesignTrace}
+        isDesignTraceActive={Boolean(activeDesignTrace)}
+        onToggleDesignTrace={handleToggleDesignTrace}
         onAskAi={handleAskAi}
         onReviseDirection={handleReviseDirectionIntent}
         onSplitDirection={handleSplitDirectionIntent}
@@ -1872,6 +2355,102 @@ function updateWorkspaceInstances(workspace: MorphoWorkspace, instances: CanvasI
       instances: nextInstances
     }
   };
+}
+
+function getPlacementNearObjects(
+  workspace: MorphoWorkspace,
+  sourceObjectIds: string[],
+  fallback: { x: number; y: number }
+): { x: number; y: number } {
+  const sourceInstances = sourceObjectIds
+    .map((objectId) => workspace.canvas.instances.find((instance) => instance.objectId === objectId))
+    .filter((instance): instance is CanvasInstance => Boolean(instance));
+
+  if (sourceInstances.length === 0) {
+    return fallback;
+  }
+
+  const right = Math.max(...sourceInstances.map((instance) => instance.position.x + instance.size.w));
+  const top = Math.min(...sourceInstances.map((instance) => instance.position.y));
+  return {
+    x: right + 92,
+    y: top
+  };
+}
+
+function getGeneratedImagePlacement(
+  workspace: MorphoWorkspace,
+  item: VisualGenerationPlanItem,
+  index: number
+): { x: number; y: number } {
+  const sourceInstance = item.referenceObjectIds
+    .map((objectId) => workspace.canvas.instances.find((instance) => instance.objectId === objectId))
+    .find(Boolean);
+  if (sourceInstance) {
+    return {
+      x: sourceInstance.position.x + sourceInstance.size.w + 92,
+      y: sourceInstance.position.y + index * 34
+    };
+  }
+
+  const directionInstance = item.targetDirectionId
+    ? workspace.canvas.instances.find((instance) => instance.objectId === item.targetDirectionId)
+    : undefined;
+  if (directionInstance) {
+    return {
+      x: directionInstance.position.x,
+      y: directionInstance.position.y + directionInstance.size.h + 72 + index * 36
+    };
+  }
+
+  return {
+    x: workspace.canvas.view.x + 180 + index * 42,
+    y: workspace.canvas.view.y + 180 + index * 42
+  };
+}
+
+async function parseImportedDocuments(
+  targets: Array<{ objectId: string; file: File }>,
+  setWorkspace: (updater: (current: MorphoWorkspace) => MorphoWorkspace) => void
+): Promise<void> {
+  for (const target of targets) {
+    if (!shouldAttemptDocumentParse(target.file)) {
+      continue;
+    }
+
+    setWorkspace((current) => markFileObjectParsing(current, target.objectId));
+    const parsed = await parseDocumentFile(target.file);
+    if (parsed.status === "failed") {
+      setWorkspace((current) =>
+        markFileObjectParseFailed(current, {
+          fileObjectId: target.objectId,
+          reason: parsed.reason
+        })
+      );
+      continue;
+    }
+
+    const extractFile = createDocumentExtractFile(target.file, parsed.text);
+    const saved = await saveBlobAsLocalAsset(indexedDbBlobStore, extractFile, "documentExtract");
+    if (saved.status === "failed") {
+      setWorkspace((current) =>
+        markFileObjectParseFailed(current, {
+          fileObjectId: target.objectId,
+          reason: saved.reason
+        })
+      );
+      continue;
+    }
+
+    setWorkspace((current) =>
+      attachDocumentExtractToFileObject(current, {
+        fileObjectId: target.objectId,
+        extractAsset: saved.asset,
+        extractedCharCount: parsed.text.length,
+        extractedPageCount: parsed.pageCount
+      })
+    );
+  }
 }
 
 function resolveConceptDirectionApplicationScope(

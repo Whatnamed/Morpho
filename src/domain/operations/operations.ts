@@ -188,10 +188,27 @@ export type CompleteImageGenerationOperationInput = {
   resultObjectId: string;
 };
 
+export type RecordImageGenerationOperationResultInput = {
+  operationId: string;
+  providerTaskId?: string;
+  resultObjectId: string;
+};
+
+export type RecordImageGenerationOperationItemFailureInput = {
+  operationId: string;
+  planItemId: string;
+  reason: string;
+};
+
 export type MarkImageGenerationOperationSubmittedInput = {
   operationId: string;
   referenceObjectIds: string[];
   imagePixels: boolean;
+};
+
+export type RecordImageGenerationPlanInput = {
+  operationId: string;
+  plan: NonNullable<ImageGenerationOperationMetadata["plan"]>;
 };
 
 export type FailImageGenerationOperationInput = {
@@ -427,7 +444,9 @@ export function createImageGenerationOperation(
       sizeOption: input.sizeOption,
       referenceObjectIds: [...input.referenceObjectIds],
       directionObjectId: input.directionObjectId,
-      visualBranchId: input.visualBranchId
+      visualBranchId: input.visualBranchId,
+      plan: input.plan,
+      resultObjectIds: []
     }
   };
 
@@ -462,7 +481,8 @@ export function completeImageGenerationOperation(
       ? {
           ...operation.imageGeneration,
           providerTaskId: input.providerTaskId,
-          resultObjectId: input.resultObjectId
+          resultObjectId: input.resultObjectId,
+          resultObjectIds: appendUnique(operation.imageGeneration.resultObjectIds ?? [], input.resultObjectId)
         }
       : undefined,
     steps: [
@@ -481,6 +501,112 @@ export function completeImageGenerationOperation(
         id: `${operation.id}-event-succeeded-${operation.events.length + 1}`,
         createdAt: now,
         summary: "图像生成任务已完成。"
+      }
+    ]
+  };
+
+  return {
+    ...workspace,
+    operations: {
+      ...workspace.operations,
+      [operation.id]: updatedOperation
+    }
+  };
+}
+
+export function recordImageGenerationOperationResult(
+  workspace: MorphoWorkspace,
+  input: RecordImageGenerationOperationResultInput
+): MorphoWorkspace {
+  const operation = workspace.operations[input.operationId];
+  if (!operation || operation.type !== "imageGeneration") {
+    return workspace;
+  }
+
+  const now = new Date().toISOString();
+  const updatedOperation: OperationRecord = {
+    ...operation,
+    status: "running",
+    updatedAt: now,
+    imageGeneration: operation.imageGeneration
+      ? {
+          ...operation.imageGeneration,
+          providerTaskId: input.providerTaskId ?? operation.imageGeneration.providerTaskId,
+          resultObjectId: input.resultObjectId,
+          resultObjectIds: appendUnique(operation.imageGeneration.resultObjectIds ?? [], input.resultObjectId)
+        }
+      : undefined,
+    steps: [
+      ...operation.steps,
+      {
+        id: `${operation.id}-step-asset-${operation.steps.length + 1}`,
+        kind: "assetSave",
+        status: "succeeded",
+        summary: `已保存生成结果 ${input.resultObjectId} 为独立本地资产和新图像对象。`,
+        createdAt: now
+      }
+    ],
+    events: [
+      ...operation.events,
+      {
+        id: `${operation.id}-event-result-${operation.events.length + 1}`,
+        createdAt: now,
+        summary: `图像生成结果已保存：${input.resultObjectId}。`
+      }
+    ]
+  };
+
+  return {
+    ...workspace,
+    operations: {
+      ...workspace.operations,
+      [operation.id]: updatedOperation
+    }
+  };
+}
+
+export function recordImageGenerationOperationItemFailure(
+  workspace: MorphoWorkspace,
+  input: RecordImageGenerationOperationItemFailureInput
+): MorphoWorkspace {
+  const operation = workspace.operations[input.operationId];
+  if (!operation || operation.type !== "imageGeneration") {
+    return workspace;
+  }
+
+  const now = new Date().toISOString();
+  const updatedOperation: OperationRecord = {
+    ...operation,
+    status: "running",
+    updatedAt: now,
+    imageGeneration: operation.imageGeneration
+      ? {
+          ...operation.imageGeneration,
+          failedItems: [
+            ...(operation.imageGeneration.failedItems ?? []),
+            {
+              planItemId: input.planItemId,
+              reason: input.reason
+            }
+          ]
+        }
+      : undefined,
+    steps: [
+      ...operation.steps,
+      {
+        id: `${operation.id}-step-item-failed-${operation.steps.length + 1}`,
+        kind: "providerWait",
+        status: "failed",
+        summary: input.reason,
+        createdAt: now
+      }
+    ],
+    events: [
+      ...operation.events,
+      {
+        id: `${operation.id}-event-item-failed-${operation.events.length + 1}`,
+        createdAt: now,
+        summary: `图像计划项失败：${input.planItemId}。${input.reason}`
       }
     ]
   };
@@ -1979,6 +2105,68 @@ function buildReviewReasonMessage(details: ProposalReviewDetails[]): string {
 
 function stableStringify(value: unknown): string {
   return JSON.stringify(value);
+}
+
+export function recordImageGenerationPlan(
+  workspace: MorphoWorkspace,
+  input: RecordImageGenerationPlanInput
+): MorphoWorkspace {
+  const operation = workspace.operations[input.operationId];
+  if (!operation || operation.type !== "imageGeneration") {
+    return workspace;
+  }
+
+  const now = new Date().toISOString();
+  const referenceObjectIds = [
+    ...new Set(
+      input.plan.items.flatMap((item) =>
+        [item.targetDirectionId, ...item.referenceObjectIds].filter((objectId): objectId is string => Boolean(objectId))
+      )
+    )
+  ];
+  const updatedOperation: OperationRecord = {
+    ...operation,
+    status: "preparing",
+    updatedAt: now,
+    sourceIds: referenceObjectIds,
+    imageGeneration: operation.imageGeneration
+      ? {
+          ...operation.imageGeneration,
+          plan: input.plan,
+          referenceObjectIds
+        }
+      : undefined,
+    steps: [
+      ...operation.steps,
+      {
+        id: `${operation.id}-step-plan-${operation.steps.length + 1}`,
+        kind: "visualPlan",
+        status: "succeeded",
+        summary: `MiMo 已形成 ${input.plan.items.length} 个受控图像生成计划项。`,
+        createdAt: now
+      }
+    ],
+    events: [
+      ...operation.events,
+      {
+        id: `${operation.id}-event-plan-${operation.events.length + 1}`,
+        createdAt: now,
+        summary: "视觉生成计划已通过本地校验。"
+      }
+    ]
+  };
+
+  return {
+    ...workspace,
+    operations: {
+      ...workspace.operations,
+      [operation.id]: updatedOperation
+    }
+  };
+}
+
+function appendUnique(values: string[], value: string): string[] {
+  return values.includes(value) ? values : [...values, value];
 }
 
 function inferConceptDirectionApplicationMode(

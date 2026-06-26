@@ -172,6 +172,8 @@ Reason: selected images and broad text regexes previously risked routing ordinar
 
 Boundary: regexes, selected object types, and suggestion chips may set a recommended task mode, but they cannot silently change the execution path.
 
+Superseded boundary: the 2026-06-26 default-routing decision below keeps manual user-selected modes authoritative, but lets the default discussion mode adopt a recommended executable task when the user has not explicitly switched modes.
+
 ## 2026-06-25: Gate Provider Capabilities by Verification
 
 Decision: GrsAI model profiles and MiMo optional capabilities carry verification status.
@@ -275,3 +277,45 @@ Decision: research, image generation, design-definition proposals, and concept-d
 Reason: simultaneous `running` or `waiting_for_user` operations can leave conflicting proposals and unclear state transitions.
 
 Boundary: ordinary discussion and comparison remain lightweight chat and do not have to create full Operation records. Suggestion chips and regex recommendations still cannot override the user-selected work intent at send time.
+
+## 2026-06-26: Use Schema Version 7 for Local Document Extracts
+
+Decision: upgrade workspace data to `schemaVersion: 7`.
+
+Reason: M4.2 needs selected imported documents to participate in research and semantic drafting without storing full file text in workspace JSON.
+
+Implemented fields on `FileObject` include parse status, extracted asset ID, extracted character count, optional page count, parse timestamp, and parse error. Extracted text is stored as a separate IndexedDB `documentExtract` asset.
+
+Boundary: the original imported file remains the source asset. Parsed text is a bounded local context artifact, not a network citation, and failed or unsupported parsing does not block ordinary file import.
+
+## 2026-06-26: Use pdfjs-dist and fflate for Browser-Side Document Extraction
+
+Decision: add `pdfjs-dist` for text-layer PDF extraction and `fflate` for PPTX ZIP/XML extraction.
+
+Reason: Morpho needs local, demo-safe document extraction for real uploaded research material before introducing cloud OCR or a server document pipeline.
+
+Boundary: supported extraction is best-effort and local-only. Text PDFs, Markdown, plain text, and PPTX slide text are supported. Scanned PDFs, legacy `.ppt`, DOC/DOCX, layout fidelity, OCR, embedded images, and table reconstruction are not implemented.
+
+## 2026-06-26: Auto-Route Default AI Requests but Preserve Manual Override
+
+Decision: when the AI panel is still in default discussion/chat mode, recommended task routing can execute `researchOperation`, `imageGeneration`, or semantic proposal intents automatically. Once the user manually selects a non-default task mode or work intent, that explicit choice remains authoritative.
+
+Reason: M4.2's demo flow depends on natural language moving from real inputs into research, definition, direction, preview, and iteration without forcing the user to manage backend modes.
+
+Boundary: suggestions only route at send time. They do not mutate project state by themselves, and provider-backed tasks still pass through the one-active-operation gate.
+
+## 2026-06-26: Compile Visual Generation Through MiMo Plans Before GrsAI Calls
+
+Decision: visual generation first asks MiMo for a structured `morphoVisualGenerationPlan`, validates that plan locally, then calls GrsAI once per approved plan item.
+
+Reason: direction previews and visual-development branches need semantic routing, role assignment, direction ownership, source references, and partial-failure tracking before image bytes are created.
+
+Boundary: plan validation blocks unauthorized object IDs, ambiguous cross-direction source mixes, and direction-preview requests that do not map one selected direction to one preview. Generated results always create new image objects and never replace source images, default references, direction status, or delivery references.
+
+## 2026-06-26: Keep Design Chain Trace Read-Only and Rebuildable
+
+Decision: design-chain tracing is computed from current objects, relations, revisions, visual branches, generation metadata, and decision records at view time.
+
+Reason: M4.2 needs reviewers to inspect how an image or direction descends from real inputs, research, conclusions, definitions, directions, and visual iterations without creating another persistent workflow object.
+
+Boundary: the trace overlay and bottom detail summary do not write project state and do not infer meaning from canvas proximity. Canvas coordinates are used only to draw the temporary visual overlay between already-known semantic records.

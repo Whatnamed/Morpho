@@ -37,6 +37,16 @@ export type AiRouteImageAttachment = {
 
 export type AiRouteAttachment = AiRouteAttachmentSummary | AiRouteImageAttachment;
 
+export type AiRouteDocumentExtract = {
+  objectId: string;
+  title: string;
+  fileName?: string;
+  text: string;
+  charCount: number;
+  pageCount?: number;
+  truncated: boolean;
+};
+
 export type AiRouteRequest = {
   draft: string;
   task: string;
@@ -48,6 +58,7 @@ export type AiRouteRequest = {
   }>;
   objectSummaries: AiRouteObjectSummary[];
   attachments: AiRouteAttachment[];
+  documentExtracts?: AiRouteDocumentExtract[];
   webSearch?: ProviderWebSearchOptions;
   defaultReferenceStatus?: string;
 };
@@ -81,6 +92,10 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
       ? []
       : value.attachments.filter(isAttachment).map(normalizeAttachment)
     : [];
+  const documentExtracts =
+    taskMode === "imageGeneration" || !Array.isArray(value.documentExtracts)
+      ? []
+      : value.documentExtracts.filter(isDocumentExtract).slice(0, 8);
 
   return {
     status: "ok",
@@ -92,6 +107,7 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
       messages,
       objectSummaries,
       attachments,
+      documentExtracts,
       webSearch: normalizeWebSearch(value.webSearch, taskMode),
       defaultReferenceStatus: typeof value.defaultReferenceStatus === "string" ? value.defaultReferenceStatus : undefined
     }
@@ -104,12 +120,13 @@ export function buildProviderMessages(request: AiRouteRequest): ProviderChatMess
     content: message.body
   }));
   const readyImages = request.attachments.filter((attachment): attachment is AiRouteImageAttachment => attachment.status === "ready");
+  const textWithDocuments = [buildDocumentExtractPromptBlock(request), request.draft].filter(Boolean).join("\n\n");
   const userContent =
     readyImages.length > 0
       ? [
           {
             type: "text" as const,
-            text: request.draft
+            text: textWithDocuments
           },
           ...readyImages.map((attachment) => ({
             type: "image_url" as const,
@@ -118,7 +135,7 @@ export function buildProviderMessages(request: AiRouteRequest): ProviderChatMess
             }
           }))
         ]
-      : request.draft;
+      : textWithDocuments;
 
   return [...history, { role: "user", content: userContent }];
 }
@@ -141,11 +158,32 @@ export function buildMorphoSystemPrompt(request: AiRouteRequest): string {
     "本次可用对象摘要：",
     objectLines,
     buildAttachmentCapabilityLine(request),
+    buildDocumentCapabilityLine(request),
     buildWebSearchCapabilityLine(request),
     buildStructuredProposalInstruction(request)
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function buildDocumentExtractPromptBlock(request: AiRouteRequest): string {
+  const documentExtracts = request.documentExtracts ?? [];
+  if (documentExtracts.length === 0) {
+    return "";
+  }
+
+  return [
+    "本次选中资料的本地解析文本如下。它们是 local project sources，不是联网 citation；引用时必须使用 objectId，不得编造 URL。",
+    ...documentExtracts.map((extract) =>
+      [
+        `## ${extract.objectId} / ${extract.title}${extract.fileName ? ` / ${extract.fileName}` : ""}`,
+        `chars=${extract.charCount}${extract.pageCount ? ` pages=${extract.pageCount}` : ""}${
+          extract.truncated ? " truncated=true" : ""
+        }`,
+        extract.text
+      ].join("\n")
+    )
+  ].join("\n\n");
 }
 
 function buildAttachmentCapabilityLine(request: AiRouteRequest): string {
@@ -159,6 +197,18 @@ function buildAttachmentCapabilityLine(request: AiRouteRequest): string {
   return `本次已发送 ${representedObjectIds.size} 个显式选择的 active 图片对象像素，使用 MiMo OpenAI-compatible image_url 输入。${contactSheetCount > 0 ? `其中 ${contactSheetCount} 个输入是自动生成的总览图，用于覆盖较多参考。` : ""}只分析这些图片，不读取隐藏对象、未选旧图或整张画布。`;
 }
 
+function buildDocumentCapabilityLine(request: AiRouteRequest): string {
+  const documentExtracts = request.documentExtracts ?? [];
+  if (documentExtracts.length === 0) {
+    return "本次没有发送本地解析文档正文；未解析或解析失败的文件不能被当作已读资料。";
+  }
+
+  const truncatedCount = documentExtracts.filter((extract) => extract.truncated).length;
+  return `本次发送 ${documentExtracts.length} 个选中 parsed 文件的 documentExtract 文本。它们只能作为本地来源 objectId 使用，不等同网络 citation。${
+    truncatedCount > 0 ? `${truncatedCount} 个文档已按长度截断。` : ""
+  }`;
+}
+
 function buildWebSearchCapabilityLine(request: AiRouteRequest): string {
   if (!request.webSearch?.enabled) {
     return "本次没有提供联网搜索工具；不得编造外部来源，也不得把普通模型文字当作 citation。";
@@ -168,6 +218,19 @@ function buildWebSearchCapabilityLine(request: AiRouteRequest): string {
 }
 
 function buildStructuredProposalInstruction(request: AiRouteRequest): string {
+  if (request.taskMode === "imageGeneration") {
+    return [
+      "本次你只负责形成受控图像生成计划，不直接生成图片，也不能声称已出图。",
+      "如果生成目标明确，请在普通回答后附加一个 fenced JSON block，且只使用以下顶层字段：",
+      "morphoVisualGenerationPlan: { kind, items }。",
+      "kind 只能是 directionPreview 或 visualDevelopment。",
+      "items 每项包含 id, targetDirectionId?, visualBranchId?, title, purpose, prompt, referenceObjectIds, role。",
+      "role 只能是 conceptImage、sceneVisual、cmfStudy、detailStudy 或 preview。",
+      "referenceObjectIds、targetDirectionId、visualBranchId 只能来自本次可用对象摘要；不得编造图片、方向、分支或来源。",
+      "方向首张预览必须一条已选方向对应一张 conceptImage，不要自动创建视觉分支。"
+    ].join("\n");
+  }
+
   if (request.taskMode === "researchOperation") {
     return [
       "如果本次研究结果足够结构化，请在普通回答后附加一个 fenced JSON block，且只使用以下顶层字段：",
@@ -220,6 +283,20 @@ function isObjectSummary(value: unknown): value is AiRouteObjectSummary {
 
 function isAttachment(value: unknown): value is AiRouteAttachment {
   return isAttachmentSummary(value) || isImageAttachment(value);
+}
+
+function isDocumentExtract(value: unknown): value is AiRouteDocumentExtract {
+  return (
+    isRecord(value) &&
+    typeof value.objectId === "string" &&
+    typeof value.title === "string" &&
+    typeof value.text === "string" &&
+    typeof value.charCount === "number" &&
+    value.text.length > 0 &&
+    (value.fileName === undefined || typeof value.fileName === "string") &&
+    (value.pageCount === undefined || typeof value.pageCount === "number") &&
+    typeof value.truncated === "boolean"
+  );
 }
 
 function isAttachmentSummary(value: unknown): value is AiRouteAttachmentSummary {
