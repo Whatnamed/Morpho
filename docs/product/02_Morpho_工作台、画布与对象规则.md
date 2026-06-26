@@ -472,3 +472,13 @@ AI 生成内容如果不需要，用户通过删除、状态调整或继续发�
 - 运行时对象 ID、数据字段、存储和同步实现。
 
 本文件锁定的是用户可见的空间语义、对象行为、操作边界和可追溯原则。
+
+---
+
+## 11. M4.1-B 已落地的对象边界
+
+- 图片角色运行时只使用正式枚举：reference、preview、conceptImage、primaryVisual、sceneVisual、cmfStudy、detailStudy、structureDiagram、interactionDiagram、deliveryAsset。旧 main、scenario、cmf、detail、diagram 只作为旧数据迁移输入出现。
+- VisualBranch 不是 MorphoObject，不生成画布卡片，不独立隐藏或删除，不直接进入交付引用。它只作为方向内图片聚合、视觉发展路线和视觉 Context 优先级记录。
+- 归档 VisualBranch 只让分支退出默认视觉聚合和可选列表；不会删除图片、清空图片 directionId、破坏版本关系、来源关系或默认参考。
+- 图片加入视觉分支时必须属于同一方向；无方向图片可以被明确加入该方向并获得 directionId + visualBranchId；跨方向加入必须阻止。
+- 从带 directionId + visualBranchId 的图片继续生成时，新图继承方向与分支。来自不同方向的多张图不能让系统自动猜目标方向。

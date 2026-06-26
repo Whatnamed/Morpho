@@ -427,4 +427,17 @@ v3 全部写完后，必须逐项检查。任何一项未通过，都不能宣�
 - `Morpho_跨窗口交接与当前规则汇总_2026-06-21.md`：重点为第 1–12 节（当前界面、画布、AI、项目记录、对 v2 的明确修正与后续讨论顺序）；
 - 本次窗口在第 3、4、5 项中由用户确认 / 未反对并继续推进的补充规则：状态与版本、项目记录自动维护、项目首页 / 资产 / 搜索 / 导入 / 恢复路径。
 
+---
+
+## 附：M4.1-B 当前实现补记
+
+当前工程实现已补齐以下 M4 语义闭环，作为后续规则解释的实现基线：
+
+- schema v6：旧图片角色 main / scenario / cmf / detail / diagram 只在迁移读取阶段出现，并映射到正式角色 primaryVisual / sceneVisual / cmfStudy / detailStudy / structureDiagram。
+- 设计定义唯一 current effective：active 与 hidden 对象合并计算最多一个当前有效定义；hidden current 不被旧定义替代。
+- Proposal 来源复核：使用语义快照和 ProposalReviewDetails 区分 sourceChanged、baseSuperseded、targetUnavailable；标题、摘要和画布变化不触发来源变化。
+- 概念方向生命周期：create / revise / split / merge 均有独立应用语义；merge 保留多父 lineage；父方向不因 split / merge 自动淘汰。
+- VisualBranch：方向内轻量记录，不是 MorphoObject；可创建、改名、归档、恢复；归档不删除图片或关系。
+- AI Runtime：研究、生图、设计定义和方向草案统一经过 active Operation gate；taskMode 仍只决定聊天 / 生图 / 研究执行链，workIntent 决定聊天内语义目标。
+
 这份账本本身不替代 v3 正文；它负责保证 v3 正文不会再次无声遗漏已确认内容。

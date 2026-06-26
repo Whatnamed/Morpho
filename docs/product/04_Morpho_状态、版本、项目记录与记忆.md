@@ -99,6 +99,10 @@ Morpho 的连续性不是靠一份“大项目总结”维持，而是由四种�
 
 设计定义默认不显示“当前版本”标签。只要它被设为当前有效设计定义，系统已知它是默认依据。
 
+全项目最多只能有一个 `isCurrentEffective === true` 的设计定义对象。这个不变量同时覆盖 active 和 hidden 对象。若当前有效设计定义被隐藏，系统仍指向它并标记为 hidden / unavailable；不得偷偷选择某个旧定义作为替代依据。
+
+迁移或异常旧数据中出现多个当前有效定义时，系统必须 deterministic 地修正：优先选择 current revision 创建时间最新者；时间相同时按稳定 ID 排序。非胜者取消 current effective 状态。
+
 只有出现实质性、尚未应用的修改时，显示：
 
 ```text
@@ -128,6 +132,15 @@ Morpho 的连续性不是靠一份“大项目总结”维持，而是由四种�
 - **待复核**：因锚点替换、定义更新等明确事件，可能需要用户重新判断。
 
 不显示“探索中、候选、已选、已生成”等冗余状态。AI 可提出建议，但只有用户明确决定才能改变主方向、备选或淘汰。
+
+方向生命周期必须区分 create / revise / split / merge：
+
+- create 创建新方向对象与 revision 1，默认 `pendingPreview`，不自动设为主方向；
+- revise 复用同一个 directionId，创建新 revision，旧 revision 不再 current，方向下已有图片和 VisualBranch 继续保留；
+- split 从一个父方向创建两个或更多新方向，记录 `splitFromDirection` lineage，父方向不自动淘汰或隐藏；
+- merge 从两个或更多父方向创建一个新方向，对每个父方向记录 `mergedFromDirection` lineage，父方向不自动淘汰或隐藏。
+
+全项目 primary 方向最多一个。设新 primary 时，旧 primary 转为 alternative 并写入决策记录。淘汰方向不等于隐藏或删除；恢复已淘汰方向默认转为 alternative，并保留 revision、lineage、图片、VisualBranch、来源与历史决策。
 
 ### 3.4 图像与视觉素材
 
@@ -171,6 +184,10 @@ Morpho 的连续性不是靠一份“大项目总结”维持，而是由四种�
 ### 4.2 正常视觉发展与新视觉分支
 
 正常视觉发展沿来源图右侧继续。无论来源图当前被称为预览、主图、场景或其他角色，材料、颜色、背景、视角、局部比例和局部部件调整通常仍属于同一路线的继续。
+
+VisualBranch 是方向内的轻量视觉路线记录，不是画布对象、看板列或交付条目。它只承担方向内图片聚合、视觉发展路线和视觉 Context 优先级。
+
+创建、改名、归档、恢复 VisualBranch 不删除图片，不清空图片 directionId，不破坏版本、来源、默认参考或 lineage。归档只让分支退出默认聚合和可选列表；恢复后重新成为可选分支。
 
 出现以下变化时，才创建新的视觉分支：
 

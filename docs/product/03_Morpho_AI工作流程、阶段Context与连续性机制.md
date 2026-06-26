@@ -222,7 +222,20 @@ Compare 是任意 Context 中可发起的局部比较操作，不是固定区域
 研究任务
 ```
 
-研究任务进入受控 Operation Runtime。第一版 Research Operation 只允许有限步骤：输入快照、本地资料收集、可选且已授权的一次联网补充、有限模型综合、ResearchAnalysisProposal、用户确认保存。模型不得自由无限调用工具、扩展搜索范围或直接改写项目对象。
+`workIntent` 是 `对话与分析` 内部的当前工作目标，用于决定 Context、系统提示和 Proposal 类型。recommendedWorkIntent 只能提示；用户发送时以当前显式选择的 workIntent 为准，不因关键词正则静默覆盖。
+
+研究、图像生成、设计定义草案和概念方向草案进入受控 Operation Runtime。真正调用 Provider 且可能生成 Proposal 或图片的任务统一经过 active Operation gate：researchOperation、imageGeneration、createDesignDefinition、reviseDesignDefinition、createConceptDirections、reviseConceptDirection、splitConceptDirection、mergeConceptDirections。已有 queued / preparing / running / waiting_for_user Operation 时，新任务必须阻止并说明当前任务，不能静默并行提交。
+
+普通 discussion / comparison 仍可作为轻量连续聊天；它们不因选中方向或推荐意图自动生成 Proposal。模型不得自由无限调用工具、扩展搜索范围或直接改写项目对象。
+
+Proposal reviewState 的应用行为必须区分：
+
+```text
+ready：可直接应用
+sourceChanged：显示具体来源变化，用户确认已复核后才能应用
+baseSuperseded：禁止直接应用，可基于当前版本重新生成
+targetUnavailable：禁止直接应用，可继续讨论、复制内容、重新生成或放弃
+```
 
 ### 5.1 三类输出
 
@@ -457,6 +470,15 @@ AI 只理解用户选中或明确说明的资料。用户可自然说：
 ```
 
 方向预览默认 4 张，可选 2 / 4 / 6。它用于快速判断产品形态、视觉气质与可继续性，不自动设主方向、默认参考或淘汰其他方向。
+
+方向 Proposal 的应用意图必须明确：
+
+```text
+create：创建一个或多个新方向，revision 1，status = pendingPreview，不自动设为主方向
+revise：复用一个目标 directionId，创建 revision +1，保留原方向下图片与 VisualBranch
+split：从一个父方向拆出两个或更多新方向，写 splitFromDirection lineage，父方向不自动淘汰
+merge：把两个或更多父方向合成一个新方向，对每个父方向写 mergedFromDirection lineage，父方向不自动淘汰
+```
 
 #### 任意图都可继续发展或衍生表达
 

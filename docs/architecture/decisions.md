@@ -219,3 +219,59 @@ Decision: when server configuration enables MiMo web search, chat/research reque
 Reason: online assistance should support the current analysis without adding a separate user-facing research configuration flow.
 
 Boundary: `imageGeneration` never receives web search tools. Morpho only persists provider citation snapshots and never fabricates sources from assistant prose.
+
+## 2026-06-26: Use Schema Version 6 for M4 Proposal Integrity and Visual Branch Runtime
+
+Decision: upgrade workspace data to `schemaVersion: 6`.
+
+Reason: M4.1-B requires deterministic proposal review, unique current-effective design definition semantics, official image roles, operational concept-direction lifecycle, and direction-scoped visual branches.
+
+Boundary: schema v6 does not introduce PDF parsing, delivery package runtime, ZIP export, DOCX/PPTX generation, cloud sync, multiplayer collaboration, auto layout, or autonomous research agents.
+
+## 2026-06-26: Normalize Image Roles at Migration Boundary
+
+Decision: runtime image roles are limited to `reference`, `preview`, `conceptImage`, `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, `structureDiagram`, `interactionDiagram`, and `deliveryAsset`.
+
+Reason: old role values and current formal role values must not coexist in runtime UI, generation metadata, shape labels, or tests.
+
+Boundary: legacy `main`, `scenario`, `cmf`, `detail`, and `diagram` are accepted only during migration and are mapped respectively to `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, and `structureDiagram`.
+
+## 2026-06-26: Enforce One Current Effective Design Definition
+
+Decision: reconcile enforces at most one `DesignDefinitionObject.isCurrentEffective === true` across active and hidden objects.
+
+Reason: downstream direction generation and context assembly need one authoritative definition pointer without silently substituting an older object.
+
+Boundary: if multiple current-effective definitions appear in migrated or corrupted data, the winner is deterministic: newest current revision `createdAt`, then stable ID order. Hidden current definitions remain current but are marked unavailable for default context.
+
+## 2026-06-26: Make Concept Direction Lifecycle Explicit
+
+Decision: `ConceptDirectionProposal.applicationMode` controls application semantics: `create`, `revise`, `split`, or `merge`.
+
+Reason: revising, splitting, and merging directions have different identity and lineage semantics and must not all be implemented as "create a new direction".
+
+Boundary: `revise` reuses one direction ID and creates a new current revision; `split` creates child directions with `splitFromDirection` lineage and leaves the parent unchanged; `merge` creates one new direction and records one `mergedFromDirection` lineage per parent. No mode automatically hides, deletes, eliminates, or promotes directions to primary.
+
+## 2026-06-26: Keep VisualBranch as a Direction-Scoped Record
+
+Decision: `VisualBranchRecord` remains a lightweight record under `workspace.visualBranches`, not a `MorphoObject`.
+
+Reason: visual branches are routing and grouping metadata for direction-internal image development, not independent canvas entities, delivery references, or workflow lanes.
+
+Boundary: branch archive/restore changes only branch availability for grouping and context priority. It does not delete images, clear image direction IDs, break generation metadata, or modify lineage.
+
+## 2026-06-26: Use Semantic Source Snapshots for Proposal Review
+
+Decision: proposals and operations store lightweight source semantic snapshots and produce structured `ProposalReviewDetails`.
+
+Reason: title, summary, canvas placement, size, zoom, and image role edits should not all be treated as source changes, while real semantic changes must be explainable before applying stale proposals.
+
+Boundary: snapshots contain object ID, type, visibility, and a semantic fingerprint only. They do not store base64, large attachments, raw provider payloads, or webpage bodies.
+
+## 2026-06-26: Gate Provider-Backed Tasks Through One Active Operation
+
+Decision: research, image generation, design-definition proposals, and concept-direction proposals all use `canStartOperation()` before starting provider-backed work.
+
+Reason: simultaneous `running` or `waiting_for_user` operations can leave conflicting proposals and unclear state transitions.
+
+Boundary: ordinary discussion and comparison remain lightweight chat and do not have to create full Operation records. Suggestion chips and regex recommendations still cannot override the user-selected work intent at send time.

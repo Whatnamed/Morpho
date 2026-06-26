@@ -26,7 +26,7 @@ No database, authentication, cloud object storage, Supabase, multiplayer sync, e
 
 ## Data Model
 
-Structured workspace data is schema version `5`.
+Structured workspace data is schema version `6`.
 
 Current workspace state includes:
 
@@ -70,12 +70,16 @@ Semantic boundaries retained from schema v2:
 - decision records are limited to project-level semantic decisions;
 - default reference changes do not rewrite old images, version chains, or delivery references.
 
-Schema v5 semantic additions:
+Schema v6 semantic additions:
 
 - `keyConclusion` is a first-class Morpho object, separate from research objects and design definitions;
-- design definitions are revisioned, but only one definition is current effective at a time;
-- concept directions are revisioned and lineage-aware; they are not treated as a kanban lane or workflow step;
-- image roles are explicit `ImageObject.role` values and can be changed through a traceable user decision;
+- design definitions are revisioned, and reconcile enforces at most one `isCurrentEffective` definition across active and hidden objects. A hidden current definition remains the current pointer but is marked unavailable for context instead of falling back to an older definition;
+- concept directions are revisioned and lineage-aware. Proposal application modes are explicit: `create` creates new pending-preview directions, `revise` reuses one direction ID and creates a new current revision, `split` creates child directions with `splitFromDirection` lineage, and `merge` creates one new direction with one `mergedFromDirection` record per parent;
+- image roles are explicit `ImageObject.role` values and can be changed through a traceable user decision. Runtime roles are limited to `reference`, `preview`, `conceptImage`, `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, `structureDiagram`, `interactionDiagram`, and `deliveryAsset`; legacy `main`, `scenario`, `cmf`, `detail`, and `diagram` are migration-only inputs;
+- VisualBranch records are lightweight records under `workspace.visualBranches`, not Morpho objects and not canvas cards. They group images inside one direction, can be archived/restored, and do not delete or move images when archived;
+- visual generation resolves an explicit direction/branch target from selected images, selected directions, or branch settings. It does not silently inject the primary direction, and images from different directions block generation until the target is explicit;
+- Operation records now cover research, image generation, design definition proposals, and concept direction proposals. Active `queued`, `preparing`, `running`, and `waiting_for_user` operations block new provider-backed tasks;
+- Proposal source review uses per-source semantic snapshots and explanatory `reviewDetails`; title, summary, canvas movement, size, and zoom changes are not semantic source changes;
 - visual-development stage snapshots include active images assigned to concept directions, not only the direction objects themselves;
 - `ProjectWorkingState` is stored as a derived, rebuildable index for current effective state and AI context assembly;
 - `StageRecord` stores the current stage snapshot, not an append-only operation log.
