@@ -28,6 +28,7 @@ import type {
   MorphoRelation,
   MorphoWorkspace,
   ObjectSnapshot,
+  VisualBranchId,
   WorkspaceMigrationResult
 } from "./types";
 
@@ -96,6 +97,17 @@ export type SetKeyConclusionStateResult =
       status: "updated";
       workspace: MorphoWorkspace;
       keyConclusion: KeyConclusionObject;
+    }
+  | {
+      status: "blocked";
+      workspace: MorphoWorkspace;
+      reason: string;
+    };
+
+export type VisualBranchActionResult =
+  | {
+      status: "updated";
+      workspace: MorphoWorkspace;
     }
   | {
       status: "blocked";
@@ -274,7 +286,7 @@ export function assembleAiContext(workspace: MorphoWorkspace, input: AssembleAiC
   if (input.task === "visualDevelopment") {
     addWorkingStateObjects(workspace, objectIds, [
       workspace.workingState.currentDesignDefinitionId,
-      workspace.workingState.primaryDirectionId
+      input.visualTargetDirectionId
     ]);
 
     if (!defaultReference) {
@@ -296,6 +308,17 @@ export function assembleAiContext(workspace: MorphoWorkspace, input: AssembleAiC
           status: "hidden",
           objectId: defaultReference.id,
           message: DEFAULT_REFERENCE_HIDDEN_MESSAGE
+        }
+      };
+    }
+
+    if (!input.visualTargetDirectionId || defaultReference.directionId !== input.visualTargetDirectionId) {
+      return {
+        draft: input.draft,
+        objectIds: [...objectIds],
+        defaultReferenceStatus: {
+          status: "missing",
+          message: "当前默认参考不属于本次明确目标方向；本次只使用当前选择和输入。"
         }
       };
     }
@@ -479,6 +502,196 @@ export function setImageRole(
       }
     ]
   });
+}
+
+export function createVisualBranch(
+  workspace: MorphoWorkspace,
+  input: { branchId?: VisualBranchId; directionId: MorphoObjectId; label: string; rootObjectId?: MorphoObjectId }
+): VisualBranchActionResult {
+  const direction = workspace.objects[input.directionId];
+  const label = input.label.trim();
+  if (!direction || direction.type !== "conceptDirection") {
+    return { status: "blocked", workspace, reason: "视觉分支必须属于一个可用的概念方向。" };
+  }
+  if (!label) {
+    return { status: "blocked", workspace, reason: "视觉分支需要可读名称。" };
+  }
+
+  const rootObject = input.rootObjectId ? workspace.objects[input.rootObjectId] : undefined;
+  if (input.rootObjectId && rootObject?.type !== "image") {
+    return { status: "blocked", workspace, reason: "视觉分支的根对象必须是图片。" };
+  }
+  if (rootObject?.type === "image" && rootObject.directionId && rootObject.directionId !== direction.id) {
+    return { status: "blocked", workspace, reason: "视觉分支根图片不能来自其他方向。" };
+  }
+
+  const now = new Date().toISOString();
+  const branchId = nextAvailableId(
+    workspace.visualBranches,
+    input.branchId ?? `visual-branch-${direction.id}-${slugifyLabel(label)}`
+  );
+
+  return {
+    status: "updated",
+    workspace: {
+      ...workspace,
+      visualBranches: {
+        ...workspace.visualBranches,
+        [branchId]: {
+          id: branchId,
+          directionId: direction.id,
+          label,
+          rootObjectId: input.rootObjectId,
+          createdAt: now
+        }
+      }
+    }
+  };
+}
+
+export function renameVisualBranch(
+  workspace: MorphoWorkspace,
+  branchId: VisualBranchId,
+  label: string
+): VisualBranchActionResult {
+  const branch = workspace.visualBranches[branchId];
+  const nextLabel = label.trim();
+  if (!branch) {
+    return { status: "blocked", workspace, reason: "视觉分支不存在。" };
+  }
+  if (!nextLabel) {
+    return { status: "blocked", workspace, reason: "视觉分支需要可读名称。" };
+  }
+
+  return {
+    status: "updated",
+    workspace: {
+      ...workspace,
+      visualBranches: {
+        ...workspace.visualBranches,
+        [branchId]: {
+          ...branch,
+          label: nextLabel
+        }
+      }
+    }
+  };
+}
+
+export function archiveVisualBranch(
+  workspace: MorphoWorkspace,
+  branchId: VisualBranchId
+): VisualBranchActionResult {
+  const branch = workspace.visualBranches[branchId];
+  if (!branch) {
+    return { status: "blocked", workspace, reason: "视觉分支不存在。" };
+  }
+  if (branch.archivedAt) {
+    return { status: "updated", workspace };
+  }
+
+  return {
+    status: "updated",
+    workspace: {
+      ...workspace,
+      visualBranches: {
+        ...workspace.visualBranches,
+        [branchId]: {
+          ...branch,
+          archivedAt: new Date().toISOString()
+        }
+      }
+    }
+  };
+}
+
+export function restoreVisualBranch(
+  workspace: MorphoWorkspace,
+  branchId: VisualBranchId
+): VisualBranchActionResult {
+  const branch = workspace.visualBranches[branchId];
+  if (!branch) {
+    return { status: "blocked", workspace, reason: "视觉分支不存在。" };
+  }
+
+  const { archivedAt: _archivedAt, ...restoredBranch } = branch;
+  return {
+    status: "updated",
+    workspace: {
+      ...workspace,
+      visualBranches: {
+        ...workspace.visualBranches,
+        [branchId]: restoredBranch
+      }
+    }
+  };
+}
+
+export function assignImageToVisualBranch(
+  workspace: MorphoWorkspace,
+  imageId: MorphoObjectId,
+  branchId: VisualBranchId
+): VisualBranchActionResult {
+  const branch = workspace.visualBranches[branchId];
+  const image = workspace.objects[imageId];
+  if (!branch) {
+    return { status: "blocked", workspace, reason: "视觉分支不存在。" };
+  }
+  if (branch.archivedAt) {
+    return { status: "blocked", workspace, reason: "视觉分支已归档，恢复后才能继续加入图片。" };
+  }
+  if (!image || image.type !== "image") {
+    return { status: "blocked", workspace, reason: "只能把图片加入视觉分支。" };
+  }
+  if (image.directionId && image.directionId !== branch.directionId) {
+    return { status: "blocked", workspace, reason: "图片不能跨方向加入视觉分支。" };
+  }
+
+  const nextImage: ImageObject = {
+    ...image,
+    directionId: image.directionId ?? branch.directionId,
+    visualBranchId: branchId,
+    updatedAt: new Date().toISOString()
+  };
+
+  return {
+    status: "updated",
+    workspace: reconcileWorkspaceDerivedState({
+      ...workspace,
+      objects: {
+        ...workspace.objects,
+        [nextImage.id]: nextImage
+      },
+      relations: ensureBelongsToDirectionRelation(workspace, nextImage.id, branch.directionId)
+    })
+  };
+}
+
+export function removeImageFromVisualBranch(
+  workspace: MorphoWorkspace,
+  imageId: MorphoObjectId
+): VisualBranchActionResult {
+  const image = workspace.objects[imageId];
+  if (!image || image.type !== "image") {
+    return { status: "blocked", workspace, reason: "只能从视觉分支移出图片。" };
+  }
+
+  const nextImage: ImageObject = {
+    ...image,
+    visualBranchId: undefined,
+    updatedAt: new Date().toISOString()
+  };
+
+  return {
+    status: "updated",
+    workspace: reconcileWorkspaceDerivedState({
+      ...workspace,
+      objects: {
+        ...workspace.objects,
+        [nextImage.id]: nextImage
+      }
+    })
+  };
 }
 
 export function setDefaultReference(
@@ -1606,6 +1819,37 @@ function makeDecisionId(workspace: MorphoWorkspace, kind: string, objectId: stri
   return `decision-${kind}-${objectId}-${workspace.decisionRecords.length + 1}`;
 }
 
+function ensureBelongsToDirectionRelation(
+  workspace: MorphoWorkspace,
+  imageId: MorphoObjectId,
+  directionId: MorphoObjectId
+): MorphoRelation[] {
+  if (
+    workspace.relations.some(
+      (relation) =>
+        relation.kind === "belongsToDirection" &&
+        relation.fromObjectId === imageId &&
+        relation.toObjectId === directionId
+    )
+  ) {
+    return workspace.relations;
+  }
+
+  return [
+    ...workspace.relations,
+    {
+      id: nextAvailableId(
+        Object.fromEntries(workspace.relations.map((relation) => [relation.id, relation])),
+        `rel-${imageId}-${directionId}-direction`
+      ),
+      kind: "belongsToDirection",
+      fromObjectId: imageId,
+      toObjectId: directionId,
+      note: "图片被明确加入该方向的视觉分支。"
+    }
+  ];
+}
+
 function nextAvailableId(record: Record<string, unknown>, preferredId: string): string {
   if (!record[preferredId]) {
     return preferredId;
@@ -1617,6 +1861,15 @@ function nextAvailableId(record: Record<string, unknown>, preferredId: string): 
   }
 
   return `${preferredId}-${suffix}`;
+}
+
+function slugifyLabel(label: string): string {
+  return label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32) || "branch";
 }
 
 function getStringArray(value: unknown): string[] {

@@ -33,13 +33,19 @@ import { parseDesignDefinitionProposalPayload } from "@/domain/operations/design
 import { parseResearchAnalysisProposalPayload } from "@/domain/operations/researchProposal";
 import {
   assembleAiContext,
+  archiveVisualBranch,
+  assignImageToVisualBranch,
   buildKeyConclusionDraftFromResearchSource,
   createKeyConclusion,
   createAiDraftFromSuggestion,
   deleteObject,
   eliminateDirection,
+  createVisualBranch,
   hideObject,
+  removeImageFromVisualBranch,
+  renameVisualBranch,
   restoreObject,
+  restoreVisualBranch,
   setConceptDirectionStatus,
   setDefaultReference,
   setKeyConclusionState,
@@ -69,6 +75,7 @@ import {
 } from "./aiTaskRouting";
 import { buildProposalDiscussionDraft, buildProposalRegenerationDraft } from "./proposalFollowupPrompts";
 import { buildWebSearchOptions, collectMiMoImageAttachments, shouldAttachImagesForMiMo } from "./aiAttachments";
+import { resolveVisualGenerationTarget } from "./visualGenerationRouting";
 import {
   getDefaultImageGenerationSettings,
   getImageGenerationModelOptions,
@@ -919,6 +926,114 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setAiDraft(`请把这些已选方向合并成一个新的概念方向草案：${directions.map((direction) => direction.title).join("、")}。父方向必须保留，不要自动淘汰或隐藏。`);
   }, [handleWorkIntentChange, selectedObjects]);
 
+  const handleCreateVisualBranch = useCallback(() => {
+    const target = selectedObjects.find((object) => object.type === "conceptDirection");
+    if (!target) {
+      return;
+    }
+    const label = window.prompt("请输入新视觉分支名称。", "未分组视觉探索");
+    const trimmedLabel = label?.trim();
+    if (!trimmedLabel) {
+      return;
+    }
+
+    setWorkspace((current) => {
+      const result = createVisualBranch(current, {
+        directionId: target.id,
+        label: trimmedLabel
+      });
+      if (result.status === "blocked") {
+        setContextWarning(result.reason);
+        return current;
+      }
+      return result.workspace;
+    });
+  }, [selectedObjects, setWorkspace]);
+
+  const handleRenameVisualBranch = useCallback(
+    (branchId: string) => {
+      const branch = workspace.visualBranches[branchId];
+      const label = window.prompt("请输入新的视觉分支名称。", branch?.label ?? "");
+      const trimmedLabel = label?.trim();
+      if (!trimmedLabel) {
+        return;
+      }
+
+      setWorkspace((current) => {
+        const result = renameVisualBranch(current, branchId, trimmedLabel);
+        if (result.status === "blocked") {
+          setContextWarning(result.reason);
+          return current;
+        }
+        return result.workspace;
+      });
+    },
+    [setWorkspace, workspace.visualBranches]
+  );
+
+  const handleArchiveVisualBranch = useCallback(
+    (branchId: string) => {
+      setWorkspace((current) => {
+        const result = archiveVisualBranch(current, branchId);
+        if (result.status === "blocked") {
+          setContextWarning(result.reason);
+          return current;
+        }
+        return result.workspace;
+      });
+    },
+    [setWorkspace]
+  );
+
+  const handleRestoreVisualBranch = useCallback(
+    (branchId: string) => {
+      setWorkspace((current) => {
+        const result = restoreVisualBranch(current, branchId);
+        if (result.status === "blocked") {
+          setContextWarning(result.reason);
+          return current;
+        }
+        return result.workspace;
+      });
+    },
+    [setWorkspace]
+  );
+
+  const handleAssignImageToVisualBranch = useCallback(
+    (branchId: string) => {
+      const target = selectedObjects.find((object) => object.type === "image");
+      if (!target) {
+        return;
+      }
+
+      setWorkspace((current) => {
+        const result = assignImageToVisualBranch(current, target.id, branchId);
+        if (result.status === "blocked") {
+          setContextWarning(result.reason);
+          return current;
+        }
+        return result.workspace;
+      });
+    },
+    [selectedObjects, setWorkspace]
+  );
+
+  const handleRemoveImageFromVisualBranch = useCallback(() => {
+    const target = selectedObjects.find((object) => object.type === "image");
+    if (!target) {
+      return;
+    }
+
+    setWorkspace((current) => {
+      const result = removeImageFromVisualBranch(current, target.id);
+      if (result.status === "blocked") {
+        setContextWarning(result.reason);
+        return current;
+      }
+      return result.workspace;
+    });
+  }, [selectedObjects, setWorkspace]);
+
   const handleLocalEdit = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "image");
     if (!target) {
@@ -938,11 +1053,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
+    const initialVisualTarget = resolveVisualGenerationTarget(workspace, selectedObjects, selectedObjectIds);
+    if (initialVisualTarget.status === "blocked") {
+      setContextWarning(initialVisualTarget.reason);
+      setImageTaskStatus({ state: "failed", message: initialVisualTarget.reason });
+      return;
+    }
+
     const context = assembleAiContext(workspace, {
       draft,
       selectedObjectIds,
       explicitObjectIds: explicitImageId ? [explicitImageId] : [],
-      task: "visualDevelopment"
+      task: "visualDevelopment",
+      visualTargetDirectionId: initialVisualTarget.directionId,
+      visualBranchId: initialVisualTarget.visualBranchId
     });
     setContextWarning(
       context.defaultReferenceStatus.status === "hidden" ? context.defaultReferenceStatus.message : undefined
@@ -951,7 +1075,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const now = new Date().toISOString();
     const operationId = `operation-image-${Date.now()}`;
     const clientRequestId = `client-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const initialDirectionObjectId = selectedObjects.find((object) => object.type === "conceptDirection")?.id;
     const userMessageId = `ai-user-image-${Date.now()}`;
     const assistantMessageId = `ai-assistant-image-${Date.now()}`;
     const controller = new AbortController();
@@ -973,7 +1096,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         aspectRatio: effectiveImageGenerationSettings.aspectRatio,
         sizeOption: effectiveImageGenerationSettings.sizeOption,
         referenceObjectIds: context.objectIds,
-        directionObjectId: initialDirectionObjectId
+        directionObjectId: initialVisualTarget.directionId,
+        visualBranchId: initialVisualTarget.visualBranchId
       });
 
       return {
@@ -1010,7 +1134,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     try {
       const referenceImages = await collectImageReferenceDataUrls(workspace, context.objectIds, controller.signal);
       const sourceObjectIds = referenceImages.sourceObjectIds;
-      const directionObjectId = findGenerationDirectionId(workspace, selectedObjects, sourceObjectIds);
+      const visualTarget = resolveVisualGenerationTarget(
+        workspace,
+        selectedObjects,
+        sourceObjectIds,
+        initialVisualTarget.visualBranchId
+      );
+      if (visualTarget.status === "blocked") {
+        throw new Error(visualTarget.reason);
+      }
+      const directionObjectId = visualTarget.directionId;
+      const visualBranchId = visualTarget.visualBranchId;
       const pixelNote =
         referenceImages.images.length === 0
           ? "本次没有可读取的本地图片像素，仅基于对象标题、摘要和你的描述请求 GrsAI。"
@@ -1041,6 +1175,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           sizeOption: effectiveImageGenerationSettings.sizeOption,
           referenceObjectIds: sourceObjectIds,
           directionObjectId,
+          visualBranchId,
           operationId,
           clientRequestId
         }),
@@ -1079,13 +1214,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             prompt: draft,
             referenceObjectIds: sourceObjectIds,
             directionId: directionObjectId,
+            visualBranchId,
             operationId,
             clientRequestId,
             providerTaskId,
             createdAt: new Date().toISOString()
           },
           sourceObjectIds,
-          directionObjectId
+          directionObjectId,
+          visualBranchId
         });
 
         const completed = completeImageGenerationOperation(generated.workspace, {
@@ -1630,11 +1767,18 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         hasPendingDesignDefinitionRevisionDraft={hasPendingDesignDefinitionRevisionDraft}
         relations={workspace.relations}
         directionLineage={workspace.directionLineage}
+        visualBranches={workspace.visualBranches}
         decisionRecords={workspace.decisionRecords}
         onAskAi={handleAskAi}
         onReviseDirection={handleReviseDirectionIntent}
         onSplitDirection={handleSplitDirectionIntent}
         onMergeDirections={handleMergeDirectionsIntent}
+        onCreateVisualBranch={handleCreateVisualBranch}
+        onRenameVisualBranch={handleRenameVisualBranch}
+        onArchiveVisualBranch={handleArchiveVisualBranch}
+        onRestoreVisualBranch={handleRestoreVisualBranch}
+        onAssignImageToVisualBranch={handleAssignImageToVisualBranch}
+        onRemoveImageFromVisualBranch={handleRemoveImageFromVisualBranch}
         onLocalEdit={handleLocalEdit}
         onReferenceIntent={handleReferenceIntent}
         onHide={handleHideSelected}
@@ -2075,26 +2219,6 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 function makeGeneratedImageFileName(mimeType: string): string {
   const extension = mimeType.includes("jpeg") ? "jpg" : mimeType.includes("webp") ? "webp" : "png";
   return `grs-result-${Date.now()}.${extension}`;
-}
-
-function findGenerationDirectionId(
-  workspace: MorphoWorkspace,
-  selectedObjects: MorphoObject[],
-  sourceObjectIds: string[]
-): string | undefined {
-  const selectedDirection = selectedObjects.find((object) => object.type === "conceptDirection");
-  if (selectedDirection) {
-    return selectedDirection.id;
-  }
-
-  for (const sourceObjectId of sourceObjectIds) {
-    const sourceObject = workspace.objects[sourceObjectId];
-    if (sourceObject?.type === "image" && sourceObject.directionId) {
-      return sourceObject.directionId;
-    }
-  }
-
-  return undefined;
 }
 
 function buildKeyConclusionDraftFromObject(object: MorphoObject):

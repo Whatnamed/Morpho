@@ -8,10 +8,16 @@ import {
   createBlankWorkspace,
   createDeliveryReference,
   createInitialWorkspace,
+  createVisualBranch,
   deleteObject,
   getRenderableCanvasInstances,
   hideObject,
   migrateWorkspaceToCurrentSchema,
+  archiveVisualBranch,
+  assignImageToVisualBranch,
+  removeImageFromVisualBranch,
+  renameVisualBranch,
+  restoreVisualBranch,
   setConceptDirectionStatus,
   setDefaultReference,
   setKeyConclusionState,
@@ -371,6 +377,46 @@ describe("Morpho workspace domain boundaries", () => {
     });
   });
 
+  it("does not inject the primary direction into visual context without an explicit visual target", () => {
+    const workspace = createInitialWorkspace();
+
+    const context = assembleAiContext(workspace, {
+      draft: "做一次无方向视觉探索。",
+      selectedObjectIds: [],
+      explicitObjectIds: [],
+      task: "visualDevelopment"
+    });
+
+    expect(context.objectIds).not.toContain("direction-soft-rail");
+    expect(context.objectIds).not.toContain("image-soft-rail-v2");
+  });
+
+  it("adds the default reference to visual context only when it belongs to the explicit target direction", () => {
+    const workspace = createInitialWorkspace();
+
+    const matchingContext = assembleAiContext(workspace, {
+      draft: "继续发展方向 A。",
+      selectedObjectIds: [],
+      explicitObjectIds: [],
+      task: "visualDevelopment",
+      visualTargetDirectionId: "direction-soft-rail"
+    });
+
+    expect(matchingContext.objectIds).toContain("direction-soft-rail");
+    expect(matchingContext.objectIds).toContain("image-soft-rail-v2");
+
+    const mismatchedContext = assembleAiContext(workspace, {
+      draft: "继续发展方向 B。",
+      selectedObjectIds: [],
+      explicitObjectIds: [],
+      task: "visualDevelopment",
+      visualTargetDirectionId: "direction-support-island"
+    });
+
+    expect(mismatchedContext.objectIds).toContain("direction-support-island");
+    expect(mismatchedContext.objectIds).not.toContain("image-soft-rail-v2");
+  });
+
   it("requires confirmation before deleting an object that still has active references", () => {
     const workspace = createInitialWorkspace();
     const result = deleteObject(workspace, "image-soft-rail-v2");
@@ -530,6 +576,103 @@ describe("Morpho workspace domain boundaries", () => {
     expect(decision?.kind).toBe("setImageRole");
     expect(updated.stageRecords.directionVisualDevelopment.decisionIds).toContain(decision?.id);
     expect(updated.stageRecords.directionVisualDevelopment.savedObjectIds).toContain(source.id);
+  });
+
+  it("creates, renames, archives, and restores a visual branch without creating canvas objects", () => {
+    const workspace = createInitialWorkspace();
+    const initialObjectCount = Object.keys(workspace.objects).length;
+
+    const created = createVisualBranch(workspace, {
+      branchId: "branch-cmf-explore",
+      directionId: "direction-soft-rail",
+      label: "CMF 探索"
+    });
+
+    expect(created.status).toBe("updated");
+    if (created.status !== "updated") {
+      throw new Error(created.reason);
+    }
+    expect(created.workspace.visualBranches["branch-cmf-explore"]).toMatchObject({
+      id: "branch-cmf-explore",
+      directionId: "direction-soft-rail",
+      label: "CMF 探索"
+    });
+    expect(Object.keys(created.workspace.objects)).toHaveLength(initialObjectCount);
+
+    const renamed = renameVisualBranch(created.workspace, "branch-cmf-explore", "CMF 与材质探索");
+    expect(renamed.status).toBe("updated");
+    if (renamed.status !== "updated") {
+      throw new Error(renamed.reason);
+    }
+    expect(renamed.workspace.visualBranches["branch-cmf-explore"]?.label).toBe("CMF 与材质探索");
+
+    const archived = archiveVisualBranch(renamed.workspace, "branch-cmf-explore");
+    expect(archived.status).toBe("updated");
+    if (archived.status !== "updated") {
+      throw new Error(archived.reason);
+    }
+    expect(archived.workspace.visualBranches["branch-cmf-explore"]?.archivedAt).toBeDefined();
+
+    const restored = restoreVisualBranch(archived.workspace, "branch-cmf-explore");
+    expect(restored.status).toBe("updated");
+    if (restored.status !== "updated") {
+      throw new Error(restored.reason);
+    }
+    expect(restored.workspace.visualBranches["branch-cmf-explore"]?.archivedAt).toBeUndefined();
+  });
+
+  it("assigns images to visual branches only within the branch direction", () => {
+    const workspace = createInitialWorkspace();
+    const seedImage = workspace.objects["image-rail-detail"];
+    if (!seedImage || seedImage.type !== "image") {
+      throw new Error("Expected seed image.");
+    }
+    const withoutDirectionImage = {
+      ...seedImage,
+      directionId: undefined,
+      visualBranchId: undefined
+    };
+    const prepared = {
+      ...workspace,
+      objects: {
+        ...workspace.objects,
+        [withoutDirectionImage.id]: withoutDirectionImage
+      }
+    };
+
+    const assigned = assignImageToVisualBranch(prepared, withoutDirectionImage.id, "visual-branch-soft-rail-detail");
+    expect(assigned.status).toBe("updated");
+    if (assigned.status !== "updated") {
+      throw new Error(assigned.reason);
+    }
+    expect(assigned.workspace.objects[withoutDirectionImage.id]).toMatchObject({
+      id: withoutDirectionImage.id,
+      type: "image",
+      directionId: "direction-soft-rail",
+      visualBranchId: "visual-branch-soft-rail-detail"
+    });
+
+    const crossDirection = assignImageToVisualBranch(
+      assigned.workspace,
+      "image-support-island-preview",
+      "visual-branch-soft-rail-detail"
+    );
+    expect(crossDirection.status).toBe("blocked");
+    if (crossDirection.status === "blocked") {
+      expect(crossDirection.reason).toContain("跨方向");
+    }
+
+    const removed = removeImageFromVisualBranch(assigned.workspace, withoutDirectionImage.id);
+    expect(removed.status).toBe("updated");
+    if (removed.status !== "updated") {
+      throw new Error(removed.reason);
+    }
+    expect(removed.workspace.objects[withoutDirectionImage.id]).toMatchObject({
+      id: withoutDirectionImage.id,
+      type: "image",
+      directionId: "direction-soft-rail",
+      visualBranchId: undefined
+    });
   });
 
   it("does not include the default reference in non-visual AI context", () => {

@@ -24,6 +24,7 @@ import type {
   KeyConclusionObject,
   MorphoObject,
   MorphoRelation,
+  VisualBranchRecord,
   ResearchObject
 } from "@/domain/morpho/types";
 import { getObjectTypeLabel, imageRoleLabel } from "../workspaceUi";
@@ -36,11 +37,18 @@ type BottomDetailBarProps = {
   keyConclusionCandidates: KeyConclusionObject[];
   relations: MorphoRelation[];
   directionLineage: DirectionLineageRecord[];
+  visualBranches: Record<string, VisualBranchRecord>;
   decisionRecords: DecisionRecord[];
   onAskAi: () => void;
   onReviseDirection: () => void;
   onSplitDirection: () => void;
   onMergeDirections: () => void;
+  onCreateVisualBranch: () => void;
+  onRenameVisualBranch: (branchId: string) => void;
+  onArchiveVisualBranch: (branchId: string) => void;
+  onRestoreVisualBranch: (branchId: string) => void;
+  onAssignImageToVisualBranch: (branchId: string) => void;
+  onRemoveImageFromVisualBranch: () => void;
   onLocalEdit: () => void;
   onReferenceIntent: () => void;
   onHide: () => void;
@@ -115,11 +123,18 @@ export function BottomDetailBar({
   keyConclusionCandidates,
   relations,
   directionLineage,
+  visualBranches,
   decisionRecords,
   onAskAi,
   onReviseDirection,
   onSplitDirection,
   onMergeDirections,
+  onCreateVisualBranch,
+  onRenameVisualBranch,
+  onArchiveVisualBranch,
+  onRestoreVisualBranch,
+  onAssignImageToVisualBranch,
+  onRemoveImageFromVisualBranch,
   onLocalEdit,
   onReferenceIntent,
   onHide,
@@ -151,6 +166,10 @@ export function BottomDetailBar({
   const showDirectionActions = primary.type === "conceptDirection" && selectedObjects.length === 1;
   const selectedDirections = selectedObjects.filter((object) => object.type === "conceptDirection");
   const showMergeDirectionsAction = selectedDirections.length >= 2 && selectedDirections.length === selectedObjects.length;
+  const imageBranchOptions =
+    primary.type === "image" && primary.directionId
+      ? Object.values(visualBranches).filter((branch) => branch.directionId === primary.directionId && !branch.archivedAt)
+      : [];
 
   return (
     <>
@@ -174,6 +193,7 @@ export function BottomDetailBar({
             relations: related,
             decisionRecords: relatedDecisions,
             directionLineage,
+            visualBranches,
             selectedCount: selectedObjects.length,
             hasPendingDesignDefinitionRevisionDraft,
             keyConclusionCandidates,
@@ -181,7 +201,10 @@ export function BottomDetailBar({
             setSupersededById,
             onSaveKeyConclusionFromResearchItem,
             onCopyItemToDraft,
-            onContinueQuestion
+            onContinueQuestion,
+            onRenameVisualBranch,
+            onArchiveVisualBranch,
+            onRestoreVisualBranch
           })}
         </div>
       </div>
@@ -240,6 +263,10 @@ export function BottomDetailBar({
                 <GitMerge size={15} />
                 查看 lineage
               </button>
+              <button className="detail-action" type="button" onClick={onCreateVisualBranch}>
+                <Sparkles size={14} />
+                创建视觉分支
+              </button>
             </>
           ) : null}
 
@@ -287,6 +314,30 @@ export function BottomDetailBar({
                   ))}
                 </select>
               </label>
+              {primary.directionId ? (
+                <label className="detail-select">
+                  <span>视觉分支</span>
+                  <select
+                    value={primary.visualBranchId ?? ""}
+                    onChange={(event) => {
+                      const branchId = event.currentTarget.value;
+                      if (branchId) {
+                        onAssignImageToVisualBranch(branchId);
+                        return;
+                      }
+                      onRemoveImageFromVisualBranch();
+                    }}
+                    aria-label="设置图片视觉分支"
+                  >
+                    <option value="">未分组视觉探索</option>
+                    {imageBranchOptions.map((branch) => (
+                      <option key={branch.id} value={branch.id}>
+                        {branch.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <button className="detail-action" type="button" onClick={onLocalEdit}>
                 <PenLine size={15} />
                 局部修改
@@ -391,12 +442,60 @@ function KeyConclusionActions({
   );
 }
 
+function VisualBranchRows({
+  branches,
+  onRenameVisualBranch,
+  onArchiveVisualBranch,
+  onRestoreVisualBranch
+}: {
+  branches: VisualBranchRecord[];
+  onRenameVisualBranch: BottomDetailBarProps["onRenameVisualBranch"];
+  onArchiveVisualBranch: BottomDetailBarProps["onArchiveVisualBranch"];
+  onRestoreVisualBranch: BottomDetailBarProps["onRestoreVisualBranch"];
+}) {
+  if (branches.length === 0) {
+    return <span className="detail-meta">当前方向还没有视觉分支。</span>;
+  }
+
+  return (
+    <section className="research-detail-group">
+      <h4>视觉分支</h4>
+      {branches.map((branch) => (
+        <div className="research-item" key={branch.id}>
+          <div className="research-item-body">
+            <strong>{branch.label}</strong>
+            <span className="detail-meta">
+              {branch.rootObjectId ? `根图：${branch.rootObjectId} · ` : ""}
+              {branch.archivedAt ? "已归档" : "可继续发展"}
+            </span>
+          </div>
+          <div className="research-item-actions">
+            <button type="button" onClick={() => onRenameVisualBranch(branch.id)}>
+              改名
+            </button>
+            {branch.archivedAt ? (
+              <button type="button" onClick={() => onRestoreVisualBranch(branch.id)}>
+                恢复
+              </button>
+            ) : (
+              <button type="button" onClick={() => onArchiveVisualBranch(branch.id)}>
+                归档
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 function renderDetail(input: {
   tab: DetailTab;
   object: MorphoObject;
   relations: MorphoRelation[];
   decisionRecords: DecisionRecord[];
   directionLineage: DirectionLineageRecord[];
+  visualBranches: Record<string, VisualBranchRecord>;
   selectedCount: number;
   hasPendingDesignDefinitionRevisionDraft: boolean;
   keyConclusionCandidates: KeyConclusionObject[];
@@ -405,12 +504,16 @@ function renderDetail(input: {
   onSaveKeyConclusionFromResearchItem: BottomDetailBarProps["onSaveKeyConclusionFromResearchItem"];
   onCopyItemToDraft: BottomDetailBarProps["onCopyItemToDraft"];
   onContinueQuestion: BottomDetailBarProps["onContinueQuestion"];
+  onRenameVisualBranch: BottomDetailBarProps["onRenameVisualBranch"];
+  onArchiveVisualBranch: BottomDetailBarProps["onArchiveVisualBranch"];
+  onRestoreVisualBranch: BottomDetailBarProps["onRestoreVisualBranch"];
 }) {
   const {
     tab,
     object,
     relations,
     directionLineage,
+    visualBranches,
     decisionRecords,
     selectedCount,
     hasPendingDesignDefinitionRevisionDraft
@@ -441,6 +544,24 @@ function renderDetail(input: {
           </span>
           {object.supersededById ? <span className="detail-meta">已替代为：{object.supersededById}</span> : null}
           {object.note ? <span className="detail-meta">备注：{object.note}</span> : null}
+        </>
+      );
+    }
+
+    if (object.type === "conceptDirection") {
+      const branches = Object.values(visualBranches).filter((branch) => branch.directionId === object.id);
+      return (
+        <>
+          <strong>{getObjectTypeLabel(object)}</strong> · {object.summary}
+          <span className="detail-meta">
+            状态：{object.status} · 当前修订：{object.currentRevisionId}
+          </span>
+          <VisualBranchRows
+            branches={branches}
+            onRenameVisualBranch={input.onRenameVisualBranch}
+            onArchiveVisualBranch={input.onArchiveVisualBranch}
+            onRestoreVisualBranch={input.onRestoreVisualBranch}
+          />
         </>
       );
     }

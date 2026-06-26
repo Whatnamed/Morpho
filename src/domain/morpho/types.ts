@@ -504,6 +504,8 @@ export type AssembleAiContextInput = {
   selectedObjectIds: MorphoObjectId[];
   explicitObjectIds: MorphoObjectId[];
   task: AiContextTask;
+  visualTargetDirectionId?: MorphoObjectId;
+  visualBranchId?: VisualBranchId;
 };
 
 export type AssembledAiContext = {

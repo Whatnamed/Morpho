@@ -344,7 +344,8 @@ export function createImageGenerationOperation(
       aspectRatio: input.aspectRatio,
       sizeOption: input.sizeOption,
       referenceObjectIds: [...input.referenceObjectIds],
-      directionObjectId: input.directionObjectId
+      directionObjectId: input.directionObjectId,
+      visualBranchId: input.visualBranchId
     }
   };
 

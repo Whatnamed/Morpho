@@ -103,6 +103,74 @@ describe("Morpho image generation domain helpers", () => {
     );
   });
 
+  it("inherits direction and visual branch when continuing from a branched source image", () => {
+    const workspace = createInitialWorkspace();
+    const result = createGeneratedImageFromAsset(workspace, {
+      asset: {
+        id: "asset-generated-branch",
+        fileName: "branch-result.png",
+        mimeType: "image/png",
+        size: 4096,
+        createdAt: "2026-06-24T00:00:00.000Z",
+        storageKey: "blob:asset-generated-branch",
+        sourceType: "aiGeneratedImage"
+      },
+      generation: {
+        modelId: "nano-banana-fast",
+        modelLabel: "nano-banana-fast",
+        aspectRatio: "4:3",
+        prompt: "沿着这条细节分支继续发展",
+        referenceObjectIds: ["image-rail-detail"],
+        createdAt: "2026-06-24T00:00:00.000Z"
+      },
+      sourceObjectIds: ["image-rail-detail"]
+    });
+
+    const createdObject = result.workspace.objects[result.createdObjectId];
+    expect(createdObject?.type).toBe("image");
+    if (createdObject?.type === "image") {
+      expect(createdObject.directionId).toBe("direction-soft-rail");
+      expect(createdObject.visualBranchId).toBe("visual-branch-soft-rail-detail");
+      expect(createdObject.generation?.directionId).toBe("direction-soft-rail");
+      expect(createdObject.generation?.visualBranchId).toBe("visual-branch-soft-rail-detail");
+    }
+  });
+
+  it("uses an explicit visual branch only when it belongs to the target direction", () => {
+    const workspace = createInitialWorkspace();
+    const result = createGeneratedImageFromAsset(workspace, {
+      asset: {
+        id: "asset-generated-explicit-branch",
+        fileName: "explicit-branch-result.png",
+        mimeType: "image/png",
+        size: 4096,
+        createdAt: "2026-06-24T00:00:00.000Z",
+        storageKey: "blob:asset-generated-explicit-branch",
+        sourceType: "aiGeneratedImage"
+      },
+      generation: {
+        modelId: "nano-banana-fast",
+        modelLabel: "nano-banana-fast",
+        aspectRatio: "1:1",
+        prompt: "在 CMF 分支探索",
+        referenceObjectIds: [],
+        directionId: "direction-soft-rail",
+        visualBranchId: "visual-branch-soft-rail-detail",
+        createdAt: "2026-06-24T00:00:00.000Z"
+      },
+      sourceObjectIds: [],
+      directionObjectId: "direction-soft-rail",
+      visualBranchId: "visual-branch-soft-rail-detail"
+    });
+
+    const createdObject = result.workspace.objects[result.createdObjectId];
+    expect(createdObject?.type).toBe("image");
+    if (createdObject?.type === "image") {
+      expect(createdObject.visualBranchId).toBe("visual-branch-soft-rail-detail");
+      expect(createdObject.generation?.visualBranchId).toBe("visual-branch-soft-rail-detail");
+    }
+  });
+
   it("sizes generated image instances from intrinsic asset dimensions", () => {
     const workspace = createInitialWorkspace();
     const result = createGeneratedImageFromAsset(workspace, {

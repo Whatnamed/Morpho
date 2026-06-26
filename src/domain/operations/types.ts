@@ -200,6 +200,7 @@ export type ImageGenerationOperationMetadata = {
   sizeOption?: string;
   referenceObjectIds: OperationObjectId[];
   directionObjectId?: OperationObjectId;
+  visualBranchId?: OperationObjectId;
   resultObjectId?: OperationObjectId;
 };
 

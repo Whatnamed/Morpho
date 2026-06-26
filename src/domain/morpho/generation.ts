@@ -7,6 +7,7 @@ export type CreateGeneratedImageInput = {
   generation: ImageGenerationMetadata;
   sourceObjectIds: string[];
   directionObjectId?: string;
+  visualBranchId?: string;
 };
 
 export type CreateGeneratedImageResult = {
@@ -38,6 +39,18 @@ export function createGeneratedImageFromAsset(
       : primarySource?.type === "image"
         ? primarySource.directionId
         : undefined;
+  const explicitVisualBranchId = input.visualBranchId ?? input.generation.visualBranchId;
+  const explicitVisualBranch = explicitVisualBranchId ? workspace.visualBranches[explicitVisualBranchId] : undefined;
+  const sourceVisualBranch =
+    primarySource?.type === "image" && primarySource.visualBranchId
+      ? workspace.visualBranches[primarySource.visualBranchId]
+      : undefined;
+  const visualBranchId =
+    directionId && explicitVisualBranch?.directionId === directionId && !explicitVisualBranch.archivedAt
+      ? explicitVisualBranch.id
+      : directionId && sourceVisualBranch?.directionId === directionId && !sourceVisualBranch.archivedAt
+        ? sourceVisualBranch.id
+        : undefined;
   const generatedImage: ImageObject = {
     id: objectId,
     type: "image",
@@ -49,9 +62,11 @@ export function createGeneratedImageFromAsset(
     imageVariant: "rail",
     assetId: input.asset.id,
     directionId,
+    visualBranchId,
     generation: {
       ...input.generation,
-      directionId
+      directionId,
+      visualBranchId
     }
   };
   const relations: MorphoRelation[] = [];
