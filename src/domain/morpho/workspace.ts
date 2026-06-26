@@ -1,5 +1,6 @@
 import { reconcileWorkspaceDerivedState, createDefaultStageRecords, createEmptyProjectWorkingState } from "./derivedState";
 import { nightrailWorkspace } from "./seed";
+import type { ArtifactProposal, SourceSemanticSnapshot } from "../operations/types";
 import type {
   AiDraftResult,
   AiSuggestionInput,
@@ -31,7 +32,7 @@ import type {
 } from "./types";
 
 const DEFAULT_REFERENCE_HIDDEN_MESSAGE = "当前后续默认参考已隐藏，请先恢复或替换后再用于相关生成。";
-const CURRENT_SCHEMA_VERSION = 5;
+const CURRENT_SCHEMA_VERSION = 6;
 
 export type DeleteObjectResult =
   | {
@@ -903,8 +904,19 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
   if (value.schemaVersion === CURRENT_SCHEMA_VERSION) {
     return {
       status: "ok",
-      workspace: normalizeV5Workspace(value),
+      workspace: normalizeV6Workspace(value),
       didMigrate: false
+    };
+  }
+
+  if (value.schemaVersion === 5) {
+    return {
+      status: "ok",
+      workspace: normalizeV6Workspace({
+        ...(structuredClone(value) as Record<string, unknown>),
+        schemaVersion: CURRENT_SCHEMA_VERSION
+      }),
+      didMigrate: true
     };
   }
 
@@ -1243,13 +1255,14 @@ function migrateV4Workspace(value: Record<string, unknown>): MorphoWorkspace {
     }
   };
 
-  return reconcileWorkspaceDerivedState(normalizeV5Workspace(normalized));
+  return reconcileWorkspaceDerivedState(normalizeV6Workspace(normalized));
 }
 
-function normalizeV5Workspace(value: Record<string, unknown>): MorphoWorkspace {
+function normalizeV6Workspace(value: Record<string, unknown>): MorphoWorkspace {
   const cloned = structuredClone(value) as Partial<MorphoWorkspace>;
   const now = new Date().toISOString();
   const canvasView = cloned.ui?.canvasView ?? cloned.canvas?.view ?? { x: 0, y: 0, zoom: 1 };
+  const objects = normalizeObjectImageRoles(cloned.objects ?? {});
 
   return reconcileWorkspaceDerivedState({
     schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -1263,13 +1276,13 @@ function normalizeV5Workspace(value: Record<string, unknown>): MorphoWorkspace {
       lastOpenedAt: cloned.project?.lastOpenedAt ?? now,
       coverAssetId: cloned.project?.coverAssetId
     },
-    objects: cloned.objects ?? {},
+    objects,
     assets: cloned.assets ?? {},
     relations: cloned.relations ?? [],
     deliveryReferences: cloned.deliveryReferences ?? {},
     decisionRecords: cloned.decisionRecords ?? [],
     operations: cloned.operations ?? {},
-    artifactProposals: cloned.artifactProposals ?? {},
+    artifactProposals: normalizeArtifactProposals(cloned.artifactProposals ?? {}, objects),
     citationSnapshots: cloned.citationSnapshots ?? {},
     designDefinitionRevisions: cloned.designDefinitionRevisions ?? {},
     directionRevisions: cloned.directionRevisions ?? {},
@@ -1331,6 +1344,174 @@ function createLegacyAssetRecords(objects: Record<MorphoObjectId, MorphoObject>)
   }
 
   return assets;
+}
+
+function normalizeObjectImageRoles(objects: Record<MorphoObjectId, MorphoObject>): Record<MorphoObjectId, MorphoObject> {
+  return Object.fromEntries(
+    Object.entries(objects).map(([objectId, object]) => {
+      if (object.type !== "image") {
+        return [objectId, object];
+      }
+
+      return [
+        objectId,
+        {
+          ...object,
+          role: normalizeImageRole(object.role)
+        }
+      ];
+    })
+  );
+}
+
+function normalizeImageRole(value: unknown): ImageRole {
+  switch (value) {
+    case "main":
+      return "primaryVisual";
+    case "scenario":
+      return "sceneVisual";
+    case "cmf":
+      return "cmfStudy";
+    case "detail":
+      return "detailStudy";
+    case "diagram":
+      return "structureDiagram";
+    case "reference":
+    case "preview":
+    case "conceptImage":
+    case "primaryVisual":
+    case "sceneVisual":
+    case "cmfStudy":
+    case "detailStudy":
+    case "structureDiagram":
+    case "interactionDiagram":
+    case "deliveryAsset":
+      return value;
+    default:
+      return "reference";
+  }
+}
+
+function normalizeArtifactProposals(
+  proposals: Record<string, ArtifactProposal>,
+  objects: Record<MorphoObjectId, MorphoObject>
+): Record<string, ArtifactProposal> {
+  return Object.fromEntries(
+    Object.entries(proposals).map(([proposalId, proposal]) => {
+      const sourceSnapshots =
+        Array.isArray(proposal.sourceSnapshots) && proposal.sourceSnapshots.length > 0
+          ? proposal.sourceSnapshots
+          : proposal.sourceObjectIds.map((objectId) => createSourceSemanticSnapshot(objects, objectId)).filter(Boolean);
+
+      if (proposal.type !== "conceptDirection") {
+        return [
+          proposalId,
+          {
+            ...proposal,
+            sourceSnapshots
+          }
+        ];
+      }
+
+      const parentDirectionIds = proposal.parentDirectionIds ?? inferParentDirectionIds(proposal);
+      const applicationMode = proposal.applicationMode ?? inferConceptDirectionApplicationMode(proposal, parentDirectionIds);
+
+      return [
+        proposalId,
+        {
+          ...proposal,
+          applicationMode,
+          targetDirectionId:
+            proposal.targetDirectionId ??
+            (applicationMode === "revise" ? proposal.directions[0]?.basedOnDirectionId : undefined),
+          parentDirectionIds,
+          sourceSnapshots
+        }
+      ];
+    })
+  );
+}
+
+function inferParentDirectionIds(proposal: Extract<ArtifactProposal, { type: "conceptDirection" }>): MorphoObjectId[] {
+  return [
+    ...new Set(
+      proposal.directions.map((direction) => direction.basedOnDirectionId).filter((id): id is string => Boolean(id))
+    )
+  ];
+}
+
+function inferConceptDirectionApplicationMode(
+  proposal: Extract<ArtifactProposal, { type: "conceptDirection" }>,
+  parentDirectionIds: MorphoObjectId[]
+): Extract<ArtifactProposal, { type: "conceptDirection" }>["applicationMode"] {
+  if (proposal.workIntent === "reviseConceptDirection") {
+    return "revise";
+  }
+  if (proposal.workIntent === "splitConceptDirection") {
+    return "split";
+  }
+  if (proposal.workIntent === "mergeConceptDirections") {
+    return "merge";
+  }
+  return parentDirectionIds.length > 0 ? "split" : "create";
+}
+
+function createSourceSemanticSnapshot(
+  objects: Record<MorphoObjectId, MorphoObject>,
+  objectId: MorphoObjectId
+): SourceSemanticSnapshot | undefined {
+  const object = objects[objectId];
+  if (!object) {
+    return undefined;
+  }
+
+  return {
+    objectId,
+    objectType: object.type,
+    visibility: object.visibility,
+    semanticFingerprint: buildSemanticFingerprint(object)
+  };
+}
+
+function buildSemanticFingerprint(object: MorphoObject): string {
+  switch (object.type) {
+    case "text":
+      return stableStringify({ body: object.body });
+    case "research":
+      return stableStringify({
+        findings: object.findings,
+        opportunities: object.opportunities,
+        constraints: object.constraints,
+        openQuestions: object.openQuestions,
+        evidence: object.evidence ?? [],
+        provenanceCitationIds: object.provenance?.citationIds ?? []
+      });
+    case "keyConclusion":
+      return stableStringify({
+        body: object.body,
+        state: object.state,
+        supersededById: object.supersededById,
+        confidence: object.confidence
+      });
+    case "designDefinition":
+      return stableStringify({
+        currentRevisionId: object.currentRevisionId,
+        isCurrentEffective: object.isCurrentEffective
+      });
+    case "conceptDirection":
+      return stableStringify({
+        currentRevisionId: object.currentRevisionId,
+        status: object.status
+      });
+    case "image":
+      return stableStringify({ assetId: object.assetId });
+    default:
+      return stableStringify({ type: object.type });
+  }
+}
+
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value);
 }
 
 function findDefaultReference(workspace: MorphoWorkspace): ImageObject | null {

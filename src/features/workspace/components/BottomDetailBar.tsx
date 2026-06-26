@@ -70,12 +70,7 @@ const imageRoleOptions: ImageRole[] = [
   "detailStudy",
   "structureDiagram",
   "interactionDiagram",
-  "deliveryAsset",
-  "main",
-  "scenario",
-  "cmf",
-  "detail",
-  "diagram"
+  "deliveryAsset"
 ];
 
 export function buildDesignDefinitionInfoMeta(hasPendingDesignDefinitionRevisionDraft: boolean): string | undefined {

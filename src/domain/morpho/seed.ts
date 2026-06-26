@@ -31,7 +31,7 @@ function withActiveVisibility(objects: Record<MorphoObjectId, SeedObject>): Reco
 }
 
 const baseWorkspace: MorphoWorkspace = {
-  schemaVersion: 5,
+  schemaVersion: 6,
   project: {
     id: "project-nightrail",
     title: "夜航 / Nightrail",
@@ -185,7 +185,7 @@ const baseWorkspace: MorphoWorkspace = {
       title: "柔光轨道 v2",
       summary: "当前主方向的核心产品图，作为后续相关生成的默认一致性基线。",
       createdBy: "ai",
-      role: "main",
+      role: "primaryVisual",
       imageVariant: "rail",
       directionId: "direction-soft-rail",
       visualBranchId: BRANCH_SOFT_RAIL_CORE_ID,
@@ -197,7 +197,7 @@ const baseWorkspace: MorphoWorkspace = {
       title: "转角连接与触感截面",
       summary: "围绕柔光轨道 v2 衍生的细节图。",
       createdBy: "ai",
-      role: "detail",
+      role: "detailStudy",
       imageVariant: "detail",
       directionId: "direction-soft-rail",
       visualBranchId: BRANCH_SOFT_RAIL_DETAIL_ID
@@ -208,7 +208,7 @@ const baseWorkspace: MorphoWorkspace = {
       title: "夜间使用场景",
       summary: "老人从卧室走向卫浴时的低位柔光路径表达。",
       createdBy: "ai",
-      role: "scenario",
+      role: "sceneVisual",
       imageVariant: "scenario",
       directionId: "direction-soft-rail",
       visualBranchId: BRANCH_SOFT_RAIL_SCENARIO_ID
@@ -219,7 +219,7 @@ const baseWorkspace: MorphoWorkspace = {
       title: "CMF 小板",
       summary: "暖灰、砂岩、深橄榄、柔光白的材质基线。",
       createdBy: "ai",
-      role: "cmf",
+      role: "cmfStudy",
       imageVariant: "cmf",
       directionId: "direction-soft-rail",
       visualBranchId: BRANCH_SOFT_RAIL_DETAIL_ID

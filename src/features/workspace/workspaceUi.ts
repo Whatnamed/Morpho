@@ -43,16 +43,6 @@ export function imageRoleLabel(role: ImageRole): string {
       return "参考图";
     case "preview":
       return "预览";
-    case "main":
-      return "主图";
-    case "scenario":
-      return "场景";
-    case "cmf":
-      return "CMF";
-    case "detail":
-      return "细节";
-    case "diagram":
-      return "设计示意";
     case "conceptImage":
       return "概念图";
     case "primaryVisual":

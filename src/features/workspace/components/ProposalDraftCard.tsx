@@ -15,7 +15,7 @@ import type {
 type ProposalDraftCardProps = {
   workspace: MorphoWorkspace;
   proposal: ArtifactProposal;
-  onApply: () => void;
+  onApply: (allowSourceChanged?: boolean) => void;
   onReject: (proposalId: string) => void;
   onContinueDiscussion: (proposalId: string) => void;
   onRegenerate: (proposalId: string) => void;
@@ -77,6 +77,15 @@ export function ProposalDraftCard({
       </div>
 
       <p className="proposal-help-text">{proposalReviewStateMessage(proposal.reviewState)}</p>
+      {proposal.reviewDetails && proposal.reviewDetails.length > 0 ? (
+        <div className="proposal-citations" aria-label="草案复核详情">
+          {proposal.reviewDetails.map((detail) => (
+            <span className="proposal-citation-pill" key={`${detail.objectId}-${detail.reason}`}>
+              {detail.objectTitle}：{proposalReviewReasonLabel(detail.reason)}
+            </span>
+          ))}
+        </div>
+      ) : null}
       {proposalTargetMessage(workspace, proposal) ? (
         <p className="proposal-help-text">{proposalTargetMessage(workspace, proposal)}</p>
       ) : null}
@@ -130,10 +139,10 @@ export function ProposalDraftCard({
         <button
           className="brand-button"
           type="button"
-          disabled={proposal.reviewState === "targetUnavailable"}
-          onClick={onApply}
+          disabled={proposal.reviewState === "targetUnavailable" || proposal.reviewState === "baseSuperseded"}
+          onClick={() => onApply(proposal.reviewState === "sourceChanged")}
         >
-          应用草案
+          {proposal.reviewState === "sourceChanged" ? "已复核来源，仍然应用" : "应用草案"}
         </button>
       </div>
     </section>
@@ -535,5 +544,20 @@ function proposalReviewStateMessage(reviewState: ArtifactProposal["reviewState"]
     case "ready":
     default:
       return "这是一份可编辑草案。保存修改只会更新待处理 proposal，不会直接改正式项目状态。";
+  }
+}
+
+function proposalReviewReasonLabel(reason: NonNullable<ArtifactProposal["reviewDetails"]>[number]["reason"]): string {
+  switch (reason) {
+    case "sourceContentChanged":
+      return "语义内容已变化";
+    case "sourceInactive":
+      return "来源已隐藏";
+    case "sourceUnavailable":
+      return "来源已删除";
+    case "baseRevisionSuperseded":
+      return "基础版本已被替代";
+    case "targetUnavailable":
+      return "目标不可用";
   }
 }

@@ -19,11 +19,12 @@ export type OperationStatus =
   | "cancelled"
   | "interrupted";
 
-export type OperationType = "research" | "imageGeneration";
+export type OperationType = "research" | "imageGeneration" | "designDefinition" | "conceptDirection";
 
 export type OperationInputSnapshot = {
   userInput: string;
   selectedObjectIds: OperationObjectId[];
+  sourceSnapshots: SourceSemanticSnapshot[];
   objectSnapshots: Array<{
     id: OperationObjectId;
     type: string;
@@ -76,6 +77,27 @@ export type ProposalStatus = "pending" | "applied" | "rejected" | "expired";
 
 export type ProposalReviewState = "ready" | "sourceChanged" | "baseSuperseded" | "targetUnavailable";
 
+export type ProposalReviewReason =
+  | "sourceContentChanged"
+  | "sourceInactive"
+  | "sourceUnavailable"
+  | "baseRevisionSuperseded"
+  | "targetUnavailable";
+
+export type ProposalReviewDetails = {
+  objectId: OperationObjectId;
+  objectTitle: string;
+  reason: ProposalReviewReason;
+  message: string;
+};
+
+export type SourceSemanticSnapshot = {
+  objectId: OperationObjectId;
+  objectType: string;
+  visibility: string;
+  semanticFingerprint: string;
+};
+
 export type ArtifactProposalBase = {
   id: ArtifactProposalId;
   type: "researchAnalysis" | "designDefinition" | "conceptDirection" | "deliveryPlan";
@@ -83,6 +105,8 @@ export type ArtifactProposalBase = {
   workIntent?: AiWorkIntent;
   status: ProposalStatus;
   reviewState?: ProposalReviewState;
+  reviewDetails?: ProposalReviewDetails[];
+  sourceSnapshots: SourceSemanticSnapshot[];
   sourceObjectIds: OperationObjectId[];
   citationIds: SourceCitationId[];
   createdAt: string;
@@ -140,6 +164,9 @@ export type ConceptDirectionProposal = ArtifactProposalBase & {
   type: "conceptDirection";
   title: string;
   summary: string;
+  applicationMode: "create" | "revise" | "split" | "merge";
+  targetDirectionId?: OperationObjectId;
+  parentDirectionIds: OperationObjectId[];
   directions: ConceptDirectionDraft[];
   basedOnDesignDefinitionId?: OperationObjectId;
   basedOnRevisionId?: string;

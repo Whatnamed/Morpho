@@ -17,6 +17,7 @@ const MAX_RECENT_RESEARCH = 3;
 
 export function createEmptyProjectWorkingState(now = new Date().toISOString()): ProjectWorkingState {
   return {
+    currentDesignDefinitionAvailability: "missing",
     alternativeDirectionIds: [],
     eliminatedDirectionIds: [],
     activeKeyConclusionIds: [],
@@ -39,11 +40,16 @@ export function createDefaultStageRecords(now = new Date().toISOString()): Recor
 
 export function reconcileWorkspaceDerivedState(workspace: MorphoWorkspace): MorphoWorkspace {
   const now = new Date().toISOString();
-  const workingState = deriveProjectWorkingState(workspace, now);
-  const stageRecords = deriveStageRecords(workspace, workingState, now);
+  const objects = reconcileCurrentEffectiveDesignDefinitions(workspace);
+  const normalizedWorkspace = {
+    ...workspace,
+    objects
+  };
+  const workingState = deriveProjectWorkingState(normalizedWorkspace, now);
+  const stageRecords = deriveStageRecords(normalizedWorkspace, workingState, now);
 
   return {
-    ...workspace,
+    ...normalizedWorkspace,
     workingState,
     stageRecords
   };
@@ -56,7 +62,13 @@ export function deriveProjectWorkingState(workspace: MorphoWorkspace, now = new 
   const researchObjects = Object.values(workspace.objects).filter(isResearchObject);
   const images = Object.values(workspace.objects).filter((object) => object.type === "image");
 
-  const currentDesignDefinition = designDefinitions.find((object) => object.isCurrentEffective) ?? designDefinitions[0];
+  const currentDesignDefinition = designDefinitions.find((object) => object.isCurrentEffective);
+  const currentDesignDefinitionAvailability =
+    currentDesignDefinition?.visibility === "active"
+      ? "available"
+      : currentDesignDefinition?.visibility === "hidden"
+        ? "hidden"
+        : "missing";
   const primaryDirection = directions.find((direction) => direction.status === "primary");
   const alternativeDirectionIds = directions
     .filter((direction) => direction.status === "alternative")
@@ -79,6 +91,7 @@ export function deriveProjectWorkingState(workspace: MorphoWorkspace, now = new 
 
   return {
     currentDesignDefinitionId: currentDesignDefinition?.id,
+    currentDesignDefinitionAvailability,
     primaryDirectionId: primaryDirection?.id,
     alternativeDirectionIds,
     eliminatedDirectionIds,
@@ -299,6 +312,39 @@ function flattenUnique(values: string[][]): string[] {
 
 function compareByCreatedAt(left: { createdAt?: string }, right: { createdAt?: string }) {
   return (left.createdAt ?? "").localeCompare(right.createdAt ?? "");
+}
+
+function reconcileCurrentEffectiveDesignDefinitions(
+  workspace: MorphoWorkspace
+): Record<MorphoObjectId, MorphoObject> {
+  const currentDefinitions = Object.values(workspace.objects)
+    .filter(isDesignDefinitionObject)
+    .filter((object) => object.isCurrentEffective);
+
+  if (currentDefinitions.length <= 1) {
+    return workspace.objects;
+  }
+
+  const [winner] = [...currentDefinitions].sort((left, right) => {
+    const leftRevision = workspace.designDefinitionRevisions[left.currentRevisionId];
+    const rightRevision = workspace.designDefinitionRevisions[right.currentRevisionId];
+    const createdAtOrder = (rightRevision?.createdAt ?? "").localeCompare(leftRevision?.createdAt ?? "");
+    return createdAtOrder !== 0 ? createdAtOrder : left.id.localeCompare(right.id);
+  });
+  const nextObjects = { ...workspace.objects };
+
+  for (const definition of currentDefinitions) {
+    if (definition.id === winner.id) {
+      continue;
+    }
+
+    nextObjects[definition.id] = {
+      ...definition,
+      isCurrentEffective: false
+    };
+  }
+
+  return nextObjects;
 }
 
 function isResearchObject(object: MorphoObject): object is ResearchObject {

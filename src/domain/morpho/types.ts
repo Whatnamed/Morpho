@@ -44,11 +44,6 @@ export type ObjectVisibility = "active" | "hidden";
 export type ImageRole =
   | "reference"
   | "preview"
-  | "main"
-  | "scenario"
-  | "cmf"
-  | "detail"
-  | "diagram"
   | "conceptImage"
   | "primaryVisual"
   | "sceneVisual"
@@ -122,6 +117,7 @@ export type ImageGenerationMetadata = {
   prompt: string;
   referenceObjectIds: MorphoObjectId[];
   directionId?: MorphoObjectId;
+  visualBranchId?: VisualBranchId;
   createdAt: string;
 };
 
@@ -398,6 +394,7 @@ export type VisualBranchRecord = {
 
 export type ProjectWorkingState = {
   currentDesignDefinitionId?: MorphoObjectId;
+  currentDesignDefinitionAvailability: "available" | "hidden" | "missing";
   primaryDirectionId?: MorphoObjectId;
   alternativeDirectionIds: MorphoObjectId[];
   eliminatedDirectionIds: MorphoObjectId[];
@@ -423,7 +420,7 @@ export type StageRecord = {
 };
 
 export type MorphoWorkspace = {
-  schemaVersion: 5;
+  schemaVersion: 6;
   project: {
     id: string;
     title: string;

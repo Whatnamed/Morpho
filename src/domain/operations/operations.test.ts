@@ -436,7 +436,147 @@ describe("Morpho Operation Runtime", () => {
       }
     };
 
-    expect(detectResearchSourceChanges(changed, created.operation.id)).toContain("来源已变化");
+    expect(detectResearchSourceChanges(changed, created.operation.id)).toContain("来源对象已被隐藏");
+  });
+
+  it("does not treat source title or summary edits as semantic source changes", () => {
+    const workspace = {
+      ...createBlankWorkspace("project-op"),
+      objects: {
+        "text-source": {
+          id: "text-source",
+          type: "text" as const,
+          title: "Source",
+          summary: "Original summary",
+          body: "Stable body",
+          createdBy: "user" as const,
+          visibility: "active" as const
+        }
+      }
+    };
+    const created = createResearchOperation(workspace, {
+      userInput: "research selected materials",
+      selectedObjectIds: ["text-source"],
+      allowWebSearch: false
+    });
+    const renamed = {
+      ...created.workspace,
+      objects: {
+        ...created.workspace.objects,
+        "text-source": {
+          ...created.workspace.objects["text-source"],
+          title: "Renamed source",
+          summary: "Changed summary only"
+        }
+      }
+    };
+
+    expect(detectResearchSourceChanges(renamed, created.operation.id)).toBeUndefined();
+  });
+
+  it("stores review details when source content changes before applying a proposal", () => {
+    const workspace = {
+      ...createBlankWorkspace("project-op"),
+      objects: {
+        "text-source": {
+          id: "text-source",
+          type: "text" as const,
+          title: "Source",
+          summary: "Original summary",
+          body: "Original body",
+          createdBy: "user" as const,
+          visibility: "active" as const
+        }
+      }
+    };
+    const proposed = recordDesignDefinitionProposal(workspace, {
+      proposalId: "proposal-definition-source-review",
+      title: "首版定义",
+      summary: "摘要",
+      projectGoal: "目标",
+      targetUsers: ["用户"],
+      primaryScenarios: ["场景"],
+      coreProblem: "问题",
+      designPrinciples: ["原则"],
+      constraints: [],
+      avoidDirections: [],
+      opportunities: [],
+      openQuestions: [],
+      sourceObjectIds: ["text-source"],
+      citations: []
+    });
+    const changed = {
+      ...proposed.workspace,
+      objects: {
+        ...proposed.workspace.objects,
+        "text-source": {
+          ...proposed.workspace.objects["text-source"],
+          body: "Changed body"
+        }
+      }
+    };
+
+    const applied = applyDesignDefinitionProposal(changed, proposed.proposal.id);
+
+    expect(applied.status).toBe("blocked");
+    if (applied.status === "blocked") {
+      expect(applied.workspace.artifactProposals[proposed.proposal.id]).toMatchObject({
+        reviewState: "sourceChanged",
+        reviewDetails: [
+          expect.objectContaining({
+            objectId: "text-source",
+            reason: "sourceContentChanged"
+          })
+        ]
+      });
+    }
+  });
+
+  it("allows explicitly reviewed sourceChanged proposals to apply", () => {
+    const workspace = {
+      ...createBlankWorkspace("project-op"),
+      objects: {
+        "text-source": {
+          id: "text-source",
+          type: "text" as const,
+          title: "Source",
+          summary: "Original summary",
+          body: "Original body",
+          createdBy: "user" as const,
+          visibility: "active" as const
+        }
+      }
+    };
+    const proposed = recordDesignDefinitionProposal(workspace, {
+      proposalId: "proposal-definition-source-reviewed",
+      title: "首版定义",
+      summary: "摘要",
+      projectGoal: "目标",
+      targetUsers: ["用户"],
+      primaryScenarios: ["场景"],
+      coreProblem: "问题",
+      designPrinciples: ["原则"],
+      constraints: [],
+      avoidDirections: [],
+      opportunities: [],
+      openQuestions: [],
+      sourceObjectIds: ["text-source"],
+      citations: []
+    });
+    const hidden = {
+      ...proposed.workspace,
+      objects: {
+        ...proposed.workspace.objects,
+        "text-source": {
+          ...proposed.workspace.objects["text-source"],
+          visibility: "hidden" as const
+        }
+      }
+    };
+
+    const applied = applyDesignDefinitionProposal(hidden, proposed.proposal.id, { allowSourceChanged: true });
+
+    expect(applied.status).toBe("updated");
   });
 
   it("applies a design definition proposal as a new revision on the current definition object", () => {

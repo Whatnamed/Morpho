@@ -1098,7 +1098,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     workspace
   ]);
 
-  const handleApplyProposal = useCallback(() => {
+  const handleApplyProposal = useCallback((allowSourceChanged = false) => {
     if (!activeProposal) {
       return;
     }
@@ -1108,7 +1108,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         position: {
           x: workspace.canvas.view.x + 220,
           y: workspace.canvas.view.y + 180
-        }
+        },
+        allowSourceChanged
       });
 
       if (result.status === "updated") {
@@ -1133,7 +1134,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
 
     if (activeProposal.type === "designDefinition") {
-      const result = applyDesignDefinitionProposal(workspace, activeProposal.id);
+      const result = applyDesignDefinitionProposal(workspace, activeProposal.id, { allowSourceChanged });
       if (result.status === "updated") {
         setWorkspace(result.workspace);
         setSelectedObjectIds([result.designDefinitionObject.id]);
@@ -1160,7 +1161,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         position: {
           x: workspace.canvas.view.x + 260,
           y: workspace.canvas.view.y + 220
-        }
+        },
+        allowSourceChanged
       });
       if (result.status === "updated") {
         setWorkspace(result.workspace);

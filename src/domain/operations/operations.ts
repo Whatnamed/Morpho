@@ -3,6 +3,7 @@ import type {
   ConceptDirectionObject,
   DesignDefinitionObject,
   DesignDefinitionRevision,
+  MorphoObject,
   MorphoRelation,
   MorphoWorkspace,
   ResearchObject
@@ -14,9 +15,11 @@ import type {
   ImageGenerationOperationMetadata,
   OperationRecord,
   OperationStatus,
+  ProposalReviewDetails,
   ProposalReviewState,
   ResearchEvidence,
   ResearchAnalysisProposal,
+  SourceSemanticSnapshot,
   SourceCitation
 } from "./types";
 
@@ -111,6 +114,9 @@ export type RecordConceptDirectionProposalInput = {
   proposalId?: string;
   operationId?: string;
   workIntent?: ConceptDirectionProposal["workIntent"];
+  applicationMode?: ConceptDirectionProposal["applicationMode"];
+  targetDirectionId?: string;
+  parentDirectionIds?: string[];
   title: string;
   summary: string;
   directions: ConceptDirectionProposal["directions"];
@@ -153,6 +159,10 @@ export type ApplyResearchProposalResult =
       workspace: MorphoWorkspace;
       reason: string;
     };
+
+type ApplyProposalOptions = {
+  allowSourceChanged?: boolean;
+};
 
 export type CreateImageGenerationOperationInput = Omit<
   ImageGenerationOperationMetadata,
@@ -210,6 +220,7 @@ export function createResearchOperation(
     inputSnapshot: {
       userInput: input.userInput,
       selectedObjectIds: [...input.selectedObjectIds],
+      sourceSnapshots: buildSourceSemanticSnapshots(workspace, input.selectedObjectIds),
       objectSnapshots
     },
     allowedCapabilities: {
@@ -300,6 +311,7 @@ export function createImageGenerationOperation(
     inputSnapshot: {
       userInput: input.prompt,
       selectedObjectIds: [...input.selectedObjectIds],
+      sourceSnapshots: buildSourceSemanticSnapshots(workspace, input.selectedObjectIds),
       objectSnapshots
     },
     allowedCapabilities: {
@@ -575,6 +587,7 @@ export function recordResearchAnalysisProposal(
     openQuestions: [...input.openQuestions],
     evidence,
     sourceObjectIds: [...input.sourceObjectIds],
+    sourceSnapshots: buildSourceSemanticSnapshots(workspace, input.sourceObjectIds),
     citationIds: citationEntries.map((citation) => citation.id),
     sourceChangedWarning: input.sourceChangedWarning,
     createdAt: now,
@@ -639,6 +652,7 @@ export function recordDesignDefinitionProposal(
     status: "pending",
     reviewState: "ready",
     sourceObjectIds: [...input.sourceObjectIds],
+    sourceSnapshots: buildSourceSemanticSnapshots(workspace, input.sourceObjectIds),
     citationIds: citationEntries.map((citation) => citation.id),
     createdAt: now,
     title: input.title,
@@ -675,7 +689,8 @@ export function recordDesignDefinitionProposal(
 
 export function applyDesignDefinitionProposal(
   workspace: MorphoWorkspace,
-  proposalId: string
+  proposalId: string,
+  options: ApplyProposalOptions = {}
 ): ApplyDesignDefinitionProposalResult {
   const proposal = workspace.artifactProposals[proposalId];
   if (!proposal || proposal.type !== "designDefinition") {
@@ -696,10 +711,10 @@ export function applyDesignDefinitionProposal(
 
   const now = new Date().toISOString();
   const designReview = evaluateDesignDefinitionProposalReviewState(workspace, proposal);
-  if (designReview) {
+  if (designReview && (designReview.state !== "sourceChanged" || !options.allowSourceChanged)) {
     return {
       status: "blocked",
-      workspace: updateProposalReviewState(workspace, proposal.id, designReview.state),
+      workspace: updateProposalReviewState(workspace, proposal.id, designReview.state, designReview.details),
       reason: designReview.reason
     };
   }
@@ -859,10 +874,14 @@ export function recordConceptDirectionProposal(
     status: "pending",
     reviewState: "ready",
     sourceObjectIds: [...input.sourceObjectIds],
+    sourceSnapshots: buildSourceSemanticSnapshots(workspace, input.sourceObjectIds),
     citationIds: citationEntries.map((citation) => citation.id),
     createdAt: now,
     title: input.title,
     summary: input.summary,
+    applicationMode: input.applicationMode ?? inferConceptDirectionApplicationMode(input.workIntent),
+    targetDirectionId: input.targetDirectionId,
+    parentDirectionIds: [...(input.parentDirectionIds ?? [])],
     directions: input.directions.map((direction) => ({
       ...direction,
       keywords: [...direction.keywords],
@@ -894,7 +913,7 @@ export function recordConceptDirectionProposal(
 export function applyConceptDirectionProposal(
   workspace: MorphoWorkspace,
   proposalId: string,
-  input: { position: CanvasPoint }
+  input: { position: CanvasPoint } & ApplyProposalOptions
 ): ApplyConceptDirectionProposalResult {
   const proposal = workspace.artifactProposals[proposalId];
   if (!proposal || proposal.type !== "conceptDirection") {
@@ -923,10 +942,10 @@ export function applyConceptDirectionProposal(
 
   const now = new Date().toISOString();
   const conceptReview = evaluateConceptDirectionProposalReviewState(workspace, proposal);
-  if (conceptReview) {
+  if (conceptReview && (conceptReview.state !== "sourceChanged" || !input.allowSourceChanged)) {
     return {
       status: "blocked",
-      workspace: updateProposalReviewState(workspace, proposal.id, conceptReview.state),
+      workspace: updateProposalReviewState(workspace, proposal.id, conceptReview.state, conceptReview.details),
       reason: conceptReview.reason
     };
   }
@@ -1076,7 +1095,7 @@ export function applyConceptDirectionProposal(
 export function applyResearchAnalysisProposal(
   workspace: MorphoWorkspace,
   proposalId: string,
-  input: { position: CanvasPoint }
+  input: { position: CanvasPoint } & ApplyProposalOptions
 ): ApplyResearchProposalResult {
   const proposal = workspace.artifactProposals[proposalId];
   if (!proposal || proposal.type !== "researchAnalysis") {
@@ -1092,6 +1111,15 @@ export function applyResearchAnalysisProposal(
       status: "blocked",
       workspace,
       reason: "研究分析草案已被处理。"
+    };
+  }
+
+  const researchReviewDetails = evaluateSourceReviewDetails(workspace, proposal.sourceSnapshots);
+  if (researchReviewDetails.length > 0 && !input.allowSourceChanged) {
+    return {
+      status: "blocked",
+      workspace: updateProposalReviewState(workspace, proposal.id, "sourceChanged", researchReviewDetails),
+      reason: buildReviewReasonMessage(researchReviewDetails)
     };
   }
 
@@ -1328,53 +1356,53 @@ export function detectResearchSourceChanges(workspace: MorphoWorkspace, operatio
     return undefined;
   }
 
-  const changed: string[] = [];
-  for (const snapshot of operation.inputSnapshot.objectSnapshots) {
-    const current = workspace.objects[snapshot.id];
-    if (!current) {
-      changed.push(`${snapshot.title} 已被删除`);
-      continue;
-    }
-
-    if (current.visibility === "hidden") {
-      changed.push(`${snapshot.title} 已被隐藏`);
-    }
-
-    if (current.title !== snapshot.title || current.summary !== snapshot.summary) {
-      changed.push(`${snapshot.title} 的标题或摘要已变化`);
-    }
-
-    if (snapshot.body !== undefined && (!("body" in current) || current.body !== snapshot.body)) {
-      changed.push(`${snapshot.title} 的正文可能已变化`);
-    }
-  }
-
-  return changed.length > 0 ? `来源已变化，保存前请复核：${changed.join("；")}` : undefined;
+  const changed = evaluateSourceReviewDetails(workspace, operation.inputSnapshot.sourceSnapshots);
+  return changed.length > 0 ? buildReviewReasonMessage(changed) : undefined;
 }
 
 function evaluateDesignDefinitionProposalReviewState(
   workspace: MorphoWorkspace,
   proposal: DesignDefinitionProposal
-): { state: ProposalReviewState; reason: string } | null {
+): { state: ProposalReviewState; reason: string; details: ProposalReviewDetails[] } | null {
   const baseDefinition = resolveBaseDesignDefinition(workspace, proposal.basedOnDesignDefinitionId);
   if (proposal.basedOnDesignDefinitionId && !baseDefinition) {
+    const details = [
+      {
+        objectId: proposal.basedOnDesignDefinitionId,
+        objectTitle: proposal.basedOnDesignDefinitionId,
+        reason: "targetUnavailable" as const,
+        message: "设计定义草案引用的原定义已不可用。"
+      }
+    ];
     return {
       state: "targetUnavailable",
-      reason: "设计定义草案引用的原定义已不可用，请重新生成或重新确认后再保存。"
+      reason: buildReviewReasonMessage(details),
+      details
     };
   }
 
   if (proposal.basedOnRevisionId && baseDefinition && baseDefinition.currentRevisionId !== proposal.basedOnRevisionId) {
+    const details = [
+      {
+        objectId: baseDefinition.id,
+        objectTitle: baseDefinition.title,
+        reason: "baseRevisionSuperseded" as const,
+        message: "设计定义草案基于的版本已被新的定义版本替代。"
+      }
+    ];
     return {
       state: "baseSuperseded",
-      reason: "设计定义草案基于的版本已被新的定义版本替代，请复核后再保存。"
+      reason: buildReviewReasonMessage(details),
+      details
     };
   }
 
-  if (proposal.sourceObjectIds.some((sourceObjectId) => !isVisibleSourceObject(workspace, sourceObjectId))) {
+  const sourceReviewDetails = evaluateSourceReviewDetails(workspace, proposal.sourceSnapshots);
+  if (sourceReviewDetails.length > 0) {
     return {
       state: "sourceChanged",
-      reason: "设计定义草案的来源对象已被隐藏或删除，请复核来源后再保存。"
+      reason: buildReviewReasonMessage(sourceReviewDetails),
+      details: sourceReviewDetails
     };
   }
 
@@ -1384,26 +1412,46 @@ function evaluateDesignDefinitionProposalReviewState(
 function evaluateConceptDirectionProposalReviewState(
   workspace: MorphoWorkspace,
   proposal: ConceptDirectionProposal
-): { state: ProposalReviewState; reason: string } | null {
+): { state: ProposalReviewState; reason: string; details: ProposalReviewDetails[] } | null {
   const baseDefinition = resolveBaseDesignDefinition(workspace, proposal.basedOnDesignDefinitionId);
   if (proposal.basedOnDesignDefinitionId && !baseDefinition) {
+    const details = [
+      {
+        objectId: proposal.basedOnDesignDefinitionId,
+        objectTitle: proposal.basedOnDesignDefinitionId,
+        reason: "targetUnavailable" as const,
+        message: "概念方向草案引用的设计定义已不可用。"
+      }
+    ];
     return {
       state: "targetUnavailable",
-      reason: "概念方向草案引用的设计定义已不可用，请重新生成或重新确认后再保存。"
+      reason: buildReviewReasonMessage(details),
+      details
     };
   }
 
   if (proposal.basedOnRevisionId && baseDefinition && baseDefinition.currentRevisionId !== proposal.basedOnRevisionId) {
+    const details = [
+      {
+        objectId: baseDefinition.id,
+        objectTitle: baseDefinition.title,
+        reason: "baseRevisionSuperseded" as const,
+        message: "概念方向草案基于的设计定义版本已被替代。"
+      }
+    ];
     return {
       state: "baseSuperseded",
-      reason: "概念方向草案基于的设计定义版本已被替代，请复核后再保存。"
+      reason: buildReviewReasonMessage(details),
+      details
     };
   }
 
-  if (proposal.sourceObjectIds.some((sourceObjectId) => !isVisibleSourceObject(workspace, sourceObjectId))) {
+  const sourceReviewDetails = evaluateSourceReviewDetails(workspace, proposal.sourceSnapshots);
+  if (sourceReviewDetails.length > 0) {
     return {
       state: "sourceChanged",
-      reason: "概念方向草案的来源对象已被隐藏或删除，请复核来源后再保存。"
+      reason: buildReviewReasonMessage(sourceReviewDetails),
+      details: sourceReviewDetails
     };
   }
 
@@ -1415,9 +1463,22 @@ function evaluateConceptDirectionProposalReviewState(
           workspace.objects[direction.basedOnDirectionId]?.visibility !== "active")
     )
   ) {
+    const details = proposal.directions
+      .filter((direction) => direction.basedOnDirectionId)
+      .filter((direction) => {
+        const target = direction.basedOnDirectionId ? workspace.objects[direction.basedOnDirectionId] : undefined;
+        return target?.type !== "conceptDirection" || target.visibility !== "active";
+      })
+      .map((direction) => ({
+        objectId: direction.basedOnDirectionId ?? "",
+        objectTitle: direction.basedOnDirectionId ?? "",
+        reason: "targetUnavailable" as const,
+        message: "概念方向草案引用的原方向已不可用。"
+      }));
     return {
       state: "targetUnavailable",
-      reason: "概念方向草案引用的原方向已不可用，请重新生成或重新确认后再保存。"
+      reason: buildReviewReasonMessage(details),
+      details
     };
   }
 
@@ -1434,7 +1495,7 @@ function resolveBaseDesignDefinition(
   }
 
   const definition = workspace.objects[definitionId];
-  if (definition?.type !== "designDefinition" || definition.visibility !== "active") {
+  if (definition?.type !== "designDefinition") {
     return undefined;
   }
 
@@ -1444,7 +1505,8 @@ function resolveBaseDesignDefinition(
 function updateProposalReviewState(
   workspace: MorphoWorkspace,
   proposalId: string,
-  reviewState: ProposalReviewState
+  reviewState: ProposalReviewState,
+  reviewDetails: ProposalReviewDetails[]
 ): MorphoWorkspace {
   const proposal = workspace.artifactProposals[proposalId];
   if (!proposal) {
@@ -1457,15 +1519,133 @@ function updateProposalReviewState(
       ...workspace.artifactProposals,
       [proposalId]: {
         ...proposal,
-        reviewState
+        reviewState,
+        reviewDetails
       }
     }
   };
 }
 
-function isVisibleSourceObject(workspace: MorphoWorkspace, objectId: string): boolean {
-  const object = workspace.objects[objectId];
-  return Boolean(object && object.visibility === "active");
+function buildSourceSemanticSnapshots(workspace: MorphoWorkspace, objectIds: string[]): SourceSemanticSnapshot[] {
+  return objectIds
+    .map((objectId) => createSourceSemanticSnapshot(workspace.objects[objectId]))
+    .filter((snapshot): snapshot is SourceSemanticSnapshot => Boolean(snapshot));
+}
+
+function createSourceSemanticSnapshot(object: MorphoObject | undefined): SourceSemanticSnapshot | undefined {
+  if (!object) {
+    return undefined;
+  }
+
+  return {
+    objectId: object.id,
+    objectType: object.type,
+    visibility: object.visibility,
+    semanticFingerprint: buildSemanticFingerprint(object)
+  };
+}
+
+function evaluateSourceReviewDetails(
+  workspace: MorphoWorkspace,
+  snapshots: SourceSemanticSnapshot[]
+): ProposalReviewDetails[] {
+  return snapshots.flatMap((snapshot): ProposalReviewDetails[] => {
+    const current = workspace.objects[snapshot.objectId];
+    if (!current) {
+      return [
+        {
+          objectId: snapshot.objectId,
+          objectTitle: snapshot.objectId,
+          reason: "sourceUnavailable" as const,
+          message: "来源对象已被删除，不能继续作为未复核依据。"
+        }
+      ];
+    }
+
+    if (current.visibility !== "active") {
+      return [
+        {
+          objectId: current.id,
+          objectTitle: current.title,
+          reason: "sourceInactive" as const,
+          message: "来源对象已被隐藏，默认不会进入当前 AI Context。"
+        }
+      ];
+    }
+
+    if (buildSemanticFingerprint(current) !== snapshot.semanticFingerprint) {
+      return [
+        {
+          objectId: current.id,
+          objectTitle: current.title,
+          reason: "sourceContentChanged" as const,
+          message: "来源对象的语义内容已变化，需要复核后才能应用。"
+        }
+      ];
+    }
+
+    return [];
+  });
+}
+
+function buildSemanticFingerprint(object: MorphoObject): string {
+  switch (object.type) {
+    case "text":
+      return stableStringify({ body: object.body });
+    case "research":
+      return stableStringify({
+        findings: object.findings,
+        opportunities: object.opportunities,
+        constraints: object.constraints,
+        openQuestions: object.openQuestions,
+        evidence: object.evidence ?? [],
+        provenanceCitationIds: object.provenance?.citationIds ?? []
+      });
+    case "keyConclusion":
+      return stableStringify({
+        body: object.body,
+        state: object.state,
+        supersededById: object.supersededById,
+        confidence: object.confidence
+      });
+    case "designDefinition":
+      return stableStringify({
+        currentRevisionId: object.currentRevisionId,
+        isCurrentEffective: object.isCurrentEffective
+      });
+    case "conceptDirection":
+      return stableStringify({
+        currentRevisionId: object.currentRevisionId,
+        status: object.status
+      });
+    case "image":
+      return stableStringify({ assetId: object.assetId });
+    default:
+      return stableStringify({ type: object.type });
+  }
+}
+
+function buildReviewReasonMessage(details: ProposalReviewDetails[]): string {
+  return `草案需要复核：${details.map((detail) => `${detail.objectTitle}：${detail.message}`).join("；")}`;
+}
+
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value);
+}
+
+function inferConceptDirectionApplicationMode(
+  workIntent: ConceptDirectionProposal["workIntent"]
+): ConceptDirectionProposal["applicationMode"] {
+  switch (workIntent) {
+    case "reviseConceptDirection":
+      return "revise";
+    case "splitConceptDirection":
+      return "split";
+    case "mergeConceptDirections":
+      return "merge";
+    default:
+      return "create";
+  }
 }
 
 function relationsBefore(index: number, sourceObjectIds: string[], objectId: string): MorphoRelation[] {

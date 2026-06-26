@@ -20,13 +20,13 @@ import {
 } from "./workspace";
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "./imports";
 import { recordDesignDefinitionProposal } from "../operations/operations";
-import { hasPendingDesignDefinitionRevisionProposal } from "./derivedState";
+import { hasPendingDesignDefinitionRevisionProposal, reconcileWorkspaceDerivedState } from "./derivedState";
 
 describe("Morpho workspace domain boundaries", () => {
-  it("creates a blank schema v5 project without depending on Nightrail seed object ids", () => {
+  it("creates a blank schema v6 project without depending on Nightrail seed object ids", () => {
     const workspace = createBlankWorkspace("project-empty-local");
 
-    expect(workspace.schemaVersion).toBe(5);
+    expect(workspace.schemaVersion).toBe(6);
     expect(workspace.project.id).toBe("project-empty-local");
     expect(workspace.objects["image-soft-rail-v2"]).toBeUndefined();
     expect(workspace.canvas.instances).toEqual([]);
@@ -280,6 +280,64 @@ describe("Morpho workspace domain boundaries", () => {
     expect(hasPendingDesignDefinitionRevisionProposal(proposed.workspace, "definition-current")).toBe(false);
   });
 
+  it("reconciles multiple current effective design definitions deterministically", () => {
+    const workspace = createInitialWorkspace();
+    const current = workspace.objects["definition-current"];
+    if (!current || current.type !== "designDefinition") {
+      throw new Error("Expected seed current design definition.");
+    }
+
+    const olderRevision = {
+      ...workspace.designDefinitionRevisions[current.currentRevisionId],
+      id: "definition-revision-older-current",
+      designDefinitionId: "definition-older-current",
+      createdAt: "2026-01-01T00:00:00.000Z"
+    };
+    const duplicate = {
+      ...current,
+      id: "definition-older-current",
+      title: "旧的异常 current 定义",
+      currentRevisionId: olderRevision.id,
+      revisionIds: [olderRevision.id],
+      isCurrentEffective: true
+    };
+
+    const reconciled = reconcileWorkspaceDerivedState({
+      ...workspace,
+      objects: {
+        ...workspace.objects,
+        [duplicate.id]: duplicate
+      },
+      designDefinitionRevisions: {
+        ...workspace.designDefinitionRevisions,
+        [olderRevision.id]: olderRevision
+      }
+    });
+
+    const currentDefinitions = Object.values(reconciled.objects).filter(
+      (object) => object.type === "designDefinition" && object.isCurrentEffective
+    );
+    expect(currentDefinitions.map((object) => object.id)).toEqual(["definition-current"]);
+    expect(reconciled.workingState.currentDesignDefinitionId).toBe("definition-current");
+  });
+
+  it("keeps a hidden current definition addressable without falling back to an older definition", () => {
+    const workspace = createInitialWorkspace();
+    const hidden = hideObject(workspace, "definition-current");
+
+    expect(hidden.workingState.currentDesignDefinitionId).toBe("definition-current");
+    expect(hidden.workingState.currentDesignDefinitionAvailability).toBe("hidden");
+
+    const context = assembleAiContext(hidden, {
+      draft: "基于当前定义生成方向。",
+      selectedObjectIds: [],
+      explicitObjectIds: [],
+      task: "conceptDirection"
+    });
+
+    expect(context.objectIds).not.toContain("definition-current");
+  });
+
   it("hides objects without deleting objects, relations, or creating decision records", () => {
     const workspace = createInitialWorkspace();
     const hidden = hideObject(workspace, "image-soft-rail-v2");
@@ -456,8 +514,8 @@ describe("Morpho workspace domain boundaries", () => {
     }
     const relationCount = workspace.relations.length;
 
-    const updated = setImageRole(workspace, source.id, "sceneVisual", {
-      reason: "用户明确将该图标记为使用场景视觉。"
+    const updated = setImageRole(workspace, source.id, "primaryVisual", {
+      reason: "用户明确将该图标记为主视觉。"
     });
     const image = updated.objects[source.id];
     const decision = updated.decisionRecords.at(-1);
@@ -465,7 +523,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(image).toMatchObject({
       id: source.id,
       type: "image",
-      role: "sceneVisual"
+      role: "primaryVisual"
     });
     expect(image?.type === "image" ? image.isDefaultReference : undefined).toBe(source.isDefaultReference);
     expect(updated.relations).toHaveLength(relationCount);
@@ -534,7 +592,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(imported.workspace.assets["asset-file-a"]?.sourceType).toBe("originalFile");
   });
 
-  it("migrates v1 workspace data to schema v5 without mutating the source object", () => {
+  it("migrates v1 workspace data to schema v6 without mutating the source object", () => {
     const legacyWorkspace = {
       schemaVersion: 1,
       project: {
@@ -581,8 +639,12 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.status).toBe("ok");
     expect(legacyWorkspace).toEqual(before);
     if (result.status === "ok") {
-      expect(result.workspace.schemaVersion).toBe(5);
+      expect(result.workspace.schemaVersion).toBe(6);
       expect(result.workspace.objects["image-a"]?.visibility).toBe("active");
+      expect(result.workspace.objects["image-a"]).toMatchObject({
+        type: "image",
+        role: "primaryVisual"
+      });
       expect(result.workspace.assets).toBeDefined();
       expect(result.workspace.operations).toEqual({});
       expect(result.workspace.artifactProposals).toEqual({});
