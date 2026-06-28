@@ -88,12 +88,10 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
     ? value.objectSummaries.filter(isObjectSummary).slice(0, 16)
     : [];
   const attachments = Array.isArray(value.attachments)
-    ? taskMode === "imageGeneration"
-      ? []
-      : value.attachments.filter(isAttachment).map(normalizeAttachment)
+    ? value.attachments.filter(isAttachment).map(normalizeAttachment)
     : [];
   const documentExtracts =
-    taskMode === "imageGeneration" || !Array.isArray(value.documentExtracts)
+    !Array.isArray(value.documentExtracts)
       ? []
       : value.documentExtracts.filter(isDocumentExtract).slice(0, 8);
 
@@ -227,7 +225,9 @@ function buildStructuredProposalInstruction(request: AiRouteRequest): string {
       "items 每项包含 id, targetDirectionId?, visualBranchId?, title, purpose, prompt, referenceObjectIds, role。",
       "role 只能是 conceptImage、sceneVisual、cmfStudy、detailStudy 或 preview。",
       "referenceObjectIds、targetDirectionId、visualBranchId 只能来自本次可用对象摘要；不得编造图片、方向、分支或来源。",
-      "方向首张预览必须一条已选方向对应一张 conceptImage，不要自动创建视觉分支。"
+      "方向预览可以按用户请求为同一方向输出多项，但每项 role 必须是 conceptImage，且不要自动创建视觉分支。",
+      "如果本次发送了图片像素或 contact sheet，只能把它们作为视觉计划依据；GrsAI 生成阶段会由 Morpho 另行选择必要参考图。",
+      "如果本次发送了本地 documentExtract，它们只用于理解项目资料和约束，不能作为网页 citation。"
     ].join("\n");
   }
 

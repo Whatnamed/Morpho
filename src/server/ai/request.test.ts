@@ -256,6 +256,73 @@ describe("MiMo chat route request conversion", () => {
     });
   });
 
+  it("keeps authorized imageGeneration context attachments and local document extracts for MiMo planning", () => {
+    const result = validateAiRouteRequest({
+      draft: "分别为这几个方向生成预览图",
+      task: "directionPreview",
+      taskMode: "imageGeneration",
+      workIntent: "discussion",
+      messages: [],
+      objectSummaries: [
+        {
+          id: "direction-a",
+          type: "conceptDirection",
+          title: "方向 A",
+          summary: "柔和轨道方向"
+        }
+      ],
+      attachments: [
+        {
+          id: "asset-image-a",
+          kind: "image",
+          objectId: "image-a",
+          objectIds: ["image-a"],
+          mimeType: "image/png",
+          dataUrl: "data:image/png;base64,abc123",
+          representation: "single",
+          status: "ready"
+        }
+      ],
+      documentExtracts: [
+        {
+          objectId: "file-a",
+          title: "访谈摘录",
+          fileName: "interview.md",
+          text: "老人夜间起身会寻找低眩光的连续扶手。",
+          charCount: 20,
+          truncated: false
+        }
+      ],
+      webSearch: { enabled: true, forceSearch: true }
+    });
+
+    expect(result).toMatchObject({
+      status: "ok",
+      value: {
+        taskMode: "imageGeneration",
+        webSearch: undefined,
+        attachments: [
+          {
+            status: "ready",
+            objectId: "image-a"
+          }
+        ],
+        documentExtracts: [
+          {
+            objectId: "file-a",
+            title: "访谈摘录"
+          }
+        ]
+      }
+    });
+    if (result.status === "ok") {
+      const prompt = buildMorphoSystemPrompt(result.value);
+      expect(prompt).toContain("本次已发送 1 个显式选择的 active 图片对象像素");
+      expect(prompt).toContain("本次发送 1 个选中 parsed 文件的 documentExtract 文本");
+      expect(prompt).toContain("本地来源 objectId");
+    }
+  });
+
   it("does not ask for proposal JSON during ordinary discussion even when task stays general", () => {
     const prompt = buildMorphoSystemPrompt({
       draft: "继续讨论这条研究线索的风险",

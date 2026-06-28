@@ -71,7 +71,141 @@ describe("visual generation plan parsing and validation", () => {
 
     expect(result).toMatchObject({
       status: "blocked",
-      reason: expect.stringContaining("一一对应")
+      reason: expect.stringContaining("每方向精确生成")
+    });
+  });
+
+  it("allows controlled multi-preview counts per selected direction", () => {
+    const workspace = createInitialWorkspace();
+    const result = validateVisualGenerationPlan(workspace, {
+      plan: {
+        kind: "directionPreview",
+        items: [
+          {
+            id: "soft-1",
+            targetDirectionId: "direction-soft-rail",
+            title: "柔轨 A",
+            purpose: "首轮比较",
+            prompt: "方向预览 A",
+            referenceObjectIds: ["direction-soft-rail"],
+            role: "conceptImage"
+          },
+          {
+            id: "soft-2",
+            targetDirectionId: "direction-soft-rail",
+            title: "柔轨 B",
+            purpose: "首轮比较",
+            prompt: "方向预览 B",
+            referenceObjectIds: ["direction-soft-rail"],
+            role: "conceptImage"
+          },
+          {
+            id: "island-1",
+            targetDirectionId: "direction-support-island",
+            title: "支撑岛 A",
+            purpose: "首轮比较",
+            prompt: "方向预览 A",
+            referenceObjectIds: ["direction-support-island"],
+            role: "conceptImage"
+          },
+          {
+            id: "island-2",
+            targetDirectionId: "direction-support-island",
+            title: "支撑岛 B",
+            purpose: "首轮比较",
+            prompt: "方向预览 B",
+            referenceObjectIds: ["direction-support-island"],
+            role: "conceptImage"
+          }
+        ]
+      },
+      allowedObjectIds: ["direction-soft-rail", "direction-support-island"],
+      selectedDirectionIds: ["direction-soft-rail", "direction-support-island"],
+      selectedImageIds: [],
+      requestedPreviewCount: 2
+    });
+
+    expect(result).toMatchObject({
+      status: "ok"
+    });
+  });
+
+  it("blocks direction preview plans with wrong count, wrong role, or too many generated items", () => {
+    const workspace = createInitialWorkspace();
+
+    expect(
+      validateVisualGenerationPlan(workspace, {
+        plan: {
+          kind: "directionPreview",
+          items: [
+            {
+              id: "soft-1",
+              targetDirectionId: "direction-soft-rail",
+              title: "柔轨 A",
+              purpose: "首轮比较",
+              prompt: "方向预览 A",
+              referenceObjectIds: ["direction-soft-rail"],
+              role: "conceptImage"
+            },
+            {
+              id: "soft-2",
+              targetDirectionId: "direction-soft-rail",
+              title: "柔轨 B",
+              purpose: "首轮比较",
+              prompt: "方向预览 B",
+              referenceObjectIds: ["direction-soft-rail"],
+              role: "sceneVisual"
+            }
+          ]
+        },
+        allowedObjectIds: ["direction-soft-rail"],
+        selectedDirectionIds: ["direction-soft-rail"],
+        selectedImageIds: [],
+        requestedPreviewCount: 2
+      })
+    ).toMatchObject({
+      status: "blocked",
+      reason: expect.stringContaining("conceptImage")
+    });
+
+    expect(
+      validateVisualGenerationPlan(workspace, {
+        plan: {
+          kind: "directionPreview",
+          items: Array.from({ length: 9 }, (_, index) => ({
+            id: `item-${index + 1}`,
+            targetDirectionId: "direction-soft-rail",
+            title: `预览 ${index + 1}`,
+            purpose: "超量",
+            prompt: "方向预览",
+            referenceObjectIds: ["direction-soft-rail"],
+            role: "conceptImage" as const
+          }))
+        },
+        allowedObjectIds: ["direction-soft-rail"],
+        selectedDirectionIds: ["direction-soft-rail"],
+        selectedImageIds: [],
+        requestedPreviewCount: 9
+      })
+    ).toMatchObject({
+      status: "blocked",
+      reason: expect.stringContaining("1、2、4 或 6")
+    });
+
+    expect(
+      validateVisualGenerationPlan(workspace, {
+        plan: {
+          kind: "directionPreview",
+          items: []
+        },
+        allowedObjectIds: ["direction-soft-rail", "direction-support-island"],
+        selectedDirectionIds: ["direction-soft-rail", "direction-support-island"],
+        selectedImageIds: [],
+        requestedPreviewCount: 6
+      })
+    ).toMatchObject({
+      status: "blocked",
+      reason: expect.stringContaining("8")
     });
   });
 

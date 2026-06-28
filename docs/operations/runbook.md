@@ -30,9 +30,11 @@ MiMo chat behavior:
 
 - ordinary text uses `MORPHO_MIMO_TEXT_MODEL`;
 - selected active images in chat/research use `MORPHO_MIMO_MULTIMODAL_MODEL`;
+- selected active images in visual-planning `imageGeneration` requests also use `MORPHO_MIMO_MULTIMODAL_MODEL`;
 - image input is limited to selected active IndexedDB image assets. Small selections are sent as individual compressed images; larger selections are packed into one or more contact sheets so every selected image is represented without exposing a user-facing upload count limit;
 - hidden images, unselected images, default references, and whole-canvas screenshots are not sent by default;
 - selected parsed file objects can send bounded local `documentExtract` text to MiMo for chat/research context. Extracts are local sources, not provider citations;
+- selected parsed file objects can also send bounded local `documentExtract` text to MiMo for visual planning when `taskMode === "imageGeneration"` and the current task context authorizes them;
 - when `MORPHO_MIMO_WEB_SEARCH_ENABLED=true`, chat/research requests provide MiMo native `web_search` and the model decides whether to use it. Image generation never receives web search tools;
 - source links are shown only when MiMo returns citation/annotation fields.
 
@@ -64,6 +66,8 @@ Current implemented behavior:
 - generated image assets store intrinsic width, height, and aspect ratio when the browser can read them.
 - image generation operations store operation IDs and client request IDs; uncertain network responses are not automatically resubmitted.
 - direction-preview and visual-development generation first ask MiMo for a structured visual plan, validate selected source/direction scope locally, and then call GrsAI once per plan item.
+- direction-preview supports `1`, `2`, `4`, or `6` previews per selected direction, with a hard total limit of `8` generated items per run.
+- image-generation Operation metadata records the requested preview count, visual plan, successful result IDs, and per-item failures for later audit.
 
 Milestone 3 Operation records are local-first and lightweight. Workspace JSON stores operation status, summaries, proposals, citation snapshots, and IndexedDB artifact references. It does not store raw webpages, large extracted files, page previews, provider raw responses, API keys, or response headers.
 
@@ -103,6 +107,31 @@ Expected results:
 - `build`: `next build` completes and prerenders static pages/routes where applicable.
 
 Manual provider smoke checks are separate from the default command set and should be run only with real `.env.local` keys and `MORPHO_ALLOW_PAID_SMOKE_TESTS=true`. Do not print keys, key counts, key suffixes, provider raw headers, or provider raw error bodies while testing.
+
+## Browser Mock Acceptance
+
+Recommended local mock acceptance path:
+
+```bash
+npm.cmd run dev -- --hostname 127.0.0.1 --port 3007
+```
+
+Then use Playwright or an equivalent real browser to:
+
+1. open `http://127.0.0.1:3007/projects/project-nightrail`;
+2. intercept `/api/ai/chat`;
+3. intercept `/api/ai/image`;
+4. exercise the required M4.3 flows without real provider keys;
+5. verify request payloads and visible UI state.
+
+Minimum flows to cover:
+
+- selected material + “分析这些资料并整理第一轮研究” routes into research;
+- selected directions + “分别为这几个方向生成预览图” routes into direction preview and shows correct preview total;
+- selected image + “保留整体结构语言，生成夜间使用场景” routes into visual development, with MiMo receiving image attachments and Grs receiving image-only generation references;
+- selected image + “分析这张图的问题” stays ordinary chat and does not call `/api/ai/image`;
+- manual task mode override beats automatic routing;
+- design-trace overlay still opens and closes.
 
 ## Current Local Persistence
 

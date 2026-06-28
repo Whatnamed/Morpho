@@ -973,7 +973,7 @@ input:focus-visible {
 
 .image-settings {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(76px, 0.7fr) minmax(70px, 0.6fr);
+  grid-template-columns: minmax(0, 1.4fr) minmax(76px, 0.7fr) minmax(70px, 0.6fr) minmax(82px, 0.7fr);
   gap: 8px;
   margin-bottom: 9px;
   padding: 9px;
@@ -1014,6 +1014,17 @@ input:focus-visible {
   gap: 6px;
   color: var(--text-muted);
   font-size: 10px;
+}
+
+.image-settings-warning {
+  grid-column: 1 / -1;
+  padding: 7px 8px;
+  border: 1px solid rgba(154, 81, 39, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 238, 220, 0.74);
+  color: #7a3e18;
+  font-size: 10px;
+  line-height: 1.45;
 }
 
 .ai-input {

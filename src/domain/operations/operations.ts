@@ -445,6 +445,7 @@ export function createImageGenerationOperation(
       referenceObjectIds: [...input.referenceObjectIds],
       directionObjectId: input.directionObjectId,
       visualBranchId: input.visualBranchId,
+      requestedPreviewCount: input.requestedPreviewCount,
       plan: input.plan,
       resultObjectIds: []
     }

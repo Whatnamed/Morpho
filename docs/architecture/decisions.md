@@ -319,3 +319,43 @@ Decision: design-chain tracing is computed from current objects, relations, revi
 Reason: M4.2 needs reviewers to inspect how an image or direction descends from real inputs, research, conclusions, definitions, directions, and visual iterations without creating another persistent workflow object.
 
 Boundary: the trace overlay and bottom detail summary do not write project state and do not infer meaning from canvas proximity. Canvas coordinates are used only to draw the temporary visual overlay between already-known semantic records.
+
+## 2026-06-28: Centralize Bounded Task Context Assembly
+
+Decision: introduce a dedicated task-context assembly layer in `src/features/workspace/taskContext.ts`.
+
+Reason: AI task input assembly had become split across view code and was no longer reliable enough for M4.3 requirements around selected materials, visual planning, default-reference gating, hidden-object exclusion, and explainable truncation.
+
+Boundary: the task-context layer is pure and deterministic. It returns bounded IDs, semantic summaries, authorized image/document scopes, skip reasons, truncation state, and default-reference status. It does not read blob bytes itself, mutate workspace state, infer semantics from canvas position, or persist raw context payloads.
+
+## 2026-06-28: Let MiMo Visual Planning Receive Authorized Local Inputs
+
+Decision: keep authorized `attachments` and `documentExtracts` on `/api/ai/chat` when `taskMode === "imageGeneration"`.
+
+Reason: MiMo visual planning for direction preview and visual development must see the real selected images and selected local parsed materials in order to produce reliable plans.
+
+Boundary: this applies only to the MiMo planning stage. `imageGeneration` still never receives native web search tools, and `/api/ai/image` still never receives document-extract text or hidden context internals.
+
+## 2026-06-28: Keep Default Reference Optional and Explicit in Visual Planning
+
+Decision: current default-reference pixels enter visual planning only when the user explicitly asks to keep or reference the current default reference and the reference remains active and relevant to the current direction scope.
+
+Reason: Morpho treats default reference as an optional consistency baseline, not as a hard prerequisite for every visual-generation task.
+
+Boundary: simply having a project-level default reference does not authorize its pixels for every task. Hidden default references remain excluded from default AI context.
+
+## 2026-06-28: Validate Direction Preview by Requested Count Instead of One-per-Direction
+
+Decision: direction preview now supports `1`, `2`, `4`, or `6` previews per selected direction, with a hard total limit of `8` generated items per run, and the requested count is stored on image-generation Operation metadata.
+
+Reason: M4.3 requires controllable multi-preview comparison without silently changing user intent or letting MiMo invent extra/unscoped outputs.
+
+Boundary: every selected direction must be covered exactly `requestedPreviewCount` times, every preview item must use `conceptImage`, no automatic visual-branch binding is allowed for direction preview, and Morpho blocks over-limit or under-specified plans before any GrsAI call.
+
+## 2026-06-28: Use Deterministic Selection-aware Auto-routing
+
+Decision: recommended task routing now combines draft text with selected object types instead of relying on narrow keyword-only heuristics.
+
+Reason: Morpho needs the default discussion mode to move naturally into research, direction preview, and visual development, while still keeping image analysis, copywriting, and manual overrides on the correct path.
+
+Boundary: routing remains deterministic and local. Morpho does not call a second model just to choose a task route, and manual user-selected task mode or work intent still remains authoritative.

@@ -39,6 +39,7 @@ import { parseDesignDefinitionProposalPayload } from "@/domain/operations/design
 import { parseResearchAnalysisProposalPayload } from "@/domain/operations/researchProposal";
 import {
   parseVisualGenerationPlanPayload,
+  validateRequestedPreviewCount,
   validateVisualGenerationPlan
 } from "@/domain/operations/visualGenerationPlan";
 import {
@@ -89,6 +90,8 @@ import {
 import { buildProposalDiscussionDraft, buildProposalRegenerationDraft } from "./proposalFollowupPrompts";
 import { buildWebSearchOptions, collectMiMoImageAttachments, shouldAttachImagesForMiMo } from "./aiAttachments";
 import { collectDocumentExtractsForAi } from "./documentContext";
+import { buildTaskContext, taskContextKindFromAiTask, type TaskContextDefaultReference } from "./taskContext";
+import { planDirectionPreviewPlacements } from "./visualPreviewLayout";
 import {
   classifyVisualGenerationIntent,
   resolveVisualGenerationTarget,
@@ -144,6 +147,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [imageGenerationSettings, setImageGenerationSettings] = useState<ImageGenerationSettings>(() =>
     getDefaultImageGenerationSettings()
   );
+  const [directionPreviewCount, setDirectionPreviewCount] = useState<1 | 2 | 4 | 6>(2);
   const [imageGenerationAspectMode, setImageGenerationAspectMode] = useState<"auto" | "manual">("auto");
   const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
   const assetUrlsRef = useRef<Record<string, string>>({});
@@ -769,6 +773,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         setWorkspace((current) => appendAiAssistantFailureMessage(current, "direction-preview-blocked", message, undefined));
         return;
       }
+      const requestedPreviewCount = intent === "directionPreview" ? directionPreviewCount : 1;
+      if (intent === "directionPreview") {
+        const countValidation = validateRequestedPreviewCount(selectedDirectionIds.length, requestedPreviewCount);
+        if (countValidation.status === "blocked") {
+          setAiDraft(draft);
+          setImageTaskStatus({ state: "failed", message: countValidation.reason });
+          setWorkspace((current) => appendAiAssistantFailureMessage(current, "direction-preview-count-blocked", countValidation.reason, undefined));
+          return;
+        }
+      }
 
       const initialVisualTarget =
         intent === "visualDevelopment"
@@ -780,12 +794,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return;
       }
 
-      const context = assembleAiContext(workspace, {
+      const context = buildTaskContext(workspace, {
+        kind: intent,
         draft,
         selectedObjectIds,
-        explicitObjectIds: [],
-        task: "visualDevelopment",
-        visualTargetDirectionId: initialVisualTarget.directionId,
+        targetDirectionIds: selectedDirectionIds.length > 0 ? selectedDirectionIds : initialVisualTarget.directionId ? [initialVisualTarget.directionId] : [],
         visualBranchId: initialVisualTarget.visualBranchId
       });
       const operationId = `operation-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -794,7 +807,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       const userMessageId = `ai-user-image-${Date.now()}`;
       const assistantMessageId = `ai-assistant-image-${Date.now()}`;
       const controller = new AbortController();
-      const objectSummaries = makeObjectSummaries(workspace, context.objectIds);
+      const objectSummaries = makeTaskObjectSummaries(context.semanticSummaries);
       abortControllerRef.current = controller;
       setIsAiStreaming(true);
       setAiDraft("");
@@ -804,8 +817,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         state: "preparing",
         message:
           intent === "directionPreview"
-            ? `已识别为：方向预览生成。将先规划 ${selectedDirectionIds.length} 张首版预览，再顺序生成。`
-            : "已识别为：图片视觉迭代。将先规划视觉目标，再生成新图片。"
+            ? `正在整理本次 Context：${selectedDirectionIds.length} 个方向 × 每方向 ${requestedPreviewCount} 张 = 总计 ${selectedDirectionIds.length * requestedPreviewCount} 张。`
+            : "正在整理本次 Context：将纳入已选图片、方向、分支和必要资料。"
       });
       setWorkspace((current) => {
         const operationCreated = createImageGenerationOperation(current, {
@@ -820,7 +833,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           sizeOption: effectiveImageGenerationSettings.sizeOption,
           referenceObjectIds: context.objectIds,
           directionObjectId: initialVisualTarget.directionId,
-          visualBranchId: initialVisualTarget.visualBranchId
+          visualBranchId: initialVisualTarget.visualBranchId,
+          requestedPreviewCount: intent === "directionPreview" ? requestedPreviewCount : undefined
         });
 
         return {
@@ -842,8 +856,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 role: "assistant",
                 body:
                   intent === "directionPreview"
-                    ? `已识别为：方向预览生成。目标 ${selectedDirectionIds.length} 个方向，每个方向默认 1 张首版概念预览；不会覆盖已有图片。`
-                    : "已识别为：图片视觉迭代。会创建新图像对象，不覆盖来源图、默认参考或交付引用。",
+                    ? `正在整理本次 Context：目标 ${selectedDirectionIds.length} 个方向，每方向 ${requestedPreviewCount} 张，总计 ${selectedDirectionIds.length * requestedPreviewCount} 张；不会覆盖已有图片。`
+                    : "正在整理本次 Context：会创建新图像对象，不覆盖来源图、默认参考或交付引用。",
                 createdAt: now,
                 status: "streaming",
                 contextObjectIds: context.objectIds,
@@ -860,6 +874,23 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       let lastProviderTaskId: string | undefined;
 
       try {
+        const attachmentResult = await collectMiMoImageAttachments(workspace, context.imageObjectIds, controller.signal);
+        const documentResult = await collectDocumentExtractsForAi(
+          workspace,
+          context.documentObjectIds,
+          indexedDbBlobStore,
+          controller.signal
+        );
+        const contextWarnings = [
+          context.skipped.length > 0 ? `${context.skipped.length} 个对象未进入本次 Context。` : "",
+          attachmentResult.warning,
+          documentResult.warning
+        ].filter(Boolean);
+        setContextWarning(contextWarnings.join(" ") || undefined);
+        setImageTaskStatus({
+          state: "preparing",
+          message: "正在分析视觉目标：MiMo 将只看到本次已授权的图片、文档提取和对象摘要。"
+        });
         const planResponse = await fetch("/api/ai/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -870,9 +901,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             workIntent: "discussion",
             messages: workspace.ai.messages.map((message) => ({ role: message.role, body: message.body })),
             objectSummaries,
-            attachments: [],
-            documentExtracts: [],
-            defaultReferenceStatus: summarizeDefaultReferenceStatus(context.defaultReferenceStatus)
+            attachments: attachmentResult.attachments,
+            documentExtracts: documentResult.extracts,
+            defaultReferenceStatus: summarizeTaskDefaultReferenceStatus(context.defaultReference)
           }),
           signal: controller.signal
         });
@@ -897,7 +928,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           plan: parsedPlan.plan,
           allowedObjectIds: context.objectIds,
           selectedDirectionIds,
-          selectedImageIds
+          selectedImageIds,
+          requestedPreviewCount
         });
         if (validatedPlan.status === "blocked") {
           throw new Error(validatedPlan.reason);
@@ -910,7 +942,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               plan: validatedPlan.plan
             }),
             assistantMessageId,
-            `MiMo 已形成受控视觉计划：${validatedPlan.plan.items.length} 项。接下来将顺序生成，当前模型 ${effectiveImageGenerationSettings.modelLabel}，不会覆盖来源图。`,
+            `已形成生成计划：${validatedPlan.plan.items.length} 项。接下来将顺序生成，当前模型 ${effectiveImageGenerationSettings.modelLabel}，不会覆盖来源图。`,
             "streaming"
           )
         );
@@ -919,7 +951,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           try {
             setImageTaskStatus({
               state: "submitting",
-              message: `正在生成 ${index + 1}/${validatedPlan.plan.items.length}：${item.title}`
+              message: `正在生成第 ${index + 1} / ${validatedPlan.plan.items.length} 张：${item.title}`
             });
             setWorkspace((current) =>
               updateAiMessage(
@@ -965,7 +997,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
             setImageTaskStatus({
               state: "downloading",
-              message: `正在保存 ${index + 1}/${validatedPlan.plan.items.length}：${item.title}`
+              message: `正在保存结果：${index + 1}/${validatedPlan.plan.items.length} ${item.title}`
             });
             const mimeType = imageResponse.headers.get("Content-Type") ?? "image/png";
             const blob = await imageResponse.blob();
@@ -1005,7 +1037,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 title: item.title,
                 summary: item.purpose,
                 role: item.role,
-                position: getGeneratedImagePlacement(current, item, index)
+                position: getGeneratedImagePlacement(current, validatedPlan.plan.items, item, index)
               });
               createdObjectId = generated.createdObjectId;
               return recordImageGenerationOperationResult(generated.workspace, {
@@ -1059,7 +1091,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         setFocusRequest((current) => ({ objectId: lastCreatedObjectId, nonce: current.nonce + 1 }));
         setImageTaskStatus({
           state: "succeeded",
-          message: `已保存 ${createdObjectIds.length} 张新图像。`
+          message: failedItems.length > 0 ? `部分完成：已保存 ${createdObjectIds.length} 张，失败 ${failedItems.length} 项。` : `已完成：已保存 ${createdObjectIds.length} 张新图像。`
         });
       } catch (error) {
         const isCancelled = error instanceof DOMException && error.name === "AbortError";
@@ -1090,6 +1122,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     },
     [
       effectiveImageGenerationSettings,
+      directionPreviewCount,
       selectedObjectIds,
       selectedObjects,
       setWorkspace,
@@ -1119,11 +1152,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
 
     const task = resolveAiContextTask(executionTaskMode, executionWorkIntent);
-    const context = assembleAiContext(workspace, {
+    const legacyContext = assembleAiContext(workspace, {
       draft,
       selectedObjectIds,
       explicitObjectIds: [],
       task
+    });
+    const context = buildTaskContext(workspace, {
+      kind: taskContextKindFromAiTask(task),
+      draft,
+      selectedObjectIds
     });
     const shouldCreateSemanticOperation =
       expectsDesignDefinitionProposal(executionWorkIntent) || expectsConceptDirectionProposal(executionWorkIntent);
@@ -1142,18 +1180,18 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             operationId: semanticOperationId,
             type: task,
             userInput: draft,
-            selectedObjectIds: context.objectIds,
+            selectedObjectIds: legacyContext.objectIds,
             workIntent: executionWorkIntent
           })
         : undefined;
     setContextWarning(
-      context.defaultReferenceStatus.status === "hidden" ? context.defaultReferenceStatus.message : undefined
+      legacyContext.defaultReferenceStatus.status === "hidden" ? legacyContext.defaultReferenceStatus.message : undefined
     );
 
     const now = new Date().toISOString();
     const userMessageId = `ai-user-${Date.now()}`;
     const assistantMessageId = `ai-assistant-${Date.now()}`;
-    const objectSummaries = makeObjectSummaries(workspace, context.objectIds);
+    const objectSummaries = makeTaskObjectSummaries(context.semanticSummaries);
     const controller = new AbortController();
     const webSearch = buildWebSearchOptions({ draft, taskMode: executionTaskMode });
     abortControllerRef.current = controller;
@@ -1173,7 +1211,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             role: "user",
             body: draft,
             createdAt: now,
-            contextObjectIds: context.objectIds,
+            contextObjectIds: legacyContext.objectIds,
             taskMode: executionTaskMode,
             recommendedTaskMode,
             workIntent: executionWorkIntent,
@@ -1185,7 +1223,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             body: "",
             createdAt: now,
             status: "streaming",
-            contextObjectIds: context.objectIds,
+            contextObjectIds: legacyContext.objectIds,
             taskMode: executionTaskMode,
             workIntent: executionWorkIntent
           }
@@ -1200,14 +1238,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         taskMode: executionTaskMode,
         selectedObjects
       })
-        ? await collectMiMoImageAttachments(workspace, context.objectIds, controller.signal)
+        ? await collectMiMoImageAttachments(workspace, context.imageObjectIds, controller.signal)
         : { attachments: [], skippedObjectIds: [], warning: undefined };
       const documentResult = await collectDocumentExtractsForAi(
         workspace,
-        context.objectIds,
+        context.documentObjectIds,
         indexedDbBlobStore,
         controller.signal
       );
+      const warnings = [
+        context.skipped.length > 0 ? `${context.skipped.length} 个对象未进入本次 Context。` : "",
+        attachmentResult.warning,
+        documentResult.warning
+      ].filter(Boolean);
+      setContextWarning(warnings.join(" ") || undefined);
       const response = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1221,7 +1265,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           attachments: attachmentResult.attachments,
           documentExtracts: documentResult.extracts,
           webSearch,
-          defaultReferenceStatus: summarizeDefaultReferenceStatus(context.defaultReferenceStatus)
+          defaultReferenceStatus: summarizeTaskDefaultReferenceStatus(context.defaultReference)
         }),
         signal: controller.signal
       });
@@ -1283,7 +1327,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             opportunities: designDefinitionProposal.proposal.opportunities,
             openQuestions: designDefinitionProposal.proposal.openQuestions,
             changeNote: designDefinitionProposal.proposal.changeNote,
-            sourceObjectIds: context.objectIds,
+            sourceObjectIds: legacyContext.objectIds,
             citations: streamResult.citations,
             operationId: semanticOperationId,
             basedOnDesignDefinitionId: currentDefinition?.id,
@@ -1309,7 +1353,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             title: conceptDirectionProposal.proposal.title,
             summary: conceptDirectionProposal.proposal.summary,
             directions: conceptDirectionProposal.proposal.directions,
-            sourceObjectIds: context.objectIds,
+            sourceObjectIds: legacyContext.objectIds,
             citations: streamResult.citations,
             operationId: semanticOperationId,
             basedOnDesignDefinitionId:
@@ -1558,6 +1602,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
+    const plannedIntent = classifyVisualGenerationIntent(draft, selectedObjects);
+    if (plannedIntent) {
+      await handleRunVisualGenerationOperation(draft);
+      return;
+    }
+
     const operationGate = canStartOperation(workspace);
     if (operationGate.status === "blocked") {
       setAiDraft(draft);
@@ -1784,6 +1834,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   }, [
     aiDraft,
     effectiveImageGenerationSettings,
+    handleRunVisualGenerationOperation,
     isAiStreaming,
     localEditObjectId,
     selectedObjectIds,
@@ -2250,6 +2301,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         isStreaming={isAiStreaming}
         imageGenerationSettings={effectiveImageGenerationSettings}
         imageGenerationModelOptions={imageGenerationModelOptions}
+        directionPreviewCount={directionPreviewCount}
         pendingConfirmation={pendingConfirmation}
         showFailure={showFailure}
         imageTaskStatus={imageTaskStatus}
@@ -2260,6 +2312,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onTaskModeChange={setTaskMode}
         onWorkIntentChange={handleWorkIntentChange}
         onImageGenerationSettingsChange={updateImageGenerationSettings}
+        onDirectionPreviewCountChange={setDirectionPreviewCount}
         onSuggestionClick={handleSuggestionClick}
         onSendMessage={handleSendAiMessage}
         onCancelRequest={handleCancelAiRequest}
@@ -2380,9 +2433,29 @@ function getPlacementNearObjects(
 
 function getGeneratedImagePlacement(
   workspace: MorphoWorkspace,
+  planItems: VisualGenerationPlanItem[],
   item: VisualGenerationPlanItem,
   index: number
 ): { x: number; y: number } {
+  if (item.targetDirectionId) {
+    const directionItems = planItems.filter((candidate) => candidate.targetDirectionId === item.targetDirectionId);
+    if (directionItems.length > 1 || item.role === "conceptImage") {
+      const placements = planDirectionPreviewPlacements(
+        workspace,
+        directionItems.map((candidate) => ({
+          id: candidate.id,
+          targetDirectionId: candidate.targetDirectionId,
+          width: 320,
+          height: 240
+        }))
+      );
+      const placement = placements.find((candidate) => candidate.planItemId === item.id);
+      if (placement) {
+        return placement.position;
+      }
+    }
+  }
+
   const sourceInstance = item.referenceObjectIds
     .map((objectId) => workspace.canvas.instances.find((instance) => instance.objectId === objectId))
     .find(Boolean);
@@ -2524,6 +2597,15 @@ function makeObjectSummaries(workspace: MorphoWorkspace, objectIds: string[]) {
     }));
 }
 
+function makeTaskObjectSummaries(summaries: Array<{ id: string; type: string; title: string; summary: string; detail?: string }>) {
+  return summaries.map((summary) => ({
+    id: summary.id,
+    type: summary.type,
+    title: summary.title,
+    summary: summary.detail ? `${summary.summary}\n${summary.detail}` : summary.summary
+  }));
+}
+
 function summarizeDefaultReferenceStatus(status: ReturnType<typeof assembleAiContext>["defaultReferenceStatus"]): string {
   switch (status.status) {
     case "available":
@@ -2534,6 +2616,19 @@ function summarizeDefaultReferenceStatus(status: ReturnType<typeof assembleAiCon
       return `missing:${status.message}`;
     case "notRelevant":
       return "notRelevant";
+  }
+}
+
+function summarizeTaskDefaultReferenceStatus(status: TaskContextDefaultReference): string {
+  switch (status.status) {
+    case "included":
+      return `included:${status.objectId}:${status.reason}`;
+    case "hidden":
+      return `hidden:${status.objectId}:${status.reason}`;
+    case "missing":
+      return `missing:${status.reason}`;
+    case "notIncluded":
+      return status.objectId ? `notIncluded:${status.objectId}:${status.reason}` : `notIncluded:${status.reason}`;
   }
 }
 

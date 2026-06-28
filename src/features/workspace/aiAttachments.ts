@@ -53,7 +53,7 @@ export function shouldAttachImagesForMiMo(input: {
   selectedObjects: MorphoObject[];
 }): boolean {
   void input.draft;
-  return input.taskMode !== "imageGeneration" && input.selectedObjects.some((object) => object.type === "image" && object.visibility === "active");
+  return input.selectedObjects.some((object) => object.type === "image" && object.visibility === "active");
 }
 
 export function buildWebSearchOptions(input: {

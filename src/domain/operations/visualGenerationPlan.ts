@@ -16,6 +16,7 @@ export type ValidateVisualGenerationPlanInput = {
   allowedObjectIds: string[];
   selectedDirectionIds: string[];
   selectedImageIds: string[];
+  requestedPreviewCount?: number;
 };
 
 export type ValidateVisualGenerationPlanResult =
@@ -29,6 +30,8 @@ export type ValidateVisualGenerationPlanResult =
     };
 
 const ALLOWED_IMAGE_ROLES: ImageRole[] = ["conceptImage", "sceneVisual", "cmfStudy", "detailStudy", "preview"];
+const DIRECTION_PREVIEW_COUNTS = [1, 2, 4, 6] as const;
+const MAX_DIRECTION_PREVIEW_TOTAL = 8;
 
 export function parseVisualGenerationPlanPayload(text: string): ParseVisualGenerationPlanResult {
   const jsonText = extractJsonBlock(text);
@@ -73,12 +76,16 @@ export function validateVisualGenerationPlan(
   const selectedImageIds = new Set(input.selectedImageIds);
   const sanitizedItems: VisualGenerationPlanItem[] = [];
 
-  if (input.plan.kind === "directionPreview" && input.plan.items.length > 3) {
-    return { status: "blocked", reason: "方向预览首版最多一次生成 3 张图。" };
-  }
-
-  if (input.plan.kind === "directionPreview" && input.plan.items.length !== selectedDirectionIds.size) {
-    return { status: "blocked", reason: "方向预览计划必须与已选方向一一对应。" };
+  const requestedPreviewCount = input.requestedPreviewCount ?? 1;
+  if (input.plan.kind === "directionPreview") {
+    const countValidation = validateRequestedPreviewCount(selectedDirectionIds.size, requestedPreviewCount);
+    if (countValidation.status === "blocked") {
+      return countValidation;
+    }
+    const expectedTotal = selectedDirectionIds.size * requestedPreviewCount;
+    if (input.plan.items.length !== expectedTotal) {
+      return { status: "blocked", reason: `方向预览计划必须覆盖每个已选方向，并且每方向精确生成 ${requestedPreviewCount} 张。` };
+    }
   }
 
   for (const item of input.plan.items) {
@@ -95,10 +102,13 @@ export function validateVisualGenerationPlan(
 
     if (input.plan.kind === "directionPreview") {
       if (!item.targetDirectionId || !selectedDirectionIds.has(item.targetDirectionId)) {
-        return { status: "blocked", reason: "方向预览计划必须一张图对应一个已选概念方向。" };
+        return { status: "blocked", reason: "方向预览计划只能对应已选概念方向。" };
       }
       if (item.visualBranchId) {
         return { status: "blocked", reason: "方向首张预览图不能自动创建或绑定视觉分支。" };
+      }
+      if (item.role !== "conceptImage") {
+        return { status: "blocked", reason: "方向预览计划的每一张图都必须使用 conceptImage 角色。" };
       }
     }
 
@@ -135,9 +145,17 @@ export function validateVisualGenerationPlan(
   }
 
   if (input.plan.kind === "directionPreview") {
-    const targets = sanitizedItems.map((item) => item.targetDirectionId);
-    if (new Set(targets).size !== sanitizedItems.length) {
-      return { status: "blocked", reason: "方向预览计划不能为同一方向重复生成首版预览。" };
+    const countByDirection = new Map<string, number>();
+    for (const item of sanitizedItems) {
+      if (!item.targetDirectionId) {
+        continue;
+      }
+      countByDirection.set(item.targetDirectionId, (countByDirection.get(item.targetDirectionId) ?? 0) + 1);
+    }
+    for (const directionId of selectedDirectionIds) {
+      if ((countByDirection.get(directionId) ?? 0) !== requestedPreviewCount) {
+        return { status: "blocked", reason: `方向预览计划必须为每个已选方向精确生成 ${requestedPreviewCount} 张。` };
+      }
     }
   }
 
@@ -148,6 +166,20 @@ export function validateVisualGenerationPlan(
       items: sanitizedItems
     }
   };
+}
+
+export function validateRequestedPreviewCount(
+  directionCount: number,
+  requestedPreviewCount: number
+): { status: "ok" } | { status: "blocked"; reason: string } {
+  if (!DIRECTION_PREVIEW_COUNTS.includes(requestedPreviewCount as (typeof DIRECTION_PREVIEW_COUNTS)[number])) {
+    return { status: "blocked", reason: "每方向预览数只能是 1、2、4 或 6。" };
+  }
+  const total = directionCount * requestedPreviewCount;
+  if (total > MAX_DIRECTION_PREVIEW_TOTAL) {
+    return { status: "blocked", reason: `本次将生成 ${total} 张，超过单次上限 8 张。请降低每方向预览数或分批生成。` };
+  }
+  return { status: "ok" };
 }
 
 export function inferImageRole(prompt: string): ImageRole {

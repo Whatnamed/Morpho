@@ -27,7 +27,7 @@ describe("workspace MiMo attachment planning", () => {
     ).toEqual(["image-active-a", "image-active-b", "image-active-c", "image-active-d", "image-active-e"]);
   });
 
-  it("uses selected active images for chat and research, but never for image generation chat route", () => {
+  it("uses selected active images for chat, research, and imageGeneration planning", () => {
     const workspace = withImages(createBlankWorkspace("project-test"));
     const selectedObjects = ["image-active-a"].map((id) => workspace.objects[id]);
 
@@ -51,7 +51,7 @@ describe("workspace MiMo attachment planning", () => {
         taskMode: "imageGeneration",
         selectedObjects
       })
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("plans image compression with max side and target bytes", () => {

@@ -93,6 +93,15 @@ Schema v7 and M4.2 additions:
 - visual generation asks MiMo for a structured visual plan, validates that plan against selected sources and direction ownership, then calls GrsAI once per plan item. Each successful result becomes a new image object with generation metadata and direction/branch/source relations; partial failures remain attached to the image-generation Operation;
 - design-chain tracing is computed on demand from objects, relations, revisions, visual branches, generation metadata, and decision records. The bottom detail surface shows the trace summary and the canvas draws a temporary overlay between traced objects without writing workspace state.
 
+M4.3 additions:
+
+- task-specific AI input assembly is centralized in `src/features/workspace/taskContext.ts` instead of being scattered through `WorkspaceClient.tsx`;
+- task context is explicit and bounded by task kind, current selection, direct semantic dependencies, conditional default reference, selected image pixels, and selected local document extracts;
+- hidden objects remain excluded from default AI context and are reported through predictable skip reasons when they are selected or otherwise encountered;
+- `imageGeneration` planning requests to MiMo can now include authorized image attachments and local `documentExtract` text, while `imageGeneration` still never receives web search;
+- direction preview supports controllable multi-preview counts per selected direction with runtime validation and operation-level audit metadata;
+- direction-preview image placement is planned through a deterministic layout helper instead of piling all generated results into one fallback area.
+
 ## Local-First Persistence
 
 Project catalog and structured workspace JSON use localStorage:
@@ -144,6 +153,7 @@ Text chat:
 - Task routing uses manual user selection as execution authority, while the default discussion/chat state can adopt recommended research, image-generation, design-definition, or concept-direction execution paths automatically.
 - For `chatAnalysis` and `researchOperation`, selected active image assets are read from IndexedDB and sent through an adaptive visual input pack. Small selections are sent as individual compressed images; larger selections are represented by one or more generated contact sheets so every selected image participates without a user-visible image count limit. The server sends the resulting images as OpenAI-compatible `image_url` content to the configured multimodal model.
 - For `chatAnalysis` and `researchOperation`, selected parsed file objects can send bounded local `documentExtract` text to MiMo. These extracts are identified as local object sources, not as network citations.
+- For `imageGeneration` planning only, MiMo can also receive selected active image pixels/contact sheets plus selected local `documentExtract` text when the current task context authorizes them. The route validation keeps those inputs for planning, but `imageGeneration` still never receives web search tools.
 - Hidden images, unselected old images, default references, and whole-canvas screenshots are not sent by default.
 - When `MORPHO_MIMO_WEB_SEARCH_ENABLED=true`, `chatAnalysis` and `researchOperation` provide MiMo native `web_search` to the model. The model decides whether the current request needs external verification or source supplementation. `imageGeneration` never receives web search tools.
 - Citation snapshots are created only from provider citation/annotation fields. Morpho does not fabricate sources from normal assistant text.
@@ -164,7 +174,8 @@ Image generation:
 - Image generation operations persist `operationId`, `clientRequestId`, optional provider task ID, status, prompt, references, model/profile, and timing. Uncertain network responses are not automatically resubmitted.
 - Visual generation can start from selected images, concept directions, design definitions, or a text prompt. Source/version relations are created only when image sources are present; selected concept directions create `belongsToDirection`.
 - Direction-preview and visual-development generation first compile a MiMo `morphoVisualGenerationPlan`. The browser validates object IDs, direction/branch scope, source mix, result count, and visual role before making GrsAI image calls.
-- Operation metadata stores the visual plan, created result object IDs, and per-item failures so a partial multi-image run remains inspectable.
+- Direction-preview generation supports `1`, `2`, `4`, or `6` previews per selected direction, with a hard total limit of `8` items per run. The chosen preview count is recorded into image-generation Operation metadata as `requestedPreviewCount`.
+- Operation metadata stores the visual plan, requested preview count, created result object IDs, and per-item failures so a partial multi-image run remains inspectable.
 
 AI boundary:
 
@@ -173,6 +184,7 @@ AI boundary:
 - Image generation always creates a new image object and never overwrites a source image.
 - Research operation output can auto-create a research card, but it does not auto-apply key conclusions, design definitions, concept directions, direction status, default references, or delivery decisions.
 - MiMo visual input is explicit and bounded by selected active images only. It is adaptively compressed or packed into contact sheets before upload, and never stored as Base64 in workspace/localStorage.
+- MiMo planning context for `imageGeneration` may be richer than GrsAI generation context, but GrsAI still receives only prompt, model settings, and generation references. Local document extracts never flow into `/api/ai/image`.
 - Local document extracts are bounded context inputs, are not stored in workspace JSON, and are never presented as provider citations.
 - If image read/compression fails, the chat falls back to object metadata and user text and tells the user that pixels were not sent.
 

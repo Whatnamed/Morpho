@@ -60,6 +60,7 @@ type AiConversationPanelProps = {
   isStreaming: boolean;
   imageGenerationSettings: ImageGenerationSettings;
   imageGenerationModelOptions: ImageGenerationModelOption[];
+  directionPreviewCount: 1 | 2 | 4 | 6;
   pendingConfirmation: PendingAiConfirmation | null;
   showFailure: boolean;
   imageTaskStatus?: {
@@ -77,6 +78,7 @@ type AiConversationPanelProps = {
     aspectRatio?: GrsImageAspectRatio;
     sizeOption?: string;
   }) => void;
+  onDirectionPreviewCountChange: (count: 1 | 2 | 4 | 6) => void;
   onSuggestionClick: (suggestion: Suggestion) => void;
   onSendMessage: () => void;
   onCancelRequest: () => void;
@@ -136,6 +138,7 @@ export function AiConversationPanel({
   isStreaming,
   imageGenerationSettings,
   imageGenerationModelOptions,
+  directionPreviewCount,
   pendingConfirmation,
   showFailure,
   imageTaskStatus,
@@ -146,6 +149,7 @@ export function AiConversationPanel({
   onTaskModeChange,
   onWorkIntentChange,
   onImageGenerationSettingsChange,
+  onDirectionPreviewCountChange,
   onSuggestionClick,
   onSendMessage,
   onCancelRequest,
@@ -165,6 +169,10 @@ export function AiConversationPanel({
   const confirmationTitle = pendingConfirmation ? getPendingConfirmationTitle(pendingConfirmation) : null;
   const confirmationBody = pendingConfirmation ? getPendingConfirmationBody(pendingConfirmation) : null;
   const confirmationActionLabel = pendingConfirmation ? getPendingConfirmationActionLabel(pendingConfirmation) : null;
+  const selectedDirectionCount = selectedObjects.filter((object) => object.type === "conceptDirection").length;
+  const showDirectionPreviewCount =
+    selectedDirectionCount > 0 && selectedDirectionCount <= 3 && (taskMode === "imageGeneration" || recommendedTaskMode === "imageGeneration");
+  const directionPreviewTotal = selectedDirectionCount * directionPreviewCount;
 
   return (
     <>
@@ -435,10 +443,33 @@ export function AiConversationPanel({
                   </select>
                 </label>
               ) : null}
+              {showDirectionPreviewCount ? (
+                <label>
+                  <span>每方向预览数</span>
+                  <select
+                    value={directionPreviewCount}
+                    onChange={(event) =>
+                      onDirectionPreviewCountChange(Number(event.currentTarget.value) as 1 | 2 | 4 | 6)
+                    }
+                  >
+                    {[1, 2, 4, 6].map((count) => (
+                      <option key={count} value={count}>
+                        {count}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <div className="image-settings-note">
                 <span>{formatCapabilities(imageGenerationSettings.capabilities)}</span>
                 <span>费用以服务商控制台为准</span>
               </div>
+              {showDirectionPreviewCount ? (
+                <div className={directionPreviewTotal > 8 ? "image-settings-warning" : "image-settings-note"}>
+                  {selectedDirectionCount} 个方向 × 每方向 {directionPreviewCount} 张 = 总计 {directionPreviewTotal} 张
+                  {directionPreviewTotal > 8 ? "，超过单次上限 8 张，请降低每方向预览数或分批生成。" : ""}
+                </div>
+              ) : null}
             </div>
           ) : null}
 

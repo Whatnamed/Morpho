@@ -218,6 +218,7 @@ export type ImageGenerationOperationMetadata = {
   referenceObjectIds: OperationObjectId[];
   directionObjectId?: OperationObjectId;
   visualBranchId?: OperationObjectId;
+  requestedPreviewCount?: number;
   resultObjectId?: OperationObjectId;
   resultObjectIds?: OperationObjectId[];
   plan?: VisualGenerationPlan;

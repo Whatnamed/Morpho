@@ -25,10 +25,11 @@ export type AvailableAiWorkIntentInput = {
 };
 
 const EXPLICIT_IMAGE_GENERATION_PATTERN =
-  /继续发展(?:这张|图像|图片)?|生成(?:(?:一张|几张|每个方向|每条方向|各方向).*(?:图|图片|预览)|场景图|角度图|cmf图|细节图|预览图|效果图|新视觉方案)|出图|图像生成|图像任务|方向预览/i;
+  /继续发展(?:这张|图像|图片)?|生成(?:(?:一张|几张|每个方向|每条方向|各方向|这些方向|这几个方向).*(?:图|图片|预览)|场景图|角度图|cmf图|细节图|预览图|效果图|新视觉方案)|出图|分别.*(?:生成|出).*(?:图|预览)|图像生成|图像任务|方向预览|改成.*场景/i;
 const GENERIC_TEXT_GENERATION_PATTERN = /生成(?:一段|一份|文案|说明|文字|摘要|标题|图注|交付说明)/i;
 const IMAGE_ANALYSIS_PATTERN = /分析这张图|比较这几张图|提取.*形态|视觉分析|看图|图片.*问题/i;
-const RESEARCH_PATTERN = /调研|研究|整理研究|联网补充|补充来源|查资料|搜索资料/i;
+const RESEARCH_PATTERN = /调研|研究|整理研究|联网补充|补充来源|查资料|搜索资料|分析这些(?:资料|文件|pdf|pptx?|markdown)|看看这些(?:资料|文件)|帮我梳理|基于这些(?:材料|资料)|验证一下|查一下/i;
+const MATERIAL_OBJECT_TYPES = new Set(["file", "text", "link", "research"]);
 const COMPARISON_PATTERN = /比较|对比|compare/i;
 const DESIGN_DEFINITION_PATTERN = /设计定义|定义|原则|边界|核心问题/i;
 const REVISE_PATTERN = /更新|修订|修改|调整|rewrite|revise/i;
@@ -38,14 +39,16 @@ const SPLIT_PATTERN = /拆分|split/i;
 const MERGE_PATTERN = /合并|merge/i;
 
 export function recommendAiTaskMode(draft: string, selectedObjectTypes: readonly string[]): AiTaskMode {
-  void selectedObjectTypes;
   const text = draft.trim();
+  const hasMaterialSelection = selectedObjectTypes.some((type) => MATERIAL_OBJECT_TYPES.has(type));
+  const selectedDirectionCount = selectedObjectTypes.filter((type) => type === "conceptDirection").length;
+  const hasImageSelection = selectedObjectTypes.includes("image");
 
   if (!text) {
     return "chatAnalysis";
   }
 
-  if (RESEARCH_PATTERN.test(text)) {
+  if (hasMaterialSelection && RESEARCH_PATTERN.test(text)) {
     return "researchOperation";
   }
 
@@ -53,8 +56,16 @@ export function recommendAiTaskMode(draft: string, selectedObjectTypes: readonly
     return "chatAnalysis";
   }
 
-  if (!GENERIC_TEXT_GENERATION_PATTERN.test(text) && EXPLICIT_IMAGE_GENERATION_PATTERN.test(text)) {
+  if (
+    !GENERIC_TEXT_GENERATION_PATTERN.test(text) &&
+    EXPLICIT_IMAGE_GENERATION_PATTERN.test(text) &&
+    (selectedDirectionCount > 0 || hasImageSelection || /图|预览|场景|cmf|细节/i.test(text))
+  ) {
     return "imageGeneration";
+  }
+
+  if (RESEARCH_PATTERN.test(text) && /联网|搜索|查一下|验证|调研|研究/i.test(text)) {
+    return "researchOperation";
   }
 
   return "chatAnalysis";

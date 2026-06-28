@@ -12,6 +12,25 @@ import {
 } from "./aiTaskRouting";
 
 describe("workspace AI task routing", () => {
+  it("routes realistic Chinese prompts from text plus selected object types", () => {
+    expect(recommendAiTaskMode("分析这些 PDF，整理第一轮研究", ["file"])).toBe("researchOperation");
+    expect(recommendAiTaskMode("看看这些资料，帮我梳理机会点", ["file", "text"])).toBe("researchOperation");
+    expect(recommendAiTaskMode("分析这张图的问题", ["image"])).toBe("chatAnalysis");
+    expect(recommendAiTaskMode("基于这些方向分别生成预览", ["conceptDirection", "conceptDirection"])).toBe("imageGeneration");
+    expect(recommendAiTaskMode("把这张图改成夜间场景", ["image"])).toBe("imageGeneration");
+    expect(recommendAiTaskMode("生成一段说明文字", ["image"])).toBe("chatAnalysis");
+  });
+
+  it("routes selected conclusions into a design definition proposal", () => {
+    expect(
+      recommendAiWorkIntent({
+        draft: "根据这些结论形成设计定义",
+        selectedObjects: [{ type: "keyConclusion" }, { type: "research" }],
+        hasCurrentDesignDefinition: false
+      })
+    ).toBe("createDesignDefinition");
+  });
+
   it("recommends image generation for explicit generation prompts without making selection mandatory", () => {
     expect(recommendAiTaskMode("基于这个方向生成一张夜间使用场景图", [])).toBe("imageGeneration");
   });
