@@ -323,6 +323,123 @@ describe("MiMo chat route request conversion", () => {
     }
   });
 
+  it("keeps bounded structured task context in the MiMo system prompt", () => {
+    const result = validateAiRouteRequest({
+      draft: "基于当前定义继续生成方向预览",
+      task: "directionPreview",
+      taskMode: "imageGeneration",
+      workIntent: "discussion",
+      messages: [],
+      objectSummaries: [],
+      attachments: [],
+      taskContext: {
+        kind: "directionPreview",
+        objectIds: ["direction-soft-rail", "definition-current"],
+        imageObjectIds: ["image-soft-rail-v2"],
+        documentObjectIds: ["file-course-brief"],
+        truncated: false,
+        defaultReference: "included:image-soft-rail-v2",
+        designDefinition: {
+          objectId: "definition-current",
+          revisionId: "definition-revision-current-1",
+          revisionNumber: 1,
+          title: "当前设计定义",
+          summary: "低施工连续支撑",
+          projectGoal: "为夜间起身建立连续辅助系统",
+          targetUsers: ["独居老人"],
+          primaryScenarios: ["夜间起身"],
+          coreProblem: "路径辨认与支撑",
+          designPrinciples: ["低施工"],
+          constraints: ["不重布线"],
+          avoidDirections: ["医疗器械感"],
+          opportunities: ["低位导光"],
+          openQuestions: ["转角如何处理"],
+          sourceObjectIds: ["research-night-path"]
+        },
+        directions: [
+          {
+            objectId: "direction-soft-rail",
+            revisionId: "direction-revision-soft-rail-1",
+            revisionNumber: 1,
+            title: "柔光轨道",
+            summary: "连续墙面轨道",
+            conceptStatement: "把导向、照明和支撑合成一个日常家具化元素",
+            keywords: ["连续轨道"],
+            strategy: "优先保持路径连续性",
+            differentiators: ["支撑与光一体化"],
+            visualSignals: ["暖灰轨道"],
+            risks: ["转角安装复杂"],
+            openQuestions: ["如何降低医疗感"],
+            sourceObjectIds: ["definition-current"],
+            basedOnDefinitionRevisionId: "definition-revision-current-1"
+          }
+        ],
+        visualBranches: [
+          {
+            id: "visual-branch-soft-rail-core",
+            directionId: "direction-soft-rail",
+            label: "核心产品图",
+            rootObjectId: "image-soft-rail-preview"
+          }
+        ],
+        skipped: [{ objectId: "hidden-image", reason: "hidden" }]
+      }
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      const prompt = buildMorphoSystemPrompt(result.value);
+      expect(prompt).toContain("Structured task context");
+      expect(prompt).toContain("definition-current / r1 / 当前设计定义");
+      expect(prompt).toContain("projectGoal: 为夜间起身建立连续辅助系统");
+      expect(prompt).toContain("direction-soft-rail / r1 / 柔光轨道");
+      expect(prompt).toContain("visualSignals: 暖灰轨道");
+      expect(prompt).toContain("visual-branch-soft-rail-core / direction-soft-rail / 核心产品图");
+      expect(prompt).not.toContain("data:image");
+    }
+  });
+
+  it("sanitizes oversized structured task context before prompt construction", () => {
+    const result = validateAiRouteRequest({
+      draft: "继续讨论",
+      taskMode: "chatAnalysis",
+      messages: [],
+      objectSummaries: [],
+      attachments: [],
+      taskContext: {
+        kind: "general",
+        objectIds: Array.from({ length: 40 }, (_, index) => `object-${index}`),
+        imageObjectIds: [],
+        documentObjectIds: [],
+        directions: Array.from({ length: 12 }, (_, index) => ({
+          objectId: `direction-${index}`,
+          revisionId: `revision-${index}`,
+          revisionNumber: index + 1,
+          title: "x".repeat(400),
+          summary: "summary",
+          conceptStatement: "statement",
+          keywords: ["a", "b", "c", "d", "e", "f"],
+          strategy: "strategy",
+          differentiators: [],
+          visualSignals: [],
+          risks: [],
+          openQuestions: [],
+          sourceObjectIds: []
+        })),
+        visualBranches: [],
+        skipped: []
+      }
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.value.taskContext?.objectIds).toHaveLength(16);
+      expect(result.value.taskContext?.directions).toHaveLength(6);
+      expect(result.value.taskContext?.directions[0]?.title).toHaveLength(160);
+      expect(result.value.taskContext?.directions[0]?.keywords).toHaveLength(5);
+    }
+  });
+
   it("does not ask for proposal JSON during ordinary discussion even when task stays general", () => {
     const prompt = buildMorphoSystemPrompt({
       draft: "继续讨论这条研究线索的风险",

@@ -1,0 +1,2 @@
+export const GRS_REFERENCE_IMAGE_LIMIT = 4;
+

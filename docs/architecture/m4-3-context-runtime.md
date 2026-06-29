@@ -113,7 +113,11 @@ Default-reference pixels are included only when all of the following are true:
 - a current default reference exists;
 - it is still active, not hidden;
 - the user draft explicitly asks to keep or reference the current default reference;
-- the request is a direction-preview or visual-development task where that reference is relevant to the current direction scope.
+- the request is a direction-preview or visual-development task;
+- if the default reference belongs to a direction, that direction is in the current target direction scope;
+- if the default reference has no direction, the current visual task has exactly one clear target direction.
+
+Default-reference pixels are never sent for research, general chat, design-definition drafting, or concept-direction drafting. Multi-direction preview does not receive an undirected default reference because there is no single unambiguous target scope.
 
 Presence of a default reference alone never makes it mandatory input.
 
@@ -141,6 +145,7 @@ If selected images span multiple directions, the existing explicit-target-direct
 For visual planning, MiMo can receive:
 
 - structured object summaries;
+- bounded structured `taskContext`, including current design-definition revision fields, current direction revision fields, relevant visual-branch records, skipped-object notes, truncation state, and default-reference status;
 - selected-image pixels or contact sheets;
 - selected local document extracts;
 - default-reference status text;
@@ -230,6 +235,7 @@ Behavior:
 
 - same-direction multi-preview results are placed in a stable small grid;
 - placements anchor near the direction card instead of the viewport center;
+- a direction-preview batch precomputes all result positions once from the pre-generation workspace, so sequential writes cannot push later siblings downward;
 - a new generation round starts below the current same-direction bottom edge;
 - results avoid covering the source direction card and avoid overlapping each other.
 
@@ -244,7 +250,7 @@ Canvas coordinates remain visual-only layout output. They do not encode business
 - max chars per document: `8_000`
 - max total document chars: `24_000`
 - max MiMo images: `16`
-- max Grs reference images: `3`
+- max Grs reference images: `4`
 - max conversation messages: `12`
 
 The task-context result explicitly records:

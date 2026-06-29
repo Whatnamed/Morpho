@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { AiTaskMode, AiWorkIntent, AssetRecord, ImageRole, MorphoObject } from "@/domain/morpho/types";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
+import { GRS_REFERENCE_IMAGE_LIMIT } from "@/domain/morpho/imageLimits";
 import { hasPendingDesignDefinitionRevisionProposal } from "@/domain/morpho/derivedState";
 import { traceDesignChain, type DesignTraceResult } from "@/domain/morpho/designTrace";
 import { createGeneratedImageFromAsset } from "@/domain/morpho/generation";
@@ -43,7 +44,6 @@ import {
   validateVisualGenerationPlan
 } from "@/domain/operations/visualGenerationPlan";
 import {
-  assembleAiContext,
   archiveVisualBranch,
   attachDocumentExtractToFileObject,
   assignImageToVisualBranch,
@@ -90,7 +90,7 @@ import {
 import { buildProposalDiscussionDraft, buildProposalRegenerationDraft } from "./proposalFollowupPrompts";
 import { buildWebSearchOptions, collectMiMoImageAttachments, shouldAttachImagesForMiMo } from "./aiAttachments";
 import { collectDocumentExtractsForAi } from "./documentContext";
-import { buildTaskContext, taskContextKindFromAiTask, type TaskContextDefaultReference } from "./taskContext";
+import { buildProviderTaskContext, buildTaskContext, taskContextKindFromAiTask, type TaskContextDefaultReference } from "./taskContext";
 import { planDirectionPreviewPlacements } from "./visualPreviewLayout";
 import {
   classifyVisualGenerationIntent,
@@ -540,11 +540,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return;
       }
 
-      const context = assembleAiContext(workspace, {
+      const context = buildTaskContext(workspace, {
+        kind: "research",
         draft,
-        selectedObjectIds,
-        explicitObjectIds: [],
-        task: "research"
+        selectedObjectIds
       });
       const webSearch = buildWebSearchOptions({ draft, taskMode: "researchOperation" });
       const created = createResearchOperation(workspace, {
@@ -557,7 +556,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       const userMessageId = `ai-user-research-${Date.now()}`;
       const assistantMessageId = `ai-assistant-research-${Date.now()}`;
       const controller = new AbortController();
-      const objectSummaries = makeObjectSummaries(workspace, context.objectIds);
+      const objectSummaries = makeTaskObjectSummaries(context.semanticSummaries);
 
       abortControllerRef.current = controller;
       setIsAiStreaming(true);
@@ -599,11 +598,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           taskMode: "researchOperation",
           selectedObjects
         })
-          ? await collectMiMoImageAttachments(workspace, context.objectIds, controller.signal)
+          ? await collectMiMoImageAttachments(workspace, context.imageObjectIds, controller.signal)
           : { attachments: [], skippedObjectIds: [], warning: undefined };
         const documentResult = await collectDocumentExtractsForAi(
           workspace,
-          context.objectIds,
+          context.documentObjectIds,
           indexedDbBlobStore,
           controller.signal
         );
@@ -619,7 +618,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             attachments: attachmentResult.attachments,
             documentExtracts: documentResult.extracts,
             webSearch,
-            defaultReferenceStatus: "notRelevant"
+            defaultReferenceStatus: summarizeTaskDefaultReferenceStatus(context.defaultReference),
+            taskContext: buildProviderTaskContext(context)
           }),
           signal: controller.signal
         });
@@ -903,7 +903,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             objectSummaries,
             attachments: attachmentResult.attachments,
             documentExtracts: documentResult.extracts,
-            defaultReferenceStatus: summarizeTaskDefaultReferenceStatus(context.defaultReference)
+            defaultReferenceStatus: summarizeTaskDefaultReferenceStatus(context.defaultReference),
+            taskContext: buildProviderTaskContext(context)
           }),
           signal: controller.signal
         });
@@ -934,6 +935,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         if (validatedPlan.status === "blocked") {
           throw new Error(validatedPlan.reason);
         }
+        const directionPreviewPlacementMap =
+          intent === "directionPreview"
+            ? new Map(
+                planDirectionPreviewPlacements(
+                  workspace,
+                  validatedPlan.plan.items.map((planItem) => ({
+                    id: planItem.id,
+                    targetDirectionId: planItem.targetDirectionId,
+                    width: 320,
+                    height: 240
+                  }))
+                ).map((placement) => [placement.planItemId, placement.position] as const)
+              )
+            : new Map<string, { x: number; y: number }>();
 
         setWorkspace((current) =>
           updateAiMessage(
@@ -1037,7 +1052,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 title: item.title,
                 summary: item.purpose,
                 role: item.role,
-                position: getGeneratedImagePlacement(current, validatedPlan.plan.items, item, index)
+                position: getGeneratedImagePlacement(current, validatedPlan.plan.items, item, index, directionPreviewPlacementMap.get(item.id))
               });
               createdObjectId = generated.createdObjectId;
               return recordImageGenerationOperationResult(generated.workspace, {
@@ -1152,12 +1167,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
 
     const task = resolveAiContextTask(executionTaskMode, executionWorkIntent);
-    const legacyContext = assembleAiContext(workspace, {
-      draft,
-      selectedObjectIds,
-      explicitObjectIds: [],
-      task
-    });
     const context = buildTaskContext(workspace, {
       kind: taskContextKindFromAiTask(task),
       draft,
@@ -1180,13 +1189,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             operationId: semanticOperationId,
             type: task,
             userInput: draft,
-            selectedObjectIds: legacyContext.objectIds,
+            selectedObjectIds: context.objectIds,
             workIntent: executionWorkIntent
           })
         : undefined;
-    setContextWarning(
-      legacyContext.defaultReferenceStatus.status === "hidden" ? legacyContext.defaultReferenceStatus.message : undefined
-    );
+    setContextWarning(context.defaultReference.status === "hidden" ? context.defaultReference.reason : undefined);
 
     const now = new Date().toISOString();
     const userMessageId = `ai-user-${Date.now()}`;
@@ -1211,7 +1218,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             role: "user",
             body: draft,
             createdAt: now,
-            contextObjectIds: legacyContext.objectIds,
+            contextObjectIds: context.objectIds,
             taskMode: executionTaskMode,
             recommendedTaskMode,
             workIntent: executionWorkIntent,
@@ -1223,7 +1230,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             body: "",
             createdAt: now,
             status: "streaming",
-            contextObjectIds: legacyContext.objectIds,
+            contextObjectIds: context.objectIds,
             taskMode: executionTaskMode,
             workIntent: executionWorkIntent
           }
@@ -1265,7 +1272,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           attachments: attachmentResult.attachments,
           documentExtracts: documentResult.extracts,
           webSearch,
-          defaultReferenceStatus: summarizeTaskDefaultReferenceStatus(context.defaultReference)
+          defaultReferenceStatus: summarizeTaskDefaultReferenceStatus(context.defaultReference),
+          taskContext: buildProviderTaskContext(context)
         }),
         signal: controller.signal
       });
@@ -1327,7 +1335,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             opportunities: designDefinitionProposal.proposal.opportunities,
             openQuestions: designDefinitionProposal.proposal.openQuestions,
             changeNote: designDefinitionProposal.proposal.changeNote,
-            sourceObjectIds: legacyContext.objectIds,
+            sourceObjectIds: context.objectIds,
             citations: streamResult.citations,
             operationId: semanticOperationId,
             basedOnDesignDefinitionId: currentDefinition?.id,
@@ -1353,7 +1361,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             title: conceptDirectionProposal.proposal.title,
             summary: conceptDirectionProposal.proposal.summary,
             directions: conceptDirectionProposal.proposal.directions,
-            sourceObjectIds: legacyContext.objectIds,
+            sourceObjectIds: context.objectIds,
             citations: streamResult.citations,
             operationId: semanticOperationId,
             basedOnDesignDefinitionId:
@@ -1623,17 +1631,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
-    const context = assembleAiContext(workspace, {
+    const context = buildTaskContext(workspace, {
+      kind: "visualDevelopment",
       draft,
       selectedObjectIds,
       explicitObjectIds: explicitImageId ? [explicitImageId] : [],
-      task: "visualDevelopment",
-      visualTargetDirectionId: initialVisualTarget.directionId,
+      targetDirectionIds: initialVisualTarget.directionId ? [initialVisualTarget.directionId] : [],
       visualBranchId: initialVisualTarget.visualBranchId
     });
-    setContextWarning(
-      context.defaultReferenceStatus.status === "hidden" ? context.defaultReferenceStatus.message : undefined
-    );
+    setContextWarning(context.defaultReference.status === "hidden" ? context.defaultReference.reason : undefined);
 
     const now = new Date().toISOString();
     const operationId = `operation-image-${Date.now()}`;
@@ -1695,7 +1701,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     let providerTaskId: string | undefined;
 
     try {
-      const referenceImages = await collectImageReferenceDataUrls(workspace, context.objectIds, controller.signal);
+      const referenceImages = await collectImageReferenceDataUrls(workspace, context.imageObjectIds, controller.signal);
       const sourceObjectIds = referenceImages.sourceObjectIds;
       const visualTarget = resolveVisualGenerationTarget(
         workspace,
@@ -2435,8 +2441,13 @@ function getGeneratedImagePlacement(
   workspace: MorphoWorkspace,
   planItems: VisualGenerationPlanItem[],
   item: VisualGenerationPlanItem,
-  index: number
+  index: number,
+  precomputedDirectionPreviewPosition?: { x: number; y: number }
 ): { x: number; y: number } {
+  if (precomputedDirectionPreviewPosition) {
+    return precomputedDirectionPreviewPosition;
+  }
+
   if (item.targetDirectionId) {
     const directionItems = planItems.filter((candidate) => candidate.targetDirectionId === item.targetDirectionId);
     if (directionItems.length > 1 || item.role === "conceptImage") {
@@ -2585,18 +2596,6 @@ function appendOperationBlockedMessage(
   };
 }
 
-function makeObjectSummaries(workspace: MorphoWorkspace, objectIds: string[]) {
-  return objectIds
-    .map((objectId) => workspace.objects[objectId])
-    .filter((object): object is MorphoObject => Boolean(object))
-    .map((object) => ({
-      id: object.id,
-      type: object.type,
-      title: object.title,
-      summary: object.summary
-    }));
-}
-
 function makeTaskObjectSummaries(summaries: Array<{ id: string; type: string; title: string; summary: string; detail?: string }>) {
   return summaries.map((summary) => ({
     id: summary.id,
@@ -2604,19 +2603,6 @@ function makeTaskObjectSummaries(summaries: Array<{ id: string; type: string; ti
     title: summary.title,
     summary: summary.detail ? `${summary.summary}\n${summary.detail}` : summary.summary
   }));
-}
-
-function summarizeDefaultReferenceStatus(status: ReturnType<typeof assembleAiContext>["defaultReferenceStatus"]): string {
-  switch (status.status) {
-    case "available":
-      return `available:${status.objectId}`;
-    case "hidden":
-      return `hidden:${status.objectId}:${status.message}`;
-    case "missing":
-      return `missing:${status.message}`;
-    case "notRelevant":
-      return "notRelevant";
-  }
 }
 
 function summarizeTaskDefaultReferenceStatus(status: TaskContextDefaultReference): string {
@@ -2893,7 +2879,7 @@ async function collectImageReferenceDataUrls(
   const images: string[] = [];
 
   for (const objectId of objectIds) {
-    if (signal.aborted || images.length >= 4) {
+    if (signal.aborted || images.length >= GRS_REFERENCE_IMAGE_LIMIT) {
       break;
     }
 

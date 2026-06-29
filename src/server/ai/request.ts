@@ -47,6 +47,65 @@ export type AiRouteDocumentExtract = {
   truncated: boolean;
 };
 
+export type AiRouteTaskContext = {
+  kind: string;
+  objectIds: string[];
+  imageObjectIds: string[];
+  documentObjectIds: string[];
+  truncated: boolean;
+  defaultReference?: string;
+  designDefinition?: AiRouteDesignDefinitionContext;
+  directions: AiRouteDirectionContext[];
+  visualBranches: AiRouteVisualBranchContext[];
+  skipped: Array<{ objectId: string; reason: string }>;
+};
+
+export type AiRouteDesignDefinitionContext = {
+  objectId: string;
+  revisionId: string;
+  revisionNumber: number;
+  title: string;
+  summary: string;
+  projectGoal: string;
+  targetUsers: string[];
+  primaryScenarios: string[];
+  coreProblem: string;
+  designPrinciples: string[];
+  constraints: string[];
+  avoidDirections: string[];
+  opportunities: string[];
+  openQuestions: string[];
+  sourceObjectIds: string[];
+  previousRevisionId?: string;
+  changeNote?: string;
+};
+
+export type AiRouteDirectionContext = {
+  objectId: string;
+  revisionId: string;
+  revisionNumber: number;
+  title: string;
+  summary: string;
+  conceptStatement: string;
+  keywords: string[];
+  strategy: string;
+  differentiators: string[];
+  visualSignals: string[];
+  risks: string[];
+  openQuestions: string[];
+  sourceObjectIds: string[];
+  basedOnDefinitionRevisionId?: string;
+  previousRevisionId?: string;
+  changeNote?: string;
+};
+
+export type AiRouteVisualBranchContext = {
+  id: string;
+  directionId: string;
+  label: string;
+  rootObjectId?: string;
+};
+
 export type AiRouteRequest = {
   draft: string;
   task: string;
@@ -61,6 +120,7 @@ export type AiRouteRequest = {
   documentExtracts?: AiRouteDocumentExtract[];
   webSearch?: ProviderWebSearchOptions;
   defaultReferenceStatus?: string;
+  taskContext?: AiRouteTaskContext;
 };
 
 export type AiRouteValidationResult =
@@ -94,6 +154,7 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
     !Array.isArray(value.documentExtracts)
       ? []
       : value.documentExtracts.filter(isDocumentExtract).slice(0, 8);
+  const taskContext = normalizeTaskContext(value.taskContext);
 
   return {
     status: "ok",
@@ -107,7 +168,8 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
       attachments,
       documentExtracts,
       webSearch: normalizeWebSearch(value.webSearch, taskMode),
-      defaultReferenceStatus: typeof value.defaultReferenceStatus === "string" ? value.defaultReferenceStatus : undefined
+      defaultReferenceStatus: typeof value.defaultReferenceStatus === "string" ? value.defaultReferenceStatus : undefined,
+      taskContext
     }
   };
 }
@@ -155,6 +217,7 @@ export function buildMorphoSystemPrompt(request: AiRouteRequest): string {
     request.defaultReferenceStatus ? `默认参考状态：${request.defaultReferenceStatus}` : "",
     "本次可用对象摘要：",
     objectLines,
+    buildTaskContextPromptBlock(request),
     buildAttachmentCapabilityLine(request),
     buildDocumentCapabilityLine(request),
     buildWebSearchCapabilityLine(request),
@@ -182,6 +245,66 @@ function buildDocumentExtractPromptBlock(request: AiRouteRequest): string {
       ].join("\n")
     )
   ].join("\n\n");
+}
+
+function buildTaskContextPromptBlock(request: AiRouteRequest): string {
+  const context = request.taskContext;
+  if (!context) {
+    return "";
+  }
+
+  const lines = [
+    "Structured task context:",
+    `kind: ${context.kind}`,
+    `objectIds: ${context.objectIds.join(", ") || "none"}`,
+    `imageObjectIds: ${context.imageObjectIds.join(", ") || "none"}`,
+    `documentObjectIds: ${context.documentObjectIds.join(", ") || "none"}`,
+    `defaultReference: ${context.defaultReference ?? "none"}`,
+    `truncated: ${context.truncated ? "true" : "false"}`
+  ];
+
+  if (context.designDefinition) {
+    const definition = context.designDefinition;
+    lines.push(
+      `designDefinition: ${definition.objectId} / r${definition.revisionNumber} / ${definition.title}`,
+      `summary: ${definition.summary}`,
+      `projectGoal: ${definition.projectGoal}`,
+      `targetUsers: ${definition.targetUsers.join("; ")}`,
+      `primaryScenarios: ${definition.primaryScenarios.join("; ")}`,
+      `coreProblem: ${definition.coreProblem}`,
+      `designPrinciples: ${definition.designPrinciples.join("; ")}`,
+      `constraints: ${definition.constraints.join("; ")}`,
+      `avoidDirections: ${definition.avoidDirections.join("; ")}`,
+      `opportunities: ${definition.opportunities.join("; ")}`,
+      `openQuestions: ${definition.openQuestions.join("; ")}`,
+      `definitionSourceObjectIds: ${definition.sourceObjectIds.join(", ")}`
+    );
+  }
+
+  for (const direction of context.directions) {
+    lines.push(
+      `direction: ${direction.objectId} / r${direction.revisionNumber} / ${direction.title}`,
+      `summary: ${direction.summary}`,
+      `conceptStatement: ${direction.conceptStatement}`,
+      `keywords: ${direction.keywords.join("; ")}`,
+      `strategy: ${direction.strategy}`,
+      `differentiators: ${direction.differentiators.join("; ")}`,
+      `visualSignals: ${direction.visualSignals.join("; ")}`,
+      `risks: ${direction.risks.join("; ")}`,
+      `openQuestions: ${direction.openQuestions.join("; ")}`,
+      `directionSourceObjectIds: ${direction.sourceObjectIds.join(", ")}`
+    );
+  }
+
+  for (const branch of context.visualBranches) {
+    lines.push(`visualBranch: ${branch.id} / ${branch.directionId} / ${branch.label}${branch.rootObjectId ? ` / root=${branch.rootObjectId}` : ""}`);
+  }
+
+  if (context.skipped.length > 0) {
+    lines.push(`skipped: ${context.skipped.map((skip) => `${skip.objectId}:${skip.reason}`).join("; ")}`);
+  }
+
+  return lines.join("\n");
 }
 
 function buildAttachmentCapabilityLine(request: AiRouteRequest): string {
@@ -355,6 +478,103 @@ function normalizeAttachment(value: AiRouteAttachment): AiRouteAttachment {
   };
 }
 
+function normalizeTaskContext(value: unknown): AiRouteTaskContext | undefined {
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    return undefined;
+  }
+
+  return {
+    kind: trimString(value.kind, 80),
+    objectIds: stringArray(value.objectIds).slice(0, 16),
+    imageObjectIds: stringArray(value.imageObjectIds).slice(0, 16),
+    documentObjectIds: stringArray(value.documentObjectIds).slice(0, 8),
+    truncated: value.truncated === true,
+    defaultReference: typeof value.defaultReference === "string" ? trimString(value.defaultReference, 240) : undefined,
+    designDefinition: normalizeDesignDefinitionContext(value.designDefinition),
+    directions: Array.isArray(value.directions) ? value.directions.map(normalizeDirectionContext).filter(isDefined).slice(0, 6) : [],
+    visualBranches: Array.isArray(value.visualBranches)
+      ? value.visualBranches.map(normalizeVisualBranchContext).filter(isDefined).slice(0, 8)
+      : [],
+    skipped: Array.isArray(value.skipped) ? value.skipped.map(normalizeSkippedContext).filter(isDefined).slice(0, 12) : []
+  };
+}
+
+function normalizeDesignDefinitionContext(value: unknown): AiRouteDesignDefinitionContext | undefined {
+  if (!isRecord(value) || typeof value.objectId !== "string" || typeof value.revisionId !== "string") {
+    return undefined;
+  }
+
+  return {
+    objectId: trimString(value.objectId, 120),
+    revisionId: trimString(value.revisionId, 120),
+    revisionNumber: numberValue(value.revisionNumber),
+    title: stringField(value.title, 160),
+    summary: stringField(value.summary, 400),
+    projectGoal: stringField(value.projectGoal, 400),
+    targetUsers: stringArray(value.targetUsers).slice(0, 8).map((item) => trimString(item, 160)),
+    primaryScenarios: stringArray(value.primaryScenarios).slice(0, 8).map((item) => trimString(item, 160)),
+    coreProblem: stringField(value.coreProblem, 400),
+    designPrinciples: stringArray(value.designPrinciples).slice(0, 8).map((item) => trimString(item, 160)),
+    constraints: stringArray(value.constraints).slice(0, 8).map((item) => trimString(item, 160)),
+    avoidDirections: stringArray(value.avoidDirections).slice(0, 8).map((item) => trimString(item, 160)),
+    opportunities: stringArray(value.opportunities).slice(0, 8).map((item) => trimString(item, 160)),
+    openQuestions: stringArray(value.openQuestions).slice(0, 8).map((item) => trimString(item, 160)),
+    sourceObjectIds: stringArray(value.sourceObjectIds).slice(0, 16),
+    previousRevisionId: typeof value.previousRevisionId === "string" ? trimString(value.previousRevisionId, 120) : undefined,
+    changeNote: typeof value.changeNote === "string" ? trimString(value.changeNote, 240) : undefined
+  };
+}
+
+function normalizeDirectionContext(value: unknown): AiRouteDirectionContext | undefined {
+  if (!isRecord(value) || typeof value.objectId !== "string" || typeof value.revisionId !== "string") {
+    return undefined;
+  }
+
+  return {
+    objectId: trimString(value.objectId, 120),
+    revisionId: trimString(value.revisionId, 120),
+    revisionNumber: numberValue(value.revisionNumber),
+    title: stringField(value.title, 160),
+    summary: stringField(value.summary, 400),
+    conceptStatement: stringField(value.conceptStatement, 400),
+    keywords: stringArray(value.keywords).slice(0, 5).map((item) => trimString(item, 120)),
+    strategy: stringField(value.strategy, 400),
+    differentiators: stringArray(value.differentiators).slice(0, 8).map((item) => trimString(item, 160)),
+    visualSignals: stringArray(value.visualSignals).slice(0, 8).map((item) => trimString(item, 160)),
+    risks: stringArray(value.risks).slice(0, 8).map((item) => trimString(item, 160)),
+    openQuestions: stringArray(value.openQuestions).slice(0, 8).map((item) => trimString(item, 160)),
+    sourceObjectIds: stringArray(value.sourceObjectIds).slice(0, 16),
+    basedOnDefinitionRevisionId:
+      typeof value.basedOnDefinitionRevisionId === "string" ? trimString(value.basedOnDefinitionRevisionId, 120) : undefined,
+    previousRevisionId: typeof value.previousRevisionId === "string" ? trimString(value.previousRevisionId, 120) : undefined,
+    changeNote: typeof value.changeNote === "string" ? trimString(value.changeNote, 240) : undefined
+  };
+}
+
+function normalizeVisualBranchContext(value: unknown): AiRouteVisualBranchContext | undefined {
+  if (!isRecord(value) || typeof value.id !== "string" || typeof value.directionId !== "string" || typeof value.label !== "string") {
+    return undefined;
+  }
+
+  return {
+    id: trimString(value.id, 120),
+    directionId: trimString(value.directionId, 120),
+    label: trimString(value.label, 160),
+    rootObjectId: typeof value.rootObjectId === "string" ? trimString(value.rootObjectId, 120) : undefined
+  };
+}
+
+function normalizeSkippedContext(value: unknown): { objectId: string; reason: string } | undefined {
+  if (!isRecord(value) || typeof value.objectId !== "string" || typeof value.reason !== "string") {
+    return undefined;
+  }
+
+  return {
+    objectId: trimString(value.objectId, 120),
+    reason: trimString(value.reason, 240)
+  };
+}
+
 function normalizeWebSearch(value: unknown, taskMode: AiRouteRequest["taskMode"]): ProviderWebSearchOptions | undefined {
   if (taskMode === "imageGeneration" || !isRecord(value) || value.enabled !== true) {
     return undefined;
@@ -374,6 +594,26 @@ function clampInteger(value: unknown, min: number, max: number, fallback: number
   }
 
   return Math.max(min, Math.min(max, Math.trunc(value)));
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.length > 0) : [];
+}
+
+function stringField(value: unknown, maxLength: number): string {
+  return typeof value === "string" ? trimString(value, maxLength) : "";
+}
+
+function trimString(value: string, maxLength: number): string {
+  return value.length > maxLength ? value.slice(0, maxLength) : value;
+}
+
+function numberValue(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+}
+
+function isDefined<T>(value: T | undefined): value is T {
+  return value !== undefined;
 }
 
 function isTaskMode(value: unknown): value is AiRouteRequest["taskMode"] {

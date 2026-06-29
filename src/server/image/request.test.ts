@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { GRS_REFERENCE_IMAGE_LIMIT } from "../../domain/morpho/imageLimits";
 import { validateGrsImageRouteRequest } from "./request";
 
 describe("GrsAI image route request validation", () => {
@@ -25,12 +26,24 @@ describe("GrsAI image route request validation", () => {
     if (result.status === "ok") {
       expect(result.value.modelId).toBe("nano-banana-2");
       expect(result.value.prompt).toBe("继续发展转角细节");
-      expect(result.value.images).toHaveLength(4);
+      expect(result.value.images).toHaveLength(GRS_REFERENCE_IMAGE_LIMIT);
       expect(result.value.aspectRatio).toBe("3:4");
       expect(result.value.sizeOption).toBe("4K");
       expect(result.value.referenceObjectIds).toEqual(["image-a"]);
       expect(result.value.directionObjectId).toBe("direction-a");
       expect(result.value.clientRequestId).toBe("client-request-a");
+    }
+  });
+
+  it("uses the shared Grs reference image limit", () => {
+    const result = validateGrsImageRouteRequest({
+      prompt: "生成参考图",
+      images: Array.from({ length: GRS_REFERENCE_IMAGE_LIMIT + 3 }, (_, index) => `data:image/png;base64,${index}`)
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.value.images).toHaveLength(GRS_REFERENCE_IMAGE_LIMIT);
     }
   });
 

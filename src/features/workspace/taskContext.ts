@@ -8,6 +8,7 @@ import type {
   MorphoWorkspace,
   VisualBranchRecord
 } from "../../domain/morpho/types";
+import { GRS_REFERENCE_IMAGE_LIMIT } from "../../domain/morpho/imageLimits";
 
 export type TaskContextKind = "research" | "general" | "directionPreview" | "visualDevelopment" | "designDefinition" | "conceptDirection";
 
@@ -45,6 +46,59 @@ export type TaskContextResult = {
   scopeNote: string;
 };
 
+export type ProviderTaskContext = {
+  kind: TaskContextKind;
+  objectIds: MorphoObjectId[];
+  imageObjectIds: MorphoObjectId[];
+  documentObjectIds: MorphoObjectId[];
+  truncated: boolean;
+  defaultReference: string;
+  designDefinition?: {
+    objectId: MorphoObjectId;
+    revisionId: string;
+    revisionNumber: number;
+    title: string;
+    summary: string;
+    projectGoal: string;
+    targetUsers: string[];
+    primaryScenarios: string[];
+    coreProblem: string;
+    designPrinciples: string[];
+    constraints: string[];
+    avoidDirections: string[];
+    opportunities: string[];
+    openQuestions: string[];
+    sourceObjectIds: MorphoObjectId[];
+    previousRevisionId?: string;
+    changeNote?: string;
+  };
+  directions: Array<{
+    objectId: MorphoObjectId;
+    revisionId: string;
+    revisionNumber: number;
+    title: string;
+    summary: string;
+    conceptStatement: string;
+    keywords: string[];
+    strategy: string;
+    differentiators: string[];
+    visualSignals: string[];
+    risks: string[];
+    openQuestions: string[];
+    sourceObjectIds: MorphoObjectId[];
+    basedOnDefinitionRevisionId?: string;
+    previousRevisionId?: string;
+    changeNote?: string;
+  }>;
+  visualBranches: Array<{
+    id: string;
+    directionId: MorphoObjectId;
+    label: string;
+    rootObjectId?: MorphoObjectId;
+  }>;
+  skipped: TaskContextSkip[];
+};
+
 export type BuildTaskContextInput = {
   kind: TaskContextKind;
   draft: string;
@@ -60,7 +114,7 @@ export const TASK_CONTEXT_LIMITS = {
   maxCharsPerDocument: 8_000,
   maxTotalDocumentChars: 24_000,
   maxMiMoImages: 16,
-  maxGrsReferenceImages: 3,
+  maxGrsReferenceImages: GRS_REFERENCE_IMAGE_LIMIT,
   maxConversationMessages: 12
 } as const;
 
@@ -158,6 +212,26 @@ export function taskContextKindFromAiTask(task: AiContextTask, visualIntent?: "d
   }
 }
 
+export function buildProviderTaskContext(context: TaskContextResult): ProviderTaskContext {
+  return {
+    kind: context.kind,
+    objectIds: context.objectIds,
+    imageObjectIds: context.imageObjectIds,
+    documentObjectIds: context.documentObjectIds,
+    truncated: context.truncated,
+    defaultReference: summarizeDefaultReference(context.defaultReference),
+    designDefinition: context.designDefinitionRevision ? summarizeDesignDefinitionRevision(context.designDefinitionRevision) : undefined,
+    directions: context.directionRevisions.map(summarizeDirectionRevision),
+    visualBranches: context.visualBranches.map((branch) => ({
+      id: branch.id,
+      directionId: branch.directionId,
+      label: branch.label,
+      rootObjectId: branch.rootObjectId
+    })),
+    skipped: context.skipped
+  };
+}
+
 function addObjectIfAvailable(
   workspace: MorphoWorkspace,
   objectIds: MorphoObjectId[],
@@ -219,8 +293,11 @@ function resolveDefaultReference(
     return { status: "hidden", objectId: object.id, reason: "默认参考已隐藏，默认不会进入本次 AI Context。" };
   }
   const explicitlyRequested = DEFAULT_REFERENCE_PATTERN.test(input.draft);
+  const isPixelEligibleTask = input.kind === "visualDevelopment" || input.kind === "directionPreview";
+  const uniqueDirectionIds = uniqueStrings([...directionIds]);
   const sameDirection = Boolean(object.directionId && directionIds.has(object.directionId));
-  if (explicitlyRequested && (sameDirection || input.kind === "visualDevelopment" || input.kind === "directionPreview")) {
+  const undirectedSingleTarget = !object.directionId && uniqueDirectionIds.length === 1;
+  if (explicitlyRequested && isPixelEligibleTask && (sameDirection || undirectedSingleTarget)) {
     return { status: "included", objectId: object.id, reason: "用户明确要求保持或参考当前默认参考。" };
   }
   return { status: "notIncluded", objectId: object.id, reason: "默认参考不是本次任务的硬性输入，未被明确要求时不发送图片像素。" };
@@ -339,4 +416,60 @@ function detailForObject(object: MorphoObject): string | undefined {
 
 function uniqueStrings(values: readonly string[]): string[] {
   return [...new Set(values.filter(Boolean))];
+}
+
+function summarizeDefaultReference(status: TaskContextDefaultReference): string {
+  switch (status.status) {
+    case "included":
+      return `included:${status.objectId}:${status.reason}`;
+    case "hidden":
+      return `hidden:${status.objectId}:${status.reason}`;
+    case "missing":
+      return `missing:${status.reason}`;
+    case "notIncluded":
+      return status.objectId ? `notIncluded:${status.objectId}:${status.reason}` : `notIncluded:${status.reason}`;
+  }
+}
+
+function summarizeDesignDefinitionRevision(revision: DesignDefinitionRevision): ProviderTaskContext["designDefinition"] {
+  return {
+    objectId: revision.designDefinitionId,
+    revisionId: revision.id,
+    revisionNumber: revision.revisionNumber,
+    title: revision.title,
+    summary: revision.summary,
+    projectGoal: revision.projectGoal,
+    targetUsers: revision.targetUsers,
+    primaryScenarios: revision.primaryScenarios,
+    coreProblem: revision.coreProblem,
+    designPrinciples: revision.designPrinciples,
+    constraints: revision.constraints,
+    avoidDirections: revision.avoidDirections,
+    opportunities: revision.opportunities,
+    openQuestions: revision.openQuestions,
+    sourceObjectIds: revision.sourceObjectIds,
+    previousRevisionId: revision.previousRevisionId,
+    changeNote: revision.changeNote
+  };
+}
+
+function summarizeDirectionRevision(revision: ConceptDirectionRevision): ProviderTaskContext["directions"][number] {
+  return {
+    objectId: revision.directionId,
+    revisionId: revision.id,
+    revisionNumber: revision.revisionNumber,
+    title: revision.title,
+    summary: revision.summary,
+    conceptStatement: revision.conceptStatement,
+    keywords: revision.keywords,
+    strategy: revision.strategy,
+    differentiators: revision.differentiators,
+    visualSignals: revision.visualSignals,
+    risks: revision.risks,
+    openQuestions: revision.openQuestions,
+    sourceObjectIds: revision.sourceObjectIds,
+    basedOnDefinitionRevisionId: revision.basedOnDefinitionRevisionId,
+    previousRevisionId: revision.previousRevisionId,
+    changeNote: revision.changeNote
+  };
 }

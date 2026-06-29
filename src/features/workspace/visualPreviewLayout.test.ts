@@ -36,6 +36,58 @@ describe("direction preview layout planning", () => {
     expect(Math.min(...placements.map((placement) => placement.position.y))).toBeGreaterThan(lowestExistingY);
     expect(hasOverlap(placements)).toBe(false);
   });
+
+  it("keeps a precomputed batch grid stable when generated previews are inserted sequentially", () => {
+    const workspace = createInitialWorkspace();
+    const items = [
+      { id: "soft-1", targetDirectionId: "direction-soft-rail", width: 240, height: 180 },
+      { id: "soft-2", targetDirectionId: "direction-soft-rail", width: 240, height: 180 },
+      { id: "soft-3", targetDirectionId: "direction-soft-rail", width: 240, height: 180 },
+      { id: "soft-4", targetDirectionId: "direction-soft-rail", width: 240, height: 180 }
+    ];
+    const precomputed = planDirectionPreviewPlacements(workspace, items);
+    const sequentialWorkspace = precomputed.reduce<ReturnType<typeof createInitialWorkspace>>(
+      (current, placement) => ({
+        ...current,
+        objects: {
+          ...current.objects,
+          [`generated-${placement.planItemId}`]: {
+            id: `generated-${placement.planItemId}`,
+            type: "image" as const,
+            title: placement.planItemId,
+            summary: "generated preview",
+            createdBy: "ai" as const,
+            visibility: "active" as const,
+            createdAt: "2026-06-30T00:00:00.000Z",
+            updatedAt: "2026-06-30T00:00:00.000Z",
+            role: "conceptImage" as const,
+            imageVariant: "rail" as const,
+            directionId: placement.targetDirectionId
+          }
+        },
+        canvas: {
+          ...current.canvas,
+          instances: [
+            ...current.canvas.instances,
+            {
+              id: `canvas-generated-${placement.planItemId}`,
+              objectId: `generated-${placement.planItemId}`,
+              position: placement.position,
+              size: placement.size
+            }
+          ]
+        }
+      }),
+      workspace
+    );
+
+    const recomputedAfterSequentialWrites = planDirectionPreviewPlacements(sequentialWorkspace, items);
+
+    expect(precomputed.map((placement) => placement.position)).not.toEqual(
+      recomputedAfterSequentialWrites.map((placement) => placement.position)
+    );
+    expect(hasOverlap(precomputed)).toBe(false);
+  });
 });
 
 function hasOverlap(placements: ReturnType<typeof planDirectionPreviewPlacements>): boolean {

@@ -5,6 +5,7 @@ import {
   isGrsImageAspectRatio,
   resolveGrsImageModelSettings
 } from "../../domain/morpho/grsImageModels";
+import { GRS_REFERENCE_IMAGE_LIMIT } from "../../domain/morpho/imageLimits";
 
 import type { GrsGenerateInput } from "./grsProvider";
 
@@ -17,8 +18,6 @@ export type GrsImageRouteValidationResult =
       status: "failed";
       reason: string;
     };
-
-const MAX_REFERENCE_IMAGES = 4;
 
 export function validateGrsImageRouteRequest(value: unknown): GrsImageRouteValidationResult {
   if (!isRecord(value)) {
@@ -36,7 +35,7 @@ export function validateGrsImageRouteRequest(value: unknown): GrsImageRouteValid
 
   const resolvedSettings = resolveGrsImageModelSettings(requestedModelId, stringValue(value.sizeOption));
   const images = Array.isArray(value.images)
-    ? value.images.filter((image): image is string => typeof image === "string" && image.length > 0).slice(0, MAX_REFERENCE_IMAGES)
+    ? value.images.filter((image): image is string => typeof image === "string" && image.length > 0).slice(0, GRS_REFERENCE_IMAGE_LIMIT)
     : [];
   const requestedAspectRatio = stringValue(value.aspectRatio);
   const aspectRatio: GrsImageAspectRatio = isGrsImageAspectRatio(requestedAspectRatio) ? requestedAspectRatio : "1:1";
