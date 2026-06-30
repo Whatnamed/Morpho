@@ -29,10 +29,10 @@ import { recordDesignDefinitionProposal } from "../operations/operations";
 import { hasPendingDesignDefinitionRevisionProposal, reconcileWorkspaceDerivedState } from "./derivedState";
 
 describe("Morpho workspace domain boundaries", () => {
-  it("creates a blank schema v7 project without depending on Nightrail seed object ids", () => {
+  it("creates a blank schema v8 project without depending on Nightrail seed object ids", () => {
     const workspace = createBlankWorkspace("project-empty-local");
 
-    expect(workspace.schemaVersion).toBe(7);
+    expect(workspace.schemaVersion).toBe(8);
     expect(workspace.project.id).toBe("project-empty-local");
     expect(workspace.objects["image-soft-rail-v2"]).toBeUndefined();
     expect(workspace.canvas.instances).toEqual([]);
@@ -40,6 +40,20 @@ describe("Morpho workspace domain boundaries", () => {
     expect(workspace.operations).toEqual({});
     expect(workspace.artifactProposals).toEqual({});
     expect(workspace.citationSnapshots).toEqual({});
+    expect(workspace.projectContinuity.currentFocus.area).toBe("startAndInput");
+    expect(workspace.projectContinuity.recordEntries).toEqual([]);
+  });
+
+  it("initializes the seed continuity focus from real project sources", () => {
+    const workspace = createInitialWorkspace();
+
+    expect(workspace.projectContinuity.currentFocus.area).toBe("directionAndVisual");
+    expect(workspace.projectContinuity.currentFocus.sourceObjectIds).toEqual([
+      "direction-soft-rail",
+      "direction-support-island",
+      "direction-soft-guide",
+      "image-soft-rail-v2"
+    ]);
   });
 
   it("moves a canvas instance without changing object type, status, or relations", () => {
@@ -108,7 +122,13 @@ describe("Morpho workspace domain boundaries", () => {
     ).toBe(true);
     expect(result.workspace.workingState.activeKeyConclusionIds).not.toContain(result.keyConclusion.id);
     expect(result.workspace.workingState.openQuestionIds).toContain(result.keyConclusion.id);
-    expect(result.workspace.stageRecords.research.savedObjectIds).toContain(result.keyConclusion.id);
+    expect(result.workspace.projectContinuity.recordEntries.at(-1)).toMatchObject({
+      stage: "research",
+      category: "decision"
+    });
+    expect(result.workspace.projectContinuity.recordEntries.at(-1)?.sourceRefs).toContainEqual(
+      expect.objectContaining({ kind: "object", id: result.keyConclusion.id })
+    );
     expect(result.workspace.decisionRecords.at(-1)?.kind).toBe("createKeyConclusion");
   });
 
@@ -574,8 +594,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(image?.type === "image" ? image.isDefaultReference : undefined).toBe(source.isDefaultReference);
     expect(updated.relations).toHaveLength(relationCount);
     expect(decision?.kind).toBe("setImageRole");
-    expect(updated.stageRecords.directionVisualDevelopment.decisionIds).toContain(decision?.id);
-    expect(updated.stageRecords.directionVisualDevelopment.savedObjectIds).toContain(source.id);
+    expect(updated.projectContinuity).toBe(workspace.projectContinuity);
   });
 
   it("creates, renames, archives, and restores a visual branch without creating canvas objects", () => {
@@ -735,7 +754,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(imported.workspace.assets["asset-file-a"]?.sourceType).toBe("originalFile");
   });
 
-  it("migrates v1 workspace data to schema v7 without mutating the source object", () => {
+  it("migrates v1 workspace data to schema v8 without mutating the source object", () => {
     const legacyWorkspace = {
       schemaVersion: 1,
       project: {
@@ -782,7 +801,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.status).toBe("ok");
     expect(legacyWorkspace).toEqual(before);
     if (result.status === "ok") {
-      expect(result.workspace.schemaVersion).toBe(7);
+      expect(result.workspace.schemaVersion).toBe(8);
       expect(result.workspace.objects["image-a"]?.visibility).toBe("active");
       expect(result.workspace.objects["image-a"]).toMatchObject({
         type: "image",
@@ -800,6 +819,11 @@ describe("Morpho workspace domain boundaries", () => {
         throw new Error("Expected migrated object to be a delivery object.");
       }
       expect(deliveryObject.references).toEqual(["delivery-ref-delivery-a-image-a"]);
+      expect(result.workspace.projectContinuity.currentFocus).toMatchObject({
+        area: "directionAndVisual",
+        sourceKind: "migration"
+      });
+      expect(result.workspace).not.toHaveProperty("stageRecords");
     }
   });
 

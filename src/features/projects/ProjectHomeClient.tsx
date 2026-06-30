@@ -130,7 +130,9 @@ function ProjectCard({ project, onOpen }: { project: LocalProjectSummary; onOpen
           <p>{project.subtitle}</p>
         </div>
         <div className="project-meta">
-          <span>最近工作：{focusLabel(project.currentFocus)}</span>
+          <span>最近工作：{focusLabel(project.currentFocus?.area)}</span>
+          <span>最近明确项目更新：{formatDate(project.continuityUpdatedAt ?? project.updatedAt)}</span>
+          <span>{project.continuityNote ?? "暂无明确项目记录；可以从导入资料或保存结论开始。"}</span>
           <span>上次打开：{formatDate(project.lastOpenedAt)}</span>
         </div>
       </div>
@@ -149,16 +151,22 @@ function createProjectId(): string {
   return `project-${Date.now().toString(36)}`;
 }
 
-function focusLabel(focus: LocalProjectSummary["currentFocus"]): string {
+function focusLabel(focus: NonNullable<LocalProjectSummary["currentFocus"]>["area"] | undefined): string {
   switch (focus) {
+    case "startAndInput":
+      return "开始与输入";
+    case "exploration":
+      return "探索";
     case "research":
       return "调研";
-    case "design_definition":
+    case "designDefinition":
       return "设计定义";
-    case "delivery_preparation":
+    case "deliveryPreparation":
       return "交付准备";
-    case "direction_visual_development":
+    case "directionAndVisual":
       return "方向与视觉发展";
+    default:
+      return "暂无明确重点";
   }
 }
 

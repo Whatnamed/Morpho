@@ -131,7 +131,8 @@ Minimum flows to cover:
 - selected image + “保留整体结构语言，生成夜间使用场景” routes into visual development, with MiMo receiving image attachments and Grs receiving image-only generation references;
 - selected image + “分析这张图的问题” stays ordinary chat and does not call `/api/ai/image`;
 - manual task mode override beats automatic routing;
-- design-trace overlay still opens and closes.
+- design-trace overlay still opens and closes;
+- the left-rail `项目记录` drawer opens and closes, shows current focus and review sections, and source clicks only locate real objects without triggering AI or mutating focus.
 
 ## Current Local Persistence
 
@@ -153,7 +154,7 @@ Legacy single-project key read for migration:
 morpho.workspace.nightrail.v1
 ```
 
-Structured workspace data is schema version `7`. v1/v2/v3/v4/v5/v6 workspace data is migrated through pure migration functions. v6 normalizes image roles to `reference`, `preview`, `conceptImage`, `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, `structureDiagram`, `interactionDiagram`, and `deliveryAsset`; old `main`, `scenario`, `cmf`, `detail`, and `diagram` values are migration-only inputs. v7 adds parse metadata to file objects and stores extracted document text as separate IndexedDB assets. Migration success writes the new project workspace and catalog. Migration failure preserves old raw data and shows a recoverable warning instead of silently resetting to seed data.
+Structured workspace data is schema version `8`. v1/v2/v3/v4/v5/v6/v7 workspace data is migrated through pure migration functions. v6 normalizes image roles to `reference`, `preview`, `conceptImage`, `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, `structureDiagram`, `interactionDiagram`, and `deliveryAsset`; old `main`, `scenario`, `cmf`, `detail`, and `diagram` values are migration-only inputs. v7 adds parse metadata to file objects and stores extracted document text as separate IndexedDB assets. v8 adds `workspace.projectContinuity`, migrates legacy `project.currentFocus` into structured `currentFocus`, and retires legacy `stageRecords` instead of converting them into a second stage-history source. Migration success writes the new project workspace and catalog. Migration failure preserves old raw data and shows a recoverable warning instead of silently resetting to seed data.
 
 Binary assets are stored in IndexedDB:
 

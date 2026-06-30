@@ -9,6 +9,7 @@ import type {
   VisualBranchRecord
 } from "../../domain/morpho/types";
 import { GRS_REFERENCE_IMAGE_LIMIT } from "../../domain/morpho/imageLimits";
+import { buildProjectContinuityContext, type ProjectContinuityContext } from "../../domain/morpho/projectContinuity";
 
 export type TaskContextKind = "research" | "general" | "directionPreview" | "visualDevelopment" | "designDefinition" | "conceptDirection";
 
@@ -44,6 +45,7 @@ export type TaskContextResult = {
   truncated: boolean;
   defaultReference: TaskContextDefaultReference;
   scopeNote: string;
+  projectContinuity: ProjectContinuityContext;
 };
 
 export type ProviderTaskContext = {
@@ -96,6 +98,7 @@ export type ProviderTaskContext = {
     label: string;
     rootObjectId?: MorphoObjectId;
   }>;
+  projectContinuity: ProjectContinuityContext;
   skipped: TaskContextSkip[];
 };
 
@@ -175,6 +178,12 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
   const budgeted = applyObjectBudget(workspace, objectIds, skipped);
   const budgetedDocuments = applyDocumentBudget(documentObjectIds, skipped);
   const budgetedImages = applyImageBudget(imageObjectIds, skipped);
+  const projectContinuity = buildProjectContinuityContext(workspace, {
+    taskKind: input.kind,
+    selectedObjectIds: selectedIds,
+    targetDirectionIds: input.targetDirectionIds,
+    includeHistorical: isHistoryOrientedDraft(input.draft)
+  });
 
   return {
     kind: input.kind,
@@ -190,8 +199,13 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
     skipped,
     truncated: budgeted.truncated || budgetedDocuments.length < documentObjectIds.length || budgetedImages.length < imageObjectIds.length,
     defaultReference,
-    scopeNote: `本次 ${input.kind} Context 只包含用户选择对象、直接相关的设计定义/方向/结论，以及被明确授权的图片和本地解析资料。`
+    scopeNote: `本次 ${input.kind} Context 只包含用户选择对象、直接相关的设计定义/方向/结论，以及被明确授权的图片和本地解析资料。`,
+    projectContinuity
   };
+}
+
+function isHistoryOrientedDraft(draft: string): boolean {
+  return /历史|旧版|旧图|之前|以往|回看|追溯|为什么/.test(draft);
 }
 
 export function taskContextKindFromAiTask(task: AiContextTask, visualIntent?: "directionPreview" | "visualDevelopment"): TaskContextKind {
@@ -228,6 +242,7 @@ export function buildProviderTaskContext(context: TaskContextResult): ProviderTa
       label: branch.label,
       rootObjectId: branch.rootObjectId
     })),
+    projectContinuity: context.projectContinuity,
     skipped: context.skipped
   };
 }

@@ -4,6 +4,8 @@ import { useState } from "react";
 import { X } from "lucide-react";
 
 import type { MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
+import type { ContinuitySourceRef, ProjectFocusArea, ProjectMemoryViewKey, StageRecordKey } from "@/domain/morpho/types";
+import { deriveProjectMemoryViews, getContinuityRecordGroups } from "@/domain/morpho/projectContinuity";
 import { getWorkspaceAssetItems, searchWorkspace, type WorkspaceAssetItem } from "@/domain/morpho/queries";
 import type { DrawerMode } from "./LeftRail";
 import { getObjectTypeLabel } from "../workspaceUi";
@@ -71,6 +73,10 @@ export function OverlayDrawers({ mode, workspace, onClose, onFocusArea, onRestor
     );
   }
 
+  if (mode === "records") {
+    return <ProjectRecordDrawer workspace={workspace} onClose={onClose} onLocateObject={onLocateObject} />;
+  }
+
   if (mode === "hidden") {
     const hiddenObjects = Object.values(workspace.objects).filter((object) => object.visibility === "hidden");
 
@@ -119,6 +125,175 @@ export function OverlayDrawers({ mode, workspace, onClose, onFocusArea, onRestor
   }
 
   return null;
+}
+
+function ProjectRecordDrawer({
+  workspace,
+  onClose,
+  onLocateObject
+}: {
+  workspace: MorphoWorkspace;
+  onClose: () => void;
+  onLocateObject: (objectId: string) => void;
+}) {
+  const groups = getContinuityRecordGroups(workspace);
+  const memoryViews = deriveProjectMemoryViews(workspace);
+  const reviewItems = workspace.projectContinuity.recordEntries
+    .filter((entry) => entry.validity === "reviewRequired" || entry.validity === "sourceUnavailable")
+    .slice(-6)
+    .reverse();
+  const stages: StageRecordKey[] = [
+    "startAndInput",
+    "exploration",
+    "research",
+    "designDefinition",
+    "directionAndVisual",
+    "deliveryPreparation"
+  ];
+  const memoryKeys: ProjectMemoryViewKey[] = [
+    "projectOverview",
+    "designDefinition",
+    "preferencesAndAvoids",
+    "decisionLog",
+    "rejectedDirections",
+    "openQuestions",
+    "deliveryPlan"
+  ];
+
+  return (
+    <Drawer title="项目记录" onClose={onClose}>
+      <section className="asset-list" aria-label="当前工作重点">
+        <div className="result-row">
+          <div className="asset-thumb" />
+          <div>
+            <strong>{focusAreaLabel(workspace.projectContinuity.currentFocus.area)}</strong>
+            <span>
+              {workspace.projectContinuity.currentFocus.note} · {formatDrawerDate(workspace.projectContinuity.currentFocus.updatedAt)}
+            </span>
+            <SourceRefs refs={focusSourceRefs(workspace)} onLocateObject={onLocateObject} />
+          </div>
+        </div>
+      </section>
+
+      <div className="result-group-title">待复核项</div>
+      {reviewItems.length > 0 ? (
+        <ContinuityEntryRows entries={reviewItems} onLocateObject={onLocateObject} />
+      ) : (
+        <p className="drawer-muted">当前没有待复核或来源不可用的连续性记录。</p>
+      )}
+
+      <div className="result-group-title">阶段记录</div>
+      {stages.map((stage) => (
+        <section className="asset-list" key={stage} aria-label={groups[stage].title}>
+          <div className="drawer-muted">{groups[stage].title}</div>
+          {groups[stage].entries.length > 0 ? (
+            <ContinuityEntryRows entries={groups[stage].entries.slice(0, 4)} onLocateObject={onLocateObject} />
+          ) : (
+            <p className="drawer-muted">{groups[stage].emptyMessage}</p>
+          )}
+        </section>
+      ))}
+
+      <div className="result-group-title">项目记忆投影</div>
+      {memoryKeys.map((key) => {
+        const view = memoryViews[key];
+        return (
+          <section className="asset-list" key={key} aria-label={view.title}>
+            <div className="drawer-muted">{view.title}</div>
+            {view.items.length > 0 ? (
+              view.items.slice(0, 4).map((item) => (
+                <div className="result-row" key={item.id}>
+                  <div className="asset-thumb" />
+                  <div>
+                    <strong>{item.title}</strong>
+                    <span>
+                      {validityLabel(item.validity)} · {item.summary}
+                    </span>
+                    <SourceRefs refs={item.sourceRefs} onLocateObject={onLocateObject} />
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="drawer-muted">{view.emptyMessage}</p>
+            )}
+          </section>
+        );
+      })}
+    </Drawer>
+  );
+}
+
+function ContinuityEntryRows({
+  entries,
+  onLocateObject
+}: {
+  entries: ReturnType<typeof getContinuityRecordGroups>[StageRecordKey]["entries"];
+  onLocateObject: (objectId: string) => void;
+}) {
+  return (
+    <div className="asset-list">
+      {entries.map((entry) => (
+        <div className="result-row" key={entry.id}>
+          <div className="asset-thumb" />
+          <div>
+            <strong>
+              {stageLabel(entry.stage)} · {categoryLabel(entry.category)}
+            </strong>
+            <span>
+              {validityLabel(entry.validity)} · {entry.summary}
+            </span>
+            <SourceRefs refs={entry.sourceRefs} onLocateObject={onLocateObject} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SourceRefs({ refs, onLocateObject }: { refs: ContinuitySourceRef[]; onLocateObject: (objectId: string) => void }) {
+  if (refs.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="drawer-filter-row" aria-label="来源">
+      {refs.slice(0, 6).map((ref) =>
+        ref.kind === "object" ? (
+          <button className="filter-chip" type="button" key={`${ref.kind}-${ref.id}`} onClick={() => onLocateObject(ref.id)}>
+            来源：{ref.snapshot?.title ?? ref.id}
+          </button>
+        ) : (
+          <span className="filter-chip" key={`${ref.kind}-${ref.id}`}>
+            {sourceKindLabel(ref.kind)}：{ref.snapshot?.title ?? ref.id}
+          </span>
+        )
+      )}
+    </div>
+  );
+}
+
+function focusSourceRefs(workspace: MorphoWorkspace): ContinuitySourceRef[] {
+  return workspace.projectContinuity.currentFocus.sourceObjectIds
+    .map((objectId): ContinuitySourceRef | undefined => {
+      const object = workspace.objects[objectId];
+      return object
+        ? ({
+            kind: "object",
+            id: object.id,
+            snapshot: {
+              title: object.title,
+              objectType: object.type,
+              visibility: object.visibility,
+              summarySnippet: object.summary
+            }
+          } satisfies ContinuitySourceRef)
+        : undefined;
+    })
+    .filter(isContinuitySourceRef);
+}
+
+function isContinuitySourceRef(ref: ContinuitySourceRef | undefined): ref is ContinuitySourceRef {
+  return Boolean(ref);
 }
 
 function AssetRows({
@@ -238,6 +413,96 @@ function SearchRows({
       ))}
     </div>
   );
+}
+
+function focusAreaLabel(area: ProjectFocusArea): string {
+  return stageLabel(area);
+}
+
+function stageLabel(stage: StageRecordKey): string {
+  switch (stage) {
+    case "startAndInput":
+      return "开始与输入";
+    case "exploration":
+      return "探索";
+    case "research":
+      return "调研";
+    case "designDefinition":
+      return "设计定义";
+    case "directionAndVisual":
+      return "方向与视觉";
+    case "deliveryPreparation":
+      return "交付准备";
+  }
+}
+
+function categoryLabel(category: string): string {
+  switch (category) {
+    case "output":
+      return "产出";
+    case "decision":
+      return "决策";
+    case "rejection":
+      return "淘汰";
+    case "preference":
+      return "偏好";
+    case "constraint":
+      return "约束";
+    case "openQuestion":
+      return "待确认";
+    case "nextFocus":
+      return "下一重点";
+    default:
+      return "系统记录";
+  }
+}
+
+function validityLabel(validity: string): string {
+  switch (validity) {
+    case "current":
+      return "当前有效";
+    case "reviewRequired":
+      return "待复核";
+    case "superseded":
+      return "已被更新替代";
+    case "sourceUnavailable":
+      return "来源不可用";
+    default:
+      return validity;
+  }
+}
+
+function sourceKindLabel(kind: ContinuitySourceRef["kind"]): string {
+  switch (kind) {
+    case "revision":
+      return "版本";
+    case "operation":
+      return "任务";
+    case "branch":
+      return "视觉分支";
+    case "decision":
+      return "决策";
+    case "citation":
+      return "来源引用";
+    case "deliveryReference":
+      return "交付引用";
+    default:
+      return "来源";
+  }
+}
+
+function formatDrawerDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "时间未知";
+  }
+
+  return date.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }
 
 function matchesAssetFilter(item: WorkspaceAssetItem, filter: string): boolean {

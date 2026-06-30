@@ -26,7 +26,7 @@ No database, authentication, cloud object storage, Supabase, multiplayer sync, e
 
 ## Data Model
 
-Structured workspace data is schema version `7`.
+Structured workspace data is schema version `8`.
 
 Current workspace state includes:
 
@@ -45,7 +45,7 @@ Current workspace state includes:
 - direction lineage records in `workspace.directionLineage`;
 - lightweight visual branch records in `workspace.visualBranches`;
 - derived working state in `workspace.workingState`;
-- current stage snapshots in `workspace.stageRecords`.
+- structured project-continuity state in `workspace.projectContinuity`.
 
 Operation persistence is intentionally lightweight:
 
@@ -82,7 +82,7 @@ Schema v6 semantic additions:
 - Proposal source review uses per-source semantic snapshots and explanatory `reviewDetails`; title, summary, canvas movement, size, and zoom changes are not semantic source changes;
 - visual-development stage snapshots include active images assigned to concept directions, not only the direction objects themselves;
 - `ProjectWorkingState` is stored as a derived, rebuildable index for current effective state and AI context assembly;
-- `StageRecord` stores the current stage snapshot, not an append-only operation log.
+- legacy `stageRecords` stored current stage snapshots in earlier schemas, but schema v8 retires them in favor of `workspace.projectContinuity`.
 
 Schema v7 and M4.2 additions:
 
@@ -101,6 +101,16 @@ M4.3 additions:
 - `imageGeneration` planning requests to MiMo can now include authorized image attachments and local `documentExtract` text, while `imageGeneration` still never receives web search;
 - direction preview supports controllable multi-preview counts per selected direction with runtime validation and operation-level audit metadata;
 - direction-preview image placement is planned through a deterministic layout helper instead of piling all generated results into one fallback area.
+
+M5-A additions:
+
+- schema v8 adds `workspace.projectContinuity` as the single project-continuity runtime entry point;
+- legacy `project.currentFocus` is accepted only as migration input, and legacy `stageRecords` are not converted into a second history source;
+- continuity events are written only from explicit successful domain events and are idempotent through stable `dedupeKey` values;
+- continuity records use typed refs for objects, revisions, operations, visual branches, decisions, citations, and delivery references, with lightweight source snapshots only;
+- `hidden`, `superseded`, and deleted or missing sources are resolved into different validity states before context assembly;
+- task context now includes bounded project continuity records and derived memory views with deterministic relevance sorting;
+- the left rail exposes a lightweight `项目记录` drawer, while the project homepage shows recent focus and continuity update notes without progress widgets.
 
 ## Local-First Persistence
 

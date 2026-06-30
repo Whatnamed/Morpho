@@ -1,8 +1,8 @@
 "use client";
 
-import { Boxes, EyeOff, FolderSearch, Map, Plus, Search } from "lucide-react";
+import { BookOpenText, Boxes, EyeOff, FolderSearch, Map, Plus, Search } from "lucide-react";
 
-export type DrawerMode = "map" | "assets" | "hidden" | "search" | null;
+export type DrawerMode = "map" | "assets" | "hidden" | "search" | "records" | null;
 
 type LeftRailProps = {
   activeDrawer: DrawerMode;
@@ -37,6 +37,15 @@ export function LeftRail({ activeDrawer, onDrawerChange }: LeftRailProps) {
       >
         <Boxes size={16} />
         <span className="tooltip">资产</span>
+      </button>
+      <button
+        className={`rail-button ${activeDrawer === "records" ? "active" : ""}`}
+        type="button"
+        aria-label="项目记录"
+        onClick={() => toggle("records")}
+      >
+        <BookOpenText size={16} />
+        <span className="tooltip">项目记录</span>
       </button>
       <button
         className={`rail-button ${activeDrawer === "hidden" ? "active" : ""}`}

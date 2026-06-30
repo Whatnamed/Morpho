@@ -9,6 +9,7 @@ import type {
   ResearchObject
 } from "../morpho/types";
 import { reconcileWorkspaceDerivedState } from "../morpho/derivedState";
+import { applyProjectContinuityEvent } from "../morpho/projectContinuity";
 import type {
   ConceptDirectionProposal,
   DesignDefinitionProposal,
@@ -506,13 +507,34 @@ export function completeImageGenerationOperation(
     ]
   };
 
-  return {
+  const updatedWorkspace: MorphoWorkspace = {
     ...workspace,
     operations: {
       ...workspace.operations,
       [operation.id]: updatedOperation
     }
   };
+  const successfulResultObjectIds = (updatedOperation.imageGeneration?.resultObjectIds ?? []).filter((objectId) =>
+    Boolean(updatedWorkspace.objects[objectId])
+  );
+  if (successfulResultObjectIds.length === 0) {
+    return updatedWorkspace;
+  }
+
+  return applyProjectContinuityEvent(updatedWorkspace, {
+    type: "visualGenerationCompleted",
+    operationId: operation.id,
+    resultObjectIds: successfulResultObjectIds,
+    sourceObjectIds: [
+      ...(updatedOperation.imageGeneration?.referenceObjectIds ?? []),
+      ...(updatedOperation.imageGeneration?.directionObjectId ? [updatedOperation.imageGeneration.directionObjectId] : [])
+    ],
+    definitionRevisionId: getCurrentDesignDefinitionRevisionId(updatedWorkspace),
+    branchId: updatedOperation.imageGeneration?.visualBranchId,
+    successCount: successfulResultObjectIds.length,
+    failureCount: updatedOperation.imageGeneration?.failedItems?.length ?? 0,
+    createdAt: now
+  });
 }
 
 export function recordImageGenerationOperationResult(
@@ -1042,7 +1064,7 @@ export function applyDesignDefinitionProposal(
     status: "updated",
     designDefinitionObject,
     revision,
-    workspace: reconcileWorkspaceDerivedState({
+    workspace: applyProjectContinuityEvent(reconcileWorkspaceDerivedState({
       ...workspace,
       objects: nextObjects,
       relations: nextRelations,
@@ -1072,6 +1094,15 @@ export function applyDesignDefinitionProposal(
         ...workspace.ui,
         lastSelectionIds: [definitionId]
       }
+    }), {
+      type: "designDefinitionApplied",
+      designDefinitionObjectId: definitionId,
+      revisionId,
+      sourceObjectIds: proposal.sourceObjectIds,
+      proposalId: proposal.id,
+      operationId: proposal.operationId,
+      citationIds: proposal.citationIds,
+      createdAt: now
     })
   };
 }
@@ -1394,7 +1425,7 @@ export function applyConceptDirectionProposal(
   return {
     status: "updated",
     directions: appliedDirections,
-    workspace: reconcileWorkspaceDerivedState({
+    workspace: applyProjectContinuityEvent(reconcileWorkspaceDerivedState({
       ...workspace,
       objects: nextObjects,
       relations: nextRelations,
@@ -1434,6 +1465,14 @@ export function applyConceptDirectionProposal(
         ...workspace.ui,
         lastSelectionIds: appliedDirections.map((direction) => direction.id)
       }
+    }), {
+      type: "conceptDirectionApplied",
+      directionObjectIds: appliedDirections.map((direction) => direction.id),
+      revisionIds: appliedDirections.map((direction) => direction.currentRevisionId),
+      proposalId: proposal.id,
+      operationId: proposal.operationId,
+      citationIds: proposal.citationIds,
+      createdAt: now
     })
   };
 }
@@ -1517,7 +1556,7 @@ export function applyResearchAnalysisProposal(
   return {
     status: "updated",
     researchObject,
-    workspace: reconcileWorkspaceDerivedState({
+    workspace: applyProjectContinuityEvent(reconcileWorkspaceDerivedState({
       ...workspace,
       objects: {
         ...workspace.objects,
@@ -1555,6 +1594,13 @@ export function applyResearchAnalysisProposal(
         ...workspace.ui,
         lastSelectionIds: [objectId]
       }
+    }), {
+      type: "researchApplied",
+      operationId: proposal.operationId,
+      researchObjectId: objectId,
+      sourceObjectIds: proposal.sourceObjectIds,
+      citationIds: proposal.citationIds,
+      createdAt: now
     })
   };
 }
@@ -2168,6 +2214,12 @@ export function recordImageGenerationPlan(
 
 function appendUnique(values: string[], value: string): string[] {
   return values.includes(value) ? values : [...values, value];
+}
+
+function getCurrentDesignDefinitionRevisionId(workspace: MorphoWorkspace): string | undefined {
+  const definitionId = workspace.workingState.currentDesignDefinitionId;
+  const definition = definitionId ? workspace.objects[definitionId] : undefined;
+  return definition?.type === "designDefinition" ? definition.currentRevisionId : undefined;
 }
 
 function inferConceptDirectionApplicationMode(

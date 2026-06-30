@@ -1,4 +1,5 @@
-import { createDefaultStageRecords, createEmptyProjectWorkingState, reconcileWorkspaceDerivedState } from "./derivedState";
+import { createEmptyProjectWorkingState, reconcileWorkspaceDerivedState } from "./derivedState";
+import { createInitialProjectContinuity } from "./projectContinuity";
 import type { MorphoObject, MorphoObjectId, MorphoWorkspace, ObjectVisibility } from "./types";
 
 type SeedObject = MorphoObject extends infer ObjectUnion
@@ -31,12 +32,11 @@ function withActiveVisibility(objects: Record<MorphoObjectId, SeedObject>): Reco
 }
 
 const baseWorkspace: MorphoWorkspace = {
-  schemaVersion: 7,
+  schemaVersion: 8,
   project: {
     id: "project-nightrail",
     title: "夜航 / Nightrail",
     subtitle: "为独居老人夜间起身与卫浴路径设计一套低施工、非医疗化的连续辅助系统。",
-    currentFocus: "direction_visual_development",
     createdAt: NOW,
     updatedAt: NOW,
     lastOpenedAt: NOW
@@ -566,7 +566,23 @@ const baseWorkspace: MorphoWorkspace = {
     }
   },
   workingState: createEmptyProjectWorkingState(NOW),
-  stageRecords: createDefaultStageRecords(NOW),
+  projectContinuity: createInitialProjectContinuity({
+    workspace: {
+      project: {
+        id: "project-nightrail",
+        title: "夜航 / Nightrail",
+        subtitle: "为独居老人夜间起身与卫浴路径设计一套低施工、非医疗化的连续辅助系统。",
+        createdAt: NOW,
+        updatedAt: NOW,
+        lastOpenedAt: NOW
+      },
+      objects: {},
+      designDefinitionRevisions: {},
+      directionRevisions: {}
+    },
+    now: NOW,
+    legacyFocus: "direction_visual_development"
+  }),
   canvas: {
     view: { x: -760, y: -160, zoom: 0.72 },
     instances: [
@@ -714,4 +730,13 @@ const baseWorkspace: MorphoWorkspace = {
   }
 };
 
-export const nightrailWorkspace: MorphoWorkspace = reconcileWorkspaceDerivedState(baseWorkspace);
+const seededWorkspace: MorphoWorkspace = {
+  ...baseWorkspace,
+  projectContinuity: createInitialProjectContinuity({
+    workspace: baseWorkspace,
+    now: NOW,
+    legacyFocus: "direction_visual_development"
+  })
+};
+
+export const nightrailWorkspace: MorphoWorkspace = reconcileWorkspaceDerivedState(seededWorkspace);

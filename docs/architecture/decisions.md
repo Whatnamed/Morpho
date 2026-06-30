@@ -154,7 +154,7 @@ Decision: upgrade workspace data to `schemaVersion: 5`.
 
 Reason: M4 semantic work needs first-class key conclusions, revisioned design definitions, revisioned concept directions, direction lineage, lightweight visual branches, and a rebuildable working-state index that can drive AI context and stage snapshots without turning canvas layout into business state.
 
-Boundary: `workingState` and `stageRecords` are derived and stored for fast local reads, but they are not the sole source of truth. Authority remains with formal objects, revisions, relations, and decision records. Schema v5 still does not introduce PDF runtime, delivery-plan runtime, or archive export.
+Boundary: `workingState` and legacy `stageRecords` are derived and stored for fast local reads, but they are not the sole source of truth. Authority remains with formal objects, revisions, relations, and decision records. Schema v5 still does not introduce PDF runtime, delivery-plan runtime, or archive export. The `stageRecords` runtime boundary is superseded by schema v8 project continuity.
 
 ## 2026-06-25: Treat Image Role Changes as Visual-Development Decisions
 
@@ -359,3 +359,19 @@ Decision: recommended task routing now combines draft text with selected object 
 Reason: Morpho needs the default discussion mode to move naturally into research, direction preview, and visual development, while still keeping image analysis, copywriting, and manual overrides on the correct path.
 
 Boundary: routing remains deterministic and local. Morpho does not call a second model just to choose a task route, and manual user-selected task mode or work intent still remains authoritative.
+
+## 2026-06-30: Use Schema Version 8 for Project Continuity
+
+Decision: upgrade workspace data to `schemaVersion: 8` and introduce `workspace.projectContinuity` as the single project-continuity runtime entry point.
+
+Reason: M5-A needs structured current focus, traceable stage records, derived project memory views, typed source refs, validity, and bounded continuity context without maintaining both legacy `project.currentFocus` and `stageRecords` as competing truth sources.
+
+Boundary: schema v8 accepts legacy `project.currentFocus` only as migration input. Legacy `stageRecords` are retired and are not bulk-converted into historical continuity entries. The continuity state remains a deterministic projection over real objects, revisions, operations, proposals, citations, relations, visual branches, delivery references, and decision records.
+
+## 2026-06-30: Keep Project Continuity Event-Driven and Deterministic
+
+Decision: write continuity only from explicit successful domain events through `applyProjectContinuityEvent`, and resolve entry validity with `resolveContinuityValidity` before context assembly.
+
+Reason: project continuity must be stable, replay-safe, and explainable. React effects, selection changes, drawer toggles, ordinary chat, proposal generation, failed operations, and canvas movement must not silently create project facts.
+
+Boundary: every continuity event has a stable `dedupeKey`. Source refs are typed and store only lightweight snapshots. Hidden sources become `reviewRequired`, deleted or missing sources become `sourceUnavailable`, directly replaced revisions or default references become `superseded`, and `sourceUnavailable` entries do not enter factual AI context. Exploration remains empty unless a future explicit exploration event is introduced.

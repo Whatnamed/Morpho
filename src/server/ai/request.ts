@@ -57,6 +57,7 @@ export type AiRouteTaskContext = {
   designDefinition?: AiRouteDesignDefinitionContext;
   directions: AiRouteDirectionContext[];
   visualBranches: AiRouteVisualBranchContext[];
+  projectContinuity?: AiRouteProjectContinuityContext;
   skipped: Array<{ objectId: string; reason: string }>;
 };
 
@@ -104,6 +105,54 @@ export type AiRouteVisualBranchContext = {
   directionId: string;
   label: string;
   rootObjectId?: string;
+};
+
+export type AiRouteContinuitySourceRef = {
+  kind: string;
+  id: string;
+  snapshot?: {
+    title: string;
+    objectType?: string;
+    revisionNumber?: number;
+    status?: string;
+    visibility?: string;
+    summarySnippet?: string;
+  };
+};
+
+export type AiRouteContinuityEntry = {
+  id: string;
+  stage: string;
+  category: string;
+  summary: string;
+  validity: string;
+  sourceRefs: AiRouteContinuitySourceRef[];
+};
+
+export type AiRouteProjectContinuityContext = {
+  currentFocus: {
+    area: string;
+    updatedAt: string;
+    sourceKind: string;
+    sourceObjectIds: string[];
+    sourceOperationId?: string;
+    note: string;
+  };
+  relevantStageRecords: AiRouteContinuityEntry[];
+  relevantProjectMemoryViews: Array<{
+    key: string;
+    title: string;
+    items: Array<{
+      id: string;
+      title: string;
+      summary: string;
+      validity: string;
+      sourceRefs: AiRouteContinuitySourceRef[];
+    }>;
+  }>;
+  reviewRequiredItems: AiRouteContinuityEntry[];
+  omitted: Array<{ id: string; reason: string }>;
+  truncated: boolean;
 };
 
 export type AiRouteRequest = {
@@ -300,11 +349,51 @@ function buildTaskContextPromptBlock(request: AiRouteRequest): string {
     lines.push(`visualBranch: ${branch.id} / ${branch.directionId} / ${branch.label}${branch.rootObjectId ? ` / root=${branch.rootObjectId}` : ""}`);
   }
 
+  appendProjectContinuityPromptLines(lines, context.projectContinuity);
+
   if (context.skipped.length > 0) {
     lines.push(`skipped: ${context.skipped.map((skip) => `${skip.objectId}:${skip.reason}`).join("; ")}`);
   }
 
   return lines.join("\n");
+}
+
+function appendProjectContinuityPromptLines(lines: string[], continuity: AiRouteProjectContinuityContext | undefined): void {
+  if (!continuity) {
+    return;
+  }
+
+  lines.push(
+    "Project continuity:",
+    `currentFocus: ${continuity.currentFocus.area} / ${continuity.currentFocus.note} / updatedAt=${continuity.currentFocus.updatedAt}`,
+    "validityRule: current can be used as stable context; reviewRequired must be marked as needing review; superseded and sourceUnavailable must not be treated as current facts."
+  );
+
+  for (const entry of continuity.relevantStageRecords) {
+    lines.push(
+      `continuityRecord: [${entry.validity}] ${entry.stage}/${entry.category} ${entry.id}: ${entry.summary}; sources=${summarizeContinuitySources(entry.sourceRefs)}`
+    );
+  }
+
+  for (const view of continuity.relevantProjectMemoryViews) {
+    for (const item of view.items) {
+      lines.push(`memoryView:${view.key}: [${item.validity}] ${item.title}: ${item.summary}`);
+    }
+  }
+
+  for (const item of continuity.reviewRequiredItems) {
+    lines.push(`reviewContinuity: [${item.validity}] ${item.stage}/${item.category} ${item.id}: ${item.summary}`);
+  }
+
+  if (continuity.omitted.length > 0 || continuity.truncated) {
+    lines.push(
+      `continuityOmitted: ${continuity.omitted.map((item) => `${item.id}:${item.reason}`).join("; ") || "none"}; truncated=${continuity.truncated ? "true" : "false"}`
+    );
+  }
+}
+
+function summarizeContinuitySources(sourceRefs: AiRouteContinuitySourceRef[]): string {
+  return sourceRefs.map((ref) => `${ref.kind}:${ref.id}`).join(", ") || "none";
 }
 
 function buildAttachmentCapabilityLine(request: AiRouteRequest): string {
@@ -495,6 +584,7 @@ function normalizeTaskContext(value: unknown): AiRouteTaskContext | undefined {
     visualBranches: Array.isArray(value.visualBranches)
       ? value.visualBranches.map(normalizeVisualBranchContext).filter(isDefined).slice(0, 8)
       : [],
+    projectContinuity: normalizeProjectContinuityContext(value.projectContinuity),
     skipped: Array.isArray(value.skipped) ? value.skipped.map(normalizeSkippedContext).filter(isDefined).slice(0, 12) : []
   };
 }
@@ -572,6 +662,120 @@ function normalizeSkippedContext(value: unknown): { objectId: string; reason: st
   return {
     objectId: trimString(value.objectId, 120),
     reason: trimString(value.reason, 240)
+  };
+}
+
+function normalizeProjectContinuityContext(value: unknown): AiRouteProjectContinuityContext | undefined {
+  if (!isRecord(value) || !isRecord(value.currentFocus)) {
+    return undefined;
+  }
+
+  return {
+    currentFocus: {
+      area: stringField(value.currentFocus.area, 80),
+      updatedAt: stringField(value.currentFocus.updatedAt, 80),
+      sourceKind: stringField(value.currentFocus.sourceKind, 80),
+      sourceObjectIds: stringArray(value.currentFocus.sourceObjectIds).slice(0, 8),
+      sourceOperationId:
+        typeof value.currentFocus.sourceOperationId === "string"
+          ? trimString(value.currentFocus.sourceOperationId, 120)
+          : undefined,
+      note: stringField(value.currentFocus.note, 220)
+    },
+    relevantStageRecords: Array.isArray(value.relevantStageRecords)
+      ? value.relevantStageRecords.map(normalizeContinuityEntry).filter(isDefined).slice(0, 6)
+      : [],
+    relevantProjectMemoryViews: Array.isArray(value.relevantProjectMemoryViews)
+      ? value.relevantProjectMemoryViews.map(normalizeProjectMemoryView).filter(isDefined).slice(0, 4)
+      : [],
+    reviewRequiredItems: Array.isArray(value.reviewRequiredItems)
+      ? value.reviewRequiredItems.map(normalizeContinuityEntry).filter(isDefined).slice(0, 4)
+      : [],
+    omitted: Array.isArray(value.omitted) ? value.omitted.map(normalizeContinuityOmitted).filter(isDefined).slice(0, 12) : [],
+    truncated: value.truncated === true
+  };
+}
+
+function normalizeContinuityEntry(value: unknown): AiRouteContinuityEntry | undefined {
+  if (!isRecord(value) || typeof value.id !== "string") {
+    return undefined;
+  }
+
+  return {
+    id: trimString(value.id, 160),
+    stage: stringField(value.stage, 80),
+    category: stringField(value.category, 80),
+    summary: stringField(value.summary, 220),
+    validity: stringField(value.validity, 80),
+    sourceRefs: Array.isArray(value.sourceRefs) ? value.sourceRefs.map(normalizeContinuitySourceRef).filter(isDefined).slice(0, 8) : []
+  };
+}
+
+function normalizeProjectMemoryView(value: unknown): AiRouteProjectContinuityContext["relevantProjectMemoryViews"][number] | undefined {
+  if (!isRecord(value) || typeof value.key !== "string" || typeof value.title !== "string") {
+    return undefined;
+  }
+
+  return {
+    key: trimString(value.key, 80),
+    title: trimString(value.title, 120),
+    items: Array.isArray(value.items)
+      ? value.items
+          .map((item) => {
+            if (!isRecord(item) || typeof item.id !== "string") {
+              return undefined;
+            }
+            return {
+              id: trimString(item.id, 160),
+              title: stringField(item.title, 160),
+              summary: stringField(item.summary, 220),
+              validity: stringField(item.validity, 80),
+              sourceRefs: Array.isArray(item.sourceRefs)
+                ? item.sourceRefs.map(normalizeContinuitySourceRef).filter(isDefined).slice(0, 8)
+                : []
+            };
+          })
+          .filter(isDefined)
+          .slice(0, 5)
+      : []
+  };
+}
+
+function normalizeContinuitySourceRef(value: unknown): AiRouteContinuitySourceRef | undefined {
+  if (!isRecord(value) || typeof value.kind !== "string" || typeof value.id !== "string") {
+    return undefined;
+  }
+
+  const snapshot = isRecord(value.snapshot)
+    ? {
+        title: stringField(value.snapshot.title, 160),
+        objectType: typeof value.snapshot.objectType === "string" ? trimString(value.snapshot.objectType, 80) : undefined,
+        revisionNumber:
+          typeof value.snapshot.revisionNumber === "number" && Number.isFinite(value.snapshot.revisionNumber)
+            ? Math.max(0, Math.trunc(value.snapshot.revisionNumber))
+            : undefined,
+        status: typeof value.snapshot.status === "string" ? trimString(value.snapshot.status, 120) : undefined,
+        visibility: typeof value.snapshot.visibility === "string" ? trimString(value.snapshot.visibility, 80) : undefined,
+        summarySnippet:
+          typeof value.snapshot.summarySnippet === "string" ? trimString(value.snapshot.summarySnippet, 220) : undefined
+      }
+    : undefined;
+
+  return {
+    kind: trimString(value.kind, 80),
+    id: trimString(value.id, 160),
+    snapshot
+  };
+}
+
+function normalizeContinuityOmitted(value: unknown): { id: string; reason: string } | undefined {
+  if (!isRecord(value) || typeof value.id !== "string" || typeof value.reason !== "string") {
+    return undefined;
+  }
+
+  return {
+    id: trimString(value.id, 160),
+    reason: trimString(value.reason, 180)
   };
 }
 

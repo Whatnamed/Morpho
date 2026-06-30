@@ -8,7 +8,9 @@ export type LocalProjectSummary = {
   id: string;
   title: string;
   subtitle: string;
-  currentFocus: MorphoWorkspace["project"]["currentFocus"];
+  currentFocus?: MorphoWorkspace["projectContinuity"]["currentFocus"];
+  continuityUpdatedAt?: string;
+  continuityNote?: string;
   lastOpenedAt: string;
   updatedAt: string;
   coverAssetId?: string;
@@ -153,7 +155,9 @@ export function summarizeProject(workspace: MorphoWorkspace): LocalProjectSummar
     id: workspace.project.id,
     title: workspace.project.title,
     subtitle: workspace.project.subtitle,
-    currentFocus: workspace.project.currentFocus,
+    currentFocus: workspace.projectContinuity.currentFocus,
+    continuityUpdatedAt: workspace.projectContinuity.updatedAt,
+    continuityNote: workspace.projectContinuity.currentFocus.note,
     lastOpenedAt: workspace.project.lastOpenedAt ?? workspace.project.updatedAt ?? "2026-06-23T00:00:00.000Z",
     updatedAt: workspace.project.updatedAt ?? "2026-06-23T00:00:00.000Z",
     coverAssetId: workspace.project.coverAssetId

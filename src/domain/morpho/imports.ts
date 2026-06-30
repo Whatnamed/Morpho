@@ -12,6 +12,7 @@ import type {
 } from "./types";
 import { reconcileWorkspaceDerivedState } from "./derivedState";
 import { getImageCanvasSize } from "./imageSizing";
+import { applyProjectContinuityEvent } from "./projectContinuity";
 
 type ImportResult = {
   workspace: MorphoWorkspace;
@@ -41,7 +42,7 @@ export function importTextObject(
     visibility: "active"
   };
 
-  return addObjectsToCanvas(workspace, [object], input.position);
+  return recordImportedObjects(addObjectsToCanvas(workspace, [object], input.position));
 }
 
 export function importUrlObject(
@@ -83,8 +84,8 @@ export function importUrlObject(
     visibility: "active"
   };
 
-  return {
-    ...addObjectsToCanvas(
+  return recordImportedObjects(
+    addObjectsToCanvas(
       {
         ...workspace,
         assets: {
@@ -95,7 +96,7 @@ export function importUrlObject(
       [object],
       input.position
     )
-  };
+  );
 }
 
 export function importAssetBackedObjects(
@@ -117,7 +118,7 @@ export function importAssetBackedObjects(
   const placed = addObjectsToCanvas(workspaceWithAssets, importedObjects, input.position);
 
   if (imageAssets.length <= 1) {
-    return placed;
+    return recordImportedObjects(placed);
   }
 
   const imageObjectIds = importedObjects
@@ -135,9 +136,14 @@ export function importAssetBackedObjects(
     visibility: "active"
   };
 
-  return addObjectsToCanvas(placed.workspace, [collection], {
+  const collectionPlaced = addObjectsToCanvas(placed.workspace, [collection], {
     x: input.position.x,
     y: input.position.y - 96
+  });
+
+  return recordImportedObjects({
+    workspace: collectionPlaced.workspace,
+    objectIds: [...placed.objectIds, ...collectionPlaced.objectIds]
   });
 }
 
@@ -209,6 +215,20 @@ function addObjectsToCanvas(workspace: MorphoWorkspace, objects: MorphoObject[],
       }
     }),
     objectIds
+  };
+}
+
+function recordImportedObjects(result: ImportResult): ImportResult {
+  if (result.objectIds.length === 0) {
+    return result;
+  }
+
+  return {
+    ...result,
+    workspace: applyProjectContinuityEvent(result.workspace, {
+      type: "inputImported",
+      objectIds: result.objectIds
+    })
   };
 }
 

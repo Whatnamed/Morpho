@@ -1,4 +1,11 @@
-import { reconcileWorkspaceDerivedState, createDefaultStageRecords, createEmptyProjectWorkingState } from "./derivedState";
+import { reconcileWorkspaceDerivedState, createEmptyProjectWorkingState } from "./derivedState";
+import {
+  applyProjectContinuityEvent,
+  createInitialProjectContinuity,
+  normalizeProjectContinuity,
+  resolveContinuityValidity,
+  type LegacyProjectFocus
+} from "./projectContinuity";
 import { nightrailWorkspace } from "./seed";
 import type { ArtifactProposal, SourceSemanticSnapshot } from "../operations/types";
 import type {
@@ -35,7 +42,7 @@ import type {
 } from "./types";
 
 const DEFAULT_REFERENCE_HIDDEN_MESSAGE = "当前后续默认参考已隐藏，请先恢复或替换后再用于相关生成。";
-const CURRENT_SCHEMA_VERSION = 7;
+const CURRENT_SCHEMA_VERSION = 8;
 
 export type DeleteObjectResult =
   | {
@@ -130,7 +137,6 @@ export function createBlankWorkspace(projectId: string): MorphoWorkspace {
       id: projectId,
       title: "未命名项目",
       subtitle: "从一句话、图片、文件或链接开始。",
-      currentFocus: "research",
       createdAt: now,
       updatedAt: now,
       lastOpenedAt: now
@@ -148,7 +154,22 @@ export function createBlankWorkspace(projectId: string): MorphoWorkspace {
     directionLineage: [],
     visualBranches: {},
     workingState: createEmptyProjectWorkingState(now),
-    stageRecords: createDefaultStageRecords(now),
+    projectContinuity: createInitialProjectContinuity({
+      workspace: {
+        project: {
+          id: projectId,
+          title: "未命名项目",
+          subtitle: "从一句话、图片、文件或链接开始。",
+          createdAt: now,
+          updatedAt: now,
+          lastOpenedAt: now
+        },
+        objects: {},
+        designDefinitionRevisions: {},
+        directionRevisions: {}
+      },
+      now
+    }),
     canvas: {
       view: { x: 0, y: 0, zoom: 1 },
       instances: []
@@ -215,7 +236,7 @@ export function hideObject(workspace: MorphoWorkspace, objectId: MorphoObjectId)
     return workspace;
   }
 
-  return reconcileWorkspaceDerivedState({
+  return resolveContinuityValidity(reconcileWorkspaceDerivedState({
     ...workspace,
     objects: {
       ...workspace.objects,
@@ -225,7 +246,7 @@ export function hideObject(workspace: MorphoWorkspace, objectId: MorphoObjectId)
         updatedAt: new Date().toISOString()
       }
     }
-  });
+  }));
 }
 
 export function restoreObject(workspace: MorphoWorkspace, objectId: MorphoObjectId): MorphoWorkspace {
@@ -235,7 +256,7 @@ export function restoreObject(workspace: MorphoWorkspace, objectId: MorphoObject
     return workspace;
   }
 
-  return reconcileWorkspaceDerivedState({
+  return resolveContinuityValidity(reconcileWorkspaceDerivedState({
     ...workspace,
     objects: {
       ...workspace.objects,
@@ -245,7 +266,7 @@ export function restoreObject(workspace: MorphoWorkspace, objectId: MorphoObject
         updatedAt: new Date().toISOString()
       }
     }
-  });
+  }));
 }
 
 export function getRenderableCanvasInstances(workspace: MorphoWorkspace): CanvasInstance[] {
@@ -486,7 +507,7 @@ export function deleteObject(
 
   return {
     status: "updated",
-    workspace: reconcileWorkspaceDerivedState({
+    workspace: resolveContinuityValidity(reconcileWorkspaceDerivedState({
       ...workspace,
       objects,
       relations,
@@ -495,7 +516,7 @@ export function deleteObject(
         ...workspace.canvas,
         instances: canvasInstances
       }
-    })
+    }))
   };
 }
 
@@ -539,13 +560,14 @@ export function setConceptDirectionStatus(
     updatedAt: now
   };
 
-  return reconcileWorkspaceDerivedState({
+  const decisionId = makeDecisionId(workspace, "setDirectionStatus", objectId);
+  const updated = reconcileWorkspaceDerivedState({
     ...workspace,
     objects,
     decisionRecords: [
       ...workspace.decisionRecords,
       {
-        id: makeDecisionId(workspace, "setDirectionStatus", objectId),
+        id: decisionId,
         kind: "setDirectionStatus",
         createdAt: now,
         summary: `${object.title} -> ${status}`,
@@ -554,6 +576,13 @@ export function setConceptDirectionStatus(
         relatedObjectIds: [objectId]
       }
     ]
+  });
+  return applyProjectContinuityEvent(updated, {
+    type: "directionStatusChanged",
+    directionObjectId: objectId,
+    status,
+    decisionId,
+    createdAt: now
   });
 }
 
@@ -628,21 +657,28 @@ export function createVisualBranch(
     input.branchId ?? `visual-branch-${direction.id}-${slugifyLabel(label)}`
   );
 
-  return {
-    status: "updated",
-    workspace: {
-      ...workspace,
-      visualBranches: {
-        ...workspace.visualBranches,
-        [branchId]: {
-          id: branchId,
-          directionId: direction.id,
-          label,
-          rootObjectId: input.rootObjectId,
-          createdAt: now
-        }
+  const nextWorkspace = {
+    ...workspace,
+    visualBranches: {
+      ...workspace.visualBranches,
+      [branchId]: {
+        id: branchId,
+        directionId: direction.id,
+        label,
+        rootObjectId: input.rootObjectId,
+        createdAt: now
       }
     }
+  };
+  return {
+    status: "updated",
+    workspace: applyProjectContinuityEvent(nextWorkspace, {
+      type: "visualBranchChanged",
+      action: "created",
+      branchId,
+      directionId: direction.id,
+      createdAt: now
+    })
   };
 }
 
@@ -687,18 +723,26 @@ export function archiveVisualBranch(
     return { status: "updated", workspace };
   }
 
-  return {
-    status: "updated",
-    workspace: {
-      ...workspace,
-      visualBranches: {
-        ...workspace.visualBranches,
-        [branchId]: {
-          ...branch,
-          archivedAt: new Date().toISOString()
-        }
+  const now = new Date().toISOString();
+  const nextWorkspace = {
+    ...workspace,
+    visualBranches: {
+      ...workspace.visualBranches,
+      [branchId]: {
+        ...branch,
+        archivedAt: now
       }
     }
+  };
+  return {
+    status: "updated",
+    workspace: applyProjectContinuityEvent(nextWorkspace, {
+      type: "visualBranchChanged",
+      action: "archived",
+      branchId,
+      directionId: branch.directionId,
+      createdAt: now
+    })
   };
 }
 
@@ -712,15 +756,23 @@ export function restoreVisualBranch(
   }
 
   const { archivedAt: _archivedAt, ...restoredBranch } = branch;
+  const now = new Date().toISOString();
+  const nextWorkspace = {
+    ...workspace,
+    visualBranches: {
+      ...workspace.visualBranches,
+      [branchId]: restoredBranch
+    }
+  };
   return {
     status: "updated",
-    workspace: {
-      ...workspace,
-      visualBranches: {
-        ...workspace.visualBranches,
-        [branchId]: restoredBranch
-      }
-    }
+    workspace: applyProjectContinuityEvent(nextWorkspace, {
+      type: "visualBranchChanged",
+      action: "restored",
+      branchId,
+      directionId: restoredBranch.directionId,
+      createdAt: now
+    })
   };
 }
 
@@ -803,6 +855,9 @@ export function setDefaultReference(
   }
 
   const now = new Date().toISOString();
+  const previousDefaultReference = Object.values(workspace.objects).find(
+    (candidate) => candidate.type === "image" && candidate.isDefaultReference && candidate.id !== objectId
+  );
   const objects = Object.fromEntries(
     Object.entries(workspace.objects).map(([entryId, entry]) => {
       if (entry.type !== "image") {
@@ -831,14 +886,15 @@ export function setDefaultReference(
       }
     : null;
 
-  return reconcileWorkspaceDerivedState({
+  const decisionId = makeDecisionId(workspace, "setDefaultReference", objectId);
+  const updated = reconcileWorkspaceDerivedState({
     ...workspace,
     objects,
     relations: defaultReferenceRelation ? [...relationsWithoutDefault, defaultReferenceRelation] : relationsWithoutDefault,
     decisionRecords: [
       ...workspace.decisionRecords,
       {
-        id: makeDecisionId(workspace, "setDefaultReference", objectId),
+        id: decisionId,
         kind: "setDefaultReference",
         createdAt: now,
         summary: `设为后续默认参考：${object.title}`,
@@ -847,6 +903,13 @@ export function setDefaultReference(
         relatedObjectIds: [objectId]
       }
     ]
+  });
+  return applyProjectContinuityEvent(updated, {
+    type: "defaultReferenceChanged",
+    imageObjectId: objectId,
+    previousImageObjectId: previousDefaultReference?.id,
+    decisionId,
+    createdAt: now
   });
 }
 
@@ -935,7 +998,13 @@ export function createKeyConclusion(
   });
 
   return {
-    workspace: nextWorkspace,
+    workspace: applyProjectContinuityEvent(nextWorkspace, {
+      type: "keyConclusionSaved",
+      objectId,
+      sourceObjectIds: input.sourceObjectIds,
+      decisionId: nextWorkspace.decisionRecords.at(-1)?.id,
+      createdAt: now
+    }),
     keyConclusion
   };
 }
@@ -1214,15 +1283,26 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
   if (value.schemaVersion === CURRENT_SCHEMA_VERSION) {
     return {
       status: "ok",
-      workspace: normalizeV7Workspace(value),
+      workspace: normalizeCurrentWorkspace(value),
       didMigrate: false
+    };
+  }
+
+  if (value.schemaVersion === 7) {
+    return {
+      status: "ok",
+      workspace: normalizeCurrentWorkspace({
+        ...(structuredClone(value) as Record<string, unknown>),
+        schemaVersion: CURRENT_SCHEMA_VERSION
+      }),
+      didMigrate: true
     };
   }
 
   if (value.schemaVersion === 6) {
     return {
       status: "ok",
-      workspace: normalizeV7Workspace({
+      workspace: normalizeCurrentWorkspace({
         ...(structuredClone(value) as Record<string, unknown>),
         schemaVersion: CURRENT_SCHEMA_VERSION
       }),
@@ -1233,7 +1313,7 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
   if (value.schemaVersion === 5) {
     return {
       status: "ok",
-      workspace: normalizeV7Workspace({
+      workspace: normalizeCurrentWorkspace({
         ...(structuredClone(value) as Record<string, unknown>),
         schemaVersion: CURRENT_SCHEMA_VERSION
       }),
@@ -1537,10 +1617,16 @@ function migrateV4Workspace(value: Record<string, unknown>): MorphoWorkspace {
   const normalized: MorphoWorkspace = {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     project: {
-      ...(cloned.project as MorphoWorkspace["project"]),
+      id: stringValue((cloned.project as Record<string, unknown>)?.id, "project-nightrail"),
+      title: stringValue((cloned.project as Record<string, unknown>)?.title, "未命名项目"),
+      subtitle: stringValue((cloned.project as Record<string, unknown>)?.subtitle),
       createdAt: stringValue((cloned.project as Record<string, unknown>)?.createdAt, now),
       updatedAt: stringValue((cloned.project as Record<string, unknown>)?.updatedAt, now),
-      lastOpenedAt: stringValue((cloned.project as Record<string, unknown>)?.lastOpenedAt, now)
+      lastOpenedAt: stringValue((cloned.project as Record<string, unknown>)?.lastOpenedAt, now),
+      coverAssetId:
+        typeof (cloned.project as Record<string, unknown>)?.coverAssetId === "string"
+          ? ((cloned.project as Record<string, unknown>).coverAssetId as string)
+          : undefined
     },
     objects,
     assets: isRecord(cloned.assets) ? (cloned.assets as Record<AssetId, AssetRecord>) : {},
@@ -1561,7 +1647,23 @@ function migrateV4Workspace(value: Record<string, unknown>): MorphoWorkspace {
     directionLineage: [],
     visualBranches: {},
     workingState: createEmptyProjectWorkingState(now),
-    stageRecords: createDefaultStageRecords(now),
+    projectContinuity: createInitialProjectContinuity({
+      workspace: {
+        project: {
+          id: stringValue((cloned.project as Record<string, unknown>)?.id, "project-nightrail"),
+          title: stringValue((cloned.project as Record<string, unknown>)?.title, "未命名项目"),
+          subtitle: stringValue((cloned.project as Record<string, unknown>)?.subtitle),
+          createdAt: stringValue((cloned.project as Record<string, unknown>)?.createdAt, now),
+          updatedAt: stringValue((cloned.project as Record<string, unknown>)?.updatedAt, now),
+          lastOpenedAt: stringValue((cloned.project as Record<string, unknown>)?.lastOpenedAt, now)
+        },
+        objects,
+        designDefinitionRevisions,
+        directionRevisions
+      },
+      now,
+      legacyFocus: legacyProjectFocus((cloned.project as Record<string, unknown>)?.currentFocus)
+    }),
     canvas: (cloned.canvas as MorphoWorkspace["canvas"]) ?? {
       view: { x: 0, y: 0, zoom: 1 },
       instances: []
@@ -1576,27 +1678,30 @@ function migrateV4Workspace(value: Record<string, unknown>): MorphoWorkspace {
     }
   };
 
-  return reconcileWorkspaceDerivedState(normalizeV7Workspace(normalized));
+  return reconcileWorkspaceDerivedState(normalizeCurrentWorkspace(normalized));
 }
 
-function normalizeV7Workspace(value: Record<string, unknown>): MorphoWorkspace {
+function normalizeCurrentWorkspace(value: Record<string, unknown>): MorphoWorkspace {
   const cloned = structuredClone(value) as Partial<MorphoWorkspace>;
   const now = new Date().toISOString();
   const canvasView = cloned.ui?.canvasView ?? cloned.canvas?.view ?? { x: 0, y: 0, zoom: 1 };
   const objects = normalizeObjectsForSchemaV7(cloned.objects ?? {});
+  const rawProject = isRecord(value.project) ? value.project : {};
+  const project = {
+    id: typeof rawProject.id === "string" ? rawProject.id : "project-nightrail",
+    title: typeof rawProject.title === "string" ? rawProject.title : "未命名项目",
+    subtitle: typeof rawProject.subtitle === "string" ? rawProject.subtitle : "",
+    createdAt: typeof rawProject.createdAt === "string" ? rawProject.createdAt : now,
+    updatedAt: typeof rawProject.updatedAt === "string" ? rawProject.updatedAt : now,
+    lastOpenedAt: typeof rawProject.lastOpenedAt === "string" ? rawProject.lastOpenedAt : now,
+    coverAssetId: typeof rawProject.coverAssetId === "string" ? rawProject.coverAssetId : undefined
+  };
+  const designDefinitionRevisions = cloned.designDefinitionRevisions ?? {};
+  const directionRevisions = cloned.directionRevisions ?? {};
 
   return reconcileWorkspaceDerivedState({
     schemaVersion: CURRENT_SCHEMA_VERSION,
-    project: {
-      id: cloned.project?.id ?? "project-nightrail",
-      title: cloned.project?.title ?? "未命名项目",
-      subtitle: cloned.project?.subtitle ?? "",
-      currentFocus: cloned.project?.currentFocus ?? "research",
-      createdAt: cloned.project?.createdAt ?? now,
-      updatedAt: cloned.project?.updatedAt ?? now,
-      lastOpenedAt: cloned.project?.lastOpenedAt ?? now,
-      coverAssetId: cloned.project?.coverAssetId
-    },
+    project,
     objects,
     assets: cloned.assets ?? {},
     relations: cloned.relations ?? [],
@@ -1605,12 +1710,21 @@ function normalizeV7Workspace(value: Record<string, unknown>): MorphoWorkspace {
     operations: cloned.operations ?? {},
     artifactProposals: normalizeArtifactProposals(cloned.artifactProposals ?? {}, objects),
     citationSnapshots: cloned.citationSnapshots ?? {},
-    designDefinitionRevisions: cloned.designDefinitionRevisions ?? {},
-    directionRevisions: cloned.directionRevisions ?? {},
+    designDefinitionRevisions,
+    directionRevisions,
     directionLineage: cloned.directionLineage ?? [],
     visualBranches: cloned.visualBranches ?? {},
     workingState: cloned.workingState ?? createEmptyProjectWorkingState(now),
-    stageRecords: cloned.stageRecords ?? createDefaultStageRecords(now),
+    projectContinuity: normalizeProjectContinuity(
+      {
+        project,
+        objects,
+        designDefinitionRevisions,
+        directionRevisions
+      },
+      cloned.projectContinuity,
+      legacyProjectFocus(rawProject.currentFocus)
+    ),
     canvas: cloned.canvas ?? {
       view: { x: 0, y: 0, zoom: 1 },
       instances: []
@@ -2035,6 +2149,18 @@ function isDirectionStatus(value: unknown): value is ConceptDirectionStatus {
     value === "eliminated" ||
     value === "needsReview"
   );
+}
+
+function legacyProjectFocus(value: unknown): LegacyProjectFocus | undefined {
+  switch (value) {
+    case "direction_visual_development":
+    case "research":
+    case "design_definition":
+    case "delivery_preparation":
+      return value;
+    default:
+      return undefined;
+  }
 }
 
 function omitRecordKey<T>(record: Record<string, T>, key: string): Record<string, T> {

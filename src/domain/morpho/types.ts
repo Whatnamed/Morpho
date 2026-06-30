@@ -10,12 +10,106 @@ export type DesignDefinitionRevisionId = string;
 export type DirectionRevisionId = string;
 export type DirectionLineageId = string;
 export type VisualBranchId = string;
-export type StageRecordKind =
+export type AiTaskMode = "chatAnalysis" | "imageGeneration" | "researchOperation";
+
+export type ProjectFocusArea =
+  | "startAndInput"
+  | "exploration"
   | "research"
   | "designDefinition"
-  | "directionVisualDevelopment"
+  | "directionAndVisual"
   | "deliveryPreparation";
-export type AiTaskMode = "chatAnalysis" | "imageGeneration" | "researchOperation";
+
+export type StageRecordKey = ProjectFocusArea;
+
+export type CurrentProjectFocus = {
+  area: ProjectFocusArea;
+  updatedAt: string;
+  sourceKind: "migration" | "userAction" | "operation" | "proposalApplied";
+  sourceObjectIds: MorphoObjectId[];
+  sourceOperationId?: string;
+  note: string;
+};
+
+export type ContinuityRecordCategory =
+  | "output"
+  | "decision"
+  | "rejection"
+  | "preference"
+  | "constraint"
+  | "openQuestion"
+  | "nextFocus"
+  | "systemNote";
+
+export type ContinuityValidity = "current" | "reviewRequired" | "superseded" | "sourceUnavailable";
+
+export type ContinuitySourceRefKind =
+  | "object"
+  | "revision"
+  | "operation"
+  | "branch"
+  | "decision"
+  | "citation"
+  | "deliveryReference";
+
+export type ContinuitySourceSnapshot = {
+  title: string;
+  objectType?: MorphoObjectType;
+  revisionNumber?: number;
+  status?: string;
+  visibility?: ObjectVisibility | "deleted";
+  summarySnippet?: string;
+};
+
+export type ContinuitySourceRef = {
+  kind: ContinuitySourceRefKind;
+  id: string;
+  snapshot?: ContinuitySourceSnapshot;
+};
+
+export type ContinuityRecordEntry = {
+  id: string;
+  dedupeKey: string;
+  stage: StageRecordKey;
+  category: ContinuityRecordCategory;
+  summary: string;
+  sourceRefs: ContinuitySourceRef[];
+  createdAt: string;
+  updatedAt: string;
+  validity: ContinuityValidity;
+  invalidationReasons?: string[];
+};
+
+export type ProjectMemoryViewKey =
+  | "projectOverview"
+  | "designDefinition"
+  | "preferencesAndAvoids"
+  | "decisionLog"
+  | "rejectedDirections"
+  | "openQuestions"
+  | "deliveryPlan";
+
+export type ProjectMemoryItem = {
+  id: string;
+  title: string;
+  summary: string;
+  sourceRefs: ContinuitySourceRef[];
+  validity: ContinuityValidity;
+};
+
+export type ProjectMemoryView = {
+  key: ProjectMemoryViewKey;
+  title: string;
+  items: ProjectMemoryItem[];
+  emptyMessage: string;
+};
+
+export type ProjectContinuityState = {
+  schemaVersion: 1;
+  currentFocus: CurrentProjectFocus;
+  recordEntries: ContinuityRecordEntry[];
+  updatedAt: string;
+};
 
 export type AiWorkIntent =
   | "discussion"
@@ -418,25 +512,12 @@ export type ProjectWorkingState = {
   lastReconciledAt: string;
 };
 
-export type StageRecord = {
-  kind: StageRecordKind;
-  goal: string;
-  currentStatus: "empty" | "active" | "pending" | "ready";
-  savedObjectIds: MorphoObjectId[];
-  decisionIds: DecisionRecordId[];
-  constraints: string[];
-  openQuestions: string[];
-  nextSuggestion: string;
-  updatedAt: string;
-};
-
 export type MorphoWorkspace = {
-  schemaVersion: 7;
+  schemaVersion: 8;
   project: {
     id: string;
     title: string;
     subtitle: string;
-    currentFocus: "direction_visual_development" | "research" | "design_definition" | "delivery_preparation";
     createdAt?: string;
     updatedAt?: string;
     lastOpenedAt?: string;
@@ -455,7 +536,7 @@ export type MorphoWorkspace = {
   directionLineage: DirectionLineageRecord[];
   visualBranches: Record<VisualBranchId, VisualBranchRecord>;
   workingState: ProjectWorkingState;
-  stageRecords: Record<StageRecordKind, StageRecord>;
+  projectContinuity: ProjectContinuityState;
   canvas: {
     view: CanvasView;
     instances: CanvasInstance[];
@@ -464,7 +545,7 @@ export type MorphoWorkspace = {
     messages: AiMessage[];
   };
   ui: {
-    activeDrawer: "map" | "assets" | "hidden" | "search" | null;
+    activeDrawer: "map" | "assets" | "hidden" | "search" | "records" | null;
     aiOpen: boolean;
     lastSelectionIds: MorphoObjectId[];
     canvasView: CanvasView;
