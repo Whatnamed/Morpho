@@ -17,6 +17,12 @@ import type {
   StageRecordKey,
   VisualBranchRecord
 } from "./types";
+import {
+  buildSemanticPatchSummary,
+  validateConversationSemanticPatch,
+  type ParsedConversationSemanticPatchItem,
+  type SemanticPatchAuthorization
+} from "./conversationSemanticPatch";
 
 export type LegacyProjectFocus =
   | "direction_visual_development"
@@ -129,6 +135,20 @@ export type ProjectContinuityContext = {
   limits: typeof PROJECT_CONTINUITY_CONTEXT_LIMITS;
 };
 
+export type ApplyConversationSemanticPatchResult = {
+  workspace: MorphoWorkspace;
+  entries: ContinuityRecordEntry[];
+  rejected: Array<{ evidenceQuote?: string; reason: string }>;
+};
+
+export type ContinuityEntryEligibility = {
+  canEnterMemory: boolean;
+  canEnterDefaultContext: boolean;
+  canEnterReviewList: boolean;
+  uiLabel: string;
+  reason: string;
+};
+
 export const PROJECT_CONTINUITY_CONTEXT_LIMITS = {
   maxStageRecords: 6,
   maxMemoryViews: 4,
@@ -202,7 +222,7 @@ export function createInitialProjectContinuity(input: {
   const area = input.legacyFocus ? legacyFocusToArea(input.legacyFocus) : inferInitialFocusArea(input.workspace);
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     currentFocus: {
       area,
       updatedAt: now,
@@ -220,7 +240,12 @@ export function normalizeProjectContinuity(
   value: unknown,
   legacyFocus?: LegacyProjectFocus
 ): ProjectContinuityState {
-  if (!isRecord(value) || value.schemaVersion !== 1 || !isRecord(value.currentFocus) || !Array.isArray(value.recordEntries)) {
+  if (
+    !isRecord(value) ||
+    (value.schemaVersion !== 1 && value.schemaVersion !== 2) ||
+    !isRecord(value.currentFocus) ||
+    !Array.isArray(value.recordEntries)
+  ) {
     return createInitialProjectContinuity({ workspace, legacyFocus });
   }
 
@@ -231,7 +256,7 @@ export function normalizeProjectContinuity(
     .filter((entry): entry is ContinuityRecordEntry => Boolean(entry));
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     currentFocus,
     recordEntries,
     updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : currentFocus.updatedAt
@@ -258,6 +283,43 @@ export function applyProjectContinuityEvent(workspace: MorphoWorkspace, event: P
       updatedAt: now
     }
   };
+}
+
+export function applyConversationSemanticPatch(
+  workspace: MorphoWorkspace,
+  authorization: SemanticPatchAuthorization,
+  items: ParsedConversationSemanticPatchItem[]
+): ApplyConversationSemanticPatchResult {
+  const resolved = resolveContinuityValidity(workspace);
+  let nextWorkspace = resolved;
+  const entries: ContinuityRecordEntry[] = [];
+  const rejected: ApplyConversationSemanticPatchResult["rejected"] = [];
+
+  for (const item of items) {
+    const validation = validateConversationSemanticPatch(item, authorization);
+    if (validation.status === "failed") {
+      rejected.push({ evidenceQuote: item.evidenceQuote, reason: validation.reason });
+      continue;
+    }
+
+    const dedupeKey = getConversationSemanticPatchDedupeKey(validation.item, validation.summary, authorization.userMessageId);
+    if (nextWorkspace.projectContinuity.recordEntries.some((entry) => entry.dedupeKey === dedupeKey)) {
+      continue;
+    }
+
+    const entry = createConversationSemanticPatchEntry(nextWorkspace, validation.item, validation.summary, dedupeKey, authorization);
+    entries.push(entry);
+    nextWorkspace = {
+      ...nextWorkspace,
+      projectContinuity: {
+        ...nextWorkspace.projectContinuity,
+        recordEntries: [...nextWorkspace.projectContinuity.recordEntries, entry],
+        updatedAt: authorization.userMessageCreatedAt
+      }
+    };
+  }
+
+  return { workspace: nextWorkspace, entries, rejected };
 }
 
 export function resolveContinuityValidity(workspace: MorphoWorkspace): MorphoWorkspace {
@@ -305,10 +367,12 @@ export function deriveProjectMemoryViews(workspace: MorphoWorkspace): ProjectMem
     ? resolved.objects[currentDefinitionRevision.designDefinitionId]
     : undefined;
   const decisionEntries = resolved.projectContinuity.recordEntries.filter(
-    (entry) => entry.category === "decision" && entry.validity !== "sourceUnavailable"
+    (entry) => entry.category === "decision" && getContinuityEntryEligibility(entry).canEnterMemory
   );
   const preferenceEntries = resolved.projectContinuity.recordEntries.filter(
-    (entry) => (entry.category === "preference" || entry.category === "constraint") && entry.validity === "current"
+    (entry) =>
+      (entry.category === "preference" || entry.category === "constraint") &&
+      getContinuityEntryEligibility(entry).canEnterMemory
   );
   const rejectedDirections = Object.values(resolved.objects).filter(
     (object): object is ConceptDirectionObject => object.type === "conceptDirection" && object.status === "eliminated"
@@ -368,6 +432,9 @@ export function deriveProjectMemoryViews(workspace: MorphoWorkspace): ProjectMem
     ]),
     decisionLog: createMemoryView("decisionLog", [
       ...decisionEntries.map((entry) => memoryItemFromEntry(entry)),
+      ...resolved.projectContinuity.recordEntries
+        .filter((entry) => (entry.category === "rejection" || entry.semanticKind === "rejectionReason") && getContinuityEntryEligibility(entry).canEnterMemory)
+        .map((entry) => memoryItemFromEntry(entry)),
       ...resolved.decisionRecords.slice(-8).map((decision) => ({
         id: decision.id,
         title: decision.summary,
@@ -446,7 +513,7 @@ export function buildProjectContinuityContext(
       items: view.items.slice(0, PROJECT_CONTINUITY_CONTEXT_LIMITS.maxItemsPerMemoryView)
     }));
   const reviewRequiredItems = rankedEntries
-    .filter((entry) => entry.validity === "reviewRequired" || entry.validity === "sourceUnavailable")
+    .filter((entry) => getContinuityEntryEligibility(entry).canEnterReviewList)
     .filter((entry) => hasDirectSourceMatch(entry, selected) || entry.stage === resolved.projectContinuity.currentFocus.area)
     .slice(0, PROJECT_CONTINUITY_CONTEXT_LIMITS.maxReviewRequiredItems)
     .map(limitEntrySummary);
@@ -462,6 +529,102 @@ export function buildProjectContinuityContext(
   };
 }
 
+export function getContinuityEntryEligibility(entry: ContinuityRecordEntry): ContinuityEntryEligibility {
+  if (entry.manualState === "withdrawn") {
+    return {
+      canEnterMemory: false,
+      canEnterDefaultContext: false,
+      canEnterReviewList: false,
+      uiLabel: "已撤回",
+      reason: "manualState=withdrawn"
+    };
+  }
+  if (entry.manualState === "notApplicable") {
+    return {
+      canEnterMemory: false,
+      canEnterDefaultContext: false,
+      canEnterReviewList: false,
+      uiLabel: "当前不适用",
+      reason: "manualState=notApplicable"
+    };
+  }
+
+  const hasHiddenSource = entry.sourceRefs.some((ref) => ref.sourceAvailability === "hidden");
+  const hasMissingSource = entry.sourceRefs.some((ref) => ref.sourceAvailability === "missing");
+  if (hasMissingSource || entry.validity === "sourceUnavailable") {
+    return {
+      canEnterMemory: false,
+      canEnterDefaultContext: false,
+      canEnterReviewList: true,
+      uiLabel: "来源不可用",
+      reason: "sourceUnavailable"
+    };
+  }
+  if (hasHiddenSource) {
+    return {
+      canEnterMemory: false,
+      canEnterDefaultContext: false,
+      canEnterReviewList: false,
+      uiLabel: entry.validity === "current" ? "当前有效 · 来源已隐藏" : `${validityUiLabel(entry.validity)} · 来源已隐藏`,
+      reason: "sourceAvailability=hidden"
+    };
+  }
+  if (entry.validity === "reviewRequired") {
+    return {
+      canEnterMemory: false,
+      canEnterDefaultContext: false,
+      canEnterReviewList: true,
+      uiLabel: "待复核",
+      reason: "validity=reviewRequired"
+    };
+  }
+  if (entry.validity === "superseded") {
+    return {
+      canEnterMemory: false,
+      canEnterDefaultContext: false,
+      canEnterReviewList: false,
+      uiLabel: "已被更新替代",
+      reason: "validity=superseded"
+    };
+  }
+
+  return {
+    canEnterMemory: true,
+    canEnterDefaultContext: true,
+    canEnterReviewList: false,
+    uiLabel: "当前有效",
+    reason: "eligible"
+  };
+}
+
+export function setConversationSemanticEntryManualState(
+  workspace: MorphoWorkspace,
+  entryId: string,
+  manualState: ContinuityRecordEntry["manualState"],
+  updatedAt = new Date().toISOString()
+): MorphoWorkspace {
+  const recordEntries = workspace.projectContinuity.recordEntries.map((entry) => {
+    if (entry.id !== entryId || entry.origin !== "conversationSemanticPatch") {
+      return entry;
+    }
+
+    return {
+      ...entry,
+      manualState,
+      updatedAt
+    };
+  });
+
+  return {
+    ...workspace,
+    projectContinuity: {
+      ...workspace.projectContinuity,
+      recordEntries,
+      updatedAt
+    }
+  };
+}
+
 function createRecordEntry(
   workspace: MorphoWorkspace,
   event: ProjectContinuityEvent,
@@ -471,6 +634,8 @@ function createRecordEntry(
   const base = {
     id: `continuity-${slugify(dedupeKey)}`,
     dedupeKey,
+    origin: "deterministicEvent" as const,
+    manualState: "active" as const,
     createdAt: now,
     updatedAt: now,
     validity: "current" as const
@@ -592,6 +757,80 @@ function createRecordEntry(
         summary: truncateText(event.summary),
         sourceRefs: event.objectIds.map((objectId) => createObjectRef(workspace, objectId)).filter(isDefined)
       };
+  }
+}
+
+function createConversationSemanticPatchEntry(
+  workspace: MorphoWorkspace,
+  item: ParsedConversationSemanticPatchItem,
+  summary: string,
+  dedupeKey: string,
+  authorization: SemanticPatchAuthorization
+): ContinuityRecordEntry {
+  const sourceRefs = [
+    createMessageRef(authorization, item.evidenceQuote),
+    ...item.relatedObjectIds.map((objectId) => createObjectRef(workspace, objectId)),
+    ...item.relatedRevisionIds.map((revisionId) => createRevisionRef(workspace, revisionId)),
+    ...item.relatedDecisionIds.map((decisionId) => createDecisionRef(workspace, decisionId))
+  ].filter(isDefined);
+
+  return {
+    id: `continuity-${slugify(dedupeKey)}`,
+    dedupeKey,
+    origin: "conversationSemanticPatch",
+    manualState: "active",
+    semanticKind: item.kind,
+    sourceMessageId: authorization.userMessageId,
+    evidenceQuote: item.evidenceQuote,
+    scope: item.scope,
+    stage: authorization.currentFocusArea,
+    category: categoryForSemanticPatchKind(item.kind),
+    summary,
+    sourceRefs,
+    createdAt: authorization.userMessageCreatedAt,
+    updatedAt: authorization.userMessageCreatedAt,
+    validity: "current"
+  };
+}
+
+function getConversationSemanticPatchDedupeKey(item: ParsedConversationSemanticPatchItem, summary: string, userMessageId: string): string {
+  return [
+    "conversationSemanticPatch",
+    userMessageId,
+    item.kind,
+    item.scope,
+    normalizeForDedupe(summary),
+    stableIds([...item.relatedObjectIds, ...item.relatedRevisionIds, ...item.relatedDecisionIds]).join("+") || "no-source"
+  ].join(":");
+}
+
+function createMessageRef(authorization: SemanticPatchAuthorization, evidenceQuote: string): ContinuitySourceRef {
+  return {
+    kind: "message",
+    id: authorization.userMessageId,
+    snapshot: {
+      title: "用户表达",
+      status: authorization.taskMode,
+      summarySnippet: truncateText(evidenceQuote, 180),
+      createdAt: authorization.userMessageCreatedAt
+    },
+    sourceAvailability: "active"
+  };
+}
+
+function categoryForSemanticPatchKind(kind: ParsedConversationSemanticPatchItem["kind"]): ContinuityRecordCategory {
+  switch (kind) {
+    case "preference":
+      return "preference";
+    case "constraint":
+    case "avoidance":
+      return "constraint";
+    case "openQuestion":
+      return "openQuestion";
+    case "decisionReason":
+      return "decision";
+    case "rejectionReason":
+      return "rejection";
   }
 }
 
@@ -768,7 +1007,10 @@ function collectOpenQuestionItems(workspace: MorphoWorkspace): ProjectMemoryItem
         validity: "current" as ContinuityValidity
       }));
     });
-  return [...definitionItems, ...researchItems, ...directionItems];
+  const semanticItems = workspace.projectContinuity.recordEntries
+    .filter((entry) => entry.category === "openQuestion" && getContinuityEntryEligibility(entry).canEnterMemory)
+    .map((entry) => memoryItemFromEntry(entry));
+  return [...definitionItems, ...researchItems, ...directionItems, ...semanticItems];
 }
 
 function stringItemsFromDefinition(
@@ -847,9 +1089,12 @@ function shouldIncludeEntryInContext(
   includeHistorical: boolean
 ): boolean {
   const hasDirectMatch = hasDirectSourceMatch(entry, selected);
-  const hasHiddenSource = entry.sourceRefs.some((ref) => ref.sourceAvailability === "hidden");
+  const eligibility = getContinuityEntryEligibility(entry);
+  if (entry.manualState !== "active") {
+    return false;
+  }
   if (entry.validity === "current") {
-    if (hasHiddenSource) {
+    if (!eligibility.canEnterDefaultContext) {
       return false;
     }
     return hasDirectMatch || isStageRelevantToTask(entry.stage, taskKind, currentFocus);
@@ -938,6 +1183,13 @@ function createObjectRef(workspace: Pick<MorphoWorkspace, "objects">, objectId: 
 }
 
 function resolveSourceRefAvailability(workspace: MorphoWorkspace, ref: ContinuitySourceRef): ContinuitySourceRef {
+  if (ref.kind === "message") {
+    return {
+      ...ref,
+      sourceAvailability: workspace.ai.messages.some((message) => message.id === ref.id) ? "active" : ref.sourceAvailability ?? "missing"
+    };
+  }
+
   if (ref.kind === "object") {
     const object = workspace.objects[ref.id];
     return {
@@ -1176,6 +1428,8 @@ function normalizeRecordEntry(value: unknown): ContinuityRecordEntry | undefined
   return {
     id: value.id,
     dedupeKey: value.dedupeKey,
+    origin: isRecordOrigin(value.origin) ? value.origin : "deterministicEvent",
+    manualState: isManualState(value.manualState) ? value.manualState : "active",
     stage: value.stage,
     category: isRecordCategory(value.category) ? value.category : "systemNote",
     summary: typeof value.summary === "string" ? value.summary : "",
@@ -1183,6 +1437,10 @@ function normalizeRecordEntry(value: unknown): ContinuityRecordEntry | undefined
     createdAt: typeof value.createdAt === "string" ? value.createdAt : new Date().toISOString(),
     updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : new Date().toISOString(),
     validity: isContinuityValidity(value.validity) ? value.validity : "current",
+    semanticKind: isSemanticPatchKind(value.semanticKind) ? value.semanticKind : undefined,
+    sourceMessageId: typeof value.sourceMessageId === "string" ? value.sourceMessageId : undefined,
+    evidenceQuote: typeof value.evidenceQuote === "string" ? value.evidenceQuote : undefined,
+    scope: isSemanticPatchScope(value.scope) ? value.scope : undefined,
     invalidationReasons: Array.isArray(value.invalidationReasons)
       ? value.invalidationReasons.filter((item): item is string => typeof item === "string")
       : undefined
@@ -1200,7 +1458,8 @@ function normalizeSourceRef(value: unknown): ContinuitySourceRef | undefined {
     value.kind !== "branch" &&
     value.kind !== "decision" &&
     value.kind !== "citation" &&
-    value.kind !== "deliveryReference"
+    value.kind !== "deliveryReference" &&
+    value.kind !== "message"
   ) {
     return undefined;
   }
@@ -1217,10 +1476,31 @@ function normalizeSourceRef(value: unknown): ContinuitySourceRef | undefined {
             value.snapshot.visibility === "active" || value.snapshot.visibility === "hidden" || value.snapshot.visibility === "deleted"
               ? value.snapshot.visibility
               : undefined,
-          summarySnippet: typeof value.snapshot.summarySnippet === "string" ? value.snapshot.summarySnippet : undefined
+          summarySnippet: typeof value.snapshot.summarySnippet === "string" ? value.snapshot.summarySnippet : undefined,
+          createdAt: typeof value.snapshot.createdAt === "string" ? value.snapshot.createdAt : undefined
         }
-      : undefined
+      : undefined,
+    sourceAvailability:
+      value.sourceAvailability === "active" || value.sourceAvailability === "hidden" || value.sourceAvailability === "missing"
+        ? value.sourceAvailability
+        : undefined
   };
+}
+
+function isRecordOrigin(value: unknown): value is ContinuityRecordEntry["origin"] {
+  return value === "deterministicEvent" || value === "conversationSemanticPatch";
+}
+
+function isManualState(value: unknown): value is ContinuityRecordEntry["manualState"] {
+  return value === "active" || value === "notApplicable" || value === "withdrawn";
+}
+
+function isSemanticPatchKind(value: unknown): value is NonNullable<ContinuityRecordEntry["semanticKind"]> {
+  return value === "preference" || value === "constraint" || value === "avoidance" || value === "openQuestion" || value === "decisionReason" || value === "rejectionReason";
+}
+
+function isSemanticPatchScope(value: unknown): value is NonNullable<ContinuityRecordEntry["scope"]> {
+  return value === "project" || value === "designDefinition" || value === "direction" || value === "visual";
 }
 
 function isProjectFocusArea(value: unknown): value is ProjectFocusArea {
@@ -1253,6 +1533,23 @@ function isRecordCategory(value: unknown): value is ContinuityRecordCategory {
 
 function isContinuityValidity(value: unknown): value is ContinuityValidity {
   return value === "current" || value === "reviewRequired" || value === "superseded" || value === "sourceUnavailable";
+}
+
+function validityUiLabel(validity: ContinuityValidity): string {
+  switch (validity) {
+    case "current":
+      return "当前有效";
+    case "reviewRequired":
+      return "待复核";
+    case "superseded":
+      return "已被更新替代";
+    case "sourceUnavailable":
+      return "来源不可用";
+  }
+}
+
+function normalizeForDedupe(value: string): string {
+  return value.replace(/\s+/g, "").toLowerCase();
 }
 
 function directionStatusLabel(status: ConceptDirectionObject["status"]): string {

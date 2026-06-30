@@ -120,6 +120,7 @@ type AiConversationPanelProps = {
   onConfirmPending: () => void;
   onCancelPending: () => void;
   onFailureRetry: () => void;
+  onOpenProjectRecords: (entryIds?: string[]) => void;
 };
 
 export function AiConversationPanel({
@@ -164,7 +165,8 @@ export function AiConversationPanel({
   onUpdatePendingKeyConclusion,
   onConfirmPending,
   onCancelPending,
-  onFailureRetry
+  onFailureRetry,
+  onOpenProjectRecords
 }: AiConversationPanelProps) {
   const confirmationTitle = pendingConfirmation ? getPendingConfirmationTitle(pendingConfirmation) : null;
   const confirmationBody = pendingConfirmation ? getPendingConfirmationBody(pendingConfirmation) : null;
@@ -209,6 +211,15 @@ export function AiConversationPanel({
           {workspace.ai.messages.map((message) => (
             <div className="ai-message" key={message.id}>
               <MarkdownContent body={message.body} />
+              {message.continuityEntryIds && message.continuityEntryIds.length > 0 ? (
+                <button
+                  className="continuity-feedback"
+                  type="button"
+                  onClick={() => onOpenProjectRecords(message.continuityEntryIds)}
+                >
+                  已补入项目记录 · {message.continuityEntryIds.length} 条
+                </button>
+              ) : null}
               {message.citationIds && message.citationIds.length > 0 ? (
                 <div className="citation-list" aria-label="来源引用">
                   {message.citationIds

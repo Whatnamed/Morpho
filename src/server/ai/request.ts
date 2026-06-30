@@ -271,6 +271,7 @@ export function buildMorphoSystemPrompt(request: AiRouteRequest): string {
     buildAttachmentCapabilityLine(request),
     buildDocumentCapabilityLine(request),
     buildWebSearchCapabilityLine(request),
+    buildConversationSemanticPatchInstruction(request),
     buildStructuredProposalInstruction(request)
   ]
     .filter(Boolean)
@@ -426,6 +427,22 @@ function buildWebSearchCapabilityLine(request: AiRouteRequest): string {
   }
 
   return `本次可使用 MiMo web_search 工具。只有当外部事实、当前信息、来源验证、案例补充或研究依据会明显提升回答时才联网；普通创意讨论、改写和不依赖外部事实的视觉发散不要联网。force_search=${request.webSearch.forceSearch}。只可引用 provider 返回的 URL citation，不得编造来源。`;
+}
+
+function buildConversationSemanticPatchInstruction(request: AiRouteRequest): string {
+  if (request.taskMode !== "chatAnalysis" && request.taskMode !== "researchOperation") {
+    return "";
+  }
+
+  return [
+    "仅当当前用户消息明确、无歧义地表达可长期使用的偏好、约束、避免项、待确认问题、已存在决定的理由或淘汰理由时，才可在普通回答后附加 morphoProjectContinuityPatch。",
+    "morphoProjectContinuityPatch 只能包含 items，最多 3 项；每项只能包含 kind, scope, evidenceQuote, relatedObjectIds, relatedRevisionIds, relatedDecisionIds。",
+    "kind 只能是 preference、constraint、avoidance、openQuestion、decisionReason、rejectionReason；scope 只能是 project、designDefinition、direction、visual。",
+    "provider 不得生成 summary；Morpho 会只用 evidenceQuote 在本地确定性生成长期记录摘要，任何 summary 字段都会被忽略。",
+    "evidenceQuote 必须是当前用户消息中的直接原话，不要从语气、暗示、模型建议、临时生成要求或未确认草案中推断。",
+    "patch 不得改变任何项目对象、方向状态、默认参考、revision、VisualBranch、交付引用或 Current Focus，也不得输出 setDirectionPrimary、setDefaultReference、hideObject、deleteObject 等状态命令。",
+    "如果不确定，不要输出 morphoProjectContinuityPatch；如果本回复还输出待应用 Proposal JSON，也不要输出 semantic patch。"
+  ].join("\n");
 }
 
 function buildStructuredProposalInstruction(request: AiRouteRequest): string {
@@ -746,6 +763,9 @@ function normalizeContinuitySourceRef(value: unknown): AiRouteContinuitySourceRe
   if (!isRecord(value) || typeof value.kind !== "string" || typeof value.id !== "string") {
     return undefined;
   }
+  if (!isContinuitySourceRefKind(value.kind)) {
+    return undefined;
+  }
 
   const snapshot = isRecord(value.snapshot)
     ? {
@@ -771,6 +791,19 @@ function normalizeContinuitySourceRef(value: unknown): AiRouteContinuitySourceRe
         ? value.sourceAvailability
         : undefined
   };
+}
+
+function isContinuitySourceRefKind(value: string): boolean {
+  return (
+    value === "object" ||
+    value === "revision" ||
+    value === "operation" ||
+    value === "branch" ||
+    value === "decision" ||
+    value === "citation" ||
+    value === "deliveryReference" ||
+    value === "message"
+  );
 }
 
 function normalizeContinuityOmitted(value: unknown): { id: string; reason: string } | undefined {

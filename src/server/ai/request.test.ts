@@ -240,6 +240,7 @@ describe("MiMo chat route request conversion", () => {
     });
 
     expect(prompt).toContain("morphoVisualGenerationPlan");
+    expect(prompt).not.toContain("morphoProjectContinuityPatch");
     expect(prompt).toContain("只负责形成受控图像生成计划");
     expect(validateAiRouteRequest({
       draft: "给每个方向生成一张预览图",
@@ -323,6 +324,43 @@ describe("MiMo chat route request conversion", () => {
     }
   });
 
+  it("allows controlled conversation continuity patches only for chat and research tasks", () => {
+    const chatPrompt = buildMorphoSystemPrompt({
+      draft: "夜间识别感比造型复杂度更重要。",
+      task: "general",
+      taskMode: "chatAnalysis",
+      workIntent: "discussion",
+      messages: [],
+      objectSummaries: [],
+      attachments: []
+    });
+    const researchPrompt = buildMorphoSystemPrompt({
+      draft: "分析这些资料，材料成本必须控制在农村家庭可接受范围内。",
+      task: "research",
+      taskMode: "researchOperation",
+      workIntent: "discussion",
+      messages: [],
+      objectSummaries: [],
+      attachments: []
+    });
+    const imagePrompt = buildMorphoSystemPrompt({
+      draft: "生成一张更温和的场景图。",
+      task: "visualDevelopment",
+      taskMode: "imageGeneration",
+      workIntent: "discussion",
+      messages: [],
+      objectSummaries: [],
+      attachments: []
+    });
+
+    expect(chatPrompt).toContain("morphoProjectContinuityPatch");
+    expect(chatPrompt).toContain("provider 不得生成 summary");
+    expect(chatPrompt).toContain("evidenceQuote 必须是当前用户消息中的直接原话");
+    expect(chatPrompt).toContain("不得改变任何项目对象、方向状态、默认参考、revision、VisualBranch、交付引用或 Current Focus");
+    expect(researchPrompt).toContain("morphoProjectContinuityPatch");
+    expect(imagePrompt).not.toContain("morphoProjectContinuityPatch");
+  });
+
   it("keeps bounded structured task context in the MiMo system prompt", () => {
     const result = validateAiRouteRequest({
       draft: "基于当前定义继续生成方向预览",
@@ -396,6 +434,129 @@ describe("MiMo chat route request conversion", () => {
       expect(prompt).toContain("visualSignals: 暖灰轨道");
       expect(prompt).toContain("visual-branch-soft-rail-core / direction-soft-rail / 核心产品图");
       expect(prompt).not.toContain("data:image");
+    }
+  });
+
+  it("keeps message continuity source refs bounded in request context", () => {
+    const result = validateAiRouteRequest({
+      draft: "继续讨论",
+      taskMode: "chatAnalysis",
+      messages: [],
+      objectSummaries: [],
+      attachments: [],
+      taskContext: {
+        kind: "general",
+        objectIds: [],
+        imageObjectIds: [],
+        documentObjectIds: [],
+        directions: [],
+        visualBranches: [],
+        projectContinuity: {
+          currentFocus: {
+            area: "directionAndVisual",
+            updatedAt: "2026-06-30T09:00:00.000Z",
+            sourceKind: "userAction",
+            sourceObjectIds: [],
+            note: "方向与视觉发展"
+          },
+          relevantStageRecords: [
+            {
+              id: "continuity-message",
+              stage: "directionAndVisual",
+              category: "preference",
+              summary: "明确偏好：夜间识别感比造型复杂度更重要",
+              validity: "current",
+              sourceRefs: [
+                {
+                  kind: "message",
+                  id: "ai-user-1",
+                  snapshot: {
+                    title: "用户表达",
+                    summarySnippet: "夜间识别感比造型复杂度更重要".repeat(20),
+                    createdAt: "2026-06-30T09:00:00.000Z"
+                  },
+                  sourceAvailability: "active"
+                }
+              ]
+            }
+          ],
+          relevantProjectMemoryViews: [],
+          reviewRequiredItems: [],
+          omitted: [],
+          truncated: false
+        },
+        skipped: []
+      }
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      const source = result.value.taskContext?.projectContinuity?.relevantStageRecords[0]?.sourceRefs[0];
+      expect(source).toMatchObject({ kind: "message", id: "ai-user-1", sourceAvailability: "active" });
+      expect(source?.snapshot?.summarySnippet?.length).toBeLessThanOrEqual(220);
+      expect(JSON.stringify(result.value.taskContext)).not.toContain("夜间识别感比造型复杂度更重要".repeat(20));
+    }
+  });
+
+  it("drops unknown continuity source ref kinds during route validation", () => {
+    const result = validateAiRouteRequest({
+      draft: "继续讨论",
+      taskMode: "chatAnalysis",
+      messages: [],
+      objectSummaries: [],
+      attachments: [],
+      taskContext: {
+        kind: "general",
+        objectIds: [],
+        imageObjectIds: [],
+        documentObjectIds: [],
+        directions: [],
+        visualBranches: [],
+        projectContinuity: {
+          currentFocus: {
+            area: "directionAndVisual",
+            updatedAt: "2026-06-30T09:00:00.000Z",
+            sourceKind: "userAction",
+            sourceObjectIds: [],
+            note: "方向与视觉发展"
+          },
+          relevantStageRecords: [
+            {
+              id: "continuity-sources",
+              stage: "directionAndVisual",
+              category: "preference",
+              summary: "明确偏好：温和",
+              validity: "current",
+              sourceRefs: [
+                {
+                  kind: "message",
+                  id: "ai-user-1",
+                  snapshot: { title: "用户表达", summarySnippet: "温和" },
+                  sourceAvailability: "active"
+                },
+                {
+                  kind: "rawPayload",
+                  id: "provider-raw",
+                  snapshot: { title: "raw" },
+                  sourceAvailability: "active"
+                }
+              ]
+            }
+          ],
+          relevantProjectMemoryViews: [],
+          reviewRequiredItems: [],
+          omitted: [],
+          truncated: false
+        },
+        skipped: []
+      }
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.value.taskContext?.projectContinuity?.relevantStageRecords[0]?.sourceRefs).toEqual([
+        expect.objectContaining({ kind: "message", id: "ai-user-1" })
+      ]);
     }
   });
 

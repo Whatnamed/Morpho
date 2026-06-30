@@ -75,6 +75,15 @@ Only one active Operation is allowed per project. Browser reload marks unfinishe
 
 Research operations can read selected parsed file extracts, selected image pixels, current workspace semantic context, and optional provider web search. A valid research result is recorded and applied into a research card automatically. Key conclusions, design definitions, concept directions, default references, direction status, and delivery decisions still require their own explicit proposal/application paths.
 
+Conversation semantic records:
+
+- `/api/ai/chat` may ask MiMo for `morphoProjectContinuityPatch` only for `chatAnalysis` and `researchOperation`;
+- `imageGeneration` never receives the semantic patch instruction;
+- provider summaries are ignored, and Morpho creates deterministic summaries locally from the exact user quote;
+- the exact quote must come from the current user message and is stored only as a short message source snapshot;
+- semantic patch writing is skipped on invalid output, failed/cancelled requests, image-generation tasks, or replies that also contain `morphoResearchProposal`, `morphoDesignDefinitionProposal`, or `morphoConceptDirectionProposal`;
+- successful writes show `已补入项目记录 · N 条` under the assistant message. The button opens/highlights records only; it does not trigger AI, change current focus, or mutate objects.
+
 Without these variables, the app still runs locally, but provider routes return clear configuration errors instead of fake AI results.
 
 ## Development Server
@@ -132,7 +141,12 @@ Minimum flows to cover:
 - selected image + “分析这张图的问题” stays ordinary chat and does not call `/api/ai/image`;
 - manual task mode override beats automatic routing;
 - design-trace overlay still opens and closes;
-- the left-rail `项目记录` drawer opens and closes, shows current focus and review sections, and source clicks only locate real objects without triggering AI or mutating focus.
+- the left-rail `项目记录` drawer opens and closes, shows current focus and review sections, and source clicks only locate real objects without triggering AI or mutating focus;
+- a mocked ordinary chat reply with a valid `morphoProjectContinuityPatch` strips the JSON from visible text, shows `已补入项目记录 · 1 条`, and opens/highlights the project-record drawer when clicked;
+- a mocked ambiguous or invalid patch does not write continuity but still shows the normal assistant reply;
+- a mocked reply that contains both a semantic patch and a Proposal block does not write the semantic patch;
+- semantic entry manual actions (`不再适用`, `撤回记录`, `恢复为当前有效`) update drawer labels and keep current focus unchanged;
+- hidden object sources display `来源已隐藏`, missing sources display `来源不可用`, and message sources display the stored quote only.
 
 ## Current Local Persistence
 
@@ -154,7 +168,7 @@ Legacy single-project key read for migration:
 morpho.workspace.nightrail.v1
 ```
 
-Structured workspace data is schema version `8`. v1/v2/v3/v4/v5/v6/v7 workspace data is migrated through pure migration functions. v6 normalizes image roles to `reference`, `preview`, `conceptImage`, `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, `structureDiagram`, `interactionDiagram`, and `deliveryAsset`; old `main`, `scenario`, `cmf`, `detail`, and `diagram` values are migration-only inputs. v7 adds parse metadata to file objects and stores extracted document text as separate IndexedDB assets. v8 adds `workspace.projectContinuity`, migrates legacy `project.currentFocus` into structured `currentFocus`, and retires legacy `stageRecords` instead of converting them into a second stage-history source. Migration success writes the new project workspace and catalog. Migration failure preserves old raw data and shows a recoverable warning instead of silently resetting to seed data.
+Structured workspace data is schema version `9`. v1/v2/v3/v4/v5/v6/v7/v8 workspace data is migrated through pure migration functions. v6 normalizes image roles to `reference`, `preview`, `conceptImage`, `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, `structureDiagram`, `interactionDiagram`, and `deliveryAsset`; old `main`, `scenario`, `cmf`, `detail`, and `diagram` values are migration-only inputs. v7 adds parse metadata to file objects and stores extracted document text as separate IndexedDB assets. v8 adds `workspace.projectContinuity`, migrates legacy `project.currentFocus` into structured `currentFocus`, and retires legacy `stageRecords` instead of converting them into a second stage-history source. v9 adds controlled conversation semantic record fields and message source refs; old v8 entries become `origin: deterministicEvent` and `manualState: active` without fabricated semantic metadata. Migration success writes the new project workspace and catalog. Migration failure preserves old raw data and shows a recoverable warning instead of silently resetting to seed data.
 
 Binary assets are stored in IndexedDB:
 
@@ -192,4 +206,5 @@ The current code does not include:
 - OCR, legacy `.ppt`, DOC/DOCX parsing, and faithful document-layout reconstruction;
 - dynamic provider model-list fetching;
 - export package generation;
+- automatic chat compression or transcript replacement;
 - deployment automation.

@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import { createInitialWorkspace, deleteObject, hideObject } from "./workspace";
 import {
+  applyConversationSemanticPatch,
   applyProjectContinuityEvent,
   buildProjectContinuityContext,
   deriveProjectMemoryViews,
+  getContinuityEntryEligibility,
   getContinuityRecordGroups,
-  resolveContinuityValidity
+  resolveContinuityValidity,
+  setConversationSemanticEntryManualState
 } from "./projectContinuity";
+import { buildSemanticPatchAuthorization } from "./conversationSemanticPatch";
 
 describe("project continuity runtime", () => {
   it("records import events with structured current focus, typed source refs, and idempotent dedupe", () => {
@@ -45,6 +49,238 @@ describe("project continuity runtime", () => {
       ])
     );
     expect(JSON.stringify(replayed.projectContinuity)).not.toContain("data:image");
+    expect(replayed.projectContinuity.recordEntries.at(-1)).toMatchObject({
+      origin: "deterministicEvent",
+      manualState: "active"
+    });
+  });
+
+  it("writes conversation semantic patches as idempotent records without changing current focus", () => {
+    const workspace = createInitialWorkspace();
+    const originalFocus = workspace.projectContinuity.currentFocus;
+    const authorization = buildSemanticPatchAuthorization({
+      taskMode: "chatAnalysis",
+      draft: "夜间识别感比造型复杂度更重要，后面不要做得太科技化。",
+      userMessageId: "ai-user-semantic-1",
+      userMessageCreatedAt: "2026-06-30T09:10:00.000Z",
+      currentFocusArea: workspace.projectContinuity.currentFocus.area,
+      objectIds: ["image-soft-rail-v2"],
+      revisionIds: [],
+      decisionIds: []
+    });
+    const applied = applyConversationSemanticPatch(workspace, authorization, [
+      {
+        kind: "preference",
+        scope: "project",
+        evidenceQuote: "夜间识别感比造型复杂度更重要",
+        relatedObjectIds: [],
+        relatedRevisionIds: [],
+        relatedDecisionIds: []
+      },
+      {
+        kind: "avoidance",
+        scope: "visual",
+        evidenceQuote: "后面不要做得太科技化",
+        relatedObjectIds: ["image-soft-rail-v2"],
+        relatedRevisionIds: [],
+        relatedDecisionIds: []
+      }
+    ]);
+    const replayed = applyConversationSemanticPatch(applied.workspace, authorization, [
+      {
+        kind: "preference",
+        scope: "project",
+        evidenceQuote: "夜间识别感比造型复杂度更重要",
+        relatedObjectIds: [],
+        relatedRevisionIds: [],
+        relatedDecisionIds: []
+      }
+    ]);
+
+    expect(applied.entries).toHaveLength(2);
+    expect(applied.workspace.projectContinuity.currentFocus).toEqual(originalFocus);
+    expect(applied.entries[0]).toMatchObject({
+      origin: "conversationSemanticPatch",
+      manualState: "active",
+      semanticKind: "preference",
+      sourceMessageId: "ai-user-semantic-1",
+      evidenceQuote: "夜间识别感比造型复杂度更重要",
+      scope: "project",
+      stage: originalFocus.area,
+      category: "preference",
+      summary: "明确偏好：夜间识别感比造型复杂度更重要",
+      sourceRefs: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "message",
+          id: "ai-user-semantic-1",
+          snapshot: expect.objectContaining({ title: "用户表达" })
+        })
+      ])
+    });
+    expect(JSON.stringify(applied.workspace.projectContinuity)).not.toContain("夜间识别感比造型复杂度更重要，后面不要做得太科技化。");
+    expect(replayed.workspace.projectContinuity.recordEntries).toHaveLength(applied.workspace.projectContinuity.recordEntries.length);
+  });
+
+  it("uses centralized eligibility for manual state, validity, and source availability", () => {
+    const workspace = createInitialWorkspace();
+    const authorization = buildSemanticPatchAuthorization({
+      taskMode: "chatAnalysis",
+      draft: "夜间识别感比造型复杂度更重要，后面不要做得太科技化。",
+      userMessageId: "ai-user-semantic-2",
+      userMessageCreatedAt: "2026-06-30T09:11:00.000Z",
+      currentFocusArea: workspace.projectContinuity.currentFocus.area,
+      objectIds: ["image-soft-rail-v2"],
+      revisionIds: [],
+      decisionIds: []
+    });
+    const applied = applyConversationSemanticPatch(workspace, authorization, [
+      {
+        kind: "avoidance",
+        scope: "visual",
+        evidenceQuote: "后面不要做得太科技化",
+        relatedObjectIds: ["image-soft-rail-v2"],
+        relatedRevisionIds: [],
+        relatedDecisionIds: []
+      }
+    ]).workspace;
+    const entry = applied.projectContinuity.recordEntries.at(-1);
+    if (!entry) {
+      throw new Error("Expected semantic entry.");
+    }
+    const hidden = resolveContinuityValidity(hideObject(applied, "image-soft-rail-v2"));
+    const hiddenEntry = hidden.projectContinuity.recordEntries.at(-1);
+    const withdrawn = {
+      ...entry,
+      manualState: "withdrawn" as const
+    };
+
+    expect(getContinuityEntryEligibility(entry)).toMatchObject({
+      canEnterMemory: true,
+      canEnterDefaultContext: true,
+      canEnterReviewList: false,
+      uiLabel: "当前有效"
+    });
+    expect(hiddenEntry ? getContinuityEntryEligibility(hiddenEntry) : undefined).toMatchObject({
+      canEnterMemory: false,
+      canEnterDefaultContext: false,
+      canEnterReviewList: false,
+      uiLabel: "当前有效 · 来源已隐藏"
+    });
+    expect(getContinuityEntryEligibility(withdrawn)).toMatchObject({
+      canEnterMemory: false,
+      canEnterDefaultContext: false,
+      canEnterReviewList: false,
+      uiLabel: "已撤回"
+    });
+  });
+
+  it("keeps inactive semantic patches in history while excluding them from memory and context", () => {
+    const workspace = createInitialWorkspace();
+    const authorization = buildSemanticPatchAuthorization({
+      taskMode: "chatAnalysis",
+      draft: "夜间识别感比造型复杂度更重要，后面不要做得太科技化。",
+      userMessageId: "ai-user-semantic-3",
+      userMessageCreatedAt: "2026-06-30T09:12:00.000Z",
+      currentFocusArea: workspace.projectContinuity.currentFocus.area,
+      objectIds: [],
+      revisionIds: [],
+      decisionIds: []
+    });
+    const applied = applyConversationSemanticPatch(workspace, authorization, [
+      {
+        kind: "preference",
+        scope: "project",
+        evidenceQuote: "夜间识别感比造型复杂度更重要",
+        relatedObjectIds: [],
+        relatedRevisionIds: [],
+        relatedDecisionIds: []
+      }
+    ]).workspace;
+    const entry = applied.projectContinuity.recordEntries.at(-1);
+    if (!entry) {
+      throw new Error("Expected semantic entry.");
+    }
+    const inactive = {
+      ...applied,
+      projectContinuity: {
+        ...applied.projectContinuity,
+        recordEntries: applied.projectContinuity.recordEntries.map((candidate) =>
+          candidate.id === entry.id ? { ...candidate, manualState: "notApplicable" as const } : candidate
+        )
+      }
+    };
+    const memory = deriveProjectMemoryViews(inactive);
+    const context = buildProjectContinuityContext(inactive, {
+      taskKind: "general",
+      selectedObjectIds: []
+    });
+
+    expect(inactive.projectContinuity.recordEntries.map((candidate) => candidate.id)).toContain(entry.id);
+    expect(memory.preferencesAndAvoids.items.map((item) => item.id)).not.toContain(entry.id);
+    expect(context.relevantStageRecords.map((candidate) => candidate.id)).not.toContain(entry.id);
+  });
+
+  it("updates manualState only for conversation semantic entries", () => {
+    const workspace = createInitialWorkspace();
+    const authorization = buildSemanticPatchAuthorization({
+      taskMode: "chatAnalysis",
+      draft: "Keep the night light warm and do not make it look medical.",
+      userMessageId: "ai-user-manual-state",
+      userMessageCreatedAt: "2026-06-30T10:00:00.000Z",
+      currentFocusArea: workspace.projectContinuity.currentFocus.area,
+      objectIds: [],
+      revisionIds: [],
+      decisionIds: []
+    });
+    const semantic = applyConversationSemanticPatch(workspace, authorization, [
+      {
+        kind: "preference",
+        scope: "project",
+        evidenceQuote: "Keep the night light warm",
+        relatedObjectIds: [],
+        relatedRevisionIds: [],
+        relatedDecisionIds: []
+      }
+    ]);
+    const semanticEntry = semantic.entries[0];
+    if (!semanticEntry) {
+      throw new Error("Expected semantic entry.");
+    }
+
+    const notApplicable = setConversationSemanticEntryManualState(
+      semantic.workspace,
+      semanticEntry.id,
+      "notApplicable",
+      "2026-06-30T10:01:00.000Z"
+    );
+    const updatedEntry = notApplicable.projectContinuity.recordEntries.find((entry) => entry.id === semanticEntry.id);
+    const context = buildProjectContinuityContext(notApplicable, {
+      taskKind: "general",
+      selectedObjectIds: []
+    });
+
+    expect(updatedEntry?.manualState).toBe("notApplicable");
+    expect(updatedEntry?.validity).toBe("current");
+    expect(context.relevantStageRecords.map((entry) => entry.id)).not.toContain(semanticEntry.id);
+
+    const deterministic = applyProjectContinuityEvent(notApplicable, {
+      type: "inputImported",
+      objectIds: ["file-course-brief"],
+      createdAt: "2026-06-30T10:02:00.000Z"
+    });
+    const deterministicEntry = deterministic.projectContinuity.recordEntries.at(-1);
+    if (!deterministicEntry) {
+      throw new Error("Expected deterministic entry.");
+    }
+    const unchanged = setConversationSemanticEntryManualState(
+      deterministic,
+      deterministicEntry.id,
+      "withdrawn",
+      "2026-06-30T10:03:00.000Z"
+    );
+
+    expect(unchanged.projectContinuity.recordEntries.at(-1)?.origin).toBe("deterministicEvent");
+    expect(unchanged.projectContinuity.recordEntries.at(-1)?.manualState).toBe("active");
   });
 
   it("keeps exploration empty unless an explicit exploration event exists", () => {

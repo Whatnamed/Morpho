@@ -452,6 +452,39 @@ input:focus-visible {
   background: rgba(255, 255, 255, 0.48);
 }
 
+.result-row.highlighted-record {
+  border-color: rgba(89, 117, 87, 0.42);
+  background: rgba(238, 244, 232, 0.68);
+}
+
+.continuity-meta-row,
+.continuity-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.continuity-meta-row span {
+  display: inline-flex;
+  width: fit-content;
+  padding: 3px 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: rgba(250, 247, 241, 0.68);
+}
+
+.continuity-quote {
+  margin: 8px 0 0;
+  padding: 7px 9px;
+  border-left: 2px solid rgba(89, 117, 87, 0.36);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .asset-thumb {
   width: 44px;
   height: 36px;
@@ -720,6 +753,24 @@ input:focus-visible {
   display: grid;
   gap: 6px;
   margin-top: 11px;
+}
+
+.continuity-feedback {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 10px;
+  padding: 7px 9px;
+  border: 1px solid rgba(89, 117, 87, 0.26);
+  border-radius: 8px;
+  background: rgba(238, 244, 232, 0.74);
+  color: var(--accent-brand);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.continuity-feedback:hover {
+  background: rgba(226, 237, 218, 0.86);
 }
 
 .citation-link {

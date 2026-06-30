@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { AiTaskMode, AiWorkIntent, AssetRecord, ImageRole, MorphoObject } from "@/domain/morpho/types";
+import type { AiTaskMode, AiWorkIntent, AssetRecord, ContinuityManualState, ImageRole, MorphoObject } from "@/domain/morpho/types";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 import { GRS_REFERENCE_IMAGE_LIMIT } from "@/domain/morpho/imageLimits";
 import { hasPendingDesignDefinitionRevisionProposal } from "@/domain/morpho/derivedState";
@@ -91,6 +91,9 @@ import { buildProposalDiscussionDraft, buildProposalRegenerationDraft } from "./
 import { buildWebSearchOptions, collectMiMoImageAttachments, shouldAttachImagesForMiMo } from "./aiAttachments";
 import { collectDocumentExtractsForAi } from "./documentContext";
 import { buildProviderTaskContext, buildTaskContext, taskContextKindFromAiTask, type TaskContextDefaultReference } from "./taskContext";
+import { setConversationSemanticEntryManualState } from "@/domain/morpho/projectContinuity";
+import { stripProjectContinuityPatchBlock } from "@/domain/morpho/conversationSemanticPatch";
+import { applyConversationSemanticPatchFromReply } from "./workspaceSemanticPatch";
 import { planDirectionPreviewPlacements } from "./visualPreviewLayout";
 import {
   classifyVisualGenerationIntent,
@@ -136,6 +139,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [workIntent, setWorkIntent] = useState<AiWorkIntent>(() => workspace.ui.workIntent);
   const [aiOpen, setAiOpen] = useState(true);
   const [activeDrawer, setActiveDrawer] = useState<DrawerMode>(null);
+  const [highlightContinuityEntryIds, setHighlightContinuityEntryIds] = useState<string[]>([]);
   const [localEditObjectId, setLocalEditObjectId] = useState<string | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingAiConfirmation | null>(null);
   const [activeProposalId, setActiveProposalId] = useState<string | null>(null);
@@ -321,6 +325,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setFocusRequest((current) => ({ objectId, nonce: current.nonce + 1 }));
     setActiveDrawer(null);
   }, []);
+
+  const openProjectRecords = useCallback((entryIds: string[] = []) => {
+    setHighlightContinuityEntryIds(entryIds);
+    setActiveDrawer("records");
+  }, []);
+
+  const handleSetContinuityEntryManualState = useCallback(
+    (entryId: string, manualState: ContinuityManualState) => {
+      setWorkspace((current) => setConversationSemanticEntryManualState(current, entryId, manualState));
+      setHighlightContinuityEntryIds([entryId]);
+      setActiveDrawer("records");
+    },
+    [setWorkspace]
+  );
 
   useEffect(() => {
     let isCancelled = false;
@@ -632,7 +650,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         const streamResult = await readAiEventStream(response.body, (assistantBody) => {
           setWorkspace((current) => updateAiMessage(current, assistantMessageId, assistantBody, "streaming"));
         });
-        const assistantBody = [attachmentResult.warning, documentResult.warning, streamResult.text]
+        const visibleResearchText = stripProjectContinuityPatchBlock(streamResult.text);
+        const assistantBody = [attachmentResult.warning, documentResult.warning, visibleResearchText]
           .filter(Boolean)
           .join("\n\n");
 
@@ -644,13 +663,27 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           ].join("\n\n");
           setWorkspace((current) => {
             const withMessage = updateAiMessage(current, assistantMessageId, fallbackBody, "done");
-            return streamResult.citations.length > 0
+            const withCitations = streamResult.citations.length > 0
               ? storeMessageCitations(withMessage, {
                   messageId: assistantMessageId,
                   operationId,
                   citations: streamResult.citations
                 })
               : withMessage;
+            const semanticPatchResult = applyConversationSemanticPatchFromReply({
+              workspace: withCitations,
+              taskMode: "researchOperation",
+              context,
+              draft,
+              userMessageId,
+              userMessageCreatedAt: now,
+              assistantText: streamResult.text
+            });
+            return semanticPatchResult.status === "applied"
+              ? updateAiMessage(semanticPatchResult.workspace, assistantMessageId, fallbackBody, "done", {
+                  continuityEntryIds: semanticPatchResult.entryIds
+                })
+              : withCitations;
           });
           return;
         }
@@ -1286,7 +1319,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       const streamResult = await readAiEventStream(response.body, (assistantBody) => {
         setWorkspace((current) => updateAiMessage(current, assistantMessageId, assistantBody, "streaming"));
       });
-      const assistantBody = [attachmentResult.warning, documentResult.warning, streamResult.text]
+      const visibleAssistantText = stripProjectContinuityPatchBlock(streamResult.text);
+      const assistantBody = [attachmentResult.warning, documentResult.warning, visibleAssistantText]
         .filter(Boolean)
         .join("\n\n");
       const resolvedAssistantBody = assistantBody || "MiMo 没有返回可显示文本。";
@@ -1374,6 +1408,22 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           nextWorkspace = updateAiMessage(proposed.workspace, assistantMessageId, resolvedAssistantBody, "done", {
             citationIds: proposed.proposal.citationIds
           });
+        } else {
+          const semanticPatchResult = applyConversationSemanticPatchFromReply({
+            workspace: nextWorkspace,
+            taskMode: executionTaskMode,
+            context,
+            draft,
+            userMessageId,
+            userMessageCreatedAt: now,
+            assistantText: streamResult.text
+          });
+          nextWorkspace = semanticPatchResult.workspace;
+          if (semanticPatchResult.status === "applied") {
+            nextWorkspace = updateAiMessage(nextWorkspace, assistantMessageId, resolvedAssistantBody, "done", {
+              continuityEntryIds: semanticPatchResult.entryIds
+            });
+          }
         }
 
         return nextWorkspace;
@@ -2285,10 +2335,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       <OverlayDrawers
         mode={activeDrawer}
         workspace={workspace}
+        highlightedRecordIds={highlightContinuityEntryIds}
         onClose={() => setActiveDrawer(null)}
         onFocusArea={focusArea}
         onRestoreObject={handleRestoreObject}
         onLocateObject={focusObject}
+        onSetContinuityEntryManualState={handleSetContinuityEntryManualState}
       />
 
       <AiConversationPanel
@@ -2334,6 +2386,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onConfirmPending={handleConfirmPending}
         onCancelPending={() => setPendingConfirmation(null)}
         onFailureRetry={() => setShowFailure(false)}
+        onOpenProjectRecords={openProjectRecords}
       />
 
       <BottomDetailBar
@@ -2623,7 +2676,7 @@ function updateAiMessage(
   messageId: string,
   body: string,
   status: "streaming" | "done" | "failed",
-  options: { citationIds?: string[] } = {}
+  options: { citationIds?: string[]; continuityEntryIds?: string[] } = {}
 ): MorphoWorkspace {
   return {
     ...workspace,
@@ -2636,6 +2689,7 @@ function updateAiMessage(
               body,
               status,
               citationIds: options.citationIds ?? message.citationIds,
+              continuityEntryIds: options.continuityEntryIds ?? message.continuityEntryIds,
               error: status === "failed" ? body : undefined
             }
           : message

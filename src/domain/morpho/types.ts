@@ -43,6 +43,20 @@ export type ContinuityRecordCategory =
 
 export type ContinuityValidity = "current" | "reviewRequired" | "superseded" | "sourceUnavailable";
 
+export type ContinuityRecordOrigin = "deterministicEvent" | "conversationSemanticPatch";
+
+export type SemanticPatchKind =
+  | "preference"
+  | "constraint"
+  | "avoidance"
+  | "openQuestion"
+  | "decisionReason"
+  | "rejectionReason";
+
+export type SemanticPatchScope = "project" | "designDefinition" | "direction" | "visual";
+
+export type ContinuityManualState = "active" | "notApplicable" | "withdrawn";
+
 export type ContinuitySourceRefKind =
   | "object"
   | "revision"
@@ -50,7 +64,8 @@ export type ContinuitySourceRefKind =
   | "branch"
   | "decision"
   | "citation"
-  | "deliveryReference";
+  | "deliveryReference"
+  | "message";
 
 export type ContinuitySourceSnapshot = {
   title: string;
@@ -59,6 +74,7 @@ export type ContinuitySourceSnapshot = {
   status?: string;
   visibility?: ObjectVisibility | "deleted";
   summarySnippet?: string;
+  createdAt?: string;
 };
 
 export type ContinuitySourceAvailability = "active" | "hidden" | "missing";
@@ -73,6 +89,8 @@ export type ContinuitySourceRef = {
 export type ContinuityRecordEntry = {
   id: string;
   dedupeKey: string;
+  origin: ContinuityRecordOrigin;
+  manualState: ContinuityManualState;
   stage: StageRecordKey;
   category: ContinuityRecordCategory;
   summary: string;
@@ -80,6 +98,10 @@ export type ContinuityRecordEntry = {
   createdAt: string;
   updatedAt: string;
   validity: ContinuityValidity;
+  semanticKind?: SemanticPatchKind;
+  sourceMessageId?: string;
+  evidenceQuote?: string;
+  scope?: SemanticPatchScope;
   invalidationReasons?: string[];
 };
 
@@ -108,7 +130,7 @@ export type ProjectMemoryView = {
 };
 
 export type ProjectContinuityState = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   currentFocus: CurrentProjectFocus;
   recordEntries: ContinuityRecordEntry[];
   updatedAt: string;
@@ -428,6 +450,7 @@ export type AiMessage = {
   operationId?: string;
   proposalId?: string;
   citationIds?: string[];
+  continuityEntryIds?: string[];
   error?: string;
 };
 
@@ -516,7 +539,7 @@ export type ProjectWorkingState = {
 };
 
 export type MorphoWorkspace = {
-  schemaVersion: 8;
+  schemaVersion: 9;
   project: {
     id: string;
     title: string;

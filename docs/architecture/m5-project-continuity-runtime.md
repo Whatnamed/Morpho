@@ -81,3 +81,19 @@ The left rail includes a lightweight `项目记录` drawer. It shows current foc
 Clicking a source in this drawer only locates/selects the real source object. It does not mutate focus, trigger AI, or write continuity events.
 
 The project homepage shows recent work focus, last explicit continuity update, and a deterministic note. It does not show stage progress, percentages, unlock states, or Kanban-style workflow state.
+
+## M5-B1 Extension
+
+Schema v9 extends project continuity with explicit conversation semantic records. These records use `origin: conversationSemanticPatch`, `manualState`, `semanticKind`, `sourceMessageId`, `evidenceQuote`, `scope`, and typed `message` source refs.
+
+Provider output is only a candidate. `/api/ai/chat` may ask for `morphoProjectContinuityPatch` only during `chatAnalysis` and `researchOperation`, and never during `imageGeneration`. Local parser, authorization, validation, deterministic summary generation, and domain write rules decide what is stored.
+
+Provider summaries are ignored. Stored summaries are deterministic templates derived from `semanticKind + evidenceQuote`, such as `明确偏好：{quote}` or `待确认问题：{quote}`. The exact quote must be a bounded substring of the current user draft.
+
+`SemanticPatchAuthorization` is built from the current task context and direct source IDs. Validation does not scan the full workspace to guess related objects. Hidden selected objects are excluded from task-context object IDs and cannot become new active semantic sources.
+
+If the same assistant reply includes a Proposal block (`morphoResearchProposal`, `morphoDesignDefinitionProposal`, or `morphoConceptDirectionProposal`), conversation semantic writing is blocked. Proposal application and successful research-object creation continue to use deterministic M5-A continuity events.
+
+`manualState`, `validity`, and `sourceAvailability` remain independent. `getContinuityEntryEligibility` centralizes how those values affect memory, default context, review lists, UI labels, and prompt serialization.
+
+See `docs/architecture/m5-b1-conversation-semantic-records.md` for the full contract.

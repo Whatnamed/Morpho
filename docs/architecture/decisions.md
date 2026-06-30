@@ -375,3 +375,43 @@ Decision: write continuity only from explicit successful domain events through `
 Reason: project continuity must be stable, replay-safe, and explainable. React effects, selection changes, drawer toggles, ordinary chat, proposal generation, failed operations, and canvas movement must not silently create project facts.
 
 Boundary: every continuity event has a stable `dedupeKey`. Source refs are typed and store only lightweight snapshots plus source availability (`active`, `hidden`, or `missing`). Hidden sources do not change entry validity and are excluded from default active AI context; deleted or missing sources become `sourceUnavailable`; directly replaced revisions or default references become `superseded`. Exploration remains empty unless a future explicit exploration event is introduced.
+
+## 2026-06-30: Use Schema Version 9 for Explicit Conversation Semantic Records
+
+Decision: upgrade workspace data to `schemaVersion: 9` and allow only authorized conversation semantic patches to append entries to `workspace.projectContinuity.recordEntries`.
+
+Reason: M5-B1 needs explicit user statements such as long-lived preferences, constraints, avoidances, open questions, decision reasons, and rejection reasons to become reusable continuity records without letting ordinary chat, model inference, or proposal drafts mutate project facts.
+
+Boundary: conversation semantic records never update `currentFocus`, objects, revisions, direction status, default references, VisualBranch state, delivery references, or DecisionRecords. Existing v8 entries migrate as `origin: deterministicEvent` and `manualState: active`; migration does not invent message refs or semantic metadata.
+
+## 2026-06-30: Keep Provider Semantic Patches Candidate-Only
+
+Decision: providers may return `morphoProjectContinuityPatch` only as a bounded candidate contract. Morpho locally parses, authorizes, validates, dedupes, summarizes, and writes accepted entries.
+
+Reason: provider-written long-term summaries or guessed associations would make project memory non-deterministic and could silently promote model interpretation into facts.
+
+Boundary: provider `summary` is ignored. Stored summaries come only from deterministic templates over `semanticKind + evidenceQuote`. `evidenceQuote` must be a short substring of the current user draft. The parser rejects unexpected fields, raw payloads, state mutation fields, invalid kind/scope values, oversized quotes, Base64, URLs, and unsafe raw-provider markers.
+
+## 2026-06-30: Authorize Semantic Sources From Task Context Only
+
+Decision: build `SemanticPatchAuthorization` from the current `TaskContextResult`, user message ID, draft, message timestamp, current focus area, and direct authorized IDs.
+
+Reason: a validator that scans the whole workspace would be able to "repair" or invent model associations after the fact, which would violate Morpho's direct-source and hidden-object boundaries.
+
+Boundary: validation checks only the authorization object. Hidden selected objects are excluded from task-context object IDs and cannot become new active semantic sources. Non-project scopes require an authorized direct source. `decisionReason` and `rejectionReason` require an authorized `DecisionRecord` source.
+
+## 2026-06-30: Block Semantic Patches When Proposal Blocks Exist
+
+Decision: do not write conversation semantic patches when the same assistant reply includes `morphoResearchProposal`, `morphoDesignDefinitionProposal`, or `morphoConceptDirectionProposal`.
+
+Reason: proposal generation is not project fact. Mixing a pending proposal with long-term semantic record writing would make it unclear whether the user confirmed a durable statement or merely received a draft.
+
+Boundary: successful research proposal application still records deterministic M5-A `researchApplied` continuity. Design-definition and concept-direction proposals write continuity only through their explicit application paths.
+
+## 2026-06-30: Centralize Continuity Eligibility
+
+Decision: use `getContinuityEntryEligibility(entry)` as the shared rule for `manualState`, `validity`, and `sourceAvailability` across memory views, default context, review lists, request prompt serialization, and the project-record drawer.
+
+Reason: hidden source handling, user withdrawal, source missing state, and review-needed state must not drift across UI and AI context code.
+
+Boundary: `manualState` does not change entry validity or source availability. Hidden sources keep historical validity but stay out of default memory/context. Missing sources are not factual inputs. `notApplicable` and `withdrawn` entries stay in history and can be restored only through semantic-entry UI actions.

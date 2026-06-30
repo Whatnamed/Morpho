@@ -29,10 +29,10 @@ import { recordDesignDefinitionProposal } from "../operations/operations";
 import { hasPendingDesignDefinitionRevisionProposal, reconcileWorkspaceDerivedState } from "./derivedState";
 
 describe("Morpho workspace domain boundaries", () => {
-  it("creates a blank schema v8 project without depending on Nightrail seed object ids", () => {
+  it("creates a blank schema v9 project without depending on Nightrail seed object ids", () => {
     const workspace = createBlankWorkspace("project-empty-local");
 
-    expect(workspace.schemaVersion).toBe(8);
+    expect(workspace.schemaVersion).toBe(9);
     expect(workspace.project.id).toBe("project-empty-local");
     expect(workspace.objects["image-soft-rail-v2"]).toBeUndefined();
     expect(workspace.canvas.instances).toEqual([]);
@@ -754,7 +754,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(imported.workspace.assets["asset-file-a"]?.sourceType).toBe("originalFile");
   });
 
-  it("migrates v1 workspace data to schema v8 without mutating the source object", () => {
+  it("migrates v1 workspace data to schema v9 without mutating the source object", () => {
     const legacyWorkspace = {
       schemaVersion: 1,
       project: {
@@ -801,7 +801,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.status).toBe("ok");
     expect(legacyWorkspace).toEqual(before);
     if (result.status === "ok") {
-      expect(result.workspace.schemaVersion).toBe(8);
+      expect(result.workspace.schemaVersion).toBe(9);
       expect(result.workspace.objects["image-a"]?.visibility).toBe("active");
       expect(result.workspace.objects["image-a"]).toMatchObject({
         type: "image",
@@ -823,8 +823,67 @@ describe("Morpho workspace domain boundaries", () => {
         area: "directionAndVisual",
         sourceKind: "migration"
       });
+      expect(result.workspace.projectContinuity.schemaVersion).toBe(2);
       expect(result.workspace).not.toHaveProperty("stageRecords");
     }
+  });
+
+  it("migrates v8 project continuity entries to v9 deterministic active entries without inventing semantic patches", () => {
+    const workspace = createInitialWorkspace();
+    const v8Workspace = {
+      ...workspace,
+      schemaVersion: 8,
+      projectContinuity: {
+        schemaVersion: 1,
+        currentFocus: workspace.projectContinuity.currentFocus,
+        recordEntries: [
+          {
+            id: "continuity-legacy",
+            dedupeKey: "legacy:event",
+            stage: "research",
+            category: "decision",
+            summary: "旧版连续性记录。",
+            sourceRefs: [
+              {
+                kind: "object",
+                id: "research-night-path",
+                snapshot: {
+                  title: "夜间路径研究",
+                  objectType: "research",
+                  visibility: "active"
+                }
+              }
+            ],
+            createdAt: "2026-06-30T08:00:00.000Z",
+            updatedAt: "2026-06-30T08:00:00.000Z",
+            validity: "current"
+          }
+        ],
+        updatedAt: "2026-06-30T08:00:00.000Z"
+      }
+    };
+
+    const result = migrateWorkspaceToCurrentSchema(v8Workspace);
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") {
+      throw new Error(result.reason);
+    }
+    expect(result.didMigrate).toBe(true);
+    expect(result.workspace.schemaVersion).toBe(9);
+    expect(result.workspace.projectContinuity.schemaVersion).toBe(2);
+    expect(result.workspace.projectContinuity.recordEntries).toEqual([
+      expect.objectContaining({
+        id: "continuity-legacy",
+        origin: "deterministicEvent",
+        manualState: "active",
+        semanticKind: undefined,
+        sourceMessageId: undefined
+      })
+    ]);
+    expect(result.workspace.objects["research-night-path"]).toBeDefined();
+    expect(result.workspace.visualBranches).toEqual(workspace.visualBranches);
+    expect(result.workspace.decisionRecords).toEqual(workspace.decisionRecords);
   });
 
   it("reports migration failure without producing replacement seed data", () => {

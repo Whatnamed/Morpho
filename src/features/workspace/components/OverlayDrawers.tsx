@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 
-import type { MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
+import type { ContinuityManualState, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
 import type { ContinuitySourceRef, ProjectFocusArea, ProjectMemoryViewKey, StageRecordKey } from "@/domain/morpho/types";
-import { deriveProjectMemoryViews, getContinuityRecordGroups } from "@/domain/morpho/projectContinuity";
+import { deriveProjectMemoryViews, getContinuityEntryEligibility, getContinuityRecordGroups, resolveContinuityValidity } from "@/domain/morpho/projectContinuity";
 import { getWorkspaceAssetItems, searchWorkspace, type WorkspaceAssetItem } from "@/domain/morpho/queries";
 import type { DrawerMode } from "./LeftRail";
 import { getObjectTypeLabel } from "../workspaceUi";
@@ -13,10 +13,12 @@ import { getObjectTypeLabel } from "../workspaceUi";
 type OverlayDrawersProps = {
   mode: DrawerMode;
   workspace: MorphoWorkspace;
+  highlightedRecordIds: string[];
   onClose: () => void;
   onFocusArea: (area: "research" | "definition" | "visual" | "delivery" | "overview") => void;
   onRestoreObject: (objectId: string) => void;
   onLocateObject: (objectId: string) => void;
+  onSetContinuityEntryManualState: (entryId: string, manualState: ContinuityManualState) => void;
 };
 
 const mapItems = [
@@ -26,7 +28,16 @@ const mapItems = [
   { label: "交付准备", area: "delivery" as const }
 ];
 
-export function OverlayDrawers({ mode, workspace, onClose, onFocusArea, onRestoreObject, onLocateObject }: OverlayDrawersProps) {
+export function OverlayDrawers({
+  mode,
+  workspace,
+  highlightedRecordIds,
+  onClose,
+  onFocusArea,
+  onRestoreObject,
+  onLocateObject,
+  onSetContinuityEntryManualState
+}: OverlayDrawersProps) {
   const [query, setQuery] = useState("暖光");
   const [assetFilter, setAssetFilter] = useState("全部");
 
@@ -74,7 +85,15 @@ export function OverlayDrawers({ mode, workspace, onClose, onFocusArea, onRestor
   }
 
   if (mode === "records") {
-    return <ProjectRecordDrawer workspace={workspace} onClose={onClose} onLocateObject={onLocateObject} />;
+    return (
+      <ProjectRecordDrawer
+        workspace={workspace}
+        highlightedRecordIds={highlightedRecordIds}
+        onClose={onClose}
+        onLocateObject={onLocateObject}
+        onSetContinuityEntryManualState={onSetContinuityEntryManualState}
+      />
+    );
   }
 
   if (mode === "hidden") {
@@ -129,17 +148,23 @@ export function OverlayDrawers({ mode, workspace, onClose, onFocusArea, onRestor
 
 function ProjectRecordDrawer({
   workspace,
+  highlightedRecordIds,
   onClose,
-  onLocateObject
+  onLocateObject,
+  onSetContinuityEntryManualState
 }: {
   workspace: MorphoWorkspace;
+  highlightedRecordIds: string[];
   onClose: () => void;
   onLocateObject: (objectId: string) => void;
+  onSetContinuityEntryManualState: (entryId: string, manualState: ContinuityManualState) => void;
 }) {
+  const highlighted = new Set(highlightedRecordIds);
+  const resolvedWorkspace = resolveContinuityValidity(workspace);
   const groups = getContinuityRecordGroups(workspace);
   const memoryViews = deriveProjectMemoryViews(workspace);
-  const reviewItems = workspace.projectContinuity.recordEntries
-    .filter((entry) => entry.validity === "reviewRequired" || entry.validity === "sourceUnavailable")
+  const reviewItems = resolvedWorkspace.projectContinuity.recordEntries
+    .filter((entry) => getContinuityEntryEligibility(entry).canEnterReviewList)
     .slice(-6)
     .reverse();
   const stages: StageRecordKey[] = [
@@ -170,14 +195,19 @@ function ProjectRecordDrawer({
             <span>
               {workspace.projectContinuity.currentFocus.note} · {formatDrawerDate(workspace.projectContinuity.currentFocus.updatedAt)}
             </span>
-            <SourceRefs refs={focusSourceRefs(workspace)} onLocateObject={onLocateObject} />
+            <ContinuitySourceRefs refs={focusSourceRefs(workspace)} onLocateObject={onLocateObject} />
           </div>
         </div>
       </section>
 
       <div className="result-group-title">待复核项</div>
       {reviewItems.length > 0 ? (
-        <ContinuityEntryRows entries={reviewItems} onLocateObject={onLocateObject} />
+        <ContinuityEntryRows
+          entries={reviewItems}
+          highlightedRecordIds={highlighted}
+          onLocateObject={onLocateObject}
+          onSetContinuityEntryManualState={onSetContinuityEntryManualState}
+        />
       ) : (
         <p className="drawer-muted">当前没有待复核或来源不可用的连续性记录。</p>
       )}
@@ -187,7 +217,12 @@ function ProjectRecordDrawer({
         <section className="asset-list" key={stage} aria-label={groups[stage].title}>
           <div className="drawer-muted">{groups[stage].title}</div>
           {groups[stage].entries.length > 0 ? (
-            <ContinuityEntryRows entries={groups[stage].entries.slice(0, 4)} onLocateObject={onLocateObject} />
+            <ContinuityEntryRows
+              entries={groups[stage].entries.slice(0, 4)}
+              highlightedRecordIds={highlighted}
+              onLocateObject={onLocateObject}
+              onSetContinuityEntryManualState={onSetContinuityEntryManualState}
+            />
           ) : (
             <p className="drawer-muted">{groups[stage].emptyMessage}</p>
           )}
@@ -209,7 +244,7 @@ function ProjectRecordDrawer({
                     <span>
                       {validityLabel(item.validity, item.sourceRefs)} · {item.summary}
                     </span>
-                    <SourceRefs refs={item.sourceRefs} onLocateObject={onLocateObject} />
+                    <ContinuitySourceRefs refs={item.sourceRefs} onLocateObject={onLocateObject} />
                   </div>
                 </div>
               ))
@@ -225,27 +260,69 @@ function ProjectRecordDrawer({
 
 function ContinuityEntryRows({
   entries,
-  onLocateObject
+  highlightedRecordIds,
+  onLocateObject,
+  onSetContinuityEntryManualState
 }: {
   entries: ReturnType<typeof getContinuityRecordGroups>[StageRecordKey]["entries"];
   onLocateObject: (objectId: string) => void;
+  highlightedRecordIds: Set<string>;
+  onSetContinuityEntryManualState: (entryId: string, manualState: ContinuityManualState) => void;
 }) {
   return (
     <div className="asset-list">
-      {entries.map((entry) => (
-        <div className="result-row" key={entry.id}>
-          <div className="asset-thumb" />
-          <div>
-            <strong>
-              {stageLabel(entry.stage)} · {categoryLabel(entry.category)}
-            </strong>
-            <span>
-              {validityLabel(entry.validity, entry.sourceRefs)} · {entry.summary}
-            </span>
-            <SourceRefs refs={entry.sourceRefs} onLocateObject={onLocateObject} />
+      {entries.map((entry) => {
+        const eligibility = getContinuityEntryEligibility(entry);
+        return (
+          <div className={`result-row ${highlightedRecordIds.has(entry.id) ? "highlighted-record" : ""}`} key={entry.id}>
+            <div className="asset-thumb" />
+            <div>
+              <strong>
+                {stageLabel(entry.stage)} · {categoryLabel(entry.category)}
+              </strong>
+              <span>
+                {eligibility.uiLabel} · {entry.summary}
+              </span>
+              {entry.origin === "conversationSemanticPatch" ? (
+                <div className="continuity-meta-row">
+                  <span>来自明确对话 · {semanticKindLabel(entry.semanticKind)}</span>
+                  <span>状态：{manualStateLabel(entry.manualState)}</span>
+                </div>
+              ) : null}
+              {entry.evidenceQuote ? <blockquote className="continuity-quote">{entry.evidenceQuote}</blockquote> : null}
+              <ContinuitySourceRefs refs={entry.sourceRefs} onLocateObject={onLocateObject} />
+              {entry.origin === "conversationSemanticPatch" ? (
+                <div className="continuity-actions">
+                  <button
+                    className="plain-button"
+                    type="button"
+                    disabled={entry.manualState === "notApplicable"}
+                    onClick={() => onSetContinuityEntryManualState(entry.id, "notApplicable")}
+                  >
+                    不再适用
+                  </button>
+                  <button
+                    className="plain-button"
+                    type="button"
+                    disabled={entry.manualState === "withdrawn"}
+                    onClick={() => onSetContinuityEntryManualState(entry.id, "withdrawn")}
+                  >
+                    撤回记录
+                  </button>
+                  <button
+                    className="plain-button"
+                    type="button"
+                    disabled={entry.manualState === "active"}
+                    onClick={() => onSetContinuityEntryManualState(entry.id, "active")}
+                  >
+                    恢复为当前有效
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -272,6 +349,39 @@ function SourceRefs({ refs, onLocateObject }: { refs: ContinuitySourceRef[]; onL
   );
 }
 
+function ContinuitySourceRefs({
+  refs,
+  onLocateObject
+}: {
+  refs: ContinuitySourceRef[];
+  onLocateObject: (objectId: string) => void;
+}) {
+  if (refs.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="drawer-filter-row" aria-label="来源">
+      {refs.slice(0, 6).map((ref) => {
+        const label = sourceRefLabel(ref);
+        if (ref.kind === "object" && ref.sourceAvailability === "active") {
+          return (
+            <button className="filter-chip" type="button" key={`${ref.kind}-${ref.id}`} onClick={() => onLocateObject(ref.id)}>
+              {label}
+            </button>
+          );
+        }
+
+        return (
+          <span className="filter-chip" key={`${ref.kind}-${ref.id}`} title={ref.snapshot?.summarySnippet}>
+            {label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function focusSourceRefs(workspace: MorphoWorkspace): ContinuitySourceRef[] {
   return workspace.projectContinuity.currentFocus.sourceObjectIds
     .map((objectId): ContinuitySourceRef | undefined => {
@@ -285,7 +395,8 @@ function focusSourceRefs(workspace: MorphoWorkspace): ContinuitySourceRef[] {
               objectType: object.type,
               visibility: object.visibility,
               summarySnippet: object.summary
-            }
+            },
+            sourceAvailability: object.visibility === "hidden" ? "hidden" : "active"
           } satisfies ContinuitySourceRef)
         : undefined;
     })
@@ -490,8 +601,55 @@ function sourceKindLabel(kind: ContinuitySourceRef["kind"]): string {
       return "来源引用";
     case "deliveryReference":
       return "交付引用";
+    case "message":
+      return "用户表达";
     default:
       return "来源";
+  }
+}
+
+function sourceRefLabel(ref: ContinuitySourceRef): string {
+  const title = ref.snapshot?.title ?? ref.id;
+  const prefix = sourceKindLabel(ref.kind);
+  if (ref.kind === "message") {
+    return `${prefix}：${ref.snapshot?.summarySnippet ?? title}`;
+  }
+  if (ref.sourceAvailability === "hidden") {
+    return `${prefix}：${title} · 来源已隐藏`;
+  }
+  if (ref.sourceAvailability === "missing") {
+    return `${prefix}：${title} · 来源不可用`;
+  }
+  return `${prefix}：${title}`;
+}
+
+function semanticKindLabel(kind: string | undefined): string {
+  switch (kind) {
+    case "preference":
+      return "偏好";
+    case "constraint":
+      return "约束";
+    case "avoidance":
+      return "避免项";
+    case "openQuestion":
+      return "待确认";
+    case "decisionReason":
+      return "决策理由";
+    case "rejectionReason":
+      return "淘汰理由";
+    default:
+      return "语义记录";
+  }
+}
+
+function manualStateLabel(state: ContinuityManualState): string {
+  switch (state) {
+    case "active":
+      return "当前有效";
+    case "notApplicable":
+      return "不再适用";
+    case "withdrawn":
+      return "已撤回";
   }
 }
 
