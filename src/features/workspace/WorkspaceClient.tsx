@@ -29,7 +29,6 @@ import {
   recordImageGenerationPlan,
   recordImageGenerationOperationItemFailure,
   recordImageGenerationOperationResult,
-  recordResearchAnalysisProposal,
   updateConceptDirectionProposalDraft,
   updateDesignDefinitionProposalDraft,
   updateResearchAnalysisProposalDraft
@@ -92,8 +91,9 @@ import { buildWebSearchOptions, collectMiMoImageAttachments, shouldAttachImagesF
 import { collectDocumentExtractsForAi } from "./documentContext";
 import { buildProviderTaskContext, buildTaskContext, taskContextKindFromAiTask, type TaskContextDefaultReference } from "./taskContext";
 import { setConversationSemanticEntryManualState } from "@/domain/morpho/projectContinuity";
-import { stripProjectContinuityPatchBlock } from "@/domain/morpho/conversationSemanticPatch";
+import { sanitizeAssistantStreamForDisplay, stripProjectContinuityPatchBlock } from "@/domain/morpho/conversationSemanticPatch";
 import { applyConversationSemanticPatchFromReply } from "./workspaceSemanticPatch";
+import { applyResearchProposalWithSemanticPatch } from "./researchSemanticPatch";
 import { planDirectionPreviewPlacements } from "./visualPreviewLayout";
 import {
   classifyVisualGenerationIntent,
@@ -648,7 +648,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }
 
         const streamResult = await readAiEventStream(response.body, (assistantBody) => {
-          setWorkspace((current) => updateAiMessage(current, assistantMessageId, assistantBody, "streaming"));
+          setWorkspace((current) => updateAiMessage(current, assistantMessageId, sanitizeAssistantStreamForDisplay(assistantBody), "streaming"));
         });
         const visibleResearchText = stripProjectContinuityPatchBlock(streamResult.text);
         const assistantBody = [attachmentResult.warning, documentResult.warning, visibleResearchText]
@@ -691,9 +691,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         const proposalId = `proposal-research-${operationId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         let appliedResearchObjectId: string | undefined;
         setWorkspace((current) => {
-          const proposed = recordResearchAnalysisProposal(
-            updateAiMessage(current, assistantMessageId, assistantBody || "MiMo 没有返回可显示文本。", "done"),
-            {
+          const result = applyResearchProposalWithSemanticPatch({
+            workspace: updateAiMessage(current, assistantMessageId, assistantBody || "MiMo 没有返回可显示文本。", "done"),
+            proposal: {
               proposalId,
               operationId,
               title: parsedProposal.proposal.title,
@@ -706,41 +706,46 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               sourceObjectIds: context.objectIds,
               citations: streamResult.citations,
               sourceChangedWarning: detectResearchSourceChanges(current, operationId)
-            }
-          );
-
-          const applied = applyResearchAnalysisProposal(proposed.workspace, proposed.proposal.id, {
-            position: getPlacementNearObjects(proposed.workspace, context.objectIds, {
-              x: proposed.workspace.canvas.view.x + 220,
-              y: proposed.workspace.canvas.view.y + 180
-            })
+            },
+            position: getPlacementNearObjects(current, context.objectIds, {
+              x: current.canvas.view.x + 220,
+              y: current.canvas.view.y + 180
+            }),
+            context,
+            draft,
+            userMessageId,
+            userMessageCreatedAt: now,
+            assistantText: streamResult.text
           });
 
-          if (applied.status === "updated") {
-            appliedResearchObjectId = applied.researchObject.id;
+          if (result.status === "updated") {
+            const researchObject = result.workspace.objects[result.researchObjectId];
+            appliedResearchObjectId = result.researchObjectId;
             return updateAiMessage(
-              applied.workspace,
+              result.workspace,
               assistantMessageId,
               [
                 assistantBody || "MiMo 没有返回可显示文本。",
-                `已识别为：研究任务。已自动创建研究卡「${applied.researchObject.title}」，来源对象 ${
+                `已识别为：研究任务。已自动创建研究卡「${researchObject?.title ?? "研究卡"}」，来源对象 ${
                   context.objectIds.length
                 } 个，${webSearch ? "已允许联网补充" : "未启用联网搜索"}。`
               ].join("\n\n"),
               "done",
               {
-                citationIds: proposed.proposal.citationIds
+                citationIds: result.proposalCitationIds,
+                continuityEntryIds: result.semanticPatch.status === "applied" ? result.semanticPatch.entryIds : undefined
               }
             );
           }
 
           return updateAiMessage(
-            proposed.workspace,
+            result.workspace,
             assistantMessageId,
-            [assistantBody || "MiMo 没有返回可显示文本。", `${applied.reason} 研究卡未自动创建。`].join("\n\n"),
+            [assistantBody || "MiMo 没有返回可显示文本。", `${result.reason} 研究卡未自动创建。`].join("\n\n"),
             "failed",
             {
-              citationIds: proposed.proposal.citationIds
+              citationIds: result.proposalCitationIds,
+              continuityEntryIds: result.semanticPatch.status === "applied" ? result.semanticPatch.entryIds : undefined
             }
           );
         });
@@ -948,7 +953,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }
 
         const planStream = await readAiEventStream(planResponse.body, (assistantBody) => {
-          setWorkspace((current) => updateAiMessage(current, assistantMessageId, assistantBody, "streaming"));
+          setWorkspace((current) => updateAiMessage(current, assistantMessageId, sanitizeAssistantStreamForDisplay(assistantBody), "streaming"));
         });
         const parsedPlan = parseVisualGenerationPlanPayload(planStream.text);
         if (parsedPlan.status === "failed") {
@@ -1317,7 +1322,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
 
       const streamResult = await readAiEventStream(response.body, (assistantBody) => {
-        setWorkspace((current) => updateAiMessage(current, assistantMessageId, assistantBody, "streaming"));
+        setWorkspace((current) => updateAiMessage(current, assistantMessageId, sanitizeAssistantStreamForDisplay(assistantBody), "streaming"));
       });
       const visibleAssistantText = stripProjectContinuityPatchBlock(streamResult.text);
       const assistantBody = [attachmentResult.warning, documentResult.warning, visibleAssistantText]

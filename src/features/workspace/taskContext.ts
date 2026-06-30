@@ -181,6 +181,13 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
   const projectContinuity = buildProjectContinuityContext(workspace, {
     taskKind: input.kind,
     selectedObjectIds: selectedIds,
+    directObjectIds: budgeted.objectIds,
+    directRevisionIds: uniqueStrings([
+      designDefinitionRevision?.id,
+      ...directionRevisions.map((revision) => revision.id)
+    ].filter((id): id is string => Boolean(id))),
+    directBranchIds: visualBranches.map((branch) => branch.id),
+    directDecisionIds: collectDirectDecisionIds(workspace, budgeted.objectIds),
     targetDirectionIds: input.targetDirectionIds,
     includeHistorical: isHistoryOrientedDraft(input.draft)
   });
@@ -385,6 +392,13 @@ function collectVisualBranches(
     }
   }
   return [...branchIds].map((branchId) => workspace.visualBranches[branchId]).filter((branch): branch is VisualBranchRecord => Boolean(branch && !branch.archivedAt));
+}
+
+function collectDirectDecisionIds(workspace: MorphoWorkspace, objectIds: MorphoObjectId[]): string[] {
+  const directObjectIds = new Set(objectIds);
+  return workspace.decisionRecords
+    .filter((decision) => decision.relatedObjectIds.some((objectId) => directObjectIds.has(objectId)) || (decision.objectSnapshot && directObjectIds.has(decision.objectSnapshot.id)))
+    .map((decision) => decision.id);
 }
 
 function applyObjectBudget(

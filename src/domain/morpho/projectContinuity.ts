@@ -121,8 +121,21 @@ export type ProjectMemoryViews = Record<ProjectMemoryViewKey, ProjectMemoryView>
 export type BuildProjectContinuityContextInput = {
   taskKind: "research" | "general" | "directionPreview" | "visualDevelopment" | "designDefinition" | "conceptDirection";
   selectedObjectIds: MorphoObjectId[];
+  directObjectIds?: MorphoObjectId[];
+  directRevisionIds?: string[];
+  directBranchIds?: string[];
+  directDecisionIds?: string[];
   targetDirectionIds?: MorphoObjectId[];
   includeHistorical?: boolean;
+};
+
+export type SemanticEntryTaskScope = {
+  taskKind: BuildProjectContinuityContextInput["taskKind"];
+  directObjectIds: readonly string[];
+  directRevisionIds: readonly string[];
+  directBranchIds: readonly string[];
+  directDecisionIds: readonly string[];
+  targetDirectionIds: readonly string[];
 };
 
 export type ProjectContinuityContext = {
@@ -295,6 +308,22 @@ export function applyConversationSemanticPatch(
   const entries: ContinuityRecordEntry[] = [];
   const rejected: ApplyConversationSemanticPatchResult["rejected"] = [];
 
+  const persistedUserMessage = resolved.ai.messages.find((message) => message.id === authorization.userMessageId);
+  if (
+    !persistedUserMessage ||
+    persistedUserMessage.role !== "user" ||
+    normalizeForDedupe(persistedUserMessage.body) !== normalizeForDedupe(authorization.draft)
+  ) {
+    return {
+      workspace: nextWorkspace,
+      entries,
+      rejected: items.map((item) => ({
+        evidenceQuote: item.evidenceQuote,
+        reason: "Semantic patch requires a persisted user message whose body matches the current user message draft."
+      }))
+    };
+  }
+
   for (const item of items) {
     const validation = validateConversationSemanticPatch(item, authorization);
     if (validation.status === "failed") {
@@ -325,12 +354,17 @@ export function applyConversationSemanticPatch(
 export function resolveContinuityValidity(workspace: MorphoWorkspace): MorphoWorkspace {
   const recordEntries = workspace.projectContinuity.recordEntries.map((entry) => {
     const reasons = getInvalidationReasons(workspace, entry);
-    const validity = validityFromReasons(reasons);
+    const sourceRefs = entry.sourceRefs.map((ref) => resolveSourceRefAvailability(workspace, ref));
+    const resolvedReasons = [
+      ...reasons,
+      ...(sourceRefs.some((ref) => ref.sourceAvailability === "missing") ? ["sourceDeleted:sourceRef"] : [])
+    ];
+    const validity = validityFromReasons(resolvedReasons);
     return {
       ...entry,
       validity,
-      sourceRefs: entry.sourceRefs.map((ref) => resolveSourceRefAvailability(workspace, ref)),
-      invalidationReasons: reasons.length > 0 ? reasons : undefined
+      sourceRefs,
+      invalidationReasons: resolvedReasons.length > 0 ? [...new Set(resolvedReasons)] : undefined
     };
   });
 
@@ -479,7 +513,14 @@ export function buildProjectContinuityContext(
   input: BuildProjectContinuityContextInput
 ): ProjectContinuityContext {
   const resolved = resolveContinuityValidity(workspace);
-  const selected = new Set([...(input.selectedObjectIds ?? []), ...(input.targetDirectionIds ?? [])]);
+  const taskScope = normalizeSemanticEntryTaskScope(input);
+  const selected = new Set([
+    ...taskScope.directObjectIds,
+    ...taskScope.directRevisionIds,
+    ...taskScope.directBranchIds,
+    ...taskScope.directDecisionIds,
+    ...taskScope.targetDirectionIds
+  ]);
   const stageRank = new Map(CONTEXT_STAGE_RELEVANCE[input.taskKind].map((stage, index) => [stage, index]));
   const rankedEntries = [...resolved.projectContinuity.recordEntries].sort((left, right) =>
     compareEntriesForContext(left, right, selected, resolved.projectContinuity.currentFocus.area, stageRank)
@@ -488,8 +529,9 @@ export function buildProjectContinuityContext(
   const omitted: ProjectContinuityContext["omitted"] = [];
 
   for (const entry of rankedEntries) {
-    if (!shouldIncludeEntryInContext(entry, selected, input.taskKind, resolved.projectContinuity.currentFocus.area, input.includeHistorical === true)) {
-      omitted.push({ id: entry.id, reason: `not relevant for ${input.taskKind}` });
+    const relevance = shouldIncludeEntryInContext(entry, selected, taskScope, resolved.projectContinuity.currentFocus.area, input.includeHistorical === true);
+    if (!relevance.include) {
+      omitted.push({ id: entry.id, reason: relevance.reason });
       continue;
     }
     if (included.length >= PROJECT_CONTINUITY_CONTEXT_LIMITS.maxStageRecords) {
@@ -504,7 +546,7 @@ export function buildProjectContinuityContext(
   const relevantProjectMemoryViews = memoryRank
     .map((key) => ({
       ...memoryViews[key],
-      items: memoryViews[key].items.filter(hasOnlyActiveSources)
+      items: filterProjectMemoryItemsForTaskContext(memoryViews[key].items, resolved.projectContinuity.recordEntries, taskScope)
     }))
     .filter((view) => view.items.length > 0)
     .slice(0, PROJECT_CONTINUITY_CONTEXT_LIMITS.maxMemoryViews)
@@ -513,8 +555,9 @@ export function buildProjectContinuityContext(
       items: view.items.slice(0, PROJECT_CONTINUITY_CONTEXT_LIMITS.maxItemsPerMemoryView)
     }));
   const reviewRequiredItems = rankedEntries
+    .filter((entry) => entry.validity === "reviewRequired")
     .filter((entry) => getContinuityEntryEligibility(entry).canEnterReviewList)
-    .filter((entry) => hasDirectSourceMatch(entry, selected) || entry.stage === resolved.projectContinuity.currentFocus.area)
+    .filter((entry) => isSemanticEntryScopeRelevantToTaskContext(entry, taskScope))
     .slice(0, PROJECT_CONTINUITY_CONTEXT_LIMITS.maxReviewRequiredItems)
     .map(limitEntrySummary);
 
@@ -527,6 +570,44 @@ export function buildProjectContinuityContext(
     truncated: omitted.some((item) => item.reason.includes("limit")),
     limits: PROJECT_CONTINUITY_CONTEXT_LIMITS
   };
+}
+
+export function isSemanticEntryScopeRelevantToTaskContext(
+  entry: ContinuityRecordEntry,
+  taskScope: SemanticEntryTaskScope
+): boolean {
+  if (entry.origin !== "conversationSemanticPatch") {
+    return true;
+  }
+
+  const scope = entry.scope ?? "project";
+  if (scope === "project") {
+    return true;
+  }
+
+  const hasDirectMatch = hasTypedDirectSourceMatch(entry, taskScope);
+  if (scope === "designDefinition") {
+    if (hasDirectMatch) {
+      return true;
+    }
+    return taskScope.taskKind === "designDefinition" || taskScope.taskKind === "conceptDirection" || taskScope.taskKind === "directionPreview" || taskScope.taskKind === "visualDevelopment";
+  }
+
+  if (scope === "direction") {
+    if (!isDirectionScopedTask(taskScope.taskKind)) {
+      return false;
+    }
+    return hasDirectMatch;
+  }
+
+  if (scope === "visual") {
+    if (!isVisualScopedTask(taskScope.taskKind)) {
+      return false;
+    }
+    return hasDirectMatch;
+  }
+
+  return false;
 }
 
 export function getContinuityEntryEligibility(entry: ContinuityRecordEntry): ContinuityEntryEligibility {
@@ -1084,35 +1165,108 @@ function compareEntriesByRecent(left: ContinuityRecordEntry, right: ContinuityRe
 function shouldIncludeEntryInContext(
   entry: ContinuityRecordEntry,
   selected: Set<string>,
-  taskKind: BuildProjectContinuityContextInput["taskKind"],
+  taskScope: SemanticEntryTaskScope,
   currentFocus: ProjectFocusArea,
   includeHistorical: boolean
-): boolean {
+): { include: true } | { include: false; reason: string } {
   const hasDirectMatch = hasDirectSourceMatch(entry, selected);
   const eligibility = getContinuityEntryEligibility(entry);
   if (entry.manualState !== "active") {
-    return false;
+    return { include: false, reason: "manual state is not active" };
   }
   if (entry.validity === "current") {
     if (!eligibility.canEnterDefaultContext) {
-      return false;
+      return { include: false, reason: eligibility.reason };
     }
-    return hasDirectMatch || isStageRelevantToTask(entry.stage, taskKind, currentFocus);
+    if (!isSemanticEntryScopeRelevantToTaskContext(entry, taskScope)) {
+      return { include: false, reason: `semantic scope not relevant for ${taskScope.taskKind}` };
+    }
+    if (entry.origin === "conversationSemanticPatch") {
+      return { include: true };
+    }
+    return hasDirectMatch || isStageRelevantToTask(entry.stage, taskScope.taskKind, currentFocus)
+      ? { include: true }
+      : { include: false, reason: `not relevant for ${taskScope.taskKind}` };
   }
   if (entry.validity === "reviewRequired") {
-    return hasDirectMatch;
+    return hasDirectMatch && isSemanticEntryScopeRelevantToTaskContext(entry, taskScope)
+      ? { include: true }
+      : { include: false, reason: `not relevant for ${taskScope.taskKind}` };
   }
   if (entry.validity === "superseded") {
-    return hasDirectMatch || includeHistorical;
+    return hasDirectMatch || includeHistorical
+      ? { include: true }
+      : { include: false, reason: `not relevant for ${taskScope.taskKind}` };
   }
   if (entry.validity === "sourceUnavailable") {
-    return false;
+    return { include: false, reason: "source unavailable" };
   }
-  return hasDirectMatch;
+  return hasDirectMatch ? { include: true } : { include: false, reason: `not relevant for ${taskScope.taskKind}` };
 }
 
 function hasOnlyActiveSources(item: ProjectMemoryItem): boolean {
   return item.sourceRefs.every((ref) => ref.sourceAvailability !== "hidden" && ref.sourceAvailability !== "missing");
+}
+
+function filterProjectMemoryItemsForTaskContext(
+  items: ProjectMemoryItem[],
+  recordEntries: ContinuityRecordEntry[],
+  taskScope: SemanticEntryTaskScope
+): ProjectMemoryItem[] {
+  const entryById = new Map(recordEntries.map((entry) => [entry.id, entry]));
+  return items.filter((item) => {
+    if (!hasOnlyActiveSources(item)) {
+      return false;
+    }
+    const entry = entryById.get(item.id);
+    return entry ? isSemanticEntryScopeRelevantToTaskContext(entry, taskScope) : true;
+  });
+}
+
+function normalizeSemanticEntryTaskScope(input: BuildProjectContinuityContextInput): SemanticEntryTaskScope {
+  return {
+    taskKind: input.taskKind,
+    directObjectIds: uniqueStrings([...(input.selectedObjectIds ?? []), ...(input.directObjectIds ?? [])]),
+    directRevisionIds: uniqueStrings(input.directRevisionIds ?? []),
+    directBranchIds: uniqueStrings(input.directBranchIds ?? []),
+    directDecisionIds: uniqueStrings(input.directDecisionIds ?? []),
+    targetDirectionIds: uniqueStrings(input.targetDirectionIds ?? [])
+  };
+}
+
+function hasTypedDirectSourceMatch(entry: ContinuityRecordEntry, taskScope: SemanticEntryTaskScope): boolean {
+  const directObjectIds = new Set([...taskScope.directObjectIds, ...taskScope.targetDirectionIds]);
+  const directRevisionIds = new Set(taskScope.directRevisionIds);
+  const directBranchIds = new Set(taskScope.directBranchIds);
+  const directDecisionIds = new Set(taskScope.directDecisionIds);
+
+  return entry.sourceRefs.some((ref) => {
+    if (ref.kind === "object") {
+      return directObjectIds.has(ref.id);
+    }
+    if (ref.kind === "revision") {
+      return directRevisionIds.has(ref.id);
+    }
+    if (ref.kind === "branch") {
+      return directBranchIds.has(ref.id);
+    }
+    if (ref.kind === "decision") {
+      return directDecisionIds.has(ref.id);
+    }
+    return false;
+  });
+}
+
+function isDirectionScopedTask(taskKind: BuildProjectContinuityContextInput["taskKind"]): boolean {
+  return taskKind === "conceptDirection" || taskKind === "directionPreview" || taskKind === "visualDevelopment" || taskKind === "general";
+}
+
+function isVisualScopedTask(taskKind: BuildProjectContinuityContextInput["taskKind"]): boolean {
+  return taskKind === "directionPreview" || taskKind === "visualDevelopment" || taskKind === "general";
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function withSourceAvailability(
@@ -1186,7 +1340,7 @@ function resolveSourceRefAvailability(workspace: MorphoWorkspace, ref: Continuit
   if (ref.kind === "message") {
     return {
       ...ref,
-      sourceAvailability: workspace.ai.messages.some((message) => message.id === ref.id) ? "active" : ref.sourceAvailability ?? "missing"
+      sourceAvailability: workspace.ai.messages.some((message) => message.id === ref.id) ? "active" : "missing"
     };
   }
 

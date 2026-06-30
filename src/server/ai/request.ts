@@ -441,7 +441,7 @@ function buildConversationSemanticPatchInstruction(request: AiRouteRequest): str
     "provider 不得生成 summary；Morpho 会只用 evidenceQuote 在本地确定性生成长期记录摘要，任何 summary 字段都会被忽略。",
     "evidenceQuote 必须是当前用户消息中的直接原话，不要从语气、暗示、模型建议、临时生成要求或未确认草案中推断。",
     "patch 不得改变任何项目对象、方向状态、默认参考、revision、VisualBranch、交付引用或 Current Focus，也不得输出 setDirectionPrimary、setDefaultReference、hideObject、deleteObject 等状态命令。",
-    "如果不确定，不要输出 morphoProjectContinuityPatch；如果本回复还输出待应用 Proposal JSON，也不要输出 semantic patch。"
+    "如果不确定，不要输出 morphoProjectContinuityPatch；如果本回复还输出设计定义或概念方向的待应用 Proposal JSON，也不要输出 semantic patch。研究任务中的结构化研究草案不会自动成立为长期项目事实，因此不作为全局抑制条件。"
   ].join("\n");
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createInitialWorkspace, deleteObject, hideObject } from "./workspace";
+import type { MorphoWorkspace } from "./types";
 import {
   applyConversationSemanticPatch,
   applyProjectContinuityEvent,
@@ -56,11 +57,12 @@ describe("project continuity runtime", () => {
   });
 
   it("writes conversation semantic patches as idempotent records without changing current focus", () => {
-    const workspace = createInitialWorkspace();
+    const draft = "夜间识别感比造型复杂度更重要，后面不要做得太科技化。";
+    const workspace = withUserMessage(createInitialWorkspace(), "ai-user-semantic-1", draft, "2026-06-30T09:10:00.000Z");
     const originalFocus = workspace.projectContinuity.currentFocus;
     const authorization = buildSemanticPatchAuthorization({
       taskMode: "chatAnalysis",
-      draft: "夜间识别感比造型复杂度更重要，后面不要做得太科技化。",
+      draft,
       userMessageId: "ai-user-semantic-1",
       userMessageCreatedAt: "2026-06-30T09:10:00.000Z",
       currentFocusArea: workspace.projectContinuity.currentFocus.area,
@@ -122,10 +124,11 @@ describe("project continuity runtime", () => {
   });
 
   it("uses centralized eligibility for manual state, validity, and source availability", () => {
-    const workspace = createInitialWorkspace();
+    const draft = "夜间识别感比造型复杂度更重要，后面不要做得太科技化。";
+    const workspace = withUserMessage(createInitialWorkspace(), "ai-user-semantic-2", draft, "2026-06-30T09:11:00.000Z");
     const authorization = buildSemanticPatchAuthorization({
       taskMode: "chatAnalysis",
-      draft: "夜间识别感比造型复杂度更重要，后面不要做得太科技化。",
+      draft,
       userMessageId: "ai-user-semantic-2",
       userMessageCreatedAt: "2026-06-30T09:11:00.000Z",
       currentFocusArea: workspace.projectContinuity.currentFocus.area,
@@ -175,10 +178,11 @@ describe("project continuity runtime", () => {
   });
 
   it("keeps inactive semantic patches in history while excluding them from memory and context", () => {
-    const workspace = createInitialWorkspace();
+    const draft = "夜间识别感比造型复杂度更重要，后面不要做得太科技化。";
+    const workspace = withUserMessage(createInitialWorkspace(), "ai-user-semantic-3", draft, "2026-06-30T09:12:00.000Z");
     const authorization = buildSemanticPatchAuthorization({
       taskMode: "chatAnalysis",
-      draft: "夜间识别感比造型复杂度更重要，后面不要做得太科技化。",
+      draft,
       userMessageId: "ai-user-semantic-3",
       userMessageCreatedAt: "2026-06-30T09:12:00.000Z",
       currentFocusArea: workspace.projectContinuity.currentFocus.area,
@@ -221,10 +225,11 @@ describe("project continuity runtime", () => {
   });
 
   it("updates manualState only for conversation semantic entries", () => {
-    const workspace = createInitialWorkspace();
+    const draft = "Keep the night light warm and do not make it look medical.";
+    const workspace = withUserMessage(createInitialWorkspace(), "ai-user-manual-state", draft, "2026-06-30T10:00:00.000Z");
     const authorization = buildSemanticPatchAuthorization({
       taskMode: "chatAnalysis",
-      draft: "Keep the night light warm and do not make it look medical.",
+      draft,
       userMessageId: "ai-user-manual-state",
       userMessageCreatedAt: "2026-06-30T10:00:00.000Z",
       currentFocusArea: workspace.projectContinuity.currentFocus.area,
@@ -529,4 +534,331 @@ describe("project continuity runtime", () => {
 
     expect(replayedReference.projectContinuity.recordEntries).toHaveLength(withReference.projectContinuity.recordEntries.length);
   });
+
+  it("filters conversation semantic entries by scope before applying the provider context budget", () => {
+    let workspace = createInitialWorkspace();
+    for (let index = 0; index < 7; index += 1) {
+      const draft = `方向 B 不要采用方向 A 的夜航灯带语言。项目级约束 ${index}。`;
+      const messageId = `ai-user-scope-budget-${index}`;
+      workspace = withUserMessage(workspace, messageId, draft, `2026-06-30T12:0${index}:00.000Z`);
+      const authorization = buildSemanticPatchAuthorization({
+        taskMode: "chatAnalysis",
+        draft,
+        userMessageId: messageId,
+        userMessageCreatedAt: `2026-06-30T12:0${index}:00.000Z`,
+        currentFocusArea: workspace.projectContinuity.currentFocus.area,
+        objectIds: ["direction-soft-rail"],
+        revisionIds: [],
+        decisionIds: []
+      });
+      workspace = applyConversationSemanticPatch(workspace, authorization, [
+        {
+          kind: "avoidance",
+          scope: "direction",
+          evidenceQuote: "方向 B 不要采用方向 A 的夜航灯带语言",
+          relatedObjectIds: ["direction-soft-rail"],
+          relatedRevisionIds: [],
+          relatedDecisionIds: []
+        },
+        {
+          kind: "constraint",
+          scope: "project",
+          evidenceQuote: `项目级约束 ${index}`,
+          relatedObjectIds: [],
+          relatedRevisionIds: [],
+          relatedDecisionIds: []
+        }
+      ]).workspace;
+    }
+
+    const views = deriveProjectMemoryViews(workspace);
+    const context = buildProjectContinuityContext(workspace, {
+      taskKind: "visualDevelopment",
+      selectedObjectIds: ["direction-support-island"],
+      targetDirectionIds: ["direction-support-island"]
+    });
+    const ids = context.relevantStageRecords.map((entry) => entry.id);
+
+    expect(views.preferencesAndAvoids.items.some((item) => item.summary.includes("方向 A 的夜航灯带语言"))).toBe(true);
+    expect(context.relevantStageRecords).toHaveLength(6);
+    expect(context.relevantStageRecords.every((entry) => entry.scope !== "direction" || entry.sourceRefs.some((ref) => ref.id === "direction-support-island"))).toBe(true);
+    expect(ids.some((id) => id.includes("项目级约束"))).toBe(true);
+    expect(context.omitted.some((item) => item.reason.includes("semantic scope"))).toBe(true);
+  });
+
+  it("applies the scope matrix for designDefinition, direction, visual, project, and deterministic records", () => {
+    const workspace = applyProjectContinuityEvent(
+      withSemanticEntries(createInitialWorkspace(), [
+        {
+          userMessageId: "ai-user-scope-project",
+          draft: "项目整体要保持夜间识别感。",
+          item: {
+            kind: "preference",
+            scope: "project",
+            evidenceQuote: "项目整体要保持夜间识别感",
+            relatedObjectIds: [],
+            relatedRevisionIds: [],
+            relatedDecisionIds: []
+          }
+        },
+        {
+          userMessageId: "ai-user-scope-definition",
+          draft: "设计定义里要避免医疗器械感。",
+          revisionIds: ["definition-revision-current-1"],
+          item: {
+            kind: "avoidance",
+            scope: "designDefinition",
+            evidenceQuote: "设计定义里要避免医疗器械感",
+            relatedObjectIds: [],
+            relatedRevisionIds: ["definition-revision-current-1"],
+            relatedDecisionIds: []
+          }
+        },
+        {
+          userMessageId: "ai-user-scope-direction-a",
+          draft: "方向 A 不要过度科技化。",
+          objectIds: ["direction-soft-rail"],
+          item: {
+            kind: "avoidance",
+            scope: "direction",
+            evidenceQuote: "方向 A 不要过度科技化",
+            relatedObjectIds: ["direction-soft-rail"],
+            relatedRevisionIds: [],
+            relatedDecisionIds: []
+          }
+        },
+        {
+          userMessageId: "ai-user-scope-visual-a",
+          draft: "这张图的灯带不要做成医疗监测设备。",
+          objectIds: ["image-soft-rail-v2"],
+          item: {
+            kind: "avoidance",
+            scope: "visual",
+            evidenceQuote: "这张图的灯带不要做成医疗监测设备",
+            relatedObjectIds: ["image-soft-rail-v2"],
+            relatedRevisionIds: [],
+            relatedDecisionIds: []
+          }
+        }
+      ]),
+      {
+        type: "researchApplied",
+        operationId: "operation-deterministic-regression",
+        researchObjectId: "research-night-path",
+        sourceObjectIds: ["file-course-brief"],
+        createdAt: "2026-06-30T12:30:00.000Z"
+      }
+    );
+
+    const research = buildProjectContinuityContext(workspace, { taskKind: "research", selectedObjectIds: [] });
+    const definition = buildProjectContinuityContext(workspace, { taskKind: "designDefinition", selectedObjectIds: [] });
+    const visualA = buildProjectContinuityContext(workspace, {
+      taskKind: "visualDevelopment",
+      selectedObjectIds: ["image-soft-rail-v2"],
+      targetDirectionIds: ["direction-soft-rail"]
+    });
+    const visualB = buildProjectContinuityContext(workspace, {
+      taskKind: "visualDevelopment",
+      selectedObjectIds: ["direction-support-island"],
+      targetDirectionIds: ["direction-support-island"]
+    });
+    const generalUnselected = buildProjectContinuityContext(workspace, { taskKind: "general", selectedObjectIds: [] });
+    const generalDirectionA = buildProjectContinuityContext(workspace, {
+      taskKind: "general",
+      selectedObjectIds: ["direction-soft-rail"]
+    });
+
+    expect(hasSummary(research, "项目整体要保持夜间识别感")).toBe(true);
+    expect(hasSummary(research, "已创建研究卡")).toBe(true);
+    expect(hasSummary(research, "设计定义里要避免医疗器械感")).toBe(false);
+    expect(hasSummary(definition, "设计定义里要避免医疗器械感")).toBe(true);
+    expect(hasSummary(visualA, "方向 A 不要过度科技化")).toBe(true);
+    expect(hasSummary(visualA, "这张图的灯带不要做成医疗监测设备")).toBe(true);
+    expect(hasSummary(visualB, "方向 A 不要过度科技化")).toBe(false);
+    expect(hasSummary(visualB, "这张图的灯带不要做成医疗监测设备")).toBe(false);
+    expect(hasSummary(generalUnselected, "方向 A 不要过度科技化")).toBe(false);
+    expect(hasSummary(generalDirectionA, "方向 A 不要过度科技化")).toBe(true);
+  });
+
+  it("marks removed message sources missing and excludes their entries from memory, context, and review lists", () => {
+    const userMessage = {
+      id: "ai-user-message-lifecycle",
+      role: "user" as const,
+      body: "Keep the night light warm.",
+      createdAt: "2026-06-30T12:40:00.000Z",
+      taskMode: "chatAnalysis" as const
+    };
+    const workspaceWithMessage = {
+      ...createInitialWorkspace(),
+      ai: {
+        messages: [userMessage]
+      }
+    };
+    const authorization = buildSemanticPatchAuthorization({
+      taskMode: "chatAnalysis",
+      draft: userMessage.body,
+      userMessageId: userMessage.id,
+      userMessageCreatedAt: userMessage.createdAt,
+      currentFocusArea: workspaceWithMessage.projectContinuity.currentFocus.area,
+      objectIds: [],
+      revisionIds: [],
+      decisionIds: []
+    });
+    const applied = applyConversationSemanticPatch(workspaceWithMessage, authorization, [
+      {
+        kind: "preference",
+        scope: "project",
+        evidenceQuote: "Keep the night light warm",
+        relatedObjectIds: [],
+        relatedRevisionIds: [],
+        relatedDecisionIds: []
+      }
+    ]).workspace;
+    const removedMessage = resolveContinuityValidity({
+      ...applied,
+      ai: { messages: [] }
+    });
+    const entry = removedMessage.projectContinuity.recordEntries.find((candidate) => candidate.sourceMessageId === userMessage.id);
+    const memory = deriveProjectMemoryViews(removedMessage);
+    const context = buildProjectContinuityContext(removedMessage, { taskKind: "general", selectedObjectIds: [] });
+    const groups = getContinuityRecordGroups(removedMessage);
+
+    expect(entry?.validity).toBe("sourceUnavailable");
+    expect(entry?.sourceRefs[0]).toMatchObject({ kind: "message", id: userMessage.id, sourceAvailability: "missing" });
+    expect(entry?.sourceRefs[0]?.snapshot?.summarySnippet).toBe("Keep the night light warm");
+    expect(memory.preferencesAndAvoids.items.map((item) => item.id)).not.toContain(entry?.id);
+    expect(context.relevantStageRecords.map((candidate) => candidate.id)).not.toContain(entry?.id);
+    expect(context.reviewRequiredItems.map((candidate) => candidate.id)).not.toContain(entry?.id);
+    expect(groups[entry?.stage ?? "startAndInput"].entries.map((candidate) => candidate.id)).toContain(entry?.id);
+  });
+
+  it("rejects semantic patches unless the authorized user message exists, is user-authored, and matches the draft", () => {
+    const base = createInitialWorkspace();
+    const validMessage = {
+      id: "ai-user-valid-write",
+      role: "user" as const,
+      body: "Keep the night light warm.",
+      createdAt: "2026-06-30T12:50:00.000Z",
+      taskMode: "chatAnalysis" as const
+    };
+    const validWorkspace = { ...base, ai: { messages: [validMessage] } };
+    const valid = applyConversationSemanticPatch(
+      validWorkspace,
+      buildSemanticPatchAuthorization({
+        taskMode: "chatAnalysis",
+        draft: validMessage.body,
+        userMessageId: validMessage.id,
+        userMessageCreatedAt: validMessage.createdAt,
+        currentFocusArea: validWorkspace.projectContinuity.currentFocus.area,
+        objectIds: [],
+        revisionIds: [],
+        decisionIds: []
+      }),
+      [{ kind: "preference", scope: "project", evidenceQuote: "Keep the night light warm", relatedObjectIds: [], relatedRevisionIds: [], relatedDecisionIds: [] }]
+    );
+    const missing = applyConversationSemanticPatch(base, buildSemanticPatchAuthorization({
+      taskMode: "chatAnalysis",
+      draft: validMessage.body,
+      userMessageId: "missing-message",
+      userMessageCreatedAt: validMessage.createdAt,
+      currentFocusArea: base.projectContinuity.currentFocus.area,
+      objectIds: [],
+      revisionIds: [],
+      decisionIds: []
+    }), [{ kind: "preference", scope: "project", evidenceQuote: "Keep the night light warm", relatedObjectIds: [], relatedRevisionIds: [], relatedDecisionIds: [] }]);
+    const assistantMessageWorkspace = {
+      ...base,
+      ai: { messages: [{ ...validMessage, id: "assistant-message", role: "assistant" as const }] }
+    };
+    const assistantRole = applyConversationSemanticPatch(
+      assistantMessageWorkspace,
+      buildSemanticPatchAuthorization({
+        taskMode: "chatAnalysis",
+        draft: validMessage.body,
+        userMessageId: "assistant-message",
+        userMessageCreatedAt: validMessage.createdAt,
+        currentFocusArea: assistantMessageWorkspace.projectContinuity.currentFocus.area,
+        objectIds: [],
+        revisionIds: [],
+        decisionIds: []
+      }),
+      [{ kind: "preference", scope: "project", evidenceQuote: "Keep the night light warm", relatedObjectIds: [], relatedRevisionIds: [], relatedDecisionIds: [] }]
+    );
+    const draftMismatch = applyConversationSemanticPatch(
+      validWorkspace,
+      buildSemanticPatchAuthorization({
+        taskMode: "chatAnalysis",
+        draft: "Keep the night light cool.",
+        userMessageId: validMessage.id,
+        userMessageCreatedAt: validMessage.createdAt,
+        currentFocusArea: validWorkspace.projectContinuity.currentFocus.area,
+        objectIds: [],
+        revisionIds: [],
+        decisionIds: []
+      }),
+      [{ kind: "preference", scope: "project", evidenceQuote: "Keep the night light cool", relatedObjectIds: [], relatedRevisionIds: [], relatedDecisionIds: [] }]
+    );
+
+    expect(valid.entries).toHaveLength(1);
+    expect(missing.entries).toEqual([]);
+    expect(missing.rejected[0]?.reason).toContain("persisted user message");
+    expect(assistantRole.entries).toEqual([]);
+    expect(assistantRole.rejected[0]?.reason).toContain("persisted user message");
+    expect(draftMismatch.entries).toEqual([]);
+    expect(draftMismatch.rejected[0]?.reason).toContain("current user message");
+  });
 });
+
+type SemanticEntrySeed = {
+  userMessageId: string;
+  draft: string;
+  objectIds?: string[];
+  revisionIds?: string[];
+  decisionIds?: string[];
+  item: Parameters<typeof applyConversationSemanticPatch>[2][number];
+};
+
+function withSemanticEntries(workspace: ReturnType<typeof createInitialWorkspace>, seeds: SemanticEntrySeed[]) {
+  return seeds.reduce((current, seed, index) => {
+    const messageCreatedAt = `2026-06-30T12:${10 + index}:00.000Z`;
+    const withMessage = withUserMessage(current, seed.userMessageId, seed.draft, messageCreatedAt);
+    const authorization = buildSemanticPatchAuthorization({
+      taskMode: "chatAnalysis",
+      draft: seed.draft,
+      userMessageId: seed.userMessageId,
+      userMessageCreatedAt: messageCreatedAt,
+      currentFocusArea: withMessage.projectContinuity.currentFocus.area,
+      objectIds: seed.objectIds ?? [],
+      revisionIds: seed.revisionIds ?? [],
+      decisionIds: seed.decisionIds ?? []
+    });
+    return applyConversationSemanticPatch(withMessage, authorization, [seed.item]).workspace;
+  }, workspace);
+}
+
+function summaries(context: ReturnType<typeof buildProjectContinuityContext>): string[] {
+  return context.relevantStageRecords.map((entry) => entry.summary);
+}
+
+function hasSummary(context: ReturnType<typeof buildProjectContinuityContext>, text: string): boolean {
+  return summaries(context).some((summary) => summary.includes(text));
+}
+
+function withUserMessage(workspace: MorphoWorkspace, id: string, body: string, createdAt: string): MorphoWorkspace {
+  return {
+    ...workspace,
+    ai: {
+      ...workspace.ai,
+      messages: [
+        ...workspace.ai.messages,
+        {
+          id,
+          role: "user",
+          body,
+          createdAt,
+          taskMode: "chatAnalysis"
+        }
+      ]
+    }
+  };
+}

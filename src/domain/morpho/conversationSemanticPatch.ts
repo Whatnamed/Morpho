@@ -194,6 +194,21 @@ export function stripProjectContinuityPatchBlock(text: string): string {
   return stripJsonBlockWithTopLevelKey(text, "morphoProjectContinuityPatch").trim();
 }
 
+export function sanitizeAssistantStreamForDisplay(rawText: string): string {
+  const withoutClosedSemanticBlocks = stripJsonBlockWithTopLevelKey(rawText, "morphoProjectContinuityPatch");
+  const lastFenceIndex = withoutClosedSemanticBlocks.lastIndexOf("```");
+  if (lastFenceIndex < 0) {
+    return withoutClosedSemanticBlocks.trim();
+  }
+
+  const fenceCount = (withoutClosedSemanticBlocks.match(/```/g) ?? []).length;
+  if (fenceCount % 2 === 0) {
+    return withoutClosedSemanticBlocks.trim();
+  }
+
+  return withoutClosedSemanticBlocks.slice(0, lastFenceIndex).trim();
+}
+
 const SEMANTIC_PATCH_LIMITS = {
   maxItems: 3,
   maxEvidenceQuoteChars: 180,
@@ -201,7 +216,6 @@ const SEMANTIC_PATCH_LIMITS = {
 } as const;
 
 const PENDING_PROPOSAL_KEYS = [
-  "morphoResearchProposal",
   "morphoDesignDefinitionProposal",
   "morphoConceptDirectionProposal"
 ] as const;

@@ -357,6 +357,8 @@ describe("MiMo chat route request conversion", () => {
     expect(chatPrompt).toContain("provider 不得生成 summary");
     expect(chatPrompt).toContain("evidenceQuote 必须是当前用户消息中的直接原话");
     expect(chatPrompt).toContain("不得改变任何项目对象、方向状态、默认参考、revision、VisualBranch、交付引用或 Current Focus");
+    expect(chatPrompt).toContain("设计定义或概念方向的待应用 Proposal JSON");
+    expect(chatPrompt).toContain("结构化研究草案不会自动成立为长期项目事实，因此不作为全局抑制条件");
     expect(researchPrompt).toContain("morphoProjectContinuityPatch");
     expect(imagePrompt).not.toContain("morphoProjectContinuityPatch");
   });

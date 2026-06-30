@@ -6,6 +6,8 @@ M5-B1 upgrades workspace data to schema v9 and lets Morpho write a small, contro
 
 This feature records only clearly stated long-lived preferences, constraints, avoidances, open questions, decision reasons, and rejection reasons. It does not change project facts, object state, direction status, design definitions, default references, visual branches, delivery references, or current focus.
 
+M5-B1.1 keeps workspace schema `9` and `ProjectContinuityState.schemaVersion` `2`. It is a behavior and boundary hardening pass, not M5-B2 automatic chat compression.
+
 Out of scope: automatic chat compression, transcript replacement, Compare, automatic status changes, default-reference changes, definition or direction application, new document readers, delivery export, archive restore, agent loops, permanent mock routes, and paid provider smoke tests.
 
 ## Data Model
@@ -65,7 +67,30 @@ Provider output is only a candidate. Local code is authoritative:
 - Non-project scopes require at least one authorized direct source.
 - `decisionReason` and `rejectionReason` require an authorized `DecisionRecord` source; an arbitrary object ID is not enough.
 
-If the same assistant reply contains any Proposal block, including `morphoResearchProposal`, `morphoDesignDefinitionProposal`, or `morphoConceptDirectionProposal`, semantic patch writing is blocked. Research proposals still use the M5-A deterministic `researchApplied` path when applied successfully.
+Before any domain write, `applyConversationSemanticPatch` verifies the authorized `userMessageId` against `workspace.ai.messages`. The message must exist, have `role: "user"`, and its body must match the local authorization draft after normalization. Missing messages, assistant messages, or draft/body mismatches reject the patch without changing visible assistant reply behavior.
+
+Morpho never trusts a provider-reported message ID. The client flow persists the real user message first, calls the provider second, then injects that local message ID into authorization.
+
+If the same assistant reply contains `morphoDesignDefinitionProposal` or `morphoConceptDirectionProposal`, semantic patch writing is blocked. Those proposals are pending drafts and must not promote draft-adjacent language into long-lived continuity.
+
+`morphoResearchProposal` no longer globally suppresses semantic patches. A research proposal is a candidate research card, not an applied design definition or concept direction. When the same research reply also contains a valid semantic patch, Morpho may write the patch only from the pre-request task context and persisted user message. The patch must not reference the newly created research card or any object that did not exist when the request started.
+
+## Scope Matrix And Context Filtering
+
+`scope` is a provider-context filter, not a project-record deletion rule. `deriveProjectMemoryViews(workspace)` continues to derive the full current project-record projection for the drawer. Task assembly applies a second local filter before serializing context to the provider.
+
+Task-filtered continuity context uses only typed direct sources from the current task context: selected/direct object IDs, definition and direction revision IDs, VisualBranch IDs, DecisionRecord IDs, and target direction IDs. It does not scan the full workspace, infer relations from canvas position, or match text keywords.
+
+Scope rules:
+
+- `project`: eligible for research, design definition, concept direction, direction preview, visual development, and general tasks when normal eligibility passes.
+- `designDefinition`: eligible for design definition, concept direction, direction preview, and visual development. It does not enter research or unselected general chat unless the current task has a direct definition source match.
+- `direction`: eligible only for concept direction, direction preview, visual development, or general tasks with a direct source match to the relevant selected/target direction, revision, branch, decision, or object.
+- `visual`: eligible only for direction preview, visual development, or general tasks with a direct source match to the relevant selected image, target direction, VisualBranch, revision, decision, or object.
+
+Scope filtering happens before continuity budget truncation. Unrelated scoped semantic entries therefore cannot consume the limited provider context budget or evict project-level constraints.
+
+M5-A deterministic event records continue to use their original stage relevance, validity, and source-availability rules. Semantic scope constraints apply only to entries with `origin: "conversationSemanticPatch"`.
 
 ## Domain Write Rules
 
@@ -80,6 +105,16 @@ userMessageId + semanticKind + scope + deterministicSummary + stable related sou
 Replaying the same semantic patch for the same user message does not append duplicates.
 
 Conversation semantic entries are written into the current focus stage for grouping only. The current focus itself remains unchanged.
+
+Research success path:
+
+1. parse and record the research proposal;
+2. apply the research proposal into a normal `ResearchObject` when valid;
+3. keep the user-visible research result text;
+4. use the pre-request task context and local `userMessageId` to parse, authorize, validate, and apply any semantic patch;
+5. attach accepted `continuityEntryIds` to the assistant message.
+
+The semantic patch source refs may include the persisted message and pre-existing authorized sources only. The newly created research card cannot become a semantic patch source for the same reply.
 
 ## Eligibility
 
@@ -99,9 +134,11 @@ Important combinations:
 
 - `manualState=withdrawn` or `manualState=notApplicable`: stays in history, excluded from memory/default context/review list.
 - `sourceAvailability=hidden`: validity stays unchanged, but the entry is excluded from memory and default context and labelled `来源已隐藏`.
-- `sourceAvailability=missing` or `validity=sourceUnavailable`: excluded from factual context and eligible for review list.
+- `sourceAvailability=missing` or `validity=sourceUnavailable`: excluded from factual memory and provider context. The project-record drawer still shows the entry with the stored quote/source snapshot and `来源不可用` label.
 - `validity=reviewRequired`: review list only, and only when directly relevant.
 - `validity=superseded`: excluded by default unless selected or historical context is requested.
+
+Message source availability is recalculated strictly from current `workspace.ai.messages`. If the referenced user message is removed, the message ref becomes `missing` even if an older persisted ref said `active`; the entry becomes `sourceUnavailable`, keeps its quote snapshot, and stops entering default memory or AI context.
 
 ## Request And UI Flow
 
@@ -114,9 +151,11 @@ Client flow:
 1. Persist the real user message.
 2. Read the provider reply.
 3. Strip `morphoProjectContinuityPatch` JSON from visible assistant text.
-4. Skip semantic writing on request failure, cancellation, stream interruption, invalid format, validation failure, image generation, or any Proposal block.
+4. Skip semantic writing on request failure, cancellation, stream interruption, invalid format, validation failure, image generation, or design-definition/concept-direction Proposal blocks.
 5. Apply accepted semantic entries locally.
 6. Attach `continuityEntryIds` to the assistant message.
+
+During streaming display, the client uses `sanitizeAssistantStreamForDisplay(rawText)`. Closed `morphoProjectContinuityPatch` fenced JSON blocks are removed from visible text, and a trailing unclosed fenced block is temporarily withheld so the user never sees partial `morphoProjectContinuityPatch` JSON. The original completed stream text is still preserved for research proposal parsing, design/concept proposal parsing, citation logic, and semantic patch parsing.
 
 The assistant message then shows a lightweight `已补入项目记录 · N 条` button. Clicking it opens and highlights the project-record drawer; it does not trigger AI, change focus, or mutate objects.
 

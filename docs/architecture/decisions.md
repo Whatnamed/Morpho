@@ -400,13 +400,13 @@ Reason: a validator that scans the whole workspace would be able to "repair" or 
 
 Boundary: validation checks only the authorization object. Hidden selected objects are excluded from task-context object IDs and cannot become new active semantic sources. Non-project scopes require an authorized direct source. `decisionReason` and `rejectionReason` require an authorized `DecisionRecord` source.
 
-## 2026-06-30: Block Semantic Patches When Proposal Blocks Exist
+## 2026-06-30: Suppress Semantic Patches for Design And Direction Proposals
 
-Decision: do not write conversation semantic patches when the same assistant reply includes `morphoResearchProposal`, `morphoDesignDefinitionProposal`, or `morphoConceptDirectionProposal`.
+Decision: do not write conversation semantic patches when the same assistant reply includes design-definition or concept-direction Proposal JSON.
 
-Reason: proposal generation is not project fact. Mixing a pending proposal with long-term semantic record writing would make it unclear whether the user confirmed a durable statement or merely received a draft.
+Reason: those proposals are pending drafts awaiting explicit user application. Mixing them with long-term semantic record writing would make it unclear whether the user confirmed a durable statement or merely received a draft.
 
-Boundary: successful research proposal application still records deterministic M5-A `researchApplied` continuity. Design-definition and concept-direction proposals write continuity only through their explicit application paths.
+Boundary: `morphoResearchProposal` is not a global suppressor. A successful research task may create a research card and also write a valid semantic patch, but the patch can use only the pre-request task context and persisted user message, and it must not bind the newly created research card as a source.
 
 ## 2026-06-30: Centralize Continuity Eligibility
 
@@ -415,3 +415,11 @@ Decision: use `getContinuityEntryEligibility(entry)` as the shared rule for `man
 Reason: hidden source handling, user withdrawal, source missing state, and review-needed state must not drift across UI and AI context code.
 
 Boundary: `manualState` does not change entry validity or source availability. Hidden sources keep historical validity but stay out of default memory/context. Missing sources are not factual inputs. `notApplicable` and `withdrawn` entries stay in history and can be restored only through semantic-entry UI actions.
+
+## 2026-06-30: Harden Semantic Scope, Message Sources, And Streaming Display
+
+Decision: semantic `scope` now filters provider task context and task-filtered memory views using only current task direct typed sources; message refs are recalculated strictly from `workspace.ai.messages`; streaming display hides complete and trailing partial `morphoProjectContinuityPatch` JSON.
+
+Reason: scoped conversation records are useful project history, but unrelated direction/visual records must not leak into provider context or consume the continuity budget for another task. Removed source messages must not remain active evidence. Users should never see technical semantic JSON during streaming.
+
+Boundary: workspace schema remains v9 and `ProjectContinuityState` remains v2. The global project-record drawer still shows valid scoped history and source-unavailable entries with snapshots. This does not implement automatic chat compression, transcript pruning, Compare, archive restore, delivery preparation, or agent loops.

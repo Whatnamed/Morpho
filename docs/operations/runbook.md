@@ -81,7 +81,11 @@ Conversation semantic records:
 - `imageGeneration` never receives the semantic patch instruction;
 - provider summaries are ignored, and Morpho creates deterministic summaries locally from the exact user quote;
 - the exact quote must come from the current user message and is stored only as a short message source snapshot;
-- semantic patch writing is skipped on invalid output, failed/cancelled requests, image-generation tasks, or replies that also contain `morphoResearchProposal`, `morphoDesignDefinitionProposal`, or `morphoConceptDirectionProposal`;
+- semantic patch writing is skipped on invalid output, failed/cancelled requests, image-generation tasks, or replies that also contain design-definition or concept-direction Proposal JSON;
+- research replies may contain both `morphoResearchProposal` and a valid semantic patch. The patch is authorized only from the pre-request task context and local persisted user message, and it must not reference the newly created research card;
+- semantic `scope` filters provider context and task-filtered memory views, not the project-record drawer. Unrelated direction/visual scoped entries are excluded before the continuity budget is applied;
+- if the source user message is removed, its message ref becomes `missing`, the entry keeps the quote snapshot, and it no longer enters factual memory or provider context;
+- streaming display hides complete and trailing partial `morphoProjectContinuityPatch` JSON. The original completed stream remains available to parsers;
 - successful writes show `已补入项目记录 · N 条` under the assistant message. The button opens/highlights records only; it does not trigger AI, change current focus, or mutate objects.
 
 Without these variables, the app still runs locally, but provider routes return clear configuration errors instead of fake AI results.
@@ -144,7 +148,9 @@ Minimum flows to cover:
 - the left-rail `项目记录` drawer opens and closes, shows current focus and review sections, and source clicks only locate real objects without triggering AI or mutating focus;
 - a mocked ordinary chat reply with a valid `morphoProjectContinuityPatch` strips the JSON from visible text, shows `已补入项目记录 · 1 条`, and opens/highlights the project-record drawer when clicked;
 - a mocked ambiguous or invalid patch does not write continuity but still shows the normal assistant reply;
-- a mocked reply that contains both a semantic patch and a Proposal block does not write the semantic patch;
+- a mocked design-definition or concept-direction proposal reply that also contains a semantic patch does not write the semantic patch;
+- a mocked research reply that contains both a valid `morphoResearchProposal` and a valid semantic patch creates the research card and shows `已补入项目记录 · 1 条` without binding the new research card as a semantic source;
+- a mocked stream that emits prose, then an unclosed semantic fenced JSON block, then the closing fence never shows `morphoProjectContinuityPatch` or its JSON fields in the chat panel at any intermediate state;
 - semantic entry manual actions (`不再适用`, `撤回记录`, `恢复为当前有效`) update drawer labels and keep current focus unchanged;
 - hidden object sources display `来源已隐藏`, missing sources display `来源不可用`, and message sources display the stored quote only.
 

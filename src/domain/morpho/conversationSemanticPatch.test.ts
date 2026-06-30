@@ -5,6 +5,7 @@ import {
   buildSemanticPatchAuthorization,
   buildSemanticPatchSummary,
   parseProjectContinuityPatchPayload,
+  sanitizeAssistantStreamForDisplay,
   stripProjectContinuityPatchBlock,
   validateConversationSemanticPatch
 } from "./conversationSemanticPatch";
@@ -266,7 +267,7 @@ describe("conversation semantic patch", () => {
     ).status).toBe("ok");
   });
 
-  it("blocks semantic patches when the same reply contains a research proposal block", () => {
+  it("does not block semantic patches when the same reply contains a research proposal block", () => {
     const reply = [
       "研究结果如下。",
       "```json",
@@ -300,7 +301,74 @@ describe("conversation semantic patch", () => {
       "```"
     ].join("\n");
 
-    expect(parseProjectContinuityPatchPayload(reply)).toMatchObject({ status: "blockedByProposal" });
+    expect(parseProjectContinuityPatchPayload(reply)).toMatchObject({ status: "ok" });
+  });
+
+  it("allows research proposals to coexist with semantic patches while still suppressing design and direction proposals", () => {
+    const researchReply = [
+      "研究结果如下。",
+      "```json",
+      JSON.stringify({
+        morphoResearchProposal: {
+          title: "研究草案",
+          summary: "摘要",
+          findings: ["发现"],
+          opportunities: [],
+          constraints: [],
+          openQuestions: [],
+          evidence: []
+        }
+      }),
+      "```",
+      "```json",
+      JSON.stringify({
+        morphoProjectContinuityPatch: {
+          items: [
+            {
+              kind: "constraint",
+              scope: "project",
+              evidenceQuote: "后面不要做得太科技化",
+              relatedObjectIds: [],
+              relatedRevisionIds: [],
+              relatedDecisionIds: []
+            }
+          ]
+        }
+      }),
+      "```"
+    ].join("\n");
+    const designReply = researchReply.replace("morphoResearchProposal", "morphoDesignDefinitionProposal");
+    const directionReply = researchReply.replace("morphoResearchProposal", "morphoConceptDirectionProposal");
+
+    expect(parseProjectContinuityPatchPayload(researchReply)).toMatchObject({ status: "ok" });
+    expect(parseProjectContinuityPatchPayload(designReply)).toMatchObject({ status: "blockedByProposal" });
+    expect(parseProjectContinuityPatchPayload(directionReply)).toMatchObject({ status: "blockedByProposal" });
+  });
+
+  it("hides complete and trailing semantic patch blocks during streaming without removing ordinary JSON", () => {
+    const semanticPrefix = [
+      "普通说明会继续显示。",
+      "```json",
+      '{"morphoProjectContinuityPatch":{"items":[{"kind":"preference"'
+    ].join("\n");
+    const completeSemantic = [
+      semanticPrefix,
+      ',"scope":"project","evidenceQuote":"夜间识别感比造型复杂度更重要","relatedObjectIds":[],"relatedRevisionIds":[],"relatedDecisionIds":[]}]}}',
+      "```",
+      "后续说明。"
+    ].join("\n");
+    const ordinaryJson = [
+      "普通说明。",
+      "```json",
+      JSON.stringify({ morphoResearchProposal: { title: "研究", summary: "摘要", findings: ["发现"] } }),
+      "```"
+    ].join("\n");
+
+    expect(sanitizeAssistantStreamForDisplay(semanticPrefix)).toBe("普通说明会继续显示。");
+    expect(sanitizeAssistantStreamForDisplay(semanticPrefix)).not.toContain("morphoProjectContinuityPatch");
+    expect(sanitizeAssistantStreamForDisplay(completeSemantic)).toBe("普通说明会继续显示。\n\n后续说明。");
+    expect(sanitizeAssistantStreamForDisplay(ordinaryJson)).toContain("morphoResearchProposal");
+    expect(stripProjectContinuityPatchBlock(ordinaryJson)).toContain("morphoResearchProposal");
   });
 
   it("strips only project-continuity JSON while preserving user-visible prose and other structured blocks", () => {

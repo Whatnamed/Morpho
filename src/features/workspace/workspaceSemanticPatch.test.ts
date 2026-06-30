@@ -229,7 +229,22 @@ describe("workspace conversation semantic patch helpers", () => {
   });
 
   it("allows research-operation semantic patches when no research proposal is applied", () => {
-    const workspace = createInitialWorkspace();
+    const userMessageId = "ai-user-semantic-client-4";
+    const userMessageCreatedAt = "2026-06-30T11:03:00.000Z";
+    const workspace = {
+      ...createInitialWorkspace(),
+      ai: {
+        messages: [
+          {
+            id: userMessageId,
+            role: "user" as const,
+            body: draft,
+            createdAt: userMessageCreatedAt,
+            taskMode: "researchOperation" as const
+          }
+        ]
+      }
+    };
     const context = buildTaskContext(workspace, {
       kind: "research",
       draft,
@@ -260,8 +275,8 @@ describe("workspace conversation semantic patch helpers", () => {
       taskMode: "researchOperation",
       context,
       draft,
-      userMessageId: "ai-user-semantic-client-4",
-      userMessageCreatedAt: "2026-06-30T11:03:00.000Z",
+      userMessageId,
+      userMessageCreatedAt,
       assistantText: reply
     });
 
