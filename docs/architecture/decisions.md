@@ -422,4 +422,36 @@ Decision: semantic `scope` now filters provider task context and task-filtered m
 
 Reason: scoped conversation records are useful project history, but unrelated direction/visual records must not leak into provider context or consume the continuity budget for another task. Removed source messages must not remain active evidence. Users should never see technical semantic JSON during streaming.
 
-Boundary: workspace schema remains v9 and `ProjectContinuityState` remains v2. The global project-record drawer still shows valid scoped history and source-unavailable entries with snapshots. This does not implement automatic chat compression, transcript pruning, Compare, archive restore, delivery preparation, or agent loops.
+Boundary at M5-B1.1 time: workspace schema remained v9 and `ProjectContinuityState` remained v2. The global project-record drawer still shows valid scoped history and source-unavailable entries with snapshots. This did not implement automatic chat compression, transcript pruning, Compare, archive restore, delivery preparation, or agent loops.
+
+## 2026-07-01: Use Schema Version 10 For Conversation Checkpoints
+
+Decision: upgrade workspace data to `schemaVersion: 10` and store automatic short-term conversation checkpoints under `workspace.ai.conversationCheckpoints`.
+
+Reason: long ordinary discussions need continuity without sending the entire visible transcript to the provider and without promoting a chat summary into project facts.
+
+Boundary: `ProjectContinuityState` remains schema v2. Checkpoints are not project memory, stage records, DecisionRecords, design definitions, direction state, default references, delivery references, or archive artifacts. Migration from v9 initializes an empty checkpoint array and preserves all raw `ai.messages` without fabricating lane keys.
+
+## 2026-07-01: Keep Conversation Checkpoints Lane-Scoped And Non-Authoritative
+
+Decision: build checkpoint lanes deterministically from current focus area, focus `updatedAt`, task kind, sorted direct object IDs, sorted target direction IDs, and optional VisualBranch ID.
+
+Reason: a checkpoint should continue only the same current discussion range. Focus epoch participation prevents a checkpoint from an older design-definition, direction, research, or visual-development context from silently entering a later context with the same focus area label.
+
+Boundary: lane keys do not use canvas coordinates, visual grouping, proximity, draft text, or model semantic guesses. Opening drawers, zooming, panning, dragging, hovering, and other visual UI state do not create a new lane.
+
+## 2026-07-01: Request Conversation Checkpoints Only In Normal Discussion Calls
+
+Decision: ask for `morphoConversationCheckpoint` only inside the existing `/api/ai/chat` provider call when ordinary `chatAnalysis` discussion has crossed deterministic thresholds.
+
+Reason: M5-B2 must not add a second model call or make the provider decide when compression is needed.
+
+Boundary: current thresholds are at least 8 usable messages and 3 user messages, or at least 5,200 characters and 2 user messages. The instruction is not present for `imageGeneration`, `researchOperation`, design-definition Proposal intents, or concept-direction Proposal intents. Failed, cancelled, streaming, and non-chat messages are excluded.
+
+## 2026-07-01: Hide Conversation Checkpoint JSON From Visible Chat
+
+Decision: use a shared structured-block helper to hide both `morphoProjectContinuityPatch` and `morphoConversationCheckpoint` JSON from visible assistant text, including malformed closed blocks and trailing unclosed streaming blocks.
+
+Reason: provider contracts are implementation details. Users should see prose and lightweight feedback, not technical JSON or schema errors.
+
+Boundary: the original completed stream text remains available to parsers. Ordinary research, design-definition, concept-direction, and visual-plan JSON blocks are not removed by the checkpoint/semantic block stripper unless their own feature-specific parsing consumes them.

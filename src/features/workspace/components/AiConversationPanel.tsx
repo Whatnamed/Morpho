@@ -211,6 +211,15 @@ export function AiConversationPanel({
           {workspace.ai.messages.map((message) => (
             <div className="ai-message" key={message.id}>
               <MarkdownContent body={message.body} />
+              {message.conversationCheckpointId &&
+              workspace.ai.conversationCheckpoints.some((checkpoint) => checkpoint.id === message.conversationCheckpointId) ? (
+                <div
+                  className="conversation-checkpoint-feedback"
+                  title="后续同一工作重点的对话会使用这份讨论整理与最近消息保持连续。"
+                >
+                  已整理当前讨论脉络
+                </div>
+              ) : null}
               {message.continuityEntryIds && message.continuityEntryIds.length > 0 ? (
                 <button
                   className="continuity-feedback"

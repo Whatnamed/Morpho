@@ -2,6 +2,11 @@ import type {
   AiTaskMode,
   ProjectFocusArea
 } from "./types";
+import {
+  extractStructuredJsonBlock,
+  sanitizeStructuredStreamForDisplay,
+  stripStructuredBlocksContainingMarkers
+} from "./structuredBlocks";
 
 export type SemanticPatchKind =
   | "preference"
@@ -195,18 +200,7 @@ export function stripProjectContinuityPatchBlock(text: string): string {
 }
 
 export function sanitizeAssistantStreamForDisplay(rawText: string): string {
-  const withoutClosedSemanticBlocks = stripFencedBlocksContainingMarker(rawText, "morphoProjectContinuityPatch");
-  const lastFenceIndex = withoutClosedSemanticBlocks.lastIndexOf("```");
-  if (lastFenceIndex < 0) {
-    return withoutClosedSemanticBlocks.trim();
-  }
-
-  const fenceCount = (withoutClosedSemanticBlocks.match(/```/g) ?? []).length;
-  if (fenceCount % 2 === 0) {
-    return withoutClosedSemanticBlocks.trim();
-  }
-
-  return withoutClosedSemanticBlocks.slice(0, lastFenceIndex).trim();
+  return sanitizeStructuredStreamForDisplay(rawText, ["morphoProjectContinuityPatch"]);
 }
 
 const SEMANTIC_PATCH_LIMITS = {
@@ -221,27 +215,15 @@ const PENDING_PROPOSAL_KEYS = [
 ] as const;
 
 function containsPendingProposalBlock(text: string): boolean {
-  return PENDING_PROPOSAL_KEYS.some((key) => Boolean(extractJsonBlock(text, key)));
+  return PENDING_PROPOSAL_KEYS.some((key) => Boolean(extractStructuredJsonBlock(text, key)));
 }
 
 function extractJsonBlock(text: string, topLevelKey: string): string | undefined {
-  const fencedBlocks = Array.from(text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi))
-    .map((match) => match[1]?.trim())
-    .filter(Boolean);
-  return fencedBlocks.find((block) => Boolean(block && hasTopLevelKey(block, topLevelKey)));
+  return extractStructuredJsonBlock(text, topLevelKey);
 }
 
 function stripFencedBlocksContainingMarker(text: string, marker: string): string {
-  return text.replace(/```(?:json)?\s*([\s\S]*?)```/gi, (block, body: string) => (body.includes(marker) ? "" : block));
-}
-
-function hasTopLevelKey(jsonText: string, topLevelKey: string): boolean {
-  try {
-    const parsed = JSON.parse(jsonText) as unknown;
-    return isRecord(parsed) && isRecord(parsed[topLevelKey]);
-  } catch {
-    return false;
-  }
+  return stripStructuredBlocksContainingMarkers(text, [marker]);
 }
 
 function parsePatchItem(value: unknown): ParsedConversationSemanticPatchItem | undefined {

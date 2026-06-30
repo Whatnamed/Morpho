@@ -42,7 +42,7 @@ import type {
 } from "./types";
 
 const DEFAULT_REFERENCE_HIDDEN_MESSAGE = "当前后续默认参考已隐藏，请先恢复或替换后再用于相关生成。";
-const CURRENT_SCHEMA_VERSION = 9;
+const CURRENT_SCHEMA_VERSION = 10;
 
 export type DeleteObjectResult =
   | {
@@ -175,7 +175,8 @@ export function createBlankWorkspace(projectId: string): MorphoWorkspace {
       instances: []
     },
     ai: {
-      messages: []
+      messages: [],
+      conversationCheckpoints: []
     },
     ui: {
       activeDrawer: null,
@@ -1288,6 +1289,17 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
     };
   }
 
+  if (value.schemaVersion === 9) {
+    return {
+      status: "ok",
+      workspace: normalizeCurrentWorkspace({
+        ...(structuredClone(value) as Record<string, unknown>),
+        schemaVersion: CURRENT_SCHEMA_VERSION
+      }),
+      didMigrate: true
+    };
+  }
+
   if (value.schemaVersion === 8) {
     return {
       status: "ok",
@@ -1679,7 +1691,7 @@ function migrateV4Workspace(value: Record<string, unknown>): MorphoWorkspace {
       view: { x: 0, y: 0, zoom: 1 },
       instances: []
     },
-    ai: (cloned.ai as MorphoWorkspace["ai"]) ?? { messages: [] },
+    ai: normalizeAiState(cloned.ai),
     ui: (cloned.ui as MorphoWorkspace["ui"]) ?? {
       activeDrawer: null,
       aiOpen: true,
@@ -1690,6 +1702,76 @@ function migrateV4Workspace(value: Record<string, unknown>): MorphoWorkspace {
   };
 
   return reconcileWorkspaceDerivedState(normalizeCurrentWorkspace(normalized));
+}
+
+function normalizeAiState(value: unknown): MorphoWorkspace["ai"] {
+  if (!isRecord(value)) {
+    return { messages: [], conversationCheckpoints: [] };
+  }
+
+  return {
+    messages: Array.isArray(value.messages) ? (value.messages as MorphoWorkspace["ai"]["messages"]) : [],
+    conversationCheckpoints: Array.isArray(value.conversationCheckpoints)
+      ? value.conversationCheckpoints.filter(isConversationCheckpoint)
+      : []
+  };
+}
+
+function isConversationCheckpoint(value: unknown): value is MorphoWorkspace["ai"]["conversationCheckpoints"][number] {
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (
+    !hasOnlyAllowedKeys(value, [
+      "id",
+      "laneKey",
+      "focusArea",
+      "focusUpdatedAt",
+      "taskKind",
+      "anchorObjectIds",
+      "targetDirectionIds",
+      "visualBranchId",
+      "sourceStartMessageId",
+      "sourceEndMessageId",
+      "sourceMessageCount",
+      "createdAt",
+      "updatedAt",
+      "threadGoal",
+      "progress",
+      "openThreads",
+      "nextTurnAnchor"
+    ])
+  ) {
+    return false;
+  }
+
+  return (
+    stringFieldsPresent(value, [
+      "id",
+      "laneKey",
+      "focusUpdatedAt",
+      "sourceStartMessageId",
+      "sourceEndMessageId",
+      "createdAt",
+      "updatedAt",
+      "threadGoal"
+    ]) &&
+    isProjectFocusArea(value.focusArea) &&
+    isConversationCheckpointTaskKind(value.taskKind) &&
+    Array.isArray(value.anchorObjectIds) &&
+    value.anchorObjectIds.every((item) => typeof item === "string") &&
+    Array.isArray(value.targetDirectionIds) &&
+    value.targetDirectionIds.every((item) => typeof item === "string") &&
+    (value.visualBranchId === undefined || typeof value.visualBranchId === "string") &&
+    typeof value.sourceMessageCount === "number" &&
+    Number.isFinite(value.sourceMessageCount) &&
+    value.sourceMessageCount >= 0 &&
+    Array.isArray(value.progress) &&
+    value.progress.every((item) => typeof item === "string") &&
+    Array.isArray(value.openThreads) &&
+    value.openThreads.every((item) => typeof item === "string") &&
+    (value.nextTurnAnchor === undefined || typeof value.nextTurnAnchor === "string")
+  );
 }
 
 function normalizeCurrentWorkspace(value: Record<string, unknown>): MorphoWorkspace {
@@ -1740,7 +1822,7 @@ function normalizeCurrentWorkspace(value: Record<string, unknown>): MorphoWorksp
       view: { x: 0, y: 0, zoom: 1 },
       instances: []
     },
-    ai: cloned.ai ?? { messages: [] },
+    ai: normalizeAiState(cloned.ai),
     ui: {
       activeDrawer: cloned.ui?.activeDrawer ?? null,
       aiOpen: cloned.ui?.aiOpen ?? true,
@@ -2148,8 +2230,39 @@ function stringValue(value: unknown, fallback = ""): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
+function stringFieldsPresent(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return keys.every((key) => typeof value[key] === "string" && value[key].trim().length > 0);
+}
+
+function hasOnlyAllowedKeys(value: Record<string, unknown>, allowedKeys: readonly string[]): boolean {
+  const allowed = new Set(allowedKeys);
+  return Object.keys(value).every((key) => allowed.has(key));
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isProjectFocusArea(value: unknown): value is MorphoWorkspace["projectContinuity"]["currentFocus"]["area"] {
+  return (
+    value === "startAndInput" ||
+    value === "exploration" ||
+    value === "research" ||
+    value === "designDefinition" ||
+    value === "directionAndVisual" ||
+    value === "deliveryPreparation"
+  );
+}
+
+function isConversationCheckpointTaskKind(value: unknown): value is MorphoWorkspace["ai"]["conversationCheckpoints"][number]["taskKind"] {
+  return (
+    value === "research" ||
+    value === "general" ||
+    value === "directionPreview" ||
+    value === "visualDevelopment" ||
+    value === "designDefinition" ||
+    value === "conceptDirection"
+  );
 }
 
 function isDirectionStatus(value: unknown): value is ConceptDirectionStatus {

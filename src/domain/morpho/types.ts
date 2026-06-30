@@ -12,6 +12,26 @@ export type DirectionLineageId = string;
 export type VisualBranchId = string;
 export type AiTaskMode = "chatAnalysis" | "imageGeneration" | "researchOperation";
 
+export type ConversationCheckpoint = {
+  id: string;
+  laneKey: string;
+  focusArea: ProjectFocusArea;
+  focusUpdatedAt: string;
+  taskKind: "research" | "general" | "directionPreview" | "visualDevelopment" | "designDefinition" | "conceptDirection";
+  anchorObjectIds: MorphoObjectId[];
+  targetDirectionIds: MorphoObjectId[];
+  visualBranchId?: VisualBranchId;
+  sourceStartMessageId: string;
+  sourceEndMessageId: string;
+  sourceMessageCount: number;
+  createdAt: string;
+  updatedAt: string;
+  threadGoal: string;
+  progress: string[];
+  openThreads: string[];
+  nextTurnAnchor?: string;
+};
+
 export type ProjectFocusArea =
   | "startAndInput"
   | "exploration"
@@ -451,6 +471,8 @@ export type AiMessage = {
   proposalId?: string;
   citationIds?: string[];
   continuityEntryIds?: string[];
+  conversationLaneKey?: string;
+  conversationCheckpointId?: string;
   error?: string;
 };
 
@@ -539,7 +561,7 @@ export type ProjectWorkingState = {
 };
 
 export type MorphoWorkspace = {
-  schemaVersion: 9;
+  schemaVersion: 10;
   project: {
     id: string;
     title: string;
@@ -569,6 +591,7 @@ export type MorphoWorkspace = {
   };
   ai: {
     messages: AiMessage[];
+    conversationCheckpoints: ConversationCheckpoint[];
   };
   ui: {
     activeDrawer: "map" | "assets" | "hidden" | "search" | "records" | null;

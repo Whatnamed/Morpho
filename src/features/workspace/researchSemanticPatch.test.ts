@@ -23,7 +23,8 @@ describe("research success semantic patch", () => {
             createdAt: userMessageCreatedAt,
             taskMode: "researchOperation" as const
           }
-        ]
+        ],
+        conversationCheckpoints: []
       }
     };
     const created = createResearchOperation(workspaceWithMessage, {

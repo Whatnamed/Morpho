@@ -105,3 +105,9 @@ If the same assistant reply includes `morphoDesignDefinitionProposal` or `morpho
 Streaming assistant display hides `morphoProjectContinuityPatch` fenced JSON, including trailing unclosed blocks, while keeping the original completed stream text available to parsers.
 
 See `docs/architecture/m5-b1-conversation-semantic-records.md` for the full contract.
+
+## M5-B2 Boundary
+
+M5-B2 adds short-term conversation checkpoints in `workspace.ai.conversationCheckpoints`. These checkpoints are not project continuity entries, do not enter memory views or the project-record drawer, and do not affect `currentFocus`, validity, source availability, or stage-record grouping.
+
+Project continuity remains responsible for real project facts and long-term explicit semantic records. Conversation checkpoints only summarize the current discussion lane for the next ordinary chat request. See `docs/architecture/m5-b2-conversation-checkpoints.md`.

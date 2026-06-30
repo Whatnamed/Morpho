@@ -26,7 +26,7 @@ No database, authentication, cloud object storage, Supabase, multiplayer sync, e
 
 ## Data Model
 
-Structured workspace data is schema version `9`.
+Structured workspace data is schema version `10`.
 
 Current workspace state includes:
 
@@ -37,6 +37,7 @@ Current workspace state includes:
 - visual-only canvas instances in `workspace.canvas.instances`;
 - persisted workspace UI state in `workspace.ui`;
 - continuous AI messages in `workspace.ai.messages`.
+- short-term conversation checkpoints in `workspace.ai.conversationCheckpoints`.
 - lightweight Operation records in `workspace.operations`;
 - Artifact Proposal records in `workspace.artifactProposals`;
 - citation snapshots in `workspace.citationSnapshots`.
@@ -126,6 +127,17 @@ M5-B1 additions:
 - streaming assistant display strips complete and trailing partial `morphoProjectContinuityPatch` JSON while preserving original completed stream text for parsers;
 - `getContinuityEntryEligibility` centralizes `manualState`, `validity`, and `sourceAvailability` behavior for memory, context, review lists, and drawer labels;
 - assistant messages can show a lightweight `已补入项目记录` feedback button that opens/highlights records without triggering AI or changing focus.
+
+M5-B2 additions:
+
+- schema v10 adds short-term conversation checkpoints to `workspace.ai.conversationCheckpoints`; `ProjectContinuityState` remains schema v2;
+- old v9 workspaces migrate by initializing an empty checkpoint array, preserving all raw `ai.messages`, and not fabricating lane keys or checkpoint content;
+- ordinary `chatAnalysis` discussion requests build a deterministic conversation lane from current focus area, focus `updatedAt`, task kind, sorted direct object IDs, sorted target direction IDs, and optional VisualBranch ID;
+- checkpoint requests trigger only after deterministic message/character thresholds and never for image generation, research operation, design-definition proposals, or concept-direction proposals;
+- provider context for continued same-lane chat uses a valid checkpoint plus bounded recent raw messages instead of the entire transcript, while the current draft remains a separate user input and is not duplicated in history;
+- `morphoConversationCheckpoint` is parsed and validated independently from `morphoProjectContinuityPatch`; either valid block may succeed if the other fails;
+- checkpoint writes update only `workspace.ai.conversationCheckpoints` and the assistant message `conversationCheckpointId`; they never write project records, current focus, objects, revisions, directions, default references, delivery references, or DecisionRecords;
+- visible assistant text strips both complete and trailing partial checkpoint/semantic technical JSON blocks, and a saved checkpoint shows only the lightweight `已整理当前讨论脉络` message.
 
 ## Local-First Persistence
 

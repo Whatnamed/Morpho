@@ -6,9 +6,9 @@ M5-B1 upgrades workspace data to schema v9 and lets Morpho write a small, contro
 
 This feature records only clearly stated long-lived preferences, constraints, avoidances, open questions, decision reasons, and rejection reasons. It does not change project facts, object state, direction status, design definitions, default references, visual branches, delivery references, or current focus.
 
-M5-B1.1 keeps workspace schema `9` and `ProjectContinuityState.schemaVersion` `2`. It is a behavior and boundary hardening pass, not M5-B2 automatic chat compression.
+M5-B1.1 kept workspace schema `9` and `ProjectContinuityState.schemaVersion` `2`. M5-B2 later moves workspace schema to `10` for conversation checkpoints while leaving `ProjectContinuityState.schemaVersion` at `2`.
 
-Out of scope: automatic chat compression, transcript replacement, Compare, automatic status changes, default-reference changes, definition or direction application, new document readers, delivery export, archive restore, agent loops, permanent mock routes, and paid provider smoke tests.
+Out of scope for M5-B1: automatic chat compression, transcript replacement, Compare, automatic status changes, default-reference changes, definition or direction application, new document readers, delivery export, archive restore, agent loops, permanent mock routes, and paid provider smoke tests. M5-B2 implements short-term conversation checkpoints in `workspace.ai`, not in `projectContinuity`.
 
 ## Data Model
 

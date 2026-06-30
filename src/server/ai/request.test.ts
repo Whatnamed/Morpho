@@ -363,6 +363,147 @@ describe("MiMo chat route request conversion", () => {
     expect(imagePrompt).not.toContain("morphoProjectContinuityPatch");
   });
 
+  it("normalizes conversation checkpoint context without exposing lane or storage metadata", () => {
+    const result = validateAiRouteRequest({
+      draft: "继续讨论转角结构。",
+      task: "general",
+      taskMode: "chatAnalysis",
+      workIntent: "discussion",
+      messages: [
+        { role: "user", body: "之前讨论低位导光。" },
+        { role: "assistant", body: "可以继续比较转角连续性。" }
+      ],
+      objectSummaries: [],
+      attachments: [],
+      conversationContext: {
+        checkpoint: {
+          threadGoal: "当前讨论聚焦于柔光轨道的转角连续性。",
+          progress: ["已讨论到低位导光应比装饰光更连续。"],
+          openThreads: ["仍待确认转角施工复杂度。"],
+          nextTurnAnchor: "下一步比较转角结构。",
+          laneKey: "internal-lane",
+          sourceStartMessageId: "message-1",
+          sourceEndMessageId: "message-8"
+        },
+        recentMessageCount: 2,
+        checkpointRequested: true,
+        laneKey: "internal-lane",
+        sourceIds: ["message-1", "message-8"]
+      }
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") {
+      throw new Error(result.reason);
+    }
+    expect(result.value.conversationContext).toEqual({
+      checkpoint: {
+        threadGoal: "当前讨论聚焦于柔光轨道的转角连续性。",
+        progress: ["已讨论到低位导光应比装饰光更连续。"],
+        openThreads: ["仍待确认转角施工复杂度。"],
+        nextTurnAnchor: "下一步比较转角结构。"
+      },
+      recentMessageCount: 2,
+      checkpointRequested: true
+    });
+    expect(JSON.stringify(result.value.conversationContext)).not.toContain("internal-lane");
+    expect(JSON.stringify(result.value.conversationContext)).not.toContain("sourceStartMessageId");
+  });
+
+  it("presents current checkpoints as non-authoritative discussion notes with explicit priority", () => {
+    const result = validateAiRouteRequest({
+      draft: "继续讨论转角结构。",
+      task: "general",
+      taskMode: "chatAnalysis",
+      workIntent: "discussion",
+      messages: [{ role: "assistant", body: "上一轮只保留少量最近消息。" }],
+      objectSummaries: [],
+      attachments: [],
+      conversationContext: {
+        checkpoint: {
+          threadGoal: "当前讨论聚焦于柔光轨道的转角连续性。",
+          progress: ["已讨论到低位导光应比装饰光更连续。"],
+          openThreads: ["仍待确认转角施工复杂度。"],
+          nextTurnAnchor: "下一步比较转角结构。"
+        },
+        recentMessageCount: 1,
+        checkpointRequested: true
+      },
+      taskContext: {
+        kind: "general",
+        objectIds: [],
+        imageObjectIds: [],
+        documentObjectIds: [],
+        directions: [],
+        visualBranches: [],
+        projectContinuity: {
+          currentFocus: {
+            area: "directionAndVisual",
+            updatedAt: "2026-07-01T08:00:00.000Z",
+            sourceKind: "userAction",
+            sourceObjectIds: [],
+            note: "方向与视觉发展"
+          },
+          relevantStageRecords: [],
+          relevantProjectMemoryViews: [],
+          reviewRequiredItems: [],
+          omitted: [],
+          truncated: false
+        },
+        skipped: []
+      }
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") {
+      throw new Error(result.reason);
+    }
+    const prompt = buildMorphoSystemPrompt(result.value);
+    expect(prompt).toContain("Conversation checkpoint");
+    expect(prompt).toContain("非权威的当前讨论笔记");
+    expect(prompt).toContain("优先级：当前用户输入 > 真实项目事实与 projectContinuity Context > 当前 checkpoint > recent raw messages");
+    expect(prompt).toContain("当前讨论聚焦于柔光轨道的转角连续性");
+    expect(prompt).toContain("morphoConversationCheckpoint");
+    expect(prompt).toContain("不要写项目事实、方向状态、默认参考、对象状态、设计定义");
+    expect(prompt).toContain("morphoProjectContinuityPatch");
+    expect(prompt).not.toContain("sourceStartMessageId");
+    expect(prompt).not.toContain("laneKey");
+  });
+
+  it("does not add checkpoint output instructions for non-chat or proposal work intents", () => {
+    const base = {
+      draft: "继续讨论。",
+      task: "general",
+      messages: [],
+      objectSummaries: [],
+      attachments: [],
+      conversationContext: {
+        recentMessageCount: 8,
+        checkpointRequested: true
+      }
+    };
+    const research = buildMorphoSystemPrompt({
+      ...base,
+      taskMode: "researchOperation",
+      workIntent: "discussion"
+    });
+    const image = buildMorphoSystemPrompt({
+      ...base,
+      taskMode: "imageGeneration",
+      workIntent: "discussion"
+    });
+    const definition = buildMorphoSystemPrompt({
+      ...base,
+      taskMode: "chatAnalysis",
+      workIntent: "createDesignDefinition"
+    });
+
+    expect(research).not.toContain("morphoConversationCheckpoint");
+    expect(image).not.toContain("morphoConversationCheckpoint");
+    expect(definition).not.toContain("morphoConversationCheckpoint");
+    expect(definition).toContain("morphoDesignDefinitionProposal");
+  });
+
   it("keeps bounded structured task context in the MiMo system prompt", () => {
     const result = validateAiRouteRequest({
       draft: "基于当前定义继续生成方向预览",

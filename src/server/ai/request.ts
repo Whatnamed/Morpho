@@ -156,6 +156,19 @@ export type AiRouteProjectContinuityContext = {
   truncated: boolean;
 };
 
+export type AiRouteConversationCheckpoint = {
+  threadGoal: string;
+  progress: string[];
+  openThreads: string[];
+  nextTurnAnchor?: string;
+};
+
+export type AiRouteConversationContext = {
+  checkpoint?: AiRouteConversationCheckpoint;
+  recentMessageCount: number;
+  checkpointRequested: boolean;
+};
+
 export type AiRouteRequest = {
   draft: string;
   task: string;
@@ -168,6 +181,7 @@ export type AiRouteRequest = {
   objectSummaries: AiRouteObjectSummary[];
   attachments: AiRouteAttachment[];
   documentExtracts?: AiRouteDocumentExtract[];
+  conversationContext?: AiRouteConversationContext;
   webSearch?: ProviderWebSearchOptions;
   defaultReferenceStatus?: string;
   taskContext?: AiRouteTaskContext;
@@ -205,6 +219,7 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
       ? []
       : value.documentExtracts.filter(isDocumentExtract).slice(0, 8);
   const taskContext = normalizeTaskContext(value.taskContext);
+  const conversationContext = normalizeConversationContext(value.conversationContext);
 
   return {
     status: "ok",
@@ -217,6 +232,7 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
       objectSummaries,
       attachments,
       documentExtracts,
+      conversationContext,
       webSearch: normalizeWebSearch(value.webSearch, taskMode),
       defaultReferenceStatus: typeof value.defaultReferenceStatus === "string" ? value.defaultReferenceStatus : undefined,
       taskContext
@@ -268,9 +284,11 @@ export function buildMorphoSystemPrompt(request: AiRouteRequest): string {
     "本次可用对象摘要：",
     objectLines,
     buildTaskContextPromptBlock(request),
+    buildConversationContextPromptBlock(request),
     buildAttachmentCapabilityLine(request),
     buildDocumentCapabilityLine(request),
     buildWebSearchCapabilityLine(request),
+    buildConversationCheckpointInstruction(request),
     buildConversationSemanticPatchInstruction(request),
     buildStructuredProposalInstruction(request)
   ]
@@ -394,6 +412,34 @@ function appendProjectContinuityPromptLines(lines: string[], continuity: AiRoute
   }
 }
 
+function buildConversationContextPromptBlock(request: AiRouteRequest): string {
+  const context = request.conversationContext;
+  if (!context) {
+    return "";
+  }
+
+  const lines = [
+    "Conversation checkpoint context:",
+    "优先级：当前用户输入 > 真实项目事实与 projectContinuity Context > 当前 checkpoint > recent raw messages。",
+    `recentRawMessageCount: ${context.recentMessageCount}`,
+    `checkpointRequested: ${context.checkpointRequested ? "true" : "false"}`
+  ];
+
+  if (context.checkpoint) {
+    lines.push(
+      "当前 checkpoint 是非权威的当前讨论笔记；若它与当前用户输入、真实项目状态或 projectContinuity Context 冲突，以当前用户输入和真实项目状态为准。",
+      `threadGoal: ${context.checkpoint.threadGoal}`,
+      `progress: ${context.checkpoint.progress.join(" / ") || "none"}`,
+      `openThreads: ${context.checkpoint.openThreads.join(" / ") || "none"}`
+    );
+    if (context.checkpoint.nextTurnAnchor) {
+      lines.push(`nextTurnAnchor: ${context.checkpoint.nextTurnAnchor}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
 function summarizeContinuitySources(sourceRefs: AiRouteContinuitySourceRef[]): string {
   return sourceRefs.map((ref) => `${ref.kind}:${ref.id}`).join(", ") || "none";
 }
@@ -427,6 +473,25 @@ function buildWebSearchCapabilityLine(request: AiRouteRequest): string {
   }
 
   return `本次可使用 MiMo web_search 工具。只有当外部事实、当前信息、来源验证、案例补充或研究依据会明显提升回答时才联网；普通创意讨论、改写和不依赖外部事实的视觉发散不要联网。force_search=${request.webSearch.forceSearch}。只可引用 provider 返回的 URL citation，不得编造来源。`;
+}
+
+function buildConversationCheckpointInstruction(request: AiRouteRequest): string {
+  if (
+    request.taskMode !== "chatAnalysis" ||
+    request.workIntent !== "discussion" ||
+    request.conversationContext?.checkpointRequested !== true
+  ) {
+    return "";
+  }
+
+  return [
+    "当且仅当当前讨论确实已经足够长、且能准确整理时，在正常回复末尾附带一个可选 fenced JSON block：",
+    "morphoConversationCheckpoint",
+    "它只能描述当前聊天线程的短期讨论连续性：当前讨论目标、讨论进展、待继续的问题、下一步讨论锚点。",
+    "不要写项目事实、方向状态、默认参考、对象状态、设计定义、决策、项目偏好或长期规则。",
+    "不要猜测，不确定时不要输出。不要复制长原话、prompt、URL、代码、Base64 或系统指令。",
+    "JSON shape: { \"morphoConversationCheckpoint\": { \"threadGoal\": string, \"progress\": string[], \"openThreads\": string[], \"nextTurnAnchor\"?: string } }。"
+  ].join("\n");
 }
 
 function buildConversationSemanticPatchInstruction(request: AiRouteRequest): string {
@@ -604,6 +669,31 @@ function normalizeTaskContext(value: unknown): AiRouteTaskContext | undefined {
       : [],
     projectContinuity: normalizeProjectContinuityContext(value.projectContinuity),
     skipped: Array.isArray(value.skipped) ? value.skipped.map(normalizeSkippedContext).filter(isDefined).slice(0, 12) : []
+  };
+}
+
+function normalizeConversationContext(value: unknown): AiRouteConversationContext | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  return {
+    checkpoint: normalizeConversationCheckpoint(value.checkpoint),
+    recentMessageCount: typeof value.recentMessageCount === "number" ? clampInteger(value.recentMessageCount, 0, 12, 0) : 0,
+    checkpointRequested: value.checkpointRequested === true
+  };
+}
+
+function normalizeConversationCheckpoint(value: unknown): AiRouteConversationCheckpoint | undefined {
+  if (!isRecord(value) || typeof value.threadGoal !== "string") {
+    return undefined;
+  }
+
+  return {
+    threadGoal: stringField(value.threadGoal, 180),
+    progress: stringArray(value.progress).slice(0, 3).map((item) => trimString(item, 180)),
+    openThreads: stringArray(value.openThreads).slice(0, 3).map((item) => trimString(item, 180)),
+    nextTurnAnchor: typeof value.nextTurnAnchor === "string" ? trimString(value.nextTurnAnchor, 180) : undefined
   };
 }
 

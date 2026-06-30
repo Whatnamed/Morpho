@@ -91,7 +91,14 @@ import { buildWebSearchOptions, collectMiMoImageAttachments, shouldAttachImagesF
 import { collectDocumentExtractsForAi } from "./documentContext";
 import { buildProviderTaskContext, buildTaskContext, taskContextKindFromAiTask, type TaskContextDefaultReference } from "./taskContext";
 import { setConversationSemanticEntryManualState } from "@/domain/morpho/projectContinuity";
-import { sanitizeAssistantStreamForDisplay, stripProjectContinuityPatchBlock } from "@/domain/morpho/conversationSemanticPatch";
+import {
+  applyConversationCheckpoint,
+  buildConversationContextForRequest,
+  buildConversationLaneKey,
+  parseConversationCheckpointPayload,
+  sanitizeConversationAssistantStreamForDisplay,
+  stripAssistantTechnicalBlocks
+} from "@/domain/morpho/conversationCheckpoint";
 import { applyConversationSemanticPatchFromReply } from "./workspaceSemanticPatch";
 import { applyResearchProposalWithSemanticPatch } from "./researchSemanticPatch";
 import { planDirectionPreviewPlacements } from "./visualPreviewLayout";
@@ -648,9 +655,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }
 
         const streamResult = await readAiEventStream(response.body, (assistantBody) => {
-          setWorkspace((current) => updateAiMessage(current, assistantMessageId, sanitizeAssistantStreamForDisplay(assistantBody), "streaming"));
+          setWorkspace((current) => updateAiMessage(current, assistantMessageId, sanitizeConversationAssistantStreamForDisplay(assistantBody), "streaming"));
         });
-        const visibleResearchText = stripProjectContinuityPatchBlock(streamResult.text);
+        const visibleResearchText = stripAssistantTechnicalBlocks(streamResult.text);
         const assistantBody = [attachmentResult.warning, documentResult.warning, visibleResearchText]
           .filter(Boolean)
           .join("\n\n");
@@ -953,7 +960,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }
 
         const planStream = await readAiEventStream(planResponse.body, (assistantBody) => {
-          setWorkspace((current) => updateAiMessage(current, assistantMessageId, sanitizeAssistantStreamForDisplay(assistantBody), "streaming"));
+          setWorkspace((current) => updateAiMessage(current, assistantMessageId, sanitizeConversationAssistantStreamForDisplay(assistantBody), "streaming"));
         });
         const parsedPlan = parseVisualGenerationPlanPayload(planStream.text);
         if (parsedPlan.status === "failed") {
@@ -1236,6 +1243,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const now = new Date().toISOString();
     const userMessageId = `ai-user-${Date.now()}`;
     const assistantMessageId = `ai-assistant-${Date.now()}`;
+    const conversationLaneKey = buildConversationLaneKey({
+      currentFocus: workspace.projectContinuity.currentFocus,
+      taskKind: context.kind,
+      anchorObjectIds: context.objectIds,
+      targetDirectionIds: context.directionRevisions.map((revision) => revision.directionId),
+      visualBranchId: context.visualBranches[0]?.id
+    });
+    const conversationContext = buildConversationContextForRequest({
+      workspace,
+      laneKey: conversationLaneKey,
+      taskMode: executionTaskMode,
+      workIntent: executionWorkIntent,
+      draft
+    });
     const objectSummaries = makeTaskObjectSummaries(context.semanticSummaries);
     const controller = new AbortController();
     const webSearch = buildWebSearchOptions({ draft, taskMode: executionTaskMode });
@@ -1260,7 +1281,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             taskMode: executionTaskMode,
             recommendedTaskMode,
             workIntent: executionWorkIntent,
-            recommendedWorkIntent
+            recommendedWorkIntent,
+            conversationLaneKey
           },
           {
             id: assistantMessageId,
@@ -1270,7 +1292,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             status: "streaming",
             contextObjectIds: context.objectIds,
             taskMode: executionTaskMode,
-            workIntent: executionWorkIntent
+            workIntent: executionWorkIntent,
+            conversationLaneKey
           }
         ]
       }
@@ -1305,10 +1328,22 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           task,
           taskMode: executionTaskMode,
           workIntent: executionWorkIntent,
-          messages: workspace.ai.messages.map((message) => ({ role: message.role, body: message.body })),
+          messages: conversationContext.recentMessages,
           objectSummaries,
           attachments: attachmentResult.attachments,
           documentExtracts: documentResult.extracts,
+          conversationContext: {
+            checkpoint: conversationContext.checkpoint
+              ? {
+                  threadGoal: conversationContext.checkpoint.threadGoal,
+                  progress: conversationContext.checkpoint.progress,
+                  openThreads: conversationContext.checkpoint.openThreads,
+                  nextTurnAnchor: conversationContext.checkpoint.nextTurnAnchor
+                }
+              : undefined,
+            recentMessageCount: conversationContext.recentMessages.length,
+            checkpointRequested: conversationContext.checkpointRequested
+          },
           webSearch,
           defaultReferenceStatus: summarizeTaskDefaultReferenceStatus(context.defaultReference),
           taskContext: buildProviderTaskContext(context)
@@ -1322,9 +1357,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
 
       const streamResult = await readAiEventStream(response.body, (assistantBody) => {
-        setWorkspace((current) => updateAiMessage(current, assistantMessageId, sanitizeAssistantStreamForDisplay(assistantBody), "streaming"));
+        setWorkspace((current) => updateAiMessage(current, assistantMessageId, sanitizeConversationAssistantStreamForDisplay(assistantBody), "streaming"));
       });
-      const visibleAssistantText = stripProjectContinuityPatchBlock(streamResult.text);
+      const visibleAssistantText = stripAssistantTechnicalBlocks(streamResult.text);
       const assistantBody = [attachmentResult.warning, documentResult.warning, visibleAssistantText]
         .filter(Boolean)
         .join("\n\n");
@@ -1424,6 +1459,34 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             assistantText: streamResult.text
           });
           nextWorkspace = semanticPatchResult.workspace;
+          const parsedConversationCheckpoint = conversationContext.checkpointRequested
+            ? parseConversationCheckpointPayload(streamResult.text)
+            : { status: "empty" as const, reason: "checkpoint not requested" };
+          if (parsedConversationCheckpoint.status === "ok") {
+            const checkpointSourceMessages = nextWorkspace.ai.messages.filter(
+              (message) =>
+                message.conversationLaneKey === conversationLaneKey &&
+                message.taskMode === "chatAnalysis" &&
+                message.status !== "failed" &&
+                message.status !== "streaming" &&
+                (message.role === "user" || message.role === "assistant")
+            );
+            const checkpointResult = applyConversationCheckpoint(nextWorkspace, {
+              laneKey: conversationLaneKey,
+              currentFocus: nextWorkspace.projectContinuity.currentFocus,
+              taskKind: context.kind,
+              anchorObjectIds: context.objectIds,
+              targetDirectionIds: context.directionRevisions.map((revision) => revision.directionId),
+              visualBranchId: context.visualBranches[0]?.id,
+              sourceStartMessageId: conversationContext.checkpoint?.sourceStartMessageId ?? checkpointSourceMessages[0]?.id ?? userMessageId,
+              sourceEndMessageId: assistantMessageId,
+              sourceMessageCount: checkpointSourceMessages.length,
+              assistantMessageId,
+              checkpoint: parsedConversationCheckpoint.checkpoint,
+              now
+            });
+            nextWorkspace = checkpointResult.workspace;
+          }
           if (semanticPatchResult.status === "applied") {
             nextWorkspace = updateAiMessage(nextWorkspace, assistantMessageId, resolvedAssistantBody, "done", {
               continuityEntryIds: semanticPatchResult.entryIds

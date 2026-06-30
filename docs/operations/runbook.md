@@ -88,6 +88,17 @@ Conversation semantic records:
 - streaming display hides complete and trailing partial `morphoProjectContinuityPatch` JSON. The original completed stream remains available to parsers;
 - successful writes show `已补入项目记录 · N 条` under the assistant message. The button opens/highlights records only; it does not trigger AI, change current focus, or mutate objects.
 
+Conversation checkpoints:
+
+- ordinary `chatAnalysis` discussion may ask for a bounded `morphoConversationCheckpoint` only after local deterministic thresholds are met;
+- no extra provider call is made for checkpoint generation;
+- the checkpoint is stored in `workspace.ai.conversationCheckpoints`, not `projectContinuity`;
+- provider request context may include the current checkpoint plus a few recent raw messages instead of the whole transcript;
+- the current draft is sent separately and is not duplicated in `messages`;
+- checkpoint JSON is hidden from visible chat, including malformed and streaming partial blocks;
+- successful saves show only `已整理当前讨论脉络` under the assistant message;
+- checkpoint failures do not affect normal replies, semantic patches, project facts, current focus, or project records.
+
 Without these variables, the app still runs locally, but provider routes return clear configuration errors instead of fake AI results.
 
 ## Development Server
@@ -151,6 +162,11 @@ Minimum flows to cover:
 - a mocked design-definition or concept-direction proposal reply that also contains a semantic patch does not write the semantic patch;
 - a mocked research reply that contains both a valid `morphoResearchProposal` and a valid semantic patch creates the research card and shows `已补入项目记录 · 1 条` without binding the new research card as a semantic source;
 - a mocked stream that emits prose, then an unclosed semantic fenced JSON block, then the closing fence never shows `morphoProjectContinuityPatch` or its JSON fields in the chat panel at any intermediate state;
+- a mocked long ordinary chat reaches the checkpoint threshold, `/api/ai/chat` receives `conversationContext.checkpointRequested=true`, returns prose plus `morphoConversationCheckpoint`, and the UI shows prose plus `已整理当前讨论脉络` without technical JSON;
+- the next mocked same-lane ordinary chat request includes the sanitized checkpoint and only bounded recent raw messages, not the full old transcript or duplicated current draft;
+- switching selected direction/image or changing the focus epoch produces a different lane and does not send the old checkpoint;
+- a malformed checkpoint block is hidden, does not save a checkpoint, and does not block a valid semantic patch;
+- a reply with both `morphoProjectContinuityPatch` and `morphoConversationCheckpoint` can write both independently, while visible chat shows neither technical JSON block;
 - semantic entry manual actions (`不再适用`, `撤回记录`, `恢复为当前有效`) update drawer labels and keep current focus unchanged;
 - hidden object sources display `来源已隐藏`, missing sources display `来源不可用`, and message sources display the stored quote only.
 
@@ -174,7 +190,7 @@ Legacy single-project key read for migration:
 morpho.workspace.nightrail.v1
 ```
 
-Structured workspace data is schema version `9`. v1/v2/v3/v4/v5/v6/v7/v8 workspace data is migrated through pure migration functions. v6 normalizes image roles to `reference`, `preview`, `conceptImage`, `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, `structureDiagram`, `interactionDiagram`, and `deliveryAsset`; old `main`, `scenario`, `cmf`, `detail`, and `diagram` values are migration-only inputs. v7 adds parse metadata to file objects and stores extracted document text as separate IndexedDB assets. v8 adds `workspace.projectContinuity`, migrates legacy `project.currentFocus` into structured `currentFocus`, and retires legacy `stageRecords` instead of converting them into a second stage-history source. v9 adds controlled conversation semantic record fields and message source refs; old v8 entries become `origin: deterministicEvent` and `manualState: active` without fabricated semantic metadata. Migration success writes the new project workspace and catalog. Migration failure preserves old raw data and shows a recoverable warning instead of silently resetting to seed data.
+Structured workspace data is schema version `10`. v1/v2/v3/v4/v5/v6/v7/v8/v9 workspace data is migrated through pure migration functions. v6 normalizes image roles to `reference`, `preview`, `conceptImage`, `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, `structureDiagram`, `interactionDiagram`, and `deliveryAsset`; old `main`, `scenario`, `cmf`, `detail`, and `diagram` values are migration-only inputs. v7 adds parse metadata to file objects and stores extracted document text as separate IndexedDB assets. v8 adds `workspace.projectContinuity`, migrates legacy `project.currentFocus` into structured `currentFocus`, and retires legacy `stageRecords` instead of converting them into a second stage-history source. v9 adds controlled conversation semantic record fields and message source refs; old v8 entries become `origin: deterministicEvent` and `manualState: active` without fabricated semantic metadata. v10 adds `workspace.ai.conversationCheckpoints`; old v9 messages are preserved, no checkpoint is invented, no old message receives a fabricated `conversationLaneKey`, and `projectContinuity` is unchanged. Migration success writes the new project workspace and catalog. Migration failure preserves old raw data and shows a recoverable warning instead of silently resetting to seed data.
 
 Binary assets are stored in IndexedDB:
 
@@ -212,5 +228,5 @@ The current code does not include:
 - OCR, legacy `.ppt`, DOC/DOCX parsing, and faithful document-layout reconstruction;
 - dynamic provider model-list fetching;
 - export package generation;
-- automatic chat compression or transcript replacement;
+- transcript replacement, transcript deletion, user-managed chat summaries, or full-project chat summaries;
 - deployment automation.
