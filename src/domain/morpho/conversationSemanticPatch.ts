@@ -191,11 +191,11 @@ export function buildSemanticPatchSummary(item: Pick<ParsedConversationSemanticP
 }
 
 export function stripProjectContinuityPatchBlock(text: string): string {
-  return stripJsonBlockWithTopLevelKey(text, "morphoProjectContinuityPatch").trim();
+  return stripFencedBlocksContainingMarker(text, "morphoProjectContinuityPatch").trim();
 }
 
 export function sanitizeAssistantStreamForDisplay(rawText: string): string {
-  const withoutClosedSemanticBlocks = stripJsonBlockWithTopLevelKey(rawText, "morphoProjectContinuityPatch");
+  const withoutClosedSemanticBlocks = stripFencedBlocksContainingMarker(rawText, "morphoProjectContinuityPatch");
   const lastFenceIndex = withoutClosedSemanticBlocks.lastIndexOf("```");
   if (lastFenceIndex < 0) {
     return withoutClosedSemanticBlocks.trim();
@@ -231,8 +231,8 @@ function extractJsonBlock(text: string, topLevelKey: string): string | undefined
   return fencedBlocks.find((block) => Boolean(block && hasTopLevelKey(block, topLevelKey)));
 }
 
-function stripJsonBlockWithTopLevelKey(text: string, topLevelKey: string): string {
-  return text.replace(/```(?:json)?\s*([\s\S]*?)```/gi, (block, body: string) => (hasTopLevelKey(body.trim(), topLevelKey) ? "" : block));
+function stripFencedBlocksContainingMarker(text: string, marker: string): string {
+  return text.replace(/```(?:json)?\s*([\s\S]*?)```/gi, (block, body: string) => (body.includes(marker) ? "" : block));
 }
 
 function hasTopLevelKey(jsonText: string, topLevelKey: string): boolean {

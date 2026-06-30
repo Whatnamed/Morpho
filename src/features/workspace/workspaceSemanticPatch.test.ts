@@ -186,6 +186,48 @@ describe("workspace conversation semantic patch helpers", () => {
     expect(result.workspace.projectContinuity.recordEntries).toEqual(workspace.projectContinuity.recordEntries);
   });
 
+  it("strips schema-invalid semantic blocks from visible text without writing continuity", () => {
+    const workspace = createInitialWorkspace();
+    const context = buildTaskContext(workspace, {
+      kind: "general",
+      draft,
+      selectedObjectIds: []
+    });
+    const reply = [
+      "I will keep that in mind.",
+      "```json",
+      JSON.stringify({
+        morphoProjectContinuityPatch: {
+          items: [
+            {
+              kind: "preference",
+              scope: "project",
+              relatedObjectIds: [],
+              relatedRevisionIds: [],
+              relatedDecisionIds: []
+            }
+          ]
+        }
+      }),
+      "```"
+    ].join("\n");
+
+    const result = applyConversationSemanticPatchFromReply({
+      workspace,
+      taskMode: "chatAnalysis",
+      context,
+      draft,
+      userMessageId: "ai-user-semantic-invalid-schema",
+      userMessageCreatedAt: "2026-06-30T11:01:45.000Z",
+      assistantText: reply
+    });
+
+    expect(result.status).toBe("skipped");
+    expect(result.visibleBody).toBe("I will keep that in mind.");
+    expect(result.visibleBody).not.toContain("morphoProjectContinuityPatch");
+    expect(result.workspace.projectContinuity.recordEntries).toEqual(workspace.projectContinuity.recordEntries);
+  });
+
   it("skips image-generation replies even when a semantic patch block appears", () => {
     const workspace = createInitialWorkspace();
     const context = buildTaskContext(workspace, {

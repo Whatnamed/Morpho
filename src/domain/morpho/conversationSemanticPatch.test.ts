@@ -371,6 +371,36 @@ describe("conversation semantic patch", () => {
     expect(stripProjectContinuityPatchBlock(ordinaryJson)).toContain("morphoResearchProposal");
   });
 
+  it("strips a closed malformed semantic patch block from final visible text", () => {
+    const reply = [
+      "Visible explanation remains.",
+      "```json",
+      '{"morphoProjectContinuityPatch": invalid}',
+      "```"
+    ].join("\n");
+
+    const stripped = stripProjectContinuityPatchBlock(reply);
+
+    expect(stripped).toBe("Visible explanation remains.");
+    expect(sanitizeAssistantStreamForDisplay(reply)).toBe("Visible explanation remains.");
+    expect(stripped).not.toContain("morphoProjectContinuityPatch");
+  });
+
+  it("preserves prose around a closed malformed semantic patch block", () => {
+    const reply = [
+      "Before the technical block.",
+      "```json",
+      '{"morphoProjectContinuityPatch":{"items":[',
+      "```",
+      "After the technical block."
+    ].join("\n");
+
+    const stripped = stripProjectContinuityPatchBlock(reply);
+
+    expect(stripped).toBe("Before the technical block.\n\nAfter the technical block.");
+    expect(stripped).not.toContain("morphoProjectContinuityPatch");
+  });
+
   it("strips only project-continuity JSON while preserving user-visible prose and other structured blocks", () => {
     const reply = [
       "已记录你的偏好。",

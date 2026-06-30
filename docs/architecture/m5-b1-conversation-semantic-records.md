@@ -157,6 +157,8 @@ Client flow:
 
 During streaming display, the client uses `sanitizeAssistantStreamForDisplay(rawText)`. Closed `morphoProjectContinuityPatch` fenced JSON blocks are removed from visible text, and a trailing unclosed fenced block is temporarily withheld so the user never sees partial `morphoProjectContinuityPatch` JSON. The original completed stream text is still preserved for research proposal parsing, design/concept proposal parsing, citation logic, and semantic patch parsing.
 
+Visible-text stripping is marker-based for `morphoProjectContinuityPatch` and does not require the fenced block to be valid JSON. Malformed or schema-invalid semantic blocks are hidden from the user, while the original completed stream remains available to the strict parser and rejected patches still do not write continuity entries.
+
 The assistant message then shows a lightweight `已补入项目记录 · N 条` button. Clicking it opens and highlights the project-record drawer; it does not trigger AI, change focus, or mutate objects.
 
 The drawer labels semantic entries as `来自明确对话 · 偏好/约束/避免项/待确认/决策理由/淘汰理由`, shows the deterministic summary, exact quote, source refs, validity, source availability, and manual-state actions. Only semantic entries can be marked `不再适用`, `撤回记录`, or restored to `当前有效`.
