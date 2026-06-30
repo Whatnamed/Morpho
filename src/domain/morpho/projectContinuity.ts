@@ -267,6 +267,7 @@ export function resolveContinuityValidity(workspace: MorphoWorkspace): MorphoWor
     return {
       ...entry,
       validity,
+      sourceRefs: entry.sourceRefs.map((ref) => resolveSourceRefAvailability(workspace, ref)),
       invalidationReasons: reasons.length > 0 ? reasons : undefined
     };
   });
@@ -334,17 +335,35 @@ export function deriveProjectMemoryViews(workspace: MorphoWorkspace): ProjectMem
               summary: truncateText(currentDefinitionRevision.summary || currentDefinitionRevision.coreProblem),
               sourceRefs: [
                 createObjectRef(resolved, currentDefinitionObject.id),
-                createRevisionRef(resolved, currentDefinitionRevision.id)
+                withSourceAvailability(
+                  createRevisionRef(resolved, currentDefinitionRevision.id),
+                  currentDefinitionObject.visibility === "hidden" ? "hidden" : "active"
+                )
               ].filter(isDefined),
-              validity: currentDefinitionObject.visibility === "hidden" ? "reviewRequired" : "current"
+              validity: "current"
             }
           ]
         : []
     ),
     preferencesAndAvoids: createMemoryView("preferencesAndAvoids", [
-      ...stringItemsFromDefinition(currentDefinitionRevision, "design-principle", currentDefinitionRevision?.designPrinciples ?? []),
-      ...stringItemsFromDefinition(currentDefinitionRevision, "constraint", currentDefinitionRevision?.constraints ?? []),
-      ...stringItemsFromDefinition(currentDefinitionRevision, "avoid", currentDefinitionRevision?.avoidDirections ?? []),
+      ...stringItemsFromDefinition(
+        currentDefinitionRevision,
+        currentDefinitionObject,
+        "design-principle",
+        currentDefinitionRevision?.designPrinciples ?? []
+      ),
+      ...stringItemsFromDefinition(
+        currentDefinitionRevision,
+        currentDefinitionObject,
+        "constraint",
+        currentDefinitionRevision?.constraints ?? []
+      ),
+      ...stringItemsFromDefinition(
+        currentDefinitionRevision,
+        currentDefinitionObject,
+        "avoid",
+        currentDefinitionRevision?.avoidDirections ?? []
+      ),
       ...preferenceEntries.map((entry) => memoryItemFromEntry(entry))
     ]),
     decisionLog: createMemoryView("decisionLog", [
@@ -416,7 +435,10 @@ export function buildProjectContinuityContext(
   const memoryViews = deriveProjectMemoryViews(resolved);
   const memoryRank = CONTEXT_MEMORY_RELEVANCE[input.taskKind];
   const relevantProjectMemoryViews = memoryRank
-    .map((key) => memoryViews[key])
+    .map((key) => ({
+      ...memoryViews[key],
+      items: memoryViews[key].items.filter(hasOnlyActiveSources)
+    }))
     .filter((view) => view.items.length > 0)
     .slice(0, PROJECT_CONTINUITY_CONTEXT_LIMITS.maxMemoryViews)
     .map((view) => ({
@@ -652,8 +674,6 @@ function getInvalidationReasons(workspace: MorphoWorkspace, entry: ContinuityRec
       const object = workspace.objects[ref.id];
       if (!object) {
         reasons.push(`sourceDeleted:${ref.id}`);
-      } else if (object.visibility === "hidden") {
-        reasons.push(`sourceHidden:${ref.id}`);
       } else if (object.type === "image" && ref.snapshot?.status === "defaultReference" && !object.isDefaultReference) {
         reasons.push(`defaultReferenceSuperseded:${ref.id}`);
       }
@@ -718,7 +738,13 @@ function createMemoryView(key: ProjectMemoryViewKey, items: ProjectMemoryItem[])
 
 function collectOpenQuestionItems(workspace: MorphoWorkspace): ProjectMemoryItem[] {
   const definitionRevision = getCurrentDesignDefinitionRevision(workspace);
-  const definitionItems = stringItemsFromDefinition(definitionRevision, "definition-open-question", definitionRevision?.openQuestions ?? []);
+  const definitionObject = definitionRevision ? workspace.objects[definitionRevision.designDefinitionId] : undefined;
+  const definitionItems = stringItemsFromDefinition(
+    definitionRevision,
+    definitionObject,
+    "definition-open-question",
+    definitionRevision?.openQuestions ?? []
+  );
   const researchItems = Object.values(workspace.objects)
     .filter((object) => object.type === "research")
     .flatMap((object) =>
@@ -727,7 +753,7 @@ function collectOpenQuestionItems(workspace: MorphoWorkspace): ProjectMemoryItem
         title: question,
         summary: question,
         sourceRefs: [createObjectRef(workspace, object.id)].filter(isDefined),
-        validity: (object.visibility === "hidden" ? "reviewRequired" : "current") as ContinuityValidity
+        validity: "current" as ContinuityValidity
       }))
     );
   const directionItems = Object.values(workspace.objects)
@@ -747,6 +773,7 @@ function collectOpenQuestionItems(workspace: MorphoWorkspace): ProjectMemoryItem
 
 function stringItemsFromDefinition(
   revision: ReturnType<typeof getCurrentDesignDefinitionRevision>,
+  owner: MorphoObject | undefined,
   prefix: string,
   values: string[]
 ): ProjectMemoryItem[] {
@@ -758,16 +785,18 @@ function stringItemsFromDefinition(
     title: value,
     summary: value,
     sourceRefs: [
+      owner ? createObjectRef({ objects: { [owner.id]: owner } }, owner.id) : undefined,
       {
-        kind: "revision",
+        kind: "revision" as const,
         id: revision.id,
         snapshot: {
           title: revision.title,
           revisionNumber: revision.revisionNumber,
           summarySnippet: truncateText(revision.summary)
-        }
+        },
+        sourceAvailability: owner ? (owner.visibility === "hidden" ? "hidden" as const : "active" as const) : "missing" as const
       }
-    ],
+    ].filter(isDefined),
     validity: "current"
   }));
 }
@@ -818,7 +847,11 @@ function shouldIncludeEntryInContext(
   includeHistorical: boolean
 ): boolean {
   const hasDirectMatch = hasDirectSourceMatch(entry, selected);
+  const hasHiddenSource = entry.sourceRefs.some((ref) => ref.sourceAvailability === "hidden");
   if (entry.validity === "current") {
+    if (hasHiddenSource) {
+      return false;
+    }
     return hasDirectMatch || isStageRelevantToTask(entry.stage, taskKind, currentFocus);
   }
   if (entry.validity === "reviewRequired") {
@@ -831,6 +864,17 @@ function shouldIncludeEntryInContext(
     return false;
   }
   return hasDirectMatch;
+}
+
+function hasOnlyActiveSources(item: ProjectMemoryItem): boolean {
+  return item.sourceRefs.every((ref) => ref.sourceAvailability !== "hidden" && ref.sourceAvailability !== "missing");
+}
+
+function withSourceAvailability(
+  ref: ContinuitySourceRef | undefined,
+  sourceAvailability: NonNullable<ContinuitySourceRef["sourceAvailability"]>
+): ContinuitySourceRef | undefined {
+  return ref ? { ...ref, sourceAvailability } : undefined;
 }
 
 function isStageRelevantToTask(
@@ -888,8 +932,41 @@ function createObjectRef(workspace: Pick<MorphoWorkspace, "objects">, objectId: 
   return {
     kind: "object",
     id: object.id,
-    snapshot: snapshotObject(object)
+    snapshot: snapshotObject(object),
+    sourceAvailability: object.visibility === "hidden" ? "hidden" : "active"
   };
+}
+
+function resolveSourceRefAvailability(workspace: MorphoWorkspace, ref: ContinuitySourceRef): ContinuitySourceRef {
+  if (ref.kind === "object") {
+    const object = workspace.objects[ref.id];
+    return {
+      ...ref,
+      sourceAvailability: !object ? "missing" : object.visibility === "hidden" ? "hidden" : "active"
+    };
+  }
+
+  if (ref.kind === "revision") {
+    const definitionRevision = workspace.designDefinitionRevisions[ref.id];
+    if (definitionRevision) {
+      return { ...ref, sourceAvailability: "active" };
+    }
+    const directionRevision = workspace.directionRevisions[ref.id];
+    if (directionRevision) {
+      return { ...ref, sourceAvailability: "active" };
+    }
+    return { ...ref, sourceAvailability: "missing" };
+  }
+
+  if (ref.kind === "branch") {
+    return { ...ref, sourceAvailability: workspace.visualBranches[ref.id] ? "active" : "missing" };
+  }
+
+  if (ref.kind === "deliveryReference") {
+    return { ...ref, sourceAvailability: workspace.deliveryReferences[ref.id] ? "active" : "missing" };
+  }
+
+  return { ...ref, sourceAvailability: "active" };
 }
 
 function createRevisionRef(

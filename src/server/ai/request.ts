@@ -118,6 +118,7 @@ export type AiRouteContinuitySourceRef = {
     visibility?: string;
     summarySnippet?: string;
   };
+  sourceAvailability?: "active" | "hidden" | "missing";
 };
 
 export type AiRouteContinuityEntry = {
@@ -366,7 +367,7 @@ function appendProjectContinuityPromptLines(lines: string[], continuity: AiRoute
   lines.push(
     "Project continuity:",
     `currentFocus: ${continuity.currentFocus.area} / ${continuity.currentFocus.note} / updatedAt=${continuity.currentFocus.updatedAt}`,
-    "validityRule: current can be used as stable context; reviewRequired must be marked as needing review; superseded and sourceUnavailable must not be treated as current facts."
+    "validityRule: current can be used as stable context only when included by Morpho; hidden sources are marked with sourceAvailability=hidden and must not be treated as active inputs; reviewRequired must be marked as needing review; superseded and sourceUnavailable must not be treated as current facts."
   );
 
   for (const entry of continuity.relevantStageRecords) {
@@ -764,7 +765,11 @@ function normalizeContinuitySourceRef(value: unknown): AiRouteContinuitySourceRe
   return {
     kind: trimString(value.kind, 80),
     id: trimString(value.id, 160),
-    snapshot
+    snapshot,
+    sourceAvailability:
+      value.sourceAvailability === "active" || value.sourceAvailability === "hidden" || value.sourceAvailability === "missing"
+        ? value.sourceAvailability
+        : undefined
   };
 }
 

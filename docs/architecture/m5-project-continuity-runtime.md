@@ -50,12 +50,12 @@ Refs carry lightweight snapshots only: title, object type, revision number, stat
 
 Validity values are:
 
-- `current`: all direct sources remain usable as stable context.
-- `reviewRequired`: source is recoverable but no longer default-active, such as hidden object or archived branch.
+- `current`: the historical fact still stands; source availability is tracked separately.
+- `reviewRequired`: the fact may need review before reuse, such as an archived VisualBranch the user is trying to continue from.
 - `superseded`: direct referenced revision or default reference has been replaced.
 - `sourceUnavailable`: direct source was deleted or is missing.
 
-Hidden and deleted are intentionally different. Hidden sources keep history recoverable and stay out of default active AI context. Deleted or missing sources keep their lightweight snapshot but are not used as factual context.
+Source availability is separate from entry validity: `active`, `hidden`, or `missing`. Hidden sources keep the original entry validity and are labelled as hidden, but they stay out of default active AI context. Deleted or missing sources keep their lightweight snapshot and mark the entry `sourceUnavailable`.
 
 Revision updates affect only entries that directly reference the old revision. Default-reference changes affect only entries that directly reference the replaced default-reference source. Direction elimination is projected from the real direction status and does not delete history.
 
@@ -67,7 +67,7 @@ Sorting is deterministic: task relevance tier, direct source match, current focu
 
 Context inclusion follows validity rules:
 
-- `current` can be included when task-relevant or directly matched.
+- `current` can be included when task-relevant and all direct sources are active.
 - `reviewRequired` is included only for direct matches and is labelled as needing review.
 - `superseded` is excluded by default unless directly matched by selection or historical inquiry context.
 - `sourceUnavailable` is excluded from factual context and appears only in review lists when relevant.

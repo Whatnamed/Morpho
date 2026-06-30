@@ -61,10 +61,13 @@ export type ContinuitySourceSnapshot = {
   summarySnippet?: string;
 };
 
+export type ContinuitySourceAvailability = "active" | "hidden" | "missing";
+
 export type ContinuitySourceRef = {
   kind: ContinuitySourceRefKind;
   id: string;
   snapshot?: ContinuitySourceSnapshot;
+  sourceAvailability?: ContinuitySourceAvailability;
 };
 
 export type ContinuityRecordEntry = {

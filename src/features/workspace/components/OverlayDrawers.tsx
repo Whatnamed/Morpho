@@ -207,7 +207,7 @@ function ProjectRecordDrawer({
                   <div>
                     <strong>{item.title}</strong>
                     <span>
-                      {validityLabel(item.validity)} · {item.summary}
+                      {validityLabel(item.validity, item.sourceRefs)} · {item.summary}
                     </span>
                     <SourceRefs refs={item.sourceRefs} onLocateObject={onLocateObject} />
                   </div>
@@ -240,7 +240,7 @@ function ContinuityEntryRows({
               {stageLabel(entry.stage)} · {categoryLabel(entry.category)}
             </strong>
             <span>
-              {validityLabel(entry.validity)} · {entry.summary}
+              {validityLabel(entry.validity, entry.sourceRefs)} · {entry.summary}
             </span>
             <SourceRefs refs={entry.sourceRefs} onLocateObject={onLocateObject} />
           </div>
@@ -457,7 +457,11 @@ function categoryLabel(category: string): string {
   }
 }
 
-function validityLabel(validity: string): string {
+function validityLabel(validity: string, refs: ContinuitySourceRef[] = []): string {
+  const hasHiddenSource = refs.some((ref) => ref.sourceAvailability === "hidden");
+  if (hasHiddenSource && validity === "current") {
+    return "当前有效 · 来源已隐藏";
+  }
   switch (validity) {
     case "current":
       return "当前有效";

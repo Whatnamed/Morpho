@@ -55,7 +55,7 @@ describe("project continuity runtime", () => {
     expect(groups.exploration.emptyMessage).toBe("暂无探索记录。");
   });
 
-  it("separates hidden from deleted source availability without removing history", () => {
+  it("keeps hidden sources current while marking them hidden and out of default context", () => {
     const workspace = applyProjectContinuityEvent(createInitialWorkspace(), {
       type: "defaultReferenceChanged",
       imageObjectId: "image-soft-rail-v2",
@@ -63,13 +63,20 @@ describe("project continuity runtime", () => {
       createdAt: "2026-06-30T08:10:00.000Z"
     });
     const hidden = resolveContinuityValidity(hideObject(workspace, "image-soft-rail-v2"));
+    const hiddenEntry = hidden.projectContinuity.recordEntries.at(-1);
+    const hiddenContext = buildProjectContinuityContext(hidden, {
+      taskKind: "visualDevelopment",
+      selectedObjectIds: []
+    });
     const deletedResult = deleteObject(workspace, "image-soft-rail-v2", {
       confirmed: true,
       reason: "用户明确删除默认参考源图。"
     });
 
-    expect(hidden.projectContinuity.recordEntries.at(-1)?.validity).toBe("reviewRequired");
-    expect(hidden.projectContinuity.recordEntries.at(-1)?.invalidationReasons).toContain("sourceHidden:image-soft-rail-v2");
+    expect(hidden.projectContinuity.recordEntries.at(-1)?.validity).toBe("current");
+    expect(hiddenEntry?.sourceRefs[0]?.sourceAvailability).toBe("hidden");
+    expect(hiddenContext.relevantStageRecords.map((entry) => entry.dedupeKey)).not.toContain(hiddenEntry?.dedupeKey);
+    expect(hiddenContext.reviewRequiredItems.map((entry) => entry.dedupeKey)).not.toContain(hiddenEntry?.dedupeKey);
     expect(deletedResult.status).toBe("updated");
     if (deletedResult.status !== "updated") {
       throw new Error("Expected deletion to update workspace.");
@@ -77,6 +84,23 @@ describe("project continuity runtime", () => {
     const deleted = resolveContinuityValidity(deletedResult.workspace);
     expect(deleted.projectContinuity.recordEntries.at(-1)?.validity).toBe("sourceUnavailable");
     expect(deleted.projectContinuity.recordEntries.at(-1)?.sourceRefs[0]?.snapshot?.title).toBe("柔光轨道 v2");
+  });
+
+
+  it("keeps hidden design-definition memories current without marking them review required", () => {
+    const hidden = resolveContinuityValidity(hideObject(createInitialWorkspace(), "definition-current"));
+    const views = deriveProjectMemoryViews(hidden);
+    const designDefinitionItem = views.designDefinition.items[0];
+    const context = buildProjectContinuityContext(hidden, {
+      taskKind: "visualDevelopment",
+      selectedObjectIds: []
+    });
+
+    expect(designDefinitionItem?.validity).toBe("current");
+    expect(designDefinitionItem?.sourceRefs[0]?.sourceAvailability).toBe("hidden");
+    expect(context.relevantProjectMemoryViews.flatMap((view) => view.items).map((item) => item.id)).not.toContain(
+      designDefinitionItem?.id
+    );
   });
 
   it("marks only entries tied to superseded design-definition revisions as superseded", () => {
