@@ -40,7 +40,7 @@ export function validateGrsImageRouteRequest(value: unknown): GrsImageRouteValid
   if (images.length > GRS_REFERENCE_IMAGE_LIMIT) {
     return {
       status: "failed",
-      reason: `GrsAI 鍙傝€冨浘鏈€澶氬彧鑳芥彁浜?${GRS_REFERENCE_IMAGE_LIMIT} 寮狅紝璇峰噺灏戝弬鑰冨浘鍚庨噸璇曘€?`
+      reason: `GrsAI 参考图最多只能使用 ${GRS_REFERENCE_IMAGE_LIMIT} 张，请减少参考图后重试。`
     };
   }
   const requestedAspectRatio = stringValue(value.aspectRatio);

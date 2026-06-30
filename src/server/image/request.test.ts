@@ -44,6 +44,7 @@ describe("GrsAI image route request validation", () => {
     if (result.status === "failed") {
       expect(result.reason).toContain(String(GRS_REFERENCE_IMAGE_LIMIT));
       expect(result.reason).toContain("GrsAI");
+      expect(result.reason).toContain("参考图最多只能使用");
     }
   });
 
