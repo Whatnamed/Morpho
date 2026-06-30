@@ -65,6 +65,7 @@ describe("workspace task context assembly", () => {
     });
 
     expect(context.defaultReference).toMatchObject({ status: "notIncluded", objectId: "image-soft-rail-v2" });
+    expect(context.defaultReference.reason).toContain("reason:default-reference-direction-mismatch");
     expect(context.imageObjectIds).not.toContain("image-soft-rail-v2");
   });
 
@@ -78,6 +79,7 @@ describe("workspace task context assembly", () => {
     });
 
     expect(context.defaultReference).toMatchObject({ status: "notIncluded", objectId: "image-soft-rail-v2" });
+    expect(context.defaultReference.reason).toContain("reason:default-reference-ambiguous-multi-direction");
     expect(context.imageObjectIds).not.toContain("image-soft-rail-v2");
   });
 

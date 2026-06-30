@@ -297,6 +297,34 @@ function resolveDefaultReference(
   const uniqueDirectionIds = uniqueStrings([...directionIds]);
   const sameDirection = Boolean(object.directionId && directionIds.has(object.directionId));
   const undirectedSingleTarget = !object.directionId && uniqueDirectionIds.length === 1;
+  if (!explicitlyRequested) {
+    return {
+      status: "notIncluded",
+      objectId: object.id,
+      reason: "reason:default-reference-not-requested; default reference was not explicitly requested."
+    };
+  }
+  if (!isPixelEligibleTask) {
+    return {
+      status: "notIncluded",
+      objectId: object.id,
+      reason: "reason:default-reference-non-visual-task; default reference pixels are only available to direction preview or visual development tasks."
+    };
+  }
+  if (object.directionId && !sameDirection) {
+    return {
+      status: "notIncluded",
+      objectId: object.id,
+      reason: "reason:default-reference-direction-mismatch; default reference belongs to a different direction than the current target scope."
+    };
+  }
+  if (!object.directionId && uniqueDirectionIds.length !== 1) {
+    return {
+      status: "notIncluded",
+      objectId: object.id,
+      reason: "reason:default-reference-ambiguous-multi-direction; undirected default reference requires one clear target direction."
+    };
+  }
   if (explicitlyRequested && isPixelEligibleTask && (sameDirection || undirectedSingleTarget)) {
     return { status: "included", objectId: object.id, reason: "用户明确要求保持或参考当前默认参考。" };
   }

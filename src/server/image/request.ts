@@ -35,8 +35,14 @@ export function validateGrsImageRouteRequest(value: unknown): GrsImageRouteValid
 
   const resolvedSettings = resolveGrsImageModelSettings(requestedModelId, stringValue(value.sizeOption));
   const images = Array.isArray(value.images)
-    ? value.images.filter((image): image is string => typeof image === "string" && image.length > 0).slice(0, GRS_REFERENCE_IMAGE_LIMIT)
+    ? value.images.filter((image): image is string => typeof image === "string" && image.length > 0)
     : [];
+  if (images.length > GRS_REFERENCE_IMAGE_LIMIT) {
+    return {
+      status: "failed",
+      reason: `GrsAI 鍙傝€冨浘鏈€澶氬彧鑳芥彁浜?${GRS_REFERENCE_IMAGE_LIMIT} 寮狅紝璇峰噺灏戝弬鑰冨浘鍚庨噸璇曘€?`
+    };
+  }
   const requestedAspectRatio = stringValue(value.aspectRatio);
   const aspectRatio: GrsImageAspectRatio = isGrsImageAspectRatio(requestedAspectRatio) ? requestedAspectRatio : "1:1";
 

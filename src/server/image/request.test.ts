@@ -12,8 +12,7 @@ describe("GrsAI image route request validation", () => {
         "data:image/png;base64,a",
         "data:image/png;base64,b",
         "data:image/png;base64,c",
-        "data:image/png;base64,d",
-        "data:image/png;base64,e"
+        "data:image/png;base64,d"
       ],
       aspectRatio: "3:4",
       sizeOption: "4K",
@@ -35,15 +34,16 @@ describe("GrsAI image route request validation", () => {
     }
   });
 
-  it("uses the shared Grs reference image limit", () => {
+  it("blocks requests that exceed the shared Grs reference image limit", () => {
     const result = validateGrsImageRouteRequest({
       prompt: "生成参考图",
       images: Array.from({ length: GRS_REFERENCE_IMAGE_LIMIT + 3 }, (_, index) => `data:image/png;base64,${index}`)
     });
 
-    expect(result.status).toBe("ok");
-    if (result.status === "ok") {
-      expect(result.value.images).toHaveLength(GRS_REFERENCE_IMAGE_LIMIT);
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") {
+      expect(result.reason).toContain(String(GRS_REFERENCE_IMAGE_LIMIT));
+      expect(result.reason).toContain("GrsAI");
     }
   });
 
