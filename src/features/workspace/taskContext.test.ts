@@ -129,6 +129,23 @@ describe("workspace task context assembly", () => {
     expect(JSON.stringify(providerContext)).not.toContain("data:image");
   });
 
+  it("keeps comparison context limited to explicit selection and never converts it to provider task context", () => {
+    const workspace = withParsedFile(createInitialWorkspace(), "file-course-brief");
+    const context = buildTaskContext(workspace, {
+      kind: "comparison",
+      draft: "比较这几个对象",
+      selectedObjectIds: ["direction-soft-rail", "file-course-brief"]
+    });
+
+    expect(context.objectIds).toEqual(["direction-soft-rail", "file-course-brief"]);
+    expect(context.defaultReference).toEqual({
+      status: "notIncluded",
+      reason: "Compare never auto-includes default reference."
+    });
+    expect(context.scopeNote).toContain("explicit selected objects");
+    expect(() => buildProviderTaskContext(context)).toThrow(/Comparison task context/);
+  });
+
   it("excludes hidden objects and reports predictable skip reasons", () => {
     const hidden = hideObject(createInitialWorkspace(), "image-soft-rail-v2");
     const context = buildTaskContext(hidden, {

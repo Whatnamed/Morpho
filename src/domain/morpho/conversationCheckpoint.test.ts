@@ -115,6 +115,39 @@ describe("conversation checkpoint parser and validator", () => {
     expect(parseConversationCheckpointPayload(reply)).toMatchObject({ status: "ok" });
   });
 
+  it("hides proposal technical blocks from visible assistant text", () => {
+    const reply = [
+      "先保留一个方向草案。",
+      "```json",
+      JSON.stringify({
+        morphoConceptDirectionProposal: {
+          title: "方向草案组",
+          summary: "待确认草案",
+          directions: [
+            {
+              title: "轻触导轨",
+              summary: "更轻的连续低位导向。",
+              conceptStatement: "用轻触低位导轨组织夜间路径。",
+              keywords: ["低位", "连续"],
+              strategy: "延续现有方向但降低构件存在感。",
+              differentiators: ["更轻"],
+              visualSignals: ["细窄暖光"],
+              risks: ["支撑可信度不足"],
+              openQuestions: ["是否仍能提供可靠触感？"]
+            }
+          ]
+        }
+      }),
+      "```"
+    ].join("\n");
+
+    const visible = sanitizeConversationAssistantStreamForDisplay(reply);
+
+    expect(visible).toContain("先保留一个方向草案。");
+    expect(visible).not.toContain("morphoConceptDirectionProposal");
+    expect(visible).not.toContain("方向草案组");
+  });
+
   it("one malformed block does not stop the other valid block from parsing", () => {
     const reply = [
       "正常回复。",

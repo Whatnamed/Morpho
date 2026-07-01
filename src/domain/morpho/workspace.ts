@@ -31,6 +31,7 @@ import type {
   ImageObject,
   ImageRole,
   KeyConclusionObject,
+  ComparisonDecisionMetadata,
   MorphoObject,
   MorphoObjectId,
   MorphoObjectType,
@@ -42,7 +43,7 @@ import type {
 } from "./types";
 
 const DEFAULT_REFERENCE_HIDDEN_MESSAGE = "当前后续默认参考已隐藏，请先恢复或替换后再用于相关生成。";
-const CURRENT_SCHEMA_VERSION = 10;
+const CURRENT_SCHEMA_VERSION = 11;
 
 export type DeleteObjectResult =
   | {
@@ -176,7 +177,8 @@ export function createBlankWorkspace(projectId: string): MorphoWorkspace {
     },
     ai: {
       messages: [],
-      conversationCheckpoints: []
+      conversationCheckpoints: [],
+      comparisonAnalyses: {}
     },
     ui: {
       activeDrawer: null,
@@ -524,16 +526,17 @@ export function deleteObject(
 export function eliminateDirection(
   workspace: MorphoWorkspace,
   objectId: MorphoObjectId,
-  options: { reason: string }
+  options: { reason: string; comparison?: ComparisonDecisionMetadata }
 ): MorphoWorkspace {
-  return setConceptDirectionStatus(workspace, objectId, "eliminated", options.reason);
+  return setConceptDirectionStatus(workspace, objectId, "eliminated", options.reason, options.comparison);
 }
 
 export function setConceptDirectionStatus(
   workspace: MorphoWorkspace,
   objectId: MorphoObjectId,
   status: ConceptDirectionStatus,
-  reason: string
+  reason: string,
+  comparison?: ComparisonDecisionMetadata
 ): MorphoWorkspace {
   const object = workspace.objects[objectId];
 
@@ -574,7 +577,8 @@ export function setConceptDirectionStatus(
         summary: `${object.title} -> ${status}`,
         reason,
         objectSnapshot: snapshotObject(object),
-        relatedObjectIds: [objectId]
+        relatedObjectIds: [objectId],
+        comparison
       }
     ]
   });
@@ -847,7 +851,7 @@ export function removeImageFromVisualBranch(
 export function setDefaultReference(
   workspace: MorphoWorkspace,
   objectId: MorphoObjectId,
-  options: { reason: string }
+  options: { reason: string; comparison?: ComparisonDecisionMetadata }
 ): MorphoWorkspace {
   const object = workspace.objects[objectId];
 
@@ -901,7 +905,8 @@ export function setDefaultReference(
         summary: `设为后续默认参考：${object.title}`,
         reason: options.reason,
         objectSnapshot: snapshotObject(object),
-        relatedObjectIds: [objectId]
+        relatedObjectIds: [objectId],
+        comparison: options.comparison
       }
     ]
   });
@@ -909,6 +914,72 @@ export function setDefaultReference(
     type: "defaultReferenceChanged",
     imageObjectId: objectId,
     previousImageObjectId: previousDefaultReference?.id,
+    decisionId,
+    createdAt: now
+  });
+}
+
+export function clearDefaultReference(
+  workspace: MorphoWorkspace,
+  objectId: MorphoObjectId,
+  options: { reason: string; comparison?: ComparisonDecisionMetadata }
+): MorphoWorkspace {
+  const object = workspace.objects[objectId];
+
+  if (!object || object.type !== "image") {
+    return workspace;
+  }
+
+  const currentDefaultReference = Object.values(workspace.objects).find(
+    (candidate) => candidate.type === "image" && candidate.isDefaultReference && candidate.id === objectId
+  );
+  if (!currentDefaultReference) {
+    return workspace;
+  }
+
+  const now = new Date().toISOString();
+  const objects = Object.fromEntries(
+    Object.entries(workspace.objects).map(([entryId, entry]) => {
+      if (entry.type !== "image") {
+        return [entryId, entry];
+      }
+
+      return [
+        entryId,
+        {
+          ...entry,
+          isDefaultReference: entry.id === objectId ? false : entry.isDefaultReference,
+          updatedAt: now
+        } satisfies ImageObject
+      ];
+    })
+  ) as Record<MorphoObjectId, MorphoObject>;
+
+  const relationsWithoutDefault = workspace.relations.filter((relation) => relation.kind !== "defaultReference");
+  const decisionId = makeDecisionId(workspace, "setDefaultReference", objectId);
+  const updated = reconcileWorkspaceDerivedState({
+    ...workspace,
+    objects,
+    relations: relationsWithoutDefault,
+    decisionRecords: [
+      ...workspace.decisionRecords,
+      {
+        id: decisionId,
+        kind: "setDefaultReference",
+        createdAt: now,
+        summary: `清除后续默认参考：${object.title}`,
+        reason: options.reason,
+        objectSnapshot: snapshotObject(object),
+        relatedObjectIds: [objectId],
+        comparison: options.comparison
+      }
+    ]
+  });
+
+  return applyProjectContinuityEvent(updated, {
+    type: "defaultReferenceChanged",
+    imageObjectId: objectId,
+    previousImageObjectId: currentDefaultReference.id,
     decisionId,
     createdAt: now
   });
@@ -926,6 +997,7 @@ export function createKeyConclusion(
     state?: KeyConclusionObject["state"];
     note?: string;
     position: CanvasPoint;
+    comparison?: ComparisonDecisionMetadata;
   }
 ): CreateKeyConclusionResult {
   const now = new Date().toISOString();
@@ -977,7 +1049,8 @@ export function createKeyConclusion(
         summary: `保留关键结论：${input.title}`,
         reason: input.note,
         objectSnapshot: snapshotObject(keyConclusion),
-        relatedObjectIds: input.sourceObjectIds
+        relatedObjectIds: input.sourceObjectIds,
+        comparison: input.comparison
       }
     ],
     canvas: {
@@ -1286,6 +1359,17 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
       status: "ok",
       workspace: normalizeCurrentWorkspace(value),
       didMigrate: false
+    };
+  }
+
+  if (value.schemaVersion === 10) {
+    return {
+      status: "ok",
+      workspace: normalizeCurrentWorkspace({
+        ...(structuredClone(value) as Record<string, unknown>),
+        schemaVersion: CURRENT_SCHEMA_VERSION
+      }),
+      didMigrate: true
     };
   }
 
@@ -1706,14 +1790,17 @@ function migrateV4Workspace(value: Record<string, unknown>): MorphoWorkspace {
 
 function normalizeAiState(value: unknown): MorphoWorkspace["ai"] {
   if (!isRecord(value)) {
-    return { messages: [], conversationCheckpoints: [] };
+    return { messages: [], conversationCheckpoints: [], comparisonAnalyses: {} };
   }
 
   return {
     messages: Array.isArray(value.messages) ? (value.messages as MorphoWorkspace["ai"]["messages"]) : [],
     conversationCheckpoints: Array.isArray(value.conversationCheckpoints)
       ? value.conversationCheckpoints.filter(isConversationCheckpoint)
-      : []
+      : [],
+    comparisonAnalyses: isRecord(value.comparisonAnalyses)
+      ? (value.comparisonAnalyses as MorphoWorkspace["ai"]["comparisonAnalyses"])
+      : {}
   };
 }
 
@@ -2261,7 +2348,8 @@ function isConversationCheckpointTaskKind(value: unknown): value is MorphoWorksp
     value === "directionPreview" ||
     value === "visualDevelopment" ||
     value === "designDefinition" ||
-    value === "conceptDirection"
+    value === "conceptDirection" ||
+    value === "comparison"
   );
 }
 

@@ -1,9 +1,16 @@
-"use client";
+﻿"use client";
 
 import type { KeyboardEvent, ReactNode } from "react";
 import { ChevronLeft, Send, Sparkles } from "lucide-react";
 
-import type { AiTaskMode, AiWorkIntent, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
+import type {
+  AiTaskMode,
+  AiWorkIntent,
+  ComparisonAnalysis,
+  ComparisonSourceRef,
+  MorphoObject,
+  MorphoWorkspace
+} from "@/domain/morpho/types";
 import type {
   ArtifactProposal,
   ConceptDirectionProposal,
@@ -16,6 +23,7 @@ import {
   type ImageGenerationModelOption,
   type ImageGenerationSettings
 } from "../imageGenerationSettings";
+import { resolveStoredComparisonSourceRefs } from "@/domain/morpho/comparisonAnalysis";
 import { ProposalDraftCard } from "./ProposalDraftCard";
 import type { Suggestion } from "../workspaceUi";
 
@@ -42,7 +50,138 @@ export type PendingAiConfirmation =
       confidence: "supported" | "partial" | "needsVerification";
       state?: "active" | "needsVerification";
       note: string;
+    }
+  | PendingComparisonConfirmation;
+
+export type PendingComparisonConfirmation =
+  | {
+      kind: "compareSetPrimary";
+      targetObjectId: string;
+      targetTitle: string;
+      comparisonAnalysisId: string;
+      comparisonAssistantMessageId: string;
+      comparisonSourceObjectIds: string[];
+      summary: string;
+      userReason: string;
+      reasonRequired: boolean;
+      keyConclusionDraft?: {
+        title: string;
+        body: string;
+        summary: string;
+        confidence: "supported" | "partial" | "needsVerification";
+      };
+    }
+  | {
+      kind: "compareSetAlternative";
+      targetObjectId: string;
+      targetTitle: string;
+      comparisonAnalysisId: string;
+      comparisonAssistantMessageId: string;
+      comparisonSourceObjectIds: string[];
+      summary: string;
+      userReason: string;
+      reasonRequired: boolean;
+      keyConclusionDraft?: {
+        title: string;
+        body: string;
+        summary: string;
+        confidence: "supported" | "partial" | "needsVerification";
+      };
+    }
+  | {
+      kind: "compareEliminate";
+      targetObjectId: string;
+      targetTitle: string;
+      comparisonAnalysisId: string;
+      comparisonAssistantMessageId: string;
+      comparisonSourceObjectIds: string[];
+      summary: string;
+      userReason: string;
+      reasonRequired: boolean;
+      keyConclusionDraft?: {
+        title: string;
+        body: string;
+        summary: string;
+        confidence: "supported" | "partial" | "needsVerification";
+      };
+    }
+  | {
+      kind: "compareRestoreAlternative";
+      targetObjectId: string;
+      targetTitle: string;
+      comparisonAnalysisId: string;
+      comparisonAssistantMessageId: string;
+      comparisonSourceObjectIds: string[];
+      summary: string;
+      userReason: string;
+      reasonRequired: boolean;
+      keyConclusionDraft?: {
+        title: string;
+        body: string;
+        summary: string;
+        confidence: "supported" | "partial" | "needsVerification";
+      };
+    }
+  | {
+      kind: "compareSetDefaultReference";
+      targetObjectId: string;
+      targetTitle: string;
+      comparisonAnalysisId: string;
+      comparisonAssistantMessageId: string;
+      comparisonSourceObjectIds: string[];
+      summary: string;
+      userReason: string;
+      reasonRequired: boolean;
+      keyConclusionDraft?: {
+        title: string;
+        body: string;
+        summary: string;
+        confidence: "supported" | "partial" | "needsVerification";
+      };
+    }
+  | {
+      kind: "compareClearDefaultReference";
+      targetObjectId: string;
+      targetTitle: string;
+      comparisonAnalysisId: string;
+      comparisonAssistantMessageId: string;
+      comparisonSourceObjectIds: string[];
+      summary: string;
+      userReason: string;
+      reasonRequired: boolean;
+      keyConclusionDraft?: {
+        title: string;
+        body: string;
+        summary: string;
+        confidence: "supported" | "partial" | "needsVerification";
+      };
+    }
+  | {
+      kind: "compareCreateKeyConclusion";
+      targetTitle: string;
+      comparisonAnalysisId: string;
+      comparisonAssistantMessageId: string;
+      comparisonSourceObjectIds: string[];
+      keyConclusionSourceObjectIds: string[];
+      summary: string;
+      userReason: string;
+      reasonRequired: boolean;
+      keyConclusionDraft: {
+        title: string;
+        body: string;
+        summary: string;
+        confidence: "supported" | "partial" | "needsVerification";
+      };
     };
+
+export type ComparisonActionRequest =
+  | "setPrimary"
+  | "setAlternative"
+  | "eliminate"
+  | "restoreAlternative"
+  | "setDefaultReference"
+  | "clearDefaultReference"
+  | "createKeyConclusion";
 
 type AiConversationPanelProps = {
   workspace: MorphoWorkspace;
@@ -117,6 +256,9 @@ type AiConversationPanelProps = {
     input: Pick<ConceptDirectionProposal, "title" | "summary" | "directions">
   ) => void;
   onUpdatePendingKeyConclusion: (patch: Partial<Extract<PendingAiConfirmation, { kind: "createKeyConclusion" }>>) => void;
+  onUpdatePendingComparison?: (patch: { userReason: string }) => void;
+  onRequestComparisonAction?: (analysisId: string, action: ComparisonActionRequest, objectId?: string) => void;
+  onLocateObject?: (objectId: string) => void;
   onConfirmPending: () => void;
   onCancelPending: () => void;
   onFailureRetry: () => void;
@@ -163,6 +305,9 @@ export function AiConversationPanel({
   onSaveDesignDefinitionProposalDraft,
   onSaveConceptDirectionProposalDraft,
   onUpdatePendingKeyConclusion,
+  onUpdatePendingComparison,
+  onRequestComparisonAction,
+  onLocateObject,
   onConfirmPending,
   onCancelPending,
   onFailureRetry,
@@ -211,6 +356,15 @@ export function AiConversationPanel({
           {workspace.ai.messages.map((message) => (
             <div className="ai-message" key={message.id}>
               <MarkdownContent body={message.body} />
+              {message.comparisonAnalysisId ? (
+                <ComparisonAnalysisCard
+                  analysis={workspace.ai.comparisonAnalyses?.[message.comparisonAnalysisId]}
+                  sourceRefs={workspace.ai.comparisonAnalyses?.[message.comparisonAnalysisId] ? resolveStoredComparisonSourceRefs(workspace, workspace.ai.comparisonAnalyses[message.comparisonAnalysisId]) : []}
+                  workspace={workspace}
+                  onRequestAction={onRequestComparisonAction}
+                  onLocateObject={onLocateObject}
+                />
+              ) : null}
               {message.conversationCheckpointId &&
               workspace.ai.conversationCheckpoints.some((checkpoint) => checkpoint.id === message.conversationCheckpointId) ? (
                 <div
@@ -333,6 +487,24 @@ export function AiConversationPanel({
                   <span className="confirm-meta">
                     来源：{pendingConfirmation.sourceObjectIds.join("、") || "无"} · 引用：
                     {pendingConfirmation.citationIds.join("、") || "无"} · 置信度：{pendingConfirmation.confidence}
+                  </span>
+                </div>
+              ) : isComparisonConfirmation(pendingConfirmation) ? (
+                <div className="confirm-editor" aria-label="Compare 决策确认">
+                  <label>
+                    <span>比较摘要</span>
+                    <textarea rows={4} value={pendingConfirmation.summary} readOnly />
+                  </label>
+                  <label>
+                    <span>{pendingConfirmation.reasonRequired ? "用户理由（必填）" : "用户理由（可选）"}</span>
+                    <textarea
+                      rows={3}
+                      value={pendingConfirmation.userReason}
+                      onChange={(event) => onUpdatePendingComparison?.({ userReason: event.currentTarget.value })}
+                    />
+                  </label>
+                  <span className="confirm-meta">
+                    来源对象：{pendingConfirmation.comparisonSourceObjectIds.join("、") || "无"}
                   </span>
                 </div>
               ) : null}
@@ -545,6 +717,14 @@ function getPendingConfirmationTitle(confirmation: PendingAiConfirmation): strin
       return "确认删除对象";
     case "createKeyConclusion":
       return "保存关键结论";
+    case "compareSetPrimary":
+    case "compareSetAlternative":
+    case "compareEliminate":
+    case "compareRestoreAlternative":
+    case "compareSetDefaultReference":
+    case "compareClearDefaultReference":
+    case "compareCreateKeyConclusion":
+      return "确认 Compare 决策";
   }
 }
 
@@ -559,6 +739,14 @@ function getPendingConfirmationBody(confirmation: PendingAiConfirmation): string
     }
     case "createKeyConclusion":
       return `将从“${confirmation.sourceTitle}”保存一条用户确认的关键结论：“${confirmation.conclusionTitle}”。它会创建新的关键结论对象、来源关系和决策记录；不会自动改写设计定义、概念方向、默认参考、交付引用或长期项目记忆。`;
+    case "compareSetPrimary":
+    case "compareSetAlternative":
+    case "compareEliminate":
+    case "compareRestoreAlternative":
+    case "compareSetDefaultReference":
+    case "compareClearDefaultReference":
+    case "compareCreateKeyConclusion":
+      return `本次 Compare 决策将针对“${confirmation.targetTitle}”写入真实状态；AI 比较摘要只读展示，不能自动成为用户理由。`;
   }
 }
 
@@ -570,6 +758,141 @@ function getPendingConfirmationActionLabel(confirmation: PendingAiConfirmation):
       return "确认删除";
     case "createKeyConclusion":
       return "确认保存结论";
+    case "compareSetPrimary":
+    case "compareSetAlternative":
+    case "compareEliminate":
+    case "compareRestoreAlternative":
+    case "compareSetDefaultReference":
+    case "compareClearDefaultReference":
+    case "compareCreateKeyConclusion":
+      return "确认决定";
+  }
+}
+
+function isComparisonConfirmation(confirmation: PendingAiConfirmation): confirmation is PendingComparisonConfirmation {
+  return (
+    confirmation.kind === "compareSetPrimary" ||
+    confirmation.kind === "compareSetAlternative" ||
+    confirmation.kind === "compareEliminate" ||
+    confirmation.kind === "compareRestoreAlternative" ||
+    confirmation.kind === "compareSetDefaultReference" ||
+    confirmation.kind === "compareClearDefaultReference" ||
+    confirmation.kind === "compareCreateKeyConclusion"
+  );
+}
+
+function ComparisonAnalysisCard({
+  analysis,
+  sourceRefs,
+  workspace,
+  onRequestAction,
+  onLocateObject
+}: {
+  analysis?: ComparisonAnalysis;
+  sourceRefs: ComparisonSourceRef[];
+  workspace: MorphoWorkspace;
+  onRequestAction?: (analysisId: string, action: ComparisonActionRequest, objectId?: string) => void;
+  onLocateObject?: (objectId: string) => void;
+}) {
+  if (!analysis) {
+    return null;
+  }
+
+  const directionSources = sourceRefs.filter((source) => workspace.objects[source.objectId]?.type === "conceptDirection");
+  const imageSources = sourceRefs.filter((source) => workspace.objects[source.objectId]?.type === "image");
+  const hasKeyConclusionCandidate = Boolean(analysis.keyConclusionCandidate);
+
+  return (
+    <div className="confirm-card" aria-label="Compare 分析结果">
+      <strong>Compare 分析</strong>
+      <p>{analysis.conclusionSummary}</p>
+      {analysis.evidenceLimits.length > 0 ? <p>证据边界：{analysis.evidenceLimits.join("；")}</p> : null}
+      <div className="confirm-editor">
+        <span className="confirm-meta">来源对象：</span>
+        <div className="failure-actions">
+          {sourceRefs.map((source) =>
+            source.availability === "active" ? (
+              <button className="plain-button" type="button" key={source.objectId} onClick={() => onLocateObject?.(source.objectId)}>
+                {source.title}
+              </button>
+            ) : (
+              <span className="confirm-meta" key={source.objectId}>
+                {source.title}
+                {formatSourceAvailability(source.availability)}
+              </span>
+            )
+          )}
+        </div>
+      </div>
+      <div className="failure-actions">
+        {directionSources.map((source) => {
+          const object = workspace.objects[source.objectId];
+          if (!object || object.type !== "conceptDirection") {
+            return null;
+          }
+          const disabled = source.availability !== "active";
+
+          return (
+            <div key={source.objectId}>
+              <span>{source.title}</span>
+              <button className="plain-button" type="button" disabled={disabled} onClick={() => onRequestAction?.(analysis.id, "setPrimary", source.objectId)}>
+                设为主方向
+              </button>
+              <button className="plain-button" type="button" disabled={disabled} onClick={() => onRequestAction?.(analysis.id, "setAlternative", source.objectId)}>
+                设为备选
+              </button>
+              {object.status === "eliminated" ? (
+                <button className="plain-button" type="button" disabled={disabled} onClick={() => onRequestAction?.(analysis.id, "restoreAlternative", source.objectId)}>
+                  恢复为备选
+                </button>
+              ) : (
+                <button className="plain-button" type="button" disabled={disabled} onClick={() => onRequestAction?.(analysis.id, "eliminate", source.objectId)}>
+                  淘汰方向
+                </button>
+              )}
+            </div>
+          );
+        })}
+        {imageSources.map((source) => {
+          const object = workspace.objects[source.objectId];
+          if (!object || object.type !== "image") {
+            return null;
+          }
+          const disabled = source.availability !== "active";
+
+          return (
+            <div key={source.objectId}>
+              <span>{source.title}</span>
+              {object.isDefaultReference ? (
+                <button className="plain-button" type="button" disabled={disabled} onClick={() => onRequestAction?.(analysis.id, "clearDefaultReference", source.objectId)}>
+                  取消后续默认参考
+                </button>
+              ) : (
+                <button className="plain-button" type="button" disabled={disabled} onClick={() => onRequestAction?.(analysis.id, "setDefaultReference", source.objectId)}>
+                  设为后续默认参考
+                </button>
+              )}
+            </div>
+          );
+        })}
+        {hasKeyConclusionCandidate ? (
+          <button className="brand-button" type="button" onClick={() => onRequestAction?.(analysis.id, "createKeyConclusion")}>
+            保存候选关键结论
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function formatSourceAvailability(availability: ComparisonSourceRef["availability"]): string {
+  switch (availability) {
+    case "active":
+      return "";
+    case "hidden":
+      return "（已隐藏）";
+    case "missing":
+      return "（已缺失）";
   }
 }
 

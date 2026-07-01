@@ -32,7 +32,7 @@ function withActiveVisibility(objects: Record<MorphoObjectId, SeedObject>): Reco
 }
 
 const baseWorkspace: MorphoWorkspace = {
-  schemaVersion: 10,
+  schemaVersion: 11,
   project: {
     id: "project-nightrail",
     title: "夜航 / Nightrail",
@@ -720,7 +720,8 @@ const baseWorkspace: MorphoWorkspace = {
         recommendedTaskMode: "imageGeneration"
       }
     ],
-    conversationCheckpoints: []
+    conversationCheckpoints: [],
+    comparisonAnalyses: {}
   },
   ui: {
     activeDrawer: null,

@@ -101,7 +101,12 @@ export const CONVERSATION_CHECKPOINT_LIMITS = {
 } as const;
 
 const CHECKPOINT_MARKER = "morphoConversationCheckpoint";
-const TECHNICAL_MARKERS = ["morphoProjectContinuityPatch", CHECKPOINT_MARKER] as const;
+const TECHNICAL_MARKERS = [
+  "morphoProjectContinuityPatch",
+  CHECKPOINT_MARKER,
+  "morphoDesignDefinitionProposal",
+  "morphoConceptDirectionProposal"
+] as const;
 const CHECKPOINT_SUPPRESSING_PROPOSAL_KEYS = ["morphoDesignDefinitionProposal", "morphoConceptDirectionProposal"] as const;
 
 export function parseConversationCheckpointPayload(text: string): ParseConversationCheckpointResult {

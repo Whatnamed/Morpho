@@ -10,6 +10,7 @@ export type DesignDefinitionRevisionId = string;
 export type DirectionRevisionId = string;
 export type DirectionLineageId = string;
 export type VisualBranchId = string;
+export type ComparisonAnalysisId = string;
 export type AiTaskMode = "chatAnalysis" | "imageGeneration" | "researchOperation";
 
 export type ConversationCheckpoint = {
@@ -17,7 +18,7 @@ export type ConversationCheckpoint = {
   laneKey: string;
   focusArea: ProjectFocusArea;
   focusUpdatedAt: string;
-  taskKind: "research" | "general" | "directionPreview" | "visualDevelopment" | "designDefinition" | "conceptDirection";
+  taskKind: "research" | "general" | "directionPreview" | "visualDevelopment" | "designDefinition" | "conceptDirection" | "comparison";
   anchorObjectIds: MorphoObjectId[];
   targetDirectionIds: MorphoObjectId[];
   visualBranchId?: VisualBranchId;
@@ -446,6 +447,64 @@ export type ObjectSnapshot = {
   title: string;
 };
 
+export type ComparisonSourceAvailability = "active" | "hidden" | "missing";
+
+export type ComparisonSourceRef = {
+  objectId: MorphoObjectId;
+  objectType: MorphoObjectType;
+  title: string;
+  summary: string;
+  availability: ComparisonSourceAvailability;
+};
+
+export type ComparisonObjectEvidence = {
+  objectId: MorphoObjectId;
+  label: string;
+  evidence: string;
+};
+
+export type ComparisonObjectEntry = {
+  objectId: MorphoObjectId;
+  title: string;
+  summary: string;
+  strengths: string[];
+  risks: string[];
+  evidence: string[];
+};
+
+export type ComparisonKeyConclusionCandidate = {
+  title: string;
+  summary: string;
+  body: string;
+  sourceObjectIds: MorphoObjectId[];
+  evidence: ComparisonObjectEvidence[];
+  confidence: KeyConclusionObject["confidence"];
+  note?: string;
+};
+
+export type ComparisonAnalysis = {
+  id: ComparisonAnalysisId;
+  assistantMessageId: string;
+  userMessageId: string;
+  createdAt: string;
+  updatedAt: string;
+  sourceObjectIds: MorphoObjectId[];
+  sourceRefs: ComparisonSourceRef[];
+  comparisonGoal: string;
+  conclusionSummary: string;
+  objectComparisons: ComparisonObjectEntry[];
+  recommendedQuestions: string[];
+  evidenceLimits: string[];
+  keyConclusionCandidate?: ComparisonKeyConclusionCandidate;
+};
+
+export type ComparisonDecisionMetadata = {
+  comparisonAnalysisId: ComparisonAnalysisId;
+  comparisonAssistantMessageId: string;
+  comparisonSourceObjectIds: MorphoObjectId[];
+  userReason?: string;
+};
+
 export type DecisionRecord = {
   id: DecisionRecordId;
   kind: DecisionKind;
@@ -454,6 +513,7 @@ export type DecisionRecord = {
   reason?: string;
   objectSnapshot?: ObjectSnapshot;
   relatedObjectIds: MorphoObjectId[];
+  comparison?: ComparisonDecisionMetadata;
 };
 
 export type AiMessage = {
@@ -473,6 +533,7 @@ export type AiMessage = {
   continuityEntryIds?: string[];
   conversationLaneKey?: string;
   conversationCheckpointId?: string;
+  comparisonAnalysisId?: ComparisonAnalysisId;
   error?: string;
 };
 
@@ -561,7 +622,7 @@ export type ProjectWorkingState = {
 };
 
 export type MorphoWorkspace = {
-  schemaVersion: 10;
+  schemaVersion: 11;
   project: {
     id: string;
     title: string;
@@ -592,6 +653,7 @@ export type MorphoWorkspace = {
   ai: {
     messages: AiMessage[];
     conversationCheckpoints: ConversationCheckpoint[];
+    comparisonAnalyses?: Record<ComparisonAnalysisId, ComparisonAnalysis>;
   };
   ui: {
     activeDrawer: "map" | "assets" | "hidden" | "search" | "records" | null;

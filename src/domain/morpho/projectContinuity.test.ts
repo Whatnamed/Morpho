@@ -692,7 +692,8 @@ describe("project continuity runtime", () => {
       ...createInitialWorkspace(),
       ai: {
         messages: [userMessage],
-        conversationCheckpoints: []
+        conversationCheckpoints: [],
+        comparisonAnalyses: {}
       }
     };
     const authorization = buildSemanticPatchAuthorization({
@@ -717,7 +718,7 @@ describe("project continuity runtime", () => {
     ]).workspace;
     const removedMessage = resolveContinuityValidity({
       ...applied,
-      ai: { messages: [], conversationCheckpoints: [] }
+      ai: { messages: [], conversationCheckpoints: [], comparisonAnalyses: {} }
     });
     const entry = removedMessage.projectContinuity.recordEntries.find((candidate) => candidate.sourceMessageId === userMessage.id);
     const memory = deriveProjectMemoryViews(removedMessage);
@@ -742,7 +743,7 @@ describe("project continuity runtime", () => {
       createdAt: "2026-06-30T12:50:00.000Z",
       taskMode: "chatAnalysis" as const
     };
-    const validWorkspace = { ...base, ai: { messages: [validMessage], conversationCheckpoints: [] } };
+    const validWorkspace = { ...base, ai: { messages: [validMessage], conversationCheckpoints: [], comparisonAnalyses: {} } };
     const valid = applyConversationSemanticPatch(
       validWorkspace,
       buildSemanticPatchAuthorization({
@@ -769,7 +770,7 @@ describe("project continuity runtime", () => {
     }), [{ kind: "preference", scope: "project", evidenceQuote: "Keep the night light warm", relatedObjectIds: [], relatedRevisionIds: [], relatedDecisionIds: [] }]);
     const assistantMessageWorkspace = {
       ...base,
-      ai: { messages: [{ ...validMessage, id: "assistant-message", role: "assistant" as const }], conversationCheckpoints: [] }
+      ai: { messages: [{ ...validMessage, id: "assistant-message", role: "assistant" as const }], conversationCheckpoints: [], comparisonAnalyses: {} }
     };
     const assistantRole = applyConversationSemanticPatch(
       assistantMessageWorkspace,

@@ -50,6 +50,7 @@ import {
   createKeyConclusion,
   createAiDraftFromSuggestion,
   deleteObject,
+  clearDefaultReference,
   eliminateDirection,
   createVisualBranch,
   hideObject,
@@ -67,7 +68,7 @@ import {
 import type { CanvasInstance, MorphoWorkspace } from "@/domain/morpho/types";
 import type { ProviderCitation } from "@/server/ai/types";
 import { AiConversationPanel } from "./components/AiConversationPanel";
-import type { PendingAiConfirmation } from "./components/AiConversationPanel";
+import type { PendingAiConfirmation, PendingComparisonConfirmation } from "./components/AiConversationPanel";
 import { BottomDetailBar } from "./components/BottomDetailBar";
 import { LeftRail, type DrawerMode } from "./components/LeftRail";
 import { OverlayDrawers } from "./components/OverlayDrawers";
@@ -89,6 +90,7 @@ import {
 import { buildProposalDiscussionDraft, buildProposalRegenerationDraft } from "./proposalFollowupPrompts";
 import { buildWebSearchOptions, collectMiMoImageAttachments, shouldAttachImagesForMiMo } from "./aiAttachments";
 import { collectDocumentExtractsForAi } from "./documentContext";
+import { resolveComparisonWritebackSourceObjectIds } from "./comparisonDecision";
 import { buildProviderTaskContext, buildTaskContext, taskContextKindFromAiTask, type TaskContextDefaultReference } from "./taskContext";
 import { setConversationSemanticEntryManualState } from "@/domain/morpho/projectContinuity";
 import {
@@ -100,6 +102,16 @@ import {
   sanitizeConversationAssistantStreamForDisplay,
   stripAssistantTechnicalBlocks
 } from "@/domain/morpho/conversationCheckpoint";
+import {
+  applyComparisonAnalysis,
+  resolveStoredComparisonSourceRefs,
+  buildComparisonAuthorization,
+  parseComparisonAnalysisPayload,
+  sanitizeComparisonAssistantStreamForDisplay,
+  stripComparisonAnalysisBlock,
+  validateComparisonAnalysis
+} from "@/domain/morpho/comparisonAnalysis";
+import type { ComparisonDecisionMetadata } from "@/domain/morpho/types";
 import { applyConversationSemanticPatchFromReply } from "./workspaceSemanticPatch";
 import { applyResearchProposalWithSemanticPatch } from "./researchSemanticPatch";
 import { planDirectionPreviewPlacements } from "./visualPreviewLayout";
@@ -138,6 +150,15 @@ type ImageTaskStatus = {
   state: ImageTaskState;
   message: string;
 };
+
+type ComparisonActionKind =
+  | "setPrimary"
+  | "setAlternative"
+  | "eliminate"
+  | "restoreAlternative"
+  | "setDefaultReference"
+  | "clearDefaultReference"
+  | "createKeyConclusion";
 
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [workspace, setWorkspace, persistenceState] = usePersistentWorkspace(projectId);
@@ -248,6 +269,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   useEffect(() => {
     setWorkIntent(workspace.ui.workIntent);
   }, [workspace.ui.workIntent]);
+
+  useEffect(() => {
+    const persistedSelection = workspace.ui.lastSelectionIds;
+    setSelectedObjectIds((current) =>
+      current.join("|") === persistedSelection.join("|") ? current : [...persistedSelection]
+    );
+  }, [workspace.ui.lastSelectionIds]);
 
   const updateImageGenerationSettings = useCallback(
     (patch: { modelId?: string; aspectRatio?: GrsImageAspectRatio; sizeOption?: string }) => {
@@ -1267,6 +1295,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setIsAiStreaming(true);
     setAiDraft("");
     setAiOpen(true);
+    if (pendingConfirmation?.kind !== "deleteObject") {
+      setPendingConfirmation(null);
+    }
+
     setWorkspace((current) => {
       const operationWorkspace = semanticOperationCreated ? semanticOperationCreated.workspace : current;
       return {
@@ -1310,7 +1342,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         selectedObjects
       })
         ? await collectMiMoImageAttachments(workspace, context.imageObjectIds, controller.signal)
-        : { attachments: [], skippedObjectIds: [], warning: undefined };
+        : { attachments: [], skippedObjectIds: [], entries: [], warning: undefined };
       const documentResult = await collectDocumentExtractsForAi(
         workspace,
         context.documentObjectIds,
@@ -1349,7 +1381,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           },
           webSearch,
           defaultReferenceStatus: summarizeTaskDefaultReferenceStatus(context.defaultReference),
-          taskContext: buildProviderTaskContext(context)
+          taskContext: context.kind === "comparison" ? undefined : buildProviderTaskContext(context)
         }),
         signal: controller.signal
       });
@@ -1360,9 +1392,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
 
       const streamResult = await readAiEventStream(response.body, (assistantBody) => {
-        setWorkspace((current) => updateAiMessage(current, assistantMessageId, sanitizeConversationAssistantStreamForDisplay(assistantBody), "streaming"));
+        const sanitizedAssistantBody = sanitizeComparisonAssistantStreamForDisplay(
+          sanitizeConversationAssistantStreamForDisplay(assistantBody)
+        );
+        setWorkspace((current) => updateAiMessage(current, assistantMessageId, sanitizedAssistantBody, "streaming"));
       });
-      const visibleAssistantText = stripAssistantTechnicalBlocks(streamResult.text);
+      const visibleAssistantText = stripComparisonAnalysisBlock(stripAssistantTechnicalBlocks(streamResult.text));
       const assistantBody = [attachmentResult.warning, documentResult.warning, visibleAssistantText]
         .filter(Boolean)
         .join("\n\n");
@@ -1381,7 +1416,27 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         conceptDirectionProposal?.status === "ok"
           ? `proposal-direction-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
           : null;
+      const hasProposalInSameReply = Boolean(designDefinitionProposalId || conceptDirectionProposalId);
+      const comparisonAuthorizationResult =
+        executionWorkIntent === "comparison"
+          ? buildComparisonAuthorization({
+              workspace,
+              selectedObjectIds,
+              userMessageId,
+              assistantMessageId,
+              createdAt: now,
+              comparisonGoal: draft,
+              imageAttachmentObjectIds: attachmentResult.entries
+                .filter((entry) => entry.status === "ready")
+                .map((entry) => entry.objectId)
+            })
+          : null;
+      const parsedComparisonAnalysis =
+        executionWorkIntent === "comparison" && !hasProposalInSameReply
+          ? parseComparisonAnalysisPayload(streamResult.text)
+          : null;
 
+      let appliedComparisonAnalysisId: string | null = null;
       setWorkspace((current) => {
         let nextWorkspace = updateAiMessage(current, assistantMessageId, resolvedAssistantBody, "done");
         if (streamResult.citations.length > 0) {
@@ -1452,49 +1507,63 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             citationIds: proposed.proposal.citationIds
           });
         } else {
-          const semanticPatchResult = applyConversationSemanticPatchFromReply({
-            workspace: nextWorkspace,
-            taskMode: executionTaskMode,
-            context,
-            draft,
-            userMessageId,
-            userMessageCreatedAt: now,
-            assistantText: streamResult.text
-          });
-          nextWorkspace = semanticPatchResult.workspace;
-          const parsedConversationCheckpoint = conversationContext.checkpointRequested
-            ? parseConversationCheckpointPayload(streamResult.text)
-            : { status: "empty" as const, reason: "checkpoint not requested" };
-          if (parsedConversationCheckpoint.status === "ok") {
-            const checkpointSourceMessages = nextWorkspace.ai.messages.filter(
-              (message) =>
-                message.conversationLaneKey === conversationLaneKey &&
-                message.taskMode === "chatAnalysis" &&
-                message.status !== "failed" &&
-                message.status !== "streaming" &&
-                (message.role === "user" || message.role === "assistant")
-            );
-            const checkpointResult = applyConversationCheckpoint(nextWorkspace, {
-              laneKey: conversationLaneKey,
-              currentFocus: nextWorkspace.projectContinuity.currentFocus,
-              taskKind: context.kind,
-              anchorObjectIds: conversationLaneAnchors.anchorObjectIds,
-              targetDirectionIds: conversationLaneAnchors.targetDirectionIds,
-              visualBranchId: conversationLaneAnchors.visualBranchId,
-              sourceStartMessageId: conversationContext.checkpoint?.sourceStartMessageId ?? checkpointSourceMessages[0]?.id ?? userMessageId,
-              sourceEndMessageId: assistantMessageId,
-              sourceMessageCount: checkpointSourceMessages.length,
-              assistantMessageId,
-              checkpoint: parsedConversationCheckpoint.checkpoint,
-              hasPendingProposal: Boolean(activeProposal),
-              now
-            });
-            nextWorkspace = checkpointResult.workspace;
+          if (
+            comparisonAuthorizationResult?.status === "ready" &&
+            parsedComparisonAnalysis?.status === "ok" &&
+            "authorization" in comparisonAuthorizationResult
+          ) {
+            const validation = validateComparisonAnalysis(parsedComparisonAnalysis.analysis, comparisonAuthorizationResult.authorization);
+            if (validation.status === "ok") {
+              nextWorkspace = applyComparisonAnalysis(nextWorkspace, validation.analysis);
+              appliedComparisonAnalysisId = validation.analysis.id;
+            }
           }
-          if (semanticPatchResult.status === "applied") {
-            nextWorkspace = updateAiMessage(nextWorkspace, assistantMessageId, resolvedAssistantBody, "done", {
-              continuityEntryIds: semanticPatchResult.entryIds
+
+          if (!hasProposalInSameReply) {
+            const semanticPatchResult = applyConversationSemanticPatchFromReply({
+              workspace: nextWorkspace,
+              taskMode: executionTaskMode,
+              context,
+              draft,
+              userMessageId,
+              userMessageCreatedAt: now,
+              assistantText: streamResult.text
             });
+            nextWorkspace = semanticPatchResult.workspace;
+            const parsedConversationCheckpoint = conversationContext.checkpointRequested
+              ? parseConversationCheckpointPayload(streamResult.text)
+              : { status: "empty" as const, reason: "checkpoint not requested" };
+            if (parsedConversationCheckpoint.status === "ok") {
+              const checkpointSourceMessages = nextWorkspace.ai.messages.filter(
+                (message) =>
+                  message.conversationLaneKey === conversationLaneKey &&
+                  message.taskMode === "chatAnalysis" &&
+                  message.status !== "failed" &&
+                  message.status !== "streaming" &&
+                  (message.role === "user" || message.role === "assistant")
+              );
+              const checkpointResult = applyConversationCheckpoint(nextWorkspace, {
+                laneKey: conversationLaneKey,
+                currentFocus: nextWorkspace.projectContinuity.currentFocus,
+                taskKind: context.kind,
+                anchorObjectIds: conversationLaneAnchors.anchorObjectIds,
+                targetDirectionIds: conversationLaneAnchors.targetDirectionIds,
+                visualBranchId: conversationLaneAnchors.visualBranchId,
+                sourceStartMessageId: conversationContext.checkpoint?.sourceStartMessageId ?? checkpointSourceMessages[0]?.id ?? userMessageId,
+                sourceEndMessageId: assistantMessageId,
+                sourceMessageCount: checkpointSourceMessages.length,
+                assistantMessageId,
+                checkpoint: parsedConversationCheckpoint.checkpoint,
+                hasPendingProposal: Boolean(activeProposal) || hasProposalInSameReply,
+                now
+              });
+              nextWorkspace = checkpointResult.workspace;
+            }
+            if (semanticPatchResult.status === "applied") {
+              nextWorkspace = updateAiMessage(nextWorkspace, assistantMessageId, resolvedAssistantBody, "done", {
+                continuityEntryIds: semanticPatchResult.entryIds
+              });
+            }
           }
         }
 
@@ -1503,6 +1572,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
       if (designDefinitionProposalId || conceptDirectionProposalId) {
         setActiveProposalId(designDefinitionProposalId ?? conceptDirectionProposalId);
+        setPendingConfirmation(null);
+      } else if (appliedComparisonAnalysisId) {
         setPendingConfirmation(null);
       }
     } catch (error) {
@@ -1526,6 +1597,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     isAiStreaming,
     recommendedTaskMode,
     recommendedWorkIntent,
+    pendingConfirmation?.kind,
     selectedObjectIds,
     selectedObjects,
     setWorkspace,
@@ -2144,6 +2216,90 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
+    if (isComparisonPendingConfirmation(pendingConfirmation)) {
+      if (pendingConfirmation.reasonRequired && !pendingConfirmation.userReason.trim()) {
+        return;
+      }
+
+      const comparisonMetadata: ComparisonDecisionMetadata = {
+        comparisonAnalysisId: pendingConfirmation.comparisonAnalysisId,
+        comparisonAssistantMessageId: pendingConfirmation.comparisonAssistantMessageId,
+        comparisonSourceObjectIds: [...pendingConfirmation.comparisonSourceObjectIds],
+        userReason: pendingConfirmation.userReason.trim() || undefined
+      };
+      setWorkspace((current) => {
+        if (pendingConfirmation.kind === "compareSetPrimary") {
+          return setConceptDirectionStatus(
+            current,
+            pendingConfirmation.targetObjectId,
+            "primary",
+            buildComparisonDecisionReason(pendingConfirmation),
+            comparisonMetadata
+          );
+        }
+
+        if (pendingConfirmation.kind === "compareSetAlternative") {
+          return setConceptDirectionStatus(
+            current,
+            pendingConfirmation.targetObjectId,
+            "alternative",
+            buildComparisonDecisionReason(pendingConfirmation),
+            comparisonMetadata
+          );
+        }
+
+        if (pendingConfirmation.kind === "compareEliminate") {
+          return eliminateDirection(current, pendingConfirmation.targetObjectId, {
+            reason: buildComparisonDecisionReason(pendingConfirmation),
+            comparison: comparisonMetadata
+          });
+        }
+
+        if (pendingConfirmation.kind === "compareRestoreAlternative") {
+          return setConceptDirectionStatus(
+            current,
+            pendingConfirmation.targetObjectId,
+            "alternative",
+            buildComparisonDecisionReason(pendingConfirmation),
+            comparisonMetadata
+          );
+        }
+
+        if (pendingConfirmation.kind === "compareSetDefaultReference") {
+          return setDefaultReference(current, pendingConfirmation.targetObjectId, {
+            reason: buildComparisonDecisionReason(pendingConfirmation),
+            comparison: comparisonMetadata
+          });
+        }
+
+        if (pendingConfirmation.kind === "compareClearDefaultReference") {
+          return clearDefaultReference(current, pendingConfirmation.targetObjectId, {
+            reason: buildComparisonDecisionReason(pendingConfirmation),
+            comparison: comparisonMetadata
+          });
+        }
+
+        const keyConclusionDraft = pendingConfirmation.keyConclusionDraft;
+        const result = createKeyConclusion(current, {
+          title: keyConclusionDraft.title,
+          body: keyConclusionDraft.body,
+          summary: keyConclusionDraft.summary,
+          sourceObjectIds: resolveComparisonWritebackSourceObjectIds(pendingConfirmation),
+          confidence: keyConclusionDraft.confidence,
+          note: pendingConfirmation.userReason.trim() || undefined,
+          position: {
+            x: current.canvas.view.x + 240,
+            y: current.canvas.view.y + 180
+          },
+          comparison: comparisonMetadata
+        });
+        return result.workspace;
+      });
+      setPendingConfirmation(null);
+      setAiDraft("");
+      return;
+    }
+
     if (pendingConfirmation.kind === "setDefaultReference") {
       setWorkspace((current) =>
         setDefaultReference(current, pendingConfirmation.targetObjectId, {
@@ -2359,6 +2515,132 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     []
   );
 
+  const handleUpdatePendingComparison = useCallback(
+    (patch: Pick<PendingComparisonConfirmation, "userReason">) => {
+      setPendingConfirmation((current) => {
+        if (!current || !isComparisonPendingConfirmation(current)) {
+          return current;
+        }
+
+        return {
+          ...current,
+          userReason: patch.userReason
+        };
+      });
+    },
+    []
+  );
+
+  const handleRequestComparisonAction = useCallback(
+    (analysisId: string, action: ComparisonActionKind, objectId?: string) => {
+      const analysis = workspace.ai.comparisonAnalyses?.[analysisId];
+      if (!analysis) {
+        return;
+      }
+
+      const summary = analysis.conclusionSummary;
+      const keyConclusionDraft = analysis.keyConclusionCandidate
+        ? {
+            title: analysis.keyConclusionCandidate.title,
+            body: analysis.keyConclusionCandidate.body,
+            summary: analysis.keyConclusionCandidate.summary,
+            confidence: analysis.keyConclusionCandidate.confidence
+          }
+        : undefined;
+
+      if (action === "createKeyConclusion") {
+        const keyConclusionCandidate = analysis.keyConclusionCandidate;
+        if (!keyConclusionDraft || !keyConclusionCandidate) {
+          return;
+        }
+
+        setAiOpen(true);
+        setTaskMode("chatAnalysis");
+        setPendingConfirmation({
+          kind: "compareCreateKeyConclusion",
+          targetTitle: keyConclusionDraft.title,
+          comparisonAnalysisId: analysis.id,
+          comparisonAssistantMessageId: analysis.assistantMessageId,
+          comparisonSourceObjectIds: [...analysis.sourceObjectIds],
+          keyConclusionSourceObjectIds: [...keyConclusionCandidate.sourceObjectIds],
+          summary,
+          userReason: "",
+          reasonRequired: false,
+          keyConclusionDraft
+        });
+        return;
+      }
+
+      if (!objectId) {
+        return;
+      }
+
+      const targetObject = workspace.objects[objectId];
+      if (!targetObject) {
+        return;
+      }
+
+      const base = {
+        targetObjectId: targetObject.id,
+        targetTitle: targetObject.title,
+        comparisonAnalysisId: analysis.id,
+        comparisonAssistantMessageId: analysis.assistantMessageId,
+        comparisonSourceObjectIds: [...analysis.sourceObjectIds],
+        summary,
+        userReason: "",
+        keyConclusionDraft
+      };
+
+      if (action === "setPrimary" && targetObject.type === "conceptDirection") {
+        setPendingConfirmation({ ...base, kind: "compareSetPrimary", reasonRequired: false });
+        return;
+      }
+
+      if (action === "setAlternative" && targetObject.type === "conceptDirection") {
+        setPendingConfirmation({ ...base, kind: "compareSetAlternative", reasonRequired: false });
+        return;
+      }
+
+      if (action === "eliminate" && targetObject.type === "conceptDirection") {
+        setPendingConfirmation({ ...base, kind: "compareEliminate", reasonRequired: true });
+        return;
+      }
+
+      if (action === "restoreAlternative" && targetObject.type === "conceptDirection") {
+        setPendingConfirmation({ ...base, kind: "compareRestoreAlternative", reasonRequired: true });
+        return;
+      }
+
+      if (action === "setDefaultReference" && targetObject.type === "image") {
+        setPendingConfirmation({ ...base, kind: "compareSetDefaultReference", reasonRequired: true });
+        return;
+      }
+
+      if (action === "clearDefaultReference" && targetObject.type === "image") {
+        setPendingConfirmation({ ...base, kind: "compareClearDefaultReference", reasonRequired: true });
+      }
+    },
+    [workspace]
+  );
+
+  function isComparisonPendingConfirmation(
+    confirmation: PendingAiConfirmation
+  ): confirmation is PendingComparisonConfirmation {
+    return (
+      confirmation.kind === "compareSetPrimary" ||
+      confirmation.kind === "compareSetAlternative" ||
+      confirmation.kind === "compareEliminate" ||
+      confirmation.kind === "compareRestoreAlternative" ||
+      confirmation.kind === "compareSetDefaultReference" ||
+      confirmation.kind === "compareClearDefaultReference" ||
+      confirmation.kind === "compareCreateKeyConclusion"
+    );
+  }
+
+  function buildComparisonDecisionReason(confirmation: PendingComparisonConfirmation): string {
+    return confirmation.userReason.trim() || "用户已明确确认此 Compare 决定。";
+  }
+
   const handleSetImageRole = useCallback(
     (role: ImageRole) => {
       const target = selectedObjects.find((object) => object.type === "image");
@@ -2456,6 +2738,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onSaveDesignDefinitionProposalDraft={handleSaveDesignDefinitionProposalDraft}
         onSaveConceptDirectionProposalDraft={handleSaveConceptDirectionProposalDraft}
         onUpdatePendingKeyConclusion={handleUpdatePendingKeyConclusion}
+        onUpdatePendingComparison={handleUpdatePendingComparison}
+        onRequestComparisonAction={handleRequestComparisonAction}
+        onLocateObject={focusObject}
         onConfirmPending={handleConfirmPending}
         onCancelPending={() => setPendingConfirmation(null)}
         onFailureRetry={() => setShowFailure(false)}

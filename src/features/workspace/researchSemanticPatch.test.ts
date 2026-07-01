@@ -24,7 +24,8 @@ describe("research success semantic patch", () => {
             taskMode: "researchOperation" as const
           }
         ],
-        conversationCheckpoints: []
+        conversationCheckpoints: [],
+        comparisonAnalyses: {}
       }
     };
     const created = createResearchOperation(workspaceWithMessage, {

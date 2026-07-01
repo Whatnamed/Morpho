@@ -290,6 +290,7 @@ export function buildMorphoSystemPrompt(request: AiRouteRequest): string {
     buildWebSearchCapabilityLine(request),
     buildConversationCheckpointInstruction(request),
     buildConversationSemanticPatchInstruction(request),
+    buildComparisonAnalysisInstruction(request),
     buildStructuredProposalInstruction(request)
   ]
     .filter(Boolean)
@@ -511,6 +512,10 @@ function buildConversationSemanticPatchInstruction(request: AiRouteRequest): str
 }
 
 function buildStructuredProposalInstruction(request: AiRouteRequest): string {
+  if (request.taskMode === "chatAnalysis" && request.workIntent === "comparison") {
+    return "";
+  }
+
   if (request.taskMode === "imageGeneration") {
     return [
       "本次你只负责形成受控图像生成计划，不直接生成图片，也不能声称已出图。",
@@ -648,6 +653,25 @@ function normalizeAttachment(value: AiRouteAttachment): AiRouteAttachment {
     representation: value.representation,
     status: value.status
   };
+}
+
+function buildComparisonAnalysisInstruction(request: AiRouteRequest): string {
+  if (request.taskMode !== "chatAnalysis" || request.workIntent !== "comparison") {
+    return "";
+  }
+
+  return [
+    "For a valid Compare turn, you may append one fenced JSON block named morphoComparisonAnalysis after the normal prose reply.",
+    "Compare is a local analysis only. Never auto-score, never auto-rank, never auto-decide, never change project state, and never treat Compare itself as project memory.",
+    "If the same reply includes morphoDesignDefinitionProposal or morphoConceptDirectionProposal, do not output morphoComparisonAnalysis.",
+    "Only compare the explicit selected objects provided in this request. Do not add extra sources, do not omit selected sources, and do not expand to hidden or missing objects.",
+    "If the selected sources do not share a clear comparison target and the user did not provide one, reply with at most one clarifying question in normal prose and do not output morphoComparisonAnalysis.",
+    "File objects can only be treated as readable evidence when a documentExtract is included in this request. Otherwise do not pretend the file was read.",
+    "Image objects only support true visual evidence when this request includes actual pixels or contact sheets. Otherwise mention the evidence limit explicitly and do not claim visual findings from the image itself.",
+    "JSON shape: { \"morphoComparisonAnalysis\": { \"comparisonGoal\": string, \"conclusionSummary\": string, \"objectComparisons\": [{ \"objectId\": string, \"title\": string, \"summary\": string, \"strengths\": string[], \"risks\": string[], \"evidence\": string[] }], \"recommendedQuestions\": string[], \"evidenceLimits\": string[], \"keyConclusionCandidate\"?: { \"title\": string, \"summary\": string, \"body\": string, \"sourceObjectIds\": string[], \"evidence\": [{ \"objectId\": string, \"label\": string, \"evidence\": string }], \"confidence\": \"supported\" | \"partial\" | \"needsVerification\", \"note\"?: string } } }",
+    "objectComparisons must cover every selected source exactly once.",
+    "keyConclusionCandidate is optional, must stay within the selected source ids, and is only a candidate draft. It never means a real keyConclusion was created."
+  ].join("\n");
 }
 
 function normalizeTaskContext(value: unknown): AiRouteTaskContext | undefined {

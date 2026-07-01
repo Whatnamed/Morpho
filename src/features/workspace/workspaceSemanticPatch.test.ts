@@ -285,7 +285,8 @@ describe("workspace conversation semantic patch helpers", () => {
             taskMode: "researchOperation" as const
           }
         ],
-        conversationCheckpoints: []
+        conversationCheckpoints: [],
+        comparisonAnalyses: {}
       }
     };
     const context = buildTaskContext(workspace, {

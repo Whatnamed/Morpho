@@ -119,7 +119,7 @@ export type ContinuityRecordGroup = {
 export type ProjectMemoryViews = Record<ProjectMemoryViewKey, ProjectMemoryView>;
 
 export type BuildProjectContinuityContextInput = {
-  taskKind: "research" | "general" | "directionPreview" | "visualDevelopment" | "designDefinition" | "conceptDirection";
+  taskKind: "research" | "general" | "directionPreview" | "visualDevelopment" | "designDefinition" | "conceptDirection" | "comparison";
   selectedObjectIds: MorphoObjectId[];
   directObjectIds?: MorphoObjectId[];
   directRevisionIds?: string[];
@@ -214,7 +214,8 @@ const CONTEXT_STAGE_RELEVANCE: Record<BuildProjectContinuityContextInput["taskKi
   conceptDirection: ["designDefinition", "research", "directionAndVisual", "startAndInput", "exploration", "deliveryPreparation"],
   directionPreview: ["directionAndVisual", "designDefinition", "research", "startAndInput", "exploration", "deliveryPreparation"],
   visualDevelopment: ["directionAndVisual", "designDefinition", "research", "startAndInput", "exploration", "deliveryPreparation"],
-  general: ["directionAndVisual", "designDefinition", "research", "startAndInput", "exploration", "deliveryPreparation"]
+  general: ["directionAndVisual", "designDefinition", "research", "startAndInput", "exploration", "deliveryPreparation"],
+  comparison: ["directionAndVisual", "designDefinition", "research", "startAndInput", "exploration", "deliveryPreparation"]
 };
 
 const CONTEXT_MEMORY_RELEVANCE: Record<BuildProjectContinuityContextInput["taskKind"], ProjectMemoryViewKey[]> = {
@@ -223,7 +224,8 @@ const CONTEXT_MEMORY_RELEVANCE: Record<BuildProjectContinuityContextInput["taskK
   conceptDirection: ["designDefinition", "preferencesAndAvoids", "decisionLog", "openQuestions", "projectOverview", "rejectedDirections", "deliveryPlan"],
   directionPreview: ["designDefinition", "preferencesAndAvoids", "decisionLog", "openQuestions", "projectOverview", "rejectedDirections", "deliveryPlan"],
   visualDevelopment: ["designDefinition", "preferencesAndAvoids", "decisionLog", "openQuestions", "projectOverview", "rejectedDirections", "deliveryPlan"],
-  general: ["projectOverview", "designDefinition", "decisionLog", "openQuestions", "preferencesAndAvoids", "rejectedDirections", "deliveryPlan"]
+  general: ["projectOverview", "designDefinition", "decisionLog", "openQuestions", "preferencesAndAvoids", "rejectedDirections", "deliveryPlan"],
+  comparison: ["projectOverview", "designDefinition", "decisionLog", "openQuestions", "preferencesAndAvoids", "rejectedDirections", "deliveryPlan"]
 };
 
 export function createInitialProjectContinuity(input: {
@@ -1290,7 +1292,8 @@ function isStageRelevantToTask(
     designDefinition: ["designDefinition", "research", "startAndInput"],
     conceptDirection: ["designDefinition", "directionAndVisual", "research"],
     directionPreview: ["directionAndVisual", "designDefinition", "research"],
-    visualDevelopment: ["directionAndVisual", "designDefinition"]
+    visualDevelopment: ["directionAndVisual", "designDefinition"],
+    comparison: ["directionAndVisual", "designDefinition", "research"]
   };
 
   return includedStages[taskKind].includes(stage);

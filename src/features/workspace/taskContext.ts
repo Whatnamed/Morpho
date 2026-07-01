@@ -11,7 +11,7 @@ import type {
 import { GRS_REFERENCE_IMAGE_LIMIT } from "../../domain/morpho/imageLimits";
 import { buildProjectContinuityContext, type ProjectContinuityContext } from "../../domain/morpho/projectContinuity";
 
-export type TaskContextKind = "research" | "general" | "directionPreview" | "visualDevelopment" | "designDefinition" | "conceptDirection";
+export type TaskContextKind = "research" | "general" | "directionPreview" | "visualDevelopment" | "designDefinition" | "conceptDirection" | "comparison";
 
 export type TaskContextDefaultReference =
   | { status: "included"; objectId: MorphoObjectId; reason: string }
@@ -49,7 +49,7 @@ export type TaskContextResult = {
 };
 
 export type ProviderTaskContext = {
-  kind: TaskContextKind;
+  kind: Exclude<TaskContextKind, "comparison">;
   objectIds: MorphoObjectId[];
   imageObjectIds: MorphoObjectId[];
   documentObjectIds: MorphoObjectId[];
@@ -151,6 +151,40 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
     }
   }
 
+  if (input.kind === "comparison") {
+    const budgeted = applyObjectBudget(workspace, objectIds, skipped);
+    const budgetedDocuments = applyDocumentBudget(documentObjectIds, skipped);
+    const budgetedImages = applyImageBudget(imageObjectIds, skipped);
+    const projectContinuity = buildProjectContinuityContext(workspace, {
+      taskKind: input.kind,
+      selectedObjectIds: selectedIds,
+      directObjectIds: budgeted.objectIds,
+      directRevisionIds: [],
+      directBranchIds: [],
+      directDecisionIds: collectDirectDecisionIds(workspace, budgeted.objectIds),
+      targetDirectionIds: input.targetDirectionIds,
+      includeHistorical: isHistoryOrientedDraft(input.draft)
+    });
+
+    return {
+      kind: input.kind,
+      objectIds: budgeted.objectIds,
+      semanticSummaries: budgeted.objectIds
+        .map((objectId) => summarizeObject(workspace.objects[objectId]))
+        .filter((summary): summary is TaskContextSummary => Boolean(summary)),
+      imageObjectIds: budgetedImages,
+      documentObjectIds: budgetedDocuments,
+      directionRevisions: [],
+      designDefinitionRevision: undefined,
+      visualBranches: [],
+      skipped,
+      truncated: budgeted.truncated || budgetedDocuments.length < documentObjectIds.length || budgetedImages.length < imageObjectIds.length,
+      defaultReference: { status: "notIncluded", reason: "Compare never auto-includes default reference." },
+      scopeNote: "Comparison Context only includes the explicit selected objects and does not auto-expand to related project state.",
+      projectContinuity
+    };
+  }
+
   if (input.kind === "visualDevelopment" || input.kind === "directionPreview" || input.kind === "conceptDirection") {
     addCurrentDesignDefinition(workspace, objectIds, skipped);
   }
@@ -222,6 +256,8 @@ export function taskContextKindFromAiTask(task: AiContextTask, visualIntent?: "d
   switch (task) {
     case "research":
       return "research";
+    case "comparison":
+      return "comparison";
     case "designDefinition":
       return "designDefinition";
     case "conceptDirection":
@@ -234,6 +270,10 @@ export function taskContextKindFromAiTask(task: AiContextTask, visualIntent?: "d
 }
 
 export function buildProviderTaskContext(context: TaskContextResult): ProviderTaskContext {
+  if (context.kind === "comparison") {
+    throw new Error("Comparison task context must not be converted into provider task context.");
+  }
+
   return {
     kind: context.kind,
     objectIds: context.objectIds,

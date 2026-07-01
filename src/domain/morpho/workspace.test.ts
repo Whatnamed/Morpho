@@ -18,6 +18,7 @@ import {
   removeImageFromVisualBranch,
   renameVisualBranch,
   restoreVisualBranch,
+  clearDefaultReference,
   setConceptDirectionStatus,
   setDefaultReference,
   setKeyConclusionState,
@@ -29,10 +30,10 @@ import { recordDesignDefinitionProposal } from "../operations/operations";
 import { hasPendingDesignDefinitionRevisionProposal, reconcileWorkspaceDerivedState } from "./derivedState";
 
 describe("Morpho workspace domain boundaries", () => {
-  it("creates a blank schema v10 project without depending on Nightrail seed object ids", () => {
+  it("creates a blank schema v11 project without depending on Nightrail seed object ids", () => {
     const workspace = createBlankWorkspace("project-empty-local");
 
-    expect(workspace.schemaVersion).toBe(10);
+    expect(workspace.schemaVersion).toBe(11);
     expect(workspace.project.id).toBe("project-empty-local");
     expect(workspace.objects["image-soft-rail-v2"]).toBeUndefined();
     expect(workspace.canvas.instances).toEqual([]);
@@ -41,6 +42,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(workspace.artifactProposals).toEqual({});
     expect(workspace.citationSnapshots).toEqual({});
     expect(workspace.ai.conversationCheckpoints).toEqual([]);
+    expect(workspace.ai.comparisonAnalyses).toEqual({});
     expect(workspace.projectContinuity.currentFocus.area).toBe("startAndInput");
     expect(workspace.projectContinuity.recordEntries).toEqual([]);
   });
@@ -573,6 +575,54 @@ describe("Morpho workspace domain boundaries", () => {
     expect(updated.decisionRecords.at(-1)?.kind).toBe("setDirectionStatus");
   });
 
+  it("allows compare-confirmed primary direction without copying AI summary into reason", () => {
+    const workspace = createInitialWorkspace();
+    const updated = setConceptDirectionStatus(
+      workspace,
+      "direction-support-island",
+      "primary",
+      "用户已明确确认此 Compare 决定。",
+      {
+        comparisonAnalysisId: "comparison-ai-assistant-1",
+        comparisonAssistantMessageId: "ai-assistant-1",
+        comparisonSourceObjectIds: ["direction-soft-rail", "direction-support-island"]
+      }
+    );
+
+    expect(updated.decisionRecords.at(-1)).toMatchObject({
+      kind: "setDirectionStatus",
+      reason: "用户已明确确认此 Compare 决定。",
+      comparison: {
+        comparisonAnalysisId: "comparison-ai-assistant-1",
+        comparisonAssistantMessageId: "ai-assistant-1",
+        comparisonSourceObjectIds: ["direction-soft-rail", "direction-support-island"]
+      }
+    });
+  });
+
+  it("clears default reference as a traceable decision with comparison metadata", () => {
+    const workspace = createInitialWorkspace();
+    const updated = clearDefaultReference(workspace, "image-soft-rail-v2", {
+      reason: "用户明确取消后续默认参考。",
+      comparison: {
+        comparisonAnalysisId: "comparison-ai-assistant-2",
+        comparisonAssistantMessageId: "ai-assistant-2",
+        comparisonSourceObjectIds: ["image-soft-rail-v2", "image-night-scenario"],
+        userReason: "默认参考需要切换。"
+      }
+    });
+
+    expect(updated.objects["image-soft-rail-v2"]).toMatchObject({ type: "image", isDefaultReference: false });
+    expect(updated.decisionRecords.at(-1)).toMatchObject({
+      kind: "setDefaultReference",
+      summary: expect.stringContaining("清除后续默认参考"),
+      comparison: {
+        comparisonAnalysisId: "comparison-ai-assistant-2",
+        userReason: "默认参考需要切换。"
+      }
+    });
+  });
+
   it("changes an image role as a traceable visual-development decision without replacing references", () => {
     const workspace = createInitialWorkspace();
     const source = workspace.objects["image-night-scenario"];
@@ -802,7 +852,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.status).toBe("ok");
     expect(legacyWorkspace).toEqual(before);
     if (result.status === "ok") {
-      expect(result.workspace.schemaVersion).toBe(10);
+      expect(result.workspace.schemaVersion).toBe(11);
       expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
       expect(result.workspace.objects["image-a"]?.visibility).toBe("active");
       expect(result.workspace.objects["image-a"]).toMatchObject({
@@ -830,7 +880,7 @@ describe("Morpho workspace domain boundaries", () => {
     }
   });
 
-  it("migrates v8 project continuity entries to v10 deterministic active entries without inventing semantic patches", () => {
+  it("migrates v8 project continuity entries to v11 deterministic active entries without inventing semantic patches", () => {
     const workspace = createInitialWorkspace();
     const v8Workspace = {
       ...workspace,
@@ -872,7 +922,7 @@ describe("Morpho workspace domain boundaries", () => {
       throw new Error(result.reason);
     }
     expect(result.didMigrate).toBe(true);
-    expect(result.workspace.schemaVersion).toBe(10);
+    expect(result.workspace.schemaVersion).toBe(11);
     expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
     expect(result.workspace.projectContinuity.schemaVersion).toBe(2);
     expect(result.workspace.projectContinuity.recordEntries).toEqual([
@@ -889,7 +939,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.workspace.decisionRecords).toEqual(workspace.decisionRecords);
   });
 
-  it("migrates v9 workspaces to v10 by adding empty conversation checkpoints without rewriting messages or project continuity", () => {
+  it("migrates v9 workspaces to v11 by adding empty conversation checkpoints without rewriting messages or project continuity", () => {
     const workspace = createInitialWorkspace();
     const v9Workspace = {
       ...workspace,
@@ -922,7 +972,7 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(10);
+    expect(result.workspace.schemaVersion).toBe(11);
     expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
     expect(result.workspace.ai.messages).toEqual(v9Workspace.ai.messages);
     expect(result.workspace.ai.messages[0]).not.toHaveProperty("conversationLaneKey");
