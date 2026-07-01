@@ -8,6 +8,10 @@ export function extractStructuredJsonBlock(text: string, marker: string): string
   return blocks.find((block) => block.body.includes(marker))?.body.trim();
 }
 
+export function containsStructuredBlock(text: string, marker: string): boolean {
+  return Boolean(extractStructuredJsonBlock(text, marker));
+}
+
 export function stripStructuredBlocksContainingMarkers(text: string, markers: readonly string[]): string {
   return text
     .replace(/```(?:json)?\s*([\s\S]*?)```/gi, (block, body: string) =>

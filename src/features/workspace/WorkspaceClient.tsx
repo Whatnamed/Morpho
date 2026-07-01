@@ -124,6 +124,7 @@ import {
 } from "@/domain/morpho/comparisonAnalysis";
 import type { ComparisonDecisionMetadata } from "@/domain/morpho/types";
 import { applyConversationSemanticPatchFromReply } from "./workspaceSemanticPatch";
+import { buildSameReplyStructuredWritePolicy, prepareAiSendBeforeProvider } from "./aiSendGuards";
 import { applyResearchProposalWithSemanticPatch } from "./researchSemanticPatch";
 import { planDirectionPreviewPlacements } from "./visualPreviewLayout";
 import {
@@ -1242,6 +1243,19 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
+    const preflight = prepareAiSendBeforeProvider({
+      workspace,
+      selectedObjectIds,
+      executionWorkIntent,
+      draft
+    });
+    if (preflight.status === "blocked") {
+      setAiOpen(preflight.aiOpen);
+      setContextWarning(preflight.contextWarning);
+      setAiDraft(preflight.aiDraft);
+      return;
+    }
+
     const task = resolveAiContextTask(executionTaskMode, executionWorkIntent);
     const context = buildTaskContext(workspace, {
       kind: taskContextKindFromAiTask(task),
@@ -1429,12 +1443,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         .filter(Boolean)
         .join("\n\n");
       const resolvedAssistantBody = assistantBody || "MiMo 没有返回可显示文本。";
-      const designDefinitionProposal = expectsDesignDefinitionProposal(executionWorkIntent)
-        ? parseDesignDefinitionProposalPayload(streamResult.text)
-        : null;
-      const conceptDirectionProposal = expectsConceptDirectionProposal(executionWorkIntent)
-        ? parseConceptDirectionProposalPayload(streamResult.text)
-        : null;
+      const structuredWritePolicy = buildSameReplyStructuredWritePolicy(streamResult.text, executionWorkIntent);
+      const designDefinitionProposal = parseDesignDefinitionProposalPayload(streamResult.text);
+      const conceptDirectionProposal = parseConceptDirectionProposalPayload(streamResult.text);
       const designDefinitionProposalId =
         designDefinitionProposal?.status === "ok"
           ? `proposal-definition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -1443,7 +1454,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         conceptDirectionProposal?.status === "ok"
           ? `proposal-direction-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
           : null;
-      const hasProposalInSameReply = Boolean(designDefinitionProposalId || conceptDirectionProposalId);
       const comparisonAuthorizationResult =
         executionWorkIntent === "comparison"
           ? buildComparisonAuthorization({
@@ -1460,7 +1470,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             })
           : null;
       const parsedComparisonAnalysis =
-        executionWorkIntent === "comparison" && !hasProposalInSameReply
+        structuredWritePolicy.allowComparisonAnalysis
           ? parseComparisonAnalysisPayload(streamResult.text)
           : null;
 
@@ -1547,7 +1557,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             }
           }
 
-          if (!hasProposalInSameReply) {
+          if (structuredWritePolicy.allowSemanticPatch) {
             const semanticPatchResult = applyConversationSemanticPatchFromReply({
               workspace: nextWorkspace,
               taskMode: executionTaskMode,
@@ -1558,7 +1568,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               assistantText: streamResult.text
             });
             nextWorkspace = semanticPatchResult.workspace;
-            const parsedConversationCheckpoint = conversationContext.checkpointRequested
+            const parsedConversationCheckpoint = structuredWritePolicy.allowConversationCheckpoint && conversationContext.checkpointRequested
               ? parseConversationCheckpointPayload(streamResult.text)
               : { status: "empty" as const, reason: "checkpoint not requested" };
             if (parsedConversationCheckpoint.status === "ok") {
@@ -1582,7 +1592,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 sourceMessageCount: checkpointSourceMessages.length,
                 assistantMessageId,
                 checkpoint: parsedConversationCheckpoint.checkpoint,
-                hasPendingProposal: Boolean(activeProposal) || hasProposalInSameReply,
+                hasPendingProposal: Boolean(activeProposal) || structuredWritePolicy.hasBlockingProposalBlock,
                 now
               });
               nextWorkspace = checkpointResult.workspace;

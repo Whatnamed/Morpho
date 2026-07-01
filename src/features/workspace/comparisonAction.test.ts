@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ComparisonAnalysis } from "../../domain/morpho/types";
+import type { ComparisonAnalysis, MorphoWorkspace } from "../../domain/morpho/types";
 import { createInitialWorkspace, hideObject } from "../../domain/morpho/workspace";
 import { validateComparisonActionTarget, validateComparisonKeyConclusionSources } from "./comparisonAction";
 
@@ -65,11 +65,11 @@ describe("comparison action target validation", () => {
     });
   });
 
-  it("requires pending key-conclusion sources to match the saved candidate exactly", () => {
+  it("blocks historical key-conclusion candidates backed only by direction summaries", () => {
     const workspace = withAnalysis(createInitialWorkspace(), makeAnalysis());
 
     expect(validateComparisonKeyConclusionSources(workspace, "comparison-a", ["direction-soft-rail"])).toMatchObject({
-      status: "ok"
+      status: "blocked"
     });
     expect(validateComparisonKeyConclusionSources(workspace, "comparison-a", ["image-soft-rail-v2"])).toMatchObject({
       status: "blocked"
@@ -77,6 +77,83 @@ describe("comparison action target validation", () => {
     expect(validateComparisonKeyConclusionSources(workspace, "comparison-a", ["direction-soft-rail", "image-soft-rail-v2"])).toMatchObject({
       status: "blocked"
     });
+  });
+
+  it("allows historical key-conclusion candidates backed by current text evidence sources", () => {
+    const workspace = withAnalysis(
+      withParsedFile(createInitialWorkspace(), "file-course-brief"),
+      makeTextEvidenceAnalysis({
+        sourceObjectIds: ["research-night-path", "insight-low-construction", "file-course-brief"],
+        evidenceObjectIds: ["research-night-path", "insight-low-construction", "file-course-brief"]
+      })
+    );
+
+    expect(
+      validateComparisonKeyConclusionSources(workspace, "comparison-text", [
+        "research-night-path",
+        "insight-low-construction",
+        "file-course-brief"
+      ])
+    ).toMatchObject({ status: "ok" });
+  });
+
+  it("blocks historical key-conclusion candidates with image, direction, unparsed file, or mismatched evidence ids", () => {
+    const base = createInitialWorkspace();
+    expect(
+      validateComparisonKeyConclusionSources(
+        withAnalysis(
+          base,
+          makeTextEvidenceAnalysis({
+            sourceObjectIds: ["research-night-path", "image-soft-rail-v2"],
+            evidenceObjectIds: ["research-night-path", "image-soft-rail-v2"]
+          })
+        ),
+        "comparison-text",
+        ["research-night-path", "image-soft-rail-v2"]
+      )
+    ).toMatchObject({ status: "blocked" });
+
+    expect(
+      validateComparisonKeyConclusionSources(
+        withAnalysis(
+          base,
+          makeTextEvidenceAnalysis({
+            sourceObjectIds: ["research-night-path", "direction-soft-rail"],
+            evidenceObjectIds: ["research-night-path", "direction-soft-rail"]
+          })
+        ),
+        "comparison-text",
+        ["research-night-path", "direction-soft-rail"]
+      )
+    ).toMatchObject({ status: "blocked" });
+
+    expect(
+      validateComparisonKeyConclusionSources(
+        withAnalysis(
+          base,
+          makeTextEvidenceAnalysis({
+            sourceObjectIds: ["research-night-path", "file-course-brief"],
+            evidenceObjectIds: ["research-night-path", "file-course-brief"]
+          })
+        ),
+        "comparison-text",
+        ["research-night-path", "file-course-brief"]
+      )
+    ).toMatchObject({ status: "blocked" });
+
+    expect(
+      validateComparisonKeyConclusionSources(
+        withAnalysis(
+          base,
+          makeTextEvidenceAnalysis({
+            sourceObjectIds: ["research-night-path", "insight-low-construction"],
+            evidenceObjectIds: ["research-night-path"]
+          })
+        ),
+        "comparison-text",
+        ["research-night-path", "insight-low-construction"]
+      )
+    ).toMatchObject({ status: "blocked" });
   });
 });
 
@@ -137,7 +214,61 @@ function makeAnalysis(): ComparisonAnalysis {
   };
 }
 
-function withAnalysis(workspace: ReturnType<typeof createInitialWorkspace>, analysis: ComparisonAnalysis) {
+function makeTextEvidenceAnalysis(input: {
+  sourceObjectIds: string[];
+  evidenceObjectIds: string[];
+}): ComparisonAnalysis {
+  return {
+    id: "comparison-text",
+    assistantMessageId: "assistant-text",
+    userMessageId: "user-text",
+    createdAt: "2026-07-01T10:00:00.000Z",
+    updatedAt: "2026-07-01T10:00:00.000Z",
+    sourceObjectIds: [...input.sourceObjectIds],
+    sourceRefs: input.sourceObjectIds.map((objectId) => ({
+      objectId,
+      objectType:
+        objectId === "file-course-brief"
+          ? "file"
+          : objectId.startsWith("insight-")
+            ? "keyConclusion"
+            : objectId.startsWith("image-")
+              ? "image"
+              : objectId.startsWith("direction-")
+                ? "conceptDirection"
+                : "research",
+      title: objectId,
+      summary: `${objectId} summary`,
+      availability: "active"
+    })),
+    comparisonGoal: "Compare text evidence",
+    conclusionSummary: "Summary",
+    objectComparisons: input.sourceObjectIds.map((objectId) => ({
+      objectId,
+      title: objectId,
+      summary: `${objectId} summary`,
+      strengths: [],
+      risks: [],
+      evidence: []
+    })),
+    recommendedQuestions: [],
+    evidenceLimits: [],
+    keyConclusionCandidate: {
+      title: "Candidate",
+      summary: "Candidate summary",
+      body: "Candidate body",
+      sourceObjectIds: [...input.sourceObjectIds],
+      evidence: input.evidenceObjectIds.map((objectId) => ({
+        objectId,
+        label: objectId,
+        evidence: `${objectId} evidence`
+      })),
+      confidence: "partial"
+    }
+  };
+}
+
+function withAnalysis(workspace: MorphoWorkspace, analysis: ComparisonAnalysis): MorphoWorkspace {
   return {
     ...workspace,
     ai: {
@@ -145,6 +276,39 @@ function withAnalysis(workspace: ReturnType<typeof createInitialWorkspace>, anal
       comparisonAnalyses: {
         ...workspace.ai.comparisonAnalyses,
         [analysis.id]: analysis
+      }
+    }
+  };
+}
+
+function withParsedFile(workspace: MorphoWorkspace, objectId: string): MorphoWorkspace {
+  const object = workspace.objects[objectId];
+  if (!object || object.type !== "file") {
+    return workspace;
+  }
+
+  return {
+    ...workspace,
+    objects: {
+      ...workspace.objects,
+      [objectId]: {
+        ...object,
+        parseStatus: "parsed",
+        extractedAssetId: "asset-document-extract-a",
+        extractedCharCount: 1200,
+        extractedPageCount: 4
+      }
+    },
+    assets: {
+      ...workspace.assets,
+      "asset-document-extract-a": {
+        id: "asset-document-extract-a",
+        fileName: "course-brief.extract.txt",
+        mimeType: "text/plain",
+        size: 1200,
+        createdAt: "2026-06-26T00:00:00.000Z",
+        storageKey: "extract:file-course-brief",
+        sourceType: "documentExtract"
       }
     }
   };
