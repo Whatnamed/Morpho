@@ -199,6 +199,40 @@ export type AiRouteComparisonBackgroundContext = {
   projectContinuity?: AiRouteProjectContinuityContext;
 };
 
+export type AiRouteDeliverySectionContext = {
+  deliveryObjectId: string;
+  sectionId: string;
+  sectionTitle: string;
+  sectionPurpose?: string;
+  existingNarrative?: string;
+  openGaps: Array<{ id: string; label: string }>;
+  references: Array<{
+    referenceId: string;
+    snapshot: {
+      sourceType: string;
+      title: string;
+      summary?: string;
+      body?: string;
+      bodyKind?: "complete" | "excerpt";
+      sourceFile?: {
+        fileObjectId: string;
+        title: string;
+        fileName?: string;
+        startOffset?: number;
+        endOffset?: number;
+      };
+      previewAsset?: {
+        assetId?: string;
+        alt: string;
+      };
+    };
+    editorialCaption?: string;
+    editorialNote?: string;
+    sourceState: "current" | "sourceHidden" | "sourceMissing" | "assetMissing" | "sourceUpdated";
+  }>;
+  truncated: boolean;
+};
+
 export type AiRouteRequest = {
   draft: string;
   task: string;
@@ -217,6 +251,7 @@ export type AiRouteRequest = {
   taskContext?: AiRouteTaskContext;
   comparisonContext?: AiRouteComparisonContext;
   comparisonBackgroundContext?: AiRouteComparisonBackgroundContext;
+  deliverySectionContext?: AiRouteDeliverySectionContext;
 };
 
 export type AiRouteValidationResult =
@@ -239,6 +274,7 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
   }
 
   const taskMode = isTaskMode(value.taskMode) ? value.taskMode : "chatAnalysis";
+  const workIntent = isWorkIntent(value.workIntent) ? value.workIntent : "discussion";
   const messages = Array.isArray(value.messages) ? value.messages.filter(isMessage).slice(-12) : [];
   const objectSummaries = Array.isArray(value.objectSummaries)
     ? value.objectSummaries.filter(isObjectSummary).slice(0, 16)
@@ -253,6 +289,7 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
   const taskContext = normalizeTaskContext(value.taskContext);
   const comparisonContext = normalizeComparisonContext(value.comparisonContext);
   const comparisonBackgroundContext = normalizeComparisonBackgroundContext(value.comparisonBackgroundContext);
+  const deliverySectionContext = normalizeDeliverySectionContext(value.deliverySectionContext);
   const conversationContext = normalizeConversationContext(value.conversationContext);
 
   return {
@@ -261,17 +298,18 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
       draft: value.draft,
       task: typeof value.task === "string" ? value.task : "general",
       taskMode,
-      workIntent: isWorkIntent(value.workIntent) ? value.workIntent : "discussion",
+      workIntent,
       messages,
       objectSummaries,
       attachments,
       documentExtracts,
       conversationContext,
-      webSearch: normalizeWebSearch(value.webSearch, taskMode),
+      webSearch: workIntent === "prepareDeliverySection" ? undefined : normalizeWebSearch(value.webSearch, taskMode),
       defaultReferenceStatus: typeof value.defaultReferenceStatus === "string" ? value.defaultReferenceStatus : undefined,
       taskContext,
       comparisonContext,
-      comparisonBackgroundContext
+      comparisonBackgroundContext,
+      deliverySectionContext
     }
   };
 }
@@ -322,6 +360,7 @@ export function buildMorphoSystemPrompt(request: AiRouteRequest): string {
     buildTaskContextPromptBlock(request),
     buildComparisonContextPromptBlock(request),
     buildComparisonBackgroundPromptBlock(request),
+    buildDeliverySectionContextPromptBlock(request),
     buildConversationContextPromptBlock(request),
     buildAttachmentCapabilityLine(request),
     buildDocumentCapabilityLine(request),
@@ -491,6 +530,49 @@ function buildComparisonBackgroundPromptBlock(request: AiRouteRequest): string {
   return lines.join("\n");
 }
 
+function buildDeliverySectionContextPromptBlock(request: AiRouteRequest): string {
+  const context = request.deliverySectionContext;
+  if (!context) {
+    return "";
+  }
+
+  const lines = [
+    "Delivery section preparation context:",
+    `deliveryObjectId: ${context.deliveryObjectId}`,
+    `sectionId: ${context.sectionId}`,
+    `sectionTitle: ${context.sectionTitle}`,
+    context.sectionPurpose ? `sectionPurpose: ${context.sectionPurpose}` : "",
+    context.existingNarrative ? `existingNarrative: ${context.existingNarrative}` : "",
+    `openGaps: ${context.openGaps.map((gap) => `${gap.id}:${gap.label}`).join("; ") || "none"}`,
+    `truncated: ${context.truncated ? "true" : "false"}`,
+    "Only these frozen delivery reference snapshots are available. They are local bounded snapshots, not live canvas objects and not complete source files.",
+    "Do not claim to have reread source files, do not use Blob URLs or Base64, and do not change delivery content unless the user applies the draft."
+  ];
+
+  for (const reference of context.references) {
+    lines.push(
+      [
+        `reference: ${reference.referenceId}`,
+        `sourceState: ${reference.sourceState}`,
+        `sourceType: ${reference.snapshot.sourceType}`,
+        `title: ${reference.snapshot.title}`,
+        reference.snapshot.summary ? `summary: ${reference.snapshot.summary}` : "",
+        reference.snapshot.body ? `snapshotBody(${reference.snapshot.bodyKind ?? "excerpt"}): ${reference.snapshot.body}` : "",
+        reference.snapshot.sourceFile
+          ? `sourceFileSnapshot: ${reference.snapshot.sourceFile.fileObjectId} / ${reference.snapshot.sourceFile.title} / range=${reference.snapshot.sourceFile.startOffset ?? "n/a"}-${reference.snapshot.sourceFile.endOffset ?? "n/a"}`
+          : "",
+        reference.snapshot.previewAsset?.assetId ? `previewAssetId: ${reference.snapshot.previewAsset.assetId}` : "",
+        reference.editorialCaption ? `editorialCaption: ${reference.editorialCaption}` : "",
+        reference.editorialNote ? `editorialNote: ${reference.editorialNote}` : ""
+      ]
+        .filter(Boolean)
+        .join("\n")
+    );
+  }
+
+  return lines.filter(Boolean).join("\n");
+}
+
 function appendProjectContinuityPromptLines(lines: string[], continuity: AiRouteProjectContinuityContext | undefined): void {
   if (!continuity) {
     return;
@@ -626,6 +708,17 @@ function buildConversationSemanticPatchInstruction(request: AiRouteRequest): str
 function buildStructuredProposalInstruction(request: AiRouteRequest): string {
   if (request.taskMode === "chatAnalysis" && request.workIntent === "comparison") {
     return "";
+  }
+
+  if (request.taskMode === "chatAnalysis" && request.workIntent === "prepareDeliverySection") {
+    return [
+      "For delivery section preparation, reply in normal prose first. You may append one fenced JSON block named morphoDeliverySectionDraft.",
+      "Use only deliverySectionContext.references frozen snapshots. Do not use live canvas object bodies, full source files, documentExtract full text, Blob URLs, Base64, web search, Compare, design definition proposal, or concept direction proposal.",
+      "The draft is not project fact, not project memory, and not applied until the user explicitly applies it.",
+      "If the same reply includes morphoDesignDefinitionProposal, morphoConceptDirectionProposal, or morphoComparisonAnalysis, do not output morphoDeliverySectionDraft.",
+      "JSON shape: { \"morphoDeliverySectionDraft\": { \"title\"?: string, \"narrative\": string, \"captions\": [{ \"referenceId\": string, \"caption\": string }], \"suggestedGaps\": [{ \"label\": string }] } }",
+      "captions may only target current section delivery reference IDs. suggestedGaps are only suggestions and must not imply they were written."
+    ].join("\n");
   }
 
   if (request.taskMode === "imageGeneration") {
@@ -862,6 +955,97 @@ function normalizeComparisonBackgroundContext(value: unknown): AiRouteComparison
   };
 
   return context.defaultReference || context.designDefinition || context.projectContinuity ? context : undefined;
+}
+
+function normalizeDeliverySectionContext(value: unknown): AiRouteDeliverySectionContext | undefined {
+  if (!isRecord(value) || typeof value.deliveryObjectId !== "string" || typeof value.sectionId !== "string") {
+    return undefined;
+  }
+
+  const context: AiRouteDeliverySectionContext = {
+    deliveryObjectId: trimString(value.deliveryObjectId, 120),
+    sectionId: trimString(value.sectionId, 120),
+    sectionTitle: stringField(value.sectionTitle, 160),
+    sectionPurpose: typeof value.sectionPurpose === "string" ? trimString(value.sectionPurpose, 300) : undefined,
+    existingNarrative: typeof value.existingNarrative === "string" ? trimString(value.existingNarrative, 1_200) : undefined,
+    openGaps: Array.isArray(value.openGaps)
+      ? value.openGaps.map(normalizeDeliveryGapContext).filter(isDefined).slice(0, 8)
+      : [],
+    references: Array.isArray(value.references)
+      ? value.references.map(normalizeDeliveryReferenceContext).filter(isDefined).slice(0, 24)
+      : [],
+    truncated: value.truncated === true
+  };
+
+  return context.references.length > 0 ? context : undefined;
+}
+
+function normalizeDeliveryGapContext(value: unknown): { id: string; label: string } | undefined {
+  if (!isRecord(value) || typeof value.id !== "string" || typeof value.label !== "string") {
+    return undefined;
+  }
+  return { id: trimString(value.id, 120), label: trimString(value.label, 240) };
+}
+
+function normalizeDeliveryReferenceContext(value: unknown): AiRouteDeliverySectionContext["references"][number] | undefined {
+  if (!isRecord(value) || typeof value.referenceId !== "string" || !isRecord(value.snapshot)) {
+    return undefined;
+  }
+  const sourceState = normalizeDeliverySourceState(value.sourceState);
+  if (!sourceState) {
+    return undefined;
+  }
+  return {
+    referenceId: trimString(value.referenceId, 120),
+    snapshot: {
+      sourceType: stringField(value.snapshot.sourceType, 80),
+      title: stringField(value.snapshot.title, 160),
+      summary: typeof value.snapshot.summary === "string" ? trimString(value.snapshot.summary, 500) : undefined,
+      body: typeof value.snapshot.body === "string" ? trimString(value.snapshot.body, 4_000) : undefined,
+      bodyKind: value.snapshot.bodyKind === "complete" || value.snapshot.bodyKind === "excerpt" ? value.snapshot.bodyKind : undefined,
+      sourceFile: normalizeDeliverySourceFile(value.snapshot.sourceFile),
+      previewAsset: normalizeDeliveryPreviewAsset(value.snapshot.previewAsset)
+    },
+    editorialCaption: typeof value.editorialCaption === "string" ? trimString(value.editorialCaption, 500) : undefined,
+    editorialNote: typeof value.editorialNote === "string" ? trimString(value.editorialNote, 500) : undefined,
+    sourceState
+  };
+}
+
+function normalizeDeliverySourceState(value: unknown): AiRouteDeliverySectionContext["references"][number]["sourceState"] | undefined {
+  if (
+    value === "current" ||
+    value === "sourceHidden" ||
+    value === "sourceMissing" ||
+    value === "assetMissing" ||
+    value === "sourceUpdated"
+  ) {
+    return value;
+  }
+  return undefined;
+}
+
+function normalizeDeliverySourceFile(value: unknown): AiRouteDeliverySectionContext["references"][number]["snapshot"]["sourceFile"] {
+  if (!isRecord(value) || typeof value.fileObjectId !== "string" || typeof value.title !== "string") {
+    return undefined;
+  }
+  return {
+    fileObjectId: trimString(value.fileObjectId, 120),
+    title: trimString(value.title, 160),
+    fileName: typeof value.fileName === "string" ? trimString(value.fileName, 160) : undefined,
+    startOffset: typeof value.startOffset === "number" ? numberValue(value.startOffset) : undefined,
+    endOffset: typeof value.endOffset === "number" ? numberValue(value.endOffset) : undefined
+  };
+}
+
+function normalizeDeliveryPreviewAsset(value: unknown): AiRouteDeliverySectionContext["references"][number]["snapshot"]["previewAsset"] {
+  if (!isRecord(value) || typeof value.alt !== "string") {
+    return undefined;
+  }
+  return {
+    assetId: typeof value.assetId === "string" ? trimString(value.assetId, 120) : undefined,
+    alt: trimString(value.alt, 240)
+  };
 }
 
 function normalizeConversationContext(value: unknown): AiRouteConversationContext | undefined {
@@ -1148,6 +1332,7 @@ function isWorkIntent(value: unknown): value is AiWorkIntent {
   return (
     value === "discussion" ||
     value === "comparison" ||
+    value === "prepareDeliverySection" ||
     value === "createDesignDefinition" ||
     value === "reviseDesignDefinition" ||
     value === "createConceptDirections" ||

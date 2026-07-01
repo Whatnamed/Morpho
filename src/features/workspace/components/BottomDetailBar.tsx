@@ -11,6 +11,7 @@ import {
   Info,
   ListChecks,
   MessageSquareText,
+  PackageOpen,
   PenLine,
   Sparkles,
   Target,
@@ -66,6 +67,7 @@ type BottomDetailBarProps = {
   onLocalEdit: () => void;
   onReferenceIntent: () => void;
   onOpenDocumentReader: (fileObjectId: string, initialLocation?: DocumentReaderInitialLocation | null) => void;
+  onOpenDeliveryPreparation: (deliveryObjectId?: string) => void;
   onHide: () => void;
   onDelete: () => void;
   onEliminateDirection: () => void;
@@ -253,6 +255,7 @@ export function BottomDetailBar({
   onLocalEdit,
   onReferenceIntent,
   onOpenDocumentReader,
+  onOpenDeliveryPreparation,
   onHide,
   onDelete,
   onEliminateDirection,
@@ -382,6 +385,13 @@ export function BottomDetailBar({
             >
               <BookOpen size={15} />
               查看原文定位
+            </button>
+          ) : null}
+
+          {primary.type === "delivery" ? (
+            <button className="detail-action brand" type="button" onClick={() => onOpenDeliveryPreparation(primary.id)}>
+              <PackageOpen size={15} />
+              打开交付准备
             </button>
           ) : null}
 

@@ -39,6 +39,8 @@ If the same assistant reply includes `morphoDesignDefinitionProposal` or `morpho
 
 Pending design/direction proposals are drafts, not stable project facts.
 
+M6 delivery section drafts are separate from Compare. `prepareDeliverySection` does not send `comparisonContext`, and a reply that includes `morphoComparisonAnalysis` blocks delivery draft creation. A delivery reference existing in a package does not make its source a Compare source; Compare sources remain explicit active selections only.
+
 ## Analysis Persistence
 
 Schema v11 stores saved analyses under `workspace.ai.comparisonAnalyses`. Assistant messages link to the saved analysis by `comparisonAnalysisId`.

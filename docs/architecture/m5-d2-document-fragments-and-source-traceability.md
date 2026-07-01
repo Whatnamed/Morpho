@@ -123,6 +123,12 @@ Hidden fragments are not eligible as new Compare or AI sources under the normal 
 
 The event records fragment ID, source file ID, start/end offsets, block IDs, and timestamp through typed source refs and deterministic summaries. It does not become a design definition, preference, key conclusion, decision, default reference, or stage-completion marker.
 
+## M6 Delivery Preparation Boundary
+
+A `documentFragment` can be explicitly added to a delivery section as a stable delivery reference. The delivery reference snapshot keeps the fragment title, summary, bounded body, source file title/name, extract asset ID, and character range.
+
+This does not authorize reading the whole source file, all sibling fragments, or the complete `documentExtract`. If the source file is hidden, missing, or points to a different/missing extract asset later, the delivery reference keeps its frozen fragment snapshot and shows the real source state instead of fabricating a source jump or silently refreshing.
+
 ## Tests
 
 Coverage includes:

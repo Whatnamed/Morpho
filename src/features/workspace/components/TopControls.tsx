@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, Download, Import, Search, SquareDashedMousePointer } from "lucide-react";
+import { Archive, Download, Import, PackageOpen, Search, SquareDashedMousePointer } from "lucide-react";
 import { useRef } from "react";
 
 type TopControlsProps = {
@@ -8,9 +8,10 @@ type TopControlsProps = {
   onImportFiles: (files: File[]) => void;
   onSearch: () => void;
   onFocusOverview: () => void;
+  onOpenDeliveryPreparation: () => void;
 };
 
-export function TopControls({ projectTitle, onImportFiles, onSearch, onFocusOverview }: TopControlsProps) {
+export function TopControls({ projectTitle, onImportFiles, onSearch, onFocusOverview, onOpenDeliveryPreparation }: TopControlsProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   return (
@@ -52,6 +53,10 @@ export function TopControls({ projectTitle, onImportFiles, onSearch, onFocusOver
         <button className="plain-button" type="button" onClick={() => fileInputRef.current?.click()}>
           <Import size={14} />
           导入
+        </button>
+        <button className="plain-button" type="button" onClick={onOpenDeliveryPreparation}>
+          <PackageOpen size={14} />
+          交付准备
         </button>
         <button className="plain-button" type="button">
           <Archive size={14} />

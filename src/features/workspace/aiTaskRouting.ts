@@ -37,6 +37,7 @@ const CREATE_PATTERN = /形成|创建|生成|提炼|draft/i;
 const CONCEPT_DIRECTION_PATTERN = /方向|概念方向|概念|方案|路线/i;
 const SPLIT_PATTERN = /拆分|split/i;
 const MERGE_PATTERN = /合并|merge/i;
+const DELIVERY_SECTION_DRAFT_PATTERN = /交付准备|交付说明|本节说明|章节说明|图注|待补内容|delivery/i;
 
 export function recommendAiTaskMode(draft: string, selectedObjectTypes: readonly string[]): AiTaskMode {
   const text = draft.trim();
@@ -103,6 +104,10 @@ export function recommendAiWorkIntent(input: RecommendAiWorkIntentInput): AiWork
     return "comparison";
   }
 
+  if (DELIVERY_SECTION_DRAFT_PATTERN.test(text)) {
+    return "prepareDeliverySection";
+  }
+
   if (DESIGN_DEFINITION_PATTERN.test(text)) {
     if (input.hasCurrentDesignDefinition) {
       return "reviseDesignDefinition";
@@ -146,7 +151,7 @@ export function getAvailableAiWorkIntents(input: AvailableAiWorkIntentInput): Ai
   }
 
   const directionCount = input.selectedObjects.filter((object) => object.type === "conceptDirection").length;
-  const intents: AiWorkIntent[] = ["discussion"];
+  const intents: AiWorkIntent[] = ["discussion", "prepareDeliverySection"];
 
   if (input.selectedObjects.length > 1) {
     intents.push("comparison");
@@ -181,6 +186,8 @@ export function resolveAiContextTask(taskMode: AiTaskMode, workIntent: AiWorkInt
   switch (workIntent) {
     case "comparison":
       return "comparison";
+    case "prepareDeliverySection":
+      return "deliveryPreparation";
     case "createDesignDefinition":
     case "reviseDesignDefinition":
       return "designDefinition";

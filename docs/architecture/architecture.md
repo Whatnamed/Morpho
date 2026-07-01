@@ -26,13 +26,14 @@ No database, authentication, cloud object storage, Supabase, multiplayer sync, e
 
 ## Data Model
 
-Structured workspace data is schema version `12`.
+Structured workspace data is schema version `13`.
 
 Current workspace state includes:
 
 - stable Morpho domain objects in `workspace.objects`;
 - binary or link metadata in `workspace.assets`;
 - stable delivery snapshots in `workspace.deliveryReferences`;
+- pending delivery section drafts in `workspace.deliverySectionDrafts`;
 - scoped semantic decisions in `workspace.decisionRecords`;
 - visual-only canvas instances in `workspace.canvas.instances`;
 - persisted workspace UI state in `workspace.ui`;
@@ -174,6 +175,16 @@ M5-D2 additions:
 - task context can include selected active fragments as bounded text sources with provenance and source availability. It does not auto-attach the whole source file or sibling fragments;
 - Compare can use selected active fragments as explicit text sources with evidence basis `documentFragment`; key-conclusion candidates may cite selected fragment IDs, not their source file IDs.
 
+M6 additions:
+
+- schema v13 upgrades the existing `delivery` object into the delivery preparation package with editable `sections`, package-level `references`, managed `gaps`, and pending `workspace.deliverySectionDrafts`;
+- legacy delivery references migrate into one deterministic `交付内容` section when needed, without inventing new packages, narratives, gaps, drafts, or AI messages;
+- delivery references are stable snapshots, not live source views. They store bounded title/summary/body/revision/file/asset metadata only and never store Blob URLs, Base64, source binaries, full source files, complete `documentExtract` text, or provider raw payloads;
+- source state is resolved as current, hidden, missing, asset missing, or source updated through deterministic fingerprint/revision comparison, not generic `updatedAt` checks;
+- refreshing a source-updated delivery reference is an explicit user action that updates only that reference snapshot, preserves editorial caption/note, and writes a normal decision plus delivery continuity event;
+- `prepareDeliverySection` sends only the current section delivery reference snapshots in `deliverySectionContext`, does not send web search, normal task context, Compare context, live source objects, full files, or full document extracts, and creates only a pending draft until the user applies it;
+- the floating delivery preparation panel supports package creation, section editing, explicit add-selected-object references, captions, gaps, stale-reference refresh, and draft apply/discard without becoming an export editor or slide layout engine.
+
 ## Local-First Persistence
 
 Project catalog and structured workspace JSON use localStorage:
@@ -226,6 +237,7 @@ Text chat:
 - For `chatAnalysis` and `researchOperation`, selected active image assets are read from IndexedDB and sent through an adaptive visual input pack. Small selections are sent as individual compressed images; larger selections are represented by one or more generated contact sheets so every selected image participates without a user-visible image count limit. The server sends the resulting images as OpenAI-compatible `image_url` content to the configured multimodal model.
 - For `chatAnalysis` and `researchOperation`, selected parsed file objects can send bounded local `documentExtract` text to MiMo. These extracts are identified as local object sources, not as network citations.
 - For `imageGeneration` planning only, MiMo can also receive selected active image pixels/contact sheets plus selected local `documentExtract` text when the current task context authorizes them. The route validation keeps those inputs for planning, but `imageGeneration` still never receives web search tools.
+- For `prepareDeliverySection`, MiMo receives only `deliverySectionContext` frozen snapshots for the current delivery section. Route validation drops web search, and the client does not send image attachments, local `documentExtract` text, normal task context, or Compare context.
 - Hidden images, unselected old images, default references, and whole-canvas screenshots are not sent by default.
 - When `MORPHO_MIMO_WEB_SEARCH_ENABLED=true`, `chatAnalysis` and `researchOperation` provide MiMo native `web_search` to the model. The model decides whether the current request needs external verification or source supplementation. `imageGeneration` never receives web search tools.
 - Citation snapshots are created only from provider citation/annotation fields. Morpho does not fabricate sources from normal assistant text.
@@ -258,6 +270,7 @@ AI boundary:
 - MiMo visual input is explicit and bounded by selected active images only. It is adaptively compressed or packed into contact sheets before upload, and never stored as Base64 in workspace/localStorage.
 - MiMo planning context for `imageGeneration` may be richer than GrsAI generation context, but GrsAI still receives only prompt, model settings, and generation references. Local document extracts never flow into `/api/ai/image`.
 - Local document extracts are bounded context inputs, are not stored in workspace JSON, and are never presented as provider citations.
+- Delivery section drafts are pending local drafts, not project facts or project memory. Applying a draft is the explicit write boundary for section narrative, listed captions, suggested gaps, decision record, and continuity event.
 - If image read/compression fails, the chat falls back to object metadata and user text and tells the user that pixels were not sent.
 
 ## Demo Project

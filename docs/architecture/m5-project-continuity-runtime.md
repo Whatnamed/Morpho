@@ -119,3 +119,11 @@ M5-D2 adds `documentFragmentCreated` as a deterministic continuity event. It rec
 The event stores lightweight traceability only: fragment object ID, source file ID, start/end offsets, block IDs, timestamp, and typed source refs. It does not copy the fragment body into project continuity or memory views.
 
 Creating a document fragment is not a current-focus change, Project Memory update, key conclusion, DecisionRecord, Compare analysis, operation, AI message, semantic patch, or conversation checkpoint. The fragment can become AI or Compare context later only through explicit selection and the normal task-context rules.
+
+## M6 Delivery Preparation Boundary
+
+M6 adds deterministic `deliveryPreparationChanged` continuity events for real delivery preparation writes such as package creation, section/gap changes, reference add/remove/refresh, and draft application.
+
+Opening or closing the delivery preparation panel, switching packages or sections, generating a pending section draft, and discarding a draft do not write continuity records or Current Focus. A pending `DeliverySectionDraft` is not Project Memory and does not enter memory views. Applying a draft is the explicit boundary that can write section narrative, listed captions, suggested gaps, a DecisionRecord, and a delivery continuity event.
+
+Delivery reference source refs remain lightweight. They point to delivery reference IDs and snapshots, not Blob URLs, Base64, full source files, full document extracts, or provider raw payloads.

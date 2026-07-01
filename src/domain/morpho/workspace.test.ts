@@ -30,10 +30,10 @@ import { recordDesignDefinitionProposal } from "../operations/operations";
 import { hasPendingDesignDefinitionRevisionProposal, reconcileWorkspaceDerivedState } from "./derivedState";
 
 describe("Morpho workspace domain boundaries", () => {
-  it("creates a blank schema v12 project without depending on Nightrail seed object ids", () => {
+  it("creates a blank schema v13 project without depending on Nightrail seed object ids", () => {
     const workspace = createBlankWorkspace("project-empty-local");
 
-    expect(workspace.schemaVersion).toBe(12);
+    expect(workspace.schemaVersion).toBe(13);
     expect(workspace.project.id).toBe("project-empty-local");
     expect(workspace.objects["image-soft-rail-v2"]).toBeUndefined();
     expect(workspace.canvas.instances).toEqual([]);
@@ -514,7 +514,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(deleted.workspace.deliveryReferences[created.deliveryReferenceId].snapshot.title).toBe(
       "连续支撑比单点扶手更符合真实动作路径"
     );
-    expect(deleted.workspace.deliveryReferences[created.deliveryReferenceId].snapshot.caption).toBe(
+    expect(deleted.workspace.deliveryReferences[created.deliveryReferenceId].editorial?.caption).toBe(
       "交付摘要：连续支持比单点扶手更符合真实动作路径。"
     );
   });
@@ -805,7 +805,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(imported.workspace.assets["asset-file-a"]?.sourceType).toBe("originalFile");
   });
 
-  it("migrates v1 workspace data to schema v10 without mutating the source object", () => {
+  it("migrates v1 workspace data to schema v13 without mutating the source object", () => {
     const legacyWorkspace = {
       schemaVersion: 1,
       project: {
@@ -852,7 +852,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.status).toBe("ok");
     expect(legacyWorkspace).toEqual(before);
     if (result.status === "ok") {
-      expect(result.workspace.schemaVersion).toBe(12);
+      expect(result.workspace.schemaVersion).toBe(13);
       expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
       expect(result.workspace.objects["image-a"]?.visibility).toBe("active");
       expect(result.workspace.objects["image-a"]).toMatchObject({
@@ -880,7 +880,7 @@ describe("Morpho workspace domain boundaries", () => {
     }
   });
 
-  it("migrates v8 project continuity entries to v12 deterministic active entries without inventing semantic patches", () => {
+  it("migrates v8 project continuity entries to v13 deterministic active entries without inventing semantic patches", () => {
     const workspace = createInitialWorkspace();
     const v8Workspace = {
       ...workspace,
@@ -922,7 +922,7 @@ describe("Morpho workspace domain boundaries", () => {
       throw new Error(result.reason);
     }
     expect(result.didMigrate).toBe(true);
-    expect(result.workspace.schemaVersion).toBe(12);
+    expect(result.workspace.schemaVersion).toBe(13);
     expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
     expect(result.workspace.projectContinuity.schemaVersion).toBe(2);
     expect(result.workspace.projectContinuity.recordEntries).toEqual([
@@ -939,7 +939,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.workspace.decisionRecords).toEqual(workspace.decisionRecords);
   });
 
-  it("migrates v11 workspaces to v12 without inventing document fragments or rewriting compare/checkpoint state", () => {
+  it("migrates v11 workspaces to v13 without inventing document fragments or rewriting compare/checkpoint state", () => {
     const workspace = createInitialWorkspace();
     const v11Workspace = {
       ...workspace,
@@ -993,6 +993,7 @@ describe("Morpho workspace domain boundaries", () => {
       }
     };
     const before = structuredClone(v11Workspace);
+    const documentFragmentCountBefore = Object.values(v11Workspace.objects).filter((object) => object.type === "documentFragment").length;
 
     const result = migrateWorkspaceToCurrentSchema(v11Workspace);
 
@@ -1001,8 +1002,10 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(12);
-    expect(Object.values(result.workspace.objects).some((object) => object.type === "documentFragment")).toBe(false);
+    expect(result.workspace.schemaVersion).toBe(13);
+    expect(Object.values(result.workspace.objects).filter((object) => object.type === "documentFragment")).toHaveLength(
+      documentFragmentCountBefore
+    );
     expect(result.workspace.ai.messages).toEqual(v11Workspace.ai.messages);
     expect(result.workspace.ai.conversationCheckpoints).toEqual(v11Workspace.ai.conversationCheckpoints);
     expect(result.workspace.ai.comparisonAnalyses).toEqual(v11Workspace.ai.comparisonAnalyses);
@@ -1015,7 +1018,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(second.didMigrate).toBe(false);
   });
 
-  it("migrates v9 workspaces to v12 by adding empty conversation checkpoints without rewriting messages or project continuity", () => {
+  it("migrates v9 workspaces to v13 by adding empty conversation checkpoints without rewriting messages or project continuity", () => {
     const workspace = createInitialWorkspace();
     const v9Workspace = {
       ...workspace,
@@ -1048,7 +1051,7 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(12);
+    expect(result.workspace.schemaVersion).toBe(13);
     expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
     expect(result.workspace.ai.messages).toEqual(v9Workspace.ai.messages);
     expect(result.workspace.ai.messages[0]).not.toHaveProperty("conversationLaneKey");

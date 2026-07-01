@@ -16,6 +16,7 @@ import {
 
 import type { CanvasInstance, MorphoObject, MorphoObjectType, MorphoWorkspace } from "../../../domain/morpho/types";
 import { hasPendingDesignDefinitionRevisionProposal } from "../../../domain/morpho/derivedState";
+import { deriveDeliveryPreparationSignals } from "../../../domain/morpho/deliveryPreparation";
 import { getObjectTypeLabel } from "../workspaceUi";
 
 export const MORPHO_SHAPE_TYPE = "morpho-object";
@@ -207,7 +208,21 @@ function getDetails(object: MorphoObject, workspace?: MorphoWorkspace): string[]
     case "imageCollection":
       return [object.summary, `成员：${object.memberObjectIds.length} 张`];
     case "delivery":
-      return [object.summary, ...object.gaps.map((gap) => gap.label)];
+      if (!workspace) {
+        return [object.summary];
+      }
+      const signals = deriveDeliveryPreparationSignals(workspace, object.id);
+      return [
+        `形式：${object.format === "board" ? "展板" : "演示文稿"}`,
+        `章节：${object.sections.length} · 引用：${object.references.length}`,
+        `开放待补：${object.gaps.filter((gap) => gap.status === "open").length}`,
+        `来源待复核：${
+          signals.sourceHiddenReferenceIds.length +
+          signals.sourceMissingReferenceIds.length +
+          signals.assetMissingReferenceIds.length +
+          signals.sourceUpdatedReferenceIds.length
+        }`
+      ];
     default:
       return [object.summary];
   }

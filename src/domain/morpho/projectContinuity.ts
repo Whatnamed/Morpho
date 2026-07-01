@@ -116,6 +116,23 @@ export type ProjectContinuityEvent =
       endOffset: number;
       blockIds: MorphoObjectId[];
       createdAt?: string;
+    }
+  | {
+      type: "deliveryPreparationChanged";
+      action:
+        | "created"
+        | "sectionChanged"
+        | "referenceAdded"
+        | "referenceRemoved"
+        | "referenceRefreshed"
+        | "draftApplied"
+        | "gapChanged";
+      deliveryObjectId: MorphoObjectId;
+      referenceIds?: string[];
+      sectionId?: string;
+      gapId?: string;
+      decisionId?: string;
+      createdAt?: string;
     };
 
 export type ContinuityRecordGroup = {
@@ -863,6 +880,18 @@ function createRecordEntry(
           isDefined
         )
       };
+    case "deliveryPreparationChanged":
+      return {
+        ...base,
+        stage: "deliveryPreparation",
+        category: event.action === "gapChanged" ? "openQuestion" : event.action === "created" ? "output" : "decision",
+        summary: deliveryEventSummary(workspace, event),
+        sourceRefs: [
+          createObjectRef(workspace, event.deliveryObjectId),
+          ...(event.referenceIds ?? []).map((referenceId) => createDeliveryReferenceRef(workspace, referenceId)),
+          event.decisionId ? createDecisionRef(workspace, event.decisionId) : undefined
+        ].filter(isDefined)
+      };
   }
 }
 
@@ -981,6 +1010,16 @@ function getEventDedupeKey(event: ProjectContinuityEvent): string {
       return `explorationRecorded:${stableIds(event.objectIds).join("+")}:${event.summary}`;
     case "documentFragmentCreated":
       return `documentFragmentCreated:${event.fragmentObjectId}:${event.fileObjectId}:${event.startOffset}-${event.endOffset}:${stableIds(event.blockIds).join("+")}`;
+    case "deliveryPreparationChanged":
+      return [
+        "deliveryPreparationChanged",
+        event.action,
+        event.deliveryObjectId,
+        event.sectionId ?? "no-section",
+        event.gapId ?? "no-gap",
+        stableIds(event.referenceIds ?? []).join("+") || "no-reference",
+        event.decisionId ?? "no-decision"
+      ].join(":");
   }
 }
 
@@ -997,6 +1036,8 @@ function focusAreaForEvent(event: ProjectContinuityEvent): ProjectFocusArea {
       return "exploration";
     case "documentFragmentCreated":
       return "research";
+    case "deliveryPreparationChanged":
+      return "deliveryPreparation";
     default:
       return "directionAndVisual";
   }
@@ -1013,6 +1054,43 @@ function focusSourceKindForEvent(event: ProjectContinuityEvent): CurrentProjectF
     default:
       return "userAction";
   }
+}
+
+function deliveryEventSummary(workspace: MorphoWorkspace, event: Extract<ProjectContinuityEvent, { type: "deliveryPreparationChanged" }>): string {
+  const title = workspace.objects[event.deliveryObjectId]?.title ?? event.deliveryObjectId;
+  switch (event.action) {
+    case "created":
+      return `已创建交付准备包「${title}」。`;
+    case "sectionChanged":
+      return `已更新交付准备包「${title}」的章节结构。`;
+    case "referenceAdded":
+      return `已向「${title}」加入 ${event.referenceIds?.length ?? 0} 项交付引用。`;
+    case "referenceRemoved":
+      return `已从「${title}」移除交付引用。`;
+    case "referenceRefreshed":
+      return `已将「${title}」中的交付引用更新为当前版本。`;
+    case "draftApplied":
+      return `已应用「${title}」的交付说明草案。`;
+    case "gapChanged":
+      return `已更新「${title}」的待补内容。`;
+  }
+}
+
+function createDeliveryReferenceRef(workspace: Pick<MorphoWorkspace, "deliveryReferences">, referenceId: string): ContinuitySourceRef | undefined {
+  const reference = workspace.deliveryReferences[referenceId];
+  if (!reference) {
+    return undefined;
+  }
+  return {
+    kind: "deliveryReference",
+    id: reference.id,
+    snapshot: {
+      title: reference.snapshot.title,
+      objectType: reference.snapshot.sourceType,
+      summarySnippet: truncateText(reference.snapshot.summary ?? reference.snapshot.body ?? reference.snapshot.title)
+    },
+    sourceAvailability: "active"
+  };
 }
 
 function getInvalidationReasons(workspace: MorphoWorkspace, entry: ContinuityRecordEntry): string[] {

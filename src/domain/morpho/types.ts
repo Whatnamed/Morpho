@@ -160,6 +160,7 @@ export type ProjectContinuityState = {
 export type AiWorkIntent =
   | "discussion"
   | "comparison"
+  | "prepareDeliverySection"
   | "createDesignDefinition"
   | "reviseDesignDefinition"
   | "createConceptDirections"
@@ -222,9 +223,26 @@ export type ConceptDirectionStatus = "pendingPreview" | "primary" | "alternative
 
 export type KeyConclusionState = "active" | "needsVerification" | "superseded" | "archived";
 
+export type DeliverySection = {
+  id: string;
+  title: string;
+  purpose?: string;
+  order: number;
+  referenceIds: DeliveryReferenceId[];
+  narrative?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type DeliveryGap = {
   id: string;
   label: string;
+  sectionId?: string;
+  status: "open" | "resolved";
+  origin: "manual" | "deliveryDraft";
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt?: string;
 };
 
 export type MorphoObjectBase = {
@@ -368,6 +386,7 @@ export type ConceptDirectionObject = MorphoObjectBase & {
 export type DeliveryObject = MorphoObjectBase & {
   type: "delivery";
   format: "board" | "presentation";
+  sections: DeliverySection[];
   gaps: DeliveryGap[];
   references: DeliveryReferenceId[];
 };
@@ -431,18 +450,65 @@ export type DeliveryReferenceSnapshot = {
   sourceType: MorphoObjectType;
   title: string;
   summary?: string;
-  caption?: string;
+  body?: string;
+  bodyKind?: "complete" | "excerpt";
+  sourceRevision?: {
+    revisionId: string;
+    revisionNumber: number;
+  };
+  sourceFile?: {
+    fileObjectId: MorphoObjectId;
+    title: string;
+    fileName?: string;
+    sourceExtractAssetId?: AssetId;
+    startOffset?: number;
+    endOffset?: number;
+  };
   previewAsset?: {
-    url?: string;
+    assetId?: AssetId;
     alt: string;
   };
 };
 
 export type DeliveryReference = {
   id: DeliveryReferenceId;
+  deliveryObjectId?: MorphoObjectId;
+  sectionId?: string;
+  order?: number;
   sourceObjectId?: MorphoObjectId;
   createdAt: string;
+  updatedAt?: string;
   snapshot: DeliveryReferenceSnapshot;
+  sourceFingerprint?: string;
+  sourceRevisionId?: string;
+  sourceRevisionNumber?: number;
+  sourceAssetId?: AssetId;
+  editorial?: {
+    caption?: string;
+    note?: string;
+  };
+};
+
+export type DeliverySectionDraft = {
+  id: string;
+  deliveryObjectId: MorphoObjectId;
+  sectionId: string;
+  userMessageId: string;
+  assistantMessageId: string;
+  referenceIds: DeliveryReferenceId[];
+  sourceFingerprints: Record<DeliveryReferenceId, string | undefined>;
+  title?: string;
+  narrative: string;
+  captions: Array<{
+    referenceId: DeliveryReferenceId;
+    caption: string;
+  }>;
+  suggestedGaps: Array<{
+    label: string;
+  }>;
+  status: "pending" | "applied" | "discarded";
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type DecisionKind =
@@ -455,7 +521,12 @@ export type DecisionKind =
   | "setImageRole"
   | "createDeliveryReference"
   | "replaceDeliveryReference"
+  | "refreshDeliveryReference"
   | "removeDeliveryReference"
+  | "createDeliveryPreparation"
+  | "updateDeliverySection"
+  | "applyDeliverySectionDraft"
+  | "setDeliveryGapStatus"
   | "deleteObject";
 
 export type ObjectSnapshot = {
@@ -640,7 +711,7 @@ export type ProjectWorkingState = {
 };
 
 export type MorphoWorkspace = {
-  schemaVersion: 12;
+  schemaVersion: 13;
   project: {
     id: string;
     title: string;
@@ -654,6 +725,7 @@ export type MorphoWorkspace = {
   assets: Record<AssetId, AssetRecord>;
   relations: MorphoRelation[];
   deliveryReferences: Record<DeliveryReferenceId, DeliveryReference>;
+  deliverySectionDrafts: Record<string, DeliverySectionDraft>;
   decisionRecords: DecisionRecord[];
   operations: Record<string, OperationRecord>;
   artifactProposals: Record<string, ArtifactProposal>;

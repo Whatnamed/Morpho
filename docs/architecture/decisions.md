@@ -503,3 +503,27 @@ Decision: selected active `documentFragment` objects can enter TaskContext and C
 Reason: a fragment is a user-extracted text source, not an implicit authorization to read the whole source file.
 
 Boundary: unselected fragments do not enter provider context. The source file and sibling fragments are not auto-attached. Fragment creation writes a deterministic continuity event but does not create Project Memory, a key conclusion, a DecisionRecord, an AI message, a checkpoint, or a Compare analysis.
+
+## 2026-07-02: Use Schema Version 13 For Delivery Preparation
+
+Decision: upgrade workspace data to `schemaVersion: 13` and extend the existing `delivery` object with editable sections, section-scoped references, managed gaps, and pending delivery section drafts.
+
+Reason: delivery preparation needs a closed loop from selected project material to stable section references, source-state review, confirmed narrative, captions, and explicit gaps without becoming final export or creating a parallel package model.
+
+Boundary: M6 does not add PPT/PDF/Figma export, final slide/page layout, archive packaging, cloud sync, collaboration, a mock route, or a second delivery-package abstraction. Canvas coordinates remain visual-only and never determine delivery inclusion or section order.
+
+## 2026-07-02: Keep Delivery References Stable And Explicitly Refreshable
+
+Decision: delivery references store stable bounded snapshots plus deterministic source fingerprint/revision/asset metadata, and stale references refresh only through explicit user action.
+
+Reason: delivery content must not silently change when a source image, conclusion, direction, document fragment, file, or asset changes after being added to delivery preparation.
+
+Boundary: snapshots do not store source binaries, Base64, Blob URLs, provider raw payloads, complete source files, original PDFs/PPTX, or complete document extracts. Refreshing a reference updates only that one reference snapshot and preserves editorial caption/note unless a future explicit overwrite action is designed.
+
+## 2026-07-02: Treat Delivery Section Drafts As Pending AI Drafts
+
+Decision: `prepareDeliverySection` uses only the current section's frozen delivery reference snapshots and may create a pending `DeliverySectionDraft`; applying the draft is the only write boundary for narrative, listed captions, suggested gaps, decision, and continuity.
+
+Reason: AI can help draft explanation text, but it must not silently turn model prose into delivery content, project memory, design definition, direction status, default reference, or Compare output.
+
+Boundary: the route drops web search for this intent. The client does not send live source object bodies, full source files, full document extracts, image pixels, Blob URLs, Base64, normal task context, or Compare context. Malformed blocks or same-reply design/direction/Compare proposals do not create a delivery draft.

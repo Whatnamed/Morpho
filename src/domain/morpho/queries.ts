@@ -46,7 +46,7 @@ export function searchWorkspace(workspace: MorphoWorkspace, query: string): Work
       kind: "deliveryReference",
       referenceId: reference.id,
       title: reference.snapshot.title,
-      summary: reference.snapshot.caption ?? reference.snapshot.summary ?? "交付引用快照",
+      summary: reference.editorial?.caption ?? reference.snapshot.summary ?? "交付引用快照",
       hidden: false
     }));
 
@@ -87,7 +87,7 @@ function matchesDeliveryReference(reference: DeliveryReference, normalizedQuery:
   return [
     reference.snapshot.title,
     reference.snapshot.summary ?? "",
-    reference.snapshot.caption ?? "",
+    reference.editorial?.caption ?? "",
     reference.snapshot.sourceType
   ]
     .join(" ")

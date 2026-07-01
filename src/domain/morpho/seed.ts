@@ -32,7 +32,7 @@ function withActiveVisibility(objects: Record<MorphoObjectId, SeedObject>): Reco
 }
 
 const baseWorkspace: MorphoWorkspace = {
-  schemaVersion: 12,
+  schemaVersion: 13,
   project: {
     id: "project-nightrail",
     title: "夜航 / Nightrail",
@@ -49,7 +49,12 @@ const baseWorkspace: MorphoWorkspace = {
       summary: "夜间居家安全与低施工改造方向的课程任务说明。",
       createdBy: "user",
       fileKind: "pdf",
-      sourceLabel: "用户导入"
+      sourceLabel: "用户导入",
+      assetId: "asset-course-brief",
+      fileName: "课程要求.pdf",
+      mimeType: "application/pdf",
+      size: 128000,
+      parseStatus: "unparsed"
     },
     "file-path-references": {
       id: "file-path-references",
@@ -59,6 +64,23 @@ const baseWorkspace: MorphoWorkspace = {
       createdBy: "user",
       fileKind: "imageSet",
       sourceLabel: "用户导入"
+    },
+    "fragment-course-goal": {
+      id: "fragment-course-goal",
+      type: "documentFragment",
+      title: "课程要求片段：低施工夜间路径",
+      summary: "课程要求中关于低施工、夜间起身路径和非医疗化表达的摘录。",
+      createdBy: "user",
+      body: "项目需围绕独居老人夜间起身到卫浴路径中的低施工辅助展开，重点关注连续识别、扶持与转身，不应呈现强医疗器械感。",
+      source: {
+        fileObjectId: "file-course-brief",
+        fileTitle: "课程要求.pdf",
+        fileName: "课程要求.pdf",
+        sourceExtractAssetId: "asset-course-brief-extract",
+        startOffset: 120,
+        endOffset: 178,
+        blockIds: ["block-course-goal"]
+      }
     },
     "research-night-path": {
       id: "research-night-path",
@@ -251,8 +273,76 @@ const baseWorkspace: MorphoWorkspace = {
       summary: "整理核心方案、主图、细节引用和图注，不承担最终排版。",
       createdBy: "user",
       format: "board",
+      sections: [
+        {
+          id: "section-delivery-board-a1-1",
+          title: "项目背景与问题",
+          order: 0,
+          referenceIds: [],
+          createdAt: NOW,
+          updatedAt: NOW
+        },
+        {
+          id: "section-delivery-board-a1-2",
+          title: "调研与关键洞察",
+          order: 1,
+          referenceIds: [],
+          createdAt: NOW,
+          updatedAt: NOW
+        },
+        {
+          id: "section-delivery-board-a1-3",
+          title: "设计定义",
+          order: 2,
+          referenceIds: [],
+          createdAt: NOW,
+          updatedAt: NOW
+        },
+        {
+          id: "section-delivery-board-a1-4",
+          title: "方向发展",
+          order: 3,
+          referenceIds: [],
+          createdAt: NOW,
+          updatedAt: NOW
+        },
+        {
+          id: "section-delivery-board-a1-5",
+          title: "方案展示",
+          order: 4,
+          referenceIds: ["delivery-ref-board-main", "delivery-ref-board-detail"],
+          createdAt: NOW,
+          updatedAt: NOW
+        },
+        {
+          id: "section-delivery-board-a1-6",
+          title: "关键细节与说明",
+          order: 5,
+          referenceIds: [],
+          createdAt: NOW,
+          updatedAt: NOW
+        },
+        {
+          id: "section-delivery-board-a1-7",
+          title: "待补内容",
+          order: 6,
+          referenceIds: [],
+          createdAt: NOW,
+          updatedAt: NOW
+        }
+      ],
       references: ["delivery-ref-board-main", "delivery-ref-board-detail"],
-      gaps: [{ id: "gap-install-diagram", label: "待补：安装逻辑示意" }]
+      gaps: [
+        {
+          id: "gap-install-diagram",
+          label: "待补：安装逻辑示意",
+          sectionId: "section-delivery-board-a1-7",
+          status: "open",
+          origin: "manual",
+          createdAt: NOW,
+          updatedAt: NOW
+        }
+      ]
     },
     "delivery-ppt-six": {
       id: "delivery-ppt-six",
@@ -261,11 +351,90 @@ const baseWorkspace: MorphoWorkspace = {
       summary: "准备页面主题与素材清单，后续带到外部工具精排。",
       createdBy: "user",
       format: "presentation",
+      sections: [
+        {
+          id: "section-delivery-ppt-six-1",
+          title: "项目起点",
+          order: 0,
+          referenceIds: [],
+          createdAt: NOW,
+          updatedAt: NOW
+        },
+        {
+          id: "section-delivery-ppt-six-2",
+          title: "调研与洞察",
+          order: 1,
+          referenceIds: [],
+          createdAt: NOW,
+          updatedAt: NOW
+        },
+        {
+          id: "section-delivery-ppt-six-3",
+          title: "设计定义",
+          order: 2,
+          referenceIds: [],
+          createdAt: NOW,
+          updatedAt: NOW
+        },
+        {
+          id: "section-delivery-ppt-six-4",
+          title: "方向发展",
+          order: 3,
+          referenceIds: [],
+          createdAt: NOW,
+          updatedAt: NOW
+        },
+        {
+          id: "section-delivery-ppt-six-5",
+          title: "方案展示",
+          order: 4,
+          referenceIds: ["delivery-ref-ppt-main", "delivery-ref-ppt-scenario"],
+          createdAt: NOW,
+          updatedAt: NOW
+        },
+        {
+          id: "section-delivery-ppt-six-6",
+          title: "结论与下一步",
+          order: 5,
+          referenceIds: [],
+          createdAt: NOW,
+          updatedAt: NOW
+        }
+      ],
       references: ["delivery-ref-ppt-main", "delivery-ref-ppt-scenario"],
-      gaps: [{ id: "gap-night-scene", label: "待补：夜间使用场景" }]
+      gaps: [
+        {
+          id: "gap-night-scene",
+          label: "待补：夜间使用场景",
+          sectionId: "section-delivery-ppt-six-6",
+          status: "open",
+          origin: "manual",
+          createdAt: NOW,
+          updatedAt: NOW
+        }
+      ]
     }
   }),
-  assets: {},
+  assets: {
+    "asset-course-brief": {
+      id: "asset-course-brief",
+      fileName: "课程要求.pdf",
+      mimeType: "application/pdf",
+      size: 128000,
+      createdAt: NOW,
+      storageKey: "seed:course-brief",
+      sourceType: "originalFile"
+    },
+    "asset-course-brief-extract": {
+      id: "asset-course-brief-extract",
+      fileName: "课程要求.txt",
+      mimeType: "text/plain",
+      size: 6400,
+      createdAt: NOW,
+      storageKey: "seed:course-brief-extract",
+      sourceType: "documentExtract"
+    }
+  },
   relations: [
     {
       id: "rel-research-course",
@@ -369,61 +538,90 @@ const baseWorkspace: MorphoWorkspace = {
   deliveryReferences: {
     "delivery-ref-board-main": {
       id: "delivery-ref-board-main",
+      deliveryObjectId: "delivery-board-a1",
+      sectionId: "section-delivery-board-a1-5",
+      order: 0,
       sourceObjectId: "image-soft-rail-v2",
       createdAt: NOW,
+      updatedAt: NOW,
       snapshot: {
         sourceType: "image",
         title: "柔光轨道 v2",
         summary: "当前主方向的核心产品图，作为后续相关生成的默认一致性基线。",
-        caption: "主图作为 A1 展板核心方案图。",
         previewAsset: {
           alt: "柔光轨道 v2 的交付引用快照"
         }
+      },
+      sourceFingerprint: "{\"seed\":\"image-soft-rail-v2\"}",
+      editorial: {
+        caption: "主图作为 A1 展板核心方案图。"
       }
     },
     "delivery-ref-board-detail": {
       id: "delivery-ref-board-detail",
+      deliveryObjectId: "delivery-board-a1",
+      sectionId: "section-delivery-board-a1-5",
+      order: 1,
       sourceObjectId: "image-rail-detail",
       createdAt: NOW,
+      updatedAt: NOW,
       snapshot: {
         sourceType: "image",
         title: "转角连接与触感截面",
         summary: "围绕柔光轨道 v2 衍生的细节图。",
-        caption: "说明转角连接和触感截面。",
         previewAsset: {
           alt: "转角连接与触感截面的交付引用快照"
         }
+      },
+      sourceFingerprint: "{\"seed\":\"image-rail-detail\"}",
+      editorial: {
+        caption: "说明转角连接和触感截面。"
       }
     },
     "delivery-ref-ppt-main": {
       id: "delivery-ref-ppt-main",
+      deliveryObjectId: "delivery-ppt-six",
+      sectionId: "section-delivery-ppt-six-5",
+      order: 0,
       sourceObjectId: "image-soft-rail-v2",
       createdAt: NOW,
+      updatedAt: NOW,
       snapshot: {
         sourceType: "image",
         title: "柔光轨道 v2",
         summary: "当前主方向的核心产品图，作为后续相关生成的默认一致性基线。",
-        caption: "汇报 PPT 的核心产品图。",
         previewAsset: {
           alt: "柔光轨道 v2 的 PPT 引用快照"
         }
+      },
+      sourceFingerprint: "{\"seed\":\"image-soft-rail-v2\"}",
+      editorial: {
+        caption: "汇报 PPT 的核心产品图。"
       }
     },
     "delivery-ref-ppt-scenario": {
       id: "delivery-ref-ppt-scenario",
+      deliveryObjectId: "delivery-ppt-six",
+      sectionId: "section-delivery-ppt-six-5",
+      order: 1,
       sourceObjectId: "image-night-scenario",
       createdAt: NOW,
+      updatedAt: NOW,
       snapshot: {
         sourceType: "image",
         title: "夜间使用场景",
         summary: "老人从卧室走向卫浴时的低位柔光路径表达。",
-        caption: "夜间路径中的使用情境。",
         previewAsset: {
           alt: "夜间使用场景的 PPT 引用快照"
         }
+      },
+      sourceFingerprint: "{\"seed\":\"image-night-scenario\"}",
+      editorial: {
+        caption: "夜间路径中的使用情境。"
       }
     }
   },
+  deliverySectionDrafts: {},
   decisionRecords: [
     {
       id: "decision-default-reference-1",

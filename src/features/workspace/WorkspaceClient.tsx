@@ -8,6 +8,7 @@ import type {
   AiWorkIntent,
   AssetRecord,
   ContinuityManualState,
+  DeliveryObject,
   ImageRole,
   MorphoObject
 } from "@/domain/morpho/types";
@@ -18,6 +19,27 @@ import { traceDesignChain, type DesignTraceResult } from "@/domain/morpho/design
 import { createGeneratedImageFromAsset } from "@/domain/morpho/generation";
 import { createDocumentExtractFile, parseDocumentFile, shouldAttemptDocumentParse } from "@/domain/morpho/documentParsing";
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "@/domain/morpho/imports";
+import {
+  addDeliveryGap,
+  addObjectsToDeliverySection,
+  applyDeliverySectionDraft,
+  createDeliveryPreparation,
+  createDeliverySectionDraft,
+  discardDeliverySectionDraft,
+  moveDeliveryReference,
+  moveDeliverySection,
+  refreshDeliveryReferenceSnapshot,
+  removeDeliveryGap,
+  removeDeliveryReference,
+  removeDeliverySection,
+  setDeliveryGapStatus,
+  updateDeliveryReferenceEditorial,
+  updateDeliverySection
+} from "@/domain/morpho/deliveryPreparation";
+import {
+  parseDeliverySectionDraftPayload,
+  validateDeliverySectionDraftPayload
+} from "@/domain/morpho/deliverySectionDraftBlock";
 import {
   applyConceptDirectionProposal,
   applyDesignDefinitionProposal,
@@ -77,12 +99,14 @@ import type { ProviderCitation } from "@/server/ai/types";
 import { AiConversationPanel } from "./components/AiConversationPanel";
 import type { PendingAiConfirmation, PendingComparisonConfirmation } from "./components/AiConversationPanel";
 import { BottomDetailBar } from "./components/BottomDetailBar";
+import { DeliveryPreparationPanel } from "./components/DeliveryPreparationPanel";
 import { DocumentReaderPanel, type DocumentReaderExtractFragmentResult } from "./components/DocumentReaderPanel";
 import { LeftRail, type DrawerMode } from "./components/LeftRail";
 import { OverlayDrawers } from "./components/OverlayDrawers";
 import { TopControls } from "./components/TopControls";
 import { usePersistentWorkspace } from "./usePersistentWorkspace";
 import { compactObjectList, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
+import { buildDeliverySectionContext, getDeliveryObjects } from "./deliveryPreparationUi";
 import { indexedDbBlobStore, getAssetObjectUrl } from "@/infrastructure/assets/indexedDbAssetStore";
 import { readImageBlobDimensions, saveBlobAsLocalAsset } from "@/infrastructure/assets/localAssetWorkflow";
 import {
@@ -215,6 +239,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   );
   const [directionPreviewCount, setDirectionPreviewCount] = useState<1 | 2 | 4 | 6>(2);
   const [imageGenerationAspectMode, setImageGenerationAspectMode] = useState<"auto" | "manual">("auto");
+  const [deliveryPanelOpen, setDeliveryPanelOpen] = useState(false);
+  const [activeDeliveryObjectId, setActiveDeliveryObjectId] = useState<string | null>(null);
+  const [pendingDeliveryDraftTarget, setPendingDeliveryDraftTarget] = useState<{ deliveryObjectId: string; sectionId: string } | null>(null);
   const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
   const assetUrlsRef = useRef<Record<string, string>>({});
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -285,6 +312,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       .filter((proposal) => proposal.status === "pending")
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
   }, [activeProposalId, workspace.artifactProposals]);
+  const deliveryObjects = useMemo(() => getDeliveryObjects(workspace), [workspace]);
   const isImageTaskMode = taskMode === "imageGeneration";
   const imageGenerationModelOptions = useMemo(() => getImageGenerationModelOptions(), []);
   const inferredImageAspectRatio = useMemo(
@@ -305,6 +333,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   useEffect(() => {
     setWorkIntent(workspace.ui.workIntent);
   }, [workspace.ui.workIntent]);
+
+  useEffect(() => {
+    if (!activeDeliveryObjectId && deliveryObjects[0]) {
+      setActiveDeliveryObjectId(deliveryObjects[0].id);
+      return;
+    }
+    if (activeDeliveryObjectId && !deliveryObjects.some((delivery) => delivery.id === activeDeliveryObjectId)) {
+      setActiveDeliveryObjectId(deliveryObjects[0]?.id ?? null);
+    }
+  }, [activeDeliveryObjectId, deliveryObjects]);
 
   useEffect(() => {
     const persistedSelection = workspace.ui.lastSelectionIds;
@@ -1295,6 +1333,19 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       draft,
       selectedObjectIds
     });
+    const deliveryDraftTarget = executionWorkIntent === "prepareDeliverySection" ? pendingDeliveryDraftTarget : null;
+    const deliveryCandidate = deliveryDraftTarget ? workspace.objects[deliveryDraftTarget.deliveryObjectId] : undefined;
+    const deliveryObject: DeliveryObject | undefined = deliveryCandidate?.type === "delivery" ? deliveryCandidate : undefined;
+    const deliverySectionContext =
+      deliveryObject && deliveryDraftTarget
+        ? buildDeliverySectionContext(workspace, deliveryObject, deliveryDraftTarget.sectionId)
+        : undefined;
+    if (executionWorkIntent === "prepareDeliverySection" && !deliverySectionContext) {
+      setAiDraft(draft);
+      setContextWarning("请先选择一个至少包含一项交付引用的章节，再生成本节说明草稿。");
+      setPendingDeliveryDraftTarget(null);
+      return;
+    }
     const shouldCreateSemanticOperation =
       expectsDesignDefinitionProposal(executionWorkIntent) || expectsConceptDirectionProposal(executionWorkIntent);
     const semanticOperationGate = shouldCreateSemanticOperation ? canStartOperation(workspace) : { status: "ok" as const };
@@ -1339,7 +1390,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     });
     const objectSummaries = makeTaskObjectSummaries(context.semanticSummaries);
     const controller = new AbortController();
-    const webSearch = buildWebSearchOptions({ draft, taskMode: executionTaskMode });
+    const webSearch =
+      executionWorkIntent === "prepareDeliverySection" ? undefined : buildWebSearchOptions({ draft, taskMode: executionTaskMode });
     abortControllerRef.current = controller;
     setIsAiStreaming(true);
     setAiDraft("");
@@ -1385,19 +1437,25 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     });
 
     try {
-      const attachmentResult = shouldAttachImagesForMiMo({
-        draft,
-        taskMode: executionTaskMode,
-        selectedObjects
-      })
-        ? await collectMiMoImageAttachments(workspace, context.imageObjectIds, controller.signal)
-        : { attachments: [], skippedObjectIds: [], entries: [], warning: undefined };
-      const documentResult = await collectDocumentExtractsForAi(
-        workspace,
-        context.documentObjectIds,
-        indexedDbBlobStore,
-        controller.signal
-      );
+      const attachmentResult =
+        executionWorkIntent === "prepareDeliverySection"
+          ? { attachments: [], skippedObjectIds: [], entries: [], warning: undefined }
+          : shouldAttachImagesForMiMo({
+                draft,
+                taskMode: executionTaskMode,
+                selectedObjects
+              })
+            ? await collectMiMoImageAttachments(workspace, context.imageObjectIds, controller.signal)
+            : { attachments: [], skippedObjectIds: [], entries: [], warning: undefined };
+      const documentResult =
+        executionWorkIntent === "prepareDeliverySection"
+          ? { extracts: [], warning: undefined }
+          : await collectDocumentExtractsForAi(
+              workspace,
+              context.documentObjectIds,
+              indexedDbBlobStore,
+              controller.signal
+            );
       const warnings = [
         context.skipped.length > 0 ? `${context.skipped.length} 个对象未进入本次 Context。` : "",
         attachmentResult.warning,
@@ -1430,7 +1488,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           },
           webSearch,
           defaultReferenceStatus: summarizeTaskDefaultReferenceStatus(context.defaultReference),
-          taskContext: context.kind === "comparison" ? undefined : buildProviderTaskContext(context),
+          taskContext:
+            context.kind === "comparison" || executionWorkIntent === "prepareDeliverySection"
+              ? undefined
+              : buildProviderTaskContext(context),
           comparisonContext:
             context.kind === "comparison"
               ? {
@@ -1456,7 +1517,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 }
               : undefined,
           comparisonBackgroundContext:
-            context.kind === "comparison" ? buildProviderComparisonBackgroundContext(context) : undefined
+            context.kind === "comparison" ? buildProviderComparisonBackgroundContext(context) : undefined,
+          deliverySectionContext
         }),
         signal: controller.signal
       });
@@ -1480,6 +1542,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       const structuredWritePolicy = buildSameReplyStructuredWritePolicy(streamResult.text, executionWorkIntent);
       const designDefinitionProposal = parseDesignDefinitionProposalPayload(streamResult.text);
       const conceptDirectionProposal = parseConceptDirectionProposalPayload(streamResult.text);
+      const deliverySectionDraft =
+        executionWorkIntent === "prepareDeliverySection" && deliverySectionContext
+          ? parseDeliverySectionDraftPayload(streamResult.text)
+          : null;
       const designDefinitionProposalId =
         designDefinitionProposal?.status === "ok"
           ? `proposal-definition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -1520,7 +1586,37 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           });
         }
 
-        if (designDefinitionProposal?.status === "ok" && designDefinitionProposalId) {
+        if (deliverySectionDraft?.status === "ok" && deliverySectionContext) {
+          const validation = validateDeliverySectionDraftPayload(deliverySectionDraft.draft, {
+            deliveryObjectId: deliverySectionContext.deliveryObjectId,
+            sectionId: deliverySectionContext.sectionId,
+            referenceIds: deliverySectionContext.references.map((reference) => reference.referenceId)
+          });
+          if (validation.status === "ok") {
+            const createdDraft = createDeliverySectionDraft(nextWorkspace, {
+              deliveryObjectId: deliverySectionContext.deliveryObjectId,
+              sectionId: deliverySectionContext.sectionId,
+              userMessageId,
+              assistantMessageId,
+              title: deliverySectionDraft.draft.title,
+              narrative: deliverySectionDraft.draft.narrative,
+              captions: deliverySectionDraft.draft.captions,
+              suggestedGaps: deliverySectionDraft.draft.suggestedGaps,
+              now
+            });
+            nextWorkspace =
+              createdDraft.status === "updated"
+                ? updateAiMessage(
+                    createdDraft.workspace,
+                    assistantMessageId,
+                    `${resolvedAssistantBody}\n\n已生成一份待确认的交付说明草稿。应用前不会写入章节、图注或待补内容。`,
+                    "done"
+                  )
+                : updateAiMessage(nextWorkspace, assistantMessageId, `${resolvedAssistantBody}\n\n${createdDraft.reason}`, "failed");
+          } else {
+            nextWorkspace = updateAiMessage(nextWorkspace, assistantMessageId, `${resolvedAssistantBody}\n\n${validation.reason}`, "failed");
+          }
+        } else if (designDefinitionProposal?.status === "ok" && designDefinitionProposalId) {
           const currentDefinitionId = nextWorkspace.workingState.currentDesignDefinitionId;
           const currentDefinitionObject = currentDefinitionId ? nextWorkspace.objects[currentDefinitionId] : undefined;
           const currentDefinition =
@@ -1592,7 +1688,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             }
           }
 
-          if (structuredWritePolicy.allowSemanticPatch) {
+          if (structuredWritePolicy.allowSemanticPatch && executionWorkIntent !== "prepareDeliverySection") {
             const semanticPatchResult = applyConversationSemanticPatchFromReply({
               workspace: nextWorkspace,
               taskMode: executionTaskMode,
@@ -1649,6 +1745,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       } else if (appliedComparisonAnalysisId) {
         setPendingConfirmation(null);
       }
+      if (executionWorkIntent === "prepareDeliverySection") {
+        setPendingDeliveryDraftTarget(null);
+      }
     } catch (error) {
       const isCancelled = error instanceof DOMException && error.name === "AbortError";
       const message = isCancelled
@@ -1671,6 +1770,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     recommendedTaskMode,
     recommendedWorkIntent,
     pendingConfirmation?.kind,
+    pendingDeliveryDraftTarget,
     selectedObjectIds,
     selectedObjects,
     setWorkspace,
@@ -1678,6 +1778,92 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     workIntent,
     workspace
   ]);
+
+  const openDeliveryPreparation = useCallback((deliveryObjectId?: string) => {
+    const targetId = deliveryObjectId ?? selectedObjects.find((object) => object.type === "delivery")?.id ?? activeDeliveryObjectId;
+    if (targetId) {
+      setActiveDeliveryObjectId(targetId);
+    }
+    setDeliveryPanelOpen(true);
+  }, [activeDeliveryObjectId, selectedObjects]);
+
+  const applyDeliveryOperation = useCallback(
+    (operation: (current: MorphoWorkspace) => { status: "updated"; workspace: MorphoWorkspace } | { status: "blocked"; workspace: MorphoWorkspace; reason: string }) => {
+      let blockedReason: string | undefined;
+      setWorkspace((current) => {
+        const result = operation(current);
+        if (result.status === "blocked") {
+          blockedReason = result.reason;
+          return current;
+        }
+        return result.workspace;
+      });
+      setContextWarning(blockedReason);
+    },
+    [setWorkspace]
+  );
+
+  const handleCreateDelivery = useCallback(
+    (input: { title: string; format: "board" | "presentation" }) => {
+      let createdId: string | undefined;
+      applyDeliveryOperation((current) => {
+        const result = createDeliveryPreparation(current, {
+          title: input.title,
+          format: input.format,
+          position: {
+            x: current.canvas.view.x + 220,
+            y: current.canvas.view.y + 180
+          }
+        });
+        if (result.status === "updated") {
+          createdId = result.deliveryObjectId;
+        }
+        return result;
+      });
+      if (createdId) {
+        setActiveDeliveryObjectId(createdId);
+        setSelectedObjectIds([createdId]);
+        setFocusRequest((current) => ({ objectId: createdId, nonce: current.nonce + 1 }));
+      }
+    },
+    [applyDeliveryOperation]
+  );
+
+  const handleRequestDeliverySectionDraft = useCallback(
+    (input: { deliveryObjectId: string; sectionId: string }) => {
+      const delivery = workspace.objects[input.deliveryObjectId];
+      if (!delivery || delivery.type !== "delivery") {
+        setContextWarning("交付准备包不可用。");
+        return;
+      }
+      const context = buildDeliverySectionContext(workspace, delivery, input.sectionId);
+      if (!context || context.references.length === 0) {
+        setContextWarning("请先为本章节加入至少一项交付引用。");
+        return;
+      }
+      setPendingDeliveryDraftTarget(input);
+      setActiveDeliveryObjectId(input.deliveryObjectId);
+      setAiOpen(true);
+      setTaskMode("chatAnalysis");
+      handleWorkIntentChange("prepareDeliverySection");
+      setAiDraft(`请基于“${context.sectionTitle}”这一节的交付引用快照，生成一份本节说明草稿，并给出必要的图注和待补内容建议。`);
+    },
+    [handleWorkIntentChange, workspace]
+  );
+
+  const handleApplyDeliveryDraft = useCallback(
+    (input: { deliveryObjectId: string; draftId: string }) => {
+      applyDeliveryOperation((current) => applyDeliverySectionDraft(current, input));
+    },
+    [applyDeliveryOperation]
+  );
+
+  const handleDiscardDeliveryDraft = useCallback(
+    (input: { deliveryObjectId: string; draftId: string }) => {
+      applyDeliveryOperation((current) => discardDeliverySectionDraft(current, input));
+    },
+    [applyDeliveryOperation]
+  );
 
   const handleCancelAiRequest = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -2923,6 +3109,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }
         onSearch={() => setActiveDrawer("search")}
         onFocusOverview={() => focusArea("overview")}
+        onOpenDeliveryPreparation={() => openDeliveryPreparation()}
       />
       <LeftRail activeDrawer={activeDrawer} onDrawerChange={setActiveDrawer} />
       <OverlayDrawers
@@ -2949,6 +3136,55 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           onExtractFragment={handleExtractDocumentFragment}
           onViewCreatedFragment={handleViewCreatedDocumentFragment}
           onClose={handleCloseDocumentReader}
+        />
+      ) : null}
+
+      {deliveryPanelOpen ? (
+        <DeliveryPreparationPanel
+          workspace={workspace}
+          selectedObjects={selectedObjects}
+          activeDeliveryObjectId={activeDeliveryObjectId}
+          isStreaming={isAiStreaming}
+          onClose={() => setDeliveryPanelOpen(false)}
+          onCreateDelivery={handleCreateDelivery}
+          onSelectDelivery={setActiveDeliveryObjectId}
+          onLocateObject={focusObject}
+          onAddSelectedObjects={(input) =>
+            applyDeliveryOperation((current) =>
+              addObjectsToDeliverySection(current, {
+                ...input
+              })
+            )
+          }
+          onUpdateSection={(input) => applyDeliveryOperation((current) => updateDeliverySection(current, input))}
+          onMoveSection={(input) => applyDeliveryOperation((current) => moveDeliverySection(current, input))}
+          onRemoveSection={(input) => applyDeliveryOperation((current) => removeDeliverySection(current, input))}
+          onMoveReference={(input) => applyDeliveryOperation((current) => moveDeliveryReference(current, input))}
+          onRemoveReference={(input) => applyDeliveryOperation((current) => removeDeliveryReference(current, input))}
+          onUpdateReferenceEditorial={(input) =>
+            applyDeliveryOperation((current) => updateDeliveryReferenceEditorial(current, input))
+          }
+          onRefreshReference={(input) =>
+            applyDeliveryOperation((current) =>
+              refreshDeliveryReferenceSnapshot(current, {
+                ...input,
+                reason: "用户在交付准备面板中确认更新为当前版本。"
+              })
+            )
+          }
+          onAddGap={(input) =>
+            applyDeliveryOperation((current) =>
+              addDeliveryGap(current, {
+                ...input,
+                origin: "manual"
+              })
+            )
+          }
+          onSetGapStatus={(input) => applyDeliveryOperation((current) => setDeliveryGapStatus(current, input))}
+          onRemoveGap={(input) => applyDeliveryOperation((current) => removeDeliveryGap(current, input))}
+          onRequestSectionDraft={handleRequestDeliverySectionDraft}
+          onApplyDraft={handleApplyDeliveryDraft}
+          onDiscardDraft={handleDiscardDeliveryDraft}
         />
       ) : null}
 
@@ -3038,6 +3274,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onSetKeyConclusionState={handleSetKeyConclusionState}
         onSetImageRole={handleSetImageRole}
         onOpenDocumentReader={handleOpenDocumentReader}
+        onOpenDeliveryPreparation={openDeliveryPreparation}
       />
     </main>
   );

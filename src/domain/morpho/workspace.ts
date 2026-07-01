@@ -1,5 +1,9 @@
 import { reconcileWorkspaceDerivedState, createEmptyProjectWorkingState } from "./derivedState";
 import {
+  createDeliveryReferenceSnapshot as createStableDeliveryReferenceSnapshot,
+  createDeliverySourceFingerprint
+} from "./deliveryPreparation";
+import {
   applyProjectContinuityEvent,
   createInitialProjectContinuity,
   normalizeProjectContinuity,
@@ -21,8 +25,10 @@ import type {
   ConceptDirectionObject,
   ConceptDirectionStatus,
   DeliveryObject,
+  DeliveryGap,
   DeliveryReference,
   DeliveryReferenceId,
+  DeliverySection,
   DesignDefinitionObject,
   DesignDefinitionRevision,
   DirectionRevisionId,
@@ -43,7 +49,7 @@ import type {
 } from "./types";
 
 const DEFAULT_REFERENCE_HIDDEN_MESSAGE = "当前后续默认参考已隐藏，请先恢复或替换后再用于相关生成。";
-const CURRENT_SCHEMA_VERSION = 12;
+const CURRENT_SCHEMA_VERSION = 13;
 
 export type DeleteObjectResult =
   | {
@@ -146,6 +152,7 @@ export function createBlankWorkspace(projectId: string): MorphoWorkspace {
     assets: {},
     relations: [],
     deliveryReferences: {},
+    deliverySectionDrafts: {},
     decisionRecords: [],
     operations: {},
     artifactProposals: {},
@@ -567,7 +574,7 @@ export function setConceptDirectionStatus(
   const decisionId = makeDecisionId(workspace, "setDirectionStatus", objectId);
   const updated = reconcileWorkspaceDerivedState({
     ...workspace,
-    objects,
+    objects: normalizeObjectsForSchemaV13(objects),
     decisionRecords: [
       ...workspace.decisionRecords,
       {
@@ -1287,6 +1294,14 @@ export function createDeliveryReference(
       reason: "来源对象不存在。"
     };
   }
+  const section = deliveryObject.sections[0];
+  if (!section) {
+    return {
+      status: "blocked",
+      workspace,
+      reason: "交付准备包需要至少一个章节。"
+    };
+  }
 
   const deliveryReferenceId = getAvailableDeliveryReferenceId(
     workspace,
@@ -1294,13 +1309,30 @@ export function createDeliveryReference(
   );
   const deliveryReference: DeliveryReference = {
     id: deliveryReferenceId,
+    deliveryObjectId: deliveryObject.id,
+    sectionId: section.id,
+    order: section.referenceIds.length,
     sourceObjectId: sourceObject.id,
     createdAt: new Date().toISOString(),
-    snapshot: createDeliveryReferenceSnapshot(sourceObject, input.caption)
+    updatedAt: new Date().toISOString(),
+    snapshot: createStableDeliveryReferenceSnapshot(workspace, sourceObject),
+    sourceFingerprint: createDeliverySourceFingerprint(workspace, sourceObject),
+    editorial: {
+      caption: input.caption
+    }
   };
   const updatedDeliveryObject: DeliveryObject = {
     ...deliveryObject,
-    references: [...deliveryObject.references, deliveryReferenceId]
+    references: [...deliveryObject.references, deliveryReferenceId],
+    sections: deliveryObject.sections.map((candidate) =>
+      candidate.id === section.id
+        ? {
+            ...candidate,
+            referenceIds: [...candidate.referenceIds, deliveryReferenceId],
+            updatedAt: deliveryReference.updatedAt ?? deliveryReference.createdAt
+          }
+        : candidate
+    )
   };
 
   return {
@@ -1359,6 +1391,17 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
       status: "ok",
       workspace: normalizeCurrentWorkspace(value),
       didMigrate: false
+    };
+  }
+
+  if (value.schemaVersion === 12) {
+    return {
+      status: "ok",
+      workspace: normalizeCurrentWorkspace({
+        ...(structuredClone(value) as Record<string, unknown>),
+        schemaVersion: CURRENT_SCHEMA_VERSION
+      }),
+      didMigrate: true
     };
   }
 
@@ -1508,7 +1551,9 @@ function migrateV1Workspace(value: Record<string, unknown>): Record<string, unkn
       migratedObjects[objectId] = {
         ...(rawObject as unknown as DeliveryObject),
         visibility,
-        references
+        references,
+        sections: createMigratedDeliverySections(objectId, references, "2026-06-23T00:00:00.000Z"),
+        gaps: normalizeDeliveryGaps((rawObject as Partial<DeliveryObject>).gaps, "2026-06-23T00:00:00.000Z")
       };
       continue;
     }
@@ -1533,9 +1578,30 @@ function migrateV1Workspace(value: Record<string, unknown>): Record<string, unkn
       const deliveryReferenceId = makeDeliveryReferenceId(objectId, sourceObjectId);
       deliveryReferences[deliveryReferenceId] = {
         id: deliveryReferenceId,
+        deliveryObjectId: objectId,
+        sectionId: `section-${objectId}-migrated-content`,
+        order: getStringArray(rawObject.references).indexOf(sourceObjectId),
         sourceObjectId,
         createdAt: "2026-06-23T00:00:00.000Z",
-        snapshot: createDeliveryReferenceSnapshot(sourceObject, sourceObject.summary)
+        updatedAt: "2026-06-23T00:00:00.000Z",
+        snapshot: createStableDeliveryReferenceSnapshot(
+          {
+            objects: migratedObjects,
+            assets: {},
+            designDefinitionRevisions: {},
+            directionRevisions: {}
+          } as MorphoWorkspace,
+          sourceObject
+        ),
+        sourceFingerprint: createDeliverySourceFingerprint(
+          {
+            objects: migratedObjects,
+            assets: {},
+            designDefinitionRevisions: {},
+            directionRevisions: {}
+          } as MorphoWorkspace,
+          sourceObject
+        )
       };
     }
   }
@@ -1545,6 +1611,7 @@ function migrateV1Workspace(value: Record<string, unknown>): Record<string, unkn
     schemaVersion: 2,
     objects: migratedObjects,
     deliveryReferences,
+    deliverySectionDrafts: {},
     decisionRecords: []
   };
 }
@@ -1750,7 +1817,14 @@ function migrateV4Workspace(value: Record<string, unknown>): MorphoWorkspace {
     assets: isRecord(cloned.assets) ? (cloned.assets as Record<AssetId, AssetRecord>) : {},
     relations: rawRelations,
     deliveryReferences: isRecord(cloned.deliveryReferences)
-      ? (cloned.deliveryReferences as Record<DeliveryReferenceId, DeliveryReference>)
+      ? normalizeDeliveryReferences(
+          cloned.deliveryReferences as Record<DeliveryReferenceId, DeliveryReference>,
+          normalizeObjectsForSchemaV13(objects),
+          isRecord(cloned.assets) ? (cloned.assets as Record<AssetId, AssetRecord>) : {}
+        )
+      : {},
+    deliverySectionDrafts: isRecord(cloned.deliverySectionDrafts)
+      ? (cloned.deliverySectionDrafts as MorphoWorkspace["deliverySectionDrafts"])
       : {},
     decisionRecords: Array.isArray(cloned.decisionRecords) ? (cloned.decisionRecords as MorphoWorkspace["decisionRecords"]) : [],
     operations: isRecord(cloned.operations) ? (cloned.operations as MorphoWorkspace["operations"]) : {},
@@ -1876,7 +1950,7 @@ function normalizeCurrentWorkspace(value: Record<string, unknown>): MorphoWorksp
   const cloned = structuredClone(value) as Partial<MorphoWorkspace>;
   const now = new Date().toISOString();
   const canvasView = cloned.ui?.canvasView ?? cloned.canvas?.view ?? { x: 0, y: 0, zoom: 1 };
-  const objects = normalizeObjectsForSchemaV7(cloned.objects ?? {});
+  const objects = normalizeObjectsForSchemaV13(normalizeObjectsForSchemaV7(cloned.objects ?? {}));
   const rawProject = isRecord(value.project) ? value.project : {};
   const project = {
     id: typeof rawProject.id === "string" ? rawProject.id : "project-nightrail",
@@ -1896,7 +1970,8 @@ function normalizeCurrentWorkspace(value: Record<string, unknown>): MorphoWorksp
     objects,
     assets: cloned.assets ?? {},
     relations: cloned.relations ?? [],
-    deliveryReferences: cloned.deliveryReferences ?? {},
+    deliveryReferences: normalizeDeliveryReferences(cloned.deliveryReferences ?? {}, objects, cloned.assets ?? {}),
+    deliverySectionDrafts: cloned.deliverySectionDrafts ?? {},
     decisionRecords: cloned.decisionRecords ?? [],
     operations: cloned.operations ?? {},
     artifactProposals: normalizeArtifactProposals(cloned.artifactProposals ?? {}, objects),
@@ -2326,6 +2401,177 @@ function getStringArray(value: unknown): string[] {
 
 function stringValue(value: unknown, fallback = ""): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function normalizeObjectsForSchemaV13(objects: Record<MorphoObjectId, MorphoObject>): Record<MorphoObjectId, MorphoObject> {
+  return Object.fromEntries(
+    Object.entries(objects).map(([objectId, object]) => {
+      if (object.type !== "delivery") {
+        return [objectId, object];
+      }
+      const now = object.updatedAt ?? object.createdAt ?? "2026-07-02T00:00:00.000Z";
+      const references = Array.isArray(object.references) ? object.references : [];
+      const sections =
+        Array.isArray(object.sections) && object.sections.length > 0
+          ? normalizeDeliverySections(object.sections, references, object.id, now)
+          : createMigratedDeliverySections(object.id, references, now);
+      return [
+        objectId,
+        {
+          ...object,
+          sections,
+          gaps: normalizeDeliveryGaps(object.gaps, now),
+          references
+        }
+      ];
+    })
+  );
+}
+
+function normalizeDeliverySections(
+  sections: DeliverySection[],
+  references: DeliveryReferenceId[],
+  deliveryObjectId: MorphoObjectId,
+  now: string
+): DeliverySection[] {
+  const remaining = new Set(references);
+  const normalized = sections.map((section, index) => {
+    const referenceIds = Array.isArray(section.referenceIds)
+      ? section.referenceIds.filter((referenceId) => {
+          if (!remaining.has(referenceId)) {
+            return false;
+          }
+          remaining.delete(referenceId);
+          return true;
+        })
+      : [];
+    return {
+      id: typeof section.id === "string" && section.id ? section.id : `section-${deliveryObjectId}-${index + 1}`,
+      title: typeof section.title === "string" && section.title.trim() ? section.title : "交付内容",
+      purpose: typeof section.purpose === "string" && section.purpose.trim() ? section.purpose : undefined,
+      order: index,
+      referenceIds,
+      narrative: typeof section.narrative === "string" && section.narrative.trim() ? section.narrative : undefined,
+      createdAt: typeof section.createdAt === "string" ? section.createdAt : now,
+      updatedAt: typeof section.updatedAt === "string" ? section.updatedAt : now
+    };
+  });
+
+  if (remaining.size > 0) {
+    normalized.push({
+      id: `section-${deliveryObjectId}-migrated-content`,
+      title: "交付内容",
+      purpose: "结构迁移保留的既有交付引用。",
+      order: normalized.length,
+      referenceIds: [...remaining],
+      narrative: undefined,
+      createdAt: now,
+      updatedAt: now
+    });
+  }
+
+  return normalized.map((section, order) => ({ ...section, order }));
+}
+
+function createMigratedDeliverySections(
+  deliveryObjectId: MorphoObjectId,
+  references: DeliveryReferenceId[],
+  now: string
+): DeliverySection[] {
+  if (references.length === 0) {
+    return [];
+  }
+  return [
+    {
+      id: `section-${deliveryObjectId}-migrated-content`,
+      title: "交付内容",
+      purpose: "结构迁移保留的既有交付引用。",
+      order: 0,
+      referenceIds: [...references],
+      createdAt: now,
+      updatedAt: now
+    }
+  ];
+}
+
+function normalizeDeliveryGaps(value: unknown, now: string): DeliveryGap[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter(isRecord)
+    .map((gap, index) => ({
+      id: typeof gap.id === "string" && gap.id ? gap.id : `gap-migrated-${index + 1}`,
+      label: typeof gap.label === "string" ? gap.label : "待补内容",
+      sectionId: typeof gap.sectionId === "string" ? gap.sectionId : undefined,
+      status: gap.status === "resolved" ? "resolved" as const : "open" as const,
+      origin: gap.origin === "deliveryDraft" ? "deliveryDraft" as const : "manual" as const,
+      createdAt: typeof gap.createdAt === "string" ? gap.createdAt : now,
+      updatedAt: typeof gap.updatedAt === "string" ? gap.updatedAt : now,
+      resolvedAt: typeof gap.resolvedAt === "string" ? gap.resolvedAt : undefined
+    }));
+}
+
+function normalizeDeliveryReferences(
+  references: Record<DeliveryReferenceId, DeliveryReference>,
+  objects: Record<MorphoObjectId, MorphoObject>,
+  assets: Record<AssetId, AssetRecord>
+): Record<DeliveryReferenceId, DeliveryReference> {
+  const workspaceForSnapshots = {
+    objects,
+    assets,
+    designDefinitionRevisions: {},
+    directionRevisions: {}
+  } as MorphoWorkspace;
+  const deliveryMembership = new Map<DeliveryReferenceId, { deliveryObjectId: MorphoObjectId; sectionId: string; order: number }>();
+  for (const object of Object.values(objects)) {
+    if (object.type !== "delivery") {
+      continue;
+    }
+    for (const section of object.sections) {
+      section.referenceIds.forEach((referenceId, order) => {
+        deliveryMembership.set(referenceId, { deliveryObjectId: object.id, sectionId: section.id, order });
+      });
+    }
+  }
+
+  return Object.fromEntries(
+    Object.entries(references).map(([referenceId, reference]) => {
+      const membership = deliveryMembership.get(referenceId);
+      const source = reference.sourceObjectId ? objects[reference.sourceObjectId] : undefined;
+      const snapshot = reference.snapshot ?? (source ? createStableDeliveryReferenceSnapshot(workspaceForSnapshots, source) : {
+        sourceType: "text" as const,
+        title: "旧交付引用",
+        summary: "迁移保留的旧交付引用快照。"
+      });
+      return [
+        referenceId,
+        {
+          ...reference,
+          deliveryObjectId: reference.deliveryObjectId ?? membership?.deliveryObjectId,
+          sectionId: reference.sectionId ?? membership?.sectionId,
+          order: reference.order ?? membership?.order,
+          snapshot,
+          updatedAt: reference.updatedAt ?? reference.createdAt,
+          sourceFingerprint: reference.sourceFingerprint ?? (source ? createDeliverySourceFingerprint(workspaceForSnapshots, source) : undefined),
+          sourceAssetId: reference.sourceAssetId ?? (source ? getDeliveryReferenceAssetId(source) : undefined)
+        }
+      ];
+    })
+  );
+}
+
+function getDeliveryReferenceAssetId(source: MorphoObject): AssetId | undefined {
+  switch (source.type) {
+    case "image":
+    case "file":
+    case "link":
+      return source.assetId;
+    case "documentFragment":
+      return source.source.sourceExtractAssetId;
+    default:
+      return undefined;
+  }
 }
 
 function stringFieldsPresent(value: Record<string, unknown>, keys: readonly string[]): boolean {

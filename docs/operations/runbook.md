@@ -101,6 +101,13 @@ Conversation checkpoints:
 - successful saves show only `已整理当前讨论脉络` under the assistant message;
 - checkpoint failures do not affect normal replies, semantic patches, project facts, current focus, or project records.
 
+Delivery preparation drafts:
+
+- `prepareDeliverySection` uses `/api/ai/chat`, but sends only the current section `deliverySectionContext` frozen snapshots;
+- web search is disabled for this intent even if `MORPHO_MIMO_WEB_SEARCH_ENABLED=true`;
+- the browser does not send selected image pixels, full source files, full `documentExtract` text, normal task context, or Compare context for delivery section drafts;
+- visible chat hides `morphoDeliverySectionDraft` JSON. A valid block creates only a pending draft; section narrative, captions, suggested gaps, DecisionRecord, and continuity event are written only when the user applies the draft.
+
 Without these variables, the app still runs locally, but provider routes return clear configuration errors instead of fake AI results.
 
 ## Development Server
@@ -193,6 +200,19 @@ Document fragment mock acceptance for M5-D2:
 - hide or remove the source file, or change/remove the source extract asset, then select the fragment. Verify the fragment body remains readable, source status is hidden/unavailable/mismatch as appropriate, and source-location is disabled;
 - select two active fragments and start Compare. Verify only those fragment IDs are Compare sources, evidence basis is `documentFragment`, and the source file full text is not auto-attached.
 
+Delivery preparation mock acceptance for M6:
+
+- open the floating delivery preparation panel from the top controls or a selected delivery card; opening/closing must not call providers or write Current Focus;
+- create a presentation preparation package, edit one section title/purpose, select active research/documentFragment/conceptDirection/image objects, and add them to different sections;
+- verify stable delivery references are created, source objects are unchanged, duplicate source references in the same section are blocked, and the same source can be added to another section;
+- edit a caption/note, move a reference, remove a reference, add a manual gap, resolve/reopen/remove the gap, close/reopen the panel, and verify content persists;
+- modify a source image title or role and hide a source file behind a document fragment, then verify old snapshots remain readable and source states show updated/hidden without automatic refresh;
+- click `更新为当前版本` on a source-updated reference, confirm that only that reference snapshot/fingerprint updates, caption/note remain, the source object is unchanged, and a DecisionRecord plus delivery continuity event are written;
+- intercept `/api/ai/chat`, click `生成本节说明草稿`, and verify the request body includes only `deliverySectionContext` for the current section snapshots and excludes webSearch, taskContext, comparisonContext, selected image Base64, Blob URLs, and full source file text;
+- return normal prose plus a valid `morphoDeliverySectionDraft`; verify technical JSON is hidden, a pending draft card appears, and no section narrative/caption/gap is written before `应用草稿`;
+- apply the draft and verify narrative, listed captions, suggested gaps, DecisionRecord, and continuity event are written;
+- return malformed draft JSON, a caption with an unauthorized reference ID, too many gaps, or a same-reply design/direction/Compare proposal and verify no delivery draft/content/DecisionRecord/semantic patch/checkpoint/Compare analysis is written.
+
 ## Current Local Persistence
 
 Project catalog:
@@ -213,7 +233,7 @@ Legacy single-project key read for migration:
 morpho.workspace.nightrail.v1
 ```
 
-Structured workspace data is schema version `12`. v1/v2/v3/v4/v5/v6/v7/v8/v9/v10/v11 workspace data is migrated through pure migration functions. v6 normalizes image roles to `reference`, `preview`, `conceptImage`, `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, `structureDiagram`, `interactionDiagram`, and `deliveryAsset`; old `main`, `scenario`, `cmf`, `detail`, and `diagram` values are migration-only inputs. v7 adds parse metadata to file objects and stores extracted document text as separate IndexedDB assets. v8 adds `workspace.projectContinuity`, migrates legacy `project.currentFocus` into structured `currentFocus`, and retires legacy `stageRecords` instead of converting them into a second stage-history source. v9 adds controlled conversation semantic record fields and message source refs; old v8 entries become `origin: deterministicEvent` and `manualState: active` without fabricated semantic metadata. v10 adds `workspace.ai.conversationCheckpoints`; old v9 messages are preserved, no checkpoint is invented, no old message receives a fabricated `conversationLaneKey`, and `projectContinuity` is unchanged. v11 adds `workspace.ai.comparisonAnalyses` plus assistant-message linkage for local Compare cards; old messages are preserved without fabricated comparison links. v12 adds `documentFragment` support and fragment source relations without fabricating historical fragments or changing existing files/messages/checkpoints/Compare analyses/DecisionRecords/project-continuity records. Migration success writes the new project workspace and catalog. Migration failure preserves old raw data and shows a recoverable warning instead of silently resetting to seed data.
+Structured workspace data is schema version `13`. v1/v2/v3/v4/v5/v6/v7/v8/v9/v10/v11/v12 workspace data is migrated through pure migration functions. v6 normalizes image roles to `reference`, `preview`, `conceptImage`, `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, `structureDiagram`, `interactionDiagram`, and `deliveryAsset`; old `main`, `scenario`, `cmf`, `detail`, and `diagram` values are migration-only inputs. v7 adds parse metadata to file objects and stores extracted document text as separate IndexedDB assets. v8 adds `workspace.projectContinuity`, migrates legacy `project.currentFocus` into structured `currentFocus`, and retires legacy `stageRecords` instead of converting them into a second stage-history source. v9 adds controlled conversation semantic record fields and message source refs; old v8 entries become `origin: deterministicEvent` and `manualState: active` without fabricated semantic metadata. v10 adds `workspace.ai.conversationCheckpoints`; old v9 messages are preserved, no checkpoint is invented, no old message receives a fabricated `conversationLaneKey`, and `projectContinuity` is unchanged. v11 adds `workspace.ai.comparisonAnalyses` plus assistant-message linkage for local Compare cards; old messages are preserved without fabricated comparison links. v12 adds `documentFragment` support and fragment source relations without fabricating historical fragments or changing existing files/messages/checkpoints/Compare analyses/DecisionRecords/project-continuity records. v13 upgrades delivery preparation with sections, stable section references, gaps, and pending delivery section drafts; it does not fabricate packages, narratives, gaps, drafts, source objects, AI messages, Compare analyses, or project-continuity records. Migration success writes the new project workspace and catalog. Migration failure preserves old raw data and shows a recoverable warning instead of silently resetting to seed data.
 
 Binary assets are stored in IndexedDB:
 
@@ -253,5 +273,6 @@ The current code does not include:
 - OCR, legacy `.ppt`, DOC/DOCX parsing, and faithful document-layout reconstruction;
 - dynamic provider model-list fetching;
 - export package generation;
+- PPT/PDF/Figma generation or final delivery layout;
 - transcript replacement, transcript deletion, user-managed chat summaries, or full-project chat summaries;
 - deployment automation.

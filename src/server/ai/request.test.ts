@@ -324,6 +324,63 @@ describe("MiMo chat route request conversion", () => {
     }
   });
 
+  it("sanitizes delivery section context and asks for a delivery draft only for prepareDeliverySection", () => {
+    const result = validateAiRouteRequest({
+      draft: "生成本节说明草案",
+      task: "deliveryPreparation",
+      taskMode: "chatAnalysis",
+      workIntent: "prepareDeliverySection",
+      messages: [],
+      objectSummaries: [],
+      attachments: [],
+      deliverySectionContext: {
+        deliveryObjectId: "delivery-a",
+        sectionId: "section-a",
+        sectionTitle: "方案展示",
+        sectionPurpose: "说明核心方案",
+        openGaps: [{ id: "gap-a", label: "补安装示意", raw: "drop" }],
+        references: [
+          {
+            referenceId: "ref-a",
+            snapshot: {
+              sourceType: "documentFragment",
+              title: "片段",
+              summary: "稳定摘要",
+              body: "有界片段正文",
+              bodyKind: "complete",
+              sourceFile: {
+                fileObjectId: "file-a",
+                title: "课程要求.pdf",
+                startOffset: 10,
+                endOffset: 20,
+                rawFullText: "must-not-survive"
+              },
+              blobUrl: "blob:must-not-survive",
+              base64: "must-not-survive"
+            },
+            editorialCaption: "已有图注",
+            sourceState: "sourceUpdated",
+            providerRaw: "must-not-survive"
+          }
+        ],
+        providerRaw: "must-not-survive"
+      }
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") {
+      throw new Error(result.reason);
+    }
+    expect(JSON.stringify(result.value.deliverySectionContext)).not.toContain("must-not-survive");
+    const prompt = buildMorphoSystemPrompt(result.value);
+    expect(prompt).toContain("Delivery section preparation context");
+    expect(prompt).toContain("Only these frozen delivery reference snapshots are available");
+    expect(prompt).toContain("morphoDeliverySectionDraft");
+    expect(prompt).toContain("not project memory");
+    expect(prompt).not.toContain("morphoDesignDefinitionProposal: { title, summary");
+    expect(prompt).not.toContain("morphoConceptDirectionProposal: { title, summary, directions");
+  });
+
   it("allows controlled conversation continuity patches only for chat and research tasks", () => {
     const chatPrompt = buildMorphoSystemPrompt({
       draft: "夜间识别感比造型复杂度更重要。",

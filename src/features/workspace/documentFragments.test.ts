@@ -183,7 +183,9 @@ describe("document fragment draft and creation", () => {
 describe("document fragment source availability and location", () => {
   it("reports active source and exact reader location only when file and extract asset still match", () => {
     const workspace = withCreatedFragment(withParsedFile(createInitialWorkspace(), "file-course-brief", sampleText()));
-    const fragment = Object.values(workspace.objects).find((object) => object.type === "documentFragment");
+    const fragment = Object.values(workspace.objects).find(
+      (object) => object.type === "documentFragment" && object.title === "Course brief fragment"
+    );
     if (!fragment || fragment.type !== "documentFragment") {
       throw new Error("Expected document fragment fixture.");
     }
@@ -200,7 +202,9 @@ describe("document fragment source availability and location", () => {
 
   it("keeps fragment body while reporting hidden, missing, and asset mismatch source states", () => {
     const workspace = withCreatedFragment(withParsedFile(createInitialWorkspace(), "file-course-brief", sampleText()));
-    const fragment = Object.values(workspace.objects).find((object) => object.type === "documentFragment");
+    const fragment = Object.values(workspace.objects).find(
+      (object) => object.type === "documentFragment" && object.title === "Course brief fragment"
+    );
     if (!fragment || fragment.type !== "documentFragment") {
       throw new Error("Expected document fragment fixture.");
     }
