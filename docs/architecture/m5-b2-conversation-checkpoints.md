@@ -113,4 +113,4 @@ The UI does not show checkpoint JSON, long summaries, provider status, a project
 
 ## Explicitly Not Implemented
 
-M5-B2 does not implement Compare, document readers, OCR, delivery preparation, archive/restore, transcript deletion, transcript replacement, user-managed summaries, full-project summaries, permanent mock routes, real paid-provider smoke calls, or a new Agent loop. M5-C remains the stage for Compare and decision write-back work.
+M5-B2 itself does not implement Compare, document readers, OCR, delivery preparation, archive/restore, transcript deletion, transcript replacement, user-managed summaries, full-project summaries, permanent mock routes, real paid-provider smoke calls, or a new Agent loop. M5-C later implements Compare and decision write-back while preserving this checkpoint boundary: design-definition and concept-direction Proposal replies still suppress checkpoint writing.

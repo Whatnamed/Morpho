@@ -763,6 +763,101 @@ describe("MiMo chat route request conversion", () => {
     }
   });
 
+  it("preserves compare evidence and background context without treating background as sources", () => {
+    const result = validateAiRouteRequest({
+      draft: "Compare these directions against the current definition.",
+      task: "comparison",
+      taskMode: "chatAnalysis",
+      workIntent: "comparison",
+      messages: [],
+      objectSummaries: [
+        { id: "direction-a", type: "conceptDirection", title: "Direction A", summary: "Soft rail." },
+        { id: "direction-b", type: "conceptDirection", title: "Direction B", summary: "Support island." }
+      ],
+      attachments: [
+        {
+          id: "asset-image-a",
+          kind: "image",
+          objectId: "image-a",
+          mimeType: "image/png",
+          status: "metadataOnly"
+        }
+      ],
+      documentExtracts: [
+        {
+          objectId: "file-a",
+          title: "Brief",
+          text: "Document extract text.",
+          charCount: 22,
+          truncated: false
+        }
+      ],
+      comparisonContext: {
+        sourceObjectIds: ["direction-a", "direction-b"],
+        attachedImageObjectIds: [],
+        unavailableImageObjectIds: ["image-a"],
+        attachedDocumentObjectIds: ["file-a"],
+        unavailableDocumentObjectIds: ["file-b"],
+        backgroundObjectIds: ["definition-current"]
+      },
+      comparisonBackgroundContext: {
+        defaultReference: "notIncluded:image-a:metadata only",
+        designDefinition: {
+          objectId: "definition-current",
+          revisionId: "definition-revision-current-1",
+          revisionNumber: 1,
+          title: "Current definition",
+          summary: "Night path continuity.",
+          projectGoal: "Help night movement.",
+          targetUsers: ["older adults"],
+          primaryScenarios: ["night wake-up"],
+          coreProblem: "orientation and support",
+          designPrinciples: ["low construction"],
+          constraints: ["no rewiring"],
+          avoidDirections: ["medical device feel"],
+          opportunities: ["low guiding light"],
+          openQuestions: ["corner handling"],
+          sourceObjectIds: ["research-a"]
+        },
+        projectContinuity: {
+          currentFocus: {
+            area: "directionAndVisual",
+            updatedAt: "2026-07-01T08:00:00.000Z",
+            sourceKind: "userAction",
+            sourceObjectIds: [],
+            note: "Direction comparison."
+          },
+          relevantStageRecords: [],
+          relevantProjectMemoryViews: [],
+          reviewRequiredItems: [],
+          omitted: [],
+          truncated: false
+        }
+      }
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") {
+      throw new Error(result.reason);
+    }
+    expect(result.value.taskContext).toBeUndefined();
+    expect(result.value.comparisonContext).toMatchObject({
+      sourceObjectIds: ["direction-a", "direction-b"],
+      attachedDocumentObjectIds: ["file-a"],
+      unavailableImageObjectIds: ["image-a"]
+    });
+    expect(result.value.comparisonBackgroundContext?.designDefinition?.objectId).toBe("definition-current");
+
+    const prompt = buildMorphoSystemPrompt(result.value);
+    expect(prompt).toContain("Compare evidence context");
+    expect(prompt).toContain("sourceObjectIds: direction-a, direction-b");
+    expect(prompt).toContain("unavailableImageObjectIds: image-a");
+    expect(prompt).toContain("Compare background context");
+    expect(prompt).toContain("definition-current / r1 / Current definition");
+    expect(prompt).toContain("evidenceBasis");
+    expect(prompt).toContain("If the same reply includes morphoDesignDefinitionProposal or morphoConceptDirectionProposal, do not output morphoComparisonAnalysis");
+  });
+
   it("does not ask for proposal JSON during ordinary discussion even when task stays general", () => {
     const prompt = buildMorphoSystemPrompt({
       draft: "继续讨论这条研究线索的风险",

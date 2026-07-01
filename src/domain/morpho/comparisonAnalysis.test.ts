@@ -97,7 +97,8 @@ describe("comparison analysis domain rules", () => {
         assistantMessageId: "assistant-1",
         createdAt: "2026-07-01T10:00:00.000Z",
         comparisonGoal: "比较这些对象对后续设计取舍的影响。",
-        imageAttachmentObjectIds: []
+        imageAttachmentObjectIds: [],
+        documentExtractObjectIds: ["file-course-brief"]
       })
     );
 
@@ -208,6 +209,184 @@ describe("comparison analysis domain rules", () => {
       authorization
     );
     expect(invalidCandidate.status).toBe("failed");
+  });
+
+  it("rejects key conclusion candidates backed by direction summaries or mismatched evidence sources", () => {
+    const workspace = withParsedFile(createInitialWorkspace(), "file-course-brief");
+    const authorization = getReadyAuthorization(
+      buildComparisonAuthorization({
+        workspace,
+        selectedObjectIds: ["direction-soft-rail", "file-course-brief"],
+        userMessageId: "user-1",
+        assistantMessageId: "assistant-1",
+        createdAt: "2026-07-01T10:00:00.000Z",
+        comparisonGoal: "compare these sources against the current design definition",
+        imageAttachmentObjectIds: [],
+        documentExtractObjectIds: ["file-course-brief"]
+      })
+    );
+    const basePayload = {
+      comparisonGoal: "compare",
+      conclusionSummary: "summary",
+      objectComparisons: [
+        {
+          objectId: "direction-soft-rail",
+          title: "Direction",
+          evidenceBasis: "objectSummary" as const,
+          summary: "direction summary",
+          strengths: [],
+          risks: [],
+          evidence: []
+        },
+        {
+          objectId: "file-course-brief",
+          title: "Brief",
+          evidenceBasis: "documentExtract" as const,
+          summary: "document summary",
+          strengths: [],
+          risks: [],
+          evidence: ["document evidence"]
+        }
+      ],
+      recommendedQuestions: [],
+      evidenceLimits: []
+    };
+
+    expect(
+      validateComparisonAnalysis(
+        {
+          ...basePayload,
+          keyConclusionCandidate: {
+            title: "candidate",
+            summary: "candidate summary",
+            body: "candidate body",
+            sourceObjectIds: ["direction-soft-rail"],
+            evidence: [{ objectId: "file-course-brief", label: "brief", evidence: "actual text" }],
+            confidence: "partial"
+          }
+        },
+        authorization
+      )
+    ).toMatchObject({ status: "failed" });
+
+    expect(
+      validateComparisonAnalysis(
+        {
+          ...basePayload,
+          keyConclusionCandidate: {
+            title: "candidate",
+            summary: "candidate summary",
+            body: "candidate body",
+            sourceObjectIds: [],
+            evidence: [{ objectId: "file-course-brief", label: "brief", evidence: "actual text" }],
+            confidence: "partial"
+          }
+        },
+        authorization
+      )
+    ).toMatchObject({ status: "failed" });
+
+    expect(
+      validateComparisonAnalysis(
+        {
+          ...basePayload,
+          keyConclusionCandidate: {
+            title: "candidate",
+            summary: "candidate summary",
+            body: "candidate body",
+            sourceObjectIds: ["file-course-brief"],
+            evidence: [{ objectId: "file-course-brief", label: "brief", evidence: "actual text" }],
+            confidence: "partial"
+          }
+        },
+        authorization
+      )
+    ).toMatchObject({
+      status: "ok",
+      analysis: {
+        keyConclusionCandidate: {
+          sourceObjectIds: ["file-course-brief"]
+        }
+      }
+    });
+  });
+
+  it("requires evidence limits and object-summary basis for selected images without pixels", () => {
+    const workspace = createInitialWorkspace();
+    const authorization = getReadyAuthorization(
+      buildComparisonAuthorization({
+        workspace,
+        selectedObjectIds: ["image-soft-rail-v2", "image-night-scenario"],
+        userMessageId: "user-1",
+        assistantMessageId: "assistant-1",
+        createdAt: "2026-07-01T10:00:00.000Z",
+        comparisonGoal: "compare images",
+        imageAttachmentObjectIds: ["image-soft-rail-v2"],
+        documentExtractObjectIds: []
+      })
+    );
+
+    const missingLimit = validateComparisonAnalysis(
+      {
+        comparisonGoal: "compare images",
+        conclusionSummary: "Only object summaries are safe for one image.",
+        objectComparisons: [
+          {
+            objectId: "image-soft-rail-v2",
+            title: "Image A",
+            evidenceBasis: "pixels",
+            summary: "Pixel-backed summary.",
+            strengths: [],
+            risks: [],
+            evidence: []
+          },
+          {
+            objectId: "image-night-scenario",
+            title: "Image B",
+            evidenceBasis: "objectSummary",
+            summary: "Metadata-only summary.",
+            strengths: [],
+            risks: [],
+            evidence: []
+          }
+        ],
+        recommendedQuestions: [],
+        evidenceLimits: []
+      },
+      authorization
+    );
+    expect(missingLimit.status).toBe("failed");
+
+    const visualClaimForUnavailable = validateComparisonAnalysis(
+      {
+        comparisonGoal: "compare images",
+        conclusionSummary: "Only object summaries are safe for one image.",
+        objectComparisons: [
+          {
+            objectId: "image-soft-rail-v2",
+            title: "Image A",
+            evidenceBasis: "pixels",
+            summary: "Pixel-backed summary.",
+            strengths: [],
+            risks: [],
+            evidence: []
+          },
+          {
+            objectId: "image-night-scenario",
+            title: "Image B",
+            evidenceBasis: "pixels",
+            summary: "Claims pixels despite missing attachment.",
+            strengths: [],
+            risks: [],
+            evidence: []
+          }
+        ],
+        recommendedQuestions: [],
+        evidenceLimits: ["image-night-scenario pixels were unavailable"]
+      },
+      authorization
+    );
+    expect(visualClaimForUnavailable.status).toBe("failed");
   });
 
   it("requires attached pixels before image comparisons can claim visual evidence", () => {

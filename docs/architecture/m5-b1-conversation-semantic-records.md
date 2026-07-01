@@ -8,7 +8,7 @@ This feature records only clearly stated long-lived preferences, constraints, av
 
 M5-B1.1 kept workspace schema `9` and `ProjectContinuityState.schemaVersion` `2`. M5-B2 later moves workspace schema to `10` for conversation checkpoints while leaving `ProjectContinuityState.schemaVersion` at `2`.
 
-Out of scope for M5-B1: automatic chat compression, transcript replacement, Compare, automatic status changes, default-reference changes, definition or direction application, new document readers, delivery export, archive restore, agent loops, permanent mock routes, and paid provider smoke tests. M5-B2 implements short-term conversation checkpoints in `workspace.ai`, not in `projectContinuity`.
+Out of scope for M5-B1: automatic chat compression, transcript replacement, Compare, automatic status changes, default-reference changes, definition or direction application, new document readers, delivery export, archive restore, agent loops, permanent mock routes, and paid provider smoke tests. M5-B2 implements short-term conversation checkpoints in `workspace.ai`, not in `projectContinuity`; M5-C later implements local Compare analyses and decision writeback.
 
 ## Data Model
 

@@ -455,3 +455,19 @@ Decision: use a shared structured-block helper to hide both `morphoProjectContin
 Reason: provider contracts are implementation details. Users should see prose and lightweight feedback, not technical JSON or schema errors.
 
 Boundary: the original completed stream text remains available to parsers. Ordinary research, design-definition, concept-direction, and visual-plan JSON blocks are not removed by the checkpoint/semantic block stripper unless their own feature-specific parsing consumes them.
+
+## 2026-07-01: Use Schema Version 11 For Local Compare Analyses
+
+Decision: upgrade workspace data to `schemaVersion: 11` and store saved local Compare analyses under `workspace.ai.comparisonAnalyses`.
+
+Reason: M5-C requires a traceable local Compare loop where explicit selected objects are analyzed, the user confirms a specific decision, and only then domain state changes.
+
+Boundary: Compare is not a project-memory system, stage page, score table, automatic ranking, or autonomous decision path. Saved analyses keep lightweight source snapshots and message links only. Real state changes still go through existing domain actions and `DecisionRecord` entries.
+
+## 2026-07-01: Separate Compare Sources From Background Context
+
+Decision: `/api/ai/chat` carries `comparisonContext` for explicit selected sources and evidence availability, plus `comparisonBackgroundContext` for slim criteria such as current design definition, continuity, and default-reference status.
+
+Reason: Compare must be able to answer questions like whether directions fit the current definition without letting background objects become hidden sources, object comparisons, evidence for key conclusions, or decision targets.
+
+Boundary: `sourceObjectIds` and `objectComparisons` must exactly match the explicit selection. File evidence requires a sent `documentExtract`; image visual evidence requires sent pixels/contact sheet; `keyConclusionCandidate` may use only selected true text evidence sources. Same-reply design-definition or concept-direction Proposal JSON suppresses Compare, semantic patch, and checkpoint writes.

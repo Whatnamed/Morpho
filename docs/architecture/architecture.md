@@ -26,7 +26,7 @@ No database, authentication, cloud object storage, Supabase, multiplayer sync, e
 
 ## Data Model
 
-Structured workspace data is schema version `10`.
+Structured workspace data is schema version `11`.
 
 Current workspace state includes:
 
@@ -38,6 +38,7 @@ Current workspace state includes:
 - persisted workspace UI state in `workspace.ui`;
 - continuous AI messages in `workspace.ai.messages`.
 - short-term conversation checkpoints in `workspace.ai.conversationCheckpoints`.
+- saved local Compare analyses in `workspace.ai.comparisonAnalyses`.
 - lightweight Operation records in `workspace.operations`;
 - Artifact Proposal records in `workspace.artifactProposals`;
 - citation snapshots in `workspace.citationSnapshots`.
@@ -138,6 +139,17 @@ M5-B2 additions:
 - `morphoConversationCheckpoint` is parsed and validated independently from `morphoProjectContinuityPatch`; either valid block may succeed if the other fails;
 - checkpoint writes update only `workspace.ai.conversationCheckpoints` and the assistant message `conversationCheckpointId`; they never write project records, current focus, objects, revisions, directions, default references, delivery references, or DecisionRecords;
 - visible assistant text strips both complete and trailing partial checkpoint/semantic technical JSON blocks, and a saved checkpoint shows only the lightweight `已整理当前讨论脉络` message.
+
+M5-C additions:
+
+- schema v11 adds saved local Compare analyses under `workspace.ai.comparisonAnalyses` and links assistant messages through `comparisonAnalysisId`;
+- Compare source selection is explicit only: 2-4 active selected objects, with hidden/missing/duplicate/unselected objects blocked for new analyses;
+- parsed file sources require a sent `documentExtract`, and image visual evidence is authorized only when pixels or contact sheets are attached in that request;
+- `/api/ai/chat` accepts `comparisonContext` for source/evidence availability and `comparisonBackgroundContext` for slim design-definition, continuity, and default-reference criteria that cannot become sources or decision targets;
+- model `objectComparisons` carry `evidenceBasis`, and local validation rejects mismatches against actual pixels/document extracts/object summaries;
+- `keyConclusionCandidate` is candidate-only and may use only selected true text evidence sources: sent document extracts, research objects, or existing key conclusions;
+- same-reply design-definition or concept-direction Proposal JSON suppresses Compare writes, semantic patches, checkpoints, and Compare decision entry points;
+- confirmed Compare decisions write normal `DecisionRecord` entries with lightweight `ComparisonDecisionMetadata`; the full Compare body is not copied into decisions or project memory.
 
 ## Local-First Persistence
 

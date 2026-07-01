@@ -34,6 +34,9 @@ export type ComparisonAuthorization = {
   createdAt: string;
   comparisonGoal: string;
   allowsVisualEvidence: boolean;
+  attachedImageObjectIds: Set<MorphoObjectId>;
+  unavailableImageObjectIds: Set<MorphoObjectId>;
+  attachedDocumentObjectIds: Set<MorphoObjectId>;
   allowedTextEvidenceObjectIds: Set<MorphoObjectId>;
 };
 
@@ -104,6 +107,7 @@ export function buildComparisonAuthorization(input: {
   createdAt: string;
   comparisonGoal: string;
   imageAttachmentObjectIds: MorphoObjectId[];
+  documentExtractObjectIds?: MorphoObjectId[];
 }): ComparisonSelectionResult | { status: "ready"; authorization: ComparisonAuthorization } {
   const selection = resolveComparisonSelection(input.workspace, input.selectedObjectIds);
   if (selection.status !== "ready") {
@@ -114,13 +118,16 @@ export function buildComparisonAuthorization(input: {
   }
 
   const imageAttachmentSet = new Set(input.imageAttachmentObjectIds);
-  const allowsVisualEvidence = selection.objectIds
-    .filter((objectId) => input.workspace.objects[objectId]?.type === "image")
-    .every((objectId) => imageAttachmentSet.has(objectId));
+  const documentExtractSet = new Set(input.documentExtractObjectIds ?? []);
+  const selectedImageObjectIds = selection.objectIds.filter((objectId) => input.workspace.objects[objectId]?.type === "image");
+  const allowsVisualEvidence = selectedImageObjectIds.every((objectId) => imageAttachmentSet.has(objectId));
   const allowedTextEvidenceObjectIds = new Set(
     selection.objectIds.filter((objectId) => {
       const object = input.workspace.objects[objectId];
-      return object?.type !== "image";
+      if (object?.type === "research" || object?.type === "keyConclusion") {
+        return true;
+      }
+      return object?.type === "file" && documentExtractSet.has(objectId) && hasUsableDocumentExtract(object);
     })
   );
 
@@ -134,6 +141,9 @@ export function buildComparisonAuthorization(input: {
       createdAt: input.createdAt,
       comparisonGoal: input.comparisonGoal.trim(),
       allowsVisualEvidence,
+      attachedImageObjectIds: imageAttachmentSet,
+      unavailableImageObjectIds: new Set(selectedImageObjectIds.filter((objectId) => !imageAttachmentSet.has(objectId))),
+      attachedDocumentObjectIds: documentExtractSet,
       allowedTextEvidenceObjectIds
     }
   };
@@ -186,21 +196,53 @@ export function validateComparisonAnalysis(
     if (object?.objectType !== "image") {
       return false;
     }
-    return authorization.allowsVisualEvidence ? false : entry.evidence.length > 0;
+    const evidenceBasis = entry.evidenceBasis ?? "objectSummary";
+    if (authorization.attachedImageObjectIds.has(entry.objectId)) {
+      return false;
+    }
+    return evidenceBasis === "pixels" || entry.evidence.length > 0;
   });
   if (invalidImageEvidence) {
     return { status: "failed", reason: "Image comparisons cannot claim visual evidence without attached pixels or contact sheet." };
   }
+  if (authorization.unavailableImageObjectIds.size > 0 && payload.evidenceLimits.length === 0) {
+    return { status: "failed", reason: "Image comparisons with unavailable pixels must state evidenceLimits." };
+  }
+
+  const invalidEvidenceBasis = payload.objectComparisons.some((entry) => {
+    const source = authorization.sourceRefs.find((item) => item.objectId === entry.objectId);
+    if (!source) {
+      return true;
+    }
+    const evidenceBasis = entry.evidenceBasis ?? inferLegacyEvidenceBasis(source);
+    if (evidenceBasis === "pixels") {
+      return source.objectType !== "image" || !authorization.attachedImageObjectIds.has(entry.objectId);
+    }
+    if (evidenceBasis === "documentExtract") {
+      return source.objectType !== "file" || !authorization.attachedDocumentObjectIds.has(entry.objectId);
+    }
+    return evidenceBasis !== "objectSummary";
+  });
+  if (invalidEvidenceBasis) {
+    return { status: "failed", reason: "objectComparisons evidenceBasis must match the actual Compare inputs." };
+  }
 
   if (payload.keyConclusionCandidate) {
     const candidateIds = payload.keyConclusionCandidate.sourceObjectIds;
+    if (candidateIds.length === 0 || candidateIds.length !== new Set(candidateIds).size) {
+      return { status: "failed", reason: "keyConclusionCandidate.sourceObjectIds must be non-empty and unique." };
+    }
     if (!candidateIds.every((id) => selectedIds.includes(id))) {
       return { status: "failed", reason: "keyConclusionCandidate.sourceObjectIds must stay within the Compare selection." };
     }
-    const hasValidEvidence = payload.keyConclusionCandidate.evidence.some(
-      (entry) => authorization.allowedTextEvidenceObjectIds.has(entry.objectId) && entry.evidence.trim().length > 0
+    if (!candidateIds.every((id) => authorization.allowedTextEvidenceObjectIds.has(id))) {
+      return { status: "failed", reason: "keyConclusionCandidate.sourceObjectIds must all be usable text evidence sources." };
+    }
+    const hasEvidence = payload.keyConclusionCandidate.evidence.length > 0;
+    const evidenceMatchesSources = payload.keyConclusionCandidate.evidence.every(
+      (entry) => candidateIds.includes(entry.objectId) && entry.evidence.trim().length > 0
     );
-    if (!hasValidEvidence) {
+    if (!hasEvidence || !evidenceMatchesSources) {
       return { status: "failed", reason: "keyConclusionCandidate requires at least one valid text-based evidence source." };
     }
   }
@@ -321,12 +363,16 @@ function parseObjectComparison(value: unknown): ComparisonObjectEntry | undefine
   if (!isRecord(value) || typeof value.objectId !== "string" || typeof value.title !== "string" || typeof value.summary !== "string") {
     return undefined;
   }
-  if (!hasOnlyAllowedKeys(value, ["objectId", "title", "summary", "strengths", "risks", "evidence"])) {
+  if (!hasOnlyAllowedKeys(value, ["objectId", "title", "evidenceBasis", "summary", "strengths", "risks", "evidence"])) {
+    return undefined;
+  }
+  if (!isEvidenceBasis(value.evidenceBasis)) {
     return undefined;
   }
   return {
     objectId: value.objectId,
     title: value.title.trim(),
+    evidenceBasis: value.evidenceBasis,
     summary: value.summary.trim(),
     strengths: stringArray(value.strengths, 4),
     risks: stringArray(value.risks, 4),
@@ -392,11 +438,23 @@ function cloneObjectComparison(entry: ComparisonObjectEntry): ComparisonObjectEn
   return {
     objectId: entry.objectId,
     title: entry.title,
+    evidenceBasis: entry.evidenceBasis,
     summary: entry.summary,
     strengths: [...entry.strengths],
     risks: [...entry.risks],
     evidence: [...entry.evidence]
   };
+}
+
+function inferLegacyEvidenceBasis(source: ComparisonSourceRef): NonNullable<ComparisonObjectEntry["evidenceBasis"]> {
+  if (source.objectType === "file") {
+    return "documentExtract";
+  }
+  return "objectSummary";
+}
+
+function isEvidenceBasis(value: unknown): value is NonNullable<ComparisonObjectEntry["evidenceBasis"]> {
+  return value === "pixels" || value === "objectSummary" || value === "documentExtract";
 }
 
 function sameExactIdSet(left: string[], right: string[]): boolean {

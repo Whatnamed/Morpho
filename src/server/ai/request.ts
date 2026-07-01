@@ -169,6 +169,21 @@ export type AiRouteConversationContext = {
   checkpointRequested: boolean;
 };
 
+export type AiRouteComparisonContext = {
+  sourceObjectIds: string[];
+  attachedImageObjectIds: string[];
+  unavailableImageObjectIds: string[];
+  attachedDocumentObjectIds: string[];
+  unavailableDocumentObjectIds: string[];
+  backgroundObjectIds: string[];
+};
+
+export type AiRouteComparisonBackgroundContext = {
+  defaultReference?: string;
+  designDefinition?: AiRouteDesignDefinitionContext;
+  projectContinuity?: AiRouteProjectContinuityContext;
+};
+
 export type AiRouteRequest = {
   draft: string;
   task: string;
@@ -185,6 +200,8 @@ export type AiRouteRequest = {
   webSearch?: ProviderWebSearchOptions;
   defaultReferenceStatus?: string;
   taskContext?: AiRouteTaskContext;
+  comparisonContext?: AiRouteComparisonContext;
+  comparisonBackgroundContext?: AiRouteComparisonBackgroundContext;
 };
 
 export type AiRouteValidationResult =
@@ -219,6 +236,8 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
       ? []
       : value.documentExtracts.filter(isDocumentExtract).slice(0, 8);
   const taskContext = normalizeTaskContext(value.taskContext);
+  const comparisonContext = normalizeComparisonContext(value.comparisonContext);
+  const comparisonBackgroundContext = normalizeComparisonBackgroundContext(value.comparisonBackgroundContext);
   const conversationContext = normalizeConversationContext(value.conversationContext);
 
   return {
@@ -235,7 +254,9 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
       conversationContext,
       webSearch: normalizeWebSearch(value.webSearch, taskMode),
       defaultReferenceStatus: typeof value.defaultReferenceStatus === "string" ? value.defaultReferenceStatus : undefined,
-      taskContext
+      taskContext,
+      comparisonContext,
+      comparisonBackgroundContext
     }
   };
 }
@@ -284,6 +305,8 @@ export function buildMorphoSystemPrompt(request: AiRouteRequest): string {
     "本次可用对象摘要：",
     objectLines,
     buildTaskContextPromptBlock(request),
+    buildComparisonContextPromptBlock(request),
+    buildComparisonBackgroundPromptBlock(request),
     buildConversationContextPromptBlock(request),
     buildAttachmentCapabilityLine(request),
     buildDocumentCapabilityLine(request),
@@ -376,6 +399,57 @@ function buildTaskContextPromptBlock(request: AiRouteRequest): string {
     lines.push(`skipped: ${context.skipped.map((skip) => `${skip.objectId}:${skip.reason}`).join("; ")}`);
   }
 
+  return lines.join("\n");
+}
+
+function buildComparisonContextPromptBlock(request: AiRouteRequest): string {
+  const context = request.comparisonContext;
+  if (!context) {
+    return "";
+  }
+
+  return [
+    "Compare evidence context:",
+    `sourceObjectIds: ${context.sourceObjectIds.join(", ") || "none"}`,
+    `attachedImageObjectIds: ${context.attachedImageObjectIds.join(", ") || "none"}`,
+    `unavailableImageObjectIds: ${context.unavailableImageObjectIds.join(", ") || "none"}`,
+    `attachedDocumentObjectIds: ${context.attachedDocumentObjectIds.join(", ") || "none"}`,
+    `unavailableDocumentObjectIds: ${context.unavailableDocumentObjectIds.join(", ") || "none"}`,
+    `backgroundObjectIds: ${context.backgroundObjectIds.join(", ") || "none"}`,
+    "Only sourceObjectIds may appear in morphoComparisonAnalysis.sourceObjectIds or objectComparisons. backgroundObjectIds are not Compare sources, evidence sources, or decision targets."
+  ].join("\n");
+}
+
+function buildComparisonBackgroundPromptBlock(request: AiRouteRequest): string {
+  const context = request.comparisonBackgroundContext;
+  if (!context) {
+    return "";
+  }
+
+  const lines = [
+    "Compare background context:",
+    `defaultReference: ${context.defaultReference ?? "none"}`,
+    "This background can explain criteria but must not be copied into Compare sources, objectComparisons, keyConclusionCandidate evidence, or decision targets."
+  ];
+
+  if (context.designDefinition) {
+    const definition = context.designDefinition;
+    lines.push(
+      `designDefinition: ${definition.objectId} / r${definition.revisionNumber} / ${definition.title}`,
+      `summary: ${definition.summary}`,
+      `projectGoal: ${definition.projectGoal}`,
+      `targetUsers: ${definition.targetUsers.join("; ")}`,
+      `primaryScenarios: ${definition.primaryScenarios.join("; ")}`,
+      `coreProblem: ${definition.coreProblem}`,
+      `designPrinciples: ${definition.designPrinciples.join("; ")}`,
+      `constraints: ${definition.constraints.join("; ")}`,
+      `avoidDirections: ${definition.avoidDirections.join("; ")}`,
+      `opportunities: ${definition.opportunities.join("; ")}`,
+      `openQuestions: ${definition.openQuestions.join("; ")}`
+    );
+  }
+
+  appendProjectContinuityPromptLines(lines, context.projectContinuity);
   return lines.join("\n");
 }
 
@@ -668,9 +742,10 @@ function buildComparisonAnalysisInstruction(request: AiRouteRequest): string {
     "If the selected sources do not share a clear comparison target and the user did not provide one, reply with at most one clarifying question in normal prose and do not output morphoComparisonAnalysis.",
     "File objects can only be treated as readable evidence when a documentExtract is included in this request. Otherwise do not pretend the file was read.",
     "Image objects only support true visual evidence when this request includes actual pixels or contact sheets. Otherwise mention the evidence limit explicitly and do not claim visual findings from the image itself.",
-    "JSON shape: { \"morphoComparisonAnalysis\": { \"comparisonGoal\": string, \"conclusionSummary\": string, \"objectComparisons\": [{ \"objectId\": string, \"title\": string, \"summary\": string, \"strengths\": string[], \"risks\": string[], \"evidence\": string[] }], \"recommendedQuestions\": string[], \"evidenceLimits\": string[], \"keyConclusionCandidate\"?: { \"title\": string, \"summary\": string, \"body\": string, \"sourceObjectIds\": string[], \"evidence\": [{ \"objectId\": string, \"label\": string, \"evidence\": string }], \"confidence\": \"supported\" | \"partial\" | \"needsVerification\", \"note\"?: string } } }",
+    "Each objectComparison must include evidenceBasis: \"pixels\" only when that source id is in attachedImageObjectIds, \"documentExtract\" only when that file id is in attachedDocumentObjectIds, otherwise \"objectSummary\".",
+    "JSON shape: { \"morphoComparisonAnalysis\": { \"comparisonGoal\": string, \"conclusionSummary\": string, \"objectComparisons\": [{ \"objectId\": string, \"title\": string, \"evidenceBasis\": \"pixels\" | \"objectSummary\" | \"documentExtract\", \"summary\": string, \"strengths\": string[], \"risks\": string[], \"evidence\": string[] }], \"recommendedQuestions\": string[], \"evidenceLimits\": string[], \"keyConclusionCandidate\"?: { \"title\": string, \"summary\": string, \"body\": string, \"sourceObjectIds\": string[], \"evidence\": [{ \"objectId\": string, \"label\": string, \"evidence\": string }], \"confidence\": \"supported\" | \"partial\" | \"needsVerification\", \"note\"?: string } } }",
     "objectComparisons must cover every selected source exactly once.",
-    "keyConclusionCandidate is optional, must stay within the selected source ids, and is only a candidate draft. It never means a real keyConclusion was created."
+    "keyConclusionCandidate is optional and only a candidate draft. Its sourceObjectIds must be non-empty selected ids that have true text evidence in this request: attachedDocumentObjectIds, research, or existing keyConclusion sources only. Its evidence entries must all use those same sourceObjectIds. It never means a real keyConclusion was created."
   ].join("\n");
 }
 
@@ -694,6 +769,35 @@ function normalizeTaskContext(value: unknown): AiRouteTaskContext | undefined {
     projectContinuity: normalizeProjectContinuityContext(value.projectContinuity),
     skipped: Array.isArray(value.skipped) ? value.skipped.map(normalizeSkippedContext).filter(isDefined).slice(0, 12) : []
   };
+}
+
+function normalizeComparisonContext(value: unknown): AiRouteComparisonContext | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  return {
+    sourceObjectIds: stringArray(value.sourceObjectIds).slice(0, 4),
+    attachedImageObjectIds: stringArray(value.attachedImageObjectIds).slice(0, 4),
+    unavailableImageObjectIds: stringArray(value.unavailableImageObjectIds).slice(0, 4),
+    attachedDocumentObjectIds: stringArray(value.attachedDocumentObjectIds).slice(0, 4),
+    unavailableDocumentObjectIds: stringArray(value.unavailableDocumentObjectIds).slice(0, 4),
+    backgroundObjectIds: stringArray(value.backgroundObjectIds).slice(0, 8)
+  };
+}
+
+function normalizeComparisonBackgroundContext(value: unknown): AiRouteComparisonBackgroundContext | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const context: AiRouteComparisonBackgroundContext = {
+    defaultReference: typeof value.defaultReference === "string" ? trimString(value.defaultReference, 240) : undefined,
+    designDefinition: normalizeDesignDefinitionContext(value.designDefinition),
+    projectContinuity: normalizeProjectContinuityContext(value.projectContinuity)
+  };
+
+  return context.defaultReference || context.designDefinition || context.projectContinuity ? context : undefined;
 }
 
 function normalizeConversationContext(value: unknown): AiRouteConversationContext | undefined {

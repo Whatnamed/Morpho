@@ -805,7 +805,21 @@ function ComparisonAnalysisCard({
   return (
     <div className="confirm-card" aria-label="Compare 分析结果">
       <strong>Compare 分析</strong>
-      <p>{analysis.conclusionSummary}</p>
+      {analysis.objectComparisons.length > 0 ? (
+        <div className="confirm-editor" aria-label="比较对象">
+          <span className="confirm-meta">比较对象</span>
+          {analysis.objectComparisons.map((entry) => (
+            <div className="compare-object-detail" key={entry.objectId}>
+              <strong>{entry.title}</strong>
+              <p>{entry.summary}</p>
+              {entry.strengths.length > 0 ? <p>优势 / 可继续发展：{entry.strengths.join("；")}</p> : null}
+              {entry.risks.length > 0 ? <p>风险 / 代价：{entry.risks.join("；")}</p> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <p>跨对象结论：{analysis.conclusionSummary}</p>
+      {analysis.recommendedQuestions.length > 0 ? <p>待继续验证：{analysis.recommendedQuestions.join("；")}</p> : null}
       {analysis.evidenceLimits.length > 0 ? <p>证据边界：{analysis.evidenceLimits.join("；")}</p> : null}
       <div className="confirm-editor">
         <span className="confirm-meta">来源对象：</span>
@@ -831,24 +845,27 @@ function ComparisonAnalysisCard({
             return null;
           }
           const disabled = source.availability !== "active";
+          const isEliminated = object.status === "eliminated";
 
           return (
             <div key={source.objectId}>
               <span>{source.title}</span>
-              <button className="plain-button" type="button" disabled={disabled} onClick={() => onRequestAction?.(analysis.id, "setPrimary", source.objectId)}>
-                设为主方向
-              </button>
-              <button className="plain-button" type="button" disabled={disabled} onClick={() => onRequestAction?.(analysis.id, "setAlternative", source.objectId)}>
-                设为备选
-              </button>
-              {object.status === "eliminated" ? (
+              {isEliminated ? (
                 <button className="plain-button" type="button" disabled={disabled} onClick={() => onRequestAction?.(analysis.id, "restoreAlternative", source.objectId)}>
                   恢复为备选
                 </button>
               ) : (
-                <button className="plain-button" type="button" disabled={disabled} onClick={() => onRequestAction?.(analysis.id, "eliminate", source.objectId)}>
-                  淘汰方向
-                </button>
+                <>
+                  <button className="plain-button" type="button" disabled={disabled} onClick={() => onRequestAction?.(analysis.id, "setPrimary", source.objectId)}>
+                    设为主方向
+                  </button>
+                  <button className="plain-button" type="button" disabled={disabled} onClick={() => onRequestAction?.(analysis.id, "setAlternative", source.objectId)}>
+                    设为备选
+                  </button>
+                  <button className="plain-button" type="button" disabled={disabled} onClick={() => onRequestAction?.(analysis.id, "eliminate", source.objectId)}>
+                    淘汰方向
+                  </button>
+                </>
               )}
             </div>
           );

@@ -466,6 +466,7 @@ export type ComparisonObjectEvidence = {
 export type ComparisonObjectEntry = {
   objectId: MorphoObjectId;
   title: string;
+  evidenceBasis?: "pixels" | "objectSummary" | "documentExtract";
   summary: string;
   strengths: string[];
   risks: string[];

@@ -91,7 +91,18 @@ import { buildProposalDiscussionDraft, buildProposalRegenerationDraft } from "./
 import { buildWebSearchOptions, collectMiMoImageAttachments, shouldAttachImagesForMiMo } from "./aiAttachments";
 import { collectDocumentExtractsForAi } from "./documentContext";
 import { resolveComparisonWritebackSourceObjectIds } from "./comparisonDecision";
-import { buildProviderTaskContext, buildTaskContext, taskContextKindFromAiTask, type TaskContextDefaultReference } from "./taskContext";
+import {
+  validateComparisonActionTarget,
+  validateComparisonKeyConclusionSources,
+  type ComparisonActionKind
+} from "./comparisonAction";
+import {
+  buildProviderComparisonBackgroundContext,
+  buildProviderTaskContext,
+  buildTaskContext,
+  taskContextKindFromAiTask,
+  type TaskContextDefaultReference
+} from "./taskContext";
 import { setConversationSemanticEntryManualState } from "@/domain/morpho/projectContinuity";
 import {
   applyConversationCheckpoint,
@@ -150,15 +161,6 @@ type ImageTaskStatus = {
   state: ImageTaskState;
   message: string;
 };
-
-type ComparisonActionKind =
-  | "setPrimary"
-  | "setAlternative"
-  | "eliminate"
-  | "restoreAlternative"
-  | "setDefaultReference"
-  | "clearDefaultReference"
-  | "createKeyConclusion";
 
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [workspace, setWorkspace, persistenceState] = usePersistentWorkspace(projectId);
@@ -1381,7 +1383,32 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           },
           webSearch,
           defaultReferenceStatus: summarizeTaskDefaultReferenceStatus(context.defaultReference),
-          taskContext: context.kind === "comparison" ? undefined : buildProviderTaskContext(context)
+          taskContext: context.kind === "comparison" ? undefined : buildProviderTaskContext(context),
+          comparisonContext:
+            context.kind === "comparison"
+              ? {
+                  sourceObjectIds: context.objectIds,
+                  attachedImageObjectIds: attachmentResult.entries
+                    .filter((entry) => entry.status === "ready")
+                    .map((entry) => entry.objectId),
+                  unavailableImageObjectIds: context.imageObjectIds.filter(
+                    (objectId) =>
+                      !attachmentResult.entries
+                        .filter((entry) => entry.status === "ready")
+                        .map((entry) => entry.objectId)
+                        .includes(objectId)
+                  ),
+                  attachedDocumentObjectIds: documentResult.extracts.map((extract) => extract.objectId),
+                  unavailableDocumentObjectIds: context.documentObjectIds.filter(
+                    (objectId) => !documentResult.extracts.some((extract) => extract.objectId === objectId)
+                  ),
+                  backgroundObjectIds: [context.designDefinitionRevision?.designDefinitionId].filter(
+                    (objectId): objectId is string => Boolean(objectId)
+                  )
+                }
+              : undefined,
+          comparisonBackgroundContext:
+            context.kind === "comparison" ? buildProviderComparisonBackgroundContext(context) : undefined
         }),
         signal: controller.signal
       });
@@ -1428,7 +1455,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               comparisonGoal: draft,
               imageAttachmentObjectIds: attachmentResult.entries
                 .filter((entry) => entry.status === "ready")
-                .map((entry) => entry.objectId)
+                .map((entry) => entry.objectId),
+              documentExtractObjectIds: documentResult.extracts.map((extract) => extract.objectId)
             })
           : null;
       const parsedComparisonAnalysis =
@@ -2228,6 +2256,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         userReason: pendingConfirmation.userReason.trim() || undefined
       };
       setWorkspace((current) => {
+        const validation = validatePendingComparisonConfirmation(current, pendingConfirmation);
+        if (validation.status !== "ok") {
+          return current;
+        }
+
         if (pendingConfirmation.kind === "compareSetPrimary") {
           return setConceptDirectionStatus(
             current,
@@ -2538,6 +2571,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return;
       }
 
+      const validation = validateComparisonActionTarget(workspace, analysisId, action, objectId);
+      if (validation.status !== "ok") {
+        return;
+      }
+
       const summary = analysis.conclusionSummary;
       const keyConclusionDraft = analysis.keyConclusionCandidate
         ? {
@@ -2575,7 +2613,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return;
       }
 
-      const targetObject = workspace.objects[objectId];
+      const targetObject = validation.targetObject;
       if (!targetObject) {
         return;
       }
@@ -3451,6 +3489,45 @@ function truncateForTitle(input: string, fallback: string): string {
   }
 
   return trimmed.length > 28 ? `${trimmed.slice(0, 28)}…` : trimmed;
+}
+
+function validatePendingComparisonConfirmation(
+  current: MorphoWorkspace,
+  confirmation: PendingComparisonConfirmation
+): ReturnType<typeof validateComparisonActionTarget> {
+  const targetValidation = validateComparisonActionTarget(
+    current,
+    confirmation.comparisonAnalysisId,
+    comparisonActionFromPending(confirmation),
+    "targetObjectId" in confirmation ? confirmation.targetObjectId : undefined
+  );
+  if (targetValidation.status !== "ok" || confirmation.kind !== "compareCreateKeyConclusion") {
+    return targetValidation;
+  }
+  return validateComparisonKeyConclusionSources(
+    current,
+    confirmation.comparisonAnalysisId,
+    confirmation.keyConclusionSourceObjectIds
+  );
+}
+
+function comparisonActionFromPending(confirmation: PendingComparisonConfirmation): ComparisonActionKind {
+  switch (confirmation.kind) {
+    case "compareSetPrimary":
+      return "setPrimary";
+    case "compareSetAlternative":
+      return "setAlternative";
+    case "compareEliminate":
+      return "eliminate";
+    case "compareRestoreAlternative":
+      return "restoreAlternative";
+    case "compareSetDefaultReference":
+      return "setDefaultReference";
+    case "compareClearDefaultReference":
+      return "clearDefaultReference";
+    case "compareCreateKeyConclusion":
+      return "createKeyConclusion";
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

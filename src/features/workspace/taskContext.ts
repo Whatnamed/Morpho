@@ -102,6 +102,12 @@ export type ProviderTaskContext = {
   skipped: TaskContextSkip[];
 };
 
+export type ProviderComparisonBackgroundContext = {
+  defaultReference: string;
+  designDefinition?: ProviderTaskContext["designDefinition"];
+  projectContinuity: ProjectContinuityContext;
+};
+
 export type BuildTaskContextInput = {
   kind: TaskContextKind;
   draft: string;
@@ -155,11 +161,12 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
     const budgeted = applyObjectBudget(workspace, objectIds, skipped);
     const budgetedDocuments = applyDocumentBudget(documentObjectIds, skipped);
     const budgetedImages = applyImageBudget(imageObjectIds, skipped);
+    const designDefinitionRevision = getCurrentDesignDefinitionRevision(workspace);
     const projectContinuity = buildProjectContinuityContext(workspace, {
       taskKind: input.kind,
       selectedObjectIds: selectedIds,
       directObjectIds: budgeted.objectIds,
-      directRevisionIds: [],
+      directRevisionIds: [designDefinitionRevision?.id].filter((id): id is string => Boolean(id)),
       directBranchIds: [],
       directDecisionIds: collectDirectDecisionIds(workspace, budgeted.objectIds),
       targetDirectionIds: input.targetDirectionIds,
@@ -175,7 +182,7 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
       imageObjectIds: budgetedImages,
       documentObjectIds: budgetedDocuments,
       directionRevisions: [],
-      designDefinitionRevision: undefined,
+      designDefinitionRevision,
       visualBranches: [],
       skipped,
       truncated: budgeted.truncated || budgetedDocuments.length < documentObjectIds.length || budgetedImages.length < imageObjectIds.length,
@@ -291,6 +298,14 @@ export function buildProviderTaskContext(context: TaskContextResult): ProviderTa
     })),
     projectContinuity: context.projectContinuity,
     skipped: context.skipped
+  };
+}
+
+export function buildProviderComparisonBackgroundContext(context: TaskContextResult): ProviderComparisonBackgroundContext {
+  return {
+    defaultReference: summarizeDefaultReference(context.defaultReference),
+    designDefinition: context.designDefinitionRevision ? summarizeDesignDefinitionRevision(context.designDefinitionRevision) : undefined,
+    projectContinuity: context.projectContinuity
   };
 }
 

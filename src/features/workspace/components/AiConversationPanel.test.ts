@@ -215,6 +215,170 @@ describe("AiConversationPanel", () => {
     expect(html).toContain("<button class=\"plain-button\" type=\"button\">方向 A：柔光轨道</button>");
   });
 
+  it("renders compare object details and recommended questions before decision actions", () => {
+    const workspace = createInitialWorkspace();
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        workspace: {
+          ...workspace,
+          ai: {
+            ...workspace.ai,
+            comparisonAnalyses: {
+              "comparison-ai-assistant-compare-detail": {
+                id: "comparison-ai-assistant-compare-detail",
+                assistantMessageId: "ai-assistant-compare-detail",
+                userMessageId: "ai-user-compare-detail",
+                createdAt: "2026-07-01T10:00:00.000Z",
+                updatedAt: "2026-07-01T10:00:00.000Z",
+                sourceObjectIds: ["direction-soft-rail", "direction-support-island"],
+                sourceRefs: [
+                  {
+                    objectId: "direction-soft-rail",
+                    objectType: "conceptDirection",
+                    title: "Direction A",
+                    summary: "Source A snapshot",
+                    availability: "active"
+                  },
+                  {
+                    objectId: "direction-support-island",
+                    objectType: "conceptDirection",
+                    title: "Direction B",
+                    summary: "Source B snapshot",
+                    availability: "active"
+                  }
+                ],
+                comparisonGoal: "Compare continuation value.",
+                conclusionSummary: "Direction A is stronger for continuous support.",
+                objectComparisons: [
+                  {
+                    objectId: "direction-soft-rail",
+                    title: "Direction A",
+                    summary: "Direction A keeps the path continuous.",
+                    strengths: ["Continuous hand support"],
+                    risks: ["Corner installation complexity"],
+                    evidence: []
+                  },
+                  {
+                    objectId: "direction-support-island",
+                    title: "Direction B",
+                    summary: "Direction B is easier to install but less continuous.",
+                    strengths: ["Lower installation scope"],
+                    risks: ["Weak route continuity"],
+                    evidence: []
+                  }
+                ],
+                recommendedQuestions: ["Validate corner transitions."],
+                evidenceLimits: ["No visual evidence in this turn."],
+                keyConclusionCandidate: undefined
+              }
+            },
+            messages: [
+              {
+                id: "ai-assistant-compare-detail",
+                role: "assistant",
+                body: "Compare complete.",
+                status: "done",
+                comparisonAnalysisId: "comparison-ai-assistant-compare-detail"
+              }
+            ]
+          }
+        }
+      }))
+    );
+
+    expect(html).toContain("比较对象");
+    expect(html).toContain("Direction A keeps the path continuous.");
+    expect(html).toContain("Continuous hand support");
+    expect(html).toContain("Corner installation complexity");
+    expect(html).toContain("待继续验证");
+    expect(html).toContain("Validate corner transitions.");
+    expect(html.indexOf("Direction A keeps the path continuous.")).toBeLessThan(html.indexOf("设为主方向"));
+  });
+
+  it("only offers restore for eliminated directions in compare decisions", () => {
+    const workspace = createInitialWorkspace();
+    const direction = workspace.objects["direction-soft-rail"];
+    if (!direction || direction.type !== "conceptDirection") {
+      throw new Error("missing direction fixture");
+    }
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        workspace: {
+          ...workspace,
+          objects: {
+            ...workspace.objects,
+            "direction-soft-rail": { ...direction, status: "eliminated" }
+          },
+          ai: {
+            ...workspace.ai,
+            comparisonAnalyses: {
+              "comparison-ai-assistant-eliminated": {
+                id: "comparison-ai-assistant-eliminated",
+                assistantMessageId: "ai-assistant-eliminated",
+                userMessageId: "ai-user-eliminated",
+                createdAt: "2026-07-01T10:00:00.000Z",
+                updatedAt: "2026-07-01T10:00:00.000Z",
+                sourceObjectIds: ["direction-soft-rail", "image-soft-rail-v2"],
+                sourceRefs: [
+                  {
+                    objectId: "direction-soft-rail",
+                    objectType: "conceptDirection",
+                    title: "Eliminated direction",
+                    summary: "Eliminated snapshot",
+                    availability: "active"
+                  },
+                  {
+                    objectId: "image-soft-rail-v2",
+                    objectType: "image",
+                    title: "Reference image",
+                    summary: "Image snapshot",
+                    availability: "active"
+                  }
+                ],
+                comparisonGoal: "Compare restore value.",
+                conclusionSummary: "Restore only if user gives a reason.",
+                objectComparisons: [
+                  {
+                    objectId: "direction-soft-rail",
+                    title: "Eliminated direction",
+                    summary: "Can be restored only as alternative first.",
+                    strengths: [],
+                    risks: [],
+                    evidence: []
+                  },
+                  {
+                    objectId: "image-soft-rail-v2",
+                    title: "Reference image",
+                    summary: "Reference snapshot.",
+                    strengths: [],
+                    risks: [],
+                    evidence: []
+                  }
+                ],
+                recommendedQuestions: [],
+                evidenceLimits: [],
+                keyConclusionCandidate: undefined
+              }
+            },
+            messages: [
+              {
+                id: "ai-assistant-eliminated",
+                role: "assistant",
+                body: "Compare complete.",
+                status: "done",
+                comparisonAnalysisId: "comparison-ai-assistant-eliminated"
+              }
+            ]
+          }
+        }
+      }))
+    );
+
+    expect(html).toContain("恢复为备选");
+    expect(html).not.toContain("设为主方向");
+    expect(html).not.toContain("设为备选");
+  });
+
   it("keeps saved compare snapshots visible when a source becomes hidden", () => {
     const hiddenWorkspace = hideObject(createInitialWorkspace(), "direction-support-island");
     const html = renderToStaticMarkup(
