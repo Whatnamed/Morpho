@@ -41,6 +41,7 @@ export function DocumentReaderPanel({
   );
   const normalizedActiveMatchIndex = matches.length === 0 ? 0 : Math.min(activeMatchIndex, matches.length - 1);
   const activeMatch = matches[normalizedActiveMatchIndex];
+  const resultCountLabel = buildResultCountLabel(query, matches.length);
 
   useEffect(() => {
     if (!activeMatch) {
@@ -105,10 +106,7 @@ export function DocumentReaderPanel({
                 }}
               />
             </div>
-            <span>
-              {query.trim() ? `${matches.length} 个命中` : "未输入关键词"}
-              {matches.length >= SEARCH_RESULT_LIMIT ? `，仅显示前 ${SEARCH_RESULT_LIMIT} 个` : ""}
-            </span>
+            <span>{resultCountLabel}</span>
             <button className="plain-button" type="button" disabled={matches.length === 0} onClick={() => goToMatch(-1)}>
               <ChevronUp size={13} />
               上一个
@@ -217,6 +215,17 @@ function formatParseStatus(status: FileObject["parseStatus"]): string {
 
 function formatCount(value: number): string {
   return Number.isFinite(value) ? value.toLocaleString("zh-CN") : "未知";
+}
+
+function buildResultCountLabel(query: string, matchCount: number): string {
+  if (!query.trim()) {
+    return "未输入关键词";
+  }
+
+  const resultLimitNote =
+    matchCount > VISIBLE_RESULT_LIMIT ? `，显示前 ${VISIBLE_RESULT_LIMIT} 条定位结果，可用上一个/下一个切换其余命中` : "";
+  const searchLimitNote = matchCount >= SEARCH_RESULT_LIMIT ? `，搜索最多计算前 ${SEARCH_RESULT_LIMIT} 个命中` : "";
+  return `${matchCount} 个命中${resultLimitNote}${searchLimitNote}`;
 }
 
 function blockIndexLabel(blocks: DocumentReaderBlock[], blockId: string): string {
