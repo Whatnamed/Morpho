@@ -2,18 +2,21 @@ import { describe, expect, it } from "vitest";
 
 import type { MorphoWorkspace } from "./types";
 import { createInitialWorkspace } from "./workspace";
+import { hideObject } from "./workspace";
 import {
   applyConversationCheckpoint,
   buildConversationContextForRequest,
   buildConversationLaneKey,
   CONVERSATION_CHECKPOINT_LIMITS,
   parseConversationCheckpointPayload,
+  resolveConversationLaneAnchors,
   sanitizeConversationAssistantStreamForDisplay,
   shouldRequestConversationCheckpoint,
   stripConversationCheckpointBlock,
   validateConversationCheckpoint
 } from "./conversationCheckpoint";
 import { parseProjectContinuityPatchPayload } from "./conversationSemanticPatch";
+import { buildTaskContext } from "../../features/workspace/taskContext";
 
 const focus = {
   area: "directionAndVisual" as const,
@@ -129,6 +132,53 @@ describe("conversation checkpoint parser and validator", () => {
 });
 
 describe("conversation lane and trigger logic", () => {
+  it("derives lane anchors from explicit active selection instead of auto-included task context objects", () => {
+    const selectedObjectIds = ["image-soft-rail-v2"] as const;
+    const workspace = createInitialWorkspace();
+    const hiddenInsightWorkspace = hideObject(workspace, "insight-continuous-support");
+    const beforeContext = buildTaskContext(workspace, {
+      kind: "general",
+      draft: "继续讨论这张图。",
+      selectedObjectIds: [...selectedObjectIds]
+    });
+    const afterContext = buildTaskContext(hiddenInsightWorkspace, {
+      kind: "general",
+      draft: "继续讨论这张图。",
+      selectedObjectIds: [...selectedObjectIds]
+    });
+
+    expect(beforeContext.objectIds).toContain("insight-continuous-support");
+    expect(afterContext.objectIds).not.toContain("insight-continuous-support");
+
+    const unstableBefore = buildConversationLaneKey({
+      currentFocus: focus,
+      taskKind: "general",
+      anchorObjectIds: beforeContext.objectIds,
+      targetDirectionIds: beforeContext.directionRevisions.map((revision) => revision.directionId),
+      visualBranchId: beforeContext.visualBranches[0]?.id
+    });
+    const unstableAfter = buildConversationLaneKey({
+      currentFocus: focus,
+      taskKind: "general",
+      anchorObjectIds: afterContext.objectIds,
+      targetDirectionIds: afterContext.directionRevisions.map((revision) => revision.directionId),
+      visualBranchId: afterContext.visualBranches[0]?.id
+    });
+
+    expect(unstableBefore).not.toBe(unstableAfter);
+
+    expect(resolveConversationLaneAnchors(workspace, [...selectedObjectIds])).toEqual({
+      anchorObjectIds: ["image-soft-rail-v2"],
+      targetDirectionIds: ["direction-soft-rail"],
+      visualBranchId: "visual-branch-soft-rail-core"
+    });
+    expect(resolveConversationLaneAnchors(hiddenInsightWorkspace, [...selectedObjectIds])).toEqual({
+      anchorObjectIds: ["image-soft-rail-v2"],
+      targetDirectionIds: ["direction-soft-rail"],
+      visualBranchId: "visual-branch-soft-rail-core"
+    });
+  });
+
   it("builds a stable lane key from focus epoch, task kind, selected objects, target directions, and visual branch", () => {
     const first = buildConversationLaneKey({
       currentFocus: focus,
@@ -178,9 +228,11 @@ describe("conversation lane and trigger logic", () => {
     const laneKey = "lane-threshold";
     const messages = makeLaneMessages(laneKey, 8);
 
-    expect(shouldRequestConversationCheckpoint({ taskMode: "chatAnalysis", workIntent: "discussion", laneKey, messages: messages.slice(0, 6) })).toBe(false);
-    expect(shouldRequestConversationCheckpoint({ taskMode: "chatAnalysis", workIntent: "discussion", laneKey, messages })).toBe(true);
-    expect(shouldRequestConversationCheckpoint({ taskMode: "chatAnalysis", workIntent: "discussion", laneKey, messages: makeLaneMessages(laneKey, 3).map((message, index) => ({ ...message, body: index === 0 ? "长内容".repeat(1800) : message.body })) })).toBe(true);
+    expect(shouldRequestConversationCheckpoint({ taskMode: "chatAnalysis", workIntent: "discussion", laneKey, messages: messages.slice(0, 6), hasPendingProposal: false })).toBe(false);
+    expect(shouldRequestConversationCheckpoint({ taskMode: "chatAnalysis", workIntent: "discussion", laneKey, messages, hasPendingProposal: false })).toBe(true);
+    expect(shouldRequestConversationCheckpoint({ taskMode: "chatAnalysis", workIntent: "comparison", laneKey, messages, hasPendingProposal: false })).toBe(true);
+    expect(shouldRequestConversationCheckpoint({ taskMode: "chatAnalysis", workIntent: "discussion", laneKey, messages, hasPendingProposal: true })).toBe(false);
+    expect(shouldRequestConversationCheckpoint({ taskMode: "chatAnalysis", workIntent: "discussion", laneKey, messages: makeLaneMessages(laneKey, 3).map((message, index) => ({ ...message, body: index === 0 ? "长内容".repeat(1800) : message.body })), hasPendingProposal: false })).toBe(true);
   });
 
   it("does not request checkpoints for image, research, proposal intents, or unusable messages", () => {
@@ -190,11 +242,15 @@ describe("conversation lane and trigger logic", () => {
       index < 8 ? { ...message, status: index % 2 === 0 ? "failed" as const : "streaming" as const } : message
     );
 
-    expect(shouldRequestConversationCheckpoint({ taskMode: "imageGeneration", workIntent: "discussion", laneKey, messages })).toBe(false);
-    expect(shouldRequestConversationCheckpoint({ taskMode: "researchOperation", workIntent: "discussion", laneKey, messages })).toBe(false);
-    expect(shouldRequestConversationCheckpoint({ taskMode: "chatAnalysis", workIntent: "createDesignDefinition", laneKey, messages })).toBe(false);
-    expect(shouldRequestConversationCheckpoint({ taskMode: "chatAnalysis", workIntent: "createConceptDirections", laneKey, messages })).toBe(false);
-    expect(shouldRequestConversationCheckpoint({ taskMode: "chatAnalysis", workIntent: "discussion", laneKey, messages: noisyMessages })).toBe(false);
+    expect(shouldRequestConversationCheckpoint({ taskMode: "imageGeneration", workIntent: "discussion", laneKey, messages, hasPendingProposal: false })).toBe(false);
+    expect(shouldRequestConversationCheckpoint({ taskMode: "researchOperation", workIntent: "discussion", laneKey, messages, hasPendingProposal: false })).toBe(false);
+    expect(shouldRequestConversationCheckpoint({ taskMode: "chatAnalysis", workIntent: "createDesignDefinition", laneKey, messages, hasPendingProposal: false })).toBe(false);
+    expect(shouldRequestConversationCheckpoint({ taskMode: "chatAnalysis", workIntent: "reviseDesignDefinition", laneKey, messages, hasPendingProposal: false })).toBe(false);
+    expect(shouldRequestConversationCheckpoint({ taskMode: "chatAnalysis", workIntent: "createConceptDirections", laneKey, messages, hasPendingProposal: false })).toBe(false);
+    expect(shouldRequestConversationCheckpoint({ taskMode: "chatAnalysis", workIntent: "reviseConceptDirection", laneKey, messages, hasPendingProposal: false })).toBe(false);
+    expect(shouldRequestConversationCheckpoint({ taskMode: "chatAnalysis", workIntent: "splitConceptDirection", laneKey, messages, hasPendingProposal: false })).toBe(false);
+    expect(shouldRequestConversationCheckpoint({ taskMode: "chatAnalysis", workIntent: "mergeConceptDirections", laneKey, messages, hasPendingProposal: false })).toBe(false);
+    expect(shouldRequestConversationCheckpoint({ taskMode: "chatAnalysis", workIntent: "discussion", laneKey, messages: noisyMessages, hasPendingProposal: false })).toBe(false);
   });
 });
 
@@ -216,6 +272,7 @@ describe("conversation checkpoint write and request context", () => {
       sourceMessageCount: 8,
       assistantMessageId: "message-8",
       checkpoint: validCheckpoint,
+      hasPendingProposal: false,
       now: "2026-07-01T10:00:00.000Z"
     });
 
@@ -240,6 +297,7 @@ describe("conversation checkpoint write and request context", () => {
       sourceMessageCount: 10,
       assistantMessageId: "message-10",
       checkpoint: { ...validCheckpoint, nextTurnAnchor: "下一步继续收敛转角方案。" },
+      hasPendingProposal: false,
       now: "2026-07-01T10:10:00.000Z"
     });
 
@@ -276,6 +334,7 @@ describe("conversation checkpoint write and request context", () => {
         sourceMessageCount: 8,
         assistantMessageId: "message-8",
         checkpoint: validCheckpoint,
+        hasPendingProposal: false,
         now: `2026-07-01T10:${String(index).padStart(2, "0")}:00.000Z`
       });
       expect(result.status).toBe("applied");
@@ -311,6 +370,7 @@ describe("conversation checkpoint write and request context", () => {
       sourceMessageCount: 6,
       assistantMessageId: "message-6",
       checkpoint: validCheckpoint,
+      hasPendingProposal: false,
       now: "2026-07-01T11:00:00.000Z"
     });
     if (applied.status !== "applied") {
@@ -323,7 +383,8 @@ describe("conversation checkpoint write and request context", () => {
       laneKey,
       taskMode: "chatAnalysis",
       workIntent: "discussion",
-      draft: "继续说转角怎么处理。"
+      draft: "继续说转角怎么处理。",
+      hasPendingProposal: false
     });
 
     expect(context.checkpoint?.id).toBe(applied.checkpoint.id);
@@ -374,7 +435,8 @@ describe("conversation checkpoint write and request context", () => {
       laneKey,
       taskMode: "chatAnalysis",
       workIntent: "discussion",
-      draft: "继续说。"
+      draft: "继续说。",
+      hasPendingProposal: false
     });
 
     expect(context.checkpoint).toBeUndefined();
@@ -413,7 +475,8 @@ describe("conversation checkpoint write and request context", () => {
       laneKey: "new-lane",
       taskMode: "chatAnalysis",
       workIntent: "discussion",
-      draft: "继续说柔光轨道。"
+      draft: "继续说柔光轨道。",
+      hasPendingProposal: false
     });
 
     expect(context.checkpoint).toBeUndefined();
@@ -422,6 +485,113 @@ describe("conversation checkpoint write and request context", () => {
       "可以把触摸支撑做成更家具化的连续线。"
     ]);
     expect(context.checkpointRequested).toBe(false);
+  });
+
+  it("skips checkpoint writes when a pending proposal exists", () => {
+    const laneKey = "lane-pending";
+    const workspace = withMessages(createInitialWorkspace(), makeLaneMessages(laneKey, 8));
+
+    const result = applyConversationCheckpoint(workspace, {
+      laneKey,
+      currentFocus: focus,
+      taskKind: "general",
+      anchorObjectIds: ["image-a"],
+      targetDirectionIds: ["direction-a"],
+      sourceStartMessageId: "message-1",
+      sourceEndMessageId: "message-8",
+      sourceMessageCount: 8,
+      assistantMessageId: "message-8",
+      checkpoint: validCheckpoint,
+      hasPendingProposal: true,
+      now: "2026-07-01T10:20:00.000Z"
+    });
+
+    expect(result).toMatchObject({ status: "skipped" });
+  });
+
+  it("skips checkpoint writes when the source range does not form one compressible lane ending at the current assistant message", () => {
+    const laneKey = "lane-guards";
+    const workspace = withMessages(createInitialWorkspace(), makeLaneMessages(laneKey, 8));
+
+    const wrongStartLane = applyConversationCheckpoint(
+      withMessages(
+        workspace,
+        workspace.ai.messages.map((message) =>
+          message.id === "message-1" ? { ...message, conversationLaneKey: "other-lane" } : message
+        )
+      ),
+      {
+        laneKey,
+        currentFocus: focus,
+        taskKind: "general",
+        anchorObjectIds: ["image-a"],
+        targetDirectionIds: ["direction-a"],
+        sourceStartMessageId: "message-1",
+        sourceEndMessageId: "message-8",
+        sourceMessageCount: 8,
+        assistantMessageId: "message-8",
+        checkpoint: validCheckpoint,
+        hasPendingProposal: false,
+        now: "2026-07-01T10:21:00.000Z"
+      }
+    );
+    expect(wrongStartLane).toMatchObject({ status: "skipped" });
+
+    const reversedRange = applyConversationCheckpoint(workspace, {
+      laneKey,
+      currentFocus: focus,
+      taskKind: "general",
+      anchorObjectIds: ["image-a"],
+      targetDirectionIds: ["direction-a"],
+      sourceStartMessageId: "message-7",
+      sourceEndMessageId: "message-6",
+      sourceMessageCount: 2,
+      assistantMessageId: "message-8",
+      checkpoint: validCheckpoint,
+      hasPendingProposal: false,
+      now: "2026-07-01T10:22:00.000Z"
+    });
+    expect(reversedRange).toMatchObject({ status: "skipped" });
+
+    const staleEndMessage = applyConversationCheckpoint(workspace, {
+      laneKey,
+      currentFocus: focus,
+      taskKind: "general",
+      anchorObjectIds: ["image-a"],
+      targetDirectionIds: ["direction-a"],
+      sourceStartMessageId: "message-1",
+      sourceEndMessageId: "message-6",
+      sourceMessageCount: 6,
+      assistantMessageId: "message-8",
+      checkpoint: validCheckpoint,
+      hasPendingProposal: false,
+      now: "2026-07-01T10:23:00.000Z"
+    });
+    expect(staleEndMessage).toMatchObject({ status: "skipped" });
+
+    const nonCompressibleRange = applyConversationCheckpoint(
+      withMessages(
+        workspace,
+        workspace.ai.messages.map((message) =>
+          message.id === "message-4" ? { ...message, status: "failed" as const } : message
+        )
+      ),
+      {
+        laneKey,
+        currentFocus: focus,
+        taskKind: "general",
+        anchorObjectIds: ["image-a"],
+        targetDirectionIds: ["direction-a"],
+        sourceStartMessageId: "message-1",
+        sourceEndMessageId: "message-8",
+        sourceMessageCount: 8,
+        assistantMessageId: "message-8",
+        checkpoint: validCheckpoint,
+        hasPendingProposal: false,
+        now: "2026-07-01T10:24:00.000Z"
+      }
+    );
+    expect(nonCompressibleRange).toMatchObject({ status: "skipped" });
   });
 });
 

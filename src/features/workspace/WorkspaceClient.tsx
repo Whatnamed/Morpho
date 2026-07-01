@@ -96,6 +96,7 @@ import {
   buildConversationContextForRequest,
   buildConversationLaneKey,
   parseConversationCheckpointPayload,
+  resolveConversationLaneAnchors,
   sanitizeConversationAssistantStreamForDisplay,
   stripAssistantTechnicalBlocks
 } from "@/domain/morpho/conversationCheckpoint";
@@ -1243,19 +1244,21 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const now = new Date().toISOString();
     const userMessageId = `ai-user-${Date.now()}`;
     const assistantMessageId = `ai-assistant-${Date.now()}`;
+    const conversationLaneAnchors = resolveConversationLaneAnchors(workspace, selectedObjectIds);
     const conversationLaneKey = buildConversationLaneKey({
       currentFocus: workspace.projectContinuity.currentFocus,
       taskKind: context.kind,
-      anchorObjectIds: context.objectIds,
-      targetDirectionIds: context.directionRevisions.map((revision) => revision.directionId),
-      visualBranchId: context.visualBranches[0]?.id
+      anchorObjectIds: conversationLaneAnchors.anchorObjectIds,
+      targetDirectionIds: conversationLaneAnchors.targetDirectionIds,
+      visualBranchId: conversationLaneAnchors.visualBranchId
     });
     const conversationContext = buildConversationContextForRequest({
       workspace,
       laneKey: conversationLaneKey,
       taskMode: executionTaskMode,
       workIntent: executionWorkIntent,
-      draft
+      draft,
+      hasPendingProposal: Boolean(activeProposal)
     });
     const objectSummaries = makeTaskObjectSummaries(context.semanticSummaries);
     const controller = new AbortController();
@@ -1475,14 +1478,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               laneKey: conversationLaneKey,
               currentFocus: nextWorkspace.projectContinuity.currentFocus,
               taskKind: context.kind,
-              anchorObjectIds: context.objectIds,
-              targetDirectionIds: context.directionRevisions.map((revision) => revision.directionId),
-              visualBranchId: context.visualBranches[0]?.id,
+              anchorObjectIds: conversationLaneAnchors.anchorObjectIds,
+              targetDirectionIds: conversationLaneAnchors.targetDirectionIds,
+              visualBranchId: conversationLaneAnchors.visualBranchId,
               sourceStartMessageId: conversationContext.checkpoint?.sourceStartMessageId ?? checkpointSourceMessages[0]?.id ?? userMessageId,
               sourceEndMessageId: assistantMessageId,
               sourceMessageCount: checkpointSourceMessages.length,
               assistantMessageId,
               checkpoint: parsedConversationCheckpoint.checkpoint,
+              hasPendingProposal: Boolean(activeProposal),
               now
             });
             nextWorkspace = checkpointResult.workspace;
@@ -1515,6 +1519,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setIsAiStreaming(false);
     }
   }, [
+    activeProposal,
     aiDraft,
     handleRunResearchOperation,
     handleRunVisualGenerationOperation,

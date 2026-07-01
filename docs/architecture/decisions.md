@@ -434,19 +434,19 @@ Boundary: `ProjectContinuityState` remains schema v2. Checkpoints are not projec
 
 ## 2026-07-01: Keep Conversation Checkpoints Lane-Scoped And Non-Authoritative
 
-Decision: build checkpoint lanes deterministically from current focus area, focus `updatedAt`, task kind, sorted direct object IDs, sorted target direction IDs, and optional VisualBranch ID.
+Decision: build checkpoint lanes deterministically from current focus area, focus `updatedAt`, task kind, sorted explicitly selected active object IDs, selected direction IDs, selected-image direction IDs, and an optional unique selected-image VisualBranch ID.
 
 Reason: a checkpoint should continue only the same current discussion range. Focus epoch participation prevents a checkpoint from an older design-definition, direction, research, or visual-development context from silently entering a later context with the same focus area label.
 
-Boundary: lane keys do not use canvas coordinates, visual grouping, proximity, draft text, or model semantic guesses. Opening drawers, zooming, panning, dragging, hovering, and other visual UI state do not create a new lane.
+Boundary: lane keys do not use auto-included task-context objects such as current definitions, related key conclusions, or other derived context helpers. They also do not use canvas coordinates, visual grouping, proximity, draft text, or model semantic guesses. Opening drawers, zooming, panning, dragging, hovering, and other visual UI state do not create a new lane.
 
-## 2026-07-01: Request Conversation Checkpoints Only In Normal Discussion Calls
+## 2026-07-01: Request Conversation Checkpoints Only In Normal Discussion Or Comparison Calls
 
-Decision: ask for `morphoConversationCheckpoint` only inside the existing `/api/ai/chat` provider call when ordinary `chatAnalysis` discussion has crossed deterministic thresholds.
+Decision: ask for `morphoConversationCheckpoint` only inside the existing `/api/ai/chat` provider call when ordinary `chatAnalysis` discussion/comparison has crossed deterministic thresholds and no pending proposal is open.
 
 Reason: M5-B2 must not add a second model call or make the provider decide when compression is needed.
 
-Boundary: current thresholds are at least 8 usable messages and 3 user messages, or at least 5,200 characters and 2 user messages. The instruction is not present for `imageGeneration`, `researchOperation`, design-definition Proposal intents, or concept-direction Proposal intents. Failed, cancelled, streaming, and non-chat messages are excluded.
+Boundary: current thresholds are at least 8 usable messages and 3 user messages, or at least 5,200 characters and 2 user messages. The instruction is not present for `imageGeneration`, `researchOperation`, design-definition Proposal intents, or concept-direction Proposal intents. Failed, cancelled, streaming, and non-chat messages are excluded, and a pending proposal suppresses checkpoint request/write.
 
 ## 2026-07-01: Hide Conversation Checkpoint JSON From Visible Chat
 

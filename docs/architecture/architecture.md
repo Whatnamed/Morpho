@@ -132,8 +132,8 @@ M5-B2 additions:
 
 - schema v10 adds short-term conversation checkpoints to `workspace.ai.conversationCheckpoints`; `ProjectContinuityState` remains schema v2;
 - old v9 workspaces migrate by initializing an empty checkpoint array, preserving all raw `ai.messages`, and not fabricating lane keys or checkpoint content;
-- ordinary `chatAnalysis` discussion requests build a deterministic conversation lane from current focus area, focus `updatedAt`, task kind, sorted direct object IDs, sorted target direction IDs, and optional VisualBranch ID;
-- checkpoint requests trigger only after deterministic message/character thresholds and never for image generation, research operation, design-definition proposals, or concept-direction proposals;
+- ordinary `chatAnalysis` discussion/comparison requests build a deterministic conversation lane from current focus area, focus `updatedAt`, task kind, sorted explicitly selected active object IDs, selected direction IDs, selected-image direction IDs, and an optional unique selected-image VisualBranch ID;
+- checkpoint requests trigger only after deterministic message/character thresholds, never for image generation, research operation, design-definition proposals, or concept-direction proposals, and are suppressed while a pending proposal is open;
 - provider context for continued same-lane chat uses a valid checkpoint plus bounded recent raw messages instead of the entire transcript, while the current draft remains a separate user input and is not duplicated in history;
 - `morphoConversationCheckpoint` is parsed and validated independently from `morphoProjectContinuityPatch`; either valid block may succeed if the other fails;
 - checkpoint writes update only `workspace.ai.conversationCheckpoints` and the assistant message `conversationCheckpointId`; they never write project records, current focus, objects, revisions, directions, default references, delivery references, or DecisionRecords;

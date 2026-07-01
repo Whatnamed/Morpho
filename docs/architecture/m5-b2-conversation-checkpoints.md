@@ -2,7 +2,7 @@
 
 ## Scope
 
-M5-B2 adds automatic short-term conversation checkpoints for long ordinary chat discussions. The goal is to keep the next request coherent without sending the entire visible transcript to the provider.
+M5-B2 adds automatic short-term conversation checkpoints for long ordinary chat discussion/comparison turns. The goal is to keep the next request coherent without sending the entire visible transcript to the provider.
 
 This is not project memory, a design definition, a DecisionRecord, direction status, default reference state, delivery preparation, Compare, archive restore, or a user-managed summary feature.
 
@@ -30,9 +30,11 @@ The current implementation uses:
 - `projectContinuity.currentFocus.area`;
 - `projectContinuity.currentFocus.updatedAt` as the focus epoch;
 - task context kind;
-- sorted active/direct anchor object IDs from task context;
-- sorted target direction IDs from current direction revisions;
-- optional VisualBranch ID.
+- sorted explicitly selected active object IDs;
+- sorted directly selected direction IDs plus selected-image `directionId` values;
+- an optional unique `visualBranchId` that comes directly from the selected images.
+
+It does not use auto-included task-context objects such as the current design definition, related key conclusions, or other derived context helpers.
 
 The focus epoch is part of the key so a new applied definition, direction, research result, or visual-development action can naturally start a new discussion lane even when the focus area name stays the same.
 
@@ -41,8 +43,9 @@ The focus epoch is part of the key so a new applied definition, direction, resea
 Checkpoint requests are deterministic. Morpho asks for a checkpoint only when:
 
 - `taskMode === "chatAnalysis"`;
-- `workIntent === "discussion"`;
+- `workIntent === "discussion"` or `workIntent === "comparison"`;
 - the request is not image generation, research operation, design-definition proposal, or concept-direction proposal;
+- the current request is not in a pending-proposal state;
 - the current lane has enough completed user/assistant chat after the last checkpoint.
 
 Current constants:
@@ -82,7 +85,9 @@ The checkpoint is described as a non-authoritative current discussion note.
 
 Providers may return a fenced JSON block with top-level `morphoConversationCheckpoint`. The local parser and validator reject invalid JSON, extra fields, empty checkpoints, overlong fields, too many items, URLs, Base64, code fences, prompt/system dumps, raw-provider markers, state-write commands, and object/revision/decision IDs.
 
-A checkpoint write only succeeds after the relevant user and assistant messages are already persisted, the assistant message belongs to the same lane, the task is ordinary chat discussion, the request actually asked for a checkpoint, no design-definition or concept-direction Proposal is present, and parser/validator both pass.
+A checkpoint write only succeeds after the relevant user and assistant messages are already persisted, the assistant message belongs to the same lane, the task is ordinary chat discussion/comparison, the request actually asked for a checkpoint, no pending proposal is present, no design-definition or concept-direction Proposal is present, and parser/validator both pass.
+
+The source range must also be valid in the domain layer: `sourceStartMessageId` and `sourceEndMessageId` must belong to the same lane, `sourceStartMessageId` must not be after `sourceEndMessageId`, `sourceEndMessageId` must equal the completed assistant message being saved, and every message in the stored source range must be a compressible `chatAnalysis` user/assistant message from that lane.
 
 Updating a lane keeps the same checkpoint ID and original `sourceStartMessageId`, advances `sourceEndMessageId`, updates count and timestamp, and never deletes raw `ai.messages`. Retention removes only the least recently updated checkpoint records beyond the lane limit.
 

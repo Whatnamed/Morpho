@@ -90,11 +90,13 @@ Conversation semantic records:
 
 Conversation checkpoints:
 
-- ordinary `chatAnalysis` discussion may ask for a bounded `morphoConversationCheckpoint` only after local deterministic thresholds are met;
+- ordinary `chatAnalysis` discussion/comparison may ask for a bounded `morphoConversationCheckpoint` only after local deterministic thresholds are met;
 - no extra provider call is made for checkpoint generation;
 - the checkpoint is stored in `workspace.ai.conversationCheckpoints`, not `projectContinuity`;
+- lane anchors come only from explicit active selection plus directly selected/selected-image direction and branch IDs, not from auto-included task-context objects;
 - provider request context may include the current checkpoint plus a few recent raw messages instead of the whole transcript;
 - the current draft is sent separately and is not duplicated in `messages`;
+- pending proposals suppress checkpoint request and checkpoint write;
 - checkpoint JSON is hidden from visible chat, including malformed and streaming partial blocks;
 - successful saves show only `已整理当前讨论脉络` under the assistant message;
 - checkpoint failures do not affect normal replies, semantic patches, project facts, current focus, or project records.

@@ -504,6 +504,25 @@ describe("MiMo chat route request conversion", () => {
     expect(definition).toContain("morphoDesignDefinitionProposal");
   });
 
+  it("adds checkpoint output instructions for comparison chats too", () => {
+    const prompt = buildMorphoSystemPrompt({
+      draft: "继续比较这两个方向。",
+      task: "general",
+      taskMode: "chatAnalysis",
+      workIntent: "comparison",
+      messages: [],
+      objectSummaries: [],
+      attachments: [],
+      conversationContext: {
+        recentMessageCount: 8,
+        checkpointRequested: true
+      }
+    });
+
+    expect(prompt).toContain("morphoConversationCheckpoint");
+    expect(prompt).toContain("短期讨论连续性");
+  });
+
   it("keeps bounded structured task context in the MiMo system prompt", () => {
     const result = validateAiRouteRequest({
       draft: "基于当前定义继续生成方向预览",

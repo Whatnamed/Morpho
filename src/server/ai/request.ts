@@ -478,7 +478,7 @@ function buildWebSearchCapabilityLine(request: AiRouteRequest): string {
 function buildConversationCheckpointInstruction(request: AiRouteRequest): string {
   if (
     request.taskMode !== "chatAnalysis" ||
-    request.workIntent !== "discussion" ||
+    (request.workIntent !== "discussion" && request.workIntent !== "comparison") ||
     request.conversationContext?.checkpointRequested !== true
   ) {
     return "";

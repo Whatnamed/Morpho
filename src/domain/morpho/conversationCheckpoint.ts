@@ -52,6 +52,11 @@ export type ConversationContextForRequest = {
   checkpointRequested: boolean;
 };
 
+export type ConversationLaneAnchors = Pick<
+  BuildConversationLaneKeyInput,
+  "anchorObjectIds" | "targetDirectionIds" | "visualBranchId"
+>;
+
 export type ApplyConversationCheckpointInput = {
   laneKey: string;
   currentFocus: {
@@ -67,6 +72,7 @@ export type ApplyConversationCheckpointInput = {
   sourceMessageCount: number;
   assistantMessageId: string;
   checkpoint: ConversationCheckpointPayload;
+  hasPendingProposal: boolean;
   now?: string;
 };
 
@@ -205,14 +211,53 @@ export function buildConversationLaneKey(input: BuildConversationLaneKeyInput): 
   ].join("|");
 }
 
+export function resolveConversationLaneAnchors(
+  workspace: MorphoWorkspace,
+  selectedObjectIds: MorphoObjectId[]
+): ConversationLaneAnchors {
+  const anchorObjectIds: MorphoObjectId[] = [];
+  const targetDirectionIds = new Set<MorphoObjectId>();
+  const visualBranchIds = new Set<VisualBranchId>();
+
+  for (const objectId of stableIds(selectedObjectIds)) {
+    const object = workspace.objects[objectId];
+    if (!object || object.visibility !== "active") {
+      continue;
+    }
+    anchorObjectIds.push(object.id);
+    if (object.type === "conceptDirection") {
+      targetDirectionIds.add(object.id);
+    }
+    if (object.type === "image") {
+      if (object.directionId) {
+        targetDirectionIds.add(object.directionId);
+      }
+      if (object.visualBranchId) {
+        visualBranchIds.add(object.visualBranchId);
+      }
+    }
+  }
+
+  return {
+    anchorObjectIds,
+    targetDirectionIds: stableIds([...targetDirectionIds]),
+    visualBranchId: visualBranchIds.size === 1 ? [...visualBranchIds][0] : undefined
+  };
+}
+
 export function shouldRequestConversationCheckpoint(input: {
   taskMode: AiTaskMode;
   workIntent: AiWorkIntent;
   laneKey: string;
   messages: AiMessage[];
+  hasPendingProposal: boolean;
   afterMessageId?: string;
 }): boolean {
-  if (input.taskMode !== "chatAnalysis" || input.workIntent !== "discussion") {
+  if (
+    input.taskMode !== "chatAnalysis" ||
+    (input.workIntent !== "discussion" && input.workIntent !== "comparison") ||
+    input.hasPendingProposal
+  ) {
     return false;
   }
 
@@ -234,6 +279,7 @@ export function buildConversationContextForRequest(input: {
   taskMode: AiTaskMode;
   workIntent: AiWorkIntent;
   draft: string;
+  hasPendingProposal: boolean;
 }): ConversationContextForRequest {
   const checkpoint = getUsableConversationCheckpoint(input.workspace, input.laneKey);
   const rawMessages = checkpoint
@@ -255,6 +301,7 @@ export function buildConversationContextForRequest(input: {
       workIntent: input.workIntent,
       laneKey: input.laneKey,
       messages: input.workspace.ai.messages,
+      hasPendingProposal: input.hasPendingProposal,
       afterMessageId: checkpoint?.sourceEndMessageId
     })
   };
@@ -285,6 +332,9 @@ export function applyConversationCheckpoint(
   if (validation.status !== "ok") {
     return { status: "skipped", workspace, reason: validation.reason };
   }
+  if (input.hasPendingProposal) {
+    return { status: "skipped", workspace, reason: "Conversation checkpoint is blocked while a pending proposal exists." };
+  }
   const assistantMessage = workspace.ai.messages.find((message) => message.id === input.assistantMessageId);
   if (!assistantMessage || assistantMessage.role !== "assistant") {
     return { status: "skipped", workspace, reason: "assistant message must be persisted before checkpoint write." };
@@ -292,11 +342,36 @@ export function applyConversationCheckpoint(
   if (assistantMessage.conversationLaneKey && assistantMessage.conversationLaneKey !== input.laneKey) {
     return { status: "skipped", workspace, reason: "assistant message lane does not match checkpoint lane." };
   }
-  if (!workspace.ai.messages.some((message) => message.id === input.sourceStartMessageId)) {
+  if (input.sourceEndMessageId !== input.assistantMessageId) {
+    return { status: "skipped", workspace, reason: "sourceEndMessageId must be the current completed assistant message." };
+  }
+
+  const sourceStartIndex = workspace.ai.messages.findIndex((message) => message.id === input.sourceStartMessageId);
+  if (sourceStartIndex < 0) {
     return { status: "skipped", workspace, reason: "sourceStartMessageId is missing." };
   }
-  if (!workspace.ai.messages.some((message) => message.id === input.sourceEndMessageId)) {
+  const sourceEndIndex = workspace.ai.messages.findIndex((message) => message.id === input.sourceEndMessageId);
+  if (sourceEndIndex < 0) {
     return { status: "skipped", workspace, reason: "sourceEndMessageId is missing." };
+  }
+  if (sourceEndIndex < sourceStartIndex) {
+    return { status: "skipped", workspace, reason: "sourceStartMessageId must not be after sourceEndMessageId." };
+  }
+
+  const sourceRange = workspace.ai.messages.slice(sourceStartIndex, sourceEndIndex + 1);
+  const sourceStart = sourceRange[0];
+  const sourceEnd = sourceRange[sourceRange.length - 1];
+  if (sourceStart?.conversationLaneKey !== input.laneKey) {
+    return { status: "skipped", workspace, reason: "sourceStartMessageId must belong to the checkpoint lane." };
+  }
+  if (sourceEnd?.conversationLaneKey !== input.laneKey) {
+    return { status: "skipped", workspace, reason: "sourceEndMessageId must belong to the checkpoint lane." };
+  }
+  if (sourceRange.some((message) => !isUsableConversationMessage(message, input.laneKey))) {
+    return { status: "skipped", workspace, reason: "source range must contain only compressible chatAnalysis messages from the same lane." };
+  }
+  if (sourceRange.length !== input.sourceMessageCount) {
+    return { status: "skipped", workspace, reason: "sourceMessageCount must match the stored source range." };
   }
 
   const now = input.now ?? new Date().toISOString();
