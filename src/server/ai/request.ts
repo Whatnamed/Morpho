@@ -73,6 +73,8 @@ export type AiRouteTaskContext = {
   skipped: Array<{ objectId: string; reason: string }>;
 };
 
+export type AiRouteDocumentFragmentExtract = AiRouteTaskContext["documentFragmentExtracts"][number];
+
 export type AiRouteDesignDefinitionContext = {
   objectId: string;
   revisionId: string;
@@ -188,6 +190,7 @@ export type AiRouteComparisonContext = {
   attachedDocumentObjectIds: string[];
   unavailableDocumentObjectIds: string[];
   backgroundObjectIds: string[];
+  documentFragmentExtracts: AiRouteDocumentFragmentExtract[];
 };
 
 export type AiRouteComparisonBackgroundContext = {
@@ -364,7 +367,7 @@ function buildTaskContextPromptBlock(request: AiRouteRequest): string {
     `objectIds: ${context.objectIds.join(", ") || "none"}`,
     `imageObjectIds: ${context.imageObjectIds.join(", ") || "none"}`,
     `documentObjectIds: ${context.documentObjectIds.join(", ") || "none"}`,
-    `documentFragmentExtracts: ${context.documentFragmentExtracts.map((fragment) => `${fragment.objectId}:${fragment.sourceFileObjectId}:${fragment.sourceStartOffset}-${fragment.sourceEndOffset}`).join(", ") || "none"}`,
+    buildDocumentFragmentExtractPromptBlock(context.documentFragmentExtracts),
     `defaultReference: ${context.defaultReference ?? "none"}`,
     `truncated: ${context.truncated ? "true" : "false"}`
   ];
@@ -429,7 +432,29 @@ function buildComparisonContextPromptBlock(request: AiRouteRequest): string {
     `attachedDocumentObjectIds: ${context.attachedDocumentObjectIds.join(", ") || "none"}`,
     `unavailableDocumentObjectIds: ${context.unavailableDocumentObjectIds.join(", ") || "none"}`,
     `backgroundObjectIds: ${context.backgroundObjectIds.join(", ") || "none"}`,
+    buildDocumentFragmentExtractPromptBlock(context.documentFragmentExtracts),
     "Only sourceObjectIds may appear in morphoComparisonAnalysis.sourceObjectIds or objectComparisons. backgroundObjectIds are not Compare sources, evidence sources, or decision targets."
+  ].join("\n");
+}
+
+function buildDocumentFragmentExtractPromptBlock(fragments: AiRouteDocumentFragmentExtract[]): string {
+  if (fragments.length === 0) {
+    return "documentFragmentExtracts: none";
+  }
+
+  return [
+    "documentFragmentExtracts:",
+    "These are user-explicit bounded local text excerpts. They are not the complete source file, and the source file full text has not been read unless separately provided as a documentExtract.",
+    ...fragments.map((fragment) =>
+      [
+        `## ${fragment.objectId} / ${fragment.title}`,
+        `sourceFile: ${fragment.sourceFileObjectId} / ${fragment.sourceFileTitle}`,
+        `sourceRange: ${fragment.sourceStartOffset}-${fragment.sourceEndOffset}`,
+        `sourceAvailability: ${fragment.sourceAvailability}`,
+        `chars=${fragment.charCount}${fragment.truncated ? " truncated=true" : ""}`,
+        fragment.text
+      ].join("\n")
+    )
   ].join("\n");
 }
 
@@ -775,10 +800,10 @@ function buildComparisonAnalysisInstruction(request: AiRouteRequest): string {
     "If the selected sources do not share a clear comparison target and the user did not provide one, reply with at most one clarifying question in normal prose and do not output morphoComparisonAnalysis.",
     "File objects can only be treated as readable evidence when a documentExtract is included in this request. Otherwise do not pretend the file was read.",
     "Image objects only support true visual evidence when this request includes actual pixels or contact sheets. Otherwise mention the evidence limit explicitly and do not claim visual findings from the image itself.",
-    "Each objectComparison must include evidenceBasis: \"pixels\" only when that source id is in attachedImageObjectIds, \"documentExtract\" only when that file id is in attachedDocumentObjectIds, \"documentFragment\" only when that selected source is an active document fragment, otherwise \"objectSummary\".",
+    "Each objectComparison must include evidenceBasis: \"pixels\" only when that source id is in attachedImageObjectIds, \"documentExtract\" only when that file id is in attachedDocumentObjectIds, \"documentFragment\" only when that selected source id is included in documentFragmentExtracts in this request, otherwise \"objectSummary\".",
     "JSON shape: { \"morphoComparisonAnalysis\": { \"comparisonGoal\": string, \"conclusionSummary\": string, \"objectComparisons\": [{ \"objectId\": string, \"title\": string, \"evidenceBasis\": \"pixels\" | \"objectSummary\" | \"documentExtract\" | \"documentFragment\", \"summary\": string, \"strengths\": string[], \"risks\": string[], \"evidence\": string[] }], \"recommendedQuestions\": string[], \"evidenceLimits\": string[], \"keyConclusionCandidate\"?: { \"title\": string, \"summary\": string, \"body\": string, \"sourceObjectIds\": string[], \"evidence\": [{ \"objectId\": string, \"label\": string, \"evidence\": string }], \"confidence\": \"supported\" | \"partial\" | \"needsVerification\", \"note\"?: string } } }",
     "objectComparisons must cover every selected source exactly once.",
-    "keyConclusionCandidate is optional and only a candidate draft. Its sourceObjectIds must be non-empty selected ids that have true text evidence in this request: attachedDocumentObjectIds, selected active documentFragment extracts, research, or existing keyConclusion sources only. Its evidence entries must all use those same sourceObjectIds. It never means a real keyConclusion was created."
+    "keyConclusionCandidate is optional and only a candidate draft. Its sourceObjectIds must be non-empty selected ids that have true text evidence in this request: attachedDocumentObjectIds, selected ids present in documentFragmentExtracts, research, or existing keyConclusion sources only. Its evidence entries must all use those same sourceObjectIds. It never means a real keyConclusion was created."
   ].join("\n");
 }
 
@@ -818,7 +843,10 @@ function normalizeComparisonContext(value: unknown): AiRouteComparisonContext | 
     unavailableImageObjectIds: stringArray(value.unavailableImageObjectIds).slice(0, 4),
     attachedDocumentObjectIds: stringArray(value.attachedDocumentObjectIds).slice(0, 4),
     unavailableDocumentObjectIds: stringArray(value.unavailableDocumentObjectIds).slice(0, 4),
-    backgroundObjectIds: stringArray(value.backgroundObjectIds).slice(0, 8)
+    backgroundObjectIds: stringArray(value.backgroundObjectIds).slice(0, 8),
+    documentFragmentExtracts: Array.isArray(value.documentFragmentExtracts)
+      ? value.documentFragmentExtracts.filter(isDocumentFragmentExtract).slice(0, 4)
+      : []
   };
 }
 

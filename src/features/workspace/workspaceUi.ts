@@ -24,6 +24,8 @@ export function getObjectTypeLabel(object: MorphoObject): string {
       return "图片合集";
     case "research":
       return "研究与分析";
+    case "documentFragment":
+      return "文档片段";
     case "keyConclusion":
       return "关键结论";
     case "designDefinition":

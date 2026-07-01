@@ -180,7 +180,11 @@ export function buildDocumentFragmentDraft(
   if (title.length > DOCUMENT_FRAGMENT_LIMITS.maxTitleChars) {
     return { status: "blocked", reason: `Document fragment title cannot exceed ${DOCUMENT_FRAGMENT_LIMITS.maxTitleChars} characters.` };
   }
-  const summary = (input.summary?.trim() || buildDefaultSummary(selection)).slice(0, DOCUMENT_FRAGMENT_LIMITS.maxSummaryChars);
+  const suppliedSummary = input.summary?.trim();
+  if (suppliedSummary && suppliedSummary.length > DOCUMENT_FRAGMENT_LIMITS.maxSummaryChars) {
+    return { status: "blocked", reason: `Document fragment summary cannot exceed ${DOCUMENT_FRAGMENT_LIMITS.maxSummaryChars} characters.` };
+  }
+  const summary = suppliedSummary || buildDefaultSummary(selection);
   const file = workspace.objects[selection.fileObjectId];
   if (!file || file.type !== "file") {
     return { status: "blocked", reason: "Document fragment source file is missing." };

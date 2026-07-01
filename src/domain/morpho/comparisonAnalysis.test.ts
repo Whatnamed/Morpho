@@ -51,7 +51,8 @@ describe("comparison analysis domain rules", () => {
         createdAt: "2026-07-01T10:00:00.000Z",
         comparisonGoal: "compare selected text evidence",
         imageAttachmentObjectIds: [],
-        documentExtractObjectIds: []
+        documentExtractObjectIds: [],
+        documentFragmentExtractObjectIds: [fragment.id]
       })
     );
 
@@ -101,6 +102,60 @@ describe("comparison analysis domain rules", () => {
         ])
       }
     });
+  });
+
+  it("blocks documentFragment evidence basis when the fragment body was not sent to the provider", () => {
+    const workspace = withDocumentFragment(withParsedFile(createInitialWorkspace(), "file-course-brief"));
+    const fragment = Object.values(workspace.objects).find((object) => object.type === "documentFragment");
+    if (!fragment || fragment.type !== "documentFragment") {
+      throw new Error("Expected document fragment fixture.");
+    }
+
+    const authorization = getReadyAuthorization(
+      buildComparisonAuthorization({
+        workspace,
+        selectedObjectIds: [fragment.id, "research-night-path"],
+        userMessageId: "user-1",
+        assistantMessageId: "assistant-1",
+        createdAt: "2026-07-01T10:00:00.000Z",
+        comparisonGoal: "compare selected text evidence",
+        imageAttachmentObjectIds: [],
+        documentExtractObjectIds: [],
+        documentFragmentExtractObjectIds: []
+      })
+    );
+
+    expect(
+      validateComparisonAnalysis(
+        {
+          comparisonGoal: "compare",
+          conclusionSummary: "summary",
+          objectComparisons: [
+            {
+              objectId: fragment.id,
+              title: fragment.title,
+              evidenceBasis: "documentFragment",
+              summary: "fragment summary",
+              strengths: [],
+              risks: [],
+              evidence: [fragment.body]
+            },
+            {
+              objectId: "research-night-path",
+              title: "Research",
+              evidenceBasis: "objectSummary",
+              summary: "research summary",
+              strengths: [],
+              risks: [],
+              evidence: []
+            }
+          ],
+          recommendedQuestions: [],
+          evidenceLimits: []
+        },
+        authorization
+      )
+    ).toMatchObject({ status: "failed" });
   });
 
   it("blocks fewer than 2, more than 4, duplicate, hidden, missing, or unparsed file selections", () => {

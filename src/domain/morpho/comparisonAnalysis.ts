@@ -109,6 +109,7 @@ export function buildComparisonAuthorization(input: {
   comparisonGoal: string;
   imageAttachmentObjectIds: MorphoObjectId[];
   documentExtractObjectIds?: MorphoObjectId[];
+  documentFragmentExtractObjectIds?: MorphoObjectId[];
 }): ComparisonSelectionResult | { status: "ready"; authorization: ComparisonAuthorization } {
   const selection = resolveComparisonSelection(input.workspace, input.selectedObjectIds);
   if (selection.status !== "ready") {
@@ -120,13 +121,17 @@ export function buildComparisonAuthorization(input: {
 
   const imageAttachmentSet = new Set(input.imageAttachmentObjectIds);
   const documentExtractSet = new Set(input.documentExtractObjectIds ?? []);
+  const documentFragmentExtractSet = new Set(input.documentFragmentExtractObjectIds ?? []);
   const selectedImageObjectIds = selection.objectIds.filter((objectId) => input.workspace.objects[objectId]?.type === "image");
   const allowsVisualEvidence = selectedImageObjectIds.every((objectId) => imageAttachmentSet.has(objectId));
   const allowedTextEvidenceObjectIds = new Set(
     selection.objectIds.filter((objectId) => {
       const object = input.workspace.objects[objectId];
-      if (object?.type === "research" || object?.type === "keyConclusion" || object?.type === "documentFragment") {
+      if (object?.type === "research" || object?.type === "keyConclusion") {
         return true;
+      }
+      if (object?.type === "documentFragment") {
+        return documentFragmentExtractSet.has(objectId);
       }
       return object?.type === "file" && documentExtractSet.has(objectId) && hasUsableDocumentExtract(object);
     })
@@ -223,7 +228,7 @@ export function validateComparisonAnalysis(
       return source.objectType !== "file" || !authorization.attachedDocumentObjectIds.has(entry.objectId);
     }
     if (evidenceBasis === "documentFragment") {
-      return source.objectType !== "documentFragment";
+      return source.objectType !== "documentFragment" || !authorization.allowedTextEvidenceObjectIds.has(entry.objectId);
     }
     return evidenceBasis !== "objectSummary";
   });

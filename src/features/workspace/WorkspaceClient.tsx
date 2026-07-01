@@ -77,7 +77,7 @@ import type { ProviderCitation } from "@/server/ai/types";
 import { AiConversationPanel } from "./components/AiConversationPanel";
 import type { PendingAiConfirmation, PendingComparisonConfirmation } from "./components/AiConversationPanel";
 import { BottomDetailBar } from "./components/BottomDetailBar";
-import { DocumentReaderPanel } from "./components/DocumentReaderPanel";
+import { DocumentReaderPanel, type DocumentReaderExtractFragmentResult } from "./components/DocumentReaderPanel";
 import { LeftRail, type DrawerMode } from "./components/LeftRail";
 import { OverlayDrawers } from "./components/OverlayDrawers";
 import { TopControls } from "./components/TopControls";
@@ -185,6 +185,7 @@ type DocumentReaderUiState = {
   text: string;
   message?: string;
   extractAsset?: AssetRecord;
+  createdFragmentId?: string;
   initialLocation?: {
     startOffset: number;
     endOffset: number;
@@ -1450,7 +1451,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                   ),
                   backgroundObjectIds: [context.designDefinitionRevision?.designDefinitionId].filter(
                     (objectId): objectId is string => Boolean(objectId)
-                  )
+                  ),
+                  documentFragmentExtracts: context.documentFragmentExtracts
                 }
               : undefined,
           comparisonBackgroundContext:
@@ -1498,7 +1500,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               imageAttachmentObjectIds: attachmentResult.entries
                 .filter((entry) => entry.status === "ready")
                 .map((entry) => entry.objectId),
-              documentExtractObjectIds: documentResult.extracts.map((extract) => extract.objectId)
+              documentExtractObjectIds: documentResult.extracts.map((extract) => extract.objectId),
+              documentFragmentExtractObjectIds: context.documentFragmentExtracts.map((fragment) => fragment.objectId)
             })
           : null;
       const parsedComparisonAnalysis =
@@ -2793,14 +2796,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   );
 
   const handleExtractDocumentFragment = useCallback(
-    (input: { blockIds: string[]; title: string; summary: string }) => {
+    (input: { blockIds: string[]; title: string; summary: string }): DocumentReaderExtractFragmentResult => {
       if (!documentReader || documentReader.status !== "loaded") {
-        return;
+        return { status: "blocked", reason: "Document reader is not ready." };
       }
 
       const file = workspace.objects[documentReader.fileObjectId];
       if (!file || file.type !== "file") {
-        return;
+        return { status: "blocked", reason: "Document fragment source file is unavailable." };
       }
 
       const selection = resolveDocumentFragmentSelection(workspace, {
@@ -2816,11 +2819,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             ? {
                 ...current,
                 status: "loaded",
-                message: selection.reason
+                message: selection.reason,
+                createdFragmentId: undefined
               }
             : current
         );
-        return;
+        return { status: "blocked", reason: selection.reason };
       }
 
       const draft = buildDocumentFragmentDraft(workspace, selection, {
@@ -2833,11 +2837,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             ? {
                 ...current,
                 status: "loaded",
-                message: draft.reason
+                message: draft.reason,
+                createdFragmentId: undefined
               }
             : current
         );
-        return;
+        return { status: "blocked", reason: draft.reason };
       }
 
       const created = createDocumentFragmentWithContinuity(workspace, draft.draft);
@@ -2847,12 +2852,30 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           ? {
               ...current,
               status: "loaded",
+              createdFragmentId: created.fragment.id,
               message: "已提取到画布"
             }
           : current
       );
+      return { status: "created", fragmentId: created.fragment.id };
     },
     [documentReader, setWorkspace, workspace]
+  );
+
+  const handleViewCreatedDocumentFragment = useCallback(
+    (fragmentId: string) => {
+      setDocumentReader(null);
+      setSelectedObjectIds([fragmentId]);
+      setWorkspace((current) => ({
+        ...current,
+        ui: {
+          ...current.ui,
+          lastSelectionIds: [fragmentId]
+        }
+      }));
+      setFocusRequest((current) => ({ objectId: fragmentId, nonce: current.nonce + 1 }));
+    },
+    [setWorkspace]
   );
 
   const handleCloseDocumentReader = useCallback(() => {
@@ -2922,7 +2945,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           status={documentReader.status}
           message={documentReader.message}
           initialLocation={documentReaderInitialLocation}
+          createdFragmentId={documentReader.createdFragmentId}
           onExtractFragment={handleExtractDocumentFragment}
+          onViewCreatedFragment={handleViewCreatedDocumentFragment}
           onClose={handleCloseDocumentReader}
         />
       ) : null}

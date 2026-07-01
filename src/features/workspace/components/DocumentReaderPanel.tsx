@@ -10,7 +10,11 @@ import {
   type DocumentReaderBlock,
   type DocumentSearchMatch
 } from "../documentReader";
-import type { DocumentReaderInitialLocation } from "../documentFragments";
+import { DOCUMENT_FRAGMENT_LIMITS, type DocumentReaderInitialLocation } from "../documentFragments";
+
+export type DocumentReaderExtractFragmentResult =
+  | { status: "created"; fragmentId: string }
+  | { status: "blocked"; reason: string };
 
 type DocumentReaderPanelProps = {
   file: FileObject;
@@ -19,7 +23,9 @@ type DocumentReaderPanelProps = {
   status: "loading" | "loaded" | "blocked" | "error";
   message?: string;
   initialLocation?: DocumentReaderInitialLocation | null;
-  onExtractFragment?: (input: { blockIds: string[]; title: string; summary: string }) => void;
+  createdFragmentId?: string;
+  onExtractFragment?: (input: { blockIds: string[]; title: string; summary: string }) => DocumentReaderExtractFragmentResult | Promise<DocumentReaderExtractFragmentResult>;
+  onViewCreatedFragment?: (fragmentId: string) => void;
   onClose: () => void;
 };
 
@@ -33,7 +39,9 @@ export function DocumentReaderPanel({
   status,
   message,
   initialLocation,
+  createdFragmentId,
   onExtractFragment,
+  onViewCreatedFragment,
   onClose
 }: DocumentReaderPanelProps) {
   const readerStateKey = `${file.id}:${file.extractedAssetId ?? "none"}:${initialLocation?.startOffset ?? "none"}:${initialLocation?.endOffset ?? "none"}`;
@@ -46,7 +54,9 @@ export function DocumentReaderPanel({
       status={status}
       message={message}
       initialLocation={initialLocation}
+      createdFragmentId={createdFragmentId}
       onExtractFragment={onExtractFragment}
+      onViewCreatedFragment={onViewCreatedFragment}
       onClose={onClose}
     />
   );
@@ -59,13 +69,16 @@ function DocumentReaderPanelContent({
   status,
   message,
   initialLocation,
+  createdFragmentId,
   onExtractFragment,
+  onViewCreatedFragment,
   onClose
 }: DocumentReaderPanelProps) {
   const [query, setQuery] = useState("");
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
   const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([]);
   const [fragmentTitle, setFragmentTitle] = useState(() => initialLocation?.label ?? "");
+  const [localExtractMessage, setLocalExtractMessage] = useState<string | undefined>();
   const blockRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const blocks = useMemo(() => buildDocumentReaderBlocks(text), [text]);
   const matches = useMemo(
@@ -84,6 +97,7 @@ function DocumentReaderPanelContent({
   const fragmentTitleValue = fragmentTitle.trim() || defaultTitle;
   const selectionWarning = buildSelectionWarning(selectedBlocks, selectedCharCount);
   const canExtract = Boolean(onExtractFragment) && selectedBlocks.length > 0 && !selectionWarning;
+  const visibleMessage = message ?? localExtractMessage;
 
   useEffect(() => {
     if (!activeMatch) {
@@ -197,17 +211,22 @@ function DocumentReaderPanelContent({
               type="button"
               disabled={!canExtract}
               title={selectionWarning ?? undefined}
-              onClick={() => {
+              onClick={async () => {
                 if (!onExtractFragment || !canExtract) {
                   return;
                 }
-                onExtractFragment({
+                const result = await onExtractFragment({
                   blockIds: selectedBlocks.map((block) => block.id),
                   title: fragmentTitleValue,
                   summary: buildFragmentSummary(selectedBlocks)
                 });
-                setSelectedBlockIds([]);
-                setFragmentTitle("");
+                if (result.status === "created") {
+                  setSelectedBlockIds([]);
+                  setFragmentTitle("");
+                  setLocalExtractMessage(undefined);
+                  return;
+                }
+                setLocalExtractMessage(result.reason);
               }}
             >
               提取到画布
@@ -217,7 +236,16 @@ function DocumentReaderPanelContent({
             </button>
           </div>
 
-          {message ? <div className="document-reader-state">{message}</div> : null}
+          {visibleMessage ? (
+            <div className="document-reader-state">
+              <span>{visibleMessage}</span>
+              {createdFragmentId && onViewCreatedFragment ? (
+                <button className="plain-button" type="button" onClick={() => onViewCreatedFragment(createdFragmentId)}>
+                  在画布中查看
+                </button>
+              ) : null}
+            </div>
+          ) : null}
 
           {query.trim() && matches.length === 0 ? <div className="document-reader-state">没有找到匹配内容。</div> : null}
 
@@ -249,11 +277,12 @@ function DocumentReaderPanelContent({
                   isSourceRange={Boolean(
                     initialLocation && block.startOffset < initialLocation.endOffset && block.endOffset > initialLocation.startOffset
                   )}
-                  onToggleSelected={() =>
+                  onToggleSelected={() => {
+                    setLocalExtractMessage(undefined);
                     setSelectedBlockIds((current) =>
                       current.includes(block.id) ? current.filter((blockId) => blockId !== block.id) : [...current, block.id]
-                    )
-                  }
+                    );
+                  }}
                   key={block.id}
                   setRef={(node) => {
                     blockRefs.current[block.id] = node;
@@ -361,14 +390,25 @@ function buildFragmentSummary(selectedBlocks: DocumentReaderBlock[]): string {
   return selectedBlocks.map((block) => block.text).join(" ").replace(/\s+/g, " ").trim().slice(0, 300);
 }
 
-function buildSelectionWarning(selectedBlocks: DocumentReaderBlock[], selectedCharCount: number): string | null {
-  if (selectedBlocks.length > 8) {
+export function buildSelectionWarning(selectedBlocks: DocumentReaderBlock[], selectedCharCount: number): string | null {
+  if (!areConsecutiveReaderBlocks(selectedBlocks)) {
+    return "一次只能提取连续的解析片段，请缩小范围后重试。";
+  }
+  if (selectedBlocks.length > DOCUMENT_FRAGMENT_LIMITS.maxBlocks) {
     return "一次最多提取 8 个解析片段，请缩小选择范围。";
   }
-  if (selectedCharCount > 6000) {
+  if (selectedCharCount > DOCUMENT_FRAGMENT_LIMITS.maxBodyChars) {
     return "一次最多提取 6,000 个字符，请缩小选择范围。";
   }
   return null;
+}
+
+export function areConsecutiveReaderBlocks(selectedBlocks: DocumentReaderBlock[]): boolean {
+  if (selectedBlocks.length <= 1) {
+    return true;
+  }
+  const sortedBlocks = [...selectedBlocks].sort((left, right) => left.index - right.index);
+  return sortedBlocks.every((block, index) => index === 0 || block.index === sortedBlocks[index - 1].index + 1);
 }
 
 function blockIndexLabel(blocks: DocumentReaderBlock[], blockId: string): string {

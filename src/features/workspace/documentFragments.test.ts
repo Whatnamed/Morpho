@@ -127,6 +127,29 @@ describe("document fragment draft and creation", () => {
     expect(created.fragment.source.endOffset).toBe(selection.endOffset);
   });
 
+  it("blocks caller-provided summaries that exceed the document fragment summary limit", () => {
+    const text = sampleText();
+    const workspace = withParsedFile(createInitialWorkspace(), "file-course-brief", text);
+    const blocks = buildDocumentReaderBlocks(text);
+    const selection = resolveDocumentFragmentSelection(workspace, {
+      fileObjectId: "file-course-brief",
+      extractAssetId: "asset-document-extract-a",
+      blockIds: blocks.slice(0, 1).map((block) => block.id),
+      title: "Course brief fragment",
+      sourceText: text
+    });
+    if (selection.status !== "ready") {
+      throw new Error(selection.reason);
+    }
+
+    expect(
+      buildDocumentFragmentDraft(workspace, selection, {
+        title: "Course brief fragment",
+        summary: "x".repeat(301)
+      })
+    ).toMatchObject({ status: "blocked" });
+  });
+
   it("records explicit extraction continuity without changing Current Focus or AI state", () => {
     const text = sampleText();
     const workspace = withParsedFile(createInitialWorkspace(), "file-course-brief", text);

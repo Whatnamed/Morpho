@@ -599,6 +599,58 @@ describe("MiMo chat route request conversion", () => {
     }
   });
 
+  it("sends selected document fragment body and provenance in the final system prompt", () => {
+    const prompt = buildMorphoSystemPrompt({
+      draft: "Use this bounded fragment.",
+      task: "research",
+      taskMode: "chatAnalysis",
+      workIntent: "discussion",
+      messages: [],
+      objectSummaries: [
+        {
+          id: "fragment-a",
+          type: "documentFragment",
+          title: "Bounded fragment",
+          summary: "Only the short card summary should not be the only evidence."
+        }
+      ],
+      attachments: [],
+      taskContext: {
+        kind: "research",
+        objectIds: ["fragment-a"],
+        imageObjectIds: [],
+        documentObjectIds: [],
+        documentFragmentExtracts: [
+          {
+            objectId: "fragment-a",
+            title: "Bounded fragment",
+            text: "FULL BOUNDED FRAGMENT BODY SENT TO PROVIDER",
+            charCount: 44,
+            truncated: false,
+            sourceFileObjectId: "file-a",
+            sourceFileTitle: "Source file title",
+            sourceStartOffset: 120,
+            sourceEndOffset: 164,
+            sourceAvailability: "active"
+          }
+        ],
+        truncated: false,
+        defaultReference: "notIncluded:default-reference-not-requested",
+        directions: [],
+        visualBranches: [],
+        skipped: []
+      }
+    });
+
+    expect(prompt).toContain("documentFragmentExtracts");
+    expect(prompt).toContain("fragment-a / Bounded fragment");
+    expect(prompt).toContain("sourceFile: file-a / Source file title");
+    expect(prompt).toContain("sourceRange: 120-164");
+    expect(prompt).toContain("sourceAvailability: active");
+    expect(prompt).toContain("FULL BOUNDED FRAGMENT BODY SENT TO PROVIDER");
+    expect(prompt).toContain("not the complete source file");
+  });
+
   it("keeps message continuity source refs bounded in request context", () => {
     const result = validateAiRouteRequest({
       draft: "继续讨论",
@@ -856,6 +908,58 @@ describe("MiMo chat route request conversion", () => {
     expect(prompt).toContain("definition-current / r1 / Current definition");
     expect(prompt).toContain("evidenceBasis");
     expect(prompt).toContain("If the same reply includes morphoDesignDefinitionProposal or morphoConceptDirectionProposal, do not output morphoComparisonAnalysis");
+  });
+
+  it("sends selected document fragment body and source availability in Compare evidence context", () => {
+    const result = validateAiRouteRequest({
+      draft: "Compare this fragment with the research card.",
+      task: "comparison",
+      taskMode: "chatAnalysis",
+      workIntent: "comparison",
+      messages: [],
+      objectSummaries: [
+        { id: "fragment-a", type: "documentFragment", title: "Fragment A", summary: "Fragment summary." },
+        { id: "research-a", type: "research", title: "Research A", summary: "Research summary." }
+      ],
+      attachments: [],
+      comparisonContext: {
+        sourceObjectIds: ["fragment-a", "research-a"],
+        attachedImageObjectIds: [],
+        unavailableImageObjectIds: [],
+        attachedDocumentObjectIds: [],
+        unavailableDocumentObjectIds: [],
+        backgroundObjectIds: ["file-a"],
+        documentFragmentExtracts: [
+          {
+            objectId: "fragment-a",
+            title: "Fragment A",
+            text: "COMPARE FRAGMENT BODY INCLUDED",
+            charCount: 30,
+            truncated: false,
+            sourceFileObjectId: "file-a",
+            sourceFileTitle: "Source file title",
+            sourceStartOffset: 50,
+            sourceEndOffset: 80,
+            sourceAvailability: "hidden"
+          }
+        ]
+      }
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") {
+      throw new Error(result.reason);
+    }
+
+    const prompt = buildMorphoSystemPrompt(result.value);
+    expect(prompt).toContain("Compare evidence context");
+    expect(prompt).toContain("documentFragmentExtracts");
+    expect(prompt).toContain("fragment-a / Fragment A");
+    expect(prompt).toContain("COMPARE FRAGMENT BODY INCLUDED");
+    expect(prompt).toContain("sourceAvailability: hidden");
+    expect(prompt).toContain("sourceFile: file-a / Source file title");
+    expect(prompt).toContain("backgroundObjectIds: file-a");
+    expect(prompt).toContain("backgroundObjectIds are not Compare sources");
   });
 
   it("does not ask for proposal JSON during ordinary discussion even when task stays general", () => {
