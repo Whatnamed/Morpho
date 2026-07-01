@@ -3,7 +3,14 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { AiTaskMode, AiWorkIntent, AssetRecord, ContinuityManualState, ImageRole, MorphoObject } from "@/domain/morpho/types";
+import type {
+  AiTaskMode,
+  AiWorkIntent,
+  AssetRecord,
+  ContinuityManualState,
+  ImageRole,
+  MorphoObject
+} from "@/domain/morpho/types";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 import { GRS_REFERENCE_IMAGE_LIMIT } from "@/domain/morpho/imageLimits";
 import { hasPendingDesignDefinitionRevisionProposal } from "@/domain/morpho/derivedState";
@@ -70,6 +77,7 @@ import type { ProviderCitation } from "@/server/ai/types";
 import { AiConversationPanel } from "./components/AiConversationPanel";
 import type { PendingAiConfirmation, PendingComparisonConfirmation } from "./components/AiConversationPanel";
 import { BottomDetailBar } from "./components/BottomDetailBar";
+import { DocumentReaderPanel } from "./components/DocumentReaderPanel";
 import { LeftRail, type DrawerMode } from "./components/LeftRail";
 import { OverlayDrawers } from "./components/OverlayDrawers";
 import { TopControls } from "./components/TopControls";
@@ -90,6 +98,7 @@ import {
 import { buildProposalDiscussionDraft, buildProposalRegenerationDraft } from "./proposalFollowupPrompts";
 import { buildWebSearchOptions, collectMiMoImageAttachments, shouldAttachImagesForMiMo } from "./aiAttachments";
 import { collectDocumentExtractsForAi } from "./documentContext";
+import { loadDocumentReaderExtract, shouldAcceptDocumentReaderLoadResult } from "./documentReader";
 import { resolveComparisonWritebackSourceObjectIds } from "./comparisonDecision";
 import {
   validateComparisonActionTarget,
@@ -163,6 +172,15 @@ type ImageTaskStatus = {
   message: string;
 };
 
+type DocumentReaderUiState = {
+  fileObjectId: string;
+  requestId: number;
+  status: "loading" | "loaded" | "blocked" | "error";
+  text: string;
+  message?: string;
+  extractAsset?: AssetRecord;
+};
+
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [workspace, setWorkspace, persistenceState] = usePersistentWorkspace(projectId);
   const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>(() => workspace.ui.lastSelectionIds);
@@ -189,6 +207,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const assetUrlsRef = useRef<Record<string, string>>({});
   const abortControllerRef = useRef<AbortController | null>(null);
   const [focusRequest, setFocusRequest] = useState<FocusRequest>({ area: "visual", nonce: 0 });
+  const [documentReader, setDocumentReader] = useState<DocumentReaderUiState | null>(null);
+  const documentReaderRequestRef = useRef(0);
+  const documentReaderAbortRef = useRef<AbortController | null>(null);
 
   const selectedObjects = useMemo(
     () => compactObjectList(workspace.objects, selectedObjectIds),
@@ -2705,6 +2726,74 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [selectedObjects, setWorkspace]
   );
 
+  const handleOpenDocumentReader = useCallback(
+    (fileObjectId: string) => {
+      documentReaderAbortRef.current?.abort();
+      const requestId = documentReaderRequestRef.current + 1;
+      documentReaderRequestRef.current = requestId;
+      const abortController = new AbortController();
+      documentReaderAbortRef.current = abortController;
+
+      setDocumentReader({
+        fileObjectId,
+        requestId,
+        status: "loading",
+        text: ""
+      });
+
+      void loadDocumentReaderExtract(workspace, fileObjectId, indexedDbBlobStore, abortController.signal).then(
+        (result) => {
+          setDocumentReader((current) => {
+            if (
+              !current ||
+              !shouldAcceptDocumentReaderLoadResult(
+                { openFileObjectId: current.fileObjectId, requestId: current.requestId },
+                { fileObjectId, requestId }
+              )
+            ) {
+              return current;
+            }
+
+            if (result.status === "loaded") {
+              return {
+                ...current,
+                status: "loaded",
+                text: result.text,
+                extractAsset: result.asset,
+                message: undefined
+              };
+            }
+
+            return {
+              ...current,
+              status: result.status,
+              text: "",
+              extractAsset: undefined,
+              message: result.message
+            };
+          });
+        }
+      );
+    },
+    [workspace]
+  );
+
+  const handleCloseDocumentReader = useCallback(() => {
+    documentReaderAbortRef.current?.abort();
+    documentReaderAbortRef.current = null;
+    documentReaderRequestRef.current += 1;
+    setDocumentReader(null);
+  }, []);
+
+  useEffect(
+    () => () => {
+      documentReaderAbortRef.current?.abort();
+    },
+    []
+  );
+
+  const documentReaderFile = documentReader ? workspace.objects[documentReader.fileObjectId] : undefined;
+
   return (
     <main className="workspace">
       <MorphoCanvas
@@ -2745,6 +2834,18 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onLocateObject={focusObject}
         onSetContinuityEntryManualState={handleSetContinuityEntryManualState}
       />
+
+      {documentReader && documentReaderFile?.type === "file" ? (
+        <DocumentReaderPanel
+          key={`${documentReader.fileObjectId}-${documentReader.requestId}`}
+          file={documentReaderFile}
+          extractAsset={documentReader.extractAsset}
+          text={documentReader.text}
+          status={documentReader.status}
+          message={documentReader.message}
+          onClose={handleCloseDocumentReader}
+        />
+      ) : null}
 
       <AiConversationPanel
         workspace={workspace}
@@ -2797,6 +2898,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
       <BottomDetailBar
         selectedObjects={selectedObjects}
+        assets={workspace.assets}
         hasPendingDesignDefinitionRevisionDraft={hasPendingDesignDefinitionRevisionDraft}
         relations={workspace.relations}
         directionLineage={workspace.directionLineage}
@@ -2829,6 +2931,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onContinueQuestion={handleContinueQuestion}
         onSetKeyConclusionState={handleSetKeyConclusionState}
         onSetImageRole={handleSetImageRole}
+        onOpenDocumentReader={handleOpenDocumentReader}
       />
     </main>
   );

@@ -2,6 +2,7 @@
 
 import {
   Ban,
+  BookOpen,
   EyeOff,
   Flag,
   GitBranch,
@@ -25,7 +26,8 @@ import type {
   MorphoObject,
   MorphoRelation,
   VisualBranchRecord,
-  ResearchObject
+  ResearchObject,
+  AssetRecord
 } from "@/domain/morpho/types";
 import type { DesignTraceResult } from "@/domain/morpho/designTrace";
 import { getObjectTypeLabel, imageRoleLabel } from "../workspaceUi";
@@ -34,6 +36,7 @@ type ResearchSourceKind = "finding" | "opportunity" | "constraint" | "openQuesti
 
 type BottomDetailBarProps = {
   selectedObjects: MorphoObject[];
+  assets: Record<string, AssetRecord>;
   hasPendingDesignDefinitionRevisionDraft: boolean;
   keyConclusionCandidates: KeyConclusionObject[];
   relations: MorphoRelation[];
@@ -55,6 +58,7 @@ type BottomDetailBarProps = {
   onRemoveImageFromVisualBranch: () => void;
   onLocalEdit: () => void;
   onReferenceIntent: () => void;
+  onOpenDocumentReader: (fileObjectId: string) => void;
   onHide: () => void;
   onDelete: () => void;
   onEliminateDirection: () => void;
@@ -121,8 +125,90 @@ export function buildConceptDirectionLineageDetail(
     : "当前方向没有已记录的 lineage。";
 }
 
+export function getDocumentReaderActionState(
+  object: MorphoObject,
+  assets: Record<string, AssetRecord> = {}
+): {
+  visible: boolean;
+  disabled: boolean;
+  label: string;
+  message: string;
+} {
+  if (object.type !== "file") {
+    return {
+      visible: false,
+      disabled: true,
+      label: "阅读解析内容",
+      message: ""
+    };
+  }
+
+  if (object.visibility !== "active") {
+    return {
+      visible: true,
+      disabled: true,
+      label: "阅读解析内容",
+      message: "该文件已隐藏；请先恢复对象，再打开本地解析文本"
+    };
+  }
+
+  if (object.parseStatus === "parsing") {
+    return {
+      visible: true,
+      disabled: true,
+      label: "阅读解析内容",
+      message: "正在解析，完成后可阅读"
+    };
+  }
+
+  if (object.parseStatus === "failed") {
+    return {
+      visible: true,
+      disabled: true,
+      label: "阅读解析内容",
+      message: object.parseError || "解析失败，当前没有可读的本地解析文本"
+    };
+  }
+
+  if (object.parseStatus === "parsed" && object.extractedAssetId) {
+    const extractAsset = assets[object.extractedAssetId];
+    if (!extractAsset || extractAsset.sourceType !== "documentExtract") {
+      return {
+        visible: true,
+        disabled: true,
+        label: "阅读解析内容",
+        message: "本地解析文本资源不可用，当前无法阅读"
+      };
+    }
+
+    return {
+      visible: true,
+      disabled: false,
+      label: "阅读解析内容",
+      message: "打开本地解析文本阅读面板"
+    };
+  }
+
+  if (object.parseStatus === "parsed") {
+    return {
+      visible: true,
+      disabled: true,
+      label: "阅读解析内容",
+      message: "本地解析文本资源不可用，当前无法阅读"
+    };
+  }
+
+  return {
+    visible: true,
+    disabled: true,
+    label: "阅读解析内容",
+    message: "该文件尚未生成可读的本地解析文本"
+  };
+}
+
 export function BottomDetailBar({
   selectedObjects,
+  assets,
   hasPendingDesignDefinitionRevisionDraft,
   keyConclusionCandidates,
   relations,
@@ -144,6 +230,7 @@ export function BottomDetailBar({
   onRemoveImageFromVisualBranch,
   onLocalEdit,
   onReferenceIntent,
+  onOpenDocumentReader,
   onHide,
   onDelete,
   onEliminateDirection,
@@ -173,6 +260,7 @@ export function BottomDetailBar({
   const showDirectionActions = primary.type === "conceptDirection" && selectedObjects.length === 1;
   const selectedDirections = selectedObjects.filter((object) => object.type === "conceptDirection");
   const showMergeDirectionsAction = selectedDirections.length >= 2 && selectedDirections.length === selectedObjects.length;
+  const documentReaderAction = getDocumentReaderActionState(primary, assets);
   const imageBranchOptions =
     primary.type === "image" && primary.directionId
       ? Object.values(visualBranches).filter((branch) => branch.directionId === primary.directionId && !branch.archivedAt)
@@ -201,6 +289,7 @@ export function BottomDetailBar({
             decisionRecords: relatedDecisions,
             directionLineage,
             visualBranches,
+            assets,
             selectedCount: selectedObjects.length,
             hasPendingDesignDefinitionRevisionDraft,
             keyConclusionCandidates,
@@ -230,6 +319,23 @@ export function BottomDetailBar({
             <MessageSquareText size={15} />
             询问 AI
           </button>
+
+          {documentReaderAction.visible ? (
+            <button
+              className="detail-action"
+              type="button"
+              disabled={documentReaderAction.disabled}
+              title={documentReaderAction.message}
+              onClick={() => {
+                if (primary.type === "file") {
+                  onOpenDocumentReader(primary.id);
+                }
+              }}
+            >
+              <BookOpen size={15} />
+              {documentReaderAction.label}
+            </button>
+          ) : null}
 
           <button className={`detail-action ${isDesignTraceActive ? "brand" : ""}`} type="button" onClick={onToggleDesignTrace}>
             <GitBranch size={15} />
@@ -530,6 +636,7 @@ function renderDetail(input: {
   decisionRecords: DecisionRecord[];
   directionLineage: DirectionLineageRecord[];
   visualBranches: Record<string, VisualBranchRecord>;
+  assets: Record<string, AssetRecord>;
   selectedCount: number;
   hasPendingDesignDefinitionRevisionDraft: boolean;
   keyConclusionCandidates: KeyConclusionObject[];
@@ -548,6 +655,7 @@ function renderDetail(input: {
     relations,
     directionLineage,
     visualBranches,
+    assets,
     decisionRecords,
     selectedCount,
     hasPendingDesignDefinitionRevisionDraft
@@ -612,6 +720,9 @@ function renderDetail(input: {
         ) : null}
         {object.type === "designDefinition" && buildDesignDefinitionInfoMeta(hasPendingDesignDefinitionRevisionDraft) ? (
           <span className="detail-meta">{buildDesignDefinitionInfoMeta(hasPendingDesignDefinitionRevisionDraft)}</span>
+        ) : null}
+        {object.type === "file" ? (
+          <span className="detail-meta">{getDocumentReaderActionState(object, assets).message}</span>
         ) : null}
       </>
     );

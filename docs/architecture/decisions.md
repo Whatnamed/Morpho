@@ -471,3 +471,11 @@ Decision: `/api/ai/chat` carries `comparisonContext` for explicit selected sourc
 Reason: Compare must be able to answer questions like whether directions fit the current definition without letting background objects become hidden sources, object comparisons, evidence for key conclusions, or decision targets.
 
 Boundary: `sourceObjectIds` and `objectComparisons` must exactly match the explicit selection. File evidence requires a sent `documentExtract`; image visual evidence requires sent pixels/contact sheet; `keyConclusionCandidate` may use only selected true text evidence sources. Same-reply design-definition or concept-direction Proposal JSON suppresses Compare, semantic patch, and checkpoint writes.
+
+## 2026-07-01: Keep Document Reading Local, Text-Only, And Schema-Neutral
+
+Decision: M5-D1 reads only the existing local IndexedDB `documentExtract` Blob for an active parsed file and presents it in a transient workspace panel with local text search and extract-offset location.
+
+Reason: users need to re-read and verify parsed source text without converting a file into project memory, AI context, a document editor, or a layout preview.
+
+Boundary: workspace schema remains v11. The reader does not add OCR, PDF page rendering, PPTX visual reconstruction, page/slide source maps, routes, cloud services, provider calls, document annotations, fragment extraction, or automatic key-conclusion/project-continuity writes. Parser counts may be shown only as counts; without a real persisted source map, location is limited to parsed text blocks and character ranges.

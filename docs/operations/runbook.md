@@ -172,6 +172,16 @@ Minimum flows to cover:
 - semantic entry manual actions (`不再适用`, `撤回记录`, `恢复为当前有效`) update drawer labels and keep current focus unchanged;
 - hidden object sources display `来源已隐藏`, missing sources display `来源不可用`, and message sources display the stored quote only.
 
+Document reader mock acceptance for M5-D1:
+
+- use a real browser with a mocked local workspace and IndexedDB `documentExtract` Blob; do not add a permanent mock route and do not call real providers;
+- select an active parsed file with a valid `documentExtract`, click `阅读解析内容`, verify the floating reader shows file metadata, the local parsed-text warning, block/character-range location, and safe text rendering;
+- search a repeated keyword, use next/previous and result clicks, and verify navigation scrolls to extract blocks without calling `/api/ai/chat` or `/api/ai/image`;
+- open a PDF/PPTX parsed-file fixture that has `extractedPageCount` but no persisted source map and verify the UI shows only the parser count plus block/character location, not page or slide jump controls;
+- select unparsed, parsing, failed, hidden, missing-extract, wrong-source-type, and missing-Blob files and verify the reader does not fake body text, does not reparse, does not call providers, and does not mutate file state;
+- switch from file A to file B while A's Blob read is still pending, then let A finish and verify B remains visible; close while a read is pending and verify there is no stale state update or console error;
+- after open, search, navigation, and close, verify canvas selection, AI messages, project continuity, conversation checkpoints, Compare analyses, DecisionRecords, and operations remain unchanged.
+
 ## Current Local Persistence
 
 Project catalog:
@@ -208,6 +218,7 @@ Local document extraction:
 - supported: Markdown, plain text, text-layer PDF, and PPTX slide text;
 - unsupported or expected to fail clearly: scanned PDFs without text layers, legacy `.ppt`, DOC/DOCX, OCR, embedded image extraction, layout reconstruction, and table fidelity;
 - parsed text is capped before being stored as a `documentExtract` asset, and each AI request applies additional per-file and total context caps.
+- M5-D1 document reading opens the saved `documentExtract` Blob as local parsed text in a temporary workspace panel. It does not preview original PDF/PPTX/Office layout, run OCR, fabricate page/slide location, or write the extract into workspace JSON.
 
 ## Current Routes
 

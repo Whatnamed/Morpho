@@ -45,6 +45,8 @@ Schema v11 stores saved analyses under `workspace.ai.comparisonAnalyses`. Assist
 
 A saved `ComparisonAnalysis` keeps source snapshots. If a source later becomes hidden or missing, the Compare card remains visible with the stored snapshot. Active sources can still be located on the canvas; hidden or missing sources cannot be jumped to automatically.
 
+M5-D1 document reading does not change Compare source-card behavior. Clicking an active file source from a Compare card remains object location/focus only; reading the local extract still requires the explicit bottom-detail `阅读解析内容` action.
+
 `ComparisonAnalysis.sourceObjectIds` and `objectComparisons` must exactly cover the explicit selection. `keyConclusionCandidate` is only a draft and may use only true text evidence sources from the selection: sent document extracts, research objects, or existing key conclusions. Direction summaries, images, object summaries for files, and background context cannot become key-conclusion evidence.
 
 ## Decision Writeback

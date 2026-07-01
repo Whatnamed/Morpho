@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildConceptDirectionLineageDetail,
   buildConceptDirectionVersionDetail,
+  getDocumentReaderActionState,
   buildDesignDefinitionInfoMeta,
   buildDesignDefinitionVersionDetail
 } from "./BottomDetailBar";
@@ -47,5 +48,90 @@ describe("BottomDetailBar concept direction text", () => {
         }
       ])
     ).toBe("mergedFromDirection：方向 AB 合并了方向 A。 mergedFromDirection：方向 AB 合并了方向 B。");
+  });
+});
+
+describe("BottomDetailBar document reader action", () => {
+  it("enables reading only for a parsed file with an extract asset id", () => {
+    expect(
+      getDocumentReaderActionState({
+        id: "file-1",
+        type: "file",
+        title: "brief.pdf",
+        summary: "",
+        createdBy: "user",
+        visibility: "active",
+        fileKind: "pdf",
+        sourceLabel: "用户导入",
+        parseStatus: "parsed",
+        extractedAssetId: "asset-extract"
+      },
+      {
+        "asset-extract": {
+          id: "asset-extract",
+          fileName: "brief.extract.txt",
+          mimeType: "text/plain",
+          size: 12,
+          createdAt: "2026-07-01T00:00:00.000Z",
+          storageKey: "blob:extract",
+          sourceType: "documentExtract"
+        }
+      })
+    ).toEqual({
+      visible: true,
+      disabled: false,
+      label: "阅读解析内容",
+      message: "打开本地解析文本阅读面板"
+    });
+  });
+
+  it("keeps unavailable file states explicit instead of pretending they are readable", () => {
+    const base = {
+      id: "file-1",
+      type: "file" as const,
+      title: "brief.pdf",
+      summary: "",
+      createdBy: "user" as const,
+      visibility: "active" as const,
+      fileKind: "pdf" as const,
+      sourceLabel: "用户导入"
+    };
+
+    expect(getDocumentReaderActionState({ ...base, parseStatus: "unparsed" })).toMatchObject({
+      visible: true,
+      disabled: true,
+      message: "该文件尚未生成可读的本地解析文本"
+    });
+    expect(getDocumentReaderActionState({ ...base, parseStatus: "parsing" })).toMatchObject({
+      disabled: true,
+      message: "正在解析，完成后可阅读"
+    });
+    expect(getDocumentReaderActionState({ ...base, parseStatus: "failed", parseError: "扫描件没有文本" })).toMatchObject({
+      disabled: true,
+      message: "扫描件没有文本"
+    });
+    expect(getDocumentReaderActionState({ ...base, parseStatus: "parsed" })).toMatchObject({
+      disabled: true,
+      message: "本地解析文本资源不可用，当前无法阅读"
+    });
+    expect(
+      getDocumentReaderActionState(
+        { ...base, parseStatus: "parsed", extractedAssetId: "asset-original" },
+        {
+          "asset-original": {
+            id: "asset-original",
+            fileName: "brief.pdf",
+            mimeType: "application/pdf",
+            size: 12,
+            createdAt: "2026-07-01T00:00:00.000Z",
+            storageKey: "blob:original",
+            sourceType: "originalFile"
+          }
+        }
+      )
+    ).toMatchObject({
+      disabled: true,
+      message: "本地解析文本资源不可用，当前无法阅读"
+    });
   });
 });

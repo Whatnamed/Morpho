@@ -151,6 +151,16 @@ M5-C additions:
 - same-reply design-definition or concept-direction Proposal JSON suppresses Compare writes, semantic patches, checkpoints, and Compare decision entry points;
 - confirmed Compare decisions write normal `DecisionRecord` entries with lightweight `ComparisonDecisionMetadata`; the full Compare body is not copied into decisions or project memory.
 
+M5-D1 additions:
+
+- workspace schema remains v11; document reading is transient UI state and does not add migration fields;
+- `src/features/workspace/documentReader.ts` resolves file-reader availability, builds stable text blocks from the saved extract string, and searches plain text with offsets into the current `documentExtract`;
+- `src/features/workspace/components/DocumentReaderPanel.tsx` renders a floating reader for local parsed text, with search, capped result snippets, block scrolling, current-match highlight, and explicit source/precision warnings;
+- the reader opens from the bottom detail bar for an active parsed file with a valid `documentExtract` asset. It reads only the IndexedDB Blob referenced by `file.extractedAssetId`;
+- unparsed, parsing, failed, hidden, missing-extract, wrong-asset-type, missing-asset, and Blob-read-failed states are explicit and do not trigger reparsing, provider calls, or workspace repair;
+- parser counts such as `extractedPageCount` may be displayed as counts only. Without a persisted page/slide source map, the reader locates only extract blocks, paragraphs, snippets, and character ranges and must not expose page/slide jump claims;
+- opening, searching, navigating, and closing the reader do not change selection, task mode, current focus, AI messages, conversation checkpoints, semantic records, Compare analyses, DecisionRecords, operations, or project continuity.
+
 ## Local-First Persistence
 
 Project catalog and structured workspace JSON use localStorage:
