@@ -346,11 +346,28 @@ export function applyConversationCheckpoint(
     return { status: "skipped", workspace, reason: "sourceEndMessageId must be the current completed assistant message." };
   }
 
-  const sourceStartIndex = workspace.ai.messages.findIndex((message) => message.id === input.sourceStartMessageId);
+  const sourceStartMessage = workspace.ai.messages.find((message) => message.id === input.sourceStartMessageId);
+  if (!sourceStartMessage) {
+    return { status: "skipped", workspace, reason: "sourceStartMessageId is missing." };
+  }
+  if (sourceStartMessage.conversationLaneKey !== input.laneKey) {
+    return { status: "skipped", workspace, reason: "sourceStartMessageId must belong to the checkpoint lane." };
+  }
+
+  const sourceEndMessage = workspace.ai.messages.find((message) => message.id === input.sourceEndMessageId);
+  if (!sourceEndMessage) {
+    return { status: "skipped", workspace, reason: "sourceEndMessageId is missing." };
+  }
+  if (sourceEndMessage.conversationLaneKey !== input.laneKey) {
+    return { status: "skipped", workspace, reason: "sourceEndMessageId must belong to the checkpoint lane." };
+  }
+
+  const laneMessages = workspace.ai.messages.filter((message) => isUsableConversationMessage(message, input.laneKey));
+  const sourceStartIndex = laneMessages.findIndex((message) => message.id === input.sourceStartMessageId);
   if (sourceStartIndex < 0) {
     return { status: "skipped", workspace, reason: "sourceStartMessageId is missing." };
   }
-  const sourceEndIndex = workspace.ai.messages.findIndex((message) => message.id === input.sourceEndMessageId);
+  const sourceEndIndex = laneMessages.findIndex((message) => message.id === input.sourceEndMessageId);
   if (sourceEndIndex < 0) {
     return { status: "skipped", workspace, reason: "sourceEndMessageId is missing." };
   }
@@ -358,15 +375,7 @@ export function applyConversationCheckpoint(
     return { status: "skipped", workspace, reason: "sourceStartMessageId must not be after sourceEndMessageId." };
   }
 
-  const sourceRange = workspace.ai.messages.slice(sourceStartIndex, sourceEndIndex + 1);
-  const sourceStart = sourceRange[0];
-  const sourceEnd = sourceRange[sourceRange.length - 1];
-  if (sourceStart?.conversationLaneKey !== input.laneKey) {
-    return { status: "skipped", workspace, reason: "sourceStartMessageId must belong to the checkpoint lane." };
-  }
-  if (sourceEnd?.conversationLaneKey !== input.laneKey) {
-    return { status: "skipped", workspace, reason: "sourceEndMessageId must belong to the checkpoint lane." };
-  }
+  const sourceRange = laneMessages.slice(sourceStartIndex, sourceEndIndex + 1);
   if (sourceRange.some((message) => !isUsableConversationMessage(message, input.laneKey))) {
     return { status: "skipped", workspace, reason: "source range must contain only compressible chatAnalysis messages from the same lane." };
   }
