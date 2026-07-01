@@ -233,7 +233,7 @@ describe("document reader workspace isolation", () => {
     expect(loaded.status).toBe("loaded");
     expect(matches).toHaveLength(2);
     expect(closedGuard).toBe(false);
-    expect(workspace.schemaVersion).toBe(11);
+    expect(workspace.schemaVersion).toBe(12);
     expect(JSON.stringify(workspace)).toBe(beforeWorkspace);
     expect(JSON.stringify(workspace.projectContinuity)).toBe(beforeContinuity);
     expect(workspace.ai.messages).toEqual([]);

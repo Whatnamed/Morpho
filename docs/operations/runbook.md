@@ -182,6 +182,17 @@ Document reader mock acceptance for M5-D1:
 - switch from file A to file B while A's Blob read is still pending, then let A finish and verify B remains visible; close while a read is pending and verify there is no stale state update or console error;
 - after open, search, navigation, and close, verify canvas selection, AI messages, project continuity, conversation checkpoints, Compare analyses, DecisionRecords, and operations remain unchanged.
 
+Document fragment mock acceptance for M5-D2:
+
+- use a real browser with a mocked local workspace and IndexedDB `documentExtract` Blob; do not add a permanent mock route and do not call real providers;
+- open an active parsed file, select two adjacent parsed blocks, edit the fragment title, and click the explicit extract action;
+- verify a new `documentFragment` canvas object appears, the reader remains open, success feedback appears, and the body matches the exact `documentExtract` slice for the saved offsets;
+- verify extraction does not call `/api/ai/chat` or `/api/ai/image`, does not create an AI message, DecisionRecord, Compare analysis, operation, checkpoint, semantic patch, key conclusion, or current-focus update;
+- select non-consecutive blocks or more than the configured block/character limits and verify no fragment or continuity record is created, no silent truncation occurs, and the UI shows the validation reason;
+- select an existing fragment and click source-location. Verify the reader opens the source file, highlights the real extract range, and shows no fabricated PDF page, PPT slide, or coordinate location;
+- hide or remove the source file, or change/remove the source extract asset, then select the fragment. Verify the fragment body remains readable, source status is hidden/unavailable/mismatch as appropriate, and source-location is disabled;
+- select two active fragments and start Compare. Verify only those fragment IDs are Compare sources, evidence basis is `documentFragment`, and the source file full text is not auto-attached.
+
 ## Current Local Persistence
 
 Project catalog:
@@ -202,7 +213,7 @@ Legacy single-project key read for migration:
 morpho.workspace.nightrail.v1
 ```
 
-Structured workspace data is schema version `11`. v1/v2/v3/v4/v5/v6/v7/v8/v9/v10 workspace data is migrated through pure migration functions. v6 normalizes image roles to `reference`, `preview`, `conceptImage`, `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, `structureDiagram`, `interactionDiagram`, and `deliveryAsset`; old `main`, `scenario`, `cmf`, `detail`, and `diagram` values are migration-only inputs. v7 adds parse metadata to file objects and stores extracted document text as separate IndexedDB assets. v8 adds `workspace.projectContinuity`, migrates legacy `project.currentFocus` into structured `currentFocus`, and retires legacy `stageRecords` instead of converting them into a second stage-history source. v9 adds controlled conversation semantic record fields and message source refs; old v8 entries become `origin: deterministicEvent` and `manualState: active` without fabricated semantic metadata. v10 adds `workspace.ai.conversationCheckpoints`; old v9 messages are preserved, no checkpoint is invented, no old message receives a fabricated `conversationLaneKey`, and `projectContinuity` is unchanged. v11 adds `workspace.ai.comparisonAnalyses` plus assistant-message linkage for local Compare cards; old messages are preserved without fabricated comparison links. Migration success writes the new project workspace and catalog. Migration failure preserves old raw data and shows a recoverable warning instead of silently resetting to seed data.
+Structured workspace data is schema version `12`. v1/v2/v3/v4/v5/v6/v7/v8/v9/v10/v11 workspace data is migrated through pure migration functions. v6 normalizes image roles to `reference`, `preview`, `conceptImage`, `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, `structureDiagram`, `interactionDiagram`, and `deliveryAsset`; old `main`, `scenario`, `cmf`, `detail`, and `diagram` values are migration-only inputs. v7 adds parse metadata to file objects and stores extracted document text as separate IndexedDB assets. v8 adds `workspace.projectContinuity`, migrates legacy `project.currentFocus` into structured `currentFocus`, and retires legacy `stageRecords` instead of converting them into a second stage-history source. v9 adds controlled conversation semantic record fields and message source refs; old v8 entries become `origin: deterministicEvent` and `manualState: active` without fabricated semantic metadata. v10 adds `workspace.ai.conversationCheckpoints`; old v9 messages are preserved, no checkpoint is invented, no old message receives a fabricated `conversationLaneKey`, and `projectContinuity` is unchanged. v11 adds `workspace.ai.comparisonAnalyses` plus assistant-message linkage for local Compare cards; old messages are preserved without fabricated comparison links. v12 adds `documentFragment` support and fragment source relations without fabricating historical fragments or changing existing files/messages/checkpoints/Compare analyses/DecisionRecords/project-continuity records. Migration success writes the new project workspace and catalog. Migration failure preserves old raw data and shows a recoverable warning instead of silently resetting to seed data.
 
 Binary assets are stored in IndexedDB:
 
@@ -219,6 +230,7 @@ Local document extraction:
 - unsupported or expected to fail clearly: scanned PDFs without text layers, legacy `.ppt`, DOC/DOCX, OCR, embedded image extraction, layout reconstruction, and table fidelity;
 - parsed text is capped before being stored as a `documentExtract` asset, and each AI request applies additional per-file and total context caps.
 - M5-D1 document reading opens the saved `documentExtract` Blob as local parsed text in a temporary workspace panel. It does not preview original PDF/PPTX/Office layout, run OCR, fabricate page/slide location, or write the extract into workspace JSON.
+- M5-D2 document fragments are explicitly extracted from consecutive reader blocks. Each fragment stores bounded body text plus file/extract/offset/block provenance and can return only to the real extract range when the source file and extract asset still match.
 
 ## Current Routes
 

@@ -126,5 +126,7 @@ function getSearchableObjectText(object: MorphoObject): string {
       return [object.title, object.summary, object.status, object.keywords.join(" ")].join(" ");
     case "delivery":
       return [object.title, object.summary, object.gaps.map((gap) => gap.label).join(" ")].join(" ");
+    default:
+      return object.title;
   }
 }

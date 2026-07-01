@@ -30,10 +30,10 @@ import { recordDesignDefinitionProposal } from "../operations/operations";
 import { hasPendingDesignDefinitionRevisionProposal, reconcileWorkspaceDerivedState } from "./derivedState";
 
 describe("Morpho workspace domain boundaries", () => {
-  it("creates a blank schema v11 project without depending on Nightrail seed object ids", () => {
+  it("creates a blank schema v12 project without depending on Nightrail seed object ids", () => {
     const workspace = createBlankWorkspace("project-empty-local");
 
-    expect(workspace.schemaVersion).toBe(11);
+    expect(workspace.schemaVersion).toBe(12);
     expect(workspace.project.id).toBe("project-empty-local");
     expect(workspace.objects["image-soft-rail-v2"]).toBeUndefined();
     expect(workspace.canvas.instances).toEqual([]);
@@ -852,7 +852,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.status).toBe("ok");
     expect(legacyWorkspace).toEqual(before);
     if (result.status === "ok") {
-      expect(result.workspace.schemaVersion).toBe(11);
+      expect(result.workspace.schemaVersion).toBe(12);
       expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
       expect(result.workspace.objects["image-a"]?.visibility).toBe("active");
       expect(result.workspace.objects["image-a"]).toMatchObject({
@@ -880,7 +880,7 @@ describe("Morpho workspace domain boundaries", () => {
     }
   });
 
-  it("migrates v8 project continuity entries to v11 deterministic active entries without inventing semantic patches", () => {
+  it("migrates v8 project continuity entries to v12 deterministic active entries without inventing semantic patches", () => {
     const workspace = createInitialWorkspace();
     const v8Workspace = {
       ...workspace,
@@ -922,7 +922,7 @@ describe("Morpho workspace domain boundaries", () => {
       throw new Error(result.reason);
     }
     expect(result.didMigrate).toBe(true);
-    expect(result.workspace.schemaVersion).toBe(11);
+    expect(result.workspace.schemaVersion).toBe(12);
     expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
     expect(result.workspace.projectContinuity.schemaVersion).toBe(2);
     expect(result.workspace.projectContinuity.recordEntries).toEqual([
@@ -939,7 +939,83 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.workspace.decisionRecords).toEqual(workspace.decisionRecords);
   });
 
-  it("migrates v9 workspaces to v11 by adding empty conversation checkpoints without rewriting messages or project continuity", () => {
+  it("migrates v11 workspaces to v12 without inventing document fragments or rewriting compare/checkpoint state", () => {
+    const workspace = createInitialWorkspace();
+    const v11Workspace = {
+      ...workspace,
+      schemaVersion: 11,
+      ai: {
+        ...workspace.ai,
+        messages: [
+          {
+            id: "ai-existing",
+            role: "assistant" as const,
+            body: "Existing compare reply",
+            status: "done" as const,
+            comparisonAnalysisId: "comparison-existing"
+          }
+        ],
+        conversationCheckpoints: [
+          {
+            id: "checkpoint-existing",
+            laneKey: "lane-existing",
+            focusArea: workspace.projectContinuity.currentFocus.area,
+            focusUpdatedAt: workspace.projectContinuity.currentFocus.updatedAt,
+            taskKind: "general" as const,
+            anchorObjectIds: ["file-course-brief"],
+            targetDirectionIds: [],
+            sourceStartMessageId: "ai-existing",
+            sourceEndMessageId: "ai-existing",
+            sourceMessageCount: 1,
+            createdAt: "2026-07-01T08:00:00.000Z",
+            updatedAt: "2026-07-01T08:00:00.000Z",
+            threadGoal: "Keep existing checkpoint.",
+            progress: ["Existing progress"],
+            openThreads: []
+          }
+        ],
+        comparisonAnalyses: {
+          "comparison-existing": {
+            id: "comparison-existing",
+            assistantMessageId: "ai-existing",
+            userMessageId: "user-existing",
+            createdAt: "2026-07-01T08:00:00.000Z",
+            updatedAt: "2026-07-01T08:00:00.000Z",
+            sourceObjectIds: ["file-course-brief", "research-night-path"],
+            sourceRefs: [],
+            comparisonGoal: "Existing comparison",
+            conclusionSummary: "Existing summary",
+            objectComparisons: [],
+            recommendedQuestions: [],
+            evidenceLimits: []
+          }
+        }
+      }
+    };
+    const before = structuredClone(v11Workspace);
+
+    const result = migrateWorkspaceToCurrentSchema(v11Workspace);
+
+    expect(result.status).toBe("ok");
+    expect(v11Workspace).toEqual(before);
+    if (result.status !== "ok") {
+      throw new Error(result.reason);
+    }
+    expect(result.workspace.schemaVersion).toBe(12);
+    expect(Object.values(result.workspace.objects).some((object) => object.type === "documentFragment")).toBe(false);
+    expect(result.workspace.ai.messages).toEqual(v11Workspace.ai.messages);
+    expect(result.workspace.ai.conversationCheckpoints).toEqual(v11Workspace.ai.conversationCheckpoints);
+    expect(result.workspace.ai.comparisonAnalyses).toEqual(v11Workspace.ai.comparisonAnalyses);
+
+    const second = migrateWorkspaceToCurrentSchema(result.workspace);
+    expect(second.status).toBe("ok");
+    if (second.status !== "ok") {
+      throw new Error(second.reason);
+    }
+    expect(second.didMigrate).toBe(false);
+  });
+
+  it("migrates v9 workspaces to v12 by adding empty conversation checkpoints without rewriting messages or project continuity", () => {
     const workspace = createInitialWorkspace();
     const v9Workspace = {
       ...workspace,
@@ -972,7 +1048,7 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(11);
+    expect(result.workspace.schemaVersion).toBe(12);
     expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
     expect(result.workspace.ai.messages).toEqual(v9Workspace.ai.messages);
     expect(result.workspace.ai.messages[0]).not.toHaveProperty("conversationLaneKey");

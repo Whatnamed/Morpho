@@ -10,7 +10,7 @@ Compare is not a page, stage, score table, ranking engine, project memory entry,
 
 New Compare source selection is limited to 2-4 active objects selected by the user. Hidden, missing, duplicate, or unselected objects cannot become new Compare sources.
 
-Allowed source types are `file`, `image`, `research`, `keyConclusion`, and `conceptDirection`. A `file` is eligible only when it has a usable parsed `documentExtract` and that extract is sent in the current request.
+Allowed source types are `file`, `image`, `research`, `keyConclusion`, `documentFragment`, and `conceptDirection`. A `file` is eligible only when it has a usable parsed `documentExtract` and that extract is sent in the current request. A `documentFragment` is eligible only when the fragment object itself is active and explicitly selected.
 
 The server request carries a separate `comparisonContext`:
 
@@ -25,7 +25,7 @@ type ComparisonContext = {
 };
 ```
 
-Each model-produced `objectComparison` must declare `evidenceBasis` as `pixels`, `documentExtract`, or `objectSummary`. Local validation rejects basis values that do not match the actual request inputs. If any selected image lacks pixels or a contact sheet, `evidenceLimits` is required and that image cannot claim `pixels` basis or visual evidence.
+Each model-produced `objectComparison` must declare `evidenceBasis` as `pixels`, `documentExtract`, `documentFragment`, or `objectSummary`. Local validation rejects basis values that do not match the actual request inputs. If any selected image lacks pixels or a contact sheet, `evidenceLimits` is required and that image cannot claim `pixels` basis or visual evidence.
 
 ## Background Context Boundary
 
@@ -47,7 +47,9 @@ A saved `ComparisonAnalysis` keeps source snapshots. If a source later becomes h
 
 M5-D1 document reading does not change Compare source-card behavior. Clicking an active file source from a Compare card remains object location/focus only; reading the local extract still requires the explicit bottom-detail `阅读解析内容` action.
 
-`ComparisonAnalysis.sourceObjectIds` and `objectComparisons` must exactly cover the explicit selection. `keyConclusionCandidate` is only a draft and may use only true text evidence sources from the selection: sent document extracts, research objects, or existing key conclusions. Direction summaries, images, object summaries for files, and background context cannot become key-conclusion evidence.
+`ComparisonAnalysis.sourceObjectIds` and `objectComparisons` must exactly cover the explicit selection. `keyConclusionCandidate` is only a draft and may use only true text evidence sources from the selection: sent document extracts, selected active document fragments, research objects, or existing key conclusions. Direction summaries, images, object summaries for files, source files behind fragments, and background context cannot become key-conclusion evidence.
+
+For document fragments, `sourceObjectIds` point to the fragment object. The original file is not automatically added as a Compare source or authorization target. Provenance follows `documentFragment -> source file / extract asset / offset range / block IDs`.
 
 ## Decision Writeback
 

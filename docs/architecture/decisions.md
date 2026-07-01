@@ -479,3 +479,27 @@ Decision: M5-D1 reads only the existing local IndexedDB `documentExtract` Blob f
 Reason: users need to re-read and verify parsed source text without converting a file into project memory, AI context, a document editor, or a layout preview.
 
 Boundary: workspace schema remains v11. The reader does not add OCR, PDF page rendering, PPTX visual reconstruction, page/slide source maps, routes, cloud services, provider calls, document annotations, fragment extraction, or automatic key-conclusion/project-continuity writes. Parser counts may be shown only as counts; without a real persisted source map, location is limited to parsed text blocks and character ranges.
+
+## 2026-07-01: Use Schema Version 12 For Document Fragments
+
+Decision: upgrade workspace data to `schemaVersion: 12` and add `documentFragment` as an explicit user-created object extracted from bounded parsed reader blocks.
+
+Reason: users need reusable text evidence that remains traceable to a source file, extract asset, character range, and reader block set without turning the original file or full extract into workspace JSON.
+
+Boundary: migration does not fabricate historical fragments. A fragment stores only bounded body text plus source metadata; it does not store original binaries, Base64, full document extracts, OCR output, PDF/PPT layout data, provider payloads, or page/slide source maps.
+
+## 2026-07-01: Treat Fragment Source Navigation As Extract-Offset Navigation Only
+
+Decision: source return for a `documentFragment` opens the existing document reader only when the source file is active and the current `extractedAssetId` still matches the fragment snapshot.
+
+Reason: the only reliable source location persisted today is the `documentExtract` character range and stable reader block IDs.
+
+Boundary: hidden/missing files, missing assets, and asset mismatches keep the fragment readable but disable navigation. The UI must not invent PDF page numbers, PPT slide numbers, coordinates, reparsing, provider calls, or source-file visibility changes.
+
+## 2026-07-01: Keep Document Fragments Explicit In AI And Compare
+
+Decision: selected active `documentFragment` objects can enter TaskContext and Compare as bounded text sources. Compare evidence basis is `documentFragment`, and key-conclusion candidates cite the fragment IDs directly.
+
+Reason: a fragment is a user-extracted text source, not an implicit authorization to read the whole source file.
+
+Boundary: unselected fragments do not enter provider context. The source file and sibling fragments are not auto-attached. Fragment creation writes a deterministic continuity event but does not create Project Memory, a key conclusion, a DecisionRecord, an AI message, a checkpoint, or a Compare analysis.

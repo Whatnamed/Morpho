@@ -4,6 +4,8 @@ import { createInitialWorkspace, hideObject } from "../../domain/morpho/workspac
 import type { MorphoWorkspace } from "../../domain/morpho/types";
 
 import { buildProviderTaskContext, buildTaskContext, TASK_CONTEXT_LIMITS } from "./taskContext";
+import { buildDocumentReaderBlocks } from "./documentReader";
+import { buildDocumentFragmentDraft, createDocumentFragment, resolveDocumentFragmentSelection } from "./documentFragments";
 
 describe("workspace task context assembly", () => {
   it("builds direction preview context from selected directions, current definition, related conclusions, selected images and parsed files", () => {
@@ -146,6 +148,40 @@ describe("workspace task context assembly", () => {
     expect(() => buildProviderTaskContext(context)).toThrow(/Comparison task context/);
   });
 
+  it("includes document fragments only when explicitly selected and sends bounded fragment body, not source file text", () => {
+    const workspace = withDocumentFragment(withParsedFile(createInitialWorkspace(), "file-course-brief"));
+    const fragment = Object.values(workspace.objects).find((object) => object.type === "documentFragment");
+    if (!fragment || fragment.type !== "documentFragment") {
+      throw new Error("Expected document fragment fixture.");
+    }
+
+    const unselected = buildTaskContext(workspace, {
+      kind: "research",
+      draft: "鏁寸悊璧勬枡",
+      selectedObjectIds: ["research-night-path"]
+    });
+    expect(unselected.objectIds).not.toContain(fragment.id);
+
+    const selected = buildTaskContext(workspace, {
+      kind: "research",
+      draft: "鏁寸悊杩欐鏂囨。鐗囨",
+      selectedObjectIds: [fragment.id]
+    });
+    const provider = buildProviderTaskContext(selected);
+
+    expect(selected.objectIds).toContain(fragment.id);
+    expect(selected.documentObjectIds).toEqual([]);
+    expect(provider.documentFragmentExtracts).toEqual([
+      expect.objectContaining({
+        objectId: fragment.id,
+        title: fragment.title,
+        text: fragment.body,
+        sourceFileObjectId: fragment.source.fileObjectId
+      })
+    ]);
+    expect(JSON.stringify(provider)).not.toContain("source file full text");
+  });
+
   it("excludes hidden objects and reports predictable skip reasons", () => {
     const hidden = hideObject(createInitialWorkspace(), "image-soft-rail-v2");
     const context = buildTaskContext(hidden, {
@@ -241,4 +277,24 @@ function withoutDefaultReferenceDirection(workspace: MorphoWorkspace): MorphoWor
       }
     }
   };
+}
+
+function withDocumentFragment(workspace: MorphoWorkspace): MorphoWorkspace {
+  const sourceText = "# 鏂囨。鐗囨\n\nsource file full text should not be sent unless the file is selected\n\nfragment bounded body";
+  const blocks = buildDocumentReaderBlocks(sourceText);
+  const selection = resolveDocumentFragmentSelection(workspace, {
+    fileObjectId: "file-course-brief",
+    extractAssetId: "asset-document-extract-a",
+    blockIds: [blocks[2]?.id ?? ""],
+    title: "Fragment",
+    sourceText
+  });
+  if (selection.status !== "ready") {
+    throw new Error(selection.reason);
+  }
+  const draft = buildDocumentFragmentDraft(workspace, selection, { title: "Fragment" });
+  if (draft.status !== "ready") {
+    throw new Error(draft.reason);
+  }
+  return createDocumentFragment(workspace, draft.draft).workspace;
 }

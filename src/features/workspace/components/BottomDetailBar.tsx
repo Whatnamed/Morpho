@@ -25,16 +25,23 @@ import type {
   KeyConclusionObject,
   MorphoObject,
   MorphoRelation,
+  MorphoWorkspace,
   VisualBranchRecord,
   ResearchObject,
   AssetRecord
 } from "@/domain/morpho/types";
 import type { DesignTraceResult } from "@/domain/morpho/designTrace";
+import {
+  resolveDocumentFragmentLocation,
+  resolveDocumentFragmentSourceAvailability,
+  type DocumentReaderInitialLocation
+} from "../documentFragments";
 import { getObjectTypeLabel, imageRoleLabel } from "../workspaceUi";
 
 type ResearchSourceKind = "finding" | "opportunity" | "constraint" | "openQuestion" | "evidence";
 
 type BottomDetailBarProps = {
+  workspace: MorphoWorkspace;
   selectedObjects: MorphoObject[];
   assets: Record<string, AssetRecord>;
   hasPendingDesignDefinitionRevisionDraft: boolean;
@@ -58,7 +65,7 @@ type BottomDetailBarProps = {
   onRemoveImageFromVisualBranch: () => void;
   onLocalEdit: () => void;
   onReferenceIntent: () => void;
-  onOpenDocumentReader: (fileObjectId: string) => void;
+  onOpenDocumentReader: (fileObjectId: string, initialLocation?: DocumentReaderInitialLocation | null) => void;
   onHide: () => void;
   onDelete: () => void;
   onEliminateDirection: () => void;
@@ -206,7 +213,22 @@ export function getDocumentReaderActionState(
   };
 }
 
+function describeDocumentFragmentSourceAvailability(
+  state: ReturnType<typeof resolveDocumentFragmentSourceAvailability>
+): string {
+  switch (state.status) {
+    case "active":
+      return "来源可用";
+    case "hidden":
+    case "missing":
+    case "assetMissing":
+    case "assetMismatch":
+      return state.reason;
+  }
+}
+
 export function BottomDetailBar({
+  workspace,
   selectedObjects,
   assets,
   hasPendingDesignDefinitionRevisionDraft,
@@ -261,6 +283,17 @@ export function BottomDetailBar({
   const selectedDirections = selectedObjects.filter((object) => object.type === "conceptDirection");
   const showMergeDirectionsAction = selectedDirections.length >= 2 && selectedDirections.length === selectedObjects.length;
   const documentReaderAction = getDocumentReaderActionState(primary, assets);
+  const fragmentSourceState =
+    primary.type === "documentFragment" ? resolveDocumentFragmentSourceAvailability(workspace, primary) : null;
+  const fragmentLocation = primary.type === "documentFragment" ? resolveDocumentFragmentLocation(workspace, primary) : null;
+  const fragmentInitialLocation: DocumentReaderInitialLocation | null =
+    fragmentLocation?.status === "ready"
+      ? {
+          startOffset: fragmentLocation.startOffset,
+          endOffset: fragmentLocation.endOffset,
+          label: fragmentLocation.label
+        }
+      : null;
   const imageBranchOptions =
     primary.type === "image" && primary.directionId
       ? Object.values(visualBranches).filter((branch) => branch.directionId === primary.directionId && !branch.archivedAt)
@@ -292,6 +325,8 @@ export function BottomDetailBar({
             assets,
             selectedCount: selectedObjects.length,
             hasPendingDesignDefinitionRevisionDraft,
+            fragmentSourceState,
+            fragmentLocation: fragmentInitialLocation,
             keyConclusionCandidates,
             supersededById,
             setSupersededById,
@@ -334,6 +369,19 @@ export function BottomDetailBar({
             >
               <BookOpen size={15} />
               {documentReaderAction.label}
+            </button>
+          ) : null}
+
+          {primary.type === "documentFragment" ? (
+            <button
+              className="detail-action"
+              type="button"
+              disabled={!fragmentInitialLocation}
+              title={fragmentSourceState ? describeDocumentFragmentSourceAvailability(fragmentSourceState) : "来源不可用"}
+              onClick={() => onOpenDocumentReader(primary.source.fileObjectId, fragmentInitialLocation)}
+            >
+              <BookOpen size={15} />
+              查看原文定位
             </button>
           ) : null}
 
@@ -639,6 +687,8 @@ function renderDetail(input: {
   assets: Record<string, AssetRecord>;
   selectedCount: number;
   hasPendingDesignDefinitionRevisionDraft: boolean;
+  fragmentSourceState: ReturnType<typeof resolveDocumentFragmentSourceAvailability> | null;
+  fragmentLocation: DocumentReaderInitialLocation | null;
   keyConclusionCandidates: KeyConclusionObject[];
   supersededById: string;
   setSupersededById: (value: string) => void;
@@ -658,7 +708,9 @@ function renderDetail(input: {
     assets,
     decisionRecords,
     selectedCount,
-    hasPendingDesignDefinitionRevisionDraft
+    hasPendingDesignDefinitionRevisionDraft,
+    fragmentSourceState,
+    fragmentLocation
   } = input;
   if (selectedCount > 1) {
     return "多选当前只作为 AI 输入与局部比较范围，不会因为同时选中就自动改变对象语义、方向状态或交付关系。";
@@ -708,6 +760,23 @@ function renderDetail(input: {
       );
     }
 
+    if (object.type === "documentFragment") {
+      return (
+        <>
+          <strong>{getObjectTypeLabel(object)}</strong> · {object.summary}
+          <span className="detail-meta">来源文件：{object.source.fileTitle}</span>
+          {object.source.fileName ? <span className="detail-meta">原始文件名：{object.source.fileName}</span> : null}
+          <span className="detail-meta">
+            解析片段：{object.source.blockIds.length} 个 block · 字符 {object.source.startOffset}-{object.source.endOffset}
+          </span>
+          <span className="detail-meta">
+            来源状态：{fragmentSourceState ? describeDocumentFragmentSourceAvailability(fragmentSourceState) : "来源不可用"}
+          </span>
+          {fragmentLocation ? <span className="detail-meta">可回到原文：{fragmentLocation.label}</span> : null}
+        </>
+      );
+    }
+
     return (
       <>
         <strong>{getObjectTypeLabel(object)}</strong> · {object.summary}
@@ -729,8 +798,34 @@ function renderDetail(input: {
   }
 
   if (tab === "来源") {
+    if (object.type === "documentFragment") {
+      return (
+        <>
+          <strong>文档片段来源</strong>
+          <span className="detail-meta">来源文件对象：{object.source.fileObjectId}</span>
+          <span className="detail-meta">来源解析资源：{object.source.sourceExtractAssetId}</span>
+          <span className="detail-meta">来源快照：{object.source.fileTitle}</span>
+          <span className="detail-meta">
+            block：{object.source.blockIds.join("、")} · offset：{object.source.startOffset}-{object.source.endOffset}
+          </span>
+          <span className="detail-meta">
+            定位状态：
+            {fragmentLocation
+              ? fragmentLocation.label
+              : fragmentSourceState
+                ? describeDocumentFragmentSourceAvailability(fragmentSourceState)
+                : "来源不可用"}
+          </span>
+        </>
+      );
+    }
+
     const sourceRelations = relations.filter(
-      (relation) => relation.kind === "source" || relation.kind === "supports" || relation.kind === "supportsConclusion"
+      (relation) =>
+        relation.kind === "source" ||
+        relation.kind === "supports" ||
+        relation.kind === "supportsConclusion" ||
+        relation.kind === "documentFragmentExtractedFromFile"
     );
     return sourceRelations.length > 0
       ? sourceRelations.map((relation) => relation.note).join(" ")

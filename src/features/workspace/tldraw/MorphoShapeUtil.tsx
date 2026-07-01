@@ -61,6 +61,7 @@ export class MorphoShapeUtil extends BaseBoxShapeUtil<MorphoShape> {
       "imageCollection",
       "research",
       "keyConclusion",
+      "documentFragment",
       "designDefinition",
       "conceptDirection",
       "delivery"
@@ -188,6 +189,8 @@ function getDetails(object: MorphoObject, workspace?: MorphoWorkspace): string[]
       ];
     case "keyConclusion":
       return [object.body, `状态：${object.state}`, `置信度：${object.confidence}`];
+    case "documentFragment":
+      return [`来源文件：${object.source.fileTitle}`, object.body.slice(0, 160), "来源状态：查看详情"];
     case "designDefinition": {
       const details = [`核心问题：${object.problem}`, `原则：${object.principles.join(" / ")}`, `避免项：${object.avoid.join(" / ")}`];
       if (workspace && hasPendingDesignDefinitionRevisionProposal(workspace, object.id)) {
@@ -253,6 +256,7 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
     props.morphoType === "research" ||
     props.morphoType === "designDefinition" ||
     props.morphoType === "keyConclusion" ||
+    props.morphoType === "documentFragment" ||
     props.morphoType === "text"
   ) {
     return (

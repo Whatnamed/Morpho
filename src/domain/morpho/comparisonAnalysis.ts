@@ -22,6 +22,7 @@ const ALLOWED_TYPES = new Set<MorphoObjectType>([
   "image",
   "research",
   "keyConclusion",
+  "documentFragment",
   "conceptDirection"
 ]);
 const COMPARISON_GOAL_PATTERN = /目标|标准|维度|价值|风险|差异|取舍|继续|发展|契合|偏离|默认参考|主方向|备选|淘汰|结论|compare|comparison/i;
@@ -124,7 +125,7 @@ export function buildComparisonAuthorization(input: {
   const allowedTextEvidenceObjectIds = new Set(
     selection.objectIds.filter((objectId) => {
       const object = input.workspace.objects[objectId];
-      if (object?.type === "research" || object?.type === "keyConclusion") {
+      if (object?.type === "research" || object?.type === "keyConclusion" || object?.type === "documentFragment") {
         return true;
       }
       return object?.type === "file" && documentExtractSet.has(objectId) && hasUsableDocumentExtract(object);
@@ -220,6 +221,9 @@ export function validateComparisonAnalysis(
     }
     if (evidenceBasis === "documentExtract") {
       return source.objectType !== "file" || !authorization.attachedDocumentObjectIds.has(entry.objectId);
+    }
+    if (evidenceBasis === "documentFragment") {
+      return source.objectType !== "documentFragment";
     }
     return evidenceBasis !== "objectSummary";
   });
@@ -450,11 +454,14 @@ function inferLegacyEvidenceBasis(source: ComparisonSourceRef): NonNullable<Comp
   if (source.objectType === "file") {
     return "documentExtract";
   }
+  if (source.objectType === "documentFragment") {
+    return "documentFragment";
+  }
   return "objectSummary";
 }
 
 function isEvidenceBasis(value: unknown): value is NonNullable<ComparisonObjectEntry["evidenceBasis"]> {
-  return value === "pixels" || value === "objectSummary" || value === "documentExtract";
+  return value === "pixels" || value === "objectSummary" || value === "documentExtract" || value === "documentFragment";
 }
 
 function sameExactIdSet(left: string[], right: string[]): boolean {

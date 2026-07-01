@@ -52,6 +52,18 @@ export type AiRouteTaskContext = {
   objectIds: string[];
   imageObjectIds: string[];
   documentObjectIds: string[];
+  documentFragmentExtracts: Array<{
+    objectId: string;
+    title: string;
+    text: string;
+    charCount: number;
+    truncated: boolean;
+    sourceFileObjectId: string;
+    sourceFileTitle: string;
+    sourceStartOffset: number;
+    sourceEndOffset: number;
+    sourceAvailability: "active" | "hidden" | "missing" | "assetMissing" | "assetMismatch";
+  }>;
   truncated: boolean;
   defaultReference?: string;
   designDefinition?: AiRouteDesignDefinitionContext;
@@ -352,6 +364,7 @@ function buildTaskContextPromptBlock(request: AiRouteRequest): string {
     `objectIds: ${context.objectIds.join(", ") || "none"}`,
     `imageObjectIds: ${context.imageObjectIds.join(", ") || "none"}`,
     `documentObjectIds: ${context.documentObjectIds.join(", ") || "none"}`,
+    `documentFragmentExtracts: ${context.documentFragmentExtracts.map((fragment) => `${fragment.objectId}:${fragment.sourceFileObjectId}:${fragment.sourceStartOffset}-${fragment.sourceEndOffset}`).join(", ") || "none"}`,
     `defaultReference: ${context.defaultReference ?? "none"}`,
     `truncated: ${context.truncated ? "true" : "false"}`
   ];
@@ -673,6 +686,26 @@ function isDocumentExtract(value: unknown): value is AiRouteDocumentExtract {
   );
 }
 
+function isDocumentFragmentExtract(value: unknown): value is AiRouteTaskContext["documentFragmentExtracts"][number] {
+  return (
+    isRecord(value) &&
+    typeof value.objectId === "string" &&
+    typeof value.title === "string" &&
+    typeof value.text === "string" &&
+    typeof value.charCount === "number" &&
+    typeof value.truncated === "boolean" &&
+    typeof value.sourceFileObjectId === "string" &&
+    typeof value.sourceFileTitle === "string" &&
+    typeof value.sourceStartOffset === "number" &&
+    typeof value.sourceEndOffset === "number" &&
+    (value.sourceAvailability === "active" ||
+      value.sourceAvailability === "hidden" ||
+      value.sourceAvailability === "missing" ||
+      value.sourceAvailability === "assetMissing" ||
+      value.sourceAvailability === "assetMismatch")
+  );
+}
+
 function isAttachmentSummary(value: unknown): value is AiRouteAttachmentSummary {
   return (
     isRecord(value) &&
@@ -742,10 +775,10 @@ function buildComparisonAnalysisInstruction(request: AiRouteRequest): string {
     "If the selected sources do not share a clear comparison target and the user did not provide one, reply with at most one clarifying question in normal prose and do not output morphoComparisonAnalysis.",
     "File objects can only be treated as readable evidence when a documentExtract is included in this request. Otherwise do not pretend the file was read.",
     "Image objects only support true visual evidence when this request includes actual pixels or contact sheets. Otherwise mention the evidence limit explicitly and do not claim visual findings from the image itself.",
-    "Each objectComparison must include evidenceBasis: \"pixels\" only when that source id is in attachedImageObjectIds, \"documentExtract\" only when that file id is in attachedDocumentObjectIds, otherwise \"objectSummary\".",
-    "JSON shape: { \"morphoComparisonAnalysis\": { \"comparisonGoal\": string, \"conclusionSummary\": string, \"objectComparisons\": [{ \"objectId\": string, \"title\": string, \"evidenceBasis\": \"pixels\" | \"objectSummary\" | \"documentExtract\", \"summary\": string, \"strengths\": string[], \"risks\": string[], \"evidence\": string[] }], \"recommendedQuestions\": string[], \"evidenceLimits\": string[], \"keyConclusionCandidate\"?: { \"title\": string, \"summary\": string, \"body\": string, \"sourceObjectIds\": string[], \"evidence\": [{ \"objectId\": string, \"label\": string, \"evidence\": string }], \"confidence\": \"supported\" | \"partial\" | \"needsVerification\", \"note\"?: string } } }",
+    "Each objectComparison must include evidenceBasis: \"pixels\" only when that source id is in attachedImageObjectIds, \"documentExtract\" only when that file id is in attachedDocumentObjectIds, \"documentFragment\" only when that selected source is an active document fragment, otherwise \"objectSummary\".",
+    "JSON shape: { \"morphoComparisonAnalysis\": { \"comparisonGoal\": string, \"conclusionSummary\": string, \"objectComparisons\": [{ \"objectId\": string, \"title\": string, \"evidenceBasis\": \"pixels\" | \"objectSummary\" | \"documentExtract\" | \"documentFragment\", \"summary\": string, \"strengths\": string[], \"risks\": string[], \"evidence\": string[] }], \"recommendedQuestions\": string[], \"evidenceLimits\": string[], \"keyConclusionCandidate\"?: { \"title\": string, \"summary\": string, \"body\": string, \"sourceObjectIds\": string[], \"evidence\": [{ \"objectId\": string, \"label\": string, \"evidence\": string }], \"confidence\": \"supported\" | \"partial\" | \"needsVerification\", \"note\"?: string } } }",
     "objectComparisons must cover every selected source exactly once.",
-    "keyConclusionCandidate is optional and only a candidate draft. Its sourceObjectIds must be non-empty selected ids that have true text evidence in this request: attachedDocumentObjectIds, research, or existing keyConclusion sources only. Its evidence entries must all use those same sourceObjectIds. It never means a real keyConclusion was created."
+    "keyConclusionCandidate is optional and only a candidate draft. Its sourceObjectIds must be non-empty selected ids that have true text evidence in this request: attachedDocumentObjectIds, selected active documentFragment extracts, research, or existing keyConclusion sources only. Its evidence entries must all use those same sourceObjectIds. It never means a real keyConclusion was created."
   ].join("\n");
 }
 
@@ -759,6 +792,9 @@ function normalizeTaskContext(value: unknown): AiRouteTaskContext | undefined {
     objectIds: stringArray(value.objectIds).slice(0, 16),
     imageObjectIds: stringArray(value.imageObjectIds).slice(0, 16),
     documentObjectIds: stringArray(value.documentObjectIds).slice(0, 8),
+    documentFragmentExtracts: Array.isArray(value.documentFragmentExtracts)
+      ? value.documentFragmentExtracts.filter(isDocumentFragmentExtract).slice(0, 8)
+      : [],
     truncated: value.truncated === true,
     defaultReference: typeof value.defaultReference === "string" ? trimString(value.defaultReference, 240) : undefined,
     designDefinition: normalizeDesignDefinitionContext(value.designDefinition),

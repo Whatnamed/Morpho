@@ -175,6 +175,7 @@ export type MorphoObjectType =
   | "imageCollection"
   | "research"
   | "keyConclusion"
+  | "documentFragment"
   | "designDefinition"
   | "conceptDirection"
   | "delivery";
@@ -331,6 +332,20 @@ export type KeyConclusionObject = MorphoObjectBase & {
   note?: string;
 };
 
+export type DocumentFragmentObject = MorphoObjectBase & {
+  type: "documentFragment";
+  body: string;
+  source: {
+    fileObjectId: MorphoObjectId;
+    fileTitle: string;
+    fileName?: string;
+    sourceExtractAssetId: AssetId;
+    startOffset: number;
+    endOffset: number;
+    blockIds: string[];
+  };
+};
+
 export type DesignDefinitionObject = MorphoObjectBase & {
   type: "designDefinition";
   problem: string;
@@ -365,6 +380,7 @@ export type MorphoObject =
   | ImageCollectionObject
   | ResearchObject
   | KeyConclusionObject
+  | DocumentFragmentObject
   | DesignDefinitionObject
   | ConceptDirectionObject
   | DeliveryObject;
@@ -400,6 +416,7 @@ export type RelationKind =
   | "usesReference"
   | "version"
   | "defaultReference"
+  | "documentFragmentExtractedFromFile"
   | "deliveryReference";
 
 export type MorphoRelation = {
@@ -466,7 +483,7 @@ export type ComparisonObjectEvidence = {
 export type ComparisonObjectEntry = {
   objectId: MorphoObjectId;
   title: string;
-  evidenceBasis?: "pixels" | "objectSummary" | "documentExtract";
+  evidenceBasis?: "pixels" | "objectSummary" | "documentExtract" | "documentFragment";
   summary: string;
   strengths: string[];
   risks: string[];
@@ -623,7 +640,7 @@ export type ProjectWorkingState = {
 };
 
 export type MorphoWorkspace = {
-  schemaVersion: 11;
+  schemaVersion: 12;
   project: {
     id: string;
     title: string;

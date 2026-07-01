@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { ComparisonAnalysis, MorphoWorkspace } from "../../domain/morpho/types";
 import { createInitialWorkspace, hideObject } from "../../domain/morpho/workspace";
 import { validateComparisonActionTarget, validateComparisonKeyConclusionSources } from "./comparisonAction";
+import { buildDocumentReaderBlocks } from "./documentReader";
+import { buildDocumentFragmentDraft, createDocumentFragment, resolveDocumentFragmentSelection } from "./documentFragments";
 
 describe("comparison action target validation", () => {
   it("blocks actions when analysis is missing, target is outside sources, or target is hidden", () => {
@@ -80,11 +82,16 @@ describe("comparison action target validation", () => {
   });
 
   it("allows historical key-conclusion candidates backed by current text evidence sources", () => {
+    const workspaceWithFragment = withDocumentFragment(withParsedFile(createInitialWorkspace(), "file-course-brief"));
+    const fragment = Object.values(workspaceWithFragment.objects).find((object) => object.type === "documentFragment");
+    if (!fragment || fragment.type !== "documentFragment") {
+      throw new Error("Expected document fragment fixture.");
+    }
     const workspace = withAnalysis(
-      withParsedFile(createInitialWorkspace(), "file-course-brief"),
+      workspaceWithFragment,
       makeTextEvidenceAnalysis({
-        sourceObjectIds: ["research-night-path", "insight-low-construction", "file-course-brief"],
-        evidenceObjectIds: ["research-night-path", "insight-low-construction", "file-course-brief"]
+        sourceObjectIds: ["research-night-path", "insight-low-construction", "file-course-brief", fragment.id],
+        evidenceObjectIds: ["research-night-path", "insight-low-construction", "file-course-brief", fragment.id]
       })
     );
 
@@ -92,7 +99,8 @@ describe("comparison action target validation", () => {
       validateComparisonKeyConclusionSources(workspace, "comparison-text", [
         "research-night-path",
         "insight-low-construction",
-        "file-course-brief"
+        "file-course-brief",
+        fragment.id
       ])
     ).toMatchObject({ status: "ok" });
   });
@@ -312,4 +320,24 @@ function withParsedFile(workspace: MorphoWorkspace, objectId: string): MorphoWor
       }
     }
   };
+}
+
+function withDocumentFragment(workspace: MorphoWorkspace): MorphoWorkspace {
+  const sourceText = "# Fragment\n\nfragment body for key conclusion";
+  const blocks = buildDocumentReaderBlocks(sourceText);
+  const selection = resolveDocumentFragmentSelection(workspace, {
+    fileObjectId: "file-course-brief",
+    extractAssetId: "asset-document-extract-a",
+    blockIds: [blocks[1]?.id ?? ""],
+    title: "Compare fragment",
+    sourceText
+  });
+  if (selection.status !== "ready") {
+    throw new Error(selection.reason);
+  }
+  const draft = buildDocumentFragmentDraft(workspace, selection, { title: "Compare fragment" });
+  if (draft.status !== "ready") {
+    throw new Error(draft.reason);
+  }
+  return createDocumentFragment(workspace, draft.draft).workspace;
 }

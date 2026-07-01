@@ -111,3 +111,11 @@ See `docs/architecture/m5-b1-conversation-semantic-records.md` for the full cont
 M5-B2 adds short-term conversation checkpoints in `workspace.ai.conversationCheckpoints`. These checkpoints are not project continuity entries, do not enter memory views or the project-record drawer, and do not affect `currentFocus`, validity, source availability, or stage-record grouping.
 
 Project continuity remains responsible for real project facts and long-term explicit semantic records. Conversation checkpoints only summarize the current discussion lane for the next ordinary chat request. See `docs/architecture/m5-b2-conversation-checkpoints.md`.
+
+## M5-D2 Document Fragment Events
+
+M5-D2 adds `documentFragmentCreated` as a deterministic continuity event. It records that the user explicitly extracted a bounded parsed-text range from a file into a new `documentFragment` object.
+
+The event stores lightweight traceability only: fragment object ID, source file ID, start/end offsets, block IDs, timestamp, and typed source refs. It does not copy the fragment body into project continuity or memory views.
+
+Creating a document fragment is not a current-focus change, Project Memory update, key conclusion, DecisionRecord, Compare analysis, operation, AI message, semantic patch, or conversation checkpoint. The fragment can become AI or Compare context later only through explicit selection and the normal task-context rules.

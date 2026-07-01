@@ -107,6 +107,15 @@ export type ProjectContinuityEvent =
       objectIds: MorphoObjectId[];
       summary: string;
       createdAt?: string;
+    }
+  | {
+      type: "documentFragmentCreated";
+      fragmentObjectId: MorphoObjectId;
+      fileObjectId: MorphoObjectId;
+      startOffset: number;
+      endOffset: number;
+      blockIds: MorphoObjectId[];
+      createdAt?: string;
     };
 
 export type ContinuityRecordGroup = {
@@ -287,7 +296,7 @@ export function applyProjectContinuityEvent(workspace: MorphoWorkspace, event: P
 
   const now = event.createdAt ?? new Date().toISOString();
   const entry = createRecordEntry(resolved, event, dedupeKey, now);
-  const currentFocus = createFocusForEvent(event, entry, now);
+  const currentFocus = shouldPreserveCurrentFocus(event) ? resolved.projectContinuity.currentFocus : createFocusForEvent(event, entry, now);
 
   return {
     ...resolved,
@@ -298,6 +307,10 @@ export function applyProjectContinuityEvent(workspace: MorphoWorkspace, event: P
       updatedAt: now
     }
   };
+}
+
+function shouldPreserveCurrentFocus(event: ProjectContinuityEvent): boolean {
+  return event.type === "documentFragmentCreated";
 }
 
 export function applyConversationSemanticPatch(
@@ -840,6 +853,16 @@ function createRecordEntry(
         summary: truncateText(event.summary),
         sourceRefs: event.objectIds.map((objectId) => createObjectRef(workspace, objectId)).filter(isDefined)
       };
+    case "documentFragmentCreated":
+      return {
+        ...base,
+        stage: "research",
+        category: "output",
+        summary: truncateText(`已创建文档片段 ${workspace.objects[event.fragmentObjectId]?.title ?? event.fragmentObjectId}`),
+        sourceRefs: [createObjectRef(workspace, event.fragmentObjectId), createObjectRef(workspace, event.fileObjectId)].filter(
+          isDefined
+        )
+      };
   }
 }
 
@@ -956,6 +979,8 @@ function getEventDedupeKey(event: ProjectContinuityEvent): string {
       return `defaultReferenceChanged:${event.imageObjectId}:${event.previousImageObjectId ?? "none"}:${event.decisionId ?? "no-decision"}`;
     case "explorationRecorded":
       return `explorationRecorded:${stableIds(event.objectIds).join("+")}:${event.summary}`;
+    case "documentFragmentCreated":
+      return `documentFragmentCreated:${event.fragmentObjectId}:${event.fileObjectId}:${event.startOffset}-${event.endOffset}:${stableIds(event.blockIds).join("+")}`;
   }
 }
 
@@ -970,6 +995,8 @@ function focusAreaForEvent(event: ProjectContinuityEvent): ProjectFocusArea {
       return "designDefinition";
     case "explorationRecorded":
       return "exploration";
+    case "documentFragmentCreated":
+      return "research";
     default:
       return "directionAndVisual";
   }

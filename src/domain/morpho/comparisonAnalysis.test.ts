@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { buildComparisonAuthorization, parseComparisonAnalysisPayload, resolveComparisonSelection, validateComparisonAnalysis } from "./comparisonAnalysis";
 import { createInitialWorkspace, hideObject } from "./workspace";
 import type { MorphoWorkspace } from "./types";
+import { buildDocumentReaderBlocks } from "@/features/workspace/documentReader";
+import { buildDocumentFragmentDraft, createDocumentFragment, resolveDocumentFragmentSelection } from "@/features/workspace/documentFragments";
 
 describe("comparison analysis domain rules", () => {
   it("allows 2 active directions, 4 active images, and valid mixed selections with an explicit shared goal", () => {
@@ -28,6 +30,77 @@ describe("comparison analysis domain rules", () => {
         imageAttachmentObjectIds: []
       }).status
     ).toBe("ready");
+  });
+
+  it("allows active document fragments as explicit Compare text sources with documentFragment evidence basis", () => {
+    const workspace = withDocumentFragment(withParsedFile(createInitialWorkspace(), "file-course-brief"));
+    const fragment = Object.values(workspace.objects).find((object) => object.type === "documentFragment");
+    if (!fragment || fragment.type !== "documentFragment") {
+      throw new Error("Expected document fragment fixture.");
+    }
+
+    expect(resolveComparisonSelection(workspace, [fragment.id, "research-night-path"])).toMatchObject({ status: "ready" });
+    expect(resolveComparisonSelection(hideObject(workspace, fragment.id), [fragment.id, "research-night-path"])).toMatchObject({ status: "blocked" });
+
+    const authorization = getReadyAuthorization(
+      buildComparisonAuthorization({
+        workspace,
+        selectedObjectIds: [fragment.id, "research-night-path"],
+        userMessageId: "user-1",
+        assistantMessageId: "assistant-1",
+        createdAt: "2026-07-01T10:00:00.000Z",
+        comparisonGoal: "compare selected text evidence",
+        imageAttachmentObjectIds: [],
+        documentExtractObjectIds: []
+      })
+    );
+
+    expect(
+      validateComparisonAnalysis(
+        {
+          comparisonGoal: "compare",
+          conclusionSummary: "summary",
+          objectComparisons: [
+            {
+              objectId: fragment.id,
+              title: fragment.title,
+              evidenceBasis: "documentFragment",
+              summary: "fragment summary",
+              strengths: [],
+              risks: [],
+              evidence: [fragment.body]
+            },
+            {
+              objectId: "research-night-path",
+              title: "Research",
+              evidenceBasis: "objectSummary",
+              summary: "research summary",
+              strengths: [],
+              risks: [],
+              evidence: []
+            }
+          ],
+          recommendedQuestions: [],
+          evidenceLimits: [],
+          keyConclusionCandidate: {
+            title: "Candidate",
+            summary: "Candidate summary",
+            body: "Candidate body",
+            sourceObjectIds: [fragment.id],
+            evidence: [{ objectId: fragment.id, label: "Fragment", evidence: fragment.body }],
+            confidence: "partial"
+          }
+        },
+        authorization
+      )
+    ).toMatchObject({
+      status: "ok",
+      analysis: {
+        objectComparisons: expect.arrayContaining([
+          expect.objectContaining({ objectId: fragment.id, evidenceBasis: "documentFragment" })
+        ])
+      }
+    });
   });
 
   it("blocks fewer than 2, more than 4, duplicate, hidden, missing, or unparsed file selections", () => {
@@ -466,6 +539,26 @@ function withParsedFile(workspace: MorphoWorkspace, objectId: string): MorphoWor
       }
     }
   };
+}
+
+function withDocumentFragment(workspace: MorphoWorkspace): MorphoWorkspace {
+  const sourceText = "# Fragment\n\nfragment body for compare\n\nother source text";
+  const blocks = buildDocumentReaderBlocks(sourceText);
+  const selection = resolveDocumentFragmentSelection(workspace, {
+    fileObjectId: "file-course-brief",
+    extractAssetId: "asset-document-extract-a",
+    blockIds: [blocks[1]?.id ?? ""],
+    title: "Compare fragment",
+    sourceText
+  });
+  if (selection.status !== "ready") {
+    throw new Error(selection.reason);
+  }
+  const draft = buildDocumentFragmentDraft(workspace, selection, { title: "Compare fragment" });
+  if (draft.status !== "ready") {
+    throw new Error(draft.reason);
+  }
+  return createDocumentFragment(workspace, draft.draft).workspace;
 }
 
 function getReadyAuthorization(result: ReturnType<typeof buildComparisonAuthorization>) {

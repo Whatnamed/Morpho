@@ -10,6 +10,7 @@ import type {
 } from "../../domain/morpho/types";
 import { GRS_REFERENCE_IMAGE_LIMIT } from "../../domain/morpho/imageLimits";
 import { buildProjectContinuityContext, type ProjectContinuityContext } from "../../domain/morpho/projectContinuity";
+import { resolveDocumentFragmentSourceAvailability } from "./documentFragments";
 
 export type TaskContextKind = "research" | "general" | "directionPreview" | "visualDevelopment" | "designDefinition" | "conceptDirection" | "comparison";
 
@@ -27,6 +28,19 @@ export type TaskContextSummary = {
   detail?: string;
 };
 
+export type TaskContextDocumentFragmentExtract = {
+  objectId: MorphoObjectId;
+  title: string;
+  text: string;
+  charCount: number;
+  truncated: boolean;
+  sourceFileObjectId: MorphoObjectId;
+  sourceFileTitle: string;
+  sourceStartOffset: number;
+  sourceEndOffset: number;
+  sourceAvailability: "active" | "hidden" | "missing" | "assetMissing" | "assetMismatch";
+};
+
 export type TaskContextSkip = {
   objectId: MorphoObjectId;
   reason: string;
@@ -38,6 +52,7 @@ export type TaskContextResult = {
   semanticSummaries: TaskContextSummary[];
   imageObjectIds: MorphoObjectId[];
   documentObjectIds: MorphoObjectId[];
+  documentFragmentExtracts: TaskContextDocumentFragmentExtract[];
   directionRevisions: ConceptDirectionRevision[];
   designDefinitionRevision?: DesignDefinitionRevision;
   visualBranches: VisualBranchRecord[];
@@ -53,6 +68,7 @@ export type ProviderTaskContext = {
   objectIds: MorphoObjectId[];
   imageObjectIds: MorphoObjectId[];
   documentObjectIds: MorphoObjectId[];
+  documentFragmentExtracts: TaskContextDocumentFragmentExtract[];
   truncated: boolean;
   defaultReference: string;
   designDefinition?: {
@@ -181,6 +197,7 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
         .filter((summary): summary is TaskContextSummary => Boolean(summary)),
       imageObjectIds: budgetedImages,
       documentObjectIds: budgetedDocuments,
+      documentFragmentExtracts: collectDocumentFragmentExtracts(workspace, budgeted.objectIds),
       directionRevisions: [],
       designDefinitionRevision,
       visualBranches: [],
@@ -219,6 +236,7 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
   const budgeted = applyObjectBudget(workspace, objectIds, skipped);
   const budgetedDocuments = applyDocumentBudget(documentObjectIds, skipped);
   const budgetedImages = applyImageBudget(imageObjectIds, skipped);
+  const documentFragmentExtracts = collectDocumentFragmentExtracts(workspace, budgeted.objectIds);
   const projectContinuity = buildProjectContinuityContext(workspace, {
     taskKind: input.kind,
     selectedObjectIds: selectedIds,
@@ -241,6 +259,7 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
       .filter((summary): summary is TaskContextSummary => Boolean(summary)),
     imageObjectIds: budgetedImages,
     documentObjectIds: budgetedDocuments,
+    documentFragmentExtracts,
     directionRevisions,
     designDefinitionRevision,
     visualBranches,
@@ -286,6 +305,7 @@ export function buildProviderTaskContext(context: TaskContextResult): ProviderTa
     objectIds: context.objectIds,
     imageObjectIds: context.imageObjectIds,
     documentObjectIds: context.documentObjectIds,
+    documentFragmentExtracts: context.documentFragmentExtracts,
     truncated: context.truncated,
     defaultReference: summarizeDefaultReference(context.defaultReference),
     designDefinition: context.designDefinitionRevision ? summarizeDesignDefinitionRevision(context.designDefinitionRevision) : undefined,
@@ -485,6 +505,32 @@ function applyImageBudget(imageObjectIds: MorphoObjectId[], skipped: TaskContext
   return limited;
 }
 
+function collectDocumentFragmentExtracts(
+  workspace: MorphoWorkspace,
+  objectIds: MorphoObjectId[]
+): TaskContextDocumentFragmentExtract[] {
+  return objectIds.flatMap((objectId) => {
+    const object = workspace.objects[objectId];
+    if (!object || object.type !== "documentFragment" || object.visibility !== "active") {
+      return [];
+    }
+    return [
+      {
+        objectId: object.id,
+        title: object.title,
+        text: object.body.slice(0, TASK_CONTEXT_LIMITS.maxCharsPerDocument),
+        charCount: object.body.length,
+        truncated: object.body.length > TASK_CONTEXT_LIMITS.maxCharsPerDocument,
+        sourceFileObjectId: object.source.fileObjectId,
+        sourceFileTitle: object.source.fileTitle,
+        sourceStartOffset: object.source.startOffset,
+        sourceEndOffset: object.source.endOffset,
+        sourceAvailability: resolveDocumentFragmentSourceAvailability(workspace, object).status
+      }
+    ];
+  });
+}
+
 function summarizeObject(object: MorphoObject | undefined): TaskContextSummary | undefined {
   if (!object) {
     return undefined;
@@ -504,6 +550,12 @@ function detailForObject(object: MorphoObject): string | undefined {
       return object.body.slice(0, 800);
     case "keyConclusion":
       return object.body;
+    case "documentFragment":
+      return [
+        object.body.slice(0, 800),
+        `source=${object.source.fileTitle}`,
+        `range=${object.source.startOffset}-${object.source.endOffset}`
+      ].join(" / ");
     case "research":
       return [...object.findings, ...object.opportunities, ...object.constraints, ...object.openQuestions].slice(0, 8).join(" / ");
     case "image":

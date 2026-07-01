@@ -26,7 +26,7 @@ No database, authentication, cloud object storage, Supabase, multiplayer sync, e
 
 ## Data Model
 
-Structured workspace data is schema version `11`.
+Structured workspace data is schema version `12`.
 
 Current workspace state includes:
 
@@ -160,6 +160,19 @@ M5-D1 additions:
 - unparsed, parsing, failed, hidden, missing-extract, wrong-asset-type, missing-asset, and Blob-read-failed states are explicit and do not trigger reparsing, provider calls, or workspace repair;
 - parser counts such as `extractedPageCount` may be displayed as counts only. Without a persisted page/slide source map, the reader locates only extract blocks, paragraphs, snippets, and character ranges and must not expose page/slide jump claims;
 - opening, searching, navigating, and closing the reader do not change selection, task mode, current focus, AI messages, conversation checkpoints, semantic records, Compare analyses, DecisionRecords, operations, or project continuity.
+
+M5-D2 additions:
+
+- schema v12 adds `documentFragment` as a first-class Morpho object created only through explicit user extraction in the document reader;
+- v11 migration to v12 initializes only schema requirements and does not fabricate historical fragments or rewrite existing files, messages, checkpoints, Compare analyses, DecisionRecords, operations, or project-continuity records;
+- fragment extraction is bounded to 1-8 consecutive parsed reader blocks and at most 6,000 characters. The saved body is recomputed from `sourceText.slice(startOffset, endOffset)` and cannot be supplied by the UI;
+- fragments store a source snapshot with file object ID, file title/name, source `documentExtract` asset ID, character offsets, and block IDs. They do not store original binaries, Base64, provider payloads, full extracts, OCR, page images, or layout maps;
+- `documentFragmentExtractedFromFile` relations and fragment source metadata express provenance. Canvas placement remains visual-only and never implies source semantics;
+- source availability distinguishes active, hidden, missing, missing extract asset, and extract-asset mismatch. The fragment body remains readable when the source is hidden or unavailable, but source navigation is disabled instead of fabricated;
+- opening a fragment source location reuses the document reader with a real extract-offset range. It does not expose fake PDF pages, fake PPT slides, coordinates, provider calls, source-file visibility changes, current-focus writes, or AI-context changes;
+- creating a fragment writes one deterministic `documentFragmentCreated` continuity event, but does not write the fragment body into Project Memory or create a key conclusion, decision, Compare analysis, operation, AI message, or checkpoint;
+- task context can include selected active fragments as bounded text sources with provenance and source availability. It does not auto-attach the whole source file or sibling fragments;
+- Compare can use selected active fragments as explicit text sources with evidence basis `documentFragment`; key-conclusion candidates may cite selected fragment IDs, not their source file IDs.
 
 ## Local-First Persistence
 

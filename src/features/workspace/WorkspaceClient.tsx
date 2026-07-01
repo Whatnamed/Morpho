@@ -99,6 +99,12 @@ import { buildProposalDiscussionDraft, buildProposalRegenerationDraft } from "./
 import { buildWebSearchOptions, collectMiMoImageAttachments, shouldAttachImagesForMiMo } from "./aiAttachments";
 import { collectDocumentExtractsForAi } from "./documentContext";
 import { loadDocumentReaderExtract, shouldAcceptDocumentReaderLoadResult } from "./documentReader";
+import {
+  buildDocumentFragmentDraft,
+  createDocumentFragmentWithContinuity,
+  resolveDocumentFragmentLocation,
+  resolveDocumentFragmentSelection
+} from "./documentFragments";
 import { resolveComparisonWritebackSourceObjectIds } from "./comparisonDecision";
 import {
   validateComparisonActionTarget,
@@ -179,6 +185,11 @@ type DocumentReaderUiState = {
   text: string;
   message?: string;
   extractAsset?: AssetRecord;
+  initialLocation?: {
+    startOffset: number;
+    endOffset: number;
+    label: string;
+  } | null;
 };
 
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
@@ -2727,7 +2738,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   );
 
   const handleOpenDocumentReader = useCallback(
-    (fileObjectId: string) => {
+    (fileObjectId: string, initialLocation?: { startOffset: number; endOffset: number; label: string } | null) => {
       documentReaderAbortRef.current?.abort();
       const requestId = documentReaderRequestRef.current + 1;
       documentReaderRequestRef.current = requestId;
@@ -2738,7 +2749,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         fileObjectId,
         requestId,
         status: "loading",
-        text: ""
+        text: "",
+        initialLocation
       });
 
       void loadDocumentReaderExtract(workspace, fileObjectId, indexedDbBlobStore, abortController.signal).then(
@@ -2760,6 +2772,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 status: "loaded",
                 text: result.text,
                 extractAsset: result.asset,
+                initialLocation,
                 message: undefined
               };
             }
@@ -2769,6 +2782,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               status: result.status,
               text: "",
               extractAsset: undefined,
+              initialLocation: undefined,
               message: result.message
             };
           });
@@ -2776,6 +2790,69 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       );
     },
     [workspace]
+  );
+
+  const handleExtractDocumentFragment = useCallback(
+    (input: { blockIds: string[]; title: string; summary: string }) => {
+      if (!documentReader || documentReader.status !== "loaded") {
+        return;
+      }
+
+      const file = workspace.objects[documentReader.fileObjectId];
+      if (!file || file.type !== "file") {
+        return;
+      }
+
+      const selection = resolveDocumentFragmentSelection(workspace, {
+        fileObjectId: file.id,
+        extractAssetId: documentReader.extractAsset?.id ?? file.extractedAssetId ?? "",
+        blockIds: input.blockIds,
+        title: input.title,
+        sourceText: documentReader.text
+      });
+      if (selection.status !== "ready") {
+        setDocumentReader((current) =>
+          current && current.fileObjectId === file.id
+            ? {
+                ...current,
+                status: "loaded",
+                message: selection.reason
+              }
+            : current
+        );
+        return;
+      }
+
+      const draft = buildDocumentFragmentDraft(workspace, selection, {
+        title: input.title,
+        summary: input.summary
+      });
+      if (draft.status !== "ready") {
+        setDocumentReader((current) =>
+          current && current.fileObjectId === file.id
+            ? {
+                ...current,
+                status: "loaded",
+                message: draft.reason
+              }
+            : current
+        );
+        return;
+      }
+
+      const created = createDocumentFragmentWithContinuity(workspace, draft.draft);
+      setWorkspace(created.workspace);
+      setDocumentReader((current) =>
+        current && current.fileObjectId === file.id
+          ? {
+              ...current,
+              status: "loaded",
+              message: "已提取到画布"
+            }
+          : current
+      );
+    },
+    [documentReader, setWorkspace, workspace]
   );
 
   const handleCloseDocumentReader = useCallback(() => {
@@ -2793,6 +2870,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   );
 
   const documentReaderFile = documentReader ? workspace.objects[documentReader.fileObjectId] : undefined;
+  const documentReaderInitialLocation = documentReader?.initialLocation ?? null;
 
   return (
     <main className="workspace">
@@ -2843,6 +2921,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           text={documentReader.text}
           status={documentReader.status}
           message={documentReader.message}
+          initialLocation={documentReaderInitialLocation}
+          onExtractFragment={handleExtractDocumentFragment}
           onClose={handleCloseDocumentReader}
         />
       ) : null}
@@ -2897,6 +2977,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       />
 
       <BottomDetailBar
+        workspace={workspace}
         selectedObjects={selectedObjects}
         assets={workspace.assets}
         hasPendingDesignDefinitionRevisionDraft={hasPendingDesignDefinitionRevisionDraft}

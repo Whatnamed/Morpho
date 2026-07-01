@@ -32,7 +32,7 @@ function withActiveVisibility(objects: Record<MorphoObjectId, SeedObject>): Reco
 }
 
 const baseWorkspace: MorphoWorkspace = {
-  schemaVersion: 11,
+  schemaVersion: 12,
   project: {
     id: "project-nightrail",
     title: "夜航 / Nightrail",

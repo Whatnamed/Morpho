@@ -124,6 +124,9 @@ function isCurrentTextEvidenceSource(workspace: MorphoWorkspace, objectId: Morph
   if (object.type === "research" || object.type === "keyConclusion") {
     return true;
   }
+  if (object.type === "documentFragment") {
+    return object.visibility === "active" && object.body.trim().length > 0;
+  }
   return (
     object.type === "file" &&
     object.parseStatus === "parsed" &&
