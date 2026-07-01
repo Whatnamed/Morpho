@@ -362,12 +362,12 @@ export function applyConversationCheckpoint(
     return { status: "skipped", workspace, reason: "sourceEndMessageId must belong to the checkpoint lane." };
   }
 
-  const laneMessages = workspace.ai.messages.filter((message) => isUsableConversationMessage(message, input.laneKey));
-  const sourceStartIndex = laneMessages.findIndex((message) => message.id === input.sourceStartMessageId);
+  const laneTimeline = workspace.ai.messages.filter((message) => message.conversationLaneKey === input.laneKey);
+  const sourceStartIndex = laneTimeline.findIndex((message) => message.id === input.sourceStartMessageId);
   if (sourceStartIndex < 0) {
     return { status: "skipped", workspace, reason: "sourceStartMessageId is missing." };
   }
-  const sourceEndIndex = laneMessages.findIndex((message) => message.id === input.sourceEndMessageId);
+  const sourceEndIndex = laneTimeline.findIndex((message) => message.id === input.sourceEndMessageId);
   if (sourceEndIndex < 0) {
     return { status: "skipped", workspace, reason: "sourceEndMessageId is missing." };
   }
@@ -375,7 +375,7 @@ export function applyConversationCheckpoint(
     return { status: "skipped", workspace, reason: "sourceStartMessageId must not be after sourceEndMessageId." };
   }
 
-  const sourceRange = laneMessages.slice(sourceStartIndex, sourceEndIndex + 1);
+  const sourceRange = laneTimeline.slice(sourceStartIndex, sourceEndIndex + 1);
   if (sourceRange.some((message) => !isUsableConversationMessage(message, input.laneKey))) {
     return { status: "skipped", workspace, reason: "source range must contain only compressible chatAnalysis messages from the same lane." };
   }

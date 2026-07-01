@@ -805,6 +805,120 @@ describe("conversation checkpoint write and request context", () => {
 
     expect(updated).toMatchObject({ status: "skipped" });
   });
+
+  it("blocks a checkpoint update when a failed lane-local message appears between source start and source end even if other lanes are ignored", () => {
+    const laneA = "lane-a-failed-middle";
+    const laneB = "lane-b-middle";
+    const workspace = withMessages(createInitialWorkspace(), [
+      {
+        id: "a-user-1",
+        role: "user",
+        body: "A 第一轮讨论。",
+        createdAt: "2026-07-01T10:00:00.000Z",
+        status: "done",
+        taskMode: "chatAnalysis",
+        conversationLaneKey: laneA
+      },
+      {
+        id: "a-assistant-1",
+        role: "assistant",
+        body: "A 第一轮回复。",
+        createdAt: "2026-07-01T10:01:00.000Z",
+        status: "done",
+        taskMode: "chatAnalysis",
+        conversationLaneKey: laneA
+      },
+      {
+        id: "b-user-1",
+        role: "user",
+        body: "B 第一轮讨论。",
+        createdAt: "2026-07-01T10:02:00.000Z",
+        status: "done",
+        taskMode: "chatAnalysis",
+        conversationLaneKey: laneB
+      },
+      {
+        id: "b-assistant-1",
+        role: "assistant",
+        body: "B 第一轮回复。",
+        createdAt: "2026-07-01T10:03:00.000Z",
+        status: "done",
+        taskMode: "chatAnalysis",
+        conversationLaneKey: laneB
+      },
+      {
+        id: "a-user-2",
+        role: "user",
+        body: "A 第二轮讨论。",
+        createdAt: "2026-07-01T10:04:00.000Z",
+        status: "done",
+        taskMode: "chatAnalysis",
+        conversationLaneKey: laneA
+      },
+      {
+        id: "a-assistant-2-failed",
+        role: "assistant",
+        body: "A 中间失败回复。",
+        createdAt: "2026-07-01T10:05:00.000Z",
+        status: "failed",
+        taskMode: "chatAnalysis",
+        conversationLaneKey: laneA
+      },
+      {
+        id: "a-user-3",
+        role: "user",
+        body: "A 第三轮讨论。",
+        createdAt: "2026-07-01T10:06:00.000Z",
+        status: "done",
+        taskMode: "chatAnalysis",
+        conversationLaneKey: laneA
+      },
+      {
+        id: "a-assistant-3",
+        role: "assistant",
+        body: "A 第三轮回复。",
+        createdAt: "2026-07-01T10:07:00.000Z",
+        status: "done",
+        taskMode: "chatAnalysis",
+        conversationLaneKey: laneA
+      }
+    ]);
+
+    const seeded = applyConversationCheckpoint(workspace, {
+      laneKey: laneA,
+      currentFocus: focus,
+      taskKind: "general",
+      anchorObjectIds: ["image-a"],
+      targetDirectionIds: ["direction-a"],
+      sourceStartMessageId: "a-user-1",
+      sourceEndMessageId: "a-assistant-1",
+      sourceMessageCount: 2,
+      assistantMessageId: "a-assistant-1",
+      checkpoint: validCheckpoint,
+      hasPendingProposal: false,
+      now: "2026-07-01T10:01:30.000Z"
+    });
+    if (seeded.status !== "applied") {
+      throw new Error("expected initial checkpoint write");
+    }
+
+    const updated = applyConversationCheckpoint(seeded.workspace, {
+      laneKey: laneA,
+      currentFocus: focus,
+      taskKind: "general",
+      anchorObjectIds: ["image-a"],
+      targetDirectionIds: ["direction-a"],
+      sourceStartMessageId: "a-user-1",
+      sourceEndMessageId: "a-assistant-3",
+      sourceMessageCount: 5,
+      assistantMessageId: "a-assistant-3",
+      checkpoint: validCheckpoint,
+      hasPendingProposal: false,
+      now: "2026-07-01T10:07:30.000Z"
+    });
+
+    expect(updated).toMatchObject({ status: "skipped" });
+  });
 });
 
 describe("conversation checkpoint visible block stripping", () => {
