@@ -34,10 +34,13 @@ export type ProjectArchiveDiagnosticSeverity = "info" | "warning" | "error";
 export type ProjectArchiveDiagnostic = {
   code:
     | "asset_metadata_orphaned"
+    | "backup_chat_scope_mismatch"
+    | "backup_continuity_scope_mismatch"
     | "binary_not_verified"
     | "duplicate_portable_bundle_key"
     | "invalid_asset_inventory_entry"
     | "invalid_asset_inventory_reference"
+    | "invalid_backup_scope"
     | "invalid_binary_status"
     | "invalid_format"
     | "invalid_manifest_version"
@@ -99,18 +102,20 @@ export type ManifestSourceProject = {
 };
 
 export type ArchiveChatScope = "none" | "decisionSummary" | "full";
-export type ProjectContinuityScope = "none" | "current";
+export type ArchiveProjectContinuityScope = "none" | "current";
+export type EditableBackupChatScope = "none" | "full";
+export type EditableBackupProjectContinuityScope = "current" | "recordEntriesNone";
 
 export type ProjectArchiveOptions = {
   createdAt?: string;
   chat?: ArchiveChatScope;
-  projectContinuity?: ProjectContinuityScope;
+  projectContinuity?: ArchiveProjectContinuityScope;
 };
 
 export type EditableBackupOptions = {
   createdAt?: string;
-  chat?: ArchiveChatScope;
-  projectContinuity?: ProjectContinuityScope;
+  chat?: EditableBackupChatScope;
+  projectContinuity?: EditableBackupProjectContinuityScope;
 };
 
 export type ProjectManifestIntegrity = {
@@ -143,7 +148,7 @@ export type HumanReadableArchiveManifest = {
   workspaceSchemaVersion: MorphoWorkspace["schemaVersion"];
   options: {
     chat: ArchiveChatScope;
-    projectContinuity: ProjectContinuityScope;
+    projectContinuity: ArchiveProjectContinuityScope;
   };
   assetInventory: WorkspaceAssetInventory;
   integrity: ProjectManifestIntegrity;
@@ -189,8 +194,8 @@ export type EditableProjectBackupManifest = {
   sourceProject: ManifestSourceProject;
   workspaceSchemaVersion: MorphoWorkspace["schemaVersion"];
   options: {
-    chat: ArchiveChatScope;
-    projectContinuity: ProjectContinuityScope;
+    chat: EditableBackupChatScope;
+    projectContinuity: EditableBackupProjectContinuityScope;
     restoreContract: {
       restoresAsNewProjectCopy: true;
       mustRemapProjectId: true;
@@ -396,8 +401,8 @@ export function collectWorkspaceAssetReferenceDiagnostics(workspace: MorphoWorks
 export function sanitizeWorkspaceForEditableBackup(
   workspace: MorphoWorkspace,
   options: {
-    chat: ArchiveChatScope;
-    projectContinuity: ProjectContinuityScope;
+    chat: EditableBackupChatScope;
+    projectContinuity: EditableBackupProjectContinuityScope;
   }
 ): EditableBackupWorkspaceSnapshot {
   const assets = Object.fromEntries(
@@ -421,7 +426,7 @@ export function sanitizeWorkspaceForEditableBackup(
 
 function sanitizeBackupAiState(
   ai: MorphoWorkspace["ai"],
-  chat: ArchiveChatScope
+  chat: EditableBackupChatScope
 ): MorphoWorkspace["ai"] {
   if (chat === "full") {
     return ai;
@@ -436,7 +441,7 @@ function sanitizeBackupAiState(
 
 function sanitizeBackupProjectContinuity(
   projectContinuity: MorphoWorkspace["projectContinuity"],
-  scope: ProjectContinuityScope
+  scope: EditableBackupProjectContinuityScope
 ): MorphoWorkspace["projectContinuity"] {
   if (scope === "current") {
     return projectContinuity;
@@ -499,7 +504,7 @@ function validateManifest<TManifest>(
   diagnostics.push(...validateAssetInventoryShape(value.assetInventory, validateBackupSnapshotShape ? "backup" : "archive"));
 
   if (validateBackupSnapshotShape) {
-    diagnostics.push(...validateBackupSnapshot(value.workspaceSnapshot, value.assetInventory));
+    diagnostics.push(...validateBackupSnapshot(value.workspaceSnapshot, value.assetInventory, value.options));
   }
 
   if (diagnostics.some((diagnostic) => diagnostic.severity === "error") || !typeGuard(value)) {
@@ -588,7 +593,11 @@ function validateAssetInventoryShape(
   return diagnostics;
 }
 
-function validateBackupSnapshot(workspaceSnapshot: unknown, assetInventory: unknown): ProjectArchiveDiagnostic[] {
+function validateBackupSnapshot(
+  workspaceSnapshot: unknown,
+  assetInventory: unknown,
+  options: unknown
+): ProjectArchiveDiagnostic[] {
   const diagnostics: ProjectArchiveDiagnostic[] = [];
   if (
     !isRecord(workspaceSnapshot) ||
@@ -646,6 +655,68 @@ function validateBackupSnapshot(workspaceSnapshot: unknown, assetInventory: unkn
       severity: "error",
       message: "workspaceSnapshot.assets must match assetInventory entries exactly.",
       path: "workspaceSnapshot.assets"
+    });
+  }
+
+  diagnostics.push(...validateEditableBackupScope(options, workspaceSnapshot));
+
+  return diagnostics;
+}
+
+function validateEditableBackupScope(
+  options: unknown,
+  workspaceSnapshot: Record<string, unknown>
+): ProjectArchiveDiagnostic[] {
+  const diagnostics: ProjectArchiveDiagnostic[] = [];
+  if (!isRecord(options) || !isEditableBackupChatScope(options.chat) || !isEditableBackupProjectContinuityScope(options.projectContinuity)) {
+    diagnostics.push({
+      code: "invalid_backup_scope",
+      severity: "error",
+      message: "Editable backup options.chat/options.projectContinuity must use backup-supported scope values.",
+      path: "options"
+    });
+    return diagnostics;
+  }
+
+  const ai = isRecord(workspaceSnapshot.ai) ? workspaceSnapshot.ai : undefined;
+  if (!ai || !Array.isArray(ai.messages) || !Array.isArray(ai.conversationCheckpoints) || !isRecord(ai.comparisonAnalyses)) {
+    diagnostics.push({
+      code: "invalid_backup_scope",
+      severity: "error",
+      message: "workspaceSnapshot.ai must include messages, conversationCheckpoints, and comparisonAnalyses.",
+      path: "workspaceSnapshot.ai"
+    });
+  } else {
+    if (
+      options.chat === "none" &&
+      (ai.messages.length > 0 || ai.conversationCheckpoints.length > 0 || Object.keys(ai.comparisonAnalyses).length > 0)
+    ) {
+      diagnostics.push({
+        code: "backup_chat_scope_mismatch",
+        severity: "error",
+        message: "options.chat = none requires empty ai.messages, ai.conversationCheckpoints, and ai.comparisonAnalyses.",
+        path: "workspaceSnapshot.ai"
+      });
+    }
+  }
+
+  const projectContinuity = isRecord(workspaceSnapshot.projectContinuity) ? workspaceSnapshot.projectContinuity : undefined;
+  if (
+    !projectContinuity ||
+    !Array.isArray(projectContinuity.recordEntries)
+  ) {
+    diagnostics.push({
+      code: "invalid_backup_scope",
+      severity: "error",
+      message: "workspaceSnapshot.projectContinuity must include a recordEntries array.",
+      path: "workspaceSnapshot.projectContinuity"
+    });
+  } else if (options.projectContinuity === "recordEntriesNone" && projectContinuity.recordEntries.length > 0) {
+    diagnostics.push({
+      code: "backup_continuity_scope_mismatch",
+      severity: "error",
+      message: "options.projectContinuity = recordEntriesNone requires empty projectContinuity.recordEntries.",
+      path: "workspaceSnapshot.projectContinuity.recordEntries"
     });
   }
 
@@ -816,7 +887,7 @@ function sourceProjectFromWorkspace(workspace: MorphoWorkspace): ManifestSourceP
   };
 }
 
-function buildArchiveContinuity(workspace: MorphoWorkspace, scope: ProjectContinuityScope): ArchiveContinuitySection {
+function buildArchiveContinuity(workspace: MorphoWorkspace, scope: ArchiveProjectContinuityScope): ArchiveContinuitySection {
   if (scope === "none") {
     return { mode: "none" };
   }
@@ -938,6 +1009,14 @@ function isPortableAssetMetadataRecord(value: unknown): value is PortableAssetMe
 
 function isAssetBinaryStatus(value: unknown): value is AssetBinaryStatus {
   return value === "notVerified" || value === "metadataOnly" || value === "missingMetadata";
+}
+
+function isEditableBackupChatScope(value: unknown): value is EditableBackupChatScope {
+  return value === "none" || value === "full";
+}
+
+function isEditableBackupProjectContinuityScope(value: unknown): value is EditableBackupProjectContinuityScope {
+  return value === "current" || value === "recordEntriesNone";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

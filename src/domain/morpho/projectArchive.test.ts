@@ -7,10 +7,16 @@ import {
   validateEditableProjectBackupManifest,
   validateHumanReadableArchiveManifest
 } from "./projectArchive";
+import type { EditableBackupOptions } from "./projectArchive";
 import type { AssetRecord, MorphoWorkspace } from "./types";
 import { createBlankWorkspace, createInitialWorkspace } from "./workspace";
 
 const NOW = "2026-07-02T10:00:00.000Z";
+const editableBackupChatScopeFull: EditableBackupOptions["chat"] = "full";
+void editableBackupChatScopeFull;
+// @ts-expect-error decisionSummary is not a valid backup chat scope
+const invalidEditableBackupChatScope: EditableBackupOptions["chat"] = "decisionSummary";
+void invalidEditableBackupChatScope;
 
 describe("M7-A project archive and backup manifests", () => {
   test("creates distinct human-readable archive and editable backup manifests from current workspaces", () => {
@@ -278,17 +284,91 @@ describe("M7-A project archive and backup manifests", () => {
     expect(backup.manifest.workspaceSnapshot.projectContinuity).toEqual(workspace.projectContinuity);
   });
 
-  test("backup project continuity none keeps snapshot aligned with scope", () => {
+  test("backup project continuity recordEntriesNone keeps snapshot aligned with scope", () => {
     const workspace = createFixtureWorkspace({ includeMissingMetadata: false });
-    const backup = createEditableProjectBackupManifest(workspace, { createdAt: NOW, projectContinuity: "none" });
+    const backup = createEditableProjectBackupManifest(workspace, {
+      createdAt: NOW,
+      projectContinuity: "recordEntriesNone"
+    });
 
     expect(backup.status).toBe("ok");
     if (backup.status !== "ok") {
       throw new Error("backup creation should be ready for assertions");
     }
 
-    expect(backup.manifest.options.projectContinuity).toBe("none");
+    expect(backup.manifest.options.projectContinuity).toBe("recordEntriesNone");
     expect(backup.manifest.workspaceSnapshot.projectContinuity.recordEntries).toEqual([]);
+    expect(backup.manifest.workspaceSnapshot.projectContinuity.currentFocus).toEqual(workspace.projectContinuity.currentFocus);
+  });
+
+  test("backup validator rejects chat none when snapshot still contains chat state", () => {
+    const workspace = createFixtureWorkspace({ includeMissingMetadata: false });
+    const backup = createEditableProjectBackupManifest(workspace, { createdAt: NOW });
+
+    expect(backup.status).toBe("ok");
+    if (backup.status !== "ok") {
+      throw new Error("backup creation should be ready for assertions");
+    }
+
+    const tampered = {
+      ...backup.manifest,
+      workspaceSnapshot: {
+        ...backup.manifest.workspaceSnapshot,
+        ai: workspace.ai
+      }
+    };
+    const validation = validateEditableProjectBackupManifest(tampered);
+    expect(validation.status).toBe("failed");
+    expect(validation.diagnostics.some((diagnostic) => diagnostic.code === "backup_chat_scope_mismatch")).toBe(true);
+  });
+
+  test("backup validator rejects invalid full chat snapshot structure", () => {
+    const workspace = createFixtureWorkspace({ includeMissingMetadata: false });
+    const backup = createEditableProjectBackupManifest(workspace, { createdAt: NOW, chat: "full" });
+
+    expect(backup.status).toBe("ok");
+    if (backup.status !== "ok") {
+      throw new Error("backup creation should be ready for assertions");
+    }
+
+    const tampered = {
+      ...backup.manifest,
+      workspaceSnapshot: {
+        ...backup.manifest.workspaceSnapshot,
+        ai: {
+          messages: "bad",
+          conversationCheckpoints: [],
+          comparisonAnalyses: {}
+        }
+      }
+    };
+    const validation = validateEditableProjectBackupManifest(tampered);
+    expect(validation.status).toBe("failed");
+    expect(validation.diagnostics.some((diagnostic) => diagnostic.code === "invalid_backup_scope")).toBe(true);
+  });
+
+  test("backup validator rejects recordEntriesNone scope when records are still present", () => {
+    const workspace = createFixtureWorkspace({ includeMissingMetadata: false });
+    const backup = createEditableProjectBackupManifest(workspace, {
+      createdAt: NOW,
+      projectContinuity: "recordEntriesNone"
+    });
+
+    expect(backup.status).toBe("ok");
+    if (backup.status !== "ok") {
+      throw new Error("backup creation should be ready for assertions");
+    }
+
+    const tampered = {
+      ...backup.manifest,
+      workspaceSnapshot: {
+        ...backup.manifest.workspaceSnapshot,
+        projectContinuity: workspace.projectContinuity
+      }
+    };
+    const validation = validateEditableProjectBackupManifest(tampered);
+    expect(validation.status).toBe("failed");
+    expect(validation.diagnostics.some((diagnostic) => diagnostic.code === "backup_continuity_scope_mismatch")).toBe(true);
   });
 
   test("validates external manifests with readable structural diagnostics and rejects runtime-only fields", () => {

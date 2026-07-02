@@ -43,12 +43,13 @@ This note records the M7-A domain contract for Morpho project archive and editab
 - Default chat scope: `none`
 - Default project continuity scope: `current`
 - Includes the structured workspace snapshot required for future restore, but with portable asset metadata only and normalized UI state.
+- Backup chat scope is intentionally narrower than archive chat scope: editable backup supports only `none` or `full`, never `decisionSummary`.
 - Chat scope is enforced in the snapshot:
   - `chat: none` -> `ai.messages = []`, `ai.conversationCheckpoints = []`, `ai.comparisonAnalyses = {}`
   - `chat: full` -> preserve the current `ai.messages`, `ai.conversationCheckpoints`, and `ai.comparisonAnalyses`
 - Project continuity scope is enforced in the snapshot:
   - `projectContinuity: current` -> preserve current structured continuity state
-  - `projectContinuity: none` -> preserve the continuity container but clear `recordEntries`
+  - `projectContinuity: recordEntriesNone` -> preserve the continuity container but clear `recordEntries`
 
 ## Workspace schema vs manifest version
 
