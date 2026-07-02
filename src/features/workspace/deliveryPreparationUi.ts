@@ -46,6 +46,37 @@ export type DeliveryReferenceRefreshPreview = {
   reason: string;
 };
 
+export type DeliveryReferenceLocationTarget =
+  | {
+      kind: "sourceObject";
+      objectId: string;
+      label: "定位来源";
+    }
+  | {
+      kind: "documentFragmentSource";
+      fileObjectId: string;
+      label: "查看原文定位";
+      initialLocation: {
+        startOffset: number;
+        endOffset: number;
+        label: string;
+      };
+    };
+
+export type DeliveryReferencePreview =
+  | {
+      status: "ready";
+      url: string;
+      alt: string;
+    }
+  | {
+      status: "assetMissing";
+      label: "原始资产当前不可用";
+    }
+  | {
+      status: "empty";
+    };
+
 export function getDeliveryObjects(workspace: MorphoWorkspace): DeliveryObject[] {
   return Object.values(workspace.objects)
     .filter((object): object is DeliveryObject => object.type === "delivery" && object.visibility === "active")
@@ -139,7 +170,7 @@ export function deliverySourceStateLabel(state: DeliveryReferenceUiState["status
 export function getDeliveryReferenceLocationTarget(
   workspace: MorphoWorkspace,
   reference: DeliveryReference
-): { objectId: string; label: string } | undefined {
+): DeliveryReferenceLocationTarget | undefined {
   if (!reference.sourceObjectId) {
     return undefined;
   }
@@ -148,7 +179,7 @@ export function getDeliveryReferenceLocationTarget(
     return undefined;
   }
   if (source.type !== "documentFragment") {
-    return { objectId: source.id, label: "定位来源" };
+    return { kind: "sourceObject", objectId: source.id, label: "定位来源" };
   }
   const file = workspace.objects[source.source.fileObjectId];
   if (!file || file.type !== "file" || file.visibility !== "active") {
@@ -157,7 +188,36 @@ export function getDeliveryReferenceLocationTarget(
   if (file.extractedAssetId !== source.source.sourceExtractAssetId || !workspace.assets[source.source.sourceExtractAssetId]) {
     return undefined;
   }
-  return { objectId: file.id, label: "查看原文定位" };
+  const startOffset = reference.snapshot.sourceFile?.startOffset;
+  const endOffset = reference.snapshot.sourceFile?.endOffset;
+  if (startOffset === undefined || endOffset === undefined) {
+    return undefined;
+  }
+  return {
+    kind: "documentFragmentSource",
+    fileObjectId: file.id,
+    label: "查看原文定位",
+    initialLocation: {
+      startOffset,
+      endOffset,
+      label: reference.snapshot.title
+    }
+  };
+}
+
+export function getDeliveryReferencePreview(
+  reference: Pick<DeliveryReference, "snapshot">,
+  assetUrls: Record<string, string>
+): DeliveryReferencePreview {
+  const previewAsset = reference.snapshot.previewAsset;
+  if (!previewAsset?.assetId) {
+    return { status: "empty" };
+  }
+  const url = assetUrls[previewAsset.assetId];
+  if (!url) {
+    return { status: "assetMissing", label: "原始资产当前不可用" };
+  }
+  return { status: "ready", url, alt: previewAsset.alt };
 }
 
 export function canRefreshDeliveryReference(workspace: MorphoWorkspace, reference: DeliveryReference): boolean {

@@ -428,12 +428,15 @@ describe("MiMo chat route request conversion", () => {
     expect(prompt).toContain("Only these frozen delivery reference snapshots are available");
     expect(prompt).toContain("morphoDeliverySectionDraft");
     expect(prompt).toContain("not project memory");
+    expect(prompt).not.toContain("morphoProjectContinuityPatch");
+    expect(prompt).not.toContain("morphoConversationCheckpoint");
+    expect(prompt).not.toContain("morphoComparisonAnalysis");
+    expect(prompt).not.toContain("morphoDesignDefinitionProposal");
+    expect(prompt).not.toContain("morphoConceptDirectionProposal");
     expect(prompt).not.toContain("Live canvas image");
     expect(prompt).not.toContain("ordinary progress");
     expect(prompt).not.toContain("Default reference must not reach");
     expect(prompt).not.toContain("Ordinary task context");
-    expect(prompt).not.toContain("morphoDesignDefinitionProposal: { title, summary");
-    expect(prompt).not.toContain("morphoConceptDirectionProposal: { title, summary, directions");
   });
 
   it("allows controlled conversation continuity patches only for chat and research tasks", () => {

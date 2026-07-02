@@ -1,6 +1,7 @@
 "use client";
 
 import { FilePlus2, GripVertical, PackageOpen, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
+import Image from "next/image";
 import { useMemo, useState } from "react";
 
 import type { DeliveryObject, DeliveryReference, DeliverySection, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
@@ -9,6 +10,7 @@ import {
   canRefreshDeliveryReference,
   canAddObjectToDelivery,
   deliveryFormatLabel,
+  getDeliveryReferencePreview,
   deliverySourceStateLabel,
   getDeliveryReferenceLocationTarget,
   getDeliveryObjects,
@@ -19,6 +21,7 @@ import { getObjectTypeLabel } from "../workspaceUi";
 
 type DeliveryPreparationPanelProps = {
   workspace: MorphoWorkspace;
+  assetUrls: Record<string, string>;
   selectedObjects: MorphoObject[];
   activeDeliveryObjectId: string | null;
   isStreaming: boolean;
@@ -26,6 +29,7 @@ type DeliveryPreparationPanelProps = {
   onCreateDelivery: (input: { title: string; format: DeliveryObject["format"] }) => void;
   onSelectDelivery: (deliveryObjectId: string) => void;
   onLocateObject: (objectId: string) => void;
+  onOpenDocumentReader: (fileObjectId: string, initialLocation: { startOffset: number; endOffset: number; label: string }) => void;
   onAddSelectedObjects: (input: { deliveryObjectId: string; sectionId: string; sourceObjectIds: string[] }) => void;
   onCreateSection: (input: { deliveryObjectId: string; title: string; purpose?: string }) => void;
   onUpdateSection: (input: { deliveryObjectId: string; sectionId: string; title?: string; purpose?: string; narrative?: string }) => void;
@@ -45,6 +49,7 @@ type DeliveryPreparationPanelProps = {
 
 export function DeliveryPreparationPanel({
   workspace,
+  assetUrls,
   selectedObjects,
   activeDeliveryObjectId,
   isStreaming,
@@ -52,6 +57,7 @@ export function DeliveryPreparationPanel({
   onCreateDelivery,
   onSelectDelivery,
   onLocateObject,
+  onOpenDocumentReader,
   onAddSelectedObjects,
   onCreateSection,
   onUpdateSection,
@@ -240,9 +246,11 @@ export function DeliveryPreparationPanel({
 
             <ReferenceList
               workspace={workspace}
+              assetUrls={assetUrls}
               delivery={activeDelivery}
               section={activeSection}
               onLocateObject={onLocateObject}
+              onOpenDocumentReader={onOpenDocumentReader}
               onMoveReference={onMoveReference}
               onRemoveReference={onRemoveReference}
               onUpdateReferenceEditorial={onUpdateReferenceEditorial}
@@ -394,18 +402,22 @@ function SectionEditor({
 
 function ReferenceList({
   workspace,
+  assetUrls,
   delivery,
   section,
   onLocateObject,
+  onOpenDocumentReader,
   onMoveReference,
   onRemoveReference,
   onUpdateReferenceEditorial,
   onRefreshReference
 }: {
   workspace: MorphoWorkspace;
+  assetUrls: Record<string, string>;
   delivery: DeliveryObject;
   section: DeliverySection;
   onLocateObject: DeliveryPreparationPanelProps["onLocateObject"];
+  onOpenDocumentReader: DeliveryPreparationPanelProps["onOpenDocumentReader"];
   onMoveReference: DeliveryPreparationPanelProps["onMoveReference"];
   onRemoveReference: DeliveryPreparationPanelProps["onRemoveReference"];
   onUpdateReferenceEditorial: DeliveryPreparationPanelProps["onUpdateReferenceEditorial"];
@@ -423,6 +435,7 @@ function ReferenceList({
         const source = reference.sourceObjectId ? workspace.objects[reference.sourceObjectId] : undefined;
         const state = resolveDeliveryReferenceState(workspace, reference.id);
         const locationTarget = getDeliveryReferenceLocationTarget(workspace, reference);
+        const preview = getDeliveryReferencePreview(reference, assetUrls);
         const canRefresh = canRefreshDeliveryReference(workspace, reference);
         const refreshPreview =
           pendingRefreshReferenceId === reference.id ? buildDeliveryReferenceRefreshPreview(workspace, reference) : null;
@@ -437,11 +450,27 @@ function ReferenceList({
                 </p>
               </div>
               {locationTarget ? (
-                <button type="button" className="plain-button" onClick={() => onLocateObject(locationTarget.objectId)}>
+                <button
+                  type="button"
+                  className="plain-button"
+                  onClick={() => {
+                    if (locationTarget.kind === "documentFragmentSource") {
+                      onOpenDocumentReader(locationTarget.fileObjectId, locationTarget.initialLocation);
+                      return;
+                    }
+                    onLocateObject(locationTarget.objectId);
+                  }}
+                >
                   {locationTarget.label}
                 </button>
               ) : null}
             </div>
+            {preview.status === "ready" ? (
+              <div className="delivery-reference-preview">
+                <Image src={preview.url} alt={preview.alt} fill sizes="360px" unoptimized />
+              </div>
+            ) : null}
+            {preview.status === "assetMissing" ? <span className="delivery-muted">{preview.label}</span> : null}
             {reference.snapshot.body ? (
               <p className="delivery-reference-body">
                 {reference.snapshot.bodyKind === "excerpt" ? "交付引用摘录：" : "交付引用正文："}

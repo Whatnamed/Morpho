@@ -697,6 +697,9 @@ function buildConversationCheckpointInstruction(request: AiRouteRequest): string
 }
 
 function buildConversationSemanticPatchInstruction(request: AiRouteRequest): string {
+  if (request.workIntent === "prepareDeliverySection") {
+    return "";
+  }
   if (request.taskMode !== "chatAnalysis" && request.taskMode !== "researchOperation") {
     return "";
   }
@@ -722,7 +725,7 @@ function buildStructuredProposalInstruction(request: AiRouteRequest): string {
       "For delivery section preparation, reply in normal prose first. You may append one fenced JSON block named morphoDeliverySectionDraft.",
       "Use only deliverySectionContext.references frozen snapshots. Do not use live canvas object bodies, full source files, documentExtract full text, Blob URLs, Base64, web search, Compare, design definition proposal, or concept direction proposal.",
       "The draft is not project fact, not project memory, and not applied until the user explicitly applies it.",
-      "If the same reply includes morphoDesignDefinitionProposal, morphoConceptDirectionProposal, morphoComparisonAnalysis, morphoResearchProposal, morphoProjectContinuityPatch, or morphoConversationCheckpoint, do not output morphoDeliverySectionDraft.",
+      "Do not output any non-delivery structured block in this reply. If you cannot produce a valid delivery draft, reply only in normal prose.",
       "JSON shape: { \"morphoDeliverySectionDraft\": { \"title\"?: string, \"narrative\": string, \"captions\": [{ \"referenceId\": string, \"caption\": string }], \"suggestedGaps\": [{ \"label\": string }] } }",
       "captions may only target current section delivery reference IDs. suggestedGaps are only suggestions and must not imply they were written."
     ].join("\n");

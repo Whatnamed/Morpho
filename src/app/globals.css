@@ -1749,6 +1749,22 @@ input:focus-visible {
   line-height: 1.65;
 }
 
+.delivery-reference-preview {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: rgba(245, 241, 232, 0.72);
+  aspect-ratio: 16 / 10;
+}
+
+.delivery-reference-preview img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
 .delivery-refresh-preview {
   background: rgba(252, 249, 240, 0.78);
 }

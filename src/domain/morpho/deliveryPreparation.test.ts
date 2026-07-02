@@ -296,6 +296,99 @@ describe("delivery preparation domain operations", () => {
     expect(resolveDeliveryReferenceState(missingAsset, imageReferenceId).status).toBe("assetMissing");
   });
 
+  it("prioritizes missing stable preview assets over source updates for image delivery references", () => {
+    const base = createBlankWorkspace("project-delivery-image-preview");
+    const now = "2026-07-02T08:24:00.000Z";
+    const workspace: MorphoWorkspace = {
+      ...base,
+      assets: {
+        "asset-image-old": {
+          id: "asset-image-old",
+          fileName: "old.png",
+          mimeType: "image/png",
+          size: 100,
+          createdAt: now,
+          storageKey: "local/images/old.png",
+          sourceType: "aiGeneratedImage"
+        },
+        "asset-image-new": {
+          id: "asset-image-new",
+          fileName: "new.png",
+          mimeType: "image/png",
+          size: 120,
+          createdAt: now,
+          storageKey: "local/images/new.png",
+          sourceType: "aiGeneratedImage"
+        }
+      },
+      objects: {
+        ...base.objects,
+        "image-delivery-source": {
+          id: "image-delivery-source",
+          type: "image",
+          title: "旧快照图",
+          summary: "加入交付时的图像。",
+          createdBy: "ai",
+          visibility: "active",
+          role: "primaryVisual",
+          imageVariant: "rail",
+          assetId: "asset-image-old",
+          createdAt: now,
+          updatedAt: now
+        }
+      }
+    };
+    const created = createDeliveryPreparation(workspace, {
+      title: "图片交付",
+      format: "board",
+      position: { x: 0, y: 0 },
+      now
+    });
+    expect(created.status).toBe("updated");
+    if (created.status !== "updated") {
+      throw new Error(created.reason);
+    }
+    const delivery = created.workspace.objects[created.deliveryObjectId] as DeliveryObject;
+    const sectionId = delivery.sections[0]?.id ?? "";
+    const added = addObjectsToDeliverySection(created.workspace, {
+      deliveryObjectId: delivery.id,
+      sectionId,
+      sourceObjectIds: ["image-delivery-source"],
+      now
+    });
+    expect(added.status).toBe("updated");
+    if (added.status !== "updated") {
+      throw new Error(added.reason);
+    }
+    const referenceId = added.createdReferenceIds[0] ?? "";
+    expect(added.workspace.deliveryReferences[referenceId]?.snapshot.previewAsset?.assetId).toBe("asset-image-old");
+
+    const source = added.workspace.objects["image-delivery-source"];
+    if (!source || source.type !== "image") {
+      throw new Error("Expected image source.");
+    }
+    const sourceUpdatedOldSnapshotAssetAvailable: MorphoWorkspace = {
+      ...added.workspace,
+      objects: {
+        ...added.workspace.objects,
+        [source.id]: {
+          ...source,
+          title: "新来源图",
+          assetId: "asset-image-new"
+        }
+      }
+    };
+    expect(resolveDeliveryReferenceState(sourceUpdatedOldSnapshotAssetAvailable, referenceId).status).toBe("sourceUpdated");
+
+    const oldSnapshotAssetMissing: MorphoWorkspace = {
+      ...sourceUpdatedOldSnapshotAssetAvailable,
+      assets: {
+        "asset-image-new": sourceUpdatedOldSnapshotAssetAvailable.assets["asset-image-new"]!
+      }
+    };
+    expect(resolveDeliveryReferenceState(oldSnapshotAssetMissing, referenceId).status).toBe("assetMissing");
+  });
+
   it("tracks document fragment source file deletion, extract changes, and missing extract assets", () => {
     const base = createInitialWorkspace();
     const delivery = base.objects["delivery-board-a1"] as DeliveryObject;

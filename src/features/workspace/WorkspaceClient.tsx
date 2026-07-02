@@ -3165,6 +3165,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       {deliveryPanelOpen ? (
         <DeliveryPreparationPanel
           workspace={workspace}
+          assetUrls={assetUrls}
           selectedObjects={selectedObjects}
           activeDeliveryObjectId={activeDeliveryObjectId}
           isStreaming={isAiStreaming}
@@ -3172,6 +3173,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           onCreateDelivery={handleCreateDelivery}
           onSelectDelivery={setActiveDeliveryObjectId}
           onLocateObject={focusObject}
+          onOpenDocumentReader={handleOpenDocumentReader}
           onAddSelectedObjects={(input) =>
             applyDeliveryOperation((current) =>
               addObjectsToDeliverySection(current, {

@@ -604,6 +604,9 @@ export function resolveDeliveryReferenceState(workspace: MorphoWorkspace, refere
   if (!reference || !reference.sourceObjectId) {
     return { status: "sourceMissing", label: "来源不可用" };
   }
+  if (reference.snapshot.previewAsset?.assetId && !workspace.assets[reference.snapshot.previewAsset.assetId]) {
+    return { status: "assetMissing", label: "原始资产不可用" };
+  }
   const source = workspace.objects[reference.sourceObjectId];
   if (!source) {
     return { status: "sourceMissing", label: "来源不可用" };
