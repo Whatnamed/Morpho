@@ -77,6 +77,14 @@ export type DeliveryReferencePreview =
       status: "empty";
     };
 
+export type DeliveryReferenceReaderTransition = {
+  closeDeliveryPanel: true;
+  activeDeliveryObjectId: string;
+  activeSectionId: string;
+  fileObjectId: string;
+  initialLocation: Extract<DeliveryReferenceLocationTarget, { kind: "documentFragmentSource" }>["initialLocation"];
+};
+
 export function getDeliveryObjects(workspace: MorphoWorkspace): DeliveryObject[] {
   return Object.values(workspace.objects)
     .filter((object): object is DeliveryObject => object.type === "delivery" && object.visibility === "active")
@@ -218,6 +226,23 @@ export function getDeliveryReferencePreview(
     return { status: "assetMissing", label: "原始资产当前不可用" };
   }
   return { status: "ready", url, alt: previewAsset.alt };
+}
+
+export function buildDeliveryReferenceReaderTransition(input: {
+  deliveryObjectId: string;
+  sectionId: string;
+  locationTarget: DeliveryReferenceLocationTarget;
+}): DeliveryReferenceReaderTransition | undefined {
+  if (input.locationTarget.kind !== "documentFragmentSource") {
+    return undefined;
+  }
+  return {
+    closeDeliveryPanel: true,
+    activeDeliveryObjectId: input.deliveryObjectId,
+    activeSectionId: input.sectionId,
+    fileObjectId: input.locationTarget.fileObjectId,
+    initialLocation: input.locationTarget.initialLocation
+  };
 }
 
 export function canRefreshDeliveryReference(workspace: MorphoWorkspace, reference: DeliveryReference): boolean {

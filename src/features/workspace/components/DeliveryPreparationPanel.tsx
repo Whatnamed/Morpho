@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 
 import type { DeliveryObject, DeliveryReference, DeliverySection, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
 import {
+  buildDeliveryReferenceReaderTransition,
   buildDeliveryReferenceRefreshPreview,
   canRefreshDeliveryReference,
   canAddObjectToDelivery,
@@ -14,7 +15,8 @@ import {
   deliverySourceStateLabel,
   getDeliveryReferenceLocationTarget,
   getDeliveryObjects,
-  getDeliverySectionReferences
+  getDeliverySectionReferences,
+  type DeliveryReferenceReaderTransition
 } from "../deliveryPreparationUi";
 import { resolveDeliveryReferenceState } from "@/domain/morpho/deliveryPreparation";
 import { getObjectTypeLabel } from "../workspaceUi";
@@ -24,12 +26,14 @@ type DeliveryPreparationPanelProps = {
   assetUrls: Record<string, string>;
   selectedObjects: MorphoObject[];
   activeDeliveryObjectId: string | null;
+  activeDeliverySectionId: string | null;
   isStreaming: boolean;
   onClose: () => void;
   onCreateDelivery: (input: { title: string; format: DeliveryObject["format"] }) => void;
   onSelectDelivery: (deliveryObjectId: string) => void;
+  onSelectDeliverySection: (sectionId: string | null) => void;
   onLocateObject: (objectId: string) => void;
-  onOpenDocumentReader: (fileObjectId: string, initialLocation: { startOffset: number; endOffset: number; label: string }) => void;
+  onOpenDeliveryReferenceReader: (transition: DeliveryReferenceReaderTransition) => void;
   onAddSelectedObjects: (input: { deliveryObjectId: string; sectionId: string; sourceObjectIds: string[] }) => void;
   onCreateSection: (input: { deliveryObjectId: string; title: string; purpose?: string }) => void;
   onUpdateSection: (input: { deliveryObjectId: string; sectionId: string; title?: string; purpose?: string; narrative?: string }) => void;
@@ -52,12 +56,14 @@ export function DeliveryPreparationPanel({
   assetUrls,
   selectedObjects,
   activeDeliveryObjectId,
+  activeDeliverySectionId,
   isStreaming,
   onClose,
   onCreateDelivery,
   onSelectDelivery,
+  onSelectDeliverySection,
   onLocateObject,
-  onOpenDocumentReader,
+  onOpenDeliveryReferenceReader,
   onAddSelectedObjects,
   onCreateSection,
   onUpdateSection,
@@ -79,7 +85,6 @@ export function DeliveryPreparationPanel({
     deliveryObjects.find((delivery) => delivery.id === activeDeliveryObjectId) ?? deliveryObjects[0] ?? null;
   const [draftTitle, setDraftTitle] = useState("课程阶段展示");
   const [draftFormat, setDraftFormat] = useState<DeliveryObject["format"]>("presentation");
-  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [gapLabel, setGapLabel] = useState("");
   const [sectionTitle, setSectionTitle] = useState("");
   const [sectionPurpose, setSectionPurpose] = useState("");
@@ -89,7 +94,8 @@ export function DeliveryPreparationPanel({
     activeDelivery && preferNewestSectionDeliveryId === activeDelivery.id
       ? [...activeDelivery.sections].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
       : undefined;
-  const activeSection = activeDelivery?.sections.find((section) => section.id === activeSectionId) ?? newestSection ?? activeDelivery?.sections[0];
+  const activeSection =
+    activeDelivery?.sections.find((section) => section.id === activeDeliverySectionId) ?? newestSection ?? activeDelivery?.sections[0];
   const addableSelectedObjects = selectedObjects.filter(canAddObjectToDelivery);
   const activeDrafts = activeDelivery
     ? Object.values(workspace.deliverySectionDrafts)
@@ -163,7 +169,7 @@ export function DeliveryPreparationPanel({
                   key={section.id}
                   type="button"
                   onClick={() => {
-                    setActiveSectionId(section.id);
+                    onSelectDeliverySection(section.id);
                     setPreferNewestSectionDeliveryId(null);
                   }}
                 >
@@ -199,7 +205,7 @@ export function DeliveryPreparationPanel({
                   });
                   setSectionTitle("");
                   setSectionPurpose("");
-                  setActiveSectionId(null);
+                  onSelectDeliverySection(null);
                   setPreferNewestSectionDeliveryId(activeDelivery.id);
                 }}
               >
@@ -250,7 +256,7 @@ export function DeliveryPreparationPanel({
               delivery={activeDelivery}
               section={activeSection}
               onLocateObject={onLocateObject}
-              onOpenDocumentReader={onOpenDocumentReader}
+              onOpenDeliveryReferenceReader={onOpenDeliveryReferenceReader}
               onMoveReference={onMoveReference}
               onRemoveReference={onRemoveReference}
               onUpdateReferenceEditorial={onUpdateReferenceEditorial}
@@ -406,7 +412,7 @@ function ReferenceList({
   delivery,
   section,
   onLocateObject,
-  onOpenDocumentReader,
+  onOpenDeliveryReferenceReader,
   onMoveReference,
   onRemoveReference,
   onUpdateReferenceEditorial,
@@ -417,7 +423,7 @@ function ReferenceList({
   delivery: DeliveryObject;
   section: DeliverySection;
   onLocateObject: DeliveryPreparationPanelProps["onLocateObject"];
-  onOpenDocumentReader: DeliveryPreparationPanelProps["onOpenDocumentReader"];
+  onOpenDeliveryReferenceReader: DeliveryPreparationPanelProps["onOpenDeliveryReferenceReader"];
   onMoveReference: DeliveryPreparationPanelProps["onMoveReference"];
   onRemoveReference: DeliveryPreparationPanelProps["onRemoveReference"];
   onUpdateReferenceEditorial: DeliveryPreparationPanelProps["onUpdateReferenceEditorial"];
@@ -454,11 +460,18 @@ function ReferenceList({
                   type="button"
                   className="plain-button"
                   onClick={() => {
-                    if (locationTarget.kind === "documentFragmentSource") {
-                      onOpenDocumentReader(locationTarget.fileObjectId, locationTarget.initialLocation);
+                    const readerTransition = buildDeliveryReferenceReaderTransition({
+                      deliveryObjectId: delivery.id,
+                      sectionId: section.id,
+                      locationTarget
+                    });
+                    if (readerTransition) {
+                      onOpenDeliveryReferenceReader(readerTransition);
                       return;
                     }
-                    onLocateObject(locationTarget.objectId);
+                    if (locationTarget.kind === "sourceObject") {
+                      onLocateObject(locationTarget.objectId);
+                    }
                   }}
                 >
                   {locationTarget.label}

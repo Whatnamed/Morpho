@@ -4,6 +4,7 @@ import { addObjectsToDeliverySection } from "@/domain/morpho/deliveryPreparation
 import { createInitialWorkspace } from "@/domain/morpho/workspace";
 import type { DeliveryObject } from "@/domain/morpho/types";
 import {
+  buildDeliveryReferenceReaderTransition,
   getDeliveryReferenceLocationTarget,
   getDeliveryReferencePreview
 } from "./deliveryPreparationUi";
@@ -52,6 +53,45 @@ describe("delivery preparation UI helpers", () => {
         label: reference.snapshot.title
       }
     });
+  });
+
+  it("builds a reader transition that closes delivery preparation while preserving the active section", () => {
+    const locationTarget = {
+      kind: "documentFragmentSource" as const,
+      fileObjectId: "file-course-brief",
+      label: "查看原文定位" as const,
+      initialLocation: {
+        startOffset: 120,
+        endOffset: 178,
+        label: "课程要求片段"
+      }
+    };
+
+    expect(
+      buildDeliveryReferenceReaderTransition({
+        deliveryObjectId: "delivery-board-a1",
+        sectionId: "section-delivery-board-a1-2",
+        locationTarget
+      })
+    ).toEqual({
+      closeDeliveryPanel: true,
+      activeDeliveryObjectId: "delivery-board-a1",
+      activeSectionId: "section-delivery-board-a1-2",
+      fileObjectId: "file-course-brief",
+      initialLocation: locationTarget.initialLocation
+    });
+
+    expect(
+      buildDeliveryReferenceReaderTransition({
+        deliveryObjectId: "delivery-board-a1",
+        sectionId: "section-delivery-board-a1-2",
+        locationTarget: {
+          kind: "sourceObject",
+          objectId: "image-soft-rail-v2",
+          label: "定位来源"
+        }
+      })
+    ).toBeUndefined();
   });
 
   it("resolves image preview from the stable snapshot asset instead of the live source", () => {

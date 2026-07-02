@@ -109,7 +109,7 @@ import { OverlayDrawers } from "./components/OverlayDrawers";
 import { TopControls } from "./components/TopControls";
 import { usePersistentWorkspace } from "./usePersistentWorkspace";
 import { compactObjectList, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
-import { buildDeliverySectionContext, getDeliveryObjects } from "./deliveryPreparationUi";
+import { buildDeliverySectionContext, getDeliveryObjects, type DeliveryReferenceReaderTransition } from "./deliveryPreparationUi";
 import { indexedDbBlobStore, getAssetObjectUrl } from "@/infrastructure/assets/indexedDbAssetStore";
 import { readImageBlobDimensions, saveBlobAsLocalAsset } from "@/infrastructure/assets/localAssetWorkflow";
 import {
@@ -244,6 +244,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [imageGenerationAspectMode, setImageGenerationAspectMode] = useState<"auto" | "manual">("auto");
   const [deliveryPanelOpen, setDeliveryPanelOpen] = useState(false);
   const [activeDeliveryObjectId, setActiveDeliveryObjectId] = useState<string | null>(null);
+  const [activeDeliverySectionId, setActiveDeliverySectionId] = useState<string | null>(null);
   const [pendingDeliveryDraftTarget, setPendingDeliveryDraftTarget] = useState<{ deliveryObjectId: string; sectionId: string } | null>(null);
   const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
   const assetUrlsRef = useRef<Record<string, string>>({});
@@ -3004,6 +3005,18 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [workspace]
   );
 
+  const handleOpenDeliveryReferenceReader = useCallback(
+    (transition: DeliveryReferenceReaderTransition) => {
+      setActiveDeliveryObjectId(transition.activeDeliveryObjectId);
+      setActiveDeliverySectionId(transition.activeSectionId);
+      if (transition.closeDeliveryPanel) {
+        setDeliveryPanelOpen(false);
+      }
+      handleOpenDocumentReader(transition.fileObjectId, transition.initialLocation);
+    },
+    [handleOpenDocumentReader]
+  );
+
   const handleExtractDocumentFragment = useCallback(
     (input: { blockIds: string[]; title: string; summary: string }): DocumentReaderExtractFragmentResult => {
       if (!documentReader || documentReader.status !== "loaded") {
@@ -3168,12 +3181,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           assetUrls={assetUrls}
           selectedObjects={selectedObjects}
           activeDeliveryObjectId={activeDeliveryObjectId}
+          activeDeliverySectionId={activeDeliverySectionId}
           isStreaming={isAiStreaming}
           onClose={() => setDeliveryPanelOpen(false)}
           onCreateDelivery={handleCreateDelivery}
-          onSelectDelivery={setActiveDeliveryObjectId}
+          onSelectDelivery={(deliveryObjectId) => {
+            setActiveDeliveryObjectId(deliveryObjectId);
+            setActiveDeliverySectionId(null);
+          }}
+          onSelectDeliverySection={setActiveDeliverySectionId}
           onLocateObject={focusObject}
-          onOpenDocumentReader={handleOpenDocumentReader}
+          onOpenDeliveryReferenceReader={handleOpenDeliveryReferenceReader}
           onAddSelectedObjects={(input) =>
             applyDeliveryOperation((current) =>
               addObjectsToDeliverySection(current, {
