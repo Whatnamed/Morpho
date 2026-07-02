@@ -3,10 +3,13 @@
 import { Download, FileArchive, RotateCcw, Upload, X } from "lucide-react";
 import { useRef } from "react";
 
+import type { EditableProjectBackupInspectionPreview } from "@/features/archive/projectBundleClient";
+
 type ProjectBundlePanelProps = {
   archiveIncludeFullChat: boolean;
   archiveIncludeContinuity: boolean;
   backupIncludeFullChat: boolean;
+  restorePreview: EditableProjectBackupInspectionPreview | null;
   busyLabel: string | null;
   message: {
     tone: "neutral" | "success" | "warning" | "error";
@@ -18,13 +21,16 @@ type ProjectBundlePanelProps = {
   onBackupIncludeFullChatChange: (checked: boolean) => void;
   onExportArchive: () => void;
   onExportBackup: () => void;
-  onRestoreBackup: (file: File) => void;
+  onInspectBackup: (file: File) => void;
+  onCancelRestorePreview: () => void;
+  onConfirmRestoreBackup: () => void;
 };
 
 export function ProjectBundlePanel({
   archiveIncludeFullChat,
   archiveIncludeContinuity,
   backupIncludeFullChat,
+  restorePreview,
   busyLabel,
   message,
   onClose,
@@ -33,7 +39,9 @@ export function ProjectBundlePanel({
   onBackupIncludeFullChatChange,
   onExportArchive,
   onExportBackup,
-  onRestoreBackup
+  onInspectBackup,
+  onCancelRestorePreview,
+  onConfirmRestoreBackup
 }: ProjectBundlePanelProps) {
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
   const isBusy = Boolean(busyLabel);
@@ -83,7 +91,7 @@ export function ProjectBundlePanel({
           <RotateCcw size={14} />
           可编辑项目备份
         </div>
-        <p className="archive-panel-muted">用于未来恢复为新的独立项目副本。默认保留当前连续性，不会覆盖现有项目。</p>
+        <p className="archive-panel-muted">用于恢复为新的独立项目副本。默认保留当前连续性，不会覆盖现有项目。</p>
         <label className="archive-option">
           <input
             checked={backupIncludeFullChat}
@@ -104,7 +112,7 @@ export function ProjectBundlePanel({
           onChange={(event) => {
             const selected = event.currentTarget.files?.[0];
             if (selected) {
-              onRestoreBackup(selected);
+              onInspectBackup(selected);
             }
             event.currentTarget.value = "";
           }}
@@ -113,6 +121,51 @@ export function ProjectBundlePanel({
           <Upload size={14} />
           恢复备份
         </button>
+
+        {restorePreview ? (
+          <div className="restore-preview-card">
+            <div className="restore-preview-title">恢复预览</div>
+            <p className="archive-panel-muted">将创建新的独立项目副本，不会覆盖当前项目或其他已有项目。</p>
+            <dl className="restore-preview-list">
+              <div>
+                <dt>原项目</dt>
+                <dd>{restorePreview.sourceProjectTitle}</dd>
+              </div>
+              <div>
+                <dt>导出时间</dt>
+                <dd>{restorePreview.createdAt}</dd>
+              </div>
+              <div>
+                <dt>聊天范围</dt>
+                <dd>{restorePreview.chat === "full" ? "完整聊天" : "不含聊天"}</dd>
+              </div>
+              <div>
+                <dt>连续性范围</dt>
+                <dd>{restorePreview.projectContinuity === "current" ? "当前连续性" : "仅保留基础容器"}</dd>
+              </div>
+              <div>
+                <dt>资产</dt>
+                <dd>
+                  共 {restorePreview.assets.total} 个，已打包 {restorePreview.assets.embedded} 个，链接{" "}
+                  {restorePreview.assets.referenceOnly} 个，缺失 {restorePreview.assets.missing} 个，尺寸不一致{" "}
+                  {restorePreview.assets.sizeMismatch} 个
+                </dd>
+              </div>
+              <div>
+                <dt>Warning</dt>
+                <dd>{restorePreview.warningCount} 条</dd>
+              </div>
+            </dl>
+            <div className="restore-preview-actions">
+              <button className="plain-button" type="button" disabled={isBusy} onClick={onCancelRestorePreview}>
+                取消
+              </button>
+              <button className="brand-button" type="button" disabled={isBusy} onClick={onConfirmRestoreBackup}>
+                确认恢复
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {busyLabel ? <div className="archive-panel-status">{busyLabel}</div> : null}

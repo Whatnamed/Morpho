@@ -455,6 +455,52 @@ input:focus-visible {
   justify-content: center;
 }
 
+.restore-preview-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(92, 71, 48, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 251, 244, 0.72);
+  padding: 12px;
+  box-shadow: 0 10px 26px rgba(67, 48, 30, 0.08);
+}
+
+.restore-preview-title {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.restore-preview-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.restore-preview-list div {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.restore-preview-list dt {
+  color: var(--text-tertiary);
+  font-size: 10px;
+}
+
+.restore-preview-list dd {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.restore-preview-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .archive-panel-status,
 .archive-panel-message {
   margin-top: 12px;

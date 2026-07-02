@@ -12,15 +12,17 @@ import {
   planEditableProjectBackupRestore,
   validateEditableProjectBackupBundle,
   type BuiltProjectBundle,
-  type BundleCreationResult,
   type ProjectBundleDiagnostic,
+  type ProjectBundleEnvelope,
   type ProjectBundleResolvedAsset
 } from "@/domain/morpho/projectBundles";
+import type { EditableProjectBackupManifest } from "@/domain/morpho/projectArchive";
 import type { AssetId, AssetRecord, MorphoWorkspace } from "@/domain/morpho/types";
 import type { BlobStore } from "@/infrastructure/assets/localAssetWorkflow";
 import {
   createCatalog,
   deleteProjectWorkspace,
+  getProjectWorkspaceStorageKey,
   loadLocalProjectCatalogSnapshot,
   summarizeProject,
   writeCatalog,
@@ -48,6 +50,23 @@ type RestoreBackupOptions = {
   now?: () => string;
   createProjectId?: () => string;
   createRuntimeStorageKey?: (assetId: AssetId, projectId: string) => string;
+};
+
+export type EditableProjectBackupInspectionPreview = {
+  sourceProjectId: string;
+  sourceProjectTitle: string;
+  sourceProjectSubtitle: string;
+  createdAt: string;
+  chat: EditableBackupOptions["chat"];
+  projectContinuity: EditableBackupOptions["projectContinuity"];
+  assets: {
+    total: number;
+    embedded: number;
+    referenceOnly: number;
+    missing: number;
+    sizeMismatch: number;
+  };
+  warningCount: number;
 };
 
 type ExportResult =
@@ -79,6 +98,30 @@ type RestoreResult =
       reason: string;
       diagnostics: ProjectBundleDiagnostic[];
     };
+
+export type InspectedEditableProjectBackupBundle = {
+  preview: EditableProjectBackupInspectionPreview;
+  bundle: ProjectBundleEnvelope;
+  manifest: EditableProjectBackupManifest;
+  files: Record<string, Uint8Array>;
+  diagnostics: ProjectBundleDiagnostic[];
+};
+
+type InspectBackupResult =
+  | {
+      status: "ok";
+      preview: EditableProjectBackupInspectionPreview;
+      backup: InspectedEditableProjectBackupBundle;
+      diagnostics: ProjectBundleDiagnostic[];
+    }
+  | {
+      status: "failed";
+      reason: string;
+      diagnostics: ProjectBundleDiagnostic[];
+    };
+
+const UNREADABLE_BACKUP_BUNDLE_REASON = "无法读取备份包。文件可能损坏，或不是 Morpho 可编辑备份。";
+const RESTORE_PROJECT_ID_ATTEMPT_LIMIT = 10;
 
 export async function exportHumanReadableArchiveBundle(
   workspace: MorphoWorkspace,
@@ -142,8 +185,14 @@ export async function exportEditableProjectBackupBundle(
   };
 }
 
-export async function restoreEditableProjectBackupBundle(file: File | Blob, options: RestoreBackupOptions): Promise<RestoreResult> {
-  const zipped = unzipSync(new Uint8Array(await file.arrayBuffer()));
+export async function inspectEditableProjectBackupBundle(file: File | Blob): Promise<InspectBackupResult> {
+  let zipped: Record<string, Uint8Array>;
+  try {
+    zipped = unzipSync(new Uint8Array(await file.arrayBuffer()));
+  } catch {
+    return unreadableBackupBundleFailure();
+  }
+
   const bundleValue = parseJsonFile(zipped["bundle.json"]);
   const manifestPath = resolveManifestPath(bundleValue);
   const manifestValue = manifestPath ? parseJsonFile(zipped[manifestPath]) : undefined;
@@ -156,22 +205,43 @@ export async function restoreEditableProjectBackupBundle(file: File | Blob, opti
   if (validation.status !== "ok") {
     return {
       status: "failed",
-      reason: validation.reason,
-      diagnostics: validation.diagnostics
+      reason: UNREADABLE_BACKUP_BUNDLE_REASON,
+      diagnostics: ensureUnreadableDiagnostic(validation.diagnostics)
     };
   }
 
+  const preview = buildEditableBackupInspectionPreview(validation.manifest, validation.files, validation.diagnostics);
+  const backup: InspectedEditableProjectBackupBundle = {
+    preview,
+    bundle: validation.bundle,
+    manifest: validation.manifest,
+    files: validation.files,
+    diagnostics: validation.diagnostics
+  };
+
+  return {
+    status: "ok",
+    preview,
+    backup,
+    diagnostics: validation.diagnostics
+  };
+}
+
+export async function restoreEditableProjectBackupBundle(
+  inspectedBackup: InspectedEditableProjectBackupBundle | Extract<InspectBackupResult, { status: "ok" }>,
+  options: RestoreBackupOptions
+): Promise<RestoreResult> {
+  const backup = "backup" in inspectedBackup ? inspectedBackup.backup : inspectedBackup;
   const catalogSnapshot = loadLocalProjectCatalogSnapshot(options.storage);
   if (catalogSnapshot.status === "failed") {
     return {
       status: "failed",
       reason: catalogSnapshot.reason,
-      diagnostics: validation.diagnostics
+      diagnostics: backup.diagnostics
     };
   }
 
   const restoredAt = options.now?.() ?? new Date().toISOString();
-  const projectId = options.createProjectId?.() ?? createProjectId();
   const baseCatalog =
     catalogSnapshot.status === "ok"
       ? catalogSnapshot.catalog
@@ -180,11 +250,26 @@ export async function restoreEditableProjectBackupBundle(file: File | Blob, opti
           recentProjectId: undefined,
           projects: []
         };
-  const projectTitle = nextRestoredProjectTitle(validation.manifest.sourceProject.title, baseCatalog);
+  const projectIdResolution = resolveRestoredProjectId({
+    sourceProjectId: backup.manifest.sourceProject.id,
+    catalog: baseCatalog,
+    storage: options.storage,
+    createProjectId: options.createProjectId ?? createProjectId
+  });
+  if (projectIdResolution.status !== "ok") {
+    return {
+      status: "failed",
+      reason: projectIdResolution.reason,
+      diagnostics: [...backup.diagnostics, projectIdResolution.diagnostic]
+    };
+  }
+
+  const projectId = projectIdResolution.projectId;
+  const projectTitle = nextRestoredProjectTitle(backup.manifest.sourceProject.title, baseCatalog);
   const createRuntimeStorageKey =
     options.createRuntimeStorageKey ?? ((assetId: AssetId, restoredProjectId: string) => `blob:${restoredProjectId}:${assetId}`);
 
-  const plan = planEditableProjectBackupRestore(validation.manifest, validation.files, {
+  const plan = planEditableProjectBackupRestore(backup.manifest, backup.files, {
     restoredAt,
     projectId,
     projectTitle,
@@ -210,7 +295,7 @@ export async function restoreEditableProjectBackupBundle(file: File | Blob, opti
     return {
       status: "failed",
       reason: error instanceof Error ? error.message : "Backup restore failed while writing asset blobs.",
-      diagnostics: validation.diagnostics
+      diagnostics: backup.diagnostics
     };
   }
 
@@ -221,7 +306,7 @@ export async function restoreEditableProjectBackupBundle(file: File | Blob, opti
     return {
       status: "failed",
       reason: workspaceWrite.reason,
-      diagnostics: validation.diagnostics
+      diagnostics: backup.diagnostics
     };
   }
 
@@ -233,7 +318,7 @@ export async function restoreEditableProjectBackupBundle(file: File | Blob, opti
     return {
       status: "failed",
       reason: catalogWrite.reason,
-      diagnostics: validation.diagnostics
+      diagnostics: backup.diagnostics
     };
   }
 
@@ -241,7 +326,7 @@ export async function restoreEditableProjectBackupBundle(file: File | Blob, opti
     status: "ok",
     projectId,
     workspace: plan.workspace,
-    diagnostics: validation.diagnostics
+    diagnostics: backup.diagnostics
   };
 }
 
@@ -359,6 +444,129 @@ function resolveManifestPath(bundleValue: unknown): string | undefined {
   }
   const manifestPath = (bundleValue as { manifestPath?: unknown }).manifestPath;
   return typeof manifestPath === "string" ? manifestPath : undefined;
+}
+
+function buildEditableBackupInspectionPreview(
+  manifest: EditableProjectBackupManifest,
+  files: Record<string, Uint8Array>,
+  diagnostics: ProjectBundleDiagnostic[]
+): EditableProjectBackupInspectionPreview {
+  const assets = {
+    total: manifest.assetInventory.entries.length,
+    embedded: 0,
+    referenceOnly: 0,
+    missing: 0,
+    sizeMismatch: 0
+  };
+
+  for (const entry of manifest.assetInventory.entries) {
+    if (entry.sourceType === "originalLink") {
+      assets.referenceOnly += 1;
+      continue;
+    }
+    const bytes = files[entry.portableBundleKey];
+    if (!bytes) {
+      assets.missing += 1;
+      continue;
+    }
+    if (bytes.byteLength !== entry.size) {
+      assets.sizeMismatch += 1;
+      continue;
+    }
+    assets.embedded += 1;
+  }
+
+  return {
+    sourceProjectId: manifest.sourceProject.id,
+    sourceProjectTitle: manifest.sourceProject.title,
+    sourceProjectSubtitle: manifest.sourceProject.subtitle,
+    createdAt: manifest.createdAt,
+    chat: manifest.options.chat,
+    projectContinuity: manifest.options.projectContinuity,
+    assets,
+    warningCount: diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length
+  };
+}
+
+function unreadableBackupBundleFailure(): Extract<InspectBackupResult, { status: "failed" }> {
+  return {
+    status: "failed",
+    reason: UNREADABLE_BACKUP_BUNDLE_REASON,
+    diagnostics: [
+      {
+        code: "unreadable_backup_bundle",
+        severity: "error",
+        message: UNREADABLE_BACKUP_BUNDLE_REASON
+      }
+    ]
+  };
+}
+
+function ensureUnreadableDiagnostic(diagnostics: ProjectBundleDiagnostic[]): ProjectBundleDiagnostic[] {
+  if (diagnostics.some((diagnostic) => diagnostic.code === "unreadable_backup_bundle")) {
+    return diagnostics;
+  }
+  return [
+    ...diagnostics,
+    {
+      code: "unreadable_backup_bundle",
+      severity: "error",
+      message: UNREADABLE_BACKUP_BUNDLE_REASON
+    }
+  ];
+}
+
+function resolveRestoredProjectId(input: {
+  sourceProjectId: string;
+  catalog: LocalProjectCatalog;
+  storage: Storage;
+  createProjectId: () => string;
+}):
+  | {
+      status: "ok";
+      projectId: string;
+    }
+  | {
+      status: "failed";
+      reason: string;
+      diagnostic: ProjectBundleDiagnostic;
+    } {
+  for (let attempt = 0; attempt < RESTORE_PROJECT_ID_ATTEMPT_LIMIT; attempt += 1) {
+    const projectId = input.createProjectId();
+    if (isRestoredProjectIdAvailable(projectId, input.sourceProjectId, input.catalog, input.storage)) {
+      return { status: "ok", projectId };
+    }
+  }
+
+  return {
+    status: "failed",
+    reason: "无法为恢复副本生成安全的新项目 ID。",
+    diagnostic: {
+      code: "restore_project_id_collision",
+      severity: "error",
+      message: `Could not generate a non-colliding restored project id after ${RESTORE_PROJECT_ID_ATTEMPT_LIMIT} attempts.`,
+      path: "project.id"
+    }
+  };
+}
+
+function isRestoredProjectIdAvailable(
+  projectId: string,
+  sourceProjectId: string,
+  catalog: LocalProjectCatalog,
+  storage: Storage
+): boolean {
+  if (!projectId || projectId === sourceProjectId) {
+    return false;
+  }
+  if (catalog.projects.some((project) => project.id === projectId)) {
+    return false;
+  }
+  try {
+    return storage.getItem(getProjectWorkspaceStorageKey(projectId)) === null;
+  } catch {
+    return false;
+  }
 }
 
 function nextRestoredProjectTitle(sourceTitle: string, catalog: LocalProjectCatalog): string {

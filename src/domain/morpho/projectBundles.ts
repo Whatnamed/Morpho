@@ -39,7 +39,9 @@ type BundleOnlyDiagnostic = {
     | "bundle_manifest_missing"
     | "invalid_bundle_format"
     | "invalid_bundle_package_kind"
-    | "invalid_bundle_version";
+    | "invalid_bundle_version"
+    | "restore_project_id_collision"
+    | "unreadable_backup_bundle";
   severity: ProjectArchiveDiagnosticSeverity;
   message: string;
   path?: string;
@@ -507,12 +509,12 @@ function archiveMarkdownFiles(
 ): ProjectBundleFile[] {
   const files = [
     outputFile("README.md", "markdown", true, utf8(buildArchiveReadme(manifest, diagnostics))),
-    outputFile("project-overview.md", "markdown", true, utf8(buildArchiveProjectOverview(manifest))),
-    outputFile("research-and-sources.md", "markdown", true, utf8(buildArchiveResearchAndSources(manifest))),
-    outputFile("directions-and-visuals.md", "markdown", true, utf8(buildArchiveDirectionsAndVisuals(manifest, resolvedAssets))),
-    outputFile("decisions-and-process.md", "markdown", true, utf8(buildArchiveDecisionsAndProcess(manifest))),
-    outputFile("delivery-preparation.md", "markdown", true, utf8(buildArchiveDeliveryPreparation(manifest))),
-    outputFile("asset-index.md", "markdown", true, utf8(buildArchiveAssetIndex(manifest, resolvedAssets)))
+    outputFile("project-overview.md", "markdown", true, utf8(buildRichArchiveProjectOverview(manifest))),
+    outputFile("research-and-sources.md", "markdown", true, utf8(buildRichArchiveResearchAndSources(manifest))),
+    outputFile("directions-and-visuals.md", "markdown", true, utf8(buildRichArchiveDirectionsAndVisuals(manifest, resolvedAssets))),
+    outputFile("decisions-and-process.md", "markdown", true, utf8(buildRichArchiveDecisionsAndProcess(manifest))),
+    outputFile("delivery-preparation.md", "markdown", true, utf8(buildRichArchiveDeliveryPreparation(manifest))),
+    outputFile("asset-index.md", "markdown", true, utf8(buildRichArchiveAssetIndex(manifest, resolvedAssets)))
   ];
 
   if (manifest.archive.conversation.mode === "full") {
@@ -654,6 +656,317 @@ function buildArchiveAssetIndex(
         })
       : ["- 暂无资产"];
   return ["# 资产索引", "", ...lines].join("\n");
+}
+
+function buildRichArchiveProjectOverview(manifest: HumanReadableArchiveManifest): string {
+  const currentFocus =
+    manifest.archive.projectContinuity.mode === "current"
+      ? manifest.archive.projectContinuity.currentFocus.note
+      : "未附带连续性记录";
+  const activeDirections = manifest.archive.directions.filter((direction) => direction.status !== "eliminated");
+  const eliminatedDirections = manifest.archive.directions.filter((direction) => direction.status === "eliminated");
+  const defaultReferences = manifest.archive.visualObjects.filter((item) => item.isDefaultReference);
+
+  return [
+    "# 项目概览",
+    "",
+    `- 项目：${manifest.sourceProject.title}`,
+    `- 副标题：${manifest.sourceProject.subtitle}`,
+    `- 导出时间：${manifest.createdAt}`,
+    `- 设计定义数量：${manifest.archive.designDefinitions.length}`,
+    `- 关键结论数量：${manifest.archive.keyConclusions.length}`,
+    `- 方向数量：${manifest.archive.directions.length}`,
+    `- 当前默认参考数量：${defaultReferences.length}`,
+    "",
+    "## 当前设计定义",
+    "",
+    ...listOrEmpty(
+      manifest.archive.designDefinitions.map((item) =>
+        [
+          `### ${item.title}`,
+          "",
+          `- 摘要：${item.summary}`,
+          `- 问题：${item.problem}`,
+          `- 当前修订：${item.currentRevisionId}`,
+          `- 是否当前生效：${yesNo(item.isCurrentEffective)}`,
+          bulletList("原则", item.principles),
+          bulletList("避免", item.avoid)
+        ].join("\n")
+      ),
+      "暂无设计定义"
+    ),
+    "",
+    "## 关键结论",
+    "",
+    ...listOrEmpty(
+      manifest.archive.keyConclusions.map(
+        (item) =>
+          `- ${item.title}｜${item.state}｜${item.confidence}：${item.summary}\n  来源对象：${joinValues(item.sourceObjectIds)}；引用：${joinValues(item.citationIds)}\n  ${item.body}`
+      ),
+      "暂无关键结论"
+    ),
+    "",
+    "## 有效方向",
+    "",
+    ...listOrEmpty(
+      activeDirections.map((item) => `- ${item.title}｜${item.status}｜${item.summary}｜关键词：${joinValues(item.keywords)}`),
+      "暂无有效方向"
+    ),
+    "",
+    "## 淘汰方向",
+    "",
+    ...listOrEmpty(
+      eliminatedDirections.map((item) => {
+        const decision = manifest.archive.decisions.find(
+          (candidate) =>
+            candidate.objectSnapshot?.id === item.id ||
+            candidate.relatedObjectIds.includes(item.id) ||
+            candidate.summary.includes(item.title)
+        );
+        return `- ${item.title}｜${item.summary}｜原因：${decision?.reason ?? decision?.summary ?? "未记录明确原因"}`;
+      }),
+      "暂无淘汰方向"
+    ),
+    "",
+    "## 默认参考图",
+    "",
+    ...listOrEmpty(
+      defaultReferences.map(
+        (item) =>
+          `- ${item.title}｜${item.role}｜${item.imageVariant}｜方向：${item.directionTitle ?? item.directionId ?? "未关联方向"}｜分支：${item.visualBranchLabel ?? item.visualBranchId ?? "未关联分支"}`
+      ),
+      "暂无默认参考图"
+    ),
+    "",
+    "## 当前重点 / 下一步",
+    "",
+    currentFocus
+  ].join("\n");
+}
+
+function buildRichArchiveResearchAndSources(manifest: HumanReadableArchiveManifest): string {
+  const researchLines = manifest.archive.researchAndSources.researchObjects.flatMap((item) => [
+    `### ${item.title}`,
+    "",
+    `- 摘要：${item.summary}`,
+    bulletList("发现", item.findings),
+    bulletList("机会", item.opportunities),
+    bulletList("约束", item.constraints),
+    bulletList("待验证", item.openQuestions),
+    "- Evidence:",
+    ...listOrEmpty(
+      (item.evidence ?? []).map(
+        (evidence) =>
+          `  - ${evidence.claim}｜${evidence.confidence}｜来源对象：${joinValues(evidence.sourceObjectIds)}｜引用：${joinValues(evidence.citationIds)}`
+      ),
+      "  - 暂无 evidence"
+    ),
+    `- Provenance：operation=${item.provenance?.operationId ?? "无"}；proposal=${item.provenance?.proposalId ?? "无"}；webSearch=${yesNo(item.provenance?.didUseWebSearch ?? false)}`
+  ]);
+  const sourceLines = manifest.archive.researchAndSources.sourceIndex.map((item) => `- ${sourceIndexLabel(item)}`);
+  const citationLines = Object.values(manifest.archive.researchAndSources.citationSnapshots).map(
+    (item) =>
+      `- ${item.id}｜${item.title}｜${item.domain ?? "无域名"}｜${item.url ?? "无 URL"}｜${item.snippet ?? "无摘录"}｜retrievedAt=${item.retrievedAt}`
+  );
+  const evidenceCitationLines = manifest.archive.researchAndSources.researchObjects.flatMap((item) =>
+    (item.evidence ?? []).flatMap((evidence) =>
+      evidence.citationIds.map((citationId) => `- ${item.id}｜${evidence.claim} -> ${citationId}`)
+    )
+  );
+
+  return [
+    "# 研究与来源",
+    "",
+    "## Research objects",
+    "",
+    ...listOrEmpty(researchLines, "暂无结构化研究对象"),
+    "",
+    "## Source index",
+    "",
+    ...listOrEmpty(sourceLines, "暂无可读来源索引"),
+    "",
+    "## Citation snapshots",
+    "",
+    ...listOrEmpty(citationLines, "暂无 citation snapshot"),
+    "",
+    "## Evidence to citation",
+    "",
+    ...listOrEmpty(evidenceCitationLines, "暂无 evidence-citation 关系")
+  ].join("\n");
+}
+
+function buildRichArchiveDirectionsAndVisuals(
+  manifest: HumanReadableArchiveManifest,
+  resolvedAssets: ProjectBundleResolvedAsset[]
+): string {
+  const assetState = new Map(resolvedAssets.map((item) => [item.sourceAssetId, item]));
+  const directionLines = manifest.archive.directions.map((item) => {
+    const revision = manifest.archive.traceability.directionRevisions[item.currentRevisionId];
+    return `- ${item.title}｜${item.status}｜${item.visibility}｜${item.summary}｜当前修订：${item.currentRevisionId}｜策略：${revision?.strategy ?? "未记录"}｜风险：${joinValues(revision?.risks)}`;
+  });
+  const branchLines = Object.values(manifest.archive.traceability.visualBranches).map(
+    (branch) =>
+      `- ${branch.label}｜id=${branch.id}｜direction=${branch.directionId}｜root=${branch.rootObjectId ?? "无"}｜archived=${branch.archivedAt ?? "否"}`
+  );
+  const visualLines = manifest.archive.visualObjects.map((item) => {
+    const asset = item.assetId ? assetState.get(item.assetId) : undefined;
+    const assetLabel = asset ? `${asset.portableBundleKey}｜${asset.availability}` : "无关联资产";
+    return `- ${item.title}｜role=${item.role}｜variant=${item.imageVariant}｜visibility=${item.visibility}｜direction=${item.directionTitle ?? item.directionId ?? "无"}｜branch=${item.visualBranchLabel ?? item.visualBranchId ?? "无"}｜defaultReference=${yesNo(item.isDefaultReference)}｜relations=${joinValues(item.relatedRelationKinds)}｜asset=${assetLabel}`;
+  });
+
+  return [
+    "# 方向与视觉路线",
+    "",
+    "## 方向",
+    "",
+    ...listOrEmpty(directionLines, "暂无概念方向"),
+    "",
+    "## Visual branches",
+    "",
+    ...listOrEmpty(branchLines, "暂无视觉分支"),
+    "",
+    "## 视觉对象",
+    "",
+    ...listOrEmpty(visualLines, "暂无视觉对象")
+  ].join("\n");
+}
+
+function buildRichArchiveDecisionsAndProcess(manifest: HumanReadableArchiveManifest): string {
+  const decisionLines = manifest.archive.decisions.map(
+    (item) =>
+      `- ${item.createdAt}｜${item.kind}｜${item.summary}｜原因：${item.reason ?? "未记录"}｜对象：${item.objectSnapshot?.title ?? item.objectSnapshot?.id ?? "无"}｜相关：${joinValues(item.relatedObjectIds)}｜Compare：${item.comparison?.comparisonAnalysisId ?? "无"}｜Compare reason：${item.comparison?.userReason ?? "无"}`
+  );
+  const definitionRevisionLines = Object.values(manifest.archive.traceability.designDefinitionRevisions).map(
+    (revision) =>
+      `- ${revision.id}｜${revision.title}｜v${revision.revisionNumber}｜current=${yesNo(revision.isCurrent)}｜${revision.summary}｜change=${revision.changeNote ?? "无"}｜sources=${joinValues(revision.sourceObjectIds)}｜citations=${joinValues(revision.citationIds)}`
+  );
+  const directionRevisionLines = Object.values(manifest.archive.traceability.directionRevisions).map(
+    (revision) =>
+      `- ${revision.id}｜${revision.title}｜v${revision.revisionNumber}｜current=${yesNo(revision.isCurrent)}｜${revision.summary}｜change=${revision.changeNote ?? "无"}｜sources=${joinValues(revision.sourceObjectIds)}｜citations=${joinValues(revision.citationIds)}`
+  );
+  const branchLines = Object.values(manifest.archive.traceability.visualBranches).map(
+    (branch) => `- ${branch.id}｜${branch.label}｜direction=${branch.directionId}｜root=${branch.rootObjectId ?? "无"}`
+  );
+  const traceLines = manifest.archive.traceability.directionLineage.map((item) => `- ${item.kind}｜${item.note}`);
+
+  return [
+    "# 决策与过程",
+    "",
+    "## 决策",
+    "",
+    ...listOrEmpty(decisionLines, "暂无 DecisionRecord"),
+    "",
+    "## Design definition revisions",
+    "",
+    ...listOrEmpty(definitionRevisionLines, "暂无设计定义修订"),
+    "",
+    "## Direction revisions",
+    "",
+    ...listOrEmpty(directionRevisionLines, "暂无方向修订"),
+    "",
+    "## Visual branches",
+    "",
+    ...listOrEmpty(branchLines, "暂无视觉分支"),
+    "",
+    "## Traceability",
+    "",
+    ...listOrEmpty(traceLines, "暂无方向谱系记录")
+  ].join("\n");
+}
+
+function buildRichArchiveDeliveryPreparation(manifest: HumanReadableArchiveManifest): string {
+  const packageLines = manifest.archive.delivery.packages.flatMap((item) => [
+    `### ${item.title}`,
+    "",
+    `- Format：${item.format}`,
+    `- Summary：${item.summary}`,
+    "- Sections:",
+    ...listOrEmpty(
+      [...item.sections]
+        .sort((left, right) => left.order - right.order)
+        .map(
+          (section) =>
+            `  - ${section.order}. ${section.title}｜purpose=${section.purpose ?? "无"}｜references=${joinValues(section.referenceIds)}｜narrative=${section.narrative ?? "无"}`
+        ),
+      "  - 暂无 sections"
+    ),
+    "- Gaps:",
+    ...listOrEmpty(
+      item.gaps.map((gap) => `  - ${gap.label}｜${gap.status}｜section=${gap.sectionId ?? "未分配"}｜origin=${gap.origin}`),
+      "  - 暂无 gaps"
+    ),
+    "- Stable references:",
+    ...listOrEmpty(
+      item.references.map((referenceId) => {
+        const reference = manifest.archive.delivery.references.find((candidate) => candidate.id === referenceId);
+        return `  - ${referenceId}｜${reference?.snapshot.title ?? "未知引用"}｜source=${reference?.sourceObjectId ?? "无"}｜asset=${reference?.sourceAssetId ?? reference?.snapshot.previewAsset?.assetId ?? "无"}｜caption=${reference?.editorial?.caption ?? "无"}`;
+      }),
+      "  - 暂无 stable references"
+    )
+  ]);
+  const draftLines = manifest.archive.delivery.sectionDrafts.map(
+    (item) =>
+      `- ${item.title ?? item.sectionId}｜${item.status}｜delivery=${item.deliveryObjectId}｜section=${item.sectionId}\n  Narrative：${item.narrative}\n  Captions：${joinValues(item.captions.map((caption) => `${caption.referenceId}: ${caption.caption}`))}\n  Suggested gaps：${joinValues(item.suggestedGaps.map((gap) => gap.label))}`
+  );
+
+  return [
+    "# 交付准备",
+    "",
+    "## Delivery packages",
+    "",
+    ...listOrEmpty(packageLines, "暂无交付准备内容"),
+    "",
+    "## Pending section drafts",
+    "",
+    ...listOrEmpty(draftLines, "暂无待应用章节草稿")
+  ].join("\n");
+}
+
+function buildRichArchiveAssetIndex(
+  manifest: HumanReadableArchiveManifest,
+  resolvedAssets: ProjectBundleResolvedAsset[]
+): string {
+  const assetState = new Map(resolvedAssets.map((item) => [item.sourceAssetId, item]));
+  const lines = manifest.assetInventory.entries.map((entry) => {
+    const state = assetState.get(entry.sourceAssetId);
+    const availability = state?.availability ?? "missingRequiredBinary";
+    const location = state?.bytes ? entry.portableBundleKey : "未打包";
+    const references = manifest.assetInventory.references
+      .filter((reference) => reference.assetId === entry.sourceAssetId)
+      .map((reference) => `${reference.field} (${reference.usage})`);
+    return `- ${entry.sourceAssetId} | ${entry.fileName} | ${entry.mimeType} | ${entry.size} bytes | ${entry.sourceType} | ${availability} | ${location} | references: ${joinValues(references)}`;
+  });
+  return ["# 资产索引", "", ...listOrEmpty(lines, "暂无资产")].join("\n");
+}
+
+function sourceIndexLabel(item: HumanReadableArchiveManifest["archive"]["researchAndSources"]["sourceIndex"][number]): string {
+  if (item.type === "link") {
+    return `${item.title}｜link｜${item.url}｜${item.domain}｜${item.description ?? item.summary}`;
+  }
+  if (item.type === "file") {
+    return `${item.title}｜file｜${item.fileName ?? "无文件名"}｜${item.mimeType ?? "未知 MIME"}｜asset=${item.assetId ?? "无"}`;
+  }
+  if (item.type === "documentFragment") {
+    return `${item.title}｜documentFragment｜${item.source.fileTitle}｜${item.source.fileName ?? "无文件名"}｜asset=${item.source.sourceExtractAssetId}｜offset=${item.source.startOffset}-${item.source.endOffset}`;
+  }
+  return `${item.title}｜text｜${item.summary}`;
+}
+
+function listOrEmpty(lines: string[], empty: string): string[] {
+  return lines.length > 0 ? lines : [`- ${empty}`];
+}
+
+function bulletList(label: string, values: readonly string[] | undefined): string {
+  return `- ${label}：${joinValues(values)}`;
+}
+
+function joinValues(values: readonly (string | undefined)[] | undefined): string {
+  const filtered = (values ?? []).filter((value): value is string => Boolean(value));
+  return filtered.length > 0 ? filtered.join("、") : "无";
+}
+
+function yesNo(value: boolean): string {
+  return value ? "是" : "否";
 }
 
 function createEnvelope(

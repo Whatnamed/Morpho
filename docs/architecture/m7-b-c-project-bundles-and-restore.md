@@ -120,3 +120,16 @@ Browser localStorage and IndexedDB are not transactional together, so restore us
 - if workspace or catalog persistence fails, the new workspace key is removed and newly written blobs are deleted
 
 This does not implement global blob garbage collection for normal object deletion. It only adds the cleanup needed for restore rollback.
+
+## M7-B/C.1 restore preview and safe rejection boundary
+
+Restore is now split into two public client stages:
+
+- `inspectEditableProjectBackupBundle(file)` reads the selected zip in memory, parses `bundle.json` and the declared `backup-manifest.json`, validates the editable-backup bundle, and returns preview metadata. It does not write blobs, workspace JSON, or catalog data.
+- `restoreEditableProjectBackupBundle(inspectedBackup, options)` accepts only the inspected backup payload and performs the write-stage restore after explicit user confirmation.
+
+The restore preview exposes the source project title, export time, chat scope, project-continuity scope, asset totals, embedded/reference-only/missing/size-mismatch counts, diagnostics, and warning count. The UI states that restore creates a new independent project copy and does not overwrite current projects.
+
+Unreadable zip files, malformed JSON, missing `bundle.json`, missing manifest paths, missing manifest files, and human-readable archive packages are rejected during inspection with a readable failed result before any write begins.
+
+Restore project id generation retries up to 10 candidates. A candidate is rejected when it equals the source project id, already exists in the local catalog, or already has a workspace storage key. If every candidate collides, restore fails before writing any blob, workspace, or catalog data.

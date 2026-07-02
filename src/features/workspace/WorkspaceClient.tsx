@@ -117,6 +117,8 @@ import {
   downloadProjectBundleFile,
   exportEditableProjectBackupBundle,
   exportHumanReadableArchiveBundle,
+  inspectEditableProjectBackupBundle,
+  type InspectedEditableProjectBackupBundle,
   restoreEditableProjectBackupBundle
 } from "@/features/archive/projectBundleClient";
 import { readImageBlobDimensions, saveBlobAsLocalAsset } from "@/infrastructure/assets/localAssetWorkflow";
@@ -269,6 +271,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     tone: "neutral" | "success" | "warning" | "error";
     text: string;
   } | null>(null);
+  const [inspectedBackup, setInspectedBackup] = useState<InspectedEditableProjectBackupBundle | null>(null);
   const documentReaderRequestRef = useRef(0);
   const documentReaderAbortRef = useRef<AbortController | null>(null);
 
@@ -1819,6 +1822,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const handleExportHumanArchive = useCallback(async () => {
     setBundleBusyLabel("正在导出可读归档…");
     setBundleMessage(null);
+    setInspectedBackup(null);
     try {
       const result = await exportHumanReadableArchiveBundle(workspace, {
         blobStore: indexedDbBlobStore,
@@ -1837,6 +1841,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         tone: result.diagnostics.some((diagnostic) => diagnostic.severity === "warning") ? "warning" : "success",
         text: summarizeBundleDiagnostics("归档已导出。", result.diagnostics)
       });
+    } catch {
+      setBundleMessage({
+        tone: "error",
+        text: "归档导出失败，请稍后重试。"
+      });
     } finally {
       setBundleBusyLabel(null);
     }
@@ -1845,6 +1854,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const handleExportEditableBackup = useCallback(async () => {
     setBundleBusyLabel("正在导出可编辑备份…");
     setBundleMessage(null);
+    setInspectedBackup(null);
     try {
       const result = await exportEditableProjectBackupBundle(workspace, {
         blobStore: indexedDbBlobStore,
@@ -1863,41 +1873,93 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         tone: result.diagnostics.some((diagnostic) => diagnostic.severity === "warning") ? "warning" : "success",
         text: summarizeBundleDiagnostics("备份已导出。", result.diagnostics)
       });
+    } catch {
+      setBundleMessage({
+        tone: "error",
+        text: "备份导出失败，请稍后重试。"
+      });
     } finally {
       setBundleBusyLabel(null);
     }
   }, [backupIncludeFullChat, workspace]);
 
-  const handleRestoreEditableBackup = useCallback(
-    async (file: File) => {
-      setBundleBusyLabel("正在恢复可编辑备份…");
-      setBundleMessage(null);
-      try {
-        const result = await restoreEditableProjectBackupBundle(file, {
-          blobStore: indexedDbBlobStore,
-          storage: window.localStorage
-        });
-        if (result.status !== "ok") {
-          setBundleMessage({
-            tone: "error",
-            text: result.reason
-          });
-          return;
-        }
-        setBundlePanelOpen(false);
+  const handleInspectEditableBackup = useCallback(async (file: File) => {
+    setBundleBusyLabel("正在读取备份包…");
+    setBundleMessage(null);
+    setInspectedBackup(null);
+    try {
+      const result = await inspectEditableProjectBackupBundle(file);
+      if (result.status !== "ok") {
         setBundleMessage({
-          tone: "success",
-          text: "备份已恢复为新的项目副本。"
+          tone: "error",
+          text: result.reason
         });
-        startTransition(() => {
-          router.push(`/projects/${encodeURIComponent(result.projectId)}`);
-        });
-      } finally {
-        setBundleBusyLabel(null);
+        return;
       }
-    },
-    [router]
-  );
+      setInspectedBackup(result.backup);
+      setBundleMessage({
+        tone: result.preview.warningCount > 0 ? "warning" : "neutral",
+        text:
+          result.preview.warningCount > 0
+            ? `备份已读取，有 ${result.preview.warningCount} 条 warning。确认后将恢复为新项目副本。`
+            : "备份已读取。请确认后恢复为新项目副本。"
+      });
+    } catch {
+      setBundleMessage({
+        tone: "error",
+        text: "无法读取备份包。文件可能损坏，或不是 Morpho 可编辑备份。"
+      });
+    } finally {
+      setBundleBusyLabel(null);
+    }
+  }, []);
+
+  const handleCancelRestorePreview = useCallback(() => {
+    setInspectedBackup(null);
+    setBundleMessage(null);
+  }, []);
+
+  const handleConfirmRestoreEditableBackup = useCallback(async () => {
+    if (!inspectedBackup) {
+      setBundleMessage({
+        tone: "error",
+        text: "请先选择并预览一个可编辑备份包。"
+      });
+      return;
+    }
+
+    setBundleBusyLabel("正在恢复可编辑备份…");
+    setBundleMessage(null);
+    try {
+      const result = await restoreEditableProjectBackupBundle(inspectedBackup, {
+        blobStore: indexedDbBlobStore,
+        storage: window.localStorage
+      });
+      if (result.status !== "ok") {
+        setBundleMessage({
+          tone: "error",
+          text: result.reason
+        });
+        return;
+      }
+      setInspectedBackup(null);
+      setBundlePanelOpen(false);
+      setBundleMessage({
+        tone: "success",
+        text: "备份已恢复为新的项目副本。"
+      });
+      startTransition(() => {
+        router.push(`/projects/${encodeURIComponent(result.projectId)}`);
+      });
+    } catch {
+      setBundleMessage({
+        tone: "error",
+        text: "恢复备份失败，请重新选择备份包后再试。"
+      });
+    } finally {
+      setBundleBusyLabel(null);
+    }
+  }, [inspectedBackup, router]);
 
   const applyDeliveryOperation = useCallback(
     (operation: (current: MorphoWorkspace) => { status: "updated"; workspace: MorphoWorkspace } | { status: "blocked"; workspace: MorphoWorkspace; reason: string }) => {
@@ -3257,6 +3319,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           archiveIncludeFullChat={archiveIncludeFullChat}
           archiveIncludeContinuity={archiveIncludeContinuity}
           backupIncludeFullChat={backupIncludeFullChat}
+          restorePreview={inspectedBackup?.preview ?? null}
           busyLabel={bundleBusyLabel}
           message={bundleMessage}
           onClose={() => setBundlePanelOpen(false)}
@@ -3265,7 +3328,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           onBackupIncludeFullChatChange={setBackupIncludeFullChat}
           onExportArchive={handleExportHumanArchive}
           onExportBackup={handleExportEditableBackup}
-          onRestoreBackup={handleRestoreEditableBackup}
+          onInspectBackup={handleInspectEditableBackup}
+          onCancelRestorePreview={handleCancelRestorePreview}
+          onConfirmRestoreBackup={handleConfirmRestoreEditableBackup}
         />
       ) : null}
       <LeftRail activeDrawer={activeDrawer} onDrawerChange={setActiveDrawer} />

@@ -80,6 +80,36 @@ describe("project bundle domain contracts", () => {
     }
   });
 
+  test("renders structured archive markdown as readable handoff documents", () => {
+    const manifest = createArchiveManifest(createBundleFixtureWorkspace());
+    const bundle = createHumanReadableArchiveBundle(manifest, [
+      resolvedAsset(manifest, "asset-cover", "embedded", "cover-bytes"),
+      resolvedAsset(manifest, "asset-link", "referenceOnly"),
+      resolvedAsset(manifest, "asset-brief", "missingRequiredBinary")
+    ]);
+
+    expect(readBundleText(bundle, "project-overview.md")).toContain("Keep riders oriented with a warm navigation cue");
+    expect(readBundleText(bundle, "project-overview.md")).toContain("Warmer low glare lighting improves perceived safety");
+    expect(readBundleText(bundle, "project-overview.md")).toContain("Sheltered Beacon");
+    expect(readBundleText(bundle, "project-overview.md")).toContain("Cold Tech Plinth");
+    expect(readBundleText(bundle, "project-overview.md")).toContain("Default Night Reference");
+    expect(readBundleText(bundle, "research-and-sources.md")).toContain("Transit riders avoid dark curb zones");
+    expect(readBundleText(bundle, "research-and-sources.md")).toContain("https://example.com/night-study");
+    expect(readBundleText(bundle, "research-and-sources.md")).toContain("Observed route choice after sunset");
+    expect(readBundleText(bundle, "directions-and-visuals.md")).toContain("branch-main");
+    expect(readBundleText(bundle, "directions-and-visuals.md")).toContain("defaultReference");
+    expect(readBundleText(bundle, "directions-and-visuals.md")).toContain("belongsToDirection");
+    expect(readBundleText(bundle, "decisions-and-process.md")).toContain("Selected Sheltered Beacon as primary");
+    expect(readBundleText(bundle, "decisions-and-process.md")).toContain("comparison-1");
+    expect(readBundleText(bundle, "decisions-and-process.md")).toContain("definition-revision-1");
+    expect(readBundleText(bundle, "delivery-preparation.md")).toContain("Hero story");
+    expect(readBundleText(bundle, "delivery-preparation.md")).toContain("Explain the rider journey from approach to boarding.");
+    expect(readBundleText(bundle, "delivery-preparation.md")).toContain("Draft narrative for the hero section.");
+    expect(readBundleText(bundle, "asset-index.md")).toContain("objects.image-default.assetId");
+    expect(readBundleText(bundle, "asset-index.md")).toContain("embedded");
+    expect(readBundleText(bundle, "asset-index.md")).toContain("missingRequiredBinary");
+  });
+
   test("validates editable backup bundles and remaps project identity plus runtime storage keys during restore planning", () => {
     const backupManifest = createBackupManifest(createBundleFixtureWorkspace(), { chat: "full", projectContinuity: "current" });
     const bundleResult = createEditableProjectBackupBundle(backupManifest, [
@@ -136,6 +166,163 @@ function createBundleFixtureWorkspace(): MorphoWorkspace {
     url: "https://example.com/night-study",
     domain: "example.com"
   };
+  const designDefinition = {
+    id: "definition-current",
+    type: "designDefinition" as const,
+    title: "Night mobility definition",
+    summary: "Keep riders oriented with a warm navigation cue",
+    problem: "Night riders need confidence at curbside pickup points.",
+    principles: ["Warm low glare guidance", "Readable from across the street"],
+    avoid: ["Cold tactical styling"],
+    currentRevisionId: "definition-revision-1",
+    revisionIds: ["definition-revision-1"],
+    isCurrentEffective: true,
+    createdBy: "ai" as const,
+    visibility: "active" as const,
+    createdAt: NOW,
+    updatedAt: NOW
+  };
+  const keyConclusion = {
+    id: "conclusion-safety",
+    type: "keyConclusion" as const,
+    title: "Warm light supports safety",
+    summary: "Warmer low glare lighting improves perceived safety",
+    body: "Riders report better orientation when the stop edge has a warmer visual anchor.",
+    state: "active" as const,
+    confidence: "supported" as const,
+    sourceObjectIds: ["research-night"],
+    citationIds: ["citation-night"],
+    confirmedAt: NOW,
+    createdBy: "ai" as const,
+    visibility: "active" as const,
+    createdAt: NOW,
+    updatedAt: NOW
+  };
+  const research = {
+    id: "research-night",
+    type: "research" as const,
+    title: "Night curb behavior",
+    summary: "Transit riders avoid dark curb zones",
+    findings: ["Riders cluster near lit edges."],
+    opportunities: ["Use a warmer vertical marker."],
+    constraints: ["Avoid glare toward traffic."],
+    openQuestions: ["Confirm mounting height."],
+    evidence: [
+      {
+        claim: "Transit riders avoid dark curb zones",
+        sourceObjectIds: ["link-night-study"],
+        citationIds: ["citation-night"],
+        confidence: "supported" as const
+      }
+    ],
+    provenance: {
+      operationId: "operation-research",
+      proposalId: "proposal-research",
+      sourceObjectIds: ["link-night-study"],
+      citationIds: ["citation-night"],
+      didUseWebSearch: true
+    },
+    createdBy: "ai" as const,
+    visibility: "active" as const,
+    createdAt: NOW,
+    updatedAt: NOW
+  };
+  const linkSource = {
+    id: "link-night-study",
+    type: "link" as const,
+    title: "Night study source",
+    editableTitle: "Night study source",
+    summary: "Observed route choice after sunset",
+    description: "Source notes on nighttime curb behavior.",
+    url: "https://example.com/night-study",
+    domain: "example.com",
+    assetId: linkAsset.id,
+    createdBy: "user" as const,
+    visibility: "active" as const,
+    createdAt: NOW,
+    updatedAt: NOW
+  };
+  const activeDirection = {
+    id: "direction-sheltered",
+    type: "conceptDirection" as const,
+    title: "Sheltered Beacon",
+    summary: "A warm vertical marker paired with a quiet shelter edge.",
+    status: "primary" as const,
+    keywords: ["warm", "sheltered"],
+    currentRevisionId: "direction-revision-1",
+    revisionIds: ["direction-revision-1"],
+    lineageRootId: "direction-sheltered",
+    createdBy: "ai" as const,
+    visibility: "active" as const,
+    createdAt: NOW,
+    updatedAt: NOW
+  };
+  const eliminatedDirection = {
+    id: "direction-cold",
+    type: "conceptDirection" as const,
+    title: "Cold Tech Plinth",
+    summary: "A colder technical plinth that feels too tactical.",
+    status: "eliminated" as const,
+    keywords: ["cold", "technical"],
+    currentRevisionId: "direction-revision-cold",
+    revisionIds: ["direction-revision-cold"],
+    lineageRootId: "direction-cold",
+    createdBy: "ai" as const,
+    visibility: "active" as const,
+    createdAt: NOW,
+    updatedAt: NOW
+  };
+  const defaultImage = {
+    id: "image-default",
+    type: "image" as const,
+    title: "Default Night Reference",
+    summary: "Warm beacon preview for the primary direction.",
+    role: "conceptImage" as const,
+    imageVariant: "path" as const,
+    assetId: coverAsset.id,
+    directionId: activeDirection.id,
+    visualBranchId: "branch-main",
+    isDefaultReference: true,
+    createdBy: "ai" as const,
+    visibility: "active" as const,
+    createdAt: NOW,
+    updatedAt: NOW
+  };
+  const delivery = {
+    id: "delivery-board",
+    type: "delivery" as const,
+    title: "Night handoff board",
+    summary: "Board package for the night curb concept.",
+    format: "board" as const,
+    sections: [
+      {
+        id: "section-hero",
+        title: "Hero story",
+        purpose: "Explain the rider journey from approach to boarding.",
+        order: 1,
+        referenceIds: ["delivery-ref-image"],
+        narrative: "The hero section opens with the warm marker as a calm waypoint.",
+        createdAt: NOW,
+        updatedAt: NOW
+      }
+    ],
+    gaps: [
+      {
+        id: "gap-install",
+        label: "Add installation context",
+        sectionId: "section-hero",
+        status: "open" as const,
+        origin: "manual" as const,
+        createdAt: NOW,
+        updatedAt: NOW
+      }
+    ],
+    references: ["delivery-ref-image"],
+    createdBy: "user" as const,
+    visibility: "active" as const,
+    createdAt: NOW,
+    updatedAt: NOW
+  };
 
   return {
     ...workspace,
@@ -149,6 +336,215 @@ function createBundleFixtureWorkspace(): MorphoWorkspace {
       [coverAsset.id]: coverAsset,
       [briefAsset.id]: briefAsset,
       [linkAsset.id]: linkAsset
+    },
+    objects: {
+      [designDefinition.id]: designDefinition,
+      [keyConclusion.id]: keyConclusion,
+      [research.id]: research,
+      [linkSource.id]: linkSource,
+      [activeDirection.id]: activeDirection,
+      [eliminatedDirection.id]: eliminatedDirection,
+      [defaultImage.id]: defaultImage,
+      [delivery.id]: delivery
+    },
+    relations: [
+      {
+        id: "relation-image-direction",
+        kind: "belongsToDirection",
+        fromObjectId: defaultImage.id,
+        toObjectId: activeDirection.id,
+        note: "Primary direction image."
+      },
+      {
+        id: "relation-default-reference",
+        kind: "defaultReference",
+        fromObjectId: defaultImage.id,
+        toObjectId: activeDirection.id,
+        note: "Current default reference."
+      }
+    ],
+    deliveryReferences: {
+      "delivery-ref-image": {
+        id: "delivery-ref-image",
+        deliveryObjectId: delivery.id,
+        sectionId: "section-hero",
+        order: 1,
+        sourceObjectId: defaultImage.id,
+        createdAt: NOW,
+        updatedAt: NOW,
+        snapshot: {
+          sourceType: "image",
+          title: "Default Night Reference",
+          summary: "Warm beacon preview for the primary direction.",
+          previewAsset: {
+            assetId: coverAsset.id,
+            alt: "Warm beacon at a night curb."
+          }
+        },
+        sourceAssetId: coverAsset.id,
+        editorial: {
+          caption: "Warm beacon as the main waypoint.",
+          note: "Use as opening visual."
+        }
+      }
+    },
+    deliverySectionDrafts: {
+      "draft-hero": {
+        id: "draft-hero",
+        deliveryObjectId: delivery.id,
+        sectionId: "section-hero",
+        userMessageId: "msg-1",
+        assistantMessageId: "msg-2",
+        referenceIds: ["delivery-ref-image"],
+        sourceFingerprints: {
+          "delivery-ref-image": "fingerprint-1"
+        },
+        title: "Hero story",
+        narrative: "Draft narrative for the hero section.",
+        captions: [
+          {
+            referenceId: "delivery-ref-image",
+            caption: "Caption draft for the warm beacon."
+          }
+        ],
+        suggestedGaps: [
+          {
+            label: "Add nighttime installation detail."
+          }
+        ],
+        status: "pending",
+        createdAt: NOW,
+        updatedAt: NOW
+      }
+    },
+    decisionRecords: [
+      {
+        id: "decision-primary",
+        kind: "setDirectionStatus",
+        createdAt: NOW,
+        summary: "Selected Sheltered Beacon as primary",
+        reason: "It better supports calm nighttime orientation.",
+        objectSnapshot: {
+          id: activeDirection.id,
+          type: "conceptDirection",
+          title: activeDirection.title
+        },
+        relatedObjectIds: [eliminatedDirection.id],
+        comparison: {
+          comparisonAnalysisId: "comparison-1",
+          comparisonAssistantMessageId: "msg-2",
+          comparisonSourceObjectIds: [activeDirection.id, eliminatedDirection.id],
+          userReason: "Choose the calmer route."
+        }
+      }
+    ],
+    citationSnapshots: {
+      "citation-night": {
+        id: "citation-night",
+        operationId: "operation-research",
+        title: "Night mobility observations",
+        url: "https://example.com/night-study",
+        domain: "example.com",
+        snippet: "Observed route choice after sunset",
+        retrievedAt: NOW
+      }
+    },
+    designDefinitionRevisions: {
+      "definition-revision-1": {
+        id: "definition-revision-1",
+        designDefinitionId: designDefinition.id,
+        revisionNumber: 1,
+        title: "Night mobility definition",
+        summary: "Keep riders oriented with a warm navigation cue",
+        projectGoal: "Improve night curb pickup confidence.",
+        targetUsers: ["Night commuters"],
+        primaryScenarios: ["Curbside pickup after sunset"],
+        coreProblem: "Dark stops make riders uncertain where to wait.",
+        designPrinciples: ["Warm low glare guidance"],
+        constraints: ["Avoid traffic glare"],
+        avoidDirections: ["Cold tactical styling"],
+        opportunities: ["Make the waiting edge visible"],
+        openQuestions: ["Mounting height"],
+        sourceObjectIds: [research.id],
+        citationIds: ["citation-night"],
+        createdAt: NOW,
+        changeNote: "Initial accepted definition.",
+        isCurrent: true
+      }
+    },
+    directionRevisions: {
+      "direction-revision-1": {
+        id: "direction-revision-1",
+        directionId: activeDirection.id,
+        revisionNumber: 1,
+        title: "Sheltered Beacon",
+        summary: "A warm vertical marker paired with a quiet shelter edge.",
+        conceptStatement: "A calm beacon makes the curb legible without becoming tactical.",
+        keywords: ["warm", "sheltered"],
+        strategy: "Use vertical warmth and a quiet canopy.",
+        differentiators: ["Soft waypoint", "Low glare"],
+        visualSignals: ["Warm vertical lens"],
+        risks: ["May need installation proof"],
+        openQuestions: ["Material durability"],
+        sourceObjectIds: [designDefinition.id],
+        citationIds: ["citation-night"],
+        basedOnDefinitionRevisionId: "definition-revision-1",
+        createdAt: NOW,
+        changeNote: "Initial primary direction.",
+        isCurrent: true
+      },
+      "direction-revision-cold": {
+        id: "direction-revision-cold",
+        directionId: eliminatedDirection.id,
+        revisionNumber: 1,
+        title: "Cold Tech Plinth",
+        summary: "A colder technical plinth that feels too tactical.",
+        conceptStatement: "A technical plinth marks the stop.",
+        keywords: ["cold", "technical"],
+        strategy: "Use a precise plinth.",
+        differentiators: ["Sharp silhouette"],
+        visualSignals: ["Blue edge light"],
+        risks: ["Too tactical"],
+        openQuestions: ["User comfort"],
+        sourceObjectIds: [designDefinition.id],
+        citationIds: [],
+        basedOnDefinitionRevisionId: "definition-revision-1",
+        createdAt: NOW,
+        isCurrent: true
+      }
+    },
+    directionLineage: [
+      {
+        id: "lineage-cold-to-sheltered",
+        kind: "supersedesDirection",
+        fromDirectionId: eliminatedDirection.id,
+        toDirectionId: activeDirection.id,
+        createdAt: NOW,
+        note: "Sheltered Beacon supersedes the colder plinth route."
+      }
+    ],
+    visualBranches: {
+      "branch-main": {
+        id: "branch-main",
+        directionId: activeDirection.id,
+        label: "Warm waypoint branch",
+        rootObjectId: defaultImage.id,
+        createdAt: NOW
+      }
+    },
+    workingState: {
+      ...workspace.workingState,
+      currentDesignDefinitionId: designDefinition.id,
+      currentDesignDefinitionAvailability: "available",
+      primaryDirectionId: activeDirection.id,
+      alternativeDirectionIds: [],
+      eliminatedDirectionIds: [eliminatedDirection.id],
+      activeKeyConclusionIds: [keyConclusion.id],
+      currentDefaultReferenceId: defaultImage.id,
+      directionReferenceIds: {
+        [activeDirection.id]: [defaultImage.id]
+      },
+      recentResearchObjectIds: [research.id]
     },
     ai: {
       messages: [
