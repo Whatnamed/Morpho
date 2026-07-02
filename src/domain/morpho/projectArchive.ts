@@ -309,6 +309,8 @@ export function createEditableProjectBackupManifest(
   options: EditableBackupOptions = {}
 ): ManifestCreationResult<EditableProjectBackupManifest> {
   const assetInventory = collectWorkspaceAssetInventory(workspace);
+  const chatScope = options.chat ?? "none";
+  const continuityScope = options.projectContinuity ?? "current";
   const manifest: EditableProjectBackupManifest = {
     format: EDITABLE_PROJECT_BACKUP_FORMAT,
     manifestVersion: PROJECT_ARCHIVE_MANIFEST_VERSION,
@@ -316,8 +318,8 @@ export function createEditableProjectBackupManifest(
     sourceProject: sourceProjectFromWorkspace(workspace),
     workspaceSchemaVersion: workspace.schemaVersion,
     options: {
-      chat: options.chat ?? "none",
-      projectContinuity: options.projectContinuity ?? "current",
+      chat: chatScope,
+      projectContinuity: continuityScope,
       restoreContract: {
         restoresAsNewProjectCopy: true,
         mustRemapProjectId: true,
@@ -328,7 +330,10 @@ export function createEditableProjectBackupManifest(
     },
     assetInventory,
     integrity: { diagnostics: [...assetInventory.diagnostics] },
-    workspaceSnapshot: sanitizeWorkspaceForEditableBackup(workspace)
+    workspaceSnapshot: sanitizeWorkspaceForEditableBackup(workspace, {
+      chat: chatScope,
+      projectContinuity: continuityScope
+    })
   };
 
   const validation = validateEditableProjectBackupManifest(manifest);
@@ -388,7 +393,13 @@ export function collectWorkspaceAssetReferenceDiagnostics(workspace: MorphoWorks
   return collectWorkspaceAssetInventory(workspace).diagnostics;
 }
 
-export function sanitizeWorkspaceForEditableBackup(workspace: MorphoWorkspace): EditableBackupWorkspaceSnapshot {
+export function sanitizeWorkspaceForEditableBackup(
+  workspace: MorphoWorkspace,
+  options: {
+    chat: ArchiveChatScope;
+    projectContinuity: ProjectContinuityScope;
+  }
+): EditableBackupWorkspaceSnapshot {
   const assets = Object.fromEntries(
     Object.entries(workspace.assets).map(([assetId, assetRecord]) => [assetId, omitRuntimeStorageKey(assetRecord)])
   );
@@ -396,6 +407,8 @@ export function sanitizeWorkspaceForEditableBackup(workspace: MorphoWorkspace): 
   return {
     ...workspace,
     assets,
+    ai: sanitizeBackupAiState(workspace.ai, options.chat),
+    projectContinuity: sanitizeBackupProjectContinuity(workspace.projectContinuity, options.projectContinuity),
     ui: {
       activeDrawer: null,
       aiOpen: true,
@@ -403,6 +416,35 @@ export function sanitizeWorkspaceForEditableBackup(workspace: MorphoWorkspace): 
       canvasView: workspace.canvas.view,
       workIntent: "discussion"
     }
+  };
+}
+
+function sanitizeBackupAiState(
+  ai: MorphoWorkspace["ai"],
+  chat: ArchiveChatScope
+): MorphoWorkspace["ai"] {
+  if (chat === "full") {
+    return ai;
+  }
+
+  return {
+    messages: [],
+    conversationCheckpoints: [],
+    comparisonAnalyses: {}
+  };
+}
+
+function sanitizeBackupProjectContinuity(
+  projectContinuity: MorphoWorkspace["projectContinuity"],
+  scope: ProjectContinuityScope
+): MorphoWorkspace["projectContinuity"] {
+  if (scope === "current") {
+    return projectContinuity;
+  }
+
+  return {
+    ...projectContinuity,
+    recordEntries: []
   };
 }
 

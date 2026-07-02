@@ -207,7 +207,7 @@ describe("M7-A project archive and backup manifests", () => {
     });
     const fullArchive = createHumanReadableArchiveManifest(workspace, { createdAt: NOW, chat: "full" });
     const backup = createEditableProjectBackupManifest(workspace, { createdAt: NOW });
-    const sanitized = sanitizeWorkspaceForEditableBackup(workspace);
+    const sanitized = sanitizeWorkspaceForEditableBackup(workspace, { chat: "none", projectContinuity: "current" });
 
     expect(defaultArchive.status).toBe("ok");
     expect(scopedArchive.status).toBe("ok");
@@ -233,6 +233,62 @@ describe("M7-A project archive and backup manifests", () => {
     expect(sanitized.ui.aiOpen).toBe(true);
     expect(sanitized.ui.canvasView).toEqual(sanitized.canvas.view);
     expect(sanitized.ui.workIntent).toBe("discussion");
+  });
+
+  test("backup default chat none removes messages, checkpoints, and compare analyses", () => {
+    const workspace = createFixtureWorkspace({ includeMissingMetadata: false });
+    const backup = createEditableProjectBackupManifest(workspace, { createdAt: NOW });
+
+    expect(backup.status).toBe("ok");
+    if (backup.status !== "ok") {
+      throw new Error("backup creation should be ready for assertions");
+    }
+
+    expect(backup.manifest.options.chat).toBe("none");
+    expect(backup.manifest.workspaceSnapshot.ai.messages).toEqual([]);
+    expect(backup.manifest.workspaceSnapshot.ai.conversationCheckpoints).toEqual([]);
+    expect(backup.manifest.workspaceSnapshot.ai.comparisonAnalyses).toEqual({});
+  });
+
+  test("backup chat full preserves messages, checkpoints, and compare analyses", () => {
+    const workspace = createFixtureWorkspace({ includeMissingMetadata: false });
+    const backup = createEditableProjectBackupManifest(workspace, { createdAt: NOW, chat: "full" });
+
+    expect(backup.status).toBe("ok");
+    if (backup.status !== "ok") {
+      throw new Error("backup creation should be ready for assertions");
+    }
+
+    expect(backup.manifest.options.chat).toBe("full");
+    expect(backup.manifest.workspaceSnapshot.ai.messages).toEqual(workspace.ai.messages);
+    expect(backup.manifest.workspaceSnapshot.ai.conversationCheckpoints).toEqual(workspace.ai.conversationCheckpoints);
+    expect(backup.manifest.workspaceSnapshot.ai.comparisonAnalyses).toEqual(workspace.ai.comparisonAnalyses);
+  });
+
+  test("backup default project continuity current preserves continuity state", () => {
+    const workspace = createFixtureWorkspace({ includeMissingMetadata: false });
+    const backup = createEditableProjectBackupManifest(workspace, { createdAt: NOW });
+
+    expect(backup.status).toBe("ok");
+    if (backup.status !== "ok") {
+      throw new Error("backup creation should be ready for assertions");
+    }
+
+    expect(backup.manifest.options.projectContinuity).toBe("current");
+    expect(backup.manifest.workspaceSnapshot.projectContinuity).toEqual(workspace.projectContinuity);
+  });
+
+  test("backup project continuity none keeps snapshot aligned with scope", () => {
+    const workspace = createFixtureWorkspace({ includeMissingMetadata: false });
+    const backup = createEditableProjectBackupManifest(workspace, { createdAt: NOW, projectContinuity: "none" });
+
+    expect(backup.status).toBe("ok");
+    if (backup.status !== "ok") {
+      throw new Error("backup creation should be ready for assertions");
+    }
+
+    expect(backup.manifest.options.projectContinuity).toBe("none");
+    expect(backup.manifest.workspaceSnapshot.projectContinuity.recordEntries).toEqual([]);
   });
 
   test("validates external manifests with readable structural diagnostics and rejects runtime-only fields", () => {
@@ -840,7 +896,7 @@ function asset(
 
 function createBlockedBackupLikeManifest(workspace: MorphoWorkspace, createdAt: string) {
   const inventory = collectWorkspaceAssetInventory(workspace);
-  const sanitized = sanitizeWorkspaceForEditableBackup(workspace);
+  const sanitized = sanitizeWorkspaceForEditableBackup(workspace, { chat: "none", projectContinuity: "current" });
 
   return {
     format: "morpho-editable-project-backup" as const,
