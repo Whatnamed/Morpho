@@ -454,7 +454,7 @@ function validateManifest<TManifest>(
     });
   }
 
-  diagnostics.push(...validateAssetInventoryShape(value.assetInventory));
+  diagnostics.push(...validateAssetInventoryShape(value.assetInventory, validateBackupSnapshotShape ? "backup" : "archive"));
 
   if (validateBackupSnapshotShape) {
     diagnostics.push(...validateBackupSnapshot(value.workspaceSnapshot, value.assetInventory));
@@ -467,7 +467,10 @@ function validateManifest<TManifest>(
   return { status: "ok", manifest: value, diagnostics: dedupeDiagnostics(diagnostics) };
 }
 
-function validateAssetInventoryShape(value: unknown): ProjectArchiveDiagnostic[] {
+function validateAssetInventoryShape(
+  value: unknown,
+  mode: "archive" | "backup"
+): ProjectArchiveDiagnostic[] {
   const diagnostics: ProjectArchiveDiagnostic[] = [];
   if (!isRecord(value) || !Array.isArray(value.entries) || !Array.isArray(value.references)) {
     diagnostics.push({
@@ -533,7 +536,7 @@ function validateAssetInventoryShape(value: unknown): ProjectArchiveDiagnostic[]
     if (!inventoryAssetIds.has(reference.assetId)) {
       diagnostics.push({
         code: "referenced_asset_missing_inventory_entry",
-        severity: "error",
+        severity: mode === "backup" ? "error" : "warning",
         message: `Asset reference ${reference.assetId} has no asset inventory entry.`,
         path: `assetInventory.references.${index}.assetId`
       });

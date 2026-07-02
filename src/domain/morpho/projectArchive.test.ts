@@ -165,6 +165,38 @@ describe("M7-A project archive and backup manifests", () => {
     expect(blockedBackup.diagnostics.some((diagnostic) => diagnostic.code === "referenced_asset_missing_inventory_entry")).toBe(true);
   });
 
+  test("allows incomplete human-readable archives but rejects incomplete editable backups", () => {
+    const invalidWorkspace = createFixtureWorkspace();
+    const archive = createHumanReadableArchiveManifest(invalidWorkspace, { createdAt: NOW });
+    const backup = createEditableProjectBackupManifest(invalidWorkspace, { createdAt: NOW });
+
+    expect(archive.status).toBe("ok");
+    expect(backup.status).toBe("blocked");
+    if (archive.status !== "ok") {
+      throw new Error("archive creation should be ready for assertions");
+    }
+
+    const archiveValidation = validateHumanReadableArchiveManifest(archive.manifest);
+    expect(archiveValidation.status).toBe("ok");
+    expect(
+      archiveValidation.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === "referenced_asset_missing_inventory_entry" && diagnostic.severity === "warning"
+      )
+    ).toBe(true);
+
+    const forcedBackupValidation = validateEditableProjectBackupManifest({
+      ...(backup.status === "blocked" ? createBlockedBackupLikeManifest(invalidWorkspace, NOW) : backup.manifest)
+    });
+    expect(forcedBackupValidation.status).toBe("failed");
+    expect(
+      forcedBackupValidation.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === "referenced_asset_missing_inventory_entry" && diagnostic.severity === "error"
+      )
+    ).toBe(true);
+  });
+
   test("controls conversation, continuity, and temporary UI state scope explicitly", () => {
     const workspace = createFixtureWorkspace({ includeMissingMetadata: false });
     const defaultArchive = createHumanReadableArchiveManifest(workspace, { createdAt: NOW });
@@ -803,5 +835,41 @@ function asset(
     size: 123,
     createdAt: NOW,
     storageKey
+  };
+}
+
+function createBlockedBackupLikeManifest(workspace: MorphoWorkspace, createdAt: string) {
+  const inventory = collectWorkspaceAssetInventory(workspace);
+  const sanitized = sanitizeWorkspaceForEditableBackup(workspace);
+
+  return {
+    format: "morpho-editable-project-backup" as const,
+    manifestVersion: "1" as const,
+    createdAt,
+    sourceProject: {
+      id: workspace.project.id,
+      title: workspace.project.title,
+      subtitle: workspace.project.subtitle,
+      createdAt: workspace.project.createdAt,
+      updatedAt: workspace.project.updatedAt,
+      lastOpenedAt: workspace.project.lastOpenedAt
+    },
+    workspaceSchemaVersion: workspace.schemaVersion,
+    options: {
+      chat: "none" as const,
+      projectContinuity: "current" as const,
+      restoreContract: {
+        restoresAsNewProjectCopy: true as const,
+        mustRemapProjectId: true as const,
+        mustRegenerateRuntimeStorageKeys: true as const,
+        mustRemapAssetIdsIfChanged: true as const,
+        neverMergeByDefault: true as const
+      }
+    },
+    assetInventory: inventory,
+    integrity: {
+      diagnostics: inventory.diagnostics
+    },
+    workspaceSnapshot: sanitized
   };
 }

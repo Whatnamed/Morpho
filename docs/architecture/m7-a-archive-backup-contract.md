@@ -75,3 +75,29 @@ This note records the M7-A domain contract for Morpho project archive and editab
 - Restore must regenerate runtime storage keys.
 - Restore must not silently merge with an existing project.
 - Asset ID remapping must update referenced asset indices consistently.
+
+## How M7-B consumes archive manifests
+
+- M7-B should treat `morpho-human-readable-archive` as a reading and handoff source, not as a restorable workspace dump.
+- It can safely consume:
+  - project overview;
+  - design definitions, key conclusions, directions;
+  - delivery packages, stable references, and section drafts;
+  - visual-route objects;
+  - research objects, source index entries, and citation snapshots;
+  - integrity diagnostics.
+- Missing asset metadata may remain as archive warnings. M7-B should surface those warnings instead of rejecting the archive when the archive is still structurally readable.
+
+## How M7-C consumes editable backup manifests
+
+- M7-C should treat `morpho-editable-project-backup` as the only restore-oriented manifest family.
+- It must require a fully valid manifest before starting restore.
+- It must restore into a new independent project copy, regenerate runtime asset storage keys, and keep asset/reference remapping consistent across the workspace snapshot.
+- If backup validation fails, M7-C must stop before any restore write begins.
+
+## Current unimplemented boundaries
+
+- M7-A does not yet read IndexedDB binary payloads to verify file completeness.
+- M7-A does not create a portable asset bundle, zip file, or downloadable archive package.
+- M7-A does not execute restore transactions, write restored data into localStorage or IndexedDB, or create restore conflict/merge flows.
+- Binary collection, bundle layout, restore transactions, and new-project materialization remain M7-B / M7-C work.
