@@ -70,6 +70,17 @@ export type ProjectWorkspaceLoadResult =
       reason: string;
     };
 
+export type ProjectPersistenceResult =
+  | {
+      status: "ok";
+      savedAt: string;
+    }
+  | {
+      status: "failed";
+      reason: string;
+      stage: "workspace" | "catalog";
+    };
+
 export function getProjectWorkspaceStorageKey(projectId: string): string {
   return `morpho.project.${projectId}.workspace.v1`;
 }
@@ -154,6 +165,43 @@ export function loadProjectWorkspace(storage: Storage, projectId: string): Proje
 
 export function saveProjectWorkspace(storage: Storage, workspace: MorphoWorkspace): void {
   void writeProjectWorkspace(storage, workspace);
+}
+
+export function persistProjectWorkspaceAndSummary(storage: Storage, workspace: MorphoWorkspace): ProjectPersistenceResult {
+  const workspaceResult = writeProjectWorkspace(storage, workspace);
+  if (workspaceResult.status === "failed") {
+    return {
+      status: "failed",
+      stage: "workspace",
+      reason: workspaceResult.reason
+    };
+  }
+
+  const loadedCatalog = loadLocalProjectCatalogSnapshot(storage);
+  if (loadedCatalog.status === "failed") {
+    return {
+      status: "failed",
+      stage: "catalog",
+      reason: loadedCatalog.reason
+    };
+  }
+
+  const summary = summarizeProject(workspace);
+  const baseProjects = loadedCatalog.status === "ok" ? loadedCatalog.catalog.projects : [];
+  const projects = [summary, ...baseProjects.filter((project) => project.id !== summary.id)];
+  const catalogResult = writeCatalog(storage, createCatalog(projects, summary.id));
+  if (catalogResult.status === "failed") {
+    return {
+      status: "failed",
+      stage: "catalog",
+      reason: catalogResult.reason
+    };
+  }
+
+  return {
+    status: "ok",
+    savedAt: new Date().toISOString()
+  };
 }
 
 export function upsertProjectSummary(storage: Storage, workspace: MorphoWorkspace): LocalProjectCatalog {

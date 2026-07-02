@@ -139,6 +139,18 @@ Expected results:
 - `test`: Vitest runs domain, persistence, import, query, MiMo, and GrsAI tests.
 - `build`: `next build` completes and prerenders static pages/routes where applicable.
 
+GitHub CI runs the same core quality gate in `.github/workflows/quality.yml` on pushes to `main` and on pull requests:
+
+```text
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+The CI workflow does not use `.env`, provider API keys, Vercel tokens, paid model smoke tests, deployment, publishing, or version changes.
+
 ## Archive And Backup
 
 Current workspace export/restore entry:
@@ -288,6 +300,16 @@ store: asset-blobs
 ```
 
 Workspace JSON stores only asset metadata and `assetId` references, not base64 file contents.
+
+M9-A local persistence behavior:
+
+- workspace saves are debounced for 400 ms with a 1200 ms max wait;
+- pending saves flush synchronously on pagehide, visibility-hidden, beforeunload, project switch, and workspace unmount;
+- workspace and catalog write failures are surfaced separately instead of reporting a false saved state;
+- local save failures show a small inline warning near the project title and do not block editing;
+- image preview object URLs are cached by `assetId + storageKey`, and only added or changed image assets are read from IndexedDB.
+
+This runtime still does not implement Supabase, cloud sync, accounts, AI access protection, automatic Blob garbage collection, or cross-device backup.
 
 Local document extraction:
 

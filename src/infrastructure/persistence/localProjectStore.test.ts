@@ -7,6 +7,7 @@ import {
   getProjectWorkspaceStorageKey,
   initializeLocalProjectCatalog,
   loadProjectWorkspace,
+  persistProjectWorkspaceAndSummary,
   saveProjectWorkspace
 } from "./localProjectStore";
 
@@ -56,10 +57,35 @@ describe("local project catalog persistence", () => {
       expect(loadedB.workspace.project.id).toBe("project-b");
     }
   });
+
+  it("reports workspace write failures without updating the catalog", () => {
+    const storage = createMemoryStorage({
+      failSetKeys: [getProjectWorkspaceStorageKey("project-a")]
+    });
+    const workspace = createBlankWorkspace("project-a");
+
+    const result = persistProjectWorkspaceAndSummary(storage, workspace);
+
+    expect(result).toMatchObject({ status: "failed", stage: "workspace" });
+    expect(storage.getItem(CATALOG_STORAGE_KEY)).toBeNull();
+  });
+
+  it("reports catalog write failures while keeping the written workspace", () => {
+    const storage = createMemoryStorage({
+      failSetKeys: [CATALOG_STORAGE_KEY]
+    });
+    const workspace = createBlankWorkspace("project-a");
+
+    const result = persistProjectWorkspaceAndSummary(storage, workspace);
+
+    expect(result).toMatchObject({ status: "failed", stage: "catalog" });
+    expect(storage.getItem(getProjectWorkspaceStorageKey("project-a"))).toBeTruthy();
+  });
 });
 
-function createMemoryStorage(): Storage {
+function createMemoryStorage(options: { failSetKeys?: string[] } = {}): Storage {
   const values = new Map<string, string>();
+  const failSetKeys = new Set(options.failSetKeys ?? []);
 
   return {
     get length() {
@@ -78,6 +104,9 @@ function createMemoryStorage(): Storage {
       values.delete(key);
     },
     setItem(key: string, value: string) {
+      if (failSetKeys.has(key)) {
+        throw new Error(`Blocked write for ${key}`);
+      }
       values.set(key, value);
     }
   };

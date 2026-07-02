@@ -111,9 +111,10 @@ import { OverlayDrawers } from "./components/OverlayDrawers";
 import { ProjectBundlePanel } from "./components/ProjectBundlePanel";
 import { TopControls } from "./components/TopControls";
 import { usePersistentWorkspace } from "./usePersistentWorkspace";
+import { useWorkspaceAssetUrls } from "./useWorkspaceAssetUrls";
 import { compactObjectList, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
 import { buildDeliverySectionContext, getDeliveryObjects, type DeliveryReferenceReaderTransition } from "./deliveryPreparationUi";
-import { indexedDbBlobStore, getAssetObjectUrl } from "@/infrastructure/assets/indexedDbAssetStore";
+import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
 import {
   downloadProjectBundleFile,
   exportEditableProjectBackupBundle,
@@ -263,8 +264,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [activeDeliveryObjectId, setActiveDeliveryObjectId] = useState<string | null>(null);
   const [activeDeliverySectionId, setActiveDeliverySectionId] = useState<string | null>(null);
   const [pendingDeliveryDraftTarget, setPendingDeliveryDraftTarget] = useState<{ deliveryObjectId: string; sectionId: string } | null>(null);
-  const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
-  const assetUrlsRef = useRef<Record<string, string>>({});
+  const assetUrls = useWorkspaceAssetUrls(workspace.assets);
   const abortControllerRef = useRef<AbortController | null>(null);
   const [focusRequest, setFocusRequest] = useState<FocusRequest>({ area: "visual", nonce: 0 });
   const [documentReader, setDocumentReader] = useState<DocumentReaderUiState | null>(null);
@@ -488,43 +488,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     },
     [setWorkspace]
   );
-
-  useEffect(() => {
-    let isCancelled = false;
-
-    async function loadAssetUrls() {
-      const imageAssets = Object.values(workspace.assets).filter(
-        (asset) => asset.sourceType === "originalImage" || asset.sourceType === "aiGeneratedImage"
-      );
-      const entries = await Promise.all(
-        imageAssets.map(async (asset) => {
-          try {
-            const url = await getAssetObjectUrl(asset.storageKey);
-            return url ? ([asset.id, url] as const) : null;
-          } catch {
-            return null;
-          }
-        })
-      );
-
-      if (isCancelled) {
-        return;
-      }
-
-      const nextAssetUrls = Object.fromEntries(
-        entries.filter((entry): entry is readonly [string, string] => Boolean(entry))
-      );
-      Object.values(assetUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
-      assetUrlsRef.current = nextAssetUrls;
-      setAssetUrls(nextAssetUrls);
-    }
-
-    void loadAssetUrls();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [workspace.assets]);
 
   const handleSelectionChange = useCallback(
     (objectIds: string[]) => {
@@ -3390,6 +3353,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
       <TopControls
         projectTitle={workspace.project.title}
+        persistenceError={
+          persistenceState.phase === "error" && persistenceState.error && !persistenceState.migrationError
+            ? persistenceState.error
+            : undefined
+        }
         onImportFiles={(files) =>
           handleImportRequest({
             files,

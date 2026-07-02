@@ -11,6 +11,7 @@ type TopControlsProps = {
   onOpenDeliveryPreparation: () => void;
   onOpenProjectBundles: () => void;
   onOpenDeliveryOutput: () => void;
+  persistenceError?: string;
 };
 
 export function TopControls({
@@ -20,7 +21,8 @@ export function TopControls({
   onFocusOverview,
   onOpenDeliveryPreparation,
   onOpenProjectBundles,
-  onOpenDeliveryOutput
+  onOpenDeliveryOutput,
+  persistenceError
 }: TopControlsProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -31,7 +33,12 @@ export function TopControls({
         <div className="project-name">
           <span className="project-dot" />
           <strong>{projectTitle}</strong>
-          <span>· 概念工作台</span>
+          <span className="project-subtitle">· 概念工作台</span>
+          {persistenceError ? (
+            <span className="save-warning" title={persistenceError}>
+              本地保存失败
+            </span>
+          ) : null}
         </div>
       </div>
       <div className="floating-cluster top-right">

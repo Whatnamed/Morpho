@@ -202,6 +202,14 @@ Binary files are not stored in localStorage. Imported images/files and generated
 
 The current code does not implement asset garbage collection. Deleting a canvas object does not delete Blob data.
 
+M9-A persistence hardening:
+
+- `usePersistentWorkspace` no longer writes the full workspace and catalog on every React state change. It schedules writes through `workspacePersistence` with a 400 ms debounce and a 1200 ms max wait.
+- Pending writes are synchronously flushed on pagehide, visibility-hidden, beforeunload, project switch, and workspace hook unmount.
+- Loading and migration errors disable automatic writes, so a temporary blank workspace cannot overwrite existing local project data.
+- `persistProjectWorkspaceAndSummary(...)` reports workspace-write and catalog-write failures separately. Catalog writes are skipped when workspace writes fail; catalog failures keep the already-written workspace and surface a catalog-stage error.
+- Image preview object URLs are reconciled incrementally by `workspaceAssetUrlCache` using `assetId + storageKey`, avoiding full IndexedDB rereads and full URL revocation when unrelated workspace state changes.
+
 ## M7 Archive, Bundle, And Restore Layers
 
 Morpho now implements the M7 contract in two layers.
