@@ -232,12 +232,25 @@ export async function restoreEditableProjectBackupBundle(
   options: RestoreBackupOptions
 ): Promise<RestoreResult> {
   const backup = "backup" in inspectedBackup ? inspectedBackup.backup : inspectedBackup;
+  const revalidation = validateEditableProjectBackupBundle({
+    bundle: backup.bundle,
+    manifest: backup.manifest,
+    files: backup.files
+  });
+  if (revalidation.status !== "ok") {
+    return {
+      status: "failed",
+      reason: "备份包在恢复前验证失败。",
+      diagnostics: revalidation.diagnostics
+    };
+  }
+
   const catalogSnapshot = loadLocalProjectCatalogSnapshot(options.storage);
   if (catalogSnapshot.status === "failed") {
     return {
       status: "failed",
       reason: catalogSnapshot.reason,
-      diagnostics: backup.diagnostics
+      diagnostics: revalidation.diagnostics
     };
   }
 
@@ -251,7 +264,7 @@ export async function restoreEditableProjectBackupBundle(
           projects: []
         };
   const projectIdResolution = resolveRestoredProjectId({
-    sourceProjectId: backup.manifest.sourceProject.id,
+    sourceProjectId: revalidation.manifest.sourceProject.id,
     catalog: baseCatalog,
     storage: options.storage,
     createProjectId: options.createProjectId ?? createProjectId
@@ -260,16 +273,16 @@ export async function restoreEditableProjectBackupBundle(
     return {
       status: "failed",
       reason: projectIdResolution.reason,
-      diagnostics: [...backup.diagnostics, projectIdResolution.diagnostic]
+      diagnostics: [...revalidation.diagnostics, projectIdResolution.diagnostic]
     };
   }
 
   const projectId = projectIdResolution.projectId;
-  const projectTitle = nextRestoredProjectTitle(backup.manifest.sourceProject.title, baseCatalog);
+  const projectTitle = nextRestoredProjectTitle(revalidation.manifest.sourceProject.title, baseCatalog);
   const createRuntimeStorageKey =
     options.createRuntimeStorageKey ?? ((assetId: AssetId, restoredProjectId: string) => `blob:${restoredProjectId}:${assetId}`);
 
-  const plan = planEditableProjectBackupRestore(backup.manifest, backup.files, {
+  const plan = planEditableProjectBackupRestore(revalidation.manifest, revalidation.files, {
     restoredAt,
     projectId,
     projectTitle,
@@ -295,7 +308,7 @@ export async function restoreEditableProjectBackupBundle(
     return {
       status: "failed",
       reason: error instanceof Error ? error.message : "Backup restore failed while writing asset blobs.",
-      diagnostics: backup.diagnostics
+      diagnostics: revalidation.diagnostics
     };
   }
 
@@ -306,7 +319,7 @@ export async function restoreEditableProjectBackupBundle(
     return {
       status: "failed",
       reason: workspaceWrite.reason,
-      diagnostics: backup.diagnostics
+      diagnostics: revalidation.diagnostics
     };
   }
 
@@ -318,7 +331,7 @@ export async function restoreEditableProjectBackupBundle(
     return {
       status: "failed",
       reason: catalogWrite.reason,
-      diagnostics: backup.diagnostics
+      diagnostics: revalidation.diagnostics
     };
   }
 
@@ -326,7 +339,7 @@ export async function restoreEditableProjectBackupBundle(
     status: "ok",
     projectId,
     workspace: plan.workspace,
-    diagnostics: backup.diagnostics
+    diagnostics: revalidation.diagnostics
   };
 }
 

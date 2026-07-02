@@ -359,6 +359,96 @@ describe("project bundle client", () => {
     expect(await alwaysCollidingBlobStore.get(`blob:${workspace.project.id}:asset-cover`)).toBeNull();
   });
 
+  test("revalidates inspected backup chat scope before restore writes", async () => {
+    const workspace = createBundleFixtureWorkspace();
+    const blobStore = new MemoryBlobStore({
+      "blob:asset-cover": "cover-bytes",
+      "blob:asset-brief": "brief-bytes"
+    });
+    const storage = createMemoryStorage();
+    const exported = await exportEditableProjectBackupBundle(workspace, {
+      blobStore,
+      createdAt: NOW,
+      chat: "full",
+      projectContinuity: "current"
+    });
+    expect(exported.status).toBe("ok");
+    if (exported.status !== "ok") {
+      throw new Error("backup export should be ready for revalidation assertions");
+    }
+    const inspected = await inspectEditableProjectBackupBundle(exported.file);
+    expect(inspected.status).toBe("ok");
+    if (inspected.status !== "ok") {
+      throw new Error("backup inspection should be ready for revalidation assertions");
+    }
+
+    const tampered = structuredClone(inspected);
+    tampered.backup.manifest.options.chat = "none";
+
+    const restored = await restoreEditableProjectBackupBundle(tampered, {
+      blobStore,
+      storage,
+      now: () => NOW,
+      createProjectId: () => "project-tampered-scope",
+      createRuntimeStorageKey: (assetId, projectId) => `blob:${projectId}:${assetId}`
+    });
+
+    expect(restored.status).toBe("failed");
+    if (restored.status === "failed") {
+      expect(restored.reason).toBe("备份包在恢复前验证失败。");
+      expect(restored.diagnostics.some((diagnostic) => diagnostic.code === "backup_chat_scope_mismatch")).toBe(true);
+    }
+    expect(await blobStore.get("blob:project-tampered-scope:asset-cover")).toBeNull();
+    expect(await blobStore.get("blob:project-tampered-scope:asset-brief")).toBeNull();
+    expect(storage.getItem(getProjectWorkspaceStorageKey("project-tampered-scope"))).toBeNull();
+    expect(storage.getItem(CATALOG_STORAGE_KEY)).toBeNull();
+  });
+
+  test("revalidates inspected backup bundle files before restore writes", async () => {
+    const workspace = createBundleFixtureWorkspace();
+    const blobStore = new MemoryBlobStore({
+      "blob:asset-cover": "cover-bytes",
+      "blob:asset-brief": "brief-bytes"
+    });
+    const storage = createMemoryStorage();
+    const exported = await exportEditableProjectBackupBundle(workspace, {
+      blobStore,
+      createdAt: NOW,
+      chat: "full",
+      projectContinuity: "current"
+    });
+    expect(exported.status).toBe("ok");
+    if (exported.status !== "ok") {
+      throw new Error("backup export should be ready for bundle revalidation assertions");
+    }
+    const inspected = await inspectEditableProjectBackupBundle(exported.file);
+    expect(inspected.status).toBe("ok");
+    if (inspected.status !== "ok") {
+      throw new Error("backup inspection should be ready for bundle revalidation assertions");
+    }
+
+    const tampered = structuredClone(inspected);
+    tampered.backup.files["unexpected.txt"] = new TextEncoder().encode("not declared");
+
+    const restored = await restoreEditableProjectBackupBundle(tampered, {
+      blobStore,
+      storage,
+      now: () => NOW,
+      createProjectId: () => "project-tampered-files",
+      createRuntimeStorageKey: (assetId, projectId) => `blob:${projectId}:${assetId}`
+    });
+
+    expect(restored.status).toBe("failed");
+    if (restored.status === "failed") {
+      expect(restored.reason).toBe("备份包在恢复前验证失败。");
+      expect(restored.diagnostics.some((diagnostic) => diagnostic.code === "bundle_file_unexpected")).toBe(true);
+    }
+    expect(await blobStore.get("blob:project-tampered-files:asset-cover")).toBeNull();
+    expect(await blobStore.get("blob:project-tampered-files:asset-brief")).toBeNull();
+    expect(storage.getItem(getProjectWorkspaceStorageKey("project-tampered-files"))).toBeNull();
+    expect(storage.getItem(CATALOG_STORAGE_KEY)).toBeNull();
+  });
+
   test("cleans up newly written blobs and does not persist a project when restore persistence fails", async () => {
     const workspace = createBundleFixtureWorkspace();
     const blobStore = new MemoryBlobStore({
