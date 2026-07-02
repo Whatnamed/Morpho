@@ -207,15 +207,16 @@ The current code does not implement asset garbage collection. Deleting a canvas 
 M7-A adds a pure domain module at `src/domain/morpho/projectArchive.ts`.
 
 - `createHumanReadableArchiveManifest(...)` builds a reading/handoff manifest and never pretends to be a restorable workspace dump.
-- `createEditableProjectBackupManifest(...)` builds a portable backup manifest and records restore constraints without performing restore.
+- `createEditableProjectBackupManifest(...)` builds a portable backup manifest, records restore constraints, and blocks creation when restore-critical integrity checks already fail.
 - `collectWorkspaceAssetInventory(...)` audits current workspace asset metadata plus known asset references across project cover, objects, document extracts, and delivery snapshots.
-- `sanitizeWorkspaceForEditableBackup(...)` preserves edit-relevant structured project state while normalizing transient UI state.
+- `sanitizeWorkspaceForEditableBackup(...)` preserves edit-relevant structured project state while normalizing transient UI state, including resetting `workIntent` to `discussion`.
 - Validation accepts `unknown` input and returns structured diagnostics suitable for future UI display.
 
 Current boundary:
 
 - runtime localStorage keys and IndexedDB `storageKey` values stay runtime-only and are excluded from portable manifests;
 - binary payloads are not yet collected, so integrity is reported honestly as metadata-only / not verified;
+- human-readable archive carries delivery packages, stable delivery references, visual-route fields, research objects, readable source-index objects, and citation snapshots instead of only a raw object subset;
 - M7-A does not add archive download, bundle generation, restore writes, or UI wiring.
 
 ## Import, Search, Assets, Hidden

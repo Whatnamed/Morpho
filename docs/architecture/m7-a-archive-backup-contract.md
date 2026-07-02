@@ -11,6 +11,7 @@ This note records the M7-A domain contract for Morpho project archive and editab
 - Structured asset inventory and reference diagnostics that describe current workspace assets and known references without exposing runtime storage keys.
 - Structural validation for external manifests with readable failure diagnostics.
 - A sanitization boundary for backup snapshots that excludes transient UI state from long-lived project facts.
+- A restore gate where backup creation is blocked when restore-critical integrity problems are already known.
 
 ## What M7-A does not add
 
@@ -27,6 +28,12 @@ This note records the M7-A domain contract for Morpho project archive and editab
 - Purpose: reading, review, handoff, and future package generation.
 - Default chat scope: `none`
 - Default project continuity scope: `none`
+- Includes:
+  - current design definitions, key conclusions, concept directions;
+  - delivery packages, sections, gaps, stable references, and pending section drafts;
+  - visual-route objects with role, variant, direction, branch, and default-reference state;
+  - research objects, readable source index entries, and citation snapshots;
+  - decisions, traceability records, and optional scoped conversation / continuity sections.
 
 ### Editable project backup
 
@@ -35,6 +42,7 @@ This note records the M7-A domain contract for Morpho project archive and editab
 - Purpose: future restore into a new editable project copy.
 - Default chat scope: `none`
 - Default project continuity scope: `current`
+- Includes the structured workspace snapshot required for future restore, but with portable asset metadata only and normalized UI state.
 
 ## Workspace schema vs manifest version
 
@@ -48,6 +56,17 @@ This note records the M7-A domain contract for Morpho project archive and editab
 - Portable manifests do not store runtime `storageKey` values or Blob URLs.
 - Asset binary integrity is not verified in M7-A; every binary is reported honestly as not verified.
 - Inventory diagnostics must surface orphaned metadata, missing metadata, and invalid inventory structure.
+- Editable backup validation also rejects runtime-only leaks and asset-inventory mismatches in the backup snapshot.
+
+## UI-state boundary
+
+- Backup snapshots keep canvas view and canvas instances because they are part of the editable workspace layout.
+- Backup snapshots normalize transient UI state:
+  - `activeDrawer` becomes `null`;
+  - `lastSelectionIds` becomes `[]`;
+  - `aiOpen` becomes `true`;
+  - `ui.canvasView` is synchronized to `canvas.view`;
+  - `ui.workIntent` is normalized to `discussion` because it is a transient AI interaction state, not a long-term project fact.
 
 ## Restore contract
 
@@ -56,4 +75,3 @@ This note records the M7-A domain contract for Morpho project archive and editab
 - Restore must regenerate runtime storage keys.
 - Restore must not silently merge with an existing project.
 - Asset ID remapping must update referenced asset indices consistently.
-

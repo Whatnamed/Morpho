@@ -1,21 +1,27 @@
+import type { SourceCitation } from "../operations/types";
 import type {
   AiMessage,
   AssetId,
   AssetRecord,
-  CanvasInstance,
-  CanvasView,
   ComparisonAnalysis,
   ConceptDirectionObject,
   DecisionRecord,
+  DeliveryObject,
   DeliveryReference,
   DeliverySectionDraft,
   DesignDefinitionObject,
   DirectionLineageRecord,
+  DocumentFragmentObject,
+  FileObject,
+  ImageObject,
+  KeyConclusionObject,
+  LinkObject,
   MorphoObject,
-  MorphoObjectId,
+  MorphoRelation,
   MorphoWorkspace,
   ProjectContinuityState,
-  ProjectWorkingState,
+  ResearchObject,
+  TextObject,
   VisualBranchRecord
 } from "./types";
 
@@ -31,12 +37,16 @@ export type ProjectArchiveDiagnostic = {
     | "binary_not_verified"
     | "duplicate_portable_bundle_key"
     | "invalid_asset_inventory_entry"
+    | "invalid_asset_inventory_reference"
+    | "invalid_binary_status"
     | "invalid_format"
     | "invalid_manifest_version"
     | "invalid_source_project"
     | "invalid_workspace_snapshot"
     | "missing_asset_metadata"
-    | "referenced_asset_missing_inventory_entry";
+    | "referenced_asset_missing_inventory_entry"
+    | "runtime_storage_key_exposed"
+    | "workspace_asset_inventory_mismatch";
   severity: ProjectArchiveDiagnosticSeverity;
   message: string;
   path?: string;
@@ -107,6 +117,24 @@ export type ProjectManifestIntegrity = {
   diagnostics: ProjectArchiveDiagnostic[];
 };
 
+export type ArchiveVisualObject = {
+  id: ImageObject["id"];
+  title: ImageObject["title"];
+  summary: ImageObject["summary"];
+  visibility: ImageObject["visibility"];
+  assetId?: ImageObject["assetId"];
+  role: ImageObject["role"];
+  imageVariant: ImageObject["imageVariant"];
+  directionId?: ImageObject["directionId"];
+  directionTitle?: string;
+  visualBranchId?: ImageObject["visualBranchId"];
+  visualBranchLabel?: string;
+  isDefaultReference: boolean;
+  relatedRelationKinds: MorphoRelation["kind"][];
+};
+
+export type ArchiveSourceIndexObject = FileObject | LinkObject | TextObject | DocumentFragmentObject;
+
 export type HumanReadableArchiveManifest = {
   format: typeof HUMAN_READABLE_ARCHIVE_FORMAT;
   manifestVersion: typeof PROJECT_ARCHIVE_MANIFEST_VERSION;
@@ -122,13 +150,19 @@ export type HumanReadableArchiveManifest = {
   archive: {
     projectOverview: ManifestSourceProject;
     designDefinitions: DesignDefinitionObject[];
-    keyConclusions: MorphoObject[];
+    keyConclusions: KeyConclusionObject[];
     directions: ConceptDirectionObject[];
-    visualObjects: Array<Pick<MorphoObject, "id" | "type" | "title" | "summary" | "visibility">>;
+    visualObjects: ArchiveVisualObject[];
+    researchAndSources: {
+      researchObjects: ResearchObject[];
+      sourceIndex: ArchiveSourceIndexObject[];
+      citationSnapshots: Record<string, SourceCitation>;
+    };
     decisions: DecisionRecord[];
     projectContinuity: ArchiveContinuitySection;
     conversation: ArchiveConversationSection;
     delivery: {
+      packages: DeliveryObject[];
       references: DeliveryReference[];
       sectionDrafts: DeliverySectionDraft[];
     };
@@ -225,7 +259,7 @@ export function createHumanReadableArchiveManifest(
   options: ProjectArchiveOptions = {}
 ): ManifestCreationResult<HumanReadableArchiveManifest> {
   const assetInventory = collectWorkspaceAssetInventory(workspace);
-  const diagnostics = assetInventory.diagnostics;
+  const diagnostics = [...assetInventory.diagnostics];
   const manifest: HumanReadableArchiveManifest = {
     format: HUMAN_READABLE_ARCHIVE_FORMAT,
     manifestVersion: PROJECT_ARCHIVE_MANIFEST_VERSION,
@@ -243,13 +277,17 @@ export function createHumanReadableArchiveManifest(
       designDefinitions: objectsOfType(workspace, "designDefinition"),
       keyConclusions: objectsOfType(workspace, "keyConclusion"),
       directions: objectsOfType(workspace, "conceptDirection"),
-      visualObjects: Object.values(workspace.objects)
-        .filter((object) => object.type === "image" || object.type === "file" || object.type === "documentFragment")
-        .map(({ id, type, title, summary, visibility }) => ({ id, type, title, summary, visibility })),
+      visualObjects: buildArchiveVisualObjects(workspace),
+      researchAndSources: {
+        researchObjects: objectsOfType(workspace, "research"),
+        sourceIndex: buildArchiveSourceIndex(workspace),
+        citationSnapshots: workspace.citationSnapshots
+      },
       decisions: workspace.decisionRecords,
       projectContinuity: buildArchiveContinuity(workspace, options.projectContinuity ?? "none"),
       conversation: buildArchiveConversation(workspace, options.chat ?? "none"),
       delivery: {
+        packages: objectsOfType(workspace, "delivery"),
         references: Object.values(workspace.deliveryReferences),
         sectionDrafts: Object.values(workspace.deliverySectionDrafts)
       },
@@ -271,7 +309,6 @@ export function createEditableProjectBackupManifest(
   options: EditableBackupOptions = {}
 ): ManifestCreationResult<EditableProjectBackupManifest> {
   const assetInventory = collectWorkspaceAssetInventory(workspace);
-  const diagnostics = assetInventory.diagnostics;
   const manifest: EditableProjectBackupManifest = {
     format: EDITABLE_PROJECT_BACKUP_FORMAT,
     manifestVersion: PROJECT_ARCHIVE_MANIFEST_VERSION,
@@ -290,10 +327,21 @@ export function createEditableProjectBackupManifest(
       }
     },
     assetInventory,
-    integrity: { diagnostics },
+    integrity: { diagnostics: [...assetInventory.diagnostics] },
     workspaceSnapshot: sanitizeWorkspaceForEditableBackup(workspace)
   };
 
+  const validation = validateEditableProjectBackupManifest(manifest);
+  const diagnostics = dedupeDiagnostics([...assetInventory.diagnostics, ...validation.diagnostics]);
+  if (validation.status === "failed") {
+    return {
+      status: "blocked",
+      reason: "Editable backup manifest has blocking integrity issues.",
+      diagnostics
+    };
+  }
+
+  manifest.integrity = { diagnostics };
   return { status: "ok", manifest, diagnostics };
 }
 
@@ -333,7 +381,7 @@ export function collectWorkspaceAssetInventory(workspace: MorphoWorkspace): Work
     }
   }
 
-  return { entries, references, diagnostics };
+  return { entries, references, diagnostics: dedupeDiagnostics(diagnostics) };
 }
 
 export function collectWorkspaceAssetReferenceDiagnostics(workspace: MorphoWorkspace): ProjectArchiveDiagnostic[] {
@@ -353,7 +401,7 @@ export function sanitizeWorkspaceForEditableBackup(workspace: MorphoWorkspace): 
       aiOpen: true,
       lastSelectionIds: [],
       canvasView: workspace.canvas.view,
-      workIntent: workspace.ui.workIntent
+      workIntent: "discussion"
     }
   };
 }
@@ -361,17 +409,18 @@ export function sanitizeWorkspaceForEditableBackup(workspace: MorphoWorkspace): 
 export function validateHumanReadableArchiveManifest(
   value: unknown
 ): ManifestValidationResult<HumanReadableArchiveManifest> {
-  return validateManifest(value, HUMAN_READABLE_ARCHIVE_FORMAT, isHumanReadableArchiveManifest);
+  return validateManifest(value, HUMAN_READABLE_ARCHIVE_FORMAT, isHumanReadableArchiveManifest, false);
 }
 
 export function validateEditableProjectBackupManifest(value: unknown): ManifestValidationResult<EditableProjectBackupManifest> {
-  return validateManifest(value, EDITABLE_PROJECT_BACKUP_FORMAT, isEditableProjectBackupManifest);
+  return validateManifest(value, EDITABLE_PROJECT_BACKUP_FORMAT, isEditableProjectBackupManifest, true);
 }
 
 function validateManifest<TManifest>(
   value: unknown,
   expectedFormat: typeof HUMAN_READABLE_ARCHIVE_FORMAT | typeof EDITABLE_PROJECT_BACKUP_FORMAT,
-  typeGuard: (value: unknown) => value is TManifest
+  typeGuard: (value: unknown) => value is TManifest,
+  validateBackupSnapshotShape: boolean
 ): ManifestValidationResult<TManifest> {
   const diagnostics: ProjectArchiveDiagnostic[] = [];
   if (!isRecord(value)) {
@@ -407,15 +456,15 @@ function validateManifest<TManifest>(
 
   diagnostics.push(...validateAssetInventoryShape(value.assetInventory));
 
-  if (expectedFormat === EDITABLE_PROJECT_BACKUP_FORMAT) {
+  if (validateBackupSnapshotShape) {
     diagnostics.push(...validateBackupSnapshot(value.workspaceSnapshot, value.assetInventory));
   }
 
   if (diagnostics.some((diagnostic) => diagnostic.severity === "error") || !typeGuard(value)) {
-    return failed("Manifest failed structural validation.", diagnostics);
+    return failed("Manifest failed structural validation.", dedupeDiagnostics(diagnostics));
   }
 
-  return { status: "ok", manifest: value, diagnostics };
+  return { status: "ok", manifest: value, diagnostics: dedupeDiagnostics(diagnostics) };
 }
 
 function validateAssetInventoryShape(value: unknown): ProjectArchiveDiagnostic[] {
@@ -431,15 +480,33 @@ function validateAssetInventoryShape(value: unknown): ProjectArchiveDiagnostic[]
   }
 
   const seenPortableBundleKeys = new Set<string>();
+  const inventoryAssetIds = new Set<string>();
+
   for (const [index, entry] of value.entries.entries()) {
-    if (!isRecord(entry) || typeof entry.sourceAssetId !== "string" || typeof entry.portableBundleKey !== "string") {
+    if (!isPortableAssetInventoryEntry(entry)) {
       diagnostics.push({
         code: "invalid_asset_inventory_entry",
         severity: "error",
-        message: "Each asset inventory entry must include sourceAssetId and portableBundleKey.",
+        message: "Each asset inventory entry must include complete portable asset metadata.",
         path: `assetInventory.entries.${index}`
       });
       continue;
+    }
+    if ("storageKey" in entry) {
+      diagnostics.push({
+        code: "runtime_storage_key_exposed",
+        severity: "error",
+        message: "Portable asset inventory entries must not expose runtime storageKey values.",
+        path: `assetInventory.entries.${index}.storageKey`
+      });
+    }
+    if (!isAssetBinaryStatus(entry.binaryStatus)) {
+      diagnostics.push({
+        code: "invalid_binary_status",
+        severity: "error",
+        message: `Unsupported binaryStatus ${stringifyForMessage(entry.binaryStatus)}.`,
+        path: `assetInventory.entries.${index}.binaryStatus`
+      });
     }
     if (seenPortableBundleKeys.has(entry.portableBundleKey)) {
       diagnostics.push({
@@ -450,6 +517,27 @@ function validateAssetInventoryShape(value: unknown): ProjectArchiveDiagnostic[]
       });
     }
     seenPortableBundleKeys.add(entry.portableBundleKey);
+    inventoryAssetIds.add(entry.sourceAssetId);
+  }
+
+  for (const [index, reference] of value.references.entries()) {
+    if (!isWorkspaceAssetReference(reference)) {
+      diagnostics.push({
+        code: "invalid_asset_inventory_reference",
+        severity: "error",
+        message: "Each asset reference must include assetId, field, ownerKind, ownerId, and usage.",
+        path: `assetInventory.references.${index}`
+      });
+      continue;
+    }
+    if (!inventoryAssetIds.has(reference.assetId)) {
+      diagnostics.push({
+        code: "referenced_asset_missing_inventory_entry",
+        severity: "error",
+        message: `Asset reference ${reference.assetId} has no asset inventory entry.`,
+        path: `assetInventory.references.${index}.assetId`
+      });
+    }
   }
 
   return diagnostics;
@@ -473,28 +561,47 @@ function validateBackupSnapshot(workspaceSnapshot: unknown, assetInventory: unkn
     return diagnostics;
   }
 
-  if (!isRecord(assetInventory) || !Array.isArray(assetInventory.entries) || !Array.isArray(assetInventory.references)) {
+  const snapshotAssetIds = new Set<string>();
+  for (const [assetId, assetValue] of Object.entries(workspaceSnapshot.assets)) {
+    snapshotAssetIds.add(assetId);
+    if (!isPortableAssetMetadataRecord(assetValue)) {
+      diagnostics.push({
+        code: "invalid_workspace_snapshot",
+        severity: "error",
+        message: `workspaceSnapshot.assets.${assetId} must include portable asset metadata.`,
+        path: `workspaceSnapshot.assets.${assetId}`
+      });
+      continue;
+    }
+    if ("storageKey" in assetValue) {
+      diagnostics.push({
+        code: "runtime_storage_key_exposed",
+        severity: "error",
+        message: "workspaceSnapshot.assets must not expose runtime storageKey values.",
+        path: `workspaceSnapshot.assets.${assetId}.storageKey`
+      });
+    }
+  }
+
+  if (!isRecord(assetInventory) || !Array.isArray(assetInventory.entries)) {
     return diagnostics;
   }
 
   const inventoryAssetIds = new Set(
     assetInventory.entries
-      .filter(isRecord)
+      .filter(isPortableAssetInventoryEntry)
       .map((entry) => entry.sourceAssetId)
-      .filter((sourceAssetId): sourceAssetId is string => typeof sourceAssetId === "string")
   );
-  for (const [index, reference] of assetInventory.references.entries()) {
-    if (!isRecord(reference) || typeof reference.assetId !== "string") {
-      continue;
-    }
-    if (!inventoryAssetIds.has(reference.assetId)) {
-      diagnostics.push({
-        code: "referenced_asset_missing_inventory_entry",
-        severity: "error",
-        message: `Asset reference ${reference.assetId} has no asset inventory entry.`,
-        path: `assetInventory.references.${index}.assetId`
-      });
-    }
+
+  const missingFromSnapshot = [...inventoryAssetIds].filter((assetId) => !snapshotAssetIds.has(assetId));
+  const extraInSnapshot = [...snapshotAssetIds].filter((assetId) => !inventoryAssetIds.has(assetId));
+  if (missingFromSnapshot.length > 0 || extraInSnapshot.length > 0) {
+    diagnostics.push({
+      code: "workspace_asset_inventory_mismatch",
+      severity: "error",
+      message: "workspaceSnapshot.assets must match assetInventory entries exactly.",
+      path: "workspaceSnapshot.assets"
+    });
   }
 
   return diagnostics;
@@ -546,57 +653,48 @@ function collectWorkspaceAssetReferences(workspace: MorphoWorkspace): WorkspaceA
     }
   }
 
-  return dedupeReferences(references);
+  return dedupeAssetReferences(references);
 }
 
 function collectObjectAssetReferences(object: MorphoObject): WorkspaceAssetReference[] {
   switch (object.type) {
     case "image":
-      return object.assetId ? [objectAssetReference(object.id, object.assetId, "objects", "assetId", "objectAsset")] : [];
+      return object.assetId ? [objectAssetReference(object.id, object.assetId, "assetId", "objectAsset")] : [];
     case "file": {
       const references: WorkspaceAssetReference[] = [];
       if (object.assetId) {
-        references.push(objectAssetReference(object.id, object.assetId, "objects", "assetId", "objectAsset"));
+        references.push(objectAssetReference(object.id, object.assetId, "assetId", "objectAsset"));
       }
       if (object.extractedAssetId) {
-        references.push(objectAssetReference(object.id, object.extractedAssetId, "objects", "extractedAssetId", "documentExtract"));
+        references.push(objectAssetReference(object.id, object.extractedAssetId, "extractedAssetId", "documentExtract"));
       }
       return references;
     }
     case "link":
-      return object.assetId ? [objectAssetReference(object.id, object.assetId, "objects", "assetId", "objectAsset")] : [];
+      return object.assetId ? [objectAssetReference(object.id, object.assetId, "assetId", "objectAsset")] : [];
     case "documentFragment":
-      return [
-        objectAssetReference(
-          object.id,
-          object.source.sourceExtractAssetId,
-          "objects",
-          "source.sourceExtractAssetId",
-          "documentExtract"
-        )
-      ];
+      return [objectAssetReference(object.id, object.source.sourceExtractAssetId, "source.sourceExtractAssetId", "documentExtract")];
     default:
       return [];
   }
 }
 
 function objectAssetReference(
-  objectId: MorphoObjectId,
+  objectId: MorphoObject["id"],
   assetId: AssetId,
-  root: string,
   fieldName: string,
   usage: WorkspaceAssetReference["usage"]
 ): WorkspaceAssetReference {
   return {
     assetId,
-    field: `${root}.${objectId}.${fieldName}`,
+    field: `objects.${objectId}.${fieldName}`,
     ownerKind: "object",
     ownerId: objectId,
     usage
   };
 }
 
-function dedupeReferences(references: WorkspaceAssetReference[]): WorkspaceAssetReference[] {
+function dedupeAssetReferences(references: WorkspaceAssetReference[]): WorkspaceAssetReference[] {
   const seen = new Set<string>();
   const result: WorkspaceAssetReference[] = [];
   for (const reference of references) {
@@ -607,6 +705,41 @@ function dedupeReferences(references: WorkspaceAssetReference[]): WorkspaceAsset
     }
   }
   return result.sort((a, b) => `${a.field}:${a.assetId}`.localeCompare(`${b.field}:${b.assetId}`));
+}
+
+function buildArchiveVisualObjects(workspace: MorphoWorkspace): ArchiveVisualObject[] {
+  return objectsOfType(workspace, "image")
+    .map((image) => {
+      const direction = image.directionId ? workspace.objects[image.directionId] : undefined;
+      const visualBranch = image.visualBranchId ? workspace.visualBranches[image.visualBranchId] : undefined;
+      return {
+        id: image.id,
+        title: image.title,
+        summary: image.summary,
+        visibility: image.visibility,
+        assetId: image.assetId,
+        role: image.role,
+        imageVariant: image.imageVariant,
+        directionId: image.directionId,
+        directionTitle: direction?.type === "conceptDirection" ? direction.title : undefined,
+        visualBranchId: image.visualBranchId,
+        visualBranchLabel: visualBranch?.label,
+        isDefaultReference: image.isDefaultReference ?? false,
+        relatedRelationKinds: workspace.relations
+          .filter((relation) => relation.fromObjectId === image.id || relation.toObjectId === image.id)
+          .map((relation) => relation.kind)
+      };
+    })
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function buildArchiveSourceIndex(workspace: MorphoWorkspace): ArchiveSourceIndexObject[] {
+  return Object.values(workspace.objects)
+    .filter(
+      (object): object is ArchiveSourceIndexObject =>
+        object.type === "file" || object.type === "link" || object.type === "text" || object.type === "documentFragment"
+    )
+    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 function toPortableAssetInventoryEntry(assetRecord: AssetRecord): PortableAssetInventoryEntry {
@@ -680,7 +813,9 @@ function objectsOfType<TType extends MorphoObject["type"]>(
   workspace: MorphoWorkspace,
   type: TType
 ): Array<Extract<MorphoObject, { type: TType }>> {
-  return Object.values(workspace.objects).filter((object): object is Extract<MorphoObject, { type: TType }> => object.type === type);
+  return Object.values(workspace.objects)
+    .filter((object): object is Extract<MorphoObject, { type: TType }> => object.type === type)
+    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 function failed<TManifest>(reason: string, diagnostics: ProjectArchiveDiagnostic[]): ManifestValidationResult<TManifest> {
@@ -688,20 +823,76 @@ function failed<TManifest>(reason: string, diagnostics: ProjectArchiveDiagnostic
 }
 
 function isHumanReadableArchiveManifest(value: unknown): value is HumanReadableArchiveManifest {
-  return isRecord(value) && value.format === HUMAN_READABLE_ARCHIVE_FORMAT && isRecord(value.archive);
+  if (!isRecord(value) || value.format !== HUMAN_READABLE_ARCHIVE_FORMAT || !isRecord(value.archive)) {
+    return false;
+  }
+  const delivery = isRecord(value.archive.delivery) ? value.archive.delivery : undefined;
+  if (!delivery) {
+    return false;
+  }
+  return (
+    Array.isArray(value.archive.visualObjects) &&
+    isRecord(value.archive.researchAndSources) &&
+    Array.isArray(delivery.packages)
+  );
 }
 
 function isEditableProjectBackupManifest(value: unknown): value is EditableProjectBackupManifest {
-  return isRecord(value) && value.format === EDITABLE_PROJECT_BACKUP_FORMAT && isRecord(value.workspaceSnapshot);
+  return (
+    isRecord(value) &&
+    value.format === EDITABLE_PROJECT_BACKUP_FORMAT &&
+    isRecord(value.workspaceSnapshot) &&
+    isRecord(value.workspaceSnapshot.assets)
+  );
 }
 
 function isSourceProject(value: unknown): value is ManifestSourceProject {
+  return isRecord(value) && typeof value.id === "string" && typeof value.title === "string" && typeof value.subtitle === "string";
+}
+
+function isPortableAssetInventoryEntry(value: unknown): value is PortableAssetInventoryEntry {
+  return (
+    isRecord(value) &&
+    typeof value.sourceAssetId === "string" &&
+    typeof value.portableBundleKey === "string" &&
+    typeof value.fileName === "string" &&
+    typeof value.mimeType === "string" &&
+    typeof value.size === "number" &&
+    typeof value.sourceType === "string" &&
+    typeof value.createdAt === "string" &&
+    typeof value.binaryStatus === "string"
+  );
+}
+
+function isWorkspaceAssetReference(value: unknown): value is WorkspaceAssetReference {
+  return (
+    isRecord(value) &&
+    typeof value.assetId === "string" &&
+    typeof value.field === "string" &&
+    (value.ownerKind === "project" || value.ownerKind === "object" || value.ownerKind === "deliveryReference") &&
+    typeof value.ownerId === "string" &&
+    (value.usage === "projectCover" ||
+      value.usage === "objectAsset" ||
+      value.usage === "documentExtract" ||
+      value.usage === "deliverySourceAsset" ||
+      value.usage === "deliverySnapshotPreview")
+  );
+}
+
+function isPortableAssetMetadataRecord(value: unknown): value is PortableAssetMetadata {
   return (
     isRecord(value) &&
     typeof value.id === "string" &&
-    typeof value.title === "string" &&
-    typeof value.subtitle === "string"
+    typeof value.fileName === "string" &&
+    typeof value.mimeType === "string" &&
+    typeof value.size === "number" &&
+    typeof value.sourceType === "string" &&
+    typeof value.createdAt === "string"
   );
+}
+
+function isAssetBinaryStatus(value: unknown): value is AssetBinaryStatus {
+  return value === "notVerified" || value === "metadataOnly" || value === "missingMetadata";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -713,4 +904,17 @@ function stringifyForMessage(value: unknown): string {
     return value;
   }
   return JSON.stringify(value);
+}
+
+function dedupeDiagnostics(diagnostics: ProjectArchiveDiagnostic[]): ProjectArchiveDiagnostic[] {
+  const seen = new Set<string>();
+  const deduped: ProjectArchiveDiagnostic[] = [];
+  for (const diagnostic of diagnostics) {
+    const key = `${diagnostic.code}:${diagnostic.path ?? ""}:${diagnostic.message}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(diagnostic);
+    }
+  }
+  return deduped;
 }
