@@ -527,3 +527,11 @@ Decision: `prepareDeliverySection` uses only the current section's frozen delive
 Reason: AI can help draft explanation text, but it must not silently turn model prose into delivery content, project memory, design definition, direction status, default reference, or Compare output.
 
 Boundary: the route drops web search for this intent. The client does not send live source object bodies, full source files, full document extracts, image pixels, Blob URLs, Base64, normal task context, or Compare context. Malformed blocks or same-reply design/direction/Compare proposals do not create a delivery draft.
+
+## 2026-07-02: Split Archive And Editable Backup Manifests
+
+Decision: M7-A defines two distinct manifest families in pure domain code: `morpho-human-readable-archive` for review/handoff and `morpho-editable-project-backup` for future restore into a new project copy.
+
+Reason: a readable archive is not the same artifact as a restore-ready backup. Keeping them separate avoids mixing handoff-oriented scope with editable recovery scope and keeps future M7-B/M7-C implementation contracts stable.
+
+Boundary: both manifests use `manifestVersion: "1"` independent of `workspace.schemaVersion`. Both expose structured asset inventory and readable diagnostics. Portable inventory keys are logical keys only and must not reuse runtime `storageKey` or Blob URLs. Backup restore must remap project identity and regenerate runtime storage keys rather than merge into an existing project.

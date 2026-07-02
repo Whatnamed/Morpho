@@ -202,6 +202,22 @@ Binary files are not stored in localStorage. Imported images/files and generated
 
 The current code does not implement asset garbage collection. Deleting a canvas object does not delete Blob data.
 
+## M7-A Archive And Backup Domain Layer
+
+M7-A adds a pure domain module at `src/domain/morpho/projectArchive.ts`.
+
+- `createHumanReadableArchiveManifest(...)` builds a reading/handoff manifest and never pretends to be a restorable workspace dump.
+- `createEditableProjectBackupManifest(...)` builds a portable backup manifest and records restore constraints without performing restore.
+- `collectWorkspaceAssetInventory(...)` audits current workspace asset metadata plus known asset references across project cover, objects, document extracts, and delivery snapshots.
+- `sanitizeWorkspaceForEditableBackup(...)` preserves edit-relevant structured project state while normalizing transient UI state.
+- Validation accepts `unknown` input and returns structured diagnostics suitable for future UI display.
+
+Current boundary:
+
+- runtime localStorage keys and IndexedDB `storageKey` values stay runtime-only and are excluded from portable manifests;
+- binary payloads are not yet collected, so integrity is reported honestly as metadata-only / not verified;
+- M7-A does not add archive download, bundle generation, restore writes, or UI wiring.
+
 ## Import, Search, Assets, Hidden
 
 Implemented import paths:
