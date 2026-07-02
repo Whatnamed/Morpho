@@ -275,22 +275,29 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
 
   const taskMode = isTaskMode(value.taskMode) ? value.taskMode : "chatAnalysis";
   const workIntent = isWorkIntent(value.workIntent) ? value.workIntent : "discussion";
-  const messages = Array.isArray(value.messages) ? value.messages.filter(isMessage).slice(-12) : [];
-  const objectSummaries = Array.isArray(value.objectSummaries)
+  const isDeliverySectionPreparation = workIntent === "prepareDeliverySection";
+  const messages = isDeliverySectionPreparation
+    ? []
+    : Array.isArray(value.messages) ? value.messages.filter(isMessage).slice(-12) : [];
+  const objectSummaries = isDeliverySectionPreparation
+    ? []
+    : Array.isArray(value.objectSummaries)
     ? value.objectSummaries.filter(isObjectSummary).slice(0, 16)
     : [];
-  const attachments = Array.isArray(value.attachments)
+  const attachments = isDeliverySectionPreparation
+    ? []
+    : Array.isArray(value.attachments)
     ? value.attachments.filter(isAttachment).map(normalizeAttachment)
     : [];
   const documentExtracts =
-    !Array.isArray(value.documentExtracts)
+    isDeliverySectionPreparation || !Array.isArray(value.documentExtracts)
       ? []
       : value.documentExtracts.filter(isDocumentExtract).slice(0, 8);
-  const taskContext = normalizeTaskContext(value.taskContext);
-  const comparisonContext = normalizeComparisonContext(value.comparisonContext);
-  const comparisonBackgroundContext = normalizeComparisonBackgroundContext(value.comparisonBackgroundContext);
+  const taskContext = isDeliverySectionPreparation ? undefined : normalizeTaskContext(value.taskContext);
+  const comparisonContext = isDeliverySectionPreparation ? undefined : normalizeComparisonContext(value.comparisonContext);
+  const comparisonBackgroundContext = isDeliverySectionPreparation ? undefined : normalizeComparisonBackgroundContext(value.comparisonBackgroundContext);
   const deliverySectionContext = normalizeDeliverySectionContext(value.deliverySectionContext);
-  const conversationContext = normalizeConversationContext(value.conversationContext);
+  const conversationContext = isDeliverySectionPreparation ? undefined : normalizeConversationContext(value.conversationContext);
 
   return {
     status: "ok",
@@ -304,8 +311,8 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
       attachments,
       documentExtracts,
       conversationContext,
-      webSearch: workIntent === "prepareDeliverySection" ? undefined : normalizeWebSearch(value.webSearch, taskMode),
-      defaultReferenceStatus: typeof value.defaultReferenceStatus === "string" ? value.defaultReferenceStatus : undefined,
+      webSearch: isDeliverySectionPreparation ? undefined : normalizeWebSearch(value.webSearch, taskMode),
+      defaultReferenceStatus: !isDeliverySectionPreparation && typeof value.defaultReferenceStatus === "string" ? value.defaultReferenceStatus : undefined,
       taskContext,
       comparisonContext,
       comparisonBackgroundContext,
@@ -715,7 +722,7 @@ function buildStructuredProposalInstruction(request: AiRouteRequest): string {
       "For delivery section preparation, reply in normal prose first. You may append one fenced JSON block named morphoDeliverySectionDraft.",
       "Use only deliverySectionContext.references frozen snapshots. Do not use live canvas object bodies, full source files, documentExtract full text, Blob URLs, Base64, web search, Compare, design definition proposal, or concept direction proposal.",
       "The draft is not project fact, not project memory, and not applied until the user explicitly applies it.",
-      "If the same reply includes morphoDesignDefinitionProposal, morphoConceptDirectionProposal, or morphoComparisonAnalysis, do not output morphoDeliverySectionDraft.",
+      "If the same reply includes morphoDesignDefinitionProposal, morphoConceptDirectionProposal, morphoComparisonAnalysis, morphoResearchProposal, morphoProjectContinuityPatch, or morphoConversationCheckpoint, do not output morphoDeliverySectionDraft.",
       "JSON shape: { \"morphoDeliverySectionDraft\": { \"title\"?: string, \"narrative\": string, \"captions\": [{ \"referenceId\": string, \"caption\": string }], \"suggestedGaps\": [{ \"label\": string }] } }",
       "captions may only target current section delivery reference IDs. suggestedGaps are only suggestions and must not imply they were written."
     ].join("\n");

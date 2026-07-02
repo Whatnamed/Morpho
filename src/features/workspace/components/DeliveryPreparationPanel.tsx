@@ -5,9 +5,12 @@ import { useMemo, useState } from "react";
 
 import type { DeliveryObject, DeliveryReference, DeliverySection, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
 import {
+  buildDeliveryReferenceRefreshPreview,
+  canRefreshDeliveryReference,
   canAddObjectToDelivery,
   deliveryFormatLabel,
   deliverySourceStateLabel,
+  getDeliveryReferenceLocationTarget,
   getDeliveryObjects,
   getDeliverySectionReferences
 } from "../deliveryPreparationUi";
@@ -24,6 +27,7 @@ type DeliveryPreparationPanelProps = {
   onSelectDelivery: (deliveryObjectId: string) => void;
   onLocateObject: (objectId: string) => void;
   onAddSelectedObjects: (input: { deliveryObjectId: string; sectionId: string; sourceObjectIds: string[] }) => void;
+  onCreateSection: (input: { deliveryObjectId: string; title: string; purpose?: string }) => void;
   onUpdateSection: (input: { deliveryObjectId: string; sectionId: string; title?: string; purpose?: string; narrative?: string }) => void;
   onMoveSection: (input: { deliveryObjectId: string; sectionId: string; toIndex: number }) => void;
   onRemoveSection: (input: { deliveryObjectId: string; sectionId: string }) => void;
@@ -49,6 +53,7 @@ export function DeliveryPreparationPanel({
   onSelectDelivery,
   onLocateObject,
   onAddSelectedObjects,
+  onCreateSection,
   onUpdateSection,
   onMoveSection,
   onRemoveSection,
@@ -70,8 +75,15 @@ export function DeliveryPreparationPanel({
   const [draftFormat, setDraftFormat] = useState<DeliveryObject["format"]>("presentation");
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [gapLabel, setGapLabel] = useState("");
+  const [sectionTitle, setSectionTitle] = useState("");
+  const [sectionPurpose, setSectionPurpose] = useState("");
+  const [preferNewestSectionDeliveryId, setPreferNewestSectionDeliveryId] = useState<string | null>(null);
 
-  const activeSection = activeDelivery?.sections.find((section) => section.id === activeSectionId) ?? activeDelivery?.sections[0];
+  const newestSection =
+    activeDelivery && preferNewestSectionDeliveryId === activeDelivery.id
+      ? [...activeDelivery.sections].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
+      : undefined;
+  const activeSection = activeDelivery?.sections.find((section) => section.id === activeSectionId) ?? newestSection ?? activeDelivery?.sections[0];
   const addableSelectedObjects = selectedObjects.filter(canAddObjectToDelivery);
   const activeDrafts = activeDelivery
     ? Object.values(workspace.deliverySectionDrafts)
@@ -144,13 +156,51 @@ export function DeliveryPreparationPanel({
                   className={`delivery-section-tab ${section.id === activeSection.id ? "active" : ""}`}
                   key={section.id}
                   type="button"
-                  onClick={() => setActiveSectionId(section.id)}
+                  onClick={() => {
+                    setActiveSectionId(section.id);
+                    setPreferNewestSectionDeliveryId(null);
+                  }}
                 >
                   <span>{index + 1}</span>
                   {section.title}
                 </button>
               ))}
             </div>
+
+            <section className="delivery-section-create">
+              <div className="delivery-card-title">新增章节</div>
+              <input
+                value={sectionTitle}
+                onChange={(event) => setSectionTitle(event.currentTarget.value)}
+                placeholder="章节标题"
+                aria-label="新增章节标题"
+              />
+              <textarea
+                value={sectionPurpose}
+                onChange={(event) => setSectionPurpose(event.currentTarget.value)}
+                placeholder="可选：本章节目的"
+                aria-label="新增章节目的"
+              />
+              <button
+                className="plain-button"
+                type="button"
+                disabled={!sectionTitle.trim()}
+                onClick={() => {
+                  onCreateSection({
+                    deliveryObjectId: activeDelivery.id,
+                    title: sectionTitle,
+                    purpose: sectionPurpose
+                  });
+                  setSectionTitle("");
+                  setSectionPurpose("");
+                  setActiveSectionId(null);
+                  setPreferNewestSectionDeliveryId(activeDelivery.id);
+                }}
+              >
+                <Plus size={14} />
+                新增章节
+              </button>
+            </section>
 
             <SectionEditor
               delivery={activeDelivery}
@@ -362,6 +412,7 @@ function ReferenceList({
   onRefreshReference: DeliveryPreparationPanelProps["onRefreshReference"];
 }) {
   const references = getDeliverySectionReferences(workspace, section);
+  const [pendingRefreshReferenceId, setPendingRefreshReferenceId] = useState<string | null>(null);
   if (references.length === 0) {
     return <p className="delivery-muted">本节还没有交付引用。选择画布对象后点击“加入当前选中对象”。</p>;
   }
@@ -371,6 +422,10 @@ function ReferenceList({
       {references.map((reference, index) => {
         const source = reference.sourceObjectId ? workspace.objects[reference.sourceObjectId] : undefined;
         const state = resolveDeliveryReferenceState(workspace, reference.id);
+        const locationTarget = getDeliveryReferenceLocationTarget(workspace, reference);
+        const canRefresh = canRefreshDeliveryReference(workspace, reference);
+        const refreshPreview =
+          pendingRefreshReferenceId === reference.id ? buildDeliveryReferenceRefreshPreview(workspace, reference) : null;
         return (
           <article className="delivery-reference-card" key={reference.id}>
             <div className="delivery-reference-head">
@@ -381,9 +436,9 @@ function ReferenceList({
                   {reference.snapshot.sourceType} · {reference.snapshot.summary ?? "稳定快照"}
                 </p>
               </div>
-              {source ? (
-                <button type="button" className="plain-button" onClick={() => onLocateObject(source.id)}>
-                  定位来源
+              {locationTarget ? (
+                <button type="button" className="plain-button" onClick={() => onLocateObject(locationTarget.objectId)}>
+                  {locationTarget.label}
                 </button>
               ) : null}
             </div>
@@ -447,12 +502,39 @@ function ReferenceList({
               <button
                 type="button"
                 className="plain-button"
-                disabled={state.status !== "sourceUpdated"}
-                onClick={() => onRefreshReference({ deliveryObjectId: delivery.id, referenceId: reference.id })}
+                disabled={!canRefresh}
+                onClick={() => setPendingRefreshReferenceId(reference.id)}
               >
                 <RefreshCw size={14} />
                 更新为当前版本
               </button>
+              <select
+                value=""
+                aria-label="移动引用到其他章节"
+                onChange={(event) => {
+                  const targetSectionId = event.currentTarget.value;
+                  const targetSection = delivery.sections.find((candidate) => candidate.id === targetSectionId);
+                  if (!targetSection) {
+                    return;
+                  }
+                  onMoveReference({
+                    deliveryObjectId: delivery.id,
+                    referenceId: reference.id,
+                    toSectionId: targetSection.id,
+                    toIndex: targetSection.referenceIds.length
+                  });
+                  event.currentTarget.value = "";
+                }}
+              >
+                <option value="">移到其他章节</option>
+                {delivery.sections
+                  .filter((candidate) => candidate.id !== section.id)
+                  .map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.title}
+                    </option>
+                  ))}
+              </select>
               <button
                 type="button"
                 className="plain-button danger"
@@ -461,6 +543,40 @@ function ReferenceList({
                 移除引用
               </button>
             </div>
+            {refreshPreview ? (
+              <div className="delivery-refresh-preview">
+                <strong>确认更新引用快照</strong>
+                {refreshPreview.status === "ready" ? (
+                  <>
+                    <p>当前引用快照：{reference.snapshot.title}</p>
+                    <p>当前来源版本：{refreshPreview.currentSnapshot.title}</p>
+                    <span>变化项：{refreshPreview.changeLabels.join(" / ")}</span>
+                    <div className="delivery-action-row">
+                      <button className="plain-button" type="button" onClick={() => setPendingRefreshReferenceId(null)}>
+                        取消
+                      </button>
+                      <button
+                        className="brand-button"
+                        type="button"
+                        onClick={() => {
+                          onRefreshReference({ deliveryObjectId: delivery.id, referenceId: reference.id });
+                          setPendingRefreshReferenceId(null);
+                        }}
+                      >
+                        确认更新
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p>{refreshPreview.reason}</p>
+                    <button className="plain-button" type="button" onClick={() => setPendingRefreshReferenceId(null)}>
+                      关闭
+                    </button>
+                  </>
+                )}
+              </div>
+            ) : null}
             {source ? <span className="delivery-muted">来源类型：{getObjectTypeLabel(source)}；刷新引用不会修改来源对象。</span> : null}
           </article>
         );

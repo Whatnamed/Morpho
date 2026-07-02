@@ -1,4 +1,4 @@
-import { extractStructuredJsonBlock } from "./structuredBlocks";
+import { extractStructuredJsonBlock, sanitizeStructuredStreamForDisplay, stripStructuredBlocksContainingMarkers } from "./structuredBlocks";
 
 export type ParsedDeliverySectionDraftPayload = {
   title?: string;
@@ -39,12 +39,19 @@ const DELIVERY_DRAFT_MARKER = "morphoDeliverySectionDraft";
 const BLOCKING_PROPOSAL_KEYS = [
   "morphoDesignDefinitionProposal",
   "morphoConceptDirectionProposal",
-  "morphoComparisonAnalysis"
+  "morphoComparisonAnalysis",
+  "morphoProjectContinuityPatch",
+  "morphoConversationCheckpoint",
+  "morphoResearchProposal"
 ] as const;
+const DELIVERY_TECHNICAL_MARKERS = [DELIVERY_DRAFT_MARKER, ...BLOCKING_PROPOSAL_KEYS] as const;
 
 const MAX_NARRATIVE_LENGTH = 2_400;
 const MAX_CAPTIONS = 24;
 const MAX_GAPS = 8;
+const MAX_TITLE_LENGTH = 160;
+const MAX_CAPTION_LENGTH = 500;
+const MAX_GAP_LABEL_LENGTH = 240;
 
 export function parseDeliverySectionDraftPayload(text: string): ParseDeliverySectionDraftResult {
   if (BLOCKING_PROPOSAL_KEYS.some((key) => Boolean(extractStructuredJsonBlock(text, key)))) {
@@ -99,6 +106,9 @@ export function validateDeliverySectionDraftPayload(
   if (draft.captions.some((caption) => !allowedReferences.has(caption.referenceId))) {
     return { status: "failed", reason: "Delivery draft caption references must belong to the current section." };
   }
+  if (new Set(draft.captions.map((caption) => caption.referenceId)).size !== draft.captions.length) {
+    return { status: "failed", reason: "Delivery draft captions must not repeat the same reference." };
+  }
   if (draft.captions.some((caption) => !caption.caption.trim())) {
     return { status: "failed", reason: "Delivery draft captions must not be empty." };
   }
@@ -107,6 +117,14 @@ export function validateDeliverySectionDraftPayload(
   }
 
   return { status: "ok" };
+}
+
+export function stripDeliverySectionDraftTechnicalBlocks(text: string): string {
+  return stripStructuredBlocksContainingMarkers(text, DELIVERY_TECHNICAL_MARKERS);
+}
+
+export function sanitizeDeliverySectionDraftStreamForDisplay(rawText: string): string {
+  return sanitizeStructuredStreamForDisplay(rawText, DELIVERY_TECHNICAL_MARKERS);
 }
 
 function parseDraftPayload(value: unknown): ParsedDeliverySectionDraftPayload | undefined {
@@ -118,15 +136,32 @@ function parseDraftPayload(value: unknown): ParsedDeliverySectionDraftPayload | 
   ) {
     return undefined;
   }
-  const captions = Array.isArray(value.captions) ? value.captions.map(parseCaption).filter(isDefined).slice(0, MAX_CAPTIONS + 1) : [];
-  const suggestedGaps = Array.isArray(value.suggestedGaps)
-    ? value.suggestedGaps.map(parseSuggestedGap).filter(isDefined).slice(0, MAX_GAPS + 1)
-    : [];
+  const narrative = value.narrative.trim();
+  if (!narrative || narrative.length > MAX_NARRATIVE_LENGTH) {
+    return undefined;
+  }
+  const title = typeof value.title === "string" ? value.title.trim() : undefined;
+  if (value.title !== undefined && (typeof value.title !== "string" || !title || title.length > MAX_TITLE_LENGTH)) {
+    return undefined;
+  }
+  if (value.captions !== undefined && !Array.isArray(value.captions)) {
+    return undefined;
+  }
+  if (value.suggestedGaps !== undefined && !Array.isArray(value.suggestedGaps)) {
+    return undefined;
+  }
+  const captions = value.captions ? value.captions.map(parseCaption) : [];
+  const suggestedGaps = value.suggestedGaps ? value.suggestedGaps.map(parseSuggestedGap) : [];
+  if (captions.some((caption) => caption === undefined) || suggestedGaps.some((gap) => gap === undefined)) {
+    return undefined;
+  }
+  const parsedCaptions = captions.filter(isDefined);
+  const parsedSuggestedGaps = suggestedGaps.filter(isDefined);
   return {
-    title: typeof value.title === "string" && value.title.trim() ? trimString(value.title, 160) : undefined,
-    narrative: trimString(value.narrative, MAX_NARRATIVE_LENGTH + 1),
-    captions,
-    suggestedGaps
+    title,
+    narrative,
+    captions: parsedCaptions,
+    suggestedGaps: parsedSuggestedGaps
   };
 }
 
@@ -137,9 +172,14 @@ function parseCaption(value: unknown): ParsedDeliverySectionDraftPayload["captio
   if (!hasOnlyAllowedKeys(value, ["referenceId", "caption"])) {
     return undefined;
   }
+  const referenceId = value.referenceId.trim();
+  const caption = value.caption.trim();
+  if (!referenceId || referenceId.length > MAX_TITLE_LENGTH || !caption || caption.length > MAX_CAPTION_LENGTH) {
+    return undefined;
+  }
   return {
-    referenceId: trimString(value.referenceId, 160),
-    caption: trimString(value.caption, 500)
+    referenceId,
+    caption
   };
 }
 
@@ -150,11 +190,11 @@ function parseSuggestedGap(value: unknown): ParsedDeliverySectionDraftPayload["s
   if (!hasOnlyAllowedKeys(value, ["label"])) {
     return undefined;
   }
-  return { label: trimString(value.label, 240) };
-}
-
-function trimString(value: string, maxLength: number): string {
-  return value.trim().slice(0, maxLength);
+  const label = value.label.trim();
+  if (!label || label.length > MAX_GAP_LABEL_LENGTH) {
+    return undefined;
+  }
+  return { label };
 }
 
 function hasOnlyAllowedKeys(value: Record<string, unknown>, allowedKeys: readonly string[]): boolean {

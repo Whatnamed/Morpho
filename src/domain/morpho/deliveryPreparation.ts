@@ -126,6 +126,12 @@ const MAX_SNAPSHOT_TEXT_CHARS = 4_000;
 const MAX_DRAFT_NARRATIVE_CHARS = 2_400;
 const MAX_DRAFT_GAPS = 8;
 
+class DeliverySnapshotLimitError extends Error {
+  constructor() {
+    super("Delivery reference snapshot text exceeds the bounded text limit.");
+  }
+}
+
 export function createDeliveryPreparation(
   workspace: MorphoWorkspace,
   input: {
@@ -396,7 +402,11 @@ export function addObjectsToDeliverySection(
       nextReferences,
       `delivery-ref-${target.id}-${section.id}-${source.id}`
     );
-    const snapshot = createDeliveryReferenceSnapshot(workspace, source);
+    const snapshotResult = createBoundedDeliveryReferenceSnapshot(workspace, source);
+    if (snapshotResult.status === "blocked") {
+      return { status: "blocked", workspace, reason: snapshotResult.reason };
+    }
+    const snapshot = snapshotResult.snapshot;
     const fingerprint = createDeliverySourceFingerprint(workspace, source);
     const revision = getSourceRevision(workspace, source);
     const assetId = getSourceAssetId(source);
@@ -598,7 +608,26 @@ export function resolveDeliveryReferenceState(workspace: MorphoWorkspace, refere
   if (!source) {
     return { status: "sourceMissing", label: "来源不可用" };
   }
-  const sourceForAvailability = source.type === "documentFragment" ? workspace.objects[source.source.fileObjectId] ?? source : source;
+  if (source.type === "documentFragment") {
+    if (!workspace.assets[source.source.sourceExtractAssetId]) {
+      return { status: "assetMissing", label: "原始资产不可用" };
+    }
+    const file = workspace.objects[source.source.fileObjectId];
+    if (!file || file.type !== "file") {
+      return { status: "sourceMissing", label: "来源不可用" };
+    }
+    if (file.visibility === "hidden") {
+      return { status: "sourceHidden", label: "来源已隐藏" };
+    }
+    if (file.extractedAssetId !== source.source.sourceExtractAssetId) {
+      return { status: "sourceUpdated", label: "当前版本已有更新" };
+    }
+    if (reference.sourceFingerprint && reference.sourceFingerprint !== createDeliverySourceFingerprint(workspace, source)) {
+      return { status: "sourceUpdated", label: "当前版本已有更新" };
+    }
+    return { status: "current", label: "当前快照" };
+  }
+  const sourceForAvailability = source;
   if (sourceForAvailability.visibility === "hidden") {
     return { status: "sourceHidden", label: "来源已隐藏" };
   }
@@ -631,6 +660,18 @@ export function refreshDeliveryReferenceSnapshot(
       return blocked(workspace, "来源不可用，不能更新引用。");
     }
   }
+  if (source.type === "documentFragment") {
+    const fileForRefresh = workspace.objects[source.source.fileObjectId];
+    if (!fileForRefresh || fileForRefresh.type !== "file" || fileForRefresh.visibility !== "active") {
+      return blocked(workspace, "来源不可用，不能更新引用。");
+    }
+    if (!workspace.assets[source.source.sourceExtractAssetId]) {
+      return blocked(workspace, "原始资产不可用，不能更新引用。");
+    }
+    if (fileForRefresh.extractedAssetId !== source.source.sourceExtractAssetId) {
+      return blocked(workspace, "来源文本已有更新，当前原文定位不可用，不能刷新该引用。");
+    }
+  }
   const assetId = getSourceAssetId(source);
   if (assetId && !workspace.assets[assetId]) {
     return blocked(workspace, "原始资产不可用，不能更新引用。");
@@ -638,9 +679,13 @@ export function refreshDeliveryReferenceSnapshot(
 
   const now = input.now ?? new Date().toISOString();
   const revision = getSourceRevision(workspace, source);
+  const snapshotResult = createBoundedDeliveryReferenceSnapshot(workspace, source);
+  if (snapshotResult.status === "blocked") {
+    return blocked(workspace, snapshotResult.reason);
+  }
   const refreshed: DeliveryReference = {
     ...reference,
-    snapshot: createDeliveryReferenceSnapshot(workspace, source),
+    snapshot: snapshotResult.snapshot,
     sourceFingerprint: createDeliverySourceFingerprint(workspace, source),
     sourceRevisionId: revision?.revisionId,
     sourceRevisionNumber: revision?.revisionNumber,
@@ -1006,6 +1051,20 @@ export function deriveDeliveryPreparationSignals(workspace: MorphoWorkspace, del
   return signals;
 }
 
+function createBoundedDeliveryReferenceSnapshot(
+  workspace: MorphoWorkspace,
+  source: MorphoObject
+): { status: "ok"; snapshot: DeliveryReferenceSnapshot } | { status: "blocked"; reason: string } {
+  try {
+    return { status: "ok", snapshot: createDeliveryReferenceSnapshot(workspace, source) };
+  } catch (error) {
+    if (error instanceof DeliverySnapshotLimitError) {
+      return { status: "blocked", reason: "交付引用快照文字超过上限，请先缩短来源内容或创建更小的片段。" };
+    }
+    throw error;
+  }
+}
+
 export function createDeliveryReferenceSnapshot(workspace: MorphoWorkspace, source: MorphoObject): DeliveryReferenceSnapshot {
   switch (source.type) {
     case "image":
@@ -1291,7 +1350,7 @@ function nextAvailableSectionId(delivery: DeliveryObject, preferredId: string): 
 
 function boundedText(value: string): string {
   if (value.length > MAX_SNAPSHOT_TEXT_CHARS) {
-    throw new Error("Delivery reference snapshot text exceeds the bounded text limit.");
+    throw new DeliverySnapshotLimitError();
   }
   return value;
 }

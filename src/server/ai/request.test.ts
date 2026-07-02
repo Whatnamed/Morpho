@@ -330,9 +330,50 @@ describe("MiMo chat route request conversion", () => {
       task: "deliveryPreparation",
       taskMode: "chatAnalysis",
       workIntent: "prepareDeliverySection",
-      messages: [],
-      objectSummaries: [],
-      attachments: [],
+      messages: [
+        { role: "user", body: "This ordinary chat history must not reach delivery draft generation." },
+        { role: "assistant", body: "Previous assistant context must not reach delivery draft generation." }
+      ],
+      objectSummaries: [
+        {
+          id: "live-image-a",
+          type: "image",
+          title: "Live canvas image",
+          summary: "This selected live object summary must not reach the provider."
+        }
+      ],
+      attachments: [
+        {
+          id: "asset-a",
+          kind: "image",
+          objectId: "live-image-a",
+          mimeType: "image/png",
+          status: "ready",
+          dataUrl: "data:image/png;base64,must-not-survive"
+        }
+      ],
+      documentExtracts: [
+        {
+          objectId: "file-fulltext",
+          title: "Full source file",
+          text: "Full source text must not reach delivery draft generation.",
+          charCount: 52
+        }
+      ],
+      conversationContext: {
+        checkpoint: {
+          threadGoal: "Ordinary checkpoint must not reach delivery draft generation.",
+          progress: ["ordinary progress"],
+          openThreads: ["ordinary open thread"],
+          nextTurnAnchor: "ordinary next turn"
+        },
+        recentMessageCount: 2,
+        checkpointRequested: true
+      },
+      defaultReferenceStatus: "Default reference must not reach delivery draft generation.",
+      taskContext: {
+        projectGoal: "Ordinary task context must not reach delivery draft generation."
+      },
       deliverySectionContext: {
         deliveryObjectId: "delivery-a",
         sectionId: "section-a",
@@ -371,12 +412,26 @@ describe("MiMo chat route request conversion", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
+    expect(result.value.messages).toEqual([]);
+    expect(result.value.objectSummaries).toEqual([]);
+    expect(result.value.attachments).toEqual([]);
+    expect(result.value.documentExtracts).toEqual([]);
+    expect(result.value.conversationContext).toBeUndefined();
+    expect(result.value.defaultReferenceStatus).toBeUndefined();
+    expect(result.value.taskContext).toBeUndefined();
+    expect(result.value.comparisonContext).toBeUndefined();
+    expect(result.value.comparisonBackgroundContext).toBeUndefined();
+    expect(buildProviderMessages(result.value)).toEqual([{ role: "user", content: result.value.draft }]);
     expect(JSON.stringify(result.value.deliverySectionContext)).not.toContain("must-not-survive");
     const prompt = buildMorphoSystemPrompt(result.value);
     expect(prompt).toContain("Delivery section preparation context");
     expect(prompt).toContain("Only these frozen delivery reference snapshots are available");
     expect(prompt).toContain("morphoDeliverySectionDraft");
     expect(prompt).toContain("not project memory");
+    expect(prompt).not.toContain("Live canvas image");
+    expect(prompt).not.toContain("ordinary progress");
+    expect(prompt).not.toContain("Default reference must not reach");
+    expect(prompt).not.toContain("Ordinary task context");
     expect(prompt).not.toContain("morphoDesignDefinitionProposal: { title, summary");
     expect(prompt).not.toContain("morphoConceptDirectionProposal: { title, summary, directions");
   });

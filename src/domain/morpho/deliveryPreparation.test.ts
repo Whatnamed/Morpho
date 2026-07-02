@@ -296,6 +296,101 @@ describe("delivery preparation domain operations", () => {
     expect(resolveDeliveryReferenceState(missingAsset, imageReferenceId).status).toBe("assetMissing");
   });
 
+  it("tracks document fragment source file deletion, extract changes, and missing extract assets", () => {
+    const base = createInitialWorkspace();
+    const delivery = base.objects["delivery-board-a1"] as DeliveryObject;
+    const sectionId = delivery.sections[0]?.id ?? "";
+    const added = addObjectsToDeliverySection(base, {
+      deliveryObjectId: delivery.id,
+      sectionId,
+      sourceObjectIds: ["fragment-course-goal"],
+      now: "2026-07-02T08:25:00.000Z"
+    });
+    expect(added.status).toBe("updated");
+    if (added.status !== "updated") {
+      throw new Error(added.reason);
+    }
+    const referenceId = added.createdReferenceIds[0] ?? "";
+    const fragment = added.workspace.objects["fragment-course-goal"];
+    const file = added.workspace.objects["file-course-brief"];
+    if (!fragment || fragment.type !== "documentFragment" || !file || file.type !== "file") {
+      throw new Error("Expected document fragment and source file.");
+    }
+
+    const deletedFile: MorphoWorkspace = {
+      ...added.workspace,
+      objects: Object.fromEntries(Object.entries(added.workspace.objects).filter(([id]) => id !== file.id))
+    };
+    expect(resolveDeliveryReferenceState(deletedFile, referenceId).status).toBe("sourceMissing");
+
+    const changedExtract: MorphoWorkspace = {
+      ...added.workspace,
+      assets: {
+        ...added.workspace.assets,
+        "asset-course-brief-extract-v2": {
+          id: "asset-course-brief-extract-v2",
+          fileName: "course-brief-extract-v2.json",
+          mimeType: "application/json",
+          size: 128,
+          createdAt: "2026-07-02T08:26:00.000Z",
+          storageKey: "local/document-extract/course-brief-v2.json",
+          sourceType: "documentExtract"
+        }
+      },
+      objects: {
+        ...added.workspace.objects,
+        [file.id]: {
+          ...file,
+          extractedAssetId: "asset-course-brief-extract-v2"
+        }
+      }
+    };
+    expect(resolveDeliveryReferenceState(changedExtract, referenceId).status).toBe("sourceUpdated");
+
+    const missingExtractAsset: MorphoWorkspace = {
+      ...added.workspace,
+      assets: Object.fromEntries(
+        Object.entries(added.workspace.assets).filter(([id]) => id !== fragment.source.sourceExtractAssetId)
+      )
+    };
+    expect(resolveDeliveryReferenceState(missingExtractAsset, referenceId).status).toBe("assetMissing");
+  });
+
+  it("blocks overlong stable snapshots without throwing or writing partial delivery state", () => {
+    const base = createInitialWorkspace();
+    const delivery = base.objects["delivery-board-a1"] as DeliveryObject;
+    const sectionId = delivery.sections[0]?.id ?? "";
+    const fragment = base.objects["fragment-course-goal"];
+    if (!fragment || fragment.type !== "documentFragment") {
+      throw new Error("Expected document fragment.");
+    }
+    const workspace: MorphoWorkspace = {
+      ...base,
+      objects: {
+        ...base.objects,
+        [fragment.id]: {
+          ...fragment,
+          body: "x".repeat(4_001)
+        }
+      }
+    };
+
+    const result = addObjectsToDeliverySection(workspace, {
+      deliveryObjectId: delivery.id,
+      sectionId,
+      sourceObjectIds: [fragment.id],
+      now: "2026-07-02T08:27:00.000Z"
+    });
+
+    expect(result.status).toBe("blocked");
+    expect(result.workspace.deliveryReferences).toEqual(workspace.deliveryReferences);
+    expect((result.workspace.objects[delivery.id] as DeliveryObject).sections[0]?.referenceIds).toEqual(
+      delivery.sections[0]?.referenceIds
+    );
+    expect(result.workspace.relations).toEqual(workspace.relations);
+    expect(result.workspace.decisionRecords).toEqual(workspace.decisionRecords);
+  });
+
   it("explicitly refreshes one reference snapshot without changing the source or editorial notes", () => {
     const base = createInitialWorkspace();
     const delivery = base.objects["delivery-board-a1"] as DeliveryObject;

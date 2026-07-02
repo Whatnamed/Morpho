@@ -24,6 +24,7 @@ import {
   addObjectsToDeliverySection,
   applyDeliverySectionDraft,
   createDeliveryPreparation,
+  createDeliverySection,
   createDeliverySectionDraft,
   discardDeliverySectionDraft,
   moveDeliveryReference,
@@ -38,6 +39,8 @@ import {
 } from "@/domain/morpho/deliveryPreparation";
 import {
   parseDeliverySectionDraftPayload,
+  sanitizeDeliverySectionDraftStreamForDisplay,
+  stripDeliverySectionDraftTechnicalBlocks,
   validateDeliverySectionDraftPayload
 } from "@/domain/morpho/deliverySectionDraftBlock";
 import {
@@ -1327,20 +1330,21 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
+    const isDeliverySectionPreparation = executionWorkIntent === "prepareDeliverySection";
     const task = resolveAiContextTask(executionTaskMode, executionWorkIntent);
     const context = buildTaskContext(workspace, {
       kind: taskContextKindFromAiTask(task),
       draft,
-      selectedObjectIds
+      selectedObjectIds: isDeliverySectionPreparation ? [] : selectedObjectIds
     });
-    const deliveryDraftTarget = executionWorkIntent === "prepareDeliverySection" ? pendingDeliveryDraftTarget : null;
+    const deliveryDraftTarget = isDeliverySectionPreparation ? pendingDeliveryDraftTarget : null;
     const deliveryCandidate = deliveryDraftTarget ? workspace.objects[deliveryDraftTarget.deliveryObjectId] : undefined;
     const deliveryObject: DeliveryObject | undefined = deliveryCandidate?.type === "delivery" ? deliveryCandidate : undefined;
     const deliverySectionContext =
       deliveryObject && deliveryDraftTarget
         ? buildDeliverySectionContext(workspace, deliveryObject, deliveryDraftTarget.sectionId)
         : undefined;
-    if (executionWorkIntent === "prepareDeliverySection" && !deliverySectionContext) {
+    if (isDeliverySectionPreparation && !deliverySectionContext) {
       setAiDraft(draft);
       setContextWarning("请先选择一个至少包含一项交付引用的章节，再生成本节说明草稿。");
       setPendingDeliveryDraftTarget(null);
@@ -1372,7 +1376,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const now = new Date().toISOString();
     const userMessageId = `ai-user-${Date.now()}`;
     const assistantMessageId = `ai-assistant-${Date.now()}`;
-    const conversationLaneAnchors = resolveConversationLaneAnchors(workspace, selectedObjectIds);
+    const conversationLaneAnchors = resolveConversationLaneAnchors(workspace, isDeliverySectionPreparation ? [] : selectedObjectIds);
     const conversationLaneKey = buildConversationLaneKey({
       currentFocus: workspace.projectContinuity.currentFocus,
       taskKind: context.kind,
@@ -1391,7 +1395,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const objectSummaries = makeTaskObjectSummaries(context.semanticSummaries);
     const controller = new AbortController();
     const webSearch =
-      executionWorkIntent === "prepareDeliverySection" ? undefined : buildWebSearchOptions({ draft, taskMode: executionTaskMode });
+      isDeliverySectionPreparation ? undefined : buildWebSearchOptions({ draft, taskMode: executionTaskMode });
     abortControllerRef.current = controller;
     setIsAiStreaming(true);
     setAiDraft("");
@@ -1413,7 +1417,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             role: "user",
             body: draft,
             createdAt: now,
-            contextObjectIds: context.objectIds,
+            contextObjectIds: isDeliverySectionPreparation ? [] : context.objectIds,
             taskMode: executionTaskMode,
             recommendedTaskMode,
             workIntent: executionWorkIntent,
@@ -1426,7 +1430,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             body: "",
             createdAt: now,
             status: "streaming",
-            contextObjectIds: context.objectIds,
+            contextObjectIds: isDeliverySectionPreparation ? [] : context.objectIds,
             taskMode: executionTaskMode,
             workIntent: executionWorkIntent,
             conversationLaneKey
@@ -1438,7 +1442,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
     try {
       const attachmentResult =
-        executionWorkIntent === "prepareDeliverySection"
+        isDeliverySectionPreparation
           ? { attachments: [], skippedObjectIds: [], entries: [], warning: undefined }
           : shouldAttachImagesForMiMo({
                 draft,
@@ -1448,7 +1452,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             ? await collectMiMoImageAttachments(workspace, context.imageObjectIds, controller.signal)
             : { attachments: [], skippedObjectIds: [], entries: [], warning: undefined };
       const documentResult =
-        executionWorkIntent === "prepareDeliverySection"
+        isDeliverySectionPreparation
           ? { extracts: [], warning: undefined }
           : await collectDocumentExtractsForAi(
               workspace,
@@ -1456,11 +1460,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               indexedDbBlobStore,
               controller.signal
             );
-      const warnings = [
-        context.skipped.length > 0 ? `${context.skipped.length} 个对象未进入本次 Context。` : "",
-        attachmentResult.warning,
-        documentResult.warning
-      ].filter(Boolean);
+      const warnings = isDeliverySectionPreparation
+        ? []
+        : [
+            context.skipped.length > 0 ? `${context.skipped.length} 个对象未进入本次 Context。` : "",
+            attachmentResult.warning,
+            documentResult.warning
+          ].filter(Boolean);
       setContextWarning(warnings.join(" ") || undefined);
       const response = await fetch("/api/ai/chat", {
         method: "POST",
@@ -1470,30 +1476,32 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           task,
           taskMode: executionTaskMode,
           workIntent: executionWorkIntent,
-          messages: conversationContext.recentMessages,
-          objectSummaries,
+          messages: isDeliverySectionPreparation ? [] : conversationContext.recentMessages,
+          objectSummaries: isDeliverySectionPreparation ? [] : objectSummaries,
           attachments: attachmentResult.attachments,
           documentExtracts: documentResult.extracts,
-          conversationContext: {
-            checkpoint: conversationContext.checkpoint
-              ? {
-                  threadGoal: conversationContext.checkpoint.threadGoal,
-                  progress: conversationContext.checkpoint.progress,
-                  openThreads: conversationContext.checkpoint.openThreads,
-                  nextTurnAnchor: conversationContext.checkpoint.nextTurnAnchor
-                }
-              : undefined,
-            recentMessageCount: conversationContext.recentMessages.length,
-            checkpointRequested: conversationContext.checkpointRequested
-          },
+          conversationContext: isDeliverySectionPreparation
+            ? undefined
+            : {
+                checkpoint: conversationContext.checkpoint
+                  ? {
+                      threadGoal: conversationContext.checkpoint.threadGoal,
+                      progress: conversationContext.checkpoint.progress,
+                      openThreads: conversationContext.checkpoint.openThreads,
+                      nextTurnAnchor: conversationContext.checkpoint.nextTurnAnchor
+                    }
+                  : undefined,
+                recentMessageCount: conversationContext.recentMessages.length,
+                checkpointRequested: conversationContext.checkpointRequested
+              },
           webSearch,
-          defaultReferenceStatus: summarizeTaskDefaultReferenceStatus(context.defaultReference),
+          defaultReferenceStatus: isDeliverySectionPreparation ? undefined : summarizeTaskDefaultReferenceStatus(context.defaultReference),
           taskContext:
-            context.kind === "comparison" || executionWorkIntent === "prepareDeliverySection"
+            context.kind === "comparison" || isDeliverySectionPreparation
               ? undefined
               : buildProviderTaskContext(context),
           comparisonContext:
-            context.kind === "comparison"
+            context.kind === "comparison" && !isDeliverySectionPreparation
               ? {
                   sourceObjectIds: context.objectIds,
                   attachedImageObjectIds: attachmentResult.entries
@@ -1517,8 +1525,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 }
               : undefined,
           comparisonBackgroundContext:
-            context.kind === "comparison" ? buildProviderComparisonBackgroundContext(context) : undefined,
-          deliverySectionContext
+            context.kind === "comparison" && !isDeliverySectionPreparation ? buildProviderComparisonBackgroundContext(context) : undefined,
+          deliverySectionContext: isDeliverySectionPreparation ? deliverySectionContext : undefined
         }),
         signal: controller.signal
       });
@@ -1529,21 +1537,23 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
 
       const streamResult = await readAiEventStream(response.body, (assistantBody) => {
-        const sanitizedAssistantBody = sanitizeComparisonAssistantStreamForDisplay(
-          sanitizeConversationAssistantStreamForDisplay(assistantBody)
-        );
+        const sanitizedAssistantBody = isDeliverySectionPreparation
+          ? sanitizeDeliverySectionDraftStreamForDisplay(assistantBody)
+          : sanitizeComparisonAssistantStreamForDisplay(sanitizeConversationAssistantStreamForDisplay(assistantBody));
         setWorkspace((current) => updateAiMessage(current, assistantMessageId, sanitizedAssistantBody, "streaming"));
       });
-      const visibleAssistantText = stripComparisonAnalysisBlock(stripAssistantTechnicalBlocks(streamResult.text));
+      const visibleAssistantText = isDeliverySectionPreparation
+        ? stripDeliverySectionDraftTechnicalBlocks(streamResult.text)
+        : stripComparisonAnalysisBlock(stripAssistantTechnicalBlocks(streamResult.text));
       const assistantBody = [attachmentResult.warning, documentResult.warning, visibleAssistantText]
         .filter(Boolean)
         .join("\n\n");
       const resolvedAssistantBody = assistantBody || "MiMo 没有返回可显示文本。";
       const structuredWritePolicy = buildSameReplyStructuredWritePolicy(streamResult.text, executionWorkIntent);
-      const designDefinitionProposal = parseDesignDefinitionProposalPayload(streamResult.text);
-      const conceptDirectionProposal = parseConceptDirectionProposalPayload(streamResult.text);
+      const designDefinitionProposal = isDeliverySectionPreparation ? null : parseDesignDefinitionProposalPayload(streamResult.text);
+      const conceptDirectionProposal = isDeliverySectionPreparation ? null : parseConceptDirectionProposalPayload(streamResult.text);
       const deliverySectionDraft =
-        executionWorkIntent === "prepareDeliverySection" && deliverySectionContext
+        isDeliverySectionPreparation && deliverySectionContext
           ? parseDeliverySectionDraftPayload(streamResult.text)
           : null;
       const designDefinitionProposalId =
@@ -1571,7 +1581,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             })
           : null;
       const parsedComparisonAnalysis =
-        structuredWritePolicy.allowComparisonAnalysis
+        structuredWritePolicy.allowComparisonAnalysis && !isDeliverySectionPreparation
           ? parseComparisonAnalysisPayload(streamResult.text)
           : null;
 
@@ -1688,7 +1698,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             }
           }
 
-          if (structuredWritePolicy.allowSemanticPatch && executionWorkIntent !== "prepareDeliverySection") {
+          if (structuredWritePolicy.allowSemanticPatch && !isDeliverySectionPreparation) {
             const semanticPatchResult = applyConversationSemanticPatchFromReply({
               workspace: nextWorkspace,
               taskMode: executionTaskMode,
@@ -1745,7 +1755,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       } else if (appliedComparisonAnalysisId) {
         setPendingConfirmation(null);
       }
-      if (executionWorkIntent === "prepareDeliverySection") {
+      if (isDeliverySectionPreparation) {
         setPendingDeliveryDraftTarget(null);
       }
     } catch (error) {
@@ -1825,6 +1835,19 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         setSelectedObjectIds([createdId]);
         setFocusRequest((current) => ({ objectId: createdId, nonce: current.nonce + 1 }));
       }
+    },
+    [applyDeliveryOperation]
+  );
+
+  const handleCreateDeliverySection = useCallback(
+    (input: { deliveryObjectId: string; title: string; purpose?: string }) => {
+      applyDeliveryOperation((current) =>
+        createDeliverySection(current, {
+          deliveryObjectId: input.deliveryObjectId,
+          title: input.title,
+          purpose: input.purpose
+        })
+      );
     },
     [applyDeliveryOperation]
   );
@@ -3156,6 +3179,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               })
             )
           }
+          onCreateSection={handleCreateDeliverySection}
           onUpdateSection={(input) => applyDeliveryOperation((current) => updateDeliverySection(current, input))}
           onMoveSection={(input) => applyDeliveryOperation((current) => moveDeliverySection(current, input))}
           onRemoveSection={(input) => applyDeliveryOperation((current) => removeDeliverySection(current, input))}

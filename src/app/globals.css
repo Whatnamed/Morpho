@@ -1532,9 +1532,11 @@ input:focus-visible {
 }
 
 .delivery-create-card,
+.delivery-section-create,
 .delivery-section-editor,
 .delivery-gaps,
 .delivery-draft-card,
+.delivery-refresh-preview,
 .delivery-reference-card {
   border: 1px solid var(--border-subtle);
   border-radius: 16px;
@@ -1547,6 +1549,12 @@ input:focus-visible {
   gap: 10px;
   padding: 12px;
   margin-bottom: 16px;
+}
+
+.delivery-section-create {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
 }
 
 .delivery-card-title,
@@ -1568,9 +1576,12 @@ input:focus-visible {
 
 .delivery-create-card input,
 .delivery-create-card select,
+.delivery-section-create input,
+.delivery-section-create textarea,
 .delivery-section-editor input,
 .delivery-section-editor textarea,
 .delivery-reference-card input,
+.delivery-reference-card select,
 .delivery-reference-card textarea,
 .delivery-gap-input input {
   width: 100%;
@@ -1584,13 +1595,16 @@ input:focus-visible {
 
 .delivery-create-card input,
 .delivery-create-card select,
+.delivery-section-create input,
 .delivery-section-editor input,
 .delivery-reference-card input,
+.delivery-reference-card select,
 .delivery-gap-input input {
   height: 34px;
   padding: 0 10px;
 }
 
+.delivery-section-create textarea,
 .delivery-section-editor textarea,
 .delivery-reference-card textarea {
   min-height: 58px;
@@ -1706,7 +1720,8 @@ input:focus-visible {
 
 .delivery-reference-card,
 .delivery-gaps,
-.delivery-draft-card {
+.delivery-draft-card,
+.delivery-refresh-preview {
   display: grid;
   gap: 10px;
   padding: 12px;
@@ -1725,11 +1740,17 @@ input:focus-visible {
 
 .delivery-reference-head p,
 .delivery-reference-body,
+.delivery-refresh-preview p,
+.delivery-refresh-preview span,
 .delivery-draft-card p {
   margin: 0;
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.65;
+}
+
+.delivery-refresh-preview {
+  background: rgba(252, 249, 240, 0.78);
 }
 
 .delivery-source-state {
