@@ -72,6 +72,46 @@ describe("workspace asset URL cache", () => {
     expect(revoked).toEqual(["blob:old"]);
   });
 
+  it("does not let a pending read restore an asset that was removed before the read completed", async () => {
+    const revoked: string[] = [];
+    const pending = new Map<string, (url: string | null) => void>();
+    const cache = createWorkspaceAssetUrlCache({
+      loadUrl: (storageKey) =>
+        new Promise((resolve) => {
+          pending.set(storageKey, resolve);
+        }),
+      revokeUrl: (url) => revoked.push(url)
+    });
+
+    const first = cache.reconcile({ a: imageAsset("a", "removed-key") });
+    await cache.reconcile({});
+    pending.get("removed-key")?.("blob:removed");
+    await first;
+
+    expect(cache.getUrls()).toEqual({});
+    expect(revoked).toEqual(["blob:removed"]);
+  });
+
+  it("does not let a pending image read restore an asset that became a non-image asset", async () => {
+    const revoked: string[] = [];
+    const pending = new Map<string, (url: string | null) => void>();
+    const cache = createWorkspaceAssetUrlCache({
+      loadUrl: (storageKey) =>
+        new Promise((resolve) => {
+          pending.set(storageKey, resolve);
+        }),
+      revokeUrl: (url) => revoked.push(url)
+    });
+
+    const first = cache.reconcile({ a: imageAsset("a", "image-key") });
+    await cache.reconcile({ a: fileAsset("a", "file-key") });
+    pending.get("image-key")?.("blob:image");
+    await first;
+
+    expect(cache.getUrls()).toEqual({});
+    expect(revoked).toEqual(["blob:image"]);
+  });
+
   it("keeps other image URLs when one IndexedDB read fails", async () => {
     const cache = createWorkspaceAssetUrlCache({
       loadUrl: async (storageKey) => {

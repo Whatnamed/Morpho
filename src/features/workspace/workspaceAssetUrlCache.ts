@@ -101,6 +101,13 @@ export function createWorkspaceAssetUrlCache({
         }
       }
 
+      for (const [assetId, entry] of pending) {
+        const desiredStorageKey = desiredKeys.get(assetId);
+        if (!desiredStorageKey || desiredStorageKey !== entry.storageKey) {
+          pending.delete(assetId);
+        }
+      }
+
       const reads: Promise<void>[] = [];
       for (const asset of imageAssets) {
         const current = cached.get(asset.id);
