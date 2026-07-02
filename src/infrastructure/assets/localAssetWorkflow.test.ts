@@ -43,6 +43,9 @@ describe("local asset workflow", () => {
       },
       async get() {
         return null;
+      },
+      async delete() {
+        // no-op
       }
     };
     const file = new File(["pdf"], "brief.pdf", { type: "application/pdf" });
@@ -65,6 +68,9 @@ function createMemoryBlobStore(): BlobStore {
     },
     async get(storageKey: string) {
       return blobs.get(storageKey) ?? null;
+    },
+    async delete(storageKey: string) {
+      blobs.delete(storageKey);
     }
   };
 }

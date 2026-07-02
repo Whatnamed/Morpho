@@ -302,4 +302,8 @@ class MemoryBlobStore implements BlobStore {
     const text = this.textByKey[storageKey];
     return text === undefined ? null : new Blob([text], { type: "text/plain" });
   }
+
+  async delete(storageKey: string): Promise<void> {
+    delete this.textByKey[storageKey];
+  }
 }

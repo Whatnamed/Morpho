@@ -3,6 +3,7 @@ import type { AssetRecord, AssetSourceType } from "../../domain/morpho/types";
 export type BlobStore = {
   put: (storageKey: string, blob: Blob) => Promise<void>;
   get: (storageKey: string) => Promise<Blob | null>;
+  delete: (storageKey: string) => Promise<void>;
 };
 
 export type SaveLocalAssetResult =

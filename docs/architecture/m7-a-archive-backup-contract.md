@@ -102,9 +102,12 @@ This note records the M7-A domain contract for Morpho project archive and editab
 - It must restore into a new independent project copy, regenerate runtime asset storage keys, and keep asset/reference remapping consistent across the workspace snapshot.
 - If backup validation fails, M7-C must stop before any restore write begins.
 
-## Current unimplemented boundaries
+## Historical boundary note
 
-- M7-A does not yet read IndexedDB binary payloads to verify file completeness.
-- M7-A does not create a portable asset bundle, zip file, or downloadable archive package.
-- M7-A does not execute restore transactions, write restored data into localStorage or IndexedDB, or create restore conflict/merge flows.
-- Binary collection, bundle layout, restore transactions, and new-project materialization remain M7-B / M7-C work.
+The items below were intentionally out of scope at M7-A time:
+
+- reading IndexedDB binary payloads for real file-completeness checks;
+- creating portable asset bundles and downloadable zip packages;
+- executing restore transactions into localStorage and IndexedDB.
+
+Those behaviors are now implemented by M7-B / M7-C. See `docs/architecture/m7-b-c-project-bundles-and-restore.md` for the current bundle and restore layer.

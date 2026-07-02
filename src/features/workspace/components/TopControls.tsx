@@ -9,9 +9,17 @@ type TopControlsProps = {
   onSearch: () => void;
   onFocusOverview: () => void;
   onOpenDeliveryPreparation: () => void;
+  onOpenProjectBundles: () => void;
 };
 
-export function TopControls({ projectTitle, onImportFiles, onSearch, onFocusOverview, onOpenDeliveryPreparation }: TopControlsProps) {
+export function TopControls({
+  projectTitle,
+  onImportFiles,
+  onSearch,
+  onFocusOverview,
+  onOpenDeliveryPreparation,
+  onOpenProjectBundles
+}: TopControlsProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   return (
@@ -28,13 +36,7 @@ export function TopControls({ projectTitle, onImportFiles, onSearch, onFocusOver
         <button className="icon-button" type="button" aria-label="搜索" title="搜索" onClick={onSearch}>
           <Search size={16} />
         </button>
-        <button
-          className="icon-button"
-          type="button"
-          aria-label="回到项目概览"
-          title="回到项目概览"
-          onClick={onFocusOverview}
-        >
+        <button className="icon-button" type="button" aria-label="回到项目概览" title="回到项目概览" onClick={onFocusOverview}>
           <SquareDashedMousePointer size={16} />
         </button>
         <input
@@ -58,7 +60,7 @@ export function TopControls({ projectTitle, onImportFiles, onSearch, onFocusOver
           <PackageOpen size={14} />
           交付准备
         </button>
-        <button className="plain-button" type="button">
+        <button className="plain-button" type="button" onClick={onOpenProjectBundles}>
           <Archive size={14} />
           归档
         </button>

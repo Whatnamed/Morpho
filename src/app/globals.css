@@ -352,7 +352,8 @@ input:focus-visible {
 }
 
 .side-drawer,
-.search-layer {
+.search-layer,
+.archive-panel {
   position: fixed;
   z-index: 45;
   border: 1px solid rgba(78, 68, 58, 0.1);
@@ -382,8 +383,17 @@ input:focus-visible {
   overscroll-behavior: contain;
 }
 
+.archive-panel {
+  top: 92px;
+  right: 84px;
+  width: min(360px, calc(100vw - 36px));
+  padding: 16px;
+  border-radius: 16px;
+}
+
 .drawer-head,
-.search-head {
+.search-head,
+.archive-panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -392,7 +402,8 @@ input:focus-visible {
 }
 
 .drawer-title,
-.search-title {
+.search-title,
+.archive-panel-title {
   font-size: 12px;
   font-weight: 650;
 }
@@ -401,6 +412,84 @@ input:focus-visible {
   color: var(--text-muted);
   font-size: 11px;
   line-height: 1.5;
+}
+
+.archive-panel-muted {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.archive-panel-section {
+  display: grid;
+  gap: 10px;
+  padding: 12px 0;
+}
+
+.archive-panel-section + .archive-panel-section {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.archive-panel-section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.archive-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.archive-option input {
+  margin: 0;
+}
+
+.archive-action {
+  justify-content: center;
+}
+
+.archive-panel-status,
+.archive-panel-message {
+  margin-top: 12px;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.archive-panel-status {
+  background: rgba(92, 71, 48, 0.08);
+  color: var(--text-secondary);
+}
+
+.archive-panel-message {
+  border: 1px solid transparent;
+}
+
+.archive-panel-message.neutral,
+.archive-panel-message.success {
+  border-color: rgba(93, 122, 88, 0.18);
+  background: rgba(93, 122, 88, 0.08);
+  color: #496043;
+}
+
+.archive-panel-message.warning {
+  border-color: rgba(161, 126, 70, 0.2);
+  background: rgba(177, 143, 87, 0.1);
+  color: #7a5a2d;
+}
+
+.archive-panel-message.error {
+  border-color: rgba(162, 82, 70, 0.18);
+  background: rgba(180, 92, 78, 0.1);
+  color: #89453b;
 }
 
 .drawer-filter-row {

@@ -91,4 +91,8 @@ class MemoryBlobStore implements BlobStore {
   async get(storageKey: string): Promise<Blob | null> {
     return this.blobs[storageKey] ?? null;
   }
+
+  async delete(storageKey: string): Promise<void> {
+    delete this.blobs[storageKey];
+  }
 }

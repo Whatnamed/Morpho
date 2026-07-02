@@ -535,3 +535,11 @@ Decision: M7-A defines two distinct manifest families in pure domain code: `morp
 Reason: a readable archive is not the same artifact as a restore-ready backup. Keeping them separate avoids mixing handoff-oriented scope with editable recovery scope and keeps future M7-B/M7-C implementation contracts stable.
 
 Boundary: both manifests use `manifestVersion: "1"` independent of `workspace.schemaVersion`. Both expose structured asset inventory and readable diagnostics. Portable inventory keys are logical keys only and must not reuse runtime `storageKey` or Blob URLs. Human-readable archive includes delivery packages, visual-route fields, research/source indexes, and citation snapshots for review/handoff. Backup restore must remap project identity and regenerate runtime storage keys rather than merge into an existing project. Editable backup creation is blocked when restore-critical integrity checks already fail, and backup snapshot UI state is normalized so transient drawer/selection/work-intent state is not treated as long-term project fact.
+
+## 2026-07-02: Use A Separate Bundle Envelope And New-Copy-Only Restore
+
+Decision: M7-B and M7-C add a separate portable package layer with `format: "morpho-project-bundle"` and `bundleVersion: "1"` instead of overloading the M7-A manifest format. Human-readable archive and editable backup remain different package kinds inside the same envelope family.
+
+Reason: download/export and restore need file-level validation, bundled asset byte-length checks, and clear package-level semantics that are distinct from manifest semantics. Keeping the envelope separate allows the manifest contract to stay stable while bundle layout and restore execution evolve.
+
+Boundary: archive bundles may export with warnings when local binaries are missing or byte lengths no longer match metadata. Editable backup bundles are stricter: export is blocked when required binaries are missing or mismatched. Restore always creates a new independent project copy, regenerates runtime storage keys for every restored asset, writes blobs before workspace/catalog state, and attempts rollback cleanup on write failures instead of overwriting or merging existing projects.

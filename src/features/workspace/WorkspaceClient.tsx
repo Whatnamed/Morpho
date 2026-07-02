@@ -1,7 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   AiTaskMode,
@@ -106,11 +107,18 @@ import { DeliveryPreparationPanel } from "./components/DeliveryPreparationPanel"
 import { DocumentReaderPanel, type DocumentReaderExtractFragmentResult } from "./components/DocumentReaderPanel";
 import { LeftRail, type DrawerMode } from "./components/LeftRail";
 import { OverlayDrawers } from "./components/OverlayDrawers";
+import { ProjectBundlePanel } from "./components/ProjectBundlePanel";
 import { TopControls } from "./components/TopControls";
 import { usePersistentWorkspace } from "./usePersistentWorkspace";
 import { compactObjectList, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
 import { buildDeliverySectionContext, getDeliveryObjects, type DeliveryReferenceReaderTransition } from "./deliveryPreparationUi";
 import { indexedDbBlobStore, getAssetObjectUrl } from "@/infrastructure/assets/indexedDbAssetStore";
+import {
+  downloadProjectBundleFile,
+  exportEditableProjectBackupBundle,
+  exportHumanReadableArchiveBundle,
+  restoreEditableProjectBackupBundle
+} from "@/features/archive/projectBundleClient";
 import { readImageBlobDimensions, saveBlobAsLocalAsset } from "@/infrastructure/assets/localAssetWorkflow";
 import {
   expectsConceptDirectionProposal,
@@ -221,6 +229,7 @@ type DocumentReaderUiState = {
 };
 
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
+  const router = useRouter();
   const [workspace, setWorkspace, persistenceState] = usePersistentWorkspace(projectId);
   const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>(() => workspace.ui.lastSelectionIds);
   const [aiDraft, setAiDraft] = useState("");
@@ -251,6 +260,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const abortControllerRef = useRef<AbortController | null>(null);
   const [focusRequest, setFocusRequest] = useState<FocusRequest>({ area: "visual", nonce: 0 });
   const [documentReader, setDocumentReader] = useState<DocumentReaderUiState | null>(null);
+  const [bundlePanelOpen, setBundlePanelOpen] = useState(false);
+  const [archiveIncludeFullChat, setArchiveIncludeFullChat] = useState(false);
+  const [archiveIncludeContinuity, setArchiveIncludeContinuity] = useState(false);
+  const [backupIncludeFullChat, setBackupIncludeFullChat] = useState(false);
+  const [bundleBusyLabel, setBundleBusyLabel] = useState<string | null>(null);
+  const [bundleMessage, setBundleMessage] = useState<{
+    tone: "neutral" | "success" | "warning" | "error";
+    text: string;
+  } | null>(null);
   const documentReaderRequestRef = useRef(0);
   const documentReaderAbortRef = useRef<AbortController | null>(null);
 
@@ -1798,6 +1816,89 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setDeliveryPanelOpen(true);
   }, [activeDeliveryObjectId, selectedObjects]);
 
+  const handleExportHumanArchive = useCallback(async () => {
+    setBundleBusyLabel("正在导出可读归档…");
+    setBundleMessage(null);
+    try {
+      const result = await exportHumanReadableArchiveBundle(workspace, {
+        blobStore: indexedDbBlobStore,
+        chat: archiveIncludeFullChat ? "full" : "none",
+        projectContinuity: archiveIncludeContinuity ? "current" : "none"
+      });
+      if (result.status !== "ok") {
+        setBundleMessage({
+          tone: result.status === "blocked" ? "warning" : "error",
+          text: result.reason
+        });
+        return;
+      }
+      downloadProjectBundleFile(result.file);
+      setBundleMessage({
+        tone: result.diagnostics.some((diagnostic) => diagnostic.severity === "warning") ? "warning" : "success",
+        text: summarizeBundleDiagnostics("归档已导出。", result.diagnostics)
+      });
+    } finally {
+      setBundleBusyLabel(null);
+    }
+  }, [archiveIncludeContinuity, archiveIncludeFullChat, workspace]);
+
+  const handleExportEditableBackup = useCallback(async () => {
+    setBundleBusyLabel("正在导出可编辑备份…");
+    setBundleMessage(null);
+    try {
+      const result = await exportEditableProjectBackupBundle(workspace, {
+        blobStore: indexedDbBlobStore,
+        chat: backupIncludeFullChat ? "full" : "none",
+        projectContinuity: "current"
+      });
+      if (result.status !== "ok") {
+        setBundleMessage({
+          tone: result.status === "blocked" ? "warning" : "error",
+          text: result.reason
+        });
+        return;
+      }
+      downloadProjectBundleFile(result.file);
+      setBundleMessage({
+        tone: result.diagnostics.some((diagnostic) => diagnostic.severity === "warning") ? "warning" : "success",
+        text: summarizeBundleDiagnostics("备份已导出。", result.diagnostics)
+      });
+    } finally {
+      setBundleBusyLabel(null);
+    }
+  }, [backupIncludeFullChat, workspace]);
+
+  const handleRestoreEditableBackup = useCallback(
+    async (file: File) => {
+      setBundleBusyLabel("正在恢复可编辑备份…");
+      setBundleMessage(null);
+      try {
+        const result = await restoreEditableProjectBackupBundle(file, {
+          blobStore: indexedDbBlobStore,
+          storage: window.localStorage
+        });
+        if (result.status !== "ok") {
+          setBundleMessage({
+            tone: "error",
+            text: result.reason
+          });
+          return;
+        }
+        setBundlePanelOpen(false);
+        setBundleMessage({
+          tone: "success",
+          text: "备份已恢复为新的项目副本。"
+        });
+        startTransition(() => {
+          router.push(`/projects/${encodeURIComponent(result.projectId)}`);
+        });
+      } finally {
+        setBundleBusyLabel(null);
+      }
+    },
+    [router]
+  );
+
   const applyDeliveryOperation = useCallback(
     (operation: (current: MorphoWorkspace) => { status: "updated"; workspace: MorphoWorkspace } | { status: "blocked"; workspace: MorphoWorkspace; reason: string }) => {
       let blockedReason: string | undefined;
@@ -3146,7 +3247,27 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onSearch={() => setActiveDrawer("search")}
         onFocusOverview={() => focusArea("overview")}
         onOpenDeliveryPreparation={() => openDeliveryPreparation()}
+        onOpenProjectBundles={() => {
+          setBundleMessage(null);
+          setBundlePanelOpen((current) => !current);
+        }}
       />
+      {bundlePanelOpen ? (
+        <ProjectBundlePanel
+          archiveIncludeFullChat={archiveIncludeFullChat}
+          archiveIncludeContinuity={archiveIncludeContinuity}
+          backupIncludeFullChat={backupIncludeFullChat}
+          busyLabel={bundleBusyLabel}
+          message={bundleMessage}
+          onClose={() => setBundlePanelOpen(false)}
+          onArchiveIncludeFullChatChange={setArchiveIncludeFullChat}
+          onArchiveIncludeContinuityChange={setArchiveIncludeContinuity}
+          onBackupIncludeFullChatChange={setBackupIncludeFullChat}
+          onExportArchive={handleExportHumanArchive}
+          onExportBackup={handleExportEditableBackup}
+          onRestoreBackup={handleRestoreEditableBackup}
+        />
+      ) : null}
       <LeftRail activeDrawer={activeDrawer} onDrawerChange={setActiveDrawer} />
       <OverlayDrawers
         mode={activeDrawer}
@@ -3552,6 +3673,18 @@ function makeTaskObjectSummaries(summaries: Array<{ id: string; type: string; ti
     title: summary.title,
     summary: summary.detail ? `${summary.summary}\n${summary.detail}` : summary.summary
   }));
+}
+
+function summarizeBundleDiagnostics(base: string, diagnostics: Array<{ severity: "info" | "warning" | "error" }>): string {
+  const warningCount = diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length;
+  const errorCount = diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
+  if (errorCount > 0) {
+    return `${base} 另有 ${errorCount} 条错误诊断。`;
+  }
+  if (warningCount > 0) {
+    return `${base} 另有 ${warningCount} 条 warning，请检查包内说明。`;
+  }
+  return base;
 }
 
 function summarizeTaskDefaultReferenceStatus(status: TaskContextDefaultReference): string {

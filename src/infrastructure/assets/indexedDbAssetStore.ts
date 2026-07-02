@@ -15,6 +15,11 @@ export const indexedDbBlobStore: BlobStore = {
     const blob = await runTransaction<Blob | undefined>(database, "readonly", (store) => store.get(storageKey));
     database.close();
     return blob ?? null;
+  },
+  async delete(storageKey: string) {
+    const database = await openAssetsDatabase();
+    await runTransaction(database, "readwrite", (store) => store.delete(storageKey));
+    database.close();
   }
 };
 

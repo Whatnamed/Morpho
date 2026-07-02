@@ -139,6 +139,21 @@ Expected results:
 - `test`: Vitest runs domain, persistence, import, query, MiMo, and GrsAI tests.
 - `build`: `next build` completes and prerenders static pages/routes where applicable.
 
+## Archive And Backup
+
+Current workspace export/restore entry:
+
+- open a project workspace;
+- click the top `归档` button;
+- use the floating panel to export a human-readable archive, export an editable backup, or restore an editable backup zip.
+
+Current behavior:
+
+- archive export may finish with warnings when referenced local binaries are missing or byte lengths no longer match asset metadata;
+- editable backup export is stricter and is blocked when required local binaries are missing or mismatched;
+- restore always creates a new local project copy with a new project id and new runtime asset storage keys;
+- restore writes blobs first and then writes workspace/catalog state, with best-effort cleanup if persistence fails.
+
 Manual provider smoke checks are separate from the default command set and should be run only with real `.env.local` keys and `MORPHO_ALLOW_PAID_SMOKE_TESTS=true`. Do not print keys, key counts, key suffixes, provider raw headers, or provider raw error bodies while testing.
 
 ## Browser Mock Acceptance
@@ -272,7 +287,6 @@ The current code does not include:
 - automatic web crawling;
 - OCR, legacy `.ppt`, DOC/DOCX parsing, and faithful document-layout reconstruction;
 - dynamic provider model-list fetching;
-- export package generation;
 - PPT/PDF/Figma generation or final delivery layout;
 - transcript replacement, transcript deletion, user-managed chat summaries, or full-project chat summaries;
 - deployment automation.

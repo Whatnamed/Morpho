@@ -33,6 +33,28 @@ export type CatalogLoadResult =
       reason: string;
     };
 
+export type CatalogSnapshotResult =
+  | {
+      status: "ok";
+      catalog: LocalProjectCatalog;
+    }
+  | {
+      status: "missing";
+    }
+  | {
+      status: "failed";
+      reason: string;
+    };
+
+export type StorageWriteResult =
+  | {
+      status: "ok";
+    }
+  | {
+      status: "failed";
+      reason: string;
+    };
+
 export type ProjectWorkspaceLoadResult =
   | {
       status: "ok";
@@ -97,6 +119,10 @@ export function initializeLocalProjectCatalog(storage: Storage): CatalogLoadResu
   };
 }
 
+export function loadLocalProjectCatalogSnapshot(storage: Storage): CatalogSnapshotResult {
+  return loadCatalog(storage);
+}
+
 export function loadProjectWorkspace(storage: Storage, projectId: string): ProjectWorkspaceLoadResult {
   const key = getProjectWorkspaceStorageKey(projectId);
   const raw = safeGetItem(storage, key);
@@ -127,7 +153,7 @@ export function loadProjectWorkspace(storage: Storage, projectId: string): Proje
 }
 
 export function saveProjectWorkspace(storage: Storage, workspace: MorphoWorkspace): void {
-  safeSetItem(storage, getProjectWorkspaceStorageKey(workspace.project.id), serializeWorkspace(workspace));
+  void writeProjectWorkspace(storage, workspace);
 }
 
 export function upsertProjectSummary(storage: Storage, workspace: MorphoWorkspace): LocalProjectCatalog {
@@ -203,7 +229,7 @@ function loadCatalog(storage: Storage):
 }
 
 function saveCatalog(storage: Storage, catalog: LocalProjectCatalog): void {
-  safeSetItem(storage, CATALOG_STORAGE_KEY, JSON.stringify(catalog));
+  void writeCatalog(storage, catalog);
 }
 
 function safeGetItem(storage: Storage, key: string): string | null {
@@ -215,10 +241,44 @@ function safeGetItem(storage: Storage, key: string): string | null {
 }
 
 function safeSetItem(storage: Storage, key: string, value: string): void {
+  void persistStorageValue(storage, key, value);
+}
+
+export function writeProjectWorkspace(storage: Storage, workspace: MorphoWorkspace): StorageWriteResult {
+  return persistStorageValue(storage, getProjectWorkspaceStorageKey(workspace.project.id), serializeWorkspace(workspace));
+}
+
+export function deleteProjectWorkspace(storage: Storage, projectId: string): void {
+  safeRemoveItem(storage, getProjectWorkspaceStorageKey(projectId));
+}
+
+export function writeCatalog(storage: Storage, catalog: LocalProjectCatalog): StorageWriteResult {
+  return persistStorageValue(storage, CATALOG_STORAGE_KEY, JSON.stringify(catalog));
+}
+
+function persistStorageValue(storage: Storage, key: string, value: string): StorageWriteResult {
   try {
     storage.setItem(key, value);
+    if (storage.getItem(key) !== value) {
+      return {
+        status: "failed",
+        reason: `Storage write for ${key} could not be verified.`
+      };
+    }
+    return { status: "ok" };
   } catch {
-    // The caller keeps in-memory state; UI reports persistence failures where needed.
+    return {
+      status: "failed",
+      reason: `Storage write for ${key} failed.`
+    };
+  }
+}
+
+function safeRemoveItem(storage: Storage, key: string): void {
+  try {
+    storage.removeItem(key);
+  } catch {
+    // Best-effort cleanup only.
   }
 }
 

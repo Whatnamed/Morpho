@@ -202,9 +202,11 @@ Binary files are not stored in localStorage. Imported images/files and generated
 
 The current code does not implement asset garbage collection. Deleting a canvas object does not delete Blob data.
 
-## M7-A Archive And Backup Domain Layer
+## M7 Archive, Bundle, And Restore Layers
 
-M7-A adds a pure domain module at `src/domain/morpho/projectArchive.ts`.
+Morpho now implements the M7 contract in two layers.
+
+Manifest layer:
 
 - `createHumanReadableArchiveManifest(...)` builds a reading/handoff manifest and never pretends to be a restorable workspace dump.
 - `createEditableProjectBackupManifest(...)` builds a portable backup manifest, records restore constraints, and blocks creation when restore-critical integrity checks already fail.
@@ -212,12 +214,16 @@ M7-A adds a pure domain module at `src/domain/morpho/projectArchive.ts`.
 - `sanitizeWorkspaceForEditableBackup(...)` preserves edit-relevant structured project state while normalizing transient UI state, including resetting `workIntent` to `discussion`.
 - Validation accepts `unknown` input and returns structured diagnostics suitable for future UI display.
 
-Current boundary:
+Bundle and restore layer:
 
 - runtime localStorage keys and IndexedDB `storageKey` values stay runtime-only and are excluded from portable manifests;
-- binary payloads are not yet collected, so integrity is reported honestly as metadata-only / not verified;
+- `src/domain/morpho/projectBundles.ts` defines the `morpho-project-bundle` envelope, bundle file layout, package validation, and restore planning;
+- `src/features/archive/projectBundleClient.ts` collects IndexedDB binaries, classifies asset availability, creates downloadable zip files with `fflate`, validates uploaded backups, and executes the local restore write path;
 - human-readable archive carries delivery packages, stable delivery references, visual-route fields, research objects, readable source-index objects, and citation snapshots instead of only a raw object subset;
-- M7-A does not add archive download, bundle generation, restore writes, or UI wiring.
+- human-readable archive bundle output includes Markdown reading files plus every currently readable local asset binary;
+- editable backup bundle output includes only the files required for restore and is blocked when required binaries are missing or mismatched;
+- restore writes every new binary before writing workspace/catalog state, removes newly written blobs on failure, creates a new project id and new runtime storage keys, and never merges into the source project;
+- `src/features/workspace/components/ProjectBundlePanel.tsx` is a lightweight floating workspace panel that reuses the top `归档` entry instead of adding a separate archive page.
 
 ## Import, Search, Assets, Hidden
 
