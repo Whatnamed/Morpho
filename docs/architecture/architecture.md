@@ -225,6 +225,19 @@ Bundle and restore layer:
 - restore writes every new binary before writing workspace/catalog state, removes newly written blobs on failure, creates a new project id and new runtime storage keys, and never merges into the source project;
 - `src/features/workspace/components/ProjectBundlePanel.tsx` is a lightweight floating workspace panel that reuses the top `归档` entry instead of adding a separate archive page.
 
+## M8 Delivery Output Packages
+
+Morpho now implements a separate delivery output package for taking one prepared delivery package into external layout tools.
+
+- `src/domain/morpho/deliveryOutput.ts` defines the independent `morpho-delivery-output` manifest with `outputVersion: "1"`, validation, diagnostics, selected-delivery-only asset candidates, and Markdown/source-map generation.
+- `src/features/delivery-output/deliveryOutputClient.ts` performs browser-only IndexedDB Blob reads, classifies asset availability, writes the zip with `fflate`, and triggers download without writing workspace, catalog, localStorage, or BlobStore state.
+- `src/features/workspace/components/DeliveryOutputPanel.tsx` is a lightweight floating output panel opened by the top `输出` button. It selects an active delivery object, runs preflight, shows section/reference/asset/gap/draft counts, and exports one zip.
+- Output packages contain `output-manifest.json`, readable Markdown files, `source-map.json`, and only the `assets/` files required by the selected delivery references.
+- Stable delivery snapshots are authoritative. Changed or missing source objects do not replace exported titles, summaries, captions, references, or assets.
+- Pending section drafts and gaps are exported for review, but export never applies drafts, closes gaps, writes decisions, updates project memory, or changes delivery content.
+
+Delivery output is not an archive or editable backup. It cannot restore a project, does not contain raw workspace JSON, does not use M7 `manifestVersion`/`bundleVersion`, and does not generate PPTX, PDF, Figma files, cloud shares, collaboration state, or final presentation layouts.
+
 ## Import, Search, Assets, Hidden
 
 Implemented import paths:

@@ -543,3 +543,11 @@ Decision: M7-B and M7-C add a separate portable package layer with `format: "mor
 Reason: download/export and restore need file-level validation, bundled asset byte-length checks, and clear package-level semantics that are distinct from manifest semantics. Keeping the envelope separate allows the manifest contract to stay stable while bundle layout and restore execution evolve.
 
 Boundary: archive bundles may export with warnings when local binaries are missing or byte lengths no longer match metadata. Editable backup bundles are stricter: export is blocked when required binaries are missing or mismatched. Restore always creates a new independent project copy, regenerates runtime storage keys for every restored asset, writes blobs before workspace/catalog state, and attempts rollback cleanup on write failures instead of overwriting or merging existing projects.
+
+## 2026-07-02: Keep Delivery Output Separate From Archive And Backup
+
+Decision: add a third package family for M8 with `format: "morpho-delivery-output"` and `outputVersion: "1"`.
+
+Reason: users need to take the selected delivery preparation package into Figma, PPT, Keynote, Illustrator, or course-submission organization without exporting the whole project process or creating a restorable backup. The output contract must preserve chapter order, stable references, captions, source maps, asset availability, gaps, and unapplied drafts while staying independent from workspace schema v13 and M7 archive/backup envelopes.
+
+Boundary: delivery output exports only one selected `delivery` object's sections, stable references, required assets, gaps, and pending drafts. It does not scan the whole canvas, export all assets, apply drafts, close gaps, refresh stale references, write workspace/catalog/IndexedDB state, restore projects, alter M7 `manifestVersion` or `bundleVersion`, or generate PPTX, PDF, Figma files, final layouts, cloud shares, or collaboration artifacts.

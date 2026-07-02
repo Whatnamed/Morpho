@@ -10,6 +10,7 @@ type TopControlsProps = {
   onFocusOverview: () => void;
   onOpenDeliveryPreparation: () => void;
   onOpenProjectBundles: () => void;
+  onOpenDeliveryOutput: () => void;
 };
 
 export function TopControls({
@@ -18,7 +19,8 @@ export function TopControls({
   onSearch,
   onFocusOverview,
   onOpenDeliveryPreparation,
-  onOpenProjectBundles
+  onOpenProjectBundles,
+  onOpenDeliveryOutput
 }: TopControlsProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -65,7 +67,7 @@ export function TopControls({
           归档
         </button>
         <div className="cluster-divider" />
-        <button className="brand-button" type="button">
+        <button className="brand-button" type="button" onClick={onOpenDeliveryOutput}>
           <Download size={14} />
           输出
         </button>

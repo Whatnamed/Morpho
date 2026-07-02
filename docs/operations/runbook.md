@@ -154,6 +154,25 @@ Current behavior:
 - restore always creates a new local project copy with a new project id and new runtime asset storage keys;
 - restore writes blobs first and then writes workspace/catalog state, with best-effort cleanup if persistence fails.
 
+## Delivery Output
+
+Current delivery output entry:
+
+- open a project workspace;
+- click the top `输出` button;
+- choose one active delivery preparation package;
+- review the preflight summary for sections, stable references, embedded assets, link/no-binary items, missing or mismatched assets, open gaps, and pending drafts;
+- click `导出交付输出包` to download a zip for external layout tools.
+
+Current behavior:
+
+- output format is `morpho-delivery-output` with `outputVersion: "1"`;
+- the zip includes `output-manifest.json`, `README.md`, `delivery-outline.md`, `captions-and-copy.md`, `gaps-and-next-steps.md`, `asset-index.md`, `source-map.json`, and selected-reference assets under `assets/`;
+- only assets required by the selected delivery object's stable references are read from IndexedDB;
+- missing local binaries and byte-size mismatches export with warnings and are documented instead of being replaced by empty files;
+- link-only and text/conclusion references do not create fake local assets;
+- delivery output does not restore projects, write workspace state, apply pending drafts, refresh stable references, or create final PPT/PDF/Figma layouts.
+
 Manual provider smoke checks are separate from the default command set and should be run only with real `.env.local` keys and `MORPHO_ALLOW_PAID_SMOKE_TESTS=true`. Do not print keys, key counts, key suffixes, provider raw headers, or provider raw error bodies while testing.
 
 ## Browser Mock Acceptance
@@ -227,6 +246,17 @@ Delivery preparation mock acceptance for M6:
 - return normal prose plus a valid `morphoDeliverySectionDraft`; verify technical JSON is hidden, a pending draft card appears, and no section narrative/caption/gap is written before `应用草稿`;
 - apply the draft and verify narrative, listed captions, suggested gaps, DecisionRecord, and continuity event are written;
 - return malformed draft JSON, a caption with an unauthorized reference ID, too many gaps, or a same-reply design/direction/Compare proposal and verify no delivery draft/content/DecisionRecord/semantic patch/checkpoint/Compare analysis is written.
+
+Delivery output mock acceptance for M8:
+
+- open a project with at least one active delivery preparation package and click the top `输出` button;
+- verify the floating panel lists active delivery packages without opening a new page or changing canvas semantics;
+- select a package and confirm the preflight summary shows sections, stable references, embedded local assets, link/no-binary items, missing or mismatched assets, open gaps, and pending drafts;
+- click `导出交付输出包`, download the zip, and inspect that Markdown files are readable, `source-map.json` maps delivery references to stable snapshots, and embedded files keep usable extensions under `assets/`;
+- verify unrelated workspace assets, hidden or eliminated objects not referenced by the delivery package, raw workspace JSON, archive manifests, backup bundles, Blob URLs, and runtime `storageKey` values are absent;
+- simulate a missing local Blob and verify export still finishes with warnings, no empty asset file is created, and `README.md` plus `asset-index.md` report the missing binary;
+- verify a delivery package with no sections is blocked, while a text-only package with sections but no stable references exports with a clear warning;
+- verify archive export, editable backup export, and restore still use the top `归档` panel and are not changed into delivery output.
 
 ## Current Local Persistence
 
