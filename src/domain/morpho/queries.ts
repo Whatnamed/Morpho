@@ -98,7 +98,7 @@ function matchesDeliveryReference(reference: DeliveryReference, normalizedQuery:
 function getSearchableObjectText(object: MorphoObject): string {
   switch (object.type) {
     case "image":
-      return [object.title, object.summary, object.role, object.directionId ?? "", object.visualBranchId ?? ""].join(" ");
+      return [object.title, object.summary].join(" ");
     case "file":
       return [object.title, object.summary, object.fileName ?? "", object.mimeType ?? "", object.sourceLabel].join(" ");
     case "text":
@@ -108,7 +108,7 @@ function getSearchableObjectText(object: MorphoObject): string {
         " "
       );
     case "imageCollection":
-      return [object.title, object.summary, object.memberObjectIds.join(" ")].join(" ");
+      return [object.title, object.summary].join(" ");
     case "research":
       return [
         object.title,
@@ -119,11 +119,11 @@ function getSearchableObjectText(object: MorphoObject): string {
         object.openQuestions.join(" ")
       ].join(" ");
     case "keyConclusion":
-      return [object.title, object.summary, object.body, object.state, object.note ?? ""].join(" ");
+      return [object.title, object.summary, object.body, object.note ?? ""].join(" ");
     case "designDefinition":
       return [object.title, object.summary, object.problem, object.principles.join(" "), object.avoid.join(" ")].join(" ");
     case "conceptDirection":
-      return [object.title, object.summary, object.status, object.keywords.join(" ")].join(" ");
+      return [object.title, object.summary, object.keywords.join(" ")].join(" ");
     case "delivery":
       return [object.title, object.summary, object.gaps.map((gap) => gap.label).join(" ")].join(" ");
     default:

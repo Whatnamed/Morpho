@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, Download, Import, PackageOpen, Search, SquareDashedMousePointer } from "lucide-react";
+import { Archive, ChevronDown, Download, Home, Import, PackageOpen, Search, SquareDashedMousePointer } from "lucide-react";
 import { useRef } from "react";
 
 type TopControlsProps = {
@@ -11,6 +11,12 @@ type TopControlsProps = {
   onOpenDeliveryPreparation: () => void;
   onOpenProjectBundles: () => void;
   onOpenDeliveryOutput: () => void;
+  projectMenuOpen?: boolean;
+  projectRenameDraft?: string;
+  onProjectMenuToggle?: () => void;
+  onProjectRenameDraftChange?: (value: string) => void;
+  onProjectRenameConfirm?: () => void;
+  onOpenProjectHome?: () => void;
   persistenceError?: string;
 };
 
@@ -22,6 +28,12 @@ export function TopControls({
   onOpenDeliveryPreparation,
   onOpenProjectBundles,
   onOpenDeliveryOutput,
+  projectMenuOpen = false,
+  projectRenameDraft = projectTitle,
+  onProjectMenuToggle,
+  onProjectRenameDraftChange,
+  onProjectRenameConfirm,
+  onOpenProjectHome,
   persistenceError
 }: TopControlsProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -30,16 +42,50 @@ export function TopControls({
     <>
       <div className="floating-cluster top-left">
         <div className="wordmark">Morpho</div>
-        <div className="project-name">
+        <button
+          className="project-name project-menu-trigger"
+          type="button"
+          aria-expanded={projectMenuOpen}
+          aria-haspopup="menu"
+          onClick={onProjectMenuToggle}
+        >
           <span className="project-dot" />
           <strong>{projectTitle}</strong>
           <span className="project-subtitle">· 概念工作台</span>
+          <ChevronDown size={13} />
           {persistenceError ? (
             <span className="save-warning" title={persistenceError}>
               本地保存失败
             </span>
           ) : null}
-        </div>
+        </button>
+        {projectMenuOpen ? (
+          <div className="project-menu" role="menu" aria-label="项目操作">
+            <div className="project-menu-title">项目操作</div>
+            <label className="project-menu-field">
+              <span>重命名项目</span>
+              <input
+                value={projectRenameDraft}
+                onChange={(event) => onProjectRenameDraftChange?.(event.currentTarget.value)}
+              />
+            </label>
+            <button className="project-menu-action" type="button" onClick={onProjectRenameConfirm}>
+              保存名称
+            </button>
+            <button className="project-menu-action" type="button" onClick={onOpenProjectHome}>
+              <Home size={14} />
+              返回项目首页
+            </button>
+            <button className="project-menu-action" type="button" onClick={onOpenProjectBundles}>
+              <Archive size={14} />
+              项目归档与恢复
+            </button>
+            <button className="project-menu-action" type="button" onClick={() => fileInputRef.current?.click()}>
+              <Import size={14} />
+              导入资料
+            </button>
+          </div>
+        ) : null}
       </div>
       <div className="floating-cluster top-right">
         <button className="icon-button" type="button" aria-label="搜索" title="搜索" onClick={onSearch}>

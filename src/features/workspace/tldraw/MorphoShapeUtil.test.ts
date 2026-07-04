@@ -6,6 +6,21 @@ import { createInitialWorkspace } from "../../../domain/morpho/workspace";
 import { getMorphoShapeProps } from "./MorphoShapeUtil";
 
 describe("MorphoShapeUtil", () => {
+  it("keeps image canvas props focused on the visual without persistent title or summary details", () => {
+    const workspace = createInitialWorkspace();
+    const image = workspace.objects["image-soft-rail-v2"];
+    const instance = workspace.canvas.instances.find((item) => item.objectId === "image-soft-rail-v2");
+
+    if (!image || image.type !== "image" || !instance) {
+      throw new Error("Expected seed workspace to include an image canvas instance.");
+    }
+
+    const props = getMorphoShapeProps(instance, image, undefined, workspace);
+
+    expect(props.morphoType).toBe("image");
+    expect(props.details).toEqual([]);
+  });
+
   it("marks design definition cards when a pending revision draft exists", () => {
     const workspace = createInitialWorkspace();
     const instance = workspace.canvas.instances.find((item) => item.objectId === "definition-current");

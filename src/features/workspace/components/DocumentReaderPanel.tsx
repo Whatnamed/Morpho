@@ -16,9 +16,24 @@ export type DocumentReaderExtractFragmentResult =
   | { status: "created"; fragmentId: string }
   | { status: "blocked"; reason: string };
 
+export type DocumentSourcePreview =
+  | {
+      status: "ready";
+      url: string;
+      mimeType: string;
+      fileName: string;
+    }
+  | {
+      status: "unsupported" | "missing";
+      fileName?: string;
+      mimeType?: string;
+      message: string;
+    };
+
 type DocumentReaderPanelProps = {
   file: FileObject;
   extractAsset?: AssetRecord;
+  sourcePreview?: DocumentSourcePreview;
   text: string;
   status: "loading" | "loaded" | "blocked" | "error";
   message?: string;
@@ -35,6 +50,7 @@ const VISIBLE_RESULT_LIMIT = 50;
 export function DocumentReaderPanel({
   file,
   extractAsset,
+  sourcePreview,
   text,
   status,
   message,
@@ -50,6 +66,7 @@ export function DocumentReaderPanel({
       key={readerStateKey}
       file={file}
       extractAsset={extractAsset}
+      sourcePreview={sourcePreview}
       text={text}
       status={status}
       message={message}
@@ -65,6 +82,7 @@ export function DocumentReaderPanel({
 function DocumentReaderPanelContent({
   file,
   extractAsset,
+  sourcePreview,
   text,
   status,
   message,
@@ -131,7 +149,7 @@ function DocumentReaderPanelContent({
     <section className="document-reader-panel" aria-label="文档阅读面板">
       <div className="document-reader-head">
         <div>
-          <span className="document-reader-kicker">本地解析文本</span>
+          <span className="document-reader-kicker">源文件与解析文本</span>
           <h2>{file.title}</h2>
         </div>
         <button className="icon-button" type="button" aria-label="关闭阅读面板" onClick={onClose}>
@@ -151,6 +169,8 @@ function DocumentReaderPanelContent({
         当前阅读的是本地解析文本，不代表原 PDF / PPTX / Office 文档的完整排版、原页视觉或原 slide 布局。
       </p>
       <p className="document-reader-precision">{buildLocationPrecisionNote(file)}</p>
+
+      <SourcePreview preview={sourcePreview} />
 
       {initialLocation ? (
         <div className="document-reader-location-banner">
@@ -296,6 +316,48 @@ function DocumentReaderPanelContent({
         </>
       ) : null}
     </section>
+  );
+}
+
+function SourcePreview({ preview }: { preview?: DocumentSourcePreview }) {
+  if (!preview) {
+    return null;
+  }
+
+  if (preview.status !== "ready") {
+    return (
+      <div className="document-source-preview blocked" aria-label="源文件预览">
+        <strong>源文件视窗</strong>
+        <span>{preview.message}</span>
+      </div>
+    );
+  }
+
+  if (preview.mimeType.startsWith("image/")) {
+    return (
+      <div className="document-source-preview" aria-label="源文件预览">
+        <strong>源文件视窗 · {preview.fileName}</strong>
+        {/* Browser-local object URLs cannot be optimized by next/image. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={preview.url} alt={preview.fileName} />
+      </div>
+    );
+  }
+
+  if (preview.mimeType === "application/pdf" || preview.mimeType.startsWith("text/")) {
+    return (
+      <div className="document-source-preview" aria-label="源文件预览">
+        <strong>源文件视窗 · {preview.fileName}</strong>
+        <iframe src={preview.url} title={`源文件预览：${preview.fileName}`} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="document-source-preview blocked" aria-label="源文件预览">
+      <strong>源文件视窗</strong>
+      <span>当前文件类型暂不能在工作台内预览原版式；下方仍可查看已提取的解析文本。</span>
+    </div>
   );
 }
 

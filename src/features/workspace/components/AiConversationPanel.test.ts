@@ -478,6 +478,158 @@ describe("AiConversationPanel", () => {
     expect(html).toContain("确认 Compare 决策");
     expect(html).toContain("来源对象：direction-soft-rail、direction-support-island、image-soft-rail-v2");
   });
+  it("shows the normal send action when no AI work is active", () => {
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        draft: "继续分析这个方向"
+      }))
+    );
+
+    expect(html).toContain('aria-label="发送"');
+    expect(html).not.toContain("停止当前任务");
+    expect(html).not.toContain("当前任务正在进行");
+  });
+
+  it("turns only the primary input action into a stop action while streaming", () => {
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        isStreaming: true,
+        draft: ""
+      }))
+    );
+
+    expect(html).toContain('aria-label="停止当前任务"');
+    expect(html).toContain("停止当前任务");
+    expect(html).not.toContain("ai-activity-strip");
+    expect(html).not.toContain("当前任务正在进行");
+  });
+
+  it("uses the primary input action to stop an unfinished operation without adding a second stop control", () => {
+    const workspace = createInitialWorkspace();
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        workspace,
+        activeOperation: {
+          id: "operation-image-stale",
+          type: "imageGeneration",
+          projectId: workspace.project.id,
+          createdAt: "2026-07-03T10:00:00.000Z",
+          updatedAt: "2026-07-03T10:00:00.000Z",
+          status: "running",
+          userInput: "生成方向预览",
+          inputSnapshot: {
+            userInput: "生成方向预览",
+            selectedObjectIds: [],
+            sourceSnapshots: [],
+            objectSnapshots: []
+          },
+          allowedCapabilities: {
+            webSearch: false,
+            imagePixels: true
+          },
+          steps: [],
+          events: [],
+          sourceIds: [],
+          proposalIds: [],
+          retryable: true
+        }
+      }))
+    );
+
+    expect(html).toContain('aria-label="停止当前任务"');
+    expect(html).not.toContain("ai-activity-strip");
+    expect(html).not.toContain("停止当前任务</button></div>");
+  });
+
+  it("renders a compact queue surface separate from the chat stream", () => {
+    const workspace = createInitialWorkspace();
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        workspace,
+        activeOperation: {
+          id: "operation-image-queue",
+          type: "imageGeneration",
+          projectId: workspace.project.id,
+          createdAt: "2026-07-04T10:00:00.000Z",
+          updatedAt: "2026-07-04T10:00:01.000Z",
+          status: "running",
+          userInput: "生成一张使用场景",
+          inputSnapshot: {
+            userInput: "生成一张使用场景",
+            selectedObjectIds: [],
+            sourceSnapshots: [],
+            objectSnapshots: []
+          },
+          allowedCapabilities: {
+            webSearch: false,
+            imagePixels: true
+          },
+          steps: [],
+          events: [],
+          sourceIds: [],
+          proposalIds: [],
+          retryable: true
+        }
+      }))
+    );
+
+    expect(html).toContain("Queue");
+    expect(html).toContain("1 active");
+    expect(html).toContain("ai-queue-pill");
+    expect(html).not.toContain("图像任务 ·");
+  });
+
+  it("keeps the collapsed AI trigger icon-only and provides a scroll-to-bottom affordance", () => {
+    const html = renderToStaticMarkup(createElement(AiConversationPanel, makeProps({ isOpen: false })));
+
+    expect(html).toContain("ai-scroll-bottom-button");
+    expect(html).toContain('aria-label="滚动到最新消息"');
+    expect(html).not.toContain(">打开 AI<");
+    expect(html).not.toContain(">收起 AI<");
+  });
+
+  it("keeps selected context compact near the input instead of flooding the chat scroll", () => {
+    const workspace = createInitialWorkspace();
+    const selectedObjects = Object.values(workspace.objects).slice(0, 6);
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        workspace,
+        selectedObjects
+      }))
+    );
+
+    expect(html).toContain("input-context-strip");
+    expect(html).toContain(`已选 ${selectedObjects.length} 个对象`);
+    expect(html).toContain(`+${selectedObjects.length - 3}`);
+    expect(html).not.toContain("conversation-title\">当前语境");
+  });
+  it("does not expose automatic routing as a forced mode switch after suggestions fill the draft", () => {
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        draft: "基于当前图片继续发展一张新图",
+        taskMode: "chatAnalysis",
+        recommendedTaskMode: "imageGeneration",
+        workIntent: "discussion",
+        recommendedWorkIntent: "createConceptDirections"
+      }))
+    );
+
+    expect(html).toContain("对话与分析");
+    expect(html).not.toContain("自动判断");
+    expect(html).not.toContain("图像生成（自动判断）");
+    expect(html).not.toContain("生成概念方向（自动判断）");
+  });
+
+  it("labels delivery preparation intent without showing a second discussion option", () => {
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        availableWorkIntents: ["discussion", "prepareDeliverySection"]
+      }))
+    );
+
+    expect(html).toContain("整理交付材料");
+    expect(html.match(/>讨论</g)?.length).toBe(1);
+  });
 });
 
 function makeProps(overrides: Partial<ComponentProps<typeof AiConversationPanel>>) {

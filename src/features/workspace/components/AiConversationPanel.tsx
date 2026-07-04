@@ -1,7 +1,7 @@
 ﻿"use client";
 
-import type { KeyboardEvent, ReactNode } from "react";
-import { ChevronLeft, Send, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { ChevronLeft, Send, Sparkles, Square } from "lucide-react";
 
 import type {
   AiTaskMode,
@@ -15,6 +15,7 @@ import type {
   ArtifactProposal,
   ConceptDirectionProposal,
   DesignDefinitionProposal,
+  OperationRecord,
   ResearchAnalysisProposal
 } from "@/domain/operations/types";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
@@ -196,6 +197,7 @@ type AiConversationPanelProps = {
   recommendedWorkIntent: AiWorkIntent;
   availableWorkIntents: AiWorkIntent[];
   activeProposal?: ArtifactProposal;
+  activeOperation?: OperationRecord | null;
   isStreaming: boolean;
   imageGenerationSettings: ImageGenerationSettings;
   imageGenerationModelOptions: ImageGenerationModelOption[];
@@ -278,6 +280,7 @@ export function AiConversationPanel({
   recommendedWorkIntent,
   availableWorkIntents,
   activeProposal,
+  activeOperation,
   isStreaming,
   imageGenerationSettings,
   imageGenerationModelOptions,
@@ -320,6 +323,52 @@ export function AiConversationPanel({
   const showDirectionPreviewCount =
     selectedDirectionCount > 0 && selectedDirectionCount <= 3 && (taskMode === "imageGeneration" || recommendedTaskMode === "imageGeneration");
   const directionPreviewTotal = selectedDirectionCount * directionPreviewCount;
+  const isAiBusy = isStreaming || Boolean(activeOperation);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
+  const activeTaskCount = isAiBusy || imageTaskStatus ? 1 : 0;
+  const visibleContextObjects = selectedObjects.slice(0, 3);
+  const hiddenContextCount = Math.max(0, selectedObjects.length - visibleContextObjects.length);
+  const modeSummary = buildModeSummary({
+    taskMode,
+    recommendedTaskMode,
+    workIntent,
+    recommendedWorkIntent
+  });
+  const updateScrollBottomVisibility = () => {
+    const element = scrollRef.current;
+    if (!element) {
+      return;
+    }
+
+    const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+    setShowScrollBottom(distanceFromBottom > 96);
+  };
+  const scrollToLatest = () => {
+    const element = scrollRef.current;
+    if (!element) {
+      return;
+    }
+
+    element.scrollTo({ top: element.scrollHeight, behavior: "smooth" });
+    setShowScrollBottom(false);
+  };
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) {
+      return;
+    }
+
+    const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+    if (distanceFromBottom < 120) {
+      element.scrollTo({ top: element.scrollHeight });
+      setShowScrollBottom(false);
+    } else {
+      setShowScrollBottom(true);
+    }
+  }, [workspace.ai.messages.length, activeProposal?.id, pendingConfirmation?.kind, showFailure]);
 
   return (
     <>
@@ -339,20 +388,7 @@ export function AiConversationPanel({
           </button>
         </div>
 
-        <div className="ai-scroll">
-          <div className="conversation-title">当前语境</div>
-          <div className="context-tags">
-            {selectedObjects.length === 0 ? (
-              <span className="context-tag">未选择对象</span>
-            ) : (
-              selectedObjects.map((object) => (
-                <span className="context-tag" key={object.id}>
-                  正在讨论 · {object.title}
-                </span>
-              ))
-            )}
-          </div>
-
+        <div className="ai-scroll" ref={scrollRef} onScroll={updateScrollBottomVisibility}>
           {workspace.ai.messages.map((message) => (
             <div className="ai-message" key={message.id}>
               <MarkdownContent body={message.body} />
@@ -431,13 +467,6 @@ export function AiConversationPanel({
             <div className="failure-card">
               <strong>默认参考未进入本次语境</strong>
               <p>{contextWarning}</p>
-            </div>
-          ) : null}
-
-          {imageTaskStatus ? (
-            <div className="failure-card">
-              <strong>图像任务 · {formatImageTaskState(imageTaskStatus.state)}</strong>
-              <p>{imageTaskStatus.message}</p>
             </div>
           ) : null}
 
@@ -534,58 +563,79 @@ export function AiConversationPanel({
             </div>
           ) : null}
         </div>
+        <button
+          className="ai-scroll-bottom-button"
+          type="button"
+          aria-label="滚动到最新消息"
+          hidden={!showScrollBottom}
+          onClick={scrollToLatest}
+        >
+          ↓
+        </button>
 
         <div className="ai-input-wrap">
-          <div className="mode-row">
-            <span>
-              当前任务：{formatTaskMode(taskMode)}
-              {recommendedTaskMode !== taskMode ? ` · 建议 ${formatTaskMode(recommendedTaskMode)}` : ""}
+          <div className="input-context-strip" aria-label="当前输入语境">
+            <span className="input-context-count">
+              {selectedObjects.length > 0 ? `已选 ${selectedObjects.length} 个对象` : "未选择对象"}
             </span>
-            <div className="mode-toggle" aria-label="执行模式">
-              <button
-                type="button"
-                className={taskMode === "chatAnalysis" ? "active" : ""}
-                onClick={() => onTaskModeChange("chatAnalysis")}
-              >
-                对话与分析
-              </button>
-              <button
-                type="button"
-                className={taskMode === "imageGeneration" ? "active" : ""}
-                onClick={() => onTaskModeChange("imageGeneration")}
-              >
-                图像生成
-              </button>
-              <button
-                type="button"
-                className={taskMode === "researchOperation" ? "active" : ""}
-                onClick={() => onTaskModeChange("researchOperation")}
-              >
-                研究任务
-              </button>
-            </div>
+            {visibleContextObjects.map((object) => (
+              <span className="input-context-chip" title={object.title} key={object.id}>
+                {object.title}
+              </span>
+            ))}
+            {hiddenContextCount > 0 ? <span className="input-context-more">+{hiddenContextCount}</span> : null}
           </div>
 
-          {taskMode === "chatAnalysis" ? (
-            <div className="mode-row mode-row-secondary">
-              <span>
-                当前工作意图：{formatWorkIntent(workIntent)}
-                {recommendedWorkIntent !== workIntent ? ` · 建议 ${formatWorkIntent(recommendedWorkIntent)}` : ""}
-              </span>
-              <div className="mode-toggle intent-toggle" aria-label="工作意图">
-                {availableWorkIntents.map((intent) => (
-                  <button
-                    key={intent}
-                    type="button"
-                    className={workIntent === intent ? "active" : ""}
-                    onClick={() => onWorkIntentChange(intent)}
-                  >
-                    {formatWorkIntent(intent)}
-                  </button>
-                ))}
+          <details className="mode-disclosure">
+            <summary>
+              <span>{modeSummary}</span>
+              <small>需要时展开调整</small>
+            </summary>
+            <div className="mode-row">
+              <span>执行方式</span>
+              <div className="mode-toggle" aria-label="执行模式">
+                <button
+                  type="button"
+                  className={taskMode === "chatAnalysis" ? "active" : ""}
+                  onClick={() => onTaskModeChange("chatAnalysis")}
+                >
+                  对话与分析
+                </button>
+                <button
+                  type="button"
+                  className={taskMode === "imageGeneration" ? "active" : ""}
+                  onClick={() => onTaskModeChange("imageGeneration")}
+                >
+                  图像生成
+                </button>
+                <button
+                  type="button"
+                  className={taskMode === "researchOperation" ? "active" : ""}
+                  onClick={() => onTaskModeChange("researchOperation")}
+                >
+                  研究任务
+                </button>
               </div>
             </div>
-          ) : null}
+
+            {taskMode === "chatAnalysis" && availableWorkIntents.length > 1 ? (
+              <div className="mode-row mode-row-secondary">
+                <span>工作重点</span>
+                <div className="mode-toggle intent-toggle" aria-label="工作意图">
+                  {availableWorkIntents.map((intent) => (
+                    <button
+                      key={intent}
+                      type="button"
+                      className={workIntent === intent ? "active" : ""}
+                      onClick={() => onWorkIntentChange(intent)}
+                    >
+                      {formatWorkIntent(intent)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </details>
 
           {isLocalEditMode ? (
             <div className="image-settings" aria-label="图像生成设置">
@@ -667,13 +717,13 @@ export function AiConversationPanel({
 
           <div className="ai-input">
             <textarea
-              rows={2}
+              rows={1}
               value={draft}
               onChange={(event) => onDraftChange(event.currentTarget.value)}
               onKeyDown={(event) => {
                 if (shouldSubmitFromTextarea(event)) {
                   event.preventDefault();
-                  if (isStreaming) {
+                  if (isAiBusy) {
                     return;
                   }
 
@@ -688,25 +738,66 @@ export function AiConversationPanel({
               placeholder="描述你想继续发展的内容…"
             />
             <button
-              className="send-button"
+              className={`send-button ${isAiBusy ? "stop" : ""}`}
               type="button"
-              aria-label={isStreaming ? "取消当前请求" : isLocalEditMode ? "执行图像任务" : "发送"}
-              onClick={isStreaming ? onCancelRequest : isLocalEditMode ? onRunLocalEdit : onSendMessage}
+              aria-label={isAiBusy ? "停止当前任务" : isLocalEditMode ? "执行图像任务" : "发送"}
+              onClick={isAiBusy ? onCancelRequest : isLocalEditMode ? onRunLocalEdit : onSendMessage}
             >
-              <Send size={15} />
+              {isAiBusy ? <Square size={13} fill="currentColor" /> : <Send size={15} />}
             </button>
           </div>
         </div>
       </section>
 
+      <div className="ai-queue">
+        <button
+          className="ai-queue-pill"
+          type="button"
+          aria-expanded={queueOpen}
+          onClick={() => setQueueOpen((open) => !open)}
+        >
+          <span>Queue</span>
+          <strong>{activeTaskCount} active</strong>
+        </button>
+        {queueOpen ? (
+          <div className="ai-queue-popover" role="status">
+            {activeTaskCount === 0 ? (
+              <span>无 active tasks</span>
+            ) : (
+              <>
+                <strong>{activeOperation ? formatOperationType(activeOperation.type) : "当前输出"}</strong>
+                {imageTaskStatus ? <p>{formatImageTaskState(imageTaskStatus.state)} · {imageTaskStatus.message}</p> : null}
+                <button className="plain-button" type="button" onClick={onCancelRequest}>
+                  停止
+                </button>
+              </>
+            )}
+          </div>
+        ) : null}
+      </div>
+
       <button className="ai-toggle" type="button" aria-label={isOpen ? "收起 AI" : "打开 AI"} onClick={onToggleOpen}>
         <div className="toggle-icon">
           <Sparkles size={16} />
         </div>
-        <span>{isOpen ? "收起 AI" : "打开 AI"}</span>
       </button>
     </>
   );
+}
+
+function formatOperationType(type: OperationRecord["type"]): string {
+  switch (type) {
+    case "imageGeneration":
+      return "图像生成";
+    case "research":
+      return "研究任务";
+    case "designDefinition":
+      return "设计定义";
+    case "conceptDirection":
+      return "概念方向";
+    default:
+      return "当前任务";
+  }
 }
 
 function getPendingConfirmationTitle(confirmation: PendingAiConfirmation): string {
@@ -928,6 +1019,8 @@ function formatWorkIntent(intent: AiWorkIntent): string {
   switch (intent) {
     case "comparison":
       return "比较";
+    case "prepareDeliverySection":
+      return "整理交付材料";
     case "createDesignDefinition":
       return "创建设计定义";
     case "reviseDesignDefinition":
@@ -944,6 +1037,21 @@ function formatWorkIntent(intent: AiWorkIntent): string {
     default:
       return "讨论";
   }
+}
+
+function buildModeSummary(input: {
+  taskMode: AiTaskMode;
+  recommendedTaskMode: AiTaskMode;
+  workIntent: AiWorkIntent;
+  recommendedWorkIntent: AiWorkIntent;
+}): string {
+  const task = formatTaskMode(input.taskMode);
+  if (input.taskMode !== "chatAnalysis") {
+    return task;
+  }
+
+  const intent = formatWorkIntent(input.workIntent);
+  return intent === "讨论" ? task : `${task} · ${intent}`;
 }
 
 function MarkdownContent({ body }: { body: string }) {

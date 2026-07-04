@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   buildConceptDirectionLineageDetail,
   buildConceptDirectionVersionDetail,
+  BottomDetailBar,
   getDocumentReaderActionState,
   buildDesignDefinitionInfoMeta,
   buildDesignDefinitionVersionDetail
 } from "./BottomDetailBar";
+import { createInitialWorkspace } from "../../../domain/morpho/workspace";
 
 describe("BottomDetailBar design definition text", () => {
   it("shows the revision-draft badge only when a pending revision draft exists", () => {
@@ -133,5 +137,58 @@ describe("BottomDetailBar document reader action", () => {
       disabled: true,
       message: "本地解析文本资源不可用，当前无法阅读"
     });
+  });
+});
+
+describe("BottomDetailBar selected object surface", () => {
+  it("renders object information without canvas action tools", () => {
+    const workspace = createInitialWorkspace();
+    const html = renderToStaticMarkup(
+      createElement(BottomDetailBar, {
+        workspace,
+        selectedObjects: [workspace.objects["image-soft-rail-v2"]],
+        assets: workspace.assets,
+        hasPendingDesignDefinitionRevisionDraft: false,
+        keyConclusionCandidates: [],
+        relations: workspace.relations,
+        directionLineage: workspace.directionLineage,
+        visualBranches: workspace.visualBranches,
+        decisionRecords: workspace.decisionRecords,
+        activeDesignTrace: null,
+        isDesignTraceActive: false,
+        onToggleDesignTrace: () => undefined,
+        onAskAi: () => undefined,
+        onReviseDirection: () => undefined,
+        onSplitDirection: () => undefined,
+        onMergeDirections: () => undefined,
+        onCreateVisualBranch: () => undefined,
+        onRenameVisualBranch: () => undefined,
+        onArchiveVisualBranch: () => undefined,
+        onRestoreVisualBranch: () => undefined,
+        onAssignImageToVisualBranch: () => undefined,
+        onRemoveImageFromVisualBranch: () => undefined,
+        onLocalEdit: () => undefined,
+        onReferenceIntent: () => undefined,
+        onOpenDocumentReader: () => undefined,
+        onOpenDeliveryPreparation: () => undefined,
+        onHide: () => undefined,
+        onDelete: () => undefined,
+        onEliminateDirection: () => undefined,
+        onSetDirectionPrimary: () => undefined,
+        onSetDirectionAlternative: () => undefined,
+        onRestoreDirectionAsAlternative: () => undefined,
+        onSaveKeyConclusionFromResearchItem: () => undefined,
+        onCopyItemToDraft: () => undefined,
+        onContinueQuestion: () => undefined,
+        onSetKeyConclusionState: () => undefined,
+        onSetImageRole: () => undefined
+      })
+    );
+
+    expect(html).toContain("后续默认参考");
+    expect(html).not.toContain("询问 AI");
+    expect(html).not.toContain("隐藏");
+    expect(html).not.toContain("删除");
+    expect(html).not.toContain("设为后续默认参考");
   });
 });

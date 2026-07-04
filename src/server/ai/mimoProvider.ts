@@ -82,7 +82,8 @@ export async function streamMiMoChat(config: MiMoConfig, input: ProviderChatInpu
   }
 
   if (!response.ok) {
-    throw new MiMoProviderError(classifyMiMoFailure({ status: response.status }), response.status);
+    const diagnostic = await readProviderFailureDiagnostic(response);
+    throw new MiMoProviderError(classifyMiMoFailure({ status: response.status }), response.status, diagnostic);
   }
 
   if (!response.body) {
@@ -90,6 +91,15 @@ export async function streamMiMoChat(config: MiMoConfig, input: ProviderChatInpu
   }
 
   return response.body.pipeThrough(createOpenAiCompatibleEventTransform());
+}
+
+async function readProviderFailureDiagnostic(response: Response): Promise<string | undefined> {
+  try {
+    const text = await response.text();
+    return text.trim().slice(0, 500) || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function createOpenAiCompatibleTextTransform(): TransformStream<Uint8Array, Uint8Array> {

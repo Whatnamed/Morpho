@@ -33,6 +33,21 @@ describe("Morpho workspace query helpers", () => {
     );
   });
 
+  it("keeps search result summaries user-facing without internal ids or enum fields", () => {
+    const results = searchWorkspace(createInitialWorkspace(), "v2");
+    const imageResult = results.find((result) => result.kind === "object" && result.objectId === "image-soft-rail-v2");
+
+    expect(imageResult?.summary).not.toContain("primaryVisual");
+    expect(imageResult?.summary).not.toContain("direction-soft-rail");
+    expect(imageResult?.summary).not.toContain("visual-branch");
+  });
+
+  it("does not match private object ids as search terms", () => {
+    const results = searchWorkspace(createInitialWorkspace(), "visual-branch-soft-rail-core");
+
+    expect(results).toEqual([]);
+  });
+
   it("lists original link assets without turning process objects into assets", () => {
     const imported = importUrlObject(createBlankWorkspace("project-assets"), {
       url: "https://example.com/reference",

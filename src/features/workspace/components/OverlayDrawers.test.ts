@@ -84,6 +84,89 @@ describe("OverlayDrawers project records", () => {
     expect(html).toContain("恢复为当前有效");
     expect(html).toContain("highlighted-record");
   });
+
+  it("opens project search with an empty query and no preset example results", () => {
+    const html = renderToStaticMarkup(
+      createElement(OverlayDrawers, {
+        mode: "search",
+        workspace: createInitialWorkspace(),
+        highlightedRecordIds: [],
+        onClose: () => undefined,
+        onFocusArea: () => undefined,
+        onRestoreObject: () => undefined,
+        onLocateObject: () => undefined,
+        onSetContinuityEntryManualState: () => undefined
+      })
+    );
+
+    expect(html).toContain('value=""');
+    expect(html).toContain("输入关键词后搜索");
+    expect(html).not.toContain("暖光");
+  });
+
+  it("does not silently hide assets after the first ten", () => {
+    const workspace = createInitialWorkspace();
+    const html = renderToStaticMarkup(
+      createElement(OverlayDrawers, {
+        mode: "assets",
+        workspace: {
+          ...workspace,
+          assets: Object.fromEntries(
+            Array.from({ length: 12 }, (_, index) => [
+              `asset-extra-${index}`,
+              {
+                id: `asset-extra-${index}`,
+                fileName: `补充资产 ${index + 1}.png`,
+                mimeType: "image/png",
+                size: 1000 + index,
+                createdAt: "2026-07-03T10:00:00.000Z",
+                storageKey: `blob:asset-extra-${index}`,
+                sourceType: "originalImage" as const
+              }
+            ])
+          )
+        },
+        highlightedRecordIds: [],
+        onClose: () => undefined,
+        onFocusArea: () => undefined,
+        onRestoreObject: () => undefined,
+        onLocateObject: () => undefined,
+        onSetContinuityEntryManualState: () => undefined
+      })
+    );
+
+    expect(html).toContain("共 12 项");
+    expect(html).toContain("显示全部");
+  });
+
+  it("renders drawer rows as user-facing metadata instead of inert action copy", () => {
+    const workspace = createInitialWorkspace();
+    const html = renderToStaticMarkup(
+      createElement(OverlayDrawers, {
+        mode: "hidden",
+        workspace: {
+          ...workspace,
+          objects: {
+            ...workspace.objects,
+            "image-soft-rail-v2": {
+              ...workspace.objects["image-soft-rail-v2"],
+              visibility: "hidden"
+            }
+          }
+        },
+        highlightedRecordIds: [],
+        onClose: () => undefined,
+        onFocusArea: () => undefined,
+        onRestoreObject: () => undefined,
+        onLocateObject: () => undefined,
+        onSetContinuityEntryManualState: () => undefined
+      })
+    );
+
+    expect(html).not.toContain("查看来源");
+    expect(html).not.toContain("查看版本");
+    expect(html).not.toContain("查看用于哪里");
+  });
 });
 
 function withContinuityEntries(workspace: MorphoWorkspace, entries: ContinuityRecordEntry[]): MorphoWorkspace {

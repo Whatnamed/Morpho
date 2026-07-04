@@ -38,8 +38,11 @@ export function OverlayDrawers({
   onLocateObject,
   onSetContinuityEntryManualState
 }: OverlayDrawersProps) {
-  const [query, setQuery] = useState("暖光");
+  const [query, setQuery] = useState("");
   const [assetFilter, setAssetFilter] = useState("全部");
+  const [showAllAssets, setShowAllAssets] = useState(false);
+  const [showAllObjectResults, setShowAllObjectResults] = useState(false);
+  const [showAllDeliveryResults, setShowAllDeliveryResults] = useState(false);
 
   if (mode === "map") {
     return (
@@ -63,10 +66,11 @@ export function OverlayDrawers({
 
   if (mode === "assets") {
     const assets = getWorkspaceAssetItems(workspace).filter((item) => matchesAssetFilter(item, assetFilter));
+    const visibleAssets = showAllAssets ? assets : assets.slice(0, 10);
 
     return (
       <Drawer title="资产" onClose={onClose}>
-        <p className="drawer-muted">只显示原始资料、文件与 AI 生成图片；方向、结论和设计定义仍留在画布中。</p>
+        <p className="drawer-muted">只显示原始资料、文件与 AI 生成图片；方向、结论和设计定义仍留在画布中。共 {assets.length} 项。</p>
         <div className="drawer-filter-row" aria-label="资产筛选">
           {["全部", "原始资料", "生成结果", "文档", "已用于交付"].map((filter, index) => (
             <button
@@ -79,7 +83,12 @@ export function OverlayDrawers({
             </button>
           ))}
         </div>
-        <AssetRows items={assets.slice(0, 10)} onLocateObject={onLocateObject} />
+        <AssetRows items={visibleAssets} onLocateObject={onLocateObject} />
+        {assets.length > 10 ? (
+          <button className="plain-button drawer-more-button" type="button" onClick={() => setShowAllAssets((current) => !current)}>
+            {showAllAssets ? "收起" : `显示全部 ${assets.length} 项`}
+          </button>
+        ) : null}
       </Drawer>
     );
   }
@@ -112,9 +121,14 @@ export function OverlayDrawers({
   }
 
   if (mode === "search") {
-    const searchResults = searchWorkspace(workspace, query);
+    const trimmedQuery = query.trim();
+    const searchResults = trimmedQuery ? searchWorkspace(workspace, trimmedQuery) : [];
     const objectResults = searchResults.filter((result) => result.kind === "object");
     const deliveryReferenceResults = searchResults.filter((result) => result.kind === "deliveryReference");
+    const visibleObjectResults = showAllObjectResults ? objectResults : objectResults.slice(0, 8);
+    const visibleDeliveryReferenceResults = showAllDeliveryResults
+      ? deliveryReferenceResults
+      : deliveryReferenceResults.slice(0, 5);
 
     return (
       <section className="search-layer" aria-label="项目内搜索">
@@ -134,10 +148,26 @@ export function OverlayDrawers({
           onChange={(event) => setQuery(event.currentTarget.value)}
         />
         <div className="search-results">
-          <div className="result-group-title">画布内容</div>
-          <SearchRows results={objectResults.slice(0, 8)} onLocateObject={onLocateObject} />
-          <div className="result-group-title">交付引用</div>
-          <SearchRows results={deliveryReferenceResults.slice(0, 5)} onLocateObject={onLocateObject} />
+          {!trimmedQuery ? (
+            <p className="drawer-muted">输入关键词后搜索画布对象、隐藏对象和交付引用快照。</p>
+          ) : (
+            <>
+              <div className="result-group-title">画布内容 · {objectResults.length}</div>
+              <SearchRows results={visibleObjectResults} onLocateObject={onLocateObject} />
+              {objectResults.length > 8 ? (
+                <button className="plain-button drawer-more-button" type="button" onClick={() => setShowAllObjectResults((current) => !current)}>
+                  {showAllObjectResults ? "收起" : `显示全部 ${objectResults.length} 条`}
+                </button>
+              ) : null}
+              <div className="result-group-title">交付引用 · {deliveryReferenceResults.length}</div>
+              <SearchRows results={visibleDeliveryReferenceResults} onLocateObject={onLocateObject} />
+              {deliveryReferenceResults.length > 5 ? (
+                <button className="plain-button drawer-more-button" type="button" onClick={() => setShowAllDeliveryResults((current) => !current)}>
+                  {showAllDeliveryResults ? "收起" : `显示全部 ${deliveryReferenceResults.length} 条`}
+                </button>
+              ) : null}
+            </>
+          )}
         </div>
       </section>
     );
@@ -424,15 +454,20 @@ function AssetRows({
         const firstObject = item.objects[0];
         return (
           <div className="asset-row" key={item.asset.id}>
-            <div className="asset-thumb" />
-            <div>
-              <strong>{item.asset.fileName}</strong>
-              <span>
-                {assetSourceLabel(item.asset.sourceType)} · {item.asset.mimeType}
-                {item.usedInDeliveryReferenceIds.length > 0 ? " · 已用于交付" : ""} · 定位已有画布实例 / 拖入可创建新实例
-              </span>
+            <div className="asset-kind-mark">{assetSourceShortLabel(item.asset.sourceType)}</div>
+            <div className="asset-row-body">
+              <div className="row-title-line">
+                <strong>{item.asset.fileName}</strong>
+                {item.usedInDeliveryReferenceIds.length > 0 ? <span className="row-status-chip">已用于交付</span> : null}
+              </div>
+              <div className="row-meta">
+                <span>{assetSourceLabel(item.asset.sourceType)}</span>
+                <span>{formatMimeLabel(item.asset.mimeType)}</span>
+                <span>{item.objects.length > 0 ? `${item.objects.length} 个画布实例` : "尚未放入画布"}</span>
+              </div>
+              <p className="row-note">资产保留为项目材料；定位会跳到已有画布实例。</p>
               {firstObject ? (
-                <button className="plain-button" type="button" onClick={() => onLocateObject(firstObject.id)}>
+                <button className="plain-button row-action" type="button" onClick={() => onLocateObject(firstObject.id)}>
                   定位
                 </button>
               ) : null}
@@ -473,15 +508,18 @@ function ObjectRows({
     <div className="asset-list">
       {objects.map((object) => (
         <div className={rowClassName} key={object.id}>
-          <div className="asset-thumb" />
-          <div>
-            <strong>{object.title}</strong>
-            <span>
-              {getObjectTypeLabel(object)}
-              {object.visibility === "hidden" ? " · 已隐藏" : ""} · 定位 / 查看来源 / 查看用于哪里
-            </span>
+          <div className="asset-kind-mark">{objectTypeShortLabel(object)}</div>
+          <div className="asset-row-body">
+            <div className="row-title-line">
+              <strong>{object.title}</strong>
+              {object.visibility === "hidden" ? <span className="row-status-chip">已隐藏</span> : null}
+            </div>
+            <div className="row-meta">
+              <span>{getObjectTypeLabel(object)}</span>
+              <span>{object.visibility === "hidden" ? "不参与默认 AI 语境" : "画布对象"}</span>
+            </div>
             {onObjectAction ? (
-              <button className="plain-button" type="button" onClick={() => onObjectAction(object.id)}>
+              <button className="plain-button row-action" type="button" onClick={() => onObjectAction(object.id)}>
                 {actionLabel}
               </button>
             ) : null}
@@ -507,15 +545,19 @@ function SearchRows({
     <div className="asset-list">
       {results.map((result) => (
         <div className="result-row" key={result.kind === "object" ? result.objectId : result.referenceId}>
-          <div className="asset-thumb" />
-          <div>
-            <strong>{result.title}</strong>
-            <span>
-              {result.summary}
-              {result.hidden ? " · 已隐藏" : ""} · 查看来源 / 查看版本 / 查看用于哪里
-            </span>
+          <div className="asset-kind-mark">{result.kind === "object" ? "对象" : "交付"}</div>
+          <div className="asset-row-body">
+            <div className="row-title-line">
+              <strong>{result.title}</strong>
+              {result.hidden ? <span className="row-status-chip">已隐藏</span> : null}
+            </div>
+            <p className="row-note">{result.summary}</p>
+            <div className="row-meta">
+              <span>{result.kind === "object" ? "画布内容" : "交付引用快照"}</span>
+              {result.hidden ? <span>恢复后可回到画布</span> : null}
+            </div>
             {result.kind === "object" ? (
-              <button className="plain-button" type="button" onClick={() => onLocateObject(result.objectId)}>
+              <button className="plain-button row-action" type="button" onClick={() => onLocateObject(result.objectId)}>
                 定位
               </button>
             ) : null}
@@ -528,6 +570,35 @@ function SearchRows({
 
 function focusAreaLabel(area: ProjectFocusArea): string {
   return stageLabel(area);
+}
+
+function objectTypeShortLabel(object: MorphoObject): string {
+  const label = getObjectTypeLabel(object);
+  return label.slice(0, 2);
+}
+
+function assetSourceShortLabel(sourceType: WorkspaceAssetItem["asset"]["sourceType"]): string {
+  switch (sourceType) {
+    case "aiGeneratedImage":
+      return "AI";
+    case "documentExtract":
+      return "文本";
+    case "originalFile":
+      return "文件";
+    case "originalLink":
+      return "链接";
+    case "originalImage":
+      return "图片";
+  }
+}
+
+function formatMimeLabel(mimeType: string): string {
+  const [category, subtype] = mimeType.split("/");
+  if (!category || !subtype) {
+    return mimeType;
+  }
+
+  return subtype.toUpperCase();
 }
 
 function stageLabel(stage: StageRecordKey): string {

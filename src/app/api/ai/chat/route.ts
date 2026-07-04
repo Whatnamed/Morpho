@@ -25,13 +25,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: config.reason }, { status: 503 });
   }
 
+  const capability = validated.value.attachments.some((attachment) => attachment.status === "ready") ? "multimodal" : "text";
+  const webSearch = config.config.webSearchEnabled ? validated.value.webSearch : undefined;
+
   try {
     const stream = await streamMiMoChat(config.config, {
       messages: buildProviderMessages(validated.value),
       systemPrompt: buildMorphoSystemPrompt(validated.value),
       stream: true,
-      capability: validated.value.attachments.some((attachment) => attachment.status === "ready") ? "multimodal" : "text",
-      webSearch: config.config.webSearchEnabled ? validated.value.webSearch : undefined,
+      capability,
+      webSearch,
       signal: request.signal
     });
 
@@ -42,6 +45,15 @@ export async function POST(request: Request) {
       }
     });
   } catch (error) {
-    return NextResponse.json({ error: getMiMoRouteErrorMessage(error) }, { status: 502 });
+    return NextResponse.json(
+      {
+        error: getMiMoRouteErrorMessage(error, {
+          capability,
+          webSearchEnabled: webSearch?.enabled === true,
+          attachmentCount: validated.value.attachments.filter((attachment) => attachment.status === "ready").length
+        })
+      },
+      { status: 502 }
+    );
   }
 }

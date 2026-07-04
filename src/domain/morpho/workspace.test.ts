@@ -23,6 +23,7 @@ import {
   setDefaultReference,
   setKeyConclusionState,
   setImageRole,
+  reorderCanvasInstances,
   updateCanvasInstancePosition
 } from "./workspace";
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "./imports";
@@ -75,6 +76,21 @@ describe("Morpho workspace domain boundaries", () => {
     });
     expect(updated.objects[instance.objectId]).toEqual(objectBefore);
     expect(updated.relations).toEqual(workspace.relations);
+  });
+
+  it("reorders canvas instances as visual layer only without changing semantic state", () => {
+    const workspace = createInitialWorkspace();
+    const targetObjectId = workspace.canvas.instances[0].objectId;
+    const objectsBefore = workspace.objects;
+    const relationsBefore = workspace.relations;
+    const deliveryBefore = workspace.deliveryReferences;
+
+    const updated = reorderCanvasInstances(workspace, [targetObjectId], "bringToFront");
+
+    expect(updated.canvas.instances.at(-1)?.objectId).toBe(targetObjectId);
+    expect(updated.objects).toBe(objectsBefore);
+    expect(updated.relations).toBe(relationsBefore);
+    expect(updated.deliveryReferences).toBe(deliveryBefore);
   });
 
   it("turns an AI suggestion into an editable draft without mutating project state", () => {

@@ -219,6 +219,11 @@ export type FailImageGenerationOperationInput = {
   providerTaskId?: string;
 };
 
+export type FailOperationInput = {
+  status: Extract<OperationStatus, "failed" | "cancelled" | "interrupted">;
+  reason: string;
+};
+
 export function createResearchOperation(
   workspace: MorphoWorkspace,
   input: CreateResearchOperationInput
@@ -1104,6 +1109,46 @@ export function applyDesignDefinitionProposal(
       citationIds: proposal.citationIds,
       createdAt: now
     })
+  };
+}
+
+export function failOperation(workspace: MorphoWorkspace, operationId: string, input: FailOperationInput): MorphoWorkspace {
+  const operation = workspace.operations[operationId];
+  if (!operation) {
+    return workspace;
+  }
+
+  const now = new Date().toISOString();
+  return {
+    ...workspace,
+    operations: {
+      ...workspace.operations,
+      [operationId]: {
+        ...operation,
+        status: input.status,
+        updatedAt: now,
+        errorSummary: input.reason,
+        retryable: input.status !== "cancelled",
+        steps: [
+          ...operation.steps,
+          {
+            id: `${operation.id}-step-${input.status}-${operation.steps.length + 1}`,
+            kind: operation.type === "research" ? "webSearch" : "modelSynthesis",
+            status: "failed",
+            summary: input.reason,
+            createdAt: now
+          }
+        ],
+        events: [
+          ...operation.events,
+          {
+            id: `${operation.id}-event-${input.status}-${operation.events.length + 1}`,
+            createdAt: now,
+            summary: input.reason
+          }
+        ]
+      }
+    }
   };
 }
 

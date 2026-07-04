@@ -228,6 +228,79 @@ export function updateCanvasInstancePosition(
   };
 }
 
+export type CanvasLayerReorderAction = "bringForward" | "sendBackward" | "bringToFront" | "sendToBack";
+
+export function reorderCanvasInstances(
+  workspace: MorphoWorkspace,
+  objectIds: MorphoObjectId[],
+  action: CanvasLayerReorderAction
+): MorphoWorkspace {
+  const objectIdSet = new Set(objectIds);
+  if (objectIdSet.size === 0) {
+    return workspace;
+  }
+
+  const selected = workspace.canvas.instances.filter((instance) => objectIdSet.has(instance.objectId));
+  if (selected.length === 0) {
+    return workspace;
+  }
+
+  const selectedInstanceIds = new Set(selected.map((instance) => instance.id));
+  const instances =
+    action === "bringForward" || action === "sendBackward"
+      ? moveSelectedInstancesOneStep(workspace.canvas.instances, selectedInstanceIds, action)
+      : moveSelectedInstancesToEdge(workspace.canvas.instances, selectedInstanceIds, action);
+
+  if (instances === workspace.canvas.instances) {
+    return workspace;
+  }
+
+  return {
+    ...workspace,
+    canvas: {
+      ...workspace.canvas,
+      instances
+    }
+  };
+}
+
+function moveSelectedInstancesToEdge(
+  instances: CanvasInstance[],
+  selectedInstanceIds: Set<CanvasInstanceId>,
+  action: Extract<CanvasLayerReorderAction, "bringToFront" | "sendToBack">
+): CanvasInstance[] {
+  const selected = instances.filter((instance) => selectedInstanceIds.has(instance.id));
+  const others = instances.filter((instance) => !selectedInstanceIds.has(instance.id));
+  return action === "bringToFront" ? [...others, ...selected] : [...selected, ...others];
+}
+
+function moveSelectedInstancesOneStep(
+  instances: CanvasInstance[],
+  selectedInstanceIds: Set<CanvasInstanceId>,
+  action: Extract<CanvasLayerReorderAction, "bringForward" | "sendBackward">
+): CanvasInstance[] {
+  const next = [...instances];
+  if (action === "bringForward") {
+    for (let index = next.length - 2; index >= 0; index -= 1) {
+      if (selectedInstanceIds.has(next[index].id) && !selectedInstanceIds.has(next[index + 1].id)) {
+        [next[index], next[index + 1]] = [next[index + 1], next[index]];
+      }
+    }
+  } else {
+    for (let index = 1; index < next.length; index += 1) {
+      if (selectedInstanceIds.has(next[index].id) && !selectedInstanceIds.has(next[index - 1].id)) {
+        [next[index], next[index - 1]] = [next[index - 1], next[index]];
+      }
+    }
+  }
+
+  return areCanvasInstancesInSameOrder(instances, next) ? instances : next;
+}
+
+function areCanvasInstancesInSameOrder(left: CanvasInstance[], right: CanvasInstance[]): boolean {
+  return left.length === right.length && left.every((instance, index) => instance.id === right[index].id);
+}
+
 export function createAiDraftFromSuggestion(
   workspace: MorphoWorkspace,
   input: AiSuggestionInput

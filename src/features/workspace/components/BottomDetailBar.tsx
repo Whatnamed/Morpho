@@ -1,22 +1,6 @@
 "use client";
 
-import {
-  Ban,
-  BookOpen,
-  EyeOff,
-  Flag,
-  GitBranch,
-  GitMerge,
-  History,
-  Info,
-  ListChecks,
-  MessageSquareText,
-  PackageOpen,
-  PenLine,
-  Sparkles,
-  Target,
-  Trash2
-} from "lucide-react";
+import { Ban, EyeOff, ListChecks, Target } from "lucide-react";
 import { useState } from "react";
 
 import type {
@@ -37,7 +21,7 @@ import {
   resolveDocumentFragmentSourceAvailability,
   type DocumentReaderInitialLocation
 } from "../documentFragments";
-import { getObjectTypeLabel, imageRoleLabel } from "../workspaceUi";
+import { getObjectTypeLabel } from "../workspaceUi";
 
 type ResearchSourceKind = "finding" | "opportunity" | "constraint" | "openQuestion" | "evidence";
 
@@ -91,19 +75,6 @@ type BottomDetailBarProps = {
 
 const tabs = ["信息", "来源", "版本", "关联", "决策"] as const;
 type DetailTab = (typeof tabs)[number];
-
-const imageRoleOptions: ImageRole[] = [
-  "reference",
-  "preview",
-  "conceptImage",
-  "primaryVisual",
-  "sceneVisual",
-  "cmfStudy",
-  "detailStudy",
-  "structureDiagram",
-  "interactionDiagram",
-  "deliveryAsset"
-];
 
 export function buildDesignDefinitionInfoMeta(hasPendingDesignDefinitionRevisionDraft: boolean): string | undefined {
   return hasPendingDesignDefinitionRevisionDraft ? "有修订草稿" : undefined;
@@ -240,33 +211,13 @@ export function BottomDetailBar({
   visualBranches,
   decisionRecords,
   activeDesignTrace,
-  isDesignTraceActive,
-  onToggleDesignTrace,
-  onAskAi,
-  onReviseDirection,
-  onSplitDirection,
-  onMergeDirections,
-  onCreateVisualBranch,
   onRenameVisualBranch,
   onArchiveVisualBranch,
   onRestoreVisualBranch,
-  onAssignImageToVisualBranch,
-  onRemoveImageFromVisualBranch,
-  onLocalEdit,
-  onReferenceIntent,
-  onOpenDocumentReader,
-  onOpenDeliveryPreparation,
-  onHide,
-  onDelete,
-  onEliminateDirection,
-  onSetDirectionPrimary,
-  onSetDirectionAlternative,
-  onRestoreDirectionAsAlternative,
   onSaveKeyConclusionFromResearchItem,
   onCopyItemToDraft,
   onContinueQuestion,
-  onSetKeyConclusionState,
-  onSetImageRole
+  onSetKeyConclusionState
 }: BottomDetailBarProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>("信息");
   const [supersededById, setSupersededById] = useState("");
@@ -344,6 +295,8 @@ export function BottomDetailBar({
         </div>
       </div>
 
+      {/* Selection actions moved to SelectionToolbar.
+      {false ? (
       <div className="detail-bar" aria-label="选中对象操作">
         <div className="detail-object">
           <div className="detail-icon">
@@ -532,6 +485,8 @@ export function BottomDetailBar({
           ) : null}
         </div>
       </div>
+      ) : null}
+      */}
     </>
   );
 }

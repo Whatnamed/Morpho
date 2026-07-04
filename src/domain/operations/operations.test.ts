@@ -13,6 +13,7 @@ import {
   detectResearchSourceChanges,
   failImageGenerationOperation,
   interruptActiveOperations,
+  failOperation,
   markImageGenerationOperationSubmitted,
   recordConceptDirectionProposal,
   recordDesignDefinitionProposal,
@@ -67,6 +68,22 @@ describe("Morpho Operation Runtime", () => {
       expect(gate.operation.status).toBe("queued");
       expect(gate.reason).toContain("未完成");
     }
+  });
+
+  it("unblocks new work after a text operation fails", () => {
+    const created = createResearchOperation(createBlankWorkspace("project-op"), {
+      userInput: "继续联网调研",
+      selectedObjectIds: [],
+      allowWebSearch: true
+    }).workspace;
+
+    const failed = failOperation(created, Object.values(created.operations)[0]?.id ?? "", {
+      status: "failed",
+      reason: "MiMo 请求失败。"
+    });
+
+    expect(Object.values(failed.operations)[0]?.status).toBe("failed");
+    expect(canStartOperation(failed).status).toBe("ok");
   });
 
   it("records a research proposal without directly creating a ResearchObject", () => {

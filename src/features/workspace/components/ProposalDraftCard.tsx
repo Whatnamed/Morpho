@@ -67,6 +67,7 @@ export function ProposalDraftCard({
         <div>
           <strong>{proposalTitle(proposal)}</strong>
           <div className="proposal-meta">
+            <span>待确认草案</span>
             <span>{proposalTypeLabel(proposal)}</span>
             <span>{proposalIntentLabel(proposal.workIntent)}</span>
           </div>
@@ -142,11 +143,24 @@ export function ProposalDraftCard({
           disabled={proposal.reviewState === "targetUnavailable" || proposal.reviewState === "baseSuperseded"}
           onClick={() => onApply(proposal.reviewState === "sourceChanged")}
         >
-          {proposal.reviewState === "sourceChanged" ? "已复核来源，仍然应用" : "应用草案"}
+          {proposal.reviewState === "sourceChanged" ? "已复核来源，仍然应用到画布" : proposalApplyLabel(proposal)}
         </button>
       </div>
     </section>
   );
+}
+
+function proposalApplyLabel(proposal: ArtifactProposal): string {
+  switch (proposal.type) {
+    case "researchAnalysis":
+      return "保存到画布";
+    case "designDefinition":
+      return "应用到画布";
+    case "conceptDirection":
+      return "应用到画布";
+    case "deliveryPlan":
+      return "保存到画布";
+  }
 }
 
 function ResearchProposalEditor({

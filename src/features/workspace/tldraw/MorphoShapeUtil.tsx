@@ -181,6 +181,8 @@ export function getMorphoShapeProps(
 
 function getDetails(object: MorphoObject, workspace?: MorphoWorkspace): string[] {
   switch (object.type) {
+    case "image":
+      return [];
     case "research":
       return [
         `发现：${object.findings[0] ?? "待补充"}`,
@@ -242,7 +244,7 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
 
   if (props.morphoType === "image") {
     return (
-      <article className={classes}>
+      <article className={classes} aria-label={props.title}>
         <div className="morpho-image-visual">
           {props.assetUrl ? (
             // Blob URLs come from browser-local IndexedDB and cannot be optimized by next/image.
@@ -258,11 +260,6 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
             <p>转角连接件</p>
           </div>
         ) : null}
-        <div className="morpho-image-caption">
-          <RoleLabel label={props.label} />
-          <strong>{props.title}</strong>
-          <p>{props.summary}</p>
-        </div>
       </article>
     );
   }

@@ -1,22 +1,23 @@
 "use client";
 
-import { BookOpenText, Boxes, EyeOff, FolderSearch, Map, Plus, Search } from "lucide-react";
+import { BookOpenText, Boxes, EyeOff, Map, Plus, Search } from "lucide-react";
 
 export type DrawerMode = "map" | "assets" | "hidden" | "search" | "records" | null;
 
 type LeftRailProps = {
   activeDrawer: DrawerMode;
   onDrawerChange: (drawer: DrawerMode) => void;
+  onAddToCanvas: () => void;
 };
 
-export function LeftRail({ activeDrawer, onDrawerChange }: LeftRailProps) {
+export function LeftRail({ activeDrawer, onDrawerChange, onAddToCanvas }: LeftRailProps) {
   const toggle = (drawer: Exclude<DrawerMode, null>) => {
     onDrawerChange(activeDrawer === drawer ? null : drawer);
   };
 
   return (
     <aside className="left-rail" aria-label="工作台导航">
-      <button className="rail-button create" type="button" aria-label="添加到画布">
+      <button className="rail-button create" type="button" aria-label="添加到画布" onClick={onAddToCanvas}>
         <Plus size={16} />
         <span className="tooltip">添加到画布</span>
       </button>
@@ -65,10 +66,6 @@ export function LeftRail({ activeDrawer, onDrawerChange }: LeftRailProps) {
       >
         <Search size={16} />
         <span className="tooltip">项目内搜索</span>
-      </button>
-      <button className="rail-button" type="button" aria-label="项目入口">
-        <FolderSearch size={16} />
-        <span className="tooltip">项目入口</span>
       </button>
     </aside>
   );

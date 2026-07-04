@@ -1,0 +1,21 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - region "Morpho 项目首页" [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]: Morpho
+        - heading "本地项目" [level=1] [ref=e6]
+        - paragraph [ref=e7]: 从已有项目继续，或直接创建一个空白工作台。资料、画布、聊天和资产都会保存在当前浏览器本地。
+      - generic [ref=e8]:
+        - button "新建项目" [ref=e9] [cursor=pointer]:
+          - img [ref=e10]
+          - text: 新建项目
+        - button "继续最近项目" [disabled] [ref=e11]:
+          - img [ref=e12]
+          - text: 继续最近项目
+    - region "项目搜索" [ref=e15]:
+      - img [ref=e16]
+      - textbox "按项目名称或一句说明搜索" [ref=e19]
+    - region "已有项目" [ref=e20]:
+      - paragraph [ref=e21]: 没有匹配项目。
+  - button "Open Next.js Dev Tools" [ref=e27] [cursor=pointer]:
+    - img [ref=e28]
