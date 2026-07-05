@@ -551,3 +551,11 @@ Decision: add a third package family for M8 with `format: "morpho-delivery-outpu
 Reason: users need to take the selected delivery preparation package into Figma, PPT, Keynote, Illustrator, or course-submission organization without exporting the whole project process or creating a restorable backup. The output contract must preserve chapter order, stable references, captions, source maps, asset availability, gaps, and unapplied drafts while staying independent from workspace schema v13 and M7 archive/backup envelopes.
 
 Boundary: delivery output exports only one selected `delivery` object's sections, stable references, required assets, gaps, and pending drafts. It does not scan the whole canvas, export all assets, apply drafts, close gaps, refresh stale references, write workspace/catalog/IndexedDB state, restore projects, alter M7 `manifestVersion` or `bundleVersion`, or generate PPTX, PDF, Figma files, final layouts, cloud shares, or collaboration artifacts.
+
+## 2026-07-05: Use Supabase Auth For Closed-Test Access Only
+
+Decision: add `@supabase/ssr` and `@supabase/supabase-js` for email/password session handling, route protection, current-user access state, and server-side AI quota reservation.
+
+Reason: M9-B requires real closed-test accounts, trusted server-side session verification, RLS-backed access records, and atomic daily AI quota checks before provider calls. The existing local-first persistence cannot provide account identity or concurrent quota enforcement.
+
+Boundary: Supabase is not the project database for Morpho workspaces. Project catalog and workspace JSON remain in browser `localStorage`, binary assets remain in IndexedDB, and login/logout must not delete, migrate, hide, or bind local projects to `auth.users.id`.

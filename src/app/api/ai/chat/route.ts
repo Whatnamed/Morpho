@@ -4,6 +4,7 @@ import { loadAiConfig } from "@/server/ai/config";
 import { getMiMoRouteErrorMessage } from "@/server/ai/errors";
 import { streamMiMoChat } from "@/server/ai/mimoProvider";
 import { buildMorphoSystemPrompt, buildProviderMessages, validateAiRouteRequest } from "@/server/ai/request";
+import { aiAccessDeniedResponse, guardAiRoute } from "@/server/auth/aiAccess";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,11 @@ export async function POST(request: Request) {
   const validated = validateAiRouteRequest(body);
   if (validated.status === "failed") {
     return NextResponse.json({ error: validated.reason }, { status: 400 });
+  }
+
+  const access = await guardAiRoute("text");
+  if (access.status === "denied") {
+    return aiAccessDeniedResponse(access);
   }
 
   const config = loadAiConfig(process.env);

@@ -6,6 +6,7 @@ import {
   OpenAiCompatibleProviderError,
   type OpenAiCompatibleResponseRequest
 } from "@/server/ai/openaiCompatibleProvider";
+import { aiAccessDeniedResponse, guardAiRoute } from "@/server/auth/aiAccess";
 
 export const runtime = "nodejs";
 
@@ -20,6 +21,11 @@ export async function POST(request: Request) {
   const validated = validateAgentRouteRequest(body);
   if (validated.status === "failed") {
     return NextResponse.json({ error: validated.reason }, { status: 400 });
+  }
+
+  const access = await guardAiRoute("text");
+  if (access.status === "denied") {
+    return aiAccessDeniedResponse(access);
   }
 
   const config = loadOpenAiCompatibleConfig(process.env);

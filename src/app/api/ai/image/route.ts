@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { loadGrsImageConfig } from "@/server/image/config";
 import { resolveGrsImageResult } from "@/server/image/grsProvider";
 import { validateGrsImageRouteRequest } from "@/server/image/request";
+import { aiAccessDeniedResponse, guardAiRoute } from "@/server/auth/aiAccess";
 
 export const runtime = "nodejs";
 
@@ -14,14 +15,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "请求不是有效 JSON。" }, { status: 400 });
   }
 
-  const config = loadGrsImageConfig(process.env);
-  if (config.status === "failed") {
-    return NextResponse.json({ error: config.reason }, { status: 503 });
-  }
-
   const validated = validateGrsImageRouteRequest(body);
   if (validated.status === "failed") {
     return NextResponse.json({ error: validated.reason }, { status: 400 });
+  }
+
+  const access = await guardAiRoute("image");
+  if (access.status === "denied") {
+    return aiAccessDeniedResponse(access);
+  }
+
+  const config = loadGrsImageConfig(process.env);
+  if (config.status === "failed") {
+    return NextResponse.json({ error: config.reason }, { status: 503 });
   }
 
   try {
