@@ -3,20 +3,14 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronLeft, Send, Sparkles, Square } from "lucide-react";
 
-import type {
-  AiTaskMode,
-  AiWorkIntent,
-  ComparisonAnalysis,
-  ComparisonSourceRef,
-  MorphoObject,
-  MorphoWorkspace
-} from "@/domain/morpho/types";
+import type { ComparisonAnalysis, ComparisonSourceRef, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
 import type {
   ArtifactProposal,
   ConceptDirectionProposal,
   DesignDefinitionProposal,
   OperationRecord,
-  ResearchAnalysisProposal
+  ResearchAnalysisProposal,
+  VisualGenerationPlan
 } from "@/domain/operations/types";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 import {
@@ -27,6 +21,7 @@ import {
 import { resolveStoredComparisonSourceRefs } from "@/domain/morpho/comparisonAnalysis";
 import { ProposalDraftCard } from "./ProposalDraftCard";
 import type { Suggestion } from "../workspaceUi";
+import type { MorphoAgentTurnMode } from "../morphoAgent";
 
 export type PendingAiConfirmation =
   | {
@@ -39,6 +34,18 @@ export type PendingAiConfirmation =
       targetObjectId: string;
       targetTitle: string;
       reasons: string[];
+    }
+  | {
+      kind: "batchGenerateVisuals";
+      targetTitle: string;
+      itemCount: number;
+      reason: string;
+      impact: string;
+      draft: string;
+      plan: VisualGenerationPlan;
+      sourceObjectIds: string[];
+      selectedDirectionIds: string[];
+      selectedImageIds: string[];
     }
   | {
       kind: "createKeyConclusion";
@@ -191,11 +198,7 @@ type AiConversationPanelProps = {
   draft: string;
   isOpen: boolean;
   isLocalEditMode: boolean;
-  taskMode: AiTaskMode;
-  recommendedTaskMode: AiTaskMode;
-  workIntent: AiWorkIntent;
-  recommendedWorkIntent: AiWorkIntent;
-  availableWorkIntents: AiWorkIntent[];
+  turnMode: MorphoAgentTurnMode;
   activeProposal?: ArtifactProposal;
   activeOperation?: OperationRecord | null;
   isStreaming: boolean;
@@ -212,8 +215,7 @@ type AiConversationPanelProps = {
   migrationError?: string;
   onToggleOpen: () => void;
   onDraftChange: (draft: string) => void;
-  onTaskModeChange: (taskMode: AiTaskMode) => void;
-  onWorkIntentChange: (workIntent: AiWorkIntent) => void;
+  onTurnModeChange: (mode: MorphoAgentTurnMode) => void;
   onImageGenerationSettingsChange: (patch: {
     modelId?: string;
     aspectRatio?: GrsImageAspectRatio;
@@ -274,11 +276,7 @@ export function AiConversationPanel({
   draft,
   isOpen,
   isLocalEditMode,
-  taskMode,
-  recommendedTaskMode,
-  workIntent,
-  recommendedWorkIntent,
-  availableWorkIntents,
+  turnMode,
   activeProposal,
   activeOperation,
   isStreaming,
@@ -292,8 +290,7 @@ export function AiConversationPanel({
   migrationError,
   onToggleOpen,
   onDraftChange,
-  onTaskModeChange,
-  onWorkIntentChange,
+  onTurnModeChange,
   onImageGenerationSettingsChange,
   onDirectionPreviewCountChange,
   onSuggestionClick,
@@ -320,22 +317,20 @@ export function AiConversationPanel({
   const confirmationBody = pendingConfirmation ? getPendingConfirmationBody(pendingConfirmation) : null;
   const confirmationActionLabel = pendingConfirmation ? getPendingConfirmationActionLabel(pendingConfirmation) : null;
   const selectedDirectionCount = selectedObjects.filter((object) => object.type === "conceptDirection").length;
-  const showDirectionPreviewCount =
-    selectedDirectionCount > 0 && selectedDirectionCount <= 3 && (taskMode === "imageGeneration" || recommendedTaskMode === "imageGeneration");
+  const showDirectionPreviewCount = selectedDirectionCount > 0 && selectedDirectionCount <= 3 && isLocalEditMode;
   const directionPreviewTotal = selectedDirectionCount * directionPreviewCount;
   const isAiBusy = isStreaming || Boolean(activeOperation);
+  const isImageTaskActive = Boolean(
+    imageTaskStatus && !["succeeded", "failed", "cancelled"].includes(imageTaskStatus.state)
+  );
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
-  const activeTaskCount = isAiBusy || imageTaskStatus ? 1 : 0;
+  const activeTaskCount = isAiBusy || isImageTaskActive ? 1 : 0;
+  const statusLabel = activeTaskCount > 0 ? "处理中" : activeProposal ? "待处理" : "空闲";
   const visibleContextObjects = selectedObjects.slice(0, 3);
   const hiddenContextCount = Math.max(0, selectedObjects.length - visibleContextObjects.length);
-  const modeSummary = buildModeSummary({
-    taskMode,
-    recommendedTaskMode,
-    workIntent,
-    recommendedWorkIntent
-  });
+  const modeSummary = turnMode === "auto" ? "自动执行" : "先确认";
   const updateScrollBottomVisibility = () => {
     const element = scrollRef.current;
     if (!element) {
@@ -589,52 +584,30 @@ export function AiConversationPanel({
           <details className="mode-disclosure">
             <summary>
               <span>{modeSummary}</span>
-              <small>需要时展开调整</small>
+              <small>Agent 会自动判断研究、提案、比较和出图</small>
             </summary>
             <div className="mode-row">
-              <span>执行方式</span>
-              <div className="mode-toggle" aria-label="执行模式">
+              <span>执行策略</span>
+              <div className="mode-toggle" aria-label="执行策略">
                 <button
                   type="button"
-                  className={taskMode === "chatAnalysis" ? "active" : ""}
-                  onClick={() => onTaskModeChange("chatAnalysis")}
+                  className={turnMode === "auto" ? "active" : ""}
+                  onClick={() => onTurnModeChange("auto")}
                 >
-                  对话与分析
+                  自动执行
                 </button>
                 <button
                   type="button"
-                  className={taskMode === "imageGeneration" ? "active" : ""}
-                  onClick={() => onTaskModeChange("imageGeneration")}
+                  className={turnMode === "confirm" ? "active" : ""}
+                  onClick={() => onTurnModeChange("confirm")}
                 >
-                  图像生成
-                </button>
-                <button
-                  type="button"
-                  className={taskMode === "researchOperation" ? "active" : ""}
-                  onClick={() => onTaskModeChange("researchOperation")}
-                >
-                  研究任务
+                  先确认
                 </button>
               </div>
             </div>
-
-            {taskMode === "chatAnalysis" && availableWorkIntents.length > 1 ? (
-              <div className="mode-row mode-row-secondary">
-                <span>工作重点</span>
-                <div className="mode-toggle intent-toggle" aria-label="工作意图">
-                  {availableWorkIntents.map((intent) => (
-                    <button
-                      key={intent}
-                      type="button"
-                      className={workIntent === intent ? "active" : ""}
-                      onClick={() => onWorkIntentChange(intent)}
-                    >
-                      {formatWorkIntent(intent)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+            <p className="mode-help-text">
+              不再手动切换“研究任务 / 图像生成 / 设计定义”等模式；选中对象后直接说你的目标，Agent 会按当前语境决定下一步。
+            </p>
           </details>
 
           {isLocalEditMode ? (
@@ -756,13 +729,13 @@ export function AiConversationPanel({
           aria-expanded={queueOpen}
           onClick={() => setQueueOpen((open) => !open)}
         >
-          <span>Queue</span>
-          <strong>{activeTaskCount} active</strong>
+          <span>状态</span>
+          <strong>{statusLabel}</strong>
         </button>
         {queueOpen ? (
           <div className="ai-queue-popover" role="status">
             {activeTaskCount === 0 ? (
-              <span>无 active tasks</span>
+              <span>{activeProposal ? "有一张草案等待处理" : "当前没有正在执行的任务"}</span>
             ) : (
               <>
                 <strong>{activeOperation ? formatOperationType(activeOperation.type) : "当前输出"}</strong>
@@ -806,6 +779,8 @@ function getPendingConfirmationTitle(confirmation: PendingAiConfirmation): strin
       return "替换后续默认参考";
     case "deleteObject":
       return "确认删除对象";
+    case "batchGenerateVisuals":
+      return "确认批量生成";
     case "createKeyConclusion":
       return "保存关键结论";
     case "compareSetPrimary":
@@ -828,6 +803,8 @@ function getPendingConfirmationBody(confirmation: PendingAiConfirmation): string
         confirmation.reasons.length > 0 ? ` 需要确认：${confirmation.reasons.join(" ")}` : "";
       return `将删除“${confirmation.targetTitle}”。它会从活动对象和画布实例中移除，并清理实时关系；已有交付引用快照和决策快照不会被改写。${reasonText}`;
     }
+    case "batchGenerateVisuals":
+      return `将基于当前语境批量生成 ${confirmation.itemCount} 张新图像。${confirmation.reason} ${confirmation.impact} 这只会创建新的图像对象，不会覆盖来源图、默认参考、交付引用或已有版本链。`;
     case "createKeyConclusion":
       return `将从“${confirmation.sourceTitle}”保存一条用户确认的关键结论：“${confirmation.conclusionTitle}”。它会创建新的关键结论对象、来源关系和决策记录；不会自动改写设计定义、概念方向、默认参考、交付引用或长期项目记忆。`;
     case "compareSetPrimary":
@@ -847,6 +824,8 @@ function getPendingConfirmationActionLabel(confirmation: PendingAiConfirmation):
       return "只替换默认参考";
     case "deleteObject":
       return "确认删除";
+    case "batchGenerateVisuals":
+      return "确认生成";
     case "createKeyConclusion":
       return "确认保存结论";
     case "compareSetPrimary":
@@ -1002,56 +981,6 @@ function formatSourceAvailability(availability: ComparisonSourceRef["availabilit
     case "missing":
       return "（已缺失）";
   }
-}
-
-function formatTaskMode(mode: AiTaskMode): string {
-  switch (mode) {
-    case "chatAnalysis":
-      return "对话与分析";
-    case "imageGeneration":
-      return "图像生成";
-    case "researchOperation":
-      return "研究任务";
-  }
-}
-
-function formatWorkIntent(intent: AiWorkIntent): string {
-  switch (intent) {
-    case "comparison":
-      return "比较";
-    case "prepareDeliverySection":
-      return "整理交付材料";
-    case "createDesignDefinition":
-      return "创建设计定义";
-    case "reviseDesignDefinition":
-      return "修订设计定义";
-    case "createConceptDirections":
-      return "创建概念方向";
-    case "reviseConceptDirection":
-      return "修订概念方向";
-    case "splitConceptDirection":
-      return "拆分方向";
-    case "mergeConceptDirections":
-      return "合并方向";
-    case "discussion":
-    default:
-      return "讨论";
-  }
-}
-
-function buildModeSummary(input: {
-  taskMode: AiTaskMode;
-  recommendedTaskMode: AiTaskMode;
-  workIntent: AiWorkIntent;
-  recommendedWorkIntent: AiWorkIntent;
-}): string {
-  const task = formatTaskMode(input.taskMode);
-  if (input.taskMode !== "chatAnalysis") {
-    return task;
-  }
-
-  const intent = formatWorkIntent(input.workIntent);
-  return intent === "讨论" ? task : `${task} · ${intent}`;
 }
 
 function MarkdownContent({ body }: { body: string }) {

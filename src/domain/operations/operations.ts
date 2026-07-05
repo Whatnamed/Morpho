@@ -67,6 +67,7 @@ export type RecordResearchProposalInput = {
     snippet?: string;
   }>;
   sourceChangedWarning?: string;
+  position?: { x: number; y: number };
 };
 
 export type RecordResearchProposalResult = {
@@ -99,6 +100,7 @@ export type RecordDesignDefinitionProposalInput = {
   basedOnDesignDefinitionId?: string;
   basedOnRevisionId?: string;
   changeNote?: string;
+  position?: { x: number; y: number };
 };
 
 export type RecordDesignDefinitionProposalResult = {
@@ -138,6 +140,7 @@ export type RecordConceptDirectionProposalInput = {
   }>;
   basedOnDesignDefinitionId?: string;
   basedOnRevisionId?: string;
+  position?: { x: number; y: number };
 };
 
 export type RecordConceptDirectionProposalResult = {
@@ -378,14 +381,14 @@ export function canStartOperation(workspace: MorphoWorkspace):
       operation: OperationRecord;
       reason: string;
     } {
-  const active = getActiveOperation(workspace);
-  if (!active) {
+  const blocking = Object.values(workspace.operations).find((operation) => isBlockingOperationStatus(operation.status));
+  if (!blocking) {
     return { status: "ok" };
   }
 
   return {
     status: "blocked",
-    operation: active,
+    operation: blocking,
     reason: "当前项目已有一个未完成的 Operation，请先取消或处理后再开始新的任务。"
   };
 }
@@ -828,6 +831,7 @@ export function recordResearchAnalysisProposal(
     citationIds: citationEntries.map((citation) => citation.id),
     sourceChangedWarning: input.sourceChangedWarning,
     createdAt: now,
+    canvasPlacement: input.position,
     reviewState: input.sourceChangedWarning ? "sourceChanged" : "ready"
   };
   const updatedOperation: OperationRecord | undefined = operation
@@ -892,6 +896,7 @@ export function recordDesignDefinitionProposal(
     sourceSnapshots: buildSourceSemanticSnapshots(workspace, input.sourceObjectIds),
     citationIds: citationEntries.map((citation) => citation.id),
     createdAt: now,
+    canvasPlacement: input.position,
     title: input.title,
     summary: input.summary,
     projectGoal: input.projectGoal,
@@ -1173,6 +1178,7 @@ export function recordConceptDirectionProposal(
     sourceSnapshots: buildSourceSemanticSnapshots(workspace, input.sourceObjectIds),
     citationIds: citationEntries.map((citation) => citation.id),
     createdAt: now,
+    canvasPlacement: input.position,
     title: input.title,
     summary: input.summary,
     applicationMode: input.applicationMode ?? inferConceptDirectionApplicationMode(input.workIntent),
@@ -2319,7 +2325,11 @@ function materializeCitationSnapshots(
 }
 
 function isActiveOperationStatus(status: OperationRecord["status"]): boolean {
-  return status === "queued" || status === "preparing" || status === "running" || status === "waiting_for_user";
+  return status === "queued" || status === "preparing" || status === "running";
+}
+
+function isBlockingOperationStatus(status: OperationRecord["status"]): boolean {
+  return isActiveOperationStatus(status) || status === "waiting_for_user";
 }
 
 function nextRecordId(record: Record<string, unknown>, preferredId: string): string {
