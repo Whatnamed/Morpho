@@ -332,6 +332,10 @@ export function hideObject(workspace: MorphoWorkspace, objectId: MorphoObjectId)
   }));
 }
 
+export function hideObjects(workspace: MorphoWorkspace, objectIds: MorphoObjectId[]): MorphoWorkspace {
+  return uniqueObjectIds(objectIds).reduce((current, objectId) => hideObject(current, objectId), workspace);
+}
+
 export function restoreObject(workspace: MorphoWorkspace, objectId: MorphoObjectId): MorphoWorkspace {
   const object = workspace.objects[objectId];
 
@@ -600,6 +604,26 @@ export function deleteObject(
         instances: canvasInstances
       }
     }))
+  };
+}
+
+export function deleteObjects(
+  workspace: MorphoWorkspace,
+  objectIds: MorphoObjectId[],
+  options: { confirmed?: boolean; reason?: string } = {}
+): DeleteObjectResult {
+  let current = workspace;
+  for (const objectId of uniqueObjectIds(objectIds)) {
+    const result = deleteObject(current, objectId, options);
+    if (result.status === "requiresConfirmation") {
+      return result;
+    }
+    current = result.workspace;
+  }
+
+  return {
+    status: "updated",
+    workspace: current
   };
 }
 
@@ -2707,4 +2731,8 @@ function legacyProjectFocus(value: unknown): LegacyProjectFocus | undefined {
 
 function omitRecordKey<T>(record: Record<string, T>, key: string): Record<string, T> {
   return Object.fromEntries(Object.entries(record).filter(([entryKey]) => entryKey !== key));
+}
+
+function uniqueObjectIds(objectIds: MorphoObjectId[]): MorphoObjectId[] {
+  return [...new Set(objectIds.filter(Boolean))];
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createInitialWorkspace } from "@/domain/morpho/workspace";
 import {
   isMorphoShapeActiveInWorkspace,
+  shouldReplaceSelectionForContextMenuTarget,
   shouldApplyFocusRequest,
   resolveFocusBounds,
   shouldOpenCanvasContextMenuFromPointerDown
@@ -43,6 +44,11 @@ describe("MorphoCanvas focus navigation", () => {
     expect(shouldOpenCanvasContextMenuFromPointerDown({ button: 2 })).toBe(true);
     expect(shouldOpenCanvasContextMenuFromPointerDown({ button: 0 })).toBe(false);
     expect(shouldOpenCanvasContextMenuFromPointerDown({ button: 1 })).toBe(false);
+  });
+
+  it("preserves a multi-selection when right-clicking an already selected shape", () => {
+    expect(shouldReplaceSelectionForContextMenuTarget("shape:a", ["shape:a", "shape:b"])).toBe(false);
+    expect(shouldReplaceSelectionForContextMenuTarget("shape:c", ["shape:a", "shape:b"])).toBe(true);
   });
 
   it("treats newly imported object shapes as active when the latest workspace contains them", () => {

@@ -85,10 +85,12 @@ import {
   buildKeyConclusionDraftFromResearchSource,
   createKeyConclusion,
   createAiDraftFromSuggestion,
+  deleteObjects,
   deleteObject,
   clearDefaultReference,
   eliminateDirection,
   createVisualBranch,
+  hideObjects,
   hideObject,
   markFileObjectParseFailed,
   markFileObjectParsing,
@@ -280,6 +282,13 @@ type DocumentReaderUiState = {
   } | null;
 };
 
+type ObjectOperationUndoEntry = {
+  workspace: MorphoWorkspace;
+  selectedObjectIds: string[];
+  localEditObjectId: string | null;
+  pendingConfirmation: PendingAiConfirmation | null;
+};
+
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const router = useRouter();
   const [workspace, setWorkspace, persistenceState] = usePersistentWorkspace(projectId);
@@ -310,6 +319,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [pendingDeliveryDraftTarget, setPendingDeliveryDraftTarget] = useState<{ deliveryObjectId: string; sectionId: string } | null>(null);
   const assetUrls = useWorkspaceAssetUrls(workspace.assets);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const objectOperationUndoStackRef = useRef<ObjectOperationUndoEntry[]>([]);
   const [focusRequest, setFocusRequest] = useState<FocusRequest>({ nonce: 0 });
   const [documentReader, setDocumentReader] = useState<DocumentReaderUiState | null>(null);
   const [bundlePanelOpen, setBundlePanelOpen] = useState(false);
@@ -549,6 +559,56 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     },
     [setWorkspace]
   );
+
+  const pushObjectOperationUndo = useCallback(() => {
+    objectOperationUndoStackRef.current = [
+      ...objectOperationUndoStackRef.current.slice(-19),
+      {
+        workspace,
+        selectedObjectIds,
+        localEditObjectId,
+        pendingConfirmation
+      }
+    ];
+  }, [localEditObjectId, pendingConfirmation, selectedObjectIds, workspace]);
+
+  const undoLastObjectOperation = useCallback(() => {
+    const entry = objectOperationUndoStackRef.current.pop();
+    if (!entry) {
+      return false;
+    }
+
+    setWorkspace(entry.workspace);
+    setSelectedObjectIds(entry.selectedObjectIds);
+    setLocalEditObjectId(entry.localEditObjectId);
+    setPendingConfirmation(entry.pendingConfirmation);
+    setCanvasContextMenu(null);
+    return true;
+  }, [setWorkspace]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.key.toLowerCase() !== "z") {
+        return;
+      }
+
+      if (isEditableDomTarget(event.target)) {
+        return;
+      }
+
+      if (!undoLastObjectOperation()) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, { capture: true });
+    };
+  }, [undoLastObjectOperation]);
 
   const handleSelectionChange = useCallback(
     (objectIds: string[]) => {
@@ -4154,15 +4214,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   }, [executeAgentVisualGenerationPlan, pendingConfirmation, setWorkspace, workspace]);
 
   const handleHideSelected = useCallback(() => {
-    if (!selectedObjects[0]) {
+    if (selectedObjects.length === 0) {
       return;
     }
 
-    const objectId = selectedObjects[0].id;
-    setWorkspace((current) => hideObject(current, objectId));
-    setSelectedObjectIds((current) => current.filter((selectedId) => selectedId !== objectId));
-    setLocalEditObjectId((current) => (current === objectId ? null : current));
-  }, [selectedObjects, setWorkspace]);
+    const objectIds = selectedObjects.map((object) => object.id);
+    pushObjectOperationUndo();
+    setWorkspace((current) => hideObjects(current, objectIds));
+    setSelectedObjectIds((current) => current.filter((selectedId) => !objectIds.includes(selectedId)));
+    setLocalEditObjectId((current) => (current && objectIds.includes(current) ? null : current));
+    setCanvasContextMenu(null);
+  }, [pushObjectOperationUndo, selectedObjects, setWorkspace]);
 
   const handleRestoreObject = useCallback(
     (objectId: string) => {
@@ -4175,24 +4237,26 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   );
 
   const handleDeleteSelected = useCallback(() => {
-    if (!selectedObjects[0]) {
+    if (selectedObjects.length === 0) {
       return;
     }
 
-    const objectId = selectedObjects[0].id;
+    const objectIds = selectedObjects.map((object) => object.id);
+    pushObjectOperationUndo();
     setWorkspace((current) => {
-      const result = deleteObject(current, objectId, {
+      const result = deleteObjects(current, objectIds, {
         confirmed: true,
         reason: "用户在对象详情栏直接删除该对象。"
       });
       return result.workspace;
     });
-    setSelectedObjectIds((current) => current.filter((selectedId) => selectedId !== objectId));
-    setLocalEditObjectId((current) => (current === objectId ? null : current));
+    setSelectedObjectIds((current) => current.filter((selectedId) => !objectIds.includes(selectedId)));
+    setLocalEditObjectId((current) => (current && objectIds.includes(current) ? null : current));
     setPendingConfirmation((current) =>
-      current?.kind === "deleteObject" && current.targetObjectId === objectId ? null : current
+      current?.kind === "deleteObject" && objectIds.includes(current.targetObjectId) ? null : current
     );
-  }, [selectedObjects, setWorkspace]);
+    setCanvasContextMenu(null);
+  }, [pushObjectOperationUndo, selectedObjects, setWorkspace]);
 
   const handleEliminateDirection = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "conceptDirection");
@@ -4737,7 +4801,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           }
 
           setCanvasContextMenu({ ...request, openedAt: Date.now() });
-          if (request.objectId) {
+          if (request.objectId && !selectedObjectIds.includes(request.objectId)) {
             setSelectedObjectIds([request.objectId]);
           }
         }}
@@ -6088,6 +6152,10 @@ function comparisonActionFromPending(confirmation: PendingComparisonConfirmation
     case "compareCreateKeyConclusion":
       return "createKeyConclusion";
   }
+}
+
+function isEditableDomTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && (target.tagName === "TEXTAREA" || target.tagName === "INPUT" || target.isContentEditable);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

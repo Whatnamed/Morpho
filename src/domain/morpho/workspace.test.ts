@@ -9,8 +9,10 @@ import {
   createDeliveryReference,
   createInitialWorkspace,
   createVisualBranch,
+  deleteObjects,
   deleteObject,
   getRenderableCanvasInstances,
+  hideObjects,
   hideObject,
   migrateWorkspaceToCurrentSchema,
   archiveVisualBranch,
@@ -395,6 +397,19 @@ describe("Morpho workspace domain boundaries", () => {
     );
   });
 
+  it("hides every selected object in a batch without deleting them", () => {
+    const workspace = createInitialWorkspace();
+    const hidden = hideObjects(workspace, ["image-soft-rail-v2", "image-night-scenario"]);
+
+    expect(hidden.objects["image-soft-rail-v2"]?.visibility).toBe("hidden");
+    expect(hidden.objects["image-night-scenario"]?.visibility).toBe("hidden");
+    expect(hidden.objects["direction-soft-rail"]).toEqual(workspace.objects["direction-soft-rail"]);
+    expect(hidden.canvas.instances.some((instance) => instance.objectId === "image-soft-rail-v2")).toBe(true);
+    expect(getRenderableCanvasInstances(hidden).some((instance) => instance.objectId === "image-soft-rail-v2")).toBe(
+      false
+    );
+  });
+
   it("keeps a hidden default reference as state but excludes it from visual AI context", () => {
     const workspace = hideObject(createInitialWorkspace(), "image-soft-rail-v2");
 
@@ -589,6 +604,25 @@ describe("Morpho workspace domain boundaries", () => {
     });
     expect(updated.workingState.primaryDirectionId).toBe(alternativeDirection.id);
     expect(updated.decisionRecords.at(-1)?.kind).toBe("setDirectionStatus");
+  });
+
+  it("confirmed batch deletion removes every selected object and their canvas instances", () => {
+    const workspace = createInitialWorkspace();
+    const result = deleteObjects(workspace, ["image-soft-rail-v2", "image-night-scenario"], {
+      confirmed: true,
+      reason: "User deleted selected objects."
+    });
+
+    expect(result.status).toBe("updated");
+    expect(result.workspace.objects["image-soft-rail-v2"]).toBeUndefined();
+    expect(result.workspace.objects["image-night-scenario"]).toBeUndefined();
+    expect(result.workspace.objects["direction-soft-rail"]).toBeDefined();
+    expect(result.workspace.canvas.instances.some((instance) => instance.objectId === "image-soft-rail-v2")).toBe(
+      false
+    );
+    expect(result.workspace.canvas.instances.some((instance) => instance.objectId === "image-night-scenario")).toBe(
+      false
+    );
   });
 
   it("allows compare-confirmed primary direction without copying AI summary into reason", () => {

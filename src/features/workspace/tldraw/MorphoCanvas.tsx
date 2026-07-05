@@ -451,7 +451,8 @@ export function MorphoCanvas({
         .reverse()
         .find((shape) => isPointInsideShape(point, shape));
 
-      if (targetShape) {
+      const selectedShapeIds = editor.getSelectedShapeIds().map((shapeId) => shapeId.toString());
+      if (targetShape && shouldReplaceSelectionForContextMenuTarget(targetShape.id.toString(), selectedShapeIds)) {
         editor.select(targetShape.id);
       }
 
@@ -702,6 +703,10 @@ function getUrlFromText(text: string): string {
 
 export function shouldOpenCanvasContextMenuFromPointerDown(event: Pick<globalThis.PointerEvent, "button">): boolean {
   return event.button === 2;
+}
+
+export function shouldReplaceSelectionForContextMenuTarget(targetShapeId: string, selectedShapeIds: string[]): boolean {
+  return !selectedShapeIds.includes(targetShapeId);
 }
 
 export function isMorphoShapeActiveInWorkspace(
