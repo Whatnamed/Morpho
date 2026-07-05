@@ -151,7 +151,8 @@ import {
 import { buildProposalDiscussionDraft, buildProposalRegenerationDraft } from "./proposalFollowupPrompts";
 import { buildWebSearchOptions, collectMiMoImageAttachments, shouldAttachImagesForMiMo } from "./aiAttachments";
 import { collectDocumentExtractsForAi } from "./documentContext";
-import { loadDocumentReaderExtract, shouldAcceptDocumentReaderLoadResult } from "./documentReader";
+import { shouldAcceptDocumentReaderLoadResult } from "./documentReader";
+import { loadDocumentReaderExtractWithRecovery } from "./documentReaderRecovery";
 import {
   buildDocumentFragmentDraft,
   createDocumentFragmentWithContinuity,
@@ -4484,6 +4485,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       documentReaderRequestRef.current = requestId;
       const abortController = new AbortController();
       documentReaderAbortRef.current = abortController;
+      setSelectedObjectIds([]);
+      setLocalEditObjectId(null);
+      setCanvasContextMenu(null);
 
       setDocumentReader({
         fileObjectId,
@@ -4494,7 +4498,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       });
 
       void Promise.all([
-        loadDocumentReaderExtract(workspace, fileObjectId, indexedDbBlobStore, abortController.signal),
+        loadDocumentReaderExtractWithRecovery(
+          workspace,
+          fileObjectId,
+          indexedDbBlobStore,
+          abortController.signal,
+          setWorkspace
+        ),
         loadDocumentSourcePreview(workspace, fileObjectId, indexedDbBlobStore, abortController.signal)
       ])
         .then(
@@ -4553,7 +4563,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           );
         });
     },
-    [cleanupDocumentSourcePreview, workspace]
+    [cleanupDocumentSourcePreview, setWorkspace, workspace]
   );
 
   const handleOpenDeliveryReferenceReader = useCallback(
@@ -5025,45 +5035,47 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onOpenProjectRecords={openProjectRecords}
       />
 
-      <BottomDetailBar
-        workspace={workspace}
-        selectedObjects={selectedObjects}
-        assets={workspace.assets}
-        hasPendingDesignDefinitionRevisionDraft={hasPendingDesignDefinitionRevisionDraft}
-        relations={workspace.relations}
-        directionLineage={workspace.directionLineage}
-        visualBranches={workspace.visualBranches}
-        decisionRecords={workspace.decisionRecords}
-        activeDesignTrace={activeDesignTrace}
-        isDesignTraceActive={Boolean(activeDesignTrace)}
-        onToggleDesignTrace={handleToggleDesignTrace}
-        onAskAi={handleAskAi}
-        onReviseDirection={handleReviseDirectionIntent}
-        onSplitDirection={handleSplitDirectionIntent}
-        onMergeDirections={handleMergeDirectionsIntent}
-        onCreateVisualBranch={handleCreateVisualBranch}
-        onRenameVisualBranch={handleRenameVisualBranch}
-        onArchiveVisualBranch={handleArchiveVisualBranch}
-        onRestoreVisualBranch={handleRestoreVisualBranch}
-        onAssignImageToVisualBranch={handleAssignImageToVisualBranch}
-        onRemoveImageFromVisualBranch={handleRemoveImageFromVisualBranch}
-        onLocalEdit={handleLocalEdit}
-        onReferenceIntent={handleReferenceIntent}
-        onHide={handleHideSelected}
-        onDelete={handleDeleteSelected}
-        onEliminateDirection={handleEliminateDirection}
-        onSetDirectionPrimary={handleSetDirectionPrimary}
-        onSetDirectionAlternative={handleSetDirectionAlternative}
-        onRestoreDirectionAsAlternative={handleRestoreDirectionAsAlternative}
-        keyConclusionCandidates={keyConclusionCandidates}
-        onSaveKeyConclusionFromResearchItem={handleSaveKeyConclusionFromResearchItem}
-        onCopyItemToDraft={handleCopyItemToDraft}
-        onContinueQuestion={handleContinueQuestion}
-        onSetKeyConclusionState={handleSetKeyConclusionState}
-        onSetImageRole={handleSetImageRole}
-        onOpenDocumentReader={handleOpenDocumentReader}
-        onOpenDeliveryPreparation={openDeliveryPreparation}
-      />
+      {!documentReader ? (
+        <BottomDetailBar
+          workspace={workspace}
+          selectedObjects={selectedObjects}
+          assets={workspace.assets}
+          hasPendingDesignDefinitionRevisionDraft={hasPendingDesignDefinitionRevisionDraft}
+          relations={workspace.relations}
+          directionLineage={workspace.directionLineage}
+          visualBranches={workspace.visualBranches}
+          decisionRecords={workspace.decisionRecords}
+          activeDesignTrace={activeDesignTrace}
+          isDesignTraceActive={Boolean(activeDesignTrace)}
+          onToggleDesignTrace={handleToggleDesignTrace}
+          onAskAi={handleAskAi}
+          onReviseDirection={handleReviseDirectionIntent}
+          onSplitDirection={handleSplitDirectionIntent}
+          onMergeDirections={handleMergeDirectionsIntent}
+          onCreateVisualBranch={handleCreateVisualBranch}
+          onRenameVisualBranch={handleRenameVisualBranch}
+          onArchiveVisualBranch={handleArchiveVisualBranch}
+          onRestoreVisualBranch={handleRestoreVisualBranch}
+          onAssignImageToVisualBranch={handleAssignImageToVisualBranch}
+          onRemoveImageFromVisualBranch={handleRemoveImageFromVisualBranch}
+          onLocalEdit={handleLocalEdit}
+          onReferenceIntent={handleReferenceIntent}
+          onHide={handleHideSelected}
+          onDelete={handleDeleteSelected}
+          onEliminateDirection={handleEliminateDirection}
+          onSetDirectionPrimary={handleSetDirectionPrimary}
+          onSetDirectionAlternative={handleSetDirectionAlternative}
+          onRestoreDirectionAsAlternative={handleRestoreDirectionAsAlternative}
+          keyConclusionCandidates={keyConclusionCandidates}
+          onSaveKeyConclusionFromResearchItem={handleSaveKeyConclusionFromResearchItem}
+          onCopyItemToDraft={handleCopyItemToDraft}
+          onContinueQuestion={handleContinueQuestion}
+          onSetKeyConclusionState={handleSetKeyConclusionState}
+          onSetImageRole={handleSetImageRole}
+          onOpenDocumentReader={handleOpenDocumentReader}
+          onOpenDeliveryPreparation={openDeliveryPreparation}
+        />
+      ) : null}
     </main>
   );
 }

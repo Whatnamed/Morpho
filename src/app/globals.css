@@ -1033,11 +1033,11 @@ input:focus-visible {
 
 .document-reader-panel {
   position: fixed;
-  z-index: 38;
+  z-index: 58;
   top: 84px;
   left: max(86px, calc(50vw - 520px));
   width: min(760px, calc(100vw - 560px));
-  max-height: calc(100vh - 150px);
+  max-height: calc(100vh - 112px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1244,7 +1244,7 @@ input:focus-visible {
   min-height: 220px;
   margin-top: 12px;
   overflow: auto;
-  padding: 0 18px 18px;
+  padding: 0 18px 28px;
 }
 
 .document-reader-block {
