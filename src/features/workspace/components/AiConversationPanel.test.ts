@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ComponentProps } from "react";
@@ -607,28 +607,25 @@ describe("AiConversationPanel", () => {
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
         draft: "基于当前图片继续发展一张新图",
-        taskMode: "chatAnalysis",
-        recommendedTaskMode: "imageGeneration",
-        workIntent: "discussion",
-        recommendedWorkIntent: "createConceptDirections"
+        turnMode: "auto"
       }))
     );
 
-    expect(html).toContain("对话与分析");
-    expect(html).not.toContain("自动判断");
+    expect(html).toContain("自动执行");
+    expect(html).toContain("Agent 会自动判断研究、提案、比较和出图");
     expect(html).not.toContain("图像生成（自动判断）");
-    expect(html).not.toContain("生成概念方向（自动判断）");
   });
 
-  it("labels delivery preparation intent without showing a second discussion option", () => {
+  it("only exposes the two turn strategies instead of work-intent toggles", () => {
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
-        availableWorkIntents: ["discussion", "prepareDeliverySection"]
+        turnMode: "confirm"
       }))
     );
 
-    expect(html).toContain("整理交付材料");
-    expect(html.match(/>讨论</g)?.length).toBe(1);
+    expect(html).toContain("先确认");
+    expect(html).toContain(">自动执行<");
+    expect(html).toContain(">先确认<");
   });
 });
 
@@ -641,11 +638,7 @@ function makeProps(overrides: Partial<ComponentProps<typeof AiConversationPanel>
     draft: "",
     isOpen: true,
     isLocalEditMode: false,
-    taskMode: "chatAnalysis" as const,
-    recommendedTaskMode: "chatAnalysis" as const,
-    workIntent: "discussion" as const,
-    recommendedWorkIntent: "discussion" as const,
-    availableWorkIntents: ["discussion" as const],
+    turnMode: "auto" as const,
     isStreaming: false,
     imageGenerationSettings: {
       modelId: "nano-banana-fast",
@@ -662,8 +655,7 @@ function makeProps(overrides: Partial<ComponentProps<typeof AiConversationPanel>
     showFailure: false,
     onToggleOpen: () => undefined,
     onDraftChange: () => undefined,
-    onTaskModeChange: () => undefined,
-    onWorkIntentChange: () => undefined,
+    onTurnModeChange: () => undefined,
     onImageGenerationSettingsChange: () => undefined,
     onDirectionPreviewCountChange: () => undefined,
     onSuggestionClick: () => undefined,

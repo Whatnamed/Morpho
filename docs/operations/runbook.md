@@ -22,9 +22,16 @@ MORPHO_MIMO_BASE_URL=https://api.xiaomimimo.com/v1
 MORPHO_MIMO_TEXT_MODEL=mimo-v2.5-pro
 MORPHO_MIMO_MULTIMODAL_MODEL=mimo-v2.5
 MORPHO_MIMO_WEB_SEARCH_ENABLED=true
+
+MORPHO_AI_PROVIDER=aijws
+MORPHO_AI_BASE_URL=https://api.aijws.com/v1
+MORPHO_AI_API_KEY=
+MORPHO_AI_MODEL=gpt-5.4
+MORPHO_AI_WEB_SEARCH_ENABLED=true
 ```
 
 `MORPHO_MIMO_API_KEYS` is a comma-separated primary/fallback key list. The singular `MORPHO_MIMO_API_KEY` remains a compatibility fallback only when the plural variable is empty. Existing local environments may still use `MORPHO_MIMO_API_KEY_2` and `MORPHO_MIMO_MODEL`; both are read as compatibility fallbacks, but new setups should use `MORPHO_MIMO_API_KEYS` and `MORPHO_MIMO_MULTIMODAL_MODEL`.
+`MORPHO_AI_*` is the GPT-5.4 agent path. The server also accepts `AIJWS_API_KEY` and the existing `MORPHO_MIMO_*` variables as compatibility fallbacks, but new setups should prefer `MORPHO_AI_PROVIDER=aijws`, `MORPHO_AI_BASE_URL`, `MORPHO_AI_API_KEY`, and `MORPHO_AI_MODEL`.
 
 MiMo chat behavior:
 

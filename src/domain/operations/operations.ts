@@ -67,6 +67,7 @@ export type RecordResearchProposalInput = {
     snippet?: string;
   }>;
   sourceChangedWarning?: string;
+  position?: { x: number; y: number };
 };
 
 export type RecordResearchProposalResult = {
@@ -99,6 +100,7 @@ export type RecordDesignDefinitionProposalInput = {
   basedOnDesignDefinitionId?: string;
   basedOnRevisionId?: string;
   changeNote?: string;
+  position?: { x: number; y: number };
 };
 
 export type RecordDesignDefinitionProposalResult = {
@@ -138,6 +140,7 @@ export type RecordConceptDirectionProposalInput = {
   }>;
   basedOnDesignDefinitionId?: string;
   basedOnRevisionId?: string;
+  position?: { x: number; y: number };
 };
 
 export type RecordConceptDirectionProposalResult = {
@@ -828,6 +831,7 @@ export function recordResearchAnalysisProposal(
     citationIds: citationEntries.map((citation) => citation.id),
     sourceChangedWarning: input.sourceChangedWarning,
     createdAt: now,
+    canvasPlacement: input.position,
     reviewState: input.sourceChangedWarning ? "sourceChanged" : "ready"
   };
   const updatedOperation: OperationRecord | undefined = operation
@@ -892,6 +896,7 @@ export function recordDesignDefinitionProposal(
     sourceSnapshots: buildSourceSemanticSnapshots(workspace, input.sourceObjectIds),
     citationIds: citationEntries.map((citation) => citation.id),
     createdAt: now,
+    canvasPlacement: input.position,
     title: input.title,
     summary: input.summary,
     projectGoal: input.projectGoal,
@@ -1173,6 +1178,7 @@ export function recordConceptDirectionProposal(
     sourceSnapshots: buildSourceSemanticSnapshots(workspace, input.sourceObjectIds),
     citationIds: citationEntries.map((citation) => citation.id),
     createdAt: now,
+    canvasPlacement: input.position,
     title: input.title,
     summary: input.summary,
     applicationMode: input.applicationMode ?? inferConceptDirectionApplicationMode(input.workIntent),

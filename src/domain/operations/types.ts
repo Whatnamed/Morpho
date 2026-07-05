@@ -111,6 +111,7 @@ export type ArtifactProposalBase = {
   sourceObjectIds: OperationObjectId[];
   citationIds: SourceCitationId[];
   createdAt: string;
+  canvasPlacement?: OperationCanvasPoint;
   appliedObjectId?: OperationObjectId;
   rejectedReason?: string;
   userNote?: string;

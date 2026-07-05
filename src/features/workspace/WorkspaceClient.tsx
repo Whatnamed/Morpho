@@ -69,7 +69,7 @@ import {
   updateDesignDefinitionProposalDraft,
   updateResearchAnalysisProposalDraft
 } from "@/domain/operations/operations";
-import type { ArtifactProposal, ConceptDirectionProposal, OperationRecord, VisualGenerationPlanItem } from "@/domain/operations/types";
+import type { ArtifactProposal, ConceptDirectionProposal, OperationRecord, VisualGenerationPlan, VisualGenerationPlanItem } from "@/domain/operations/types";
 import { parseConceptDirectionProposalPayload } from "@/domain/operations/conceptDirectionProposal";
 import { parseDesignDefinitionProposalPayload } from "@/domain/operations/designDefinitionProposal";
 import { parseResearchAnalysisProposalPayload } from "@/domain/operations/researchProposal";
@@ -113,6 +113,7 @@ import { DeliveryOutputPanel } from "./components/DeliveryOutputPanel";
 import { DocumentReaderPanel, type DocumentReaderExtractFragmentResult, type DocumentSourcePreview } from "./components/DocumentReaderPanel";
 import { LeftRail, type DrawerMode } from "./components/LeftRail";
 import { OverlayDrawers } from "./components/OverlayDrawers";
+import { ProposalCanvasLayer } from "./components/ProposalCanvasLayer";
 import { ProjectBundlePanel } from "./components/ProjectBundlePanel";
 import { CanvasContextMenu, SelectionToolbar } from "./components/SelectionToolbar";
 import { TopControls } from "./components/TopControls";
@@ -205,6 +206,25 @@ import {
   resolveGenerationSettings,
   type ImageGenerationSettings
 } from "./imageGenerationSettings";
+import {
+  buildAgentHistoryMessages,
+  buildMorphoAgentInitialTools,
+  buildMorphoAgentSystemPrompt,
+  buildMorphoAgentTools,
+  buildMorphoAgentUserInput,
+  buildToolResultOutput,
+  parseMorphoAgentToolArguments,
+  type AgentRouteResult,
+  type CreateComparisonAnalysisArgs,
+  type CreateConceptDirectionProposalArgs,
+  type CreateDesignDefinitionProposalArgs,
+  type CreateResearchAnalysisArgs,
+  type GenerateVisualsArgs,
+  type MorphoAgentTurnMode,
+  type ReadSelectedContextResult,
+  type RequestConfirmationArgs,
+  type SearchWebEvidenceArgs
+} from "./morphoAgent";
 import type { CanvasImportRequest, FocusArea } from "./tldraw/MorphoCanvas";
 
 const MorphoCanvas = dynamic(() => import("./tldraw/MorphoCanvas").then((mod) => mod.MorphoCanvas), {
@@ -254,6 +274,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [workspace, setWorkspace, persistenceState] = usePersistentWorkspace(projectId);
   const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>(() => workspace.ui.lastSelectionIds);
   const [aiDraft, setAiDraft] = useState("");
+  const [agentTurnMode, setAgentTurnMode] = useState<MorphoAgentTurnMode>("auto");
   const [taskMode, setTaskMode] = useState<AiTaskMode>("chatAnalysis");
   const [workIntent, setWorkIntent] = useState<AiWorkIntent>(() => workspace.ui.workIntent);
   const [aiOpen, setAiOpen] = useState(true);
@@ -372,6 +393,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       .filter((proposal) => proposal.status === "pending")
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
   }, [activeProposalId, workspace.artifactProposals]);
+  const pendingCanvasProposals = useMemo(
+    () =>
+      Object.values(workspace.artifactProposals)
+        .filter((proposal) => proposal.status === "pending" && proposal.canvasPlacement)
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt)),
+    [workspace.artifactProposals]
+  );
   const activeOperation = useMemo(() => getActiveOperation(workspace), [workspace]);
   const deliveryObjects = useMemo(() => getDeliveryObjects(workspace), [workspace]);
   const isImageTaskMode = taskMode === "imageGeneration";
@@ -1894,6 +1922,737 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     workspace
   ]);
 
+  const executeAgentVisualGenerationPlan = useCallback(async (input: {
+      workspaceSnapshot: MorphoWorkspace;
+      draft: string;
+      plan: VisualGenerationPlan;
+      sourceObjectIds: string[];
+      selectedDirectionIds: string[];
+      selectedImageIds: string[];
+      signal: AbortSignal;
+    }) => {
+      let currentWorkspace = input.workspaceSnapshot;
+      const requestedPreviewCount =
+        input.plan.kind === "directionPreview"
+          ? (Math.max(1, Math.trunc(input.plan.items.length / Math.max(input.selectedDirectionIds.length, 1))) as 1 | 2 | 4 | 6)
+          : undefined;
+      const validatedPlan = validateVisualGenerationPlan(currentWorkspace, {
+        plan: input.plan,
+        allowedObjectIds: input.sourceObjectIds,
+        selectedDirectionIds: input.selectedDirectionIds,
+        selectedImageIds: input.selectedImageIds,
+        requestedPreviewCount
+      });
+      if (validatedPlan.status === "blocked") {
+        throw new Error(validatedPlan.reason);
+      }
+
+      const operationId = `operation-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const clientRequestId = `client-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const operationCreated = createImageGenerationOperation(currentWorkspace, {
+        operationId,
+        clientRequestId,
+        prompt: input.draft,
+        selectedObjectIds: input.sourceObjectIds,
+        imagePixels: false,
+        modelId: effectiveImageGenerationSettings.modelId,
+        modelLabel: effectiveImageGenerationSettings.modelLabel,
+        aspectRatio: effectiveImageGenerationSettings.aspectRatio,
+        sizeOption: effectiveImageGenerationSettings.sizeOption,
+        referenceObjectIds: input.sourceObjectIds,
+        requestedPreviewCount
+      });
+      currentWorkspace = recordImageGenerationPlan(operationCreated.workspace, {
+        operationId,
+        plan: validatedPlan.plan
+      });
+      setWorkspace(() => currentWorkspace);
+
+      const placementMap =
+        validatedPlan.plan.kind === "directionPreview"
+          ? new Map(
+              planDirectionPreviewPlacements(
+                currentWorkspace,
+                validatedPlan.plan.items.map((item) => ({
+                  id: item.id,
+                  targetDirectionId: item.targetDirectionId,
+                  width: 320,
+                  height: 240
+                }))
+              ).map((placement) => [placement.planItemId, placement.position] as const)
+            )
+          : new Map<string, { x: number; y: number }>();
+
+      let lastProviderTaskId: string | undefined;
+      const createdObjectIds: string[] = [];
+      const failedItems: string[] = [];
+
+      for (const [itemIndex, item] of validatedPlan.plan.items.entries()) {
+        try {
+          setImageTaskStatus({
+            state: "submitting",
+            message: `正在生成 ${itemIndex + 1}/${validatedPlan.plan.items.length}：${item.title}`
+          });
+
+          const referenceImages = await collectImageReferenceDataUrls(currentWorkspace, item.referenceObjectIds, input.signal);
+          currentWorkspace = markImageGenerationOperationSubmitted(currentWorkspace, {
+            operationId,
+            referenceObjectIds: item.referenceObjectIds,
+            imagePixels: referenceImages.images.length > 0
+          });
+          setWorkspace(() => currentWorkspace);
+
+          const imageResponse = await fetch("/api/ai/image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              modelId: effectiveImageGenerationSettings.modelId,
+              prompt: item.prompt,
+              images: referenceImages.images,
+              aspectRatio: effectiveImageGenerationSettings.aspectRatio,
+              sizeOption: effectiveImageGenerationSettings.sizeOption,
+              referenceObjectIds: item.referenceObjectIds,
+              directionObjectId: item.targetDirectionId,
+              visualBranchId: item.visualBranchId,
+              operationId,
+              clientRequestId
+            }),
+            signal: input.signal
+          });
+          lastProviderTaskId = imageResponse.headers.get("X-Morpho-Provider-Task-Id") || lastProviderTaskId;
+          if (!imageResponse.ok) {
+            throw new Error(await readErrorResponse(imageResponse));
+          }
+
+          setImageTaskStatus({
+            state: "downloading",
+            message: `正在保存 ${itemIndex + 1}/${validatedPlan.plan.items.length}：${item.title}`
+          });
+          const mimeType = imageResponse.headers.get("Content-Type") ?? "image/png";
+          const blob = await imageResponse.blob();
+          const file = new File([blob], makeGeneratedImageFileName(mimeType), { type: mimeType });
+          const saved = await saveBlobAsLocalAsset(indexedDbBlobStore, file, "aiGeneratedImage", {
+            readImageDimensions: readImageBlobDimensions
+          });
+          if (saved.status === "failed") {
+            throw new Error(saved.reason);
+          }
+
+          const generated = createGeneratedImageFromAsset(currentWorkspace, {
+            asset: saved.asset,
+            generation: {
+              modelId: effectiveImageGenerationSettings.modelId,
+              modelLabel: effectiveImageGenerationSettings.modelLabel,
+              aspectRatio: effectiveImageGenerationSettings.aspectRatio,
+              sizeOption: effectiveImageGenerationSettings.sizeOption,
+              prompt: item.prompt,
+              referenceObjectIds: item.referenceObjectIds,
+              directionId: item.targetDirectionId,
+              visualBranchId: item.visualBranchId,
+              operationId,
+              clientRequestId,
+              providerTaskId: lastProviderTaskId,
+              title: item.title,
+              purpose: item.purpose,
+              role: item.role,
+              visualPlan: validatedPlan.plan,
+              createdAt: new Date().toISOString()
+            },
+            sourceObjectIds: referenceImages.sourceObjectIds,
+            directionObjectId: item.targetDirectionId,
+            visualBranchId: item.visualBranchId,
+            title: item.title,
+            summary: item.purpose,
+            role: item.role,
+            position: getGeneratedImagePlacement(
+              currentWorkspace,
+              validatedPlan.plan.items,
+              item,
+              itemIndex,
+              placementMap.get(item.id)
+            )
+          });
+          currentWorkspace = recordImageGenerationOperationResult(generated.workspace, {
+            operationId,
+            providerTaskId: lastProviderTaskId,
+            resultObjectId: generated.createdObjectId
+          });
+          createdObjectIds.push(generated.createdObjectId);
+          setWorkspace(() => currentWorkspace);
+        } catch (itemError) {
+          const reason = itemError instanceof Error ? itemError.message : "图像生成失败";
+          failedItems.push(`${item.title}: ${reason}`);
+          currentWorkspace = recordImageGenerationOperationItemFailure(currentWorkspace, {
+            operationId,
+            planItemId: item.id,
+            reason
+          });
+          setWorkspace(() => currentWorkspace);
+        }
+      }
+
+      if (createdObjectIds.length === 0) {
+        throw new Error(failedItems[0] ?? "所有图像计划项都生成失败了。");
+      }
+
+      const lastCreatedObjectId = createdObjectIds.at(-1) ?? createdObjectIds[0];
+      currentWorkspace = completeImageGenerationOperation(currentWorkspace, {
+        operationId,
+        providerTaskId: lastProviderTaskId,
+        resultObjectId: lastCreatedObjectId
+      });
+      setWorkspace(() => currentWorkspace);
+      setSelectedObjectIds(createdObjectIds);
+      setFocusRequest((current) => ({ objectId: lastCreatedObjectId, nonce: current.nonce + 1 }));
+      setImageTaskStatus({
+        state: "succeeded",
+        message:
+          failedItems.length > 0
+            ? `部分完成：已保存 ${createdObjectIds.length} 张，失败 ${failedItems.length} 项。`
+            : `已完成：已保存 ${createdObjectIds.length} 张新图像。`
+      });
+
+      return {
+        workspace: currentWorkspace,
+        createdObjectIds,
+        failedItems
+      };
+    },
+    [effectiveImageGenerationSettings, setFocusRequest, setImageTaskStatus, setSelectedObjectIds, setWorkspace]
+  );
+
+
+  const handleSendMorphoAgentTurn = useCallback(async () => {
+    const draft = aiDraft.trim();
+    if (!draft || isAiStreaming) {
+      return;
+    }
+
+    if (pendingDeliveryDraftTarget) {
+      await handleSendAiMessage();
+      return;
+    }
+
+    const context = buildTaskContext(workspace, {
+      kind: "general",
+      draft,
+      selectedObjectIds
+    });
+    const providerTaskContext = buildProviderTaskContext(context);
+    const controller = new AbortController();
+    const now = new Date().toISOString();
+    const userMessageId = `ai-user-agent-${Date.now()}`;
+    const assistantMessageId = `ai-assistant-agent-${Date.now()}`;
+    const baseHistory = workspace.ai.messages
+      .filter((message) => message.status !== "failed" && message.status !== "streaming")
+      .slice(-8)
+      .map((message) => ({ role: message.role, body: message.body }));
+
+    const attachmentResult = shouldAttachImagesForMiMo({
+      draft,
+      taskMode: "chatAnalysis",
+      selectedObjects
+    })
+      ? await collectMiMoImageAttachments(workspace, context.imageObjectIds, controller.signal)
+      : { attachments: [], skippedObjectIds: [], entries: [], warning: undefined };
+    const documentResult = await collectDocumentExtractsForAi(
+      workspace,
+      context.documentObjectIds,
+      indexedDbBlobStore,
+      controller.signal
+    );
+    const userInput = buildMorphoAgentUserInput({
+      draft: [
+        draft,
+        documentResult.extracts.length > 0
+          ? `\n\n本轮本地文档提取：\n${documentResult.extracts
+              .map((extract) => `- ${extract.title}（${extract.objectId}）\n${extract.text.slice(0, 2200)}`)
+              .join("\n\n")}`
+          : ""
+      ]
+        .filter(Boolean)
+        .join(""),
+      context,
+      providerTaskContext
+    });
+    attachmentResult.attachments
+      .filter((attachment) => attachment.status === "ready")
+      .forEach((attachment) => {
+        userInput.content.push({
+          type: "input_image",
+          image_url: attachment.dataUrl
+        });
+      });
+
+    abortControllerRef.current = controller;
+    setIsAiStreaming(true);
+    setAiDraft("");
+    setAiOpen(true);
+    setContextWarning(
+      [
+        context.defaultReference.status === "hidden" ? context.defaultReference.reason : "",
+        attachmentResult.warning,
+        documentResult.warning
+      ]
+        .filter(Boolean)
+        .join(" ") || undefined
+    );
+    setWorkspace((current) => ({
+      ...current,
+      ai: {
+        ...current.ai,
+        messages: [
+          ...current.ai.messages,
+          {
+            id: userMessageId,
+            role: "user",
+            body: draft,
+            createdAt: now,
+            contextObjectIds: context.objectIds,
+            taskMode: "chatAnalysis"
+          },
+          {
+            id: assistantMessageId,
+            role: "assistant",
+            body: "正在理解当前意图，并准备受控执行。",
+            createdAt: now,
+            status: "streaming",
+            contextObjectIds: context.objectIds,
+            taskMode: "chatAnalysis"
+          }
+        ]
+      }
+    }));
+
+    let currentWorkspace = workspace;
+    let conversationInput: Array<unknown> = [
+      {
+        role: "system",
+        content: [
+          {
+            type: "input_text",
+            text: buildMorphoAgentSystemPrompt({
+              mode: agentTurnMode,
+              workspace: currentWorkspace,
+              selectedObjects,
+              context,
+              providerTaskContext
+            })
+          }
+        ]
+      },
+      ...buildAgentHistoryMessages(baseHistory),
+      userInput
+    ];
+    let finalText = "";
+    let collectedCitations: ProviderCitation[] = [];
+    let totalWebSearchCalls = 0;
+    let activeProposalForTurnId: string | null = null;
+    let queuedResult: AgentRouteResult | null = null;
+
+    async function requestAgentTurn(
+      input: Array<unknown>,
+      tools: ReturnType<typeof buildMorphoAgentTools>
+    ): Promise<AgentRouteResult> {
+      const response = await fetch("/api/ai/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          input,
+          tools
+        }),
+        signal: controller.signal
+      });
+
+      if (response.ok) {
+        return (await response.json()) as AgentRouteResult;
+      }
+
+      const errorText = await readErrorResponse(response);
+      throw new Error(errorText);
+    }
+
+    try {
+      for (let stepIndex = 0; stepIndex < 4; stepIndex += 1) {
+        setWorkspace((current) =>
+          updateAiMessage(current, assistantMessageId, `正在进行第 ${stepIndex + 1} 步 Agent 判断。`, "streaming")
+        );
+        let result: AgentRouteResult;
+        if (queuedResult) {
+          result = queuedResult;
+        } else {
+          result = await requestAgentTurn(
+            conversationInput,
+            stepIndex === 0 ? buildMorphoAgentInitialTools() : buildMorphoAgentTools(true)
+          );
+        }
+        queuedResult = null;
+        collectedCitations = dedupeCitations([...collectedCitations, ...result.citations]);
+        totalWebSearchCalls += result.webSearchCallCount;
+        if (totalWebSearchCalls > 2) {
+          throw new Error("本次 Agent 超过了允许的联网检索次数上限。");
+        }
+
+        conversationInput = [...conversationInput, ...result.outputItems];
+
+        if (result.functionCalls.length === 0) {
+          finalText = result.outputText.trim() || "本次 Agent 未返回可显示文本。";
+          break;
+        }
+
+        const toolOutputs = [];
+        for (const call of result.functionCalls) {
+          const parsed = parseMorphoAgentToolArguments(call);
+          switch (parsed.name) {
+            case "read_selected_context": {
+              toolOutputs.push(
+                buildToolResultOutput(call.callId, buildReadSelectedContextResult(context, providerTaskContext))
+              );
+              break;
+            }
+            case "search_web_evidence": {
+              const args = parsed.args;
+              const webSearchResponse = await fetch("/api/ai/web-search", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  queries: args.queries,
+                  maxSources: 5
+                }),
+                signal: controller.signal
+              });
+              if (!webSearchResponse.ok) {
+                throw new Error(await readErrorResponse(webSearchResponse));
+              }
+              const webSearchResult = (await webSearchResponse.json()) as { sources: Array<Record<string, unknown>> };
+              toolOutputs.push(
+                buildToolResultOutput(call.callId, {
+                  reason: args.reason,
+                  sources: webSearchResult.sources
+                })
+              );
+              break;
+            }
+            case "create_research_analysis": {
+              const args = parsed.args;
+              const operationGate = canStartOperation(currentWorkspace);
+              if (operationGate.status === "blocked") {
+                throw new Error(operationGate.reason);
+              }
+              const created = createResearchOperation(currentWorkspace, {
+                userInput: draft,
+                selectedObjectIds: context.objectIds,
+                allowWebSearch: totalWebSearchCalls > 0
+              });
+              const proposalId = `proposal-research-${created.operation.id}-${Date.now()}`;
+              const applied = applyResearchProposalWithSemanticPatch({
+                workspace: created.workspace,
+                proposal: {
+                  proposalId,
+                  operationId: created.operation.id,
+                  title: args.title,
+                  summary: args.summary,
+                  findings: args.findings,
+                  opportunities: args.opportunities,
+                  constraints: args.constraints,
+                  openQuestions: args.openQuestions,
+                  evidence: args.evidence,
+                  sourceObjectIds: context.objectIds,
+                  citations: collectedCitations
+                },
+                position: getPlacementNearObjects(created.workspace, context.objectIds, {
+                  x: created.workspace.canvas.view.x + 220,
+                  y: created.workspace.canvas.view.y + 180
+                }),
+                context,
+                draft,
+                userMessageId,
+                userMessageCreatedAt: now,
+                assistantText: ""
+              });
+              currentWorkspace = applied.workspace;
+              setWorkspace(() => currentWorkspace);
+              if (applied.status === "updated") {
+                setSelectedObjectIds([applied.researchObjectId]);
+                setFocusRequest((current) => ({ objectId: applied.researchObjectId, nonce: current.nonce + 1 }));
+              }
+              toolOutputs.push(
+                buildToolResultOutput(call.callId, {
+                  status: applied.status,
+                  researchObjectId: applied.status === "updated" ? applied.researchObjectId : undefined,
+                  reason: applied.status === "blocked" ? applied.reason : undefined
+                })
+              );
+              break;
+            }
+            case "create_design_definition_proposal": {
+              const args = parsed.args;
+              const operationGate = canStartOperation(currentWorkspace);
+              if (operationGate.status === "blocked") {
+                throw new Error(operationGate.reason);
+              }
+              const operationId = `operation-designDefinition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+              const created = createArtifactProposalOperation(currentWorkspace, {
+                operationId,
+                type: "designDefinition",
+                userInput: draft,
+                selectedObjectIds: context.objectIds,
+                workIntent: "createDesignDefinition"
+              });
+              const basedOnDefinitionId = currentWorkspace.workingState.currentDesignDefinitionId;
+              const basedOnDefinitionObject = basedOnDefinitionId ? currentWorkspace.objects[basedOnDefinitionId] : undefined;
+              const recorded = recordDesignDefinitionProposal(created.workspace, {
+                operationId,
+                workIntent: "createDesignDefinition",
+                title: args.title,
+                summary: args.summary,
+                projectGoal: args.projectGoal,
+                targetUsers: args.targetUsers,
+                primaryScenarios: args.primaryScenarios,
+                coreProblem: args.coreProblem,
+                designPrinciples: args.designPrinciples,
+                constraints: args.constraints,
+                avoidDirections: args.avoidDirections,
+                opportunities: args.opportunities,
+                openQuestions: args.openQuestions,
+                changeNote: args.changeNote,
+                sourceObjectIds: context.objectIds,
+                citations: collectedCitations,
+                basedOnDesignDefinitionId: basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.id : undefined,
+                basedOnRevisionId: basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.currentRevisionId : undefined,
+                position: getProposalPlacement(created.workspace, context.objectIds, "definition")
+              });
+              currentWorkspace = recorded.workspace;
+              activeProposalForTurnId = recorded.proposal.id;
+              setWorkspace(() => currentWorkspace);
+              setActiveProposalId(recorded.proposal.id);
+              toolOutputs.push(
+                buildToolResultOutput(call.callId, {
+                  status: "created",
+                  proposalId: recorded.proposal.id
+                })
+              );
+              break;
+            }
+            case "create_concept_direction_proposal": {
+              const args = parsed.args;
+              const operationGate = canStartOperation(currentWorkspace);
+              if (operationGate.status === "blocked") {
+                throw new Error(operationGate.reason);
+              }
+              const operationId = `operation-conceptDirection-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+              const created = createArtifactProposalOperation(currentWorkspace, {
+                operationId,
+                type: "conceptDirection",
+                userInput: draft,
+                selectedObjectIds: context.objectIds,
+                workIntent: "createConceptDirections"
+              });
+              const basedOnDefinitionId = currentWorkspace.workingState.currentDesignDefinitionId;
+              const basedOnDefinitionObject = basedOnDefinitionId ? currentWorkspace.objects[basedOnDefinitionId] : undefined;
+              const recorded = recordConceptDirectionProposal(created.workspace, {
+                operationId,
+                workIntent: "createConceptDirections",
+                title: args.title,
+                summary: args.summary,
+                directions: args.directions,
+                sourceObjectIds: context.objectIds,
+                citations: collectedCitations,
+                basedOnDesignDefinitionId: basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.id : undefined,
+                basedOnRevisionId: basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.currentRevisionId : undefined,
+                position: getProposalPlacement(created.workspace, context.objectIds, "direction")
+              });
+              currentWorkspace = recorded.workspace;
+              activeProposalForTurnId = recorded.proposal.id;
+              setWorkspace(() => currentWorkspace);
+              setActiveProposalId(recorded.proposal.id);
+              toolOutputs.push(
+                buildToolResultOutput(call.callId, {
+                  status: "created",
+                  proposalId: recorded.proposal.id
+                })
+              );
+              break;
+            }
+            case "generate_visuals": {
+              const args = parsed.args;
+              if (args.items.length > 4) {
+                setPendingConfirmation({
+                  kind: "batchGenerateVisuals",
+                  targetTitle: selectedObjects[0]?.title ?? "当前选择",
+                  itemCount: args.items.length,
+                  reason: `本次计划会一次生成 ${args.items.length} 张图像，超过自动执行上限。`,
+                  impact: "确认后会创建新的图像对象，并写入来源、方向与分支关系。",
+                  draft,
+                  plan: {
+                    kind: args.kind,
+                    items: args.items
+                  },
+                  sourceObjectIds: [...context.objectIds],
+                  selectedDirectionIds: selectedObjects
+                    .filter((object) => object.type === "conceptDirection")
+                    .map((object) => object.id),
+                  selectedImageIds: selectedObjects.filter((object) => object.type === "image").map((object) => object.id)
+                });
+                toolOutputs.push(
+                  buildToolResultOutput(call.callId, {
+                    status: "pendingConfirmation",
+                    reason: "超过 4 张图像的批量生成需要先确认。",
+                    action: "batchGenerateVisuals",
+                    impact: "确认后会创建多个新的图像对象，不会覆盖原图。"
+                  })
+                );
+                break;
+              }
+              const generationResult = await executeAgentVisualGenerationPlan({
+                workspaceSnapshot: currentWorkspace,
+                draft,
+                plan: {
+                  kind: args.kind,
+                  items: args.items
+                },
+                sourceObjectIds: context.objectIds,
+                selectedDirectionIds: selectedObjects
+                  .filter((object) => object.type === "conceptDirection")
+                  .map((object) => object.id),
+                selectedImageIds: selectedObjects.filter((object) => object.type === "image").map((object) => object.id),
+                signal: controller.signal
+              });
+              currentWorkspace = generationResult.workspace;
+              toolOutputs.push(
+                buildToolResultOutput(call.callId, {
+                  status: "created",
+                  objectIds: generationResult.createdObjectIds
+                })
+              );
+              break;
+            }
+            case "create_comparison_analysis": {
+              const args = parsed.args;
+              const authorizationResult = buildComparisonAuthorization({
+                workspace: currentWorkspace,
+                selectedObjectIds,
+                userMessageId,
+                assistantMessageId,
+                createdAt: now,
+                comparisonGoal: args.comparisonGoal,
+                imageAttachmentObjectIds: attachmentResult.entries
+                  .filter((entry) => entry.status === "ready")
+                  .map((entry) => entry.objectId),
+                documentExtractObjectIds: documentResult.extracts.map((extract) => extract.objectId),
+                documentFragmentExtractObjectIds: context.documentFragmentExtracts.map((fragment) => fragment.objectId)
+              });
+              if (!("authorization" in authorizationResult)) {
+                throw new Error(
+                  authorizationResult.status === "blocked"
+                    ? authorizationResult.reason
+                    : "Compare authorization was not created."
+                );
+              }
+              const validation = validateComparisonAnalysis(args, authorizationResult.authorization);
+              if (validation.status !== "ok") {
+                throw new Error(validation.reason);
+              }
+              currentWorkspace = applyComparisonAnalysis(currentWorkspace, validation.analysis);
+              setWorkspace(() => currentWorkspace);
+              toolOutputs.push(
+                buildToolResultOutput(call.callId, {
+                  status: "created",
+                  analysisId: validation.analysis.id
+                })
+              );
+              break;
+            }
+            case "request_confirmation": {
+              const args = parsed.args;
+              if (args.action === "setDefaultReference" && args.targetObjectId) {
+                const target = currentWorkspace.objects[args.targetObjectId];
+                if (target?.type === "image") {
+                  setPendingConfirmation({
+                    kind: "setDefaultReference",
+                    targetObjectId: target.id,
+                    targetTitle: target.title
+                  });
+                }
+              }
+              toolOutputs.push(
+                buildToolResultOutput(call.callId, {
+                  status: "pendingConfirmation",
+                  action: args.action,
+                  reason: args.reason,
+                  impact: args.impact
+                })
+              );
+              break;
+            }
+            default:
+              parsed satisfies never;
+          }
+        }
+
+        if (toolOutputs.length === 0) {
+          break;
+        }
+
+        conversationInput = [...conversationInput, ...toolOutputs];
+        const continued = await requestAgentTurn(conversationInput, buildMorphoAgentTools(true));
+        collectedCitations = dedupeCitations([...collectedCitations, ...continued.citations]);
+        totalWebSearchCalls += continued.webSearchCallCount;
+        if (totalWebSearchCalls > 2) {
+          throw new Error("本次 Agent 超过了允许的联网检索次数上限。");
+        }
+        conversationInput = [...conversationInput, ...continued.outputItems];
+        if (continued.functionCalls.length === 0) {
+          finalText = continued.outputText.trim() || finalText;
+          break;
+        }
+        queuedResult = continued;
+      }
+      if (!finalText && queuedResult) {
+        throw new Error("当前 Agent 回合超过允许的执行步数，请收窄任务范围后重试。");
+      }
+
+      setWorkspace((current) => {
+        let nextWorkspace = updateAiMessage(currentWorkspace, assistantMessageId, finalText || "已完成当前执行。", "done");
+        if (collectedCitations.length > 0) {
+          nextWorkspace = storeMessageCitations(nextWorkspace, {
+            messageId: assistantMessageId,
+            operationId: assistantMessageId,
+            citations: collectedCitations
+          });
+        }
+        return nextWorkspace;
+      });
+      if (activeProposalForTurnId) {
+        setActiveProposalId(activeProposalForTurnId);
+      }
+    } catch (error) {
+      const isCancelled = error instanceof DOMException && error.name === "AbortError";
+      const message = isCancelled
+        ? "当前 Agent 回合已取消。原输入、选择和已完成步骤已保留。"
+        : error instanceof Error
+          ? error.message
+          : "当前 Agent 回合失败。";
+      setAiDraft(draft);
+      setWorkspace((current) => updateAiMessage(current, assistantMessageId, message, "failed"));
+      setShowFailure(true);
+    } finally {
+      abortControllerRef.current = null;
+      setIsAiStreaming(false);
+    }
+  }, [
+    agentTurnMode,
+    aiDraft,
+    executeAgentVisualGenerationPlan,
+    handleSendAiMessage,
+    isAiStreaming,
+    pendingDeliveryDraftTarget,
+    selectedObjectIds,
+    selectedObjects,
+    setWorkspace,
+    workspace
+  ]);
+
   const openDeliveryPreparation = useCallback((deliveryObjectId?: string) => {
     const targetId = deliveryObjectId ?? selectedObjects.find((object) => object.type === "delivery")?.id ?? activeDeliveryObjectId;
     if (targetId) {
@@ -2770,6 +3529,119 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
   }, [activeProposal, setWorkspace, workspace]);
 
+  const handleApplyProposalFromCanvas = useCallback(
+    (proposalId: string) => {
+      setActiveProposalId(proposalId);
+      const proposal = workspace.artifactProposals[proposalId];
+      if (!proposal || proposal.status !== "pending") {
+        return;
+      }
+
+      if (proposal.type === "researchAnalysis") {
+        const result = applyResearchAnalysisProposal(workspace, proposal.id, {
+          position: {
+            x: workspace.canvas.view.x + 220,
+            y: workspace.canvas.view.y + 180
+          }
+        });
+
+        if (result.status === "updated") {
+          setWorkspace(
+            appendAiAssistantNotice(
+              result.workspace,
+              "research-proposal-applied",
+              `已保存到画布：研究卡「${result.researchObject.title}」。我已选中并定位到它。`,
+              proposal.id
+            )
+          );
+          setSelectedObjectIds([result.researchObject.id]);
+          setFocusRequest((current) => ({ objectId: result.researchObject.id, nonce: current.nonce + 1 }));
+          setActiveProposalId(null);
+        } else {
+          setWorkspace(
+            appendAiAssistantFailureMessage(
+              result.workspace,
+              "research-proposal-failed",
+              `${result.reason} 请整理来源后再确认。`,
+              proposal.id
+            )
+          );
+        }
+
+        setAiDraft("");
+        setTaskMode("chatAnalysis");
+        return;
+      }
+
+      if (proposal.type === "designDefinition") {
+        const result = applyDesignDefinitionProposal(workspace, proposal.id, {});
+        if (result.status === "updated") {
+          setWorkspace(
+            appendAiAssistantNotice(
+              result.workspace,
+              "design-definition-proposal-applied",
+              `已应用到画布：设计定义「${result.designDefinitionObject.title}」。我已选中并定位到它。`,
+              proposal.id
+            )
+          );
+          setSelectedObjectIds([result.designDefinitionObject.id]);
+          setFocusRequest((current) => ({ objectId: result.designDefinitionObject.id, nonce: current.nonce + 1 }));
+          setActiveProposalId(null);
+        } else {
+          setWorkspace(
+            appendAiAssistantFailureMessage(
+              result.workspace,
+              "design-definition-proposal-failed",
+              `${result.reason} 请复核后再确认。`,
+              proposal.id
+            )
+          );
+        }
+
+        setAiDraft("");
+        setTaskMode("chatAnalysis");
+        return;
+      }
+
+      if (proposal.type === "conceptDirection") {
+        const result = applyConceptDirectionProposal(workspace, proposal.id, {
+          position: {
+            x: workspace.canvas.view.x + 260,
+            y: workspace.canvas.view.y + 220
+          }
+        });
+        if (result.status === "updated") {
+          setWorkspace(
+            appendAiAssistantNotice(
+              result.workspace,
+              "concept-direction-proposal-applied",
+              `已应用到画布：${result.directions.length} 个概念方向。我已选中并定位到第一个方向。`,
+              proposal.id
+            )
+          );
+          setSelectedObjectIds(result.directions.map((direction) => direction.id));
+          if (result.directions[0]) {
+            setFocusRequest((current) => ({ objectId: result.directions[0].id, nonce: current.nonce + 1 }));
+          }
+          setActiveProposalId(null);
+        } else {
+          setWorkspace(
+            appendAiAssistantFailureMessage(
+              result.workspace,
+              "concept-direction-proposal-failed",
+              `${result.reason} 请复核后再确认。`,
+              proposal.id
+            )
+          );
+        }
+
+        setAiDraft("");
+        setTaskMode("chatAnalysis");
+      }
+    },
+    [setWorkspace, workspace]
+  );
+
   const handleRejectProposal = useCallback(
     (proposalId: string) => {
       setWorkspace((current) => rejectArtifactProposal(current, proposalId, "用户明确放弃当前草案。"));
@@ -2848,8 +3720,58 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     });
   }, [selectedObjects]);
 
-  const handleConfirmPending = useCallback(() => {
+  const handleConfirmPending = useCallback(async () => {
     if (!pendingConfirmation) {
+      return;
+    }
+
+    if (pendingConfirmation.kind === "batchGenerateVisuals") {
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      setIsAiStreaming(true);
+      setShowFailure(false);
+      setPendingConfirmation(null);
+      setAiDraft("");
+      setImageTaskStatus({
+        state: "preparing",
+        message: `正在批量生成 ${pendingConfirmation.itemCount} 张图像`
+      });
+
+      try {
+        const result = await executeAgentVisualGenerationPlan({
+          workspaceSnapshot: workspace,
+          draft: pendingConfirmation.draft,
+          plan: pendingConfirmation.plan,
+          sourceObjectIds: pendingConfirmation.sourceObjectIds,
+          selectedDirectionIds: pendingConfirmation.selectedDirectionIds,
+          selectedImageIds: pendingConfirmation.selectedImageIds,
+          signal: controller.signal
+        });
+        setWorkspace(() =>
+          appendAiAssistantNotice(
+            result.workspace,
+            "agent-batch-generate-visuals",
+            result.failedItems.length > 0
+              ? `已按确认生成并保存 ${result.createdObjectIds.length} 张新图像，另有 ${result.failedItems.length} 项失败。`
+              : `已按确认生成并保存 ${result.createdObjectIds.length} 张新图像。`
+          )
+        );
+      } catch (error) {
+        const isCancelled = error instanceof DOMException && error.name === "AbortError";
+        const message = isCancelled
+          ? "批量图像生成已取消。"
+          : error instanceof Error
+            ? error.message
+            : "批量图像生成失败。";
+        setAiDraft(pendingConfirmation.draft);
+        setImageTaskStatus({ state: isCancelled ? "cancelled" : "failed", message });
+        setWorkspace((current) =>
+          appendAiAssistantFailureMessage(current, "agent-batch-generate-visuals", message)
+        );
+      } finally {
+        abortControllerRef.current = null;
+        setIsAiStreaming(false);
+      }
       return;
     }
 
@@ -2990,7 +3912,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setLocalEditObjectId((current) => (current === pendingConfirmation.targetObjectId ? null : current));
     setPendingConfirmation(null);
     setAiDraft("");
-  }, [pendingConfirmation, setWorkspace, workspace]);
+  }, [executeAgentVisualGenerationPlan, pendingConfirmation, setWorkspace, workspace]);
 
   const handleHideSelected = useCallback(() => {
     if (!selectedObjects[0]) {
@@ -3573,6 +4495,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }}
       />
 
+      <ProposalCanvasLayer
+        proposals={pendingCanvasProposals}
+        view={workspace.canvas.view}
+        activeProposalId={activeProposal?.id ?? null}
+        onFocusProposal={setActiveProposalId}
+        onApplyProposal={handleApplyProposalFromCanvas}
+        onRejectProposal={handleRejectProposal}
+        onContinueDiscussion={handleContinueProposalDiscussion}
+      />
+
       <TopControls
         projectTitle={workspace.project.title}
         persistenceError={
@@ -3817,11 +4749,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         draft={aiDraft}
         isOpen={aiOpen}
         isLocalEditMode={isImageTaskMode}
-        taskMode={taskMode}
-        recommendedTaskMode={recommendedTaskMode}
-        workIntent={workIntent}
-        recommendedWorkIntent={recommendedWorkIntent}
-        availableWorkIntents={availableWorkIntents}
+        turnMode={agentTurnMode}
         activeProposal={activeProposal}
         activeOperation={activeOperation}
         isStreaming={isAiStreaming}
@@ -3835,12 +4763,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         migrationError={persistenceState.migrationError}
         onToggleOpen={() => setAiOpen((open) => !open)}
         onDraftChange={setAiDraft}
-        onTaskModeChange={setTaskMode}
-        onWorkIntentChange={handleWorkIntentChange}
+        onTurnModeChange={setAgentTurnMode}
         onImageGenerationSettingsChange={updateImageGenerationSettings}
         onDirectionPreviewCountChange={setDirectionPreviewCount}
         onSuggestionClick={handleSuggestionClick}
-        onSendMessage={handleSendAiMessage}
+        onSendMessage={handleSendMorphoAgentTurn}
         onCancelRequest={handleCancelAiRequest}
         onRunLocalEdit={handleRunLocalEdit}
         onApplyProposal={handleApplyProposal}
@@ -3962,6 +4889,47 @@ function getPlacementNearObjects(
   return {
     x: right + 92,
     y: top
+  };
+}
+
+function getProposalPlacement(
+  workspace: MorphoWorkspace,
+  sourceObjectIds: string[],
+  kind: "definition" | "direction"
+): { x: number; y: number } {
+  const fallback =
+    kind === "definition"
+      ? {
+          x: workspace.canvas.view.x + 280,
+          y: workspace.canvas.view.y + 180
+        }
+      : {
+          x: workspace.canvas.view.x + 420,
+          y: workspace.canvas.view.y + 220
+        };
+
+  return getPlacementNearObjects(workspace, sourceObjectIds, fallback);
+}
+
+function buildReadSelectedContextResult(
+  context: ReturnType<typeof buildTaskContext>,
+  providerTaskContext: ReturnType<typeof buildProviderTaskContext>
+): ReadSelectedContextResult {
+  return {
+    objectSummaries: context.semanticSummaries.map((summary) => ({
+      id: summary.id,
+      type: summary.type,
+      title: summary.title,
+      summary: summary.summary,
+      detail: summary.detail
+    })),
+    directDocumentTitles: context.documentFragmentExtracts.map((extract) => extract.title),
+    imageObjectIds: [...context.imageObjectIds],
+    objectIds: [...context.objectIds],
+    defaultReference: providerTaskContext.defaultReference,
+    scopeNote: context.scopeNote,
+    designDefinitionTitle: providerTaskContext.designDefinition?.title,
+    directionTitles: providerTaskContext.directions.map((direction) => direction.title)
   };
 }
 
