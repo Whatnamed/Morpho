@@ -50,7 +50,7 @@ export function LoginClient({ nextPath, configError }: LoginClientProps) {
           <span>M</span>
         </div>
         <p className="login-eyebrow">Morpho 封闭测试</p>
-        <h1>使用受邀测试账号登录</h1>
+        <h1>使用管理员创建的测试账号登录</h1>
         <p className="login-copy">账号仅用于进入产品与保护 AI 调用额度。项目、画布、图片和文件仍保存在当前浏览器本地。</p>
 
         <form className="login-form" onSubmit={submit}>
