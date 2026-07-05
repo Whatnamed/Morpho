@@ -559,3 +559,11 @@ Decision: add `@supabase/ssr` and `@supabase/supabase-js` for email/password ses
 Reason: M9-B requires real closed-test accounts, trusted server-side session verification, RLS-backed access records, and atomic daily AI quota checks before provider calls. The existing local-first persistence cannot provide account identity or concurrent quota enforcement.
 
 Boundary: Supabase is not the project database for Morpho workspaces. Project catalog and workspace JSON remain in browser `localStorage`, binary assets remain in IndexedDB, and login/logout must not delete, migrate, hide, or bind local projects to `auth.users.id`.
+
+## 2026-07-05: Harden Supabase Closed-Test RPC Boundaries
+
+Decision: revoke direct `EXECUTE` on Supabase's `public.rls_auto_enable()` event-trigger function from `PUBLIC`, `anon`, and `authenticated`, while keeping the existing event trigger enabled. Daily AI quota dates are explicitly calculated as Beijing calendar days with `Asia/Shanghai`.
+
+Reason: closed-test users should not be able to call infrastructure maintenance functions directly, and quota reset behavior must be product-explicit rather than depending on the database session `TimeZone` or `current_date`.
+
+Boundary: `public.get_my_access_state()` and `public.reserve_ai_daily_quota(text)` intentionally remain `SECURITY DEFINER` RPCs executable only by `authenticated`. They are kept because RLS blocks direct writes to quota/access tables and the server needs a narrow, atomic, current-user RPC to read self status and reserve quota before upstream AI calls. Both functions use fixed `search_path`, `auth.uid()` as the only user identity source, no dynamic SQL, no prompt/project-content persistence, no cross-user parameters, and return only the caller's own access/usage snapshot.
