@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { createInitialWorkspace } from "@/domain/morpho/workspace";
-import { shouldApplyFocusRequest, resolveFocusBounds, shouldOpenCanvasContextMenuFromPointerDown } from "./MorphoCanvas";
+import {
+  isMorphoShapeActiveInWorkspace,
+  shouldApplyFocusRequest,
+  resolveFocusBounds,
+  shouldOpenCanvasContextMenuFromPointerDown
+} from "./MorphoCanvas";
 
 describe("MorphoCanvas focus navigation", () => {
   it("uses real canvas instance positions before falling back to fixed landmarks", () => {
@@ -38,5 +43,34 @@ describe("MorphoCanvas focus navigation", () => {
     expect(shouldOpenCanvasContextMenuFromPointerDown({ button: 2 })).toBe(true);
     expect(shouldOpenCanvasContextMenuFromPointerDown({ button: 0 })).toBe(false);
     expect(shouldOpenCanvasContextMenuFromPointerDown({ button: 1 })).toBe(false);
+  });
+
+  it("treats newly imported object shapes as active when the latest workspace contains them", () => {
+    const workspace = createInitialWorkspace();
+    const importedObject = {
+      id: "imported-text-object",
+      type: "text" as const,
+      title: "Imported note",
+      summary: "Dropped text",
+      body: "Dropped text",
+      createdBy: "user" as const,
+      visibility: "active" as const
+    };
+    const shape = {
+      props: {
+        objectId: importedObject.id
+      }
+    };
+
+    expect(isMorphoShapeActiveInWorkspace(shape, workspace)).toBe(false);
+    expect(
+      isMorphoShapeActiveInWorkspace(shape, {
+        ...workspace,
+        objects: {
+          ...workspace.objects,
+          [importedObject.id]: importedObject
+        }
+      })
+    ).toBe(true);
   });
 });

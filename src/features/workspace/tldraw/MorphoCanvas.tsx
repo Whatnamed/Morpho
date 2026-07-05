@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from "react";
 import { Tldraw, Vec, type Editor, type TLShapeId } from "tldraw";
 
 import { calculateAnchoredZoom } from "@/domain/morpho/canvasCamera";
@@ -157,7 +157,12 @@ export function MorphoCanvas({
   const latestViewRef = useRef<CanvasView>(workspace.canvas.view);
   const lastPersistedViewKeyRef = useRef(getCanvasViewKey(workspace.canvas.view));
   const lastContextMenuOpenAtRef = useRef(0);
+  const latestWorkspaceRef = useRef(workspace);
   const [liveView, setLiveView] = useState<CanvasView>(workspace.canvas.view);
+
+  useLayoutEffect(() => {
+    latestWorkspaceRef.current = workspace;
+  }, [workspace]);
   const traceOverlayEdges = useMemo(() => {
     if (traceObjectIds.length === 0 || traceEdges.length === 0) {
       return [];
@@ -263,8 +268,9 @@ export function MorphoCanvas({
 
   const syncFromEditor = useCallback(
     (editor: Editor) => {
+      const currentWorkspace = latestWorkspaceRef.current;
       const pageShapes = editor.getCurrentPageShapes().filter(isMorphoShape);
-      const inactiveShapes = pageShapes.filter((shape) => workspace.objects[shape.props.objectId]?.visibility !== "active");
+      const inactiveShapes = pageShapes.filter((shape) => !isMorphoShapeActiveInWorkspace(shape, currentWorkspace));
       if (inactiveShapes.length > 0) {
         editor.deleteShapes(inactiveShapes.map((shape) => shape.id));
       }
@@ -272,7 +278,7 @@ export function MorphoCanvas({
       const selectedShapes = editor
         .getSelectedShapes()
         .filter(isMorphoShape)
-        .filter((shape) => workspace.objects[shape.props.objectId]?.visibility === "active");
+        .filter((shape) => isMorphoShapeActiveInWorkspace(shape, currentWorkspace));
       const selectedObjectIds = selectedShapes.map((shape) => shape.props.objectId);
       const selectionKey = selectedObjectIds.join("|");
       if (selectionKey !== lastSelectionRef.current) {
@@ -284,7 +290,7 @@ export function MorphoCanvas({
       const movedInstances = editor
         .getCurrentPageShapes()
         .filter(isMorphoShape)
-        .filter((shape) => workspace.objects[shape.props.objectId]?.visibility === "active")
+        .filter((shape) => isMorphoShapeActiveInWorkspace(shape, currentWorkspace))
         .map((shape) => ({
           id: shape.props.instanceId,
           objectId: shape.props.objectId,
@@ -302,7 +308,7 @@ export function MorphoCanvas({
       setLiveView(nextView);
       scheduleViewPersist(nextView);
     },
-    [onSelectionBoundsChange, onSelectionChange, scheduleInstancesPersist, scheduleViewPersist, workspace.objects]
+    [onSelectionBoundsChange, onSelectionChange, scheduleInstancesPersist, scheduleViewPersist]
   );
 
   const syncWorkspaceToEditor = useCallback(
@@ -696,6 +702,13 @@ function getUrlFromText(text: string): string {
 
 export function shouldOpenCanvasContextMenuFromPointerDown(event: Pick<globalThis.PointerEvent, "button">): boolean {
   return event.button === 2;
+}
+
+export function isMorphoShapeActiveInWorkspace(
+  shape: { props: Pick<MorphoShape["props"], "objectId"> },
+  workspace: Pick<MorphoWorkspace, "objects">
+): boolean {
+  return workspace.objects[shape.props.objectId]?.visibility === "active";
 }
 
 function getCanvasViewKey(view: CanvasView): string {
