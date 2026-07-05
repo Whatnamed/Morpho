@@ -225,6 +225,7 @@ import {
   type RequestConfirmationArgs,
   type SearchWebEvidenceArgs
 } from "./morphoAgent";
+import { appendAgentTurnMessages } from "./agentTurnMessages";
 import type { CanvasImportRequest, FocusArea } from "./tldraw/MorphoCanvas";
 
 const MorphoCanvas = dynamic(() => import("./tldraw/MorphoCanvas").then((mod) => mod.MorphoCanvas), {
@@ -2197,34 +2198,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         .filter(Boolean)
         .join(" ") || undefined
     );
-    setWorkspace((current) => ({
-      ...current,
-      ai: {
-        ...current.ai,
-        messages: [
-          ...current.ai.messages,
-          {
-            id: userMessageId,
-            role: "user",
-            body: draft,
-            createdAt: now,
-            contextObjectIds: context.objectIds,
-            taskMode: "chatAnalysis"
-          },
-          {
-            id: assistantMessageId,
-            role: "assistant",
-            body: "正在理解当前意图，并准备受控执行。",
-            createdAt: now,
-            status: "streaming",
-            contextObjectIds: context.objectIds,
-            taskMode: "chatAnalysis"
-          }
-        ]
-      }
-    }));
-
-    let currentWorkspace = workspace;
+    let currentWorkspace = appendAgentTurnMessages(workspace, {
+      userMessageId,
+      assistantMessageId,
+      userBody: draft,
+      assistantBody: "正在理解当前意图，并准备受控执行。",
+      createdAt: now,
+      contextObjectIds: context.objectIds
+    });
+    setWorkspace(() => currentWorkspace);
     let conversationInput: Array<unknown> = [
       {
         role: "system",
