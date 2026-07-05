@@ -115,6 +115,7 @@ export type RequestConfirmationArgs = {
   targetObjectId?: string;
   reason: string;
   impact: string;
+  visualPlan?: GenerateVisualsArgs;
 };
 
 export type MorphoAgentToolArguments =
@@ -415,7 +416,36 @@ export function buildMorphoAgentTools(webSearchEnabled: boolean): ResponseTool[]
           },
           targetObjectId: { type: "string" },
           reason: { type: "string" },
-          impact: { type: "string" }
+          impact: { type: "string" },
+          visualPlan: {
+            type: "object",
+            additionalProperties: false,
+            required: ["kind", "items"],
+            properties: {
+              kind: { type: "string", enum: ["directionPreview", "visualDevelopment"] },
+              items: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["id", "title", "purpose", "prompt", "referenceObjectIds", "role"],
+                  properties: {
+                    id: { type: "string" },
+                    targetDirectionId: { type: "string" },
+                    visualBranchId: { type: "string" },
+                    title: { type: "string" },
+                    purpose: { type: "string" },
+                    prompt: { type: "string" },
+                    referenceObjectIds: stringArraySchema(),
+                    role: {
+                      type: "string",
+                      enum: ["preview", "conceptImage", "sceneVisual", "cmfStudy", "detailStudy"]
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     })
@@ -742,7 +772,7 @@ function validateCreateComparisonAnalysisArgs(toolName: string, value: unknown):
 }
 
 function validateRequestConfirmationArgs(toolName: string, value: unknown): asserts value is RequestConfirmationArgs {
-  const record = requireExactObject(toolName, value, ["action", "reason", "impact"], ["targetObjectId"]);
+  const record = requireExactObject(toolName, value, ["action", "reason", "impact"], ["targetObjectId", "visualPlan"]);
   requireEnum(toolName, record, "action", [
     "applyDesignDefinition",
     "setDirectionPrimary",
@@ -754,6 +784,10 @@ function validateRequestConfirmationArgs(toolName: string, value: unknown): asse
   requireOptionalString(toolName, record, "targetObjectId");
   requireString(toolName, record, "reason");
   requireString(toolName, record, "impact");
+  if (record.visualPlan !== undefined) {
+    validateGenerateVisualsArgs(`${toolName}.visualPlan`, record.visualPlan);
+    record.visualPlan = normalizeGenerateVisualsArgs(record.visualPlan as GenerateVisualsArgs);
+  }
 }
 
 function requireExactObject(

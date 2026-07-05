@@ -59,6 +59,38 @@ describe("Morpho agent tool argument validation", () => {
     ).toThrow("最多允许 3 项");
   });
 
+  it("accepts a request confirmation with an executable visual plan", () => {
+    const parsed = parseMorphoAgentToolArguments(makeCall("request_confirmation", {
+      action: "batchGenerateVisuals",
+      reason: "Batch needs confirmation.",
+      impact: "Creates new image objects.",
+      visualPlan: {
+        kind: "directionPreview",
+        items: [
+          {
+            id: "preview-1",
+            title: "Preview",
+            purpose: "Explore a direction.",
+            prompt: "Warm product render.",
+            referenceObjectIds: ["direction-soft-rail"],
+            role: "preview"
+          }
+        ]
+      }
+    }));
+
+    expect(parsed).toMatchObject({
+      name: "request_confirmation",
+      args: {
+        action: "batchGenerateVisuals",
+        visualPlan: {
+          kind: "directionPreview",
+          items: [{ role: "conceptImage" }]
+        }
+      }
+    });
+  });
+
   it("rejects unsupported tool names", () => {
     expect(() => parseMorphoAgentToolArguments(makeCall("delete_everything", {}))).toThrow("未支持的 Agent 工具");
   });

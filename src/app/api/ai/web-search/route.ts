@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server";
 
+import { loadOpenAiCompatibleConfig } from "@/server/ai/openaiCompatibleConfig";
 import { searchWebEvidence } from "@/server/ai/webSearch";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  if (isExplicitlyDisabled(process.env.MORPHO_AI_WEB_SEARCH_ENABLED ?? process.env.MORPHO_MIMO_WEB_SEARCH_ENABLED)) {
+    return NextResponse.json({ error: "网页搜索已关闭。" }, { status: 403 });
+  }
+
+  const config = loadOpenAiCompatibleConfig(process.env);
+  if (config.status === "ok" && !config.config.webSearchEnabled) {
+    return NextResponse.json({ error: "网页搜索已关闭。" }, { status: 403 });
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -38,4 +48,9 @@ export async function POST(request: Request) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isExplicitlyDisabled(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "false" || normalized === "0" || normalized === "off" || normalized === "no";
 }

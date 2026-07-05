@@ -21,7 +21,16 @@ import {
 import { resolveStoredComparisonSourceRefs } from "@/domain/morpho/comparisonAnalysis";
 import { ProposalDraftCard } from "./ProposalDraftCard";
 import type { Suggestion } from "../workspaceUi";
-import type { MorphoAgentTurnMode } from "../morphoAgent";
+import type {
+  CreateComparisonAnalysisArgs,
+  CreateConceptDirectionProposalArgs,
+  CreateDesignDefinitionProposalArgs,
+  CreateResearchAnalysisArgs,
+  GenerateVisualsArgs,
+  MorphoAgentTurnMode,
+  RequestConfirmationArgs
+} from "../morphoAgent";
+import type { ProviderCitation } from "@/server/ai/types";
 
 export type PendingAiConfirmation =
   | {
@@ -58,6 +67,73 @@ export type PendingAiConfirmation =
       confidence: "supported" | "partial" | "needsVerification";
       state?: "active" | "needsVerification";
       note: string;
+    }
+  | {
+      kind: "agentCreateResearchAnalysis";
+      targetTitle: string;
+      reason: string;
+      impact: string;
+      draft: string;
+      args: CreateResearchAnalysisArgs;
+      sourceObjectIds: string[];
+      citations: ProviderCitation[];
+    }
+  | {
+      kind: "agentCreateDesignDefinitionProposal";
+      targetTitle: string;
+      reason: string;
+      impact: string;
+      draft: string;
+      args: CreateDesignDefinitionProposalArgs;
+      sourceObjectIds: string[];
+      citations: ProviderCitation[];
+    }
+  | {
+      kind: "agentCreateConceptDirectionProposal";
+      targetTitle: string;
+      reason: string;
+      impact: string;
+      draft: string;
+      args: CreateConceptDirectionProposalArgs;
+      sourceObjectIds: string[];
+      citations: ProviderCitation[];
+    }
+  | {
+      kind: "agentCreateComparisonAnalysis";
+      targetTitle: string;
+      reason: string;
+      impact: string;
+      args: CreateComparisonAnalysisArgs;
+      selectedObjectIds: string[];
+      userMessageId: string;
+      assistantMessageId: string;
+      imageAttachmentObjectIds: string[];
+      documentExtractObjectIds: string[];
+      documentFragmentExtractObjectIds: string[];
+    }
+  | {
+      kind: "agentGenerateVisuals";
+      targetTitle: string;
+      reason: string;
+      impact: string;
+      draft: string;
+      plan: GenerateVisualsArgs;
+      sourceObjectIds: string[];
+      selectedDirectionIds: string[];
+      selectedImageIds: string[];
+    }
+  | {
+      kind: "agentRequestedAction";
+      targetTitle: string;
+      reason: string;
+      impact: string;
+      action: RequestConfirmationArgs["action"];
+      targetObjectId?: string;
+      visualPlan?: GenerateVisualsArgs;
+      draft: string;
+      sourceObjectIds: string[];
+      selectedDirectionIds: string[];
+      selectedImageIds: string[];
     }
   | PendingComparisonConfirmation;
 
@@ -783,6 +859,18 @@ function getPendingConfirmationTitle(confirmation: PendingAiConfirmation): strin
       return "确认批量生成";
     case "createKeyConclusion":
       return "保存关键结论";
+    case "agentCreateResearchAnalysis":
+      return "确认创建研究卡";
+    case "agentCreateDesignDefinitionProposal":
+      return "确认创建设计定义草稿";
+    case "agentCreateConceptDirectionProposal":
+      return "确认创建概念方向草稿";
+    case "agentCreateComparisonAnalysis":
+      return "确认创建 Compare 分析";
+    case "agentGenerateVisuals":
+      return "确认生成视觉结果";
+    case "agentRequestedAction":
+      return getAgentRequestedActionTitle(confirmation.action);
     case "compareSetPrimary":
     case "compareSetAlternative":
     case "compareEliminate":
@@ -807,6 +895,14 @@ function getPendingConfirmationBody(confirmation: PendingAiConfirmation): string
       return `将基于当前语境批量生成 ${confirmation.itemCount} 张新图像。${confirmation.reason} ${confirmation.impact} 这只会创建新的图像对象，不会覆盖来源图、默认参考、交付引用或已有版本链。`;
     case "createKeyConclusion":
       return `将从“${confirmation.sourceTitle}”保存一条用户确认的关键结论：“${confirmation.conclusionTitle}”。它会创建新的关键结论对象、来源关系和决策记录；不会自动改写设计定义、概念方向、默认参考、交付引用或长期项目记忆。`;
+    case "agentCreateResearchAnalysis":
+    case "agentCreateDesignDefinitionProposal":
+    case "agentCreateConceptDirectionProposal":
+    case "agentCreateComparisonAnalysis":
+    case "agentGenerateVisuals":
+      return `将执行“${confirmation.targetTitle}”。基于当前显式语境和本回合已获得的来源执行。${confirmation.reason} ${confirmation.impact} 未确认前不会创建、修改或生成任何项目对象；取消不会改变项目状态。`;
+    case "agentRequestedAction":
+      return `Agent 请求执行“${getAgentRequestedActionTitle(confirmation.action)}”。基于当前显式语境和目标对象执行。${confirmation.reason} ${confirmation.impact} 未确认前不会改变项目状态；取消不会改写设计定义、方向状态、默认参考、图像或交付引用。`;
     case "compareSetPrimary":
     case "compareSetAlternative":
     case "compareEliminate":
@@ -828,6 +924,13 @@ function getPendingConfirmationActionLabel(confirmation: PendingAiConfirmation):
       return "确认生成";
     case "createKeyConclusion":
       return "确认保存结论";
+    case "agentCreateResearchAnalysis":
+    case "agentCreateDesignDefinitionProposal":
+    case "agentCreateConceptDirectionProposal":
+    case "agentCreateComparisonAnalysis":
+    case "agentGenerateVisuals":
+    case "agentRequestedAction":
+      return "确认执行";
     case "compareSetPrimary":
     case "compareSetAlternative":
     case "compareEliminate":
@@ -836,6 +939,23 @@ function getPendingConfirmationActionLabel(confirmation: PendingAiConfirmation):
     case "compareClearDefaultReference":
     case "compareCreateKeyConclusion":
       return "确认决定";
+  }
+}
+
+function getAgentRequestedActionTitle(action: RequestConfirmationArgs["action"]): string {
+  switch (action) {
+    case "applyDesignDefinition":
+      return "应用设计定义";
+    case "setDirectionPrimary":
+      return "设为主方向";
+    case "setDirectionAlternative":
+      return "设为备选方向";
+    case "eliminateDirection":
+      return "淘汰方向";
+    case "setDefaultReference":
+      return "替换后续默认参考";
+    case "batchGenerateVisuals":
+      return "批量生成视觉结果";
   }
 }
 

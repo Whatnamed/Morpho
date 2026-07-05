@@ -28,7 +28,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await executeOpenAiCompatibleResponse(config.config, validated.value, request.signal);
+    const result = await executeOpenAiCompatibleResponse(
+      config.config,
+      filterAgentRequestForConfig(validated.value, config.config),
+      request.signal
+    );
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof OpenAiCompatibleProviderError) {
@@ -47,6 +51,20 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: "OpenAI-compatible Provider 网络调用失败。" }, { status: 502 });
   }
+}
+
+export function filterAgentRequestForConfig(
+  request: OpenAiCompatibleResponseRequest,
+  config: { webSearchEnabled: boolean }
+): OpenAiCompatibleResponseRequest {
+  if (config.webSearchEnabled) {
+    return request;
+  }
+
+  return {
+    ...request,
+    tools: request.tools?.filter((tool) => tool.type !== "function" || tool.name !== "search_web_evidence")
+  };
 }
 
 function validateAgentRouteRequest(value: unknown):

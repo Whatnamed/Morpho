@@ -27,12 +27,12 @@ export function ProposalCanvasLayer({
   }
 
   return (
-    <div className="proposal-canvas-layer" aria-hidden="true">
+    <div className="proposal-canvas-layer" aria-label="画布草案">
       {proposals.map((proposal) => {
         if (!proposal.canvasPlacement) {
           return null;
         }
-        const left = getVisibleProposalLeft(proposal.canvasPlacement.x * view.zoom + view.x);
+        const left = proposal.canvasPlacement.x * view.zoom + view.x;
         const top = proposal.canvasPlacement.y * view.zoom + view.y;
 
         return (
@@ -67,18 +67,6 @@ export function ProposalCanvasLayer({
       })}
     </div>
   );
-}
-
-function getVisibleProposalLeft(left: number): number {
-  if (typeof window === "undefined") {
-    return left;
-  }
-
-  const cardWidth = 248;
-  const reservedAiPanelWidth = 456;
-  const edgeGap = 16;
-  const maxLeft = Math.max(edgeGap, window.innerWidth - reservedAiPanelWidth - cardWidth - edgeGap);
-  return Math.min(left, maxLeft);
 }
 
 function formatProposalKind(type: ArtifactProposal["type"]): string {
