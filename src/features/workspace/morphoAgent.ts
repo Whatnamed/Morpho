@@ -350,6 +350,7 @@ export function buildMorphoAgentTools(webSearchEnabled: boolean): ResponseTool[]
                 referenceObjectIds: stringArraySchema(),
                 role: {
                   type: "string",
+                  description: "Use conceptImage for every item when kind is directionPreview.",
                   enum: ["preview", "conceptImage", "sceneVisual", "cmfStudy", "detailStudy"]
                 }
               }
@@ -488,7 +489,7 @@ export function parseMorphoAgentToolArguments(call: AgentFunctionCall): MorphoAg
       return { name: call.name, args: parsed };
     case "generate_visuals":
       validateGenerateVisualsArgs(call.name, parsed);
-      return { name: call.name, args: parsed };
+      return { name: call.name, args: normalizeGenerateVisualsArgs(parsed) };
     case "create_comparison_analysis":
       validateCreateComparisonAnalysisArgs(call.name, parsed);
       return { name: call.name, args: parsed };
@@ -687,6 +688,20 @@ function validateGenerateVisualsArgs(toolName: string, value: unknown): asserts 
       "detailStudy"
     ]);
   });
+}
+
+function normalizeGenerateVisualsArgs(args: GenerateVisualsArgs): GenerateVisualsArgs {
+  if (args.kind !== "directionPreview") {
+    return args;
+  }
+
+  return {
+    ...args,
+    items: args.items.map((item) => ({
+      ...item,
+      role: "conceptImage"
+    }))
+  };
 }
 
 function validateCreateComparisonAnalysisArgs(toolName: string, value: unknown): asserts value is CreateComparisonAnalysisArgs {

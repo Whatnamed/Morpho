@@ -381,14 +381,14 @@ export function canStartOperation(workspace: MorphoWorkspace):
       operation: OperationRecord;
       reason: string;
     } {
-  const active = getActiveOperation(workspace);
-  if (!active) {
+  const blocking = Object.values(workspace.operations).find((operation) => isBlockingOperationStatus(operation.status));
+  if (!blocking) {
     return { status: "ok" };
   }
 
   return {
     status: "blocked",
-    operation: active,
+    operation: blocking,
     reason: "当前项目已有一个未完成的 Operation，请先取消或处理后再开始新的任务。"
   };
 }
@@ -2325,7 +2325,11 @@ function materializeCitationSnapshots(
 }
 
 function isActiveOperationStatus(status: OperationRecord["status"]): boolean {
-  return status === "queued" || status === "preparing" || status === "running" || status === "waiting_for_user";
+  return status === "queued" || status === "preparing" || status === "running";
+}
+
+function isBlockingOperationStatus(status: OperationRecord["status"]): boolean {
+  return isActiveOperationStatus(status) || status === "waiting_for_user";
 }
 
 function nextRecordId(record: Record<string, unknown>, preferredId: string): string {

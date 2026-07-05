@@ -128,6 +128,10 @@ export async function executeOpenAiCompatibleResponse(
   request: OpenAiCompatibleResponseRequest,
   signal?: AbortSignal
 ): Promise<OpenAiCompatibleResponseResult> {
+  if (shouldUseChatCompletionsFirst(config)) {
+    return executeOpenAiCompatibleChatCompletion(config, request, signal);
+  }
+
   const response = await fetch(`${config.baseUrl}/responses`, {
     method: "POST",
     headers: {
@@ -161,6 +165,14 @@ export async function executeOpenAiCompatibleResponse(
       ? raw.output.filter((item) => isRecord(item) && item.type === "web_search_call").length
       : 0
   };
+}
+
+function shouldUseChatCompletionsFirst(config: OpenAiCompatibleConfig): boolean {
+  try {
+    return new URL(config.baseUrl).hostname.toLowerCase().includes("aijws.com");
+  } catch {
+    return false;
+  }
 }
 
 async function executeOpenAiCompatibleChatCompletion(
@@ -315,8 +327,7 @@ function convertResponseToolsToChatTools(tools: ResponseTool[] | undefined): Cha
         function: {
           name: tool.name,
           description: tool.description,
-          parameters: tool.parameters,
-          strict: tool.strict
+          parameters: tool.parameters
         }
       }
     ];

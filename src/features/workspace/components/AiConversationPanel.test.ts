@@ -541,7 +541,7 @@ describe("AiConversationPanel", () => {
     expect(html).not.toContain("停止当前任务</button></div>");
   });
 
-  it("renders a compact queue surface separate from the chat stream", () => {
+  it("renders a compact status surface separate from the chat stream", () => {
     const workspace = createInitialWorkspace();
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
@@ -573,8 +573,8 @@ describe("AiConversationPanel", () => {
       }))
     );
 
-    expect(html).toContain("Queue");
-    expect(html).toContain("1 active");
+    expect(html).toContain("状态");
+    expect(html).toContain("处理中");
     expect(html).toContain("ai-queue-pill");
     expect(html).not.toContain("图像任务 ·");
   });

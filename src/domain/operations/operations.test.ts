@@ -12,6 +12,7 @@ import {
   createResearchOperation,
   detectResearchSourceChanges,
   failImageGenerationOperation,
+  getActiveOperation,
   interruptActiveOperations,
   failOperation,
   markImageGenerationOperationSubmitted,
@@ -560,6 +561,7 @@ describe("Morpho Operation Runtime", () => {
     expect(canStartOperation(proposed.workspace)).toMatchObject({
       status: "blocked"
     });
+    expect(getActiveOperation(proposed.workspace)).toBeUndefined();
 
     const applied = applyDesignDefinitionProposal(proposed.workspace, proposed.proposal.id);
     expect(applied.status).toBe("updated");

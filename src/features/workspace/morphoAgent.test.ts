@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parseMorphoAgentToolArguments, type AgentFunctionCall } from "./morphoAgent";
 
 describe("Morpho agent tool argument validation", () => {
-  it("accepts valid visual generation arguments", () => {
+  it("normalizes direction preview visual roles before operation validation", () => {
     const parsed = parseMorphoAgentToolArguments(makeCall("generate_visuals", {
       kind: "directionPreview",
       items: [
@@ -31,7 +31,7 @@ describe("Morpho agent tool argument validation", () => {
             purpose: "验证更轻、更模块化的表达",
             prompt: "A warm product design preview for a modular night support rail.",
             referenceObjectIds: ["direction-soft-rail"],
-            role: "preview"
+            role: "conceptImage"
           }
         ]
       }

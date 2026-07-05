@@ -36,10 +36,10 @@ export async function POST(request: Request) {
         {
           error:
             error.status === 401 || error.status === 403
-              ? "OpenAI-compatible Provider 鉴权失败，请检查 MORPHO_AI_API_KEY。"
+                ? "OpenAI-compatible Provider 鉴权失败，请检查 MORPHO_AI_API_KEY。"
               : error.status === 400
                 ? "OpenAI-compatible Provider 请求格式不兼容，请检查模型、tools 或图片输入。"
-                : error.diagnostic ?? "OpenAI-compatible Provider 调用失败。"
+                : readableProviderDiagnostic(error.diagnostic) ?? "OpenAI-compatible Provider 调用失败，请稍后重试。"
         },
         { status: 502 }
       );
@@ -68,4 +68,18 @@ function validateAgentRouteRequest(value: unknown):
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readableProviderDiagnostic(diagnostic: string | undefined): string | undefined {
+  const trimmed = diagnostic?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const normalized = trimmed.toLowerCase();
+  if (normalized.includes("<!doctype html") || normalized.includes("<html") || normalized.includes("bad gateway")) {
+    return "OpenAI-compatible Provider 暂时不可用或上游返回 502，请稍后重试。";
+  }
+
+  return trimmed.slice(0, 240);
 }

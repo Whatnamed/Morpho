@@ -32,14 +32,16 @@ export function ProposalCanvasLayer({
         if (!proposal.canvasPlacement) {
           return null;
         }
+        const left = getVisibleProposalLeft(proposal.canvasPlacement.x * view.zoom + view.x);
+        const top = proposal.canvasPlacement.y * view.zoom + view.y;
 
         return (
           <article
             key={proposal.id}
             className={`proposal-canvas-card${proposal.id === activeProposalId ? " is-active" : ""}`}
             style={{
-              left: proposal.canvasPlacement.x * view.zoom + view.x,
-              top: proposal.canvasPlacement.y * view.zoom + view.y,
+              left,
+              top,
               transform: `scale(${Math.max(0.72, Math.min(view.zoom, 1))})`,
               transformOrigin: "top left"
             }}
@@ -65,6 +67,18 @@ export function ProposalCanvasLayer({
       })}
     </div>
   );
+}
+
+function getVisibleProposalLeft(left: number): number {
+  if (typeof window === "undefined") {
+    return left;
+  }
+
+  const cardWidth = 248;
+  const reservedAiPanelWidth = 456;
+  const edgeGap = 16;
+  const maxLeft = Math.max(edgeGap, window.innerWidth - reservedAiPanelWidth - cardWidth - edgeGap);
+  return Math.min(left, maxLeft);
 }
 
 function formatProposalKind(type: ArtifactProposal["type"]): string {

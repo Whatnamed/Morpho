@@ -87,8 +87,13 @@ export function validateVisualGenerationPlan(
       return { status: "blocked", reason: `方向预览计划必须覆盖每个已选方向，并且每方向精确生成 ${requestedPreviewCount} 张。` };
     }
   }
+  const planItems =
+    input.plan.kind === "visualDevelopment" ? input.plan.items.slice(0, requestedPreviewCount) : input.plan.items;
+  if (input.plan.kind === "visualDevelopment" && planItems.length !== requestedPreviewCount) {
+    return { status: "blocked", reason: `视觉继续发展计划必须精确生成 ${requestedPreviewCount} 张。` };
+  }
 
-  for (const item of input.plan.items) {
+  for (const item of planItems) {
     if (item.referenceObjectIds.some((objectId) => !allowedObjectIds.has(objectId))) {
       return { status: "blocked", reason: "视觉计划引用了本次未授权的对象 ID。" };
     }
@@ -131,15 +136,24 @@ export function validateVisualGenerationPlan(
       }
     }
 
-    if (item.visualBranchId) {
-      const branch = workspace.visualBranches[item.visualBranchId];
+    let visualBranchId = item.visualBranchId;
+    if (visualBranchId) {
+      const branch = workspace.visualBranches[visualBranchId];
       if (!branch || branch.archivedAt || (item.targetDirectionId && branch.directionId !== item.targetDirectionId)) {
-        return { status: "blocked", reason: "视觉计划引用了不可用或跨方向的视觉分支。" };
+        visualBranchId = input.plan.kind === "visualDevelopment" ? undefined : item.visualBranchId;
+      }
+
+      if (visualBranchId) {
+        const validBranch = workspace.visualBranches[visualBranchId];
+        if (!validBranch || validBranch.archivedAt || (item.targetDirectionId && validBranch.directionId !== item.targetDirectionId)) {
+          return { status: "blocked", reason: "视觉计划引用了不可用或跨方向的视觉分支。" };
+        }
       }
     }
 
     sanitizedItems.push({
       ...item,
+      visualBranchId,
       role: ALLOWED_IMAGE_ROLES.includes(item.role) ? item.role : inferImageRole(item.prompt)
     });
   }

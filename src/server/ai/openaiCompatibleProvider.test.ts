@@ -221,6 +221,100 @@ describe("openai-compatible provider adapter", () => {
     }
   });
 
+  it("uses chat completions first for aijws-compatible endpoints", async () => {
+    const calls: Array<{ url: string; body: unknown }> = [];
+    const originalFetch = global.fetch;
+    global.fetch = async (input, init) => {
+      calls.push({
+        url: String(input),
+        body: JSON.parse(String(init?.body))
+      });
+
+      return new Response(
+        JSON.stringify({
+          id: "chat_aijws_123",
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                tool_calls: [
+                  {
+                    id: "call_1",
+                    type: "function",
+                    function: {
+                      name: "read_selected_context",
+                      arguments: "{}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      ) as unknown as Response;
+    };
+
+    try {
+      const result = await executeOpenAiCompatibleResponse(
+        {
+          apiKey: "secret",
+          baseUrl: "https://api.aijws.com/v1",
+          model: "gpt-5.4",
+          webSearchEnabled: true
+        },
+        {
+          input: [
+            {
+              role: "user",
+              content: [{ type: "input_text", text: "Read context." }]
+            }
+          ],
+          tools: [
+            {
+              type: "function",
+              name: "read_selected_context",
+              description: "Read context",
+              parameters: { type: "object", additionalProperties: false, properties: {} },
+              strict: true
+            }
+          ]
+        }
+      );
+
+      expect(calls.map((call) => call.url)).toEqual(["https://api.aijws.com/v1/chat/completions"]);
+      expect(calls[0].body).toEqual({
+        model: "gpt-5.4",
+        messages: [
+          {
+            role: "user",
+            content: "Read context."
+          }
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "read_selected_context",
+              description: "Read context",
+              parameters: { type: "object", additionalProperties: false, properties: {} }
+            }
+          }
+        ]
+      });
+      expect(result.functionCalls).toEqual([
+        {
+          id: "call_1",
+          callId: "call_1",
+          name: "read_selected_context",
+          argumentsText: "{}"
+        }
+      ]);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it("converts chat tool calls into the agent response shape", async () => {
     const originalFetch = global.fetch;
     global.fetch = async (input) => {

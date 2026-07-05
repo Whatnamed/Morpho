@@ -320,10 +320,14 @@ export function AiConversationPanel({
   const showDirectionPreviewCount = selectedDirectionCount > 0 && selectedDirectionCount <= 3 && isLocalEditMode;
   const directionPreviewTotal = selectedDirectionCount * directionPreviewCount;
   const isAiBusy = isStreaming || Boolean(activeOperation);
+  const isImageTaskActive = Boolean(
+    imageTaskStatus && !["succeeded", "failed", "cancelled"].includes(imageTaskStatus.state)
+  );
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
-  const activeTaskCount = isAiBusy || imageTaskStatus ? 1 : 0;
+  const activeTaskCount = isAiBusy || isImageTaskActive ? 1 : 0;
+  const statusLabel = activeTaskCount > 0 ? "处理中" : activeProposal ? "待处理" : "空闲";
   const visibleContextObjects = selectedObjects.slice(0, 3);
   const hiddenContextCount = Math.max(0, selectedObjects.length - visibleContextObjects.length);
   const modeSummary = turnMode === "auto" ? "自动执行" : "先确认";
@@ -725,13 +729,13 @@ export function AiConversationPanel({
           aria-expanded={queueOpen}
           onClick={() => setQueueOpen((open) => !open)}
         >
-          <span>Queue</span>
-          <strong>{activeTaskCount} active</strong>
+          <span>状态</span>
+          <strong>{statusLabel}</strong>
         </button>
         {queueOpen ? (
           <div className="ai-queue-popover" role="status">
             {activeTaskCount === 0 ? (
-              <span>无 active tasks</span>
+              <span>{activeProposal ? "有一张草案等待处理" : "当前没有正在执行的任务"}</span>
             ) : (
               <>
                 <strong>{activeOperation ? formatOperationType(activeOperation.type) : "当前输出"}</strong>

@@ -237,6 +237,86 @@ describe("visual generation plan parsing and validation", () => {
     });
   });
 
+  it("normalizes visual development plans that expand a single continuation into multiple generated images", () => {
+    const workspace = createInitialWorkspace();
+    const result = validateVisualGenerationPlan(workspace, {
+      plan: {
+        kind: "visualDevelopment",
+        items: [
+          {
+            id: "item-a",
+            targetDirectionId: "direction-soft-rail",
+            title: "Integrated version A",
+            purpose: "Continue the selected image",
+            prompt: "Keep the proportions and make the connection more integrated.",
+            referenceObjectIds: ["image-soft-rail-v2"],
+            role: "conceptImage"
+          },
+          {
+            id: "item-b",
+            targetDirectionId: "direction-soft-rail",
+            title: "Integrated version B",
+            purpose: "Unexpected extra variation",
+            prompt: "Keep the proportions and make another integrated variation.",
+            referenceObjectIds: ["image-soft-rail-v2"],
+            role: "conceptImage"
+          }
+        ]
+      },
+      allowedObjectIds: ["image-soft-rail-v2", "direction-soft-rail"],
+      selectedDirectionIds: ["direction-soft-rail"],
+      selectedImageIds: ["image-soft-rail-v2"]
+    });
+
+    expect(result).toMatchObject({
+      status: "ok",
+      plan: {
+        items: [
+          {
+            id: "item-a"
+          }
+        ]
+      }
+    });
+    expect(result.status === "ok" ? result.plan.items : []).toHaveLength(1);
+  });
+
+  it("drops fabricated visual branch ids from visual development plans", () => {
+    const workspace = createInitialWorkspace();
+    const result = validateVisualGenerationPlan(workspace, {
+      plan: {
+        kind: "visualDevelopment",
+        items: [
+          {
+            id: "item-a",
+            targetDirectionId: "direction-soft-rail",
+            visualBranchId: "branch-invented-by-model",
+            title: "Integrated version",
+            purpose: "Continue the selected image",
+            prompt: "Keep the proportions and make the connection more integrated.",
+            referenceObjectIds: ["image-soft-rail-v2"],
+            role: "conceptImage"
+          }
+        ]
+      },
+      allowedObjectIds: ["image-soft-rail-v2", "direction-soft-rail"],
+      selectedDirectionIds: ["direction-soft-rail"],
+      selectedImageIds: ["image-soft-rail-v2"]
+    });
+
+    expect(result).toMatchObject({
+      status: "ok",
+      plan: {
+        items: [
+          {
+            id: "item-a",
+            visualBranchId: undefined
+          }
+        ]
+      }
+    });
+  });
+
   it("blocks visual development across directions without a matching target", () => {
     const workspace = createInitialWorkspace();
     const result = validateVisualGenerationPlan(workspace, {
