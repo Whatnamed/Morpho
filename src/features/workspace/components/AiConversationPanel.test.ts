@@ -57,7 +57,7 @@ describe("AiConversationPanel", () => {
       }))
     );
 
-    expect(html).toContain("已补入项目记录");
+    expect(html).toContain("已保存为项目线索");
     expect(html).toContain("2 条");
   });
 
@@ -614,6 +614,61 @@ describe("AiConversationPanel", () => {
     expect(html).toContain("自动执行");
     expect(html).toContain("Agent 会自动判断研究、提案、比较和出图");
     expect(html).not.toContain("图像生成（自动判断）");
+  });
+
+  it("uses generic failure copy for failed chat or Compare turns", () => {
+    const workspace = createInitialWorkspace();
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        showFailure: true,
+        workspace: {
+          ...workspace,
+          ai: {
+            ...workspace.ai,
+            messages: [
+              {
+                id: "ai-assistant-failed-chat",
+                role: "assistant",
+                body: "AI 额度服务暂时不可用，请稍后重试。",
+                status: "failed",
+                taskMode: "chatAnalysis"
+              }
+            ]
+          }
+        }
+      }))
+    );
+
+    expect(html).toContain("这次 AI 回复没有完成");
+    expect(html).toContain("项目对象未被自动更改");
+    expect(html).not.toContain("原图和修改要求已保留");
+  });
+
+  it("keeps image-generation failure copy specific to image tasks", () => {
+    const workspace = createInitialWorkspace();
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        showFailure: true,
+        workspace: {
+          ...workspace,
+          ai: {
+            ...workspace.ai,
+            messages: [
+              {
+                id: "ai-assistant-failed-image",
+                role: "assistant",
+                body: "今日生图额度已用完，请明天再试。",
+                status: "failed",
+                taskMode: "imageGeneration"
+              }
+            ]
+          }
+        }
+      }))
+    );
+
+    expect(html).toContain("这次图像任务没有完成");
+    expect(html).toContain("来源图、参考对象和生成要求已保留");
   });
 
   it("only exposes the two turn strategies instead of work-intent toggles", () => {

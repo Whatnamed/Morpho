@@ -191,4 +191,75 @@ describe("BottomDetailBar selected object surface", () => {
     expect(html).not.toContain("删除");
     expect(html).not.toContain("设为后续默认参考");
   });
+
+  it("renders parsed document reader as a real detail action", () => {
+    const workspace = createInitialWorkspace();
+    const parsedFile = {
+      id: "file-brief",
+      type: "file" as const,
+      title: "brief.pdf",
+      summary: "",
+      createdBy: "user" as const,
+      visibility: "active" as const,
+      fileKind: "pdf" as const,
+      sourceLabel: "用户导入",
+      parseStatus: "parsed" as const,
+      extractedAssetId: "asset-extract"
+    };
+    const html = renderToStaticMarkup(
+      createElement(BottomDetailBar, {
+        workspace,
+        selectedObjects: [parsedFile],
+        assets: {
+          "asset-extract": {
+            id: "asset-extract",
+            fileName: "brief.extract.txt",
+            mimeType: "text/plain",
+            size: 12,
+            createdAt: "2026-07-01T00:00:00.000Z",
+            storageKey: "blob:extract",
+            sourceType: "documentExtract"
+          }
+        },
+        hasPendingDesignDefinitionRevisionDraft: false,
+        keyConclusionCandidates: [],
+        relations: [],
+        directionLineage: [],
+        visualBranches: {},
+        decisionRecords: [],
+        activeDesignTrace: null,
+        isDesignTraceActive: false,
+        onToggleDesignTrace: () => undefined,
+        onAskAi: () => undefined,
+        onReviseDirection: () => undefined,
+        onSplitDirection: () => undefined,
+        onMergeDirections: () => undefined,
+        onCreateVisualBranch: () => undefined,
+        onRenameVisualBranch: () => undefined,
+        onArchiveVisualBranch: () => undefined,
+        onRestoreVisualBranch: () => undefined,
+        onAssignImageToVisualBranch: () => undefined,
+        onRemoveImageFromVisualBranch: () => undefined,
+        onLocalEdit: () => undefined,
+        onReferenceIntent: () => undefined,
+        onOpenDocumentReader: () => undefined,
+        onOpenDeliveryPreparation: () => undefined,
+        onHide: () => undefined,
+        onDelete: () => undefined,
+        onEliminateDirection: () => undefined,
+        onSetDirectionPrimary: () => undefined,
+        onSetDirectionAlternative: () => undefined,
+        onRestoreDirectionAsAlternative: () => undefined,
+        onSaveKeyConclusionFromResearchItem: () => undefined,
+        onCopyItemToDraft: () => undefined,
+        onContinueQuestion: () => undefined,
+        onSetKeyConclusionState: () => undefined,
+        onSetImageRole: () => undefined
+      })
+    );
+
+    expect(html).toContain("detail-inline-action");
+    expect(html).toContain("阅读解析内容");
+    expect(html).toContain("打开本地解析文本阅读面板");
+  });
 });

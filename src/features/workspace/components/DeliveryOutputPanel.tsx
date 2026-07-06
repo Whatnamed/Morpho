@@ -92,7 +92,7 @@ export function DeliveryOutputPanel({
                   <strong>{delivery.title}</strong>
                   <span>{deliveryFormatLabel(delivery.format)}</span>
                   <small>
-                    章节 {delivery.sections.length} · 稳定引用 {delivery.references.length} · open gaps{" "}
+                    章节 {delivery.sections.length} · 稳定引用 {delivery.references.length} · 待补{" "}
                     {delivery.gaps.filter((gap) => gap.status === "open").length} · 未应用草稿{" "}
                     {pendingDraftCount(workspace, delivery.id)}
                   </small>

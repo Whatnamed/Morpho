@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpenText, Boxes, EyeOff, Map, Plus, Search } from "lucide-react";
+import { Boxes, EyeOff, Map, Plus, Search } from "lucide-react";
 
 export type DrawerMode = "map" | "assets" | "hidden" | "search" | "records" | null;
 
@@ -38,15 +38,6 @@ export function LeftRail({ activeDrawer, onDrawerChange, onAddToCanvas }: LeftRa
       >
         <Boxes size={16} />
         <span className="tooltip">资产</span>
-      </button>
-      <button
-        className={`rail-button ${activeDrawer === "records" ? "active" : ""}`}
-        type="button"
-        aria-label="项目记录"
-        onClick={() => toggle("records")}
-      >
-        <BookOpenText size={16} />
-        <span className="tooltip">项目记录</span>
       </button>
       <button
         className={`rail-button ${activeDrawer === "hidden" ? "active" : ""}`}

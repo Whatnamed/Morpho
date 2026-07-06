@@ -131,23 +131,23 @@ export function ProjectHomeClient({ account, accessError }: ProjectHomeClientPro
 
       <section className="home-hero product-home-hero" aria-label="Morpho 项目首页">
         <div>
-          <p className="home-kicker">你的设计工作台</p>
-          <h1>从一个新想法开始，或继续上次的项目。</h1>
-          <p>项目、画布、图片和文件仍保存在当前浏览器中。账号只用于封闭测试资格与 AI 调用保护。</p>
+          <p className="home-kicker">项目工作台</p>
+          <h1>继续设计</h1>
+          <p>从最近项目回到连续画布；新想法也可以直接从一句话、图片、文件或链接开始。</p>
         </div>
         <div className="home-actions">
-          <button className="brand-button" type="button" onClick={createProject} disabled={!isActive}>
-            <Plus size={15} />
-            新建项目
-          </button>
           <button
-            className="plain-button"
+            className="brand-button"
             type="button"
             disabled={!isActive || !recentProject}
             onClick={() => isActive && recentProject && openProject(recentProject.id)}
           >
             <Clock size={15} />
             继续最近项目
+          </button>
+          <button className="plain-button" type="button" onClick={createProject} disabled={!isActive}>
+            <Plus size={15} />
+            新建项目
           </button>
         </div>
       </section>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Ban, EyeOff, ListChecks, Target } from "lucide-react";
+import { Ban, BookOpen, EyeOff, ListChecks, Target } from "lucide-react";
 import { useState } from "react";
 
 import type {
@@ -211,6 +211,7 @@ export function BottomDetailBar({
   visualBranches,
   decisionRecords,
   activeDesignTrace,
+  onOpenDocumentReader,
   onRenameVisualBranch,
   onArchiveVisualBranch,
   onRestoreVisualBranch,
@@ -292,6 +293,34 @@ export function BottomDetailBar({
             onRestoreVisualBranch
           })}
           {activeDesignTrace ? <DesignTraceSummary trace={activeDesignTrace} /> : null}
+          {documentReaderAction.visible ? (
+            <button
+              className="detail-inline-action"
+              type="button"
+              disabled={documentReaderAction.disabled}
+              title={documentReaderAction.message}
+              onClick={() => {
+                if (primary.type === "file") {
+                  onOpenDocumentReader(primary.id);
+                }
+              }}
+            >
+              <BookOpen size={14} />
+              {documentReaderAction.label}
+            </button>
+          ) : null}
+          {primary.type === "documentFragment" ? (
+            <button
+              className="detail-inline-action"
+              type="button"
+              disabled={!fragmentInitialLocation}
+              title={fragmentSourceState ? describeDocumentFragmentSourceAvailability(fragmentSourceState) : "来源不可用"}
+              onClick={() => onOpenDocumentReader(primary.source.fileObjectId, fragmentInitialLocation)}
+            >
+              <BookOpen size={14} />
+              查看原文定位
+            </button>
+          ) : null}
         </div>
       </div>
 

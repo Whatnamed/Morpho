@@ -254,6 +254,10 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
             renderVisual(props.imageVariant)
           )}
         </div>
+        <div className="morpho-image-label">
+          <span>{props.label}</span>
+          <strong>{props.title}</strong>
+        </div>
         {props.isBeingLocallyEdited ? (
           <div className="edit-annotation">
             <span />

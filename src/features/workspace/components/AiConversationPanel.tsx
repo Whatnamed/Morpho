@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronLeft, Send, Sparkles, Square } from "lucide-react";
 
-import type { ComparisonAnalysis, ComparisonSourceRef, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
+import type { AiMessage, ComparisonAnalysis, ComparisonSourceRef, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
 import type {
   ArtifactProposal,
   ConceptDirectionProposal,
@@ -407,6 +407,7 @@ export function AiConversationPanel({
   const visibleContextObjects = selectedObjects.slice(0, 3);
   const hiddenContextCount = Math.max(0, selectedObjects.length - visibleContextObjects.length);
   const modeSummary = turnMode === "auto" ? "自动执行" : "先确认";
+  const failureCopy = showFailure ? getFailureCopy(getLatestFailedAssistantMessage(workspace)) : null;
   const updateScrollBottomVisibility = () => {
     const element = scrollRef.current;
     if (!element) {
@@ -487,7 +488,7 @@ export function AiConversationPanel({
                   type="button"
                   onClick={() => onOpenProjectRecords(message.continuityEntryIds)}
                 >
-                  已补入项目记录 · {message.continuityEntryIds.length} 条
+                  已保存为项目线索 · {message.continuityEntryIds.length} 条
                 </button>
               ) : null}
               {message.citationIds && message.citationIds.length > 0 ? (
@@ -621,8 +622,8 @@ export function AiConversationPanel({
 
           {showFailure ? (
             <div className="failure-card">
-              <strong>这次修改没有完成</strong>
-              <p>原图和修改要求已保留。可以重试、修改后重试，或取消并保留原图。</p>
+              <strong>{failureCopy?.title}</strong>
+              <p>{failureCopy?.body}</p>
               <div className="failure-actions">
                 <button className="plain-button" type="button" onClick={onFailureRetry}>
                   重试
@@ -847,6 +848,31 @@ function formatOperationType(type: OperationRecord["type"]): string {
     default:
       return "当前任务";
   }
+}
+
+function getLatestFailedAssistantMessage(workspace: MorphoWorkspace): AiMessage | undefined {
+  return [...workspace.ai.messages].reverse().find((message) => message.role === "assistant" && message.status === "failed");
+}
+
+function getFailureCopy(message: AiMessage | undefined): { title: string; body: string } {
+  if (message?.taskMode === "imageGeneration") {
+    return {
+      title: "这次图像任务没有完成",
+      body: "来源图、参考对象和生成要求已保留。可以重试、修改后重试，或取消并保留现有内容。"
+    };
+  }
+
+  if (message?.taskMode === "researchOperation") {
+    return {
+      title: "这次研究任务没有完成",
+      body: "本轮资料范围和问题已保留。可以重试，或先修改要求再重新发送。"
+    };
+  }
+
+  return {
+    title: "这次 AI 回复没有完成",
+    body: "本轮输入已保留，项目对象未被自动更改。可以重试，或先修改要求再重新发送。"
+  };
 }
 
 function getPendingConfirmationTitle(confirmation: PendingAiConfirmation): string {

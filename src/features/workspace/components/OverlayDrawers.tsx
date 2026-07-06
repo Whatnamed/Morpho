@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 
-import type { ContinuityManualState, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
-import type { ContinuitySourceRef, ProjectFocusArea, ProjectMemoryViewKey, StageRecordKey } from "@/domain/morpho/types";
-import { deriveProjectMemoryViews, getContinuityEntryEligibility, getContinuityRecordGroups, resolveContinuityValidity } from "@/domain/morpho/projectContinuity";
+import type { ContinuityManualState, ContinuityRecordEntry, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
+import type { ContinuitySourceRef, ProjectFocusArea, StageRecordKey } from "@/domain/morpho/types";
+import { getContinuityEntryEligibility, resolveContinuityValidity } from "@/domain/morpho/projectContinuity";
 import { getWorkspaceAssetItems, searchWorkspace, type WorkspaceAssetItem } from "@/domain/morpho/queries";
 import type { DrawerMode } from "./LeftRail";
 import { getObjectTypeLabel } from "../workspaceUi";
@@ -191,33 +191,15 @@ function ProjectRecordDrawer({
 }) {
   const highlighted = new Set(highlightedRecordIds);
   const resolvedWorkspace = resolveContinuityValidity(workspace);
-  const groups = getContinuityRecordGroups(workspace);
-  const memoryViews = deriveProjectMemoryViews(workspace);
   const reviewItems = resolvedWorkspace.projectContinuity.recordEntries
     .filter((entry) => getContinuityEntryEligibility(entry).canEnterReviewList)
     .slice(-6)
     .reverse();
-  const stages: StageRecordKey[] = [
-    "startAndInput",
-    "exploration",
-    "research",
-    "designDefinition",
-    "directionAndVisual",
-    "deliveryPreparation"
-  ];
-  const memoryKeys: ProjectMemoryViewKey[] = [
-    "projectOverview",
-    "designDefinition",
-    "preferencesAndAvoids",
-    "decisionLog",
-    "rejectedDirections",
-    "openQuestions",
-    "deliveryPlan"
-  ];
 
   return (
-    <Drawer title="项目记录" onClose={onClose}>
-      <section className="asset-list" aria-label="当前工作重点">
+    <Drawer title="项目线索" onClose={onClose}>
+      <p className="drawer-muted">这里只显示由用户表达或明确动作保存下来的可复核线索，不暴露内部阶段记录或项目记忆文件。</p>
+      <section className="asset-list" aria-label="当前工作线索">
         <div className="result-row">
           <div className="asset-thumb" />
           <div>
@@ -230,7 +212,7 @@ function ProjectRecordDrawer({
         </div>
       </section>
 
-      <div className="result-group-title">待复核项</div>
+      <div className="result-group-title">待复核线索</div>
       {reviewItems.length > 0 ? (
         <ContinuityEntryRows
           entries={reviewItems}
@@ -239,51 +221,20 @@ function ProjectRecordDrawer({
           onSetContinuityEntryManualState={onSetContinuityEntryManualState}
         />
       ) : (
-        <p className="drawer-muted">当前没有待复核或来源不可用的连续性记录。</p>
+        <p className="drawer-muted">当前没有待复核或来源不可用的项目线索。</p>
       )}
 
-      <div className="result-group-title">阶段记录</div>
-      {stages.map((stage) => (
-        <section className="asset-list" key={stage} aria-label={groups[stage].title}>
-          <div className="drawer-muted">{groups[stage].title}</div>
-          {groups[stage].entries.length > 0 ? (
-            <ContinuityEntryRows
-              entries={groups[stage].entries.slice(0, 4)}
-              highlightedRecordIds={highlighted}
-              onLocateObject={onLocateObject}
-              onSetContinuityEntryManualState={onSetContinuityEntryManualState}
-            />
-          ) : (
-            <p className="drawer-muted">{groups[stage].emptyMessage}</p>
-          )}
-        </section>
-      ))}
-
-      <div className="result-group-title">项目记忆投影</div>
-      {memoryKeys.map((key) => {
-        const view = memoryViews[key];
-        return (
-          <section className="asset-list" key={key} aria-label={view.title}>
-            <div className="drawer-muted">{view.title}</div>
-            {view.items.length > 0 ? (
-              view.items.slice(0, 4).map((item) => (
-                <div className="result-row" key={item.id}>
-                  <div className="asset-thumb" />
-                  <div>
-                    <strong>{item.title}</strong>
-                    <span>
-                      {validityLabel(item.validity, item.sourceRefs)} · {item.summary}
-                    </span>
-                    <ContinuitySourceRefs refs={item.sourceRefs} onLocateObject={onLocateObject} />
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="drawer-muted">{view.emptyMessage}</p>
-            )}
-          </section>
-        );
-      })}
+      <div className="result-group-title">近期线索</div>
+      {resolvedWorkspace.projectContinuity.recordEntries.length > 0 ? (
+        <ContinuityEntryRows
+          entries={[...resolvedWorkspace.projectContinuity.recordEntries].slice(-12).reverse()}
+          highlightedRecordIds={highlighted}
+          onLocateObject={onLocateObject}
+          onSetContinuityEntryManualState={onSetContinuityEntryManualState}
+        />
+      ) : (
+        <p className="drawer-muted">当前还没有保存的项目线索。</p>
+      )}
     </Drawer>
   );
 }
@@ -294,7 +245,7 @@ function ContinuityEntryRows({
   onLocateObject,
   onSetContinuityEntryManualState
 }: {
-  entries: ReturnType<typeof getContinuityRecordGroups>[StageRecordKey]["entries"];
+  entries: ContinuityRecordEntry[];
   onLocateObject: (objectId: string) => void;
   highlightedRecordIds: Set<string>;
   onSetContinuityEntryManualState: (entryId: string, manualState: ContinuityManualState) => void;
