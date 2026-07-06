@@ -10,7 +10,6 @@ import type {
   AssetRecord,
   ContinuityManualState,
   DeliveryObject,
-  ImageRole,
   MorphoObject
 } from "@/domain/morpho/types";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
@@ -101,8 +100,6 @@ import {
   restoreVisualBranch,
   setConceptDirectionStatus,
   setDefaultReference,
-  setKeyConclusionState,
-  setImageRole,
   type CanvasLayerReorderAction
 } from "@/domain/morpho/workspace";
 import type { CanvasInstance, MorphoWorkspace } from "@/domain/morpho/types";
@@ -4358,19 +4355,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setAiDraft(`请继续追问：${text}`);
   }, []);
 
-  const handleSetKeyConclusionState = useCallback(
-    (keyConclusionId: string, nextState: "active" | "needsVerification" | "superseded" | "archived", supersededById?: string) => {
-      setWorkspace((current) => {
-        const result = setKeyConclusionState(current, keyConclusionId, nextState, {
-          supersededById,
-          reason: "用户在底部详情栏中明确修改关键结论状态。"
-        });
-        return result.workspace;
-      });
-    },
-    [setWorkspace]
-  );
-
   const handleUpdatePendingKeyConclusion = useCallback(
     (patch: Partial<Extract<PendingAiConfirmation, { kind: "createKeyConclusion" }>>) => {
       setPendingConfirmation((current) => {
@@ -4517,22 +4501,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   function buildComparisonDecisionReason(confirmation: PendingComparisonConfirmation): string {
     return confirmation.userReason.trim() || "用户已明确确认此 Compare 决定。";
   }
-
-  const handleSetImageRole = useCallback(
-    (role: ImageRole) => {
-      const target = selectedObjects.find((object) => object.type === "image");
-      if (!target) {
-        return;
-      }
-
-      setWorkspace((current) =>
-        setImageRole(current, target.id, role, {
-          reason: `用户在底部详情栏明确将图片角色标记为 ${role}。`
-        })
-      );
-    },
-    [selectedObjects, setWorkspace]
-  );
 
   const cleanupDocumentSourcePreview = useCallback(() => {
     if (documentSourcePreviewUrlRef.current) {
@@ -5110,34 +5078,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           visualBranches={workspace.visualBranches}
           decisionRecords={workspace.decisionRecords}
           activeDesignTrace={activeDesignTrace}
-          isDesignTraceActive={Boolean(activeDesignTrace)}
-          onToggleDesignTrace={handleToggleDesignTrace}
-          onAskAi={handleAskAi}
-          onReviseDirection={handleReviseDirectionIntent}
-          onSplitDirection={handleSplitDirectionIntent}
-          onMergeDirections={handleMergeDirectionsIntent}
-          onCreateVisualBranch={handleCreateVisualBranch}
           onRenameVisualBranch={handleRenameVisualBranch}
           onArchiveVisualBranch={handleArchiveVisualBranch}
           onRestoreVisualBranch={handleRestoreVisualBranch}
-          onAssignImageToVisualBranch={handleAssignImageToVisualBranch}
-          onRemoveImageFromVisualBranch={handleRemoveImageFromVisualBranch}
-          onLocalEdit={handleLocalEdit}
-          onReferenceIntent={handleReferenceIntent}
-          onHide={handleHideSelected}
-          onDelete={handleDeleteSelected}
-          onEliminateDirection={handleEliminateDirection}
-          onSetDirectionPrimary={handleSetDirectionPrimary}
-          onSetDirectionAlternative={handleSetDirectionAlternative}
-          onRestoreDirectionAsAlternative={handleRestoreDirectionAsAlternative}
-          keyConclusionCandidates={keyConclusionCandidates}
           onSaveKeyConclusionFromResearchItem={handleSaveKeyConclusionFromResearchItem}
           onCopyItemToDraft={handleCopyItemToDraft}
           onContinueQuestion={handleContinueQuestion}
-          onSetKeyConclusionState={handleSetKeyConclusionState}
-          onSetImageRole={handleSetImageRole}
           onOpenDocumentReader={handleOpenDocumentReader}
-          onOpenDeliveryPreparation={openDeliveryPreparation}
         />
       ) : null}
     </main>

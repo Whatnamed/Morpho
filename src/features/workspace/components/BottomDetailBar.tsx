@@ -1,13 +1,11 @@
 "use client";
 
-import { Ban, BookOpen, EyeOff, ListChecks, Target } from "lucide-react";
+import { BookOpen, Target } from "lucide-react";
 import { useState } from "react";
 
 import type {
   DecisionRecord,
   DirectionLineageRecord,
-  ImageRole,
-  KeyConclusionObject,
   MorphoObject,
   MorphoRelation,
   MorphoWorkspace,
@@ -30,34 +28,15 @@ type BottomDetailBarProps = {
   selectedObjects: MorphoObject[];
   assets: Record<string, AssetRecord>;
   hasPendingDesignDefinitionRevisionDraft: boolean;
-  keyConclusionCandidates: KeyConclusionObject[];
   relations: MorphoRelation[];
   directionLineage: DirectionLineageRecord[];
   visualBranches: Record<string, VisualBranchRecord>;
   decisionRecords: DecisionRecord[];
   activeDesignTrace: DesignTraceResult | null;
-  isDesignTraceActive: boolean;
-  onToggleDesignTrace: () => void;
-  onAskAi: () => void;
-  onReviseDirection: () => void;
-  onSplitDirection: () => void;
-  onMergeDirections: () => void;
-  onCreateVisualBranch: () => void;
   onRenameVisualBranch: (branchId: string) => void;
   onArchiveVisualBranch: (branchId: string) => void;
   onRestoreVisualBranch: (branchId: string) => void;
-  onAssignImageToVisualBranch: (branchId: string) => void;
-  onRemoveImageFromVisualBranch: () => void;
-  onLocalEdit: () => void;
-  onReferenceIntent: () => void;
   onOpenDocumentReader: (fileObjectId: string, initialLocation?: DocumentReaderInitialLocation | null) => void;
-  onOpenDeliveryPreparation: (deliveryObjectId?: string) => void;
-  onHide: () => void;
-  onDelete: () => void;
-  onEliminateDirection: () => void;
-  onSetDirectionPrimary: () => void;
-  onSetDirectionAlternative: () => void;
-  onRestoreDirectionAsAlternative: () => void;
   onSaveKeyConclusionFromResearchItem: (input: {
     researchObjectId: string;
     sourceKind: ResearchSourceKind;
@@ -65,12 +44,6 @@ type BottomDetailBarProps = {
   }) => void;
   onCopyItemToDraft: (text: string) => void;
   onContinueQuestion: (text: string) => void;
-  onSetKeyConclusionState: (
-    keyConclusionId: string,
-    nextState: KeyConclusionObject["state"],
-    supersededById?: string
-  ) => void;
-  onSetImageRole: (role: ImageRole) => void;
 };
 
 const tabs = ["信息", "来源", "版本", "关联", "决策"] as const;
@@ -205,7 +178,6 @@ export function BottomDetailBar({
   selectedObjects,
   assets,
   hasPendingDesignDefinitionRevisionDraft,
-  keyConclusionCandidates,
   relations,
   directionLineage,
   visualBranches,
@@ -217,11 +189,9 @@ export function BottomDetailBar({
   onRestoreVisualBranch,
   onSaveKeyConclusionFromResearchItem,
   onCopyItemToDraft,
-  onContinueQuestion,
-  onSetKeyConclusionState
+  onContinueQuestion
 }: BottomDetailBarProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>("信息");
-  const [supersededById, setSupersededById] = useState("");
 
   if (selectedObjects.length === 0) {
     return null;
@@ -234,9 +204,6 @@ export function BottomDetailBar({
   const relatedDecisions = decisionRecords.filter(
     (record) => record.objectSnapshot?.id === primary.id || record.relatedObjectIds.includes(primary.id)
   );
-  const showDirectionActions = primary.type === "conceptDirection" && selectedObjects.length === 1;
-  const selectedDirections = selectedObjects.filter((object) => object.type === "conceptDirection");
-  const showMergeDirectionsAction = selectedDirections.length >= 2 && selectedDirections.length === selectedObjects.length;
   const documentReaderAction = getDocumentReaderActionState(primary, assets);
   const fragmentSourceState =
     primary.type === "documentFragment" ? resolveDocumentFragmentSourceAvailability(workspace, primary) : null;
@@ -249,10 +216,6 @@ export function BottomDetailBar({
           label: fragmentLocation.label
         }
       : null;
-  const imageBranchOptions =
-    primary.type === "image" && primary.directionId
-      ? Object.values(visualBranches).filter((branch) => branch.directionId === primary.directionId && !branch.archivedAt)
-      : [];
 
   return (
     <>
@@ -282,9 +245,6 @@ export function BottomDetailBar({
             hasPendingDesignDefinitionRevisionDraft,
             fragmentSourceState,
             fragmentLocation: fragmentInitialLocation,
-            keyConclusionCandidates,
-            supersededById,
-            setSupersededById,
             onSaveKeyConclusionFromResearchItem,
             onCopyItemToDraft,
             onContinueQuestion,
@@ -323,277 +283,6 @@ export function BottomDetailBar({
           ) : null}
         </div>
       </div>
-
-      {/* Selection actions moved to SelectionToolbar.
-      {false ? (
-      <div className="detail-bar" aria-label="选中对象操作">
-        <div className="detail-object">
-          <div className="detail-icon">
-            <Info size={14} />
-          </div>
-          <span>{selectedObjects.length > 1 ? `已选 ${selectedObjects.length} 个对象` : primary.title}</span>
-        </div>
-
-        <div className="detail-actions">
-          <button className="detail-action" type="button" onClick={onAskAi}>
-            <MessageSquareText size={15} />
-            询问 AI
-          </button>
-
-          {documentReaderAction.visible ? (
-            <button
-              className="detail-action"
-              type="button"
-              disabled={documentReaderAction.disabled}
-              title={documentReaderAction.message}
-              onClick={() => {
-                if (primary.type === "file") {
-                  onOpenDocumentReader(primary.id);
-                }
-              }}
-            >
-              <BookOpen size={15} />
-              {documentReaderAction.label}
-            </button>
-          ) : null}
-
-          {primary.type === "documentFragment" ? (
-            <button
-              className="detail-action"
-              type="button"
-              disabled={!fragmentInitialLocation}
-              title={fragmentSourceState ? describeDocumentFragmentSourceAvailability(fragmentSourceState) : "来源不可用"}
-              onClick={() => onOpenDocumentReader(primary.source.fileObjectId, fragmentInitialLocation)}
-            >
-              <BookOpen size={15} />
-              查看原文定位
-            </button>
-          ) : null}
-
-          {primary.type === "delivery" ? (
-            <button className="detail-action brand" type="button" onClick={() => onOpenDeliveryPreparation(primary.id)}>
-              <PackageOpen size={15} />
-              打开交付准备
-            </button>
-          ) : null}
-
-          <button className={`detail-action ${isDesignTraceActive ? "brand" : ""}`} type="button" onClick={onToggleDesignTrace}>
-            <GitBranch size={15} />
-            {isDesignTraceActive ? "关闭设计链路" : "查看设计链路"}
-          </button>
-
-          <button className="detail-action" type="button" onClick={onHide}>
-            <EyeOff size={15} />
-            隐藏
-          </button>
-
-          <button className="detail-action" type="button" onClick={onDelete}>
-            <Trash2 size={15} />
-            删除
-          </button>
-
-          {showDirectionActions && primary.status !== "primary" && primary.status !== "eliminated" ? (
-            <button className="detail-action" type="button" onClick={onSetDirectionPrimary}>
-              <Flag size={15} />
-              设为主方向
-            </button>
-          ) : null}
-
-          {showDirectionActions ? (
-            <>
-              <button className="detail-action" type="button" onClick={onReviseDirection}>
-                <PenLine size={15} />
-                修订方向
-              </button>
-              <button className="detail-action" type="button" onClick={onSplitDirection}>
-                <GitBranch size={15} />
-                拆分方向
-              </button>
-              <button className="detail-action" type="button" onClick={() => setActiveTab("版本")}>
-                <History size={15} />
-                查看修订历史
-              </button>
-              <button className="detail-action" type="button" onClick={() => setActiveTab("关联")}>
-                <GitMerge size={15} />
-                查看 lineage
-              </button>
-              <button className="detail-action" type="button" onClick={onCreateVisualBranch}>
-                <Sparkles size={14} />
-                创建视觉分支
-              </button>
-            </>
-          ) : null}
-
-          {showMergeDirectionsAction ? (
-            <button className="detail-action" type="button" onClick={onMergeDirections}>
-              <GitMerge size={15} />
-              合并已选方向
-            </button>
-          ) : null}
-
-          {showDirectionActions && primary.status !== "alternative" && primary.status !== "eliminated" ? (
-            <button className="detail-action" type="button" onClick={onSetDirectionAlternative}>
-              <GitBranch size={15} />
-              转为备选
-            </button>
-          ) : null}
-
-          {showDirectionActions && primary.status === "eliminated" ? (
-            <button className="detail-action" type="button" onClick={onRestoreDirectionAsAlternative}>
-              <GitBranch size={15} />
-              恢复为备选
-            </button>
-          ) : null}
-
-          {showDirectionActions && primary.status !== "eliminated" ? (
-            <button className="detail-action" type="button" onClick={onEliminateDirection}>
-              <Ban size={15} />
-              淘汰方向
-            </button>
-          ) : null}
-
-          {primary.type === "image" ? (
-            <>
-              <label className="detail-select">
-                <span>角色</span>
-                <select
-                  value={primary.role}
-                  onChange={(event) => onSetImageRole(event.currentTarget.value as ImageRole)}
-                  aria-label="设置图片角色"
-                >
-                  {imageRoleOptions.map((role) => (
-                    <option key={role} value={role}>
-                      {imageRoleLabel(role)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {primary.directionId ? (
-                <label className="detail-select">
-                  <span>视觉分支</span>
-                  <select
-                    value={primary.visualBranchId ?? ""}
-                    onChange={(event) => {
-                      const branchId = event.currentTarget.value;
-                      if (branchId) {
-                        onAssignImageToVisualBranch(branchId);
-                        return;
-                      }
-                      onRemoveImageFromVisualBranch();
-                    }}
-                    aria-label="设置图片视觉分支"
-                  >
-                    <option value="">未分组视觉探索</option>
-                    {imageBranchOptions.map((branch) => (
-                      <option key={branch.id} value={branch.id}>
-                        {branch.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-              <button className="detail-action" type="button" onClick={onLocalEdit}>
-                <PenLine size={15} />
-                局部修改
-              </button>
-              <button className="detail-action brand" type="button" onClick={onReferenceIntent}>
-                <Sparkles size={14} />
-                设为后续默认参考
-              </button>
-            </>
-          ) : null}
-
-          {primary.type === "keyConclusion" ? (
-            <KeyConclusionActions
-              keyConclusion={primary}
-              candidates={keyConclusionCandidates}
-              supersededById={supersededById}
-              onSupersededByIdChange={setSupersededById}
-              onSetKeyConclusionState={onSetKeyConclusionState}
-            />
-          ) : null}
-        </div>
-      </div>
-      ) : null}
-      */}
-    </>
-  );
-}
-
-function KeyConclusionActions({
-  keyConclusion,
-  candidates,
-  supersededById,
-  onSupersededByIdChange,
-  onSetKeyConclusionState
-}: {
-  keyConclusion: KeyConclusionObject;
-  candidates: KeyConclusionObject[];
-  supersededById: string;
-  onSupersededByIdChange: (value: string) => void;
-  onSetKeyConclusionState: BottomDetailBarProps["onSetKeyConclusionState"];
-}) {
-  return (
-    <>
-      {keyConclusion.state !== "needsVerification" ? (
-        <button
-          className="detail-action"
-          type="button"
-          onClick={() => onSetKeyConclusionState(keyConclusion.id, "needsVerification")}
-        >
-          <ListChecks size={15} />
-          标为待验证
-        </button>
-      ) : (
-        <button className="detail-action" type="button" onClick={() => onSetKeyConclusionState(keyConclusion.id, "active")}>
-          <ListChecks size={15} />
-          恢复 active
-        </button>
-      )}
-
-      {keyConclusion.state !== "archived" ? (
-        <button className="detail-action" type="button" onClick={() => onSetKeyConclusionState(keyConclusion.id, "archived")}>
-          <EyeOff size={15} />
-          归档
-        </button>
-      ) : (
-        <button className="detail-action" type="button" onClick={() => onSetKeyConclusionState(keyConclusion.id, "active")}>
-          <EyeOff size={15} />
-          恢复 active
-        </button>
-      )}
-
-      {keyConclusion.state !== "superseded" ? (
-        <>
-          <label className="detail-select">
-            <span>替代为</span>
-            <select value={supersededById} onChange={(event) => onSupersededByIdChange(event.currentTarget.value)}>
-              <option value="">请选择</option>
-              {candidates
-                .filter((candidate) => candidate.id !== keyConclusion.id)
-                .map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>
-                    {candidate.title}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <button
-            className="detail-action"
-            type="button"
-            disabled={!supersededById}
-            onClick={() => onSetKeyConclusionState(keyConclusion.id, "superseded", supersededById || undefined)}
-          >
-            <Ban size={15} />
-            标为已替代
-          </button>
-        </>
-      ) : (
-        <button className="detail-action" type="button" onClick={() => onSetKeyConclusionState(keyConclusion.id, "active")}>
-          <Ban size={15} />
-          恢复 active
-        </button>
-      )}
     </>
   );
 }
@@ -683,9 +372,6 @@ function renderDetail(input: {
   hasPendingDesignDefinitionRevisionDraft: boolean;
   fragmentSourceState: ReturnType<typeof resolveDocumentFragmentSourceAvailability> | null;
   fragmentLocation: DocumentReaderInitialLocation | null;
-  keyConclusionCandidates: KeyConclusionObject[];
-  supersededById: string;
-  setSupersededById: (value: string) => void;
   onSaveKeyConclusionFromResearchItem: BottomDetailBarProps["onSaveKeyConclusionFromResearchItem"];
   onCopyItemToDraft: BottomDetailBarProps["onCopyItemToDraft"];
   onContinueQuestion: BottomDetailBarProps["onContinueQuestion"];

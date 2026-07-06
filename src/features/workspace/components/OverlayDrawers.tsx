@@ -308,28 +308,6 @@ function ContinuityEntryRows({
   );
 }
 
-function SourceRefs({ refs, onLocateObject }: { refs: ContinuitySourceRef[]; onLocateObject: (objectId: string) => void }) {
-  if (refs.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="drawer-filter-row" aria-label="来源">
-      {refs.slice(0, 6).map((ref) =>
-        ref.kind === "object" ? (
-          <button className="filter-chip" type="button" key={`${ref.kind}-${ref.id}`} onClick={() => onLocateObject(ref.id)}>
-            来源：{ref.snapshot?.title ?? ref.id}
-          </button>
-        ) : (
-          <span className="filter-chip" key={`${ref.kind}-${ref.id}`}>
-            {sourceKindLabel(ref.kind)}：{ref.snapshot?.title ?? ref.id}
-          </span>
-        )
-      )}
-    </div>
-  );
-}
-
 function ContinuitySourceRefs({
   refs,
   onLocateObject
@@ -587,25 +565,6 @@ function categoryLabel(category: string): string {
       return "下一重点";
     default:
       return "系统记录";
-  }
-}
-
-function validityLabel(validity: string, refs: ContinuitySourceRef[] = []): string {
-  const hasHiddenSource = refs.some((ref) => ref.sourceAvailability === "hidden");
-  if (hasHiddenSource && validity === "current") {
-    return "当前有效 · 来源已隐藏";
-  }
-  switch (validity) {
-    case "current":
-      return "当前有效";
-    case "reviewRequired":
-      return "待复核";
-    case "superseded":
-      return "已被更新替代";
-    case "sourceUnavailable":
-      return "来源不可用";
-    default:
-      return validity;
   }
 }
 
