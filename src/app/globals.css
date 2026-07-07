@@ -4269,13 +4269,13 @@ select:focus-visible {
 }
 
 .morpho-object-image {
-  border-radius: 10px;
+  border-radius: 0;
 }
 
 .morpho-image-visual {
   overflow: hidden;
   border: 1px solid rgba(78, 68, 58, 0.1);
-  border-radius: 10px;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.34);
   box-shadow: 0 8px 22px rgba(30, 24, 18, 0.055);
 }
