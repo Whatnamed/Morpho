@@ -825,6 +825,41 @@ describe("Morpho Operation Runtime", () => {
     }
   });
 
+  it("places an applied first design definition on the canvas at the proposal placement", () => {
+    const workspace = createBlankWorkspace("project-definition-placement");
+    const proposed = recordDesignDefinitionProposal(workspace, {
+      proposalId: "proposal-definition-canvas-placement",
+      title: "Definition draft",
+      summary: "A concise design definition draft.",
+      projectGoal: "Create a clear product definition.",
+      targetUsers: ["User"],
+      primaryScenarios: ["Scenario"],
+      coreProblem: "The project needs a stable definition.",
+      designPrinciples: ["Clear boundary"],
+      constraints: ["Low complexity"],
+      avoidDirections: ["Vague scope"],
+      opportunities: ["Better decision making"],
+      openQuestions: ["What should be verified next?"],
+      sourceObjectIds: [],
+      citations: [],
+      position: { x: 640, y: 360 }
+    });
+
+    const applied = applyDesignDefinitionProposal(proposed.workspace, proposed.proposal.id);
+
+    expect(applied.status).toBe("updated");
+    if (applied.status === "updated") {
+      expect(applied.workspace.canvas.instances).toContainEqual(
+        expect.objectContaining({
+          objectId: applied.designDefinitionObject.id,
+          position: { x: 640, y: 360 },
+          size: { w: 320, h: 210 }
+        })
+      );
+      expect(applied.workspace.ui.lastSelectionIds).toEqual([applied.designDefinitionObject.id]);
+    }
+  });
+
   it("blocks a design definition proposal when its base revision has been superseded", () => {
     const workspace = createInitialWorkspace();
     const currentDefinition =

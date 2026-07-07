@@ -1069,6 +1069,23 @@ export function applyDesignDefinitionProposal(
     status: "applied",
     appliedObjectId: definitionId
   };
+  const nextCanvasInstances = workspace.canvas.instances.some((instance) => instance.objectId === definitionId)
+    ? workspace.canvas.instances
+    : [
+        ...workspace.canvas.instances,
+        {
+          id: nextRecordId(
+            Object.fromEntries(workspace.canvas.instances.map((instance) => [instance.id, instance])),
+            `canvas-${definitionId}`
+          ),
+          objectId: definitionId,
+          position: proposal.canvasPlacement ?? {
+            x: workspace.canvas.view.x + 220,
+            y: workspace.canvas.view.y + 180
+          },
+          size: { w: 320, h: 210 }
+        }
+      ];
 
   return {
     status: "updated",
@@ -1083,6 +1100,10 @@ export function applyDesignDefinitionProposal(
       artifactProposals: {
         ...workspace.artifactProposals,
         [proposal.id]: appliedProposal
+      },
+      canvas: {
+        ...workspace.canvas,
+        instances: nextCanvasInstances
       },
       decisionRecords: [
         ...workspace.decisionRecords,

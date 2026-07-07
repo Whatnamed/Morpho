@@ -19,7 +19,6 @@ import {
   type ImageGenerationSettings
 } from "../imageGenerationSettings";
 import { resolveStoredComparisonSourceRefs } from "@/domain/morpho/comparisonAnalysis";
-import { ProposalDraftCard } from "./ProposalDraftCard";
 import type { Suggestion } from "../workspaceUi";
 import type {
   CreateComparisonAnalysisArgs,
@@ -373,13 +372,6 @@ export function AiConversationPanel({
   onSendMessage,
   onCancelRequest,
   onRunLocalEdit,
-  onApplyProposal,
-  onRejectProposal,
-  onContinueProposalDiscussion,
-  onRegenerateProposal,
-  onSaveResearchProposalDraft,
-  onSaveDesignDefinitionProposalDraft,
-  onSaveConceptDirectionProposalDraft,
   onUpdatePendingKeyConclusion,
   onUpdatePendingComparison,
   onRequestComparisonAction,
@@ -583,19 +575,7 @@ export function AiConversationPanel({
             </div>
           ) : null}
 
-          {activeProposal ? (
-            <ProposalDraftCard
-              workspace={workspace}
-              proposal={activeProposal}
-              onApply={onApplyProposal}
-              onReject={onRejectProposal}
-              onContinueDiscussion={onContinueProposalDiscussion}
-              onRegenerate={onRegenerateProposal}
-              onSaveResearchDraft={onSaveResearchProposalDraft}
-              onSaveDesignDefinitionDraft={onSaveDesignDefinitionProposalDraft}
-              onSaveConceptDirectionDraft={onSaveConceptDirectionProposalDraft}
-            />
-          ) : null}
+          {activeProposal ? <ProposalChatNote proposal={activeProposal} /> : null}
 
           {pendingConfirmation && confirmationTitle && confirmationBody && confirmationActionLabel ? (
             <div className="confirm-card">
@@ -900,6 +880,29 @@ function ThinkingIndicator() {
       <i />
     </div>
   );
+}
+
+function ProposalChatNote({ proposal }: { proposal: ArtifactProposal }) {
+  return (
+    <div className="proposal-chat-note" aria-label="画布草案提示">
+      <span>{proposalTypeSummary(proposal)}</span>
+      <strong>{proposal.title}</strong>
+      <p>草案已放到画布。选中画布上的草案卡片后，可以继续讨论、修改同一草案，或应用为正式项目内容。</p>
+    </div>
+  );
+}
+
+function proposalTypeSummary(proposal: ArtifactProposal): string {
+  switch (proposal.type) {
+    case "researchAnalysis":
+      return "研究草案";
+    case "designDefinition":
+      return "设计定义草案";
+    case "conceptDirection":
+      return `方向草案${proposal.directions.length > 1 ? ` · ${proposal.directions.length} 个方向` : ""}`;
+    case "deliveryPlan":
+      return "交付草案";
+  }
 }
 
 function isAgentThinkingPlaceholder(body: string): boolean {

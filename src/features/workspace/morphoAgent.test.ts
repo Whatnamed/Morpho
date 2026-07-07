@@ -6,6 +6,7 @@ import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
 import {
   buildMorphoAgentSystemPrompt,
   buildMorphoAgentTools,
+  getDesignDefinitionDrafts,
   parseMorphoAgentToolArguments,
   type AgentFunctionCall
 } from "./morphoAgent";
@@ -95,6 +96,65 @@ describe("Morpho agent tool argument validation", () => {
     });
   });
 
+  it("accepts multiple design-definition draft alternatives in one tool call", () => {
+    const parsed = parseMorphoAgentToolArguments(makeCall("create_design_definition_proposal", {
+      title: "Definition A",
+      summary: "Primary definition route.",
+      projectGoal: "Clarify the project.",
+      targetUsers: ["Designer"],
+      primaryScenarios: ["Concept review"],
+      coreProblem: "The project needs a stable definition.",
+      designPrinciples: ["Clear scope"],
+      constraints: ["Low complexity"],
+      avoidDirections: ["Vague intent"],
+      opportunities: ["Better decisions"],
+      openQuestions: ["What should be verified?"],
+      alternatives: [
+        {
+          title: "Definition B",
+          summary: "Alternative definition route.",
+          projectGoal: "Frame the project from validation.",
+          targetUsers: ["Designer"],
+          primaryScenarios: ["Concept review"],
+          coreProblem: "The riskiest assumption needs to be explicit.",
+          designPrinciples: ["Verification first"],
+          constraints: ["Low complexity"],
+          avoidDirections: ["Vague intent"],
+          opportunities: ["Better decisions"],
+          openQuestions: ["What should be verified?"]
+        }
+      ]
+    }));
+
+    expect(parsed).toMatchObject({
+      name: "create_design_definition_proposal",
+      args: {
+        title: "Definition A",
+        alternatives: [
+          {
+            title: "Definition B",
+            coreProblem: "The riskiest assumption needs to be explicit."
+          }
+        ]
+      }
+    });
+  });
+
+  it("expands design-definition alternatives as separate drafts with a safe limit", () => {
+    const base = makeDefinitionArgs("Definition A");
+    const drafts = getDesignDefinitionDrafts({
+      ...base,
+      alternatives: [
+        makeDefinitionArgs("Definition B"),
+        makeDefinitionArgs("Definition C"),
+        makeDefinitionArgs("Definition D")
+      ]
+    });
+
+    expect(drafts.map((draft) => draft.title)).toEqual(["Definition A", "Definition B", "Definition C"]);
+    expect(drafts.every((draft) => !("alternatives" in draft))).toBe(true);
+  });
+
   it("rejects undeclared arguments before execution", () => {
     expect(() =>
       parseMorphoAgentToolArguments(makeCall("request_confirmation", {
@@ -159,5 +219,21 @@ function makeCall(name: string, args: unknown): AgentFunctionCall {
     callId: `call-${name}`,
     name,
     argumentsText: JSON.stringify(args)
+  };
+}
+
+function makeDefinitionArgs(title: string) {
+  return {
+    title,
+    summary: `${title} summary`,
+    projectGoal: "Clarify the project.",
+    targetUsers: ["Designer"],
+    primaryScenarios: ["Concept review"],
+    coreProblem: "The project needs a stable definition.",
+    designPrinciples: ["Clear scope"],
+    constraints: ["Low complexity"],
+    avoidDirections: ["Vague intent"],
+    opportunities: ["Better decisions"],
+    openQuestions: ["What should be verified?"]
   };
 }

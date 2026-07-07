@@ -49,7 +49,7 @@ export type CreateResearchAnalysisArgs = {
   }>;
 };
 
-export type CreateDesignDefinitionProposalArgs = {
+export type DesignDefinitionDraftArgs = {
   title: string;
   summary: string;
   projectGoal: string;
@@ -63,6 +63,15 @@ export type CreateDesignDefinitionProposalArgs = {
   openQuestions: string[];
   changeNote?: string;
 };
+
+export type CreateDesignDefinitionProposalArgs = DesignDefinitionDraftArgs & {
+  alternatives?: DesignDefinitionDraftArgs[];
+};
+
+export function getDesignDefinitionDrafts(args: CreateDesignDefinitionProposalArgs): DesignDefinitionDraftArgs[] {
+  const { alternatives: _alternatives, ...primaryDraft } = args;
+  return [primaryDraft, ...(args.alternatives ?? [])].slice(0, 3);
+}
 
 export type CreateConceptDirectionProposalArgs = {
   title: string;
@@ -286,7 +295,42 @@ export function buildMorphoAgentTools(webSearchEnabled: boolean): ResponseTool[]
           avoidDirections: stringArraySchema(),
           opportunities: stringArraySchema(),
           openQuestions: stringArraySchema(),
-          changeNote: { type: "string" }
+          changeNote: { type: "string" },
+          alternatives: {
+            type: "array",
+            description: "Optional extra design definition proposals when the user asks for multiple drafts. Keep this to 2 alternatives or fewer.",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: [
+                "title",
+                "summary",
+                "projectGoal",
+                "targetUsers",
+                "primaryScenarios",
+                "coreProblem",
+                "designPrinciples",
+                "constraints",
+                "avoidDirections",
+                "opportunities",
+                "openQuestions"
+              ],
+              properties: {
+                title: { type: "string" },
+                summary: { type: "string" },
+                projectGoal: { type: "string" },
+                targetUsers: stringArraySchema(),
+                primaryScenarios: stringArraySchema(),
+                coreProblem: { type: "string" },
+                designPrinciples: stringArraySchema(),
+                constraints: stringArraySchema(),
+                avoidDirections: stringArraySchema(),
+                opportunities: stringArraySchema(),
+                openQuestions: stringArraySchema(),
+                changeNote: { type: "string" }
+              }
+            }
+          }
         }
       }
     }),
@@ -643,8 +687,35 @@ function validateCreateDesignDefinitionProposalArgs(
       "opportunities",
       "openQuestions"
     ],
-    ["changeNote"]
+    ["changeNote", "alternatives"]
   );
+  validateDesignDefinitionDraftArgs(toolName, record);
+  if ("alternatives" in record) {
+    requireArray(toolName, record, "alternatives").forEach((entry, index) => {
+      const alternative = requireExactObject(
+        `${toolName}.alternatives[${index}]`,
+        entry,
+        [
+          "title",
+          "summary",
+          "projectGoal",
+          "targetUsers",
+          "primaryScenarios",
+          "coreProblem",
+          "designPrinciples",
+          "constraints",
+          "avoidDirections",
+          "opportunities",
+          "openQuestions"
+        ],
+        ["changeNote"]
+      );
+      validateDesignDefinitionDraftArgs(`${toolName}.alternatives[${index}]`, alternative);
+    });
+  }
+}
+
+function validateDesignDefinitionDraftArgs(toolName: string, record: Record<string, unknown>) {
   requireString(toolName, record, "title");
   requireString(toolName, record, "summary");
   requireString(toolName, record, "projectGoal");

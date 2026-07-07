@@ -115,6 +115,7 @@ import { DocumentReaderPanel, type DocumentReaderExtractFragmentResult, type Doc
 import { LeftRail, type DrawerMode } from "./components/LeftRail";
 import { OverlayDrawers } from "./components/OverlayDrawers";
 import { ProposalCanvasLayer } from "./components/ProposalCanvasLayer";
+import { ProposalReviewPanel } from "./components/ProposalReviewPanel";
 import { ProjectBundlePanel } from "./components/ProjectBundlePanel";
 import { ResearchDetailPanel } from "./components/ResearchDetailPanel";
 import { CanvasContextMenu, SelectionToolbar } from "./components/SelectionToolbar";
@@ -224,6 +225,7 @@ import {
   buildMorphoAgentTools,
   buildMorphoAgentUserInput,
   buildToolResultOutput,
+  getDesignDefinitionDrafts,
   parseMorphoAgentToolArguments,
   type AgentRouteResult,
   type CreateComparisonAnalysisArgs,
@@ -2559,35 +2561,47 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               });
               const basedOnDefinitionId = currentWorkspace.workingState.currentDesignDefinitionId;
               const basedOnDefinitionObject = basedOnDefinitionId ? currentWorkspace.objects[basedOnDefinitionId] : undefined;
-              const recorded = recordDesignDefinitionProposal(created.workspace, {
-                operationId,
-                workIntent: "createDesignDefinition",
-                title: args.title,
-                summary: args.summary,
-                projectGoal: args.projectGoal,
-                targetUsers: args.targetUsers,
-                primaryScenarios: args.primaryScenarios,
-                coreProblem: args.coreProblem,
-                designPrinciples: args.designPrinciples,
-                constraints: normalizeResearchItems(args.constraints),
-                avoidDirections: args.avoidDirections,
-                opportunities: normalizeResearchItems(args.opportunities),
-                openQuestions: normalizeResearchItems(args.openQuestions),
-                changeNote: args.changeNote,
-                sourceObjectIds: context.objectIds,
-                citations: collectedCitations,
-                basedOnDesignDefinitionId: basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.id : undefined,
-                basedOnRevisionId: basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.currentRevisionId : undefined,
-                position: getProposalPlacement(created.workspace, context.objectIds, "definition")
-              });
-              currentWorkspace = recorded.workspace;
-              activeProposalForTurnId = recorded.proposal.id;
+              const proposalPlacement = getProposalPlacement(created.workspace, context.objectIds, "definition");
+              const recordedProposalIds: string[] = [];
+              currentWorkspace = created.workspace;
+              for (const [proposalIndex, proposalDraft] of getDesignDefinitionDrafts(args).entries()) {
+                const recorded = recordDesignDefinitionProposal(currentWorkspace, {
+                  operationId,
+                  workIntent: "createDesignDefinition",
+                  title: proposalDraft.title,
+                  summary: proposalDraft.summary,
+                  projectGoal: proposalDraft.projectGoal,
+                  targetUsers: proposalDraft.targetUsers,
+                  primaryScenarios: proposalDraft.primaryScenarios,
+                  coreProblem: proposalDraft.coreProblem,
+                  designPrinciples: proposalDraft.designPrinciples,
+                  constraints: normalizeResearchItems(proposalDraft.constraints),
+                  avoidDirections: proposalDraft.avoidDirections,
+                  opportunities: normalizeResearchItems(proposalDraft.opportunities),
+                  openQuestions: normalizeResearchItems(proposalDraft.openQuestions),
+                  changeNote: proposalDraft.changeNote,
+                  sourceObjectIds: context.objectIds,
+                  citations: collectedCitations,
+                  basedOnDesignDefinitionId: basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.id : undefined,
+                  basedOnRevisionId: basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.currentRevisionId : undefined,
+                  position: {
+                    x: proposalPlacement.x + proposalIndex * 352,
+                    y: proposalPlacement.y
+                  }
+                });
+                currentWorkspace = recorded.workspace;
+                recordedProposalIds.push(recorded.proposal.id);
+              }
+              activeProposalForTurnId = recordedProposalIds[0] ?? null;
               setWorkspace(() => currentWorkspace);
-              setActiveProposalId(recorded.proposal.id);
+              if (activeProposalForTurnId) {
+                setActiveProposalId(activeProposalForTurnId);
+              }
               toolOutputs.push(
                 buildToolResultOutput(call.callId, {
                   status: "created",
-                  proposalId: recorded.proposal.id
+                  proposalId: recordedProposalIds[0],
+                  proposalIds: recordedProposalIds
                 })
               );
               break;
@@ -4895,6 +4909,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onRejectProposal={handleRejectProposal}
         onContinueDiscussion={handleContinueProposalDiscussion}
       />
+
+      {activeProposal?.canvasPlacement ? (
+        <ProposalReviewPanel
+          workspace={workspace}
+          proposal={activeProposal}
+          onApply={handleApplyProposal}
+          onReject={handleRejectProposal}
+          onContinueDiscussion={handleContinueProposalDiscussion}
+          onRegenerate={handleRegenerateProposal}
+          onSaveResearchDraft={handleSaveResearchProposalDraft}
+          onSaveDesignDefinitionDraft={handleSaveDesignDefinitionProposalDraft}
+          onSaveConceptDirectionDraft={handleSaveConceptDirectionProposalDraft}
+        />
+      ) : null}
 
       <TopControls
         projectTitle={workspace.project.title}

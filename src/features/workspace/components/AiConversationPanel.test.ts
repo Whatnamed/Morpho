@@ -6,6 +6,7 @@ import type { PendingComparisonConfirmation } from "./AiConversationPanel";
 
 import { AiConversationPanel, parseMarkdownBlocks } from "./AiConversationPanel";
 import { createInitialWorkspace, hideObject } from "../../../domain/morpho/workspace";
+import { recordDesignDefinitionProposal } from "../../../domain/operations/operations";
 
 describe("AiConversationPanel", () => {
   it("parses headings, paragraphs, lists, and markdown tables", () => {
@@ -150,6 +151,39 @@ describe("AiConversationPanel", () => {
     expect(html).toContain("后续同一工作重点的对话会使用这份讨论整理与最近消息保持连续");
     expect(html).not.toContain("当前讨论聚焦在柔光轨道方向的转角连续性");
     expect(html).not.toContain("morphoConversationCheckpoint");
+  });
+
+  it("keeps canvas-placed proposals out of the chat editor surface", () => {
+    const workspace = createInitialWorkspace();
+    const proposed = recordDesignDefinitionProposal(workspace, {
+      proposalId: "proposal-definition-on-canvas",
+      title: "Definition draft on canvas",
+      summary: "This draft should be reviewed from the canvas, not as a long chat card.",
+      projectGoal: "Keep proposal review close to the canvas.",
+      targetUsers: ["Designer"],
+      primaryScenarios: ["Reviewing proposals"],
+      coreProblem: "Long proposal editors block the conversation.",
+      designPrinciples: ["Canvas first"],
+      constraints: ["Do not hide the chat"],
+      avoidDirections: ["Long chat forms"],
+      opportunities: ["Discuss the selected draft"],
+      openQuestions: ["Which draft should be applied?"],
+      sourceObjectIds: [],
+      citations: [],
+      position: { x: 420, y: 260 }
+    });
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        workspace: proposed.workspace,
+        activeProposal: proposed.proposal
+      }))
+    );
+
+    expect(html).toContain("proposal-chat-note");
+    expect(html).toContain("Definition draft on canvas");
+    expect(html).not.toContain("proposal-card");
+    expect(html).not.toContain("proposal-editor");
+    expect(html).not.toContain("Long proposal editors block the conversation.");
   });
 
   it("renders compare analysis actions only after analysis is saved", () => {
