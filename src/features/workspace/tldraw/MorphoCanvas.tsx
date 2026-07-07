@@ -317,6 +317,7 @@ export function MorphoCanvas({
       const shapesByInstance = new Map(shapes.map((shape) => [shape.props.instanceId, shape]));
       const renderableInstances = getRenderableCanvasInstances(workspace);
       const renderableInstanceIds = new Set(renderableInstances.map((instance) => instance.id));
+      const pendingInstances = pendingInstancesRef.current;
       const toCreate = [];
       const toUpdate: MorphoShape[] = [];
       const toDelete = shapes.filter((shape) => !renderableInstanceIds.has(shape.props.instanceId));
@@ -328,18 +329,22 @@ export function MorphoCanvas({
         }
 
         const existing = shapesByInstance.get(instance.id);
+        const renderInstance = resolveInstanceForEditorSync(instance, pendingInstances);
         const assetUrl = object.type === "image" && object.assetId ? assetUrls[object.assetId] : undefined;
         if (!existing) {
-          toCreate.push(createMorphoShapePartial(instance, object, assetUrl, workspace, traceObjectIds.includes(object.id)));
+          toCreate.push(createMorphoShapePartial(renderInstance, object, assetUrl, workspace, traceObjectIds.includes(object.id)));
         } else {
-          toUpdate.push({
-            ...existing,
-            props: {
-              ...getMorphoShapeProps(instance, object, assetUrl, workspace),
-              isBeingLocallyEdited: object.id === annotatedObjectId,
-              isInDesignTrace: traceObjectIds.includes(object.id)
-            }
-          });
+          const nextProps = {
+            ...getMorphoShapeProps(renderInstance, object, assetUrl, workspace),
+            isBeingLocallyEdited: object.id === annotatedObjectId,
+            isInDesignTrace: traceObjectIds.includes(object.id)
+          };
+          if (!areMorphoShapePropsEqual(existing.props, nextProps)) {
+            toUpdate.push({
+              ...existing,
+              props: nextProps
+            });
+          }
         }
       }
 
@@ -756,4 +761,31 @@ function isPointInsideShape(point: { x: number; y: number }, shape: MorphoShape)
 
 export function getShapeIdForInstance(instanceId: string): TLShapeId {
   return `shape:${instanceId}` as TLShapeId;
+}
+
+export function resolveInstanceForEditorSync(instance: CanvasInstance, pendingInstances: CanvasInstance[] | null): CanvasInstance {
+  return pendingInstances?.find((pendingInstance) => pendingInstance.id === instance.id) ?? instance;
+}
+
+export function areMorphoShapePropsEqual(left: MorphoShape["props"], right: MorphoShape["props"]): boolean {
+  return (
+    left.w === right.w &&
+    left.h === right.h &&
+    left.objectId === right.objectId &&
+    left.instanceId === right.instanceId &&
+    left.morphoType === right.morphoType &&
+    left.title === right.title &&
+    left.summary === right.summary &&
+    left.label === right.label &&
+    left.imageVariant === right.imageVariant &&
+    left.isDefaultReference === right.isDefaultReference &&
+    left.isBeingLocallyEdited === right.isBeingLocallyEdited &&
+    left.isInDesignTrace === right.isInDesignTrace &&
+    left.assetUrl === right.assetUrl &&
+    areStringArraysEqual(left.details, right.details)
+  );
+}
+
+function areStringArraysEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((item, index) => item === right[index]);
 }

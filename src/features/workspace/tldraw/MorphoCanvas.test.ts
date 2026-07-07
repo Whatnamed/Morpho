@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { createInitialWorkspace } from "@/domain/morpho/workspace";
 import {
+  areMorphoShapePropsEqual,
   isMorphoShapeActiveInWorkspace,
+  resolveInstanceForEditorSync,
   shouldReplaceSelectionForContextMenuTarget,
   shouldApplyFocusRequest,
   resolveFocusBounds,
@@ -78,5 +80,45 @@ describe("MorphoCanvas focus navigation", () => {
         }
       })
     ).toBe(true);
+  });
+
+  it("keeps pending editor geometry ahead of stale workspace geometry while syncing back to tldraw", () => {
+    const workspace = createInitialWorkspace();
+    const instance = workspace.canvas.instances.find((item) => item.objectId === "image-soft-rail-v2");
+
+    if (!instance) {
+      throw new Error("Expected seed workspace to include an image canvas instance.");
+    }
+
+    const pending = {
+      ...instance,
+      size: { w: instance.size.w + 80, h: instance.size.h + 80 }
+    };
+
+    expect(resolveInstanceForEditorSync(instance, [pending])).toBe(pending);
+    expect(resolveInstanceForEditorSync(instance, null)).toBe(instance);
+  });
+
+  it("compares Morpho shape props before writing redundant tldraw updates", () => {
+    const props = {
+      w: 240,
+      h: 180,
+      objectId: "object-a",
+      instanceId: "instance-a",
+      morphoType: "image" as const,
+      title: "Image",
+      summary: "Summary",
+      label: "参考图",
+      details: [],
+      imageVariant: "rail",
+      isDefaultReference: true,
+      isBeingLocallyEdited: false,
+      isInDesignTrace: false,
+      assetUrl: "blob:asset"
+    };
+
+    expect(areMorphoShapePropsEqual(props, { ...props })).toBe(true);
+    expect(areMorphoShapePropsEqual(props, { ...props, w: 300 })).toBe(false);
+    expect(areMorphoShapePropsEqual(props, { ...props, details: ["source"] })).toBe(false);
   });
 });
