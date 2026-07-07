@@ -619,6 +619,22 @@ describe("AiJWS chat route request conversion", () => {
     expect(definition).toContain("morphoDesignDefinitionProposal");
   });
 
+  it("asks research operations for evaluated scannable research points", () => {
+    const prompt = buildMorphoSystemPrompt({
+      draft: "分析这些资料。",
+      task: "research",
+      taskMode: "researchOperation",
+      workIntent: "discussion",
+      messages: [],
+      objectSummaries: [],
+      attachments: []
+    });
+
+    expect(prompt).toContain("短标题：一句说明");
+    expect(prompt).toContain("先广泛分析，再评估筛选");
+    expect(prompt).toContain("不要把背景常识、过渡话或重复观点放进卡片");
+  });
+
   it("adds checkpoint output instructions for comparison chats too", () => {
     const prompt = buildMorphoSystemPrompt({
       draft: "继续比较这两个方向。",

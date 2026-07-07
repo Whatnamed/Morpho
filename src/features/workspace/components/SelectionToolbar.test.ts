@@ -17,6 +17,8 @@ describe("SelectionToolbar", () => {
         isDesignTraceActive: false,
         onAskAi: () => undefined,
         onToggleDesignTrace: () => undefined,
+        onOpenResearchDetail: () => undefined,
+        onAutoSelectResearch: () => undefined,
         onOpenDocumentReader: () => undefined,
         onOpenDeliveryPreparation: () => undefined,
         onLocalEdit: () => undefined,
@@ -39,6 +41,42 @@ describe("SelectionToolbar", () => {
     expect(html).toContain("局部改");
     expect(html).toContain("默认参考");
     expect(html).not.toContain(selected[0].title);
+    expect(html).not.toContain("研究详情");
+  });
+
+  it("offers research detail only for a selected research object", () => {
+    const workspace = createInitialWorkspace();
+    const selected = [workspace.objects["research-night-path"]];
+
+    const html = renderToStaticMarkup(
+      createElement(SelectionToolbar, {
+        selectedObjects: selected,
+        placement: { x: 120, y: 220, placement: "above" },
+        isDesignTraceActive: false,
+        onAskAi: () => undefined,
+        onToggleDesignTrace: () => undefined,
+        onOpenResearchDetail: () => undefined,
+        onAutoSelectResearch: () => undefined,
+        onOpenDocumentReader: () => undefined,
+        onOpenDeliveryPreparation: () => undefined,
+        onLocalEdit: () => undefined,
+        onReferenceIntent: () => undefined,
+        onHide: () => undefined,
+        onDelete: () => undefined,
+        onReviseDirection: () => undefined,
+        onSplitDirection: () => undefined,
+        onMergeDirections: () => undefined,
+        onCreateVisualBranch: () => undefined,
+        onSetDirectionPrimary: () => undefined,
+        onSetDirectionAlternative: () => undefined,
+        onRestoreDirectionAsAlternative: () => undefined,
+        onEliminateDirection: () => undefined,
+        onReorderLayer: () => undefined
+      })
+    );
+
+    expect(html).toContain("研究详情");
+    expect(html).toContain("AI 代选");
   });
 
   it("offers stable layer operations in the Morpho context menu", () => {

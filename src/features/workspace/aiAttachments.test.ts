@@ -5,6 +5,7 @@ import { createBlankWorkspace } from "../../domain/morpho/workspace";
 import {
   buildWebSearchOptions,
   planImageAttachmentCompression,
+  resolveAiProviderImageObjectIds,
   selectAiProviderImageAttachmentCandidates,
   shouldAttachImagesForAiProvider
 } from "./aiAttachments";
@@ -52,6 +53,30 @@ describe("workspace AI provider attachment planning", () => {
         selectedObjects
       })
     ).toBe(true);
+  });
+
+  it("keeps explicitly selected image ids even when task context image ids are empty", () => {
+    const workspace = withImages(createBlankWorkspace("project-test"));
+    const selectedObjects = [workspace.objects["image-active-a"], workspace.objects["text-a"]];
+
+    expect(
+      resolveAiProviderImageObjectIds({
+        contextImageObjectIds: [],
+        selectedObjects
+      })
+    ).toEqual(["image-active-a"]);
+  });
+
+  it("prioritizes selected image ids before context-expanded images without duplicates", () => {
+    const workspace = withImages(createBlankWorkspace("project-test"));
+    const selectedObjects = [workspace.objects["image-active-b"]];
+
+    expect(
+      resolveAiProviderImageObjectIds({
+        contextImageObjectIds: ["image-active-a", "image-active-b", "image-active-c"],
+        selectedObjects
+      })
+    ).toEqual(["image-active-b", "image-active-a", "image-active-c"]);
   });
 
   it("plans image compression with max side and target bytes", () => {

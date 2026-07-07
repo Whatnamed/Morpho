@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { ChevronLeft, Send, Sparkles, Square } from "lucide-react";
+import { ChevronLeft, Send, Square } from "lucide-react";
 
 import type { AiMessage, ComparisonAnalysis, ComparisonSourceRef, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
 import type {
@@ -400,14 +400,18 @@ export function AiConversationPanel({
     imageTaskStatus && !["succeeded", "failed", "cancelled"].includes(imageTaskStatus.state)
   );
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const draftTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const didInitializeScrollRef = useRef(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
+  const [dismissedContextWarning, setDismissedContextWarning] = useState<string | null>(null);
   const activeTaskCount = isAiBusy || isImageTaskActive ? 1 : 0;
   const statusLabel = activeTaskCount > 0 ? "处理中" : activeProposal ? "待处理" : "空闲";
   const visibleContextObjects = selectedObjects.slice(0, 3);
   const hiddenContextCount = Math.max(0, selectedObjects.length - visibleContextObjects.length);
   const modeSummary = turnMode === "auto" ? "自动执行" : "先确认";
   const failureCopy = showFailure ? getFailureCopy(getLatestFailedAssistantMessage(workspace)) : null;
+  const visibleContextWarning = contextWarning && dismissedContextWarning !== contextWarning ? contextWarning : undefined;
   const updateScrollBottomVisibility = () => {
     const element = scrollRef.current;
     if (!element) {
@@ -426,10 +430,30 @@ export function AiConversationPanel({
     element.scrollTo({ top: element.scrollHeight, behavior: "smooth" });
     setShowScrollBottom(false);
   };
+  const resizeDraftTextarea = (element = draftTextareaRef.current) => {
+    if (!element) {
+      return;
+    }
+
+    element.style.height = "auto";
+    const maxHeight = Number.parseFloat(window.getComputedStyle(element).maxHeight) || 104;
+    const nextHeight = Math.min(element.scrollHeight, maxHeight);
+    element.style.height = `${nextHeight}px`;
+    element.style.overflowY = element.scrollHeight > maxHeight ? "auto" : "hidden";
+  };
 
   useEffect(() => {
     const element = scrollRef.current;
     if (!element) {
+      return;
+    }
+
+    if (isOpen && !didInitializeScrollRef.current) {
+      didInitializeScrollRef.current = true;
+      window.requestAnimationFrame(() => {
+        element.scrollTo({ top: element.scrollHeight });
+        setShowScrollBottom(false);
+      });
       return;
     }
 
@@ -440,78 +464,85 @@ export function AiConversationPanel({
     } else {
       setShowScrollBottom(true);
     }
-  }, [workspace.ai.messages.length, activeProposal?.id, pendingConfirmation?.kind, showFailure]);
+  }, [isOpen, workspace.ai.messages.length, activeProposal?.id, pendingConfirmation?.kind, showFailure]);
+
+  useEffect(() => {
+    resizeDraftTextarea();
+  }, [draft, isOpen]);
 
   return (
     <>
       <section className={`ai-panel ${isOpen ? "" : "collapsed"}`} aria-label="AI 对话">
         <div className="ai-top">
-          <div className="ai-title">
-            <div className="ai-mark">
-              <Sparkles size={16} />
-            </div>
-            <div>
-              <strong>对话</strong>
-              <span>连续 AI 工作面</span>
-            </div>
-          </div>
+          <div className="ai-top-handle" aria-hidden="true" />
           <button className="icon-button" type="button" aria-label="收起 AI 面板" onClick={onToggleOpen}>
             <ChevronLeft size={16} />
           </button>
         </div>
 
-        <div className="ai-scroll" ref={scrollRef} onScroll={updateScrollBottomVisibility}>
-          {workspace.ai.messages.map((message) => (
-            <div className="ai-message" key={message.id}>
-              <MarkdownContent body={message.body} />
-              {message.comparisonAnalysisId ? (
-                <ComparisonAnalysisCard
-                  analysis={workspace.ai.comparisonAnalyses?.[message.comparisonAnalysisId]}
-                  sourceRefs={workspace.ai.comparisonAnalyses?.[message.comparisonAnalysisId] ? resolveStoredComparisonSourceRefs(workspace, workspace.ai.comparisonAnalyses[message.comparisonAnalysisId]) : []}
-                  workspace={workspace}
-                  onRequestAction={onRequestComparisonAction}
-                  onLocateObject={onLocateObject}
-                />
-              ) : null}
-              {message.conversationCheckpointId &&
-              workspace.ai.conversationCheckpoints.some((checkpoint) => checkpoint.id === message.conversationCheckpointId) ? (
-                <div
-                  className="conversation-checkpoint-feedback"
-                  title="后续同一工作重点的对话会使用这份讨论整理与最近消息保持连续。"
-                >
-                  已整理当前讨论脉络
-                </div>
-              ) : null}
-              {message.continuityEntryIds && message.continuityEntryIds.length > 0 ? (
-                <button
-                  className="continuity-feedback"
-                  type="button"
-                  onClick={() => onOpenProjectRecords(message.continuityEntryIds)}
-                >
-                  已保存为项目线索 · {message.continuityEntryIds.length} 条
-                </button>
-              ) : null}
-              {message.citationIds && message.citationIds.length > 0 ? (
-                <div className="citation-list" aria-label="来源引用">
-                  {message.citationIds
-                    .map((citationId) => workspace.citationSnapshots[citationId])
-                    .filter((citation) => Boolean(citation))
-                    .map((citation) => (
-                      <a
-                        className="citation-link"
-                        href={citation.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        key={citation.id}
-                      >
-                        <span>{citation.title}</span>
-                        {citation.domain ? <small>{citation.domain}</small> : null}
-                      </a>
-                    ))}
-                </div>
-              ) : null}
-            </div>
-          ))}
+        <div className="ai-scroll-shell">
+          <div className="ai-scroll" ref={scrollRef} onScroll={updateScrollBottomVisibility}>
+            {workspace.ai.messages.map((message) => {
+              const isPlaceholderThinking =
+                message.role === "assistant" &&
+                message.status === "streaming" &&
+                (!message.body.trim() || isAgentThinkingPlaceholder(message.body));
+
+              return (
+              <div className={`ai-message ${message.role}`} key={message.id}>
+                {isPlaceholderThinking ? <ThinkingIndicator /> : <MarkdownContent body={message.body} />}
+                {message.comparisonAnalysisId ? (
+                  <ComparisonAnalysisCard
+                    analysis={workspace.ai.comparisonAnalyses?.[message.comparisonAnalysisId]}
+                    sourceRefs={workspace.ai.comparisonAnalyses?.[message.comparisonAnalysisId] ? resolveStoredComparisonSourceRefs(workspace, workspace.ai.comparisonAnalyses[message.comparisonAnalysisId]) : []}
+                    workspace={workspace}
+                    onRequestAction={onRequestComparisonAction}
+                    onLocateObject={onLocateObject}
+                  />
+                ) : null}
+                {message.conversationCheckpointId &&
+                workspace.ai.conversationCheckpoints.some((checkpoint) => checkpoint.id === message.conversationCheckpointId) ? (
+                  <div
+                    className="conversation-checkpoint-feedback"
+                    title="后续同一工作重点的对话会使用这份讨论整理与最近消息保持连续。"
+                  >
+                    已整理当前讨论脉络
+                  </div>
+                ) : null}
+                {message.continuityEntryIds && message.continuityEntryIds.length > 0 ? (
+                  <button
+                    className="continuity-feedback"
+                    type="button"
+                    onClick={() => onOpenProjectRecords(message.continuityEntryIds)}
+                  >
+                    已保存为项目线索 · {message.continuityEntryIds.length} 条
+                  </button>
+                ) : null}
+                {message.citationIds && message.citationIds.length > 0 ? (
+                  <div className="citation-list" aria-label="来源引用">
+                    {message.citationIds
+                      .map((citationId) => workspace.citationSnapshots[citationId])
+                      .filter((citation) => Boolean(citation))
+                      .map((citation, citationIndex) => (
+                        <a
+                          className="citation-link citation-link-line"
+                          href={citation.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          key={citation.id}
+                        >
+                          <span className="citation-index">{citationIndex + 1}</span>
+                          <span className="citation-copy">
+                            <span className="citation-title">{citation.title}</span>
+                            {citation.domain ? <small>{citation.domain}</small> : null}
+                          </span>
+                        </a>
+                      ))}
+                  </div>
+                ) : null}
+              </div>
+              );
+            })}
 
           <div className="suggestions">
             {suggestions.map((suggestion) => (
@@ -535,10 +566,20 @@ export function AiConversationPanel({
             </div>
           ) : null}
 
-          {contextWarning ? (
-            <div className="failure-card">
-              <strong>默认参考未进入本次语境</strong>
-              <p>{contextWarning}</p>
+          {visibleContextWarning ? (
+            <div className="context-note">
+              <div>
+                <strong>本轮语境提示</strong>
+                <p>{visibleContextWarning} 仅影响本轮发送给 AI 的上下文，不会改变原文件、画布对象或本地数据。</p>
+              </div>
+              <button
+                className="context-note-close"
+                type="button"
+                aria-label="关闭语境提示"
+                onClick={() => setDismissedContextWarning(visibleContextWarning)}
+              >
+                ×
+              </button>
             </div>
           ) : null}
 
@@ -634,21 +675,22 @@ export function AiConversationPanel({
               </div>
             </div>
           ) : null}
+          </div>
+          <button
+            className="ai-scroll-bottom-button"
+            type="button"
+            aria-label="滚动到最新消息"
+            hidden={!showScrollBottom}
+            onClick={scrollToLatest}
+          >
+            ↓
+          </button>
         </div>
-        <button
-          className="ai-scroll-bottom-button"
-          type="button"
-          aria-label="滚动到最新消息"
-          hidden={!showScrollBottom}
-          onClick={scrollToLatest}
-        >
-          ↓
-        </button>
 
         <div className="ai-input-wrap">
           <div className="input-context-strip" aria-label="当前输入语境">
             <span className="input-context-count">
-              {selectedObjects.length > 0 ? `已选 ${selectedObjects.length} 个对象` : "未选择对象"}
+              {selectedObjects.length > 0 ? `已选 ${selectedObjects.length}` : "无选择"}
             </span>
             {visibleContextObjects.map((object) => (
               <span className="input-context-chip" title={object.title} key={object.id}>
@@ -661,10 +703,8 @@ export function AiConversationPanel({
           <details className="mode-disclosure">
             <summary>
               <span>{modeSummary}</span>
-              <small>Agent 会自动判断研究、提案、比较和出图</small>
             </summary>
             <div className="mode-row">
-              <span>执行策略</span>
               <div className="mode-toggle" aria-label="执行策略">
                 <button
                   type="button"
@@ -682,9 +722,6 @@ export function AiConversationPanel({
                 </button>
               </div>
             </div>
-            <p className="mode-help-text">
-              不再手动切换“研究任务 / 图像生成 / 设计定义”等模式；选中对象后直接说你的目标，Agent 会按当前语境决定下一步。
-            </p>
           </details>
 
           {isLocalEditMode ? (
@@ -767,9 +804,13 @@ export function AiConversationPanel({
 
           <div className="ai-input">
             <textarea
+              ref={draftTextareaRef}
               rows={1}
               value={draft}
-              onChange={(event) => onDraftChange(event.currentTarget.value)}
+              onChange={(event) => {
+                onDraftChange(event.currentTarget.value);
+                resizeDraftTextarea(event.currentTarget);
+              }}
               onKeyDown={(event) => {
                 if (shouldSubmitFromTextarea(event)) {
                   event.preventDefault();
@@ -827,8 +868,8 @@ export function AiConversationPanel({
       </div>
 
       <button className="ai-toggle" type="button" aria-label={isOpen ? "收起 AI" : "打开 AI"} onClick={onToggleOpen}>
-        <div className="toggle-icon">
-          <Sparkles size={16} />
+        <div className="toggle-icon morpho-toggle-mark" aria-hidden="true">
+          M
         </div>
       </button>
     </>
@@ -848,6 +889,26 @@ function formatOperationType(type: OperationRecord["type"]): string {
     default:
       return "当前任务";
   }
+}
+
+function ThinkingIndicator() {
+  return (
+    <div className="thinking-row" aria-label="AI 正在思考">
+      <span>Thinking</span>
+      <i />
+      <i />
+      <i />
+    </div>
+  );
+}
+
+function isAgentThinkingPlaceholder(body: string): boolean {
+  return (
+    body.includes("正在理解") ||
+    body.includes("正在进行") ||
+    body.includes("姝ｅ湪鐞嗚В") ||
+    body.includes("姝ｅ湪杩涜")
+  );
 }
 
 function getLatestFailedAssistantMessage(workspace: MorphoWorkspace): AiMessage | undefined {

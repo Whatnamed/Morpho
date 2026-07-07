@@ -72,6 +72,7 @@ import type { ArtifactProposal, ConceptDirectionProposal, OperationRecord, Visua
 import { parseConceptDirectionProposalPayload } from "@/domain/operations/conceptDirectionProposal";
 import { parseDesignDefinitionProposalPayload } from "@/domain/operations/designDefinitionProposal";
 import { parseResearchAnalysisProposalPayload } from "@/domain/operations/researchProposal";
+import { normalizeResearchItems } from "@/domain/operations/researchItems";
 import {
   parseVisualGenerationPlanPayload,
   validateRequestedPreviewCount,
@@ -115,12 +116,14 @@ import { LeftRail, type DrawerMode } from "./components/LeftRail";
 import { OverlayDrawers } from "./components/OverlayDrawers";
 import { ProposalCanvasLayer } from "./components/ProposalCanvasLayer";
 import { ProjectBundlePanel } from "./components/ProjectBundlePanel";
+import { ResearchDetailPanel } from "./components/ResearchDetailPanel";
 import { CanvasContextMenu, SelectionToolbar } from "./components/SelectionToolbar";
 import { TopControls } from "./components/TopControls";
 import { usePersistentWorkspace } from "./usePersistentWorkspace";
 import { useWorkspaceAssetUrls } from "./useWorkspaceAssetUrls";
 import { compactObjectList, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
 import { getFloatingMenuPlacement, getSelectionToolbarPlacement, type ScreenRect } from "./selectionToolbar";
+import { shouldBlockSnapshotUndo } from "./workspaceUndo";
 import { buildDeliverySectionContext, getDeliveryObjects, type DeliveryReferenceReaderTransition } from "./deliveryPreparationUi";
 import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
 import {
@@ -148,7 +151,12 @@ import {
   resolveWorkIntentForSend
 } from "./aiTaskRouting";
 import { buildProposalDiscussionDraft, buildProposalRegenerationDraft } from "./proposalFollowupPrompts";
-import { buildWebSearchOptions, collectAiProviderImageAttachments, shouldAttachImagesForAiProvider } from "./aiAttachments";
+import {
+  buildWebSearchOptions,
+  collectAiProviderImageAttachments,
+  resolveAiProviderImageObjectIds,
+  shouldAttachImagesForAiProvider
+} from "./aiAttachments";
 import { collectDocumentExtractsForAi } from "./documentContext";
 import { shouldAcceptDocumentReaderLoadResult } from "./documentReader";
 import { loadDocumentReaderExtractWithRecovery } from "./documentReaderRecovery";
@@ -159,6 +167,7 @@ import {
   resolveDocumentFragmentSelection
 } from "./documentFragments";
 import { resolveComparisonWritebackSourceObjectIds } from "./comparisonDecision";
+import { applyResearchExtractionSelection, getResearchExtractionRecommendationKeys } from "./researchExtraction";
 import {
   validateComparisonActionTarget,
   validateComparisonKeyConclusionSources,
@@ -185,6 +194,7 @@ import {
   applyComparisonAnalysis,
   resolveStoredComparisonSourceRefs,
   buildComparisonAuthorization,
+  buildComparisonAnalysisVisibleSummary,
   parseComparisonAnalysisPayload,
   sanitizeComparisonAssistantStreamForDisplay,
   stripComparisonAnalysisBlock,
@@ -345,11 +355,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [projectRenameDraft, setProjectRenameDraft] = useState(workspace.project.title);
   const [selectionScreenBounds, setSelectionScreenBounds] = useState<ScreenRect | null>(null);
   const [canvasContextMenu, setCanvasContextMenu] = useState<{ x: number; y: number; objectId: string | null; openedAt: number } | null>(null);
+  const [activeResearchDetailObjectId, setActiveResearchDetailObjectId] = useState<string | null>(null);
 
   const selectedObjects = useMemo(
     () => compactObjectList(workspace.objects, selectedObjectIds),
     [selectedObjectIds, workspace.objects]
   );
+  const activeResearchDetailObject = useMemo(() => {
+    if (!activeResearchDetailObjectId) {
+      return null;
+    }
+
+    const object = workspace.objects[activeResearchDetailObjectId];
+    return object?.type === "research" && object.visibility === "active" ? object : null;
+  }, [activeResearchDetailObjectId, workspace.objects]);
   useEffect(() => {
     setProjectRenameDraft(workspace.project.title);
   }, [workspace.project.title]);
@@ -575,13 +594,18 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return false;
     }
 
+    if (shouldBlockSnapshotUndo(entry.workspace, workspace)) {
+      setCanvasContextMenu(null);
+      return true;
+    }
+
     setWorkspace(entry.workspace);
     setSelectedObjectIds(entry.selectedObjectIds);
     setLocalEditObjectId(entry.localEditObjectId);
     setPendingConfirmation(entry.pendingConfirmation);
     setCanvasContextMenu(null);
     return true;
-  }, [setWorkspace]);
+  }, [setWorkspace, workspace]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -908,7 +932,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           taskMode: "researchOperation",
           selectedObjects
         })
-          ? await collectAiProviderImageAttachments(workspace, context.imageObjectIds, controller.signal)
+          ? await collectAiProviderImageAttachments(
+              workspace,
+              resolveAiProviderImageObjectIds({
+                contextImageObjectIds: context.imageObjectIds,
+                selectedObjects
+              }),
+              controller.signal
+            )
           : { attachments: [], skippedObjectIds: [], warning: undefined };
         const documentResult = await collectDocumentExtractsForAi(
           workspace,
@@ -1214,7 +1245,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       let lastProviderTaskId: string | undefined;
 
       try {
-        const attachmentResult = await collectAiProviderImageAttachments(workspace, context.imageObjectIds, controller.signal);
+        const attachmentResult = await collectAiProviderImageAttachments(
+          workspace,
+          resolveAiProviderImageObjectIds({
+            contextImageObjectIds: context.imageObjectIds,
+            selectedObjects
+          }),
+          controller.signal
+        );
         const documentResult = await collectDocumentExtractsForAi(
           workspace,
           context.documentObjectIds,
@@ -1637,8 +1675,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 draft,
                 taskMode: executionTaskMode,
                 selectedObjects
-              })
-            ? await collectAiProviderImageAttachments(workspace, context.imageObjectIds, controller.signal)
+            })
+            ? await collectAiProviderImageAttachments(
+                workspace,
+                resolveAiProviderImageObjectIds({
+                  contextImageObjectIds: context.imageObjectIds,
+                  selectedObjects
+                }),
+                controller.signal
+              )
             : { attachments: [], skippedObjectIds: [], entries: [], warning: undefined };
       const documentResult =
         isDeliverySectionPreparation
@@ -1731,14 +1776,23 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           : sanitizeComparisonAssistantStreamForDisplay(sanitizeConversationAssistantStreamForDisplay(assistantBody));
         setWorkspace((current) => updateAiMessage(current, assistantMessageId, sanitizedAssistantBody, "streaming"));
       });
-      const visibleAssistantText = isDeliverySectionPreparation
+      const rawVisibleAssistantText = isDeliverySectionPreparation
         ? stripDeliverySectionDraftTechnicalBlocks(streamResult.text)
         : stripComparisonAnalysisBlock(stripAssistantTechnicalBlocks(streamResult.text));
+      const structuredWritePolicy = buildSameReplyStructuredWritePolicy(streamResult.text, executionWorkIntent);
+      const parsedComparisonAnalysis =
+        structuredWritePolicy.allowComparisonAnalysis && !isDeliverySectionPreparation
+          ? parseComparisonAnalysisPayload(streamResult.text)
+          : null;
+      const visibleAssistantText =
+        rawVisibleAssistantText ||
+        (parsedComparisonAnalysis?.status === "ok"
+          ? buildComparisonAnalysisVisibleSummary(parsedComparisonAnalysis.analysis)
+          : "");
       const assistantBody = [attachmentResult.warning, documentResult.warning, visibleAssistantText]
         .filter(Boolean)
         .join("\n\n");
       const resolvedAssistantBody = assistantBody || "AiJWS 没有返回可显示文本。";
-      const structuredWritePolicy = buildSameReplyStructuredWritePolicy(streamResult.text, executionWorkIntent);
       const designDefinitionProposal = isDeliverySectionPreparation ? null : parseDesignDefinitionProposalPayload(streamResult.text);
       const conceptDirectionProposal = isDeliverySectionPreparation ? null : parseConceptDirectionProposalPayload(streamResult.text);
       const deliverySectionDraft =
@@ -1769,11 +1823,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               documentFragmentExtractObjectIds: context.documentFragmentExtracts.map((fragment) => fragment.objectId)
             })
           : null;
-      const parsedComparisonAnalysis =
-        structuredWritePolicy.allowComparisonAnalysis && !isDeliverySectionPreparation
-          ? parseComparisonAnalysisPayload(streamResult.text)
-          : null;
-
       let appliedComparisonAnalysisId: string | null = null;
       setWorkspace((current) => {
         let nextWorkspace = updateAiMessage(current, assistantMessageId, resolvedAssistantBody, "done");
@@ -1952,7 +2001,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       const message = isCancelled
         ? "当前请求已取消。原输入、选择和上下文已保留。"
         : error instanceof Error
-          ? error.message
+          ? normalizeAgentTurnErrorMessage(error.message)
           : "AI 请求失败。";
       setAiDraft(draft);
       setWorkspace((current) =>
@@ -2221,7 +2270,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       taskMode: "chatAnalysis",
       selectedObjects
     })
-      ? await collectAiProviderImageAttachments(workspace, context.imageObjectIds, controller.signal)
+      ? await collectAiProviderImageAttachments(
+          workspace,
+          resolveAiProviderImageObjectIds({
+            contextImageObjectIds: context.imageObjectIds,
+            selectedObjects
+          }),
+          controller.signal
+        )
       : { attachments: [], skippedObjectIds: [], entries: [], warning: undefined };
     const documentResult = await collectDocumentExtractsForAi(
       workspace,
@@ -2300,17 +2356,21 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     let totalAutoGeneratedImageItems = 0;
     let activeProposalForTurnId: string | null = null;
     let queuedResult: AgentRouteResult | null = null;
+    const agentTurnId = `agent-turn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     async function requestAgentTurn(
       input: Array<unknown>,
-      tools: ReturnType<typeof buildMorphoAgentTools>
+      tools: ReturnType<typeof buildMorphoAgentTools>,
+      continuation = false
     ): Promise<AgentRouteResult> {
       const response = await fetch("/api/ai/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           input,
-          tools
+          tools,
+          agentTurnId,
+          continuation
         }),
         signal: controller.signal
       });
@@ -2334,7 +2394,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         } else {
           result = await requestAgentTurn(
             conversationInput,
-            stepIndex === 0 ? buildMorphoAgentInitialTools() : buildMorphoAgentTools(true)
+            stepIndex === 0 ? buildMorphoAgentInitialTools() : buildMorphoAgentTools(true),
+            stepIndex > 0
           );
         }
         queuedResult = null;
@@ -2406,7 +2467,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   queries: args.queries,
-                  maxSources: Math.max(0, AGENT_TURN_MAX_WEB_SEARCH_SOURCES - collectedCitations.length)
+                  maxSources: Math.max(0, AGENT_TURN_MAX_WEB_SEARCH_SOURCES - collectedCitations.length),
+                  agentTurnId,
+                  agentContinuation: true
                 }),
                 signal: controller.signal
               });
@@ -2447,10 +2510,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                   operationId: created.operation.id,
                   title: args.title,
                   summary: args.summary,
-                  findings: args.findings,
-                  opportunities: args.opportunities,
-                  constraints: args.constraints,
-                  openQuestions: args.openQuestions,
+                  findings: normalizeResearchItems(args.findings),
+                  opportunities: normalizeResearchItems(args.opportunities),
+                  constraints: normalizeResearchItems(args.constraints),
+                  openQuestions: normalizeResearchItems(args.openQuestions),
                   evidence: constrainResearchEvidence(args, context.objectIds, collectedCitations),
                   sourceObjectIds: context.objectIds,
                   citations: collectedCitations
@@ -2506,10 +2569,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 primaryScenarios: args.primaryScenarios,
                 coreProblem: args.coreProblem,
                 designPrinciples: args.designPrinciples,
-                constraints: args.constraints,
+                constraints: normalizeResearchItems(args.constraints),
                 avoidDirections: args.avoidDirections,
-                opportunities: args.opportunities,
-                openQuestions: args.openQuestions,
+                opportunities: normalizeResearchItems(args.opportunities),
+                openQuestions: normalizeResearchItems(args.openQuestions),
                 changeNote: args.changeNote,
                 sourceObjectIds: context.objectIds,
                 citations: collectedCitations,
@@ -2691,7 +2754,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }
 
         conversationInput = [...conversationInput, ...toolOutputs];
-        const continued = await requestAgentTurn(conversationInput, buildMorphoAgentTools(true));
+        const continued = await requestAgentTurn(conversationInput, buildMorphoAgentTools(true), true);
         collectedCitations = dedupeCitations([...collectedCitations, ...continued.citations]);
         totalWebSearchCalls += continued.webSearchCallCount;
         if (totalWebSearchCalls > 2) {
@@ -3890,10 +3953,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             operationId: created.operation.id,
             title: pendingConfirmation.args.title,
             summary: pendingConfirmation.args.summary,
-            findings: pendingConfirmation.args.findings,
-            opportunities: pendingConfirmation.args.opportunities,
-            constraints: pendingConfirmation.args.constraints,
-            openQuestions: pendingConfirmation.args.openQuestions,
+            findings: normalizeResearchItems(pendingConfirmation.args.findings),
+            opportunities: normalizeResearchItems(pendingConfirmation.args.opportunities),
+            constraints: normalizeResearchItems(pendingConfirmation.args.constraints),
+            openQuestions: normalizeResearchItems(pendingConfirmation.args.openQuestions),
             evidence: constrainResearchEvidence(
               pendingConfirmation.args,
               pendingConfirmation.sourceObjectIds,
@@ -4339,6 +4402,54 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       });
     },
     [workspace]
+  );
+
+  const handleOpenResearchDetail = useCallback(() => {
+    const research = selectedObjects.find((object) => object.type === "research");
+    if (!research) {
+      return;
+    }
+
+    setActiveResearchDetailObjectId(research.id);
+  }, [selectedObjects]);
+
+  const handleAutoSelectResearch = useCallback(() => {
+    const research = selectedObjects.length === 1 && selectedObjects[0]?.type === "research" ? selectedObjects[0] : undefined;
+    if (!research) {
+      return;
+    }
+
+    const selectedKeys = getResearchExtractionRecommendationKeys(workspace, research.id);
+    if (selectedKeys.length === 0) {
+      setAiOpen(true);
+      setTaskMode("chatAnalysis");
+      setAiDraft("这张研究卡暂时没有可保留的研究点。");
+      return;
+    }
+
+    const result = applyResearchExtractionSelection(workspace, research.id, selectedKeys);
+    setWorkspace(result.workspace);
+    if (result.activeObjectIds.length > 0) {
+      setSelectedObjectIds(result.activeObjectIds);
+      setFocusRequest((current) => ({ objectId: result.activeObjectIds[0], nonce: current.nonce + 1 }));
+    }
+    setActiveResearchDetailObjectId(null);
+  }, [selectedObjects, setWorkspace, workspace]);
+
+  const handleApplyResearchExtractionSelection = useCallback(
+    (selectedKeys: string[]) => {
+      if (!activeResearchDetailObjectId) {
+        return;
+      }
+
+      const result = applyResearchExtractionSelection(workspace, activeResearchDetailObjectId, selectedKeys);
+      setWorkspace(result.workspace);
+      if (result.activeObjectIds.length > 0) {
+        setSelectedObjectIds(result.activeObjectIds);
+        setFocusRequest((current) => ({ objectId: result.activeObjectIds[0], nonce: current.nonce + 1 }));
+      }
+    },
+    [activeResearchDetailObjectId, setWorkspace, workspace]
   );
 
   const handleCopyItemToDraft = useCallback((text: string) => {
@@ -4876,6 +4987,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         isDesignTraceActive={Boolean(activeDesignTrace)}
         onAskAi={handleAskAi}
         onToggleDesignTrace={handleToggleDesignTrace}
+        onOpenResearchDetail={handleOpenResearchDetail}
+        onAutoSelectResearch={handleAutoSelectResearch}
         onOpenDocumentReader={() => {
           const primary = selectedObjects[0];
           if (!primary) {
@@ -5019,6 +5132,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           onRequestSectionDraft={handleRequestDeliverySectionDraft}
           onApplyDraft={handleApplyDeliveryDraft}
           onDiscardDraft={handleDiscardDeliveryDraft}
+        />
+      ) : null}
+
+      {activeResearchDetailObject ? (
+        <ResearchDetailPanel
+          workspace={workspace}
+          research={activeResearchDetailObject}
+          onClose={() => setActiveResearchDetailObjectId(null)}
+          onApplySelection={handleApplyResearchExtractionSelection}
         />
       ) : null}
 
@@ -5767,6 +5889,22 @@ function parseAiStreamEvent(line: string): AiStreamEvent | null {
   }
 
   return null;
+}
+
+function normalizeAgentTurnErrorMessage(message: string): string {
+  const normalized = message.toLowerCase();
+  const looksLikeAuthError =
+    normalized.includes("sign in") ||
+    normalized.includes("login") ||
+    normalized.includes("unauthenticated") ||
+    message.includes("请先登录") ||
+    message.includes("璇峰厛鐧诲綍");
+
+  if (!looksLikeAuthError) {
+    return message;
+  }
+
+  return "登录状态失效，本轮已完成步骤已保留。请重新登录后重试。";
 }
 
 function isProviderCitation(value: unknown): value is ProviderCitation {

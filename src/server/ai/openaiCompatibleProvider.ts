@@ -65,6 +65,11 @@ export type OpenAiCompatibleResponseResult = {
   outputItems: AgentOutputItem[];
 };
 
+export type OpenAiCompatibleStreamHandlers = {
+  onTextDelta?: (text: string) => void;
+  onCitations?: (citations: ProviderCitation[]) => void;
+};
+
 type RawResponse = {
   id?: string;
   output?: unknown[];
@@ -167,6 +172,26 @@ export async function executeOpenAiCompatibleResponse(
   };
 }
 
+export async function streamOpenAiCompatibleResponse(
+  config: OpenAiCompatibleConfig,
+  request: OpenAiCompatibleResponseRequest,
+  handlers: OpenAiCompatibleStreamHandlers,
+  signal?: AbortSignal
+): Promise<OpenAiCompatibleResponseResult> {
+  if (shouldUseChatCompletionsFirst(config)) {
+    return streamOpenAiCompatibleChatCompletion(config, request, handlers, signal);
+  }
+
+  const result = await executeOpenAiCompatibleResponse(config, request, signal);
+  if (result.outputText) {
+    handlers.onTextDelta?.(result.outputText);
+  }
+  if (result.citations.length > 0) {
+    handlers.onCitations?.(result.citations);
+  }
+  return result;
+}
+
 function shouldUseChatCompletionsFirst(config: OpenAiCompatibleConfig): boolean {
   try {
     return new URL(config.baseUrl).hostname.toLowerCase().includes("aijws.com");
@@ -200,6 +225,161 @@ async function executeOpenAiCompatibleChatCompletion(
 
   const raw = (await response.json()) as RawChatCompletion;
   return extractChatCompletionResult(raw);
+}
+
+async function streamOpenAiCompatibleChatCompletion(
+  config: OpenAiCompatibleConfig,
+  request: OpenAiCompatibleResponseRequest,
+  handlers: OpenAiCompatibleStreamHandlers,
+  signal?: AbortSignal
+): Promise<OpenAiCompatibleResponseResult> {
+  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: config.model,
+      messages: convertResponseInputToChatMessages(request.input),
+      tools: convertResponseToolsToChatTools(request.tools),
+      stream: true
+    }),
+    signal
+  });
+
+  if (!response.ok) {
+    throw new OpenAiCompatibleProviderError(response.status, await safeReadDiagnostic(response));
+  }
+
+  const contentType = response.headers.get("Content-Type")?.toLowerCase() ?? "";
+  if (!response.body || !contentType.includes("text/event-stream")) {
+    const raw = (await response.json()) as RawChatCompletion;
+    const result = extractChatCompletionResult(raw);
+    if (result.outputText) {
+      handlers.onTextDelta?.(result.outputText);
+    }
+    if (result.citations.length > 0) {
+      handlers.onCitations?.(result.citations);
+    }
+    return result;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let outputText = "";
+  const citations: ProviderCitation[] = [];
+
+  while (true) {
+    const result = await reader.read();
+    if (result.value) {
+      buffer += decoder.decode(result.value, { stream: !result.done });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        const parsed = parseChatCompletionStreamLine(line);
+        if (!parsed || parsed.done) {
+          continue;
+        }
+        if (parsed.text) {
+          outputText += parsed.text;
+          handlers.onTextDelta?.(parsed.text);
+        }
+        if (parsed.citations.length > 0) {
+          citations.push(...parsed.citations);
+          handlers.onCitations?.(parsed.citations);
+        }
+      }
+    }
+    if (result.done) {
+      break;
+    }
+  }
+
+  if (buffer.trim()) {
+    const parsed = parseChatCompletionStreamLine(buffer);
+    if (parsed && !parsed.done) {
+      if (parsed.text) {
+        outputText += parsed.text;
+        handlers.onTextDelta?.(parsed.text);
+      }
+      if (parsed.citations.length > 0) {
+        citations.push(...parsed.citations);
+        handlers.onCitations?.(parsed.citations);
+      }
+    }
+  }
+
+  const finalCitations = dedupeCitations(citations);
+  return {
+    responseId: "",
+    outputText: outputText.trim(),
+    functionCalls: [],
+    citations: finalCitations,
+    outputItems: outputText.trim()
+      ? [
+          {
+            type: "message",
+            content: [{ type: "output_text", text: outputText.trim() }]
+          }
+        ]
+      : [],
+    webSearchCallCount: 0
+  };
+}
+
+function dedupeCitations(citations: ProviderCitation[]): ProviderCitation[] {
+  const seen = new Set<string>();
+  return citations.filter((citation) => {
+    const key = citation.url ?? `${citation.title}:${citation.snippet ?? ""}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function parseChatCompletionStreamLine(line: string): { text: string; citations: ProviderCitation[]; done: boolean } | null {
+  const trimmed = line.trim();
+  if (!trimmed || !trimmed.startsWith("data:")) {
+    return null;
+  }
+
+  const data = trimmed.slice("data:".length).trim();
+  if (!data || data === "[DONE]") {
+    return { text: "", citations: [], done: true };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    return null;
+  }
+
+  const text = extractChatCompletionDeltaText(parsed);
+  return {
+    text,
+    citations: extractCitations(parsed),
+    done: false
+  };
+}
+
+function extractChatCompletionDeltaText(value: unknown): string {
+  if (!isRecord(value) || !Array.isArray(value.choices)) {
+    return "";
+  }
+
+  return value.choices
+    .map((choice) => {
+      if (!isRecord(choice) || !isRecord(choice.delta)) {
+        return "";
+      }
+      return typeof choice.delta.content === "string" ? choice.delta.content : "";
+    })
+    .join("");
 }
 
 async function safeReadDiagnostic(response: Response): Promise<string | undefined> {

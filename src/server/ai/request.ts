@@ -750,6 +750,10 @@ function buildStructuredProposalInstruction(request: AiRouteRequest): string {
     return [
       "如果本次研究结果足够结构化，请在普通回答后附加一个 fenced JSON block，且只使用以下顶层字段：",
       "morphoResearchProposal: { title, summary, findings, opportunities, constraints, openQuestions, evidence }。",
+      "研究输出要先广泛分析，再评估筛选；只把真正会改变设计判断、方向选择或验证计划的候选点写入卡片。",
+      "findings、opportunities、constraints、openQuestions 中每一条都使用「短标题：一句说明」格式，标题用于一眼区分点与点，说明只写这一点为什么重要。",
+      "发现=改变项目理解的观察；机会=可执行的设计动作；约束=会改变取舍的边界；待验证=答案会影响后续决定的问题。",
+      "不要把背景常识、过渡话或重复观点放进卡片；证据不足的内容放到待验证或 evidence confidence，不要伪装成稳定结论。",
       "evidence 每项包含 claim、sourceObjectIds、citationUrls、confidence，其中 confidence 为 supported、partial 或 needsVerification。",
       "如果无法可靠结构化，不要输出该 JSON block。"
     ].join("\n");

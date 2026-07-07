@@ -55,4 +55,29 @@ describe("ResearchAnalysisProposal structured parsing", () => {
       status: "failed"
     });
   });
+
+  it("accepts structured research point objects while preserving title and detail", () => {
+    const result = parseResearchAnalysisProposalPayload(`
+\`\`\`json
+{
+  "morphoResearchProposal": {
+    "title": "海洋噪声研究",
+    "summary": "筛出可用于定义阶段的候选点。",
+    "findings": [{ "title": "证据边界", "detail": "现有资料能支持问题重要性，但还不足以证明完整工业产品定义。" }],
+    "opportunities": [],
+    "constraints": [],
+    "openQuestions": [],
+    "evidence": []
+  }
+}
+\`\`\`
+`);
+
+    expect(result).toMatchObject({
+      status: "ok",
+      proposal: {
+        findings: ["证据边界：现有资料能支持问题重要性，但还不足以证明完整工业产品定义。"]
+      }
+    });
+  });
 });

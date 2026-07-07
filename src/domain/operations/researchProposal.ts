@@ -1,4 +1,5 @@
 import type { ResearchEvidence } from "./types";
+import { normalizeResearchItems, type ResearchItemInput } from "./researchItems";
 
 export type ParsedResearchAnalysisProposal = {
   title: string;
@@ -45,10 +46,10 @@ export function parseResearchAnalysisProposalPayload(text: string): ParseResearc
   const proposal = parsed.morphoResearchProposal;
   const title = stringValue(proposal.title);
   const summary = stringValue(proposal.summary);
-  const findings = stringArray(proposal.findings);
-  const opportunities = stringArray(proposal.opportunities);
-  const constraints = stringArray(proposal.constraints);
-  const openQuestions = stringArray(proposal.openQuestions);
+  const findings = normalizeResearchItems(researchItemArray(proposal.findings));
+  const opportunities = normalizeResearchItems(researchItemArray(proposal.opportunities));
+  const constraints = normalizeResearchItems(researchItemArray(proposal.constraints));
+  const openQuestions = normalizeResearchItems(researchItemArray(proposal.openQuestions));
   const evidence = parseEvidence(proposal.evidence);
 
   if (!title || !summary || findings.length === 0) {
@@ -113,6 +114,14 @@ function stringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean)
     : [];
+}
+
+function researchItemArray(value: unknown): ResearchItemInput[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is ResearchItemInput => typeof item === "string" || isRecord(item));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

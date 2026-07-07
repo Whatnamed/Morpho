@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { loadOpenAiCompatibleConfig } from "@/server/ai/openaiCompatibleConfig";
 import { searchWebEvidence } from "@/server/ai/webSearch";
-import { aiAccessDeniedResponse, guardAiRoute } from "@/server/auth/aiAccess";
+import { aiAccessDeniedResponse, guardAiRoute, requireAiRouteUser } from "@/server/auth/aiAccess";
 
 export const runtime = "nodejs";
 
@@ -32,7 +32,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "至少需要一个非空查询。" }, { status: 400 });
   }
 
-  const access = await guardAiRoute("text");
+  const isAgentContinuation =
+    body.agentContinuation === true && typeof body.agentTurnId === "string" && body.agentTurnId.trim().length > 0;
+  const access = isAgentContinuation ? await requireAiRouteUser() : await guardAiRoute("text");
   if (access.status === "denied") {
     return aiAccessDeniedResponse(access);
   }

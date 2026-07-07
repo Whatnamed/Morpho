@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from "react";
-import { Tldraw, Vec, type Editor, type TLShapeId } from "tldraw";
+import { Tldraw, Vec, type Editor, type TLShapeId, type TLShapePartial } from "tldraw";
 
 import { calculateAnchoredZoom } from "@/domain/morpho/canvasCamera";
 import type { DesignTraceEdge } from "@/domain/morpho/designTrace";
@@ -54,6 +54,7 @@ export type CanvasContextMenuRequest = {
 };
 
 const shapeUtils = [MorphoShapeUtil];
+export const MORPHO_EDITOR_SYNC_RUN_OPTIONS = { history: "ignore" } as const;
 const MIN_WHEEL_ZOOM = 0.12;
 const MAX_WHEEL_ZOOM = 2.4;
 
@@ -318,7 +319,7 @@ export function MorphoCanvas({
       const renderableInstances = getRenderableCanvasInstances(workspace);
       const renderableInstanceIds = new Set(renderableInstances.map((instance) => instance.id));
       const pendingInstances = pendingInstancesRef.current;
-      const toCreate = [];
+      const toCreate: TLShapePartial<MorphoShape>[] = [];
       const toUpdate: MorphoShape[] = [];
       const toDelete = shapes.filter((shape) => !renderableInstanceIds.has(shape.props.instanceId));
 
@@ -348,29 +349,31 @@ export function MorphoCanvas({
         }
       }
 
-      if (toCreate.length > 0) {
-        editor.createShapes(toCreate);
-      }
+      editor.run(() => {
+        if (toCreate.length > 0) {
+          editor.createShapes(toCreate);
+        }
 
-      if (toUpdate.length > 0) {
-        editor.updateShapes(toUpdate);
-      }
+        if (toUpdate.length > 0) {
+          editor.updateShapes(toUpdate);
+        }
 
-      if (toDelete.length > 0) {
-        editor.deleteShapes(toDelete.map((shape) => shape.id));
-      }
+        if (toDelete.length > 0) {
+          editor.deleteShapes(toDelete.map((shape) => shape.id));
+        }
 
-      const orderedShapeIds = renderableInstances
-        .map((instance) =>
-          editor
-            .getCurrentPageShapes()
-            .filter(isMorphoShape)
-            .find((shape) => shape.props.instanceId === instance.id)?.id
-        )
-        .filter((id): id is TLShapeId => Boolean(id));
-      for (const shapeId of orderedShapeIds) {
-        editor.bringToFront([shapeId]);
-      }
+        const orderedShapeIds = renderableInstances
+          .map((instance) =>
+            editor
+              .getCurrentPageShapes()
+              .filter(isMorphoShape)
+              .find((shape) => shape.props.instanceId === instance.id)?.id
+          )
+          .filter((id): id is TLShapeId => Boolean(id));
+        for (const shapeId of orderedShapeIds) {
+          editor.bringToFront([shapeId]);
+        }
+      }, MORPHO_EDITOR_SYNC_RUN_OPTIONS);
     },
     [annotatedObjectId, assetUrls, traceObjectIds, workspace]
   );

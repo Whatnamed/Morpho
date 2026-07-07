@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { recordDesignDefinitionProposal } from "../../../domain/operations/operations";
+import type { CanvasInstance, KeyConclusionObject, ResearchObject } from "../../../domain/morpho/types";
 import { createInitialWorkspace } from "../../../domain/morpho/workspace";
 
-import { getMorphoShapeProps } from "./MorphoShapeUtil";
+import { getAdaptiveMorphoShapeSize, getMorphoShapeProps } from "./MorphoShapeUtil";
 
 describe("MorphoShapeUtil", () => {
   it("keeps image canvas props focused on the visual without persistent title or summary details", () => {
@@ -92,5 +93,201 @@ describe("MorphoShapeUtil", () => {
     const props = getMorphoShapeProps(instance, currentDefinition, undefined, proposed.workspace);
 
     expect(props.details).not.toContain("有修订草稿");
+  });
+  it("keeps research canvas cards as concise entry objects", () => {
+    const research: ResearchObject = {
+      id: "research-long",
+      type: "research",
+      title: "Ocean noise buoy research before design definition",
+      summary: "Long research card",
+      createdBy: "ai",
+      visibility: "active",
+      findings: [
+        "Existing materials can support a first design definition if the project is framed as a dynamic monitoring, warning, and management buoy system for ocean-noise hotspots."
+      ],
+      opportunities: [
+        "Define the buoy as a boundary node for a dynamic acoustic refuge, using color, light, and data-state visualization to communicate sea-area risk levels."
+      ],
+      constraints: [
+        "The current local research supports why ocean-noise intervention matters and why a buoy can work as a system node, but it is not enough for a complete industrial-grade product definition."
+      ],
+      openQuestions: [
+        "Who is the primary audience for the buoy: crew, port managers, marine protection organizations, research teams, or near-shore public users?"
+      ],
+      evidence: [],
+      provenance: {
+        operationId: "operation-research-long",
+        proposalId: "proposal-research-long",
+        sourceObjectIds: [],
+        citationIds: [],
+        didUseWebSearch: false
+      }
+    };
+
+    const size = getAdaptiveMorphoShapeSize(
+      {
+        id: "canvas-research-long",
+        objectId: research.id,
+        position: { x: 0, y: 0 },
+        size: { w: 320, h: 120 }
+      },
+      research
+    );
+
+    expect(size.w).toBe(320);
+    expect(size.h).toBeGreaterThan(120);
+    expect(size.h).toBeLessThanOrEqual(220);
+  });
+
+  it("keeps research detail sections out of the canvas card", () => {
+    const workspace = createInitialWorkspace();
+    const research = workspace.objects["research-night-path"];
+    const instance = workspace.canvas.instances.find((item) => item.objectId === "research-night-path");
+
+    if (!research || research.type !== "research" || !instance) {
+      throw new Error("Expected seed workspace to include a research object.");
+    }
+
+    const props = getMorphoShapeProps(instance, research, undefined, workspace);
+
+    expect(props.researchSections).toBeUndefined();
+    expect(props.details).toHaveLength(4);
+  });
+
+  it("keeps key conclusion canvas cards focused on the conclusion text only", () => {
+    const keyConclusion: KeyConclusionObject = {
+      id: "key-no-repeat",
+      type: "keyConclusion",
+      title: "问题必须在起足够成立，因此后续设计无需再反复证明“海洋噪音值得做”。",
+      summary: "问题必须在起足够成立，因此后续设计无需再反复证明“海洋噪音值得做”。",
+      body: "问题必须在起足够成立，因此后续设计无需再反复证明“海洋噪音值得做”。",
+      createdBy: "user",
+      visibility: "active",
+      state: "active",
+      confidence: "partial",
+      sourceObjectIds: ["research-night-path"],
+      citationIds: [],
+      confirmedAt: "2026-07-07T00:00:00.000Z",
+      createdAt: "2026-07-07T00:00:00.000Z",
+      updatedAt: "2026-07-07T00:00:00.000Z"
+    };
+    const instance: CanvasInstance = {
+      id: "canvas-key-no-repeat",
+      objectId: keyConclusion.id,
+      position: { x: 0, y: 0 },
+      size: { w: 280, h: 120 }
+    };
+
+    const props = getMorphoShapeProps(instance, keyConclusion);
+
+    expect(props.title).toBe(keyConclusion.title);
+    expect(props.details).toEqual([]);
+  });
+
+  it("uses the research item type as the label for extracted key conclusions", () => {
+    const workspace = createInitialWorkspace();
+    const research = workspace.objects["research-night-path"];
+    if (!research || research.type !== "research") {
+      throw new Error("Expected seed workspace to include a research object.");
+    }
+    const cases = [
+      ["发现第", "发现"],
+      ["机会点第", "机会点"],
+      ["约束第", "约束"],
+      ["待验证问题第", "待验证"]
+    ] as const;
+
+    for (const [noteKind, expectedLabel] of cases) {
+      const keyConclusion: KeyConclusionObject = {
+        id: `key-${expectedLabel}-label`,
+        type: "keyConclusion",
+        title: "把海域风险转译成港航管理可以执行的避让建议。",
+        summary: "把海域风险转译成港航管理可以执行的避让建议。",
+        body: "把海域风险转译成港航管理可以执行的避让建议。",
+        createdBy: "user",
+        visibility: "active",
+        state: "active",
+        confidence: "partial",
+        sourceObjectIds: [research.id],
+        citationIds: [],
+        confirmedAt: "2026-07-07T00:00:00.000Z",
+        note: `用户从研究对象“${research.title}”的${noteKind} 1条中保留关键结论。`,
+        createdAt: "2026-07-07T00:00:00.000Z",
+        updatedAt: "2026-07-07T00:00:00.000Z"
+      };
+      const instance: CanvasInstance = {
+        id: `canvas-${keyConclusion.id}`,
+        objectId: keyConclusion.id,
+        position: { x: 0, y: 0 },
+        size: { w: 280, h: 116 }
+      };
+
+      expect(getMorphoShapeProps(instance, keyConclusion).label).toBe(expectedLabel);
+    }
+  });
+
+  it("compacts previously auto-sized extracted key conclusion cards", () => {
+    const keyConclusion: KeyConclusionObject = {
+      id: "key-previously-tall",
+      type: "keyConclusion",
+      title: "围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。",
+      summary: "围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。",
+      body: "围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。",
+      createdBy: "user",
+      visibility: "active",
+      state: "active",
+      confidence: "partial",
+      sourceObjectIds: ["research-night-path"],
+      citationIds: [],
+      confirmedAt: "2026-07-07T00:00:00.000Z",
+      note: "用户从研究对象“研究与分析”的发现第 1条中保留关键结论。",
+      createdAt: "2026-07-07T00:00:00.000Z",
+      updatedAt: "2026-07-07T00:00:00.000Z"
+    };
+    const instance: CanvasInstance = {
+      id: "canvas-key-previously-tall",
+      objectId: keyConclusion.id,
+      position: { x: 0, y: 0 },
+      size: { w: 280, h: 218 }
+    };
+
+    const props = getMorphoShapeProps(instance, keyConclusion);
+
+    expect(props.h).toBeLessThanOrEqual(156);
+  });
+
+  it("caps long extracted conclusion cards instead of growing into oversized notes", () => {
+    const keyConclusion: KeyConclusionObject = {
+      id: "key-too-long",
+      type: "keyConclusion",
+      title:
+        "作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。",
+      summary:
+        "作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。",
+      body:
+        "作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。",
+      createdBy: "user",
+      visibility: "active",
+      state: "needsVerification",
+      confidence: "needsVerification",
+      sourceObjectIds: ["research-night-path"],
+      citationIds: [],
+      confirmedAt: "2026-07-07T00:00:00.000Z",
+      note: "用户从研究对象“研究与分析”的待验证问题第 1条中保留关键结论。",
+      createdAt: "2026-07-07T00:00:00.000Z",
+      updatedAt: "2026-07-07T00:00:00.000Z"
+    };
+    const props = getMorphoShapeProps(
+      {
+        id: "canvas-key-too-long",
+        objectId: keyConclusion.id,
+        position: { x: 0, y: 0 },
+        size: { w: 320, h: 104 }
+      },
+      keyConclusion
+    );
+
+    expect(props.h).toBeLessThanOrEqual(156);
+    expect(props.h).toBeGreaterThanOrEqual(118);
   });
 });

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { executeOpenAiCompatibleResponse, OpenAiCompatibleProviderError } from "./openaiCompatibleProvider";
+import {
+  executeOpenAiCompatibleResponse,
+  OpenAiCompatibleProviderError,
+  streamOpenAiCompatibleResponse
+} from "./openaiCompatibleProvider";
 
 describe("openai-compatible provider adapter", () => {
   it("extracts text, tool calls, citations, and web search count from responses output", async () => {
@@ -310,6 +314,64 @@ describe("openai-compatible provider adapter", () => {
           argumentsText: "{}"
         }
       ]);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("streams chat completion deltas from aijws-compatible endpoints", async () => {
+    const calls: Array<{ url: string; body: unknown }> = [];
+    const originalFetch = global.fetch;
+    const encoder = new TextEncoder();
+    global.fetch = async (input, init) => {
+      calls.push({
+        url: String(input),
+        body: JSON.parse(String(init?.body))
+      });
+
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"hello "}}]}\n\n'));
+            controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"world"}}]}\n\n'));
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+          }
+        }),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } }
+      ) as unknown as Response;
+    };
+
+    try {
+      const deltas: string[] = [];
+      const result = await streamOpenAiCompatibleResponse(
+        {
+          apiKey: "secret",
+          baseUrl: "https://api.aijws.com/v1",
+          model: "gpt-5.4",
+          webSearchEnabled: true
+        },
+        {
+          input: [
+            {
+              role: "user",
+              content: [{ type: "input_text", text: "hi" }]
+            }
+          ]
+        },
+        {
+          onTextDelta: (text) => deltas.push(text)
+        }
+      );
+
+      expect(calls[0].url).toBe("https://api.aijws.com/v1/chat/completions");
+      expect(calls[0].body).toEqual({
+        model: "gpt-5.4",
+        messages: [{ role: "user", content: "hi" }],
+        stream: true
+      });
+      expect(deltas).toEqual(["hello ", "world"]);
+      expect(result.outputText).toBe("hello world");
     } finally {
       global.fetch = originalFetch;
     }

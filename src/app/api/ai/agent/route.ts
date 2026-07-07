@@ -6,7 +6,7 @@ import {
   OpenAiCompatibleProviderError,
   type OpenAiCompatibleResponseRequest
 } from "@/server/ai/openaiCompatibleProvider";
-import { aiAccessDeniedResponse, guardAiRoute } from "@/server/auth/aiAccess";
+import { aiAccessDeniedResponse, guardAiRoute, requireAiRouteUser } from "@/server/auth/aiAccess";
 
 export const runtime = "nodejs";
 
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: validated.reason }, { status: 400 });
   }
 
-  const access = await guardAiRoute("text");
+  const access = validated.agentContinuation ? await requireAiRouteUser() : await guardAiRoute("text");
   if (access.status === "denied") {
     return aiAccessDeniedResponse(access);
   }
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
         {
           error:
             error.status === 401 || error.status === 403
-                ? "OpenAI-compatible Provider 鉴权失败，请检查 MORPHO_AI_API_KEY。"
+              ? "OpenAI-compatible Provider 鉴权失败，请检查 MORPHO_AI_API_KEY。"
               : error.status === 400
                 ? "OpenAI-compatible Provider 请求格式不兼容，请检查模型、tools 或图片输入。"
                 : readableProviderDiagnostic(error.diagnostic) ?? "OpenAI-compatible Provider 调用失败，请稍后重试。"
@@ -74,14 +74,23 @@ export function filterAgentRequestForConfig(
 }
 
 function validateAgentRouteRequest(value: unknown):
-  | { status: "ok"; value: OpenAiCompatibleResponseRequest }
+  | {
+      status: "ok";
+      value: OpenAiCompatibleResponseRequest;
+      agentTurnId?: string;
+      agentContinuation: boolean;
+    }
   | { status: "failed"; reason: string } {
   if (!isRecord(value) || !Array.isArray(value.input) || value.input.length === 0) {
     return { status: "failed", reason: "input 缺失或为空。" };
   }
 
+  const agentTurnId = typeof value.agentTurnId === "string" && value.agentTurnId.trim() ? value.agentTurnId : undefined;
+
   return {
     status: "ok",
+    agentTurnId,
+    agentContinuation: value.continuation === true && Boolean(agentTurnId),
     value: {
       input: value.input as OpenAiCompatibleResponseRequest["input"],
       tools: Array.isArray(value.tools) ? (value.tools as OpenAiCompatibleResponseRequest["tools"]) : undefined,

@@ -17,9 +17,11 @@ vi.mock("@/server/ai/openaiCompatibleConfig", () => ({
 }));
 
 const guardAiRouteMock = vi.fn();
+const requireAiRouteUserMock = vi.fn();
 
 vi.mock("@/server/auth/aiAccess", () => ({
   guardAiRoute: (...args: unknown[]) => guardAiRouteMock(...args),
+  requireAiRouteUser: (...args: unknown[]) => requireAiRouteUserMock(...args),
   aiAccessDeniedResponse: (result: { error: string; httpStatus: number }) =>
     Response.json({ error: result.error }, { status: result.httpStatus })
 }));
@@ -43,6 +45,7 @@ vi.mock("@/server/ai/openaiCompatibleProvider", () => ({
 describe("agent route config filtering", () => {
   beforeEach(() => {
     guardAiRouteMock.mockReset();
+    requireAiRouteUserMock.mockReset();
     guardAiRouteMock.mockResolvedValue({
       status: "allowed",
       usage: {
@@ -55,7 +58,19 @@ describe("agent route config filtering", () => {
         usageDate: "2026-07-05"
       }
     });
+    requireAiRouteUserMock.mockResolvedValue({
+      status: "allowed",
+      userId: "user-1"
+    });
     executeOpenAiCompatibleResponseMock.mockReset();
+    executeOpenAiCompatibleResponseMock.mockResolvedValue({
+      responseId: "resp_1",
+      outputText: "ok",
+      functionCalls: [],
+      citations: [],
+      webSearchCallCount: 0,
+      outputItems: []
+    });
   });
 
   it("removes local web search tools before provider execution when disabled", () => {
@@ -103,5 +118,23 @@ describe("agent route config filtering", () => {
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({ error: "请先登录 Morpho。" });
     expect(executeOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
+  });
+
+  it("uses auth-only access for same agent turn continuations", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/ai/agent", {
+        method: "POST",
+        body: JSON.stringify({
+          agentTurnId: "agent-turn-1",
+          continuation: true,
+          input: [{ role: "user", content: [{ type: "input_text", text: "continue" }] }]
+        })
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(requireAiRouteUserMock).toHaveBeenCalledTimes(1);
+    expect(guardAiRouteMock).not.toHaveBeenCalled();
+    expect(executeOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(1);
   });
 });

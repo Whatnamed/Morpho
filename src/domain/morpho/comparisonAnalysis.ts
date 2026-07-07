@@ -308,6 +308,32 @@ export function stripComparisonAnalysisBlock(text: string): string {
   return stripStructuredBlocksContainingMarkers(text, [COMPARISON_MARKER]).trim();
 }
 
+export function buildComparisonAnalysisVisibleSummary(analysis: ParsedComparisonAnalysisPayload): string {
+  const lines = ["Compare 分析", "", `结论：${analysis.conclusionSummary}`];
+
+  if (analysis.objectComparisons.length > 0) {
+    lines.push("", "对象判断：");
+    for (const entry of analysis.objectComparisons) {
+      const details = [
+        entry.summary,
+        entry.strengths.length > 0 ? `优势：${entry.strengths.join("；")}` : "",
+        entry.risks.length > 0 ? `风险：${entry.risks.join("；")}` : ""
+      ].filter(Boolean);
+      lines.push(`- ${entry.title}：${details.join("。")}`);
+    }
+  }
+
+  if (analysis.recommendedQuestions.length > 0) {
+    lines.push("", `待继续确认：${analysis.recommendedQuestions.join("；")}`);
+  }
+
+  if (analysis.evidenceLimits.length > 0) {
+    lines.push("", `证据边界：${analysis.evidenceLimits.join("；")}`);
+  }
+
+  return lines.join("\n");
+}
+
 export function sanitizeComparisonAssistantStreamForDisplay(rawText: string): string {
   return sanitizeStructuredStreamForDisplay(rawText, [COMPARISON_MARKER]);
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Target } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import { useState } from "react";
 
 import type {
@@ -186,10 +186,7 @@ export function BottomDetailBar({
   onOpenDocumentReader,
   onRenameVisualBranch,
   onArchiveVisualBranch,
-  onRestoreVisualBranch,
-  onSaveKeyConclusionFromResearchItem,
-  onCopyItemToDraft,
-  onContinueQuestion
+  onRestoreVisualBranch
 }: BottomDetailBarProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>("信息");
 
@@ -245,9 +242,6 @@ export function BottomDetailBar({
             hasPendingDesignDefinitionRevisionDraft,
             fragmentSourceState,
             fragmentLocation: fragmentInitialLocation,
-            onSaveKeyConclusionFromResearchItem,
-            onCopyItemToDraft,
-            onContinueQuestion,
             onRenameVisualBranch,
             onArchiveVisualBranch,
             onRestoreVisualBranch
@@ -372,9 +366,6 @@ function renderDetail(input: {
   hasPendingDesignDefinitionRevisionDraft: boolean;
   fragmentSourceState: ReturnType<typeof resolveDocumentFragmentSourceAvailability> | null;
   fragmentLocation: DocumentReaderInitialLocation | null;
-  onSaveKeyConclusionFromResearchItem: BottomDetailBarProps["onSaveKeyConclusionFromResearchItem"];
-  onCopyItemToDraft: BottomDetailBarProps["onCopyItemToDraft"];
-  onContinueQuestion: BottomDetailBarProps["onContinueQuestion"];
   onRenameVisualBranch: BottomDetailBarProps["onRenameVisualBranch"];
   onArchiveVisualBranch: BottomDetailBarProps["onArchiveVisualBranch"];
   onRestoreVisualBranch: BottomDetailBarProps["onRestoreVisualBranch"];
@@ -398,14 +389,7 @@ function renderDetail(input: {
 
   if (tab === "信息") {
     if (object.type === "research") {
-      return (
-        <ResearchDetail
-          object={object}
-          onSaveKeyConclusionFromResearchItem={input.onSaveKeyConclusionFromResearchItem}
-          onCopyItemToDraft={input.onCopyItemToDraft}
-          onContinueQuestion={input.onContinueQuestion}
-        />
-      );
+      return <ResearchCompactDetail object={object} />;
     }
 
     if (object.type === "keyConclusion") {
@@ -478,6 +462,10 @@ function renderDetail(input: {
   }
 
   if (tab === "来源") {
+    if (object.type === "research") {
+      return <ResearchSourceDetail object={object} relations={relations} />;
+    }
+
     if (object.type === "documentFragment") {
       return (
         <>
@@ -540,164 +528,46 @@ function renderDetail(input: {
     : "关键决策需要用户明确确认；AI 不会因为选中对象而自动改变主方向、默认参考或交付引用。";
 }
 
-function ResearchDetail({
-  object,
-  onSaveKeyConclusionFromResearchItem,
-  onCopyItemToDraft,
-  onContinueQuestion
-}: {
-  object: ResearchObject;
-  onSaveKeyConclusionFromResearchItem: BottomDetailBarProps["onSaveKeyConclusionFromResearchItem"];
-  onCopyItemToDraft: BottomDetailBarProps["onCopyItemToDraft"];
-  onContinueQuestion: BottomDetailBarProps["onContinueQuestion"];
-}) {
+function ResearchCompactDetail({ object }: { object: ResearchObject }) {
+  const totalItems = object.findings.length + object.opportunities.length + object.constraints.length + object.openQuestions.length;
+
   return (
-    <div className="research-detail">
+    <div className="research-detail research-detail-compact">
       <strong>{getObjectTypeLabel(object)}</strong> · {object.summary}
-      <ResearchGroup
-        label="发现"
-        items={object.findings}
-        kind="finding"
-        researchObjectId={object.id}
-        onSaveKeyConclusionFromResearchItem={onSaveKeyConclusionFromResearchItem}
-        onCopyItemToDraft={onCopyItemToDraft}
-        onContinueQuestion={onContinueQuestion}
-      />
-      <ResearchGroup
-        label="机会点"
-        items={object.opportunities}
-        kind="opportunity"
-        researchObjectId={object.id}
-        onSaveKeyConclusionFromResearchItem={onSaveKeyConclusionFromResearchItem}
-        onCopyItemToDraft={onCopyItemToDraft}
-        onContinueQuestion={onContinueQuestion}
-      />
-      <ResearchGroup
-        label="约束"
-        items={object.constraints}
-        kind="constraint"
-        researchObjectId={object.id}
-        onSaveKeyConclusionFromResearchItem={onSaveKeyConclusionFromResearchItem}
-        onCopyItemToDraft={onCopyItemToDraft}
-        onContinueQuestion={onContinueQuestion}
-      />
-      <ResearchGroup
-        label="待验证问题"
-        items={object.openQuestions}
-        kind="openQuestion"
-        researchObjectId={object.id}
-        onSaveKeyConclusionFromResearchItem={onSaveKeyConclusionFromResearchItem}
-        onCopyItemToDraft={onCopyItemToDraft}
-        onContinueQuestion={onContinueQuestion}
-      />
-      {object.evidence && object.evidence.length > 0 ? (
-        <section className="research-detail-group">
-          <h4>证据</h4>
-          {object.evidence.map((item, index) => (
-            <div className="research-item" key={`${object.id}-evidence-${index}`}>
-              <div className="research-item-body">
-                <strong>{item.claim}</strong>
-                <span className="detail-meta">
-                  来源：{item.sourceObjectIds.join("、") || "无"} · 引用：{item.citationIds.join("、") || "无"} · 置信度：
-                  {item.confidence}
-                </span>
-              </div>
-              <ResearchItemActions
-                text={item.claim}
-                researchObjectId={object.id}
-                kind="evidence"
-                index={index}
-                onSaveKeyConclusionFromResearchItem={onSaveKeyConclusionFromResearchItem}
-                onCopyItemToDraft={onCopyItemToDraft}
-                onContinueQuestion={onContinueQuestion}
-              />
-            </div>
-          ))}
-        </section>
-      ) : null}
-      {object.provenance ? (
-        <span className="detail-meta">
-          来源对象：{object.provenance.sourceObjectIds.join("、") || "无"} · 引用：
-          {object.provenance.citationIds.join("、") || "无"}
-        </span>
-      ) : null}
+      <span className="detail-meta">
+        候选内容：发现 {object.findings.length} · 机会 {object.opportunities.length} · 约束 {object.constraints.length} · 待验证{" "}
+        {object.openQuestions.length}
+      </span>
+      <span className="detail-meta">
+        这些候选内容已在画布卡片上摘要显示；完整来源、证据和引用在“来源”中追溯。
+        {totalItems > 4 ? ` 共 ${totalItems} 条。` : ""}
+      </span>
     </div>
   );
 }
 
-function ResearchGroup({
-  label,
-  items,
-  kind,
-  researchObjectId,
-  onSaveKeyConclusionFromResearchItem,
-  onCopyItemToDraft,
-  onContinueQuestion
-}: {
-  label: string;
-  items: string[];
-  kind: Exclude<ResearchSourceKind, "evidence">;
-  researchObjectId: string;
-  onSaveKeyConclusionFromResearchItem: BottomDetailBarProps["onSaveKeyConclusionFromResearchItem"];
-  onCopyItemToDraft: BottomDetailBarProps["onCopyItemToDraft"];
-  onContinueQuestion: BottomDetailBarProps["onContinueQuestion"];
-}) {
-  if (items.length === 0) {
-    return null;
-  }
-
-  return (
-    <section className="research-detail-group">
-      <h4>{label}</h4>
-      {items.map((item, index) => (
-        <div className="research-item" key={`${researchObjectId}-${kind}-${index}`}>
-          <div className="research-item-body">
-            <strong>{item}</strong>
-          </div>
-          <ResearchItemActions
-            text={item}
-            researchObjectId={researchObjectId}
-            kind={kind}
-            index={index}
-            onSaveKeyConclusionFromResearchItem={onSaveKeyConclusionFromResearchItem}
-            onCopyItemToDraft={onCopyItemToDraft}
-            onContinueQuestion={onContinueQuestion}
-          />
-        </div>
-      ))}
-    </section>
+function ResearchSourceDetail({ object, relations }: { object: ResearchObject; relations: MorphoRelation[] }) {
+  const sourceRelations = relations.filter(
+    (relation) => relation.kind === "source" || relation.kind === "supports" || relation.kind === "supportsConclusion"
   );
-}
 
-function ResearchItemActions({
-  text,
-  researchObjectId,
-  kind,
-  index,
-  onSaveKeyConclusionFromResearchItem,
-  onCopyItemToDraft,
-  onContinueQuestion
-}: {
-  text: string;
-  researchObjectId: string;
-  kind: ResearchSourceKind;
-  index: number;
-  onSaveKeyConclusionFromResearchItem: BottomDetailBarProps["onSaveKeyConclusionFromResearchItem"];
-  onCopyItemToDraft: BottomDetailBarProps["onCopyItemToDraft"];
-  onContinueQuestion: BottomDetailBarProps["onContinueQuestion"];
-}) {
   return (
-    <div className="research-item-actions">
-      <button type="button" onClick={() => onSaveKeyConclusionFromResearchItem({ researchObjectId, sourceKind: kind, index })}>
-        <Target size={13} />
-        保留为关键结论
-      </button>
-      <button type="button" onClick={() => onCopyItemToDraft(text)}>
-        复制到输入框
-      </button>
-      <button type="button" onClick={() => onContinueQuestion(text)}>
-        继续追问
-      </button>
+    <div className="research-detail research-detail-compact">
+      <strong>研究来源</strong>
+      {object.provenance ? (
+        <span className="detail-meta">
+          来源对象：{object.provenance.sourceObjectIds.join("、") || "无"} · 引用：
+          {object.provenance.citationIds.join("、") || "无"} · 联网：{object.provenance.didUseWebSearch ? "是" : "否"}
+        </span>
+      ) : (
+        <span className="detail-meta">当前研究对象没有记录来源快照。</span>
+      )}
+      {object.evidence && object.evidence.length > 0 ? (
+        <span className="detail-meta">
+          证据：{object.evidence.length} 条 · {object.evidence[0]?.claim}
+        </span>
+      ) : null}
+      {sourceRelations.length > 0 ? <span className="detail-meta">{sourceRelations.map((relation) => relation.note).join(" ")}</span> : null}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createInitialWorkspace } from "@/domain/morpho/workspace";
 import {
+  MORPHO_EDITOR_SYNC_RUN_OPTIONS,
   areMorphoShapePropsEqual,
   isMorphoShapeActiveInWorkspace,
   resolveInstanceForEditorSync,
@@ -12,6 +13,10 @@ import {
 } from "./MorphoCanvas";
 
 describe("MorphoCanvas focus navigation", () => {
+  it("keeps workspace-driven shape sync out of tldraw undo history", () => {
+    expect(MORPHO_EDITOR_SYNC_RUN_OPTIONS).toEqual({ history: "ignore" });
+  });
+
   it("uses real canvas instance positions before falling back to fixed landmarks", () => {
     const workspace = createInitialWorkspace();
     const movedWorkspace = {

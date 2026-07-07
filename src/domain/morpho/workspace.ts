@@ -22,6 +22,7 @@ import type {
   CanvasInstance,
   CanvasInstanceId,
   CanvasPoint,
+  CanvasSize,
   ConceptDirectionObject,
   ConceptDirectionStatus,
   DeliveryObject,
@@ -1101,6 +1102,7 @@ export function createKeyConclusion(
     state?: KeyConclusionObject["state"];
     note?: string;
     position: CanvasPoint;
+    size?: CanvasSize;
     comparison?: ComparisonDecisionMetadata;
   }
 ): CreateKeyConclusionResult {
@@ -1165,7 +1167,7 @@ export function createKeyConclusion(
           id: `canvas-${objectId}`,
           objectId,
           position: input.position,
-          size: { w: 280, h: 120 }
+          size: input.size ?? { w: 280, h: 120 }
         }
       ]
     },

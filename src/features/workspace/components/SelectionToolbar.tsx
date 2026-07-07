@@ -24,6 +24,8 @@ export type SelectionToolbarProps = {
   isDesignTraceActive: boolean;
   onAskAi: () => void;
   onToggleDesignTrace: () => void;
+  onOpenResearchDetail: () => void;
+  onAutoSelectResearch: () => void;
   onOpenDocumentReader: () => void;
   onOpenDeliveryPreparation: () => void;
   onLocalEdit: () => void;
@@ -47,6 +49,8 @@ export function SelectionToolbar({
   isDesignTraceActive,
   onAskAi,
   onToggleDesignTrace,
+  onOpenResearchDetail,
+  onAutoSelectResearch,
   onOpenDocumentReader,
   onOpenDeliveryPreparation,
   onLocalEdit,
@@ -91,6 +95,18 @@ export function SelectionToolbar({
           <BookOpen size={15} />
           回原文
         </button>
+      ) : null}
+      {onlyOne && primary.type === "research" ? (
+        <>
+          <button className="brand" type="button" onClick={onOpenResearchDetail}>
+            <BookOpen size={15} />
+            研究详情
+          </button>
+          <button type="button" onClick={onAutoSelectResearch}>
+            <Sparkles size={15} />
+            AI 代选
+          </button>
+        </>
       ) : null}
       {onlyOne && primary.type === "delivery" ? (
         <button className="brand" type="button" onClick={onOpenDeliveryPreparation}>

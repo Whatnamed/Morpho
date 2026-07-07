@@ -31,9 +31,10 @@ export function getSelectionToolbarPlacement(
     obstacles?: ScreenRect[];
   }
 ): SelectionToolbarPlacement {
-  const preferredX = selectionBounds.x + selectionBounds.w / 2 - options.toolbar.w / 2;
-  const maxX = Math.max(options.margin, viewport.w - options.margin - options.toolbar.w);
-  const x = clamp(preferredX, options.margin, maxX);
+  const preferredCenterX = selectionBounds.x + selectionBounds.w / 2;
+  const minCenterX = options.margin + options.toolbar.w / 2;
+  const maxCenterX = Math.max(minCenterX, viewport.w - options.margin - options.toolbar.w / 2);
+  const x = clamp(preferredCenterX, minCenterX, maxCenterX);
   const aboveY = selectionBounds.y - options.gap - options.toolbar.h;
   const belowY = selectionBounds.y + selectionBounds.h + options.gap;
   const canFitAbove = aboveY >= options.margin;

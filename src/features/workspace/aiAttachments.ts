@@ -56,6 +56,17 @@ export function shouldAttachImagesForAiProvider(input: {
   return input.selectedObjects.some((object) => object.type === "image" && object.visibility === "active");
 }
 
+export function resolveAiProviderImageObjectIds(input: {
+  contextImageObjectIds: readonly string[];
+  selectedObjects: readonly MorphoObject[];
+}): string[] {
+  const selectedImageIds = input.selectedObjects
+    .filter((object) => object.type === "image" && object.visibility === "active")
+    .map((object) => object.id);
+
+  return uniqueStrings([...selectedImageIds, ...input.contextImageObjectIds]);
+}
+
 export function buildWebSearchOptions(input: {
   draft: string;
   taskMode: "chatAnalysis" | "imageGeneration" | "researchOperation";
@@ -472,4 +483,8 @@ function chunkArray<T>(items: readonly T[], chunkSize: number): T[][] {
     chunks.push(items.slice(index, index + chunkSize));
   }
   return chunks;
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values)];
 }

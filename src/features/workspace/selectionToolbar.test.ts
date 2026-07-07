@@ -27,7 +27,7 @@ describe("selection toolbar placement", () => {
     );
 
     expect(placement.placement).toBe("above");
-    expect(placement.x).toBe(470);
+    expect(placement.x).toBe(730);
   });
 
   it("clamps context menus inside the visible viewport", () => {

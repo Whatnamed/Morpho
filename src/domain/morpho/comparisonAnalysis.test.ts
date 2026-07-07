@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { buildComparisonAuthorization, parseComparisonAnalysisPayload, resolveComparisonSelection, validateComparisonAnalysis } from "./comparisonAnalysis";
+import {
+  buildComparisonAnalysisVisibleSummary,
+  buildComparisonAuthorization,
+  parseComparisonAnalysisPayload,
+  resolveComparisonSelection,
+  validateComparisonAnalysis
+} from "./comparisonAnalysis";
 import { createInitialWorkspace, hideObject } from "./workspace";
 import type { MorphoWorkspace } from "./types";
 import { buildDocumentReaderBlocks } from "@/features/workspace/documentReader";
@@ -213,6 +219,39 @@ describe("comparison analysis domain rules", () => {
     ].join("\n"));
 
     expect(parsed.status).toBe("blockedByProposal");
+  });
+
+  it("builds a readable fallback when a compare reply contains only the structured payload", () => {
+    const visible = buildComparisonAnalysisVisibleSummary({
+      comparisonGoal: "compare",
+      conclusionSummary: "Direction A is stronger for the current goal.",
+      objectComparisons: [
+        {
+          objectId: "direction-a",
+          title: "Direction A",
+          summary: "Keeps the route continuous.",
+          strengths: ["Clear guidance"],
+          risks: ["Corner detail needs validation"],
+          evidence: []
+        },
+        {
+          objectId: "file-brief",
+          title: "Brief",
+          evidenceBasis: "documentExtract",
+          summary: "Confirms the night-use constraint.",
+          strengths: [],
+          risks: [],
+          evidence: ["Night-use constraint"]
+        }
+      ],
+      recommendedQuestions: ["Validate the corner detail."],
+      evidenceLimits: ["One image was not available as pixels."]
+    });
+
+    expect(visible).toContain("Compare 分析");
+    expect(visible).toContain("Direction A is stronger");
+    expect(visible).toContain("Direction A");
+    expect(visible).toContain("证据边界");
   });
 
   it("requires exact selection coverage and valid key conclusion candidate evidence", () => {

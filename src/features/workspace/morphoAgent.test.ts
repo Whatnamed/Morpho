@@ -1,8 +1,44 @@
 import { describe, expect, it } from "vitest";
 
-import { parseMorphoAgentToolArguments, type AgentFunctionCall } from "./morphoAgent";
+import { createInitialWorkspace } from "@/domain/morpho/workspace";
+
+import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
+import {
+  buildMorphoAgentSystemPrompt,
+  buildMorphoAgentTools,
+  parseMorphoAgentToolArguments,
+  type AgentFunctionCall
+} from "./morphoAgent";
 
 describe("Morpho agent tool argument validation", () => {
+  it("instructs research tools to output evaluated scannable points", () => {
+    const tools = buildMorphoAgentTools(false);
+    const serializedTools = JSON.stringify(tools);
+
+    expect(serializedTools).toContain("短标题：一句说明");
+    expect(serializedTools).toContain("筛选真正有价值");
+  });
+
+  it("keeps the agent research contract focused on evaluated candidates", () => {
+    const workspace = createInitialWorkspace();
+    const selectedObjects = [workspace.objects["research-night-path"]].filter(Boolean);
+    const context = buildTaskContext(workspace, {
+      kind: "research",
+      draft: "继续分析这张研究卡，筛出可保留的点。",
+      selectedObjectIds: ["research-night-path"]
+    });
+    const prompt = buildMorphoAgentSystemPrompt({
+      mode: "auto",
+      workspace,
+      selectedObjects,
+      context,
+      providerTaskContext: buildProviderTaskContext(context)
+    });
+
+    expect(prompt).toContain("研究输出先广泛分析，再评估筛选");
+    expect(prompt).toContain("短标题：一句说明");
+  });
+
   it("normalizes direction preview visual roles before operation validation", () => {
     const parsed = parseMorphoAgentToolArguments(makeCall("generate_visuals", {
       kind: "directionPreview",
@@ -34,6 +70,27 @@ describe("Morpho agent tool argument validation", () => {
             role: "conceptImage"
           }
         ]
+      }
+    });
+  });
+
+  it("tolerates optional research notes without blocking research card creation", () => {
+    const parsed = parseMorphoAgentToolArguments(makeCall("create_research_analysis", {
+      title: "海洋噪声研究",
+      summary: "筛出可用于定义阶段的候选点。",
+      findings: ["证据边界：现有资料能支持问题重要性，但还不足以证明完整工业产品定义。"],
+      opportunities: ["管理动作：把风险识别结果转译成港航管理可执行的避让建议。"],
+      constraints: [],
+      openQuestions: [],
+      evidence: [],
+      changeNote: "本轮只创建研究卡，不应用为稳定结论。"
+    }));
+
+    expect(parsed).toMatchObject({
+      name: "create_research_analysis",
+      args: {
+        title: "海洋噪声研究",
+        changeNote: "本轮只创建研究卡，不应用为稳定结论。"
       }
     });
   });

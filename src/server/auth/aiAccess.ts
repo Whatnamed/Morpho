@@ -27,6 +27,17 @@ export type AiRouteAccessResult =
       error: string;
     };
 
+export type AiRouteUserAccessResult =
+  | {
+      status: "allowed";
+      userId: string;
+    }
+  | {
+      status: "denied";
+      httpStatus: 401 | 503;
+      error: string;
+    };
+
 export type AiAccessClient = {
   auth: {
     getUser(): Promise<{
@@ -70,6 +81,31 @@ export async function guardAiRoute(kind: AiQuotaKind): Promise<AiRouteAccessResu
   }
 
   return reserveAiQuotaForRequest(created.client as unknown as AiAccessClient, kind);
+}
+
+export async function requireAiRouteUser(): Promise<AiRouteUserAccessResult> {
+  const created = await createServerSupabaseClient();
+  if (created.status === "failed") {
+    return {
+      status: "denied",
+      httpStatus: 503,
+      error: created.reason
+    };
+  }
+
+  const userResult = await (created.client as unknown as AiAccessClient).auth.getUser();
+  if (userResult.error || !userResult.data.user) {
+    return {
+      status: "denied",
+      httpStatus: 401,
+      error: "璇峰厛鐧诲綍 Morpho銆?"
+    };
+  }
+
+  return {
+    status: "allowed",
+    userId: userResult.data.user.id
+  };
 }
 
 export async function reserveAiQuotaForRequest(client: AiAccessClient, kind: AiQuotaKind): Promise<AiRouteAccessResult> {

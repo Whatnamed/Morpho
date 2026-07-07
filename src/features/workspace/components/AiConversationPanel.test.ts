@@ -61,6 +61,49 @@ describe("AiConversationPanel", () => {
     expect(html).toContain("2 条");
   });
 
+  it("renders research citations with the selected left-rule source style", () => {
+    const workspace = createInitialWorkspace();
+    const citationIds = ["citation-a", "citation-b", "citation-c", "citation-d", "citation-e"];
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        workspace: {
+          ...workspace,
+          citationSnapshots: Object.fromEntries(
+            citationIds.map((id, index) => [
+              id,
+              {
+                id,
+                operationId: "operation-citations",
+                title: `Source ${index + 1}`,
+                url: `https://example.com/${index + 1}`,
+                domain: `example-${index + 1}.com`,
+                retrievedAt: "2026-07-07T08:00:00.000Z"
+              }
+            ])
+          ),
+          ai: {
+            ...workspace.ai,
+            messages: [
+              {
+                id: "assistant-with-citations",
+                role: "assistant",
+                body: "这轮调研有 5 个来源。",
+                status: "done",
+                citationIds
+              }
+            ]
+          }
+        }
+      }))
+    );
+
+    expect(html.match(/citation-link citation-link-line/g)).toHaveLength(citationIds.length);
+    expect(html).not.toContain("citation-link-index");
+    expect(html).not.toContain("citation-link-biblio");
+    expect(html).not.toContain("citation-link-rule");
+    expect(html).not.toContain("citation-link-minimal");
+  });
+
   it("renders lightweight conversation checkpoint feedback without exposing checkpoint content", () => {
     const workspace = createInitialWorkspace();
     const html = renderToStaticMarkup(
@@ -504,6 +547,78 @@ describe("AiConversationPanel", () => {
     expect(html).not.toContain("当前任务正在进行");
   });
 
+  it("renders context warnings as compact notes instead of failure cards", () => {
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        contextWarning: "Some selected context was shortened."
+      }))
+    );
+
+    expect(html).toContain("context-note");
+    expect(html).toContain("Some selected context was shortened.");
+    expect(html).toContain("不会改变原文件");
+    expect(html).not.toContain("默认参考未进入本次语境");
+  });
+
+  it("uses a user bubble and assistant prose without the same bubble chrome", () => {
+    const workspace = createInitialWorkspace();
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        workspace: {
+          ...workspace,
+          ai: {
+            ...workspace.ai,
+            messages: [
+              {
+                id: "user-1",
+                role: "user",
+                body: "请比较这两张图",
+                createdAt: "2026-07-07T08:00:00.000Z"
+              },
+              {
+                id: "assistant-1",
+                role: "assistant",
+                body: "可以，我会先看结构差异。",
+                createdAt: "2026-07-07T08:00:01.000Z",
+                status: "done"
+              }
+            ]
+          }
+        }
+      }))
+    );
+
+    expect(html).toContain('class="ai-message user"');
+    expect(html).toContain('class="ai-message assistant"');
+  });
+
+  it("shows a thinking indicator for an empty streaming assistant message", () => {
+    const workspace = createInitialWorkspace();
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        workspace: {
+          ...workspace,
+          ai: {
+            ...workspace.ai,
+            messages: [
+              {
+                id: "assistant-streaming",
+                role: "assistant",
+                body: "",
+                createdAt: "2026-07-07T08:00:01.000Z",
+                status: "streaming"
+              }
+            ]
+          }
+        },
+        isStreaming: true
+      }))
+    );
+
+    expect(html).toContain("thinking-row");
+    expect(html).toContain("Thinking");
+  });
+
   it("uses the primary input action to stop an unfinished operation without adding a second stop control", () => {
     const workspace = createInitialWorkspace();
     const html = renderToStaticMarkup(
@@ -584,6 +699,8 @@ describe("AiConversationPanel", () => {
 
     expect(html).toContain("ai-scroll-bottom-button");
     expect(html).toContain('aria-label="滚动到最新消息"');
+    expect(html).toContain("ai-top-handle");
+    expect(html).not.toContain("ai-panel-logo");
     expect(html).not.toContain(">打开 AI<");
     expect(html).not.toContain(">收起 AI<");
   });
@@ -599,7 +716,7 @@ describe("AiConversationPanel", () => {
     );
 
     expect(html).toContain("input-context-strip");
-    expect(html).toContain(`已选 ${selectedObjects.length} 个对象`);
+    expect(html).toContain(`已选 ${selectedObjects.length}`);
     expect(html).toContain(`+${selectedObjects.length - 3}`);
     expect(html).not.toContain("conversation-title\">当前语境");
   });
@@ -612,7 +729,7 @@ describe("AiConversationPanel", () => {
     );
 
     expect(html).toContain("自动执行");
-    expect(html).toContain("Agent 会自动判断研究、提案、比较和出图");
+    expect(html).not.toContain("Agent 会自动判断研究、提案、比较和出图");
     expect(html).not.toContain("图像生成（自动判断）");
   });
 

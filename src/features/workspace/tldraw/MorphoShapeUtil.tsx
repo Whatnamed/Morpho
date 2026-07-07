@@ -17,9 +17,16 @@ import {
 import type { CanvasInstance, MorphoObject, MorphoObjectType, MorphoWorkspace } from "../../../domain/morpho/types";
 import { hasPendingDesignDefinitionRevisionProposal } from "../../../domain/morpho/derivedState";
 import { deriveDeliveryPreparationSignals } from "../../../domain/morpho/deliveryPreparation";
+import { getResearchItemParts } from "../../../domain/operations/researchItems";
 import { getObjectTypeLabel } from "../workspaceUi";
 
 export const MORPHO_SHAPE_TYPE = "morpho-object";
+
+type ResearchShapeSection = {
+  label: string;
+  items: string[];
+  omittedCount: number;
+};
 
 type MorphoShapeProps = {
   w: number;
@@ -36,6 +43,7 @@ type MorphoShapeProps = {
   isBeingLocallyEdited?: boolean;
   isInDesignTrace?: boolean;
   assetUrl?: string;
+  researchSections?: ResearchShapeSection[];
 };
 
 declare module "@tldraw/tlschema" {
@@ -75,7 +83,14 @@ export class MorphoShapeUtil extends BaseBoxShapeUtil<MorphoShape> {
     isDefaultReference: T.boolean.optional(),
     isBeingLocallyEdited: T.boolean.optional(),
     isInDesignTrace: T.boolean.optional(),
-    assetUrl: T.string.optional()
+    assetUrl: T.string.optional(),
+    researchSections: T.arrayOf(
+      T.object({
+        label: T.string,
+        items: T.arrayOf(T.string),
+        omittedCount: T.number
+      })
+    ).optional()
   };
 
   override canBind() {
@@ -163,19 +178,165 @@ export function getMorphoShapeProps(
   assetUrl?: string,
   workspace?: MorphoWorkspace
 ): MorphoShapeProps {
+  const details = getDetails(object, workspace);
+  const adaptiveSize = getAdaptiveMorphoShapeSize(instance, object, details);
+
   return {
-    w: instance.size.w,
-    h: instance.size.h,
+    w: adaptiveSize.w,
+    h: adaptiveSize.h,
     objectId: object.id,
     instanceId: instance.id,
     morphoType: object.type,
     title: object.title,
     summary: object.summary,
-    label: getObjectTypeLabel(object),
-    details: getDetails(object, workspace),
+    label: getMorphoShapeLabel(object),
+    details,
     imageVariant: object.type === "image" ? object.imageVariant : undefined,
     isDefaultReference: object.type === "image" ? object.isDefaultReference : undefined,
     assetUrl
+  };
+}
+
+export function getAdaptiveMorphoShapeSize(
+  instance: CanvasInstance,
+  object: MorphoObject,
+  details = getDetails(object)
+): { w: number; h: number } {
+  if (!isContentHeightAdaptiveObject(object)) {
+    return instance.size;
+  }
+
+  if (object.type === "research") {
+    return getResearchShapeSize(instance, object);
+  }
+
+  if (object.type === "keyConclusion") {
+    return getKeyConclusionShapeSize(instance, object);
+  }
+
+  const width = Math.max(instance.size.w, 260);
+  const contentWidth = Math.max(160, width - 40);
+  const titleLineCount = estimateLineCount(object.title, Math.max(10, Math.floor(contentWidth / 18)));
+  const detailLineCount = details.reduce(
+    (total, detail) => total + estimateLineCount(detail, Math.max(14, Math.floor(contentWidth / 10.5))),
+    0
+  );
+  const detailGapHeight = Math.max(0, details.length - 1) * 9;
+  const estimatedHeight = 18 + 12 + 12 + titleLineCount * 25 + 13 + detailLineCount * 18 + detailGapHeight + 18;
+
+  return {
+    w: width,
+    h: Math.max(instance.size.h, Math.ceil(estimatedHeight))
+  };
+}
+
+function getKeyConclusionShapeSize(instance: CanvasInstance, object: Extract<MorphoObject, { type: "keyConclusion" }>): { w: number; h: number } {
+  const width = Math.max(instance.size.w, 300);
+  const contentWidth = Math.max(176, width - 42);
+  const parts = getResearchItemParts(object.title);
+  const titleLineCount = estimateLineCount(parts.title, Math.max(12, Math.floor(contentWidth / 12)));
+  const detailLineCount = parts.detail ? estimateLineCount(parts.detail, Math.max(14, Math.floor(contentWidth / 11))) : 0;
+  const estimatedHeight = 16 + 12 + 9 + titleLineCount * 18 + (parts.detail ? 5 + detailLineCount * 17 : 0) + 16;
+  const extractedLabel = getResearchExtractedKeyConclusionLabel(object.note);
+  const compactHeight = extractedLabel
+    ? Math.min(156, Math.max(108, Math.ceil(estimatedHeight)))
+    : Math.ceil(estimatedHeight);
+  const isPreviouslyAutoSizedExtraction =
+    Boolean(extractedLabel) &&
+    instance.size.w >= 280 &&
+    instance.size.w <= 340 &&
+    instance.size.h > compactHeight &&
+    instance.size.h <= 260;
+
+  return {
+    w: width,
+    h: isPreviouslyAutoSizedExtraction ? compactHeight : Math.max(instance.size.h, compactHeight)
+  };
+}
+
+function getResearchShapeSize(instance: CanvasInstance, object: Extract<MorphoObject, { type: "research" }>): { w: number; h: number } {
+  const width = Math.max(instance.size.w, 320);
+  const contentWidth = Math.max(190, width - 40);
+  const titleLineCount = estimateLineCount(object.title, Math.max(12, Math.floor(contentWidth / 14)));
+  const summaryLineCount = Math.min(3, estimateLineCount(object.summary, Math.max(16, Math.floor(contentWidth / 11))));
+  const estimatedHeight = 16 + 12 + titleLineCount * 20 + (object.summary.trim() ? 8 + summaryLineCount * 17 : 0) + 18;
+  const compactHeight = Math.min(220, Math.max(124, Math.ceil(estimatedHeight)));
+  const isGeneratedDefaultResearchSize = instance.size.w >= 300 && instance.size.w <= 340 && instance.size.h === 210;
+
+  return {
+    w: width,
+    h: isGeneratedDefaultResearchSize ? compactHeight : Math.max(instance.size.h, compactHeight)
+  };
+}
+
+function getMorphoShapeLabel(object: MorphoObject): string {
+  if (object.type !== "keyConclusion") {
+    return getObjectTypeLabel(object);
+  }
+
+  return getResearchExtractedKeyConclusionLabel(object.note) ?? getObjectTypeLabel(object);
+}
+
+function getResearchExtractedKeyConclusionLabel(note?: string): string | undefined {
+  if (!note) {
+    return undefined;
+  }
+
+  if (note.includes("发现第")) {
+    return "发现";
+  }
+  if (note.includes("机会点第")) {
+    return "机会点";
+  }
+  if (note.includes("约束第")) {
+    return "约束";
+  }
+  if (note.includes("待验证问题第")) {
+    return "待验证";
+  }
+
+  return undefined;
+}
+
+function isContentHeightAdaptiveObject(object: MorphoObject): boolean {
+  return (
+    object.type === "research" ||
+    object.type === "designDefinition" ||
+    object.type === "keyConclusion" ||
+    object.type === "documentFragment" ||
+    object.type === "text"
+  );
+}
+
+function estimateLineCount(text: string, charsPerLine: number): number {
+  if (!text.trim()) {
+    return 1;
+  }
+
+  return Math.max(
+    1,
+    text
+      .split(/\r?\n/)
+      .reduce((total, line) => total + Math.max(1, Math.ceil(Array.from(line).length / charsPerLine)), 0)
+  );
+}
+
+export function getResearchShapeSections(object: Extract<MorphoObject, { type: "research" }>): ResearchShapeSection[] {
+  return [
+    createResearchShapeSection("发现", object.findings),
+    createResearchShapeSection("机会", object.opportunities),
+    createResearchShapeSection("约束", object.constraints),
+    createResearchShapeSection("待验证", object.openQuestions)
+  ];
+}
+
+function createResearchShapeSection(label: string, sourceItems: string[]): ResearchShapeSection {
+  const items = sourceItems.length > 0 ? sourceItems.slice(0, 1) : ["待补充"];
+
+  return {
+    label,
+    items,
+    omittedCount: Math.max(0, sourceItems.length - items.length)
   };
 }
 
@@ -191,7 +352,7 @@ function getDetails(object: MorphoObject, workspace?: MorphoWorkspace): string[]
         `待验证：${object.openQuestions[0] ?? "待补充"}`
       ];
     case "keyConclusion":
-      return [object.body, `状态：${object.state}`, `置信度：${object.confidence}`];
+      return [];
     case "documentFragment":
       return [`来源文件：${object.source.fileTitle}`, object.body.slice(0, 160), "来源状态：查看详情"];
     case "designDefinition": {
@@ -269,9 +430,33 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
   }
 
   if (
-    props.morphoType === "research" ||
+    props.morphoType === "research"
+  ) {
+    return (
+      <article className={classes}>
+        <RoleLabel label={props.label} />
+        <h3>{props.title}</h3>
+        {props.summary ? <p className="morpho-research-summary">{props.summary}</p> : null}
+      </article>
+    );
+  }
+
+  if (
+    props.morphoType === "keyConclusion"
+  ) {
+    const parts = getResearchItemParts(props.title);
+
+    return (
+      <article className={classes}>
+        <RoleLabel label={props.label} />
+        <h3 className="morpho-key-title">{parts.title}</h3>
+        {parts.detail ? <p className="morpho-key-detail">{parts.detail}</p> : null}
+      </article>
+    );
+  }
+
+  if (
     props.morphoType === "designDefinition" ||
-    props.morphoType === "keyConclusion" ||
     props.morphoType === "documentFragment" ||
     props.morphoType === "text"
   ) {

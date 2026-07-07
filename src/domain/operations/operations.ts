@@ -1637,7 +1637,7 @@ export function applyResearchAnalysisProposal(
             id: instanceId,
             objectId,
             position: input.position,
-            size: { w: 320, h: 210 }
+            size: { w: 320, h: 148 }
           }
         ]
       },

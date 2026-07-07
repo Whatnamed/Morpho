@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 
 import { loadOpenAiCompatibleConfig } from "@/server/ai/openaiCompatibleConfig";
 import {
-  executeOpenAiCompatibleResponse,
   OpenAiCompatibleProviderError,
+  streamOpenAiCompatibleResponse,
   type OpenAiCompatibleResponseRequest,
+  type ProviderCitation,
   type ResponseMessageInput
 } from "@/server/ai/openaiCompatibleProvider";
 import { buildMorphoSystemPrompt, buildProviderMessages, validateAiRouteRequest } from "@/server/ai/request";
@@ -38,33 +39,22 @@ export async function POST(request: Request) {
   }
 
   const webSearch = config.config.webSearchEnabled ? validated.value.webSearch : undefined;
-  const imageInputCount = validated.value.attachments.filter((attachment) => attachment.status === "ready").length;
+  const providerRequest = buildOpenAiCompatibleChatRequest(validated.value, Boolean(webSearch?.enabled));
 
-  try {
-    const result = await executeOpenAiCompatibleResponse(
-      config.config,
-      buildOpenAiCompatibleChatRequest(validated.value, Boolean(webSearch?.enabled)),
-      request.signal
-    );
-
-    return new Response(createNdjsonChatStream(result), {
+  return new Response(
+    createNdjsonChatStream({
+      config: config.config,
+      providerRequest,
+      originalRequest: validated.value,
+      signal: request.signal
+    }),
+    {
       headers: {
         "Content-Type": "application/x-ndjson; charset=utf-8",
         "Cache-Control": "no-store"
       }
-    });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error: getOpenAiCompatibleChatRouteErrorMessage(error, {
-          imageInputCount,
-          webSearchEnabled: webSearch?.enabled === true,
-          diagnostic: error instanceof OpenAiCompatibleProviderError ? error.diagnostic : undefined
-        })
-      },
-      { status: 502 }
-    );
-  }
+    }
+  );
 }
 
 function buildOpenAiCompatibleChatRequest(request: AiRouteRequest, includeWebSearch: boolean): OpenAiCompatibleResponseRequest {
@@ -114,22 +104,132 @@ function convertProviderMessageToResponseInput(message: ProviderChatMessage): Re
   };
 }
 
-function createNdjsonChatStream(result: Awaited<ReturnType<typeof executeOpenAiCompatibleResponse>>): ReadableStream<Uint8Array> {
+function createNdjsonChatStream(input: {
+  config: Parameters<typeof streamOpenAiCompatibleResponse>[0];
+  providerRequest: OpenAiCompatibleResponseRequest;
+  originalRequest: AiRouteRequest;
+  signal: AbortSignal;
+}): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
+
   return new ReadableStream({
-    start(controller) {
-      if (result.outputText) {
-        controller.enqueue(encoder.encode(`${JSON.stringify({ type: "delta", text: result.outputText })}\n`));
-      }
+    async start(controller) {
+      const writeEvent = (event: unknown) => {
+        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+      };
 
-      if (result.citations.length > 0) {
-        controller.enqueue(encoder.encode(`${JSON.stringify({ type: "citations", citations: result.citations })}\n`));
-      }
+      const runProviderStream = async (
+        providerRequest: OpenAiCompatibleResponseRequest,
+        leadingWarning?: string
+      ) => {
+        if (leadingWarning) {
+          writeEvent({ type: "delta", text: `${leadingWarning}\n\n` });
+        }
 
-      controller.enqueue(encoder.encode(`${JSON.stringify({ type: "done" })}\n`));
-      controller.close();
+        const citations: ProviderCitation[] = [];
+        const result = await streamOpenAiCompatibleResponse(
+          input.config,
+          providerRequest,
+          {
+            onTextDelta: (text) => {
+              if (text) {
+                writeEvent({ type: "delta", text });
+              }
+            },
+            onCitations: (newCitations) => {
+              citations.push(...newCitations);
+            }
+          },
+          input.signal
+        );
+
+        const allCitations = dedupeCitations([...citations, ...result.citations]);
+        if (allCitations.length > 0) {
+          writeEvent({ type: "citations", citations: allCitations });
+        }
+      };
+
+      try {
+        try {
+          await runProviderStream(input.providerRequest);
+        } catch (error) {
+          if (!shouldRetryTextOnlyAfterImageFailure(error, input.originalRequest)) {
+            throw error;
+          }
+
+          await runProviderStream(
+            buildOpenAiCompatibleChatRequest(
+              stripImageInputsFromAiRouteRequest(input.originalRequest),
+              Boolean(input.originalRequest.webSearch?.enabled)
+            ),
+            "图片像素没有被当前文本模型接受；这次先基于对象摘要和已解析文档继续回复。"
+          );
+        }
+
+        writeEvent({ type: "done" });
+      } catch (error) {
+        writeEvent({
+          type: "error",
+          message: getOpenAiCompatibleChatRouteErrorMessage(error, {
+            imageInputCount: input.originalRequest.attachments.filter((attachment) => attachment.status === "ready").length,
+            webSearchEnabled: input.originalRequest.webSearch?.enabled === true,
+            diagnostic: error instanceof OpenAiCompatibleProviderError ? error.diagnostic : undefined
+          })
+        });
+      } finally {
+        controller.close();
+      }
     }
   });
+}
+
+function dedupeCitations(citations: ProviderCitation[]): ProviderCitation[] {
+  const seen = new Set<string>();
+  return citations.filter((citation) => {
+    const key = citation.url ?? `${citation.title}:${citation.snippet ?? ""}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function shouldRetryTextOnlyAfterImageFailure(error: unknown, request: AiRouteRequest): boolean {
+  const hasReadyImages = request.attachments.some((attachment) => attachment.status === "ready");
+  if (!hasReadyImages || !(error instanceof OpenAiCompatibleProviderError)) {
+    return false;
+  }
+
+  const diagnostic = (error.diagnostic ?? "").toLowerCase();
+  return (
+    [400, 413, 415, 422, 500, 502, 503, 504].includes(error.status) &&
+    (diagnostic.includes("image") ||
+      diagnostic.includes("input_image") ||
+      diagnostic.includes("image_url") ||
+      diagnostic.includes("unsupported") ||
+      diagnostic.includes("bad gateway") ||
+      error.status === 502)
+  );
+}
+
+function stripImageInputsFromAiRouteRequest(request: AiRouteRequest): AiRouteRequest {
+  const imageSourceIds = request.objectSummaries
+    .filter((object) => object.type === "image")
+    .map((object) => object.id);
+  const originalUnavailable = request.comparisonContext?.unavailableImageObjectIds ?? [];
+
+  return {
+    ...request,
+    attachments: request.attachments.filter((attachment) => attachment.status !== "ready"),
+    comparisonContext: request.comparisonContext
+      ? {
+          ...request.comparisonContext,
+          attachedImageObjectIds: [],
+          unavailableImageObjectIds: [...new Set([...originalUnavailable, ...imageSourceIds])]
+        }
+      : request.comparisonContext
+  };
 }
 
 function getOpenAiCompatibleChatRouteErrorMessage(
