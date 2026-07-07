@@ -12,17 +12,9 @@ npm.cmd install
 
 Copy `.env.example` to `.env.local` for local AI provider calls. Do not commit `.env.local`.
 
-Text chat through MiMo:
+Text chat and agent turns through AiJWS / OpenAI-compatible:
 
 ```text
-MORPHO_AI_PROVIDER=mimo
-MORPHO_MIMO_API_KEYS=
-MORPHO_MIMO_API_KEY=
-MORPHO_MIMO_BASE_URL=https://api.xiaomimimo.com/v1
-MORPHO_MIMO_TEXT_MODEL=mimo-v2.5-pro
-MORPHO_MIMO_MULTIMODAL_MODEL=mimo-v2.5
-MORPHO_MIMO_WEB_SEARCH_ENABLED=true
-
 MORPHO_AI_PROVIDER=aijws
 MORPHO_AI_BASE_URL=https://api.aijws.com/v1
 MORPHO_AI_API_KEY=
@@ -30,20 +22,18 @@ MORPHO_AI_MODEL=gpt-5.4
 MORPHO_AI_WEB_SEARCH_ENABLED=true
 ```
 
-`MORPHO_MIMO_API_KEYS` is a comma-separated primary/fallback key list. The singular `MORPHO_MIMO_API_KEY` remains a compatibility fallback only when the plural variable is empty. Existing local environments may still use `MORPHO_MIMO_API_KEY_2` and `MORPHO_MIMO_MODEL`; both are read as compatibility fallbacks, but new setups should use `MORPHO_MIMO_API_KEYS` and `MORPHO_MIMO_MULTIMODAL_MODEL`.
-`MORPHO_AI_*` is the GPT-5.4 agent path. The server also accepts `AIJWS_API_KEY` and the existing `MORPHO_MIMO_*` variables as compatibility fallbacks, but new setups should prefer `MORPHO_AI_PROVIDER=aijws`, `MORPHO_AI_BASE_URL`, `MORPHO_AI_API_KEY`, and `MORPHO_AI_MODEL`.
+`MORPHO_AI_*` is the text AI path for `/api/ai/chat`, `/api/ai/agent`, and related web-search gating. The server also accepts `AIJWS_API_KEY`, `AIJWS_BASE_URL`, and `AIJWS_MODEL` as compatibility aliases. MiMo variables are no longer used for text AI.
 
-MiMo chat behavior:
+AiJWS text behavior:
 
-- ordinary text uses `MORPHO_MIMO_TEXT_MODEL`;
-- selected active images in chat/research use `MORPHO_MIMO_MULTIMODAL_MODEL`;
-- selected active images in visual-planning `imageGeneration` requests also use `MORPHO_MIMO_MULTIMODAL_MODEL`;
+- ordinary text and selected-image chat/research use `MORPHO_AI_MODEL`;
+- selected active images in visual-planning `imageGeneration` requests are sent to AiJWS for the structured visual plan, then GrsAI generates the actual images;
 - image input is limited to selected active IndexedDB image assets. Small selections are sent as individual compressed images; larger selections are packed into one or more contact sheets so every selected image is represented without exposing a user-facing upload count limit;
 - hidden images, unselected images, default references, and whole-canvas screenshots are not sent by default;
-- selected parsed file objects can send bounded local `documentExtract` text to MiMo for chat/research context. Extracts are local sources, not provider citations;
-- selected parsed file objects can also send bounded local `documentExtract` text to MiMo for visual planning when `taskMode === "imageGeneration"` and the current task context authorizes them;
-- when `MORPHO_MIMO_WEB_SEARCH_ENABLED=true`, chat/research requests provide MiMo native `web_search` and the model decides whether to use it. Image generation never receives web search tools;
-- source links are shown only when MiMo returns citation/annotation fields.
+- selected parsed file objects can send bounded local `documentExtract` text to AiJWS for chat/research context. Extracts are local sources, not provider citations;
+- selected parsed file objects can also send bounded local `documentExtract` text to AiJWS for visual planning when `taskMode === "imageGeneration"` and the current task context authorizes them;
+- when `MORPHO_AI_WEB_SEARCH_ENABLED=true`, chat/research requests may provide provider web-search tooling where supported. Image generation never receives web search tools;
+- source links are shown only when the provider returns citation/annotation fields.
 
 Image generation through GrsAI:
 
@@ -72,7 +62,7 @@ Current implemented behavior:
 - `gpt-image-2` sends pixel-style `aspectRatio`, `replyType: "json"`, and no `imageSize`;
 - generated image assets store intrinsic width, height, and aspect ratio when the browser can read them.
 - image generation operations store operation IDs and client request IDs; uncertain network responses are not automatically resubmitted.
-- direction-preview and visual-development generation first ask MiMo for a structured visual plan, validate selected source/direction scope locally, and then call GrsAI once per plan item.
+- direction-preview and visual-development generation first ask AiJWS for a structured visual plan, validate selected source/direction scope locally, and then call GrsAI once per plan item.
 - direction-preview supports `1`, `2`, `4`, or `6` previews per selected direction, with a hard total limit of `8` generated items per run.
 - image-generation Operation metadata records the requested preview count, visual plan, successful result IDs, and per-item failures for later audit.
 
@@ -84,7 +74,7 @@ Research operations can read selected parsed file extracts, selected image pixel
 
 Conversation semantic records:
 
-- `/api/ai/chat` may ask MiMo for `morphoProjectContinuityPatch` only for `chatAnalysis` and `researchOperation`;
+- `/api/ai/chat` may ask AiJWS for `morphoProjectContinuityPatch` only for `chatAnalysis` and `researchOperation`;
 - `imageGeneration` never receives the semantic patch instruction;
 - provider summaries are ignored, and Morpho creates deterministic summaries locally from the exact user quote;
 - the exact quote must come from the current user message and is stored only as a short message source snapshot;
@@ -111,7 +101,7 @@ Conversation checkpoints:
 Delivery preparation drafts:
 
 - `prepareDeliverySection` uses `/api/ai/chat`, but sends only the current section `deliverySectionContext` frozen snapshots;
-- web search is disabled for this intent even if `MORPHO_MIMO_WEB_SEARCH_ENABLED=true`;
+- web search is disabled for this intent even if `MORPHO_AI_WEB_SEARCH_ENABLED=true`;
 - the browser does not send selected image pixels, full source files, full `documentExtract` text, normal task context, or Compare context for delivery section drafts;
 - visible chat hides `morphoDeliverySectionDraft` JSON. A valid block creates only a pending draft; section narrative, captions, suggested gaps, DecisionRecord, and continuity event are written only when the user applies the draft.
 
@@ -143,7 +133,7 @@ Expected results:
 
 - `lint`: ESLint completes with no reported problems.
 - `typecheck`: `tsc --noEmit` completes.
-- `test`: Vitest runs domain, persistence, import, query, MiMo, and GrsAI tests.
+- `test`: Vitest runs domain, persistence, import, query, AiJWS/OpenAI-compatible, and GrsAI tests.
 - `build`: `next build` completes and prerenders static pages/routes where applicable.
 
 GitHub CI runs the same core quality gate in `.github/workflows/quality.yml` on pushes to `main` and on pull requests:
@@ -214,7 +204,7 @@ Minimum flows to cover:
 
 - selected material + “分析这些资料并整理第一轮研究” routes into research;
 - selected directions + “分别为这几个方向生成预览图” routes into direction preview and shows correct preview total;
-- selected image + “保留整体结构语言，生成夜间使用场景” routes into visual development, with MiMo receiving image attachments and Grs receiving image-only generation references;
+- selected image + “保留整体结构语言，生成夜间使用场景” routes into visual development, with AiJWS receiving image attachments for planning and Grs receiving image-only generation references;
 - selected image + “分析这张图的问题” stays ordinary chat and does not call `/api/ai/image`;
 - manual task mode override beats automatic routing;
 - design-trace overlay still opens and closes;
@@ -331,7 +321,7 @@ Local document extraction:
 ```text
 /                         project homepage
 /projects/[projectId]     project workspace
-/api/ai/chat              MiMo text chat proxy
+/api/ai/chat              AiJWS text chat proxy
 /api/ai/image             GrsAI image generation proxy
 ```
 

@@ -7,7 +7,7 @@ import { aiAccessDeniedResponse, guardAiRoute } from "@/server/auth/aiAccess";
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  if (isExplicitlyDisabled(process.env.MORPHO_AI_WEB_SEARCH_ENABLED ?? process.env.MORPHO_MIMO_WEB_SEARCH_ENABLED)) {
+  if (isExplicitlyDisabled(process.env.MORPHO_AI_WEB_SEARCH_ENABLED)) {
     return NextResponse.json({ error: "网页搜索已关闭。" }, { status: 403 });
   }
 

@@ -20,7 +20,7 @@ describe("openai-compatible config", () => {
     });
   });
 
-  it("accepts legacy MiMo env keys", () => {
+  it("does not fall back to legacy MiMo env keys for text AI", () => {
     const result = loadOpenAiCompatibleConfig({
       MORPHO_MIMO_API_KEYS: "primary, fallback",
       MORPHO_MIMO_BASE_URL: "https://api.xiaomimimo.com/v1/",
@@ -28,14 +28,6 @@ describe("openai-compatible config", () => {
       MORPHO_MIMO_WEB_SEARCH_ENABLED: "false"
     });
 
-    expect(result).toEqual({
-      status: "ok",
-      config: {
-        apiKey: "primary",
-        baseUrl: "https://api.xiaomimimo.com/v1",
-        model: "mimo-v2.5-pro",
-        webSearchEnabled: false
-      }
-    });
+    expect(result.status).toBe("failed");
   });
 });

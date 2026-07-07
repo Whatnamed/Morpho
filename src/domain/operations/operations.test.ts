@@ -80,7 +80,7 @@ describe("Morpho Operation Runtime", () => {
 
     const failed = failOperation(created, Object.values(created.operations)[0]?.id ?? "", {
       status: "failed",
-      reason: "MiMo 请求失败。"
+      reason: "AiJWS 请求失败。"
     });
 
     expect(Object.values(failed.operations)[0]?.status).toBe("failed");

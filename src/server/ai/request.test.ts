@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildMorphoSystemPrompt, buildProviderMessages, validateAiRouteRequest } from "./request";
 
-describe("MiMo chat route request conversion", () => {
+describe("AiJWS chat route request conversion", () => {
   it("states when no image pixels are sent", () => {
     const prompt = buildMorphoSystemPrompt({
       draft: "Analyze this image",
@@ -257,7 +257,7 @@ describe("MiMo chat route request conversion", () => {
     });
   });
 
-  it("keeps authorized imageGeneration context attachments and local document extracts for MiMo planning", () => {
+  it("keeps authorized imageGeneration context attachments and local document extracts for AiJWS planning", () => {
     const result = validateAiRouteRequest({
       draft: "分别为这几个方向生成预览图",
       task: "directionPreview",
@@ -638,7 +638,7 @@ describe("MiMo chat route request conversion", () => {
     expect(prompt).toContain("短期讨论连续性");
   });
 
-  it("keeps bounded structured task context in the MiMo system prompt", () => {
+  it("keeps bounded structured task context in the AiJWS system prompt", () => {
     const result = validateAiRouteRequest({
       draft: "基于当前定义继续生成方向预览",
       task: "directionPreview",

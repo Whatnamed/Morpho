@@ -84,13 +84,13 @@ Reason: images, PDFs, and other files must survive refresh without putting base6
 
 Boundary: current code records asset metadata and Blob storage keys but does not implement garbage collection.
 
-## 2026-06-24: Use Server-Side MiMo Adapter for Text Chat
+## 2026-06-24: Use Server-Side AiJWS Adapter for Text Chat
 
-Decision: implement `/api/ai/chat` as a server-side route that reads `MORPHO_MIMO_*` and calls MiMo through an OpenAI-compatible streaming adapter.
+Decision: implement `/api/ai/chat` as a server-side route that reads `MORPHO_AI_*` / `AIJWS_*` and calls AiJWS through the shared OpenAI-compatible provider adapter. MiMo configuration is no longer read by active text AI routes.
 
 Reason: API keys must not appear in browser code, localStorage, logs, or `NEXT_PUBLIC_*` variables.
 
-Boundary: MiMo can return text analysis, suggestions, and drafts only. It cannot directly mutate Morpho project state.
+Boundary: AiJWS can return text analysis, suggestions, and drafts only. It cannot directly mutate Morpho project state.
 
 ## 2026-06-24: Use Server-Side GrsAI Adapter for Image Generation
 
@@ -188,15 +188,15 @@ Decision: `/api/ai/chat` now supports selected-image visual input and normalized
 
 Reason: M3.2 needs real image understanding and source display without turning ordinary chat into implicit multimodal analysis or exposing local assets broadly.
 
-Boundary: only `chatAnalysis` and `researchOperation` may send image pixels, only when the user text clearly asks to analyze/compare/extract visual information, and only for selected active image objects. The browser reads and compresses up to 3 IndexedDB image Blobs; Base64 data is sent only in the request and is never stored in workspace/localStorage. The server uses the configured multimodal MiMo model and OpenAI-compatible `image_url` message parts.
+Boundary: only `chatAnalysis` and `researchOperation` may send image pixels, only when the user text clearly asks to analyze/compare/extract visual information, and only for selected active image objects. Base64 data is sent only in the request and is never stored in workspace/localStorage. The server uses the configured AiJWS/OpenAI-compatible model and `image_url` message parts.
 
 ## 2026-06-25: Use Provider Citation Snapshots Only
 
-Decision: MiMo stream normalization emits `delta`, `citations`, `done`, and `error` events. Chat messages and Research Proposals persist citation snapshot IDs when provider citation fields are present.
+Decision: AiJWS/OpenAI-compatible response normalization emits `delta`, `citations`, and `done` events. Chat messages and Research Proposals persist citation snapshot IDs when provider citation fields are present.
 
 Reason: Morpho must show sources for online-assisted work, but it must not fabricate citations from plain assistant text.
 
-Boundary: when `MORPHO_MIMO_WEB_SEARCH_ENABLED=true`, chat/research requests provide MiMo native `web_search` and let the model decide whether to use it. `imageGeneration` never receives web search tools. If the provider returns no citation annotations, Morpho records no source list and local analysis still continues.
+Boundary: when `MORPHO_AI_WEB_SEARCH_ENABLED=true`, chat/research requests may provide AiJWS/OpenAI-compatible web-search tooling where supported. `imageGeneration` never receives web search tools. If the provider returns no citation annotations, Morpho records no source list and local analysis still continues.
 
 ## 2026-06-25: Persist Anchored Canvas Camera
 

@@ -19,23 +19,6 @@ export type ProviderChatMessage = {
   content: ProviderChatContent;
 };
 
-export type MiMoConfig = {
-  apiKeys: string[];
-  textModel: string;
-  multimodalModel: string;
-  baseUrl: string;
-  webSearchEnabled: boolean;
-};
-
-export type ProviderChatInput = {
-  messages: ProviderChatMessage[];
-  systemPrompt: string;
-  stream: boolean;
-  capability: "text" | "multimodal";
-  webSearch?: ProviderWebSearchOptions;
-  signal?: AbortSignal;
-};
-
 export type ProviderWebSearchOptions = {
   enabled: boolean;
   maxKeyword?: number;
@@ -48,40 +31,4 @@ export type ProviderCitation = {
   url?: string;
   domain?: string;
   snippet?: string;
-};
-
-export type ProviderStreamEvent =
-  | {
-      type: "delta";
-      text: string;
-    }
-  | {
-      type: "citations";
-      citations: ProviderCitation[];
-    }
-  | {
-      type: "done";
-    }
-  | {
-      type: "error";
-      message: string;
-};
-
-export type ProviderRequest = {
-  url: string;
-  headers: Record<string, string>;
-  body: {
-    model: string;
-    messages: ProviderChatMessage[];
-    stream: boolean;
-    thinking: {
-      type: "disabled";
-    };
-    tools?: Array<{
-      type: "web_search";
-      max_keyword?: number;
-      force_search: boolean;
-      limit?: number;
-    }>;
-  };
 };

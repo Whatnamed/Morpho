@@ -138,7 +138,7 @@ export const TASK_CONTEXT_LIMITS = {
   maxDocumentExtracts: 8,
   maxCharsPerDocument: 8_000,
   maxTotalDocumentChars: 24_000,
-  maxMiMoImages: 16,
+  maxAiProviderImages: 16,
   maxGrsReferenceImages: GRS_REFERENCE_IMAGE_LIMIT,
   maxConversationMessages: 12
 } as const;
@@ -498,9 +498,9 @@ function applyDocumentBudget(documentObjectIds: MorphoObjectId[], skipped: TaskC
 }
 
 function applyImageBudget(imageObjectIds: MorphoObjectId[], skipped: TaskContextSkip[]): MorphoObjectId[] {
-  const limited = uniqueStrings(imageObjectIds).slice(0, TASK_CONTEXT_LIMITS.maxMiMoImages);
-  for (const objectId of uniqueStrings(imageObjectIds).slice(TASK_CONTEXT_LIMITS.maxMiMoImages)) {
-    skipped.push({ objectId, reason: `已达到 MiMo 图片输入数量上限 ${TASK_CONTEXT_LIMITS.maxMiMoImages}，本图片未发送像素。` });
+  const limited = uniqueStrings(imageObjectIds).slice(0, TASK_CONTEXT_LIMITS.maxAiProviderImages);
+  for (const objectId of uniqueStrings(imageObjectIds).slice(TASK_CONTEXT_LIMITS.maxAiProviderImages)) {
+    skipped.push({ objectId, reason: `已达到 AiJWS 图片输入数量上限 ${TASK_CONTEXT_LIMITS.maxAiProviderImages}，本图片未发送像素。` });
   }
   return limited;
 }

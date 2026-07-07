@@ -2240,7 +2240,7 @@ export function recordImageGenerationPlan(
         id: `${operation.id}-step-plan-${operation.steps.length + 1}`,
         kind: "visualPlan",
         status: "succeeded",
-        summary: `MiMo 已形成 ${input.plan.items.length} 个受控图像生成计划项。`,
+        summary: `AiJWS 已形成 ${input.plan.items.length} 个受控图像生成计划项。`,
         createdAt: now
       }
     ],

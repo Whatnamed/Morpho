@@ -5,16 +5,16 @@ import { createBlankWorkspace } from "../../domain/morpho/workspace";
 import {
   buildWebSearchOptions,
   planImageAttachmentCompression,
-  selectMiMoImageAttachmentCandidates,
-  shouldAttachImagesForMiMo
+  selectAiProviderImageAttachmentCandidates,
+  shouldAttachImagesForAiProvider
 } from "./aiAttachments";
 
-describe("workspace MiMo attachment planning", () => {
+describe("workspace AI provider attachment planning", () => {
   it("selects all active image assets without silently truncating hidden or unreadable images", () => {
     const workspace = withImages(createBlankWorkspace("project-test"));
 
     expect(
-      selectMiMoImageAttachmentCandidates(workspace, [
+      selectAiProviderImageAttachmentCandidates(workspace, [
         "image-active-a",
         "image-hidden",
         "text-a",
@@ -32,21 +32,21 @@ describe("workspace MiMo attachment planning", () => {
     const selectedObjects = ["image-active-a"].map((id) => workspace.objects[id]);
 
     expect(
-      shouldAttachImagesForMiMo({
+      shouldAttachImagesForAiProvider({
         draft: "hello",
         taskMode: "chatAnalysis",
         selectedObjects
       })
     ).toBe(true);
     expect(
-      shouldAttachImagesForMiMo({
+      shouldAttachImagesForAiProvider({
         draft: "research these materials",
         taskMode: "researchOperation",
         selectedObjects
       })
     ).toBe(true);
     expect(
-      shouldAttachImagesForMiMo({
+      shouldAttachImagesForAiProvider({
         draft: "generate a new image",
         taskMode: "imageGeneration",
         selectedObjects

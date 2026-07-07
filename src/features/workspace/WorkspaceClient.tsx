@@ -148,7 +148,7 @@ import {
   resolveWorkIntentForSend
 } from "./aiTaskRouting";
 import { buildProposalDiscussionDraft, buildProposalRegenerationDraft } from "./proposalFollowupPrompts";
-import { buildWebSearchOptions, collectMiMoImageAttachments, shouldAttachImagesForMiMo } from "./aiAttachments";
+import { buildWebSearchOptions, collectAiProviderImageAttachments, shouldAttachImagesForAiProvider } from "./aiAttachments";
 import { collectDocumentExtractsForAi } from "./documentContext";
 import { shouldAcceptDocumentReaderLoadResult } from "./documentReader";
 import { loadDocumentReaderExtractWithRecovery } from "./documentReaderRecovery";
@@ -903,12 +903,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }));
 
       try {
-        const attachmentResult = shouldAttachImagesForMiMo({
+        const attachmentResult = shouldAttachImagesForAiProvider({
           draft,
           taskMode: "researchOperation",
           selectedObjects
         })
-          ? await collectMiMoImageAttachments(workspace, context.imageObjectIds, controller.signal)
+          ? await collectAiProviderImageAttachments(workspace, context.imageObjectIds, controller.signal)
           : { attachments: [], skippedObjectIds: [], warning: undefined };
         const documentResult = await collectDocumentExtractsForAi(
           workspace,
@@ -950,7 +950,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         const parsedProposal = parseResearchAnalysisProposalPayload(streamResult.text);
         if (parsedProposal.status === "failed") {
           const fallbackBody = [
-            assistantBody || "MiMo 没有返回可显示文本。",
+            assistantBody || "AiJWS 没有返回可显示文本。",
             "本次研究结果未能整理为可保存草案；你可以继续追问、补充要求或重试研究任务。"
           ].join("\n\n");
           setWorkspace((current) => {
@@ -984,7 +984,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         let appliedResearchObjectId: string | undefined;
         setWorkspace((current) => {
           const result = applyResearchProposalWithSemanticPatch({
-            workspace: updateAiMessage(current, assistantMessageId, assistantBody || "MiMo 没有返回可显示文本。", "done"),
+            workspace: updateAiMessage(current, assistantMessageId, assistantBody || "AiJWS 没有返回可显示文本。", "done"),
             proposal: {
               proposalId,
               operationId,
@@ -1017,7 +1017,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               result.workspace,
               assistantMessageId,
               [
-                assistantBody || "MiMo 没有返回可显示文本。",
+                assistantBody || "AiJWS 没有返回可显示文本。",
                 `已识别为：研究任务。已自动创建研究卡「${researchObject?.title ?? "研究卡"}」，来源对象 ${
                   context.objectIds.length
                 } 个，${webSearch ? "已允许联网补充" : "未启用联网搜索"}。`
@@ -1033,7 +1033,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           return updateAiMessage(
             result.workspace,
             assistantMessageId,
-            [assistantBody || "MiMo 没有返回可显示文本。", `${result.reason} 研究卡未自动创建。`].join("\n\n"),
+            [assistantBody || "AiJWS 没有返回可显示文本。", `${result.reason} 研究卡未自动创建。`].join("\n\n"),
             "failed",
             {
               citationIds: result.proposalCitationIds,
@@ -1214,7 +1214,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       let lastProviderTaskId: string | undefined;
 
       try {
-        const attachmentResult = await collectMiMoImageAttachments(workspace, context.imageObjectIds, controller.signal);
+        const attachmentResult = await collectAiProviderImageAttachments(workspace, context.imageObjectIds, controller.signal);
         const documentResult = await collectDocumentExtractsForAi(
           workspace,
           context.documentObjectIds,
@@ -1229,7 +1229,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         setContextWarning(contextWarnings.join(" ") || undefined);
         setImageTaskStatus({
           state: "preparing",
-          message: "正在分析视觉目标：MiMo 将只看到本次已授权的图片、文档提取和对象摘要。"
+          message: "正在分析视觉目标：AiJWS 将只看到本次已授权的图片、文档提取和对象摘要。"
         });
         const planResponse = await fetch("/api/ai/chat", {
           method: "POST",
@@ -1262,7 +1262,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           throw new Error(parsedPlan.reason);
         }
         if (parsedPlan.plan.kind !== intent) {
-          throw new Error("MiMo 返回的视觉计划类型与当前识别任务不一致。");
+          throw new Error("AiJWS 返回的视觉计划类型与当前识别任务不一致。");
         }
 
         const validatedPlan = validateVisualGenerationPlan(workspace, {
@@ -1633,12 +1633,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       const attachmentResult =
         isDeliverySectionPreparation
           ? { attachments: [], skippedObjectIds: [], entries: [], warning: undefined }
-          : shouldAttachImagesForMiMo({
+          : shouldAttachImagesForAiProvider({
                 draft,
                 taskMode: executionTaskMode,
                 selectedObjects
               })
-            ? await collectMiMoImageAttachments(workspace, context.imageObjectIds, controller.signal)
+            ? await collectAiProviderImageAttachments(workspace, context.imageObjectIds, controller.signal)
             : { attachments: [], skippedObjectIds: [], entries: [], warning: undefined };
       const documentResult =
         isDeliverySectionPreparation
@@ -1737,7 +1737,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       const assistantBody = [attachmentResult.warning, documentResult.warning, visibleAssistantText]
         .filter(Boolean)
         .join("\n\n");
-      const resolvedAssistantBody = assistantBody || "MiMo 没有返回可显示文本。";
+      const resolvedAssistantBody = assistantBody || "AiJWS 没有返回可显示文本。";
       const structuredWritePolicy = buildSameReplyStructuredWritePolicy(streamResult.text, executionWorkIntent);
       const designDefinitionProposal = isDeliverySectionPreparation ? null : parseDesignDefinitionProposalPayload(streamResult.text);
       const conceptDirectionProposal = isDeliverySectionPreparation ? null : parseConceptDirectionProposalPayload(streamResult.text);
@@ -2216,12 +2216,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       .slice(-8)
       .map((message) => ({ role: message.role, body: message.body }));
 
-    const attachmentResult = shouldAttachImagesForMiMo({
+    const attachmentResult = shouldAttachImagesForAiProvider({
       draft,
       taskMode: "chatAnalysis",
       selectedObjects
     })
-      ? await collectMiMoImageAttachments(workspace, context.imageObjectIds, controller.signal)
+      ? await collectAiProviderImageAttachments(workspace, context.imageObjectIds, controller.signal)
       : { attachments: [], skippedObjectIds: [], entries: [], warning: undefined };
     const documentResult = await collectDocumentExtractsForAi(
       workspace,

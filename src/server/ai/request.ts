@@ -654,7 +654,7 @@ function buildAttachmentCapabilityLine(request: AiRouteRequest): string {
 
   const representedObjectIds = new Set(readyImages.flatMap((attachment) => attachment.objectIds ?? [attachment.objectId]));
   const contactSheetCount = readyImages.filter((attachment) => attachment.representation === "contactSheet").length;
-  return `本次已发送 ${representedObjectIds.size} 个显式选择的 active 图片对象像素，使用 MiMo OpenAI-compatible image_url 输入。${contactSheetCount > 0 ? `其中 ${contactSheetCount} 个输入是自动生成的总览图，用于覆盖较多参考。` : ""}只分析这些图片，不读取隐藏对象、未选旧图或整张画布。`;
+  return `本次已发送 ${representedObjectIds.size} 个显式选择的 active 图片对象像素，使用 AiJWS OpenAI-compatible image_url 输入。${contactSheetCount > 0 ? `其中 ${contactSheetCount} 个输入是自动生成的总览图，用于覆盖较多参考。` : ""}只分析这些图片，不读取隐藏对象、未选旧图或整张画布。`;
 }
 
 function buildDocumentCapabilityLine(request: AiRouteRequest): string {
@@ -674,7 +674,7 @@ function buildWebSearchCapabilityLine(request: AiRouteRequest): string {
     return "本次没有提供联网搜索工具；不得编造外部来源，也不得把普通模型文字当作 citation。";
   }
 
-  return `本次可使用 MiMo web_search 工具。只有当外部事实、当前信息、来源验证、案例补充或研究依据会明显提升回答时才联网；普通创意讨论、改写和不依赖外部事实的视觉发散不要联网。force_search=${request.webSearch.forceSearch}。只可引用 provider 返回的 URL citation，不得编造来源。`;
+  return `本次可使用 AiJWS web search 工具。只有当外部事实、当前信息、来源验证、案例补充或研究依据会明显提升回答时才联网；普通创意讨论、改写和不依赖外部事实的视觉发散不要联网。force_search=${request.webSearch.forceSearch}。只可引用 provider 返回的 URL citation，不得编造来源。`;
 }
 
 function buildConversationCheckpointInstruction(request: AiRouteRequest): string {

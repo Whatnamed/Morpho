@@ -1,9 +1,9 @@
 import type { MorphoObject, MorphoWorkspace } from "../../domain/morpho/types";
 import { indexedDbBlobStore } from "../../infrastructure/assets/indexedDbAssetStore";
 
-export type MiMoImageAttachmentRepresentation = "single" | "contactSheet";
+export type AiProviderImageAttachmentRepresentation = "single" | "contactSheet";
 
-export type MiMoImageAttachment = {
+export type AiProviderImageAttachment = {
   id: string;
   kind: "image";
   objectId: string;
@@ -13,19 +13,19 @@ export type MiMoImageAttachment = {
   width?: number;
   height?: number;
   byteSize?: number;
-  representation: MiMoImageAttachmentRepresentation;
+  representation: AiProviderImageAttachmentRepresentation;
   status: "ready";
 };
 
 export type VisualInputPackEntry = {
   objectId: string;
-  representation: MiMoImageAttachmentRepresentation;
+  representation: AiProviderImageAttachmentRepresentation;
   attachmentId?: string;
   status: "ready" | "failed";
 };
 
-export type CollectMiMoImageAttachmentsResult = {
-  attachments: MiMoImageAttachment[];
+export type CollectAiProviderImageAttachmentsResult = {
+  attachments: AiProviderImageAttachment[];
   skippedObjectIds: string[];
   entries: VisualInputPackEntry[];
   warning?: string;
@@ -41,13 +41,13 @@ export type ImageCompressionPlan = {
 const DIRECT_IMAGE_THRESHOLD = 3;
 const CONTACT_SHEET_CHUNK_SIZE = 16;
 const CONTACT_SHEET_MAX_SIDE = 1600;
-const MAX_MIMO_IMAGE_SIDE = 1600;
-const TARGET_MIMO_IMAGE_BYTES = 1.5 * 1024 * 1024;
+const MAX_AI_PROVIDER_IMAGE_SIDE = 1600;
+const TARGET_AI_PROVIDER_IMAGE_BYTES = 1.5 * 1024 * 1024;
 
 const FORCED_WEB_SEARCH_PATTERN =
   /必须联网|请联网|联网|搜索|查一下|最新|当前|验证|核实|来源|引用|source|search|verify|latest|current/i;
 
-export function shouldAttachImagesForMiMo(input: {
+export function shouldAttachImagesForAiProvider(input: {
   draft: string;
   taskMode: "chatAnalysis" | "imageGeneration" | "researchOperation";
   selectedObjects: MorphoObject[];
@@ -84,7 +84,7 @@ export function buildWebSearchOptions(input: {
   };
 }
 
-export function selectMiMoImageAttachmentCandidates(workspace: MorphoWorkspace, objectIds: readonly string[]): string[] {
+export function selectAiProviderImageAttachmentCandidates(workspace: MorphoWorkspace, objectIds: readonly string[]): string[] {
   const seen = new Set<string>();
   const candidates: string[] = [];
 
@@ -117,8 +117,8 @@ export function planImageAttachmentCompression(input: {
   maxSide?: number;
   targetBytes?: number;
 }): ImageCompressionPlan {
-  const maxSide = input.maxSide ?? MAX_MIMO_IMAGE_SIDE;
-  const targetBytes = input.targetBytes ?? TARGET_MIMO_IMAGE_BYTES;
+  const maxSide = input.maxSide ?? MAX_AI_PROVIDER_IMAGE_SIDE;
+  const targetBytes = input.targetBytes ?? TARGET_AI_PROVIDER_IMAGE_BYTES;
   const longestSide = Math.max(input.width, input.height);
   const scale = longestSide > maxSide ? maxSide / longestSide : 1;
 
@@ -130,12 +130,12 @@ export function planImageAttachmentCompression(input: {
   };
 }
 
-export async function collectMiMoImageAttachments(
+export async function collectAiProviderImageAttachments(
   workspace: MorphoWorkspace,
   objectIds: readonly string[],
   signal: AbortSignal
-): Promise<CollectMiMoImageAttachmentsResult> {
-  const candidates = selectMiMoImageAttachmentCandidates(workspace, objectIds);
+): Promise<CollectAiProviderImageAttachmentsResult> {
+  const candidates = selectAiProviderImageAttachmentCandidates(workspace, objectIds);
   if (candidates.length <= DIRECT_IMAGE_THRESHOLD) {
     return collectDirectImageAttachments(workspace, candidates, signal);
   }
@@ -147,8 +147,8 @@ async function collectDirectImageAttachments(
   workspace: MorphoWorkspace,
   objectIds: readonly string[],
   signal: AbortSignal
-): Promise<CollectMiMoImageAttachmentsResult> {
-  const attachments: MiMoImageAttachment[] = [];
+): Promise<CollectAiProviderImageAttachmentsResult> {
+  const attachments: AiProviderImageAttachment[] = [];
   const skippedObjectIds: string[] = [];
   const entries: VisualInputPackEntry[] = [];
 
@@ -172,7 +172,7 @@ async function collectDirectImageAttachments(
       }
 
       const compressed = await compressImageBlobToDataUrl(blob, signal);
-      const attachment: MiMoImageAttachment = {
+      const attachment: AiProviderImageAttachment = {
         id: asset.id,
         kind: "image",
         objectId,
@@ -205,8 +205,8 @@ async function collectContactSheetAttachments(
   workspace: MorphoWorkspace,
   objectIds: readonly string[],
   signal: AbortSignal
-): Promise<CollectMiMoImageAttachmentsResult> {
-  const attachments: MiMoImageAttachment[] = [];
+): Promise<CollectAiProviderImageAttachmentsResult> {
+  const attachments: AiProviderImageAttachment[] = [];
   const skippedObjectIds: string[] = [];
   const entries: VisualInputPackEntry[] = [];
 
@@ -243,7 +243,7 @@ async function collectContactSheetAttachments(
 
     const sheet = await createContactSheetDataUrl(loaded, signal);
     const sheetObjectIds = loaded.map((item) => item.objectId);
-    const attachment: MiMoImageAttachment = {
+    const attachment: AiProviderImageAttachment = {
       id: `contact-sheet-${sheetObjectIds.join("-")}`,
       kind: "image",
       objectId: sheetObjectIds[0] ?? "contact-sheet",
@@ -322,7 +322,7 @@ async function compressImageBlobToDataUrl(
   context.drawImage(image.element, 0, 0, plan.width, plan.height);
   for (const quality of [0.82, 0.72, 0.62, 0.52]) {
     const output = await canvasToBlob(canvas, "image/jpeg", quality, signal);
-    if (output.size <= TARGET_MIMO_IMAGE_BYTES || quality === 0.52) {
+    if (output.size <= TARGET_AI_PROVIDER_IMAGE_BYTES || quality === 0.52) {
       return {
         dataUrl: await blobToDataUrl(output, signal),
         mimeType: "image/jpeg",

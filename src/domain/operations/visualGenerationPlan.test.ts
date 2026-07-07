@@ -8,7 +8,7 @@ import {
 } from "./visualGenerationPlan";
 
 describe("visual generation plan parsing and validation", () => {
-  it("parses fenced MiMo visual generation plans", () => {
+  it("parses fenced AiJWS visual generation plans", () => {
     const parsed = parseVisualGenerationPlanPayload(`
 回答摘要
 
