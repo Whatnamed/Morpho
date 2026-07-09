@@ -59,7 +59,7 @@ import {
   interruptActiveOperations,
   markImageGenerationOperationSubmitted,
   rejectArtifactProposal,
-  recordConceptDirectionProposal,
+  recordAndApplyConceptDirectionProposal,
   recordDesignDefinitionProposal,
   recordImageGenerationPlan,
   recordImageGenerationOperationItemFailure,
@@ -114,8 +114,7 @@ import { DeliveryOutputPanel } from "./components/DeliveryOutputPanel";
 import { DocumentReaderPanel, type DocumentReaderExtractFragmentResult, type DocumentSourcePreview } from "./components/DocumentReaderPanel";
 import { LeftRail, type DrawerMode } from "./components/LeftRail";
 import { OverlayDrawers } from "./components/OverlayDrawers";
-import { ProposalCanvasLayer } from "./components/ProposalCanvasLayer";
-import { ProposalReviewPanel } from "./components/ProposalReviewPanel";
+import { ProposalDraftCard } from "./components/ProposalDraftCard";
 import { ProjectBundlePanel } from "./components/ProjectBundlePanel";
 import { ResearchDetailPanel } from "./components/ResearchDetailPanel";
 import { CanvasContextMenu, SelectionToolbar } from "./components/SelectionToolbar";
@@ -125,6 +124,7 @@ import { useWorkspaceAssetUrls } from "./useWorkspaceAssetUrls";
 import { compactObjectList, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
 import { getFloatingMenuPlacement, getSelectionToolbarPlacement, type ScreenRect } from "./selectionToolbar";
 import { shouldBlockSnapshotUndo } from "./workspaceUndo";
+import { resolveWorkspaceShortcut } from "./workspaceShortcuts";
 import { buildDeliverySectionContext, getDeliveryObjects, type DeliveryReferenceReaderTransition } from "./deliveryPreparationUi";
 import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
 import {
@@ -205,6 +205,7 @@ import type { ComparisonDecisionMetadata } from "@/domain/morpho/types";
 import { applyConversationSemanticPatchFromReply } from "./workspaceSemanticPatch";
 import { buildSameReplyStructuredWritePolicy, prepareAiSendBeforeProvider } from "./aiSendGuards";
 import { applyResearchProposalWithSemanticPatch } from "./researchSemanticPatch";
+import { applySelectedProposalDraftRevision } from "./proposalDraftRevision";
 import { planDirectionPreviewPlacements } from "./visualPreviewLayout";
 import {
   classifyVisualGenerationIntent,
@@ -298,9 +299,35 @@ type ObjectOperationUndoEntry = {
   pendingConfirmation: PendingAiConfirmation | null;
 };
 
+type WorkspaceTextPrompt =
+  | {
+      kind: "createVisualBranch";
+      directionId: string;
+      title: string;
+      body: string;
+      label: string;
+      initialValue: string;
+    }
+  | {
+      kind: "renameVisualBranch";
+      branchId: string;
+      title: string;
+      body: string;
+      label: string;
+      initialValue: string;
+    }
+  | {
+      kind: "eliminateDirection";
+      directionId: string;
+      title: string;
+      body: string;
+      label: string;
+      initialValue: string;
+    };
+
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const router = useRouter();
-  const [workspace, setWorkspace, persistenceState] = usePersistentWorkspace(projectId);
+  const [workspace, setWorkspace, persistenceState, flushWorkspace] = usePersistentWorkspace(projectId);
   const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>(() => workspace.ui.lastSelectionIds);
   const [aiDraft, setAiDraft] = useState("");
   const [agentTurnMode, setAgentTurnMode] = useState<MorphoAgentTurnMode>("auto");
@@ -311,7 +338,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [highlightContinuityEntryIds, setHighlightContinuityEntryIds] = useState<string[]>([]);
   const [localEditObjectId, setLocalEditObjectId] = useState<string | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingAiConfirmation | null>(null);
+  const [textPrompt, setTextPrompt] = useState<WorkspaceTextPrompt | null>(null);
   const [activeProposalId, setActiveProposalId] = useState<string | null>(null);
+  const [detailProposalId, setDetailProposalId] = useState<string | null>(null);
   const [traceStartObjectId, setTraceStartObjectId] = useState<string | null>(null);
   const [showFailure, setShowFailure] = useState(false);
   const [contextWarning, setContextWarning] = useState<string | undefined>();
@@ -358,11 +387,27 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [selectionScreenBounds, setSelectionScreenBounds] = useState<ScreenRect | null>(null);
   const [canvasContextMenu, setCanvasContextMenu] = useState<{ x: number; y: number; objectId: string | null; openedAt: number } | null>(null);
   const [activeResearchDetailObjectId, setActiveResearchDetailObjectId] = useState<string | null>(null);
+  const [aiInputFocusNonce, setAiInputFocusNonce] = useState(0);
+  const [manualSaveNotice, setManualSaveNotice] = useState<string | null>(null);
+  const manualSaveNoticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selectedObjects = useMemo(
     () => compactObjectList(workspace.objects, selectedObjectIds),
     [selectedObjectIds, workspace.objects]
   );
+  const activeCanvasObjectIds = useMemo(() => {
+    const ids: string[] = [];
+    const seen = new Set<string>();
+    workspace.canvas.instances.forEach((instance) => {
+      const object = workspace.objects[instance.objectId];
+      if (!object || object.visibility !== "active" || seen.has(object.id)) {
+        return;
+      }
+      seen.add(object.id);
+      ids.push(object.id);
+    });
+    return ids;
+  }, [workspace.canvas.instances, workspace.objects]);
   const activeResearchDetailObject = useMemo(() => {
     if (!activeResearchDetailObjectId) {
       return null;
@@ -420,25 +465,22 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [selectedObjects, taskMode, workspace.workingState.currentDesignDefinitionId]
   );
   const activeProposal = useMemo(() => {
-    const selectedProposal =
-      activeProposalId && workspace.artifactProposals[activeProposalId]?.status === "pending"
-        ? workspace.artifactProposals[activeProposalId]
-        : undefined;
-    if (selectedProposal) {
-      return selectedProposal;
-    }
-
-    return Object.values(workspace.artifactProposals)
-      .filter((proposal) => proposal.status === "pending")
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+    return activeProposalId && workspace.artifactProposals[activeProposalId]?.status === "pending"
+      ? workspace.artifactProposals[activeProposalId]
+      : undefined;
   }, [activeProposalId, workspace.artifactProposals]);
-  const pendingCanvasProposals = useMemo(
+  const detailProposal = useMemo(
     () =>
-      Object.values(workspace.artifactProposals)
-        .filter((proposal) => proposal.status === "pending" && proposal.canvasPlacement)
-        .sort((left, right) => left.createdAt.localeCompare(right.createdAt)),
-    [workspace.artifactProposals]
+      detailProposalId && workspace.artifactProposals[detailProposalId]?.status === "pending"
+        ? workspace.artifactProposals[detailProposalId]
+        : null,
+    [detailProposalId, workspace.artifactProposals]
   );
+  useEffect(() => {
+    if (detailProposalId && !detailProposal) {
+      setDetailProposalId(null);
+    }
+  }, [detailProposal, detailProposalId]);
   const activeOperation = useMemo(() => getActiveOperation(workspace), [workspace]);
   const deliveryObjects = useMemo(() => getDeliveryObjects(workspace), [workspace]);
   const isImageTaskMode = taskMode === "imageGeneration";
@@ -563,6 +605,28 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setFocusRequest((current) => ({ objectId, nonce: current.nonce + 1 }));
     setActiveDrawer(null);
   }, []);
+
+  const handleManualSave = useCallback(() => {
+    const result = flushWorkspace();
+    const message = result.phase === "error" ? "本地保存失败" : "已保存";
+    setManualSaveNotice(message);
+    if (manualSaveNoticeTimeoutRef.current) {
+      clearTimeout(manualSaveNoticeTimeoutRef.current);
+    }
+    manualSaveNoticeTimeoutRef.current = setTimeout(() => {
+      setManualSaveNotice(null);
+      manualSaveNoticeTimeoutRef.current = null;
+    }, 1400);
+  }, [flushWorkspace]);
+
+  useEffect(
+    () => () => {
+      if (manualSaveNoticeTimeoutRef.current) {
+        clearTimeout(manualSaveNoticeTimeoutRef.current);
+      }
+    },
+    []
+  );
 
   const openProjectRecords = useCallback((entryIds: string[] = []) => {
     setHighlightContinuityEntryIds(entryIds);
@@ -1903,7 +1967,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             selectedObjectIds,
             executionWorkIntent
           );
-          const proposed = recordConceptDirectionProposal(nextWorkspace, {
+          const placed = recordAndApplyConceptDirectionProposal(nextWorkspace, {
             proposalId: conceptDirectionProposalId,
             workIntent: executionWorkIntent,
             applicationMode: applicationScope.applicationMode,
@@ -1920,11 +1984,23 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             basedOnRevisionId:
               basedOnDefinitionObject?.type === "designDefinition"
                 ? basedOnDefinitionObject.currentRevisionId
-                : undefined
+                : undefined,
+            position: getProposalPlacement(nextWorkspace, context.objectIds, "direction")
           });
-          nextWorkspace = updateAiMessage(proposed.workspace, assistantMessageId, resolvedAssistantBody, "done", {
-            citationIds: proposed.proposal.citationIds
-          });
+          nextWorkspace =
+            placed.status === "updated"
+              ? updateAiMessage(
+                  placed.workspace,
+                  assistantMessageId,
+                  `${resolvedAssistantBody}\n\n已应用到画布：${placed.directions.length} 个概念方向。`,
+                  "done",
+                  {
+                    citationIds: placed.proposal.citationIds
+                  }
+                )
+              : updateAiMessage(placed.workspace, assistantMessageId, `${resolvedAssistantBody}\n\n${placed.reason}`, "failed", {
+                  citationIds: placed.proposal.citationIds
+                });
         } else {
           if (
             comparisonAuthorizationResult?.status === "ready" &&
@@ -1990,7 +2066,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       });
 
       if (designDefinitionProposalId || conceptDirectionProposalId) {
-        setActiveProposalId(designDefinitionProposalId ?? conceptDirectionProposalId);
         setPendingConfirmation(null);
       } else if (appliedComparisonAnalysisId) {
         setPendingConfirmation(null);
@@ -2356,7 +2431,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     let totalWebSearchCalls = 0;
     let localWebSearchToolCalls = 0;
     let totalAutoGeneratedImageItems = 0;
-    let activeProposalForTurnId: string | null = null;
     let queuedResult: AgentRouteResult | null = null;
     const agentTurnId = `agent-turn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -2452,6 +2526,30 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             case "read_selected_context": {
               toolOutputs.push(
                 buildToolResultOutput(call.callId, buildReadSelectedContextResult(context, providerTaskContext))
+              );
+              break;
+            }
+            case "revise_selected_proposal_draft": {
+              const revision = applySelectedProposalDraftRevision(currentWorkspace, selectedObjectIds, parsed.args);
+              currentWorkspace = revision.workspace;
+              setWorkspace(() => currentWorkspace);
+              if (revision.status === "updated") {
+                setSelectedObjectIds([revision.proposalId]);
+                setActiveProposalId(revision.proposalId);
+              }
+              toolOutputs.push(
+                buildToolResultOutput(
+                  call.callId,
+                  revision.status === "updated"
+                    ? {
+                        status: "updated",
+                        proposalId: revision.proposalId
+                      }
+                    : {
+                        status: "blocked",
+                        reason: revision.reason
+                      }
+                )
               );
               break;
             }
@@ -2592,11 +2690,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 currentWorkspace = recorded.workspace;
                 recordedProposalIds.push(recorded.proposal.id);
               }
-              activeProposalForTurnId = recordedProposalIds[0] ?? null;
               setWorkspace(() => currentWorkspace);
-              if (activeProposalForTurnId) {
-                setActiveProposalId(activeProposalForTurnId);
-              }
               toolOutputs.push(
                 buildToolResultOutput(call.callId, {
                   status: "created",
@@ -2622,7 +2716,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               });
               const basedOnDefinitionId = currentWorkspace.workingState.currentDesignDefinitionId;
               const basedOnDefinitionObject = basedOnDefinitionId ? currentWorkspace.objects[basedOnDefinitionId] : undefined;
-              const recorded = recordConceptDirectionProposal(created.workspace, {
+              const placed = recordAndApplyConceptDirectionProposal(created.workspace, {
                 operationId,
                 workIntent: "createConceptDirections",
                 title: args.title,
@@ -2634,14 +2728,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 basedOnRevisionId: basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.currentRevisionId : undefined,
                 position: getProposalPlacement(created.workspace, context.objectIds, "direction")
               });
-              currentWorkspace = recorded.workspace;
-              activeProposalForTurnId = recorded.proposal.id;
+              currentWorkspace = placed.workspace;
               setWorkspace(() => currentWorkspace);
-              setActiveProposalId(recorded.proposal.id);
+              if (placed.status === "updated") {
+                setSelectedObjectIds(placed.directions.map((direction) => direction.id));
+                if (placed.directions[0]) {
+                  setFocusRequest((current) => ({ objectId: placed.directions[0].id, nonce: current.nonce + 1 }));
+                }
+              }
               toolOutputs.push(
                 buildToolResultOutput(call.callId, {
-                  status: "created",
-                  proposalId: recorded.proposal.id
+                  status: placed.status === "updated" ? "applied" : "created",
+                  proposalId: placed.proposal.id,
+                  directionIds: placed.status === "updated" ? placed.directions.map((direction) => direction.id) : undefined,
+                  reason: placed.status === "blocked" ? placed.reason : undefined
                 })
               );
               break;
@@ -2796,9 +2896,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }
         return nextWorkspace;
       });
-      if (activeProposalForTurnId) {
-        setActiveProposalId(activeProposalForTurnId);
-      }
     } catch (error) {
       const isCancelled = error instanceof DOMException && error.name === "AbortError";
       const message = isCancelled
@@ -3231,44 +3328,76 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     if (!target) {
       return;
     }
-    const label = window.prompt("请输入新视觉分支名称。", "未分组视觉探索");
-    const trimmedLabel = label?.trim();
-    if (!trimmedLabel) {
-      return;
-    }
-
-    setWorkspace((current) => {
-      const result = createVisualBranch(current, {
-        directionId: target.id,
-        label: trimmedLabel
-      });
-      if (result.status === "blocked") {
-        setContextWarning(result.reason);
-        return current;
-      }
-      return result.workspace;
+    setTextPrompt({
+      kind: "createVisualBranch",
+      directionId: target.id,
+      title: "新视觉分支",
+      body: "为当前方向创建一条可继续发展的视觉路线。创建分支不会移动、删除或改写现有图片。",
+      label: "分支名称",
+      initialValue: "未分组视觉探索"
     });
-  }, [selectedObjects, setWorkspace]);
+  }, [selectedObjects]);
 
   const handleRenameVisualBranch = useCallback(
     (branchId: string) => {
       const branch = workspace.visualBranches[branchId];
-      const label = window.prompt("请输入新的视觉分支名称。", branch?.label ?? "");
-      const trimmedLabel = label?.trim();
-      if (!trimmedLabel) {
+      if (!branch) {
+        return;
+      }
+      setTextPrompt({
+        kind: "renameVisualBranch",
+        branchId,
+        title: "重命名视觉分支",
+        body: "只更新分支名称，不改变图片、方向、版本或交付引用。",
+        label: "分支名称",
+        initialValue: branch.label
+      });
+    },
+    [workspace.visualBranches]
+  );
+
+  const handleSubmitTextPrompt = useCallback(
+    (value: string) => {
+      if (!textPrompt) {
+        return;
+      }
+      const trimmedValue = value.trim();
+      if (!trimmedValue) {
         return;
       }
 
-      setWorkspace((current) => {
-        const result = renameVisualBranch(current, branchId, trimmedLabel);
-        if (result.status === "blocked") {
-          setContextWarning(result.reason);
-          return current;
-        }
-        return result.workspace;
-      });
+      if (textPrompt.kind === "createVisualBranch") {
+        setWorkspace((current) => {
+          const result = createVisualBranch(current, {
+            directionId: textPrompt.directionId,
+            label: trimmedValue
+          });
+          if (result.status === "blocked") {
+            setContextWarning(result.reason);
+            return current;
+          }
+          return result.workspace;
+        });
+      } else if (textPrompt.kind === "renameVisualBranch") {
+        setWorkspace((current) => {
+          const result = renameVisualBranch(current, textPrompt.branchId, trimmedValue);
+          if (result.status === "blocked") {
+            setContextWarning(result.reason);
+            return current;
+          }
+          return result.workspace;
+        });
+      } else {
+        setWorkspace((current) =>
+          eliminateDirection(current, textPrompt.directionId, {
+            reason: trimmedValue
+          })
+        );
+      }
+
+      setTextPrompt(null);
     },
-    [setWorkspace, workspace.visualBranches]
+    [setWorkspace, textPrompt]
   );
 
   const handleArchiveVisualBranch = useCallback(
@@ -3598,11 +3727,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
 
     if (activeProposal.type === "researchAnalysis") {
+      const position = getProposalDraftCanvasPosition(workspace, activeProposal.id, {
+        x: workspace.canvas.view.x + 220,
+        y: workspace.canvas.view.y + 180
+      });
       const result = applyResearchAnalysisProposal(workspace, activeProposal.id, {
-        position: {
-          x: workspace.canvas.view.x + 220,
-          y: workspace.canvas.view.y + 180
-        },
+        position,
         allowSourceChanged
       });
 
@@ -3618,6 +3748,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         setSelectedObjectIds([result.researchObject.id]);
         setFocusRequest((current) => ({ objectId: result.researchObject.id, nonce: current.nonce + 1 }));
         setActiveProposalId(null);
+        setDetailProposalId(null);
       } else {
         setWorkspace(
           appendAiAssistantFailureMessage(
@@ -3648,6 +3779,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         setSelectedObjectIds([result.designDefinitionObject.id]);
         setFocusRequest((current) => ({ objectId: result.designDefinitionObject.id, nonce: current.nonce + 1 }));
         setActiveProposalId(null);
+        setDetailProposalId(null);
       } else {
         setWorkspace(
           appendAiAssistantFailureMessage(
@@ -3665,11 +3797,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
 
     if (activeProposal.type === "conceptDirection") {
+      const position = getProposalDraftCanvasPosition(workspace, activeProposal.id, {
+        x: workspace.canvas.view.x + 260,
+        y: workspace.canvas.view.y + 220
+      });
       const result = applyConceptDirectionProposal(workspace, activeProposal.id, {
-        position: {
-          x: workspace.canvas.view.x + 260,
-          y: workspace.canvas.view.y + 220
-        },
+        position,
         allowSourceChanged
       });
       if (result.status === "updated") {
@@ -3686,6 +3819,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           setFocusRequest((current) => ({ objectId: result.directions[0].id, nonce: current.nonce + 1 }));
         }
         setActiveProposalId(null);
+        setDetailProposalId(null);
       } else {
         setWorkspace(
           appendAiAssistantFailureMessage(
@@ -3703,7 +3837,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   }, [activeProposal, setWorkspace, workspace]);
 
   const handleApplyProposalFromCanvas = useCallback(
-    (proposalId: string) => {
+    (proposalId: string, allowSourceChanged = false) => {
       setActiveProposalId(proposalId);
       const proposal = workspace.artifactProposals[proposalId];
       if (!proposal || proposal.status !== "pending") {
@@ -3711,11 +3845,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
 
       if (proposal.type === "researchAnalysis") {
+        const position = getProposalDraftCanvasPosition(workspace, proposal.id, {
+          x: workspace.canvas.view.x + 220,
+          y: workspace.canvas.view.y + 180
+        });
         const result = applyResearchAnalysisProposal(workspace, proposal.id, {
-          position: {
-            x: workspace.canvas.view.x + 220,
-            y: workspace.canvas.view.y + 180
-          }
+          position,
+          allowSourceChanged
         });
 
         if (result.status === "updated") {
@@ -3730,6 +3866,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           setSelectedObjectIds([result.researchObject.id]);
           setFocusRequest((current) => ({ objectId: result.researchObject.id, nonce: current.nonce + 1 }));
           setActiveProposalId(null);
+          setDetailProposalId(null);
         } else {
           setWorkspace(
             appendAiAssistantFailureMessage(
@@ -3747,7 +3884,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
 
       if (proposal.type === "designDefinition") {
-        const result = applyDesignDefinitionProposal(workspace, proposal.id, {});
+        const result = applyDesignDefinitionProposal(workspace, proposal.id, { allowSourceChanged });
         if (result.status === "updated") {
           setWorkspace(
             appendAiAssistantNotice(
@@ -3760,6 +3897,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           setSelectedObjectIds([result.designDefinitionObject.id]);
           setFocusRequest((current) => ({ objectId: result.designDefinitionObject.id, nonce: current.nonce + 1 }));
           setActiveProposalId(null);
+          setDetailProposalId(null);
         } else {
           setWorkspace(
             appendAiAssistantFailureMessage(
@@ -3777,11 +3915,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
 
       if (proposal.type === "conceptDirection") {
+        const position = getProposalDraftCanvasPosition(workspace, proposal.id, {
+          x: workspace.canvas.view.x + 260,
+          y: workspace.canvas.view.y + 220
+        });
         const result = applyConceptDirectionProposal(workspace, proposal.id, {
-          position: {
-            x: workspace.canvas.view.x + 260,
-            y: workspace.canvas.view.y + 220
-          }
+          position,
+          allowSourceChanged
         });
         if (result.status === "updated") {
           setWorkspace(
@@ -3797,6 +3937,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             setFocusRequest((current) => ({ objectId: result.directions[0].id, nonce: current.nonce + 1 }));
           }
           setActiveProposalId(null);
+          setDetailProposalId(null);
         } else {
           setWorkspace(
             appendAiAssistantFailureMessage(
@@ -3819,6 +3960,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     (proposalId: string) => {
       setWorkspace((current) => rejectArtifactProposal(current, proposalId, "用户明确放弃当前草案。"));
       setActiveProposalId((current) => (current === proposalId ? null : current));
+      setDetailProposalId((current) => (current === proposalId ? null : current));
+      setSelectedObjectIds((current) => current.filter((selectedId) => selectedId !== proposalId));
     },
     [setWorkspace]
   );
@@ -4037,7 +4180,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           basedOnRevisionId: basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.currentRevisionId : undefined,
           position: getProposalPlacement(created.workspace, pendingConfirmation.sourceObjectIds, "definition")
         });
-        setActiveProposalId(recorded.proposal.id);
         return recorded.workspace;
       });
       setPendingConfirmation(null);
@@ -4061,7 +4203,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         });
         const basedOnDefinitionId = current.workingState.currentDesignDefinitionId;
         const basedOnDefinitionObject = basedOnDefinitionId ? current.objects[basedOnDefinitionId] : undefined;
-        const recorded = recordConceptDirectionProposal(created.workspace, {
+        const placed = recordAndApplyConceptDirectionProposal(created.workspace, {
           operationId,
           workIntent: "createConceptDirections",
           title: pendingConfirmation.args.title,
@@ -4073,8 +4215,19 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           basedOnRevisionId: basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.currentRevisionId : undefined,
           position: getProposalPlacement(created.workspace, pendingConfirmation.sourceObjectIds, "direction")
         });
-        setActiveProposalId(recorded.proposal.id);
-        return recorded.workspace;
+        if (placed.status === "blocked") {
+          return appendAiAssistantFailureMessage(placed.workspace, "agent-confirm-direction", placed.reason, placed.proposal.id);
+        }
+        setSelectedObjectIds(placed.directions.map((direction) => direction.id));
+        if (placed.directions[0]) {
+          setFocusRequest((focus) => ({ objectId: placed.directions[0].id, nonce: focus.nonce + 1 }));
+        }
+        return appendAiAssistantNotice(
+          placed.workspace,
+          "agent-confirm-direction-applied",
+          `已应用到画布：${placed.directions.length} 个概念方向。我已选中并定位到第一个方向。`,
+          placed.proposal.id
+        );
       });
       setPendingConfirmation(null);
       setAiDraft("");
@@ -4292,11 +4445,23 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
-    const objectIds = selectedObjects.map((object) => object.id);
-    pushObjectOperationUndo();
-    setWorkspace((current) => hideObjects(current, objectIds));
-    setSelectedObjectIds((current) => current.filter((selectedId) => !objectIds.includes(selectedId)));
-    setLocalEditObjectId((current) => (current && objectIds.includes(current) ? null : current));
+    const proposalObjects = selectedObjects.filter((object) => object.type === "proposalDraft");
+    const objectIds = selectedObjects.filter((object) => object.type !== "proposalDraft").map((object) => object.id);
+    if (objectIds.length > 0) {
+      pushObjectOperationUndo();
+    }
+    setWorkspace((current) => {
+      const hidden = objectIds.length > 0 ? hideObjects(current, objectIds) : current;
+      return proposalObjects.reduce(
+        (next, object) => rejectArtifactProposal(next, object.proposalId, "用户从画布隐藏并放弃当前草案。"),
+        hidden
+      );
+    });
+    const removedIds = [...objectIds, ...proposalObjects.map((object) => object.id)];
+    setSelectedObjectIds((current) => current.filter((selectedId) => !removedIds.includes(selectedId)));
+    setLocalEditObjectId((current) => (current && removedIds.includes(current) ? null : current));
+    setActiveProposalId((current) => (current && removedIds.includes(current) ? null : current));
+    setDetailProposalId((current) => (current && removedIds.includes(current) ? null : current));
     setCanvasContextMenu(null);
   }, [pushObjectOperationUndo, selectedObjects, setWorkspace]);
 
@@ -4315,20 +4480,32 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
-    const objectIds = selectedObjects.map((object) => object.id);
-    pushObjectOperationUndo();
+    const proposalObjects = selectedObjects.filter((object) => object.type === "proposalDraft");
+    const objectIds = selectedObjects.filter((object) => object.type !== "proposalDraft").map((object) => object.id);
+    if (objectIds.length > 0) {
+      pushObjectOperationUndo();
+    }
     setWorkspace((current) => {
-      const result = deleteObjects(current, objectIds, {
-        confirmed: true,
-        reason: "用户在对象详情栏直接删除该对象。"
-      });
-      return result.workspace;
+      const deleted =
+        objectIds.length > 0
+          ? deleteObjects(current, objectIds, {
+              confirmed: true,
+              reason: "用户在对象详情栏直接删除该对象。"
+            }).workspace
+          : current;
+      return proposalObjects.reduce(
+        (next, object) => rejectArtifactProposal(next, object.proposalId, "用户从画布删除并放弃当前草案。"),
+        deleted
+      );
     });
-    setSelectedObjectIds((current) => current.filter((selectedId) => !objectIds.includes(selectedId)));
-    setLocalEditObjectId((current) => (current && objectIds.includes(current) ? null : current));
+    const removedIds = [...objectIds, ...proposalObjects.map((object) => object.id)];
+    setSelectedObjectIds((current) => current.filter((selectedId) => !removedIds.includes(selectedId)));
+    setLocalEditObjectId((current) => (current && removedIds.includes(current) ? null : current));
     setPendingConfirmation((current) =>
-      current?.kind === "deleteObject" && objectIds.includes(current.targetObjectId) ? null : current
+      current?.kind === "deleteObject" && removedIds.includes(current.targetObjectId) ? null : current
     );
+    setActiveProposalId((current) => (current && removedIds.includes(current) ? null : current));
+    setDetailProposalId((current) => (current && removedIds.includes(current) ? null : current));
     setCanvasContextMenu(null);
   }, [pushObjectOperationUndo, selectedObjects, setWorkspace]);
 
@@ -4337,18 +4514,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     if (!target) {
       return;
     }
-    const reason = window.prompt("请输入或编辑淘汰理由。淘汰不会隐藏、删除方向，也不会移除图片、修订或 lineage。", "");
-    const trimmedReason = reason?.trim();
-    if (!trimmedReason) {
-      return;
-    }
-
-    setWorkspace((current) =>
-      eliminateDirection(current, target.id, {
-        reason: trimmedReason
-      })
-    );
-  }, [selectedObjects, setWorkspace]);
+    setTextPrompt({
+      kind: "eliminateDirection",
+      directionId: target.id,
+      title: "淘汰方向",
+      body: "请输入或编辑淘汰理由。淘汰不会隐藏、删除方向，也不会移除图片、修订或 lineage。",
+      label: "淘汰理由",
+      initialValue: ""
+    });
+  }, [selectedObjects]);
 
   const handleSetDirectionPrimary = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "conceptDirection");
@@ -4836,6 +5010,146 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const documentReaderFile = documentReader ? workspace.objects[documentReader.fileObjectId] : undefined;
   const documentReaderInitialLocation = documentReader?.initialLocation ?? null;
+  const selectAllCanvasObjects = useCallback(() => {
+    if (activeCanvasObjectIds.length === 0) {
+      return false;
+    }
+
+    setSelectedObjectIds(activeCanvasObjectIds);
+    setCanvasContextMenu(null);
+    setWorkspace((current) => ({
+      ...current,
+      ui: {
+        ...current.ui,
+        lastSelectionIds: activeCanvasObjectIds
+      }
+    }));
+    return true;
+  }, [activeCanvasObjectIds, setWorkspace]);
+
+  const clearCanvasSelection = useCallback(() => {
+    if (selectedObjectIds.length === 0) {
+      return false;
+    }
+
+    setSelectedObjectIds([]);
+    setCanvasContextMenu(null);
+    setSelectionScreenBounds(null);
+    setWorkspace((current) => ({
+      ...current,
+      ui: {
+        ...current.ui,
+        lastSelectionIds: []
+      }
+    }));
+    return true;
+  }, [selectedObjectIds.length, setWorkspace]);
+
+  const closeTopWorkspaceSurface = useCallback(() => {
+    if (canvasContextMenu) {
+      setCanvasContextMenu(null);
+      return true;
+    }
+    if (detailProposalId) {
+      setDetailProposalId(null);
+      return true;
+    }
+    if (activeResearchDetailObjectId) {
+      setActiveResearchDetailObjectId(null);
+      return true;
+    }
+    if (documentReader) {
+      handleCloseDocumentReader();
+      return true;
+    }
+    if (deliveryPanelOpen) {
+      setDeliveryPanelOpen(false);
+      return true;
+    }
+    if (deliveryOutputPanelOpen) {
+      setDeliveryOutputPanelOpen(false);
+      return true;
+    }
+    if (bundlePanelOpen) {
+      setBundlePanelOpen(false);
+      return true;
+    }
+    if (projectMenuOpen) {
+      setProjectMenuOpen(false);
+      return true;
+    }
+    if (activeDrawer) {
+      setActiveDrawer(null);
+      return true;
+    }
+
+    return clearCanvasSelection();
+  }, [
+    activeDrawer,
+    activeResearchDetailObjectId,
+    bundlePanelOpen,
+    canvasContextMenu,
+    clearCanvasSelection,
+    deliveryOutputPanelOpen,
+    deliveryPanelOpen,
+    detailProposalId,
+    documentReader,
+    handleCloseDocumentReader,
+    projectMenuOpen
+  ]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const shortcut = resolveWorkspaceShortcut(event, event.target);
+      if (!shortcut) {
+        return;
+      }
+
+      let handled = false;
+      switch (shortcut) {
+        case "deleteSelection":
+          if (!canvasContextMenu && selectedObjects.length > 0) {
+            handleDeleteSelected();
+            handled = true;
+          }
+          break;
+        case "selectAllCanvas":
+          handled = selectAllCanvasObjects();
+          break;
+        case "focusAiInput":
+          setAiOpen(true);
+          setAiInputFocusNonce((current) => current + 1);
+          handled = true;
+          break;
+        case "manualSave":
+          handleManualSave();
+          handled = true;
+          break;
+        case "closeOrClearSelection":
+          handled = closeTopWorkspaceSurface();
+          break;
+      }
+
+      if (!handled) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+    };
+
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, [
+    canvasContextMenu,
+    closeTopWorkspaceSurface,
+    handleDeleteSelected,
+    handleManualSave,
+    selectAllCanvasObjects,
+    selectedObjects.length
+  ]);
+
   const viewportSize =
     typeof window === "undefined"
       ? { w: 1280, h: 800 }
@@ -4875,6 +5189,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           event.currentTarget.value = "";
         }}
       />
+      {manualSaveNotice ? (
+        <div className="workspace-save-toast" role="status" aria-live="polite">
+          {manualSaveNotice}
+        </div>
+      ) : null}
       <MorphoCanvas
         workspace={workspace}
         annotatedObjectId={localEditObjectId}
@@ -4900,27 +5219,35 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }}
       />
 
-      <ProposalCanvasLayer
-        proposals={pendingCanvasProposals}
-        view={workspace.canvas.view}
-        activeProposalId={activeProposal?.id ?? null}
-        onFocusProposal={setActiveProposalId}
-        onApplyProposal={handleApplyProposalFromCanvas}
-        onRejectProposal={handleRejectProposal}
-        onContinueDiscussion={handleContinueProposalDiscussion}
-      />
+      {detailProposal ? (
+        <aside className="proposal-detail-dialog" aria-label="草案详情">
+          <button
+            className="proposal-detail-close"
+            type="button"
+            aria-label="关闭草案详情"
+            onClick={() => setDetailProposalId(null)}
+          >
+            ×
+          </button>
+          <ProposalDraftCard
+            workspace={workspace}
+            proposal={detailProposal}
+            onApply={(allowSourceChanged) => handleApplyProposalFromCanvas(detailProposal.id, allowSourceChanged)}
+            onReject={handleRejectProposal}
+            onContinueDiscussion={handleContinueProposalDiscussion}
+            onRegenerate={handleRegenerateProposal}
+            onSaveResearchDraft={handleSaveResearchProposalDraft}
+            onSaveDesignDefinitionDraft={handleSaveDesignDefinitionProposalDraft}
+            onSaveConceptDirectionDraft={handleSaveConceptDirectionProposalDraft}
+          />
+        </aside>
+      ) : null}
 
-      {activeProposal?.canvasPlacement ? (
-        <ProposalReviewPanel
-          workspace={workspace}
-          proposal={activeProposal}
-          onApply={handleApplyProposal}
-          onReject={handleRejectProposal}
-          onContinueDiscussion={handleContinueProposalDiscussion}
-          onRegenerate={handleRegenerateProposal}
-          onSaveResearchDraft={handleSaveResearchProposalDraft}
-          onSaveDesignDefinitionDraft={handleSaveDesignDefinitionProposalDraft}
-          onSaveConceptDirectionDraft={handleSaveConceptDirectionProposalDraft}
+      {textPrompt ? (
+        <WorkspaceTextPromptDialog
+          prompt={textPrompt}
+          onCancel={() => setTextPrompt(null)}
+          onSubmit={handleSubmitTextPrompt}
         />
       ) : null}
 
@@ -5036,6 +5363,35 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onReferenceIntent={handleReferenceIntent}
         onHide={handleHideSelected}
         onDelete={handleDeleteSelected}
+        onOpenProposalDetail={() => {
+          const proposalObject = selectedObjects.find((object) => object.type === "proposalDraft");
+          if (proposalObject?.type !== "proposalDraft") {
+            return;
+          }
+          setActiveProposalId(proposalObject.proposalId);
+          setDetailProposalId(proposalObject.proposalId);
+        }}
+        onApplyProposal={() => {
+          const proposalObject = selectedObjects.find((object) => object.type === "proposalDraft");
+          if (proposalObject?.type !== "proposalDraft") {
+            return;
+          }
+          handleApplyProposalFromCanvas(proposalObject.proposalId);
+        }}
+        onRejectProposal={() => {
+          const proposalObject = selectedObjects.find((object) => object.type === "proposalDraft");
+          if (proposalObject?.type !== "proposalDraft") {
+            return;
+          }
+          handleRejectProposal(proposalObject.proposalId);
+        }}
+        onContinueProposalDiscussion={() => {
+          const proposalObject = selectedObjects.find((object) => object.type === "proposalDraft");
+          if (proposalObject?.type !== "proposalDraft") {
+            return;
+          }
+          handleContinueProposalDiscussion(proposalObject.proposalId);
+        }}
         onReviseDirection={handleReviseDirectionIntent}
         onSplitDirection={handleSplitDirectionIntent}
         onMergeDirections={handleMergeDirectionsIntent}
@@ -5086,6 +5442,39 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           onHide={handleHideSelected}
           onDelete={handleDeleteSelected}
           onReorderLayer={handleReorderSelectedLayers}
+          onOpenProposalDetail={() => {
+            const proposalObject = contextMenuObjects.find((object) => object.type === "proposalDraft");
+            if (proposalObject?.type !== "proposalDraft") {
+              return;
+            }
+            setActiveProposalId(proposalObject.proposalId);
+            setDetailProposalId(proposalObject.proposalId);
+            setCanvasContextMenu(null);
+          }}
+          onApplyProposal={() => {
+            const proposalObject = contextMenuObjects.find((object) => object.type === "proposalDraft");
+            if (proposalObject?.type !== "proposalDraft") {
+              return;
+            }
+            handleApplyProposalFromCanvas(proposalObject.proposalId);
+            setCanvasContextMenu(null);
+          }}
+          onRejectProposal={() => {
+            const proposalObject = contextMenuObjects.find((object) => object.type === "proposalDraft");
+            if (proposalObject?.type !== "proposalDraft") {
+              return;
+            }
+            handleRejectProposal(proposalObject.proposalId);
+            setCanvasContextMenu(null);
+          }}
+          onContinueProposalDiscussion={() => {
+            const proposalObject = contextMenuObjects.find((object) => object.type === "proposalDraft");
+            if (proposalObject?.type !== "proposalDraft") {
+              return;
+            }
+            handleContinueProposalDiscussion(proposalObject.proposalId);
+            setCanvasContextMenu(null);
+          }}
         />
       ) : null}
 
@@ -5191,6 +5580,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         imageTaskStatus={imageTaskStatus}
         contextWarning={contextWarning}
         migrationError={persistenceState.migrationError}
+        focusInputRequestNonce={aiInputFocusNonce}
         onToggleOpen={() => setAiOpen((open) => !open)}
         onDraftChange={setAiDraft}
         onTurnModeChange={setAgentTurnMode}
@@ -5241,6 +5631,49 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   );
 }
 
+function WorkspaceTextPromptDialog({
+  prompt,
+  onCancel,
+  onSubmit
+}: {
+  prompt: WorkspaceTextPrompt;
+  onCancel: () => void;
+  onSubmit: (value: string) => void;
+}) {
+  const [value, setValue] = useState(prompt.initialValue);
+
+  return (
+    <aside className="workspace-text-prompt" aria-label={prompt.title}>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit(value);
+        }}
+      >
+        <div className="workspace-text-prompt-header">
+          <strong>{prompt.title}</strong>
+          <button type="button" aria-label="关闭" onClick={onCancel}>
+            ×
+          </button>
+        </div>
+        <p>{prompt.body}</p>
+        <label>
+          <span>{prompt.label}</span>
+          <textarea autoFocus rows={3} value={value} onChange={(event) => setValue(event.currentTarget.value)} />
+        </label>
+        <div className="workspace-text-prompt-actions">
+          <button type="button" onClick={onCancel}>
+            取消
+          </button>
+          <button className="brand" type="submit" disabled={!value.trim()}>
+            确认
+          </button>
+        </div>
+      </form>
+    </aside>
+  );
+}
+
 function updateWorkspaceInstances(workspace: MorphoWorkspace, instances: CanvasInstance[]): MorphoWorkspace {
   const updates = new Map(instances.map((instance) => [instance.id, instance]));
   let didChange = false;
@@ -5280,6 +5713,14 @@ function updateWorkspaceInstances(workspace: MorphoWorkspace, instances: CanvasI
       instances: nextInstances
     }
   };
+}
+
+function getProposalDraftCanvasPosition(
+  workspace: MorphoWorkspace,
+  proposalId: string,
+  fallback: { x: number; y: number }
+): { x: number; y: number } {
+  return workspace.canvas.instances.find((instance) => instance.objectId === proposalId)?.position ?? fallback;
 }
 
 function getPlacementNearObjects(
@@ -5335,6 +5776,7 @@ function buildReadSelectedContextResult(
       detail: summary.detail
     })),
     directDocumentTitles: context.documentFragmentExtracts.map((extract) => extract.title),
+    proposalDrafts: context.proposalDrafts,
     imageObjectIds: [...context.imageObjectIds],
     objectIds: [...context.objectIds],
     defaultReference: providerTaskContext.defaultReference,
@@ -5613,6 +6055,7 @@ function buildPendingAgentActionConfirmation(input: {
         selectedImageIds: input.selectedObjects.filter((object) => object.type === "image").map((object) => object.id)
       };
     case "read_selected_context":
+    case "revise_selected_proposal_draft":
     case "search_web_evidence":
     case "request_confirmation":
       throw new Error("Only mutating agent tools can be converted into a pending action.");

@@ -220,4 +220,55 @@ describe("BottomDetailBar selected object surface", () => {
     expect(html).toContain("阅读解析内容");
     expect(html).toContain("打开本地解析文本阅读面板");
   });
+
+  it("renders the selected concept direction current revision details", () => {
+    const workspace = createInitialWorkspace();
+    const direction = workspace.objects["direction-soft-rail"];
+    if (direction.type !== "conceptDirection") {
+      throw new Error("seed direction missing");
+    }
+    const detailedWorkspace = {
+      ...workspace,
+      directionRevisions: {
+        ...workspace.directionRevisions,
+        [direction.currentRevisionId]: {
+          ...workspace.directionRevisions[direction.currentRevisionId]!,
+          conceptStatement: "A stable concept statement for review.",
+          strategy: "Use fixed nodes as a resilient warning network.",
+          differentiators: ["Stable deployment", "Clear system boundary"],
+          visualSignals: ["Vertical anchor", "Modular shell"],
+          risks: ["Needs maintenance proof"],
+          openQuestions: ["How often should the node be serviced?"]
+        }
+      }
+    };
+
+    const html = renderToStaticMarkup(
+      createElement(BottomDetailBar, {
+        workspace: detailedWorkspace,
+        selectedObjects: [direction],
+        assets: detailedWorkspace.assets,
+        hasPendingDesignDefinitionRevisionDraft: false,
+        relations: detailedWorkspace.relations,
+        directionLineage: detailedWorkspace.directionLineage,
+        visualBranches: detailedWorkspace.visualBranches,
+        decisionRecords: detailedWorkspace.decisionRecords,
+        activeDesignTrace: null,
+        onRenameVisualBranch: () => undefined,
+        onArchiveVisualBranch: () => undefined,
+        onRestoreVisualBranch: () => undefined,
+        onOpenDocumentReader: () => undefined,
+        onSaveKeyConclusionFromResearchItem: () => undefined,
+        onCopyItemToDraft: () => undefined,
+        onContinueQuestion: () => undefined
+      })
+    );
+
+    expect(html).toContain("A stable concept statement for review.");
+    expect(html).toContain("Use fixed nodes as a resilient warning network.");
+    expect(html).toContain("Stable deployment");
+    expect(html).toContain("Vertical anchor");
+    expect(html).toContain("Needs maintenance proof");
+    expect(html).toContain("How often should the node be serviced?");
+  });
 });

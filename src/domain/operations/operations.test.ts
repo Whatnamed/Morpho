@@ -17,6 +17,7 @@ import {
   failOperation,
   markImageGenerationOperationSubmitted,
   recordConceptDirectionProposal,
+  recordAndApplyConceptDirectionProposal,
   recordDesignDefinitionProposal,
   recordImageGenerationPlan,
   recordImageGenerationOperationItemFailure,
@@ -71,6 +72,95 @@ describe("Morpho Operation Runtime", () => {
     }
   });
 
+  it("does not block new work for an older proposal operation that is waiting for user review", () => {
+    const created = createArtifactProposalOperation(createBlankWorkspace("project-op"), {
+      operationId: "operation-old-waiting-proposal",
+      type: "conceptDirection",
+      userInput: "generate drafts",
+      selectedObjectIds: [],
+      workIntent: "createConceptDirections"
+    }).workspace;
+    const operation = created.operations["operation-old-waiting-proposal"];
+    expect(operation).toBeDefined();
+    const waiting = {
+      ...created,
+      operations: {
+        ...created.operations,
+        "operation-old-waiting-proposal": {
+          ...operation!,
+          status: "waiting_for_user" as const
+        }
+      }
+    };
+
+    expect(canStartOperation(waiting).status).toBe("ok");
+  });
+
+  it("can directly place explicit concept direction drafts as separate canvas directions", () => {
+    const workspace = createInitialWorkspace();
+    const result = recordAndApplyConceptDirectionProposal(workspace, {
+      operationId: undefined,
+      workIntent: "createConceptDirections",
+      title: "声浮概念方向组",
+      summary: "三个可并排判断的方向。",
+      directions: [
+        {
+          title: "方向 1 | 声学锚定式声学哨站",
+          summary: "用固定部署形成稳定声学边界。",
+          conceptStatement: "以长期驻留节点承担连续监测。",
+          keywords: ["固定部署", "远距预警"],
+          strategy: "把关键节点做成稳定基础设施。",
+          differentiators: ["部署稳定", "系统边界清楚"],
+          visualSignals: ["竖向锚点", "模块化外壳"],
+          risks: ["初期布设成本较高"],
+          openQuestions: ["如何降低维护频率"]
+        },
+        {
+          title: "方向 2 | 漂移拼接式避险浮标群",
+          summary: "用可迁移浮标构成动态态势网络。",
+          conceptStatement: "以群体协同覆盖复杂海域。",
+          keywords: ["群体协同", "动态部署"],
+          strategy: "把系统做成可重组网络。",
+          differentiators: ["适应性强", "覆盖范围可变"],
+          visualSignals: ["浮体阵列", "柔性连接"],
+          risks: ["边界稳定性需要验证"],
+          openQuestions: ["如何表达群体协同"]
+        },
+        {
+          title: "方向 3 | 近人引导式声学交互终端",
+          summary: "把系统收束为人与环境之间的交互终端。",
+          conceptStatement: "以近人端提示理解和行动。",
+          keywords: ["近人引导", "交互反馈"],
+          strategy: "把复杂监测结果翻译为可行动反馈。",
+          differentiators: ["用户理解成本低", "反馈更直接"],
+          visualSignals: ["手持终端", "柔和声光提示"],
+          risks: ["信息过载风险"],
+          openQuestions: ["如何控制提示层级"]
+        }
+      ],
+      sourceObjectIds: ["definition-current"],
+      citations: [],
+      basedOnDesignDefinitionId: "definition-current",
+      basedOnRevisionId: "definition-revision-current-1",
+      position: { x: 1200, y: 320 }
+    });
+
+    expect(result.status).toBe("updated");
+    if (result.status !== "updated") {
+      return;
+    }
+    expect(result.directions).toHaveLength(3);
+    expect(result.workspace.objects[result.proposal.id]).toBeUndefined();
+    expect(result.workspace.artifactProposals[result.proposal.id]?.status).toBe("applied");
+    expect(result.workspace.canvas.instances.filter((instance) => result.directions.some((direction) => direction.id === instance.objectId))).toHaveLength(3);
+    expect(result.workspace.objects[result.directions[1]!.id]).toMatchObject({
+      type: "conceptDirection",
+      title: "方向 2 | 漂移拼接式避险浮标群",
+      summary: "用可迁移浮标构成动态态势网络。",
+      status: "pendingPreview"
+    });
+  });
+
   it("unblocks new work after a text operation fails", () => {
     const created = createResearchOperation(createBlankWorkspace("project-op"), {
       userInput: "继续联网调研",
@@ -106,7 +196,12 @@ describe("Morpho Operation Runtime", () => {
       citations: []
     });
 
-    expect(Object.values(proposed.workspace.objects)).toHaveLength(0);
+    expect(Object.values(proposed.workspace.objects).filter((object) => object.type === "research")).toHaveLength(0);
+    expect(proposed.workspace.objects[proposed.proposal.id]).toMatchObject({
+      type: "proposalDraft",
+      proposalId: proposed.proposal.id,
+      proposalType: "researchAnalysis"
+    });
     expect(proposed.proposal.status).toBe("pending");
     expect(proposed.workspace.artifactProposals[proposed.proposal.id]).toEqual(proposed.proposal);
   });
@@ -169,7 +264,12 @@ describe("Morpho Operation Runtime", () => {
       ]
     });
 
-    expect(updated.objects).toEqual(proposed.workspace.objects);
+    expect(updated.objects["text-source"]).toEqual(proposed.workspace.objects["text-source"]);
+    expect(updated.objects[proposed.proposal.id]).toMatchObject({
+      type: "proposalDraft",
+      title: updated.artifactProposals[proposed.proposal.id]?.title,
+      summary: updated.artifactProposals[proposed.proposal.id]?.summary
+    });
     expect(updated.artifactProposals[proposed.proposal.id]).toMatchObject({
       title: "研究草案 v2",
       summary: "更新后的摘要",
@@ -202,7 +302,7 @@ describe("Morpho Operation Runtime", () => {
 
     const rejected = rejectArtifactProposal(proposed.workspace, proposed.proposal.id, "用户明确放弃当前草案。");
 
-    expect(rejected.objects).toEqual(proposed.workspace.objects);
+    expect(rejected.objects[proposed.proposal.id]).toBeUndefined();
     expect(rejected.artifactProposals[proposed.proposal.id]).toMatchObject({
       status: "rejected",
       rejectedReason: "用户明确放弃当前草案。"
@@ -526,7 +626,7 @@ describe("Morpho Operation Runtime", () => {
     expect(detectResearchSourceChanges(changed, created.operation.id)).toContain("来源对象已被隐藏");
   });
 
-  it("keeps design-definition proposal operations waiting for user and blocks unrelated operations", () => {
+  it("completes design-definition proposal operations after placing the draft on canvas", () => {
     const workspace = createInitialWorkspace();
     const operationCreated = createArtifactProposalOperation(workspace, {
       operationId: "operation-definition-create",
@@ -555,11 +655,11 @@ describe("Morpho Operation Runtime", () => {
 
     expect(proposed.workspace.operations[operationCreated.operation.id]).toMatchObject({
       type: "designDefinition",
-      status: "waiting_for_user",
+      status: "succeeded",
       proposalIds: [proposed.proposal.id]
     });
     expect(canStartOperation(proposed.workspace)).toMatchObject({
-      status: "blocked"
+      status: "ok"
     });
     expect(getActiveOperation(proposed.workspace)).toBeUndefined();
 
@@ -570,7 +670,7 @@ describe("Morpho Operation Runtime", () => {
     }
   });
 
-  it("cancels a waiting proposal operation when the proposal is rejected", () => {
+  it("keeps completed proposal operations completed when the canvas draft is rejected", () => {
     const workspace = createInitialWorkspace();
     const operationCreated = createArtifactProposalOperation(workspace, {
       operationId: "operation-direction-create",
@@ -604,7 +704,7 @@ describe("Morpho Operation Runtime", () => {
     const rejected = rejectArtifactProposal(proposed.workspace, proposed.proposal.id, "用户放弃。");
 
     expect(rejected.artifactProposals[proposed.proposal.id]?.status).toBe("rejected");
-    expect(rejected.operations[operationCreated.operation.id]?.status).toBe("cancelled");
+    expect(rejected.operations[operationCreated.operation.id]?.status).toBe("succeeded");
   });
 
   it("does not treat source title or summary edits as semantic source changes", () => {
@@ -857,6 +957,122 @@ describe("Morpho Operation Runtime", () => {
         })
       );
       expect(applied.workspace.ui.lastSelectionIds).toEqual([applied.designDefinitionObject.id]);
+    }
+  });
+
+  it("records a pending design proposal as a real canvas object until it is applied or rejected", () => {
+    const workspace = createBlankWorkspace("project-real-proposal-object");
+    const proposed = recordDesignDefinitionProposal(workspace, {
+      proposalId: "proposal-definition-real-object",
+      title: "Definition draft",
+      summary: "Short draft summary.",
+      projectGoal: "Create a clear product definition.",
+      targetUsers: ["User"],
+      primaryScenarios: ["Scenario"],
+      coreProblem: "The project needs a stable definition.",
+      designPrinciples: ["Clear boundary"],
+      constraints: [],
+      avoidDirections: [],
+      opportunities: [],
+      openQuestions: [],
+      sourceObjectIds: [],
+      citations: [],
+      position: { x: 640, y: 360 }
+    });
+
+    expect(proposed.workspace.objects[proposed.proposal.id]).toMatchObject({
+      id: proposed.proposal.id,
+      type: "proposalDraft",
+      proposalId: proposed.proposal.id,
+      proposalType: "designDefinition",
+      visibility: "active",
+      title: "Definition draft",
+      summary: "Short draft summary."
+    });
+    expect(proposed.workspace.canvas.instances).toContainEqual(
+      expect.objectContaining({
+        objectId: proposed.proposal.id,
+        position: { x: 640, y: 360 }
+      })
+    );
+
+    const rejected = rejectArtifactProposal(proposed.workspace, proposed.proposal.id, "discarded");
+    expect(rejected.artifactProposals[proposed.proposal.id]?.status).toBe("rejected");
+    expect(rejected.objects[proposed.proposal.id]).toBeUndefined();
+    expect(rejected.canvas.instances.some((instance) => instance.objectId === proposed.proposal.id)).toBe(false);
+  });
+
+  it("removes the pending proposal object when applying the proposal", () => {
+    const workspace = createBlankWorkspace("project-apply-real-proposal-object");
+    const proposed = recordDesignDefinitionProposal(workspace, {
+      proposalId: "proposal-definition-apply-removes-draft",
+      title: "Definition draft",
+      summary: "Short draft summary.",
+      projectGoal: "Create a clear product definition.",
+      targetUsers: ["User"],
+      primaryScenarios: ["Scenario"],
+      coreProblem: "The project needs a stable definition.",
+      designPrinciples: ["Clear boundary"],
+      constraints: [],
+      avoidDirections: [],
+      opportunities: [],
+      openQuestions: [],
+      sourceObjectIds: [],
+      citations: [],
+      position: { x: 320, y: 180 }
+    });
+
+    const applied = applyDesignDefinitionProposal(proposed.workspace, proposed.proposal.id);
+
+    expect(applied.status).toBe("updated");
+    if (applied.status === "updated") {
+      expect(applied.workspace.objects[proposed.proposal.id]).toBeUndefined();
+      expect(applied.workspace.canvas.instances.some((instance) => instance.objectId === proposed.proposal.id)).toBe(false);
+      expect(applied.workspace.canvas.instances.some((instance) => instance.objectId === applied.designDefinitionObject.id)).toBe(true);
+    }
+  });
+
+  it("applies a moved proposal draft from its real canvas object position", () => {
+    const workspace = createBlankWorkspace("project-apply-moved-proposal-object");
+    const proposed = recordDesignDefinitionProposal(workspace, {
+      proposalId: "proposal-definition-apply-moved-draft",
+      title: "Definition draft",
+      summary: "Short draft summary.",
+      projectGoal: "Create a clear product definition.",
+      targetUsers: ["User"],
+      primaryScenarios: ["Scenario"],
+      coreProblem: "The project needs a stable definition.",
+      designPrinciples: ["Clear boundary"],
+      constraints: [],
+      avoidDirections: [],
+      opportunities: [],
+      openQuestions: [],
+      sourceObjectIds: [],
+      citations: [],
+      position: { x: 320, y: 180 }
+    });
+    const movedWorkspace = {
+      ...proposed.workspace,
+      canvas: {
+        ...proposed.workspace.canvas,
+        instances: proposed.workspace.canvas.instances.map((instance) =>
+          instance.objectId === proposed.proposal.id
+            ? { ...instance, position: { x: 820, y: 420 } }
+            : instance
+        )
+      }
+    };
+
+    const applied = applyDesignDefinitionProposal(movedWorkspace, proposed.proposal.id);
+
+    expect(applied.status).toBe("updated");
+    if (applied.status === "updated") {
+      expect(applied.workspace.canvas.instances).toContainEqual(
+        expect.objectContaining({
+          objectId: applied.designDefinitionObject.id,
+          position: { x: 820, y: 420 }
+        })
+      );
     }
   });
 

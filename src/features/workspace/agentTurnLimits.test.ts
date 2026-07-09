@@ -15,6 +15,7 @@ describe("agent turn limits", () => {
     expect(isAgentMutatingTool("create_research_analysis")).toBe(true);
     expect(isAgentMutatingTool("create_design_definition_proposal")).toBe(true);
     expect(isAgentMutatingTool("create_concept_direction_proposal")).toBe(true);
+    expect(isAgentMutatingTool("revise_selected_proposal_draft")).toBe(false);
     expect(isAgentMutatingTool("create_comparison_analysis")).toBe(true);
     expect(isAgentMutatingTool("generate_visuals")).toBe(true);
   });

@@ -28,6 +28,8 @@ export function getObjectTypeLabel(object: MorphoObject): string {
       return "文档片段";
     case "keyConclusion":
       return "关键结论";
+    case "proposalDraft":
+      return "待确认草案";
     case "designDefinition":
       return "设计定义";
     case "conceptDirection":

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createInitialWorkspace, hideObject } from "../../domain/morpho/workspace";
 import type { MorphoWorkspace } from "../../domain/morpho/types";
+import { recordDesignDefinitionProposal } from "../../domain/operations/operations";
 
 import { buildProviderTaskContext, buildTaskContext, TASK_CONTEXT_LIMITS } from "./taskContext";
 import { buildDocumentReaderBlocks } from "./documentReader";
@@ -180,6 +181,44 @@ describe("workspace task context assembly", () => {
       })
     ]);
     expect(JSON.stringify(provider)).not.toContain("source file full text");
+  });
+
+  it("includes full editable fields for an explicitly selected proposal draft", () => {
+    const proposed = recordDesignDefinitionProposal(createInitialWorkspace(), {
+      proposalId: "proposal-definition-context",
+      operationId: "operation-definition-context",
+      workIntent: "createDesignDefinition",
+      title: "Definition draft",
+      summary: "Draft summary.",
+      projectGoal: "Clarify a safer product definition.",
+      targetUsers: ["Designer"],
+      primaryScenarios: ["Reviewing concepts"],
+      coreProblem: "The first draft is too broad.",
+      designPrinciples: ["Be explicit"],
+      constraints: ["No extra product scope"],
+      avoidDirections: ["Generic wording"],
+      opportunities: ["Sharper decision language"],
+      openQuestions: ["What needs validation first?"],
+      sourceObjectIds: ["research-night-path"],
+      citations: [],
+      position: { x: 100, y: 100 }
+    });
+
+    const context = buildTaskContext(proposed.workspace, {
+      kind: "designDefinition",
+      draft: "把这张草案改得更明确",
+      selectedObjectIds: ["proposal-definition-context"]
+    });
+
+    expect(context.proposalDrafts).toEqual([
+      expect.objectContaining({
+        proposalId: "proposal-definition-context",
+        proposalType: "designDefinition",
+        title: "Definition draft",
+        projectGoal: "Clarify a safer product definition.",
+        constraints: ["No extra product scope"]
+      })
+    ]);
   });
 
   it("excludes hidden objects and reports predictable skip reasons", () => {

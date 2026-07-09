@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronLeft, Send, Square } from "lucide-react";
 
 import type { AiMessage, ComparisonAnalysis, ComparisonSourceRef, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
@@ -19,6 +19,7 @@ import {
   type ImageGenerationSettings
 } from "../imageGenerationSettings";
 import { resolveStoredComparisonSourceRefs } from "@/domain/morpho/comparisonAnalysis";
+import { sanitizeStructuredStreamForDisplay } from "@/domain/morpho/structuredBlocks";
 import type { Suggestion } from "../workspaceUi";
 import type {
   CreateComparisonAnalysisArgs,
@@ -288,6 +289,7 @@ type AiConversationPanelProps = {
   } | null;
   contextWarning?: string;
   migrationError?: string;
+  focusInputRequestNonce?: number;
   onToggleOpen: () => void;
   onDraftChange: (draft: string) => void;
   onTurnModeChange: (mode: MorphoAgentTurnMode) => void;
@@ -363,6 +365,7 @@ export function AiConversationPanel({
   imageTaskStatus,
   contextWarning,
   migrationError,
+  focusInputRequestNonce = 0,
   onToggleOpen,
   onDraftChange,
   onTurnModeChange,
@@ -398,7 +401,7 @@ export function AiConversationPanel({
   const [queueOpen, setQueueOpen] = useState(false);
   const [dismissedContextWarning, setDismissedContextWarning] = useState<string | null>(null);
   const activeTaskCount = isAiBusy || isImageTaskActive ? 1 : 0;
-  const statusLabel = activeTaskCount > 0 ? "处理中" : activeProposal ? "待处理" : "空闲";
+  const statusLabel = activeTaskCount > 0 ? "处理中" : "空闲";
   const visibleContextObjects = selectedObjects.slice(0, 3);
   const hiddenContextCount = Math.max(0, selectedObjects.length - visibleContextObjects.length);
   const modeSummary = turnMode === "auto" ? "自动执行" : "先确认";
@@ -433,6 +436,29 @@ export function AiConversationPanel({
     element.style.height = `${nextHeight}px`;
     element.style.overflowY = element.scrollHeight > maxHeight ? "auto" : "hidden";
   };
+  const handleCopy = (event: ClipboardEvent<HTMLElement>) => {
+    if (isEditableCopyTarget(event.target)) {
+      return;
+    }
+
+    const selectedText = window.getSelection()?.toString() ?? "";
+    if (selectedText.trim()) {
+      event.clipboardData.setData("text/plain", selectedText);
+      event.preventDefault();
+      return;
+    }
+
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    const messageId = target?.closest<HTMLElement>("[data-message-id]")?.dataset.messageId;
+    const message = messageId ? workspace.ai.messages.find((entry) => entry.id === messageId) : undefined;
+    const visibleMessageBody = message ? getVisibleAiMessageBody(message.body) : "";
+    if (!visibleMessageBody.trim()) {
+      return;
+    }
+
+    event.clipboardData.setData("text/plain", visibleMessageBody);
+    event.preventDefault();
+  };
 
   useEffect(() => {
     const element = scrollRef.current;
@@ -462,9 +488,17 @@ export function AiConversationPanel({
     resizeDraftTextarea();
   }, [draft, isOpen]);
 
+  useEffect(() => {
+    if (!isOpen || focusInputRequestNonce <= 0) {
+      return;
+    }
+
+    draftTextareaRef.current?.focus();
+  }, [focusInputRequestNonce, isOpen]);
+
   return (
     <>
-      <section className={`ai-panel ${isOpen ? "" : "collapsed"}`} aria-label="AI 对话">
+      <section className={`ai-panel ${isOpen ? "" : "collapsed"}`} aria-label="AI 对话" onCopyCapture={handleCopy}>
         <div className="ai-top">
           <div className="ai-top-handle" aria-hidden="true" />
           <button className="icon-button" type="button" aria-label="收起 AI 面板" onClick={onToggleOpen}>
@@ -481,8 +515,8 @@ export function AiConversationPanel({
                 (!message.body.trim() || isAgentThinkingPlaceholder(message.body));
 
               return (
-              <div className={`ai-message ${message.role}`} key={message.id}>
-                {isPlaceholderThinking ? <ThinkingIndicator /> : <MarkdownContent body={message.body} />}
+              <div className={`ai-message ${message.role}`} key={message.id} data-message-id={message.id}>
+                {isPlaceholderThinking ? <ThinkingIndicator /> : <MarkdownContent body={getVisibleAiMessageBody(message.body)} />}
                 {message.comparisonAnalysisId ? (
                   <ComparisonAnalysisCard
                     analysis={workspace.ai.comparisonAnalyses?.[message.comparisonAnalysisId]}
@@ -833,7 +867,7 @@ export function AiConversationPanel({
         {queueOpen ? (
           <div className="ai-queue-popover" role="status">
             {activeTaskCount === 0 ? (
-              <span>{activeProposal ? "有一张草案等待处理" : "当前没有正在执行的任务"}</span>
+              <span>当前没有正在执行的任务</span>
             ) : (
               <>
                 <strong>{activeOperation ? formatOperationType(activeOperation.type) : "当前输出"}</strong>
@@ -1253,6 +1287,20 @@ function MarkdownContent({ body }: { body: string }) {
   );
 }
 
+export function getVisibleAiMessageBody(body: string): string {
+  return sanitizeStructuredStreamForDisplay(body, AI_MESSAGE_TECHNICAL_MARKERS);
+}
+
+const AI_MESSAGE_TECHNICAL_MARKERS = [
+  "morphoProjectContinuityPatch",
+  "morphoConversationCheckpoint",
+  "morphoDesignDefinitionProposal",
+  "morphoConceptDirectionProposal",
+  "morphoComparisonAnalysis",
+  "morphoDeliverySectionDraft",
+  "morphoResearchProposal"
+] as const;
+
 type MarkdownBlock =
   | { kind: "heading"; level: number; text: string }
   | { kind: "paragraph"; text: string }
@@ -1385,6 +1433,14 @@ function renderInlineMarkdown(text: string): ReactNode[] {
 
 function shouldSubmitFromTextarea(event: KeyboardEvent<HTMLTextAreaElement>): boolean {
   return event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing;
+}
+
+function isEditableCopyTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return Boolean(target.closest("textarea, input, [contenteditable='true']"));
 }
 
 function formatCapabilities(capabilities: ImageGenerationSettings["capabilities"]): string {

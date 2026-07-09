@@ -140,6 +140,102 @@ describe("Morpho agent tool argument validation", () => {
     });
   });
 
+  it("parses a full selected design-definition draft revision", () => {
+    const parsed = parseMorphoAgentToolArguments(makeCall("revise_selected_proposal_draft", {
+      proposalId: "proposal-definition-a",
+      proposalType: "designDefinition",
+      title: "Definition A revised",
+      summary: "A tighter definition summary.",
+      projectGoal: "Clarify the product direction.",
+      targetUsers: ["Industrial designer"],
+      primaryScenarios: ["Reviewing concept options"],
+      coreProblem: "The original draft is too broad.",
+      designPrinciples: ["Make the hierarchy explicit"],
+      constraints: ["Avoid adding new scope"],
+      avoidDirections: ["Generic AI wording"],
+      opportunities: ["Use clearer decision language"],
+      openQuestions: ["Which risk needs validation first?"],
+      changeNote: "Tightened language."
+    }));
+
+    expect(parsed).toMatchObject({
+      name: "revise_selected_proposal_draft",
+      args: {
+        proposalId: "proposal-definition-a",
+        proposalType: "designDefinition",
+        title: "Definition A revised",
+        projectGoal: "Clarify the product direction."
+      }
+    });
+  });
+
+  it("parses a full selected concept-direction draft revision", () => {
+    const parsed = parseMorphoAgentToolArguments(makeCall("revise_selected_proposal_draft", {
+      proposalId: "proposal-direction-a",
+      proposalType: "conceptDirection",
+      title: "Direction revised",
+      summary: "A clearer set of concept directions.",
+      directions: [
+        {
+          title: "Soft rail",
+          summary: "Continuous support language.",
+          conceptStatement: "A warmer continuous support rail.",
+          keywords: ["warm", "continuous"],
+          strategy: "Keep the route legible.",
+          differentiators: ["Quieter visual hierarchy"],
+          visualSignals: ["Low glowing rail"],
+          risks: ["Corner complexity"],
+          openQuestions: ["How should corners resolve?"]
+        }
+      ]
+    }));
+
+    expect(parsed).toMatchObject({
+      name: "revise_selected_proposal_draft",
+      args: {
+        proposalId: "proposal-direction-a",
+        proposalType: "conceptDirection",
+        directions: [{ title: "Soft rail" }]
+      }
+    });
+  });
+
+  it("parses a selected research draft revision without accepting evidence rewrites", () => {
+    const parsed = parseMorphoAgentToolArguments(makeCall("revise_selected_proposal_draft", {
+      proposalId: "proposal-research-a",
+      proposalType: "researchAnalysis",
+      title: "Research revised",
+      summary: "Sharper research framing.",
+      findings: ["Finding: one useful point."],
+      opportunities: ["Opportunity: one useful opening."],
+      constraints: ["Constraint: one real boundary."],
+      openQuestions: ["Question: one thing to verify."]
+    }));
+
+    expect(parsed).toMatchObject({
+      name: "revise_selected_proposal_draft",
+      args: {
+        proposalId: "proposal-research-a",
+        proposalType: "researchAnalysis",
+        findings: ["Finding: one useful point."]
+      }
+    });
+
+    expect(() =>
+      parseMorphoAgentToolArguments(makeCall("revise_selected_proposal_draft", {
+        proposalId: "proposal-research-a",
+        proposalType: "researchAnalysis",
+        title: "Research revised",
+        summary: "Sharper research framing.",
+        findings: ["Finding: one useful point."],
+        opportunities: ["Opportunity: one useful opening."],
+        constraints: ["Constraint: one real boundary."],
+        openQuestions: ["Question: one thing to verify."],
+        evidence: []
+      }))
+    ).toThrow("未声明参数");
+  });
+
   it("expands design-definition alternatives as separate drafts with a safe limit", () => {
     const base = makeDefinitionArgs("Definition A");
     const drafts = getDesignDefinitionDrafts({

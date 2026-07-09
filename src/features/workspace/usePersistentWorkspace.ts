@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 import { createBlankWorkspace } from "@/domain/morpho/workspace";
@@ -120,5 +120,7 @@ export function usePersistentWorkspace(projectId: string) {
     };
   }, [hasLoaded, loadResult.migrationError]);
 
-  return [workspace, setWorkspace, { ...persistence, migrationError: loadResult.migrationError }] as const;
+  const flushWorkspace = useCallback(() => controllerRef.current?.flush() ?? persistence, [persistence]);
+
+  return [workspace, setWorkspace, { ...persistence, migrationError: loadResult.migrationError }, flushWorkspace] as const;
 }

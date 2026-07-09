@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   BaseBoxShapeUtil,
@@ -73,7 +73,8 @@ export class MorphoShapeUtil extends BaseBoxShapeUtil<MorphoShape> {
       "documentFragment",
       "designDefinition",
       "conceptDirection",
-      "delivery"
+      "delivery",
+      "proposalDraft"
     ),
     title: T.string,
     summary: T.string,
@@ -210,6 +211,10 @@ export function getAdaptiveMorphoShapeSize(
     return getResearchShapeSize(instance, object);
   }
 
+  if (object.type === "designDefinition") {
+    return getDesignDefinitionShapeSize(instance, object, details);
+  }
+
   if (object.type === "keyConclusion") {
     return getKeyConclusionShapeSize(instance, object);
   }
@@ -227,6 +232,37 @@ export function getAdaptiveMorphoShapeSize(
   return {
     w: width,
     h: Math.max(instance.size.h, Math.ceil(estimatedHeight))
+  };
+}
+
+function getDesignDefinitionShapeSize(
+  instance: CanvasInstance,
+  object: Extract<MorphoObject, { type: "designDefinition" }>,
+  details: string[]
+): { w: number; h: number } {
+  const width = Math.max(instance.size.w, 320);
+  const contentWidth = Math.max(190, width - 40);
+  const titleLineCount = estimateLineCount(object.title, Math.max(12, Math.floor(contentWidth / 14)));
+  const summaryLineCount = object.summary.trim()
+    ? estimateLineCount(object.summary, Math.max(16, Math.floor(contentWidth / 11)))
+    : 0;
+  const detailLineCount = details.reduce(
+    (total, detail) => total + estimateLineCount(detail, Math.max(14, Math.floor(contentWidth / 11))),
+    0
+  );
+  const estimatedHeight =
+    18 +
+    12 +
+    titleLineCount * 20 +
+    (summaryLineCount > 0 ? 8 + summaryLineCount * 17 : 0) +
+    (detailLineCount > 0 ? 8 + detailLineCount * 18 : 0) +
+    18;
+  const compactHeight = Math.max(136, Math.ceil(estimatedHeight));
+  const shouldShrinkLegacyFullDefinitionCard = instance.size.h > 280 && compactHeight < 240;
+
+  return {
+    w: width,
+    h: shouldShrinkLegacyFullDefinitionCard ? compactHeight : Math.max(instance.size.h, compactHeight)
   };
 }
 
@@ -356,14 +392,14 @@ function getDetails(object: MorphoObject, workspace?: MorphoWorkspace): string[]
     case "documentFragment":
       return [`来源文件：${object.source.fileTitle}`, object.body.slice(0, 160), "来源状态：查看详情"];
     case "designDefinition": {
-      const details = [`核心问题：${object.problem}`, `原则：${object.principles.join(" / ")}`, `避免项：${object.avoid.join(" / ")}`];
+      const details: string[] = [];
       if (workspace && hasPendingDesignDefinitionRevisionProposal(workspace, object.id)) {
         details.push("有修订草稿");
       }
       return details;
     }
     case "conceptDirection":
-      return [object.summary, `关键词：${object.keywords.join(" / ")}`];
+      return [object.summary, `鍏抽敭璇嶏細${object.keywords.join(" / ")}`];
     case "text":
       return [object.body];
     case "link":
@@ -378,8 +414,8 @@ function getDetails(object: MorphoObject, workspace?: MorphoWorkspace): string[]
       return [
         `形式：${object.format === "board" ? "展板" : "演示文稿"}`,
         `章节：${object.sections.length} · 引用：${object.references.length}`,
-        `开放待补：${object.gaps.filter((gap) => gap.status === "open").length}`,
-        `来源待复核：${
+        `寮€鏀惧緟琛ワ細${object.gaps.filter((gap) => gap.status === "open").length}`,
+        `鏉ユ簮寰呭鏍革細${
           signals.sourceHiddenReferenceIds.length +
           signals.sourceMissingReferenceIds.length +
           signals.assetMissingReferenceIds.length +
@@ -422,7 +458,7 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
         {props.isBeingLocallyEdited ? (
           <div className="edit-annotation">
             <span />
-            <p>转角连接件</p>
+            <p>局部编辑中</p>
           </div>
         ) : null}
       </article>
@@ -455,8 +491,35 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
     );
   }
 
+  if (props.morphoType === "designDefinition") {
+    return (
+      <article className={classes}>
+        <RoleLabel label={props.label} />
+        <h3>{props.title}</h3>
+        {props.summary ? <p className="morpho-definition-summary">{props.summary}</p> : null}
+        {props.details.map((detail) => (
+          <span className="morpho-definition-status" key={detail}>
+            {detail}
+          </span>
+        ))}
+      </article>
+    );
+  }
+
+  if (props.morphoType === "proposalDraft") {
+    return (
+      <article className={classes}>
+        <div className="morpho-proposal-header">
+          <RoleLabel label={props.label} />
+          <span>待确认</span>
+        </div>
+        <h3>{props.title}</h3>
+        {props.summary ? <p className="morpho-proposal-summary">{props.summary}</p> : null}
+      </article>
+    );
+  }
+
   if (
-    props.morphoType === "designDefinition" ||
     props.morphoType === "documentFragment" ||
     props.morphoType === "text"
   ) {
@@ -513,7 +576,7 @@ function RoleLabel({ label }: { label: string }) {
 function renderVisual(variant?: string) {
   if (variant === "cmf") {
     return (
-      <svg viewBox="0 0 320 210" role="img" aria-label="CMF 小板">
+      <svg viewBox="0 0 320 210" role="img" aria-label="CMF 灏忔澘">
         <rect width="320" height="210" fill="#E7E0D6" />
         <rect x="28" y="28" width="76" height="154" rx="8" fill="#D9D4CA" />
         <rect x="122" y="28" width="76" height="154" rx="8" fill="#A99782" />
@@ -525,7 +588,7 @@ function renderVisual(variant?: string) {
 
   if (variant === "scenario" || variant === "path") {
     return (
-      <svg viewBox="0 0 340 230" role="img" aria-label="夜间起身路径">
+      <svg viewBox="0 0 340 230" role="img" aria-label="澶滈棿璧疯韩璺緞">
         <defs>
           <linearGradient id="scenarioWall" x1="0" x2="1">
             <stop stopColor="#E8E0D5" />
@@ -545,7 +608,7 @@ function renderVisual(variant?: string) {
 
   if (variant === "supportIsland") {
     return (
-      <svg viewBox="0 0 320 210" role="img" aria-label="家具化支撑岛">
+      <svg viewBox="0 0 320 210" role="img" aria-label="瀹跺叿鍖栨敮鎾戝矝">
         <rect width="320" height="210" fill="#E9E4DA" />
         <rect x="56" y="74" width="86" height="78" rx="16" fill="#9D8F7D" />
         <rect x="178" y="52" width="72" height="108" rx="20" fill="#646F5E" />
@@ -557,7 +620,7 @@ function renderVisual(variant?: string) {
 
   if (variant === "softGuide") {
     return (
-      <svg viewBox="0 0 320 210" role="img" aria-label="软性引导带">
+      <svg viewBox="0 0 320 210" role="img" aria-label="杞€у紩瀵煎甫">
         <rect width="320" height="210" fill="#ECE8E1" />
         <path d="M42 146c52-44 86-30 126-56 28-18 52-34 108-16" fill="none" stroke="#AFA28E" strokeWidth="18" strokeLinecap="round" />
         <path d="M42 146c52-44 86-30 126-56 28-18 52-34 108-16" fill="none" stroke="#F9DFA4" strokeWidth="4" strokeLinecap="round" />
@@ -567,7 +630,7 @@ function renderVisual(variant?: string) {
 
   if (variant === "detail") {
     return (
-      <svg viewBox="0 0 320 210" role="img" aria-label="转角连接细节">
+      <svg viewBox="0 0 320 210" role="img" aria-label="杞杩炴帴缁嗚妭">
         <rect width="320" height="210" fill="#EEE9E0" />
         <path d="M58 132h112c36 0 57-22 57-58v-8" fill="none" stroke="#53604E" strokeWidth="28" strokeLinecap="round" />
         <path d="M58 132h112c36 0 57-22 57-58v-8" fill="none" stroke="#FFE2A0" strokeWidth="6" strokeLinecap="round" />

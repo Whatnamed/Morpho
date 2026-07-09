@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { proposalTargetMessage, proposalTypeLabel } from "./ProposalDraftCard";
+import { formatProposalForClipboard, proposalTargetMessage, proposalTypeLabel } from "./ProposalDraftCard";
 
 const workspace = {
   objects: {
@@ -110,5 +110,28 @@ describe("ProposalDraftCard labels", () => {
         } as never
       )
     ).toBe("本次操作：合并方向。合并来源：方向 A、方向 B。");
+  });
+
+  it("serializes proposal values for reliable copy from the detail dialog", () => {
+    const text = formatProposalForClipboard({
+      type: "designDefinition",
+      title: "海洋噪音浮标课设",
+      summary: "形成三个可继续筛选的设计定义草案。",
+      projectGoal: "帮助海上活动更早识别风险。",
+      coreProblem: "低频噪音影响生态保护判断。",
+      targetUsers: ["海洋生态保护机构"],
+      primaryScenarios: ["热点海域浮标节点"],
+      designPrinciples: ["风险地图优先"],
+      constraints: ["不能只围绕旗舰物种"],
+      avoidDirections: ["单一物种装置"],
+      opportunities: ["分级响应输出"],
+      openQuestions: ["固定热点还是移动浮标？"],
+      workIntent: "createDesignDefinition"
+    } as never);
+
+    expect(text).toContain("海洋噪音浮标课设");
+    expect(text).toContain("项目目标：帮助海上活动更早识别风险。");
+    expect(text).toContain("- 海洋生态保护机构");
+    expect(text).toContain("- 固定热点还是移动浮标？");
   });
 });

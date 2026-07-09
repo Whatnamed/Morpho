@@ -11,7 +11,8 @@ import type {
   MorphoWorkspace,
   VisualBranchRecord,
   ResearchObject,
-  AssetRecord
+  AssetRecord,
+  ConceptDirectionRevision
 } from "@/domain/morpho/types";
 import type { DesignTraceResult } from "@/domain/morpho/designTrace";
 import {
@@ -231,6 +232,7 @@ export function BottomDetailBar({
         </div>
         <div className="detail-content">
           {renderDetail({
+            workspace,
             tab: activeTab,
             object: primary,
             relations: related,
@@ -328,6 +330,45 @@ function VisualBranchRows({
   );
 }
 
+function ConceptDirectionRevisionDetail({ revision }: { revision: ConceptDirectionRevision }) {
+  return (
+    <section className="research-detail-group">
+      <h4>当前方向详情</h4>
+      <div className="research-item">
+        <div className="research-item-body">
+          <strong>概念说明</strong>
+          <span>{revision.conceptStatement}</span>
+        </div>
+      </div>
+      <div className="research-item">
+        <div className="research-item-body">
+          <strong>策略</strong>
+          <span>{revision.strategy}</span>
+        </div>
+      </div>
+      <CompactTextList title="差异点" items={revision.differentiators} />
+      <CompactTextList title="视觉信号" items={revision.visualSignals} />
+      <CompactTextList title="风险" items={revision.risks} />
+      <CompactTextList title="待确认问题" items={revision.openQuestions} />
+    </section>
+  );
+}
+
+function CompactTextList({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="research-item">
+      <div className="research-item-body">
+        <strong>{title}</strong>
+        <span>{items.join(" / ")}</span>
+      </div>
+    </div>
+  );
+}
+
 function DesignTraceSummary({ trace }: { trace: DesignTraceResult }) {
   return (
     <section className="design-trace-summary" aria-label="设计链路摘要">
@@ -355,6 +396,7 @@ function DesignTraceSummary({ trace }: { trace: DesignTraceResult }) {
 }
 
 function renderDetail(input: {
+  workspace: MorphoWorkspace;
   tab: DetailTab;
   object: MorphoObject;
   relations: MorphoRelation[];
@@ -372,6 +414,7 @@ function renderDetail(input: {
 }) {
   const {
     tab,
+    workspace,
     object,
     relations,
     directionLineage,
@@ -408,12 +451,14 @@ function renderDetail(input: {
 
     if (object.type === "conceptDirection") {
       const branches = Object.values(visualBranches).filter((branch) => branch.directionId === object.id);
+      const revision = workspace.directionRevisions[object.currentRevisionId];
       return (
         <>
           <strong>{getObjectTypeLabel(object)}</strong> · {object.summary}
           <span className="detail-meta">
             状态：{object.status} · 当前修订：{object.currentRevisionId}
           </span>
+          {revision ? <ConceptDirectionRevisionDetail revision={revision} /> : null}
           <VisualBranchRows
             branches={branches}
             onRenameVisualBranch={input.onRenameVisualBranch}

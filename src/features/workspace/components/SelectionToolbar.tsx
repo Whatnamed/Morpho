@@ -32,6 +32,10 @@ export type SelectionToolbarProps = {
   onReferenceIntent: () => void;
   onHide: () => void;
   onDelete: () => void;
+  onOpenProposalDetail: () => void;
+  onApplyProposal: () => void;
+  onRejectProposal: () => void;
+  onContinueProposalDiscussion: () => void;
   onReviseDirection: () => void;
   onSplitDirection: () => void;
   onMergeDirections: () => void;
@@ -55,6 +59,10 @@ export function SelectionToolbar({
   onOpenDeliveryPreparation,
   onLocalEdit,
   onReferenceIntent,
+  onOpenProposalDetail,
+  onApplyProposal,
+  onRejectProposal,
+  onContinueProposalDiscussion,
   onReviseDirection,
   onSplitDirection,
   onMergeDirections,
@@ -113,6 +121,26 @@ export function SelectionToolbar({
           <PackageOpen size={15} />
           交付
         </button>
+      ) : null}
+      {onlyOne && primary.type === "proposalDraft" ? (
+        <>
+          <button className="brand" type="button" onClick={onOpenProposalDetail}>
+            <BookOpen size={15} />
+            查看详情
+          </button>
+          <button type="button" onClick={onContinueProposalDiscussion}>
+            <MessageSquareText size={15} />
+            继续讨论
+          </button>
+          <button type="button" onClick={onApplyProposal}>
+            <Sparkles size={15} />
+            应用草案
+          </button>
+          <button className="danger" type="button" onClick={onRejectProposal}>
+            <Trash2 size={15} />
+            放弃草案
+          </button>
+        </>
       ) : null}
       <button className={isDesignTraceActive ? "brand" : ""} type="button" onClick={onToggleDesignTrace}>
         <GitBranch size={15} />
@@ -190,6 +218,10 @@ export type CanvasContextMenuProps = {
   onReferenceIntent: () => void;
   onHide: () => void;
   onDelete: () => void;
+  onOpenProposalDetail: () => void;
+  onApplyProposal: () => void;
+  onRejectProposal: () => void;
+  onContinueProposalDiscussion: () => void;
   onReorderLayer: (action: CanvasLayerReorderAction) => void;
 };
 
@@ -204,6 +236,10 @@ export function CanvasContextMenu({
   onReferenceIntent,
   onHide,
   onDelete,
+  onOpenProposalDetail,
+  onApplyProposal,
+  onRejectProposal,
+  onContinueProposalDiscussion,
   onReorderLayer
 }: CanvasContextMenuProps) {
   if (selectedObjects.length === 0) {
@@ -216,6 +252,51 @@ export function CanvasContextMenu({
     action();
     onClose();
   };
+
+  if (primary.type === "proposalDraft") {
+    return (
+      <div
+        className="canvas-context-menu"
+        style={{ left: x, top: y }}
+        role="menu"
+        aria-label="画布草案菜单"
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+      >
+        <button type="button" role="menuitem" onClick={() => run(onOpenProposalDetail)}>
+          <BookOpen size={15} />
+          查看详情
+        </button>
+        <button type="button" role="menuitem" onClick={() => run(onContinueProposalDiscussion)}>
+          <MessageSquareText size={15} />
+          继续讨论
+        </button>
+        <button type="button" role="menuitem" onClick={() => run(onApplyProposal)}>
+          <Sparkles size={15} />
+          应用草案
+        </button>
+        <button className="danger" type="button" role="menuitem" onClick={() => run(onRejectProposal)}>
+          <Trash2 size={15} />
+          放弃草案
+        </button>
+        <hr />
+        <button type="button" role="menuitem" onClick={() => run(() => onReorderLayer("bringForward"))}>
+          上移一层
+        </button>
+        <button type="button" role="menuitem" onClick={() => run(() => onReorderLayer("sendBackward"))}>
+          下移一层
+        </button>
+        <button type="button" role="menuitem" onClick={() => run(() => onReorderLayer("bringToFront"))}>
+          置于顶层
+        </button>
+        <button type="button" role="menuitem" onClick={() => run(() => onReorderLayer("sendToBack"))}>
+          置于底层
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div

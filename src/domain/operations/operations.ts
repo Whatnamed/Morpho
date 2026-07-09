@@ -6,6 +6,7 @@ import type {
   MorphoObject,
   MorphoRelation,
   MorphoWorkspace,
+  ProposalDraftObject,
   ResearchObject
 } from "../morpho/types";
 import { reconcileWorkspaceDerivedState } from "../morpho/derivedState";
@@ -13,6 +14,7 @@ import { applyProjectContinuityEvent } from "../morpho/projectContinuity";
 import type {
   ConceptDirectionProposal,
   DesignDefinitionProposal,
+  ArtifactProposal,
   ImageGenerationOperationMetadata,
   OperationRecord,
   OperationStatus,
@@ -157,6 +159,20 @@ export type ApplyConceptDirectionProposalResult =
   | {
       status: "blocked";
       workspace: MorphoWorkspace;
+      reason: string;
+    };
+
+export type RecordAndApplyConceptDirectionProposalResult =
+  | {
+      status: "updated";
+      workspace: MorphoWorkspace;
+      proposal: ConceptDirectionProposal;
+      directions: ConceptDirectionObject[];
+    }
+  | {
+      status: "blocked";
+      workspace: MorphoWorkspace;
+      proposal: ConceptDirectionProposal;
       reason: string;
     };
 
@@ -795,6 +811,71 @@ export function interruptActiveOperations(workspace: MorphoWorkspace, reason: st
     : workspace;
 }
 
+function attachProposalDraftObject(
+  workspace: MorphoWorkspace,
+  proposal: ArtifactProposal,
+  now: string
+): MorphoWorkspace {
+  const position = proposal.canvasPlacement ?? {
+    x: workspace.canvas.view.x + 220,
+    y: workspace.canvas.view.y + 180
+  };
+  const draftObject: ProposalDraftObject = {
+    id: proposal.id,
+    type: "proposalDraft",
+    proposalId: proposal.id,
+    proposalType: proposal.type,
+    title: proposal.title,
+    summary: proposal.summary,
+    createdBy: "ai",
+    visibility: "active",
+    createdAt: now,
+    updatedAt: now
+  };
+  const hasInstance = workspace.canvas.instances.some((instance) => instance.objectId === proposal.id);
+
+  return {
+    ...workspace,
+    objects: {
+      ...workspace.objects,
+      [proposal.id]: draftObject
+    },
+    canvas: {
+      ...workspace.canvas,
+      instances: hasInstance
+        ? workspace.canvas.instances
+        : [
+            ...workspace.canvas.instances,
+            {
+              id: nextRecordId(
+                Object.fromEntries(workspace.canvas.instances.map((instance) => [instance.id, instance])),
+                `canvas-${proposal.id}`
+              ),
+              objectId: proposal.id,
+              position,
+              size: proposal.type === "conceptDirection" ? { w: 360, h: 168 } : { w: 340, h: 168 }
+            }
+          ]
+    }
+  };
+}
+
+function removeProposalDraftObject(workspace: MorphoWorkspace, proposalId: string): MorphoWorkspace {
+  if (!workspace.objects[proposalId] && !workspace.canvas.instances.some((instance) => instance.objectId === proposalId)) {
+    return workspace;
+  }
+
+  const { [proposalId]: _removed, ...objects } = workspace.objects;
+  return {
+    ...workspace,
+    objects,
+    canvas: {
+      ...workspace.canvas,
+      instances: workspace.canvas.instances.filter((instance) => instance.objectId !== proposalId)
+    }
+  };
+}
+
 export function recordResearchAnalysisProposal(
   workspace: MorphoWorkspace,
   input: RecordResearchProposalInput
@@ -834,11 +915,13 @@ export function recordResearchAnalysisProposal(
     canvasPlacement: input.position,
     reviewState: input.sourceChangedWarning ? "sourceChanged" : "ready"
   };
+  const workspaceWithDraftObject = attachProposalDraftObject(workspace, proposal, now);
   const updatedOperation: OperationRecord | undefined = operation
     ? {
         ...operation,
-        status: "waiting_for_user",
+        status: "succeeded",
         updatedAt: now,
+        retryable: false,
         proposalIds: [...operation.proposalIds, proposal.id],
         steps: [
           ...operation.steps,
@@ -846,7 +929,7 @@ export function recordResearchAnalysisProposal(
             id: `${operation.id}-step-proposal-${operation.steps.length + 1}`,
             kind: "proposal",
             status: "succeeded",
-            summary: "研究分析草案已准备，等待用户确认保存。",
+            summary: "研究分析草案已放到画布，可稍后查看、应用、修改或放弃。",
             createdAt: now
           }
         ]
@@ -856,7 +939,7 @@ export function recordResearchAnalysisProposal(
   return {
     proposal,
     workspace: {
-      ...workspace,
+      ...workspaceWithDraftObject,
       operations: updatedOperation
         ? {
             ...workspace.operations,
@@ -864,7 +947,7 @@ export function recordResearchAnalysisProposal(
           }
         : workspace.operations,
       artifactProposals: {
-        ...workspace.artifactProposals,
+        ...workspaceWithDraftObject.artifactProposals,
         [proposal.id]: proposal
       },
       citationSnapshots: {
@@ -912,14 +995,15 @@ export function recordDesignDefinitionProposal(
     basedOnRevisionId: input.basedOnRevisionId,
     changeNote: input.changeNote
   };
+  const workspaceWithDraftObject = attachProposalDraftObject(workspace, proposal, now);
   const updatedOperation = input.operationId
-    ? markProposalOperationWaitingForUser(workspace.operations[input.operationId], proposal.id, now, "设计定义草案已准备，等待用户确认应用。")
+    ? markProposalOperationCompleted(workspace.operations[input.operationId], proposal.id, now, "设计定义草案已放到画布，可稍后查看、应用、修改或放弃。")
     : undefined;
 
   return {
     proposal,
     workspace: {
-      ...workspace,
+      ...workspaceWithDraftObject,
       operations: updatedOperation
         ? {
             ...workspace.operations,
@@ -927,7 +1011,7 @@ export function recordDesignDefinitionProposal(
           }
         : workspace.operations,
       artifactProposals: {
-        ...workspace.artifactProposals,
+        ...workspaceWithDraftObject.artifactProposals,
         [proposal.id]: proposal
       },
       citationSnapshots: {
@@ -1041,8 +1125,9 @@ export function applyDesignDefinitionProposal(
     updatedAt: now
   };
 
+  const { [proposal.id]: _removedProposalDraft, ...objectsWithoutProposalDraft } = workspace.objects;
   const nextObjects = {
-    ...workspace.objects,
+    ...objectsWithoutProposalDraft,
     [definitionId]: designDefinitionObject
   };
   const nextRelations = workspace.relations.filter(
@@ -1069,20 +1154,26 @@ export function applyDesignDefinitionProposal(
     status: "applied",
     appliedObjectId: definitionId
   };
-  const nextCanvasInstances = workspace.canvas.instances.some((instance) => instance.objectId === definitionId)
-    ? workspace.canvas.instances
+  const proposalDraftInstance = workspace.canvas.instances.find((instance) => instance.objectId === proposal.id);
+  const canvasInstancesWithoutProposalDraft = workspace.canvas.instances.filter((instance) => instance.objectId !== proposal.id);
+  const appliedPosition =
+    proposalDraftInstance?.position ??
+    proposal.canvasPlacement ??
+    {
+      x: workspace.canvas.view.x + 220,
+      y: workspace.canvas.view.y + 180
+    };
+  const nextCanvasInstances = canvasInstancesWithoutProposalDraft.some((instance) => instance.objectId === definitionId)
+    ? canvasInstancesWithoutProposalDraft
     : [
-        ...workspace.canvas.instances,
+        ...canvasInstancesWithoutProposalDraft,
         {
           id: nextRecordId(
             Object.fromEntries(workspace.canvas.instances.map((instance) => [instance.id, instance])),
             `canvas-${definitionId}`
           ),
           objectId: definitionId,
-          position: proposal.canvasPlacement ?? {
-            x: workspace.canvas.view.x + 220,
-            y: workspace.canvas.view.y + 180
-          },
+          position: appliedPosition,
           size: { w: 320, h: 210 }
         }
       ];
@@ -1216,14 +1307,15 @@ export function recordConceptDirectionProposal(
     basedOnDesignDefinitionId: input.basedOnDesignDefinitionId,
     basedOnRevisionId: input.basedOnRevisionId
   };
+  const workspaceWithDraftObject = attachProposalDraftObject(workspace, proposal, now);
   const updatedOperation = input.operationId
-    ? markProposalOperationWaitingForUser(workspace.operations[input.operationId], proposal.id, now, "概念方向草案已准备，等待用户确认应用。")
+    ? markProposalOperationCompleted(workspace.operations[input.operationId], proposal.id, now, "概念方向草案已放到画布，可稍后查看、应用、修改或放弃。")
     : undefined;
 
   return {
     proposal,
     workspace: {
-      ...workspace,
+      ...workspaceWithDraftObject,
       operations: updatedOperation
         ? {
             ...workspace.operations,
@@ -1231,7 +1323,7 @@ export function recordConceptDirectionProposal(
           }
         : workspace.operations,
       artifactProposals: {
-        ...workspace.artifactProposals,
+        ...workspaceWithDraftObject.artifactProposals,
         [proposal.id]: proposal
       },
       citationSnapshots: {
@@ -1239,6 +1331,32 @@ export function recordConceptDirectionProposal(
         ...Object.fromEntries(citationEntries.map((citation) => [citation.id, citation]))
       }
     }
+  };
+}
+
+export function recordAndApplyConceptDirectionProposal(
+  workspace: MorphoWorkspace,
+  input: RecordConceptDirectionProposalInput & { position: CanvasPoint }
+): RecordAndApplyConceptDirectionProposalResult {
+  const recorded = recordConceptDirectionProposal(workspace, input);
+  const applied = applyConceptDirectionProposal(recorded.workspace, recorded.proposal.id, {
+    position: input.position
+  });
+
+  if (applied.status === "updated") {
+    return {
+      status: "updated",
+      workspace: applied.workspace,
+      proposal: applied.workspace.artifactProposals[recorded.proposal.id] as ConceptDirectionProposal,
+      directions: applied.directions
+    };
+  }
+
+  return {
+    status: "blocked",
+    workspace: applied.workspace,
+    proposal: recorded.proposal,
+    reason: applied.reason
   };
 }
 
@@ -1282,9 +1400,10 @@ export function applyConceptDirectionProposal(
     };
   }
 
-  const nextObjects = { ...workspace.objects };
+  const { [proposal.id]: _removedProposalDraft, ...objectsWithoutProposalDraft } = workspace.objects;
+  const nextObjects = { ...objectsWithoutProposalDraft };
   const nextRelations = [...workspace.relations];
-  const nextInstances = [...workspace.canvas.instances];
+  const nextInstances = workspace.canvas.instances.filter((instance) => instance.objectId !== proposal.id);
   const nextDirectionRevisions = { ...workspace.directionRevisions };
   const nextLineage = [...workspace.directionLineage];
   const appliedDirections: ConceptDirectionObject[] = [];
@@ -1581,8 +1700,9 @@ export function applyResearchAnalysisProposal(
   }
 
   const objectId = nextRecordId(workspace.objects, `research-${proposal.id}`);
+  const canvasInstancesWithoutProposalDraft = workspace.canvas.instances.filter((instance) => instance.objectId !== proposal.id);
   const instanceId = nextRecordId(
-    Object.fromEntries(workspace.canvas.instances.map((instance) => [instance.id, instance])),
+    Object.fromEntries(canvasInstancesWithoutProposalDraft.map((instance) => [instance.id, instance])),
     `canvas-${objectId}`
   );
   const researchObject: ResearchObject = {
@@ -1631,7 +1751,7 @@ export function applyResearchAnalysisProposal(
     workspace: applyProjectContinuityEvent(reconcileWorkspaceDerivedState({
       ...workspace,
       objects: {
-        ...workspace.objects,
+        ...removeProposalDraftObject(workspace, proposal.id).objects,
         [objectId]: researchObject
       },
       artifactProposals: {
@@ -1653,7 +1773,7 @@ export function applyResearchAnalysisProposal(
       canvas: {
         ...workspace.canvas,
         instances: [
-          ...workspace.canvas.instances,
+          ...canvasInstancesWithoutProposalDraft,
           {
             id: instanceId,
             objectId,
@@ -1689,9 +1809,21 @@ export function updateResearchAnalysisProposalDraft(
   if (!proposal || proposal.type !== "researchAnalysis" || proposal.status !== "pending") {
     return workspace;
   }
+  const proposalObject = workspace.objects[proposalId]?.type === "proposalDraft" ? workspace.objects[proposalId] : undefined;
 
   return {
     ...workspace,
+    objects: proposalObject
+      ? {
+          ...workspace.objects,
+          [proposalId]: {
+            ...proposalObject,
+            title: input.title,
+            summary: input.summary,
+            updatedAt: new Date().toISOString()
+          }
+        }
+      : workspace.objects,
     artifactProposals: {
       ...workspace.artifactProposals,
       [proposalId]: {
@@ -1736,9 +1868,21 @@ export function updateDesignDefinitionProposalDraft(
   if (!proposal || proposal.type !== "designDefinition" || proposal.status !== "pending") {
     return workspace;
   }
+  const proposalObject = workspace.objects[proposalId]?.type === "proposalDraft" ? workspace.objects[proposalId] : undefined;
 
   return {
     ...workspace,
+    objects: proposalObject
+      ? {
+          ...workspace.objects,
+          [proposalId]: {
+            ...proposalObject,
+            title: input.title,
+            summary: input.summary,
+            updatedAt: new Date().toISOString()
+          }
+        }
+      : workspace.objects,
     artifactProposals: {
       ...workspace.artifactProposals,
       [proposalId]: {
@@ -1769,9 +1913,21 @@ export function updateConceptDirectionProposalDraft(
   if (!proposal || proposal.type !== "conceptDirection" || proposal.status !== "pending") {
     return workspace;
   }
+  const proposalObject = workspace.objects[proposalId]?.type === "proposalDraft" ? workspace.objects[proposalId] : undefined;
 
   return {
     ...workspace,
+    objects: proposalObject
+      ? {
+          ...workspace.objects,
+          [proposalId]: {
+            ...proposalObject,
+            title: input.title,
+            summary: input.summary,
+            updatedAt: new Date().toISOString()
+          }
+        }
+      : workspace.objects,
     artifactProposals: {
       ...workspace.artifactProposals,
       [proposalId]: {
@@ -1801,10 +1957,12 @@ export function rejectArtifactProposal(
     return workspace;
   }
 
+  const workspaceWithoutDraftObject = removeProposalDraftObject(workspace, proposalId);
+
   return {
-    ...workspace,
+    ...workspaceWithoutDraftObject,
     artifactProposals: {
-      ...workspace.artifactProposals,
+      ...workspaceWithoutDraftObject.artifactProposals,
       [proposalId]: {
         ...proposal,
         status: "rejected",
@@ -1812,7 +1970,7 @@ export function rejectArtifactProposal(
       }
     },
     operations: markProposalOperationFinal(
-      workspace.operations,
+      workspaceWithoutDraftObject.operations,
       proposal.operationId,
       "cancelled",
       new Date().toISOString(),
@@ -2050,7 +2208,7 @@ function updateProposalReviewState(
   };
 }
 
-function markProposalOperationWaitingForUser(
+function markProposalOperationCompleted(
   operation: OperationRecord | undefined,
   proposalId: string,
   now: string,
@@ -2062,8 +2220,9 @@ function markProposalOperationWaitingForUser(
 
   return {
     ...operation,
-    status: "waiting_for_user",
+    status: "succeeded",
     updatedAt: now,
+    retryable: false,
     proposalIds: operation.proposalIds.includes(proposalId)
       ? operation.proposalIds
       : [...operation.proposalIds, proposalId],
@@ -2080,7 +2239,7 @@ function markProposalOperationWaitingForUser(
     events: [
       ...operation.events,
       {
-        id: `${operation.id}-event-waiting-${operation.events.length + 1}`,
+        id: `${operation.id}-event-succeeded-${operation.events.length + 1}`,
         createdAt: now,
         summary
       }
@@ -2100,6 +2259,10 @@ function markProposalOperationFinal(
   }
 
   const operation = operations[operationId];
+  if (operation.status !== "waiting_for_user") {
+    return operations;
+  }
+
   return {
     ...operations,
     [operationId]: {
@@ -2350,7 +2513,7 @@ function isActiveOperationStatus(status: OperationRecord["status"]): boolean {
 }
 
 function isBlockingOperationStatus(status: OperationRecord["status"]): boolean {
-  return isActiveOperationStatus(status) || status === "waiting_for_user";
+  return isActiveOperationStatus(status);
 }
 
 function nextRecordId(record: Record<string, unknown>, preferredId: string): string {

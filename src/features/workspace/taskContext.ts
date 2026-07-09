@@ -8,6 +8,7 @@ import type {
   MorphoWorkspace,
   VisualBranchRecord
 } from "../../domain/morpho/types";
+import type { ArtifactProposal } from "../../domain/operations/types";
 import { GRS_REFERENCE_IMAGE_LIMIT } from "../../domain/morpho/imageLimits";
 import { buildProjectContinuityContext, type ProjectContinuityContext } from "../../domain/morpho/projectContinuity";
 import { resolveDocumentFragmentSourceAvailability } from "./documentFragments";
@@ -41,6 +42,41 @@ export type TaskContextDocumentFragmentExtract = {
   sourceAvailability: "active" | "hidden" | "missing" | "assetMissing" | "assetMismatch";
 };
 
+export type TaskContextProposalDraft =
+  | {
+      proposalId: MorphoObjectId;
+      proposalType: "researchAnalysis";
+      title: string;
+      summary: string;
+      findings: string[];
+      opportunities: string[];
+      constraints: string[];
+      openQuestions: string[];
+    }
+  | {
+      proposalId: MorphoObjectId;
+      proposalType: "designDefinition";
+      title: string;
+      summary: string;
+      projectGoal: string;
+      targetUsers: string[];
+      primaryScenarios: string[];
+      coreProblem: string;
+      designPrinciples: string[];
+      constraints: string[];
+      avoidDirections: string[];
+      opportunities: string[];
+      openQuestions: string[];
+      changeNote?: string;
+    }
+  | {
+      proposalId: MorphoObjectId;
+      proposalType: "conceptDirection";
+      title: string;
+      summary: string;
+      directions: Extract<ArtifactProposal, { type: "conceptDirection" }>["directions"];
+    };
+
 export type TaskContextSkip = {
   objectId: MorphoObjectId;
   reason: string;
@@ -53,6 +89,7 @@ export type TaskContextResult = {
   imageObjectIds: MorphoObjectId[];
   documentObjectIds: MorphoObjectId[];
   documentFragmentExtracts: TaskContextDocumentFragmentExtract[];
+  proposalDrafts: TaskContextProposalDraft[];
   directionRevisions: ConceptDirectionRevision[];
   designDefinitionRevision?: DesignDefinitionRevision;
   visualBranches: VisualBranchRecord[];
@@ -198,6 +235,7 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
       imageObjectIds: budgetedImages,
       documentObjectIds: budgetedDocuments,
       documentFragmentExtracts: collectDocumentFragmentExtracts(workspace, budgeted.objectIds),
+      proposalDrafts: collectProposalDrafts(workspace, budgeted.objectIds),
       directionRevisions: [],
       designDefinitionRevision,
       visualBranches: [],
@@ -237,6 +275,7 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
   const budgetedDocuments = applyDocumentBudget(documentObjectIds, skipped);
   const budgetedImages = applyImageBudget(imageObjectIds, skipped);
   const documentFragmentExtracts = collectDocumentFragmentExtracts(workspace, budgeted.objectIds);
+  const proposalDrafts = collectProposalDrafts(workspace, budgeted.objectIds);
   const projectContinuity = buildProjectContinuityContext(workspace, {
     taskKind: input.kind,
     selectedObjectIds: selectedIds,
@@ -260,6 +299,7 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
     imageObjectIds: budgetedImages,
     documentObjectIds: budgetedDocuments,
     documentFragmentExtracts,
+    proposalDrafts,
     directionRevisions,
     designDefinitionRevision,
     visualBranches,
@@ -529,6 +569,69 @@ function collectDocumentFragmentExtracts(
       }
     ];
   });
+}
+
+function collectProposalDrafts(workspace: MorphoWorkspace, objectIds: MorphoObjectId[]): TaskContextProposalDraft[] {
+  return uniqueStrings(objectIds).flatMap((objectId) => {
+    const object = workspace.objects[objectId];
+    if (!object || object.type !== "proposalDraft" || object.visibility !== "active") {
+      return [];
+    }
+
+    const proposal = workspace.artifactProposals[object.proposalId];
+    const draft = proposal?.status === "pending" ? summarizeProposalDraft(proposal) : undefined;
+    return draft ? [draft] : [];
+  });
+}
+
+function summarizeProposalDraft(proposal: ArtifactProposal): TaskContextProposalDraft | undefined {
+  switch (proposal.type) {
+    case "researchAnalysis":
+      return {
+        proposalId: proposal.id,
+        proposalType: proposal.type,
+        title: proposal.title,
+        summary: proposal.summary,
+        findings: [...proposal.findings],
+        opportunities: [...proposal.opportunities],
+        constraints: [...proposal.constraints],
+        openQuestions: [...proposal.openQuestions]
+      };
+    case "designDefinition":
+      return {
+        proposalId: proposal.id,
+        proposalType: proposal.type,
+        title: proposal.title,
+        summary: proposal.summary,
+        projectGoal: proposal.projectGoal,
+        targetUsers: [...proposal.targetUsers],
+        primaryScenarios: [...proposal.primaryScenarios],
+        coreProblem: proposal.coreProblem,
+        designPrinciples: [...proposal.designPrinciples],
+        constraints: [...proposal.constraints],
+        avoidDirections: [...proposal.avoidDirections],
+        opportunities: [...proposal.opportunities],
+        openQuestions: [...proposal.openQuestions],
+        changeNote: proposal.changeNote
+      };
+    case "conceptDirection":
+      return {
+        proposalId: proposal.id,
+        proposalType: proposal.type,
+        title: proposal.title,
+        summary: proposal.summary,
+        directions: proposal.directions.map((direction) => ({
+          ...direction,
+          keywords: [...direction.keywords],
+          differentiators: [...direction.differentiators],
+          visualSignals: [...direction.visualSignals],
+          risks: [...direction.risks],
+          openQuestions: [...direction.openQuestions]
+        }))
+      };
+    case "deliveryPlan":
+      return undefined;
+  }
 }
 
 function summarizeObject(object: MorphoObject | undefined): TaskContextSummary | undefined {

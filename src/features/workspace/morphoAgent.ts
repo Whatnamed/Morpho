@@ -79,6 +79,29 @@ export type CreateConceptDirectionProposalArgs = {
   directions: ConceptDirectionProposal["directions"];
 };
 
+export type ReviseSelectedProposalDraftArgs =
+  | ({
+      proposalId: string;
+      proposalType: "designDefinition";
+    } & DesignDefinitionDraftArgs)
+  | {
+      proposalId: string;
+      proposalType: "conceptDirection";
+      title: string;
+      summary: string;
+      directions: ConceptDirectionProposal["directions"];
+    }
+  | {
+      proposalId: string;
+      proposalType: "researchAnalysis";
+      title: string;
+      summary: string;
+      findings: string[];
+      opportunities: string[];
+      constraints: string[];
+      openQuestions: string[];
+    };
+
 export type GenerateVisualsArgs = {
   kind: "directionPreview" | "visualDevelopment";
   items: Array<{
@@ -134,6 +157,7 @@ export type MorphoAgentToolArguments =
   | { name: "create_research_analysis"; args: CreateResearchAnalysisArgs }
   | { name: "create_design_definition_proposal"; args: CreateDesignDefinitionProposalArgs }
   | { name: "create_concept_direction_proposal"; args: CreateConceptDirectionProposalArgs }
+  | { name: "revise_selected_proposal_draft"; args: ReviseSelectedProposalDraftArgs }
   | { name: "generate_visuals"; args: GenerateVisualsArgs }
   | { name: "create_comparison_analysis"; args: CreateComparisonAnalysisArgs }
   | { name: "request_confirmation"; args: RequestConfirmationArgs };
@@ -147,6 +171,7 @@ export type ReadSelectedContextResult = {
     detail?: string;
   }>;
   directDocumentTitles: string[];
+  proposalDrafts: TaskContextResult["proposalDrafts"];
   imageObjectIds: string[];
   objectIds: string[];
   defaultReference: string;
@@ -192,6 +217,8 @@ export function buildMorphoAgentSystemPrompt(input: {
       ? `当前相关方向：${input.providerTaskContext.directions.map((direction) => direction.title).join(" / ")}`
       : "当前没有显式相关的概念方向。",
     "优先工作方式：先判断是否需要 read_selected_context；只有在当前本地资料不足且确实需要外部事实时才调用 search_web_evidence；结构化结果足够明确时应立刻调用对应写入工具。",
+    "当用户选中一张 pending 草案并要求修改、调整、压缩、重写、改标题或改内容时，先调用 read_selected_context 读取完整草案，再调用 revise_selected_proposal_draft 原地更新这一张草案；不要新建草案，不要等待确认，不要把完整长草案塞回对话。",
+    "只有用户明确说再生成一个、新方案、另起一版、多个替代方案时，才调用 create_design_definition_proposal 或 create_concept_direction_proposal 新建草案。",
     "生成图片时，不允许只给 Prompt、只给长文分析或让用户切模式；应直接调用 generate_visuals。"
   ]
     .filter(Boolean)
@@ -225,6 +252,64 @@ export function buildMorphoAgentUserInput(input: {
 export function buildMorphoAgentTools(webSearchEnabled: boolean): ResponseTool[] {
   const tools: ResponseTool[] = [
     readSelectedContextTool(),
+    functionTool({
+      name: "revise_selected_proposal_draft",
+      description:
+        "Revise the single selected pending proposal draft in place. Use this when the user asks to modify, adjust, rewrite, shorten, rename, or change the selected draft. Do not create a new proposal unless the user explicitly asks for another/new/multiple alternatives.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        required: ["proposalId", "proposalType", "title", "summary"],
+        properties: {
+          proposalId: { type: "string" },
+          proposalType: { type: "string", enum: ["researchAnalysis", "designDefinition", "conceptDirection"] },
+          title: { type: "string" },
+          summary: { type: "string" },
+          projectGoal: { type: "string" },
+          targetUsers: stringArraySchema(),
+          primaryScenarios: stringArraySchema(),
+          coreProblem: { type: "string" },
+          designPrinciples: stringArraySchema(),
+          constraints: stringArraySchema(),
+          avoidDirections: stringArraySchema(),
+          opportunities: stringArraySchema(),
+          openQuestions: stringArraySchema(),
+          changeNote: { type: "string" },
+          findings: stringArraySchema(),
+          directions: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: [
+                "title",
+                "summary",
+                "conceptStatement",
+                "keywords",
+                "strategy",
+                "differentiators",
+                "visualSignals",
+                "risks",
+                "openQuestions"
+              ],
+              properties: {
+                title: { type: "string" },
+                summary: { type: "string" },
+                conceptStatement: { type: "string" },
+                keywords: stringArraySchema(),
+                strategy: { type: "string" },
+                differentiators: stringArraySchema(),
+                visualSignals: stringArraySchema(),
+                risks: stringArraySchema(),
+                openQuestions: stringArraySchema(),
+                basedOnDirectionId: { type: "string" },
+                lineageKind: { type: "string", enum: ["variant", "split", "merge", "revision"] }
+              }
+            }
+          }
+        }
+      }
+    }),
     functionTool({
       name: "create_research_analysis",
       description:
@@ -569,6 +654,9 @@ export function parseMorphoAgentToolArguments(call: AgentFunctionCall): MorphoAg
     case "create_concept_direction_proposal":
       validateCreateConceptDirectionProposalArgs(call.name, parsed);
       return { name: call.name, args: parsed };
+    case "revise_selected_proposal_draft":
+      validateReviseSelectedProposalDraftArgs(call.name, parsed);
+      return { name: call.name, args: parsed };
     case "generate_visuals":
       validateGenerateVisualsArgs(call.name, parsed);
       return { name: call.name, args: normalizeGenerateVisualsArgs(parsed) };
@@ -771,6 +859,109 @@ function validateCreateConceptDirectionProposalArgs(
       "revision"
     ]);
   });
+}
+
+function validateReviseSelectedProposalDraftArgs(
+  toolName: string,
+  value: unknown
+): asserts value is ReviseSelectedProposalDraftArgs {
+  const base = requireExactObject(toolName, value, ["proposalId", "proposalType", "title", "summary"], [
+    "projectGoal",
+    "targetUsers",
+    "primaryScenarios",
+    "coreProblem",
+    "designPrinciples",
+    "constraints",
+    "avoidDirections",
+    "opportunities",
+    "openQuestions",
+    "changeNote",
+    "findings",
+    "directions"
+  ]);
+  requireString(toolName, base, "proposalId");
+  const proposalType = requireEnum(toolName, base, "proposalType", [
+    "researchAnalysis",
+    "designDefinition",
+    "conceptDirection"
+  ]);
+
+  if (proposalType === "designDefinition") {
+    const record = requireExactObject(
+      toolName,
+      value,
+      [
+        "proposalId",
+        "proposalType",
+        "title",
+        "summary",
+        "projectGoal",
+        "targetUsers",
+        "primaryScenarios",
+        "coreProblem",
+        "designPrinciples",
+        "constraints",
+        "avoidDirections",
+        "opportunities",
+        "openQuestions"
+      ],
+      ["changeNote"]
+    );
+    validateDesignDefinitionDraftArgs(toolName, record);
+    return;
+  }
+
+  if (proposalType === "conceptDirection") {
+    const record = requireExactObject(toolName, value, ["proposalId", "proposalType", "title", "summary", "directions"]);
+    requireString(toolName, record, "title");
+    requireString(toolName, record, "summary");
+    requireArray(toolName, record, "directions").forEach((entry, index) => {
+      validateConceptDirectionDraft(`${toolName}.directions[${index}]`, entry);
+    });
+    return;
+  }
+
+  const record = requireExactObject(
+    toolName,
+    value,
+    ["proposalId", "proposalType", "title", "summary", "findings", "opportunities", "constraints", "openQuestions"]
+  );
+  requireString(toolName, record, "title");
+  requireString(toolName, record, "summary");
+  requireStringArray(toolName, record, "findings");
+  requireStringArray(toolName, record, "opportunities");
+  requireStringArray(toolName, record, "constraints");
+  requireStringArray(toolName, record, "openQuestions");
+}
+
+function validateConceptDirectionDraft(toolName: string, value: unknown): void {
+  const direction = requireExactObject(
+    toolName,
+    value,
+    [
+      "title",
+      "summary",
+      "conceptStatement",
+      "keywords",
+      "strategy",
+      "differentiators",
+      "visualSignals",
+      "risks",
+      "openQuestions"
+    ],
+    ["basedOnDirectionId", "lineageKind"]
+  );
+  requireString(toolName, direction, "title");
+  requireString(toolName, direction, "summary");
+  requireString(toolName, direction, "conceptStatement");
+  requireStringArray(toolName, direction, "keywords");
+  requireString(toolName, direction, "strategy");
+  requireStringArray(toolName, direction, "differentiators");
+  requireStringArray(toolName, direction, "visualSignals");
+  requireStringArray(toolName, direction, "risks");
+  requireStringArray(toolName, direction, "openQuestions");
+  requireOptionalString(toolName, direction, "basedOnDirectionId");
+  requireOptionalEnum(toolName, direction, "lineageKind", ["variant", "split", "merge", "revision"]);
 }
 
 function validateGenerateVisualsArgs(toolName: string, value: unknown): asserts value is GenerateVisualsArgs {

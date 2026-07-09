@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createInitialWorkspace, getRenderableCanvasInstances } from "@/domain/morpho/workspace";
+import { recordDesignDefinitionProposal } from "@/domain/operations/operations";
 import {
   MORPHO_EDITOR_SYNC_RUN_OPTIONS,
   areMorphoShapePropsEqual,
+  getSelectedMorphoShapeIds,
   isMorphoShapeActiveInWorkspace,
   resolveInstanceForEditorSync,
   shouldReplaceSelectionForContextMenuTarget,
@@ -87,6 +89,91 @@ describe("MorphoCanvas focus navigation", () => {
     ).toBe(true);
   });
 
+  it("renders pending design definition proposals through real workspace canvas objects", () => {
+    const workspace = createInitialWorkspace();
+    const proposed = recordDesignDefinitionProposal(workspace, {
+      proposalId: "proposal-definition-on-tldraw-canvas",
+      title: "Definition draft A",
+      summary: "A concise draft summary.",
+      projectGoal: "Create a clear product definition.",
+      targetUsers: ["Student"],
+      primaryScenarios: ["Course review"],
+      coreProblem: "The problem is unclear.",
+      designPrinciples: ["Clear boundary"],
+      constraints: ["Limited material"],
+      avoidDirections: ["Vague installation"],
+      opportunities: ["Translate issues into design actions"],
+      openQuestions: ["What should be verified next?"],
+      sourceObjectIds: [],
+      citations: [],
+      position: { x: 640, y: 360 }
+    });
+
+    expect(proposed.workspace.objects[proposed.proposal.id]).toMatchObject({
+      id: proposed.proposal.id,
+      type: "proposalDraft",
+      proposalId: proposed.proposal.id,
+      proposalType: "designDefinition"
+    });
+    expect(getRenderableCanvasInstances(proposed.workspace)).toContainEqual(
+      expect.objectContaining({
+        objectId: proposed.proposal.id,
+        position: { x: 640, y: 360 }
+      })
+    );
+  });
+
+  it("keeps pending proposal shapes active while their proposal is pending", () => {
+    const workspace = createInitialWorkspace();
+    const proposed = recordDesignDefinitionProposal(workspace, {
+      proposalId: "proposal-active-shape",
+      title: "Definition proposal",
+      summary: "Summary.",
+      projectGoal: "Goal.",
+      targetUsers: ["User"],
+      primaryScenarios: ["Scenario"],
+      coreProblem: "Problem.",
+      designPrinciples: ["Principle"],
+      constraints: [],
+      avoidDirections: [],
+      opportunities: [],
+      openQuestions: [],
+      sourceObjectIds: [],
+      citations: [],
+      position: { x: 420, y: 260 }
+    });
+    const shape = {
+      props: {
+        objectId: proposed.proposal.id,
+        morphoType: "proposalDraft"
+      }
+    };
+
+    expect(isMorphoShapeActiveInWorkspace(shape, proposed.workspace)).toBe(true);
+    expect(isMorphoShapeActiveInWorkspace(shape, workspace)).toBe(false);
+  });
+
+  it("keeps selected proposal drafts in the normal selected object ids", () => {
+    const selection = getSelectedMorphoShapeIds([
+      {
+        props: {
+          objectId: "image-a",
+          morphoType: "image"
+        }
+      },
+      {
+        props: {
+          objectId: "proposal-a",
+          morphoType: "proposalDraft"
+        }
+      }
+    ]);
+
+    expect(selection.objectIds).toEqual(["image-a", "proposal-a"]);
+    expect(selection.proposalIds).toEqual(["proposal-a"]);
+  });
+
+
   it("keeps pending editor geometry ahead of stale workspace geometry while syncing back to tldraw", () => {
     const workspace = createInitialWorkspace();
     const instance = workspace.canvas.instances.find((item) => item.objectId === "image-soft-rail-v2");
@@ -104,6 +191,7 @@ describe("MorphoCanvas focus navigation", () => {
     expect(resolveInstanceForEditorSync(instance, null)).toBe(instance);
   });
 
+
   it("compares Morpho shape props before writing redundant tldraw updates", () => {
     const props = {
       w: 240,
@@ -113,7 +201,7 @@ describe("MorphoCanvas focus navigation", () => {
       morphoType: "image" as const,
       title: "Image",
       summary: "Summary",
-      label: "参考图",
+      label: "鍙傝€冨浘",
       details: [],
       imageVariant: "rail",
       isDefaultReference: true,
@@ -125,5 +213,6 @@ describe("MorphoCanvas focus navigation", () => {
     expect(areMorphoShapePropsEqual(props, { ...props })).toBe(true);
     expect(areMorphoShapePropsEqual(props, { ...props, w: 300 })).toBe(false);
     expect(areMorphoShapePropsEqual(props, { ...props, details: ["source"] })).toBe(false);
+    expect(areMorphoShapePropsEqual(props, { ...props, morphoType: "proposalDraft" })).toBe(false);
   });
 });

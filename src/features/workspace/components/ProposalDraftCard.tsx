@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type Dispatch, type SetStateAction } from "react";
+import { useState, type ClipboardEvent, type Dispatch, type SetStateAction } from "react";
 
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 import type {
@@ -61,8 +61,24 @@ export function ProposalDraftCard({
   onSaveDesignDefinitionDraft,
   onSaveConceptDirectionDraft
 }: ProposalDraftCardProps) {
+  const [isEditing, setIsEditing] = useState(false);
+
+  const handleCopy = (event: ClipboardEvent<HTMLElement>) => {
+    if (isEditableCopyTarget(event.target)) {
+      return;
+    }
+
+    const selectedText = window.getSelection()?.toString() ?? "";
+    if (selectedText.trim()) {
+      return;
+    }
+
+    event.clipboardData.setData("text/plain", formatProposalForClipboard(proposal));
+    event.preventDefault();
+  };
+
   return (
-    <section className="proposal-card" aria-label="待处理草案">
+    <section className="proposal-card" aria-label="待处理草案" onCopyCapture={handleCopy}>
       <div className="proposal-card-header">
         <div>
           <strong>{proposalTitle(proposal)}</strong>
@@ -105,29 +121,38 @@ export function ProposalDraftCard({
         )}
       </div>
 
-      {proposal.type === "researchAnalysis" ? (
-        <ResearchProposalEditor
-          key={proposalEditorKey(proposal)}
-          proposal={proposal}
-          onSave={onSaveResearchDraft}
-        />
-      ) : null}
-      {proposal.type === "designDefinition" ? (
-        <DesignDefinitionProposalEditor
-          key={proposalEditorKey(proposal)}
-          proposal={proposal}
-          onSave={onSaveDesignDefinitionDraft}
-        />
-      ) : null}
-      {proposal.type === "conceptDirection" ? (
-        <ConceptDirectionProposalEditor
-          key={proposalEditorKey(proposal)}
-          proposal={proposal}
-          onSave={onSaveConceptDirectionDraft}
-        />
-      ) : null}
+      {isEditing ? (
+        <>
+          {proposal.type === "researchAnalysis" ? (
+            <ResearchProposalEditor
+              key={proposalEditorKey(proposal)}
+              proposal={proposal}
+              onSave={onSaveResearchDraft}
+            />
+          ) : null}
+          {proposal.type === "designDefinition" ? (
+            <DesignDefinitionProposalEditor
+              key={proposalEditorKey(proposal)}
+              proposal={proposal}
+              onSave={onSaveDesignDefinitionDraft}
+            />
+          ) : null}
+          {proposal.type === "conceptDirection" ? (
+            <ConceptDirectionProposalEditor
+              key={proposalEditorKey(proposal)}
+              proposal={proposal}
+              onSave={onSaveConceptDirectionDraft}
+            />
+          ) : null}
+        </>
+      ) : (
+        <ProposalReadView proposal={proposal} />
+      )}
 
       <div className="proposal-actions">
+        <button className="plain-button" type="button" onClick={() => setIsEditing((current) => !current)}>
+          {isEditing ? "查看阅读版" : "编辑草案"}
+        </button>
         <button className="plain-button" type="button" onClick={() => onContinueDiscussion(proposal.id)}>
           继续讨论
         </button>
@@ -146,6 +171,99 @@ export function ProposalDraftCard({
           {proposal.reviewState === "sourceChanged" ? "已复核来源，仍然应用到画布" : proposalApplyLabel(proposal)}
         </button>
       </div>
+    </section>
+  );
+}
+
+function ProposalReadView({ proposal }: { proposal: ArtifactProposal }) {
+  if (proposal.type === "researchAnalysis") {
+    return (
+      <div className="proposal-read">
+        <ReadSection title="摘要" body={proposal.summary} />
+        <ReadListSection title="发现" items={proposal.findings} />
+        <ReadListSection title="机会点" items={proposal.opportunities} />
+        <ReadListSection title="约束" items={proposal.constraints} />
+        <ReadListSection title="待确认问题" items={proposal.openQuestions} />
+      </div>
+    );
+  }
+
+  if (proposal.type === "designDefinition") {
+    return (
+      <div className="proposal-read">
+        <ReadSection title="摘要" body={proposal.summary} />
+        <ReadSection title="项目目标" body={proposal.projectGoal} />
+        <ReadListSection title="目标用户" items={proposal.targetUsers} />
+        <ReadListSection title="主要场景" items={proposal.primaryScenarios} />
+        <ReadSection title="核心问题" body={proposal.coreProblem} />
+        <ReadListSection title="设计原则" items={proposal.designPrinciples} />
+        <ReadListSection title="约束" items={proposal.constraints} />
+        <ReadListSection title="避免方向" items={proposal.avoidDirections} />
+        <ReadListSection title="机会点" items={proposal.opportunities} />
+        <ReadListSection title="待确认问题" items={proposal.openQuestions} />
+        {proposal.changeNote ? <ReadSection title="变更说明" body={proposal.changeNote} /> : null}
+      </div>
+    );
+  }
+
+  if (proposal.type === "conceptDirection") {
+    return (
+      <div className="proposal-read">
+        <ReadSection title="摘要" body={proposal.summary} />
+        <div className="proposal-read-list">
+          {proposal.directions.map((direction, index) => (
+            <article className="proposal-direction-read" key={`${proposal.id}-read-direction-${index}`}>
+              <span className="proposal-read-kicker">方向 {index + 1}</span>
+              <strong>{direction.title}</strong>
+              <p>{direction.summary}</p>
+              <ReadSection title="概念说明" body={direction.conceptStatement} />
+              <ReadListSection title="关键词" items={direction.keywords} compact />
+              <ReadSection title="策略" body={direction.strategy} />
+              <ReadListSection title="差异点" items={direction.differentiators} />
+              <ReadListSection title="视觉信号" items={direction.visualSignals} />
+              <ReadListSection title="风险" items={direction.risks} />
+              <ReadListSection title="待确认问题" items={direction.openQuestions} />
+            </article>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="proposal-read">
+      <ReadSection title="摘要" body={proposal.summary} />
+    </div>
+  );
+}
+
+function ReadSection({ title, body }: { title: string; body: string }) {
+  if (!body.trim()) {
+    return null;
+  }
+
+  return (
+    <section className="proposal-read-section">
+      <span className="proposal-read-kicker">{title}</span>
+      <p>{body}</p>
+    </section>
+  );
+}
+
+function ReadListSection({ title, items, compact = false }: { title: string; items: string[]; compact?: boolean }) {
+  const visibleItems = items.filter((item) => item.trim());
+  if (visibleItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className={`proposal-read-section ${compact ? "compact" : ""}`}>
+      <span className="proposal-read-kicker">{title}</span>
+      <ul>
+        {visibleItems.map((item, index) => (
+          <li key={`${title}-${index}`}>{item}</li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -470,6 +588,62 @@ function splitLines(value: string): string[] {
     .split("\n")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+export function formatProposalForClipboard(proposal: ArtifactProposal): string {
+  const lines = [proposal.title, proposalTypeLabel(proposal), "", `摘要：${proposal.summary}`];
+
+  if (proposal.type === "researchAnalysis") {
+    pushClipboardList(lines, "发现", proposal.findings);
+    pushClipboardList(lines, "机会点", proposal.opportunities);
+    pushClipboardList(lines, "约束", proposal.constraints);
+    pushClipboardList(lines, "待确认问题", proposal.openQuestions);
+  }
+
+  if (proposal.type === "designDefinition") {
+    lines.push("", `项目目标：${proposal.projectGoal}`, `核心问题：${proposal.coreProblem}`);
+    pushClipboardList(lines, "目标用户", proposal.targetUsers);
+    pushClipboardList(lines, "主要场景", proposal.primaryScenarios);
+    pushClipboardList(lines, "设计原则", proposal.designPrinciples);
+    pushClipboardList(lines, "约束", proposal.constraints);
+    pushClipboardList(lines, "避免方向", proposal.avoidDirections);
+    pushClipboardList(lines, "机会点", proposal.opportunities);
+    pushClipboardList(lines, "待确认问题", proposal.openQuestions);
+    if (proposal.changeNote) {
+      lines.push("", `变更说明：${proposal.changeNote}`);
+    }
+  }
+
+  if (proposal.type === "conceptDirection") {
+    proposal.directions.forEach((direction, index) => {
+      lines.push("", `方向 ${index + 1}：${direction.title}`, direction.summary, `概念说明：${direction.conceptStatement}`);
+      pushClipboardList(lines, "关键词", direction.keywords);
+      lines.push(`策略：${direction.strategy}`);
+      pushClipboardList(lines, "差异点", direction.differentiators);
+      pushClipboardList(lines, "视觉信号", direction.visualSignals);
+      pushClipboardList(lines, "风险", direction.risks);
+      pushClipboardList(lines, "待确认问题", direction.openQuestions);
+    });
+  }
+
+  return lines.filter((line, index) => line.trim() || lines[index - 1]?.trim()).join("\n").trim();
+}
+
+function pushClipboardList(lines: string[], title: string, items: string[]) {
+  const values = items.filter((item) => item.trim());
+  if (values.length === 0) {
+    return;
+  }
+
+  lines.push("", `${title}：`, ...values.map((item) => `- ${item}`));
+}
+
+function isEditableCopyTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return Boolean(target.closest("textarea, input, [contenteditable='true']"));
 }
 
 function proposalTitle(proposal: ArtifactProposal): string {

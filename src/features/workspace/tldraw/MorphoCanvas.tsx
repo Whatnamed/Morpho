@@ -9,7 +9,6 @@ import type { CanvasInstance, CanvasPoint, CanvasView, MorphoWorkspace } from "@
 import { getRenderableCanvasInstances } from "@/domain/morpho/workspace";
 import type { ScreenRect } from "../selectionToolbar";
 import {
-  MORPHO_SHAPE_TYPE,
   MorphoShapeUtil,
   createMorphoShapePartial,
   getMorphoShapeProps,
@@ -280,11 +279,11 @@ export function MorphoCanvas({
         .getSelectedShapes()
         .filter(isMorphoShape)
         .filter((shape) => isMorphoShapeActiveInWorkspace(shape, currentWorkspace));
-      const selectedObjectIds = selectedShapes.map((shape) => shape.props.objectId);
-      const selectionKey = selectedObjectIds.join("|");
+      const selectedIds = getSelectedMorphoShapeIds(selectedShapes);
+      const selectionKey = selectedIds.objectIds.join("|");
       if (selectionKey !== lastSelectionRef.current) {
         lastSelectionRef.current = selectionKey;
-        onSelectionChange(selectedObjectIds);
+        onSelectionChange(selectedIds.objectIds);
       }
       onSelectionBoundsChange(calculateSelectionScreenBounds(editor));
 
@@ -717,9 +716,25 @@ export function shouldReplaceSelectionForContextMenuTarget(targetShapeId: string
   return !selectedShapeIds.includes(targetShapeId);
 }
 
+export function getSelectedMorphoShapeIds(
+  shapes: Array<{ props: Pick<MorphoShape["props"], "objectId" | "morphoType"> }>
+): { objectIds: string[]; proposalIds: string[] } {
+  const objectIds: string[] = [];
+  const proposalIds: string[] = [];
+
+  for (const shape of shapes) {
+    objectIds.push(shape.props.objectId);
+    if (shape.props.morphoType === "proposalDraft") {
+      proposalIds.push(shape.props.objectId);
+    }
+  }
+
+  return { objectIds, proposalIds };
+}
+
 export function isMorphoShapeActiveInWorkspace(
-  shape: { props: Pick<MorphoShape["props"], "objectId"> },
-  workspace: Pick<MorphoWorkspace, "objects">
+  shape: { props: Pick<MorphoShape["props"], "objectId"> & { morphoType?: string } },
+  workspace: Pick<MorphoWorkspace, "objects" | "artifactProposals">
 ): boolean {
   return workspace.objects[shape.props.objectId]?.visibility === "active";
 }

@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ComponentProps } from "react";
 import type { PendingComparisonConfirmation } from "./AiConversationPanel";
 
-import { AiConversationPanel, parseMarkdownBlocks } from "./AiConversationPanel";
+import { AiConversationPanel, getVisibleAiMessageBody, parseMarkdownBlocks } from "./AiConversationPanel";
 import { createInitialWorkspace, hideObject } from "../../../domain/morpho/workspace";
 import { recordDesignDefinitionProposal } from "../../../domain/operations/operations";
 
@@ -34,6 +34,51 @@ describe("AiConversationPanel", () => {
       },
       { kind: "list", ordered: false, items: ["保留输入", "不自动执行"] }
     ]);
+  });
+
+  it("renders restored AI messages without proposal technical blocks", () => {
+    const workspace = createInitialWorkspace();
+    const rawBody = [
+      "这里是用户应该看到的说明。",
+      "```json",
+      JSON.stringify({
+        morphoConceptDirectionProposal: {
+          title: "内部草案",
+          summary: "不应该显示",
+          directions: []
+        }
+      }),
+      "```"
+    ].join("\n");
+
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        workspace: {
+          ...workspace,
+          ai: {
+            ...workspace.ai,
+            messages: [
+              {
+                id: "ai-assistant-restored-technical",
+                role: "assistant",
+                body: rawBody,
+                status: "done"
+              }
+            ]
+          }
+        }
+      }))
+    );
+
+    expect(getVisibleAiMessageBody(rawBody)).toBe("这里是用户应该看到的说明。");
+    expect(html).toContain("这里是用户应该看到的说明。");
+    expect(html).not.toContain("morphoConceptDirectionProposal");
+    expect(html).not.toContain("内部草案");
+    expect(
+      getVisibleAiMessageBody(
+        ["可见研究说明。", "```json", JSON.stringify({ morphoResearchProposal: { title: "内部研究" } }), "```"].join("\n")
+      )
+    ).toBe("可见研究说明。");
   });
 
   it("renders a jumpable feedback action for saved continuity records", () => {

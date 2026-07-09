@@ -94,6 +94,24 @@ describe("MorphoShapeUtil", () => {
 
     expect(props.details).not.toContain("有修订草稿");
   });
+
+  it("keeps design definition canvas cards to title and full summary, not full structured fields", () => {
+    const workspace = createInitialWorkspace();
+    const definition = workspace.objects["definition-current"];
+    const instance = workspace.canvas.instances.find((item) => item.objectId === "definition-current");
+
+    if (!definition || definition.type !== "designDefinition" || !instance) {
+      throw new Error("Expected seed workspace to include the current design definition instance.");
+    }
+
+    const props = getMorphoShapeProps(instance, definition, undefined, workspace);
+
+    expect(props.summary).toBe(definition.summary);
+    expect(props.details.join("\n")).not.toContain(definition.problem);
+    expect(props.details.join("\n")).not.toContain(definition.principles[0]);
+    expect(props.details.join("\n")).not.toContain(definition.avoid[0]);
+  });
+
   it("keeps research canvas cards as concise entry objects", () => {
     const research: ResearchObject = {
       id: "research-long",

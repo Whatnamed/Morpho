@@ -1153,6 +1153,8 @@ export function createDeliveryReferenceSnapshot(workspace: MorphoWorkspace, sour
       return { sourceType: source.type, title: source.editableTitle ?? source.title, summary: source.description ?? source.summary };
     case "imageCollection":
       return { sourceType: source.type, title: source.title, summary: `${source.summary} · ${source.memberObjectIds.length} 项图片` };
+    case "proposalDraft":
+      throw new Error("Pending proposal drafts cannot be delivery reference sources.");
     case "delivery":
       throw new Error("Delivery objects cannot be delivery reference sources.");
   }
@@ -1215,6 +1217,8 @@ export function createDeliverySourceFingerprint(workspace: MorphoWorkspace, sour
       return stableStringify({ type: source.type, title: source.title, summary: source.summary, body: source.body });
     case "imageCollection":
       return stableStringify({ type: source.type, title: source.title, summary: source.summary, memberObjectIds: source.memberObjectIds });
+    case "proposalDraft":
+      return stableStringify({ type: source.type, title: source.title, summary: source.summary, proposalId: source.proposalId });
     case "delivery":
       return stableStringify({ type: source.type, title: source.title });
   }

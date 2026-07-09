@@ -177,6 +177,7 @@ export type MorphoObjectType =
   | "research"
   | "keyConclusion"
   | "documentFragment"
+  | "proposalDraft"
   | "designDefinition"
   | "conceptDirection"
   | "delivery";
@@ -364,6 +365,12 @@ export type DocumentFragmentObject = MorphoObjectBase & {
   };
 };
 
+export type ProposalDraftObject = MorphoObjectBase & {
+  type: "proposalDraft";
+  proposalId: string;
+  proposalType: ArtifactProposal["type"];
+};
+
 export type DesignDefinitionObject = MorphoObjectBase & {
   type: "designDefinition";
   problem: string;
@@ -400,6 +407,7 @@ export type MorphoObject =
   | ResearchObject
   | KeyConclusionObject
   | DocumentFragmentObject
+  | ProposalDraftObject
   | DesignDefinitionObject
   | ConceptDirectionObject
   | DeliveryObject;
