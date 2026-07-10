@@ -221,7 +221,7 @@ describe("BottomDetailBar selected object surface", () => {
     expect(html).toContain("打开本地解析文本阅读面板");
   });
 
-  it("renders the selected concept direction current revision details", () => {
+  it("keeps concept direction information compact instead of embedding full revision details", () => {
     const workspace = createInitialWorkspace();
     const direction = workspace.objects["direction-soft-rail"];
     if (direction.type !== "conceptDirection") {
@@ -264,11 +264,10 @@ describe("BottomDetailBar selected object surface", () => {
       })
     );
 
-    expect(html).toContain("A stable concept statement for review.");
-    expect(html).toContain("Use fixed nodes as a resilient warning network.");
-    expect(html).toContain("Stable deployment");
-    expect(html).toContain("Vertical anchor");
-    expect(html).toContain("Needs maintenance proof");
-    expect(html).toContain("How often should the node be serviced?");
+    expect(html).toContain(direction.summary);
+    expect(html).toContain("状态：主方向");
+    expect(html).toContain("修订 1");
+    expect(html).not.toContain("A stable concept statement for review.");
+    expect(html).not.toContain("Use fixed nodes as a resilient warning network.");
   });
 });

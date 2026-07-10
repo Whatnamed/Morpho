@@ -145,6 +145,7 @@ export async function executeOpenAiCompatibleResponse(
     },
     body: JSON.stringify({
       model: config.model,
+      ...(config.reasoningEffort ? { reasoning: { effort: config.reasoningEffort } } : {}),
       input: request.input,
       tools: request.tools
     }),
@@ -213,6 +214,7 @@ async function executeOpenAiCompatibleChatCompletion(
     },
     body: JSON.stringify({
       model: config.model,
+      ...(config.reasoningEffort ? { reasoning_effort: config.reasoningEffort } : {}),
       messages: convertResponseInputToChatMessages(request.input),
       tools: convertResponseToolsToChatTools(request.tools)
     }),
@@ -241,6 +243,7 @@ async function streamOpenAiCompatibleChatCompletion(
     },
     body: JSON.stringify({
       model: config.model,
+      ...(config.reasoningEffort ? { reasoning_effort: config.reasoningEffort } : {}),
       messages: convertResponseInputToChatMessages(request.input),
       tools: convertResponseToolsToChatTools(request.tools),
       stream: true

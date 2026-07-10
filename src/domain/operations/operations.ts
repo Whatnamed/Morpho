@@ -1,4 +1,5 @@
 import type {
+  CanvasInstance,
   CanvasPoint,
   ConceptDirectionObject,
   DesignDefinitionObject,
@@ -25,6 +26,12 @@ import type {
   SourceSemanticSnapshot,
   SourceCitation
 } from "./types";
+
+const DESIGN_DEFINITION_CANDIDATE_STACK_SLOT_HEIGHT = 288;
+const DESIGN_DEFINITION_CANDIDATE_GAP = 32;
+const DESIGN_DEFINITION_BATCH_ALIGNMENT_TOLERANCE = 24;
+const CONCEPT_DIRECTION_CARD_WIDTH = 320;
+const CONCEPT_DIRECTION_CARD_GAP = 32;
 
 export type CreateResearchOperationInput = {
   userInput: string;
@@ -1054,13 +1061,16 @@ export function applyDesignDefinitionProposal(
     };
   }
 
-  const currentDefinitionId =
-    proposal.basedOnDesignDefinitionId && workspace.objects[proposal.basedOnDesignDefinitionId]?.type === "designDefinition"
+  const shouldReviseExistingDefinition = proposal.workIntent !== "createDesignDefinition";
+  const currentDefinitionId = shouldReviseExistingDefinition
+    ? proposal.basedOnDesignDefinitionId &&
+      workspace.objects[proposal.basedOnDesignDefinitionId]?.type === "designDefinition"
       ? proposal.basedOnDesignDefinitionId
       : workspace.workingState.currentDesignDefinitionId &&
           workspace.objects[workspace.workingState.currentDesignDefinitionId]?.type === "designDefinition"
         ? workspace.workingState.currentDesignDefinitionId
-        : undefined;
+        : undefined
+    : undefined;
   const currentDefinition =
     currentDefinitionId && workspace.objects[currentDefinitionId]?.type === "designDefinition"
       ? workspace.objects[currentDefinitionId]
@@ -1126,8 +1136,19 @@ export function applyDesignDefinitionProposal(
   };
 
   const { [proposal.id]: _removedProposalDraft, ...objectsWithoutProposalDraft } = workspace.objects;
+  const objectsWithInactiveDefinitions = Object.fromEntries(
+    Object.entries(objectsWithoutProposalDraft).map(([objectId, object]) => [
+      objectId,
+      object.type === "designDefinition" && object.isCurrentEffective
+        ? {
+            ...object,
+            isCurrentEffective: false
+          }
+        : object
+    ])
+  );
   const nextObjects = {
-    ...objectsWithoutProposalDraft,
+    ...objectsWithInactiveDefinitions,
     [definitionId]: designDefinitionObject
   };
   const nextRelations = workspace.relations.filter(
@@ -1154,6 +1175,10 @@ export function applyDesignDefinitionProposal(
     status: "applied",
     appliedObjectId: definitionId
   };
+  const nextArtifactProposals = {
+    ...workspace.artifactProposals,
+    [proposal.id]: appliedProposal
+  };
   const proposalDraftInstance = workspace.canvas.instances.find((instance) => instance.objectId === proposal.id);
   const canvasInstancesWithoutProposalDraft = workspace.canvas.instances.filter((instance) => instance.objectId !== proposal.id);
   const appliedPosition =
@@ -1174,9 +1199,18 @@ export function applyDesignDefinitionProposal(
           ),
           objectId: definitionId,
           position: appliedPosition,
-          size: { w: 320, h: 210 }
+          size: {
+            w: Math.max(proposalDraftInstance?.size.w ?? 320, 340),
+            h: Math.max(proposalDraftInstance?.size.h ?? 210, 210)
+          }
         }
       ];
+  const reflowedCanvasInstances = reflowDesignDefinitionCandidateBatch({
+    instances: nextCanvasInstances,
+    objects: nextObjects,
+    proposals: nextArtifactProposals,
+    operationId: proposal.operationId
+  });
 
   return {
     status: "updated",
@@ -1188,13 +1222,10 @@ export function applyDesignDefinitionProposal(
       relations: nextRelations,
       designDefinitionRevisions: nextRevisions,
       operations: markProposalOperationFinal(workspace.operations, proposal.operationId, "succeeded", now, "设计定义草案已应用。"),
-      artifactProposals: {
-        ...workspace.artifactProposals,
-        [proposal.id]: appliedProposal
-      },
+      artifactProposals: nextArtifactProposals,
       canvas: {
         ...workspace.canvas,
-        instances: nextCanvasInstances
+        instances: reflowedCanvasInstances
       },
       decisionRecords: [
         ...workspace.decisionRecords,
@@ -1227,6 +1258,63 @@ export function applyDesignDefinitionProposal(
       createdAt: now
     })
   };
+}
+
+export function setCurrentDesignDefinition(
+  workspace: MorphoWorkspace,
+  designDefinitionId: string,
+  reason = "用户明确将该方案设为当前设计定义。"
+): MorphoWorkspace {
+  const target = workspace.objects[designDefinitionId];
+  if (target?.type !== "designDefinition" || target.isCurrentEffective) {
+    return workspace;
+  }
+
+  const now = new Date().toISOString();
+  const previousCurrentDefinitionId = workspace.workingState.currentDesignDefinitionId;
+  const objects = Object.fromEntries(
+    Object.entries(workspace.objects).map(([objectId, object]) => [
+      objectId,
+      object.type === "designDefinition"
+        ? {
+            ...object,
+            isCurrentEffective: object.id === designDefinitionId,
+            updatedAt: object.id === designDefinitionId ? now : object.updatedAt
+          }
+        : object
+    ])
+  );
+  const updatedWorkspace = reconcileWorkspaceDerivedState({
+    ...workspace,
+    objects,
+    decisionRecords: [
+      ...workspace.decisionRecords,
+      {
+        id: nextRecordId(
+          Object.fromEntries(workspace.decisionRecords.map((record) => [record.id, record])),
+          "decision-set-current-design-definition"
+        ),
+        kind: "applyDesignDefinition",
+        createdAt: now,
+        summary: `设为当前设计定义：${target.title}`,
+        reason,
+        objectSnapshot: {
+          id: target.id,
+          type: target.type,
+          title: target.title
+        },
+        relatedObjectIds: [previousCurrentDefinitionId].filter((id): id is string => Boolean(id))
+      }
+    ]
+  });
+
+  return applyProjectContinuityEvent(updatedWorkspace, {
+    type: "designDefinitionApplied",
+    designDefinitionObjectId: target.id,
+    revisionId: target.currentRevisionId,
+    sourceObjectIds: [],
+    createdAt: now
+  });
 }
 
 export function failOperation(workspace: MorphoWorkspace, operationId: string, input: FailOperationInput): MorphoWorkspace {
@@ -1334,6 +1422,69 @@ export function recordConceptDirectionProposal(
   };
 }
 
+function reflowDesignDefinitionCandidateBatch(input: {
+  instances: CanvasInstance[];
+  objects: MorphoWorkspace["objects"];
+  proposals: MorphoWorkspace["artifactProposals"];
+  operationId?: string;
+}): CanvasInstance[] {
+  if (!input.operationId) {
+    return input.instances;
+  }
+
+  const candidateObjectIds = new Set(
+    Object.values(input.proposals)
+      .filter((proposal): proposal is DesignDefinitionProposal =>
+        proposal.type === "designDefinition" && proposal.operationId === input.operationId
+      )
+      .map((proposal) => (proposal.status === "applied" ? proposal.appliedObjectId : proposal.id))
+      .filter((objectId): objectId is string => Boolean(objectId))
+  );
+  const candidates = input.instances
+    .filter((instance) => candidateObjectIds.has(instance.objectId))
+    .sort(
+      (left, right) =>
+        left.position.y - right.position.y ||
+        left.position.x - right.position.x ||
+        left.objectId.localeCompare(right.objectId)
+    );
+
+  if (candidates.length < 2) {
+    return input.instances;
+  }
+
+  const xValues = candidates.map((instance) => instance.position.x);
+  if (Math.max(...xValues) - Math.min(...xValues) > DESIGN_DEFINITION_BATCH_ALIGNMENT_TOLERANCE) {
+    return input.instances;
+  }
+
+  const anchorX = candidates[0].position.x;
+  let nextY = candidates[0].position.y;
+  const reflowedById = new Map<string, CanvasInstance>();
+
+  for (const instance of candidates) {
+    const object = input.objects[instance.objectId];
+    const size =
+      object?.type === "designDefinition"
+        ? {
+            w: Math.max(instance.size.w, 340),
+            h: instance.size.h
+          }
+        : instance.size;
+    reflowedById.set(instance.id, {
+      ...instance,
+      position: { x: anchorX, y: nextY },
+      size
+    });
+    nextY +=
+      (object?.type === "designDefinition"
+        ? Math.max(size.h, DESIGN_DEFINITION_CANDIDATE_STACK_SLOT_HEIGHT)
+        : size.h) + DESIGN_DEFINITION_CANDIDATE_GAP;
+  }
+
+  return input.instances.map((instance) => reflowedById.get(instance.id) ?? instance);
+}
+
 export function recordAndApplyConceptDirectionProposal(
   workspace: MorphoWorkspace,
   input: RecordConceptDirectionProposalInput & { position: CanvasPoint }
@@ -1407,6 +1558,7 @@ export function applyConceptDirectionProposal(
   const nextDirectionRevisions = { ...workspace.directionRevisions };
   const nextLineage = [...workspace.directionLineage];
   const appliedDirections: ConceptDirectionObject[] = [];
+  let nextDirectionY = input.position.y;
   const applicationMode = proposal.applicationMode;
   const targetObject = proposal.targetDirectionId ? nextObjects[proposal.targetDirectionId] : undefined;
   const targetDirection = targetObject?.type === "conceptDirection" ? targetObject : undefined;
@@ -1452,7 +1604,11 @@ export function applyConceptDirectionProposal(
     return revisionId;
   };
 
-  const addCanvasInstance = (directionId: string, index: number) => {
+  const addCanvasInstance = (
+    directionId: string,
+    draft: ConceptDirectionProposal["directions"][number]
+  ) => {
+    const cardSize = estimateConceptDirectionCardSize(draft);
     nextInstances.push({
       id: nextRecordId(
         Object.fromEntries(nextInstances.map((instance) => [instance.id, instance])),
@@ -1460,11 +1616,12 @@ export function applyConceptDirectionProposal(
       ),
       objectId: directionId,
       position: {
-        x: input.position.x + index * 300,
-        y: input.position.y
+        x: input.position.x,
+        y: nextDirectionY
       },
-      size: { w: 270, h: 184 }
+      size: cardSize
     });
+    nextDirectionY += cardSize.h + CONCEPT_DIRECTION_CARD_GAP;
   };
 
   const addDefinitionSupportRelation = (directionId: string) => {
@@ -1518,7 +1675,7 @@ export function applyConceptDirectionProposal(
       updatedAt: now
     };
     nextObjects[directionId] = directionObject;
-    addCanvasInstance(directionId, index);
+    addCanvasInstance(directionId, draft);
     addDefinitionSupportRelation(directionId);
     appliedDirections.push(directionObject);
     return directionObject;
@@ -1666,6 +1823,43 @@ export function applyConceptDirectionProposal(
       createdAt: now
     })
   };
+}
+
+function estimateConceptDirectionCardSize(
+  draft: ConceptDirectionProposal["directions"][number]
+): { w: number; h: number } {
+  const contentWidth = CONCEPT_DIRECTION_CARD_WIDTH - 36;
+  const titleLines = estimateCanvasTextLines(draft.title, Math.max(12, Math.floor(contentWidth / 14)));
+  const summaryLines = estimateCanvasTextLines(draft.summary, Math.max(16, Math.floor(contentWidth / 10.5)));
+  const keywordLines = estimateCanvasTextLines(
+    `关键词：${draft.keywords.join(" / ")}`,
+    Math.max(18, Math.floor(contentWidth / 10))
+  );
+  const height =
+    35 +
+    10 +
+    9 +
+    titleLines * 19 +
+    8 +
+    summaryLines * 17 +
+    13 +
+    6 +
+    keywordLines * 15 +
+    6;
+
+  return {
+    w: CONCEPT_DIRECTION_CARD_WIDTH,
+    h: Math.max(196, Math.ceil(height))
+  };
+}
+
+function estimateCanvasTextLines(text: string, charsPerLine: number): number {
+  return Math.max(
+    1,
+    text
+      .split(/\r?\n/)
+      .reduce((total, line) => total + Math.max(1, Math.ceil(Array.from(line).length / charsPerLine)), 0)
+  );
 }
 
 export function applyResearchAnalysisProposal(

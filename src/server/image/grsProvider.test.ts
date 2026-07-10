@@ -3,6 +3,31 @@ import { describe, expect, it } from "vitest";
 import { createGrsGenerateRequest, resolveGrsImageResult } from "./grsProvider";
 
 describe("GrsAI image provider adapter", () => {
+  it("sends nano-banana-2-lite with the lightweight nano-banana request shape", () => {
+    const request = createGrsGenerateRequest(
+      {
+        apiKey: "secret-grs-key",
+        baseUrl: "https://grs.example",
+        model: "nano-banana-2-lite"
+      },
+      {
+        modelId: "nano-banana-2-lite",
+        prompt: "industrial design buoy",
+        images: [],
+        aspectRatio: "16:9",
+        referenceObjectIds: []
+      }
+    );
+
+    expect(request.body).toEqual({
+      model: "nano-banana-2-lite",
+      prompt: "industrial design buoy",
+      images: [],
+      aspectRatio: "16:9",
+      replyType: "json"
+    });
+  });
+
   it("keeps the API key in headers and sends a client-selected model without secrets in the body", () => {
     const request = createGrsGenerateRequest(
       {

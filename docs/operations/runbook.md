@@ -18,7 +18,8 @@ Text chat and agent turns through AiJWS / OpenAI-compatible:
 MORPHO_AI_PROVIDER=aijws
 MORPHO_AI_BASE_URL=https://api.aijws.com/v1
 MORPHO_AI_API_KEY=
-MORPHO_AI_MODEL=gpt-5.4
+MORPHO_AI_MODEL=gpt-5.6-terra
+MORPHO_AI_REASONING_EFFORT=high
 MORPHO_AI_WEB_SEARCH_ENABLED=true
 ```
 
@@ -27,6 +28,7 @@ MORPHO_AI_WEB_SEARCH_ENABLED=true
 AiJWS text behavior:
 
 - ordinary text and selected-image chat/research use `MORPHO_AI_MODEL`;
+- supported reasoning models use `MORPHO_AI_REASONING_EFFORT` with `low`, `medium`, or `high`; omit it to use the provider default;
 - selected active images in visual-planning `imageGeneration` requests are sent to AiJWS for the structured visual plan, then GrsAI generates the actual images;
 - image input is limited to selected active IndexedDB image assets. Small selections are sent as individual compressed images; larger selections are packed into one or more contact sheets so every selected image is represented without exposing a user-facing upload count limit;
 - hidden images, unselected images, default references, and whole-canvas screenshots are not sent by default;
@@ -40,7 +42,7 @@ Image generation through GrsAI:
 ```text
 MORPHO_GRS_API_KEY=
 MORPHO_GRS_BASE_URL=https://grsaiapi.com
-MORPHO_GRS_DEFAULT_MODEL=nano-banana-fast
+MORPHO_GRS_DEFAULT_MODEL=nano-banana-2-lite
 MORPHO_GRS_IMAGE_MODEL=
 ```
 
@@ -56,7 +58,7 @@ The browser image-task UI sends a selected model ID, aspect ratio, optional size
 
 Current implemented behavior:
 
-- default image model in the UI: `nano-banana-fast`;
+- default image model in the UI: `nano-banana-2-lite`;
 - selectable image models come from `src/domain/morpho/grsImageModels.ts`;
 - `nano-banana-*` profiles send `replyType: "json"` and send `imageSize` only when the selected model supports a size option;
 - `gpt-image-2` sends pixel-style `aspectRatio`, `replyType: "json"`, and no `imageSize`;

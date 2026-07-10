@@ -11,8 +11,7 @@ import type {
   MorphoWorkspace,
   VisualBranchRecord,
   ResearchObject,
-  AssetRecord,
-  ConceptDirectionRevision
+  AssetRecord
 } from "@/domain/morpho/types";
 import type { DesignTraceResult } from "@/domain/morpho/designTrace";
 import {
@@ -330,45 +329,6 @@ function VisualBranchRows({
   );
 }
 
-function ConceptDirectionRevisionDetail({ revision }: { revision: ConceptDirectionRevision }) {
-  return (
-    <section className="research-detail-group">
-      <h4>当前方向详情</h4>
-      <div className="research-item">
-        <div className="research-item-body">
-          <strong>概念说明</strong>
-          <span>{revision.conceptStatement}</span>
-        </div>
-      </div>
-      <div className="research-item">
-        <div className="research-item-body">
-          <strong>策略</strong>
-          <span>{revision.strategy}</span>
-        </div>
-      </div>
-      <CompactTextList title="差异点" items={revision.differentiators} />
-      <CompactTextList title="视觉信号" items={revision.visualSignals} />
-      <CompactTextList title="风险" items={revision.risks} />
-      <CompactTextList title="待确认问题" items={revision.openQuestions} />
-    </section>
-  );
-}
-
-function CompactTextList({ title, items }: { title: string; items: string[] }) {
-  if (items.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="research-item">
-      <div className="research-item-body">
-        <strong>{title}</strong>
-        <span>{items.join(" / ")}</span>
-      </div>
-    </div>
-  );
-}
-
 function DesignTraceSummary({ trace }: { trace: DesignTraceResult }) {
   return (
     <section className="design-trace-summary" aria-label="设计链路摘要">
@@ -456,9 +416,9 @@ function renderDetail(input: {
         <>
           <strong>{getObjectTypeLabel(object)}</strong> · {object.summary}
           <span className="detail-meta">
-            状态：{object.status} · 当前修订：{object.currentRevisionId}
+            状态：{conceptDirectionStatusLabel(object.status)}
+            {revision ? ` · 修订 ${revision.revisionNumber}` : ""}
           </span>
-          {revision ? <ConceptDirectionRevisionDetail revision={revision} /> : null}
           <VisualBranchRows
             branches={branches}
             onRenameVisualBranch={input.onRenameVisualBranch}
@@ -571,6 +531,21 @@ function renderDetail(input: {
   return decisionRecords.length > 0
     ? decisionRecords.map((record) => `${record.summary}${record.reason ? `，${record.reason}` : ""}`).join(" ")
     : "关键决策需要用户明确确认；AI 不会因为选中对象而自动改变主方向、默认参考或交付引用。";
+}
+
+function conceptDirectionStatusLabel(status: Extract<MorphoObject, { type: "conceptDirection" }>["status"]): string {
+  switch (status) {
+    case "pendingPreview":
+      return "待预览";
+    case "primary":
+      return "主方向";
+    case "alternative":
+      return "备选方向";
+    case "eliminated":
+      return "已淘汰";
+    case "needsReview":
+      return "待复核";
+  }
 }
 
 function ResearchCompactDetail({ object }: { object: ResearchObject }) {

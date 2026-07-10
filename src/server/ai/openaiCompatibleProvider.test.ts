@@ -348,7 +348,8 @@ describe("openai-compatible provider adapter", () => {
         {
           apiKey: "secret",
           baseUrl: "https://api.aijws.com/v1",
-          model: "gpt-5.4",
+          model: "gpt-5.6-terra",
+          reasoningEffort: "high",
           webSearchEnabled: true
         },
         {
@@ -366,7 +367,8 @@ describe("openai-compatible provider adapter", () => {
 
       expect(calls[0].url).toBe("https://api.aijws.com/v1/chat/completions");
       expect(calls[0].body).toEqual({
-        model: "gpt-5.4",
+        model: "gpt-5.6-terra",
+        reasoning_effort: "high",
         messages: [{ role: "user", content: "hi" }],
         stream: true
       });

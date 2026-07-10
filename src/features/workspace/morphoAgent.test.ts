@@ -7,6 +7,7 @@ import {
   buildMorphoAgentSystemPrompt,
   buildMorphoAgentTools,
   getDesignDefinitionDrafts,
+  isExplicitComparisonRequest,
   parseMorphoAgentToolArguments,
   type AgentFunctionCall
 } from "./morphoAgent";
@@ -38,6 +39,30 @@ describe("Morpho agent tool argument validation", () => {
 
     expect(prompt).toContain("研究输出先广泛分析，再评估筛选");
     expect(prompt).toContain("短标题：一句说明");
+  });
+
+  it("keeps ordinary multi-draft analysis in conversation instead of forcing Compare", () => {
+    const workspace = createInitialWorkspace();
+    const selectedObjects = [workspace.objects["definition-current"]].filter(Boolean);
+    const context = buildTaskContext(workspace, {
+      kind: "general",
+      draft: "分析这些方案并给我一些建议",
+      selectedObjectIds: ["definition-current"]
+    });
+    const prompt = buildMorphoAgentSystemPrompt({
+      mode: "auto",
+      workspace,
+      selectedObjects,
+      context,
+      providerTaskContext: buildProviderTaskContext(context)
+    });
+    const tools = buildMorphoAgentTools(false, { allowComparisonAnalysis: false });
+
+    expect(prompt).toContain("没有明确说“比较”“对比”或 Compare");
+    expect(JSON.stringify(tools)).not.toContain("create_comparison_analysis");
+    expect(isExplicitComparisonRequest("分析这三个方案")).toBe(false);
+    expect(isExplicitComparisonRequest("不要做对比卡片，只根据内容分析")).toBe(false);
+    expect(isExplicitComparisonRequest("对比这三个方案")).toBe(true);
   });
 
   it("normalizes direction preview visual roles before operation validation", () => {
@@ -247,8 +272,18 @@ describe("Morpho agent tool argument validation", () => {
       ]
     });
 
-    expect(drafts.map((draft) => draft.title)).toEqual(["Definition A", "Definition B", "Definition C"]);
+    expect(drafts.map((draft) => draft.title)).toEqual([
+      "方案 A｜Definition A",
+      "方案 B｜Definition B",
+      "方案 C｜Definition C"
+    ]);
     expect(drafts.every((draft) => !("alternatives" in draft))).toBe(true);
+  });
+
+  it("keeps a single design-definition draft title unchanged", () => {
+    expect(getDesignDefinitionDrafts(makeDefinitionArgs("Dynamic refuge network"))[0]?.title).toBe(
+      "Dynamic refuge network"
+    );
   });
 
   it("rejects undeclared arguments before execution", () => {

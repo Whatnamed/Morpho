@@ -56,7 +56,7 @@ describe("GrsAI image route request validation", () => {
 
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
-      expect(result.value.modelId).toBe("nano-banana-fast");
+      expect(result.value.modelId).toBe("nano-banana-2-lite");
       expect(result.value.sizeOption).toBeUndefined();
     }
   });

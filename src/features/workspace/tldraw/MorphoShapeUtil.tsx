@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { useLayoutEffect, useRef } from "react";
 import {
   BaseBoxShapeUtil,
   HTMLContainer,
@@ -7,6 +8,7 @@ import {
   T,
   createShapeId,
   resizeBox,
+  useEditor,
   type Geometry2d,
   type RecordProps,
   type TLResizeInfo,
@@ -125,17 +127,7 @@ export class MorphoShapeUtil extends BaseBoxShapeUtil<MorphoShape> {
   }
 
   override component(shape: MorphoShape) {
-    return (
-      <HTMLContainer
-        className="morpho-shape-host"
-        style={{
-          width: shape.props.w,
-          height: shape.props.h
-        }}
-      >
-        <MorphoShapeCard shape={shape} />
-      </HTMLContainer>
-    );
+    return <MorphoShapeContainer shape={shape} />;
   }
 
   override getIndicatorPath(shape: MorphoShape) {
@@ -147,6 +139,74 @@ export class MorphoShapeUtil extends BaseBoxShapeUtil<MorphoShape> {
   override onResize(shape: MorphoShape, info: TLResizeInfo<MorphoShape>) {
     return resizeBox(shape, info);
   }
+}
+
+function MorphoShapeContainer({ shape }: { shape: MorphoShape }) {
+  const editor = useEditor();
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!shouldAutoGrowMorphoShape(shape.props.morphoType)) {
+      return;
+    }
+
+    let cancelled = false;
+    const synchronizeHeight = () => {
+      if (cancelled) {
+        return;
+      }
+      const content = contentRef.current?.firstElementChild;
+      if (!(content instanceof HTMLElement)) {
+        return;
+      }
+      const nextHeight = resolveAutoGrowHeight(shape.props.h, content.scrollHeight);
+      if (!nextHeight) {
+        return;
+      }
+      editor.run(
+        () => {
+          editor.updateShape<MorphoShape>({
+            id: shape.id,
+            type: shape.type,
+            props: { h: nextHeight }
+          });
+        },
+        { history: "ignore" }
+      );
+    };
+
+    synchronizeHeight();
+    const frame = window.requestAnimationFrame(synchronizeHeight);
+    void document.fonts?.ready.then(synchronizeHeight);
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+    };
+  }, [editor, shape]);
+
+  return (
+    <HTMLContainer
+      className="morpho-shape-host"
+      style={{
+        width: shape.props.w,
+        height: shape.props.h
+      }}
+    >
+      <div className="morpho-shape-content" ref={contentRef}>
+        <MorphoShapeCard shape={shape} />
+      </div>
+    </HTMLContainer>
+  );
+}
+
+export function shouldAutoGrowMorphoShape(type: MorphoObjectType): boolean {
+  return type !== "image";
+}
+
+export function resolveAutoGrowHeight(currentHeight: number, contentScrollHeight: number): number | null {
+  const requiredHeight = Math.ceil(contentScrollHeight + 2);
+  return requiredHeight > currentHeight + 1 ? requiredHeight : null;
 }
 
 export function isMorphoShape(shape: TLShape): shape is MorphoShape {
@@ -251,13 +311,14 @@ function getDesignDefinitionShapeSize(
     0
   );
   const estimatedHeight =
-    18 +
+    36 +
+    10 +
     12 +
-    titleLineCount * 20 +
-    (summaryLineCount > 0 ? 8 + summaryLineCount * 17 : 0) +
-    (detailLineCount > 0 ? 8 + detailLineCount * 18 : 0) +
-    18;
-  const compactHeight = Math.max(136, Math.ceil(estimatedHeight));
+    titleLineCount * 25 +
+    (summaryLineCount > 0 ? 13 + summaryLineCount * 19 : 0) +
+    (detailLineCount > 0 ? details.length * 10 + detailLineCount * 20 : 0) +
+    4;
+  const compactHeight = Math.max(150, Math.ceil(estimatedHeight));
   const shouldShrinkLegacyFullDefinitionCard = instance.size.h > 280 && compactHeight < 240;
 
   return {
@@ -393,13 +454,16 @@ function getDetails(object: MorphoObject, workspace?: MorphoWorkspace): string[]
       return [`来源文件：${object.source.fileTitle}`, object.body.slice(0, 160), "来源状态：查看详情"];
     case "designDefinition": {
       const details: string[] = [];
+      if (!object.isCurrentEffective) {
+        details.push("非当前定义");
+      }
       if (workspace && hasPendingDesignDefinitionRevisionProposal(workspace, object.id)) {
         details.push("有修订草稿");
       }
       return details;
     }
     case "conceptDirection":
-      return [object.summary, `鍏抽敭璇嶏細${object.keywords.join(" / ")}`];
+      return [object.summary, `关键词：${object.keywords.join(" / ")}`];
     case "text":
       return [object.body];
     case "link":
@@ -414,8 +478,8 @@ function getDetails(object: MorphoObject, workspace?: MorphoWorkspace): string[]
       return [
         `形式：${object.format === "board" ? "展板" : "演示文稿"}`,
         `章节：${object.sections.length} · 引用：${object.references.length}`,
-        `寮€鏀惧緟琛ワ細${object.gaps.filter((gap) => gap.status === "open").length}`,
-        `鏉ユ簮寰呭鏍革細${
+        `开放待补：${object.gaps.filter((gap) => gap.status === "open").length}`,
+        `来源待复核：${
           signals.sourceHiddenReferenceIds.length +
           signals.sourceMissingReferenceIds.length +
           signals.assetMissingReferenceIds.length +
@@ -588,7 +652,7 @@ function renderVisual(variant?: string) {
 
   if (variant === "scenario" || variant === "path") {
     return (
-      <svg viewBox="0 0 340 230" role="img" aria-label="澶滈棿璧疯韩璺緞">
+      <svg viewBox="0 0 340 230" role="img" aria-label="夜间起身路径">
         <defs>
           <linearGradient id="scenarioWall" x1="0" x2="1">
             <stop stopColor="#E8E0D5" />
@@ -608,7 +672,7 @@ function renderVisual(variant?: string) {
 
   if (variant === "supportIsland") {
     return (
-      <svg viewBox="0 0 320 210" role="img" aria-label="瀹跺叿鍖栨敮鎾戝矝">
+      <svg viewBox="0 0 320 210" role="img" aria-label="家居化支撑岛">
         <rect width="320" height="210" fill="#E9E4DA" />
         <rect x="56" y="74" width="86" height="78" rx="16" fill="#9D8F7D" />
         <rect x="178" y="52" width="72" height="108" rx="20" fill="#646F5E" />
@@ -630,7 +694,7 @@ function renderVisual(variant?: string) {
 
   if (variant === "detail") {
     return (
-      <svg viewBox="0 0 320 210" role="img" aria-label="杞杩炴帴缁嗚妭">
+      <svg viewBox="0 0 320 210" role="img" aria-label="转角连接细节">
         <rect width="320" height="210" fill="#EEE9E0" />
         <path d="M58 132h112c36 0 57-22 57-58v-8" fill="none" stroke="#53604E" strokeWidth="28" strokeLinecap="round" />
         <path d="M58 132h112c36 0 57-22 57-58v-8" fill="none" stroke="#FFE2A0" strokeWidth="6" strokeLinecap="round" />

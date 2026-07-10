@@ -2,6 +2,7 @@ export type OpenAiCompatibleConfig = {
   apiKey: string;
   baseUrl: string;
   model: string;
+  reasoningEffort?: "low" | "medium" | "high";
   webSearchEnabled: boolean;
 };
 
@@ -27,7 +28,8 @@ export function loadOpenAiCompatibleConfig(env: Partial<NodeJS.ProcessEnv>): Ope
   const apiKey = firstNonEmpty(env.MORPHO_AI_API_KEY, env.AIJWS_API_KEY) ?? "";
   const baseUrlCandidate = trimTrailingSlash(firstNonEmpty(env.MORPHO_AI_BASE_URL, env.AIJWS_BASE_URL));
   const baseUrl = baseUrlCandidate || defaultBaseUrlForProvider(provider);
-  const model = firstNonEmpty(env.MORPHO_AI_MODEL, env.AIJWS_MODEL) ?? "gpt-5.4";
+  const model = firstNonEmpty(env.MORPHO_AI_MODEL, env.AIJWS_MODEL) ?? "gpt-5.6-terra";
+  const reasoningEffort = parseReasoningEffort(env.MORPHO_AI_REASONING_EFFORT);
   const webSearchEnabled = parseBoolean(env.MORPHO_AI_WEB_SEARCH_ENABLED, true);
 
   if (!apiKey || !baseUrl) {
@@ -43,6 +45,7 @@ export function loadOpenAiCompatibleConfig(env: Partial<NodeJS.ProcessEnv>): Ope
       apiKey,
       baseUrl,
       model,
+      reasoningEffort,
       webSearchEnabled
     }
   };
@@ -104,6 +107,15 @@ function parseBoolean(value: string | undefined, defaultValue: boolean): boolean
   }
 
   return defaultValue;
+}
+
+function parseReasoningEffort(value: string | undefined): "low" | "medium" | "high" | undefined {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "low" || normalized === "medium" || normalized === "high") {
+    return normalized;
+  }
+
+  return undefined;
 }
 
 function trimTrailingSlash(value: string | undefined): string {

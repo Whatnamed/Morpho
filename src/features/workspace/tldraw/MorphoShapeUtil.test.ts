@@ -1,12 +1,38 @@
 import { describe, expect, it } from "vitest";
 
 import { recordDesignDefinitionProposal } from "../../../domain/operations/operations";
-import type { CanvasInstance, KeyConclusionObject, ResearchObject } from "../../../domain/morpho/types";
+import type { CanvasInstance, KeyConclusionObject, MorphoObjectType, ResearchObject } from "../../../domain/morpho/types";
 import { createInitialWorkspace } from "../../../domain/morpho/workspace";
 
-import { getAdaptiveMorphoShapeSize, getMorphoShapeProps } from "./MorphoShapeUtil";
+import {
+  getAdaptiveMorphoShapeSize,
+  getMorphoShapeProps,
+  resolveAutoGrowHeight,
+  shouldAutoGrowMorphoShape
+} from "./MorphoShapeUtil";
 
 describe("MorphoShapeUtil", () => {
+  it("auto-grows every text-bearing canvas object while keeping image geometry stable", () => {
+    const textTypes: MorphoObjectType[] = [
+      "file",
+      "text",
+      "link",
+      "imageCollection",
+      "research",
+      "keyConclusion",
+      "documentFragment",
+      "designDefinition",
+      "conceptDirection",
+      "delivery",
+      "proposalDraft"
+    ];
+
+    expect(textTypes.every(shouldAutoGrowMorphoShape)).toBe(true);
+    expect(shouldAutoGrowMorphoShape("image")).toBe(false);
+    expect(resolveAutoGrowHeight(180, 240)).toBe(242);
+    expect(resolveAutoGrowHeight(180, 179)).toBeNull();
+  });
+
   it("keeps image canvas props focused on the visual without persistent title or summary details", () => {
     const workspace = createInitialWorkspace();
     const image = workspace.objects["image-soft-rail-v2"];
@@ -110,6 +136,69 @@ describe("MorphoShapeUtil", () => {
     expect(props.details.join("\n")).not.toContain(definition.problem);
     expect(props.details.join("\n")).not.toContain(definition.principles[0]);
     expect(props.details.join("\n")).not.toContain(definition.avoid[0]);
+  });
+
+  it("renders concept direction keywords with the correct user-facing label", () => {
+    const workspace = createInitialWorkspace();
+    const direction = workspace.objects["direction-soft-rail"];
+    const instance = workspace.canvas.instances.find((item) => item.objectId === "direction-soft-rail");
+
+    if (!direction || direction.type !== "conceptDirection" || !instance) {
+      throw new Error("Expected seed workspace to include a concept direction instance.");
+    }
+
+    const props = getMorphoShapeProps(instance, direction, undefined, workspace);
+
+    expect(props.details[1]).toBe(`关键词：${direction.keywords.join(" / ")}`);
+    expect(props.details.join("")).not.toContain("鍏");
+  });
+
+  it("marks non-current design definitions without removing them from the canvas", () => {
+    const workspace = createInitialWorkspace();
+    const definition = workspace.objects["definition-current"];
+    const instance = workspace.canvas.instances.find((item) => item.objectId === "definition-current");
+
+    if (!definition || definition.type !== "designDefinition" || !instance) {
+      throw new Error("Expected seed workspace to include the current design definition instance.");
+    }
+
+    const nonCurrent = { ...definition, isCurrentEffective: false };
+    const props = getMorphoShapeProps(instance, nonCurrent, undefined, {
+      ...workspace,
+      objects: {
+        ...workspace.objects,
+        [nonCurrent.id]: nonCurrent
+      }
+    });
+
+    expect(props.details).toContain("非当前定义");
+  });
+
+  it("includes non-current status chips in the adaptive design-definition height", () => {
+    const workspace = createInitialWorkspace();
+    const definition = workspace.objects["definition-current"];
+    const instance = workspace.canvas.instances.find((item) => item.objectId === "definition-current");
+
+    if (!definition || definition.type !== "designDefinition" || !instance) {
+      throw new Error("Expected seed workspace to include the current design definition instance.");
+    }
+
+    const nonCurrent = {
+      ...definition,
+      isCurrentEffective: false,
+      title: "方案 A｜声学生态风险预警浮标系统",
+      summary:
+        "以可部署的海上浮标为前端，识别并分级生态声学风险，将水下感知转化为船舶与管理者可执行的减速、绕行或复核建议，同时避免影响海洋生物。"
+    };
+    const compactInstance = {
+      ...instance,
+      size: { w: 340, h: 120 }
+    };
+    const currentSize = getAdaptiveMorphoShapeSize(compactInstance, nonCurrent, []);
+    const nonCurrentSize = getAdaptiveMorphoShapeSize(compactInstance, nonCurrent, ["非当前定义"]);
+
+    expect(nonCurrentSize.h).toBeGreaterThan(currentSize.h);
+    expect(nonCurrentSize.h - currentSize.h).toBeGreaterThanOrEqual(20);
   });
 
   it("keeps research canvas cards as concise entry objects", () => {

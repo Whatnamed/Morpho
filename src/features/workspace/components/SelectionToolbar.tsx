@@ -36,6 +36,9 @@ export type SelectionToolbarProps = {
   onApplyProposal: () => void;
   onRejectProposal: () => void;
   onContinueProposalDiscussion: () => void;
+  onOpenDesignDefinitionDetail: () => void;
+  onOpenConceptDirectionDetail: () => void;
+  onSetCurrentDesignDefinition: () => void;
   onReviseDirection: () => void;
   onSplitDirection: () => void;
   onMergeDirections: () => void;
@@ -63,6 +66,9 @@ export function SelectionToolbar({
   onApplyProposal,
   onRejectProposal,
   onContinueProposalDiscussion,
+  onOpenDesignDefinitionDetail,
+  onOpenConceptDirectionDetail,
+  onSetCurrentDesignDefinition,
   onReviseDirection,
   onSplitDirection,
   onMergeDirections,
@@ -142,6 +148,20 @@ export function SelectionToolbar({
           </button>
         </>
       ) : null}
+      {onlyOne && primary.type === "designDefinition" ? (
+        <>
+          <button className="brand" type="button" onClick={onOpenDesignDefinitionDetail}>
+            <BookOpen size={15} />
+            查看详情
+          </button>
+          {!primary.isCurrentEffective ? (
+            <button type="button" onClick={onSetCurrentDesignDefinition}>
+              <Flag size={15} />
+              设为当前定义
+            </button>
+          ) : null}
+        </>
+      ) : null}
       <button className={isDesignTraceActive ? "brand" : ""} type="button" onClick={onToggleDesignTrace}>
         <GitBranch size={15} />
         链路
@@ -160,6 +180,10 @@ export function SelectionToolbar({
       ) : null}
       {showDirectionActions ? (
         <>
+          <button className="brand" type="button" onClick={onOpenConceptDirectionDetail}>
+            <BookOpen size={15} />
+            详情
+          </button>
           {primary.status !== "primary" && primary.status !== "eliminated" ? (
             <button type="button" onClick={onSetDirectionPrimary}>
               <Flag size={15} />
@@ -222,6 +246,8 @@ export type CanvasContextMenuProps = {
   onApplyProposal: () => void;
   onRejectProposal: () => void;
   onContinueProposalDiscussion: () => void;
+  onOpenDesignDefinitionDetail: () => void;
+  onOpenConceptDirectionDetail: () => void;
   onReorderLayer: (action: CanvasLayerReorderAction) => void;
 };
 
@@ -240,6 +266,8 @@ export function CanvasContextMenu({
   onApplyProposal,
   onRejectProposal,
   onContinueProposalDiscussion,
+  onOpenDesignDefinitionDetail,
+  onOpenConceptDirectionDetail,
   onReorderLayer
 }: CanvasContextMenuProps) {
   if (selectedObjects.length === 0) {
@@ -317,6 +345,18 @@ export function CanvasContextMenu({
         <MessageSquareText size={15} />
         询问 AI
       </button>
+      {primary.type === "designDefinition" ? (
+        <button type="button" role="menuitem" onClick={() => run(onOpenDesignDefinitionDetail)}>
+          <BookOpen size={15} />
+          查看详情
+        </button>
+      ) : null}
+      {primary.type === "conceptDirection" ? (
+        <button type="button" role="menuitem" onClick={() => run(onOpenConceptDirectionDetail)}>
+          <BookOpen size={15} />
+          查看详情
+        </button>
+      ) : null}
       {primary.type === "image" ? (
         <>
           <button type="button" role="menuitem" onClick={() => run(onLocalEdit)}>

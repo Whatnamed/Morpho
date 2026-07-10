@@ -111,7 +111,7 @@ ConceptDirectionProposal
 
 当前实现中，研究、设计定义和概念方向都先生成 Proposal。用户点击应用后，应用层才调用领域函数创建或修订正式对象、修订记录、关系、lineage 和决策记录。
 
-保存 Research Proposal 不会自动生成或改写长期项目记忆、设计定义、方向状态、关键结论或交付引用。应用 DesignDefinition Proposal 会创建首版当前定义或修订当前定义。应用 ConceptDirection Proposal 必须按 `applicationMode` 执行 create / revise / split / merge。
+保存 Research Proposal 不会自动生成或改写长期项目记忆、设计定义、方向状态、关键结论或交付引用。应用 DesignDefinition Proposal 时，`createDesignDefinition` 创建独立定义对象并把原当前定义降为非当前，`reviseDesignDefinition` 才复用同一个定义对象并追加 revision。应用 ConceptDirection Proposal 必须按 `applicationMode` 执行 create / revise / split / merge。
 
 ## 7. Context 与压缩
 

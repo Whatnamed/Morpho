@@ -24,6 +24,7 @@ import {
   recordImageGenerationOperationResult,
   recordResearchAnalysisProposal,
   rejectArtifactProposal,
+  setCurrentDesignDefinition,
   updateResearchAnalysisProposalDraft
 } from "./operations";
 
@@ -152,7 +153,18 @@ describe("Morpho Operation Runtime", () => {
     expect(result.directions).toHaveLength(3);
     expect(result.workspace.objects[result.proposal.id]).toBeUndefined();
     expect(result.workspace.artifactProposals[result.proposal.id]?.status).toBe("applied");
-    expect(result.workspace.canvas.instances.filter((instance) => result.directions.some((direction) => direction.id === instance.objectId))).toHaveLength(3);
+    const directionInstances = result.workspace.canvas.instances
+      .filter((instance) => result.directions.some((direction) => direction.id === instance.objectId))
+      .sort((left, right) => left.position.y - right.position.y);
+    expect(directionInstances).toHaveLength(3);
+    expect(directionInstances.map((instance) => instance.position.x)).toEqual([1200, 1200, 1200]);
+    expect(directionInstances[1]!.position.y).toBe(
+      directionInstances[0]!.position.y + directionInstances[0]!.size.h + 32
+    );
+    expect(directionInstances[2]!.position.y).toBe(
+      directionInstances[1]!.position.y + directionInstances[1]!.size.h + 32
+    );
+    expect(directionInstances.every((instance) => instance.size.w === 320)).toBe(true);
     expect(result.workspace.objects[result.directions[1]!.id]).toMatchObject({
       type: "conceptDirection",
       title: "方向 2 | 漂移拼接式避险浮标群",
@@ -855,6 +867,7 @@ describe("Morpho Operation Runtime", () => {
         : undefined;
     const proposed = recordDesignDefinitionProposal(workspace, {
       proposalId: "proposal-definition-revision",
+      workIntent: "reviseDesignDefinition",
       title: "当前设计定义 v2",
       summary: "在连续支撑基础上收紧转角与触感边界。",
       projectGoal: "让独居老人夜间起身路径更可辨认、更可扶持、更不打扰家居氛围。",
@@ -925,6 +938,126 @@ describe("Morpho Operation Runtime", () => {
     }
   });
 
+  it("keeps create-definition alternatives as separate canvas objects when switching the current definition", () => {
+    const workspace = createBlankWorkspace("project-definition-alternatives");
+    const proposalA = recordDesignDefinitionProposal(workspace, {
+      proposalId: "proposal-definition-a",
+      operationId: "operation-definition-alternatives",
+      workIntent: "createDesignDefinition",
+      title: "方案 A｜Acoustic warning buoy",
+      summary: "Definition A",
+      projectGoal: "Clarify route A.",
+      targetUsers: ["Port operator"],
+      primaryScenarios: ["Shipping lane"],
+      coreProblem: "Warn operators about acoustic risk.",
+      designPrinciples: ["Clear warning"],
+      constraints: [],
+      avoidDirections: [],
+      opportunities: [],
+      openQuestions: [],
+      sourceObjectIds: [],
+      citations: [],
+      position: { x: 640, y: 320 }
+    });
+    const proposalB = recordDesignDefinitionProposal(proposalA.workspace, {
+      proposalId: "proposal-definition-b",
+      operationId: "operation-definition-alternatives",
+      workIntent: "createDesignDefinition",
+      title: "方案 B｜Dynamic refuge network",
+      summary: "Definition B",
+      projectGoal: "Clarify route B.",
+      targetUsers: ["Conservation operator"],
+      primaryScenarios: ["Acoustic refuge"],
+      coreProblem: "Coordinate a dynamic protected area.",
+      designPrinciples: ["Adaptive boundary"],
+      constraints: [],
+      avoidDirections: [],
+      opportunities: [],
+      openQuestions: [],
+      sourceObjectIds: [],
+      citations: [],
+      position: { x: 640, y: 520 }
+    });
+
+    const appliedA = applyDesignDefinitionProposal(proposalB.workspace, proposalA.proposal.id);
+    expect(appliedA.status).toBe("updated");
+    if (appliedA.status !== "updated") {
+      return;
+    }
+
+    const appliedB = applyDesignDefinitionProposal(appliedA.workspace, proposalB.proposal.id);
+    expect(appliedB.status).toBe("updated");
+    if (appliedB.status !== "updated") {
+      return;
+    }
+
+    expect(appliedB.designDefinitionObject.id).not.toBe(appliedA.designDefinitionObject.id);
+    expect(appliedB.workspace.objects[appliedA.designDefinitionObject.id]).toMatchObject({
+      title: "方案 A｜Acoustic warning buoy",
+      type: "designDefinition",
+      isCurrentEffective: false
+    });
+    expect(appliedB.workspace.objects[appliedB.designDefinitionObject.id]).toMatchObject({
+      title: "方案 B｜Dynamic refuge network",
+      type: "designDefinition",
+      isCurrentEffective: true
+    });
+    expect(appliedB.workspace.canvas.instances).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          objectId: appliedA.designDefinitionObject.id,
+          position: { x: 640, y: 320 }
+        }),
+        expect.objectContaining({
+          objectId: appliedB.designDefinitionObject.id,
+          position: { x: 640, y: 640 }
+        })
+      ])
+    );
+  });
+
+  it("can restore a previous definition as current without moving either definition", () => {
+    const workspace = createInitialWorkspace();
+    const original = workspace.objects["definition-current"];
+    if (!original || original.type !== "designDefinition") {
+      throw new Error("Expected a current design definition.");
+    }
+    const alternative = {
+      ...original,
+      id: "definition-alternative",
+      title: "Alternative definition",
+      isCurrentEffective: false,
+      createdAt: "2026-07-10T00:00:00.000Z",
+      updatedAt: "2026-07-10T00:00:00.000Z"
+    };
+    const withAlternative = {
+      ...workspace,
+      objects: {
+        ...workspace.objects,
+        [alternative.id]: alternative
+      },
+      canvas: {
+        ...workspace.canvas,
+        instances: [
+          ...workspace.canvas.instances,
+          {
+            id: "canvas-definition-alternative",
+            objectId: alternative.id,
+            position: { x: 900, y: 500 },
+            size: { w: 320, h: 210 }
+          }
+        ]
+      }
+    };
+
+    const switched = setCurrentDesignDefinition(withAlternative, alternative.id);
+
+    expect(switched.objects["definition-current"]).toMatchObject({ isCurrentEffective: false });
+    expect(switched.objects[alternative.id]).toMatchObject({ isCurrentEffective: true });
+    expect(switched.workingState.currentDesignDefinitionId).toBe(alternative.id);
+    expect(switched.canvas.instances).toEqual(withAlternative.canvas.instances);
+  });
+
   it("places an applied first design definition on the canvas at the proposal placement", () => {
     const workspace = createBlankWorkspace("project-definition-placement");
     const proposed = recordDesignDefinitionProposal(workspace, {
@@ -953,7 +1086,7 @@ describe("Morpho Operation Runtime", () => {
         expect.objectContaining({
           objectId: applied.designDefinitionObject.id,
           position: { x: 640, y: 360 },
-          size: { w: 320, h: 210 }
+          size: { w: 340, h: 210 }
         })
       );
       expect(applied.workspace.ui.lastSelectionIds).toEqual([applied.designDefinitionObject.id]);

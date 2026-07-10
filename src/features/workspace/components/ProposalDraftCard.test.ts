@@ -53,7 +53,17 @@ describe("ProposalDraftCard labels", () => {
           workIntent: "createDesignDefinition"
         } as never
       )
-    ).toBe("应用后会创建首版当前设计定义，成为后续方向生成的默认依据。");
+    ).toBe("应用后会把这张草案作为独立设计定义并设为当前；原有定义会保留为非当前定义。");
+
+    expect(
+      proposalTargetMessage(
+        { objects: {} } as never,
+        {
+          type: "designDefinition",
+          workIntent: "createDesignDefinition"
+        } as never
+      )
+    ).toBe("应用后会创建首个当前设计定义，成为后续方向生成的默认依据。");
 
     expect(
       proposalTargetMessage(

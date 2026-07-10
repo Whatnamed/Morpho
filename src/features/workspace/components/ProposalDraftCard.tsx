@@ -678,7 +678,10 @@ export function proposalTargetMessage(workspace: MorphoWorkspace, proposal: Arti
     }
 
     if (proposal.workIntent === "createDesignDefinition") {
-      return "应用后会创建首版当前设计定义，成为后续方向生成的默认依据。";
+      const hasCurrentDefinition = Object.values(workspace.objects).some((object) => object.type === "designDefinition");
+      return hasCurrentDefinition
+        ? "应用后会把这张草案作为独立设计定义并设为当前；原有定义会保留为非当前定义。"
+        : "应用后会创建首个当前设计定义，成为后续方向生成的默认依据。";
     }
   }
 

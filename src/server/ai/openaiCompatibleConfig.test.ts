@@ -6,7 +6,8 @@ describe("openai-compatible config", () => {
   it("accepts the existing AIJWS env shape", () => {
     const result = loadOpenAiCompatibleConfig({
       AIJWS_API_KEY: "key",
-      MORPHO_AI_MODEL: "gpt-5.4"
+      MORPHO_AI_MODEL: "gpt-5.6-terra",
+      MORPHO_AI_REASONING_EFFORT: "high"
     });
 
     expect(result).toEqual({
@@ -14,7 +15,26 @@ describe("openai-compatible config", () => {
       config: {
         apiKey: "key",
         baseUrl: "https://api.aijws.com/v1",
-        model: "gpt-5.4",
+        model: "gpt-5.6-terra",
+        reasoningEffort: "high",
+        webSearchEnabled: true
+      }
+    });
+  });
+
+  it("ignores unsupported reasoning effort values", () => {
+    const result = loadOpenAiCompatibleConfig({
+      AIJWS_API_KEY: "key",
+      MORPHO_AI_REASONING_EFFORT: "maximum"
+    });
+
+    expect(result).toEqual({
+      status: "ok",
+      config: {
+        apiKey: "key",
+        baseUrl: "https://api.aijws.com/v1",
+        model: "gpt-5.6-terra",
+        reasoningEffort: undefined,
         webSearchEnabled: true
       }
     });

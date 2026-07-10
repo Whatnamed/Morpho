@@ -70,7 +70,19 @@ export type CreateDesignDefinitionProposalArgs = DesignDefinitionDraftArgs & {
 
 export function getDesignDefinitionDrafts(args: CreateDesignDefinitionProposalArgs): DesignDefinitionDraftArgs[] {
   const { alternatives: _alternatives, ...primaryDraft } = args;
-  return [primaryDraft, ...(args.alternatives ?? [])].slice(0, 3);
+  const drafts = [primaryDraft, ...(args.alternatives ?? [])].slice(0, 3);
+  if (drafts.length <= 1) {
+    return drafts;
+  }
+
+  return drafts.map((draft, index) => ({
+    ...draft,
+    title: `方案 ${String.fromCharCode(65 + index)}｜${stripDesignDefinitionOptionPrefix(draft.title)}`
+  }));
+}
+
+function stripDesignDefinitionOptionPrefix(title: string): string {
+  return title.replace(/^方案\s*[a-c]\s*(?:[｜|:：\-—]\s*)?/i, "").trim() || title.trim();
 }
 
 export type CreateConceptDirectionProposalArgs = {
@@ -217,8 +229,10 @@ export function buildMorphoAgentSystemPrompt(input: {
       ? `当前相关方向：${input.providerTaskContext.directions.map((direction) => direction.title).join(" / ")}`
       : "当前没有显式相关的概念方向。",
     "优先工作方式：先判断是否需要 read_selected_context；只有在当前本地资料不足且确实需要外部事实时才调用 search_web_evidence；结构化结果足够明确时应立刻调用对应写入工具。",
+    "当用户多选草案或设计定义并要求分析、评估、梳理或给建议，但没有明确说“比较”“对比”或 Compare 时，先读取完整选择内容，再直接在对话中回答；不要调用 create_comparison_analysis，不要创建 Compare 记录或画布对象。",
     "当用户选中一张 pending 草案并要求修改、调整、压缩、重写、改标题或改内容时，先调用 read_selected_context 读取完整草案，再调用 revise_selected_proposal_draft 原地更新这一张草案；不要新建草案，不要等待确认，不要把完整长草案塞回对话。",
     "只有用户明确说再生成一个、新方案、另起一版、多个替代方案时，才调用 create_design_definition_proposal 或 create_concept_direction_proposal 新建草案。",
+    "当用户明确要求多个设计定义方案时，create_design_definition_proposal 的根草案必须是方案 A 的完整独立内容，alternatives 依次放方案 B、方案 C；根草案不得写成整组方案的总览。只生成一个方案时不要添加 A/B/C 编号。",
     "生成图片时，不允许只给 Prompt、只给长文分析或让用户切模式；应直接调用 generate_visuals。"
   ]
     .filter(Boolean)
@@ -249,7 +263,10 @@ export function buildMorphoAgentUserInput(input: {
   };
 }
 
-export function buildMorphoAgentTools(webSearchEnabled: boolean): ResponseTool[] {
+export function buildMorphoAgentTools(
+  webSearchEnabled: boolean,
+  options: { allowComparisonAnalysis?: boolean } = {}
+): ResponseTool[] {
   const tools: ResponseTool[] = [
     readSelectedContextTool(),
     functionTool({
@@ -383,7 +400,7 @@ export function buildMorphoAgentTools(webSearchEnabled: boolean): ResponseTool[]
           changeNote: { type: "string" },
           alternatives: {
             type: "array",
-            description: "Optional extra design definition proposals when the user asks for multiple drafts. Keep this to 2 alternatives or fewer.",
+            description: "用户要求多个方案时放方案 B、方案 C；根对象必须是完整的方案 A，不得作为整组总览。最多 2 个 alternatives。",
             items: {
               type: "object",
               additionalProperties: false,
@@ -613,11 +630,25 @@ export function buildMorphoAgentTools(webSearchEnabled: boolean): ResponseTool[]
     );
   }
 
-  return tools;
+  return options.allowComparisonAnalysis === false
+    ? tools.filter((tool) => tool.type !== "function" || tool.name !== "create_comparison_analysis")
+    : tools;
 }
 
 export function buildMorphoAgentInitialTools(): ResponseTool[] {
   return [readSelectedContextTool()];
+}
+
+export function isExplicitComparisonRequest(draft: string): boolean {
+  const text = draft.trim();
+  if (
+    /(?:不要|别|无需|不需要|不是).{0,16}(?:比较|对比|compare)|(?:比较|对比|compare).{0,16}(?:不要|别|无需|不需要|不是)/i.test(
+      text
+    )
+  ) {
+    return false;
+  }
+  return /比较|对比|compare/i.test(text);
 }
 
 export function buildAgentHistoryMessages(messages: Array<{ role: "user" | "assistant"; body: string }>): ResponseMessageInput[] {

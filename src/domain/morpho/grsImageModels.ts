@@ -10,6 +10,7 @@ export type GrsImageModelCatalogItem = {
   label: string;
   status: GrsImageModelStatus;
   capabilityStatus: GrsImageCapabilityStatus;
+  enabledForExecution?: boolean;
   family: GrsImageModelFamily;
   points: number;
   capabilities: GrsImageCapability[];
@@ -24,6 +25,7 @@ export type ResolvedGrsImageModelSettings = {
 };
 
 export const GRS_IMAGE_ASPECT_RATIOS: readonly GrsImageAspectRatio[] = ["1:1", "4:3", "3:4", "16:9", "9:16"];
+export const DEFAULT_GRS_IMAGE_MODEL_ID = "nano-banana-2-lite";
 
 export const GRS_IMAGE_MODEL_CATALOG: readonly GrsImageModelCatalogItem[] = [
   {
@@ -81,6 +83,17 @@ export const GRS_IMAGE_MODEL_CATALOG: readonly GrsImageModelCatalogItem[] = [
     capabilities: ["textToImage", "imageToImage"],
     sizeOptions: ["1K", "2K", "4K"],
     defaultSizeOption: "1K"
+  },
+  {
+    id: "nano-banana-2-lite",
+    label: "nano-banana-2-lite",
+    status: "available",
+    capabilityStatus: "documented",
+    enabledForExecution: true,
+    family: "nanoBanana",
+    points: 440,
+    capabilities: ["textToImage", "imageToImage"],
+    note: "Provider-documented as using the same request shape as nano-banana-fast."
   },
   {
     id: "nano-banana-fast",
@@ -173,12 +186,17 @@ export function getSelectableGrsImageModels(): GrsImageModelCatalogItem[] {
 }
 
 export function getExecutableGrsImageModels(): GrsImageModelCatalogItem[] {
-  return getSelectableGrsImageModels().filter((model) => model.capabilityStatus === "smokeTestVerified");
+  return getSelectableGrsImageModels().filter(
+    (model) => model.capabilityStatus === "smokeTestVerified" || model.enabledForExecution === true
+  );
 }
 
 export function getDefaultGrsImageModel(): GrsImageModelCatalogItem {
-  const selectable = getExecutableGrsImageModels();
-  return selectable.reduce((best, model) => (model.points < best.points ? model : best), selectable[0]);
+  const executable = getExecutableGrsImageModels();
+  return (
+    executable.find((model) => model.id === DEFAULT_GRS_IMAGE_MODEL_ID) ??
+    executable.reduce((best, model) => (model.points < best.points ? model : best), executable[0])
+  );
 }
 
 export function findSelectableGrsImageModel(modelId: string): GrsImageModelCatalogItem | undefined {

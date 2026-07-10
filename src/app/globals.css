@@ -4540,6 +4540,21 @@ select:focus-visible {
   overflow: visible;
 }
 
+.morpho-shape-content {
+  width: 100%;
+  height: 100%;
+}
+
+.morpho-object:not(.morpho-object-image) {
+  overflow: hidden;
+}
+
+.morpho-object:not(.morpho-object-image) h3,
+.morpho-object:not(.morpho-object-image) p,
+.morpho-object:not(.morpho-object-image) small {
+  overflow-wrap: anywhere;
+}
+
 .morpho-object-image {
   border-radius: 0;
 }

@@ -292,7 +292,7 @@ Image generation:
 - Browser calls `/api/ai/image`.
 - The route reads `MORPHO_GRS_*` only on the server.
 - GrsAI uses `POST /v1/api/generate` and, when needed, bounded polling on `GET /v1/api/result?id=...`.
-- GrsAI image models are exposed through a static, client-safe catalog. The current default is `nano-banana-fast`, the lowest-point available image model in the catalog.
+- GrsAI image models are exposed through a static, client-safe catalog. The current default is `nano-banana-2-lite`.
 - The right-side image task UI lets the user choose model, aspect ratio, and model-supported size option for the current request only.
 - GrsAI request parameters are selected by server-side model profile. `nano-banana-*` models send `replyType: "json"` and send `imageSize` only when the selected model supports a size option; `gpt-image-2` sends pixel-style `aspectRatio`, `replyType: "json"`, and no `imageSize`.
 - The server downloads the final remote result URL and returns image bytes to the browser.

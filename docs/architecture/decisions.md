@@ -567,3 +567,17 @@ Decision: revoke direct `EXECUTE` on Supabase's `public.rls_auto_enable()` event
 Reason: closed-test users should not be able to call infrastructure maintenance functions directly, and quota reset behavior must be product-explicit rather than depending on the database session `TimeZone` or `current_date`.
 
 Boundary: `public.get_my_access_state()` and `public.reserve_ai_daily_quota(text)` intentionally remain `SECURITY DEFINER` RPCs executable only by `authenticated`. They are kept because RLS blocks direct writes to quota/access tables and the server needs a narrow, atomic, current-user RPC to read self status and reserve quota before upstream AI calls. Both functions use fixed `search_path`, `auth.uid()` as the only user identity source, no dynamic SQL, no prompt/project-content persistence, no cross-user parameters, and return only the caller's own access/usage snapshot.
+## 2026-07-10: Default GrsAI Image Model to `nano-banana-2-lite`
+
+Decision: add the provider-documented `nano-banana-2-lite` model to the static client-safe catalog and make it the default image-generation model.
+
+Reason: the model uses the same request shape and 440-point rate as `nano-banana-fast`, while the project explicitly selected it as the new default.
+
+Boundary: the model is enabled from provider documentation but is not marked smoke-test verified until a paid generation succeeds. It does not add size controls or change image persistence, reference, operation, or delivery semantics.
+## 2026-07-10: Preserve Parallel Design Definition Alternatives on Canvas
+
+Decision: explicit multi-option design-definition generation creates vertically stacked peer drafts. Applying a `createDesignDefinition` proposal creates an independent definition object at that draft's canvas position and makes it current; the previous definition remains visible as non-current. `reviseDesignDefinition` continues to reuse the same object and append a revision.
+
+Reason: alternative definitions represent different product strategies, not successive edits to one strategy. Reusing the current object made one option overwrite another visually and removed the user's ability to switch between candidates.
+
+Boundary: only one definition is current effective at a time. Canvas position remains visual organization only, and switching current definition does not move, delete, or merge definition objects.

@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { createInitialWorkspace } from "../../domain/morpho/workspace";
-import { inferGenerationAspectRatio, resolveGenerationSettings } from "./imageGenerationSettings";
+import {
+  getDefaultImageGenerationSettings,
+  inferGenerationAspectRatio,
+  resolveGenerationSettings
+} from "./imageGenerationSettings";
 
 describe("workspace image generation settings", () => {
   it("uses the selected image asset ratio before the default reference", () => {
@@ -68,6 +72,15 @@ describe("workspace image generation settings", () => {
 
   it("falls back to square when no image dimensions are available", () => {
     expect(inferGenerationAspectRatio(createInitialWorkspace(), [])).toBe("1:1");
+  });
+
+  it("uses nano-banana-2-lite as the default image generation model", () => {
+    expect(getDefaultImageGenerationSettings()).toMatchObject({
+      modelId: "nano-banana-2-lite",
+      modelLabel: "nano-banana-2-lite",
+      points: 440,
+      sizeOptions: []
+    });
   });
 
   it("only exposes size options supported by the selected model", () => {
