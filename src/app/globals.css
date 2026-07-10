@@ -3967,10 +3967,54 @@ input:focus-visible {
   line-height: 1.75;
 }
 
+.login-mode-switch {
+  display: inline-flex;
+  gap: 2px;
+  margin-top: 24px;
+  padding: 3px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.login-mode-switch button,
+.login-mode-copy button {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.login-mode-switch button {
+  min-width: 58px;
+  padding: 6px 10px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.login-mode-switch button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(61, 48, 37, 0.12);
+}
+
 .login-form {
   display: grid;
   gap: 16px;
   margin-top: 28px;
+}
+
+.login-mode-copy {
+  margin: 18px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.login-mode-copy button {
+  margin-left: 6px;
+  color: var(--accent-brand);
+  font-weight: 650;
 }
 
 .login-form label {

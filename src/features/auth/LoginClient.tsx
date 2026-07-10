@@ -4,6 +4,12 @@ import { ArrowRight, LockKeyhole } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
+import {
+  navigateAfterAuthentication,
+  isAuthSubmissionDisabled,
+  submitEmailPasswordAuth,
+  type EmailPasswordAuthMode
+} from "@/features/auth/emailPasswordAuth";
 import { createBrowserSupabaseClient } from "@/infrastructure/supabase/browser";
 
 type LoginClientProps = {
@@ -13,10 +19,19 @@ type LoginClientProps = {
 
 export function LoginClient({ nextPath, configError }: LoginClientProps) {
   const router = useRouter();
+  const [mode, setMode] = useState<EmailPasswordAuthMode>("sign-in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [error, setError] = useState<string | null>(configError ?? null);
   const [isPending, startTransition] = useTransition();
+
+  const changeMode = (nextMode: EmailPasswordAuthMode) => {
+    setMode(nextMode);
+    setPassword("");
+    setPasswordConfirmation("");
+    setError(configError ?? null);
+  };
 
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -25,18 +40,24 @@ export function LoginClient({ nextPath, configError }: LoginClientProps) {
     startTransition(async () => {
       try {
         const supabase = createBrowserSupabaseClient();
-        const result = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password
+        const result = await submitEmailPasswordAuth(supabase, {
+          mode,
+          email,
+          password,
+          passwordConfirmation
         });
 
-        if (result.error) {
-          setError(mapLoginError(result.error.message));
+        if (result.status === "error") {
+          setError(result.message);
           return;
         }
 
-        router.push(nextPath);
-        router.refresh();
+        if (result.status === "confirmation-required") {
+          setError("账号已创建，但 Supabase 当前仍要求邮箱确认。请检查 Authentication 的 Confirm email 设置。");
+          return;
+        }
+
+        navigateAfterAuthentication(router.replace, nextPath);
       } catch {
         setError("服务暂时不可用，请稍后重试。");
       }
@@ -45,13 +66,24 @@ export function LoginClient({ nextPath, configError }: LoginClientProps) {
 
   return (
     <main className="login-page">
-      <section className="login-card" aria-label="Morpho 封闭测试登录">
+      <section className="login-card" aria-label="Morpho 账号访问">
         <div className="login-mark">
           <span>M</span>
         </div>
-        <p className="login-eyebrow">Morpho 封闭测试</p>
-        <h1>使用管理员创建的测试账号登录</h1>
-        <p className="login-copy">账号仅用于进入产品与保护 AI 调用额度。项目、画布、图片和文件仍保存在当前浏览器本地。</p>
+        <p className="login-eyebrow">Morpho</p>
+        <h1>{mode === "sign-in" ? "登录以继续你的项目" : "创建 Morpho 账号"}</h1>
+        <p className="login-copy">
+          {mode === "sign-in" ? "使用你的邮箱和密码访问 Morpho。" : "使用邮箱和密码开始。"} 项目、画布、图片和文件仍保存在当前浏览器本地。
+        </p>
+
+        <div className="login-mode-switch" aria-label="账号操作">
+          <button type="button" aria-pressed={mode === "sign-in"} onClick={() => changeMode("sign-in")}>
+            登录
+          </button>
+          <button type="button" aria-pressed={mode === "sign-up"} onClick={() => changeMode("sign-up")}>
+            注册
+          </button>
+        </div>
 
         <form className="login-form" onSubmit={submit}>
           <label>
@@ -70,15 +102,29 @@ export function LoginClient({ nextPath, configError }: LoginClientProps) {
           <label>
             密码
             <input
-              autoComplete="current-password"
+              autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
               name="password"
-              placeholder="输入测试账号密码"
+              placeholder={mode === "sign-in" ? "输入密码" : "设置密码"}
               type="password"
               value={password}
               onChange={(event) => setPassword(event.currentTarget.value)}
               required
             />
           </label>
+          {mode === "sign-up" ? (
+            <label>
+              确认密码
+              <input
+                autoComplete="new-password"
+                name="password-confirmation"
+                placeholder="再次输入密码"
+                type="password"
+                value={passwordConfirmation}
+                onChange={(event) => setPasswordConfirmation(event.currentTarget.value)}
+                required
+              />
+            </label>
+          ) : null}
 
           {error ? (
             <div className="login-error" role="alert">
@@ -87,25 +133,19 @@ export function LoginClient({ nextPath, configError }: LoginClientProps) {
             </div>
           ) : null}
 
-          <button className="brand-button login-submit" type="submit" disabled={isPending || Boolean(configError)}>
-            登录
+          <button className="brand-button login-submit" type="submit" disabled={isAuthSubmissionDisabled(isPending, configError)}>
+            {mode === "sign-in" ? "登录" : "创建账号"}
             <ArrowRight size={15} />
           </button>
         </form>
+
+        <p className="login-mode-copy">
+          {mode === "sign-in" ? "首次使用？" : "已有账号？"}
+          <button type="button" onClick={() => changeMode(mode === "sign-in" ? "sign-up" : "sign-in")}>
+            {mode === "sign-in" ? "创建账号" : "登录"}
+          </button>
+        </p>
       </section>
     </main>
   );
-}
-
-function mapLoginError(message: string): string {
-  const normalized = message.toLowerCase();
-  if (normalized.includes("invalid") || normalized.includes("credential") || normalized.includes("password")) {
-    return "邮箱或密码不正确。";
-  }
-
-  if (normalized.includes("disabled") || normalized.includes("blocked") || normalized.includes("not confirmed")) {
-    return "当前账号无法使用，请联系项目管理员。";
-  }
-
-  return "服务暂时不可用，请稍后重试。";
 }
