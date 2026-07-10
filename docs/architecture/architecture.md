@@ -140,6 +140,13 @@ M5-B2 additions:
 - `morphoConversationCheckpoint` is parsed and validated independently from `morphoProjectContinuityPatch`; either valid block may succeed if the other fails;
 - checkpoint writes update only `workspace.ai.conversationCheckpoints` and the assistant message `conversationCheckpointId`; they never write project records, current focus, objects, revisions, directions, default references, delivery references, or DecisionRecords;
 - visible assistant text strips both complete and trailing partial checkpoint/semantic technical JSON blocks, and a saved checkpoint shows only the lightweight `已整理当前讨论脉络` message.
+- the controlled Agent path now uses the same deterministic lane/checkpoint model instead of sending the last eight global messages; Agent user/assistant messages persist their lane and discussion intent while the visible transcript remains complete;
+- `/api/ai/agent` estimates the complete provider request, including system text, recent messages, tool schemas, tool outputs, image reserves, and an optional previous actual input-token baseline;
+- the default Agent budget is a 372,000-token provider window, checkpoint preparation at 200,000 tokens, mandatory request compaction at 300,000 tokens, and a 16,000-token target for the compressible discussion/tool-history portion. The first two thresholds trigger work; they are not post-compaction target sizes;
+- preparation keeps real project context, the current user input, the current selection, the current checkpoint, bounded recent same-lane messages, and the latest unresolved tool-output group. Older completed tool outputs are shortened without replaying their tools;
+- standard Responses and Chat Completions token usage is normalized to one internal shape. A provider context-limit failure triggers one server-side emergency-compacted retry of the same provider request, never a replay of client-side mutations, image generation, Proposal application, or other completed tools;
+- when a mandatory-compaction response does not contain a valid checkpoint, the client may request one checkpoint-only continuation with no tools or images. Failure of that optional refresh does not invalidate the already completed visible Agent result.
+- an exact `/compact` input gathers all eligible messages in the current lane after the existing checkpoint and rolls them through bounded checkpoint-only Agent requests with no tools or images. The visible assistant message moves from `正在压缩当前上下文…` only after all chunks complete; partial failure keeps the previous checkpoint and reports failure. A successful result writes only the final normal lane checkpoint and does not mutate canvas objects.
 
 M5-C additions:
 

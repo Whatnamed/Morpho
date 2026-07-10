@@ -114,3 +114,37 @@ The UI does not show checkpoint JSON, long summaries, provider status, a project
 ## Explicitly Not Implemented
 
 M5-B2 itself does not implement Compare, document readers, OCR, delivery preparation, archive/restore, transcript deletion, transcript replacement, user-managed summaries, full-project summaries, permanent mock routes, real paid-provider smoke calls, or a new Agent loop. M5-C later implements Compare and decision write-back while preserving this checkpoint boundary: design-definition and concept-direction Proposal replies still suppress checkpoint writing.
+
+## 2026-07-10 Agent Runtime Extension
+
+The controlled Agent path now reuses the same lane keys, checkpoint payload, parser, validator, retention, display protection, and raw-transcript preservation rules.
+
+Agent provider context is assembled as:
+
+```text
+current user input
+> real project state and projectContinuity
+> selected objects and current revisions
+> same-lane checkpoint
+> bounded recent same-lane messages
+> protected current tool-call/output tail
+```
+
+The server estimates the full request and uses configurable thresholds:
+
+```text
+MORPHO_AI_CONTEXT_WINDOW_TOKENS=372000
+MORPHO_AI_CONTEXT_PREPARE_TOKENS=200000
+MORPHO_AI_CONTEXT_COMPACT_TOKENS=300000
+MORPHO_AI_CONTEXT_TARGET_TOKENS=16000
+```
+
+The 200,000 and 300,000 values are trigger thresholds, not retained context sizes. `CONTEXT_TARGET_TOKENS` limits the compressible discussion and completed-tool-history portion after compaction. The non-compressible system contract, current user input, current selected image inputs, real project state, and latest unresolved tool-output group remain protected even when they make the complete provider request larger than the target.
+
+At prepare pressure, older completed tool outputs and excess history are shortened toward the target. At compact pressure, history is reduced further and the provider is explicitly asked for a refreshed checkpoint.
+
+Responses `input_tokens` and Chat Completions `prompt_tokens` are normalized as actual input-token usage and can become the baseline for the next continuation inside the same Agent turn. If the provider reports a context-limit error, the server performs one emergency-compacted retry of that same request. Since client-side tools have already completed before a continuation request, this retry cannot execute those tools again.
+
+If the final compact-pressure response omits a valid checkpoint, Morpho may issue one bounded checkpoint-only continuation with no tools or image inputs. This optional request changes only the provider-side discussion summary; it never changes objects, revisions, direction status, default references, delivery references, or the visible answer.
+
+An exact `/compact` user input builds a complete same-lane source after the usable checkpoint's `sourceEndMessageId`. The client divides that source into bounded oldest-to-newest chunks, sends each chunk through a checkpoint-only request with no tools or image inputs, and feeds each valid generated checkpoint into the next chunk. The visible transcript remains in `正在压缩当前上下文…` until every chunk succeeds. Only the final checkpoint is written; a partial failure retains the previous valid checkpoint and reports failure instead of success. A lane with too little new discussion reports that no compression is needed.

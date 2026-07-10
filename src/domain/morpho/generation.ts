@@ -1,5 +1,6 @@
 import { reconcileWorkspaceDerivedState } from "./derivedState";
 import { getImageCanvasSize } from "./imageSizing";
+import { findAvailableCanvasPosition } from "./canvasPlacement";
 import type {
   AssetRecord,
   CanvasPoint,
@@ -33,7 +34,7 @@ export function createGeneratedImageFromAsset(
 ): CreateGeneratedImageResult {
   const primarySourceId = input.sourceObjectIds[0];
   const primarySource = primarySourceId ? workspace.objects[primarySourceId] : undefined;
-  const sourceImages = input.sourceObjectIds
+  const sourceImages = [...new Set(input.sourceObjectIds)]
     .map((objectId) => workspace.objects[objectId])
     .filter((object): object is ImageObject => Boolean(object) && object.type === "image");
   const sourceInstance = primarySourceId
@@ -47,6 +48,11 @@ export function createGeneratedImageFromAsset(
     Object.fromEntries(workspace.canvas.instances.map((instance) => [instance.id, instance])),
     `canvas-${objectId}`
   );
+  const canvasSize = getImageCanvasSize({
+    width: input.asset.width,
+    height: input.asset.height,
+    aspectRatio: input.asset.aspectRatio
+  });
   const explicitDirection = input.directionObjectId ? workspace.objects[input.directionObjectId] : undefined;
   const directionId =
     explicitDirection?.type === "conceptDirection"
@@ -66,6 +72,26 @@ export function createGeneratedImageFromAsset(
       : directionId && sourceVisualBranch?.directionId === directionId && !sourceVisualBranch.archivedAt
         ? sourceVisualBranch.id
         : undefined;
+  const preferredPosition = input.position
+    ? input.position
+    : sourceInstance
+      ? {
+          x: sourceInstance.position.x + sourceInstance.size.w + 92,
+          y: sourceInstance.position.y
+        }
+      : directionInstance
+        ? {
+            x: directionInstance.position.x + directionInstance.size.w + 92,
+            y: directionInstance.position.y
+          }
+        : {
+            x: workspace.canvas.view.x + 180,
+            y: workspace.canvas.view.y + 180
+          };
+  const position = findAvailableCanvasPosition(workspace, {
+    preferred: preferredPosition,
+    size: canvasSize
+  });
   const generatedImage: ImageObject = {
     id: objectId,
     type: "image",
@@ -96,16 +122,18 @@ export function createGeneratedImageFromAsset(
       toObjectId: objectId,
       note: "GrsAI 视觉发展使用该图作为本次明确来源。"
     });
-    relations.push({
-      id: nextAvailableId(
-        Object.fromEntries([...workspace.relations, ...relations].map((relation) => [relation.id, relation])),
-        `rel-${sourceImage.id}-${objectId}-version`
-      ),
-      kind: "version",
-      fromObjectId: sourceImage.id,
-      toObjectId: objectId,
-      note: "GrsAI 视觉发展创建的新对象，来源图不被覆盖。"
-    });
+    if (sourceImages.length === 1) {
+      relations.push({
+        id: nextAvailableId(
+          Object.fromEntries([...workspace.relations, ...relations].map((relation) => [relation.id, relation])),
+          `rel-${sourceImage.id}-${objectId}-version`
+        ),
+        kind: "version",
+        fromObjectId: sourceImage.id,
+        toObjectId: objectId,
+        note: "GrsAI 视觉发展创建的新对象，来源图不被覆盖。"
+      });
+    }
   }
 
   if (directionId) {
@@ -141,27 +169,8 @@ export function createGeneratedImageFromAsset(
           {
             id: canvasInstanceId,
             objectId,
-            position: input.position
-              ? input.position
-              : sourceInstance
-              ? {
-                  x: sourceInstance.position.x + sourceInstance.size.w + 92,
-                  y: sourceInstance.position.y
-                }
-              : directionInstance
-                ? {
-                    x: directionInstance.position.x,
-                    y: directionInstance.position.y + directionInstance.size.h + 72
-                  }
-              : {
-                  x: workspace.canvas.view.x + 180,
-                  y: workspace.canvas.view.y + 180
-                },
-            size: getImageCanvasSize({
-              width: input.asset.width,
-              height: input.asset.height,
-              aspectRatio: input.asset.aspectRatio
-            })
+            position,
+            size: canvasSize
           }
         ]
       },

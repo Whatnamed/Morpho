@@ -17,6 +17,7 @@ import { GRS_REFERENCE_IMAGE_LIMIT } from "@/domain/morpho/imageLimits";
 import { hasPendingDesignDefinitionRevisionProposal } from "@/domain/morpho/derivedState";
 import { traceDesignChain, type DesignTraceResult } from "@/domain/morpho/designTrace";
 import { createGeneratedImageFromAsset } from "@/domain/morpho/generation";
+import { getImageCanvasSize } from "@/domain/morpho/imageSizing";
 import { createDocumentExtractFile, parseDocumentFile, shouldAttemptDocumentParse } from "@/domain/morpho/documentParsing";
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "@/domain/morpho/imports";
 import {
@@ -210,7 +211,14 @@ import { buildSameReplyStructuredWritePolicy, prepareAiSendBeforeProvider } from
 import { applyResearchProposalWithSemanticPatch } from "./researchSemanticPatch";
 import { applySelectedProposalDraftRevision } from "./proposalDraftRevision";
 import { getSiblingProposalPlacement } from "./proposalDraftPlacement";
-import { planDirectionPreviewPlacements } from "./visualPreviewLayout";
+import { planDirectionPreviewPlacements, planVisualDevelopmentPlacements } from "./visualPreviewLayout";
+import { applyAgentConversationCheckpointFromReply } from "./agentConversationCheckpoint";
+import {
+  buildManualConversationCompactionPlan,
+  executeManualConversationCompactionPlan,
+  getManualCompactionStatusText,
+  parseManualCompactCommand
+} from "./manualConversationCompaction";
 import {
   classifyVisualGenerationIntent,
   resolveVisualGenerationTarget,
@@ -224,6 +232,7 @@ import {
   type ImageGenerationSettings
 } from "./imageGenerationSettings";
 import {
+  buildAgentCheckpointCompactionInput,
   buildAgentHistoryMessages,
   buildMorphoAgentInitialTools,
   buildMorphoAgentSystemPrompt,
@@ -1412,20 +1421,30 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         if (validatedPlan.status === "blocked") {
           throw new Error(validatedPlan.reason);
         }
-        const directionPreviewPlacementMap =
-          intent === "directionPreview"
-            ? new Map(
-                planDirectionPreviewPlacements(
-                  workspace,
-                  validatedPlan.plan.items.map((planItem) => ({
-                    id: planItem.id,
-                    targetDirectionId: planItem.targetDirectionId,
-                    width: 320,
-                    height: 240
-                  }))
-                ).map((placement) => [placement.planItemId, placement.position] as const)
+        const plannedImageSize = getPlannedImageSize(effectiveImageGenerationSettings.aspectRatio);
+        const visualPlacementMap = new Map(
+          (validatedPlan.plan.kind === "directionPreview"
+            ? planDirectionPreviewPlacements(
+                workspace,
+                validatedPlan.plan.items.map((planItem) => ({
+                  id: planItem.id,
+                  targetDirectionId: planItem.targetDirectionId,
+                  width: plannedImageSize.w,
+                  height: plannedImageSize.h
+                }))
               )
-            : new Map<string, { x: number; y: number }>();
+            : planVisualDevelopmentPlacements(
+                workspace,
+                validatedPlan.plan.items.map((planItem) => ({
+                  id: planItem.id,
+                  referenceObjectIds: planItem.referenceObjectIds,
+                  targetDirectionId: planItem.targetDirectionId,
+                  width: plannedImageSize.w,
+                  height: plannedImageSize.h
+                }))
+              )
+          ).map((placement) => [placement.planItemId, placement.position] as const)
+        );
 
         setWorkspace((current) =>
           updateAiMessage(
@@ -1529,7 +1548,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 title: item.title,
                 summary: item.purpose,
                 role: item.role,
-                position: getGeneratedImagePlacement(current, validatedPlan.plan.items, item, index, directionPreviewPlacementMap.get(item.id))
+                position: getGeneratedImagePlacement(current, item, index, visualPlacementMap.get(item.id))
               });
               createdObjectId = generated.createdObjectId;
               return recordImageGenerationOperationResult(generated.workspace, {
@@ -2195,20 +2214,30 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       });
       setWorkspace(() => currentWorkspace);
 
-      const placementMap =
-        validatedPlan.plan.kind === "directionPreview"
-          ? new Map(
-              planDirectionPreviewPlacements(
-                currentWorkspace,
-                validatedPlan.plan.items.map((item) => ({
-                  id: item.id,
-                  targetDirectionId: item.targetDirectionId,
-                  width: 320,
-                  height: 240
-                }))
-              ).map((placement) => [placement.planItemId, placement.position] as const)
+      const plannedImageSize = getPlannedImageSize(effectiveImageGenerationSettings.aspectRatio);
+      const placementMap = new Map(
+        (validatedPlan.plan.kind === "directionPreview"
+          ? planDirectionPreviewPlacements(
+              currentWorkspace,
+              validatedPlan.plan.items.map((item) => ({
+                id: item.id,
+                targetDirectionId: item.targetDirectionId,
+                width: plannedImageSize.w,
+                height: plannedImageSize.h
+              }))
             )
-          : new Map<string, { x: number; y: number }>();
+          : planVisualDevelopmentPlacements(
+              currentWorkspace,
+              validatedPlan.plan.items.map((item) => ({
+                id: item.id,
+                referenceObjectIds: item.referenceObjectIds,
+                targetDirectionId: item.targetDirectionId,
+                width: plannedImageSize.w,
+                height: plannedImageSize.h
+              }))
+            )
+        ).map((placement) => [placement.planItemId, placement.position] as const)
+      );
 
       let lastProviderTaskId: string | undefined;
       const createdObjectIds: string[] = [];
@@ -2293,7 +2322,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             role: item.role,
             position: getGeneratedImagePlacement(
               currentWorkspace,
-              validatedPlan.plan.items,
               item,
               itemIndex,
               placementMap.get(item.id)
@@ -2355,6 +2383,166 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
+    if (parseManualCompactCommand(draft).matched) {
+      const context = buildTaskContext(workspace, {
+        kind: "general",
+        draft,
+        selectedObjectIds
+      });
+      const conversationLaneAnchors = resolveConversationLaneAnchors(workspace, selectedObjectIds);
+      const conversationLaneKey = buildConversationLaneKey({
+        currentFocus: workspace.projectContinuity.currentFocus,
+        taskKind: context.kind,
+        anchorObjectIds: conversationLaneAnchors.anchorObjectIds,
+        targetDirectionIds: conversationLaneAnchors.targetDirectionIds,
+        visualBranchId: conversationLaneAnchors.visualBranchId
+      });
+      const conversationContext = buildConversationContextForRequest({
+        workspace,
+        laneKey: conversationLaneKey,
+        taskMode: "chatAnalysis",
+        workIntent: "discussion",
+        draft,
+        hasPendingProposal: Boolean(activeProposal)
+      });
+      const compactionPlan = buildManualConversationCompactionPlan({
+        messages: workspace.ai.messages,
+        laneKey: conversationLaneKey,
+        checkpoint: conversationContext.checkpoint
+      });
+      const now = new Date().toISOString();
+      const userMessageId = `ai-user-compact-${Date.now()}`;
+      const assistantMessageId = `ai-assistant-compact-${Date.now()}`;
+      const controller = new AbortController();
+      let currentWorkspace = appendAgentTurnMessages(workspace, {
+        userMessageId,
+        assistantMessageId,
+        userBody: draft,
+        assistantBody: getManualCompactionStatusText("running"),
+        createdAt: now,
+        contextObjectIds: context.objectIds,
+        conversationLaneKey,
+        workIntent: "discussion"
+      });
+
+      setAiDraft("");
+      setAiOpen(true);
+      setIsAiStreaming(true);
+      abortControllerRef.current = controller;
+      setWorkspace(() => currentWorkspace);
+
+      if (compactionPlan.sourceMessageIds.length < 2) {
+        currentWorkspace = updateAiMessage(
+          currentWorkspace,
+          assistantMessageId,
+          getManualCompactionStatusText("notNeeded"),
+          "done"
+        );
+        setWorkspace(() => currentWorkspace);
+        abortControllerRef.current = null;
+        setIsAiStreaming(false);
+        return;
+      }
+
+      try {
+        const compactionExecution = await executeManualConversationCompactionPlan(compactionPlan, {
+          initialCheckpoint: conversationContext.checkpoint,
+          compactChunk: async ({ checkpoint, chunk, chunkIndex, chunkCount }) => {
+            const response = await fetch("/api/ai/agent", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                input: buildAgentCheckpointCompactionInput({
+                  checkpoint,
+                  messages: chunk.messages,
+                  draft,
+                  assistantReply: "用户请求立即压缩当前讨论脉络。",
+                  chunkIndex,
+                  chunkCount
+                }),
+                tools: [],
+                agentTurnId: `agent-compact-${Date.now()}-${chunkIndex}-${Math.random().toString(36).slice(2, 8)}`,
+                continuation: false
+              }),
+              signal: controller.signal
+            });
+            if (!response.ok) {
+              throw new Error(await readErrorResponse(response));
+            }
+            const result = (await response.json()) as AgentRouteResult;
+            const parsedCheckpoint = parseConversationCheckpointPayload(result.outputText);
+            if (parsedCheckpoint.status !== "ok") {
+              throw new Error("模型没有返回可用的讨论摘要。");
+            }
+            return {
+              rawReply: result.outputText,
+              checkpoint: parsedCheckpoint.checkpoint
+            };
+          }
+        });
+        if (compactionExecution.status !== "completed") {
+          currentWorkspace = updateAiMessage(
+            currentWorkspace,
+            assistantMessageId,
+            getManualCompactionStatusText("failed"),
+            "failed"
+          );
+          setWorkspace(() => currentWorkspace);
+          setShowFailure(true);
+          return;
+        }
+
+        currentWorkspace = updateAiMessage(
+          currentWorkspace,
+          assistantMessageId,
+          getManualCompactionStatusText("completed"),
+          "done"
+        );
+        const checkpointResult = applyAgentConversationCheckpointFromReply(currentWorkspace, {
+          laneKey: conversationLaneKey,
+          currentFocus: currentWorkspace.projectContinuity.currentFocus,
+          taskKind: context.kind,
+          anchorObjectIds: conversationLaneAnchors.anchorObjectIds,
+          targetDirectionIds: conversationLaneAnchors.targetDirectionIds,
+          visualBranchId: conversationLaneAnchors.visualBranchId,
+          assistantMessageId,
+          replyText: compactionExecution.rawReply,
+          requested: true,
+          hasPendingProposal: Boolean(activeProposal),
+          now: new Date().toISOString()
+        });
+        currentWorkspace =
+          checkpointResult.status === "applied"
+            ? checkpointResult.workspace
+            : updateAiMessage(
+                currentWorkspace,
+                assistantMessageId,
+                getManualCompactionStatusText("failed"),
+                "failed"
+              );
+        setWorkspace(() => currentWorkspace);
+        if (checkpointResult.status !== "applied") {
+          setShowFailure(true);
+        }
+      } catch (error) {
+        const isCancelled = error instanceof DOMException && error.name === "AbortError";
+        currentWorkspace = updateAiMessage(
+          currentWorkspace,
+          assistantMessageId,
+          isCancelled ? "上下文压缩已取消。" : getManualCompactionStatusText("failed"),
+          isCancelled ? "done" : "failed"
+        );
+        setWorkspace(() => currentWorkspace);
+        if (!isCancelled) {
+          setShowFailure(true);
+        }
+      } finally {
+        abortControllerRef.current = null;
+        setIsAiStreaming(false);
+      }
+      return;
+    }
+
     if (pendingDeliveryDraftTarget) {
       await handleSendAiMessage();
       return;
@@ -2366,14 +2554,27 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       selectedObjectIds
     });
     const providerTaskContext = buildProviderTaskContext(context);
+    const conversationLaneAnchors = resolveConversationLaneAnchors(workspace, selectedObjectIds);
+    const conversationLaneKey = buildConversationLaneKey({
+      currentFocus: workspace.projectContinuity.currentFocus,
+      taskKind: context.kind,
+      anchorObjectIds: conversationLaneAnchors.anchorObjectIds,
+      targetDirectionIds: conversationLaneAnchors.targetDirectionIds,
+      visualBranchId: conversationLaneAnchors.visualBranchId
+    });
+    const conversationContext = buildConversationContextForRequest({
+      workspace,
+      laneKey: conversationLaneKey,
+      taskMode: "chatAnalysis",
+      workIntent: "discussion",
+      draft,
+      hasPendingProposal: Boolean(activeProposal)
+    });
     const controller = new AbortController();
     const now = new Date().toISOString();
     const userMessageId = `ai-user-agent-${Date.now()}`;
     const assistantMessageId = `ai-assistant-agent-${Date.now()}`;
-    const baseHistory = workspace.ai.messages
-      .filter((message) => message.status !== "failed" && message.status !== "streaming")
-      .slice(-8)
-      .map((message) => ({ role: message.role, body: message.body }));
+    const baseHistory = conversationContext.recentMessages;
 
     const attachmentResult = shouldAttachImagesForAiProvider({
       draft,
@@ -2437,7 +2638,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       userBody: draft,
       assistantBody: "正在理解当前意图，并准备受控执行。",
       createdAt: now,
-      contextObjectIds: context.objectIds
+      contextObjectIds: context.objectIds,
+      conversationLaneKey,
+      workIntent: "discussion"
     });
     setWorkspace(() => currentWorkspace);
     let conversationInput: Array<unknown> = [
@@ -2451,7 +2654,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               workspace: currentWorkspace,
               selectedObjects,
               context,
-              providerTaskContext
+              providerTaskContext,
+              conversationContext
             })
           }
         ]
@@ -2467,6 +2671,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     let queuedResult: AgentRouteResult | null = null;
     const agentTurnId = `agent-turn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const allowStructuredComparison = isExplicitComparisonRequest(draft);
+    let contextBudgetBaselineTokens = 0;
+    let checkpointRequested = conversationContext.checkpointRequested;
+    const contextRuntime: {
+      highestPressure: "normal" | "prepare" | "compact";
+    } = {
+      highestPressure: "normal"
+    };
+    let checkpointReplyText: string | undefined;
 
     async function requestAgentTurn(
       input: Array<unknown>,
@@ -2480,13 +2692,27 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           input,
           tools,
           agentTurnId,
-          continuation
+          continuation,
+          contextBudgetBaselineTokens
         }),
         signal: controller.signal
       });
 
       if (response.ok) {
-        return (await response.json()) as AgentRouteResult;
+        const result = (await response.json()) as AgentRouteResult;
+        contextBudgetBaselineTokens = Math.max(
+          contextBudgetBaselineTokens,
+          result.usage?.inputTokens ?? 0
+        );
+        checkpointRequested =
+          checkpointRequested || result.context?.checkpointRequested === true;
+        if (
+          result.context?.pressure === "compact" ||
+          (result.context?.pressure === "prepare" && contextRuntime.highestPressure === "normal")
+        ) {
+          contextRuntime.highestPressure = result.context.pressure;
+        }
+        return result;
       }
 
       const errorText = await readErrorResponse(response);
@@ -2521,6 +2747,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
         if (result.functionCalls.length === 0) {
           finalText = result.outputText.trim() || "本次 Agent 未返回可显示文本。";
+          if (parseConversationCheckpointPayload(result.outputText).status === "ok") {
+            checkpointReplyText = result.outputText;
+          }
           break;
         }
 
@@ -2914,6 +3143,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         conversationInput = [...conversationInput, ...continued.outputItems];
         if (continued.functionCalls.length === 0) {
           finalText = continued.outputText.trim() || finalText;
+          if (parseConversationCheckpointPayload(continued.outputText).status === "ok") {
+            checkpointReplyText = continued.outputText;
+          }
           break;
         }
         queuedResult = continued;
@@ -2922,8 +3154,47 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         throw new Error("当前 Agent 回合超过允许的执行步数，请收窄任务范围后重试。");
       }
 
-      setWorkspace((current) => {
-        let nextWorkspace = updateAiMessage(currentWorkspace, assistantMessageId, finalText || "已完成当前执行。", "done");
+      if (checkpointRequested && contextRuntime.highestPressure === "compact" && !checkpointReplyText) {
+        try {
+          const compactedCheckpoint = await requestAgentTurn(
+            buildAgentCheckpointCompactionInput({
+              conversationContext,
+              draft,
+              assistantReply: finalText || "已完成当前执行。"
+            }),
+            [],
+            true
+          );
+          if (parseConversationCheckpointPayload(compactedCheckpoint.outputText).status === "ok") {
+            checkpointReplyText = compactedCheckpoint.outputText;
+          }
+        } catch {
+          // The visible Agent result remains valid even when the optional checkpoint refresh fails.
+        }
+      }
+
+      setWorkspace(() => {
+        const replyText = finalText || "已完成当前执行。";
+        let nextWorkspace = updateAiMessage(
+          currentWorkspace,
+          assistantMessageId,
+          sanitizeConversationAssistantStreamForDisplay(replyText) || "已完成当前执行。",
+          "done"
+        );
+        const checkpointResult = applyAgentConversationCheckpointFromReply(nextWorkspace, {
+          laneKey: conversationLaneKey,
+          currentFocus: nextWorkspace.projectContinuity.currentFocus,
+          taskKind: context.kind,
+          anchorObjectIds: conversationLaneAnchors.anchorObjectIds,
+          targetDirectionIds: conversationLaneAnchors.targetDirectionIds,
+          visualBranchId: conversationLaneAnchors.visualBranchId,
+          assistantMessageId,
+          replyText: checkpointReplyText ?? replyText,
+          requested: checkpointRequested,
+          hasPendingProposal: Boolean(activeProposal),
+          now: new Date().toISOString()
+        });
+        nextWorkspace = checkpointResult.workspace;
         if (collectedCitations.length > 0) {
           nextWorkspace = storeMessageCitations(nextWorkspace, {
             messageId: assistantMessageId,
@@ -2948,6 +3219,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setIsAiStreaming(false);
     }
   }, [
+    activeProposal,
     agentTurnMode,
     aiDraft,
     executeAgentVisualGenerationPlan,
@@ -5923,32 +6195,12 @@ function buildReadSelectedContextResult(
 
 function getGeneratedImagePlacement(
   workspace: MorphoWorkspace,
-  planItems: VisualGenerationPlanItem[],
   item: VisualGenerationPlanItem,
   index: number,
-  precomputedDirectionPreviewPosition?: { x: number; y: number }
+  precomputedPosition?: { x: number; y: number }
 ): { x: number; y: number } {
-  if (precomputedDirectionPreviewPosition) {
-    return precomputedDirectionPreviewPosition;
-  }
-
-  if (item.targetDirectionId) {
-    const directionItems = planItems.filter((candidate) => candidate.targetDirectionId === item.targetDirectionId);
-    if (directionItems.length > 1 || item.role === "conceptImage") {
-      const placements = planDirectionPreviewPlacements(
-        workspace,
-        directionItems.map((candidate) => ({
-          id: candidate.id,
-          targetDirectionId: candidate.targetDirectionId,
-          width: 320,
-          height: 240
-        }))
-      );
-      const placement = placements.find((candidate) => candidate.planItemId === item.id);
-      if (placement) {
-        return placement.position;
-      }
-    }
+  if (precomputedPosition) {
+    return precomputedPosition;
   }
 
   const sourceInstance = item.referenceObjectIds
@@ -5975,6 +6227,13 @@ function getGeneratedImagePlacement(
     x: workspace.canvas.view.x + 180 + index * 42,
     y: workspace.canvas.view.y + 180 + index * 42
   };
+}
+
+function getPlannedImageSize(aspectRatio: GrsImageAspectRatio): { w: number; h: number } {
+  const [width, height] = aspectRatio.split(":").map(Number);
+  return getImageCanvasSize({
+    aspectRatio: width && height ? width / height : undefined
+  });
 }
 
 async function parseImportedDocuments(

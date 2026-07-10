@@ -12,6 +12,7 @@ import type {
 } from "../morpho/types";
 import { reconcileWorkspaceDerivedState } from "../morpho/derivedState";
 import { applyProjectContinuityEvent } from "../morpho/projectContinuity";
+import { findAvailableCanvasPosition } from "../morpho/canvasPlacement";
 import type {
   ConceptDirectionProposal,
   DesignDefinitionProposal,
@@ -823,10 +824,16 @@ function attachProposalDraftObject(
   proposal: ArtifactProposal,
   now: string
 ): MorphoWorkspace {
-  const position = proposal.canvasPlacement ?? {
+  const preferredPosition = proposal.canvasPlacement ?? {
     x: workspace.canvas.view.x + 220,
     y: workspace.canvas.view.y + 180
   };
+  const size = proposal.type === "conceptDirection" ? { w: 360, h: 168 } : { w: 340, h: 168 };
+  const position = findAvailableCanvasPosition(workspace, {
+    preferred: preferredPosition,
+    size,
+    ignoreObjectIds: [proposal.id]
+  });
   const draftObject: ProposalDraftObject = {
     id: proposal.id,
     type: "proposalDraft",
@@ -860,7 +867,7 @@ function attachProposalDraftObject(
               ),
               objectId: proposal.id,
               position,
-              size: proposal.type === "conceptDirection" ? { w: 360, h: 168 } : { w: 340, h: 168 }
+              size
             }
           ]
     }
@@ -1558,7 +1565,19 @@ export function applyConceptDirectionProposal(
   const nextDirectionRevisions = { ...workspace.directionRevisions };
   const nextLineage = [...workspace.directionLineage];
   const appliedDirections: ConceptDirectionObject[] = [];
-  let nextDirectionY = input.position.y;
+  const directionCardSizes = proposal.directions.map(estimateConceptDirectionCardSize);
+  const directionBatchSize = {
+    w: Math.max(...directionCardSizes.map((size) => size.w)),
+    h:
+      directionCardSizes.reduce((total, size) => total + size.h, 0) +
+      Math.max(0, directionCardSizes.length - 1) * CONCEPT_DIRECTION_CARD_GAP
+  };
+  const directionBatchPosition = findAvailableCanvasPosition(workspace, {
+    preferred: input.position,
+    size: directionBatchSize,
+    ignoreObjectIds: [proposal.id]
+  });
+  let nextDirectionY = directionBatchPosition.y;
   const applicationMode = proposal.applicationMode;
   const targetObject = proposal.targetDirectionId ? nextObjects[proposal.targetDirectionId] : undefined;
   const targetDirection = targetObject?.type === "conceptDirection" ? targetObject : undefined;
@@ -1616,7 +1635,7 @@ export function applyConceptDirectionProposal(
       ),
       objectId: directionId,
       position: {
-        x: input.position.x,
+        x: directionBatchPosition.x,
         y: nextDirectionY
       },
       size: cardSize
@@ -1894,7 +1913,15 @@ export function applyResearchAnalysisProposal(
   }
 
   const objectId = nextRecordId(workspace.objects, `research-${proposal.id}`);
+  const proposalDraftInstance = workspace.canvas.instances.find((instance) => instance.objectId === proposal.id);
   const canvasInstancesWithoutProposalDraft = workspace.canvas.instances.filter((instance) => instance.objectId !== proposal.id);
+  const appliedPosition =
+    proposalDraftInstance?.position ??
+    findAvailableCanvasPosition(workspace, {
+      preferred: input.position,
+      size: { w: 320, h: 148 },
+      ignoreObjectIds: [proposal.id]
+    });
   const instanceId = nextRecordId(
     Object.fromEntries(canvasInstancesWithoutProposalDraft.map((instance) => [instance.id, instance])),
     `canvas-${objectId}`
@@ -1971,7 +1998,7 @@ export function applyResearchAnalysisProposal(
           {
             id: instanceId,
             objectId,
-            position: input.position,
+            position: appliedPosition,
             size: { w: 320, h: 148 }
           }
         ]

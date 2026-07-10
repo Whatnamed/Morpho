@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "../../domain/morpho/workspace";
+import { createBlankWorkspace, createInitialWorkspace } from "../../domain/morpho/workspace";
 
-import { planDirectionPreviewPlacements } from "./visualPreviewLayout";
+import { planDirectionPreviewPlacements, planVisualDevelopmentPlacements } from "./visualPreviewLayout";
 
 describe("direction preview layout planning", () => {
   it("places same-direction multi previews in a stable non-overlapping grid near the direction card", () => {
@@ -87,6 +87,116 @@ describe("direction preview layout planning", () => {
       recomputedAfterSequentialWrites.map((placement) => placement.position)
     );
     expect(hasOverlap(precomputed)).toBe(false);
+  });
+
+  it("places previews to the right of vertically stacked directions without covering any direction card", () => {
+    const workspace = createBlankWorkspace("direction-preview-lanes");
+    for (const [index, directionId] of ["direction-a", "direction-b", "direction-c"].entries()) {
+      workspace.objects[directionId] = {
+        id: directionId,
+        type: "conceptDirection",
+        title: directionId,
+        summary: directionId,
+        createdBy: "ai",
+        visibility: "active",
+        status: "pendingPreview",
+        keywords: [],
+        currentRevisionId: `revision-${directionId}`,
+        revisionIds: [`revision-${directionId}`],
+        lineageRootId: directionId
+      };
+      workspace.canvas.instances.push({
+        id: `canvas-${directionId}`,
+        objectId: directionId,
+        position: { x: 600, y: 120 + index * 272 },
+        size: { w: 320, h: 240 }
+      });
+    }
+
+    const placements = planDirectionPreviewPlacements(workspace, [
+      { id: "preview-a", targetDirectionId: "direction-a", width: 320, height: 320 },
+      { id: "preview-b", targetDirectionId: "direction-b", width: 320, height: 320 },
+      { id: "preview-c", targetDirectionId: "direction-c", width: 320, height: 320 }
+    ]);
+
+    expect(placements.every((placement) => placement.position.x >= 1012)).toBe(true);
+    expect(hasOverlap(placements)).toBe(false);
+    expect(
+      placements.every((placement) =>
+        workspace.canvas.instances.every((instance) => {
+          const separated =
+            placement.position.x + placement.size.w <= instance.position.x ||
+            instance.position.x + instance.size.w <= placement.position.x ||
+            placement.position.y + placement.size.h <= instance.position.y ||
+            instance.position.y + instance.size.h <= placement.position.y;
+          return separated;
+        })
+      )
+    ).toBe(true);
+  });
+
+  it("places image iterations to the right of the selected source image instead of in the direction preview lane", () => {
+    const workspace = createBlankWorkspace("visual-development-source-lane");
+    workspace.objects["direction-a"] = {
+      id: "direction-a",
+      type: "conceptDirection",
+      title: "Direction A",
+      summary: "Direction A",
+      createdBy: "ai",
+      visibility: "active",
+      status: "pendingPreview",
+      keywords: [],
+      currentRevisionId: "revision-direction-a",
+      revisionIds: ["revision-direction-a"],
+      lineageRootId: "direction-a"
+    };
+    workspace.objects["source-image"] = {
+      id: "source-image",
+      type: "image",
+      title: "Source preview",
+      summary: "Source preview",
+      createdBy: "ai",
+      visibility: "active",
+      role: "conceptImage",
+      imageVariant: "rail",
+      directionId: "direction-a"
+    };
+    workspace.canvas.instances.push(
+      {
+        id: "canvas-direction-a",
+        objectId: "direction-a",
+        position: { x: 600, y: 200 },
+        size: { w: 320, h: 240 }
+      },
+      {
+        id: "canvas-source-image",
+        objectId: "source-image",
+        position: { x: 1100, y: 200 },
+        size: { w: 240, h: 240 }
+      }
+    );
+
+    const placements = planVisualDevelopmentPlacements(workspace, [
+      {
+        id: "iteration-a",
+        referenceObjectIds: ["direction-a", "source-image"],
+        targetDirectionId: "direction-a",
+        width: 240,
+        height: 240
+      },
+      {
+        id: "iteration-b",
+        referenceObjectIds: ["direction-a", "source-image"],
+        targetDirectionId: "direction-a",
+        width: 240,
+        height: 240
+      }
+    ]);
+
+    expect(placements.map((placement) => placement.position)).toEqual([
+      { x: 1432, y: 200 },
+      { x: 1704, y: 200 }
+    ]);
   });
 });
 

@@ -4,6 +4,8 @@ import { createInitialWorkspace } from "@/domain/morpho/workspace";
 
 import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
 import {
+  buildAgentCheckpointCompactionInput,
+  buildAgentConversationPromptBlock,
   buildMorphoAgentSystemPrompt,
   buildMorphoAgentTools,
   getDesignDefinitionDrafts,
@@ -11,6 +13,87 @@ import {
   parseMorphoAgentToolArguments,
   type AgentFunctionCall
 } from "./morphoAgent";
+
+describe("agent conversation context", () => {
+  it("places the checkpoint behind real project state and asks for a refreshed checkpoint when requested", () => {
+    const prompt = buildAgentConversationPromptBlock({
+      checkpoint: {
+        id: "checkpoint-1",
+        laneKey: "lane-1",
+        focusArea: "directionAndVisual",
+        focusUpdatedAt: "2026-07-10T00:00:00.000Z",
+        taskKind: "general",
+        anchorObjectIds: [],
+        targetDirectionIds: [],
+        sourceStartMessageId: "message-1",
+        sourceEndMessageId: "message-8",
+        sourceMessageCount: 8,
+        createdAt: "2026-07-10T00:00:00.000Z",
+        updatedAt: "2026-07-10T00:00:00.000Z",
+        threadGoal: "继续收敛当前浮标概念方向",
+        progress: ["已经确定需要保持高可见性"],
+        openThreads: ["仍需确认维护方式"],
+        nextTurnAnchor: "根据新图继续调整结构"
+      },
+      recentMessages: [],
+      rawMessageCount: 0,
+      omittedMessageCount: 0,
+      checkpointRequested: true,
+      laneKey: "lane-1"
+    });
+
+    expect(prompt).toContain("当前用户输入 > 真实项目状态");
+    expect(prompt).toContain("继续收敛当前浮标概念方向");
+    expect(prompt).toContain("morphoConversationCheckpoint");
+  });
+
+  it("builds a bounded checkpoint-only continuation without tools or image inputs", () => {
+    const input = buildAgentCheckpointCompactionInput({
+      conversationContext: {
+        laneKey: "lane-1",
+        recentMessages: [
+          { role: "user", body: "先保持高可见性" },
+          { role: "assistant", body: "可以从轮廓和颜色开始" }
+        ],
+        rawMessageCount: 2,
+        omittedMessageCount: 0,
+        checkpointRequested: true
+      },
+      draft: "继续迭代这个方向",
+      assistantReply: "已经生成两张新的预览，并保留原有产品架构。"
+    });
+
+    expect(input).toHaveLength(2);
+    expect(JSON.stringify(input)).toContain("morphoConversationCheckpoint");
+    expect(JSON.stringify(input)).toContain("继续迭代这个方向");
+    expect(JSON.stringify(input)).toContain("已经生成两张新的预览");
+    expect(JSON.stringify(input)).not.toContain("input_image");
+  });
+
+  it("builds a rolling compaction request from the complete supplied chunk instead of the recent-message cap", () => {
+    const messages = Array.from({ length: 9 }, (_, index) => ({
+      role: index % 2 === 0 ? "user" as const : "assistant" as const,
+      body: `完整分块消息 ${index + 1}`
+    }));
+    const input = buildAgentCheckpointCompactionInput({
+      checkpoint: {
+        threadGoal: "继续收敛完整讨论",
+        progress: ["此前分块已经完成整理"],
+        openThreads: ["继续吸收当前分块内容"]
+      },
+      messages,
+      draft: "/compact",
+      assistantReply: "正在滚动压缩当前讨论。",
+      chunkIndex: 1,
+      chunkCount: 3
+    });
+    const serialized = JSON.stringify(input);
+
+    expect(serialized).toContain("完整分块消息 1");
+    expect(serialized).toContain("完整分块消息 9");
+    expect(serialized).toContain("第 2 / 3 块");
+  });
+});
 
 describe("Morpho agent tool argument validation", () => {
   it("instructs research tools to output evaluated scannable points", () => {

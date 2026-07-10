@@ -47,7 +47,25 @@ type BottomDetailBarProps = {
 };
 
 const tabs = ["信息", "来源", "版本", "关联", "决策"] as const;
-type DetailTab = (typeof tabs)[number];
+export type DetailTab = (typeof tabs)[number];
+
+export type DetailRelationRow = {
+  id: string;
+  label: string;
+  title: string;
+  meta: string;
+};
+
+type DetailTabAvailabilityInput = {
+  workspace: MorphoWorkspace;
+  object: MorphoObject;
+  relations: MorphoRelation[];
+  decisionRecords: DecisionRecord[];
+  selectedCount: number;
+  hasPendingDesignDefinitionRevisionDraft?: boolean;
+  directionLineage?: DirectionLineageRecord[];
+  hasActiveDesignTrace?: boolean;
+};
 
 export function buildDesignDefinitionInfoMeta(hasPendingDesignDefinitionRevisionDraft: boolean): string | undefined {
   return hasPendingDesignDefinitionRevisionDraft ? "有修订草稿" : undefined;
@@ -76,6 +94,109 @@ export function buildConceptDirectionLineageDetail(
   return records.length > 0
     ? records.map((record) => `${record.kind}：${record.note}`).join(" ")
     : "当前方向没有已记录的 lineage。";
+}
+
+export function getAvailableDetailTabs(input: DetailTabAvailabilityInput): DetailTab[] {
+  if (input.selectedCount > 1) {
+    return ["信息"];
+  }
+
+  const available: DetailTab[] = ["信息"];
+  const hasSource =
+    buildSourceDetailRows(input).length > 0 ||
+    (input.object.type === "research" && hasResearchSourceData(input.object)) ||
+    input.object.type === "documentFragment";
+  const hasVersion =
+    buildVersionDetailRows(input).length > 0 ||
+    (input.object.type === "designDefinition" &&
+      (input.object.revisionIds.length > 1 || Boolean(input.hasPendingDesignDefinitionRevisionDraft))) ||
+    (input.object.type === "conceptDirection" && input.object.revisionIds.length > 1);
+  const hasRelated =
+    buildRelatedDetailRows(input).length > 0 ||
+    Boolean(input.hasActiveDesignTrace) ||
+    (input.object.type === "conceptDirection" &&
+      (input.directionLineage ?? []).some(
+        (record) => record.fromDirectionId === input.object.id || record.toDirectionId === input.object.id
+      ));
+
+  if (hasSource) {
+    available.push("来源");
+  }
+  if (hasVersion) {
+    available.push("版本");
+  }
+  if (hasRelated) {
+    available.push("关联");
+  }
+  if (input.decisionRecords.length > 0) {
+    available.push("决策");
+  }
+  return available;
+}
+
+export function buildSourceDetailRows(input: Pick<DetailTabAvailabilityInput, "workspace" | "object" | "relations">): DetailRelationRow[] {
+  return dedupeDetailRows(
+    input.relations
+      .filter(
+        (relation) =>
+          relation.toObjectId === input.object.id &&
+          (relation.kind === "source" ||
+            relation.kind === "supports" ||
+            relation.kind === "supportsConclusion" ||
+            relation.kind === "documentFragmentExtractedFromFile")
+      )
+      .map((relation) =>
+        buildObjectDetailRow(
+          input.workspace,
+          relation.fromObjectId,
+          sourceRelationLabel(relation.kind, input.workspace.objects[relation.fromObjectId])
+        )
+      )
+  );
+}
+
+export function buildVersionDetailRows(input: Pick<DetailTabAvailabilityInput, "workspace" | "object" | "relations">): DetailRelationRow[] {
+  const versionRelations = input.relations.filter((relation) => relation.kind === "version");
+  const parentRows = versionRelations
+    .filter((relation) => relation.toObjectId === input.object.id)
+    .map((relation) => buildObjectDetailRow(input.workspace, relation.fromObjectId, "父版本"));
+  const childRows = versionRelations
+    .filter((relation) => relation.fromObjectId === input.object.id)
+    .map((relation) => buildObjectDetailRow(input.workspace, relation.toObjectId, "子版本"));
+
+  if (parentRows.length === 0 && childRows.length === 0) {
+    return [];
+  }
+
+  return [
+    ...dedupeDetailRows(parentRows),
+    buildObjectDetailRow(input.workspace, input.object.id, "当前对象"),
+    ...dedupeDetailRows(childRows)
+  ];
+}
+
+export function buildRelatedDetailRows(input: Pick<DetailTabAvailabilityInput, "workspace" | "object" | "relations">): DetailRelationRow[] {
+  const candidates = input.relations.flatMap((relation) => {
+    if (relation.kind === "source" || relation.kind === "version" || relation.kind === "documentFragmentExtractedFromFile") {
+      return [];
+    }
+    if (
+      (relation.kind === "supports" || relation.kind === "supportsConclusion") &&
+      relation.toObjectId === input.object.id
+    ) {
+      return [];
+    }
+    if (relation.fromObjectId !== input.object.id && relation.toObjectId !== input.object.id) {
+      return [];
+    }
+
+    const isOutgoing = relation.fromObjectId === input.object.id;
+    const otherObjectId = isOutgoing ? relation.toObjectId : relation.fromObjectId;
+    const label = relatedRelationLabel(relation.kind, isOutgoing);
+    return label ? [buildObjectDetailRow(input.workspace, otherObjectId, label)] : [];
+  });
+
+  return dedupeDetailRows(candidates);
 }
 
 export function getDocumentReaderActionState(
@@ -213,14 +334,25 @@ export function BottomDetailBar({
           label: fragmentLocation.label
         }
       : null;
+  const availableTabs = getAvailableDetailTabs({
+    workspace,
+    object: primary,
+    relations: related,
+    decisionRecords: relatedDecisions,
+    selectedCount: selectedObjects.length,
+    hasPendingDesignDefinitionRevisionDraft,
+    directionLineage,
+    hasActiveDesignTrace: Boolean(activeDesignTrace)
+  });
+  const visibleTab = availableTabs.includes(activeTab) ? activeTab : availableTabs[0] ?? "信息";
 
   return (
     <>
       <div className="detail-popover" aria-label="对象详情">
         <div className="detail-tabs">
-          {tabs.map((tab) => (
+          {availableTabs.map((tab) => (
             <button
-              className={`detail-tab ${activeTab === tab ? "active" : ""}`}
+              className={`detail-tab ${visibleTab === tab ? "active" : ""}`}
               type="button"
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -232,7 +364,7 @@ export function BottomDetailBar({
         <div className="detail-content">
           {renderDetail({
             workspace,
-            tab: activeTab,
+            tab: visibleTab,
             object: primary,
             relations: related,
             decisionRecords: relatedDecisions,
@@ -247,7 +379,7 @@ export function BottomDetailBar({
             onArchiveVisualBranch,
             onRestoreVisualBranch
           })}
-          {activeDesignTrace ? <DesignTraceSummary trace={activeDesignTrace} /> : null}
+          {visibleTab === "关联" && activeDesignTrace ? <DesignTraceSummary trace={activeDesignTrace} /> : null}
           {documentReaderAction.visible ? (
             <button
               className="detail-inline-action"
@@ -387,7 +519,7 @@ function renderDetail(input: {
     fragmentLocation
   } = input;
   if (selectedCount > 1) {
-    return "多选当前只作为 AI 输入与局部比较范围，不会因为同时选中就自动改变对象语义、方向状态或交付关系。";
+    return <MultiSelectionDetail selectedCount={selectedCount} />;
   }
 
   if (tab === "信息") {
@@ -400,10 +532,10 @@ function renderDetail(input: {
         <>
           <strong>{getObjectTypeLabel(object)}</strong> · {object.summary}
           <span className="detail-meta">
-            来源：{object.sourceObjectIds.join("、") || "无"} · 引用：{object.citationIds.join("、") || "无"} · 状态：
+            来源：{object.sourceObjectIds.length} 项 · 引用：{object.citationIds.length} 项 · 状态：
             {object.state}
           </span>
-          {object.supersededById ? <span className="detail-meta">已替代为：{object.supersededById}</span> : null}
+          {object.supersededById ? <span className="detail-meta">已有更新结论替代该条。</span> : null}
           {object.note ? <span className="detail-meta">备注：{object.note}</span> : null}
         </>
       );
@@ -468,18 +600,16 @@ function renderDetail(input: {
 
   if (tab === "来源") {
     if (object.type === "research") {
-      return <ResearchSourceDetail object={object} relations={relations} />;
+      return <ResearchSourceDetail workspace={workspace} object={object} relations={relations} />;
     }
 
     if (object.type === "documentFragment") {
       return (
         <>
           <strong>文档片段来源</strong>
-          <span className="detail-meta">来源文件对象：{object.source.fileObjectId}</span>
-          <span className="detail-meta">来源解析资源：{object.source.sourceExtractAssetId}</span>
-          <span className="detail-meta">来源快照：{object.source.fileTitle}</span>
+          <span className="detail-meta">来源文件：{object.source.fileTitle}</span>
           <span className="detail-meta">
-            block：{object.source.blockIds.join("、")} · offset：{object.source.startOffset}-{object.source.endOffset}
+            已提取 {object.source.blockIds.length} 个原文片段
           </span>
           <span className="detail-meta">
             定位状态：
@@ -493,44 +623,243 @@ function renderDetail(input: {
       );
     }
 
-    const sourceRelations = relations.filter(
-      (relation) =>
-        relation.kind === "source" ||
-        relation.kind === "supports" ||
-        relation.kind === "supportsConclusion" ||
-        relation.kind === "documentFragmentExtractedFromFile"
-    );
-    return sourceRelations.length > 0
-      ? sourceRelations.map((relation) => relation.note).join(" ")
-      : "当前没有展开的直接来源说明。";
+    return <DetailRelationRows rows={buildSourceDetailRows({ workspace, object, relations })} />;
   }
 
   if (tab === "版本") {
     if (object.type === "designDefinition") {
-      return buildDesignDefinitionVersionDetail(object.revisionIds.length, hasPendingDesignDefinitionRevisionDraft);
+      return (
+        <RevisionDetailRows
+          rows={buildDesignDefinitionRevisionRows(workspace, object.revisionIds, object.currentRevisionId)}
+          pendingRevisionDraft={hasPendingDesignDefinitionRevisionDraft}
+        />
+      );
     }
 
     if (object.type === "conceptDirection") {
-      return buildConceptDirectionVersionDetail(object.revisionIds, object.currentRevisionId);
+      return <RevisionDetailRows rows={buildConceptDirectionRevisionRows(workspace, object.revisionIds, object.currentRevisionId)} />;
     }
 
-    const versions = relations.filter((relation) => relation.kind === "version");
-    return versions.length > 0 ? versions.map((relation) => relation.note).join(" ") : "当前没有直接版本关系。";
+    return <DetailRelationRows rows={buildVersionDetailRows({ workspace, object, relations })} />;
   }
 
   if (tab === "关联") {
     if (object.type === "conceptDirection") {
-      const relationDetail = relations.length > 0 ? relations.map((relation) => relation.note).join(" ") : "";
-      const lineageDetail = buildConceptDirectionLineageDetail(object.id, directionLineage);
-      return [relationDetail, lineageDetail].filter(Boolean).join(" ");
+      return (
+        <>
+          <DetailRelationRows rows={buildRelatedDetailRows({ workspace, object, relations })} />
+          <DirectionLineageRows directionId={object.id} directionLineage={directionLineage} />
+        </>
+      );
     }
 
-    return relations.length > 0 ? relations.map((relation) => relation.note).join(" ") : "当前没有直接关联。";
+    return <DetailRelationRows rows={buildRelatedDetailRows({ workspace, object, relations })} />;
   }
 
-  return decisionRecords.length > 0
-    ? decisionRecords.map((record) => `${record.summary}${record.reason ? `，${record.reason}` : ""}`).join(" ")
-    : "关键决策需要用户明确确认；AI 不会因为选中对象而自动改变主方向、默认参考或交付引用。";
+  return <DecisionDetailRows decisionRecords={decisionRecords} />;
+}
+
+function MultiSelectionDetail({ selectedCount }: { selectedCount: number }) {
+  return (
+    <div className="detail-summary">
+      <strong>已选 {selectedCount} 个对象</strong>
+      <span className="detail-meta">当前选择会作为 AI 输入和局部分析范围。</span>
+    </div>
+  );
+}
+
+function DetailRelationRows({ rows }: { rows: DetailRelationRow[] }) {
+  return (
+    <div className="detail-row-list">
+      {rows.map((row) => (
+        <div className="detail-row" key={`${row.label}-${row.id}`}>
+          <span className="detail-row-label">{row.label}</span>
+          <div className="detail-row-body">
+            <strong>{row.title}</strong>
+            <span>{row.meta}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RevisionDetailRows({
+  rows,
+  pendingRevisionDraft = false
+}: {
+  rows: DetailRelationRow[];
+  pendingRevisionDraft?: boolean;
+}) {
+  return (
+    <>
+      <DetailRelationRows rows={rows} />
+      {pendingRevisionDraft ? <span className="detail-meta">有修订草稿待应用。</span> : null}
+    </>
+  );
+}
+
+function DecisionDetailRows({ decisionRecords }: { decisionRecords: DecisionRecord[] }) {
+  return (
+    <div className="detail-row-list">
+      {decisionRecords.map((record) => (
+        <div className="detail-row" key={record.id}>
+          <span className="detail-row-label">已确认</span>
+          <div className="detail-row-body">
+            <strong>{record.summary}</strong>
+            {record.reason ? <span>{record.reason}</span> : null}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DirectionLineageRows({
+  directionId,
+  directionLineage
+}: {
+  directionId: string;
+  directionLineage: DirectionLineageRecord[];
+}) {
+  const records = directionLineage.filter(
+    (record) => record.fromDirectionId === directionId || record.toDirectionId === directionId
+  );
+  if (records.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="detail-row-list">
+      {records.map((record) => (
+        <div className="detail-row" key={record.id}>
+          <span className="detail-row-label">{directionLineageLabel(record.kind)}</span>
+          <div className="detail-row-body">
+            <span>{record.note}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function buildObjectDetailRow(workspace: MorphoWorkspace, objectId: string, label: string): DetailRelationRow {
+  const relatedObject = workspace.objects[objectId];
+  return {
+    id: objectId,
+    label,
+    title: relatedObject?.title ?? "已删除对象",
+    meta: relatedObject ? getObjectTypeLabel(relatedObject) : "对象不可用"
+  };
+}
+
+function buildDesignDefinitionRevisionRows(
+  workspace: MorphoWorkspace,
+  revisionIds: string[],
+  currentRevisionId: string
+): DetailRelationRow[] {
+  return revisionIds
+    .map((revisionId) => workspace.designDefinitionRevisions[revisionId])
+    .filter(Boolean)
+    .map((revision) => ({
+      id: revision.id,
+      label: revision.id === currentRevisionId ? "当前修订" : `修订 ${revision.revisionNumber}`,
+      title: revision.title,
+      meta: revision.id === currentRevisionId ? "当前有效内容" : "历史修订"
+    }));
+}
+
+function buildConceptDirectionRevisionRows(
+  workspace: MorphoWorkspace,
+  revisionIds: string[],
+  currentRevisionId: string
+): DetailRelationRow[] {
+  return revisionIds
+    .map((revisionId) => workspace.directionRevisions[revisionId])
+    .filter(Boolean)
+    .map((revision) => ({
+      id: revision.id,
+      label: revision.id === currentRevisionId ? "当前修订" : `修订 ${revision.revisionNumber}`,
+      title: revision.title,
+      meta: revision.id === currentRevisionId ? "当前方向内容" : "历史修订"
+    }));
+}
+
+function sourceRelationLabel(kind: MorphoRelation["kind"], sourceObject: MorphoObject | undefined): string {
+  if (kind === "documentFragmentExtractedFromFile") {
+    return "来源文件";
+  }
+  if (kind === "source") {
+    return sourceObject?.type === "image" ? "起始图" : "来源对象";
+  }
+  return "上游依据";
+}
+
+function relatedRelationLabel(kind: MorphoRelation["kind"], isOutgoing: boolean): string | undefined {
+  switch (kind) {
+    case "belongsToDirection":
+      return isOutgoing ? "归属方向" : "包含视觉素材";
+    case "defaultReference":
+      return isOutgoing ? "后续默认参考" : "默认参考图";
+    case "deliveryReference":
+      return isOutgoing ? "已用于交付" : "包含交付引用";
+    case "usesReference":
+      return isOutgoing ? "用于参考" : "被用作参考";
+    case "supports":
+    case "supportsConclusion":
+      return isOutgoing ? "支持下游对象" : undefined;
+    default:
+      return undefined;
+  }
+}
+
+function directionLineageLabel(kind: DirectionLineageRecord["kind"]): string {
+  switch (kind) {
+    case "derivedFromDirection":
+      return "发展自";
+    case "splitFromDirection":
+      return "拆分自";
+    case "mergedFromDirection":
+      return "合并自";
+    case "supersedesDirection":
+      return "替代";
+  }
+}
+
+function dedupeDetailRows(rows: DetailRelationRow[]): DetailRelationRow[] {
+  const byObjectId = new Map<string, DetailRelationRow>();
+  for (const row of rows) {
+    const existing = byObjectId.get(row.id);
+    if (!existing || detailRowPriority(row.label) > detailRowPriority(existing.label)) {
+      byObjectId.set(row.id, row);
+    }
+  }
+  return [...byObjectId.values()];
+}
+
+function detailRowPriority(label: string): number {
+  switch (label) {
+    case "后续默认参考":
+    case "默认参考图":
+      return 4;
+    case "已用于交付":
+    case "包含交付引用":
+      return 3;
+    case "归属方向":
+    case "包含视觉素材":
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+function hasResearchSourceData(object: ResearchObject): boolean {
+  return Boolean(
+    object.provenance &&
+      (object.provenance.sourceObjectIds.length > 0 ||
+        object.provenance.citationIds.length > 0 ||
+        object.provenance.didUseWebSearch)
+  );
 }
 
 function conceptDirectionStatusLabel(status: Extract<MorphoObject, { type: "conceptDirection" }>["status"]): string {
@@ -566,28 +895,30 @@ function ResearchCompactDetail({ object }: { object: ResearchObject }) {
   );
 }
 
-function ResearchSourceDetail({ object, relations }: { object: ResearchObject; relations: MorphoRelation[] }) {
-  const sourceRelations = relations.filter(
-    (relation) => relation.kind === "source" || relation.kind === "supports" || relation.kind === "supportsConclusion"
-  );
-
+function ResearchSourceDetail({
+  workspace,
+  object,
+  relations
+}: {
+  workspace: MorphoWorkspace;
+  object: ResearchObject;
+  relations: MorphoRelation[];
+}) {
   return (
     <div className="research-detail research-detail-compact">
       <strong>研究来源</strong>
       {object.provenance ? (
         <span className="detail-meta">
-          来源对象：{object.provenance.sourceObjectIds.join("、") || "无"} · 引用：
-          {object.provenance.citationIds.join("、") || "无"} · 联网：{object.provenance.didUseWebSearch ? "是" : "否"}
+          来源对象 {object.provenance.sourceObjectIds.length} 项 · 引用 {object.provenance.citationIds.length} 项
+          {object.provenance.didUseWebSearch ? " · 已使用联网检索" : ""}
         </span>
-      ) : (
-        <span className="detail-meta">当前研究对象没有记录来源快照。</span>
-      )}
+      ) : null}
       {object.evidence && object.evidence.length > 0 ? (
         <span className="detail-meta">
           证据：{object.evidence.length} 条 · {object.evidence[0]?.claim}
         </span>
       ) : null}
-      {sourceRelations.length > 0 ? <span className="detail-meta">{sourceRelations.map((relation) => relation.note).join(" ")}</span> : null}
+      <DetailRelationRows rows={buildSourceDetailRows({ workspace, object, relations })} />
     </div>
   );
 }

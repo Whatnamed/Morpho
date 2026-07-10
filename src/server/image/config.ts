@@ -13,6 +13,10 @@ export type GrsImageConfigResult =
 export function loadGrsImageConfig(env: Partial<NodeJS.ProcessEnv>): GrsImageConfigResult {
   const apiKey = env.MORPHO_GRS_API_KEY;
   const baseUrl = env.MORPHO_GRS_BASE_URL;
+  const fallbackBaseUrls = (env.MORPHO_GRS_FALLBACK_BASE_URLS ?? "")
+    .split(",")
+    .map((value) => value.trim().replace(/\/$/, ""))
+    .filter((value) => value && value !== baseUrl?.replace(/\/$/, ""));
   const model = env.MORPHO_GRS_DEFAULT_MODEL || env.MORPHO_GRS_IMAGE_MODEL;
 
   if (!apiKey || !baseUrl || !model) {
@@ -28,6 +32,7 @@ export function loadGrsImageConfig(env: Partial<NodeJS.ProcessEnv>): GrsImageCon
     config: {
       apiKey,
       baseUrl,
+      ...(fallbackBaseUrls.length > 0 ? { fallbackBaseUrls: [...new Set(fallbackBaseUrls)] } : {}),
       model
     }
   };

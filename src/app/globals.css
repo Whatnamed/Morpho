@@ -2993,6 +2993,46 @@ input:focus-visible {
   font-size: 11px;
 }
 
+.detail-row-list {
+  display: grid;
+  gap: 6px;
+}
+
+.detail-row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.detail-row:last-child {
+  border-bottom: 0;
+}
+
+.detail-row-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.detail-row-body {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.detail-row-body strong,
+.detail-row-body span {
+  overflow-wrap: anywhere;
+}
+
+.detail-row-body span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .icon {
   width: 16px;
   height: 16px;

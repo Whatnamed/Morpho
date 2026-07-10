@@ -6,6 +6,7 @@ import {
   OpenAiCompatibleProviderError,
   type OpenAiCompatibleResponseRequest
 } from "@/server/ai/openaiCompatibleProvider";
+import { executeAgentRequestWithContextBudget } from "@/server/ai/agentContextBudget";
 import { aiAccessDeniedResponse, guardAiRoute, requireAiRouteUser } from "@/server/auth/aiAccess";
 
 export const runtime = "nodejs";
@@ -34,12 +35,22 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await executeOpenAiCompatibleResponse(
-      config.config,
-      filterAgentRequestForConfig(validated.value, config.config),
-      request.signal
-    );
-    return NextResponse.json(result);
+    const providerRequest = filterAgentRequestForConfig(validated.value, config.config);
+    const execution = await executeAgentRequestWithContextBudget(providerRequest, {
+      limits: {
+        windowTokens: config.config.contextWindowTokens,
+        prepareTokens: config.config.contextPrepareTokens,
+        compactTokens: config.config.contextCompactTokens,
+        targetTokens: config.config.contextTargetTokens
+      },
+      baselineInputTokens: validated.contextBudgetBaselineTokens,
+      execute: (preparedRequest) =>
+        executeOpenAiCompatibleResponse(config.config, preparedRequest, request.signal)
+    });
+    return NextResponse.json({
+      ...execution.result,
+      context: execution.context
+    });
   } catch (error) {
     if (error instanceof OpenAiCompatibleProviderError) {
       return NextResponse.json(
@@ -49,7 +60,8 @@ export async function POST(request: Request) {
               ? "OpenAI-compatible Provider 鉴权失败，请检查 MORPHO_AI_API_KEY。"
               : error.status === 400
                 ? "OpenAI-compatible Provider 请求格式不兼容，请检查模型、tools 或图片输入。"
-                : readableProviderDiagnostic(error.diagnostic) ?? "OpenAI-compatible Provider 调用失败，请稍后重试。"
+                : readableProviderDiagnostic(error.diagnostic) ?? "OpenAI-compatible Provider 调用失败，请稍后重试。",
+          ...(error.code === "context_limit" ? { code: "context_limit" } : {})
         },
         { status: 502 }
       );
@@ -79,6 +91,7 @@ function validateAgentRouteRequest(value: unknown):
       value: OpenAiCompatibleResponseRequest;
       agentTurnId?: string;
       agentContinuation: boolean;
+      contextBudgetBaselineTokens?: number;
     }
   | { status: "failed"; reason: string } {
   if (!isRecord(value) || !Array.isArray(value.input) || value.input.length === 0) {
@@ -91,12 +104,17 @@ function validateAgentRouteRequest(value: unknown):
     status: "ok",
     agentTurnId,
     agentContinuation: value.continuation === true && Boolean(agentTurnId),
+    contextBudgetBaselineTokens: parseOptionalNonNegativeInteger(value.contextBudgetBaselineTokens),
     value: {
       input: value.input as OpenAiCompatibleResponseRequest["input"],
       tools: Array.isArray(value.tools) ? (value.tools as OpenAiCompatibleResponseRequest["tools"]) : undefined,
       previousResponseId: typeof value.previousResponseId === "string" ? value.previousResponseId : undefined
     }
   };
+}
+
+function parseOptionalNonNegativeInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -132,7 +132,7 @@ describe("GrsAI image provider adapter", () => {
         aspectRatio: "4:3",
         referenceObjectIds: []
       },
-      { fetchImpl, maxPolls: 1, pollDelayMs: 0 }
+      { fetchImpl, maxPolls: 1, pollDelayMs: 0, retryDelayMs: 0 }
     );
 
     expect(result.status).toBe("ok");
@@ -201,6 +201,117 @@ describe("GrsAI image provider adapter", () => {
     );
 
     expect(result.status).toBe("failed");
+  });
+
+  it("retries one transient generate network failure before succeeding", async () => {
+    let generateCalls = 0;
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("/generate")) {
+        generateCalls += 1;
+        if (generateCalls === 1) {
+          throw new TypeError("fetch failed");
+        }
+        return jsonResponse({ status: "succeeded", url: "https://cdn.example/retry.png" });
+      }
+
+      return new Response(new Blob(["png"], { type: "image/png" }), {
+        status: 200,
+        headers: { "Content-Type": "image/png" }
+      });
+    };
+
+    const result = await resolveGrsImageResult(
+      {
+        apiKey: "key",
+        baseUrl: "https://grs-primary.example",
+        fallbackBaseUrls: ["https://grs-fallback.example"],
+        model: "nano-banana-2-lite"
+      },
+      {
+        modelId: "nano-banana-2-lite",
+        prompt: "test retry",
+        images: [],
+        aspectRatio: "1:1",
+        referenceObjectIds: []
+      },
+      { fetchImpl, maxPolls: 1, pollDelayMs: 0, retryDelayMs: 0 }
+    );
+
+    expect(result.status).toBe("ok");
+    expect(generateCalls).toBe(2);
+  });
+
+  it("uses the configured fallback host after the primary host has a network failure", async () => {
+    const requestedUrls: string[] = [];
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url === "https://grs-primary.example/v1/api/generate") {
+        throw new TypeError("primary connection failed");
+      }
+      if (url === "https://grs-fallback.example/v1/api/generate") {
+        return jsonResponse({ status: "succeeded", url: "https://cdn.example/fallback.png" });
+      }
+      return new Response(new Blob(["png"], { type: "image/png" }), {
+        status: 200,
+        headers: { "Content-Type": "image/png" }
+      });
+    };
+
+    const result = await resolveGrsImageResult(
+      {
+        apiKey: "key",
+        baseUrl: "https://grs-primary.example",
+        fallbackBaseUrls: ["https://grs-fallback.example"],
+        model: "nano-banana-2-lite"
+      },
+      {
+        modelId: "nano-banana-2-lite",
+        prompt: "fallback host test",
+        images: [],
+        aspectRatio: "1:1",
+        referenceObjectIds: []
+      },
+      { fetchImpl, maxPolls: 1, pollDelayMs: 0, retryDelayMs: 0 }
+    );
+
+    expect(result.status).toBe("ok");
+    expect(requestedUrls.slice(0, 2)).toEqual([
+      "https://grs-primary.example/v1/api/generate",
+      "https://grs-fallback.example/v1/api/generate"
+    ]);
+  });
+
+  it("returns provider failure detail instead of a generic task failure", async () => {
+    const result = await resolveGrsImageResult(
+      {
+        apiKey: "key",
+        baseUrl: "https://grs.example",
+        model: "nano-banana-2-lite"
+      },
+      {
+        modelId: "nano-banana-2-lite",
+        prompt: "test failure detail",
+        images: [],
+        aspectRatio: "1:1",
+        referenceObjectIds: []
+      },
+      {
+        fetchImpl: async () =>
+          jsonResponse({
+            status: "failed",
+            message: "temporary upstream capacity limit"
+          }),
+        maxPolls: 1,
+        pollDelayMs: 0
+      }
+    );
+
+    expect(result).toEqual({
+      status: "failed",
+      reason: "GrsAI image task failed: temporary upstream capacity limit"
+    });
   });
 });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { reconcileWorkspaceDerivedState } from "./derivedState";
 import { createGeneratedImageFromAsset } from "./generation";
 import { createInitialWorkspace } from "./workspace";
 
@@ -103,6 +104,97 @@ describe("Morpho image generation domain helpers", () => {
     );
   });
 
+  it("keeps multiple selected images as direct sources instead of treating every reference as a parent version", () => {
+    const workspace = createInitialWorkspace();
+    const result = createGeneratedImageFromAsset(workspace, {
+      asset: {
+        id: "asset-generated-multi-reference",
+        fileName: "multi-reference-result.png",
+        mimeType: "image/png",
+        size: 4096,
+        createdAt: "2026-07-10T00:00:00.000Z",
+        storageKey: "blob:asset-generated-multi-reference",
+        sourceType: "aiGeneratedImage"
+      },
+      generation: {
+        modelId: "nano-banana-2-lite",
+        modelLabel: "nano-banana-2-lite",
+        aspectRatio: "1:1",
+        prompt: "结合主图和细节图生成一张新的说明图",
+        referenceObjectIds: ["image-soft-rail-v2", "image-rail-detail"],
+        createdAt: "2026-07-10T00:00:00.000Z"
+      },
+      sourceObjectIds: ["image-soft-rail-v2", "image-rail-detail"]
+    });
+
+    const createdRelations = result.workspace.relations.filter(
+      (relation) => relation.toObjectId === result.createdObjectId
+    );
+
+    expect(createdRelations.filter((relation) => relation.kind === "source").map((relation) => relation.fromObjectId)).toEqual([
+      "image-soft-rail-v2",
+      "image-rail-detail"
+    ]);
+    expect(createdRelations.some((relation) => relation.kind === "version")).toBe(false);
+  });
+
+  it("removes legacy version relations from generated images that record multiple image references", () => {
+    const workspace = createInitialWorkspace();
+    const generated = createGeneratedImageFromAsset(workspace, {
+      asset: {
+        id: "asset-generated-legacy-multi-reference",
+        fileName: "legacy-multi-reference.png",
+        mimeType: "image/png",
+        size: 4096,
+        createdAt: "2026-07-10T00:00:00.000Z",
+        storageKey: "blob:asset-generated-legacy-multi-reference",
+        sourceType: "aiGeneratedImage"
+      },
+      generation: {
+        modelId: "nano-banana-2-lite",
+        modelLabel: "nano-banana-2-lite",
+        aspectRatio: "1:1",
+        prompt: "结合两张图生成说明预览",
+        referenceObjectIds: ["image-soft-rail-v2", "image-rail-detail"],
+        createdAt: "2026-07-10T00:00:00.000Z"
+      },
+      sourceObjectIds: ["image-soft-rail-v2", "image-rail-detail"]
+    });
+    const legacyWorkspace = {
+      ...generated.workspace,
+      relations: [
+        ...generated.workspace.relations,
+        {
+          id: "legacy-version-a",
+          kind: "version" as const,
+          fromObjectId: "image-soft-rail-v2",
+          toObjectId: generated.createdObjectId,
+          note: "旧实现错误地把多参考图写为父版本。"
+        },
+        {
+          id: "legacy-version-b",
+          kind: "version" as const,
+          fromObjectId: "image-rail-detail",
+          toObjectId: generated.createdObjectId,
+          note: "旧实现错误地把多参考图写为父版本。"
+        }
+      ]
+    };
+
+    const reconciled = reconcileWorkspaceDerivedState(legacyWorkspace);
+
+    expect(
+      reconciled.relations.some(
+        (relation) => relation.toObjectId === generated.createdObjectId && relation.kind === "version"
+      )
+    ).toBe(false);
+    expect(
+      reconciled.relations.filter(
+        (relation) => relation.toObjectId === generated.createdObjectId && relation.kind === "source"
+      )
+    ).toHaveLength(2);
+  });
+
   it("inherits direction and visual branch when continuing from a branched source image", () => {
     const workspace = createInitialWorkspace();
     const result = createGeneratedImageFromAsset(workspace, {
@@ -200,5 +292,38 @@ describe("Morpho image generation domain helpers", () => {
     const instance = result.workspace.canvas.instances.find((item) => item.objectId === result.createdObjectId);
 
     expect(instance?.size).toEqual({ w: 320, h: 180 });
+  });
+
+  it("treats an explicit generated-image position as a preferred position and avoids visible objects", () => {
+    const workspace = createInitialWorkspace();
+    const occupied = workspace.canvas.instances[0];
+    expect(occupied).toBeDefined();
+
+    const result = createGeneratedImageFromAsset(workspace, {
+      asset: {
+        id: "asset-generated-collision",
+        fileName: "collision-result.png",
+        mimeType: "image/png",
+        size: 4096,
+        createdAt: "2026-07-10T00:00:00.000Z",
+        storageKey: "blob:asset-generated-collision",
+        sourceType: "aiGeneratedImage",
+        width: 1024,
+        height: 1024
+      },
+      generation: {
+        modelId: "nano-banana-2-lite",
+        modelLabel: "nano-banana-2-lite",
+        aspectRatio: "1:1",
+        prompt: "collision test",
+        referenceObjectIds: [],
+        createdAt: "2026-07-10T00:00:00.000Z"
+      },
+      sourceObjectIds: [],
+      position: occupied!.position
+    });
+
+    const instance = result.workspace.canvas.instances.find((item) => item.objectId === result.createdObjectId);
+    expect(instance?.position).not.toEqual(occupied!.position);
   });
 });

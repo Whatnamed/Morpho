@@ -4,6 +4,7 @@ import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 export type GrsImageConfig = {
   apiKey: string;
   baseUrl: string;
+  fallbackBaseUrls?: string[];
   model: string;
 };
 
@@ -52,11 +53,15 @@ export type ResolveGrsImageOptions = {
   fetchImpl?: typeof fetch;
   maxPolls?: number;
   pollDelayMs?: number;
+  generateAttempts?: number;
+  retryDelayMs?: number;
   signal?: AbortSignal;
 };
 
 const DEFAULT_MAX_POLLS = 12;
 const DEFAULT_POLL_DELAY_MS = 1500;
+const DEFAULT_GENERATE_ATTEMPTS = 2;
+const DEFAULT_RETRY_DELAY_MS = 500;
 
 export function createGrsGenerateRequest(config: GrsImageConfig, input: GrsGenerateInput): GrsGenerateRequest {
   const baseUrl = config.baseUrl.replace(/\/$/, "");
@@ -95,15 +100,55 @@ export async function resolveGrsImageResult(
   const fetchImpl = options.fetchImpl ?? fetch;
   const maxPolls = options.maxPolls ?? DEFAULT_MAX_POLLS;
   const pollDelayMs = options.pollDelayMs ?? DEFAULT_POLL_DELAY_MS;
+  const generateAttempts = Math.max(1, options.generateAttempts ?? DEFAULT_GENERATE_ATTEMPTS);
+  const retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
   const signal = options.signal;
-  const request = createGrsGenerateRequest(config, input);
+  const baseUrls = uniqueBaseUrls(config.baseUrl, config.fallbackBaseUrls);
+  const attemptBaseUrls =
+    baseUrls.length > 1
+      ? baseUrls.slice(0, Math.max(generateAttempts, baseUrls.length))
+      : Array.from({ length: generateAttempts }, () => config.baseUrl);
 
-  const generateResponse = await safeFetch(fetchImpl, request.url, {
-    method: "POST",
-    headers: request.headers,
-    body: JSON.stringify(request.body),
-    signal
-  });
+  let generateResponse: Awaited<ReturnType<typeof safeFetch>> | undefined;
+  let activeBaseUrl = config.baseUrl;
+  for (let attempt = 0; attempt < attemptBaseUrls.length; attempt += 1) {
+    const attemptBaseUrl = attemptBaseUrls[attempt] ?? config.baseUrl;
+    const request = createGrsGenerateRequest({ ...config, baseUrl: attemptBaseUrl }, input);
+    try {
+      generateResponse = await safeFetch(fetchImpl, request.url, {
+        method: "POST",
+        headers: request.headers,
+        body: JSON.stringify(request.body),
+        signal
+      });
+    } catch (error) {
+      if (attempt < attemptBaseUrls.length - 1 && !signal?.aborted) {
+        await delay(retryDelayMs, signal);
+        continue;
+      }
+      const detail = error instanceof Error && error.message ? `: ${error.message}` : "";
+      return {
+        status: "failed",
+        reason: `GrsAI network request failed after ${attempt + 1} attempts${detail}`
+      };
+    }
+
+    if (
+      generateResponse.status === "ok" &&
+      !generateResponse.response.ok &&
+      isTransientHttpStatus(generateResponse.response.status) &&
+      attempt < attemptBaseUrls.length - 1
+    ) {
+      await delay(retryDelayMs, signal);
+      continue;
+    }
+    activeBaseUrl = attemptBaseUrl;
+    break;
+  }
+
+  if (!generateResponse) {
+    return { status: "failed", reason: "GrsAI image request did not start." };
+  }
 
   if (generateResponse.status === "cancelled") {
     return generateResponse;
@@ -138,7 +183,7 @@ export async function resolveGrsImageResult(
     return { status: "failed", reason: "GrsAI did not return an image URL or task id." };
   }
 
-  const resultUrl = `${config.baseUrl.replace(/\/$/, "")}/v1/api/result?id=${encodeURIComponent(taskId)}`;
+  const resultUrl = `${activeBaseUrl.replace(/\/$/, "")}/v1/api/result?id=${encodeURIComponent(taskId)}`;
   for (let attempt = 0; attempt < maxPolls; attempt += 1) {
     if (signal?.aborted) {
       return { status: "cancelled", reason: "GrsAI image request was cancelled." };
@@ -180,7 +225,11 @@ async function resolvePayload(
 ): Promise<GrsImageResult | { status: "pending" }> {
   const status = extractStatus(payload);
   if (isFailureStatus(status)) {
-    return { status: "failed", reason: "GrsAI image task failed." };
+    const detail = extractFailureDetail(payload);
+    return {
+      status: "failed",
+      reason: detail ? `GrsAI image task failed: ${detail}` : "GrsAI image task failed."
+    };
   }
 
   const imageUrl = extractImageUrl(payload);
@@ -328,6 +377,38 @@ function isPendingStatus(status: string | undefined): boolean {
 
 function isFailureStatus(status: string | undefined): boolean {
   return Boolean(status && ["failed", "failure", "error", "cancelled", "canceled"].includes(status));
+}
+
+function extractFailureDetail(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  for (const key of ["message", "error", "msg", "reason"]) {
+    const detail = value[key];
+    if (typeof detail === "string" && detail.trim()) {
+      return detail.trim();
+    }
+    if (isRecord(detail)) {
+      const nested = extractFailureDetail(detail);
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+
+  if (isRecord(value.data)) {
+    return extractFailureDetail(value.data);
+  }
+  return undefined;
+}
+
+function isTransientHttpStatus(status: number): boolean {
+  return status === 429 || status === 502 || status === 503 || status === 504;
+}
+
+function uniqueBaseUrls(primary: string, fallbacks: readonly string[] | undefined): string[] {
+  return [...new Set([primary, ...(fallbacks ?? [])].map((value) => value.replace(/\/$/, "")).filter(Boolean))];
 }
 
 function isHttpUrl(value: string): boolean {

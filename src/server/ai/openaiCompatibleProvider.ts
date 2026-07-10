@@ -1,5 +1,10 @@
 import type { OpenAiCompatibleConfig } from "./openaiCompatibleConfig";
 
+type OpenAiCompatibleProviderConfig = Pick<
+  OpenAiCompatibleConfig,
+  "apiKey" | "baseUrl" | "model" | "reasoningEffort" | "webSearchEnabled"
+>;
+
 export type ResponseTextContentPart = {
   type: "input_text";
   text: string;
@@ -56,6 +61,12 @@ export type ProviderFunctionCall = {
   argumentsText: string;
 };
 
+export type ProviderTokenUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+};
+
 export type OpenAiCompatibleResponseResult = {
   responseId: string;
   outputText: string;
@@ -63,6 +74,7 @@ export type OpenAiCompatibleResponseResult = {
   citations: ProviderCitation[];
   webSearchCallCount: number;
   outputItems: AgentOutputItem[];
+  usage?: ProviderTokenUsage;
 };
 
 export type OpenAiCompatibleStreamHandlers = {
@@ -73,10 +85,12 @@ export type OpenAiCompatibleStreamHandlers = {
 type RawResponse = {
   id?: string;
   output?: unknown[];
+  usage?: unknown;
 };
 
 type RawChatCompletion = {
   id?: string;
+  usage?: unknown;
   choices?: Array<{
     message?: {
       content?: unknown;
@@ -119,17 +133,20 @@ export type AgentOutputItem = {
 };
 
 export class OpenAiCompatibleProviderError extends Error {
+  readonly code?: "context_limit";
+
   constructor(
     readonly status: number,
     readonly diagnostic?: string
   ) {
     super(`OpenAI-compatible provider error (${status})`);
     this.name = "OpenAiCompatibleProviderError";
+    this.code = status === 413 || isContextLimitDiagnostic(diagnostic) ? "context_limit" : undefined;
   }
 }
 
 export async function executeOpenAiCompatibleResponse(
-  config: OpenAiCompatibleConfig,
+  config: OpenAiCompatibleProviderConfig,
   request: OpenAiCompatibleResponseRequest,
   signal?: AbortSignal
 ): Promise<OpenAiCompatibleResponseResult> {
@@ -161,6 +178,7 @@ export async function executeOpenAiCompatibleResponse(
   }
 
   const raw = (await response.json()) as RawResponse;
+  const usage = extractTokenUsage(raw.usage, "input_tokens", "output_tokens");
   return {
     responseId: typeof raw.id === "string" ? raw.id : "",
     outputText: extractOutputText(raw.output),
@@ -169,12 +187,13 @@ export async function executeOpenAiCompatibleResponse(
     outputItems: extractOutputItems(raw.output),
     webSearchCallCount: Array.isArray(raw.output)
       ? raw.output.filter((item) => isRecord(item) && item.type === "web_search_call").length
-      : 0
+      : 0,
+    ...(usage ? { usage } : {})
   };
 }
 
 export async function streamOpenAiCompatibleResponse(
-  config: OpenAiCompatibleConfig,
+  config: OpenAiCompatibleProviderConfig,
   request: OpenAiCompatibleResponseRequest,
   handlers: OpenAiCompatibleStreamHandlers,
   signal?: AbortSignal
@@ -193,7 +212,7 @@ export async function streamOpenAiCompatibleResponse(
   return result;
 }
 
-function shouldUseChatCompletionsFirst(config: OpenAiCompatibleConfig): boolean {
+function shouldUseChatCompletionsFirst(config: OpenAiCompatibleProviderConfig): boolean {
   try {
     return new URL(config.baseUrl).hostname.toLowerCase().includes("aijws.com");
   } catch {
@@ -202,7 +221,7 @@ function shouldUseChatCompletionsFirst(config: OpenAiCompatibleConfig): boolean 
 }
 
 async function executeOpenAiCompatibleChatCompletion(
-  config: OpenAiCompatibleConfig,
+  config: OpenAiCompatibleProviderConfig,
   request: OpenAiCompatibleResponseRequest,
   signal?: AbortSignal
 ): Promise<OpenAiCompatibleResponseResult> {
@@ -230,7 +249,7 @@ async function executeOpenAiCompatibleChatCompletion(
 }
 
 async function streamOpenAiCompatibleChatCompletion(
-  config: OpenAiCompatibleConfig,
+  config: OpenAiCompatibleProviderConfig,
   request: OpenAiCompatibleResponseRequest,
   handlers: OpenAiCompatibleStreamHandlers,
   signal?: AbortSignal
@@ -524,6 +543,7 @@ function extractChatCompletionResult(raw: RawChatCompletion): OpenAiCompatibleRe
   const content = typeof message?.content === "string" ? message.content : "";
   const functionCalls = extractChatToolCalls(message?.tool_calls);
   const outputItems: AgentOutputItem[] = [];
+  const usage = extractTokenUsage(raw.usage, "prompt_tokens", "completion_tokens");
 
   if (content.trim()) {
     outputItems.push({
@@ -553,8 +573,36 @@ function extractChatCompletionResult(raw: RawChatCompletion): OpenAiCompatibleRe
     functionCalls,
     citations: extractCitations(raw),
     outputItems,
-    webSearchCallCount: 0
+    webSearchCallCount: 0,
+    ...(usage ? { usage } : {})
   };
+}
+
+function extractTokenUsage(
+  value: unknown,
+  inputField: "input_tokens" | "prompt_tokens",
+  outputField: "output_tokens" | "completion_tokens"
+): ProviderTokenUsage | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const inputTokens = nonNegativeInteger(value[inputField]);
+  const outputTokens = nonNegativeInteger(value[outputField]);
+  const totalTokens = nonNegativeInteger(value.total_tokens);
+  if (inputTokens === undefined || outputTokens === undefined) {
+    return undefined;
+  }
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: totalTokens ?? inputTokens + outputTokens
+  };
+}
+
+function nonNegativeInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
 function extractChatToolCalls(value: unknown): ProviderFunctionCall[] {
@@ -765,4 +813,23 @@ function domainFromUrl(url: string): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isContextLimitDiagnostic(diagnostic: string | undefined): boolean {
+  const normalized = diagnostic?.toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return [
+    "context_length_exceeded",
+    "context_window_exceeded",
+    "maximum context length",
+    "maximum context window",
+    "exceeds the context window",
+    "exceeded the context window",
+    "input is too long",
+    "prompt is too long",
+    "too many tokens"
+  ].some((pattern) => normalized.includes(pattern));
 }

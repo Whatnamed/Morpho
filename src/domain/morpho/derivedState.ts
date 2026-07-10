@@ -7,7 +7,8 @@ import type {
   MorphoObjectId,
   MorphoWorkspace,
   ProjectWorkingState,
-  ResearchObject
+  ResearchObject,
+  ImageObject
 } from "./types";
 
 const MAX_RECENT_RESEARCH = 3;
@@ -29,9 +30,11 @@ export function createEmptyProjectWorkingState(now = new Date().toISOString()): 
 export function reconcileWorkspaceDerivedState(workspace: MorphoWorkspace): MorphoWorkspace {
   const now = new Date().toISOString();
   const objects = reconcileCurrentEffectiveDesignDefinitions(workspace);
+  const relations = reconcileLegacyMultiReferenceVersionRelations(workspace, objects);
   const normalizedWorkspace = {
     ...workspace,
-    objects
+    objects,
+    relations
   };
   const workingState = deriveProjectWorkingState(normalizedWorkspace, now);
 
@@ -39,6 +42,37 @@ export function reconcileWorkspaceDerivedState(workspace: MorphoWorkspace): Morp
     ...normalizedWorkspace,
     workingState
   };
+}
+
+function reconcileLegacyMultiReferenceVersionRelations(
+  workspace: MorphoWorkspace,
+  objects: Record<MorphoObjectId, MorphoObject>
+) {
+  const generatedMultiReferenceImageIds = new Set(
+    Object.values(objects)
+      .filter((object): object is ImageObject => object.type === "image")
+      .filter((object) => {
+        const imageReferenceCount = new Set(
+          (object.generation?.referenceObjectIds ?? []).filter(
+            (referenceObjectId) => objects[referenceObjectId]?.type === "image"
+          )
+        ).size;
+        return imageReferenceCount > 1;
+      })
+      .map((object) => object.id)
+  );
+
+  if (generatedMultiReferenceImageIds.size === 0) {
+    return workspace.relations;
+  }
+
+  return workspace.relations.filter(
+    (relation) =>
+      !(
+        relation.kind === "version" &&
+        generatedMultiReferenceImageIds.has(relation.toObjectId)
+      )
+  );
 }
 
 export function deriveProjectWorkingState(workspace: MorphoWorkspace, now = new Date().toISOString()): ProjectWorkingState {

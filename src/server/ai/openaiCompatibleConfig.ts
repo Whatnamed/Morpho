@@ -4,6 +4,10 @@ export type OpenAiCompatibleConfig = {
   model: string;
   reasoningEffort?: "low" | "medium" | "high";
   webSearchEnabled: boolean;
+  contextWindowTokens: number;
+  contextPrepareTokens: number;
+  contextCompactTokens: number;
+  contextTargetTokens: number;
 };
 
 export type OpenAiCompatibleConfigResult =
@@ -31,6 +35,28 @@ export function loadOpenAiCompatibleConfig(env: Partial<NodeJS.ProcessEnv>): Ope
   const model = firstNonEmpty(env.MORPHO_AI_MODEL, env.AIJWS_MODEL) ?? "gpt-5.6-terra";
   const reasoningEffort = parseReasoningEffort(env.MORPHO_AI_REASONING_EFFORT);
   const webSearchEnabled = parseBoolean(env.MORPHO_AI_WEB_SEARCH_ENABLED, true);
+  const contextWindowTokens = parsePositiveInteger(env.MORPHO_AI_CONTEXT_WINDOW_TOKENS, 372_000);
+  const contextPrepareTokens = parsePositiveInteger(env.MORPHO_AI_CONTEXT_PREPARE_TOKENS, 200_000);
+  const contextCompactTokens = parsePositiveInteger(env.MORPHO_AI_CONTEXT_COMPACT_TOKENS, 300_000);
+  const contextTargetTokens = parsePositiveInteger(env.MORPHO_AI_CONTEXT_TARGET_TOKENS, 16_000);
+
+  if (
+    contextWindowTokens === undefined ||
+    contextPrepareTokens === undefined ||
+    contextCompactTokens === undefined ||
+    contextTargetTokens === undefined ||
+    !(
+      contextTargetTokens < contextPrepareTokens &&
+      contextPrepareTokens < contextCompactTokens &&
+      contextCompactTokens < contextWindowTokens
+    )
+  ) {
+    return {
+      status: "failed",
+      reason:
+        "AI 上下文配置无效：请确保 target、prepare、compact、window 为正整数，且 target < prepare < compact < window。"
+    };
+  }
 
   if (!apiKey || !baseUrl) {
     return {
@@ -46,7 +72,11 @@ export function loadOpenAiCompatibleConfig(env: Partial<NodeJS.ProcessEnv>): Ope
       baseUrl,
       model,
       reasoningEffort,
-      webSearchEnabled
+      webSearchEnabled,
+      contextWindowTokens,
+      contextPrepareTokens,
+      contextCompactTokens,
+      contextTargetTokens
     }
   };
 }
@@ -116,6 +146,20 @@ function parseReasoningEffort(value: string | undefined): "low" | "medium" | "hi
   }
 
   return undefined;
+}
+
+function parsePositiveInteger(value: string | undefined, defaultValue: number): number | undefined {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return defaultValue;
+  }
+
+  if (!/^\d+$/.test(normalized)) {
+    return undefined;
+  }
+
+  const parsed = Number(normalized);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function trimTrailingSlash(value: string | undefined): string {

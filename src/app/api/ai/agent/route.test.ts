@@ -11,7 +11,11 @@ vi.mock("@/server/ai/openaiCompatibleConfig", () => ({
       apiKey: "test-key",
       baseUrl: "https://agent.example.test",
       model: "test-model",
-      webSearchEnabled: true
+      webSearchEnabled: true,
+      contextWindowTokens: 372_000,
+      contextPrepareTokens: 200_000,
+      contextCompactTokens: 300_000,
+      contextTargetTokens: 16_000
     }
   })
 }));
@@ -33,11 +37,13 @@ vi.mock("@/server/ai/openaiCompatibleProvider", () => ({
   OpenAiCompatibleProviderError: class OpenAiCompatibleProviderError extends Error {
     status: number;
     diagnostic?: string;
+    code?: string;
 
-    constructor(message: string, status: number, diagnostic?: string) {
-      super(message);
+    constructor(status: number, diagnostic?: string) {
+      super(`OpenAI-compatible provider error (${status})`);
       this.status = status;
       this.diagnostic = diagnostic;
+      this.code = diagnostic?.includes("context_length_exceeded") ? "context_limit" : undefined;
     }
   }
 }));
@@ -136,5 +142,79 @@ describe("agent route config filtering", () => {
     expect(requireAiRouteUserMock).toHaveBeenCalledTimes(1);
     expect(guardAiRouteMock).not.toHaveBeenCalled();
     expect(executeOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a machine-readable context limit code while preserving the current Chinese error", async () => {
+    const { OpenAiCompatibleProviderError } = await import("@/server/ai/openaiCompatibleProvider");
+    executeOpenAiCompatibleResponseMock.mockRejectedValue(
+      new OpenAiCompatibleProviderError(400, '{"error":{"code":"context_length_exceeded"}}')
+    );
+
+    const response = await POST(
+      new Request("http://localhost/api/ai/agent", {
+        method: "POST",
+        body: JSON.stringify({
+          input: [{ role: "user", content: [{ type: "input_text", text: "继续讨论" }] }]
+        })
+      })
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({
+      error: "OpenAI-compatible Provider 请求格式不兼容，请检查模型、tools 或图片输入。",
+      code: "context_limit"
+    });
+    expect(executeOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("emergency-compacts and retries a context limit without re-entering the client tool loop", async () => {
+    const { OpenAiCompatibleProviderError } = await import("@/server/ai/openaiCompatibleProvider");
+    executeOpenAiCompatibleResponseMock
+      .mockRejectedValueOnce(
+        new OpenAiCompatibleProviderError(400, '{"error":{"code":"context_length_exceeded"}}')
+      )
+      .mockResolvedValueOnce({
+        responseId: "resp_retry",
+        outputText: "重试完成",
+        functionCalls: [],
+        citations: [],
+        webSearchCallCount: 0,
+        outputItems: [],
+        usage: {
+          inputTokens: 210_000,
+          outputTokens: 500,
+          totalTokens: 210_500
+        }
+      });
+
+    const response = await POST(
+      new Request("http://localhost/api/ai/agent", {
+        method: "POST",
+        body: JSON.stringify({
+          agentTurnId: "agent-turn-retry",
+          continuation: true,
+          input: [
+            { role: "system", content: [{ type: "input_text", text: "系统规则" }] },
+            { role: "user", content: [{ type: "input_text", text: "旧问题" }] },
+            { role: "assistant", content: [{ type: "input_text", text: "旧回答" }] },
+            { role: "user", content: [{ type: "input_text", text: "当前问题" }] }
+          ]
+        })
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.outputText).toBe("重试完成");
+    expect(payload.context).toMatchObject({
+      pressure: "compact",
+      compacted: true,
+      checkpointRequested: true,
+      retried: true
+    });
+    expect(executeOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(2);
+    const retryRequest = executeOpenAiCompatibleResponseMock.mock.calls[1]?.[1] as OpenAiCompatibleResponseRequest;
+    expect(JSON.stringify(retryRequest.input)).not.toContain("旧问题");
+    expect(JSON.stringify(retryRequest.input)).toContain("当前问题");
   });
 });

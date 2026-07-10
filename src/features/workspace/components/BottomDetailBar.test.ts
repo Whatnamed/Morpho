@@ -4,13 +4,18 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   buildConceptDirectionLineageDetail,
+  buildRelatedDetailRows,
+  buildSourceDetailRows,
+  buildVersionDetailRows,
   buildConceptDirectionVersionDetail,
   BottomDetailBar,
+  getAvailableDetailTabs,
   getDocumentReaderActionState,
   buildDesignDefinitionInfoMeta,
   buildDesignDefinitionVersionDetail
 } from "./BottomDetailBar";
 import { createInitialWorkspace } from "../../../domain/morpho/workspace";
+import { createGeneratedImageFromAsset } from "../../../domain/morpho/generation";
 
 describe("BottomDetailBar design definition text", () => {
   it("shows the revision-draft badge only when a pending revision draft exists", () => {
@@ -52,6 +57,139 @@ describe("BottomDetailBar concept direction text", () => {
         }
       ])
     ).toBe("mergedFromDirection：方向 AB 合并了方向 A。 mergedFromDirection：方向 AB 合并了方向 B。");
+  });
+});
+
+describe("BottomDetailBar relationship tabs", () => {
+  it("shows only tabs with real direct detail for a selected image", () => {
+    const workspace = createInitialWorkspace();
+    const image = workspace.objects["image-soft-rail-v2"];
+    if (image.type !== "image") {
+      throw new Error("seed image missing");
+    }
+
+    expect(
+      getAvailableDetailTabs({
+        workspace,
+        object: image,
+        relations: workspace.relations.filter(
+          (relation) => relation.fromObjectId === image.id || relation.toObjectId === image.id
+        ),
+        decisionRecords: [],
+        selectedCount: 1
+      })
+    ).toEqual(["信息", "版本", "关联"]);
+  });
+
+  it("renders direct source rows once per source object instead of repeating relation notes", () => {
+    const workspace = createInitialWorkspace();
+    const image = workspace.objects["image-soft-rail-v2"];
+    if (image.type !== "image") {
+      throw new Error("seed image missing");
+    }
+    const rows = buildSourceDetailRows({
+      workspace,
+      object: image,
+      relations: [
+        {
+          id: "source-1",
+          kind: "source",
+          fromObjectId: "image-soft-rail-preview",
+          toObjectId: image.id,
+          note: "GrsAI 视觉发展使用该图作为本次明确来源。"
+        },
+        {
+          id: "source-duplicate",
+          kind: "source",
+          fromObjectId: "image-soft-rail-preview",
+          toObjectId: image.id,
+          note: "GrsAI 视觉发展使用该图作为本次明确来源。"
+        }
+      ]
+    });
+
+    expect(rows).toEqual([
+      {
+        id: "image-soft-rail-preview",
+        label: "起始图",
+        title: "柔光轨道预览",
+        meta: "预览"
+      }
+    ]);
+  });
+
+  it("shows a one-layer version view with parent, current object, and direct children", () => {
+    const workspace = createInitialWorkspace();
+    const image = workspace.objects["image-soft-rail-v2"];
+    if (image.type !== "image") {
+      throw new Error("seed image missing");
+    }
+
+    expect(
+      buildVersionDetailRows({
+        workspace,
+        object: image,
+        relations: workspace.relations.filter(
+          (relation) => relation.fromObjectId === image.id || relation.toObjectId === image.id
+        )
+      })
+    ).toEqual([
+      {
+        id: "image-soft-rail-preview",
+        label: "父版本",
+        title: "柔光轨道预览",
+        meta: "预览"
+      },
+      {
+        id: image.id,
+        label: "当前对象",
+        title: "柔光轨道 v2",
+        meta: "后续默认参考"
+      },
+      {
+        id: "image-rail-detail",
+        label: "子版本",
+        title: "转角连接与触感截面",
+        meta: "细节研究"
+      },
+      {
+        id: "image-night-scenario",
+        label: "子版本",
+        title: "夜间使用场景",
+        meta: "场景视觉"
+      }
+    ]);
+  });
+
+  it("keeps association detail separate from source and version relationships", () => {
+    const workspace = createInitialWorkspace();
+    const image = workspace.objects["image-soft-rail-v2"];
+    if (image.type !== "image") {
+      throw new Error("seed image missing");
+    }
+
+    expect(
+      buildRelatedDetailRows({
+        workspace,
+        object: image,
+        relations: workspace.relations.filter(
+          (relation) => relation.fromObjectId === image.id || relation.toObjectId === image.id
+        )
+      })
+    ).toEqual([
+      {
+        id: "direction-soft-rail",
+        label: "后续默认参考",
+        title: "方向 A：柔光轨道",
+        meta: "主方向"
+      },
+      {
+        id: "delivery-board-a1",
+        label: "已用于交付",
+        title: "A1 展板 / 核心方案",
+        meta: "交付准备"
+      }
+    ]);
   });
 });
 
@@ -141,6 +279,59 @@ describe("BottomDetailBar document reader action", () => {
 });
 
 describe("BottomDetailBar selected object surface", () => {
+  it("renders multi-reference images without a fabricated version tab or repeated provider notes", () => {
+    const workspace = createInitialWorkspace();
+    const generated = createGeneratedImageFromAsset(workspace, {
+      asset: {
+        id: "asset-bottom-detail-multi-source",
+        fileName: "multi-source.png",
+        mimeType: "image/png",
+        size: 4096,
+        createdAt: "2026-07-10T00:00:00.000Z",
+        storageKey: "blob:asset-bottom-detail-multi-source",
+        sourceType: "aiGeneratedImage"
+      },
+      generation: {
+        modelId: "nano-banana-2-lite",
+        modelLabel: "nano-banana-2-lite",
+        aspectRatio: "1:1",
+        prompt: "结合两张图生成说明预览",
+        referenceObjectIds: ["image-soft-rail-v2", "image-rail-detail"],
+        createdAt: "2026-07-10T00:00:00.000Z"
+      },
+      sourceObjectIds: ["image-soft-rail-v2", "image-rail-detail"]
+    });
+    const image = generated.workspace.objects[generated.createdObjectId];
+    if (!image) {
+      throw new Error("generated image missing");
+    }
+    const html = renderToStaticMarkup(
+      createElement(BottomDetailBar, {
+        workspace: generated.workspace,
+        selectedObjects: [image],
+        assets: generated.workspace.assets,
+        hasPendingDesignDefinitionRevisionDraft: false,
+        relations: generated.workspace.relations,
+        directionLineage: generated.workspace.directionLineage,
+        visualBranches: generated.workspace.visualBranches,
+        decisionRecords: [],
+        activeDesignTrace: null,
+        onRenameVisualBranch: () => undefined,
+        onArchiveVisualBranch: () => undefined,
+        onRestoreVisualBranch: () => undefined,
+        onOpenDocumentReader: () => undefined,
+        onSaveKeyConclusionFromResearchItem: () => undefined,
+        onCopyItemToDraft: () => undefined,
+        onContinueQuestion: () => undefined
+      })
+    );
+
+    expect(html).toContain("来源");
+    expect(html).toContain("关联");
+    expect(html).not.toContain(">版本<");
+    expect(html).not.toContain("GrsAI 视觉发展使用该图作为本次明确来源");
+  });
+
   it("renders object information without canvas action tools", () => {
     const workspace = createInitialWorkspace();
     const html = renderToStaticMarkup(

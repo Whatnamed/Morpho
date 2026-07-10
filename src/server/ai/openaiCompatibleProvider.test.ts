@@ -13,6 +13,11 @@ describe("openai-compatible provider adapter", () => {
       new Response(
         JSON.stringify({
           id: "resp_123",
+          usage: {
+            input_tokens: 1234,
+            output_tokens: 56,
+            total_tokens: 1290
+          },
           output: [
             { type: "web_search_call", id: "ws_1" },
             {
@@ -112,7 +117,12 @@ describe("openai-compatible provider adapter", () => {
             arguments: "{}"
           }
         ],
-        webSearchCallCount: 1
+        webSearchCallCount: 1,
+        usage: {
+          inputTokens: 1234,
+          outputTokens: 56,
+          totalTokens: 1290
+        }
       });
     } finally {
       global.fetch = originalFetch;
@@ -142,6 +152,78 @@ describe("openai-compatible provider adapter", () => {
           }
         )
       ).rejects.toEqual(expect.any(OpenAiCompatibleProviderError));
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("classifies standard context limit diagnostics", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "This model's maximum context length is 128000 tokens.",
+            type: "invalid_request_error",
+            code: "context_length_exceeded"
+          }
+        }),
+        { status: 400 }
+      ) as unknown as Response;
+
+    try {
+      await expect(
+        executeOpenAiCompatibleResponse(
+          {
+            apiKey: "secret",
+            baseUrl: "https://api.example.com/v1",
+            model: "gpt-5.4",
+            webSearchEnabled: true
+          },
+          {
+            input: [
+              {
+                role: "user",
+                content: [{ type: "input_text", text: "hi" }]
+              }
+            ]
+          }
+        )
+      ).rejects.toMatchObject({
+        status: 400,
+        code: "context_limit"
+      });
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("classifies an HTTP 413 provider response as a context limit even without a diagnostic body", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = async () => new Response("", { status: 413 }) as unknown as Response;
+
+    try {
+      await expect(
+        executeOpenAiCompatibleResponse(
+          {
+            apiKey: "secret",
+            baseUrl: "https://api.example.com/v1",
+            model: "gpt-5.4",
+            webSearchEnabled: true
+          },
+          {
+            input: [
+              {
+                role: "user",
+                content: [{ type: "input_text", text: "hi" }]
+              }
+            ]
+          }
+        )
+      ).rejects.toMatchObject({
+        status: 413,
+        code: "context_limit"
+      });
     } finally {
       global.fetch = originalFetch;
     }
@@ -237,6 +319,11 @@ describe("openai-compatible provider adapter", () => {
       return new Response(
         JSON.stringify({
           id: "chat_aijws_123",
+          usage: {
+            prompt_tokens: 42,
+            completion_tokens: 8,
+            total_tokens: 50
+          },
           choices: [
             {
               message: {
@@ -314,6 +401,11 @@ describe("openai-compatible provider adapter", () => {
           argumentsText: "{}"
         }
       ]);
+      expect(result.usage).toEqual({
+        inputTokens: 42,
+        outputTokens: 8,
+        totalTokens: 50
+      });
     } finally {
       global.fetch = originalFetch;
     }

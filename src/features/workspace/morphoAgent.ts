@@ -1,5 +1,10 @@
 import type { ConceptDirectionProposal } from "@/domain/operations/types";
-import type { ImageRole, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
+import type {
+  ConversationCheckpoint,
+  ImageRole,
+  MorphoObject,
+  MorphoWorkspace
+} from "@/domain/morpho/types";
 import type {
   ProviderCitation,
   ResponseFunctionTool,
@@ -9,6 +14,15 @@ import type {
 } from "@/server/ai/openaiCompatibleProvider";
 
 import type { ProviderTaskContext, TaskContextResult } from "./taskContext";
+
+export type AgentConversationContext = {
+  laneKey: string;
+  checkpoint?: ConversationCheckpoint;
+  recentMessages: Array<{ role: "user" | "assistant"; body: string }>;
+  rawMessageCount: number;
+  omittedMessageCount: number;
+  checkpointRequested: boolean;
+};
 
 export type MorphoAgentTurnMode = "auto" | "confirm";
 
@@ -31,6 +45,20 @@ export type AgentRouteResult = {
   citations: ProviderCitation[];
   webSearchCallCount: number;
   outputItems: AgentOutputItem[];
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  };
+  context?: {
+    estimatedInputTokens: number;
+    finalEstimatedInputTokens: number;
+    compressibleTokens: number;
+    pressure: "normal" | "prepare" | "compact";
+    compacted: boolean;
+    checkpointRequested: boolean;
+    retried?: boolean;
+  };
 };
 
 export type CreateResearchAnalysisArgs = {
@@ -198,6 +226,7 @@ export function buildMorphoAgentSystemPrompt(input: {
   selectedObjects: readonly MorphoObject[];
   context: TaskContextResult;
   providerTaskContext: ProviderTaskContext;
+  conversationContext?: AgentConversationContext;
 }): string {
   const selectedObjectLines =
     input.selectedObjects.length > 0
@@ -228,6 +257,7 @@ export function buildMorphoAgentSystemPrompt(input: {
     input.providerTaskContext.directions.length > 0
       ? `当前相关方向：${input.providerTaskContext.directions.map((direction) => direction.title).join(" / ")}`
       : "当前没有显式相关的概念方向。",
+    buildAgentConversationPromptBlock(input.conversationContext),
     "优先工作方式：先判断是否需要 read_selected_context；只有在当前本地资料不足且确实需要外部事实时才调用 search_web_evidence；结构化结果足够明确时应立刻调用对应写入工具。",
     "当用户多选草案或设计定义并要求分析、评估、梳理或给建议，但没有明确说“比较”“对比”或 Compare 时，先读取完整选择内容，再直接在对话中回答；不要调用 create_comparison_analysis，不要创建 Compare 记录或画布对象。",
     "当用户选中一张 pending 草案并要求修改、调整、压缩、重写、改标题或改内容时，先调用 read_selected_context 读取完整草案，再调用 revise_selected_proposal_draft 原地更新这一张草案；不要新建草案，不要等待确认，不要把完整长草案塞回对话。",
@@ -635,6 +665,104 @@ export function buildMorphoAgentTools(
     : tools;
 }
 
+export function buildAgentConversationPromptBlock(
+  context: AgentConversationContext | undefined
+): string {
+  if (!context) {
+    return "";
+  }
+
+  const lines = [
+    "Conversation checkpoint context:",
+    "优先级：当前用户输入 > 真实项目状态与 projectContinuity > 当前 checkpoint > recent raw messages。",
+    `recentRawMessageCount: ${context.recentMessages.length}`,
+    `checkpointRequested: ${context.checkpointRequested ? "true" : "false"}`
+  ];
+  if (context.checkpoint) {
+    lines.push(
+      "当前 checkpoint 是非权威的短期讨论笔记；与实时项目状态冲突时，以实时项目状态为准。",
+      `threadGoal: ${context.checkpoint.threadGoal}`,
+      `progress: ${context.checkpoint.progress.join(" / ") || "none"}`,
+      `openThreads: ${context.checkpoint.openThreads.join(" / ") || "none"}`
+    );
+    if (context.checkpoint.nextTurnAnchor) {
+      lines.push(`nextTurnAnchor: ${context.checkpoint.nextTurnAnchor}`);
+    }
+  }
+  if (context.checkpointRequested) {
+    lines.push(
+      "在正常回答末尾附带 morphoConversationCheckpoint fenced JSON block。",
+      "它只记录当前讨论目标、进展、待继续问题和下一轮锚点，不记录项目状态写入、对象 ID、URL、Prompt 或工具日志。",
+      'JSON shape: { "morphoConversationCheckpoint": { "threadGoal": string, "progress": string[], "openThreads": string[], "nextTurnAnchor"?: string } }'
+    );
+  }
+  return lines.join("\n");
+}
+
+export function buildAgentCheckpointCompactionInput(input: {
+  conversationContext?: AgentConversationContext;
+  checkpoint?: Pick<ConversationCheckpoint, "threadGoal" | "progress" | "openThreads" | "nextTurnAnchor">;
+  messages?: Array<{ role: "user" | "assistant"; body: string }>;
+  draft: string;
+  assistantReply: string;
+  chunkIndex?: number;
+  chunkCount?: number;
+}): ResponseMessageInput[] {
+  const sourceMessages = input.messages ?? input.conversationContext?.recentMessages.slice(-6) ?? [];
+  const recentMessages = sourceMessages
+    .map((message) =>
+      `${message.role}: ${
+        input.messages ? message.body : truncateAgentContextText(message.body, 700)
+      }`
+    )
+    .join("\n");
+  const checkpoint = input.checkpoint ?? input.conversationContext?.checkpoint;
+  const chunkProgress =
+    input.chunkIndex !== undefined && input.chunkCount !== undefined
+      ? `当前正在整理第 ${input.chunkIndex + 1} / ${input.chunkCount} 块。必须把已有 checkpoint 与本块内容合并为新的 checkpoint。`
+      : undefined;
+  return [
+    {
+      role: "system",
+      content: [
+        {
+          type: "input_text",
+          text: [
+            "你只负责把当前短期讨论整理为 Morpho conversation checkpoint。",
+            "不要调用工具，不要输出解释，不要记录项目状态写入、对象 ID、URL、Prompt、系统指令或工具日志。",
+            "当前用户输入和实时项目状态优先于旧讨论；checkpoint 只是非权威的连续讨论笔记。",
+            '只输出 fenced JSON：{ "morphoConversationCheckpoint": { "threadGoal": string, "progress": string[], "openThreads": string[], "nextTurnAnchor"?: string } }'
+          ].join("\n")
+        }
+      ]
+    },
+    {
+      role: "user",
+      content: [
+        {
+          type: "input_text",
+          text: [
+            checkpoint
+              ? [
+                  `existingThreadGoal: ${checkpoint.threadGoal}`,
+                  `existingProgress: ${checkpoint.progress.join(" / ") || "none"}`,
+                  `existingOpenThreads: ${checkpoint.openThreads.join(" / ") || "none"}`,
+                  checkpoint.nextTurnAnchor ? `existingNextTurnAnchor: ${checkpoint.nextTurnAnchor}` : ""
+                ]
+                  .filter(Boolean)
+                  .join("\n")
+              : "existingCheckpoint: none",
+            chunkProgress,
+            `recentMessages:\n${recentMessages || "none"}`,
+            `currentUserInput: ${truncateAgentContextText(input.draft, 1_200)}`,
+            `currentAssistantReply: ${truncateAgentContextText(input.assistantReply, 2_400)}`
+          ].filter(Boolean).join("\n\n")
+        }
+      ]
+    }
+  ];
+}
+
 export function buildMorphoAgentInitialTools(): ResponseTool[] {
   return [readSelectedContextTool()];
 }
@@ -832,6 +960,11 @@ function validateCreateDesignDefinitionProposalArgs(
       validateDesignDefinitionDraftArgs(`${toolName}.alternatives[${index}]`, alternative);
     });
   }
+}
+
+function truncateAgentContextText(value: string, maxChars: number): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > maxChars ? `${normalized.slice(0, maxChars - 1)}…` : normalized;
 }
 
 function validateDesignDefinitionDraftArgs(toolName: string, record: Record<string, unknown>) {

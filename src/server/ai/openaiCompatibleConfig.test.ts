@@ -17,7 +17,11 @@ describe("openai-compatible config", () => {
         baseUrl: "https://api.aijws.com/v1",
         model: "gpt-5.6-terra",
         reasoningEffort: "high",
-        webSearchEnabled: true
+        webSearchEnabled: true,
+        contextWindowTokens: 372_000,
+        contextPrepareTokens: 200_000,
+        contextCompactTokens: 300_000,
+        contextTargetTokens: 16_000
       }
     });
   });
@@ -35,9 +39,57 @@ describe("openai-compatible config", () => {
         baseUrl: "https://api.aijws.com/v1",
         model: "gpt-5.6-terra",
         reasoningEffort: undefined,
-        webSearchEnabled: true
+        webSearchEnabled: true,
+        contextWindowTokens: 372_000,
+        contextPrepareTokens: 200_000,
+        contextCompactTokens: 300_000,
+        contextTargetTokens: 16_000
       }
     });
+  });
+
+  it("parses explicit context token thresholds", () => {
+    const result = loadOpenAiCompatibleConfig({
+      AIJWS_API_KEY: "key",
+      MORPHO_AI_CONTEXT_WINDOW_TOKENS: "500000",
+      MORPHO_AI_CONTEXT_PREPARE_TOKENS: "220000",
+      MORPHO_AI_CONTEXT_COMPACT_TOKENS: "360000",
+      MORPHO_AI_CONTEXT_TARGET_TOKENS: "12000"
+    });
+
+    expect(result).toMatchObject({
+      status: "ok",
+      config: {
+        contextWindowTokens: 500_000,
+        contextPrepareTokens: 220_000,
+        contextCompactTokens: 360_000,
+        contextTargetTokens: 12_000
+      }
+    });
+  });
+
+  it.each([
+    {
+      MORPHO_AI_CONTEXT_WINDOW_TOKENS: "300000",
+      MORPHO_AI_CONTEXT_PREPARE_TOKENS: "200000",
+      MORPHO_AI_CONTEXT_COMPACT_TOKENS: "300000"
+    },
+    {
+      MORPHO_AI_CONTEXT_WINDOW_TOKENS: "not-a-number"
+    },
+    {
+      MORPHO_AI_CONTEXT_PREPARE_TOKENS: "0"
+    },
+    {
+      MORPHO_AI_CONTEXT_TARGET_TOKENS: "200000"
+    }
+  ])("rejects invalid context token thresholds", (contextEnv) => {
+    const result = loadOpenAiCompatibleConfig({
+      AIJWS_API_KEY: "key",
+      ...contextEnv
+    });
+
+    expect(result.status).toBe("failed");
   });
 
   it("does not fall back to legacy MiMo env keys for text AI", () => {

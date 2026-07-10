@@ -38,6 +38,26 @@ describe("GrsAI image config", () => {
     });
   });
 
+  it("reads comma-separated fallback base URLs without duplicating the primary", () => {
+    const result = loadGrsImageConfig({
+      MORPHO_GRS_API_KEY: "secret",
+      MORPHO_GRS_BASE_URL: "https://grs-primary.example",
+      MORPHO_GRS_FALLBACK_BASE_URLS:
+        "https://grs-fallback.example, https://grs-primary.example, https://grs-second.example",
+      MORPHO_GRS_DEFAULT_MODEL: "nano-banana-2-lite"
+    });
+
+    expect(result).toEqual({
+      status: "ok",
+      config: {
+        apiKey: "secret",
+        baseUrl: "https://grs-primary.example",
+        fallbackBaseUrls: ["https://grs-fallback.example", "https://grs-second.example"],
+        model: "nano-banana-2-lite"
+      }
+    });
+  });
+
   it("fails clearly when required GrsAI environment variables are missing", () => {
     const result = loadGrsImageConfig({});
 

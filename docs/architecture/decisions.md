@@ -581,3 +581,11 @@ Decision: explicit multi-option design-definition generation creates vertically 
 Reason: alternative definitions represent different product strategies, not successive edits to one strategy. Reusing the current object made one option overwrite another visually and removed the user's ability to switch between candidates.
 
 Boundary: only one definition is current effective at a time. Canvas position remains visual organization only, and switching current definition does not move, delete, or merge definition objects.
+
+## 2026-07-10: Compact Agent Context Without Replaying Tools
+
+Decision: extend the existing lane-local `ConversationCheckpoint` runtime to the controlled Agent path and enforce server-side request budgets of 372,000 tokens for the configured provider window, 200,000 tokens for checkpoint preparation, 300,000 tokens for mandatory compaction, and 16,000 tokens as the target for compressible discussion/tool history.
+
+Reason: the Agent previously sent only the last eight global messages, which bounded request size but silently discarded older discussion continuity. A lane checkpoint plus recent same-lane messages preserves continuity while keeping the full visible transcript and real project state unchanged.
+
+Boundary: the 200,000 and 300,000 values are trigger thresholds, not post-compaction sizes. Compaction changes provider input only. It does not delete or rewrite `workspace.ai.messages`, change project facts, expose token meters in the UI, switch away from AiJWS Chat Completions, add a dependency, or alter the workspace schema. The latest tool-call/output tail is protected, and a provider context-limit failure retries the provider request exactly once without rerunning completed client-side tools or project mutations. An exact `/compact` command rolls all eligible current-lane messages after the previous checkpoint through bounded checkpoint-only calls. No canvas or project-state tool is available, and only the final checkpoint is persisted after every chunk succeeds.

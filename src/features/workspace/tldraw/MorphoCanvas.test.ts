@@ -115,12 +115,22 @@ describe("MorphoCanvas focus navigation", () => {
       proposalId: proposed.proposal.id,
       proposalType: "designDefinition"
     });
-    expect(getRenderableCanvasInstances(proposed.workspace)).toContainEqual(
-      expect.objectContaining({
-        objectId: proposed.proposal.id,
-        position: { x: 640, y: 360 }
-      })
-    );
+    const renderableInstances = getRenderableCanvasInstances(proposed.workspace);
+    const proposalInstance = renderableInstances.find((instance) => instance.objectId === proposed.proposal.id);
+    expect(proposalInstance?.position.x).toBe(640);
+    expect(proposalInstance?.position.y).toBeGreaterThan(360);
+    expect(
+      renderableInstances
+        .filter((instance) => instance.objectId !== proposed.proposal.id)
+        .every(
+          (instance) =>
+            !proposalInstance ||
+            proposalInstance.position.x + proposalInstance.size.w <= instance.position.x ||
+            instance.position.x + instance.size.w <= proposalInstance.position.x ||
+            proposalInstance.position.y + proposalInstance.size.h <= instance.position.y ||
+            instance.position.y + instance.size.h <= proposalInstance.position.y
+        )
+    ).toBe(true);
   });
 
   it("keeps pending proposal shapes active while their proposal is pending", () => {

@@ -29,6 +29,160 @@ import {
 } from "./operations";
 
 describe("Morpho Operation Runtime", () => {
+  it("moves a generated proposal draft away from an occupied canvas position", () => {
+    const workspace = createBlankWorkspace("project-proposal-placement-collision");
+    workspace.objects.existing = {
+      id: "existing",
+      type: "text",
+      title: "Existing",
+      summary: "Existing object",
+      body: "Existing object",
+      createdBy: "user",
+      visibility: "active"
+    };
+    workspace.canvas.instances.push({
+      id: "canvas-existing",
+      objectId: "existing",
+      position: { x: 640, y: 320 },
+      size: { w: 340, h: 168 }
+    });
+
+    const result = recordDesignDefinitionProposal(workspace, {
+      proposalId: "proposal-definition-collision",
+      operationId: "operation-definition-collision",
+      workIntent: "createDesignDefinition",
+      title: "Definition candidate",
+      summary: "Candidate summary",
+      projectGoal: "Goal",
+      targetUsers: [],
+      primaryScenarios: [],
+      coreProblem: "Problem",
+      designPrinciples: [],
+      constraints: [],
+      avoidDirections: [],
+      opportunities: [],
+      openQuestions: [],
+      sourceObjectIds: [],
+      citations: [],
+      position: { x: 640, y: 320 }
+    });
+
+    const proposalInstance = result.workspace.canvas.instances.find(
+      (instance) => instance.objectId === result.proposal.id
+    );
+    expect(proposalInstance?.position).toEqual({ x: 640, y: 520 });
+  });
+
+  it("keeps an applied research object at the collision-free proposal position", () => {
+    const workspace = createBlankWorkspace("project-research-placement-collision");
+    workspace.objects.existing = {
+      id: "existing",
+      type: "text",
+      title: "Existing",
+      summary: "Existing object",
+      body: "Existing object",
+      createdBy: "user",
+      visibility: "active"
+    };
+    workspace.canvas.instances.push({
+      id: "canvas-existing",
+      objectId: "existing",
+      position: { x: 640, y: 320 },
+      size: { w: 320, h: 148 }
+    });
+    const operation = createResearchOperation(workspace, {
+      userInput: "research",
+      selectedObjectIds: [],
+      allowWebSearch: false
+    });
+    const proposed = recordResearchAnalysisProposal(operation.workspace, {
+      operationId: operation.operation.id,
+      title: "Research",
+      summary: "Research summary",
+      findings: [],
+      opportunities: [],
+      constraints: [],
+      openQuestions: [],
+      sourceObjectIds: [],
+      citations: [],
+      position: { x: 640, y: 320 }
+    });
+    const applied = applyResearchAnalysisProposal(proposed.workspace, proposed.proposal.id, {
+      position: { x: 640, y: 320 }
+    });
+
+    expect(applied.status).toBe("updated");
+    if (applied.status !== "updated") {
+      return;
+    }
+    const researchInstance = applied.workspace.canvas.instances.find(
+      (instance) => instance.objectId === applied.researchObject.id
+    );
+    expect(researchInstance?.position).toEqual({ x: 640, y: 500 });
+  });
+
+  it("moves an applied concept-direction batch as one block away from existing canvas objects", () => {
+    const workspace = createBlankWorkspace("project-direction-placement-collision");
+    workspace.objects.existing = {
+      id: "existing",
+      type: "text",
+      title: "Existing",
+      summary: "Existing object",
+      body: "Existing object",
+      createdBy: "user",
+      visibility: "active"
+    };
+    workspace.canvas.instances.push({
+      id: "canvas-existing",
+      objectId: "existing",
+      position: { x: 1200, y: 320 },
+      size: { w: 320, h: 240 }
+    });
+
+    const result = recordAndApplyConceptDirectionProposal(workspace, {
+      operationId: "operation-direction-collision",
+      workIntent: "createConceptDirections",
+      title: "Direction candidates",
+      summary: "Two direction candidates",
+      directions: [
+        {
+          title: "Direction A",
+          summary: "A",
+          conceptStatement: "A",
+          keywords: [],
+          strategy: "A",
+          differentiators: [],
+          visualSignals: [],
+          risks: [],
+          openQuestions: []
+        },
+        {
+          title: "Direction B",
+          summary: "B",
+          conceptStatement: "B",
+          keywords: [],
+          strategy: "B",
+          differentiators: [],
+          visualSignals: [],
+          risks: [],
+          openQuestions: []
+        }
+      ],
+      sourceObjectIds: [],
+      citations: [],
+      position: { x: 1200, y: 320 }
+    });
+
+    expect(result.status).toBe("updated");
+    if (result.status !== "updated") {
+      return;
+    }
+    const directionInstances = result.workspace.canvas.instances.filter((instance) =>
+      result.directions.some((direction) => direction.id === instance.objectId)
+    );
+    expect(Math.min(...directionInstances.map((instance) => instance.position.y))).toBeGreaterThanOrEqual(592);
+  });
+
   it("creates a finite research operation from an input snapshot without mutating objects", () => {
     const workspace = createBlankWorkspace("project-op");
     const operation = createResearchOperation(workspace, {
