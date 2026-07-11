@@ -61,11 +61,15 @@ export function shouldShowSelectionToolbarForInteraction(input: {
 export const SELECTION_TOOLBAR_OBSTACLE_SELECTORS = [
   ".ai-panel:not(.collapsed)",
   ".detail-popover",
+  ".side-drawer",
+  ".project-map",
   ".left-rail",
   ".floating-cluster",
   ".delivery-panel",
+  ".delivery-output-panel",
   ".archive-panel",
   ".document-reader-panel",
+  ".proposal-detail-dialog",
   ".ai-queue"
 ] as const;
 

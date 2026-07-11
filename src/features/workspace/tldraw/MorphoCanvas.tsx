@@ -45,6 +45,11 @@ type MorphoCanvasProps = {
   pendingImageGenerationSlots: PendingImageGenerationSlot[];
   focusRequest: FocusRequest;
   selectedObjectIds: string[];
+  /**
+   * Changes when floating chrome opens/closes so the selection toolbar
+   * re-measures obstacles even when the tldraw editor itself is idle.
+   */
+  floatingChromeKey?: string;
   renderSelectionToolbar?: (selectedObjects: MorphoObject[], placement: SelectionToolbarPlacement) => ReactNode;
   onSelectionChange: (objectIds: string[]) => void;
   onInstancesChange: (instances: CanvasInstance[]) => void;
@@ -144,6 +149,7 @@ export function MorphoCanvas({
   pendingImageGenerationSlots,
   focusRequest,
   selectedObjectIds,
+  floatingChromeKey = "",
   renderSelectionToolbar,
   onSelectionChange,
   onInstancesChange,
@@ -177,9 +183,15 @@ export function MorphoCanvas({
     () => ({
       OnTheCanvas: () => <CanvasRelationshipOverlay workspace={workspace} emphasizedObjectId={highlightedObjectId} />,
       InFrontOfTheCanvas: () =>
-        renderSelectionToolbar ? <CanvasSelectionToolbar workspace={workspace} renderToolbar={renderSelectionToolbar} /> : null
+        renderSelectionToolbar ? (
+          <CanvasSelectionToolbar
+            workspace={workspace}
+            floatingChromeKey={floatingChromeKey}
+            renderToolbar={renderSelectionToolbar}
+          />
+        ) : null
     }),
-    [highlightedObjectId, renderSelectionToolbar, workspace]
+    [floatingChromeKey, highlightedObjectId, renderSelectionToolbar, workspace]
   );
   const pendingSlotRects = useMemo(() => {
     return pendingImageGenerationSlots.map((slot) => {
@@ -834,9 +846,11 @@ const SELECTION_TOOLBAR_GAP = 12;
 
 const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
   workspace,
+  floatingChromeKey,
   renderToolbar
 }: {
   workspace: MorphoWorkspace;
+  floatingChromeKey: string;
   renderToolbar: (selectedObjects: MorphoObject[], placement: SelectionToolbarPlacement) => ReactNode;
 }) {
   const editor = useEditor();
@@ -844,6 +858,16 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
   const isSelectIdle = editor.isIn("select.idle");
   const isDragging = editor.inputs.getIsDragging();
   const isPanning = editor.inputs.getIsPanning();
+  /**
+   * Obstacle DOM (drawers / AI panel) often commits in the same React update as
+   * floatingChromeKey. Measuring during that render still sees the previous DOM.
+   * Remeasure after layout so "toolbar already open → open panel" hides correctly.
+   */
+  const [obstacleEpoch, setObstacleEpoch] = useState(0);
+  useLayoutEffect(() => {
+    setObstacleEpoch((value) => value + 1);
+  }, [floatingChromeKey]);
+
   if (
     !shouldShowSelectionToolbarForInteraction({
       isSelectIdle,
@@ -864,6 +888,8 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
     return null;
   }
 
+  // Read epoch so layout remount forces a fresh obstacle query + placement.
+  void obstacleEpoch;
   const obstacles = collectSelectionToolbarObstacles();
   const placement = getSelectionToolbarPlacement(
     { x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h },

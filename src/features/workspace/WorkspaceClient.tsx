@@ -5677,6 +5677,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         pendingImageGenerationSlots={pendingImageGenerationSlots}
         focusRequest={focusRequest}
         selectedObjectIds={selectedObjectIds}
+        floatingChromeKey={[
+          activeDrawer ?? "none",
+          aiOpen ? "ai" : "x",
+          deliveryPanelOpen ? "delivery" : "x",
+          deliveryOutputPanelOpen ? "output" : "x",
+          bundlePanelOpen ? "bundle" : "x",
+          documentReader ? "reader" : "x",
+          detailProposalId ? "proposal" : "x",
+          detailDesignDefinitionId ? "def" : "x",
+          detailConceptDirectionId ? "concept" : "x"
+        ].join(":")}
         renderSelectionToolbar={renderSelectionToolbar}
         onSelectionChange={handleSelectionChange}
         onInstancesChange={handleInstancesChange}

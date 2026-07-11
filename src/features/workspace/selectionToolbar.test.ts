@@ -126,11 +126,28 @@ describe("selection toolbar placement", () => {
   it("maps positive client rects into screen obstacles and keeps obstacle selectors stable", () => {
     expect(SELECTION_TOOLBAR_OBSTACLE_SELECTORS).toContain(".ai-panel:not(.collapsed)");
     expect(SELECTION_TOOLBAR_OBSTACLE_SELECTORS).toContain(".detail-popover");
+    expect(SELECTION_TOOLBAR_OBSTACLE_SELECTORS).toContain(".side-drawer");
+    expect(SELECTION_TOOLBAR_OBSTACLE_SELECTORS).toContain(".project-map");
     expect(
       screenRectsFromClientRects([
         { left: 10, top: 20, width: 100, height: 50 },
         { left: 0, top: 0, width: 0, height: 0 }
       ])
     ).toEqual([{ x: 10, y: 20, w: 100, h: 50 }]);
+  });
+
+  it("hides when the toolbar would overlap a left side drawer", () => {
+    const placement = getSelectionToolbarPlacement(
+      { x: 120, y: 240, w: 220, h: 160 },
+      { w: 1280, h: 800 },
+      {
+        toolbar: { w: 360, h: 44 },
+        margin: 16,
+        gap: 12,
+        obstacles: [{ x: 84, y: 84, w: 340, h: 600 }]
+      }
+    );
+
+    expect(placement).toBeNull();
   });
 });

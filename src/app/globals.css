@@ -444,15 +444,15 @@ button:disabled {
 .project-map {
   position: fixed;
   z-index: 44;
-  /* Keep top clearance; raise bottom so short panels are not too low. */
-  top: 84px;
-  bottom: 56px;
+  /* Bottom-align with AI panel (bottom: 82px); grow upward within the free band. */
+  top: auto;
+  bottom: 82px;
   left: 83px;
   width: 230px;
   height: fit-content;
-  max-height: calc(100vh - 84px - 56px);
-  margin-top: auto;
-  margin-bottom: auto;
+  max-height: calc(100vh - 84px - 82px);
+  margin-top: 0;
+  margin-bottom: 0;
   padding: 13px;
   border: 1px solid rgba(78, 68, 58, 0.1);
   border-radius: 12px;
@@ -516,15 +516,15 @@ button:disabled {
 }
 
 .side-drawer {
-  /* Same vertical band as project-map. */
-  top: 84px;
-  bottom: 56px;
+  /* Bottom-align with AI panel; same free band as project-map. */
+  top: auto;
+  bottom: 82px;
   left: 84px;
   width: 286px;
   height: fit-content;
-  max-height: calc(100vh - 84px - 56px);
-  margin-top: auto;
-  margin-bottom: auto;
+  max-height: calc(100vh - 84px - 82px);
+  margin-top: 0;
+  margin-bottom: 0;
   padding: 16px;
   border-radius: 13px;
   overflow: auto;
@@ -3861,7 +3861,7 @@ button:disabled {
 
 .side-drawer {
   width: 310px;
-  max-height: calc(100vh - 84px - 56px);
+  max-height: calc(100vh - 84px - 82px);
   padding: 18px;
   border-radius: var(--radius-lg);
 }
@@ -4753,7 +4753,7 @@ select:focus-visible {
 
 .side-drawer {
   width: 340px;
-  max-height: calc(100vh - 84px - 56px);
+  max-height: calc(100vh - 84px - 82px);
   padding: 17px;
 }
 
