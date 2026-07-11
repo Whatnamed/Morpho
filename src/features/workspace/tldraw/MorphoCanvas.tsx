@@ -6,7 +6,14 @@ import { Tldraw, Vec, track, useEditor, type Editor, type TLShape, type TLShapeI
 import { calculateAnchoredZoom } from "@/domain/morpho/canvasCamera";
 import type { CanvasInstance, CanvasPoint, CanvasView, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
 import { getRenderableCanvasInstances } from "@/domain/morpho/workspace";
-import { getSelectionToolbarPlacement, type SelectionToolbarPlacement } from "../selectionToolbar";
+import {
+  getSelectionToolbarPlacement,
+  screenRectsFromClientRects,
+  SELECTION_TOOLBAR_OBSTACLE_SELECTORS,
+  shouldShowSelectionToolbarForInteraction,
+  type SelectionToolbarPlacement,
+  type ScreenRect
+} from "../selectionToolbar";
 import { shouldAcceptCanvasSelection } from "../workspaceNavigation";
 import type { PendingImageGenerationSlot } from "../pendingImageGenerationSlots";
 import { buildRelationshipPath, buildRelationshipRoute, createRelationshipRouteCache, type CanvasPageBounds } from "./canvasRelationshipRouting";
@@ -821,6 +828,10 @@ const CanvasRelationshipOverlay = track(function CanvasRelationshipOverlay({
   );
 });
 
+const SELECTION_TOOLBAR_SIZE = { w: 460, h: 44 } as const;
+const SELECTION_TOOLBAR_MARGIN = 18;
+const SELECTION_TOOLBAR_GAP = 12;
+
 const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
   workspace,
   renderToolbar
@@ -829,27 +840,66 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
   renderToolbar: (selectedObjects: MorphoObject[], placement: SelectionToolbarPlacement) => ReactNode;
 }) {
   const editor = useEditor();
-  if (!editor.isIn("select.idle")) return null;
+  // Read path + input atoms so track() re-renders when idle / drag / pan changes.
+  const isSelectIdle = editor.isIn("select.idle");
+  const isDragging = editor.inputs.getIsDragging();
+  const isPanning = editor.inputs.getIsPanning();
+  if (
+    !shouldShowSelectionToolbarForInteraction({
+      isSelectIdle,
+      isDragging,
+      isPanning
+    })
+  ) {
+    return null;
+  }
+
   const bounds = editor.getSelectionRotatedScreenBounds();
   const selectedObjects = editor
     .getSelectedShapes()
     .filter(isMorphoShape)
     .map((shape) => workspace.objects[shape.props.objectId])
     .filter((object): object is MorphoObject => Boolean(object));
-  if (!bounds || selectedObjects.length === 0) return null;
+  if (!bounds || selectedObjects.length === 0) {
+    return null;
+  }
 
-  const aiPanel = document.querySelector<HTMLElement>(".ai-panel:not(.collapsed)");
-  const aiBounds = aiPanel?.getBoundingClientRect();
+  const obstacles = collectSelectionToolbarObstacles();
   const placement = getSelectionToolbarPlacement(
     { x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h },
     { w: window.innerWidth, h: window.innerHeight },
-    { toolbar: { w: 460, h: 44 }, margin: 18, gap: 12 }
+    {
+      toolbar: { w: SELECTION_TOOLBAR_SIZE.w, h: SELECTION_TOOLBAR_SIZE.h },
+      margin: SELECTION_TOOLBAR_MARGIN,
+      gap: SELECTION_TOOLBAR_GAP,
+      obstacles
+    }
   );
-  if (aiBounds && placement.x + 230 > aiBounds.left && placement.y < aiBounds.bottom && placement.y + 44 > aiBounds.top) {
-    placement.x = Math.max(18 + 230, aiBounds.left - 18 - 230);
+  if (!placement) {
+    return null;
   }
+
   return <>{renderToolbar(selectedObjects, placement)}</>;
 });
+
+function collectSelectionToolbarObstacles(): ScreenRect[] {
+  if (typeof document === "undefined") {
+    return [];
+  }
+
+  const clientRects: Array<Pick<DOMRect, "left" | "top" | "width" | "height">> = [];
+  for (const selector of SELECTION_TOOLBAR_OBSTACLE_SELECTORS) {
+    document.querySelectorAll<HTMLElement>(selector).forEach((element) => {
+      // Collapsed AI is already excluded by selector; skip other inert nodes.
+      if (element.getClientRects().length === 0) {
+        return;
+      }
+      clientRects.push(element.getBoundingClientRect());
+    });
+  }
+
+  return screenRectsFromClientRects(clientRects);
+}
 
 function getUrlFromText(text: string): string {
   const trimmed = text.trim();
