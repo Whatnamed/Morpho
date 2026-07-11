@@ -24,12 +24,22 @@ describe("buildRelationshipRoute", () => {
     expect(route.waypoints).toEqual([]);
   });
 
-  it("spreads ports on the same edge for multiple direct relationships", () => {
-    const upper = buildRelationshipRoute({ source, target, obstacles: [], sourcePort: { index: 0, count: 3 } });
+  it("uses one shared edge anchor when several relationships leave the same side", () => {
+    const upperTarget = { ...target, y: 20 };
+    const lowerTarget = { ...target, y: 220 };
+    const upper = buildRelationshipRoute({ source, target: upperTarget, obstacles: [], sourcePort: { index: 0, count: 3 } });
     const center = buildRelationshipRoute({ source, target, obstacles: [], sourcePort: { index: 1, count: 3 } });
-    const lower = buildRelationshipRoute({ source, target, obstacles: [], sourcePort: { index: 2, count: 3 } });
+    const lower = buildRelationshipRoute({ source, target: lowerTarget, obstacles: [], sourcePort: { index: 2, count: 3 } });
 
-    expect([upper.start.y, center.start.y, lower.start.y]).toEqual([108, 120, 132]);
+    expect([upper.start.y, center.start.y, lower.start.y]).toEqual([120, 120, 120]);
+
+    const upperSource = { ...source, y: 20 };
+    const lowerSource = { ...source, y: 220 };
+    const incomingUpper = buildRelationshipRoute({ source: upperSource, target, obstacles: [], targetPort: { index: 0, count: 3 } });
+    const incomingCenter = buildRelationshipRoute({ source, target, obstacles: [], targetPort: { index: 1, count: 3 } });
+    const incomingLower = buildRelationshipRoute({ source: lowerSource, target, obstacles: [], targetPort: { index: 2, count: 3 } });
+
+    expect([incomingUpper.end.y, incomingCenter.end.y, incomingLower.end.y]).toEqual([120, 120, 120]);
   });
 });
 

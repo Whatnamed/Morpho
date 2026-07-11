@@ -797,19 +797,8 @@ const CanvasRelationshipOverlay = track(function CanvasRelationshipOverlay({
   const visibleEdges = collectDirectCanvasEdges(workspace).filter(
     (edge) => boundsByObjectId.has(edge.fromObjectId) && boundsByObjectId.has(edge.toObjectId)
   );
-  const portIndexByObject = new Map<string, number>();
-  const portCountByObject = new Map<string, number>();
-  for (const edge of visibleEdges) {
-    portCountByObject.set(edge.fromObjectId, (portCountByObject.get(edge.fromObjectId) ?? 0) + 1);
-    portCountByObject.set(edge.toObjectId, (portCountByObject.get(edge.toObjectId) ?? 0) + 1);
-  }
-
   const routes = visibleEdges.map((edge) => {
     const key = `${edge.fromObjectId}:${edge.toObjectId}`;
-    const sourceIndex = portIndexByObject.get(edge.fromObjectId) ?? 0;
-    const targetIndex = portIndexByObject.get(edge.toObjectId) ?? 0;
-    portIndexByObject.set(edge.fromObjectId, sourceIndex + 1);
-    portIndexByObject.set(edge.toObjectId, targetIndex + 1);
     const source = boundsByObjectId.get(edge.fromObjectId)!;
     const target = boundsByObjectId.get(edge.toObjectId)!;
     const endpointObjectIds = [edge.fromObjectId, edge.toObjectId];
@@ -817,9 +806,7 @@ const CanvasRelationshipOverlay = track(function CanvasRelationshipOverlay({
     const route = cached ?? buildRelationshipRoute({
       source,
       target,
-      obstacles: [],
-      sourcePort: { index: sourceIndex, count: portCountByObject.get(edge.fromObjectId) ?? 1 },
-      targetPort: { index: targetIndex, count: portCountByObject.get(edge.toObjectId) ?? 1 }
+      obstacles: []
     });
     if (!cached) routeCacheRef.current.set(key, route, endpointObjectIds);
     const emphasized = emphasizedObjectId === edge.fromObjectId || emphasizedObjectId === edge.toObjectId || editor.getSelectedShapeIds().some((shapeId) => {

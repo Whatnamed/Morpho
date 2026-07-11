@@ -8,29 +8,28 @@ type BuildRelationshipRouteInput = {
   source: CanvasPageBounds;
   target: CanvasPageBounds;
   obstacles: CanvasPageBounds[];
+  // Retained for callers while direct Morpho relationships converge on one
+  // anchor per object side instead of allocating one port per edge.
   sourcePort?: Port;
   targetPort?: Port;
 };
 
 const ENDPOINT_GAP = 6;
-const PORT_SPACING = 12;
 
 export function buildRelationshipRoute({
   source,
   target,
-  obstacles: _obstacles,
-  sourcePort,
-  targetPort
+  obstacles: _obstacles
 }: BuildRelationshipRouteInput): RelationshipRoute {
   const sourceCenter = centerOf(source);
   const targetCenter = centerOf(target);
   const horizontal = Math.abs(targetCenter.x - sourceCenter.x) >= Math.abs(targetCenter.y - sourceCenter.y);
   const start = horizontal
-    ? edgePoint(source, targetCenter.x >= sourceCenter.x ? "right" : "left", sourcePort)
-    : edgePoint(source, targetCenter.y >= sourceCenter.y ? "bottom" : "top", sourcePort);
+    ? edgePoint(source, targetCenter.x >= sourceCenter.x ? "right" : "left")
+    : edgePoint(source, targetCenter.y >= sourceCenter.y ? "bottom" : "top");
   const end = horizontal
-    ? edgePoint(target, targetCenter.x >= sourceCenter.x ? "left" : "right", targetPort)
-    : edgePoint(target, targetCenter.y >= sourceCenter.y ? "top" : "bottom", targetPort);
+    ? edgePoint(target, targetCenter.x >= sourceCenter.x ? "left" : "right")
+    : edgePoint(target, targetCenter.y >= sourceCenter.y ? "top" : "bottom");
   return { start, end, waypoints: [] };
 }
 
@@ -93,12 +92,11 @@ export function createRelationshipRouteCache() {
   };
 }
 
-function edgePoint(bounds: CanvasPageBounds, side: "left" | "right" | "top" | "bottom", port: Port | undefined): CanvasPoint {
-  const offset = port ? (port.index - (port.count - 1) / 2) * PORT_SPACING : 0;
-  if (side === "left") return { x: bounds.x - ENDPOINT_GAP, y: bounds.y + bounds.h / 2 + offset };
-  if (side === "right") return { x: bounds.x + bounds.w + ENDPOINT_GAP, y: bounds.y + bounds.h / 2 + offset };
-  if (side === "top") return { x: bounds.x + bounds.w / 2 + offset, y: bounds.y - ENDPOINT_GAP };
-  return { x: bounds.x + bounds.w / 2 + offset, y: bounds.y + bounds.h + ENDPOINT_GAP };
+function edgePoint(bounds: CanvasPageBounds, side: "left" | "right" | "top" | "bottom"): CanvasPoint {
+  if (side === "left") return { x: bounds.x - ENDPOINT_GAP, y: bounds.y + bounds.h / 2 };
+  if (side === "right") return { x: bounds.x + bounds.w + ENDPOINT_GAP, y: bounds.y + bounds.h / 2 };
+  if (side === "top") return { x: bounds.x + bounds.w / 2, y: bounds.y - ENDPOINT_GAP };
+  return { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h + ENDPOINT_GAP };
 }
 
 function centerOf(bounds: CanvasPageBounds): CanvasPoint {

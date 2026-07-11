@@ -1383,38 +1383,25 @@ button:disabled {
   scrollbar-width: none;
 }
 
-/*
- * Fixed + body portal (see AiConversationPanel). Must not live under .ai-panel's
- * backdrop-filter / scroll-shell mask, or blur samples empty glass only.
- */
 .ai-scroll-bottom-button {
-  position: fixed;
-  z-index: 46;
-  width: 36px;
-  height: 36px;
+  position: absolute;
+  right: 18px;
+  bottom: 150px;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid rgba(78, 68, 58, 0.16);
+  border: 1px solid rgba(78, 68, 58, 0.12);
   border-radius: 999px;
-  /* Dense enough to read, open enough for real frost of text behind. */
-  background: rgba(252, 251, 248, 0.58);
-  color: var(--text-secondary);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.55) inset,
-    0 8px 20px rgba(54, 45, 35, 0.12);
-  backdrop-filter: blur(28px) saturate(1.18);
-  -webkit-backdrop-filter: blur(28px) saturate(1.18);
+  /* Fully opaque — no glass sampling, no show-through. */
+  background: #fcfbf8;
+  color: var(--text-primary);
+  box-shadow: 0 8px 20px rgba(54, 45, 35, 0.12);
   cursor: pointer;
   line-height: 0;
-  transform: translateX(-50%);
-  transition:
-    background-color 150ms ease,
-    border-color 150ms ease,
-    box-shadow 150ms ease,
-    color 150ms ease,
-    transform 150ms ease;
 }
 
 .ai-scroll-bottom-button svg {
@@ -1424,25 +1411,8 @@ button:disabled {
   transform: translateY(2px);
 }
 
-.ai-scroll-bottom-button:hover {
-  border-color: rgba(109, 127, 136, 0.36);
-  background: rgba(255, 255, 255, 0.66);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.65) inset,
-    0 10px 22px rgba(30, 24, 18, 0.12);
-  color: var(--text-primary);
-  transform: translateX(-50%) translateY(-1px);
-}
-
-.ai-scroll-bottom-button:focus-visible {
-  outline: 2px solid rgba(109, 127, 136, 0.6);
-  outline-offset: 3px;
-}
-
-.ai-scroll-bottom-button.has-new-content {
-  border-color: rgba(142, 76, 36, 0.28);
-  background: rgba(255, 250, 245, 0.6);
-  color: var(--accent-brand);
+.ai-scroll-bottom-button[hidden] {
+  display: none;
 }
 
 .ai-scroll::-webkit-scrollbar {
@@ -5617,6 +5587,17 @@ select:focus-visible {
   border-radius: 999px;
 }
 
+.ai-scroll-bottom-button {
+  left: 50%;
+  right: auto;
+  bottom: 12px;
+  transform: translateX(-50%);
+  background: #fcfbf8;
+  opacity: 1;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 .detail-popover {
   width: min(700px, calc(100vw - 560px));
   max-height: 24vh;
@@ -6928,6 +6909,44 @@ select:focus-visible {
   border-top: 0;
   background: transparent;
   box-shadow: none;
+}
+
+.ai-scroll-bottom-button {
+  z-index: 3;
+  bottom: 36px;
+  width: 36px;
+  height: 36px;
+  border-color: rgba(78, 68, 58, 0.16);
+  background: #fcfbf8;
+  box-shadow: 0 6px 16px rgba(30, 24, 18, 0.1);
+  color: var(--text-secondary);
+  opacity: 1;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.ai-scroll-bottom-button:hover {
+  border-color: rgba(109, 127, 136, 0.36);
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(30, 24, 18, 0.12);
+  color: var(--text-primary);
+  opacity: 1;
+  transform: translateX(-50%) translateY(-1px);
+}
+
+.ai-scroll-bottom-button:focus-visible {
+  outline: 2px solid rgba(109, 127, 136, 0.6);
+  outline-offset: 3px;
+  opacity: 1;
+}
+
+.ai-scroll-bottom-button.has-new-content {
+  border-color: rgba(142, 76, 36, 0.28);
+  background: #fffaf5;
+  color: var(--accent-brand);
+  box-shadow: 0 6px 16px rgba(142, 76, 36, 0.12);
+  opacity: 1;
 }
 
 @media (max-width: 980px) {
