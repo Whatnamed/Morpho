@@ -156,7 +156,7 @@ export function ProjectHomeClient({ account, accessError }: ProjectHomeClientPro
               </button>
             ))
           ) : (
-            <p>还没有项目</p>
+            <p className="project-home-empty-hint">还没有项目</p>
           )}
         </section>
 

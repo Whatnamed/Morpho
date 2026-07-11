@@ -93,6 +93,7 @@ export function LoginClient({ nextPath, configError }: LoginClientProps) {
               inputMode="email"
               name="email"
               placeholder="name@example.com"
+              spellCheck={false}
               type="email"
               value={email}
               onChange={(event) => setEmail(event.currentTarget.value)}

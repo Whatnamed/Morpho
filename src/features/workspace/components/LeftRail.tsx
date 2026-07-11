@@ -1,6 +1,6 @@
 "use client";
 
-import { Boxes, EyeOff, Map, Plus, Search } from "lucide-react";
+import { Boxes, EyeOff, Map, NotebookText, Plus, Search } from "lucide-react";
 
 export type DrawerMode = "map" | "assets" | "hidden" | "search" | "records" | null;
 
@@ -17,7 +17,7 @@ export function LeftRail({ activeDrawer, onDrawerChange, onAddToCanvas }: LeftRa
 
   return (
     <aside className="left-rail" aria-label="工作台导航">
-      <button className="rail-button create" type="button" aria-label="添加到画布" onClick={onAddToCanvas}>
+      <button className="rail-button create" type="button" aria-label="添加到画布" title="添加到画布" onClick={onAddToCanvas}>
         <Plus size={16} />
         <span className="tooltip">添加到画布</span>
       </button>
@@ -25,6 +25,8 @@ export function LeftRail({ activeDrawer, onDrawerChange, onAddToCanvas }: LeftRa
         className={`rail-button ${activeDrawer === "map" ? "active" : ""}`}
         type="button"
         aria-label="项目地图"
+        aria-pressed={activeDrawer === "map"}
+        title="项目地图"
         onClick={() => toggle("map")}
       >
         <Map size={16} />
@@ -34,6 +36,8 @@ export function LeftRail({ activeDrawer, onDrawerChange, onAddToCanvas }: LeftRa
         className={`rail-button ${activeDrawer === "assets" ? "active" : ""}`}
         type="button"
         aria-label="资产"
+        aria-pressed={activeDrawer === "assets"}
+        title="资产"
         onClick={() => toggle("assets")}
       >
         <Boxes size={16} />
@@ -43,16 +47,31 @@ export function LeftRail({ activeDrawer, onDrawerChange, onAddToCanvas }: LeftRa
         className={`rail-button ${activeDrawer === "hidden" ? "active" : ""}`}
         type="button"
         aria-label="已隐藏内容"
+        aria-pressed={activeDrawer === "hidden"}
+        title="已隐藏内容"
         onClick={() => toggle("hidden")}
       >
         <EyeOff size={16} />
         <span className="tooltip">已隐藏内容</span>
+      </button>
+      <button
+        className={`rail-button ${activeDrawer === "records" ? "active" : ""}`}
+        type="button"
+        aria-label="项目记录"
+        aria-pressed={activeDrawer === "records"}
+        title="项目记录"
+        onClick={() => toggle("records")}
+      >
+        <NotebookText size={16} />
+        <span className="tooltip">项目记录</span>
       </button>
       <div className="rail-separator" />
       <button
         className={`rail-button ${activeDrawer === "search" ? "active" : ""}`}
         type="button"
         aria-label="项目内搜索"
+        aria-pressed={activeDrawer === "search"}
+        title="项目内搜索"
         onClick={() => toggle("search")}
       >
         <Search size={16} />
