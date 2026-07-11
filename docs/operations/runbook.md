@@ -12,6 +12,14 @@ npm.cmd install
 
 Copy `.env.example` to `.env.local` for local AI provider calls. Do not commit `.env.local`.
 
+tldraw hobby / production license (browser-safe public key):
+
+```text
+NEXT_PUBLIC_TLDRAW_LICENSE_KEY=
+```
+
+Put the key in `.env.local` only. Restart `next dev` after changing it. The app passes it to `<Tldraw licenseKey={...} />` from `NEXT_PUBLIC_TLDRAW_LICENSE_KEY`.
+
 Text chat and agent turns through AiJWS / OpenAI-compatible:
 
 ```text

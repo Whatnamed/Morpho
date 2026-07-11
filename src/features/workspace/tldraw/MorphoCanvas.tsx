@@ -713,9 +713,12 @@ export function MorphoCanvas({
         hideUi
         shapeUtils={shapeUtils}
         colorScheme="light"
+        licenseKey={process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY || undefined}
         onMount={(editor) => {
           editorRef.current = editor;
           editor.user.updateUserPreferences({ isSnapMode: true });
+          // World-space dot grid that pans/zooms with the camera (replaces CSS screen grid).
+          editor.updateInstanceState({ isGridMode: true });
           syncWorkspaceToEditor(editor);
           latestViewRef.current = workspace.canvas.view;
           lastPersistedViewKeyRef.current = getCanvasViewKey(workspace.canvas.view);

@@ -3807,11 +3807,8 @@ button:disabled {
 /* UI refinement pass: keep Morpho as a calm floating workspace, not a dashboard shell. */
 .workspace {
   background:
-    linear-gradient(rgba(77, 66, 54, 0.024) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(77, 66, 54, 0.024) 1px, transparent 1px),
     linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(247, 245, 241, 0.94)),
     var(--canvas);
-  background-size: 48px 48px, 48px 48px, auto, auto;
 }
 
 .floating-cluster,
@@ -4186,11 +4183,8 @@ button:disabled {
 }
 
 .tl-background {
-  background:
-    linear-gradient(rgba(77, 66, 54, 0.026) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(77, 66, 54, 0.026) 1px, transparent 1px),
-    var(--canvas) !important;
-  background-size: 48px 48px !important;
+  /* Solid canvas fill only; world-space dots come from tldraw Grid. */
+  background: var(--canvas) !important;
 }
 
 .login-page {
@@ -4631,20 +4625,22 @@ select:focus-visible {
 
 .workspace {
   background:
-    linear-gradient(rgba(77, 66, 54, 0.018) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(77, 66, 54, 0.018) 1px, transparent 1px),
     radial-gradient(circle at 34% 22%, rgba(255, 255, 255, 0.55), transparent 30%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.4), rgba(247, 245, 241, 0.96)),
     var(--canvas);
-  background-size: 56px 56px, 56px 56px, auto, auto, auto;
 }
 
 .tl-background {
-  background:
-    linear-gradient(rgba(77, 66, 54, 0.018) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(77, 66, 54, 0.018) 1px, transparent 1px),
-    var(--canvas) !important;
-  background-size: 56px 56px !important;
+  background: var(--canvas) !important;
+}
+
+/* tldraw world-space dot grid: warm, quiet, follows pan/zoom */
+.workspace-canvas,
+.workspace-canvas .tl-theme__light,
+.workspace-canvas .tl-container {
+  --tl-color-background: #f7f5f1;
+  /* Soft world-space dots: visible but not competing with cards. */
+  --tl-color-grid: rgba(77, 66, 54, 0.26);
 }
 
 .floating-cluster {
@@ -6904,11 +6900,12 @@ select:focus-visible {
   z-index: 3;
   /* Sit above the softest part of the shell mask fade. */
   bottom: 36px;
-  border-color: rgba(78, 68, 58, 0.1);
-  background: rgba(252, 251, 248, 0.7);
-  box-shadow: 0 4px 12px rgba(30, 24, 18, 0.055);
+  border-color: rgba(78, 68, 58, 0.14);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 5px 14px rgba(30, 24, 18, 0.08);
   color: var(--text-secondary);
-  opacity: 0.62;
+  /* Default (no new content) must stay readable; was 0.62 and nearly invisible. */
+  opacity: 0.88;
   transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease, color 150ms ease, opacity 150ms ease, transform 150ms ease;
 }
 
