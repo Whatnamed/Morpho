@@ -320,11 +320,13 @@ function ContinuitySourceRefs({
     return null;
   }
 
+  const visibleRefs = refs.slice(0, 3);
+  const hiddenCount = Math.max(0, refs.length - visibleRefs.length);
+
   return (
     <ul className="continuity-source-list" aria-label="来源">
-      {refs.slice(0, 6).map((ref) => {
+      {visibleRefs.map((ref) => {
         const fullLabel = sourceRefLabel(ref);
-        const shortLabel = truncateLabel(fullLabel, 42);
         if (ref.kind === "object" && ref.sourceAvailability === "active") {
           return (
             <li key={`${ref.kind}-${ref.id}`}>
@@ -334,7 +336,8 @@ function ContinuitySourceRefs({
                 title={fullLabel}
                 onClick={() => onLocateObject(ref.id)}
               >
-                {shortLabel}
+                <span className="continuity-source-kind">{sourceKindLabel(ref.kind)}</span>
+                <span className="continuity-source-text">{sourceRefDisplayTitle(ref)}</span>
               </button>
             </li>
           );
@@ -343,11 +346,18 @@ function ContinuitySourceRefs({
         return (
           <li key={`${ref.kind}-${ref.id}`}>
             <span className="continuity-source-item" title={ref.snapshot?.summarySnippet ?? fullLabel}>
-              {shortLabel}
+              <span className="continuity-source-kind">{sourceKindLabel(ref.kind)}</span>
+              <span className="continuity-source-text">{sourceRefDisplayTitle(ref)}</span>
+              {sourceAvailabilitySuffix(ref) ? (
+                <span className="continuity-source-flag">{sourceAvailabilitySuffix(ref)}</span>
+              ) : null}
             </span>
           </li>
         );
       })}
+      {hiddenCount > 0 ? (
+        <li className="continuity-source-more">另有 {hiddenCount} 项来源</li>
+      ) : null}
     </ul>
   );
 }
@@ -581,38 +591,78 @@ function categoryLabel(category: string): string {
 
 function sourceKindLabel(kind: ContinuitySourceRef["kind"]): string {
   switch (kind) {
+    case "object":
+      return "对象";
     case "revision":
       return "版本";
     case "operation":
       return "任务";
     case "branch":
-      return "视觉分支";
+      return "分支";
     case "decision":
       return "决策";
     case "citation":
-      return "来源引用";
+      return "引用";
     case "deliveryReference":
-      return "交付引用";
+      return "交付";
     case "message":
-      return "用户表达";
+      return "表达";
     default:
       return "来源";
   }
 }
 
-function sourceRefLabel(ref: ContinuitySourceRef): string {
-  const title = ref.snapshot?.title ?? ref.id;
-  const prefix = sourceKindLabel(ref.kind);
+function sourceRefDisplayTitle(ref: ContinuitySourceRef): string {
   if (ref.kind === "message") {
-    return `${prefix}：${ref.snapshot?.summarySnippet ?? title}`;
+    return ref.snapshot?.summarySnippet ?? ref.snapshot?.title ?? ref.id;
   }
+  if (ref.kind === "operation") {
+    return operationDisplayTitle(ref.snapshot?.title ?? ref.id);
+  }
+  return ref.snapshot?.title ?? ref.id;
+}
+
+function sourceAvailabilitySuffix(ref: ContinuitySourceRef): string {
   if (ref.sourceAvailability === "hidden") {
-    return `${prefix}：${title} · 来源已隐藏`;
+    return "已隐藏";
   }
   if (ref.sourceAvailability === "missing") {
-    return `${prefix}：${title} · 来源不可用`;
+    return "不可用";
   }
-  return `${prefix}：${title}`;
+  return "";
+}
+
+function sourceRefLabel(ref: ContinuitySourceRef): string {
+  const title = sourceRefDisplayTitle(ref);
+  const flag = sourceAvailabilitySuffix(ref);
+  const kind = sourceKindLabel(ref.kind);
+  return flag ? `${kind}：${title} · ${flag}` : `${kind}：${title}`;
+}
+
+function operationDisplayTitle(raw: string): string {
+  const normalized = raw.toLowerCase();
+  if (normalized.includes("designdefinition")) {
+    return "设计定义";
+  }
+  if (normalized.includes("conceptdirection")) {
+    return "概念方向";
+  }
+  if (normalized.includes("imagegeneration") || normalized.includes("image_generation")) {
+    return "图像生成";
+  }
+  if (normalized.includes("research")) {
+    return "研究任务";
+  }
+  if (normalized.includes("comparison") || normalized.includes("compare")) {
+    return "比较分析";
+  }
+  if (normalized.includes("delivery")) {
+    return "交付准备";
+  }
+  if (/operation/i.test(raw) || /^[a-z]+(?:[A-Z][a-z0-9]+)+$/.test(raw)) {
+    return "后台任务";
+  }
+  return raw;
 }
 
 function semanticKindLabel(kind: string | undefined): string {

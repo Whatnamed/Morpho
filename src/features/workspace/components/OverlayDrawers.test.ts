@@ -76,11 +76,13 @@ describe("OverlayDrawers project records", () => {
     expect(html).toContain("项目记录");
     expect(html).toContain("对话 · 偏好");
     expect(html).toContain("夜间识别感优先");
-    expect(html).toContain("来源已隐藏");
-    expect(html).toContain("来源不可用");
-    expect(html).toContain("用户表达");
+    expect(html).toContain("已隐藏");
+    expect(html).toContain("不可用");
+    expect(html).toContain("表达");
     expect(html).toContain("continuity-record-summary");
     expect(html).toContain("continuity-source-list");
+    expect(html).toContain("continuity-source-kind");
+    expect(html).not.toContain("designDefinitionOperation");
     expect(html).not.toContain("当前没有待复核或来源不可用的连续性记录。");
     expect(html).toContain("不再适用");
     expect(html).toContain("撤回记录");
