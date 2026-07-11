@@ -3611,7 +3611,7 @@ button:disabled {
 }
 
 .morpho-object.is-default-reference::before {
-  content: "鍚庣画榛樿鍙傝€?;
+  content: "后续默认参考";
   position: absolute;
   z-index: 2;
   top: 8px;
