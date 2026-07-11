@@ -1288,11 +1288,78 @@ button:disabled {
 .canvas-relationship-overlay path.is-primary {
   stroke: rgba(90, 105, 112, 0.68);
   stroke-opacity: 0.92;
+  stroke-width: 1.6;
 }
 
 .canvas-relationship-overlay path.is-emphasized {
   stroke: rgba(109, 127, 136, 0.88);
   stroke-width: 2;
+}
+
+.canvas-relationship-overlay path.is-dimmed {
+  stroke: rgba(90, 105, 112, 0.22);
+  stroke-opacity: 0.35;
+  stroke-width: 1.2;
+}
+
+.canvas-relationship-overlay path.is-chain {
+  stroke: rgba(109, 127, 136, 0.92);
+  stroke-opacity: 1;
+  stroke-width: 2.1;
+}
+
+.canvas-relationship-overlay path.is-chain-secondary {
+  stroke: rgba(142, 76, 36, 0.42);
+  stroke-opacity: 0.55;
+  stroke-width: 1.35;
+  stroke-dasharray: 5 6;
+}
+
+/* Stage landmarks: warm wash under cards, not heavy containers. */
+.stage-region-shape {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  box-sizing: border-box;
+}
+
+.stage-region-wash {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(78, 68, 58, 0.08);
+  border-radius: 16px;
+  background: rgba(252, 251, 248, 0.42);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  pointer-events: none;
+}
+
+.stage-region-title {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  z-index: 1;
+  color: rgba(78, 68, 58, 0.48);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  user-select: none;
+}
+
+.stage-region-research .stage-region-wash {
+  background: rgba(248, 246, 241, 0.5);
+}
+
+.stage-region-definition .stage-region-wash {
+  background: rgba(252, 249, 245, 0.48);
+}
+
+.stage-region-visual .stage-region-wash {
+  background: rgba(250, 248, 244, 0.44);
+}
+
+.stage-region-delivery .stage-region-wash {
+  background: rgba(246, 248, 246, 0.46);
 }
 
 .document-reader-block {

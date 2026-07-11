@@ -19,6 +19,15 @@ describe("MorphoCanvas focus navigation", () => {
     expect(MORPHO_EDITOR_SYNC_RUN_OPTIONS).toEqual({ history: "ignore" });
   });
 
+  it("filters selection to morpho shapes so stage-only selection yields no object toolbar ids", () => {
+    const morphoLike = {
+      props: { objectId: "definition-current", instanceId: "canvas-definition-current" }
+    } as never;
+    // Stage shapes are excluded before this helper is called; empty morpho selection is the stage-only case.
+    expect(getSelectedMorphoShapeIds([]).objectIds).toEqual([]);
+    expect(getSelectedMorphoShapeIds([morphoLike]).objectIds).toEqual(["definition-current"]);
+  });
+
   it("uses real canvas instance positions before falling back to fixed landmarks", () => {
     const workspace = createInitialWorkspace();
     const movedWorkspace = {

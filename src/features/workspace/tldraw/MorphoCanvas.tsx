@@ -16,8 +16,16 @@ import {
 } from "../selectionToolbar";
 import { shouldAcceptCanvasSelection } from "../workspaceNavigation";
 import type { PendingImageGenerationSlot } from "../pendingImageGenerationSlots";
+import type { StageRegionRecord } from "@/domain/morpho/types";
+import {
+  areStageRegionRecordsEqual,
+  ensureStageRegions,
+  getStageRegions,
+  mergeStageShapeLayoutsIntoRecords
+} from "@/domain/morpho/stageRegions";
 import { buildRelationshipPath, buildRelationshipRoute, createRelationshipRouteCache, type CanvasPageBounds } from "./canvasRelationshipRouting";
-import { collectDirectCanvasEdges } from "./canvasRelationships";
+import { canvasEdgeKey, collectPrimaryCanvasEdges } from "./primaryCanvasEdges";
+import type { PrimaryCanvasTrace } from "./primaryCanvasTrace";
 import {
   MorphoShapeUtil,
   createMorphoShapePartial,
@@ -25,6 +33,12 @@ import {
   isMorphoShape,
   type MorphoShape
 } from "./MorphoShapeUtil";
+import {
+  StageRegionShapeUtil,
+  createStageRegionShapePartial,
+  isStageRegionShape,
+  type StageRegionShape
+} from "./StageRegionShapeUtil";
 
 export type FocusArea = "overview" | "research" | "definition" | "visual" | "delivery";
 
@@ -39,7 +53,8 @@ type FocusRequest = {
 type MorphoCanvasProps = {
   workspace: MorphoWorkspace;
   annotatedObjectId: string | null;
-  traceObjectIds: string[];
+  /** Full primary-chain highlight payload for canvas (not only object ids). */
+  canvasTrace: PrimaryCanvasTrace | null;
   highlightedObjectId: string | null;
   assetUrls: Record<string, string>;
   pendingImageGenerationSlots: PendingImageGenerationSlot[];
@@ -53,6 +68,7 @@ type MorphoCanvasProps = {
   renderSelectionToolbar?: (selectedObjects: MorphoObject[], placement: SelectionToolbarPlacement) => ReactNode;
   onSelectionChange: (objectIds: string[]) => void;
   onInstancesChange: (instances: CanvasInstance[]) => void;
+  onStageRegionsChange: (regions: StageRegionRecord[]) => void;
   onViewChange: (view: CanvasView) => void;
   onLiveViewChange?: (view: CanvasView) => void;
   onImportRequest: (request: CanvasImportRequest) => void;
@@ -72,7 +88,7 @@ export type CanvasContextMenuRequest = {
   objectId: string | null;
 };
 
-const shapeUtils = [MorphoShapeUtil];
+const shapeUtils = [MorphoShapeUtil, StageRegionShapeUtil];
 export const MORPHO_EDITOR_SYNC_RUN_OPTIONS = { history: "ignore" } as const;
 const MIN_WHEEL_ZOOM = 0.12;
 const MAX_WHEEL_ZOOM = 2.4;
@@ -143,7 +159,7 @@ export function shouldApplyFocusRequest(focusRequest: FocusRequest, lastAppliedN
 export function MorphoCanvas({
   workspace,
   annotatedObjectId,
-  traceObjectIds,
+  canvasTrace,
   highlightedObjectId,
   assetUrls,
   pendingImageGenerationSlots,
@@ -153,6 +169,7 @@ export function MorphoCanvas({
   renderSelectionToolbar,
   onSelectionChange,
   onInstancesChange,
+  onStageRegionsChange,
   onViewChange,
   onLiveViewChange,
   onImportRequest,
@@ -163,6 +180,8 @@ export function MorphoCanvas({
   const lastSelectionRef = useRef("");
   const pendingInstancesRef = useRef<CanvasInstance[] | null>(null);
   const instancesPersistTimerRef = useRef<number | null>(null);
+  const pendingStageRegionsRef = useRef<StageRegionRecord[] | null>(null);
+  const stageRegionsPersistTimerRef = useRef<number | null>(null);
   const lastAppliedFocusNonceRef = useRef<number | null>(null);
   const viewPersistTimerRef = useRef<number | null>(null);
   const latestViewRef = useRef<CanvasView>(workspace.canvas.view);
@@ -170,8 +189,14 @@ export function MorphoCanvas({
   const lastContextMenuOpenAtRef = useRef(0);
   const latestWorkspaceRef = useRef(workspace);
   const latestSelectedObjectIdsRef = useRef(selectedObjectIds);
+  const didSendStagesToBackRef = useRef(false);
   const windowFocusedRef = useRef(typeof document === "undefined" ? true : document.hasFocus());
   const [liveView, setLiveView] = useState<CanvasView>(workspace.canvas.view);
+  const traceObjectIds = useMemo(() => canvasTrace?.highlightedObjectIds ?? [], [canvasTrace]);
+  const traceEdgeKeySet = useMemo(() => new Set(canvasTrace?.highlightedEdgeKeys ?? []), [canvasTrace]);
+  const secondaryTraceObjectIds = useMemo(() => new Set(canvasTrace?.secondaryObjectIds ?? []), [canvasTrace]);
+  const secondaryTraceEdgeKeys = useMemo(() => new Set(canvasTrace?.secondaryEdgeKeys ?? []), [canvasTrace]);
+  const isChainTraceActive = canvasTrace?.mode === "chain";
 
   useLayoutEffect(() => {
     latestWorkspaceRef.current = workspace;
@@ -181,7 +206,16 @@ export function MorphoCanvas({
   }, [selectedObjectIds]);
   const canvasComponents = useMemo(
     () => ({
-      OnTheCanvas: () => <CanvasRelationshipOverlay workspace={workspace} emphasizedObjectId={highlightedObjectId} />,
+      OnTheCanvas: () => (
+        <CanvasRelationshipOverlay
+          workspace={workspace}
+          emphasizedObjectId={highlightedObjectId}
+          isChainTraceActive={isChainTraceActive}
+          traceEdgeKeys={traceEdgeKeySet}
+          secondaryTraceEdgeKeys={secondaryTraceEdgeKeys}
+          secondaryTraceObjectIds={secondaryTraceObjectIds}
+        />
+      ),
       InFrontOfTheCanvas: () =>
         renderSelectionToolbar ? (
           <CanvasSelectionToolbar
@@ -191,7 +225,16 @@ export function MorphoCanvas({
           />
         ) : null
     }),
-    [floatingChromeKey, highlightedObjectId, renderSelectionToolbar, workspace]
+    [
+      floatingChromeKey,
+      highlightedObjectId,
+      isChainTraceActive,
+      renderSelectionToolbar,
+      secondaryTraceEdgeKeys,
+      secondaryTraceObjectIds,
+      traceEdgeKeySet,
+      workspace
+    ]
   );
   const pendingSlotRects = useMemo(() => {
     return pendingImageGenerationSlots.map((slot) => {
@@ -262,6 +305,19 @@ export function MorphoCanvas({
     onInstancesChange(instances);
   }, [onInstancesChange]);
 
+  const flushPendingStageRegions = useCallback(() => {
+    if (stageRegionsPersistTimerRef.current !== null) {
+      window.clearTimeout(stageRegionsPersistTimerRef.current);
+      stageRegionsPersistTimerRef.current = null;
+    }
+    const regions = pendingStageRegionsRef.current;
+    if (!regions) {
+      return;
+    }
+    pendingStageRegionsRef.current = null;
+    onStageRegionsChange(regions);
+  }, [onStageRegionsChange]);
+
   const scheduleInstancesPersist = useCallback(
     (instances: CanvasInstance[]) => {
       pendingInstancesRef.current = instances;
@@ -276,11 +332,25 @@ export function MorphoCanvas({
     [flushPendingInstances]
   );
 
+  const scheduleStageRegionsPersist = useCallback(
+    (regions: StageRegionRecord[]) => {
+      pendingStageRegionsRef.current = regions;
+      if (stageRegionsPersistTimerRef.current !== null) {
+        window.clearTimeout(stageRegionsPersistTimerRef.current);
+      }
+      stageRegionsPersistTimerRef.current = window.setTimeout(() => {
+        flushPendingStageRegions();
+      }, 140);
+    },
+    [flushPendingStageRegions]
+  );
+
   const syncFromEditor = useCallback(
-    (editor: Editor, changedShapes?: MorphoShape[]) => {
+    (editor: Editor, changedShapes?: Array<MorphoShape | StageRegionShape>) => {
       const currentWorkspace = latestWorkspaceRef.current;
-      const pageShapes = changedShapes ?? editor.getCurrentPageShapes().filter(isMorphoShape);
-      const inactiveShapes = pageShapes.filter((shape) => !isMorphoShapeActiveInWorkspace(shape, currentWorkspace));
+      const pageMorphoShapes =
+        changedShapes?.filter(isMorphoShape) ?? editor.getCurrentPageShapes().filter(isMorphoShape);
+      const inactiveShapes = pageMorphoShapes.filter((shape) => !isMorphoShapeActiveInWorkspace(shape, currentWorkspace));
       if (inactiveShapes.length > 0) {
         editor.deleteShapes(inactiveShapes.map((shape) => shape.id));
       }
@@ -295,6 +365,7 @@ export function MorphoCanvas({
           .getSelectedShapes()
           .filter(isMorphoShape)
           .filter((shape) => isMorphoShapeActiveInWorkspace(shape, currentWorkspace));
+        // Stage-only selection must not surface object toolbar/details.
         const selectedIds = getSelectedMorphoShapeIds(selectedShapes);
         const selectionKey = selectedIds.objectIds.join("|");
         if (selectionKey !== lastSelectionRef.current) {
@@ -303,28 +374,55 @@ export function MorphoCanvas({
         }
       }
 
-      const movedInstances = pageShapes
-        .filter((shape) => isMorphoShapeActiveInWorkspace(shape, currentWorkspace))
-        .map((shape) => ({
-          id: shape.props.instanceId,
-          objectId: shape.props.objectId,
-          position: { x: shape.x, y: shape.y },
-          size: { w: shape.props.w, h: shape.props.h }
-        }));
+      const stageShapesChanged = Boolean(changedShapes?.some(isStageRegionShape));
+      const morphoShapesChanged = Boolean(changedShapes?.some(isMorphoShape));
 
-      if (movedInstances.length > 0) {
-        scheduleInstancesPersist(movedInstances);
+      // Stage drag moves members via StageRegionShapeUtil; flush full morpho page
+      // only when morpho or stage shapes actually changed — never on camera-only ticks.
+      if (morphoShapesChanged || stageShapesChanged) {
+        const allMorpho = editor.getCurrentPageShapes().filter(isMorphoShape);
+        const allInstances = allMorpho
+          .filter((shape) => isMorphoShapeActiveInWorkspace(shape, currentWorkspace))
+          .map((shape) => ({
+            id: shape.props.instanceId,
+            objectId: shape.props.objectId,
+            position: { x: shape.x, y: shape.y },
+            size: { w: shape.props.w, h: shape.props.h }
+          }));
+        if (allInstances.length > 0) {
+          scheduleInstancesPersist(allInstances);
+        }
       }
+
+      if (stageShapesChanged) {
+        const stageShapes = editor.getCurrentPageShapes().filter(isStageRegionShape);
+        const base = getStageRegions(currentWorkspace);
+        const layouts = stageShapes.map((shape) => ({
+          id: shape.id.replace(/^shape:/, ""),
+          x: shape.x,
+          y: shape.y,
+          w: shape.props.w,
+          h: shape.props.h,
+          memberObjectIds: [...shape.props.memberObjectIds]
+        }));
+        const nextRegions = mergeStageShapeLayoutsIntoRecords(base, layouts);
+        if (!areStageRegionRecordsEqual(base, nextRegions)) {
+          scheduleStageRegionsPersist(nextRegions);
+        }
+      }
+
       const camera = editor.getCamera();
       const nextView = { x: camera.x, y: camera.y, zoom: camera.z };
       setLiveView(nextView);
       scheduleViewPersist(nextView);
     },
-    [onSelectionChange, scheduleInstancesPersist, scheduleViewPersist]
+    [onSelectionChange, scheduleInstancesPersist, scheduleStageRegionsPersist, scheduleViewPersist]
   );
 
   const syncWorkspaceToEditor = useCallback(
     (editor: Editor) => {
+      const ensured = ensureStageRegions(workspace);
+      const stageRegions = getStageRegions(ensured);
       const shapes = editor.getCurrentPageShapes().filter(isMorphoShape);
       const shapesByInstance = new Map(shapes.map((shape) => [shape.props.instanceId, shape]));
       const renderableInstances = getRenderableCanvasInstances(workspace);
@@ -333,6 +431,7 @@ export function MorphoCanvas({
       const toCreate: TLShapePartial<MorphoShape>[] = [];
       const toUpdate: MorphoShape[] = [];
       const toDelete = shapes.filter((shape) => !renderableInstanceIds.has(shape.props.instanceId));
+      const traceIdSet = new Set(traceObjectIds);
 
       for (const instance of renderableInstances) {
         const object = workspace.objects[instance.objectId];
@@ -350,7 +449,7 @@ export function MorphoCanvas({
               object,
               assetUrl,
               workspace,
-              traceObjectIds.includes(object.id),
+              traceIdSet.has(object.id),
               highlightedObjectId === object.id
             )
           );
@@ -358,7 +457,7 @@ export function MorphoCanvas({
           const nextProps = {
             ...getMorphoShapeProps(renderInstance, object, assetUrl, workspace, highlightedObjectId === object.id),
             isBeingLocallyEdited: object.id === annotatedObjectId,
-            isInDesignTrace: traceObjectIds.includes(object.id)
+            isInDesignTrace: traceIdSet.has(object.id)
           };
           if (!areMorphoShapePropsEqual(existing.props, nextProps)) {
             toUpdate.push({
@@ -368,6 +467,45 @@ export function MorphoCanvas({
           }
         }
       }
+
+      const existingStages = editor.getCurrentPageShapes().filter(isStageRegionShape);
+      const existingStageById = new Map(existingStages.map((shape) => [shape.id.replace(/^shape:/, ""), shape]));
+      const stagePartials = stageRegions.map((region) => createStageRegionShapePartial(region));
+      const stageIds = new Set(stageRegions.map((region) => region.id));
+      const stagesToCreate = stagePartials.filter((partial) => !existingStageById.has(String(partial.id).replace(/^shape:/, "")));
+      const stagesToUpdate: StageRegionShape[] = [];
+      for (const region of stageRegions) {
+        const existing = existingStageById.get(region.id);
+        if (!existing) {
+          continue;
+        }
+        const pendingLayout = pendingStageRegionsRef.current?.find((item) => item.id === region.id);
+        const layout = pendingLayout ?? region;
+        const membersChanged =
+          existing.props.memberObjectIds.length !== region.memberObjectIds.length ||
+          existing.props.memberObjectIds.some((id, index) => id !== region.memberObjectIds[index]);
+        const geometryChanged =
+          Math.abs(existing.x - layout.x) > 0.01 ||
+          Math.abs(existing.y - layout.y) > 0.01 ||
+          Math.abs(existing.props.w - layout.w) > 0.01 ||
+          Math.abs(existing.props.h - layout.h) > 0.01;
+        if (membersChanged || geometryChanged || existing.props.title !== region.title) {
+          stagesToUpdate.push({
+            ...existing,
+            x: layout.x,
+            y: layout.y,
+            props: {
+              ...existing.props,
+              w: layout.w,
+              h: layout.h,
+              title: region.title,
+              stageKey: region.key,
+              memberObjectIds: [...region.memberObjectIds]
+            }
+          });
+        }
+      }
+      const stagesToDelete = existingStages.filter((shape) => !stageIds.has(shape.id.replace(/^shape:/, "")));
 
       editor.run(() => {
         if (toCreate.length > 0) {
@@ -382,6 +520,24 @@ export function MorphoCanvas({
           editor.deleteShapes(toDelete.map((shape) => shape.id));
         }
 
+        if (stagesToCreate.length > 0) {
+          editor.createShapes(stagesToCreate);
+        }
+        if (stagesToUpdate.length > 0) {
+          editor.updateShapes(stagesToUpdate);
+        }
+        if (stagesToDelete.length > 0) {
+          editor.deleteShapes(stagesToDelete.map((shape) => shape.id));
+        }
+
+        // Send stages behind object cards only once after initial create.
+        if (!didSendStagesToBackRef.current || stagesToCreate.length > 0) {
+          const stageShapeIds = editor.getCurrentPageShapes().filter(isStageRegionShape).map((shape) => shape.id);
+          if (stageShapeIds.length > 0) {
+            editor.sendToBack(stageShapeIds);
+          }
+          didSendStagesToBackRef.current = true;
+        }
       }, MORPHO_EDITOR_SYNC_RUN_OPTIONS);
     },
     [annotatedObjectId, assetUrls, highlightedObjectId, traceObjectIds, workspace]
@@ -580,8 +736,10 @@ export function MorphoCanvas({
   }, [handleContextMenuPointerDown, suppressNativeContextMenu]);
 
   useEffect(() => {
+    // Single flush path for instances + stage regions + camera (no duplicate onMount listeners).
     const flushInteractionState = () => {
       flushPendingInstances();
+      flushPendingStageRegions();
       flushViewPersist();
     };
     const restoreSelectionFromParent = () => {
@@ -629,8 +787,9 @@ export function MorphoCanvas({
       window.removeEventListener("focus", handleWindowFocus);
       window.removeEventListener("beforeunload", flushInteractionState);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      flushInteractionState();
     };
-  }, [flushPendingInstances, flushViewPersist]);
+  }, [flushPendingInstances, flushPendingStageRegions, flushViewPersist]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -693,13 +852,6 @@ export function MorphoCanvas({
     }
   }, [focusRequest, scheduleViewPersist, workspace]);
 
-  useEffect(() => {
-    return () => {
-      flushPendingInstances();
-      flushViewPersist();
-    };
-  }, [flushPendingInstances, flushViewPersist]);
-
   return (
     <div
       ref={canvasHostRef}
@@ -730,7 +882,18 @@ export function MorphoCanvas({
             const changedShapes = [
               ...Object.values(entry.changes.added),
               ...Object.values(entry.changes.updated).map(([, after]) => after)
-            ].filter((record): record is MorphoShape => "type" in record && isMorphoShape(record as TLShape));
+            ].filter(
+              (record): record is MorphoShape | StageRegionShape =>
+                "type" in record && (isMorphoShape(record as TLShape) || isStageRegionShape(record as TLShape))
+            );
+            // Camera-only updates produce empty changedShapes; syncFromEditor will no-op persist.
+            if (changedShapes.length === 0) {
+              const camera = editor.getCamera();
+              const nextView = { x: camera.x, y: camera.y, zoom: camera.z };
+              setLiveView(nextView);
+              scheduleViewPersist(nextView);
+              return;
+            }
             syncFromEditor(editor, changedShapes);
           });
 
@@ -768,10 +931,18 @@ export function MorphoCanvas({
 
 const CanvasRelationshipOverlay = track(function CanvasRelationshipOverlay({
   workspace,
-  emphasizedObjectId
+  emphasizedObjectId,
+  isChainTraceActive,
+  traceEdgeKeys,
+  secondaryTraceEdgeKeys,
+  secondaryTraceObjectIds
 }: {
   workspace: MorphoWorkspace;
   emphasizedObjectId: string | null;
+  isChainTraceActive: boolean;
+  traceEdgeKeys: Set<string>;
+  secondaryTraceEdgeKeys: Set<string>;
+  secondaryTraceObjectIds: Set<string>;
 }) {
   const editor = useEditor();
   const routeCacheRef = useRef(createRelationshipRouteCache());
@@ -794,10 +965,12 @@ const CanvasRelationshipOverlay = track(function CanvasRelationshipOverlay({
     boundsByObjectId.set(shape.props.objectId, nextBounds);
   }
 
-  const visibleEdges = collectDirectCanvasEdges(workspace).filter(
+  // Permanent overlay draws only primary edges (full aggregate stays available elsewhere).
+  const visibleEdges = collectPrimaryCanvasEdges(workspace).filter(
     (edge) => boundsByObjectId.has(edge.fromObjectId) && boundsByObjectId.has(edge.toObjectId)
   );
   const routes = visibleEdges.map((edge) => {
+    const pairKey = canvasEdgeKey(edge.fromObjectId, edge.toObjectId);
     const key = `${edge.fromObjectId}:${edge.toObjectId}`;
     const source = boundsByObjectId.get(edge.fromObjectId)!;
     const target = boundsByObjectId.get(edge.toObjectId)!;
@@ -809,22 +982,37 @@ const CanvasRelationshipOverlay = track(function CanvasRelationshipOverlay({
       obstacles: []
     });
     if (!cached) routeCacheRef.current.set(key, route, endpointObjectIds);
-    const emphasized = emphasizedObjectId === edge.fromObjectId || emphasizedObjectId === edge.toObjectId || editor.getSelectedShapeIds().some((shapeId) => {
+    const selectedHit = editor.getSelectedShapeIds().some((shapeId) => {
       const shape = editor.getShape(shapeId);
       if (!shape || !isMorphoShape(shape)) return false;
       return shape.props.objectId === edge.fromObjectId || shape.props.objectId === edge.toObjectId;
     });
-    return { key, edge, route, emphasized };
+    const onPrimaryChain = traceEdgeKeys.has(pairKey);
+    const onSecondary = secondaryTraceEdgeKeys.has(pairKey);
+    const hoverHit =
+      emphasizedObjectId === edge.fromObjectId ||
+      emphasizedObjectId === edge.toObjectId ||
+      secondaryTraceObjectIds.has(edge.fromObjectId) ||
+      secondaryTraceObjectIds.has(edge.toObjectId);
+    let className = "is-primary";
+    if (isChainTraceActive) {
+      if (onPrimaryChain) {
+        className = "is-emphasized is-chain";
+      } else if (onSecondary) {
+        className = "is-secondary is-chain-secondary";
+      } else {
+        className = "is-dimmed";
+      }
+    } else if (selectedHit || hoverHit || onPrimaryChain) {
+      className = "is-emphasized";
+    }
+    return { key, edge, route, className };
   });
 
   return (
     <svg className="canvas-relationship-overlay" viewBox="0 0 1 1" aria-hidden="true">
-      {routes.map(({ key, edge, route, emphasized }) => (
-        <path
-          key={key}
-          className={emphasized ? "is-emphasized" : edge.primary ? "is-primary" : "is-secondary"}
-          d={buildRelationshipPath(route)}
-        />
+      {routes.map(({ key, route, className }) => (
+        <path key={key} className={className} d={buildRelationshipPath(route)} />
       ))}
     </svg>
   );

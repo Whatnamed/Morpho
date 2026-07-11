@@ -17,6 +17,8 @@ import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 import { GRS_REFERENCE_IMAGE_LIMIT } from "@/domain/morpho/imageLimits";
 import { hasPendingDesignDefinitionRevisionProposal } from "@/domain/morpho/derivedState";
 import { traceDesignChain, type DesignTraceResult } from "@/domain/morpho/designTrace";
+import { areStageRegionRecordsEqual, ensureStageRegions, type StageRegionRecord } from "@/domain/morpho/stageRegions";
+import { collectPrimaryCanvasTrace } from "./tldraw/primaryCanvasTrace";
 import { createGeneratedImageFromAsset } from "@/domain/morpho/generation";
 import { getImageCanvasSize } from "@/domain/morpho/imageSizing";
 import { createDocumentExtractFile, parseDocumentFile, shouldAttemptDocumentParse } from "@/domain/morpho/documentParsing";
@@ -373,6 +375,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [detailConceptDirectionId, setDetailConceptDirectionId] = useState<string | null>(null);
   const [detailHoverObjectId, setDetailHoverObjectId] = useState<string | null>(null);
   const [traceStartObjectId, setTraceStartObjectId] = useState<string | null>(null);
+  const [canvasTraceMode, setCanvasTraceMode] = useState<"direct" | "chain">("direct");
   const [showFailure, setShowFailure] = useState(false);
   const [contextWarning, setContextWarning] = useState<string | undefined>();
   const [isAiStreaming, setIsAiStreaming] = useState(false);
@@ -800,6 +803,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     (objectIds: string[]) => {
       setSelectedObjectIds(objectIds);
       setCanvasContextMenu(null);
+      setTraceStartObjectId((current) => {
+        if (!current || (objectIds.length === 1 && objectIds[0] === current)) {
+          return current;
+        }
+        setCanvasTraceMode("direct");
+        return null;
+      });
       if (objectIds.length === 0) {
         setActiveDrawer(null);
       }
@@ -823,6 +833,24 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const handleInstancesChange = useCallback(
     (instances: CanvasInstance[]) => {
       setWorkspace((current) => updateWorkspaceInstances(current, instances));
+    },
+    [setWorkspace]
+  );
+
+  const handleStageRegionsChange = useCallback(
+    (regions: StageRegionRecord[]) => {
+      setWorkspace((current) => {
+        if (areStageRegionRecordsEqual(current.canvas.stageRegions, regions)) {
+          return current;
+        }
+        return {
+          ...current,
+          canvas: {
+            ...current.canvas,
+            stageRegions: regions
+          }
+        };
+      });
     },
     [setWorkspace]
   );
@@ -1017,6 +1045,24 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
     return traceDesignChain(workspace, traceStartObjectId);
   }, [traceStartObjectId, workspace]);
+
+  // Canvas highlight uses primary-edge path; bottom bar keeps full designTrace summary.
+  const canvasTrace = useMemo(() => {
+    if (!traceStartObjectId || !workspace.objects[traceStartObjectId]) {
+      if (selectedObjectIds.length === 1 && workspace.objects[selectedObjectIds[0]]) {
+        return collectPrimaryCanvasTrace(workspace, selectedObjectIds[0], "direct");
+      }
+      return null;
+    }
+    return collectPrimaryCanvasTrace(workspace, traceStartObjectId, canvasTraceMode);
+  }, [canvasTraceMode, selectedObjectIds, traceStartObjectId, workspace]);
+
+  useEffect(() => {
+    setWorkspace((current) => {
+      const next = ensureStageRegions(current);
+      return next === current ? current : next;
+    });
+  }, [setWorkspace, workspace.project.id, workspace.objects]);
 
   const handleRunResearchOperation = useCallback(
     async (draft: string) => {
@@ -3680,8 +3726,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
-    setTraceStartObjectId((current) => (current === target.id ? null : target.id));
-  }, [selectedObjects]);
+    setTraceStartObjectId((current) => {
+      if (current === target.id && canvasTraceMode === "chain") {
+        setCanvasTraceMode("direct");
+        return null;
+      }
+      setCanvasTraceMode("chain");
+      return target.id;
+    });
+  }, [canvasTraceMode, selectedObjects]);
 
   const handleReviseDirectionIntent = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "conceptDirection");
@@ -5620,7 +5673,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     <SelectionToolbar
       selectedObjects={toolbarObjects}
       placement={placement}
-      isDesignTraceActive={Boolean(activeDesignTrace)}
+      isDesignTraceActive={Boolean(traceStartObjectId) && canvasTraceMode === "chain"}
       onAskAi={handleAskAi}
       onToggleDesignTrace={handleToggleDesignTrace}
       onOpenResearchDetail={handleOpenResearchDetail}
@@ -5671,7 +5724,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       <MorphoCanvas
         workspace={workspace}
         annotatedObjectId={localEditObjectId}
-        traceObjectIds={activeDesignTrace?.objectIds ?? []}
+        canvasTrace={canvasTrace}
         highlightedObjectId={detailHoverObjectId}
         assetUrls={assetUrls}
         pendingImageGenerationSlots={pendingImageGenerationSlots}
@@ -5691,6 +5744,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         renderSelectionToolbar={renderSelectionToolbar}
         onSelectionChange={handleSelectionChange}
         onInstancesChange={handleInstancesChange}
+        onStageRegionsChange={handleStageRegionsChange}
         onViewChange={handleCanvasViewChange}
         onLiveViewChange={handleCanvasLiveViewChange}
         onImportRequest={handleImportRequest}

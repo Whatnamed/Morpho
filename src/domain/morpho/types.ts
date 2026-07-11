@@ -435,6 +435,20 @@ export type CanvasView = {
   zoom: number;
 };
 
+/** Canvas presentation landmark — not a MorphoObject and not schema-versioned. */
+export type StageRegionKey = "research" | "definition" | "visual" | "delivery";
+
+export type StageRegionRecord = {
+  id: string;
+  key: StageRegionKey;
+  title: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  memberObjectIds: MorphoObjectId[];
+};
+
 export type RelationKind =
   | "source"
   | "supports"
@@ -747,6 +761,11 @@ export type MorphoWorkspace = {
   canvas: {
     view: CanvasView;
     instances: CanvasInstance[];
+    /**
+     * Optional canvas presentation only. Not a schema migration field —
+     * missing records are filled at runtime by ensureStageRegions.
+     */
+    stageRegions?: StageRegionRecord[];
   };
   ai: {
     messages: AiMessage[];
