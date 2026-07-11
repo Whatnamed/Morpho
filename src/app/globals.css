@@ -7672,14 +7672,18 @@ select:focus-visible {
   transform: translateY(-1px);
 }
 
-.side-drawer,
 .search-layer,
-.project-map,
 .delivery-panel,
 .delivery-output-panel,
 .archive-panel,
 .document-reader-panel {
   animation: morpho-popover-in var(--duration-ui) var(--ease-out);
+}
+
+/* Keep vertical centering (translateY -50%) while the rail popovers open. */
+.side-drawer,
+.project-map {
+  animation: morpho-rail-popover-in var(--duration-ui) var(--ease-out);
 }
 
 .drawer-filter-row .filter-chip,
@@ -7808,6 +7812,17 @@ select:focus-visible {
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes morpho-rail-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-50% + 6px)) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
   }
 }
 
