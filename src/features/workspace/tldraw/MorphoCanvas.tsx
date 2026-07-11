@@ -20,8 +20,12 @@ import type { StageRegionRecord } from "@/domain/morpho/types";
 import {
   areStageRegionRecordsEqual,
   ensureStageRegions,
+  fitStageRegionToVisibleMembers,
   getStageRegions,
-  mergeStageShapeLayoutsIntoRecords
+  hasVisibleStageRegionMembers,
+  mergeStageShapeLayoutsIntoRecords,
+  resetStageRegionStyle,
+  updateStageRegionStyle
 } from "@/domain/morpho/stageRegions";
 import { buildRelationshipPath, buildRelationshipRoute, createRelationshipRouteCache, type CanvasPageBounds } from "./canvasRelationshipRouting";
 import { canvasEdgeKey, collectPrimaryCanvasEdges } from "./primaryCanvasEdges";
@@ -39,6 +43,7 @@ import {
   isStageRegionShape,
   type StageRegionShape
 } from "./StageRegionShapeUtil";
+import { StageRegionToolbar } from "../components/StageRegionToolbar";
 
 export type FocusArea = "overview" | "research" | "definition" | "visual" | "delivery";
 
@@ -216,14 +221,14 @@ export function MorphoCanvas({
           secondaryTraceObjectIds={secondaryTraceObjectIds}
         />
       ),
-      InFrontOfTheCanvas: () =>
-        renderSelectionToolbar ? (
-          <CanvasSelectionToolbar
-            workspace={workspace}
-            floatingChromeKey={floatingChromeKey}
-            renderToolbar={renderSelectionToolbar}
-          />
-        ) : null
+      InFrontOfTheCanvas: () => (
+        <CanvasSelectionToolbar
+          workspace={workspace}
+          floatingChromeKey={floatingChromeKey}
+          renderToolbar={renderSelectionToolbar}
+          onStageRegionsChange={onStageRegionsChange}
+        />
+      )
     }),
     [
       floatingChromeKey,
@@ -233,7 +238,8 @@ export function MorphoCanvas({
       secondaryTraceEdgeKeys,
       secondaryTraceObjectIds,
       traceEdgeKeySet,
-      workspace
+      workspace,
+      onStageRegionsChange
     ]
   );
   const pendingSlotRects = useMemo(() => {
@@ -361,10 +367,15 @@ export function MorphoCanvas({
           windowFocused: windowFocusedRef.current
         })
       ) {
-        const selectedShapes = editor
-          .getSelectedShapes()
+        const editorSelection = editor.getSelectedShapes();
+        const selectedShapes = editorSelection
           .filter(isMorphoShape)
           .filter((shape) => isMorphoShapeActiveInWorkspace(shape, currentWorkspace));
+        const selectedStageShapes = editorSelection.filter(isStageRegionShape);
+        // Box-selecting cards must not also select their background stage region.
+        if (selectedShapes.length > 0 && selectedStageShapes.length > 0) {
+          editor.setSelectedShapes(selectedShapes);
+        }
         // Stage-only selection must not surface object toolbar/details.
         const selectedIds = getSelectedMorphoShapeIds(selectedShapes);
         const selectionKey = selectedIds.objectIds.join("|");
@@ -403,7 +414,13 @@ export function MorphoCanvas({
           y: shape.y,
           w: shape.props.w,
           h: shape.props.h,
-          memberObjectIds: [...shape.props.memberObjectIds]
+          memberObjectIds: [...shape.props.memberObjectIds],
+          colorKey: shape.props.colorKey,
+          fillOpacity: shape.props.fillOpacity,
+          backgroundVisible: shape.props.backgroundVisible,
+          borderStyle: shape.props.borderStyle,
+          locked: shape.props.locked,
+          isActivated: true
         }));
         const nextRegions = mergeStageShapeLayoutsIntoRecords(base, layouts);
         if (!areStageRegionRecordsEqual(base, nextRegions)) {
@@ -422,7 +439,7 @@ export function MorphoCanvas({
   const syncWorkspaceToEditor = useCallback(
     (editor: Editor) => {
       const ensured = ensureStageRegions(workspace);
-      const stageRegions = getStageRegions(ensured);
+      const stageRegions = getStageRegions(ensured).filter((region) => region.isActivated);
       const shapes = editor.getCurrentPageShapes().filter(isMorphoShape);
       const shapesByInstance = new Map(shapes.map((shape) => [shape.props.instanceId, shape]));
       const renderableInstances = getRenderableCanvasInstances(workspace);
@@ -489,18 +506,33 @@ export function MorphoCanvas({
           Math.abs(existing.y - layout.y) > 0.01 ||
           Math.abs(existing.props.w - layout.w) > 0.01 ||
           Math.abs(existing.props.h - layout.h) > 0.01;
-        if (membersChanged || geometryChanged || existing.props.title !== region.title) {
+        const styleChanged =
+          existing.props.colorKey !== region.colorKey ||
+          existing.props.fillOpacity !== region.fillOpacity ||
+          existing.props.backgroundVisible !== region.backgroundVisible ||
+          existing.props.borderStyle !== region.borderStyle ||
+          existing.props.locked !== region.locked ||
+          existing.isLocked !== false;
+        if (membersChanged || geometryChanged || styleChanged || existing.props.title !== region.title) {
           stagesToUpdate.push({
             ...existing,
             x: layout.x,
             y: layout.y,
+            // Preserve selection for custom-locked stages so their toolbar can
+            // always unlock them. Drag/resize is handled by the shape util.
+            isLocked: false,
             props: {
               ...existing.props,
               w: layout.w,
               h: layout.h,
               title: region.title,
               stageKey: region.key,
-              memberObjectIds: [...region.memberObjectIds]
+              memberObjectIds: [...region.memberObjectIds],
+              colorKey: region.colorKey,
+              fillOpacity: region.fillOpacity,
+              backgroundVisible: region.backgroundVisible,
+              borderStyle: region.borderStyle,
+              locked: region.locked
             }
           });
         }
@@ -1019,17 +1051,20 @@ const CanvasRelationshipOverlay = track(function CanvasRelationshipOverlay({
 });
 
 const SELECTION_TOOLBAR_SIZE = { w: 460, h: 44 } as const;
+const STAGE_REGION_TOOLBAR_SIZE = { w: 286, h: 44 } as const;
 const SELECTION_TOOLBAR_MARGIN = 18;
 const SELECTION_TOOLBAR_GAP = 12;
 
 const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
   workspace,
   floatingChromeKey,
-  renderToolbar
+  renderToolbar,
+  onStageRegionsChange
 }: {
   workspace: MorphoWorkspace;
   floatingChromeKey: string;
-  renderToolbar: (selectedObjects: MorphoObject[], placement: SelectionToolbarPlacement) => ReactNode;
+  renderToolbar?: (selectedObjects: MorphoObject[], placement: SelectionToolbarPlacement) => ReactNode;
+  onStageRegionsChange: (regions: StageRegionRecord[]) => void;
 }) {
   const editor = useEditor();
   // Read path + input atoms so track() re-renders when idle / drag / pan changes.
@@ -1062,7 +1097,8 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
     .filter(isMorphoShape)
     .map((shape) => workspace.objects[shape.props.objectId])
     .filter((object): object is MorphoObject => Boolean(object));
-  if (!bounds || selectedObjects.length === 0) {
+  const selectedStageShapes = editor.getSelectedShapes().filter(isStageRegionShape);
+  if (!bounds || (selectedObjects.length === 0 && selectedStageShapes.length !== 1)) {
     return null;
   }
 
@@ -1073,7 +1109,10 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
     { x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h },
     { w: window.innerWidth, h: window.innerHeight },
     {
-      toolbar: { w: SELECTION_TOOLBAR_SIZE.w, h: SELECTION_TOOLBAR_SIZE.h },
+      toolbar:
+        selectedObjects.length > 0
+          ? { w: SELECTION_TOOLBAR_SIZE.w, h: SELECTION_TOOLBAR_SIZE.h }
+          : { w: STAGE_REGION_TOOLBAR_SIZE.w, h: STAGE_REGION_TOOLBAR_SIZE.h },
       margin: SELECTION_TOOLBAR_MARGIN,
       gap: SELECTION_TOOLBAR_GAP,
       obstacles
@@ -1083,8 +1122,53 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
     return null;
   }
 
-  return <>{renderToolbar(selectedObjects, placement)}</>;
+  if (selectedObjects.length > 0) {
+    return renderToolbar ? <>{renderToolbar(selectedObjects, placement)}</> : null;
+  }
+
+  const selectedStage = selectedStageShapes[0];
+  const region = getStageRegions(workspace).find((item) => item.id === selectedStage.id.replace(/^shape:/, ""));
+  if (!region || !region.isActivated) {
+    return null;
+  }
+
+  return <CanvasStageRegionToolbar workspace={workspace} region={region} placement={placement} onStageRegionsChange={onStageRegionsChange} />;
 });
+
+function CanvasStageRegionToolbar({
+  workspace,
+  region,
+  placement,
+  onStageRegionsChange
+}: {
+  workspace: MorphoWorkspace;
+  region: StageRegionRecord;
+  placement: SelectionToolbarPlacement;
+  onStageRegionsChange: (regions: StageRegionRecord[]) => void;
+}) {
+  const editor = useEditor();
+
+  const applyWorkspaceStageChange = (nextWorkspace: MorphoWorkspace, historyLabel: string) => {
+    const nextRegion = getStageRegions(nextWorkspace).find((item) => item.id === region.id);
+    if (!nextRegion || areStageRegionRecordsEqual(workspace.canvas.stageRegions, nextWorkspace.canvas.stageRegions)) {
+      return;
+    }
+    editor.markHistoryStoppingPoint(historyLabel);
+    editor.updateShapes([createStageRegionShapePartial(nextRegion)]);
+    onStageRegionsChange(nextWorkspace.canvas.stageRegions ?? []);
+  };
+
+  return (
+    <StageRegionToolbar
+      region={region}
+      placement={placement}
+      canFit={!region.locked && hasVisibleStageRegionMembers(workspace, region.id)}
+      onUpdateStyle={(patch, historyLabel) => applyWorkspaceStageChange(updateStageRegionStyle(workspace, region.id, patch), historyLabel)}
+      onFit={() => applyWorkspaceStageChange(fitStageRegionToVisibleMembers(workspace, region.id), "适应分区内容")}
+      onResetStyle={() => applyWorkspaceStageChange(resetStageRegionStyle(workspace, region.id), "恢复分区默认样式")}
+    />
+  );
+}
 
 function collectSelectionToolbarObstacles(): ScreenRect[] {
   if (typeof document === "undefined") {

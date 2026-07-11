@@ -17,6 +17,7 @@ import {
 import type { CanvasLayerReorderAction } from "@/domain/morpho/workspace";
 import type { MorphoObject } from "@/domain/morpho/types";
 import type { SelectionToolbarPlacement } from "../selectionToolbar";
+import { CanvasIconButton } from "./CanvasIconButton";
 
 export type SelectionToolbarProps = {
   selectedObjects: MorphoObject[];
@@ -76,7 +77,9 @@ export function SelectionToolbar({
   onSetDirectionPrimary,
   onSetDirectionAlternative,
   onRestoreDirectionAsAlternative,
-  onEliminateDirection
+  onEliminateDirection,
+  onHide,
+  onDelete
 }: SelectionToolbarProps) {
   if (!placement || selectedObjects.length === 0) {
     return null;
@@ -114,159 +117,149 @@ export function SelectionToolbar({
       }}
     >
       <div className="selection-toolbar-group" role="group" aria-label="对话">
-        <button type="button" onClick={onAskAi}>
+        <CanvasIconButton label="问 AI" onClick={onAskAi}>
           <MessageSquareText size={15} />
-          问 AI
-        </button>
+        </CanvasIconButton>
       </div>
 
       {hasObjectActions ? <span className="selection-toolbar-divider" aria-hidden="true" /> : null}
 
       {onlyOne && primary.type === "file" ? (
         <div className="selection-toolbar-group" role="group" aria-label="文件">
-          <button type="button" onClick={onOpenDocumentReader}>
+          <CanvasIconButton label="阅读文本" onClick={onOpenDocumentReader}>
             <BookOpen size={15} />
-            读文本
-          </button>
+          </CanvasIconButton>
         </div>
       ) : null}
       {onlyOne && primary.type === "documentFragment" ? (
         <div className="selection-toolbar-group" role="group" aria-label="文档片段">
-          <button type="button" onClick={onOpenDocumentReader}>
+          <CanvasIconButton label="回到原文" onClick={onOpenDocumentReader}>
             <BookOpen size={15} />
-            回原文
-          </button>
+          </CanvasIconButton>
         </div>
       ) : null}
       {onlyOne && primary.type === "research" ? (
         <div className="selection-toolbar-group" role="group" aria-label="研究">
-          <button className="brand" type="button" onClick={onOpenResearchDetail}>
+          <CanvasIconButton label="查看研究详情" className="brand" onClick={onOpenResearchDetail}>
             <BookOpen size={15} />
-            研究详情
-          </button>
-          <button type="button" onClick={onAutoSelectResearch}>
+          </CanvasIconButton>
+          <CanvasIconButton label="AI 代选" onClick={onAutoSelectResearch}>
             <Sparkles size={15} />
-            AI 代选
-          </button>
+          </CanvasIconButton>
         </div>
       ) : null}
       {onlyOne && primary.type === "delivery" ? (
         <div className="selection-toolbar-group" role="group" aria-label="交付">
-          <button className="brand" type="button" onClick={onOpenDeliveryPreparation}>
+          <CanvasIconButton label="打开交付准备" className="brand" onClick={onOpenDeliveryPreparation}>
             <PackageOpen size={15} />
-            交付
-          </button>
+          </CanvasIconButton>
         </div>
       ) : null}
       {onlyOne && primary.type === "proposalDraft" ? (
         <div className="selection-toolbar-group" role="group" aria-label="草案">
-          <button className="brand" type="button" onClick={onOpenProposalDetail}>
+          <CanvasIconButton label="查看草案详情" className="brand" onClick={onOpenProposalDetail}>
             <BookOpen size={15} />
-            查看详情
-          </button>
-          <button type="button" onClick={onContinueProposalDiscussion}>
+          </CanvasIconButton>
+          <CanvasIconButton label="继续讨论草案" onClick={onContinueProposalDiscussion}>
             <MessageSquareText size={15} />
-            继续讨论
-          </button>
-          <button type="button" onClick={onApplyProposal}>
+          </CanvasIconButton>
+          <CanvasIconButton label="应用草案" onClick={onApplyProposal}>
             <Sparkles size={15} />
-            应用草案
-          </button>
-          <button className="danger" type="button" onClick={onRejectProposal}>
+          </CanvasIconButton>
+          <CanvasIconButton label="放弃草案" danger onClick={onRejectProposal}>
             <Trash2 size={15} />
-            放弃草案
-          </button>
+          </CanvasIconButton>
         </div>
       ) : null}
       {onlyOne && primary.type === "designDefinition" ? (
         <div className="selection-toolbar-group" role="group" aria-label="设计定义">
-          <button className="brand" type="button" onClick={onOpenDesignDefinitionDetail}>
+          <CanvasIconButton label="查看设计定义详情" className="brand" onClick={onOpenDesignDefinitionDetail}>
             <BookOpen size={15} />
-            查看详情
-          </button>
+          </CanvasIconButton>
           {!primary.isCurrentEffective ? (
-            <button type="button" onClick={onSetCurrentDesignDefinition}>
+            <CanvasIconButton label="设为当前设计定义" onClick={onSetCurrentDesignDefinition}>
               <Flag size={15} />
-              设为当前定义
-            </button>
+            </CanvasIconButton>
           ) : null}
         </div>
       ) : null}
       {onlyOne && primary.type === "image" ? (
         <div className="selection-toolbar-group" role="group" aria-label="图像">
-          <button type="button" onClick={onLocalEdit}>
+          <CanvasIconButton label="局部编辑" onClick={onLocalEdit}>
             <PenLine size={15} />
-            局部改
-          </button>
-          <button className="brand" type="button" onClick={onReferenceIntent}>
+          </CanvasIconButton>
+          <CanvasIconButton label="设为后续默认参考" className="brand" onClick={onReferenceIntent}>
             <Sparkles size={15} />
-            默认参考
-          </button>
+          </CanvasIconButton>
         </div>
       ) : null}
       {showDirectionActions ? (
         <>
           <div className="selection-toolbar-group" role="group" aria-label="方向">
-            <button className="brand" type="button" onClick={onOpenConceptDirectionDetail}>
+            <CanvasIconButton label="查看方向详情" className="brand" onClick={onOpenConceptDirectionDetail}>
               <BookOpen size={15} />
-              详情
-            </button>
+            </CanvasIconButton>
             {primary.status !== "primary" && primary.status !== "eliminated" ? (
-              <button type="button" onClick={onSetDirectionPrimary}>
+              <CanvasIconButton label="设为主方向" onClick={onSetDirectionPrimary}>
                 <Flag size={15} />
-                主方向
-              </button>
+              </CanvasIconButton>
             ) : null}
             {primary.status !== "alternative" && primary.status !== "eliminated" ? (
-              <button type="button" onClick={onSetDirectionAlternative}>
+              <CanvasIconButton label="设为备选方向" onClick={onSetDirectionAlternative}>
                 <GitCompare size={15} />
-                备选
-              </button>
+              </CanvasIconButton>
             ) : null}
             {primary.status === "eliminated" ? (
-              <button type="button" onClick={onRestoreDirectionAsAlternative}>
+              <CanvasIconButton label="恢复为备选方向" onClick={onRestoreDirectionAsAlternative}>
                 <GitCompare size={15} />
-                恢复
-              </button>
+              </CanvasIconButton>
             ) : (
-              <button type="button" onClick={onEliminateDirection}>
+              <CanvasIconButton label="淘汰方向" danger onClick={onEliminateDirection}>
                 <Trash2 size={15} />
-                淘汰
-              </button>
+              </CanvasIconButton>
             )}
           </div>
           <span className="selection-toolbar-divider" aria-hidden="true" />
           <div className="selection-toolbar-group is-secondary" role="group" aria-label="方向发展">
-            <button type="button" onClick={onReviseDirection}>
+            <CanvasIconButton label="修订方向" onClick={onReviseDirection}>
               <PenLine size={15} />
-              修订
-            </button>
-            <button type="button" onClick={onSplitDirection}>
+            </CanvasIconButton>
+            <CanvasIconButton label="拆分方向" onClick={onSplitDirection}>
               <GitBranch size={15} />
-              拆分
-            </button>
-            <button type="button" onClick={onCreateVisualBranch}>
+            </CanvasIconButton>
+            <CanvasIconButton label="创建视觉分支" onClick={onCreateVisualBranch}>
               <Sparkles size={15} />
-              分支
-            </button>
+            </CanvasIconButton>
           </div>
         </>
       ) : null}
       {showMergeDirectionsAction ? (
         <div className="selection-toolbar-group" role="group" aria-label="合并方向">
-          <button type="button" onClick={onMergeDirections}>
+          <CanvasIconButton label="合并方向" onClick={onMergeDirections}>
             <GitCompare size={15} />
-            合并
-          </button>
+          </CanvasIconButton>
         </div>
       ) : null}
 
       <span className="selection-toolbar-divider" aria-hidden="true" />
       <div className="selection-toolbar-group is-secondary" role="group" aria-label="追溯">
-        <button className={isDesignTraceActive ? "brand" : ""} type="button" onClick={onToggleDesignTrace}>
+        <CanvasIconButton
+          label={isDesignTraceActive ? "关闭链路" : "查看链路"}
+          active={isDesignTraceActive}
+          pressed={isDesignTraceActive}
+          onClick={onToggleDesignTrace}
+        >
           <GitBranch size={15} />
-          链路
-        </button>
+        </CanvasIconButton>
+      </div>
+      <span className="selection-toolbar-divider" aria-hidden="true" />
+      <div className="selection-toolbar-group is-secondary" role="group" aria-label="对象显示与删除">
+        <CanvasIconButton label="隐藏对象" onClick={onHide}>
+          <EyeOff size={15} />
+        </CanvasIconButton>
+        <CanvasIconButton label="删除对象" danger onClick={onDelete}>
+          <Trash2 size={15} />
+        </CanvasIconButton>
       </div>
     </div>
   );

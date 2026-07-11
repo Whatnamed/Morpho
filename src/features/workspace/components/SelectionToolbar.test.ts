@@ -45,8 +45,11 @@ describe("SelectionToolbar", () => {
     );
 
     expect(html).toContain("selection-toolbar");
-    expect(html).toContain("局部改");
-    expect(html).toContain("默认参考");
+    expect(html).toContain('aria-label="局部编辑"');
+    expect(html).toContain('aria-label="设为后续默认参考"');
+    expect(html).toContain('aria-label="隐藏对象"');
+    expect(html).toContain('aria-label="删除对象"');
+    expect(html).not.toContain(">局部编辑<");
     expect(html).not.toContain(selected[0].title);
     expect(html).not.toContain("研究详情");
   });
@@ -92,8 +95,8 @@ describe("SelectionToolbar", () => {
       })
     );
 
-    expect(html).toContain("查看详情");
-    expect(html).toContain("设为当前定义");
+    expect(html).toContain('aria-label="查看设计定义详情"');
+    expect(html).toContain('aria-label="设为当前设计定义"');
   });
 
   it("offers research detail only for a selected research object", () => {
@@ -255,9 +258,9 @@ describe("SelectionToolbar", () => {
       })
     );
 
-    expect(html).toContain("查看详情");
-    expect(html).toContain("应用草案");
-    expect(html).toContain("放弃草案");
+    expect(html).toContain('aria-label="查看草案详情"');
+    expect(html).toContain('aria-label="应用草案"');
+    expect(html).toContain('aria-label="放弃草案"');
   });
 
   it("offers a direct detail action for a selected concept direction", () => {

@@ -1315,7 +1315,7 @@ button:disabled {
   stroke-dasharray: 5 6;
 }
 
-/* Stage landmarks: warm wash under cards, not heavy containers. */
+/* Stage landmarks: readable on canvas dots, still light — not flowchart boxes. */
 .stage-region-shape {
   position: relative;
   overflow: hidden;
@@ -1326,10 +1326,13 @@ button:disabled {
 .stage-region-wash {
   position: absolute;
   inset: 0;
-  border: 1px solid rgba(78, 68, 58, 0.08);
+  border: 1px solid var(--stage-region-border, rgba(78, 68, 58, 0.16));
   border-radius: 16px;
-  background: rgba(252, 251, 248, 0.42);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  background: var(--stage-region-fill, rgba(255, 252, 246, 0.78));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 0 0 1px rgba(78, 68, 58, 0.04),
+    0 10px 28px rgba(54, 45, 35, 0.04);
   pointer-events: none;
 }
 
@@ -1338,28 +1341,23 @@ button:disabled {
   top: 12px;
   left: 14px;
   z-index: 1;
-  color: rgba(78, 68, 58, 0.48);
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--stage-region-title, rgba(78, 68, 58, 0.72));
+  font-size: 12px;
+  font-weight: 680;
+  letter-spacing: 0.05em;
   pointer-events: none;
   user-select: none;
 }
 
-.stage-region-research .stage-region-wash {
-  background: rgba(248, 246, 241, 0.5);
+.stage-region-shape.is-border-none .stage-region-wash {
+  border-color: transparent;
 }
 
-.stage-region-definition .stage-region-wash {
-  background: rgba(252, 249, 245, 0.48);
-}
-
-.stage-region-visual .stage-region-wash {
-  background: rgba(250, 248, 244, 0.44);
-}
-
-.stage-region-delivery .stage-region-wash {
-  background: rgba(246, 248, 246, 0.46);
+.stage-region-shape.is-border-dashed .stage-region-wash {
+  border-style: dashed;
 }
 
 .document-reader-block {
@@ -2469,6 +2467,10 @@ button:disabled {
   height: 0;
 }
 
+.stage-region-toolbar {
+  overflow: visible;
+}
+
 .selection-toolbar-group {
   display: inline-flex;
   align-items: center;
@@ -2532,6 +2534,158 @@ button:disabled {
 .selection-toolbar button.danger:hover {
   background: rgba(166, 69, 58, 0.08);
   color: var(--danger);
+}
+
+.selection-toolbar .canvas-icon-button {
+  position: relative;
+  width: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.selection-toolbar .canvas-icon-button.is-active {
+  background: rgba(142, 76, 36, 0.12);
+  color: var(--accent-brand-hover);
+}
+
+.selection-toolbar .canvas-icon-button.is-danger {
+  color: var(--text-secondary);
+}
+
+.selection-toolbar .canvas-icon-button.is-danger:hover,
+.selection-toolbar .canvas-icon-button.is-danger:focus-visible {
+  background: rgba(166, 69, 58, 0.1);
+  color: var(--danger);
+}
+
+.selection-toolbar .canvas-icon-button:focus-visible,
+.stage-toolbar-popover button:focus-visible {
+  outline: 2px solid var(--accent-select);
+  outline-offset: 2px;
+}
+
+.selection-toolbar .canvas-icon-button::after,
+.stage-toolbar-popover [data-tooltip]::after {
+  position: absolute;
+  z-index: 4;
+  top: calc(100% + 8px);
+  left: 50%;
+  max-width: 156px;
+  padding: 5px 7px;
+  border-radius: 6px;
+  background: rgba(49, 42, 35, 0.9);
+  color: #fff;
+  content: attr(data-tooltip);
+  font-size: 10px;
+  line-height: 1.2;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -2px);
+  transition:
+    opacity var(--duration-fast) ease,
+    transform var(--duration-fast) ease;
+  white-space: nowrap;
+}
+
+.selection-toolbar .canvas-icon-button:hover::after,
+.selection-toolbar .canvas-icon-button:focus-visible::after,
+.stage-toolbar-popover [data-tooltip]:hover::after,
+.stage-toolbar-popover [data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.canvas-toolbar-popover-anchor {
+  position: relative;
+}
+
+.stage-color-dot {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 6px;
+  height: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(78, 68, 58, 0.2);
+}
+
+.stage-toolbar-popover {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 8px);
+  left: 50%;
+  display: flex;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid rgba(78, 68, 58, 0.12);
+  border-radius: 10px;
+  background: rgba(252, 251, 248, 0.98);
+  box-shadow: var(--shadow-popover);
+  transform: translateX(-50%);
+  backdrop-filter: blur(14px);
+}
+
+.stage-region-toolbar.below .stage-toolbar-popover {
+  top: auto;
+  bottom: calc(100% + 8px);
+}
+
+.stage-color-popover,
+.stage-border-popover {
+  align-items: center;
+}
+
+.stage-color-swatch,
+.stage-border-option {
+  position: relative;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.stage-color-swatch > span {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgba(78, 68, 58, 0.12);
+}
+
+.stage-color-swatch:hover,
+.stage-border-option:hover,
+.stage-color-swatch.is-selected,
+.stage-border-option.is-selected {
+  border-color: rgba(142, 76, 36, 0.34);
+  background: rgba(142, 76, 36, 0.08);
+  color: var(--accent-brand-hover);
+}
+
+.stage-opacity-popover {
+  width: 152px;
+  align-items: center;
+}
+
+.stage-opacity-popover output {
+  min-width: 32px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.stage-opacity-popover input[type="range"] {
+  width: 104px;
+  accent-color: var(--accent-brand);
 }
 
 .selection-toolbar-divider {

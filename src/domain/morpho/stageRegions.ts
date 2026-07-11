@@ -3,11 +3,34 @@ import type {
   MorphoObject,
   MorphoObjectId,
   MorphoWorkspace,
+  StageRegionBorderStyle,
+  StageRegionColorKey,
   StageRegionKey,
   StageRegionRecord
 } from "./types";
 
-export type { StageRegionKey, StageRegionRecord };
+export type { StageRegionBorderStyle, StageRegionColorKey, StageRegionKey, StageRegionRecord };
+
+export type StageRegionStyle = Required<
+  Pick<StageRegionRecord, "colorKey" | "fillOpacity" | "backgroundVisible" | "borderStyle" | "locked" | "isActivated">
+>;
+
+export type StageRegionColorPreset = {
+  key: StageRegionColorKey;
+  label: string;
+  fill: string;
+  border: string;
+  title: string;
+};
+
+export const STAGE_REGION_COLOR_PRESETS: readonly StageRegionColorPreset[] = [
+  { key: "warmSand", label: "暖米色", fill: "rgb(238 224 201)", border: "rgb(174 143 101)", title: "rgb(122 91 57)" },
+  { key: "mistBlue", label: "雾蓝", fill: "rgb(213 227 234)", border: "rgb(117 148 164)", title: "rgb(73 107 125)" },
+  { key: "sage", label: "浅灰绿", fill: "rgb(218 230 218)", border: "rgb(125 151 128)", title: "rgb(79 110 84)" },
+  { key: "violetGray", label: "淡紫灰", fill: "rgb(226 221 235)", border: "rgb(143 128 163)", title: "rgb(99 82 123)" },
+  { key: "clay", label: "浅陶色", fill: "rgb(238 218 206)", border: "rgb(174 126 102)", title: "rgb(128 82 61)" },
+  { key: "warmGray", label: "中性暖灰", fill: "rgb(228 225 219)", border: "rgb(143 134 122)", title: "rgb(97 89 79)" }
+] as const;
 
 export const STAGE_REGION_DEFS: ReadonlyArray<{ key: StageRegionKey; title: string; id: string }> = [
   { key: "research", title: "资料与研究", id: "stage-research" },
@@ -27,10 +50,51 @@ const MEMBER_PADDING = 72;
 const MIN_REGION_W = 360;
 const MIN_REGION_H = 280;
 
+const DEFAULT_COLOR_BY_STAGE: Record<StageRegionKey, StageRegionColorKey> = {
+  research: "warmSand",
+  definition: "mistBlue",
+  visual: "violetGray",
+  delivery: "sage"
+};
+
+const COLOR_KEYS = new Set<StageRegionColorKey>(STAGE_REGION_COLOR_PRESETS.map((preset) => preset.key));
+const BORDER_STYLES = new Set<StageRegionBorderStyle>(["none", "solid", "dashed"]);
+
+export function getStageRegionColorPreset(colorKey: StageRegionColorKey): StageRegionColorPreset {
+  return STAGE_REGION_COLOR_PRESETS.find((preset) => preset.key === colorKey) ?? STAGE_REGION_COLOR_PRESETS[0];
+}
+
+export function getDefaultStageRegionStyle(key: StageRegionKey): StageRegionStyle {
+  return {
+    colorKey: DEFAULT_COLOR_BY_STAGE[key],
+    fillOpacity: 16,
+    backgroundVisible: true,
+    borderStyle: "solid",
+    locked: false,
+    isActivated: false
+  };
+}
+
+export function normalizeStageRegionRecord(record: StageRegionRecord): StageRegionRecord & StageRegionStyle {
+  const defaults = getDefaultStageRegionStyle(record.key);
+  const colorKey = record.colorKey && COLOR_KEYS.has(record.colorKey) ? record.colorKey : defaults.colorKey;
+  const borderStyle = record.borderStyle && BORDER_STYLES.has(record.borderStyle) ? record.borderStyle : defaults.borderStyle;
+  return {
+    ...record,
+    colorKey,
+    fillOpacity: clampStageOpacity(record.fillOpacity ?? defaults.fillOpacity),
+    backgroundVisible: record.backgroundVisible ?? defaults.backgroundVisible,
+    borderStyle,
+    locked: record.locked ?? defaults.locked,
+    // Old projects with members are already active; empty projects stay quiet.
+    isActivated: record.isActivated ?? record.memberObjectIds.length > 0
+  };
+}
+
 /**
  * Semantic home for a canvas object. Canvas coordinates never decide membership.
  */
-export function classifyStageRegionKey(object: MorphoObject): StageRegionKey | null {
+export function resolveStageRegionForObject(object: MorphoObject): StageRegionKey | null {
   switch (object.type) {
     case "file":
     case "text":
@@ -41,8 +105,19 @@ export function classifyStageRegionKey(object: MorphoObject): StageRegionKey | n
     case "keyConclusion":
       return "research";
     case "designDefinition":
-    case "proposalDraft":
       return "definition";
+    case "proposalDraft":
+      switch (object.proposalType) {
+        case "researchAnalysis":
+          return "research";
+        case "conceptDirection":
+          return "visual";
+        case "deliveryPlan":
+          return "delivery";
+        case "designDefinition":
+        default:
+          return "definition";
+      }
     case "conceptDirection":
       return "visual";
     case "delivery":
@@ -69,6 +144,9 @@ export function classifyStageRegionKey(object: MorphoObject): StageRegionKey | n
       return null;
   }
 }
+
+/** @deprecated Prefer resolveStageRegionForObject for new callers. */
+export const classifyStageRegionKey = resolveStageRegionForObject;
 
 export function computeStageBoundsFromMembers(
   workspace: MorphoWorkspace,
@@ -101,7 +179,7 @@ export function computeStageBoundsFromMembers(
   return { x, y, w, h };
 }
 
-export function buildInitialStageRegions(workspace: MorphoWorkspace): StageRegionRecord[] {
+export function buildInitialStageRegions(workspace: MorphoWorkspace): Array<StageRegionRecord & StageRegionStyle> {
   const membersByKey: Record<StageRegionKey, MorphoObjectId[]> = {
     research: [],
     definition: [],
@@ -110,10 +188,7 @@ export function buildInitialStageRegions(workspace: MorphoWorkspace): StageRegio
   };
 
   for (const object of Object.values(workspace.objects)) {
-    if (object.visibility !== "active") {
-      continue;
-    }
-    const key = classifyStageRegionKey(object);
+    const key = resolveStageRegionForObject(object);
     if (!key) {
       continue;
     }
@@ -128,21 +203,23 @@ export function buildInitialStageRegions(workspace: MorphoWorkspace): StageRegio
       key: def.key,
       title: def.title,
       ...bounds,
-      memberObjectIds
+      memberObjectIds,
+      ...getDefaultStageRegionStyle(def.key),
+      isActivated: memberObjectIds.length > 0
     };
   });
 }
 
-export function getStageRegions(workspace: MorphoWorkspace): StageRegionRecord[] {
+export function getStageRegions(workspace: MorphoWorkspace): Array<StageRegionRecord & StageRegionStyle> {
   const existing = workspace.canvas.stageRegions;
   if (existing && existing.length === STAGE_REGION_DEFS.length) {
-    return existing;
+    return existing.map(normalizeStageRegionRecord);
   }
   return buildInitialStageRegions(workspace);
 }
 
 /**
- * Ensure four stage records exist. New active objects join their semantic home once;
+ * Ensure four stage records exist. New objects join their semantic home once;
  * dragging off a region never removes membership. Bounds only change when caller
  * updates them (user resize/drag), not when object positions change.
  */
@@ -158,40 +235,43 @@ export function ensureStageRegions(workspace: MorphoWorkspace): MorphoWorkspace 
     };
   }
 
+  const normalizedCurrent = current.map(normalizeStageRegionRecord);
   const assigned = new Set<MorphoObjectId>();
-  for (const region of current) {
+  for (const region of normalizedCurrent) {
     for (const id of region.memberObjectIds) {
       assigned.add(id);
     }
   }
 
-  let changed = false;
-  const nextRegions = current.map((region) => {
+  let changed = !areStageRegionRecordsEqual(current, normalizedCurrent);
+  const nextRegions = normalizedCurrent.map((region) => {
     const additions: MorphoObjectId[] = [];
     for (const object of Object.values(workspace.objects)) {
-      if (object.visibility !== "active" || assigned.has(object.id)) {
+      if (assigned.has(object.id)) {
         continue;
       }
-      if (classifyStageRegionKey(object) !== region.key) {
+      if (resolveStageRegionForObject(object) !== region.key) {
         continue;
       }
       additions.push(object.id);
       assigned.add(object.id);
     }
 
-    // Drop deleted / non-active members only.
+    // Hidden objects remain members. Missing objects are deleted and cleaned up.
     const kept = region.memberObjectIds.filter((id) => {
       const object = workspace.objects[id];
-      return Boolean(object && object.visibility === "active");
+      return Boolean(object);
     });
     const dropped = kept.length !== region.memberObjectIds.length;
-    if (additions.length === 0 && !dropped) {
+    const isActivated = region.isActivated || additions.length > 0;
+    if (additions.length === 0 && !dropped && isActivated === region.isActivated) {
       return region;
     }
     changed = true;
     return {
       ...region,
-      memberObjectIds: [...kept, ...additions]
+      memberObjectIds: [...kept, ...additions],
+      isActivated
     };
   });
 
@@ -199,6 +279,85 @@ export function ensureStageRegions(workspace: MorphoWorkspace): MorphoWorkspace 
     return workspace;
   }
 
+  return {
+    ...workspace,
+    canvas: {
+      ...workspace.canvas,
+      stageRegions: nextRegions
+    }
+  };
+}
+
+export function hasVisibleStageRegionMembers(workspace: MorphoWorkspace, stageId: string): boolean {
+  const region = getStageRegions(workspace).find((item) => item.id === stageId);
+  if (!region) {
+    return false;
+  }
+  return region.memberObjectIds.some((id) => workspace.objects[id]?.visibility === "active");
+}
+
+/** Explicit action only — normal object movement never changes region bounds. */
+export function fitStageRegionToVisibleMembers(workspace: MorphoWorkspace, stageId: string): MorphoWorkspace {
+  const region = getStageRegions(workspace).find((item) => item.id === stageId);
+  if (!region || !hasVisibleStageRegionMembers(workspace, stageId)) {
+    return workspace;
+  }
+  const nextBounds = computeStageBoundsFromMembers(workspace, region.key, region.memberObjectIds);
+  if (
+    Math.abs(nextBounds.x - region.x) < 0.001 &&
+    Math.abs(nextBounds.y - region.y) < 0.001 &&
+    Math.abs(nextBounds.w - region.w) < 0.001 &&
+    Math.abs(nextBounds.h - region.h) < 0.001
+  ) {
+    return workspace;
+  }
+  return updateStageRegionLayout(workspace, [{ id: region.id, ...nextBounds }]);
+}
+
+export function updateStageRegionStyle(
+  workspace: MorphoWorkspace,
+  stageId: string,
+  patch: Partial<Pick<StageRegionRecord, "colorKey" | "fillOpacity" | "backgroundVisible" | "borderStyle" | "locked">>
+): MorphoWorkspace {
+  const regions = getStageRegions(workspace);
+  const nextRegions = regions.map((region) =>
+    region.id === stageId
+      ? normalizeStageRegionRecord({
+          ...region,
+          ...patch
+        })
+      : region
+  );
+  if (areStageRegionRecordsEqual(workspace.canvas.stageRegions, nextRegions)) {
+    return workspace;
+  }
+  return {
+    ...workspace,
+    canvas: {
+      ...workspace.canvas,
+      stageRegions: nextRegions
+    }
+  };
+}
+
+export function resetStageRegionStyle(workspace: MorphoWorkspace, stageId: string): MorphoWorkspace {
+  const regions = getStageRegions(workspace);
+  const nextRegions = regions.map((region) => {
+    if (region.id !== stageId) {
+      return region;
+    }
+    const defaults = getDefaultStageRegionStyle(region.key);
+    return {
+      ...region,
+      colorKey: defaults.colorKey,
+      fillOpacity: defaults.fillOpacity,
+      backgroundVisible: defaults.backgroundVisible,
+      borderStyle: defaults.borderStyle
+    };
+  });
+  if (areStageRegionRecordsEqual(workspace.canvas.stageRegions, nextRegions)) {
+    return workspace;
+  }
   return {
     ...workspace,
     canvas: {
@@ -279,6 +438,12 @@ export function areStageRegionRecordsEqual(
       Math.abs(a.y - b.y) > 0.001 ||
       Math.abs(a.w - b.w) > 0.001 ||
       Math.abs(a.h - b.h) > 0.001 ||
+      a.colorKey !== b.colorKey ||
+      a.fillOpacity !== b.fillOpacity ||
+      a.backgroundVisible !== b.backgroundVisible ||
+      a.borderStyle !== b.borderStyle ||
+      a.locked !== b.locked ||
+      a.isActivated !== b.isActivated ||
       a.memberObjectIds.length !== b.memberObjectIds.length ||
       a.memberObjectIds.some((id, memberIndex) => id !== b.memberObjectIds[memberIndex])
     ) {
@@ -294,7 +459,10 @@ export function areStageRegionRecordsEqual(
  */
 export function mergeStageShapeLayoutsIntoRecords(
   base: StageRegionRecord[],
-  layouts: Array<{ id: string; x: number; y: number; w: number; h: number; memberObjectIds?: MorphoObjectId[] }>
+  layouts: Array<
+    Pick<StageRegionRecord, "id" | "x" | "y" | "w" | "h"> &
+      Partial<Pick<StageRegionRecord, "memberObjectIds" | "colorKey" | "fillOpacity" | "backgroundVisible" | "borderStyle" | "locked" | "isActivated">>
+  >
 ): StageRegionRecord[] {
   const byId = new Map(layouts.map((item) => [item.id, item]));
   return base.map((region) => {
@@ -302,15 +470,25 @@ export function mergeStageShapeLayoutsIntoRecords(
     if (!layout) {
       return region;
     }
-    return {
+    return normalizeStageRegionRecord({
       ...region,
       x: layout.x,
       y: layout.y,
       w: layout.w,
       h: layout.h,
-      memberObjectIds: layout.memberObjectIds ? [...layout.memberObjectIds] : region.memberObjectIds
-    };
+      memberObjectIds: layout.memberObjectIds ? [...layout.memberObjectIds] : region.memberObjectIds,
+      colorKey: layout.colorKey ?? region.colorKey,
+      fillOpacity: layout.fillOpacity ?? region.fillOpacity,
+      backgroundVisible: layout.backgroundVisible ?? region.backgroundVisible,
+      borderStyle: layout.borderStyle ?? region.borderStyle,
+      locked: layout.locked ?? region.locked,
+      isActivated: layout.isActivated ?? region.isActivated
+    });
   });
+}
+
+function clampStageOpacity(value: number): number {
+  return Math.min(100, Math.max(0, Math.round(value)));
 }
 
 /**

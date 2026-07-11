@@ -12,8 +12,11 @@ import {
   type TLShape,
   type TLShapePartial
 } from "tldraw";
+import { LockKeyhole } from "lucide-react";
+import type { CSSProperties } from "react";
 
-import type { StageRegionKey, StageRegionRecord } from "@/domain/morpho/types";
+import type { StageRegionBorderStyle, StageRegionColorKey, StageRegionKey, StageRegionRecord } from "@/domain/morpho/types";
+import { getStageRegionColorPreset, normalizeStageRegionRecord } from "@/domain/morpho/stageRegions";
 
 export const STAGE_REGION_SHAPE_TYPE = "stageRegion";
 
@@ -23,6 +26,11 @@ type StageRegionShapeProps = {
   stageKey: StageRegionKey;
   title: string;
   memberObjectIds: string[];
+  colorKey: StageRegionColorKey;
+  fillOpacity: number;
+  backgroundVisible: boolean;
+  borderStyle: StageRegionBorderStyle;
+  locked: boolean;
 };
 
 declare module "@tldraw/tlschema" {
@@ -38,17 +46,27 @@ export function isStageRegionShape(shape: TLShape): shape is StageRegionShape {
 }
 
 export function createStageRegionShapePartial(record: StageRegionRecord): TLShapePartial<StageRegionShape> {
+  const normalized = normalizeStageRegionRecord(record);
   return {
-    id: `shape:${record.id}` as StageRegionShape["id"],
+    id: `shape:${normalized.id}` as StageRegionShape["id"],
     type: STAGE_REGION_SHAPE_TYPE,
-    x: record.x,
-    y: record.y,
+    x: normalized.x,
+    y: normalized.y,
+    // Do not use tldraw's native lock here: native locked shapes cannot be
+    // selected again with the default editor options, which would strand this
+    // stage's unlock control. The custom `locked` prop blocks drag and resize.
+    isLocked: false,
     props: {
-      w: record.w,
-      h: record.h,
-      stageKey: record.key,
-      title: record.title,
-      memberObjectIds: [...record.memberObjectIds]
+      w: normalized.w,
+      h: normalized.h,
+      stageKey: normalized.key,
+      title: normalized.title,
+      memberObjectIds: [...normalized.memberObjectIds],
+      colorKey: normalized.colorKey,
+      fillOpacity: normalized.fillOpacity,
+      backgroundVisible: normalized.backgroundVisible,
+      borderStyle: normalized.borderStyle,
+      locked: normalized.locked
     }
   };
 }
@@ -65,7 +83,12 @@ export class StageRegionShapeUtil extends BaseBoxShapeUtil<StageRegionShape> {
     h: T.number,
     stageKey: T.literalEnum("research", "definition", "visual", "delivery"),
     title: T.string,
-    memberObjectIds: T.arrayOf(T.string)
+    memberObjectIds: T.arrayOf(T.string),
+    colorKey: T.literalEnum("warmSand", "mistBlue", "sage", "violetGray", "clay", "warmGray"),
+    fillOpacity: T.number,
+    backgroundVisible: T.boolean,
+    borderStyle: T.literalEnum("none", "solid", "dashed"),
+    locked: T.boolean
   };
 
   override canEdit = () => false;
@@ -74,6 +97,7 @@ export class StageRegionShapeUtil extends BaseBoxShapeUtil<StageRegionShape> {
   override canReceiveNewChildrenOfType = () => false;
   override isAspectRatioLocked = () => false;
   override hideRotateHandle = () => true;
+  override canResize = (shape: StageRegionShape) => !shape.props.locked;
 
   getDefaultProps(): StageRegionShapeProps {
     return {
@@ -81,7 +105,12 @@ export class StageRegionShapeUtil extends BaseBoxShapeUtil<StageRegionShape> {
       h: 320,
       stageKey: "research",
       title: "资料与研究",
-      memberObjectIds: []
+      memberObjectIds: [],
+      colorKey: "warmSand",
+      fillOpacity: 16,
+      backgroundVisible: true,
+      borderStyle: "solid",
+      locked: false
     };
   }
 
@@ -103,8 +132,16 @@ export class StageRegionShapeUtil extends BaseBoxShapeUtil<StageRegionShape> {
   /**
    * Move explicit members by the same delta inside one interactive translate.
    * tldraw batches the drag into a single history entry with these updates.
-   */
+  */
   override onTranslate = (initial: StageRegionShape, current: StageRegionShape) => {
+    if (current.props.locked) {
+      return {
+        id: current.id,
+        type: "stageRegion" as const,
+        x: initial.x,
+        y: initial.y
+      };
+    }
     const dx = current.x - initial.x;
     const dy = current.y - initial.y;
     if (dx === 0 && dy === 0) {
@@ -160,17 +197,26 @@ export class StageRegionShapeUtil extends BaseBoxShapeUtil<StageRegionShape> {
   private lastTranslateByShapeId = new Map<string, { x: number; y: number }>();
 
   override component(shape: StageRegionShape) {
+    const color = getStageRegionColorPreset(shape.props.colorKey);
+    const fill = shape.props.backgroundVisible ? `color-mix(in srgb, ${color.fill} ${shape.props.fillOpacity}%, transparent)` : "transparent";
+    const borderColor = shape.props.borderStyle === "none" ? "transparent" : color.border;
     return (
       <HTMLContainer
-        className={`stage-region-shape stage-region-${shape.props.stageKey}`}
+        className={`stage-region-shape stage-region-${shape.props.stageKey} is-border-${shape.props.borderStyle}`}
         style={{
           width: shape.props.w,
           height: shape.props.h,
-          pointerEvents: "all"
-        }}
+          pointerEvents: "all",
+          "--stage-region-fill": fill,
+          "--stage-region-border": borderColor,
+          "--stage-region-title": color.title
+        } as CSSProperties}
       >
         <div className="stage-region-wash" aria-hidden="true" />
-        <div className="stage-region-title">{shape.props.title}</div>
+        <div className="stage-region-title">
+          <span>{shape.props.title}</span>
+          {shape.props.locked ? <LockKeyhole size={11} aria-label="已锁定分区" /> : null}
+        </div>
       </HTMLContainer>
     );
   }

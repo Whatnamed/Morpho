@@ -437,6 +437,8 @@ export type CanvasView = {
 
 /** Canvas presentation landmark — not a MorphoObject and not schema-versioned. */
 export type StageRegionKey = "research" | "definition" | "visual" | "delivery";
+export type StageRegionColorKey = "warmSand" | "mistBlue" | "sage" | "violetGray" | "clay" | "warmGray";
+export type StageRegionBorderStyle = "none" | "solid" | "dashed";
 
 export type StageRegionRecord = {
   id: string;
@@ -447,6 +449,13 @@ export type StageRegionRecord = {
   w: number;
   h: number;
   memberObjectIds: MorphoObjectId[];
+  /** Optional so pre-style projects remain readable without a schema migration. */
+  colorKey?: StageRegionColorKey;
+  fillOpacity?: number;
+  backgroundVisible?: boolean;
+  borderStyle?: StageRegionBorderStyle;
+  locked?: boolean;
+  isActivated?: boolean;
 };
 
 export type RelationKind =

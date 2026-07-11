@@ -18,6 +18,30 @@ describe("StageRegionShapeUtil helpers", () => {
     expect(partial.type).toBe(STAGE_REGION_SHAPE_TYPE);
     expect(partial.props?.title).toBe("资料与研究");
     expect(partial.props?.memberObjectIds?.length).toBeGreaterThan(0);
+    expect(partial.props).toMatchObject({
+      colorKey: "warmSand",
+      fillOpacity: 16,
+      backgroundVisible: true,
+      borderStyle: "solid",
+      locked: false
+    });
+  });
+
+  it("keeps custom-locked stage regions selectable in tldraw", () => {
+    const partial = createStageRegionShapePartial({
+      id: "stage-research",
+      key: "research",
+      title: "资料与研究",
+      x: 0,
+      y: 0,
+      w: 400,
+      h: 320,
+      memberObjectIds: [],
+      locked: true
+    });
+
+    expect(partial.isLocked).toBe(false);
+    expect(partial.props?.locked).toBe(true);
   });
 
   it("type-guards stage shapes without treating them as morpho objects", () => {
