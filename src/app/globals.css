@@ -8878,3 +8878,25 @@ select:focus-visible {
   display: none !important;
 }
 
+
+/* ========================================================================== */
+/* Restore workspace paper color + visible grid (cascade last)               */
+/* ========================================================================== */
+
+.workspace {
+  background:
+    linear-gradient(rgba(77, 66, 54, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(77, 66, 54, 0.03) 1px, transparent 1px),
+    radial-gradient(circle at 14% 12%, rgba(255, 255, 255, 0.72), transparent 26%),
+    radial-gradient(circle at 82% 78%, rgba(237, 230, 221, 0.48), transparent 32%),
+    var(--canvas) !important;
+  background-size: 48px 48px, 48px 48px, auto, auto, auto !important;
+}
+
+.tl-background {
+  background:
+    linear-gradient(rgba(77, 66, 54, 0.032) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(77, 66, 54, 0.032) 1px, transparent 1px),
+    var(--canvas) !important;
+  background-size: 48px 48px !important;
+}
