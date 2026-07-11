@@ -82,15 +82,24 @@ input:focus-visible {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 14% 12%, rgba(255, 255, 255, 0.78), transparent 24%),
-    radial-gradient(circle at 82% 78%, rgba(237, 230, 221, 0.52), transparent 30%),
-    var(--canvas);
+  background-color: var(--canvas);
+  background-image:
+    linear-gradient(rgba(77, 66, 54, 0.024) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(77, 66, 54, 0.024) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(247, 245, 241, 0.94));
+  background-size: 48px 48px, 48px 48px, auto;
+  background-repeat: repeat, repeat, no-repeat;
 }
 
 .workspace-canvas {
   position: absolute;
   inset: 0;
+  background-color: var(--canvas);
+}
+
+.workspace-canvas .tl-theme,
+.workspace-canvas .tl-container {
+  --tl-color-background: #f7f5f1;
 }
 
 .workspace-save-toast {
@@ -3780,12 +3789,13 @@ button:disabled {
 
 /* UI refinement pass: keep Morpho as a calm floating workspace, not a dashboard shell. */
 .workspace {
-  background:
+  background-color: var(--canvas);
+  background-image:
     linear-gradient(rgba(77, 66, 54, 0.024) 1px, transparent 1px),
     linear-gradient(90deg, rgba(77, 66, 54, 0.024) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(247, 245, 241, 0.94)),
-    var(--canvas);
-  background-size: 48px 48px, 48px 48px, auto, auto;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(247, 245, 241, 0.94));
+  background-size: 48px 48px, 48px 48px, auto;
+  background-repeat: repeat, repeat, no-repeat;
 }
 
 .floating-cluster,
@@ -4160,10 +4170,10 @@ button:disabled {
 }
 
 .tl-background {
-  background:
+  background-color: var(--canvas) !important;
+  background-image:
     linear-gradient(rgba(77, 66, 54, 0.026) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(77, 66, 54, 0.026) 1px, transparent 1px),
-    var(--canvas) !important;
+    linear-gradient(90deg, rgba(77, 66, 54, 0.026) 1px, transparent 1px) !important;
   background-size: 48px 48px !important;
 }
 
@@ -4604,21 +4614,21 @@ select:focus-visible {
 }
 
 .workspace {
-  background:
-    linear-gradient(rgba(77, 66, 54, 0.018) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(77, 66, 54, 0.018) 1px, transparent 1px),
-    radial-gradient(circle at 34% 22%, rgba(255, 255, 255, 0.55), transparent 30%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.4), rgba(247, 245, 241, 0.96)),
-    var(--canvas);
-  background-size: 56px 56px, 56px 56px, auto, auto, auto;
+  background-color: var(--canvas);
+  background-image:
+    linear-gradient(rgba(77, 66, 54, 0.024) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(77, 66, 54, 0.024) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(247, 245, 241, 0.94));
+  background-size: 48px 48px, 48px 48px, auto;
+  background-repeat: repeat, repeat, no-repeat;
 }
 
 .tl-background {
-  background:
-    linear-gradient(rgba(77, 66, 54, 0.018) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(77, 66, 54, 0.018) 1px, transparent 1px),
-    var(--canvas) !important;
-  background-size: 56px 56px !important;
+  background-color: #f7f5f1 !important;
+  background-image: linear-gradient(rgba(77, 66, 54, 0.026) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(77, 66, 54, 0.026) 1px, transparent 1px) !important;
+  background-size: 48px 48px !important;
+  background-repeat: repeat !important;
 }
 
 .floating-cluster {
@@ -8880,23 +8890,46 @@ select:focus-visible {
 
 
 /* ========================================================================== */
-/* Restore workspace paper color + visible grid (cascade last)               */
+/* Canvas paper + grid — match pre-card-redesign look (must stay last)         */
+/* tldraw paints .tl-background with --tl-color-background; override both.    */
 /* ========================================================================== */
 
-.workspace {
-  background:
-    linear-gradient(rgba(77, 66, 54, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(77, 66, 54, 0.03) 1px, transparent 1px),
-    radial-gradient(circle at 14% 12%, rgba(255, 255, 255, 0.72), transparent 26%),
-    radial-gradient(circle at 82% 78%, rgba(237, 230, 221, 0.48), transparent 32%),
-    var(--canvas) !important;
-  background-size: 48px 48px, 48px 48px, auto, auto, auto !important;
+.workspace,
+.workspace .tl-theme,
+.workspace .tl-container,
+.workspace-canvas,
+.workspace-canvas .tl-theme,
+.workspace-canvas .tl-container {
+  --tl-color-background: #f7f5f1;
 }
 
+.workspace {
+  background-color: var(--canvas) !important;
+  background-image:
+    linear-gradient(rgba(77, 66, 54, 0.024) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(77, 66, 54, 0.024) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(247, 245, 241, 0.94)) !important;
+  background-size: 48px 48px, 48px 48px, auto !important;
+  background-repeat: repeat, repeat, no-repeat !important;
+}
+
+.workspace .tl-background,
+.workspace-canvas .tl-background,
 .tl-background {
-  background:
-    linear-gradient(rgba(77, 66, 54, 0.032) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(77, 66, 54, 0.032) 1px, transparent 1px),
-    var(--canvas) !important;
+  background-color: #f7f5f1 !important;
+  background-image: linear-gradient(rgba(77, 66, 54, 0.026) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(77, 66, 54, 0.026) 1px, transparent 1px) !important;
   background-size: 48px 48px !important;
+  background-repeat: repeat !important;
+  background-position: 0 0 !important;
+}
+
+.workspace .tl-background__wrapper,
+.workspace-canvas .tl-background__wrapper {
+  background-color: #f7f5f1 !important;
+}
+
+/* Also paint the canvas host so empty areas never fall back to tldraw cool-gray. */
+.workspace-canvas .tl-canvas {
+  background-color: #f7f5f1 !important;
 }
