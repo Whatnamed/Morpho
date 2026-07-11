@@ -444,13 +444,13 @@ button:disabled {
 .project-map {
   position: fixed;
   z-index: 44;
-  /* Band under top chrome, slightly lower than AI top for clearer separation. */
+  /* Keep top clearance; raise bottom so short panels are not too low. */
   top: 84px;
-  bottom: 24px;
+  bottom: 56px;
   left: 83px;
   width: 230px;
   height: fit-content;
-  max-height: calc(100vh - 84px - 24px);
+  max-height: calc(100vh - 84px - 56px);
   margin-top: auto;
   margin-bottom: auto;
   padding: 13px;
