@@ -28,6 +28,16 @@
   --shadow-panel: 0 6px 24px rgba(30, 24, 18, 0.05);
   --shadow-popover: 0 12px 36px rgba(30, 24, 18, 0.08);
   --shadow-float: 0 10px 28px rgba(30, 24, 18, 0.07);
+  /*
+   * Shared frosted glass for AI panel + persistent chrome.
+   * Current: denser chrome recipe. More open alt:
+   *   --morpho-glass-bg: rgba(252, 251, 248, 0.72);
+   *   --morpho-glass-blur: blur(26px) saturate(1.08);
+   *   --morpho-glass-border: rgba(78, 68, 58, 0.09);
+   */
+  --morpho-glass-bg: rgba(252, 251, 248, 0.8);
+  --morpho-glass-blur: blur(18px) saturate(1.05);
+  --morpho-glass-border: rgba(78, 68, 58, 0.11);
   --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
   --duration-fast: 140ms;
   --duration-ui: 200ms;
@@ -2028,10 +2038,8 @@ button:disabled {
 
 .ai-input-wrap {
   padding: 10px;
-  border-top: 1px solid rgba(78, 68, 58, 0.1);
-  background:
-    linear-gradient(180deg, rgba(252, 251, 248, 0.76), rgba(250, 247, 241, 0.96)),
-    rgba(252, 251, 248, 0.92);
+  border-top: 0;
+  background: transparent;
 }
 
 .input-context-strip {
@@ -5249,7 +5257,7 @@ select:focus-visible {
 
 .input-context-strip {
   border-radius: 10px;
-  background: rgba(250, 247, 241, 0.72);
+  background: transparent;
 }
 
 .mode-toggle {
@@ -5284,11 +5292,12 @@ select:focus-visible {
   width: min(426px, calc(100vw - 56px));
   height: min(640px, calc(100vh - 128px));
   min-height: 440px;
-  border: 1px solid rgba(78, 68, 58, 0.09);
+  border: 1px solid var(--morpho-glass-border);
   border-radius: 22px;
-  background: rgba(252, 251, 248, 0.72);
+  background: var(--morpho-glass-bg);
   box-shadow: 0 18px 54px rgba(30, 24, 18, 0.11);
-  backdrop-filter: blur(26px) saturate(1.08);
+  backdrop-filter: var(--morpho-glass-blur);
+  -webkit-backdrop-filter: var(--morpho-glass-blur);
 }
 
 .ai-top {
@@ -5337,11 +5346,32 @@ select:focus-visible {
   position: relative;
   flex: 1;
   min-height: 0;
+  /*
+   * Viewport-fixed fade on the non-scrolling shell (not the scroll content).
+   * Masking to transparent reveals .ai-panel's own frosted fill — no cream overlay band.
+   */
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 calc(100% - 96px),
+    rgba(0, 0, 0, 0.62) calc(100% - 44px),
+    rgba(0, 0, 0, 0.22) calc(100% - 16px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 calc(100% - 96px),
+    rgba(0, 0, 0, 0.62) calc(100% - 44px),
+    rgba(0, 0, 0, 0.22) calc(100% - 16px),
+    transparent 100%
+  );
 }
 
 .ai-scroll-shell .ai-scroll {
   height: 100%;
-  padding-bottom: 48px;
+  /* Last lines can rest above the fade when scrolled to end. */
+  padding-bottom: 88px;
 }
 
 .ai-panel .ai-message {
@@ -5404,9 +5434,11 @@ select:focus-visible {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px 8px;
-  padding: 9px 12px 12px;
-  border-top: 1px solid rgba(78, 68, 58, 0.08);
-  background: rgba(250, 247, 241, 0.5);
+  padding: 4px 14px 14px;
+  /* Same continuous surface as .ai-panel — no separate footer slab. */
+  border-top: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .input-context-strip {
@@ -5503,14 +5535,16 @@ select:focus-visible {
   align-items: center;
   gap: 8px;
   padding: 5px 6px 5px 12px;
+  /* Soft inset control on the same panel surface, not a second plate. */
   border-color: rgba(78, 68, 58, 0.1);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.62);
+  background: rgba(255, 255, 255, 0.34);
   box-shadow: none;
 }
 
 .ai-input:focus-within {
   border-color: rgba(109, 127, 136, 0.34);
+  background: rgba(255, 255, 255, 0.42);
   box-shadow: none;
 }
 
@@ -6852,34 +6886,24 @@ select:focus-visible {
   font-size: 12px;
 }
 
-/* The input surface floats above a fade, instead of ending the transcript with a hard edge. */
+/* Old solid-color fade overlay — kept disabled; shell mask replaces it. */
 .ai-scroll-shell::after {
-  position: absolute;
-  z-index: 2;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 62px;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(252, 251, 248, 0), rgba(252, 251, 248, 0.78) 72%, rgba(252, 251, 248, 0.92));
-  content: "";
-}
-
-.ai-scroll-shell .ai-scroll {
-  padding-bottom: 86px;
+  display: none;
+  content: none;
 }
 
 .ai-input-wrap {
   position: relative;
   z-index: 4;
   border-top: 0;
-  background: rgba(250, 247, 241, 0.72);
-  box-shadow: 0 -10px 24px rgba(252, 251, 248, 0.48);
+  background: transparent;
+  box-shadow: none;
 }
 
 .ai-scroll-bottom-button {
   z-index: 3;
-  bottom: 17px;
+  /* Sit above the softest part of the shell mask fade. */
+  bottom: 36px;
   border-color: rgba(78, 68, 58, 0.1);
   background: rgba(252, 251, 248, 0.7);
   box-shadow: 0 4px 12px rgba(30, 24, 18, 0.055);
@@ -7631,6 +7655,7 @@ select:focus-visible {
 
 .ai-input:focus-within {
   border-color: rgba(109, 127, 136, 0.4);
+  background: rgba(255, 255, 255, 0.46);
   box-shadow: 0 0 0 3px rgba(109, 127, 136, 0.08);
 }
 
@@ -7952,9 +7977,8 @@ select:focus-visible {
 }
 
 .ai-input-wrap.is-busy {
-  background:
-    linear-gradient(180deg, rgba(252, 251, 248, 0.7), rgba(246, 243, 237, 0.94)),
-    rgba(252, 251, 248, 0.92);
+  /* Keep the continuous panel surface even while a task is running. */
+  background: transparent;
 }
 
 .ai-input-wrap.has-selection .input-context-count.has-items {
@@ -7963,11 +7987,12 @@ select:focus-visible {
 
 .ai-input-wrap.is-image-task .image-settings {
   border-color: rgba(142, 76, 36, 0.16);
-  background: rgba(255, 252, 247, 0.72);
+  background: rgba(255, 252, 247, 0.48);
 }
 
 .ai-input.has-content {
-  border-color: rgba(78, 68, 58, 0.18);
+  border-color: rgba(78, 68, 58, 0.16);
+  background: rgba(255, 255, 255, 0.4);
 }
 
 .send-button:disabled {
@@ -8553,9 +8578,23 @@ select:focus-visible {
 /* UI polish completion — shell only; do not touch morpho-object / canvas bg   */
 /* -------------------------------------------------------------------------- */
 
+/*
+ * Persistent chrome glass = same recipe as AI panel (via --morpho-glass-*).
+ * Temporary drawers/dialogs keep their own denser surfaces.
+ */
+.floating-cluster,
+.left-rail,
+.selection-toolbar,
+.tl-canvas__in-front .selection-toolbar,
+.ai-panel {
+  border-color: var(--morpho-glass-border);
+  background: var(--morpho-glass-bg);
+  background-color: var(--morpho-glass-bg);
+  backdrop-filter: var(--morpho-glass-blur);
+  -webkit-backdrop-filter: var(--morpho-glass-blur);
+}
+
 .left-rail {
-  border-color: rgba(78, 68, 58, 0.1);
-  background: rgba(252, 251, 248, 0.86);
   box-shadow: 0 10px 28px rgba(30, 24, 18, 0.07);
 }
 
