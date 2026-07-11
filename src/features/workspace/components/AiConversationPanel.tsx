@@ -1,6 +1,7 @@
 ﻿"use client";
 
-import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, ChevronLeft, Send, Square } from "lucide-react";
 
 import type { AiMessage, ComparisonAnalysis, ComparisonSourceRef, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
@@ -397,9 +398,11 @@ export function AiConversationPanel({
     imageTaskStatus && !["succeeded", "failed", "cancelled"].includes(imageTaskStatus.state)
   );
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollShellRef = useRef<HTMLDivElement | null>(null);
   const draftTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const didInitializeScrollRef = useRef(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [scrollBottomAnchor, setScrollBottomAnchor] = useState<{ left: number; top: number } | null>(null);
   const [queueOpen, setQueueOpen] = useState(false);
   const [dismissedContextWarning, setDismissedContextWarning] = useState<string | null>(null);
   const activeTaskCount = isAiBusy || isImageTaskActive ? 1 : 0;
@@ -409,6 +412,31 @@ export function AiConversationPanel({
   const modeSummary = turnMode === "auto" ? "自动执行" : "先确认";
   const failureCopy = showFailure ? getFailureCopy(getLatestFailedAssistantMessage(workspace)) : null;
   const visibleContextWarning = contextWarning && dismissedContextWarning !== contextWarning ? contextWarning : undefined;
+  /**
+   * Portal the chip to document.body with fixed coords so backdrop-filter can sample
+   * the already-painted AI panel (text included). Nested blur inside .ai-panel + mask
+   * only samples empty glass and looks "transparent with no blur".
+   */
+  const updateScrollBottomAnchor = useCallback(() => {
+    const shell = scrollShellRef.current;
+    if (!shell || !isOpen || !showScrollBottom) {
+      setScrollBottomAnchor(null);
+      return;
+    }
+
+    const rect = shell.getBoundingClientRect();
+    if (rect.width < 8 || rect.height < 8) {
+      setScrollBottomAnchor(null);
+      return;
+    }
+
+    const buttonSize = 36;
+    const bottomGap = 40;
+    setScrollBottomAnchor({
+      left: rect.left + rect.width / 2,
+      top: rect.bottom - bottomGap - buttonSize
+    });
+  }, [isOpen, showScrollBottom]);
   const updateScrollBottomVisibility = () => {
     const element = scrollRef.current;
     if (!element) {
@@ -416,7 +444,28 @@ export function AiConversationPanel({
     }
 
     const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
-    setShowScrollBottom(distanceFromBottom > 96);
+    const shouldShow = distanceFromBottom > 96;
+    setShowScrollBottom(shouldShow);
+    if (!shouldShow) {
+      setScrollBottomAnchor(null);
+      return;
+    }
+
+    // Position immediately on scroll; layout effect also re-runs when flag flips.
+    const shell = scrollShellRef.current;
+    if (!shell || !isOpen) {
+      return;
+    }
+    const rect = shell.getBoundingClientRect();
+    if (rect.width < 8 || rect.height < 8) {
+      return;
+    }
+    const buttonSize = 36;
+    const bottomGap = 40;
+    setScrollBottomAnchor({
+      left: rect.left + rect.width / 2,
+      top: rect.bottom - bottomGap - buttonSize
+    });
   };
   const scrollToLatest = () => {
     const element = scrollRef.current;
@@ -426,7 +475,35 @@ export function AiConversationPanel({
 
     element.scrollTo({ top: element.scrollHeight, behavior: "smooth" });
     setShowScrollBottom(false);
+    setScrollBottomAnchor(null);
   };
+
+  useLayoutEffect(() => {
+    updateScrollBottomAnchor();
+  }, [updateScrollBottomAnchor, workspace.ai.messages.length, isStreaming, draft]);
+
+  useEffect(() => {
+    if (!isOpen || !showScrollBottom) {
+      return;
+    }
+
+    const onChange = () => updateScrollBottomAnchor();
+    window.addEventListener("resize", onChange);
+    // Capture scrolls from the transcript and any nested scrollers.
+    window.addEventListener("scroll", onChange, true);
+    const shell = scrollShellRef.current;
+    const resizeObserver =
+      shell && typeof ResizeObserver !== "undefined" ? new ResizeObserver(onChange) : null;
+    if (shell && resizeObserver) {
+      resizeObserver.observe(shell);
+    }
+
+    return () => {
+      window.removeEventListener("resize", onChange);
+      window.removeEventListener("scroll", onChange, true);
+      resizeObserver?.disconnect();
+    };
+  }, [isOpen, showScrollBottom, updateScrollBottomAnchor]);
   const resizeDraftTextarea = (element = draftTextareaRef.current) => {
     if (!element) {
       return;
@@ -508,7 +585,7 @@ export function AiConversationPanel({
           </button>
         </div>
 
-        <div className="ai-scroll-shell">
+        <div className="ai-scroll-shell" ref={scrollShellRef}>
           <div className="ai-scroll" ref={scrollRef} onScroll={updateScrollBottomVisibility}>
             {workspace.ai.messages.map((message) => {
               const isPlaceholderThinking =
@@ -694,15 +771,6 @@ export function AiConversationPanel({
             </div>
           ) : null}
           </div>
-          <button
-            className={`ai-scroll-bottom-button${isStreaming ? " has-new-content" : ""}`}
-            type="button"
-            aria-label="滚动到最新消息"
-            hidden={!showScrollBottom}
-            onClick={scrollToLatest}
-          >
-            <ChevronDown size={22} strokeWidth={2.25} aria-hidden="true" />
-          </button>
         </div>
 
         <div
@@ -903,6 +971,21 @@ export function AiConversationPanel({
           M
         </div>
       </button>
+
+      {typeof document !== "undefined" && isOpen && showScrollBottom && scrollBottomAnchor
+        ? createPortal(
+            <button
+              className={`ai-scroll-bottom-button${isStreaming ? " has-new-content" : ""}`}
+              type="button"
+              aria-label="滚动到最新消息"
+              style={{ left: scrollBottomAnchor.left, top: scrollBottomAnchor.top }}
+              onClick={scrollToLatest}
+            >
+              <ChevronDown size={22} strokeWidth={2.25} aria-hidden="true" />
+            </button>,
+            document.body
+          )
+        : null}
     </>
   );
 }
