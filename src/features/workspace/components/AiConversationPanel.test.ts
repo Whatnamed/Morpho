@@ -103,7 +103,7 @@ describe("AiConversationPanel", () => {
       }))
     );
 
-    expect(html).toContain("已保存为项目线索");
+    expect(html).toContain("已保存为项目记录");
     expect(html).toContain("2 条");
   });
 

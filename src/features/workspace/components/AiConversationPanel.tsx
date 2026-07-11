@@ -543,7 +543,7 @@ export function AiConversationPanel({
                     type="button"
                     onClick={() => onOpenProjectRecords(message.continuityEntryIds)}
                   >
-                    已保存为项目线索 · {message.continuityEntryIds.length} 条
+                    已保存为项目记录 · {message.continuityEntryIds.length} 条
                   </button>
                 ) : null}
                 {message.citationIds && message.citationIds.length > 0 ? (

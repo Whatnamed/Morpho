@@ -197,22 +197,22 @@ function ProjectRecordDrawer({
     .reverse();
 
   return (
-    <Drawer title="项目线索" onClose={onClose}>
-      <p className="drawer-muted">这里只显示由用户表达或明确动作保存下来的可复核线索，不暴露内部阶段记录或项目记忆文件。</p>
-      <section className="asset-list" aria-label="当前工作线索">
-        <div className="result-row">
-          <div className="asset-thumb" />
-          <div>
-            <strong>{focusAreaLabel(workspace.projectContinuity.currentFocus.area)}</strong>
-            <span>
-              {workspace.projectContinuity.currentFocus.note} · {formatDrawerDate(workspace.projectContinuity.currentFocus.updatedAt)}
-            </span>
-            <ContinuitySourceRefs refs={focusSourceRefs(workspace)} onLocateObject={onLocateObject} />
-          </div>
+    <Drawer title="项目记录" onClose={onClose}>
+      <p className="drawer-muted">
+        这里汇总由你明确表达或确认后留下的可复核记录，不暴露内部阶段文件或项目记忆细节。
+      </p>
+
+      <div className="result-group-title">当前工作重点</div>
+      <section className="continuity-record continuity-record-focus" aria-label="当前工作重点">
+        <div className="continuity-record-kicker">
+          <span>{focusAreaLabel(workspace.projectContinuity.currentFocus.area)}</span>
+          <span className="continuity-record-time">{formatDrawerDate(workspace.projectContinuity.currentFocus.updatedAt)}</span>
         </div>
+        <p className="continuity-record-summary">{workspace.projectContinuity.currentFocus.note}</p>
+        <ContinuitySourceRefs refs={focusSourceRefs(workspace)} onLocateObject={onLocateObject} />
       </section>
 
-      <div className="result-group-title">待复核线索</div>
+      <div className="result-group-title">待复核</div>
       {reviewItems.length > 0 ? (
         <ContinuityEntryRows
           entries={reviewItems}
@@ -221,10 +221,10 @@ function ProjectRecordDrawer({
           onSetContinuityEntryManualState={onSetContinuityEntryManualState}
         />
       ) : (
-        <p className="drawer-muted">当前没有待复核或来源不可用的项目线索。</p>
+        <p className="drawer-muted">当前没有待复核或来源不可用的记录。</p>
       )}
 
-      <div className="result-group-title">近期线索</div>
+      <div className="result-group-title">近期记录</div>
       {resolvedWorkspace.projectContinuity.recordEntries.length > 0 ? (
         <ContinuityEntryRows
           entries={[...resolvedWorkspace.projectContinuity.recordEntries].slice(-12).reverse()}
@@ -233,7 +233,7 @@ function ProjectRecordDrawer({
           onSetContinuityEntryManualState={onSetContinuityEntryManualState}
         />
       ) : (
-        <p className="drawer-muted">当前还没有保存的项目线索。</p>
+        <p className="drawer-muted">当前还没有保存的项目记录。</p>
       )}
     </Drawer>
   );
@@ -251,57 +251,58 @@ function ContinuityEntryRows({
   onSetContinuityEntryManualState: (entryId: string, manualState: ContinuityManualState) => void;
 }) {
   return (
-    <div className="asset-list">
+    <div className="continuity-record-list">
       {entries.map((entry) => {
         const eligibility = getContinuityEntryEligibility(entry);
         return (
-          <div className={`result-row ${highlightedRecordIds.has(entry.id) ? "highlighted-record" : ""}`} key={entry.id}>
-            <div className="asset-thumb" />
-            <div>
-              <strong>
-                {stageLabel(entry.stage)} · {categoryLabel(entry.category)}
-              </strong>
-              <span>
-                {eligibility.uiLabel} · {entry.summary}
-              </span>
-              {entry.origin === "conversationSemanticPatch" ? (
-                <div className="continuity-meta-row">
-                  <span>来自明确对话 · {semanticKindLabel(entry.semanticKind)}</span>
-                  <span>状态：{manualStateLabel(entry.manualState)}</span>
-                </div>
-              ) : null}
-              {entry.evidenceQuote ? <blockquote className="continuity-quote">{entry.evidenceQuote}</blockquote> : null}
-              <ContinuitySourceRefs refs={entry.sourceRefs} onLocateObject={onLocateObject} />
-              {entry.origin === "conversationSemanticPatch" ? (
-                <div className="continuity-actions">
-                  <button
-                    className="plain-button"
-                    type="button"
-                    disabled={entry.manualState === "notApplicable"}
-                    onClick={() => onSetContinuityEntryManualState(entry.id, "notApplicable")}
-                  >
-                    不再适用
-                  </button>
-                  <button
-                    className="plain-button"
-                    type="button"
-                    disabled={entry.manualState === "withdrawn"}
-                    onClick={() => onSetContinuityEntryManualState(entry.id, "withdrawn")}
-                  >
-                    撤回记录
-                  </button>
-                  <button
-                    className="plain-button"
-                    type="button"
-                    disabled={entry.manualState === "active"}
-                    onClick={() => onSetContinuityEntryManualState(entry.id, "active")}
-                  >
-                    恢复为当前有效
-                  </button>
-                </div>
-              ) : null}
+          <article
+            className={`continuity-record ${highlightedRecordIds.has(entry.id) ? "highlighted-record" : ""}`}
+            key={entry.id}
+          >
+            <div className="continuity-record-kicker">
+              <span>{stageLabel(entry.stage)}</span>
+              <span>{categoryLabel(entry.category)}</span>
+              {eligibility.uiLabel ? <span className="continuity-record-status">{eligibility.uiLabel}</span> : null}
+              <span className="continuity-record-time">{formatDrawerDate(entry.updatedAt || entry.createdAt)}</span>
             </div>
-          </div>
+            <p className="continuity-record-summary">{entry.summary}</p>
+            {entry.origin === "conversationSemanticPatch" ? (
+              <div className="continuity-meta-row">
+                <span>对话 · {semanticKindLabel(entry.semanticKind)}</span>
+                <span>{manualStateLabel(entry.manualState)}</span>
+              </div>
+            ) : null}
+            {entry.evidenceQuote ? <blockquote className="continuity-quote">{entry.evidenceQuote}</blockquote> : null}
+            <ContinuitySourceRefs refs={entry.sourceRefs} onLocateObject={onLocateObject} />
+            {entry.origin === "conversationSemanticPatch" ? (
+              <div className="continuity-actions">
+                <button
+                  className="plain-button"
+                  type="button"
+                  disabled={entry.manualState === "notApplicable"}
+                  onClick={() => onSetContinuityEntryManualState(entry.id, "notApplicable")}
+                >
+                  不再适用
+                </button>
+                <button
+                  className="plain-button"
+                  type="button"
+                  disabled={entry.manualState === "withdrawn"}
+                  onClick={() => onSetContinuityEntryManualState(entry.id, "withdrawn")}
+                >
+                  撤回记录
+                </button>
+                <button
+                  className="plain-button"
+                  type="button"
+                  disabled={entry.manualState === "active"}
+                  onClick={() => onSetContinuityEntryManualState(entry.id, "active")}
+                >
+                  恢复为当前有效
+                </button>
+              </div>
+            ) : null}
+          </article>
         );
       })}
     </div>
@@ -320,24 +321,34 @@ function ContinuitySourceRefs({
   }
 
   return (
-    <div className="drawer-filter-row" aria-label="来源">
+    <ul className="continuity-source-list" aria-label="来源">
       {refs.slice(0, 6).map((ref) => {
-        const label = sourceRefLabel(ref);
+        const fullLabel = sourceRefLabel(ref);
+        const shortLabel = truncateLabel(fullLabel, 42);
         if (ref.kind === "object" && ref.sourceAvailability === "active") {
           return (
-            <button className="filter-chip" type="button" key={`${ref.kind}-${ref.id}`} onClick={() => onLocateObject(ref.id)}>
-              {label}
-            </button>
+            <li key={`${ref.kind}-${ref.id}`}>
+              <button
+                className="continuity-source-item is-action"
+                type="button"
+                title={fullLabel}
+                onClick={() => onLocateObject(ref.id)}
+              >
+                {shortLabel}
+              </button>
+            </li>
           );
         }
 
         return (
-          <span className="filter-chip" key={`${ref.kind}-${ref.id}`} title={ref.snapshot?.summarySnippet}>
-            {label}
-          </span>
+          <li key={`${ref.kind}-${ref.id}`}>
+            <span className="continuity-source-item" title={ref.snapshot?.summarySnippet ?? fullLabel}>
+              {shortLabel}
+            </span>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 }
 
@@ -646,6 +657,14 @@ function formatDrawerDate(value: string): string {
     hour: "2-digit",
     minute: "2-digit"
   });
+}
+
+function truncateLabel(value: string, maxLength: number): string {
+  const chars = Array.from(value.trim());
+  if (chars.length <= maxLength) {
+    return value.trim();
+  }
+  return `${chars.slice(0, Math.max(1, maxLength - 1)).join("")}…`;
 }
 
 function matchesAssetFilter(item: WorkspaceAssetItem, filter: string): boolean {
