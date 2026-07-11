@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
-import { ChevronLeft, Send, Square } from "lucide-react";
+import { ChevronDown, ChevronLeft, Send, Square } from "lucide-react";
 
 import type { AiMessage, ComparisonAnalysis, ComparisonSourceRef, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
 import type {
@@ -701,7 +701,7 @@ export function AiConversationPanel({
             hidden={!showScrollBottom}
             onClick={scrollToLatest}
           >
-            ↓
+            <ChevronDown size={22} strokeWidth={2.25} aria-hidden="true" />
           </button>
         </div>
 
