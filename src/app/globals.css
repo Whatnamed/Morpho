@@ -441,15 +441,19 @@ button:disabled {
 .project-map {
   position: fixed;
   z-index: 44;
-  top: 144px;
+  top: 50%;
   left: 83px;
   width: 230px;
+  max-height: min(620px, calc(100vh - 48px));
   padding: 13px;
   border: 1px solid rgba(78, 68, 58, 0.1);
   border-radius: 12px;
   background: rgba(252, 251, 248, 0.96);
   box-shadow: var(--shadow-popover);
   backdrop-filter: blur(20px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  transform: translateY(-50%);
 }
 
 .map-title {
@@ -504,14 +508,15 @@ button:disabled {
 }
 
 .side-drawer {
-  top: 154px;
+  top: 50%;
   left: 84px;
   width: 286px;
-  max-height: 560px;
+  max-height: min(620px, calc(100vh - 48px));
   padding: 16px;
   border-radius: 13px;
   overflow: auto;
   overscroll-behavior: contain;
+  transform: translateY(-50%);
 }
 
 .search-layer {
@@ -3843,7 +3848,7 @@ button:disabled {
 
 .side-drawer {
   width: 310px;
-  max-height: min(620px, calc(100vh - 184px));
+  max-height: min(620px, calc(100vh - 48px));
   padding: 18px;
   border-radius: var(--radius-lg);
 }
@@ -4735,7 +4740,7 @@ select:focus-visible {
 
 .side-drawer {
   width: 340px;
-  max-height: min(660px, calc(100vh - 170px));
+  max-height: min(660px, calc(100vh - 48px));
   padding: 17px;
 }
 
