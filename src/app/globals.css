@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   --canvas: #f7f5f1;
   --surface: #fcfbf8;
   --surface-raised: #ffffff;
@@ -82,24 +82,15 @@ input:focus-visible {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background-color: var(--canvas);
-  background-image:
-    linear-gradient(rgba(77, 66, 54, 0.024) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(77, 66, 54, 0.024) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(247, 245, 241, 0.94));
-  background-size: 48px 48px, 48px 48px, auto;
-  background-repeat: repeat, repeat, no-repeat;
+  background:
+    radial-gradient(circle at 14% 12%, rgba(255, 255, 255, 0.78), transparent 24%),
+    radial-gradient(circle at 82% 78%, rgba(237, 230, 221, 0.52), transparent 30%),
+    var(--canvas);
 }
 
 .workspace-canvas {
   position: absolute;
   inset: 0;
-  background-color: var(--canvas);
-}
-
-.workspace-canvas .tl-theme,
-.workspace-canvas .tl-container {
-  --tl-color-background: #f7f5f1;
 }
 
 .workspace-save-toast {
@@ -3789,13 +3780,12 @@ button:disabled {
 
 /* UI refinement pass: keep Morpho as a calm floating workspace, not a dashboard shell. */
 .workspace {
-  background-color: var(--canvas);
-  background-image:
+  background:
     linear-gradient(rgba(77, 66, 54, 0.024) 1px, transparent 1px),
     linear-gradient(90deg, rgba(77, 66, 54, 0.024) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(247, 245, 241, 0.94));
-  background-size: 48px 48px, 48px 48px, auto;
-  background-repeat: repeat, repeat, no-repeat;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(247, 245, 241, 0.94)),
+    var(--canvas);
+  background-size: 48px 48px, 48px 48px, auto, auto;
 }
 
 .floating-cluster,
@@ -4170,10 +4160,10 @@ button:disabled {
 }
 
 .tl-background {
-  background-color: var(--canvas) !important;
-  background-image:
+  background:
     linear-gradient(rgba(77, 66, 54, 0.026) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(77, 66, 54, 0.026) 1px, transparent 1px) !important;
+    linear-gradient(90deg, rgba(77, 66, 54, 0.026) 1px, transparent 1px),
+    var(--canvas) !important;
   background-size: 48px 48px !important;
 }
 
@@ -4614,21 +4604,21 @@ select:focus-visible {
 }
 
 .workspace {
-  background-color: var(--canvas);
-  background-image:
-    linear-gradient(rgba(77, 66, 54, 0.024) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(77, 66, 54, 0.024) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(247, 245, 241, 0.94));
-  background-size: 48px 48px, 48px 48px, auto;
-  background-repeat: repeat, repeat, no-repeat;
+  background:
+    linear-gradient(rgba(77, 66, 54, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(77, 66, 54, 0.018) 1px, transparent 1px),
+    radial-gradient(circle at 34% 22%, rgba(255, 255, 255, 0.55), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.4), rgba(247, 245, 241, 0.96)),
+    var(--canvas);
+  background-size: 56px 56px, 56px 56px, auto, auto, auto;
 }
 
 .tl-background {
-  background-color: #f7f5f1 !important;
-  background-image: linear-gradient(rgba(77, 66, 54, 0.026) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(77, 66, 54, 0.026) 1px, transparent 1px) !important;
-  background-size: 48px 48px !important;
-  background-repeat: repeat !important;
+  background:
+    linear-gradient(rgba(77, 66, 54, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(77, 66, 54, 0.018) 1px, transparent 1px),
+    var(--canvas) !important;
+  background-size: 56px 56px !important;
 }
 
 .floating-cluster {
@@ -6584,7 +6574,7 @@ select:focus-visible {
 }
 
 .project-meta span:not(:last-child)::after {
-  content: "路";
+  content: "·";
   margin-left: 8px;
   color: rgba(78, 68, 58, 0.28);
 }
@@ -7530,7 +7520,7 @@ select:focus-visible {
 }
 
 /* -------------------------------------------------------------------------- */
-/* R3 UI polish pass 鈥?visual hierarchy, quiet chrome, detail states (T2 copy) */
+/* R3 UI polish pass — visual hierarchy, quiet chrome, detail states (T2 copy) */
 /* -------------------------------------------------------------------------- */
 
 .left-rail {
@@ -7864,7 +7854,7 @@ select:focus-visible {
 }
 
 /* -------------------------------------------------------------------------- */
-/* R3 pass 2 鈥?object materials, AI input states, home + floating panels       */
+/* R3 pass 2 — object materials, AI input states, home + floating panels       */
 /* -------------------------------------------------------------------------- */
 
 .morpho-object-link,
@@ -8159,7 +8149,7 @@ select:focus-visible {
 }
 
 /* -------------------------------------------------------------------------- */
-/* R3 pass 3 鈥?detail popover density, delivery form layout, archive panels    */
+/* R3 pass 3 — detail popover density, delivery form layout, archive panels    */
 /* -------------------------------------------------------------------------- */
 
 .detail-popover {
@@ -8535,401 +8525,4 @@ select:focus-visible {
   .detail-inline-action {
     transition: none;
   }
-}
-
-
-/* ========================================================================== */
-/* Non-image cards v2 — flat, minimal, type-distinct (no gradients)            */
-/* ========================================================================== */
-
-.morpho-object:not(.morpho-object-image) {
-  position: relative;
-  box-sizing: border-box;
-  min-height: 100%;
-  padding: 14px 15px 15px;
-  border: 1px solid #e6e1d9;
-  border-radius: 12px;
-  background: #fffcf8;
-  box-shadow: 0 1px 0 rgba(33, 31, 27, 0.04);
-  color: #211f1b;
-}
-
-.morpho-object:not(.morpho-object-image)::before,
-.morpho-object:not(.morpho-object-image)::after {
-  content: none;
-  display: none;
-}
-
-.morpho-object:not(.morpho-object-image) h3 {
-  margin: 10px 0 0;
-  color: #211f1b;
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-.morpho-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 18px;
-}
-
-.morpho-role-label {
-  color: #8a837a;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  line-height: 1.2;
-}
-
-.morpho-role-dot,
-.morpho-role-label span {
-  display: none !important;
-}
-
-.morpho-card-kicker {
-  flex: 0 0 auto;
-  color: #8a837a;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  line-height: 1;
-}
-
-.morpho-card-summary {
-  margin: 8px 0 0;
-  color: #5f5952;
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
-  overflow: hidden;
-}
-
-.morpho-card-meta {
-  display: block;
-  margin-top: 10px;
-  color: #9a9288;
-  font-size: 10px;
-  line-height: 1.4;
-}
-
-/* File — cool white, square-ish, left slate bar */
-.morpho-object-file {
-  border-color: #d7dde0;
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: none;
-  border-left: 3px solid #6f818b;
-}
-
-.morpho-object-file .morpho-role-label,
-.morpho-object-file .morpho-card-kicker {
-  color: #6f818b;
-}
-
-/* Document fragment — quote strip */
-.morpho-object-documentFragment {
-  border-color: #dde3e5;
-  border-radius: 6px;
-  background: #f7f9f9;
-  border-left: 3px solid #7d9099;
-  box-shadow: none;
-}
-
-.morpho-object-documentFragment .morpho-document-lines {
-  margin-top: 8px;
-  display: grid;
-  gap: 6px;
-}
-
-.morpho-object-documentFragment .morpho-document-lines p {
-  margin: 0;
-  color: #5f5952;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-/* Research — soft blue-gray fill */
-.morpho-object-research {
-  border-color: #d2dbe0;
-  border-radius: 10px;
-  background: #eef3f5;
-  box-shadow: none;
-}
-
-.morpho-object-research .morpho-role-label,
-.morpho-object-research .morpho-card-kicker {
-  color: #5d727c;
-}
-
-.morpho-object-research h3 {
-  font-size: 14.5px;
-}
-
-/* Key conclusion — warm flat amber */
-.morpho-object-keyConclusion {
-  display: block;
-  border-color: #e5d3ad;
-  border-radius: 10px;
-  background: #fff6e8;
-  border-left: 3px solid #b8893a;
-  box-shadow: none;
-  padding-left: 14px;
-}
-
-.morpho-object-keyConclusion .morpho-role-label,
-.morpho-object-keyConclusion .morpho-card-kicker {
-  color: #9a6f28;
-}
-
-.morpho-object-keyConclusion h3,
-.morpho-object-keyConclusion .morpho-key-title {
-  margin-top: 10px;
-  font-size: 13.5px;
-  font-weight: 620;
-}
-
-.morpho-finding-marker {
-  display: none !important;
-}
-
-/* Design definition — stronger brown identity, flatter paper */
-.morpho-object-designDefinition {
-  border-color: #e2d0c0;
-  border-radius: 4px 12px 12px 4px;
-  background: #fff8f1;
-  border-left: 4px solid #8e4c24;
-  box-shadow: none;
-  padding-left: 16px;
-}
-
-.morpho-object-designDefinition .morpho-role-label,
-.morpho-object-designDefinition .morpho-card-kicker {
-  color: #8e4c24;
-}
-
-.morpho-object-designDefinition h3 {
-  margin-top: 11px;
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.morpho-definition-status-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 12px;
-}
-
-.morpho-definition-status {
-  display: inline-flex;
-  max-width: 100%;
-  padding: 3px 8px;
-  border: 1px solid #e2d0c0;
-  border-radius: 999px;
-  background: #ffffff;
-  color: #8e4c24;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.3;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Concept direction — cooler, rounder route card */
-.morpho-object-conceptDirection {
-  border-color: #cfd9dd;
-  border-radius: 16px;
-  background: #f3f7f8;
-  box-shadow: none;
-}
-
-.morpho-object-conceptDirection .morpho-role-label,
-.morpho-object-conceptDirection .morpho-card-kicker {
-  color: #5d727c;
-}
-
-.morpho-object-conceptDirection h3 {
-  margin-top: 11px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #d7e0e3;
-  font-size: 14px;
-}
-
-.morpho-object-conceptDirection .morpho-card-summary {
-  -webkit-line-clamp: 3;
-}
-
-/* Proposal draft — dashed outline only */
-.morpho-object-proposalDraft {
-  border: 1.5px dashed #c98655;
-  border-radius: 12px;
-  background: #fffaf5;
-  box-shadow: none;
-}
-
-.morpho-object-proposalDraft .morpho-role-label,
-.morpho-object-proposalDraft .morpho-card-kicker {
-  color: #a35c2a;
-}
-
-/* Text note — soft flat note */
-.morpho-object-text {
-  border: 0;
-  border-radius: 10px;
-  background: #fff8df;
-  box-shadow: none;
-}
-
-.morpho-object-text .morpho-role-label {
-  color: #9a8752;
-}
-
-.morpho-object-text .morpho-document-lines {
-  margin-top: 8px;
-  display: grid;
-  gap: 5px;
-}
-
-.morpho-object-text .morpho-document-lines p {
-  margin: 0;
-  color: #5f5952;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-/* Delivery — quiet green flat */
-.morpho-object-delivery {
-  border-color: #c9d8cc;
-  border-radius: 12px;
-  background: #f1f6f2;
-  border-left: 3px solid #4e6b52;
-  box-shadow: none;
-}
-
-.morpho-object-delivery .morpho-role-label,
-.morpho-object-delivery .morpho-card-kicker {
-  color: #4e6b52;
-}
-
-.morpho-object-delivery .delivery-wire {
-  display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.morpho-object-delivery .delivery-main-image {
-  min-height: 72px;
-  border-radius: 6px;
-  border: 1px solid #c9d8cc;
-  background: #ffffff;
-}
-
-.morpho-object-delivery .delivery-text-lines {
-  min-height: 72px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px;
-  border-radius: 6px;
-  border: 1px solid #c9d8cc;
-  background: #ffffff;
-}
-
-.morpho-object-delivery .delivery-text-lines span {
-  display: block;
-  height: 2px;
-  border-radius: 999px;
-  background: #c9d8cc;
-}
-
-.morpho-object-delivery .delivery-text-lines span:nth-child(1) { width: 100%; }
-.morpho-object-delivery .delivery-text-lines span:nth-child(2) { width: 72%; }
-.morpho-object-delivery .delivery-text-lines span:nth-child(3) { width: 54%; }
-
-/* Link / collection */
-.morpho-object-link,
-.morpho-object-imageCollection {
-  border-color: #d7dde0;
-  border-radius: 10px;
-  background: #ffffff;
-  box-shadow: none;
-}
-
-.morpho-object-link .morpho-role-label,
-.morpho-object-imageCollection .morpho-role-label {
-  color: #6f818b;
-}
-
-/* Image cards stay image-first */
-.morpho-object-image {
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.morpho-object-image::before,
-.morpho-object-image::after {
-  content: none !important;
-  display: none !important;
-}
-
-
-/* ========================================================================== */
-/* Canvas paper + grid — match pre-card-redesign look (must stay last)         */
-/* tldraw paints .tl-background with --tl-color-background; override both.    */
-/* ========================================================================== */
-
-.workspace,
-.workspace .tl-theme,
-.workspace .tl-container,
-.workspace-canvas,
-.workspace-canvas .tl-theme,
-.workspace-canvas .tl-container {
-  --tl-color-background: #f7f5f1;
-}
-
-.workspace {
-  background-color: var(--canvas) !important;
-  background-image:
-    linear-gradient(rgba(77, 66, 54, 0.024) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(77, 66, 54, 0.024) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(247, 245, 241, 0.94)) !important;
-  background-size: 48px 48px, 48px 48px, auto !important;
-  background-repeat: repeat, repeat, no-repeat !important;
-}
-
-.workspace .tl-background,
-.workspace-canvas .tl-background,
-.tl-background {
-  background-color: #f7f5f1 !important;
-  background-image: linear-gradient(rgba(77, 66, 54, 0.026) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(77, 66, 54, 0.026) 1px, transparent 1px) !important;
-  background-size: 48px 48px !important;
-  background-repeat: repeat !important;
-  background-position: 0 0 !important;
-}
-
-.workspace .tl-background__wrapper,
-.workspace-canvas .tl-background__wrapper {
-  background-color: #f7f5f1 !important;
-}
-
-/* Also paint the canvas host so empty areas never fall back to tldraw cool-gray. */
-.workspace-canvas .tl-canvas {
-  background-color: #f7f5f1 !important;
 }

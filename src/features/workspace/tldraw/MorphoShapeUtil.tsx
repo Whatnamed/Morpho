@@ -562,11 +562,13 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
   if (props.morphoType === "file") {
     return (
       <article className={classes}>
-        <div className="morpho-card-head">
+        <div className="morpho-source-file-head">
           <RoleLabel label={props.label} />
+          <span aria-hidden="true" />
         </div>
         <h3>{props.title}</h3>
-        {props.summary ? <p className="morpho-card-summary">{props.summary}</p> : null}
+        {props.summary ? <p>{props.summary}</p> : null}
+        <div className="morpho-source-file-lines" aria-hidden="true"><span /><span /><span /></div>
       </article>
     );
   }
@@ -574,27 +576,26 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
   if (props.morphoType === "research") {
     return (
       <article className={classes}>
-        <div className="morpho-card-head">
-          <RoleLabel label={props.label} />
-          <span className="morpho-card-kicker">分析</span>
-        </div>
+        <div className="morpho-research-head"><RoleLabel label={props.label} /><span>分析</span></div>
         <h3>{props.title}</h3>
-        {props.summary ? <p className="morpho-card-summary">{props.summary}</p> : null}
+        {props.summary ? <p className="morpho-research-summary">{props.summary}</p> : null}
       </article>
     );
   }
 
-  if (props.morphoType === "keyConclusion") {
+  if (
+    props.morphoType === "keyConclusion"
+  ) {
     const parts = getResearchItemParts(props.title);
 
     return (
       <article className={classes}>
-        <div className="morpho-card-head">
+        <div className="morpho-finding-marker" aria-hidden="true">结论</div>
+        <div className="morpho-finding-copy">
           <RoleLabel label={props.label} />
-          <span className="morpho-card-kicker">结论</span>
+          <h3 className="morpho-key-title">{parts.title}</h3>
+          {parts.detail ? <p className="morpho-key-detail">{parts.detail}</p> : null}
         </div>
-        <h3 className="morpho-key-title">{parts.title}</h3>
-        {parts.detail ? <p className="morpho-card-summary">{parts.detail}</p> : null}
       </article>
     );
   }
@@ -602,21 +603,10 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
   if (props.morphoType === "designDefinition") {
     return (
       <article className={classes}>
-        <div className="morpho-card-head">
-          <RoleLabel label={props.label} />
-          <span className="morpho-card-kicker">定义</span>
-        </div>
+        <div className="morpho-definition-head"><RoleLabel label={props.label} /><span>定义</span></div>
         <h3>{props.title}</h3>
-        {props.summary ? <p className="morpho-card-summary">{props.summary}</p> : null}
-        {props.details.length > 0 ? (
-          <div className="morpho-definition-status-row">
-            {props.details.map((detail) => (
-              <span className="morpho-definition-status" key={detail}>
-                {detail}
-              </span>
-            ))}
-          </div>
-        ) : null}
+        {props.summary ? <p className="morpho-definition-summary">{props.summary}</p> : null}
+        {props.details.length > 0 ? <div className="morpho-definition-status-row">{props.details.map((detail) => <span className="morpho-definition-status" key={detail}>{detail}</span>)}</div> : null}
       </article>
     );
   }
@@ -624,12 +614,12 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
   if (props.morphoType === "proposalDraft") {
     return (
       <article className={classes}>
-        <div className="morpho-card-head">
+        <div className="morpho-proposal-header">
           <RoleLabel label={props.label} />
-          <span className="morpho-card-kicker">待确认</span>
+          <span>待确认</span>
         </div>
         <h3>{props.title}</h3>
-        {props.summary ? <p className="morpho-card-summary">{props.summary}</p> : null}
+        {props.summary ? <p className="morpho-proposal-summary">{props.summary}</p> : null}
       </article>
     );
   }
@@ -637,10 +627,7 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
   if (props.morphoType === "documentFragment") {
     return (
       <article className={classes}>
-        <div className="morpho-card-head">
-          <RoleLabel label={props.label} />
-          <span className="morpho-card-kicker">摘录</span>
-        </div>
+        <div className="morpho-fragment-head"><RoleLabel label={props.label} /><span aria-hidden="true">摘</span></div>
         <h3>{props.title}</h3>
         <div className="morpho-document-lines">
           {props.details.map((detail) => (
@@ -654,9 +641,7 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
   if (props.morphoType === "text") {
     return (
       <article className={classes}>
-        <div className="morpho-card-head">
-          <RoleLabel label={props.label} />
-        </div>
+        <RoleLabel label={props.label} />
         <h3>{props.title}</h3>
         <div className="morpho-document-lines">
           {props.details.map((detail) => (
@@ -670,20 +655,17 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
   if (props.morphoType === "delivery") {
     return (
       <article className={classes}>
-        <div className="morpho-card-head">
-          <RoleLabel label={props.label} />
-          <span className="morpho-card-kicker">交付</span>
-        </div>
+        <RoleLabel label={props.label} />
         <h3>{props.title}</h3>
-        <div className="delivery-wire" aria-hidden="true">
-          <div className="delivery-main-image" />
+        <div className="delivery-wire">
+          <div className="delivery-main-image">{renderVisual("rail")}</div>
           <div className="delivery-text-lines">
             <span />
             <span />
             <span />
           </div>
         </div>
-        <p className="morpho-card-summary">{props.details[1] ?? props.summary}</p>
+        <p>{props.details[1] ?? props.summary}</p>
       </article>
     );
   }
@@ -691,31 +673,31 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
   if (props.morphoType === "conceptDirection") {
     return (
       <article className={classes}>
-        <div className="morpho-card-head">
-          <RoleLabel label={props.label} />
-          <span className="morpho-card-kicker">方向</span>
-        </div>
+        <div className="morpho-direction-head"><RoleLabel label={props.label} /><span aria-hidden="true">→</span></div>
         <h3>{props.title}</h3>
-        {props.summary ? <p className="morpho-card-summary">{props.summary}</p> : null}
-        {props.details.length > 1 ? <small className="morpho-card-meta">{props.details[1]}</small> : null}
+        <p>{props.summary}</p>
+        {props.details.length > 1 ? <small>{props.details[1]}</small> : null}
       </article>
     );
   }
 
   return (
     <article className={classes}>
-      <div className="morpho-card-head">
-        <RoleLabel label={props.label} />
-      </div>
+      <RoleLabel label={props.label} />
       <h3>{props.title}</h3>
-      {props.summary ? <p className="morpho-card-summary">{props.summary}</p> : null}
-      {props.details.length > 1 ? <small className="morpho-card-meta">{props.details[1]}</small> : null}
+      <p>{props.summary}</p>
+      {props.details.length > 1 ? <small>{props.details[1]}</small> : null}
     </article>
   );
 }
 
 function RoleLabel({ label }: { label: string }) {
-  return <div className="morpho-role-label">{label}</div>;
+  return (
+    <div className="morpho-role-label">
+      <span />
+      {label}
+    </div>
+  );
 }
 
 function renderVisual(variant?: string) {
