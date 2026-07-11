@@ -8,6 +8,7 @@ import type {
   AiTaskMode,
   AiWorkIntent,
   AssetRecord,
+  CanvasView,
   ContinuityManualState,
   DeliveryObject,
   MorphoObject
@@ -126,9 +127,20 @@ import { TopControls } from "./components/TopControls";
 import { usePersistentWorkspace } from "./usePersistentWorkspace";
 import { useWorkspaceAssetUrls } from "./useWorkspaceAssetUrls";
 import { compactObjectList, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
-import { getFloatingMenuPlacement, getSelectionToolbarPlacement, type ScreenRect } from "./selectionToolbar";
+import { getFloatingMenuPlacement, type SelectionToolbarPlacement } from "./selectionToolbar";
 import { shouldBlockSnapshotUndo } from "./workspaceUndo";
 import { resolveWorkspaceShortcut } from "./workspaceShortcuts";
+import {
+  buildPendingImageGenerationSlots,
+  removePendingImageGenerationSlot,
+  type PendingImageGenerationSlot
+} from "./pendingImageGenerationSlots";
+import {
+  popDetailNavigation,
+  pushDetailNavigation,
+  shouldHydratePersistedSelection,
+  type DetailNavigationSnapshot
+} from "./workspaceNavigation";
 import { buildDeliverySectionContext, getDeliveryObjects, type DeliveryReferenceReaderTransition } from "./deliveryPreparationUi";
 import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
 import {
@@ -272,6 +284,8 @@ const MorphoCanvas = dynamic(() => import("./tldraw/MorphoCanvas").then((mod) =>
 type FocusRequest = {
   area?: FocusArea;
   objectId?: string;
+  view?: CanvasView;
+  selectionObjectIds?: string[];
   nonce: number;
 };
 
@@ -357,11 +371,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [detailProposalId, setDetailProposalId] = useState<string | null>(null);
   const [detailDesignDefinitionId, setDetailDesignDefinitionId] = useState<string | null>(null);
   const [detailConceptDirectionId, setDetailConceptDirectionId] = useState<string | null>(null);
+  const [detailHoverObjectId, setDetailHoverObjectId] = useState<string | null>(null);
   const [traceStartObjectId, setTraceStartObjectId] = useState<string | null>(null);
   const [showFailure, setShowFailure] = useState(false);
   const [contextWarning, setContextWarning] = useState<string | undefined>();
   const [isAiStreaming, setIsAiStreaming] = useState(false);
   const [imageTaskStatus, setImageTaskStatus] = useState<ImageTaskStatus | null>(null);
+  const [pendingImageGenerationSlots, setPendingImageGenerationSlots] = useState<PendingImageGenerationSlot[]>([]);
   const [imageGenerationSettings, setImageGenerationSettings] = useState<ImageGenerationSettings>(() =>
     getDefaultImageGenerationSettings()
   );
@@ -374,6 +390,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const assetUrls = useWorkspaceAssetUrls(workspace.assets);
   const abortControllerRef = useRef<AbortController | null>(null);
   const objectOperationUndoStackRef = useRef<ObjectOperationUndoEntry[]>([]);
+  const detailNavigationUndoStackRef = useRef<DetailNavigationSnapshot[]>([]);
+  const latestCanvasViewRef = useRef<CanvasView>(workspace.canvas.view);
+  const selectionHydratedProjectIdRef = useRef<string | null>(null);
   const [focusRequest, setFocusRequest] = useState<FocusRequest>({ nonce: 0 });
   const [documentReader, setDocumentReader] = useState<DocumentReaderUiState | null>(null);
   const [bundlePanelOpen, setBundlePanelOpen] = useState(false);
@@ -400,7 +419,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const railImportInputRef = useRef<HTMLInputElement | null>(null);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [projectRenameDraft, setProjectRenameDraft] = useState(workspace.project.title);
-  const [selectionScreenBounds, setSelectionScreenBounds] = useState<ScreenRect | null>(null);
   const [canvasContextMenu, setCanvasContextMenu] = useState<{ x: number; y: number; objectId: string | null; openedAt: number } | null>(null);
   const [activeResearchDetailObjectId, setActiveResearchDetailObjectId] = useState<string | null>(null);
   const [aiInputFocusNonce, setAiInputFocusNonce] = useState(0);
@@ -558,10 +576,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   useEffect(() => {
     const persistedSelection = workspace.ui.lastSelectionIds;
+    if (!shouldHydratePersistedSelection(selectionHydratedProjectIdRef.current, workspace.project.id)) {
+      return;
+    }
+
+    selectionHydratedProjectIdRef.current = workspace.project.id;
     setSelectedObjectIds((current) =>
       current.join("|") === persistedSelection.join("|") ? current : [...persistedSelection]
     );
-  }, [workspace.ui.lastSelectionIds]);
+  }, [workspace.project.id, workspace.ui.lastSelectionIds]);
 
   const updateImageGenerationSettings = useCallback(
     (patch: { modelId?: string; aspectRatio?: GrsImageAspectRatio; sizeOption?: string }) => {
@@ -642,11 +665,24 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setActiveDrawer(null);
   }, []);
 
-  const focusObject = useCallback((objectId: string) => {
+  const focusObject = useCallback((objectId: string, options: { rememberView?: boolean } = {}) => {
+    if (options.rememberView) {
+      detailNavigationUndoStackRef.current = pushDetailNavigation(detailNavigationUndoStackRef.current, {
+        view: latestCanvasViewRef.current,
+        selectedObjectIds
+      });
+    }
     setSelectedObjectIds([objectId]);
     setFocusRequest((current) => ({ objectId, nonce: current.nonce + 1 }));
     setActiveDrawer(null);
-  }, []);
+  }, [selectedObjectIds]);
+
+  const locateObjectFromDetail = useCallback(
+    (objectId: string) => {
+      focusObject(objectId, { rememberView: true });
+    },
+    [focusObject]
+  );
 
   const handleManualSave = useCallback(() => {
     const result = flushWorkspace();
@@ -696,7 +732,28 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     ];
   }, [localEditObjectId, pendingConfirmation, selectedObjectIds, workspace]);
 
+  const undoLastDetailNavigation = useCallback(() => {
+    const restored = popDetailNavigation(detailNavigationUndoStackRef.current);
+    if (!restored) {
+      return false;
+    }
+
+    detailNavigationUndoStackRef.current = restored.history;
+    latestCanvasViewRef.current = restored.snapshot.view;
+    setSelectedObjectIds(restored.snapshot.selectedObjectIds);
+    setFocusRequest((current) => ({
+      view: restored.snapshot.view,
+      selectionObjectIds: restored.snapshot.selectedObjectIds,
+      nonce: current.nonce + 1
+    }));
+    return true;
+  }, []);
+
   const undoLastObjectOperation = useCallback(() => {
+    if (undoLastDetailNavigation()) {
+      return true;
+    }
+
     const entry = objectOperationUndoStackRef.current.pop();
     if (!entry) {
       return false;
@@ -713,7 +770,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setPendingConfirmation(entry.pendingConfirmation);
     setCanvasContextMenu(null);
     return true;
-  }, [setWorkspace, workspace]);
+  }, [setWorkspace, undoLastDetailNavigation, workspace]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -745,7 +802,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setCanvasContextMenu(null);
       if (objectIds.length === 0) {
         setActiveDrawer(null);
-        setSelectionScreenBounds(null);
       }
       setWorkspace((current) => {
         if (current.ui.lastSelectionIds.join("|") === objectIds.join("|")) {
@@ -773,6 +829,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const handleCanvasViewChange = useCallback(
     (view: MorphoWorkspace["canvas"]["view"]) => {
+      latestCanvasViewRef.current = view;
       setWorkspace((current) => {
         if (
           current.canvas.view.x === view.x &&
@@ -800,6 +857,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     },
     [setWorkspace]
   );
+
+  const handleCanvasLiveViewChange = useCallback((view: CanvasView) => {
+    latestCanvasViewRef.current = view;
+  }, []);
 
   const handleImportRequest = useCallback(
     async (request: CanvasImportRequest) => {
@@ -1445,6 +1506,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               )
           ).map((placement) => [placement.planItemId, placement.position] as const)
         );
+        setPendingImageGenerationSlots((current) => [
+          ...current.filter((slot) => slot.operationId !== operationId),
+          ...buildPendingImageGenerationSlots({
+            operationId,
+            items: validatedPlan.plan.items,
+            placements: visualPlacementMap,
+            size: plannedImageSize
+          })
+        ]);
 
         setWorkspace((current) =>
           updateAiMessage(
@@ -1559,6 +1629,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             });
             if (createdObjectId) {
               createdObjectIds.push(createdObjectId);
+              setPendingImageGenerationSlots((current) =>
+                removePendingImageGenerationSlot(current, operationId, item.id)
+              );
             }
           } catch (itemError) {
             const itemMessage = itemError instanceof Error ? itemError.message : "图像计划项生成失败。";
@@ -1570,6 +1643,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 reason: itemMessage
               })
             );
+            setPendingImageGenerationSlots((current) => removePendingImageGenerationSlot(current, operationId, item.id));
           }
         }
 
@@ -2238,6 +2312,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             )
         ).map((placement) => [placement.planItemId, placement.position] as const)
       );
+      setPendingImageGenerationSlots((current) => [
+        ...current.filter((slot) => slot.operationId !== operationId),
+        ...buildPendingImageGenerationSlots({
+          operationId,
+          items: validatedPlan.plan.items,
+          placements: placementMap,
+          size: plannedImageSize
+        })
+      ]);
 
       let lastProviderTaskId: string | undefined;
       const createdObjectIds: string[] = [];
@@ -2333,6 +2416,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             resultObjectId: generated.createdObjectId
           });
           createdObjectIds.push(generated.createdObjectId);
+          setPendingImageGenerationSlots((current) =>
+            removePendingImageGenerationSlot(current, operationId, item.id)
+          );
           setWorkspace(() => currentWorkspace);
         } catch (itemError) {
           const reason = itemError instanceof Error ? itemError.message : "图像生成失败";
@@ -2342,6 +2428,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             planItemId: item.id,
             reason
           });
+          setPendingImageGenerationSlots((current) => removePendingImageGenerationSlot(current, operationId, item.id));
           setWorkspace(() => currentWorkspace);
         }
       }
@@ -3879,6 +3966,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       };
     });
 
+    const localPlanItemId = `${operationId}-local-edit`;
     let providerTaskId: string | undefined;
 
     try {
@@ -3895,6 +3983,30 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
       const directionObjectId = visualTarget.directionId;
       const visualBranchId = visualTarget.visualBranchId;
+      const localSourceImage = selectedObjects.find(
+        (object): object is Extract<MorphoObject, { type: "image" }> => object.id === explicitImageId && object.type === "image"
+      );
+      const localPlanItem: VisualGenerationPlanItem = {
+        id: localPlanItemId,
+        title: localSourceImage ? `${localSourceImage.title} 修订` : "局部视觉修订",
+        purpose: "在保留当前参考关系的前提下进行局部视觉修订。",
+        prompt: draft,
+        referenceObjectIds: sourceObjectIds,
+        targetDirectionId: directionObjectId,
+        visualBranchId,
+        role: localSourceImage?.role ?? "conceptImage"
+      };
+      const plannedImageSize = getPlannedImageSize(effectiveImageGenerationSettings.aspectRatio);
+      const localPlacement = getGeneratedImagePlacement(workspace, localPlanItem, 0);
+      setPendingImageGenerationSlots((current) => [
+        ...current.filter((slot) => slot.operationId !== operationId),
+        ...buildPendingImageGenerationSlots({
+          operationId,
+          items: [localPlanItem],
+          placements: new Map([[localPlanItem.id, localPlacement]]),
+          size: plannedImageSize
+        })
+      ]);
       const pixelNote =
         referenceImages.images.length === 0
           ? "本次没有可读取的本地图片像素，仅基于对象标题、摘要和你的描述请求 GrsAI。"
@@ -3972,7 +4084,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           },
           sourceObjectIds,
           directionObjectId,
-          visualBranchId
+          visualBranchId,
+          title: localPlanItem.title,
+          summary: localPlanItem.purpose,
+          role: localPlanItem.role,
+          position: localPlacement
         });
 
         const completed = completeImageGenerationOperation(generated.workspace, {
@@ -3989,6 +4105,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         );
       });
       setSelectedObjectIds([createdObjectId]);
+      setPendingImageGenerationSlots((current) =>
+        removePendingImageGenerationSlot(current, operationId, localPlanItemId)
+      );
       setFocusRequest((current) => ({ objectId: createdObjectId, nonce: current.nonce + 1 }));
       setLocalEditObjectId(null);
       setImageTaskStatus({ state: "succeeded", message: "图像结果已保存，并创建为新的画布对象。" });
@@ -4015,6 +4134,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         )
       );
     } finally {
+      setPendingImageGenerationSlots((current) =>
+        removePendingImageGenerationSlot(current, operationId, localPlanItemId)
+      );
       abortControllerRef.current = null;
       setIsAiStreaming(false);
     }
@@ -5352,7 +5474,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
     setSelectedObjectIds([]);
     setCanvasContextMenu(null);
-    setSelectionScreenBounds(null);
     setWorkspace((current) => ({
       ...current,
       ui: {
@@ -5485,14 +5606,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           w: window.innerWidth,
           h: window.innerHeight
         };
-  const selectionToolbarPlacement =
-    selectionScreenBounds && selectedObjects.length > 0
-      ? getSelectionToolbarPlacement(selectionScreenBounds, viewportSize, {
-          toolbar: { w: 340, h: 40 },
-          margin: 18,
-          gap: 12
-        })
-      : null;
   const contextMenuObjects =
     canvasContextMenu?.objectId && !selectedObjectIds.includes(canvasContextMenu.objectId)
       ? compactObjectList(workspace.objects, [canvasContextMenu.objectId])
@@ -5502,7 +5615,40 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         menu: { w: 220, h: 340 },
         margin: 18
       })
-    : null;
+      : null;
+  const renderSelectionToolbar = (toolbarObjects: MorphoObject[], placement: SelectionToolbarPlacement) => (
+    <SelectionToolbar
+      selectedObjects={toolbarObjects}
+      placement={placement}
+      isDesignTraceActive={Boolean(activeDesignTrace)}
+      onAskAi={handleAskAi}
+      onToggleDesignTrace={handleToggleDesignTrace}
+      onOpenResearchDetail={handleOpenResearchDetail}
+      onAutoSelectResearch={handleAutoSelectResearch}
+      onOpenDocumentReader={() => { const primary = toolbarObjects[0]; if (primary?.type === "file") handleOpenDocumentReader(primary.id); else if (primary?.type === "documentFragment") handleOpenDocumentReader(primary.source.fileObjectId); }}
+      onOpenDeliveryPreparation={() => openDeliveryPreparation(toolbarObjects[0]?.type === "delivery" ? toolbarObjects[0].id : undefined)}
+      onLocalEdit={handleLocalEdit}
+      onReferenceIntent={handleReferenceIntent}
+      onHide={handleHideSelected}
+      onDelete={handleDeleteSelected}
+      onOpenProposalDetail={() => { const object = toolbarObjects.find((item) => item.type === "proposalDraft"); if (object?.type === "proposalDraft") { setDetailDesignDefinitionId(null); setDetailConceptDirectionId(null); setActiveProposalId(object.proposalId); setDetailProposalId(object.proposalId); } }}
+      onApplyProposal={() => { const object = toolbarObjects.find((item) => item.type === "proposalDraft"); if (object?.type === "proposalDraft") handleApplyProposalFromCanvas(object.proposalId); }}
+      onRejectProposal={() => { const object = toolbarObjects.find((item) => item.type === "proposalDraft"); if (object?.type === "proposalDraft") handleRejectProposal(object.proposalId); }}
+      onContinueProposalDiscussion={() => { const object = toolbarObjects.find((item) => item.type === "proposalDraft"); if (object?.type === "proposalDraft") handleContinueProposalDiscussion(object.proposalId); }}
+      onOpenDesignDefinitionDetail={() => { const object = toolbarObjects.find((item) => item.type === "designDefinition"); if (object?.type === "designDefinition") { setDetailProposalId(null); setDetailConceptDirectionId(null); setDetailDesignDefinitionId(object.id); } }}
+      onOpenConceptDirectionDetail={() => { const object = toolbarObjects.find((item) => item.type === "conceptDirection"); if (object?.type === "conceptDirection") { setDetailProposalId(null); setDetailDesignDefinitionId(null); setDetailConceptDirectionId(object.id); } }}
+      onSetCurrentDesignDefinition={() => { const object = toolbarObjects.find((item) => item.type === "designDefinition"); if (object?.type === "designDefinition") setWorkspace((current) => setCurrentDesignDefinition(current, object.id)); }}
+      onReviseDirection={handleReviseDirectionIntent}
+      onSplitDirection={handleSplitDirectionIntent}
+      onMergeDirections={handleMergeDirectionsIntent}
+      onCreateVisualBranch={handleCreateVisualBranch}
+      onSetDirectionPrimary={handleSetDirectionPrimary}
+      onSetDirectionAlternative={handleSetDirectionAlternative}
+      onRestoreDirectionAsAlternative={handleRestoreDirectionAsAlternative}
+      onEliminateDirection={handleEliminateDirection}
+      onReorderLayer={handleReorderSelectedLayers}
+    />
+  );
 
   return (
     <main className="workspace">
@@ -5526,13 +5672,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         workspace={workspace}
         annotatedObjectId={localEditObjectId}
         traceObjectIds={activeDesignTrace?.objectIds ?? []}
-        traceEdges={activeDesignTrace?.edges ?? []}
+        highlightedObjectId={detailHoverObjectId}
         assetUrls={assetUrls}
+        pendingImageGenerationSlots={pendingImageGenerationSlots}
         focusRequest={focusRequest}
+        selectedObjectIds={selectedObjectIds}
+        renderSelectionToolbar={renderSelectionToolbar}
         onSelectionChange={handleSelectionChange}
-        onSelectionBoundsChange={setSelectionScreenBounds}
         onInstancesChange={handleInstancesChange}
         onViewChange={handleCanvasViewChange}
+        onLiveViewChange={handleCanvasLiveViewChange}
         onImportRequest={handleImportRequest}
         onContextMenuRequest={(request) => {
           if (!request.objectId && selectedObjectIds.length === 0) {
@@ -5698,97 +5847,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onSetContinuityEntryManualState={handleSetContinuityEntryManualState}
       />
 
-      <SelectionToolbar
-        selectedObjects={selectedObjects}
-        placement={selectionToolbarPlacement}
-        isDesignTraceActive={Boolean(activeDesignTrace)}
-        onAskAi={handleAskAi}
-        onToggleDesignTrace={handleToggleDesignTrace}
-        onOpenResearchDetail={handleOpenResearchDetail}
-        onAutoSelectResearch={handleAutoSelectResearch}
-        onOpenDocumentReader={() => {
-          const primary = selectedObjects[0];
-          if (!primary) {
-            return;
-          }
-          if (primary.type === "file") {
-            handleOpenDocumentReader(primary.id);
-          } else if (primary.type === "documentFragment") {
-            handleOpenDocumentReader(primary.source.fileObjectId);
-          }
-        }}
-        onOpenDeliveryPreparation={() => {
-          const primary = selectedObjects[0];
-          openDeliveryPreparation(primary?.type === "delivery" ? primary.id : undefined);
-        }}
-        onLocalEdit={handleLocalEdit}
-        onReferenceIntent={handleReferenceIntent}
-        onHide={handleHideSelected}
-        onDelete={handleDeleteSelected}
-        onOpenProposalDetail={() => {
-          const proposalObject = selectedObjects.find((object) => object.type === "proposalDraft");
-          if (proposalObject?.type !== "proposalDraft") {
-            return;
-          }
-          setDetailDesignDefinitionId(null);
-          setDetailConceptDirectionId(null);
-          setActiveProposalId(proposalObject.proposalId);
-          setDetailProposalId(proposalObject.proposalId);
-        }}
-        onApplyProposal={() => {
-          const proposalObject = selectedObjects.find((object) => object.type === "proposalDraft");
-          if (proposalObject?.type !== "proposalDraft") {
-            return;
-          }
-          handleApplyProposalFromCanvas(proposalObject.proposalId);
-        }}
-        onRejectProposal={() => {
-          const proposalObject = selectedObjects.find((object) => object.type === "proposalDraft");
-          if (proposalObject?.type !== "proposalDraft") {
-            return;
-          }
-          handleRejectProposal(proposalObject.proposalId);
-        }}
-        onContinueProposalDiscussion={() => {
-          const proposalObject = selectedObjects.find((object) => object.type === "proposalDraft");
-          if (proposalObject?.type !== "proposalDraft") {
-            return;
-          }
-          handleContinueProposalDiscussion(proposalObject.proposalId);
-        }}
-        onOpenDesignDefinitionDetail={() => {
-          const definition = selectedObjects.find((object) => object.type === "designDefinition");
-          if (definition?.type === "designDefinition") {
-            setDetailProposalId(null);
-            setDetailConceptDirectionId(null);
-            setDetailDesignDefinitionId(definition.id);
-          }
-        }}
-        onOpenConceptDirectionDetail={() => {
-          const direction = selectedObjects.find((object) => object.type === "conceptDirection");
-          if (direction?.type === "conceptDirection") {
-            setDetailProposalId(null);
-            setDetailDesignDefinitionId(null);
-            setDetailConceptDirectionId(direction.id);
-          }
-        }}
-        onSetCurrentDesignDefinition={() => {
-          const definition = selectedObjects.find((object) => object.type === "designDefinition");
-          if (definition?.type !== "designDefinition") {
-            return;
-          }
-          setWorkspace((current) => setCurrentDesignDefinition(current, definition.id));
-        }}
-        onReviseDirection={handleReviseDirectionIntent}
-        onSplitDirection={handleSplitDirectionIntent}
-        onMergeDirections={handleMergeDirectionsIntent}
-        onCreateVisualBranch={handleCreateVisualBranch}
-        onSetDirectionPrimary={handleSetDirectionPrimary}
-        onSetDirectionAlternative={handleSetDirectionAlternative}
-        onRestoreDirectionAsAlternative={handleRestoreDirectionAsAlternative}
-        onEliminateDirection={handleEliminateDirection}
-        onReorderLayer={handleReorderSelectedLayers}
-      />
       {canvasContextMenu ? (
         <div
           className="canvas-menu-dismiss-layer"
@@ -6019,6 +6077,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           workspace={workspace}
           selectedObjects={selectedObjects}
           assets={workspace.assets}
+          assetUrls={assetUrls}
           hasPendingDesignDefinitionRevisionDraft={hasPendingDesignDefinitionRevisionDraft}
           relations={workspace.relations}
           directionLineage={workspace.directionLineage}
@@ -6032,6 +6091,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           onCopyItemToDraft={handleCopyItemToDraft}
           onContinueQuestion={handleContinueQuestion}
           onOpenDocumentReader={handleOpenDocumentReader}
+          onPreviewObject={setDetailHoverObjectId}
+          onLocateObject={locateObjectFromDetail}
         />
       ) : null}
     </main>

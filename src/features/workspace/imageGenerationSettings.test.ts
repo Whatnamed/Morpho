@@ -74,12 +74,13 @@ describe("workspace image generation settings", () => {
     expect(inferGenerationAspectRatio(createInitialWorkspace(), [])).toBe("1:1");
   });
 
-  it("uses nano-banana-2-lite as the default image generation model", () => {
+  it("uses gpt-image-2 as the default image generation model", () => {
     expect(getDefaultImageGenerationSettings()).toMatchObject({
-      modelId: "nano-banana-2-lite",
-      modelLabel: "nano-banana-2-lite",
-      points: 440,
-      sizeOptions: []
+      modelId: "gpt-image-2",
+      modelLabel: "gpt-image-2",
+      points: 600,
+      sizeOption: "1K",
+      sizeOptions: ["1K"]
     });
   });
 

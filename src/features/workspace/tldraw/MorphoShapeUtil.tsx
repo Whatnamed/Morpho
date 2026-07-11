@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useLayoutEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import {
   BaseBoxShapeUtil,
   HTMLContainer,
@@ -44,6 +44,7 @@ type MorphoShapeProps = {
   isDefaultReference?: boolean;
   isBeingLocallyEdited?: boolean;
   isInDesignTrace?: boolean;
+  isDetailReferenceHighlighted?: boolean;
   assetUrl?: string;
   researchSections?: ResearchShapeSection[];
 };
@@ -86,6 +87,7 @@ export class MorphoShapeUtil extends BaseBoxShapeUtil<MorphoShape> {
     isDefaultReference: T.boolean.optional(),
     isBeingLocallyEdited: T.boolean.optional(),
     isInDesignTrace: T.boolean.optional(),
+    isDetailReferenceHighlighted: T.boolean.optional(),
     assetUrl: T.string.optional(),
     researchSections: T.arrayOf(
       T.object({
@@ -145,7 +147,7 @@ function MorphoShapeContainer({ shape }: { shape: MorphoShape }) {
   const editor = useEditor();
   const contentRef = useRef<HTMLDivElement>(null);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!shouldAutoGrowMorphoShape(shape.props.morphoType)) {
       return;
     }
@@ -159,7 +161,11 @@ function MorphoShapeContainer({ shape }: { shape: MorphoShape }) {
       if (!(content instanceof HTMLElement)) {
         return;
       }
-      const nextHeight = resolveAutoGrowHeight(shape.props.h, content.scrollHeight);
+      const nextHeight = resolveAutoGrowHeight(
+        shape.props.h,
+        content.scrollHeight,
+        content.clientHeight
+      );
       if (!nextHeight) {
         return;
       }
@@ -175,13 +181,22 @@ function MorphoShapeContainer({ shape }: { shape: MorphoShape }) {
       );
     };
 
-    synchronizeHeight();
+    // A new material treatment can legitimately need one growth pass. Keep it out
+    // of React's layout commit so a tldraw geometry update cannot nest a commit.
     const frame = window.requestAnimationFrame(synchronizeHeight);
-    void document.fonts?.ready.then(synchronizeHeight);
+    let fontFrame: number | undefined;
+    void document.fonts?.ready.then(() => {
+      if (!cancelled) {
+        fontFrame = window.requestAnimationFrame(synchronizeHeight);
+      }
+    });
 
     return () => {
       cancelled = true;
       window.cancelAnimationFrame(frame);
+      if (fontFrame !== undefined) {
+        window.cancelAnimationFrame(fontFrame);
+      }
     };
   }, [editor, shape]);
 
@@ -204,7 +219,17 @@ export function shouldAutoGrowMorphoShape(type: MorphoObjectType): boolean {
   return type !== "image";
 }
 
-export function resolveAutoGrowHeight(currentHeight: number, contentScrollHeight: number): number | null {
+export function resolveAutoGrowHeight(
+  currentHeight: number,
+  contentScrollHeight: number,
+  visibleContentHeight = currentHeight
+): number | null {
+  // scrollHeight/clientHeight stay in the same unscaled CSS coordinate system.
+  // The two-pixel tolerance absorbs the card border and prevents a full-height
+  // card from feeding its own geometry back into tldraw on every render.
+  if (contentScrollHeight <= Math.ceil(visibleContentHeight) + 2) {
+    return null;
+  }
   const requiredHeight = Math.ceil(contentScrollHeight + 2);
   return requiredHeight > currentHeight + 1 ? requiredHeight : null;
 }
@@ -218,7 +243,8 @@ export function createMorphoShapePartial(
   object: MorphoObject,
   assetUrl?: string,
   workspace?: MorphoWorkspace,
-  isInDesignTrace = false
+  isInDesignTrace = false,
+  isDetailReferenceHighlighted = false
 ): TLShapePartial<MorphoShape> {
   return {
     id: createShapeId(instance.id),
@@ -228,7 +254,8 @@ export function createMorphoShapePartial(
     opacity: object.type === "conceptDirection" && object.status === "eliminated" ? 0.68 : 1,
     props: {
       ...getMorphoShapeProps(instance, object, assetUrl, workspace),
-      isInDesignTrace
+      isInDesignTrace,
+      isDetailReferenceHighlighted
     }
   };
 }
@@ -237,7 +264,8 @@ export function getMorphoShapeProps(
   instance: CanvasInstance,
   object: MorphoObject,
   assetUrl?: string,
-  workspace?: MorphoWorkspace
+  workspace?: MorphoWorkspace,
+  isDetailReferenceHighlighted = false
 ): MorphoShapeProps {
   const details = getDetails(object, workspace);
   const adaptiveSize = getAdaptiveMorphoShapeSize(instance, object, details);
@@ -254,6 +282,7 @@ export function getMorphoShapeProps(
     details,
     imageVariant: object.type === "image" ? object.imageVariant : undefined,
     isDefaultReference: object.type === "image" ? object.isDefaultReference : undefined,
+    isDetailReferenceHighlighted,
     assetUrl
   };
 }
@@ -498,7 +527,8 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
     `morpho-object-${props.morphoType}`,
     props.isDefaultReference ? "is-default-reference" : "",
     props.isBeingLocallyEdited ? "is-local-editing" : "",
-    props.isInDesignTrace ? "is-design-trace" : ""
+    props.isInDesignTrace ? "is-design-trace" : "",
+    props.isDetailReferenceHighlighted ? "is-detail-reference-highlighted" : ""
   ]
     .filter(Boolean)
     .join(" ");
@@ -529,12 +559,24 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
     );
   }
 
-  if (
-    props.morphoType === "research"
-  ) {
+  if (props.morphoType === "file") {
     return (
       <article className={classes}>
-        <RoleLabel label={props.label} />
+        <div className="morpho-source-file-head">
+          <RoleLabel label={props.label} />
+          <span aria-hidden="true" />
+        </div>
+        <h3>{props.title}</h3>
+        {props.summary ? <p>{props.summary}</p> : null}
+        <div className="morpho-source-file-lines" aria-hidden="true"><span /><span /><span /></div>
+      </article>
+    );
+  }
+
+  if (props.morphoType === "research") {
+    return (
+      <article className={classes}>
+        <div className="morpho-research-head"><RoleLabel label={props.label} /><span>分析</span></div>
         <h3>{props.title}</h3>
         {props.summary ? <p className="morpho-research-summary">{props.summary}</p> : null}
       </article>
@@ -548,9 +590,12 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
 
     return (
       <article className={classes}>
-        <RoleLabel label={props.label} />
-        <h3 className="morpho-key-title">{parts.title}</h3>
-        {parts.detail ? <p className="morpho-key-detail">{parts.detail}</p> : null}
+        <div className="morpho-finding-marker" aria-hidden="true">结论</div>
+        <div className="morpho-finding-copy">
+          <RoleLabel label={props.label} />
+          <h3 className="morpho-key-title">{parts.title}</h3>
+          {parts.detail ? <p className="morpho-key-detail">{parts.detail}</p> : null}
+        </div>
       </article>
     );
   }
@@ -558,14 +603,10 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
   if (props.morphoType === "designDefinition") {
     return (
       <article className={classes}>
-        <RoleLabel label={props.label} />
+        <div className="morpho-definition-head"><RoleLabel label={props.label} /><span>定义</span></div>
         <h3>{props.title}</h3>
         {props.summary ? <p className="morpho-definition-summary">{props.summary}</p> : null}
-        {props.details.map((detail) => (
-          <span className="morpho-definition-status" key={detail}>
-            {detail}
-          </span>
-        ))}
+        {props.details.length > 0 ? <div className="morpho-definition-status-row">{props.details.map((detail) => <span className="morpho-definition-status" key={detail}>{detail}</span>)}</div> : null}
       </article>
     );
   }
@@ -583,10 +624,21 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
     );
   }
 
-  if (
-    props.morphoType === "documentFragment" ||
-    props.morphoType === "text"
-  ) {
+  if (props.morphoType === "documentFragment") {
+    return (
+      <article className={classes}>
+        <div className="morpho-fragment-head"><RoleLabel label={props.label} /><span aria-hidden="true">摘</span></div>
+        <h3>{props.title}</h3>
+        <div className="morpho-document-lines">
+          {props.details.map((detail) => (
+            <p key={detail}>{detail}</p>
+          ))}
+        </div>
+      </article>
+    );
+  }
+
+  if (props.morphoType === "text") {
     return (
       <article className={classes}>
         <RoleLabel label={props.label} />
@@ -614,6 +666,17 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
           </div>
         </div>
         <p>{props.details[1] ?? props.summary}</p>
+      </article>
+    );
+  }
+
+  if (props.morphoType === "conceptDirection") {
+    return (
+      <article className={classes}>
+        <div className="morpho-direction-head"><RoleLabel label={props.label} /><span aria-hidden="true">→</span></div>
+        <h3>{props.title}</h3>
+        <p>{props.summary}</p>
+        {props.details.length > 1 ? <small>{props.details[1]}</small> : null}
       </article>
     );
   }

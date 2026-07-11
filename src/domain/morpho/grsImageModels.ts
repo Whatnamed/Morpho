@@ -25,7 +25,7 @@ export type ResolvedGrsImageModelSettings = {
 };
 
 export const GRS_IMAGE_ASPECT_RATIOS: readonly GrsImageAspectRatio[] = ["1:1", "4:3", "3:4", "16:9", "9:16"];
-export const DEFAULT_GRS_IMAGE_MODEL_ID = "nano-banana-2-lite";
+export const DEFAULT_GRS_IMAGE_MODEL_ID = "gpt-image-2";
 
 export const GRS_IMAGE_MODEL_CATALOG: readonly GrsImageModelCatalogItem[] = [
   {
@@ -45,6 +45,7 @@ export const GRS_IMAGE_MODEL_CATALOG: readonly GrsImageModelCatalogItem[] = [
     label: "gpt-image-2",
     status: "available",
     capabilityStatus: "documented",
+    enabledForExecution: true,
     family: "gptImage2",
     points: 600,
     capabilities: ["textToImage", "imageToImage"],

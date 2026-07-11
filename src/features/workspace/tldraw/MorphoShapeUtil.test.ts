@@ -31,6 +31,7 @@ describe("MorphoShapeUtil", () => {
     expect(shouldAutoGrowMorphoShape("image")).toBe(false);
     expect(resolveAutoGrowHeight(180, 240)).toBe(242);
     expect(resolveAutoGrowHeight(180, 179)).toBeNull();
+    expect(resolveAutoGrowHeight(180, 182, 180)).toBeNull();
   });
 
   it("keeps image canvas props focused on the visual without persistent title or summary details", () => {
@@ -46,6 +47,20 @@ describe("MorphoShapeUtil", () => {
 
     expect(props.morphoType).toBe("image");
     expect(props.details).toEqual([]);
+  });
+
+  it("marks an object referenced from the detail bar for a local canvas highlight", () => {
+    const workspace = createInitialWorkspace();
+    const image = workspace.objects["image-soft-rail-v2"];
+    const instance = workspace.canvas.instances.find((item) => item.objectId === "image-soft-rail-v2");
+
+    if (!image || image.type !== "image" || !instance) {
+      throw new Error("Expected seed workspace to include an image canvas instance.");
+    }
+
+    const props = getMorphoShapeProps(instance, image, undefined, workspace, true);
+
+    expect(props.isDetailReferenceHighlighted).toBe(true);
   });
 
   it("marks design definition cards when a pending revision draft exists", () => {

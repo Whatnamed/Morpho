@@ -8,12 +8,12 @@ import {
 } from "./grsImageModels";
 
 describe("GrsAI image model catalog", () => {
-  it("defaults to the configured lightweight image generation model from the static catalog", () => {
+  it("defaults to gpt-image-2 from the static catalog", () => {
     const defaultModel = getDefaultGrsImageModel();
 
-    expect(defaultModel.id).toBe("nano-banana-2-lite");
+    expect(defaultModel.id).toBe("gpt-image-2");
     expect(defaultModel.status).toBe("available");
-    expect(defaultModel.points).toBe(440);
+    expect(defaultModel.points).toBe(600);
   });
 
   it("does not expose text or maintenance models as selectable image generation models", () => {
@@ -32,7 +32,7 @@ describe("GrsAI image model catalog", () => {
 
     expect(executableIds).toContain("nano-banana-2-lite");
     expect(executableIds).toContain("nano-banana-fast");
-    expect(executableIds).not.toContain("gpt-image-2");
+    expect(executableIds).toContain("gpt-image-2");
     expect(getDefaultGrsImageModel().capabilityStatus).toBe("documented");
   });
 

@@ -9,6 +9,7 @@ import {
   buildVersionDetailRows,
   buildConceptDirectionVersionDetail,
   BottomDetailBar,
+  DetailRelationRows,
   getAvailableDetailTabs,
   getDocumentReaderActionState,
   buildDesignDefinitionInfoMeta,
@@ -108,7 +109,7 @@ describe("BottomDetailBar relationship tabs", () => {
       ]
     });
 
-    expect(rows).toEqual([
+    expect(rows).toMatchObject([
       {
         id: "image-soft-rail-preview",
         label: "起始图",
@@ -133,7 +134,7 @@ describe("BottomDetailBar relationship tabs", () => {
           (relation) => relation.fromObjectId === image.id || relation.toObjectId === image.id
         )
       })
-    ).toEqual([
+    ).toMatchObject([
       {
         id: "image-soft-rail-preview",
         label: "父版本",
@@ -176,7 +177,7 @@ describe("BottomDetailBar relationship tabs", () => {
           (relation) => relation.fromObjectId === image.id || relation.toObjectId === image.id
         )
       })
-    ).toEqual([
+    ).toMatchObject([
       {
         id: "direction-soft-rail",
         label: "后续默认参考",
@@ -279,6 +280,39 @@ describe("BottomDetailBar document reader action", () => {
 });
 
 describe("BottomDetailBar selected object surface", () => {
+  it("renders a direct object relation as a thumbnail-backed locate button", () => {
+    const workspace = createInitialWorkspace();
+    const sourceImage = workspace.objects["image-soft-rail-v2"];
+    if (!sourceImage || sourceImage.type !== "image") {
+      throw new Error("seed image missing");
+    }
+    const relatedImage = { ...sourceImage, assetId: "asset-related-image" };
+
+    const html = renderToStaticMarkup(
+      createElement(DetailRelationRows, {
+        rows: [
+          {
+            id: relatedImage.id,
+            objectId: relatedImage.id,
+            object: relatedImage,
+            label: "起始图",
+            title: relatedImage.title,
+            meta: "概念图"
+          }
+        ],
+        assetUrls: {
+          [relatedImage.assetId]: "blob:related-image"
+        },
+        onPreviewObject: () => undefined,
+        onLocateObject: () => undefined
+      })
+    );
+
+    expect(html).toContain("detail-object-reference");
+    expect(html).toContain(`data-object-id="${relatedImage.id}"`);
+    expect(html).toContain('src="blob:related-image"');
+  });
+
   it("renders multi-reference images without a fabricated version tab or repeated provider notes", () => {
     const workspace = createInitialWorkspace();
     const generated = createGeneratedImageFromAsset(workspace, {

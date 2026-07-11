@@ -1,13 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from "react";
-import { Tldraw, Vec, type Editor, type TLShapeId, type TLShapePartial } from "tldraw";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
+import { Tldraw, Vec, track, useEditor, type Editor, type TLShape, type TLShapeId, type TLShapePartial } from "tldraw";
 
 import { calculateAnchoredZoom } from "@/domain/morpho/canvasCamera";
-import type { DesignTraceEdge } from "@/domain/morpho/designTrace";
-import type { CanvasInstance, CanvasPoint, CanvasView, MorphoWorkspace } from "@/domain/morpho/types";
+import type { CanvasInstance, CanvasPoint, CanvasView, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
 import { getRenderableCanvasInstances } from "@/domain/morpho/workspace";
-import type { ScreenRect } from "../selectionToolbar";
+import { getSelectionToolbarPlacement, type SelectionToolbarPlacement } from "../selectionToolbar";
+import { shouldAcceptCanvasSelection } from "../workspaceNavigation";
+import type { PendingImageGenerationSlot } from "../pendingImageGenerationSlots";
+import { buildRelationshipPath, buildRelationshipRoute, createRelationshipRouteCache, type CanvasPageBounds } from "./canvasRelationshipRouting";
+import { collectDirectCanvasEdges } from "./canvasRelationships";
 import {
   MorphoShapeUtil,
   createMorphoShapePartial,
@@ -21,6 +24,8 @@ export type FocusArea = "overview" | "research" | "definition" | "visual" | "del
 type FocusRequest = {
   area?: FocusArea;
   objectId?: string;
+  view?: CanvasView;
+  selectionObjectIds?: string[];
   nonce: number;
 };
 
@@ -28,13 +33,16 @@ type MorphoCanvasProps = {
   workspace: MorphoWorkspace;
   annotatedObjectId: string | null;
   traceObjectIds: string[];
-  traceEdges: DesignTraceEdge[];
+  highlightedObjectId: string | null;
   assetUrls: Record<string, string>;
+  pendingImageGenerationSlots: PendingImageGenerationSlot[];
   focusRequest: FocusRequest;
+  selectedObjectIds: string[];
+  renderSelectionToolbar?: (selectedObjects: MorphoObject[], placement: SelectionToolbarPlacement) => ReactNode;
   onSelectionChange: (objectIds: string[]) => void;
-  onSelectionBoundsChange: (bounds: ScreenRect | null) => void;
   onInstancesChange: (instances: CanvasInstance[]) => void;
   onViewChange: (view: CanvasView) => void;
+  onLiveViewChange?: (view: CanvasView) => void;
   onImportRequest: (request: CanvasImportRequest) => void;
   onContextMenuRequest: (request: CanvasContextMenuRequest) => void;
 };
@@ -117,39 +125,29 @@ export function resolveFocusBounds(workspace: MorphoWorkspace, area: FocusArea):
 }
 
 export function shouldApplyFocusRequest(focusRequest: FocusRequest, lastAppliedNonce: number | null): boolean {
-  return focusRequest.nonce !== lastAppliedNonce && Boolean(focusRequest.area || focusRequest.objectId);
+  return focusRequest.nonce !== lastAppliedNonce && Boolean(focusRequest.area || focusRequest.objectId || focusRequest.view);
 }
-
-type TraceOverlayNode = {
-  objectId: string;
-  x: number;
-  y: number;
-};
-
-type TraceOverlayEdge = {
-  key: string;
-  from: TraceOverlayNode;
-  to: TraceOverlayNode;
-};
 
 export function MorphoCanvas({
   workspace,
   annotatedObjectId,
   traceObjectIds,
-  traceEdges,
+  highlightedObjectId,
   assetUrls,
+  pendingImageGenerationSlots,
   focusRequest,
+  selectedObjectIds,
+  renderSelectionToolbar,
   onSelectionChange,
-  onSelectionBoundsChange,
   onInstancesChange,
   onViewChange,
+  onLiveViewChange,
   onImportRequest,
   onContextMenuRequest
 }: MorphoCanvasProps) {
   const editorRef = useRef<Editor | null>(null);
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const lastSelectionRef = useRef("");
-  const lastInstancesRef = useRef("");
   const pendingInstancesRef = useRef<CanvasInstance[] | null>(null);
   const instancesPersistTimerRef = useRef<number | null>(null);
   const lastAppliedFocusNonceRef = useRef<number | null>(null);
@@ -158,46 +156,39 @@ export function MorphoCanvas({
   const lastPersistedViewKeyRef = useRef(getCanvasViewKey(workspace.canvas.view));
   const lastContextMenuOpenAtRef = useRef(0);
   const latestWorkspaceRef = useRef(workspace);
+  const latestSelectedObjectIdsRef = useRef(selectedObjectIds);
+  const windowFocusedRef = useRef(typeof document === "undefined" ? true : document.hasFocus());
   const [liveView, setLiveView] = useState<CanvasView>(workspace.canvas.view);
 
   useLayoutEffect(() => {
     latestWorkspaceRef.current = workspace;
   }, [workspace]);
-  const traceOverlayEdges = useMemo(() => {
-    if (traceObjectIds.length === 0 || traceEdges.length === 0) {
-      return [];
-    }
+  useLayoutEffect(() => {
+    latestSelectedObjectIdsRef.current = selectedObjectIds;
+  }, [selectedObjectIds]);
+  const canvasComponents = useMemo(
+    () => ({
+      OnTheCanvas: () => <CanvasRelationshipOverlay workspace={workspace} emphasizedObjectId={highlightedObjectId} />,
+      InFrontOfTheCanvas: () =>
+        renderSelectionToolbar ? <CanvasSelectionToolbar workspace={workspace} renderToolbar={renderSelectionToolbar} /> : null
+    }),
+    [highlightedObjectId, renderSelectionToolbar, workspace]
+  );
+  const pendingSlotRects = useMemo(() => {
+    return pendingImageGenerationSlots.map((slot) => {
+      return {
+        ...slot,
+        left: slot.position.x * liveView.zoom + liveView.x,
+        top: slot.position.y * liveView.zoom + liveView.y,
+        width: slot.size.w * liveView.zoom,
+        height: slot.size.h * liveView.zoom
+      };
+    });
+  }, [liveView, pendingImageGenerationSlots]);
 
-    const traceObjectIdSet = new Set(traceObjectIds);
-    const instanceByObjectId = new Map(workspace.canvas.instances.map((instance) => [instance.objectId, instance]));
-    const nodeByObjectId = new Map<string, TraceOverlayNode>();
-    for (const objectId of traceObjectIdSet) {
-      const instance = instanceByObjectId.get(objectId);
-      if (!instance) {
-        continue;
-      }
-
-      nodeByObjectId.set(objectId, {
-        objectId,
-        x: (instance.position.x + instance.size.w / 2) * liveView.zoom + liveView.x,
-        y: (instance.position.y + instance.size.h / 2) * liveView.zoom + liveView.y
-      });
-    }
-
-    return traceEdges
-      .map((edge, index) => {
-        const from = nodeByObjectId.get(edge.fromObjectId);
-        const to = nodeByObjectId.get(edge.toObjectId);
-        return from && to
-          ? {
-              key: `${edge.kind}-${edge.fromObjectId}-${edge.toObjectId}-${index}`,
-              from,
-              to
-            }
-          : null;
-      })
-      .filter((edge): edge is TraceOverlayEdge => Boolean(edge));
-  }, [liveView, traceEdges, traceObjectIds, workspace.canvas.instances]);
+  useEffect(() => {
+    onLiveViewChange?.(liveView);
+  }, [liveView, onLiveViewChange]);
 
   const flushViewPersist = useCallback(() => {
     if (viewPersistTimerRef.current !== null) {
@@ -267,29 +258,33 @@ export function MorphoCanvas({
   );
 
   const syncFromEditor = useCallback(
-    (editor: Editor) => {
+    (editor: Editor, changedShapes?: MorphoShape[]) => {
       const currentWorkspace = latestWorkspaceRef.current;
-      const pageShapes = editor.getCurrentPageShapes().filter(isMorphoShape);
+      const pageShapes = changedShapes ?? editor.getCurrentPageShapes().filter(isMorphoShape);
       const inactiveShapes = pageShapes.filter((shape) => !isMorphoShapeActiveInWorkspace(shape, currentWorkspace));
       if (inactiveShapes.length > 0) {
         editor.deleteShapes(inactiveShapes.map((shape) => shape.id));
       }
 
-      const selectedShapes = editor
-        .getSelectedShapes()
-        .filter(isMorphoShape)
-        .filter((shape) => isMorphoShapeActiveInWorkspace(shape, currentWorkspace));
-      const selectedIds = getSelectedMorphoShapeIds(selectedShapes);
-      const selectionKey = selectedIds.objectIds.join("|");
-      if (selectionKey !== lastSelectionRef.current) {
-        lastSelectionRef.current = selectionKey;
-        onSelectionChange(selectedIds.objectIds);
+      if (
+        shouldAcceptCanvasSelection({
+          documentVisible: document.visibilityState === "visible",
+          windowFocused: windowFocusedRef.current
+        })
+      ) {
+        const selectedShapes = editor
+          .getSelectedShapes()
+          .filter(isMorphoShape)
+          .filter((shape) => isMorphoShapeActiveInWorkspace(shape, currentWorkspace));
+        const selectedIds = getSelectedMorphoShapeIds(selectedShapes);
+        const selectionKey = selectedIds.objectIds.join("|");
+        if (selectionKey !== lastSelectionRef.current) {
+          lastSelectionRef.current = selectionKey;
+          onSelectionChange(selectedIds.objectIds);
+        }
       }
-      onSelectionBoundsChange(calculateSelectionScreenBounds(editor));
 
-      const movedInstances = editor
-        .getCurrentPageShapes()
-        .filter(isMorphoShape)
+      const movedInstances = pageShapes
         .filter((shape) => isMorphoShapeActiveInWorkspace(shape, currentWorkspace))
         .map((shape) => ({
           id: shape.props.instanceId,
@@ -298,9 +293,7 @@ export function MorphoCanvas({
           size: { w: shape.props.w, h: shape.props.h }
         }));
 
-      const instancesKey = JSON.stringify(movedInstances);
-      if (instancesKey !== lastInstancesRef.current) {
-        lastInstancesRef.current = instancesKey;
+      if (movedInstances.length > 0) {
         scheduleInstancesPersist(movedInstances);
       }
       const camera = editor.getCamera();
@@ -308,7 +301,7 @@ export function MorphoCanvas({
       setLiveView(nextView);
       scheduleViewPersist(nextView);
     },
-    [onSelectionBoundsChange, onSelectionChange, scheduleInstancesPersist, scheduleViewPersist]
+    [onSelectionChange, scheduleInstancesPersist, scheduleViewPersist]
   );
 
   const syncWorkspaceToEditor = useCallback(
@@ -332,10 +325,19 @@ export function MorphoCanvas({
         const renderInstance = resolveInstanceForEditorSync(instance, pendingInstances);
         const assetUrl = object.type === "image" && object.assetId ? assetUrls[object.assetId] : undefined;
         if (!existing) {
-          toCreate.push(createMorphoShapePartial(renderInstance, object, assetUrl, workspace, traceObjectIds.includes(object.id)));
+          toCreate.push(
+            createMorphoShapePartial(
+              renderInstance,
+              object,
+              assetUrl,
+              workspace,
+              traceObjectIds.includes(object.id),
+              highlightedObjectId === object.id
+            )
+          );
         } else {
           const nextProps = {
-            ...getMorphoShapeProps(renderInstance, object, assetUrl, workspace),
+            ...getMorphoShapeProps(renderInstance, object, assetUrl, workspace, highlightedObjectId === object.id),
             isBeingLocallyEdited: object.id === annotatedObjectId,
             isInDesignTrace: traceObjectIds.includes(object.id)
           };
@@ -361,20 +363,9 @@ export function MorphoCanvas({
           editor.deleteShapes(toDelete.map((shape) => shape.id));
         }
 
-        const orderedShapeIds = renderableInstances
-          .map((instance) =>
-            editor
-              .getCurrentPageShapes()
-              .filter(isMorphoShape)
-              .find((shape) => shape.props.instanceId === instance.id)?.id
-          )
-          .filter((id): id is TLShapeId => Boolean(id));
-        for (const shapeId of orderedShapeIds) {
-          editor.bringToFront([shapeId]);
-        }
       }, MORPHO_EDITOR_SYNC_RUN_OPTIONS);
     },
-    [annotatedObjectId, assetUrls, traceObjectIds, workspace]
+    [annotatedObjectId, assetUrls, highlightedObjectId, traceObjectIds, workspace]
   );
 
   const getPagePoint = useCallback((clientX: number, clientY: number): CanvasPoint => {
@@ -574,23 +565,49 @@ export function MorphoCanvas({
       flushPendingInstances();
       flushViewPersist();
     };
+    const restoreSelectionFromParent = () => {
+      const editor = editorRef.current;
+      if (!editor) {
+        return;
+      }
+
+      const selectedObjectIdSet = new Set(latestSelectedObjectIdsRef.current);
+      const shapeIds = editor
+        .getCurrentPageShapes()
+        .filter(isMorphoShape)
+        .filter((shape) => selectedObjectIdSet.has(shape.props.objectId))
+        .map((shape) => shape.id);
+      lastSelectionRef.current = latestSelectedObjectIdsRef.current.join("|");
+      editor.select(...shapeIds);
+    };
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
+        windowFocusedRef.current = false;
         flushInteractionState();
       }
+    };
+    const handleWindowBlur = () => {
+      windowFocusedRef.current = false;
+      flushInteractionState();
+    };
+    const handleWindowFocus = () => {
+      windowFocusedRef.current = true;
+      window.requestAnimationFrame(restoreSelectionFromParent);
     };
     const host = canvasHostRef.current;
 
     host?.addEventListener("pointerup", flushInteractionState, { capture: true });
     host?.addEventListener("pointercancel", flushInteractionState, { capture: true });
-    window.addEventListener("blur", flushInteractionState);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("focus", handleWindowFocus);
     window.addEventListener("beforeunload", flushInteractionState);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       host?.removeEventListener("pointerup", flushInteractionState, { capture: true });
       host?.removeEventListener("pointercancel", flushInteractionState, { capture: true });
-      window.removeEventListener("blur", flushInteractionState);
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("focus", handleWindowFocus);
       window.removeEventListener("beforeunload", flushInteractionState);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
@@ -611,6 +628,22 @@ export function MorphoCanvas({
       return;
     }
     lastAppliedFocusNonceRef.current = focusRequest.nonce;
+
+    if (focusRequest.view) {
+      const selectedObjectIdSet = new Set(focusRequest.selectionObjectIds ?? []);
+      const shapeIds = editor
+        .getCurrentPageShapes()
+        .filter(isMorphoShape)
+        .filter((shape) => selectedObjectIdSet.has(shape.props.objectId))
+        .map((shape) => shape.id);
+      lastSelectionRef.current = (focusRequest.selectionObjectIds ?? []).join("|");
+      editor.select(...shapeIds);
+      editor.setCamera(new Vec(focusRequest.view.x, focusRequest.view.y, focusRequest.view.zoom), {
+        immediate: true
+      });
+      scheduleViewPersist(focusRequest.view);
+      return;
+    }
 
     if (focusRequest.objectId) {
       const shape = editor.getCurrentPageShapes().filter(isMorphoShape).find((candidate) => candidate.props.objectId === focusRequest.objectId);
@@ -657,19 +690,26 @@ export function MorphoCanvas({
       onPasteCapture={handlePasteCapture}
     >
       <Tldraw
+        components={canvasComponents}
         hideUi
         shapeUtils={shapeUtils}
         colorScheme="light"
         onMount={(editor) => {
           editorRef.current = editor;
+          editor.user.updateUserPreferences({ isSnapMode: true });
           syncWorkspaceToEditor(editor);
           latestViewRef.current = workspace.canvas.view;
           lastPersistedViewKeyRef.current = getCanvasViewKey(workspace.canvas.view);
           editor.setCamera({ x: workspace.canvas.view.x, y: workspace.canvas.view.y, z: workspace.canvas.view.zoom });
           setLiveView(workspace.canvas.view);
+          onLiveViewChange?.(workspace.canvas.view);
 
-          const cleanup = editor.store.listen(() => {
-            syncFromEditor(editor);
+          const cleanup = editor.store.listen((entry) => {
+            const changedShapes = [
+              ...Object.values(entry.changes.added),
+              ...Object.values(entry.changes.updated).map(([, after]) => after)
+            ].filter((record): record is MorphoShape => "type" in record && isMorphoShape(record as TLShape));
+            syncFromEditor(editor, changedShapes);
           });
 
           return () => {
@@ -678,22 +718,138 @@ export function MorphoCanvas({
           };
         }}
       />
-      {traceOverlayEdges.length > 0 ? (
-        <svg className="design-trace-overlay" aria-hidden="true">
-          {traceOverlayEdges.map((edge) => (
-            <line
-              key={edge.key}
-              x1={edge.from.x}
-              y1={edge.from.y}
-              x2={edge.to.x}
-              y2={edge.to.y}
-            />
+      {pendingSlotRects.length > 0 ? (
+        <div className="pending-generation-layer" aria-live="polite">
+          {pendingSlotRects.map((slot) => (
+            <div
+              className="pending-generation-slot"
+              key={slot.id}
+              style={{
+                left: slot.left,
+                top: slot.top,
+                width: slot.width,
+                height: slot.height
+              }}
+            >
+              <span className="pending-generation-spinner" aria-hidden="true" />
+              <div>
+                <span>{pendingSlotRoleLabel(slot.role)}</span>
+                <strong>{slot.title}</strong>
+              </div>
+            </div>
           ))}
-        </svg>
+        </div>
       ) : null}
     </div>
   );
 }
+
+const CanvasRelationshipOverlay = track(function CanvasRelationshipOverlay({
+  workspace,
+  emphasizedObjectId
+}: {
+  workspace: MorphoWorkspace;
+  emphasizedObjectId: string | null;
+}) {
+  const editor = useEditor();
+  const routeCacheRef = useRef(createRelationshipRouteCache());
+  const boundsKeyByObjectRef = useRef(new Map<string, string>());
+  const shapes = editor.getCurrentPageShapes().filter(isMorphoShape);
+  const boundsByObjectId = new Map<string, CanvasPageBounds>();
+  for (const shape of shapes) {
+    const bounds = editor.getShapePageBounds(shape);
+    if (!bounds) continue;
+    const nextBounds = { x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h };
+    const key = `${nextBounds.x}:${nextBounds.y}:${nextBounds.w}:${nextBounds.h}`;
+    const previousKey = boundsKeyByObjectRef.current.get(shape.props.objectId);
+    if (previousKey !== key) {
+      routeCacheRef.current.invalidateConnectedObject(shape.props.objectId);
+      if (!previousKey) {
+        routeCacheRef.current.clear();
+      }
+      boundsKeyByObjectRef.current.set(shape.props.objectId, key);
+    }
+    boundsByObjectId.set(shape.props.objectId, nextBounds);
+  }
+
+  const visibleEdges = collectDirectCanvasEdges(workspace).filter(
+    (edge) => boundsByObjectId.has(edge.fromObjectId) && boundsByObjectId.has(edge.toObjectId)
+  );
+  const portIndexByObject = new Map<string, number>();
+  const portCountByObject = new Map<string, number>();
+  for (const edge of visibleEdges) {
+    portCountByObject.set(edge.fromObjectId, (portCountByObject.get(edge.fromObjectId) ?? 0) + 1);
+    portCountByObject.set(edge.toObjectId, (portCountByObject.get(edge.toObjectId) ?? 0) + 1);
+  }
+
+  const routes = visibleEdges.map((edge) => {
+    const key = `${edge.fromObjectId}:${edge.toObjectId}`;
+    const sourceIndex = portIndexByObject.get(edge.fromObjectId) ?? 0;
+    const targetIndex = portIndexByObject.get(edge.toObjectId) ?? 0;
+    portIndexByObject.set(edge.fromObjectId, sourceIndex + 1);
+    portIndexByObject.set(edge.toObjectId, targetIndex + 1);
+    const source = boundsByObjectId.get(edge.fromObjectId)!;
+    const target = boundsByObjectId.get(edge.toObjectId)!;
+    const endpointObjectIds = [edge.fromObjectId, edge.toObjectId];
+    const cached = routeCacheRef.current.get(key);
+    const route = cached ?? buildRelationshipRoute({
+      source,
+      target,
+      obstacles: [],
+      sourcePort: { index: sourceIndex, count: portCountByObject.get(edge.fromObjectId) ?? 1 },
+      targetPort: { index: targetIndex, count: portCountByObject.get(edge.toObjectId) ?? 1 }
+    });
+    if (!cached) routeCacheRef.current.set(key, route, endpointObjectIds);
+    const emphasized = emphasizedObjectId === edge.fromObjectId || emphasizedObjectId === edge.toObjectId || editor.getSelectedShapeIds().some((shapeId) => {
+      const shape = editor.getShape(shapeId);
+      if (!shape || !isMorphoShape(shape)) return false;
+      return shape.props.objectId === edge.fromObjectId || shape.props.objectId === edge.toObjectId;
+    });
+    return { key, edge, route, emphasized };
+  });
+
+  return (
+    <svg className="canvas-relationship-overlay" viewBox="0 0 1 1" aria-hidden="true">
+      {routes.map(({ key, edge, route, emphasized }) => (
+        <path
+          key={key}
+          className={emphasized ? "is-emphasized" : edge.primary ? "is-primary" : "is-secondary"}
+          d={buildRelationshipPath(route)}
+        />
+      ))}
+    </svg>
+  );
+});
+
+const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
+  workspace,
+  renderToolbar
+}: {
+  workspace: MorphoWorkspace;
+  renderToolbar: (selectedObjects: MorphoObject[], placement: SelectionToolbarPlacement) => ReactNode;
+}) {
+  const editor = useEditor();
+  if (!editor.isIn("select.idle")) return null;
+  const bounds = editor.getSelectionRotatedScreenBounds();
+  const selectedObjects = editor
+    .getSelectedShapes()
+    .filter(isMorphoShape)
+    .map((shape) => workspace.objects[shape.props.objectId])
+    .filter((object): object is MorphoObject => Boolean(object));
+  if (!bounds || selectedObjects.length === 0) return null;
+
+  const aiPanel = document.querySelector<HTMLElement>(".ai-panel:not(.collapsed)");
+  const aiBounds = aiPanel?.getBoundingClientRect();
+  const placement = getSelectionToolbarPlacement(
+    { x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h },
+    { w: window.innerWidth, h: window.innerHeight },
+    { toolbar: { w: 460, h: 44 }, margin: 18, gap: 12 }
+  );
+  if (aiBounds && placement.x + 230 > aiBounds.left && placement.y < aiBounds.bottom && placement.y + 44 > aiBounds.top) {
+    placement.x = Math.max(18 + 230, aiBounds.left - 18 - 230);
+  }
+  return <>{renderToolbar(selectedObjects, placement)}</>;
+});
 
 function getUrlFromText(text: string): string {
   const trimmed = text.trim();
@@ -705,6 +861,27 @@ function getUrlFromText(text: string): string {
     return new URL(trimmed).href;
   } catch {
     return "";
+  }
+}
+
+function pendingSlotRoleLabel(role: string): string {
+  switch (role) {
+    case "primaryVisual":
+      return "主图";
+    case "sceneVisual":
+      return "场景图";
+    case "cmfStudy":
+      return "CMF 研究";
+    case "detailStudy":
+      return "细节图";
+    case "structureDiagram":
+      return "设计示意";
+    case "deliveryAsset":
+      return "交付素材";
+    case "preview":
+    case "conceptImage":
+    default:
+      return "正在生成";
   }
 }
 
@@ -751,23 +928,6 @@ function isEditableEventTarget(target: EventTarget): boolean {
   return target.tagName === "TEXTAREA" || target.tagName === "INPUT" || target.isContentEditable;
 }
 
-function calculateSelectionScreenBounds(editor: Editor): ScreenRect | null {
-  const bounds = editor.getSelectionPageBounds();
-  if (!bounds) {
-    return null;
-  }
-
-  const topLeft = editor.pageToScreen({ x: bounds.x, y: bounds.y });
-  const bottomRight = editor.pageToScreen({ x: bounds.x + bounds.w, y: bounds.y + bounds.h });
-
-  return {
-    x: Math.min(topLeft.x, bottomRight.x),
-    y: Math.min(topLeft.y, bottomRight.y),
-    w: Math.abs(bottomRight.x - topLeft.x),
-    h: Math.abs(bottomRight.y - topLeft.y)
-  };
-}
-
 function isPointInsideShape(point: { x: number; y: number }, shape: MorphoShape): boolean {
   return (
     point.x >= shape.x &&
@@ -799,6 +959,7 @@ export function areMorphoShapePropsEqual(left: MorphoShape["props"], right: Morp
     left.isDefaultReference === right.isDefaultReference &&
     left.isBeingLocallyEdited === right.isBeingLocallyEdited &&
     left.isInDesignTrace === right.isInDesignTrace &&
+    left.isDetailReferenceHighlighted === right.isDetailReferenceHighlighted &&
     left.assetUrl === right.assetUrl &&
     areStringArraysEqual(left.details, right.details)
   );

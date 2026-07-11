@@ -27,6 +27,7 @@ type BottomDetailBarProps = {
   workspace: MorphoWorkspace;
   selectedObjects: MorphoObject[];
   assets: Record<string, AssetRecord>;
+  assetUrls?: Record<string, string>;
   hasPendingDesignDefinitionRevisionDraft: boolean;
   relations: MorphoRelation[];
   directionLineage: DirectionLineageRecord[];
@@ -44,6 +45,8 @@ type BottomDetailBarProps = {
   }) => void;
   onCopyItemToDraft: (text: string) => void;
   onContinueQuestion: (text: string) => void;
+  onPreviewObject?: (objectId: string | null) => void;
+  onLocateObject?: (objectId: string) => void;
 };
 
 const tabs = ["信息", "来源", "版本", "关联", "决策"] as const;
@@ -51,6 +54,8 @@ export type DetailTab = (typeof tabs)[number];
 
 export type DetailRelationRow = {
   id: string;
+  objectId?: string;
+  object?: MorphoObject;
   label: string;
   title: string;
   meta: string;
@@ -298,6 +303,7 @@ export function BottomDetailBar({
   workspace,
   selectedObjects,
   assets,
+  assetUrls = {},
   hasPendingDesignDefinitionRevisionDraft,
   relations,
   directionLineage,
@@ -307,7 +313,9 @@ export function BottomDetailBar({
   onOpenDocumentReader,
   onRenameVisualBranch,
   onArchiveVisualBranch,
-  onRestoreVisualBranch
+  onRestoreVisualBranch,
+  onPreviewObject,
+  onLocateObject
 }: BottomDetailBarProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>("信息");
 
@@ -371,13 +379,16 @@ export function BottomDetailBar({
             directionLineage,
             visualBranches,
             assets,
+            assetUrls,
             selectedCount: selectedObjects.length,
             hasPendingDesignDefinitionRevisionDraft,
             fragmentSourceState,
             fragmentLocation: fragmentInitialLocation,
             onRenameVisualBranch,
             onArchiveVisualBranch,
-            onRestoreVisualBranch
+            onRestoreVisualBranch,
+            onPreviewObject,
+            onLocateObject
           })}
           {visibleTab === "关联" && activeDesignTrace ? <DesignTraceSummary trace={activeDesignTrace} /> : null}
           {documentReaderAction.visible ? (
@@ -496,6 +507,7 @@ function renderDetail(input: {
   directionLineage: DirectionLineageRecord[];
   visualBranches: Record<string, VisualBranchRecord>;
   assets: Record<string, AssetRecord>;
+  assetUrls: Record<string, string>;
   selectedCount: number;
   hasPendingDesignDefinitionRevisionDraft: boolean;
   fragmentSourceState: ReturnType<typeof resolveDocumentFragmentSourceAvailability> | null;
@@ -503,6 +515,8 @@ function renderDetail(input: {
   onRenameVisualBranch: BottomDetailBarProps["onRenameVisualBranch"];
   onArchiveVisualBranch: BottomDetailBarProps["onArchiveVisualBranch"];
   onRestoreVisualBranch: BottomDetailBarProps["onRestoreVisualBranch"];
+  onPreviewObject?: (objectId: string | null) => void;
+  onLocateObject?: (objectId: string) => void;
 }) {
   const {
     tab,
@@ -512,11 +526,14 @@ function renderDetail(input: {
     directionLineage,
     visualBranches,
     assets,
+    assetUrls,
     decisionRecords,
     selectedCount,
     hasPendingDesignDefinitionRevisionDraft,
     fragmentSourceState,
-    fragmentLocation
+    fragmentLocation,
+    onPreviewObject,
+    onLocateObject
   } = input;
   if (selectedCount > 1) {
     return <MultiSelectionDetail selectedCount={selectedCount} />;
@@ -600,7 +617,16 @@ function renderDetail(input: {
 
   if (tab === "来源") {
     if (object.type === "research") {
-      return <ResearchSourceDetail workspace={workspace} object={object} relations={relations} />;
+      return (
+        <ResearchSourceDetail
+          workspace={workspace}
+          object={object}
+          relations={relations}
+          assetUrls={assetUrls}
+          onPreviewObject={onPreviewObject}
+          onLocateObject={onLocateObject}
+        />
+      );
     }
 
     if (object.type === "documentFragment") {
@@ -623,7 +649,14 @@ function renderDetail(input: {
       );
     }
 
-    return <DetailRelationRows rows={buildSourceDetailRows({ workspace, object, relations })} />;
+    return (
+      <DetailRelationRows
+        rows={buildSourceDetailRows({ workspace, object, relations })}
+        assetUrls={assetUrls}
+        onPreviewObject={onPreviewObject}
+        onLocateObject={onLocateObject}
+      />
+    );
   }
 
   if (tab === "版本") {
@@ -640,20 +673,39 @@ function renderDetail(input: {
       return <RevisionDetailRows rows={buildConceptDirectionRevisionRows(workspace, object.revisionIds, object.currentRevisionId)} />;
     }
 
-    return <DetailRelationRows rows={buildVersionDetailRows({ workspace, object, relations })} />;
+    return (
+      <DetailRelationRows
+        rows={buildVersionDetailRows({ workspace, object, relations })}
+        assetUrls={assetUrls}
+        onPreviewObject={onPreviewObject}
+        onLocateObject={onLocateObject}
+      />
+    );
   }
 
   if (tab === "关联") {
     if (object.type === "conceptDirection") {
       return (
         <>
-          <DetailRelationRows rows={buildRelatedDetailRows({ workspace, object, relations })} />
+          <DetailRelationRows
+            rows={buildRelatedDetailRows({ workspace, object, relations })}
+            assetUrls={assetUrls}
+            onPreviewObject={onPreviewObject}
+            onLocateObject={onLocateObject}
+          />
           <DirectionLineageRows directionId={object.id} directionLineage={directionLineage} />
         </>
       );
     }
 
-    return <DetailRelationRows rows={buildRelatedDetailRows({ workspace, object, relations })} />;
+    return (
+      <DetailRelationRows
+        rows={buildRelatedDetailRows({ workspace, object, relations })}
+        assetUrls={assetUrls}
+        onPreviewObject={onPreviewObject}
+        onLocateObject={onLocateObject}
+      />
+    );
   }
 
   return <DecisionDetailRows decisionRecords={decisionRecords} />;
@@ -668,19 +720,76 @@ function MultiSelectionDetail({ selectedCount }: { selectedCount: number }) {
   );
 }
 
-function DetailRelationRows({ rows }: { rows: DetailRelationRow[] }) {
+export function DetailRelationRows({
+  rows,
+  assetUrls = {},
+  onPreviewObject,
+  onLocateObject
+}: {
+  rows: DetailRelationRow[];
+  assetUrls?: Record<string, string>;
+  onPreviewObject?: (objectId: string | null) => void;
+  onLocateObject?: (objectId: string) => void;
+}) {
   return (
     <div className="detail-row-list">
-      {rows.map((row) => (
-        <div className="detail-row" key={`${row.label}-${row.id}`}>
-          <span className="detail-row-label">{row.label}</span>
-          <div className="detail-row-body">
-            <strong>{row.title}</strong>
-            <span>{row.meta}</span>
-          </div>
-        </div>
-      ))}
+      {rows.map((row) => {
+        const referenceObject = row.objectId && row.object ? row.object : null;
+        if (!referenceObject) {
+          return (
+            <div className="detail-row" key={`${row.label}-${row.id}`}>
+              <span className="detail-row-label">{row.label}</span>
+              <div className="detail-row-body">
+                <strong>{row.title}</strong>
+                <span>{row.meta}</span>
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <button
+            className="detail-row detail-object-reference"
+            data-object-id={referenceObject.id}
+            key={`${row.label}-${row.id}`}
+            type="button"
+            onBlur={() => onPreviewObject?.(null)}
+            onClick={() => onLocateObject?.(referenceObject.id)}
+            onFocus={() => onPreviewObject?.(referenceObject.id)}
+            onPointerEnter={() => onPreviewObject?.(referenceObject.id)}
+            onPointerLeave={() => onPreviewObject?.(null)}
+          >
+            <span className="detail-row-label">{row.label}</span>
+            <div className="detail-object-reference-body">
+              <DetailObjectThumbnail assetUrls={assetUrls} object={referenceObject} />
+              <div className="detail-row-body">
+                <strong>{row.title}</strong>
+                <span>{row.meta}</span>
+              </div>
+            </div>
+          </button>
+        );
+      })}
     </div>
+  );
+}
+
+function DetailObjectThumbnail({ object, assetUrls }: { object: MorphoObject; assetUrls: Record<string, string> }) {
+  const assetUrl = object.type === "image" && object.assetId ? assetUrls[object.assetId] : undefined;
+  if (assetUrl) {
+    return (
+      <span className="detail-object-thumbnail detail-object-thumbnail-image" aria-hidden="true">
+        {/* Blob URLs come from local IndexedDB and cannot be optimized by next/image. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={assetUrl} alt="" />
+      </span>
+    );
+  }
+
+  return (
+    <span className={`detail-object-thumbnail detail-object-thumbnail-${object.type}`} aria-hidden="true">
+      {getObjectTypeLabel(object).slice(0, 1)}
+    </span>
   );
 }
 
@@ -747,6 +856,8 @@ function buildObjectDetailRow(workspace: MorphoWorkspace, objectId: string, labe
   const relatedObject = workspace.objects[objectId];
   return {
     id: objectId,
+    objectId: relatedObject?.id,
+    object: relatedObject,
     label,
     title: relatedObject?.title ?? "已删除对象",
     meta: relatedObject ? getObjectTypeLabel(relatedObject) : "对象不可用"
@@ -898,11 +1009,17 @@ function ResearchCompactDetail({ object }: { object: ResearchObject }) {
 function ResearchSourceDetail({
   workspace,
   object,
-  relations
+  relations,
+  assetUrls,
+  onPreviewObject,
+  onLocateObject
 }: {
   workspace: MorphoWorkspace;
   object: ResearchObject;
   relations: MorphoRelation[];
+  assetUrls: Record<string, string>;
+  onPreviewObject?: (objectId: string | null) => void;
+  onLocateObject?: (objectId: string) => void;
 }) {
   return (
     <div className="research-detail research-detail-compact">
@@ -918,7 +1035,12 @@ function ResearchSourceDetail({
           证据：{object.evidence.length} 条 · {object.evidence[0]?.claim}
         </span>
       ) : null}
-      <DetailRelationRows rows={buildSourceDetailRows({ workspace, object, relations })} />
+      <DetailRelationRows
+        rows={buildSourceDetailRows({ workspace, object, relations })}
+        assetUrls={assetUrls}
+        onPreviewObject={onPreviewObject}
+        onLocateObject={onLocateObject}
+      />
     </div>
   );
 }

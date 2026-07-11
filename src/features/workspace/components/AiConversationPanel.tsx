@@ -691,7 +691,7 @@ export function AiConversationPanel({
           ) : null}
           </div>
           <button
-            className="ai-scroll-bottom-button"
+            className={`ai-scroll-bottom-button${isStreaming ? " has-new-content" : ""}`}
             type="button"
             aria-label="滚动到最新消息"
             hidden={!showScrollBottom}

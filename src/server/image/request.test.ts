@@ -48,7 +48,7 @@ describe("GrsAI image route request validation", () => {
     }
   });
 
-  it("falls back to the cheapest available model when the client omits modelId", () => {
+  it("falls back to gpt-image-2 when the client omits modelId", () => {
     const result = validateGrsImageRouteRequest({
       prompt: "生成一张夜间使用场景",
       aspectRatio: "1:1"
@@ -56,8 +56,8 @@ describe("GrsAI image route request validation", () => {
 
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
-      expect(result.value.modelId).toBe("nano-banana-2-lite");
-      expect(result.value.sizeOption).toBeUndefined();
+      expect(result.value.modelId).toBe("gpt-image-2");
+      expect(result.value.sizeOption).toBe("1K");
     }
   });
 
