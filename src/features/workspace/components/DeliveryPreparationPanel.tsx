@@ -123,206 +123,240 @@ export function DeliveryPreparationPanel({
               <PackageOpen size={15} />
               新建交付准备包
             </div>
-            <input value={draftTitle} onChange={(event) => setDraftTitle(event.currentTarget.value)} aria-label="交付准备标题" />
-            <select
-              value={draftFormat}
-              onChange={(event) => setDraftFormat(event.currentTarget.value as DeliveryObject["format"])}
-              aria-label="交付形式"
-            >
-              <option value="presentation">演示文稿</option>
-              <option value="board">展板</option>
-            </select>
+            <label className="delivery-field">
+              <span>交付准备标题</span>
+              <input value={draftTitle} onChange={(event) => setDraftTitle(event.currentTarget.value)} aria-label="交付准备标题" />
+            </label>
+            <label className="delivery-field">
+              <span>交付形式</span>
+              <select
+                value={draftFormat}
+                onChange={(event) => setDraftFormat(event.currentTarget.value as DeliveryObject["format"])}
+                aria-label="交付形式"
+              >
+                <option value="presentation">演示文稿</option>
+                <option value="board">展板</option>
+              </select>
+            </label>
             <button className="brand-button" type="button" onClick={() => onCreateDelivery({ title: draftTitle, format: draftFormat })}>
               <Plus size={14} />
               新建
             </button>
           </section>
 
-          <div className="delivery-list-title">已有准备包</div>
-          {deliveryObjects.map((delivery) => (
-            <button
-              className={`delivery-package-row ${activeDelivery?.id === delivery.id ? "active" : ""}`}
-              key={delivery.id}
-              type="button"
-              onClick={() => onSelectDelivery(delivery.id)}
-            >
-              <strong>{delivery.title}</strong>
-              <span>
-                {deliveryFormatLabel(delivery.format)} · {delivery.sections.length} 节 · {delivery.references.length} 引用
-              </span>
-            </button>
-          ))}
+          <div className="delivery-sidebar-list">
+            <div className="delivery-list-title">已有准备包</div>
+            {deliveryObjects.length === 0 ? (
+              <p className="delivery-muted">还没有准备包</p>
+            ) : (
+              deliveryObjects.map((delivery) => (
+                <button
+                  className={`delivery-package-row ${activeDelivery?.id === delivery.id ? "active" : ""}`}
+                  key={delivery.id}
+                  type="button"
+                  onClick={() => onSelectDelivery(delivery.id)}
+                >
+                  <strong>{delivery.title}</strong>
+                  <span>
+                    {deliveryFormatLabel(delivery.format)} · {delivery.sections.length} 节 · {delivery.references.length} 引用
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
         </aside>
 
         {activeDelivery && activeSection ? (
           <div className="delivery-main">
-            <div className="delivery-meta-row">
-              <strong>{activeDelivery.title}</strong>
-              <span>{deliveryFormatLabel(activeDelivery.format)}</span>
-              <span>{activeDelivery.gaps.filter((gap) => gap.status === "open").length} 项待补</span>
+            <div className="delivery-main-sticky">
+              <div className="delivery-meta-row">
+                <strong>{activeDelivery.title}</strong>
+                <span>{deliveryFormatLabel(activeDelivery.format)}</span>
+                <span>{activeDelivery.gaps.filter((gap) => gap.status === "open").length} 项待补</span>
+              </div>
+
+              <div className="delivery-section-tabs" aria-label="交付章节">
+                {activeDelivery.sections.map((section, index) => (
+                  <button
+                    className={`delivery-section-tab ${section.id === activeSection.id ? "active" : ""}`}
+                    key={section.id}
+                    type="button"
+                    onClick={() => {
+                      onSelectDeliverySection(section.id);
+                      setPreferNewestSectionDeliveryId(null);
+                    }}
+                  >
+                    <span>{index + 1}</span>
+                    {section.title}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="delivery-section-tabs" aria-label="交付章节">
-              {activeDelivery.sections.map((section, index) => (
-                <button
-                  className={`delivery-section-tab ${section.id === activeSection.id ? "active" : ""}`}
-                  key={section.id}
-                  type="button"
-                  onClick={() => {
-                    onSelectDeliverySection(section.id);
-                    setPreferNewestSectionDeliveryId(null);
-                  }}
-                >
-                  <span>{index + 1}</span>
-                  {section.title}
-                </button>
-              ))}
-            </div>
+            <div className="delivery-main-stack">
+              <section className="delivery-section-editor-block">
+                <div className="delivery-block-heading">当前章节</div>
+                <SectionEditor
+                  delivery={activeDelivery}
+                  section={activeSection}
+                  onUpdateSection={onUpdateSection}
+                  onMoveSection={onMoveSection}
+                  onRemoveSection={onRemoveSection}
+                />
+              </section>
 
-            <section className="delivery-section-create">
-              <div className="delivery-card-title">新增章节</div>
-              <input
-                value={sectionTitle}
-                onChange={(event) => setSectionTitle(event.currentTarget.value)}
-                placeholder="章节标题"
-                aria-label="新增章节标题"
-              />
-              <textarea
-                value={sectionPurpose}
-                onChange={(event) => setSectionPurpose(event.currentTarget.value)}
-                placeholder="可选：本章节目的"
-                aria-label="新增章节目的"
-              />
-              <button
-                className="plain-button"
-                type="button"
-                disabled={!sectionTitle.trim()}
-                onClick={() => {
-                  onCreateSection({
-                    deliveryObjectId: activeDelivery.id,
-                    title: sectionTitle,
-                    purpose: sectionPurpose
-                  });
-                  setSectionTitle("");
-                  setSectionPurpose("");
-                  onSelectDeliverySection(null);
-                  setPreferNewestSectionDeliveryId(activeDelivery.id);
-                }}
-              >
-                <Plus size={14} />
-                新增章节
-              </button>
-            </section>
-
-            <SectionEditor
-              delivery={activeDelivery}
-              section={activeSection}
-              onUpdateSection={onUpdateSection}
-              onMoveSection={onMoveSection}
-              onRemoveSection={onRemoveSection}
-            />
-
-            <div className="delivery-action-row">
-              <button
-                className="plain-button"
-                type="button"
-                disabled={addableSelectedObjects.length === 0}
-                title={addableSelectedObjects.length === 0 ? "请选择 active 的非交付对象" : "把当前选择保存为稳定交付引用"}
-                onClick={() =>
-                  onAddSelectedObjects({
-                    deliveryObjectId: activeDelivery.id,
-                    sectionId: activeSection.id,
-                    sourceObjectIds: addableSelectedObjects.map((object) => object.id)
-                  })
-                }
-              >
-                <FilePlus2 size={14} />
-                加入当前选中对象
-              </button>
-              <button
-                className="plain-button"
-                type="button"
-                disabled={activeSection.referenceIds.length === 0 || isStreaming}
-                onClick={() => onRequestSectionDraft({ deliveryObjectId: activeDelivery.id, sectionId: activeSection.id })}
-              >
-                <Sparkles size={14} />
-                生成本节说明草稿
-              </button>
-            </div>
-
-            <ReferenceList
-              workspace={workspace}
-              assetUrls={assetUrls}
-              delivery={activeDelivery}
-              section={activeSection}
-              onLocateObject={onLocateObject}
-              onOpenDeliveryReferenceReader={onOpenDeliveryReferenceReader}
-              onMoveReference={onMoveReference}
-              onRemoveReference={onRemoveReference}
-              onUpdateReferenceEditorial={onUpdateReferenceEditorial}
-              onRefreshReference={onRefreshReference}
-            />
-
-            <section className="delivery-gaps">
-              <div className="delivery-card-title">待补内容</div>
-              <div className="delivery-gap-input">
-                <input value={gapLabel} onChange={(event) => setGapLabel(event.currentTarget.value)} placeholder="例如：补充安装示意图" />
+              <section className="delivery-section-create">
+                <div className="delivery-card-title">新增章节</div>
+                <label className="delivery-field">
+                  <span>章节标题</span>
+                  <input
+                    value={sectionTitle}
+                    onChange={(event) => setSectionTitle(event.currentTarget.value)}
+                    placeholder="章节标题"
+                    aria-label="新增章节标题"
+                  />
+                </label>
+                <label className="delivery-field">
+                  <span>本章节目的</span>
+                  <textarea
+                    value={sectionPurpose}
+                    onChange={(event) => setSectionPurpose(event.currentTarget.value)}
+                    placeholder="可选：本章节目的"
+                    aria-label="新增章节目的"
+                  />
+                </label>
                 <button
                   className="plain-button"
                   type="button"
+                  disabled={!sectionTitle.trim()}
                   onClick={() => {
-                    onAddGap({ deliveryObjectId: activeDelivery.id, sectionId: activeSection.id, label: gapLabel });
-                    setGapLabel("");
+                    onCreateSection({
+                      deliveryObjectId: activeDelivery.id,
+                      title: sectionTitle,
+                      purpose: sectionPurpose
+                    });
+                    setSectionTitle("");
+                    setSectionPurpose("");
+                    onSelectDeliverySection(null);
+                    setPreferNewestSectionDeliveryId(activeDelivery.id);
                   }}
                 >
-                  添加
+                  <Plus size={14} />
+                  新增章节
                 </button>
-              </div>
-              {activeDelivery.gaps
-                .filter((gap) => !gap.sectionId || gap.sectionId === activeSection.id)
-                .map((gap) => (
-                  <div className={`delivery-gap-row ${gap.status}`} key={gap.id}>
-                    <span>{gap.label}</span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onSetGapStatus({
-                          deliveryObjectId: activeDelivery.id,
-                          gapId: gap.id,
-                          status: gap.status === "open" ? "resolved" : "open"
-                        })
-                      }
-                    >
-                      {gap.status === "open" ? "标记解决" : "重新打开"}
-                    </button>
-                    <button type="button" onClick={() => onRemoveGap({ deliveryObjectId: activeDelivery.id, gapId: gap.id })}>
-                      移除
-                    </button>
-                  </div>
-                ))}
-            </section>
-
-            {activeDrafts.length > 0 ? (
-              <section className="delivery-draft-stack">
-                <div className="delivery-card-title">交付说明草稿</div>
-                {activeDrafts.map((draft) => (
-                  <article className="delivery-draft-card" key={draft.id}>
-                    <strong>{draft.title ?? activeDelivery.sections.find((section) => section.id === draft.sectionId)?.title ?? "章节草稿"}</strong>
-                    <p>{draft.narrative}</p>
-                    {draft.captions.length > 0 ? <span>图注建议：{draft.captions.length} 条</span> : null}
-                    {draft.suggestedGaps.length > 0 ? <span>待补建议：{draft.suggestedGaps.map((gap) => gap.label).join(" / ")}</span> : null}
-                    <div className="delivery-action-row">
-                      <button className="brand-button" type="button" onClick={() => onApplyDraft({ deliveryObjectId: activeDelivery.id, draftId: draft.id })}>
-                        应用草稿
-                      </button>
-                      <button className="plain-button" type="button" onClick={() => onDiscardDraft({ deliveryObjectId: activeDelivery.id, draftId: draft.id })}>
-                        放弃
-                      </button>
-                    </div>
-                  </article>
-                ))}
               </section>
-            ) : null}
+
+              <section className="delivery-section-actions-block">
+                <div className="delivery-block-heading">本节材料</div>
+                <div className="delivery-action-row">
+                  <button
+                    className="plain-button"
+                    type="button"
+                    disabled={addableSelectedObjects.length === 0}
+                    title={addableSelectedObjects.length === 0 ? "请选择 active 的非交付对象" : "把当前选择保存为稳定交付引用"}
+                    onClick={() =>
+                      onAddSelectedObjects({
+                        deliveryObjectId: activeDelivery.id,
+                        sectionId: activeSection.id,
+                        sourceObjectIds: addableSelectedObjects.map((object) => object.id)
+                      })
+                    }
+                  >
+                    <FilePlus2 size={14} />
+                    加入当前选中对象
+                  </button>
+                  <button
+                    className="plain-button"
+                    type="button"
+                    disabled={activeSection.referenceIds.length === 0 || isStreaming}
+                    onClick={() => onRequestSectionDraft({ deliveryObjectId: activeDelivery.id, sectionId: activeSection.id })}
+                  >
+                    <Sparkles size={14} />
+                    生成本节说明草稿
+                  </button>
+                </div>
+
+                <ReferenceList
+                  workspace={workspace}
+                  assetUrls={assetUrls}
+                  delivery={activeDelivery}
+                  section={activeSection}
+                  onLocateObject={onLocateObject}
+                  onOpenDeliveryReferenceReader={onOpenDeliveryReferenceReader}
+                  onMoveReference={onMoveReference}
+                  onRemoveReference={onRemoveReference}
+                  onUpdateReferenceEditorial={onUpdateReferenceEditorial}
+                  onRefreshReference={onRefreshReference}
+                />
+              </section>
+
+              <section className="delivery-gaps">
+                <div className="delivery-card-title">待补内容</div>
+                <div className="delivery-gap-input">
+                  <input value={gapLabel} onChange={(event) => setGapLabel(event.currentTarget.value)} placeholder="例如：补充安装示意图" aria-label="待补内容" />
+                  <button
+                    className="plain-button"
+                    type="button"
+                    disabled={!gapLabel.trim()}
+                    onClick={() => {
+                      onAddGap({ deliveryObjectId: activeDelivery.id, sectionId: activeSection.id, label: gapLabel });
+                      setGapLabel("");
+                    }}
+                  >
+                    添加
+                  </button>
+                </div>
+                {activeDelivery.gaps.filter((gap) => !gap.sectionId || gap.sectionId === activeSection.id).length === 0 ? (
+                  <p className="delivery-muted">本节暂无待补项</p>
+                ) : null}
+                {activeDelivery.gaps
+                  .filter((gap) => !gap.sectionId || gap.sectionId === activeSection.id)
+                  .map((gap) => (
+                    <div className={`delivery-gap-row ${gap.status}`} key={gap.id}>
+                      <span>{gap.label}</span>
+                      <div className="delivery-gap-actions">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onSetGapStatus({
+                              deliveryObjectId: activeDelivery.id,
+                              gapId: gap.id,
+                              status: gap.status === "open" ? "resolved" : "open"
+                            })
+                          }
+                        >
+                          {gap.status === "open" ? "标记解决" : "重新打开"}
+                        </button>
+                        <button type="button" onClick={() => onRemoveGap({ deliveryObjectId: activeDelivery.id, gapId: gap.id })}>
+                          移除
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+              </section>
+
+              {activeDrafts.length > 0 ? (
+                <section className="delivery-draft-stack">
+                  <div className="delivery-card-title">交付说明草稿</div>
+                  {activeDrafts.map((draft) => (
+                    <article className="delivery-draft-card" key={draft.id}>
+                      <strong>{draft.title ?? activeDelivery.sections.find((section) => section.id === draft.sectionId)?.title ?? "章节草稿"}</strong>
+                      <p>{draft.narrative}</p>
+                      {draft.captions.length > 0 ? <span>图注建议：{draft.captions.length} 条</span> : null}
+                      {draft.suggestedGaps.length > 0 ? <span>待补建议：{draft.suggestedGaps.map((gap) => gap.label).join(" / ")}</span> : null}
+                      <div className="delivery-action-row">
+                        <button className="brand-button" type="button" onClick={() => onApplyDraft({ deliveryObjectId: activeDelivery.id, draftId: draft.id })}>
+                          应用草稿
+                        </button>
+                        <button className="plain-button" type="button" onClick={() => onDiscardDraft({ deliveryObjectId: activeDelivery.id, draftId: draft.id })}>
+                          放弃
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </section>
+              ) : null}
+            </div>
           </div>
         ) : (
           <div className="delivery-empty">
@@ -351,29 +385,38 @@ function SectionEditor({
 }) {
   return (
     <section className="delivery-section-editor">
-      <input
-        value={section.title}
-        aria-label="章节标题"
-        onChange={(event) =>
-          onUpdateSection({ deliveryObjectId: delivery.id, sectionId: section.id, title: event.currentTarget.value })
-        }
-      />
-      <textarea
-        value={section.purpose ?? ""}
-        aria-label="章节目的"
-        placeholder="章节目的或说明"
-        onChange={(event) =>
-          onUpdateSection({ deliveryObjectId: delivery.id, sectionId: section.id, purpose: event.currentTarget.value })
-        }
-      />
-      <textarea
-        value={section.narrative ?? ""}
-        aria-label="章节说明"
-        placeholder="用户确认后的章节说明会写在这里。AI 草稿不会自动应用。"
-        onChange={(event) =>
-          onUpdateSection({ deliveryObjectId: delivery.id, sectionId: section.id, narrative: event.currentTarget.value })
-        }
-      />
+      <label className="delivery-field">
+        <span>章节标题</span>
+        <input
+          value={section.title}
+          aria-label="章节标题"
+          onChange={(event) =>
+            onUpdateSection({ deliveryObjectId: delivery.id, sectionId: section.id, title: event.currentTarget.value })
+          }
+        />
+      </label>
+      <label className="delivery-field">
+        <span>章节目的</span>
+        <textarea
+          value={section.purpose ?? ""}
+          aria-label="章节目的"
+          placeholder="章节目的或说明"
+          onChange={(event) =>
+            onUpdateSection({ deliveryObjectId: delivery.id, sectionId: section.id, purpose: event.currentTarget.value })
+          }
+        />
+      </label>
+      <label className="delivery-field">
+        <span>章节说明</span>
+        <textarea
+          value={section.narrative ?? ""}
+          aria-label="章节说明"
+          placeholder="用户确认后的章节说明会写在这里。AI 草稿不会自动应用。"
+          onChange={(event) =>
+            onUpdateSection({ deliveryObjectId: delivery.id, sectionId: section.id, narrative: event.currentTarget.value })
+          }
+        />
+      </label>
       <div className="delivery-action-row">
         <button
           type="button"

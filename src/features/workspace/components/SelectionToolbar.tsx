@@ -88,30 +88,58 @@ export function SelectionToolbar({
   const showDirectionActions = onlyOne && primary.type === "conceptDirection";
   const showMergeDirectionsAction = selectedDirections.length >= 2 && selectedDirections.length === selectedObjects.length;
 
+  const hasObjectActions =
+    (onlyOne &&
+      (primary.type === "file" ||
+        primary.type === "documentFragment" ||
+        primary.type === "research" ||
+        primary.type === "delivery" ||
+        primary.type === "proposalDraft" ||
+        primary.type === "designDefinition" ||
+        primary.type === "image" ||
+        primary.type === "conceptDirection")) ||
+    showMergeDirectionsAction;
+
   return (
     <div
       className={`selection-toolbar ${placement.placement}`}
       aria-label="选中对象工具"
       style={{ left: placement.x, top: placement.y }}
+      onPointerDown={(event) => {
+        // Keep tldraw from treating toolbar clicks as canvas selection/drag.
+        event.stopPropagation();
+      }}
+      onPointerUp={(event) => {
+        event.stopPropagation();
+      }}
     >
-      <button type="button" onClick={onAskAi}>
-        <MessageSquareText size={15} />
-        问 AI
-      </button>
-      {onlyOne && primary.type === "file" ? (
-        <button type="button" onClick={onOpenDocumentReader}>
-          <BookOpen size={15} />
-          读文本
+      <div className="selection-toolbar-group" role="group" aria-label="对话">
+        <button type="button" onClick={onAskAi}>
+          <MessageSquareText size={15} />
+          问 AI
         </button>
+      </div>
+
+      {hasObjectActions ? <span className="selection-toolbar-divider" aria-hidden="true" /> : null}
+
+      {onlyOne && primary.type === "file" ? (
+        <div className="selection-toolbar-group" role="group" aria-label="文件">
+          <button type="button" onClick={onOpenDocumentReader}>
+            <BookOpen size={15} />
+            读文本
+          </button>
+        </div>
       ) : null}
       {onlyOne && primary.type === "documentFragment" ? (
-        <button type="button" onClick={onOpenDocumentReader}>
-          <BookOpen size={15} />
-          回原文
-        </button>
+        <div className="selection-toolbar-group" role="group" aria-label="文档片段">
+          <button type="button" onClick={onOpenDocumentReader}>
+            <BookOpen size={15} />
+            回原文
+          </button>
+        </div>
       ) : null}
       {onlyOne && primary.type === "research" ? (
-        <>
+        <div className="selection-toolbar-group" role="group" aria-label="研究">
           <button className="brand" type="button" onClick={onOpenResearchDetail}>
             <BookOpen size={15} />
             研究详情
@@ -120,16 +148,18 @@ export function SelectionToolbar({
             <Sparkles size={15} />
             AI 代选
           </button>
-        </>
+        </div>
       ) : null}
       {onlyOne && primary.type === "delivery" ? (
-        <button className="brand" type="button" onClick={onOpenDeliveryPreparation}>
-          <PackageOpen size={15} />
-          交付
-        </button>
+        <div className="selection-toolbar-group" role="group" aria-label="交付">
+          <button className="brand" type="button" onClick={onOpenDeliveryPreparation}>
+            <PackageOpen size={15} />
+            交付
+          </button>
+        </div>
       ) : null}
       {onlyOne && primary.type === "proposalDraft" ? (
-        <>
+        <div className="selection-toolbar-group" role="group" aria-label="草案">
           <button className="brand" type="button" onClick={onOpenProposalDetail}>
             <BookOpen size={15} />
             查看详情
@@ -146,10 +176,10 @@ export function SelectionToolbar({
             <Trash2 size={15} />
             放弃草案
           </button>
-        </>
+        </div>
       ) : null}
       {onlyOne && primary.type === "designDefinition" ? (
-        <>
+        <div className="selection-toolbar-group" role="group" aria-label="设计定义">
           <button className="brand" type="button" onClick={onOpenDesignDefinitionDetail}>
             <BookOpen size={15} />
             查看详情
@@ -160,14 +190,10 @@ export function SelectionToolbar({
               设为当前定义
             </button>
           ) : null}
-        </>
+        </div>
       ) : null}
-      <button className={isDesignTraceActive ? "brand" : ""} type="button" onClick={onToggleDesignTrace}>
-        <GitBranch size={15} />
-        链路
-      </button>
       {onlyOne && primary.type === "image" ? (
-        <>
+        <div className="selection-toolbar-group" role="group" aria-label="图像">
           <button type="button" onClick={onLocalEdit}>
             <PenLine size={15} />
             局部改
@@ -176,57 +202,72 @@ export function SelectionToolbar({
             <Sparkles size={15} />
             默认参考
           </button>
-        </>
+        </div>
       ) : null}
       {showDirectionActions ? (
         <>
-          <button className="brand" type="button" onClick={onOpenConceptDirectionDetail}>
-            <BookOpen size={15} />
-            详情
-          </button>
-          {primary.status !== "primary" && primary.status !== "eliminated" ? (
-            <button type="button" onClick={onSetDirectionPrimary}>
-              <Flag size={15} />
-              主方向
+          <div className="selection-toolbar-group" role="group" aria-label="方向">
+            <button className="brand" type="button" onClick={onOpenConceptDirectionDetail}>
+              <BookOpen size={15} />
+              详情
             </button>
-          ) : null}
-          {primary.status !== "alternative" && primary.status !== "eliminated" ? (
-            <button type="button" onClick={onSetDirectionAlternative}>
-              <GitCompare size={15} />
-              备选
+            {primary.status !== "primary" && primary.status !== "eliminated" ? (
+              <button type="button" onClick={onSetDirectionPrimary}>
+                <Flag size={15} />
+                主方向
+              </button>
+            ) : null}
+            {primary.status !== "alternative" && primary.status !== "eliminated" ? (
+              <button type="button" onClick={onSetDirectionAlternative}>
+                <GitCompare size={15} />
+                备选
+              </button>
+            ) : null}
+            {primary.status === "eliminated" ? (
+              <button type="button" onClick={onRestoreDirectionAsAlternative}>
+                <GitCompare size={15} />
+                恢复
+              </button>
+            ) : (
+              <button type="button" onClick={onEliminateDirection}>
+                <Trash2 size={15} />
+                淘汰
+              </button>
+            )}
+          </div>
+          <span className="selection-toolbar-divider" aria-hidden="true" />
+          <div className="selection-toolbar-group is-secondary" role="group" aria-label="方向发展">
+            <button type="button" onClick={onReviseDirection}>
+              <PenLine size={15} />
+              修订
             </button>
-          ) : null}
-          {primary.status === "eliminated" ? (
-            <button type="button" onClick={onRestoreDirectionAsAlternative}>
-              <GitCompare size={15} />
-              恢复
+            <button type="button" onClick={onSplitDirection}>
+              <GitBranch size={15} />
+              拆分
             </button>
-          ) : (
-            <button type="button" onClick={onEliminateDirection}>
-              <Trash2 size={15} />
-              淘汰
+            <button type="button" onClick={onCreateVisualBranch}>
+              <Sparkles size={15} />
+              分支
             </button>
-          )}
-          <button type="button" onClick={onReviseDirection}>
-            <PenLine size={15} />
-            修订
-          </button>
-          <button type="button" onClick={onSplitDirection}>
-            <GitBranch size={15} />
-            拆分
-          </button>
-          <button type="button" onClick={onCreateVisualBranch}>
-            <Sparkles size={15} />
-            分支
-          </button>
+          </div>
         </>
       ) : null}
       {showMergeDirectionsAction ? (
-        <button type="button" onClick={onMergeDirections}>
-          <GitCompare size={15} />
-          合并
-        </button>
+        <div className="selection-toolbar-group" role="group" aria-label="合并方向">
+          <button type="button" onClick={onMergeDirections}>
+            <GitCompare size={15} />
+            合并
+          </button>
+        </div>
       ) : null}
+
+      <span className="selection-toolbar-divider" aria-hidden="true" />
+      <div className="selection-toolbar-group is-secondary" role="group" aria-label="追溯">
+        <button className={isDesignTraceActive ? "brand" : ""} type="button" onClick={onToggleDesignTrace}>
+          <GitBranch size={15} />
+          链路
+        </button>
+      </div>
     </div>
   );
 }

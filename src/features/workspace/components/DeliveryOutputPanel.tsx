@@ -68,61 +68,65 @@ export function DeliveryOutputPanel({
         </button>
       </div>
 
-      {deliveryObjects.length === 0 ? (
-        <div className="delivery-output-empty">
-          <PackageCheck size={18} />
-          <strong>还没有交付准备包。</strong>
-          <span>请先在“交付准备”中整理章节和稳定引用。</span>
-        </div>
-      ) : (
-        <>
-          <div className="archive-panel-section">
-            <div className="archive-panel-section-title">
-              <PackageCheck size={14} />
-              选择交付准备包
-            </div>
-            <div className="delivery-output-list">
-              {deliveryObjects.map((delivery) => (
-                <button
-                  key={delivery.id}
-                  className={`delivery-output-row ${delivery.id === selectedDeliveryId ? "active" : ""}`}
-                  type="button"
-                  onClick={() => setManualSelectedDeliveryId(delivery.id)}
-                >
-                  <strong>{delivery.title}</strong>
-                  <span>{deliveryFormatLabel(delivery.format)}</span>
-                  <small>
-                    章节 {delivery.sections.length} · 稳定引用 {delivery.references.length} · 待补{" "}
-                    {delivery.gaps.filter((gap) => gap.status === "open").length} · 未应用草稿{" "}
-                    {pendingDraftCount(workspace, delivery.id)}
-                  </small>
-                </button>
-              ))}
-            </div>
+      <div className="archive-panel-body">
+        {deliveryObjects.length === 0 ? (
+          <div className="delivery-output-empty">
+            <PackageCheck size={18} />
+            <strong>还没有交付准备包。</strong>
+            <span>请先在“交付准备”中整理章节和稳定引用。</span>
           </div>
-
-          <div className="archive-panel-section">
-            <div className="archive-panel-section-title">
-              <FileWarning size={14} />
-              导出前检查
+        ) : (
+          <>
+            <div className="archive-panel-section">
+              <div className="archive-panel-section-title">
+                <PackageCheck size={14} />
+                选择交付准备包
+              </div>
+              <div className="delivery-output-list">
+                {deliveryObjects.map((delivery) => (
+                  <button
+                    key={delivery.id}
+                    className={`delivery-output-row ${delivery.id === selectedDeliveryId ? "active" : ""}`}
+                    type="button"
+                    onClick={() => setManualSelectedDeliveryId(delivery.id)}
+                  >
+                    <strong>{delivery.title}</strong>
+                    <span>{deliveryFormatLabel(delivery.format)}</span>
+                    <small>
+                      章节 {delivery.sections.length} · 稳定引用 {delivery.references.length} · 待补{" "}
+                      {delivery.gaps.filter((gap) => gap.status === "open").length} · 未应用草稿{" "}
+                      {pendingDraftCount(workspace, delivery.id)}
+                    </small>
+                  </button>
+                ))}
+              </div>
             </div>
-            {renderPreflight(preflight, selectedDelivery)}
-          </div>
 
-          <button
-            className="brand-button archive-action"
-            type="button"
-            disabled={!canExport}
-            onClick={() => selectedDelivery && onExport(selectedDelivery.id)}
-          >
-            <Download size={14} />
-            导出交付输出包
-          </button>
-        </>
-      )}
+            <div className="archive-panel-section">
+              <div className="archive-panel-section-title">
+                <FileWarning size={14} />
+                导出前检查
+              </div>
+              {renderPreflight(preflight, selectedDelivery)}
+            </div>
 
-      {busyLabel ? <div className="archive-panel-status">{busyLabel}</div> : null}
-      {message ? <div className={`archive-panel-message ${message.tone}`}>{message.text}</div> : null}
+            <div className="archive-action-row">
+              <button
+                className="brand-button archive-action"
+                type="button"
+                disabled={!canExport}
+                onClick={() => selectedDelivery && onExport(selectedDelivery.id)}
+              >
+                <Download size={14} />
+                导出交付输出包
+              </button>
+            </div>
+          </>
+        )}
+
+        {busyLabel ? <div className="archive-panel-status">{busyLabel}</div> : null}
+        {message ? <div className={`archive-panel-message ${message.tone}`}>{message.text}</div> : null}
+      </div>
     </section>
   );
 }

@@ -58,32 +58,37 @@ export function ProjectBundlePanel({
         </button>
       </div>
 
+      <div className="archive-panel-body">
       <div className="archive-panel-section">
         <div className="archive-panel-section-title">
           <FileArchive size={14} />
           人类可读项目归档
         </div>
         <p className="archive-panel-muted">用于阅读、交接和复盘。缺失本地二进制时仍可导出，但会明确标记 warning。</p>
-        <label className="archive-option">
-          <input
-            checked={archiveIncludeFullChat}
-            type="checkbox"
-            onChange={(event) => onArchiveIncludeFullChatChange(event.currentTarget.checked)}
-          />
-          <span>附带完整聊天记录</span>
-        </label>
-        <label className="archive-option">
-          <input
-            checked={archiveIncludeContinuity}
-            type="checkbox"
-            onChange={(event) => onArchiveIncludeContinuityChange(event.currentTarget.checked)}
-          />
-          <span>附带当前连续性记录</span>
-        </label>
-        <button className="brand-button archive-action" type="button" disabled={isBusy} onClick={onExportArchive}>
-          <Download size={14} />
-          导出归档
-        </button>
+        <div className="archive-option-list">
+          <label className="archive-option">
+            <input
+              checked={archiveIncludeFullChat}
+              type="checkbox"
+              onChange={(event) => onArchiveIncludeFullChatChange(event.currentTarget.checked)}
+            />
+            <span>附带完整聊天记录</span>
+          </label>
+          <label className="archive-option">
+            <input
+              checked={archiveIncludeContinuity}
+              type="checkbox"
+              onChange={(event) => onArchiveIncludeContinuityChange(event.currentTarget.checked)}
+            />
+            <span>附带当前连续性记录</span>
+          </label>
+        </div>
+        <div className="archive-action-row">
+          <button className="brand-button archive-action" type="button" disabled={isBusy} onClick={onExportArchive}>
+            <Download size={14} />
+            导出归档
+          </button>
+        </div>
       </div>
 
       <div className="archive-panel-section">
@@ -92,35 +97,39 @@ export function ProjectBundlePanel({
           可编辑项目备份
         </div>
         <p className="archive-panel-muted">用于恢复为新的独立项目副本。默认保留当前连续性，不会覆盖现有项目。</p>
-        <label className="archive-option">
+        <div className="archive-option-list">
+          <label className="archive-option">
+            <input
+              checked={backupIncludeFullChat}
+              type="checkbox"
+              onChange={(event) => onBackupIncludeFullChatChange(event.currentTarget.checked)}
+            />
+            <span>附带完整聊天记录</span>
+          </label>
+        </div>
+        <div className="archive-action-row">
+          <button className="plain-button archive-action" type="button" disabled={isBusy} onClick={onExportBackup}>
+            <Download size={14} />
+            导出备份
+          </button>
           <input
-            checked={backupIncludeFullChat}
-            type="checkbox"
-            onChange={(event) => onBackupIncludeFullChatChange(event.currentTarget.checked)}
+            ref={restoreInputRef}
+            className="sr-only"
+            type="file"
+            accept=".zip,application/zip"
+            onChange={(event) => {
+              const selected = event.currentTarget.files?.[0];
+              if (selected) {
+                onInspectBackup(selected);
+              }
+              event.currentTarget.value = "";
+            }}
           />
-          <span>附带完整聊天记录</span>
-        </label>
-        <button className="plain-button archive-action" type="button" disabled={isBusy} onClick={onExportBackup}>
-          <Download size={14} />
-          导出备份
-        </button>
-        <input
-          ref={restoreInputRef}
-          className="sr-only"
-          type="file"
-          accept=".zip,application/zip"
-          onChange={(event) => {
-            const selected = event.currentTarget.files?.[0];
-            if (selected) {
-              onInspectBackup(selected);
-            }
-            event.currentTarget.value = "";
-          }}
-        />
-        <button className="plain-button archive-action" type="button" disabled={isBusy} onClick={() => restoreInputRef.current?.click()}>
-          <Upload size={14} />
-          恢复备份
-        </button>
+          <button className="plain-button archive-action" type="button" disabled={isBusy} onClick={() => restoreInputRef.current?.click()}>
+            <Upload size={14} />
+            恢复备份
+          </button>
+        </div>
 
         {restorePreview ? (
           <div className="restore-preview-card">
@@ -166,6 +175,7 @@ export function ProjectBundlePanel({
             </div>
           </div>
         ) : null}
+      </div>
       </div>
 
       {busyLabel ? <div className="archive-panel-status">{busyLabel}</div> : null}

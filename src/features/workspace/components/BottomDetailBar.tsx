@@ -354,14 +354,24 @@ export function BottomDetailBar({
   });
   const visibleTab = availableTabs.includes(activeTab) ? activeTab : availableTabs[0] ?? "信息";
 
+  const hasInlineActions = documentReaderAction.visible || primary.type === "documentFragment";
+
   return (
-    <>
-      <div className="detail-popover" aria-label="对象详情">
-        <div className="detail-tabs">
+    <div className="detail-popover" aria-label="对象详情">
+      <div className="detail-popover-head">
+        <div className="detail-object-chip" title={primary.title}>
+          <span className="detail-object-type">{getObjectTypeLabel(primary)}</span>
+          <strong className="detail-object-title">
+            {selectedObjects.length > 1 ? `已选 ${selectedObjects.length} 项` : primary.title}
+          </strong>
+        </div>
+        <div className="detail-tabs" role="tablist" aria-label="详情分类">
           {availableTabs.map((tab) => (
             <button
               className={`detail-tab ${visibleTab === tab ? "active" : ""}`}
               type="button"
+              role="tab"
+              aria-selected={visibleTab === tab}
               key={tab}
               onClick={() => setActiveTab(tab)}
             >
@@ -369,7 +379,9 @@ export function BottomDetailBar({
             </button>
           ))}
         </div>
-        <div className="detail-content">
+      </div>
+      <div className="detail-content" role="tabpanel">
+        <div className="detail-content-stack">
           {renderDetail({
             workspace,
             tab: visibleTab,
@@ -391,37 +403,41 @@ export function BottomDetailBar({
             onLocateObject
           })}
           {visibleTab === "关联" && activeDesignTrace ? <DesignTraceSummary trace={activeDesignTrace} /> : null}
-          {documentReaderAction.visible ? (
-            <button
-              className="detail-inline-action"
-              type="button"
-              disabled={documentReaderAction.disabled}
-              title={documentReaderAction.message}
-              onClick={() => {
-                if (primary.type === "file") {
-                  onOpenDocumentReader(primary.id);
-                }
-              }}
-            >
-              <BookOpen size={14} />
-              {documentReaderAction.label}
-            </button>
-          ) : null}
-          {primary.type === "documentFragment" ? (
-            <button
-              className="detail-inline-action"
-              type="button"
-              disabled={!fragmentInitialLocation}
-              title={fragmentSourceState ? describeDocumentFragmentSourceAvailability(fragmentSourceState) : "来源不可用"}
-              onClick={() => onOpenDocumentReader(primary.source.fileObjectId, fragmentInitialLocation)}
-            >
-              <BookOpen size={14} />
-              查看原文定位
-            </button>
-          ) : null}
         </div>
+        {hasInlineActions ? (
+          <div className="detail-content-actions">
+            {documentReaderAction.visible ? (
+              <button
+                className="detail-inline-action"
+                type="button"
+                disabled={documentReaderAction.disabled}
+                title={documentReaderAction.message}
+                onClick={() => {
+                  if (primary.type === "file") {
+                    onOpenDocumentReader(primary.id);
+                  }
+                }}
+              >
+                <BookOpen size={14} />
+                {documentReaderAction.label}
+              </button>
+            ) : null}
+            {primary.type === "documentFragment" ? (
+              <button
+                className="detail-inline-action"
+                type="button"
+                disabled={!fragmentInitialLocation}
+                title={fragmentSourceState ? describeDocumentFragmentSourceAvailability(fragmentSourceState) : "来源不可用"}
+                onClick={() => onOpenDocumentReader(primary.source.fileObjectId, fragmentInitialLocation)}
+              >
+                <BookOpen size={14} />
+                查看原文定位
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
-    </>
+    </div>
   );
 }
 

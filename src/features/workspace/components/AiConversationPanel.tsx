@@ -391,6 +391,8 @@ export function AiConversationPanel({
   const showDirectionPreviewCount = selectedDirectionCount > 0 && selectedDirectionCount <= 3 && isLocalEditMode;
   const directionPreviewTotal = selectedDirectionCount * directionPreviewCount;
   const isAiBusy = isStreaming || Boolean(activeOperation);
+  const hasDraftContent = draft.trim().length > 0;
+  const canSubmitDraft = hasDraftContent;
   const isImageTaskActive = Boolean(
     imageTaskStatus && !["succeeded", "failed", "cancelled"].includes(imageTaskStatus.state)
   );
@@ -570,18 +572,20 @@ export function AiConversationPanel({
               );
             })}
 
-          <div className="suggestions">
-            {suggestions.map((suggestion) => (
-              <button
-                className="suggestion-chip"
-                type="button"
-                key={suggestion.label}
-                onClick={() => onSuggestionClick(suggestion)}
-              >
-                {suggestion.label}
-              </button>
-            ))}
-          </div>
+          {suggestions.length > 0 ? (
+            <div className="suggestions" aria-label="可选建议">
+              {suggestions.map((suggestion) => (
+                <button
+                  className="suggestion-chip"
+                  type="button"
+                  key={suggestion.label}
+                  onClick={() => onSuggestionClick(suggestion)}
+                >
+                  {suggestion.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           {migrationError ? (
             <div className="failure-card">
@@ -701,9 +705,18 @@ export function AiConversationPanel({
           </button>
         </div>
 
-        <div className="ai-input-wrap">
+        <div
+          className={[
+            "ai-input-wrap",
+            isAiBusy ? "is-busy" : "",
+            isLocalEditMode ? "is-image-task" : "",
+            selectedObjects.length > 0 ? "has-selection" : ""
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
           <div className="input-context-strip" aria-label="当前输入语境">
-            <span className="input-context-count">
+            <span className={`input-context-count${selectedObjects.length > 0 ? " has-items" : ""}`}>
               {selectedObjects.length > 0 ? `已选 ${selectedObjects.length}` : "无选择"}
             </span>
             {visibleContextObjects.map((object) => (
@@ -719,10 +732,11 @@ export function AiConversationPanel({
               <span>{modeSummary}</span>
             </summary>
             <div className="mode-row">
-              <div className="mode-toggle" aria-label="执行策略">
+              <div className="mode-toggle" role="group" aria-label="执行策略">
                 <button
                   type="button"
                   className={turnMode === "auto" ? "active" : ""}
+                  aria-pressed={turnMode === "auto"}
                   onClick={() => onTurnModeChange("auto")}
                 >
                   自动执行
@@ -730,6 +744,7 @@ export function AiConversationPanel({
                 <button
                   type="button"
                   className={turnMode === "confirm" ? "active" : ""}
+                  aria-pressed={turnMode === "confirm"}
                   onClick={() => onTurnModeChange("confirm")}
                 >
                   先确认
@@ -816,7 +831,7 @@ export function AiConversationPanel({
             </div>
           ) : null}
 
-          <div className="ai-input">
+          <div className={`ai-input${hasDraftContent ? " has-content" : ""}`}>
             <textarea
               ref={draftTextareaRef}
               rows={1}
@@ -828,7 +843,7 @@ export function AiConversationPanel({
               onKeyDown={(event) => {
                 if (shouldSubmitFromTextarea(event)) {
                   event.preventDefault();
-                  if (isAiBusy) {
+                  if (isAiBusy || !canSubmitDraft) {
                     return;
                   }
 
@@ -841,11 +856,13 @@ export function AiConversationPanel({
                 }
               }}
               placeholder="描述你想继续发展的内容…"
+              aria-busy={isAiBusy}
             />
             <button
               className={`send-button ${isAiBusy ? "stop" : ""}`}
               type="button"
               aria-label={isAiBusy ? "停止当前任务" : isLocalEditMode ? "执行图像任务" : "发送"}
+              disabled={!isAiBusy && !canSubmitDraft}
               onClick={isAiBusy ? onCancelRequest : isLocalEditMode ? onRunLocalEdit : onSendMessage}
             >
               {isAiBusy ? <Square size={13} fill="currentColor" /> : <Send size={15} />}
@@ -854,7 +871,7 @@ export function AiConversationPanel({
         </div>
       </section>
 
-      <div className="ai-queue">
+      <div className={`ai-queue${activeTaskCount > 0 ? " is-active" : ""}`}>
         <button
           className="ai-queue-pill"
           type="button"
@@ -862,7 +879,7 @@ export function AiConversationPanel({
           onClick={() => setQueueOpen((open) => !open)}
         >
           <span>状态</span>
-          <strong>{statusLabel}</strong>
+          <strong data-state={activeTaskCount > 0 ? "busy" : "idle"}>{statusLabel}</strong>
         </button>
         {queueOpen ? (
           <div className="ai-queue-popover" role="status">

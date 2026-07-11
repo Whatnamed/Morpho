@@ -88,37 +88,42 @@ export function TopControls({
         ) : null}
       </div>
       <div className="floating-cluster top-right">
-        <button className="icon-button" type="button" aria-label="搜索" title="搜索" onClick={onSearch}>
-          <Search size={16} />
-        </button>
-        <button className="icon-button" type="button" aria-label="回到项目概览" title="回到项目概览" onClick={onFocusOverview}>
-          <SquareDashedMousePointer size={16} />
-        </button>
-        <input
-          ref={fileInputRef}
-          className="sr-only"
-          type="file"
-          multiple
-          onChange={(event) => {
-            const files = Array.from(event.currentTarget.files ?? []);
-            if (files.length > 0) {
-              onImportFiles(files);
-            }
-            event.currentTarget.value = "";
-          }}
-        />
-        <button className="plain-button" type="button" onClick={() => fileInputRef.current?.click()}>
-          <Import size={14} />
-          导入
-        </button>
-        <button className="plain-button" type="button" onClick={onOpenDeliveryPreparation}>
-          <PackageOpen size={14} />
-          交付准备
-        </button>
-        <button className="plain-button" type="button" onClick={onOpenProjectBundles}>
-          <Archive size={14} />
-          归档
-        </button>
+        <div className="toolbar-group" role="group" aria-label="视图">
+          <button className="icon-button" type="button" aria-label="搜索" title="搜索" onClick={onSearch}>
+            <Search size={16} />
+          </button>
+          <button className="icon-button" type="button" aria-label="回到项目概览" title="回到项目概览" onClick={onFocusOverview}>
+            <SquareDashedMousePointer size={16} />
+          </button>
+        </div>
+        <div className="cluster-divider" />
+        <div className="toolbar-group" role="group" aria-label="资料与交付">
+          <input
+            ref={fileInputRef}
+            className="sr-only"
+            type="file"
+            multiple
+            onChange={(event) => {
+              const files = Array.from(event.currentTarget.files ?? []);
+              if (files.length > 0) {
+                onImportFiles(files);
+              }
+              event.currentTarget.value = "";
+            }}
+          />
+          <button className="plain-button" type="button" onClick={() => fileInputRef.current?.click()}>
+            <Import size={14} />
+            导入
+          </button>
+          <button className="plain-button" type="button" onClick={onOpenDeliveryPreparation}>
+            <PackageOpen size={14} />
+            交付准备
+          </button>
+          <button className="plain-button" type="button" onClick={onOpenProjectBundles}>
+            <Archive size={14} />
+            归档
+          </button>
+        </div>
         <div className="cluster-divider" />
         <button className="brand-button" type="button" onClick={onOpenDeliveryOutput}>
           <Download size={14} />
