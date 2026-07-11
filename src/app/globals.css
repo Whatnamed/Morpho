@@ -355,7 +355,8 @@ button:disabled {
 
 .left-rail {
   position: fixed;
-  z-index: 35;
+  /* Above side-drawer / project-map so hover tooltips are never covered. */
+  z-index: 50;
   top: 50%;
   left: 25px;
   width: 48px;
@@ -370,6 +371,7 @@ button:disabled {
   box-shadow: var(--shadow-panel);
   backdrop-filter: blur(16px);
   transform: translateY(-50%);
+  overflow: visible;
 }
 
 .rail-button {
@@ -416,6 +418,7 @@ button:disabled {
 
 .tooltip {
   position: absolute;
+  z-index: 2;
   top: 50%;
   left: calc(100% + 10px);
   padding: 7px 8px;
@@ -441,10 +444,15 @@ button:disabled {
 .project-map {
   position: fixed;
   z-index: 44;
-  top: 50%;
+  /* Band under top chrome (same 72px as AI panel top) and above bottom margin. */
+  top: 72px;
+  bottom: 24px;
   left: 83px;
   width: 230px;
-  max-height: min(620px, calc(100vh - 48px));
+  height: fit-content;
+  max-height: calc(100vh - 72px - 24px);
+  margin-top: auto;
+  margin-bottom: auto;
   padding: 13px;
   border: 1px solid rgba(78, 68, 58, 0.1);
   border-radius: 12px;
@@ -453,7 +461,7 @@ button:disabled {
   backdrop-filter: blur(20px);
   overflow: auto;
   overscroll-behavior: contain;
-  transform: translateY(-50%);
+  transform: none;
 }
 
 .map-title {
@@ -508,15 +516,20 @@ button:disabled {
 }
 
 .side-drawer {
-  top: 50%;
+  /* Same vertical band as project-map: clear top chrome like AI panel (72px). */
+  top: 72px;
+  bottom: 24px;
   left: 84px;
   width: 286px;
-  max-height: min(620px, calc(100vh - 48px));
+  height: fit-content;
+  max-height: calc(100vh - 72px - 24px);
+  margin-top: auto;
+  margin-bottom: auto;
   padding: 16px;
   border-radius: 13px;
   overflow: auto;
   overscroll-behavior: contain;
-  transform: translateY(-50%);
+  transform: none;
 }
 
 .search-layer {
@@ -3848,7 +3861,7 @@ button:disabled {
 
 .side-drawer {
   width: 310px;
-  max-height: min(620px, calc(100vh - 48px));
+  max-height: calc(100vh - 72px - 24px);
   padding: 18px;
   border-radius: var(--radius-lg);
 }
@@ -4740,7 +4753,7 @@ select:focus-visible {
 
 .side-drawer {
   width: 340px;
-  max-height: min(660px, calc(100vh - 48px));
+  max-height: calc(100vh - 72px - 24px);
   padding: 17px;
 }
 
@@ -7680,10 +7693,10 @@ select:focus-visible {
   animation: morpho-popover-in var(--duration-ui) var(--ease-out);
 }
 
-/* Keep vertical centering (translateY -50%) while the rail popovers open. */
+/* Rail popovers open with a light rise; keep transform free for layout centering. */
 .side-drawer,
 .project-map {
-  animation: morpho-rail-popover-in var(--duration-ui) var(--ease-out);
+  animation: morpho-popover-in var(--duration-ui) var(--ease-out);
 }
 
 .drawer-filter-row .filter-chip,
@@ -7812,17 +7825,6 @@ select:focus-visible {
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes morpho-rail-popover-in {
-  from {
-    opacity: 0;
-    transform: translateY(calc(-50% + 6px)) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(-50%) scale(1);
   }
 }
 
