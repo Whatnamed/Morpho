@@ -518,11 +518,11 @@ button:disabled {
 .side-drawer {
   /* Same vertical band as project-map. */
   top: 84px;
-  bottom: 24px;
+  bottom: 56px;
   left: 84px;
   width: 286px;
   height: fit-content;
-  max-height: calc(100vh - 84px - 24px);
+  max-height: calc(100vh - 84px - 56px);
   margin-top: auto;
   margin-bottom: auto;
   padding: 16px;
@@ -3861,7 +3861,7 @@ button:disabled {
 
 .side-drawer {
   width: 310px;
-  max-height: calc(100vh - 84px - 24px);
+  max-height: calc(100vh - 84px - 56px);
   padding: 18px;
   border-radius: var(--radius-lg);
 }
@@ -4753,7 +4753,7 @@ select:focus-visible {
 
 .side-drawer {
   width: 340px;
-  max-height: calc(100vh - 84px - 24px);
+  max-height: calc(100vh - 84px - 56px);
   padding: 17px;
 }
 
