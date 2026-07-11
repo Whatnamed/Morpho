@@ -8526,3 +8526,525 @@ select:focus-visible {
     transition: none;
   }
 }
+
+/* ========================================================================== */
+/* Non-image canvas materials redesign — editorial, distinct, warm Morpho     */
+/* ========================================================================== */
+
+.morpho-object:not(.morpho-object-image) {
+  position: relative;
+  box-sizing: border-box;
+  min-height: 100%;
+  color: var(--text-primary);
+}
+
+.morpho-object:not(.morpho-object-image) h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-weight: 560;
+  letter-spacing: -0.02em;
+  line-height: 1.32;
+  overflow-wrap: anywhere;
+}
+
+.morpho-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 22px;
+}
+
+.morpho-role-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.morpho-role-dot {
+  width: 6px !important;
+  height: 6px !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  background: currentColor !important;
+  opacity: 0.55;
+}
+
+.morpho-card-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 8px;
+  border: 1px solid rgba(109, 127, 136, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--accent-select);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.morpho-card-badge-warm {
+  border-color: rgba(138, 104, 52, 0.22);
+  background: rgba(255, 246, 230, 0.9);
+  color: var(--warning);
+}
+
+.morpho-card-badge-brand {
+  border-color: rgba(142, 76, 36, 0.2);
+  background: rgba(255, 244, 234, 0.92);
+  color: var(--accent-brand);
+}
+
+.morpho-card-badge-green {
+  border-color: rgba(78, 107, 82, 0.22);
+  background: rgba(236, 244, 238, 0.95);
+  color: var(--success);
+}
+
+.morpho-card-summary {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 420;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+
+.morpho-card-meta {
+  display: block;
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+/* --- File: stacked document sheet --- */
+.morpho-object-file {
+  padding: 14px 15px 14px 16px;
+  border: 1px solid rgba(109, 127, 136, 0.16);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 248, 248, 0.94));
+  box-shadow:
+    4px 4px 0 rgba(109, 127, 136, 0.07),
+    0 10px 24px rgba(30, 24, 18, 0.05);
+}
+
+.morpho-object-file::before,
+.morpho-object-file::after {
+  content: none;
+}
+
+.morpho-file-glyph {
+  width: 14px;
+  height: 16px;
+  border: 1.5px solid rgba(109, 127, 136, 0.42);
+  border-radius: 2px 3px 2px 2px;
+  background:
+    linear-gradient(180deg, transparent 0 22%, rgba(109, 127, 136, 0.14) 22% 28%, transparent 28% 48%, rgba(109, 127, 136, 0.12) 48% 54%, transparent 54%);
+  box-shadow: 2px 2px 0 rgba(109, 127, 136, 0.1);
+}
+
+.morpho-object-file h3 {
+  margin-top: 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.morpho-object-file .morpho-role-label {
+  color: rgba(109, 127, 136, 0.78);
+}
+
+.morpho-source-file-lines {
+  display: grid;
+  gap: 5px;
+  margin-top: 14px;
+}
+
+.morpho-source-file-lines span {
+  display: block;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(109, 127, 136, 0.14);
+}
+
+.morpho-source-file-lines span:nth-child(1) { width: 100%; }
+.morpho-source-file-lines span:nth-child(2) { width: 78%; }
+.morpho-source-file-lines span:nth-child(3) { width: 52%; }
+
+/* --- Document fragment: quote extract --- */
+.morpho-object-documentFragment {
+  padding: 14px 16px 15px 18px;
+  border: 1px solid rgba(109, 127, 136, 0.12);
+  border-left: 3px solid rgba(109, 127, 136, 0.55);
+  border-radius: 4px 14px 14px 4px;
+  background:
+    linear-gradient(135deg, rgba(244, 247, 247, 0.95), rgba(252, 251, 248, 0.92));
+  box-shadow: 0 8px 22px rgba(30, 24, 18, 0.04);
+}
+
+.morpho-object-documentFragment::before {
+  content: none;
+}
+
+.morpho-object-documentFragment h3 {
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.morpho-object-documentFragment .morpho-document-lines {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.morpho-object-documentFragment .morpho-document-lines p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  line-height: 1.55;
+  font-style: italic;
+}
+
+/* --- Research: analysis sheet with soft grid --- */
+.morpho-object-research {
+  padding: 15px 16px 16px;
+  border: 1px solid rgba(109, 127, 136, 0.14);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.55), transparent 28%),
+    repeating-linear-gradient(
+      180deg,
+      transparent,
+      transparent 21px,
+      rgba(109, 127, 136, 0.045) 21px,
+      rgba(109, 127, 136, 0.045) 22px
+    ),
+    rgba(245, 248, 248, 0.96);
+  box-shadow: 0 12px 28px rgba(30, 24, 18, 0.045);
+}
+
+.morpho-object-research::after {
+  content: none;
+}
+
+.morpho-object-research h3 {
+  margin-top: 11px;
+  font-size: 15px;
+  font-weight: 560;
+  padding-right: 0;
+}
+
+.morpho-object-research .morpho-role-label {
+  color: rgba(109, 127, 136, 0.8);
+}
+
+.morpho-research-summary {
+  -webkit-line-clamp: 3;
+}
+
+/* --- Key conclusion: warm insight card (no vertical text) --- */
+.morpho-object-keyConclusion {
+  display: block;
+  padding: 14px 15px 15px;
+  border: 1px solid rgba(138, 104, 52, 0.18);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(255, 232, 196, 0.45), transparent 42%),
+    linear-gradient(180deg, rgba(255, 252, 246, 0.98), rgba(255, 248, 238, 0.94));
+  box-shadow: 0 10px 26px rgba(120, 84, 36, 0.06);
+}
+
+.morpho-object-keyConclusion::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, rgba(138, 104, 52, 0.75), rgba(142, 76, 36, 0.45));
+}
+
+.morpho-finding-marker {
+  display: none;
+}
+
+.morpho-object-keyConclusion .morpho-key-title {
+  margin-top: 10px;
+  font-size: 13.5px;
+  font-weight: 620;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.morpho-object-keyConclusion .morpho-key-detail {
+  margin-top: 7px;
+  -webkit-line-clamp: 3;
+}
+
+/* --- Design definition: editorial spine sheet --- */
+.morpho-object-designDefinition {
+  padding: 16px 17px 16px 18px;
+  border: 1px solid rgba(142, 76, 36, 0.12);
+  border-radius: 6px 16px 16px 6px;
+  background:
+    linear-gradient(90deg, rgba(142, 76, 36, 0.08), transparent 14px),
+    linear-gradient(180deg, rgba(255, 253, 249, 0.98), rgba(252, 246, 239, 0.94));
+  box-shadow: 0 14px 32px rgba(90, 48, 24, 0.06);
+}
+
+.morpho-object-designDefinition::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 4px;
+  border-radius: 6px 0 0 6px;
+  background: linear-gradient(180deg, var(--accent-brand), rgba(142, 76, 36, 0.55));
+}
+
+.morpho-object-designDefinition h3 {
+  margin-top: 12px;
+  font-size: 16px;
+  font-weight: 560;
+  line-height: 1.34;
+  letter-spacing: -0.025em;
+}
+
+.morpho-definition-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.morpho-definition-status {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(142, 76, 36, 0.08);
+  color: var(--accent-brand);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Concept direction: route card --- */
+.morpho-object-conceptDirection {
+  padding: 14px 15px 15px;
+  border: 1px solid rgba(109, 127, 136, 0.15);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.75), transparent 36%),
+    rgba(246, 249, 249, 0.96);
+  box-shadow: 0 12px 28px rgba(40, 56, 62, 0.05);
+}
+
+.morpho-object-conceptDirection::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 16px;
+  height: 3px;
+  border-radius: 0 0 4px 4px;
+  background: linear-gradient(90deg, rgba(109, 127, 136, 0.75), rgba(109, 127, 136, 0.2));
+}
+
+.morpho-direction-mark {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(109, 127, 136, 0.22);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--accent-select);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(30, 24, 18, 0.04);
+}
+
+.morpho-object-conceptDirection h3 {
+  margin-top: 12px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid rgba(109, 127, 136, 0.1);
+  font-size: 14.5px;
+  font-weight: 580;
+}
+
+.morpho-object-conceptDirection .morpho-card-summary {
+  margin-top: 9px;
+  -webkit-line-clamp: 3;
+}
+
+.morpho-object-conceptDirection .morpho-card-meta {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(109, 127, 136, 0.14);
+}
+
+/* --- Proposal draft: pending review --- */
+.morpho-object-proposalDraft {
+  overflow: hidden;
+  padding: 15px 16px 16px;
+  border: 1.5px dashed rgba(142, 76, 36, 0.34);
+  border-radius: 14px;
+  background:
+    linear-gradient(160deg, rgba(255, 250, 244, 0.98), rgba(255, 245, 236, 0.92));
+  box-shadow: 0 10px 24px rgba(120, 60, 24, 0.05);
+}
+
+.morpho-object-proposalDraft::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 28px 28px 0;
+  border-color: transparent rgba(142, 76, 36, 0.18) transparent transparent;
+  transform: none;
+  background: transparent;
+}
+
+.morpho-object-proposalDraft h3 {
+  margin-top: 11px;
+  font-size: 14.5px;
+}
+
+/* --- Text note --- */
+.morpho-object-text {
+  padding: 14px 15px 15px;
+  border: 1px solid rgba(180, 150, 90, 0.16);
+  border-radius: 4px 14px 12px 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 252, 240, 0.98), rgba(255, 246, 224, 0.9));
+  box-shadow: 0 8px 20px rgba(120, 96, 40, 0.05);
+}
+
+.morpho-object-text::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 14px;
+  right: 14px;
+  height: 4px;
+  border-radius: 0 0 3px 3px;
+  background: rgba(210, 176, 96, 0.35);
+}
+
+.morpho-object-text h3 {
+  margin-top: 10px;
+  font-size: 13.5px;
+  font-weight: 560;
+}
+
+.morpho-object-text .morpho-document-lines {
+  margin-top: 8px;
+  display: grid;
+  gap: 5px;
+}
+
+.morpho-object-text .morpho-document-lines p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* --- Delivery package --- */
+.morpho-object-delivery {
+  padding: 14px 15px 15px;
+  border: 1px solid rgba(78, 107, 82, 0.18);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(248, 252, 248, 0.98), rgba(239, 246, 240, 0.94));
+  box-shadow: 0 12px 28px rgba(48, 72, 52, 0.05);
+}
+
+.morpho-object-delivery h3 {
+  margin-top: 10px;
+  font-size: 14.5px;
+  font-weight: 580;
+}
+
+.morpho-object-delivery .delivery-wire {
+  margin-top: 12px;
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(78, 107, 82, 0.1);
+}
+
+.morpho-object-delivery .delivery-main-image {
+  border-radius: 7px;
+  overflow: hidden;
+  border: 1px solid rgba(78, 107, 82, 0.12);
+  background: #fff;
+}
+
+.morpho-object-delivery .delivery-text-lines {
+  border-radius: 7px;
+  border: 1px solid rgba(78, 107, 82, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+/* --- Link / collection --- */
+.morpho-object-link,
+.morpho-object-imageCollection {
+  padding: 14px 15px 15px;
+  border: 1px solid rgba(109, 127, 136, 0.14);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(246, 248, 248, 0.92));
+  box-shadow: 0 10px 24px rgba(30, 24, 18, 0.04);
+}
+
+.morpho-object-link::after {
+  content: "";
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: 10px;
+  height: 10px;
+  border-right: 1.5px solid rgba(109, 127, 136, 0.45);
+  border-top: 1.5px solid rgba(109, 127, 136, 0.45);
+  transform: rotate(45deg);
+  opacity: 0.7;
+}
+
+/* Keep image cards image-first; do not inherit paper treatments */
+.morpho-object-image {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+.morpho-object-image::before,
+.morpho-object-image::after {
+  content: none;
+}
