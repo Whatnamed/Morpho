@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --canvas: #f7f5f1;
   --surface: #fcfbf8;
   --surface-raised: #ffffff;
@@ -3611,7 +3611,7 @@ button:disabled {
 }
 
 .morpho-object.is-default-reference::before {
-  content: "后续默认参考";
+  content: "鍚庣画榛樿鍙傝€?;
   position: absolute;
   z-index: 2;
   top: 8px;
@@ -6574,7 +6574,7 @@ select:focus-visible {
 }
 
 .project-meta span:not(:last-child)::after {
-  content: "·";
+  content: "路";
   margin-left: 8px;
   color: rgba(78, 68, 58, 0.28);
 }
@@ -7520,7 +7520,7 @@ select:focus-visible {
 }
 
 /* -------------------------------------------------------------------------- */
-/* R3 UI polish pass — visual hierarchy, quiet chrome, detail states (T2 copy) */
+/* R3 UI polish pass 鈥?visual hierarchy, quiet chrome, detail states (T2 copy) */
 /* -------------------------------------------------------------------------- */
 
 .left-rail {
@@ -7854,7 +7854,7 @@ select:focus-visible {
 }
 
 /* -------------------------------------------------------------------------- */
-/* R3 pass 2 — object materials, AI input states, home + floating panels       */
+/* R3 pass 2 鈥?object materials, AI input states, home + floating panels       */
 /* -------------------------------------------------------------------------- */
 
 .morpho-object-link,
@@ -8149,7 +8149,7 @@ select:focus-visible {
 }
 
 /* -------------------------------------------------------------------------- */
-/* R3 pass 3 — detail popover density, delivery form layout, archive panels    */
+/* R3 pass 3 鈥?detail popover density, delivery form layout, archive panels    */
 /* -------------------------------------------------------------------------- */
 
 .detail-popover {
@@ -8527,23 +8527,36 @@ select:focus-visible {
   }
 }
 
+
 /* ========================================================================== */
-/* Non-image canvas materials redesign — editorial, distinct, warm Morpho     */
+/* Non-image cards v2 — flat, minimal, type-distinct (no gradients)            */
 /* ========================================================================== */
 
 .morpho-object:not(.morpho-object-image) {
   position: relative;
   box-sizing: border-box;
   min-height: 100%;
-  color: var(--text-primary);
+  padding: 14px 15px 15px;
+  border: 1px solid #e6e1d9;
+  border-radius: 12px;
+  background: #fffcf8;
+  box-shadow: 0 1px 0 rgba(33, 31, 27, 0.04);
+  color: #211f1b;
+}
+
+.morpho-object:not(.morpho-object-image)::before,
+.morpho-object:not(.morpho-object-image)::after {
+  content: none;
+  display: none;
 }
 
 .morpho-object:not(.morpho-object-image) h3 {
-  margin: 0;
-  color: var(--text-primary);
-  font-weight: 560;
-  letter-spacing: -0.02em;
-  line-height: 1.32;
+  margin: 10px 0 0;
+  color: #211f1b;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
@@ -8551,70 +8564,38 @@ select:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  min-height: 22px;
+  gap: 8px;
+  min-height: 18px;
 }
 
 .morpho-role-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-muted);
+  color: #8a837a;
   font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  line-height: 1;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
 }
 
-.morpho-role-dot {
-  width: 6px !important;
-  height: 6px !important;
-  border: 0 !important;
-  border-radius: 50% !important;
-  background: currentColor !important;
-  opacity: 0.55;
+.morpho-role-dot,
+.morpho-role-label span {
+  display: none !important;
 }
 
-.morpho-card-badge {
+.morpho-card-kicker {
   flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  min-height: 20px;
-  padding: 2px 8px;
-  border: 1px solid rgba(109, 127, 136, 0.18);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
-  color: var(--accent-select);
+  color: #8a837a;
   font-size: 10px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: 0.04em;
   line-height: 1;
-}
-
-.morpho-card-badge-warm {
-  border-color: rgba(138, 104, 52, 0.22);
-  background: rgba(255, 246, 230, 0.9);
-  color: var(--warning);
-}
-
-.morpho-card-badge-brand {
-  border-color: rgba(142, 76, 36, 0.2);
-  background: rgba(255, 244, 234, 0.92);
-  color: var(--accent-brand);
-}
-
-.morpho-card-badge-green {
-  border-color: rgba(78, 107, 82, 0.22);
-  background: rgba(236, 244, 238, 0.95);
-  color: var(--success);
 }
 
 .morpho-card-summary {
   margin: 8px 0 0;
-  color: var(--text-secondary);
+  color: #5f5952;
   font-size: 12px;
-  font-weight: 420;
-  line-height: 1.55;
+  font-weight: 400;
+  line-height: 1.5;
   overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -8625,84 +8606,32 @@ select:focus-visible {
 .morpho-card-meta {
   display: block;
   margin-top: 10px;
-  color: var(--text-muted);
+  color: #9a9288;
   font-size: 10px;
   line-height: 1.4;
 }
 
-/* --- File: stacked document sheet --- */
+/* File — cool white, square-ish, left slate bar */
 .morpho-object-file {
-  padding: 14px 15px 14px 16px;
-  border: 1px solid rgba(109, 127, 136, 0.16);
-  border-radius: 12px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 248, 248, 0.94));
-  box-shadow:
-    4px 4px 0 rgba(109, 127, 136, 0.07),
-    0 10px 24px rgba(30, 24, 18, 0.05);
+  border-color: #d7dde0;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: none;
+  border-left: 3px solid #6f818b;
 }
 
-.morpho-object-file::before,
-.morpho-object-file::after {
-  content: none;
+.morpho-object-file .morpho-role-label,
+.morpho-object-file .morpho-card-kicker {
+  color: #6f818b;
 }
 
-.morpho-file-glyph {
-  width: 14px;
-  height: 16px;
-  border: 1.5px solid rgba(109, 127, 136, 0.42);
-  border-radius: 2px 3px 2px 2px;
-  background:
-    linear-gradient(180deg, transparent 0 22%, rgba(109, 127, 136, 0.14) 22% 28%, transparent 28% 48%, rgba(109, 127, 136, 0.12) 48% 54%, transparent 54%);
-  box-shadow: 2px 2px 0 rgba(109, 127, 136, 0.1);
-}
-
-.morpho-object-file h3 {
-  margin-top: 12px;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.morpho-object-file .morpho-role-label {
-  color: rgba(109, 127, 136, 0.78);
-}
-
-.morpho-source-file-lines {
-  display: grid;
-  gap: 5px;
-  margin-top: 14px;
-}
-
-.morpho-source-file-lines span {
-  display: block;
-  height: 2px;
-  border-radius: 999px;
-  background: rgba(109, 127, 136, 0.14);
-}
-
-.morpho-source-file-lines span:nth-child(1) { width: 100%; }
-.morpho-source-file-lines span:nth-child(2) { width: 78%; }
-.morpho-source-file-lines span:nth-child(3) { width: 52%; }
-
-/* --- Document fragment: quote extract --- */
+/* Document fragment — quote strip */
 .morpho-object-documentFragment {
-  padding: 14px 16px 15px 18px;
-  border: 1px solid rgba(109, 127, 136, 0.12);
-  border-left: 3px solid rgba(109, 127, 136, 0.55);
-  border-radius: 4px 14px 14px 4px;
-  background:
-    linear-gradient(135deg, rgba(244, 247, 247, 0.95), rgba(252, 251, 248, 0.92));
-  box-shadow: 0 8px 22px rgba(30, 24, 18, 0.04);
-}
-
-.morpho-object-documentFragment::before {
-  content: none;
-}
-
-.morpho-object-documentFragment h3 {
-  margin-top: 10px;
-  font-size: 13px;
-  font-weight: 600;
+  border-color: #dde3e5;
+  border-radius: 6px;
+  background: #f7f9f9;
+  border-left: 3px solid #7d9099;
+  box-shadow: none;
 }
 
 .morpho-object-documentFragment .morpho-document-lines {
@@ -8713,120 +8642,75 @@ select:focus-visible {
 
 .morpho-object-documentFragment .morpho-document-lines p {
   margin: 0;
-  color: var(--text-secondary);
-  font-size: 11.5px;
-  line-height: 1.55;
-  font-style: italic;
+  color: #5f5952;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
-/* --- Research: analysis sheet with soft grid --- */
+/* Research — soft blue-gray fill */
 .morpho-object-research {
-  padding: 15px 16px 16px;
-  border: 1px solid rgba(109, 127, 136, 0.14);
-  border-radius: 14px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.55), transparent 28%),
-    repeating-linear-gradient(
-      180deg,
-      transparent,
-      transparent 21px,
-      rgba(109, 127, 136, 0.045) 21px,
-      rgba(109, 127, 136, 0.045) 22px
-    ),
-    rgba(245, 248, 248, 0.96);
-  box-shadow: 0 12px 28px rgba(30, 24, 18, 0.045);
+  border-color: #d2dbe0;
+  border-radius: 10px;
+  background: #eef3f5;
+  box-shadow: none;
 }
 
-.morpho-object-research::after {
-  content: none;
+.morpho-object-research .morpho-role-label,
+.morpho-object-research .morpho-card-kicker {
+  color: #5d727c;
 }
 
 .morpho-object-research h3 {
-  margin-top: 11px;
-  font-size: 15px;
-  font-weight: 560;
-  padding-right: 0;
+  font-size: 14.5px;
 }
 
-.morpho-object-research .morpho-role-label {
-  color: rgba(109, 127, 136, 0.8);
-}
-
-.morpho-research-summary {
-  -webkit-line-clamp: 3;
-}
-
-/* --- Key conclusion: warm insight card (no vertical text) --- */
+/* Key conclusion — warm flat amber */
 .morpho-object-keyConclusion {
   display: block;
-  padding: 14px 15px 15px;
-  border: 1px solid rgba(138, 104, 52, 0.18);
-  border-radius: 14px;
-  background:
-    radial-gradient(circle at 100% 0%, rgba(255, 232, 196, 0.45), transparent 42%),
-    linear-gradient(180deg, rgba(255, 252, 246, 0.98), rgba(255, 248, 238, 0.94));
-  box-shadow: 0 10px 26px rgba(120, 84, 36, 0.06);
+  border-color: #e5d3ad;
+  border-radius: 10px;
+  background: #fff6e8;
+  border-left: 3px solid #b8893a;
+  box-shadow: none;
+  padding-left: 14px;
 }
 
-.morpho-object-keyConclusion::before {
-  content: "";
-  position: absolute;
-  top: 12px;
-  bottom: 12px;
-  left: 0;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: linear-gradient(180deg, rgba(138, 104, 52, 0.75), rgba(142, 76, 36, 0.45));
+.morpho-object-keyConclusion .morpho-role-label,
+.morpho-object-keyConclusion .morpho-card-kicker {
+  color: #9a6f28;
 }
 
-.morpho-finding-marker {
-  display: none;
-}
-
+.morpho-object-keyConclusion h3,
 .morpho-object-keyConclusion .morpho-key-title {
   margin-top: 10px;
   font-size: 13.5px;
   font-weight: 620;
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
 }
 
-.morpho-object-keyConclusion .morpho-key-detail {
-  margin-top: 7px;
-  -webkit-line-clamp: 3;
+.morpho-finding-marker {
+  display: none !important;
 }
 
-/* --- Design definition: editorial spine sheet --- */
+/* Design definition — stronger brown identity, flatter paper */
 .morpho-object-designDefinition {
-  padding: 16px 17px 16px 18px;
-  border: 1px solid rgba(142, 76, 36, 0.12);
-  border-radius: 6px 16px 16px 6px;
-  background:
-    linear-gradient(90deg, rgba(142, 76, 36, 0.08), transparent 14px),
-    linear-gradient(180deg, rgba(255, 253, 249, 0.98), rgba(252, 246, 239, 0.94));
-  box-shadow: 0 14px 32px rgba(90, 48, 24, 0.06);
+  border-color: #e2d0c0;
+  border-radius: 4px 12px 12px 4px;
+  background: #fff8f1;
+  border-left: 4px solid #8e4c24;
+  box-shadow: none;
+  padding-left: 16px;
 }
 
-.morpho-object-designDefinition::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 4px;
-  border-radius: 6px 0 0 6px;
-  background: linear-gradient(180deg, var(--accent-brand), rgba(142, 76, 36, 0.55));
+.morpho-object-designDefinition .morpho-role-label,
+.morpho-object-designDefinition .morpho-card-kicker {
+  color: #8e4c24;
 }
 
 .morpho-object-designDefinition h3 {
-  margin-top: 12px;
+  margin-top: 11px;
   font-size: 16px;
-  font-weight: 560;
-  line-height: 1.34;
-  letter-spacing: -0.025em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .morpho-definition-status-row {
@@ -8839,128 +8723,66 @@ select:focus-visible {
 .morpho-definition-status {
   display: inline-flex;
   max-width: 100%;
-  padding: 4px 8px;
+  padding: 3px 8px;
+  border: 1px solid #e2d0c0;
   border-radius: 999px;
-  background: rgba(142, 76, 36, 0.08);
-  color: var(--accent-brand);
+  background: #ffffff;
+  color: #8e4c24;
   font-size: 10px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* --- Concept direction: route card --- */
+/* Concept direction — cooler, rounder route card */
 .morpho-object-conceptDirection {
-  padding: 14px 15px 15px;
-  border: 1px solid rgba(109, 127, 136, 0.15);
+  border-color: #cfd9dd;
   border-radius: 16px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.75), transparent 36%),
-    rgba(246, 249, 249, 0.96);
-  box-shadow: 0 12px 28px rgba(40, 56, 62, 0.05);
+  background: #f3f7f8;
+  box-shadow: none;
 }
 
-.morpho-object-conceptDirection::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 16px;
-  right: 16px;
-  height: 3px;
-  border-radius: 0 0 4px 4px;
-  background: linear-gradient(90deg, rgba(109, 127, 136, 0.75), rgba(109, 127, 136, 0.2));
-}
-
-.morpho-direction-mark {
-  width: 24px;
-  height: 24px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(109, 127, 136, 0.22);
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.8);
-  color: var(--accent-select);
-  font-size: 13px;
-  font-weight: 600;
-  box-shadow: 0 2px 8px rgba(30, 24, 18, 0.04);
+.morpho-object-conceptDirection .morpho-role-label,
+.morpho-object-conceptDirection .morpho-card-kicker {
+  color: #5d727c;
 }
 
 .morpho-object-conceptDirection h3 {
-  margin-top: 12px;
-  padding-bottom: 9px;
-  border-bottom: 1px solid rgba(109, 127, 136, 0.1);
-  font-size: 14.5px;
-  font-weight: 580;
+  margin-top: 11px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #d7e0e3;
+  font-size: 14px;
 }
 
 .morpho-object-conceptDirection .morpho-card-summary {
-  margin-top: 9px;
   -webkit-line-clamp: 3;
 }
 
-.morpho-object-conceptDirection .morpho-card-meta {
-  margin-top: 9px;
-  padding-top: 8px;
-  border-top: 1px dashed rgba(109, 127, 136, 0.14);
-}
-
-/* --- Proposal draft: pending review --- */
+/* Proposal draft — dashed outline only */
 .morpho-object-proposalDraft {
-  overflow: hidden;
-  padding: 15px 16px 16px;
-  border: 1.5px dashed rgba(142, 76, 36, 0.34);
-  border-radius: 14px;
-  background:
-    linear-gradient(160deg, rgba(255, 250, 244, 0.98), rgba(255, 245, 236, 0.92));
-  box-shadow: 0 10px 24px rgba(120, 60, 24, 0.05);
+  border: 1.5px dashed #c98655;
+  border-radius: 12px;
+  background: #fffaf5;
+  box-shadow: none;
 }
 
-.morpho-object-proposalDraft::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 0;
-  height: 0;
-  border-style: solid;
-  border-width: 0 28px 28px 0;
-  border-color: transparent rgba(142, 76, 36, 0.18) transparent transparent;
-  transform: none;
-  background: transparent;
+.morpho-object-proposalDraft .morpho-role-label,
+.morpho-object-proposalDraft .morpho-card-kicker {
+  color: #a35c2a;
 }
 
-.morpho-object-proposalDraft h3 {
-  margin-top: 11px;
-  font-size: 14.5px;
-}
-
-/* --- Text note --- */
+/* Text note — soft flat note */
 .morpho-object-text {
-  padding: 14px 15px 15px;
-  border: 1px solid rgba(180, 150, 90, 0.16);
-  border-radius: 4px 14px 12px 12px;
-  background:
-    linear-gradient(180deg, rgba(255, 252, 240, 0.98), rgba(255, 246, 224, 0.9));
-  box-shadow: 0 8px 20px rgba(120, 96, 40, 0.05);
+  border: 0;
+  border-radius: 10px;
+  background: #fff8df;
+  box-shadow: none;
 }
 
-.morpho-object-text::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 14px;
-  right: 14px;
-  height: 4px;
-  border-radius: 0 0 3px 3px;
-  background: rgba(210, 176, 96, 0.35);
-}
-
-.morpho-object-text h3 {
-  margin-top: 10px;
-  font-size: 13.5px;
-  font-weight: 560;
+.morpho-object-text .morpho-role-label {
+  color: #9a8752;
 }
 
 .morpho-object-text .morpho-document-lines {
@@ -8971,80 +8793,88 @@ select:focus-visible {
 
 .morpho-object-text .morpho-document-lines p {
   margin: 0;
-  color: var(--text-secondary);
+  color: #5f5952;
   font-size: 12px;
   line-height: 1.5;
 }
 
-/* --- Delivery package --- */
+/* Delivery — quiet green flat */
 .morpho-object-delivery {
-  padding: 14px 15px 15px;
-  border: 1px solid rgba(78, 107, 82, 0.18);
-  border-radius: 14px;
-  background:
-    linear-gradient(180deg, rgba(248, 252, 248, 0.98), rgba(239, 246, 240, 0.94));
-  box-shadow: 0 12px 28px rgba(48, 72, 52, 0.05);
+  border-color: #c9d8cc;
+  border-radius: 12px;
+  background: #f1f6f2;
+  border-left: 3px solid #4e6b52;
+  box-shadow: none;
 }
 
-.morpho-object-delivery h3 {
-  margin-top: 10px;
-  font-size: 14.5px;
-  font-weight: 580;
+.morpho-object-delivery .morpho-role-label,
+.morpho-object-delivery .morpho-card-kicker {
+  color: #4e6b52;
 }
 
 .morpho-object-delivery .delivery-wire {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 8px;
   margin-top: 12px;
-  padding: 8px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid rgba(78, 107, 82, 0.1);
 }
 
 .morpho-object-delivery .delivery-main-image {
-  border-radius: 7px;
-  overflow: hidden;
-  border: 1px solid rgba(78, 107, 82, 0.12);
-  background: #fff;
+  min-height: 72px;
+  border-radius: 6px;
+  border: 1px solid #c9d8cc;
+  background: #ffffff;
 }
 
 .morpho-object-delivery .delivery-text-lines {
-  border-radius: 7px;
-  border: 1px solid rgba(78, 107, 82, 0.1);
-  background: rgba(255, 255, 255, 0.72);
+  min-height: 72px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #c9d8cc;
+  background: #ffffff;
 }
 
-/* --- Link / collection --- */
+.morpho-object-delivery .delivery-text-lines span {
+  display: block;
+  height: 2px;
+  border-radius: 999px;
+  background: #c9d8cc;
+}
+
+.morpho-object-delivery .delivery-text-lines span:nth-child(1) { width: 100%; }
+.morpho-object-delivery .delivery-text-lines span:nth-child(2) { width: 72%; }
+.morpho-object-delivery .delivery-text-lines span:nth-child(3) { width: 54%; }
+
+/* Link / collection */
 .morpho-object-link,
 .morpho-object-imageCollection {
-  padding: 14px 15px 15px;
-  border: 1px solid rgba(109, 127, 136, 0.14);
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(246, 248, 248, 0.92));
-  box-shadow: 0 10px 24px rgba(30, 24, 18, 0.04);
-}
-
-.morpho-object-link::after {
-  content: "";
-  position: absolute;
-  right: 14px;
-  bottom: 14px;
-  width: 10px;
-  height: 10px;
-  border-right: 1.5px solid rgba(109, 127, 136, 0.45);
-  border-top: 1.5px solid rgba(109, 127, 136, 0.45);
-  transform: rotate(45deg);
-  opacity: 0.7;
-}
-
-/* Keep image cards image-first; do not inherit paper treatments */
-.morpho-object-image {
-  background: transparent;
-  border: 0;
+  border-color: #d7dde0;
+  border-radius: 10px;
+  background: #ffffff;
   box-shadow: none;
+}
+
+.morpho-object-link .morpho-role-label,
+.morpho-object-imageCollection .morpho-role-label {
+  color: #6f818b;
+}
+
+/* Image cards stay image-first */
+.morpho-object-image {
   padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .morpho-object-image::before,
 .morpho-object-image::after {
-  content: none;
+  content: none !important;
+  display: none !important;
 }
+

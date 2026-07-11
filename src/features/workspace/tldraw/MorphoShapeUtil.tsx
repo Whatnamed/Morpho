@@ -564,15 +564,9 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
       <article className={classes}>
         <div className="morpho-card-head">
           <RoleLabel label={props.label} />
-          <span className="morpho-file-glyph" aria-hidden="true" />
         </div>
         <h3>{props.title}</h3>
         {props.summary ? <p className="morpho-card-summary">{props.summary}</p> : null}
-        <div className="morpho-source-file-lines" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </div>
       </article>
     );
   }
@@ -582,10 +576,10 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
       <article className={classes}>
         <div className="morpho-card-head">
           <RoleLabel label={props.label} />
-          <span className="morpho-card-badge">分析</span>
+          <span className="morpho-card-kicker">分析</span>
         </div>
         <h3>{props.title}</h3>
-        {props.summary ? <p className="morpho-card-summary morpho-research-summary">{props.summary}</p> : null}
+        {props.summary ? <p className="morpho-card-summary">{props.summary}</p> : null}
       </article>
     );
   }
@@ -597,10 +591,10 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
       <article className={classes}>
         <div className="morpho-card-head">
           <RoleLabel label={props.label} />
-          <span className="morpho-card-badge morpho-card-badge-warm">结论</span>
+          <span className="morpho-card-kicker">结论</span>
         </div>
         <h3 className="morpho-key-title">{parts.title}</h3>
-        {parts.detail ? <p className="morpho-card-summary morpho-key-detail">{parts.detail}</p> : null}
+        {parts.detail ? <p className="morpho-card-summary">{parts.detail}</p> : null}
       </article>
     );
   }
@@ -610,10 +604,10 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
       <article className={classes}>
         <div className="morpho-card-head">
           <RoleLabel label={props.label} />
-          <span className="morpho-card-badge morpho-card-badge-brand">定义</span>
+          <span className="morpho-card-kicker">定义</span>
         </div>
         <h3>{props.title}</h3>
-        {props.summary ? <p className="morpho-card-summary morpho-definition-summary">{props.summary}</p> : null}
+        {props.summary ? <p className="morpho-card-summary">{props.summary}</p> : null}
         {props.details.length > 0 ? (
           <div className="morpho-definition-status-row">
             {props.details.map((detail) => (
@@ -632,10 +626,10 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
       <article className={classes}>
         <div className="morpho-card-head">
           <RoleLabel label={props.label} />
-          <span className="morpho-card-badge morpho-card-badge-brand">待确认</span>
+          <span className="morpho-card-kicker">待确认</span>
         </div>
         <h3>{props.title}</h3>
-        {props.summary ? <p className="morpho-card-summary morpho-proposal-summary">{props.summary}</p> : null}
+        {props.summary ? <p className="morpho-card-summary">{props.summary}</p> : null}
       </article>
     );
   }
@@ -645,7 +639,7 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
       <article className={classes}>
         <div className="morpho-card-head">
           <RoleLabel label={props.label} />
-          <span className="morpho-card-badge">摘录</span>
+          <span className="morpho-card-kicker">摘录</span>
         </div>
         <h3>{props.title}</h3>
         <div className="morpho-document-lines">
@@ -678,11 +672,11 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
       <article className={classes}>
         <div className="morpho-card-head">
           <RoleLabel label={props.label} />
-          <span className="morpho-card-badge morpho-card-badge-green">交付</span>
+          <span className="morpho-card-kicker">交付</span>
         </div>
         <h3>{props.title}</h3>
-        <div className="delivery-wire">
-          <div className="delivery-main-image">{renderVisual("rail")}</div>
+        <div className="delivery-wire" aria-hidden="true">
+          <div className="delivery-main-image" />
           <div className="delivery-text-lines">
             <span />
             <span />
@@ -699,9 +693,7 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
       <article className={classes}>
         <div className="morpho-card-head">
           <RoleLabel label={props.label} />
-          <span className="morpho-direction-mark" aria-hidden="true">
-            →
-          </span>
+          <span className="morpho-card-kicker">方向</span>
         </div>
         <h3>{props.title}</h3>
         {props.summary ? <p className="morpho-card-summary">{props.summary}</p> : null}
@@ -723,12 +715,7 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
 }
 
 function RoleLabel({ label }: { label: string }) {
-  return (
-    <div className="morpho-role-label">
-      <span className="morpho-role-dot" aria-hidden="true" />
-      {label}
-    </div>
-  );
+  return <div className="morpho-role-label">{label}</div>;
 }
 
 function renderVisual(variant?: string) {
