@@ -8,6 +8,10 @@ Use the repository `.npmrc` registry setting.
 npm.cmd install
 ```
 
+## Cloudflare Workers
+
+Morpho can also be built for Cloudflare Workers through OpenNext without changing the normal Vercel build path. See [Cloudflare Workers deployment](./cloudflare-workers.md) for configuration, environment variables, preview, deployment, acceptance, and rollback.
+
 ## Environment
 
 Copy `.env.example` to `.env.local` for local AI provider calls. Do not commit `.env.local`.

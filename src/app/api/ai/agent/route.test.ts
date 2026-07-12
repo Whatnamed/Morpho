@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { filterAgentRequestForConfig, POST } from "./route";
+import { POST } from "./route";
+import { filterAgentRequestForConfig } from "@/server/ai/agentRoute";
 import type { OpenAiCompatibleResponseRequest } from "@/server/ai/openaiCompatibleProvider";
 
 vi.mock("@/server/ai/openaiCompatibleConfig", () => ({

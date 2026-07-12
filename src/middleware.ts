@@ -4,7 +4,7 @@ import { isAuthRequired } from "@/infrastructure/supabase/env";
 import { createProxySupabaseClient } from "@/infrastructure/supabase/server";
 import { sanitizeNextPath } from "@/server/auth/redirects";
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   if (!isAuthRequired(process.env)) {
     return NextResponse.next();
   }

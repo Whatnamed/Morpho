@@ -7,6 +7,7 @@ import {
   type OpenAiCompatibleResponseRequest
 } from "@/server/ai/openaiCompatibleProvider";
 import { executeAgentRequestWithContextBudget } from "@/server/ai/agentContextBudget";
+import { filterAgentRequestForConfig } from "@/server/ai/agentRoute";
 import { aiAccessDeniedResponse, guardAiRoute, requireAiRouteUser } from "@/server/auth/aiAccess";
 
 export const runtime = "nodejs";
@@ -69,20 +70,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: "OpenAI-compatible Provider 网络调用失败。" }, { status: 502 });
   }
-}
-
-export function filterAgentRequestForConfig(
-  request: OpenAiCompatibleResponseRequest,
-  config: { webSearchEnabled: boolean }
-): OpenAiCompatibleResponseRequest {
-  if (config.webSearchEnabled) {
-    return request;
-  }
-
-  return {
-    ...request,
-    tools: request.tools?.filter((tool) => tool.type !== "function" || tool.name !== "search_web_evidence")
-  };
 }
 
 function validateAgentRouteRequest(value: unknown):
