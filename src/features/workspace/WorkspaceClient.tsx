@@ -257,6 +257,11 @@ import {
   type ImageGenerationSettings
 } from "./imageGenerationSettings";
 import {
+  IMAGE_GENERATION_MAX_CONCURRENCY,
+  buildImageGenerationProgressMessage,
+  mapWithConcurrency
+} from "./imageGenerationConcurrency";
+import {
   buildAgentCheckpointCompactionInput,
   buildAgentHistoryMessages,
   buildMorphoAgentInitialTools,
@@ -1655,127 +1660,195 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               plan: validatedPlan.plan
             }),
             assistantMessageId,
-            `已形成生成计划：${validatedPlan.plan.items.length} 项。接下来将顺序生成，当前模型 ${generationSettings.modelLabel}，不会覆盖来源图。`,
+            `已形成生成计划：${validatedPlan.plan.items.length} 项。最多 ${IMAGE_GENERATION_MAX_CONCURRENCY} 路并发生成，当前模型 ${generationSettings.modelLabel}，不会覆盖来源图。`,
             "streaming"
           )
         );
 
-        for (const [index, item] of validatedPlan.plan.items.entries()) {
-          try {
-            setImageTaskStatus({
-              state: "submitting",
-              message: `正在生成第 ${index + 1} / ${validatedPlan.plan.items.length} 张：${item.title}`
-            });
-            setWorkspace((current) =>
-              updateAiMessage(
-                current,
-                assistantMessageId,
-                `生成 ${index + 1}/${validatedPlan.plan.items.length}：${item.title}`,
-                "streaming"
-              )
-            );
-
-            const referenceImages = await collectImageReferenceDataUrls(workspace, item.referenceObjectIds, controller.signal);
-            setWorkspace((current) =>
-              markImageGenerationOperationSubmitted(current, {
-                operationId,
-                referenceObjectIds: item.referenceObjectIds,
-                imagePixels: referenceImages.images.length > 0
-              })
-            );
-
-            const imageResponse = await fetch("/api/ai/image", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                modelId: generationSettings.modelId,
-                prompt: item.prompt,
-                images: referenceImages.images,
-                aspectRatio: generationSettings.aspectRatio,
-                sizeOption: generationSettings.sizeOption,
-                referenceObjectIds: item.referenceObjectIds,
-                directionObjectId: item.targetDirectionId,
-                visualBranchId: item.visualBranchId,
-                operationId,
-                clientRequestId
+        const totalItems = validatedPlan.plan.items.length;
+        let completedCount = 0;
+        let inFlightCount = 0;
+        const publishProgress = () => {
+          setImageTaskStatus({
+            state: inFlightCount > 0 ? "submitting" : "downloading",
+            message: buildImageGenerationProgressMessage({
+              total: totalItems,
+              completed: completedCount,
+              inFlight: inFlightCount,
+              concurrency: IMAGE_GENERATION_MAX_CONCURRENCY
+            })
+          });
+          setWorkspace((current) =>
+            updateAiMessage(
+              current,
+              assistantMessageId,
+              buildImageGenerationProgressMessage({
+                total: totalItems,
+                completed: completedCount,
+                inFlight: inFlightCount,
+                concurrency: IMAGE_GENERATION_MAX_CONCURRENCY
               }),
-              signal: controller.signal
-            });
-            lastProviderTaskId = imageResponse.headers.get("X-Morpho-Provider-Task-Id") || lastProviderTaskId;
+              "streaming"
+            )
+          );
+        };
 
-            if (!imageResponse.ok) {
-              const failure = await readErrorResponse(imageResponse);
-              throw new Error(failure);
+        type VisualItemResult =
+          | {
+              status: "ok";
+              index: number;
+              item: (typeof validatedPlan.plan.items)[number];
+              asset: AssetRecord;
+              sourceObjectIds: string[];
+              providerTaskId?: string;
             }
+          | {
+              status: "failed";
+              index: number;
+              item: (typeof validatedPlan.plan.items)[number];
+              reason: string;
+            };
 
-            setImageTaskStatus({
-              state: "downloading",
-              message: `正在保存结果：${index + 1}/${validatedPlan.plan.items.length} ${item.title}`
-            });
-            const mimeType = imageResponse.headers.get("Content-Type") ?? "image/png";
-            const blob = await imageResponse.blob();
-            const file = new File([blob], makeGeneratedImageFileName(mimeType), { type: mimeType });
-            const saved = await saveBlobAsLocalAsset(indexedDbBlobStore, file, "aiGeneratedImage", {
-              readImageDimensions: readImageBlobDimensions
-            });
-            if (saved.status === "failed") {
-              throw new Error(saved.reason);
+        // Network + local asset save may run in parallel; workspace writes stay functional/serial-safe.
+        const itemResults = await mapWithConcurrency(
+          validatedPlan.plan.items,
+          IMAGE_GENERATION_MAX_CONCURRENCY,
+          async (item, index): Promise<VisualItemResult> => {
+            inFlightCount += 1;
+            publishProgress();
+            try {
+              const referenceImages = await collectImageReferenceDataUrls(
+                workspace,
+                item.referenceObjectIds,
+                controller.signal
+              );
+              setWorkspace((current) =>
+                markImageGenerationOperationSubmitted(current, {
+                  operationId,
+                  referenceObjectIds: item.referenceObjectIds,
+                  imagePixels: referenceImages.images.length > 0
+                })
+              );
+
+              const itemClientRequestId = `${clientRequestId}-${item.id}`;
+              const imageResponse = await fetch("/api/ai/image", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  modelId: generationSettings.modelId,
+                  prompt: item.prompt,
+                  images: referenceImages.images,
+                  aspectRatio: generationSettings.aspectRatio,
+                  sizeOption: generationSettings.sizeOption,
+                  referenceObjectIds: item.referenceObjectIds,
+                  directionObjectId: item.targetDirectionId,
+                  visualBranchId: item.visualBranchId,
+                  operationId,
+                  clientRequestId: itemClientRequestId
+                }),
+                signal: controller.signal
+              });
+              const providerTaskId = imageResponse.headers.get("X-Morpho-Provider-Task-Id") || undefined;
+              if (providerTaskId) {
+                lastProviderTaskId = providerTaskId;
+              }
+
+              if (!imageResponse.ok) {
+                throw new Error(await readErrorResponse(imageResponse));
+              }
+
+              const mimeType = imageResponse.headers.get("Content-Type") ?? "image/png";
+              const blob = await imageResponse.blob();
+              const file = new File([blob], makeGeneratedImageFileName(mimeType), { type: mimeType });
+              const saved = await saveBlobAsLocalAsset(indexedDbBlobStore, file, "aiGeneratedImage", {
+                readImageDimensions: readImageBlobDimensions
+              });
+              if (saved.status === "failed") {
+                throw new Error(saved.reason);
+              }
+
+              return {
+                status: "ok",
+                index,
+                item,
+                asset: saved.asset,
+                sourceObjectIds: referenceImages.sourceObjectIds,
+                providerTaskId
+              };
+            } catch (itemError) {
+              const itemMessage = itemError instanceof Error ? itemError.message : "图像计划项生成失败。";
+              return { status: "failed", index, item, reason: itemMessage };
+            } finally {
+              inFlightCount = Math.max(0, inFlightCount - 1);
+              completedCount += 1;
+              publishProgress();
             }
+          }
+        );
 
+        // Apply workspace mutations in plan order so placement/version bookkeeping stays deterministic.
+        for (const result of itemResults) {
+          if (result.status === "ok") {
             let createdObjectId = "";
             setWorkspace((current) => {
               const generated = createGeneratedImageFromAsset(current, {
-                asset: saved.asset,
+                asset: result.asset,
                 generation: {
                   modelId: generationSettings.modelId,
                   modelLabel: generationSettings.modelLabel,
                   aspectRatio: generationSettings.aspectRatio,
                   sizeOption: generationSettings.sizeOption,
-                  prompt: item.prompt,
-                  referenceObjectIds: item.referenceObjectIds,
-                  directionId: item.targetDirectionId,
-                  visualBranchId: item.visualBranchId,
+                  prompt: result.item.prompt,
+                  referenceObjectIds: result.item.referenceObjectIds,
+                  directionId: result.item.targetDirectionId,
+                  visualBranchId: result.item.visualBranchId,
                   operationId,
-                  clientRequestId,
-                  providerTaskId: lastProviderTaskId,
-                  title: item.title,
-                  purpose: item.purpose,
-                  role: item.role,
+                  clientRequestId: `${clientRequestId}-${result.item.id}`,
+                  providerTaskId: result.providerTaskId ?? lastProviderTaskId,
+                  title: result.item.title,
+                  purpose: result.item.purpose,
+                  role: result.item.role,
                   visualPlan: validatedPlan.plan,
                   createdAt: new Date().toISOString()
                 },
-                sourceObjectIds: referenceImages.sourceObjectIds,
-                directionObjectId: item.targetDirectionId,
-                visualBranchId: item.visualBranchId,
-                title: item.title,
-                summary: item.purpose,
-                role: item.role,
-                position: getGeneratedImagePlacement(current, item, index, visualPlacementMap.get(item.id))
+                sourceObjectIds: result.sourceObjectIds,
+                directionObjectId: result.item.targetDirectionId,
+                visualBranchId: result.item.visualBranchId,
+                title: result.item.title,
+                summary: result.item.purpose,
+                role: result.item.role,
+                position: getGeneratedImagePlacement(
+                  current,
+                  result.item,
+                  result.index,
+                  visualPlacementMap.get(result.item.id)
+                )
               });
               createdObjectId = generated.createdObjectId;
               return recordImageGenerationOperationResult(generated.workspace, {
                 operationId,
-                providerTaskId: lastProviderTaskId,
+                providerTaskId: result.providerTaskId ?? lastProviderTaskId,
                 resultObjectId: generated.createdObjectId
               });
             });
             if (createdObjectId) {
               createdObjectIds.push(createdObjectId);
-              setPendingImageGenerationSlots((current) =>
-                removePendingImageGenerationSlot(current, operationId, item.id)
-              );
             }
-          } catch (itemError) {
-            const itemMessage = itemError instanceof Error ? itemError.message : "图像计划项生成失败。";
-            failedItems.push(`${item.title}: ${itemMessage}`);
+            setPendingImageGenerationSlots((current) =>
+              removePendingImageGenerationSlot(current, operationId, result.item.id)
+            );
+          } else {
+            failedItems.push(`${result.item.title}: ${result.reason}`);
             setWorkspace((current) =>
               recordImageGenerationOperationItemFailure(current, {
                 operationId,
-                planItemId: item.id,
-                reason: itemMessage
+                planItemId: result.item.id,
+                reason: result.reason
               })
             );
-            setPendingImageGenerationSlots((current) => removePendingImageGenerationSlot(current, operationId, item.id));
+            setPendingImageGenerationSlots((current) =>
+              removePendingImageGenerationSlot(current, operationId, result.item.id)
+            );
           }
         }
 
@@ -2461,110 +2534,168 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       let lastProviderTaskId: string | undefined;
       const createdObjectIds: string[] = [];
       const failedItems: string[] = [];
+      const totalItems = validatedPlan.plan.items.length;
+      let completedCount = 0;
+      let inFlightCount = 0;
+      const publishProgress = () => {
+        setImageTaskStatus({
+          state: inFlightCount > 0 ? "submitting" : "downloading",
+          message: buildImageGenerationProgressMessage({
+            total: totalItems,
+            completed: completedCount,
+            inFlight: inFlightCount,
+            concurrency: IMAGE_GENERATION_MAX_CONCURRENCY
+          })
+        });
+      };
 
-      for (const [itemIndex, item] of validatedPlan.plan.items.entries()) {
-        try {
-          setImageTaskStatus({
-            state: "submitting",
-            message: `正在生成 ${itemIndex + 1}/${validatedPlan.plan.items.length}：${item.title}`
-          });
-
-          const referenceImages = await collectImageReferenceDataUrls(currentWorkspace, item.referenceObjectIds, input.signal);
-          currentWorkspace = markImageGenerationOperationSubmitted(currentWorkspace, {
-            operationId,
-            referenceObjectIds: item.referenceObjectIds,
-            imagePixels: referenceImages.images.length > 0
-          });
-          setWorkspace(() => currentWorkspace);
-
-          const imageResponse = await fetch("/api/ai/image", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              modelId: generationSettings.modelId,
-              prompt: item.prompt,
-              images: referenceImages.images,
-              aspectRatio: generationSettings.aspectRatio,
-              sizeOption: generationSettings.sizeOption,
-              referenceObjectIds: item.referenceObjectIds,
-              directionObjectId: item.targetDirectionId,
-              visualBranchId: item.visualBranchId,
-              operationId,
-              clientRequestId
-            }),
-            signal: input.signal
-          });
-          lastProviderTaskId = imageResponse.headers.get("X-Morpho-Provider-Task-Id") || lastProviderTaskId;
-          if (!imageResponse.ok) {
-            throw new Error(await readErrorResponse(imageResponse));
+      type AgentItemResult =
+        | {
+            status: "ok";
+            index: number;
+            item: (typeof validatedPlan.plan.items)[number];
+            asset: AssetRecord;
+            sourceObjectIds: string[];
+            providerTaskId?: string;
           }
+        | {
+            status: "failed";
+            index: number;
+            item: (typeof validatedPlan.plan.items)[number];
+            reason: string;
+          };
 
-          setImageTaskStatus({
-            state: "downloading",
-            message: `正在保存 ${itemIndex + 1}/${validatedPlan.plan.items.length}：${item.title}`
-          });
-          const mimeType = imageResponse.headers.get("Content-Type") ?? "image/png";
-          const blob = await imageResponse.blob();
-          const file = new File([blob], makeGeneratedImageFileName(mimeType), { type: mimeType });
-          const saved = await saveBlobAsLocalAsset(indexedDbBlobStore, file, "aiGeneratedImage", {
-            readImageDimensions: readImageBlobDimensions
-          });
-          if (saved.status === "failed") {
-            throw new Error(saved.reason);
+      const itemResults = await mapWithConcurrency(
+        validatedPlan.plan.items,
+        IMAGE_GENERATION_MAX_CONCURRENCY,
+        async (item, itemIndex): Promise<AgentItemResult> => {
+          inFlightCount += 1;
+          publishProgress();
+          try {
+            const referenceImages = await collectImageReferenceDataUrls(
+              currentWorkspace,
+              item.referenceObjectIds,
+              input.signal
+            );
+            // Functional update only — do not race currentWorkspace local pointer during parallel fetches.
+            setWorkspace((current) =>
+              markImageGenerationOperationSubmitted(current, {
+                operationId,
+                referenceObjectIds: item.referenceObjectIds,
+                imagePixels: referenceImages.images.length > 0
+              })
+            );
+
+            const itemClientRequestId = `${clientRequestId}-${item.id}`;
+            const imageResponse = await fetch("/api/ai/image", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                modelId: generationSettings.modelId,
+                prompt: item.prompt,
+                images: referenceImages.images,
+                aspectRatio: generationSettings.aspectRatio,
+                sizeOption: generationSettings.sizeOption,
+                referenceObjectIds: item.referenceObjectIds,
+                directionObjectId: item.targetDirectionId,
+                visualBranchId: item.visualBranchId,
+                operationId,
+                clientRequestId: itemClientRequestId
+              }),
+              signal: input.signal
+            });
+            const providerTaskId = imageResponse.headers.get("X-Morpho-Provider-Task-Id") || undefined;
+            if (providerTaskId) {
+              lastProviderTaskId = providerTaskId;
+            }
+            if (!imageResponse.ok) {
+              throw new Error(await readErrorResponse(imageResponse));
+            }
+
+            const mimeType = imageResponse.headers.get("Content-Type") ?? "image/png";
+            const blob = await imageResponse.blob();
+            const file = new File([blob], makeGeneratedImageFileName(mimeType), { type: mimeType });
+            const saved = await saveBlobAsLocalAsset(indexedDbBlobStore, file, "aiGeneratedImage", {
+              readImageDimensions: readImageBlobDimensions
+            });
+            if (saved.status === "failed") {
+              throw new Error(saved.reason);
+            }
+
+            return {
+              status: "ok",
+              index: itemIndex,
+              item,
+              asset: saved.asset,
+              sourceObjectIds: referenceImages.sourceObjectIds,
+              providerTaskId
+            };
+          } catch (itemError) {
+            const reason = itemError instanceof Error ? itemError.message : "图像生成失败";
+            return { status: "failed", index: itemIndex, item, reason };
+          } finally {
+            inFlightCount = Math.max(0, inFlightCount - 1);
+            completedCount += 1;
+            publishProgress();
           }
+        }
+      );
 
+      for (const result of itemResults) {
+        if (result.status === "ok") {
           const generated = createGeneratedImageFromAsset(currentWorkspace, {
-            asset: saved.asset,
+            asset: result.asset,
             generation: {
               modelId: generationSettings.modelId,
               modelLabel: generationSettings.modelLabel,
               aspectRatio: generationSettings.aspectRatio,
               sizeOption: generationSettings.sizeOption,
-              prompt: item.prompt,
-              referenceObjectIds: item.referenceObjectIds,
-              directionId: item.targetDirectionId,
-              visualBranchId: item.visualBranchId,
+              prompt: result.item.prompt,
+              referenceObjectIds: result.item.referenceObjectIds,
+              directionId: result.item.targetDirectionId,
+              visualBranchId: result.item.visualBranchId,
               operationId,
-              clientRequestId,
-              providerTaskId: lastProviderTaskId,
-              title: item.title,
-              purpose: item.purpose,
-              role: item.role,
+              clientRequestId: `${clientRequestId}-${result.item.id}`,
+              providerTaskId: result.providerTaskId ?? lastProviderTaskId,
+              title: result.item.title,
+              purpose: result.item.purpose,
+              role: result.item.role,
               visualPlan: validatedPlan.plan,
               createdAt: new Date().toISOString()
             },
-            sourceObjectIds: referenceImages.sourceObjectIds,
-            directionObjectId: item.targetDirectionId,
-            visualBranchId: item.visualBranchId,
-            title: item.title,
-            summary: item.purpose,
-            role: item.role,
+            sourceObjectIds: result.sourceObjectIds,
+            directionObjectId: result.item.targetDirectionId,
+            visualBranchId: result.item.visualBranchId,
+            title: result.item.title,
+            summary: result.item.purpose,
+            role: result.item.role,
             position: getGeneratedImagePlacement(
               currentWorkspace,
-              item,
-              itemIndex,
-              placementMap.get(item.id)
+              result.item,
+              result.index,
+              placementMap.get(result.item.id)
             )
           });
           currentWorkspace = recordImageGenerationOperationResult(generated.workspace, {
             operationId,
-            providerTaskId: lastProviderTaskId,
+            providerTaskId: result.providerTaskId ?? lastProviderTaskId,
             resultObjectId: generated.createdObjectId
           });
           createdObjectIds.push(generated.createdObjectId);
           setPendingImageGenerationSlots((current) =>
-            removePendingImageGenerationSlot(current, operationId, item.id)
+            removePendingImageGenerationSlot(current, operationId, result.item.id)
           );
           setWorkspace(() => currentWorkspace);
-        } catch (itemError) {
-          const reason = itemError instanceof Error ? itemError.message : "图像生成失败";
-          failedItems.push(`${item.title}: ${reason}`);
+        } else {
+          failedItems.push(`${result.item.title}: ${result.reason}`);
           currentWorkspace = recordImageGenerationOperationItemFailure(currentWorkspace, {
             operationId,
-            planItemId: item.id,
-            reason
+            planItemId: result.item.id,
+            reason: result.reason
           });
-          setPendingImageGenerationSlots((current) => removePendingImageGenerationSlot(current, operationId, item.id));
+          setPendingImageGenerationSlots((current) =>
+            removePendingImageGenerationSlot(current, operationId, result.item.id)
+          );
           setWorkspace(() => currentWorkspace);
         }
       }
