@@ -1092,7 +1092,20 @@ describe("Morpho workspace domain boundaries", () => {
                   type: "reasoning",
                   text: "检查完成。",
                   state: "done",
-                  createdAt: "2026-07-13T00:00:00.000Z"
+                  createdAt: "2026-07-13T00:00:00.000Z",
+                  attemptId: "attempt-a"
+                },
+                {
+                  id: "tool-1",
+                  type: "toolActivity",
+                  toolCallId: "tool-1",
+                  toolName: "read_selected_context",
+                  activityKind: "contextRead",
+                  label: "读取当前选择的对象",
+                  state: "done",
+                  startedAt: "2026-07-13T00:00:00.500Z",
+                  completedAt: "2026-07-13T00:00:01.000Z",
+                  source: "local"
                 }
               ]
             }
@@ -1115,7 +1128,10 @@ describe("Morpho workspace domain boundaries", () => {
       body: "完成。",
       agentTrace: {
         status: "done",
-        parts: [expect.objectContaining({ id: "reasoning-1", text: "检查完成。" })]
+        parts: [
+          expect.objectContaining({ id: "reasoning-1", text: "检查完成。", attemptId: "attempt-a" }),
+          expect.objectContaining({ id: "tool-1", source: "local", state: "done" })
+        ]
       }
     });
   });

@@ -4,6 +4,10 @@ import {
   parseOpenAiResponsesStream,
   type OpenAiCompatibleAgentStreamEvent
 } from "./openaiCompatibleResponsesStream";
+import {
+  normalizeProviderTokenUsage,
+  type NormalizedProviderTokenUsage
+} from "./providerTokenUsage";
 
 type OpenAiCompatibleProviderConfig = Pick<
   OpenAiCompatibleConfig,
@@ -66,11 +70,7 @@ export type ProviderFunctionCall = {
   argumentsText: string;
 };
 
-export type ProviderTokenUsage = {
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-};
+export type ProviderTokenUsage = NormalizedProviderTokenUsage;
 
 export type OpenAiCompatibleResponseResult = {
   responseId: string;
@@ -306,106 +306,182 @@ async function streamOpenAiCompatibleChatCompletion(
   if (!response.body || !contentType.includes("text/event-stream")) {
     const raw = (await response.json()) as RawChatCompletion;
     const result = extractChatCompletionResult(raw);
-    if (result.outputText) {
-      handlers.onTextDelta?.(result.outputText);
-    }
-    if (result.citations.length > 0) {
-      handlers.onCitations?.(result.citations);
-    }
+    emitBufferedResult(result, handlers);
     return result;
   }
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let outputText = "";
+  const textChunks: string[] = [];
   const citations: ProviderCitation[] = [];
   const toolCalls = new Map<number, ChatToolCall>();
+  const streamPartOrder: Array<{ kind: "text" } | { kind: "tool"; index: number }> = [];
+  const orderedToolIndices = new Set<number>();
+  let textOrderRegistered = false;
   let responseId = "";
   let reasoningStarted = false;
-  let reasoningPartId = "chat-reasoning";
-
-  while (true) {
-    const result = await reader.read();
-    if (result.value) {
-      buffer += decoder.decode(result.value, { stream: !result.done });
-      const parsedFrames = consumeChatCompletionSseFrames(buffer);
-      buffer = parsedFrames.remainder;
-      for (const frame of parsedFrames.frames) {
-        if (frame.done) {
-          continue;
-        }
-        const parsed = parseChatCompletionStreamData(frame.data);
-        if (!parsed) {
-          continue;
-        }
-        responseId = parsed.responseId ?? responseId;
-        if (parsed.reasoning) {
-          if (!reasoningStarted) {
-            reasoningStarted = true;
-            handlers.onEvent?.({ type: "reasoning-start", partId: reasoningPartId });
-          }
-          handlers.onEvent?.({ type: "reasoning-delta", partId: reasoningPartId, delta: parsed.reasoning });
-        }
-        if (parsed.text) {
-          outputText += parsed.text;
-          handlers.onTextDelta?.(parsed.text);
-          handlers.onEvent?.({ type: "final-delta", partId: "chat-final", delta: parsed.text });
-        }
-        if (parsed.citations.length > 0) {
-          citations.push(...parsed.citations);
-          handlers.onCitations?.(parsed.citations);
-          parsed.citations.forEach((citation) => handlers.onEvent?.({ type: "citation", citation }));
-        }
-        parsed.toolDeltas.forEach((toolDelta) => {
-          const existing = toolCalls.get(toolDelta.index);
-          toolCalls.set(toolDelta.index, {
-            id: toolDelta.id ?? existing?.id ?? `chat-call-${toolDelta.index}`,
-            type: "function",
-            function: {
-              name: toolDelta.name ?? existing?.function.name ?? "",
-              arguments: `${existing?.function.arguments ?? ""}${toolDelta.argumentsDelta ?? ""}`
-            }
-          });
-        });
-      }
-    }
-    if (result.done) {
-      break;
-    }
+  const reasoningPartId = "chat-reasoning";
+  let usage: ProviderTokenUsage | undefined;
+  let aborted = signal?.aborted === true;
+  const abortReader = () => {
+    aborted = true;
+    void reader.cancel().catch(() => undefined);
+  };
+  if (aborted) {
+    abortReader();
+  } else {
+    signal?.addEventListener("abort", abortReader, { once: true });
   }
 
-  const tailFrames = consumeChatCompletionSseFrames(`${buffer}\n\n`);
-  for (const frame of tailFrames.frames) {
-    if (frame.done) {
-      continue;
+  const consumeParsed = (parsed: NonNullable<ReturnType<typeof parseChatCompletionStreamData>>) => {
+    responseId = parsed.responseId ?? responseId;
+    if (parsed.reasoning) {
+      if (!reasoningStarted) {
+        reasoningStarted = true;
+        handlers.onEvent?.({ type: "reasoning-start", partId: reasoningPartId });
+      }
+      handlers.onEvent?.({ type: "reasoning-delta", partId: reasoningPartId, delta: parsed.reasoning });
     }
-    const parsed = parseChatCompletionStreamData(frame.data);
-    if (parsed?.text) {
-      outputText += parsed.text;
-      handlers.onTextDelta?.(parsed.text);
-      handlers.onEvent?.({ type: "final-delta", partId: "chat-final", delta: parsed.text });
+    if (parsed.text) {
+      if (!textOrderRegistered) {
+        textOrderRegistered = true;
+        streamPartOrder.push({ kind: "text" });
+      }
+      textChunks.push(parsed.text);
     }
+    if (parsed.citations.length > 0) {
+      citations.push(...parsed.citations);
+      handlers.onCitations?.(parsed.citations);
+      parsed.citations.forEach((citation) => handlers.onEvent?.({ type: "citation", citation }));
+    }
+    parsed.toolDeltas.forEach((toolDelta) => {
+      if (!orderedToolIndices.has(toolDelta.index)) {
+        orderedToolIndices.add(toolDelta.index);
+        streamPartOrder.push({ kind: "tool", index: toolDelta.index });
+      }
+      const existing = toolCalls.get(toolDelta.index);
+      toolCalls.set(toolDelta.index, {
+        id: toolDelta.id ?? existing?.id ?? `chat-call-${toolDelta.index}`,
+        type: "function",
+        function: {
+          name: toolDelta.name ?? existing?.function.name ?? "",
+          arguments: `${existing?.function.arguments ?? ""}${toolDelta.argumentsDelta ?? ""}`
+        }
+      });
+    });
+    if (parsed.usage) {
+      usage = parsed.usage;
+      handlers.onEvent?.({ type: "usage", usage });
+    }
+  };
+
+  try {
+    while (true) {
+      if (aborted) {
+        throw createAbortError();
+      }
+      const result = await reader.read();
+      if (aborted) {
+        throw createAbortError();
+      }
+      if (result.value) {
+        buffer += decoder.decode(result.value, { stream: !result.done });
+        const parsedFrames = consumeChatCompletionSseFrames(buffer);
+        buffer = parsedFrames.remainder;
+        for (const frame of parsedFrames.frames) {
+          if (frame.done) {
+            continue;
+          }
+          const parsed = parseChatCompletionStreamData(frame.data);
+          if (parsed) {
+            consumeParsed(parsed);
+          }
+        }
+      }
+      if (result.done) {
+        break;
+      }
+    }
+
+    const tailFrames = consumeChatCompletionSseFrames(`${buffer}\n\n`);
+    for (const frame of tailFrames.frames) {
+      if (frame.done) {
+        continue;
+      }
+      const parsed = parseChatCompletionStreamData(frame.data);
+      if (parsed) {
+        consumeParsed(parsed);
+      }
+    }
+  } finally {
+    signal?.removeEventListener("abort", abortReader);
+    reader.releaseLock();
   }
 
   const finalCitations = dedupeCitations(citations);
   if (reasoningStarted) {
     handlers.onEvent?.({ type: "reasoning-end", partId: reasoningPartId });
   }
-  const functionCalls = extractChatToolCalls([...toolCalls.values()]);
-  functionCalls.forEach((functionCall) => handlers.onEvent?.({ type: "function-call-ready", functionCall }));
-  handlers.onEvent?.({ type: "final-end", partId: "chat-final" });
+  const functionCallByIndex = new Map(
+    [...toolCalls.entries()].flatMap(([index, toolCall]) => {
+      const functionCall = extractChatToolCalls([toolCall])[0];
+      return functionCall ? [[index, functionCall] as const] : [];
+    })
+  );
+  const functionCalls = [...functionCallByIndex.values()];
+  const bufferedText = textChunks.join("");
+  const phase = functionCalls.length > 0 ? "commentary" : "final";
+  const partId = phase === "commentary" ? "chat-commentary" : "chat-final";
+  let textEmitted = false;
+  const emittedFunctionCallIds = new Set<string>();
+  const emitText = () => {
+    if (!bufferedText || textEmitted) {
+      return;
+    }
+    textEmitted = true;
+    handlers.onEvent?.({ type: phase === "commentary" ? "commentary-start" : "final-start", partId });
+    textChunks.forEach((delta) => {
+      handlers.onEvent?.({
+        type: phase === "commentary" ? "commentary-delta" : "final-delta",
+        partId,
+        delta
+      });
+      if (phase === "final") {
+        handlers.onTextDelta?.(delta);
+      }
+    });
+    handlers.onEvent?.({ type: phase === "commentary" ? "commentary-end" : "final-end", partId });
+  };
+  streamPartOrder.forEach((part) => {
+    if (part.kind === "text") {
+      emitText();
+      return;
+    }
+    const functionCall = functionCallByIndex.get(part.index);
+    if (functionCall) {
+      emittedFunctionCallIds.add(functionCall.callId);
+      handlers.onEvent?.({ type: "function-call-ready", functionCall });
+    }
+  });
+  emitText();
+  functionCalls.forEach((functionCall) => {
+    if (!emittedFunctionCallIds.has(functionCall.callId)) {
+      handlers.onEvent?.({ type: "function-call-ready", functionCall });
+    }
+  });
   return {
     responseId,
-    outputText: outputText.trim(),
+    outputText: phase === "final" ? bufferedText.trim() : "",
     functionCalls,
     citations: finalCitations,
     outputItems: [
-      ...(outputText.trim()
+      ...(bufferedText.trim()
         ? [
             {
               type: "message",
-              content: [{ type: "output_text", text: outputText.trim() }]
+              phase: phase === "commentary" ? "commentary" : "final_answer",
+              content: [{ type: "output_text", text: bufferedText.trim() }]
             }
           ]
         : []),
@@ -417,7 +493,8 @@ async function streamOpenAiCompatibleChatCompletion(
         arguments: call.argumentsText
       }))
     ],
-    webSearchCallCount: 0
+    webSearchCallCount: 0,
+    ...(usage ? { usage } : {})
   };
 }
 
@@ -477,6 +554,7 @@ function parseChatCompletionStreamData(value: string):
       reasoning: string;
       citations: ProviderCitation[];
       toolDeltas: Array<{ index: number; id?: string; name?: string; argumentsDelta?: string }>;
+      usage?: ProviderTokenUsage;
     }
   | undefined {
   let parsed: unknown;
@@ -526,7 +604,11 @@ function parseChatCompletionStreamData(value: string):
     text,
     reasoning,
     citations: extractCitations(parsed),
-    toolDeltas
+    toolDeltas,
+    usage: normalizeProviderTokenUsage(parsed.usage, {
+      input: "prompt_tokens",
+      output: "completion_tokens"
+    })
   };
 }
 
@@ -557,7 +639,10 @@ function shouldFallbackToChatCompletions(status: number, diagnostic: string | un
 }
 
 function resultFromRawResponse(raw: RawResponse): OpenAiCompatibleResponseResult {
-  const usage = extractTokenUsage(raw.usage, "input_tokens", "output_tokens");
+  const usage = normalizeProviderTokenUsage(raw.usage, {
+    input: "input_tokens",
+    output: "output_tokens"
+  });
   return {
     responseId: typeof raw.id === "string" ? raw.id : "",
     outputText: extractOutputText(raw.output),
@@ -580,11 +665,34 @@ function isRawChatCompletion(value: RawResponse | RawChatCompletion): value is R
 }
 
 function emitBufferedResult(result: OpenAiCompatibleResponseResult, handlers: OpenAiCompatibleStreamHandlers): void {
-  if (result.outputText) {
-    handlers.onTextDelta?.(result.outputText);
+  const hasFunctionCalls = result.functionCalls.length > 0;
+  for (const [index, item] of result.outputItems.entries()) {
+    if (item.type === "message") {
+      const text = extractOutputTextFromMessageItem(item);
+      if (!text) {
+        continue;
+      }
+      const phase = item.phase === "commentary" || (!item.phase && hasFunctionCalls) ? "commentary" : "final";
+      const partId = typeof item.id === "string" ? item.id : `buffered-message-${index}`;
+      handlers.onEvent?.({ type: phase === "commentary" ? "commentary-start" : "final-start", partId });
+      handlers.onEvent?.({ type: phase === "commentary" ? "commentary-delta" : "final-delta", partId, delta: text });
+      handlers.onEvent?.({ type: phase === "commentary" ? "commentary-end" : "final-end", partId });
+      if (phase === "final") {
+        handlers.onTextDelta?.(text);
+      }
+    } else if (item.type === "function_call") {
+      const functionCall = extractFunctionCalls([item])[0];
+      if (functionCall) {
+        handlers.onEvent?.({ type: "function-call-ready", functionCall });
+      }
+    }
   }
   if (result.citations.length > 0) {
     handlers.onCitations?.(result.citations);
+    result.citations.forEach((citation) => handlers.onEvent?.({ type: "citation", citation }));
+  }
+  if (result.usage) {
+    handlers.onEvent?.({ type: "usage", usage: result.usage });
   }
 }
 
@@ -690,12 +798,17 @@ function extractChatCompletionResult(raw: RawChatCompletion): OpenAiCompatibleRe
   const message = raw.choices?.[0]?.message;
   const content = typeof message?.content === "string" ? message.content : "";
   const functionCalls = extractChatToolCalls(message?.tool_calls);
+  const phase = functionCalls.length > 0 ? "commentary" : "final";
   const outputItems: AgentOutputItem[] = [];
-  const usage = extractTokenUsage(raw.usage, "prompt_tokens", "completion_tokens");
+  const usage = normalizeProviderTokenUsage(raw.usage, {
+    input: "prompt_tokens",
+    output: "completion_tokens"
+  });
 
   if (content.trim()) {
     outputItems.push({
       type: "message",
+      phase: phase === "commentary" ? "commentary" : "final_answer",
       content: [
         {
           type: "output_text",
@@ -717,40 +830,13 @@ function extractChatCompletionResult(raw: RawChatCompletion): OpenAiCompatibleRe
 
   return {
     responseId: typeof raw.id === "string" ? raw.id : "",
-    outputText: content.trim(),
+    outputText: phase === "final" ? content.trim() : "",
     functionCalls,
     citations: extractCitations(raw),
     outputItems,
     webSearchCallCount: 0,
     ...(usage ? { usage } : {})
   };
-}
-
-function extractTokenUsage(
-  value: unknown,
-  inputField: "input_tokens" | "prompt_tokens",
-  outputField: "output_tokens" | "completion_tokens"
-): ProviderTokenUsage | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const inputTokens = nonNegativeInteger(value[inputField]);
-  const outputTokens = nonNegativeInteger(value[outputField]);
-  const totalTokens = nonNegativeInteger(value.total_tokens);
-  if (inputTokens === undefined || outputTokens === undefined) {
-    return undefined;
-  }
-
-  return {
-    inputTokens,
-    outputTokens,
-    totalTokens: totalTokens ?? inputTokens + outputTokens
-  };
-}
-
-function nonNegativeInteger(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
 function extractChatToolCalls(value: unknown): ProviderFunctionCall[] {
@@ -834,9 +920,13 @@ function extractOutputText(output: unknown[] | undefined): string {
     return "";
   }
 
+  const hasFunctionCall = output.some((item) => isRecord(item) && item.type === "function_call");
   const parts: string[] = [];
   for (const item of output) {
     if (!isRecord(item) || item.type !== "message" || !Array.isArray(item.content)) {
+      continue;
+    }
+    if (item.phase === "commentary" || (item.phase !== "final_answer" && hasFunctionCall)) {
       continue;
     }
 
@@ -961,6 +1051,10 @@ function domainFromUrl(url: string): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function createAbortError(): DOMException {
+  return new DOMException("The provider stream was aborted.", "AbortError");
 }
 
 function isContextLimitDiagnostic(diagnostic: string | undefined): boolean {

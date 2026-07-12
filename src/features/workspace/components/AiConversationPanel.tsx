@@ -1,11 +1,9 @@
 ﻿"use client";
 
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
-import { Brain, ChevronDown, ChevronLeft, FileText, ImageIcon, Search, Send, Square, Wrench } from "lucide-react";
+import { ChevronDown, ChevronLeft, Send, Square } from "lucide-react";
 
 import type {
-  AgentMessagePart,
-  AgentTrace,
   AiMessage,
   ComparisonAnalysis,
   ComparisonSourceRef,
@@ -39,6 +37,7 @@ import type {
   RequestConfirmationArgs
 } from "../morphoAgent";
 import type { ProviderCitation } from "@/server/ai/types";
+import { AgentProcessDisclosure } from "./AgentProcessDisclosure";
 
 export type PendingAiConfirmation =
   | {
@@ -526,7 +525,9 @@ export function AiConversationPanel({
 
               return (
               <div className={`ai-message ${message.role}`} key={message.id} data-message-id={message.id}>
-                {message.agentTrace ? <AgentProcessDisclosure trace={message.agentTrace} /> : null}
+                {message.agentTrace ? (
+                  <AgentProcessDisclosure trace={message.agentTrace} renderText={renderAgentProcessText} />
+                ) : null}
                 {message.agentTrace ? (
                   message.body.trim() ? <MarkdownContent body={getVisibleAiMessageBody(message.body)} /> : null
                 ) : isPlaceholderThinking ? (
@@ -948,124 +949,8 @@ function ThinkingIndicator() {
   );
 }
 
-function AgentProcessDisclosure({ trace }: { trace: AgentTrace }) {
-  const isStreaming = trace.status === "streaming";
-  const [isOpen, setIsOpen] = useState(isStreaming);
-  const manuallyToggledRef = useRef(false);
-  const closeTimerRef = useRef<number | null>(null);
-  const hasVisibleParts = trace.parts.some((part) => {
-    if (part.type === "toolActivity") {
-      return true;
-    }
-    return part.text.trim().length > 0;
-  });
-
-  useEffect(() => {
-    if (closeTimerRef.current !== null) {
-      window.clearTimeout(closeTimerRef.current);
-      closeTimerRef.current = null;
-    }
-    if (isStreaming) {
-      if (!manuallyToggledRef.current) {
-        setIsOpen(true);
-      }
-      return;
-    }
-    if (!manuallyToggledRef.current) {
-      closeTimerRef.current = window.setTimeout(() => setIsOpen(false), 800);
-    }
-    return () => {
-      if (closeTimerRef.current !== null) {
-        window.clearTimeout(closeTimerRef.current);
-      }
-    };
-  }, [isStreaming]);
-
-  if (!isStreaming && !hasVisibleParts) {
-    return null;
-  }
-
-  const title = getAgentTraceTitle(trace, isStreaming);
-  return (
-    <section className={`agent-process ${isStreaming ? "is-streaming" : ""}`} aria-label="Agent 过程">
-      <button
-        className="agent-process-trigger"
-        type="button"
-        aria-expanded={isOpen}
-        onClick={() => {
-          manuallyToggledRef.current = true;
-          setIsOpen((open) => !open);
-        }}
-      >
-        <Brain size={14} aria-hidden="true" />
-        <span className={isStreaming ? "agent-process-title is-shimmer" : "agent-process-title"}>{title}</span>
-        <ChevronDown className={isOpen ? "is-open" : ""} size={15} aria-hidden="true" />
-      </button>
-      {isOpen && hasVisibleParts ? (
-        <div className="agent-process-parts">
-          {trace.parts.map((part) => (
-            <AgentProcessPart key={part.id} part={part} />
-          ))}
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function AgentProcessPart({ part }: { part: AgentMessagePart }) {
-  if (part.type === "toolActivity") {
-    return (
-      <div className={`agent-process-activity ${part.state === "running" ? "is-running" : ""} ${part.state === "failed" ? "is-failed" : ""}`}>
-        <AgentActivityIcon kind={part.activityKind} />
-        <span>{part.label}</span>
-        {part.detail ? <small>{part.detail}</small> : null}
-      </div>
-    );
-  }
-
-  if (!part.text.trim()) {
-    return null;
-  }
-
-  return (
-    <div className={`agent-process-text agent-process-${part.type}`}>
-      <MarkdownContent body={part.text} />
-    </div>
-  );
-}
-
-function AgentActivityIcon({ kind }: { kind: Extract<AgentMessagePart, { type: "toolActivity" }>["activityKind"] }) {
-  if (kind === "webSearch") {
-    return <Search size={14} aria-hidden="true" />;
-  }
-  if (kind === "fileRead" || kind === "contextRead") {
-    return <FileText size={14} aria-hidden="true" />;
-  }
-  if (kind === "imageGeneration") {
-    return <ImageIcon size={14} aria-hidden="true" />;
-  }
-  return <Wrench size={14} aria-hidden="true" />;
-}
-
-function getAgentTraceTitle(trace: AgentTrace, isStreaming: boolean): string {
-  if (isStreaming) {
-    return trace.parts.some((part) => part.type === "toolActivity") ? "处理中…" : "思考中…";
-  }
-  const startedAt = Date.parse(trace.startedAt);
-  const completedAt = Date.parse(trace.completedAt ?? trace.startedAt);
-  const durationSeconds = Math.max(0, Math.round((completedAt - startedAt) / 1000));
-  const duration = formatAgentTraceDuration(durationSeconds);
-  const hasThought = trace.parts.some((part) => part.type === "reasoning" || part.type === "commentary");
-  return `${hasThought ? "思考了" : "处理了"} ${duration}`;
-}
-
-function formatAgentTraceDuration(totalSeconds: number): string {
-  if (totalSeconds < 60) {
-    return `${totalSeconds}s`;
-  }
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+function renderAgentProcessText(text: string): ReactNode {
+  return <MarkdownContent body={text} />;
 }
 
 function ProposalChatNote({ proposal }: { proposal: ArtifactProposal }) {

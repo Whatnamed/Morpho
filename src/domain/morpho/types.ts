@@ -654,6 +654,7 @@ export type AgentReasoningPart = {
   text: string;
   state: "streaming" | "done";
   createdAt: string;
+  attemptId?: string;
 };
 
 export type AgentCommentaryPart = {
@@ -662,6 +663,7 @@ export type AgentCommentaryPart = {
   text: string;
   state: "streaming" | "done";
   createdAt: string;
+  attemptId?: string;
 };
 
 export type AgentToolActivityPart = {
@@ -675,6 +677,8 @@ export type AgentToolActivityPart = {
   state: "running" | "done" | "failed";
   startedAt: string;
   completedAt?: string;
+  source?: "provider" | "local";
+  attemptId?: string;
 };
 
 export type AgentMessagePart = AgentReasoningPart | AgentCommentaryPart | AgentToolActivityPart;

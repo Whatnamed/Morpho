@@ -30,6 +30,11 @@ export type AgentContextExecutionResult<T> = {
   };
 };
 
+export type AgentContextExecutionAttempt = {
+  index: 0 | 1;
+  kind: "initial" | "contextRetry";
+};
+
 type AgentContextCompactionMode = "prepare" | "compact" | "emergency";
 
 const IMAGE_INPUT_TOKEN_RESERVE = 8_192;
@@ -111,15 +116,17 @@ export async function executeAgentRequestWithContextBudget<T>(
   options: {
     limits: AgentContextLimits;
     baselineInputTokens?: number;
-    execute: (request: OpenAiCompatibleResponseRequest) => Promise<T>;
+    execute: (request: OpenAiCompatibleResponseRequest, attempt: AgentContextExecutionAttempt) => Promise<T>;
+    onRetry?: (attempt: { failed: AgentContextExecutionAttempt; next: AgentContextExecutionAttempt }) => void;
   }
 ): Promise<AgentContextExecutionResult<T>> {
   const prepared = prepareAgentContextRequest(request, {
     limits: options.limits,
     baselineInputTokens: options.baselineInputTokens
   });
+  const initialAttempt: AgentContextExecutionAttempt = { index: 0, kind: "initial" };
   try {
-    const result = await options.execute(prepared.request);
+    const result = await options.execute(prepared.request, initialAttempt);
     return {
       result,
       context: {
@@ -141,7 +148,9 @@ export async function executeAgentRequestWithContextBudget<T>(
       baselineInputTokens: options.baselineInputTokens,
       force: "emergency"
     });
-    const result = await options.execute(emergency.request);
+    const retryAttempt: AgentContextExecutionAttempt = { index: 1, kind: "contextRetry" };
+    options.onRetry?.({ failed: initialAttempt, next: retryAttempt });
+    const result = await options.execute(emergency.request, retryAttempt);
     return {
       result,
       context: {

@@ -21,6 +21,7 @@ export type AgentStreamUsage = {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  reasoningTokens?: number;
 };
 
 export type AgentStreamContext = {
@@ -60,25 +61,36 @@ export type AgentRouteStreamEvent =
   | {
       type: "turn-start";
       agentTurnId?: string;
+      attemptId?: string;
       startedAt: string;
+    }
+  | {
+      type: "turn-attempt-reset";
+      attemptId: string;
+      nextAttemptId: string;
+      message: string;
     }
   | {
       type: "reasoning-start" | "reasoning-end";
       partId: string;
+      attemptId?: string;
     }
   | {
       type: "reasoning-delta";
       partId: string;
       delta: string;
+      attemptId?: string;
     }
   | {
       type: "commentary-start" | "commentary-end" | "final-start" | "final-end";
       partId: string;
+      attemptId?: string;
     }
   | {
       type: "commentary-delta" | "final-delta";
       partId: string;
       delta: string;
+      attemptId?: string;
     }
   | {
       type: "provider-tool-start" | "provider-tool-update" | "provider-tool-end";
@@ -88,18 +100,22 @@ export type AgentRouteStreamEvent =
       label: string;
       detail?: string;
       state?: "done" | "failed";
+      attemptId?: string;
     }
   | {
       type: "function-call-ready";
       functionCall: AgentStreamFunctionCall;
+      attemptId?: string;
     }
   | {
       type: "citation";
       citation: AgentStreamCitation;
+      attemptId?: string;
     }
   | {
       type: "usage";
       usage: AgentStreamUsage;
+      attemptId?: string;
     }
   | {
       type: "context";
@@ -111,11 +127,13 @@ export type AgentRouteStreamEvent =
   | {
       type: "turn-complete";
       result: AgentStreamResult;
+      attemptId?: string;
     }
   | {
       type: "turn-error";
       error: string;
       code?: "context_limit" | "interrupted";
+      attemptId?: string;
     };
 
 export function encodeAgentRouteSse(event: AgentRouteStreamEvent): Uint8Array {
@@ -132,15 +150,27 @@ export async function readAgentRouteSse(
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let aborted = options.signal?.aborted === true;
+  const abortReader = () => {
+    aborted = true;
+    void reader.cancel().catch(() => undefined);
+  };
+  if (aborted) {
+    abortReader();
+  } else {
+    options.signal?.addEventListener("abort", abortReader, { once: true });
+  }
 
   try {
     while (true) {
-      if (options.signal?.aborted) {
-        await reader.cancel();
+      if (aborted) {
         throw createAbortError();
       }
 
       const next = await reader.read();
+      if (aborted) {
+        throw createAbortError();
+      }
       if (next.value) {
         buffer += decoder.decode(next.value, { stream: !next.done });
         const parsed = consumeSseFrames(buffer);
@@ -165,6 +195,7 @@ export async function readAgentRouteSse(
       }
     }
   } finally {
+    options.signal?.removeEventListener("abort", abortReader);
     reader.releaseLock();
   }
 }
@@ -238,8 +269,38 @@ function decodeAgentRouteEvent(value: string): AgentRouteStreamEvent | undefined
 }
 
 function isAgentRouteStreamEvent(value: unknown): value is AgentRouteStreamEvent {
-  return typeof value === "object" && value !== null && "type" in value && typeof value.type === "string";
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    typeof value.type === "string" &&
+    AGENT_ROUTE_EVENT_TYPES.has(value.type)
+  );
 }
+
+const AGENT_ROUTE_EVENT_TYPES = new Set<string>([
+  "turn-start",
+  "turn-attempt-reset",
+  "reasoning-start",
+  "reasoning-end",
+  "reasoning-delta",
+  "commentary-start",
+  "commentary-end",
+  "final-start",
+  "final-end",
+  "commentary-delta",
+  "final-delta",
+  "provider-tool-start",
+  "provider-tool-update",
+  "provider-tool-end",
+  "function-call-ready",
+  "citation",
+  "usage",
+  "context",
+  "heartbeat",
+  "turn-complete",
+  "turn-error"
+]);
 
 function createAbortError(): DOMException {
   return new DOMException("The stream was aborted.", "AbortError");

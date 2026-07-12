@@ -4,6 +4,7 @@ import { loadOpenAiCompatibleConfig } from "@/server/ai/openaiCompatibleConfig";
 import {
   OpenAiCompatibleProviderError,
   streamOpenAiCompatibleResponse,
+  type OpenAiCompatibleAgentStreamEvent,
   type OpenAiCompatibleResponseRequest
 } from "@/server/ai/openaiCompatibleProvider";
 import { executeAgentRequestWithContextBudget } from "@/server/ai/agentContextBudget";
@@ -37,7 +38,27 @@ export async function POST(request: Request) {
   }
 
   const providerRequest = filterAgentRequestForConfig(validated.value, config.config);
+  const providerAbortController = new AbortController();
+  const attemptIds = [`provider-attempt-${crypto.randomUUID()}`, `provider-attempt-${crypto.randomUUID()}`] as const;
+  let activeAttemptIndex: 0 | 1 = 0;
   let streamClosed = false;
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
+  const cleanup = () => {
+    if (heartbeat) {
+      clearInterval(heartbeat);
+      heartbeat = undefined;
+    }
+    request.signal.removeEventListener("abort", abortFromRequest);
+  };
+  const abortFromRequest = () => {
+    cleanup();
+    providerAbortController.abort(request.signal.reason);
+  };
+  if (request.signal.aborted) {
+    abortFromRequest();
+  } else {
+    request.signal.addEventListener("abort", abortFromRequest, { once: true });
+  }
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const enqueue = (event: AgentRouteStreamEvent) => {
@@ -50,11 +71,12 @@ export async function POST(request: Request) {
           streamClosed = true;
         }
       };
-      const heartbeat = setInterval(() => enqueue({ type: "heartbeat" }), 12_000);
+      heartbeat = setInterval(() => enqueue({ type: "heartbeat" }), 12_000);
       void (async () => {
         enqueue({
           type: "turn-start",
           ...(validated.agentTurnId ? { agentTurnId: validated.agentTurnId } : {}),
+          attemptId: attemptIds[0],
           startedAt: new Date().toISOString()
         });
         try {
@@ -66,8 +88,10 @@ export async function POST(request: Request) {
               targetTokens: config.config.contextTargetTokens
             },
             baselineInputTokens: validated.contextBudgetBaselineTokens,
-            execute: (preparedRequest) =>
-              streamOpenAiCompatibleResponse(
+            execute: (preparedRequest, attempt) => {
+              activeAttemptIndex = attempt.index;
+              const attemptId = attemptIds[attempt.index];
+              return streamOpenAiCompatibleResponse(
                 config.config,
                 preparedRequest,
                 {
@@ -75,24 +99,36 @@ export async function POST(request: Request) {
                     if (event.type === "unknown") {
                       return;
                     }
-                    enqueue(event);
+                    enqueue(addProviderAttemptId(event, attemptId));
                   }
                 },
-                request.signal
-              )
+                providerAbortController.signal
+              );
+            },
+            onRetry: ({ failed, next }) => {
+              activeAttemptIndex = next.index;
+              enqueue({
+                type: "turn-attempt-reset",
+                attemptId: attemptIds[failed.index],
+                nextAttemptId: attemptIds[next.index],
+                message: "正在重新整理当前语境"
+              });
+            }
           });
+          const completedAttemptId = attemptIds[execution.context.retried ? 1 : 0];
           enqueue({ type: "context", context: execution.context });
           enqueue({
             type: "turn-complete",
+            attemptId: completedAttemptId,
             result: {
               ...execution.result,
               context: execution.context
             }
           });
         } catch (error) {
-          enqueue(providerErrorEvent(error));
+          enqueue({ ...providerErrorEvent(error), attemptId: attemptIds[activeAttemptIndex] });
         } finally {
-          clearInterval(heartbeat);
+          cleanup();
           if (!streamClosed) {
             try {
               controller.close();
@@ -104,8 +140,9 @@ export async function POST(request: Request) {
       })();
     },
     cancel() {
-      // The Request signal reaches the provider fetch and terminates the active stream.
       streamClosed = true;
+      cleanup();
+      providerAbortController.abort(new DOMException("The Agent stream consumer cancelled the response.", "AbortError"));
     }
   });
 
@@ -118,6 +155,13 @@ export async function POST(request: Request) {
       "X-Accel-Buffering": "no"
     }
   });
+}
+
+function addProviderAttemptId(
+  event: Exclude<OpenAiCompatibleAgentStreamEvent, { type: "unknown" }>,
+  attemptId: string
+): AgentRouteStreamEvent {
+  return { ...event, attemptId };
 }
 
 function providerErrorEvent(error: unknown): Extract<AgentRouteStreamEvent, { type: "turn-error" }> {

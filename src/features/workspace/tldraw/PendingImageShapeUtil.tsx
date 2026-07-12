@@ -155,7 +155,7 @@ type PendingSlotEditor = {
   createShapes: (partials: TLShapePartial[]) => unknown;
   updateShapes: (partials: TLShapePartial[]) => unknown;
   deleteShapes: (ids: TLShape["id"][]) => unknown;
-  run: (fn: () => void, opts?: { history: "ignore" }) => unknown;
+  run: (fn: () => void, opts?: { history: "ignore"; ignoreShapeLock?: boolean }) => unknown;
 };
 
 export function syncPendingImageSlotsToEditor(
@@ -215,5 +215,5 @@ export function syncPendingImageSlotsToEditor(
     if (toDelete.length > 0) {
       editor.deleteShapes(toDelete);
     }
-  }, runOptions);
+  }, { ...runOptions, ignoreShapeLock: true });
 }

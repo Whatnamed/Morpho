@@ -281,6 +281,46 @@ describe("visual generation plan parsing and validation", () => {
     expect(result.status === "ok" ? result.plan.items : []).toHaveLength(1);
   });
 
+  it("preserves every requested visual development item in a validated Agent batch", () => {
+    const workspace = createInitialWorkspace();
+    const result = validateVisualGenerationPlan(workspace, {
+      plan: {
+        kind: "visualDevelopment",
+        items: [
+          {
+            id: "item-a",
+            targetDirectionId: "direction-soft-rail",
+            title: "Integrated version A",
+            purpose: "Continue the selected image",
+            prompt: "Keep the proportions and make the connection more integrated.",
+            referenceObjectIds: ["image-soft-rail-v2"],
+            role: "conceptImage"
+          },
+          {
+            id: "item-b",
+            targetDirectionId: "direction-soft-rail",
+            title: "Integrated version B",
+            purpose: "Compare a second controlled variation",
+            prompt: "Keep the proportions and make a second integrated variation.",
+            referenceObjectIds: ["image-soft-rail-v2"],
+            role: "conceptImage"
+          }
+        ]
+      },
+      allowedObjectIds: ["image-soft-rail-v2", "direction-soft-rail"],
+      selectedDirectionIds: ["direction-soft-rail"],
+      selectedImageIds: ["image-soft-rail-v2"],
+      requestedPreviewCount: 2
+    });
+
+    expect(result).toMatchObject({
+      status: "ok",
+      plan: {
+        items: [{ id: "item-a" }, { id: "item-b" }]
+      }
+    });
+  });
+
   it("drops fabricated visual branch ids from visual development plans", () => {
     const workspace = createInitialWorkspace();
     const result = validateVisualGenerationPlan(workspace, {

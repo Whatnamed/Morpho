@@ -50,6 +50,115 @@ describe("OpenAI-compatible Responses SSE parser", () => {
     expect(result.outputText).toContain("protocol probe complete");
   });
 
+  it("buffers a message without phase and classifies it as commentary when a function call follows", async () => {
+    const events: Array<{ type: string; delta?: string }> = [];
+    const result = await parseOpenAiResponsesStream(
+      responseFrames([
+        {
+          type: "response.output_item.added",
+          item: { id: "message-1", type: "message", role: "assistant", content: [] }
+        },
+        { type: "response.output_text.delta", item_id: "message-1", delta: "我先读取当前选择。" },
+        { type: "response.output_text.done", item_id: "message-1", text: "我先读取当前选择。" },
+        {
+          type: "response.output_item.done",
+          item: {
+            id: "message-1",
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: "我先读取当前选择。" }]
+          }
+        },
+        {
+          type: "response.output_item.added",
+          item: {
+            id: "function-1",
+            type: "function_call",
+            call_id: "call-1",
+            name: "read_selected_context",
+            arguments: "{}"
+          }
+        },
+        {
+          type: "response.output_item.done",
+          item: {
+            id: "function-1",
+            type: "function_call",
+            call_id: "call-1",
+            name: "read_selected_context",
+            arguments: "{}"
+          }
+        },
+        {
+          type: "response.completed",
+          response: {
+            id: "response-1",
+            usage: { input_tokens: 10, output_tokens: 4, total_tokens: 14 }
+          }
+        }
+      ]),
+      { onEvent: (event) => events.push(event) }
+    );
+
+    expect(events.map((event) => event.type)).toContain("commentary-start");
+    expect(events.map((event) => event.type)).not.toContain("final-start");
+    expect(events.filter((event) => event.type === "commentary-delta")).toEqual([
+      expect.objectContaining({ delta: "我先读取当前选择。" })
+    ]);
+    expect(result.outputText).toBe("");
+    expect(result.functionCalls).toHaveLength(1);
+  });
+
+  it("buffers a message without phase and classifies it as final when no function call follows", async () => {
+    const eventTypes: string[] = [];
+    const result = await parseOpenAiResponsesStream(
+      responseFrames([
+        {
+          type: "response.output_item.added",
+          item: { id: "message-1", type: "message", role: "assistant", content: [] }
+        },
+        { type: "response.output_text.delta", item_id: "message-1", delta: "这是最终答复。" },
+        {
+          type: "response.output_item.done",
+          item: {
+            id: "message-1",
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: "这是最终答复。" }]
+          }
+        },
+        {
+          type: "response.completed",
+          response: { id: "response-1", usage: { input_tokens: 8, output_tokens: 3, total_tokens: 11 } }
+        }
+      ]),
+      { onEvent: (event) => eventTypes.push(event.type) }
+    );
+
+    expect(eventTypes).toContain("final-start");
+    expect(eventTypes).not.toContain("commentary-start");
+    expect(result.outputText).toBe("这是最终答复。");
+  });
+
+  it("derives input usage and preserves reasoning-token details from the real provider fixture", async () => {
+    const events: Array<{ type: string; usage?: { inputTokens: number; reasoningTokens?: number } }> = [];
+    const result = await parseOpenAiResponsesStream(
+      streamFixture("responses-reasoning-tool-stream.ndjson", [2, 17, 5]),
+      { onEvent: (event) => events.push(event) }
+    );
+
+    expect(result.usage).toEqual({
+      inputTokens: 4472,
+      outputTokens: 42,
+      totalTokens: 4514,
+      reasoningTokens: 18
+    });
+    expect(events.find((event) => event.type === "usage")?.usage).toMatchObject({
+      inputTokens: 4472,
+      reasoningTokens: 18
+    });
+  });
+
   it("accepts CRLF, multiline data, unknown events, and [DONE]", async () => {
     const frame = [
       ": heartbeat\r\n",
@@ -110,4 +219,8 @@ function streamFromString(value: string, chunkSizes = [value.length]): ReadableS
       controller.close();
     }
   });
+}
+
+function responseFrames(events: Array<Record<string, unknown>>): ReadableStream<Uint8Array> {
+  return streamFromString(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), [3, 11, 2]);
 }

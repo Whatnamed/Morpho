@@ -1,27 +1,108 @@
 import type { AgentActivityKind } from "@/domain/morpho/types";
 import type { MorphoAgentToolArguments } from "./morphoAgent";
 
-export function getAgentToolActivityPresentation(
-  toolName: MorphoAgentToolArguments["name"]
-): { activityKind: AgentActivityKind; label: string } {
-  switch (toolName) {
-    case "read_selected_context":
-      return { activityKind: "contextRead", label: "读取当前选择的对象" };
-    case "search_web_evidence":
-      return { activityKind: "webSearch", label: "搜索并检查相关资料" };
-    case "create_research_analysis":
-      return { activityKind: "analysis", label: "整理研究与分析" };
-    case "create_design_definition_proposal":
-      return { activityKind: "proposal", label: "形成设计定义草案" };
-    case "create_concept_direction_proposal":
-      return { activityKind: "proposal", label: "形成概念方向草案" };
-    case "revise_selected_proposal_draft":
-      return { activityKind: "workspaceWrite", label: "更新当前草案" };
-    case "generate_visuals":
-      return { activityKind: "imageGeneration", label: "生成视觉方向" };
-    case "create_comparison_analysis":
-      return { activityKind: "comparison", label: "比较所选对象" };
-    case "request_confirmation":
-      return { activityKind: "confirmation", label: "准备操作确认" };
+export type AgentToolActivityDescriptor = {
+  activityKind: AgentActivityKind;
+  label: string;
+  detail?: string;
+};
+
+type AgentToolActivityContext = {
+  workspace?: {
+    artifactProposals: Record<string, { title: string } | undefined>;
+  };
+  selectedObjects?: Array<{ id: string; title: string }>;
+};
+
+export function buildAgentToolActivityDescriptor(
+  tool: MorphoAgentToolArguments,
+  context: AgentToolActivityContext = {}
+): AgentToolActivityDescriptor {
+  switch (tool.name) {
+    case "read_selected_context": {
+      const count = context.selectedObjects?.length ?? 0;
+      return {
+        activityKind: "contextRead",
+        label: count > 0 ? `读取当前选择的 ${count} 个对象` : "读取当前选择的对象"
+      };
+    }
+    case "search_web_evidence": {
+      const reason = cleanActivityText(tool.args.reason);
+      const query = cleanActivityText(tool.args.queries[0]);
+      return {
+        activityKind: "webSearch",
+        label: reason ?? (query ? `搜索 ${query}` : "搜索并检查相关资料"),
+        detail: reason && query ? query : undefined
+      };
+    }
+    case "create_research_analysis": {
+      const title = cleanActivityText(tool.args.title);
+      const findingCount = tool.args.findings.length;
+      return {
+        activityKind: "analysis",
+        label: title ? `整理「${title}」研究与分析` : "整理研究与分析",
+        detail: findingCount > 0 ? `${findingCount} 项发现` : undefined
+      };
+    }
+    case "create_design_definition_proposal": {
+      const title = cleanActivityText(tool.args.title);
+      return { activityKind: "proposal", label: title ? `形成「${title}」设计定义草案` : "形成设计定义草案" };
+    }
+    case "create_concept_direction_proposal": {
+      const title = cleanActivityText(tool.args.title);
+      const directionCount = tool.args.directions.length;
+      return {
+        activityKind: "proposal",
+        label: title ? `形成「${title}」概念方向草案` : "形成概念方向草案",
+        detail: directionCount > 0 ? `${directionCount} 个方向` : undefined
+      };
+    }
+    case "revise_selected_proposal_draft": {
+      const title = cleanActivityText(
+        context.workspace?.artifactProposals[tool.args.proposalId]?.title ?? tool.args.title
+      );
+      return { activityKind: "workspaceWrite", label: title ? `更新「${title}」方案草稿` : "更新当前方案草稿" };
+    }
+    case "generate_visuals": {
+      const count = tool.args.items.length;
+      return {
+        activityKind: "imageGeneration",
+        label: count > 0 ? `生成 ${count} 张视觉方向` : "生成视觉方向"
+      };
+    }
+    case "create_comparison_analysis": {
+      const count = context.selectedObjects?.length ?? tool.args.objectComparisons.length;
+      return {
+        activityKind: "comparison",
+        label: count > 0 ? `比较当前选择的 ${count} 个对象` : "比较所选对象"
+      };
+    }
+    case "request_confirmation": {
+      const reason = cleanActivityText(tool.args.reason);
+      return { activityKind: "confirmation", label: reason ?? "准备操作确认" };
+    }
   }
+}
+
+export function sanitizeAgentActivityDetail(value: string | undefined): string | undefined {
+  if (value && /(?:stack trace|traceback|<!doctype|<html)/i.test(value)) {
+    return undefined;
+  }
+  const cleaned = cleanActivityText(value, 160);
+  if (!cleaned || /^(?:\{|\[)/.test(cleaned)) {
+    return undefined;
+  }
+  return cleaned;
+}
+
+function cleanActivityText(value: string | undefined, maxLength = 72): string | undefined {
+  const cleaned = value
+    ?.replace(/<[^>]*>/g, " ")
+    .replace(/[A-Za-z]:\\[^\s]+/g, "相关资料")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned || /^(?:\{|\[)/.test(cleaned)) {
+    return undefined;
+  }
+  return cleaned.slice(0, maxLength);
 }

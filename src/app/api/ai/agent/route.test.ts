@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "./route";
 import { filterAgentRequestForConfig } from "@/server/ai/agentRoute";
 import type { OpenAiCompatibleResponseRequest } from "@/server/ai/openaiCompatibleProvider";
+import { readAgentRouteSse, type AgentRouteStreamEvent } from "@/shared/agentStreamProtocol";
 
 vi.mock("@/server/ai/openaiCompatibleConfig", () => ({
   loadOpenAiCompatibleConfig: () => ({
@@ -195,11 +196,20 @@ describe("agent route stream", () => {
 
   it("emergency-compacts and retries a context-limit stream without client tool replay", async () => {
     const { OpenAiCompatibleProviderError } = await import("@/server/ai/openaiCompatibleProvider");
-    streamOpenAiCompatibleResponseMock
-      .mockRejectedValueOnce(
-        new OpenAiCompatibleProviderError(400, '{"error":{"code":"context_length_exceeded"}}')
-      )
-      .mockResolvedValueOnce({
+    let attempt = 0;
+    streamOpenAiCompatibleResponseMock.mockImplementation(
+      async (_config: unknown, _request: unknown, handlers: { onEvent?: (event: unknown) => void }) => {
+        attempt += 1;
+        if (attempt === 1) {
+          handlers.onEvent?.({ type: "reasoning-start", partId: "reasoning-old" });
+          handlers.onEvent?.({ type: "reasoning-delta", partId: "reasoning-old", delta: "半截推理" });
+          handlers.onEvent?.({ type: "usage", usage: { inputTokens: 300_000, outputTokens: 20, totalTokens: 300_020 } });
+          throw new OpenAiCompatibleProviderError(400, '{"error":{"code":"context_length_exceeded"}}');
+        }
+        handlers.onEvent?.({ type: "reasoning-start", partId: "reasoning-new" });
+        handlers.onEvent?.({ type: "reasoning-delta", partId: "reasoning-new", delta: "正确推理" });
+        handlers.onEvent?.({ type: "usage", usage: { inputTokens: 210_000, outputTokens: 500, totalTokens: 210_500 } });
+        return {
         responseId: "resp_retry",
         outputText: "重试完成",
         functionCalls: [],
@@ -211,7 +221,9 @@ describe("agent route stream", () => {
           outputTokens: 500,
           totalTokens: 210_500
         }
-      });
+        };
+      }
+    );
 
     const response = await POST(
       agentRequest({
@@ -225,14 +237,79 @@ describe("agent route stream", () => {
         ]
       })
     );
-    const body = await response.text();
+    const events: AgentRouteStreamEvent[] = [];
+    if (!response.body) {
+      throw new Error("Expected an SSE response body.");
+    }
+    await readAgentRouteSse(response.body, { onEvent: (event) => events.push(event) });
 
-    expect(body).toContain("event: turn-complete");
-    expect(body).toContain("重试完成");
+    const start = events.find((event) => event.type === "turn-start");
+    const reset = events.find((event) => event.type === "turn-attempt-reset");
+    const complete = events.find((event) => event.type === "turn-complete");
+    const usageEvents = events.filter((event) => event.type === "usage");
+    expect(start).toMatchObject({ attemptId: expect.any(String) });
+    expect(reset).toMatchObject({
+      attemptId: start && "attemptId" in start ? start.attemptId : undefined,
+      nextAttemptId: expect.any(String),
+      message: "正在重新整理当前语境"
+    });
+    expect(reset && "nextAttemptId" in reset ? reset.nextAttemptId : undefined).not.toBe(
+      start && "attemptId" in start ? start.attemptId : undefined
+    );
+    expect(complete).toMatchObject({
+      attemptId: reset && "nextAttemptId" in reset ? reset.nextAttemptId : undefined,
+      result: expect.objectContaining({ outputText: "重试完成" })
+    });
+    expect(usageEvents).toHaveLength(2);
+    expect(usageEvents[1]).toMatchObject({
+      attemptId: reset && "nextAttemptId" in reset ? reset.nextAttemptId : undefined,
+      usage: { inputTokens: 210_000 }
+    });
     expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(2);
     const retryRequest = streamOpenAiCompatibleResponseMock.mock.calls[1]?.[1] as OpenAiCompatibleResponseRequest;
     expect(JSON.stringify(retryRequest.input)).not.toContain("旧问题");
     expect(JSON.stringify(retryRequest.input)).toContain("当前问题");
+  });
+
+  it("aborts the upstream provider signal when the response reader is cancelled", async () => {
+    let providerSignal: AbortSignal | undefined;
+    let markAborted: (() => void) | undefined;
+    const aborted = new Promise<void>((resolve) => {
+      markAborted = resolve;
+    });
+    streamOpenAiCompatibleResponseMock.mockImplementationOnce(
+      async (
+        _config: unknown,
+        _request: unknown,
+        _handlers: unknown,
+        signal: AbortSignal
+      ) => {
+        providerSignal = signal;
+        await new Promise<never>((_resolve, reject) => {
+          const onAbort = () => {
+            markAborted?.();
+            reject(new DOMException("aborted", "AbortError"));
+          };
+          if (signal.aborted) {
+            onAbort();
+          } else {
+            signal.addEventListener("abort", onAbort, { once: true });
+          }
+        });
+      }
+    );
+
+    const response = await POST(agentRequest());
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("Expected an SSE response body.");
+    }
+    await reader.read();
+    await reader.cancel();
+    await aborted;
+
+    expect(providerSignal?.aborted).toBe(true);
+    expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -793,7 +793,9 @@ describe("AiConversationPanel", () => {
     );
 
     expect(html).toContain("思考了 1m 12s");
-    expect(html).not.toContain("核对完成。");
+    expect(html).toContain('class="agent-process-collapse is-closed"');
+    expect(html).toContain('aria-hidden="true"');
+    expect(html).toContain("核对完成。");
   });
 
   it("uses the primary input action to stop an unfinished operation without adding a second stop control", () => {

@@ -3,7 +3,6 @@
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { flushSync } from "react-dom";
 
 import type {
   AiTaskMode,
@@ -290,13 +289,19 @@ import {
 } from "./morphoAgent";
 import { appendAgentTurnMessages } from "./agentTurnMessages";
 import {
-  applyAgentStreamEventToTrace,
+  applyAgentStreamEventsToTrace,
   completeAgentTrace,
   createAgentTrace,
   finishLocalAgentToolActivity,
   startLocalAgentToolActivity
 } from "./agentMessageTrace";
-import { getAgentToolActivityPresentation } from "./agentToolActivity";
+import { buildAgentToolActivityDescriptor, sanitizeAgentActivityDetail } from "./agentToolActivity";
+import {
+  consumeAgentTurnStream,
+  createAgentAttemptGuard,
+  createAgentStreamEventBatcher
+} from "./agentStreamClient";
+import { commitWorkspaceStateNow } from "./workspaceCommitBoundary";
 import {
   AGENT_TURN_EMERGENCY_DURATION_MS,
   AGENT_TURN_EMERGENCY_MODEL_TURN_CEILING,
@@ -307,7 +312,6 @@ import {
   webSearchSourcesToCitations,
   wouldExceedAutoImageTurnLimit
 } from "./agentTurnLimits";
-import { readAgentRouteSse, type AgentRouteStreamEvent } from "@/shared/agentStreamProtocol";
 import type { CanvasImportRequest, FocusArea } from "./tldraw/MorphoCanvas";
 import type { CanvasSelectionRequest } from "./tldraw/canvasSelection";
 
@@ -429,25 +433,28 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [activeDeliverySectionId, setActiveDeliverySectionId] = useState<string | null>(null);
   const [pendingDeliveryDraftTarget, setPendingDeliveryDraftTarget] = useState<{ deliveryObjectId: string; sectionId: string } | null>(null);
   const commitWorkspaceNow = useCallback(
-    <T,>(transform: (current: MorphoWorkspace) => { workspace: MorphoWorkspace; value: T }): T => {
-      let committed: { workspace: MorphoWorkspace; value: T } | undefined;
-      flushSync(() => {
-        setWorkspace((current) => {
-          committed = transform(current);
-          return committed.workspace;
-        });
-      });
-      if (!committed) {
-        throw new Error("Workspace update did not commit.");
-      }
-      return committed.value;
-    },
+    <T,>(transform: (current: MorphoWorkspace) => { workspace: MorphoWorkspace; value: T }): T =>
+      commitWorkspaceStateNow(setWorkspace, transform),
     [setWorkspace]
+  );
+  const readWorkspaceNow = useCallback(
+    () => commitWorkspaceNow((current) => ({ workspace: current, value: current })),
+    [commitWorkspaceNow]
   );
   const assetUrls = useWorkspaceAssetUrls(workspace.assets);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const agentStreamFlushRef = useRef<(() => void) | null>(null);
   const objectOperationUndoStackRef = useRef<ObjectOperationUndoEntry[]>([]);
   const detailNavigationUndoStackRef = useRef<DetailNavigationSnapshot[]>([]);
+  useEffect(
+    () => () => {
+      agentStreamFlushRef.current?.();
+      agentStreamFlushRef.current = null;
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+    },
+    []
+  );
   const latestCanvasViewRef = useRef<CanvasView>(workspace.canvas.view);
   const selectionHydratedProjectIdRef = useRef<string | null>(null);
   const [focusRequest, setFocusRequest] = useState<FocusRequest>({ nonce: 0 });
@@ -2501,16 +2508,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       requestedPreviewCount?: 1 | 2 | 4 | 6;
       signal: AbortSignal;
     }) => {
-      const requestedPreviewCount =
+      const requestedGenerationCount =
         input.plan.kind === "directionPreview"
           ? input.requestedPreviewCount ?? 1
-          : undefined;
+          : input.plan.items.length;
       const validatedPlan = validateVisualGenerationPlan(input.workspaceSnapshot, {
         plan: input.plan,
         allowedObjectIds: input.sourceObjectIds,
         selectedDirectionIds: input.selectedDirectionIds,
         selectedImageIds: input.selectedImageIds,
-        requestedPreviewCount
+        requestedPreviewCount: requestedGenerationCount
       });
       if (validatedPlan.status === "blocked") {
         throw new Error(validatedPlan.reason);
@@ -2534,7 +2541,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           aspectRatio: generationSettings.aspectRatio,
           sizeOption: generationSettings.sizeOption,
           referenceObjectIds: input.sourceObjectIds,
-          requestedPreviewCount
+          requestedPreviewCount: input.plan.kind === "directionPreview" ? requestedGenerationCount : undefined
         });
         const workspaceWithPlan = recordImageGenerationPlan(operationCreated.workspace, {
           operationId,
@@ -2676,84 +2683,122 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         );
       };
 
-      await mapWithConcurrency(
-        validatedPlan.plan.items,
-        IMAGE_GENERATION_MAX_CONCURRENCY,
-        async (item, itemIndex): Promise<AgentItemResult> => {
-          inFlightCount += 1;
-          publishProgress();
-          try {
-            const referenceImages = await collectImageReferenceDataUrls(
-              workspaceAtPlanCommit,
-              item.referenceObjectIds,
-              input.signal
-            );
-            setWorkspace((current) =>
-              markImageGenerationOperationSubmitted(current, {
-                operationId,
-                referenceObjectIds: item.referenceObjectIds,
-                imagePixels: referenceImages.images.length > 0
-              })
-            );
-
-            const itemClientRequestId = `${clientRequestId}-${item.id}`;
-            const imageResponse = await fetch("/api/ai/image", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                modelId: generationSettings.modelId,
-                prompt: item.prompt,
-                images: referenceImages.images,
-                aspectRatio: generationSettings.aspectRatio,
-                sizeOption: generationSettings.sizeOption,
-                referenceObjectIds: item.referenceObjectIds,
-                directionObjectId: item.targetDirectionId,
-                visualBranchId: item.visualBranchId,
-                operationId,
-                clientRequestId: itemClientRequestId
-              }),
-              signal: input.signal
-            });
-            const providerTaskId = imageResponse.headers.get("X-Morpho-Provider-Task-Id") || undefined;
-            if (providerTaskId) {
-              lastProviderTaskId = providerTaskId;
-            }
-            if (!imageResponse.ok) {
-              throw new Error(await readErrorResponse(imageResponse));
-            }
-
-            const mimeType = imageResponse.headers.get("Content-Type") ?? "image/png";
-            const blob = await imageResponse.blob();
-            const file = new File([blob], makeGeneratedImageFileName(mimeType), { type: mimeType });
-            const saved = await saveBlobAsLocalAsset(indexedDbBlobStore, file, "aiGeneratedImage", {
-              readImageDimensions: readImageBlobDimensions
-            });
-            if (saved.status === "failed") {
-              throw new Error(saved.reason);
-            }
-
-            return {
-              status: "ok",
-              index: itemIndex,
-              item,
-              asset: saved.asset,
-              sourceObjectIds: referenceImages.sourceObjectIds,
-              providerTaskId
-            };
-          } catch (itemError) {
-            const reason = itemError instanceof Error ? itemError.message : "图像生成失败";
-            return { status: "failed", index: itemIndex, item, reason };
-          } finally {
-            inFlightCount = Math.max(0, inFlightCount - 1);
-            completedCount += 1;
+      try {
+        await mapWithConcurrency(
+          validatedPlan.plan.items,
+          IMAGE_GENERATION_MAX_CONCURRENCY,
+          async (item, itemIndex): Promise<AgentItemResult> => {
+            inFlightCount += 1;
             publishProgress();
-          }
-        },
-        { onSettled: applyAgentItemResult }
-      );
+            try {
+              const referenceImages = await collectImageReferenceDataUrls(
+                workspaceAtPlanCommit,
+                item.referenceObjectIds,
+                input.signal
+              );
+              setWorkspace((current) =>
+                markImageGenerationOperationSubmitted(current, {
+                  operationId,
+                  referenceObjectIds: item.referenceObjectIds,
+                  imagePixels: referenceImages.images.length > 0
+                })
+              );
+
+              const itemClientRequestId = `${clientRequestId}-${item.id}`;
+              const imageResponse = await fetch("/api/ai/image", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  modelId: generationSettings.modelId,
+                  prompt: item.prompt,
+                  images: referenceImages.images,
+                  aspectRatio: generationSettings.aspectRatio,
+                  sizeOption: generationSettings.sizeOption,
+                  referenceObjectIds: item.referenceObjectIds,
+                  directionObjectId: item.targetDirectionId,
+                  visualBranchId: item.visualBranchId,
+                  operationId,
+                  clientRequestId: itemClientRequestId
+                }),
+                signal: input.signal
+              });
+              const providerTaskId = imageResponse.headers.get("X-Morpho-Provider-Task-Id") || undefined;
+              if (providerTaskId) {
+                lastProviderTaskId = providerTaskId;
+              }
+              if (!imageResponse.ok) {
+                throw new Error(await readErrorResponse(imageResponse));
+              }
+
+              const mimeType = imageResponse.headers.get("Content-Type") ?? "image/png";
+              const blob = await imageResponse.blob();
+              const file = new File([blob], makeGeneratedImageFileName(mimeType), { type: mimeType });
+              const saved = await saveBlobAsLocalAsset(indexedDbBlobStore, file, "aiGeneratedImage", {
+                readImageDimensions: readImageBlobDimensions
+              });
+              if (saved.status === "failed") {
+                throw new Error(saved.reason);
+              }
+
+              return {
+                status: "ok",
+                index: itemIndex,
+                item,
+                asset: saved.asset,
+                sourceObjectIds: referenceImages.sourceObjectIds,
+                providerTaskId
+              };
+            } catch (itemError) {
+              if (itemError instanceof DOMException && itemError.name === "AbortError") {
+                throw itemError;
+              }
+              const reason = itemError instanceof Error ? itemError.message : "图像生成失败";
+              return { status: "failed", index: itemIndex, item, reason };
+            } finally {
+              inFlightCount = Math.max(0, inFlightCount - 1);
+              completedCount += 1;
+              publishProgress();
+            }
+          },
+          { onSettled: applyAgentItemResult }
+        );
+      } catch (error) {
+        const isCancelled = error instanceof DOMException && error.name === "AbortError";
+        const reason = isCancelled
+          ? "图像任务已取消。原输入、来源对象和已有结果已保留。"
+          : error instanceof Error
+            ? error.message
+            : "图像任务失败。";
+        commitWorkspaceNow((current) => {
+          const failed = failImageGenerationOperation(current, {
+            operationId,
+            status: isCancelled ? "cancelled" : "failed",
+            reason,
+            providerTaskId: lastProviderTaskId
+          });
+          return { workspace: failed, value: undefined };
+        });
+        setImageTaskStatus({ state: isCancelled ? "cancelled" : "failed", message: reason });
+        throw error;
+      } finally {
+        setPendingImageGenerationSlots((current) =>
+          current.filter((slot) => slot.operationId !== operationId)
+        );
+      }
 
       if (createdObjectIds.length === 0) {
-        throw new Error(failedItems[0] ?? "所有图像计划项都生成失败了。");
+        const reason = failedItems[0] ?? "所有图像计划项都生成失败了。";
+        commitWorkspaceNow((current) => {
+          const failed = failImageGenerationOperation(current, {
+            operationId,
+            status: "failed",
+            reason,
+            providerTaskId: lastProviderTaskId
+          });
+          return { workspace: failed, value: undefined };
+        });
+        setImageTaskStatus({ state: "failed", message: reason });
+        throw new Error(reason);
       }
 
       const lastCreatedObjectId = createdObjectIds.at(-1) ?? createdObjectIds[0];
@@ -2822,31 +2867,35 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       const userMessageId = `ai-user-compact-${Date.now()}`;
       const assistantMessageId = `ai-assistant-compact-${Date.now()}`;
       const controller = new AbortController();
-      let currentWorkspace = appendAgentTurnMessages(workspace, {
-        userMessageId,
-        assistantMessageId,
-        userBody: draft,
-        assistantBody: getManualCompactionStatusText("running"),
-        createdAt: now,
-        contextObjectIds: context.objectIds,
-        conversationLaneKey,
-        workIntent: "discussion"
-      });
 
       setAiDraft("");
       setAiOpen(true);
       setIsAiStreaming(true);
       abortControllerRef.current = controller;
-      setWorkspace(() => currentWorkspace);
+      commitWorkspaceNow((current) => {
+        const next = appendAgentTurnMessages(current, {
+          userMessageId,
+          assistantMessageId,
+          userBody: draft,
+          assistantBody: getManualCompactionStatusText("running"),
+          createdAt: now,
+          contextObjectIds: context.objectIds,
+          conversationLaneKey,
+          workIntent: "discussion"
+        });
+        return { workspace: next, value: undefined };
+      });
 
       if (compactionPlan.sourceMessageIds.length < 2) {
-        currentWorkspace = updateAiMessage(
-          currentWorkspace,
-          assistantMessageId,
-          getManualCompactionStatusText("notNeeded"),
-          "done"
-        );
-        setWorkspace(() => currentWorkspace);
+        commitWorkspaceNow((current) => {
+          const next = updateAiMessage(
+            current,
+            assistantMessageId,
+            getManualCompactionStatusText("notNeeded"),
+            "done"
+          );
+          return { workspace: next, value: undefined };
+        });
         abortControllerRef.current = null;
         setIsAiStreaming(false);
         return;
@@ -2874,10 +2923,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               }),
               signal: controller.signal
             });
-            if (!response.ok) {
-              throw new Error(await readErrorResponse(response));
-            }
-            const result = (await response.json()) as AgentRouteResult;
+            const result = await consumeAgentTurnStream(response, { signal: controller.signal });
             const parsedCheckpoint = parseConversationCheckpointPayload(result.outputText);
             if (parsedCheckpoint.status !== "ok") {
               throw new Error("模型没有返回可用的讨论摘要。");
@@ -2889,64 +2935,74 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           }
         });
         if (compactionExecution.status !== "completed") {
-          currentWorkspace = updateAiMessage(
-            currentWorkspace,
-            assistantMessageId,
-            getManualCompactionStatusText("failed"),
-            "failed"
-          );
-          setWorkspace(() => currentWorkspace);
+          commitWorkspaceNow((current) => {
+            const next = updateAiMessage(
+              current,
+              assistantMessageId,
+              getManualCompactionStatusText("failed"),
+              "failed"
+            );
+            return { workspace: next, value: undefined };
+          });
           setShowFailure(true);
           return;
         }
 
-        currentWorkspace = updateAiMessage(
-          currentWorkspace,
-          assistantMessageId,
-          getManualCompactionStatusText("completed"),
-          "done"
-        );
-        const checkpointResult = applyAgentConversationCheckpointFromReply(currentWorkspace, {
-          laneKey: conversationLaneKey,
-          currentFocus: currentWorkspace.projectContinuity.currentFocus,
-          taskKind: context.kind,
-          anchorObjectIds: conversationLaneAnchors.anchorObjectIds,
-          targetDirectionIds: conversationLaneAnchors.targetDirectionIds,
-          visualBranchId: conversationLaneAnchors.visualBranchId,
-          assistantMessageId,
-          replyText: compactionExecution.rawReply,
-          requested: true,
-          hasPendingProposal: Boolean(activeProposal),
-          now: new Date().toISOString()
+        const checkpointApplied = commitWorkspaceNow((current) => {
+          const completed = updateAiMessage(
+            current,
+            assistantMessageId,
+            getManualCompactionStatusText("completed"),
+            "done"
+          );
+          const checkpointResult = applyAgentConversationCheckpointFromReply(completed, {
+            laneKey: conversationLaneKey,
+            currentFocus: completed.projectContinuity.currentFocus,
+            taskKind: context.kind,
+            anchorObjectIds: conversationLaneAnchors.anchorObjectIds,
+            targetDirectionIds: conversationLaneAnchors.targetDirectionIds,
+            visualBranchId: conversationLaneAnchors.visualBranchId,
+            assistantMessageId,
+            replyText: compactionExecution.rawReply,
+            requested: true,
+            hasPendingProposal: Boolean(activeProposal),
+            now: new Date().toISOString()
+          });
+          const next =
+            checkpointResult.status === "applied"
+              ? checkpointResult.workspace
+              : updateAiMessage(
+                  completed,
+                  assistantMessageId,
+                  getManualCompactionStatusText("failed"),
+                  "failed"
+                );
+          return { workspace: next, value: checkpointResult.status === "applied" };
         });
-        currentWorkspace =
-          checkpointResult.status === "applied"
-            ? checkpointResult.workspace
-            : updateAiMessage(
-                currentWorkspace,
-                assistantMessageId,
-                getManualCompactionStatusText("failed"),
-                "failed"
-              );
-        setWorkspace(() => currentWorkspace);
-        if (checkpointResult.status !== "applied") {
+        if (!checkpointApplied) {
           setShowFailure(true);
         }
       } catch (error) {
         const isCancelled = error instanceof DOMException && error.name === "AbortError";
-        currentWorkspace = updateAiMessage(
-          currentWorkspace,
-          assistantMessageId,
-          isCancelled ? "上下文压缩已取消。" : getManualCompactionStatusText("failed"),
-          isCancelled ? "done" : "failed"
-        );
-        setWorkspace(() => currentWorkspace);
+        commitWorkspaceNow((current) => {
+          const next = updateAiMessage(
+            current,
+            assistantMessageId,
+            isCancelled ? "上下文压缩已取消。" : getManualCompactionStatusText("failed"),
+            isCancelled ? "done" : "failed"
+          );
+          return { workspace: next, value: undefined };
+        });
         if (!isCancelled) {
           setShowFailure(true);
         }
       } finally {
-        abortControllerRef.current = null;
-        setIsAiStreaming(false);
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null;
+          setIsAiStreaming(false);
+        } else if (abortControllerRef.current === null) {
+          setIsAiStreaming(false);
+        }
       }
       return;
     }
@@ -3045,18 +3101,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       ...createAgentTrace(now),
       agentTurnId
     };
-    let currentWorkspace = appendAgentTurnMessages(workspace, {
-      userMessageId,
-      assistantMessageId,
-      userBody: draft,
-      assistantBody: "",
-      createdAt: now,
-      contextObjectIds: context.objectIds,
-      conversationLaneKey,
-      workIntent: "discussion",
-      agentTrace: initialAgentTrace
+    const workspaceAtAgentStart = commitWorkspaceNow((current) => {
+      const next = appendAgentTurnMessages(current, {
+        userMessageId,
+        assistantMessageId,
+        userBody: draft,
+        assistantBody: "",
+        createdAt: now,
+        contextObjectIds: context.objectIds,
+        conversationLaneKey,
+        workIntent: "discussion",
+        agentTrace: initialAgentTrace
+      });
+      return { workspace: next, value: next };
     });
-    setWorkspace(() => currentWorkspace);
     let conversationInput: Array<unknown> = [
       {
         role: "system",
@@ -3065,7 +3123,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             type: "input_text",
             text: buildMorphoAgentSystemPrompt({
               mode: agentTurnMode,
-              workspace: currentWorkspace,
+              workspace: workspaceAtAgentStart,
               selectedObjects,
               context,
               providerTaskContext,
@@ -3097,6 +3155,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     let latestProviderResponseId: string | undefined;
     const agentTurnStartedAt = Date.now();
     let emergencyGuardTriggered = false;
+    let requestSequence = 0;
+    const streamedFinalTextByAttempt = new Map<string, string>();
 
     async function requestAgentTurn(
       input: Array<unknown>,
@@ -3115,60 +3175,96 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }),
         signal: controller.signal
       });
-
-      if (!response.ok || !response.body) {
-        throw new Error(await readErrorResponse(response));
-      }
-
-      let completeResult: AgentRouteResult | undefined;
-      let streamError: string | undefined;
-      let streamCancelled = false;
-      let streamText = "";
-      await readAgentRouteSse(response.body, {
-        signal: controller.signal,
-        onEvent: (event) => {
-          if (event.type === "turn-complete") {
-            completeResult = event.result;
-            return;
-          }
-          if (event.type === "turn-error") {
-            streamError = event.error;
-            streamCancelled = event.code === "interrupted";
-            return;
-          }
-          if (event.type === "usage") {
-            contextBudgetBaselineTokens = Math.max(contextBudgetBaselineTokens, event.usage.inputTokens);
-            return;
-          }
-          if (event.type === "context") {
-            checkpointRequested = checkpointRequested || event.context.checkpointRequested;
-            if (
-              event.context.pressure === "compact" ||
-              (event.context.pressure === "prepare" && contextRuntime.highestPressure === "normal")
-            ) {
-              contextRuntime.highestPressure = event.context.pressure;
+      const attemptGuard = createAgentAttemptGuard();
+      const requestStreamKey = `legacy-${requestSequence++}`;
+      let activeAttemptInputTokens = 0;
+      const batcher = createAgentStreamEventBatcher({
+        onFlush: (events) => {
+          const nowIso = new Date().toISOString();
+          const bodyChanged = events.some(
+            (event) => event.type === "final-delta" || event.type === "turn-attempt-reset"
+          );
+          commitWorkspaceNow((current) => {
+            const message = current.ai.messages.find((candidate) => candidate.id === assistantMessageId);
+            if (!message) {
+              return { workspace: current, value: undefined };
             }
-            return;
-          }
-          if (event.type === "final-delta") {
-            streamText += event.delta;
-          }
-          applyAgentRouteStreamEvent(event, streamText);
+            const trace = applyAgentStreamEventsToTrace(
+              message.agentTrace ?? { ...createAgentTrace(now), agentTurnId },
+              events,
+              nowIso
+            );
+            const body = bodyChanged
+              ? sanitizeConversationAssistantStreamForDisplay([...streamedFinalTextByAttempt.values()].join(""))
+              : message.body;
+            const next = updateAiMessage(current, assistantMessageId, body, "streaming", { agentTrace: trace });
+            return { workspace: next, value: undefined };
+          });
         }
       });
-
-      if (streamError) {
-        if (streamCancelled) {
-          throw new DOMException(streamError, "AbortError");
+      const flushBatch = () => batcher.flush();
+      agentStreamFlushRef.current = flushBatch;
+      let completeResult: AgentRouteResult;
+      try {
+        completeResult = await consumeAgentTurnStream(response, {
+          signal: controller.signal,
+          onEvent: (event) => {
+            if (!attemptGuard.accept(event)) {
+              return;
+            }
+            if (event.type === "turn-attempt-reset") {
+              streamedFinalTextByAttempt.delete(event.attemptId);
+              activeAttemptInputTokens = 0;
+              batcher.push(event);
+              return;
+            }
+            if (event.type === "usage") {
+              activeAttemptInputTokens = Math.max(activeAttemptInputTokens, event.usage.inputTokens);
+              return;
+            }
+            if (event.type === "context") {
+              checkpointRequested = checkpointRequested || event.context.checkpointRequested;
+              if (
+                event.context.pressure === "compact" ||
+                (event.context.pressure === "prepare" && contextRuntime.highestPressure === "normal")
+              ) {
+                contextRuntime.highestPressure = event.context.pressure;
+              }
+              return;
+            }
+            if (event.type === "final-delta") {
+              const attemptId = event.attemptId ?? attemptGuard.getActiveAttemptId() ?? requestStreamKey;
+              streamedFinalTextByAttempt.set(
+                attemptId,
+                `${streamedFinalTextByAttempt.get(attemptId) ?? ""}${event.delta}`
+              );
+              batcher.push(event);
+              return;
+            }
+            if (
+              event.type === "reasoning-start" ||
+              event.type === "reasoning-delta" ||
+              event.type === "reasoning-end" ||
+              event.type === "commentary-start" ||
+              event.type === "commentary-delta" ||
+              event.type === "commentary-end" ||
+              event.type === "provider-tool-start" ||
+              event.type === "provider-tool-update" ||
+              event.type === "provider-tool-end"
+            ) {
+              batcher.push(event);
+            }
+          }
+        });
+      } finally {
+        batcher.flush();
+        if (agentStreamFlushRef.current === flushBatch) {
+          agentStreamFlushRef.current = null;
         }
-        throw new Error(streamError);
       }
-      if (!completeResult) {
-        throw new Error("与 AI 的流式连接意外中断，请重试。");
-      }
-
       contextBudgetBaselineTokens = Math.max(
         contextBudgetBaselineTokens,
+        activeAttemptInputTokens,
         completeResult.usage?.inputTokens ?? 0
       );
       latestProviderResponseId = completeResult.responseId || latestProviderResponseId;
@@ -3182,49 +3278,21 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return completeResult;
     }
 
-    function applyAgentRouteStreamEvent(event: AgentRouteStreamEvent, streamedFinalText: string): void {
-      if (
-        event.type === "turn-start" ||
-        event.type === "turn-complete" ||
-        event.type === "turn-error" ||
-        event.type === "usage" ||
-        event.type === "context" ||
-        event.type === "heartbeat"
-      ) {
-        return;
-      }
-      setWorkspace((current) => {
-        const message = current.ai.messages.find((candidate) => candidate.id === assistantMessageId);
-        if (!message) {
-          return current;
-        }
-        const trace = applyAgentStreamEventToTrace(
-          message.agentTrace ?? { ...createAgentTrace(now), agentTurnId },
-          event,
-          new Date().toISOString()
-        );
-        const nextBody =
-          event.type === "final-delta"
-            ? sanitizeConversationAssistantStreamForDisplay(streamedFinalText)
-            : message.body;
-        return updateAiMessage(current, assistantMessageId, nextBody, "streaming", { agentTrace: trace });
-      });
-    }
-
     try {
       while (true) {
+        assertAgentTurnActive(controller.signal);
         if (
           emergencyGuardTriggered ||
           modelTurnCount >= AGENT_TURN_EMERGENCY_MODEL_TURN_CEILING ||
           Date.now() - agentTurnStartedAt >= AGENT_TURN_EMERGENCY_DURATION_MS
         ) {
           const guardActivityId = `${agentTurnId}:emergency-final`;
-          setWorkspace((current) => {
+          commitWorkspaceNow((current) => {
             const message = current.ai.messages.find((candidate) => candidate.id === assistantMessageId);
             if (!message?.agentTrace) {
-              return current;
+              return { workspace: current, value: undefined };
             }
-            return updateAiMessage(current, assistantMessageId, message.body, "streaming", {
+            const next = updateAiMessage(current, assistantMessageId, message.body, "streaming", {
               agentTrace: startLocalAgentToolActivity(
                 message.agentTrace,
                 {
@@ -3236,6 +3304,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 new Date().toISOString()
               )
             });
+            return { workspace: next, value: undefined };
           });
           const finalization = await requestAgentTurn(
             [
@@ -3254,12 +3323,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             true
           );
           finalText = finalization.outputText.trim() || finalText || "已停止继续执行，并保留已完成结果。";
-          setWorkspace((current) => {
+          commitWorkspaceNow((current) => {
             const message = current.ai.messages.find((candidate) => candidate.id === assistantMessageId);
             if (!message?.agentTrace) {
-              return current;
+              return { workspace: current, value: undefined };
             }
-            return updateAiMessage(current, assistantMessageId, message.body, "streaming", {
+            const next = updateAiMessage(current, assistantMessageId, message.body, "streaming", {
               agentTrace: finishLocalAgentToolActivity(
                 message.agentTrace,
                 guardActivityId,
@@ -3267,6 +3336,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 new Date().toISOString()
               )
             });
+            return { workspace: next, value: undefined };
           });
           break;
         }
@@ -3321,6 +3391,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           | undefined;
 
         for (const { call, parsed } of parsedCalls) {
+          assertAgentTurnActive(controller.signal);
           const repetition = isRepeatedAgentToolCall(previousToolSignature, repeatedToolCallCount, parsed);
           previousToolSignature = repetition.signature;
           repeatedToolCallCount = repetition.repeatCount;
@@ -3328,24 +3399,29 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             emergencyGuardTriggered = true;
             break;
           }
-          const activity = getAgentToolActivityPresentation(parsed.name);
-          setWorkspace((current) => {
+          const activity = buildAgentToolActivityDescriptor(parsed, {
+            workspace: readWorkspaceNow(),
+            selectedObjects
+          });
+          commitWorkspaceNow((current) => {
             const message = current.ai.messages.find((candidate) => candidate.id === assistantMessageId);
             if (!message?.agentTrace) {
-              return current;
+              return { workspace: current, value: undefined };
             }
-            return updateAiMessage(current, assistantMessageId, message.body, "streaming", {
+            const next = updateAiMessage(current, assistantMessageId, message.body, "streaming", {
               agentTrace: startLocalAgentToolActivity(
                 message.agentTrace,
                 {
                   toolCallId: call.callId,
                   toolName: parsed.name,
                   activityKind: activity.activityKind,
-                  label: activity.label
+                  label: activity.label,
+                  detail: activity.detail
                 },
                 new Date().toISOString()
               )
             });
+            return { workspace: next, value: undefined };
           });
           if (parsed.name === "generate_visuals" && visualBatch?.status === "blocked") {
             toolOutputs.push(
@@ -3354,7 +3430,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 reason: visualBatch.reason
               })
             );
-            setWorkspace((current) => finishAgentToolActivityInWorkspace(current, assistantMessageId, call.callId, "failed"));
+            commitWorkspaceNow((current) => {
+              const next = finishAgentToolActivityInWorkspace(current, assistantMessageId, call.callId, "failed");
+              return { workspace: next, value: undefined };
+            });
             continue;
           }
           if (agentTurnMode === "confirm" && isAgentMutatingTool(parsed.name)) {
@@ -3390,7 +3469,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             );
             finalText = result.outputText.trim() || "已准备确认卡。确认前不会改变项目状态。";
             pendingAgentActionCreated = true;
-            setWorkspace((current) => finishAgentToolActivityInWorkspace(current, assistantMessageId, call.callId, "done"));
+            commitWorkspaceNow((current) => {
+              const next = finishAgentToolActivityInWorkspace(current, assistantMessageId, call.callId, "done");
+              return { workspace: next, value: undefined };
+            });
             break;
           }
           try {
@@ -3402,9 +3484,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               break;
             }
             case "revise_selected_proposal_draft": {
-              const revision = applySelectedProposalDraftRevision(currentWorkspace, selectedObjectIds, parsed.args);
-              currentWorkspace = revision.workspace;
-              setWorkspace(() => currentWorkspace);
+              const revision = commitWorkspaceNow((current) => {
+                const result = applySelectedProposalDraftRevision(current, selectedObjectIds, parsed.args);
+                return { workspace: result.workspace, value: result };
+              });
               if (revision.status === "updated") {
                 setSelectedObjectIds([revision.proposalId]);
                 setActiveProposalId(revision.proposalId);
@@ -3465,43 +3548,44 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             }
             case "create_research_analysis": {
               const args = parsed.args;
-              const operationGate = canStartOperation(currentWorkspace);
-              if (operationGate.status === "blocked") {
-                throw new Error(operationGate.reason);
-              }
-              const created = createResearchOperation(currentWorkspace, {
-                userInput: draft,
-                selectedObjectIds: context.objectIds,
-                allowWebSearch: totalWebSearchCalls > 0
+              const applied = commitWorkspaceNow((current) => {
+                const operationGate = canStartOperation(current);
+                if (operationGate.status === "blocked") {
+                  throw new Error(operationGate.reason);
+                }
+                const created = createResearchOperation(current, {
+                  userInput: draft,
+                  selectedObjectIds: context.objectIds,
+                  allowWebSearch: totalWebSearchCalls > 0
+                });
+                const proposalId = `proposal-research-${created.operation.id}-${Date.now()}`;
+                const result = applyResearchProposalWithSemanticPatch({
+                  workspace: created.workspace,
+                  proposal: {
+                    proposalId,
+                    operationId: created.operation.id,
+                    title: args.title,
+                    summary: args.summary,
+                    findings: normalizeResearchItems(args.findings),
+                    opportunities: normalizeResearchItems(args.opportunities),
+                    constraints: normalizeResearchItems(args.constraints),
+                    openQuestions: normalizeResearchItems(args.openQuestions),
+                    evidence: constrainResearchEvidence(args, context.objectIds, collectedCitations),
+                    sourceObjectIds: context.objectIds,
+                    citations: collectedCitations
+                  },
+                  position: getPlacementNearObjects(created.workspace, context.objectIds, {
+                    x: created.workspace.canvas.view.x + 220,
+                    y: created.workspace.canvas.view.y + 180
+                  }),
+                  context,
+                  draft,
+                  userMessageId,
+                  userMessageCreatedAt: now,
+                  assistantText: ""
+                });
+                return { workspace: result.workspace, value: result };
               });
-              const proposalId = `proposal-research-${created.operation.id}-${Date.now()}`;
-              const applied = applyResearchProposalWithSemanticPatch({
-                workspace: created.workspace,
-                proposal: {
-                  proposalId,
-                  operationId: created.operation.id,
-                  title: args.title,
-                  summary: args.summary,
-                  findings: normalizeResearchItems(args.findings),
-                  opportunities: normalizeResearchItems(args.opportunities),
-                  constraints: normalizeResearchItems(args.constraints),
-                  openQuestions: normalizeResearchItems(args.openQuestions),
-                  evidence: constrainResearchEvidence(args, context.objectIds, collectedCitations),
-                  sourceObjectIds: context.objectIds,
-                  citations: collectedCitations
-                },
-                position: getPlacementNearObjects(created.workspace, context.objectIds, {
-                  x: created.workspace.canvas.view.x + 220,
-                  y: created.workspace.canvas.view.y + 180
-                }),
-                context,
-                draft,
-                userMessageId,
-                userMessageCreatedAt: now,
-                assistantText: ""
-              });
-              currentWorkspace = applied.workspace;
-              setWorkspace(() => currentWorkspace);
               if (applied.status === "updated") {
                 setSelectedObjectIds([applied.researchObjectId]);
                 setFocusRequest((current) => ({ objectId: applied.researchObjectId, nonce: current.nonce + 1 }));
@@ -3517,49 +3601,55 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             }
             case "create_design_definition_proposal": {
               const args = parsed.args;
-              const operationGate = canStartOperation(currentWorkspace);
-              if (operationGate.status === "blocked") {
-                throw new Error(operationGate.reason);
-              }
-              const operationId = `operation-designDefinition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-              const created = createArtifactProposalOperation(currentWorkspace, {
-                operationId,
-                type: "designDefinition",
-                userInput: draft,
-                selectedObjectIds: context.objectIds,
-                workIntent: "createDesignDefinition"
-              });
-              const basedOnDefinitionId = currentWorkspace.workingState.currentDesignDefinitionId;
-              const basedOnDefinitionObject = basedOnDefinitionId ? currentWorkspace.objects[basedOnDefinitionId] : undefined;
-              const proposalPlacement = getProposalPlacement(created.workspace, context.objectIds, "definition");
-              const recordedProposalIds: string[] = [];
-              currentWorkspace = created.workspace;
-              for (const [proposalIndex, proposalDraft] of getDesignDefinitionDrafts(args).entries()) {
-                const recorded = recordDesignDefinitionProposal(currentWorkspace, {
+              const recordedProposalIds = commitWorkspaceNow((current) => {
+                const operationGate = canStartOperation(current);
+                if (operationGate.status === "blocked") {
+                  throw new Error(operationGate.reason);
+                }
+                const operationId = `operation-designDefinition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                const created = createArtifactProposalOperation(current, {
                   operationId,
-                  workIntent: "createDesignDefinition",
-                  title: proposalDraft.title,
-                  summary: proposalDraft.summary,
-                  projectGoal: proposalDraft.projectGoal,
-                  targetUsers: proposalDraft.targetUsers,
-                  primaryScenarios: proposalDraft.primaryScenarios,
-                  coreProblem: proposalDraft.coreProblem,
-                  designPrinciples: proposalDraft.designPrinciples,
-                  constraints: normalizeResearchItems(proposalDraft.constraints),
-                  avoidDirections: proposalDraft.avoidDirections,
-                  opportunities: normalizeResearchItems(proposalDraft.opportunities),
-                  openQuestions: normalizeResearchItems(proposalDraft.openQuestions),
-                  changeNote: proposalDraft.changeNote,
-                  sourceObjectIds: context.objectIds,
-                  citations: collectedCitations,
-                  basedOnDesignDefinitionId: basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.id : undefined,
-                  basedOnRevisionId: basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.currentRevisionId : undefined,
-                  position: getSiblingProposalPlacement(proposalPlacement, proposalIndex)
+                  type: "designDefinition",
+                  userInput: draft,
+                  selectedObjectIds: context.objectIds,
+                  workIntent: "createDesignDefinition"
                 });
-                currentWorkspace = recorded.workspace;
-                recordedProposalIds.push(recorded.proposal.id);
-              }
-              setWorkspace(() => currentWorkspace);
+                const basedOnDefinitionId = current.workingState.currentDesignDefinitionId;
+                const basedOnDefinitionObject = basedOnDefinitionId ? current.objects[basedOnDefinitionId] : undefined;
+                const proposalPlacement = getProposalPlacement(created.workspace, context.objectIds, "definition");
+                const proposalIds: string[] = [];
+                let nextWorkspace = created.workspace;
+                for (const [proposalIndex, proposalDraft] of getDesignDefinitionDrafts(args).entries()) {
+                  const recorded = recordDesignDefinitionProposal(nextWorkspace, {
+                    operationId,
+                    workIntent: "createDesignDefinition",
+                    title: proposalDraft.title,
+                    summary: proposalDraft.summary,
+                    projectGoal: proposalDraft.projectGoal,
+                    targetUsers: proposalDraft.targetUsers,
+                    primaryScenarios: proposalDraft.primaryScenarios,
+                    coreProblem: proposalDraft.coreProblem,
+                    designPrinciples: proposalDraft.designPrinciples,
+                    constraints: normalizeResearchItems(proposalDraft.constraints),
+                    avoidDirections: proposalDraft.avoidDirections,
+                    opportunities: normalizeResearchItems(proposalDraft.opportunities),
+                    openQuestions: normalizeResearchItems(proposalDraft.openQuestions),
+                    changeNote: proposalDraft.changeNote,
+                    sourceObjectIds: context.objectIds,
+                    citations: collectedCitations,
+                    basedOnDesignDefinitionId:
+                      basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.id : undefined,
+                    basedOnRevisionId:
+                      basedOnDefinitionObject?.type === "designDefinition"
+                        ? basedOnDefinitionObject.currentRevisionId
+                        : undefined,
+                    position: getSiblingProposalPlacement(proposalPlacement, proposalIndex)
+                  });
+                  nextWorkspace = recorded.workspace;
+                  proposalIds.push(recorded.proposal.id);
+                }
+                return { workspace: nextWorkspace, value: proposalIds };
+              });
               toolOutputs.push(
                 buildToolResultOutput(call.callId, {
                   status: "created",
@@ -3571,34 +3661,39 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             }
             case "create_concept_direction_proposal": {
               const args = parsed.args;
-              const operationGate = canStartOperation(currentWorkspace);
-              if (operationGate.status === "blocked") {
-                throw new Error(operationGate.reason);
-              }
-              const operationId = `operation-conceptDirection-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-              const created = createArtifactProposalOperation(currentWorkspace, {
-                operationId,
-                type: "conceptDirection",
-                userInput: draft,
-                selectedObjectIds: context.objectIds,
-                workIntent: "createConceptDirections"
+              const placed = commitWorkspaceNow((current) => {
+                const operationGate = canStartOperation(current);
+                if (operationGate.status === "blocked") {
+                  throw new Error(operationGate.reason);
+                }
+                const operationId = `operation-conceptDirection-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                const created = createArtifactProposalOperation(current, {
+                  operationId,
+                  type: "conceptDirection",
+                  userInput: draft,
+                  selectedObjectIds: context.objectIds,
+                  workIntent: "createConceptDirections"
+                });
+                const basedOnDefinitionId = current.workingState.currentDesignDefinitionId;
+                const basedOnDefinitionObject = basedOnDefinitionId ? current.objects[basedOnDefinitionId] : undefined;
+                const result = recordAndApplyConceptDirectionProposal(created.workspace, {
+                  operationId,
+                  workIntent: "createConceptDirections",
+                  title: args.title,
+                  summary: args.summary,
+                  directions: args.directions,
+                  sourceObjectIds: context.objectIds,
+                  citations: collectedCitations,
+                  basedOnDesignDefinitionId:
+                    basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.id : undefined,
+                  basedOnRevisionId:
+                    basedOnDefinitionObject?.type === "designDefinition"
+                      ? basedOnDefinitionObject.currentRevisionId
+                      : undefined,
+                  position: getProposalPlacement(created.workspace, context.objectIds, "direction")
+                });
+                return { workspace: result.workspace, value: result };
               });
-              const basedOnDefinitionId = currentWorkspace.workingState.currentDesignDefinitionId;
-              const basedOnDefinitionObject = basedOnDefinitionId ? currentWorkspace.objects[basedOnDefinitionId] : undefined;
-              const placed = recordAndApplyConceptDirectionProposal(created.workspace, {
-                operationId,
-                workIntent: "createConceptDirections",
-                title: args.title,
-                summary: args.summary,
-                directions: args.directions,
-                sourceObjectIds: context.objectIds,
-                citations: collectedCitations,
-                basedOnDesignDefinitionId: basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.id : undefined,
-                basedOnRevisionId: basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.currentRevisionId : undefined,
-                position: getProposalPlacement(created.workspace, context.objectIds, "direction")
-              });
-              currentWorkspace = placed.workspace;
-              setWorkspace(() => currentWorkspace);
               if (placed.status === "updated") {
                 setSelectedObjectIds(placed.directions.map((direction) => direction.id));
                 if (placed.directions[0]) {
@@ -3659,7 +3754,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               }
               totalAutoGeneratedImageItems += args.items.length;
               const generationResult = await executeAgentVisualGenerationPlan({
-                workspaceSnapshot: currentWorkspace,
+                workspaceSnapshot: readWorkspaceNow(),
                 draft,
                 plan: args,
                 sourceObjectIds: context.objectIds,
@@ -3670,7 +3765,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 requestedPreviewCount: visualBatch.expected.requestedPreviewCount,
                 signal: controller.signal
               });
-              currentWorkspace = generationResult.workspace;
               executedVisualBatch = generationResult;
               toolOutputs.push(
                 buildToolResultOutput(call.callId, {
@@ -3683,36 +3777,40 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             }
             case "create_comparison_analysis": {
               const args = parsed.args;
-              const authorizationResult = buildComparisonAuthorization({
-                workspace: currentWorkspace,
-                selectedObjectIds,
-                userMessageId,
-                assistantMessageId,
-                createdAt: now,
-                comparisonGoal: args.comparisonGoal,
-                imageAttachmentObjectIds: attachmentResult.entries
-                  .filter((entry) => entry.status === "ready")
-                  .map((entry) => entry.objectId),
-                documentExtractObjectIds: documentResult.extracts.map((extract) => extract.objectId),
-                documentFragmentExtractObjectIds: context.documentFragmentExtracts.map((fragment) => fragment.objectId)
+              const analysisId = commitWorkspaceNow((current) => {
+                const authorizationResult = buildComparisonAuthorization({
+                  workspace: current,
+                  selectedObjectIds,
+                  userMessageId,
+                  assistantMessageId,
+                  createdAt: now,
+                  comparisonGoal: args.comparisonGoal,
+                  imageAttachmentObjectIds: attachmentResult.entries
+                    .filter((entry) => entry.status === "ready")
+                    .map((entry) => entry.objectId),
+                  documentExtractObjectIds: documentResult.extracts.map((extract) => extract.objectId),
+                  documentFragmentExtractObjectIds: context.documentFragmentExtracts.map(
+                    (fragment) => fragment.objectId
+                  )
+                });
+                if (!("authorization" in authorizationResult)) {
+                  throw new Error(
+                    authorizationResult.status === "blocked"
+                      ? authorizationResult.reason
+                      : "Compare authorization was not created."
+                  );
+                }
+                const validation = validateComparisonAnalysis(args, authorizationResult.authorization);
+                if (validation.status !== "ok") {
+                  throw new Error(validation.reason);
+                }
+                const next = applyComparisonAnalysis(current, validation.analysis);
+                return { workspace: next, value: validation.analysis.id };
               });
-              if (!("authorization" in authorizationResult)) {
-                throw new Error(
-                  authorizationResult.status === "blocked"
-                    ? authorizationResult.reason
-                    : "Compare authorization was not created."
-                );
-              }
-              const validation = validateComparisonAnalysis(args, authorizationResult.authorization);
-              if (validation.status !== "ok") {
-                throw new Error(validation.reason);
-              }
-              currentWorkspace = applyComparisonAnalysis(currentWorkspace, validation.analysis);
-              setWorkspace(() => currentWorkspace);
               toolOutputs.push(
                 buildToolResultOutput(call.callId, {
                   status: "created",
-                  analysisId: validation.analysis.id
+                  analysisId
                 })
               );
               break;
@@ -3722,7 +3820,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               setPendingConfirmation(
                 buildRequestedAgentActionConfirmation({
                   args,
-                  workspace: currentWorkspace,
+                  workspace: readWorkspaceNow(),
                   draft,
                   contextObjectIds: context.objectIds,
                   selectedObjects
@@ -3751,10 +3849,22 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 reason
               })
             );
-            setWorkspace((current) => finishAgentToolActivityInWorkspace(current, assistantMessageId, call.callId, "failed"));
+            commitWorkspaceNow((current) => {
+              const next = finishAgentToolActivityInWorkspace(
+                current,
+                assistantMessageId,
+                call.callId,
+                "failed",
+                sanitizeAgentActivityDetail(reason)
+              );
+              return { workspace: next, value: undefined };
+            });
             continue;
           }
-          setWorkspace((current) => finishAgentToolActivityInWorkspace(current, assistantMessageId, call.callId, "done"));
+          commitWorkspaceNow((current) => {
+            const next = finishAgentToolActivityInWorkspace(current, assistantMessageId, call.callId, "done");
+            return { workspace: next, value: undefined };
+          });
         }
 
         if (emergencyGuardTriggered) {
@@ -3773,6 +3883,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
       if (checkpointRequested && contextRuntime.highestPressure === "compact" && !checkpointReplyText) {
         try {
+          assertAgentTurnActive(controller.signal);
           const compactedCheckpoint = await requestAgentTurn(
             buildAgentCheckpointCompactionInput({
               conversationContext,
@@ -3785,12 +3896,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           if (parseConversationCheckpointPayload(compactedCheckpoint.outputText).status === "ok") {
             checkpointReplyText = compactedCheckpoint.outputText;
           }
-        } catch {
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            throw error;
+          }
           // The visible Agent result remains valid even when the optional checkpoint refresh fails.
         }
       }
 
-      setWorkspace((current) => {
+      commitWorkspaceNow((current) => {
         const replyText = finalText || "已完成当前执行。";
         const currentMessage = current.ai.messages.find((message) => message.id === assistantMessageId);
         const completedTrace = currentMessage?.agentTrace
@@ -3827,7 +3941,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             citations: collectedCitations
           });
         }
-        return nextWorkspace;
+        return { workspace: nextWorkspace, value: undefined };
       });
     } catch (error) {
       const isCancelled = error instanceof DOMException && error.name === "AbortError";
@@ -3836,8 +3950,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         : error instanceof Error
           ? error.message
           : "当前 Agent 回合失败。";
-      setAiDraft(draft);
-      setWorkspace((current) => {
+      if (abortControllerRef.current === controller || abortControllerRef.current === null) {
+        setAiDraft(draft);
+      }
+      commitWorkspaceNow((current) => {
         const assistantMessage = current.ai.messages.find((candidate) => candidate.id === assistantMessageId);
         const trace = assistantMessage?.agentTrace
           ? completeAgentTrace(
@@ -3846,26 +3962,32 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               new Date().toISOString()
             )
           : undefined;
-        return updateAiMessage(current, assistantMessageId, message, isCancelled ? "cancelled" : "failed", {
+        const next = updateAiMessage(current, assistantMessageId, message, isCancelled ? "cancelled" : "failed", {
           ...(trace ? { agentTrace: trace } : {})
         });
+        return { workspace: next, value: undefined };
       });
       setShowFailure(true);
     } finally {
-      abortControllerRef.current = null;
-      setIsAiStreaming(false);
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+        setIsAiStreaming(false);
+      } else if (abortControllerRef.current === null) {
+        setIsAiStreaming(false);
+      }
     }
   }, [
     activeProposal,
     agentTurnMode,
     aiDraft,
+    commitWorkspaceNow,
     executeAgentVisualGenerationPlan,
     handleSendAiMessage,
     isAiStreaming,
     pendingDeliveryDraftTarget,
+    readWorkspaceNow,
     selectedObjectIds,
     selectedObjects,
-    setWorkspace,
     workspace
   ]);
 
@@ -4190,6 +4312,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   );
 
   const handleCancelAiRequest = useCallback(() => {
+    agentStreamFlushRef.current?.();
+    agentStreamFlushRef.current = null;
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
     setIsAiStreaming(false);
@@ -4201,8 +4325,26 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           }
         : current
     );
-    setWorkspace((current) => interruptActiveOperations(current, "用户停止了当前 AI 任务。原输入、已保存对象和已有结果会保留。"));
-  }, [setWorkspace]);
+    commitWorkspaceNow((current) => {
+      const activeMessage = [...current.ai.messages]
+        .reverse()
+        .find((message) => message.status === "streaming" && message.agentTrace);
+      let next = current;
+      if (activeMessage?.agentTrace) {
+        next = updateAiMessage(
+          next,
+          activeMessage.id,
+          activeMessage.body || "当前 Agent 回合已取消。原输入、选择和已完成步骤已保留。",
+          "cancelled",
+          {
+            agentTrace: completeAgentTrace(activeMessage.agentTrace, "cancelled", new Date().toISOString())
+          }
+        );
+      }
+      next = interruptActiveOperations(next, "用户停止了当前 AI 任务。原输入、已保存对象和已有结果会保留。");
+      return { workspace: next, value: undefined };
+    });
+  }, [commitWorkspaceNow]);
 
   const handleSuggestionClick = useCallback(
     (suggestion: Suggestion) => {
@@ -7366,15 +7508,22 @@ function finishAgentToolActivityInWorkspace(
   workspace: MorphoWorkspace,
   messageId: string,
   toolCallId: string,
-  state: "done" | "failed"
+  state: "done" | "failed",
+  detail?: string
 ): MorphoWorkspace {
   const message = workspace.ai.messages.find((candidate) => candidate.id === messageId);
   if (!message?.agentTrace) {
     return workspace;
   }
   return updateAiMessage(workspace, messageId, message.body, "streaming", {
-    agentTrace: finishLocalAgentToolActivity(message.agentTrace, toolCallId, { state }, new Date().toISOString())
+    agentTrace: finishLocalAgentToolActivity(message.agentTrace, toolCallId, { state, detail }, new Date().toISOString())
   });
+}
+
+function assertAgentTurnActive(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
 }
 
 function appendAiAssistantFailureMessage(

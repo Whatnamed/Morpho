@@ -6,6 +6,18 @@ import type {
   ProviderTokenUsage
 } from "./openaiCompatibleProvider";
 import type { AgentStreamActivityKind } from "@/shared/agentStreamProtocol";
+import { normalizeProviderTokenUsage } from "./providerTokenUsage";
+
+type MessagePhase = "commentary" | "final";
+
+type MessageStreamState = {
+  phase?: MessagePhase;
+  text: string;
+  emittedLength: number;
+  done: boolean;
+  startEmitted: boolean;
+  endEmitted: boolean;
+};
 
 export type OpenAiCompatibleAgentStreamEvent =
   | { type: "reasoning-start" | "reasoning-end"; partId: string }
@@ -47,15 +59,27 @@ export async function parseOpenAiResponsesStream(
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let aborted = options.signal?.aborted === true;
+  const abortReader = () => {
+    aborted = true;
+    void reader.cancel().catch(() => undefined);
+  };
+  if (aborted) {
+    abortReader();
+  } else {
+    options.signal?.addEventListener("abort", abortReader, { once: true });
+  }
 
   try {
     while (true) {
-      if (options.signal?.aborted) {
-        await reader.cancel();
+      if (aborted) {
         throw createAbortError();
       }
 
       const next = await reader.read();
+      if (aborted) {
+        throw createAbortError();
+      }
       if (next.value) {
         buffer += decoder.decode(next.value, { stream: !next.done });
         const parsed = consumeSseFrames(buffer);
@@ -70,6 +94,7 @@ export async function parseOpenAiResponsesStream(
       }
     }
   } finally {
+    options.signal?.removeEventListener("abort", abortReader);
     reader.releaseLock();
   }
 }
@@ -78,7 +103,8 @@ export function createOpenAiCompatibleResponseAccumulator(
   onEvent?: (event: OpenAiCompatibleAgentStreamEvent) => void
 ) {
   const itemById = new Map<string, AgentOutputItem>();
-  const messagePhaseById = new Map<string, "commentary" | "final">();
+  const messagePhaseById = new Map<string, MessagePhase>();
+  const messageStateById = new Map<string, MessageStreamState>();
   const functionByItemId = new Map<string, ProviderFunctionCall>();
   const emittedFunctionCallIds = new Set<string>();
   const citations: ProviderCitation[] = [];
@@ -87,6 +113,7 @@ export function createOpenAiCompatibleResponseAccumulator(
   let usage: ProviderTokenUsage | undefined;
   let completed = false;
   let failed = false;
+  let hasFunctionCall = false;
 
   const emit = (event: OpenAiCompatibleAgentStreamEvent) => onEvent?.(event);
 
@@ -127,12 +154,11 @@ export function createOpenAiCompatibleResponseAccumulator(
           itemById.set(itemId, toOutputItem(item));
           const itemType = stringValue(item.type);
           if (itemType === "message") {
-            const phase = classifyMessagePhase(item.phase);
-            messagePhaseById.set(itemId, phase);
-            emit({ type: phase === "commentary" ? "commentary-start" : "final-start", partId: itemId });
+            registerMessageItem(itemId, item);
             return;
           }
           if (itemType === "function_call") {
+            markFunctionCallPresent();
             const functionCall = functionCallFromItem(item);
             if (functionCall) {
               functionByItemId.set(itemId, functionCall);
@@ -165,11 +191,12 @@ export function createOpenAiCompatibleResponseAccumulator(
           itemById.set(itemId, toOutputItem(item));
           const itemType = stringValue(item.type);
           if (itemType === "message") {
-            const phase = messagePhaseById.get(itemId) ?? classifyMessagePhase(item.phase);
-            emit({ type: phase === "commentary" ? "commentary-end" : "final-end", partId: itemId });
+            registerMessageItem(itemId, item);
+            finishMessageItem(itemId);
             return;
           }
           if (itemType === "function_call") {
+            markFunctionCallPresent();
             const functionCall = functionCallFromItem(item) ?? functionByItemId.get(itemId);
             if (functionCall) {
               functionByItemId.set(itemId, functionCall);
@@ -224,8 +251,7 @@ export function createOpenAiCompatibleResponseAccumulator(
           if (!itemId || !delta) {
             return;
           }
-          const phase = messagePhaseById.get(itemId) ?? "final";
-          emit({ type: phase === "commentary" ? "commentary-delta" : "final-delta", partId: itemId, delta });
+          appendMessageText(itemId, delta);
           return;
         }
         case "response.output_text.done": {
@@ -233,8 +259,11 @@ export function createOpenAiCompatibleResponseAccumulator(
           if (!itemId) {
             return;
           }
-          const phase = messagePhaseById.get(itemId) ?? "final";
-          emit({ type: phase === "commentary" ? "commentary-end" : "final-end", partId: itemId });
+          const text = stringValue(record.text);
+          if (text) {
+            setMessageText(itemId, text);
+          }
+          finishMessageItem(itemId);
           return;
         }
         case "response.function_call_arguments.delta":
@@ -261,12 +290,13 @@ export function createOpenAiCompatibleResponseAccumulator(
             return;
           }
           const isComplete = eventType === "response.web_search_call.completed";
+          const query = extractHostedToolQuery(record);
           emit({
             type: isComplete ? "provider-tool-end" : "provider-tool-update",
             toolCallId: itemId,
             toolName: "web_search",
             activityKind: "webSearch",
-            label: "搜索并检查相关资料",
+            label: query ? `搜索 ${query}` : "搜索并检查相关资料",
             ...(isComplete ? { state: "done" as const } : {})
           });
           return;
@@ -290,10 +320,30 @@ export function createOpenAiCompatibleResponseAccumulator(
             response.output.forEach((item, index) => {
               const itemRecord = asRecord(item);
               if (itemRecord) {
-                itemById.set(`response-output-${index}`, toOutputItem(itemRecord));
+                const itemId =
+                  stringValue(itemRecord.id) ??
+                  stringValue(itemRecord.call_id) ??
+                  `response-output-${index}`;
+                const normalizedItem = { ...itemRecord, id: itemId };
+                itemById.set(itemId, toOutputItem(normalizedItem));
+                if (itemRecord.type === "message") {
+                  registerMessageItem(itemId, normalizedItem);
+                  finishMessageItem(itemId);
+                } else if (itemRecord.type === "function_call") {
+                  markFunctionCallPresent();
+                  const functionCall = functionCallFromItem(normalizedItem);
+                  if (functionCall) {
+                    functionByItemId.set(itemId, functionCall);
+                    emitFunctionCall(functionCall);
+                  }
+                }
               }
             });
           }
+          if (!hasFunctionCall && [...itemById.values()].some((item) => item.type === "function_call")) {
+            markFunctionCallPresent();
+          }
+          flushUnclassifiedMessages(hasFunctionCall ? "commentary" : "final");
           completed = true;
           return;
         }
@@ -334,6 +384,110 @@ export function createOpenAiCompatibleResponseAccumulator(
     }
     emittedFunctionCallIds.add(functionCall.callId);
     emit({ type: "function-call-ready", functionCall });
+  }
+
+  function getMessageState(itemId: string): MessageStreamState {
+    const existing = messageStateById.get(itemId);
+    if (existing) {
+      return existing;
+    }
+    const created: MessageStreamState = {
+      text: "",
+      emittedLength: 0,
+      done: false,
+      startEmitted: false,
+      endEmitted: false
+    };
+    messageStateById.set(itemId, created);
+    return created;
+  }
+
+  function registerMessageItem(itemId: string, item: Record<string, unknown>): void {
+    const state = getMessageState(itemId);
+    const itemText = extractMessageItemText(item);
+    if (itemText) {
+      setMessageText(itemId, itemText);
+    }
+    const explicitPhase = parseMessagePhase(item.phase);
+    if (explicitPhase) {
+      classifyMessage(itemId, explicitPhase);
+    } else if (hasFunctionCall) {
+      classifyMessage(itemId, "commentary");
+    } else if (state.phase) {
+      messagePhaseById.set(itemId, state.phase);
+    }
+  }
+
+  function appendMessageText(itemId: string, delta: string): void {
+    const state = getMessageState(itemId);
+    state.text += delta;
+    emitPendingMessageText(itemId, state);
+  }
+
+  function setMessageText(itemId: string, text: string): void {
+    const state = getMessageState(itemId);
+    if (text.length >= state.text.length) {
+      state.text = text;
+    }
+    emitPendingMessageText(itemId, state);
+  }
+
+  function finishMessageItem(itemId: string): void {
+    const state = getMessageState(itemId);
+    state.done = true;
+    if (!state.phase && hasFunctionCall) {
+      classifyMessage(itemId, "commentary");
+    }
+    emitMessageEnd(itemId, state);
+  }
+
+  function classifyMessage(itemId: string, phase: MessagePhase): void {
+    const state = getMessageState(itemId);
+    state.phase = phase;
+    messagePhaseById.set(itemId, phase);
+    if (!state.startEmitted) {
+      state.startEmitted = true;
+      emit({ type: phase === "commentary" ? "commentary-start" : "final-start", partId: itemId });
+    }
+    emitPendingMessageText(itemId, state);
+    emitMessageEnd(itemId, state);
+  }
+
+  function emitPendingMessageText(itemId: string, state: MessageStreamState): void {
+    if (!state.phase || state.emittedLength >= state.text.length) {
+      return;
+    }
+    const delta = state.text.slice(state.emittedLength);
+    state.emittedLength = state.text.length;
+    emit({
+      type: state.phase === "commentary" ? "commentary-delta" : "final-delta",
+      partId: itemId,
+      delta
+    });
+  }
+
+  function emitMessageEnd(itemId: string, state: MessageStreamState): void {
+    if (!state.phase || !state.done || state.endEmitted) {
+      return;
+    }
+    state.endEmitted = true;
+    emit({ type: state.phase === "commentary" ? "commentary-end" : "final-end", partId: itemId });
+  }
+
+  function flushUnclassifiedMessages(phase: MessagePhase): void {
+    messageStateById.forEach((state, itemId) => {
+      if (!state.phase) {
+        classifyMessage(itemId, phase);
+      }
+    });
+  }
+
+  function markFunctionCallPresent(): void {
+    if (hasFunctionCall) {
+      return;
+    }
+    hasFunctionCall = true;
+    flushUnclassifiedMessages("commentary");
   }
 }
 
@@ -391,8 +545,11 @@ function parseSseFrame(frame: string): ParsedSseFrame | undefined {
   return joined ? { ...(event ? { event } : {}), data: joined } : undefined;
 }
 
-function classifyMessagePhase(value: unknown): "commentary" | "final" {
-  return value === "commentary" ? "commentary" : "final";
+function parseMessagePhase(value: unknown): MessagePhase | undefined {
+  if (value === "commentary") {
+    return "commentary";
+  }
+  return value === "final_answer" ? "final" : undefined;
 }
 
 function reasoningPartId(itemId: string, summaryIndex: number): string {
@@ -404,9 +561,17 @@ function hostedToolFromItem(item: Record<string, unknown>):
   | undefined {
   switch (item.type) {
     case "web_search_call":
-      return { toolName: "web_search", activityKind: "webSearch", label: "搜索并检查相关资料" };
+      return {
+        toolName: "web_search",
+        activityKind: "webSearch",
+        label: extractHostedToolQuery(item) ? `搜索 ${extractHostedToolQuery(item)}` : "搜索并检查相关资料"
+      };
     case "file_search_call":
-      return { toolName: "file_search", activityKind: "fileRead", label: "读取相关文件和资料" };
+      return {
+        toolName: "file_search",
+        activityKind: "fileRead",
+        label: extractHostedToolQuery(item) ? `检索 ${extractHostedToolQuery(item)}` : "读取相关文件和资料"
+      };
     case "computer_call":
     case "shell_call":
     case "code_interpreter_call":
@@ -414,6 +579,21 @@ function hostedToolFromItem(item: Record<string, unknown>):
     default:
       return undefined;
   }
+}
+
+function extractHostedToolQuery(value: Record<string, unknown>): string | undefined {
+  const action = asRecord(value.action);
+  const direct = stringValue(value.query) ?? stringValue(action?.query);
+  const queries = Array.isArray(value.queries)
+    ? value.queries
+    : Array.isArray(action?.queries)
+      ? action.queries
+      : undefined;
+  const query = direct ?? queries?.find((item): item is string => typeof item === "string" && item.trim().length > 0);
+  if (!query) {
+    return undefined;
+  }
+  return query.replace(/\s+/g, " ").trim().slice(0, 72);
 }
 
 function functionCallFromItem(item: Record<string, unknown>): ProviderFunctionCall | undefined {
@@ -447,7 +627,7 @@ function collectFunctionCalls(
 
 function extractOutputText(
   outputItems: AgentOutputItem[],
-  messagePhaseById: Map<string, "commentary" | "final">
+  messagePhaseById: Map<string, MessagePhase>
 ): string {
   const text: string[] = [];
   for (const item of outputItems) {
@@ -473,18 +653,22 @@ function extractOutputText(
 }
 
 function extractUsage(value: unknown): ProviderTokenUsage | undefined {
-  const usage = asRecord(value);
-  const inputTokens = numberValue(usage?.input_tokens);
-  const outputTokens = numberValue(usage?.output_tokens);
-  const totalTokens = numberValue(usage?.total_tokens);
-  if (inputTokens === undefined || outputTokens === undefined) {
-    return undefined;
+  return normalizeProviderTokenUsage(value, {
+    input: "input_tokens",
+    output: "output_tokens"
+  });
+}
+
+function extractMessageItemText(item: Record<string, unknown>): string {
+  if (!Array.isArray(item.content)) {
+    return "";
   }
-  return {
-    inputTokens,
-    outputTokens,
-    totalTokens: totalTokens ?? inputTokens + outputTokens
-  };
+  return item.content
+    .map((part) => {
+      const record = asRecord(part);
+      return record?.type === "output_text" && typeof record.text === "string" ? record.text : "";
+    })
+    .join("");
 }
 
 function extractCitations(value: unknown): ProviderCitation[] {

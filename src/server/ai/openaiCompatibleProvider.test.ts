@@ -53,7 +53,7 @@ describe("openai-compatible provider adapter", () => {
 
       expect(result).toMatchObject({
         responseId: "resp_123",
-        outputText: "已找到外部证据。",
+        outputText: "",
         functionCalls: [
           {
             id: "fc_1",
@@ -296,6 +296,118 @@ describe("openai-compatible provider adapter", () => {
         name: "read_selected_context",
         argumentsText: "{}"
       });
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("buffers Chat Completions text as commentary when a tool call follows", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = async (input) => {
+      if (String(input).endsWith("/responses")) {
+        return new Response("unsupported endpoint", { status: 405 }) as unknown as Response;
+      }
+      return sseResponse([
+        'data: {"id":"chat_1","choices":[{"delta":{"content":"我先读取当前选择。"}}]}\n\n',
+        'data: {"id":"chat_1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"read_selected_context","arguments":"{}"}}]}}]}\n\n',
+        "data: [DONE]\n\n"
+      ]) as unknown as Response;
+    };
+
+    try {
+      const events: Array<{ type: string; delta?: string }> = [];
+      const finalDeltas: string[] = [];
+      const result = await streamOpenAiCompatibleResponse(config(), request(), {
+        onEvent: (event) => events.push(event),
+        onTextDelta: (delta) => finalDeltas.push(delta)
+      });
+
+      expect(events.map((event) => event.type)).toEqual([
+        "commentary-start",
+        "commentary-delta",
+        "commentary-end",
+        "function-call-ready"
+      ]);
+      expect(events.find((event) => event.type === "commentary-delta")?.delta).toBe("我先读取当前选择。");
+      expect(finalDeltas).toEqual([]);
+      expect(result.outputText).toBe("");
+      expect(result.functionCalls).toHaveLength(1);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("buffers pure Chat Completions text as final without duplicating commentary", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = async (input) => {
+      if (String(input).endsWith("/responses")) {
+        return new Response("unsupported endpoint", { status: 405 }) as unknown as Response;
+      }
+      return sseResponse([
+        'data: {"id":"chat_1","choices":[{"delta":{"content":"最终"}}]}\n\n',
+        'data: {"id":"chat_1","choices":[{"delta":{"content":"答复"}}]}\n\n',
+        "data: [DONE]\n\n"
+      ]) as unknown as Response;
+    };
+
+    try {
+      const events: Array<{ type: string; delta?: string }> = [];
+      const finalDeltas: string[] = [];
+      const result = await streamOpenAiCompatibleResponse(config(), request(), {
+        onEvent: (event) => events.push(event),
+        onTextDelta: (delta) => finalDeltas.push(delta)
+      });
+
+      expect(events.map((event) => event.type)).toEqual(["final-start", "final-delta", "final-delta", "final-end"]);
+      expect(events.map((event) => event.type)).not.toContain("commentary-delta");
+      expect(finalDeltas).toEqual(["最终", "答复"]);
+      expect(result.outputText).toBe("最终答复");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("classifies buffered JSON Chat fallback text as commentary when tools are present", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = async (input) => {
+      if (String(input).endsWith("/responses")) {
+        return new Response("unsupported endpoint", { status: 405 }) as unknown as Response;
+      }
+      return jsonResponse({
+        id: "chat_1",
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: "我先读取当前选择。",
+              tool_calls: [
+                {
+                  id: "call_1",
+                  type: "function",
+                  function: { name: "read_selected_context", arguments: "{}" }
+                }
+              ]
+            }
+          }
+        ],
+        usage: { prompt_tokens: 8, completion_tokens: 4, total_tokens: 12 }
+      }) as unknown as Response;
+    };
+
+    try {
+      const events: string[] = [];
+      const result = await streamOpenAiCompatibleResponse(config(), request(), {
+        onEvent: (event) => events.push(event.type)
+      });
+
+      expect(events).toEqual([
+        "commentary-start",
+        "commentary-delta",
+        "commentary-end",
+        "function-call-ready",
+        "usage"
+      ]);
+      expect(result.outputText).toBe("");
     } finally {
       global.fetch = originalFetch;
     }

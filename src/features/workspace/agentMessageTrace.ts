@@ -15,13 +15,16 @@ export function applyAgentStreamEventToTrace(
   now: string
 ): AgentTrace {
   switch (event.type) {
+    case "turn-attempt-reset":
+      return resetAgentTraceAttempt(trace, event.attemptId);
     case "reasoning-start":
       return appendTextPart(trace, {
         id: event.partId,
         type: "reasoning",
         text: "",
         state: "streaming",
-        createdAt: now
+        createdAt: now,
+        attemptId: event.attemptId
       });
     case "reasoning-delta":
       return appendTextDelta(trace, event.partId, "reasoning", event.delta);
@@ -33,7 +36,8 @@ export function applyAgentStreamEventToTrace(
         type: "commentary",
         text: "",
         state: "streaming",
-        createdAt: now
+        createdAt: now,
+        attemptId: event.attemptId
       });
     case "commentary-delta":
       return appendTextDelta(trace, event.partId, "commentary", event.delta);
@@ -49,7 +53,9 @@ export function applyAgentStreamEventToTrace(
         label: event.label,
         detail: event.detail,
         state: "running",
-        startedAt: now
+        startedAt: now,
+        source: "provider",
+        attemptId: event.attemptId
       });
     case "provider-tool-update":
       return updateToolActivity(trace, event.toolCallId, {
@@ -88,8 +94,32 @@ export function startLocalAgentToolActivity(
     label: input.label,
     detail: input.detail,
     state: "running",
-    startedAt: now
+    startedAt: now,
+    source: "local"
   });
+}
+
+export function applyAgentStreamEventsToTrace(
+  trace: AgentTrace,
+  events: AgentRouteStreamEvent[],
+  now: string
+): AgentTrace {
+  return events.reduce((current, event) => applyAgentStreamEventToTrace(current, event, now), trace);
+}
+
+export function resetAgentTraceAttempt(trace: AgentTrace, attemptId: string): AgentTrace {
+  return {
+    ...trace,
+    parts: trace.parts.filter((part) => {
+      if (part.attemptId !== attemptId) {
+        return true;
+      }
+      if (part.type === "reasoning" || part.type === "commentary") {
+        return false;
+      }
+      return part.source !== "provider" || part.state !== "running";
+    })
+  };
 }
 
 export function finishLocalAgentToolActivity(

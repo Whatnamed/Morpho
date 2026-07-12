@@ -106,6 +106,10 @@ describe("PendingImageShapeUtil", () => {
     );
 
     expect(run).toHaveBeenCalled();
+    expect(run).toHaveBeenCalledWith(expect.any(Function), {
+      history: "ignore",
+      ignoreShapeLock: true
+    });
     expect(deleteShapes).toHaveBeenCalledWith([stale.id]);
     expect(createShapes).toHaveBeenCalledWith([
       expect.objectContaining({
