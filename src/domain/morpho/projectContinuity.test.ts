@@ -5,6 +5,7 @@ import type { MorphoWorkspace } from "./types";
 import {
   applyConversationSemanticPatch,
   applyProjectContinuityEvent,
+  buildContinuityRecordId,
   buildProjectContinuityContext,
   deriveProjectMemoryViews,
   getContinuityEntryEligibility,
@@ -15,6 +16,15 @@ import {
 import { buildSemanticPatchAuthorization } from "./conversationSemanticPatch";
 
 describe("project continuity runtime", () => {
+  it("builds stable unique IDs when long dedupe keys share the old slug prefix", () => {
+    const sharedPrefix = "default-reference:".padEnd(120, "x");
+    const first = `${sharedPrefix}:first-tail`;
+    const second = `${sharedPrefix}:second-tail`;
+
+    expect(buildContinuityRecordId(first)).not.toBe(buildContinuityRecordId(second));
+    expect(buildContinuityRecordId(first)).toBe(buildContinuityRecordId(first));
+  });
+
   it("records import events with structured current focus, typed source refs, and idempotent dedupe", () => {
     const workspace = createInitialWorkspace();
     const updated = applyProjectContinuityEvent(workspace, {

@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 
 import type {
   AiTaskMode,
@@ -28,7 +29,6 @@ import {
   type StageRegionRecord
 } from "@/domain/morpho/stageRegions";
 import { collectPrimaryCanvasTrace } from "./tldraw/primaryCanvasTrace";
-import { createGeneratedImageFromAsset } from "@/domain/morpho/generation";
 import { getImageCanvasSize } from "@/domain/morpho/imageSizing";
 import { createDocumentExtractFile, parseDocumentFile, shouldAttemptDocumentParse } from "@/domain/morpho/documentParsing";
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "@/domain/morpho/imports";
@@ -75,8 +75,6 @@ import {
   recordAndApplyConceptDirectionProposal,
   recordDesignDefinitionProposal,
   recordImageGenerationPlan,
-  recordImageGenerationOperationItemFailure,
-  recordImageGenerationOperationResult,
   setCurrentDesignDefinition,
   updateConceptDirectionProposalDraft,
   updateDesignDefinitionProposalDraft,
@@ -148,6 +146,7 @@ import {
   removePendingImageGenerationSlot,
   type PendingImageGenerationSlot
 } from "./pendingImageGenerationSlots";
+import { applyImageGenerationResultCommit } from "./imageGenerationResultCommit";
 import {
   popDetailNavigation,
   pushDetailNavigation,
@@ -417,6 +416,22 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [activeDeliveryObjectId, setActiveDeliveryObjectId] = useState<string | null>(null);
   const [activeDeliverySectionId, setActiveDeliverySectionId] = useState<string | null>(null);
   const [pendingDeliveryDraftTarget, setPendingDeliveryDraftTarget] = useState<{ deliveryObjectId: string; sectionId: string } | null>(null);
+  const commitWorkspaceNow = useCallback(
+    <T,>(transform: (current: MorphoWorkspace) => { workspace: MorphoWorkspace; value: T }): T => {
+      let committed: { workspace: MorphoWorkspace; value: T } | undefined;
+      flushSync(() => {
+        setWorkspace((current) => {
+          committed = transform(current);
+          return committed.workspace;
+        });
+      });
+      if (!committed) {
+        throw new Error("Workspace update did not commit.");
+      }
+      return committed.value;
+    },
+    [setWorkspace]
+  );
   const assetUrls = useWorkspaceAssetUrls(workspace.assets);
   const abortControllerRef = useRef<AbortController | null>(null);
   const objectOperationUndoStackRef = useRef<ObjectOperationUndoEntry[]>([]);
@@ -1724,11 +1739,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               reason: string;
             };
 
-        const applyVisualItemResult = (result: VisualItemResult) => {
+        const applyVisualItemResult = async (result: VisualItemResult) => {
           if (result.status === "ok") {
-            let createdObjectId = "";
-            setWorkspace((current) => {
-              const generated = createGeneratedImageFromAsset(current, {
+            const createdObjectId = commitWorkspaceNow((current) => {
+              const committed = applyImageGenerationResultCommit(current, {
+                status: "succeeded",
+                operationId,
+                providerTaskId: result.providerTaskId ?? lastProviderTaskId,
                 asset: result.asset,
                 generation: {
                   modelId: generationSettings.modelId,
@@ -1759,27 +1776,25 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                   result.item,
                   result.index,
                   visualPlacementMap.get(result.item.id)
-                )
+                ),
+                canvasSize: plannedImageSize
               });
-              createdObjectId = generated.createdObjectId;
-              return recordImageGenerationOperationResult(generated.workspace, {
-                operationId,
-                providerTaskId: result.providerTaskId ?? lastProviderTaskId,
-                resultObjectId: generated.createdObjectId
-              });
+              return { workspace: committed.workspace, value: committed.createdObjectId };
             });
             if (createdObjectId) {
               createdObjectIds.push(createdObjectId);
             }
           } else {
             failedItems.push(`${result.item.title}: ${result.reason}`);
-            setWorkspace((current) =>
-              recordImageGenerationOperationItemFailure(current, {
+            commitWorkspaceNow((current) => {
+              const committed = applyImageGenerationResultCommit(current, {
+                status: "failed",
                 operationId,
                 planItemId: result.item.id,
                 reason: result.reason
-              })
-            );
+              });
+              return { workspace: committed.workspace, value: undefined };
+            });
           }
 
           // Clear this exact reservation before the matching real image shape
@@ -1928,6 +1943,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     },
     [
       effectiveImageGenerationSettings,
+      commitWorkspaceNow,
       directionPreviewCount,
       selectedObjectIds,
       selectedObjects,
@@ -2473,12 +2489,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       requestedPreviewCount?: 1 | 2 | 4 | 6;
       signal: AbortSignal;
     }) => {
-      let currentWorkspace = input.workspaceSnapshot;
       const requestedPreviewCount =
         input.plan.kind === "directionPreview"
           ? input.requestedPreviewCount ?? 1
           : undefined;
-      const validatedPlan = validateVisualGenerationPlan(currentWorkspace, {
+      const validatedPlan = validateVisualGenerationPlan(input.workspaceSnapshot, {
         plan: input.plan,
         allowedObjectIds: input.sourceObjectIds,
         selectedDirectionIds: input.selectedDirectionIds,
@@ -2495,30 +2510,32 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         intent: input.plan.kind === "directionPreview" ? "directionPreview" : "visualDevelopment",
         aspectRatio: effectiveImageGenerationSettings.aspectRatio
       });
-      const operationCreated = createImageGenerationOperation(currentWorkspace, {
-        operationId,
-        clientRequestId,
-        prompt: input.draft,
-        selectedObjectIds: input.sourceObjectIds,
-        imagePixels: false,
-        modelId: generationSettings.modelId,
-        modelLabel: generationSettings.modelLabel,
-        aspectRatio: generationSettings.aspectRatio,
-        sizeOption: generationSettings.sizeOption,
-        referenceObjectIds: input.sourceObjectIds,
-        requestedPreviewCount
+      const workspaceAtPlanCommit = commitWorkspaceNow((current) => {
+        const operationCreated = createImageGenerationOperation(current, {
+          operationId,
+          clientRequestId,
+          prompt: input.draft,
+          selectedObjectIds: input.sourceObjectIds,
+          imagePixels: false,
+          modelId: generationSettings.modelId,
+          modelLabel: generationSettings.modelLabel,
+          aspectRatio: generationSettings.aspectRatio,
+          sizeOption: generationSettings.sizeOption,
+          referenceObjectIds: input.sourceObjectIds,
+          requestedPreviewCount
+        });
+        const workspaceWithPlan = recordImageGenerationPlan(operationCreated.workspace, {
+          operationId,
+          plan: validatedPlan.plan
+        });
+        return { workspace: workspaceWithPlan, value: workspaceWithPlan };
       });
-      currentWorkspace = recordImageGenerationPlan(operationCreated.workspace, {
-        operationId,
-        plan: validatedPlan.plan
-      });
-      setWorkspace(() => currentWorkspace);
 
       const plannedImageSize = getPlannedImageSize(effectiveImageGenerationSettings.aspectRatio);
       const placementMap = new Map(
         (validatedPlan.plan.kind === "directionPreview"
           ? planDirectionPreviewPlacements(
-              currentWorkspace,
+              workspaceAtPlanCommit,
               validatedPlan.plan.items.map((item) => ({
                 id: item.id,
                 targetDirectionId: item.targetDirectionId,
@@ -2527,7 +2544,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               }))
             )
           : planVisualDevelopmentPlacements(
-              currentWorkspace,
+              workspaceAtPlanCommit,
               validatedPlan.plan.items.map((item) => ({
                 id: item.id,
                 referenceObjectIds: item.referenceObjectIds,
@@ -2582,53 +2599,61 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             reason: string;
           };
 
-      const applyAgentItemResult = (result: AgentItemResult) => {
+      const applyAgentItemResult = async (result: AgentItemResult) => {
         if (result.status === "ok") {
-          const generated = createGeneratedImageFromAsset(currentWorkspace, {
-            asset: result.asset,
-            generation: {
-              modelId: generationSettings.modelId,
-              modelLabel: generationSettings.modelLabel,
-              aspectRatio: generationSettings.aspectRatio,
-              sizeOption: generationSettings.sizeOption,
-              prompt: result.item.prompt,
-              referenceObjectIds: result.item.referenceObjectIds,
-              directionId: result.item.targetDirectionId,
-              visualBranchId: result.item.visualBranchId,
+          const createdObjectId = commitWorkspaceNow((current) => {
+            const committed = applyImageGenerationResultCommit(current, {
+              status: "succeeded",
               operationId,
-              clientRequestId: `${clientRequestId}-${result.item.id}`,
               providerTaskId: result.providerTaskId ?? lastProviderTaskId,
+              asset: result.asset,
+              generation: {
+                modelId: generationSettings.modelId,
+                modelLabel: generationSettings.modelLabel,
+                aspectRatio: generationSettings.aspectRatio,
+                sizeOption: generationSettings.sizeOption,
+                prompt: result.item.prompt,
+                referenceObjectIds: result.item.referenceObjectIds,
+                directionId: result.item.targetDirectionId,
+                visualBranchId: result.item.visualBranchId,
+                operationId,
+                clientRequestId: `${clientRequestId}-${result.item.id}`,
+                providerTaskId: result.providerTaskId ?? lastProviderTaskId,
+                title: result.item.title,
+                purpose: result.item.purpose,
+                role: result.item.role,
+                visualPlan: validatedPlan.plan,
+                createdAt: new Date().toISOString()
+              },
+              sourceObjectIds: result.sourceObjectIds,
+              directionObjectId: result.item.targetDirectionId,
+              visualBranchId: result.item.visualBranchId,
               title: result.item.title,
-              purpose: result.item.purpose,
+              summary: result.item.purpose,
               role: result.item.role,
-              visualPlan: validatedPlan.plan,
-              createdAt: new Date().toISOString()
-            },
-            sourceObjectIds: result.sourceObjectIds,
-            directionObjectId: result.item.targetDirectionId,
-            visualBranchId: result.item.visualBranchId,
-            title: result.item.title,
-            summary: result.item.purpose,
-            role: result.item.role,
-            position: getGeneratedImagePlacement(
-              currentWorkspace,
-              result.item,
-              result.index,
-              placementMap.get(result.item.id)
-            )
+              position: getGeneratedImagePlacement(
+                current,
+                result.item,
+                result.index,
+                placementMap.get(result.item.id)
+              ),
+              canvasSize: plannedImageSize
+            });
+            return { workspace: committed.workspace, value: committed.createdObjectId };
           });
-          currentWorkspace = recordImageGenerationOperationResult(generated.workspace, {
-            operationId,
-            providerTaskId: result.providerTaskId ?? lastProviderTaskId,
-            resultObjectId: generated.createdObjectId
-          });
-          createdObjectIds.push(generated.createdObjectId);
+          if (createdObjectId) {
+            createdObjectIds.push(createdObjectId);
+          }
         } else {
           failedItems.push(`${result.item.title}: ${result.reason}`);
-          currentWorkspace = recordImageGenerationOperationItemFailure(currentWorkspace, {
-            operationId,
-            planItemId: result.item.id,
-            reason: result.reason
+          commitWorkspaceNow((current) => {
+            const committed = applyImageGenerationResultCommit(current, {
+              status: "failed",
+              operationId,
+              planItemId: result.item.id,
+              reason: result.reason
+            });
+            return { workspace: committed.workspace, value: undefined };
           });
         }
 
@@ -2637,7 +2662,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         setPendingImageGenerationSlots((current) =>
           removePendingImageGenerationSlot(current, operationId, result.item.id)
         );
-        setWorkspace(() => currentWorkspace);
       };
 
       await mapWithConcurrency(
@@ -2648,11 +2672,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           publishProgress();
           try {
             const referenceImages = await collectImageReferenceDataUrls(
-              currentWorkspace,
+              workspaceAtPlanCommit,
               item.referenceObjectIds,
               input.signal
             );
-            // Functional update only — do not race currentWorkspace local pointer during parallel fetches.
             setWorkspace((current) =>
               markImageGenerationOperationSubmitted(current, {
                 operationId,
@@ -2722,12 +2745,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
 
       const lastCreatedObjectId = createdObjectIds.at(-1) ?? createdObjectIds[0];
-      currentWorkspace = completeImageGenerationOperation(currentWorkspace, {
-        operationId,
-        providerTaskId: lastProviderTaskId,
-        resultObjectId: lastCreatedObjectId
+      const completedWorkspace = commitWorkspaceNow((current) => {
+        const completed = completeImageGenerationOperation(current, {
+          operationId,
+          providerTaskId: lastProviderTaskId,
+          resultObjectId: lastCreatedObjectId
+        });
+        return { workspace: completed, value: completed };
       });
-      setWorkspace(() => currentWorkspace);
       setSelectedObjectIds(createdObjectIds);
       setFocusRequest((current) => ({ objectId: lastCreatedObjectId, nonce: current.nonce + 1 }));
       setImageTaskStatus({
@@ -2739,12 +2764,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       });
 
       return {
-        workspace: currentWorkspace,
+        workspace: completedWorkspace,
         createdObjectIds,
         failedItems
       };
     },
-    [effectiveImageGenerationSettings, setFocusRequest, setImageTaskStatus, setSelectedObjectIds, setWorkspace]
+    [commitWorkspaceNow, effectiveImageGenerationSettings, setFocusRequest, setImageTaskStatus, setSelectedObjectIds, setWorkspace]
   );
 
 
@@ -4430,9 +4455,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         throw new Error(saved.reason);
       }
 
-      const createdObjectId = `image-generated-${saved.asset.id}`;
-      setWorkspace((current) => {
-        const generated = createGeneratedImageFromAsset(current, {
+      const createdObjectId = commitWorkspaceNow((current) => {
+        const committed = applyImageGenerationResultCommit(current, {
+          status: "succeeded",
+          operationId,
+          providerTaskId,
           asset: saved.asset,
           generation: {
             modelId: generationSettings.modelId,
@@ -4454,21 +4481,25 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           title: localPlanItem.title,
           summary: localPlanItem.purpose,
           role: localPlanItem.role,
-          position: localPlacement
+          position: localPlacement,
+          canvasSize: plannedImageSize
         });
 
-        const completed = completeImageGenerationOperation(generated.workspace, {
+        const completed = completeImageGenerationOperation(committed.workspace, {
           operationId,
           providerTaskId,
-          resultObjectId: generated.createdObjectId
+          resultObjectId: committed.createdObjectId ?? `image-generated-${saved.asset.id}`
         });
 
-        return updateAiMessage(
-          completed,
-          assistantMessageId,
-          "GrsAI 已返回图像结果。已保存为独立本地资产，并在画布上创建新的图像对象；来源图、版本链、默认参考和交付引用没有被替换。",
-          "done"
-        );
+        return {
+          workspace: updateAiMessage(
+            completed,
+            assistantMessageId,
+            "GrsAI 已返回图像结果。已保存为独立本地资产，并在画布上创建新的图像对象；来源图、版本链、默认参考和交付引用没有被替换。",
+            "done"
+          ),
+          value: committed.createdObjectId ?? `image-generated-${saved.asset.id}`
+        };
       });
       setSelectedObjectIds([createdObjectId]);
       setPendingImageGenerationSlots((current) =>
@@ -4508,6 +4539,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
   }, [
     aiDraft,
+    commitWorkspaceNow,
     effectiveImageGenerationSettings,
     handleRunVisualGenerationOperation,
     isAiStreaming,

@@ -131,6 +131,13 @@ export function StageRegionToolbar({
       // Range inputs may reject capture in some browsers.
     }
   };
+  const stopToolbarPointerCapture = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.target instanceof HTMLInputElement && event.target.type === "range") {
+      return;
+    }
+    event.stopPropagation();
+    event.nativeEvent.stopImmediatePropagation();
+  };
 
   return (
     <div
@@ -142,20 +149,16 @@ export function StageRegionToolbar({
       onPointerMove={(event) => event.stopPropagation()}
       onPointerUp={(event) => event.stopPropagation()}
       onPointerDownCapture={(event) => {
-        event.stopPropagation();
-        event.nativeEvent.stopImmediatePropagation();
+        stopToolbarPointerCapture(event);
       }}
       onPointerMoveCapture={(event) => {
-        event.stopPropagation();
-        event.nativeEvent.stopImmediatePropagation();
+        stopToolbarPointerCapture(event);
       }}
       onPointerUpCapture={(event) => {
-        event.stopPropagation();
-        event.nativeEvent.stopImmediatePropagation();
+        stopToolbarPointerCapture(event);
       }}
       onPointerCancelCapture={(event) => {
-        event.stopPropagation();
-        event.nativeEvent.stopImmediatePropagation();
+        stopToolbarPointerCapture(event);
       }}
     >
       <div className="selection-toolbar-group" role="group" aria-label="分区样式">
@@ -216,16 +219,13 @@ export function StageRegionToolbar({
               onPointerDown={(event) => event.stopPropagation()}
               onPointerMove={(event) => event.stopPropagation()}
               onPointerDownCapture={(event) => {
-                event.stopPropagation();
-                event.nativeEvent.stopImmediatePropagation();
+                stopToolbarPointerCapture(event);
               }}
               onPointerMoveCapture={(event) => {
-                event.stopPropagation();
-                event.nativeEvent.stopImmediatePropagation();
+                stopToolbarPointerCapture(event);
               }}
               onPointerUpCapture={(event) => {
-                event.stopPropagation();
-                event.nativeEvent.stopImmediatePropagation();
+                stopToolbarPointerCapture(event);
               }}
             >
               <output aria-live="polite">{fillOpacity}%</output>

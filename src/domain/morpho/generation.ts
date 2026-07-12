@@ -21,6 +21,7 @@ export type CreateGeneratedImageInput = {
   summary?: string;
   role?: ImageRole;
   position?: CanvasPoint;
+  canvasSize?: { w: number; h: number };
 };
 
 export type CreateGeneratedImageResult = {
@@ -48,11 +49,13 @@ export function createGeneratedImageFromAsset(
     Object.fromEntries(workspace.canvas.instances.map((instance) => [instance.id, instance])),
     `canvas-${objectId}`
   );
-  const canvasSize = getImageCanvasSize({
-    width: input.asset.width,
-    height: input.asset.height,
-    aspectRatio: input.asset.aspectRatio
-  });
+  const canvasSize =
+    input.canvasSize ??
+    getImageCanvasSize({
+      width: input.asset.width,
+      height: input.asset.height,
+      aspectRatio: input.asset.aspectRatio
+    });
   const explicitDirection = input.directionObjectId ? workspace.objects[input.directionObjectId] : undefined;
   const directionId =
     explicitDirection?.type === "conceptDirection"

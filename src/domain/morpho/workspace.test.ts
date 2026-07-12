@@ -31,6 +31,7 @@ import {
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "./imports";
 import { recordDesignDefinitionProposal } from "../operations/operations";
 import { hasPendingDesignDefinitionRevisionProposal, reconcileWorkspaceDerivedState } from "./derivedState";
+import { buildContinuityRecordId, setConversationSemanticEntryManualState } from "./projectContinuity";
 
 describe("Morpho workspace domain boundaries", () => {
   it("creates a blank schema v13 project without depending on Nightrail seed object ids", () => {
@@ -977,7 +978,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.workspace.projectContinuity.schemaVersion).toBe(2);
     expect(result.workspace.projectContinuity.recordEntries).toEqual([
       expect.objectContaining({
-        id: "continuity-legacy",
+        id: buildContinuityRecordId("legacy:event"),
         origin: "deterministicEvent",
         manualState: "active",
         semanticKind: undefined,
@@ -1207,6 +1208,97 @@ describe("Morpho workspace domain boundaries", () => {
       throw new Error(result.reason);
     }
     expect(result.workspace.ai.conversationCheckpoints).toEqual([currentWorkspace.ai.conversationCheckpoints[0]]);
+  });
+
+  it("repairs collided continuity IDs and remaps saved message references without losing either record", () => {
+    const workspace = createInitialWorkspace();
+    const sharedPrefix = "conversationSemanticPatch:".padEnd(120, "x");
+    const firstDedupeKey = `${sharedPrefix}:first-tail`;
+    const secondDedupeKey = `${sharedPrefix}:second-tail`;
+    const legacyWorkspace = {
+      ...workspace,
+      projectContinuity: {
+        ...workspace.projectContinuity,
+        recordEntries: [
+          {
+            id: "continuity-legacy-collision",
+            dedupeKey: firstDedupeKey,
+            origin: "conversationSemanticPatch" as const,
+            manualState: "active" as const,
+            semanticKind: "preference" as const,
+            sourceMessageId: "message-collision",
+            evidenceQuote: "保留第一个长键记录",
+            scope: "project" as const,
+            stage: "directionAndVisual" as const,
+            category: "preference" as const,
+            summary: "明确偏好：保留第一个长键记录",
+            sourceRefs: [],
+            createdAt: "2026-07-12T08:00:00.000Z",
+            updatedAt: "2026-07-12T08:00:00.000Z",
+            validity: "current" as const
+          },
+          {
+            id: "continuity-legacy-collision",
+            dedupeKey: secondDedupeKey,
+            origin: "conversationSemanticPatch" as const,
+            manualState: "active" as const,
+            semanticKind: "avoidance" as const,
+            sourceMessageId: "message-collision",
+            evidenceQuote: "保留第二个长键记录",
+            scope: "visual" as const,
+            stage: "directionAndVisual" as const,
+            category: "avoidance" as const,
+            summary: "明确避免：保留第二个长键记录",
+            sourceRefs: [],
+            createdAt: "2026-07-12T08:01:00.000Z",
+            updatedAt: "2026-07-12T08:01:00.000Z",
+            validity: "current" as const
+          }
+        ]
+      },
+      ai: {
+        ...workspace.ai,
+        messages: [
+          {
+            id: "message-collision",
+            role: "assistant" as const,
+            body: "这两条记录都已保存。",
+            createdAt: "2026-07-12T08:02:00.000Z",
+            status: "done" as const,
+            taskMode: "chatAnalysis" as const,
+            continuityEntryIds: ["continuity-legacy-collision"]
+          }
+        ]
+      }
+    };
+
+    const migrated = migrateWorkspaceToCurrentSchema(legacyWorkspace);
+    expect(migrated.status).toBe("ok");
+    if (migrated.status !== "ok") {
+      throw new Error(migrated.reason);
+    }
+
+    const entryIds = migrated.workspace.projectContinuity.recordEntries.map((entry) => entry.id);
+    expect(entryIds).toHaveLength(2);
+    expect(new Set(entryIds).size).toBe(2);
+    expect(migrated.workspace.ai.messages[0]?.continuityEntryIds).toEqual(entryIds);
+
+    const normalizedAgain = migrateWorkspaceToCurrentSchema(migrated.workspace);
+    expect(normalizedAgain.status).toBe("ok");
+    if (normalizedAgain.status !== "ok") {
+      throw new Error(normalizedAgain.reason);
+    }
+    expect(normalizedAgain.workspace.projectContinuity.recordEntries).toEqual(
+      migrated.workspace.projectContinuity.recordEntries
+    );
+
+    const updated = setConversationSemanticEntryManualState(
+      migrated.workspace,
+      entryIds[0]!,
+      "notApplicable",
+      "2026-07-12T08:03:00.000Z"
+    );
+    expect(updated.projectContinuity.recordEntries.map((entry) => entry.manualState)).toEqual(["notApplicable", "active"]);
   });
 
   it("reports migration failure without producing replacement seed data", () => {

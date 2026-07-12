@@ -10,7 +10,7 @@ export async function mapWithConcurrency<T, R>(
   concurrency: number,
   worker: (item: T, index: number) => Promise<R>,
   options: {
-    onSettled?: (result: R, index: number) => void;
+    onSettled?: (result: R, index: number) => void | Promise<void>;
   } = {}
 ): Promise<R[]> {
   if (items.length === 0) {
@@ -30,7 +30,7 @@ export async function mapWithConcurrency<T, R>(
       }
       const result = await worker(items[index]!, index);
       results[index] = result;
-      options.onSettled?.(result, index);
+      await options.onSettled?.(result, index);
     }
   };
 

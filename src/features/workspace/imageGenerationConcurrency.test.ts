@@ -53,7 +53,9 @@ describe("imageGenerationConcurrency", () => {
         return item;
       },
       {
-        onSettled: (item) => settled.push(item === "fast" ? 1 : 2)
+        onSettled: (item) => {
+          settled.push(item === "fast" ? 1 : 2);
+        }
       }
     );
 

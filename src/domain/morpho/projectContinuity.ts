@@ -1,4 +1,5 @@
 import type {
+  AiMessage,
   ConceptDirectionObject,
   ContinuityRecordCategory,
   ContinuityRecordEntry,
@@ -281,26 +282,78 @@ export function normalizeProjectContinuity(
   value: unknown,
   legacyFocus?: LegacyProjectFocus
 ): ProjectContinuityState {
+  return normalizeProjectContinuityWithIdMigration(workspace, value, legacyFocus).state;
+}
+
+export function normalizeProjectContinuityWithMessageReferences(
+  workspace: Pick<MorphoWorkspace, "project" | "objects" | "designDefinitionRevisions" | "directionRevisions">,
+  value: unknown,
+  messages: AiMessage[],
+  legacyFocus?: LegacyProjectFocus
+): { state: ProjectContinuityState; messages: AiMessage[] } {
+  const normalized = normalizeProjectContinuityWithIdMigration(workspace, value, legacyFocus);
+  if (normalized.entryIdsByLegacyId.size === 0) {
+    return { state: normalized.state, messages };
+  }
+
+  return {
+    state: normalized.state,
+    messages: messages.map((message) => {
+      if (!message.continuityEntryIds || message.continuityEntryIds.length === 0) {
+        return message;
+      }
+
+      return {
+        ...message,
+        continuityEntryIds: [
+          ...new Set(
+            message.continuityEntryIds.flatMap(
+              (entryId) => normalized.entryIdsByLegacyId.get(entryId) ?? [entryId]
+            )
+          )
+        ]
+      };
+    })
+  };
+}
+
+function normalizeProjectContinuityWithIdMigration(
+  workspace: Pick<MorphoWorkspace, "project" | "objects" | "designDefinitionRevisions" | "directionRevisions">,
+  value: unknown,
+  legacyFocus?: LegacyProjectFocus
+): { state: ProjectContinuityState; entryIdsByLegacyId: Map<string, string[]> } {
   if (
     !isRecord(value) ||
     (value.schemaVersion !== 1 && value.schemaVersion !== 2) ||
     !isRecord(value.currentFocus) ||
     !Array.isArray(value.recordEntries)
   ) {
-    return createInitialProjectContinuity({ workspace, legacyFocus });
+    return {
+      state: createInitialProjectContinuity({ workspace, legacyFocus }),
+      entryIdsByLegacyId: new Map()
+    };
   }
 
   const fallback = createInitialProjectContinuity({ workspace, legacyFocus });
   const currentFocus = normalizeCurrentFocus(value.currentFocus, fallback.currentFocus);
+  const entryIdsByLegacyId = new Map<string, string[]>();
   const recordEntries = value.recordEntries
     .map(normalizeRecordEntry)
-    .filter((entry): entry is ContinuityRecordEntry => Boolean(entry));
+    .filter((entry): entry is ContinuityRecordEntry => Boolean(entry))
+    .map((entry) => {
+      const id = buildContinuityRecordId(entry.dedupeKey);
+      entryIdsByLegacyId.set(entry.id, [...(entryIdsByLegacyId.get(entry.id) ?? []), id]);
+      return { ...entry, id };
+    });
 
   return {
-    schemaVersion: 2,
-    currentFocus,
-    recordEntries,
-    updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : currentFocus.updatedAt
+    state: {
+      schemaVersion: 2,
+      currentFocus,
+      recordEntries,
+      updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : currentFocus.updatedAt
+    },
+    entryIdsByLegacyId
   };
 }
 
@@ -745,7 +798,7 @@ function createRecordEntry(
   now: string
 ): ContinuityRecordEntry {
   const base = {
-    id: `continuity-${slugify(dedupeKey)}`,
+    id: buildContinuityRecordId(dedupeKey),
     dedupeKey,
     origin: "deterministicEvent" as const,
     manualState: "active" as const,
@@ -910,7 +963,7 @@ function createConversationSemanticPatchEntry(
   ].filter(isDefined);
 
   return {
-    id: `continuity-${slugify(dedupeKey)}`,
+    id: buildContinuityRecordId(dedupeKey),
     dedupeKey,
     origin: "conversationSemanticPatch",
     manualState: "active",
@@ -1842,6 +1895,25 @@ function visualBranchActionLabel(action: "created" | "archived" | "restored"): s
 
 function stableIds(values: readonly string[]): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
+
+export function buildContinuityRecordId(dedupeKey: string): string {
+  const readablePrefix = slugify(dedupeKey).slice(0, 80) || "record";
+  return `continuity-${readablePrefix}-${stableContinuityIdHash(dedupeKey)}`;
+}
+
+function stableContinuityIdHash(value: string): string {
+  let first = 0x811c9dc5;
+  let second = 0x9e3779b9;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    first = Math.imul(first ^ code, 0x01000193);
+    second = Math.imul(second ^ code, 0x85ebca6b);
+    second ^= second >>> 13;
+  }
+
+  return `${(first >>> 0).toString(36)}${(second >>> 0).toString(36)}`;
 }
 
 function slugify(value: string): string {

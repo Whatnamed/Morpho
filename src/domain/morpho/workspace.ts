@@ -6,7 +6,7 @@ import {
 import {
   applyProjectContinuityEvent,
   createInitialProjectContinuity,
-  normalizeProjectContinuity,
+  normalizeProjectContinuityWithMessageReferences,
   resolveContinuityValidity,
   type LegacyProjectFocus
 } from "./projectContinuity";
@@ -2062,6 +2062,18 @@ function normalizeCurrentWorkspace(value: Record<string, unknown>): MorphoWorksp
   };
   const designDefinitionRevisions = cloned.designDefinitionRevisions ?? {};
   const directionRevisions = cloned.directionRevisions ?? {};
+  const ai = normalizeAiState(cloned.ai);
+  const normalizedContinuity = normalizeProjectContinuityWithMessageReferences(
+    {
+      project,
+      objects,
+      designDefinitionRevisions,
+      directionRevisions
+    },
+    cloned.projectContinuity,
+    ai.messages,
+    legacyProjectFocus(rawProject.currentFocus)
+  );
 
   return reconcileWorkspaceDerivedState({
     schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -2080,21 +2092,15 @@ function normalizeCurrentWorkspace(value: Record<string, unknown>): MorphoWorksp
     directionLineage: cloned.directionLineage ?? [],
     visualBranches: cloned.visualBranches ?? {},
     workingState: cloned.workingState ?? createEmptyProjectWorkingState(now),
-    projectContinuity: normalizeProjectContinuity(
-      {
-        project,
-        objects,
-        designDefinitionRevisions,
-        directionRevisions
-      },
-      cloned.projectContinuity,
-      legacyProjectFocus(rawProject.currentFocus)
-    ),
+    projectContinuity: normalizedContinuity.state,
     canvas: cloned.canvas ?? {
       view: { x: 0, y: 0, zoom: 1 },
       instances: []
     },
-    ai: normalizeAiState(cloned.ai),
+    ai: {
+      ...ai,
+      messages: normalizedContinuity.messages
+    },
     ui: {
       activeDrawer: cloned.ui?.activeDrawer ?? null,
       aiOpen: cloned.ui?.aiOpen ?? true,

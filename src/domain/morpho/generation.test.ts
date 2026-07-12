@@ -294,6 +294,37 @@ describe("Morpho image generation domain helpers", () => {
     expect(instance?.size).toEqual({ w: 320, h: 180 });
   });
 
+  it("keeps a planned generation frame when the returned asset uses a different aspect ratio", () => {
+    const workspace = createInitialWorkspace();
+    const result = createGeneratedImageFromAsset(workspace, {
+      asset: {
+        id: "asset-generated-planned-frame",
+        fileName: "returned-square.png",
+        mimeType: "image/png",
+        size: 4096,
+        createdAt: "2026-07-12T08:00:00.000Z",
+        storageKey: "blob:asset-generated-planned-frame",
+        sourceType: "aiGeneratedImage",
+        width: 1024,
+        height: 1024,
+        aspectRatio: 1
+      },
+      generation: {
+        modelId: "nano-banana-fast",
+        modelLabel: "nano-banana-fast",
+        aspectRatio: "16:9",
+        prompt: "生成横向场景图",
+        referenceObjectIds: [],
+        createdAt: "2026-07-12T08:00:00.000Z"
+      },
+      sourceObjectIds: [],
+      canvasSize: { w: 320, h: 180 }
+    });
+
+    const instance = result.workspace.canvas.instances.find((item) => item.objectId === result.createdObjectId);
+    expect(instance?.size).toEqual({ w: 320, h: 180 });
+  });
+
   it("treats an explicit generated-image position as a preferred position and avoids visible objects", () => {
     const workspace = createInitialWorkspace();
     const occupied = workspace.canvas.instances[0];
