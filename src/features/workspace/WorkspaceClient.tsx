@@ -710,9 +710,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [focusObject]
   );
 
-  const handleManualSave = useCallback(() => {
-    const result = flushWorkspace();
-    const message = result.phase === "error" ? "本地保存失败" : "已保存";
+  const showWorkspaceNotice = useCallback((message: string, durationMs = 1600) => {
     setManualSaveNotice(message);
     if (manualSaveNoticeTimeoutRef.current) {
       clearTimeout(manualSaveNoticeTimeoutRef.current);
@@ -720,8 +718,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     manualSaveNoticeTimeoutRef.current = setTimeout(() => {
       setManualSaveNotice(null);
       manualSaveNoticeTimeoutRef.current = null;
-    }, 1400);
-  }, [flushWorkspace]);
+    }, durationMs);
+  }, []);
+
+  const handleManualSave = useCallback(() => {
+    const result = flushWorkspace();
+    showWorkspaceNotice(result.phase === "error" ? "本地保存失败" : "已保存", 1400);
+  }, [flushWorkspace, showWorkspaceNotice]);
 
   useEffect(
     () => () => {
@@ -1045,42 +1048,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         y: latestCanvasViewRef.current.y + 160
       };
       const result = await readClipboardAsImportPayload();
+      // Clipboard feedback is transient chrome — never write into the AI conversation.
       if (result.status === "denied") {
-        setWorkspace((current) => ({
-          ...current,
-          ai: {
-            ...current.ai,
-            messages: [
-              ...current.ai.messages,
-              {
-                id: `ai-clipboard-denied-${Date.now()}`,
-                role: "assistant",
-                body: result.reason,
-                status: "failed",
-                createdAt: new Date().toISOString()
-              }
-            ]
-          }
-        }));
+        showWorkspaceNotice(result.reason, 2200);
         return;
       }
       if (result.status === "empty") {
-        setWorkspace((current) => ({
-          ...current,
-          ai: {
-            ...current.ai,
-            messages: [
-              ...current.ai.messages,
-              {
-                id: `ai-clipboard-empty-${Date.now()}`,
-                role: "assistant",
-                body: "剪贴板里没有可粘贴的图片、链接或文本。",
-                status: "failed",
-                createdAt: new Date().toISOString()
-              }
-            ]
-          }
-        }));
+        showWorkspaceNotice("剪贴板里没有可粘贴的图片、链接或文本", 2000);
         return;
       }
       await handleImportRequest({
@@ -1090,7 +1064,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         text: result.text
       });
     },
-    [handleImportRequest, setWorkspace]
+    [handleImportRequest, showWorkspaceNotice]
   );
 
   const handleContextMenuImportFiles = useCallback((pagePosition?: { x: number; y: number }) => {
