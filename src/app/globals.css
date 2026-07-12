@@ -6365,8 +6365,7 @@ select:focus-visible {
 /* Project home: a calm, persistent workbench for returning to real local projects. */
 .project-home {
   width: 100%;
-  min-height: 100vh;
-  height: auto;
+  height: 100vh;
   display: grid;
   grid-template-columns: 224px minmax(0, 1fr);
   overflow: hidden;
@@ -6375,7 +6374,8 @@ select:focus-visible {
 }
 
 .project-home-sidebar {
-  min-height: 100vh;
+  height: 100vh;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 26px;
@@ -6589,6 +6589,8 @@ select:focus-visible {
 }
 
 .project-home-main {
+  height: 100vh;
+  overflow-y: auto;
   min-width: 0;
   padding: 30px clamp(24px, 5vw, 72px) 64px;
 }
