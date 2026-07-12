@@ -10,11 +10,16 @@ describe("agent turn messages", () => {
       userMessageId: "user-agent-turn",
       assistantMessageId: "assistant-agent-turn",
       userBody: "继续分析这个方向",
-      assistantBody: "正在理解当前意图，并准备受控执行。",
+      assistantBody: "",
       createdAt: "2026-07-05T00:00:00.000Z",
       contextObjectIds: ["direction-soft-rail"],
       conversationLaneKey: "conversation|focus=directionAndVisual|task=general",
-      workIntent: "discussion"
+      workIntent: "discussion",
+      agentTrace: {
+        startedAt: "2026-07-05T00:00:00.000Z",
+        status: "streaming",
+        parts: []
+      }
     });
 
     expect(workspace.ai.messages.some((message) => message.id === "user-agent-turn")).toBe(false);
@@ -31,12 +36,17 @@ describe("agent turn messages", () => {
       {
         id: "assistant-agent-turn",
         role: "assistant",
-        body: "正在理解当前意图，并准备受控执行。",
+        body: "",
         status: "streaming",
         contextObjectIds: ["direction-soft-rail"],
         taskMode: "chatAnalysis",
         workIntent: "discussion",
-        conversationLaneKey: "conversation|focus=directionAndVisual|task=general"
+        conversationLaneKey: "conversation|focus=directionAndVisual|task=general",
+        agentTrace: {
+          startedAt: "2026-07-05T00:00:00.000Z",
+          status: "streaming",
+          parts: []
+        }
       }
     ]);
   });

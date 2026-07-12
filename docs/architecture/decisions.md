@@ -588,7 +588,15 @@ Decision: extend the existing lane-local `ConversationCheckpoint` runtime to the
 
 Reason: the Agent previously sent only the last eight global messages, which bounded request size but silently discarded older discussion continuity. A lane checkpoint plus recent same-lane messages preserves continuity while keeping the full visible transcript and real project state unchanged.
 
-Boundary: the 200,000 and 300,000 values are trigger thresholds, not post-compaction sizes. Compaction changes provider input only. It does not delete or rewrite `workspace.ai.messages`, change project facts, expose token meters in the UI, switch away from AiJWS Chat Completions, add a dependency, or alter the workspace schema. The latest tool-call/output tail is protected, and a provider context-limit failure retries the provider request exactly once without rerunning completed client-side tools or project mutations. An exact `/compact` command rolls all eligible current-lane messages after the previous checkpoint through bounded checkpoint-only calls. No canvas or project-state tool is available, and only the final checkpoint is persisted after every chunk succeeds.
+Boundary: the 200,000 and 300,000 values are trigger thresholds, not post-compaction sizes. Compaction changes provider input only. It does not delete or rewrite `workspace.ai.messages`, change project facts, expose token meters in the UI, add a dependency, or alter the workspace schema. The latest tool-call/output tail is protected, and a provider context-limit failure retries the provider request exactly once without rerunning completed client-side tools or project mutations. An exact `/compact` command rolls all eligible current-lane messages after the previous checkpoint through bounded checkpoint-only calls. No canvas or project-state tool is available, and only the final checkpoint is persisted after every chunk succeeds.
+
+## 2026-07-13: Stream Agent Responses With Ordered, Safe Process Parts
+
+Decision: use OpenAI-compatible `/responses` SSE as the primary Agent protocol and persist optional ordered `AiMessage.agentTrace` parts under workspace `schemaVersion: 14`.
+
+Reason: a completed JSON response leaves the user without real feedback for long Agent runs and cannot preserve the true order of reasoning summaries, commentary, provider activity, local-tool execution, and final text. The response stream now surfaces only API-returned reasoning summaries and explicit commentary phases; it never derives or displays hidden reasoning content.
+
+Boundary: `agentTrace` stores concise user-facing parts only, not raw SSE, encrypted reasoning, provider headers, API keys, raw tool arguments, hidden chain of thought, or diagnostic HTML. Final answer text remains in `AiMessage.body`. `/responses` is attempted before Chat Completions for every compatible base URL; fallback is limited to explicit endpoint incompatibility and never masks 5xx, quota, or authentication failures. Client-side workspace tools remain local. The internal 28-turn, 18-minute, and repeated-tool guards are recovery mechanisms, not user-visible steps; they request one tools-free finalization and preserve completed trace/project writes.
 
 ## 2026-07-12: Add Cloudflare Workers Deployment Through OpenNext
 

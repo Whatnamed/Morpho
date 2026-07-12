@@ -50,7 +50,7 @@ import type {
 } from "./types";
 
 const DEFAULT_REFERENCE_HIDDEN_MESSAGE = "当前后续默认参考已隐藏，请先恢复或替换后再用于相关生成。";
-const CURRENT_SCHEMA_VERSION = 13;
+const CURRENT_SCHEMA_VERSION = 14;
 
 export type DeleteObjectResult =
   | {
@@ -1490,6 +1490,17 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
       status: "ok",
       workspace: normalizeCurrentWorkspace(value),
       didMigrate: false
+    };
+  }
+
+  if (value.schemaVersion === 13) {
+    return {
+      status: "ok",
+      workspace: normalizeCurrentWorkspace({
+        ...(structuredClone(value) as Record<string, unknown>),
+        schemaVersion: CURRENT_SCHEMA_VERSION
+      }),
+      didMigrate: true
     };
   }
 

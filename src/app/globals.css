@@ -1655,6 +1655,128 @@ button:disabled {
   animation-delay: 280ms;
 }
 
+ .agent-process {
+  margin: 2px 0 10px;
+  max-width: 100%;
+  color: var(--text-secondary);
+}
+
+.agent-process-trigger {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+}
+
+.agent-process-trigger > svg:last-child {
+  flex: 0 0 auto;
+  transition: transform 180ms ease;
+}
+
+.agent-process-trigger > svg:last-child.is-open {
+  transform: rotate(180deg);
+}
+
+.agent-process-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.agent-process-title.is-shimmer {
+  color: transparent;
+  background: linear-gradient(100deg, var(--text-muted) 12%, var(--text-secondary) 46%, var(--text-muted) 78%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: agent-process-title-shimmer 1.9s linear infinite;
+}
+
+.agent-process-parts {
+  display: grid;
+  gap: 8px;
+  padding: 5px 0 2px 21px;
+}
+
+.agent-process-text {
+  max-width: 100%;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.agent-process-text .markdown-message {
+  padding: 0;
+}
+
+.agent-process-text .markdown-paragraph {
+  color: inherit;
+}
+
+.agent-process-activity {
+  position: relative;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  column-gap: 7px;
+  align-items: start;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.agent-process-activity svg {
+  margin-top: 2px;
+}
+
+.agent-process-activity span,
+.agent-process-activity small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.agent-process-activity small {
+  grid-column: 2;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.agent-process-activity.is-failed {
+  color: var(--danger);
+}
+
+.agent-process-activity.is-running::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 8%, rgba(255, 255, 255, 0.76) 42%, transparent 76%);
+  transform: translateX(-115%);
+  animation: agent-process-activity-shimmer 1.7s ease-in-out infinite;
+}
+
+@keyframes agent-process-title-shimmer {
+  to {
+    background-position: -220% 0;
+  }
+}
+
+@keyframes agent-process-activity-shimmer {
+  to {
+    transform: translateX(115%);
+  }
+}
+
 @keyframes thinking-dot {
   0%,
   80%,
@@ -3954,8 +4076,15 @@ button:disabled {
 
 @media (prefers-reduced-motion: reduce) {
   .pending-generation-shimmer,
-  .pending-generation-grain i {
+  .pending-generation-grain i,
+  .agent-process-title.is-shimmer,
+  .agent-process-activity.is-running::after {
     animation: none;
+  }
+
+  .agent-process-title.is-shimmer {
+    color: var(--text-muted);
+    background: none;
   }
 }
 

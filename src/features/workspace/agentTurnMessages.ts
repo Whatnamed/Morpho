@@ -1,4 +1,4 @@
-import type { AiWorkIntent, MorphoWorkspace } from "@/domain/morpho/types";
+import type { AgentTrace, AiWorkIntent, MorphoWorkspace } from "@/domain/morpho/types";
 
 type AppendAgentTurnMessagesInput = {
   userMessageId: string;
@@ -9,6 +9,7 @@ type AppendAgentTurnMessagesInput = {
   contextObjectIds: string[];
   conversationLaneKey: string;
   workIntent: AiWorkIntent;
+  agentTrace?: AgentTrace;
 };
 
 export function appendAgentTurnMessages(
@@ -40,7 +41,8 @@ export function appendAgentTurnMessages(
           contextObjectIds: input.contextObjectIds,
           taskMode: "chatAnalysis",
           workIntent: input.workIntent,
-          conversationLaneKey: input.conversationLaneKey
+          conversationLaneKey: input.conversationLaneKey,
+          ...(input.agentTrace ? { agentTrace: input.agentTrace } : {})
         }
       ]
     }

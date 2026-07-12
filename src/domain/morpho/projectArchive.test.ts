@@ -40,8 +40,8 @@ describe("M7-A project archive and backup manifests", () => {
     expect(backup.manifest.createdAt).toBe(NOW);
     expect(archive.manifest.sourceProject.id).toBe("project-blank");
     expect(backup.manifest.sourceProject.id).toBe(seeded.project.id);
-    expect(archive.manifest.workspaceSchemaVersion).toBe(13);
-    expect(backup.manifest.workspaceSchemaVersion).toBe(13);
+    expect(archive.manifest.workspaceSchemaVersion).toBe(14);
+    expect(backup.manifest.workspaceSchemaVersion).toBe(14);
     expect(archive.manifest.archive).toBeDefined();
     expect(backup.manifest.workspaceSnapshot).toBeDefined();
     expect("workspaceSnapshot" in archive.manifest).toBe(false);

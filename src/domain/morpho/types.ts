@@ -636,12 +636,64 @@ export type DecisionRecord = {
   comparison?: ComparisonDecisionMetadata;
 };
 
+export type AgentActivityKind =
+  | "webSearch"
+  | "fileRead"
+  | "contextRead"
+  | "analysis"
+  | "proposal"
+  | "imageGeneration"
+  | "comparison"
+  | "workspaceWrite"
+  | "confirmation"
+  | "other";
+
+export type AgentReasoningPart = {
+  id: string;
+  type: "reasoning";
+  text: string;
+  state: "streaming" | "done";
+  createdAt: string;
+};
+
+export type AgentCommentaryPart = {
+  id: string;
+  type: "commentary";
+  text: string;
+  state: "streaming" | "done";
+  createdAt: string;
+};
+
+export type AgentToolActivityPart = {
+  id: string;
+  type: "toolActivity";
+  toolCallId: string;
+  toolName: string;
+  activityKind: AgentActivityKind;
+  label: string;
+  detail?: string;
+  state: "running" | "done" | "failed";
+  startedAt: string;
+  completedAt?: string;
+};
+
+export type AgentMessagePart = AgentReasoningPart | AgentCommentaryPart | AgentToolActivityPart;
+
+export type AgentTrace = {
+  startedAt: string;
+  completedAt?: string;
+  parts: AgentMessagePart[];
+  status: "streaming" | "done" | "failed" | "cancelled";
+  agentTurnId?: string;
+  responseId?: string;
+};
+
 export type AiMessage = {
   id: string;
   role: "assistant" | "user";
   body: string;
   createdAt?: string;
-  status?: "streaming" | "done" | "failed";
+  status?: "streaming" | "done" | "failed" | "cancelled";
   contextObjectIds?: MorphoObjectId[];
   taskMode?: AiTaskMode;
   recommendedTaskMode?: AiTaskMode;
@@ -654,6 +706,7 @@ export type AiMessage = {
   conversationLaneKey?: string;
   conversationCheckpointId?: string;
   comparisonAnalysisId?: ComparisonAnalysisId;
+  agentTrace?: AgentTrace;
   error?: string;
 };
 
@@ -742,7 +795,7 @@ export type ProjectWorkingState = {
 };
 
 export type MorphoWorkspace = {
-  schemaVersion: 13;
+  schemaVersion: 14;
   project: {
     id: string;
     title: string;

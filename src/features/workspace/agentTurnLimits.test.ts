@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   AGENT_TURN_MAX_AUTO_IMAGE_ITEMS,
+  AGENT_TURN_REPEAT_TOOL_CALL_LIMIT,
+  isRepeatedAgentToolCall,
   isAgentMutatingTool,
   webSearchSourcesToCitations,
   wouldExceedAutoImageTurnLimit
@@ -42,6 +44,34 @@ describe("agent turn limits", () => {
         snippet: "Short snippet"
       }
     ]);
+  });
+
+  it("detects only consecutive repeated tool signatures as an emergency-loop signal", () => {
+    const first = isRepeatedAgentToolCall(undefined, 0, {
+      name: "read_selected_context",
+      args: {}
+    });
+    const second = isRepeatedAgentToolCall(first.signature, first.repeatCount, {
+      name: "read_selected_context",
+      args: {}
+    });
+    const different = isRepeatedAgentToolCall(second.signature, second.repeatCount, {
+      name: "search_web_evidence",
+      args: { queries: ["night safety"], reason: "Need current sources." }
+    });
+
+    expect(first).toMatchObject({ repeatCount: 1, exceeded: false });
+    expect(second).toMatchObject({ repeatCount: 2, exceeded: false });
+    expect(different).toMatchObject({ repeatCount: 1, exceeded: false });
+
+    let repeated = second;
+    for (let index = 0; index < AGENT_TURN_REPEAT_TOOL_CALL_LIMIT; index += 1) {
+      repeated = isRepeatedAgentToolCall(repeated.signature, repeated.repeatCount, {
+        name: "read_selected_context",
+        args: {}
+      });
+    }
+    expect(repeated.exceeded).toBe(true);
   });
 });
 

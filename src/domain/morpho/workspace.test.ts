@@ -34,10 +34,10 @@ import { hasPendingDesignDefinitionRevisionProposal, reconcileWorkspaceDerivedSt
 import { buildContinuityRecordId, setConversationSemanticEntryManualState } from "./projectContinuity";
 
 describe("Morpho workspace domain boundaries", () => {
-  it("creates a blank schema v13 project without depending on Nightrail seed object ids", () => {
+  it("creates a blank schema v14 project without depending on Nightrail seed object ids", () => {
     const workspace = createBlankWorkspace("project-empty-local");
 
-    expect(workspace.schemaVersion).toBe(13);
+    expect(workspace.schemaVersion).toBe(14);
     expect(workspace.project.id).toBe("project-empty-local");
     expect(workspace.objects["image-soft-rail-v2"]).toBeUndefined();
     expect(workspace.canvas.instances).toEqual([]);
@@ -856,7 +856,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(imported.workspace.assets["asset-file-a"]?.sourceType).toBe("originalFile");
   });
 
-  it("migrates v1 workspace data to schema v13 without mutating the source object", () => {
+  it("migrates v1 workspace data to schema v14 without mutating the source object", () => {
     const legacyWorkspace = {
       schemaVersion: 1,
       project: {
@@ -903,7 +903,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.status).toBe("ok");
     expect(legacyWorkspace).toEqual(before);
     if (result.status === "ok") {
-      expect(result.workspace.schemaVersion).toBe(13);
+      expect(result.workspace.schemaVersion).toBe(14);
       expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
       expect(result.workspace.objects["image-a"]?.visibility).toBe("active");
       expect(result.workspace.objects["image-a"]).toMatchObject({
@@ -931,7 +931,7 @@ describe("Morpho workspace domain boundaries", () => {
     }
   });
 
-  it("migrates v8 project continuity entries to v13 deterministic active entries without inventing semantic patches", () => {
+  it("migrates v8 project continuity entries to v14 deterministic active entries without inventing semantic patches", () => {
     const workspace = createInitialWorkspace();
     const v8Workspace = {
       ...workspace,
@@ -973,7 +973,7 @@ describe("Morpho workspace domain boundaries", () => {
       throw new Error(result.reason);
     }
     expect(result.didMigrate).toBe(true);
-    expect(result.workspace.schemaVersion).toBe(13);
+    expect(result.workspace.schemaVersion).toBe(14);
     expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
     expect(result.workspace.projectContinuity.schemaVersion).toBe(2);
     expect(result.workspace.projectContinuity.recordEntries).toEqual([
@@ -990,7 +990,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.workspace.decisionRecords).toEqual(workspace.decisionRecords);
   });
 
-  it("migrates v11 workspaces to v13 without inventing document fragments or rewriting compare/checkpoint state", () => {
+  it("migrates v11 workspaces to v14 without inventing document fragments or rewriting compare/checkpoint state", () => {
     const workspace = createInitialWorkspace();
     const v11Workspace = {
       ...workspace,
@@ -1053,7 +1053,7 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(13);
+    expect(result.workspace.schemaVersion).toBe(14);
     expect(Object.values(result.workspace.objects).filter((object) => object.type === "documentFragment")).toHaveLength(
       documentFragmentCountBefore
     );
@@ -1069,7 +1069,58 @@ describe("Morpho workspace domain boundaries", () => {
     expect(second.didMigrate).toBe(false);
   });
 
-  it("migrates v9 workspaces to v13 by adding empty conversation checkpoints without rewriting messages or project continuity", () => {
+  it("migrates v13 messages without fabricating or losing Agent trace data", () => {
+    const workspace = createInitialWorkspace();
+    const v13Workspace = {
+      ...workspace,
+      schemaVersion: 13,
+      ai: {
+        ...workspace.ai,
+        messages: [
+          {
+            id: "assistant-trace",
+            role: "assistant",
+            body: "完成。",
+            status: "done",
+            agentTrace: {
+              startedAt: "2026-07-13T00:00:00.000Z",
+              completedAt: "2026-07-13T00:00:02.000Z",
+              status: "done",
+              parts: [
+                {
+                  id: "reasoning-1",
+                  type: "reasoning",
+                  text: "检查完成。",
+                  state: "done",
+                  createdAt: "2026-07-13T00:00:00.000Z"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    };
+    const before = structuredClone(v13Workspace);
+
+    const result = migrateWorkspaceToCurrentSchema(v13Workspace);
+
+    expect(v13Workspace).toEqual(before);
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") {
+      throw new Error(result.reason);
+    }
+    expect(result.workspace.schemaVersion).toBe(14);
+    expect(result.workspace.ai.messages[0]).toMatchObject({
+      id: "assistant-trace",
+      body: "完成。",
+      agentTrace: {
+        status: "done",
+        parts: [expect.objectContaining({ id: "reasoning-1", text: "检查完成。" })]
+      }
+    });
+  });
+
+  it("migrates v9 workspaces to v14 by adding empty conversation checkpoints without rewriting messages or project continuity", () => {
     const workspace = createInitialWorkspace();
     const v9Workspace = {
       ...workspace,
@@ -1102,7 +1153,7 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(13);
+    expect(result.workspace.schemaVersion).toBe(14);
     expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
     expect(result.workspace.ai.messages).toEqual(v9Workspace.ai.messages);
     expect(result.workspace.ai.messages[0]).not.toHaveProperty("conversationLaneKey");

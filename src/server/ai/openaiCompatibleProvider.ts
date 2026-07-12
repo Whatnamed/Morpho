@@ -1,4 +1,9 @@
 import type { OpenAiCompatibleConfig } from "./openaiCompatibleConfig";
+import {
+  OpenAiCompatibleStreamError,
+  parseOpenAiResponsesStream,
+  type OpenAiCompatibleAgentStreamEvent
+} from "./openaiCompatibleResponsesStream";
 
 type OpenAiCompatibleProviderConfig = Pick<
   OpenAiCompatibleConfig,
@@ -80,7 +85,10 @@ export type OpenAiCompatibleResponseResult = {
 export type OpenAiCompatibleStreamHandlers = {
   onTextDelta?: (text: string) => void;
   onCitations?: (citations: ProviderCitation[]) => void;
+  onEvent?: (event: OpenAiCompatibleAgentStreamEvent) => void;
 };
+
+export type { OpenAiCompatibleAgentStreamEvent } from "./openaiCompatibleResponsesStream";
 
 type RawResponse = {
   id?: string;
@@ -150,10 +158,6 @@ export async function executeOpenAiCompatibleResponse(
   request: OpenAiCompatibleResponseRequest,
   signal?: AbortSignal
 ): Promise<OpenAiCompatibleResponseResult> {
-  if (shouldUseChatCompletionsFirst(config)) {
-    return executeOpenAiCompatibleChatCompletion(config, request, signal);
-  }
-
   const response = await fetch(`${config.baseUrl}/responses`, {
     method: "POST",
     headers: {
@@ -162,7 +166,7 @@ export async function executeOpenAiCompatibleResponse(
     },
     body: JSON.stringify({
       model: config.model,
-      ...(config.reasoningEffort ? { reasoning: { effort: config.reasoningEffort } } : {}),
+      ...(config.reasoningEffort ? { reasoning: { effort: config.reasoningEffort, summary: "auto" } } : {}),
       input: request.input,
       tools: request.tools
     }),
@@ -171,25 +175,13 @@ export async function executeOpenAiCompatibleResponse(
 
   if (!response.ok) {
     const diagnostic = await safeReadDiagnostic(response);
-    if (requestHasImageInput(request) && shouldRetryWithChatCompletions(response.status, diagnostic)) {
+    if (shouldFallbackToChatCompletions(response.status, diagnostic)) {
       return executeOpenAiCompatibleChatCompletion(config, request, signal);
     }
     throw new OpenAiCompatibleProviderError(response.status, diagnostic);
   }
 
-  const raw = (await response.json()) as RawResponse;
-  const usage = extractTokenUsage(raw.usage, "input_tokens", "output_tokens");
-  return {
-    responseId: typeof raw.id === "string" ? raw.id : "",
-    outputText: extractOutputText(raw.output),
-    functionCalls: extractFunctionCalls(raw.output),
-    citations: extractCitations(raw.output),
-    outputItems: extractOutputItems(raw.output),
-    webSearchCallCount: Array.isArray(raw.output)
-      ? raw.output.filter((item) => isRecord(item) && item.type === "web_search_call").length
-      : 0,
-    ...(usage ? { usage } : {})
-  };
+  return resultFromRawResponse((await response.json()) as RawResponse);
 }
 
 export async function streamOpenAiCompatibleResponse(
@@ -198,25 +190,61 @@ export async function streamOpenAiCompatibleResponse(
   handlers: OpenAiCompatibleStreamHandlers,
   signal?: AbortSignal
 ): Promise<OpenAiCompatibleResponseResult> {
-  if (shouldUseChatCompletionsFirst(config)) {
+  const response = await fetch(`${config.baseUrl}/responses`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: config.model,
+      stream: true,
+      ...(config.reasoningEffort ? { reasoning: { effort: config.reasoningEffort, summary: "auto" } } : {}),
+      input: request.input,
+      tools: request.tools
+    }),
+    signal
+  });
+
+  if (!response.ok) {
+    const diagnostic = await safeReadDiagnostic(response);
+    if (shouldFallbackToChatCompletions(response.status, diagnostic)) {
+      return streamOpenAiCompatibleChatCompletion(config, request, handlers, signal);
+    }
+    throw new OpenAiCompatibleProviderError(response.status, diagnostic);
+  }
+
+  const contentType = response.headers.get("Content-Type")?.toLowerCase() ?? "";
+  if (!response.body || !contentType.includes("text/event-stream")) {
+    if (contentType.includes("application/json")) {
+      const raw = (await response.json()) as RawResponse | RawChatCompletion;
+      if (!isRawChatCompletion(raw) && !isRawResponsesResult(raw)) {
+        return streamOpenAiCompatibleChatCompletion(config, request, handlers, signal);
+      }
+      const result = isRawChatCompletion(raw) ? extractChatCompletionResult(raw) : resultFromRawResponse(raw);
+      emitBufferedResult(result, handlers);
+      return result;
+    }
     return streamOpenAiCompatibleChatCompletion(config, request, handlers, signal);
   }
 
-  const result = await executeOpenAiCompatibleResponse(config, request, signal);
-  if (result.outputText) {
-    handlers.onTextDelta?.(result.outputText);
-  }
-  if (result.citations.length > 0) {
-    handlers.onCitations?.(result.citations);
-  }
-  return result;
-}
-
-function shouldUseChatCompletionsFirst(config: OpenAiCompatibleProviderConfig): boolean {
   try {
-    return new URL(config.baseUrl).hostname.toLowerCase().includes("aijws.com");
-  } catch {
-    return false;
+    return await parseOpenAiResponsesStream(response.body, {
+      signal,
+      onEvent: (event) => {
+        handlers.onEvent?.(event);
+        if (event.type === "final-delta") {
+          handlers.onTextDelta?.(event.delta);
+        } else if (event.type === "citation") {
+          handlers.onCitations?.([event.citation]);
+        }
+      }
+    });
+  } catch (error) {
+    if (error instanceof OpenAiCompatibleStreamError) {
+      throw new OpenAiCompatibleProviderError(502, error.kind === "interrupted" ? "stream interrupted" : "stream failed");
+    }
+    throw error;
   }
 }
 
@@ -292,26 +320,54 @@ async function streamOpenAiCompatibleChatCompletion(
   let buffer = "";
   let outputText = "";
   const citations: ProviderCitation[] = [];
+  const toolCalls = new Map<number, ChatToolCall>();
+  let responseId = "";
+  let reasoningStarted = false;
+  let reasoningPartId = "chat-reasoning";
 
   while (true) {
     const result = await reader.read();
     if (result.value) {
       buffer += decoder.decode(result.value, { stream: !result.done });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        const parsed = parseChatCompletionStreamLine(line);
-        if (!parsed || parsed.done) {
+      const parsedFrames = consumeChatCompletionSseFrames(buffer);
+      buffer = parsedFrames.remainder;
+      for (const frame of parsedFrames.frames) {
+        if (frame.done) {
           continue;
+        }
+        const parsed = parseChatCompletionStreamData(frame.data);
+        if (!parsed) {
+          continue;
+        }
+        responseId = parsed.responseId ?? responseId;
+        if (parsed.reasoning) {
+          if (!reasoningStarted) {
+            reasoningStarted = true;
+            handlers.onEvent?.({ type: "reasoning-start", partId: reasoningPartId });
+          }
+          handlers.onEvent?.({ type: "reasoning-delta", partId: reasoningPartId, delta: parsed.reasoning });
         }
         if (parsed.text) {
           outputText += parsed.text;
           handlers.onTextDelta?.(parsed.text);
+          handlers.onEvent?.({ type: "final-delta", partId: "chat-final", delta: parsed.text });
         }
         if (parsed.citations.length > 0) {
           citations.push(...parsed.citations);
           handlers.onCitations?.(parsed.citations);
+          parsed.citations.forEach((citation) => handlers.onEvent?.({ type: "citation", citation }));
         }
+        parsed.toolDeltas.forEach((toolDelta) => {
+          const existing = toolCalls.get(toolDelta.index);
+          toolCalls.set(toolDelta.index, {
+            id: toolDelta.id ?? existing?.id ?? `chat-call-${toolDelta.index}`,
+            type: "function",
+            function: {
+              name: toolDelta.name ?? existing?.function.name ?? "",
+              arguments: `${existing?.function.arguments ?? ""}${toolDelta.argumentsDelta ?? ""}`
+            }
+          });
+        });
       }
     }
     if (result.done) {
@@ -319,34 +375,48 @@ async function streamOpenAiCompatibleChatCompletion(
     }
   }
 
-  if (buffer.trim()) {
-    const parsed = parseChatCompletionStreamLine(buffer);
-    if (parsed && !parsed.done) {
-      if (parsed.text) {
-        outputText += parsed.text;
-        handlers.onTextDelta?.(parsed.text);
-      }
-      if (parsed.citations.length > 0) {
-        citations.push(...parsed.citations);
-        handlers.onCitations?.(parsed.citations);
-      }
+  const tailFrames = consumeChatCompletionSseFrames(`${buffer}\n\n`);
+  for (const frame of tailFrames.frames) {
+    if (frame.done) {
+      continue;
+    }
+    const parsed = parseChatCompletionStreamData(frame.data);
+    if (parsed?.text) {
+      outputText += parsed.text;
+      handlers.onTextDelta?.(parsed.text);
+      handlers.onEvent?.({ type: "final-delta", partId: "chat-final", delta: parsed.text });
     }
   }
 
   const finalCitations = dedupeCitations(citations);
+  if (reasoningStarted) {
+    handlers.onEvent?.({ type: "reasoning-end", partId: reasoningPartId });
+  }
+  const functionCalls = extractChatToolCalls([...toolCalls.values()]);
+  functionCalls.forEach((functionCall) => handlers.onEvent?.({ type: "function-call-ready", functionCall }));
+  handlers.onEvent?.({ type: "final-end", partId: "chat-final" });
   return {
-    responseId: "",
+    responseId,
     outputText: outputText.trim(),
-    functionCalls: [],
+    functionCalls,
     citations: finalCitations,
-    outputItems: outputText.trim()
-      ? [
-          {
-            type: "message",
-            content: [{ type: "output_text", text: outputText.trim() }]
-          }
-        ]
-      : [],
+    outputItems: [
+      ...(outputText.trim()
+        ? [
+            {
+              type: "message",
+              content: [{ type: "output_text", text: outputText.trim() }]
+            }
+          ]
+        : []),
+      ...functionCalls.map((call) => ({
+        type: "function_call",
+        id: call.id,
+        call_id: call.callId,
+        name: call.name,
+        arguments: call.argumentsText
+      }))
+    ],
     webSearchCallCount: 0
   };
 }
@@ -363,45 +433,101 @@ function dedupeCitations(citations: ProviderCitation[]): ProviderCitation[] {
   });
 }
 
-function parseChatCompletionStreamLine(line: string): { text: string; citations: ProviderCitation[]; done: boolean } | null {
-  const trimmed = line.trim();
-  if (!trimmed || !trimmed.startsWith("data:")) {
-    return null;
+function consumeChatCompletionSseFrames(value: string): {
+  frames: Array<{ data: string; done: boolean }>;
+  remainder: string;
+} {
+  const frames: Array<{ data: string; done: boolean }> = [];
+  let cursor = 0;
+  while (cursor < value.length) {
+    const delimiter = findSseFrameDelimiter(value, cursor);
+    if (!delimiter) {
+      break;
+    }
+    const dataLines = value
+      .slice(cursor, delimiter.start)
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice("data:".length).trimStart());
+    const data = dataLines.join("\n");
+    if (data) {
+      frames.push({ data, done: data === "[DONE]" });
+    }
+    cursor = delimiter.end;
   }
-
-  const data = trimmed.slice("data:".length).trim();
-  if (!data || data === "[DONE]") {
-    return { text: "", citations: [], done: true };
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(data);
-  } catch {
-    return null;
-  }
-
-  const text = extractChatCompletionDeltaText(parsed);
-  return {
-    text,
-    citations: extractCitations(parsed),
-    done: false
-  };
+  return { frames, remainder: value.slice(cursor) };
 }
 
-function extractChatCompletionDeltaText(value: unknown): string {
-  if (!isRecord(value) || !Array.isArray(value.choices)) {
-    return "";
+function findSseFrameDelimiter(value: string, fromIndex: number): { start: number; end: number } | undefined {
+  const crlfIndex = value.indexOf("\r\n\r\n", fromIndex);
+  const lfIndex = value.indexOf("\n\n", fromIndex);
+  if (crlfIndex < 0 && lfIndex < 0) {
+    return undefined;
+  }
+  if (lfIndex < 0 || (crlfIndex >= 0 && crlfIndex < lfIndex)) {
+    return { start: crlfIndex, end: crlfIndex + 4 };
+  }
+  return { start: lfIndex, end: lfIndex + 2 };
+}
+
+function parseChatCompletionStreamData(value: string):
+  | {
+      responseId?: string;
+      text: string;
+      reasoning: string;
+      citations: ProviderCitation[];
+      toolDeltas: Array<{ index: number; id?: string; name?: string; argumentsDelta?: string }>;
+    }
+  | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(parsed) || !Array.isArray(parsed.choices)) {
+    return undefined;
   }
 
-  return value.choices
-    .map((choice) => {
-      if (!isRecord(choice) || !isRecord(choice.delta)) {
-        return "";
-      }
-      return typeof choice.delta.content === "string" ? choice.delta.content : "";
-    })
-    .join("");
+  const toolDeltas: Array<{ index: number; id?: string; name?: string; argumentsDelta?: string }> = [];
+  let text = "";
+  let reasoning = "";
+  for (const choice of parsed.choices) {
+    if (!isRecord(choice) || !isRecord(choice.delta)) {
+      continue;
+    }
+    const delta = choice.delta;
+    text += typeof delta.content === "string" ? delta.content : "";
+    reasoning +=
+      typeof delta.reasoning_content === "string"
+        ? delta.reasoning_content
+        : typeof delta.reasoning === "string"
+          ? delta.reasoning
+          : "";
+    if (Array.isArray(delta.tool_calls)) {
+      delta.tool_calls.forEach((toolCall, fallbackIndex) => {
+        if (!isRecord(toolCall)) {
+          return;
+        }
+        const functionRecord = isRecord(toolCall.function) ? toolCall.function : undefined;
+        const index =
+          typeof toolCall.index === "number" && Number.isSafeInteger(toolCall.index) ? toolCall.index : fallbackIndex;
+        toolDeltas.push({
+          index,
+          ...(typeof toolCall.id === "string" ? { id: toolCall.id } : {}),
+          ...(typeof functionRecord?.name === "string" ? { name: functionRecord.name } : {}),
+          ...(typeof functionRecord?.arguments === "string" ? { argumentsDelta: functionRecord.arguments } : {})
+        });
+      });
+    }
+  }
+  return {
+    responseId: typeof parsed.id === "string" ? parsed.id : undefined,
+    text,
+    reasoning,
+    citations: extractCitations(parsed),
+    toolDeltas
+  };
 }
 
 async function safeReadDiagnostic(response: Response): Promise<string | undefined> {
@@ -413,31 +539,53 @@ async function safeReadDiagnostic(response: Response): Promise<string | undefine
   }
 }
 
-function requestHasImageInput(request: OpenAiCompatibleResponseRequest): boolean {
-  return request.input.some((item) => {
-    const record: Record<string, unknown> | undefined = isRecord(item) ? item : undefined;
-    const content = record?.content;
-    if (!Array.isArray(content)) {
-      return false;
-    }
-    return content.some((part) => isRecord(part) && part.type === "input_image");
-  });
-}
-
-function shouldRetryWithChatCompletions(status: number, diagnostic: string | undefined): boolean {
-  if (![400, 413, 415, 422, 500, 502, 503, 504].includes(status)) {
-    return false;
+function shouldFallbackToChatCompletions(status: number, diagnostic: string | undefined): boolean {
+  if (status === 404 || status === 405) {
+    return true;
   }
-
   const normalized = (diagnostic ?? "").toLowerCase();
   return (
-    normalized.includes("image") ||
-    normalized.includes("input_image") ||
-    normalized.includes("bad gateway") ||
-    normalized.includes("provider") ||
-    normalized.includes("请求格式") ||
-    status === 502
+    normalized.includes("responses endpoint") ||
+    normalized.includes("responses api") ||
+    normalized.includes("endpoint unsupported") ||
+    normalized.includes("unsupported endpoint") ||
+    normalized.includes("not support /responses") ||
+    normalized.includes("does not support responses") ||
+    normalized.includes("不支持 responses") ||
+    normalized.includes("不支持 /responses")
   );
+}
+
+function resultFromRawResponse(raw: RawResponse): OpenAiCompatibleResponseResult {
+  const usage = extractTokenUsage(raw.usage, "input_tokens", "output_tokens");
+  return {
+    responseId: typeof raw.id === "string" ? raw.id : "",
+    outputText: extractOutputText(raw.output),
+    functionCalls: extractFunctionCalls(raw.output),
+    citations: extractCitations(raw.output),
+    outputItems: extractOutputItems(raw.output),
+    webSearchCallCount: Array.isArray(raw.output)
+      ? raw.output.filter((item) => isRecord(item) && item.type === "web_search_call").length
+      : 0,
+    ...(usage ? { usage } : {})
+  };
+}
+
+function isRawResponsesResult(value: RawResponse | RawChatCompletion): value is RawResponse {
+  return Array.isArray((value as RawResponse).output) || typeof (value as RawResponse).id === "string";
+}
+
+function isRawChatCompletion(value: RawResponse | RawChatCompletion): value is RawChatCompletion {
+  return Array.isArray((value as RawChatCompletion).choices);
+}
+
+function emitBufferedResult(result: OpenAiCompatibleResponseResult, handlers: OpenAiCompatibleStreamHandlers): void {
+  if (result.outputText) {
+    handlers.onTextDelta?.(result.outputText);
+  }
+  if (result.citations.length > 0) {
+    handlers.onCitations?.(result.citations);
+  }
 }
 
 function convertResponseInputToChatMessages(input: OpenAiCompatibleResponseRequest["input"]): ChatMessage[] {

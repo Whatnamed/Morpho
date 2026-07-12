@@ -8,7 +8,6 @@ vi.mock("@/server/ai/openaiCompatibleConfig", () => ({
   loadOpenAiCompatibleConfig: () => ({
     status: "ok",
     config: {
-      provider: "aijws",
       apiKey: "test-key",
       baseUrl: "https://agent.example.test",
       model: "test-model",
@@ -31,10 +30,10 @@ vi.mock("@/server/auth/aiAccess", () => ({
     Response.json({ error: result.error }, { status: result.httpStatus })
 }));
 
-const executeOpenAiCompatibleResponseMock = vi.fn();
+const streamOpenAiCompatibleResponseMock = vi.fn();
 
 vi.mock("@/server/ai/openaiCompatibleProvider", () => ({
-  executeOpenAiCompatibleResponse: (...args: unknown[]) => executeOpenAiCompatibleResponseMock(...args),
+  streamOpenAiCompatibleResponse: (...args: unknown[]) => streamOpenAiCompatibleResponseMock(...args),
   OpenAiCompatibleProviderError: class OpenAiCompatibleProviderError extends Error {
     status: number;
     diagnostic?: string;
@@ -49,35 +48,42 @@ vi.mock("@/server/ai/openaiCompatibleProvider", () => ({
   }
 }));
 
-describe("agent route config filtering", () => {
+describe("agent route stream", () => {
   beforeEach(() => {
     guardAiRouteMock.mockReset();
     requireAiRouteUserMock.mockReset();
-    guardAiRouteMock.mockResolvedValue({
-      status: "allowed",
-      usage: {
-        role: "tester",
-        accessStatus: "active",
-        dailyTextLimit: 20,
-        dailyImageLimit: 4,
-        textRequestCount: 1,
-        imageRequestCount: 0,
-        usageDate: "2026-07-05"
+    streamOpenAiCompatibleResponseMock.mockReset();
+    guardAiRouteMock.mockResolvedValue({ status: "allowed" });
+    requireAiRouteUserMock.mockResolvedValue({ status: "allowed", userId: "user-1" });
+    streamOpenAiCompatibleResponseMock.mockImplementation(
+      async (_config: unknown, _request: unknown, handlers: { onEvent?: (event: unknown) => void }) => {
+        handlers.onEvent?.({ type: "reasoning-start", partId: "reasoning-1" });
+        handlers.onEvent?.({ type: "reasoning-delta", partId: "reasoning-1", delta: "检查语境。" });
+        handlers.onEvent?.({
+          type: "function-call-ready",
+          functionCall: {
+            id: "fc_1",
+            callId: "call_1",
+            name: "read_selected_context",
+            argumentsText: "{}"
+          }
+        });
+        handlers.onEvent?.({
+          type: "usage",
+          usage: { inputTokens: 5, outputTokens: 2, totalTokens: 7 }
+        });
+        handlers.onEvent?.({ type: "final-delta", partId: "final-1", delta: "完成。" });
+        return {
+          responseId: "resp_1",
+          outputText: "完成。",
+          functionCalls: [],
+          citations: [],
+          webSearchCallCount: 0,
+          outputItems: [],
+          usage: { inputTokens: 5, outputTokens: 2, totalTokens: 7 }
+        };
       }
-    });
-    requireAiRouteUserMock.mockResolvedValue({
-      status: "allowed",
-      userId: "user-1"
-    });
-    executeOpenAiCompatibleResponseMock.mockReset();
-    executeOpenAiCompatibleResponseMock.mockResolvedValue({
-      responseId: "resp_1",
-      outputText: "ok",
-      functionCalls: [],
-      citations: [],
-      webSearchCallCount: 0,
-      outputItems: []
-    });
+    );
   });
 
   it("removes local web search tools before provider execution when disabled", () => {
@@ -106,71 +112,90 @@ describe("agent route config filtering", () => {
     ).toEqual(["read_selected_context"]);
   });
 
-  it("returns JSON 401 for unauthenticated requests before provider execution", async () => {
+  it("keeps pre-stream authentication failures as JSON", async () => {
     guardAiRouteMock.mockResolvedValueOnce({
       status: "denied",
       httpStatus: 401,
       error: "请先登录 Morpho。"
     });
 
-    const response = await POST(
-      new Request("http://localhost/api/ai/agent", {
-        method: "POST",
-        body: JSON.stringify({
-          input: [{ role: "user", content: [{ type: "input_text", text: "继续讨论" }] }]
-        })
-      })
-    );
+    const response = await POST(agentRequest());
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({ error: "请先登录 Morpho。" });
-    expect(executeOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
+    expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
   });
 
-  it("uses auth-only access for same agent turn continuations", async () => {
+  it("uses auth-only access for same-turn continuations and returns typed SSE", async () => {
     const response = await POST(
-      new Request("http://localhost/api/ai/agent", {
-        method: "POST",
-        body: JSON.stringify({
-          agentTurnId: "agent-turn-1",
-          continuation: true,
-          input: [{ role: "user", content: [{ type: "input_text", text: "continue" }] }]
-        })
+      agentRequest({
+        agentTurnId: "agent-turn-1",
+        continuation: true
       })
     );
+    const body = await response.text();
 
-    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toContain("text/event-stream");
     expect(requireAiRouteUserMock).toHaveBeenCalledTimes(1);
     expect(guardAiRouteMock).not.toHaveBeenCalled();
-    expect(executeOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(1);
+    expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(1);
+    expect(body).toContain("event: turn-start");
+    expect(body).toContain("event: reasoning-delta");
+    expect(body).toContain("event: function-call-ready");
+    expect(body).toContain("event: usage");
+    expect(body).toContain("event: turn-complete");
   });
 
-  it("returns a machine-readable context limit code while preserving the current Chinese error", async () => {
+  it("flushes turn-start before the provider completes", async () => {
+    let finishProvider: (() => void) | undefined;
+    streamOpenAiCompatibleResponseMock.mockImplementationOnce(
+      async (_config: unknown, _request: unknown, handlers: { onEvent?: (event: unknown) => void }) => {
+        handlers.onEvent?.({ type: "reasoning-start", partId: "reasoning-early" });
+        await new Promise<void>((resolve) => {
+          finishProvider = resolve;
+        });
+        return {
+          responseId: "resp_delayed",
+          outputText: "完成。",
+          functionCalls: [],
+          citations: [],
+          webSearchCallCount: 0,
+          outputItems: []
+        };
+      }
+    );
+
+    const response = await POST(agentRequest());
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("Expected an SSE response body.");
+    }
+    const first = await reader.read();
+    const firstChunk = new TextDecoder().decode(first.value);
+
+    expect(firstChunk).toContain("event: turn-start");
+    finishProvider?.();
+    await reader.cancel();
+  });
+
+  it("emits a final stream error after the response has started", async () => {
     const { OpenAiCompatibleProviderError } = await import("@/server/ai/openaiCompatibleProvider");
-    executeOpenAiCompatibleResponseMock.mockRejectedValue(
+    streamOpenAiCompatibleResponseMock.mockRejectedValue(
       new OpenAiCompatibleProviderError(400, '{"error":{"code":"context_length_exceeded"}}')
     );
 
-    const response = await POST(
-      new Request("http://localhost/api/ai/agent", {
-        method: "POST",
-        body: JSON.stringify({
-          input: [{ role: "user", content: [{ type: "input_text", text: "继续讨论" }] }]
-        })
-      })
-    );
+    const response = await POST(agentRequest());
+    const body = await response.text();
 
-    expect(response.status).toBe(502);
-    await expect(response.json()).resolves.toEqual({
-      error: "OpenAI-compatible Provider 请求格式不兼容，请检查模型、tools 或图片输入。",
-      code: "context_limit"
-    });
-    expect(executeOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(2);
+    expect(response.status).toBe(200);
+    expect(body).toContain("event: turn-start");
+    expect(body).toContain("event: turn-error");
+    expect(body).toContain('"code":"context_limit"');
   });
 
-  it("emergency-compacts and retries a context limit without re-entering the client tool loop", async () => {
+  it("emergency-compacts and retries a context-limit stream without client tool replay", async () => {
     const { OpenAiCompatibleProviderError } = await import("@/server/ai/openaiCompatibleProvider");
-    executeOpenAiCompatibleResponseMock
+    streamOpenAiCompatibleResponseMock
       .mockRejectedValueOnce(
         new OpenAiCompatibleProviderError(400, '{"error":{"code":"context_length_exceeded"}}')
       )
@@ -189,33 +214,34 @@ describe("agent route config filtering", () => {
       });
 
     const response = await POST(
-      new Request("http://localhost/api/ai/agent", {
-        method: "POST",
-        body: JSON.stringify({
-          agentTurnId: "agent-turn-retry",
-          continuation: true,
-          input: [
-            { role: "system", content: [{ type: "input_text", text: "系统规则" }] },
-            { role: "user", content: [{ type: "input_text", text: "旧问题" }] },
-            { role: "assistant", content: [{ type: "input_text", text: "旧回答" }] },
-            { role: "user", content: [{ type: "input_text", text: "当前问题" }] }
-          ]
-        })
+      agentRequest({
+        agentTurnId: "agent-turn-retry",
+        continuation: true,
+        input: [
+          { role: "system", content: [{ type: "input_text", text: "系统规则" }] },
+          { role: "user", content: [{ type: "input_text", text: "旧问题" }] },
+          { role: "assistant", content: [{ type: "input_text", text: "旧回答" }] },
+          { role: "user", content: [{ type: "input_text", text: "当前问题" }] }
+        ]
       })
     );
+    const body = await response.text();
 
-    expect(response.status).toBe(200);
-    const payload = await response.json();
-    expect(payload.outputText).toBe("重试完成");
-    expect(payload.context).toMatchObject({
-      pressure: "compact",
-      compacted: true,
-      checkpointRequested: true,
-      retried: true
-    });
-    expect(executeOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(2);
-    const retryRequest = executeOpenAiCompatibleResponseMock.mock.calls[1]?.[1] as OpenAiCompatibleResponseRequest;
+    expect(body).toContain("event: turn-complete");
+    expect(body).toContain("重试完成");
+    expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(2);
+    const retryRequest = streamOpenAiCompatibleResponseMock.mock.calls[1]?.[1] as OpenAiCompatibleResponseRequest;
     expect(JSON.stringify(retryRequest.input)).not.toContain("旧问题");
     expect(JSON.stringify(retryRequest.input)).toContain("当前问题");
   });
 });
+
+function agentRequest(overrides: Record<string, unknown> = {}): Request {
+  return new Request("http://localhost/api/ai/agent", {
+    method: "POST",
+    body: JSON.stringify({
+      input: [{ role: "user", content: [{ type: "input_text", text: "继续讨论" }] }],
+      ...overrides
+    })
+  });
+}

@@ -219,6 +219,21 @@ Current behavior:
 
 Manual provider smoke checks are separate from the default command set and should be run only with real `.env.local` keys and `MORPHO_ALLOW_PAID_SMOKE_TESTS=true`. Do not print keys, key counts, key suffixes, provider raw headers, or provider raw error bodies while testing.
 
+### Agent Responses SSE Probe
+
+Use the local-only probe with a real `.env.local` and explicit paid-test permission:
+
+```bash
+node --experimental-strip-types --env-file=.env.local scripts/probe-agent-responses-stream.mjs --scenario=reasoning
+node --experimental-strip-types --env-file=.env.local scripts/probe-agent-responses-stream.mjs --scenario=tool --fixture=responses-reasoning-tool-stream.ndjson
+node --experimental-strip-types --env-file=.env.local scripts/probe-agent-responses-stream.mjs --scenario=continuation --fixture=responses-tool-continuation-stream.ndjson
+node --experimental-strip-types --env-file=.env.local scripts/probe-agent-responses-stream.mjs --scenario=cancel
+```
+
+The probe sends only synthetic inputs. It logs event names and writes only sanitized fixtures: no keys, headers, project data, image URLs, encrypted reasoning, or raw diagnostics. The optional `web-search` scenario is expected to report a clean failure if the active provider does not support it; do not replace that failure with a Chat Completions retry.
+
+For manual Agent acceptance, use a disposable local project. Verify a normal answer, a real tool loop beyond four model continuations, optional commentary, no-commentary tool execution, native/provider search activity when available, image generation, cancellation, user-controlled disclosure state, page refresh of a completed trace, and a clean browser console. The process disclosure must contain only real reasoning summaries, commentary, and activity; final text remains below it.
+
 ## Browser Mock Acceptance
 
 Recommended local mock acceptance path:
@@ -322,7 +337,7 @@ Legacy single-project key read for migration:
 morpho.workspace.nightrail.v1
 ```
 
-Structured workspace data is schema version `13`. v1/v2/v3/v4/v5/v6/v7/v8/v9/v10/v11/v12 workspace data is migrated through pure migration functions. v6 normalizes image roles to `reference`, `preview`, `conceptImage`, `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, `structureDiagram`, `interactionDiagram`, and `deliveryAsset`; old `main`, `scenario`, `cmf`, `detail`, and `diagram` values are migration-only inputs. v7 adds parse metadata to file objects and stores extracted document text as separate IndexedDB assets. v8 adds `workspace.projectContinuity`, migrates legacy `project.currentFocus` into structured `currentFocus`, and retires legacy `stageRecords` instead of converting them into a second stage-history source. v9 adds controlled conversation semantic record fields and message source refs; old v8 entries become `origin: deterministicEvent` and `manualState: active` without fabricated semantic metadata. v10 adds `workspace.ai.conversationCheckpoints`; old v9 messages are preserved, no checkpoint is invented, no old message receives a fabricated `conversationLaneKey`, and `projectContinuity` is unchanged. v11 adds `workspace.ai.comparisonAnalyses` plus assistant-message linkage for local Compare cards; old messages are preserved without fabricated comparison links. v12 adds `documentFragment` support and fragment source relations without fabricating historical fragments or changing existing files/messages/checkpoints/Compare analyses/DecisionRecords/project-continuity records. v13 upgrades delivery preparation with sections, stable section references, gaps, and pending delivery section drafts; it does not fabricate packages, narratives, gaps, drafts, source objects, AI messages, Compare analyses, or project-continuity records. Migration success writes the new project workspace and catalog. Migration failure preserves old raw data and shows a recoverable warning instead of silently resetting to seed data.
+Structured workspace data is schema version `14`. v1/v2/v3/v4/v5/v6/v7/v8/v9/v10/v11/v12/v13 workspace data is migrated through pure migration functions. v6 normalizes image roles to `reference`, `preview`, `conceptImage`, `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, `structureDiagram`, `interactionDiagram`, and `deliveryAsset`; old `main`, `scenario`, `cmf`, `detail`, and `diagram` values are migration-only inputs. v7 adds parse metadata to file objects and stores extracted document text as separate IndexedDB assets. v8 adds `workspace.projectContinuity`, migrates legacy `project.currentFocus` into structured `currentFocus`, and retires legacy `stageRecords` instead of converting them into a second stage-history source. v9 adds controlled conversation semantic record fields and message source refs; old v8 entries become `origin: deterministicEvent` and `manualState: active` without fabricated semantic metadata. v10 adds `workspace.ai.conversationCheckpoints`; old v9 messages are preserved, no checkpoint is invented, no old message receives a fabricated `conversationLaneKey`, and `projectContinuity` is unchanged. v11 adds `workspace.ai.comparisonAnalyses` plus assistant-message linkage for local Compare cards; old messages are preserved without fabricated comparison links. v12 adds `documentFragment` support and fragment source relations without fabricating historical fragments or changing existing files/messages/checkpoints/Compare analyses/DecisionRecords/project-continuity records. v13 upgrades delivery preparation with sections, stable section references, gaps, and pending delivery section drafts. v14 adds optional ordered assistant `agentTrace` records and preserves all prior message bodies, citations, checkpoints, Compare analyses, and project-continuity state without fabricating trace parts. Migration success writes the new project workspace and catalog. Migration failure preserves old raw data and shows a recoverable warning instead of silently resetting to seed data.
 
 Binary assets are stored in IndexedDB:
 

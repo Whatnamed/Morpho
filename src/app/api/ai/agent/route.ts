@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 
 import { loadOpenAiCompatibleConfig } from "@/server/ai/openaiCompatibleConfig";
 import {
-  executeOpenAiCompatibleResponse,
   OpenAiCompatibleProviderError,
+  streamOpenAiCompatibleResponse,
   type OpenAiCompatibleResponseRequest
 } from "@/server/ai/openaiCompatibleProvider";
 import { executeAgentRequestWithContextBudget } from "@/server/ai/agentContextBudget";
 import { filterAgentRequestForConfig } from "@/server/ai/agentRoute";
 import { aiAccessDeniedResponse, guardAiRoute, requireAiRouteUser } from "@/server/auth/aiAccess";
+import { encodeAgentRouteSse, type AgentRouteStreamEvent } from "@/shared/agentStreamProtocol";
 
 export const runtime = "nodejs";
 
@@ -35,41 +36,116 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: config.reason }, { status: 503 });
   }
 
-  try {
-    const providerRequest = filterAgentRequestForConfig(validated.value, config.config);
-    const execution = await executeAgentRequestWithContextBudget(providerRequest, {
-      limits: {
-        windowTokens: config.config.contextWindowTokens,
-        prepareTokens: config.config.contextPrepareTokens,
-        compactTokens: config.config.contextCompactTokens,
-        targetTokens: config.config.contextTargetTokens
-      },
-      baselineInputTokens: validated.contextBudgetBaselineTokens,
-      execute: (preparedRequest) =>
-        executeOpenAiCompatibleResponse(config.config, preparedRequest, request.signal)
-    });
-    return NextResponse.json({
-      ...execution.result,
-      context: execution.context
-    });
-  } catch (error) {
-    if (error instanceof OpenAiCompatibleProviderError) {
-      return NextResponse.json(
-        {
-          error:
-            error.status === 401 || error.status === 403
-              ? "OpenAI-compatible Provider 鉴权失败，请检查 MORPHO_AI_API_KEY。"
-              : error.status === 400
-                ? "OpenAI-compatible Provider 请求格式不兼容，请检查模型、tools 或图片输入。"
-                : readableProviderDiagnostic(error.diagnostic) ?? "OpenAI-compatible Provider 调用失败，请稍后重试。",
-          ...(error.code === "context_limit" ? { code: "context_limit" } : {})
-        },
-        { status: 502 }
-      );
+  const providerRequest = filterAgentRequestForConfig(validated.value, config.config);
+  let streamClosed = false;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const enqueue = (event: AgentRouteStreamEvent) => {
+        if (streamClosed) {
+          return;
+        }
+        try {
+          controller.enqueue(encodeAgentRouteSse(event));
+        } catch {
+          streamClosed = true;
+        }
+      };
+      const heartbeat = setInterval(() => enqueue({ type: "heartbeat" }), 12_000);
+      void (async () => {
+        enqueue({
+          type: "turn-start",
+          ...(validated.agentTurnId ? { agentTurnId: validated.agentTurnId } : {}),
+          startedAt: new Date().toISOString()
+        });
+        try {
+          const execution = await executeAgentRequestWithContextBudget(providerRequest, {
+            limits: {
+              windowTokens: config.config.contextWindowTokens,
+              prepareTokens: config.config.contextPrepareTokens,
+              compactTokens: config.config.contextCompactTokens,
+              targetTokens: config.config.contextTargetTokens
+            },
+            baselineInputTokens: validated.contextBudgetBaselineTokens,
+            execute: (preparedRequest) =>
+              streamOpenAiCompatibleResponse(
+                config.config,
+                preparedRequest,
+                {
+                  onEvent: (event) => {
+                    if (event.type === "unknown") {
+                      return;
+                    }
+                    enqueue(event);
+                  }
+                },
+                request.signal
+              )
+          });
+          enqueue({ type: "context", context: execution.context });
+          enqueue({
+            type: "turn-complete",
+            result: {
+              ...execution.result,
+              context: execution.context
+            }
+          });
+        } catch (error) {
+          enqueue(providerErrorEvent(error));
+        } finally {
+          clearInterval(heartbeat);
+          if (!streamClosed) {
+            try {
+              controller.close();
+            } catch {
+              streamClosed = true;
+            }
+          }
+        }
+      })();
+    },
+    cancel() {
+      // The Request signal reaches the provider fetch and terminates the active stream.
+      streamClosed = true;
     }
+  });
 
-    return NextResponse.json({ error: "OpenAI-compatible Provider 网络调用失败。" }, { status: 502 });
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no"
+    }
+  });
+}
+
+function providerErrorEvent(error: unknown): Extract<AgentRouteStreamEvent, { type: "turn-error" }> {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return {
+      type: "turn-error",
+      error: "当前 Agent 回合已取消。已完成的过程和结果会保留。",
+      code: "interrupted"
+    };
   }
+
+  if (error instanceof OpenAiCompatibleProviderError) {
+    return {
+      type: "turn-error",
+      error:
+        error.status === 401 || error.status === 403
+          ? "OpenAI-compatible Provider 鉴权失败，请检查 MORPHO_AI_API_KEY。"
+          : error.status === 400
+            ? "OpenAI-compatible Provider 请求格式不兼容，请检查模型、tools 或图片输入。"
+            : readableProviderDiagnostic(error.diagnostic) ?? "OpenAI-compatible Provider 调用失败，请稍后重试。",
+      ...(error.code === "context_limit" ? { code: "context_limit" as const } : {})
+    };
+  }
+
+  return {
+    type: "turn-error",
+    error: "OpenAI-compatible Provider 网络调用失败，请稍后重试。"
+  };
 }
 
 function validateAgentRouteRequest(value: unknown):

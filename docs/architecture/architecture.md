@@ -26,7 +26,7 @@ No database, authentication, cloud object storage, Supabase, multiplayer sync, e
 
 ## Data Model
 
-Structured workspace data is schema version `13`.
+Structured workspace data is schema version `14`.
 
 Current workspace state includes:
 
@@ -38,6 +38,7 @@ Current workspace state includes:
 - visual-only canvas instances in `workspace.canvas.instances`;
 - persisted workspace UI state in `workspace.ui`;
 - continuous AI messages in `workspace.ai.messages`.
+- optional ordered Agent process traces in `AiMessage.agentTrace`.
 - short-term conversation checkpoints in `workspace.ai.conversationCheckpoints`.
 - saved local Compare analyses in `workspace.ai.comparisonAnalyses`.
 - lightweight Operation records in `workspace.operations`;
@@ -148,6 +149,15 @@ M5-B2 additions:
 - when a mandatory-compaction response does not contain a valid checkpoint, the client may request one checkpoint-only continuation with no tools or images. Failure of that optional refresh does not invalidate the already completed visible Agent result.
 - an exact `/compact` input gathers all eligible messages in the current lane after the existing checkpoint and rolls them through bounded checkpoint-only Agent requests with no tools or images. The visible assistant message moves from `正在压缩当前上下文…` only after all chunks complete; partial failure keeps the previous checkpoint and reports failure. A successful result writes only the final normal lane checkpoint and does not mutate canvas objects.
 
+Agent streaming additions:
+
+- `/api/ai/agent` now emits typed SSE while the provider is still running, including provider reasoning summaries, optional commentary, final text deltas, native hosted-tool activity, function-call readiness, citations, usage, context metadata, heartbeat, completion, and post-start errors;
+- `src/server/ai/openaiCompatibleResponsesStream.ts` is the isolated Responses compatibility parser. It handles arbitrary byte boundaries, CRLF/multiline SSE data, heartbeats, `[DONE]`, unknown events, cancellation, provider failure, and early disconnect without saving raw SSE into workspace data;
+- Responses is the default protocol for all configured OpenAI-compatible endpoints, including AiJWS. Chat Completions is used only after an explicit endpoint-unsupported signal (404/405 or compatible diagnostic), never to mask quota, authentication, or ordinary 5xx failures;
+- assistant messages may persist `agentTrace` ordered parts. Reasoning stores only provider-returned summaries, commentary stores only an explicit `phase: "commentary"` message, and tool activities are created from actual provider or local-tool execution. Final text remains in `AiMessage.body`;
+- the client continues to execute workspace tools locally, updates one stable tool activity per `toolCallId`, and merges all provider continuations into the same assistant message and `agentTurnId`;
+- normal Agent execution has no four-turn product limit. It uses a high internal ceiling, total-duration guard, and repeated-tool signature guard; a guard requests one tools-free finalization and retains completed trace and writes.
+
 M5-C additions:
 
 - schema v11 adds saved local Compare analyses under `workspace.ai.comparisonAnalyses` and links assistant messages through `comparisonAnalysisId`;
@@ -185,6 +195,7 @@ M5-D2 additions:
 M6 additions:
 
 - schema v13 upgrades the existing `delivery` object into the delivery preparation package with editable `sections`, package-level `references`, managed `gaps`, and pending `workspace.deliverySectionDrafts`;
+- schema v14 adds optional persisted `AiMessage.agentTrace` records. v13 workspaces migrate without fabricating traces or changing existing message bodies, citations, checkpoints, Compare analyses, or project-continuity state;
 - legacy delivery references migrate into one deterministic `交付内容` section when needed, without inventing new packages, narratives, gaps, drafts, or AI messages;
 - delivery references are stable snapshots, not live source views. They store bounded title/summary/body/revision/file/asset metadata only and never store Blob URLs, Base64, source binaries, full source files, complete `documentExtract` text, or provider raw payloads;
 - source state is resolved as current, hidden, missing, asset missing, or source updated through deterministic fingerprint/revision comparison, not generic `updatedAt` checks;

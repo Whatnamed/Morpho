@@ -698,6 +698,104 @@ describe("AiConversationPanel", () => {
     expect(html).toContain("Thinking");
   });
 
+  it("renders ordered Agent process parts above independently streamed final body", () => {
+    const workspace = createInitialWorkspace();
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        workspace: {
+          ...workspace,
+          ai: {
+            ...workspace.ai,
+            messages: [
+              {
+                id: "assistant-agent-trace",
+                role: "assistant",
+                body: "最终回答在过程区下方。",
+                status: "streaming",
+                agentTrace: {
+                  startedAt: "2026-07-13T00:00:00.000Z",
+                  status: "streaming",
+                  parts: [
+                    {
+                      id: "reasoning-1",
+                      type: "reasoning",
+                      text: "先确认当前选择范围。",
+                      state: "done",
+                      createdAt: "2026-07-13T00:00:00.000Z"
+                    },
+                    {
+                      id: "tool-1",
+                      type: "toolActivity",
+                      toolCallId: "call-1",
+                      toolName: "read_selected_context",
+                      activityKind: "contextRead",
+                      label: "读取当前选择的对象",
+                      state: "running",
+                      startedAt: "2026-07-13T00:00:01.000Z"
+                    },
+                    {
+                      id: "commentary-1",
+                      type: "commentary",
+                      text: "资料足以继续。",
+                      state: "streaming",
+                      createdAt: "2026-07-13T00:00:02.000Z"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        isStreaming: true
+      }))
+    );
+
+    expect(html).toContain("agent-process");
+    expect(html).toContain("处理中…");
+    expect(html).toContain("读取当前选择的对象");
+    expect(html).toContain("agent-process-activity is-running");
+    expect(html.indexOf("先确认当前选择范围。")).toBeLessThan(html.indexOf("最终回答在过程区下方。"));
+  });
+
+  it("collapses completed historical Agent trace by default and keeps its duration title", () => {
+    const workspace = createInitialWorkspace();
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        workspace: {
+          ...workspace,
+          ai: {
+            ...workspace.ai,
+            messages: [
+              {
+                id: "assistant-finished-trace",
+                role: "assistant",
+                body: "完成。",
+                status: "done",
+                agentTrace: {
+                  startedAt: "2026-07-13T00:00:00.000Z",
+                  completedAt: "2026-07-13T00:01:12.000Z",
+                  status: "done",
+                  parts: [
+                    {
+                      id: "reasoning-1",
+                      type: "reasoning",
+                      text: "核对完成。",
+                      state: "done",
+                      createdAt: "2026-07-13T00:00:00.000Z"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }))
+    );
+
+    expect(html).toContain("思考了 1m 12s");
+    expect(html).not.toContain("核对完成。");
+  });
+
   it("uses the primary input action to stop an unfinished operation without adding a second stop control", () => {
     const workspace = createInitialWorkspace();
     const html = renderToStaticMarkup(

@@ -657,7 +657,7 @@ describe("delivery preparation domain operations", () => {
 });
 
 describe("delivery preparation schema migration", () => {
-  it("migrates v12 workspaces to v13 without inventing delivery packages", () => {
+  it("migrates v12 workspaces to v14 without inventing delivery packages", () => {
     const workspace = createBlankWorkspace("project-no-delivery");
     const v12 = { ...workspace, schemaVersion: 12 };
 
@@ -667,7 +667,7 @@ describe("delivery preparation schema migration", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(13);
+    expect(result.workspace.schemaVersion).toBe(14);
     expect(Object.values(result.workspace.objects).some((object) => object.type === "delivery")).toBe(false);
     expect(result.workspace.deliverySectionDrafts).toEqual({});
   });
@@ -677,7 +677,7 @@ describe("delivery preparation schema migration", () => {
     const legacyDelivery = workspace.objects["delivery-board-a1"] as DeliveryObject;
     const legacy: MorphoWorkspace = {
       ...workspace,
-      schemaVersion: 12 as 13,
+      schemaVersion: 12 as 14,
       objects: {
         ...workspace.objects,
         [legacyDelivery.id]: {
