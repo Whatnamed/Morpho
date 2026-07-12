@@ -1,5 +1,17 @@
 export type CanvasSelectableKind = "morpho" | "stage" | "other";
 
+export type CanvasSelectionRequest = {
+  objectIds: string[];
+  nonce: number;
+};
+
+export function shouldApplyCanvasSelectionRequest(
+  request: CanvasSelectionRequest,
+  lastAppliedNonce: number | null
+): boolean {
+  return request.nonce !== lastAppliedNonce;
+}
+
 /**
  * Keeps the presentation-only stage landmarks out of object selections before
  * tldraw commits page state. The final stage is intentionally the newest one:

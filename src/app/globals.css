@@ -2546,6 +2546,12 @@ button:disabled {
   border-radius: 9px;
   background: rgba(253, 252, 249, 0.98);
   box-shadow: 0 12px 28px rgba(54, 45, 35, 0.16);
+  max-width: calc(100vw - 36px);
+}
+
+.selection-toolbar.below .canvas-toolbar-menu {
+  top: auto;
+  bottom: calc(100% + 8px);
 }
 
 .canvas-toolbar-menu button {

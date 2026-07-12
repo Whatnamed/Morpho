@@ -277,6 +277,7 @@ import {
   wouldExceedAutoImageTurnLimit
 } from "./agentTurnLimits";
 import type { CanvasImportRequest, FocusArea } from "./tldraw/MorphoCanvas";
+import type { CanvasSelectionRequest } from "./tldraw/canvasSelection";
 
 const MorphoCanvas = dynamic(() => import("./tldraw/MorphoCanvas").then((mod) => mod.MorphoCanvas), {
   ssr: false,
@@ -397,6 +398,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const latestCanvasViewRef = useRef<CanvasView>(workspace.canvas.view);
   const selectionHydratedProjectIdRef = useRef<string | null>(null);
   const [focusRequest, setFocusRequest] = useState<FocusRequest>({ nonce: 0 });
+  const [selectionRequest, setSelectionRequest] = useState<CanvasSelectionRequest>({ objectIds: [], nonce: 0 });
   const [documentReader, setDocumentReader] = useState<DocumentReaderUiState | null>(null);
   const [bundlePanelOpen, setBundlePanelOpen] = useState(false);
   const [archiveIncludeFullChat, setArchiveIncludeFullChat] = useState(false);
@@ -432,6 +434,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     () => compactObjectList(workspace.objects, selectedObjectIds),
     [selectedObjectIds, workspace.objects]
   );
+  const requestCanvasSelection = useCallback((objectIds: string[]) => {
+    const nextObjectIds = [...objectIds];
+    setSelectedObjectIds(nextObjectIds);
+    setSelectionRequest((current) => ({ objectIds: nextObjectIds, nonce: current.nonce + 1 }));
+  }, []);
   const activeCanvasObjectIds = useMemo(() => {
     const ids: string[] = [];
     const seen = new Set<string>();
@@ -584,10 +591,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
 
     selectionHydratedProjectIdRef.current = workspace.project.id;
-    setSelectedObjectIds((current) =>
-      current.join("|") === persistedSelection.join("|") ? current : [...persistedSelection]
-    );
-  }, [workspace.project.id, workspace.ui.lastSelectionIds]);
+    requestCanvasSelection(persistedSelection);
+  }, [requestCanvasSelection, workspace.project.id, workspace.ui.lastSelectionIds]);
 
   const updateImageGenerationSettings = useCallback(
     (patch: { modelId?: string; aspectRatio?: GrsImageAspectRatio; sizeOption?: string }) => {
@@ -768,12 +773,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
 
     setWorkspace(entry.workspace);
-    setSelectedObjectIds(entry.selectedObjectIds);
+    requestCanvasSelection(entry.selectedObjectIds);
     setLocalEditObjectId(entry.localEditObjectId);
     setPendingConfirmation(entry.pendingConfirmation);
     setCanvasContextMenu(null);
     return true;
-  }, [setWorkspace, undoLastDetailNavigation, workspace]);
+  }, [requestCanvasSelection, setWorkspace, undoLastDetailNavigation, workspace]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -969,14 +974,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       });
 
       if (nextSelection.length > 0) {
-        setSelectedObjectIds(nextSelection);
+        requestCanvasSelection(nextSelection);
       }
 
       if (parseTargets.length > 0) {
         void parseImportedDocuments(parseTargets, setWorkspace);
       }
     },
-    [setWorkspace]
+    [requestCanvasSelection, setWorkspace]
   );
   const handleRailAddToCanvas = useCallback(() => {
     railImportInputRef.current?.click();
@@ -5508,7 +5513,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return false;
     }
 
-    setSelectedObjectIds(activeCanvasObjectIds);
+    requestCanvasSelection(activeCanvasObjectIds);
     setCanvasContextMenu(null);
     setWorkspace((current) => ({
       ...current,
@@ -5518,14 +5523,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
     }));
     return true;
-  }, [activeCanvasObjectIds, setWorkspace]);
+  }, [activeCanvasObjectIds, requestCanvasSelection, setWorkspace]);
 
   const clearCanvasSelection = useCallback(() => {
     if (selectedObjectIds.length === 0) {
       return false;
     }
 
-    setSelectedObjectIds([]);
+    requestCanvasSelection([]);
     setCanvasContextMenu(null);
     setWorkspace((current) => ({
       ...current,
@@ -5535,7 +5540,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
     }));
     return true;
-  }, [selectedObjectIds.length, setWorkspace]);
+  }, [requestCanvasSelection, selectedObjectIds.length, setWorkspace]);
 
   const closeTopWorkspaceSurface = useCallback(() => {
     if (canvasContextMenu) {
@@ -5736,6 +5741,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         assetUrls={assetUrls}
         pendingImageGenerationSlots={pendingImageGenerationSlots}
         focusRequest={focusRequest}
+        selectionRequest={selectionRequest}
         floatingChromeKey={[
           activeDrawer ?? "none",
           aiOpen ? "ai" : "x",

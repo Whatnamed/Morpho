@@ -44,7 +44,14 @@ import {
   type StageRegionShape
 } from "./StageRegionShapeUtil";
 import { StageRegionToolbar } from "../components/StageRegionToolbar";
-import { areSelectionIdsEqual, normalizeCanvasSelectionIds, type CanvasSelectableKind } from "./canvasSelection";
+import { createStageOpacitySessionController } from "./stageOpacitySession";
+import {
+  areSelectionIdsEqual,
+  normalizeCanvasSelectionIds,
+  shouldApplyCanvasSelectionRequest,
+  type CanvasSelectableKind,
+  type CanvasSelectionRequest
+} from "./canvasSelection";
 
 export type FocusArea = "overview" | "research" | "definition" | "visual" | "delivery";
 
@@ -65,6 +72,7 @@ type MorphoCanvasProps = {
   assetUrls: Record<string, string>;
   pendingImageGenerationSlots: PendingImageGenerationSlot[];
   focusRequest: FocusRequest;
+  selectionRequest: CanvasSelectionRequest;
   /**
    * Changes when floating chrome opens/closes so the selection toolbar
    * re-measures obstacles even when the tldraw editor itself is idle.
@@ -152,6 +160,7 @@ export function MorphoCanvas({
   assetUrls,
   pendingImageGenerationSlots,
   focusRequest,
+  selectionRequest,
   floatingChromeKey = "",
   renderSelectionToolbar,
   onSelectionChange,
@@ -170,6 +179,7 @@ export function MorphoCanvas({
   const pendingStageRegionsRef = useRef<StageRegionRecord[] | null>(null);
   const stageRegionsPersistTimerRef = useRef<number | null>(null);
   const lastAppliedFocusNonceRef = useRef<number | null>(null);
+  const lastAppliedSelectionRequestNonceRef = useRef<number | null>(null);
   const viewPersistTimerRef = useRef<number | null>(null);
   const latestViewRef = useRef<CanvasView>(workspace.canvas.view);
   const lastPersistedViewKeyRef = useRef(getCanvasViewKey(workspace.canvas.view));
@@ -177,6 +187,7 @@ export function MorphoCanvas({
   const latestWorkspaceRef = useRef(workspace);
   const didSendStagesToBackRef = useRef(false);
   const stageOpacityPreviewRef = useRef<string | null>(null);
+  const [editorReadyEpoch, setEditorReadyEpoch] = useState(0);
   const [liveView, setLiveView] = useState<CanvasView>(workspace.canvas.view);
   const traceObjectIds = useMemo(() => canvasTrace?.highlightedObjectIds ?? [], [canvasTrace]);
   const traceEdgeKeySet = useMemo(() => new Set(canvasTrace?.highlightedEdgeKeys ?? []), [canvasTrace]);
@@ -790,6 +801,20 @@ export function MorphoCanvas({
 
   useEffect(() => {
     const editor = editorRef.current;
+    if (!editor || !shouldApplyCanvasSelectionRequest(selectionRequest, lastAppliedSelectionRequestNonceRef.current)) {
+      return;
+    }
+    lastAppliedSelectionRequestNonceRef.current = selectionRequest.nonce;
+    const shapeIds = getMorphoShapeIdsForSelectionRequest(
+      editor.getCurrentPageShapes().filter(isMorphoShape),
+      selectionRequest.objectIds,
+      latestWorkspaceRef.current
+    );
+    editor.select(...shapeIds);
+  }, [editorReadyEpoch, selectionRequest]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
     if (!editor || !shouldApplyFocusRequest(focusRequest, lastAppliedFocusNonceRef.current)) {
       return;
     }
@@ -855,6 +880,7 @@ export function MorphoCanvas({
         licenseKey={process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY || undefined}
         onMount={(editor) => {
           editorRef.current = editor;
+          setEditorReadyEpoch((current) => current + 1);
           editor.user.updateUserPreferences({ isSnapMode: true });
           // World-space dot grid that pans/zooms with the camera (replaces CSS screen grid).
           editor.updateInstanceState({ isGridMode: true });
@@ -1140,6 +1166,7 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
 
   return (
     <CanvasStageRegionToolbar
+      key={region.id}
       workspace={workspace}
       region={region}
       placement={placement}
@@ -1169,13 +1196,48 @@ function CanvasStageRegionToolbar({
   isMeasuring: boolean;
 }) {
   const editor = useEditor();
-  const opacitySessionRef = useRef<{
-    stageId: string;
-    startOpacity: number;
-    previewOpacity: number;
-    selectionKey: string;
-    active: boolean;
-  } | null>(null);
+  const workspaceRef = useRef(workspace);
+  const onStageRegionsChangeRef = useRef(onStageRegionsChange);
+  const onStageOpacityPreviewChangeRef = useRef(onStageOpacityPreviewChange);
+  useEffect(() => {
+    workspaceRef.current = workspace;
+    onStageRegionsChangeRef.current = onStageRegionsChange;
+    onStageOpacityPreviewChangeRef.current = onStageOpacityPreviewChange;
+  }, [onStageOpacityPreviewChange, onStageRegionsChange, workspace]);
+  const [opacitySession, setOpacitySession] = useState<ReturnType<typeof createStageOpacitySessionController> | null>(null);
+  useEffect(() => {
+    const controller = createStageOpacitySessionController({
+      getOpacity: (stageId) => {
+        const shape = editor.getShape(`shape:${stageId}` as TLShapeId);
+        return shape && isStageRegionShape(shape) ? shape.props.fillOpacity : null;
+      },
+      writeOpacity: (stageId, value, options) => {
+        const write = () => {
+          editor.updateShapes([
+            { id: `shape:${stageId}` as TLShapeId, type: STAGE_REGION_SHAPE_TYPE, props: { fillOpacity: value } }
+          ]);
+        };
+        if (options.history === "ignore") {
+          editor.run(write, MORPHO_EDITOR_SYNC_RUN_OPTIONS);
+        } else {
+          write();
+        }
+      },
+      markHistoryStoppingPoint: (label) => editor.markHistoryStoppingPoint(label),
+      persist: (stageId, value) => {
+        const nextWorkspace = updateStageRegionStyle(workspaceRef.current, stageId, { fillOpacity: value });
+        if (nextWorkspace !== workspaceRef.current) {
+          onStageRegionsChangeRef.current(nextWorkspace.canvas.stageRegions ?? []);
+        }
+      },
+      onSessionStageChange: (stageId) => onStageOpacityPreviewChangeRef.current(stageId)
+    });
+    setOpacitySession(controller);
+    return () => {
+      controller.dispose();
+      onStageOpacityPreviewChangeRef.current(null);
+    };
+  }, [editor]);
 
   const applyWorkspaceStageChange = (nextWorkspace: MorphoWorkspace, historyLabel: string) => {
     const nextRegion = getStageRegions(nextWorkspace).find((item) => item.id === region.id);
@@ -1190,57 +1252,11 @@ function CanvasStageRegionToolbar({
   };
 
   const beginOpacity = () => {
-    if (opacitySessionRef.current?.active) return;
-    const stageShape = editor.getShape(`shape:${region.id}` as TLShapeId);
-    if (!stageShape || !isStageRegionShape(stageShape)) return;
-    const startOpacity = stageShape.props.fillOpacity;
-    opacitySessionRef.current = {
-      stageId: region.id,
-      startOpacity,
-      previewOpacity: startOpacity,
-      selectionKey: editor.getSelectedShapeIds().join("|"),
-      active: true
-    };
-    onStageOpacityPreviewChange(region.id);
+    opacitySession?.begin(region.id);
   };
 
   const previewOpacity = (value: number) => {
-    beginOpacity();
-    const session = opacitySessionRef.current;
-    if (!session?.active || session.stageId !== region.id) return;
-    const nextValue = Math.round(Math.min(100, Math.max(0, value)));
-    session.previewOpacity = nextValue;
-    editor.run(() => {
-      editor.updateShapes([
-        { id: `shape:${region.id}` as TLShapeId, type: STAGE_REGION_SHAPE_TYPE, props: { fillOpacity: nextValue } }
-      ]);
-    }, MORPHO_EDITOR_SYNC_RUN_OPTIONS);
-  };
-
-  const finishOpacity = (commit: boolean) => {
-    const session = opacitySessionRef.current;
-    if (!session?.active || session.stageId !== region.id) return;
-    session.active = false;
-    opacitySessionRef.current = null;
-    const finalValue = commit ? session.previewOpacity : session.startOpacity;
-    // The listener sees this session as active until both writes are finished,
-    // preventing preview updates from leaking into workspace persistence.
-    onStageOpacityPreviewChange(region.id);
-    editor.run(() => {
-      editor.updateShapes([
-        { id: `shape:${region.id}` as TLShapeId, type: STAGE_REGION_SHAPE_TYPE, props: { fillOpacity: session.startOpacity } }
-      ]);
-    }, MORPHO_EDITOR_SYNC_RUN_OPTIONS);
-
-    if (commit && finalValue !== session.startOpacity) {
-      editor.markHistoryStoppingPoint("调整分区透明度");
-      editor.updateShapes([
-        { id: `shape:${region.id}` as TLShapeId, type: STAGE_REGION_SHAPE_TYPE, props: { fillOpacity: finalValue } }
-      ]);
-      const nextWorkspace = updateStageRegionStyle(workspace, region.id, { fillOpacity: finalValue });
-      onStageRegionsChange(nextWorkspace.canvas.stageRegions ?? []);
-    }
-    onStageOpacityPreviewChange(null);
+    opacitySession?.preview(region.id, value);
   };
 
   return (
@@ -1251,8 +1267,8 @@ function CanvasStageRegionToolbar({
       onUpdateStyle={(patch, historyLabel) => applyWorkspaceStageChange(updateStageRegionStyle(workspace, region.id, patch), historyLabel)}
       onBeginOpacity={beginOpacity}
       onPreviewOpacity={previewOpacity}
-      onCommitOpacity={() => finishOpacity(true)}
-      onCancelOpacity={() => finishOpacity(false)}
+      onCommitOpacity={() => opacitySession?.commit()}
+      onCancelOpacity={() => opacitySession?.cancel()}
       onMeasure={onMeasure}
       isMeasuring={isMeasuring}
       onFit={() => applyWorkspaceStageChange(fitStageRegionToVisibleMembers(workspace, region.id), "适应分区内容")}
@@ -1341,6 +1357,18 @@ export function getSelectedMorphoShapeIds(
   }
 
   return { objectIds, proposalIds };
+}
+
+export function getMorphoShapeIdsForSelectionRequest(
+  shapes: MorphoShape[],
+  objectIds: string[],
+  workspace: Pick<MorphoWorkspace, "objects" | "artifactProposals">
+): TLShapeId[] {
+  const requested = new Set(objectIds);
+  return shapes
+    .filter((shape) => requested.has(shape.props.objectId))
+    .filter((shape) => isMorphoShapeActiveInWorkspace(shape, workspace))
+    .map((shape) => shape.id);
 }
 
 export function isMorphoShapeActiveInWorkspace(

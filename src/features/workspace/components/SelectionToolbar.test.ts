@@ -3,7 +3,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { createInitialWorkspace } from "@/domain/morpho/workspace";
-import { CanvasContextMenu, SelectionToolbar } from "./SelectionToolbar";
+import {
+  CanvasContextMenu,
+  getDirectionMenuVerticalDirection,
+  SelectionToolbar,
+  shouldRenderGenericObjectActions
+} from "./SelectionToolbar";
 
 describe("SelectionToolbar", () => {
   it("renders action tools near the selection without repeating object titles", () => {
@@ -308,7 +313,23 @@ describe("SelectionToolbar", () => {
     expect(html).toContain('aria-label="查看方向详情"');
     expect(html).toContain('data-tooltip="查看方向详情"');
     expect(html).toContain('aria-label="更多方向操作"');
+    expect(html).toContain('data-menu-direction="down"');
     expect(html).not.toContain(">查看方向详情<");
     expect(html).not.toContain(">修订方向<");
+    expect(html).not.toContain('aria-label="隐藏对象"');
+    expect(html).not.toContain('aria-label="删除对象"');
+  });
+
+  it("keeps hide and delete in the direction menu only, while ordinary objects retain generic actions", () => {
+    const workspace = createInitialWorkspace();
+    const direction = workspace.objects["direction-soft-rail"]!;
+    const image = workspace.objects["image-soft-rail-v2"]!;
+    expect(shouldRenderGenericObjectActions([direction])).toBe(false);
+    expect(shouldRenderGenericObjectActions([image])).toBe(true);
+  });
+
+  it("opens a direction more menu upward when its toolbar is placed below the selection", () => {
+    expect(getDirectionMenuVerticalDirection({ x: 12, y: 12, placement: "below" })).toBe("up");
+    expect(getDirectionMenuVerticalDirection({ x: 12, y: 12, placement: "above" })).toBe("down");
   });
 });

@@ -63,6 +63,14 @@ export type SelectionToolbarProps = {
   isMeasuring?: boolean;
 };
 
+export function shouldRenderGenericObjectActions(selectedObjects: MorphoObject[]): boolean {
+  return !(selectedObjects.length === 1 && selectedObjects[0]?.type === "conceptDirection");
+}
+
+export function getDirectionMenuVerticalDirection(placement: SelectionToolbarPlacement): "up" | "down" {
+  return placement.placement === "below" ? "up" : "down";
+}
+
 export function SelectionToolbar({
   selectedObjects,
   placement,
@@ -96,7 +104,9 @@ export function SelectionToolbar({
   isMeasuring = false
 }: SelectionToolbarProps) {
   const [isDirectionMenuOpen, setIsDirectionMenuOpen] = useState(false);
+  const [directionMenuOffset, setDirectionMenuOffset] = useState({ x: 0, y: 0 });
   const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const directionMenuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!isDirectionMenuOpen) return;
     const close = (event: PointerEvent) => {
@@ -131,6 +141,22 @@ export function SelectionToolbar({
     return () => observer.disconnect();
   }, [onMeasure]);
 
+  useLayoutEffect(() => {
+    if (!isDirectionMenuOpen) return;
+    const keepInViewport = () => {
+      const menu = directionMenuRef.current;
+      if (!menu) return;
+      const rect = menu.getBoundingClientRect();
+      const margin = 12;
+      const x = rect.left < margin ? margin - rect.left : rect.right > window.innerWidth - margin ? window.innerWidth - margin - rect.right : 0;
+      const y = rect.top < margin ? margin - rect.top : rect.bottom > window.innerHeight - margin ? window.innerHeight - margin - rect.bottom : 0;
+      setDirectionMenuOffset((current) => (current.x === x && current.y === y ? current : { x, y }));
+    };
+    keepInViewport();
+    window.addEventListener("resize", keepInViewport);
+    return () => window.removeEventListener("resize", keepInViewport);
+  }, [isDirectionMenuOpen, placement?.placement]);
+
   if (!placement || selectedObjects.length === 0) {
     return null;
   }
@@ -140,6 +166,7 @@ export function SelectionToolbar({
   const selectedDirections = selectedObjects.filter((object) => object.type === "conceptDirection");
   const showDirectionActions = onlyOne && primary.type === "conceptDirection";
   const showMergeDirectionsAction = selectedDirections.length >= 2 && selectedDirections.length === selectedObjects.length;
+  const showGenericObjectActions = shouldRenderGenericObjectActions(selectedObjects);
 
   const hasObjectActions =
     (onlyOne &&
@@ -267,7 +294,12 @@ export function SelectionToolbar({
             ) : null}
           </div>
           <span className="selection-toolbar-divider" aria-hidden="true" />
-          <div className="selection-toolbar-group is-secondary canvas-toolbar-menu-anchor" role="group" aria-label="方向更多操作">
+          <div
+            className="selection-toolbar-group is-secondary canvas-toolbar-menu-anchor"
+            role="group"
+            aria-label="方向更多操作"
+            data-menu-direction={getDirectionMenuVerticalDirection(placement)}
+          >
             <CanvasIconButton
               label="更多方向操作"
               active={isDirectionMenuOpen}
@@ -278,7 +310,13 @@ export function SelectionToolbar({
               <MoreHorizontal size={16} />
             </CanvasIconButton>
             {isDirectionMenuOpen ? (
-              <div className="canvas-toolbar-menu" role="menu" aria-label="方向更多操作">
+              <div
+                ref={directionMenuRef}
+                className="canvas-toolbar-menu"
+                role="menu"
+                aria-label="方向更多操作"
+                style={{ transform: `translate(${directionMenuOffset.x}px, ${directionMenuOffset.y}px)` }}
+              >
                 <button type="button" role="menuitem" onClick={() => { onReviseDirection(); setIsDirectionMenuOpen(false); }}><PenLine size={15} />修订方向</button>
                 <button type="button" role="menuitem" onClick={() => { onSplitDirection(); setIsDirectionMenuOpen(false); }}><GitBranch size={15} />拆分方向</button>
                 <button type="button" role="menuitem" onClick={() => { onCreateVisualBranch(); setIsDirectionMenuOpen(false); }}><GitBranchPlus size={15} />创建视觉分支</button>
@@ -310,15 +348,19 @@ export function SelectionToolbar({
           <GitBranch size={15} />
         </CanvasIconButton>
       </div>
-      <span className="selection-toolbar-divider" aria-hidden="true" />
-      <div className="selection-toolbar-group is-secondary" role="group" aria-label="对象显示与删除">
-        <CanvasIconButton label="隐藏对象" onClick={onHide}>
-          <EyeOff size={15} />
-        </CanvasIconButton>
-        <CanvasIconButton label="删除对象" danger onClick={onDelete}>
-          <Trash2 size={15} />
-        </CanvasIconButton>
-      </div>
+      {showGenericObjectActions ? (
+        <>
+          <span className="selection-toolbar-divider" aria-hidden="true" />
+          <div className="selection-toolbar-group is-secondary" role="group" aria-label="对象显示与删除">
+            <CanvasIconButton label="隐藏对象" onClick={onHide}>
+              <EyeOff size={15} />
+            </CanvasIconButton>
+            <CanvasIconButton label="删除对象" danger onClick={onDelete}>
+              <Trash2 size={15} />
+            </CanvasIconButton>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

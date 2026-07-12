@@ -6,6 +6,7 @@ import {
   MORPHO_EDITOR_SYNC_RUN_OPTIONS,
   areMorphoShapePropsEqual,
   getSelectedMorphoShapeIds,
+  getMorphoShapeIdsForSelectionRequest,
   isMorphoShapeActiveInWorkspace,
   resolveInstanceForEditorSync,
   shouldReplaceSelectionForContextMenuTarget,
@@ -26,6 +27,19 @@ describe("MorphoCanvas focus navigation", () => {
     // Stage shapes are excluded before this helper is called; empty morpho selection is the stage-only case.
     expect(getSelectedMorphoShapeIds([]).objectIds).toEqual([]);
     expect(getSelectedMorphoShapeIds([morphoLike]).objectIds).toEqual(["definition-current"]);
+  });
+
+  it("resolves a programmatic request to active Morpho shapes only and allows an empty request to clear selection", () => {
+    const workspace = createInitialWorkspace();
+    const visible = workspace.objects["image-soft-rail-v2"]!;
+    const hidden = { ...workspace.objects["image-night-rail"]!, visibility: "hidden" as const };
+    const shapes = [
+      { id: "shape:visible", props: { objectId: visible.id } },
+      { id: "shape:hidden", props: { objectId: hidden.id } }
+    ] as never;
+    const withHidden = { ...workspace, objects: { ...workspace.objects, [hidden.id]: hidden } };
+    expect(getMorphoShapeIdsForSelectionRequest(shapes, [visible.id, hidden.id, "missing"], withHidden)).toEqual(["shape:visible"]);
+    expect(getMorphoShapeIdsForSelectionRequest(shapes, [], withHidden)).toEqual([]);
   });
 
   it("uses real canvas instance positions before falling back to fixed landmarks", () => {
