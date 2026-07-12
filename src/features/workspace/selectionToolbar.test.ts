@@ -7,6 +7,7 @@ import {
   isSelectionVisibleEnoughForToolbar,
   screenRectsFromClientRects,
   SELECTION_TOOLBAR_OBSTACLE_SELECTORS,
+  shouldKeepStageToolbarVisible,
   shouldShowSelectionToolbarForInteraction
 } from "./selectionToolbar";
 
@@ -24,6 +25,30 @@ describe("selection toolbar interaction visibility", () => {
     expect(shouldShowSelectionToolbarForInteraction({ isSelectIdle: false, isDragging: false, isPanning: false })).toBe(
       false
     );
+  });
+
+  it("keeps the stage toolbar while a style popover is open even if tldraw reports dragging", () => {
+    expect(
+      shouldKeepStageToolbarVisible({
+        interactionAllowsToolbar: false,
+        stagePopoverOpen: true,
+        stageOnlySelection: true
+      })
+    ).toBe(true);
+    expect(
+      shouldKeepStageToolbarVisible({
+        interactionAllowsToolbar: false,
+        stagePopoverOpen: true,
+        stageOnlySelection: false
+      })
+    ).toBe(false);
+    expect(
+      shouldKeepStageToolbarVisible({
+        interactionAllowsToolbar: true,
+        stagePopoverOpen: false,
+        stageOnlySelection: true
+      })
+    ).toBe(true);
   });
 });
 

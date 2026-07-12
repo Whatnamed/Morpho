@@ -57,6 +57,21 @@ export function shouldShowSelectionToolbarForInteraction(input: {
   return input.isSelectIdle && !input.isDragging && !input.isPanning;
 }
 
+/**
+ * Stage style popovers (especially the opacity range) must survive tldraw's
+ * isDragging flag while the user is adjusting the control.
+ */
+export function shouldKeepStageToolbarVisible(input: {
+  interactionAllowsToolbar: boolean;
+  stagePopoverOpen: boolean;
+  stageOnlySelection: boolean;
+}): boolean {
+  if (input.interactionAllowsToolbar) {
+    return true;
+  }
+  return input.stagePopoverOpen && input.stageOnlySelection;
+}
+
 /** CSS selectors for floating UI that should hide/avoid the selection toolbar. */
 export const SELECTION_TOOLBAR_OBSTACLE_SELECTORS = [
   ".ai-panel:not(.collapsed)",

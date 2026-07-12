@@ -26,16 +26,19 @@ export function createStageOpacitySessionController(host: StageOpacitySessionHos
     active = null;
     // Keep canvas persistence suppressed through both editor writes.
     host.onSessionStageChange(session.stageId);
-    host.writeOpacity(session.stageId, session.startOpacity, { history: "ignore" });
     if (commit && session.previewOpacity !== session.startOpacity) {
+      // Restore the pre-gesture value out of history, then record one final step
+      // so Undo returns to the visual state at gesture start.
+      host.writeOpacity(session.stageId, session.startOpacity, { history: "ignore" });
       host.markHistoryStoppingPoint("调整分区透明度");
       host.writeOpacity(session.stageId, session.previewOpacity, { history: "record" });
       host.persist(session.stageId, session.previewOpacity);
-      host.onSessionStageChange(null);
-      return true;
+    } else if (!commit) {
+      host.writeOpacity(session.stageId, session.startOpacity, { history: "ignore" });
     }
+    // Always clear the preview lock; selection is restored by the host write path.
     host.onSessionStageChange(null);
-    return !commit;
+    return commit ? session.previewOpacity !== session.startOpacity : true;
   };
 
   const begin = (stageId: string): boolean => {

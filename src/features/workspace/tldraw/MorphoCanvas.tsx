@@ -10,6 +10,7 @@ import {
   getSelectionToolbarPlacement,
   screenRectsFromClientRects,
   SELECTION_TOOLBAR_OBSTACLE_SELECTORS,
+  shouldKeepStageToolbarVisible,
   shouldShowSelectionToolbarForInteraction,
   type SelectionToolbarPlacement,
   type ScreenRect
@@ -43,7 +44,7 @@ import {
   isStageRegionShape,
   type StageRegionShape
 } from "./StageRegionShapeUtil";
-import { StageRegionToolbar } from "../components/StageRegionToolbar";
+import { StageRegionToolbar, type StageRegionOpenPopover } from "../components/StageRegionToolbar";
 import { createStageOpacitySessionController } from "./stageOpacitySession";
 import {
   areSelectionIdsEqual,
@@ -1087,6 +1088,16 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
   const [obstacleEpoch, setObstacleEpoch] = useState(0);
   const [objectToolbarSize, setObjectToolbarSize] = useState<{ key: string; w: number; h: number } | null>(null);
   const [stageToolbarSize, setStageToolbarSize] = useState<{ key: string; w: number; h: number } | null>(null);
+  /**
+   * Stage chrome anchor: popover + stage id live here so slider commit / brief
+   * deselection cannot wipe the open panel. Popover only closes explicitly.
+   */
+  const [stageChrome, setStageChrome] = useState<{
+    stageId: string;
+    openPopover: StageRegionOpenPopover;
+  } | null>(null);
+  const lastStagePlacementRef = useRef<SelectionToolbarPlacement | null>(null);
+  const lastStageBoundsRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
   useLayoutEffect(() => {
     setObstacleEpoch((value) => value + 1);
   }, [floatingChromeKey]);
@@ -1096,10 +1107,43 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
     .map((shape) => workspace.objects[shape.props.objectId])
     .filter((object): object is MorphoObject => Boolean(object));
   const selectedStageShapes = selectedShapes.filter(isStageRegionShape);
+  const selectedStageId =
+    selectedStageShapes.length === 1 && selectedObjects.length === 0
+      ? selectedStageShapes[0].id.replace(/^shape:/, "")
+      : null;
+  const stagePopoverOpen = stageChrome?.openPopover != null;
+  // While a stage popover is open, keep chrome on that stage even if selection flickers.
+  const anchoredStageId = stagePopoverOpen ? stageChrome!.stageId : selectedStageId;
+  const stageOnlySelection = Boolean(anchoredStageId) && selectedObjects.length === 0;
+
+  // Selecting a real canvas object dismisses stage popovers. Empty selection does not
+  // (slider release can briefly clear tldraw selection).
+  useEffect(() => {
+    if (selectedObjects.length > 0 && stageChrome) {
+      setStageChrome(null);
+    }
+  }, [selectedObjects, stageChrome]);
+
+  // Opacity commit/history can drop stage selection. Only re-assert while the
+  // opacity popover is open — do not steal selection during color/border popovers
+  // or normal object interaction.
+  useLayoutEffect(() => {
+    if (stageChrome?.openPopover !== "opacity" || !stageChrome.stageId) {
+      return;
+    }
+    const shapeId = `shape:${stageChrome.stageId}` as TLShapeId;
+    const selected = editor.getSelectedShapeIds();
+    if (selected.length === 1 && selected[0] === shapeId) {
+      return;
+    }
+    if (editor.getShape(shapeId)) {
+      editor.select(shapeId);
+    }
+  }, [editor, stageChrome, workspace.canvas.stageRegions]);
 
   const selectionKey = selectedObjects.length > 0
     ? `objects:${selectedObjects.map((object) => `${object.id}:${object.type}`).join("|")}`
-    : `stage:${selectedStageShapes[0]?.id ?? ""}`;
+    : `stage:${anchoredStageId ?? ""}`;
   const measuredObjectSize = objectToolbarSize?.key === selectionKey ? objectToolbarSize : null;
   const measuredStageSize = stageToolbarSize?.key === selectionKey ? stageToolbarSize : null;
   const reportObjectToolbarSize = useCallback(
@@ -1112,25 +1156,62 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
   );
   const reportStageToolbarSize = useCallback(
     (size: { w: number; h: number }) => {
+      // Placement should use the bar height only; popovers hang below/above and
+      // must not inflate the toolbar box or candidates fail and chrome vanishes.
+      const barHeight = 44;
+      const next = { w: size.w, h: Math.min(size.h, barHeight + 4) };
       setStageToolbarSize((current) =>
-        current?.key === selectionKey && current.w === size.w && current.h === size.h ? current : { key: selectionKey, ...size }
+        current?.key === selectionKey && current.w === next.w && current.h === next.h
+          ? current
+          : { key: selectionKey, ...next }
       );
     },
     [selectionKey]
   );
 
+  const interactionAllowsToolbar = shouldShowSelectionToolbarForInteraction({
+    isSelectIdle,
+    isDragging,
+    isPanning
+  });
+  // Opacity slider drag can flip tldraw isDragging; keep stage chrome if a popover is open.
   if (
-    !shouldShowSelectionToolbarForInteraction({
-      isSelectIdle,
-      isDragging,
-      isPanning
+    !shouldKeepStageToolbarVisible({
+      interactionAllowsToolbar,
+      stagePopoverOpen,
+      stageOnlySelection
     })
   ) {
     return null;
   }
 
-  const bounds = editor.getSelectionRotatedScreenBounds();
-  if (!bounds || (selectedObjects.length === 0 && selectedStageShapes.length !== 1)) {
+  const selectionBounds = editor.getSelectionRotatedScreenBounds();
+  let bounds = selectionBounds
+    ? { x: selectionBounds.x, y: selectionBounds.y, w: selectionBounds.w, h: selectionBounds.h }
+    : null;
+  if ((!bounds || bounds.w <= 0 || bounds.h <= 0) && anchoredStageId) {
+    const shape = editor.getShape(`shape:${anchoredStageId}` as TLShapeId);
+    const pageBounds = shape ? editor.getShapePageBounds(shape) : null;
+    if (pageBounds) {
+      const topLeft = editor.pageToScreen({ x: pageBounds.x, y: pageBounds.y });
+      const bottomRight = editor.pageToScreen({
+        x: pageBounds.x + pageBounds.w,
+        y: pageBounds.y + pageBounds.h
+      });
+      bounds = {
+        x: topLeft.x,
+        y: topLeft.y,
+        w: Math.max(1, bottomRight.x - topLeft.x),
+        h: Math.max(1, bottomRight.y - topLeft.y)
+      };
+    } else if (stagePopoverOpen) {
+      bounds = lastStageBoundsRef.current;
+    }
+  }
+  if (bounds) {
+    lastStageBoundsRef.current = bounds;
+  }
+  if (!bounds || (selectedObjects.length === 0 && !anchoredStageId)) {
     return null;
   }
   // Read epoch so layout remount forces a fresh obstacle query + placement.
@@ -1148,28 +1229,45 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
       obstacles
     }
   );
-  if (!placement) {
+  const resolvedPlacement =
+    placement ?? (stagePopoverOpen && anchoredStageId ? lastStagePlacementRef.current : null);
+  if (placement) {
+    lastStagePlacementRef.current = placement;
+  }
+  if (!resolvedPlacement) {
     return null;
   }
 
   if (selectedObjects.length > 0) {
     return renderToolbar
-      ? <>{renderToolbar(selectedObjects, placement, reportObjectToolbarSize, !measuredObjectSize)}</>
+      ? <>{renderToolbar(selectedObjects, resolvedPlacement, reportObjectToolbarSize, !measuredObjectSize)}</>
       : null;
   }
 
-  const selectedStage = selectedStageShapes[0];
-  const region = getStageRegions(workspace).find((item) => item.id === selectedStage.id.replace(/^shape:/, ""));
+  const region = anchoredStageId
+    ? getStageRegions(workspace).find((item) => item.id === anchoredStageId)
+    : undefined;
   if (!region || !region.isActivated) {
     return null;
   }
+
+  const openPopover = stageChrome?.stageId === region.id ? stageChrome.openPopover : null;
+  const handleOpenPopoverChange = (next: StageRegionOpenPopover) => {
+    if (next == null) {
+      setStageChrome(null);
+      return;
+    }
+    setStageChrome({ stageId: region.id, openPopover: next });
+  };
 
   return (
     <CanvasStageRegionToolbar
       key={region.id}
       workspace={workspace}
       region={region}
-      placement={placement}
+      placement={resolvedPlacement}
+      openPopover={openPopover}
+      onOpenPopoverChange={handleOpenPopoverChange}
       onStageRegionsChange={onStageRegionsChange}
       onStageOpacityPreviewChange={onStageOpacityPreviewChange}
       onMeasure={reportStageToolbarSize}
@@ -1182,6 +1280,8 @@ function CanvasStageRegionToolbar({
   workspace,
   region,
   placement,
+  openPopover,
+  onOpenPopoverChange,
   onStageRegionsChange,
   onStageOpacityPreviewChange,
   onMeasure,
@@ -1190,6 +1290,8 @@ function CanvasStageRegionToolbar({
   workspace: MorphoWorkspace;
   region: StageRegionRecord;
   placement: SelectionToolbarPlacement;
+  openPopover: StageRegionOpenPopover;
+  onOpenPopoverChange: (next: StageRegionOpenPopover) => void;
   onStageRegionsChange: (regions: StageRegionRecord[]) => void;
   onStageOpacityPreviewChange: (stageId: string | null) => void;
   onMeasure: (size: { w: number; h: number }) => void;
@@ -1212,10 +1314,16 @@ function CanvasStageRegionToolbar({
         return shape && isStageRegionShape(shape) ? shape.props.fillOpacity : null;
       },
       writeOpacity: (stageId, value, options) => {
+        const shapeId = `shape:${stageId}` as TLShapeId;
         const write = () => {
           editor.updateShapes([
-            { id: `shape:${stageId}` as TLShapeId, type: STAGE_REGION_SHAPE_TYPE, props: { fillOpacity: value } }
+            { id: shapeId, type: STAGE_REGION_SHAPE_TYPE, props: { fillOpacity: value } }
           ]);
+          // Only re-assert selection on the recorded commit write (not every preview tick),
+          // so continuous drag does not thrash selection for the rest of the editor.
+          if (options.history === "record" && editor.getShape(shapeId)) {
+            editor.setSelectedShapes([shapeId]);
+          }
         };
         if (options.history === "ignore") {
           editor.run(write, MORPHO_EDITOR_SYNC_RUN_OPTIONS);
@@ -1264,6 +1372,8 @@ function CanvasStageRegionToolbar({
       region={region}
       placement={placement}
       canFit={!region.locked && hasVisibleStageRegionMembers(workspace, region.id)}
+      openPopover={openPopover}
+      onOpenPopoverChange={onOpenPopoverChange}
       onUpdateStyle={(patch, historyLabel) => applyWorkspaceStageChange(updateStageRegionStyle(workspace, region.id, patch), historyLabel)}
       onBeginOpacity={beginOpacity}
       onPreviewOpacity={previewOpacity}

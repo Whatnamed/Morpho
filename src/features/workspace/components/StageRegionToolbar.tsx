@@ -1,19 +1,22 @@
 "use client";
 
-import { Droplets, EyeOff, LockKeyhole, LockKeyholeOpen, PaintBucket, Palette, RotateCcw, Scan } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Droplets, EyeOff, LockKeyhole, LockKeyholeOpen, PaintBucket, RotateCcw, Scan } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
-import type { StageRegionBorderStyle, StageRegionColorKey, StageRegionRecord } from "@/domain/morpho/types";
+import type { StageRegionBorderStyle, StageRegionRecord } from "@/domain/morpho/types";
 import { getStageRegionColorPreset, STAGE_REGION_COLOR_PRESETS } from "@/domain/morpho/stageRegions";
 import type { SelectionToolbarPlacement } from "../selectionToolbar";
 import { CanvasIconButton } from "./CanvasIconButton";
 
-type OpenPopover = "color" | "opacity" | "border" | null;
+export type StageRegionOpenPopover = "color" | "opacity" | "border" | null;
 
 export type StageRegionToolbarProps = {
   region: StageRegionRecord;
   placement: SelectionToolbarPlacement;
   canFit: boolean;
+  /** Controlled popover — kept by the host so brief toolbar unmounts do not discard it. */
+  openPopover: StageRegionOpenPopover;
+  onOpenPopoverChange: (next: StageRegionOpenPopover) => void;
   onUpdateStyle: (
     patch: Partial<Pick<StageRegionRecord, "colorKey" | "fillOpacity" | "backgroundVisible" | "borderStyle" | "locked">>,
     historyLabel: string
@@ -32,6 +35,8 @@ export function StageRegionToolbar({
   region,
   placement,
   canFit,
+  openPopover,
+  onOpenPopoverChange,
   onUpdateStyle,
   onBeginOpacity,
   onPreviewOpacity,
@@ -42,7 +47,6 @@ export function StageRegionToolbar({
   onFit,
   onResetStyle
 }: StageRegionToolbarProps) {
-  const [openPopover, setOpenPopover] = useState<OpenPopover>(null);
   const [previewOpacity, setPreviewOpacity] = useState<number | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const color = getStageRegionColorPreset(region.colorKey ?? "warmSand");
@@ -51,11 +55,22 @@ export function StageRegionToolbar({
   const backgroundVisible = region.backgroundVisible ?? true;
   const locked = region.locked ?? false;
   const latestCommitRef = useRef(onCommitOpacity);
+  /** Ignore outside-close until residual pointer/click events after a slider gesture settle. */
+  const opacityGestureGuardRef = useRef(false);
+  const opacityGuardTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     latestCommitRef.current = onCommitOpacity;
   }, [onCommitOpacity]);
-  useEffect(() => () => latestCommitRef.current(), []);
+  useEffect(
+    () => () => {
+      latestCommitRef.current();
+      if (opacityGuardTimerRef.current !== null) {
+        window.clearTimeout(opacityGuardTimerRef.current);
+      }
+    },
+    []
+  );
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -73,40 +88,75 @@ export function StageRegionToolbar({
     const observer = new ResizeObserver(report);
     observer.observe(root);
     return () => observer.disconnect();
-  }, [onMeasure]);
+  }, [onMeasure, openPopover]);
 
   useEffect(() => {
     const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (opacityGestureGuardRef.current) {
+        return;
+      }
       if (!rootRef.current?.contains(event.target as Node)) {
         if (openPopover === "opacity") {
           onCommitOpacity();
           setPreviewOpacity(null);
         }
-        setOpenPopover(null);
+        onOpenPopoverChange(null);
       }
     };
     document.addEventListener("pointerdown", closeOnOutsidePointer, { capture: true });
     return () => document.removeEventListener("pointerdown", closeOnOutsidePointer, { capture: true });
-  }, [onCommitOpacity, openPopover]);
+  }, [onCommitOpacity, onOpenPopoverChange, openPopover]);
 
-  const togglePopover = (next: Exclude<OpenPopover, null>) => {
-    setOpenPopover((current) => {
-      if (current === "opacity") {
-        onCommitOpacity();
-        setPreviewOpacity(null);
-      }
-      return current === next ? null : next;
-    });
+  const setOpenPopover = (next: StageRegionOpenPopover) => {
+    if (openPopover === "opacity" && next !== "opacity") {
+      onCommitOpacity();
+      setPreviewOpacity(null);
+    }
+    onOpenPopoverChange(next);
   };
 
+  const togglePopover = (next: Exclude<StageRegionOpenPopover, null>) => {
+    setOpenPopover(openPopover === next ? null : next);
+  };
+
+  const armOpacityGestureGuard = () => {
+    opacityGestureGuardRef.current = true;
+    if (opacityGuardTimerRef.current !== null) {
+      window.clearTimeout(opacityGuardTimerRef.current);
+    }
+    // Cover pointerup → click / lostcapture sequences that land on the canvas.
+    opacityGuardTimerRef.current = window.setTimeout(() => {
+      opacityGestureGuardRef.current = false;
+      opacityGuardTimerRef.current = null;
+    }, 280);
+  };
+
+  // Commit the current opacity gesture only — keep the popover open for more tweaks.
   const commitOpacity = () => {
     onCommitOpacity();
     setPreviewOpacity(null);
+    armOpacityGestureGuard();
   };
 
   const cancelOpacity = () => {
     onCancelOpacity();
     setPreviewOpacity(null);
+    armOpacityGestureGuard();
+  };
+
+  const beginOpacityGesture = (event: ReactPointerEvent<HTMLInputElement>) => {
+    opacityGestureGuardRef.current = true;
+    if (opacityGuardTimerRef.current !== null) {
+      window.clearTimeout(opacityGuardTimerRef.current);
+      opacityGuardTimerRef.current = null;
+    }
+    onBeginOpacity();
+    event.stopPropagation();
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Range inputs may reject capture in some browsers.
+    }
   };
 
   return (
@@ -116,19 +166,24 @@ export function StageRegionToolbar({
       aria-label={`${region.title}分区工具`}
       style={{ left: placement.x, top: placement.y, visibility: isMeasuring ? "hidden" : "visible" }}
       onPointerDown={(event) => event.stopPropagation()}
+      onPointerMove={(event) => event.stopPropagation()}
       onPointerUp={(event) => event.stopPropagation()}
     >
       <div className="selection-toolbar-group" role="group" aria-label="分区样式">
         <div className="canvas-toolbar-popover-anchor">
           <CanvasIconButton
             label="颜色"
+            className="stage-color-trigger"
             active={openPopover === "color"}
             aria-expanded={openPopover === "color"}
             aria-haspopup="dialog"
             onClick={() => togglePopover("color")}
           >
-            <Palette size={16} />
-            <span className="stage-color-dot" style={{ backgroundColor: color.border }} aria-hidden="true" />
+            <span
+              className="stage-color-swatch-face"
+              style={{ backgroundColor: color.border }}
+              aria-hidden="true"
+            />
           </CanvasIconButton>
           {openPopover === "color" ? (
             <div className="stage-toolbar-popover stage-color-popover" role="dialog" aria-label="分区颜色">
@@ -163,7 +218,13 @@ export function StageRegionToolbar({
             <Droplets size={16} />
           </CanvasIconButton>
           {openPopover === "opacity" ? (
-            <div className="stage-toolbar-popover stage-opacity-popover" role="dialog" aria-label="分区背景透明度">
+            <div
+              className="stage-toolbar-popover stage-opacity-popover"
+              role="dialog"
+              aria-label="分区背景透明度"
+              onPointerDown={(event) => event.stopPropagation()}
+              onPointerMove={(event) => event.stopPropagation()}
+            >
               <output aria-live="polite">{fillOpacity}%</output>
               <input
                 aria-label="背景不透明度"
@@ -172,15 +233,23 @@ export function StageRegionToolbar({
                 max="100"
                 step="1"
                 value={fillOpacity}
-                onPointerDown={onBeginOpacity}
-                onPointerUp={commitOpacity}
+                onPointerDown={beginOpacityGesture}
+                onPointerUp={(event) => {
+                  event.stopPropagation();
+                  commitOpacity();
+                }}
                 onPointerCancel={cancelOpacity}
                 onFocus={onBeginOpacity}
-                onBlur={commitOpacity}
+                onBlur={() => {
+                  onCommitOpacity();
+                  setPreviewOpacity(null);
+                  armOpacityGestureGuard();
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Escape") {
                     event.preventDefault();
                     cancelOpacity();
+                    setOpenPopover(null);
                     return;
                   }
                   if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(event.key)) {
