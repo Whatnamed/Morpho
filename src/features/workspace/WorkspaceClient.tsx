@@ -131,6 +131,7 @@ import { DeliveryOutputPanel } from "./components/DeliveryOutputPanel";
 import { DocumentReaderPanel, type DocumentReaderExtractFragmentResult, type DocumentSourcePreview } from "./components/DocumentReaderPanel";
 import { LeftRail, type DrawerMode } from "./components/LeftRail";
 import { OverlayDrawers } from "./components/OverlayDrawers";
+import type { LeftRailAnchor } from "./leftRailPopoverPlacement";
 import { ProposalDraftCard } from "./components/ProposalDraftCard";
 import { ProjectBundlePanel } from "./components/ProjectBundlePanel";
 import { ResearchDetailPanel } from "./components/ResearchDetailPanel";
@@ -262,6 +263,10 @@ import {
   mapWithConcurrency
 } from "./imageGenerationConcurrency";
 import {
+  buildAgentVisualGenerationBatch,
+  resolveExpectedVisualGenerationCount
+} from "./agentVisualGenerationBatch";
+import {
   buildAgentCheckpointCompactionInput,
   buildAgentHistoryMessages,
   buildMorphoAgentInitialTools,
@@ -386,6 +391,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [workIntent, setWorkIntent] = useState<AiWorkIntent>(() => workspace.ui.workIntent);
   const [aiOpen, setAiOpen] = useState(true);
   const [activeDrawer, setActiveDrawer] = useState<DrawerMode>(null);
+  const [drawerAnchor, setDrawerAnchor] = useState<LeftRailAnchor | null>(null);
   const [highlightContinuityEntryIds, setHighlightContinuityEntryIds] = useState<string[]>([]);
   const [localEditObjectId, setLocalEditObjectId] = useState<string | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingAiConfirmation | null>(null);
@@ -464,7 +470,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   );
   const requestCanvasSelection = useCallback((objectIds: string[]) => {
     const nextObjectIds = [...objectIds];
-    setSelectedObjectIds(nextObjectIds);
     setSelectionRequest((current) => ({ objectIds: nextObjectIds, nonce: current.nonce + 1 }));
   }, []);
   const activeCanvasObjectIds = useMemo(() => {
@@ -662,6 +667,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   useEffect(() => {
     if (!activeDrawer) {
+      setDrawerAnchor(null);
       return;
     }
 
@@ -674,6 +680,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [activeDrawer]);
+
+  const handleDrawerChange = useCallback((drawer: DrawerMode, anchor?: LeftRailAnchor) => {
+    setDrawerAnchor(drawer ? anchor ?? null : null);
+    setActiveDrawer(drawer);
+  }, []);
 
   useEffect(() => {
     if (!activeDrawer) {
@@ -1713,8 +1724,74 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               reason: string;
             };
 
-        // Network + local asset save may run in parallel; workspace writes stay functional/serial-safe.
-        const itemResults = await mapWithConcurrency(
+        const applyVisualItemResult = (result: VisualItemResult) => {
+          if (result.status === "ok") {
+            let createdObjectId = "";
+            setWorkspace((current) => {
+              const generated = createGeneratedImageFromAsset(current, {
+                asset: result.asset,
+                generation: {
+                  modelId: generationSettings.modelId,
+                  modelLabel: generationSettings.modelLabel,
+                  aspectRatio: generationSettings.aspectRatio,
+                  sizeOption: generationSettings.sizeOption,
+                  prompt: result.item.prompt,
+                  referenceObjectIds: result.item.referenceObjectIds,
+                  directionId: result.item.targetDirectionId,
+                  visualBranchId: result.item.visualBranchId,
+                  operationId,
+                  clientRequestId: `${clientRequestId}-${result.item.id}`,
+                  providerTaskId: result.providerTaskId ?? lastProviderTaskId,
+                  title: result.item.title,
+                  purpose: result.item.purpose,
+                  role: result.item.role,
+                  visualPlan: validatedPlan.plan,
+                  createdAt: new Date().toISOString()
+                },
+                sourceObjectIds: result.sourceObjectIds,
+                directionObjectId: result.item.targetDirectionId,
+                visualBranchId: result.item.visualBranchId,
+                title: result.item.title,
+                summary: result.item.purpose,
+                role: result.item.role,
+                position: getGeneratedImagePlacement(
+                  current,
+                  result.item,
+                  result.index,
+                  visualPlacementMap.get(result.item.id)
+                )
+              });
+              createdObjectId = generated.createdObjectId;
+              return recordImageGenerationOperationResult(generated.workspace, {
+                operationId,
+                providerTaskId: result.providerTaskId ?? lastProviderTaskId,
+                resultObjectId: generated.createdObjectId
+              });
+            });
+            if (createdObjectId) {
+              createdObjectIds.push(createdObjectId);
+            }
+          } else {
+            failedItems.push(`${result.item.title}: ${result.reason}`);
+            setWorkspace((current) =>
+              recordImageGenerationOperationItemFailure(current, {
+                operationId,
+                planItemId: result.item.id,
+                reason: result.reason
+              })
+            );
+          }
+
+          // Clear this exact reservation before the matching real image shape
+          // is synchronized into tldraw; siblings remain in place.
+          setPendingImageGenerationSlots((current) =>
+            removePendingImageGenerationSlot(current, operationId, result.item.id)
+          );
+        };
+
+        // Network + local asset save may run in parallel; each settled image is
+        // written back immediately instead of waiting for its slower siblings.
+        await mapWithConcurrency(
           validatedPlan.plan.items,
           IMAGE_GENERATION_MAX_CONCURRENCY,
           async (item, index): Promise<VisualItemResult> => {
@@ -1787,74 +1864,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               completedCount += 1;
               publishProgress();
             }
-          }
+          },
+          { onSettled: applyVisualItemResult }
         );
-
-        // Apply workspace mutations in plan order so placement/version bookkeeping stays deterministic.
-        for (const result of itemResults) {
-          if (result.status === "ok") {
-            let createdObjectId = "";
-            setWorkspace((current) => {
-              const generated = createGeneratedImageFromAsset(current, {
-                asset: result.asset,
-                generation: {
-                  modelId: generationSettings.modelId,
-                  modelLabel: generationSettings.modelLabel,
-                  aspectRatio: generationSettings.aspectRatio,
-                  sizeOption: generationSettings.sizeOption,
-                  prompt: result.item.prompt,
-                  referenceObjectIds: result.item.referenceObjectIds,
-                  directionId: result.item.targetDirectionId,
-                  visualBranchId: result.item.visualBranchId,
-                  operationId,
-                  clientRequestId: `${clientRequestId}-${result.item.id}`,
-                  providerTaskId: result.providerTaskId ?? lastProviderTaskId,
-                  title: result.item.title,
-                  purpose: result.item.purpose,
-                  role: result.item.role,
-                  visualPlan: validatedPlan.plan,
-                  createdAt: new Date().toISOString()
-                },
-                sourceObjectIds: result.sourceObjectIds,
-                directionObjectId: result.item.targetDirectionId,
-                visualBranchId: result.item.visualBranchId,
-                title: result.item.title,
-                summary: result.item.purpose,
-                role: result.item.role,
-                position: getGeneratedImagePlacement(
-                  current,
-                  result.item,
-                  result.index,
-                  visualPlacementMap.get(result.item.id)
-                )
-              });
-              createdObjectId = generated.createdObjectId;
-              return recordImageGenerationOperationResult(generated.workspace, {
-                operationId,
-                providerTaskId: result.providerTaskId ?? lastProviderTaskId,
-                resultObjectId: generated.createdObjectId
-              });
-            });
-            if (createdObjectId) {
-              createdObjectIds.push(createdObjectId);
-            }
-            setPendingImageGenerationSlots((current) =>
-              removePendingImageGenerationSlot(current, operationId, result.item.id)
-            );
-          } else {
-            failedItems.push(`${result.item.title}: ${result.reason}`);
-            setWorkspace((current) =>
-              recordImageGenerationOperationItemFailure(current, {
-                operationId,
-                planItemId: result.item.id,
-                reason: result.reason
-              })
-            );
-            setPendingImageGenerationSlots((current) =>
-              removePendingImageGenerationSlot(current, operationId, result.item.id)
-            );
-          }
-        }
 
         if (createdObjectIds.length === 0) {
           throw new Error(failedItems[0] ?? "所有图像计划项都生成失败。");
@@ -2458,12 +2470,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       sourceObjectIds: string[];
       selectedDirectionIds: string[];
       selectedImageIds: string[];
+      requestedPreviewCount?: 1 | 2 | 4 | 6;
       signal: AbortSignal;
     }) => {
       let currentWorkspace = input.workspaceSnapshot;
       const requestedPreviewCount =
         input.plan.kind === "directionPreview"
-          ? (Math.max(1, Math.trunc(input.plan.items.length / Math.max(input.selectedDirectionIds.length, 1))) as 1 | 2 | 4 | 6)
+          ? input.requestedPreviewCount ?? 1
           : undefined;
       const validatedPlan = validateVisualGenerationPlan(currentWorkspace, {
         plan: input.plan,
@@ -2569,7 +2582,65 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             reason: string;
           };
 
-      const itemResults = await mapWithConcurrency(
+      const applyAgentItemResult = (result: AgentItemResult) => {
+        if (result.status === "ok") {
+          const generated = createGeneratedImageFromAsset(currentWorkspace, {
+            asset: result.asset,
+            generation: {
+              modelId: generationSettings.modelId,
+              modelLabel: generationSettings.modelLabel,
+              aspectRatio: generationSettings.aspectRatio,
+              sizeOption: generationSettings.sizeOption,
+              prompt: result.item.prompt,
+              referenceObjectIds: result.item.referenceObjectIds,
+              directionId: result.item.targetDirectionId,
+              visualBranchId: result.item.visualBranchId,
+              operationId,
+              clientRequestId: `${clientRequestId}-${result.item.id}`,
+              providerTaskId: result.providerTaskId ?? lastProviderTaskId,
+              title: result.item.title,
+              purpose: result.item.purpose,
+              role: result.item.role,
+              visualPlan: validatedPlan.plan,
+              createdAt: new Date().toISOString()
+            },
+            sourceObjectIds: result.sourceObjectIds,
+            directionObjectId: result.item.targetDirectionId,
+            visualBranchId: result.item.visualBranchId,
+            title: result.item.title,
+            summary: result.item.purpose,
+            role: result.item.role,
+            position: getGeneratedImagePlacement(
+              currentWorkspace,
+              result.item,
+              result.index,
+              placementMap.get(result.item.id)
+            )
+          });
+          currentWorkspace = recordImageGenerationOperationResult(generated.workspace, {
+            operationId,
+            providerTaskId: result.providerTaskId ?? lastProviderTaskId,
+            resultObjectId: generated.createdObjectId
+          });
+          createdObjectIds.push(generated.createdObjectId);
+        } else {
+          failedItems.push(`${result.item.title}: ${result.reason}`);
+          currentWorkspace = recordImageGenerationOperationItemFailure(currentWorkspace, {
+            operationId,
+            planItemId: result.item.id,
+            reason: result.reason
+          });
+        }
+
+        // The pending shape effect runs before workspace shape sync, so this
+        // removes the matching placeholder before its image object is created.
+        setPendingImageGenerationSlots((current) =>
+          removePendingImageGenerationSlot(current, operationId, result.item.id)
+        );
+        setWorkspace(() => currentWorkspace);
+      };
+
+      await mapWithConcurrency(
         validatedPlan.plan.items,
         IMAGE_GENERATION_MAX_CONCURRENCY,
         async (item, itemIndex): Promise<AgentItemResult> => {
@@ -2642,67 +2713,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             completedCount += 1;
             publishProgress();
           }
-        }
+        },
+        { onSettled: applyAgentItemResult }
       );
-
-      for (const result of itemResults) {
-        if (result.status === "ok") {
-          const generated = createGeneratedImageFromAsset(currentWorkspace, {
-            asset: result.asset,
-            generation: {
-              modelId: generationSettings.modelId,
-              modelLabel: generationSettings.modelLabel,
-              aspectRatio: generationSettings.aspectRatio,
-              sizeOption: generationSettings.sizeOption,
-              prompt: result.item.prompt,
-              referenceObjectIds: result.item.referenceObjectIds,
-              directionId: result.item.targetDirectionId,
-              visualBranchId: result.item.visualBranchId,
-              operationId,
-              clientRequestId: `${clientRequestId}-${result.item.id}`,
-              providerTaskId: result.providerTaskId ?? lastProviderTaskId,
-              title: result.item.title,
-              purpose: result.item.purpose,
-              role: result.item.role,
-              visualPlan: validatedPlan.plan,
-              createdAt: new Date().toISOString()
-            },
-            sourceObjectIds: result.sourceObjectIds,
-            directionObjectId: result.item.targetDirectionId,
-            visualBranchId: result.item.visualBranchId,
-            title: result.item.title,
-            summary: result.item.purpose,
-            role: result.item.role,
-            position: getGeneratedImagePlacement(
-              currentWorkspace,
-              result.item,
-              result.index,
-              placementMap.get(result.item.id)
-            )
-          });
-          currentWorkspace = recordImageGenerationOperationResult(generated.workspace, {
-            operationId,
-            providerTaskId: result.providerTaskId ?? lastProviderTaskId,
-            resultObjectId: generated.createdObjectId
-          });
-          createdObjectIds.push(generated.createdObjectId);
-          setPendingImageGenerationSlots((current) =>
-            removePendingImageGenerationSlot(current, operationId, result.item.id)
-          );
-          setWorkspace(() => currentWorkspace);
-        } else {
-          failedItems.push(`${result.item.title}: ${result.reason}`);
-          currentWorkspace = recordImageGenerationOperationItemFailure(currentWorkspace, {
-            operationId,
-            planItemId: result.item.id,
-            reason: result.reason
-          });
-          setPendingImageGenerationSlots((current) =>
-            removePendingImageGenerationSlot(current, operationId, result.item.id)
-          );
-          setWorkspace(() => currentWorkspace);
-        }
-      }
 
       if (createdObjectIds.length === 0) {
         throw new Error(failedItems[0] ?? "所有图像计划项都生成失败了。");
@@ -3113,12 +3126,49 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
         const toolOutputs = [];
         let pendingAgentActionCreated = false;
-        for (const call of result.functionCalls) {
-          const parsed = parseMorphoAgentToolArguments(call);
+        const parsedCalls = result.functionCalls.map((call) => ({
+          call,
+          parsed: parseMorphoAgentToolArguments(call)
+        }));
+        const visualCalls = parsedCalls.flatMap(({ call, parsed }) =>
+          parsed.name === "generate_visuals" ? [{ callId: call.callId, plan: parsed.args }] : []
+        );
+        const visualBatch =
+          visualCalls.length > 0
+            ? buildAgentVisualGenerationBatch({
+                calls: visualCalls,
+                expected: resolveExpectedVisualGenerationCount({
+                  draft,
+                  kind: visualCalls[0]!.plan.kind,
+                  selectedDirectionCount: selectedObjects.filter((object) => object.type === "conceptDirection").length
+                })
+              })
+            : null;
+        let executedVisualBatch:
+          | {
+              createdObjectIds: string[];
+            }
+          | undefined;
+
+        for (const { call, parsed } of parsedCalls) {
+          if (parsed.name === "generate_visuals" && visualBatch?.status === "blocked") {
+            toolOutputs.push(
+              buildToolResultOutput(call.callId, {
+                status: "blocked",
+                reason: visualBatch.reason
+              })
+            );
+            continue;
+          }
           if (agentTurnMode === "confirm" && isAgentMutatingTool(parsed.name)) {
+            const confirmationPlan =
+              parsed.name === "generate_visuals" && visualBatch?.status === "ok" ? visualBatch.plan : undefined;
             setPendingConfirmation(
               buildPendingAgentActionConfirmation({
-                parsed,
+                parsed:
+                  confirmationPlan && parsed.name === "generate_visuals"
+                    ? { ...parsed, args: confirmationPlan }
+                    : parsed,
                 draft,
                 contextObjectIds: context.objectIds,
                 citations: collectedCitations,
@@ -3367,7 +3417,21 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               break;
             }
             case "generate_visuals": {
-              const args = parsed.args;
+              if (!visualBatch || visualBatch.status !== "ok") {
+                throw new Error("图像生成批次没有通过完整性校验。");
+              }
+              if (executedVisualBatch) {
+                toolOutputs.push(
+                  buildToolResultOutput(call.callId, {
+                    status: "created",
+                    objectIds: executedVisualBatch.createdObjectIds,
+                    batched: true
+                  })
+                );
+                break;
+              }
+
+              const args = visualBatch.plan;
               if (wouldExceedAutoImageTurnLimit(totalAutoGeneratedImageItems, args)) {
                 setPendingConfirmation({
                   kind: "agentGenerateVisuals",
@@ -3404,13 +3468,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                   .filter((object) => object.type === "conceptDirection")
                   .map((object) => object.id),
                 selectedImageIds: selectedObjects.filter((object) => object.type === "image").map((object) => object.id),
+                requestedPreviewCount: visualBatch.expected.requestedPreviewCount,
                 signal: controller.signal
               });
               currentWorkspace = generationResult.workspace;
+              executedVisualBatch = generationResult;
               toolOutputs.push(
                 buildToolResultOutput(call.callId, {
                   status: "created",
-                  objectIds: generationResult.createdObjectIds
+                  objectIds: generationResult.createdObjectIds,
+                  batched: true
                 })
               );
               break;
@@ -6252,7 +6319,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       ) : null}
       <LeftRail
         activeDrawer={activeDrawer}
-        onDrawerChange={setActiveDrawer}
+        onDrawerChange={handleDrawerChange}
         onAddToCanvas={handleRailAddToCanvas}
       />
       <OverlayDrawers
@@ -6264,6 +6331,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onRestoreObject={handleRestoreObject}
         onLocateObject={focusObject}
         onSetContinuityEntryManualState={handleSetContinuityEntryManualState}
+        anchor={drawerAnchor}
       />
 
       {canvasContextMenu ? (

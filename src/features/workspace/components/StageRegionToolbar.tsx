@@ -55,9 +55,6 @@ export function StageRegionToolbar({
   const backgroundVisible = region.backgroundVisible ?? true;
   const locked = region.locked ?? false;
   const latestCommitRef = useRef(onCommitOpacity);
-  /** Ignore outside-close until residual pointer/click events after a slider gesture settle. */
-  const opacityGestureGuardRef = useRef(false);
-  const opacityGuardTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     latestCommitRef.current = onCommitOpacity;
@@ -65,9 +62,6 @@ export function StageRegionToolbar({
   useEffect(
     () => () => {
       latestCommitRef.current();
-      if (opacityGuardTimerRef.current !== null) {
-        window.clearTimeout(opacityGuardTimerRef.current);
-      }
     },
     []
   );
@@ -92,9 +86,6 @@ export function StageRegionToolbar({
 
   useEffect(() => {
     const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (opacityGestureGuardRef.current) {
-        return;
-      }
       if (!rootRef.current?.contains(event.target as Node)) {
         if (openPopover === "opacity") {
           onCommitOpacity();
@@ -119,39 +110,21 @@ export function StageRegionToolbar({
     setOpenPopover(openPopover === next ? null : next);
   };
 
-  const armOpacityGestureGuard = () => {
-    opacityGestureGuardRef.current = true;
-    if (opacityGuardTimerRef.current !== null) {
-      window.clearTimeout(opacityGuardTimerRef.current);
-    }
-    // Cover pointerup → click / lostcapture sequences that land on the canvas.
-    opacityGuardTimerRef.current = window.setTimeout(() => {
-      opacityGestureGuardRef.current = false;
-      opacityGuardTimerRef.current = null;
-    }, 280);
-  };
-
   // Commit the current opacity gesture only — keep the popover open for more tweaks.
   const commitOpacity = () => {
     onCommitOpacity();
     setPreviewOpacity(null);
-    armOpacityGestureGuard();
   };
 
   const cancelOpacity = () => {
     onCancelOpacity();
     setPreviewOpacity(null);
-    armOpacityGestureGuard();
   };
 
   const beginOpacityGesture = (event: ReactPointerEvent<HTMLInputElement>) => {
-    opacityGestureGuardRef.current = true;
-    if (opacityGuardTimerRef.current !== null) {
-      window.clearTimeout(opacityGuardTimerRef.current);
-      opacityGuardTimerRef.current = null;
-    }
     onBeginOpacity();
     event.stopPropagation();
+    event.nativeEvent.stopImmediatePropagation();
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
@@ -168,6 +141,22 @@ export function StageRegionToolbar({
       onPointerDown={(event) => event.stopPropagation()}
       onPointerMove={(event) => event.stopPropagation()}
       onPointerUp={(event) => event.stopPropagation()}
+      onPointerDownCapture={(event) => {
+        event.stopPropagation();
+        event.nativeEvent.stopImmediatePropagation();
+      }}
+      onPointerMoveCapture={(event) => {
+        event.stopPropagation();
+        event.nativeEvent.stopImmediatePropagation();
+      }}
+      onPointerUpCapture={(event) => {
+        event.stopPropagation();
+        event.nativeEvent.stopImmediatePropagation();
+      }}
+      onPointerCancelCapture={(event) => {
+        event.stopPropagation();
+        event.nativeEvent.stopImmediatePropagation();
+      }}
     >
       <div className="selection-toolbar-group" role="group" aria-label="分区样式">
         <div className="canvas-toolbar-popover-anchor">
@@ -175,6 +164,7 @@ export function StageRegionToolbar({
             label="颜色"
             className="stage-color-trigger"
             active={openPopover === "color"}
+            suppressTooltip={openPopover === "color"}
             aria-expanded={openPopover === "color"}
             aria-haspopup="dialog"
             onClick={() => togglePopover("color")}
@@ -211,6 +201,7 @@ export function StageRegionToolbar({
           <CanvasIconButton
             label="透明度"
             active={openPopover === "opacity"}
+            suppressTooltip={openPopover === "opacity"}
             aria-expanded={openPopover === "opacity"}
             aria-haspopup="dialog"
             onClick={() => togglePopover("opacity")}
@@ -224,6 +215,18 @@ export function StageRegionToolbar({
               aria-label="分区背景透明度"
               onPointerDown={(event) => event.stopPropagation()}
               onPointerMove={(event) => event.stopPropagation()}
+              onPointerDownCapture={(event) => {
+                event.stopPropagation();
+                event.nativeEvent.stopImmediatePropagation();
+              }}
+              onPointerMoveCapture={(event) => {
+                event.stopPropagation();
+                event.nativeEvent.stopImmediatePropagation();
+              }}
+              onPointerUpCapture={(event) => {
+                event.stopPropagation();
+                event.nativeEvent.stopImmediatePropagation();
+              }}
             >
               <output aria-live="polite">{fillOpacity}%</output>
               <input
@@ -236,6 +239,7 @@ export function StageRegionToolbar({
                 onPointerDown={beginOpacityGesture}
                 onPointerUp={(event) => {
                   event.stopPropagation();
+                  event.nativeEvent.stopImmediatePropagation();
                   commitOpacity();
                 }}
                 onPointerCancel={cancelOpacity}
@@ -243,7 +247,6 @@ export function StageRegionToolbar({
                 onBlur={() => {
                   onCommitOpacity();
                   setPreviewOpacity(null);
-                  armOpacityGestureGuard();
                 }}
                 onKeyDown={(event) => {
                   if (event.key === "Escape") {
@@ -275,6 +278,7 @@ export function StageRegionToolbar({
           <CanvasIconButton
             label="边框"
             active={openPopover === "border"}
+            suppressTooltip={openPopover === "border"}
             aria-expanded={openPopover === "border"}
             aria-haspopup="dialog"
             onClick={() => togglePopover("border")}

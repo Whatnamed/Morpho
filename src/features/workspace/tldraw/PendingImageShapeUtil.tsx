@@ -126,8 +126,15 @@ export class PendingImageShapeUtil extends BaseBoxShapeUtil<PendingImageShape> {
         }}
       >
         <div className="pending-generation-slot" aria-busy="true" aria-label={`${shape.props.roleLabel}：${shape.props.title}`}>
-          <span className="pending-generation-spinner" aria-hidden="true" />
-          <div>
+          <span className="pending-generation-shimmer" aria-hidden="true" />
+          <span className="pending-generation-grain" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+          </span>
+          <div className="pending-generation-copy">
             <span>{shape.props.roleLabel}</span>
             <strong>{shape.props.title}</strong>
           </div>

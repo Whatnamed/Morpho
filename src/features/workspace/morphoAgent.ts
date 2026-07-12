@@ -263,7 +263,8 @@ export function buildMorphoAgentSystemPrompt(input: {
     "当用户选中一张 pending 草案并要求修改、调整、压缩、重写、改标题或改内容时，先调用 read_selected_context 读取完整草案，再调用 revise_selected_proposal_draft 原地更新这一张草案；不要新建草案，不要等待确认，不要把完整长草案塞回对话。",
     "只有用户明确说再生成一个、新方案、另起一版、多个替代方案时，才调用 create_design_definition_proposal 或 create_concept_direction_proposal 新建草案。",
     "当用户明确要求多个设计定义方案时，create_design_definition_proposal 的根草案必须是方案 A 的完整独立内容，alternatives 依次放方案 B、方案 C；根草案不得写成整组方案的总览。只生成一个方案时不要添加 A/B/C 编号。",
-    "生成图片时，不允许只给 Prompt、只给长文分析或让用户切模式；应直接调用 generate_visuals。"
+    "生成图片时，不允许只给 Prompt、只给长文分析或让用户切模式；应直接调用 generate_visuals。",
+    "当用户明确要求多张并列图像时，必须在同一次 generate_visuals 调用的 items[] 中返回完整数量；不得拆成多个单项调用，也不得先返回部分计划。方向预览要区分“每方向几张”与“总共几张”。"
   ]
     .filter(Boolean)
     .join("\n");
@@ -512,7 +513,7 @@ export function buildMorphoAgentTools(
     }),
     functionTool({
       name: "generate_visuals",
-      description: "直接生成方向预览或视觉继续发展结果，并把新图落到正确的画布位置；每次自动生成最多 4 张。",
+      description: "直接生成方向预览或视觉继续发展结果，并把新图落到正确的画布位置；每次自动生成最多 4 张。多张并列结果必须放在同一个完整 items[] 中，不得拆成多个 generate_visuals 调用。",
       parameters: {
         type: "object",
         additionalProperties: false,

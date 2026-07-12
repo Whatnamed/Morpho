@@ -1,27 +1,39 @@
 import { describe, expect, it } from "vitest";
 
-import { buildFastRelationshipRoute, buildRelationshipRoute, createRelationshipRouteCache, type CanvasPageBounds } from "./canvasRelationshipRouting";
+import {
+  RELATIONSHIP_EXIT_DISTANCE,
+  buildFastRelationshipRoute,
+  buildRelationshipPath,
+  buildRelationshipRoute,
+  createRelationshipRouteCache,
+  type CanvasPageBounds
+} from "./canvasRelationshipRouting";
 
 const source: CanvasPageBounds = { x: 0, y: 80, w: 120, h: 80 };
 const target: CanvasPageBounds = { x: 420, y: 80, w: 120, h: 80 };
 
 describe("buildRelationshipRoute", () => {
-  it("connects horizontal neighbors at opposite card edges instead of their centers", () => {
-    const route = buildRelationshipRoute({ source, target, obstacles: [] });
+  it.each([
+    ["right upper", { ...target, y: 20 }],
+    ["right lower", { ...target, y: 220 }],
+    ["very close right", { x: 145, y: 220, w: 120, h: 80 }]
+  ])("routes %s with a right-first lead before turning", (_label, routeTarget) => {
+    const route = buildRelationshipRoute({ source, target: routeTarget, obstacles: [] });
 
     expect(route.start).toMatchObject({ x: 126, y: 120 });
-    expect(route.end).toMatchObject({ x: 414, y: 120 });
-    expect(route.waypoints).toEqual([]);
+    expect(route.end).toMatchObject({ x: routeTarget.x - 6, y: routeTarget.y + routeTarget.h / 2 });
+    expect(route.waypoints[0]).toEqual({ x: 126 + RELATIONSHIP_EXIT_DISTANCE, y: 120 });
+    expect(route.waypoints[1]).toEqual({ x: 126 + RELATIONSHIP_EXIT_DISTANCE, y: route.end.y });
   });
 
-  it("keeps direct source-to-target links readable even when they cross a non-endpoint object", () => {
+  it("keeps the stable route independent of unrelated obstacles", () => {
     const route = buildRelationshipRoute({
       source,
       target,
       obstacles: [{ x: 220, y: 70, w: 110, h: 120 }]
     });
 
-    expect(route.waypoints).toEqual([]);
+    expect(route.waypoints).toHaveLength(2);
   });
 
   it("uses one shared edge anchor when several relationships leave the same side", () => {
@@ -59,8 +71,27 @@ describe("relationship route cache", () => {
     expect(cache.get("edge-b")).toBe(first);
   });
 
-  it("uses a direct low-cost route for every relationship", () => {
+  it("uses the same right-first route for fast relationship updates", () => {
     const fast = buildFastRelationshipRoute({ source, target });
-    expect(fast.waypoints).toEqual([]);
+    expect(fast.waypoints[0]).toEqual({ x: 126 + RELATIONSHIP_EXIT_DISTANCE, y: 120 });
+  });
+
+  it("wraps deterministically when the target is on the left", () => {
+    const leftTarget = { x: -300, y: 280, w: 120, h: 80 };
+    const route = buildRelationshipRoute({ source, target: leftTarget, obstacles: [] });
+
+    expect(route.waypoints[0]).toEqual({ x: 126 + RELATIONSHIP_EXIT_DISTANCE, y: 120 });
+    expect(route.waypoints).toHaveLength(4);
+    expect(route.waypoints.at(-1)).toEqual({ x: leftTarget.x - 34, y: leftTarget.y + leftTarget.h / 2 });
+    expect(route.end).toEqual({ x: leftTarget.x - 6, y: leftTarget.y + leftTarget.h / 2 });
+  });
+
+  it("builds rounded orthogonal segments instead of a bezier curve", () => {
+    const route = buildRelationshipRoute({ source, target: { ...target, y: 220 }, obstacles: [] });
+    const path = buildRelationshipPath(route);
+
+    expect(path).toContain(" Q ");
+    expect(path).not.toContain(" C ");
+    expect(path).toMatch(/^M 126 120 L /);
   });
 });

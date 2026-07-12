@@ -7,6 +7,7 @@ type CanvasIconButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "chil
   active?: boolean;
   pressed?: boolean;
   danger?: boolean;
+  suppressTooltip?: boolean;
   children: ReactNode;
 };
 
@@ -16,6 +17,7 @@ export function CanvasIconButton({
   active = false,
   pressed,
   danger = false,
+  suppressTooltip = false,
   className,
   children,
   ...props
@@ -33,7 +35,7 @@ export function CanvasIconButton({
         .join(" ")}
       aria-label={label}
       aria-pressed={pressed}
-      data-tooltip={label}
+      data-tooltip={suppressTooltip ? undefined : label}
     >
       {children}
     </button>

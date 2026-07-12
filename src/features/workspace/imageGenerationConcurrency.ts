@@ -8,7 +8,10 @@ export const IMAGE_GENERATION_MAX_CONCURRENCY = 4;
 export async function mapWithConcurrency<T, R>(
   items: readonly T[],
   concurrency: number,
-  worker: (item: T, index: number) => Promise<R>
+  worker: (item: T, index: number) => Promise<R>,
+  options: {
+    onSettled?: (result: R, index: number) => void;
+  } = {}
 ): Promise<R[]> {
   if (items.length === 0) {
     return [];
@@ -25,7 +28,9 @@ export async function mapWithConcurrency<T, R>(
       if (index >= items.length) {
         return;
       }
-      results[index] = await worker(items[index]!, index);
+      const result = await worker(items[index]!, index);
+      results[index] = result;
+      options.onSettled?.(result, index);
     }
   };
 

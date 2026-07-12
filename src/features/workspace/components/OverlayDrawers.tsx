@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 
 import type { ContinuityManualState, ContinuityRecordEntry, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
@@ -9,6 +9,11 @@ import { getContinuityEntryEligibility, resolveContinuityValidity } from "@/doma
 import { getWorkspaceAssetItems, searchWorkspace, type WorkspaceAssetItem } from "@/domain/morpho/queries";
 import type { DrawerMode } from "./LeftRail";
 import { getObjectTypeLabel } from "../workspaceUi";
+import {
+  getLeftRailPopoverPosition,
+  type LeftRailAnchor,
+  type LeftRailPopoverPosition
+} from "../leftRailPopoverPlacement";
 
 type OverlayDrawersProps = {
   mode: DrawerMode;
@@ -19,6 +24,7 @@ type OverlayDrawersProps = {
   onRestoreObject: (objectId: string) => void;
   onLocateObject: (objectId: string) => void;
   onSetContinuityEntryManualState: (entryId: string, manualState: ContinuityManualState) => void;
+  anchor?: LeftRailAnchor | null;
 };
 
 const mapItems = [
@@ -36,17 +42,51 @@ export function OverlayDrawers({
   onFocusArea,
   onRestoreObject,
   onLocateObject,
-  onSetContinuityEntryManualState
+  onSetContinuityEntryManualState,
+  anchor = null
 }: OverlayDrawersProps) {
   const [query, setQuery] = useState("");
   const [assetFilter, setAssetFilter] = useState("全部");
   const [showAllAssets, setShowAllAssets] = useState(false);
   const [showAllObjectResults, setShowAllObjectResults] = useState(false);
   const [showAllDeliveryResults, setShowAllDeliveryResults] = useState(false);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const [panelPosition, setPanelPosition] = useState<LeftRailPopoverPosition | null>(null);
+  const updatePanelPosition = useCallback(() => {
+    const panel = panelRef.current;
+    if (!panel) {
+      return;
+    }
+    const next = getLeftRailPopoverPosition({
+      anchor,
+      panel: { width: panel.offsetWidth, height: panel.offsetHeight },
+      viewport: { width: window.innerWidth, height: window.innerHeight }
+    });
+    setPanelPosition((current) => (current?.top === next.top && current.left === next.left ? current : next));
+  }, [anchor]);
+
+  useLayoutEffect(() => {
+    updatePanelPosition();
+    const panel = panelRef.current;
+    if (!panel) {
+      return;
+    }
+    const observer = new ResizeObserver(updatePanelPosition);
+    observer.observe(panel);
+    window.addEventListener("resize", updatePanelPosition);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updatePanelPosition);
+    };
+  }, [mode, updatePanelPosition]);
+
+  const anchoredStyle = panelPosition
+    ? { top: panelPosition.top, left: panelPosition.left, right: "auto", bottom: "auto" }
+    : { top: 84, left: 84, right: "auto", bottom: "auto" };
 
   if (mode === "map") {
     return (
-      <section className="project-map" aria-label="项目地图">
+      <section ref={panelRef} className="project-map" aria-label="项目地图" style={anchoredStyle}>
         <div className="map-title">项目地图</div>
         <button className="map-item" type="button" onClick={() => onFocusArea("overview")}>
           项目概览 <span>↗</span>
@@ -69,7 +109,7 @@ export function OverlayDrawers({
     const visibleAssets = showAllAssets ? assets : assets.slice(0, 10);
 
     return (
-      <Drawer title="资产" onClose={onClose}>
+      <Drawer title="资产" onClose={onClose} panelRef={panelRef} style={anchoredStyle}>
         <p className="drawer-muted">只显示原始资料、文件与 AI 生成图片；方向、结论和设计定义仍留在画布中。共 {assets.length} 项。</p>
         <div className="drawer-filter-row" aria-label="资产筛选">
           {["全部", "原始资料", "生成结果", "文档", "已用于交付"].map((filter, index) => (
@@ -101,6 +141,8 @@ export function OverlayDrawers({
         onClose={onClose}
         onLocateObject={onLocateObject}
         onSetContinuityEntryManualState={onSetContinuityEntryManualState}
+        panelRef={panelRef}
+        style={anchoredStyle}
       />
     );
   }
@@ -109,7 +151,7 @@ export function OverlayDrawers({
     const hiddenObjects = Object.values(workspace.objects).filter((object) => object.visibility === "hidden");
 
     return (
-      <Drawer title="已隐藏内容" onClose={onClose}>
+      <Drawer title="已隐藏内容" onClose={onClose} panelRef={panelRef} style={anchoredStyle}>
         <p className="drawer-muted">隐藏内容没有被删除，也不会作为 AI 默认输入。恢复后才会重新出现在画布中。</p>
         {hiddenObjects.length > 0 ? (
           <ObjectRows objects={hiddenObjects} onObjectAction={onRestoreObject} actionLabel="恢复并定位" />
@@ -181,13 +223,17 @@ function ProjectRecordDrawer({
   highlightedRecordIds,
   onClose,
   onLocateObject,
-  onSetContinuityEntryManualState
+  onSetContinuityEntryManualState,
+  panelRef,
+  style
 }: {
   workspace: MorphoWorkspace;
   highlightedRecordIds: string[];
   onClose: () => void;
   onLocateObject: (objectId: string) => void;
   onSetContinuityEntryManualState: (entryId: string, manualState: ContinuityManualState) => void;
+  panelRef: React.RefObject<HTMLElement | null>;
+  style: React.CSSProperties;
 }) {
   const highlighted = new Set(highlightedRecordIds);
   const resolvedWorkspace = resolveContinuityValidity(workspace);
@@ -197,7 +243,7 @@ function ProjectRecordDrawer({
     .reverse();
 
   return (
-    <Drawer title="项目记录" onClose={onClose}>
+    <Drawer title="项目记录" onClose={onClose} panelRef={panelRef} style={style}>
       <p className="drawer-muted">
         这里汇总由你明确表达或确认后留下的可复核记录，不暴露内部阶段文件或项目记忆细节。
       </p>
@@ -429,9 +475,21 @@ function AssetRows({
   );
 }
 
-function Drawer({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+function Drawer({
+  title,
+  children,
+  onClose,
+  panelRef,
+  style
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+  panelRef: React.RefObject<HTMLElement | null>;
+  style: React.CSSProperties;
+}) {
   return (
-    <section className="side-drawer" aria-label={title}>
+    <section ref={panelRef} className="side-drawer" aria-label={title} style={style}>
       <div className="drawer-head">
         <div className="drawer-title">{title}</div>
         <button className="icon-button" type="button" aria-label={`关闭${title}`} onClick={onClose}>

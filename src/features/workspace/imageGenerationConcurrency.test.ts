@@ -36,6 +36,33 @@ describe("imageGenerationConcurrency", () => {
     expect(worker).not.toHaveBeenCalled();
   });
 
+  it("publishes each settled item without waiting for a slower sibling", async () => {
+    const settled: number[] = [];
+    let releaseSlow: (() => void) | undefined;
+    const slow = new Promise<void>((resolve) => {
+      releaseSlow = resolve;
+    });
+
+    const task = mapWithConcurrency(
+      ["slow", "fast"],
+      2,
+      async (item) => {
+        if (item === "slow") {
+          await slow;
+        }
+        return item;
+      },
+      {
+        onSettled: (item) => settled.push(item === "fast" ? 1 : 2)
+      }
+    );
+
+    await vi.waitFor(() => expect(settled).toEqual([1]));
+    releaseSlow?.();
+    await expect(task).resolves.toEqual(["slow", "fast"]);
+    expect(settled).toEqual([1, 2]);
+  });
+
   it("builds concurrent progress copy", () => {
     expect(
       buildImageGenerationProgressMessage({ total: 6, completed: 2, inFlight: 4, concurrency: 4 })

@@ -15,6 +15,9 @@ type BuildRelationshipRouteInput = {
 };
 
 const ENDPOINT_GAP = 6;
+export const RELATIONSHIP_EXIT_DISTANCE = 42;
+const RELATIONSHIP_RETURN_DISTANCE = 34;
+const RELATIONSHIP_CORNER_RADIUS = 12;
 
 export function buildRelationshipRoute({
   source,
@@ -23,14 +26,36 @@ export function buildRelationshipRoute({
 }: BuildRelationshipRouteInput): RelationshipRoute {
   const sourceCenter = centerOf(source);
   const targetCenter = centerOf(target);
-  const horizontal = Math.abs(targetCenter.x - sourceCenter.x) >= Math.abs(targetCenter.y - sourceCenter.y);
-  const start = horizontal
-    ? edgePoint(source, targetCenter.x >= sourceCenter.x ? "right" : "left")
-    : edgePoint(source, targetCenter.y >= sourceCenter.y ? "bottom" : "top");
-  const end = horizontal
-    ? edgePoint(target, targetCenter.x >= sourceCenter.x ? "left" : "right")
-    : edgePoint(target, targetCenter.y >= sourceCenter.y ? "top" : "bottom");
-  return { start, end, waypoints: [] };
+  const start = edgePoint(source, "right");
+  const end = edgePoint(target, "left");
+  const exit = { x: start.x + RELATIONSHIP_EXIT_DISTANCE, y: start.y };
+
+  if (targetCenter.x >= sourceCenter.x) {
+    return {
+      start,
+      end,
+      waypoints: [exit, { x: exit.x, y: end.y }]
+    };
+  }
+
+  // A target on the left still exits right first. It then returns around both
+  // cards before entering the target's left side, which keeps the gesture
+  // legible and avoids abrupt vertical turns at the source edge.
+  const routeY =
+    targetCenter.y >= sourceCenter.y
+      ? Math.max(source.y + source.h, target.y + target.h) + RELATIONSHIP_RETURN_DISTANCE
+      : Math.min(source.y, target.y) - RELATIONSHIP_RETURN_DISTANCE;
+  const returnX = Math.min(source.x, target.x) - RELATIONSHIP_RETURN_DISTANCE;
+  return {
+    start,
+    end,
+    waypoints: [
+      exit,
+      { x: exit.x, y: routeY },
+      { x: returnX, y: routeY },
+      { x: returnX, y: end.y }
+    ]
+  };
 }
 
 export function buildFastRelationshipRoute(input: Omit<BuildRelationshipRouteInput, "obstacles">): RelationshipRoute {
@@ -38,21 +63,28 @@ export function buildFastRelationshipRoute(input: Omit<BuildRelationshipRouteInp
 }
 
 export function buildRelationshipPath(route: RelationshipRoute): string {
-  const points = [route.start, ...route.waypoints, route.end];
-  if (points.length === 2) {
-    const [start, end] = points;
-    const controlDistance = Math.max(28, Math.abs(end.x - start.x) * 0.34, Math.abs(end.y - start.y) * 0.34);
-    const horizontal = Math.abs(end.x - start.x) >= Math.abs(end.y - start.y);
-    const firstControl = horizontal ? { x: start.x + Math.sign(end.x - start.x) * controlDistance, y: start.y } : { x: start.x, y: start.y + Math.sign(end.y - start.y) * controlDistance };
-    const secondControl = horizontal ? { x: end.x - Math.sign(end.x - start.x) * controlDistance, y: end.y } : { x: end.x, y: end.y - Math.sign(end.y - start.y) * controlDistance };
-    return `M ${start.x} ${start.y} C ${firstControl.x} ${firstControl.y}, ${secondControl.x} ${secondControl.y}, ${end.x} ${end.y}`;
+  const points = removeDuplicateAndCollinearPoints([route.start, ...route.waypoints, route.end]);
+  if (points.length <= 1) {
+    return "";
   }
 
-  return points.slice(1).reduce((path, point, index) => {
-    const previous = points[index];
-    const midpoint = { x: (previous.x + point.x) / 2, y: (previous.y + point.y) / 2 };
-    return `${path} Q ${previous.x} ${previous.y}, ${midpoint.x} ${midpoint.y}`;
-  }, `M ${points[0].x} ${points[0].y}`) + ` T ${points.at(-1)!.x} ${points.at(-1)!.y}`;
+  let path = `M ${points[0]!.x} ${points[0]!.y}`;
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = points[index - 1]!;
+    const corner = points[index]!;
+    const next = points[index + 1]!;
+    const radius = Math.min(
+      RELATIONSHIP_CORNER_RADIUS,
+      distance(previous, corner) / 2,
+      distance(corner, next) / 2
+    );
+    const entry = moveToward(corner, previous, radius);
+    const exit = moveToward(corner, next, radius);
+    path += ` L ${entry.x} ${entry.y} Q ${corner.x} ${corner.y}, ${exit.x} ${exit.y}`;
+  }
+
+  const end = points.at(-1)!;
+  return `${path} L ${end.x} ${end.y}`;
 }
 
 export function createRelationshipRouteCache() {
@@ -101,4 +133,40 @@ function edgePoint(bounds: CanvasPageBounds, side: "left" | "right" | "top" | "b
 
 function centerOf(bounds: CanvasPageBounds): CanvasPoint {
   return { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 };
+}
+
+function removeDuplicateAndCollinearPoints(points: CanvasPoint[]): CanvasPoint[] {
+  return points.reduce<CanvasPoint[]>((result, point) => {
+    const previous = result.at(-1);
+    if (previous && previous.x === point.x && previous.y === point.y) {
+      return result;
+    }
+    const beforePrevious = result.at(-2);
+    if (
+      beforePrevious &&
+      previous &&
+      ((beforePrevious.x === previous.x && previous.x === point.x) ||
+        (beforePrevious.y === previous.y && previous.y === point.y))
+    ) {
+      result[result.length - 1] = point;
+      return result;
+    }
+    result.push(point);
+    return result;
+  }, []);
+}
+
+function distance(left: CanvasPoint, right: CanvasPoint): number {
+  return Math.hypot(right.x - left.x, right.y - left.y);
+}
+
+function moveToward(from: CanvasPoint, toward: CanvasPoint, amount: number): CanvasPoint {
+  const distanceToTarget = distance(from, toward);
+  if (distanceToTarget === 0) {
+    return { ...from };
+  }
+  return {
+    x: from.x + ((toward.x - from.x) / distanceToTarget) * amount,
+    y: from.y + ((toward.y - from.y) / distanceToTarget) * amount
+  };
 }

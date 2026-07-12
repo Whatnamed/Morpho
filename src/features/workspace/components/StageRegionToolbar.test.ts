@@ -81,5 +81,6 @@ describe("StageRegionToolbar", () => {
     expect(html).toContain('aria-label="分区背景透明度"');
     expect(html).toContain('type="range"');
     expect(html).toContain('aria-label="背景不透明度"');
+    expect(html).not.toContain('data-tooltip="透明度"');
   });
 });
