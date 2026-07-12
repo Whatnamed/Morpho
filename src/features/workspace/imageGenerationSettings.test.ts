@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { createInitialWorkspace } from "../../domain/morpho/workspace";
 import {
+  DEVELOPMENT_IMAGE_MODEL_ID,
   getDefaultImageGenerationSettings,
   inferGenerationAspectRatio,
-  resolveGenerationSettings
+  PREVIEW_IMAGE_MODEL_ID,
+  resolveGenerationSettings,
+  resolveImageGenerationSettingsForVisualIntent,
+  resolveImageModelIdForVisualIntent
 } from "./imageGenerationSettings";
 
 describe("workspace image generation settings", () => {
@@ -81,6 +85,21 @@ describe("workspace image generation settings", () => {
       points: 600,
       sizeOption: "1K",
       sizeOptions: ["1K"]
+    });
+  });
+
+  it("routes direction preview to lite and visual development to gpt-image-2", () => {
+    expect(resolveImageModelIdForVisualIntent("directionPreview")).toBe(PREVIEW_IMAGE_MODEL_ID);
+    expect(resolveImageModelIdForVisualIntent("visualDevelopment")).toBe(DEVELOPMENT_IMAGE_MODEL_ID);
+    expect(resolveImageModelIdForVisualIntent(null)).toBe(DEVELOPMENT_IMAGE_MODEL_ID);
+    expect(resolveImageGenerationSettingsForVisualIntent({ intent: "directionPreview" })).toMatchObject({
+      modelId: "nano-banana-2-lite",
+      modelLabel: "nano-banana-2-lite"
+    });
+    expect(resolveImageGenerationSettingsForVisualIntent({ intent: "visualDevelopment", aspectRatio: "16:9" })).toMatchObject({
+      modelId: "gpt-image-2",
+      aspectRatio: "16:9",
+      sizeOption: "1K"
     });
   });
 

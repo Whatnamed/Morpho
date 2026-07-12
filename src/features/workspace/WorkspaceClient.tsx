@@ -253,6 +253,7 @@ import {
   getImageGenerationModelOptions,
   inferGenerationAspectRatio,
   resolveGenerationSettings,
+  resolveImageGenerationSettingsForVisualIntent,
   type ImageGenerationSettings
 } from "./imageGenerationSettings";
 import {
@@ -1474,6 +1475,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       const assistantMessageId = `ai-assistant-image-${Date.now()}`;
       const controller = new AbortController();
       const objectSummaries = makeTaskObjectSummaries(context.semanticSummaries);
+      // Intent routes model automatically (no user model picker yet).
+      const generationSettings = resolveImageGenerationSettingsForVisualIntent({
+        intent,
+        aspectRatio: effectiveImageGenerationSettings.aspectRatio
+      });
       abortControllerRef.current = controller;
       setIsAiStreaming(true);
       setAiDraft("");
@@ -1493,10 +1499,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           prompt: draft,
           selectedObjectIds: context.objectIds,
           imagePixels: false,
-          modelId: effectiveImageGenerationSettings.modelId,
-          modelLabel: effectiveImageGenerationSettings.modelLabel,
-          aspectRatio: effectiveImageGenerationSettings.aspectRatio,
-          sizeOption: effectiveImageGenerationSettings.sizeOption,
+          modelId: generationSettings.modelId,
+          modelLabel: generationSettings.modelLabel,
+          aspectRatio: generationSettings.aspectRatio,
+          sizeOption: generationSettings.sizeOption,
           referenceObjectIds: context.objectIds,
           directionObjectId: initialVisualTarget.directionId,
           visualBranchId: initialVisualTarget.visualBranchId,
@@ -1649,7 +1655,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               plan: validatedPlan.plan
             }),
             assistantMessageId,
-            `已形成生成计划：${validatedPlan.plan.items.length} 项。接下来将顺序生成，当前模型 ${effectiveImageGenerationSettings.modelLabel}，不会覆盖来源图。`,
+            `已形成生成计划：${validatedPlan.plan.items.length} 项。接下来将顺序生成，当前模型 ${generationSettings.modelLabel}，不会覆盖来源图。`,
             "streaming"
           )
         );
@@ -1682,11 +1688,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                modelId: effectiveImageGenerationSettings.modelId,
+                modelId: generationSettings.modelId,
                 prompt: item.prompt,
                 images: referenceImages.images,
-                aspectRatio: effectiveImageGenerationSettings.aspectRatio,
-                sizeOption: effectiveImageGenerationSettings.sizeOption,
+                aspectRatio: generationSettings.aspectRatio,
+                sizeOption: generationSettings.sizeOption,
                 referenceObjectIds: item.referenceObjectIds,
                 directionObjectId: item.targetDirectionId,
                 visualBranchId: item.visualBranchId,
@@ -1721,10 +1727,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               const generated = createGeneratedImageFromAsset(current, {
                 asset: saved.asset,
                 generation: {
-                  modelId: effectiveImageGenerationSettings.modelId,
-                  modelLabel: effectiveImageGenerationSettings.modelLabel,
-                  aspectRatio: effectiveImageGenerationSettings.aspectRatio,
-                  sizeOption: effectiveImageGenerationSettings.sizeOption,
+                  modelId: generationSettings.modelId,
+                  modelLabel: generationSettings.modelLabel,
+                  aspectRatio: generationSettings.aspectRatio,
+                  sizeOption: generationSettings.sizeOption,
                   prompt: item.prompt,
                   referenceObjectIds: item.referenceObjectIds,
                   directionId: item.targetDirectionId,
@@ -2395,16 +2401,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
       const operationId = `operation-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const clientRequestId = `client-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const generationSettings = resolveImageGenerationSettingsForVisualIntent({
+        intent: input.plan.kind === "directionPreview" ? "directionPreview" : "visualDevelopment",
+        aspectRatio: effectiveImageGenerationSettings.aspectRatio
+      });
       const operationCreated = createImageGenerationOperation(currentWorkspace, {
         operationId,
         clientRequestId,
         prompt: input.draft,
         selectedObjectIds: input.sourceObjectIds,
         imagePixels: false,
-        modelId: effectiveImageGenerationSettings.modelId,
-        modelLabel: effectiveImageGenerationSettings.modelLabel,
-        aspectRatio: effectiveImageGenerationSettings.aspectRatio,
-        sizeOption: effectiveImageGenerationSettings.sizeOption,
+        modelId: generationSettings.modelId,
+        modelLabel: generationSettings.modelLabel,
+        aspectRatio: generationSettings.aspectRatio,
+        sizeOption: generationSettings.sizeOption,
         referenceObjectIds: input.sourceObjectIds,
         requestedPreviewCount
       });
@@ -2471,11 +2481,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              modelId: effectiveImageGenerationSettings.modelId,
+              modelId: generationSettings.modelId,
               prompt: item.prompt,
               images: referenceImages.images,
-              aspectRatio: effectiveImageGenerationSettings.aspectRatio,
-              sizeOption: effectiveImageGenerationSettings.sizeOption,
+              aspectRatio: generationSettings.aspectRatio,
+              sizeOption: generationSettings.sizeOption,
               referenceObjectIds: item.referenceObjectIds,
               directionObjectId: item.targetDirectionId,
               visualBranchId: item.visualBranchId,
@@ -2506,10 +2516,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           const generated = createGeneratedImageFromAsset(currentWorkspace, {
             asset: saved.asset,
             generation: {
-              modelId: effectiveImageGenerationSettings.modelId,
-              modelLabel: effectiveImageGenerationSettings.modelLabel,
-              aspectRatio: effectiveImageGenerationSettings.aspectRatio,
-              sizeOption: effectiveImageGenerationSettings.sizeOption,
+              modelId: generationSettings.modelId,
+              modelLabel: generationSettings.modelLabel,
+              aspectRatio: generationSettings.aspectRatio,
+              sizeOption: generationSettings.sizeOption,
               prompt: item.prompt,
               referenceObjectIds: item.referenceObjectIds,
               directionId: item.targetDirectionId,
@@ -4054,6 +4064,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setShowFailure(false);
     setAiDraft("");
     setAiOpen(true);
+    // Local edit / single-image path is always visual development quality.
+    const generationSettings = resolveImageGenerationSettingsForVisualIntent({
+      intent: "visualDevelopment",
+      aspectRatio: effectiveImageGenerationSettings.aspectRatio
+    });
     setWorkspace((current) => {
       const operationCreated = createImageGenerationOperation(current, {
         operationId,
@@ -4061,10 +4076,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         prompt: draft,
         selectedObjectIds: context.objectIds,
         imagePixels: false,
-        modelId: effectiveImageGenerationSettings.modelId,
-        modelLabel: effectiveImageGenerationSettings.modelLabel,
-        aspectRatio: effectiveImageGenerationSettings.aspectRatio,
-        sizeOption: effectiveImageGenerationSettings.sizeOption,
+        modelId: generationSettings.modelId,
+        modelLabel: generationSettings.modelLabel,
+        aspectRatio: generationSettings.aspectRatio,
+        sizeOption: generationSettings.sizeOption,
         referenceObjectIds: context.objectIds,
         directionObjectId: initialVisualTarget.directionId,
         visualBranchId: initialVisualTarget.visualBranchId
@@ -4163,11 +4178,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          modelId: effectiveImageGenerationSettings.modelId,
+          modelId: generationSettings.modelId,
           prompt: draft,
           images: referenceImages.images,
-          aspectRatio: effectiveImageGenerationSettings.aspectRatio,
-          sizeOption: effectiveImageGenerationSettings.sizeOption,
+          aspectRatio: generationSettings.aspectRatio,
+          sizeOption: generationSettings.sizeOption,
           referenceObjectIds: sourceObjectIds,
           directionObjectId,
           visualBranchId,
@@ -4202,10 +4217,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         const generated = createGeneratedImageFromAsset(current, {
           asset: saved.asset,
           generation: {
-            modelId: effectiveImageGenerationSettings.modelId,
-            modelLabel: effectiveImageGenerationSettings.modelLabel,
-            aspectRatio: effectiveImageGenerationSettings.aspectRatio,
-            sizeOption: effectiveImageGenerationSettings.sizeOption,
+            modelId: generationSettings.modelId,
+            modelLabel: generationSettings.modelLabel,
+            aspectRatio: generationSettings.aspectRatio,
+            sizeOption: generationSettings.sizeOption,
             prompt: draft,
             referenceObjectIds: sourceObjectIds,
             directionId: directionObjectId,

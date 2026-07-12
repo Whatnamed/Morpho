@@ -10,6 +10,12 @@ import {
   resolveGrsImageModelSettings
 } from "../../domain/morpho/grsImageModels";
 import type { MorphoWorkspace } from "../../domain/morpho/types";
+import type { VisualGenerationIntent } from "./visualGenerationRouting";
+
+/** Fast multi-preview / direction scouting. */
+export const PREVIEW_IMAGE_MODEL_ID = "nano-banana-2-lite";
+/** Higher-quality iteration, scene, detail, and general generation. */
+export const DEVELOPMENT_IMAGE_MODEL_ID = "gpt-image-2";
 
 export type ImageGenerationSettings = {
   modelId: string;
@@ -82,6 +88,28 @@ export function getDefaultImageGenerationSettings(): ImageGenerationSettings {
     modelId: model.id,
     sizeOption: model.defaultSizeOption,
     aspectRatio: "1:1"
+  });
+}
+
+/**
+ * Automatic model routing when there is no user model picker.
+ * - directionPreview → nano-banana-2-lite (fast, multi-shot scouting)
+ * - visualDevelopment / unknown → gpt-image-2 (quality for iteration & detail)
+ */
+export function resolveImageModelIdForVisualIntent(intent: VisualGenerationIntent | null): string {
+  if (intent === "directionPreview") {
+    return PREVIEW_IMAGE_MODEL_ID;
+  }
+  return DEVELOPMENT_IMAGE_MODEL_ID;
+}
+
+export function resolveImageGenerationSettingsForVisualIntent(input: {
+  intent: VisualGenerationIntent | null;
+  aspectRatio?: GrsImageAspectRatio;
+}): ImageGenerationSettings {
+  return resolveGenerationSettings({
+    modelId: resolveImageModelIdForVisualIntent(input.intent),
+    aspectRatio: input.aspectRatio ?? "1:1"
   });
 }
 
