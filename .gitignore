@@ -12,14 +12,7 @@ out/
 .env
 .env.*
 !.env.example
-.dev.vars
-.DS_Store
-Thumbs.db
-
-# OpenNext
-.open-next
-
-# wrangler files
-.wrangler
 .dev.vars*
 !.dev.vars.example
+.DS_Store
+Thumbs.db
