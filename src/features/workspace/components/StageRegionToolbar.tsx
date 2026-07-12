@@ -1,7 +1,7 @@
 "use client";
 
-import { Ban, Droplets, EyeOff, LockKeyhole, LockKeyholeOpen, PaintBucket, Palette, RotateCcw, Scan, Square, SquareDashed } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Droplets, EyeOff, LockKeyhole, LockKeyholeOpen, PaintBucket, Palette, RotateCcw, Scan } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { StageRegionBorderStyle, StageRegionColorKey, StageRegionRecord } from "@/domain/morpho/types";
 import { getStageRegionColorPreset, STAGE_REGION_COLOR_PRESETS } from "@/domain/morpho/stageRegions";
@@ -18,31 +18,95 @@ export type StageRegionToolbarProps = {
     patch: Partial<Pick<StageRegionRecord, "colorKey" | "fillOpacity" | "backgroundVisible" | "borderStyle" | "locked">>,
     historyLabel: string
   ) => void;
+  onBeginOpacity: () => void;
+  onPreviewOpacity: (value: number) => void;
+  onCommitOpacity: () => void;
+  onCancelOpacity: () => void;
+  onMeasure?: (size: { w: number; h: number }) => void;
+  isMeasuring?: boolean;
   onFit: () => void;
   onResetStyle: () => void;
 };
 
-export function StageRegionToolbar({ region, placement, canFit, onUpdateStyle, onFit, onResetStyle }: StageRegionToolbarProps) {
+export function StageRegionToolbar({
+  region,
+  placement,
+  canFit,
+  onUpdateStyle,
+  onBeginOpacity,
+  onPreviewOpacity,
+  onCommitOpacity,
+  onCancelOpacity,
+  onMeasure,
+  isMeasuring = false,
+  onFit,
+  onResetStyle
+}: StageRegionToolbarProps) {
   const [openPopover, setOpenPopover] = useState<OpenPopover>(null);
+  const [previewOpacity, setPreviewOpacity] = useState<number | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const color = getStageRegionColorPreset(region.colorKey ?? "warmSand");
   const borderStyle = region.borderStyle ?? "solid";
-  const fillOpacity = region.fillOpacity ?? 16;
+  const fillOpacity = previewOpacity ?? region.fillOpacity ?? 16;
   const backgroundVisible = region.backgroundVisible ?? true;
   const locked = region.locked ?? false;
+  const latestCommitRef = useRef(onCommitOpacity);
+
+  useEffect(() => {
+    latestCommitRef.current = onCommitOpacity;
+  }, [onCommitOpacity]);
+  useEffect(() => () => latestCommitRef.current(), []);
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root || !onMeasure) return;
+    let last = "";
+    const report = () => {
+      const { width, height } = root.getBoundingClientRect();
+      const next = `${Math.round(width)}:${Math.round(height)}`;
+      if (next !== last) {
+        last = next;
+        onMeasure({ w: Math.round(width), h: Math.round(height) });
+      }
+    };
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [onMeasure]);
 
   useEffect(() => {
     const closeOnOutsidePointer = (event: PointerEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) {
+        if (openPopover === "opacity") {
+          onCommitOpacity();
+          setPreviewOpacity(null);
+        }
         setOpenPopover(null);
       }
     };
     document.addEventListener("pointerdown", closeOnOutsidePointer, { capture: true });
     return () => document.removeEventListener("pointerdown", closeOnOutsidePointer, { capture: true });
-  }, []);
+  }, [onCommitOpacity, openPopover]);
 
   const togglePopover = (next: Exclude<OpenPopover, null>) => {
-    setOpenPopover((current) => (current === next ? null : next));
+    setOpenPopover((current) => {
+      if (current === "opacity") {
+        onCommitOpacity();
+        setPreviewOpacity(null);
+      }
+      return current === next ? null : next;
+    });
+  };
+
+  const commitOpacity = () => {
+    onCommitOpacity();
+    setPreviewOpacity(null);
+  };
+
+  const cancelOpacity = () => {
+    onCancelOpacity();
+    setPreviewOpacity(null);
   };
 
   return (
@@ -50,7 +114,7 @@ export function StageRegionToolbar({ region, placement, canFit, onUpdateStyle, o
       ref={rootRef}
       className={`stage-region-toolbar selection-toolbar ${placement.placement}`}
       aria-label={`${region.title}分区工具`}
-      style={{ left: placement.x, top: placement.y }}
+      style={{ left: placement.x, top: placement.y, visibility: isMeasuring ? "hidden" : "visible" }}
       onPointerDown={(event) => event.stopPropagation()}
       onPointerUp={(event) => event.stopPropagation()}
     >
@@ -108,7 +172,31 @@ export function StageRegionToolbar({ region, placement, canFit, onUpdateStyle, o
                 max="100"
                 step="1"
                 value={fillOpacity}
-                onChange={(event) => onUpdateStyle({ fillOpacity: Number(event.currentTarget.value) }, "调整分区透明度")}
+                onPointerDown={onBeginOpacity}
+                onPointerUp={commitOpacity}
+                onPointerCancel={cancelOpacity}
+                onFocus={onBeginOpacity}
+                onBlur={commitOpacity}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    cancelOpacity();
+                    return;
+                  }
+                  if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(event.key)) {
+                    onBeginOpacity();
+                  }
+                }}
+                onKeyUp={(event) => {
+                  if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(event.key)) {
+                    commitOpacity();
+                  }
+                }}
+                onChange={(event) => {
+                  const value = Number(event.currentTarget.value);
+                  setPreviewOpacity(value);
+                  onPreviewOpacity(value);
+                }}
               />
             </div>
           ) : null}
@@ -215,10 +303,23 @@ function BorderOption({
 
 function BorderStyleIcon({ borderStyle }: { borderStyle: StageRegionBorderStyle }) {
   if (borderStyle === "none") {
-    return <Ban size={16} />;
+    return (
+      <svg viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true">
+        <rect x="3.25" y="4.5" width="13.5" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M3.4 16.1 16.6 3.9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
   }
   if (borderStyle === "dashed") {
-    return <SquareDashed size={16} />;
+    return (
+      <svg viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true">
+        <rect x="3.25" y="4.5" width="13.5" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 2" />
+      </svg>
+    );
   }
-  return <Square size={16} />;
+  return (
+    <svg viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true">
+      <rect x="3.25" y="4.5" width="13.5" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
 }

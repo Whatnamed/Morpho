@@ -299,7 +299,7 @@ export function hasVisibleStageRegionMembers(workspace: MorphoWorkspace, stageId
 /** Explicit action only — normal object movement never changes region bounds. */
 export function fitStageRegionToVisibleMembers(workspace: MorphoWorkspace, stageId: string): MorphoWorkspace {
   const region = getStageRegions(workspace).find((item) => item.id === stageId);
-  if (!region || !hasVisibleStageRegionMembers(workspace, stageId)) {
+  if (!region || region.locked || !hasVisibleStageRegionMembers(workspace, stageId)) {
     return workspace;
   }
   const nextBounds = computeStageBoundsFromMembers(workspace, region.key, region.memberObjectIds);
@@ -461,7 +461,7 @@ export function mergeStageShapeLayoutsIntoRecords(
   base: StageRegionRecord[],
   layouts: Array<
     Pick<StageRegionRecord, "id" | "x" | "y" | "w" | "h"> &
-      Partial<Pick<StageRegionRecord, "memberObjectIds" | "colorKey" | "fillOpacity" | "backgroundVisible" | "borderStyle" | "locked" | "isActivated">>
+      Partial<Pick<StageRegionRecord, "memberObjectIds" | "colorKey" | "fillOpacity" | "backgroundVisible" | "borderStyle" | "locked">>
   >
 ): StageRegionRecord[] {
   const byId = new Map(layouts.map((item) => [item.id, item]));
@@ -482,7 +482,8 @@ export function mergeStageShapeLayoutsIntoRecords(
       backgroundVisible: layout.backgroundVisible ?? region.backgroundVisible,
       borderStyle: layout.borderStyle ?? region.borderStyle,
       locked: layout.locked ?? region.locked,
-      isActivated: layout.isActivated ?? region.isActivated
+      // Activation is semantic: only ensureStageRegions may turn a stage on.
+      isActivated: region.isActivated
     });
   });
 }

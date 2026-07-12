@@ -14,7 +14,6 @@ import {
   type SelectionToolbarPlacement,
   type ScreenRect
 } from "../selectionToolbar";
-import { shouldAcceptCanvasSelection } from "../workspaceNavigation";
 import type { PendingImageGenerationSlot } from "../pendingImageGenerationSlots";
 import type { StageRegionRecord } from "@/domain/morpho/types";
 import {
@@ -39,11 +38,13 @@ import {
 } from "./MorphoShapeUtil";
 import {
   StageRegionShapeUtil,
+  STAGE_REGION_SHAPE_TYPE,
   createStageRegionShapePartial,
   isStageRegionShape,
   type StageRegionShape
 } from "./StageRegionShapeUtil";
 import { StageRegionToolbar } from "../components/StageRegionToolbar";
+import { areSelectionIdsEqual, normalizeCanvasSelectionIds, type CanvasSelectableKind } from "./canvasSelection";
 
 export type FocusArea = "overview" | "research" | "definition" | "visual" | "delivery";
 
@@ -64,13 +65,17 @@ type MorphoCanvasProps = {
   assetUrls: Record<string, string>;
   pendingImageGenerationSlots: PendingImageGenerationSlot[];
   focusRequest: FocusRequest;
-  selectedObjectIds: string[];
   /**
    * Changes when floating chrome opens/closes so the selection toolbar
    * re-measures obstacles even when the tldraw editor itself is idle.
    */
   floatingChromeKey?: string;
-  renderSelectionToolbar?: (selectedObjects: MorphoObject[], placement: SelectionToolbarPlacement) => ReactNode;
+  renderSelectionToolbar?: (
+    selectedObjects: MorphoObject[],
+    placement: SelectionToolbarPlacement,
+    onMeasure?: (size: { w: number; h: number }) => void,
+    isMeasuring?: boolean
+  ) => ReactNode;
   onSelectionChange: (objectIds: string[]) => void;
   onInstancesChange: (instances: CanvasInstance[]) => void;
   onStageRegionsChange: (regions: StageRegionRecord[]) => void;
@@ -110,36 +115,14 @@ const focusBounds: Record<FocusArea, CanvasFocusBounds> = {
 
 export function resolveFocusBounds(workspace: MorphoWorkspace, area: FocusArea): CanvasFocusBounds {
   const fallback = focusBounds[area];
-  const instances = getRenderableCanvasInstances(workspace).filter((instance) => {
-    const object = workspace.objects[instance.objectId];
-    if (!object) {
-      return false;
-    }
-
-    if (area === "overview") {
-      return true;
-    }
-
-    if (area === "research") {
-      return ["file", "text", "link", "imageCollection", "research", "documentFragment", "keyConclusion"].includes(object.type);
-    }
-
-    if (area === "definition") {
-      return object.type === "designDefinition";
-    }
-
-    if (area === "visual") {
-      return object.type === "conceptDirection" || object.type === "image";
-    }
-
-    if (area === "delivery") {
-      return object.type === "delivery";
-    }
-
-    return false;
-  });
+  const stage = area === "overview" ? null : getStageRegions(workspace).find((region) => region.key === area);
+  const memberObjectIds = stage ? new Set(stage.memberObjectIds) : null;
+  const instances = getRenderableCanvasInstances(workspace).filter((instance) => !memberObjectIds || memberObjectIds.has(instance.objectId));
 
   if (instances.length === 0) {
+    if (stage?.isActivated) {
+      return { x: stage.x, y: stage.y, w: stage.w, h: stage.h, zoom: fallback.zoom };
+    }
     return fallback;
   }
 
@@ -169,7 +152,6 @@ export function MorphoCanvas({
   assetUrls,
   pendingImageGenerationSlots,
   focusRequest,
-  selectedObjectIds,
   floatingChromeKey = "",
   renderSelectionToolbar,
   onSelectionChange,
@@ -193,9 +175,8 @@ export function MorphoCanvas({
   const lastPersistedViewKeyRef = useRef(getCanvasViewKey(workspace.canvas.view));
   const lastContextMenuOpenAtRef = useRef(0);
   const latestWorkspaceRef = useRef(workspace);
-  const latestSelectedObjectIdsRef = useRef(selectedObjectIds);
   const didSendStagesToBackRef = useRef(false);
-  const windowFocusedRef = useRef(typeof document === "undefined" ? true : document.hasFocus());
+  const stageOpacityPreviewRef = useRef<string | null>(null);
   const [liveView, setLiveView] = useState<CanvasView>(workspace.canvas.view);
   const traceObjectIds = useMemo(() => canvasTrace?.highlightedObjectIds ?? [], [canvasTrace]);
   const traceEdgeKeySet = useMemo(() => new Set(canvasTrace?.highlightedEdgeKeys ?? []), [canvasTrace]);
@@ -206,9 +187,6 @@ export function MorphoCanvas({
   useLayoutEffect(() => {
     latestWorkspaceRef.current = workspace;
   }, [workspace]);
-  useLayoutEffect(() => {
-    latestSelectedObjectIdsRef.current = selectedObjectIds;
-  }, [selectedObjectIds]);
   const canvasComponents = useMemo(
     () => ({
       OnTheCanvas: () => (
@@ -227,6 +205,9 @@ export function MorphoCanvas({
           floatingChromeKey={floatingChromeKey}
           renderToolbar={renderSelectionToolbar}
           onStageRegionsChange={onStageRegionsChange}
+          onStageOpacityPreviewChange={(stageId) => {
+            stageOpacityPreviewRef.current = stageId;
+          }}
         />
       )
     }),
@@ -351,7 +332,24 @@ export function MorphoCanvas({
     [flushPendingStageRegions]
   );
 
-  const syncFromEditor = useCallback(
+  const syncSelectionFromEditor = useCallback(
+    (editor: Editor) => {
+      const currentWorkspace = latestWorkspaceRef.current;
+      const selectedShapes = editor
+        .getSelectedShapes()
+        .filter(isMorphoShape)
+        .filter((shape) => isMorphoShapeActiveInWorkspace(shape, currentWorkspace));
+      const selectedIds = getSelectedMorphoShapeIds(selectedShapes);
+      const selectionKey = selectedIds.objectIds.join("|");
+      if (selectionKey !== lastSelectionRef.current) {
+        lastSelectionRef.current = selectionKey;
+        onSelectionChange(selectedIds.objectIds);
+      }
+    },
+    [onSelectionChange]
+  );
+
+  const syncShapesFromEditor = useCallback(
     (editor: Editor, changedShapes?: Array<MorphoShape | StageRegionShape>) => {
       const currentWorkspace = latestWorkspaceRef.current;
       const pageMorphoShapes =
@@ -361,36 +359,12 @@ export function MorphoCanvas({
         editor.deleteShapes(inactiveShapes.map((shape) => shape.id));
       }
 
-      if (
-        shouldAcceptCanvasSelection({
-          documentVisible: document.visibilityState === "visible",
-          windowFocused: windowFocusedRef.current
-        })
-      ) {
-        const editorSelection = editor.getSelectedShapes();
-        const selectedShapes = editorSelection
-          .filter(isMorphoShape)
-          .filter((shape) => isMorphoShapeActiveInWorkspace(shape, currentWorkspace));
-        const selectedStageShapes = editorSelection.filter(isStageRegionShape);
-        // Box-selecting cards must not also select their background stage region.
-        if (selectedShapes.length > 0 && selectedStageShapes.length > 0) {
-          editor.setSelectedShapes(selectedShapes);
-        }
-        // Stage-only selection must not surface object toolbar/details.
-        const selectedIds = getSelectedMorphoShapeIds(selectedShapes);
-        const selectionKey = selectedIds.objectIds.join("|");
-        if (selectionKey !== lastSelectionRef.current) {
-          lastSelectionRef.current = selectionKey;
-          onSelectionChange(selectedIds.objectIds);
-        }
-      }
-
       const stageShapesChanged = Boolean(changedShapes?.some(isStageRegionShape));
       const morphoShapesChanged = Boolean(changedShapes?.some(isMorphoShape));
 
-      // Stage drag moves members via StageRegionShapeUtil; flush full morpho page
-      // only when morpho or stage shapes actually changed — never on camera-only ticks.
-      if (morphoShapesChanged || stageShapesChanged) {
+      // Stage drags update their members as Morpho shapes; styling a stage never
+      // writes unrelated instance geometry.
+      if (morphoShapesChanged) {
         const allMorpho = editor.getCurrentPageShapes().filter(isMorphoShape);
         const allInstances = allMorpho
           .filter((shape) => isMorphoShapeActiveInWorkspace(shape, currentWorkspace))
@@ -405,7 +379,7 @@ export function MorphoCanvas({
         }
       }
 
-      if (stageShapesChanged) {
+      if (stageShapesChanged && !stageOpacityPreviewRef.current) {
         const stageShapes = editor.getCurrentPageShapes().filter(isStageRegionShape);
         const base = getStageRegions(currentWorkspace);
         const layouts = stageShapes.map((shape) => ({
@@ -419,8 +393,7 @@ export function MorphoCanvas({
           fillOpacity: shape.props.fillOpacity,
           backgroundVisible: shape.props.backgroundVisible,
           borderStyle: shape.props.borderStyle,
-          locked: shape.props.locked,
-          isActivated: true
+          locked: shape.props.locked
         }));
         const nextRegions = mergeStageShapeLayoutsIntoRecords(base, layouts);
         if (!areStageRegionRecordsEqual(base, nextRegions)) {
@@ -428,12 +401,18 @@ export function MorphoCanvas({
         }
       }
 
+    },
+    [scheduleInstancesPersist, scheduleStageRegionsPersist]
+  );
+
+  const syncCameraFromEditor = useCallback(
+    (editor: Editor) => {
       const camera = editor.getCamera();
       const nextView = { x: camera.x, y: camera.y, zoom: camera.z };
       setLiveView(nextView);
       scheduleViewPersist(nextView);
     },
-    [onSelectionChange, scheduleInstancesPersist, scheduleStageRegionsPersist, scheduleViewPersist]
+    [scheduleViewPersist]
   );
 
   const syncWorkspaceToEditor = useCallback(
@@ -774,41 +753,19 @@ export function MorphoCanvas({
       flushPendingStageRegions();
       flushViewPersist();
     };
-    const restoreSelectionFromParent = () => {
-      const editor = editorRef.current;
-      if (!editor) {
-        return;
-      }
-
-      const selectedObjectIdSet = new Set(latestSelectedObjectIdsRef.current);
-      const shapeIds = editor
-        .getCurrentPageShapes()
-        .filter(isMorphoShape)
-        .filter((shape) => selectedObjectIdSet.has(shape.props.objectId))
-        .map((shape) => shape.id);
-      lastSelectionRef.current = latestSelectedObjectIdsRef.current.join("|");
-      editor.select(...shapeIds);
-    };
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
-        windowFocusedRef.current = false;
         flushInteractionState();
       }
     };
     const handleWindowBlur = () => {
-      windowFocusedRef.current = false;
       flushInteractionState();
-    };
-    const handleWindowFocus = () => {
-      windowFocusedRef.current = true;
-      window.requestAnimationFrame(restoreSelectionFromParent);
     };
     const host = canvasHostRef.current;
 
     host?.addEventListener("pointerup", flushInteractionState, { capture: true });
     host?.addEventListener("pointercancel", flushInteractionState, { capture: true });
     window.addEventListener("blur", handleWindowBlur);
-    window.addEventListener("focus", handleWindowFocus);
     window.addEventListener("beforeunload", flushInteractionState);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
@@ -816,7 +773,6 @@ export function MorphoCanvas({
       host?.removeEventListener("pointerup", flushInteractionState, { capture: true });
       host?.removeEventListener("pointercancel", flushInteractionState, { capture: true });
       window.removeEventListener("blur", handleWindowBlur);
-      window.removeEventListener("focus", handleWindowFocus);
       window.removeEventListener("beforeunload", flushInteractionState);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       flushInteractionState();
@@ -846,7 +802,6 @@ export function MorphoCanvas({
         .filter(isMorphoShape)
         .filter((shape) => selectedObjectIdSet.has(shape.props.objectId))
         .map((shape) => shape.id);
-      lastSelectionRef.current = (focusRequest.selectionObjectIds ?? []).join("|");
       editor.select(...shapeIds);
       editor.setCamera(new Vec(focusRequest.view.x, focusRequest.view.y, focusRequest.view.zoom), {
         immediate: true
@@ -910,6 +865,22 @@ export function MorphoCanvas({
           setLiveView(workspace.canvas.view);
           onLiveViewChange?.(workspace.canvas.view);
 
+          const selectionKind = (shapeId: string): CanvasSelectableKind => {
+            const shape = editor.getShape(shapeId as TLShapeId);
+            if (shape && isMorphoShape(shape)) return "morpho";
+            if (shape && isStageRegionShape(shape)) return "stage";
+            return "other";
+          };
+          const cleanupBeforeSelection = editor.sideEffects.registerBeforeChangeHandler("instance_page_state", (previous, next) => {
+            const normalizedIds = normalizeCanvasSelectionIds(previous.selectedShapeIds, next.selectedShapeIds, selectionKind);
+            return areSelectionIdsEqual(next.selectedShapeIds, normalizedIds) ? next : { ...next, selectedShapeIds: normalizedIds as TLShapeId[] };
+          });
+          const cleanupAfterSelection = editor.sideEffects.registerAfterChangeHandler("instance_page_state", (_previous, next) => {
+            if (next.pageId === editor.getCurrentPageId()) {
+              syncSelectionFromEditor(editor);
+            }
+          });
+
           const cleanup = editor.store.listen((entry) => {
             const changedShapes = [
               ...Object.values(entry.changes.added),
@@ -918,19 +889,23 @@ export function MorphoCanvas({
               (record): record is MorphoShape | StageRegionShape =>
                 "type" in record && (isMorphoShape(record as TLShape) || isStageRegionShape(record as TLShape))
             );
-            // Camera-only updates produce empty changedShapes; syncFromEditor will no-op persist.
-            if (changedShapes.length === 0) {
-              const camera = editor.getCamera();
-              const nextView = { x: camera.x, y: camera.y, zoom: camera.z };
-              setLiveView(nextView);
-              scheduleViewPersist(nextView);
-              return;
+            if (changedShapes.length > 0) {
+              syncShapesFromEditor(editor, changedShapes);
             }
-            syncFromEditor(editor, changedShapes);
+
+            const changedRecords = [
+              ...Object.values(entry.changes.added),
+              ...Object.values(entry.changes.updated).map(([, after]) => after)
+            ];
+            if (changedRecords.some((record) => record.typeName === "camera")) {
+              syncCameraFromEditor(editor);
+            }
           });
 
           return () => {
             cleanup();
+            cleanupAfterSelection();
+            cleanupBeforeSelection();
             editorRef.current = null;
           };
         }}
@@ -1050,8 +1025,8 @@ const CanvasRelationshipOverlay = track(function CanvasRelationshipOverlay({
   );
 });
 
-const SELECTION_TOOLBAR_SIZE = { w: 460, h: 44 } as const;
-const STAGE_REGION_TOOLBAR_SIZE = { w: 286, h: 44 } as const;
+const UNMEASURED_SELECTION_TOOLBAR_SIZE = { w: 360, h: 44 } as const;
+const UNMEASURED_STAGE_REGION_TOOLBAR_SIZE = { w: 286, h: 44 } as const;
 const SELECTION_TOOLBAR_MARGIN = 18;
 const SELECTION_TOOLBAR_GAP = 12;
 
@@ -1059,12 +1034,19 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
   workspace,
   floatingChromeKey,
   renderToolbar,
-  onStageRegionsChange
+  onStageRegionsChange,
+  onStageOpacityPreviewChange
 }: {
   workspace: MorphoWorkspace;
   floatingChromeKey: string;
-  renderToolbar?: (selectedObjects: MorphoObject[], placement: SelectionToolbarPlacement) => ReactNode;
+  renderToolbar?: (
+    selectedObjects: MorphoObject[],
+    placement: SelectionToolbarPlacement,
+    onMeasure?: (size: { w: number; h: number }) => void,
+    isMeasuring?: boolean
+  ) => ReactNode;
   onStageRegionsChange: (regions: StageRegionRecord[]) => void;
+  onStageOpacityPreviewChange: (stageId: string | null) => void;
 }) {
   const editor = useEditor();
   // Read path + input atoms so track() re-renders when idle / drag / pan changes.
@@ -1077,9 +1059,39 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
    * Remeasure after layout so "toolbar already open → open panel" hides correctly.
    */
   const [obstacleEpoch, setObstacleEpoch] = useState(0);
+  const [objectToolbarSize, setObjectToolbarSize] = useState<{ key: string; w: number; h: number } | null>(null);
+  const [stageToolbarSize, setStageToolbarSize] = useState<{ key: string; w: number; h: number } | null>(null);
   useLayoutEffect(() => {
     setObstacleEpoch((value) => value + 1);
   }, [floatingChromeKey]);
+  const selectedShapes = editor.getSelectedShapes();
+  const selectedObjects = selectedShapes
+    .filter(isMorphoShape)
+    .map((shape) => workspace.objects[shape.props.objectId])
+    .filter((object): object is MorphoObject => Boolean(object));
+  const selectedStageShapes = selectedShapes.filter(isStageRegionShape);
+
+  const selectionKey = selectedObjects.length > 0
+    ? `objects:${selectedObjects.map((object) => `${object.id}:${object.type}`).join("|")}`
+    : `stage:${selectedStageShapes[0]?.id ?? ""}`;
+  const measuredObjectSize = objectToolbarSize?.key === selectionKey ? objectToolbarSize : null;
+  const measuredStageSize = stageToolbarSize?.key === selectionKey ? stageToolbarSize : null;
+  const reportObjectToolbarSize = useCallback(
+    (size: { w: number; h: number }) => {
+      setObjectToolbarSize((current) =>
+        current?.key === selectionKey && current.w === size.w && current.h === size.h ? current : { key: selectionKey, ...size }
+      );
+    },
+    [selectionKey]
+  );
+  const reportStageToolbarSize = useCallback(
+    (size: { w: number; h: number }) => {
+      setStageToolbarSize((current) =>
+        current?.key === selectionKey && current.w === size.w && current.h === size.h ? current : { key: selectionKey, ...size }
+      );
+    },
+    [selectionKey]
+  );
 
   if (
     !shouldShowSelectionToolbarForInteraction({
@@ -1092,16 +1104,9 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
   }
 
   const bounds = editor.getSelectionRotatedScreenBounds();
-  const selectedObjects = editor
-    .getSelectedShapes()
-    .filter(isMorphoShape)
-    .map((shape) => workspace.objects[shape.props.objectId])
-    .filter((object): object is MorphoObject => Boolean(object));
-  const selectedStageShapes = editor.getSelectedShapes().filter(isStageRegionShape);
   if (!bounds || (selectedObjects.length === 0 && selectedStageShapes.length !== 1)) {
     return null;
   }
-
   // Read epoch so layout remount forces a fresh obstacle query + placement.
   void obstacleEpoch;
   const obstacles = collectSelectionToolbarObstacles();
@@ -1109,10 +1114,9 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
     { x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h },
     { w: window.innerWidth, h: window.innerHeight },
     {
-      toolbar:
-        selectedObjects.length > 0
-          ? { w: SELECTION_TOOLBAR_SIZE.w, h: SELECTION_TOOLBAR_SIZE.h }
-          : { w: STAGE_REGION_TOOLBAR_SIZE.w, h: STAGE_REGION_TOOLBAR_SIZE.h },
+      toolbar: selectedObjects.length > 0
+        ? measuredObjectSize ?? UNMEASURED_SELECTION_TOOLBAR_SIZE
+        : measuredStageSize ?? UNMEASURED_STAGE_REGION_TOOLBAR_SIZE,
       margin: SELECTION_TOOLBAR_MARGIN,
       gap: SELECTION_TOOLBAR_GAP,
       obstacles
@@ -1123,7 +1127,9 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
   }
 
   if (selectedObjects.length > 0) {
-    return renderToolbar ? <>{renderToolbar(selectedObjects, placement)}</> : null;
+    return renderToolbar
+      ? <>{renderToolbar(selectedObjects, placement, reportObjectToolbarSize, !measuredObjectSize)}</>
+      : null;
   }
 
   const selectedStage = selectedStageShapes[0];
@@ -1132,30 +1138,109 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
     return null;
   }
 
-  return <CanvasStageRegionToolbar workspace={workspace} region={region} placement={placement} onStageRegionsChange={onStageRegionsChange} />;
+  return (
+    <CanvasStageRegionToolbar
+      workspace={workspace}
+      region={region}
+      placement={placement}
+      onStageRegionsChange={onStageRegionsChange}
+      onStageOpacityPreviewChange={onStageOpacityPreviewChange}
+      onMeasure={reportStageToolbarSize}
+      isMeasuring={!measuredStageSize}
+    />
+  );
 });
 
 function CanvasStageRegionToolbar({
   workspace,
   region,
   placement,
-  onStageRegionsChange
+  onStageRegionsChange,
+  onStageOpacityPreviewChange,
+  onMeasure,
+  isMeasuring
 }: {
   workspace: MorphoWorkspace;
   region: StageRegionRecord;
   placement: SelectionToolbarPlacement;
   onStageRegionsChange: (regions: StageRegionRecord[]) => void;
+  onStageOpacityPreviewChange: (stageId: string | null) => void;
+  onMeasure: (size: { w: number; h: number }) => void;
+  isMeasuring: boolean;
 }) {
   const editor = useEditor();
+  const opacitySessionRef = useRef<{
+    stageId: string;
+    startOpacity: number;
+    previewOpacity: number;
+    selectionKey: string;
+    active: boolean;
+  } | null>(null);
 
   const applyWorkspaceStageChange = (nextWorkspace: MorphoWorkspace, historyLabel: string) => {
     const nextRegion = getStageRegions(nextWorkspace).find((item) => item.id === region.id);
     if (!nextRegion || areStageRegionRecordsEqual(workspace.canvas.stageRegions, nextWorkspace.canvas.stageRegions)) {
       return;
     }
+    onStageOpacityPreviewChange(region.id);
     editor.markHistoryStoppingPoint(historyLabel);
     editor.updateShapes([createStageRegionShapePartial(nextRegion)]);
+    onStageOpacityPreviewChange(null);
     onStageRegionsChange(nextWorkspace.canvas.stageRegions ?? []);
+  };
+
+  const beginOpacity = () => {
+    if (opacitySessionRef.current?.active) return;
+    const stageShape = editor.getShape(`shape:${region.id}` as TLShapeId);
+    if (!stageShape || !isStageRegionShape(stageShape)) return;
+    const startOpacity = stageShape.props.fillOpacity;
+    opacitySessionRef.current = {
+      stageId: region.id,
+      startOpacity,
+      previewOpacity: startOpacity,
+      selectionKey: editor.getSelectedShapeIds().join("|"),
+      active: true
+    };
+    onStageOpacityPreviewChange(region.id);
+  };
+
+  const previewOpacity = (value: number) => {
+    beginOpacity();
+    const session = opacitySessionRef.current;
+    if (!session?.active || session.stageId !== region.id) return;
+    const nextValue = Math.round(Math.min(100, Math.max(0, value)));
+    session.previewOpacity = nextValue;
+    editor.run(() => {
+      editor.updateShapes([
+        { id: `shape:${region.id}` as TLShapeId, type: STAGE_REGION_SHAPE_TYPE, props: { fillOpacity: nextValue } }
+      ]);
+    }, MORPHO_EDITOR_SYNC_RUN_OPTIONS);
+  };
+
+  const finishOpacity = (commit: boolean) => {
+    const session = opacitySessionRef.current;
+    if (!session?.active || session.stageId !== region.id) return;
+    session.active = false;
+    opacitySessionRef.current = null;
+    const finalValue = commit ? session.previewOpacity : session.startOpacity;
+    // The listener sees this session as active until both writes are finished,
+    // preventing preview updates from leaking into workspace persistence.
+    onStageOpacityPreviewChange(region.id);
+    editor.run(() => {
+      editor.updateShapes([
+        { id: `shape:${region.id}` as TLShapeId, type: STAGE_REGION_SHAPE_TYPE, props: { fillOpacity: session.startOpacity } }
+      ]);
+    }, MORPHO_EDITOR_SYNC_RUN_OPTIONS);
+
+    if (commit && finalValue !== session.startOpacity) {
+      editor.markHistoryStoppingPoint("调整分区透明度");
+      editor.updateShapes([
+        { id: `shape:${region.id}` as TLShapeId, type: STAGE_REGION_SHAPE_TYPE, props: { fillOpacity: finalValue } }
+      ]);
+      const nextWorkspace = updateStageRegionStyle(workspace, region.id, { fillOpacity: finalValue });
+      onStageRegionsChange(nextWorkspace.canvas.stageRegions ?? []);
+    }
+    onStageOpacityPreviewChange(null);
   };
 
   return (
@@ -1164,6 +1249,12 @@ function CanvasStageRegionToolbar({
       placement={placement}
       canFit={!region.locked && hasVisibleStageRegionMembers(workspace, region.id)}
       onUpdateStyle={(patch, historyLabel) => applyWorkspaceStageChange(updateStageRegionStyle(workspace, region.id, patch), historyLabel)}
+      onBeginOpacity={beginOpacity}
+      onPreviewOpacity={previewOpacity}
+      onCommitOpacity={() => finishOpacity(true)}
+      onCancelOpacity={() => finishOpacity(false)}
+      onMeasure={onMeasure}
+      isMeasuring={isMeasuring}
       onFit={() => applyWorkspaceStageChange(fitStageRegionToVisibleMembers(workspace, region.id), "适应分区内容")}
       onResetStyle={() => applyWorkspaceStageChange(resetStageRegionStyle(workspace, region.id), "恢复分区默认样式")}
     />
@@ -1231,6 +1322,11 @@ export function shouldReplaceSelectionForContextMenuTarget(targetShapeId: string
   return !selectedShapeIds.includes(targetShapeId);
 }
 
+/**
+ * Store shape-diff list for syncFromEditor.
+ * Empty diffs must not short-circuit selection sync; pass `undefined` so the
+ * sync path still reads selection + camera without treating "[]" as a geometry write.
+ */
 export function getSelectedMorphoShapeIds(
   shapes: Array<{ props: Pick<MorphoShape["props"], "objectId" | "morphoType"> }>
 ): { objectIds: string[]; proposalIds: string[] } {

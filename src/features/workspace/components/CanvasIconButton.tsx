@@ -34,7 +34,6 @@ export function CanvasIconButton({
       aria-label={label}
       aria-pressed={pressed}
       data-tooltip={label}
-      title={label}
     >
       {children}
     </button>

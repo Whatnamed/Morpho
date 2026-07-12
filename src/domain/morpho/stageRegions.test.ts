@@ -137,6 +137,13 @@ describe("stage region membership", () => {
     expect(movedFit).toMatchObject({ x: firstFit.x, y: firstFit.y, w: firstFit.w, h: firstFit.h });
   });
 
+  it("does not fit a locked region even when it has visible members", () => {
+    const workspace = ensureStageRegions(createInitialWorkspace());
+    const region = getStageRegions(workspace)[0]!;
+    const locked = updateStageRegionStyle(workspace, region.id, { locked: true });
+    expect(fitStageRegionToVisibleMembers(locked, region.id)).toBe(locked);
+  });
+
   it("routes proposal drafts by proposal type instead of treating every draft as a definition", () => {
     const base = createInitialWorkspace().objects["definition-current"]!;
     const proposal = (proposalType: "researchAnalysis" | "designDefinition" | "conceptDirection" | "deliveryPlan") => ({
@@ -236,6 +243,15 @@ describe("stage region membership", () => {
     ]);
     expect(areStageRegionRecordsEqual(regions, moved)).toBe(false);
     expect(moved[0].x).toBe(regions[0].x + 12);
+  });
+
+  it("never lets a shape layout activate an inactive stage", () => {
+    const workspace = ensureStageRegions(createInitialWorkspace());
+    const regions = getStageRegions(workspace).map((region, index) => (index === 0 ? { ...region, isActivated: false } : region));
+    const merged = mergeStageShapeLayoutsIntoRecords(regions, [
+      { id: regions[0].id, x: regions[0].x + 1, y: regions[0].y, w: regions[0].w, h: regions[0].h }
+    ]);
+    expect(merged[0].isActivated).toBe(false);
   });
 
   it("builds an atomic stage-drag payload for stage + members (undo-friendly unit)", () => {

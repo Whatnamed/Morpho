@@ -15,6 +15,10 @@ describe("StageRegionToolbar", () => {
         placement: { x: 120, y: 220, placement: "above" },
         canFit: true,
         onUpdateStyle: () => undefined,
+        onBeginOpacity: () => undefined,
+        onPreviewOpacity: () => undefined,
+        onCommitOpacity: () => undefined,
+        onCancelOpacity: () => undefined,
         onFit: () => undefined,
         onResetStyle: () => undefined
       })
@@ -38,6 +42,10 @@ describe("StageRegionToolbar", () => {
         placement: { x: 120, y: 220, placement: "above" },
         canFit: false,
         onUpdateStyle: () => undefined,
+        onBeginOpacity: () => undefined,
+        onPreviewOpacity: () => undefined,
+        onCommitOpacity: () => undefined,
+        onCancelOpacity: () => undefined,
         onFit: () => undefined,
         onResetStyle: () => undefined
       })

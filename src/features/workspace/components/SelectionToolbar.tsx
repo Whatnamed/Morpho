@@ -1,18 +1,28 @@
 "use client";
 
 import {
+  BadgeCheck,
   BookOpen,
+  CircleOff,
   Copy,
   EyeOff,
+  FileX2,
   Flag,
   GitBranch,
+  GitBranchPlus,
   GitCompare,
+  GitMerge,
+  Info,
+  ListChecks,
   MessageSquareText,
+  MoreHorizontal,
   PackageOpen,
   PenLine,
+  Pin,
   Sparkles,
   Trash2
 } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { CanvasLayerReorderAction } from "@/domain/morpho/workspace";
 import type { MorphoObject } from "@/domain/morpho/types";
@@ -49,6 +59,8 @@ export type SelectionToolbarProps = {
   onRestoreDirectionAsAlternative: () => void;
   onEliminateDirection: () => void;
   onReorderLayer: (action: CanvasLayerReorderAction) => void;
+  onMeasure?: (size: { w: number; h: number }) => void;
+  isMeasuring?: boolean;
 };
 
 export function SelectionToolbar({
@@ -79,8 +91,46 @@ export function SelectionToolbar({
   onRestoreDirectionAsAlternative,
   onEliminateDirection,
   onHide,
-  onDelete
+  onDelete,
+  onMeasure,
+  isMeasuring = false
 }: SelectionToolbarProps) {
+  const [isDirectionMenuOpen, setIsDirectionMenuOpen] = useState(false);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!isDirectionMenuOpen) return;
+    const close = (event: PointerEvent) => {
+      if (!toolbarRef.current?.contains(event.target as Node)) setIsDirectionMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsDirectionMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", close, { capture: true });
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", close, { capture: true });
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isDirectionMenuOpen]);
+
+  useLayoutEffect(() => {
+    const root = toolbarRef.current;
+    if (!root || !onMeasure) return;
+    let last = "";
+    const report = () => {
+      const { width, height } = root.getBoundingClientRect();
+      const next = `${Math.round(width)}:${Math.round(height)}`;
+      if (next !== last) {
+        last = next;
+        onMeasure({ w: Math.round(width), h: Math.round(height) });
+      }
+    };
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [onMeasure]);
+
   if (!placement || selectedObjects.length === 0) {
     return null;
   }
@@ -105,9 +155,10 @@ export function SelectionToolbar({
 
   return (
     <div
+      ref={toolbarRef}
       className={`selection-toolbar ${placement.placement}`}
       aria-label="选中对象工具"
-      style={{ left: placement.x, top: placement.y }}
+      style={{ left: placement.x, top: placement.y, visibility: isMeasuring ? "hidden" : "visible" }}
       onPointerDown={(event) => {
         // Keep tldraw from treating toolbar clicks as canvas selection/drag.
         event.stopPropagation();
@@ -127,7 +178,7 @@ export function SelectionToolbar({
       {onlyOne && primary.type === "file" ? (
         <div className="selection-toolbar-group" role="group" aria-label="文件">
           <CanvasIconButton label="阅读文本" onClick={onOpenDocumentReader}>
-            <BookOpen size={15} />
+            <Info size={15} />
           </CanvasIconButton>
         </div>
       ) : null}
@@ -144,7 +195,7 @@ export function SelectionToolbar({
             <BookOpen size={15} />
           </CanvasIconButton>
           <CanvasIconButton label="AI 代选" onClick={onAutoSelectResearch}>
-            <Sparkles size={15} />
+            <ListChecks size={15} />
           </CanvasIconButton>
         </div>
       ) : null}
@@ -158,23 +209,23 @@ export function SelectionToolbar({
       {onlyOne && primary.type === "proposalDraft" ? (
         <div className="selection-toolbar-group" role="group" aria-label="草案">
           <CanvasIconButton label="查看草案详情" className="brand" onClick={onOpenProposalDetail}>
-            <BookOpen size={15} />
+            <Info size={15} />
           </CanvasIconButton>
           <CanvasIconButton label="继续讨论草案" onClick={onContinueProposalDiscussion}>
             <MessageSquareText size={15} />
           </CanvasIconButton>
           <CanvasIconButton label="应用草案" onClick={onApplyProposal}>
-            <Sparkles size={15} />
+            <BadgeCheck size={15} />
           </CanvasIconButton>
           <CanvasIconButton label="放弃草案" danger onClick={onRejectProposal}>
-            <Trash2 size={15} />
+            <FileX2 size={15} />
           </CanvasIconButton>
         </div>
       ) : null}
       {onlyOne && primary.type === "designDefinition" ? (
         <div className="selection-toolbar-group" role="group" aria-label="设计定义">
           <CanvasIconButton label="查看设计定义详情" className="brand" onClick={onOpenDesignDefinitionDetail}>
-            <BookOpen size={15} />
+            <Info size={15} />
           </CanvasIconButton>
           {!primary.isCurrentEffective ? (
             <CanvasIconButton label="设为当前设计定义" onClick={onSetCurrentDesignDefinition}>
@@ -189,7 +240,7 @@ export function SelectionToolbar({
             <PenLine size={15} />
           </CanvasIconButton>
           <CanvasIconButton label="设为后续默认参考" className="brand" onClick={onReferenceIntent}>
-            <Sparkles size={15} />
+            <Pin size={15} />
           </CanvasIconButton>
         </div>
       ) : null}
@@ -197,7 +248,7 @@ export function SelectionToolbar({
         <>
           <div className="selection-toolbar-group" role="group" aria-label="方向">
             <CanvasIconButton label="查看方向详情" className="brand" onClick={onOpenConceptDirectionDetail}>
-              <BookOpen size={15} />
+              <Info size={15} />
             </CanvasIconButton>
             {primary.status !== "primary" && primary.status !== "eliminated" ? (
               <CanvasIconButton label="设为主方向" onClick={onSetDirectionPrimary}>
@@ -213,30 +264,37 @@ export function SelectionToolbar({
               <CanvasIconButton label="恢复为备选方向" onClick={onRestoreDirectionAsAlternative}>
                 <GitCompare size={15} />
               </CanvasIconButton>
-            ) : (
-              <CanvasIconButton label="淘汰方向" danger onClick={onEliminateDirection}>
-                <Trash2 size={15} />
-              </CanvasIconButton>
-            )}
+            ) : null}
           </div>
           <span className="selection-toolbar-divider" aria-hidden="true" />
-          <div className="selection-toolbar-group is-secondary" role="group" aria-label="方向发展">
-            <CanvasIconButton label="修订方向" onClick={onReviseDirection}>
-              <PenLine size={15} />
+          <div className="selection-toolbar-group is-secondary canvas-toolbar-menu-anchor" role="group" aria-label="方向更多操作">
+            <CanvasIconButton
+              label="更多方向操作"
+              active={isDirectionMenuOpen}
+              aria-haspopup="menu"
+              aria-expanded={isDirectionMenuOpen}
+              onClick={() => setIsDirectionMenuOpen((value) => !value)}
+            >
+              <MoreHorizontal size={16} />
             </CanvasIconButton>
-            <CanvasIconButton label="拆分方向" onClick={onSplitDirection}>
-              <GitBranch size={15} />
-            </CanvasIconButton>
-            <CanvasIconButton label="创建视觉分支" onClick={onCreateVisualBranch}>
-              <Sparkles size={15} />
-            </CanvasIconButton>
+            {isDirectionMenuOpen ? (
+              <div className="canvas-toolbar-menu" role="menu" aria-label="方向更多操作">
+                <button type="button" role="menuitem" onClick={() => { onReviseDirection(); setIsDirectionMenuOpen(false); }}><PenLine size={15} />修订方向</button>
+                <button type="button" role="menuitem" onClick={() => { onSplitDirection(); setIsDirectionMenuOpen(false); }}><GitBranch size={15} />拆分方向</button>
+                <button type="button" role="menuitem" onClick={() => { onCreateVisualBranch(); setIsDirectionMenuOpen(false); }}><GitBranchPlus size={15} />创建视觉分支</button>
+                <button type="button" role="menuitem" onClick={() => { onHide(); setIsDirectionMenuOpen(false); }}><EyeOff size={15} />隐藏</button>
+                <hr />
+                {primary.status !== "eliminated" ? <button type="button" role="menuitem" className="is-eliminate" onClick={() => { onEliminateDirection(); setIsDirectionMenuOpen(false); }}><CircleOff size={15} />淘汰方向</button> : null}
+                <button type="button" role="menuitem" className="danger" onClick={() => { onDelete(); setIsDirectionMenuOpen(false); }}><Trash2 size={15} />删除</button>
+              </div>
+            ) : null}
           </div>
         </>
       ) : null}
       {showMergeDirectionsAction ? (
         <div className="selection-toolbar-group" role="group" aria-label="合并方向">
           <CanvasIconButton label="合并方向" onClick={onMergeDirections}>
-            <GitCompare size={15} />
+            <GitMerge size={15} />
           </CanvasIconButton>
         </div>
       ) : null}

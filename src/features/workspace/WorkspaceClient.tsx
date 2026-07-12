@@ -5669,10 +5669,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         margin: 18
       })
       : null;
-  const renderSelectionToolbar = (toolbarObjects: MorphoObject[], placement: SelectionToolbarPlacement) => (
+  const renderSelectionToolbar = (
+    toolbarObjects: MorphoObject[],
+    placement: SelectionToolbarPlacement,
+    onMeasure?: (size: { w: number; h: number }) => void,
+    isMeasuring?: boolean
+  ) => (
     <SelectionToolbar
       selectedObjects={toolbarObjects}
       placement={placement}
+      onMeasure={onMeasure}
+      isMeasuring={isMeasuring}
       isDesignTraceActive={Boolean(traceStartObjectId) && canvasTraceMode === "chain"}
       onAskAi={handleAskAi}
       onToggleDesignTrace={handleToggleDesignTrace}
@@ -5729,7 +5736,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         assetUrls={assetUrls}
         pendingImageGenerationSlots={pendingImageGenerationSlots}
         focusRequest={focusRequest}
-        selectedObjectIds={selectedObjectIds}
         floatingChromeKey={[
           activeDrawer ?? "none",
           aiOpen ? "ai" : "x",

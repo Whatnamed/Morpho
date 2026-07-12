@@ -2449,8 +2449,7 @@ button:disabled {
   align-items: center;
   justify-content: flex-start;
   gap: 4px;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
+  overflow: visible;
   padding: 5px 6px;
   border: 1px solid rgba(78, 68, 58, 0.11);
   border-radius: 14px;
@@ -2460,11 +2459,6 @@ button:disabled {
   scrollbar-width: none;
   /* tldraw InFrontOfTheCanvas sets pointer-events:none on the host layer */
   pointer-events: auto;
-}
-
-.selection-toolbar::-webkit-scrollbar {
-  width: 0;
-  height: 0;
 }
 
 .stage-region-toolbar {
@@ -2534,6 +2528,47 @@ button:disabled {
 .selection-toolbar button.danger:hover {
   background: rgba(166, 69, 58, 0.08);
   color: var(--danger);
+}
+
+.canvas-toolbar-menu-anchor {
+  position: relative;
+}
+
+.canvas-toolbar-menu {
+  position: absolute;
+  z-index: 6;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  min-width: 158px;
+  padding: 5px;
+  border: 1px solid rgba(78, 68, 58, 0.13);
+  border-radius: 9px;
+  background: rgba(253, 252, 249, 0.98);
+  box-shadow: 0 12px 28px rgba(54, 45, 35, 0.16);
+}
+
+.canvas-toolbar-menu button {
+  display: flex;
+  width: 100%;
+  min-height: 30px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border-radius: 6px;
+  text-align: left;
+}
+
+.canvas-toolbar-menu hr {
+  width: 100%;
+  height: 1px;
+  margin: 5px 0;
+  border: 0;
+  background: rgba(78, 68, 58, 0.12);
+}
+
+.canvas-toolbar-menu .is-eliminate {
+  color: #8c6531;
 }
 
 .selection-toolbar .canvas-icon-button {
@@ -4877,6 +4912,21 @@ select:focus-visible {
   --tl-color-grid: rgba(77, 66, 54, 0.26);
 }
 
+/*
+ * tldraw license watermark stays visible and clickable (license requirement),
+ * but sits bottom-left so it does not collide with Morpho AI status / toggle.
+ */
+.workspace-canvas .tl-watermark_SEE-LICENSE {
+  right: auto !important;
+  left: max(8px, env(safe-area-inset-left)) !important;
+}
+
+.workspace-canvas .tl-watermark_SEE-LICENSE[data-mobile="true"] {
+  right: auto !important;
+  left: max(-2px, calc(env(safe-area-inset-left) - 2px)) !important;
+  border-radius: 0 4px 4px 0 !important;
+}
+
 .floating-cluster {
   min-height: 42px;
   padding: 6px;
@@ -5179,7 +5229,7 @@ select:focus-visible {
 }
 
 .morpho-object-proposalDraft {
-  border-left: 2px solid rgba(109, 127, 136, 0.66);
+  border-left: 2px solid rgba(120, 100, 82, 0.55);
   border-radius: 6px 10px 10px 6px;
   background:
     linear-gradient(180deg, rgba(255, 254, 251, 0.94), rgba(248, 246, 240, 0.88)),
@@ -5352,19 +5402,19 @@ select:focus-visible {
 
 /* Keep each non-image canvas object legible as a different kind of working material. */
 .morpho-object-file {
-  border-top: 2px solid rgba(109, 127, 136, 0.42);
-  background: rgba(246, 248, 248, 0.84);
+  border-top: 2px solid rgba(120, 100, 82, 0.38);
+  background: rgba(252, 249, 244, 0.9);
 }
 
 .morpho-object-documentFragment {
-  border-left: 3px solid rgba(109, 127, 136, 0.58);
+  border-left: 3px solid rgba(120, 100, 82, 0.5);
   border-radius: 7px 10px 10px 7px;
-  background: rgba(241, 244, 244, 0.82);
+  background: rgba(250, 247, 242, 0.9);
 }
 
 .morpho-object-research {
-  border-top: 2px solid rgba(109, 127, 136, 0.42);
-  background: rgba(249, 250, 249, 0.92);
+  border-top: 2px solid rgba(142, 76, 36, 0.28);
+  background: rgba(255, 252, 247, 0.94);
 }
 
 .morpho-object-keyConclusion {
@@ -5374,12 +5424,12 @@ select:focus-visible {
 
 .morpho-object-designDefinition {
   border-left-width: 3px;
-  background: rgba(255, 252, 248, 0.92);
+  background: rgba(255, 252, 248, 0.94);
 }
 
 .morpho-object-conceptDirection {
-  border-top: 2px solid rgba(109, 127, 136, 0.54);
-  background: rgba(248, 250, 250, 0.86);
+  border-top: 2px solid rgba(120, 100, 82, 0.42);
+  background: rgba(253, 250, 245, 0.92);
 }
 
 .morpho-object-proposalDraft {
@@ -7300,7 +7350,7 @@ select:focus-visible {
   width: 8px;
   height: 10px;
   display: block;
-  border: 1px solid rgba(109, 127, 136, 0.44);
+  border: 1px solid rgba(120, 100, 82, 0.42);
   border-radius: 1px;
 }
 
@@ -7347,12 +7397,12 @@ select:focus-visible {
   left: 10px;
   width: 2px;
   border-radius: 2px;
-  background: rgba(109, 127, 136, 0.58);
+  background: rgba(120, 100, 82, 0.52);
   content: "";
 }
 
 .morpho-fragment-head > span {
-  color: rgba(109, 127, 136, 0.66);
+  color: rgba(120, 100, 82, 0.72);
   font-size: 12px;
   font-weight: 650;
 }
@@ -7367,7 +7417,7 @@ select:focus-visible {
   padding: 16px 18px 17px;
   border: 1px solid rgba(78, 68, 58, 0.1);
   border-radius: 8px;
-  background: rgba(248, 250, 249, 0.96);
+  background: rgba(255, 252, 247, 0.96);
   box-shadow: none;
 }
 
@@ -7377,13 +7427,13 @@ select:focus-visible {
   bottom: 14px;
   width: 30px;
   height: 18px;
-  border-top: 1px solid rgba(109, 127, 136, 0.16);
-  border-bottom: 1px solid rgba(109, 127, 136, 0.16);
+  border-top: 1px solid rgba(142, 76, 36, 0.14);
+  border-bottom: 1px solid rgba(142, 76, 36, 0.14);
   content: "";
 }
 
 .morpho-research-head > span {
-  color: rgba(109, 127, 136, 0.7);
+  color: rgba(142, 76, 36, 0.62);
   font-size: 10px;
   font-weight: 650;
   letter-spacing: 0.07em;
@@ -8168,7 +8218,7 @@ select:focus-visible {
 .morpho-object-imageCollection {
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.5) 0 42%, transparent 42%),
-    rgba(246, 248, 248, 0.88);
+    rgba(252, 249, 244, 0.9);
 }
 
 .morpho-object-delivery .delivery-wire {

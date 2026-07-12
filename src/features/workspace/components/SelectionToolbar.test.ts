@@ -46,6 +46,7 @@ describe("SelectionToolbar", () => {
 
     expect(html).toContain("selection-toolbar");
     expect(html).toContain('aria-label="局部编辑"');
+    expect(html).toContain('data-tooltip="局部编辑"');
     expect(html).toContain('aria-label="设为后续默认参考"');
     expect(html).toContain('aria-label="隐藏对象"');
     expect(html).toContain('aria-label="删除对象"');
@@ -304,7 +305,10 @@ describe("SelectionToolbar", () => {
       })
     );
 
-    expect(html).toContain("详情");
-    expect(html).toContain("修订");
+    expect(html).toContain('aria-label="查看方向详情"');
+    expect(html).toContain('data-tooltip="查看方向详情"');
+    expect(html).toContain('aria-label="更多方向操作"');
+    expect(html).not.toContain(">查看方向详情<");
+    expect(html).not.toContain(">修订方向<");
   });
 });
