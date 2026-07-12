@@ -6325,7 +6325,6 @@ select:focus-visible {
   align-items: center;
 }
 
-.project-card:hover,
 .continue-project:hover {
   border-color: rgba(109, 127, 136, 0.2);
   box-shadow: 0 12px 30px rgba(30, 24, 18, 0.06);
@@ -6894,6 +6893,8 @@ select:focus-visible {
   cursor: pointer;
   font: inherit;
   text-align: left;
+  transform: translateY(0);
+  will-change: transform, box-shadow, border-color;
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
@@ -7053,6 +7054,7 @@ select:focus-visible {
   isolation: isolate;
   background: rgba(244, 241, 235, 0.76);
   pointer-events: none;
+  transform: translateZ(0);
 }
 
 .project-canvas-preview-grid {
