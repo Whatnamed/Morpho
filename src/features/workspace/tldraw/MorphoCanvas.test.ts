@@ -13,7 +13,8 @@ import {
   shouldApplyFocusRequest,
   resolveFocusBounds,
   shouldMirrorCameraIntoReactLiveView,
-  shouldOpenCanvasContextMenuFromPointerDown
+  shouldOpenCanvasContextMenuFromPointerDown,
+  resolveCanvasContextMenuKind
 } from "./MorphoCanvas";
 
 describe("MorphoCanvas focus navigation", () => {
@@ -24,6 +25,14 @@ describe("MorphoCanvas focus navigation", () => {
   it("mirrors camera into React live view only when pending slots need host layout", () => {
     expect(shouldMirrorCameraIntoReactLiveView(0)).toBe(false);
     expect(shouldMirrorCameraIntoReactLiveView(2)).toBe(true);
+  });
+
+  it("resolves context menu kind from object, stage, or empty hits", () => {
+    expect(resolveCanvasContextMenuKind({ objectId: "image-a", stageId: null })).toBe("object");
+    expect(resolveCanvasContextMenuKind({ objectId: null, stageId: "stage-research" })).toBe("stage");
+    expect(resolveCanvasContextMenuKind({ objectId: null, stageId: null })).toBe("empty");
+    // Object hit wins over stage when both are present.
+    expect(resolveCanvasContextMenuKind({ objectId: "image-a", stageId: "stage-research" })).toBe("object");
   });
 
   it("filters selection to morpho shapes so stage-only selection yields no object toolbar ids", () => {

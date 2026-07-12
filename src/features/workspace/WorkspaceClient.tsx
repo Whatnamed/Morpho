@@ -17,7 +17,16 @@ import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 import { GRS_REFERENCE_IMAGE_LIMIT } from "@/domain/morpho/imageLimits";
 import { hasPendingDesignDefinitionRevisionProposal } from "@/domain/morpho/derivedState";
 import { traceDesignChain, type DesignTraceResult } from "@/domain/morpho/designTrace";
-import { areStageRegionRecordsEqual, ensureStageRegions, type StageRegionRecord } from "@/domain/morpho/stageRegions";
+import {
+  areStageRegionRecordsEqual,
+  ensureStageRegions,
+  fitStageRegionToVisibleMembers,
+  getStageRegions,
+  hasVisibleStageRegionMembers,
+  resetStageRegionStyle,
+  updateStageRegionStyle,
+  type StageRegionRecord
+} from "@/domain/morpho/stageRegions";
 import { collectPrimaryCanvasTrace } from "./tldraw/primaryCanvasTrace";
 import { createGeneratedImageFromAsset } from "@/domain/morpho/generation";
 import { getImageCanvasSize } from "@/domain/morpho/imageSizing";
@@ -424,7 +433,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const railImportInputRef = useRef<HTMLInputElement | null>(null);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [projectRenameDraft, setProjectRenameDraft] = useState(workspace.project.title);
-  const [canvasContextMenu, setCanvasContextMenu] = useState<{ x: number; y: number; objectId: string | null; openedAt: number } | null>(null);
+  const [canvasContextMenu, setCanvasContextMenu] = useState<{
+    x: number;
+    y: number;
+    objectId: string | null;
+    stageId: string | null;
+    openedAt: number;
+  } | null>(null);
   const [activeResearchDetailObjectId, setActiveResearchDetailObjectId] = useState<string | null>(null);
   const [aiInputFocusNonce, setAiInputFocusNonce] = useState(0);
   const [manualSaveNotice, setManualSaveNotice] = useState<string | null>(null);
@@ -855,6 +870,19 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             stageRegions: regions
           }
         };
+      });
+    },
+    [setWorkspace]
+  );
+
+  const applyStageRegionWorkspaceMutation = useCallback(
+    (mutate: (current: typeof workspace) => typeof workspace) => {
+      setWorkspace((current) => {
+        const next = mutate(ensureStageRegions(current));
+        if (areStageRegionRecordsEqual(current.canvas.stageRegions, next.canvas.stageRegions)) {
+          return current;
+        }
+        return next;
       });
     },
     [setWorkspace]
@@ -5667,7 +5695,29 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const contextMenuObjects =
     canvasContextMenu?.objectId && !selectedObjectIds.includes(canvasContextMenu.objectId)
       ? compactObjectList(workspace.objects, [canvasContextMenu.objectId])
-      : selectedObjects;
+      : canvasContextMenu?.stageId
+        ? []
+        : selectedObjects;
+  const contextMenuKind: "object" | "stage" | "empty" = canvasContextMenu?.objectId
+    ? "object"
+    : canvasContextMenu?.stageId
+      ? "stage"
+      : "empty";
+  const contextMenuStage = useMemo(() => {
+    if (!canvasContextMenu?.stageId) {
+      return null;
+    }
+    const region = getStageRegions(workspace).find((item) => item.id === canvasContextMenu.stageId);
+    if (!region) {
+      return null;
+    }
+    return {
+      id: region.id,
+      title: region.title,
+      locked: Boolean(region.locked),
+      canFit: !region.locked && hasVisibleStageRegionMembers(workspace, region.id)
+    };
+  }, [canvasContextMenu?.stageId, workspace]);
   const contextMenuPlacement = canvasContextMenu
     ? getFloatingMenuPlacement(canvasContextMenu, viewportSize, {
         menu: { w: 220, h: 340 },
@@ -5761,14 +5811,19 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onLiveViewChange={handleCanvasLiveViewChange}
         onImportRequest={handleImportRequest}
         onContextMenuRequest={(request) => {
-          if (!request.objectId && selectedObjectIds.length === 0) {
-            setCanvasContextMenu(null);
-            return;
-          }
-
-          setCanvasContextMenu({ ...request, openedAt: Date.now() });
+          setCanvasContextMenu({
+            x: request.x,
+            y: request.y,
+            objectId: request.objectId,
+            stageId: request.stageId,
+            openedAt: Date.now()
+          });
           if (request.objectId && !selectedObjectIds.includes(request.objectId)) {
-            setSelectedObjectIds([request.objectId]);
+            requestCanvasSelection([request.objectId]);
+          }
+          if (request.stageId) {
+            // Stage selection lives in the editor; clear Morpho object selection so toolbars don't mix.
+            setSelectedObjectIds([]);
           }
         }}
       />
@@ -5955,7 +6010,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         <CanvasContextMenu
           x={contextMenuPlacement?.x ?? canvasContextMenu.x}
           y={contextMenuPlacement?.y ?? canvasContextMenu.y}
+          kind={contextMenuKind}
           selectedObjects={contextMenuObjects}
+          stage={contextMenuStage}
+          hasSelection={selectedObjectIds.length > 0}
           onClose={() => setCanvasContextMenu(null)}
           onCopySummary={handleCopySelectedSummary}
           onAskAi={handleAskAi}
@@ -5964,6 +6022,25 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           onHide={handleHideSelected}
           onDelete={handleDeleteSelected}
           onReorderLayer={handleReorderSelectedLayers}
+          onClearSelection={() => requestCanvasSelection([])}
+          onFocusOverview={() => focusArea("overview")}
+          onFitStage={() => {
+            if (!canvasContextMenu.stageId) return;
+            applyStageRegionWorkspaceMutation((current) => fitStageRegionToVisibleMembers(current, canvasContextMenu.stageId!));
+          }}
+          onToggleStageLock={() => {
+            if (!canvasContextMenu.stageId) return;
+            const stageId = canvasContextMenu.stageId;
+            applyStageRegionWorkspaceMutation((current) => {
+              const region = getStageRegions(current).find((item) => item.id === stageId);
+              if (!region) return current;
+              return updateStageRegionStyle(current, stageId, { locked: !region.locked });
+            });
+          }}
+          onResetStageStyle={() => {
+            if (!canvasContextMenu.stageId) return;
+            applyStageRegionWorkspaceMutation((current) => resetStageRegionStyle(current, canvasContextMenu.stageId!));
+          }}
           onOpenProposalDetail={() => {
             const proposalObject = contextMenuObjects.find((object) => object.type === "proposalDraft");
             if (proposalObject?.type !== "proposalDraft") {

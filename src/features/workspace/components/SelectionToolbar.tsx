@@ -14,15 +14,20 @@ import {
   GitMerge,
   Info,
   ListChecks,
+  LockKeyhole,
+  LockKeyholeOpen,
   MessageSquareText,
   MoreHorizontal,
   PackageOpen,
   PenLine,
   Pin,
+  RotateCcw,
+  Scan,
+  ScanSearch,
   Sparkles,
   Trash2
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import type { CanvasLayerReorderAction } from "@/domain/morpho/workspace";
 import type { MorphoObject } from "@/domain/morpho/types";
@@ -365,10 +370,23 @@ export function SelectionToolbar({
   );
 }
 
+export type CanvasContextMenuKind = "object" | "stage" | "empty";
+
+export type CanvasContextMenuStageInfo = {
+  id: string;
+  title: string;
+  locked: boolean;
+  canFit: boolean;
+};
+
 export type CanvasContextMenuProps = {
   x: number;
   y: number;
+  /** Hit target: object card, stage region, or empty canvas. */
+  kind: CanvasContextMenuKind;
   selectedObjects: MorphoObject[];
+  stage?: CanvasContextMenuStageInfo | null;
+  hasSelection: boolean;
   onClose: () => void;
   onCopySummary: () => void;
   onAskAi: () => void;
@@ -383,12 +401,47 @@ export type CanvasContextMenuProps = {
   onOpenDesignDefinitionDetail: () => void;
   onOpenConceptDirectionDetail: () => void;
   onReorderLayer: (action: CanvasLayerReorderAction) => void;
+  onClearSelection: () => void;
+  onFocusOverview: () => void;
+  onFitStage: () => void;
+  onToggleStageLock: () => void;
+  onResetStageStyle: () => void;
 };
+
+function ContextMenuShell({
+  x,
+  y,
+  label,
+  children
+}: {
+  x: number;
+  y: number;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className="canvas-context-menu"
+      style={{ left: x, top: y }}
+      role="menu"
+      aria-label={label}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 export function CanvasContextMenu({
   x,
   y,
+  kind,
   selectedObjects,
+  stage = null,
+  hasSelection,
   onClose,
   onCopySummary,
   onAskAi,
@@ -402,31 +455,85 @@ export function CanvasContextMenu({
   onContinueProposalDiscussion,
   onOpenDesignDefinitionDetail,
   onOpenConceptDirectionDetail,
-  onReorderLayer
+  onReorderLayer,
+  onClearSelection,
+  onFocusOverview,
+  onFitStage,
+  onToggleStageLock,
+  onResetStageStyle
 }: CanvasContextMenuProps) {
-  if (selectedObjects.length === 0) {
-    return null;
-  }
-
-  const primary = selectedObjects[0];
-
   const run = (action: () => void) => {
     action();
     onClose();
   };
 
-  if (primary.type === "proposalDraft") {
+  if (kind === "empty") {
     return (
-      <div
-        className="canvas-context-menu"
-        style={{ left: x, top: y }}
-        role="menu"
-        aria-label="画布草案菜单"
-        onContextMenu={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-        }}
-      >
+      <ContextMenuShell x={x} y={y} label="画布菜单">
+        <button type="button" role="menuitem" onClick={() => run(onAskAi)}>
+          <MessageSquareText size={15} />
+          询问 AI
+        </button>
+        <button type="button" role="menuitem" onClick={() => run(onFocusOverview)}>
+          <ScanSearch size={15} />
+          查看全局
+        </button>
+        {hasSelection ? (
+          <button type="button" role="menuitem" onClick={() => run(onClearSelection)}>
+            <CircleOff size={15} />
+            取消选择
+          </button>
+        ) : null}
+      </ContextMenuShell>
+    );
+  }
+
+  if (kind === "stage" && stage) {
+    return (
+      <ContextMenuShell x={x} y={y} label={`${stage.title}分区菜单`}>
+        <button type="button" role="menuitem" disabled={!stage.canFit} onClick={() => run(onFitStage)}>
+          <Scan size={15} />
+          适应内容
+        </button>
+        <button type="button" role="menuitem" onClick={() => run(onToggleStageLock)}>
+          {stage.locked ? <LockKeyholeOpen size={15} /> : <LockKeyhole size={15} />}
+          {stage.locked ? "解锁分区" : "锁定分区"}
+        </button>
+        <button type="button" role="menuitem" onClick={() => run(onResetStageStyle)}>
+          <RotateCcw size={15} />
+          恢复默认样式
+        </button>
+        <hr />
+        <button type="button" role="menuitem" onClick={() => run(onAskAi)}>
+          <MessageSquareText size={15} />
+          询问 AI
+        </button>
+      </ContextMenuShell>
+    );
+  }
+
+  if (selectedObjects.length === 0) {
+    // Object kind without resolved objects — fall back to empty canvas actions.
+    return (
+      <ContextMenuShell x={x} y={y} label="画布菜单">
+        <button type="button" role="menuitem" onClick={() => run(onAskAi)}>
+          <MessageSquareText size={15} />
+          询问 AI
+        </button>
+        <button type="button" role="menuitem" onClick={() => run(onFocusOverview)}>
+          <ScanSearch size={15} />
+          查看全局
+        </button>
+      </ContextMenuShell>
+    );
+  }
+
+  const primary = selectedObjects[0];
+  const multi = selectedObjects.length > 1;
+
+  if (primary.type === "proposalDraft" && !multi) {
+    return (
+      <ContextMenuShell x={x} y={y} label="画布草案菜单">
         <button type="button" role="menuitem" onClick={() => run(onOpenProposalDetail)}>
           <BookOpen size={15} />
           查看详情
@@ -456,54 +563,57 @@ export function CanvasContextMenu({
         <button type="button" role="menuitem" onClick={() => run(() => onReorderLayer("sendToBack"))}>
           置于底层
         </button>
-      </div>
+      </ContextMenuShell>
     );
   }
 
   return (
-    <div
-      className="canvas-context-menu"
-      style={{ left: x, top: y }}
-      role="menu"
-      aria-label="画布对象菜单"
-      onContextMenu={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }}
-    >
-      <button type="button" role="menuitem" onClick={() => run(onCopySummary)}>
-        <Copy size={15} />
-        复制摘要
-      </button>
-      <button type="button" role="menuitem" onClick={() => run(onAskAi)}>
-        <MessageSquareText size={15} />
-        询问 AI
-      </button>
-      {primary.type === "designDefinition" ? (
-        <button type="button" role="menuitem" onClick={() => run(onOpenDesignDefinitionDetail)}>
-          <BookOpen size={15} />
-          查看详情
-        </button>
-      ) : null}
-      {primary.type === "conceptDirection" ? (
-        <button type="button" role="menuitem" onClick={() => run(onOpenConceptDirectionDetail)}>
-          <BookOpen size={15} />
-          查看详情
-        </button>
-      ) : null}
-      {primary.type === "image" ? (
+    <ContextMenuShell x={x} y={y} label={multi ? "画布多选菜单" : "画布对象菜单"}>
+      {!multi ? (
         <>
-          <button type="button" role="menuitem" onClick={() => run(onLocalEdit)}>
-            <PenLine size={15} />
-            局部修改
+          <button type="button" role="menuitem" onClick={() => run(onCopySummary)}>
+            <Copy size={15} />
+            复制摘要
           </button>
-          <button type="button" role="menuitem" onClick={() => run(onReferenceIntent)}>
-            <Sparkles size={15} />
-            设为后续默认参考
+          <button type="button" role="menuitem" onClick={() => run(onAskAi)}>
+            <MessageSquareText size={15} />
+            询问 AI
           </button>
+          {primary.type === "designDefinition" ? (
+            <button type="button" role="menuitem" onClick={() => run(onOpenDesignDefinitionDetail)}>
+              <BookOpen size={15} />
+              查看详情
+            </button>
+          ) : null}
+          {primary.type === "conceptDirection" ? (
+            <button type="button" role="menuitem" onClick={() => run(onOpenConceptDirectionDetail)}>
+              <BookOpen size={15} />
+              查看详情
+            </button>
+          ) : null}
+          {primary.type === "image" ? (
+            <>
+              <button type="button" role="menuitem" onClick={() => run(onLocalEdit)}>
+                <PenLine size={15} />
+                局部修改
+              </button>
+              <button type="button" role="menuitem" onClick={() => run(onReferenceIntent)}>
+                <Sparkles size={15} />
+                设为后续默认参考
+              </button>
+            </>
+          ) : null}
+          <hr />
         </>
-      ) : null}
-      <hr />
+      ) : (
+        <>
+          <button type="button" role="menuitem" onClick={() => run(onAskAi)}>
+            <MessageSquareText size={15} />
+            询问 AI
+          </button>
+          <hr />
+        </>
+      )}
       <button type="button" role="menuitem" onClick={() => run(() => onReorderLayer("bringForward"))}>
         上移一层
       </button>
@@ -519,12 +629,12 @@ export function CanvasContextMenu({
       <hr />
       <button type="button" role="menuitem" onClick={() => run(onHide)}>
         <EyeOff size={15} />
-        隐藏
+        {multi ? "隐藏所选" : "隐藏"}
       </button>
       <button className="danger" type="button" role="menuitem" onClick={() => run(onDelete)}>
         <Trash2 size={15} />
-        删除
+        {multi ? "删除所选" : "删除"}
       </button>
-    </div>
+    </ContextMenuShell>
   );
 }

@@ -104,8 +104,22 @@ export type CanvasImportRequest = {
 export type CanvasContextMenuRequest = {
   x: number;
   y: number;
+  /** Morpho object under the pointer, if any. Takes priority over stage. */
   objectId: string | null;
+  /** Activated stage region under the pointer when no object was hit. */
+  stageId: string | null;
 };
+
+/** Resolve which canvas context-menu body to show from a hit-test result. */
+export function resolveCanvasContextMenuKind(request: Pick<CanvasContextMenuRequest, "objectId" | "stageId">): "object" | "stage" | "empty" {
+  if (request.objectId) {
+    return "object";
+  }
+  if (request.stageId) {
+    return "stage";
+  }
+  return "empty";
+}
 
 const shapeUtils = [MorphoShapeUtil, StageRegionShapeUtil];
 export const MORPHO_EDITOR_SYNC_RUN_OPTIONS = { history: "ignore" } as const;
@@ -686,26 +700,52 @@ export function MorphoCanvas({
     (clientX: number, clientY: number) => {
       const editor = editorRef.current;
       if (!editor) {
-        onContextMenuRequest({ x: clientX, y: clientY, objectId: null });
+        onContextMenuRequest({ x: clientX, y: clientY, objectId: null, stageId: null });
         return;
       }
 
       const point = editor.screenToPage({ x: clientX, y: clientY });
-      const targetShape = [...editor.getCurrentPageShapesSorted()]
+      const pageShapesTopFirst = [...editor.getCurrentPageShapesSorted()].reverse();
+      const targetMorpho = pageShapesTopFirst
         .filter(isMorphoShape)
         .filter((shape) => workspace.objects[shape.props.objectId]?.visibility === "active")
-        .reverse()
-        .find((shape) => isPointInsideShape(point, shape));
+        .find((shape) => isPointInsideBoxShape(point, shape));
 
       const selectedShapeIds = editor.getSelectedShapeIds().map((shapeId) => shapeId.toString());
-      if (targetShape && shouldReplaceSelectionForContextMenuTarget(targetShape.id.toString(), selectedShapeIds)) {
-        editor.select(targetShape.id);
+      if (targetMorpho) {
+        if (shouldReplaceSelectionForContextMenuTarget(targetMorpho.id.toString(), selectedShapeIds)) {
+          editor.select(targetMorpho.id);
+        }
+        onContextMenuRequest({
+          x: clientX,
+          y: clientY,
+          objectId: targetMorpho.props.objectId,
+          stageId: null
+        });
+        lastContextMenuOpenAtRef.current = Date.now();
+        return;
+      }
+
+      const targetStage = pageShapesTopFirst
+        .filter(isStageRegionShape)
+        .find((shape) => isPointInsideBoxShape(point, shape));
+      if (targetStage) {
+        editor.select(targetStage.id);
+        onContextMenuRequest({
+          x: clientX,
+          y: clientY,
+          objectId: null,
+          stageId: targetStage.id.replace(/^shape:/, "")
+        });
+        lastContextMenuOpenAtRef.current = Date.now();
+        return;
       }
 
       onContextMenuRequest({
         x: clientX,
         y: clientY,
-        objectId: targetShape?.props.objectId ?? null
+        objectId: null,
+        stageId: null
       });
       lastContextMenuOpenAtRef.current = Date.now();
     },
@@ -1550,7 +1590,10 @@ function isEditableEventTarget(target: EventTarget): boolean {
   return target.tagName === "TEXTAREA" || target.tagName === "INPUT" || target.isContentEditable;
 }
 
-function isPointInsideShape(point: { x: number; y: number }, shape: MorphoShape): boolean {
+function isPointInsideBoxShape(
+  point: { x: number; y: number },
+  shape: { x: number; y: number; props: { w: number; h: number } }
+): boolean {
   return (
     point.x >= shape.x &&
     point.x <= shape.x + shape.props.w &&

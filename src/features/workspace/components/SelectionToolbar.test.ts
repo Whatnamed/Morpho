@@ -147,27 +147,38 @@ describe("SelectionToolbar", () => {
     expect(html).toContain("AI 代选");
   });
 
+  const contextMenuHandlers = {
+    onClose: () => undefined,
+    onCopySummary: () => undefined,
+    onAskAi: () => undefined,
+    onLocalEdit: () => undefined,
+    onReferenceIntent: () => undefined,
+    onHide: () => undefined,
+    onDelete: () => undefined,
+    onOpenProposalDetail: () => undefined,
+    onApplyProposal: () => undefined,
+    onRejectProposal: () => undefined,
+    onContinueProposalDiscussion: () => undefined,
+    onOpenDesignDefinitionDetail: () => undefined,
+    onOpenConceptDirectionDetail: () => undefined,
+    onReorderLayer: () => undefined,
+    onClearSelection: () => undefined,
+    onFocusOverview: () => undefined,
+    onFitStage: () => undefined,
+    onToggleStageLock: () => undefined,
+    onResetStageStyle: () => undefined
+  };
+
   it("offers stable layer operations in the Morpho context menu", () => {
     const workspace = createInitialWorkspace();
     const html = renderToStaticMarkup(
       createElement(CanvasContextMenu, {
         x: 100,
         y: 120,
+        kind: "object",
         selectedObjects: [workspace.objects["image-soft-rail-v2"]],
-        onClose: () => undefined,
-        onCopySummary: () => undefined,
-        onAskAi: () => undefined,
-        onLocalEdit: () => undefined,
-        onReferenceIntent: () => undefined,
-        onHide: () => undefined,
-        onDelete: () => undefined,
-        onOpenProposalDetail: () => undefined,
-        onApplyProposal: () => undefined,
-        onRejectProposal: () => undefined,
-        onContinueProposalDiscussion: () => undefined,
-        onOpenDesignDefinitionDetail: () => undefined,
-        onOpenConceptDirectionDetail: () => undefined,
-        onReorderLayer: () => undefined
+        hasSelection: true,
+        ...contextMenuHandlers
       })
     );
 
@@ -183,6 +194,7 @@ describe("SelectionToolbar", () => {
       createElement(CanvasContextMenu, {
         x: 100,
         y: 120,
+        kind: "object",
         selectedObjects: [
           {
             id: "proposal-definition-a",
@@ -195,20 +207,8 @@ describe("SelectionToolbar", () => {
             proposalType: "designDefinition"
           }
         ],
-        onClose: () => undefined,
-        onCopySummary: () => undefined,
-        onAskAi: () => undefined,
-        onLocalEdit: () => undefined,
-        onReferenceIntent: () => undefined,
-        onHide: () => undefined,
-        onDelete: () => undefined,
-        onOpenProposalDetail: () => undefined,
-        onApplyProposal: () => undefined,
-        onRejectProposal: () => undefined,
-        onContinueProposalDiscussion: () => undefined,
-        onOpenDesignDefinitionDetail: () => undefined,
-        onOpenConceptDirectionDetail: () => undefined,
-        onReorderLayer: () => undefined
+        hasSelection: true,
+        ...contextMenuHandlers
       })
     );
 
@@ -216,6 +216,54 @@ describe("SelectionToolbar", () => {
     expect(html).toContain("应用草案");
     expect(html).toContain("放弃草案");
     expect(html).not.toContain("隐藏");
+  });
+
+  it("shows a canvas menu on empty right-click with optional clear-selection", () => {
+    const empty = renderToStaticMarkup(
+      createElement(CanvasContextMenu, {
+        x: 40,
+        y: 50,
+        kind: "empty",
+        selectedObjects: [],
+        hasSelection: false,
+        ...contextMenuHandlers
+      })
+    );
+    expect(empty).toContain("画布菜单");
+    expect(empty).toContain("询问 AI");
+    expect(empty).toContain("查看全局");
+    expect(empty).not.toContain("取消选择");
+
+    const withSelection = renderToStaticMarkup(
+      createElement(CanvasContextMenu, {
+        x: 40,
+        y: 50,
+        kind: "empty",
+        selectedObjects: [],
+        hasSelection: true,
+        ...contextMenuHandlers
+      })
+    );
+    expect(withSelection).toContain("取消选择");
+  });
+
+  it("shows stage-specific actions when right-clicking a stage region", () => {
+    const html = renderToStaticMarkup(
+      createElement(CanvasContextMenu, {
+        x: 40,
+        y: 50,
+        kind: "stage",
+        selectedObjects: [],
+        hasSelection: false,
+        stage: { id: "stage-research", title: "资料与研究", locked: false, canFit: true },
+        ...contextMenuHandlers
+      })
+    );
+    expect(html).toContain("资料与研究分区菜单");
+    expect(html).toContain("适应内容");
+    expect(html).toContain("锁定分区");
+    expect(html).toContain("恢复默认样式");
+    expect(html).not.toContain("删除");
   });
 
   it("offers proposal actions directly in the selection toolbar", () => {
