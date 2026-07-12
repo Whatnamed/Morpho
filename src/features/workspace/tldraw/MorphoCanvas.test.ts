@@ -12,12 +12,18 @@ import {
   shouldReplaceSelectionForContextMenuTarget,
   shouldApplyFocusRequest,
   resolveFocusBounds,
+  shouldMirrorCameraIntoReactLiveView,
   shouldOpenCanvasContextMenuFromPointerDown
 } from "./MorphoCanvas";
 
 describe("MorphoCanvas focus navigation", () => {
   it("keeps workspace-driven shape sync out of tldraw undo history", () => {
     expect(MORPHO_EDITOR_SYNC_RUN_OPTIONS).toEqual({ history: "ignore" });
+  });
+
+  it("mirrors camera into React live view only when pending slots need host layout", () => {
+    expect(shouldMirrorCameraIntoReactLiveView(0)).toBe(false);
+    expect(shouldMirrorCameraIntoReactLiveView(2)).toBe(true);
   });
 
   it("filters selection to morpho shapes so stage-only selection yields no object toolbar ids", () => {

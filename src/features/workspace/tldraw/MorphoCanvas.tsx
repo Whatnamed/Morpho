@@ -153,6 +153,15 @@ export function shouldApplyFocusRequest(focusRequest: FocusRequest, lastAppliedN
   return focusRequest.nonce !== lastAppliedNonce && Boolean(focusRequest.area || focusRequest.objectId || focusRequest.view);
 }
 
+/**
+ * Camera updates must not always re-enter React. Only mirror into React state
+ * when something outside tldraw's own camera transform still needs screen-space
+ * coordinates (currently: pending generation slots overlaid on the host).
+ */
+export function shouldMirrorCameraIntoReactLiveView(pendingSlotCount: number): boolean {
+  return pendingSlotCount > 0;
+}
+
 export function MorphoCanvas({
   workspace,
   annotatedObjectId,
@@ -182,13 +191,17 @@ export function MorphoCanvas({
   const lastAppliedFocusNonceRef = useRef<number | null>(null);
   const lastAppliedSelectionRequestNonceRef = useRef<number | null>(null);
   const viewPersistTimerRef = useRef<number | null>(null);
+  const liveViewRafRef = useRef<number | null>(null);
   const latestViewRef = useRef<CanvasView>(workspace.canvas.view);
   const lastPersistedViewKeyRef = useRef(getCanvasViewKey(workspace.canvas.view));
   const lastContextMenuOpenAtRef = useRef(0);
   const latestWorkspaceRef = useRef(workspace);
+  const onLiveViewChangeRef = useRef(onLiveViewChange);
+  const pendingSlotCountRef = useRef(pendingImageGenerationSlots.length);
   const didSendStagesToBackRef = useRef(false);
   const stageOpacityPreviewRef = useRef<string | null>(null);
   const [editorReadyEpoch, setEditorReadyEpoch] = useState(0);
+  /** React mirror of the camera — only updated when pending slots need host-space layout. */
   const [liveView, setLiveView] = useState<CanvasView>(workspace.canvas.view);
   const traceObjectIds = useMemo(() => canvasTrace?.highlightedObjectIds ?? [], [canvasTrace]);
   const traceEdgeKeySet = useMemo(() => new Set(canvasTrace?.highlightedEdgeKeys ?? []), [canvasTrace]);
@@ -199,6 +212,26 @@ export function MorphoCanvas({
   useLayoutEffect(() => {
     latestWorkspaceRef.current = workspace;
   }, [workspace]);
+  useLayoutEffect(() => {
+    onLiveViewChangeRef.current = onLiveViewChange;
+  }, [onLiveViewChange]);
+  useLayoutEffect(() => {
+    pendingSlotCountRef.current = pendingImageGenerationSlots.length;
+  }, [pendingImageGenerationSlots.length]);
+  // When generation slots appear, pull the latest camera into React once so overlays align.
+  useEffect(() => {
+    if (pendingImageGenerationSlots.length > 0) {
+      setLiveView(latestViewRef.current);
+    }
+  }, [pendingImageGenerationSlots.length]);
+  useEffect(() => {
+    return () => {
+      if (liveViewRafRef.current !== null) {
+        window.cancelAnimationFrame(liveViewRafRef.current);
+        liveViewRafRef.current = null;
+      }
+    };
+  }, []);
   const canvasComponents = useMemo(
     () => ({
       OnTheCanvas: () => (
@@ -247,10 +280,6 @@ export function MorphoCanvas({
     });
   }, [liveView, pendingImageGenerationSlots]);
 
-  useEffect(() => {
-    onLiveViewChange?.(liveView);
-  }, [liveView, onLiveViewChange]);
-
   const flushViewPersist = useCallback(() => {
     if (viewPersistTimerRef.current !== null) {
       window.clearTimeout(viewPersistTimerRef.current);
@@ -287,6 +316,29 @@ export function MorphoCanvas({
       }, 280);
     },
     [onViewChange]
+  );
+
+  /**
+   * Publish camera to refs + debounced persist always; only re-enter React when
+   * host overlays (pending slots) still need screen-space coordinates.
+   */
+  const publishCameraView = useCallback(
+    (nextView: CanvasView) => {
+      latestViewRef.current = nextView;
+      onLiveViewChangeRef.current?.(nextView);
+      scheduleViewPersist(nextView);
+      if (!shouldMirrorCameraIntoReactLiveView(pendingSlotCountRef.current)) {
+        return;
+      }
+      if (liveViewRafRef.current !== null) {
+        return;
+      }
+      liveViewRafRef.current = window.requestAnimationFrame(() => {
+        liveViewRafRef.current = null;
+        setLiveView(latestViewRef.current);
+      });
+    },
+    [scheduleViewPersist]
   );
 
   const flushPendingInstances = useCallback(() => {
@@ -420,11 +472,9 @@ export function MorphoCanvas({
   const syncCameraFromEditor = useCallback(
     (editor: Editor) => {
       const camera = editor.getCamera();
-      const nextView = { x: camera.x, y: camera.y, zoom: camera.z };
-      setLiveView(nextView);
-      scheduleViewPersist(nextView);
+      publishCameraView({ x: camera.x, y: camera.y, zoom: camera.z });
     },
-    [scheduleViewPersist]
+    [publishCameraView]
   );
 
   const syncWorkspaceToEditor = useCallback(
@@ -713,9 +763,8 @@ export function MorphoCanvas({
     editor.setCamera(new Vec(nextView.x, nextView.y, nextView.zoom), {
       immediate: true
     });
-    setLiveView(nextView);
-    scheduleViewPersist(nextView);
-  }, [scheduleViewPersist]);
+    publishCameraView(nextView);
+  }, [publishCameraView]);
 
   useEffect(() => {
     const host = canvasHostRef.current;
@@ -889,8 +938,9 @@ export function MorphoCanvas({
           latestViewRef.current = workspace.canvas.view;
           lastPersistedViewKeyRef.current = getCanvasViewKey(workspace.canvas.view);
           editor.setCamera({ x: workspace.canvas.view.x, y: workspace.canvas.view.y, z: workspace.canvas.view.zoom });
+          latestViewRef.current = workspace.canvas.view;
           setLiveView(workspace.canvas.view);
-          onLiveViewChange?.(workspace.canvas.view);
+          onLiveViewChangeRef.current?.(workspace.canvas.view);
 
           const selectionKind = (shapeId: string): CanvasSelectableKind => {
             const shape = editor.getShape(shapeId as TLShapeId);
