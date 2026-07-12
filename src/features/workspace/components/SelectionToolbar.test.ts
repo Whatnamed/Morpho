@@ -52,12 +52,62 @@ describe("SelectionToolbar", () => {
     expect(html).toContain("selection-toolbar");
     expect(html).toContain('aria-label="局部编辑"');
     expect(html).toContain('data-tooltip="局部编辑"');
-    expect(html).toContain('aria-label="设为后续默认参考"');
+    // Seed image is already the default reference: pin is active and toggles cancel.
+    expect(html).toContain('aria-label="取消后续默认参考"');
+    expect(html).toContain("is-active");
+    expect(html).not.toContain('class="canvas-icon-button brand"');
+    expect(html).not.toContain('class="canvas-icon-button brand is-active"');
     expect(html).toContain('aria-label="隐藏对象"');
     expect(html).toContain('aria-label="删除对象"');
     expect(html).not.toContain(">局部编辑<");
     expect(html).not.toContain(selected[0].title);
     expect(html).not.toContain("研究详情");
+  });
+
+  it("shows an inactive pin for images that are not the default reference", () => {
+    const workspace = createInitialWorkspace();
+    const selected = [workspace.objects["image-soft-rail-v2"]];
+    if (!selected[0] || selected[0].type !== "image") {
+      throw new Error("Expected seed image.");
+    }
+
+    const html = renderToStaticMarkup(
+      createElement(SelectionToolbar, {
+        selectedObjects: [{ ...selected[0], isDefaultReference: false }],
+        placement: { x: 120, y: 220, placement: "above" },
+        isDesignTraceActive: false,
+        onAskAi: () => undefined,
+        onToggleDesignTrace: () => undefined,
+        onOpenResearchDetail: () => undefined,
+        onAutoSelectResearch: () => undefined,
+        onOpenDocumentReader: () => undefined,
+        onOpenDeliveryPreparation: () => undefined,
+        onLocalEdit: () => undefined,
+        onReferenceIntent: () => undefined,
+        onHide: () => undefined,
+        onDelete: () => undefined,
+        onOpenProposalDetail: () => undefined,
+        onApplyProposal: () => undefined,
+        onRejectProposal: () => undefined,
+        onContinueProposalDiscussion: () => undefined,
+        onOpenDesignDefinitionDetail: () => undefined,
+        onOpenConceptDirectionDetail: () => undefined,
+        onSetCurrentDesignDefinition: () => undefined,
+        onReviseDirection: () => undefined,
+        onSplitDirection: () => undefined,
+        onMergeDirections: () => undefined,
+        onCreateVisualBranch: () => undefined,
+        onSetDirectionPrimary: () => undefined,
+        onSetDirectionAlternative: () => undefined,
+        onRestoreDirectionAsAlternative: () => undefined,
+        onEliminateDirection: () => undefined,
+        onReorderLayer: () => undefined
+      })
+    );
+
+    expect(html).toContain('aria-label="设为后续默认参考"');
+    expect(html).not.toContain('aria-label="取消后续默认参考"');
+    expect(html).not.toMatch(/aria-label="设为后续默认参考"[^>]*is-active|is-active[^>]*aria-label="设为后续默认参考"/);
   });
 
   it("offers setting a non-current design definition as current", () => {

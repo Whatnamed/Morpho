@@ -273,7 +273,12 @@ export function SelectionToolbar({
           <CanvasIconButton label="局部编辑" onClick={onLocalEdit}>
             <PenLine size={15} />
           </CanvasIconButton>
-          <CanvasIconButton label="设为后续默认参考" className="brand" onClick={onReferenceIntent}>
+          <CanvasIconButton
+            label={primary.isDefaultReference ? "取消后续默认参考" : "设为后续默认参考"}
+            active={primary.isDefaultReference}
+            pressed={primary.isDefaultReference}
+            onClick={onReferenceIntent}
+          >
             <Pin size={15} />
           </CanvasIconButton>
         </div>
@@ -637,8 +642,8 @@ export function CanvasContextMenu({
                 局部修改
               </button>
               <button type="button" role="menuitem" onClick={() => run(onReferenceIntent)}>
-                <Sparkles size={15} />
-                设为后续默认参考
+                <Pin size={15} />
+                {primary.isDefaultReference ? "取消后续默认参考" : "设为后续默认参考"}
               </button>
             </>
           ) : null}

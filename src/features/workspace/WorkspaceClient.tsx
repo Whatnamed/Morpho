@@ -4758,12 +4758,18 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
+    pushObjectOperationUndo();
+
     if (target.isDefaultReference) {
-      showWorkspaceNotice(`「${target.title}」已是后续默认参考`);
+      setWorkspace((current) =>
+        clearDefaultReference(current, target.id, {
+          reason: "用户在画布上明确取消后续默认参考。"
+        })
+      );
+      showWorkspaceNotice(`已取消「${target.title}」的后续默认参考`);
       return;
     }
 
-    pushObjectOperationUndo();
     setWorkspace((current) =>
       setDefaultReference(current, target.id, {
         reason: "用户在画布上明确设为后续默认参考。"
