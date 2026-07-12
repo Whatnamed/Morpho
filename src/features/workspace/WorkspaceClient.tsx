@@ -7045,8 +7045,7 @@ function normalizeAgentTurnErrorMessage(message: string): string {
     normalized.includes("sign in") ||
     normalized.includes("login") ||
     normalized.includes("unauthenticated") ||
-    message.includes("请先登录") ||
-    message.includes("璇峰厛鐧诲綍");
+    message.includes("请先登录");
 
   if (!looksLikeAuthError) {
     return message;

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { reserveAiQuotaForRequest } from "./aiAccess";
+import { requireAiRouteUserForClient, reserveAiQuotaForRequest } from "./aiAccess";
 
 function createClient(overrides: {
   user?: { id: string; email?: string } | null;
@@ -25,6 +25,18 @@ function createClient(overrides: {
 }
 
 describe("AI access and quota guard", () => {
+  it("returns the shared 401 login error for agent and web-search continuations", async () => {
+    const client = createClient({ user: null });
+
+    await expect(requireAiRouteUserForClient(client)).resolves.toEqual({
+      status: "denied",
+      httpStatus: 401,
+      error: "请先登录 Morpho。"
+    });
+
+    expect(client.rpc).not.toHaveBeenCalled();
+  });
+
   it("returns 401 when no authenticated user is available", async () => {
     const client = createClient({ user: null });
 

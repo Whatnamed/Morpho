@@ -93,12 +93,18 @@ export async function requireAiRouteUser(): Promise<AiRouteUserAccessResult> {
     };
   }
 
-  const userResult = await (created.client as unknown as AiAccessClient).auth.getUser();
+  return requireAiRouteUserForClient(created.client as unknown as Pick<AiAccessClient, "auth">);
+}
+
+export async function requireAiRouteUserForClient(
+  client: Pick<AiAccessClient, "auth">
+): Promise<AiRouteUserAccessResult> {
+  const userResult = await client.auth.getUser();
   if (userResult.error || !userResult.data.user) {
     return {
       status: "denied",
       httpStatus: 401,
-      error: "璇峰厛鐧诲綍 Morpho銆?"
+      error: "请先登录 Morpho。"
     };
   }
 

@@ -8,13 +8,23 @@ Use the repository `.npmrc` registry setting.
 npm.cmd install
 ```
 
-## Cloudflare Workers
+## Vercel Production
 
-Morpho can also be built for Cloudflare Workers through OpenNext without changing the normal Vercel build path. See [Cloudflare Workers deployment](./cloudflare-workers.md) for configuration, environment variables, preview, deployment, acceptance, and rollback.
+Morpho is currently deployed to Vercel. The standard production-compatible build is:
+
+```bash
+npm.cmd run build
+```
+
+Vercel must receive the values named in `.env.example`; never copy values from local `.env.local` into documentation, logs, or Git.
+
+## Cloudflare Workers Backup Capability
+
+Cloudflare/OpenNext remains a retained backup capability and does not replace the Vercel production path. Keep the Cloudflare files and `cf:*` scripts intact. See [Cloudflare Workers deployment](./cloudflare-workers.md) for its separate configuration, preview, deployment, acceptance, and rollback flow.
 
 ## Environment
 
-Copy `.env.example` to `.env.local` for local AI provider calls. Do not commit `.env.local`.
+Copy `.env.example` to `.env.local` for local development. Do not commit `.env.local`. `.env.example` is the sole baseline for environment-variable names, documented defaults, and comments.
 
 tldraw hobby / production license (browser-safe public key):
 
@@ -24,16 +34,19 @@ NEXT_PUBLIC_TLDRAW_LICENSE_KEY=
 
 Put the key in `.env.local` only. Restart `next dev` after changing it. The app passes it to `<Tldraw licenseKey={...} />` from `NEXT_PUBLIC_TLDRAW_LICENSE_KEY`.
 
-Text chat and agent turns through AiJWS / OpenAI-compatible:
+Supabase email/password authentication for closed-test access:
 
 ```text
-MORPHO_AI_PROVIDER=aijws
-MORPHO_AI_BASE_URL=https://api.aijws.com/v1
-MORPHO_AI_API_KEY=
-MORPHO_AI_MODEL=gpt-5.6-terra
-MORPHO_AI_REASONING_EFFORT=high
-MORPHO_AI_WEB_SEARCH_ENABLED=true
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+MORPHO_AUTH_REQUIRED=true
 ```
+
+The two `NEXT_PUBLIC_SUPABASE_*` values are public browser configuration, not secrets. Never use a Supabase service-role key in this application. Supabase stores only account identity, tester eligibility, and AI daily-quota state. Projects, canvases, files, images, and backups remain local in browser localStorage / IndexedDB and are not cloud-synced.
+
+With `MORPHO_AUTH_REQUIRED=true`, missing public Supabase configuration fails closed: `/login` renders the configuration error with no variable values, while `/` and `/projects/*` redirect to `/login` instead of rendering protected content. `/api/ai/*` retains its 503 configuration failure behavior. Set `MORPHO_AUTH_REQUIRED=false` only for explicit local authentication bypass.
+
+Text chat and agent turns use the AiJWS / OpenAI-compatible `MORPHO_AI_*` group defined in `.env.example`. Its current example model is `gpt-5.6-terra`.
 
 `MORPHO_AI_*` is the text AI path for `/api/ai/chat`, `/api/ai/agent`, and related web-search gating. The server also accepts `AIJWS_API_KEY`, `AIJWS_BASE_URL`, and `AIJWS_MODEL` as compatibility aliases. MiMo variables are no longer used for text AI.
 
@@ -49,14 +62,7 @@ AiJWS text behavior:
 - when `MORPHO_AI_WEB_SEARCH_ENABLED=true`, chat/research requests may provide provider web-search tooling where supported. Image generation never receives web search tools;
 - source links are shown only when the provider returns citation/annotation fields.
 
-Image generation through GrsAI:
-
-```text
-MORPHO_GRS_API_KEY=
-MORPHO_GRS_BASE_URL=https://grsaiapi.com
-MORPHO_GRS_DEFAULT_MODEL=nano-banana-2-lite
-MORPHO_GRS_IMAGE_MODEL=
-```
+Image generation uses the GrsAI `MORPHO_GRS_*` group defined in `.env.example`. The current example/default image model is `gpt-image-2`.
 
 `MORPHO_GRS_DEFAULT_MODEL` is the current default image model variable. `MORPHO_GRS_IMAGE_MODEL` remains a legacy fallback for existing local environments.
 
@@ -70,7 +76,7 @@ The browser image-task UI sends a selected model ID, aspect ratio, optional size
 
 Current implemented behavior:
 
-- default image model in the UI: `nano-banana-2-lite`;
+- default image model in the UI: `gpt-image-2`;
 - selectable image models come from `src/domain/morpho/grsImageModels.ts`;
 - `nano-banana-*` profiles send `replyType: "json"` and send `imageSize` only when the selected model supports a size option;
 - `gpt-image-2` sends pixel-style `aspectRatio`, `replyType: "json"`, and no `imageSize`;
@@ -161,6 +167,12 @@ npm run build
 ```
 
 The CI workflow does not use `.env`, provider API keys, Vercel tokens, paid model smoke tests, deployment, publishing, or version changes.
+
+## Supabase Security Notes
+
+The remaining Security Advisor notices for `public.get_my_access_state()` and `public.reserve_ai_daily_quota(text)` are intentional and reviewed. They remain `SECURITY DEFINER` RPCs executable only by `authenticated`, because RLS blocks direct access to the qualification/quota tables and the application needs narrow current-user operations to read access state and atomically reserve quota. Both functions use fixed `search_path`, derive identity from `auth.uid()`, accept no cross-user identifier, use no dynamic SQL, and return only the caller's own state. Do not change them to `SECURITY INVOKER` or revoke `authenticated` execution just to remove the notices.
+
+The Supabase Free-plan leaked-password-protection advisor warning is a plan limitation. It is not fixed by changing application SQL or weakening authentication behavior.
 
 ## Archive And Backup
 
@@ -320,7 +332,7 @@ M9-A local persistence behavior:
 - local save failures show a small inline warning near the project title and do not block editing;
 - image preview object URLs are cached by `assetId + storageKey`, and only added or changed image assets are read from IndexedDB.
 
-This runtime still does not implement Supabase, cloud sync, accounts, AI access protection, automatic Blob garbage collection, or cross-device backup.
+Supabase provides account identity, access qualification, and AI quota only. This runtime still does not implement project cloud sync, cloud file storage, automatic Blob garbage collection, or cross-device backup. Use the editable backup export/restore flow for browser-to-browser transfer.
 
 Local document extraction:
 
@@ -334,8 +346,11 @@ Local document extraction:
 
 ```text
 /                         project homepage
+/login                    Supabase email/password login and registration
 /projects/[projectId]     project workspace
 /api/ai/chat              AiJWS text chat proxy
+/api/ai/agent             AiJWS agent continuation proxy
+/api/ai/web-search        AiJWS web-search proxy
 /api/ai/image             GrsAI image generation proxy
 ```
 
@@ -343,13 +358,11 @@ Local document extraction:
 
 The current code does not include:
 
-- Supabase or any other database;
-- authentication;
-- cloud file storage;
+- cloud project synchronization or cloud file storage;
 - multiplayer sync;
 - automatic web crawling;
 - OCR, legacy `.ppt`, DOC/DOCX parsing, and faithful document-layout reconstruction;
 - dynamic provider model-list fetching;
 - PPT/PDF/Figma generation or final delivery layout;
 - transcript replacement, transcript deletion, user-managed chat summaries, or full-project chat summaries;
-- deployment automation.
+- deployment automation beyond the existing Vercel deployment and checked-in Cloudflare/OpenNext backup scripts.

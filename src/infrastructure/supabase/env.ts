@@ -9,6 +9,11 @@ export type SupabasePublicConfig =
       reason: string;
     };
 
+export type AuthRuntimeConfig = {
+  authRequired: boolean;
+  supabase: SupabasePublicConfig;
+};
+
 export function loadSupabasePublicConfig(env: Record<string, string | undefined>): SupabasePublicConfig {
   const url = env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const publishableKey = env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
@@ -30,4 +35,11 @@ export function loadSupabasePublicConfig(env: Record<string, string | undefined>
 export function isAuthRequired(env: Record<string, string | undefined>): boolean {
   const value = env.MORPHO_AUTH_REQUIRED?.trim().toLowerCase();
   return value !== "false" && value !== "0" && value !== "off" && value !== "no";
+}
+
+export function loadAuthRuntimeConfig(env: Record<string, string | undefined>): AuthRuntimeConfig {
+  return {
+    authRequired: isAuthRequired(env),
+    supabase: loadSupabasePublicConfig(env)
+  };
 }
