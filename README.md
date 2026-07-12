@@ -22,7 +22,7 @@ Morpho is an AI-assisted concept-development workspace for product and industria
 - `schemaVersion: 13` 的 local-first 数据底座，包括隐藏、删除、淘汰、后续默认参考、交付稳定引用、安全迁移、IndexedDB 二进制资产、连续 AI 消息、轻量 Operation / Proposal 状态、来源语义快照、关键结论、唯一当前有效设计定义、方向 create / revise / split / merge、方向内 VisualBranch、正式图片角色和可重建工作状态；
 - Supabase 仅保存账号身份、测试资格和 AI 每日额度；邮箱密码注册的测试用户自动成为 active tester，文本/生图额度为 `500 / 100`；
 - 通过 AiJWS OpenAI-compatible 路径的服务端文本 AI route，支持普通文本、显式选中图片的视觉理解输入，以及受控 web search citation 事件；当前示例模型为 `gpt-5.6-terra`；
-- 服务端 GrsAI 图像生成 route，图像任务可选择模型、比例和支持的规格；当前默认模型为 `gpt-image-2`，成功结果会保存为新的本地资产和新的图像对象；
+- 服务端 GrsAI 图像生成 route，图像任务按意图自动分流模型（方向批量预览用 `nano-banana-2-lite`，视觉发展/迭代/局部修改/场景/细节及未知意图用 `gpt-image-2`）；`MORPHO_GRS_DEFAULT_MODEL` 仅为服务端默认与兼容回退，不代表所有图像任务固定使用该模型；成功结果会保存为新的本地资产和新的图像对象；
 - 当前正式环境已部署到 Vercel；Cloudflare/OpenNext 文件保留为备用能力，不是当前正式环境。
 
 当前 AiJWS 文本 AI 在 `对话与分析` 或 `研究任务` 中会读取显式选中的 active 图片资产：少量图片逐张发送，较多图片自动整理为总览图以覆盖全部选中资料；隐藏图片、未选旧图和整张画布不会默认发送。`MORPHO_AI_WEB_SEARCH_ENABLED=true` 时，chat/research 可使用 provider 的 web-search 能力；`imageGeneration` 永不提供联网工具。来源列表只展示 provider 返回的 citation，不从模型正文猜测。GrsAI 图像生成按静态模型 catalog 和服务端 profile 组装请求；`nano-banana-*` 与 `gpt-image-2` 请求字段分开处理，不混用 `imageSize`。
@@ -84,7 +84,7 @@ http://127.0.0.1:3000/projects/project-nightrail
 
 不要把真实 Key 放进客户端代码、`NEXT_PUBLIC_*`、localStorage、日志或 Git 提交。
 
-`MORPHO_AI_*` 是当前文本 AI 的 OpenAI-compatible / AiJWS 路径，示例模型为 `gpt-5.6-terra`。图像默认模型为 `gpt-image-2`。`MORPHO_GRS_IMAGE_MODEL` 仅保留为 `MORPHO_GRS_DEFAULT_MODEL` 的兼容回退。`MORPHO_AUTH_REQUIRED=false` 只用于本地显式关闭认证；默认/`true` 时缺少 Supabase 公共配置会 fail closed，受保护页面只会进入显示配置错误的 `/login`，AI route 仍返回 503。
+`MORPHO_AI_*` 是当前文本 AI 的 OpenAI-compatible / AiJWS 路径，示例模型为 `gpt-5.6-terra`。图像模型由工作台意图路由决定：`directionPreview` / 方向批量预览使用 `nano-banana-2-lite`；`visualDevelopment`、继续发展、局部修改、场景、细节及未知意图使用 `gpt-image-2`。`.env` 中的 `MORPHO_GRS_DEFAULT_MODEL`（示例为 `gpt-image-2`）是服务端缺省/兼容回退，不是“所有图像任务都用这个模型”。`MORPHO_GRS_IMAGE_MODEL` 仅保留为 `MORPHO_GRS_DEFAULT_MODEL` 的兼容回退。`MORPHO_AUTH_REQUIRED=false` 只用于本地显式关闭认证；默认/`true` 时缺少 Supabase 公共配置会 fail closed，受保护页面只会进入显示配置错误的 `/login`，AI route 仍返回 503。
 
 常用检查：
 

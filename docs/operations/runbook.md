@@ -62,9 +62,14 @@ AiJWS text behavior:
 - when `MORPHO_AI_WEB_SEARCH_ENABLED=true`, chat/research requests may provide provider web-search tooling where supported. Image generation never receives web search tools;
 - source links are shown only when the provider returns citation/annotation fields.
 
-Image generation uses the GrsAI `MORPHO_GRS_*` group defined in `.env.example`. The current example/default image model is `gpt-image-2`.
+Image generation uses the GrsAI `MORPHO_GRS_*` group defined in `.env.example`.
 
-`MORPHO_GRS_DEFAULT_MODEL` is the current default image model variable. `MORPHO_GRS_IMAGE_MODEL` remains a legacy fallback for existing local environments.
+`MORPHO_GRS_DEFAULT_MODEL` (example value `gpt-image-2`) is the **server-side default / compatibility fallback** used when a request omits a model or needs a catalog default. It does **not** mean every Morpho image task is fixed to that model. `MORPHO_GRS_IMAGE_MODEL` remains a legacy fallback for existing local environments.
+
+Workspace visual generation routes models by intent (see `resolveImageGenerationSettingsForVisualIntent` in `src/features/workspace/imageGenerationSettings.ts`):
+
+- `directionPreview` / direction batch preview → `nano-banana-2-lite` (fast multi-shot scouting);
+- `visualDevelopment`, continue-development, local edit, scene/detail work, and unknown intent → `gpt-image-2` (higher quality iteration).
 
 Paid provider smoke tests are disabled unless explicitly enabled:
 
@@ -72,17 +77,21 @@ Paid provider smoke tests are disabled unless explicitly enabled:
 MORPHO_ALLOW_PAID_SMOKE_TESTS=false
 ```
 
-The browser image-task UI sends a selected model ID, aspect ratio, optional size option, and client request ID to `/api/ai/image`. The route still requires server-only GrsAI config, but the provider request body is normalized on the server.
+The browser sends `modelId` (from intent routing for main visual paths), aspect ratio, optional size option, and client request ID to `/api/ai/image`. The route still requires server-only GrsAI config, but the provider request body is normalized on the server.
 
 Current implemented behavior:
 
-- default image model in the UI: `gpt-image-2`;
-- selectable image models come from `src/domain/morpho/grsImageModels.ts`;
+- automatic model routing (no required user model picker for the main visual paths):
+  - direction preview batch → `nano-banana-2-lite`;
+  - visual development / local edit / scene / detail / unknown → `gpt-image-2`;
+- catalog of selectable models still lives in `src/domain/morpho/grsImageModels.ts`;
+- `MORPHO_GRS_DEFAULT_MODEL` is server default/fallback only, not a global override of the intent router;
+- multi-item plans generate with up to **4 concurrent** GrsAI requests (`IMAGE_GENERATION_MAX_CONCURRENCY`);
 - `nano-banana-*` profiles send `replyType: "json"` and send `imageSize` only when the selected model supports a size option;
 - `gpt-image-2` sends pixel-style `aspectRatio`, `replyType: "json"`, and no `imageSize`;
 - generated image assets store intrinsic width, height, and aspect ratio when the browser can read them.
 - image generation operations store operation IDs and client request IDs; uncertain network responses are not automatically resubmitted.
-- direction-preview and visual-development generation first ask AiJWS for a structured visual plan, validate selected source/direction scope locally, and then call GrsAI once per plan item.
+- direction-preview and visual-development generation first ask AiJWS for a structured visual plan, validate selected source/direction scope locally, and then call GrsAI per plan item (concurrently, capped at 4).
 - direction-preview supports `1`, `2`, `4`, or `6` previews per selected direction, with a hard total limit of `8` generated items per run.
 - image-generation Operation metadata records the requested preview count, visual plan, successful result IDs, and per-item failures for later audit.
 
