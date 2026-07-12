@@ -354,6 +354,7 @@ type WorkspaceTextPrompt =
       body: string;
       label: string;
       initialValue: string;
+      allowEmpty?: false;
     }
   | {
       kind: "renameVisualBranch";
@@ -362,6 +363,7 @@ type WorkspaceTextPrompt =
       body: string;
       label: string;
       initialValue: string;
+      allowEmpty?: false;
     }
   | {
       kind: "eliminateDirection";
@@ -370,6 +372,8 @@ type WorkspaceTextPrompt =
       body: string;
       label: string;
       initialValue: string;
+      allowEmpty: true;
+      comparison?: ComparisonDecisionMetadata;
     };
 
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
@@ -4032,7 +4036,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return;
       }
       const trimmedValue = value.trim();
-      if (!trimmedValue) {
+      if (!trimmedValue && !textPrompt.allowEmpty) {
         return;
       }
 
@@ -4058,16 +4062,32 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           return result.workspace;
         });
       } else {
+        const reason =
+          trimmedValue ||
+          (textPrompt.comparison
+            ? "用户从 Compare 明确淘汰该方向。"
+            : "用户明确淘汰该方向。");
+        pushObjectOperationUndo();
         setWorkspace((current) =>
           eliminateDirection(current, textPrompt.directionId, {
-            reason: trimmedValue
+            reason,
+            comparison: textPrompt.comparison
+              ? {
+                  ...textPrompt.comparison,
+                  userReason: trimmedValue || undefined
+                }
+              : undefined
           })
+        );
+        const direction = workspace.objects[textPrompt.directionId];
+        showWorkspaceNotice(
+          direction?.type === "conceptDirection" ? `已淘汰方向「${direction.title}」` : "已淘汰方向"
         );
       }
 
       setTextPrompt(null);
     },
-    [setWorkspace, textPrompt]
+    [pushObjectOperationUndo, setWorkspace, showWorkspaceNotice, textPrompt, workspace.objects]
   );
 
   const handleArchiveVisualBranch = useCallback(
@@ -4738,13 +4758,19 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
-    setAiOpen(true);
-    setPendingConfirmation({
-      kind: "setDefaultReference",
-      targetObjectId: target.id,
-      targetTitle: target.title
-    });
-  }, [selectedObjects]);
+    if (target.isDefaultReference) {
+      showWorkspaceNotice(`「${target.title}」已是后续默认参考`);
+      return;
+    }
+
+    pushObjectOperationUndo();
+    setWorkspace((current) =>
+      setDefaultReference(current, target.id, {
+        reason: "用户在画布上明确设为后续默认参考。"
+      })
+    );
+    showWorkspaceNotice(`已设「${target.title}」为后续默认参考`);
+  }, [pushObjectOperationUndo, selectedObjects, setWorkspace, showWorkspaceNotice]);
 
   const handleConfirmPending = useCallback(async () => {
     if (!pendingConfirmation) {
@@ -5237,9 +5263,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       kind: "eliminateDirection",
       directionId: target.id,
       title: "淘汰方向",
-      body: "请输入或编辑淘汰理由。淘汰不会隐藏、删除方向，也不会移除图片、修订或 lineage。",
-      label: "淘汰理由",
-      initialValue: ""
+      body: "淘汰不会隐藏、删除方向，也不会移除图片、修订或 lineage。理由可选，不填也可直接淘汰。",
+      label: "淘汰理由（可选）",
+      initialValue: "",
+      allowEmpty: true
     });
   }, [selectedObjects]);
 
@@ -5249,10 +5276,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
+    pushObjectOperationUndo();
     setWorkspace((current) =>
-      setConceptDirectionStatus(current, target.id, "primary", "用户在底部详情栏明确将该方向设为主方向。")
+      setConceptDirectionStatus(current, target.id, "primary", "用户在画布上明确将该方向设为主方向。")
     );
-  }, [selectedObjects, setWorkspace]);
+    showWorkspaceNotice(`已将「${target.title}」设为主方向`);
+  }, [pushObjectOperationUndo, selectedObjects, setWorkspace, showWorkspaceNotice]);
 
   const handleSetDirectionAlternative = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "conceptDirection");
@@ -5260,10 +5289,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
+    pushObjectOperationUndo();
     setWorkspace((current) =>
-      setConceptDirectionStatus(current, target.id, "alternative", "用户在底部详情栏明确将该方向转为备选方向。")
+      setConceptDirectionStatus(current, target.id, "alternative", "用户在画布上明确将该方向转为备选方向。")
     );
-  }, [selectedObjects, setWorkspace]);
+    showWorkspaceNotice(`已将「${target.title}」设为备选方向`);
+  }, [pushObjectOperationUndo, selectedObjects, setWorkspace, showWorkspaceNotice]);
 
   const handleRestoreDirectionAsAlternative = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "conceptDirection");
@@ -5271,10 +5302,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
+    pushObjectOperationUndo();
     setWorkspace((current) =>
       setConceptDirectionStatus(current, target.id, "alternative", "用户将已淘汰方向恢复为备选方向。")
     );
-  }, [selectedObjects, setWorkspace]);
+    showWorkspaceNotice(`已将「${target.title}」恢复为备选方向`);
+  }, [pushObjectOperationUndo, selectedObjects, setWorkspace, showWorkspaceNotice]);
 
   const handleSaveKeyConclusionFromResearchItem = useCallback(
     (input: { researchObjectId: string; sourceKind: "finding" | "opportunity" | "constraint" | "openQuestion" | "evidence"; index: number }) => {
@@ -5288,27 +5321,31 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         index: input.index
       });
       if (draftResult.status !== "ready") {
-        setAiOpen(true);
-        setAiDraft(draftResult.reason);
+        showWorkspaceNotice(draftResult.reason);
         return;
       }
 
-      setAiOpen(true);
-      setTaskMode("chatAnalysis");
-      setPendingConfirmation({
-        kind: "createKeyConclusion",
-        sourceObjectIds: draftResult.draft.sourceObjectIds,
-        sourceTitle: research.title,
-        conclusionTitle: draftResult.draft.title,
+      pushObjectOperationUndo();
+      const result = createKeyConclusion(workspace, {
+        title: draftResult.draft.title,
         body: draftResult.draft.body,
         summary: draftResult.draft.summary,
+        sourceObjectIds: draftResult.draft.sourceObjectIds,
         citationIds: draftResult.draft.citationIds,
         confidence: draftResult.draft.confidence,
         state: draftResult.draft.state,
-        note: draftResult.draft.note
+        note: draftResult.draft.note,
+        position: {
+          x: workspace.canvas.view.x + 240,
+          y: workspace.canvas.view.y + 180
+        }
       });
+      setWorkspace(result.workspace);
+      setSelectedObjectIds([result.keyConclusion.id]);
+      setFocusRequest((current) => ({ objectId: result.keyConclusion.id, nonce: current.nonce + 1 }));
+      showWorkspaceNotice(`已保存关键结论「${result.keyConclusion.title}」`);
     },
-    [workspace]
+    [pushObjectOperationUndo, setWorkspace, showWorkspaceNotice, workspace]
   );
 
   const handleOpenResearchDetail = useCallback(() => {
@@ -5414,39 +5451,50 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
       const validation = validateComparisonActionTarget(workspace, analysisId, action, objectId);
       if (validation.status !== "ok") {
+        showWorkspaceNotice(validation.reason);
         return;
       }
 
-      const summary = analysis.conclusionSummary;
-      const keyConclusionDraft = analysis.keyConclusionCandidate
-        ? {
-            title: analysis.keyConclusionCandidate.title,
-            body: analysis.keyConclusionCandidate.body,
-            summary: analysis.keyConclusionCandidate.summary,
-            confidence: analysis.keyConclusionCandidate.confidence
-          }
-        : undefined;
+      const comparisonMetadata: ComparisonDecisionMetadata = {
+        comparisonAnalysisId: analysis.id,
+        comparisonAssistantMessageId: analysis.assistantMessageId,
+        comparisonSourceObjectIds: [...analysis.sourceObjectIds]
+      };
 
       if (action === "createKeyConclusion") {
         const keyConclusionCandidate = analysis.keyConclusionCandidate;
-        if (!keyConclusionDraft || !keyConclusionCandidate) {
+        if (!keyConclusionCandidate) {
           return;
         }
 
-        setAiOpen(true);
-        setTaskMode("chatAnalysis");
-        setPendingConfirmation({
-          kind: "compareCreateKeyConclusion",
-          targetTitle: keyConclusionDraft.title,
-          comparisonAnalysisId: analysis.id,
-          comparisonAssistantMessageId: analysis.assistantMessageId,
-          comparisonSourceObjectIds: [...analysis.sourceObjectIds],
-          keyConclusionSourceObjectIds: [...keyConclusionCandidate.sourceObjectIds],
-          summary,
-          userReason: "",
-          reasonRequired: false,
-          keyConclusionDraft
+        const sourceCheck = validateComparisonKeyConclusionSources(
+          workspace,
+          analysisId,
+          keyConclusionCandidate.sourceObjectIds
+        );
+        if (sourceCheck.status !== "ok") {
+          showWorkspaceNotice(sourceCheck.reason);
+          return;
+        }
+
+        pushObjectOperationUndo();
+        const result = createKeyConclusion(workspace, {
+          title: keyConclusionCandidate.title,
+          body: keyConclusionCandidate.body,
+          summary: keyConclusionCandidate.summary,
+          sourceObjectIds: [...keyConclusionCandidate.sourceObjectIds],
+          confidence: keyConclusionCandidate.confidence,
+          note: keyConclusionCandidate.note,
+          position: {
+            x: workspace.canvas.view.x + 240,
+            y: workspace.canvas.view.y + 180
+          },
+          comparison: comparisonMetadata
         });
+        setWorkspace(result.workspace);
+        setSelectedObjectIds([result.keyConclusion.id]);
+        setFocusRequest((current) => ({ objectId: result.keyConclusion.id, nonce: current.nonce + 1 }));
+        showWorkspaceNotice(`已保存关键结论「${result.keyConclusion.title}」`);
         return;
       }
 
@@ -5459,47 +5507,86 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return;
       }
 
-      const base = {
-        targetObjectId: targetObject.id,
-        targetTitle: targetObject.title,
-        comparisonAnalysisId: analysis.id,
-        comparisonAssistantMessageId: analysis.assistantMessageId,
-        comparisonSourceObjectIds: [...analysis.sourceObjectIds],
-        summary,
-        userReason: "",
-        keyConclusionDraft
-      };
+      if (action === "eliminate" && targetObject.type === "conceptDirection") {
+        setTextPrompt({
+          kind: "eliminateDirection",
+          directionId: targetObject.id,
+          title: "淘汰方向",
+          body: "从 Compare 结果淘汰该方向。淘汰不会隐藏或删除方向。理由可选，不填也可直接淘汰。",
+          label: "淘汰理由（可选）",
+          initialValue: "",
+          allowEmpty: true,
+          comparison: comparisonMetadata
+        });
+        return;
+      }
+
+      pushObjectOperationUndo();
 
       if (action === "setPrimary" && targetObject.type === "conceptDirection") {
-        setPendingConfirmation({ ...base, kind: "compareSetPrimary", reasonRequired: false });
+        setWorkspace((current) =>
+          setConceptDirectionStatus(
+            current,
+            targetObject.id,
+            "primary",
+            "用户从 Compare 明确将该方向设为主方向。",
+            comparisonMetadata
+          )
+        );
+        showWorkspaceNotice(`已将「${targetObject.title}」设为主方向`);
         return;
       }
 
       if (action === "setAlternative" && targetObject.type === "conceptDirection") {
-        setPendingConfirmation({ ...base, kind: "compareSetAlternative", reasonRequired: false });
-        return;
-      }
-
-      if (action === "eliminate" && targetObject.type === "conceptDirection") {
-        setPendingConfirmation({ ...base, kind: "compareEliminate", reasonRequired: true });
+        setWorkspace((current) =>
+          setConceptDirectionStatus(
+            current,
+            targetObject.id,
+            "alternative",
+            "用户从 Compare 明确将该方向设为备选方向。",
+            comparisonMetadata
+          )
+        );
+        showWorkspaceNotice(`已将「${targetObject.title}」设为备选方向`);
         return;
       }
 
       if (action === "restoreAlternative" && targetObject.type === "conceptDirection") {
-        setPendingConfirmation({ ...base, kind: "compareRestoreAlternative", reasonRequired: true });
+        setWorkspace((current) =>
+          setConceptDirectionStatus(
+            current,
+            targetObject.id,
+            "alternative",
+            "用户从 Compare 明确将该方向恢复为备选。",
+            comparisonMetadata
+          )
+        );
+        showWorkspaceNotice(`已将「${targetObject.title}」恢复为备选方向`);
         return;
       }
 
       if (action === "setDefaultReference" && targetObject.type === "image") {
-        setPendingConfirmation({ ...base, kind: "compareSetDefaultReference", reasonRequired: true });
+        setWorkspace((current) =>
+          setDefaultReference(current, targetObject.id, {
+            reason: "用户从 Compare 明确设为后续默认参考。",
+            comparison: comparisonMetadata
+          })
+        );
+        showWorkspaceNotice(`已设「${targetObject.title}」为后续默认参考`);
         return;
       }
 
       if (action === "clearDefaultReference" && targetObject.type === "image") {
-        setPendingConfirmation({ ...base, kind: "compareClearDefaultReference", reasonRequired: true });
+        setWorkspace((current) =>
+          clearDefaultReference(current, targetObject.id, {
+            reason: "用户从 Compare 明确取消后续默认参考。",
+            comparison: comparisonMetadata
+          })
+        );
+        showWorkspaceNotice(`已取消「${targetObject.title}」的后续默认参考`);
       }
     },
-    [workspace]
+    [pushObjectOperationUndo, setWorkspace, showWorkspaceNotice, workspace]
   );
 
   function isComparisonPendingConfirmation(
@@ -6462,12 +6549,16 @@ function WorkspaceTextPromptDialog({
   onSubmit: (value: string) => void;
 }) {
   const [value, setValue] = useState(prompt.initialValue);
+  const canSubmit = Boolean(prompt.allowEmpty) || Boolean(value.trim());
 
   return (
     <aside className="workspace-text-prompt" aria-label={prompt.title}>
       <form
         onSubmit={(event) => {
           event.preventDefault();
+          if (!canSubmit) {
+            return;
+          }
           onSubmit(value);
         }}
       >
@@ -6486,8 +6577,8 @@ function WorkspaceTextPromptDialog({
           <button type="button" onClick={onCancel}>
             取消
           </button>
-          <button className="brand" type="submit" disabled={!value.trim()}>
-            确认
+          <button className="brand" type="submit" disabled={!canSubmit}>
+            {prompt.kind === "eliminateDirection" ? "确认淘汰" : "确认"}
           </button>
         </div>
       </form>
