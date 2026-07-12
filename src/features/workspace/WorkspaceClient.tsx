@@ -118,6 +118,7 @@ import {
   type CanvasLayerReorderAction
 } from "@/domain/morpho/workspace";
 import type { CanvasInstance, MorphoWorkspace } from "@/domain/morpho/types";
+import { readClipboardAsImportPayload } from "./canvasClipboardImport";
 import type { ProviderCitation } from "@/server/ai/types";
 import type { WebSearchSource } from "@/server/ai/webSearch";
 import { AiConversationPanel } from "./components/AiConversationPanel";
@@ -438,8 +439,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     y: number;
     objectId: string | null;
     stageId: string | null;
+    pagePosition: { x: number; y: number };
     openedAt: number;
   } | null>(null);
+  const pendingImportPositionRef = useRef<{ x: number; y: number } | null>(null);
   const [activeResearchDetailObjectId, setActiveResearchDetailObjectId] = useState<string | null>(null);
   const [aiInputFocusNonce, setAiInputFocusNonce] = useState(0);
   const [manualSaveNotice, setManualSaveNotice] = useState<string | null>(null);
@@ -1021,16 +1024,86 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return;
       }
 
+      const position = pendingImportPositionRef.current ?? {
+        x: workspace.canvas.view.x + 180,
+        y: workspace.canvas.view.y + 180
+      };
+      pendingImportPositionRef.current = null;
+
       void handleImportRequest({
         files: selectedFiles,
-        position: {
-          x: workspace.canvas.view.x + 180,
-          y: workspace.canvas.view.y + 180
-        }
+        position
       });
     },
     [handleImportRequest, workspace.canvas.view.x, workspace.canvas.view.y]
   );
+
+  const handleContextMenuPaste = useCallback(
+    async (pagePosition?: { x: number; y: number }) => {
+      const position = pagePosition ?? {
+        x: latestCanvasViewRef.current.x + 160,
+        y: latestCanvasViewRef.current.y + 160
+      };
+      const result = await readClipboardAsImportPayload();
+      if (result.status === "denied") {
+        setWorkspace((current) => ({
+          ...current,
+          ai: {
+            ...current.ai,
+            messages: [
+              ...current.ai.messages,
+              {
+                id: `ai-clipboard-denied-${Date.now()}`,
+                role: "assistant",
+                body: result.reason,
+                status: "failed",
+                createdAt: new Date().toISOString()
+              }
+            ]
+          }
+        }));
+        return;
+      }
+      if (result.status === "empty") {
+        setWorkspace((current) => ({
+          ...current,
+          ai: {
+            ...current.ai,
+            messages: [
+              ...current.ai.messages,
+              {
+                id: `ai-clipboard-empty-${Date.now()}`,
+                role: "assistant",
+                body: "剪贴板里没有可粘贴的图片、链接或文本。",
+                status: "failed",
+                createdAt: new Date().toISOString()
+              }
+            ]
+          }
+        }));
+        return;
+      }
+      await handleImportRequest({
+        position,
+        files: result.files,
+        url: result.url,
+        text: result.text
+      });
+    },
+    [handleImportRequest, setWorkspace]
+  );
+
+  const handleContextMenuImportFiles = useCallback((pagePosition?: { x: number; y: number }) => {
+    pendingImportPositionRef.current = pagePosition ?? {
+      x: latestCanvasViewRef.current.x + 180,
+      y: latestCanvasViewRef.current.y + 180
+    };
+    railImportInputRef.current?.click();
+  }, []);
+
+  const handleSelectAllVisibleObjects = useCallback(() => {
+    requestCanvasSelection(activeCanvasObjectIds);
+  }, [activeCanvasObjectIds, requestCanvasSelection]);
   const handleOpenProjectHome = useCallback(() => {
     router.push("/");
   }, [router]);
@@ -5816,6 +5889,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             y: request.y,
             objectId: request.objectId,
             stageId: request.stageId,
+            pagePosition: request.pagePosition,
             openedAt: Date.now()
           });
           if (request.objectId && !selectedObjectIds.includes(request.objectId)) {
@@ -6024,6 +6098,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           onReorderLayer={handleReorderSelectedLayers}
           onClearSelection={() => requestCanvasSelection([])}
           onFocusOverview={() => focusArea("overview")}
+          onPasteHere={() => {
+            void handleContextMenuPaste(canvasContextMenu.pagePosition);
+          }}
+          onImportFiles={() => handleContextMenuImportFiles(canvasContextMenu.pagePosition)}
+          onSelectAllVisible={handleSelectAllVisibleObjects}
           onFitStage={() => {
             if (!canvasContextMenu.stageId) return;
             applyStageRegionWorkspaceMutation((current) => fitStageRegionToVisibleMembers(current, canvasContextMenu.stageId!));

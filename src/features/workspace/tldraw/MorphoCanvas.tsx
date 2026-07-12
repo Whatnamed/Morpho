@@ -108,6 +108,8 @@ export type CanvasContextMenuRequest = {
   objectId: string | null;
   /** Activated stage region under the pointer when no object was hit. */
   stageId: string | null;
+  /** Page-space point for paste/import placement. */
+  pagePosition: CanvasPoint;
 };
 
 /** Resolve which canvas context-menu body to show from a hit-test result. */
@@ -699,12 +701,23 @@ export function MorphoCanvas({
   const openContextMenuAt = useCallback(
     (clientX: number, clientY: number) => {
       const editor = editorRef.current;
+      const fallbackPage = {
+        x: workspace.canvas.view.x + 160,
+        y: workspace.canvas.view.y + 160
+      };
       if (!editor) {
-        onContextMenuRequest({ x: clientX, y: clientY, objectId: null, stageId: null });
+        onContextMenuRequest({
+          x: clientX,
+          y: clientY,
+          objectId: null,
+          stageId: null,
+          pagePosition: fallbackPage
+        });
         return;
       }
 
       const point = editor.screenToPage({ x: clientX, y: clientY });
+      const pagePosition = { x: point.x, y: point.y };
       const pageShapesTopFirst = [...editor.getCurrentPageShapesSorted()].reverse();
       const targetMorpho = pageShapesTopFirst
         .filter(isMorphoShape)
@@ -720,7 +733,8 @@ export function MorphoCanvas({
           x: clientX,
           y: clientY,
           objectId: targetMorpho.props.objectId,
-          stageId: null
+          stageId: null,
+          pagePosition
         });
         lastContextMenuOpenAtRef.current = Date.now();
         return;
@@ -735,7 +749,8 @@ export function MorphoCanvas({
           x: clientX,
           y: clientY,
           objectId: null,
-          stageId: targetStage.id.replace(/^shape:/, "")
+          stageId: targetStage.id.replace(/^shape:/, ""),
+          pagePosition
         });
         lastContextMenuOpenAtRef.current = Date.now();
         return;
@@ -745,11 +760,12 @@ export function MorphoCanvas({
         x: clientX,
         y: clientY,
         objectId: null,
-        stageId: null
+        stageId: null,
+        pagePosition
       });
       lastContextMenuOpenAtRef.current = Date.now();
     },
-    [onContextMenuRequest, workspace.objects]
+    [onContextMenuRequest, workspace.canvas.view.x, workspace.canvas.view.y, workspace.objects]
   );
 
   const handleContextMenuPointerDown = useCallback(

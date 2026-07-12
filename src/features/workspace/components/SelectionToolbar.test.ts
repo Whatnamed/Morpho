@@ -166,7 +166,10 @@ describe("SelectionToolbar", () => {
     onFocusOverview: () => undefined,
     onFitStage: () => undefined,
     onToggleStageLock: () => undefined,
-    onResetStageStyle: () => undefined
+    onResetStageStyle: () => undefined,
+    onPasteHere: () => undefined,
+    onImportFiles: () => undefined,
+    onSelectAllVisible: () => undefined
   };
 
   it("offers stable layer operations in the Morpho context menu", () => {
@@ -230,6 +233,9 @@ describe("SelectionToolbar", () => {
       })
     );
     expect(empty).toContain("画布菜单");
+    expect(empty).toContain("粘贴");
+    expect(empty).toContain("导入文件");
+    expect(empty).toContain("全选可见对象");
     expect(empty).toContain("询问 AI");
     expect(empty).toContain("查看全局");
     expect(empty).not.toContain("取消选择");
@@ -260,6 +266,8 @@ describe("SelectionToolbar", () => {
       })
     );
     expect(html).toContain("资料与研究分区菜单");
+    expect(html).toContain("粘贴到此处");
+    expect(html).toContain("导入文件");
     expect(html).toContain("适应内容");
     expect(html).toContain("锁定分区");
     expect(html).toContain("恢复默认样式");

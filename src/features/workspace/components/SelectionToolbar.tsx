@@ -4,8 +4,10 @@ import {
   BadgeCheck,
   BookOpen,
   CircleOff,
+  ClipboardPaste,
   Copy,
   EyeOff,
+  FileUp,
   FileX2,
   Flag,
   GitBranch,
@@ -406,6 +408,9 @@ export type CanvasContextMenuProps = {
   onFitStage: () => void;
   onToggleStageLock: () => void;
   onResetStageStyle: () => void;
+  onPasteHere: () => void;
+  onImportFiles: () => void;
+  onSelectAllVisible: () => void;
 };
 
 function ContextMenuShell({
@@ -460,7 +465,10 @@ export function CanvasContextMenu({
   onFocusOverview,
   onFitStage,
   onToggleStageLock,
-  onResetStageStyle
+  onResetStageStyle,
+  onPasteHere,
+  onImportFiles,
+  onSelectAllVisible
 }: CanvasContextMenuProps) {
   const run = (action: () => void) => {
     action();
@@ -470,6 +478,15 @@ export function CanvasContextMenu({
   if (kind === "empty") {
     return (
       <ContextMenuShell x={x} y={y} label="画布菜单">
+        <button type="button" role="menuitem" onClick={() => run(onPasteHere)}>
+          <ClipboardPaste size={15} />
+          粘贴
+        </button>
+        <button type="button" role="menuitem" onClick={() => run(onImportFiles)}>
+          <FileUp size={15} />
+          导入文件…
+        </button>
+        <hr />
         <button type="button" role="menuitem" onClick={() => run(onAskAi)}>
           <MessageSquareText size={15} />
           询问 AI
@@ -477,6 +494,10 @@ export function CanvasContextMenu({
         <button type="button" role="menuitem" onClick={() => run(onFocusOverview)}>
           <ScanSearch size={15} />
           查看全局
+        </button>
+        <button type="button" role="menuitem" onClick={() => run(onSelectAllVisible)}>
+          <Copy size={15} />
+          全选可见对象
         </button>
         {hasSelection ? (
           <button type="button" role="menuitem" onClick={() => run(onClearSelection)}>
@@ -491,6 +512,15 @@ export function CanvasContextMenu({
   if (kind === "stage" && stage) {
     return (
       <ContextMenuShell x={x} y={y} label={`${stage.title}分区菜单`}>
+        <button type="button" role="menuitem" onClick={() => run(onPasteHere)}>
+          <ClipboardPaste size={15} />
+          粘贴到此处
+        </button>
+        <button type="button" role="menuitem" onClick={() => run(onImportFiles)}>
+          <FileUp size={15} />
+          导入文件…
+        </button>
+        <hr />
         <button type="button" role="menuitem" disabled={!stage.canFit} onClick={() => run(onFitStage)}>
           <Scan size={15} />
           适应内容
@@ -516,6 +546,15 @@ export function CanvasContextMenu({
     // Object kind without resolved objects — fall back to empty canvas actions.
     return (
       <ContextMenuShell x={x} y={y} label="画布菜单">
+        <button type="button" role="menuitem" onClick={() => run(onPasteHere)}>
+          <ClipboardPaste size={15} />
+          粘贴
+        </button>
+        <button type="button" role="menuitem" onClick={() => run(onImportFiles)}>
+          <FileUp size={15} />
+          导入文件…
+        </button>
+        <hr />
         <button type="button" role="menuitem" onClick={() => run(onAskAi)}>
           <MessageSquareText size={15} />
           询问 AI
