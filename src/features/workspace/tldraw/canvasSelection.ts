@@ -29,7 +29,8 @@ export function normalizeCanvasSelectionIds(
 
   const stageIds = nextIds.filter((id) => getKind(id) === "stage");
   if (stageIds.length === 0) {
-    return [...nextIds];
+    // Drop ephemeral pending-image (and other non-morpho) shapes from selection.
+    return [];
   }
 
   const previous = new Set(previousIds);

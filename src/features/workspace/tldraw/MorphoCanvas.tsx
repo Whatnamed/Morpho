@@ -44,6 +44,11 @@ import {
   isStageRegionShape,
   type StageRegionShape
 } from "./StageRegionShapeUtil";
+import {
+  PendingImageShapeUtil,
+  isPendingImageShape,
+  syncPendingImageSlotsToEditor
+} from "./PendingImageShapeUtil";
 import { StageRegionToolbar, type StageRegionOpenPopover } from "../components/StageRegionToolbar";
 import { createStageOpacitySessionController } from "./stageOpacitySession";
 import {
@@ -123,7 +128,7 @@ export function resolveCanvasContextMenuKind(request: Pick<CanvasContextMenuRequ
   return "empty";
 }
 
-const shapeUtils = [MorphoShapeUtil, StageRegionShapeUtil];
+const shapeUtils = [MorphoShapeUtil, StageRegionShapeUtil, PendingImageShapeUtil];
 export const MORPHO_EDITOR_SYNC_RUN_OPTIONS = { history: "ignore" } as const;
 const MIN_WHEEL_ZOOM = 0.12;
 const MAX_WHEEL_ZOOM = 2.4;
@@ -169,15 +174,6 @@ export function shouldApplyFocusRequest(focusRequest: FocusRequest, lastAppliedN
   return focusRequest.nonce !== lastAppliedNonce && Boolean(focusRequest.area || focusRequest.objectId || focusRequest.view);
 }
 
-/**
- * Camera updates must not always re-enter React. Only mirror into React state
- * when something outside tldraw's own camera transform still needs screen-space
- * coordinates (currently: pending generation slots overlaid on the host).
- */
-export function shouldMirrorCameraIntoReactLiveView(pendingSlotCount: number): boolean {
-  return pendingSlotCount > 0;
-}
-
 export function MorphoCanvas({
   workspace,
   annotatedObjectId,
@@ -207,18 +203,14 @@ export function MorphoCanvas({
   const lastAppliedFocusNonceRef = useRef<number | null>(null);
   const lastAppliedSelectionRequestNonceRef = useRef<number | null>(null);
   const viewPersistTimerRef = useRef<number | null>(null);
-  const liveViewRafRef = useRef<number | null>(null);
   const latestViewRef = useRef<CanvasView>(workspace.canvas.view);
   const lastPersistedViewKeyRef = useRef(getCanvasViewKey(workspace.canvas.view));
   const lastContextMenuOpenAtRef = useRef(0);
   const latestWorkspaceRef = useRef(workspace);
   const onLiveViewChangeRef = useRef(onLiveViewChange);
-  const pendingSlotCountRef = useRef(pendingImageGenerationSlots.length);
   const didSendStagesToBackRef = useRef(false);
   const stageOpacityPreviewRef = useRef<string | null>(null);
   const [editorReadyEpoch, setEditorReadyEpoch] = useState(0);
-  /** React mirror of the camera — only updated when pending slots need host-space layout. */
-  const [liveView, setLiveView] = useState<CanvasView>(workspace.canvas.view);
   const traceObjectIds = useMemo(() => canvasTrace?.highlightedObjectIds ?? [], [canvasTrace]);
   const traceEdgeKeySet = useMemo(() => new Set(canvasTrace?.highlightedEdgeKeys ?? []), [canvasTrace]);
   const secondaryTraceObjectIds = useMemo(() => new Set(canvasTrace?.secondaryObjectIds ?? []), [canvasTrace]);
@@ -231,23 +223,6 @@ export function MorphoCanvas({
   useLayoutEffect(() => {
     onLiveViewChangeRef.current = onLiveViewChange;
   }, [onLiveViewChange]);
-  useLayoutEffect(() => {
-    pendingSlotCountRef.current = pendingImageGenerationSlots.length;
-  }, [pendingImageGenerationSlots.length]);
-  // When generation slots appear, pull the latest camera into React once so overlays align.
-  useEffect(() => {
-    if (pendingImageGenerationSlots.length > 0) {
-      setLiveView(latestViewRef.current);
-    }
-  }, [pendingImageGenerationSlots.length]);
-  useEffect(() => {
-    return () => {
-      if (liveViewRafRef.current !== null) {
-        window.cancelAnimationFrame(liveViewRafRef.current);
-        liveViewRafRef.current = null;
-      }
-    };
-  }, []);
   const canvasComponents = useMemo(
     () => ({
       OnTheCanvas: () => (
@@ -284,17 +259,14 @@ export function MorphoCanvas({
       onStageRegionsChange
     ]
   );
-  const pendingSlotRects = useMemo(() => {
-    return pendingImageGenerationSlots.map((slot) => {
-      return {
-        ...slot,
-        left: slot.position.x * liveView.zoom + liveView.x,
-        top: slot.position.y * liveView.zoom + liveView.y,
-        width: slot.size.w * liveView.zoom,
-        height: slot.size.h * liveView.zoom
-      };
-    });
-  }, [liveView, pendingImageGenerationSlots]);
+  // Ephemeral loading cards live in page space inside tldraw (not a DOM overlay).
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) {
+      return;
+    }
+    syncPendingImageSlotsToEditor(editor, pendingImageGenerationSlots, MORPHO_EDITOR_SYNC_RUN_OPTIONS);
+  }, [editorReadyEpoch, pendingImageGenerationSlots]);
 
   const flushViewPersist = useCallback(() => {
     if (viewPersistTimerRef.current !== null) {
@@ -335,24 +307,14 @@ export function MorphoCanvas({
   );
 
   /**
-   * Publish camera to refs + debounced persist always; only re-enter React when
-   * host overlays (pending slots) still need screen-space coordinates.
+   * Publish camera to refs + debounced persist. Do not setState every pan frame —
+   * pending generation cards are tldraw shapes and follow the camera natively.
    */
   const publishCameraView = useCallback(
     (nextView: CanvasView) => {
       latestViewRef.current = nextView;
       onLiveViewChangeRef.current?.(nextView);
       scheduleViewPersist(nextView);
-      if (!shouldMirrorCameraIntoReactLiveView(pendingSlotCountRef.current)) {
-        return;
-      }
-      if (liveViewRafRef.current !== null) {
-        return;
-      }
-      liveViewRafRef.current = window.requestAnimationFrame(() => {
-        liveViewRafRef.current = null;
-        setLiveView(latestViewRef.current);
-      });
     },
     [scheduleViewPersist]
   );
@@ -995,13 +957,13 @@ export function MorphoCanvas({
           lastPersistedViewKeyRef.current = getCanvasViewKey(workspace.canvas.view);
           editor.setCamera({ x: workspace.canvas.view.x, y: workspace.canvas.view.y, z: workspace.canvas.view.zoom });
           latestViewRef.current = workspace.canvas.view;
-          setLiveView(workspace.canvas.view);
           onLiveViewChangeRef.current?.(workspace.canvas.view);
 
           const selectionKind = (shapeId: string): CanvasSelectableKind => {
             const shape = editor.getShape(shapeId as TLShapeId);
             if (shape && isMorphoShape(shape)) return "morpho";
             if (shape && isStageRegionShape(shape)) return "stage";
+            if (shape && isPendingImageShape(shape)) return "other";
             return "other";
           };
           const cleanupBeforeSelection = editor.sideEffects.registerBeforeChangeHandler("instance_page_state", (previous, next) => {
@@ -1043,28 +1005,6 @@ export function MorphoCanvas({
           };
         }}
       />
-      {pendingSlotRects.length > 0 ? (
-        <div className="pending-generation-layer" aria-live="polite">
-          {pendingSlotRects.map((slot) => (
-            <div
-              className="pending-generation-slot"
-              key={slot.id}
-              style={{
-                left: slot.left,
-                top: slot.top,
-                width: slot.width,
-                height: slot.height
-              }}
-            >
-              <span className="pending-generation-spinner" aria-hidden="true" />
-              <div>
-                <span>{pendingSlotRoleLabel(slot.role)}</span>
-                <strong>{slot.title}</strong>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -1522,27 +1462,6 @@ function getUrlFromText(text: string): string {
     return new URL(trimmed).href;
   } catch {
     return "";
-  }
-}
-
-function pendingSlotRoleLabel(role: string): string {
-  switch (role) {
-    case "primaryVisual":
-      return "主图";
-    case "sceneVisual":
-      return "场景图";
-    case "cmfStudy":
-      return "CMF 研究";
-    case "detailStudy":
-      return "细节图";
-    case "structureDiagram":
-      return "设计示意";
-    case "deliveryAsset":
-      return "交付素材";
-    case "preview":
-    case "conceptImage":
-    default:
-      return "正在生成";
   }
 }
 

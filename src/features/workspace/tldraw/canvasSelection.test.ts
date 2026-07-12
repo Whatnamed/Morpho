@@ -24,6 +24,13 @@ describe("normalizeCanvasSelectionIds", () => {
     expect(normalizeCanvasSelectionIds([], ["shape:stage-b", "shape:stage-a"], getKind)).toEqual(["shape:stage-a"]);
   });
 
+  it("drops pending-image and other ephemeral shapes from selection", () => {
+    expect(normalizeCanvasSelectionIds([], ["shape:pending-op1:item-a"], getKind)).toEqual([]);
+    expect(
+      normalizeCanvasSelectionIds([], ["shape:pending-op1:item-a", "shape:object-a"], getKind)
+    ).toEqual(["shape:object-a"]);
+  });
+
   it("applies each programmatic selection request nonce only once, including empty selection", () => {
     expect(shouldApplyCanvasSelectionRequest({ objectIds: ["object-a"], nonce: 1 }, null)).toBe(true);
     expect(shouldApplyCanvasSelectionRequest({ objectIds: ["object-a"], nonce: 1 }, 1)).toBe(false);
