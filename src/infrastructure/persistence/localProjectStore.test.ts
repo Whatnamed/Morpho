@@ -90,6 +90,59 @@ describe("local project catalog persistence", () => {
     expect(storage.getItem(LEGACY_WORKSPACE_STORAGE_KEY)).toBeTruthy();
   });
 
+  it("adds the current case study beside a modified catalogued Nightrail project", () => {
+    const storage = createMemoryStorage();
+    const legacy = createTestWorkspace();
+    const modified = {
+      ...legacy,
+      objects: {
+        ...legacy.objects,
+        "user-note": {
+          id: "user-note",
+          type: "text" as const,
+          title: "用户补充",
+          summary: "保留这条笔记。",
+          body: "保留这条笔记。",
+          createdBy: "user" as const,
+          visibility: "active" as const
+        }
+      }
+    };
+    saveProjectWorkspace(storage, modified);
+    storage.setItem(
+      CATALOG_STORAGE_KEY,
+      JSON.stringify({
+        schemaVersion: 1,
+        recentProjectId: modified.project.id,
+        projects: [
+          {
+            id: modified.project.id,
+            title: modified.project.title,
+            subtitle: modified.project.subtitle,
+            lastOpenedAt: modified.project.lastOpenedAt,
+            updatedAt: modified.project.updatedAt
+          }
+        ]
+      })
+    );
+
+    const result = initializeLocalProjectCatalog(storage);
+
+    expect(result).toMatchObject({
+      status: "ok",
+      didMigrate: true,
+      catalog: {
+        recentProjectId: CURRENT_CASE_STUDY_ID,
+        projects: expect.arrayContaining([
+          expect.objectContaining({ id: modified.project.id }),
+          expect.objectContaining({ id: CURRENT_CASE_STUDY_ID })
+        ])
+      }
+    });
+    expect(storage.getItem(getProjectWorkspaceStorageKey(modified.project.id))).toBeTruthy();
+    expect(storage.getItem(getProjectWorkspaceStorageKey(CURRENT_CASE_STUDY_ID))).toBeTruthy();
+  });
+
   it("preserves a legacy project when another local project already exists", () => {
     const storage = createMemoryStorage();
     const legacy = createTestWorkspace();

@@ -390,6 +390,23 @@ function migrateExistingCatalog(storage: Storage, catalog: LocalProjectCatalog):
 
   const marker = readCaseStudyMarker(storage);
   const currentCaseSummary = catalog.projects.find((project) => project.id === CURRENT_CASE_STUDY_ID);
+  const legacySummary = catalog.projects.find((project) => project.id === LEGACY_NIGHTRAIL_PROJECT_ID);
+  if (!currentCaseSummary && legacySummary) {
+    const legacyWorkspace = loadProjectWorkspace(storage, LEGACY_NIGHTRAIL_PROJECT_ID);
+    if (legacyWorkspace.status === "ok" && !isPristineLegacyNightrailWorkspace(legacyWorkspace.workspace)) {
+      const next = createCurrentCaseStudyWorkspace();
+      saveProjectWorkspace(storage, next);
+      const nextCatalog = createCatalog([summarizeProject(next), ...catalog.projects], CURRENT_CASE_STUDY_ID);
+      saveCatalog(storage, nextCatalog);
+      writeCaseStudyMarker(storage);
+      return {
+        status: "ok",
+        catalog: nextCatalog,
+        didMigrate: true
+      };
+    }
+  }
+
   if (
     marker &&
     currentCaseSummary &&
