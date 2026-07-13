@@ -232,7 +232,7 @@ describe("agent route stream", () => {
         input: [
           { role: "system", content: [{ type: "input_text", text: "系统规则" }] },
           { role: "user", content: [{ type: "input_text", text: "旧问题" }] },
-          { role: "assistant", content: [{ type: "input_text", text: "旧回答" }] },
+          { role: "assistant", content: [{ type: "output_text", text: "旧回答" }] },
           { role: "user", content: [{ type: "input_text", text: "当前问题" }] }
         ]
       })

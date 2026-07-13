@@ -229,24 +229,17 @@ describe("openai-compatible provider adapter", () => {
     }
   });
 
-  it("falls back only when Responses is explicitly unsupported", async () => {
+  it("does not call Chat Completions when Responses is unsupported", async () => {
     const calls: string[] = [];
     const originalFetch = global.fetch;
     global.fetch = async (input) => {
       calls.push(String(input));
-      if (String(input).endsWith("/responses")) {
-        return new Response("Responses endpoint unsupported", { status: 404 }) as unknown as Response;
-      }
-      return jsonResponse({
-        id: "chat_123",
-        choices: [{ message: { role: "assistant", content: "fallback response" } }]
-      }) as unknown as Response;
+      return new Response("Responses endpoint unsupported", { status: 404 }) as unknown as Response;
     };
 
     try {
-      const result = await executeOpenAiCompatibleResponse(config(), request());
-      expect(calls).toEqual(["https://api.example.com/v1/responses", "https://api.example.com/v1/chat/completions"]);
-      expect(result.outputText).toBe("fallback response");
+      await expect(executeOpenAiCompatibleResponse(config(), request())).rejects.toMatchObject({ status: 404 });
+      expect(calls).toEqual(["https://api.example.com/v1/responses"]);
     } finally {
       global.fetch = originalFetch;
     }
@@ -275,174 +268,79 @@ describe("openai-compatible provider adapter", () => {
     }
   });
 
-  it("falls back to Chat Completions after repeated Responses gateway failures", async () => {
+  it("keeps repeated Responses gateway failures on the Responses endpoint", async () => {
     const calls: string[] = [];
     const originalFetch = global.fetch;
     global.fetch = async (input) => {
       calls.push(String(input));
-      if (String(input).endsWith("/responses")) {
-        return new Response("bad gateway", { status: 502 }) as unknown as Response;
-      }
-      return jsonResponse({
-        id: "chat_after_gateway_failure",
-        choices: [{ message: { role: "assistant", content: "chat fallback response" } }]
-      }) as unknown as Response;
+      return new Response("bad gateway", { status: 502 }) as unknown as Response;
     };
 
     try {
-      const result = await executeOpenAiCompatibleResponse(config(), request());
+      await expect(executeOpenAiCompatibleResponse(config(), request())).rejects.toMatchObject({ status: 502 });
       expect(calls).toEqual([
         "https://api.example.com/v1/responses",
         "https://api.example.com/v1/responses",
         "https://api.example.com/v1/responses",
-        "https://api.example.com/v1/chat/completions"
+        "https://api.example.com/v1/responses"
       ]);
-      expect(result.outputText).toBe("chat fallback response");
     } finally {
       global.fetch = originalFetch;
     }
-  });
+  }, 15_000);
 
-  it("preserves Chat Completions fallback reasoning and function-call deltas", async () => {
-    const calls: string[] = [];
+  it("falls back to a buffered Responses request after repeated stream gateway failures", async () => {
+    const calls: Array<{ url: string; stream: boolean | undefined }> = [];
     const originalFetch = global.fetch;
-    global.fetch = async (input) => {
-      calls.push(String(input));
-      if (String(input).endsWith("/responses")) {
-        return new Response("unsupported endpoint", { status: 405 }) as unknown as Response;
-      }
-      return sseResponse([
-        'data: {"id":"chat_1","choices":[{"delta":{"reasoning_content":"checking"}}]}\r\n\r\n',
-        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"read_selected_context","arguments":"{}"}}]}}]}\n\n',
-        "data: [DONE]\n\n"
-      ]) as unknown as Response;
-    };
-
-    try {
-      const events: string[] = [];
-      const result = await streamOpenAiCompatibleResponse(config(), request(), {
-        onEvent: (event) => events.push(event.type)
-      });
-      expect(calls).toEqual(["https://api.example.com/v1/responses", "https://api.example.com/v1/chat/completions"]);
-      expect(events).toContain("reasoning-delta");
-      expect(events).toContain("function-call-ready");
-      expect(result.functionCalls[0]).toMatchObject({
-        callId: "call_1",
-        name: "read_selected_context",
-        argumentsText: "{}"
-      });
-    } finally {
-      global.fetch = originalFetch;
-    }
-  });
-
-  it("buffers Chat Completions text as commentary when a tool call follows", async () => {
-    const originalFetch = global.fetch;
-    global.fetch = async (input) => {
-      if (String(input).endsWith("/responses")) {
-        return new Response("unsupported endpoint", { status: 405 }) as unknown as Response;
-      }
-      return sseResponse([
-        'data: {"id":"chat_1","choices":[{"delta":{"content":"我先读取当前选择。"}}]}\n\n',
-        'data: {"id":"chat_1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"read_selected_context","arguments":"{}"}}]}}]}\n\n',
-        "data: [DONE]\n\n"
-      ]) as unknown as Response;
-    };
-
-    try {
-      const events: Array<{ type: string; delta?: string }> = [];
-      const finalDeltas: string[] = [];
-      const result = await streamOpenAiCompatibleResponse(config(), request(), {
-        onEvent: (event) => events.push(event),
-        onTextDelta: (delta) => finalDeltas.push(delta)
-      });
-
-      expect(events.map((event) => event.type)).toEqual([
-        "commentary-start",
-        "commentary-delta",
-        "commentary-end",
-        "function-call-ready"
-      ]);
-      expect(events.find((event) => event.type === "commentary-delta")?.delta).toBe("我先读取当前选择。");
-      expect(finalDeltas).toEqual([]);
-      expect(result.outputText).toBe("");
-      expect(result.functionCalls).toHaveLength(1);
-    } finally {
-      global.fetch = originalFetch;
-    }
-  });
-
-  it("buffers pure Chat Completions text as final without duplicating commentary", async () => {
-    const originalFetch = global.fetch;
-    global.fetch = async (input) => {
-      if (String(input).endsWith("/responses")) {
-        return new Response("unsupported endpoint", { status: 405 }) as unknown as Response;
-      }
-      return sseResponse([
-        'data: {"id":"chat_1","choices":[{"delta":{"content":"最终"}}]}\n\n',
-        'data: {"id":"chat_1","choices":[{"delta":{"content":"答复"}}]}\n\n',
-        "data: [DONE]\n\n"
-      ]) as unknown as Response;
-    };
-
-    try {
-      const events: Array<{ type: string; delta?: string }> = [];
-      const finalDeltas: string[] = [];
-      const result = await streamOpenAiCompatibleResponse(config(), request(), {
-        onEvent: (event) => events.push(event),
-        onTextDelta: (delta) => finalDeltas.push(delta)
-      });
-
-      expect(events.map((event) => event.type)).toEqual(["final-start", "final-delta", "final-delta", "final-end"]);
-      expect(events.map((event) => event.type)).not.toContain("commentary-delta");
-      expect(finalDeltas).toEqual(["最终", "答复"]);
-      expect(result.outputText).toBe("最终答复");
-    } finally {
-      global.fetch = originalFetch;
-    }
-  });
-
-  it("classifies buffered JSON Chat fallback text as commentary when tools are present", async () => {
-    const originalFetch = global.fetch;
-    global.fetch = async (input) => {
-      if (String(input).endsWith("/responses")) {
-        return new Response("unsupported endpoint", { status: 405 }) as unknown as Response;
+    global.fetch = async (input, init) => {
+      const body = JSON.parse(String(init?.body)) as { stream?: boolean };
+      calls.push({ url: String(input), stream: body.stream });
+      if (body.stream) {
+        return new Response("bad gateway", { status: 502 }) as unknown as Response;
       }
       return jsonResponse({
-        id: "chat_1",
-        choices: [
-          {
-            message: {
-              role: "assistant",
-              content: "我先读取当前选择。",
-              tool_calls: [
-                {
-                  id: "call_1",
-                  type: "function",
-                  function: { name: "read_selected_context", arguments: "{}" }
-                }
-              ]
-            }
-          }
-        ],
-        usage: { prompt_tokens: 8, completion_tokens: 4, total_tokens: 12 }
+        id: "resp_buffered",
+        output: [{ type: "message", content: [{ type: "output_text", text: "buffered Responses result" }] }]
       }) as unknown as Response;
     };
 
     try {
-      const events: string[] = [];
-      const result = await streamOpenAiCompatibleResponse(config(), request(), {
-        onEvent: (event) => events.push(event.type)
-      });
-
-      expect(events).toEqual([
-        "commentary-start",
-        "commentary-delta",
-        "commentary-end",
-        "function-call-ready",
-        "usage"
+      const result = await streamOpenAiCompatibleResponse(config(), request(), {});
+      expect(calls).toEqual([
+        { url: "https://api.example.com/v1/responses", stream: true },
+        { url: "https://api.example.com/v1/responses", stream: true },
+        { url: "https://api.example.com/v1/responses", stream: true },
+        { url: "https://api.example.com/v1/responses", stream: true },
+        { url: "https://api.example.com/v1/responses", stream: undefined }
       ]);
-      expect(result.outputText).toBe("");
+      expect(result.outputText).toBe("buffered Responses result");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  }, 15_000);
+
+  it("falls back to a buffered Responses request when an event stream ends early", async () => {
+    const calls: Array<{ url: string; stream: boolean | undefined }> = [];
+    const originalFetch = global.fetch;
+    global.fetch = async (input, init) => {
+      const body = JSON.parse(String(init?.body)) as { stream?: boolean };
+      calls.push({ url: String(input), stream: body.stream });
+      if (body.stream) {
+        return sseResponse([responseEvent("response.created", { response: { id: "resp_incomplete" } })]) as unknown as Response;
+      }
+      return jsonResponse({
+        id: "resp_recovered",
+        output: [{ type: "message", content: [{ type: "output_text", text: "recovered Responses result" }] }]
+      }) as unknown as Response;
+    };
+
+    try {
+      const result = await streamOpenAiCompatibleResponse(config(), request(), {});
+      expect(calls).toEqual([
+        { url: "https://api.example.com/v1/responses", stream: true },
+        { url: "https://api.example.com/v1/responses", stream: undefined }
+      ]);
+      expect(result.outputText).toBe("recovered Responses result");
     } finally {
       global.fetch = originalFetch;
     }

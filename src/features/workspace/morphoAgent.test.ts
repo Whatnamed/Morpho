@@ -6,6 +6,7 @@ import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
 import {
   buildAgentCheckpointCompactionInput,
   buildAgentConversationPromptBlock,
+  buildAgentHistoryMessages,
   buildMorphoAgentSystemPrompt,
   buildMorphoAgentTools,
   getDesignDefinitionDrafts,
@@ -96,6 +97,36 @@ describe("agent conversation context", () => {
 });
 
 describe("Morpho agent tool argument validation", () => {
+  it("serializes historical assistant messages as Responses output text", () => {
+    expect(
+      buildAgentHistoryMessages([
+        { role: "user", body: "旧问题" },
+        { role: "assistant", body: "旧回答" }
+      ])
+    ).toEqual([
+      { role: "user", content: [{ type: "input_text", text: "旧问题" }] },
+      { role: "assistant", content: [{ type: "output_text", text: "旧回答" }] }
+    ]);
+  });
+
+  it("keeps provider strict mode disabled while retaining local argument validation", () => {
+    const strictValues = buildMorphoAgentTools(true).flatMap((tool) =>
+      tool.type === "function" ? [tool.strict] : []
+    );
+
+    expect(strictValues).not.toHaveLength(0);
+    expect(strictValues.every((strict) => strict === false)).toBe(true);
+    expect(() =>
+      parseMorphoAgentToolArguments(makeCall("request_confirmation", {
+        action: "setDefaultReference",
+        targetObjectId: "image-a",
+        reason: "用户要求替换后续默认参考。",
+        impact: "后续生成会默认参考该图。",
+        unexpectedField: true
+      }))
+    ).toThrow("未声明参数");
+  });
+
   it("instructs research tools to output evaluated scannable points", () => {
     const tools = buildMorphoAgentTools(false);
     const serializedTools = JSON.stringify(tools);

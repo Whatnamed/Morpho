@@ -143,7 +143,7 @@ The 200,000 and 300,000 values are trigger thresholds, not retained context size
 
 At prepare pressure, older completed tool outputs and excess history are shortened toward the target. At compact pressure, history is reduced further and the provider is explicitly asked for a refreshed checkpoint.
 
-Responses `input_tokens` and Chat Completions `prompt_tokens` are normalized as actual input-token usage and can become the baseline for the next continuation inside the same Agent turn. If the provider reports a context-limit error, the server performs one emergency-compacted retry of that same request. Since client-side tools have already completed before a continuation request, this retry cannot execute those tools again.
+Responses `input_tokens` are normalized as actual input-token usage and can become the baseline for the next continuation inside the same Agent turn. If the provider reports a context-limit error, the server performs one emergency-compacted retry of that same request. Since client-side tools have already completed before a continuation request, this retry cannot execute those tools again.
 
 If the final compact-pressure response omits a valid checkpoint, Morpho may issue one bounded checkpoint-only continuation with no tools or image inputs. This optional request changes only the provider-side discussion summary; it never changes objects, revisions, direction status, default references, delivery references, or the visible answer.
 

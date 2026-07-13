@@ -82,14 +82,14 @@ function convertProviderMessageToResponseInput(message: ProviderChatMessage): Re
     typeof message.content === "string"
       ? [
           {
-            type: "input_text" as const,
+            type: message.role === "assistant" ? "output_text" as const : "input_text" as const,
             text: message.content
           }
         ]
       : message.content.map((part) =>
           part.type === "text"
             ? {
-                type: "input_text" as const,
+                type: message.role === "assistant" ? "output_text" as const : "input_text" as const,
                 text: part.text
               }
             : {

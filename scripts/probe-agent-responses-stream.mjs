@@ -18,7 +18,13 @@ if (loadedConfig.status === "failed") {
 }
 
 async function runProbe(config) {
-  const request = buildScenarioRequest(scenario, config.webSearchEnabled);
+  const fullAgentScenario = scenario === "full-agent-continuation";
+  const agentTools = fullAgentScenario
+    ? await import("../src/features/workspace/morphoAgent.ts")
+    : undefined;
+  const request = fullAgentScenario
+    ? buildFullAgentProbeRequest(agentTools)
+    : buildScenarioRequest(scenario, config.webSearchEnabled);
   const controller = new AbortController();
   const shouldCancel = scenario === "cancel";
   const cancelTimer = shouldCancel ? setTimeout(() => controller.abort(), 900) : undefined;
@@ -26,7 +32,7 @@ async function runProbe(config) {
   try {
     const first = await requestResponseStream(config, request, controller.signal);
     const events = [...first.events];
-    if (scenario === "continuation" || scenario === "tool-error") {
+    if (scenario === "continuation" || scenario === "tool-error" || fullAgentScenario) {
       const functionCall = findCompletedFunctionCall(first.events);
       if (!functionCall || first.outputItems.length === 0) {
         throw new Error("the provider did not return a function call that can be continued");
@@ -42,10 +48,20 @@ async function runProbe(config) {
               output:
                 scenario === "tool-error"
                   ? JSON.stringify({ ok: false, error: "Synthetic probe tool failure." })
-                  : JSON.stringify({ ok: true, result: "Synthetic probe lookup result." })
+                  : JSON.stringify(
+                      fullAgentScenario
+                        ? {
+                            status: "ok",
+                            selectedObjectCount: 0,
+                            summary: "Synthetic local project context was read."
+                          }
+                        : { ok: true, result: "Synthetic probe lookup result." }
+                    )
             }
           ],
-          tools: [probeFunctionTool()]
+          tools: fullAgentScenario
+            ? agentTools.buildMorphoAgentTools(config.webSearchEnabled)
+            : [probeFunctionTool()]
         },
         controller.signal
       );
@@ -262,9 +278,51 @@ function buildScenarioRequest(selectedScenario, webSearchEnabled) {
           }
         ]
       };
+    case "assistant-history-input-text":
+    case "assistant-history-output-text":
+      return {
+        input: [
+          ...sharedInput,
+          {
+            role: "assistant",
+            content: [
+              {
+                type: selectedScenario === "assistant-history-output-text" ? "output_text" : "input_text",
+                text: "Synthetic historical assistant reply."
+              }
+            ]
+          },
+          {
+            role: "user",
+            content: [{ type: "input_text", text: "Reply with exactly: assistant history accepted" }]
+          }
+        ]
+      };
     default:
       throw new Error(`unsupported scenario: ${selectedScenario}`);
   }
+}
+
+function buildFullAgentProbeRequest(agentTools) {
+  return {
+    input: [
+      {
+        role: "system",
+        content: [
+          {
+            type: "input_text",
+            text:
+              "This is a synthetic compatibility probe. Call read_selected_context exactly once with {}. Do not use any other tool. After the local result, reply with exactly DONE."
+          }
+        ]
+      },
+      {
+        role: "user",
+        content: [{ type: "input_text", text: "Read the synthetic local project context." }]
+      }
+    ],
+    tools: agentTools.buildMorphoAgentInitialTools()
+  };
 }
 
 function probeFunctionTool() {
@@ -282,7 +340,7 @@ function probeFunctionTool() {
       },
       required: ["query"]
     },
-    strict: true
+    strict: false
   };
 }
 

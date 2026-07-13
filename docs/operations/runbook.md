@@ -227,6 +227,8 @@ Use the local-only probe with a real `.env.local` and explicit paid-test permiss
 node --experimental-strip-types --env-file=.env.local scripts/probe-agent-responses-stream.mjs --scenario=reasoning
 node --experimental-strip-types --env-file=.env.local scripts/probe-agent-responses-stream.mjs --scenario=tool --fixture=responses-reasoning-tool-stream.ndjson
 node --experimental-strip-types --env-file=.env.local scripts/probe-agent-responses-stream.mjs --scenario=continuation --fixture=responses-tool-continuation-stream.ndjson
+node --experimental-strip-types --env-file=.env.local scripts/probe-agent-responses-stream.mjs --scenario=full-agent-continuation
+node --experimental-strip-types --env-file=.env.local scripts/probe-agent-responses-stream.mjs --scenario=assistant-history-output-text
 node --experimental-strip-types --env-file=.env.local scripts/probe-agent-responses-stream.mjs --scenario=cancel
 ```
 

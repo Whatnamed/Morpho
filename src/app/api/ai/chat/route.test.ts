@@ -124,6 +124,34 @@ describe("AI chat route", () => {
     );
   });
 
+  it("serializes assistant history as Responses output text", async () => {
+    const response = await POST(
+      makeRequest({
+        draft: "继续分析",
+        messages: [
+          { role: "user", body: "上一轮的问题" },
+          { role: "assistant", body: "上一轮的回答" }
+        ],
+        objectSummaries: [],
+        attachments: []
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await response.text();
+    const providerRequest = streamOpenAiCompatibleResponseMock.mock.calls[0]?.[1] as {
+      input: Array<{ role?: string; content?: Array<{ type?: string; text?: string }> }>;
+    };
+    expect(providerRequest.input).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "assistant",
+          content: [expect.objectContaining({ type: "output_text", text: "上一轮的回答" })]
+        })
+      ])
+    );
+  });
+
   it("falls back to text-only context when AiJWS rejects image input", async () => {
     const { OpenAiCompatibleProviderError } = await import("@/server/ai/openaiCompatibleProvider");
     streamOpenAiCompatibleResponseMock

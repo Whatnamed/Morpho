@@ -760,7 +760,7 @@ export function isExplicitComparisonRequest(draft: string): boolean {
 export function buildAgentHistoryMessages(messages: Array<{ role: "user" | "assistant"; body: string }>): ResponseMessageInput[] {
   return messages.map((message) => ({
     role: message.role,
-    content: [{ type: "input_text", text: message.body }]
+    content: [{ type: message.role === "assistant" ? "output_text" : "input_text", text: message.body }]
   }));
 }
 
@@ -818,7 +818,7 @@ function functionTool(input: {
     name: input.name,
     description: input.description,
     parameters: input.parameters,
-    strict: true
+    strict: false
   };
 }
 
