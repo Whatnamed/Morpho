@@ -135,6 +135,8 @@ type ChatTool = {
   };
 };
 
+const TRANSIENT_RESPONSE_RETRY_DELAYS_MS = [300, 800] as const;
+
 export type AgentOutputItem = {
   type: string;
   [key: string]: unknown;
@@ -158,7 +160,7 @@ export async function executeOpenAiCompatibleResponse(
   request: OpenAiCompatibleResponseRequest,
   signal?: AbortSignal
 ): Promise<OpenAiCompatibleResponseResult> {
-  const response = await fetch(`${config.baseUrl}/responses`, {
+  const response = await fetchProviderResponse(`${config.baseUrl}/responses`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
@@ -190,7 +192,7 @@ export async function streamOpenAiCompatibleResponse(
   handlers: OpenAiCompatibleStreamHandlers,
   signal?: AbortSignal
 ): Promise<OpenAiCompatibleResponseResult> {
-  const response = await fetch(`${config.baseUrl}/responses`, {
+  const response = await fetchProviderResponse(`${config.baseUrl}/responses`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
@@ -621,8 +623,61 @@ async function safeReadDiagnostic(response: Response): Promise<string | undefine
   }
 }
 
+async function fetchProviderResponse(url: string, init: RequestInit): Promise<Response> {
+  let lastNetworkError: unknown;
+  for (let attempt = 0; attempt <= TRANSIENT_RESPONSE_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      const response = await fetch(url, init);
+      if (!isTransientProviderResponse(response.status) || attempt === TRANSIENT_RESPONSE_RETRY_DELAYS_MS.length) {
+        return response;
+      }
+      await discardProviderResponse(response);
+    } catch (error) {
+      if (init.signal?.aborted || attempt === TRANSIENT_RESPONSE_RETRY_DELAYS_MS.length) {
+        throw error;
+      }
+      lastNetworkError = error;
+    }
+
+    await waitForTransientRetry(TRANSIENT_RESPONSE_RETRY_DELAYS_MS[attempt], init.signal);
+  }
+
+  throw lastNetworkError ?? new Error("Provider request did not produce a response.");
+}
+
+function isTransientProviderResponse(status: number): boolean {
+  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+async function discardProviderResponse(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The response is being retried, so an unread diagnostic body is not useful.
+  }
+}
+
+function waitForTransientRetry(delayMs: number, signal: AbortSignal | null | undefined): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(signal.reason ?? createAbortError());
+  }
+
+  return new Promise((resolve, reject) => {
+    const abort = () => {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
+      reject(signal?.reason ?? createAbortError());
+    };
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }, delayMs);
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+
 function shouldFallbackToChatCompletions(status: number, diagnostic: string | undefined): boolean {
-  if (status === 404 || status === 405) {
+  if (status === 404 || status === 405 || status === 502 || status === 503 || status === 504) {
     return true;
   }
   const normalized = (diagnostic ?? "").toLowerCase();

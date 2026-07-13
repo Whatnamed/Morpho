@@ -252,17 +252,52 @@ describe("openai-compatible provider adapter", () => {
     }
   });
 
-  it("does not hide provider 5xx failures behind a Chat Completions fallback", async () => {
+  it("retries a transient Responses gateway failure before succeeding", async () => {
     const calls: string[] = [];
     const originalFetch = global.fetch;
     global.fetch = async (input) => {
       calls.push(String(input));
-      return new Response("bad gateway", { status: 502 }) as unknown as Response;
+      if (calls.length === 1) {
+        return new Response("bad gateway", { status: 502 }) as unknown as Response;
+      }
+      return jsonResponse({
+        id: "resp_retried",
+        output: [{ type: "message", content: [{ type: "output_text", text: "retried response" }] }]
+      }) as unknown as Response;
     };
 
     try {
-      await expect(executeOpenAiCompatibleResponse(config(), request())).rejects.toBeInstanceOf(OpenAiCompatibleProviderError);
-      expect(calls).toEqual(["https://api.example.com/v1/responses"]);
+      const result = await executeOpenAiCompatibleResponse(config(), request());
+      expect(calls).toEqual(["https://api.example.com/v1/responses", "https://api.example.com/v1/responses"]);
+      expect(result.outputText).toBe("retried response");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("falls back to Chat Completions after repeated Responses gateway failures", async () => {
+    const calls: string[] = [];
+    const originalFetch = global.fetch;
+    global.fetch = async (input) => {
+      calls.push(String(input));
+      if (String(input).endsWith("/responses")) {
+        return new Response("bad gateway", { status: 502 }) as unknown as Response;
+      }
+      return jsonResponse({
+        id: "chat_after_gateway_failure",
+        choices: [{ message: { role: "assistant", content: "chat fallback response" } }]
+      }) as unknown as Response;
+    };
+
+    try {
+      const result = await executeOpenAiCompatibleResponse(config(), request());
+      expect(calls).toEqual([
+        "https://api.example.com/v1/responses",
+        "https://api.example.com/v1/responses",
+        "https://api.example.com/v1/responses",
+        "https://api.example.com/v1/chat/completions"
+      ]);
+      expect(result.outputText).toBe("chat fallback response");
     } finally {
       global.fetch = originalFetch;
     }
