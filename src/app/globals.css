@@ -2752,25 +2752,6 @@ button:disabled {
   color: var(--text-primary);
 }
 
-.selection-toolbar button.brand {
-  background: var(--accent-brand);
-  color: #fff;
-}
-
-.selection-toolbar button.brand:hover {
-  background: var(--accent-brand-hover);
-  color: #fff;
-}
-
-.selection-toolbar button.danger {
-  color: var(--danger);
-}
-
-.selection-toolbar button.danger:hover {
-  background: rgba(166, 69, 58, 0.08);
-  color: var(--danger);
-}
-
 .canvas-toolbar-menu-anchor {
   position: relative;
 }
@@ -2826,21 +2807,6 @@ button:disabled {
   padding: 0;
   justify-content: center;
   border-radius: 8px;
-}
-
-.selection-toolbar .canvas-icon-button.is-active {
-  background: rgba(142, 76, 36, 0.12);
-  color: var(--accent-brand-hover);
-}
-
-.selection-toolbar .canvas-icon-button.is-danger {
-  color: var(--text-secondary);
-}
-
-.selection-toolbar .canvas-icon-button.is-danger:hover,
-.selection-toolbar .canvas-icon-button.is-danger:focus-visible {
-  background: rgba(166, 69, 58, 0.1);
-  color: var(--danger);
 }
 
 .selection-toolbar .canvas-icon-button:focus-visible,
@@ -2900,13 +2866,6 @@ button:disabled {
     inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
-.selection-toolbar .canvas-icon-button.stage-color-trigger.is-active .stage-color-swatch-face,
-.selection-toolbar .canvas-icon-button.stage-color-trigger:hover .stage-color-swatch-face {
-  box-shadow:
-    0 0 0 1.5px rgba(142, 76, 36, 0.42),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35);
-}
-
 .stage-toolbar-popover {
   position: absolute;
   z-index: 3;
@@ -2959,9 +2918,9 @@ button:disabled {
 .stage-border-option:hover,
 .stage-color-swatch.is-selected,
 .stage-border-option.is-selected {
-  border-color: rgba(142, 76, 36, 0.34);
-  background: rgba(142, 76, 36, 0.08);
-  color: var(--accent-brand-hover);
+  border-color: rgba(78, 68, 58, 0.2);
+  background: var(--surface-muted);
+  color: var(--text-primary);
 }
 
 /* Compact left: percentage sits close to the edge (no oversized right-aligned box). */
@@ -4776,10 +4735,6 @@ button:disabled {
 
 .tl-canvas__in-front .selection-toolbar button {
   pointer-events: auto;
-}
-
-.selection-toolbar button.brand {
-  background: var(--accent-select);
 }
 
 @media (max-width: 1280px) {

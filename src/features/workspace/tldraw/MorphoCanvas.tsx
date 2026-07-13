@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
 import { Tldraw, Vec, track, useEditor, type Editor, type TLShape, type TLShapeId, type TLShapePartial } from "tldraw";
 
-import { calculateAnchoredZoom } from "@/domain/morpho/canvasCamera";
+import {
+  DEFAULT_MAX_CANVAS_ZOOM,
+  DEFAULT_MIN_CANVAS_ZOOM,
+  calculateAnchoredZoomForTarget,
+  calculateWheelZoomLogDelta,
+  normalizeWheelDelta
+} from "@/domain/morpho/canvasCamera";
 import type { CanvasInstance, CanvasPoint, CanvasView, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
 import { getRenderableCanvasInstances } from "@/domain/morpho/workspace";
 import {
@@ -58,6 +64,7 @@ import {
   type CanvasSelectableKind,
   type CanvasSelectionRequest
 } from "./canvasSelection";
+import { createWheelZoomFrameScheduler, type WheelZoomFrameScheduler } from "./wheelZoomFrameScheduler";
 
 export type FocusArea = "overview" | "research" | "definition" | "visual" | "delivery";
 
@@ -130,8 +137,8 @@ export function resolveCanvasContextMenuKind(request: Pick<CanvasContextMenuRequ
 
 const shapeUtils = [MorphoShapeUtil, StageRegionShapeUtil, PendingImageShapeUtil];
 export const MORPHO_EDITOR_SYNC_RUN_OPTIONS = { history: "ignore" } as const;
-const MIN_WHEEL_ZOOM = 0.12;
-const MAX_WHEEL_ZOOM = 2.4;
+const MIN_WHEEL_ZOOM = DEFAULT_MIN_CANVAS_ZOOM;
+const MAX_WHEEL_ZOOM = DEFAULT_MAX_CANVAS_ZOOM;
 
 export type CanvasFocusBounds = { x: number; y: number; w: number; h: number; zoom: number };
 
@@ -203,6 +210,7 @@ export function MorphoCanvas({
   const lastAppliedFocusNonceRef = useRef<number | null>(null);
   const lastAppliedSelectionRequestNonceRef = useRef<number | null>(null);
   const viewPersistTimerRef = useRef<number | null>(null);
+  const wheelZoomSchedulerRef = useRef<WheelZoomFrameScheduler | null>(null);
   const latestViewRef = useRef<CanvasView>(workspace.canvas.view);
   const lastPersistedViewKeyRef = useRef(getCanvasViewKey(workspace.canvas.view));
   const lastContextMenuOpenAtRef = useRef(0);
@@ -318,6 +326,42 @@ export function MorphoCanvas({
     },
     [scheduleViewPersist]
   );
+  const applyWheelZoomFrame = useCallback(
+    ({ zoomLogDelta, screenPoint }: { zoomLogDelta: number; screenPoint: CanvasPoint }) => {
+      const editor = editorRef.current;
+      if (!editor) {
+        return;
+      }
+
+      const pagePoint = editor.screenToPage(screenPoint);
+      const camera = editor.getCamera();
+      const nextView = calculateAnchoredZoomForTarget({
+        camera: { x: camera.x, y: camera.y, zoom: camera.z },
+        anchorPagePoint: { x: pagePoint.x, y: pagePoint.y },
+        targetZoom: camera.z * Math.exp(zoomLogDelta),
+        minZoom: MIN_WHEEL_ZOOM,
+        maxZoom: MAX_WHEEL_ZOOM
+      });
+      editor.setCamera(new Vec(nextView.x, nextView.y, nextView.zoom), {
+        immediate: true
+      });
+      publishCameraView(nextView);
+    },
+    [publishCameraView]
+  );
+
+  useEffect(() => {
+    const scheduler = createWheelZoomFrameScheduler({
+      onFrame: applyWheelZoomFrame
+    });
+    wheelZoomSchedulerRef.current = scheduler;
+    return () => {
+      scheduler.dispose();
+      if (wheelZoomSchedulerRef.current === scheduler) {
+        wheelZoomSchedulerRef.current = null;
+      }
+    };
+  }, [applyWheelZoomFrame]);
 
   const flushPendingInstances = useCallback(() => {
     if (instancesPersistTimerRef.current !== null) {
@@ -761,28 +805,21 @@ export function MorphoCanvas({
   );
 
   const handleCanvasWheel = useCallback((event: WheelEvent) => {
-    const editor = editorRef.current;
-    if (!editor) {
+    const scheduler = wheelZoomSchedulerRef.current;
+    if (!scheduler) {
       return;
     }
 
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
-    const pagePoint = editor.screenToPage({ x: event.clientX, y: event.clientY });
-    const camera = editor.getCamera();
-    const nextView = calculateAnchoredZoom({
-      camera: { x: camera.x, y: camera.y, zoom: camera.z },
-      anchorPagePoint: { x: pagePoint.x, y: pagePoint.y },
-      deltaY: event.deltaY,
-      minZoom: MIN_WHEEL_ZOOM,
-      maxZoom: MAX_WHEEL_ZOOM
+    scheduler.push({
+      zoomLogDelta: calculateWheelZoomLogDelta(
+        normalizeWheelDelta(event.deltaY, event.deltaMode, Math.max(window.innerHeight, 1))
+      ),
+      screenPoint: { x: event.clientX, y: event.clientY }
     });
-    editor.setCamera(new Vec(nextView.x, nextView.y, nextView.zoom), {
-      immediate: true
-    });
-    publishCameraView(nextView);
-  }, [publishCameraView]);
+  }, []);
 
   useEffect(() => {
     const host = canvasHostRef.current;

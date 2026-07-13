@@ -87,6 +87,35 @@ describe("StageRegionToolbar", () => {
     expect(html).not.toContain('data-tooltip="透明度"');
   });
 
+  it("uses icon changes for persisted background and lock state", () => {
+    const region = {
+      ...getStageRegions(ensureStageRegions(createInitialWorkspace()))[0],
+      backgroundVisible: false,
+      locked: true
+    };
+    const html = renderToStaticMarkup(
+      createElement(StageRegionToolbar, {
+        region,
+        placement: { x: 120, y: 220, placement: "above" },
+        canFit: true,
+        openPopover: null,
+        onOpenPopoverChange: () => undefined,
+        onUpdateStyle: () => undefined,
+        onBeginOpacity: () => undefined,
+        onPreviewOpacity: () => undefined,
+        onCommitOpacity: () => undefined,
+        onCancelOpacity: () => undefined,
+        onFit: () => undefined,
+        onResetStyle: () => undefined
+      })
+    );
+
+    expect(html).toContain('aria-label="显示背景"');
+    expect(html).toContain("lucide-eye-off");
+    expect(html).toContain('aria-label="解锁分区"');
+    expect(html).toContain("lucide-lock-keyhole");
+  });
+
   it("keeps opacity open through repeated pointer commits and closes only outside or on Escape", async () => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     const region = getStageRegions(ensureStageRegions(createInitialWorkspace()))[0]!;

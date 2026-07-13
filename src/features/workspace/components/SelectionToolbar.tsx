@@ -23,11 +23,14 @@ import {
   PackageOpen,
   PenLine,
   Pin,
+  PinOff,
   RotateCcw,
   Scan,
   ScanSearch,
   Sparkles,
-  Trash2
+  Trash2,
+  Unlink,
+  X
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
@@ -225,7 +228,7 @@ export function SelectionToolbar({
       ) : null}
       {onlyOne && primary.type === "research" ? (
         <div className="selection-toolbar-group" role="group" aria-label="研究">
-          <CanvasIconButton label="查看研究详情" className="brand" onClick={onOpenResearchDetail}>
+          <CanvasIconButton label="查看研究详情" onClick={onOpenResearchDetail}>
             <BookOpen size={15} />
           </CanvasIconButton>
           <CanvasIconButton label="AI 代选" onClick={onAutoSelectResearch}>
@@ -235,14 +238,14 @@ export function SelectionToolbar({
       ) : null}
       {onlyOne && primary.type === "delivery" ? (
         <div className="selection-toolbar-group" role="group" aria-label="交付">
-          <CanvasIconButton label="打开交付准备" className="brand" onClick={onOpenDeliveryPreparation}>
+          <CanvasIconButton label="打开交付准备" onClick={onOpenDeliveryPreparation}>
             <PackageOpen size={15} />
           </CanvasIconButton>
         </div>
       ) : null}
       {onlyOne && primary.type === "proposalDraft" ? (
         <div className="selection-toolbar-group" role="group" aria-label="草案">
-          <CanvasIconButton label="查看草案详情" className="brand" onClick={onOpenProposalDetail}>
+          <CanvasIconButton label="查看草案详情" onClick={onOpenProposalDetail}>
             <Info size={15} />
           </CanvasIconButton>
           <CanvasIconButton label="继续讨论草案" onClick={onContinueProposalDiscussion}>
@@ -258,7 +261,7 @@ export function SelectionToolbar({
       ) : null}
       {onlyOne && primary.type === "designDefinition" ? (
         <div className="selection-toolbar-group" role="group" aria-label="设计定义">
-          <CanvasIconButton label="查看设计定义详情" className="brand" onClick={onOpenDesignDefinitionDetail}>
+          <CanvasIconButton label="查看设计定义详情" onClick={onOpenDesignDefinitionDetail}>
             <Info size={15} />
           </CanvasIconButton>
           {!primary.isCurrentEffective ? (
@@ -279,14 +282,14 @@ export function SelectionToolbar({
             pressed={primary.isDefaultReference}
             onClick={onReferenceIntent}
           >
-            <Pin size={15} />
+            {primary.isDefaultReference ? <PinOff size={15} /> : <Pin size={15} />}
           </CanvasIconButton>
         </div>
       ) : null}
       {showDirectionActions ? (
         <>
           <div className="selection-toolbar-group" role="group" aria-label="方向">
-            <CanvasIconButton label="查看方向详情" className="brand" onClick={onOpenConceptDirectionDetail}>
+            <CanvasIconButton label="查看方向详情" onClick={onOpenConceptDirectionDetail}>
               <Info size={15} />
             </CanvasIconButton>
             {primary.status !== "primary" && primary.status !== "eliminated" ? (
@@ -319,7 +322,7 @@ export function SelectionToolbar({
               aria-expanded={isDirectionMenuOpen}
               onClick={() => setIsDirectionMenuOpen((value) => !value)}
             >
-              <MoreHorizontal size={16} />
+              {isDirectionMenuOpen ? <X size={16} /> : <MoreHorizontal size={16} />}
             </CanvasIconButton>
             {isDirectionMenuOpen ? (
               <div
@@ -357,7 +360,7 @@ export function SelectionToolbar({
           pressed={isDesignTraceActive}
           onClick={onToggleDesignTrace}
         >
-          <GitBranch size={15} />
+          {isDesignTraceActive ? <Unlink size={15} /> : <GitBranch size={15} />}
         </CanvasIconButton>
       </div>
       {showGenericObjectActions ? (

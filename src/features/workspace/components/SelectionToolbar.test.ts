@@ -55,6 +55,7 @@ describe("SelectionToolbar", () => {
     // Seed image is already the default reference: pin is active and toggles cancel.
     expect(html).toContain('aria-label="取消后续默认参考"');
     expect(html).toContain("is-active");
+    expect(html).toContain("lucide-pin-off");
     expect(html).not.toContain('class="canvas-icon-button brand"');
     expect(html).not.toContain('class="canvas-icon-button brand is-active"');
     expect(html).toContain('aria-label="隐藏对象"');
@@ -108,6 +109,52 @@ describe("SelectionToolbar", () => {
     expect(html).toContain('aria-label="设为后续默认参考"');
     expect(html).not.toContain('aria-label="取消后续默认参考"');
     expect(html).not.toMatch(/aria-label="设为后续默认参考"[^>]*is-active|is-active[^>]*aria-label="设为后续默认参考"/);
+    expect(html).toContain("lucide-pin");
+    expect(html).not.toContain("lucide-pin-off");
+  });
+
+  it("keeps detail actions neutral and changes the trace icon instead of adding an active fill", () => {
+    const workspace = createInitialWorkspace();
+    const selected = [workspace.objects["research-night-path"]];
+    const html = renderToStaticMarkup(
+      createElement(SelectionToolbar, {
+        selectedObjects: selected,
+        placement: { x: 120, y: 220, placement: "above" },
+        isDesignTraceActive: true,
+        onAskAi: () => undefined,
+        onToggleDesignTrace: () => undefined,
+        onOpenResearchDetail: () => undefined,
+        onAutoSelectResearch: () => undefined,
+        onOpenDocumentReader: () => undefined,
+        onOpenDeliveryPreparation: () => undefined,
+        onLocalEdit: () => undefined,
+        onReferenceIntent: () => undefined,
+        onHide: () => undefined,
+        onDelete: () => undefined,
+        onOpenProposalDetail: () => undefined,
+        onApplyProposal: () => undefined,
+        onRejectProposal: () => undefined,
+        onContinueProposalDiscussion: () => undefined,
+        onOpenDesignDefinitionDetail: () => undefined,
+        onOpenConceptDirectionDetail: () => undefined,
+        onSetCurrentDesignDefinition: () => undefined,
+        onReviseDirection: () => undefined,
+        onSplitDirection: () => undefined,
+        onMergeDirections: () => undefined,
+        onCreateVisualBranch: () => undefined,
+        onSetDirectionPrimary: () => undefined,
+        onSetDirectionAlternative: () => undefined,
+        onRestoreDirectionAsAlternative: () => undefined,
+        onEliminateDirection: () => undefined,
+        onReorderLayer: () => undefined
+      })
+    );
+
+    expect(html).toContain('aria-label="查看研究详情"');
+    expect(html).not.toContain("canvas-icon-button brand");
+    expect(html).toContain('aria-label="关闭链路"');
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain("lucide-unlink");
   });
 
   it("offers setting a non-current design definition as current", () => {
