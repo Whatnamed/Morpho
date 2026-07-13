@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  AGENT_TURN_MAX_AUTO_IMAGE_ITEMS,
+  AGENT_TURN_EMERGENCY_DURATION_MS,
+  AGENT_TURN_EMERGENCY_MODEL_TURN_CEILING,
   AGENT_TURN_REPEAT_TOOL_CALL_LIMIT,
-  isRepeatedAgentToolCall,
+  AGENT_WEB_SEARCH_MAX_SOURCES_PER_CALL,
+  buildAgentEmergencyFinalizationRequest,
   isAgentMutatingTool,
-  webSearchSourcesToCitations,
-  wouldExceedAutoImageTurnLimit
+  isRepeatedAgentToolCall,
+  mergeAgentSearchCitations,
+  shouldFinalizeAgentTurn,
+  webSearchSourcesToCitations
 } from "./agentTurnLimits";
-import type { GenerateVisualsArgs } from "./morphoAgent";
+import type { MorphoAgentToolArguments } from "./morphoAgent";
 
 describe("agent turn limits", () => {
   it("classifies only project-writing agent tools as mutating", () => {
@@ -22,9 +26,39 @@ describe("agent turn limits", () => {
     expect(isAgentMutatingTool("generate_visuals")).toBe(true);
   });
 
-  it("applies the automatic image cap across the whole agent turn", () => {
-    expect(wouldExceedAutoImageTurnLimit(0, makePlan(AGENT_TURN_MAX_AUTO_IMAGE_ITEMS))).toBe(false);
-    expect(wouldExceedAutoImageTurnLimit(3, makePlan(2))).toBe(true);
+  it("keeps the web source cap scoped to one search payload", () => {
+    expect(AGENT_WEB_SEARCH_MAX_SOURCES_PER_CALL).toBe(5);
+  });
+
+  it.each([3, 5, 6])("allows %i consecutive searches when every query is different", (count) => {
+    const states = runSearchSequence(
+      Array.from({ length: count }, (_, index) => ({
+        name: "search_web_evidence" as const,
+        args: { queries: [`research angle ${index + 1}`], reason: `Close evidence gap ${index + 1}.` }
+      }))
+    );
+
+    expect(states).toHaveLength(count);
+    expect(states.every((state) => !state.exceeded && state.repeatCount === 1)).toBe(true);
+  });
+
+  it("normalizes equivalent searches before applying the repeat-loop guard", () => {
+    const searches: MorphoAgentToolArguments[] = Array.from(
+      { length: AGENT_TURN_REPEAT_TOOL_CALL_LIMIT + 1 },
+      (_, index) => ({
+        name: "search_web_evidence",
+        args: {
+          queries: index % 2 === 0 ? ["  Rural   bathroom safety ", "grab rail"] : ["GRAB RAIL", "rural bathroom safety"],
+          reason: `Changed commentary ${index + 1}`
+        }
+      })
+    );
+
+    const states = runSearchSequence(searches);
+    expect(states.at(-1)).toMatchObject({
+      repeatCount: AGENT_TURN_REPEAT_TOOL_CALL_LIMIT + 1,
+      exceeded: true
+    });
   });
 
   it("converts local web search sources into provider citations", () => {
@@ -46,45 +80,66 @@ describe("agent turn limits", () => {
     ]);
   });
 
-  it("detects only consecutive repeated tool signatures as an emergency-loop signal", () => {
-    const first = isRepeatedAgentToolCall(undefined, 0, {
-      name: "read_selected_context",
-      args: {}
-    });
-    const second = isRepeatedAgentToolCall(first.signature, first.repeatCount, {
-      name: "read_selected_context",
-      args: {}
-    });
-    const different = isRepeatedAgentToolCall(second.signature, second.repeatCount, {
-      name: "search_web_evidence",
-      args: { queries: ["night safety"], reason: "Need current sources." }
-    });
+  it("deduplicates citations across repeated hosted and local search results", () => {
+    const merged = mergeAgentSearchCitations(
+      [
+        { title: "Source A", url: "https://example.com/report#summary", snippet: "Shared evidence" },
+        { title: "Source B", url: "https://example.org/other", snippet: "Different evidence" }
+      ],
+      [
+        { title: "Source A", url: "https://example.com/report", snippet: "Shared evidence" },
+        { title: "Mirror of Source B", url: "https://mirror.example.org/report", snippet: "  Different   evidence " },
+        { title: "Source C", url: "https://example.net/new", snippet: "New evidence" }
+      ]
+    );
 
-    expect(first).toMatchObject({ repeatCount: 1, exceeded: false });
-    expect(second).toMatchObject({ repeatCount: 2, exceeded: false });
-    expect(different).toMatchObject({ repeatCount: 1, exceeded: false });
+    expect(merged.map((citation) => citation.title.trim())).toEqual(["Source A", "Source B", "Source C"]);
+  });
 
-    let repeated = second;
-    for (let index = 0; index < AGENT_TURN_REPEAT_TOOL_CALL_LIMIT; index += 1) {
-      repeated = isRepeatedAgentToolCall(repeated.signature, repeated.repeatCount, {
-        name: "read_selected_context",
-        args: {}
-      });
-    }
-    expect(repeated.exceeded).toBe(true);
+  it("uses the model ceiling, duration, and loop signal only as high-level finalization guards", () => {
+    expect(
+      shouldFinalizeAgentTurn({ emergencyGuardTriggered: false, modelTurnCount: 27, elapsedMs: 17 * 60 * 1000 })
+    ).toBe(false);
+    expect(
+      shouldFinalizeAgentTurn({
+        emergencyGuardTriggered: false,
+        modelTurnCount: AGENT_TURN_EMERGENCY_MODEL_TURN_CEILING,
+        elapsedMs: 0
+      })
+    ).toBe(true);
+    expect(
+      shouldFinalizeAgentTurn({
+        emergencyGuardTriggered: false,
+        modelTurnCount: 0,
+        elapsedMs: AGENT_TURN_EMERGENCY_DURATION_MS
+      })
+    ).toBe(true);
+    expect(shouldFinalizeAgentTurn({ emergencyGuardTriggered: true, modelTurnCount: 1, elapsedMs: 1 })).toBe(true);
+  });
+
+  it("finalizes with tools disabled while preserving prior outputs and trace input", () => {
+    const priorInput = [
+      { role: "user", content: [{ type: "input_text", text: "Research broadly." }] },
+      { type: "function_call_output", call_id: "search-3", output: "{\"sources\":[\"kept\"]}" }
+    ];
+
+    const request = buildAgentEmergencyFinalizationRequest(priorInput);
+
+    expect(request.tools).toEqual([]);
+    expect(request.continuation).toBe(true);
+    expect(request.input.slice(0, priorInput.length)).toEqual(priorInput);
+    expect(request.input.at(-1)).toMatchObject({ role: "user" });
   });
 });
 
-function makePlan(count: number): GenerateVisualsArgs {
-  return {
-    kind: "directionPreview",
-    items: Array.from({ length: count }, (_, index) => ({
-      id: `item-${index + 1}`,
-      title: `Item ${index + 1}`,
-      purpose: "Preview",
-      prompt: "Warm product preview",
-      referenceObjectIds: ["direction-soft-rail"],
-      role: "conceptImage"
-    }))
-  };
+function runSearchSequence(tools: MorphoAgentToolArguments[]) {
+  let signature: string | undefined;
+  let repeatCount = 0;
+
+  return tools.map((tool) => {
+    const next = isRepeatedAgentToolCall(signature, repeatCount, tool);
+    signature = next.signature;
+    repeatCount = next.repeatCount;
+    return next;
+  });
 }

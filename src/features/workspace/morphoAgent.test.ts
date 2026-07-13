@@ -124,6 +124,31 @@ describe("Morpho agent tool argument validation", () => {
     expect(prompt).toContain("短标题：一句说明");
   });
 
+  it("guides broad evidence search and validated image counts without low fixed gates", () => {
+    const workspace = createInitialWorkspace();
+    const context = buildTaskContext(workspace, {
+      kind: "general",
+      draft: "全面搜索后生成六张视觉素材",
+      selectedObjectIds: []
+    });
+    const prompt = buildMorphoAgentSystemPrompt({
+      mode: "auto",
+      workspace,
+      selectedObjects: [],
+      context,
+      providerTaskContext: buildProviderTaskContext(context)
+    });
+    const tools = JSON.stringify(buildMorphoAgentTools(true));
+
+    expect(prompt).toContain("证据充分后自然停止");
+    expect(prompt).toContain("不得重复完全相同的搜索");
+    expect(prompt).toContain("图片数量本身不构成确认理由");
+    expect(prompt).toContain("后续基于新结果产生新的明确需求时，可以再次调用 generate_visuals");
+    expect(tools).toContain("全面研究可用不同查询继续补充");
+    expect(tools).toContain("数量遵循用户请求和通过校验的计划");
+    expect(prompt).not.toMatch(/最多\s*[24]\s*张|超过\s*[24]\s*张/);
+  });
+
   it("keeps ordinary multi-draft analysis in conversation instead of forcing Compare", () => {
     const workspace = createInitialWorkspace();
     const selectedObjects = [workspace.objects["definition-current"]].filter(Boolean);

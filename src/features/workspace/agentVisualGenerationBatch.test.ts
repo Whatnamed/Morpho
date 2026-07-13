@@ -81,4 +81,51 @@ describe("agent visual generation batch", () => {
       reason: expect.stringContaining("不得拆分")
     });
   });
+
+  it.each([5, 6])("accepts one complete %i-item visual development plan", (count) => {
+    const expected = resolveExpectedVisualGenerationCount({
+      draft: `请生成 ${count} 张视觉素材`,
+      kind: "visualDevelopment",
+      selectedDirectionCount: 0
+    });
+    const batch = buildAgentVisualGenerationBatch({
+      expected,
+      calls: [{ callId: `call-${count}`, plan: makePlan(count, `batch-${count}`) }]
+    });
+
+    expect(batch).toMatchObject({ status: "ok", expected: { totalItems: count } });
+    if (batch.status === "ok") {
+      expect(batch.plan.items).toHaveLength(count);
+      expect(batch.plan.items[0]?.id).toBe(`batch-${count}-1`);
+    }
+  });
+
+  it("accepts two independent 3-item plans in the same agent turn", () => {
+    const expected = { totalItems: 3, source: "explicitTotal" as const };
+    const firstBatch = buildAgentVisualGenerationBatch({
+      expected,
+      calls: [{ callId: "call-first-3", plan: makePlan(3, "first") }]
+    });
+    const secondBatch = buildAgentVisualGenerationBatch({
+      expected,
+      calls: [{ callId: "call-second-3", plan: makePlan(3, "second") }]
+    });
+
+    expect(firstBatch.status).toBe("ok");
+    expect(secondBatch.status).toBe("ok");
+    if (firstBatch.status === "ok" && secondBatch.status === "ok") {
+      expect([...firstBatch.plan.items, ...secondBatch.plan.items]).toHaveLength(6);
+    }
+  });
 });
+
+function makePlan(count: number, prefix: string) {
+  return {
+    kind: "visualDevelopment" as const,
+    items: Array.from({ length: count }, (_, index) => ({
+      ...firstItem,
+      id: `${prefix}-${index + 1}`,
+      title: `${prefix} ${index + 1}`
+    }))
+  };
+}

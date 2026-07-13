@@ -238,7 +238,7 @@ Compare 是任意 Context 中可发起的局部比较操作，不是固定区域
 
 研究、图像生成、设计定义草案和概念方向草案进入受控 Operation Runtime。真正调用 Provider 且可能生成 Proposal 或图片的任务统一经过 active Operation gate：researchOperation、imageGeneration、createDesignDefinition、reviseDesignDefinition、createConceptDirections、reviseConceptDirection、splitConceptDirection、mergeConceptDirections。已有 queued / preparing / running / waiting_for_user Operation 时，新任务必须阻止并说明当前任务，不能静默并行提交。
 
-普通 discussion / comparison 仍可作为轻量连续聊天；它们不因选中方向或推荐意图自动生成 Proposal。模型不得自由无限调用工具、扩展搜索范围或直接改写项目对象。
+普通 discussion / comparison 仍可作为轻量连续聊天；它们不因选中方向或推荐意图自动生成 Proposal。模型只能围绕当前任务和证据缺口调用工具，不得无意义重复搜索、无限扩展任务范围或直接改写项目对象。
 
 Proposal reviewState 的应用行为必须区分：
 
@@ -335,7 +335,13 @@ MiMo 视觉输入和 MiMo web search 都必须以官方协议和真实验证为�
 
 当 `MORPHO_MIMO_WEB_SEARCH_ENABLED=true` 时，chatAnalysis 与 researchOperation 可向 MiMo 提供原生 web_search 工具，由模型判断是否需要联网验证、补充案例、查找当前信息或提供外部来源。普通创意发散、文字改写和不依赖外部事实的视觉讨论不应主动联网。imageGeneration 永不启用 web_search。
 
+受控 Agent 的单次回合不设置累计联网搜索次数上限。搜索是否继续由任务需要和证据充分程度决定；用户要求全面、广泛或多角度调研时，可以拆分不同查询、核对来源并针对缺口继续检索。单次本地搜索结果仍保持合理体积，跨搜索来源按 URL 和内容去重，较早工具结果继续由 Context 机制压缩。连续相同工具与等价参数仍会触发循环保护，不同关键词或不同角度不得被误判为重复。
+
 聊天、ResearchAnalysisProposal 和正式 ResearchObject 只能展示 provider 返回的真实 citation snapshot；不得从普通模型文本里猜测或伪造来源。
+
+通过结构、字段、来源与参考校验的 Agent 图像计划按用户请求执行；单次 Agent 回合不设置累计图片数量确认门槛，图片数量本身也不是请求确认的理由。图片生成仍受 Provider 真实配额、API 参数校验、并发控制、pending slot、逐项写回、失败隔离和用户取消约束，且每张结果都创建新对象，不覆盖原图。自动执行/先确认模式、用户主动确认以及其他高影响项目决定的确认语义保持不变。
+
+内部 28 个模型回合、18 分钟总时长和等价工具重复检测只是异常恢复保护，不是产品步骤或可见进度。触发保护后停止继续调用工具，保留已有过程、引用、图片和项目写入，并用一次无工具请求整理已完成内容与未完成部分。
 
 ---
 
