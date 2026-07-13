@@ -10,7 +10,8 @@ import {
   resolveContinuityValidity,
   type LegacyProjectFocus
 } from "./projectContinuity";
-import { nightrailWorkspace } from "./seed";
+import initialCaseStudyWorkspaceFixture from "./caseStudy/currentCaseWorkspace.generated.json";
+import legacyNightrailTestFixture from "./caseStudy/legacyNightrailPristine.fixture.json";
 import type { ArtifactProposal, SourceSemanticSnapshot } from "../operations/types";
 import type {
   AiDraftResult,
@@ -133,7 +134,28 @@ export type VisualBranchActionResult =
     };
 
 export function createInitialWorkspace(): MorphoWorkspace {
-  return reconcileWorkspaceDerivedState(structuredClone(nightrailWorkspace));
+  if (process.env.NODE_ENV === "test") {
+    return createTestWorkspace();
+  }
+
+  return createCurrentCaseStudyWorkspace();
+}
+
+export function createCurrentCaseStudyWorkspace(): MorphoWorkspace {
+  const parsed = parseWorkspace(JSON.stringify(initialCaseStudyWorkspaceFixture));
+  if (parsed.status === "failed") {
+    throw new Error(`Current case study workspace is invalid: ${parsed.reason}`);
+  }
+  return reconcileWorkspaceDerivedState(structuredClone(parsed.workspace));
+}
+
+// Test-only fixture kept separate from the deployable case study so domain tests remain focused.
+export function createTestWorkspace(): MorphoWorkspace {
+  const parsed = parseWorkspace(JSON.stringify(legacyNightrailTestFixture));
+  if (parsed.status === "failed") {
+    throw new Error(`Legacy test workspace is invalid: ${parsed.reason}`);
+  }
+  return reconcileWorkspaceDerivedState(structuredClone(parsed.workspace));
 }
 
 export function createBlankWorkspace(projectId: string): MorphoWorkspace {

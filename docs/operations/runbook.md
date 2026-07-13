@@ -146,7 +146,7 @@ Expected local URLs:
 
 ```text
 http://127.0.0.1:3000/
-http://127.0.0.1:3000/projects/project-nightrail
+http://127.0.0.1:3000/projects/project-morpho-case-study
 ```
 
 ## Checks
@@ -244,7 +244,7 @@ npm.cmd run dev -- --hostname 127.0.0.1 --port 3007
 
 Then use Playwright or an equivalent real browser to:
 
-1. open `http://127.0.0.1:3007/projects/project-nightrail`;
+1. open `http://127.0.0.1:3007/projects/project-morpho-case-study`;
 2. intercept `/api/ai/chat`;
 3. intercept `/api/ai/image`;
 4. exercise the required M4.3 flows without real provider keys;
@@ -331,7 +331,7 @@ Per-project workspace:
 morpho.project.${projectId}.workspace.v1
 ```
 
-Legacy single-project key read for migration:
+Legacy single-project key read for a one-time pristine-Nightrail migration:
 
 ```text
 morpho.workspace.nightrail.v1

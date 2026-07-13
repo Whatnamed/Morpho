@@ -14,6 +14,7 @@ import {
   type LocalProjectCatalog,
   type LocalProjectSummary
 } from "@/infrastructure/persistence/localProjectStore";
+import { ensureCurrentCaseStudyAssets } from "@/infrastructure/assets/currentCaseStudyAssetInstaller";
 import { createBrowserSupabaseClient } from "@/infrastructure/supabase/browser";
 import type { AccountAccessSnapshot } from "@/server/auth/accountAccess";
 import { useWorkspaceAssetUrls } from "@/features/workspace/useWorkspaceAssetUrls";
@@ -35,7 +36,7 @@ export function ProjectHomeClient({ account, accessError }: ProjectHomeClientPro
 
   useEffect(() => {
     let isCancelled = false;
-    queueMicrotask(() => {
+    queueMicrotask(async () => {
       if (isCancelled) return;
 
       const result = initializeLocalProjectCatalog(window.localStorage);
@@ -44,6 +45,8 @@ export function ProjectHomeClient({ account, accessError }: ProjectHomeClientPro
         return;
       }
 
+      await ensureCurrentCaseStudyAssets();
+      if (isCancelled) return;
       setCatalog(result.catalog);
     });
 

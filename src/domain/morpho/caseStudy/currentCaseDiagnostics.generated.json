@@ -1,0 +1,37 @@
+{
+  "assetCount": 28,
+  "caseStudyVersion": "2026-07-in-progress-1",
+  "chat": {
+    "agentTraceCount": 22,
+    "agentTracePartCount": 76,
+    "assistantMessageCount": 102,
+    "checkpointCount": 1,
+    "citationCount": 18,
+    "userMessageCount": 82
+  },
+  "cleanedCategories": [
+    "local-or-temporary-url"
+  ],
+  "embeddedAssetCount": 28,
+  "missingAssetCount": 0,
+  "objectTypes": {
+    "conceptDirection": 3,
+    "delivery": 2,
+    "designDefinition": 3,
+    "file": 3,
+    "image": 21,
+    "keyConclusion": 6,
+    "research": 4
+  },
+  "project": {
+    "id": "project-morpho-case-study",
+    "sourceId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+    "subtitle": "从一句话、图片、文件或链接开始。",
+    "title": "测试",
+    "workspaceSchemaVersion": 14
+  },
+  "referenceOnlyAssetCount": 0,
+  "resourceBytes": 40880166,
+  "sizeMismatchCount": 0,
+  "workspaceFingerprint": "8a7b6d79"
+}

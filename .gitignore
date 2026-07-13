@@ -16,3 +16,4 @@ out/
 !.dev.vars.example
 .DS_Store
 Thumbs.db
+temp/

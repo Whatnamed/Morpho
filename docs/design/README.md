@@ -50,12 +50,9 @@ Use it only to understand:
 
 ## Demo content
 
-The official Morpho demo project is:
+The deployable built-in case study is generated from the current editable Morpho backup. Its project content is intentionally real and may remain in progress.
 
-> 夜航 / Nightrail
-> 为独居老人的夜间起身与卫浴路径设计一套低施工、非医疗化的连续辅助系统。
-
-All new prototype and implementation data should use this project unless the task explicitly creates another example project.
+`Morpho_UI_原型设计说明_v1.md` still contains `夜航 / Nightrail` as a v1 prototype illustration. Treat that material as visual-reference history, not as deployable runtime seed data.
 
 ## Archive
 

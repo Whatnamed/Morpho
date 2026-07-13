@@ -1,0 +1,3 @@
+# Generated case-study source assets are hash-verified before BlobStore installation.
+public/case-study/current/assets/*.md -text -whitespace
+public/case-study/current/assets/*.txt -text -whitespace

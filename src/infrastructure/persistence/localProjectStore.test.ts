@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { createBlankWorkspace, createInitialWorkspace, serializeWorkspace } from "../../domain/morpho/workspace";
+import { CURRENT_CASE_STUDY_ID } from "../../domain/morpho/caseStudy/currentCaseStudy";
+import { createBlankWorkspace, createTestWorkspace, serializeWorkspace } from "../../domain/morpho/workspace";
 import {
   CATALOG_STORAGE_KEY,
   LEGACY_WORKSPACE_STORAGE_KEY,
@@ -12,9 +13,9 @@ import {
 } from "./localProjectStore";
 
 describe("local project catalog persistence", () => {
-  it("migrates the legacy single Nightrail workspace into a project catalog without deleting legacy raw data", () => {
+  it("replaces the sole pristine legacy Nightrail workspace with the current case study", () => {
     const storage = createMemoryStorage();
-    const legacyRaw = serializeWorkspace(createInitialWorkspace());
+    const legacyRaw = serializeWorkspace(createTestWorkspace());
     storage.setItem(LEGACY_WORKSPACE_STORAGE_KEY, legacyRaw);
 
     const result = initializeLocalProjectCatalog(storage);
@@ -23,9 +24,106 @@ describe("local project catalog persistence", () => {
     if (result.status !== "ok") {
       throw new Error("Expected catalog migration to succeed.");
     }
-    expect(result.catalog.projects.map((project) => project.id)).toContain("project-nightrail");
-    expect(storage.getItem(getProjectWorkspaceStorageKey("project-nightrail"))).toBeTruthy();
-    expect(storage.getItem(LEGACY_WORKSPACE_STORAGE_KEY)).toBe(legacyRaw);
+    expect(result.catalog.projects.map((project) => project.id)).toEqual([CURRENT_CASE_STUDY_ID]);
+    expect(storage.getItem(getProjectWorkspaceStorageKey("project-nightrail"))).toBeNull();
+    expect(storage.getItem(getProjectWorkspaceStorageKey(CURRENT_CASE_STUDY_ID))).toBeTruthy();
+    expect(storage.getItem(LEGACY_WORKSPACE_STORAGE_KEY)).toBeNull();
+  });
+
+  it("still recognizes pristine Nightrail after only view and selection state changes", () => {
+    const storage = createMemoryStorage();
+    const legacy = createTestWorkspace();
+    storage.setItem(
+      LEGACY_WORKSPACE_STORAGE_KEY,
+      serializeWorkspace({
+        ...legacy,
+        project: {
+          ...legacy.project,
+          lastOpenedAt: "2026-07-13T00:00:00.000Z",
+          updatedAt: "2026-07-13T00:00:00.000Z"
+        },
+        canvas: {
+          ...legacy.canvas,
+          view: { x: 100, y: 40, zoom: 1.2 }
+        },
+        ui: {
+          ...legacy.ui,
+          lastSelectionIds: [],
+          canvasView: { x: 100, y: 40, zoom: 1.2 }
+        }
+      })
+    );
+
+    const result = initializeLocalProjectCatalog(storage);
+
+    expect(result).toMatchObject({ status: "ok", catalog: { recentProjectId: CURRENT_CASE_STUDY_ID } });
+  });
+
+  it("does not replace legacy Nightrail after the user adds an object or a chat message", () => {
+    const storage = createMemoryStorage();
+    const legacy = createTestWorkspace();
+    const modified = {
+      ...legacy,
+      objects: {
+        ...legacy.objects,
+        "user-note": {
+          id: "user-note",
+          type: "text" as const,
+          title: "用户补充",
+          summary: "用户自己的内容",
+          body: "保留这条笔记。",
+          createdBy: "user" as const,
+          visibility: "active" as const
+        }
+      },
+      ai: {
+        ...legacy.ai,
+        messages: [...legacy.ai.messages, { id: "user-message-added", role: "user" as const, body: "继续推进。" }]
+      }
+    };
+    storage.setItem(LEGACY_WORKSPACE_STORAGE_KEY, serializeWorkspace(modified));
+
+    const result = initializeLocalProjectCatalog(storage);
+
+    expect(result).toMatchObject({ status: "ok", catalog: { recentProjectId: "project-nightrail" } });
+    expect(storage.getItem(getProjectWorkspaceStorageKey(CURRENT_CASE_STUDY_ID))).toBeNull();
+    expect(storage.getItem(LEGACY_WORKSPACE_STORAGE_KEY)).toBeTruthy();
+  });
+
+  it("preserves a legacy project when another local project already exists", () => {
+    const storage = createMemoryStorage();
+    const legacy = createTestWorkspace();
+    const other = createBlankWorkspace("project-other");
+    saveProjectWorkspace(storage, legacy);
+    saveProjectWorkspace(storage, other);
+    storage.setItem(
+      CATALOG_STORAGE_KEY,
+      JSON.stringify({
+        schemaVersion: 1,
+        recentProjectId: "project-other",
+        projects: [
+          {
+            id: legacy.project.id,
+            title: legacy.project.title,
+            subtitle: legacy.project.subtitle,
+            lastOpenedAt: legacy.project.lastOpenedAt,
+            updatedAt: legacy.project.updatedAt
+          },
+          {
+            id: other.project.id,
+            title: other.project.title,
+            subtitle: other.project.subtitle,
+            lastOpenedAt: other.project.lastOpenedAt,
+            updatedAt: other.project.updatedAt
+          }
+        ]
+      })
+    );
+
+    const result = initializeLocalProjectCatalog(storage);
+
+    expect(result).toMatchObject({ status: "ok", catalog: { projects: expect.arrayContaining([expect.objectContaining({ id: "project-nightrail" })]) } });
+    expect(storage.getItem(getProjectWorkspaceStorageKey(CURRENT_CASE_STUDY_ID))).toBeNull();
   });
 
   it("keeps corrupt legacy workspace raw data when migration fails", () => {

@@ -1,0 +1,229 @@
+{
+  "manifestVersion": "2026-07-in-progress-1",
+  "assets": [
+    {
+      "assetId": "asset-73398ac0fdbbfb4dc080443a67ad7257-jpg-a5293b00-c6e5-4e36-a419-83e46f840154",
+      "contentHash": "35c8fea122cd5003db1d47f0526a00da722c39b3205e83594b7a7f7c2d497681",
+      "mimeType": "image/jpeg",
+      "publicPath": "/case-study/current/assets/35c8fea122cd5003db1d47f0526a00da722c39b3205e83594b7a7f7c2d497681.jpg",
+      "runtimeStorageKey": "case-study:current:asset-73398ac0fdbbfb4dc080443a67ad7257-jpg-a5293b00-c6e5-4e36-a419-83e46f840154",
+      "size": 151140
+    },
+    {
+      "assetId": "asset-7add87e4d5b3af015eefc40e5cbdd858-jpg-f7b04d18-548d-4abf-b19e-e06d7ee8c933",
+      "contentHash": "6233c25d79fb185063ea81f17e0657de5e7cfb915a4bb37dca68f6252931024e",
+      "mimeType": "image/jpeg",
+      "publicPath": "/case-study/current/assets/6233c25d79fb185063ea81f17e0657de5e7cfb915a4bb37dca68f6252931024e.jpg",
+      "runtimeStorageKey": "case-study:current:asset-7add87e4d5b3af015eefc40e5cbdd858-jpg-f7b04d18-548d-4abf-b19e-e06d7ee8c933",
+      "size": 14484
+    },
+    {
+      "assetId": "asset-8735393f661c7b763aab851f51ec9515-jpg-62496dcd-5275-4f6f-9315-66088de12ee8",
+      "contentHash": "bc9ce0d9aaddc2969b22d7f4605d2516e524d07fe24932fd5e99b025c3888c25",
+      "mimeType": "image/jpeg",
+      "publicPath": "/case-study/current/assets/bc9ce0d9aaddc2969b22d7f4605d2516e524d07fe24932fd5e99b025c3888c25.jpg",
+      "runtimeStorageKey": "case-study:current:asset-8735393f661c7b763aab851f51ec9515-jpg-62496dcd-5275-4f6f-9315-66088de12ee8",
+      "size": 35083
+    },
+    {
+      "assetId": "asset-c8f9eefd0dc341b9cb432945fb811cd7-jpg-c885c98b-32da-45df-a668-8bf9eb20c9b8",
+      "contentHash": "e579129b12fd957e6cfa1fcfc017c0b1f42dc709a62bd114cce04dfcac67cc0a",
+      "mimeType": "image/jpeg",
+      "publicPath": "/case-study/current/assets/e579129b12fd957e6cfa1fcfc017c0b1f42dc709a62bd114cce04dfcac67cc0a.jpg",
+      "runtimeStorageKey": "case-study:current:asset-c8f9eefd0dc341b9cb432945fb811cd7-jpg-c885c98b-32da-45df-a668-8bf9eb20c9b8",
+      "size": 120523
+    },
+    {
+      "assetId": "asset-cc4786dd96012fd9156c2d5e901a8414-jpg-4491f369-be21-4b56-ba4b-92c1e9ad766d",
+      "contentHash": "33bd110be0235626d81524289f43e2c176149c7109030e259503cb8afe54c6f6",
+      "mimeType": "image/jpeg",
+      "publicPath": "/case-study/current/assets/33bd110be0235626d81524289f43e2c176149c7109030e259503cb8afe54c6f6.jpg",
+      "runtimeStorageKey": "case-study:current:asset-cc4786dd96012fd9156c2d5e901a8414-jpg-4491f369-be21-4b56-ba4b-92c1e9ad766d",
+      "size": 13180
+    },
+    {
+      "assetId": "asset-f27b01e25d7b34487408433f26241c95-jpg-7a65cfe1-69f0-4771-9f79-9133faab973d",
+      "contentHash": "b7e83328a1c4572595616d0a5ba0930a37fc9216292c1524f27def0e59bcd3cc",
+      "mimeType": "image/jpeg",
+      "publicPath": "/case-study/current/assets/b7e83328a1c4572595616d0a5ba0930a37fc9216292c1524f27def0e59bcd3cc.jpg",
+      "runtimeStorageKey": "case-study:current:asset-f27b01e25d7b34487408433f26241c95-jpg-7a65cfe1-69f0-4771-9f79-9133faab973d",
+      "size": 72621
+    },
+    {
+      "assetId": "asset-grok-pdf-f3ae3b84-a07f-46a8-80d3-920b4aa670a4",
+      "contentHash": "7e95517771095dbb08f2d0f955d745b54435b08f6abcd82818f7da0de55340ab",
+      "mimeType": "application/pdf",
+      "publicPath": "/case-study/current/assets/7e95517771095dbb08f2d0f955d745b54435b08f6abcd82818f7da0de55340ab.pdf",
+      "runtimeStorageKey": "case-study:current:asset-grok-pdf-f3ae3b84-a07f-46a8-80d3-920b4aa670a4",
+      "size": 4871565
+    },
+    {
+      "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+      "contentHash": "c1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc",
+      "mimeType": "image/jpeg",
+      "publicPath": "/case-study/current/assets/c1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc.jpg",
+      "runtimeStorageKey": "case-study:current:asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+      "size": 444892
+    },
+    {
+      "assetId": "asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095",
+      "contentHash": "d30fd3aa9a0bf57a0761f9ab152bafae9419935ed261f7cd984a6e16335aad99",
+      "mimeType": "image/jpeg",
+      "publicPath": "/case-study/current/assets/d30fd3aa9a0bf57a0761f9ab152bafae9419935ed261f7cd984a6e16335aad99.jpg",
+      "runtimeStorageKey": "case-study:current:asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095",
+      "size": 508781
+    },
+    {
+      "assetId": "asset-grs-result-1783682287791-jpg-d4f07c12-7497-4067-ad09-15baa6449672",
+      "contentHash": "6a93dafc2584937c3ce0a251ee9113ffd8ad7fa087a89c5492b88cef7f99a033",
+      "mimeType": "image/jpeg",
+      "publicPath": "/case-study/current/assets/6a93dafc2584937c3ce0a251ee9113ffd8ad7fa087a89c5492b88cef7f99a033.jpg",
+      "runtimeStorageKey": "case-study:current:asset-grs-result-1783682287791-jpg-d4f07c12-7497-4067-ad09-15baa6449672",
+      "size": 463105
+    },
+    {
+      "assetId": "asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131",
+      "contentHash": "1cea2ee855a0c5fbd38f41f46b372e6f42a808832751d1ab869738f5675eb08e",
+      "mimeType": "image/jpeg",
+      "publicPath": "/case-study/current/assets/1cea2ee855a0c5fbd38f41f46b372e6f42a808832751d1ab869738f5675eb08e.jpg",
+      "runtimeStorageKey": "case-study:current:asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131",
+      "size": 464991
+    },
+    {
+      "assetId": "asset-grs-result-1783686836365-jpg-bd78734a-811a-4f87-a526-9a8e1862008e",
+      "contentHash": "0116b683e410406b943d14fc0660faa29e88aaaee11c96ffb90808c2f2d2f7c3",
+      "mimeType": "image/jpeg",
+      "publicPath": "/case-study/current/assets/0116b683e410406b943d14fc0660faa29e88aaaee11c96ffb90808c2f2d2f7c3.jpg",
+      "runtimeStorageKey": "case-study:current:asset-grs-result-1783686836365-jpg-bd78734a-811a-4f87-a526-9a8e1862008e",
+      "size": 466392
+    },
+    {
+      "assetId": "asset-grs-result-1783696461343-jpg-a7e57f25-1c72-4a46-a87a-c5364f38c79a",
+      "contentHash": "5955aff073ce861298c6e9020355cbebf6742b2b983d950bf140df24ba3d5625",
+      "mimeType": "image/jpeg",
+      "publicPath": "/case-study/current/assets/5955aff073ce861298c6e9020355cbebf6742b2b983d950bf140df24ba3d5625.jpg",
+      "runtimeStorageKey": "case-study:current:asset-grs-result-1783696461343-jpg-a7e57f25-1c72-4a46-a87a-c5364f38c79a",
+      "size": 545157
+    },
+    {
+      "assetId": "asset-grs-result-1783696671929-jpg-b9c740ba-38db-4901-b771-631ba4e96464",
+      "contentHash": "4963978d8389b0c05aac34a5970da2ab9cb3ea1a32c70d96da0d63bea0bb1b15",
+      "mimeType": "image/jpeg",
+      "publicPath": "/case-study/current/assets/4963978d8389b0c05aac34a5970da2ab9cb3ea1a32c70d96da0d63bea0bb1b15.jpg",
+      "runtimeStorageKey": "case-study:current:asset-grs-result-1783696671929-jpg-b9c740ba-38db-4901-b771-631ba4e96464",
+      "size": 571221
+    },
+    {
+      "assetId": "asset-grs-result-1783696937588-jpg-721675ec-7336-47de-894b-73f827a617ae",
+      "contentHash": "ec5255f56abaa5ca91ca2b650e118b6519ecfc92693d915a60fa43625ab89276",
+      "mimeType": "image/jpeg",
+      "publicPath": "/case-study/current/assets/ec5255f56abaa5ca91ca2b650e118b6519ecfc92693d915a60fa43625ab89276.jpg",
+      "runtimeStorageKey": "case-study:current:asset-grs-result-1783696937588-jpg-721675ec-7336-47de-894b-73f827a617ae",
+      "size": 497505
+    },
+    {
+      "assetId": "asset-grs-result-1783696973466-jpg-54f46fc4-284d-44bf-b483-3f470fed0a6f",
+      "contentHash": "9a5445d4f5350a489e29156a788d7e0a6e660df9f9e3d273c69a419e380769c7",
+      "mimeType": "image/jpeg",
+      "publicPath": "/case-study/current/assets/9a5445d4f5350a489e29156a788d7e0a6e660df9f9e3d273c69a419e380769c7.jpg",
+      "runtimeStorageKey": "case-study:current:asset-grs-result-1783696973466-jpg-54f46fc4-284d-44bf-b483-3f470fed0a6f",
+      "size": 498232
+    },
+    {
+      "assetId": "asset-grs-result-1783855353992-png-03cabcf6-e36e-4e6d-893d-46f0f6cdc146",
+      "contentHash": "c41bb5bb8015ca2daf5a5f7fba5115274042f12c4e7fc10423266250f9357a81",
+      "mimeType": "image/png",
+      "publicPath": "/case-study/current/assets/c41bb5bb8015ca2daf5a5f7fba5115274042f12c4e7fc10423266250f9357a81.png",
+      "runtimeStorageKey": "case-study:current:asset-grs-result-1783855353992-png-03cabcf6-e36e-4e6d-893d-46f0f6cdc146",
+      "size": 1688004
+    },
+    {
+      "assetId": "asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+      "contentHash": "6359e9e78c696712130d70cbd19bd714098721237fed21d54028b3a6c4bb2c4d",
+      "mimeType": "image/png",
+      "publicPath": "/case-study/current/assets/6359e9e78c696712130d70cbd19bd714098721237fed21d54028b3a6c4bb2c4d.png",
+      "runtimeStorageKey": "case-study:current:asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+      "size": 1779324
+    },
+    {
+      "assetId": "asset-grs-result-1783860534073-png-a896841d-2804-4ebc-885e-51bc95e6056f",
+      "contentHash": "418920e8ec67677282ed67e13725441f695b033209ec584a12ecc0302ad8fae8",
+      "mimeType": "image/png",
+      "publicPath": "/case-study/current/assets/418920e8ec67677282ed67e13725441f695b033209ec584a12ecc0302ad8fae8.png",
+      "runtimeStorageKey": "case-study:current:asset-grs-result-1783860534073-png-a896841d-2804-4ebc-885e-51bc95e6056f",
+      "size": 1561116
+    },
+    {
+      "assetId": "asset-grs-result-1783860809826-png-c73887dc-9d04-420f-af1b-771c1e2c146f",
+      "contentHash": "906aa554bc8f1e0546ebd87e53c8e2eea14d307f80b553b99141ac4e4c4ff642",
+      "mimeType": "image/png",
+      "publicPath": "/case-study/current/assets/906aa554bc8f1e0546ebd87e53c8e2eea14d307f80b553b99141ac4e4c4ff642.png",
+      "runtimeStorageKey": "case-study:current:asset-grs-result-1783860809826-png-c73887dc-9d04-420f-af1b-771c1e2c146f",
+      "size": 1552154
+    },
+    {
+      "assetId": "asset-grs-result-1783889212798-png-18d08576-b883-4acc-b413-e98d58f29139",
+      "contentHash": "cc2e327868e192cdfab93e6f2f088194eee0b56d6712b99d2d281db93d58fdf0",
+      "mimeType": "image/png",
+      "publicPath": "/case-study/current/assets/cc2e327868e192cdfab93e6f2f088194eee0b56d6712b99d2d281db93d58fdf0.png",
+      "runtimeStorageKey": "case-study:current:asset-grs-result-1783889212798-png-18d08576-b883-4acc-b413-e98d58f29139",
+      "size": 88
+    },
+    {
+      "assetId": "asset-grs-result-1783889911958-png-2e05109c-693c-4f6f-bf8a-c62b70c92b83",
+      "contentHash": "cc2e327868e192cdfab93e6f2f088194eee0b56d6712b99d2d281db93d58fdf0",
+      "mimeType": "image/png",
+      "publicPath": "/case-study/current/assets/cc2e327868e192cdfab93e6f2f088194eee0b56d6712b99d2d281db93d58fdf0.png",
+      "runtimeStorageKey": "case-study:current:asset-grs-result-1783889911958-png-2e05109c-693c-4f6f-bf8a-c62b70c92b83",
+      "size": 88
+    },
+    {
+      "assetId": "asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead",
+      "contentHash": "cc2e327868e192cdfab93e6f2f088194eee0b56d6712b99d2d281db93d58fdf0",
+      "mimeType": "image/png",
+      "publicPath": "/case-study/current/assets/cc2e327868e192cdfab93e6f2f088194eee0b56d6712b99d2d281db93d58fdf0.png",
+      "runtimeStorageKey": "case-study:current:asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead",
+      "size": 88
+    },
+    {
+      "assetId": "asset-here-is-how-it-works-sc2026-extract--ab253b30-2f69-4293-be50-759eb9a42e71",
+      "contentHash": "82421cf7d89becc22ca99d43d3edc60709df07a1803c5676c603a99c63bdc6f7",
+      "mimeType": "text/plain",
+      "publicPath": "/case-study/current/assets/82421cf7d89becc22ca99d43d3edc60709df07a1803c5676c603a99c63bdc6f7.txt",
+      "runtimeStorageKey": "case-study:current:asset-here-is-how-it-works-sc2026-extract--ab253b30-2f69-4293-be50-759eb9a42e71",
+      "size": 7044
+    },
+    {
+      "assetId": "asset-here-is-how-it-works-sc2026-pdf-b718325e-9d7f-493e-82e3-bc777042af71",
+      "contentHash": "5d01088f515aadbd42e1fcf209dfc0dc3efd54c5d3aa92552fbd897cecb0b5d2",
+      "mimeType": "application/pdf",
+      "publicPath": "/case-study/current/assets/5d01088f515aadbd42e1fcf209dfc0dc3efd54c5d3aa92552fbd897cecb0b5d2.pdf",
+      "runtimeStorageKey": "case-study:current:asset-here-is-how-it-works-sc2026-pdf-b718325e-9d7f-493e-82e3-bc777042af71",
+      "size": 19713943
+    },
+    {
+      "assetId": "asset-jpg-cf696804-574f-4489-a970-de5cff405dfb",
+      "contentHash": "6448012a33bca8ee873910a4fb6a93b181a01dd62e177fa41ed092708805503c",
+      "mimeType": "image/jpeg",
+      "publicPath": "/case-study/current/assets/6448012a33bca8ee873910a4fb6a93b181a01dd62e177fa41ed092708805503c.jpg",
+      "runtimeStorageKey": "case-study:current:asset-jpg-cf696804-574f-4489-a970-de5cff405dfb",
+      "size": 4760215
+    },
+    {
+      "assetId": "asset-m-extract-txt-9c71dbcc-d1c8-4648-b465-bb230a0c00e6",
+      "contentHash": "d8b431db0aa1b64c7dc828a50175d871ca8e2334d80d9399da2ab78d85d802d7",
+      "mimeType": "text/plain",
+      "publicPath": "/case-study/current/assets/d8b431db0aa1b64c7dc828a50175d871ca8e2334d80d9399da2ab78d85d802d7.txt",
+      "runtimeStorageKey": "case-study:current:asset-m-extract-txt-9c71dbcc-d1c8-4648-b465-bb230a0c00e6",
+      "size": 39615
+    },
+    {
+      "assetId": "asset-m-md-558df8e4-89d9-4df5-9f7e-3e4444e06b4f",
+      "contentHash": "d8b431db0aa1b64c7dc828a50175d871ca8e2334d80d9399da2ab78d85d802d7",
+      "mimeType": "text/markdown",
+      "publicPath": "/case-study/current/assets/d8b431db0aa1b64c7dc828a50175d871ca8e2334d80d9399da2ab78d85d802d7.md",
+      "runtimeStorageKey": "case-study:current:asset-m-md-558df8e4-89d9-4df5-9f7e-3e4444e06b4f",
+      "size": 39615
+    }
+  ]
+}

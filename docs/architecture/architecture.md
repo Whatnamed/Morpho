@@ -215,7 +215,7 @@ Project catalog and structured workspace JSON use localStorage:
 
 - catalog key: `morpho.projects.catalog.v1`;
 - workspace key: `morpho.project.${projectId}.workspace.v1`;
-- legacy single-project key `morpho.workspace.nightrail.v1` is read for migration only.
+- legacy single-project key `morpho.workspace.nightrail.v1` is read only to detect and safely replace one pristine Nightrail demo.
 
 Binary files are not stored in localStorage. Imported images/files and generated image results are saved as Blobs in IndexedDB:
 
@@ -225,6 +225,8 @@ Binary files are not stored in localStorage. Imported images/files and generated
 - assets contain filename, MIME type, size, creation time, storage key, source type, and optional intrinsic image dimensions.
 
 The current code does not implement asset garbage collection. Deleting a canvas object does not delete Blob data.
+
+The deployable starter is `project-morpho-case-study`, generated from an editable backup. Its public case-study assets are hash-addressed under `public/case-study/current/assets/`; first use fetches, verifies, and writes them into the same IndexedDB BlobStore used by ordinary projects. The installer is idempotent and only removes the two known legacy Nightrail seed keys after a confirmed pristine replacement.
 
 M9-A persistence hardening:
 
@@ -341,14 +343,6 @@ AI boundary:
 - Delivery section drafts are pending local drafts, not project facts or project memory. Applying a draft is the explicit write boundary for section narrative, listed captions, suggested gaps, decision record, and continuity event.
 - If image read/compression fails, the chat falls back to object metadata and user text and tells the user that pixels were not sent.
 
-## Demo Project
+## Built-In Case Study
 
-The seeded migrated project remains the official demo:
-
-- `夜航 / Nightrail`
-- Main direction: `方向 A：柔光轨道`
-- Default reference image: `柔光轨道 v2`
-- Alternative direction: `方向 B：家具化支撑岛`
-- Eliminated direction: `方向 C：软性引导带`
-
-Historical `Nightfield`, tactical-tool, and “安静的仪器” demo content is not used.
+The deployable built-in project is `project-morpho-case-study`, generated from the current real editable backup. It preserves the backup's canvas, relations, assets, messages, Agent traces, citations, project continuity, and incomplete state. The old Nightrail structure remains only as a test fixture and as a guarded one-time migration fingerprint.

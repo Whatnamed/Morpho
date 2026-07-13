@@ -19,7 +19,7 @@ Morpho is an AI-assisted concept-development workspace for product and industria
 - 浮动顶部控件、左侧窄工具轨、右下连续 AI 对话面板；
 - 选中对象后出现的底部详情栏；
 - Morpho 领域对象、画布实例、资产、项目 catalog、本地持久化和语义状态边界；
-- `schemaVersion: 13` 的 local-first 数据底座，包括隐藏、删除、淘汰、后续默认参考、交付稳定引用、安全迁移、IndexedDB 二进制资产、连续 AI 消息、轻量 Operation / Proposal 状态、来源语义快照、关键结论、唯一当前有效设计定义、方向 create / revise / split / merge、方向内 VisualBranch、正式图片角色和可重建工作状态；
+- `schemaVersion: 14` 的 local-first 数据底座，包括隐藏、删除、淘汰、后续默认参考、交付稳定引用、安全迁移、IndexedDB 二进制资产、连续 AI 消息、Agent 过程、轻量 Operation / Proposal 状态、来源语义快照、关键结论、唯一当前有效设计定义、方向 create / revise / split / merge、方向内 VisualBranch、正式图片角色和可重建工作状态；
 - Supabase 仅保存账号身份、测试资格和 AI 每日额度；邮箱密码注册的测试用户自动成为 active tester，文本/生图额度为 `500 / 100`；
 - 通过 AiJWS OpenAI-compatible 路径的服务端文本 AI route，支持普通文本、显式选中图片的视觉理解输入，以及受控 web search citation 事件；当前示例模型为 `gpt-5.6-terra`；
 - 服务端 GrsAI 图像生成 route，图像任务按意图自动分流模型（方向批量预览用 `nano-banana-2-lite`，视觉发展/迭代/局部修改/场景/细节及未知意图用 `gpt-image-2`）；`MORPHO_GRS_DEFAULT_MODEL` 仅为服务端默认与兼容回退，不代表所有图像任务固定使用该模型；成功结果会保存为新的本地资产和新的图像对象；
@@ -77,7 +77,7 @@ npm.cmd run dev -- --hostname 127.0.0.1 --port 3000
 
 ```text
 http://127.0.0.1:3000
-http://127.0.0.1:3000/projects/project-nightrail
+http://127.0.0.1:3000/projects/project-morpho-case-study
 ```
 
 如需本地认证或真实 AI 调用，复制 `.env.example` 为 `.env.local` 并填写对应值。`.env.example` 是环境变量名称、默认值和注释的唯一基线；不要从旧 README、历史 MiMo 配置或其他文档复制变量。
@@ -124,10 +124,12 @@ npm.cmd run build
 
 ## 官方示例项目
 
-当前官方 demo 项目是：
+当前内置案例项目来自真实 Morpho 可编辑备份：
 
-> 夜航 / Nightrail  
-> 为独居老人的夜间起身与卫浴路径设计一套低施工、非医疗化的连续辅助系统。
+> 测试
+> 从一句话、图片、文件或链接开始。
+
+案例包含真实的研究、文件、解析结果、方向、图片、对话、Agent 过程和项目连续性；它按备份中的未完成状态展示，不补造交付内容。更新流程见 [`docs/operations/case-study-seed.md`](docs/operations/case-study-seed.md)。
 
 不要把历史原型内容，例如 `Nightfield`、“安静的仪器”、战术工具或 compact tactical-light 方案，当成 Morpho 当前正式产品内容。
 

@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { MorphoWorkspace } from "@/domain/morpho/types";
+import { CURRENT_CASE_STUDY_ID } from "@/domain/morpho/caseStudy/currentCaseStudy";
 import { createBlankWorkspace } from "@/domain/morpho/workspace";
 import { interruptActiveOperations } from "@/domain/operations/operations";
+import { ensureCurrentCaseStudyAssets } from "@/infrastructure/assets/currentCaseStudyAssetInstaller";
 import {
   initializeLocalProjectCatalog,
   loadProjectWorkspace,
@@ -21,7 +23,7 @@ type PersistentWorkspaceLoadResult = {
   migrationError?: string;
 };
 
-function loadWorkspace(projectId: string): PersistentWorkspaceLoadResult {
+async function loadWorkspace(projectId: string): Promise<PersistentWorkspaceLoadResult> {
   if (typeof window === "undefined") {
     return { workspace: createBlankWorkspace(projectId) };
   }
@@ -32,6 +34,10 @@ function loadWorkspace(projectId: string): PersistentWorkspaceLoadResult {
       workspace: createBlankWorkspace(projectId),
       migrationError: catalog.reason
     };
+  }
+
+  if (projectId === CURRENT_CASE_STUDY_ID) {
+    await ensureCurrentCaseStudyAssets();
   }
 
   const loaded = loadProjectWorkspace(window.localStorage, projectId);
@@ -58,25 +64,31 @@ export function usePersistentWorkspace(projectId: string) {
     controllerRef.current?.flush();
     controllerRef.current?.dispose();
     controllerRef.current = null;
+    let isCancelled = false;
 
     const timeoutId = window.setTimeout(() => {
-      const loaded = loadWorkspace(projectId);
-      setLoadResult(loaded);
-      setWorkspace(loaded.workspace);
-      setHasLoaded(true);
-      if (loaded.migrationError) {
-        setPersistence({ phase: "error", isDirty: false, error: loaded.migrationError });
-        return;
-      }
+      void loadWorkspace(projectId).then((loaded) => {
+        if (isCancelled) {
+          return;
+        }
+        setLoadResult(loaded);
+        setWorkspace(loaded.workspace);
+        setHasLoaded(true);
+        if (loaded.migrationError) {
+          setPersistence({ phase: "error", isDirty: false, error: loaded.migrationError });
+          return;
+        }
 
-      controllerRef.current = createWorkspacePersistenceController({
-        writer: (currentWorkspace) => persistProjectWorkspaceAndSummary(window.localStorage, currentWorkspace),
-        onStateChange: setPersistence
+        controllerRef.current = createWorkspacePersistenceController({
+          writer: (currentWorkspace) => persistProjectWorkspaceAndSummary(window.localStorage, currentWorkspace),
+          onStateChange: setPersistence
+        });
+        setPersistence(controllerRef.current.getState());
       });
-      setPersistence(controllerRef.current.getState());
     }, 0);
 
     return () => {
+      isCancelled = true;
       window.clearTimeout(timeoutId);
       controllerRef.current?.flush();
       controllerRef.current?.dispose();

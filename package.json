@@ -10,6 +10,7 @@
     "cf:preview": "npm run cf:build && opennextjs-cloudflare preview",
     "cf:deploy": "npm run cf:build && opennextjs-cloudflare deploy",
     "cf:typegen": "wrangler types worker-configuration.d.ts --include-runtime false",
+    "case-study:import": "node ./scripts/import-case-study-backup.mjs",
     "dev": "next dev",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
