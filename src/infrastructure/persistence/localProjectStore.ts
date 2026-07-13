@@ -296,6 +296,14 @@ function safeGetItem(storage: Storage, key: string): string | null {
   }
 }
 
+function safeStorageKey(storage: Storage, index: number): string | null {
+  try {
+    return storage.key(index);
+  } catch {
+    return null;
+  }
+}
+
 function safeSetItem(storage: Storage, key: string, value: string): void {
   void persistStorageValue(storage, key, value);
 }
@@ -340,6 +348,33 @@ function safeRemoveItem(storage: Storage, key: string): void {
 
 function migrateExistingCatalog(storage: Storage, catalog: LocalProjectCatalog): CatalogLoadResult {
   if (catalog.projects.length === 0) {
+    const recoveredWorkspaces = recoverCataloglessProjectWorkspaces(storage);
+    if (recoveredWorkspaces.length > 0) {
+      if (
+        recoveredWorkspaces.length === 1 &&
+        recoveredWorkspaces[0]?.project.id === LEGACY_NIGHTRAIL_PROJECT_ID &&
+        isPristineLegacyNightrailWorkspace(recoveredWorkspaces[0])
+      ) {
+        deleteProjectWorkspace(storage, LEGACY_NIGHTRAIL_PROJECT_ID);
+        return installCurrentCaseStudy(storage, {
+          obsoleteStorageKeys: [...LEGACY_NIGHTRAIL_OBSOLETE_STORAGE_KEYS]
+        });
+      }
+
+      const recoveredCatalog = createCatalog(
+        recoveredWorkspaces.map(summarizeProject),
+        catalog.recentProjectId && recoveredWorkspaces.some((workspace) => workspace.project.id === catalog.recentProjectId)
+          ? catalog.recentProjectId
+          : recoveredWorkspaces[0]?.project.id
+      );
+      saveCatalog(storage, recoveredCatalog);
+      return {
+        status: "ok",
+        catalog: recoveredCatalog,
+        didMigrate: true
+      };
+    }
+
     return installCurrentCaseStudy(storage);
   }
 
@@ -384,6 +419,40 @@ function migrateExistingCatalog(storage: Storage, catalog: LocalProjectCatalog):
     catalog,
     didMigrate: false
   };
+}
+
+function recoverCataloglessProjectWorkspaces(storage: Storage): MorphoWorkspace[] {
+  const workspaces: MorphoWorkspace[] = [];
+
+  for (let index = 0; index < storage.length; index += 1) {
+    const storageKey = safeStorageKey(storage, index);
+    const projectId = storageKey ? parseProjectWorkspaceStorageKey(storageKey) : null;
+    if (!storageKey || !projectId) {
+      continue;
+    }
+
+    const raw = safeGetItem(storage, storageKey);
+    if (!raw) {
+      continue;
+    }
+
+    const parsed = parseWorkspace(raw);
+    if (parsed.status === "failed" || parsed.workspace.project.id !== projectId) {
+      continue;
+    }
+
+    if (parsed.didMigrate) {
+      safeSetItem(storage, storageKey, serializeWorkspace(parsed.workspace));
+    }
+    workspaces.push(parsed.workspace);
+  }
+
+  return workspaces;
+}
+
+function parseProjectWorkspaceStorageKey(storageKey: string): string | null {
+  const match = /^morpho\.project\.(.+)\.workspace\.v1$/.exec(storageKey);
+  return match?.[1] ?? null;
 }
 
 function installCurrentCaseStudy(

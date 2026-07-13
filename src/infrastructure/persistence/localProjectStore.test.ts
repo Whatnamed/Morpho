@@ -126,6 +126,32 @@ describe("local project catalog persistence", () => {
     expect(storage.getItem(getProjectWorkspaceStorageKey(CURRENT_CASE_STUDY_ID))).toBeNull();
   });
 
+  it("rebuilds an empty catalog from valid local project workspaces without replacing them", () => {
+    const storage = createMemoryStorage();
+    const existing = createBlankWorkspace("project-existing");
+    saveProjectWorkspace(storage, existing);
+    storage.setItem(
+      CATALOG_STORAGE_KEY,
+      JSON.stringify({
+        schemaVersion: 1,
+        projects: []
+      })
+    );
+
+    const result = initializeLocalProjectCatalog(storage);
+
+    expect(result).toMatchObject({
+      status: "ok",
+      didMigrate: true,
+      catalog: {
+        recentProjectId: "project-existing",
+        projects: [expect.objectContaining({ id: "project-existing" })]
+      }
+    });
+    expect(storage.getItem(getProjectWorkspaceStorageKey("project-existing"))).toBeTruthy();
+    expect(storage.getItem(getProjectWorkspaceStorageKey(CURRENT_CASE_STUDY_ID))).toBeNull();
+  });
+
   it("keeps corrupt legacy workspace raw data when migration fails", () => {
     const storage = createMemoryStorage();
     storage.setItem(LEGACY_WORKSPACE_STORAGE_KEY, "{not-json");

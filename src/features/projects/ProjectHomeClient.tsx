@@ -45,9 +45,9 @@ export function ProjectHomeClient({ account, accessError }: ProjectHomeClientPro
         return;
       }
 
-      await ensureCurrentCaseStudyAssets();
       if (isCancelled) return;
       setCatalog(result.catalog);
+      void ensureCurrentCaseStudyAssets();
     });
 
     return () => {
