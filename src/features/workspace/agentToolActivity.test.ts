@@ -32,8 +32,8 @@ describe("Agent tool activity descriptors", () => {
         args: {
           kind: "visualDevelopment",
           items: [
-            { id: "one", title: "一", purpose: "一", prompt: "一", referenceObjectIds: [], role: "conceptImage" },
-            { id: "two", title: "二", purpose: "二", prompt: "二", referenceObjectIds: [], role: "conceptImage" }
+            visualIntent("one", "一"),
+            visualIntent("two", "二")
           ]
         }
       }).label
@@ -73,3 +73,20 @@ describe("Agent tool activity descriptors", () => {
     expect(sanitizeAgentActivityDetail("<!doctype html><html>bad gateway</html>")).toBeUndefined();
   });
 });
+
+function visualIntent(id: string, title: string) {
+  return {
+    id,
+    title,
+    purpose: title,
+    requestedReferenceObjectIds: [],
+    changeGoals: [],
+    preserve: [],
+    allowToChange: [],
+    productForm: [],
+    materialsAndCmf: [],
+    environmentAndLighting: [],
+    avoid: [],
+    role: "conceptImage" as const
+  };
+}

@@ -20,7 +20,7 @@ Vercel must receive the values named in `.env.example`; never copy values from l
 
 ## Cloudflare Workers Backup Capability
 
-Cloudflare/OpenNext remains a retained backup capability and does not replace the Vercel production path. Keep the Cloudflare files and `cf:*` scripts intact. See [Cloudflare Workers deployment](./cloudflare-workers.md) for its separate configuration, preview, deployment, acceptance, and rollback flow.
+Cloudflare/OpenNext remains a retained, opt-in backup capability and does not replace the Vercel production path. Normal `next dev`, validation, and production builds do not initialize OpenNext or read `.dev.vars`; only explicit `cf:*` commands enter that path. Keep the Cloudflare files and scripts intact. See [Cloudflare Workers deployment](./cloudflare-workers.md) for its separate configuration, preview, deployment, acceptance, and rollback flow.
 
 ## Environment
 
@@ -48,7 +48,7 @@ With `MORPHO_AUTH_REQUIRED=true`, missing public Supabase configuration fails cl
 
 Text chat and agent turns use the AiJWS / OpenAI-compatible `MORPHO_AI_*` group defined in `.env.example`. Its current example model is `gpt-5.6-terra`.
 
-`MORPHO_AI_*` is the text AI path for `/api/ai/chat`, `/api/ai/agent`, and related web-search gating. The server also accepts `AIJWS_API_KEY`, `AIJWS_BASE_URL`, and `AIJWS_MODEL` as compatibility aliases. MiMo variables are no longer used for text AI.
+`MORPHO_AI_*` configures the formal `/api/ai/agent` Responses path, the compatibility-only `/api/ai/chat` route, and related web-search gating. The server also accepts `AIJWS_API_KEY`, `AIJWS_BASE_URL`, and `AIJWS_MODEL` as compatibility aliases. MiMo variables are no longer used for text AI.
 
 AiJWS text behavior:
 
@@ -91,9 +91,9 @@ Current implemented behavior:
 - `gpt-image-2` sends pixel-style `aspectRatio`, `replyType: "json"`, and no `imageSize`;
 - generated image assets store intrinsic width, height, and aspect ratio when the browser can read them.
 - image generation operations store operation IDs and client request IDs; uncertain network responses are not automatically resubmitted.
-- direction-preview and visual-development generation first ask AiJWS for a structured visual plan, validate selected source/direction scope locally, and then call GrsAI per plan item (concurrently, capped at 4).
-- direction-preview supports `1`, `2`, `4`, or `6` previews per selected direction, with a hard total limit of `8` generated items per run.
-- image-generation Operation metadata records the requested preview count, visual plan, successful result IDs, and per-item failures for later audit.
+- direction-preview and visual-development generation use Agent structured visual intent, deterministic reference resolution, local Prompt compilation, and then call GrsAI per plan item with concurrency capped at 4;
+- `1`, `2`, `4`, and `6` are UI shortcuts only. Explicit positive counts and more than three selected directions are valid;
+- image-generation metadata records requested count, structured intent, compiled prompt, prompt-contract version, reference-resolution omissions, model settings, successful result IDs, and per-item failures.
 
 Milestone 3 Operation records are local-first and lightweight. Workspace JSON stores operation status, summaries, proposals, citation snapshots, and IndexedDB artifact references. It does not store raw webpages, large extracted files, page previews, provider raw responses, API keys, or response headers.
 
@@ -101,38 +101,24 @@ Only one active Operation is allowed per project. Browser reload marks unfinishe
 
 Research operations can read selected parsed file extracts, selected image pixels, current workspace semantic context, and optional provider web search. A valid research result is recorded and applied into a research card automatically. Key conclusions, design definitions, concept directions, default references, direction status, and delivery decisions still require their own explicit proposal/application paths.
 
-Conversation semantic records:
+AI continuity and Project Memory:
 
-- `/api/ai/chat` may ask AiJWS for `morphoProjectContinuityPatch` only for `chatAnalysis` and `researchOperation`;
-- `imageGeneration` never receives the semantic patch instruction;
-- provider summaries are ignored, and Morpho creates deterministic summaries locally from the exact user quote;
-- the exact quote must come from the current user message and is stored only as a short message source snapshot;
-- semantic patch writing is skipped on invalid output, failed/cancelled requests, image-generation tasks, or replies that also contain design-definition or concept-direction Proposal JSON;
-- research replies may contain both `morphoResearchProposal` and a valid semantic patch. The patch is authorized only from the pre-request task context and local persisted user message, and it must not reference the newly created research card;
-- semantic `scope` filters provider context and task-filtered memory views, not the project-record drawer. Unrelated direction/visual scoped entries are excluded before the continuity budget is applied;
-- if the source user message is removed, its message ref becomes `missing`, the entry keeps the quote snapshot, and it no longer enters factual memory or provider context;
-- streaming display hides complete and trailing partial `morphoProjectContinuityPatch` JSON. The original completed stream remains available to parsers;
-- successful writes show `已补入项目记录 · N 条` under the assistant message. The button opens/highlights records only; it does not trigger AI, change current focus, or mutate objects.
+- the formal panel calls only `/api/ai/agent`; `/api/ai/chat` is compatibility-only;
+- all uncompressed project messages participate below the Token threshold. Lane, focus, selection, direction, and branch do not filter history;
+- automatic compaction persists a validated summary revision and covered boundary before older messages leave provider input. Raw messages remain in the workspace and `search_project_conversation` can still return them;
+- explicit history, memory, and progress questions must complete their required read tools before final text is accepted;
+- `submit_memory_update` accepts only locally authorized exact quotes from the current persisted user message. AI suggestions and one-off requests are rejected as stable preferences;
+- deterministic project facts project into seven current Memory documents and only actually occurred Stage Records. Current versions, source refs, revision chains, and `reviewRequired` are visible under `项目记录`;
+- successful writes show only specific feedback such as `已更新项目偏好`, `已记录设计决定`, or `已更新方向与视觉发展记录`; no write means no feedback;
+- legacy `conversationCheckpoints` and lane keys remain in backups and migrations but do not select formal Agent history.
 
-Conversation checkpoints:
-
-- ordinary `chatAnalysis` discussion/comparison may ask for a bounded `morphoConversationCheckpoint` only after local deterministic thresholds are met;
-- no extra provider call is made for checkpoint generation;
-- the checkpoint is stored in `workspace.ai.conversationCheckpoints`, not `projectContinuity`;
-- lane anchors come only from explicit active selection plus directly selected/selected-image direction and branch IDs, not from auto-included task-context objects;
-- provider request context may include the current checkpoint plus a few recent raw messages instead of the whole transcript;
-- the current draft is sent separately and is not duplicated in `messages`;
-- pending proposals suppress checkpoint request and checkpoint write;
-- checkpoint JSON is hidden from visible chat, including malformed and streaming partial blocks;
-- successful saves show only `已整理当前讨论脉络` under the assistant message;
-- checkpoint failures do not affect normal replies, semantic patches, project facts, current focus, or project records.
 
 Delivery preparation drafts:
 
-- `prepareDeliverySection` uses `/api/ai/chat`, but sends only the current section `deliverySectionContext` frozen snapshots;
+- delivery drafting uses `/api/ai/agent` and the `prepare_delivery_section_draft` tool, with only the current section's frozen `deliverySectionContext` snapshots authorized;
 - web search is disabled for this intent even if `MORPHO_AI_WEB_SEARCH_ENABLED=true`;
 - the browser does not send selected image pixels, full source files, full `documentExtract` text, normal task context, or Compare context for delivery section drafts;
-- visible chat hides `morphoDeliverySectionDraft` JSON. A valid block creates only a pending draft; section narrative, captions, suggested gaps, DecisionRecord, and continuity event are written only when the user applies the draft.
+- locally validated `prepare_delivery_section_draft` arguments create only a pending draft; section narrative, captions, suggested gaps, DecisionRecord, and continuity event are written only when the user applies it.
 
 Without these variables, the app still runs locally, but provider routes return clear configuration errors instead of fake AI results.
 
@@ -156,6 +142,7 @@ npm.cmd run lint
 npm.cmd run typecheck
 npm.cmd test
 npm.cmd run build
+npm.cmd run case-study:upgrade
 ```
 
 Expected results:
@@ -164,6 +151,7 @@ Expected results:
 - `typecheck`: `tsc --noEmit` completes.
 - `test`: Vitest runs domain, persistence, import, query, AiJWS/OpenAI-compatible, and GrsAI tests.
 - `build`: `next build` completes and prerenders static pages/routes where applicable.
+- `case-study:upgrade`: upgrades the generated current-case workspace to schema 15; running it twice must leave the workspace hash unchanged.
 
 GitHub CI runs the same core quality gate in `.github/workflows/quality.yml` on pushes to `main` and on pull requests:
 
@@ -195,6 +183,7 @@ Current behavior:
 
 - archive export may finish with warnings when referenced local binaries are missing or byte lengths no longer match asset metadata;
 - editable backup export is stricter and is blocked when required local binaries are missing or mismatched;
+- editable backups always use full AI continuity scope and preserve raw messages, summary revisions, legacy checkpoints, Memory/Stage revisions, Continuity Events, traces, citations, Compare analyses, and image-generation provenance;
 - restore always creates a new local project copy with a new project id and new runtime asset storage keys;
 - restore writes blobs first and then writes workspace/catalog state, with best-effort cleanup if persistence fails.
 
@@ -236,43 +225,42 @@ The probe sends only synthetic inputs. It logs event names and writes only sanit
 
 For manual Agent acceptance, use a disposable local project. Verify a normal answer, a real tool loop beyond four model continuations, optional commentary, no-commentary tool execution, native/provider search activity when available, image generation, cancellation, user-controlled disclosure state, page refresh of a completed trace, and a clean browser console. The process disclosure must contain only real reasoning summaries, commentary, and activity; final text remains below it.
 
-## Browser Mock Acceptance
+## AI Continuity Browser Acceptance
 
-Recommended local mock acceptance path:
+Start a development server with real local configuration. Use a fresh Playwright profile and the generated current-case project:
 
 ```bash
 npm.cmd run dev -- --hostname 127.0.0.1 --port 3007
 ```
 
-Then use Playwright or an equivalent real browser to:
+Open `http://127.0.0.1:3007/projects/project-morpho-case-study`. Formal panel traffic must use `/api/ai/agent`; no workspace action may call `/api/ai/chat`.
 
-1. open `http://127.0.0.1:3007/projects/project-morpho-case-study`;
-2. intercept `/api/ai/chat`;
-3. intercept `/api/ai/image`;
-4. exercise the required M4.3 flows without real provider keys;
-5. verify request payloads and visible UI state.
+Minimum acceptance:
 
-Minimum flows to cover:
+1. Ask `你还记得最早的对话是什么吗？`; verify the process calls `search_project_conversation` and the answer cites the real earliest user message and time.
+2. Ask `你看看本地文档，应该有记录过本地文档吧，关于进度还有记忆之类的` and `你还记得上下文吗，关于产品的现在进度如何了`; verify real Project Memory/Stage Record reads occur before the answer and no source-free “没有记录” claim appears.
+3. Continue several turns while changing selection, direction, VisualBranch, Current Focus, and delivery-panel visibility; verify one continuous conversation remains and earlier discussion is still recalled.
+4. State one explicit stable preference and one avoidance. Verify only the exact user-backed items enter `偏好与避免项`, specific update feedback appears, source navigation works, and an AI suggestion/one-off generation request does not become a preference.
+5. Confirm a primary/alternative/eliminated direction decision and verify Decision Log, Rejected Directions, relevant Stage Record, revision chain, and restore semantics.
+6. Run visual development for 3 images, then four directions with 3 previews each. Run one batch with default reference excluded, plus scene, CMF, and detail tasks. Verify complete plans, bounded concurrent execution, partial-result retention, no source overwrite, one Agent Trace, and persisted intent/compiledPrompt/reference/model provenance. Paid calls require `MORPHO_ALLOW_PAID_SMOKE_TESTS=true`.
+7. Generate a delivery-section draft. Verify `prepare_delivery_section_draft` uses frozen section references and creates a pending draft; no delivery content changes before explicit apply.
+8. Export an editable backup, inspect it, restore a new copy, and verify raw chat, compaction, Memory/Stage revisions, traces, citations, Compare records, assets, and generation provenance survive.
 
-- selected material + “分析这些资料并整理第一轮研究” routes into research;
-- selected directions + “分别为这几个方向生成预览图” routes into direction preview and shows correct preview total;
-- selected image + “保留整体结构语言，生成夜间使用场景” routes into visual development, with AiJWS receiving image attachments for planning and Grs receiving image-only generation references;
-- selected image + “分析这张图的问题” stays ordinary chat and does not call `/api/ai/image`;
-- manual task mode override beats automatic routing;
-- design-trace overlay still opens and closes;
-- the left-rail `项目记录` drawer opens and closes, shows current focus and review sections, and source clicks only locate real objects without triggering AI or mutating focus;
-- a mocked ordinary chat reply with a valid `morphoProjectContinuityPatch` strips the JSON from visible text, shows `已补入项目记录 · 1 条`, and opens/highlights the project-record drawer when clicked;
-- a mocked ambiguous or invalid patch does not write continuity but still shows the normal assistant reply;
-- a mocked design-definition or concept-direction proposal reply that also contains a semantic patch does not write the semantic patch;
-- a mocked research reply that contains both a valid `morphoResearchProposal` and a valid semantic patch creates the research card and shows `已补入项目记录 · 1 条` without binding the new research card as a semantic source;
-- a mocked stream that emits prose, then an unclosed semantic fenced JSON block, then the closing fence never shows `morphoProjectContinuityPatch` or its JSON fields in the chat panel at any intermediate state;
-- a mocked long ordinary chat reaches the checkpoint threshold, `/api/ai/chat` receives `conversationContext.checkpointRequested=true`, returns prose plus `morphoConversationCheckpoint`, and the UI shows prose plus `已整理当前讨论脉络` without technical JSON;
-- the next mocked same-lane ordinary chat request includes the sanitized checkpoint and only bounded recent raw messages, not the full old transcript or duplicated current draft;
-- switching selected direction/image or changing the focus epoch produces a different lane and does not send the old checkpoint;
-- a malformed checkpoint block is hidden, does not save a checkpoint, and does not block a valid semantic patch;
-- a reply with both `morphoProjectContinuityPatch` and `morphoConversationCheckpoint` can write both independently, while visible chat shows neither technical JSON block;
-- semantic entry manual actions (`不再适用`, `撤回记录`, `恢复为当前有效`) update drawer labels and keep current focus unchanged;
-- hidden object sources display `来源已隐藏`, missing sources display `来源不可用`, and message sources display the stored quote only.
+Automatic compaction may be tested without manufacturing a huge transcript. In development only, set this before reloading:
+
+```js
+localStorage.setItem("morpho:test:conversation-token-limits", JSON.stringify({
+  windowTokens: 40000,
+  prepareTokens: 17000,
+  compactTokens: 18000,
+  targetUncompressedTokens: 400
+}));
+```
+
+Verify one `整理讨论上下文` activity, an advanced summary boundary, retained raw messages, and successful history search across that boundary. Remove the key after acceptance. Production builds ignore this override.
+
+For every scenario, inspect console and network failures, hydration errors, duplicate Thinking/progress surfaces, overlapping UI, and final workspace persistence. Do not treat a rendered answer alone as acceptance evidence.
+
 
 Document reader mock acceptance for M5-D1:
 
@@ -303,10 +291,10 @@ Delivery preparation mock acceptance for M6:
 - edit a caption/note, move a reference, remove a reference, add a manual gap, resolve/reopen/remove the gap, close/reopen the panel, and verify content persists;
 - modify a source image title or role and hide a source file behind a document fragment, then verify old snapshots remain readable and source states show updated/hidden without automatic refresh;
 - click `更新为当前版本` on a source-updated reference, confirm that only that reference snapshot/fingerprint updates, caption/note remain, the source object is unchanged, and a DecisionRecord plus delivery continuity event are written;
-- intercept `/api/ai/chat`, click `生成本节说明草稿`, and verify the request body includes only `deliverySectionContext` for the current section snapshots and excludes webSearch, taskContext, comparisonContext, selected image Base64, Blob URLs, and full source file text;
-- return normal prose plus a valid `morphoDeliverySectionDraft`; verify technical JSON is hidden, a pending draft card appears, and no section narrative/caption/gap is written before `应用草稿`;
+- monitor `/api/ai/agent`, click `生成本节说明草稿`, and verify the Agent calls `prepare_delivery_section_draft` against only the current frozen section references, without selected image Base64, Blob URLs, or full source-file text;
+- return a valid delivery tool call and verify a pending draft appears with no section narrative/caption/gap write before `应用草稿`;
 - apply the draft and verify narrative, listed captions, suggested gaps, DecisionRecord, and continuity event are written;
-- return malformed draft JSON, a caption with an unauthorized reference ID, too many gaps, or a same-reply design/direction/Compare proposal and verify no delivery draft/content/DecisionRecord/semantic patch/checkpoint/Compare analysis is written.
+- return malformed tool arguments, an unauthorized reference ID, or too many gaps and verify no delivery draft/content/DecisionRecord/memory update/Compare analysis is written.
 
 Delivery output mock acceptance for M8:
 
@@ -339,7 +327,7 @@ Legacy single-project key read for a one-time pristine-Nightrail migration:
 morpho.workspace.nightrail.v1
 ```
 
-Structured workspace data is schema version `14`. v1/v2/v3/v4/v5/v6/v7/v8/v9/v10/v11/v12/v13 workspace data is migrated through pure migration functions. v6 normalizes image roles to `reference`, `preview`, `conceptImage`, `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, `structureDiagram`, `interactionDiagram`, and `deliveryAsset`; old `main`, `scenario`, `cmf`, `detail`, and `diagram` values are migration-only inputs. v7 adds parse metadata to file objects and stores extracted document text as separate IndexedDB assets. v8 adds `workspace.projectContinuity`, migrates legacy `project.currentFocus` into structured `currentFocus`, and retires legacy `stageRecords` instead of converting them into a second stage-history source. v9 adds controlled conversation semantic record fields and message source refs; old v8 entries become `origin: deterministicEvent` and `manualState: active` without fabricated semantic metadata. v10 adds `workspace.ai.conversationCheckpoints`; old v9 messages are preserved, no checkpoint is invented, no old message receives a fabricated `conversationLaneKey`, and `projectContinuity` is unchanged. v11 adds `workspace.ai.comparisonAnalyses` plus assistant-message linkage for local Compare cards; old messages are preserved without fabricated comparison links. v12 adds `documentFragment` support and fragment source relations without fabricating historical fragments or changing existing files/messages/checkpoints/Compare analyses/DecisionRecords/project-continuity records. v13 upgrades delivery preparation with sections, stable section references, gaps, and pending delivery section drafts. v14 adds optional ordered assistant `agentTrace` records and preserves all prior message bodies, citations, checkpoints, Compare analyses, and project-continuity state without fabricating trace parts. Migration success writes the new project workspace and catalog. Migration failure preserves old raw data and shows a recoverable warning instead of silently resetting to seed data.
+Structured workspace data is schema version `15`. v1 through v14 workspace data is migrated through pure migration functions. v6 normalizes image roles to `reference`, `preview`, `conceptImage`, `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, `structureDiagram`, `interactionDiagram`, and `deliveryAsset`; old `main`, `scenario`, `cmf`, `detail`, and `diagram` values are migration-only inputs. v7 adds parse metadata to file objects and stores extracted document text as separate IndexedDB assets. v8 adds `workspace.projectContinuity`, migrates legacy `project.currentFocus` into structured `currentFocus`, and retires legacy `stageRecords` instead of converting them into a second stage-history source. v9 adds controlled conversation semantic record fields and message source refs; old v8 entries become `origin: deterministicEvent` and `manualState: active` without fabricated semantic metadata. v10 adds `workspace.ai.conversationCheckpoints`; old v9 messages are preserved, no checkpoint is invented, no old message receives a fabricated `conversationLaneKey`, and `projectContinuity` is unchanged. v11 adds `workspace.ai.comparisonAnalyses` plus assistant-message linkage for local Compare cards; old messages are preserved without fabricated comparison links. v12 adds `documentFragment` support and fragment source relations without fabricating historical fragments or changing existing files/messages/checkpoints/Compare analyses/DecisionRecords/project-continuity records. v13 upgrades delivery preparation with sections, stable section references, gaps, and pending delivery section drafts. v14 adds optional ordered assistant `agentTrace` records and preserves all prior message bodies, citations, checkpoints, Compare analyses, and project-continuity state without fabricating trace parts. v15 adds project-wide conversation compaction, revisioned summaries, seven revisioned Project Memory documents, six possible revisioned Stage Records, and structured image-generation provenance. It migrates old checkpoints without deleting them, preserves every raw message and event, and does not fabricate unsupported semantic facts. Migration success writes the new project workspace and catalog. Migration failure preserves old raw data and shows a recoverable warning instead of silently resetting to seed data.
 
 Binary assets are stored in IndexedDB:
 
@@ -374,8 +362,8 @@ Local document extraction:
 /                         project homepage
 /login                    Supabase email/password login and registration
 /projects/[projectId]     project workspace
-/api/ai/chat              AiJWS text chat proxy
-/api/ai/agent             AiJWS agent continuation proxy
+/api/ai/agent             formal OpenAI-compatible Responses Agent stream
+/api/ai/chat              deprecated compatibility-only text route
 /api/ai/web-search        AiJWS web-search proxy
 /api/ai/image             GrsAI image generation proxy
 ```
@@ -390,5 +378,5 @@ The current code does not include:
 - OCR, legacy `.ppt`, DOC/DOCX parsing, and faithful document-layout reconstruction;
 - dynamic provider model-list fetching;
 - PPT/PDF/Figma generation or final delivery layout;
-- transcript replacement, transcript deletion, user-managed chat summaries, or full-project chat summaries;
+- transcript replacement, transcript deletion, or user-managed chat-summary files;
 - deployment automation beyond the existing Vercel deployment and checked-in Cloudflare/OpenNext backup scripts.

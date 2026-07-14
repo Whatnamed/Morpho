@@ -34,10 +34,10 @@ import { hasPendingDesignDefinitionRevisionProposal, reconcileWorkspaceDerivedSt
 import { buildContinuityRecordId, setConversationSemanticEntryManualState } from "./projectContinuity";
 
 describe("Morpho workspace domain boundaries", () => {
-  it("creates a blank schema v14 project without depending on Nightrail seed object ids", () => {
+  it("creates a blank schema v15 project without depending on Nightrail seed object ids", () => {
     const workspace = createBlankWorkspace("project-empty-local");
 
-    expect(workspace.schemaVersion).toBe(14);
+    expect(workspace.schemaVersion).toBe(15);
     expect(workspace.project.id).toBe("project-empty-local");
     expect(workspace.objects["image-soft-rail-v2"]).toBeUndefined();
     expect(workspace.canvas.instances).toEqual([]);
@@ -672,6 +672,8 @@ describe("Morpho workspace domain boundaries", () => {
         userReason: "默认参考需要切换。"
       }
     });
+    expect(updated.projectContinuity.recordEntries.at(-1)?.summary).toContain("已清除");
+    expect(updated.projectContinuity.currentFocus.note).toContain("已清除");
   });
 
   it("changes an image role as a traceable visual-development decision without replacing references", () => {
@@ -903,7 +905,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.status).toBe("ok");
     expect(legacyWorkspace).toEqual(before);
     if (result.status === "ok") {
-      expect(result.workspace.schemaVersion).toBe(14);
+      expect(result.workspace.schemaVersion).toBe(15);
       expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
       expect(result.workspace.objects["image-a"]?.visibility).toBe("active");
       expect(result.workspace.objects["image-a"]).toMatchObject({
@@ -973,7 +975,7 @@ describe("Morpho workspace domain boundaries", () => {
       throw new Error(result.reason);
     }
     expect(result.didMigrate).toBe(true);
-    expect(result.workspace.schemaVersion).toBe(14);
+    expect(result.workspace.schemaVersion).toBe(15);
     expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
     expect(result.workspace.projectContinuity.schemaVersion).toBe(2);
     expect(result.workspace.projectContinuity.recordEntries).toEqual([
@@ -1053,7 +1055,7 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(14);
+    expect(result.workspace.schemaVersion).toBe(15);
     expect(Object.values(result.workspace.objects).filter((object) => object.type === "documentFragment")).toHaveLength(
       documentFragmentCountBefore
     );
@@ -1122,7 +1124,7 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(14);
+    expect(result.workspace.schemaVersion).toBe(15);
     expect(result.workspace.ai.messages[0]).toMatchObject({
       id: "assistant-trace",
       body: "完成。",
@@ -1169,7 +1171,7 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(14);
+    expect(result.workspace.schemaVersion).toBe(15);
     expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
     expect(result.workspace.ai.messages).toEqual(v9Workspace.ai.messages);
     expect(result.workspace.ai.messages[0]).not.toHaveProperty("conversationLaneKey");
@@ -1376,5 +1378,22 @@ describe("Morpho workspace domain boundaries", () => {
       throw new Error("Expected migration to fail.");
     }
     expect(result.reason).toBe("Unsupported Morpho workspace schema version.");
+  });
+
+  it("normalizes schema v15 workspace state idempotently across persisted JSON", () => {
+    const first = migrateWorkspaceToCurrentSchema(JSON.parse(JSON.stringify(createInitialWorkspace())));
+    expect(first.status).toBe("ok");
+    if (first.status !== "ok") {
+      throw new Error(first.reason);
+    }
+    const second = migrateWorkspaceToCurrentSchema(JSON.parse(JSON.stringify(first.workspace)));
+    expect(second.status).toBe("ok");
+    if (second.status !== "ok") {
+      throw new Error(second.reason);
+    }
+
+    expect(second.workspace.workingState).toEqual(first.workspace.workingState);
+    expect(second.workspace.projectMemory).toEqual(first.workspace.projectMemory);
+    expect(second.workspace.ai.messages).toEqual(first.workspace.ai.messages);
   });
 });

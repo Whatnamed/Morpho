@@ -15,6 +15,7 @@ describe("research success semantic patch", () => {
     const workspaceWithMessage = {
       ...createInitialWorkspace(),
       ai: {
+        ...createInitialWorkspace().ai,
         messages: [
           {
             id: userMessageId,

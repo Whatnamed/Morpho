@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 14,
+  "schemaVersion": 15,
   "project": {
     "id": "project-morpho-case-study",
     "title": "测试",
@@ -12224,7 +12224,7 @@
       "research-proposal-research-operation-research-4-1783427445958"
     ],
     "derivedFromRevision": "ws-d1f09ec8",
-    "lastReconciledAt": "2026-07-13T05:11:37.489Z"
+    "lastReconciledAt": "2026-07-05T05:54:53.363Z"
   },
   "projectContinuity": {
     "schemaVersion": 2,
@@ -16604,6 +16604,3976 @@
     ],
     "updatedAt": "2026-07-12T20:58:32.335Z"
   },
+  "projectMemory": {
+    "schemaVersion": 1,
+    "documents": {
+      "projectOverview": {
+        "key": "projectOverview",
+        "title": "项目概览",
+        "currentRevisionId": "memory-projectOverview-1y979kv",
+        "updatedAt": "2026-07-05T05:54:53.363Z"
+      },
+      "designBrief": {
+        "key": "designBrief",
+        "title": "设计定义",
+        "currentRevisionId": "memory-designBrief-1xk11bd",
+        "updatedAt": "2026-07-05T05:54:53.363Z"
+      },
+      "userPreferences": {
+        "key": "userPreferences",
+        "title": "偏好与避免项"
+      },
+      "decisionLog": {
+        "key": "decisionLog",
+        "title": "决策记录",
+        "currentRevisionId": "memory-decisionLog-1ds9izq",
+        "updatedAt": "2026-07-05T05:54:53.363Z"
+      },
+      "rejectedDirections": {
+        "key": "rejectedDirections",
+        "title": "已淘汰方向"
+      },
+      "openQuestions": {
+        "key": "openQuestions",
+        "title": "待确认问题",
+        "currentRevisionId": "memory-openQuestions-1pes3hc",
+        "updatedAt": "2026-07-05T05:54:53.363Z"
+      },
+      "outputPlan": {
+        "key": "outputPlan",
+        "title": "交付计划",
+        "currentRevisionId": "memory-outputPlan-1hdyhdb",
+        "updatedAt": "2026-07-05T05:54:53.363Z"
+      }
+    },
+    "revisions": {
+      "memory-projectOverview-1y979kv": {
+        "id": "memory-projectOverview-1y979kv",
+        "documentKey": "projectOverview",
+        "sections": [
+          {
+            "key": "projectStart",
+            "title": "项目起点与目标",
+            "items": [
+              "从一句话、图片、文件或链接开始。"
+            ]
+          },
+          {
+            "key": "currentFocus",
+            "title": "当前工作重点",
+            "items": [
+              "视觉生成完成 2 项。"
+            ]
+          },
+          {
+            "key": "stableResults",
+            "title": "主要成果",
+            "items": [
+              "当前设计定义：方案 A｜声学生态风险预警浮标系统",
+              "当前主方向：方向 1｜守望塔：长期驻留型声学浮标",
+              "已有 2 个交付准备对象"
+            ]
+          },
+          {
+            "key": "mainRoute",
+            "title": "当前主路线",
+            "items": [
+              "方向 1｜守望塔：长期驻留型声学浮标"
+            ]
+          },
+          {
+            "key": "recentChange",
+            "title": "最近重要变化",
+            "items": [
+              "视觉生成完成 2 项。"
+            ]
+          }
+        ],
+        "sourceRefs": [
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-1",
+            "snapshot": {
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "objectType": "conceptDirection",
+              "visibility": "active",
+              "summarySnippet": "一件长期驻留、可被远距离辨识的海上公共基础设施产品；强调可靠存活与低干扰存在感。",
+              "createdAt": "2026-07-10T08:14:59.083Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783889911958-png-2e05109c-693c-4f6f-bf8a-c62b70c92b83",
+            "snapshot": {
+              "title": "夜间柔光扶手",
+              "objectType": "image",
+              "status": "conceptImage",
+              "visibility": "active",
+              "summarySnippet": "验证低眩光连续引导"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead",
+            "snapshot": {
+              "title": "卫浴路径节点",
+              "objectType": "image",
+              "status": "conceptImage",
+              "visibility": "active",
+              "summarySnippet": "验证模块化转角节点"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783889910968-moy113",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "definition-revision-design-definition-proposal-definition-1783669222059-1",
+            "snapshot": {
+              "title": "方案 A｜声学生态风险预警浮标系统",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "以可部署的海上浮标为前端，识别并分级生态声学风险，将水下感知转化为船舶与管理者可执行的减速、绕行或复核建议；面向多类受噪声影响海洋生物，而非单一旗舰物种。"
+            },
+            "sourceAvailability": "active"
+          }
+        ],
+        "basis": "deterministic",
+        "createdAt": "2026-07-05T05:54:53.363Z",
+        "reviewRequired": false
+      },
+      "memory-designBrief-1xk11bd": {
+        "id": "memory-designBrief-1xk11bd",
+        "documentKey": "designBrief",
+        "sections": [
+          {
+            "key": "projectGoal",
+            "title": "项目目标",
+            "items": [
+              "在生态热点海域建立从水下声学监测到海面提示与后台处置的最小闭环，降低航运和局部海上作业对敏感生物栖息活动的干扰。"
+            ]
+          },
+          {
+            "key": "targetUsers",
+            "title": "目标用户",
+            "items": [
+              "近海航运船长与调度员",
+              "海洋保护区与港航管理人员",
+              "生态监测与科研团队"
+            ]
+          },
+          {
+            "key": "primaryScenarios",
+            "title": "核心场景",
+            "items": [
+              "船舶进入已知或预测生态热点前，接收航速与航线风险建议",
+              "浮标检测到异常声学风险时，通过海面状态信号提示附近船只，并向后台发出事件记录",
+              "管理人员在后台查看风险地图、设备健康状态与处置建议，决定是否发布临时管控"
+            ]
+          },
+          {
+            "key": "coreProblem",
+            "title": "核心问题",
+            "items": [
+              "现有噪声风险往往以分散数据或事后报告呈现，船舶运营者与海域管理者难以在风险发生时获得可信、可理解且可行动的提示。"
+            ]
+          },
+          {
+            "key": "designPrinciples",
+            "title": "设计原则",
+            "items": [
+              "闭环优先：每次风险提示必须对应明确的建议动作、责任角色和记录结果。",
+              "分层呈现：水下感知、海面信号、后台管理各自只承载当下所需信息。",
+              "多物种导向：以生态敏感度和栖息情境分级，不将产品叙事绑定单一动物。",
+              "可信而克制：用风险等级、置信度和复核状态表达不确定性，不制造绝对安全承诺。",
+              "低维护部署：结构、供能、通信和回收策略应从开放海况与长期值守出发。"
+            ]
+          },
+          {
+            "key": "constraints",
+            "title": "约束",
+            "items": [
+              "海况、腐蚀、生物附着、供电和通信中断限制设备长期稳定运行。",
+              "声学信号受环境噪声、季节和物种差异影响，实时识别存在误报与漏报。",
+              "浮标只能建议或提示，速度限制、绕航和施工暂停需要适配既有监管与运营权限。",
+              "避免增加船员操作负担或在航行安全信息之外制造干扰。"
+            ]
+          },
+          {
+            "key": "avoidDirections",
+            "title": "避免项",
+            "items": [
+              "避免把产品做成只展示实时声波的科研仪器界面。",
+              "避免以单一鲸豚形象替代完整生态影响范围。",
+              "避免承诺浮标可独立执法、自动强制船舶改道或保证零干扰。",
+              "避免用高频告警造成告警疲劳或掩盖真正紧急事件。"
+            ]
+          },
+          {
+            "key": "opportunities",
+            "title": "机会",
+            "items": [
+              "将海山、峡谷、大陆架边缘和海洋锋面等可预测热点转为浮标布设与巡航优先级。",
+              "以可视化海面状态和数字通告连接现场船只与后台决策，形成可被理解的风险语言。",
+              "建立事件—建议—响应—结果的数据链，为后续保护措施评估提供依据。"
+            ]
+          },
+          {
+            "key": "openQuestions",
+            "title": "待确认问题",
+            "items": [
+              "风险事件的首要处置动作应是航线建议、速度建议、施工暂停建议还是数据上报？",
+              "哪些物种、声学指标与环境变量足以支撑首个风险等级模型？",
+              "海面提示的法律身份和信息优先级应如何与既有航行安全系统协调？"
+            ]
+          }
+        ],
+        "sourceRefs": [
+          {
+            "kind": "object",
+            "id": "design-definition-proposal-definition-1783669222059",
+            "snapshot": {
+              "title": "方案 A｜声学生态风险预警浮标系统",
+              "objectType": "designDefinition",
+              "visibility": "active",
+              "summarySnippet": "以可部署的海上浮标为前端，识别并分级生态声学风险，将水下感知转化为船舶与管理者可执行的减速、绕行或复核建议；面向多类受噪声影响海洋生物，而非单一旗舰物种。",
+              "createdAt": "2026-07-10T07:41:04.835Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "definition-revision-design-definition-proposal-definition-1783669222059-1",
+            "snapshot": {
+              "title": "方案 A｜声学生态风险预警浮标系统"
+            }
+          }
+        ],
+        "basis": "deterministic",
+        "createdAt": "2026-07-05T05:54:53.363Z",
+        "reviewRequired": false
+      },
+      "memory-decisionLog-1ds9izq": {
+        "id": "memory-decisionLog-1ds9izq",
+        "documentKey": "decisionLog",
+        "sections": [
+          {
+            "key": "decisions",
+            "title": "当前项目决定",
+            "items": [
+              "删除 cc4786dd96012fd9156c2d5e901a8414.jpg；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-05T12:23:20.010Z",
+              "删除 f27b01e25d7b34487408433f26241c95.jpg；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-05T12:25:15.087Z",
+              "创建交付准备包：课程阶段展示；时间：2026-07-06T18:22:22.151Z",
+              "加入 1 项交付引用。；时间：2026-07-06T18:22:34.832Z",
+              "创建交付准备包：课程阶段展示；时间：2026-07-07T07:39:34.969Z",
+              "删除 海洋噪音浮标项目前期研究与设计定义支撑性判断；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T09:24:25.395Z",
+              "保留关键结论：可保留为核心结论的一点，不是“做一个能消除海洋噪音的万能浮标”，而是“做一个面向海洋噪音热点的动态监测与管理节点”。；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 1条中保留关键结论。；时间：2026-07-07T11:11:52.954Z",
+              "保留关键结论：问题必要性已足够成立，因此后续设计无需再反复证明“海洋噪音是否值得做”，而应转向“在什么场景、为谁、以什么边界来做”。；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 2条中保留关键结论。；时间：2026-07-07T11:11:52.955Z",
+              "保留关键结论：系统策略层面可以明确采用时空动态管理逻辑：在关键季节、关键航道、迁徙走廊、繁殖海域或施工缓冲区内进行针对性监测和提示。；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 3条中保留关键结论。；时间：2026-07-07T11:11:52.955Z",
+              "保留关键结论：产品层面最稳妥的角色定义是感知+上传+提示+协同，而不是直接声学干预海洋环境。；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 4条中保留关键结论。；时间：2026-07-07T11:11:52.955Z",
+              "保留关键结论：将后续设计定义收束为一个具体场景下的“动态海洋声学监测与提示浮标系统”，能同时保留研究深度与课程展板叙事清晰度。；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的机会点第 1条中保留关键结论。；时间：2026-07-07T11:11:52.955Z",
+              "保留关键结论：围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的机会点第 2条中保留关键结论。；时间：2026-07-07T11:11:52.956Z",
+              "保留关键结论：没有默认参考、额外文档原文或图片证据进入本次语境；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的约束第 2条中保留关键结论。；时间：2026-07-07T11:11:52.956Z",
+              "保留关键结论：本次结果应提炼“可保留的关键结论”，同时说明哪些判断仍需在设计定义阶段继续收束；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的约束第 3条中保留关键结论。；时间：2026-07-07T11:11:52.956Z",
+              "保留关键结论：系统输出应以哪种行为为主：数据记录、风险告警、航行提示、管理建议，还是多角色分层输出？；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的待验证问题第 3条中保留关键结论。；时间：2026-07-07T11:11:52.956Z",
+              "保留关键结论：课程项目希望更偏现实工程约束，还是更偏概念性系统设计表达？；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的待验证问题第 4条中保留关键结论。；时间：2026-07-07T11:11:52.957Z",
+              "删除 可保留为核心结论的一点，不是“做一个能消除海洋噪音的万能浮标”，而是“做一个面向海洋噪音热点的动态监测与管理节点”。；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T11:22:16.186Z",
+              "删除 问题必要性已足够成立，因此后续设计无需再反复证明“海洋噪音是否值得做”，而应转向“在什么场景、为谁、以什么边界来做”。；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T11:22:16.187Z",
+              "删除 系统策略层面可以明确采用时空动态管理逻辑：在关键季节、关键航道、迁徙走廊、繁殖海域或施工缓冲区内进行针对性监测和提示。；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T11:22:16.188Z",
+              "删除 产品层面最稳妥的角色定义是感知+上传+提示+协同，而不是直接声学干预海洋环境。；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T11:22:16.188Z",
+              "删除 将后续设计定义收束为一个具体场景下的“动态海洋声学监测与提示浮标系统”，能同时保留研究深度与课程展板叙事清晰度。；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T11:22:16.188Z",
+              "删除 围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T11:22:16.189Z",
+              "删除 没有默认参考、额外文档原文或图片证据进入本次语境；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T11:22:16.189Z",
+              "删除 本次结果应提炼“可保留的关键结论”，同时说明哪些判断仍需在设计定义阶段继续收束；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T11:22:16.189Z",
+              "删除 系统输出应以哪种行为为主：数据记录、风险告警、航行提示、管理建议，还是多角色分层输出？；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T11:22:16.190Z",
+              "删除 课程项目希望更偏现实工程约束，还是更偏概念性系统设计表达？；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T11:22:16.190Z",
+              "保留关键结论：可保留为核心结论的一点，不是“做一个能消除海洋噪音的万能浮标”，而是“做一个面向海洋噪音热点的动态监测与管理节点”。；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 1条中保留关键结论。；时间：2026-07-07T11:22:26.123Z",
+              "保留关键结论：系统策略层面可以明确采用时空动态管理逻辑：在关键季节、关键航道、迁徙走廊、繁殖海域或施工缓冲区内进行针对性监测和提示。；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 3条中保留关键结论。；时间：2026-07-07T11:22:26.123Z",
+              "保留关键结论：产品层面最稳妥的角色定义是感知+上传+提示+协同，而不是直接声学干预海洋环境。；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 4条中保留关键结论。；时间：2026-07-07T11:22:26.124Z",
+              "保留关键结论：真正的设计缺口已经转移到产品边界定义：它究竟更像科研监测基础设施、航运警示设施、港航管理节点，还是面向公众传播的教育性装置。；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 6条中保留关键结论。；时间：2026-07-07T11:22:26.124Z",
+              "保留关键结论：围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的机会点第 2条中保留关键结论。；时间：2026-07-07T11:22:26.124Z",
+              "保留关键结论：如果后续继续细化，可把“浮标”定义为系统中可见、可部署、可沟通的关键节点，从而把服务、基础设施和产品外观统一起来。；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的机会点第 3条中保留关键结论。；时间：2026-07-07T11:22:26.124Z",
+              "保留关键结论：本次结果应提炼“可保留的关键结论”，同时说明哪些判断仍需在设计定义阶段继续收束；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的约束第 3条中保留关键结论。；时间：2026-07-07T11:22:26.124Z",
+              "保留关键结论：优先场景应锁定在哪一种：鲸类迁徙航道、季节性繁殖海域、港口附近航道，还是海洋施工缓冲区？；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的待验证问题第 1条中保留关键结论。；时间：2026-07-07T11:22:26.125Z",
+              "保留关键结论：核心目标用户是谁：科研团队、港航管理方、施工运营方、船员，还是公众教育场景中的访客？；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的待验证问题第 2条中保留关键结论。；时间：2026-07-07T11:22:26.125Z",
+              "删除 图片合集 · 6 张；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T11:41:16.879Z",
+              "删除 海洋噪音浮标课设：设计定义前的研究与分析；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T12:14:39.187Z",
+              "删除 海洋噪音浮标课设：关键结论与证据边界；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T12:14:39.187Z",
+              "删除 可保留为核心结论的一点，不是“做一个能消除海洋噪音的万能浮标”，而是“做一个面向海洋噪音热点的动态监测与管理节点”。；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T12:14:39.187Z",
+              "删除 系统策略层面可以明确采用时空动态管理逻辑：在关键季节、关键航道、迁徙走廊、繁殖海域或施工缓冲区内进行针对性监测和提示。；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T12:14:39.187Z",
+              "删除 产品层面最稳妥的角色定义是感知+上传+提示+协同，而不是直接声学干预海洋环境。；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T12:14:39.188Z",
+              "删除 真正的设计缺口已经转移到产品边界定义：它究竟更像科研监测基础设施、航运警示设施、港航管理节点，还是面向公众传播的教育性装置。；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T12:14:39.188Z",
+              "删除 围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T12:14:39.188Z",
+              "删除 如果后续继续细化，可把“浮标”定义为系统中可见、可部署、可沟通的关键节点，从而把服务、基础设施和产品外观统一起来。；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T12:14:39.188Z",
+              "删除 本次结果应提炼“可保留的关键结论”，同时说明哪些判断仍需在设计定义阶段继续收束；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T12:14:39.188Z",
+              "删除 优先场景应锁定在哪一种：鲸类迁徙航道、季节性繁殖海域、港口附近航道，还是海洋施工缓冲区？；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T12:14:39.188Z",
+              "删除 核心目标用户是谁：科研团队、港航管理方、施工运营方、船员，还是公众教育场景中的访客？；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T12:14:39.188Z",
+              "保留关键结论：保护对象扩展：本地研究把受害对象从鲸豚扩展到鱼类、海龟和无脊椎动物，显著增强了课题的生态与公共价值论据。；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界（重建）”的发现第 1条中保留关键结论。；时间：2026-07-07T12:31:25.238Z",
+              "保留关键结论：热点可预测性：生物热点并非随机分布，而是与海山、峡谷、大陆架边缘及可建模海洋锋面相关，说明系统可以先做风险地图再做实时验证。；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界（重建）”的发现第 2条中保留关键结论。；时间：2026-07-07T12:31:25.239Z",
+              "保留关键结论：系统定位收束：把课题表述为“动态海洋声学避难所网络”或“声学生态风险预警浮标系统”，能同时容纳生态论据与产品边界。；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界（重建）”的机会点第 1条中保留关键结论。；时间：2026-07-07T12:31:25.239Z",
+              "保留关键结论：交互层级明确：将产品输出分成水下感知、海面信号和后台管理三层，有利于后续建立展板叙事和产品架构。；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界（重建）”的机会点第 2条中保留关键结论。；时间：2026-07-07T12:31:25.240Z",
+              "保留关键结论：生态对象扩大：已选文档显示受航运低频噪音影响的不仅是鲸豚，也包括鱼类、海龟和部分无脊椎动物，设计目标不应只围绕单一旗舰物种。；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界（重建）”的约束第 1条中保留关键结论。；时间：2026-07-07T12:31:25.240Z",
+              "保留关键结论：作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界（重建）”的待验证问题第 1条中保留关键结论。；时间：2026-07-07T12:31:25.241Z",
+              "应用设计定义：海洋噪音浮标课设：设计定义草案三方案；原因：按用户要求，从当前研究结论中整理三种后续方案可遵循的设计定义草案，重点覆盖目标、场景、设计原则、现实限制与应避免方向，并兼顾创新性、问题匹配度与可行性。；时间：2026-07-07T13:50:30.897Z",
+              "应用设计定义：海洋噪音浮标课设：设计定义草案三方案（重建）；原因：基于当前6条关键结论，重新整理三套可继续深化的设计定义草案，重点覆盖目标、场景、设计原则、现实限制与避免方向，并兼顾创新性、问题解决力度与课程可行性。；时间：2026-07-07T14:21:18.408Z",
+              "删除 海洋噪音浮标课设：设计定义草案三方案（重建）；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T14:59:54.032Z",
+              "应用设计定义：方案 C｜分层声学生态交互系统；原因：将该草案标题统一为 C 方案命名，避免与 A/B 方案不搭。；时间：2026-07-08T09:30:58.677Z",
+              "保存概念方向：基于方案 C 的三种高区分概念方向；时间：2026-07-08T09:36:47.648Z",
+              "方向 1｜岸海锚定式声学哨站 -> alternative；原因：用户在底部详情栏明确将该方向转为备选方向。；时间：2026-07-08T09:37:48.277Z",
+              "方向 1｜岸海锚定式声学哨站 -> primary；原因：用户在底部详情栏明确将该方向设为主方向。；时间：2026-07-08T09:38:06.816Z",
+              "方向 1｜岸海锚定式声学哨站 -> alternative；原因：用户在底部详情栏明确将该方向转为备选方向。；时间：2026-07-08T09:38:07.906Z",
+              "删除 方向 1｜岸海锚定式声学哨站；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-09T13:39:14.705Z",
+              "删除 方向 2｜漂移拼接式避险浮标群；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-09T13:39:14.706Z",
+              "删除 方向 3｜近人引导式声学交互终端；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-09T13:39:14.707Z",
+              "应用设计定义：方案 A｜声学生态风险预警浮标系统；时间：2026-07-09T13:47:35.956Z",
+              "应用设计定义：方案 B｜动态海洋声学避难所网络；时间：2026-07-09T13:47:44.147Z",
+              "删除 方案 B｜动态海洋声学避难所网络；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-10T07:00:38.769Z",
+              "应用设计定义：方案 B｜动态海洋声学避难所网络；原因：替代草案：优先定义区域治理和动态空间管理，而不是单船预警。；时间：2026-07-10T07:20:37.374Z",
+              "应用设计定义：方案 C｜海上工程声学合规守望系统；原因：替代草案：优先定义高噪声工程活动中的现场合规与作业调整。；时间：2026-07-10T07:31:26.837Z",
+              "设为当前设计定义：方案 B｜动态海洋声学避难所网络；原因：用户明确将该方案设为当前设计定义。；时间：2026-07-10T07:32:08.672Z",
+              "删除 方案 B｜动态海洋声学避难所网络；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-10T07:39:07.724Z",
+              "删除 方案 C｜海上工程声学合规守望系统；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-10T07:39:07.725Z",
+              "应用设计定义：方案 B｜动态海洋声学避难所网络；时间：2026-07-10T07:40:54.956Z",
+              "应用设计定义：方案 C｜海上作业声学合规守望系统；时间：2026-07-10T07:41:02.053Z",
+              "应用设计定义：方案 A｜声学生态风险预警浮标系统；时间：2026-07-10T07:41:04.835Z",
+              "设为当前设计定义：方案 B｜动态海洋声学避难所网络；原因：用户明确将该方案设为当前设计定义。；时间：2026-07-10T07:41:07.213Z",
+              "设为当前设计定义：方案 A｜声学生态风险预警浮标系统；原因：用户明确将该方案设为当前设计定义。；时间：2026-07-10T08:13:13.670Z",
+              "保存概念方向：声学生态风险预警浮标系统｜三种实体产品方向；时间：2026-07-10T08:14:59.083Z",
+              "方向 1｜守望塔：长期驻留型声学浮标 -> primary；原因：用户在底部详情栏明确将该方向设为主方向。；时间：2026-07-10T11:35:52.046Z",
+              "设为后续默认参考：守望塔｜维护可达版；原因：用户在画布上明确设为后续默认参考。；时间：2026-07-12T12:09:06.270Z",
+              "清除后续默认参考：守望塔｜维护可达版；原因：用户在画布上明确取消后续默认参考。；时间：2026-07-12T12:21:05.711Z",
+              "设为后续默认参考：守望塔｜维护可达版；原因：用户在画布上明确设为后续默认参考。；时间：2026-07-12T12:21:09.081Z",
+              "清除后续默认参考：守望塔｜维护可达版；原因：用户在画布上明确取消后续默认参考。；时间：2026-07-12T12:21:12.051Z",
+              "设为后续默认参考：守望塔｜维护可达版；原因：用户在画布上明确设为后续默认参考。；时间：2026-07-12T12:21:14.745Z",
+              "清除后续默认参考：守望塔｜维护可达版；原因：用户在画布上明确取消后续默认参考。；时间：2026-07-12T12:42:15.167Z",
+              "设为后续默认参考：守望塔｜维护可达版；原因：用户在画布上明确设为后续默认参考。；时间：2026-07-12T12:42:15.225Z",
+              "清除后续默认参考：守望塔｜维护可达版；原因：用户在画布上明确取消后续默认参考。；时间：2026-07-12T12:42:16.990Z",
+              "设为后续默认参考：守望塔｜维护可达版；原因：用户从 Compare 明确设为后续默认参考。；时间：2026-07-12T12:44:27.770Z",
+              "清除后续默认参考：守望塔｜维护可达版；原因：用户在画布上明确取消后续默认参考。；时间：2026-07-12T12:45:41.492Z"
+            ]
+          }
+        ],
+        "sourceRefs": [
+          {
+            "kind": "decision",
+            "id": "decision-apply-concept-direction-58",
+            "snapshot": {
+              "title": "保存概念方向：基于方案 C 的三种高区分概念方向",
+              "status": "applyConceptDirection"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-apply-concept-direction-78",
+            "snapshot": {
+              "title": "保存概念方向：声学生态风险预警浮标系统｜三种实体产品方向",
+              "status": "applyConceptDirection"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-apply-design-definition-54",
+            "snapshot": {
+              "title": "应用设计定义：海洋噪音浮标课设：设计定义草案三方案",
+              "status": "applyDesignDefinition"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-apply-design-definition-55",
+            "snapshot": {
+              "title": "应用设计定义：海洋噪音浮标课设：设计定义草案三方案（重建）",
+              "status": "applyDesignDefinition"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-apply-design-definition-57",
+            "snapshot": {
+              "title": "应用设计定义：方案 C｜分层声学生态交互系统",
+              "status": "applyDesignDefinition"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-apply-design-definition-65",
+            "snapshot": {
+              "title": "应用设计定义：方案 A｜声学生态风险预警浮标系统",
+              "status": "applyDesignDefinition"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-apply-design-definition-66",
+            "snapshot": {
+              "title": "应用设计定义：方案 B｜动态海洋声学避难所网络",
+              "status": "applyDesignDefinition"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-apply-design-definition-68",
+            "snapshot": {
+              "title": "应用设计定义：方案 B｜动态海洋声学避难所网络",
+              "status": "applyDesignDefinition"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-apply-design-definition-69",
+            "snapshot": {
+              "title": "应用设计定义：方案 C｜海上工程声学合规守望系统",
+              "status": "applyDesignDefinition"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-apply-design-definition-73",
+            "snapshot": {
+              "title": "应用设计定义：方案 B｜动态海洋声学避难所网络",
+              "status": "applyDesignDefinition"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-apply-design-definition-74",
+            "snapshot": {
+              "title": "应用设计定义：方案 C｜海上作业声学合规守望系统",
+              "status": "applyDesignDefinition"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-apply-design-definition-75",
+            "snapshot": {
+              "title": "应用设计定义：方案 A｜声学生态风险预警浮标系统",
+              "status": "applyDesignDefinition"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createDeliveryPreparation-delivery-课程阶段展示-2-5",
+            "snapshot": {
+              "title": "创建交付准备包：课程阶段展示",
+              "status": "createDeliveryPreparation"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createDeliveryPreparation-delivery-课程阶段展示-3",
+            "snapshot": {
+              "title": "创建交付准备包：课程阶段展示",
+              "status": "createDeliveryPreparation"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createDeliveryReference-delivery-ref-delivery-课程阶段展示-section-delivery-课程阶段展示-1-image-asset-jpg-cf696804-574f-4489-a970-de5cff405dfb-4",
+            "snapshot": {
+              "title": "加入 1 项交付引用。",
+              "status": "createDeliveryReference"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-10-16",
+            "snapshot": {
+              "title": "保留关键结论：课程项目希望更偏现实工程约束，还是更偏概念性系统设计表达？",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-2-28",
+            "snapshot": {
+              "title": "保留关键结论：系统策略层面可以明确采用时空动态管理逻辑：在关键季节、关键航道、迁徙走廊、繁殖海域或施工缓冲区内进行针对性监测和提示。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-2-49",
+            "snapshot": {
+              "title": "保留关键结论：热点可预测性：生物热点并非随机分布，而是与海山、峡谷、大陆架边缘及可建模海洋锋面相关，说明系统可以先做风险地图再做实时验证。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-2-8",
+            "snapshot": {
+              "title": "保留关键结论：问题必要性已足够成立，因此后续设计无需再反复证明“海洋噪音是否值得做”，而应转向“在什么场景、为谁、以什么边界来做”。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-27",
+            "snapshot": {
+              "title": "保留关键结论：可保留为核心结论的一点，不是“做一个能消除海洋噪音的万能浮标”，而是“做一个面向海洋噪音热点的动态监测与管理节点”。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-3-29",
+            "snapshot": {
+              "title": "保留关键结论：产品层面最稳妥的角色定义是感知+上传+提示+协同，而不是直接声学干预海洋环境。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-3-50",
+            "snapshot": {
+              "title": "保留关键结论：系统定位收束：把课题表述为“动态海洋声学避难所网络”或“声学生态风险预警浮标系统”，能同时容纳生态论据与产品边界。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-3-9",
+            "snapshot": {
+              "title": "保留关键结论：系统策略层面可以明确采用时空动态管理逻辑：在关键季节、关键航道、迁徙走廊、繁殖海域或施工缓冲区内进行针对性监测和提示。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-4-10",
+            "snapshot": {
+              "title": "保留关键结论：产品层面最稳妥的角色定义是感知+上传+提示+协同，而不是直接声学干预海洋环境。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-4-30",
+            "snapshot": {
+              "title": "保留关键结论：真正的设计缺口已经转移到产品边界定义：它究竟更像科研监测基础设施、航运警示设施、港航管理节点，还是面向公众传播的教育性装置。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-4-51",
+            "snapshot": {
+              "title": "保留关键结论：交互层级明确：将产品输出分成水下感知、海面信号和后台管理三层，有利于后续建立展板叙事和产品架构。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-48",
+            "snapshot": {
+              "title": "保留关键结论：保护对象扩展：本地研究把受害对象从鲸豚扩展到鱼类、海龟和无脊椎动物，显著增强了课题的生态与公共价值论据。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-5-11",
+            "snapshot": {
+              "title": "保留关键结论：将后续设计定义收束为一个具体场景下的“动态海洋声学监测与提示浮标系统”，能同时保留研究深度与课程展板叙事清晰度。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-5-31",
+            "snapshot": {
+              "title": "保留关键结论：围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-5-52",
+            "snapshot": {
+              "title": "保留关键结论：生态对象扩大：已选文档显示受航运低频噪音影响的不仅是鲸豚，也包括鱼类、海龟和部分无脊椎动物，设计目标不应只围绕单一旗舰物种。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-6-12",
+            "snapshot": {
+              "title": "保留关键结论：围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-6-32",
+            "snapshot": {
+              "title": "保留关键结论：如果后续继续细化，可把“浮标”定义为系统中可见、可部署、可沟通的关键节点，从而把服务、基础设施和产品外观统一起来。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-6-53",
+            "snapshot": {
+              "title": "保留关键结论：作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-7",
+            "snapshot": {
+              "title": "保留关键结论：可保留为核心结论的一点，不是“做一个能消除海洋噪音的万能浮标”，而是“做一个面向海洋噪音热点的动态监测与管理节点”。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-7-13",
+            "snapshot": {
+              "title": "保留关键结论：没有默认参考、额外文档原文或图片证据进入本次语境",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-7-33",
+            "snapshot": {
+              "title": "保留关键结论：本次结果应提炼“可保留的关键结论”，同时说明哪些判断仍需在设计定义阶段继续收束",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-8-14",
+            "snapshot": {
+              "title": "保留关键结论：本次结果应提炼“可保留的关键结论”，同时说明哪些判断仍需在设计定义阶段继续收束",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-8-34",
+            "snapshot": {
+              "title": "保留关键结论：优先场景应锁定在哪一种：鲸类迁徙航道、季节性繁殖海域、港口附近航道，还是海洋施工缓冲区？",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-9-15",
+            "snapshot": {
+              "title": "保留关键结论：系统输出应以哪种行为为主：数据记录、风险告警、航行提示、管理建议，还是多角色分层输出？",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-9-35",
+            "snapshot": {
+              "title": "保留关键结论：核心目标用户是谁：科研团队、港航管理方、施工运营方、船员，还是公众教育场景中的访客？",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-design-definition-proposal-definition-1783431536319-56",
+            "snapshot": {
+              "title": "删除 海洋噪音浮标课设：设计定义草案三方案（重建）",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-design-definition-proposal-definition-1783491915333-67",
+            "snapshot": {
+              "title": "删除 方案 B｜动态海洋声学避难所网络",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-design-definition-proposal-definition-1783666931192-2-71",
+            "snapshot": {
+              "title": "删除 方案 B｜动态海洋声学避难所网络",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-design-definition-proposal-definition-1783666931192-3-72",
+            "snapshot": {
+              "title": "删除 方案 C｜海上工程声学合规守望系统",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-direction-proposal-direction-1783503160642-1-62",
+            "snapshot": {
+              "title": "删除 方向 1｜岸海锚定式声学哨站",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-direction-proposal-direction-1783503160642-2-63",
+            "snapshot": {
+              "title": "删除 方向 2｜漂移拼接式避险浮标群",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-direction-proposal-direction-1783503160642-3-64",
+            "snapshot": {
+              "title": "删除 方向 3｜近人引导式声学交互终端",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-image-asset-cc4786dd96012fd9156c2d5e901a8414-jpg-4491f369-be21-4b56-ba4b-92c1e9ad766d-1",
+            "snapshot": {
+              "title": "删除 cc4786dd96012fd9156c2d5e901a8414.jpg",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-image-asset-f27b01e25d7b34487408433f26241c95-jpg-7a65cfe1-69f0-4771-9f79-9133faab973d-2",
+            "snapshot": {
+              "title": "删除 f27b01e25d7b34487408433f26241c95.jpg",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-image-collection-36",
+            "snapshot": {
+              "title": "删除 图片合集 · 6 张",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-10-26",
+            "snapshot": {
+              "title": "删除 课程项目希望更偏现实工程约束，还是更偏概念性系统设计表达？",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-17",
+            "snapshot": {
+              "title": "删除 可保留为核心结论的一点，不是“做一个能消除海洋噪音的万能浮标”，而是“做一个面向海洋噪音热点的动态监测与管理节点”。",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-2-18",
+            "snapshot": {
+              "title": "删除 问题必要性已足够成立，因此后续设计无需再反复证明“海洋噪音是否值得做”，而应转向“在什么场景、为谁、以什么边界来做”。",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-2-40",
+            "snapshot": {
+              "title": "删除 系统策略层面可以明确采用时空动态管理逻辑：在关键季节、关键航道、迁徙走廊、繁殖海域或施工缓冲区内进行针对性监测和提示。",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-3-19",
+            "snapshot": {
+              "title": "删除 系统策略层面可以明确采用时空动态管理逻辑：在关键季节、关键航道、迁徙走廊、繁殖海域或施工缓冲区内进行针对性监测和提示。",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-3-41",
+            "snapshot": {
+              "title": "删除 产品层面最稳妥的角色定义是感知+上传+提示+协同，而不是直接声学干预海洋环境。",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-39",
+            "snapshot": {
+              "title": "删除 可保留为核心结论的一点，不是“做一个能消除海洋噪音的万能浮标”，而是“做一个面向海洋噪音热点的动态监测与管理节点”。",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-4-20",
+            "snapshot": {
+              "title": "删除 产品层面最稳妥的角色定义是感知+上传+提示+协同，而不是直接声学干预海洋环境。",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-4-42",
+            "snapshot": {
+              "title": "删除 真正的设计缺口已经转移到产品边界定义：它究竟更像科研监测基础设施、航运警示设施、港航管理节点，还是面向公众传播的教育性装置。",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-5-21",
+            "snapshot": {
+              "title": "删除 将后续设计定义收束为一个具体场景下的“动态海洋声学监测与提示浮标系统”，能同时保留研究深度与课程展板叙事清晰度。",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-5-43",
+            "snapshot": {
+              "title": "删除 围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-6-22",
+            "snapshot": {
+              "title": "删除 围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-6-44",
+            "snapshot": {
+              "title": "删除 如果后续继续细化，可把“浮标”定义为系统中可见、可部署、可沟通的关键节点，从而把服务、基础设施和产品外观统一起来。",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-7-23",
+            "snapshot": {
+              "title": "删除 没有默认参考、额外文档原文或图片证据进入本次语境",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-7-45",
+            "snapshot": {
+              "title": "删除 本次结果应提炼“可保留的关键结论”，同时说明哪些判断仍需在设计定义阶段继续收束",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-8-24",
+            "snapshot": {
+              "title": "删除 本次结果应提炼“可保留的关键结论”，同时说明哪些判断仍需在设计定义阶段继续收束",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-8-46",
+            "snapshot": {
+              "title": "删除 优先场景应锁定在哪一种：鲸类迁徙航道、季节性繁殖海域、港口附近航道，还是海洋施工缓冲区？",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-9-25",
+            "snapshot": {
+              "title": "删除 系统输出应以哪种行为为主：数据记录、风险告警、航行提示、管理建议，还是多角色分层输出？",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-9-47",
+            "snapshot": {
+              "title": "删除 核心目标用户是谁：科研团队、港航管理方、施工运营方、船员，还是公众教育场景中的访客？",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-research-proposal-research-operation-research-1783412122557-6",
+            "snapshot": {
+              "title": "删除 海洋噪音浮标项目前期研究与设计定义支撑性判断",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-research-proposal-research-operation-research-2-1783416125896-37",
+            "snapshot": {
+              "title": "删除 海洋噪音浮标课设：设计定义前的研究与分析",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-research-proposal-research-operation-research-3-1783422035914-38",
+            "snapshot": {
+              "title": "删除 海洋噪音浮标课设：关键结论与证据边界",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-set-current-design-definition",
+            "snapshot": {
+              "title": "设为当前设计定义：方案 B｜动态海洋声学避难所网络",
+              "status": "applyDesignDefinition"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-set-current-design-definition-2",
+            "snapshot": {
+              "title": "设为当前设计定义：方案 B｜动态海洋声学避难所网络",
+              "status": "applyDesignDefinition"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-set-current-design-definition-3",
+            "snapshot": {
+              "title": "设为当前设计定义：方案 A｜声学生态风险预警浮标系统",
+              "status": "applyDesignDefinition"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-80",
+            "snapshot": {
+              "title": "设为后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-81",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-82",
+            "snapshot": {
+              "title": "设为后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-83",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-84",
+            "snapshot": {
+              "title": "设为后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-85",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-86",
+            "snapshot": {
+              "title": "设为后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-87",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-88",
+            "snapshot": {
+              "title": "设为后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-89",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDirectionStatus-direction-proposal-direction-1783503160642-1-59",
+            "snapshot": {
+              "title": "方向 1｜岸海锚定式声学哨站 -> alternative",
+              "status": "setDirectionStatus"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDirectionStatus-direction-proposal-direction-1783503160642-1-60",
+            "snapshot": {
+              "title": "方向 1｜岸海锚定式声学哨站 -> primary",
+              "status": "setDirectionStatus"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDirectionStatus-direction-proposal-direction-1783503160642-1-61",
+            "snapshot": {
+              "title": "方向 1｜岸海锚定式声学哨站 -> alternative",
+              "status": "setDirectionStatus"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDirectionStatus-direction-proposal-direction-1783671299082-1-79",
+            "snapshot": {
+              "title": "方向 1｜守望塔：长期驻留型声学浮标 -> primary",
+              "status": "setDirectionStatus"
+            }
+          },
+          {
+            "kind": "object",
+            "id": "delivery-课程阶段展示",
+            "snapshot": {
+              "title": "课程阶段展示",
+              "objectType": "delivery",
+              "visibility": "active",
+              "summarySnippet": "交付准备包用于组织章节、稳定引用、说明文字和待补内容，不是最终排版文件。",
+              "createdAt": "2026-07-06T18:22:22.151Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "delivery-课程阶段展示-2",
+            "snapshot": {
+              "title": "课程阶段展示",
+              "objectType": "delivery",
+              "visibility": "active",
+              "summarySnippet": "交付准备包用于组织章节、稳定引用、说明文字和待补内容，不是最终排版文件。",
+              "createdAt": "2026-07-07T07:39:34.969Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "design-definition-proposal-definition-1783669222059",
+            "snapshot": {
+              "title": "方案 A｜声学生态风险预警浮标系统",
+              "objectType": "designDefinition",
+              "visibility": "active",
+              "summarySnippet": "以可部署的海上浮标为前端，识别并分级生态声学风险，将水下感知转化为船舶与管理者可执行的减速、绕行或复核建议；面向多类受噪声影响海洋生物，而非单一旗舰物种。",
+              "createdAt": "2026-07-10T07:41:04.835Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "design-definition-proposal-definition-1783669222059-2",
+            "snapshot": {
+              "title": "方案 B｜动态海洋声学避难所网络",
+              "objectType": "designDefinition",
+              "visibility": "active",
+              "summarySnippet": "以风险地图与动态管理边界为核心，将分布式声学监测、生态热点预测和保护区治理联结为一个可更新的区域级避难所网络。",
+              "createdAt": "2026-07-10T07:40:54.956Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-1",
+            "snapshot": {
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "objectType": "conceptDirection",
+              "visibility": "active",
+              "summarySnippet": "一件长期驻留、可被远距离辨识的海上公共基础设施产品；强调可靠存活与低干扰存在感。",
+              "createdAt": "2026-07-10T08:14:59.083Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-2",
+            "snapshot": {
+              "title": "方向 2｜声学哨兵：快速投放型模块浮标",
+              "objectType": "conceptDirection",
+              "visibility": "active",
+              "summarySnippet": "一套可运输、可投放、可回收的轻量化声学哨兵；强调部署速度、任务适配与模块化扩展。",
+              "createdAt": "2026-07-10T08:14:59.083Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-3",
+            "snapshot": {
+              "title": "方向 3｜共航标：船舶交互型生态航标",
+              "objectType": "conceptDirection",
+              "visibility": "active",
+              "summarySnippet": "一件以航行者感知和行为改变为优先的交互式海上标志物；强调远距可读性、行动导向与共同航行的公共语义。",
+              "createdAt": "2026-07-10T08:14:59.083Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-jpg-cf696804-574f-4489-a970-de5cff405dfb",
+            "snapshot": {
+              "title": "展板英.jpg",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+            "snapshot": {
+              "title": "守望塔｜维护可达版",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "以更清晰的维护、吊装和声学接口逻辑，验证同一产品语言下的另一种工程化表达。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion",
+            "snapshot": {
+              "title": "保护对象扩展：本地研究把受害对象从鲸豚扩展到鱼类、海龟和无脊椎动物，显著增强了课题的生态与公共价值论据。",
+              "objectType": "keyConclusion",
+              "visibility": "active",
+              "summarySnippet": "保护对象扩展：本地研究把受害对象从鲸豚扩展到鱼类、海龟和无脊椎动物，显著增强了课题的生态与公共价值论据。",
+              "createdAt": "2026-07-07T12:31:25.238Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-2",
+            "snapshot": {
+              "title": "热点可预测性：生物热点并非随机分布，而是与海山、峡谷、大陆架边缘及可建模海洋锋面相关，说明系统可以先做风险地图再做实时验证。",
+              "objectType": "keyConclusion",
+              "visibility": "active",
+              "summarySnippet": "热点可预测性：生物热点并非随机分布，而是与海山、峡谷、大陆架边缘及可建模海洋锋面相关，说明系统可以先做风险地图再做实时验证。",
+              "createdAt": "2026-07-07T12:31:25.239Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-3",
+            "snapshot": {
+              "title": "系统定位收束：把课题表述为“动态海洋声学避难所网络”或“声学生态风险预警浮标系统”，能同时容纳生态论据与产品边界。",
+              "objectType": "keyConclusion",
+              "visibility": "active",
+              "summarySnippet": "系统定位收束：把课题表述为“动态海洋声学避难所网络”或“声学生态风险预警浮标系统”，能同时容纳生态论据与产品边界。",
+              "createdAt": "2026-07-07T12:31:25.239Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-4",
+            "snapshot": {
+              "title": "交互层级明确：将产品输出分成水下感知、海面信号和后台管理三层，有利于后续建立展板叙事和产品架构。",
+              "objectType": "keyConclusion",
+              "visibility": "active",
+              "summarySnippet": "交互层级明确：将产品输出分成水下感知、海面信号和后台管理三层，有利于后续建立展板叙事和产品架构。",
+              "createdAt": "2026-07-07T12:31:25.240Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-5",
+            "snapshot": {
+              "title": "生态对象扩大：已选文档显示受航运低频噪音影响的不仅是鲸豚，也包括鱼类、海龟和部分无脊椎动物，设计目标不应只围绕单一旗舰物种。",
+              "objectType": "keyConclusion",
+              "visibility": "active",
+              "summarySnippet": "生态对象扩大：已选文档显示受航运低频噪音影响的不仅是鲸豚，也包括鱼类、海龟和部分无脊椎动物，设计目标不应只围绕单一旗舰物种。",
+              "createdAt": "2026-07-07T12:31:25.240Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-6",
+            "snapshot": {
+              "title": "作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。",
+              "objectType": "keyConclusion",
+              "visibility": "active",
+              "summarySnippet": "作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。",
+              "createdAt": "2026-07-07T12:31:25.241Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "research-proposal-research-operation-research-4-1783427445958",
+            "snapshot": {
+              "title": "海洋噪音浮标课设：关键结论与证据边界（重建）",
+              "objectType": "research",
+              "visibility": "active",
+              "summarySnippet": "基于已选本地文档、展板要求和少量外部案例，可保留的关键结论集中在：该课题可以被合理定义为一个面向声敏海洋生物热点的动态声学监测/预警/管理系统；浮标最可信的角色是被动声学感知、数据上传与管理触发节点，而不是单体装置直接消除大范围海洋噪音。证据足以支持设计收束方向、系统角色判断和展板叙事框架，但不足以直接推出具体工程参数、单一外形、长期部署能力或治理成效量化。"
+            },
+            "sourceAvailability": "active"
+          }
+        ],
+        "basis": "deterministic",
+        "createdAt": "2026-07-05T05:54:53.363Z",
+        "reviewRequired": true
+      },
+      "memory-openQuestions-1pes3hc": {
+        "id": "memory-openQuestions-1pes3hc",
+        "documentKey": "openQuestions",
+        "sections": [
+          {
+            "key": "questions",
+            "title": "当前待确认问题",
+            "items": [
+              "风险事件的首要处置动作应是航线建议、速度建议、施工暂停建议还是数据上报？",
+              "哪些物种、声学指标与环境变量足以支撑首个风险等级模型？",
+              "海面提示的法律身份和信息优先级应如何与既有航行安全系统协调？",
+              "目标海况、续航周期和允许维护间隔分别是多少？",
+              "风险状态需在多远距离被船员直观识别，哪些信息必须只在船端呈现？",
+              "核心场景是单点临时监测，还是多点阵列定位？",
+              "产品是否必须由单人从小艇完成投放和回收？",
+              "实体端需要传达的最小行动信息是什么，如何与既有航标体系区分？",
+              "主要面向商船、渔船还是近岸休闲船，不同群体的识读逻辑是否需要分化？",
+              "作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。",
+              "目标用户优先级：主要服务对象是港口/海事监管者、海上施工方、科研机构还是公众教育场景？不同对象会改变界面、结构和语言。",
+              "部署场景范围：概念是近岸施工区、航道节点、繁殖地边缘还是迁徙通道？场景不同会改变浮体尺度、可视性和通信设定。",
+              "主动发声边界：是否需要声音广播或驱离功能仍缺证据支持，若加入会显著改变伦理与工程复杂度。",
+              "图像参考取舍：四张图中有一张为室内湿滑警示牌，其价值更可能是风险提示语义而非真实海工结构，需要后续明确保留方式。"
+            ]
+          }
+        ],
+        "sourceRefs": [
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-1",
+            "snapshot": {
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "objectType": "conceptDirection",
+              "visibility": "active",
+              "summarySnippet": "一件长期驻留、可被远距离辨识的海上公共基础设施产品；强调可靠存活与低干扰存在感。",
+              "createdAt": "2026-07-10T08:14:59.083Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-2",
+            "snapshot": {
+              "title": "方向 2｜声学哨兵：快速投放型模块浮标",
+              "objectType": "conceptDirection",
+              "visibility": "active",
+              "summarySnippet": "一套可运输、可投放、可回收的轻量化声学哨兵；强调部署速度、任务适配与模块化扩展。",
+              "createdAt": "2026-07-10T08:14:59.083Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-3",
+            "snapshot": {
+              "title": "方向 3｜共航标：船舶交互型生态航标",
+              "objectType": "conceptDirection",
+              "visibility": "active",
+              "summarySnippet": "一件以航行者感知和行为改变为优先的交互式海上标志物；强调远距可读性、行动导向与共同航行的公共语义。",
+              "createdAt": "2026-07-10T08:14:59.083Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "research-proposal-research-operation-research-4-1783427445958",
+            "snapshot": {
+              "title": "海洋噪音浮标课设：关键结论与证据边界（重建）",
+              "objectType": "research",
+              "visibility": "active",
+              "summarySnippet": "基于已选本地文档、展板要求和少量外部案例，可保留的关键结论集中在：该课题可以被合理定义为一个面向声敏海洋生物热点的动态声学监测/预警/管理系统；浮标最可信的角色是被动声学感知、数据上传与管理触发节点，而不是单体装置直接消除大范围海洋噪音。证据足以支持设计收束方向、系统角色判断和展板叙事框架，但不足以直接推出具体工程参数、单一外形、长期部署能力或治理成效量化。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "research-proposal-research-operation-research-5-1783888093411",
+            "snapshot": {
+              "title": "多轮验收研究 2",
+              "objectType": "research",
+              "visibility": "active",
+              "summarySnippet": "用于验证超过四轮的连续工具执行。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "research-proposal-research-operation-research-6-1783888094794",
+            "snapshot": {
+              "title": "多轮验收研究 4",
+              "objectType": "research",
+              "visibility": "active",
+              "summarySnippet": "用于验证超过四轮的连续工具执行。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "research-proposal-research-operation-research-7-1783888286820",
+            "snapshot": {
+              "title": "并发写入验收研究",
+              "objectType": "research",
+              "visibility": "active",
+              "summarySnippet": "验证 Agent 工具写入不会覆盖用户同时完成的工作区操作。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "definition-revision-design-definition-proposal-definition-1783669222059-1",
+            "snapshot": {
+              "title": "方案 A｜声学生态风险预警浮标系统"
+            }
+          }
+        ],
+        "basis": "deterministic",
+        "createdAt": "2026-07-05T05:54:53.363Z",
+        "reviewRequired": false
+      },
+      "memory-outputPlan-1hdyhdb": {
+        "id": "memory-outputPlan-1hdyhdb",
+        "documentKey": "outputPlan",
+        "sections": [
+          {
+            "key": "formats",
+            "title": "输出形式",
+            "items": [
+              "课程阶段展示"
+            ]
+          },
+          {
+            "key": "sections",
+            "title": "章节结构",
+            "items": [
+              "课程阶段展示 / 项目起点：待整理",
+              "课程阶段展示 / 调研与洞察：待整理",
+              "课程阶段展示 / 设计定义：待整理",
+              "课程阶段展示 / 方向发展：待整理",
+              "课程阶段展示 / 方案展示：待整理",
+              "课程阶段展示 / 结论与下一步：待整理",
+              "课程阶段展示 / 项目背景与问题：待整理",
+              "课程阶段展示 / 调研与关键洞察：待整理",
+              "课程阶段展示 / 关键细节与说明：待整理",
+              "课程阶段展示 / 待补内容：待整理"
+            ]
+          },
+          {
+            "key": "references",
+            "title": "稳定引用",
+            "items": [
+              "课程阶段展示：展板英.jpg"
+            ]
+          }
+        ],
+        "sourceRefs": [
+          {
+            "kind": "deliveryReference",
+            "id": "delivery-ref-delivery-课程阶段展示-section-delivery-课程阶段展示-1-image-asset-jpg-cf696804-574f-4489-a970-de5cff405dfb",
+            "snapshot": {
+              "title": "展板英.jpg",
+              "summarySnippet": "用户导入的原始图片。"
+            }
+          },
+          {
+            "kind": "object",
+            "id": "delivery-课程阶段展示",
+            "snapshot": {
+              "title": "课程阶段展示",
+              "objectType": "delivery",
+              "visibility": "active",
+              "summarySnippet": "交付准备包用于组织章节、稳定引用、说明文字和待补内容，不是最终排版文件。",
+              "createdAt": "2026-07-06T18:22:22.151Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "delivery-课程阶段展示-2",
+            "snapshot": {
+              "title": "课程阶段展示",
+              "objectType": "delivery",
+              "visibility": "active",
+              "summarySnippet": "交付准备包用于组织章节、稳定引用、说明文字和待补内容，不是最终排版文件。",
+              "createdAt": "2026-07-07T07:39:34.969Z"
+            },
+            "sourceAvailability": "active"
+          }
+        ],
+        "basis": "deterministic",
+        "createdAt": "2026-07-05T05:54:53.363Z",
+        "reviewRequired": false
+      }
+    },
+    "stageRecords": {
+      "startAndInput": {
+        "stage": "startAndInput",
+        "currentRevisionId": "stage-startAndInput-1cswzkb",
+        "updatedAt": "2026-07-05T05:54:53.363Z"
+      },
+      "research": {
+        "stage": "research",
+        "currentRevisionId": "stage-research-f1jy0h",
+        "updatedAt": "2026-07-05T05:54:53.363Z"
+      },
+      "designDefinition": {
+        "stage": "designDefinition",
+        "currentRevisionId": "stage-designDefinition-43xb0v",
+        "updatedAt": "2026-07-05T05:54:53.363Z"
+      },
+      "directionAndVisual": {
+        "stage": "directionAndVisual",
+        "currentRevisionId": "stage-directionAndVisual-115l19l",
+        "updatedAt": "2026-07-05T05:54:53.363Z"
+      },
+      "deliveryPreparation": {
+        "stage": "deliveryPreparation",
+        "currentRevisionId": "stage-deliveryPreparation-1kshe1i",
+        "updatedAt": "2026-07-05T05:54:53.363Z"
+      }
+    },
+    "stageRevisions": {
+      "stage-startAndInput-1cswzkb": {
+        "id": "stage-startAndInput-1cswzkb",
+        "stage": "startAndInput",
+        "sections": {
+          "outputs": [
+            "已加入 1 项项目输入。",
+            "已加入 7 项项目输入。",
+            "m海洋噪音.md",
+            "grok海洋噪音.pdf",
+            "Here_is_how_it_works__SC2026展板要求.pdf"
+          ]
+        },
+        "sourceRefs": [
+          {
+            "kind": "object",
+            "id": "file-asset-grok-pdf-f3ae3b84-a07f-46a8-80d3-920b4aa670a4",
+            "snapshot": {
+              "title": "grok海洋噪音.pdf",
+              "objectType": "file",
+              "visibility": "active",
+              "summarySnippet": "application/pdf · 4.6 MB · 解析失败"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "file-asset-here-is-how-it-works-sc2026-pdf-b718325e-9d7f-493e-82e3-bc777042af71",
+            "snapshot": {
+              "title": "Here_is_how_it_works__SC2026展板要求.pdf",
+              "objectType": "file",
+              "visibility": "active",
+              "summarySnippet": "application/pdf · 18.8 MB · 已解析 4625 字符 · 4 页/张"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "file-asset-m-md-558df8e4-89d9-4df5-9f7e-3e4444e06b4f",
+            "snapshot": {
+              "title": "m海洋噪音.md",
+              "objectType": "file",
+              "visibility": "active",
+              "summarySnippet": "text/markdown · 38.7 KB · 已解析 23112 字符"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-73398ac0fdbbfb4dc080443a67ad7257-jpg-a5293b00-c6e5-4e36-a419-83e46f840154",
+            "snapshot": {
+              "title": "73398ac0fdbbfb4dc080443a67ad7257.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-7add87e4d5b3af015eefc40e5cbdd858-jpg-f7b04d18-548d-4abf-b19e-e06d7ee8c933",
+            "snapshot": {
+              "title": "7add87e4d5b3af015eefc40e5cbdd858.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-8735393f661c7b763aab851f51ec9515-jpg-62496dcd-5275-4f6f-9315-66088de12ee8",
+            "snapshot": {
+              "title": "8735393f661c7b763aab851f51ec9515.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-c8f9eefd0dc341b9cb432945fb811cd7-jpg-c885c98b-32da-45df-a668-8bf9eb20c9b8",
+            "snapshot": {
+              "title": "c8f9eefd0dc341b9cb432945fb811cd7.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-cc4786dd96012fd9156c2d5e901a8414-jpg-4491f369-be21-4b56-ba4b-92c1e9ad766d",
+            "snapshot": {
+              "title": "cc4786dd96012fd9156c2d5e901a8414.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-f27b01e25d7b34487408433f26241c95-jpg-7a65cfe1-69f0-4771-9f79-9133faab973d",
+            "snapshot": {
+              "title": "f27b01e25d7b34487408433f26241c95.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-jpg-cf696804-574f-4489-a970-de5cff405dfb",
+            "snapshot": {
+              "title": "展板英.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-collection",
+            "snapshot": {
+              "title": "图片合集 · 6 张",
+              "objectType": "imageCollection",
+              "visibility": "active",
+              "summarySnippet": "批量导入形成的初始展开合集；成员仍是独立对象。"
+            },
+            "sourceAvailability": "missing"
+          }
+        ],
+        "createdAt": "2026-07-05T05:54:53.363Z",
+        "reviewRequired": true
+      },
+      "stage-research-f1jy0h": {
+        "id": "stage-research-f1jy0h",
+        "stage": "research",
+        "sections": {
+          "outputs": [
+            "已创建研究卡「海洋噪音浮标项目前期研究与设计定义支撑性判断」。",
+            "已创建研究卡「海洋噪音浮标课设：设计定义前的研究与分析」。",
+            "已创建研究卡「海洋噪音浮标课设：关键结论与证据边界」。",
+            "已创建研究卡「海洋噪音浮标课设：关键结论与证据边界（重建）」。",
+            "已创建研究卡「多轮验收研究 2」。",
+            "已创建研究卡「多轮验收研究 4」。",
+            "已创建研究卡「并发写入验收研究」。",
+            "海洋噪音浮标课设：关键结论与证据边界（重建）",
+            "多轮验收研究 2",
+            "多轮验收研究 4",
+            "并发写入验收研究"
+          ],
+          "decisions": [
+            "已保留关键结论「可保留为核心结论的一点，不是“做一个能消除海洋噪音的万能浮标”，而是“做一个面向海洋噪音热点的动态监测与管理节点”。」。",
+            "已保留关键结论「问题必要性已足够成立，因此后续设计无需再反复证明“海洋噪音是否值得做”，而应转向“在什么场景、为谁、以什么边界来做”。」。",
+            "已保留关键结论「系统策略层面可以明确采用时空动态管理逻辑：在关键季节、关键航道、迁徙走廊、繁殖海域或施工缓冲区内进行针对性监测和提示。」。",
+            "已保留关键结论「产品层面最稳妥的角色定义是感知+上传+提示+协同，而不是直接声学干预海洋环境。」。",
+            "已保留关键结论「将后续设计定义收束为一个具体场景下的“动态海洋声学监测与提示浮标系统”，能同时保留研究深度与课程展板叙事清晰度。」。",
+            "已保留关键结论「围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。」。",
+            "已保留关键结论「没有默认参考、额外文档原文或图片证据进入本次语境」。",
+            "已保留关键结论「本次结果应提炼“可保留的关键结论”，同时说明哪些判断仍需在设计定义阶段继续收束」。",
+            "已保留关键结论「系统输出应以哪种行为为主：数据记录、风险告警、航行提示、管理建议，还是多角色分层输出？」。",
+            "已保留关键结论「课程项目希望更偏现实工程约束，还是更偏概念性系统设计表达？」。"
+          ],
+          "openRisks": [
+            "作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。",
+            "目标用户优先级：主要服务对象是港口/海事监管者、海上施工方、科研机构还是公众教育场景？不同对象会改变界面、结构和语言。",
+            "部署场景范围：概念是近岸施工区、航道节点、繁殖地边缘还是迁徙通道？场景不同会改变浮体尺度、可视性和通信设定。",
+            "主动发声边界：是否需要声音广播或驱离功能仍缺证据支持，若加入会显著改变伦理与工程复杂度。",
+            "图像参考取舍：四张图中有一张为室内湿滑警示牌，其价值更可能是风险提示语义而非真实海工结构，需要后续明确保留方式。"
+          ]
+        },
+        "sourceRefs": [
+          {
+            "kind": "citation",
+            "id": "proposal-research-operation-research-1783412122557-citation-1",
+            "snapshot": {
+              "title": "Near Real-Time Passive Acoustic Mitigation Monitoring: Three Case ...",
+              "status": "link.springer.com",
+              "summarySnippet": "Title: Near Real-Time Passive Acoustic Mitigation Monitoring: Three Case Studies URL Source: http://link.springer.com/rwe/10.1007/978-3-031-94229-7_92-1 Published Time: 2026 Markdown Content: ## Abstract Near real-time …"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "citation",
+            "id": "proposal-research-operation-research-1783412122557-citation-2",
+            "snapshot": {
+              "title": "PDF  Near Real-Time Passive Acoustic Mitigation Monitoring: Three Case Studies",
+              "status": "tethys.pnnl.gov",
+              "summarySnippet": "Title: Near Real-Time Passive Acoustic Mitigation Monitoring: Three Case Studies URL Source: http://tethys.pnnl.gov/sites/default/files/publications/Malinka-et-al-2026.pdf Published Time: Fri, 20 Mar 2026 17:39:06 GMT N…"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "citation",
+            "id": "proposal-research-operation-research-1783412122557-citation-3",
+            "snapshot": {
+              "title": "A rare glimpse of a quieter ocean - NOAA Research",
+              "status": "research.noaa.gov",
+              "summarySnippet": "Title: A rare glimpse of a quieter ocean URL Source: http://research.noaa.gov/a-rare-glimpse-of-a-quieter-ocean/ Published Time: 2025-08-20T17:31:33+00:00 Markdown Content: The dramatic disruption of commerce and trade …"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "citation",
+            "id": "proposal-research-operation-research-1783412122557-citation-4",
+            "snapshot": {
+              "title": "Near Real-Time Passive Acoustic Mitigation Monitoring: Three Case ...",
+              "status": "tethys.pnnl.gov",
+              "summarySnippet": "Title: Near Real-Time Passive Acoustic Mitigation Monitoring: Three Case Studies URL Source: http://tethys.pnnl.gov/publications/near-real-time-passive-acoustic-mitigation-monitoring-three-case-studies-0 Markdown Conten…"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "citation",
+            "id": "proposal-research-operation-research-1783412122557-citation-5",
+            "snapshot": {
+              "title": "Evaluating the Benefits of Noise Reduction Mitigation: The ... - Springer",
+              "status": "link.springer.com",
+              "summarySnippet": "Title: Evaluating the Benefits of Noise Reduction Mitigation: The ECHO Program URL Source: http://link.springer.com/rwe/10.1007/978-3-031-50256-9_100 Published Time: 2024 Markdown Content: ## Abstract Mitigation measure…"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "citation",
+            "id": "proposal-research-operation-research-2-1783416125896-citation-1",
+            "snapshot": {
+              "title": "Near Real-Time Passive Acoustic Mitigation Monitoring: Three Case ...",
+              "status": "link.springer.com",
+              "summarySnippet": "Title: Near Real-Time Passive Acoustic Mitigation Monitoring: Three Case Studies URL Source: http://link.springer.com/rwe/10.1007/978-3-031-94229-7_92-1 Published Time: 2026 Markdown Content: ## Abstract Near real-time …"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "citation",
+            "id": "proposal-research-operation-research-2-1783416125896-citation-2",
+            "snapshot": {
+              "title": "CAB Guardian — SMRU Consulting",
+              "status": "www.smruconsulting.com",
+              "summarySnippet": "Title: CAB Guardian — SMRU Consulting URL Source: http://www.smruconsulting.com/cabgrd Markdown Content: ![Image 1: CAB Guardian](https://images.squarespace-cdn.com/content/v1/62322506899eb410c49182e2/1e9613b8-84ab-454a…"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "citation",
+            "id": "proposal-research-operation-research-2-1783416125896-citation-3",
+            "snapshot": {
+              "title": "Near Real-Time Passive Acoustic Mitigation Monitoring: Three Case ...",
+              "status": "tethys.pnnl.gov",
+              "summarySnippet": "Title: Near Real-Time Passive Acoustic Mitigation Monitoring: Three Case Studies URL Source: http://tethys.pnnl.gov/publications/near-real-time-passive-acoustic-mitigation-monitoring-three-case-studies-0 Published Time:…"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "citation",
+            "id": "proposal-research-operation-research-2-1783416125896-citation-4",
+            "snapshot": {
+              "title": "Science and Monitoring - Bureau of Ocean Energy Management",
+              "status": "www.boem.gov",
+              "summarySnippet": "Title: Science and Monitoring URL Source: http://www.boem.gov/environment/center-marine-acoustics/science-and-monitoring Markdown Content: [Skip to main content](http://www.boem.gov/environment/center-marine-acoustics/s…"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "citation",
+            "id": "proposal-research-operation-research-2-1783416125896-citation-5",
+            "snapshot": {
+              "title": "PDF  Near Real-Time Passive Acoustic Mitigation Monitoring: Three Case Studies",
+              "status": "tethys.pnnl.gov",
+              "summarySnippet": "Title: Near Real-Time Passive Acoustic Mitigation Monitoring: Three Case Studies URL Source: http://tethys.pnnl.gov/sites/default/files/publications/Malinka-et-al-2026.pdf Published Time: Fri, 20 Mar 2026 17:39:06 GMT N…"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "citation",
+            "id": "proposal-research-operation-research-4-1783427445958-citation-1",
+            "snapshot": {
+              "title": "Near Real-Time Passive Acoustic Mitigation Monitoring: Three Case ...",
+              "status": "link.springer.com",
+              "summarySnippet": "Title: Near Real-Time Passive Acoustic Mitigation Monitoring: Three Case Studies URL Source: http://link.springer.com/rwe/10.1007/978-3-031-94229-7_92-1 Published Time: 2026 Markdown Content: ## Abstract Near real-time …"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "citation",
+            "id": "proposal-research-operation-research-4-1783427445958-citation-2",
+            "snapshot": {
+              "title": "PDF  Near Real-Time Passive Acoustic Mitigation Monitoring: Three Case Studies",
+              "status": "tethys.pnnl.gov",
+              "summarySnippet": "Title: Near Real-Time Passive Acoustic Mitigation Monitoring: Three Case Studies URL Source: http://tethys.pnnl.gov/sites/default/files/publications/Malinka-et-al-2026.pdf Published Time: Fri, 20 Mar 2026 17:39:06 GMT N…"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "citation",
+            "id": "proposal-research-operation-research-4-1783427445958-citation-3",
+            "snapshot": {
+              "title": "Acoustic Monitoring Solutions | Real-Time PAM, Noise Analysis & Compliance",
+              "status": "mobyo.ai",
+              "summarySnippet": "Title: Acoustic Monitoring Solutions | Real-Time PAM, Noise Analysis & Compliance URL Source: http://mobyo.ai/ Markdown Content: Protect Marine Life ## Reduce the impact of noise on Marine Life through Passive Acoustic …"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "citation",
+            "id": "proposal-research-operation-research-4-1783427445958-citation-4",
+            "snapshot": {
+              "title": "Passive Acoustic Monitoring - RTSYS Underwater Technologies",
+              "status": "rtsys.eu",
+              "summarySnippet": "Title: Passive Acoustic Monitoring - RTSYS Underwater Technologies URL Source: http://rtsys.eu/passive-acoustic-monitoring Markdown Content: ## Characterization of underwater operational sound of a tidal stream turbine …"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "citation",
+            "id": "proposal-research-operation-research-4-1783427445958-citation-5",
+            "snapshot": {
+              "title": "Buoys for acoustic or multiparameter monitoring by RTSYS Underwater ...",
+              "status": "rtsys.eu",
+              "summarySnippet": "Title: Buoys for acoustic or multiparameter monitoring by RTSYS Underwater Technologies URL Source: http://rtsys.eu/buoys Markdown Content: ## Rugged buoy RUBHY Real-time acoustic monitoring in heavy seas * [Overview](h…"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-10-16",
+            "snapshot": {
+              "title": "保留关键结论：课程项目希望更偏现实工程约束，还是更偏概念性系统设计表达？",
+              "status": "createKeyConclusion",
+              "summarySnippet": "用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的待验证问题第 4条中保留关键结论。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-2-8",
+            "snapshot": {
+              "title": "保留关键结论：问题必要性已足够成立，因此后续设计无需再反复证明“海洋噪音是否值得做”，而应转向“在什么场景、为谁、以什么边界来做”。",
+              "status": "createKeyConclusion",
+              "summarySnippet": "用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 2条中保留关键结论。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-3-9",
+            "snapshot": {
+              "title": "保留关键结论：系统策略层面可以明确采用时空动态管理逻辑：在关键季节、关键航道、迁徙走廊、繁殖海域或施工缓冲区内进行针对性监测和提示。",
+              "status": "createKeyConclusion",
+              "summarySnippet": "用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 3条中保留关键结论。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-4-10",
+            "snapshot": {
+              "title": "保留关键结论：产品层面最稳妥的角色定义是感知+上传+提示+协同，而不是直接声学干预海洋环境。",
+              "status": "createKeyConclusion",
+              "summarySnippet": "用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 4条中保留关键结论。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-5-11",
+            "snapshot": {
+              "title": "保留关键结论：将后续设计定义收束为一个具体场景下的“动态海洋声学监测与提示浮标系统”，能同时保留研究深度与课程展板叙事清晰度。",
+              "status": "createKeyConclusion",
+              "summarySnippet": "用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的机会点第 1条中保留关键结论。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-6-12",
+            "snapshot": {
+              "title": "保留关键结论：围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。",
+              "status": "createKeyConclusion",
+              "summarySnippet": "用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的机会点第 2条中保留关键结论。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-7",
+            "snapshot": {
+              "title": "保留关键结论：可保留为核心结论的一点，不是“做一个能消除海洋噪音的万能浮标”，而是“做一个面向海洋噪音热点的动态监测与管理节点”。",
+              "status": "createKeyConclusion",
+              "summarySnippet": "用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 1条中保留关键结论。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-7-13",
+            "snapshot": {
+              "title": "保留关键结论：没有默认参考、额外文档原文或图片证据进入本次语境",
+              "status": "createKeyConclusion",
+              "summarySnippet": "用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的约束第 2条中保留关键结论。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-8-14",
+            "snapshot": {
+              "title": "保留关键结论：本次结果应提炼“可保留的关键结论”，同时说明哪些判断仍需在设计定义阶段继续收束",
+              "status": "createKeyConclusion",
+              "summarySnippet": "用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的约束第 3条中保留关键结论。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-9-15",
+            "snapshot": {
+              "title": "保留关键结论：系统输出应以哪种行为为主：数据记录、风险告警、航行提示、管理建议，还是多角色分层输出？",
+              "status": "createKeyConclusion",
+              "summarySnippet": "用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的待验证问题第 3条中保留关键结论。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-1",
+            "snapshot": {
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "objectType": "conceptDirection",
+              "status": "primary",
+              "visibility": "active",
+              "summarySnippet": "一件长期驻留、可被远距离辨识的海上公共基础设施产品；强调可靠存活与低干扰存在感。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "file-asset-grok-pdf-f3ae3b84-a07f-46a8-80d3-920b4aa670a4",
+            "snapshot": {
+              "title": "grok海洋噪音.pdf",
+              "objectType": "file",
+              "status": "failed",
+              "visibility": "active",
+              "summarySnippet": "application/pdf · 4.6 MB · 解析失败"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "file-asset-here-is-how-it-works-sc2026-pdf-b718325e-9d7f-493e-82e3-bc777042af71",
+            "snapshot": {
+              "title": "Here_is_how_it_works__SC2026展板要求.pdf",
+              "objectType": "file",
+              "status": "parsed",
+              "visibility": "active",
+              "summarySnippet": "application/pdf · 18.8 MB · 已解析 4625 字符 · 4 页/张"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "file-asset-m-md-558df8e4-89d9-4df5-9f7e-3e4444e06b4f",
+            "snapshot": {
+              "title": "m海洋噪音.md",
+              "objectType": "file",
+              "status": "parsed",
+              "visibility": "active",
+              "summarySnippet": "text/markdown · 38.7 KB · 已解析 23112 字符"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-73398ac0fdbbfb4dc080443a67ad7257-jpg-a5293b00-c6e5-4e36-a419-83e46f840154",
+            "snapshot": {
+              "title": "73398ac0fdbbfb4dc080443a67ad7257.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-7add87e4d5b3af015eefc40e5cbdd858-jpg-f7b04d18-548d-4abf-b19e-e06d7ee8c933",
+            "snapshot": {
+              "title": "7add87e4d5b3af015eefc40e5cbdd858.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-8735393f661c7b763aab851f51ec9515-jpg-62496dcd-5275-4f6f-9315-66088de12ee8",
+            "snapshot": {
+              "title": "8735393f661c7b763aab851f51ec9515.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-c8f9eefd0dc341b9cb432945fb811cd7-jpg-c885c98b-32da-45df-a668-8bf9eb20c9b8",
+            "snapshot": {
+              "title": "c8f9eefd0dc341b9cb432945fb811cd7.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131",
+            "snapshot": {
+              "title": "守望塔｜航标黄上部与隐藏式支脚",
+              "objectType": "image",
+              "status": "conceptImage",
+              "visibility": "active",
+              "summarySnippet": "探索高可见航标上部、低干扰水下模块与陆地直立支撑的一体化产品主图。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion",
+            "snapshot": {
+              "title": "可保留为核心结论的一点，不是“做一个能消除海洋噪音的万能浮标”，而是“做一个面向海洋噪音热点的动态监测与管理节点”。",
+              "objectType": "keyConclusion",
+              "status": "active",
+              "visibility": "active",
+              "summarySnippet": "可保留为核心结论的一点，不是“做一个能消除海洋噪音的万能浮标”，而是“做一个面向海洋噪音热点的动态监测与管理节点”。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-10",
+            "snapshot": {
+              "title": "课程项目希望更偏现实工程约束，还是更偏概念性系统设计表达？",
+              "objectType": "keyConclusion",
+              "status": "needsVerification",
+              "visibility": "active",
+              "summarySnippet": "课程项目希望更偏现实工程约束，还是更偏概念性系统设计表达？"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-2",
+            "snapshot": {
+              "title": "问题必要性已足够成立，因此后续设计无需再反复证明“海洋噪音是否值得做”，而应转向“在什么场景、为谁、以什么边界来做”。",
+              "objectType": "keyConclusion",
+              "status": "active",
+              "visibility": "active",
+              "summarySnippet": "问题必要性已足够成立，因此后续设计无需再反复证明“海洋噪音是否值得做”，而应转向“在什么场景、为谁、以什么边界来做”。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-3",
+            "snapshot": {
+              "title": "系统策略层面可以明确采用时空动态管理逻辑：在关键季节、关键航道、迁徙走廊、繁殖海域或施工缓冲区内进行针对性监测和提示。",
+              "objectType": "keyConclusion",
+              "status": "active",
+              "visibility": "active",
+              "summarySnippet": "系统策略层面可以明确采用时空动态管理逻辑：在关键季节、关键航道、迁徙走廊、繁殖海域或施工缓冲区内进行针对性监测和提示。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-4",
+            "snapshot": {
+              "title": "产品层面最稳妥的角色定义是感知+上传+提示+协同，而不是直接声学干预海洋环境。",
+              "objectType": "keyConclusion",
+              "status": "active",
+              "visibility": "active",
+              "summarySnippet": "产品层面最稳妥的角色定义是感知+上传+提示+协同，而不是直接声学干预海洋环境。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-5",
+            "snapshot": {
+              "title": "将后续设计定义收束为一个具体场景下的“动态海洋声学监测与提示浮标系统”，能同时保留研究深度与课程展板叙事清晰度。",
+              "objectType": "keyConclusion",
+              "status": "active",
+              "visibility": "active",
+              "summarySnippet": "将后续设计定义收束为一个具体场景下的“动态海洋声学监测与提示浮标系统”，能同时保留研究深度与课程展板叙事清晰度。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-6",
+            "snapshot": {
+              "title": "围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。",
+              "objectType": "keyConclusion",
+              "status": "active",
+              "visibility": "active",
+              "summarySnippet": "围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-7",
+            "snapshot": {
+              "title": "没有默认参考、额外文档原文或图片证据进入本次语境",
+              "objectType": "keyConclusion",
+              "status": "active",
+              "visibility": "active",
+              "summarySnippet": "没有默认参考、额外文档原文或图片证据进入本次语境"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-8",
+            "snapshot": {
+              "title": "本次结果应提炼“可保留的关键结论”，同时说明哪些判断仍需在设计定义阶段继续收束",
+              "objectType": "keyConclusion",
+              "status": "active",
+              "visibility": "active",
+              "summarySnippet": "本次结果应提炼“可保留的关键结论”，同时说明哪些判断仍需在设计定义阶段继续收束"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-9",
+            "snapshot": {
+              "title": "系统输出应以哪种行为为主：数据记录、风险告警、航行提示、管理建议，还是多角色分层输出？",
+              "objectType": "keyConclusion",
+              "status": "needsVerification",
+              "visibility": "active",
+              "summarySnippet": "系统输出应以哪种行为为主：数据记录、风险告警、航行提示、管理建议，还是多角色分层输出？"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "research-proposal-research-operation-research-1783412122557",
+            "snapshot": {
+              "title": "海洋噪音浮标项目前期研究与设计定义支撑性判断",
+              "objectType": "research",
+              "visibility": "active",
+              "summarySnippet": "现有资料已足够支撑进入设计定义第一轮：本地研究已清楚说明海洋噪音问题的生态必要性、时空动态性以及‘预测模型+实时验证’的系统思路；展板规范也已明确交付边界。当前不足主要不在问题定义，而在产品落地层面，需补足现实案例、海上浮标运维约束、监测能力边界与干预对象范围。基于这些补充，可将项目从泛泛的‘海洋噪音治理系统’收束为更可落地的‘用于热点海域声学监测与动态预警/管理的浮标节点’。"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "research-proposal-research-operation-research-2-1783416125896",
+            "snapshot": {
+              "title": "海洋噪音浮标课设：设计定义前的研究与分析",
+              "objectType": "research",
+              "visibility": "active",
+              "summarySnippet": "现有资料已经足够支撑第一轮设计定义，但支撑的是一个‘动态海洋声学监测与管理浮标系统’方向，而不是任何形式的海洋噪音万能装置。你的本地研究在问题必要性、生态对象、时空动态性和管理逻辑上很强；不足之处主要在现实案例、部署约束和产品边界。补充案例后可以明确：浮标可行，但其最可信的角色是被动声学监测、通信上传、风险提示和管理协同节点。接下来应围绕具体场景、目标用户、系统边界和浮标角色来收束设计定义。"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "research-proposal-research-operation-research-3-1783422035914",
+            "snapshot": {
+              "title": "海洋噪音浮标课设：关键结论与证据边界",
+              "objectType": "research",
+              "visibility": "active",
+              "summarySnippet": "从现有“设计定义前的研究与分析”中提炼出可直接保留到后续设计定义阶段的关键结论，并明确这些结论成立的证据边界与不应过度外推的部分。"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "research-proposal-research-operation-research-4-1783427445958",
+            "snapshot": {
+              "title": "海洋噪音浮标课设：关键结论与证据边界（重建）",
+              "objectType": "research",
+              "visibility": "active",
+              "summarySnippet": "基于已选本地文档、展板要求和少量外部案例，可保留的关键结论集中在：该课题可以被合理定义为一个面向声敏海洋生物热点的动态声学监测/预警/管理系统；浮标最可信的角色是被动声学感知、数据上传与管理触发节点，而不是单体装置直接消除大范围海洋噪音。证据足以支持设计收束方向、系统角色判断和展板叙事框架，但不足以直接推出具体工程参数、单一外形、长期部署能力或治理成效量化。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "research-proposal-research-operation-research-5-1783888093411",
+            "snapshot": {
+              "title": "多轮验收研究 2",
+              "objectType": "research",
+              "visibility": "active",
+              "summarySnippet": "用于验证超过四轮的连续工具执行。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "research-proposal-research-operation-research-6-1783888094794",
+            "snapshot": {
+              "title": "多轮验收研究 4",
+              "objectType": "research",
+              "visibility": "active",
+              "summarySnippet": "用于验证超过四轮的连续工具执行。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "research-proposal-research-operation-research-7-1783888286820",
+            "snapshot": {
+              "title": "并发写入验收研究",
+              "objectType": "research",
+              "visibility": "active",
+              "summarySnippet": "验证 Agent 工具写入不会覆盖用户同时完成的工作区操作。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-research",
+            "snapshot": {
+              "title": "research operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-research-2",
+            "snapshot": {
+              "title": "research operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-research-3",
+            "snapshot": {
+              "title": "research operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-research-4",
+            "snapshot": {
+              "title": "research operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-research-5",
+            "snapshot": {
+              "title": "research operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-research-6",
+            "snapshot": {
+              "title": "research operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-research-7",
+            "snapshot": {
+              "title": "research operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          }
+        ],
+        "createdAt": "2026-07-05T05:54:53.363Z",
+        "reviewRequired": true
+      },
+      "stage-designDefinition-43xb0v": {
+        "id": "stage-designDefinition-43xb0v",
+        "stage": "designDefinition",
+        "sections": {
+          "decisions": [
+            "已应用设计定义「海洋噪音浮标课设：设计定义草案三方案」。",
+            "已应用设计定义「海洋噪音浮标课设：设计定义草案三方案（重建）」。",
+            "已应用设计定义「方案 C｜分层声学生态交互系统」。",
+            "已应用设计定义「方案 A｜声学生态风险预警浮标系统」。",
+            "已应用设计定义「方案 B｜动态海洋声学避难所网络」。",
+            "已应用设计定义「方案 C｜海上工程声学合规守望系统」。",
+            "已应用设计定义「方案 C｜海上作业声学合规守望系统」。"
+          ],
+          "outputs": [
+            "方案 A｜声学生态风险预警浮标系统（r1）"
+          ],
+          "constraints": [
+            "海况、腐蚀、生物附着、供电和通信中断限制设备长期稳定运行。",
+            "声学信号受环境噪声、季节和物种差异影响，实时识别存在误报与漏报。",
+            "浮标只能建议或提示，速度限制、绕航和施工暂停需要适配既有监管与运营权限。",
+            "避免增加船员操作负担或在航行安全信息之外制造干扰。"
+          ],
+          "openRisks": [
+            "风险事件的首要处置动作应是航线建议、速度建议、施工暂停建议还是数据上报？",
+            "哪些物种、声学指标与环境变量足以支撑首个风险等级模型？",
+            "海面提示的法律身份和信息优先级应如何与既有航行安全系统协调？"
+          ]
+        },
+        "sourceRefs": [
+          {
+            "kind": "object",
+            "id": "design-definition-proposal-definition-1783431536319",
+            "snapshot": {
+              "title": "海洋噪音浮标课设：设计定义草案三方案（重建）",
+              "objectType": "designDefinition",
+              "status": "currentEffective",
+              "visibility": "active",
+              "summarySnippet": "本草案以“浮标是系统节点而非单体终局产品”为共同前提，提出三种可行但侧重点不同的定义路径：一是面向港航通行管理的声学生态风险预警系统，强调与船舶行为调整相连；二是面向生态热点保护的动态海洋声学避难所网络，强调风险地图与季节性弹性部署；三是面向近海工程活动的施工缓冲协同系统，强调在施工窗口中实现监测、告警与暂停建议。三案都以多物种保护、风险地图+实时校正、三层交互架构为基础，同时把现实限制与避免方向前置，帮助后续方案在创新表达与课程可落…"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "design-definition-proposal-definition-1783491915333",
+            "snapshot": {
+              "title": "方案 B｜动态海洋声学避难所网络",
+              "objectType": "designDefinition",
+              "status": "currentEffective",
+              "visibility": "active",
+              "summarySnippet": "以动态保护空间为核心，强调根据热点与实时数据形成临时避让区，更偏向系统治理与生态策略。"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "design-definition-proposal-definition-1783666931192-2",
+            "snapshot": {
+              "title": "方案 B｜动态海洋声学避难所网络",
+              "objectType": "designDefinition",
+              "status": "currentEffective",
+              "visibility": "active",
+              "summarySnippet": "把产品定义为可随季节、海况和生物活动调整的区域级避难所网络：浮标节点提供实测验证，后台将风险区转化为临时的安静窗口与避让边界。"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "design-definition-proposal-definition-1783666931192-3",
+            "snapshot": {
+              "title": "方案 C｜海上工程声学合规守望系统",
+              "objectType": "designDefinition",
+              "status": "currentEffective",
+              "visibility": "active",
+              "summarySnippet": "把系统聚焦在施工、勘测与维护等高噪声作业前后的现场决策：通过可部署浮标与现场状态界面，为启动、暂停、降噪和复工提供可审计依据。"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "design-definition-proposal-definition-1783669222059",
+            "snapshot": {
+              "title": "方案 A｜声学生态风险预警浮标系统",
+              "objectType": "designDefinition",
+              "status": "currentEffective",
+              "visibility": "active",
+              "summarySnippet": "以可部署的海上浮标为前端，识别并分级生态声学风险，将水下感知转化为船舶与管理者可执行的减速、绕行或复核建议；面向多类受噪声影响海洋生物，而非单一旗舰物种。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "design-definition-proposal-definition-1783669222059-2",
+            "snapshot": {
+              "title": "方案 B｜动态海洋声学避难所网络",
+              "objectType": "designDefinition",
+              "status": "currentEffective",
+              "visibility": "active",
+              "summarySnippet": "以风险地图与动态管理边界为核心，将分布式声学监测、生态热点预测和保护区治理联结为一个可更新的区域级避难所网络。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "design-definition-proposal-definition-1783669222059-3",
+            "snapshot": {
+              "title": "方案 C｜海上作业声学合规守望系统",
+              "objectType": "designDefinition",
+              "status": "currentEffective",
+              "visibility": "active",
+              "summarySnippet": "面向施工、勘测和维护等阶段性高噪声作业，提供现场监测、风险分级、降载或暂停建议及复工记录的合规支持系统。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion",
+            "snapshot": {
+              "title": "保护对象扩展：本地研究把受害对象从鲸豚扩展到鱼类、海龟和无脊椎动物，显著增强了课题的生态与公共价值论据。",
+              "objectType": "keyConclusion",
+              "status": "active",
+              "visibility": "active",
+              "summarySnippet": "保护对象扩展：本地研究把受害对象从鲸豚扩展到鱼类、海龟和无脊椎动物，显著增强了课题的生态与公共价值论据。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-2",
+            "snapshot": {
+              "title": "热点可预测性：生物热点并非随机分布，而是与海山、峡谷、大陆架边缘及可建模海洋锋面相关，说明系统可以先做风险地图再做实时验证。",
+              "objectType": "keyConclusion",
+              "status": "active",
+              "visibility": "active",
+              "summarySnippet": "热点可预测性：生物热点并非随机分布，而是与海山、峡谷、大陆架边缘及可建模海洋锋面相关，说明系统可以先做风险地图再做实时验证。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-3",
+            "snapshot": {
+              "title": "系统定位收束：把课题表述为“动态海洋声学避难所网络”或“声学生态风险预警浮标系统”，能同时容纳生态论据与产品边界。",
+              "objectType": "keyConclusion",
+              "status": "active",
+              "visibility": "active",
+              "summarySnippet": "系统定位收束：把课题表述为“动态海洋声学避难所网络”或“声学生态风险预警浮标系统”，能同时容纳生态论据与产品边界。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-4",
+            "snapshot": {
+              "title": "交互层级明确：将产品输出分成水下感知、海面信号和后台管理三层，有利于后续建立展板叙事和产品架构。",
+              "objectType": "keyConclusion",
+              "status": "active",
+              "visibility": "active",
+              "summarySnippet": "交互层级明确：将产品输出分成水下感知、海面信号和后台管理三层，有利于后续建立展板叙事和产品架构。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-5",
+            "snapshot": {
+              "title": "生态对象扩大：已选文档显示受航运低频噪音影响的不仅是鲸豚，也包括鱼类、海龟和部分无脊椎动物，设计目标不应只围绕单一旗舰物种。",
+              "objectType": "keyConclusion",
+              "status": "active",
+              "visibility": "active",
+              "summarySnippet": "生态对象扩大：已选文档显示受航运低频噪音影响的不仅是鲸豚，也包括鱼类、海龟和部分无脊椎动物，设计目标不应只围绕单一旗舰物种。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-6",
+            "snapshot": {
+              "title": "作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。",
+              "objectType": "keyConclusion",
+              "status": "needsVerification",
+              "visibility": "active",
+              "summarySnippet": "作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-designDefinition-1783431536318-f8habk",
+            "snapshot": {
+              "title": "designDefinition operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-designDefinition-1783433914702-dzpkqb",
+            "snapshot": {
+              "title": "designDefinition operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-designDefinition-1783491915333-gronlg",
+            "snapshot": {
+              "title": "designDefinition operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-designDefinition-1783666931191-2231h8",
+            "snapshot": {
+              "title": "designDefinition operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-designDefinition-1783669222058-fi72ya",
+            "snapshot": {
+              "title": "designDefinition operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "definition-revision-design-definition-proposal-definition-1783431536319-1",
+            "snapshot": {
+              "title": "海洋噪音浮标课设：设计定义草案三方案",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "基于当前研究结论，提出三种可继续深化的设计定义草案，分别强调预警管理、动态避让网络与施工缓冲协同。三案都遵循生态对象不局限于鲸豚、热点具有可预测性、产品应拆分为水下感知/海面信号/后台管理三层，以及作用链必须闭环这四个基础判断；差异主要在于服务对象、触发动作、实施场景与可行性重心。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "definition-revision-design-definition-proposal-definition-1783431536319-2",
+            "snapshot": {
+              "title": "海洋噪音浮标课设：设计定义草案三方案（重建）",
+              "revisionNumber": 2,
+              "status": "current",
+              "summarySnippet": "本草案以“浮标是系统节点而非单体终局产品”为共同前提，提出三种可行但侧重点不同的定义路径：一是面向港航通行管理的声学生态风险预警系统，强调与船舶行为调整相连；二是面向生态热点保护的动态海洋声学避难所网络，强调风险地图与季节性弹性部署；三是面向近海工程活动的施工缓冲协同系统，强调在施工窗口中实现监测、告警与暂停建议。三案都以多物种保护、风险地图+实时校正、三层交互架构为基础，同时把现实限制与避免方向前置，帮助后续方案在创新表达与课程可落…"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "definition-revision-design-definition-proposal-definition-1783491915333-1",
+            "snapshot": {
+              "title": "方案 C｜分层声学生态交互系统",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "基于当前六条关键结论，形成三个可继续筛选的设计定义草案，分别偏向预警基础设施、动态避难所网络与分层交互系统，避免使用“重建”等调试痕迹命名。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "definition-revision-design-definition-proposal-definition-1783491915333-2",
+            "snapshot": {
+              "title": "方案 A｜声学生态风险预警浮标系统",
+              "revisionNumber": 2,
+              "status": "current",
+              "summarySnippet": "以浮标为核心入口，强调监测、识别与预警传递，是最接近产品化设备系统的定义。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "definition-revision-design-definition-proposal-definition-1783491915333-3",
+            "snapshot": {
+              "title": "方案 B｜动态海洋声学避难所网络",
+              "revisionNumber": 3,
+              "status": "current",
+              "summarySnippet": "以动态保护空间为核心，强调根据热点与实时数据形成临时避让区，更偏向系统治理与生态策略。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "definition-revision-design-definition-proposal-definition-1783666931192-2-1",
+            "snapshot": {
+              "title": "方案 B｜动态海洋声学避难所网络",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "把产品定义为可随季节、海况和生物活动调整的区域级避难所网络：浮标节点提供实测验证，后台将风险区转化为临时的安静窗口与避让边界。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "definition-revision-design-definition-proposal-definition-1783666931192-3-1",
+            "snapshot": {
+              "title": "方案 C｜海上工程声学合规守望系统",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "把系统聚焦在施工、勘测与维护等高噪声作业前后的现场决策：通过可部署浮标与现场状态界面，为启动、暂停、降噪和复工提供可审计依据。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "definition-revision-design-definition-proposal-definition-1783669222059-1",
+            "snapshot": {
+              "title": "方案 A｜声学生态风险预警浮标系统"
+            }
+          },
+          {
+            "kind": "revision",
+            "id": "definition-revision-design-definition-proposal-definition-1783669222059-2-1",
+            "snapshot": {
+              "title": "方案 B｜动态海洋声学避难所网络",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "以风险地图与动态管理边界为核心，将分布式声学监测、生态热点预测和保护区治理联结为一个可更新的区域级避难所网络。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "definition-revision-design-definition-proposal-definition-1783669222059-3-1",
+            "snapshot": {
+              "title": "方案 C｜海上作业声学合规守望系统",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "面向施工、勘测和维护等阶段性高噪声作业，提供现场监测、风险分级、降载或暂停建议及复工记录的合规支持系统。"
+            },
+            "sourceAvailability": "active"
+          }
+        ],
+        "createdAt": "2026-07-05T05:54:53.363Z",
+        "reviewRequired": true
+      },
+      "stage-directionAndVisual-1nr7xvx": {
+        "id": "stage-directionAndVisual-1nr7xvx",
+        "stage": "directionAndVisual",
+        "sections": {
+          "outputs": [
+            "已应用 3 个概念方向。",
+            "视觉生成完成 3 项。",
+            "视觉生成完成 1 项。",
+            "视觉生成完成 2 项。",
+            "方向 1｜守望塔：长期驻留型声学浮标（primary）",
+            "方向 2｜声学哨兵：快速投放型模块浮标（pendingPreview）",
+            "方向 3｜共航标：船舶交互型生态航标（pendingPreview）",
+            "已生成 16 个视觉对象"
+          ],
+          "decisions": [
+            "方向 1｜岸海锚定式声学哨站 已标记为 备选。",
+            "方向 1｜岸海锚定式声学哨站 已标记为 主方向。",
+            "方向 1｜守望塔：长期驻留型声学浮标 已标记为 主方向。",
+            "已将「守望塔｜维护可达版」设为后续默认参考。"
+          ],
+          "goalAndStatus": [
+            "视觉生成完成 2 项。"
+          ]
+        },
+        "sourceRefs": [
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-81",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference",
+              "summarySnippet": "用户在画布上明确取消后续默认参考。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-83",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference",
+              "summarySnippet": "用户在画布上明确取消后续默认参考。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-85",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference",
+              "summarySnippet": "用户在画布上明确取消后续默认参考。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-87",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference",
+              "summarySnippet": "用户在画布上明确取消后续默认参考。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-89",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference",
+              "summarySnippet": "用户在画布上明确取消后续默认参考。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDirectionStatus-direction-proposal-direction-1783503160642-1-59",
+            "snapshot": {
+              "title": "方向 1｜岸海锚定式声学哨站 -> alternative",
+              "status": "setDirectionStatus",
+              "summarySnippet": "用户在底部详情栏明确将该方向转为备选方向。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDirectionStatus-direction-proposal-direction-1783503160642-1-60",
+            "snapshot": {
+              "title": "方向 1｜岸海锚定式声学哨站 -> primary",
+              "status": "setDirectionStatus",
+              "summarySnippet": "用户在底部详情栏明确将该方向设为主方向。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDirectionStatus-direction-proposal-direction-1783503160642-1-61",
+            "snapshot": {
+              "title": "方向 1｜岸海锚定式声学哨站 -> alternative",
+              "status": "setDirectionStatus",
+              "summarySnippet": "用户在底部详情栏明确将该方向转为备选方向。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDirectionStatus-direction-proposal-direction-1783671299082-1-79",
+            "snapshot": {
+              "title": "方向 1｜守望塔：长期驻留型声学浮标 -> primary",
+              "status": "setDirectionStatus",
+              "summarySnippet": "用户在底部详情栏明确将该方向设为主方向。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783503160642-1",
+            "snapshot": {
+              "title": "方向 1｜岸海锚定式声学哨站",
+              "objectType": "conceptDirection",
+              "status": "alternative",
+              "visibility": "active",
+              "summarySnippet": "以固定部署的岸海边界节点为核心，通过长期驻留、持续监听与分级广播形成稳定的声学预警基础设施。"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783503160642-2",
+            "snapshot": {
+              "title": "方向 2｜漂移拼接式避险浮标群",
+              "objectType": "conceptDirection",
+              "status": "pendingPreview",
+              "visibility": "active",
+              "summarySnippet": "以可增减、可迁移的浮标群体构成动态网络，通过节点协同和临时拼接形成弹性避险与引导系统。"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783503160642-3",
+            "snapshot": {
+              "title": "方向 3｜近人引导式声学交互终端",
+              "objectType": "conceptDirection",
+              "status": "pendingPreview",
+              "visibility": "active",
+              "summarySnippet": "以近距离接触和具身引导为核心，把系统收束为人与环境之间的交互终端，强化可理解反馈与行动指引。"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-1",
+            "snapshot": {
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "objectType": "conceptDirection",
+              "visibility": "active",
+              "summarySnippet": "一件长期驻留、可被远距离辨识的海上公共基础设施产品；强调可靠存活与低干扰存在感。",
+              "createdAt": "2026-07-10T08:14:59.083Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-2",
+            "snapshot": {
+              "title": "方向 2｜声学哨兵：快速投放型模块浮标",
+              "objectType": "conceptDirection",
+              "visibility": "active",
+              "summarySnippet": "一套可运输、可投放、可回收的轻量化声学哨兵；强调部署速度、任务适配与模块化扩展。",
+              "createdAt": "2026-07-10T08:14:59.083Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-3",
+            "snapshot": {
+              "title": "方向 3｜共航标：船舶交互型生态航标",
+              "objectType": "conceptDirection",
+              "visibility": "active",
+              "summarySnippet": "一件以航行者感知和行为改变为优先的交互式海上标志物；强调远距可读性、行动导向与共同航行的公共语义。",
+              "createdAt": "2026-07-10T08:14:59.083Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-73398ac0fdbbfb4dc080443a67ad7257-jpg-a5293b00-c6e5-4e36-a419-83e46f840154",
+            "snapshot": {
+              "title": "73398ac0fdbbfb4dc080443a67ad7257.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-7add87e4d5b3af015eefc40e5cbdd858-jpg-f7b04d18-548d-4abf-b19e-e06d7ee8c933",
+            "snapshot": {
+              "title": "7add87e4d5b3af015eefc40e5cbdd858.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-8735393f661c7b763aab851f51ec9515-jpg-62496dcd-5275-4f6f-9315-66088de12ee8",
+            "snapshot": {
+              "title": "8735393f661c7b763aab851f51ec9515.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-c8f9eefd0dc341b9cb432945fb811cd7-jpg-c885c98b-32da-45df-a668-8bf9eb20c9b8",
+            "snapshot": {
+              "title": "c8f9eefd0dc341b9cb432945fb811cd7.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+            "snapshot": {
+              "title": "守望塔｜纯产品预览",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "呈现长期驻留型声学浮标的稳定结构、耐候构造与低干扰公共设施气质。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095",
+            "snapshot": {
+              "title": "声学哨兵｜纯产品预览",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "呈现快速投放、模块化更换与回收运输导向的轻量化装备形态。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783682287791-jpg-d4f07c12-7497-4067-ad09-15baa6449672",
+            "snapshot": {
+              "title": "共航标｜纯产品预览",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "呈现以远距信号阅读和航行行为引导为核心的交互式航标产品气质。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131",
+            "snapshot": {
+              "title": "守望塔｜航标黄上部与隐藏式支脚",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "探索高可见航标上部、低干扰水下模块与陆地直立支撑的一体化产品主图。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783686836365-jpg-bd78734a-811a-4f87-a526-9a8e1862008e",
+            "snapshot": {
+              "title": "守望塔｜航标黄浮圈与三点维护支撑",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "补充另一种高可见上部和低干扰下部比例的产品主图，检验可陆地直立的整体结构。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783696461343-jpg-a7e57f25-1c72-4a46-a87a-c5364f38c79a",
+            "snapshot": {
+              "title": "守望塔优化｜整体式航标浮标",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "将当前概念收敛为成熟、可长期驻留的海工浮标，消除塑料叠层与陆地支脚感。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783696671929-jpg-b9c740ba-38db-4901-b771-631ba4e96464",
+            "snapshot": {
+              "title": "守望塔优化｜护舷式海工浮标",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "以连续浮体、工程法兰和单一航标色，建立更成熟的可维护海工形象。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783696937588-jpg-721675ec-7336-47de-894b-73f827a617ae",
+            "snapshot": {
+              "title": "守望塔｜基形保留 · 高可见上部",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "在保留参考图主体比例、塔身、圆形浮力环与下部吊舱基本形态的前提下，优化海面上部的警示色彩与海面下部低干扰分区。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783696973466-jpg-54f46fc4-284d-44bf-b483-3f470fed0a6f",
+            "snapshot": {
+              "title": "守望塔｜基形保留 · 警示分区",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "以纯产品主图复核基形不变前提下的上部警示色、下部低干扰配色与一体支脚。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783855353992-png-03cabcf6-e36e-4e6d-893d-46f0f6cdc146",
+            "snapshot": {
+              "title": "守望塔｜海况耐久版",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "在不改变既有警示色分区、塔式基形和可收纳弯曲支架语言的前提下，强化真实海上长期驻留设备的结构可信度。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+            "snapshot": {
+              "title": "守望塔｜维护可达版",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "以更清晰的维护、吊装和声学接口逻辑，验证同一产品语言下的另一种工程化表达。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783860534073-png-a896841d-2804-4ebc-885e-51bc95e6056f",
+            "snapshot": {
+              "title": "守望塔｜整合甲板版",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "将现有维护、吊装与陆地支撑部件收敛为一体化结构，验证简洁、专业的工业设备主图。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783860809826-png-c73887dc-9d04-420f-af1b-771c1e2c146f",
+            "snapshot": {
+              "title": "守望塔｜模块化下舱版",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "以清晰的上下功能分区和隐藏式维护支撑，探索更克制的模块化工程产品表达。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783889212798-png-18d08576-b883-4acc-b413-e98d58f29139",
+            "snapshot": {
+              "title": "夜间柔光扶手",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "验证低眩光连续引导"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783889911958-png-2e05109c-693c-4f6f-bf8a-c62b70c92b83",
+            "snapshot": {
+              "title": "夜间柔光扶手",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "验证低眩光连续引导"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead",
+            "snapshot": {
+              "title": "卫浴路径节点",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "验证模块化转角节点"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-conceptDirection-1783503160642-jxmg2y",
+            "snapshot": {
+              "title": "conceptDirection operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-conceptDirection-1783671299081-wgn547",
+            "snapshot": {
+              "title": "conceptDirection operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783682031023-1fg5cv",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783686468463-ouu2iq",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783686507065-fh61f9",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783696442449-sbqoe2",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783696479592-f39ql2",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783696881931-azg5l3",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783696956308-lbvpwi",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783855268126-o6a3kx",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783855373229-t1376u",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783860462857-5lqor9",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783860534085-yoq0of",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783889211791-rivcoj",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783889910968-moy113",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "definition-revision-design-definition-proposal-definition-1783669222059-1",
+            "snapshot": {
+              "title": "方案 A｜声学生态风险预警浮标系统",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "以可部署的海上浮标为前端，识别并分级生态声学风险，将水下感知转化为船舶与管理者可执行的减速、绕行或复核建议；面向多类受噪声影响海洋生物，而非单一旗舰物种。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "direction-revision-direction-proposal-direction-1783503160642-1-1",
+            "snapshot": {
+              "title": "方向 1｜岸海锚定式声学哨站",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "以固定部署的岸海边界节点为核心，通过长期驻留、持续监听与分级广播形成稳定的声学预警基础设施。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "direction-revision-direction-proposal-direction-1783503160642-2-1",
+            "snapshot": {
+              "title": "方向 2｜漂移拼接式避险浮标群",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "以可增减、可迁移的浮标群体构成动态网络，通过节点协同和临时拼接形成弹性避险与引导系统。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "direction-revision-direction-proposal-direction-1783503160642-3-1",
+            "snapshot": {
+              "title": "方向 3｜近人引导式声学交互终端",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "以近距离接触和具身引导为核心，把系统收束为人与环境之间的交互终端，强化可理解反馈与行动指引。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "direction-revision-direction-proposal-direction-1783671299082-1-1",
+            "snapshot": {
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "一件长期驻留、可被远距离辨识的海上公共基础设施产品；强调可靠存活与低干扰存在感。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "direction-revision-direction-proposal-direction-1783671299082-2-1",
+            "snapshot": {
+              "title": "方向 2｜声学哨兵：快速投放型模块浮标",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "一套可运输、可投放、可回收的轻量化声学哨兵；强调部署速度、任务适配与模块化扩展。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "direction-revision-direction-proposal-direction-1783671299082-3-1",
+            "snapshot": {
+              "title": "方向 3｜共航标：船舶交互型生态航标",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "一件以航行者感知和行为改变为优先的交互式海上标志物；强调远距可读性、行动导向与共同航行的公共语义。"
+            },
+            "sourceAvailability": "active"
+          }
+        ],
+        "createdAt": "2026-07-05T05:54:53.363Z",
+        "reviewRequired": true
+      },
+      "stage-deliveryPreparation-1kshe1i": {
+        "id": "stage-deliveryPreparation-1kshe1i",
+        "stage": "deliveryPreparation",
+        "sections": {
+          "outputs": [
+            "已创建交付准备包「课程阶段展示」。",
+            "课程阶段展示"
+          ],
+          "decisions": [
+            "已向「课程阶段展示」加入 1 项交付引用。"
+          ],
+          "openRisks": []
+        },
+        "sourceRefs": [
+          {
+            "kind": "decision",
+            "id": "decision-createDeliveryPreparation-delivery-课程阶段展示-2-5",
+            "snapshot": {
+              "title": "创建交付准备包：课程阶段展示",
+              "status": "createDeliveryPreparation",
+              "summarySnippet": "创建交付准备包：课程阶段展示"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createDeliveryPreparation-delivery-课程阶段展示-3",
+            "snapshot": {
+              "title": "创建交付准备包：课程阶段展示",
+              "status": "createDeliveryPreparation",
+              "summarySnippet": "创建交付准备包：课程阶段展示"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createDeliveryReference-delivery-ref-delivery-课程阶段展示-section-delivery-课程阶段展示-1-image-asset-jpg-cf696804-574f-4489-a970-de5cff405dfb-4",
+            "snapshot": {
+              "title": "加入 1 项交付引用。",
+              "status": "createDeliveryReference",
+              "summarySnippet": "加入 1 项交付引用。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "deliveryReference",
+            "id": "delivery-ref-delivery-课程阶段展示-section-delivery-课程阶段展示-1-image-asset-jpg-cf696804-574f-4489-a970-de5cff405dfb",
+            "snapshot": {
+              "title": "展板英.jpg",
+              "objectType": "image",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "delivery-课程阶段展示",
+            "snapshot": {
+              "title": "课程阶段展示",
+              "objectType": "delivery",
+              "visibility": "active",
+              "summarySnippet": "交付准备包用于组织章节、稳定引用、说明文字和待补内容，不是最终排版文件。",
+              "createdAt": "2026-07-06T18:22:22.151Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "delivery-课程阶段展示-2",
+            "snapshot": {
+              "title": "课程阶段展示",
+              "objectType": "delivery",
+              "visibility": "active",
+              "summarySnippet": "交付准备包用于组织章节、稳定引用、说明文字和待补内容，不是最终排版文件。",
+              "createdAt": "2026-07-07T07:39:34.969Z"
+            },
+            "sourceAvailability": "active"
+          }
+        ],
+        "createdAt": "2026-07-05T05:54:53.363Z",
+        "reviewRequired": false
+      },
+      "stage-directionAndVisual-115l19l": {
+        "id": "stage-directionAndVisual-115l19l",
+        "stage": "directionAndVisual",
+        "previousRevisionId": "stage-directionAndVisual-1nr7xvx",
+        "sections": {
+          "outputs": [
+            "已应用 3 个概念方向。",
+            "视觉生成完成 3 项。",
+            "视觉生成完成 1 项。",
+            "视觉生成完成 2 项。",
+            "方向 1｜守望塔：长期驻留型声学浮标（primary）",
+            "方向 2｜声学哨兵：快速投放型模块浮标（pendingPreview）",
+            "方向 3｜共航标：船舶交互型生态航标（pendingPreview）",
+            "已生成 16 个视觉对象"
+          ],
+          "decisions": [
+            "方向 1｜岸海锚定式声学哨站 已标记为 备选。",
+            "方向 1｜岸海锚定式声学哨站 已标记为 主方向。",
+            "方向 1｜守望塔：长期驻留型声学浮标 已标记为 主方向。",
+            "已清除「守望塔｜维护可达版」的后续默认参考。"
+          ],
+          "goalAndStatus": [
+            "视觉生成完成 2 项。"
+          ]
+        },
+        "sourceRefs": [
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-81",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference",
+              "summarySnippet": "用户在画布上明确取消后续默认参考。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-83",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference",
+              "summarySnippet": "用户在画布上明确取消后续默认参考。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-85",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference",
+              "summarySnippet": "用户在画布上明确取消后续默认参考。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-87",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference",
+              "summarySnippet": "用户在画布上明确取消后续默认参考。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-89",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference",
+              "summarySnippet": "用户在画布上明确取消后续默认参考。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDirectionStatus-direction-proposal-direction-1783503160642-1-59",
+            "snapshot": {
+              "title": "方向 1｜岸海锚定式声学哨站 -> alternative",
+              "status": "setDirectionStatus",
+              "summarySnippet": "用户在底部详情栏明确将该方向转为备选方向。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDirectionStatus-direction-proposal-direction-1783503160642-1-60",
+            "snapshot": {
+              "title": "方向 1｜岸海锚定式声学哨站 -> primary",
+              "status": "setDirectionStatus",
+              "summarySnippet": "用户在底部详情栏明确将该方向设为主方向。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDirectionStatus-direction-proposal-direction-1783503160642-1-61",
+            "snapshot": {
+              "title": "方向 1｜岸海锚定式声学哨站 -> alternative",
+              "status": "setDirectionStatus",
+              "summarySnippet": "用户在底部详情栏明确将该方向转为备选方向。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDirectionStatus-direction-proposal-direction-1783671299082-1-79",
+            "snapshot": {
+              "title": "方向 1｜守望塔：长期驻留型声学浮标 -> primary",
+              "status": "setDirectionStatus",
+              "summarySnippet": "用户在底部详情栏明确将该方向设为主方向。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783503160642-1",
+            "snapshot": {
+              "title": "方向 1｜岸海锚定式声学哨站",
+              "objectType": "conceptDirection",
+              "status": "alternative",
+              "visibility": "active",
+              "summarySnippet": "以固定部署的岸海边界节点为核心，通过长期驻留、持续监听与分级广播形成稳定的声学预警基础设施。"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783503160642-2",
+            "snapshot": {
+              "title": "方向 2｜漂移拼接式避险浮标群",
+              "objectType": "conceptDirection",
+              "status": "pendingPreview",
+              "visibility": "active",
+              "summarySnippet": "以可增减、可迁移的浮标群体构成动态网络，通过节点协同和临时拼接形成弹性避险与引导系统。"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783503160642-3",
+            "snapshot": {
+              "title": "方向 3｜近人引导式声学交互终端",
+              "objectType": "conceptDirection",
+              "status": "pendingPreview",
+              "visibility": "active",
+              "summarySnippet": "以近距离接触和具身引导为核心，把系统收束为人与环境之间的交互终端，强化可理解反馈与行动指引。"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-1",
+            "snapshot": {
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "objectType": "conceptDirection",
+              "visibility": "active",
+              "summarySnippet": "一件长期驻留、可被远距离辨识的海上公共基础设施产品；强调可靠存活与低干扰存在感。",
+              "createdAt": "2026-07-10T08:14:59.083Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-2",
+            "snapshot": {
+              "title": "方向 2｜声学哨兵：快速投放型模块浮标",
+              "objectType": "conceptDirection",
+              "visibility": "active",
+              "summarySnippet": "一套可运输、可投放、可回收的轻量化声学哨兵；强调部署速度、任务适配与模块化扩展。",
+              "createdAt": "2026-07-10T08:14:59.083Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-3",
+            "snapshot": {
+              "title": "方向 3｜共航标：船舶交互型生态航标",
+              "objectType": "conceptDirection",
+              "visibility": "active",
+              "summarySnippet": "一件以航行者感知和行为改变为优先的交互式海上标志物；强调远距可读性、行动导向与共同航行的公共语义。",
+              "createdAt": "2026-07-10T08:14:59.083Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-73398ac0fdbbfb4dc080443a67ad7257-jpg-a5293b00-c6e5-4e36-a419-83e46f840154",
+            "snapshot": {
+              "title": "73398ac0fdbbfb4dc080443a67ad7257.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-7add87e4d5b3af015eefc40e5cbdd858-jpg-f7b04d18-548d-4abf-b19e-e06d7ee8c933",
+            "snapshot": {
+              "title": "7add87e4d5b3af015eefc40e5cbdd858.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-8735393f661c7b763aab851f51ec9515-jpg-62496dcd-5275-4f6f-9315-66088de12ee8",
+            "snapshot": {
+              "title": "8735393f661c7b763aab851f51ec9515.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-c8f9eefd0dc341b9cb432945fb811cd7-jpg-c885c98b-32da-45df-a668-8bf9eb20c9b8",
+            "snapshot": {
+              "title": "c8f9eefd0dc341b9cb432945fb811cd7.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+            "snapshot": {
+              "title": "守望塔｜纯产品预览",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "呈现长期驻留型声学浮标的稳定结构、耐候构造与低干扰公共设施气质。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095",
+            "snapshot": {
+              "title": "声学哨兵｜纯产品预览",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "呈现快速投放、模块化更换与回收运输导向的轻量化装备形态。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783682287791-jpg-d4f07c12-7497-4067-ad09-15baa6449672",
+            "snapshot": {
+              "title": "共航标｜纯产品预览",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "呈现以远距信号阅读和航行行为引导为核心的交互式航标产品气质。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131",
+            "snapshot": {
+              "title": "守望塔｜航标黄上部与隐藏式支脚",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "探索高可见航标上部、低干扰水下模块与陆地直立支撑的一体化产品主图。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783686836365-jpg-bd78734a-811a-4f87-a526-9a8e1862008e",
+            "snapshot": {
+              "title": "守望塔｜航标黄浮圈与三点维护支撑",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "补充另一种高可见上部和低干扰下部比例的产品主图，检验可陆地直立的整体结构。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783696461343-jpg-a7e57f25-1c72-4a46-a87a-c5364f38c79a",
+            "snapshot": {
+              "title": "守望塔优化｜整体式航标浮标",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "将当前概念收敛为成熟、可长期驻留的海工浮标，消除塑料叠层与陆地支脚感。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783696671929-jpg-b9c740ba-38db-4901-b771-631ba4e96464",
+            "snapshot": {
+              "title": "守望塔优化｜护舷式海工浮标",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "以连续浮体、工程法兰和单一航标色，建立更成熟的可维护海工形象。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783696937588-jpg-721675ec-7336-47de-894b-73f827a617ae",
+            "snapshot": {
+              "title": "守望塔｜基形保留 · 高可见上部",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "在保留参考图主体比例、塔身、圆形浮力环与下部吊舱基本形态的前提下，优化海面上部的警示色彩与海面下部低干扰分区。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783696973466-jpg-54f46fc4-284d-44bf-b483-3f470fed0a6f",
+            "snapshot": {
+              "title": "守望塔｜基形保留 · 警示分区",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "以纯产品主图复核基形不变前提下的上部警示色、下部低干扰配色与一体支脚。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783855353992-png-03cabcf6-e36e-4e6d-893d-46f0f6cdc146",
+            "snapshot": {
+              "title": "守望塔｜海况耐久版",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "在不改变既有警示色分区、塔式基形和可收纳弯曲支架语言的前提下，强化真实海上长期驻留设备的结构可信度。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+            "snapshot": {
+              "title": "守望塔｜维护可达版",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "以更清晰的维护、吊装和声学接口逻辑，验证同一产品语言下的另一种工程化表达。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783860534073-png-a896841d-2804-4ebc-885e-51bc95e6056f",
+            "snapshot": {
+              "title": "守望塔｜整合甲板版",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "将现有维护、吊装与陆地支撑部件收敛为一体化结构，验证简洁、专业的工业设备主图。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783860809826-png-c73887dc-9d04-420f-af1b-771c1e2c146f",
+            "snapshot": {
+              "title": "守望塔｜模块化下舱版",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "以清晰的上下功能分区和隐藏式维护支撑，探索更克制的模块化工程产品表达。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783889212798-png-18d08576-b883-4acc-b413-e98d58f29139",
+            "snapshot": {
+              "title": "夜间柔光扶手",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "验证低眩光连续引导"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783889911958-png-2e05109c-693c-4f6f-bf8a-c62b70c92b83",
+            "snapshot": {
+              "title": "夜间柔光扶手",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "验证低眩光连续引导"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead",
+            "snapshot": {
+              "title": "卫浴路径节点",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "验证模块化转角节点"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-conceptDirection-1783503160642-jxmg2y",
+            "snapshot": {
+              "title": "conceptDirection operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-conceptDirection-1783671299081-wgn547",
+            "snapshot": {
+              "title": "conceptDirection operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783682031023-1fg5cv",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783686468463-ouu2iq",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783686507065-fh61f9",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783696442449-sbqoe2",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783696479592-f39ql2",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783696881931-azg5l3",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783696956308-lbvpwi",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783855268126-o6a3kx",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783855373229-t1376u",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783860462857-5lqor9",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783860534085-yoq0of",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783889211791-rivcoj",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783889910968-moy113",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "definition-revision-design-definition-proposal-definition-1783669222059-1",
+            "snapshot": {
+              "title": "方案 A｜声学生态风险预警浮标系统",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "以可部署的海上浮标为前端，识别并分级生态声学风险，将水下感知转化为船舶与管理者可执行的减速、绕行或复核建议；面向多类受噪声影响海洋生物，而非单一旗舰物种。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "direction-revision-direction-proposal-direction-1783503160642-1-1",
+            "snapshot": {
+              "title": "方向 1｜岸海锚定式声学哨站",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "以固定部署的岸海边界节点为核心，通过长期驻留、持续监听与分级广播形成稳定的声学预警基础设施。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "direction-revision-direction-proposal-direction-1783503160642-2-1",
+            "snapshot": {
+              "title": "方向 2｜漂移拼接式避险浮标群",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "以可增减、可迁移的浮标群体构成动态网络，通过节点协同和临时拼接形成弹性避险与引导系统。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "direction-revision-direction-proposal-direction-1783503160642-3-1",
+            "snapshot": {
+              "title": "方向 3｜近人引导式声学交互终端",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "以近距离接触和具身引导为核心，把系统收束为人与环境之间的交互终端，强化可理解反馈与行动指引。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "direction-revision-direction-proposal-direction-1783671299082-1-1",
+            "snapshot": {
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "一件长期驻留、可被远距离辨识的海上公共基础设施产品；强调可靠存活与低干扰存在感。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "direction-revision-direction-proposal-direction-1783671299082-2-1",
+            "snapshot": {
+              "title": "方向 2｜声学哨兵：快速投放型模块浮标",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "一套可运输、可投放、可回收的轻量化声学哨兵；强调部署速度、任务适配与模块化扩展。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "direction-revision-direction-proposal-direction-1783671299082-3-1",
+            "snapshot": {
+              "title": "方向 3｜共航标：船舶交互型生态航标",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "一件以航行者感知和行为改变为优先的交互式海上标志物；强调远距可读性、行动导向与共同航行的公共语义。"
+            },
+            "sourceAvailability": "active"
+          }
+        ],
+        "createdAt": "2026-07-05T05:54:53.363Z",
+        "reviewRequired": true
+      }
+    },
+    "updatedAt": "2026-07-05T05:54:53.363Z"
+  },
   "canvas": {
     "view": {
       "x": -1038.4927968920033,
@@ -20446,6 +24416,43 @@
         "nextTurnAnchor": "等待用户后续指令。"
       }
     ],
+    "conversationCompaction": {
+      "summaryRevisionId": "conversation-summary-migrated-sqca77",
+      "coveredThroughMessageId": "ai-assistant-compact-1783694432905",
+      "coveredMessageCount": 84,
+      "updatedAt": "2026-07-10T14:40:43.101Z",
+      "sourceMessageIdsHash": "4cysl7"
+    },
+    "conversationSummaryRevisions": {
+      "conversation-summary-migrated-sqca77": {
+        "id": "conversation-summary-migrated-sqca77",
+        "summary": {
+          "threadGoal": "确认上下文链路正常且不对画布对象执行创建、修改或删除操作。",
+          "establishedContext": [
+            "已按要求回复“上下文链路正常”。",
+            "未执行任何画布对象操作。",
+            "当前用户请求压缩讨论脉络。"
+          ],
+          "decisionsAndReasons": [],
+          "activeWork": [
+            "已按要求回复“上下文链路正常”。",
+            "未执行任何画布对象操作。",
+            "当前用户请求压缩讨论脉络。"
+          ],
+          "unresolvedQuestions": [],
+          "referencedObjects": [
+            "image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131",
+            "direction-proposal-direction-1783671299082-1"
+          ],
+          "nextTurnAnchor": "等待用户后续指令。"
+        },
+        "sourceStartMessageId": "ai-user-agent-1783693500646",
+        "sourceEndMessageId": "ai-assistant-compact-1783694432905",
+        "sourceMessageCount": 3,
+        "sourceMessageIdsHash": "4cysl7",
+        "createdAt": "2026-07-10T14:40:43.101Z"
+      }
+    },
     "comparisonAnalyses": {
       "comparison-ai-assistant-agent-1783860167521": {
         "id": "comparison-ai-assistant-agent-1783860167521",

@@ -276,6 +276,7 @@ describe("workspace conversation semantic patch helpers", () => {
     const workspace = {
       ...createInitialWorkspace(),
       ai: {
+        ...createInitialWorkspace().ai,
         messages: [
           {
             id: userMessageId,

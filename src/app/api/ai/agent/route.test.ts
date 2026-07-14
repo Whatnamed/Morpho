@@ -233,7 +233,23 @@ describe("agent route stream", () => {
           { role: "system", content: [{ type: "input_text", text: "系统规则" }] },
           { role: "user", content: [{ type: "input_text", text: "旧问题" }] },
           { role: "assistant", content: [{ type: "output_text", text: "旧回答" }] },
-          { role: "user", content: [{ type: "input_text", text: "当前问题" }] }
+          { role: "user", content: [{ type: "input_text", text: "当前问题" }] },
+          {
+            type: "function_call",
+            id: "old-call-item",
+            call_id: "old-call",
+            name: "search_web_evidence",
+            arguments: "{}"
+          },
+          { type: "function_call_output", call_id: "old-call", output: "x".repeat(20_000) },
+          {
+            type: "function_call",
+            id: "latest-call-item",
+            call_id: "latest-call",
+            name: "read_selected_context",
+            arguments: "{}"
+          },
+          { type: "function_call_output", call_id: "latest-call", output: "latest result" }
         ]
       })
     );
@@ -267,8 +283,9 @@ describe("agent route stream", () => {
     });
     expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(2);
     const retryRequest = streamOpenAiCompatibleResponseMock.mock.calls[1]?.[1] as OpenAiCompatibleResponseRequest;
-    expect(JSON.stringify(retryRequest.input)).not.toContain("旧问题");
+    expect(JSON.stringify(retryRequest.input)).toContain("旧问题");
     expect(JSON.stringify(retryRequest.input)).toContain("当前问题");
+    expect(JSON.stringify(retryRequest.input)).toContain("latest result");
   });
 
   it("aborts the upstream provider signal when the response reader is cancelled", async () => {

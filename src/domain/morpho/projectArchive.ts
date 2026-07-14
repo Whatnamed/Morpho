@@ -165,6 +165,7 @@ export type HumanReadableArchiveManifest = {
     };
     decisions: DecisionRecord[];
     projectContinuity: ArchiveContinuitySection;
+    projectMemory: MorphoWorkspace["projectMemory"];
     conversation: ArchiveConversationSection;
     delivery: {
       packages: DeliveryObject[];
@@ -256,6 +257,8 @@ type ArchiveConversationSection =
       mode: "full";
       messages: AiMessage[];
       conversationCheckpoints: MorphoWorkspace["ai"]["conversationCheckpoints"];
+      conversationCompaction: MorphoWorkspace["ai"]["conversationCompaction"];
+      conversationSummaryRevisions: MorphoWorkspace["ai"]["conversationSummaryRevisions"];
       comparisonAnalyses: Record<string, ComparisonAnalysis>;
     };
 
@@ -290,6 +293,7 @@ export function createHumanReadableArchiveManifest(
       },
       decisions: workspace.decisionRecords,
       projectContinuity: buildArchiveContinuity(workspace, options.projectContinuity ?? "none"),
+      projectMemory: workspace.projectMemory,
       conversation: buildArchiveConversation(workspace, options.chat ?? "none"),
       delivery: {
         packages: objectsOfType(workspace, "delivery"),
@@ -314,7 +318,7 @@ export function createEditableProjectBackupManifest(
   options: EditableBackupOptions = {}
 ): ManifestCreationResult<EditableProjectBackupManifest> {
   const assetInventory = collectWorkspaceAssetInventory(workspace);
-  const chatScope = options.chat ?? "none";
+  const chatScope = options.chat ?? "full";
   const continuityScope = options.projectContinuity ?? "current";
   const manifest: EditableProjectBackupManifest = {
     format: EDITABLE_PROJECT_BACKUP_FORMAT,
@@ -435,6 +439,8 @@ function sanitizeBackupAiState(
   return {
     messages: [],
     conversationCheckpoints: [],
+    conversationCompaction: { coveredMessageCount: 0 },
+    conversationSummaryRevisions: {},
     comparisonAnalyses: {}
   };
 }
@@ -616,6 +622,15 @@ function validateBackupSnapshot(
   }
 
   const snapshotAssetIds = new Set<string>();
+  const snapshotSchemaVersion = workspaceSnapshot.schemaVersion as number;
+  if (snapshotSchemaVersion >= 15 && !isRecord(workspaceSnapshot.projectMemory)) {
+    diagnostics.push({
+      code: "invalid_workspace_snapshot",
+      severity: "error",
+      message: "schema 15 editable backups must include Project Memory and Stage Records.",
+      path: "workspaceSnapshot.projectMemory"
+    });
+  }
   for (const [assetId, assetValue] of Object.entries(workspaceSnapshot.assets)) {
     snapshotAssetIds.add(assetId);
     if (!isPortableAssetMetadataRecord(assetValue)) {
@@ -688,8 +703,23 @@ function validateEditableBackupScope(
     });
   } else {
     if (
+      typeof workspaceSnapshot.schemaVersion === "number" &&
+      workspaceSnapshot.schemaVersion >= 15 &&
+      (!isRecord(ai.conversationCompaction) || !isRecord(ai.conversationSummaryRevisions))
+    ) {
+      diagnostics.push({
+        code: "invalid_backup_scope",
+        severity: "error",
+        message: "schema 15 editable backups must include conversation compaction state and summary revisions.",
+        path: "workspaceSnapshot.ai"
+      });
+    }
+    if (
       options.chat === "none" &&
-      (ai.messages.length > 0 || ai.conversationCheckpoints.length > 0 || Object.keys(ai.comparisonAnalyses).length > 0)
+      (ai.messages.length > 0 ||
+        ai.conversationCheckpoints.length > 0 ||
+        Object.keys(ai.comparisonAnalyses).length > 0 ||
+        (isRecord(ai.conversationSummaryRevisions) && Object.keys(ai.conversationSummaryRevisions).length > 0))
     ) {
       diagnostics.push({
         code: "backup_chat_scope_mismatch",
@@ -916,6 +946,8 @@ function buildArchiveConversation(workspace: MorphoWorkspace, scope: ArchiveChat
     mode: "full",
     messages: workspace.ai.messages,
     conversationCheckpoints: workspace.ai.conversationCheckpoints,
+    conversationCompaction: workspace.ai.conversationCompaction,
+    conversationSummaryRevisions: workspace.ai.conversationSummaryRevisions,
     comparisonAnalyses: workspace.ai.comparisonAnalyses ?? {}
   };
 }

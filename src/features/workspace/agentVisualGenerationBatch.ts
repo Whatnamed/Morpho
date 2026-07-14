@@ -2,7 +2,7 @@ import type { VisualGenerationPlan } from "@/domain/operations/types";
 
 export type ExpectedVisualGenerationCount = {
   totalItems: number;
-  requestedPreviewCount?: 1 | 2 | 4 | 6;
+  requestedPreviewCount?: number;
   source: "explicitTotal" | "explicitPerDirection" | "default";
 };
 
@@ -33,7 +33,11 @@ const COUNT_WORDS: Record<string, number> = {
   五: 5,
   六: 6,
   七: 7,
-  八: 8
+  八: 8,
+  九: 9,
+  十: 10,
+  十一: 11,
+  十二: 12
 };
 
 /**
@@ -45,50 +49,74 @@ export function resolveExpectedVisualGenerationCount(input: {
   draft: string;
   kind: VisualGenerationPlan["kind"];
   selectedDirectionCount: number;
+  defaultPreviewCount?: number;
 }): ExpectedVisualGenerationCount {
   const normalizedDraft = input.draft.replace(/\s+/g, "");
-  const perDirectionCount = readCount(
-    normalizedDraft.match(/(?:每个方向|每条方向|各方向|每一方向|每个方案)(?:生成|出|要|做)?([一二两三四五六七八\d]+)(?:张|幅|个)?(?:图|预览|方案)?/i)?.[1]
+  const explicitTotal = readCount(
+    normalizedDraft.match(/(?:总共|一共|合计|总计)(?:生成|出|给我|要|做)?([一二两三四五六七八九十\d]+)(?:张|幅|个(?:方向|方案)?)(?:图|图片|预览|方案|视觉)?/i)?.[1]
   );
-  if (input.kind === "directionPreview" && perDirectionCount) {
+  if (explicitTotal) {
+    return expectedFromExplicitTotal(explicitTotal, input.selectedDirectionCount, input.kind);
+  }
+
+  const perDirectionCount = readCount(
+    normalizedDraft.match(/(?:每个方向|每条方向|各方向|每一方向|每个方案)(?:生成|出|要|做)?([一二两三四五六七八九十\d]+)(?:张|幅|个)?(?:图|预览|方案)?/i)?.[1]
+  );
+  const explicitDirectionCount = readCount(
+    normalizedDraft.match(/([一二两三四五六七八九十\d]+)(?:个|条)?(?:并列)?(?:视觉)?方向/i)?.[1]
+  );
+  if (perDirectionCount && (input.kind === "directionPreview" || explicitDirectionCount)) {
+    const directionCount = explicitDirectionCount ?? Math.max(1, input.selectedDirectionCount);
     return {
-      totalItems: perDirectionCount * Math.max(1, input.selectedDirectionCount),
-      requestedPreviewCount: asPreviewCount(perDirectionCount),
+      totalItems: perDirectionCount * directionCount,
+      requestedPreviewCount: perDirectionCount,
       source: "explicitPerDirection"
     };
   }
 
-  const explicitTotal = readCount(
-    normalizedDraft.match(/(?:总共|一共|合计|总计)?(?:生成|出|给我|要|做)([一二两三四五六七八\d]+)(?:张|幅|个(?:方向|方案)?)(?:图|图片|预览|方案|视觉)?/i)?.[1]
-      ?? normalizedDraft.match(/([一二两三四五六七八\d]+)(?:张|幅|个(?:方向|方案)?)(?:图|图片|预览|方案|视觉)/i)?.[1]
+  const unqualifiedTotal = readCount(
+    normalizedDraft.match(/(?:生成|出|给我|要|做)([一二两三四五六七八九十\d]+)(?:张|幅|个(?:方向|方案)?)(?:图|图片|预览|方案|视觉)?/i)?.[1]
+      ?? normalizedDraft.match(/([一二两三四五六七八九十\d]+)(?:张|幅|个(?:方向|方案)?)(?:图|图片|预览|方案|视觉)/i)?.[1]
   );
-  if (explicitTotal) {
-    if (input.kind === "directionPreview") {
-      const directionCount = Math.max(1, input.selectedDirectionCount);
-      const perDirection = explicitTotal / directionCount;
-      if (Number.isInteger(perDirection) && asPreviewCount(perDirection)) {
-        return {
-          totalItems: explicitTotal,
-          requestedPreviewCount: asPreviewCount(perDirection),
-          source: "explicitTotal"
-        };
-      }
-    }
-    return {
-      totalItems: explicitTotal,
-      source: "explicitTotal"
-    };
+  if (unqualifiedTotal) {
+    return expectedFromExplicitTotal(unqualifiedTotal, input.selectedDirectionCount, input.kind);
   }
 
   if (input.kind === "directionPreview") {
+    const defaultPreviewCount =
+      Number.isSafeInteger(input.defaultPreviewCount) && (input.defaultPreviewCount ?? 0) > 0
+        ? input.defaultPreviewCount!
+        : 1;
     return {
-      totalItems: Math.max(1, input.selectedDirectionCount),
-      requestedPreviewCount: 1,
+      totalItems: Math.max(1, input.selectedDirectionCount) * defaultPreviewCount,
+      requestedPreviewCount: defaultPreviewCount,
       source: "default"
     };
   }
 
   return { totalItems: 1, source: "default" };
+}
+
+function expectedFromExplicitTotal(
+  explicitTotal: number,
+  selectedDirectionCount: number,
+  kind: VisualGenerationPlan["kind"]
+): ExpectedVisualGenerationCount {
+  if (kind === "directionPreview") {
+    const directionCount = Math.max(1, selectedDirectionCount);
+    const perDirection = explicitTotal / directionCount;
+    if (Number.isInteger(perDirection) && perDirection > 0) {
+      return {
+        totalItems: explicitTotal,
+        requestedPreviewCount: perDirection,
+        source: "explicitTotal"
+      };
+    }
+  }
+  return {
+    totalItems: explicitTotal,
+    source: "explicitTotal"
+  };
 }
 
 export function buildAgentVisualGenerationBatch(input: {
@@ -145,8 +173,4 @@ function readCount(value: string | undefined): number | undefined {
     return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
   }
   return COUNT_WORDS[value];
-}
-
-function asPreviewCount(value: number): 1 | 2 | 4 | 6 | undefined {
-  return value === 1 || value === 2 || value === 4 || value === 6 ? value : undefined;
 }

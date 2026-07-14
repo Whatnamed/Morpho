@@ -1,5 +1,5 @@
 import type { MorphoWorkspace } from "../types";
-import { fingerprintCaseStudyWorkspace } from "./caseStudyFingerprint";
+import { fingerprintStructuredValue } from "./caseStudyFingerprint";
 
 export const LEGACY_NIGHTRAIL_PROJECT_ID = "project-nightrail";
 
@@ -53,7 +53,17 @@ export function isPristineLegacyNightrailWorkspace(workspace: MorphoWorkspace): 
     return false;
   }
 
-  return fingerprintCaseStudyWorkspace(workspace) === LEGACY_NIGHTRAIL_PRISTINE_FINGERPRINT;
+  const { projectMemory: _projectMemory, ...withoutMemory } = workspace;
+  const {
+    conversationCompaction: _conversationCompaction,
+    conversationSummaryRevisions: _conversationSummaryRevisions,
+    ...legacyAi
+  } = workspace.ai;
+  return fingerprintStructuredValue({
+    ...withoutMemory,
+    schemaVersion: 14,
+    ai: legacyAi
+  }) === LEGACY_NIGHTRAIL_PRISTINE_FINGERPRINT;
 }
 
 function sameSortedIds(actual: string[], expected: readonly string[]): boolean {

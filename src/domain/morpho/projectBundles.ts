@@ -9,6 +9,7 @@ import {
   type ProjectArchiveDiagnosticSeverity
 } from "./projectArchive";
 import type { AssetId, AssetRecord, MorphoWorkspace } from "./types";
+import { migrateWorkspaceToCurrentSchema } from "./workspace";
 
 export const PROJECT_BUNDLE_FORMAT = "morpho-project-bundle";
 export const PROJECT_BUNDLE_VERSION = "1";
@@ -265,17 +266,33 @@ export function planEditableProjectBackupRestore(
     }
   }
 
-  const workspace: MorphoWorkspace = {
+  const migrated = migrateWorkspaceToCurrentSchema({
     ...manifest.workspaceSnapshot,
+    assets: restoredAssets
+  });
+  if (migrated.status !== "ok") {
+    return {
+      status: "failed",
+      reason: migrated.reason,
+      diagnostics: [{
+        code: "invalid_workspace_snapshot",
+        severity: "error",
+        message: migrated.reason,
+        path: "workspaceSnapshot"
+      }]
+    };
+  }
+
+  const workspace: MorphoWorkspace = {
+    ...migrated.workspace,
     project: {
-      ...manifest.workspaceSnapshot.project,
+      ...migrated.workspace.project,
       id: options.projectId,
       title: options.projectTitle,
       createdAt: options.restoredAt,
       updatedAt: options.restoredAt,
       lastOpenedAt: options.restoredAt
-    },
-    assets: restoredAssets
+    }
   };
 
   return {

@@ -27,9 +27,38 @@ function generation(operationId: string, title: string): ImageGenerationMetadata
     modelLabel: "nano-banana-fast",
     aspectRatio: "16:9",
     prompt: title,
+    compiledPrompt: `compiled:${title}`,
+    promptContractVersion: "morpho-image-prompt-v2",
     referenceObjectIds: ["image-soft-rail-v2"],
+    referenceResolution: {
+      resolvedObjectIds: ["image-soft-rail-v2"],
+      candidates: [
+        {
+          objectId: "image-soft-rail-v2",
+          reason: "selectedSource",
+          priority: 2,
+          included: true
+        }
+      ],
+      providerLimit: 4,
+      defaultReferenceExcluded: false
+    },
     title,
     role: "conceptImage",
+    visualIntent: {
+      id: `intent-${title}`,
+      title,
+      purpose: "验证生成记录",
+      requestedReferenceObjectIds: ["image-soft-rail-v2"],
+      changeGoals: ["深化当前方案"],
+      preserve: ["主体结构"],
+      allowToChange: ["局部细节"],
+      productForm: [],
+      materialsAndCmf: [],
+      environmentAndLighting: [],
+      avoid: [],
+      role: "conceptImage"
+    },
     createdAt: "2026-07-12T09:00:00.000Z"
   };
 }
@@ -87,6 +116,17 @@ describe("image generation result commits", () => {
       firstSecond.createdObjectId
     ]);
     expect(completed.operations[operationId]?.status).toBe("succeeded");
+    const firstGenerated = completed.objects[firstSecond.createdObjectId!];
+    expect(firstGenerated?.type).toBe("image");
+    if (firstGenerated?.type === "image") {
+      expect(firstGenerated.generation).toMatchObject({
+        modelId: "nano-banana-fast",
+        compiledPrompt: "compiled:第一张",
+        promptContractVersion: "morpho-image-prompt-v2",
+        referenceObjectIds: ["image-soft-rail-v2"],
+        visualIntent: { title: "第一张" }
+      });
+    }
     expect(completed.canvas.instances.find((item) => item.objectId === secondFirst.createdObjectId)).toMatchObject({
       position: { x: 4600, y: 4200 },
       size: { w: 320, h: 180 }

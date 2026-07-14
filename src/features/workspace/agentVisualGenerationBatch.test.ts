@@ -44,6 +44,25 @@ describe("agent visual generation batch", () => {
     ).toMatchObject({ totalItems: 2, requestedPreviewCount: 1, source: "explicitTotal" });
   });
 
+  it("uses the UI preview shortcut only as a fallback when the user did not type another count", () => {
+    expect(
+      resolveExpectedVisualGenerationCount({
+        draft: "生成方向预览",
+        kind: "directionPreview",
+        selectedDirectionCount: 4,
+        defaultPreviewCount: 6
+      })
+    ).toEqual({ totalItems: 24, requestedPreviewCount: 6, source: "default" });
+    expect(
+      resolveExpectedVisualGenerationCount({
+        draft: "每个方向生成 3 张预览",
+        kind: "directionPreview",
+        selectedDirectionCount: 4,
+        defaultPreviewCount: 6
+      })
+    ).toEqual({ totalItems: 12, requestedPreviewCount: 3, source: "explicitPerDirection" });
+  });
+
   it("merges two single-item generate calls into one complete batch", () => {
     const expected = resolveExpectedVisualGenerationCount({
       draft: "生成两张图",
@@ -82,7 +101,7 @@ describe("agent visual generation batch", () => {
     });
   });
 
-  it.each([5, 6])("accepts one complete %i-item visual development plan", (count) => {
+  it.each([3, 5, 9, 12])("accepts one complete %i-item visual development plan", (count) => {
     const expected = resolveExpectedVisualGenerationCount({
       draft: `请生成 ${count} 张视觉素材`,
       kind: "visualDevelopment",
@@ -98,6 +117,53 @@ describe("agent visual generation batch", () => {
       expect(batch.plan.items).toHaveLength(count);
       expect(batch.plan.items[0]?.id).toBe(`batch-${count}-1`);
     }
+  });
+
+  it("accepts four directions with three previews each as one complete 12-item batch", () => {
+    const expected = resolveExpectedVisualGenerationCount({
+      draft: "四个方向，每个方向生成 3 张预览",
+      kind: "directionPreview",
+      selectedDirectionCount: 4
+    });
+    const plan = {
+      kind: "directionPreview" as const,
+      items: Array.from({ length: 4 }, (_, directionIndex) =>
+        Array.from({ length: 3 }, (_, previewIndex) => ({
+          ...firstItem,
+          id: `direction-${directionIndex + 1}-preview-${previewIndex + 1}`,
+          targetDirectionId: `direction-${directionIndex + 1}`
+        }))
+      ).flat()
+    };
+    const batch = buildAgentVisualGenerationBatch({
+      expected,
+      calls: [{ callId: "call-four-directions", plan }]
+    });
+
+    expect(expected).toMatchObject({ totalItems: 12, requestedPreviewCount: 3, source: "explicitPerDirection" });
+    expect(batch).toMatchObject({ status: "ok" });
+    if (batch.status === "ok") {
+      expect(batch.plan.items).toHaveLength(12);
+      expect(new Set(batch.plan.items.map((item) => item.targetDirectionId)).size).toBe(4);
+    }
+  });
+
+  it("prioritizes an explicit total over the per-direction count in visual-development wording", () => {
+    expect(
+      resolveExpectedVisualGenerationCount({
+        draft: "探索四个并列视觉方向，每个方向生成 3 张预览，总共 12 张。",
+        kind: "visualDevelopment",
+        selectedDirectionCount: 1
+      })
+    ).toEqual({ totalItems: 12, source: "explicitTotal" });
+
+    expect(
+      resolveExpectedVisualGenerationCount({
+        draft: "探索四个并列视觉方向，每个方向生成 3 张预览。",
+        kind: "visualDevelopment",
+        selectedDirectionCount: 1
+      })
+    ).toEqual({ totalItems: 12, requestedPreviewCount: 3, source: "explicitPerDirection" });
   });
 
   it("accepts two independent 3-item plans in the same agent turn", () => {

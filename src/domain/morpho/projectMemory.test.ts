@@ -1,0 +1,212 @@
+import { describe, expect, it } from "vitest";
+
+import { buildSemanticPatchAuthorization } from "./conversationSemanticPatch";
+import { applyConversationSemanticPatch } from "./projectContinuity";
+import {
+  getCurrentProjectMemoryRevision,
+  getCurrentStageRecordRevision,
+  getProjectMemoryHistory,
+  getStageRecordHistory,
+  normalizeProjectMemoryState,
+  reconcileProjectMemory
+} from "./projectMemory";
+import type { AiMessage, MorphoWorkspace, ProjectMemoryKey } from "./types";
+import { clearDefaultReference, createInitialWorkspace } from "./workspace";
+
+const MEMORY_KEYS: ProjectMemoryKey[] = [
+  "projectOverview",
+  "designBrief",
+  "userPreferences",
+  "decisionLog",
+  "rejectedDirections",
+  "openQuestions",
+  "outputPlan"
+];
+
+describe("Project Memory Kernel", () => {
+  it("projects seven current documents and only stages that actually have project facts", () => {
+    const workspace = reconcileProjectMemory(createInitialWorkspace(), "2026-07-13T12:00:00.000Z");
+
+    expect(MEMORY_KEYS.map((key) => workspace.projectMemory.documents[key].title)).toHaveLength(7);
+    expect(MEMORY_KEYS.filter((key) => getCurrentProjectMemoryRevision(workspace.projectMemory, key))).toEqual([
+      "projectOverview",
+      "designBrief",
+      "decisionLog",
+      "rejectedDirections",
+      "openQuestions",
+      "outputPlan"
+    ]);
+    expect(getCurrentStageRecordRevision(workspace.projectMemory, "exploration")).toBeUndefined();
+    expect(getCurrentStageRecordRevision(workspace.projectMemory, "research")).toBeDefined();
+    expect(getCurrentStageRecordRevision(workspace.projectMemory, "directionAndVisual")).toBeDefined();
+    expect(getCurrentStageRecordRevision(workspace.projectMemory, "deliveryPreparation")).toBeDefined();
+  });
+
+  it("does not turn an assistant suggestion into a stable user preference", () => {
+    const workspace = createInitialWorkspace();
+    const withSuggestion: MorphoWorkspace = {
+      ...workspace,
+      ai: {
+        ...workspace.ai,
+        messages: [
+          ...workspace.ai.messages,
+          message("assistant-suggestion", "assistant", "我建议以后都使用高饱和紫色。")
+        ]
+      }
+    };
+    const reconciled = reconcileProjectMemory(withSuggestion, "2026-07-13T12:00:00.000Z");
+    expect(getCurrentProjectMemoryRevision(reconciled.projectMemory, "userPreferences")).toBeUndefined();
+  });
+
+  it("records explicit user evidence once, updates memory and stage revisions, and preserves revision chains", () => {
+    let workspace = withUserMessage(createInitialWorkspace(), "user-pref-1", "以后都保持低眩光，避免医疗器械感。", "12:00");
+    workspace = applyMemoryItems(workspace, "user-pref-1", "以后都保持低眩光，避免医疗器械感。", [
+      { kind: "preference", evidenceQuote: "以后都保持低眩光" },
+      { kind: "avoidance", evidenceQuote: "避免医疗器械感" }
+    ]);
+    workspace = reconcileProjectMemory(workspace, "2026-07-13T12:01:00.000Z");
+    const firstRevision = getCurrentProjectMemoryRevision(workspace.projectMemory, "userPreferences");
+    expect(firstRevision?.basis).toBe("userExplicit");
+    expect(JSON.stringify(firstRevision?.sections)).toContain("以后都保持低眩光");
+    expect(firstRevision?.sourceRefs).toContainEqual(expect.objectContaining({ kind: "message", id: "user-pref-1" }));
+
+    const replay = reconcileProjectMemory(
+      applyMemoryItems(workspace, "user-pref-1", "以后都保持低眩光，避免医疗器械感。", [
+        { kind: "preference", evidenceQuote: "以后都保持低眩光" }
+      ]),
+      "2026-07-13T12:02:00.000Z"
+    );
+    expect(getProjectMemoryHistory(replay.projectMemory, "userPreferences")).toHaveLength(1);
+
+    let second = withUserMessage(replay, "user-pref-2", "后续材质优先使用低反光表面。", "12:03");
+    second = applyMemoryItems(second, "user-pref-2", "后续材质优先使用低反光表面。", [
+      { kind: "preference", evidenceQuote: "材质优先使用低反光表面" }
+    ]);
+    second = reconcileProjectMemory(second, "2026-07-13T12:04:00.000Z");
+    const currentRevision = getCurrentProjectMemoryRevision(second.projectMemory, "userPreferences");
+    expect(currentRevision?.previousRevisionId).toBe(firstRevision?.id);
+    expect(getProjectMemoryHistory(second.projectMemory, "userPreferences")).toHaveLength(2);
+    expect(getStageRecordHistory(second.projectMemory, "directionAndVisual").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("removes invalidated message-backed content from the current projection without deleting history", () => {
+    let workspace = withUserMessage(createInitialWorkspace(), "user-pref-remove", "始终避免高亮镜面。", "12:00");
+    workspace = applyMemoryItems(workspace, "user-pref-remove", "始终避免高亮镜面。", [
+      { kind: "avoidance", evidenceQuote: "始终避免高亮镜面" }
+    ]);
+    workspace = reconcileProjectMemory(workspace, "2026-07-13T12:01:00.000Z");
+    expect(getCurrentProjectMemoryRevision(workspace.projectMemory, "userPreferences")?.sections.length).toBeGreaterThan(0);
+
+    const removed = reconcileProjectMemory(
+      { ...workspace, ai: { ...workspace.ai, messages: workspace.ai.messages.filter((entry) => entry.id !== "user-pref-remove") } },
+      "2026-07-13T12:02:00.000Z"
+    );
+    expect(getCurrentProjectMemoryRevision(removed.projectMemory, "userPreferences")?.sections).toEqual([]);
+    expect(getProjectMemoryHistory(removed.projectMemory, "userPreferences")).toHaveLength(2);
+  });
+
+  it("normalizes legacy cleared-default wording before projecting current memory and stage records", () => {
+    const cleared = clearDefaultReference(createInitialWorkspace(), "image-soft-rail-v2", {
+      reason: "用户明确取消后续默认参考。"
+    });
+    const latestEntry = cleared.projectContinuity.recordEntries.at(-1);
+    if (!latestEntry) {
+      throw new Error("Expected a default-reference continuity entry.");
+    }
+    const staleSummary = "已将「柔光轨道 v2」设为后续默认参考。";
+    const stale: MorphoWorkspace = {
+      ...cleared,
+      projectContinuity: {
+        ...cleared.projectContinuity,
+        currentFocus: { ...cleared.projectContinuity.currentFocus, note: staleSummary },
+        recordEntries: cleared.projectContinuity.recordEntries.map((entry) =>
+          entry.id === latestEntry.id ? { ...entry, summary: staleSummary } : entry
+        )
+      }
+    };
+
+    const reconciled = reconcileProjectMemory(stale, "2026-07-13T12:02:00.000Z");
+    const overview = getCurrentProjectMemoryRevision(reconciled.projectMemory, "projectOverview");
+    const directionStage = getCurrentStageRecordRevision(reconciled.projectMemory, "directionAndVisual");
+    expect(JSON.stringify(overview?.sections)).toContain("已清除「柔光轨道 v2」的后续默认参考");
+    expect(JSON.stringify(directionStage?.sections)).toContain("已清除「柔光轨道 v2」的后续默认参考");
+    expect(JSON.stringify(overview?.sections)).not.toContain(staleSummary);
+  });
+
+  it("stays idempotent across JSON persistence and collapses consecutive equivalent revisions", () => {
+    const workspace = reconcileProjectMemory(createInitialWorkspace(), "2026-07-13T12:00:00.000Z");
+    const persisted = JSON.parse(JSON.stringify(workspace.projectMemory)) as MorphoWorkspace["projectMemory"];
+    const root = getCurrentProjectMemoryRevision(persisted, "projectOverview");
+    if (!root) {
+      throw new Error("Expected a Project Overview revision.");
+    }
+    const duplicateId = "memory-projectOverview-duplicate";
+    persisted.revisions[duplicateId] = {
+      ...root,
+      id: duplicateId,
+      previousRevisionId: root.id
+    };
+    persisted.documents.projectOverview = {
+      ...persisted.documents.projectOverview,
+      currentRevisionId: duplicateId
+    };
+
+    const normalized = normalizeProjectMemoryState(workspace, persisted, "2026-07-13T12:05:00.000Z");
+    const normalizedAgain = normalizeProjectMemoryState(
+      workspace,
+      JSON.parse(JSON.stringify(normalized)),
+      "2026-07-13T12:10:00.000Z"
+    );
+
+    expect(normalized.documents.projectOverview.currentRevisionId).toBe(root.id);
+    expect(normalized.revisions[duplicateId]).toBeUndefined();
+    expect(normalizedAgain).toEqual(normalized);
+  });
+});
+
+function applyMemoryItems(
+  workspace: MorphoWorkspace,
+  userMessageId: string,
+  draft: string,
+  items: Array<{ kind: "preference" | "avoidance"; evidenceQuote: string }>
+): MorphoWorkspace {
+  const authorization = buildSemanticPatchAuthorization({
+    taskMode: "chatAnalysis",
+    draft,
+    userMessageId,
+    userMessageCreatedAt: workspace.ai.messages.find((entry) => entry.id === userMessageId)?.createdAt ?? "",
+    currentFocusArea: workspace.projectContinuity.currentFocus.area,
+    objectIds: [],
+    revisionIds: [],
+    decisionIds: []
+  });
+  return applyConversationSemanticPatch(
+    workspace,
+    authorization,
+    items.map((item) => ({
+      ...item,
+      scope: "project" as const,
+      relatedObjectIds: [],
+      relatedRevisionIds: [],
+      relatedDecisionIds: []
+    }))
+  ).workspace;
+}
+
+function withUserMessage(workspace: MorphoWorkspace, id: string, body: string, time: string): MorphoWorkspace {
+  return {
+    ...workspace,
+    ai: { ...workspace.ai, messages: [...workspace.ai.messages, message(id, "user", body, time)] }
+  };
+}
+
+function message(id: string, role: "user" | "assistant", body: string, time = "12:00"): AiMessage {
+  return {
+    id,
+    role,
+    body,
+    createdAt: `2026-07-13T${time}:00.000Z`,
+    taskMode: "chatAnalysis",
+    status: "done"
+  };
+}

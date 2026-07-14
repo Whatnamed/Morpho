@@ -26,6 +26,23 @@ export function buildAgentToolActivityDescriptor(
         label: count > 0 ? `读取当前选择的 ${count} 个对象` : "读取当前选择的对象"
       };
     }
+    case "read_project_memory":
+      return {
+        activityKind: "contextRead",
+        label: tool.args.keys?.length ? `读取 ${tool.args.keys.length} 项项目记忆` : "读取项目记忆"
+      };
+    case "read_stage_record":
+      return {
+        activityKind: "contextRead",
+        label: tool.args.stages?.length ? `读取 ${tool.args.stages.length} 项阶段记录` : "读取阶段记录"
+      };
+    case "search_project_conversation": {
+      const keyword = cleanActivityText(tool.args.keyword);
+      return {
+        activityKind: "contextRead",
+        label: keyword ? `查找历史对话「${keyword}」` : "查找项目历史对话"
+      };
+    }
     case "search_web_evidence": {
       const reason = cleanActivityText(tool.args.reason);
       const query = cleanActivityText(tool.args.queries[0]);
@@ -77,6 +94,13 @@ export function buildAgentToolActivityDescriptor(
         label: count > 0 ? `比较当前选择的 ${count} 个对象` : "比较所选对象"
       };
     }
+    case "prepare_delivery_section_draft":
+      return { activityKind: "workspaceWrite", label: "形成交付章节说明草稿" };
+    case "submit_memory_update":
+      return {
+        activityKind: "workspaceWrite",
+        label: tool.args.items.length > 1 ? `记录 ${tool.args.items.length} 项明确项目信息` : "记录明确项目信息"
+      };
     case "request_confirmation": {
       const reason = cleanActivityText(tool.args.reason);
       return { activityKind: "confirmation", label: reason ?? "准备操作确认" };

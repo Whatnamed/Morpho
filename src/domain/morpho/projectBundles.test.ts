@@ -547,6 +547,7 @@ function createBundleFixtureWorkspace(): MorphoWorkspace {
       recentResearchObjectIds: [research.id]
     },
     ai: {
+      ...workspace.ai,
       messages: [
         { id: "msg-1", role: "user", body: "Keep the warmer direction.", createdAt: NOW },
         { id: "msg-2", role: "assistant", body: "Recorded for the project.", createdAt: NOW }

@@ -130,7 +130,7 @@ describe("visual generation plan parsing and validation", () => {
     });
   });
 
-  it("blocks direction preview plans with wrong count, wrong role, or too many generated items", () => {
+  it("blocks wrong direction preview plans while allowing arbitrary positive counts", () => {
     const workspace = createInitialWorkspace();
 
     expect(
@@ -187,10 +187,7 @@ describe("visual generation plan parsing and validation", () => {
         selectedImageIds: [],
         requestedPreviewCount: 9
       })
-    ).toMatchObject({
-      status: "blocked",
-      reason: expect.stringContaining("1、2、4 或 6")
-    });
+    ).toMatchObject({ status: "ok" });
 
     expect(
       validateVisualGenerationPlan(workspace, {
@@ -205,7 +202,7 @@ describe("visual generation plan parsing and validation", () => {
       })
     ).toMatchObject({
       status: "blocked",
-      reason: expect.stringContaining("8")
+      reason: expect.stringContaining("每方向精确生成 6 张")
     });
   });
 
@@ -237,7 +234,7 @@ describe("visual generation plan parsing and validation", () => {
     });
   });
 
-  it("normalizes visual development plans that expand a single continuation into multiple generated images", () => {
+  it("rejects an incomplete visual development count instead of silently slicing the plan", () => {
     const workspace = createInitialWorkspace();
     const result = validateVisualGenerationPlan(workspace, {
       plan: {
@@ -269,16 +266,9 @@ describe("visual generation plan parsing and validation", () => {
     });
 
     expect(result).toMatchObject({
-      status: "ok",
-      plan: {
-        items: [
-          {
-            id: "item-a"
-          }
-        ]
-      }
+      status: "blocked",
+      reason: expect.stringContaining("精确生成 1 张")
     });
-    expect(result.status === "ok" ? result.plan.items : []).toHaveLength(1);
   });
 
   it("preserves every requested visual development item in a validated Agent batch", () => {

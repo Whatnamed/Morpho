@@ -27,8 +27,10 @@ export function createEmptyProjectWorkingState(now = new Date().toISOString()): 
   };
 }
 
-export function reconcileWorkspaceDerivedState(workspace: MorphoWorkspace): MorphoWorkspace {
-  const now = new Date().toISOString();
+export function reconcileWorkspaceDerivedState(
+  workspace: MorphoWorkspace,
+  now = new Date().toISOString()
+): MorphoWorkspace {
   const objects = reconcileCurrentEffectiveDesignDefinitions(workspace);
   const relations = reconcileLegacyMultiReferenceVersionRelations(workspace, objects);
   const normalizedWorkspace = {

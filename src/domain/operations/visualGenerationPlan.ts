@@ -29,9 +29,17 @@ export type ValidateVisualGenerationPlanResult =
       reason: string;
     };
 
-const ALLOWED_IMAGE_ROLES: ImageRole[] = ["conceptImage", "sceneVisual", "cmfStudy", "detailStudy", "preview"];
-const DIRECTION_PREVIEW_COUNTS = [1, 2, 4, 6] as const;
-const MAX_DIRECTION_PREVIEW_TOTAL = 8;
+const ALLOWED_IMAGE_ROLES: ImageRole[] = [
+  "preview",
+  "conceptImage",
+  "primaryVisual",
+  "sceneVisual",
+  "cmfStudy",
+  "detailStudy",
+  "structureDiagram",
+  "interactionDiagram",
+  "deliveryAsset"
+];
 
 export function parseVisualGenerationPlanPayload(text: string): ParseVisualGenerationPlanResult {
   const jsonText = extractJsonBlock(text);
@@ -87,8 +95,7 @@ export function validateVisualGenerationPlan(
       return { status: "blocked", reason: `方向预览计划必须覆盖每个已选方向，并且每方向精确生成 ${requestedPreviewCount} 张。` };
     }
   }
-  const planItems =
-    input.plan.kind === "visualDevelopment" ? input.plan.items.slice(0, requestedPreviewCount) : input.plan.items;
+  const planItems = input.plan.items;
   if (input.plan.kind === "visualDevelopment" && planItems.length !== requestedPreviewCount) {
     return { status: "blocked", reason: `视觉继续发展计划必须精确生成 ${requestedPreviewCount} 张。` };
   }
@@ -186,12 +193,11 @@ export function validateRequestedPreviewCount(
   directionCount: number,
   requestedPreviewCount: number
 ): { status: "ok" } | { status: "blocked"; reason: string } {
-  if (!DIRECTION_PREVIEW_COUNTS.includes(requestedPreviewCount as (typeof DIRECTION_PREVIEW_COUNTS)[number])) {
-    return { status: "blocked", reason: "每方向预览数只能是 1、2、4 或 6。" };
+  if (!Number.isSafeInteger(directionCount) || directionCount < 1) {
+    return { status: "blocked", reason: "方向预览至少需要一个明确的目标方向。" };
   }
-  const total = directionCount * requestedPreviewCount;
-  if (total > MAX_DIRECTION_PREVIEW_TOTAL) {
-    return { status: "blocked", reason: `本次将生成 ${total} 张，超过单次上限 8 张。请降低每方向预览数或分批生成。` };
+  if (!Number.isSafeInteger(requestedPreviewCount) || requestedPreviewCount < 1) {
+    return { status: "blocked", reason: "每方向预览数量必须是正整数。" };
   }
   return { status: "ok" };
 }

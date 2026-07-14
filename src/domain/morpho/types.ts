@@ -1,4 +1,12 @@
-import type { ArtifactProposal, OperationRecord, ResearchEvidence, SourceCitation, VisualGenerationPlan } from "../operations/types";
+import type {
+  ArtifactProposal,
+  OperationRecord,
+  ResearchEvidence,
+  SourceCitation,
+  VisualGenerationPlan,
+  VisualIntentItem,
+  VisualReferenceResolution
+} from "../operations/types";
 
 export type MorphoObjectId = string;
 export type CanvasInstanceId = string;
@@ -33,6 +41,37 @@ export type ConversationCheckpoint = {
   nextTurnAnchor?: string;
 };
 
+export type ConversationSummary = {
+  threadGoal: string;
+  establishedContext: string[];
+  decisionsAndReasons: string[];
+  activeWork: string[];
+  unresolvedQuestions: string[];
+  referencedObjects: string[];
+  nextTurnAnchor?: string;
+};
+
+export type ConversationSummaryRevision = {
+  id: string;
+  previousRevisionId?: string;
+  summary: ConversationSummary;
+  sourceStartMessageId: string;
+  sourceEndMessageId: string;
+  sourceMessageCount: number;
+  sourceMessageIdsHash: string;
+  estimatedInputTokens?: number;
+  createdAt: string;
+};
+
+export type ConversationCompactionState = {
+  summaryRevisionId?: string;
+  coveredThroughMessageId?: string;
+  coveredMessageCount: number;
+  updatedAt?: string;
+  estimatedInputTokens?: number;
+  sourceMessageIdsHash?: string;
+};
+
 export type ProjectFocusArea =
   | "startAndInput"
   | "exploration"
@@ -42,6 +81,78 @@ export type ProjectFocusArea =
   | "deliveryPreparation";
 
 export type StageRecordKey = ProjectFocusArea;
+
+export type ProjectMemoryKey =
+  | "projectOverview"
+  | "designBrief"
+  | "userPreferences"
+  | "decisionLog"
+  | "rejectedDirections"
+  | "openQuestions"
+  | "outputPlan";
+
+export type ProjectMemorySection = {
+  key: string;
+  title: string;
+  items: string[];
+};
+
+export type MemoryRevisionBasis = "deterministic" | "userExplicit" | "userConfirmed" | "mixed";
+
+export type ProjectMemoryDocument = {
+  key: ProjectMemoryKey;
+  title: string;
+  currentRevisionId?: string;
+  updatedAt?: string;
+};
+
+export type ProjectMemoryRevision = {
+  id: string;
+  documentKey: ProjectMemoryKey;
+  previousRevisionId?: string;
+  sections: ProjectMemorySection[];
+  sourceRefs: ContinuitySourceRef[];
+  basis: MemoryRevisionBasis;
+  createdAt: string;
+  reviewRequired: boolean;
+};
+
+export type StageRecordSectionKey =
+  | "goalAndStatus"
+  | "outputs"
+  | "decisions"
+  | "rejected"
+  | "preferences"
+  | "constraints"
+  | "openRisks"
+  | "nextFocus";
+
+export type StageRecordSections = Partial<Record<StageRecordSectionKey, string[]>>;
+
+export type StageRecord = {
+  stage: StageRecordKey;
+  currentRevisionId?: string;
+  updatedAt?: string;
+};
+
+export type StageRecordRevision = {
+  id: string;
+  stage: StageRecordKey;
+  previousRevisionId?: string;
+  sections: StageRecordSections;
+  sourceRefs: ContinuitySourceRef[];
+  createdAt: string;
+  reviewRequired: boolean;
+};
+
+export type ProjectMemoryState = {
+  schemaVersion: 1;
+  documents: Record<ProjectMemoryKey, ProjectMemoryDocument>;
+  revisions: Record<string, ProjectMemoryRevision>;
+  stageRecords: Partial<Record<StageRecordKey, StageRecord>>;
+  stageRevisions: Record<string, StageRecordRevision>;
+  updatedAt: string;
+};
 
 export type CurrentProjectFocus = {
   area: ProjectFocusArea;
@@ -277,12 +388,16 @@ export type ImageGenerationMetadata = {
   aspectRatio: string;
   sizeOption?: string;
   prompt: string;
+  compiledPrompt?: string;
+  promptContractVersion?: string;
   referenceObjectIds: MorphoObjectId[];
+  referenceResolution?: VisualReferenceResolution;
   directionId?: MorphoObjectId;
   visualBranchId?: VisualBranchId;
   title?: string;
   purpose?: string;
   role?: ImageRole;
+  visualIntent?: VisualIntentItem;
   visualPlan?: VisualGenerationPlan;
   createdAt: string;
 };
@@ -709,10 +824,26 @@ export type AiMessage = {
   continuityEntryIds?: string[];
   conversationLaneKey?: string;
   conversationCheckpointId?: string;
+  conversationSummaryRevisionId?: string;
+  memoryUpdateKeys?: ProjectMemoryKey[];
+  stageRecordUpdateKeys?: StageRecordKey[];
+  promptContractVersion?: string;
+  taskStrategy?: AgentTaskStrategyKind;
   comparisonAnalysisId?: ComparisonAnalysisId;
   agentTrace?: AgentTrace;
   error?: string;
 };
+
+export type AgentTaskStrategyKind =
+  | "discussion"
+  | "research"
+  | "designDefinition"
+  | "conceptDirection"
+  | "directionPreview"
+  | "visualDevelopment"
+  | "comparison"
+  | "deliveryPreparation"
+  | "historyAndMemory";
 
 export type DesignDefinitionRevision = {
   id: DesignDefinitionRevisionId;
@@ -799,7 +930,7 @@ export type ProjectWorkingState = {
 };
 
 export type MorphoWorkspace = {
-  schemaVersion: 14;
+  schemaVersion: 15;
   project: {
     id: string;
     title: string;
@@ -824,6 +955,7 @@ export type MorphoWorkspace = {
   visualBranches: Record<VisualBranchId, VisualBranchRecord>;
   workingState: ProjectWorkingState;
   projectContinuity: ProjectContinuityState;
+  projectMemory: ProjectMemoryState;
   canvas: {
     view: CanvasView;
     instances: CanvasInstance[];
@@ -836,6 +968,8 @@ export type MorphoWorkspace = {
   ai: {
     messages: AiMessage[];
     conversationCheckpoints: ConversationCheckpoint[];
+    conversationCompaction: ConversationCompactionState;
+    conversationSummaryRevisions: Record<string, ConversationSummaryRevision>;
     comparisonAnalyses?: Record<ComparisonAnalysisId, ComparisonAnalysis>;
   };
   ui: {

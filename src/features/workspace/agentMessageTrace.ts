@@ -139,6 +139,14 @@ export function finishLocalAgentToolActivity(
   });
 }
 
+export function updateLocalAgentToolActivity(
+  trace: AgentTrace,
+  toolCallId: string,
+  input: { label?: string; detail?: string }
+): AgentTrace {
+  return updateToolActivity(trace, toolCallId, input);
+}
+
 export function completeAgentTrace(
   trace: AgentTrace,
   status: AgentTrace["status"],

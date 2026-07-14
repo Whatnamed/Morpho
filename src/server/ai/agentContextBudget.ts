@@ -39,11 +39,7 @@ type AgentContextCompactionMode = "prepare" | "compact" | "emergency";
 
 const IMAGE_INPUT_TOKEN_RESERVE = 8_192;
 const ESTIMATE_BASE_TOKENS = 128;
-const PREPARE_HISTORY_LIMIT = 4;
-const COMPACT_HISTORY_LIMIT = 2;
-const PREPARE_OLD_TOOL_OUTPUT_CHARS = 1_200;
-const COMPACT_OLD_TOOL_OUTPUT_CHARS = 480;
-const CHECKPOINT_INSTRUCTION_MARKER = "morphoConversationCheckpoint";
+const EMERGENCY_OLD_TOOL_OUTPUT_CHARS = 480;
 
 export function classifyAgentContextPressure(
   estimatedInputTokens: number,
@@ -93,21 +89,27 @@ export function prepareAgentContextRequest(
     };
   }
 
-  let compactedRequest = compactAgentContextRequest(request, options.force ?? pressure);
-  let compressibleTokens = estimateCompressibleContextTokens(compactedRequest);
-  if (compressibleTokens > options.limits.targetTokens) {
-    compactedRequest = compactAgentContextRequest(request, "emergency");
-    compressibleTokens = estimateCompressibleContextTokens(compactedRequest);
+  if (options.force !== "emergency") {
+    return {
+      request,
+      pressure,
+      estimatedInputTokens,
+      finalEstimatedInputTokens: localEstimate,
+      compressibleTokens: estimateCompressibleContextTokens(request),
+      compacted: false,
+      checkpointRequested: false
+    };
   }
-  const requestWithCheckpointInstruction = appendCheckpointInstruction(compactedRequest);
+
+  const compactedRequest = compactAgentContextRequest(request, "emergency");
   return {
-    request: requestWithCheckpointInstruction,
+    request: compactedRequest,
     pressure,
     estimatedInputTokens,
-    finalEstimatedInputTokens: estimateAgentContextTokens(requestWithCheckpointInstruction),
-    compressibleTokens,
-    compacted: true,
-    checkpointRequested: true
+    finalEstimatedInputTokens: estimateAgentContextTokens(compactedRequest),
+    compressibleTokens: estimateCompressibleContextTokens(compactedRequest),
+    compacted: compactedRequest !== request,
+    checkpointRequested: false
   };
 }
 
@@ -148,6 +150,9 @@ export async function executeAgentRequestWithContextBudget<T>(
       baselineInputTokens: options.baselineInputTokens,
       force: "emergency"
     });
+    if (!emergency.compacted) {
+      throw error;
+    }
     const retryAttempt: AgentContextExecutionAttempt = { index: 1, kind: "contextRetry" };
     options.onRetry?.({ failed: initialAttempt, next: retryAttempt });
     const result = await options.execute(emergency.request, retryAttempt);
@@ -158,8 +163,8 @@ export async function executeAgentRequestWithContextBudget<T>(
         estimatedInputTokens: prepared.estimatedInputTokens,
         finalEstimatedInputTokens: emergency.finalEstimatedInputTokens,
         compressibleTokens: emergency.compressibleTokens,
-        compacted: true,
-        checkpointRequested: true,
+        compacted: emergency.compacted,
+        checkpointRequested: false,
         retried: true
       }
     };
@@ -170,36 +175,14 @@ function compactAgentContextRequest(
   request: OpenAiCompatibleResponseRequest,
   mode: AgentContextCompactionMode
 ): OpenAiCompatibleResponseRequest {
-  const currentUserIndex = findCurrentUserMessageIndex(request.input);
-  const historyLimit =
-    mode === "emergency"
-      ? 0
-      : mode === "compact"
-        ? COMPACT_HISTORY_LIMIT
-        : PREPARE_HISTORY_LIMIT;
-  const prefix = request.input.slice(0, currentUserIndex);
-  const systemMessages = prefix.filter((item) => isResponseMessage(item) && item.role === "system");
-  const historyMessages = prefix.filter(
-    (item) => isResponseMessage(item) && (item.role === "user" || item.role === "assistant")
-  );
-  const currentAndTail = request.input.slice(currentUserIndex);
-  const compactedTail = compactOldToolOutputs(
-    currentAndTail,
-    mode === "emergency"
-      ? Math.floor(COMPACT_OLD_TOOL_OUTPUT_CHARS / 2)
-      : mode === "compact"
-        ? COMPACT_OLD_TOOL_OUTPUT_CHARS
-        : PREPARE_OLD_TOOL_OUTPUT_CHARS
-  );
-
-  return {
-    ...request,
-    input: [
-      ...systemMessages,
-      ...(historyLimit > 0 ? historyMessages.slice(-historyLimit) : []),
-      ...compactedTail
-    ]
-  };
+  if (mode !== "emergency") {
+    return request;
+  }
+  const compactedInput = compactOldToolOutputs(request.input, EMERGENCY_OLD_TOOL_OUTPUT_CHARS);
+  if (compactedInput === request.input) {
+    return request;
+  }
+  return { ...request, input: compactedInput };
 }
 
 function isContextLimitError(error: unknown): boolean {
@@ -287,7 +270,8 @@ function compactOldToolOutputs(
     latestToolOutputGroupStart -= 1;
   }
 
-  return items.map((item, index) => {
+  let changed = false;
+  const compacted = items.map((item, index) => {
     if (
       !isFunctionToolOutput(item) ||
       index >= latestToolOutputGroupStart ||
@@ -295,49 +279,13 @@ function compactOldToolOutputs(
     ) {
       return item;
     }
+    changed = true;
     return {
       ...item,
       output: `${item.output.slice(0, maxChars)}…`
     };
   });
-}
-
-function appendCheckpointInstruction(request: OpenAiCompatibleResponseRequest): OpenAiCompatibleResponseRequest {
-  const systemIndex = request.input.findIndex((item) => isResponseMessage(item) && item.role === "system");
-  if (systemIndex < 0) {
-    return request;
-  }
-  const systemMessage = request.input[systemIndex];
-  if (!isResponseMessage(systemMessage)) {
-    return request;
-  }
-  const existingText = systemMessage.content
-    .filter((part) => part.type === "input_text")
-    .map((part) => part.text)
-    .join("\n");
-  if (existingText.includes(CHECKPOINT_INSTRUCTION_MARKER)) {
-    return request;
-  }
-
-  const nextInput = [...request.input];
-  nextInput[systemIndex] = {
-    ...systemMessage,
-    content: [
-      ...systemMessage.content,
-      {
-        type: "input_text",
-        text: [
-          "当前请求已接近 Context 预算，请在正常回答末尾附带一个简短的 checkpoint。",
-          "仅记录当前讨论目标、进展、待继续问题和下一轮锚点，不记录项目状态写入或内部提示。",
-          'JSON shape: { "morphoConversationCheckpoint": { "threadGoal": string, "progress": string[], "openThreads": string[], "nextTurnAnchor"?: string } }'
-        ].join("\n")
-      }
-    ]
-  };
-  return {
-    ...request,
-    input: nextInput
-  };
+  return changed ? compacted : items;
 }
 
 function findCurrentUserMessageIndex(input: OpenAiCompatibleResponseRequest["input"]): number {

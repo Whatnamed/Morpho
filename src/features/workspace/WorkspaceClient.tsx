@@ -11,7 +11,9 @@ import type {
   CanvasView,
   ContinuityManualState,
   DeliveryObject,
-  MorphoObject
+  MorphoObject,
+  ProjectMemoryKey,
+  StageRecordKey
 } from "@/domain/morpho/types";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 import { GRS_REFERENCE_IMAGE_LIMIT } from "@/domain/morpho/imageLimits";
@@ -80,6 +82,7 @@ import {
   updateResearchAnalysisProposalDraft
 } from "@/domain/operations/operations";
 import type { ArtifactProposal, ConceptDirectionProposal, OperationRecord, VisualGenerationPlan, VisualGenerationPlanItem } from "@/domain/operations/types";
+import { compileVisualGenerationPlan } from "@/domain/operations/imagePromptCompiler";
 import { parseConceptDirectionProposalPayload } from "@/domain/operations/conceptDirectionProposal";
 import { parseDesignDefinitionProposalPayload } from "@/domain/operations/designDefinitionProposal";
 import { parseResearchAnalysisProposalPayload } from "@/domain/operations/researchProposal";
@@ -208,15 +211,32 @@ import {
   taskContextKindFromAiTask,
   type TaskContextDefaultReference
 } from "./taskContext";
-import { setConversationSemanticEntryManualState } from "@/domain/morpho/projectContinuity";
 import {
-  applyConversationCheckpoint,
-  buildConversationContextForRequest,
+  applyConversationSemanticPatch,
+  setConversationSemanticEntryManualState
+} from "@/domain/morpho/projectContinuity";
+import { buildSemanticPatchAuthorization } from "@/domain/morpho/conversationSemanticPatch";
+import {
+  applyConversationSummaryRevision,
+  buildContinuousConversationContext,
+  buildConversationCompactionPlan,
+  estimateTextTokens,
+  parseConversationSummaryPayload,
+  sanitizeConversationSummaryStreamForDisplay,
+  type ConversationCompactionPlan,
+  type ConversationTokenLimits
+} from "@/domain/morpho/conversationCompaction";
+import { searchProjectConversation } from "@/domain/morpho/conversationSearch";
+import {
+  getCurrentProjectMemoryRevision,
+  getCurrentStageRecordRevision,
+  getProjectMemoryHistory,
+  getStageRecordHistory
+} from "@/domain/morpho/projectMemory";
+import {
   buildConversationLaneKey,
-  parseConversationCheckpointPayload,
   resolveConversationLaneAnchors,
-  sanitizeConversationAssistantStreamForDisplay,
-  stripAssistantTechnicalBlocks
+  sanitizeConversationAssistantStreamForDisplay
 } from "@/domain/morpho/conversationCheckpoint";
 import {
   applyComparisonAnalysis,
@@ -229,16 +249,12 @@ import {
   validateComparisonAnalysis
 } from "@/domain/morpho/comparisonAnalysis";
 import type { ComparisonDecisionMetadata } from "@/domain/morpho/types";
-import { applyConversationSemanticPatchFromReply } from "./workspaceSemanticPatch";
-import { buildSameReplyStructuredWritePolicy, prepareAiSendBeforeProvider } from "./aiSendGuards";
+import { buildSemanticPatchAuthorizationInput } from "./workspaceSemanticPatch";
 import { applyResearchProposalWithSemanticPatch } from "./researchSemanticPatch";
 import { applySelectedProposalDraftRevision } from "./proposalDraftRevision";
 import { getSiblingProposalPlacement } from "./proposalDraftPlacement";
 import { planDirectionPreviewPlacements, planVisualDevelopmentPlacements } from "./visualPreviewLayout";
-import { applyAgentConversationCheckpointFromReply } from "./agentConversationCheckpoint";
 import {
-  buildManualConversationCompactionPlan,
-  executeManualConversationCompactionPlan,
   getManualCompactionStatusText,
   parseManualCompactCommand
 } from "./manualConversationCompaction";
@@ -249,7 +265,6 @@ import {
 } from "./visualGenerationRouting";
 import {
   getDefaultImageGenerationSettings,
-  getImageGenerationModelOptions,
   inferGenerationAspectRatio,
   resolveGenerationSettings,
   resolveImageGenerationSettingsForVisualIntent,
@@ -267,14 +282,16 @@ import {
 import {
   buildAgentCheckpointCompactionInput,
   buildAgentHistoryMessages,
-  buildMorphoAgentInitialTools,
+  buildMorphoAgentToolArgumentRepairOutputs,
+  buildMorphoAgentToolArgumentRepairReminder,
   buildMorphoAgentSystemPrompt,
   buildMorphoAgentTools,
   buildMorphoAgentUserInput,
   buildToolResultOutput,
   getDesignDefinitionDrafts,
   isExplicitComparisonRequest,
-  parseMorphoAgentToolArguments,
+  normalizeGenerateVisualsForSelectedDirections,
+  parseMorphoAgentToolCallBatch,
   type AgentRouteResult,
   type CreateComparisonAnalysisArgs,
   type CreateConceptDirectionProposalArgs,
@@ -287,16 +304,26 @@ import {
   type RequestConfirmationArgs,
   type SearchWebEvidenceArgs
 } from "./morphoAgent";
+import {
+  buildRequiredAgentReadReminder,
+  getMissingRequiredAgentReadTools,
+  resolveAgentTaskStrategy,
+  resolveRequiredAgentReadTools,
+  type RequiredAgentReadToolName
+} from "./agentTaskStrategy";
+import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
 import { appendAgentTurnMessages } from "./agentTurnMessages";
 import {
   applyAgentStreamEventsToTrace,
   completeAgentTrace,
   createAgentTrace,
   finishLocalAgentToolActivity,
-  startLocalAgentToolActivity
+  startLocalAgentToolActivity,
+  updateLocalAgentToolActivity
 } from "./agentMessageTrace";
 import { buildAgentToolActivityDescriptor, sanitizeAgentActivityDetail } from "./agentToolActivity";
 import {
+  AgentTurnStreamError,
   consumeAgentTurnStream,
   createAgentAttemptGuard,
   createAgentStreamEventBatcher
@@ -318,6 +345,63 @@ const MorphoCanvas = dynamic(() => import("./tldraw/MorphoCanvas").then((mod) =>
   ssr: false,
   loading: () => <div className="workspace-canvas" aria-label="画布正在加载" />
 });
+
+async function requestConversationSummary(
+  plan: ConversationCompactionPlan,
+  signal: AbortSignal,
+  agentTurnId: string
+): Promise<ReturnType<typeof parseConversationSummaryPayload>> {
+  const response = await fetch("/api/ai/agent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      input: buildAgentCheckpointCompactionInput({
+        previousSummaryRevision: plan.previousSummaryRevision,
+        messages: plan.sourceMessages,
+        sourceStartMessageId: plan.sourceStartMessageId,
+        sourceEndMessageId: plan.sourceEndMessageId,
+        sourceMessageCount: plan.sourceMessageCount
+      }),
+      tools: [],
+      agentTurnId,
+      continuation: false
+    }),
+    signal
+  });
+  const result = await consumeAgentTurnStream(response, { signal });
+  return parseConversationSummaryPayload(result.outputText);
+}
+
+const CONVERSATION_TOKEN_LIMITS_TEST_KEY = "morpho:test:conversation-token-limits";
+const MAX_AGENT_TOOL_ARGUMENT_REPAIR_ATTEMPTS = 3;
+
+export function readConversationTokenLimitsOverride(): ConversationTokenLimits | undefined {
+  if (process.env.NODE_ENV === "production" || typeof window === "undefined") {
+    return undefined;
+  }
+  const raw = window.localStorage.getItem(CONVERSATION_TOKEN_LIMITS_TEST_KEY);
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<ConversationTokenLimits>;
+    const values = [parsed.windowTokens, parsed.prepareTokens, parsed.compactTokens, parsed.targetUncompressedTokens];
+    if (!values.every((value) => Number.isSafeInteger(value) && (value ?? 0) > 0)) {
+      return undefined;
+    }
+    const limits = parsed as ConversationTokenLimits;
+    if (
+      limits.prepareTokens >= limits.compactTokens ||
+      limits.compactTokens >= limits.windowTokens ||
+      limits.targetUncompressedTokens >= limits.compactTokens
+    ) {
+      return undefined;
+    }
+    return limits;
+  } catch {
+    return undefined;
+  }
+}
 
 type FocusRequest = {
   area?: FocusArea;
@@ -395,6 +479,24 @@ type WorkspaceTextPrompt =
       comparison?: ComparisonDecisionMetadata;
     };
 
+function isComparisonPendingConfirmation(
+  confirmation: PendingAiConfirmation
+): confirmation is PendingComparisonConfirmation {
+  return (
+    confirmation.kind === "compareSetPrimary" ||
+    confirmation.kind === "compareSetAlternative" ||
+    confirmation.kind === "compareEliminate" ||
+    confirmation.kind === "compareRestoreAlternative" ||
+    confirmation.kind === "compareSetDefaultReference" ||
+    confirmation.kind === "compareClearDefaultReference" ||
+    confirmation.kind === "compareCreateKeyConclusion"
+  );
+}
+
+function buildComparisonDecisionReason(confirmation: PendingComparisonConfirmation): string {
+  return confirmation.userReason.trim() || "用户已明确确认此 Compare 决定。";
+}
+
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const router = useRouter();
   const [workspace, setWorkspace, persistenceState, flushWorkspace] = usePersistentWorkspace(projectId);
@@ -402,7 +504,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [aiDraft, setAiDraft] = useState("");
   const [agentTurnMode, setAgentTurnMode] = useState<MorphoAgentTurnMode>("auto");
   const [taskMode, setTaskMode] = useState<AiTaskMode>("chatAnalysis");
-  const [workIntent, setWorkIntent] = useState<AiWorkIntent>(() => workspace.ui.workIntent);
+  const workIntent = workspace.ui.workIntent;
   const [aiOpen, setAiOpen] = useState(true);
   const [activeDrawer, setActiveDrawer] = useState<DrawerMode>(null);
   const [drawerAnchor, setDrawerAnchor] = useState<LeftRailAnchor | null>(null);
@@ -428,7 +530,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [directionPreviewCount, setDirectionPreviewCount] = useState<1 | 2 | 4 | 6>(2);
   const [imageGenerationAspectMode, setImageGenerationAspectMode] = useState<"auto" | "manual">("auto");
   const [deliveryPanelOpen, setDeliveryPanelOpen] = useState(false);
-  const [activeDeliveryObjectId, setActiveDeliveryObjectId] = useState<string | null>(null);
+  const [requestedActiveDeliveryObjectId, setActiveDeliveryObjectId] = useState<string | null>(null);
   const [activeDeliverySectionId, setActiveDeliverySectionId] = useState<string | null>(null);
   const [pendingDeliveryDraftTarget, setPendingDeliveryDraftTarget] = useState<{ deliveryObjectId: string; sectionId: string } | null>(null);
   const commitWorkspaceNow = useCallback(
@@ -462,7 +564,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [bundlePanelOpen, setBundlePanelOpen] = useState(false);
   const [archiveIncludeFullChat, setArchiveIncludeFullChat] = useState(false);
   const [archiveIncludeContinuity, setArchiveIncludeContinuity] = useState(false);
-  const [backupIncludeFullChat, setBackupIncludeFullChat] = useState(false);
   const [bundleBusyLabel, setBundleBusyLabel] = useState<string | null>(null);
   const [bundleMessage, setBundleMessage] = useState<{
     tone: "neutral" | "success" | "warning" | "error";
@@ -526,9 +627,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const object = workspace.objects[activeResearchDetailObjectId];
     return object?.type === "research" && object.visibility === "active" ? object : null;
   }, [activeResearchDetailObjectId, workspace.objects]);
-  useEffect(() => {
-    setProjectRenameDraft(workspace.project.title);
-  }, [workspace.project.title]);
   const keyConclusionCandidates = useMemo(
     () =>
       Object.values(workspace.objects).filter(
@@ -586,11 +684,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         : null,
     [detailProposalId, workspace.artifactProposals]
   );
-  useEffect(() => {
-    if (detailProposalId && !detailProposal) {
-      setDetailProposalId(null);
-    }
-  }, [detailProposal, detailProposalId]);
   const detailDesignDefinition = useMemo(() => {
     const object = detailDesignDefinitionId ? workspace.objects[detailDesignDefinitionId] : undefined;
     if (!object || object.type !== "designDefinition") {
@@ -599,11 +692,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const revision = workspace.designDefinitionRevisions[object.currentRevisionId];
     return revision ? { object, revision } : null;
   }, [detailDesignDefinitionId, workspace.designDefinitionRevisions, workspace.objects]);
-  useEffect(() => {
-    if (detailDesignDefinitionId && !detailDesignDefinition) {
-      setDetailDesignDefinitionId(null);
-    }
-  }, [detailDesignDefinition, detailDesignDefinitionId]);
   const detailConceptDirection = useMemo(() => {
     const object = detailConceptDirectionId ? workspace.objects[detailConceptDirectionId] : undefined;
     if (!object || object.type !== "conceptDirection") {
@@ -612,15 +700,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const revision = workspace.directionRevisions[object.currentRevisionId];
     return revision ? { object, revision } : null;
   }, [detailConceptDirectionId, workspace.directionRevisions, workspace.objects]);
-  useEffect(() => {
-    if (detailConceptDirectionId && !detailConceptDirection) {
-      setDetailConceptDirectionId(null);
-    }
-  }, [detailConceptDirection, detailConceptDirectionId]);
   const activeOperation = useMemo(() => getActiveOperation(workspace), [workspace]);
   const deliveryObjects = useMemo(() => getDeliveryObjects(workspace), [workspace]);
+  const activeDeliveryObjectId = useMemo(
+    () =>
+      requestedActiveDeliveryObjectId &&
+      deliveryObjects.some((delivery) => delivery.id === requestedActiveDeliveryObjectId)
+        ? requestedActiveDeliveryObjectId
+        : deliveryObjects[0]?.id ?? null,
+    [deliveryObjects, requestedActiveDeliveryObjectId]
+  );
   const isImageTaskMode = taskMode === "imageGeneration";
-  const imageGenerationModelOptions = useMemo(() => getImageGenerationModelOptions(), []);
   const inferredImageAspectRatio = useMemo(
     () => inferGenerationAspectRatio(workspace, selectedObjectIds),
     [selectedObjectIds, workspace]
@@ -635,20 +725,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         : imageGenerationSettings,
     [imageGenerationAspectMode, imageGenerationSettings, inferredImageAspectRatio]
   );
-
-  useEffect(() => {
-    setWorkIntent(workspace.ui.workIntent);
-  }, [workspace.ui.workIntent]);
-
-  useEffect(() => {
-    if (!activeDeliveryObjectId && deliveryObjects[0]) {
-      setActiveDeliveryObjectId(deliveryObjects[0].id);
-      return;
-    }
-    if (activeDeliveryObjectId && !deliveryObjects.some((delivery) => delivery.id === activeDeliveryObjectId)) {
-      setActiveDeliveryObjectId(deliveryObjects[0]?.id ?? null);
-    }
-  }, [activeDeliveryObjectId, deliveryObjects]);
 
   useEffect(() => {
     const persistedSelection = workspace.ui.lastSelectionIds;
@@ -680,7 +756,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const handleWorkIntentChange = useCallback(
     (nextWorkIntent: AiWorkIntent) => {
-      setWorkIntent(nextWorkIntent);
       setWorkspace((current) => {
         if (current.ui.workIntent === nextWorkIntent) {
           return current;
@@ -698,26 +773,24 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [setWorkspace]
   );
 
+  const handleDrawerChange = useCallback((drawer: DrawerMode, anchor?: LeftRailAnchor) => {
+    setDrawerAnchor(drawer ? anchor ?? null : null);
+    setActiveDrawer(drawer);
+  }, []);
+
   useEffect(() => {
     if (!activeDrawer) {
-      setDrawerAnchor(null);
       return;
     }
-
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setActiveDrawer(null);
+        handleDrawerChange(null);
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeDrawer]);
-
-  const handleDrawerChange = useCallback((drawer: DrawerMode, anchor?: LeftRailAnchor) => {
-    setDrawerAnchor(drawer ? anchor ?? null : null);
-    setActiveDrawer(drawer);
-  }, []);
+  }, [activeDrawer, handleDrawerChange]);
 
   useEffect(() => {
     if (!activeDrawer) {
@@ -733,17 +806,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return;
       }
 
-      setActiveDrawer(null);
+      handleDrawerChange(null);
     };
 
     document.addEventListener("pointerdown", handlePointerDown, true);
     return () => document.removeEventListener("pointerdown", handlePointerDown, true);
-  }, [activeDrawer]);
+  }, [activeDrawer, handleDrawerChange]);
 
   const focusArea = useCallback((area: FocusArea) => {
     setFocusRequest((current) => ({ area, nonce: current.nonce + 1 }));
-    setActiveDrawer(null);
-  }, []);
+    handleDrawerChange(null);
+  }, [handleDrawerChange]);
 
   const focusObject = useCallback((objectId: string, options: { rememberView?: boolean } = {}) => {
     if (options.rememberView) {
@@ -754,8 +827,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
     setSelectedObjectIds([objectId]);
     setFocusRequest((current) => ({ objectId, nonce: current.nonce + 1 }));
-    setActiveDrawer(null);
-  }, [selectedObjectIds]);
+    handleDrawerChange(null);
+  }, [handleDrawerChange, selectedObjectIds]);
 
   const locateObjectFromDetail = useCallback(
     (objectId: string) => {
@@ -791,16 +864,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const openProjectRecords = useCallback((entryIds: string[] = []) => {
     setHighlightContinuityEntryIds(entryIds);
-    setActiveDrawer("records");
-  }, []);
+    handleDrawerChange("records");
+  }, [handleDrawerChange]);
 
   const handleSetContinuityEntryManualState = useCallback(
     (entryId: string, manualState: ContinuityManualState) => {
       setWorkspace((current) => setConversationSemanticEntryManualState(current, entryId, manualState));
       setHighlightContinuityEntryIds([entryId]);
-      setActiveDrawer("records");
+      handleDrawerChange("records");
     },
-    [setWorkspace]
+    [handleDrawerChange, setWorkspace]
   );
 
   const pushObjectOperationUndo = useCallback(() => {
@@ -891,7 +964,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return null;
       });
       if (objectIds.length === 0) {
-        setActiveDrawer(null);
+        handleDrawerChange(null);
       }
       setWorkspace((current) => {
         if (current.ui.lastSelectionIds.join("|") === objectIds.join("|")) {
@@ -907,7 +980,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         };
       });
     },
-    [setWorkspace]
+    [handleDrawerChange, setWorkspace]
   );
 
   const handleInstancesChange = useCallback(
@@ -1198,1305 +1271,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     });
   }, [setWorkspace, workspace.project.id, workspace.objects]);
 
-  const handleRunResearchOperation = useCallback(
-    async (draft: string) => {
-      const operationGate = canStartOperation(workspace);
-      if (operationGate.status === "blocked") {
-        setAiDraft(draft);
-        setWorkspace((current) => ({
-          ...current,
-          ai: {
-            ...current.ai,
-            messages: [
-              ...current.ai.messages,
-              {
-                id: `ai-operation-blocked-${Date.now()}`,
-                role: "assistant",
-                body: `${operationGate.reason} 当前未完成任务：${operationGate.operation.userInput}`,
-                status: "failed",
-                createdAt: new Date().toISOString(),
-                operationId: operationGate.operation.id
-              }
-            ]
-          }
-        }));
-        return;
-      }
-
-      const context = buildTaskContext(workspace, {
-        kind: "research",
-        draft,
-        selectedObjectIds
-      });
-      const webSearch = buildWebSearchOptions({ draft, taskMode: "researchOperation" });
-      const created = createResearchOperation(workspace, {
-        userInput: draft,
-        selectedObjectIds: context.objectIds,
-        allowWebSearch: Boolean(webSearch)
-      });
-      const operationId = created.operation.id;
-      const now = new Date().toISOString();
-      const userMessageId = `ai-user-research-${Date.now()}`;
-      const assistantMessageId = `ai-assistant-research-${Date.now()}`;
-      const controller = new AbortController();
-      const objectSummaries = makeTaskObjectSummaries(context.semanticSummaries);
-
-      abortControllerRef.current = controller;
-      setIsAiStreaming(true);
-      setAiDraft("");
-      setAiOpen(true);
-      setWorkspace(() => ({
-        ...created.workspace,
-        ai: {
-          ...created.workspace.ai,
-          messages: [
-            ...created.workspace.ai.messages,
-            {
-              id: userMessageId,
-              role: "user",
-              body: draft,
-              createdAt: now,
-              contextObjectIds: context.objectIds,
-              taskMode: "researchOperation"
-            },
-              {
-                id: assistantMessageId,
-                role: "assistant",
-                body: webSearch
-                  ? "研究任务已开始：正在整理本地输入快照，并准备一次已授权的联网补充。"
-                  : "研究任务已开始：正在整理本地输入快照。本轮未启用联网搜索。",
-                createdAt: now,
-                status: "streaming",
-              contextObjectIds: context.objectIds,
-              taskMode: "researchOperation",
-              operationId
-            }
-          ]
-        }
-      }));
-
-      try {
-        const attachmentResult = shouldAttachImagesForAiProvider({
-          draft,
-          taskMode: "researchOperation",
-          selectedObjects
-        })
-          ? await collectAiProviderImageAttachments(
-              workspace,
-              resolveAiProviderImageObjectIds({
-                contextImageObjectIds: context.imageObjectIds,
-                selectedObjects
-              }),
-              controller.signal
-            )
-          : { attachments: [], skippedObjectIds: [], warning: undefined };
-        const documentResult = await collectDocumentExtractsForAi(
-          workspace,
-          context.documentObjectIds,
-          indexedDbBlobStore,
-          controller.signal
-        );
-        const response = await fetch("/api/ai/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            draft,
-            task: "research",
-            taskMode: "researchOperation",
-            messages: workspace.ai.messages.map((message) => ({ role: message.role, body: message.body })),
-            objectSummaries,
-            attachments: attachmentResult.attachments,
-            documentExtracts: documentResult.extracts,
-            webSearch,
-            defaultReferenceStatus: summarizeTaskDefaultReferenceStatus(context.defaultReference),
-            taskContext: buildProviderTaskContext(context)
-          }),
-          signal: controller.signal
-        });
-
-        if (!response.ok || !response.body) {
-          const failure = await readErrorResponse(response);
-          throw new Error(failure);
-        }
-
-        const streamResult = await readAiEventStream(response.body, (assistantBody) => {
-          setWorkspace((current) => updateAiMessage(current, assistantMessageId, sanitizeConversationAssistantStreamForDisplay(assistantBody), "streaming"));
-        });
-        const visibleResearchText = stripAssistantTechnicalBlocks(streamResult.text);
-        const assistantBody = [attachmentResult.warning, documentResult.warning, visibleResearchText]
-          .filter(Boolean)
-          .join("\n\n");
-
-        const parsedProposal = parseResearchAnalysisProposalPayload(streamResult.text);
-        if (parsedProposal.status === "failed") {
-          const fallbackBody = [
-            assistantBody || "AiJWS 没有返回可显示文本。",
-            "本次研究结果未能整理为可保存草案；你可以继续追问、补充要求或重试研究任务。"
-          ].join("\n\n");
-          setWorkspace((current) => {
-            const withMessage = updateAiMessage(current, assistantMessageId, fallbackBody, "done");
-            const withCitations = streamResult.citations.length > 0
-              ? storeMessageCitations(withMessage, {
-                  messageId: assistantMessageId,
-                  operationId,
-                  citations: streamResult.citations
-                })
-              : withMessage;
-            const semanticPatchResult = applyConversationSemanticPatchFromReply({
-              workspace: withCitations,
-              taskMode: "researchOperation",
-              context,
-              draft,
-              userMessageId,
-              userMessageCreatedAt: now,
-              assistantText: streamResult.text
-            });
-            return semanticPatchResult.status === "applied"
-              ? updateAiMessage(semanticPatchResult.workspace, assistantMessageId, fallbackBody, "done", {
-                  continuityEntryIds: semanticPatchResult.entryIds
-                })
-              : withCitations;
-          });
-          return;
-        }
-
-        const proposalId = `proposal-research-${operationId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        let appliedResearchObjectId: string | undefined;
-        setWorkspace((current) => {
-          const result = applyResearchProposalWithSemanticPatch({
-            workspace: updateAiMessage(current, assistantMessageId, assistantBody || "AiJWS 没有返回可显示文本。", "done"),
-            proposal: {
-              proposalId,
-              operationId,
-              title: parsedProposal.proposal.title,
-              summary: parsedProposal.proposal.summary,
-              findings: parsedProposal.proposal.findings,
-              opportunities: parsedProposal.proposal.opportunities,
-              constraints: parsedProposal.proposal.constraints,
-              openQuestions: parsedProposal.proposal.openQuestions,
-              evidence: parsedProposal.proposal.evidence,
-              sourceObjectIds: context.objectIds,
-              citations: streamResult.citations,
-              sourceChangedWarning: detectResearchSourceChanges(current, operationId)
-            },
-            position: getPlacementNearObjects(current, context.objectIds, {
-              x: current.canvas.view.x + 220,
-              y: current.canvas.view.y + 180
-            }),
-            context,
-            draft,
-            userMessageId,
-            userMessageCreatedAt: now,
-            assistantText: streamResult.text
-          });
-
-          if (result.status === "updated") {
-            const researchObject = result.workspace.objects[result.researchObjectId];
-            appliedResearchObjectId = result.researchObjectId;
-            return updateAiMessage(
-              result.workspace,
-              assistantMessageId,
-              [
-                assistantBody || "AiJWS 没有返回可显示文本。",
-                `已识别为：研究任务。已自动创建研究卡「${researchObject?.title ?? "研究卡"}」，来源对象 ${
-                  context.objectIds.length
-                } 个，${webSearch ? "已允许联网补充" : "未启用联网搜索"}。`
-              ].join("\n\n"),
-              "done",
-              {
-                citationIds: result.proposalCitationIds,
-                continuityEntryIds: result.semanticPatch.status === "applied" ? result.semanticPatch.entryIds : undefined
-              }
-            );
-          }
-
-          return updateAiMessage(
-            result.workspace,
-            assistantMessageId,
-            [assistantBody || "AiJWS 没有返回可显示文本。", `${result.reason} 研究卡未自动创建。`].join("\n\n"),
-            "failed",
-            {
-              citationIds: result.proposalCitationIds,
-              continuityEntryIds: result.semanticPatch.status === "applied" ? result.semanticPatch.entryIds : undefined
-            }
-          );
-        });
-        if (appliedResearchObjectId) {
-          setSelectedObjectIds([appliedResearchObjectId]);
-          setFocusRequest((current) => ({ objectId: appliedResearchObjectId, nonce: current.nonce + 1 }));
-        }
-        setActiveProposalId(null);
-        setPendingConfirmation(null);
-      } catch (error) {
-        const isCancelled = error instanceof DOMException && error.name === "AbortError";
-        const message = isCancelled
-          ? "研究任务已取消。原输入、选择和已完成步骤已保留。"
-          : error instanceof Error
-            ? error.message
-            : "研究任务失败。";
-        setAiDraft(draft);
-        setWorkspace((current) =>
-          updateAiMessage(
-            failOperation(current, operationId, {
-              status: isCancelled ? "cancelled" : "failed",
-              reason: message
-            }),
-            assistantMessageId,
-            message,
-            "failed"
-          )
-        );
-      } finally {
-        abortControllerRef.current = null;
-        setIsAiStreaming(false);
-      }
-    },
-    [selectedObjectIds, selectedObjects, setWorkspace, workspace]
-  );
-
-  const handleRunVisualGenerationOperation = useCallback(
-    async (draft: string) => {
-      const intent = classifyVisualGenerationIntent(draft, selectedObjects);
-      if (!intent) {
-        setAiDraft(draft);
-        setImageTaskStatus({
-          state: "failed",
-          message: "没有识别到明确的方向预览或图片视觉迭代目标。请先选择 1-3 个方向，或选择要继续发展的图片。"
-        });
-        setWorkspace((current) =>
-          appendAiAssistantFailureMessage(
-            current,
-            "image-generation-intent-blocked",
-            "已识别到图像生成措辞，但缺少明确目标：请选择 1-3 个概念方向生成首张预览，或选择图片做视觉迭代。",
-            undefined
-          )
-        );
-        return;
-      }
-
-      const operationGate = canStartOperation(workspace);
-      if (operationGate.status === "blocked") {
-        setAiDraft(draft);
-        setImageTaskStatus({ state: "failed", message: operationGate.reason });
-        setWorkspace((current) => appendOperationBlockedMessage(current, operationGate.operation, operationGate.reason));
-        return;
-      }
-
-      const selectedDirectionIds = selectedObjects
-        .filter((object) => object.type === "conceptDirection")
-        .map((object) => object.id);
-      const selectedImageIds = selectedObjects.filter((object) => object.type === "image").map((object) => object.id);
-      if (intent === "directionPreview" && (selectedDirectionIds.length === 0 || selectedDirectionIds.length > 3)) {
-        const message = "方向预览首版一次只支持选择 1-3 个概念方向。";
-        setAiDraft(draft);
-        setImageTaskStatus({ state: "failed", message });
-        setWorkspace((current) => appendAiAssistantFailureMessage(current, "direction-preview-blocked", message, undefined));
-        return;
-      }
-      const requestedPreviewCount = intent === "directionPreview" ? directionPreviewCount : 1;
-      if (intent === "directionPreview") {
-        const countValidation = validateRequestedPreviewCount(selectedDirectionIds.length, requestedPreviewCount);
-        if (countValidation.status === "blocked") {
-          setAiDraft(draft);
-          setImageTaskStatus({ state: "failed", message: countValidation.reason });
-          setWorkspace((current) => appendAiAssistantFailureMessage(current, "direction-preview-count-blocked", countValidation.reason, undefined));
-          return;
-        }
-      }
-
-      const initialVisualTarget =
-        intent === "visualDevelopment"
-          ? resolveVisualGenerationTarget(workspace, selectedObjects, selectedObjectIds)
-          : { status: "ready" as const };
-      if (initialVisualTarget.status === "blocked") {
-        setContextWarning(initialVisualTarget.reason);
-        setImageTaskStatus({ state: "failed", message: initialVisualTarget.reason });
-        return;
-      }
-
-      const context = buildTaskContext(workspace, {
-        kind: intent,
-        draft,
-        selectedObjectIds,
-        targetDirectionIds: selectedDirectionIds.length > 0 ? selectedDirectionIds : initialVisualTarget.directionId ? [initialVisualTarget.directionId] : [],
-        visualBranchId: initialVisualTarget.visualBranchId
-      });
-      const operationId = `operation-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const clientRequestId = `client-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const now = new Date().toISOString();
-      const userMessageId = `ai-user-image-${Date.now()}`;
-      const assistantMessageId = `ai-assistant-image-${Date.now()}`;
-      const controller = new AbortController();
-      const objectSummaries = makeTaskObjectSummaries(context.semanticSummaries);
-      // Intent routes model automatically (no user model picker yet).
-      const generationSettings = resolveImageGenerationSettingsForVisualIntent({
-        intent,
-        aspectRatio: effectiveImageGenerationSettings.aspectRatio
-      });
-      abortControllerRef.current = controller;
-      setIsAiStreaming(true);
-      setAiDraft("");
-      setAiOpen(true);
-      setShowFailure(false);
-      setImageTaskStatus({
-        state: "preparing",
-        message:
-          intent === "directionPreview"
-            ? `正在整理本次 Context：${selectedDirectionIds.length} 个方向 × 每方向 ${requestedPreviewCount} 张 = 总计 ${selectedDirectionIds.length * requestedPreviewCount} 张。`
-            : "正在整理本次 Context：将纳入已选图片、方向、分支和必要资料。"
-      });
-      setWorkspace((current) => {
-        const operationCreated = createImageGenerationOperation(current, {
-          operationId,
-          clientRequestId,
-          prompt: draft,
-          selectedObjectIds: context.objectIds,
-          imagePixels: false,
-          modelId: generationSettings.modelId,
-          modelLabel: generationSettings.modelLabel,
-          aspectRatio: generationSettings.aspectRatio,
-          sizeOption: generationSettings.sizeOption,
-          referenceObjectIds: context.objectIds,
-          directionObjectId: initialVisualTarget.directionId,
-          visualBranchId: initialVisualTarget.visualBranchId,
-          requestedPreviewCount: intent === "directionPreview" ? requestedPreviewCount : undefined
-        });
-
-        return {
-          ...operationCreated.workspace,
-          ai: {
-            ...operationCreated.workspace.ai,
-            messages: [
-              ...operationCreated.workspace.ai.messages,
-              {
-                id: userMessageId,
-                role: "user",
-                body: draft,
-                createdAt: now,
-                contextObjectIds: context.objectIds,
-                taskMode: "imageGeneration"
-              },
-              {
-                id: assistantMessageId,
-                role: "assistant",
-                body:
-                  intent === "directionPreview"
-                    ? `正在整理本次 Context：目标 ${selectedDirectionIds.length} 个方向，每方向 ${requestedPreviewCount} 张，总计 ${selectedDirectionIds.length * requestedPreviewCount} 张；不会覆盖已有图片。`
-                    : "正在整理本次 Context：会创建新图像对象，不覆盖来源图、默认参考或交付引用。",
-                createdAt: now,
-                status: "streaming",
-                contextObjectIds: context.objectIds,
-                taskMode: "imageGeneration",
-                operationId
-              }
-            ]
-          }
-        };
-      });
-
-      const createdObjectIds: string[] = [];
-      const failedItems: string[] = [];
-      let lastProviderTaskId: string | undefined;
-
-      try {
-        const attachmentResult = await collectAiProviderImageAttachments(
-          workspace,
-          resolveAiProviderImageObjectIds({
-            contextImageObjectIds: context.imageObjectIds,
-            selectedObjects
-          }),
-          controller.signal
-        );
-        const documentResult = await collectDocumentExtractsForAi(
-          workspace,
-          context.documentObjectIds,
-          indexedDbBlobStore,
-          controller.signal
-        );
-        const contextWarnings = [
-          context.skipped.length > 0 ? `${context.skipped.length} 个对象未进入本次 Context。` : "",
-          attachmentResult.warning,
-          documentResult.warning
-        ].filter(Boolean);
-        setContextWarning(contextWarnings.join(" ") || undefined);
-        setImageTaskStatus({
-          state: "preparing",
-          message: "正在分析视觉目标：AiJWS 将只看到本次已授权的图片、文档提取和对象摘要。"
-        });
-        const planResponse = await fetch("/api/ai/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            draft,
-            task: intent,
-            taskMode: "imageGeneration",
-            workIntent: "discussion",
-            messages: workspace.ai.messages.map((message) => ({ role: message.role, body: message.body })),
-            objectSummaries,
-            attachments: attachmentResult.attachments,
-            documentExtracts: documentResult.extracts,
-            defaultReferenceStatus: summarizeTaskDefaultReferenceStatus(context.defaultReference),
-            taskContext: buildProviderTaskContext(context)
-          }),
-          signal: controller.signal
-        });
-
-        if (!planResponse.ok || !planResponse.body) {
-          const failure = await readErrorResponse(planResponse);
-          throw new Error(failure);
-        }
-
-        const planStream = await readAiEventStream(planResponse.body, (assistantBody) => {
-          setWorkspace((current) => updateAiMessage(current, assistantMessageId, sanitizeConversationAssistantStreamForDisplay(assistantBody), "streaming"));
-        });
-        const parsedPlan = parseVisualGenerationPlanPayload(planStream.text);
-        if (parsedPlan.status === "failed") {
-          throw new Error(parsedPlan.reason);
-        }
-        if (parsedPlan.plan.kind !== intent) {
-          throw new Error("AiJWS 返回的视觉计划类型与当前识别任务不一致。");
-        }
-
-        const validatedPlan = validateVisualGenerationPlan(workspace, {
-          plan: parsedPlan.plan,
-          allowedObjectIds: context.objectIds,
-          selectedDirectionIds,
-          selectedImageIds,
-          requestedPreviewCount
-        });
-        if (validatedPlan.status === "blocked") {
-          throw new Error(validatedPlan.reason);
-        }
-        const plannedImageSize = getPlannedImageSize(effectiveImageGenerationSettings.aspectRatio);
-        const visualPlacementMap = new Map(
-          (validatedPlan.plan.kind === "directionPreview"
-            ? planDirectionPreviewPlacements(
-                workspace,
-                validatedPlan.plan.items.map((planItem) => ({
-                  id: planItem.id,
-                  targetDirectionId: planItem.targetDirectionId,
-                  width: plannedImageSize.w,
-                  height: plannedImageSize.h
-                }))
-              )
-            : planVisualDevelopmentPlacements(
-                workspace,
-                validatedPlan.plan.items.map((planItem) => ({
-                  id: planItem.id,
-                  referenceObjectIds: planItem.referenceObjectIds,
-                  targetDirectionId: planItem.targetDirectionId,
-                  width: plannedImageSize.w,
-                  height: plannedImageSize.h
-                }))
-              )
-          ).map((placement) => [placement.planItemId, placement.position] as const)
-        );
-        setPendingImageGenerationSlots((current) => [
-          ...current.filter((slot) => slot.operationId !== operationId),
-          ...buildPendingImageGenerationSlots({
-            operationId,
-            items: validatedPlan.plan.items,
-            placements: visualPlacementMap,
-            size: plannedImageSize
-          })
-        ]);
-
-        setWorkspace((current) =>
-          updateAiMessage(
-            recordImageGenerationPlan(current, {
-              operationId,
-              plan: validatedPlan.plan
-            }),
-            assistantMessageId,
-            `已形成生成计划：${validatedPlan.plan.items.length} 项。最多 ${IMAGE_GENERATION_MAX_CONCURRENCY} 路并发生成，当前模型 ${generationSettings.modelLabel}，不会覆盖来源图。`,
-            "streaming"
-          )
-        );
-
-        const totalItems = validatedPlan.plan.items.length;
-        let completedCount = 0;
-        let inFlightCount = 0;
-        const publishProgress = () => {
-          setImageTaskStatus({
-            state: inFlightCount > 0 ? "submitting" : "downloading",
-            message: buildImageGenerationProgressMessage({
-              total: totalItems,
-              completed: completedCount,
-              inFlight: inFlightCount,
-              concurrency: IMAGE_GENERATION_MAX_CONCURRENCY
-            })
-          });
-          setWorkspace((current) =>
-            updateAiMessage(
-              current,
-              assistantMessageId,
-              buildImageGenerationProgressMessage({
-                total: totalItems,
-                completed: completedCount,
-                inFlight: inFlightCount,
-                concurrency: IMAGE_GENERATION_MAX_CONCURRENCY
-              }),
-              "streaming"
-            )
-          );
-        };
-
-        type VisualItemResult =
-          | {
-              status: "ok";
-              index: number;
-              item: (typeof validatedPlan.plan.items)[number];
-              asset: AssetRecord;
-              sourceObjectIds: string[];
-              providerTaskId?: string;
-            }
-          | {
-              status: "failed";
-              index: number;
-              item: (typeof validatedPlan.plan.items)[number];
-              reason: string;
-            };
-
-        const applyVisualItemResult = async (result: VisualItemResult) => {
-          if (result.status === "ok") {
-            const createdObjectId = commitWorkspaceNow((current) => {
-              const committed = applyImageGenerationResultCommit(current, {
-                status: "succeeded",
-                operationId,
-                providerTaskId: result.providerTaskId ?? lastProviderTaskId,
-                asset: result.asset,
-                generation: {
-                  modelId: generationSettings.modelId,
-                  modelLabel: generationSettings.modelLabel,
-                  aspectRatio: generationSettings.aspectRatio,
-                  sizeOption: generationSettings.sizeOption,
-                  prompt: result.item.prompt,
-                  referenceObjectIds: result.item.referenceObjectIds,
-                  directionId: result.item.targetDirectionId,
-                  visualBranchId: result.item.visualBranchId,
-                  operationId,
-                  clientRequestId: `${clientRequestId}-${result.item.id}`,
-                  providerTaskId: result.providerTaskId ?? lastProviderTaskId,
-                  title: result.item.title,
-                  purpose: result.item.purpose,
-                  role: result.item.role,
-                  visualPlan: validatedPlan.plan,
-                  createdAt: new Date().toISOString()
-                },
-                sourceObjectIds: result.sourceObjectIds,
-                directionObjectId: result.item.targetDirectionId,
-                visualBranchId: result.item.visualBranchId,
-                title: result.item.title,
-                summary: result.item.purpose,
-                role: result.item.role,
-                position: getGeneratedImagePlacement(
-                  current,
-                  result.item,
-                  result.index,
-                  visualPlacementMap.get(result.item.id)
-                ),
-                canvasSize: plannedImageSize
-              });
-              return { workspace: committed.workspace, value: committed.createdObjectId };
-            });
-            if (createdObjectId) {
-              createdObjectIds.push(createdObjectId);
-            }
-          } else {
-            failedItems.push(`${result.item.title}: ${result.reason}`);
-            commitWorkspaceNow((current) => {
-              const committed = applyImageGenerationResultCommit(current, {
-                status: "failed",
-                operationId,
-                planItemId: result.item.id,
-                reason: result.reason
-              });
-              return { workspace: committed.workspace, value: undefined };
-            });
-          }
-
-          // Clear this exact reservation before the matching real image shape
-          // is synchronized into tldraw; siblings remain in place.
-          setPendingImageGenerationSlots((current) =>
-            removePendingImageGenerationSlot(current, operationId, result.item.id)
-          );
-        };
-
-        // Network + local asset save may run in parallel; each settled image is
-        // written back immediately instead of waiting for its slower siblings.
-        await mapWithConcurrency(
-          validatedPlan.plan.items,
-          IMAGE_GENERATION_MAX_CONCURRENCY,
-          async (item, index): Promise<VisualItemResult> => {
-            inFlightCount += 1;
-            publishProgress();
-            try {
-              const referenceImages = await collectImageReferenceDataUrls(
-                workspace,
-                item.referenceObjectIds,
-                controller.signal
-              );
-              setWorkspace((current) =>
-                markImageGenerationOperationSubmitted(current, {
-                  operationId,
-                  referenceObjectIds: item.referenceObjectIds,
-                  imagePixels: referenceImages.images.length > 0
-                })
-              );
-
-              const itemClientRequestId = `${clientRequestId}-${item.id}`;
-              const imageResponse = await fetch("/api/ai/image", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  modelId: generationSettings.modelId,
-                  prompt: item.prompt,
-                  images: referenceImages.images,
-                  aspectRatio: generationSettings.aspectRatio,
-                  sizeOption: generationSettings.sizeOption,
-                  referenceObjectIds: item.referenceObjectIds,
-                  directionObjectId: item.targetDirectionId,
-                  visualBranchId: item.visualBranchId,
-                  operationId,
-                  clientRequestId: itemClientRequestId
-                }),
-                signal: controller.signal
-              });
-              const providerTaskId = imageResponse.headers.get("X-Morpho-Provider-Task-Id") || undefined;
-              if (providerTaskId) {
-                lastProviderTaskId = providerTaskId;
-              }
-
-              if (!imageResponse.ok) {
-                throw new Error(await readErrorResponse(imageResponse));
-              }
-
-              const mimeType = imageResponse.headers.get("Content-Type") ?? "image/png";
-              const blob = await imageResponse.blob();
-              const file = new File([blob], makeGeneratedImageFileName(mimeType), { type: mimeType });
-              const saved = await saveBlobAsLocalAsset(indexedDbBlobStore, file, "aiGeneratedImage", {
-                readImageDimensions: readImageBlobDimensions
-              });
-              if (saved.status === "failed") {
-                throw new Error(saved.reason);
-              }
-
-              return {
-                status: "ok",
-                index,
-                item,
-                asset: saved.asset,
-                sourceObjectIds: referenceImages.sourceObjectIds,
-                providerTaskId
-              };
-            } catch (itemError) {
-              const itemMessage = itemError instanceof Error ? itemError.message : "图像计划项生成失败。";
-              return { status: "failed", index, item, reason: itemMessage };
-            } finally {
-              inFlightCount = Math.max(0, inFlightCount - 1);
-              completedCount += 1;
-              publishProgress();
-            }
-          },
-          { onSettled: applyVisualItemResult }
-        );
-
-        if (createdObjectIds.length === 0) {
-          throw new Error(failedItems[0] ?? "所有图像计划项都生成失败。");
-        }
-
-        const lastCreatedObjectId = createdObjectIds.at(-1) ?? createdObjectIds[0];
-        setWorkspace((current) =>
-          updateAiMessage(
-            completeImageGenerationOperation(current, {
-              operationId,
-              providerTaskId: lastProviderTaskId,
-              resultObjectId: lastCreatedObjectId
-            }),
-            assistantMessageId,
-            [
-              `图像任务完成：成功 ${createdObjectIds.length} 张，失败 ${failedItems.length} 项。`,
-              intent === "directionPreview"
-                ? "每张首版预览已绑定对应方向，角色为概念图；没有自动设置主方向或默认参考。"
-                : "新图已写入来源、版本、方向和视觉分支关系；来源图没有被覆盖。",
-              failedItems.length > 0 ? `失败项：${failedItems.join("；")}` : ""
-            ]
-              .filter(Boolean)
-              .join("\n\n"),
-            "done"
-          )
-        );
-        setSelectedObjectIds(createdObjectIds);
-        setFocusRequest((current) => ({ objectId: lastCreatedObjectId, nonce: current.nonce + 1 }));
-        setImageTaskStatus({
-          state: "succeeded",
-          message: failedItems.length > 0 ? `部分完成：已保存 ${createdObjectIds.length} 张，失败 ${failedItems.length} 项。` : `已完成：已保存 ${createdObjectIds.length} 张新图像。`
-        });
-      } catch (error) {
-        const isCancelled = error instanceof DOMException && error.name === "AbortError";
-        const message = isCancelled
-          ? "图像任务已取消。原输入、来源对象和已有结果已保留。"
-          : error instanceof Error
-            ? error.message
-            : "图像任务失败。";
-        setAiDraft(draft);
-        setImageTaskStatus({ state: isCancelled ? "cancelled" : "failed", message });
-        setWorkspace((current) =>
-          updateAiMessage(
-            failImageGenerationOperation(current, {
-              operationId,
-              status: isCancelled ? "cancelled" : "failed",
-              reason: message,
-              providerTaskId: lastProviderTaskId
-            }),
-            assistantMessageId,
-            message,
-            "failed"
-          )
-        );
-      } finally {
-        abortControllerRef.current = null;
-        setIsAiStreaming(false);
-      }
-    },
-    [
-      effectiveImageGenerationSettings,
-      commitWorkspaceNow,
-      directionPreviewCount,
-      selectedObjectIds,
-      selectedObjects,
-      setWorkspace,
-      workspace
-    ]
-  );
-
-  const handleSendAiMessage = useCallback(async () => {
-    const draft = aiDraft.trim();
-    if (!draft || isAiStreaming) {
-      return;
-    }
-
-    const executionTaskMode = resolveTaskModeForSend({ currentTaskMode: taskMode, recommendedTaskMode });
-    const executionWorkIntent = resolveWorkIntentForSend({
-      currentWorkIntent: executionTaskMode === "chatAnalysis" ? workIntent : "discussion",
-      recommendedWorkIntent
-    });
-    if (executionTaskMode === "researchOperation") {
-      await handleRunResearchOperation(draft);
-      return;
-    }
-
-    if (executionTaskMode === "imageGeneration") {
-      await handleRunVisualGenerationOperation(draft);
-      return;
-    }
-
-    const preflight = prepareAiSendBeforeProvider({
-      workspace,
-      selectedObjectIds,
-      executionWorkIntent,
-      draft
-    });
-    if (preflight.status === "blocked") {
-      setAiOpen(preflight.aiOpen);
-      setContextWarning(preflight.contextWarning);
-      setAiDraft(preflight.aiDraft);
-      return;
-    }
-
-    const isDeliverySectionPreparation = executionWorkIntent === "prepareDeliverySection";
-    const task = resolveAiContextTask(executionTaskMode, executionWorkIntent);
-    const context = buildTaskContext(workspace, {
-      kind: taskContextKindFromAiTask(task),
-      draft,
-      selectedObjectIds: isDeliverySectionPreparation ? [] : selectedObjectIds
-    });
-    const deliveryDraftTarget = isDeliverySectionPreparation ? pendingDeliveryDraftTarget : null;
-    const deliveryCandidate = deliveryDraftTarget ? workspace.objects[deliveryDraftTarget.deliveryObjectId] : undefined;
-    const deliveryObject: DeliveryObject | undefined = deliveryCandidate?.type === "delivery" ? deliveryCandidate : undefined;
-    const deliverySectionContext =
-      deliveryObject && deliveryDraftTarget
-        ? buildDeliverySectionContext(workspace, deliveryObject, deliveryDraftTarget.sectionId)
-        : undefined;
-    if (isDeliverySectionPreparation && !deliverySectionContext) {
-      setAiDraft(draft);
-      setContextWarning("请先选择一个至少包含一项交付引用的章节，再生成本节说明草稿。");
-      setPendingDeliveryDraftTarget(null);
-      return;
-    }
-    const shouldCreateSemanticOperation =
-      expectsDesignDefinitionProposal(executionWorkIntent) || expectsConceptDirectionProposal(executionWorkIntent);
-    const semanticOperationGate = shouldCreateSemanticOperation ? canStartOperation(workspace) : { status: "ok" as const };
-    if (semanticOperationGate.status === "blocked") {
-      setAiDraft(draft);
-      setWorkspace((current) => appendOperationBlockedMessage(current, semanticOperationGate.operation, semanticOperationGate.reason));
-      return;
-    }
-    const semanticOperationId = shouldCreateSemanticOperation
-      ? `operation-${task}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-      : undefined;
-    const semanticOperationCreated =
-      semanticOperationId && (task === "designDefinition" || task === "conceptDirection")
-        ? createArtifactProposalOperation(workspace, {
-            operationId: semanticOperationId,
-            type: task,
-            userInput: draft,
-            selectedObjectIds: context.objectIds,
-            workIntent: executionWorkIntent
-          })
-        : undefined;
-    setContextWarning(context.defaultReference.status === "hidden" ? context.defaultReference.reason : undefined);
-
-    const now = new Date().toISOString();
-    const userMessageId = `ai-user-${Date.now()}`;
-    const assistantMessageId = `ai-assistant-${Date.now()}`;
-    const conversationLaneAnchors = resolveConversationLaneAnchors(workspace, isDeliverySectionPreparation ? [] : selectedObjectIds);
-    const conversationLaneKey = buildConversationLaneKey({
-      currentFocus: workspace.projectContinuity.currentFocus,
-      taskKind: context.kind,
-      anchorObjectIds: conversationLaneAnchors.anchorObjectIds,
-      targetDirectionIds: conversationLaneAnchors.targetDirectionIds,
-      visualBranchId: conversationLaneAnchors.visualBranchId
-    });
-    const conversationContext = buildConversationContextForRequest({
-      workspace,
-      laneKey: conversationLaneKey,
-      taskMode: executionTaskMode,
-      workIntent: executionWorkIntent,
-      draft,
-      hasPendingProposal: Boolean(activeProposal)
-    });
-    const objectSummaries = makeTaskObjectSummaries(context.semanticSummaries);
-    const controller = new AbortController();
-    const webSearch =
-      isDeliverySectionPreparation ? undefined : buildWebSearchOptions({ draft, taskMode: executionTaskMode });
-    abortControllerRef.current = controller;
-    setIsAiStreaming(true);
-    setAiDraft("");
-    setAiOpen(true);
-    if (pendingConfirmation?.kind !== "deleteObject") {
-      setPendingConfirmation(null);
-    }
-
-    setWorkspace((current) => {
-      const operationWorkspace = semanticOperationCreated ? semanticOperationCreated.workspace : current;
-      return {
-        ...operationWorkspace,
-      ai: {
-        ...operationWorkspace.ai,
-        messages: [
-          ...operationWorkspace.ai.messages,
-          {
-            id: userMessageId,
-            role: "user",
-            body: draft,
-            createdAt: now,
-            contextObjectIds: isDeliverySectionPreparation ? [] : context.objectIds,
-            taskMode: executionTaskMode,
-            recommendedTaskMode,
-            workIntent: executionWorkIntent,
-            recommendedWorkIntent,
-            conversationLaneKey
-          },
-          {
-            id: assistantMessageId,
-            role: "assistant",
-            body: "",
-            createdAt: now,
-            status: "streaming",
-            contextObjectIds: isDeliverySectionPreparation ? [] : context.objectIds,
-            taskMode: executionTaskMode,
-            workIntent: executionWorkIntent,
-            conversationLaneKey
-          }
-        ]
-      }
-      };
-    });
-
-    try {
-      const attachmentResult =
-        isDeliverySectionPreparation
-          ? { attachments: [], skippedObjectIds: [], entries: [], warning: undefined }
-          : shouldAttachImagesForAiProvider({
-                draft,
-                taskMode: executionTaskMode,
-                selectedObjects
-            })
-            ? await collectAiProviderImageAttachments(
-                workspace,
-                resolveAiProviderImageObjectIds({
-                  contextImageObjectIds: context.imageObjectIds,
-                  selectedObjects
-                }),
-                controller.signal
-              )
-            : { attachments: [], skippedObjectIds: [], entries: [], warning: undefined };
-      const documentResult =
-        isDeliverySectionPreparation
-          ? { extracts: [], warning: undefined }
-          : await collectDocumentExtractsForAi(
-              workspace,
-              context.documentObjectIds,
-              indexedDbBlobStore,
-              controller.signal
-            );
-      const warnings = isDeliverySectionPreparation
-        ? []
-        : [
-            context.skipped.length > 0 ? `${context.skipped.length} 个对象未进入本次 Context。` : "",
-            attachmentResult.warning,
-            documentResult.warning
-          ].filter(Boolean);
-      setContextWarning(warnings.join(" ") || undefined);
-      const response = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          draft,
-          task,
-          taskMode: executionTaskMode,
-          workIntent: executionWorkIntent,
-          messages: isDeliverySectionPreparation ? [] : conversationContext.recentMessages,
-          objectSummaries: isDeliverySectionPreparation ? [] : objectSummaries,
-          attachments: attachmentResult.attachments,
-          documentExtracts: documentResult.extracts,
-          conversationContext: isDeliverySectionPreparation
-            ? undefined
-            : {
-                checkpoint: conversationContext.checkpoint
-                  ? {
-                      threadGoal: conversationContext.checkpoint.threadGoal,
-                      progress: conversationContext.checkpoint.progress,
-                      openThreads: conversationContext.checkpoint.openThreads,
-                      nextTurnAnchor: conversationContext.checkpoint.nextTurnAnchor
-                    }
-                  : undefined,
-                recentMessageCount: conversationContext.recentMessages.length,
-                checkpointRequested: conversationContext.checkpointRequested
-              },
-          webSearch,
-          defaultReferenceStatus: isDeliverySectionPreparation ? undefined : summarizeTaskDefaultReferenceStatus(context.defaultReference),
-          taskContext:
-            context.kind === "comparison" || isDeliverySectionPreparation
-              ? undefined
-              : buildProviderTaskContext(context),
-          comparisonContext:
-            context.kind === "comparison" && !isDeliverySectionPreparation
-              ? {
-                  sourceObjectIds: context.objectIds,
-                  attachedImageObjectIds: attachmentResult.entries
-                    .filter((entry) => entry.status === "ready")
-                    .map((entry) => entry.objectId),
-                  unavailableImageObjectIds: context.imageObjectIds.filter(
-                    (objectId) =>
-                      !attachmentResult.entries
-                        .filter((entry) => entry.status === "ready")
-                        .map((entry) => entry.objectId)
-                        .includes(objectId)
-                  ),
-                  attachedDocumentObjectIds: documentResult.extracts.map((extract) => extract.objectId),
-                  unavailableDocumentObjectIds: context.documentObjectIds.filter(
-                    (objectId) => !documentResult.extracts.some((extract) => extract.objectId === objectId)
-                  ),
-                  backgroundObjectIds: [context.designDefinitionRevision?.designDefinitionId].filter(
-                    (objectId): objectId is string => Boolean(objectId)
-                  ),
-                  documentFragmentExtracts: context.documentFragmentExtracts
-                }
-              : undefined,
-          comparisonBackgroundContext:
-            context.kind === "comparison" && !isDeliverySectionPreparation ? buildProviderComparisonBackgroundContext(context) : undefined,
-          deliverySectionContext: isDeliverySectionPreparation ? deliverySectionContext : undefined
-        }),
-        signal: controller.signal
-      });
-
-      if (!response.ok || !response.body) {
-        const failure = await readErrorResponse(response);
-        throw new Error(failure);
-      }
-
-      const streamResult = await readAiEventStream(response.body, (assistantBody) => {
-        const sanitizedAssistantBody = isDeliverySectionPreparation
-          ? sanitizeDeliverySectionDraftStreamForDisplay(assistantBody)
-          : sanitizeComparisonAssistantStreamForDisplay(sanitizeConversationAssistantStreamForDisplay(assistantBody));
-        setWorkspace((current) => updateAiMessage(current, assistantMessageId, sanitizedAssistantBody, "streaming"));
-      });
-      const rawVisibleAssistantText = isDeliverySectionPreparation
-        ? stripDeliverySectionDraftTechnicalBlocks(streamResult.text)
-        : stripComparisonAnalysisBlock(stripAssistantTechnicalBlocks(streamResult.text));
-      const structuredWritePolicy = buildSameReplyStructuredWritePolicy(streamResult.text, executionWorkIntent);
-      const parsedComparisonAnalysis =
-        structuredWritePolicy.allowComparisonAnalysis && !isDeliverySectionPreparation
-          ? parseComparisonAnalysisPayload(streamResult.text)
-          : null;
-      const visibleAssistantText =
-        rawVisibleAssistantText ||
-        (parsedComparisonAnalysis?.status === "ok"
-          ? buildComparisonAnalysisVisibleSummary(parsedComparisonAnalysis.analysis)
-          : "");
-      const assistantBody = [attachmentResult.warning, documentResult.warning, visibleAssistantText]
-        .filter(Boolean)
-        .join("\n\n");
-      const resolvedAssistantBody = assistantBody || "AiJWS 没有返回可显示文本。";
-      const designDefinitionProposal = isDeliverySectionPreparation ? null : parseDesignDefinitionProposalPayload(streamResult.text);
-      const conceptDirectionProposal = isDeliverySectionPreparation ? null : parseConceptDirectionProposalPayload(streamResult.text);
-      const deliverySectionDraft =
-        isDeliverySectionPreparation && deliverySectionContext
-          ? parseDeliverySectionDraftPayload(streamResult.text)
-          : null;
-      const designDefinitionProposalId =
-        designDefinitionProposal?.status === "ok"
-          ? `proposal-definition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-          : null;
-      const conceptDirectionProposalId =
-        conceptDirectionProposal?.status === "ok"
-          ? `proposal-direction-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-          : null;
-      const comparisonAuthorizationResult =
-        executionWorkIntent === "comparison"
-          ? buildComparisonAuthorization({
-              workspace,
-              selectedObjectIds,
-              userMessageId,
-              assistantMessageId,
-              createdAt: now,
-              comparisonGoal: draft,
-              imageAttachmentObjectIds: attachmentResult.entries
-                .filter((entry) => entry.status === "ready")
-                .map((entry) => entry.objectId),
-              documentExtractObjectIds: documentResult.extracts.map((extract) => extract.objectId),
-              documentFragmentExtractObjectIds: context.documentFragmentExtracts.map((fragment) => fragment.objectId)
-            })
-          : null;
-      let appliedComparisonAnalysisId: string | null = null;
-      setWorkspace((current) => {
-        let nextWorkspace = updateAiMessage(current, assistantMessageId, resolvedAssistantBody, "done");
-        if (streamResult.citations.length > 0) {
-          nextWorkspace = storeMessageCitations(nextWorkspace, {
-            messageId: assistantMessageId,
-            operationId: assistantMessageId,
-            citations: streamResult.citations
-          });
-        }
-
-        if (deliverySectionDraft?.status === "ok" && deliverySectionContext) {
-          const validation = validateDeliverySectionDraftPayload(deliverySectionDraft.draft, {
-            deliveryObjectId: deliverySectionContext.deliveryObjectId,
-            sectionId: deliverySectionContext.sectionId,
-            referenceIds: deliverySectionContext.references.map((reference) => reference.referenceId)
-          });
-          if (validation.status === "ok") {
-            const createdDraft = createDeliverySectionDraft(nextWorkspace, {
-              deliveryObjectId: deliverySectionContext.deliveryObjectId,
-              sectionId: deliverySectionContext.sectionId,
-              userMessageId,
-              assistantMessageId,
-              title: deliverySectionDraft.draft.title,
-              narrative: deliverySectionDraft.draft.narrative,
-              captions: deliverySectionDraft.draft.captions,
-              suggestedGaps: deliverySectionDraft.draft.suggestedGaps,
-              now
-            });
-            nextWorkspace =
-              createdDraft.status === "updated"
-                ? updateAiMessage(
-                    createdDraft.workspace,
-                    assistantMessageId,
-                    `${resolvedAssistantBody}\n\n已生成一份待确认的交付说明草稿。应用前不会写入章节、图注或待补内容。`,
-                    "done"
-                  )
-                : updateAiMessage(nextWorkspace, assistantMessageId, `${resolvedAssistantBody}\n\n${createdDraft.reason}`, "failed");
-          } else {
-            nextWorkspace = updateAiMessage(nextWorkspace, assistantMessageId, `${resolvedAssistantBody}\n\n${validation.reason}`, "failed");
-          }
-        } else if (designDefinitionProposal?.status === "ok" && designDefinitionProposalId) {
-          const currentDefinitionId = nextWorkspace.workingState.currentDesignDefinitionId;
-          const currentDefinitionObject = currentDefinitionId ? nextWorkspace.objects[currentDefinitionId] : undefined;
-          const currentDefinition =
-            currentDefinitionObject?.type === "designDefinition" ? currentDefinitionObject : undefined;
-          const proposed = recordDesignDefinitionProposal(nextWorkspace, {
-            proposalId: designDefinitionProposalId,
-            workIntent: executionWorkIntent,
-            title: designDefinitionProposal.proposal.title,
-            summary: designDefinitionProposal.proposal.summary,
-            projectGoal: designDefinitionProposal.proposal.projectGoal,
-            targetUsers: designDefinitionProposal.proposal.targetUsers,
-            primaryScenarios: designDefinitionProposal.proposal.primaryScenarios,
-            coreProblem: designDefinitionProposal.proposal.coreProblem,
-            designPrinciples: designDefinitionProposal.proposal.designPrinciples,
-            constraints: designDefinitionProposal.proposal.constraints,
-            avoidDirections: designDefinitionProposal.proposal.avoidDirections,
-            opportunities: designDefinitionProposal.proposal.opportunities,
-            openQuestions: designDefinitionProposal.proposal.openQuestions,
-            changeNote: designDefinitionProposal.proposal.changeNote,
-            sourceObjectIds: context.objectIds,
-            citations: streamResult.citations,
-            operationId: semanticOperationId,
-            basedOnDesignDefinitionId: currentDefinition?.id,
-            basedOnRevisionId: currentDefinition?.currentRevisionId
-          });
-          nextWorkspace = updateAiMessage(proposed.workspace, assistantMessageId, resolvedAssistantBody, "done", {
-            citationIds: proposed.proposal.citationIds
-          });
-        } else if (conceptDirectionProposal?.status === "ok" && conceptDirectionProposalId) {
-          const basedOnDefinitionId = nextWorkspace.workingState.currentDesignDefinitionId;
-          const basedOnDefinitionObject = basedOnDefinitionId ? nextWorkspace.objects[basedOnDefinitionId] : undefined;
-          const applicationScope = resolveConceptDirectionApplicationScope(
-            nextWorkspace,
-            selectedObjectIds,
-            executionWorkIntent
-          );
-          const placed = recordAndApplyConceptDirectionProposal(nextWorkspace, {
-            proposalId: conceptDirectionProposalId,
-            workIntent: executionWorkIntent,
-            applicationMode: applicationScope.applicationMode,
-            targetDirectionId: applicationScope.targetDirectionId,
-            parentDirectionIds: applicationScope.parentDirectionIds,
-            title: conceptDirectionProposal.proposal.title,
-            summary: conceptDirectionProposal.proposal.summary,
-            directions: conceptDirectionProposal.proposal.directions,
-            sourceObjectIds: context.objectIds,
-            citations: streamResult.citations,
-            operationId: semanticOperationId,
-            basedOnDesignDefinitionId:
-              basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.id : undefined,
-            basedOnRevisionId:
-              basedOnDefinitionObject?.type === "designDefinition"
-                ? basedOnDefinitionObject.currentRevisionId
-                : undefined,
-            position: getProposalPlacement(nextWorkspace, context.objectIds, "direction")
-          });
-          nextWorkspace =
-            placed.status === "updated"
-              ? updateAiMessage(
-                  placed.workspace,
-                  assistantMessageId,
-                  `${resolvedAssistantBody}\n\n已应用到画布：${placed.directions.length} 个概念方向。`,
-                  "done",
-                  {
-                    citationIds: placed.proposal.citationIds
-                  }
-                )
-              : updateAiMessage(placed.workspace, assistantMessageId, `${resolvedAssistantBody}\n\n${placed.reason}`, "failed", {
-                  citationIds: placed.proposal.citationIds
-                });
-        } else {
-          if (
-            comparisonAuthorizationResult?.status === "ready" &&
-            parsedComparisonAnalysis?.status === "ok" &&
-            "authorization" in comparisonAuthorizationResult
-          ) {
-            const validation = validateComparisonAnalysis(parsedComparisonAnalysis.analysis, comparisonAuthorizationResult.authorization);
-            if (validation.status === "ok") {
-              nextWorkspace = applyComparisonAnalysis(nextWorkspace, validation.analysis);
-              appliedComparisonAnalysisId = validation.analysis.id;
-            }
-          }
-
-          if (structuredWritePolicy.allowSemanticPatch && !isDeliverySectionPreparation) {
-            const semanticPatchResult = applyConversationSemanticPatchFromReply({
-              workspace: nextWorkspace,
-              taskMode: executionTaskMode,
-              context,
-              draft,
-              userMessageId,
-              userMessageCreatedAt: now,
-              assistantText: streamResult.text
-            });
-            nextWorkspace = semanticPatchResult.workspace;
-            const parsedConversationCheckpoint = structuredWritePolicy.allowConversationCheckpoint && conversationContext.checkpointRequested
-              ? parseConversationCheckpointPayload(streamResult.text)
-              : { status: "empty" as const, reason: "checkpoint not requested" };
-            if (parsedConversationCheckpoint.status === "ok") {
-              const checkpointSourceMessages = nextWorkspace.ai.messages.filter(
-                (message) =>
-                  message.conversationLaneKey === conversationLaneKey &&
-                  message.taskMode === "chatAnalysis" &&
-                  message.status !== "failed" &&
-                  message.status !== "streaming" &&
-                  (message.role === "user" || message.role === "assistant")
-              );
-              const checkpointResult = applyConversationCheckpoint(nextWorkspace, {
-                laneKey: conversationLaneKey,
-                currentFocus: nextWorkspace.projectContinuity.currentFocus,
-                taskKind: context.kind,
-                anchorObjectIds: conversationLaneAnchors.anchorObjectIds,
-                targetDirectionIds: conversationLaneAnchors.targetDirectionIds,
-                visualBranchId: conversationLaneAnchors.visualBranchId,
-                sourceStartMessageId: conversationContext.checkpoint?.sourceStartMessageId ?? checkpointSourceMessages[0]?.id ?? userMessageId,
-                sourceEndMessageId: assistantMessageId,
-                sourceMessageCount: checkpointSourceMessages.length,
-                assistantMessageId,
-                checkpoint: parsedConversationCheckpoint.checkpoint,
-                hasPendingProposal: Boolean(activeProposal) || structuredWritePolicy.hasBlockingProposalBlock,
-                now
-              });
-              nextWorkspace = checkpointResult.workspace;
-            }
-            if (semanticPatchResult.status === "applied") {
-              nextWorkspace = updateAiMessage(nextWorkspace, assistantMessageId, resolvedAssistantBody, "done", {
-                continuityEntryIds: semanticPatchResult.entryIds
-              });
-            }
-          }
-        }
-
-        return nextWorkspace;
-      });
-
-      if (designDefinitionProposalId || conceptDirectionProposalId) {
-        setPendingConfirmation(null);
-      } else if (appliedComparisonAnalysisId) {
-        setPendingConfirmation(null);
-      }
-      if (isDeliverySectionPreparation) {
-        setPendingDeliveryDraftTarget(null);
-      }
-    } catch (error) {
-      const isCancelled = error instanceof DOMException && error.name === "AbortError";
-      const message = isCancelled
-        ? "当前请求已取消。原输入、选择和上下文已保留。"
-        : error instanceof Error
-          ? normalizeAgentTurnErrorMessage(error.message)
-          : "AI 请求失败。";
-      setAiDraft(draft);
-      setWorkspace((current) =>
-        updateAiMessage(
-          semanticOperationId
-            ? failOperation(current, semanticOperationId, {
-                status: isCancelled ? "cancelled" : "failed",
-                reason: message
-              })
-            : current,
-          assistantMessageId,
-          message,
-          "failed"
-        )
-      );
-    } finally {
-      abortControllerRef.current = null;
-      setIsAiStreaming(false);
-    }
-  }, [
-    activeProposal,
-    aiDraft,
-    handleRunResearchOperation,
-    handleRunVisualGenerationOperation,
-    isAiStreaming,
-    recommendedTaskMode,
-    recommendedWorkIntent,
-    pendingConfirmation?.kind,
-    pendingDeliveryDraftTarget,
-    selectedObjectIds,
-    selectedObjects,
-    setWorkspace,
-    taskMode,
-    workIntent,
-    workspace
-  ]);
-
   const executeAgentVisualGenerationPlan = useCallback(async (input: {
       workspaceSnapshot: MorphoWorkspace;
       draft: string;
@@ -2504,7 +1278,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       sourceObjectIds: string[];
       selectedDirectionIds: string[];
       selectedImageIds: string[];
-      requestedPreviewCount?: 1 | 2 | 4 | 6;
+      requestedPreviewCount?: number;
+      onProgress?: (message: string) => void;
       signal: AbortSignal;
     }) => {
       const requestedGenerationCount =
@@ -2513,7 +1288,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           : input.plan.items.length;
       const validatedPlan = validateVisualGenerationPlan(input.workspaceSnapshot, {
         plan: input.plan,
-        allowedObjectIds: input.sourceObjectIds,
+        allowedObjectIds: [
+          ...input.sourceObjectIds,
+          ...input.plan.items.flatMap((item) => item.referenceObjectIds)
+        ],
         selectedDirectionIds: input.selectedDirectionIds,
         selectedImageIds: input.selectedImageIds,
         requestedPreviewCount: requestedGenerationCount
@@ -2590,15 +1368,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       let completedCount = 0;
       let inFlightCount = 0;
       const publishProgress = () => {
+        const message = buildImageGenerationProgressMessage({
+          total: totalItems,
+          completed: completedCount,
+          inFlight: inFlightCount,
+          concurrency: IMAGE_GENERATION_MAX_CONCURRENCY
+        });
         setImageTaskStatus({
           state: inFlightCount > 0 ? "submitting" : "downloading",
-          message: buildImageGenerationProgressMessage({
-            total: totalItems,
-            completed: completedCount,
-            inFlight: inFlightCount,
-            concurrency: IMAGE_GENERATION_MAX_CONCURRENCY
-          })
+          message
         });
+        input.onProgress?.(message);
       };
 
       type AgentItemResult =
@@ -2631,7 +1411,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 aspectRatio: generationSettings.aspectRatio,
                 sizeOption: generationSettings.sizeOption,
                 prompt: result.item.prompt,
+                compiledPrompt: result.item.prompt,
+                promptContractVersion: result.item.promptContractVersion,
                 referenceObjectIds: result.item.referenceObjectIds,
+                referenceResolution: result.item.referenceResolution,
                 directionId: result.item.targetDirectionId,
                 visualBranchId: result.item.visualBranchId,
                 operationId,
@@ -2640,6 +1423,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 title: result.item.title,
                 purpose: result.item.purpose,
                 role: result.item.role,
+                visualIntent: result.item.visualIntent,
                 visualPlan: validatedPlan.plan,
                 createdAt: new Date().toISOString()
               },
@@ -2849,19 +1633,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         targetDirectionIds: conversationLaneAnchors.targetDirectionIds,
         visualBranchId: conversationLaneAnchors.visualBranchId
       });
-      const conversationContext = buildConversationContextForRequest({
-        workspace,
-        laneKey: conversationLaneKey,
-        taskMode: "chatAnalysis",
-        workIntent: "discussion",
-        draft,
-        hasPendingProposal: Boolean(activeProposal)
-      });
-      const compactionPlan = buildManualConversationCompactionPlan({
-        messages: workspace.ai.messages,
-        laneKey: conversationLaneKey,
-        checkpoint: conversationContext.checkpoint
-      });
+      const compactionPlan = buildConversationCompactionPlan({ workspace, force: "compact" });
       const now = new Date().toISOString();
       const userMessageId = `ai-user-compact-${Date.now()}`;
       const assistantMessageId = `ai-assistant-compact-${Date.now()}`;
@@ -2880,12 +1652,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           createdAt: now,
           contextObjectIds: context.objectIds,
           conversationLaneKey,
-          workIntent: "discussion"
+          workIntent: "discussion",
+          taskMode: "chatAnalysis",
+          promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+          taskStrategy: "discussion"
         });
         return { workspace: next, value: undefined };
       });
 
-      if (compactionPlan.sourceMessageIds.length < 2) {
+      if (!compactionPlan) {
         commitWorkspaceNow((current) => {
           const next = updateAiMessage(
             current,
@@ -2901,84 +1676,33 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
 
       try {
-        const compactionExecution = await executeManualConversationCompactionPlan(compactionPlan, {
-          initialCheckpoint: conversationContext.checkpoint,
-          compactChunk: async ({ checkpoint, chunk, chunkIndex, chunkCount }) => {
-            const response = await fetch("/api/ai/agent", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                input: buildAgentCheckpointCompactionInput({
-                  checkpoint,
-                  messages: chunk.messages,
-                  draft,
-                  assistantReply: "用户请求立即压缩当前讨论脉络。",
-                  chunkIndex,
-                  chunkCount
-                }),
-                tools: [],
-                agentTurnId: `agent-compact-${Date.now()}-${chunkIndex}-${Math.random().toString(36).slice(2, 8)}`,
-                continuation: false
-              }),
-              signal: controller.signal
-            });
-            const result = await consumeAgentTurnStream(response, { signal: controller.signal });
-            const parsedCheckpoint = parseConversationCheckpointPayload(result.outputText);
-            if (parsedCheckpoint.status !== "ok") {
-              throw new Error("模型没有返回可用的讨论摘要。");
-            }
-            return {
-              rawReply: result.outputText,
-              checkpoint: parsedCheckpoint.checkpoint
-            };
-          }
-        });
-        if (compactionExecution.status !== "completed") {
-          commitWorkspaceNow((current) => {
-            const next = updateAiMessage(
-              current,
-              assistantMessageId,
-              getManualCompactionStatusText("failed"),
-              "failed"
-            );
-            return { workspace: next, value: undefined };
-          });
-          setShowFailure(true);
-          return;
+        const parsedSummary = await requestConversationSummary(
+          compactionPlan,
+          controller.signal,
+          `agent-compact-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        );
+        if (parsedSummary.status !== "ok") {
+          throw new Error("模型没有返回可用的连续对话摘要。");
         }
-
-        const checkpointApplied = commitWorkspaceNow((current) => {
-          const completed = updateAiMessage(
-            current,
-            assistantMessageId,
-            getManualCompactionStatusText("completed"),
-            "done"
-          );
-          const checkpointResult = applyAgentConversationCheckpointFromReply(completed, {
-            laneKey: conversationLaneKey,
-            currentFocus: completed.projectContinuity.currentFocus,
-            taskKind: context.kind,
-            anchorObjectIds: conversationLaneAnchors.anchorObjectIds,
-            targetDirectionIds: conversationLaneAnchors.targetDirectionIds,
-            visualBranchId: conversationLaneAnchors.visualBranchId,
-            assistantMessageId,
-            replyText: compactionExecution.rawReply,
-            requested: true,
-            hasPendingProposal: Boolean(activeProposal),
+        const summaryApplied = commitWorkspaceNow((current) => {
+          const result = applyConversationSummaryRevision(current, {
+            summary: parsedSummary.summary,
+            sourceMessageIds: compactionPlan.sourceMessages.map((message) => message.id),
+            expectedPreviousRevisionId: compactionPlan.previousSummaryRevision?.id,
+            estimatedInputTokens: compactionPlan.estimatedInputTokens,
             now: new Date().toISOString()
           });
-          const next =
-            checkpointResult.status === "applied"
-              ? checkpointResult.workspace
-              : updateAiMessage(
-                  completed,
-                  assistantMessageId,
-                  getManualCompactionStatusText("failed"),
-                  "failed"
-                );
-          return { workspace: next, value: checkpointResult.status === "applied" };
+          const next = updateAiMessage(
+            result.workspace,
+            assistantMessageId,
+            result.status === "applied"
+              ? getManualCompactionStatusText("completed")
+              : getManualCompactionStatusText("failed"),
+            result.status === "applied" ? "done" : "failed"
+          );
+          return { workspace: next, value: result.status === "applied" };
         });
-        if (!checkpointApplied) {
+        if (!summaryApplied) {
           setShowFailure(true);
         }
       } catch (error) {
@@ -3006,18 +1730,57 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
-    if (pendingDeliveryDraftTarget) {
-      await handleSendAiMessage();
+    const executionTaskMode = pendingDeliveryDraftTarget
+      ? "chatAnalysis"
+      : resolveTaskModeForSend({ currentTaskMode: taskMode, recommendedTaskMode });
+    const executionWorkIntent = pendingDeliveryDraftTarget
+      ? "prepareDeliverySection"
+      : resolveWorkIntentForSend({
+          currentWorkIntent: workIntent,
+          recommendedWorkIntent
+        });
+    const strategy = resolveAgentTaskStrategy({
+      draft,
+      taskMode: executionTaskMode,
+      workIntent: executionWorkIntent,
+      selectedObjects,
+      workspace,
+      hasDeliveryDraftTarget: Boolean(pendingDeliveryDraftTarget)
+    });
+    const selectedDirectionCount = selectedObjects.filter((object) => object.type === "conceptDirection").length;
+    const directionPreviewCountContract =
+      strategy.kind === "directionPreview"
+        ? resolveExpectedVisualGenerationCount({
+            draft,
+            kind: "directionPreview",
+            selectedDirectionCount,
+            defaultPreviewCount: directionPreviewCount
+          })
+        : undefined;
+    const context = buildTaskContext(workspace, {
+      kind: strategy.contextKind,
+      draft,
+      selectedObjectIds: pendingDeliveryDraftTarget ? [] : selectedObjectIds
+    });
+    const providerTaskContext = buildProviderTaskContext(context);
+    const deliveryCandidate = pendingDeliveryDraftTarget
+      ? workspace.objects[pendingDeliveryDraftTarget.deliveryObjectId]
+      : undefined;
+    const deliveryObject = deliveryCandidate?.type === "delivery" ? deliveryCandidate : undefined;
+    const deliverySectionContext =
+      deliveryObject && pendingDeliveryDraftTarget
+        ? buildDeliverySectionContext(workspace, deliveryObject, pendingDeliveryDraftTarget.sectionId)
+        : undefined;
+    if (pendingDeliveryDraftTarget && !deliverySectionContext) {
+      setContextWarning("请先选择一个至少包含一项交付引用的章节，再生成本节说明草稿。");
+      setPendingDeliveryDraftTarget(null);
       return;
     }
 
-    const context = buildTaskContext(workspace, {
-      kind: "general",
-      draft,
-      selectedObjectIds
-    });
-    const providerTaskContext = buildProviderTaskContext(context);
-    const conversationLaneAnchors = resolveConversationLaneAnchors(workspace, selectedObjectIds);
+    const conversationLaneAnchors = resolveConversationLaneAnchors(
+      workspace,
+      pendingDeliveryDraftTarget ? [] : selectedObjectIds
+    );
     const conversationLaneKey = buildConversationLaneKey({
       currentFocus: workspace.projectContinuity.currentFocus,
       taskKind: context.kind,
@@ -3025,23 +1788,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       targetDirectionIds: conversationLaneAnchors.targetDirectionIds,
       visualBranchId: conversationLaneAnchors.visualBranchId
     });
-    const conversationContext = buildConversationContextForRequest({
-      workspace,
-      laneKey: conversationLaneKey,
-      taskMode: "chatAnalysis",
-      workIntent: "discussion",
-      draft,
-      hasPendingProposal: Boolean(activeProposal)
-    });
     const controller = new AbortController();
     const now = new Date().toISOString();
     const userMessageId = `ai-user-agent-${Date.now()}`;
     const assistantMessageId = `ai-assistant-agent-${Date.now()}`;
-    const baseHistory = conversationContext.recentMessages;
 
-    const attachmentResult = shouldAttachImagesForAiProvider({
+    const attachmentResult = !pendingDeliveryDraftTarget && shouldAttachImagesForAiProvider({
       draft,
-      taskMode: "chatAnalysis",
+      taskMode: executionTaskMode,
       selectedObjects
     })
       ? await collectAiProviderImageAttachments(
@@ -3053,15 +1807,34 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           controller.signal
         )
       : { attachments: [], skippedObjectIds: [], entries: [], warning: undefined };
-    const documentResult = await collectDocumentExtractsForAi(
-      workspace,
-      context.documentObjectIds,
-      indexedDbBlobStore,
-      controller.signal
-    );
+    const documentResult = pendingDeliveryDraftTarget
+      ? { extracts: [], warning: undefined }
+      : await collectDocumentExtractsForAi(
+          workspace,
+          context.documentObjectIds,
+          indexedDbBlobStore,
+          controller.signal
+        );
+    const fixedAgentContextTokenEstimate =
+      estimateTextTokens(
+        JSON.stringify({
+          draft,
+          strategy: strategy.kind,
+          context: context.semanticSummaries,
+          providerTaskContext,
+          documentExtracts: documentResult.extracts,
+          tools: buildMorphoAgentTools(true, {
+            allowComparisonAnalysis: isExplicitComparisonRequest(draft)
+          })
+        })
+      ) + 16_000;
+    const conversationTokenLimits = readConversationTokenLimitsOverride();
     const userInput = buildMorphoAgentUserInput({
       draft: [
         draft,
+        directionPreviewCountContract?.source === "default"
+          ? `\n\n本轮界面数量选择：${selectedDirectionCount} 个方向，每方向 ${directionPreviewCountContract.requestedPreviewCount} 张，共 ${directionPreviewCountContract.totalItems} 张。`
+          : "",
         documentResult.extracts.length > 0
           ? `\n\n本轮本地文档提取：\n${documentResult.extracts
               .map((extract) => `- ${extract.title}（${extract.objectId}）\n${extract.text.slice(0, 2200)}`)
@@ -3085,6 +1858,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     abortControllerRef.current = controller;
     setIsAiStreaming(true);
     setAiDraft("");
+    setTaskMode("chatAnalysis");
     setAiOpen(true);
     setContextWarning(
       [
@@ -3100,7 +1874,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       ...createAgentTrace(now),
       agentTurnId
     };
-    const workspaceAtAgentStart = commitWorkspaceNow((current) => {
+    let workspaceAtAgentStart = commitWorkspaceNow((current) => {
       const next = appendAgentTurnMessages(current, {
         userMessageId,
         assistantMessageId,
@@ -3109,11 +1883,111 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         createdAt: now,
         contextObjectIds: context.objectIds,
         conversationLaneKey,
-        workIntent: "discussion",
+        workIntent: executionWorkIntent,
+        taskMode: executionTaskMode,
+        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+        taskStrategy: strategy.kind,
         agentTrace: initialAgentTrace
       });
       return { workspace: next, value: next };
     });
+    const automaticCompactionPlan = buildConversationCompactionPlan({
+      workspace,
+      fixedContextTokenEstimate: fixedAgentContextTokenEstimate,
+      imageTokenReserve: attachmentResult.attachments.length * 8_192,
+      limits: conversationTokenLimits
+    });
+    if (automaticCompactionPlan) {
+      const compactionActivityId = `${agentTurnId}:conversation-summary`;
+      commitWorkspaceNow((current) => {
+        const assistant = current.ai.messages.find((message) => message.id === assistantMessageId);
+        if (!assistant?.agentTrace) {
+          return { workspace: current, value: undefined };
+        }
+        return {
+          workspace: updateAiMessage(current, assistantMessageId, assistant.body, "streaming", {
+            agentTrace: startLocalAgentToolActivity(
+              assistant.agentTrace,
+              {
+                toolCallId: compactionActivityId,
+                toolName: "compact_conversation_history",
+                activityKind: "contextRead",
+                label: "整理讨论上下文",
+                detail: `整理 ${automaticCompactionPlan.sourceMessageCount} 条较早消息`
+              },
+              new Date().toISOString()
+            )
+          }),
+          value: undefined
+        };
+      });
+      try {
+        const parsedSummary = await requestConversationSummary(
+          automaticCompactionPlan,
+          controller.signal,
+          `${agentTurnId}-summary`
+        );
+        if (parsedSummary.status !== "ok") {
+          throw new Error("连续对话摘要未通过校验。");
+        }
+        workspaceAtAgentStart = commitWorkspaceNow((current) => {
+          const applied = applyConversationSummaryRevision(current, {
+            summary: parsedSummary.summary,
+            sourceMessageIds: automaticCompactionPlan.sourceMessages.map((message) => message.id),
+            expectedPreviousRevisionId: automaticCompactionPlan.previousSummaryRevision?.id,
+            estimatedInputTokens: automaticCompactionPlan.estimatedInputTokens,
+            now: new Date().toISOString()
+          });
+          if (applied.status !== "applied") {
+            throw new Error(applied.reason);
+          }
+          const assistant = applied.workspace.ai.messages.find((message) => message.id === assistantMessageId);
+          const completed = assistant?.agentTrace
+            ? updateAiMessage(applied.workspace, assistantMessageId, assistant.body, "streaming", {
+                agentTrace: finishLocalAgentToolActivity(
+                  assistant.agentTrace,
+                  compactionActivityId,
+                  { state: "done", detail: "原始历史仍可查询" },
+                  new Date().toISOString()
+                )
+              })
+            : applied.workspace;
+          return { workspace: completed, value: completed };
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "连续对话压缩失败。";
+        commitWorkspaceNow((current) => ({
+          workspace: updateAiMessage(
+            current,
+            assistantMessageId,
+            `连续对话压缩失败，原始历史未丢失。${message}`,
+            "failed"
+          ),
+          value: undefined
+        }));
+        setAiDraft(draft);
+        setShowFailure(true);
+        abortControllerRef.current = null;
+        setIsAiStreaming(false);
+        return;
+      }
+    }
+    const continuousConversation = buildContinuousConversationContext({
+      workspace: workspaceAtAgentStart,
+      fixedContextTokenEstimate: fixedAgentContextTokenEstimate,
+      imageTokenReserve: attachmentResult.attachments.length * 8_192,
+      limits: conversationTokenLimits
+    });
+    const baseHistory = continuousConversation.messages.filter((message) => message.id !== userMessageId);
+    let conversationContext = {
+      laneKey: conversationLaneKey,
+      summaryRevision: continuousConversation.summaryRevision,
+      messages: baseHistory,
+      rawMessageCount: baseHistory.length,
+      coveredMessageCount: continuousConversation.coveredMessageCount,
+      estimatedInputTokens: continuousConversation.estimatedInputTokens,
+      pressure: continuousConversation.pressure
+    };
     let conversationInput: Array<unknown> = [
       {
         role: "system",
@@ -3122,6 +1996,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             type: "input_text",
             text: buildMorphoAgentSystemPrompt({
               mode: agentTurnMode,
+              strategy: strategy.kind,
               workspace: workspaceAtAgentStart,
               selectedObjects,
               context,
@@ -3134,24 +2009,30 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       ...buildAgentHistoryMessages(baseHistory),
       userInput
     ];
+    const turnContinuationItems: unknown[] = [];
     let finalText = "";
     let collectedCitations: ProviderCitation[] = [];
     let hasWebSearchEvidence = false;
+    const requiredReadTools = resolveRequiredAgentReadTools(draft);
+    const completedReadTools = new Set<RequiredAgentReadToolName>();
+    const memoryUpdateEntryIds = new Set<string>();
+    const memoryUpdateKeys = new Set<ProjectMemoryKey>();
+    const stageRecordUpdateKeys = new Set<StageRecordKey>();
     const allowStructuredComparison = isExplicitComparisonRequest(draft);
     let contextBudgetBaselineTokens = 0;
-    let checkpointRequested = conversationContext.checkpointRequested;
     const contextRuntime: {
       highestPressure: "normal" | "prepare" | "compact";
     } = {
-      highestPressure: "normal"
+      highestPressure: conversationContext.pressure
     };
-    let checkpointReplyText: string | undefined;
     let modelTurnCount = 0;
+    let toolArgumentRepairCount = 0;
     let previousToolSignature: string | undefined;
     let repeatedToolCallCount = 0;
     let latestProviderResponseId: string | undefined;
     const agentTurnStartedAt = Date.now();
     let emergencyGuardTriggered = false;
+    let continuationCompactionAttempted = false;
     let requestSequence = 0;
     const streamedFinalTextByAttempt = new Map<string, string>();
 
@@ -3192,7 +2073,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               nowIso
             );
             const body = bodyChanged
-              ? sanitizeConversationAssistantStreamForDisplay([...streamedFinalTextByAttempt.values()].join(""))
+              ? sanitizeConversationSummaryStreamForDisplay(
+                  sanitizeConversationAssistantStreamForDisplay([...streamedFinalTextByAttempt.values()].join(""))
+                )
               : message.body;
             const next = updateAiMessage(current, assistantMessageId, body, "streaming", { agentTrace: trace });
             return { workspace: next, value: undefined };
@@ -3220,7 +2103,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               return;
             }
             if (event.type === "context") {
-              checkpointRequested = checkpointRequested || event.context.checkpointRequested;
               if (
                 event.context.pressure === "compact" ||
                 (event.context.pressure === "prepare" && contextRuntime.highestPressure === "normal")
@@ -3265,7 +2147,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         completeResult.usage?.inputTokens ?? 0
       );
       latestProviderResponseId = completeResult.responseId || latestProviderResponseId;
-      checkpointRequested = checkpointRequested || completeResult.context?.checkpointRequested === true;
       if (
         completeResult.context?.pressure === "compact" ||
         (completeResult.context?.pressure === "prepare" && contextRuntime.highestPressure === "normal")
@@ -3273,6 +2154,116 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         contextRuntime.highestPressure = completeResult.context.pressure;
       }
       return completeResult;
+    }
+
+    async function compactConversationBeforeContinuation(): Promise<boolean> {
+      if (continuationCompactionAttempted) {
+        return false;
+      }
+      continuationCompactionAttempted = true;
+      const currentWorkspace = readWorkspaceNow();
+      const plan = buildConversationCompactionPlan({
+        workspace: currentWorkspace,
+        fixedContextTokenEstimate: Math.max(fixedAgentContextTokenEstimate, contextBudgetBaselineTokens),
+        imageTokenReserve: attachmentResult.attachments.length * 8_192,
+        limits: conversationTokenLimits,
+        force: "compact"
+      });
+      if (!plan) {
+        return false;
+      }
+
+      const activityId = `${agentTurnId}:continuation-summary`;
+      commitWorkspaceNow((current) => {
+        const assistant = current.ai.messages.find((message) => message.id === assistantMessageId);
+        if (!assistant?.agentTrace) {
+          return { workspace: current, value: undefined };
+        }
+        return {
+          workspace: updateAiMessage(current, assistantMessageId, assistant.body, "streaming", {
+            agentTrace: startLocalAgentToolActivity(
+              assistant.agentTrace,
+              {
+                toolCallId: activityId,
+                toolName: "compact_conversation_history",
+                activityKind: "contextRead",
+                label: "整理讨论上下文",
+                detail: "继续执行前整理较早对话"
+              },
+              new Date().toISOString()
+            )
+          }),
+          value: undefined
+        };
+      });
+      const parsedSummary = await requestConversationSummary(plan, controller.signal, `${agentTurnId}-continuation-summary`);
+      if (parsedSummary.status !== "ok") {
+        throw new Error("继续执行前的对话摘要未通过校验，原始历史已保留。");
+      }
+      const compactedWorkspace = commitWorkspaceNow((current) => {
+        const applied = applyConversationSummaryRevision(current, {
+          summary: parsedSummary.summary,
+          sourceMessageIds: plan.sourceMessages.map((message) => message.id),
+          expectedPreviousRevisionId: plan.previousSummaryRevision?.id,
+          estimatedInputTokens: Math.max(plan.estimatedInputTokens, contextBudgetBaselineTokens),
+          now: new Date().toISOString()
+        });
+        if (applied.status !== "applied") {
+          throw new Error(applied.reason);
+        }
+        const assistant = applied.workspace.ai.messages.find((message) => message.id === assistantMessageId);
+        const next = assistant?.agentTrace
+          ? updateAiMessage(applied.workspace, assistantMessageId, assistant.body, "streaming", {
+              agentTrace: finishLocalAgentToolActivity(
+                assistant.agentTrace,
+                activityId,
+                { state: "done", detail: "原始历史仍可查询" },
+                new Date().toISOString()
+              )
+            })
+          : applied.workspace;
+        return { workspace: next, value: next };
+      });
+      const refreshed = buildContinuousConversationContext({
+        workspace: compactedWorkspace,
+        fixedContextTokenEstimate: fixedAgentContextTokenEstimate,
+        imageTokenReserve: attachmentResult.attachments.length * 8_192,
+        limits: conversationTokenLimits
+      });
+      const refreshedHistory = refreshed.messages.filter((message) => message.id !== userMessageId);
+      conversationContext = {
+        laneKey: conversationLaneKey,
+        summaryRevision: refreshed.summaryRevision,
+        messages: refreshedHistory,
+        rawMessageCount: refreshedHistory.length,
+        coveredMessageCount: refreshed.coveredMessageCount,
+        estimatedInputTokens: refreshed.estimatedInputTokens,
+        pressure: refreshed.pressure
+      };
+      conversationInput = [
+        {
+          role: "system",
+          content: [
+            {
+              type: "input_text",
+              text: buildMorphoAgentSystemPrompt({
+                mode: agentTurnMode,
+                strategy: strategy.kind,
+                workspace: compactedWorkspace,
+                selectedObjects,
+                context,
+                providerTaskContext,
+                conversationContext
+              })
+            }
+          ]
+        },
+        ...buildAgentHistoryMessages(refreshedHistory),
+        userInput,
+        ...turnContinuationItems
+      ];
+      contextRuntime.highestPressure = refreshed.pressure;
+      return true;
     }
 
     try {
@@ -3329,35 +2320,145 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           });
           break;
         }
-        const result = await requestAgentTurn(
-          conversationInput,
-          modelTurnCount === 0
-            ? buildMorphoAgentInitialTools()
-            : buildMorphoAgentTools(true, { allowComparisonAnalysis: allowStructuredComparison }),
-          modelTurnCount > 0
-        );
+        const tools = buildMorphoAgentTools(true, { allowComparisonAnalysis: allowStructuredComparison });
+        let result: AgentRouteResult;
+        try {
+          result = await requestAgentTurn(conversationInput, tools, modelTurnCount > 0);
+        } catch (error) {
+          if (
+            error instanceof AgentTurnStreamError &&
+            error.code === "context_limit" &&
+            await compactConversationBeforeContinuation()
+          ) {
+            result = await requestAgentTurn(conversationInput, tools, modelTurnCount > 0);
+          } else {
+            throw error;
+          }
+        }
         modelTurnCount += 1;
         collectedCitations = mergeAgentSearchCitations(collectedCitations, result.citations);
         hasWebSearchEvidence ||= result.webSearchCallCount > 0;
 
         conversationInput = [...conversationInput, ...result.outputItems];
+        turnContinuationItems.push(...result.outputItems);
 
         if (result.functionCalls.length === 0) {
-          finalText = result.outputText.trim() || "本次 Agent 未返回可显示文本。";
-          if (parseConversationCheckpointPayload(result.outputText).status === "ok") {
-            checkpointReplyText = result.outputText;
+          const missingReadTools = getMissingRequiredAgentReadTools(requiredReadTools, completedReadTools);
+          if (missingReadTools.length > 0) {
+            const reminder = {
+              role: "system",
+              content: [
+                {
+                  type: "input_text",
+                  text: buildRequiredAgentReadReminder(missingReadTools)
+                }
+              ]
+            };
+            conversationInput = [...conversationInput, reminder];
+            turnContinuationItems.push(reminder);
+            continue;
           }
+          finalText = result.outputText.trim() || "本次 Agent 未返回可显示文本。";
           break;
         }
 
         const toolOutputs = [];
         let pendingAgentActionCreated = false;
-        const parsedCalls = result.functionCalls.map((call) => ({
-          call,
-          parsed: parseMorphoAgentToolArguments(call)
-        }));
+        const parsedCallBatch = parseMorphoAgentToolCallBatch(result.functionCalls);
+        const invalidCalls = parsedCallBatch.filter((entry) => entry.status === "invalid");
+        if (invalidCalls.length > 0) {
+          toolArgumentRepairCount += 1;
+          if (toolArgumentRepairCount > MAX_AGENT_TOOL_ARGUMENT_REPAIR_ATTEMPTS) {
+            throw new Error("Agent 连续返回不符合工具 schema 的参数，已停止本轮以避免重复执行。");
+          }
+          const repairOutputs = buildMorphoAgentToolArgumentRepairOutputs(parsedCallBatch);
+          const repairReminder = {
+            role: "system",
+            content: [
+              {
+                type: "input_text",
+                text: buildMorphoAgentToolArgumentRepairReminder(parsedCallBatch)
+              }
+            ]
+          };
+          conversationInput = [...conversationInput, ...repairOutputs, repairReminder];
+          turnContinuationItems.push(...repairOutputs, repairReminder);
+          const repairActivityId = `${agentTurnId}:tool-argument-repair:${toolArgumentRepairCount}`;
+          commitWorkspaceNow((current) => {
+            const message = current.ai.messages.find((candidate) => candidate.id === assistantMessageId);
+            if (!message?.agentTrace) {
+              return { workspace: current, value: undefined };
+            }
+            const started = startLocalAgentToolActivity(
+              message.agentTrace,
+              {
+                toolCallId: repairActivityId,
+                toolName: "tool_argument_repair",
+                activityKind: "analysis",
+                label: "校正工具参数",
+                detail: sanitizeAgentActivityDetail(invalidCalls.map((entry) => entry.error).join("；"))
+              },
+              new Date().toISOString()
+            );
+            const next = updateAiMessage(current, assistantMessageId, message.body, "streaming", {
+              agentTrace: finishLocalAgentToolActivity(
+                started,
+                repairActivityId,
+                { state: "done" },
+                new Date().toISOString()
+              )
+            });
+            return { workspace: next, value: undefined };
+          });
+          continue;
+        }
+        toolArgumentRepairCount = 0;
+        const parsedCalls = parsedCallBatch.flatMap((entry) => {
+          if (entry.status !== "valid") {
+            return [];
+          }
+          return [
+            {
+              call: entry.call,
+              parsed:
+                entry.parsed.name === "generate_visuals"
+                  ? {
+                      ...entry.parsed,
+                      args: normalizeGenerateVisualsForSelectedDirections(
+                        entry.parsed.args,
+                        selectedDirectionCount
+                      )
+                    }
+                  : entry.parsed
+            }
+          ];
+        });
+        const visualWorkspace = readWorkspaceNow();
+        const projectReferenceObjectIds = Object.values(visualWorkspace.objects)
+          .filter(
+            (object) =>
+              object.type === "image" &&
+              object.visibility === "active" &&
+              object.role === "reference"
+          )
+          .map((object) => object.id);
         const visualCalls = parsedCalls.flatMap(({ call, parsed }) =>
-          parsed.name === "generate_visuals" ? [{ callId: call.callId, plan: parsed.args }] : []
+          parsed.name === "generate_visuals"
+            ? [
+                {
+                  callId: call.callId,
+                  plan: compileVisualGenerationPlan({
+                    workspace: visualWorkspace,
+                    kind: parsed.args.kind,
+                    intents: parsed.args.items,
+                    selectedSourceObjectIds: context.objectIds,
+                    projectReferenceObjectIds,
+                    modelId: effectiveImageGenerationSettings.modelId,
+                    currentUserInput: draft
+                  })
+                }
+              ]
+            : []
         );
         const visualBatch =
           visualCalls.length > 0
@@ -3366,7 +2467,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 expected: resolveExpectedVisualGenerationCount({
                   draft,
                   kind: visualCalls[0]!.plan.kind,
-                  selectedDirectionCount: selectedObjects.filter((object) => object.type === "conceptDirection").length
+                  selectedDirectionCount,
+                  defaultPreviewCount: directionPreviewCount
                 })
               })
             : null;
@@ -3433,10 +2535,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               parsed.name === "generate_visuals" && visualBatch?.status === "ok" ? visualBatch.plan : undefined;
             setPendingConfirmation(
               buildPendingAgentActionConfirmation({
-                parsed:
-                  confirmationPlan && parsed.name === "generate_visuals"
-                    ? { ...parsed, args: confirmationPlan }
-                    : parsed,
+                parsed,
+                compiledVisualPlan: confirmationPlan,
                 draft,
                 contextObjectIds: context.objectIds,
                 citations: collectedCitations,
@@ -3473,6 +2573,70 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               toolOutputs.push(
                 buildToolResultOutput(call.callId, buildReadSelectedContextResult(context, providerTaskContext))
               );
+              break;
+            }
+            case "read_project_memory": {
+              const current = readWorkspaceNow();
+              const keys: ProjectMemoryKey[] = parsed.args.keys ?? [
+                "projectOverview",
+                "designBrief",
+                "userPreferences",
+                "decisionLog",
+                "rejectedDirections",
+                "openQuestions",
+                "outputPlan"
+              ];
+              toolOutputs.push(
+                buildToolResultOutput(call.callId, {
+                  documents: keys.map((key) => {
+                    const document = current.projectMemory.documents[key];
+                    const revision = getCurrentProjectMemoryRevision(current.projectMemory, key);
+                    return {
+                      key,
+                      title: document.title,
+                      revision,
+                      history: parsed.args.includeHistory
+                        ? getProjectMemoryHistory(current.projectMemory, key).slice(0, 5)
+                        : undefined
+                    };
+                  })
+                })
+              );
+              completedReadTools.add("read_project_memory");
+              break;
+            }
+            case "read_stage_record": {
+              const current = readWorkspaceNow();
+              const stages: StageRecordKey[] = parsed.args.stages ?? [
+                "startAndInput",
+                "exploration",
+                "research",
+                "designDefinition",
+                "directionAndVisual",
+                "deliveryPreparation"
+              ];
+              toolOutputs.push(
+                buildToolResultOutput(call.callId, {
+                  records: stages.map((stage) => ({
+                    stage,
+                    revision: getCurrentStageRecordRevision(current.projectMemory, stage),
+                    history: parsed.args.includeHistory
+                      ? getStageRecordHistory(current.projectMemory, stage).slice(0, 5)
+                      : undefined
+                  }))
+                })
+              );
+              completedReadTools.add("read_stage_record");
+              break;
+            }
+            case "search_project_conversation": {
+              toolOutputs.push(
+                buildToolResultOutput(
+                  call.callId,
+                  searchProjectConversation(readWorkspaceNow(), parsed.args)
+                )
+              );
+              completedReadTools.add("search_project_conversation");
               break;
             }
             case "revise_selected_proposal_draft": {
@@ -3719,6 +2883,22 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                   .map((object) => object.id),
                 selectedImageIds: selectedObjects.filter((object) => object.type === "image").map((object) => object.id),
                 requestedPreviewCount: visualBatch.expected.requestedPreviewCount,
+                onProgress: (message) => {
+                  commitWorkspaceNow((current) => {
+                    const assistant = current.ai.messages.find((candidate) => candidate.id === assistantMessageId);
+                    if (!assistant?.agentTrace) {
+                      return { workspace: current, value: undefined };
+                    }
+                    return {
+                      workspace: updateAiMessage(current, assistantMessageId, assistant.body, "streaming", {
+                        agentTrace: updateLocalAgentToolActivity(assistant.agentTrace, call.callId, {
+                          detail: message
+                        })
+                      }),
+                      value: undefined
+                    };
+                  });
+                },
                 signal: controller.signal
               });
               executedVisualBatch = generationResult;
@@ -3771,11 +2951,99 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               );
               break;
             }
+            case "prepare_delivery_section_draft": {
+              if (!deliverySectionContext) {
+                throw new Error("当前没有已授权的交付章节上下文。");
+              }
+              const validation = validateDeliverySectionDraftPayload(parsed.args, {
+                deliveryObjectId: deliverySectionContext.deliveryObjectId,
+                sectionId: deliverySectionContext.sectionId,
+                referenceIds: deliverySectionContext.references.map((reference) => reference.referenceId)
+              });
+              if (validation.status !== "ok") {
+                throw new Error(validation.reason);
+              }
+              const draftResult = commitWorkspaceNow((current) => {
+                const created = createDeliverySectionDraft(current, {
+                  deliveryObjectId: deliverySectionContext.deliveryObjectId,
+                  sectionId: deliverySectionContext.sectionId,
+                  userMessageId,
+                  assistantMessageId,
+                  title: parsed.args.title,
+                  narrative: parsed.args.narrative,
+                  captions: parsed.args.captions,
+                  suggestedGaps: parsed.args.suggestedGaps,
+                  now: new Date().toISOString()
+                });
+                return { workspace: created.workspace, value: created };
+              });
+              if (draftResult.status !== "updated") {
+                throw new Error(draftResult.reason);
+              }
+              setPendingDeliveryDraftTarget(null);
+              toolOutputs.push(
+                buildToolResultOutput(call.callId, {
+                  status: "pendingConfirmation",
+                  draftId: draftResult.draftId,
+                  deliveryObjectId: deliverySectionContext.deliveryObjectId,
+                  sectionId: deliverySectionContext.sectionId,
+                  note: "草稿尚未应用到交付章节。"
+                })
+              );
+              break;
+            }
+            case "submit_memory_update": {
+              const memoryUpdate = commitWorkspaceNow((current) => {
+                const authorization = buildSemanticPatchAuthorization(
+                  buildSemanticPatchAuthorizationInput({
+                    workspace: current,
+                    taskMode: "chatAnalysis",
+                    context,
+                    draft,
+                    userMessageId,
+                    userMessageCreatedAt: now
+                  })
+                );
+                const applied = applyConversationSemanticPatch(
+                  current,
+                  authorization,
+                  parsed.args.items.map((item) => ({
+                    ...item,
+                    relatedDecisionIds: []
+                  }))
+                );
+                return { workspace: applied.workspace, value: applied };
+              });
+              memoryUpdate.entries.forEach((entry) => {
+                memoryUpdateEntryIds.add(entry.id);
+                stageRecordUpdateKeys.add(entry.stage);
+                memoryUpdateKeys.add(entry.category === "openQuestion" ? "openQuestions" : "userPreferences");
+              });
+              toolOutputs.push(
+                buildToolResultOutput(call.callId, {
+                  status: memoryUpdate.entries.length > 0 ? "recorded" : "skipped",
+                  entryIds: memoryUpdate.entries.map((entry) => entry.id),
+                  rejected: memoryUpdate.rejected
+                })
+              );
+              break;
+            }
             case "request_confirmation": {
               const args = parsed.args;
+              const compiledVisualPlan = args.visualPlan
+                ? compileVisualGenerationPlan({
+                    workspace: readWorkspaceNow(),
+                    kind: args.visualPlan.kind,
+                    intents: args.visualPlan.items,
+                    selectedSourceObjectIds: context.objectIds,
+                    modelId: effectiveImageGenerationSettings.modelId,
+                    currentUserInput: draft
+                  })
+                : undefined;
               setPendingConfirmation(
                 buildRequestedAgentActionConfirmation({
                   args,
+                  compiledVisualPlan,
                   workspace: readWorkspaceNow(),
                   draft,
                   contextObjectIds: context.objectIds,
@@ -3825,6 +3093,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
         if (emergencyGuardTriggered) {
           conversationInput = [...conversationInput, ...toolOutputs];
+          turnContinuationItems.push(...toolOutputs);
           continue;
         }
 
@@ -3837,30 +3106,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }
 
         conversationInput = [...conversationInput, ...toolOutputs];
-      }
-      if (checkpointRequested && contextRuntime.highestPressure === "compact" && !checkpointReplyText) {
-        try {
-          assertAgentTurnActive(controller.signal);
-          const compactedCheckpoint = await requestAgentTurn(
-            buildAgentCheckpointCompactionInput({
-              conversationContext,
-              draft,
-              assistantReply: finalText || "已完成当前执行。"
-            }),
-            [],
-            true
-          );
-          if (parseConversationCheckpointPayload(compactedCheckpoint.outputText).status === "ok") {
-            checkpointReplyText = compactedCheckpoint.outputText;
-          }
-        } catch (error) {
-          if (error instanceof DOMException && error.name === "AbortError") {
-            throw error;
-          }
-          // The visible Agent result remains valid even when the optional checkpoint refresh fails.
+        turnContinuationItems.push(...toolOutputs);
+        if (contextRuntime.highestPressure === "compact") {
+          await compactConversationBeforeContinuation();
         }
       }
-
       commitWorkspaceNow((current) => {
         const replyText = finalText || "已完成当前执行。";
         const currentMessage = current.ai.messages.find((message) => message.id === assistantMessageId);
@@ -3873,24 +3123,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         let nextWorkspace = updateAiMessage(
           current,
           assistantMessageId,
-          sanitizeConversationAssistantStreamForDisplay(replyText) || "已完成当前执行。",
+          sanitizeConversationSummaryStreamForDisplay(sanitizeConversationAssistantStreamForDisplay(replyText)) ||
+            "已完成当前执行。",
           "done",
-          ...(completedTrace ? [{ agentTrace: completedTrace }] : [])
+          {
+            ...(completedTrace ? { agentTrace: completedTrace } : {}),
+            ...(memoryUpdateEntryIds.size > 0
+              ? {
+                  continuityEntryIds: [...memoryUpdateEntryIds],
+                  memoryUpdateKeys: [...memoryUpdateKeys],
+                  stageRecordUpdateKeys: [...stageRecordUpdateKeys]
+                }
+              : {})
+          }
         );
-        const checkpointResult = applyAgentConversationCheckpointFromReply(nextWorkspace, {
-          laneKey: conversationLaneKey,
-          currentFocus: nextWorkspace.projectContinuity.currentFocus,
-          taskKind: context.kind,
-          anchorObjectIds: conversationLaneAnchors.anchorObjectIds,
-          targetDirectionIds: conversationLaneAnchors.targetDirectionIds,
-          visualBranchId: conversationLaneAnchors.visualBranchId,
-          assistantMessageId,
-          replyText: checkpointReplyText ?? replyText,
-          requested: checkpointRequested,
-          hasPendingProposal: Boolean(activeProposal),
-          now: new Date().toISOString()
-        });
-        nextWorkspace = checkpointResult.workspace;
         if (collectedCitations.length > 0) {
           nextWorkspace = storeMessageCitations(nextWorkspace, {
             messageId: assistantMessageId,
@@ -3934,17 +3180,21 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
     }
   }, [
-    activeProposal,
     agentTurnMode,
     aiDraft,
     commitWorkspaceNow,
+    directionPreviewCount,
+    effectiveImageGenerationSettings.modelId,
     executeAgentVisualGenerationPlan,
-    handleSendAiMessage,
     isAiStreaming,
     pendingDeliveryDraftTarget,
     readWorkspaceNow,
+    recommendedTaskMode,
+    recommendedWorkIntent,
     selectedObjectIds,
     selectedObjects,
+    taskMode,
+    workIntent,
     workspace
   ]);
 
@@ -4074,7 +3324,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     try {
       const result = await exportEditableProjectBackupBundle(workspace, {
         blobStore: indexedDbBlobStore,
-        chat: backupIncludeFullChat ? "full" : "none",
+        chat: "full",
         projectContinuity: "current"
       });
       if (result.status !== "ok") {
@@ -4097,7 +3347,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     } finally {
       setBundleBusyLabel(null);
     }
-  }, [backupIncludeFullChat, workspace]);
+  }, [workspace]);
 
   const handleInspectEditableBackup = useCallback(async (file: File) => {
     setBundleBusyLabel("正在读取备份包…");
@@ -4542,299 +3792,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setLocalEditObjectId(target.id);
     setAiDraft("保留整体比例与柔光轨道语言，把转角连接件做得更一体化、少一些外露五金感。");
   }, [selectedObjects]);
-
-  const handleRunLocalEdit = useCallback(async () => {
-    const draft = aiDraft.trim();
-    const explicitImageId = localEditObjectId ?? selectedObjects.find((object) => object.type === "image")?.id;
-    if (!draft || isAiStreaming) {
-      return;
-    }
-
-    const plannedIntent = classifyVisualGenerationIntent(draft, selectedObjects);
-    if (plannedIntent) {
-      await handleRunVisualGenerationOperation(draft);
-      return;
-    }
-
-    const operationGate = canStartOperation(workspace);
-    if (operationGate.status === "blocked") {
-      setAiDraft(draft);
-      setImageTaskStatus({ state: "failed", message: operationGate.reason });
-      setWorkspace((current) => appendOperationBlockedMessage(current, operationGate.operation, operationGate.reason));
-      return;
-    }
-
-    const initialVisualTarget = resolveVisualGenerationTarget(workspace, selectedObjects, selectedObjectIds);
-    if (initialVisualTarget.status === "blocked") {
-      setContextWarning(initialVisualTarget.reason);
-      setImageTaskStatus({ state: "failed", message: initialVisualTarget.reason });
-      return;
-    }
-
-    const context = buildTaskContext(workspace, {
-      kind: "visualDevelopment",
-      draft,
-      selectedObjectIds,
-      explicitObjectIds: explicitImageId ? [explicitImageId] : [],
-      targetDirectionIds: initialVisualTarget.directionId ? [initialVisualTarget.directionId] : [],
-      visualBranchId: initialVisualTarget.visualBranchId
-    });
-    setContextWarning(context.defaultReference.status === "hidden" ? context.defaultReference.reason : undefined);
-
-    const now = new Date().toISOString();
-    const operationId = `operation-image-${Date.now()}`;
-    const clientRequestId = `client-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const userMessageId = `ai-user-image-${Date.now()}`;
-    const assistantMessageId = `ai-assistant-image-${Date.now()}`;
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-    setIsAiStreaming(true);
-    setImageTaskStatus({ state: "preparing", message: "正在准备本次图像任务的最小参考。" });
-    setShowFailure(false);
-    setAiDraft("");
-    setAiOpen(true);
-    // Local edit / single-image path is always visual development quality.
-    const generationSettings = resolveImageGenerationSettingsForVisualIntent({
-      intent: "visualDevelopment",
-      aspectRatio: effectiveImageGenerationSettings.aspectRatio
-    });
-    setWorkspace((current) => {
-      const operationCreated = createImageGenerationOperation(current, {
-        operationId,
-        clientRequestId,
-        prompt: draft,
-        selectedObjectIds: context.objectIds,
-        imagePixels: false,
-        modelId: generationSettings.modelId,
-        modelLabel: generationSettings.modelLabel,
-        aspectRatio: generationSettings.aspectRatio,
-        sizeOption: generationSettings.sizeOption,
-        referenceObjectIds: context.objectIds,
-        directionObjectId: initialVisualTarget.directionId,
-        visualBranchId: initialVisualTarget.visualBranchId
-      });
-
-      return {
-        ...operationCreated.workspace,
-        ai: {
-          ...operationCreated.workspace.ai,
-        messages: [
-          ...operationCreated.workspace.ai.messages,
-          {
-            id: userMessageId,
-            role: "user",
-            body: draft,
-            createdAt: now,
-            contextObjectIds: context.objectIds,
-            taskMode: "imageGeneration"
-          },
-          {
-            id: assistantMessageId,
-            role: "assistant",
-            body: "图像任务准备中：会创建新图像对象，不会覆盖来源图、默认参考或交付引用。",
-            createdAt: now,
-            status: "streaming",
-            contextObjectIds: context.objectIds,
-            taskMode: "imageGeneration",
-            operationId
-          }
-        ]
-      }
-      };
-    });
-
-    const localPlanItemId = `${operationId}-local-edit`;
-    let providerTaskId: string | undefined;
-
-    try {
-      const referenceImages = await collectImageReferenceDataUrls(workspace, context.imageObjectIds, controller.signal);
-      const sourceObjectIds = referenceImages.sourceObjectIds;
-      const visualTarget = resolveVisualGenerationTarget(
-        workspace,
-        selectedObjects,
-        sourceObjectIds,
-        initialVisualTarget.visualBranchId
-      );
-      if (visualTarget.status === "blocked") {
-        throw new Error(visualTarget.reason);
-      }
-      const directionObjectId = visualTarget.directionId;
-      const visualBranchId = visualTarget.visualBranchId;
-      const localSourceImage = selectedObjects.find(
-        (object): object is Extract<MorphoObject, { type: "image" }> => object.id === explicitImageId && object.type === "image"
-      );
-      const localPlanItem: VisualGenerationPlanItem = {
-        id: localPlanItemId,
-        title: localSourceImage ? `${localSourceImage.title} 修订` : "局部视觉修订",
-        purpose: "在保留当前参考关系的前提下进行局部视觉修订。",
-        prompt: draft,
-        referenceObjectIds: sourceObjectIds,
-        targetDirectionId: directionObjectId,
-        visualBranchId,
-        role: localSourceImage?.role ?? "conceptImage"
-      };
-      const plannedImageSize = getPlannedImageSize(effectiveImageGenerationSettings.aspectRatio);
-      const localPlacement = getGeneratedImagePlacement(workspace, localPlanItem, 0);
-      setPendingImageGenerationSlots((current) => [
-        ...current.filter((slot) => slot.operationId !== operationId),
-        ...buildPendingImageGenerationSlots({
-          operationId,
-          items: [localPlanItem],
-          placements: new Map([[localPlanItem.id, localPlacement]]),
-          size: plannedImageSize
-        })
-      ]);
-      const pixelNote =
-        referenceImages.images.length === 0
-          ? "本次没有可读取的本地图片像素，仅基于对象标题、摘要和你的描述请求 GrsAI。"
-          : `本次会发送 ${referenceImages.images.length} 张明确参考图像。`;
-
-      setWorkspace((current) =>
-        updateAiMessage(
-          markImageGenerationOperationSubmitted(current, {
-            operationId,
-            referenceObjectIds: sourceObjectIds,
-            imagePixels: referenceImages.images.length > 0
-          }),
-          assistantMessageId,
-          `图像任务提交中：${pixelNote}`,
-          "streaming"
-        )
-      );
-      setImageTaskStatus({ state: "submitting", message: "正在提交 GrsAI 图像生成请求。" });
-
-      const responsePromise = fetch("/api/ai/image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          modelId: generationSettings.modelId,
-          prompt: draft,
-          images: referenceImages.images,
-          aspectRatio: generationSettings.aspectRatio,
-          sizeOption: generationSettings.sizeOption,
-          referenceObjectIds: sourceObjectIds,
-          directionObjectId,
-          visualBranchId,
-          operationId,
-          clientRequestId
-        }),
-        signal: controller.signal
-      });
-
-      setImageTaskStatus({ state: "waiting", message: "GrsAI 正在生成或返回结果。" });
-      const response = await responsePromise;
-      providerTaskId = response.headers.get("X-Morpho-Provider-Task-Id") || undefined;
-
-      if (!response.ok) {
-        const failure = await readErrorResponse(response);
-        throw new Error(failure);
-      }
-
-      setImageTaskStatus({ state: "downloading", message: "正在保存生成结果到本地资产库。" });
-      const mimeType = response.headers.get("Content-Type") ?? "image/png";
-      const blob = await response.blob();
-      const file = new File([blob], makeGeneratedImageFileName(mimeType), { type: mimeType });
-      const saved = await saveBlobAsLocalAsset(indexedDbBlobStore, file, "aiGeneratedImage", {
-        readImageDimensions: readImageBlobDimensions
-      });
-      if (saved.status === "failed") {
-        throw new Error(saved.reason);
-      }
-
-      const createdObjectId = commitWorkspaceNow((current) => {
-        const committed = applyImageGenerationResultCommit(current, {
-          status: "succeeded",
-          operationId,
-          providerTaskId,
-          asset: saved.asset,
-          generation: {
-            modelId: generationSettings.modelId,
-            modelLabel: generationSettings.modelLabel,
-            aspectRatio: generationSettings.aspectRatio,
-            sizeOption: generationSettings.sizeOption,
-            prompt: draft,
-            referenceObjectIds: sourceObjectIds,
-            directionId: directionObjectId,
-            visualBranchId,
-            operationId,
-            clientRequestId,
-            providerTaskId,
-            createdAt: new Date().toISOString()
-          },
-          sourceObjectIds,
-          directionObjectId,
-          visualBranchId,
-          title: localPlanItem.title,
-          summary: localPlanItem.purpose,
-          role: localPlanItem.role,
-          position: localPlacement,
-          canvasSize: plannedImageSize
-        });
-
-        const completed = completeImageGenerationOperation(committed.workspace, {
-          operationId,
-          providerTaskId,
-          resultObjectId: committed.createdObjectId ?? `image-generated-${saved.asset.id}`
-        });
-
-        return {
-          workspace: updateAiMessage(
-            completed,
-            assistantMessageId,
-            "GrsAI 已返回图像结果。已保存为独立本地资产，并在画布上创建新的图像对象；来源图、版本链、默认参考和交付引用没有被替换。",
-            "done"
-          ),
-          value: committed.createdObjectId ?? `image-generated-${saved.asset.id}`
-        };
-      });
-      setSelectedObjectIds([createdObjectId]);
-      setPendingImageGenerationSlots((current) =>
-        removePendingImageGenerationSlot(current, operationId, localPlanItemId)
-      );
-      setFocusRequest((current) => ({ objectId: createdObjectId, nonce: current.nonce + 1 }));
-      setLocalEditObjectId(null);
-      setImageTaskStatus({ state: "succeeded", message: "图像结果已保存，并创建为新的画布对象。" });
-    } catch (error) {
-      const isCancelled = error instanceof DOMException && error.name === "AbortError";
-      const message = isCancelled
-        ? "图像任务已取消。原输入、来源对象和已有结果已保留。"
-        : error instanceof Error
-          ? error.message
-          : "GrsAI 图像任务失败。";
-      setAiDraft(draft);
-      setImageTaskStatus({ state: isCancelled ? "cancelled" : "failed", message });
-      setWorkspace((current) =>
-        updateAiMessage(
-          failImageGenerationOperation(current, {
-            operationId,
-            status: isCancelled ? "cancelled" : error instanceof TypeError ? "interrupted" : "failed",
-            reason: message,
-            providerTaskId
-          }),
-          assistantMessageId,
-          message,
-          "failed"
-        )
-      );
-    } finally {
-      setPendingImageGenerationSlots((current) =>
-        removePendingImageGenerationSlot(current, operationId, localPlanItemId)
-      );
-      abortControllerRef.current = null;
-      setIsAiStreaming(false);
-    }
-  }, [
-    aiDraft,
-    commitWorkspaceNow,
-    effectiveImageGenerationSettings,
-    handleRunVisualGenerationOperation,
-    isAiStreaming,
-    localEditObjectId,
-    selectedObjectIds,
-    selectedObjects,
-    setWorkspace,
-    workspace
-  ]);
 
   const handleApplyProposal = useCallback((allowSourceChanged = false) => {
     if (!activeProposal) {
@@ -5605,7 +4562,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     (objectId: string) => {
       setWorkspace((current) => restoreObject(current, objectId));
       setSelectedObjectIds([objectId]);
-      setActiveDrawer(null);
       focusObject(objectId);
     },
     [focusObject, setWorkspace]
@@ -5790,16 +4746,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const handleCopyItemToDraft = useCallback((text: string) => {
     setAiOpen(true);
     setTaskMode("chatAnalysis");
-    setWorkIntent("discussion");
+    handleWorkIntentChange("discussion");
     setAiDraft(text);
-  }, []);
+  }, [handleWorkIntentChange]);
 
   const handleContinueQuestion = useCallback((text: string) => {
     setAiOpen(true);
     setTaskMode("chatAnalysis");
-    setWorkIntent("discussion");
+    handleWorkIntentChange("discussion");
     setAiDraft(`请继续追问：${text}`);
-  }, []);
+  }, [handleWorkIntentChange]);
 
   const handleUpdatePendingKeyConclusion = useCallback(
     (patch: Partial<Extract<PendingAiConfirmation, { kind: "createKeyConclusion" }>>) => {
@@ -5979,24 +4935,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     },
     [pushObjectOperationUndo, setWorkspace, showWorkspaceNotice, workspace]
   );
-
-  function isComparisonPendingConfirmation(
-    confirmation: PendingAiConfirmation
-  ): confirmation is PendingComparisonConfirmation {
-    return (
-      confirmation.kind === "compareSetPrimary" ||
-      confirmation.kind === "compareSetAlternative" ||
-      confirmation.kind === "compareEliminate" ||
-      confirmation.kind === "compareRestoreAlternative" ||
-      confirmation.kind === "compareSetDefaultReference" ||
-      confirmation.kind === "compareClearDefaultReference" ||
-      confirmation.kind === "compareCreateKeyConclusion"
-    );
-  }
-
-  function buildComparisonDecisionReason(confirmation: PendingComparisonConfirmation): string {
-    return confirmation.userReason.trim() || "用户已明确确认此 Compare 决定。";
-  }
 
   const cleanupDocumentSourcePreview = useCallback(() => {
     if (documentSourcePreviewUrlRef.current) {
@@ -6283,7 +5221,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return true;
     }
     if (activeDrawer) {
-      setActiveDrawer(null);
+      handleDrawerChange(null);
       return true;
     }
 
@@ -6301,6 +5239,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     detailProposalId,
     documentReader,
     handleCloseDocumentReader,
+    handleDrawerChange,
     projectMenuOpen
   ]);
 
@@ -6388,7 +5327,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       locked: Boolean(region.locked),
       canFit: !region.locked && hasVisibleStageRegionMembers(workspace, region.id)
     };
-  }, [canvasContextMenu?.stageId, workspace]);
+  }, [canvasContextMenu, workspace]);
   const contextMenuPlacement = canvasContextMenu
     ? getFloatingMenuPlacement(canvasContextMenu, viewportSize, {
         menu: { w: 220, h: 340 },
@@ -6470,9 +5409,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           deliveryOutputPanelOpen ? "output" : "x",
           bundlePanelOpen ? "bundle" : "x",
           documentReader ? "reader" : "x",
-          detailProposalId ? "proposal" : "x",
-          detailDesignDefinitionId ? "def" : "x",
-          detailConceptDirectionId ? "concept" : "x"
+          detailProposal ? "proposal" : "x",
+          detailDesignDefinition ? "def" : "x",
+          detailConceptDirection ? "concept" : "x"
         ].join(":")}
         renderSelectionToolbar={renderSelectionToolbar}
         onSelectionChange={handleSelectionChange}
@@ -6582,7 +5521,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             }
           })
         }
-        onSearch={() => setActiveDrawer("search")}
+        onSearch={() => handleDrawerChange("search")}
         onFocusOverview={() => focusArea("overview")}
         onOpenDeliveryPreparation={() => openDeliveryPreparation()}
         onOpenProjectBundles={() => {
@@ -6598,7 +5537,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }}
         projectMenuOpen={projectMenuOpen}
         projectRenameDraft={projectRenameDraft}
-        onProjectMenuToggle={() => setProjectMenuOpen((current) => !current)}
+        onProjectMenuToggle={() => {
+          if (!projectMenuOpen) {
+            setProjectRenameDraft(workspace.project.title);
+          }
+          setProjectMenuOpen((current) => !current);
+        }}
         onProjectRenameDraftChange={setProjectRenameDraft}
         onProjectRenameConfirm={handleConfirmProjectRename}
         onOpenProjectHome={handleOpenProjectHome}
@@ -6620,14 +5564,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         <ProjectBundlePanel
           archiveIncludeFullChat={archiveIncludeFullChat}
           archiveIncludeContinuity={archiveIncludeContinuity}
-          backupIncludeFullChat={backupIncludeFullChat}
           restorePreview={inspectedBackup?.preview ?? null}
           busyLabel={bundleBusyLabel}
           message={bundleMessage}
           onClose={() => setBundlePanelOpen(false)}
           onArchiveIncludeFullChatChange={setArchiveIncludeFullChat}
           onArchiveIncludeContinuityChange={setArchiveIncludeContinuity}
-          onBackupIncludeFullChatChange={setBackupIncludeFullChat}
           onExportArchive={handleExportHumanArchive}
           onExportBackup={handleExportEditableBackup}
           onInspectBackup={handleInspectEditableBackup}
@@ -6644,7 +5586,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         mode={activeDrawer}
         workspace={workspace}
         highlightedRecordIds={highlightContinuityEntryIds}
-        onClose={() => setActiveDrawer(null)}
+        onClose={() => handleDrawerChange(null)}
         onFocusArea={focusArea}
         onRestoreObject={handleRestoreObject}
         onLocateObject={focusObject}
@@ -6864,13 +5806,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         suggestions={suggestions}
         draft={aiDraft}
         isOpen={aiOpen}
-        isLocalEditMode={false}
+        isImageTaskContext={taskMode === "imageGeneration" || recommendedTaskMode === "imageGeneration"}
         turnMode={agentTurnMode}
         activeProposal={activeProposal}
         activeOperation={activeOperation}
         isStreaming={isAiStreaming}
         imageGenerationSettings={effectiveImageGenerationSettings}
-        imageGenerationModelOptions={imageGenerationModelOptions}
         directionPreviewCount={directionPreviewCount}
         pendingConfirmation={pendingConfirmation}
         showFailure={showFailure}
@@ -6886,7 +5827,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onSuggestionClick={handleSuggestionClick}
         onSendMessage={handleSendMorphoAgentTurn}
         onCancelRequest={handleCancelAiRequest}
-        onRunLocalEdit={handleRunLocalEdit}
         onApplyProposal={handleApplyProposal}
         onRejectProposal={handleRejectProposal}
         onContinueProposalDiscussion={handleContinueProposalDiscussion}
@@ -7272,6 +6212,7 @@ function summarizeTaskDefaultReferenceStatus(status: TaskContextDefaultReference
 
 function buildPendingAgentActionConfirmation(input: {
   parsed: MorphoAgentToolArguments;
+  compiledVisualPlan?: VisualGenerationPlan;
   draft: string;
   contextObjectIds: string[];
   citations: ProviderCitation[];
@@ -7332,13 +6273,16 @@ function buildPendingAgentActionConfirmation(input: {
         documentFragmentExtractObjectIds: [...input.documentFragmentExtractObjectIds]
       };
     case "generate_visuals":
+      if (!input.compiledVisualPlan) {
+        throw new Error("图像确认缺少已编译的完整计划。");
+      }
       return {
         kind: "agentGenerateVisuals",
         targetTitle: input.selectedObjects[0]?.title ?? "当前选择",
         reason: "先确认模式要求生成图像前由用户明确确认。",
         impact: "确认后会创建新的图像对象，不会覆盖来源图像。",
         draft: input.draft,
-        plan: input.parsed.args,
+        plan: input.compiledVisualPlan,
         sourceObjectIds: [...input.contextObjectIds],
         selectedDirectionIds: input.selectedObjects
           .filter((object) => object.type === "conceptDirection")
@@ -7346,8 +6290,13 @@ function buildPendingAgentActionConfirmation(input: {
         selectedImageIds: input.selectedObjects.filter((object) => object.type === "image").map((object) => object.id)
       };
     case "read_selected_context":
+    case "read_project_memory":
+    case "read_stage_record":
+    case "search_project_conversation":
     case "revise_selected_proposal_draft":
     case "search_web_evidence":
+    case "prepare_delivery_section_draft":
+    case "submit_memory_update":
     case "request_confirmation":
       throw new Error("Only mutating agent tools can be converted into a pending action.");
   }
@@ -7355,6 +6304,7 @@ function buildPendingAgentActionConfirmation(input: {
 
 function buildRequestedAgentActionConfirmation(input: {
   args: RequestConfirmationArgs;
+  compiledVisualPlan?: VisualGenerationPlan;
   workspace: MorphoWorkspace;
   draft: string;
   contextObjectIds: string[];
@@ -7370,7 +6320,7 @@ function buildRequestedAgentActionConfirmation(input: {
     impact: input.args.impact,
     action: input.args.action,
     targetObjectId: input.args.targetObjectId,
-    visualPlan: input.args.visualPlan,
+    visualPlan: input.compiledVisualPlan,
     draft: input.draft,
     sourceObjectIds: [...input.contextObjectIds],
     selectedDirectionIds: input.selectedObjects
@@ -7438,7 +6388,13 @@ function updateAiMessage(
   messageId: string,
   body: string,
   status: "streaming" | "done" | "failed" | "cancelled",
-  options: { citationIds?: string[]; continuityEntryIds?: string[]; agentTrace?: AgentTrace } = {}
+  options: {
+    citationIds?: string[];
+    continuityEntryIds?: string[];
+    memoryUpdateKeys?: ProjectMemoryKey[];
+    stageRecordUpdateKeys?: StageRecordKey[];
+    agentTrace?: AgentTrace;
+  } = {}
 ): MorphoWorkspace {
   return {
     ...workspace,
@@ -7452,6 +6408,8 @@ function updateAiMessage(
               status,
               citationIds: options.citationIds ?? message.citationIds,
               continuityEntryIds: options.continuityEntryIds ?? message.continuityEntryIds,
+              memoryUpdateKeys: options.memoryUpdateKeys ?? message.memoryUpdateKeys,
+              stageRecordUpdateKeys: options.stageRecordUpdateKeys ?? message.stageRecordUpdateKeys,
               agentTrace: options.agentTrace ?? message.agentTrace,
               error: status === "failed" ? body : undefined
             }

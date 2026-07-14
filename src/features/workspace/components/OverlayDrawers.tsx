@@ -4,8 +4,20 @@ import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 
 import type { ContinuityManualState, ContinuityRecordEntry, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
-import type { ContinuitySourceRef, ProjectFocusArea, StageRecordKey } from "@/domain/morpho/types";
+import type {
+  ContinuitySourceRef,
+  ProjectFocusArea,
+  ProjectMemoryKey,
+  StageRecordKey
+} from "@/domain/morpho/types";
 import { getContinuityEntryEligibility, resolveContinuityValidity } from "@/domain/morpho/projectContinuity";
+import {
+  getCurrentProjectMemoryRevision,
+  getCurrentStageRecordRevision,
+  getProjectMemoryHistory,
+  getStageRecordHistory,
+  reconcileProjectMemory
+} from "@/domain/morpho/projectMemory";
 import { getWorkspaceAssetItems, searchWorkspace, type WorkspaceAssetItem } from "@/domain/morpho/queries";
 import type { DrawerMode } from "./LeftRail";
 import { getObjectTypeLabel } from "../workspaceUi";
@@ -235,8 +247,9 @@ function ProjectRecordDrawer({
   panelRef: React.RefObject<HTMLElement | null>;
   style: React.CSSProperties;
 }) {
+  const [activeTab, setActiveTab] = useState<"memory" | "stages" | "history">("memory");
   const highlighted = new Set(highlightedRecordIds);
-  const resolvedWorkspace = resolveContinuityValidity(workspace);
+  const resolvedWorkspace = reconcileProjectMemory(resolveContinuityValidity(workspace));
   const reviewItems = resolvedWorkspace.projectContinuity.recordEntries
     .filter((entry) => getContinuityEntryEligibility(entry).canEnterReviewList)
     .slice(-6)
@@ -244,44 +257,170 @@ function ProjectRecordDrawer({
 
   return (
     <Drawer title="项目记录" onClose={onClose} panelRef={panelRef} style={style}>
-      <p className="drawer-muted">
-        这里汇总由你明确表达或确认后留下的可复核记录，不暴露内部阶段文件或项目记忆细节。
-      </p>
+      <div className="drawer-filter-row" role="tablist" aria-label="项目记录视图">
+        {([
+          ["memory", "当前项目记忆"],
+          ["stages", "阶段记录"],
+          ["history", "历史与来源"]
+        ] as const).map(([value, label]) => (
+          <button
+            className={`filter-chip ${activeTab === value ? "active" : ""}`}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === value}
+            key={value}
+            onClick={() => setActiveTab(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-      <div className="result-group-title">当前工作重点</div>
-      <section className="continuity-record continuity-record-focus" aria-label="当前工作重点">
-        <div className="continuity-record-kicker">
-          <span>{focusAreaLabel(workspace.projectContinuity.currentFocus.area)}</span>
-          <span className="continuity-record-time">{formatDrawerDate(workspace.projectContinuity.currentFocus.updatedAt)}</span>
-        </div>
-        <p className="continuity-record-summary">{workspace.projectContinuity.currentFocus.note}</p>
-        <ContinuitySourceRefs refs={focusSourceRefs(workspace)} onLocateObject={onLocateObject} />
-      </section>
+      {activeTab === "memory" ? (
+        <CurrentProjectMemory workspace={resolvedWorkspace} onLocateObject={onLocateObject} />
+      ) : null}
+      {activeTab === "stages" ? (
+        <CurrentStageRecords workspace={resolvedWorkspace} onLocateObject={onLocateObject} />
+      ) : null}
+      {activeTab === "history" ? (
+        <>
+          <div className="result-group-title">当前工作重点</div>
+          <section className="continuity-record continuity-record-focus" aria-label="当前工作重点">
+            <div className="continuity-record-kicker">
+              <span>{focusAreaLabel(workspace.projectContinuity.currentFocus.area)}</span>
+              <span className="continuity-record-time">{formatDrawerDate(workspace.projectContinuity.currentFocus.updatedAt)}</span>
+            </div>
+            <p className="continuity-record-summary">{workspace.projectContinuity.currentFocus.note}</p>
+            <ContinuitySourceRefs refs={focusSourceRefs(workspace)} onLocateObject={onLocateObject} />
+          </section>
 
-      <div className="result-group-title">待复核</div>
-      {reviewItems.length > 0 ? (
-        <ContinuityEntryRows
-          entries={reviewItems}
-          highlightedRecordIds={highlighted}
-          onLocateObject={onLocateObject}
-          onSetContinuityEntryManualState={onSetContinuityEntryManualState}
-        />
-      ) : (
-        <p className="drawer-muted">当前没有待复核或来源不可用的记录。</p>
-      )}
+          <div className="result-group-title">待复核</div>
+          {reviewItems.length > 0 ? (
+            <ContinuityEntryRows
+              entries={reviewItems}
+              highlightedRecordIds={highlighted}
+              onLocateObject={onLocateObject}
+              onSetContinuityEntryManualState={onSetContinuityEntryManualState}
+            />
+          ) : (
+            <p className="drawer-muted">当前没有待复核或来源不可用的记录。</p>
+          )}
 
-      <div className="result-group-title">近期记录</div>
-      {resolvedWorkspace.projectContinuity.recordEntries.length > 0 ? (
-        <ContinuityEntryRows
-          entries={[...resolvedWorkspace.projectContinuity.recordEntries].slice(-12).reverse()}
-          highlightedRecordIds={highlighted}
-          onLocateObject={onLocateObject}
-          onSetContinuityEntryManualState={onSetContinuityEntryManualState}
-        />
-      ) : (
-        <p className="drawer-muted">当前还没有保存的项目记录。</p>
-      )}
+          <div className="result-group-title">近期记录</div>
+          {resolvedWorkspace.projectContinuity.recordEntries.length > 0 ? (
+            <ContinuityEntryRows
+              entries={[...resolvedWorkspace.projectContinuity.recordEntries].slice(-12).reverse()}
+              highlightedRecordIds={highlighted}
+              onLocateObject={onLocateObject}
+              onSetContinuityEntryManualState={onSetContinuityEntryManualState}
+            />
+          ) : (
+            <p className="drawer-muted">当前还没有保存的项目记录。</p>
+          )}
+        </>
+      ) : null}
     </Drawer>
+  );
+}
+
+const PROJECT_MEMORY_KEYS: ProjectMemoryKey[] = [
+  "projectOverview",
+  "designBrief",
+  "userPreferences",
+  "decisionLog",
+  "rejectedDirections",
+  "openQuestions",
+  "outputPlan"
+];
+
+const STAGE_RECORD_KEYS: StageRecordKey[] = [
+  "startAndInput",
+  "exploration",
+  "research",
+  "designDefinition",
+  "directionAndVisual",
+  "deliveryPreparation"
+];
+
+function CurrentProjectMemory({
+  workspace,
+  onLocateObject
+}: {
+  workspace: MorphoWorkspace;
+  onLocateObject: (objectId: string) => void;
+}) {
+  return (
+    <div className="continuity-record-list" role="tabpanel">
+      {PROJECT_MEMORY_KEYS.map((key) => {
+        const document = workspace.projectMemory.documents[key];
+        const revision = getCurrentProjectMemoryRevision(workspace.projectMemory, key);
+        const historyCount = getProjectMemoryHistory(workspace.projectMemory, key).length;
+        return (
+          <article className="continuity-record" key={key}>
+            <div className="continuity-record-kicker">
+              <span>{document.title}</span>
+              {revision?.reviewRequired ? <span className="continuity-record-status">待复核</span> : null}
+              <span className="continuity-record-time">{revision ? formatDrawerDate(revision.createdAt) : "尚未形成"}</span>
+            </div>
+            {revision ? (
+              <>
+                {revision.sections.map((section) => (
+                  <section key={section.key}>
+                    <div className="result-group-title">{section.title}</div>
+                    {section.items.map((item) => <p className="continuity-record-summary" key={item}>{item}</p>)}
+                  </section>
+                ))}
+                <ContinuitySourceRefs refs={revision.sourceRefs} onLocateObject={onLocateObject} />
+                {historyCount > 1 ? <p className="drawer-muted">已有 {historyCount} 个可追溯修订</p> : null}
+              </>
+            ) : (
+              <p className="drawer-muted">当前没有有效内容。</p>
+            )}
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function CurrentStageRecords({
+  workspace,
+  onLocateObject
+}: {
+  workspace: MorphoWorkspace;
+  onLocateObject: (objectId: string) => void;
+}) {
+  const records = STAGE_RECORD_KEYS.map((stage) => ({
+    stage,
+    revision: getCurrentStageRecordRevision(workspace.projectMemory, stage),
+    historyCount: getStageRecordHistory(workspace.projectMemory, stage).length
+  })).filter((record) => Boolean(record.revision));
+
+  if (records.length === 0) {
+    return <p className="drawer-muted" role="tabpanel">当前还没有已发生阶段的有效记录。</p>;
+  }
+  return (
+    <div className="continuity-record-list" role="tabpanel">
+      {records.map(({ stage, revision, historyCount }) => (
+        <article className="continuity-record" key={stage}>
+          <div className="continuity-record-kicker">
+            <span>{stageLabel(stage)}</span>
+            {revision?.reviewRequired ? <span className="continuity-record-status">待复核</span> : null}
+            <span className="continuity-record-time">{revision ? formatDrawerDate(revision.createdAt) : ""}</span>
+          </div>
+          {revision
+            ? Object.entries(revision.sections).map(([section, items]) => (
+                <section key={section}>
+                  <div className="result-group-title">{stageSectionLabel(section)}</div>
+                  {items?.map((item) => <p className="continuity-record-summary" key={item}>{item}</p>)}
+                </section>
+              ))
+            : null}
+          {revision ? <ContinuitySourceRefs refs={revision.sourceRefs} onLocateObject={onLocateObject} /> : null}
+          {historyCount > 1 ? <p className="drawer-muted">已有 {historyCount} 个可追溯修订</p> : null}
+        </article>
+      ))}
+    </div>
   );
 }
 
@@ -623,6 +762,29 @@ function stageLabel(stage: StageRecordKey): string {
       return "方向与视觉";
     case "deliveryPreparation":
       return "交付准备";
+  }
+}
+
+function stageSectionLabel(section: string): string {
+  switch (section) {
+    case "goalAndStatus":
+      return "目标与状态";
+    case "outputs":
+      return "产出";
+    case "decisions":
+      return "决定";
+    case "rejected":
+      return "淘汰与不采用";
+    case "preferences":
+      return "偏好";
+    case "constraints":
+      return "约束";
+    case "openRisks":
+      return "开放问题与风险";
+    case "nextFocus":
+      return "下一重点";
+    default:
+      return section;
   }
 }
 

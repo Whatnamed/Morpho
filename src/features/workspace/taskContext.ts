@@ -176,8 +176,7 @@ export const TASK_CONTEXT_LIMITS = {
   maxCharsPerDocument: 8_000,
   maxTotalDocumentChars: 24_000,
   maxAiProviderImages: 16,
-  maxGrsReferenceImages: GRS_REFERENCE_IMAGE_LIMIT,
-  maxConversationMessages: 12
+  maxGrsReferenceImages: GRS_REFERENCE_IMAGE_LIMIT
 } as const;
 
 const DEFAULT_REFERENCE_PATTERN = /默认参考|保持.*一致|延续.*默认|参考当前默认|reference/i;

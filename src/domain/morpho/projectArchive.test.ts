@@ -40,8 +40,8 @@ describe("M7-A project archive and backup manifests", () => {
     expect(backup.manifest.createdAt).toBe(NOW);
     expect(archive.manifest.sourceProject.id).toBe("project-blank");
     expect(backup.manifest.sourceProject.id).toBe(seeded.project.id);
-    expect(archive.manifest.workspaceSchemaVersion).toBe(14);
-    expect(backup.manifest.workspaceSchemaVersion).toBe(14);
+    expect(archive.manifest.workspaceSchemaVersion).toBe(15);
+    expect(backup.manifest.workspaceSchemaVersion).toBe(15);
     expect(archive.manifest.archive).toBeDefined();
     expect(backup.manifest.workspaceSnapshot).toBeDefined();
     expect("workspaceSnapshot" in archive.manifest).toBe(false);
@@ -241,7 +241,7 @@ describe("M7-A project archive and backup manifests", () => {
     expect(sanitized.ui.workIntent).toBe("discussion");
   });
 
-  test("backup default chat none removes messages, checkpoints, and compare analyses", () => {
+  test("backup defaults to full AI continuity and Project Memory preservation", () => {
     const workspace = createFixtureWorkspace({ includeMissingMetadata: false });
     const backup = createEditableProjectBackupManifest(workspace, { createdAt: NOW });
 
@@ -250,10 +250,9 @@ describe("M7-A project archive and backup manifests", () => {
       throw new Error("backup creation should be ready for assertions");
     }
 
-    expect(backup.manifest.options.chat).toBe("none");
-    expect(backup.manifest.workspaceSnapshot.ai.messages).toEqual([]);
-    expect(backup.manifest.workspaceSnapshot.ai.conversationCheckpoints).toEqual([]);
-    expect(backup.manifest.workspaceSnapshot.ai.comparisonAnalyses).toEqual({});
+    expect(backup.manifest.options.chat).toBe("full");
+    expect(backup.manifest.workspaceSnapshot.ai).toEqual(workspace.ai);
+    expect(backup.manifest.workspaceSnapshot.projectMemory).toEqual(workspace.projectMemory);
   });
 
   test("backup chat full preserves messages, checkpoints, and compare analyses", () => {
@@ -273,7 +272,7 @@ describe("M7-A project archive and backup manifests", () => {
 
   test("backup default project continuity current preserves continuity state", () => {
     const workspace = createFixtureWorkspace({ includeMissingMetadata: false });
-    const backup = createEditableProjectBackupManifest(workspace, { createdAt: NOW });
+    const backup = createEditableProjectBackupManifest(workspace, { createdAt: NOW, chat: "none" });
 
     expect(backup.status).toBe("ok");
     if (backup.status !== "ok") {
@@ -303,7 +302,7 @@ describe("M7-A project archive and backup manifests", () => {
 
   test("backup validator rejects chat none when snapshot still contains chat state", () => {
     const workspace = createFixtureWorkspace({ includeMissingMetadata: false });
-    const backup = createEditableProjectBackupManifest(workspace, { createdAt: NOW });
+    const backup = createEditableProjectBackupManifest(workspace, { createdAt: NOW, chat: "none" });
 
     expect(backup.status).toBe("ok");
     if (backup.status !== "ok") {
@@ -915,6 +914,7 @@ function createFixtureWorkspace(options: { includeMissingMetadata?: boolean } = 
       updatedAt: NOW
     },
     ai: {
+      ...workspace.ai,
       messages: [
         { id: "msg-user", role: "user", body: "Compare these directions", createdAt: NOW },
         {

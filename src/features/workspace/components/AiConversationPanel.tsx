@@ -21,7 +21,6 @@ import type {
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 import {
   GRS_IMAGE_ASPECT_RATIOS,
-  type ImageGenerationModelOption,
   type ImageGenerationSettings
 } from "../imageGenerationSettings";
 import { resolveStoredComparisonSourceRefs } from "@/domain/morpho/comparisonAnalysis";
@@ -32,7 +31,6 @@ import type {
   CreateConceptDirectionProposalArgs,
   CreateDesignDefinitionProposalArgs,
   CreateResearchAnalysisArgs,
-  GenerateVisualsArgs,
   MorphoAgentTurnMode,
   RequestConfirmationArgs
 } from "../morphoAgent";
@@ -124,7 +122,7 @@ export type PendingAiConfirmation =
       reason: string;
       impact: string;
       draft: string;
-      plan: GenerateVisualsArgs;
+      plan: VisualGenerationPlan;
       sourceObjectIds: string[];
       selectedDirectionIds: string[];
       selectedImageIds: string[];
@@ -136,7 +134,7 @@ export type PendingAiConfirmation =
       impact: string;
       action: RequestConfirmationArgs["action"];
       targetObjectId?: string;
-      visualPlan?: GenerateVisualsArgs;
+      visualPlan?: VisualGenerationPlan;
       draft: string;
       sourceObjectIds: string[];
       selectedDirectionIds: string[];
@@ -280,13 +278,12 @@ type AiConversationPanelProps = {
   suggestions: Suggestion[];
   draft: string;
   isOpen: boolean;
-  isLocalEditMode: boolean;
+  isImageTaskContext: boolean;
   turnMode: MorphoAgentTurnMode;
   activeProposal?: ArtifactProposal;
   activeOperation?: OperationRecord | null;
   isStreaming: boolean;
   imageGenerationSettings: ImageGenerationSettings;
-  imageGenerationModelOptions: ImageGenerationModelOption[];
   directionPreviewCount: 1 | 2 | 4 | 6;
   pendingConfirmation: PendingAiConfirmation | null;
   showFailure: boolean;
@@ -309,7 +306,6 @@ type AiConversationPanelProps = {
   onSuggestionClick: (suggestion: Suggestion) => void;
   onSendMessage: () => void;
   onCancelRequest: () => void;
-  onRunLocalEdit: () => void;
   onApplyProposal: (allowSourceChanged?: boolean) => void;
   onRejectProposal: (proposalId: string) => void;
   onContinueProposalDiscussion: (proposalId: string) => void;
@@ -359,13 +355,12 @@ export function AiConversationPanel({
   suggestions,
   draft,
   isOpen,
-  isLocalEditMode,
+  isImageTaskContext,
   turnMode,
   activeProposal,
   activeOperation,
   isStreaming,
   imageGenerationSettings,
-  imageGenerationModelOptions,
   directionPreviewCount,
   pendingConfirmation,
   showFailure,
@@ -381,7 +376,6 @@ export function AiConversationPanel({
   onSuggestionClick,
   onSendMessage,
   onCancelRequest,
-  onRunLocalEdit,
   onUpdatePendingKeyConclusion,
   onUpdatePendingComparison,
   onRequestComparisonAction,
@@ -395,12 +389,13 @@ export function AiConversationPanel({
   const confirmationBody = pendingConfirmation ? getPendingConfirmationBody(pendingConfirmation) : null;
   const confirmationActionLabel = pendingConfirmation ? getPendingConfirmationActionLabel(pendingConfirmation) : null;
   const selectedDirectionCount = selectedObjects.filter((object) => object.type === "conceptDirection").length;
-  const showDirectionPreviewCount = selectedDirectionCount > 0 && selectedDirectionCount <= 3 && isLocalEditMode;
+  const showDirectionPreviewCount = selectedDirectionCount > 0 && isImageTaskContext;
   const directionPreviewTotal = selectedDirectionCount * directionPreviewCount;
   const isAiBusy = isStreaming || Boolean(activeOperation);
   const hasDraftContent = draft.trim().length > 0;
   const canSubmitDraft = hasDraftContent;
   const isImageTaskActive = Boolean(
+    !isStreaming &&
     imageTaskStatus && !["succeeded", "failed", "cancelled"].includes(imageTaskStatus.state)
   );
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -522,6 +517,7 @@ export function AiConversationPanel({
                 message.role === "assistant" &&
                 message.status === "streaming" &&
                 (!message.body.trim() || isAgentThinkingPlaceholder(message.body));
+              const projectRecordFeedback = getProjectRecordFeedback(message);
 
               return (
               <div className={`ai-message ${message.role}`} key={message.id} data-message-id={message.id}>
@@ -544,22 +540,13 @@ export function AiConversationPanel({
                     onLocateObject={onLocateObject}
                   />
                 ) : null}
-                {message.conversationCheckpointId &&
-                workspace.ai.conversationCheckpoints.some((checkpoint) => checkpoint.id === message.conversationCheckpointId) ? (
-                  <div
-                    className="conversation-checkpoint-feedback"
-                    title="后续同一工作重点的对话会使用这份讨论整理与最近消息保持连续。"
-                  >
-                    已整理当前讨论脉络
-                  </div>
-                ) : null}
-                {message.continuityEntryIds && message.continuityEntryIds.length > 0 ? (
+                {projectRecordFeedback ? (
                   <button
                     className="continuity-feedback"
                     type="button"
                     onClick={() => onOpenProjectRecords(message.continuityEntryIds)}
                   >
-                    已保存为项目记录 · {message.continuityEntryIds.length} 条
+                    {projectRecordFeedback}
                   </button>
                 ) : null}
                 {message.citationIds && message.citationIds.length > 0 ? (
@@ -725,7 +712,7 @@ export function AiConversationPanel({
           className={[
             "ai-input-wrap",
             isAiBusy ? "is-busy" : "",
-            isLocalEditMode ? "is-image-task" : "",
+            isImageTaskContext ? "is-image-task" : "",
             selectedObjects.length > 0 ? "has-selection" : ""
           ]
             .filter(Boolean)
@@ -769,21 +756,8 @@ export function AiConversationPanel({
             </div>
           </details>
 
-          {isLocalEditMode ? (
+          {isImageTaskContext ? (
             <div className="image-settings" aria-label="图像生成设置">
-              <label>
-                <span>模型</span>
-                <select
-                  value={imageGenerationSettings.modelId}
-                  onChange={(event) => onImageGenerationSettingsChange({ modelId: event.currentTarget.value })}
-                >
-                  {imageGenerationModelOptions.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.label} · {model.points} 积分/次
-                    </option>
-                  ))}
-                </select>
-              </label>
               <label>
                 <span>比例</span>
                 <select
@@ -839,9 +813,8 @@ export function AiConversationPanel({
                 <span>费用以服务商控制台为准</span>
               </div>
               {showDirectionPreviewCount ? (
-                <div className={directionPreviewTotal > 8 ? "image-settings-warning" : "image-settings-note"}>
+                <div className="image-settings-note">
                   {selectedDirectionCount} 个方向 × 每方向 {directionPreviewCount} 张 = 总计 {directionPreviewTotal} 张
-                  {directionPreviewTotal > 8 ? "，超过单次上限 8 张，请降低每方向预览数或分批生成。" : ""}
                 </div>
               ) : null}
             </div>
@@ -863,11 +836,6 @@ export function AiConversationPanel({
                     return;
                   }
 
-                  if (isLocalEditMode) {
-                    onRunLocalEdit();
-                    return;
-                  }
-
                   onSendMessage();
                 }
               }}
@@ -877,9 +845,9 @@ export function AiConversationPanel({
             <button
               className={`send-button ${isAiBusy ? "stop" : ""}`}
               type="button"
-              aria-label={isAiBusy ? "停止当前任务" : isLocalEditMode ? "执行图像任务" : "发送"}
+              aria-label={isAiBusy ? "停止当前任务" : "发送"}
               disabled={!isAiBusy && !canSubmitDraft}
-              onClick={isAiBusy ? onCancelRequest : isLocalEditMode ? onRunLocalEdit : onSendMessage}
+              onClick={isAiBusy ? onCancelRequest : onSendMessage}
             >
               {isAiBusy ? <Square size={13} fill="currentColor" /> : <Send size={15} />}
             </button>
@@ -904,7 +872,7 @@ export function AiConversationPanel({
             ) : (
               <>
                 <strong>{activeOperation ? formatOperationType(activeOperation.type) : "当前输出"}</strong>
-                {imageTaskStatus ? <p>{formatImageTaskState(imageTaskStatus.state)} · {imageTaskStatus.message}</p> : null}
+                {imageTaskStatus && !isStreaming ? <p>{formatImageTaskState(imageTaskStatus.state)} · {imageTaskStatus.message}</p> : null}
                 <button className="plain-button" type="button" onClick={onCancelRequest}>
                   停止
                 </button>
@@ -974,6 +942,25 @@ function proposalTypeSummary(proposal: ArtifactProposal): string {
     case "deliveryPlan":
       return "交付草案";
   }
+}
+
+function getProjectRecordFeedback(message: AiMessage): string | undefined {
+  if (!message.continuityEntryIds?.length) {
+    return undefined;
+  }
+  if (message.memoryUpdateKeys?.includes("userPreferences")) {
+    return "已更新项目偏好";
+  }
+  if (message.memoryUpdateKeys?.includes("decisionLog")) {
+    return "已记录设计决定";
+  }
+  if (message.stageRecordUpdateKeys?.includes("directionAndVisual")) {
+    return "已更新方向与视觉发展记录";
+  }
+  if (message.stageRecordUpdateKeys?.length) {
+    return "已更新项目记忆与阶段记录";
+  }
+  return `已保存为项目记录 · ${message.continuityEntryIds.length} 条`;
 }
 
 function isAgentThinkingPlaceholder(body: string): boolean {

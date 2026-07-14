@@ -7,92 +7,86 @@ import {
   buildAgentCheckpointCompactionInput,
   buildAgentConversationPromptBlock,
   buildAgentHistoryMessages,
+  buildMorphoAgentToolArgumentRepairOutputs,
+  buildMorphoAgentToolArgumentRepairReminder,
   buildMorphoAgentSystemPrompt,
   buildMorphoAgentTools,
   getDesignDefinitionDrafts,
   isExplicitComparisonRequest,
+  normalizeGenerateVisualsForSelectedDirections,
+  parseMorphoAgentToolCallBatch,
   parseMorphoAgentToolArguments,
   type AgentFunctionCall
 } from "./morphoAgent";
 
 describe("agent conversation context", () => {
-  it("places the checkpoint behind real project state and asks for a refreshed checkpoint when requested", () => {
+  it("places a source-bounded conversation summary behind real project state", () => {
     const prompt = buildAgentConversationPromptBlock({
-      checkpoint: {
-        id: "checkpoint-1",
-        laneKey: "lane-1",
-        focusArea: "directionAndVisual",
-        focusUpdatedAt: "2026-07-10T00:00:00.000Z",
-        taskKind: "general",
-        anchorObjectIds: [],
-        targetDirectionIds: [],
+      laneKey: "lane-1",
+      summaryRevision: {
+        id: "summary-1",
         sourceStartMessageId: "message-1",
         sourceEndMessageId: "message-8",
         sourceMessageCount: 8,
+        sourceMessageIdsHash: "hash-1",
         createdAt: "2026-07-10T00:00:00.000Z",
-        updatedAt: "2026-07-10T00:00:00.000Z",
-        threadGoal: "继续收敛当前浮标概念方向",
-        progress: ["已经确定需要保持高可见性"],
-        openThreads: ["仍需确认维护方式"],
-        nextTurnAnchor: "根据新图继续调整结构"
+        summary: {
+          threadGoal: "继续收敛当前浮标概念方向",
+          establishedContext: ["已经确定需要保持高可见性"],
+          decisionsAndReasons: [],
+          activeWork: ["根据新图继续调整结构"],
+          unresolvedQuestions: ["仍需确认维护方式"],
+          referencedObjects: []
+        }
       },
-      recentMessages: [],
+      messages: [],
       rawMessageCount: 0,
-      omittedMessageCount: 0,
-      checkpointRequested: true,
-      laneKey: "lane-1"
+      coveredMessageCount: 8,
+      estimatedInputTokens: 2400,
+      pressure: "normal"
     });
 
-    expect(prompt).toContain("当前用户输入 > 真实项目状态");
+    expect(prompt).toContain("当前用户输入 > 真实项目状态与 Memory Kernel");
     expect(prompt).toContain("继续收敛当前浮标概念方向");
-    expect(prompt).toContain("morphoConversationCheckpoint");
+    expect(prompt).toContain("summarySourceRange: message-1..message-8");
+    expect(prompt).not.toContain("morphoConversationCheckpoint");
   });
 
-  it("builds a bounded checkpoint-only continuation without tools or image inputs", () => {
+  it("builds a source-bounded high-fidelity summary request without tools or image inputs", () => {
     const input = buildAgentCheckpointCompactionInput({
-      conversationContext: {
-        laneKey: "lane-1",
-        recentMessages: [
-          { role: "user", body: "先保持高可见性" },
-          { role: "assistant", body: "可以从轮廓和颜色开始" }
-        ],
-        rawMessageCount: 2,
-        omittedMessageCount: 0,
-        checkpointRequested: true
-      },
-      draft: "继续迭代这个方向",
-      assistantReply: "已经生成两张新的预览，并保留原有产品架构。"
+      messages: [
+        { id: "message-1", role: "user", body: "先保持高可见性" },
+        { id: "message-2", role: "assistant", body: "可以从轮廓和颜色开始" }
+      ],
+      sourceStartMessageId: "message-1",
+      sourceEndMessageId: "message-2",
+      sourceMessageCount: 2
     });
 
     expect(input).toHaveLength(2);
-    expect(JSON.stringify(input)).toContain("morphoConversationCheckpoint");
-    expect(JSON.stringify(input)).toContain("继续迭代这个方向");
-    expect(JSON.stringify(input)).toContain("已经生成两张新的预览");
+    expect(JSON.stringify(input)).toContain("morphoConversationSummary");
+    expect(JSON.stringify(input)).toContain("先保持高可见性");
+    expect(JSON.stringify(input)).toContain("message-1..message-2");
     expect(JSON.stringify(input)).not.toContain("input_image");
   });
 
-  it("builds a rolling compaction request from the complete supplied chunk instead of the recent-message cap", () => {
+  it("uses the complete supplied source range instead of a recent-message cap", () => {
     const messages = Array.from({ length: 9 }, (_, index) => ({
+      id: `message-${index + 1}`,
       role: index % 2 === 0 ? "user" as const : "assistant" as const,
       body: `完整分块消息 ${index + 1}`
     }));
     const input = buildAgentCheckpointCompactionInput({
-      checkpoint: {
-        threadGoal: "继续收敛完整讨论",
-        progress: ["此前分块已经完成整理"],
-        openThreads: ["继续吸收当前分块内容"]
-      },
       messages,
-      draft: "/compact",
-      assistantReply: "正在滚动压缩当前讨论。",
-      chunkIndex: 1,
-      chunkCount: 3
+      sourceStartMessageId: "message-1",
+      sourceEndMessageId: "message-9",
+      sourceMessageCount: 9
     });
     const serialized = JSON.stringify(input);
 
     expect(serialized).toContain("完整分块消息 1");
     expect(serialized).toContain("完整分块消息 9");
-    expect(serialized).toContain("第 2 / 3 块");
+    expect(serialized).toContain("sourceMessageCount: 9");
   });
 });
 
@@ -127,6 +121,41 @@ describe("Morpho agent tool argument validation", () => {
     ).toThrow("未声明参数");
   });
 
+  it("returns retryable outputs for a mixed batch instead of partially executing invalid tool calls", () => {
+    const batch = parseMorphoAgentToolCallBatch([
+      makeCall("read_selected_context", {}),
+      makeCall("generate_visuals", {
+        kind: "visualDevelopment",
+        items: [
+          {
+            id: "visual-1",
+            title: "Structural study",
+            purpose: "Refine the selected product.",
+            requestedReferenceObjectIds: [],
+            changeGoals: ["Clarify the load path"],
+            preserve: ["Product identity"],
+            allowToChange: ["Shell transitions"],
+            productForm: ["Marine buoy"],
+            materialsAndCmf: ["Marine coating"],
+            environmentAndLighting: ["Studio lighting"],
+            avoid: ["Scene"],
+            role: "conceptImage",
+            visualSignals: ["Continuous shell"]
+          }
+        ]
+      })
+    ]);
+    const outputs = buildMorphoAgentToolArgumentRepairOutputs(batch).map((output) => JSON.parse(output.output));
+
+    expect(batch.map((entry) => entry.status)).toEqual(["valid", "invalid"]);
+    expect(outputs).toEqual([
+      expect.objectContaining({ status: "not_executed", retryable: true }),
+      expect.objectContaining({ status: "invalid_arguments", retryable: true })
+    ]);
+    expect(buildMorphoAgentToolArgumentRepairReminder(batch)).toContain("visualSignals");
+    expect(buildMorphoAgentToolArgumentRepairReminder(batch)).toContain("重新调用本批仍需执行的全部工具");
+  });
+
   it("instructs research tools to output evaluated scannable points", () => {
     const tools = buildMorphoAgentTools(false);
     const serializedTools = JSON.stringify(tools);
@@ -145,6 +174,7 @@ describe("Morpho agent tool argument validation", () => {
     });
     const prompt = buildMorphoAgentSystemPrompt({
       mode: "auto",
+      strategy: "research",
       workspace,
       selectedObjects,
       context,
@@ -164,6 +194,7 @@ describe("Morpho agent tool argument validation", () => {
     });
     const prompt = buildMorphoAgentSystemPrompt({
       mode: "auto",
+      strategy: "research",
       workspace,
       selectedObjects: [],
       context,
@@ -171,12 +202,11 @@ describe("Morpho agent tool argument validation", () => {
     });
     const tools = JSON.stringify(buildMorphoAgentTools(true));
 
-    expect(prompt).toContain("证据充分后自然停止");
-    expect(prompt).toContain("不得重复完全相同的搜索");
+    expect(prompt).toContain("证据缺口");
     expect(prompt).toContain("图片数量本身不构成确认理由");
-    expect(prompt).toContain("后续基于新结果产生新的明确需求时，可以再次调用 generate_visuals");
+    expect(prompt).toContain("必须在该次 generate_visuals 的 items[] 中返回完整数量");
     expect(tools).toContain("全面研究可用不同查询继续补充");
-    expect(tools).toContain("数量遵循用户请求和通过校验的计划");
+    expect(tools).toContain("提交完整的结构化视觉意图");
     expect(prompt).not.toMatch(/最多\s*[24]\s*张|超过\s*[24]\s*张/);
   });
 
@@ -190,6 +220,7 @@ describe("Morpho agent tool argument validation", () => {
     });
     const prompt = buildMorphoAgentSystemPrompt({
       mode: "auto",
+      strategy: "discussion",
       workspace,
       selectedObjects,
       context,
@@ -213,8 +244,14 @@ describe("Morpho agent tool argument validation", () => {
           targetDirectionId: "direction-soft-rail",
           title: "轻量家居化预览",
           purpose: "验证更轻、更模块化的表达",
-          prompt: "A warm product design preview for a modular night support rail.",
-          referenceObjectIds: ["direction-soft-rail"],
+          requestedReferenceObjectIds: [],
+          changeGoals: ["让架构更轻、更模块化"],
+          preserve: ["夜间识别"],
+          allowToChange: ["比例与支撑结构"],
+          productForm: ["模块化扶手"],
+          materialsAndCmf: ["温暖低反光材料"],
+          environmentAndLighting: ["夜间家居环境"],
+          avoid: ["医疗器械感"],
           role: "preview"
         }
       ]
@@ -230,8 +267,14 @@ describe("Morpho agent tool argument validation", () => {
             targetDirectionId: "direction-soft-rail",
             title: "轻量家居化预览",
             purpose: "验证更轻、更模块化的表达",
-            prompt: "A warm product design preview for a modular night support rail.",
-            referenceObjectIds: ["direction-soft-rail"],
+            requestedReferenceObjectIds: [],
+            changeGoals: ["让架构更轻、更模块化"],
+            preserve: ["夜间识别"],
+            allowToChange: ["比例与支撑结构"],
+            productForm: ["模块化扶手"],
+            materialsAndCmf: ["温暖低反光材料"],
+            environmentAndLighting: ["夜间家居环境"],
+            avoid: ["医疗器械感"],
             role: "conceptImage"
           }
         ]
@@ -458,8 +501,15 @@ describe("Morpho agent tool argument validation", () => {
             id: "preview-1",
             title: "Preview",
             purpose: "Explore a direction.",
-            prompt: "Warm product render.",
-            referenceObjectIds: ["direction-soft-rail"],
+            targetDirectionId: "direction-soft-rail",
+            requestedReferenceObjectIds: [],
+            changeGoals: ["Explore the direction"],
+            preserve: ["Product identity"],
+            allowToChange: ["Form language"],
+            productForm: ["Support rail"],
+            materialsAndCmf: ["Warm matte finish"],
+            environmentAndLighting: ["Night interior"],
+            avoid: ["Clinical expression"],
             role: "preview"
           }
         ]
@@ -476,6 +526,59 @@ describe("Morpho agent tool argument validation", () => {
         }
       }
     });
+  });
+
+  it("treats targetless visual variants as visual development instead of invalid direction previews", () => {
+    const parsed = parseMorphoAgentToolArguments(makeCall("generate_visuals", {
+      kind: "directionPreview",
+      items: [
+        {
+          id: "variant-a",
+          title: "Visual variant A",
+          purpose: "Explore a selected image.",
+          requestedReferenceObjectIds: ["image-a"],
+          changeGoals: ["Refine the shell"],
+          preserve: ["Product identity"],
+          allowToChange: ["Surface transitions"],
+          productForm: ["Marine buoy"],
+          materialsAndCmf: ["Marine coating"],
+          environmentAndLighting: ["Studio lighting"],
+          avoid: ["Scene"],
+          role: "preview"
+        }
+      ]
+    }));
+
+    expect(parsed).toMatchObject({
+      name: "generate_visuals",
+      args: { kind: "visualDevelopment", items: [{ id: "variant-a", role: "preview" }] }
+    });
+  });
+
+  it("uses visual development when direction-like variants start from an image rather than selected directions", () => {
+    const args = {
+      kind: "directionPreview" as const,
+      items: [
+        {
+          id: "variant-a",
+          title: "Visual variant A",
+          purpose: "Explore a selected image.",
+          targetDirectionId: "direction-a",
+          requestedReferenceObjectIds: ["image-a"],
+          changeGoals: ["Refine the shell"],
+          preserve: ["Product identity"],
+          allowToChange: ["Surface transitions"],
+          productForm: ["Marine buoy"],
+          materialsAndCmf: ["Marine coating"],
+          environmentAndLighting: ["Studio lighting"],
+          avoid: ["Scene"],
+          role: "conceptImage" as const
+        }
+      ]
+    };
+
+    expect(normalizeGenerateVisualsForSelectedDirections(args, 0).kind).toBe("visualDevelopment");
+    expect(normalizeGenerateVisualsForSelectedDirections(args, 1).kind).toBe("directionPreview");
   });
 
   it("rejects unsupported tool names", () => {

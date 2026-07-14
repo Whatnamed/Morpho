@@ -15,9 +15,15 @@ import type {
   ProjectMemoryItem,
   ProjectMemoryView,
   ProjectMemoryViewKey,
+  StageRecordRevision,
   StageRecordKey,
   VisualBranchRecord
 } from "./types";
+import {
+  getCurrentProjectMemoryRevision,
+  getCurrentStageRecordRevision,
+  reconcileProjectMemory
+} from "./projectMemory";
 import {
   buildSemanticPatchSummary,
   validateConversationSemanticPatch,
@@ -168,6 +174,7 @@ export type SemanticEntryTaskScope = {
 export type ProjectContinuityContext = {
   currentFocus: CurrentProjectFocus;
   relevantStageRecords: ContinuityRecordEntry[];
+  currentStageRecords: StageRecordRevision[];
   relevantProjectMemoryViews: ProjectMemoryView[];
   reviewRequiredItems: ContinuityRecordEntry[];
   omitted: Array<{ id: string; reason: string }>;
@@ -447,16 +454,19 @@ export function resolveContinuityValidity(workspace: MorphoWorkspace): MorphoWor
     const validity = validityFromReasons(resolvedReasons);
     return {
       ...entry,
+      summary: normalizeDeterministicEntrySummary(workspace, entry),
       validity,
       sourceRefs,
       invalidationReasons: resolvedReasons.length > 0 ? [...new Set(resolvedReasons)] : undefined
     };
   });
+  const currentFocus = normalizeCurrentFocusSummary(workspace.projectContinuity.currentFocus, recordEntries);
 
   return {
     ...workspace,
     projectContinuity: {
       ...workspace.projectContinuity,
+      currentFocus,
       recordEntries
     }
   };
@@ -480,117 +490,34 @@ export function getContinuityRecordGroups(workspace: MorphoWorkspace): Record<St
 }
 
 export function deriveProjectMemoryViews(workspace: MorphoWorkspace): ProjectMemoryViews {
-  const resolved = resolveContinuityValidity(workspace);
-  const currentDefinitionRevision = getCurrentDesignDefinitionRevision(resolved);
-  const currentDefinitionObject = currentDefinitionRevision
-    ? resolved.objects[currentDefinitionRevision.designDefinitionId]
-    : undefined;
-  const decisionEntries = resolved.projectContinuity.recordEntries.filter(
-    (entry) => entry.category === "decision" && getContinuityEntryEligibility(entry).canEnterMemory
-  );
-  const preferenceEntries = resolved.projectContinuity.recordEntries.filter(
-    (entry) =>
-      (entry.category === "preference" || entry.category === "constraint") &&
-      getContinuityEntryEligibility(entry).canEnterMemory
-  );
-  const rejectedDirections = Object.values(resolved.objects).filter(
-    (object): object is ConceptDirectionObject => object.type === "conceptDirection" && object.status === "eliminated"
-  );
-  const openQuestions = collectOpenQuestionItems(resolved);
+  const memoryWorkspace = reconcileProjectMemory(workspace);
+  const mapping = {
+    projectOverview: "projectOverview",
+    designDefinition: "designBrief",
+    preferencesAndAvoids: "userPreferences",
+    decisionLog: "decisionLog",
+    rejectedDirections: "rejectedDirections",
+    openQuestions: "openQuestions",
+    deliveryPlan: "outputPlan"
+  } as const;
 
-  return {
-    projectOverview: createMemoryView("projectOverview", [
-      {
-        id: `overview-${resolved.project.id}`,
-        title: resolved.project.title,
-        summary: truncateText(`${resolved.project.subtitle || "未命名项目"}；当前重点：${resolved.projectContinuity.currentFocus.note}`),
-        sourceRefs: [],
-        validity: "current"
-      }
-    ]),
-    designDefinition: createMemoryView(
-      "designDefinition",
-      currentDefinitionRevision && currentDefinitionObject
-        ? [
-            {
-              id: currentDefinitionRevision.id,
-              title: currentDefinitionRevision.title,
-              summary: truncateText(currentDefinitionRevision.summary || currentDefinitionRevision.coreProblem),
-              sourceRefs: [
-                createObjectRef(resolved, currentDefinitionObject.id),
-                withSourceAvailability(
-                  createRevisionRef(resolved, currentDefinitionRevision.id),
-                  currentDefinitionObject.visibility === "hidden" ? "hidden" : "active"
-                )
-              ].filter(isDefined),
-              validity: "current"
-            }
-          ]
-        : []
-    ),
-    preferencesAndAvoids: createMemoryView("preferencesAndAvoids", [
-      ...stringItemsFromDefinition(
-        currentDefinitionRevision,
-        currentDefinitionObject,
-        "design-principle",
-        currentDefinitionRevision?.designPrinciples ?? []
-      ),
-      ...stringItemsFromDefinition(
-        currentDefinitionRevision,
-        currentDefinitionObject,
-        "constraint",
-        currentDefinitionRevision?.constraints ?? []
-      ),
-      ...stringItemsFromDefinition(
-        currentDefinitionRevision,
-        currentDefinitionObject,
-        "avoid",
-        currentDefinitionRevision?.avoidDirections ?? []
-      ),
-      ...preferenceEntries.map((entry) => memoryItemFromEntry(entry))
-    ]),
-    decisionLog: createMemoryView("decisionLog", [
-      ...decisionEntries.map((entry) => memoryItemFromEntry(entry)),
-      ...resolved.projectContinuity.recordEntries
-        .filter((entry) => (entry.category === "rejection" || entry.semanticKind === "rejectionReason") && getContinuityEntryEligibility(entry).canEnterMemory)
-        .map((entry) => memoryItemFromEntry(entry)),
-      ...resolved.decisionRecords.slice(-8).map((decision) => ({
-        id: decision.id,
-        title: decision.summary,
-        summary: truncateText(decision.reason ?? decision.summary),
-        sourceRefs: [
-          {
-            kind: "decision" as const,
-            id: decision.id,
-            snapshot: {
-              title: decision.summary,
-              status: decision.kind,
-              summarySnippet: truncateText(decision.reason ?? decision.summary)
-            }
-          },
-          ...(decision.objectSnapshot ? [createObjectRef(resolved, decision.objectSnapshot.id)] : [])
-        ].filter(isDefined),
-        validity: "current" as const
-      }))
-    ]),
-    rejectedDirections: createMemoryView(
-      "rejectedDirections",
-      rejectedDirections.map((direction) => ({
-        id: direction.id,
-        title: direction.title,
-        summary: truncateText(direction.summary),
-        sourceRefs: [createObjectRef(resolved, direction.id)].filter(isDefined),
-        validity: "current" as const
-      }))
-    ),
-    openQuestions: createMemoryView("openQuestions", openQuestions),
-    deliveryPlan: createMemoryView(
-      "deliveryPlan",
-      resolved.projectContinuity.recordEntries
-        .filter((entry) => entry.stage === "deliveryPreparation" && entry.validity === "current")
-        .map((entry) => memoryItemFromEntry(entry))
-    )
-  };
+  return Object.fromEntries(
+    (Object.keys(mapping) as ProjectMemoryViewKey[]).map((viewKey) => {
+      const revision = getCurrentProjectMemoryRevision(memoryWorkspace.projectMemory, mapping[viewKey]);
+      const items = revision
+        ? revision.sections.flatMap((section) =>
+            section.items.map((summary, itemIndex) => ({
+              id: `${revision.id}:${section.key}:${itemIndex}`,
+              title: viewKey === "rejectedDirections" ? summary.split("；")[0] ?? section.title : section.title,
+              summary: truncateText(summary),
+              sourceRefs: revision.sourceRefs,
+              validity: revision.reviewRequired ? ("reviewRequired" as const) : ("current" as const)
+            }))
+          )
+        : [];
+      return [viewKey, createMemoryView(viewKey, items)];
+    })
+  ) as ProjectMemoryViews;
 }
 
 export function buildProjectContinuityContext(
@@ -626,7 +553,8 @@ export function buildProjectContinuityContext(
     included.push(limitEntrySummary(entry));
   }
 
-  const memoryViews = deriveProjectMemoryViews(resolved);
+  const memoryWorkspace = reconcileProjectMemory(resolved);
+  const memoryViews = deriveProjectMemoryViews(memoryWorkspace);
   const memoryRank = CONTEXT_MEMORY_RELEVANCE[input.taskKind];
   const relevantProjectMemoryViews = memoryRank
     .map((key) => ({
@@ -645,10 +573,14 @@ export function buildProjectContinuityContext(
     .filter((entry) => isSemanticEntryScopeRelevantToTaskContext(entry, taskScope))
     .slice(0, PROJECT_CONTINUITY_CONTEXT_LIMITS.maxReviewRequiredItems)
     .map(limitEntrySummary);
+  const currentStageRecords = CONTEXT_STAGE_RELEVANCE[input.taskKind]
+    .map((stage) => getCurrentStageRecordRevision(memoryWorkspace.projectMemory, stage))
+    .filter((revision): revision is StageRecordRevision => Boolean(revision));
 
   return {
     currentFocus: resolved.projectContinuity.currentFocus,
     relevantStageRecords: included,
+    currentStageRecords,
     relevantProjectMemoryViews,
     reviewRequiredItems,
     omitted,
@@ -909,7 +841,7 @@ function createRecordEntry(
         ...base,
         stage: "directionAndVisual",
         category: "decision",
-        summary: `已将「${workspace.objects[event.imageObjectId]?.title ?? event.imageObjectId}」设为后续默认参考。`,
+        summary: defaultReferenceEventSummary(workspace, event),
         sourceRefs: [
           createObjectRef(workspace, event.imageObjectId),
           event.decisionId ? createDecisionRef(workspace, event.decisionId) : undefined
@@ -1037,6 +969,61 @@ function createFocusForEvent(event: ProjectContinuityEvent, entry: ContinuityRec
     sourceOperationId: operationRef?.id,
     note: entry.summary
   };
+}
+
+function defaultReferenceEventSummary(
+  workspace: MorphoWorkspace,
+  event: Extract<ProjectContinuityEvent, { type: "defaultReferenceChanged" }>
+): string {
+  const title = workspace.objects[event.imageObjectId]?.title ?? event.imageObjectId;
+  const decision = event.decisionId
+    ? workspace.decisionRecords.find((record) => record.id === event.decisionId)
+    : undefined;
+  const wasCleared =
+    event.previousImageObjectId === event.imageObjectId ||
+    (decision?.kind === "setDefaultReference" && decision.summary.startsWith("清除后续默认参考"));
+  return wasCleared ? `已清除「${title}」的后续默认参考。` : `已将「${title}」设为后续默认参考。`;
+}
+
+function normalizeDeterministicEntrySummary(workspace: MorphoWorkspace, entry: ContinuityRecordEntry): string {
+  if (entry.origin !== "deterministicEvent" || !entry.dedupeKey.startsWith("defaultReferenceChanged:")) {
+    return entry.summary;
+  }
+  const decisionRef = entry.sourceRefs.find((ref) => ref.kind === "decision");
+  const decision = decisionRef
+    ? workspace.decisionRecords.find((record) => record.id === decisionRef.id)
+    : undefined;
+  if (decision?.kind !== "setDefaultReference") {
+    return entry.summary;
+  }
+  const objectRef = entry.sourceRefs.find((ref) => ref.kind === "object");
+  const title = objectRef?.snapshot?.title ?? (objectRef ? workspace.objects[objectRef.id]?.title : undefined);
+  if (!title) {
+    return entry.summary;
+  }
+  return decision.summary.startsWith("清除后续默认参考")
+    ? `已清除「${title}」的后续默认参考。`
+    : `已将「${title}」设为后续默认参考。`;
+}
+
+function normalizeCurrentFocusSummary(
+  currentFocus: CurrentProjectFocus,
+  entries: ContinuityRecordEntry[]
+): CurrentProjectFocus {
+  const sourceObjectIds = [...currentFocus.sourceObjectIds].sort();
+  const matchingEntry = [...entries].reverse().find((entry) => {
+    if (entry.stage !== currentFocus.area || entry.updatedAt !== currentFocus.updatedAt) {
+      return false;
+    }
+    const entryObjectIds = entry.sourceRefs
+      .filter((ref) => ref.kind === "object")
+      .map((ref) => ref.id)
+      .sort();
+    return entryObjectIds.length === sourceObjectIds.length && entryObjectIds.every((id, index) => id === sourceObjectIds[index]);
+  });
+  return matchingEntry && matchingEntry.summary !== currentFocus.note
+    ? { ...currentFocus, note: matchingEntry.summary }
+    : currentFocus;
 }
 
 function getEventDedupeKey(event: ProjectContinuityEvent): string {

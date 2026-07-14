@@ -193,6 +193,49 @@ export type ArtifactProposal =
   | ConceptDirectionProposal
   | DeliveryPlanProposal;
 
+export type VisualIntentItem = {
+  id: string;
+  targetDirectionId?: OperationObjectId;
+  visualBranchId?: OperationObjectId;
+  title: string;
+  purpose: string;
+  requestedReferenceObjectIds: OperationObjectId[];
+  excludeDefaultReference?: boolean;
+  changeGoals: string[];
+  preserve: string[];
+  allowToChange: string[];
+  composition?: string;
+  viewpoint?: string;
+  productForm: string[];
+  materialsAndCmf: string[];
+  environmentAndLighting: string[];
+  avoid: string[];
+  userPromptRemainder?: string;
+  role: ImageRole;
+};
+
+export type VisualReferenceReason =
+  | "userExplicit"
+  | "selectedSource"
+  | "branchRoot"
+  | "directParent"
+  | "directionRepresentative"
+  | "defaultReference"
+  | "projectReference";
+
+export type VisualReferenceResolution = {
+  resolvedObjectIds: OperationObjectId[];
+  candidates: Array<{
+    objectId: OperationObjectId;
+    reason: VisualReferenceReason;
+    priority: number;
+    included: boolean;
+    omissionReason?: "providerLimit" | "duplicate" | "unavailable" | "directionMismatch" | "defaultExcluded";
+  }>;
+  providerLimit: number;
+  defaultReferenceExcluded: boolean;
+};
+
 export type VisualGenerationPlanItem = {
   id: string;
   targetDirectionId?: OperationObjectId;
@@ -202,6 +245,9 @@ export type VisualGenerationPlanItem = {
   prompt: string;
   referenceObjectIds: OperationObjectId[];
   role: ImageRole;
+  visualIntent?: VisualIntentItem;
+  referenceResolution?: VisualReferenceResolution;
+  promptContractVersion?: string;
 };
 
 export type VisualGenerationPlan = {

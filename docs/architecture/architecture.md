@@ -8,7 +8,8 @@ Implemented routes:
 
 - `/` renders the local project homepage.
 - `/projects/[projectId]` renders the Morpho workspace for one local project.
-- `/api/ai/chat` proxies server-side AiJWS/OpenAI-compatible text chat.
+- `/api/ai/agent` is the formal workspace Agent route and streams OpenAI-compatible Responses SSE.
+- `/api/ai/chat` remains a deprecated compatibility route for isolated legacy tests; the formal workspace panel has no caller.
 - `/api/ai/image` proxies server-side GrsAI image generation and returns the generated image bytes.
 
 Important module boundaries:
@@ -26,7 +27,7 @@ No database, authentication, cloud object storage, Supabase, multiplayer sync, e
 
 ## Data Model
 
-Structured workspace data is schema version `14`.
+Structured workspace data is schema version `15`.
 
 Current workspace state includes:
 
@@ -39,7 +40,9 @@ Current workspace state includes:
 - persisted workspace UI state in `workspace.ui`;
 - continuous AI messages in `workspace.ai.messages`.
 - optional ordered Agent process traces in `AiMessage.agentTrace`.
-- short-term conversation checkpoints in `workspace.ai.conversationCheckpoints`.
+- legacy conversation checkpoints in `workspace.ai.conversationCheckpoints` for migration and audit compatibility;
+- project-wide compaction state and revisioned summaries in `workspace.ai.conversationCompaction` and `workspace.ai.conversationSummaryRevisions`;
+- seven revisioned current project-memory projections plus six possible revisioned stage records in `workspace.projectMemory`;
 - saved local Compare analyses in `workspace.ai.comparisonAnalyses`.
 - lightweight Operation records in `workspace.operations`;
 - Artifact Proposal records in `workspace.artifactProposals`;
@@ -116,7 +119,7 @@ M5-A additions:
 - task context now includes bounded project continuity records and derived memory views with deterministic relevance sorting;
 - the left rail exposes a lightweight `项目记录` drawer, while the project homepage shows recent focus and continuity update notes without progress widgets.
 
-M5-B1 additions:
+M5-B1 schema-v9 compatibility history (superseded by schema-v15 Memory feedback):
 
 - schema v9 adds controlled conversation semantic records to `workspace.projectContinuity.recordEntries` without changing real project facts;
 - conversation semantic entries carry `origin`, `manualState`, `semanticKind`, `sourceMessageId`, `evidenceQuote`, and `scope`;
@@ -131,7 +134,9 @@ M5-B1 additions:
 - `getContinuityEntryEligibility` centralizes `manualState`, `validity`, and `sourceAvailability` behavior for memory, context, review lists, and drawer labels;
 - assistant messages can show a lightweight `已补入项目记录` feedback button that opens/highlights records without triggering AI or changing focus.
 
-M5-B2 additions:
+M5-B2 schema-v10 compatibility history (superseded by the schema-v15 continuous-conversation runtime below):
+
+The following bullets explain why legacy checkpoint fields still exist and how older workspaces were produced. They are not the current formal Agent Context contract.
 
 - schema v10 adds short-term conversation checkpoints to `workspace.ai.conversationCheckpoints`; `ProjectContinuityState` remains schema v2;
 - old v9 workspaces migrate by initializing an empty checkpoint array, preserving all raw `ai.messages`, and not fabricating lane keys or checkpoint content;
@@ -170,7 +175,7 @@ M5-C additions:
 - schema v11 adds saved local Compare analyses under `workspace.ai.comparisonAnalyses` and links assistant messages through `comparisonAnalysisId`;
 - Compare source selection is explicit only: 2-4 active selected objects, with hidden/missing/duplicate/unselected objects blocked for new analyses;
 - parsed file sources require a sent `documentExtract`, and image visual evidence is authorized only when pixels or contact sheets are attached in that request;
-- `/api/ai/chat` accepts `comparisonContext` for source/evidence availability and `comparisonBackgroundContext` for slim design-definition, continuity, and default-reference criteria that cannot become sources or decision targets;
+- legacy schema-v11 compatibility tests still cover `/api/ai/chat` comparison payloads; the formal panel now creates Compare analysis through the Agent `create_comparison_analysis` tool with the same local authorization and validation;
 - model `objectComparisons` carry `evidenceBasis`, and local validation rejects mismatches against actual pixels/document extracts/object summaries;
 - `keyConclusionCandidate` is candidate-only and may use only selected true text evidence sources: sent document extracts, research objects, or existing key conclusions;
 - same-reply design-definition or concept-direction Proposal JSON suppresses Compare writes, semantic patches, checkpoints, and Compare decision entry points;
@@ -209,6 +214,22 @@ M6 additions:
 - refreshing a source-updated delivery reference is an explicit user action that updates only that reference snapshot, preserves editorial caption/note, and writes a normal decision plus delivery continuity event;
 - `prepareDeliverySection` sends only the current section delivery reference snapshots in `deliverySectionContext`, does not send web search, normal task context, Compare context, live source objects, full files, or full document extracts, and creates only a pending draft until the user applies it;
 - the floating delivery preparation panel supports package creation, section editing, explicit add-selected-object references, captions, gaps, stale-reference refresh, and draft apply/discard without becoming an export editor or slide layout engine.
+
+## Schema v15 AI Continuity And Memory
+
+Schema v15 is the current runtime contract and supersedes lane-local checkpoint selection:
+
+- `conversationLaneKey` and legacy checkpoints remain labels and migration evidence only;
+- `ConversationCompactionState` points to a revisioned project-wide summary boundary, while all original `ai.messages` remain persisted and searchable;
+- `ProjectMemoryState` contains seven document descriptors, current revision pointers, immutable history, source refs, basis, and `reviewRequired`;
+- stage records use six possible project areas but create current revisions only for stages with real content; Compare writes back to the relevant stage and never becomes a stage;
+- deterministic projection and controlled semantic entries meet in one Memory Kernel, with consecutive equivalent revisions collapsed during migration so reload is idempotent;
+- Agent messages record prompt-contract version, task strategy, specific memory/stage update keys, citations, and Agent Trace provenance;
+- generated images record structured intent, compiled prompt, reference-resolution diagnostics, prompt-contract version, model settings, and operation/provider provenance;
+- editable backups default to full conversation scope and preserve raw chat, summary revisions, legacy checkpoints, memory/stage revisions, Continuity Events, Agent Trace, citations, Compare analyses, and image provenance;
+- the generated current-case fixture is upgraded with `npm.cmd run case-study:upgrade`; repeated upgrades must produce the same workspace hash.
+
+No new runtime dependency or external service was introduced for schema v15.
 
 ## Local-First Persistence
 
@@ -298,51 +319,34 @@ Asset panel and search are real workspace queries:
 
 ## AI Providers
 
-Text chat:
+Text Agent:
 
-- Browser calls `/api/ai/chat`.
-- The route reads `MORPHO_AI_*` / `AIJWS_*` only on the server.
-- AiJWS is called through the shared OpenAI-compatible provider adapter.
-- The browser receives normalized NDJSON stream events: `delta`, `citations`, and `done`.
-- Task routing uses manual user selection as execution authority, while the default discussion/chat state can adopt recommended research, image-generation, design-definition, or concept-direction execution paths automatically.
-- For `chatAnalysis` and `researchOperation`, selected active image assets are read from IndexedDB and sent through an adaptive visual input pack. Small selections are sent as individual compressed images; larger selections are represented by one or more generated contact sheets so every selected image participates without a user-visible image count limit. The server sends the resulting images as OpenAI-compatible `image_url` content to the configured multimodal model.
-- For `chatAnalysis` and `researchOperation`, selected parsed file objects can send bounded local `documentExtract` text to AiJWS. These extracts are identified as local object sources, not as network citations.
-- For `imageGeneration` planning only, AiJWS can also receive selected active image pixels/contact sheets plus selected local `documentExtract` text when the current task context authorizes them. The route validation keeps those inputs for planning, but `imageGeneration` still never receives web search tools.
-- For `prepareDeliverySection`, AiJWS receives only `deliverySectionContext` frozen snapshots for the current delivery section. Route validation drops web search, and the client does not send image attachments, local `documentExtract` text, normal task context, or Compare context.
-- Hidden images, unselected old images, default references, and whole-canvas screenshots are not sent by default.
-- When `MORPHO_AI_WEB_SEARCH_ENABLED=true`, `chatAnalysis` and `researchOperation` may provide AiJWS/OpenAI-compatible web-search tooling where supported. `imageGeneration` never receives web search tools.
-- Citation snapshots are created only from provider citation/annotation fields. Morpho does not fabricate sources from normal assistant text.
-- MiMo environment variables are not read by the text AI route.
+- The formal workspace panel calls only `/api/ai/agent`; the route streams Responses reasoning summaries, commentary, function calls, citations, usage, context pressure, and final text over typed SSE.
+- `/api/ai/chat` is retained only for compatibility tests and has no formal-panel caller. Delivery section drafting, research, design definitions, directions, comparison, memory updates, and visual planning all use Agent tools or deterministic domain services.
+- Context is one continuous project conversation. Selection, focus, direction, branch, and the legacy lane key affect strategy and provenance only; they never filter formal history.
+- Below the prepare threshold, every uncompressed user/assistant message enters the request. After compaction, the current summary revision plus every complete message after its covered boundary enter the request. Raw messages are never deleted.
+- Default limits are a 372,000-token window, 200,000 prepare threshold, 300,000 compact threshold, and 16,000 target uncompressed tail. Production uses provider configuration; development may use the documented localStorage override for browser acceptance.
+- A valid summary revision is applied atomically with source range, count, hash, previous revision, and boundary metadata. Failed summary validation leaves the prior boundary unchanged. A provider context-limit error may trigger one client summary/retry after the server's replay-safe tool-output retry.
+- Explicit history, memory, and progress questions are guarded: the Agent must complete `search_project_conversation`, `read_project_memory`, and/or `read_stage_record` as required before a final answer can be accepted.
+- Task Strategy resolves discussion, research, design definition, concept direction, direction preview, visual development, comparison, delivery preparation, and history/memory. A versioned Prompt Registry composes shared authority, continuity, memory, and task policies.
+- `submit_memory_update` accepts only locally validated candidates backed by an exact quote from the persisted current user message. Deterministic projections remain authoritative; AI suggestions and one-off generation requests do not become user preferences.
+- Citation snapshots come only from provider citation/annotation fields or local web-search results. Morpho never fabricates citations from assistant prose.
 
 Image generation:
 
-- Browser calls `/api/ai/image`.
-- The route reads `MORPHO_GRS_*` only on the server.
-- GrsAI uses `POST /v1/api/generate` and, when needed, bounded polling on `GET /v1/api/result?id=...`.
-- GrsAI image models are exposed through a static, client-safe catalog. The current default is `nano-banana-2-lite`.
-- The right-side image task UI lets the user choose model, aspect ratio, and model-supported size option for the current request only.
-- GrsAI request parameters are selected by server-side model profile. `nano-banana-*` models send `replyType: "json"` and send `imageSize` only when the selected model supports a size option; `gpt-image-2` sends pixel-style `aspectRatio`, `replyType: "json"`, and no `imageSize`.
-- The server downloads the final remote result URL and returns image bytes to the browser.
-- The browser stores the returned image Blob in IndexedDB and creates a new `ImageObject` plus canvas instance.
-- Imported and generated images share the same canvas size helper, using intrinsic asset dimensions when available and `contain` display semantics on the canvas.
-- Generated `ImageObject` records include generation metadata: model id, model label, aspect ratio, optional size option, prompt, reference object IDs, optional direction ID, and creation time.
-- Image generation operations persist `operationId`, `clientRequestId`, optional provider task ID, status, prompt, references, model/profile, and timing. Uncertain network responses are not automatically resubmitted.
-- Visual generation can start from selected images, concept directions, design definitions, or a text prompt. Source/version relations are created only when image sources are present; selected concept directions create `belongsToDirection`.
-- Direction-preview and visual-development generation first compile an AiJWS `morphoVisualGenerationPlan`. The browser validates object IDs, direction/branch scope, source mix, result count, and visual role before making GrsAI image calls.
-- Direction-preview generation supports `1`, `2`, `4`, or `6` previews per selected direction, with a hard total limit of `8` items per run. The chosen preview count is recorded into image-generation Operation metadata as `requestedPreviewCount`.
-- Operation metadata stores the visual plan, requested preview count, created result object IDs, and per-item failures so a partial multi-image run remains inspectable.
+- The Agent sends structured visual intent, not a final provider prompt. `ImagePromptCompiler` combines current user input, Design Brief, direction revision, user preferences, role/task template, preservation/change boundaries, and a model adapter.
+- References are resolved deterministically: current explicit references, selected source, branch root/direct parent, target-direction representative, applicable default reference, then other required project references. Duplicates, direction mismatches, default exclusion, unavailable assets, and provider-limit omissions are recorded.
+- `1 / 2 / 4 / 6` remain UI shortcuts only. Explicit positive counts such as 3, 5, 9, or 12 and more than three directions are accepted; the Agent must produce one complete plan and execution may use bounded concurrency.
+- The browser calls `/api/ai/image` only after local intent compilation and plan validation. Each success creates a new image object and persists structured intent, compiled prompt, prompt-contract version, resolved references and omissions, model settings, operation/provider IDs, and source relations.
+- Image progress updates the same Agent Process tool activity. Partial failures and cancellation preserve every completed image and never overwrite a source image.
 
-AI boundary:
+AI authority boundary:
 
-- AI can reply, analyze, suggest, and generate editable text or image results.
-- AI does not directly mutate domain state such as deletion, hidden state, direction status, default reference, delivery references, or project memory.
-- Image generation always creates a new image object and never overwrites a source image.
-- Research operation output can auto-create a research card, but it does not auto-apply key conclusions, design definitions, concept directions, direction status, default references, or delivery decisions.
-- AiJWS visual input is explicit and bounded by selected active images only. It is adaptively compressed or packed into contact sheets before upload, and never stored as Base64 in workspace/localStorage.
-- AiJWS planning context for `imageGeneration` may be richer than GrsAI generation context, but GrsAI still receives only prompt, model settings, and generation references. Local document extracts never flow into `/api/ai/image`.
-- Local document extracts are bounded context inputs, are not stored in workspace JSON, and are never presented as provider citations.
-- Delivery section drafts are pending local drafts, not project facts or project memory. Applying a draft is the explicit write boundary for section narrative, listed captions, suggested gaps, decision record, and continuity event.
-- If image read/compression fails, the chat falls back to object metadata and user text and tells the user that pixels were not sent.
+- AI reads through explicit tools and writes only through locally validated tools and domain operations.
+- Applied design definitions, direction status, default reference, important delivery decisions, and other high-impact actions keep their existing confirmation/authorization boundaries.
+- Project Memory contains source-driven current projections and revision history; it is not a second fact source and is not exposed as user-managed files.
+- Delivery section generation creates a pending draft from frozen section references. Applying that draft remains the explicit write boundary for narrative, captions, gaps, decisions, and continuity events.
+
 
 ## Built-In Case Study
 

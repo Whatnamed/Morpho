@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type SetStateAction } from "react";
 
 import type { MorphoWorkspace } from "@/domain/morpho/types";
+import { reconcileProjectMemory } from "@/domain/morpho/projectMemory";
 import { CURRENT_CASE_STUDY_ID } from "@/domain/morpho/caseStudy/currentCaseStudy";
 import { createBlankWorkspace } from "@/domain/morpho/workspace";
 import { interruptActiveOperations } from "@/domain/operations/operations";
@@ -133,6 +134,12 @@ export function usePersistentWorkspace(projectId: string) {
   }, [hasLoaded, loadResult.migrationError]);
 
   const flushWorkspace = useCallback(() => controllerRef.current?.flush() ?? persistence, [persistence]);
+  const setReconciledWorkspace = useCallback((action: SetStateAction<MorphoWorkspace>) => {
+    setWorkspace((current) => {
+      const next = typeof action === "function" ? action(current) : action;
+      return reconcileProjectMemory(next);
+    });
+  }, []);
 
-  return [workspace, setWorkspace, { ...persistence, migrationError: loadResult.migrationError }, flushWorkspace] as const;
+  return [workspace, setReconciledWorkspace, { ...persistence, migrationError: loadResult.migrationError }, flushWorkspace] as const;
 }

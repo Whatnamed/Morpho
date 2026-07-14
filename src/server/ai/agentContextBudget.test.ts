@@ -83,7 +83,7 @@ describe("agent context budget", () => {
     );
   });
 
-  it("keeps the system prompt, current user input, recent history, and latest tool tail when compacting", () => {
+  it("keeps every conversation message and only compacts completed old tool outputs in an emergency", () => {
     const request: OpenAiCompatibleResponseRequest = {
       input: [
         message("system", "系统规则"),
@@ -143,13 +143,13 @@ describe("agent context budget", () => {
         compactTokens: 1_000,
         targetTokens: 300
       },
-      force: "compact"
+      force: "emergency"
     });
 
     expect(prepared.pressure).toBe("compact");
     expect(JSON.stringify(prepared.request.input)).toContain("系统规则");
     expect(JSON.stringify(prepared.request.input)).toContain("当前问题");
-    expect(JSON.stringify(prepared.request.input)).not.toContain("旧问题一");
+    expect(JSON.stringify(prepared.request.input)).toContain("旧问题一");
     expect(JSON.stringify(prepared.request.input)).toContain("旧问题三");
     expect(JSON.stringify(prepared.request.input)).toContain("call-current");
     expect(JSON.stringify(prepared.request.input)).toContain("FIRST_CURRENT_TAIL_MARKER");
@@ -165,7 +165,8 @@ describe("agent context budget", () => {
     expect(
       oldOutput && "output" in oldOutput ? String(oldOutput.output).length : 0
     ).toBeLessThan(2_000);
-    expect(prepared.compressibleTokens).toBeLessThanOrEqual(300);
+    expect(prepared.compacted).toBe(true);
+    expect(prepared.checkpointRequested).toBe(false);
   });
 
   it("uses a provider usage baseline when it is higher than the local estimate", () => {
@@ -190,7 +191,23 @@ describe("agent context budget", () => {
         message("assistant", "很早的回答"),
         message("user", "最近的问题"),
         message("assistant", "最近的回答"),
-        message("user", "当前问题")
+        message("user", "当前问题"),
+        {
+          type: "function_call",
+          id: "old-call-item",
+          call_id: "old-call",
+          name: "search_web_evidence",
+          arguments: "{}"
+        },
+        { type: "function_call_output", call_id: "old-call", output: "x".repeat(20_000) },
+        {
+          type: "function_call",
+          id: "latest-call-item",
+          call_id: "latest-call",
+          name: "read_selected_context",
+          arguments: "{}"
+        },
+        { type: "function_call_output", call_id: "latest-call", output: "latest result" }
       ]
     };
     const seenRequests: OpenAiCompatibleResponseRequest[] = [];
@@ -214,10 +231,11 @@ describe("agent context budget", () => {
     });
 
     expect(seenRequests).toHaveLength(2);
-    expect(JSON.stringify(seenRequests[1]?.input)).not.toContain("很早的问题");
+    expect(JSON.stringify(seenRequests[1]?.input)).toContain("很早的问题");
     expect(JSON.stringify(seenRequests[1]?.input)).toContain("当前问题");
+    expect(JSON.stringify(seenRequests[1]?.input)).toContain("latest result");
     expect(execution.context.retried).toBe(true);
-    expect(execution.context.checkpointRequested).toBe(true);
+    expect(execution.context.checkpointRequested).toBe(false);
   });
 
   it("does not retry a non-context provider failure", async () => {

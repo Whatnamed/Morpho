@@ -150,7 +150,7 @@ describe("AiConversationPanel", () => {
     expect(html).not.toContain("citation-link-minimal");
   });
 
-  it("renders lightweight conversation checkpoint feedback without exposing checkpoint content", () => {
+  it("does not expose deprecated lane checkpoint feedback or checkpoint content", () => {
     const workspace = createInitialWorkspace();
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
@@ -192,8 +192,8 @@ describe("AiConversationPanel", () => {
       }))
     );
 
-    expect(html).toContain("已整理当前讨论脉络");
-    expect(html).toContain("后续同一工作重点的对话会使用这份讨论整理与最近消息保持连续");
+    expect(html).not.toContain("已整理当前讨论脉络");
+    expect(html).not.toContain("后续同一工作重点的对话会使用这份讨论整理与最近消息保持连续");
     expect(html).not.toContain("当前讨论聚焦在柔光轨道方向的转角连续性");
     expect(html).not.toContain("morphoConversationCheckpoint");
   });
@@ -757,6 +757,83 @@ describe("AiConversationPanel", () => {
     expect(html.indexOf("先确认当前选择范围。")).toBeLessThan(html.indexOf("最终回答在过程区下方。"));
   });
 
+  it("keeps image progress inside Agent Process without a duplicate Thinking row", () => {
+    const workspace = createInitialWorkspace();
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        workspace: {
+          ...workspace,
+          ai: {
+            ...workspace.ai,
+            messages: [
+              {
+                id: "assistant-image-trace",
+                role: "assistant",
+                body: "",
+                status: "streaming",
+                agentTrace: {
+                  startedAt: "2026-07-13T00:00:00.000Z",
+                  status: "streaming",
+                  parts: [
+                    {
+                      id: "tool-image",
+                      type: "toolActivity",
+                      toolCallId: "call-image",
+                      toolName: "generate_visuals",
+                      activityKind: "imageGeneration",
+                      label: "生成图像 2/3",
+                      state: "running",
+                      startedAt: "2026-07-13T00:00:01.000Z"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        isStreaming: true
+      }))
+    );
+
+    expect(html).toContain("生成图像 2/3");
+    expect(html).toContain("agent-process-activity is-running");
+    expect(html).not.toContain("thinking-row");
+    expect(html).not.toContain(">Thinking<");
+  });
+
+  it("shows specific project-memory feedback only when a persisted update exists", () => {
+    const workspace = createInitialWorkspace();
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        workspace: {
+          ...workspace,
+          ai: {
+            ...workspace.ai,
+            messages: [
+              {
+                id: "assistant-memory-update",
+                role: "assistant",
+                body: "已按你的明确偏好继续。",
+                status: "done",
+                continuityEntryIds: ["continuity-preference"],
+                memoryUpdateKeys: ["userPreferences"]
+              },
+              {
+                id: "assistant-no-memory-update",
+                role: "assistant",
+                body: "这只是一次普通讨论。",
+                status: "done"
+              }
+            ]
+          }
+        }
+      }))
+    );
+
+    expect(html).toContain("已更新项目偏好");
+    expect(html.match(/continuity-feedback/g)).toHaveLength(1);
+  });
+
   it("collapses completed historical Agent trace by default and keeps its duration title", () => {
     const workspace = createInitialWorkspace();
     const html = renderToStaticMarkup(
@@ -978,6 +1055,26 @@ describe("AiConversationPanel", () => {
     expect(html).toContain(">自动执行<");
     expect(html).toContain(">先确认<");
   });
+
+  it("keeps 1/2/4/6 direction-count shortcuts without exposing model routing", () => {
+    const workspace = createInitialWorkspace();
+    const selectedObjects = Object.values(workspace.objects).filter((object) => object.type === "conceptDirection");
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        workspace,
+        selectedObjects,
+        isImageTaskContext: true,
+        directionPreviewCount: 4
+      }))
+    );
+
+    expect(html).toContain("每方向预览数");
+    expect(html).toContain(`${selectedObjects.length} 个方向 × 每方向 4 张 = 总计 ${selectedObjects.length * 4} 张`);
+    for (const count of [1, 2, 4, 6]) {
+      expect(html).toContain(`<option value="${count}"`);
+    }
+    expect(html).not.toContain(">模型<");
+  });
 });
 
 function makeProps(overrides: Partial<ComponentProps<typeof AiConversationPanel>>) {
@@ -988,7 +1085,7 @@ function makeProps(overrides: Partial<ComponentProps<typeof AiConversationPanel>
     suggestions: [],
     draft: "",
     isOpen: true,
-    isLocalEditMode: false,
+    isImageTaskContext: false,
     turnMode: "auto" as const,
     isStreaming: false,
     imageGenerationSettings: {
@@ -1000,7 +1097,6 @@ function makeProps(overrides: Partial<ComponentProps<typeof AiConversationPanel>
       sizeOptions: [],
       capabilities: ["textToImage" as const]
     },
-    imageGenerationModelOptions: [],
     directionPreviewCount: 2 as const,
     pendingConfirmation: null,
     showFailure: false,
@@ -1012,7 +1108,6 @@ function makeProps(overrides: Partial<ComponentProps<typeof AiConversationPanel>
     onSuggestionClick: () => undefined,
     onSendMessage: () => undefined,
     onCancelRequest: () => undefined,
-    onRunLocalEdit: () => undefined,
     onApplyProposal: () => undefined,
     onRejectProposal: () => undefined,
     onContinueProposalDiscussion: () => undefined,

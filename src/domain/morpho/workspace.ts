@@ -10,6 +10,17 @@ import {
   resolveContinuityValidity,
   type LegacyProjectFocus
 } from "./projectContinuity";
+import {
+  createEmptyProjectMemoryState,
+  normalizeProjectMemoryState,
+  reconcileProjectMemory
+} from "./projectMemory";
+import {
+  createEmptyConversationCompactionState,
+  migrateLegacyCheckpointToConversationCompaction,
+  normalizeConversationCompactionState,
+  normalizeConversationSummaryRevisions
+} from "./conversationCompaction";
 import initialCaseStudyWorkspaceFixture from "./caseStudy/currentCaseWorkspace.generated.json";
 import legacyNightrailTestFixture from "./caseStudy/legacyNightrailPristine.fixture.json";
 import type { ArtifactProposal, SourceSemanticSnapshot } from "../operations/types";
@@ -51,7 +62,7 @@ import type {
 } from "./types";
 
 const DEFAULT_REFERENCE_HIDDEN_MESSAGE = "当前后续默认参考已隐藏，请先恢复或替换后再用于相关生成。";
-const CURRENT_SCHEMA_VERSION = 14;
+const CURRENT_SCHEMA_VERSION = 15;
 
 export type DeleteObjectResult =
   | {
@@ -161,7 +172,7 @@ export function createTestWorkspace(): MorphoWorkspace {
 export function createBlankWorkspace(projectId: string): MorphoWorkspace {
   const now = new Date().toISOString();
 
-  return reconcileWorkspaceDerivedState({
+  return reconcileProjectMemory(reconcileWorkspaceDerivedState({
     schemaVersion: CURRENT_SCHEMA_VERSION,
     project: {
       id: projectId,
@@ -201,6 +212,7 @@ export function createBlankWorkspace(projectId: string): MorphoWorkspace {
       },
       now
     }),
+    projectMemory: createEmptyProjectMemoryState(now),
     canvas: {
       view: { x: 0, y: 0, zoom: 1 },
       instances: []
@@ -208,6 +220,8 @@ export function createBlankWorkspace(projectId: string): MorphoWorkspace {
     ai: {
       messages: [],
       conversationCheckpoints: [],
+      conversationCompaction: createEmptyConversationCompactionState(),
+      conversationSummaryRevisions: {},
       comparisonAnalyses: {}
     },
     ui: {
@@ -217,7 +231,7 @@ export function createBlankWorkspace(projectId: string): MorphoWorkspace {
       canvasView: { x: 0, y: 0, zoom: 1 },
       workIntent: "discussion"
     }
-  });
+  }), now);
 }
 
 export function updateCanvasInstancePosition(
@@ -1515,6 +1529,17 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
     };
   }
 
+  if (value.schemaVersion === 14) {
+    return {
+      status: "ok",
+      workspace: normalizeCurrentWorkspace({
+        ...(structuredClone(value) as Record<string, unknown>),
+        schemaVersion: CURRENT_SCHEMA_VERSION
+      }),
+      didMigrate: true
+    };
+  }
+
   if (value.schemaVersion === 13) {
     return {
       status: "ok",
@@ -1988,6 +2013,7 @@ function migrateV4Workspace(value: Record<string, unknown>): MorphoWorkspace {
       now,
       legacyFocus: legacyProjectFocus((cloned.project as Record<string, unknown>)?.currentFocus)
     }),
+    projectMemory: createEmptyProjectMemoryState(now),
     canvas: (cloned.canvas as MorphoWorkspace["canvas"]) ?? {
       view: { x: 0, y: 0, zoom: 1 },
       instances: []
@@ -2002,19 +2028,36 @@ function migrateV4Workspace(value: Record<string, unknown>): MorphoWorkspace {
     }
   };
 
-  return reconcileWorkspaceDerivedState(normalizeCurrentWorkspace(normalized));
+  return reconcileWorkspaceDerivedState(normalizeCurrentWorkspace(normalized), now);
 }
 
 function normalizeAiState(value: unknown): MorphoWorkspace["ai"] {
   if (!isRecord(value)) {
-    return { messages: [], conversationCheckpoints: [], comparisonAnalyses: {} };
+    return {
+      messages: [],
+      conversationCheckpoints: [],
+      conversationCompaction: createEmptyConversationCompactionState(),
+      conversationSummaryRevisions: {},
+      comparisonAnalyses: {}
+    };
   }
 
-  return {
-    messages: Array.isArray(value.messages) ? (value.messages as MorphoWorkspace["ai"]["messages"]) : [],
-    conversationCheckpoints: Array.isArray(value.conversationCheckpoints)
+  const messages = Array.isArray(value.messages) ? (value.messages as MorphoWorkspace["ai"]["messages"]) : [];
+  const conversationCheckpoints = Array.isArray(value.conversationCheckpoints)
       ? value.conversationCheckpoints.filter(isConversationCheckpoint)
-      : [],
+      : [];
+  const migrated = migrateLegacyCheckpointToConversationCompaction({
+    messages,
+    checkpoints: conversationCheckpoints,
+    state: normalizeConversationCompactionState(value.conversationCompaction),
+    revisions: normalizeConversationSummaryRevisions(value.conversationSummaryRevisions)
+  });
+
+  return {
+    messages,
+    conversationCheckpoints,
+    conversationCompaction: migrated.state,
+    conversationSummaryRevisions: migrated.revisions,
     comparisonAnalyses: isRecord(value.comparisonAnalyses)
       ? (value.comparisonAnalyses as MorphoWorkspace["ai"]["comparisonAnalyses"])
       : {}
@@ -2080,10 +2123,16 @@ function isConversationCheckpoint(value: unknown): value is MorphoWorkspace["ai"
 
 function normalizeCurrentWorkspace(value: Record<string, unknown>): MorphoWorkspace {
   const cloned = structuredClone(value) as Partial<MorphoWorkspace>;
-  const now = new Date().toISOString();
+  const sourceProject = isRecord(value.project) ? value.project : {};
+  const now =
+    typeof sourceProject.updatedAt === "string"
+      ? sourceProject.updatedAt
+      : typeof sourceProject.createdAt === "string"
+        ? sourceProject.createdAt
+        : new Date().toISOString();
   const canvasView = cloned.ui?.canvasView ?? cloned.canvas?.view ?? { x: 0, y: 0, zoom: 1 };
   const objects = normalizeObjectsForSchemaV13(normalizeObjectsForSchemaV7(cloned.objects ?? {}));
-  const rawProject = isRecord(value.project) ? value.project : {};
+  const rawProject = sourceProject;
   const project = {
     id: typeof rawProject.id === "string" ? rawProject.id : "project-nightrail",
     title: typeof rawProject.title === "string" ? rawProject.title : "未命名项目",
@@ -2108,7 +2157,7 @@ function normalizeCurrentWorkspace(value: Record<string, unknown>): MorphoWorksp
     legacyProjectFocus(rawProject.currentFocus)
   );
 
-  return reconcileWorkspaceDerivedState({
+  const normalized = reconcileWorkspaceDerivedState({
     schemaVersion: CURRENT_SCHEMA_VERSION,
     project,
     objects,
@@ -2126,6 +2175,7 @@ function normalizeCurrentWorkspace(value: Record<string, unknown>): MorphoWorksp
     visualBranches: cloned.visualBranches ?? {},
     workingState: cloned.workingState ?? createEmptyProjectWorkingState(now),
     projectContinuity: normalizedContinuity.state,
+    projectMemory: createEmptyProjectMemoryState(now),
     canvas: cloned.canvas ?? {
       view: { x: 0, y: 0, zoom: 1 },
       instances: []
@@ -2141,7 +2191,12 @@ function normalizeCurrentWorkspace(value: Record<string, unknown>): MorphoWorksp
       canvasView,
       workIntent: cloned.ui?.workIntent ?? "discussion"
     }
-  });
+  }, now);
+
+  return {
+    ...normalized,
+    projectMemory: normalizeProjectMemoryState(normalized, cloned.projectMemory, now)
+  };
 }
 
 function createLegacyAssetRecords(objects: Record<MorphoObjectId, MorphoObject>): Record<string, AssetRecord> {

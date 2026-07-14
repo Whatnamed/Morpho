@@ -24,7 +24,7 @@ export function classifyVisualGenerationIntent(
   const selectedDirections = selectedObjects.filter((object) => object.type === "conceptDirection");
   const selectedImages = selectedObjects.filter((object) => object.type === "image");
 
-  if (selectedDirections.length > 0 && selectedDirections.length <= 3 && DIRECTION_PREVIEW_PATTERN.test(text)) {
+  if (selectedDirections.length > 0 && DIRECTION_PREVIEW_PATTERN.test(text)) {
     return "directionPreview";
   }
 

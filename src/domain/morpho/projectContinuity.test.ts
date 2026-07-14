@@ -411,7 +411,7 @@ describe("project continuity runtime", () => {
     expect(researchEntry?.validity).toBe("current");
   });
 
-  it("derives seven traceable memory views without inventing delivery plans", () => {
+  it("derives seven traceable memory views from current structured state", () => {
     const workspace = createInitialWorkspace();
     const views = deriveProjectMemoryViews(workspace);
 
@@ -428,8 +428,8 @@ describe("project continuity runtime", () => {
       expect.objectContaining({ kind: "revision", id: "definition-revision-current-1" })
     );
     expect(views.rejectedDirections.items.map((item) => item.title)).toContain("方向 C：软性引导带");
-    expect(views.deliveryPlan.items).toEqual([]);
-    expect(views.deliveryPlan.emptyMessage).toBe("暂无真实交付计划。");
+    expect(views.deliveryPlan.items.length).toBeGreaterThan(0);
+    expect(views.deliveryPlan.items.some((item) => item.summary.includes("A1 展板"))).toBe(true);
   });
 
   it("builds deterministic task continuity context with relevance and validity rules", () => {
@@ -457,8 +457,9 @@ describe("project continuity runtime", () => {
     expect(context.currentFocus.area).toBe("directionAndVisual");
     expect(context.relevantStageRecords[0]?.stage).toBe("directionAndVisual");
     expect(context.relevantProjectMemoryViews.map((view) => view.key)).toEqual(
-      expect.arrayContaining(["designDefinition", "preferencesAndAvoids", "decisionLog"])
+      expect.arrayContaining(["designDefinition", "decisionLog", "openQuestions"])
     );
+    expect(context.relevantProjectMemoryViews.map((view) => view.key)).not.toContain("preferencesAndAvoids");
     expect(context.omitted.some((item) => item.reason.includes("not relevant"))).toBe(true);
     expect(context.truncated).toBe(false);
     expect(JSON.stringify(context)).not.toContain("prompt");
@@ -701,6 +702,7 @@ describe("project continuity runtime", () => {
     const workspaceWithMessage = {
       ...createInitialWorkspace(),
       ai: {
+        ...createInitialWorkspace().ai,
         messages: [userMessage],
         conversationCheckpoints: [],
         comparisonAnalyses: {}
@@ -728,7 +730,7 @@ describe("project continuity runtime", () => {
     ]).workspace;
     const removedMessage = resolveContinuityValidity({
       ...applied,
-      ai: { messages: [], conversationCheckpoints: [], comparisonAnalyses: {} }
+      ai: { ...applied.ai, messages: [], conversationCheckpoints: [], comparisonAnalyses: {} }
     });
     const entry = removedMessage.projectContinuity.recordEntries.find((candidate) => candidate.sourceMessageId === userMessage.id);
     const memory = deriveProjectMemoryViews(removedMessage);
@@ -753,7 +755,7 @@ describe("project continuity runtime", () => {
       createdAt: "2026-06-30T12:50:00.000Z",
       taskMode: "chatAnalysis" as const
     };
-    const validWorkspace = { ...base, ai: { messages: [validMessage], conversationCheckpoints: [], comparisonAnalyses: {} } };
+    const validWorkspace = { ...base, ai: { ...base.ai, messages: [validMessage], conversationCheckpoints: [], comparisonAnalyses: {} } };
     const valid = applyConversationSemanticPatch(
       validWorkspace,
       buildSemanticPatchAuthorization({
@@ -780,7 +782,7 @@ describe("project continuity runtime", () => {
     }), [{ kind: "preference", scope: "project", evidenceQuote: "Keep the night light warm", relatedObjectIds: [], relatedRevisionIds: [], relatedDecisionIds: [] }]);
     const assistantMessageWorkspace = {
       ...base,
-      ai: { messages: [{ ...validMessage, id: "assistant-message", role: "assistant" as const }], conversationCheckpoints: [], comparisonAnalyses: {} }
+      ai: { ...base.ai, messages: [{ ...validMessage, id: "assistant-message", role: "assistant" as const }], conversationCheckpoints: [], comparisonAnalyses: {} }
     };
     const assistantRole = applyConversationSemanticPatch(
       assistantMessageWorkspace,

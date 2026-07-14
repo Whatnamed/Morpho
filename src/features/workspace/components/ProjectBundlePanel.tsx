@@ -8,7 +8,6 @@ import type { EditableProjectBackupInspectionPreview } from "@/features/archive/
 type ProjectBundlePanelProps = {
   archiveIncludeFullChat: boolean;
   archiveIncludeContinuity: boolean;
-  backupIncludeFullChat: boolean;
   restorePreview: EditableProjectBackupInspectionPreview | null;
   busyLabel: string | null;
   message: {
@@ -18,7 +17,6 @@ type ProjectBundlePanelProps = {
   onClose: () => void;
   onArchiveIncludeFullChatChange: (checked: boolean) => void;
   onArchiveIncludeContinuityChange: (checked: boolean) => void;
-  onBackupIncludeFullChatChange: (checked: boolean) => void;
   onExportArchive: () => void;
   onExportBackup: () => void;
   onInspectBackup: (file: File) => void;
@@ -29,14 +27,12 @@ type ProjectBundlePanelProps = {
 export function ProjectBundlePanel({
   archiveIncludeFullChat,
   archiveIncludeContinuity,
-  backupIncludeFullChat,
   restorePreview,
   busyLabel,
   message,
   onClose,
   onArchiveIncludeFullChatChange,
   onArchiveIncludeContinuityChange,
-  onBackupIncludeFullChatChange,
   onExportArchive,
   onExportBackup,
   onInspectBackup,
@@ -96,17 +92,7 @@ export function ProjectBundlePanel({
           <RotateCcw size={14} />
           可编辑项目备份
         </div>
-        <p className="archive-panel-muted">用于恢复为新的独立项目副本。默认保留当前连续性，不会覆盖现有项目。</p>
-        <div className="archive-option-list">
-          <label className="archive-option">
-            <input
-              checked={backupIncludeFullChat}
-              type="checkbox"
-              onChange={(event) => onBackupIncludeFullChatChange(event.currentTarget.checked)}
-            />
-            <span>附带完整聊天记录</span>
-          </label>
-        </div>
+        <p className="archive-panel-muted">用于恢复为新的独立项目副本。完整聊天、Agent 过程、连续摘要、项目记忆和阶段记录会一并保留，不会覆盖现有项目。</p>
         <div className="archive-action-row">
           <button className="plain-button archive-action" type="button" disabled={isBusy} onClick={onExportBackup}>
             <Download size={14} />

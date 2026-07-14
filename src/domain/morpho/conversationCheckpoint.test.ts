@@ -440,6 +440,7 @@ describe("conversation checkpoint write and request context", () => {
       {
         ...createInitialWorkspace(),
         ai: {
+          ...createInitialWorkspace().ai,
           messages: makeLaneMessages(laneKey, 10),
           conversationCheckpoints: [
             {
