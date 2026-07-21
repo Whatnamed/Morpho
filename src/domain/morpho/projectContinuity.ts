@@ -424,7 +424,10 @@ export function applyConversationSemanticPatch(
     }
 
     const dedupeKey = getConversationSemanticPatchDedupeKey(validation.item, validation.summary, authorization.userMessageId);
-    if (nextWorkspace.projectContinuity.recordEntries.some((entry) => entry.dedupeKey === dedupeKey)) {
+    if (
+      nextWorkspace.projectContinuity.recordEntries.some((entry) => entry.dedupeKey === dedupeKey) ||
+      hasEquivalentCurrentSemanticEntry(nextWorkspace.projectContinuity.recordEntries, validation.item, validation.summary)
+    ) {
       continue;
     }
 
@@ -922,6 +925,32 @@ function getConversationSemanticPatchDedupeKey(item: ParsedConversationSemanticP
     normalizeForDedupe(summary),
     stableIds([...item.relatedObjectIds, ...item.relatedRevisionIds, ...item.relatedDecisionIds]).join("+") || "no-source"
   ].join(":");
+}
+
+function hasEquivalentCurrentSemanticEntry(
+  entries: readonly ContinuityRecordEntry[],
+  item: ParsedConversationSemanticPatchItem,
+  summary: string
+): boolean {
+  const sourceIds = stableIds([...item.relatedObjectIds, ...item.relatedRevisionIds, ...item.relatedDecisionIds]);
+  return entries.some((entry) => {
+    if (
+      entry.origin !== "conversationSemanticPatch" ||
+      entry.manualState !== "active" ||
+      entry.validity !== "current" ||
+      entry.semanticKind !== item.kind ||
+      (entry.scope ?? "project") !== item.scope ||
+      normalizeForDedupe(entry.summary) !== normalizeForDedupe(summary)
+    ) {
+      return false;
+    }
+    const entrySourceIds = stableIds(
+      entry.sourceRefs
+        .filter((ref) => ref.kind === "object" || ref.kind === "revision" || ref.kind === "decision")
+        .map((ref) => ref.id)
+    );
+    return entrySourceIds.length === sourceIds.length && entrySourceIds.every((id, index) => id === sourceIds[index]);
+  });
 }
 
 function createMessageRef(authorization: SemanticPatchAuthorization, evidenceQuote: string): ContinuitySourceRef {

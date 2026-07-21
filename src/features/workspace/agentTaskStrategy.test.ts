@@ -6,6 +6,7 @@ import { buildAgentPolicyBlocks, MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./
 import {
   buildRequiredAgentReadReminder,
   getMissingRequiredAgentReadTools,
+  resolveAgentReadIntent,
   resolveAgentTaskStrategy,
   resolveRequiredAgentReadTools
 } from "./agentTaskStrategy";
@@ -110,6 +111,25 @@ describe("Agent task strategy and prompt registry", () => {
         "你看看项目记忆和阶段记录，告诉我项目现在做到哪了、已经形成了哪些稳定决定、还有哪些问题没解决"
       )
     ).toEqual(["read_project_memory", "read_stage_record"]);
+  });
+
+  it("expands history, memory, and stage phrases without routing selected-object revisions to chat history", () => {
+    expect(resolveRequiredAgentReadTools("项目是怎么开始的，经历过哪些变化？")).toEqual(["search_project_conversation"]);
+    expect(resolveRequiredAgentReadTools("你记得我喜欢什么，之前说过不要什么？")).toEqual(["read_project_memory"]);
+    expect(resolveRequiredAgentReadTools("当前项目进度如何，接下来要做什么？")).toEqual([
+      "read_project_memory",
+      "read_stage_record"
+    ]);
+    expect(resolveAgentReadIntent("看一下上一版为什么这样做", { hasSelectedObject: true })).toMatchObject({
+      history: false,
+      objectRevision: true
+    });
+    expect(
+      resolve({
+        draft: "看一下上一版为什么这样做",
+        selectedObjects: [object("image-soft-rail-v2")]
+      })
+    ).toMatchObject({ kind: "discussion" });
   });
 
   function object(id: string): MorphoObject {

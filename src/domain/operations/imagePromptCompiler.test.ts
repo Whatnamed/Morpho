@@ -35,7 +35,7 @@ describe("Image Prompt Compiler and reference resolver", () => {
     );
   });
 
-  it("honors default-reference exclusion and rejects cross-direction references", () => {
+  it("honors default-reference exclusion and retains explicit cross-direction references", () => {
     const workspace = withImageAssets(createInitialWorkspace());
     const resolution = resolveVisualReferences({
       workspace,
@@ -47,9 +47,15 @@ describe("Image Prompt Compiler and reference resolver", () => {
       providerLimit: 4
     });
 
-    expect(resolution.resolvedObjectIds).not.toContain("image-support-island-preview");
+    expect(resolution.resolvedObjectIds).toContain("image-support-island-preview");
     expect(resolution.candidates).toContainEqual(
-      expect.objectContaining({ objectId: "image-support-island-preview", omissionReason: "directionMismatch" })
+      expect.objectContaining({
+        objectId: "image-support-island-preview",
+        reason: "userExplicit",
+        included: true,
+        crossDirection: true,
+        retentionReason: expect.any(String)
+      })
     );
     expect(resolution.candidates).toContainEqual(
       expect.objectContaining({ objectId: "image-soft-rail-v2", omissionReason: "defaultExcluded" })

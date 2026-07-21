@@ -2,6 +2,7 @@ import type {
   ConceptDirectionObject,
   ContinuityRecordEntry,
   ContinuitySourceRef,
+  AgentTaskStrategyKind,
   MemoryRevisionBasis,
   MorphoObject,
   MorphoWorkspace,
@@ -15,6 +16,7 @@ import type {
   StageRecordSections
 } from "./types";
 import { getContinuityEntryEligibility, resolveContinuityValidity } from "./projectContinuity";
+import { classifyDecisionRecords } from "./decisionRecords";
 
 export const PROJECT_MEMORY_KEYS: readonly ProjectMemoryKey[] = [
   "projectOverview",
@@ -52,6 +54,45 @@ export const STAGE_RECORD_TITLES: Record<StageRecordKey, string> = {
   designDefinition: "设计定义",
   directionAndVisual: "方向与视觉发展",
   deliveryPreparation: "交付准备"
+};
+
+export const AGENT_DEFAULT_MEMORY_LIMITS = {
+  maxSectionsPerDocument: 4,
+  maxItemsPerSection: 5,
+  maxItemChars: 320,
+  maxSourceRefs: 3
+} as const;
+
+export type AgentDefaultMemoryDocument = {
+  key: ProjectMemoryKey;
+  title: string;
+  revisionId?: string;
+  updatedAt?: string;
+  reviewRequired: boolean;
+  empty: boolean;
+  sections: ProjectMemorySection[];
+  sourceRefs: Array<{ kind: ContinuitySourceRef["kind"]; id: string; title?: string }>;
+};
+
+export type AgentDefaultStageRecord = {
+  stage: StageRecordKey;
+  revisionId?: string;
+  updatedAt?: string;
+  reviewRequired: boolean;
+  empty: boolean;
+  sections: StageRecordSections;
+  sourceRefs: Array<{ kind: ContinuitySourceRef["kind"]; id: string; title?: string }>;
+};
+
+export type AgentDefaultMemoryContext = {
+  documents: AgentDefaultMemoryDocument[];
+  stageRecords: AgentDefaultStageRecord[];
+  defaultReference?: {
+    status: "available" | "missing" | "unavailable";
+    objectId?: string;
+    title?: string;
+    directionId?: string;
+  };
 };
 
 type ProjectionWorkspace = Pick<
@@ -168,6 +209,153 @@ export function getStageRecordHistory(state: ProjectMemoryState, stage: StageRec
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
+export function buildAgentDefaultMemoryContext(
+  workspace: MorphoWorkspace,
+  strategy: AgentTaskStrategyKind
+): AgentDefaultMemoryContext {
+  const resolved = reconcileProjectMemory(resolveContinuityValidity(workspace));
+  const documentKeys = new Set<ProjectMemoryKey>([
+    "projectOverview",
+    "designBrief",
+    "userPreferences",
+    "openQuestions"
+  ]);
+  for (const key of defaultDocumentKeysForStrategy(strategy)) {
+    documentKeys.add(key);
+  }
+
+  return {
+    documents: [...documentKeys].map((key) => compactDefaultMemoryDocument(resolved.projectMemory, key)),
+    stageRecords: defaultStageKeysForStrategy(strategy, resolved.projectContinuity.currentFocus.area).map((stage) =>
+      compactDefaultStageRecord(resolved.projectMemory, stage)
+    ),
+    ...(isVisualStrategy(strategy) ? { defaultReference: compactDefaultReference(resolved) } : {})
+  };
+}
+
+function defaultDocumentKeysForStrategy(strategy: AgentTaskStrategyKind): ProjectMemoryKey[] {
+  switch (strategy) {
+    case "conceptDirection":
+      return ["rejectedDirections"];
+    case "deliveryPreparation":
+      return ["outputPlan"];
+    default:
+      return [];
+  }
+}
+
+function defaultStageKeysForStrategy(
+  strategy: AgentTaskStrategyKind,
+  currentFocus: StageRecordKey
+): StageRecordKey[] {
+  switch (strategy) {
+    case "research":
+      return ["research"];
+    case "designDefinition":
+      return ["research", "designDefinition"];
+    case "conceptDirection":
+    case "directionPreview":
+    case "visualDevelopment":
+      return ["directionAndVisual"];
+    case "deliveryPreparation":
+      return ["deliveryPreparation"];
+    case "comparison":
+    case "historyAndMemory":
+      return [];
+    case "discussion":
+      return [currentFocus];
+  }
+}
+
+function compactDefaultMemoryDocument(state: ProjectMemoryState, key: ProjectMemoryKey): AgentDefaultMemoryDocument {
+  const document = state.documents[key];
+  const revision = getCurrentProjectMemoryRevision(state, key);
+  return {
+    key,
+    title: document.title,
+    revisionId: revision?.id,
+    updatedAt: revision?.createdAt ?? document.updatedAt,
+    reviewRequired: revision?.reviewRequired ?? false,
+    empty: !revision || revision.sections.length === 0,
+    sections: revision ? compactMemorySectionsForAgent(revision.sections) : [],
+    sourceRefs: revision ? compactSourceRefsForAgent(revision.sourceRefs) : []
+  };
+}
+
+function compactDefaultStageRecord(state: ProjectMemoryState, stage: StageRecordKey): AgentDefaultStageRecord {
+  const record = state.stageRecords[stage];
+  const revision = getCurrentStageRecordRevision(state, stage);
+  return {
+    stage,
+    revisionId: revision?.id,
+    updatedAt: revision?.createdAt ?? record?.updatedAt,
+    reviewRequired: revision?.reviewRequired ?? false,
+    empty: !revision || stageSectionItemCount(revision.sections) === 0,
+    sections: revision ? compactStageSectionsForAgent(revision.sections) : {},
+    sourceRefs: revision ? compactSourceRefsForAgent(revision.sourceRefs) : []
+  };
+}
+
+function compactMemorySectionsForAgent(sections: readonly ProjectMemorySection[]): ProjectMemorySection[] {
+  return sections.slice(0, AGENT_DEFAULT_MEMORY_LIMITS.maxSectionsPerDocument).map((section) => ({
+    key: section.key,
+    title: section.title,
+    items: section.items
+      .slice(0, AGENT_DEFAULT_MEMORY_LIMITS.maxItemsPerSection)
+      .map((item) => truncateAgentMemoryItem(item))
+  }));
+}
+
+function compactStageSectionsForAgent(sections: StageRecordSections): StageRecordSections {
+  return Object.fromEntries(
+    Object.entries(sections)
+      .slice(0, AGENT_DEFAULT_MEMORY_LIMITS.maxSectionsPerDocument)
+      .map(([key, items]) => [
+        key,
+        (items ?? [])
+          .slice(0, AGENT_DEFAULT_MEMORY_LIMITS.maxItemsPerSection)
+          .map((item) => truncateAgentMemoryItem(item))
+      ])
+  ) as StageRecordSections;
+}
+
+function compactSourceRefsForAgent(
+  sourceRefs: readonly ContinuitySourceRef[]
+): Array<{ kind: ContinuitySourceRef["kind"]; id: string; title?: string }> {
+  return sourceRefs
+    .filter((source) => source.sourceAvailability !== "hidden" && source.sourceAvailability !== "missing")
+    .slice(0, AGENT_DEFAULT_MEMORY_LIMITS.maxSourceRefs)
+    .map((source) => ({ kind: source.kind, id: source.id, title: source.snapshot?.title }));
+}
+
+function compactDefaultReference(workspace: MorphoWorkspace): AgentDefaultMemoryContext["defaultReference"] {
+  const objectId = workspace.workingState.currentDefaultReferenceId;
+  if (!objectId) {
+    return { status: "missing" };
+  }
+  const object = workspace.objects[objectId];
+  if (!object || object.type !== "image" || object.visibility !== "active" || !object.assetId) {
+    return { status: "unavailable", objectId };
+  }
+  return {
+    status: "available",
+    objectId: object.id,
+    title: object.title,
+    directionId: object.directionId
+  };
+}
+
+function isVisualStrategy(strategy: AgentTaskStrategyKind): boolean {
+  return strategy === "directionPreview" || strategy === "visualDevelopment";
+}
+
+function truncateAgentMemoryItem(value: string): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > AGENT_DEFAULT_MEMORY_LIMITS.maxItemChars
+    ? `${normalized.slice(0, AGENT_DEFAULT_MEMORY_LIMITS.maxItemChars - 1)}…`
+    : normalized;
+}
+
 function projectDocument(
   workspace: ProjectionWorkspace,
   resolved: MorphoWorkspace,
@@ -200,6 +388,19 @@ function projectOverview(workspace: ProjectionWorkspace, resolved: MorphoWorkspa
   const recentEntry = [...resolved.projectContinuity.recordEntries]
     .filter(isCurrentEligibleEntry)
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+  const currentFocusSourceMissing = resolved.projectContinuity.currentFocus.sourceObjectIds.some(
+    (objectId) => !workspace.objects[objectId]
+  );
+  const currentDefinitionMissing = Boolean(
+    workspace.workingState.currentDesignDefinitionId &&
+      (!workspace.objects[workspace.workingState.currentDesignDefinitionId] || !currentDefinition)
+  );
+  const primaryDirectionMissing = Boolean(
+    workspace.workingState.primaryDirectionId && !workspace.objects[workspace.workingState.primaryDirectionId]
+  );
+  const hasReviewRequiredEntry = resolved.projectContinuity.recordEntries.some(
+    (entry) => getContinuityEntryEligibility(entry).canEnterReviewList
+  );
   const stableResults = uniqueText([
     currentDefinition ? `当前设计定义：${currentDefinition.title}` : "",
     primaryDirection?.type === "conceptDirection" ? `当前主方向：${primaryDirection.title}` : "",
@@ -221,7 +422,7 @@ function projectOverview(workspace: ProjectionWorkspace, resolved: MorphoWorkspa
       ...(recentEntry?.sourceRefs ?? [])
     ]),
     basis: recentEntry?.origin === "conversationSemanticPatch" ? "mixed" : "deterministic",
-    reviewRequired: Boolean(recentEntry && !isCurrentEligibleEntry(recentEntry))
+    reviewRequired: currentFocusSourceMissing || currentDefinitionMissing || primaryDirectionMissing || hasReviewRequiredEntry
   };
 }
 
@@ -283,13 +484,17 @@ function projectUserPreferences(resolved: MorphoWorkspace): ProjectedDocument {
 }
 
 function projectDecisionLog(workspace: ProjectionWorkspace): ProjectedDocument {
-  const decisions = [...workspace.decisionRecords].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  const classified = classifyDecisionRecords(workspace);
+  const currentDecisions = classified
+    .filter((item) => item.state === "current")
+    .map((item) => item.record)
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   return {
     sections: compactSections([
       section(
         "decisions",
         "当前项目决定",
-        decisions.map((decision) =>
+        currentDecisions.map((decision) =>
           [decision.summary, decision.reason ? `原因：${decision.reason}` : "", `时间：${decision.createdAt}`]
             .filter(Boolean)
             .join("；")
@@ -297,15 +502,13 @@ function projectDecisionLog(workspace: ProjectionWorkspace): ProjectedDocument {
       )
     ]),
     sourceRefs: uniqueSourceRefs(
-      decisions.flatMap((decision) => [
+      currentDecisions.flatMap((decision) => [
         decisionRef(decision.id, decision.summary, decision.kind),
         ...decision.relatedObjectIds.map((objectId) => objectRef(workspace.objects[objectId])).filter(isSourceRef)
       ])
     ),
     basis: "deterministic",
-    reviewRequired: decisions.some((decision) =>
-      decision.relatedObjectIds.some((objectId) => !workspace.objects[objectId])
-    )
+    reviewRequired: classified.some((item) => item.state === "reviewRequired")
   };
 }
 

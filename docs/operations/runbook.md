@@ -24,6 +24,8 @@ Cloudflare/OpenNext remains a retained, opt-in backup capability and does not re
 
 ## Environment
 
+Morpho's production Context Policy is fixed in `src/domain/morpho/agentContextPolicy.ts`: `256000` window, `204800` prepare, `230400` compact, and `16000` target uncompressed tail. These values are not configured through Vercel environment variables. Do not add `MORPHO_AI_CONTEXT_*` variables to `.env.local` or Vercel; they are ignored by the production runtime.
+
 Copy `.env.example` to `.env.local` for local development. Do not commit `.env.local`. `.env.example` is the sole baseline for environment-variable names, documented defaults, and comments.
 
 tldraw hobby / production license (browser-safe public key):
@@ -227,13 +229,13 @@ For manual Agent acceptance, use a disposable local project. Verify a normal ans
 
 ## AI Continuity Browser Acceptance
 
-Start a development server with real local configuration. Use a fresh Playwright profile and the generated current-case project:
+Start a development server with real local configuration. Use the already-open Chrome local page when available and the generated current-case project:
 
 ```bash
-npm.cmd run dev -- --hostname 127.0.0.1 --port 3007
+npm.cmd run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
-Open `http://127.0.0.1:3007/projects/project-morpho-case-study`. Formal panel traffic must use `/api/ai/agent`; no workspace action may call `/api/ai/chat`.
+Open `http://127.0.0.1:3000/projects/project-morpho-case-study`. Formal panel traffic must use `/api/ai/agent`; no workspace action may call `/api/ai/chat`.
 
 Minimum acceptance:
 

@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { createInitialWorkspace } from "../morpho/workspace";
+import type { VisualIntentItem } from "./types";
 import {
   inferImageRole,
   parseVisualGenerationPlanPayload,
   validateVisualGenerationPlan
 } from "./visualGenerationPlan";
+import { resolveVisualReferences } from "./visualReferenceResolver";
 
 describe("visual generation plan parsing and validation", () => {
   it("parses fenced AiJWS visual generation plans", () => {
@@ -379,4 +381,88 @@ describe("visual generation plan parsing and validation", () => {
     expect(inferImageRole("探索 CMF 材质颜色")).toBe("cmfStudy");
     expect(inferImageRole("继续细节连接结构")).toBe("detailStudy");
   });
+
+  it("keeps an explicitly selected image when it crosses into another direction", () => {
+    const workspace = withAvailableImages(createInitialWorkspace());
+    const intent = visualIntent({
+      targetDirectionId: "direction-support-island",
+      requestedReferenceObjectIds: ["image-soft-rail-v2"]
+    });
+    const resolution = resolveVisualReferences({
+      workspace,
+      intent,
+      selectedSourceObjectIds: [],
+      providerLimit: 4
+    });
+    const selected = resolution.candidates.find((candidate) => candidate.objectId === "image-soft-rail-v2");
+
+    expect(selected).toMatchObject({
+      reason: "userExplicit",
+      included: true,
+      sourceDirectionId: "direction-soft-rail",
+      targetDirectionId: "direction-support-island",
+      crossDirection: true,
+      retentionReason: expect.stringContaining("明确")
+    });
+    expect(resolution.resolvedObjectIds).toContain("image-soft-rail-v2");
+  });
+
+  it("does not inject an automatic reference from another direction, while retaining or excluding the default explicitly", () => {
+    const workspace = withAvailableImages(createInitialWorkspace());
+    const automatic = resolveVisualReferences({
+      workspace,
+      intent: visualIntent({ targetDirectionId: "direction-support-island" }),
+      selectedSourceObjectIds: [],
+      projectReferenceObjectIds: ["image-soft-rail-v2"],
+      providerLimit: 8
+    });
+    expect(automatic.candidates.find((candidate) => candidate.objectId === "image-soft-rail-v2" && candidate.reason === "projectReference")).toMatchObject({
+      included: false,
+      omissionReason: "directionMismatch",
+      crossDirection: true
+    });
+
+    const defaultReference = automatic.candidates.find((candidate) => candidate.reason === "defaultReference");
+    expect(defaultReference).toMatchObject({ included: true, crossDirection: true });
+
+    const excluded = resolveVisualReferences({
+      workspace,
+      intent: visualIntent({ targetDirectionId: "direction-support-island", excludeDefaultReference: true }),
+      selectedSourceObjectIds: [],
+      providerLimit: 8
+    });
+    expect(excluded.defaultReferenceExcluded).toBe(true);
+    expect(excluded.candidates.find((candidate) => candidate.reason === "defaultReference")).toMatchObject({
+      included: false,
+      omissionReason: "defaultExcluded"
+    });
+  });
 });
+
+function visualIntent(overrides: Partial<VisualIntentItem> = {}): VisualIntentItem {
+  return {
+    id: "visual-item-test",
+    title: "跨方向视觉发展",
+    purpose: "借用结构发展新方向",
+    requestedReferenceObjectIds: [],
+    changeGoals: ["发展结构关系"],
+    preserve: ["保留主体比例"],
+    allowToChange: ["允许表面细节变化"],
+    productForm: [],
+    materialsAndCmf: [],
+    environmentAndLighting: [],
+    avoid: [],
+    role: "conceptImage",
+    ...overrides
+  };
+}
+
+function withAvailableImages(workspace: ReturnType<typeof createInitialWorkspace>) {
+  const objects = { ...workspace.objects };
+  for (const object of Object.values(objects)) {
+    if (object.type === "image") {
+      objects[object.id] = { ...object, assetId: `asset-${object.id}` };
+    }
+  }
+  return { ...workspace, objects };
+}

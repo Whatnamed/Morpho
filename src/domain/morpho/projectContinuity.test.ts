@@ -131,6 +131,37 @@ describe("project continuity runtime", () => {
     });
     expect(JSON.stringify(applied.workspace.projectContinuity)).not.toContain("夜间识别感比造型复杂度更重要，后面不要做得太科技化。");
     expect(replayed.workspace.projectContinuity.recordEntries).toHaveLength(applied.workspace.projectContinuity.recordEntries.length);
+
+    const repeatedMessage = withUserMessage(
+      applied.workspace,
+      "ai-user-semantic-1-repeat",
+      draft,
+      "2026-06-30T09:11:00.000Z"
+    );
+    const repeatedAuthorization = buildSemanticPatchAuthorization({
+      taskMode: "chatAnalysis",
+      draft,
+      userMessageId: "ai-user-semantic-1-repeat",
+      userMessageCreatedAt: "2026-06-30T09:11:00.000Z",
+      currentFocusArea: repeatedMessage.projectContinuity.currentFocus.area,
+      objectIds: [],
+      revisionIds: [],
+      decisionIds: []
+    });
+    const repeated = applyConversationSemanticPatch(repeatedMessage, repeatedAuthorization, [
+      {
+        kind: "preference",
+        scope: "project",
+        evidenceQuote: "夜间识别感比造型复杂度更重要",
+        relatedObjectIds: [],
+        relatedRevisionIds: [],
+        relatedDecisionIds: []
+      }
+    ]);
+    expect(repeated.entries).toEqual([]);
+    expect(repeated.workspace.projectContinuity.recordEntries).toHaveLength(
+      applied.workspace.projectContinuity.recordEntries.length
+    );
   });
 
   it("uses centralized eligibility for manual state, validity, and source availability", () => {

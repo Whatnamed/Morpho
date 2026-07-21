@@ -12,6 +12,12 @@ import type {
 } from "@/domain/morpho/types";
 import { getContinuityEntryEligibility, resolveContinuityValidity } from "@/domain/morpho/projectContinuity";
 import {
+  classifyDecisionRecords,
+  decisionKindLabel,
+  decisionStateLabel,
+  type ClassifiedDecisionRecord
+} from "@/domain/morpho/decisionRecords";
+import {
   getCurrentProjectMemoryRevision,
   getCurrentStageRecordRevision,
   getProjectMemoryHistory,
@@ -254,6 +260,10 @@ function ProjectRecordDrawer({
     .filter((entry) => getContinuityEntryEligibility(entry).canEnterReviewList)
     .slice(-6)
     .reverse();
+  const historicalDecisions = classifyDecisionRecords(resolvedWorkspace)
+    .filter((item) => item.state !== "current")
+    .slice(-12)
+    .reverse();
 
   return (
     <Drawer title="项目记录" onClose={onClose} panelRef={panelRef} style={style}>
@@ -306,6 +316,17 @@ function ProjectRecordDrawer({
             <p className="drawer-muted">当前没有待复核或来源不可用的记录。</p>
           )}
 
+          <div className="result-group-title">历史决定</div>
+          {historicalDecisions.length > 0 ? (
+            <DecisionHistoryRows
+              items={historicalDecisions}
+              workspace={resolvedWorkspace}
+              onLocateObject={onLocateObject}
+            />
+          ) : (
+            <p className="drawer-muted">当前没有已替代或待复核的决定。</p>
+          )}
+
           <div className="result-group-title">近期记录</div>
           {resolvedWorkspace.projectContinuity.recordEntries.length > 0 ? (
             <ContinuityEntryRows
@@ -321,6 +342,58 @@ function ProjectRecordDrawer({
       ) : null}
     </Drawer>
   );
+}
+
+function DecisionHistoryRows({
+  items,
+  workspace,
+  onLocateObject
+}: {
+  items: ClassifiedDecisionRecord[];
+  workspace: MorphoWorkspace;
+  onLocateObject: (objectId: string) => void;
+}) {
+  return (
+    <div className="continuity-record-list">
+      {items.map(({ record, state, reason }) => (
+        <article className="continuity-record" key={record.id}>
+          <div className="continuity-record-kicker">
+            <span>{decisionKindLabel(record.kind)}</span>
+            <span className="continuity-record-status">{decisionStateLabel(state)}</span>
+            <span className="continuity-record-time">{formatDrawerDate(record.createdAt)}</span>
+          </div>
+          <p className="continuity-record-summary">{record.summary}</p>
+          {record.reason ? <p className="drawer-muted">原因：{record.reason}</p> : null}
+          {reason ? <p className="drawer-muted">当前状态：{reason}</p> : null}
+          <ContinuitySourceRefs refs={decisionSourceRefs(record, workspace)} onLocateObject={onLocateObject} />
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function decisionSourceRefs(
+  record: ClassifiedDecisionRecord["record"],
+  workspace: MorphoWorkspace
+): ContinuitySourceRef[] {
+  const objectIds = [...new Set([record.objectSnapshot?.id, ...record.relatedObjectIds].filter((id): id is string => Boolean(id)))];
+  return [
+    {
+      kind: "decision",
+      id: record.id,
+      snapshot: { title: record.summary, status: record.kind },
+      sourceAvailability: "active"
+    },
+    ...objectIds.map((objectId) => {
+      const object = workspace.objects[objectId];
+      return {
+        kind: "object" as const,
+        id: objectId,
+        snapshot: { title: object?.title ?? record.objectSnapshot?.title ?? objectId, objectType: object?.type },
+        sourceAvailability: object ? (object.visibility === "hidden" ? "hidden" : "active") : "missing"
+      } satisfies ContinuitySourceRef;
+    })
+  ];
 }
 
 const PROJECT_MEMORY_KEYS: ProjectMemoryKey[] = [

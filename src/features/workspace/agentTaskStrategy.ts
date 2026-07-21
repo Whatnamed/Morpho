@@ -18,21 +18,38 @@ export type RequiredAgentReadToolName =
   | "read_stage_record"
   | "search_project_conversation";
 
-export function resolveRequiredAgentReadTools(draft: string): RequiredAgentReadToolName[] {
-  const text = draft.trim();
+export type AgentReadIntent = {
+  history: boolean;
+  memory: boolean;
+  stage: boolean;
+  objectRevision: boolean;
+};
+
+export function resolveAgentReadIntent(
+  draft: string,
+  input: { hasSelectedObject?: boolean } = {}
+): AgentReadIntent {
+  const text = draft.replace(/\s+/g, " ").trim();
+  const objectRevision = Boolean(input.hasSelectedObject && /上一版|前一版/.test(text));
+  const history = !objectRevision && /最早的?对话|最早聊了什么|一开始怎么说|第一次提到|最初怎么确定|我们之前聊过|回顾一下聊天|以前为什么(?:这样)?决定|当时怎么讨论|项目是怎么开始|经历过哪些变化|最开始|历史聊天|聊天记录/.test(text);
+  const memory = /你记得我喜欢什么|之前说过不要|稳定要求|当前设计原则|还有哪些问题没解决|项目里记住了什么|项目记忆|稳定决定|偏好|避免项|开放问题|待确认问题|上下文/.test(text) || (/还记得/.test(text) && !history);
+  const stage = /现在做到哪|当前项目进度|哪些阶段完成|接下来要做|调研阶段.*得出|方向阶段.*结论|交付还缺|阶段记录|做到哪|进度|当前状态|现在.*(?:情况|进展)/.test(text);
+  return { history, memory, stage, objectRevision };
+}
+
+export function resolveRequiredAgentReadTools(
+  draft: string,
+  input: { hasSelectedObject?: boolean } = {}
+): RequiredAgentReadToolName[] {
+  const intent = resolveAgentReadIntent(draft, input);
   const required = new Set<RequiredAgentReadToolName>();
-  const asksConversationHistory = /最早的?对话|第一次提到|以前为什么|最开始|历史聊天|聊天记录/i.test(text);
-  if (asksConversationHistory) {
+  if (intent.history) {
     required.add("search_project_conversation");
   }
-  if (
-    /项目记忆|稳定决定|偏好|避免项|开放问题|待确认问题|上下文/i.test(text) ||
-    (/还记得/i.test(text) && !asksConversationHistory)
-  ) {
+  if (intent.memory || intent.stage) {
     required.add("read_project_memory");
   }
-  if (/阶段记录|做到哪|进度|当前状态|现在.*(?:情况|进展)/i.test(text)) {
-    required.add("read_project_memory");
+  if (intent.stage) {
     required.add("read_stage_record");
   }
   return [...required];
@@ -72,8 +89,9 @@ export function resolveAgentTaskStrategy(input: {
     selectedImages.length > 0 || Boolean(input.workspace.workingState.currentDefaultReferenceId);
   const directionPreviewRequested = /预览|每个方向|各方向|方向.*(?:图|视觉)/i.test(text);
   const visualDevelopmentRequested = /继续发展|局部修改|场景|cmf|材质|细节|角度|示意|生成.*图/i.test(text);
+  const readIntent = resolveAgentReadIntent(text, { hasSelectedObject: input.selectedObjects.length > 0 });
 
-  if (isHistoryOrMemoryRequest(text)) {
+  if ((readIntent.history || readIntent.memory || readIntent.stage) && !readIntent.objectRevision) {
     return strategy("historyAndMemory", "general", "用户明确询问项目历史、项目记忆或阶段记录");
   }
   if (input.hasDeliveryDraftTarget || input.workIntent === "prepareDeliverySection") {
@@ -111,10 +129,6 @@ export function resolveAgentTaskStrategy(input: {
 
 function strategy(kind: AgentTaskStrategyKind, contextKind: TaskContextKind, reason: string): AgentTaskStrategy {
   return { kind, contextKind, reason };
-}
-
-function isHistoryOrMemoryRequest(text: string): boolean {
-  return /最早的?对话|第一次提到|以前为什么|最开始|历史聊天|聊天记录|项目记忆|阶段记录|做到哪|进度|稳定决定|哪些问题.*(?:没|未)解决/i.test(text);
 }
 
 function isExplicitComparison(text: string): boolean {

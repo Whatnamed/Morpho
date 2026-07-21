@@ -24,6 +24,7 @@ import type {
 
 import type { ProviderTaskContext, TaskContextResult } from "./taskContext";
 import { buildAgentPolicyBlocks } from "./agentPromptRegistry";
+import { buildAgentDefaultMemoryContext, type AgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
 
 export type AgentConversationContext = {
   laneKey: string;
@@ -147,6 +148,7 @@ export type SearchProjectConversationArgs = {
   to?: string;
   limit?: number;
   neighborCount?: number;
+  includeDiagnostics?: boolean;
 };
 
 export type SubmitMemoryUpdateArgs = {
@@ -157,6 +159,7 @@ export type SubmitMemoryUpdateArgs = {
     relatedObjectIds: string[];
     relatedRevisionIds: string[];
   }>;
+  skippedReason?: string;
 };
 
 export type PrepareDeliverySectionDraftArgs = {
@@ -255,11 +258,13 @@ export function buildMorphoAgentSystemPrompt(input: {
   context: TaskContextResult;
   providerTaskContext: ProviderTaskContext;
   conversationContext?: AgentConversationContext;
+  defaultMemoryContext?: AgentDefaultMemoryContext;
 }): string {
   const selectedObjectLines =
     input.selectedObjects.length > 0
       ? input.selectedObjects.map((object) => `- ${object.id} / ${object.type} / ${object.title}: ${object.summary}`).join("\n")
       : "- 当前没有显式选中对象。";
+  const defaultMemoryContext = input.defaultMemoryContext ?? buildAgentDefaultMemoryContext(input.workspace, input.strategy);
 
   return [
     ...buildAgentPolicyBlocks(input.strategy),
@@ -279,6 +284,7 @@ export function buildMorphoAgentSystemPrompt(input: {
     "当前显式选择对象：",
     selectedObjectLines,
     `Context 范围说明：${input.context.scopeNote}`,
+    buildAgentDefaultMemoryPromptBlock(defaultMemoryContext),
     `默认参考：${input.providerTaskContext.defaultReference}`,
     input.providerTaskContext.designDefinition
       ? `当前设计定义：${input.providerTaskContext.designDefinition.title}（r${input.providerTaskContext.designDefinition.revisionNumber}）`
@@ -630,7 +636,7 @@ export function buildMorphoAgentTools(
     }),
     functionTool({
       name: "submit_memory_update",
-      description: "只提交当前用户消息中明确表达的稳定偏好、约束、避免项或开放问题。evidenceQuote 必须逐字来自当前用户消息。",
+      description: "只提交当前用户消息中明确表达的稳定偏好、约束、避免项或开放问题。evidenceQuote 必须逐字来自当前用户消息。若系统提示本轮需要确认记忆更新但没有可写入内容，传 items: [] 和 skippedReason 说明原因。",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -651,7 +657,8 @@ export function buildMorphoAgentTools(
                 relatedRevisionIds: stringArraySchema()
               }
             }
-          }
+          },
+          skippedReason: { type: "string" }
         }
       }
     }),
@@ -722,6 +729,41 @@ export function buildMorphoAgentTools(
   return options.allowComparisonAnalysis === false
     ? tools.filter((tool) => tool.type !== "function" || tool.name !== "create_comparison_analysis")
     : tools;
+}
+
+function buildAgentDefaultMemoryPromptBlock(memory: AgentDefaultMemoryContext): string {
+  const documents = memory.documents.map((document) => {
+    const status = document.empty ? "当前为空" : document.reviewRequired ? "当前内容需复核" : "当前有效";
+    const revision = document.revisionId ? `，revision ${document.revisionId}` : "";
+    const sections = document.sections
+      .map((section) => `${section.title}：${section.items.join("；")}`)
+      .join(" | ");
+    const sources = document.sourceRefs.map((source) => source.title ?? source.id).join("、");
+    return `- ${document.title}（${status}${revision}）${sections ? `：${sections}` : ""}${sources ? `；来源：${sources}` : ""}`;
+  });
+  const stages = memory.stageRecords.map((record) => {
+    const status = record.empty ? "当前为空" : record.reviewRequired ? "当前内容需复核" : "当前有效";
+    const sections = Object.entries(record.sections)
+      .flatMap(([key, items]) => (items ?? []).map((item) => `${key}：${item}`))
+      .join("；");
+    const sources = record.sourceRefs.map((source) => source.title ?? source.id).join("、");
+    return `- ${record.stage}（${status}${record.revisionId ? `，revision ${record.revisionId}` : ""}）${sections ? `：${sections}` : ""}${sources ? `；来源：${sources}` : ""}`;
+  });
+  const reference = memory.defaultReference
+    ? memory.defaultReference.status === "available"
+      ? `当前默认参考：${memory.defaultReference.title ?? memory.defaultReference.objectId}（${memory.defaultReference.objectId}）`
+      : memory.defaultReference.status === "missing"
+        ? "当前默认参考：未设置"
+        : `当前默认参考：不可用${memory.defaultReference.objectId ? `（${memory.defaultReference.objectId}）` : ""}`
+    : "";
+
+  return [
+    "默认项目记忆（仅注入各类记忆与当前阶段记录的紧凑当前内容；不是完整历史）：",
+    documents.length > 0 ? documents.join("\n") : "- 当前任务没有需要默认注入的项目记忆文档。",
+    stages.length > 0 ? `当前阶段记录：\n${stages.join("\n")}` : "当前任务没有需要默认注入的阶段记录。",
+    reference,
+    "若用户询问历史版本、来源细节、被替代决定或原始聊天，必须再调用相应真实读取工具；不能把这段紧凑内容当作完整历史。"
+  ].filter(Boolean).join("\n");
 }
 
 export function buildAgentConversationPromptBlock(
@@ -1141,7 +1183,8 @@ function validateSearchProjectConversationArgs(
     "from",
     "to",
     "limit",
-    "neighborCount"
+    "neighborCount",
+    "includeDiagnostics"
   ]);
   const mode = requireEnum(toolName, record, "mode", ["earliest", "latest", "keyword"]);
   requireOptionalString(toolName, record, "keyword");
@@ -1150,6 +1193,7 @@ function validateSearchProjectConversationArgs(
   requireOptionalString(toolName, record, "to");
   requireOptionalInteger(toolName, record, "limit", 1, 20);
   requireOptionalInteger(toolName, record, "neighborCount", 0, 3);
+  requireOptionalBoolean(toolName, record, "includeDiagnostics");
   if (mode === "keyword" && typeof record.keyword !== "string") {
     throw new Error(`Agent 工具 ${toolName} 在 keyword 模式下必须提供 keyword。`);
   }
@@ -1290,7 +1334,8 @@ function searchProjectConversationTool(): ResponseFunctionTool {
         from: { type: "string" },
         to: { type: "string" },
         limit: { type: "integer", minimum: 1, maximum: 20 },
-        neighborCount: { type: "integer", minimum: 0, maximum: 3 }
+        neighborCount: { type: "integer", minimum: 0, maximum: 3 },
+        includeDiagnostics: { type: "boolean" }
       }
     }
   });
@@ -1595,10 +1640,20 @@ function validatePrepareDeliverySectionDraftArgs(
 }
 
 function validateSubmitMemoryUpdateArgs(toolName: string, value: unknown): asserts value is SubmitMemoryUpdateArgs {
-  const record = requireExactObject(toolName, value, ["items"]);
+  const record = requireExactObject(toolName, value, ["items"], ["skippedReason"]);
   const items = requireArray(toolName, record, "items");
-  if (items.length < 1 || items.length > 3) {
-    throw new Error(`Agent 工具 ${toolName} 的参数 items 需要 1 到 3 项。`);
+  requireOptionalString(toolName, record, "skippedReason");
+  if (items.length > 3) {
+    throw new Error(`Agent 工具 ${toolName} 的参数 items 最多 3 项。`);
+  }
+  if (items.length === 0) {
+    if (typeof record.skippedReason !== "string") {
+      throw new Error(`Agent 工具 ${toolName} 在 items 为空时必须提供 skippedReason。`);
+    }
+    return;
+  }
+  if (record.skippedReason !== undefined) {
+    throw new Error(`Agent 工具 ${toolName} 在提交记忆项时不能同时提供 skippedReason。`);
   }
   items.forEach((entry, index) => {
     const item = requireExactObject(`${toolName}.items[${index}]`, entry, [

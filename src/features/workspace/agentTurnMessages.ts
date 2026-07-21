@@ -1,6 +1,7 @@
 import type {
   AgentTaskStrategyKind,
   AgentTrace,
+  AiMessage,
   AiTaskMode,
   AiWorkIntent,
   MorphoWorkspace
@@ -19,6 +20,7 @@ type AppendAgentTurnMessagesInput = {
   promptContractVersion?: string;
   taskStrategy?: AgentTaskStrategyKind;
   agentTrace?: AgentTrace;
+  contextVisibility?: AiMessage["contextVisibility"];
 };
 
 export function appendAgentTurnMessages(
@@ -39,6 +41,7 @@ export function appendAgentTurnMessages(
           contextObjectIds: input.contextObjectIds,
           taskMode: input.taskMode ?? "chatAnalysis",
           workIntent: input.workIntent,
+          contextVisibility: input.contextVisibility ?? "model",
           conversationLaneKey: input.conversationLaneKey,
           promptContractVersion: input.promptContractVersion,
           taskStrategy: input.taskStrategy
@@ -52,6 +55,7 @@ export function appendAgentTurnMessages(
           contextObjectIds: input.contextObjectIds,
           taskMode: input.taskMode ?? "chatAnalysis",
           workIntent: input.workIntent,
+          contextVisibility: input.contextVisibility ?? "model",
           conversationLaneKey: input.conversationLaneKey,
           promptContractVersion: input.promptContractVersion,
           taskStrategy: input.taskStrategy,

@@ -5,6 +5,7 @@ import {
   applyConversationSummaryRevision,
   buildContinuousConversationContext,
   buildConversationCompactionPlan,
+  getUsableConversationMessages,
   migrateLegacyCheckpointToConversationCompaction,
   parseConversationSummaryPayload,
   type ConversationTokenLimits
@@ -41,6 +42,30 @@ describe("continuous conversation compaction", () => {
     expect(context.pressure).toBe("normal");
     expect(context.messages.map((entry) => entry.id)).toEqual(["m1", "m2", "m3", "m4"]);
     expect(context.messages.map((entry) => entry.laneKey)).toEqual(["lane-a", "lane-a", "lane-b", "lane-b"]);
+  });
+
+  it("keeps UI-only compaction notices visible but out of model context and summary ranges", () => {
+    const workspace = withMessages([
+      message("m1", "user", "/compact"),
+      message("m2", "assistant", "正在整理上下文"),
+      { ...message("m3", "user", "正式问题"), contextVisibility: "model" },
+      { ...message("m4", "assistant", "正式回答"), contextVisibility: "model" }
+    ]);
+    const uiOnlyWorkspace = {
+      ...workspace,
+      ai: {
+        ...workspace.ai,
+        messages: workspace.ai.messages.map((entry) =>
+          entry.id === "m1" || entry.id === "m2" ? { ...entry, contextVisibility: "uiOnly" as const } : entry
+        )
+      }
+    };
+
+    expect(getUsableConversationMessages(uiOnlyWorkspace.ai.messages).map((entry) => entry.id)).toEqual(["m3", "m4"]);
+    expect(buildContinuousConversationContext({ workspace: uiOnlyWorkspace, limits }).messages.map((entry) => entry.id)).toEqual([
+      "m3",
+      "m4"
+    ]);
   });
 
   it("reports prepare pressure without dropping a single raw message", () => {

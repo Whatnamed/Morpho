@@ -26,6 +26,7 @@ import legacyNightrailTestFixture from "./caseStudy/legacyNightrailPristine.fixt
 import type { ArtifactProposal, SourceSemanticSnapshot } from "../operations/types";
 import type {
   AiDraftResult,
+  AiMessage,
   AiSuggestionInput,
   AssembleAiContextInput,
   AssembledAiContext,
@@ -2042,7 +2043,9 @@ function normalizeAiState(value: unknown): MorphoWorkspace["ai"] {
     };
   }
 
-  const messages = Array.isArray(value.messages) ? (value.messages as MorphoWorkspace["ai"]["messages"]) : [];
+  const messages = Array.isArray(value.messages)
+    ? (value.messages as AiMessage[]).map(normalizeAiMessageContextVisibility)
+    : [];
   const conversationCheckpoints = Array.isArray(value.conversationCheckpoints)
       ? value.conversationCheckpoints.filter(isConversationCheckpoint)
       : [];
@@ -2062,6 +2065,28 @@ function normalizeAiState(value: unknown): MorphoWorkspace["ai"] {
       ? (value.comparisonAnalyses as MorphoWorkspace["ai"]["comparisonAnalyses"])
       : {}
   };
+}
+
+function normalizeAiMessageContextVisibility(message: AiMessage): AiMessage {
+  if (message.contextVisibility === "model" || message.contextVisibility === "uiOnly") {
+    return message;
+  }
+
+  return isLegacyUiOnlyAiMessage(message) ? { ...message, contextVisibility: "uiOnly" } : message;
+}
+
+function isLegacyUiOnlyAiMessage(message: AiMessage): boolean {
+  if (message.role === "user") {
+    return message.body.trim().toLocaleLowerCase() === "/compact";
+  }
+
+  return [
+    "正在压缩当前上下文…",
+    "上下文压缩完成。已保留当前项目状态、选中对象、待继续问题和最近讨论。",
+    "当前讨论还很短，无需压缩。",
+    "上下文压缩未完成：模型没有返回可用的讨论摘要，请稍后重试。",
+    "上下文压缩已取消。"
+  ].includes(message.body.trim());
 }
 
 function isConversationCheckpoint(value: unknown): value is MorphoWorkspace["ai"]["conversationCheckpoints"][number] {

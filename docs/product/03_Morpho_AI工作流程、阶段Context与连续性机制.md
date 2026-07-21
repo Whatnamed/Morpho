@@ -142,10 +142,13 @@ Compare 是任意 Context 中可发起的局部比较操作，不是固定区域
 
 真实 Provider usage 优先于估算；没有 usage 时使用同一套保守估算。`normal / prepare / compact / emergency` 是内部压力状态，不作为用户可见进度。
 
+Morpho 的生产 Context Policy 固定为：`windowTokens = 256000`、`prepareTokens = 204800`、`compactTokens = 230400`、`targetUncompressedTokens = 16000`。这是 Morpho 自己认可的内部预算，不代表 Provider 的物理上限，也不接受 Vercel 或 Provider 环境变量在生产中改写。`prepare` 只做准备；达到 90% 的 `compact` 才生成并持久化摘要。客户端压缩、服务端 Agent Budget 和图像/工具预留都从 `src/domain/morpho/agentContextPolicy.ts` 的同一策略出发。
+
 ### 3.3 “默认不读取全部历史”的准确含义
 
 - 尚未压缩的聊天默认完整携带；
 - 已压缩的早期聊天默认通过当前摘要修订携带；
+- 当前项目记忆的有界紧凑内容每轮默认携带，包括项目概览、设计定义、稳定偏好、待确认问题和任务相关的当前阶段记录；
 - 原始聊天始终持久化保留；
 - 用户追问具体旧内容时，通过确定性聊天查询读取原始消息；
 - 不默认读取的是全画布、全部图片像素、所有文档正文、所有历史版本、全部隐藏内容和无关淘汰方向。
@@ -198,7 +201,7 @@ Agent 可以跨阶段反复分析、生成、比较、修改与讨论。切换�
 
 ### 4.4 手动 `/compact`
 
-`/compact` 只作为调试和手动补救。它按同一项目连续会话和当前压缩边界整理，不按 lane 分块；不创建或修改画布对象，不切换工作重点，也不要求用户日常管理 Context。只有全部摘要写入成功才推进边界。
+`/compact` 只作为调试和手动补救。它按同一项目连续会话和当前压缩边界整理，不按 lane 分块；不创建或修改画布对象，不切换工作重点，也不要求用户日常管理 Context。其命令和纯状态消息标记为 `contextVisibility=uiOnly`：可以显示、备份和审计，但不进入模型 Context、摘要或普通历史搜索。只有全部摘要写入成功才推进边界。
 
 ### 4.5 历史、记忆和阶段记录查询
 

@@ -813,6 +813,7 @@ export type AiMessage = {
   body: string;
   createdAt?: string;
   status?: "streaming" | "done" | "failed" | "cancelled";
+  contextVisibility?: "model" | "uiOnly";
   contextObjectIds?: MorphoObjectId[];
   taskMode?: AiTaskMode;
   recommendedTaskMode?: AiTaskMode;

@@ -67,6 +67,32 @@ describe("project conversation search", () => {
 
     expect(searchProjectConversation(summarized, { mode: "keyword", keyword: "最早" }).matches[0]?.message.messageId).toBe("m1");
   });
+
+  it("keeps UI-only compaction messages and failed/cancelled turns out of normal search unless diagnostics are requested", () => {
+    const workspace = fixture();
+    const withDiagnostics: MorphoWorkspace = {
+      ...workspace,
+      ai: {
+        ...workspace.ai,
+        messages: [
+          ...workspace.ai.messages,
+          { ...item("ui-only", "user", "diagnostic ui-only", "10:06", "lane-c"), contextVisibility: "uiOnly" },
+          { ...item("failed", "assistant", "diagnostic failed", "10:07", "lane-c"), status: "failed", error: "upstream" },
+          { ...item("cancelled", "assistant", "diagnostic cancelled", "10:08", "lane-c"), status: "cancelled" }
+        ]
+      }
+    };
+
+    expect(searchProjectConversation(withDiagnostics, { mode: "keyword", keyword: "diagnostic" }).totalMatched).toBe(0);
+    const diagnostics = searchProjectConversation(withDiagnostics, {
+      mode: "keyword",
+      keyword: "diagnostic",
+      includeDiagnostics: true,
+      limit: 5
+    });
+    expect(diagnostics.totalMatched).toBe(3);
+    expect(diagnostics.query.includeDiagnostics).toBe(true);
+  });
 });
 
 function fixture(): MorphoWorkspace {

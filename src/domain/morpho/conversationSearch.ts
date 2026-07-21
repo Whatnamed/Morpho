@@ -11,6 +11,7 @@ export type ConversationSearchQuery = {
   to?: string;
   limit?: number;
   neighborCount?: number;
+  includeDiagnostics?: boolean;
 };
 
 export type ConversationSearchMessage = {
@@ -48,7 +49,8 @@ export function searchProjectConversation(
   const keyword = query.keyword?.replace(/\s+/g, " ").trim();
   const fromTime = parseTime(query.from);
   const toTime = parseTime(query.to);
-  const timeline = workspace.ai.messages.filter(isSearchableMessage);
+  const includeDiagnostics = query.includeDiagnostics === true;
+  const timeline = workspace.ai.messages.filter((message) => isSearchableMessage(message, includeDiagnostics));
   const matchingIndexes = timeline.flatMap((message, index) => {
     if (role !== "any" && message.role !== role) {
       return [];
@@ -77,7 +79,8 @@ export function searchProjectConversation(
       from: query.from,
       to: query.to,
       limit,
-      neighborCount
+      neighborCount,
+      includeDiagnostics
     },
     matches: selectedIndexes.map((index) => ({
       message: toSearchMessage(timeline[index]!),
@@ -89,11 +92,16 @@ export function searchProjectConversation(
   };
 }
 
-function isSearchableMessage(message: AiMessage): boolean {
+function isSearchableMessage(message: AiMessage, includeDiagnostics: boolean): boolean {
   return (
     (message.role === "user" || message.role === "assistant") &&
     message.body.trim().length > 0 &&
-    message.status !== "streaming"
+    message.status !== "streaming" &&
+    (includeDiagnostics ||
+      (message.contextVisibility !== "uiOnly" &&
+        message.status !== "failed" &&
+        message.status !== "cancelled" &&
+        !message.error))
   );
 }
 

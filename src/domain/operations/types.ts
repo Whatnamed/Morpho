@@ -229,6 +229,10 @@ export type VisualReferenceResolution = {
     objectId: OperationObjectId;
     reason: VisualReferenceReason;
     priority: number;
+    sourceDirectionId?: OperationObjectId;
+    targetDirectionId?: OperationObjectId;
+    crossDirection?: boolean;
+    retentionReason?: string;
     included: boolean;
     omissionReason?: "providerLimit" | "duplicate" | "unavailable" | "directionMismatch" | "defaultExcluded";
   }>;

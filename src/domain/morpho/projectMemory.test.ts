@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildSemanticPatchAuthorization } from "./conversationSemanticPatch";
 import { applyConversationSemanticPatch } from "./projectContinuity";
 import {
+  buildAgentDefaultMemoryContext,
   getCurrentProjectMemoryRevision,
   getCurrentStageRecordRevision,
   getProjectMemoryHistory,
@@ -11,7 +12,7 @@ import {
   reconcileProjectMemory
 } from "./projectMemory";
 import type { AiMessage, MorphoWorkspace, ProjectMemoryKey } from "./types";
-import { clearDefaultReference, createInitialWorkspace } from "./workspace";
+import { clearDefaultReference, createBlankWorkspace, createInitialWorkspace } from "./workspace";
 
 const MEMORY_KEYS: ProjectMemoryKey[] = [
   "projectOverview",
@@ -40,6 +41,52 @@ describe("Project Memory Kernel", () => {
     expect(getCurrentStageRecordRevision(workspace.projectMemory, "research")).toBeDefined();
     expect(getCurrentStageRecordRevision(workspace.projectMemory, "directionAndVisual")).toBeDefined();
     expect(getCurrentStageRecordRevision(workspace.projectMemory, "deliveryPreparation")).toBeDefined();
+  });
+
+  it("builds a bounded current-only default memory context for ordinary Agent turns", () => {
+    let workspace = withUserMessage(createInitialWorkspace(), "default-memory-user", "以后这个项目都保持克制、低压迫感。", "12:00");
+    workspace = applyMemoryItems(workspace, "default-memory-user", "以后这个项目都保持克制、低压迫感。", [
+      { kind: "preference", evidenceQuote: "以后这个项目都保持克制、低压迫感" }
+    ]);
+    workspace = reconcileProjectMemory(workspace, "2026-07-13T12:01:00.000Z");
+
+    const context = buildAgentDefaultMemoryContext(workspace, "discussion");
+    expect(context.documents.map((document) => document.key)).toEqual([
+      "projectOverview",
+      "designBrief",
+      "userPreferences",
+      "openQuestions"
+    ]);
+    expect(JSON.stringify(context.documents.find((document) => document.key === "userPreferences"))).toContain(
+      "克制、低压迫感"
+    );
+    expect(context.documents.every((document) => document.sections.length <= 4)).toBe(true);
+    expect(context.documents.every((document) => document.sections.every((section) => section.items.length <= 5))).toBe(true);
+    expect(context.stageRecords).toHaveLength(1);
+    expect(context.stageRecords[0]?.stage).toBe("directionAndVisual");
+  });
+
+  it("derives overview reviewRequired from real source gaps instead of an unreachable filtered entry", () => {
+    const valid = reconcileProjectMemory(createInitialWorkspace(), "2026-07-13T12:00:00.000Z");
+    expect(getCurrentProjectMemoryRevision(valid.projectMemory, "projectOverview")?.reviewRequired).toBe(false);
+
+    const missingFocusSource = reconcileProjectMemory(
+      {
+        ...valid,
+        projectContinuity: {
+          ...valid.projectContinuity,
+          currentFocus: {
+            ...valid.projectContinuity.currentFocus,
+            sourceObjectIds: ["object-no-longer-present"]
+          }
+        }
+      },
+      "2026-07-13T12:01:00.000Z"
+    );
+    expect(getCurrentProjectMemoryRevision(missingFocusSource.projectMemory, "projectOverview")?.reviewRequired).toBe(true);
+
+    const empty = reconcileProjectMemory(createBlankWorkspace("empty-memory-review"), "2026-07-13T12:02:00.000Z");
+    expect(getCurrentProjectMemoryRevision(empty.projectMemory, "projectOverview")?.reviewRequired).toBe(false);
   });
 
   it("does not turn an assistant suggestion into a stable user preference", () => {

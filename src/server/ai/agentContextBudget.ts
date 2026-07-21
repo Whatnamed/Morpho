@@ -3,6 +3,10 @@ import type {
   ResponseFunctionToolOutput,
   ResponseMessageInput
 } from "./openaiCompatibleProvider";
+import {
+  MORPHO_AGENT_CONTEXT_POLICY,
+  type MorphoAgentContextPolicy
+} from "@/domain/morpho/agentContextPolicy";
 
 export type AgentContextLimits = {
   windowTokens: number;
@@ -40,6 +44,17 @@ type AgentContextCompactionMode = "prepare" | "compact" | "emergency";
 const IMAGE_INPUT_TOKEN_RESERVE = 8_192;
 const ESTIMATE_BASE_TOKENS = 128;
 const EMERGENCY_OLD_TOOL_OUTPUT_CHARS = 480;
+
+export function createAgentContextLimits(
+  policy: MorphoAgentContextPolicy = MORPHO_AGENT_CONTEXT_POLICY
+): AgentContextLimits {
+  return {
+    windowTokens: policy.windowTokens,
+    prepareTokens: policy.prepareTokens,
+    compactTokens: policy.compactTokens,
+    targetTokens: policy.targetUncompressedTokens
+  };
+}
 
 export function classifyAgentContextPressure(
   estimatedInputTokens: number,

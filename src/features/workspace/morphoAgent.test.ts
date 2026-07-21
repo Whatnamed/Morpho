@@ -185,6 +185,28 @@ describe("Morpho agent tool argument validation", () => {
     expect(prompt).toContain("短标题：一句说明");
   });
 
+  it("injects bounded current project memory into ordinary Agent prompts", () => {
+    const workspace = createInitialWorkspace();
+    const context = buildTaskContext(workspace, {
+      kind: "general",
+      draft: "基于当前方向继续讨论",
+      selectedObjectIds: []
+    });
+    const prompt = buildMorphoAgentSystemPrompt({
+      mode: "auto",
+      strategy: "discussion",
+      workspace,
+      selectedObjects: [],
+      context,
+      providerTaskContext: buildProviderTaskContext(context)
+    });
+
+    expect(prompt).toContain("默认项目记忆");
+    expect(prompt).toContain("仅注入各类记忆与当前阶段记录的紧凑当前内容");
+    expect(prompt).toContain("不是完整历史");
+    expect(prompt).toContain("必须再调用相应真实读取工具");
+  });
+
   it("guides broad evidence search and validated image counts without low fixed gates", () => {
     const workspace = createInitialWorkspace();
     const context = buildTaskContext(workspace, {
@@ -487,6 +509,36 @@ describe("Morpho agent tool argument validation", () => {
         reason: "补充现实限制。"
       }))
     ).toThrow("最多允许 3 项");
+  });
+
+  it("accepts a structured skipped memory update acknowledgement and rejects mixed writes", () => {
+    expect(
+      parseMorphoAgentToolArguments(
+        makeCall("submit_memory_update", {
+          items: [],
+          skippedReason: "本轮表达只针对当前对象，不能授权为项目级记忆。"
+        })
+      )
+    ).toMatchObject({
+      name: "submit_memory_update",
+      args: { items: [], skippedReason: expect.stringContaining("当前对象") }
+    });
+    expect(() =>
+      parseMorphoAgentToolArguments(
+        makeCall("submit_memory_update", {
+          items: [
+            {
+              kind: "preference",
+              scope: "project",
+              evidenceQuote: "以后保持低眩光",
+              relatedObjectIds: [],
+              relatedRevisionIds: []
+            }
+          ],
+          skippedReason: "同时跳过"
+        })
+      )
+    ).toThrow("不能同时提供 skippedReason");
   });
 
   it("accepts a request confirmation with an executable visual plan", () => {

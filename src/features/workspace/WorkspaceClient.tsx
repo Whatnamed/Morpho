@@ -16,6 +16,7 @@ import type {
   StageRecordKey
 } from "@/domain/morpho/types";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
+import { MORPHO_AGENT_CONTEXT_POLICY } from "@/domain/morpho/agentContextPolicy";
 import { GRS_REFERENCE_IMAGE_LIMIT } from "@/domain/morpho/imageLimits";
 import { hasPendingDesignDefinitionRevisionProposal } from "@/domain/morpho/derivedState";
 import { traceDesignChain, type DesignTraceResult } from "@/domain/morpho/designTrace";
@@ -228,6 +229,7 @@ import {
 } from "@/domain/morpho/conversationCompaction";
 import { searchProjectConversation } from "@/domain/morpho/conversationSearch";
 import {
+  buildAgentDefaultMemoryContext,
   getCurrentProjectMemoryRevision,
   getCurrentStageRecordRevision,
   getProjectMemoryHistory,
@@ -311,6 +313,12 @@ import {
   resolveRequiredAgentReadTools,
   type RequiredAgentReadToolName
 } from "./agentTaskStrategy";
+import {
+  buildRequiredAgentMemoryUpdateReminder,
+  resolveRequiredAgentMemoryUpdate,
+  shouldApplyAgentMemoryUpdate,
+  shouldPromptForMemoryUpdate
+} from "./agentMemoryUpdateGuard";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
 import { appendAgentTurnMessages } from "./agentTurnMessages";
 import {
@@ -1653,6 +1661,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           contextObjectIds: context.objectIds,
           conversationLaneKey,
           workIntent: "discussion",
+          contextVisibility: "uiOnly",
           taskMode: "chatAnalysis",
           promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
           taskStrategy: "discussion"
@@ -1820,6 +1829,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         JSON.stringify({
           draft,
           strategy: strategy.kind,
+          defaultMemoryContext: buildAgentDefaultMemoryContext(workspace, strategy.kind),
           context: context.semanticSummaries,
           providerTaskContext,
           documentExtracts: documentResult.extracts,
@@ -1827,7 +1837,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             allowComparisonAnalysis: isExplicitComparisonRequest(draft)
           })
         })
-      ) + 16_000;
+      ) + MORPHO_AGENT_CONTEXT_POLICY.targetUncompressedTokens;
     const conversationTokenLimits = readConversationTokenLimitsOverride();
     const userInput = buildMorphoAgentUserInput({
       draft: [
@@ -2001,7 +2011,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               selectedObjects,
               context,
               providerTaskContext,
-              conversationContext
+              conversationContext,
+              defaultMemoryContext: buildAgentDefaultMemoryContext(workspaceAtAgentStart, strategy.kind)
             })
           }
         ]
@@ -2013,8 +2024,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     let finalText = "";
     let collectedCitations: ProviderCitation[] = [];
     let hasWebSearchEvidence = false;
-    const requiredReadTools = resolveRequiredAgentReadTools(draft);
+    const requiredReadTools = resolveRequiredAgentReadTools(draft, {
+      hasSelectedObject: selectedObjects.length > 0
+    });
     const completedReadTools = new Set<RequiredAgentReadToolName>();
+    const requiredMemoryUpdate = resolveRequiredAgentMemoryUpdate(draft);
+    let memoryUpdateReminderInserted = false;
+    let memoryUpdateHandled = !requiredMemoryUpdate;
     const memoryUpdateEntryIds = new Set<string>();
     const memoryUpdateKeys = new Set<ProjectMemoryKey>();
     const stageRecordUpdateKeys = new Set<StageRecordKey>();
@@ -2253,7 +2269,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 selectedObjects,
                 context,
                 providerTaskContext,
-                conversationContext
+                conversationContext,
+                defaultMemoryContext: buildAgentDefaultMemoryContext(compactedWorkspace, strategy.kind)
               })
             }
           ]
@@ -2354,6 +2371,28 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 }
               ]
             };
+            conversationInput = [...conversationInput, reminder];
+            turnContinuationItems.push(reminder);
+            continue;
+          }
+          if (
+            requiredMemoryUpdate &&
+            shouldPromptForMemoryUpdate({
+              candidate: requiredMemoryUpdate,
+              reminderInserted: memoryUpdateReminderInserted,
+              handled: memoryUpdateHandled
+            })
+          ) {
+            const reminder = {
+              role: "system",
+              content: [
+                {
+                  type: "input_text",
+                  text: buildRequiredAgentMemoryUpdateReminder(requiredMemoryUpdate)
+                }
+              ]
+            };
+            memoryUpdateReminderInserted = true;
             conversationInput = [...conversationInput, reminder];
             turnContinuationItems.push(reminder);
             continue;
@@ -2993,6 +3032,36 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               break;
             }
             case "submit_memory_update": {
+              memoryUpdateHandled = true;
+              const memoryUpdateAuthorized = Boolean(
+                requiredMemoryUpdate &&
+                  (parsed.args.items.length === 0 ||
+                    shouldApplyAgentMemoryUpdate({
+                      candidate: requiredMemoryUpdate,
+                      draft,
+                      items: parsed.args.items
+                    }))
+              );
+              if (!memoryUpdateAuthorized) {
+                toolOutputs.push(
+                  buildToolResultOutput(call.callId, {
+                    status: "skipped",
+                    skippedReason: requiredMemoryUpdate
+                      ? "记忆证据必须逐字来自当前用户消息；本次写入已跳过。"
+                      : "当前消息仅是一次性要求，不能写入项目记忆。"
+                  })
+                );
+                break;
+              }
+              if (parsed.args.items.length === 0) {
+                toolOutputs.push(
+                  buildToolResultOutput(call.callId, {
+                    status: "skipped",
+                    skippedReason: parsed.args.skippedReason
+                  })
+                );
+                break;
+              }
               const memoryUpdate = commitWorkspaceNow((current) => {
                 const authorization = buildSemanticPatchAuthorization(
                   buildSemanticPatchAuthorizationInput({

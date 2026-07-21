@@ -130,16 +130,16 @@ current user input
 > protected current tool-call/output tail
 ```
 
-The server estimates the full request and uses configurable thresholds:
+The server estimates the full request and uses Morpho's fixed internal Context Policy:
 
 ```text
-MORPHO_AI_CONTEXT_WINDOW_TOKENS=372000
-MORPHO_AI_CONTEXT_PREPARE_TOKENS=200000
-MORPHO_AI_CONTEXT_COMPACT_TOKENS=300000
-MORPHO_AI_CONTEXT_TARGET_TOKENS=16000
+windowTokens=256000
+prepareTokens=204800
+compactTokens=230400
+targetUncompressedTokens=16000
 ```
 
-The 200,000 and 300,000 values are trigger thresholds, not retained context sizes. `CONTEXT_TARGET_TOKENS` limits the compressible discussion and completed-tool-history portion after compaction. The non-compressible system contract, current user input, current selected image inputs, real project state, and latest unresolved tool-output group remain protected even when they make the complete provider request larger than the target.
+The 204,800 and 230,400 values are trigger thresholds, not retained context sizes. The fixed policy is shared by the client and `/api/ai/agent`; production environment variables cannot change it. `targetUncompressedTokens` limits the compressible discussion and completed-tool-history portion after compaction. The non-compressible system contract, current user input, current selected image inputs, real project state, and latest unresolved tool-output group remain protected even when they make the complete provider request larger than the target.
 
 At prepare pressure, older completed tool outputs and excess history are shortened toward the target. At compact pressure, history is reduced further and the provider is explicitly asked for a refreshed checkpoint.
 
@@ -147,4 +147,4 @@ Responses `input_tokens` are normalized as actual input-token usage and can beco
 
 If the final compact-pressure response omits a valid checkpoint, Morpho may issue one bounded checkpoint-only continuation with no tools or image inputs. This optional request changes only the provider-side discussion summary; it never changes objects, revisions, direction status, default references, delivery references, or the visible answer.
 
-An exact `/compact` user input builds a complete same-lane source after the usable checkpoint's `sourceEndMessageId`. The client divides that source into bounded oldest-to-newest chunks, sends each chunk through a checkpoint-only request with no tools or image inputs, and feeds each valid generated checkpoint into the next chunk. The visible transcript remains in `正在压缩当前上下文…` until every chunk succeeds. Only the final checkpoint is written; a partial failure retains the previous valid checkpoint and reports failure instead of success. A lane with too little new discussion reports that no compression is needed.
+An exact `/compact` user input builds a complete project-wide source after the usable summary boundary. The client divides that source into bounded oldest-to-newest chunks, sends each chunk through a summary-only request with no tools or image inputs, and feeds each valid generated summary into the next chunk. The visible transcript remains in `正在压缩当前上下文…` until every chunk succeeds. Only the final summary is written; a partial failure retains the previous valid summary and reports failure instead of success. A project with too little new discussion reports that no compression is needed.

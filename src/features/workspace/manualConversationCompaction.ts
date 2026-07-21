@@ -46,20 +46,15 @@ export function parseManualCompactCommand(draft: string): ManualCompactCommandRe
 
 export function buildManualConversationCompactionPlan(input: {
   messages: AiMessage[];
+  /** Retained for call-site compatibility; manual compaction is project-wide. */
   laneKey: string;
   checkpoint?: ConversationCheckpoint;
   maxChunkTokens?: number;
 }): ManualConversationCompactionPlan {
   const maxChunkTokens = Math.max(32, input.maxChunkTokens ?? DEFAULT_MANUAL_COMPACTION_CHUNK_TOKENS);
-  const laneMessages = input.messages.filter(
-    (message) => message.conversationLaneKey === input.laneKey && isCompressibleChatMessage(message)
-  );
-  const candidateMessages =
-    laneMessages.length > 0 || input.checkpoint
-      ? laneMessages
-      : input.messages.filter(
-          (message) => !message.conversationLaneKey && isCompressibleChatMessage(message)
-        );
+  // `/compact` summarizes the continuous project conversation. Lane keys are
+  // UI routing metadata and must not hide eligible history from the model.
+  const candidateMessages = input.messages.filter(isCompressibleChatMessage);
   const checkpointEndIndex = input.checkpoint
     ? candidateMessages.findIndex((message) => message.id === input.checkpoint?.sourceEndMessageId)
     : -1;
@@ -238,8 +233,10 @@ function extractCheckpointPayload(checkpoint: ConversationCheckpoint): Conversat
 function isCompressibleChatMessage(message: AiMessage): boolean {
   return (
     (message.role === "user" || message.role === "assistant") &&
+    message.contextVisibility !== "uiOnly" &&
     message.taskMode === "chatAnalysis" &&
     message.status !== "failed" &&
+    message.status !== "cancelled" &&
     message.status !== "streaming" &&
     !message.error
   );

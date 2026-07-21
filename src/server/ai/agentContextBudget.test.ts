@@ -10,9 +10,9 @@ import {
 } from "./agentContextBudget";
 
 const limits: AgentContextLimits = {
-  windowTokens: 372_000,
-  prepareTokens: 200_000,
-  compactTokens: 300_000,
+  windowTokens: 256_000,
+  prepareTokens: 204_800,
+  compactTokens: 230_400,
   targetTokens: 16_000
 };
 
@@ -25,10 +25,10 @@ function message(role: "system" | "user" | "assistant", text: string) {
 
 describe("agent context budget", () => {
   it("classifies normal, prepare, and compact pressure at the configured thresholds", () => {
-    expect(classifyAgentContextPressure(199_999, limits)).toBe("normal");
-    expect(classifyAgentContextPressure(200_000, limits)).toBe("prepare");
-    expect(classifyAgentContextPressure(299_999, limits)).toBe("prepare");
-    expect(classifyAgentContextPressure(300_000, limits)).toBe("compact");
+    expect(classifyAgentContextPressure(204_799, limits)).toBe("normal");
+    expect(classifyAgentContextPressure(204_800, limits)).toBe("prepare");
+    expect(classifyAgentContextPressure(230_399, limits)).toBe("prepare");
+    expect(classifyAgentContextPressure(230_400, limits)).toBe("compact");
   });
 
   it("counts image inputs with a fixed token reserve instead of their base64 character length", () => {

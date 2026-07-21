@@ -23,7 +23,7 @@ describe("manual conversation compaction", () => {
     expect(getManualCompactionStatusText("failed")).toContain("上下文压缩未完成");
   });
 
-  it("plans every eligible message in the current lane after the existing checkpoint", () => {
+  it("plans every eligible project message after the existing checkpoint", () => {
     const laneKey = "lane-current";
     const messages: AiMessage[] = [
       ...Array.from({ length: 10 }, (_, index): AiMessage => ({
@@ -63,16 +63,17 @@ describe("manual conversation compaction", () => {
       "current-7",
       "current-8",
       "current-9",
-      "current-10"
+      "current-10",
+      "other-1"
     ]);
     expect(plan.chunks.length).toBeGreaterThan(1);
     expect(plan.chunks.flatMap((chunk) => chunk.messages).map((message) => message.body).join("")).toContain(
       "当前讨论第 5 条"
     );
-    expect(JSON.stringify(plan)).not.toContain("另一个 lane");
+    expect(JSON.stringify(plan)).toContain("另一个 lane");
   });
 
-  it("uses legacy unkeyed chat history only when the current lane has no keyed history", () => {
+  it("keeps legacy and keyed history in the same project conversation", () => {
     const legacyMessages: AiMessage[] = [
       {
         id: "legacy-user",
@@ -110,7 +111,7 @@ describe("manual conversation compaction", () => {
     });
 
     expect(fallbackPlan.sourceMessageIds).toEqual(["legacy-user", "legacy-assistant"]);
-    expect(keyedPlan.sourceMessageIds).toEqual(["current-user"]);
+    expect(keyedPlan.sourceMessageIds).toEqual(["legacy-user", "legacy-assistant", "current-user"]);
   });
 
   it("rolls the generated checkpoint through every chunk before reporting completion", async () => {

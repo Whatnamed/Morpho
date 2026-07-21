@@ -5,6 +5,7 @@ import type {
   ConversationSummaryRevision,
   MorphoWorkspace
 } from "./types";
+import { MORPHO_AGENT_CONTEXT_POLICY, type MorphoAgentContextPolicy } from "./agentContextPolicy";
 import {
   extractStructuredJsonBlock,
   sanitizeStructuredStreamForDisplay,
@@ -13,19 +14,9 @@ import {
 
 export const CONVERSATION_SUMMARY_MARKER = "morphoConversationSummary";
 
-export const DEFAULT_CONVERSATION_TOKEN_LIMITS = {
-  windowTokens: 372_000,
-  prepareTokens: 200_000,
-  compactTokens: 300_000,
-  targetUncompressedTokens: 16_000
-} as const;
+export const DEFAULT_CONVERSATION_TOKEN_LIMITS = MORPHO_AGENT_CONTEXT_POLICY;
 
-export type ConversationTokenLimits = {
-  windowTokens: number;
-  prepareTokens: number;
-  compactTokens: number;
-  targetUncompressedTokens: number;
-};
+export type ConversationTokenLimits = MorphoAgentContextPolicy;
 
 export type ConversationPressure = "normal" | "prepare" | "compact" | "emergency";
 
@@ -416,12 +407,13 @@ export function applyConversationSummaryRevision(
 export function getUsableConversationMessages(messages: readonly AiMessage[]): AiMessage[] {
   return messages.filter(
     (message) =>
+      message.contextVisibility !== "uiOnly" &&
       (message.role === "user" || message.role === "assistant") &&
-      message.status !== "streaming" &&
-      message.status !== "failed" &&
+      (message.role === "user"
+        ? message.status !== "streaming" && message.status !== "failed" && message.status !== "cancelled"
+        : message.status === undefined || message.status === "done") &&
       !message.error &&
-      message.body.trim().length > 0 &&
-      message.body.trim() !== "/compact"
+      message.body.trim().length > 0
   );
 }
 

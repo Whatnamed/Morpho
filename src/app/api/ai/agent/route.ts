@@ -7,7 +7,10 @@ import {
   type OpenAiCompatibleAgentStreamEvent,
   type OpenAiCompatibleResponseRequest
 } from "@/server/ai/openaiCompatibleProvider";
-import { executeAgentRequestWithContextBudget } from "@/server/ai/agentContextBudget";
+import {
+  createAgentContextLimits,
+  executeAgentRequestWithContextBudget
+} from "@/server/ai/agentContextBudget";
 import { filterAgentRequestForConfig } from "@/server/ai/agentRoute";
 import { aiAccessDeniedResponse, guardAiRoute, requireAiRouteUser } from "@/server/auth/aiAccess";
 import { encodeAgentRouteSse, type AgentRouteStreamEvent } from "@/shared/agentStreamProtocol";
@@ -81,12 +84,7 @@ export async function POST(request: Request) {
         });
         try {
           const execution = await executeAgentRequestWithContextBudget(providerRequest, {
-            limits: {
-              windowTokens: config.config.contextWindowTokens,
-              prepareTokens: config.config.contextPrepareTokens,
-              compactTokens: config.config.contextCompactTokens,
-              targetTokens: config.config.contextTargetTokens
-            },
+            limits: createAgentContextLimits(config.config.contextPolicy),
             baselineInputTokens: validated.contextBudgetBaselineTokens,
             execute: (preparedRequest, attempt) => {
               activeAttemptIndex = attempt.index;

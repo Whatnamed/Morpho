@@ -1186,6 +1186,54 @@ describe("Morpho workspace domain boundaries", () => {
     expect(second.workspace.ai.conversationCheckpoints).toEqual([]);
   });
 
+  it("marks only recognizable legacy compaction notices as UI-only during migration", () => {
+    const workspace = createInitialWorkspace();
+    const legacyWorkspace = {
+      ...workspace,
+      ai: {
+        ...workspace.ai,
+        messages: [
+          {
+            id: "legacy-compact-command",
+            role: "user" as const,
+            body: "/compact",
+            createdAt: "2026-07-01T08:00:00.000Z",
+            status: "done" as const,
+            taskMode: "chatAnalysis" as const
+          },
+          {
+            id: "legacy-compact-status",
+            role: "assistant" as const,
+            body: "正在压缩当前上下文…",
+            createdAt: "2026-07-01T08:01:00.000Z",
+            status: "done" as const,
+            taskMode: "chatAnalysis" as const
+          },
+          {
+            id: "legacy-normal-reply",
+            role: "assistant" as const,
+            body: "这是一条正式讨论回复。",
+            createdAt: "2026-07-01T08:02:00.000Z",
+            status: "done" as const,
+            taskMode: "chatAnalysis" as const
+          }
+        ]
+      }
+    };
+
+    const result = migrateWorkspaceToCurrentSchema(legacyWorkspace);
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") {
+      throw new Error(result.reason);
+    }
+    expect(result.workspace.ai.messages.map((message) => message.contextVisibility)).toEqual([
+      "uiOnly",
+      "uiOnly",
+      undefined
+    ]);
+    expect(migrateWorkspaceToCurrentSchema(result.workspace)).toMatchObject({ didMigrate: false });
+  });
+
   it("normalizes current v10 checkpoint storage by dropping invalid checkpoint records", () => {
     const workspace = createInitialWorkspace();
     const currentWorkspace = {

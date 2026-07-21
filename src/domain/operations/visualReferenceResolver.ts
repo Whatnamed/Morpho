@@ -54,9 +54,6 @@ export function resolveVisualReferences(input: {
       if (!object || object.type !== "image" || object.visibility !== "active" || !object.assetId) {
         return { ...candidate, included: false, omissionReason: "unavailable" as const };
       }
-      if (!isDirectionCompatible(object, input.intent.targetDirectionId)) {
-        return { ...candidate, included: false, omissionReason: "directionMismatch" as const };
-      }
       const isExplicitSelection = candidate.reason === "userExplicit" || candidate.reason === "selectedSource";
       if (
         input.intent.excludeDefaultReference &&
@@ -65,15 +62,31 @@ export function resolveVisualReferences(input: {
       ) {
         return { ...candidate, included: false, omissionReason: "defaultExcluded" as const };
       }
+      const crossDirection = Boolean(
+        input.intent.targetDirectionId && object.directionId && object.directionId !== input.intent.targetDirectionId
+      );
+      const directionMetadata = {
+        ...(object.directionId ? { sourceDirectionId: object.directionId } : {}),
+        ...(input.intent.targetDirectionId ? { targetDirectionId: input.intent.targetDirectionId } : {}),
+        ...(crossDirection ? { crossDirection: true } : {})
+      };
+      if (crossDirection && !isStrongCrossDirectionReference(candidate.reason)) {
+        return { ...candidate, ...directionMetadata, included: false, omissionReason: "directionMismatch" as const };
+      }
       if (seen.has(candidate.objectId)) {
-        return { ...candidate, included: false, omissionReason: "duplicate" as const };
+        return { ...candidate, ...directionMetadata, included: false, omissionReason: "duplicate" as const };
       }
       seen.add(candidate.objectId);
       if (includedCount >= providerLimit) {
-        return { ...candidate, included: false, omissionReason: "providerLimit" as const };
+        return { ...candidate, ...directionMetadata, included: false, omissionReason: "providerLimit" as const };
       }
       includedCount += 1;
-      return { ...candidate, included: true };
+      return {
+        ...candidate,
+        ...directionMetadata,
+        ...(crossDirection ? { retentionReason: crossDirectionRetentionReason(candidate.reason) } : {}),
+        included: true
+      };
     });
 
   return {
@@ -141,12 +154,23 @@ function imageRepresentativeRank(image: ImageObject): number {
   }
 }
 
-function isDirectionCompatible(
-  image: ImageObject,
-  targetDirectionId: string | undefined
-): boolean {
-  if (!targetDirectionId || !image.directionId || image.directionId === targetDirectionId) {
-    return true;
+function isStrongCrossDirectionReference(reason: VisualReferenceReason): boolean {
+  return reason === "userExplicit" || reason === "selectedSource" || reason === "branchRoot" || reason === "directParent" || reason === "defaultReference";
+}
+
+function crossDirectionRetentionReason(reason: VisualReferenceReason): string {
+  switch (reason) {
+    case "userExplicit":
+      return "用户明确指定，保留跨方向参考。";
+    case "selectedSource":
+      return "用户当前选择，保留跨方向参考。";
+    case "branchRoot":
+      return "当前视觉分支根图，保留作为分支连续性参考。";
+    case "directParent":
+      return "来源图的直接父图，保留作为版本连续性参考。";
+    case "defaultReference":
+      return "当前后续默认参考，保留作为项目一致性基线。";
+    default:
+      return "保留用户可追溯的强关系参考。";
   }
-  return false;
 }

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { MORPHO_AGENT_CONTEXT_POLICY } from "@/domain/morpho/agentContextPolicy";
 import { POST } from "./route";
 import { filterAgentRequestForConfig } from "@/server/ai/agentRoute";
 import type { OpenAiCompatibleResponseRequest } from "@/server/ai/openaiCompatibleProvider";
@@ -13,10 +14,7 @@ vi.mock("@/server/ai/openaiCompatibleConfig", () => ({
       baseUrl: "https://agent.example.test",
       model: "test-model",
       webSearchEnabled: true,
-      contextWindowTokens: 372_000,
-      contextPrepareTokens: 200_000,
-      contextCompactTokens: 300_000,
-      contextTargetTokens: 16_000
+      contextPolicy: MORPHO_AGENT_CONTEXT_POLICY
     }
   })
 }));
