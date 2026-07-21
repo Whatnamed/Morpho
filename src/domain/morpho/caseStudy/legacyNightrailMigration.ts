@@ -57,6 +57,7 @@ export function isPristineLegacyNightrailWorkspace(workspace: MorphoWorkspace): 
   const {
     conversationCompaction: _conversationCompaction,
     conversationSummaryRevisions: _conversationSummaryRevisions,
+    providerContextFrames: _providerContextFrames,
     ...legacyAi
   } = workspace.ai;
   return fingerprintStructuredValue({

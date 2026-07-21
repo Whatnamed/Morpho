@@ -16,7 +16,8 @@ const limits: ConversationTokenLimits = {
   windowTokens: 1_000,
   prepareTokens: 240,
   compactTokens: 420,
-  targetUncompressedTokens: 90
+  targetUncompressedTokens: 90,
+  responseReserveTokens: 0
 };
 
 const summary: ConversationSummary = {

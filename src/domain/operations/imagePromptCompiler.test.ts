@@ -87,7 +87,8 @@ describe("Image Prompt Compiler and reference resolver", () => {
 
     expect(compiled.promptContractVersion).toBe(IMAGE_PROMPT_CONTRACT_VERSION);
     expect(compiled.prompt).toContain("这次只改转角，不要改变扶手主体比例");
-    expect(compiled.prompt).toContain("任务模板：局部修改");
+    expect(compiled.prompt).toContain("任务模板：定向修改");
+    expect(compiled.editMode).toBe("directedEdit");
     expect(compiled.prompt).toContain("图片角色：关键细节");
     expect(compiled.prompt).toContain("主体比例");
     expect(compiled.prompt).toContain("当前 Design Brief");

@@ -25,6 +25,38 @@ describe("provider token usage normalization", () => {
     ).toEqual({ inputTokens: 4429, outputTokens: 76, totalTokens: 4505 });
   });
 
+  it("normalizes cached and uncached input tokens without double counting", () => {
+    expect(
+      normalizeProviderTokenUsage(
+        {
+          input_tokens: 1_000,
+          output_tokens: 100,
+          total_tokens: 1_100,
+          prompt_tokens_details: { cached_tokens: 750 },
+          completion_tokens_details: { reasoning_tokens: 40 }
+        },
+        responseFields
+      )
+    ).toEqual({
+      inputTokens: 1_000,
+      cachedInputTokens: 750,
+      uncachedInputTokens: 250,
+      cacheHitRatio: 0.75,
+      outputTokens: 100,
+      totalTokens: 1_100,
+      reasoningTokens: 40
+    });
+  });
+
+  it("rejects cached input counts larger than total input", () => {
+    expect(
+      normalizeProviderTokenUsage(
+        { input_tokens: 10, output_tokens: 2, total_tokens: 12, cached_input_tokens: 11 },
+        responseFields
+      )
+    ).toBeUndefined();
+  });
+
   it("rejects totals below output tokens and non-numeric fields", () => {
     expect(normalizeProviderTokenUsage({ output_tokens: 20, total_tokens: 10 }, responseFields)).toBeUndefined();
     expect(

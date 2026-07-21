@@ -15,7 +15,8 @@
     "dev": "next dev",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:prompt-cache": "node scripts/test-prompt-cache-compatibility.mjs"
   },
   "keywords": [],
   "author": "",

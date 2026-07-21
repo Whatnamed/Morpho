@@ -1,5 +1,7 @@
 # Morpho M4.3 Context Runtime
 
+> Historical milestone note: this document describes the M4.3 baseline. The current v3.2 runtime has since added project-wide conversation compaction, the Memory Kernel, Provider Context Frames, and the Responses Agent route. Current image-edit wording is `directed edit`; the provider still has no mask/inpainting input and therefore no pixel-level local-edit guarantee.
+
 ## Scope
 
 M4.3 closes the runtime gap between selected real project material and the actual AI task that runs.
@@ -7,14 +9,14 @@ M4.3 closes the runtime gap between selected real project material and the actua
 This milestone adds:
 
 - a unified task-context assembly layer for research, general chat/proposal, direction preview, and visual development;
-- controlled MiMo planning context for `imageGeneration`;
+- controlled provider planning context for `imageGeneration`;
 - deterministic auto-routing that considers draft text plus current selection shape;
 - controllable multi-preview direction generation;
 - more inspectable image-generation operation status and result metadata.
 
 This milestone does not add:
 
-- long-term project memory or automatic context compression;
+- the M4.3 milestone itself did not add long-term project memory or automatic context compression;
 - document readers, page previews, OCR, or partial-file semantic object extraction;
 - compare workflow runtime;
 - delivery/export/archive runtime;
@@ -27,7 +29,7 @@ This milestone does not add:
 Before M4.3, visual planning and ordinary AI task assembly still had three reliability problems:
 
 1. task-specific context was still assembled ad hoc in `WorkspaceClient.tsx`;
-2. MiMo visual-planning requests could lose authorized attachments and local document extracts when `taskMode === "imageGeneration"`;
+2. provider visual-planning requests could lose authorized attachments and local document extracts when `taskMode === "imageGeneration"`;
 3. direction preview was still effectively treated as one preview per direction, with weak auditing of requested count and weak placement planning.
 
 M4.3 moves those concerns into explicit, testable runtime boundaries.
@@ -84,7 +86,7 @@ Research context may include:
 - selected text, links, existing research, and other selected semantic objects;
 - bounded semantic summaries for selected and directly relevant objects.
 
-MiMo may also receive native `web_search` only for chat/research requests when server config enables it.
+The current Agent may receive the configured OpenAI-compatible web-search tool only for eligible research/chat profiles.
 
 ### General / proposal discussion
 
@@ -136,11 +138,11 @@ Visual-development context includes:
 
 If selected images span multiple directions, the existing explicit-target-direction rule still applies during visual-plan validation.
 
-## MiMo and GrsAI Boundary
+## Historical MiMo and GrsAI Boundary
 
-### MiMo planning stage
+### Historical MiMo planning stage
 
-`/api/ai/chat` now accepts authorized `imageGeneration` request attachments and local `documentExtracts`.
+The historical planning path accepted authorized `imageGeneration` request attachments and local `documentExtracts`; the formal workspace path now uses `/api/ai/agent` Responses SSE.
 
 For visual planning, MiMo can receive:
 
@@ -291,17 +293,17 @@ Single-item failures do not delete already-saved successful results, and generat
 The recommended acceptance path avoids paid-provider usage:
 
 1. run local dev server;
-2. open real browser against `/projects/project-nightrail`;
+2. open the current real browser project at `/projects/project-morpho-case-study`;
 3. preload or manipulate selection state through real UI or seeded local storage;
-4. intercept `/api/ai/chat` and `/api/ai/image`;
+4. intercept the active `/api/ai/agent` and `/api/ai/image` routes;
 5. assert request payloads and visible UI status;
-6. return mocked MiMo plan JSON and mocked image bytes.
+6. return mocked provider plan JSON and mocked image bytes.
 
 Minimum flows to verify:
 
 - selected material -> research route;
 - selected directions -> direction preview with preview-count summary and grouped placement;
-- selected image -> visual development with MiMo image attachments and Grs image-only references;
+- selected image -> visual development with provider image attachments and Grs image-only references;
 - selected image + analysis wording -> ordinary chat, not image generation;
 - manual task-mode override beats auto-routing;
 - design-trace overlay still opens and closes.

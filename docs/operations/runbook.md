@@ -24,7 +24,7 @@ Cloudflare/OpenNext remains a retained, opt-in backup capability and does not re
 
 ## Environment
 
-Morpho's production Context Policy is fixed in `src/domain/morpho/agentContextPolicy.ts`: `256000` window, `204800` prepare, `230400` compact, and `16000` target uncompressed tail. These values are not configured through Vercel environment variables. Do not add `MORPHO_AI_CONTEXT_*` variables to `.env.local` or Vercel; they are ignored by the production runtime.
+Morpho's production Context Policy is fixed in `src/domain/morpho/agentContextPolicy.ts`: `256000` window, `204800` prepare, `230400` compact, `16000` target uncompressed tail, and a separate `16000` response reserve. These values are not configured through Vercel environment variables. Do not add `MORPHO_AI_CONTEXT_*` variables to `.env.local` or Vercel; they are ignored by the production runtime.
 
 Copy `.env.example` to `.env.local` for local development. Do not commit `.env.local`. `.env.example` is the sole baseline for environment-variable names, documented defaults, and comments.
 
@@ -63,6 +63,7 @@ AiJWS text behavior:
 - selected parsed file objects can also send bounded local `documentExtract` text to AiJWS for visual planning when `taskMode === "imageGeneration"` and the current task context authorizes them;
 - when `MORPHO_AI_WEB_SEARCH_ENABLED=true`, chat/research requests may provide provider web-search tooling where supported. Image generation never receives web search tools;
 - source links are shown only when the provider returns citation/annotation fields.
+- prompt cache fields stay disabled by default. Enable `MORPHO_AI_SUPPORTS_PROMPT_CACHE_KEY`, `MORPHO_AI_SUPPORTS_PROMPT_CACHE_RETENTION`, and the explicit key flag only after the current relay has passed the compatibility probe; a cache miss never changes Agent correctness.
 
 Image generation uses the GrsAI `MORPHO_GRS_*` group defined in `.env.example`.
 
@@ -71,7 +72,7 @@ Image generation uses the GrsAI `MORPHO_GRS_*` group defined in `.env.example`.
 Workspace visual generation routes models by intent (see `resolveImageGenerationSettingsForVisualIntent` in `src/features/workspace/imageGenerationSettings.ts`):
 
 - `directionPreview` / direction batch preview → `nano-banana-2-lite` (fast multi-shot scouting);
-- `visualDevelopment`, continue-development, local edit, scene/detail work, and unknown intent → `gpt-image-2` (higher quality iteration).
+- `visualDevelopment`, continue-development, directed edit, scene/detail work, and unknown intent → `gpt-image-2` (higher quality iteration).
 
 Paid provider smoke tests are disabled unless explicitly enabled:
 
@@ -85,7 +86,7 @@ Current implemented behavior:
 
 - automatic model routing (no required user model picker for the main visual paths):
   - direction preview batch → `nano-banana-2-lite`;
-  - visual development / local edit / scene / detail / unknown → `gpt-image-2`;
+  - visual development / directed edit / scene / detail / unknown → `gpt-image-2`;
 - catalog of selectable models still lives in `src/domain/morpho/grsImageModels.ts`;
 - `MORPHO_GRS_DEFAULT_MODEL` is server default/fallback only, not a global override of the intent router;
 - multi-item plans generate with up to **4 concurrent** GrsAI requests (`IMAGE_GENERATION_MAX_CONCURRENCY`);
@@ -96,6 +97,7 @@ Current implemented behavior:
 - direction-preview and visual-development generation use Agent structured visual intent, deterministic reference resolution, local Prompt compilation, and then call GrsAI per plan item with concurrency capped at 4;
 - `1`, `2`, `4`, and `6` are UI shortcuts only. Explicit positive counts and more than three selected directions are valid;
 - image-generation metadata records requested count, structured intent, compiled prompt, prompt-contract version, reference-resolution omissions, model settings, successful result IDs, and per-item failures.
+- the current GRSAI request supports text-to-image, image-to-image, and prompt-level directed edit. It has no mask/inpainting field; UI and prompts must not promise pixel-level local editing, and sources are never overwritten.
 
 Milestone 3 Operation records are local-first and lightweight. Workspace JSON stores operation status, summaries, proposals, citation snapshots, and IndexedDB artifact references. It does not store raw webpages, large extracted files, page previews, provider raw responses, API keys, or response headers.
 

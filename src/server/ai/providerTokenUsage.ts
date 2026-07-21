@@ -1,5 +1,8 @@
 export type NormalizedProviderTokenUsage = {
   inputTokens: number;
+  cachedInputTokens?: number;
+  uncachedInputTokens?: number;
+  cacheHitRatio?: number;
   outputTokens: number;
   totalTokens: number;
   reasoningTokens?: number;
@@ -48,9 +51,26 @@ export function normalizeProviderTokenUsage(
   }
 
   const outputDetails = asRecord(usage.output_tokens_details);
-  const reasoningTokens = nonNegativeInteger(outputDetails?.reasoning_tokens);
+  const completionDetails = asRecord(usage.completion_tokens_details);
+  const reasoningTokens = nonNegativeInteger(outputDetails?.reasoning_tokens ?? completionDetails?.reasoning_tokens);
+  const inputDetails = asRecord(usage.input_tokens_details);
+  const promptDetails = asRecord(usage.prompt_tokens_details);
+  const cachedInputTokens =
+    nonNegativeInteger(usage.cached_input_tokens) ??
+    nonNegativeInteger(inputDetails?.cached_tokens) ??
+    nonNegativeInteger(promptDetails?.cached_tokens);
+  if (cachedInputTokens !== undefined && cachedInputTokens > inputTokens) {
+    return undefined;
+  }
+  const uncachedInputTokens =
+    cachedInputTokens === undefined ? undefined : inputTokens - cachedInputTokens;
   return {
     inputTokens,
+    ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
+    ...(uncachedInputTokens !== undefined ? { uncachedInputTokens } : {}),
+    ...(cachedInputTokens !== undefined
+      ? { cacheHitRatio: inputTokens === 0 ? 0 : cachedInputTokens / inputTokens }
+      : {}),
     outputTokens,
     totalTokens,
     ...(reasoningTokens !== undefined && reasoningTokens <= outputTokens ? { reasoningTokens } : {})

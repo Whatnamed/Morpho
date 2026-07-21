@@ -12,7 +12,8 @@ export type AgentContextLimits = {
   windowTokens: number;
   prepareTokens: number;
   compactTokens: number;
-  targetTokens: number;
+  targetUncompressedTokens: number;
+  responseReserveTokens: number;
 };
 
 export type AgentContextPressure = "normal" | "prepare" | "compact";
@@ -21,6 +22,7 @@ export type PreparedAgentContextRequest = {
   request: OpenAiCompatibleResponseRequest;
   pressure: AgentContextPressure;
   estimatedInputTokens: number;
+  estimatedOccupancyTokens: number;
   finalEstimatedInputTokens: number;
   compressibleTokens: number;
   compacted: boolean;
@@ -52,7 +54,8 @@ export function createAgentContextLimits(
     windowTokens: policy.windowTokens,
     prepareTokens: policy.prepareTokens,
     compactTokens: policy.compactTokens,
-    targetTokens: policy.targetUncompressedTokens
+    targetUncompressedTokens: policy.targetUncompressedTokens,
+    responseReserveTokens: policy.responseReserveTokens
   };
 }
 
@@ -88,15 +91,17 @@ export function prepareAgentContextRequest(
 ): PreparedAgentContextRequest {
   const localEstimate = estimateAgentContextTokens(request);
   const estimatedInputTokens = Math.max(localEstimate, options.baselineInputTokens ?? 0);
+  const estimatedOccupancyTokens = estimatedInputTokens + options.limits.responseReserveTokens;
   const pressure =
     options.force === "emergency"
       ? "compact"
-      : options.force ?? classifyAgentContextPressure(estimatedInputTokens, options.limits);
+      : options.force ?? classifyAgentContextPressure(estimatedOccupancyTokens, options.limits);
   if (pressure === "normal") {
     return {
       request,
       pressure,
       estimatedInputTokens,
+      estimatedOccupancyTokens,
       finalEstimatedInputTokens: localEstimate,
       compressibleTokens: estimateCompressibleContextTokens(request),
       compacted: false,
@@ -109,6 +114,7 @@ export function prepareAgentContextRequest(
       request,
       pressure,
       estimatedInputTokens,
+      estimatedOccupancyTokens,
       finalEstimatedInputTokens: localEstimate,
       compressibleTokens: estimateCompressibleContextTokens(request),
       compacted: false,
@@ -121,6 +127,7 @@ export function prepareAgentContextRequest(
     request: compactedRequest,
     pressure,
     estimatedInputTokens,
+    estimatedOccupancyTokens,
     finalEstimatedInputTokens: estimateAgentContextTokens(compactedRequest),
     compressibleTokens: estimateCompressibleContextTokens(compactedRequest),
     compacted: compactedRequest !== request,
@@ -149,6 +156,7 @@ export async function executeAgentRequestWithContextBudget<T>(
       context: {
         pressure: prepared.pressure,
         estimatedInputTokens: prepared.estimatedInputTokens,
+        estimatedOccupancyTokens: prepared.estimatedOccupancyTokens,
         finalEstimatedInputTokens: prepared.finalEstimatedInputTokens,
         compressibleTokens: prepared.compressibleTokens,
         compacted: prepared.compacted,
@@ -176,6 +184,7 @@ export async function executeAgentRequestWithContextBudget<T>(
       context: {
         pressure: "compact",
         estimatedInputTokens: prepared.estimatedInputTokens,
+        estimatedOccupancyTokens: emergency.estimatedInputTokens + options.limits.responseReserveTokens,
         finalEstimatedInputTokens: emergency.finalEstimatedInputTokens,
         compressibleTokens: emergency.compressibleTokens,
         compacted: emergency.compacted,

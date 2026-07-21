@@ -1,4 +1,5 @@
 import { getCurrentProjectMemoryRevision } from "../morpho/projectMemory";
+import type { GrsImageEditMode } from "../morpho/grsImageModels";
 import type { MorphoWorkspace } from "../morpho/types";
 import type {
   VisualGenerationPlan,
@@ -13,6 +14,7 @@ export const IMAGE_PROMPT_CONTRACT_VERSION = "morpho-image-prompt-v2";
 export type CompiledImagePrompt = {
   prompt: string;
   promptContractVersion: typeof IMAGE_PROMPT_CONTRACT_VERSION;
+  editMode: GrsImageEditMode;
   referenceResolution: VisualReferenceResolution;
 };
 
@@ -39,10 +41,12 @@ export function compileImagePrompt(input: {
 
   const rolePolicy = imageRolePolicy(input.intent.role);
   const taskPolicy = imageTaskPolicy(input.intent);
+  const editMode = resolveImageEditMode(input.intent, input.referenceResolution);
   const sections = [
     `任务：${input.intent.title}`,
     `目的：${input.intent.purpose}`,
     `图片角色：${rolePolicy.label}`,
+    `图像编辑能力：${editModeLabel(editMode)}`,
     rolePolicy.instruction,
     taskPolicy,
     line("当前用户要求（最高优先级）", input.currentUserInput),
@@ -71,12 +75,13 @@ export function compileImagePrompt(input: {
     references.length > 0 ? `参考图语义优先级已经由 Morpho 解析：${references.join("；")}` : "本轮无可用参考图。",
     input.intent.excludeDefaultReference ? "本轮明确排除项目默认参考。" : "",
     modelAdapterInstruction(input.modelId),
-    "只生成本任务要求的新图，不覆盖来源图；不要擅自改变未列入允许变化的主体架构。"
+    "只生成本任务要求的新图，不覆盖来源图；没有蒙版或 inpainting 参数时，不保证未指定区域像素级不变，只能通过提示词尽量保持结构、比例、材质和构图。"
   ].filter(Boolean);
 
   return {
     prompt: sections.join("\n\n"),
     promptContractVersion: IMAGE_PROMPT_CONTRACT_VERSION,
+    editMode,
     referenceResolution: input.referenceResolution
   };
 }
@@ -117,6 +122,7 @@ export function compileVisualGenerationPlan(input: {
         prompt: compiled.prompt,
         referenceObjectIds: referenceResolution.resolvedObjectIds,
         role: input.kind === "directionPreview" ? "conceptImage" : intent.role,
+        editMode: compiled.editMode,
         visualIntent: intent,
         referenceResolution,
         promptContractVersion: compiled.promptContractVersion
@@ -128,7 +134,7 @@ export function compileVisualGenerationPlan(input: {
 function imageTaskPolicy(intent: VisualIntentItem): string {
   const taskText = [intent.title, intent.purpose, ...intent.changeGoals].join(" ");
   if (/局部|仅修改|只改|替换|移除|增加细节/i.test(taskText)) {
-    return "任务模板：局部修改。只改变 changeGoals 指定区域，未明确允许变化的产品结构、比例、视角关系和识别特征全部保持。";
+    return "任务模板：定向修改。通过提示词尽量改变 changeGoals 指定内容并保留其余结构、比例、材质和构图；当前链路没有蒙版，不能承诺像素级局部锁定。";
   }
   if (intent.role === "sceneVisual") {
     return "任务模板：使用场景。用真实环境、人物关系与光线解释使用情境，同时维持产品主体、比例和关键结构。";
@@ -146,6 +152,33 @@ function imageTaskPolicy(intent: VisualIntentItem): string {
     return "任务模板：继续发展。沿来源图的产品身份和当前方向深化，形成可追溯的新方案，不退回为无关的新概念。";
   }
   return "任务模板：按本轮结构化视觉意图生成一个新的、可追溯的项目图像对象。";
+}
+
+function resolveImageEditMode(
+  intent: VisualIntentItem,
+  referenceResolution: VisualReferenceResolution
+): GrsImageEditMode {
+  if (referenceResolution.resolvedObjectIds.length === 0) {
+    return "textToImage";
+  }
+  if (intent.editMode === "directedEdit" || intent.editMode === "maskedLocalEdit") {
+    return "directedEdit";
+  }
+  const taskText = [intent.title, intent.purpose, ...intent.changeGoals].join(" ");
+  return /局部|仅修改|只改|替换|移除|增加细节|定向修改/i.test(taskText) ? "directedEdit" : "imageToImage";
+}
+
+function editModeLabel(editMode: GrsImageEditMode): string {
+  switch (editMode) {
+    case "textToImage":
+      return "文生图";
+    case "imageToImage":
+      return "图生图";
+    case "directedEdit":
+      return "定向修改（基于参考图的提示词编辑）";
+    case "maskedLocalEdit":
+      return "蒙版局部编辑（当前 Provider 不可用）";
+  }
 }
 
 function imageRolePolicy(role: VisualIntentItem["role"]): { label: string; instruction: string } {

@@ -42,6 +42,7 @@ Current workspace state includes:
 - optional ordered Agent process traces in `AiMessage.agentTrace`.
 - legacy conversation checkpoints in `workspace.ai.conversationCheckpoints` for migration and audit compatibility;
 - project-wide compaction state and revisioned summaries in `workspace.ai.conversationCompaction` and `workspace.ai.conversationSummaryRevisions`;
+- append-only provider-only Context Frames in `workspace.ai.providerContextFrames` for project state, turn scope, runtime configuration, and conversation summaries;
 - seven revisioned current project-memory projections plus six possible revisioned stage records in `workspace.projectMemory`;
 - saved local Compare analyses in `workspace.ai.comparisonAnalyses`.
 - lightweight Operation records in `workspace.operations`;
@@ -225,11 +226,13 @@ Schema v15 is the current runtime contract and supersedes lane-local checkpoint 
 - stage records use six possible project areas but create current revisions only for stages with real content; Compare writes back to the relevant stage and never becomes a stage;
 - deterministic projection and controlled semantic entries meet in one Memory Kernel, with consecutive equivalent revisions collapsed during migration so reload is idempotent;
 - Agent messages record prompt-contract version, task strategy, specific memory/stage update keys, citations, and Agent Trace provenance;
-- `src/domain/morpho/agentContextPolicy.ts` is the only production Context Policy source: 256,000 window, 204,800 prepare, 230,400 compact, and 16,000 uncompressed-tail target. `prepare` never trims history; only `compact` advances a validated summary boundary;
+- `src/domain/morpho/agentContextPolicy.ts` is the only production Context Policy source: 256,000 window, 204,800 prepare, 230,400 compact, 16,000 uncompressed-tail target, and a separate 16,000 response reserve. `prepare` never trims history; only `compact` advances a validated summary boundary;
 - every formal Agent request receives a bounded current Memory Kernel projection plus the task-relevant current Stage Record. Full history, revisions, hidden objects, and old decisions remain explicit-read material;
 - `AiMessage.contextVisibility` keeps `/compact` commands and pure operation notices in UI/audit history without sending them to model Context, summary, or default conversation search;
 - DecisionRecords remain append-only and are classified against current structured state as `current`, `superseded`, `historical`, or `reviewRequired`; current Agent memory and the default drawer view do not treat every record as current;
 - generated images record structured intent, compiled prompt, reference-resolution diagnostics, prompt-contract version, model settings, and operation/provider provenance;
+- Provider input keeps a byte-stable system prefix and deterministic `standard` / `standardWithWebSearch` tool profiles. Cache key/retention fields are opt-in and relay-compatible; missing cache metadata is observable as unavailable but never affects correctness;
+- GrsAI image planning distinguishes `textToImage`, `imageToImage`, and prompt-level `directedEdit`. The current request has no mask/inpainting field, so `maskedLocalEdit` is unavailable and no pixel-level local-edit guarantee is exposed;
 - editable backups default to full conversation scope and preserve raw chat, summary revisions, legacy checkpoints, memory/stage revisions, Continuity Events, Agent Trace, citations, Compare analyses, and image provenance;
 - the generated current-case fixture is upgraded with `npm.cmd run case-study:upgrade`; repeated upgrades must produce the same workspace hash.
 

@@ -13,6 +13,7 @@ import type {
   ProjectMemoryState,
   StageRecordKey,
   StageRecordRevision,
+  StageRecordSectionKey,
   StageRecordSections
 } from "./types";
 import { getContinuityEntryEligibility, resolveContinuityValidity } from "./projectContinuity";
@@ -57,11 +58,62 @@ export const STAGE_RECORD_TITLES: Record<StageRecordKey, string> = {
 };
 
 export const AGENT_DEFAULT_MEMORY_LIMITS = {
-  maxSectionsPerDocument: 4,
+  maxSectionsPerDocument: 9,
   maxItemsPerSection: 5,
   maxItemChars: 320,
-  maxSourceRefs: 3
+  maxSourceRefs: 3,
+  maxTotalItems: 24,
+  maxDocumentChars: 6_000
 } as const;
+
+const PROJECT_MEMORY_SECTION_PRIORITY: Record<ProjectMemoryKey, readonly string[]> = {
+  projectOverview: ["currentFocus", "stableResults", "projectStart", "mainRoute", "recentChange"],
+  designBrief: [
+    "coreProblem",
+    "designPrinciples",
+    "constraints",
+    "avoidDirections",
+    "projectGoal",
+    "targetUsers",
+    "primaryScenarios",
+    "opportunities",
+    "openQuestions"
+  ],
+  userPreferences: [
+    "projectAvoids",
+    "projectConstraints",
+    "projectPreferences",
+    "designDefinition",
+    "direction",
+    "visual",
+    "review"
+  ],
+  decisionLog: ["decisions"],
+  rejectedDirections: ["directions"],
+  openQuestions: ["blocking", "designDefinition", "direction", "delivery", "exploration"],
+  outputPlan: ["formats", "gaps", "sections", "references", "completed"]
+};
+
+const STAGE_SECTION_PRIORITY: readonly StageRecordSectionKey[] = [
+  "goalAndStatus",
+  "decisions",
+  "constraints",
+  "openRisks",
+  "nextFocus",
+  "outputs",
+  "preferences",
+  "rejected"
+];
+
+function sectionPriority(priority: readonly string[], key: string): number {
+  const index = priority.indexOf(key);
+  return index >= 0 ? index : priority.length + 1;
+}
+
+function stageSectionPriority(key: keyof StageRecordSections): number {
+  const index = STAGE_SECTION_PRIORITY.indexOf(key as StageRecordSectionKey);
+  return index >= 0 ? index : STAGE_SECTION_PRIORITY.length + 1;
+}
 
 export type AgentDefaultMemoryDocument = {
   key: ProjectMemoryKey;
@@ -277,7 +329,7 @@ function compactDefaultMemoryDocument(state: ProjectMemoryState, key: ProjectMem
     updatedAt: revision?.createdAt ?? document.updatedAt,
     reviewRequired: revision?.reviewRequired ?? false,
     empty: !revision || revision.sections.length === 0,
-    sections: revision ? compactMemorySectionsForAgent(revision.sections) : [],
+    sections: revision ? compactMemorySectionsForAgent(key, revision.sections) : [],
     sourceRefs: revision ? compactSourceRefsForAgent(revision.sourceRefs) : []
   };
 }
@@ -296,34 +348,74 @@ function compactDefaultStageRecord(state: ProjectMemoryState, stage: StageRecord
   };
 }
 
-function compactMemorySectionsForAgent(sections: readonly ProjectMemorySection[]): ProjectMemorySection[] {
-  return sections.slice(0, AGENT_DEFAULT_MEMORY_LIMITS.maxSectionsPerDocument).map((section) => ({
-    key: section.key,
-    title: section.title,
-    items: section.items
-      .slice(0, AGENT_DEFAULT_MEMORY_LIMITS.maxItemsPerSection)
-      .map((item) => truncateAgentMemoryItem(item))
-  }));
+function compactMemorySectionsForAgent(
+  documentKey: ProjectMemoryKey,
+  sections: readonly ProjectMemorySection[]
+): ProjectMemorySection[] {
+  const priority = PROJECT_MEMORY_SECTION_PRIORITY[documentKey] ?? [];
+  const ranked = [...sections]
+    .map((section, index) => ({ section, index }))
+    .sort((left, right) => {
+      const priorityDelta = sectionPriority(priority, left.section.key) - sectionPriority(priority, right.section.key);
+      return priorityDelta || left.index - right.index || left.section.key.localeCompare(right.section.key);
+    })
+    .slice(0, AGENT_DEFAULT_MEMORY_LIMITS.maxSectionsPerDocument);
+  const result: ProjectMemorySection[] = [];
+  let totalItems = 0;
+  let totalChars = 0;
+  for (const { section } of ranked) {
+    const items: string[] = [];
+    for (const item of section.items.slice(0, AGENT_DEFAULT_MEMORY_LIMITS.maxItemsPerSection)) {
+      if (totalItems >= AGENT_DEFAULT_MEMORY_LIMITS.maxTotalItems) {
+        break;
+      }
+      const compacted = truncateAgentMemoryItem(item);
+      if (!compacted || totalChars + compacted.length > AGENT_DEFAULT_MEMORY_LIMITS.maxDocumentChars) {
+        continue;
+      }
+      items.push(compacted);
+      totalItems += 1;
+      totalChars += compacted.length;
+    }
+    if (items.length > 0) {
+      result.push({ key: section.key, title: section.title, items });
+    }
+    if (totalItems >= AGENT_DEFAULT_MEMORY_LIMITS.maxTotalItems) {
+      break;
+    }
+  }
+  return result;
 }
 
 function compactStageSectionsForAgent(sections: StageRecordSections): StageRecordSections {
-  return Object.fromEntries(
-    Object.entries(sections)
+  let totalItems = 0;
+  const compacted = Object.entries(sections)
+      .map(([key, items], index) => ({ key, items: items ?? [], index }))
+      .sort((left, right) => {
+        const priorityDelta =
+          stageSectionPriority(left.key as keyof StageRecordSections) -
+          stageSectionPriority(right.key as keyof StageRecordSections);
+        return priorityDelta || left.index - right.index || left.key.localeCompare(right.key);
+      })
       .slice(0, AGENT_DEFAULT_MEMORY_LIMITS.maxSectionsPerDocument)
-      .map(([key, items]) => [
-        key,
-        (items ?? [])
-          .slice(0, AGENT_DEFAULT_MEMORY_LIMITS.maxItemsPerSection)
-          .map((item) => truncateAgentMemoryItem(item))
-      ])
-  ) as StageRecordSections;
+      .map(({ key, items }) => {
+        const remaining = Math.max(0, AGENT_DEFAULT_MEMORY_LIMITS.maxTotalItems - totalItems);
+        const compactedItems = items
+          .slice(0, Math.min(AGENT_DEFAULT_MEMORY_LIMITS.maxItemsPerSection, remaining))
+          .map((item) => truncateAgentMemoryItem(item));
+        totalItems += compactedItems.length;
+        return [key, compactedItems] as const;
+      })
+      .filter(([, items]) => items.length > 0);
+  return Object.fromEntries(compacted) as StageRecordSections;
 }
 
 function compactSourceRefsForAgent(
   sourceRefs: readonly ContinuitySourceRef[]
 ): Array<{ kind: ContinuitySourceRef["kind"]; id: string; title?: string }> {
-  return sourceRefs
+  return [...sourceRefs]
     .filter((source) => source.sourceAvailability !== "hidden" && source.sourceAvailability !== "missing")
+    .sort((left, right) => `${left.kind}:${left.id}`.localeCompare(`${right.kind}:${right.id}`))
     .slice(0, AGENT_DEFAULT_MEMORY_LIMITS.maxSourceRefs)
     .map((source) => ({ kind: source.kind, id: source.id, title: source.snapshot?.title }));
 }
@@ -459,24 +551,29 @@ function projectUserPreferences(resolved: MorphoWorkspace): ProjectedDocument {
       isCurrentEligibleEntry(entry)
   );
 
+  const sections = [
+    preferenceSection(
+      "projectAvoids",
+      "项目范围明确避免",
+      entries.filter((entry) => entry.scope === "project" && entry.semanticKind === "avoidance")
+    ),
+    preferenceSection(
+      "projectConstraints",
+      "项目范围明确约束",
+      entries.filter((entry) => entry.scope === "project" && entry.semanticKind === "constraint")
+    ),
+    preferenceSection(
+      "projectPreferences",
+      "项目范围稳定偏好",
+      entries.filter((entry) => entry.scope === "project" && entry.semanticKind === "preference")
+    ),
+    preferenceSection("designDefinition", "设计定义范围", entries.filter((entry) => entry.scope === "designDefinition")),
+    preferenceSection("direction", "方向范围", entries.filter((entry) => entry.scope === "direction")),
+    preferenceSection("visual", "视觉范围", entries.filter((entry) => entry.scope === "visual")),
+  ].filter((candidate): candidate is ProjectMemorySection => candidate.items.length > 0);
+
   return {
-    sections: compactSections([
-      section(
-        "preferences",
-        "稳定偏好",
-        entries.filter((entry) => entry.semanticKind === "preference").map((entry) => semanticEntryText(entry))
-      ),
-      section(
-        "avoids",
-        "明确避免",
-        entries.filter((entry) => entry.semanticKind === "avoidance").map((entry) => semanticEntryText(entry))
-      ),
-      section(
-        "constraints",
-        "用户明确约束",
-        entries.filter((entry) => entry.semanticKind === "constraint").map((entry) => semanticEntryText(entry))
-      )
-    ]),
+    sections,
     sourceRefs: uniqueSourceRefs(entries.flatMap((entry) => entry.sourceRefs)),
     basis: entries.length > 0 ? "userExplicit" : "deterministic",
     reviewRequired: false
@@ -543,18 +640,22 @@ function projectOpenQuestions(workspace: ProjectionWorkspace, resolved: MorphoWo
     return directionRevision?.openQuestions ?? [];
   });
   const researchQuestions = objectsOfType(workspace, "research").flatMap((research) => research.openQuestions);
+  const deliveryQuestions = objectsOfType(workspace, "delivery").flatMap((delivery) =>
+    delivery.gaps.filter((gap) => gap.status !== "resolved").map((gap) => `${delivery.title}：${gap.label}`)
+  );
   const semanticEntries = resolved.projectContinuity.recordEntries.filter(
     (entry) => entry.semanticKind === "openQuestion" && isCurrentEligibleEntry(entry)
   );
-  const questions = uniqueText([
-    ...(revision?.openQuestions ?? []),
-    ...directionQuestions,
-    ...researchQuestions,
-    ...semanticEntries.map(semanticEntryText)
-  ]);
+  const sections = [
+    section("blocking", "阻塞当前任务", semanticEntries.filter((entry) => entry.scope === "project").map(semanticEntryText)),
+    section("designDefinition", "影响设计定义", revision?.openQuestions ?? []),
+    section("direction", "影响方向", directionQuestions),
+    section("delivery", "影响交付", deliveryQuestions),
+    section("exploration", "普通探索问题", researchQuestions)
+  ].filter((candidate) => candidate.items.length > 0);
 
   return {
-    sections: compactSections([section("questions", "当前待确认问题", questions)]),
+    sections: compactSections(sections),
     sourceRefs: uniqueSourceRefs([
       ...(revision ? [revisionRef(revision.id, revision.title)] : []),
       ...objectsOfType(workspace, "conceptDirection").map(objectRef),
@@ -580,13 +681,19 @@ function projectOutputPlan(workspace: ProjectionWorkspace): ProjectedDocument {
       .filter(Boolean)
       .map((reference) => `${delivery.title}：${reference.snapshot.title}`)
   );
+  const completed = deliveries.flatMap((delivery) =>
+    delivery.sections
+      .filter((sectionItem) => Boolean(sectionItem.narrative?.trim()))
+      .map((sectionItem) => `${delivery.title}：${sectionItem.title}`)
+  );
 
   return {
     sections: compactSections([
       section("formats", "输出形式", deliveries.map((delivery) => delivery.title)),
+      section("gaps", "待补内容", gaps),
       section("sections", "章节结构", sectionItems),
       section("references", "稳定引用", references),
-      section("gaps", "待补内容", gaps)
+      section("completed", "已完成内容", completed)
     ]),
     sourceRefs: uniqueSourceRefs([
       ...deliveries.map(objectRef),
@@ -899,6 +1006,22 @@ function focusSourceRefs(workspace: ProjectionWorkspace): ContinuitySourceRef[] 
 
 function section(key: string, title: string, items: readonly string[]): ProjectMemorySection {
   return { key, title, items: uniqueText(items) };
+}
+
+function preferenceSection(
+  key: string,
+  title: string,
+  entries: readonly ContinuityRecordEntry[]
+): ProjectMemorySection {
+  return section(
+    key,
+    title,
+    entries.map((entry) => {
+      const prefix = entry.semanticKind === "avoidance" ? "避免" : entry.semanticKind === "constraint" ? "约束" : "偏好";
+      const review = getContinuityEntryEligibility(entry).canEnterReviewList ? "（待复核）" : "";
+      return `${prefix}${review}：${semanticEntryText(entry)}`;
+    })
+  );
 }
 
 function compactSections(sections: ProjectMemorySection[]): ProjectMemorySection[] {

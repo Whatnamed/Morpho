@@ -19,6 +19,9 @@ export type AgentStreamOutputItem = {
 
 export type AgentStreamUsage = {
   inputTokens: number;
+  cachedInputTokens?: number;
+  uncachedInputTokens?: number;
+  cacheHitRatio?: number;
   outputTokens: number;
   totalTokens: number;
   reasoningTokens?: number;
@@ -26,12 +29,30 @@ export type AgentStreamUsage = {
 
 export type AgentStreamContext = {
   estimatedInputTokens: number;
+  estimatedOccupancyTokens: number;
   finalEstimatedInputTokens: number;
   compressibleTokens: number;
   pressure: "normal" | "prepare" | "compact";
   compacted: boolean;
   checkpointRequested: boolean;
   retried?: boolean;
+};
+
+export type AgentProviderDiagnostics = {
+  promptContractVersion?: string;
+  toolProfile?: "standard" | "standardWithWebSearch";
+  stablePrefixHash?: string;
+  previousStablePrefixHash?: string;
+  contextFrameCount?: number;
+  appendedContextFrameCount?: number;
+  conversationSummaryRevisionId?: string;
+  cachedInputTokens?: number;
+  uncachedInputTokens?: number;
+  cacheHitRatio?: number;
+  providerCacheKeyEnabled?: boolean;
+  providerCacheRetention?: "in_memory" | "24h";
+  cacheStatus?: "hit" | "miss" | "unavailable";
+  compactedThisTurn?: boolean;
 };
 
 export type AgentStreamResult = {
@@ -43,6 +64,7 @@ export type AgentStreamResult = {
   outputItems: AgentStreamOutputItem[];
   usage?: AgentStreamUsage;
   context?: AgentStreamContext;
+  providerDiagnostics?: AgentProviderDiagnostics;
 };
 
 export type AgentStreamActivityKind =

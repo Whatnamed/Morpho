@@ -69,13 +69,25 @@ const strategyPolicies: Record<AgentTaskStrategyKind, string[]> = {
   ]
 };
 
-export function buildAgentPolicyBlocks(strategy: AgentTaskStrategyKind): string[] {
+export function buildAgentStablePolicyBlocks(): string[] {
   return [
     `Prompt contract: ${MORPHO_AGENT_PROMPT_CONTRACT_VERSION}`,
     ...coreAgentPolicy,
     ...authorityPolicy,
     ...continuityPolicy,
     ...memoryPolicy,
-    ...strategyPolicies[strategy]
+    "工具定义、工具顺序和图片顺序必须稳定；不要因为普通任务措辞临时增删或重排工具。",
+    "项目状态、阶段记录、项目记忆、当前选择和本轮任务通过追加 Context Frame 提供，不写回 Stable System Prefix。",
+    "缓存命中只依赖精确公共前缀；Cache Miss 不影响正确性。",
+    "图像能力边界：支持文生图和图生图；可以执行定向修改，但没有蒙版时不得承诺像素级局部编辑。",
+    "图像生成始终创建新对象和新 revision，保留来源图，不覆盖来源。"
   ];
+}
+
+export function buildAgentStrategyPolicyBlocks(strategy: AgentTaskStrategyKind): string[] {
+  return strategyPolicies[strategy];
+}
+
+export function buildAgentPolicyBlocks(strategy: AgentTaskStrategyKind): string[] {
+  return [...buildAgentStablePolicyBlocks(), ...buildAgentStrategyPolicyBlocks(strategy)];
 }

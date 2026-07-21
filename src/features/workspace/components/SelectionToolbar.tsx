@@ -642,7 +642,7 @@ export function CanvasContextMenu({
             <>
               <button type="button" role="menuitem" onClick={() => run(onLocalEdit)}>
                 <PenLine size={15} />
-                局部修改
+                定向修改
               </button>
               <button type="button" role="menuitem" onClick={() => run(onReferenceIntent)}>
                 <Pin size={15} />

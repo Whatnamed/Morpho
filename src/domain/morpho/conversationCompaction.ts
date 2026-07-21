@@ -234,7 +234,7 @@ export function buildContinuousConversationContext(input: {
   const estimatedInputTokens =
     (input.fixedContextTokenEstimate ?? 0) +
     (input.imageTokenReserve ?? 0) +
-    (input.outputTokenReserve ?? 0) +
+    (input.outputTokenReserve ?? limits.responseReserveTokens) +
     estimateConversationSummaryTokens(summaryRevision?.summary) +
     estimateConversationMessageTokens(messages);
 

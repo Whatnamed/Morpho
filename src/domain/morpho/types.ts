@@ -7,6 +7,7 @@ import type {
   VisualIntentItem,
   VisualReferenceResolution
 } from "../operations/types";
+import type { GrsImageEditMode } from "./grsImageModels";
 
 export type MorphoObjectId = string;
 export type CanvasInstanceId = string;
@@ -390,6 +391,7 @@ export type ImageGenerationMetadata = {
   prompt: string;
   compiledPrompt?: string;
   promptContractVersion?: string;
+  editMode?: GrsImageEditMode;
   referenceObjectIds: MorphoObjectId[];
   referenceResolution?: VisualReferenceResolution;
   directionId?: MorphoObjectId;
@@ -835,6 +837,40 @@ export type AiMessage = {
   error?: string;
 };
 
+export type ProviderContextFrameKind =
+  | "projectState"
+  | "turnContext"
+  | "runtimeConfiguration"
+  | "conversationSummary";
+
+export type ProviderContextFrameSourceRef = {
+  kind: string;
+  id: string;
+  title?: string;
+};
+
+export type ProviderContextFrame = {
+  id: string;
+  kind: ProviderContextFrameKind;
+  createdAt: string;
+  promptContractVersion: string;
+  taskStrategy?: AgentTaskStrategyKind;
+  projectMemoryRevisionIds: string[];
+  stageRecordRevisionIds: string[];
+  designDefinitionRevisionId?: string;
+  directionRevisionIds: string[];
+  defaultReferenceObjectId?: string;
+  selectedObjectIds: string[];
+  relatedObjectIds: string[];
+  renderedText: string;
+  contentHash: string;
+  supersedesFrameId?: string;
+  contextVisibility: "providerOnly";
+  sourceRefs: ProviderContextFrameSourceRef[];
+  reason: string;
+  anchorMessageId?: string;
+};
+
 export type AgentTaskStrategyKind =
   | "discussion"
   | "research"
@@ -971,6 +1007,7 @@ export type MorphoWorkspace = {
     conversationCheckpoints: ConversationCheckpoint[];
     conversationCompaction: ConversationCompactionState;
     conversationSummaryRevisions: Record<string, ConversationSummaryRevision>;
+    providerContextFrames?: ProviderContextFrame[];
     comparisonAnalyses?: Record<ComparisonAnalysisId, ComparisonAnalysis>;
   };
   ui: {

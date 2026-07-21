@@ -82,13 +82,16 @@ export function shouldPromptForMemoryUpdate(input: {
 export function shouldApplyAgentMemoryUpdate(input: {
   candidate: RequiredAgentMemoryUpdate | undefined;
   draft: string;
-  items: ReadonlyArray<{ evidenceQuote: string }>;
+  items: ReadonlyArray<{ evidenceQuote: string; kind?: RequiredAgentMemoryUpdateKind }>;
 }): boolean {
   if (!input.candidate || input.items.length === 0) {
     return false;
   }
 
   return input.items.every(
-    (item) => item.evidenceQuote.length > 0 && input.draft.includes(item.evidenceQuote)
+    (item) =>
+      item.evidenceQuote.length > 0 &&
+      input.draft.includes(item.evidenceQuote) &&
+      (item.kind === undefined || item.kind === input.candidate?.kind)
   );
 }

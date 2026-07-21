@@ -10,6 +10,14 @@ export type OpenAiCompatibleConfig = {
   reasoningEffort?: "low" | "medium" | "high";
   webSearchEnabled: boolean;
   contextPolicy: MorphoAgentContextPolicy;
+  promptCache?: PromptCacheProviderCapability;
+};
+
+export type PromptCacheProviderCapability = {
+  supportsPromptCacheKey: boolean;
+  supportsPromptCacheRetention: boolean;
+  promptCacheRetention?: "in_memory" | "24h";
+  promptCacheKeyEnabled: boolean;
 };
 
 export type OpenAiCompatibleConfigResult =
@@ -37,6 +45,11 @@ export function loadOpenAiCompatibleConfig(env: Partial<NodeJS.ProcessEnv>): Ope
   const model = firstNonEmpty(env.MORPHO_AI_MODEL, env.AIJWS_MODEL) ?? "gpt-5.6-terra";
   const reasoningEffort = parseReasoningEffort(env.MORPHO_AI_REASONING_EFFORT);
   const webSearchEnabled = parseBoolean(env.MORPHO_AI_WEB_SEARCH_ENABLED, true);
+  const supportsPromptCacheKey = parseBoolean(env.MORPHO_AI_SUPPORTS_PROMPT_CACHE_KEY, false);
+  const supportsPromptCacheRetention = parseBoolean(env.MORPHO_AI_SUPPORTS_PROMPT_CACHE_RETENTION, false);
+  const promptCacheKeyEnabled =
+    supportsPromptCacheKey && parseBoolean(env.MORPHO_AI_PROMPT_CACHE_KEY_ENABLED, false);
+  const requestedPromptCacheRetention = parsePromptCacheRetention(env.MORPHO_AI_PROMPT_CACHE_RETENTION);
 
   if (!apiKey || !baseUrl) {
     return {
@@ -53,7 +66,15 @@ export function loadOpenAiCompatibleConfig(env: Partial<NodeJS.ProcessEnv>): Ope
       model,
       reasoningEffort,
       webSearchEnabled,
-      contextPolicy: createMorphoAgentContextPolicy()
+      contextPolicy: createMorphoAgentContextPolicy(),
+      promptCache: {
+        supportsPromptCacheKey,
+        supportsPromptCacheRetention,
+        promptCacheKeyEnabled,
+        ...(supportsPromptCacheRetention && requestedPromptCacheRetention
+          ? { promptCacheRetention: requestedPromptCacheRetention }
+          : {})
+      }
     }
   };
 }
@@ -123,6 +144,11 @@ function parseReasoningEffort(value: string | undefined): "low" | "medium" | "hi
   }
 
   return undefined;
+}
+
+function parsePromptCacheRetention(value: string | undefined): "in_memory" | "24h" | undefined {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "in_memory" || normalized === "24h" ? normalized : undefined;
 }
 
 function trimTrailingSlash(value: string | undefined): string {

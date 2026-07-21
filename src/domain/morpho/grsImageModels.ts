@@ -1,7 +1,8 @@
 export type GrsImageModelStatus = "available" | "maintenance";
 export type GrsImageCapabilityStatus = "documented" | "smokeTestVerified" | "unavailable";
 export type GrsImageModelFamily = "nanoBanana" | "gptImage2";
-export type GrsImageCapability = "textToImage" | "imageToImage";
+export type GrsImageEditMode = "textToImage" | "imageToImage" | "directedEdit" | "maskedLocalEdit";
+export type GrsImageCapability = GrsImageEditMode;
 export type GrsImageSizeOption = "1K" | "2K" | "4K";
 export type GrsImageAspectRatio = "1:1" | "4:3" | "3:4" | "16:9" | "9:16";
 

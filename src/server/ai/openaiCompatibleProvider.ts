@@ -8,10 +8,11 @@ import {
   normalizeProviderTokenUsage,
   type NormalizedProviderTokenUsage
 } from "./providerTokenUsage";
+import type { AgentProviderDiagnostics } from "@/shared/agentStreamProtocol";
 
 type OpenAiCompatibleProviderConfig = Pick<
   OpenAiCompatibleConfig,
-  "apiKey" | "baseUrl" | "model" | "reasoningEffort" | "webSearchEnabled"
+  "apiKey" | "baseUrl" | "model" | "reasoningEffort" | "webSearchEnabled" | "promptCache"
 >;
 
 export type ResponseTextContentPart = {
@@ -59,6 +60,9 @@ export type OpenAiCompatibleResponseRequest = {
   input: Array<ResponseMessageInput | ResponseFunctionToolOutput | AgentOutputItem>;
   tools?: ResponseTool[];
   previousResponseId?: string;
+  promptCacheKey?: string;
+  promptCacheRetention?: "in_memory" | "24h";
+  diagnostics?: AgentProviderDiagnostics;
 };
 
 export type ProviderCitation = {
@@ -85,6 +89,7 @@ export type OpenAiCompatibleResponseResult = {
   webSearchCallCount: number;
   outputItems: AgentOutputItem[];
   usage?: ProviderTokenUsage;
+  providerDiagnostics?: AgentProviderDiagnostics;
 };
 
 export type OpenAiCompatibleStreamHandlers = {
@@ -132,21 +137,32 @@ export async function executeOpenAiCompatibleResponse(
       Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({
-      model: config.model,
-      ...(config.reasoningEffort ? { reasoning: { effort: config.reasoningEffort, summary: "auto" } } : {}),
-      input: request.input,
-      tools: request.tools
-    }),
+    body: JSON.stringify(buildProviderRequestBody(config, request)),
     signal
   });
 
   if (!response.ok) {
     const diagnostic = await safeReadDiagnostic(response);
+    if (shouldRetryWithoutUnsupportedPromptCache(config, request, response.status, diagnostic)) {
+      const retry = await fetchProviderResponse(`${config.baseUrl}/responses`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(buildProviderRequestBody(config, withoutPromptCacheFields(request))),
+        signal
+      });
+      if (retry.ok) {
+        return resultFromRawResponse((await retry.json()) as RawResponse, request.diagnostics, "unavailable");
+      }
+      const retryDiagnostic = await safeReadDiagnostic(retry);
+      throw new OpenAiCompatibleProviderError(retry.status, retryDiagnostic);
+    }
     throw new OpenAiCompatibleProviderError(response.status, diagnostic);
   }
 
-  return resultFromRawResponse((await response.json()) as RawResponse);
+  return resultFromRawResponse((await response.json()) as RawResponse, request.diagnostics);
 }
 
 export async function streamOpenAiCompatibleResponse(
@@ -161,18 +177,15 @@ export async function streamOpenAiCompatibleResponse(
       Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({
-      model: config.model,
-      stream: true,
-      ...(config.reasoningEffort ? { reasoning: { effort: config.reasoningEffort, summary: "auto" } } : {}),
-      input: request.input,
-      tools: request.tools
-    }),
+    body: JSON.stringify({ ...buildProviderRequestBody(config, request), stream: true }),
     signal
   });
 
   if (!response.ok) {
     const diagnostic = await safeReadDiagnostic(response);
+    if (shouldRetryWithoutUnsupportedPromptCache(config, request, response.status, diagnostic)) {
+      return executeBufferedResponsesFallback(config, withoutPromptCacheFields(request), handlers, signal, "unavailable");
+    }
     if (shouldUseBufferedResponsesFallback(response.status)) {
       return executeBufferedResponsesFallback(config, request, handlers, signal);
     }
@@ -186,7 +199,7 @@ export async function streamOpenAiCompatibleResponse(
       if (!isRawResponsesResult(raw)) {
         throw new OpenAiCompatibleProviderError(502, "Responses endpoint returned an incompatible JSON payload.");
       }
-      const result = resultFromRawResponse(raw);
+      const result = resultFromRawResponse(raw, request.diagnostics);
       emitBufferedResult(result, handlers);
       return result;
     }
@@ -194,7 +207,7 @@ export async function streamOpenAiCompatibleResponse(
   }
 
   try {
-    return await parseOpenAiResponsesStream(response.body, {
+    const result = await parseOpenAiResponsesStream(response.body, {
       signal,
       onEvent: (event) => {
         handlers.onEvent?.(event);
@@ -205,6 +218,17 @@ export async function streamOpenAiCompatibleResponse(
         }
       }
     });
+    result.providerDiagnostics = {
+      ...request.diagnostics,
+      ...(result.usage?.cachedInputTokens !== undefined
+        ? {
+            cachedInputTokens: result.usage.cachedInputTokens,
+            uncachedInputTokens: result.usage.uncachedInputTokens,
+            cacheHitRatio: result.usage.cacheHitRatio
+          }
+        : {})
+    };
+    return result;
   } catch (error) {
     if (error instanceof OpenAiCompatibleStreamError) {
       return executeBufferedResponsesFallback(config, request, handlers, signal);
@@ -217,9 +241,13 @@ async function executeBufferedResponsesFallback(
   config: OpenAiCompatibleProviderConfig,
   request: OpenAiCompatibleResponseRequest,
   handlers: OpenAiCompatibleStreamHandlers,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  cacheStatus?: "unavailable"
 ): Promise<OpenAiCompatibleResponseResult> {
   const result = await executeOpenAiCompatibleResponse(config, request, signal);
+  if (cacheStatus) {
+    result.providerDiagnostics = { ...result.providerDiagnostics, cacheStatus };
+  }
   emitBufferedResult(result, handlers);
   return result;
 }
@@ -290,11 +318,83 @@ function waitForTransientRetry(delayMs: number, signal: AbortSignal | null | und
   });
 }
 
-function resultFromRawResponse(raw: RawResponse): OpenAiCompatibleResponseResult {
+function buildProviderRequestBody(
+  config: OpenAiCompatibleProviderConfig,
+  request: OpenAiCompatibleResponseRequest
+): Record<string, unknown> {
+  const promptCache = config.promptCache ?? {
+    supportsPromptCacheKey: false,
+    supportsPromptCacheRetention: false,
+    promptCacheKeyEnabled: false
+  };
+  const body: Record<string, unknown> = {
+    model: config.model,
+    ...(config.reasoningEffort ? { reasoning: { effort: config.reasoningEffort, summary: "auto" } } : {}),
+    input: request.input,
+    tools: request.tools
+  };
+
+  if (promptCache.promptCacheKeyEnabled && promptCache.supportsPromptCacheKey && request.promptCacheKey) {
+    body.prompt_cache_key = request.promptCacheKey;
+  }
+  if (
+    promptCache.supportsPromptCacheRetention &&
+    promptCache.promptCacheRetention &&
+    request.promptCacheRetention
+  ) {
+    body.prompt_cache_retention = request.promptCacheRetention;
+  }
+  return body;
+}
+
+function withoutPromptCacheFields(request: OpenAiCompatibleResponseRequest): OpenAiCompatibleResponseRequest {
+  const { promptCacheKey: _promptCacheKey, promptCacheRetention: _promptCacheRetention, ...rest } = request;
+  return rest;
+}
+
+function shouldRetryWithoutUnsupportedPromptCache(
+  config: OpenAiCompatibleProviderConfig,
+  request: OpenAiCompatibleResponseRequest,
+  status: number,
+  diagnostic: string | undefined
+): boolean {
+  if (status !== 400 || !request.promptCacheKey && !request.promptCacheRetention) {
+    return false;
+  }
+  const promptCache = config.promptCache;
+  if (!promptCache?.promptCacheKeyEnabled && !promptCache?.promptCacheRetention) {
+    return false;
+  }
+  const normalized = diagnostic?.toLowerCase() ?? "";
+  return [
+    "prompt_cache_key",
+    "prompt_cache_retention",
+    "unknown field",
+    "unrecognized field",
+    "additional properties"
+  ].some((pattern) => normalized.includes(pattern));
+}
+
+function resultFromRawResponse(
+  raw: RawResponse,
+  diagnostics?: AgentProviderDiagnostics,
+  cacheStatus?: "unavailable"
+): OpenAiCompatibleResponseResult {
   const usage = normalizeProviderTokenUsage(raw.usage, {
     input: "input_tokens",
     output: "output_tokens"
   });
+  const providerDiagnostics: AgentProviderDiagnostics = {
+    ...diagnostics,
+    ...(usage?.cachedInputTokens !== undefined
+      ? {
+          cachedInputTokens: usage.cachedInputTokens,
+          uncachedInputTokens: usage.uncachedInputTokens,
+          cacheHitRatio: usage.cacheHitRatio
+        }
+      : {}),
+    ...(cacheStatus ? { cacheStatus } : {})
+  };
   return {
     responseId: typeof raw.id === "string" ? raw.id : "",
     outputText: extractOutputText(raw.output),
@@ -304,7 +404,8 @@ function resultFromRawResponse(raw: RawResponse): OpenAiCompatibleResponseResult
     webSearchCallCount: Array.isArray(raw.output)
       ? raw.output.filter((item) => isRecord(item) && item.type === "web_search_call").length
       : 0,
-    ...(usage ? { usage } : {})
+    ...(usage ? { usage } : {}),
+    ...(Object.keys(providerDiagnostics).length > 0 ? { providerDiagnostics } : {})
   };
 }
 

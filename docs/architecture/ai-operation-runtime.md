@@ -2,6 +2,12 @@
 
 本文件记录 Milestone 3 引入的 AI Operation Runtime 边界。它是当前工程实现依据，不替代产品文档中的 AI、状态、资产和项目记忆规则。
 
+## 2026-07-22 Current Runtime Addendum
+
+The formal workspace Agent now uses `/api/ai/agent` with OpenAI-compatible Responses SSE. `/api/ai/chat` is compatibility-only and has no formal-panel caller. Current turns use a byte-stable system prefix and deterministic tool profile; project state, task scope, runtime configuration, and conversation summaries are appended as provider-only Context Frames and are preserved in full editable backups. The fixed `256000 / 204800 / 230400` Context Policy separates the `16000` uncompressed-tail target from the `16000` response reserve.
+
+The current GrsAI boundary is text-to-image, image-to-image, and prompt-level directed edit. The request has no mask or inpainting parameter, so the UI and prompt compiler must not promise pixel-level local editing. A generated image always becomes a new object and never overwrites its source. The original Milestone 3 notes below remain historical where they mention MiMo or the compatibility route.
+
 ## 1. Runtime 边界
 
 Operation 是受控、有限步骤的本地优先工作流，不是无限自主 Agent Loop。
@@ -20,7 +26,7 @@ Research Operation 最多执行：
 ```text
 输入快照
 → 本地资料收集
-→ 可选的一次 MiMo 原生联网补充（由模型在已启用工具时自行判断）
+→ 可选的一次 OpenAI-compatible provider web-search 补充（由模型在已启用工具时自行判断）
 → 有限模型综合
 → ResearchAnalysisProposal
 → 用户确认保存
@@ -93,9 +99,9 @@ Proposal review details 必须说明哪个来源发生了什么，常见原因�
 
 客户端工具负责读取本地 IndexedDB 资产、压缩可发送图片、保存生成结果和更新本地 workspace。
 
-服务端 Provider 工具负责调用 MiMo / GrsAI，并只读取服务端环境变量。浏览器请求不得携带 API Key、Base URL 或 provider 私密配置。
+服务端 Provider 工具负责调用 OpenAI-compatible / GrsAI，并只读取服务端环境变量。浏览器请求不得携带 API Key、Base URL 或 provider 私密配置。
 
-MiMo web search 不是独立调研产品。当 `MORPHO_MIMO_WEB_SEARCH_ENABLED=true` 且 taskMode 为 `chatAnalysis` 或 `researchOperation` 时，服务端可向 MiMo 提供原生 `web_search` 工具，由模型判断是否需要联网。`imageGeneration` 永不提供 web search。Morpho 仍只保存 provider 返回的 citation snapshot，不保存网页正文或原始工具结果。
+Web search 不是独立调研产品。当 `MORPHO_AI_WEB_SEARCH_ENABLED=true` 且当前 Agent tool profile 启用时，服务端可向 OpenAI-compatible provider 提供 web-search 工具，由模型判断是否需要联网。图像生成永不提供 web search。Morpho 仍只保存 provider 返回的 citation snapshot，不保存网页正文或原始工具结果。
 
 ## 6. Proposal 与正式对象
 

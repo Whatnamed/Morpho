@@ -19,7 +19,12 @@ describe("openai-compatible config", () => {
         model: "gpt-5.6-terra",
         reasoningEffort: "high",
         webSearchEnabled: true,
-        contextPolicy: MORPHO_AGENT_CONTEXT_POLICY
+        contextPolicy: MORPHO_AGENT_CONTEXT_POLICY,
+        promptCache: {
+          supportsPromptCacheKey: false,
+          supportsPromptCacheRetention: false,
+          promptCacheKeyEnabled: false
+        }
       }
     });
   });
@@ -38,7 +43,12 @@ describe("openai-compatible config", () => {
         model: "gpt-5.6-terra",
         reasoningEffort: undefined,
         webSearchEnabled: true,
-        contextPolicy: MORPHO_AGENT_CONTEXT_POLICY
+        contextPolicy: MORPHO_AGENT_CONTEXT_POLICY,
+        promptCache: {
+          supportsPromptCacheKey: false,
+          supportsPromptCacheRetention: false,
+          promptCacheKeyEnabled: false
+        }
       }
     });
   });

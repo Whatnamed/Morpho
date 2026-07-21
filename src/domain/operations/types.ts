@@ -1,4 +1,5 @@
 import type { AiWorkIntent, ImageRole } from "../morpho/types";
+import type { GrsImageEditMode } from "../morpho/grsImageModels";
 
 export type OperationId = string;
 export type ArtifactProposalId = string;
@@ -211,6 +212,7 @@ export type VisualIntentItem = {
   environmentAndLighting: string[];
   avoid: string[];
   userPromptRemainder?: string;
+  editMode?: GrsImageEditMode;
   role: ImageRole;
 };
 
@@ -249,6 +251,7 @@ export type VisualGenerationPlanItem = {
   prompt: string;
   referenceObjectIds: OperationObjectId[];
   role: ImageRole;
+  editMode?: GrsImageEditMode;
   visualIntent?: VisualIntentItem;
   referenceResolution?: VisualReferenceResolution;
   promptContractVersion?: string;

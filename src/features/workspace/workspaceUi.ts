@@ -124,7 +124,7 @@ export function getSuggestionsForSelection(objects: MorphoObject[], context: Sug
           prompt: `基于“${object.title}”继续发展，保留当前结构语言和整体气质。`
         },
         {
-          label: "局部修改",
+          label: "定向修改",
           prompt: `保留“${object.title}”的整体比例和主要结构，只调整局部细节，让它更完整。`
         },
         {

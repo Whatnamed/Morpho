@@ -60,8 +60,15 @@ describe("Project Memory Kernel", () => {
     expect(JSON.stringify(context.documents.find((document) => document.key === "userPreferences"))).toContain(
       "克制、低压迫感"
     );
-    expect(context.documents.every((document) => document.sections.length <= 4)).toBe(true);
+    expect(context.documents.every((document) => document.sections.length <= 9)).toBe(true);
     expect(context.documents.every((document) => document.sections.every((section) => section.items.length <= 5))).toBe(true);
+    const designBrief = context.documents.find((document) => document.key === "designBrief");
+    expect(designBrief?.sections.slice(0, 4).map((section) => section.key)).toEqual([
+      "coreProblem",
+      "designPrinciples",
+      "constraints",
+      "avoidDirections"
+    ]);
     expect(context.stageRecords).toHaveLength(1);
     expect(context.stageRecords[0]?.stage).toBe("directionAndVisual");
   });

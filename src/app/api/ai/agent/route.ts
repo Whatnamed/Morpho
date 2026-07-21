@@ -12,6 +12,12 @@ import {
   executeAgentRequestWithContextBudget
 } from "@/server/ai/agentContextBudget";
 import { filterAgentRequestForConfig } from "@/server/ai/agentRoute";
+import {
+  buildPromptCacheKey,
+  hashStablePrefix,
+  resolveProviderToolProfile
+} from "@/server/ai/promptCache";
+import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
 import { aiAccessDeniedResponse, guardAiRoute, requireAiRouteUser } from "@/server/auth/aiAccess";
 import { encodeAgentRouteSse, type AgentRouteStreamEvent } from "@/shared/agentStreamProtocol";
 
@@ -40,7 +46,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: config.reason }, { status: 503 });
   }
 
-  const providerRequest = filterAgentRequestForConfig(validated.value, config.config);
+  const filteredRequest = filterAgentRequestForConfig(validated.value, config.config);
+  const filteredToolProfile = resolveProviderToolProfile(filteredRequest.tools);
+  const generatedPromptCacheKey =
+    validated.projectId &&
+    config.config.promptCache?.supportsPromptCacheKey &&
+    config.config.promptCache.promptCacheKeyEnabled
+      ? buildPromptCacheKey({
+          projectId: validated.projectId,
+          model: config.config.model,
+          promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+          toolProfile: filteredToolProfile
+        })
+      : undefined;
+  const providerRequest: OpenAiCompatibleResponseRequest = {
+    ...filteredRequest,
+    ...(generatedPromptCacheKey ? { promptCacheKey: generatedPromptCacheKey } : {}),
+    diagnostics: {
+      ...filteredRequest.diagnostics,
+      toolProfile: filteredToolProfile,
+      stablePrefixHash: hashStablePrefix(firstSystemPrompt(filteredRequest)),
+      providerCacheKeyEnabled: config.config.promptCache?.promptCacheKeyEnabled ?? false,
+      ...(config.config.promptCache?.promptCacheRetention
+        ? { providerCacheRetention: config.config.promptCache.promptCacheRetention }
+        : {})
+    }
+  };
   const providerAbortController = new AbortController();
   const attemptIds = [`provider-attempt-${crypto.randomUUID()}`, `provider-attempt-${crypto.randomUUID()}`] as const;
   let activeAttemptIndex: 0 | 1 = 0;
@@ -120,7 +151,18 @@ export async function POST(request: Request) {
             attemptId: completedAttemptId,
             result: {
               ...execution.result,
-              context: execution.context
+              context: execution.context,
+              providerDiagnostics: {
+                ...execution.result.providerDiagnostics,
+                providerCacheKeyEnabled: config.config.promptCache?.promptCacheKeyEnabled ?? false,
+                ...(config.config.promptCache?.promptCacheRetention
+                  ? { providerCacheRetention: config.config.promptCache.promptCacheRetention }
+                  : {}),
+                ...(execution.result.usage?.cachedInputTokens !== undefined
+                  ? { cacheStatus: "hit" as const }
+                  : { cacheStatus: "unavailable" as const }),
+                compactedThisTurn: execution.context.compacted || execution.context.retried
+              }
             }
           });
         } catch (error) {
@@ -194,6 +236,7 @@ function validateAgentRouteRequest(value: unknown):
   | {
       status: "ok";
       value: OpenAiCompatibleResponseRequest;
+      projectId?: string;
       agentTurnId?: string;
       agentContinuation: boolean;
       contextBudgetBaselineTokens?: number;
@@ -207,15 +250,37 @@ function validateAgentRouteRequest(value: unknown):
 
   return {
     status: "ok",
+    projectId: typeof value.projectId === "string" && value.projectId.trim() ? value.projectId : undefined,
     agentTurnId,
     agentContinuation: value.continuation === true && Boolean(agentTurnId),
     contextBudgetBaselineTokens: parseOptionalNonNegativeInteger(value.contextBudgetBaselineTokens),
     value: {
       input: value.input as OpenAiCompatibleResponseRequest["input"],
       tools: Array.isArray(value.tools) ? (value.tools as OpenAiCompatibleResponseRequest["tools"]) : undefined,
-      previousResponseId: typeof value.previousResponseId === "string" ? value.previousResponseId : undefined
+      previousResponseId: typeof value.previousResponseId === "string" ? value.previousResponseId : undefined,
+      promptCacheKey: typeof value.promptCacheKey === "string" ? value.promptCacheKey : undefined,
+      promptCacheRetention:
+        value.promptCacheRetention === "in_memory" || value.promptCacheRetention === "24h"
+          ? value.promptCacheRetention
+          : undefined,
+      diagnostics: isRecord(value.diagnostics)
+        ? (value.diagnostics as OpenAiCompatibleResponseRequest["diagnostics"])
+        : undefined
     }
   };
+}
+
+function firstSystemPrompt(request: OpenAiCompatibleResponseRequest): string {
+  const system = request.input.find(
+    (item) =>
+      typeof item === "object" &&
+      item !== null &&
+      "role" in item &&
+      item.role === "system" &&
+      "content" in item &&
+      Array.isArray(item.content)
+  ) as { content: Array<{ text?: unknown }> } | undefined;
+  return system?.content.map((part) => (typeof part.text === "string" ? part.text : "")).join("\n") ?? "";
 }
 
 function parseOptionalNonNegativeInteger(value: unknown): number | undefined {

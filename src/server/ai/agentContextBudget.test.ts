@@ -13,7 +13,8 @@ const limits: AgentContextLimits = {
   windowTokens: 256_000,
   prepareTokens: 204_800,
   compactTokens: 230_400,
-  targetTokens: 16_000
+  targetUncompressedTokens: 16_000,
+  responseReserveTokens: 16_000
 };
 
 function message(role: "system" | "user" | "assistant", text: string) {
@@ -141,7 +142,8 @@ describe("agent context budget", () => {
         windowTokens: 2_000,
         prepareTokens: 500,
         compactTokens: 1_000,
-        targetTokens: 300
+        targetUncompressedTokens: 300,
+        responseReserveTokens: 200
       },
       force: "emergency"
     });
@@ -180,7 +182,8 @@ describe("agent context budget", () => {
     });
 
     expect(prepared.estimatedInputTokens).toBe(220_000);
-    expect(prepared.pressure).toBe("prepare");
+    expect(prepared.estimatedOccupancyTokens).toBe(236_000);
+    expect(prepared.pressure).toBe("compact");
   });
 
   it("retries a provider context limit exactly once with an emergency-compacted request", async () => {

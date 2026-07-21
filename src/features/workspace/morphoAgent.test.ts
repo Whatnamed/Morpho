@@ -48,7 +48,7 @@ describe("agent conversation context", () => {
 
     expect(prompt).toContain("当前用户输入 > 真实项目状态与 Memory Kernel");
     expect(prompt).toContain("继续收敛当前浮标概念方向");
-    expect(prompt).toContain("summarySourceRange: message-1..message-8");
+    expect(prompt).not.toContain("summarySourceRange: message-1..message-8");
     expect(prompt).not.toContain("morphoConversationCheckpoint");
   });
 
@@ -185,7 +185,7 @@ describe("Morpho agent tool argument validation", () => {
     expect(prompt).toContain("短标题：一句说明");
   });
 
-  it("injects bounded current project memory into ordinary Agent prompts", () => {
+  it("keeps dynamic project memory out of the stable Agent prompt", () => {
     const workspace = createInitialWorkspace();
     const context = buildTaskContext(workspace, {
       kind: "general",
@@ -201,10 +201,28 @@ describe("Morpho agent tool argument validation", () => {
       providerTaskContext: buildProviderTaskContext(context)
     });
 
-    expect(prompt).toContain("默认项目记忆");
-    expect(prompt).toContain("仅注入各类记忆与当前阶段记录的紧凑当前内容");
-    expect(prompt).toContain("不是完整历史");
-    expect(prompt).toContain("必须再调用相应真实读取工具");
+    const otherPrompt = buildMorphoAgentSystemPrompt({
+      mode: "auto",
+      strategy: "research",
+      workspace,
+      selectedObjects: [],
+      context: buildTaskContext(workspace, {
+        kind: "research",
+        draft: "完全不同的研究输入和选择",
+        selectedObjectIds: ["research-night-path"]
+      }),
+      providerTaskContext: buildProviderTaskContext(
+        buildTaskContext(workspace, {
+          kind: "research",
+          draft: "完全不同的研究输入和选择",
+          selectedObjectIds: ["research-night-path"]
+        })
+      )
+    });
+
+    expect(prompt).toBe(otherPrompt);
+    expect(prompt).toContain("通过追加 Context Frame 提供");
+    expect(prompt).not.toContain("基于当前方向继续讨论");
   });
 
   it("guides broad evidence search and validated image counts without low fixed gates", () => {
@@ -224,9 +242,9 @@ describe("Morpho agent tool argument validation", () => {
     });
     const tools = JSON.stringify(buildMorphoAgentTools(true));
 
-    expect(prompt).toContain("证据缺口");
-    expect(prompt).toContain("图片数量本身不构成确认理由");
-    expect(prompt).toContain("必须在该次 generate_visuals 的 items[] 中返回完整数量");
+    expect(prompt).toContain("当用户要求一批并列图像时，generate_visuals.items[] 必须覆盖完整数量");
+    expect(prompt).not.toContain("全面搜索后生成六张视觉素材");
+    expect(prompt).toContain("当用户要求一批并列图像时，generate_visuals.items[] 必须覆盖完整数量");
     expect(tools).toContain("全面研究可用不同查询继续补充");
     expect(tools).toContain("提交完整的结构化视觉意图");
     expect(prompt).not.toMatch(/最多\s*[24]\s*张|超过\s*[24]\s*张/);
@@ -250,8 +268,8 @@ describe("Morpho agent tool argument validation", () => {
     });
     const tools = buildMorphoAgentTools(false, { allowComparisonAnalysis: false });
 
-    expect(prompt).toContain("没有明确说“比较”“对比”或 Compare");
-    expect(JSON.stringify(tools)).not.toContain("create_comparison_analysis");
+    expect(prompt).toContain("当用户多选草案或设计定义并要求分析但未明确要求比较时，读取完整选择内容后直接在对话中回答");
+    expect(JSON.stringify(tools)).toContain("create_comparison_analysis");
     expect(isExplicitComparisonRequest("分析这三个方案")).toBe(false);
     expect(isExplicitComparisonRequest("不要做对比卡片，只根据内容分析")).toBe(false);
     expect(isExplicitComparisonRequest("对比这三个方案")).toBe(true);

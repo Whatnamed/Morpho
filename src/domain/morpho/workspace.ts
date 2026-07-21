@@ -58,6 +58,7 @@ import type {
   MorphoRelation,
   MorphoWorkspace,
   ObjectSnapshot,
+  ProviderContextFrame,
   VisualBranchId,
   WorkspaceMigrationResult
 } from "./types";
@@ -223,6 +224,7 @@ export function createBlankWorkspace(projectId: string): MorphoWorkspace {
       conversationCheckpoints: [],
       conversationCompaction: createEmptyConversationCompactionState(),
       conversationSummaryRevisions: {},
+      providerContextFrames: [],
       comparisonAnalyses: {}
     },
     ui: {
@@ -2039,6 +2041,7 @@ function normalizeAiState(value: unknown): MorphoWorkspace["ai"] {
       conversationCheckpoints: [],
       conversationCompaction: createEmptyConversationCompactionState(),
       conversationSummaryRevisions: {},
+      providerContextFrames: [],
       comparisonAnalyses: {}
     };
   }
@@ -2061,10 +2064,78 @@ function normalizeAiState(value: unknown): MorphoWorkspace["ai"] {
     conversationCheckpoints,
     conversationCompaction: migrated.state,
     conversationSummaryRevisions: migrated.revisions,
+    providerContextFrames: normalizeProviderContextFrames(value.providerContextFrames),
     comparisonAnalyses: isRecord(value.comparisonAnalyses)
       ? (value.comparisonAnalyses as MorphoWorkspace["ai"]["comparisonAnalyses"])
       : {}
   };
+}
+
+function normalizeProviderContextFrames(value: unknown): ProviderContextFrame[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((candidate) => {
+    if (!isRecord(candidate) || candidate.contextVisibility !== "providerOnly") {
+      return [];
+    }
+    const kind = candidate.kind;
+    if (
+      (kind !== "projectState" &&
+        kind !== "turnContext" &&
+        kind !== "runtimeConfiguration" &&
+        kind !== "conversationSummary") ||
+      typeof candidate.id !== "string" ||
+      typeof candidate.createdAt !== "string" ||
+      typeof candidate.promptContractVersion !== "string" ||
+      typeof candidate.renderedText !== "string" ||
+      typeof candidate.contentHash !== "string" ||
+      typeof candidate.reason !== "string"
+    ) {
+      return [];
+    }
+    const sourceRefs = Array.isArray(candidate.sourceRefs)
+      ? candidate.sourceRefs.flatMap((source) => {
+          if (!isRecord(source) || typeof source.kind !== "string" || typeof source.id !== "string") {
+            return [];
+          }
+          return [{
+            kind: source.kind,
+            id: source.id,
+            ...(typeof source.title === "string" ? { title: source.title } : {})
+          }];
+        })
+      : [];
+    return [{
+      id: candidate.id,
+      kind,
+      createdAt: candidate.createdAt,
+      promptContractVersion: candidate.promptContractVersion,
+      ...(typeof candidate.taskStrategy === "string" ? { taskStrategy: candidate.taskStrategy as ProviderContextFrame["taskStrategy"] } : {}),
+      projectMemoryRevisionIds: stringArray(candidate.projectMemoryRevisionIds),
+      stageRecordRevisionIds: stringArray(candidate.stageRecordRevisionIds),
+      ...(typeof candidate.designDefinitionRevisionId === "string"
+        ? { designDefinitionRevisionId: candidate.designDefinitionRevisionId }
+        : {}),
+      directionRevisionIds: stringArray(candidate.directionRevisionIds),
+      ...(typeof candidate.defaultReferenceObjectId === "string"
+        ? { defaultReferenceObjectId: candidate.defaultReferenceObjectId }
+        : {}),
+      selectedObjectIds: stringArray(candidate.selectedObjectIds),
+      relatedObjectIds: stringArray(candidate.relatedObjectIds),
+      renderedText: candidate.renderedText,
+      contentHash: candidate.contentHash,
+      ...(typeof candidate.supersedesFrameId === "string" ? { supersedesFrameId: candidate.supersedesFrameId } : {}),
+      contextVisibility: "providerOnly",
+      sourceRefs,
+      reason: candidate.reason,
+      ...(typeof candidate.anchorMessageId === "string" ? { anchorMessageId: candidate.anchorMessageId } : {})
+    }];
+  });
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
 function normalizeAiMessageContextVisibility(message: AiMessage): AiMessage {

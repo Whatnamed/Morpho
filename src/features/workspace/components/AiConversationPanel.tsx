@@ -1474,6 +1474,10 @@ function formatCapabilities(capabilities: ImageGenerationSettings["capabilities"
         return "文生图";
       case "imageToImage":
         return "图生图";
+      case "directedEdit":
+        return "定向修改";
+      case "maskedLocalEdit":
+        return "蒙版局部编辑";
     }
   });
 

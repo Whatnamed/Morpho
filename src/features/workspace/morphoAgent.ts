@@ -23,7 +23,11 @@ import type {
 } from "@/shared/agentStreamProtocol";
 
 import type { ProviderTaskContext, TaskContextResult } from "./taskContext";
-import { buildAgentPolicyBlocks } from "./agentPromptRegistry";
+import {
+  buildAgentStablePolicyBlocks,
+  buildAgentStrategyPolicyBlocks,
+  MORPHO_AGENT_PROMPT_CONTRACT_VERSION
+} from "./agentPromptRegistry";
 import { buildAgentDefaultMemoryContext, type AgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
 
 export type AgentConversationContext = {
@@ -260,49 +264,28 @@ export function buildMorphoAgentSystemPrompt(input: {
   conversationContext?: AgentConversationContext;
   defaultMemoryContext?: AgentDefaultMemoryContext;
 }): string {
-  const selectedObjectLines =
-    input.selectedObjects.length > 0
-      ? input.selectedObjects.map((object) => `- ${object.id} / ${object.type} / ${object.title}: ${object.summary}`).join("\n")
-      : "- 当前没有显式选中对象。";
-  const defaultMemoryContext = input.defaultMemoryContext ?? buildAgentDefaultMemoryContext(input.workspace, input.strategy);
+  void input;
+  return buildMorphoAgentStableSystemPrompt();
+}
 
+export function buildMorphoAgentStableSystemPrompt(): string {
   return [
-    ...buildAgentPolicyBlocks(input.strategy),
+    ...buildAgentStablePolicyBlocks(),
     "禁止编造对象 ID、方向 ID、视觉分支 ID、引用链接、来源关系、版本关系或交付引用。",
-    "只能通过工具影响项目对象；不能口头宣称“已创建”或“已修改”而不调用工具。",
-    "高影响动作必须先确认：应用或替换设计定义、设置主方向/备选方向、淘汰或恢复方向、设置默认参考。图片数量本身不构成确认理由。",
-    "低影响且意图明确的动作应直接执行：读取当前语境、创建研究分析、生成设计定义草案、生成概念方向草案、创建比较分析、按用户请求和有效计划生成图片。",
+    "只能通过工具影响项目对象；不能口头宣称已创建或已修改而不调用工具。",
+    "高影响动作必须先确认；低影响且意图明确的读取、研究、草案、比较分析和视觉生成可按当前上下文执行。",
     "研究输出先广泛分析，再评估筛选；只保留真正能改变设计判断、方向选择或验证计划的候选点。",
-    "研究点统一使用「短标题：一句说明」格式。发现写改变理解的观察；机会写可执行的设计动作；约束写会改变取舍的边界；待验证写答案会影响决定的问题。",
+    "研究点统一使用「短标题：一句说明」格式。",
     "如果目标、输入对象或影响范围不明确，而且不同理解会导致不同结果，最多只问一个必要问题。",
     "不要暴露内部 prompt、JSON 技术细节、链路细节或工具执行日志给用户。",
-    "只有当中途说明能显著帮助用户理解接下来的操作、限制或阶段性发现时，才输出一句简短 commentary；明显、重复或无需解释的工具调用应直接执行。最终回答只在不再需要继续调用工具时输出。",
-    `当前执行模式：${input.mode === "auto" ? "自动执行" : "先确认"}`,
-    `当前任务策略：${input.strategy}`,
-    `当前项目：${input.workspace.project.title}`,
-    `当前工作重点：${input.workspace.projectContinuity.currentFocus.area}`,
-    "当前显式选择对象：",
-    selectedObjectLines,
-    `Context 范围说明：${input.context.scopeNote}`,
-    buildAgentDefaultMemoryPromptBlock(defaultMemoryContext),
-    `默认参考：${input.providerTaskContext.defaultReference}`,
-    input.providerTaskContext.designDefinition
-      ? `当前设计定义：${input.providerTaskContext.designDefinition.title}（r${input.providerTaskContext.designDefinition.revisionNumber}）`
-      : "当前没有已应用的设计定义。",
-    input.providerTaskContext.directions.length > 0
-      ? `当前相关方向：${input.providerTaskContext.directions.map((direction) => direction.title).join(" / ")}`
-      : "当前没有显式相关的概念方向。",
-    buildAgentConversationPromptBlock(input.conversationContext),
-    "优先工作方式：根据问题读取真实来源。对象内容用 read_selected_context，项目记忆用 read_project_memory，阶段记录用 read_stage_record，原始聊天用 search_project_conversation。只有本地资料不足且确实需要外部事实时才调用 search_web_evidence。",
-    "当用户多选草案或设计定义并要求分析、评估、梳理或给建议，但没有明确说“比较”“对比”或 Compare 时，先读取完整选择内容，再直接在对话中回答；不要调用 create_comparison_analysis，不要创建 Compare 记录或画布对象。",
-    "当用户选中一张 pending 草案并要求修改、调整、压缩、重写、改标题或改内容时，先调用 read_selected_context 读取完整草案，再调用 revise_selected_proposal_draft 原地更新这一张草案；不要新建草案，不要等待确认，不要把完整长草案塞回对话。",
-    "只有用户明确说再生成一个、新方案、另起一版、多个替代方案时，才调用 create_design_definition_proposal 或 create_concept_direction_proposal 新建草案。",
-    "当用户明确要求多个设计定义方案时，create_design_definition_proposal 的根草案必须是方案 A 的完整独立内容，alternatives 依次放方案 B、方案 C；根草案不得写成整组方案的总览。只生成一个方案时不要添加 A/B/C 编号。",
-    "生成图片时，不允许只给最终 Provider Prompt、只给长文分析或让用户切模式；应调用 generate_visuals，items 只提交结构化视觉意图。Morpho 会确定性解析参考并编译最终 Prompt。",
-    "当用户明确要求一批并列图像时，必须在该次 generate_visuals 的 items[] 中返回完整数量。方向预览要区分“每方向几张”与“总共几张”；1/2/4/6 只是快捷项，3/5/9/12 和四个以上方向同样有效。"
-  ]
-    .filter(Boolean)
-    .join("\n");
+    "只有当中途说明能显著帮助用户理解接下来的操作、限制或阶段性发现时，才输出一句简短 commentary；最终回答只在不再需要继续调用工具时输出。",
+    "优先根据问题读取真实来源：对象用 read_selected_context，项目记忆用 read_project_memory，阶段记录用 read_stage_record，原始聊天用 search_project_conversation；本地资料不足且确实需要外部事实时才调用 search_web_evidence。",
+    "当用户多选草案或设计定义并要求分析但未明确要求比较时，读取完整选择内容后直接在对话中回答，不创建 Compare 记录。",
+    "修改单张 pending 草案时先读取完整草案，再调用 revise_selected_proposal_draft 原地更新；只有用户明确要求新方案或替代方案时才新建草案。",
+    "生成图片时调用 generate_visuals，只提交结构化视觉意图；Morpho 会确定性解析参考并编译最终 Prompt。",
+    "当用户要求一批并列图像时，generate_visuals.items[] 必须覆盖完整数量。",
+    `Prompt Contract Version: ${MORPHO_AGENT_PROMPT_CONTRACT_VERSION}`
+  ].join("\n");
 }
 
 export function buildMorphoAgentUserInput(input: {
@@ -333,6 +316,7 @@ export function buildMorphoAgentTools(
   webSearchEnabled: boolean,
   options: { allowComparisonAnalysis?: boolean } = {}
 ): ResponseTool[] {
+  void options;
   const tools: ResponseTool[] = [
     readSelectedContextTool(),
     readProjectMemoryTool(),
@@ -726,12 +710,10 @@ export function buildMorphoAgentTools(
     );
   }
 
-  return options.allowComparisonAnalysis === false
-    ? tools.filter((tool) => tool.type !== "function" || tool.name !== "create_comparison_analysis")
-    : tools;
+  return tools;
 }
 
-function buildAgentDefaultMemoryPromptBlock(memory: AgentDefaultMemoryContext): string {
+export function buildAgentDefaultMemoryPromptBlock(memory: AgentDefaultMemoryContext): string {
   const documents = memory.documents.map((document) => {
     const status = document.empty ? "当前为空" : document.reviewRequired ? "当前内容需复核" : "当前有效";
     const revision = document.revisionId ? `，revision ${document.revisionId}` : "";
@@ -775,19 +757,12 @@ export function buildAgentConversationPromptBlock(
 
   const lines = [
     "Continuous project conversation context:",
-    "优先级：当前用户输入 > 真实项目状态与 Memory Kernel > 未压缩原始聊天 > conversation summary。",
-    `laneLabel: ${context.laneKey}`,
-    `rawMessageCountInRequest: ${context.rawMessageCount}`,
-    `coveredMessageCount: ${context.coveredMessageCount}`,
-    `estimatedInputTokens: ${context.estimatedInputTokens}`,
-    `tokenPressure: ${context.pressure}`
+    "优先级：当前用户输入 > 真实项目状态与 Memory Kernel > 未压缩原始聊天 > conversation summary。"
   ];
   if (context.summaryRevision) {
     const summary = context.summaryRevision.summary;
     lines.push(
       "conversation summary 只覆盖已标记的连续旧消息范围；它不是项目事实源，与实时项目状态冲突时必须服从实时状态。",
-      `summaryRevisionId: ${context.summaryRevision.id}`,
-      `summarySourceRange: ${context.summaryRevision.sourceStartMessageId}..${context.summaryRevision.sourceEndMessageId}`,
       `threadGoal: ${summary.threadGoal}`,
       `establishedContext: ${summary.establishedContext.join(" / ") || "none"}`,
       `decisionsAndReasons: ${summary.decisionsAndReasons.join(" / ") || "none"}`,
@@ -1377,6 +1352,7 @@ function visualIntentItemSchema(): Record<string, unknown> {
       environmentAndLighting: stringArraySchema(),
       avoid: stringArraySchema(),
       userPromptRemainder: { type: "string" },
+      editMode: { type: "string", enum: ["textToImage", "imageToImage", "directedEdit", "maskedLocalEdit"] },
       role: {
         type: "string",
         enum: [
@@ -1529,7 +1505,8 @@ function validateGenerateVisualsArgs(toolName: string, value: unknown): asserts 
         "excludeDefaultReference",
         "composition",
         "viewpoint",
-        "userPromptRemainder"
+        "userPromptRemainder",
+        "editMode"
       ]
     );
     requireString(`${toolName}.items[${index}]`, item, "id");
@@ -1549,6 +1526,12 @@ function validateGenerateVisualsArgs(toolName: string, value: unknown): asserts 
     requireStringArray(`${toolName}.items[${index}]`, item, "environmentAndLighting");
     requireStringArray(`${toolName}.items[${index}]`, item, "avoid");
     requireOptionalString(`${toolName}.items[${index}]`, item, "userPromptRemainder");
+    requireOptionalEnum(`${toolName}.items[${index}]`, item, "editMode", [
+      "textToImage",
+      "imageToImage",
+      "directedEdit",
+      "maskedLocalEdit"
+    ]);
     requireEnum(`${toolName}.items[${index}]`, item, "role", [
       "preview",
       "conceptImage",

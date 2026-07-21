@@ -259,6 +259,7 @@ type ArchiveConversationSection =
       conversationCheckpoints: MorphoWorkspace["ai"]["conversationCheckpoints"];
       conversationCompaction: MorphoWorkspace["ai"]["conversationCompaction"];
       conversationSummaryRevisions: MorphoWorkspace["ai"]["conversationSummaryRevisions"];
+      providerContextFrames: NonNullable<MorphoWorkspace["ai"]["providerContextFrames"]>;
       comparisonAnalyses: Record<string, ComparisonAnalysis>;
     };
 
@@ -441,6 +442,7 @@ function sanitizeBackupAiState(
     conversationCheckpoints: [],
     conversationCompaction: { coveredMessageCount: 0 },
     conversationSummaryRevisions: {},
+    providerContextFrames: [],
     comparisonAnalyses: {}
   };
 }
@@ -948,6 +950,7 @@ function buildArchiveConversation(workspace: MorphoWorkspace, scope: ArchiveChat
     conversationCheckpoints: workspace.ai.conversationCheckpoints,
     conversationCompaction: workspace.ai.conversationCompaction,
     conversationSummaryRevisions: workspace.ai.conversationSummaryRevisions,
+    providerContextFrames: workspace.ai.providerContextFrames ?? [],
     comparisonAnalyses: workspace.ai.comparisonAnalyses ?? {}
   };
 }

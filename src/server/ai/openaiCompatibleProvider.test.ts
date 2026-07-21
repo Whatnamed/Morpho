@@ -82,6 +82,114 @@ describe("openai-compatible provider adapter", () => {
     }
   });
 
+  it("forwards prompt cache fields only when the provider capability is explicitly enabled", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const originalFetch = global.fetch;
+    global.fetch = async (_input, init) => {
+      calls.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return jsonResponse({
+        id: "resp_cached",
+        usage: {
+          input_tokens: 100,
+          output_tokens: 10,
+          total_tokens: 110,
+          input_tokens_details: { cached_tokens: 60 }
+        },
+        output: [{ type: "message", content: [{ type: "output_text", text: "cached" }] }]
+      }) as unknown as Response;
+    };
+
+    try {
+      const result = await executeOpenAiCompatibleResponse(
+        {
+          ...config(),
+          promptCache: {
+            supportsPromptCacheKey: true,
+            supportsPromptCacheRetention: true,
+            promptCacheKeyEnabled: true,
+            promptCacheRetention: "24h"
+          }
+        },
+        {
+          ...request(),
+          promptCacheKey: "morpho:project:model:contract:standard",
+          promptCacheRetention: "24h"
+        }
+      );
+      expect(calls[0]).toMatchObject({
+        prompt_cache_key: "morpho:project:model:contract:standard",
+        prompt_cache_retention: "24h"
+      });
+      expect(result.usage).toMatchObject({ cachedInputTokens: 60, uncachedInputTokens: 40, cacheHitRatio: 0.6 });
+      expect(result.providerDiagnostics).toMatchObject({
+        cachedInputTokens: 60,
+        uncachedInputTokens: 40,
+        cacheHitRatio: 0.6
+      });
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("retries once without unsupported prompt cache fields after a compatible 400", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const originalFetch = global.fetch;
+    global.fetch = async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      calls.push(body);
+      if (calls.length === 1) {
+        return new Response(JSON.stringify({ error: { message: "Unknown field prompt_cache_key" } }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" }
+        }) as unknown as Response;
+      }
+      return jsonResponse({
+        id: "resp_no_cache",
+        output: [{ type: "message", content: [{ type: "output_text", text: "fallback" }] }]
+      }) as unknown as Response;
+    };
+
+    try {
+      const result = await executeOpenAiCompatibleResponse(
+        {
+          ...config(),
+          promptCache: {
+            supportsPromptCacheKey: true,
+            supportsPromptCacheRetention: false,
+            promptCacheKeyEnabled: true
+          }
+        },
+        { ...request(), promptCacheKey: "morpho:cache-key" }
+      );
+      expect(calls).toHaveLength(2);
+      expect(calls[0]).toHaveProperty("prompt_cache_key", "morpho:cache-key");
+      expect(calls[1]).not.toHaveProperty("prompt_cache_key");
+      expect(result.outputText).toBe("fallback");
+      expect(result.providerDiagnostics?.cacheStatus).toBe("unavailable");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("does not send cache fields when the provider capability is disabled", async () => {
+    const originalFetch = global.fetch;
+    let body: Record<string, unknown> | undefined;
+    global.fetch = async (_input, init) => {
+      body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return jsonResponse({ id: "resp_default", output: [] }) as unknown as Response;
+    };
+    try {
+      await executeOpenAiCompatibleResponse(
+        config(),
+        { ...request(), promptCacheKey: "should-not-forward", promptCacheRetention: "24h" }
+      );
+      expect(body).not.toHaveProperty("prompt_cache_key");
+      expect(body).not.toHaveProperty("prompt_cache_retention");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it("requests Responses with stream and a reasoning summary by default", async () => {
     const calls: Array<{ url: string; body: unknown }> = [];
     const originalFetch = global.fetch;

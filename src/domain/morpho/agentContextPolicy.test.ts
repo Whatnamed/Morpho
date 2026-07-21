@@ -10,7 +10,8 @@ describe("Morpho Agent context policy", () => {
       windowTokens: 256_000,
       prepareTokens: 204_800,
       compactTokens: 230_400,
-      targetUncompressedTokens: 16_000
+      targetUncompressedTokens: 16_000,
+      responseReserveTokens: 16_000
     });
     expect(MORPHO_AGENT_CONTEXT_POLICY.prepareTokens).toBe(
       MORPHO_AGENT_CONTEXT_POLICY.windowTokens * 0.8
@@ -26,7 +27,8 @@ describe("Morpho Agent context policy", () => {
       windowTokens: MORPHO_AGENT_CONTEXT_POLICY.windowTokens,
       prepareTokens: MORPHO_AGENT_CONTEXT_POLICY.prepareTokens,
       compactTokens: MORPHO_AGENT_CONTEXT_POLICY.compactTokens,
-      targetTokens: MORPHO_AGENT_CONTEXT_POLICY.targetUncompressedTokens
+      targetUncompressedTokens: MORPHO_AGENT_CONTEXT_POLICY.targetUncompressedTokens,
+      responseReserveTokens: MORPHO_AGENT_CONTEXT_POLICY.responseReserveTokens
     });
     expect(createMorphoAgentContextPolicy()).toEqual(MORPHO_AGENT_CONTEXT_POLICY);
   });

@@ -2,7 +2,8 @@ export const MORPHO_AGENT_CONTEXT_POLICY = {
   windowTokens: 256_000,
   prepareTokens: 204_800,
   compactTokens: 230_400,
-  targetUncompressedTokens: 16_000
+  targetUncompressedTokens: 16_000,
+  responseReserveTokens: 16_000
 } as const;
 
 export type MorphoAgentContextPolicy = {
@@ -10,6 +11,7 @@ export type MorphoAgentContextPolicy = {
   prepareTokens: number;
   compactTokens: number;
   targetUncompressedTokens: number;
+  responseReserveTokens: number;
 };
 
 export function createMorphoAgentContextPolicy(): MorphoAgentContextPolicy {
