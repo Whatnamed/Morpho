@@ -4,7 +4,8 @@ import type {
   AiMessage,
   AiTaskMode,
   AiWorkIntent,
-  MorphoWorkspace
+  MorphoWorkspace,
+  ProviderInputSnapshot
 } from "@/domain/morpho/types";
 
 type AppendAgentTurnMessagesInput = {
@@ -21,6 +22,7 @@ type AppendAgentTurnMessagesInput = {
   taskStrategy?: AgentTaskStrategyKind;
   agentTrace?: AgentTrace;
   contextVisibility?: AiMessage["contextVisibility"];
+  providerInputSnapshot?: ProviderInputSnapshot;
 };
 
 export function appendAgentTurnMessages(
@@ -44,7 +46,8 @@ export function appendAgentTurnMessages(
           contextVisibility: input.contextVisibility ?? "model",
           conversationLaneKey: input.conversationLaneKey,
           promptContractVersion: input.promptContractVersion,
-          taskStrategy: input.taskStrategy
+          taskStrategy: input.taskStrategy,
+          ...(input.providerInputSnapshot ? { providerInputSnapshot: input.providerInputSnapshot } : {})
         },
         {
           id: input.assistantMessageId,

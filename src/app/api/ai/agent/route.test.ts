@@ -111,6 +111,33 @@ describe("agent route stream", () => {
     ).toEqual(["read_selected_context"]);
   });
 
+  it("injects only an explicitly enabled compatible 24h cache retention", () => {
+    const request: OpenAiCompatibleResponseRequest = {
+      input: [{ role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      promptCacheRetention: "24h"
+    };
+    const enabled = filterAgentRequestForConfig(request, {
+      webSearchEnabled: true,
+      promptCache: {
+        supportsPromptCacheKey: false,
+        supportsPromptCacheRetention: true,
+        promptCacheRetention: "24h",
+        promptCacheKeyEnabled: false
+      }
+    });
+    expect(enabled.promptCacheRetention).toBe("24h");
+
+    const disabled = filterAgentRequestForConfig(request, {
+      webSearchEnabled: true,
+      promptCache: {
+        supportsPromptCacheKey: false,
+        supportsPromptCacheRetention: false,
+        promptCacheKeyEnabled: false
+      }
+    });
+    expect(disabled.promptCacheRetention).toBeUndefined();
+  });
+
   it("keeps pre-stream authentication failures as JSON", async () => {
     guardAiRouteMock.mockResolvedValueOnce({
       status: "denied",

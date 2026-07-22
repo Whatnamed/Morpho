@@ -5,6 +5,7 @@ import {
   applyConversationSummaryRevision,
   buildContinuousConversationContext,
   buildConversationCompactionPlan,
+  estimateConversationSummaryTokens,
   getUsableConversationMessages,
   migrateLegacyCheckpointToConversationCompaction,
   parseConversationSummaryPayload,
@@ -109,6 +110,38 @@ describe("continuous conversation compaction", () => {
     const context = buildContinuousConversationContext({ workspace: applied.workspace, limits });
     expect(context.summaryRevision?.summary).toEqual(summary);
     expect(context.messages.map((entry) => entry.id)).toEqual(plan.remainingMessages.map((entry) => entry.id));
+  });
+
+  it("does not count a summary twice when the provider fixed estimate already includes its frame", () => {
+    const workspace = withMessages(longConversation(8, 90));
+    const plan = buildConversationCompactionPlan({ workspace, limits });
+    if (!plan) {
+      throw new Error("Expected a compaction plan.");
+    }
+    const applied = applyConversationSummaryRevision(workspace, {
+      summary,
+      sourceMessageIds: plan.sourceMessages.map((entry) => entry.id),
+      now: "2026-07-13T12:00:00.000Z"
+    });
+    if (applied.status !== "applied") {
+      throw new Error(applied.reason);
+    }
+
+    const normal = buildContinuousConversationContext({
+      workspace: applied.workspace,
+      fixedContextTokenEstimate: 100,
+      limits
+    });
+    const providerFramed = buildContinuousConversationContext({
+      workspace: applied.workspace,
+      fixedContextTokenEstimate: 100,
+      summaryAlreadyIncludedInFixedContext: true,
+      limits
+    });
+
+    expect(normal.estimatedInputTokens - providerFramed.estimatedInputTokens).toBe(
+      estimateConversationSummaryTokens(summary)
+    );
   });
 
   it("chains revisions and rejects stale or non-contiguous writes without mutating state", () => {

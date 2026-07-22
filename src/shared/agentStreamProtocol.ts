@@ -50,8 +50,9 @@ export type AgentProviderDiagnostics = {
   uncachedInputTokens?: number;
   cacheHitRatio?: number;
   providerCacheKeyEnabled?: boolean;
-  providerCacheRetention?: "in_memory" | "24h";
-  cacheStatus?: "hit" | "miss" | "unavailable";
+  providerCacheRetention?: "24h";
+  cacheStatus?: "unavailable" | "miss" | "partialHit" | "fullHit";
+  providerInputBoundaryReasons?: string[];
   compactedThisTurn?: boolean;
 };
 

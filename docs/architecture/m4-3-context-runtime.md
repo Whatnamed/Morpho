@@ -322,6 +322,14 @@ If a human explicitly wants a paid smoke test:
 
 The agent should not run this automatically.
 
+## Current Provider Transcript Follow-up
+
+The current Responses Agent keeps the M4.3 task-context boundary but adds a durable provider transcript contract. Formal user messages store an immutable provider-visible snapshot, while provider-only Context Frames carry a deterministic `sequence` and `placement`. Project State is task-independent; strategy, selection, authorization, and task memory remain in Turn Context; Runtime Configuration contains only semantic runtime changes.
+
+Active requests use the snapshot before current workspace state, retain all usable uncompressed chat, and insert post-tool state after the initiating user instead of moving it to the front on replay. Summary frames use `provider-frame-conversation-summary:<summaryRevisionId>` and one active frame per revision. Client and server share `src/shared/providerInputBudget.ts`, so active frames, history, tools, image reserve, and the separate response reserve participate in the fixed 256k / 80% / 90% policy without trimming during prepare.
+
+Old messages use a `legacyProviderInput` fallback. Document extracts are captured in the snapshot when sent; unavailable extracts, image input, prompt-contract changes, tool-profile changes, and compaction are explicit cache boundaries. Prompt-cache key and retention remain opt-in; `in_memory` is ignored, and only a capability-verified `24h` value is forwarded. Cache metadata is classified as unavailable, miss, partial hit, or full hit. Original chat and summary revisions remain intact for search, backup, and restore.
+
 ## Out of Scope After M4.3
 
 Still not implemented after this milestone:

@@ -43,6 +43,7 @@ Current workspace state includes:
 - legacy conversation checkpoints in `workspace.ai.conversationCheckpoints` for migration and audit compatibility;
 - project-wide compaction state and revisioned summaries in `workspace.ai.conversationCompaction` and `workspace.ai.conversationSummaryRevisions`;
 - append-only provider-only Context Frames in `workspace.ai.providerContextFrames` for project state, turn scope, runtime configuration, and conversation summaries;
+- immutable provider-visible user snapshots in `AiMessage.providerInputSnapshot`, plus deterministic frame `sequence` / `placement` metadata for transcript replay;
 - seven revisioned current project-memory projections plus six possible revisioned stage records in `workspace.projectMemory`;
 - saved local Compare analyses in `workspace.ai.comparisonAnalyses`.
 - lightweight Operation records in `workspace.operations`;
@@ -165,6 +166,7 @@ Agent streaming additions:
 - assistant messages may persist `agentTrace` ordered parts. Reasoning stores only provider-returned summaries. Explicit `commentary` and `final_answer` phases are authoritative; unphased Responses text is buffered until turn completion and becomes commentary only when that turn also contains a tool call. Tool activities come from actual provider or local-tool execution. Final text remains in `AiMessage.body`;
 - every provider attempt has a stable `attemptId`. A context-limit retry emits `turn-attempt-reset`; the client removes failed-attempt provider-only increments, ignores late events from that attempt, retains completed Morpho work, and uses only successful-attempt usage and terminal output;
 - the route owns the provider `AbortController`; request abort and response-reader cancellation both abort the upstream fetch and stop heartbeat/parser work;
+- client and server share `src/shared/providerInputBudget.ts`; cache diagnostics use four states (`unavailable`, `miss`, `partialHit`, `fullHit`) and prompt-cache retention is absent by default, with only explicit compatible `24h` forwarded;
 - the client continues to execute workspace tools locally, updates one stable tool activity per `toolCallId`, and merges all provider continuations into the same assistant message and `agentTurnId`. Agent writes pass through a functional latest-workspace commit boundary, so streamed trace, concurrent user edits, operation/continuity changes, and tool results cannot overwrite one another;
 - text deltas are merged by part and flushed about every 48ms, while tool start/end remains immediate. The process disclosure keeps ordered parts mounted for a 200ms lightweight collapse, follows the internal scroll only near the bottom, uses 220-320px bounded scrolling with fades, and disables shimmer/transitions for reduced motion;
 - normal Agent execution has no four-turn product limit and no per-turn accumulated web-search-call limit. Hosted provider searches and local `search_web_evidence` results may continue while the task still has evidence gaps; each local search response remains bounded to five sources, while URL/content citation deduplication and context compaction bound the accumulated payload;

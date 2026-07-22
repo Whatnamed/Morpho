@@ -7,6 +7,10 @@ import {
   MORPHO_AGENT_CONTEXT_POLICY,
   type MorphoAgentContextPolicy
 } from "@/domain/morpho/agentContextPolicy";
+import {
+  estimateProviderInputTokens,
+  estimateProviderSerializedTokens
+} from "@/shared/providerInputBudget";
 
 export type AgentContextLimits = {
   windowTokens: number;
@@ -43,8 +47,6 @@ export type AgentContextExecutionAttempt = {
 
 type AgentContextCompactionMode = "prepare" | "compact" | "emergency";
 
-const IMAGE_INPUT_TOKEN_RESERVE = 8_192;
-const ESTIMATE_BASE_TOKENS = 128;
 const EMERGENCY_OLD_TOOL_OUTPUT_CHARS = 480;
 
 export function createAgentContextLimits(
@@ -73,12 +75,11 @@ export function classifyAgentContextPressure(
 }
 
 export function estimateAgentContextTokens(request: OpenAiCompatibleResponseRequest): number {
-  const imageCount = countImageInputs(request.input);
-  const textTokens = estimateSerializedTokens({
+  return estimateProviderInputTokens({
     input: request.input,
-    tools: request.tools ?? []
-  });
-  return ESTIMATE_BASE_TOKENS + textTokens + imageCount * IMAGE_INPUT_TOKEN_RESERVE;
+    tools: request.tools ?? [],
+    responseReserveTokens: 0
+  }).inputTokens;
 }
 
 export function prepareAgentContextRequest(
@@ -225,7 +226,7 @@ function estimateCompressibleContextTokens(request: OpenAiCompatibleResponseRequ
     .filter((item) => isResponseMessage(item) && item.role !== "system");
   const protectedToolTailStart = findProtectedToolTailStart(request.input, currentUserIndex);
   const completedToolHistory = request.input.slice(currentUserIndex + 1, protectedToolTailStart);
-  return estimateSerializedTokens({
+  return estimateProviderSerializedTokens({
     history,
     completedToolHistory
   });
@@ -260,16 +261,6 @@ function findProtectedToolTailStart(
     }
   }
   return input.length;
-}
-
-function estimateSerializedTokens(value: unknown): number {
-  const normalized = JSON.stringify(value, (key, item) => {
-    if (key === "image_url" && typeof item === "string") {
-      return "[image-input]";
-    }
-    return item;
-  });
-  return Math.ceil(new TextEncoder().encode(normalized).length / 3);
 }
 
 function compactOldToolOutputs(
@@ -320,17 +311,6 @@ function findCurrentUserMessageIndex(input: OpenAiCompatibleResponseRequest["inp
     }
   }
   return 0;
-}
-
-function countImageInputs(input: OpenAiCompatibleResponseRequest["input"]): number {
-  let count = 0;
-  for (const item of input) {
-    if (!isResponseMessage(item)) {
-      continue;
-    }
-    count += item.content.filter((part) => part.type === "input_image").length;
-  }
-  return count;
 }
 
 function isResponseMessage(value: OpenAiCompatibleResponseRequest["input"][number]): value is ResponseMessageInput {

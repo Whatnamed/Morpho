@@ -8,6 +8,7 @@ import {
   prepareAgentContextRequest,
   type AgentContextLimits
 } from "./agentContextBudget";
+import { estimateProviderInputTokens } from "@/shared/providerInputBudget";
 
 const limits: AgentContextLimits = {
   windowTokens: 256_000,
@@ -82,6 +83,19 @@ describe("agent context budget", () => {
     expect(estimateAgentContextTokens({ ...request, tools })).toBeGreaterThan(
       estimateAgentContextTokens(request)
     );
+  });
+
+  it("uses the same pure input estimator that the client can call", () => {
+    const request: OpenAiCompatibleResponseRequest = {
+      input: [message("system", "规则"), message("user", "当前问题")]
+    };
+    const tools: ResponseTool[] = [];
+    expect(estimateAgentContextTokens({ ...request, tools })).toBe(
+      estimateProviderInputTokens({ input: request.input, tools, responseReserveTokens: 0 }).inputTokens
+    );
+    expect(
+      estimateProviderInputTokens({ input: request.input, tools, responseReserveTokens: 16_000 }).estimatedOccupancyTokens
+    ).toBe(estimateAgentContextTokens({ ...request, tools }) + 16_000);
   });
 
   it("keeps every conversation message and only compacts completed old tool outputs in an emergency", () => {

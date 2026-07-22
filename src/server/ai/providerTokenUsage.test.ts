@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeProviderTokenUsage } from "./providerTokenUsage";
+import { classifyProviderCacheStatus, normalizeProviderTokenUsage } from "./providerTokenUsage";
 
 const responseFields = { input: "input_tokens", output: "output_tokens" } as const;
 
@@ -57,6 +57,21 @@ describe("provider token usage normalization", () => {
     ).toBeUndefined();
   });
 
+  it("rejects malformed cached token metadata instead of silently downgrading it to unavailable", () => {
+    expect(
+      normalizeProviderTokenUsage(
+        { input_tokens: 10, output_tokens: 2, total_tokens: 12, cached_input_tokens: "10" },
+        responseFields
+      )
+    ).toBeUndefined();
+    expect(
+      normalizeProviderTokenUsage(
+        { input_tokens: 10, output_tokens: 2, total_tokens: 12, input_tokens_details: { cached_tokens: -1 } },
+        responseFields
+      )
+    ).toBeUndefined();
+  });
+
   it("rejects totals below output tokens and non-numeric fields", () => {
     expect(normalizeProviderTokenUsage({ output_tokens: 20, total_tokens: 10 }, responseFields)).toBeUndefined();
     expect(
@@ -68,5 +83,13 @@ describe("provider token usage normalization", () => {
   it("returns undefined when usage or the required output count is missing", () => {
     expect(normalizeProviderTokenUsage(undefined, responseFields)).toBeUndefined();
     expect(normalizeProviderTokenUsage({}, responseFields)).toBeUndefined();
+  });
+
+  it("classifies unavailable, miss, partial, and full cache metadata without double counting", () => {
+    expect(classifyProviderCacheStatus(1000, undefined)).toBe("unavailable");
+    expect(classifyProviderCacheStatus(1000, 0)).toBe("miss");
+    expect(classifyProviderCacheStatus(1000, 250)).toBe("partialHit");
+    expect(classifyProviderCacheStatus(1000, 1000)).toBe("fullHit");
+    expect(classifyProviderCacheStatus(0, 0)).toBe("miss");
   });
 });

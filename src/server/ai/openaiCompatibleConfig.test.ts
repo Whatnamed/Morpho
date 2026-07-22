@@ -80,4 +80,26 @@ describe("openai-compatible config", () => {
 
     expect(result.status).toBe("failed");
   });
+
+  it("forwards only explicit 24h retention and keeps the default cache retention off", () => {
+    const disabled = loadOpenAiCompatibleConfig({
+      AIJWS_API_KEY: "key",
+      MORPHO_AI_SUPPORTS_PROMPT_CACHE_RETENTION: "true",
+      MORPHO_AI_PROMPT_CACHE_RETENTION: "in_memory"
+    });
+    expect(disabled.status).toBe("ok");
+    if (disabled.status === "ok") {
+      expect(disabled.config.promptCache?.promptCacheRetention).toBeUndefined();
+    }
+
+    const enabled = loadOpenAiCompatibleConfig({
+      AIJWS_API_KEY: "key",
+      MORPHO_AI_SUPPORTS_PROMPT_CACHE_RETENTION: "true",
+      MORPHO_AI_PROMPT_CACHE_RETENTION: "24h"
+    });
+    expect(enabled.status).toBe("ok");
+    if (enabled.status === "ok") {
+      expect(enabled.config.promptCache?.promptCacheRetention).toBe("24h");
+    }
+  });
 });

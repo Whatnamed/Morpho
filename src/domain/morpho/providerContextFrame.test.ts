@@ -42,6 +42,20 @@ describe("Provider Context Frames", () => {
     expect(appendProviderContextFrame([first], second)).toEqual([first]);
   });
 
+  it("keeps project-state identity independent from task strategy and selection", () => {
+    const first = createProviderContextFrame(frameInput({
+      taskStrategy: "discussion",
+      selectedObjectIds: []
+    }));
+    const second = createProviderContextFrame(frameInput({
+      taskStrategy: "research",
+      selectedObjectIds: ["selected-later"]
+    }));
+
+    expect(second.id).toBe(first.id);
+    expect(second.contentHash).toBe(first.contentHash);
+  });
+
   it("keeps the latest project/runtime state while dropping stale turn frames outside the active history", () => {
     const oldState = createProviderContextFrame(
       frameInput({
@@ -90,5 +104,65 @@ describe("Provider Context Frames", () => {
     expect(message.role).toBe("system");
     expect(message.content[0]?.text).toContain("Project State Frame");
     expect(message.content[0]?.text).toContain("当前项目状态");
+  });
+
+  it("keeps causal frame order instead of moving post-state before the initiating user", () => {
+    const preState = createProviderContextFrame(frameInput({
+      sequence: 1,
+      placement: "beforeUser",
+      anchorMessageId: "user-a",
+      renderedText: "前置状态"
+    }));
+    const turn = createProviderContextFrame(frameInput({
+      kind: "turnContext",
+      sequence: 2,
+      placement: "beforeUser",
+      anchorMessageId: "user-a",
+      renderedText: "本轮上下文"
+    }));
+    const postState = createProviderContextFrame(frameInput({
+      sequence: 3,
+      placement: "afterUser",
+      anchorMessageId: "user-a",
+      renderedText: "工具后的状态"
+    }));
+
+    expect(
+      buildProviderContextFrameTimeline({
+        frames: [postState, turn, preState],
+        activeMessageIds: new Set(["user-a"])
+      }).map((frame) => frame.renderedText)
+    ).toEqual(["前置状态", "本轮上下文", "工具后的状态"]);
+  });
+
+  it("gives one active summary frame a revision identity and drops older summaries", () => {
+    const first = createProviderContextFrame(frameInput({
+      kind: "conversationSummary",
+      sequence: 1,
+      summaryRevisionId: "summary-1",
+      renderedText: "摘要一"
+    }));
+    const duplicate = createProviderContextFrame(frameInput({
+      kind: "conversationSummary",
+      sequence: 2,
+      summaryRevisionId: "summary-1",
+      renderedText: "摘要一"
+    }));
+    const second = createProviderContextFrame(frameInput({
+      kind: "conversationSummary",
+      sequence: 3,
+      summaryRevisionId: "summary-2",
+      renderedText: "摘要二"
+    }));
+
+    expect(first.id).toBe("provider-frame-conversation-summary:summary-1");
+    expect(appendProviderContextFrame([first], duplicate)).toHaveLength(1);
+    expect(
+      buildProviderContextFrameTimeline({
+        frames: [first, duplicate, second],
+        activeMessageIds: new Set(),
+        activeSummaryRevisionId: "summary-2"
+      }).map((frame) => frame.renderedText)
+    ).toEqual(["摘要二"]);
   });
 });

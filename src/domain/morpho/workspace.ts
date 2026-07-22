@@ -21,6 +21,7 @@ import {
   normalizeConversationCompactionState,
   normalizeConversationSummaryRevisions
 } from "./conversationCompaction";
+import { normalizeProviderInputSnapshot } from "./providerInputSnapshot";
 import initialCaseStudyWorkspaceFixture from "./caseStudy/currentCaseWorkspace.generated.json";
 import legacyNightrailTestFixture from "./caseStudy/legacyNightrailPristine.fixture.json";
 import type { ArtifactProposal, SourceSemanticSnapshot } from "../operations/types";
@@ -52,6 +53,7 @@ import type {
   ImageRole,
   KeyConclusionObject,
   ComparisonDecisionMetadata,
+  ConversationSummaryRevision,
   MorphoObject,
   MorphoObjectId,
   MorphoObjectType,
@@ -2047,7 +2049,7 @@ function normalizeAiState(value: unknown): MorphoWorkspace["ai"] {
   }
 
   const messages = Array.isArray(value.messages)
-    ? (value.messages as AiMessage[]).map(normalizeAiMessageContextVisibility)
+    ? (value.messages as AiMessage[]).map(normalizeAiMessage)
     : [];
   const conversationCheckpoints = Array.isArray(value.conversationCheckpoints)
       ? value.conversationCheckpoints.filter(isConversationCheckpoint)
@@ -2064,22 +2066,32 @@ function normalizeAiState(value: unknown): MorphoWorkspace["ai"] {
     conversationCheckpoints,
     conversationCompaction: migrated.state,
     conversationSummaryRevisions: migrated.revisions,
-    providerContextFrames: normalizeProviderContextFrames(value.providerContextFrames),
+    providerContextFrames: normalizeProviderContextFrames(
+      value.providerContextFrames,
+      migrated.revisions,
+      messages
+    ),
     comparisonAnalyses: isRecord(value.comparisonAnalyses)
       ? (value.comparisonAnalyses as MorphoWorkspace["ai"]["comparisonAnalyses"])
       : {}
   };
 }
 
-function normalizeProviderContextFrames(value: unknown): ProviderContextFrame[] {
+function normalizeProviderContextFrames(
+  value: unknown,
+  summaryRevisions: Record<string, ConversationSummaryRevision>,
+  messages: readonly AiMessage[]
+): ProviderContextFrame[] {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.flatMap((candidate) => {
+  const usedSequences = new Set<number>();
+  const summaryKeys = new Set<string>();
+  const frames = value.flatMap((candidate, index) => {
     if (!isRecord(candidate) || candidate.contextVisibility !== "providerOnly") {
       return [];
     }
-    const kind = candidate.kind;
+    const kind = candidate.kind as ProviderContextFrame["kind"];
     if (
       (kind !== "projectState" &&
         kind !== "turnContext" &&
@@ -2106,10 +2118,30 @@ function normalizeProviderContextFrames(value: unknown): ProviderContextFrame[] 
           }];
         })
       : [];
+    const sequence = normalizeFrameSequence(candidate.sequence, index + 1, usedSequences);
+    const placement = kind === "conversationSummary"
+      ? "conversationBaseline"
+      : normalizeFramePlacement(candidate.placement, candidate.anchorMessageId);
+    const summaryRevisionId = kind === "conversationSummary"
+      ? inferSummaryRevisionId(candidate, summaryRevisions, messages)
+      : undefined;
+    const summaryKey = kind === "conversationSummary"
+      ? summaryRevisionId ?? `legacy:${candidate.contentHash}`
+      : undefined;
+    if (summaryKey && summaryKeys.has(summaryKey)) {
+      return [];
+    }
+    if (summaryKey) {
+      summaryKeys.add(summaryKey);
+    }
     return [{
-      id: candidate.id,
+      id: summaryRevisionId
+        ? `provider-frame-conversation-summary:${summaryRevisionId}`
+        : candidate.id,
       kind,
       createdAt: candidate.createdAt,
+      sequence,
+      placement,
       promptContractVersion: candidate.promptContractVersion,
       ...(typeof candidate.taskStrategy === "string" ? { taskStrategy: candidate.taskStrategy as ProviderContextFrame["taskStrategy"] } : {}),
       projectMemoryRevisionIds: stringArray(candidate.projectMemoryRevisionIds),
@@ -2126,12 +2158,88 @@ function normalizeProviderContextFrames(value: unknown): ProviderContextFrame[] 
       renderedText: candidate.renderedText,
       contentHash: candidate.contentHash,
       ...(typeof candidate.supersedesFrameId === "string" ? { supersedesFrameId: candidate.supersedesFrameId } : {}),
-      contextVisibility: "providerOnly",
+      contextVisibility: "providerOnly" as const,
       sourceRefs,
       reason: candidate.reason,
-      ...(typeof candidate.anchorMessageId === "string" ? { anchorMessageId: candidate.anchorMessageId } : {})
+      ...(typeof candidate.anchorMessageId === "string" ? { anchorMessageId: candidate.anchorMessageId } : {}),
+      ...(summaryRevisionId ? { summaryRevisionId } : {})
     }];
   });
+  return frames.sort((left, right) => left.sequence - right.sequence);
+}
+
+function normalizeFrameSequence(value: unknown, fallback: number, used: Set<number>): number {
+  const candidate = typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : fallback;
+  if (!used.has(candidate)) {
+    used.add(candidate);
+    return candidate;
+  }
+  let next = Math.max(fallback, ...used) + 1;
+  while (used.has(next)) {
+    next += 1;
+  }
+  used.add(next);
+  return next;
+}
+
+function normalizeFramePlacement(value: unknown, anchorMessageId: unknown): ProviderContextFrame["placement"] {
+  if (
+    value === "conversationBaseline" ||
+    value === "beforeUser" ||
+    value === "afterUser" ||
+    value === "beforeAssistant" ||
+    value === "afterAssistant"
+  ) {
+    return value;
+  }
+  return typeof anchorMessageId === "string" ? "beforeUser" : "conversationBaseline";
+}
+
+function inferSummaryRevisionId(
+  candidate: Record<string, unknown>,
+  summaryRevisions: Record<string, ConversationSummaryRevision>,
+  messages: readonly AiMessage[]
+): string | undefined {
+  if (typeof candidate.summaryRevisionId === "string") {
+    if (summaryRevisions[candidate.summaryRevisionId]) {
+      return candidate.summaryRevisionId;
+    }
+  }
+  if (typeof candidate.anchorMessageId === "string") {
+    const messageRevisionId = messages.find(
+      (message) => message.id === candidate.anchorMessageId && message.conversationSummaryRevisionId
+    )?.conversationSummaryRevisionId;
+    if (messageRevisionId && summaryRevisions[messageRevisionId]) {
+      return messageRevisionId;
+    }
+    const sourceEndRevision = Object.values(summaryRevisions).find(
+      (revision) => revision.sourceEndMessageId === candidate.anchorMessageId
+    );
+    if (sourceEndRevision) {
+      return sourceEndRevision.id;
+    }
+  }
+  if (typeof candidate.renderedText === "string") {
+    const matchingRevisions = Object.values(summaryRevisions).filter(
+      (revision) => renderConversationSummaryFrameText(revision) === candidate.renderedText
+    );
+    if (matchingRevisions.length === 1) {
+      return matchingRevisions[0]?.id;
+    }
+  }
+  return undefined;
+}
+
+function renderConversationSummaryFrameText(revision: ConversationSummaryRevision): string {
+  const summary = revision.summary;
+  return [
+    `项目聊天摘要目标：${summary.threadGoal}`,
+    `已建立上下文：${summary.establishedContext.join("；") || "无"}`,
+    `决定及原因：${summary.decisionsAndReasons.join("；") || "无"}`,
+    `当前工作：${summary.activeWork.join("；") || "无"}`,
+    `未解决问题：${summary.unresolvedQuestions.join("；") || "无"}`,
+    `下一轮锚点：${summary.nextTurnAnchor ?? "无"}`
+  ].join("\n");
 }
 
 function stringArray(value: unknown): string[] {
@@ -2144,6 +2252,14 @@ function normalizeAiMessageContextVisibility(message: AiMessage): AiMessage {
   }
 
   return isLegacyUiOnlyAiMessage(message) ? { ...message, contextVisibility: "uiOnly" } : message;
+}
+
+function normalizeAiMessage(message: AiMessage): AiMessage {
+  const normalized = normalizeAiMessageContextVisibility(message);
+  const providerInputSnapshot = normalizeProviderInputSnapshot(message.providerInputSnapshot);
+  return providerInputSnapshot
+    ? { ...normalized, providerInputSnapshot }
+    : normalized;
 }
 
 function isLegacyUiOnlyAiMessage(message: AiMessage): boolean {

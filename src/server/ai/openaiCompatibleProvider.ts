@@ -5,6 +5,7 @@ import {
   type OpenAiCompatibleAgentStreamEvent
 } from "./openaiCompatibleResponsesStream";
 import {
+  classifyProviderCacheStatus,
   normalizeProviderTokenUsage,
   type NormalizedProviderTokenUsage
 } from "./providerTokenUsage";
@@ -61,7 +62,7 @@ export type OpenAiCompatibleResponseRequest = {
   tools?: ResponseTool[];
   previousResponseId?: string;
   promptCacheKey?: string;
-  promptCacheRetention?: "in_memory" | "24h";
+  promptCacheRetention?: "24h";
   diagnostics?: AgentProviderDiagnostics;
 };
 
@@ -226,7 +227,11 @@ export async function streamOpenAiCompatibleResponse(
             uncachedInputTokens: result.usage.uncachedInputTokens,
             cacheHitRatio: result.usage.cacheHitRatio
           }
-        : {})
+        : {}),
+      cacheStatus: classifyProviderCacheStatus(
+        result.usage?.inputTokens ?? 0,
+        result.usage?.cachedInputTokens
+      )
     };
     return result;
   } catch (error) {
@@ -393,7 +398,10 @@ function resultFromRawResponse(
           cacheHitRatio: usage.cacheHitRatio
         }
       : {}),
-    ...(cacheStatus ? { cacheStatus } : {})
+    cacheStatus: cacheStatus ?? classifyProviderCacheStatus(
+      usage?.inputTokens ?? 0,
+      usage?.cachedInputTokens
+    )
   };
   return {
     responseId: typeof raw.id === "string" ? raw.id : "",

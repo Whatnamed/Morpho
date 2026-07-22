@@ -88,6 +88,8 @@ http://127.0.0.1:3000/projects/project-morpho-case-study
 
 Morpho 的正式 Agent 使用固定内部 Context Policy：`256000` window、`204800` prepare、`230400` compact、`16000` target uncompressed、独立的 `16000` response reserve。项目记忆的有界当前投影和当前任务阶段记录每轮通过 provider-only Context Frame 进入 Agent；稳定系统前缀不携带项目正文，完整历史、revision、来源细节和历史决定按需通过工具读取。Prompt cache key/retention 默认关闭，只有兼容性探针通过且显式开启时才发送；缓存未命中或 Provider 不返回 cached tokens 不影响正确性。生产环境不读取 `MORPHO_AI_CONTEXT_*` 阈值变量，客户端与服务端共享 `src/domain/morpho/agentContextPolicy.ts`；仅非生产浏览器验收可使用 localStorage override，验收后应删除。
 
+Provider transcript replay persists an immutable provider-visible input snapshot on each formal user turn. Replay prefers that snapshot over current selection, memory, document, or image state; old image pixels are not resent automatically, and legacy/document/image drift is reported as a cache boundary. Context Frames carry deterministic sequence and placement, so pre-turn state, user input, post-tool state, and assistant history retain causal order. Cache diagnostics distinguish `unavailable`, `miss`, `partialHit`, and `fullHit`; retention remains absent by default and only an explicit compatible `24h` value is forwarded.
+
 常用检查：
 
 ```bash

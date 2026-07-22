@@ -17,6 +17,7 @@ import {
   hashStablePrefix,
   resolveProviderToolProfile
 } from "@/server/ai/promptCache";
+import { classifyProviderCacheStatus } from "@/server/ai/providerTokenUsage";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
 import { aiAccessDeniedResponse, guardAiRoute, requireAiRouteUser } from "@/server/auth/aiAccess";
 import { encodeAgentRouteSse, type AgentRouteStreamEvent } from "@/shared/agentStreamProtocol";
@@ -158,9 +159,10 @@ export async function POST(request: Request) {
                 ...(config.config.promptCache?.promptCacheRetention
                   ? { providerCacheRetention: config.config.promptCache.promptCacheRetention }
                   : {}),
-                ...(execution.result.usage?.cachedInputTokens !== undefined
-                  ? { cacheStatus: "hit" as const }
-                  : { cacheStatus: "unavailable" as const }),
+                cacheStatus: classifyProviderCacheStatus(
+                  execution.result.usage?.inputTokens ?? 0,
+                  execution.result.usage?.cachedInputTokens
+                ),
                 compactedThisTurn: execution.context.compacted || execution.context.retried
               }
             }
@@ -260,7 +262,7 @@ function validateAgentRouteRequest(value: unknown):
       previousResponseId: typeof value.previousResponseId === "string" ? value.previousResponseId : undefined,
       promptCacheKey: typeof value.promptCacheKey === "string" ? value.promptCacheKey : undefined,
       promptCacheRetention:
-        value.promptCacheRetention === "in_memory" || value.promptCacheRetention === "24h"
+        value.promptCacheRetention === "24h"
           ? value.promptCacheRetention
           : undefined,
       diagnostics: isRecord(value.diagnostics)

@@ -1,5 +1,6 @@
 import type { AgentProviderDiagnostics } from "@/shared/agentStreamProtocol";
 import type { ResponseTool } from "./openaiCompatibleProvider";
+import { classifyProviderCacheStatus } from "./providerTokenUsage";
 
 export type ProviderToolProfile = "standard" | "standardWithWebSearch";
 
@@ -31,7 +32,7 @@ export function normalizeCacheDiagnostics(input: {
     cacheHitRatio?: number;
   };
   providerCacheKeyEnabled: boolean;
-  providerCacheRetention?: "in_memory" | "24h";
+  providerCacheRetention?: "24h";
 }): AgentProviderDiagnostics {
   const cachedInputTokens = input.usage?.cachedInputTokens;
   const totalInputTokens = input.usage?.inputTokens;
@@ -46,7 +47,7 @@ export function normalizeCacheDiagnostics(input: {
       : {}),
     providerCacheKeyEnabled: input.providerCacheKeyEnabled,
     ...(input.providerCacheRetention ? { providerCacheRetention: input.providerCacheRetention } : {}),
-    ...(cachedInputTokens === undefined ? { cacheStatus: "unavailable" as const } : {})
+    cacheStatus: classifyProviderCacheStatus(totalInputTokens ?? 0, cachedInputTokens)
   };
 }
 

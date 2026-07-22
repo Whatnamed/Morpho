@@ -32,6 +32,7 @@ import { importAssetBackedObjects, importTextObject, importUrlObject } from "./i
 import { recordDesignDefinitionProposal } from "../operations/operations";
 import { hasPendingDesignDefinitionRevisionProposal, reconcileWorkspaceDerivedState } from "./derivedState";
 import { buildContinuityRecordId, setConversationSemanticEntryManualState } from "./projectContinuity";
+import { applyConversationSummaryRevision } from "./conversationCompaction";
 
 describe("Morpho workspace domain boundaries", () => {
   it("creates a blank schema v15 project without depending on Nightrail seed object ids", () => {
@@ -1426,6 +1427,105 @@ describe("Morpho workspace domain boundaries", () => {
       throw new Error("Expected migration to fail.");
     }
     expect(result.reason).toBe("Unsupported Morpho workspace schema version.");
+  });
+
+  it("migrates duplicate legacy summary frames to one baseline frame idempotently", () => {
+    const workspace = createBlankWorkspace("project-summary-frame-migration");
+    const withMessages = {
+      ...workspace,
+      ai: {
+        ...workspace.ai,
+        messages: [
+          { id: "summary-user", role: "user" as const, body: "旧问题", createdAt: "2026-07-22T00:00:00.000Z" },
+          { id: "summary-assistant", role: "assistant" as const, body: "旧回答", createdAt: "2026-07-22T00:00:01.000Z" }
+        ]
+      }
+    };
+    const summary = {
+      threadGoal: "验证摘要重放",
+      establishedContext: ["已有连续对话"],
+      decisionsAndReasons: ["保留原始聊天"],
+      activeWork: ["迁移旧 Frame"],
+      unresolvedQuestions: ["无"],
+      referencedObjects: [],
+      nextTurnAnchor: "继续测试"
+    };
+    const applied = applyConversationSummaryRevision(withMessages, {
+      summary,
+      sourceMessageIds: ["summary-user", "summary-assistant"],
+      now: "2026-07-22T00:01:00.000Z"
+    });
+    expect(applied.status).toBe("applied");
+    if (applied.status !== "applied") {
+      throw new Error(applied.reason);
+    }
+
+    const renderedText = [
+      `项目聊天摘要目标：${summary.threadGoal}`,
+      `已建立上下文：${summary.establishedContext.join("；")}`,
+      `决定及原因：${summary.decisionsAndReasons.join("；")}`,
+      `当前工作：${summary.activeWork.join("；")}`,
+      `未解决问题：${summary.unresolvedQuestions.join("；")}`,
+      `下一轮锚点：${summary.nextTurnAnchor}`
+    ].join("\n");
+    const raw = JSON.parse(JSON.stringify(applied.workspace)) as Record<string, unknown>;
+    const rawAi = raw.ai as Record<string, unknown>;
+    rawAi.providerContextFrames = [
+      {
+        id: "legacy-summary-frame-a",
+        kind: "conversationSummary",
+        createdAt: "2026-07-22T00:01:00.000Z",
+        promptContractVersion: "morpho-agent-v3",
+        projectMemoryRevisionIds: [],
+        stageRecordRevisionIds: [],
+        directionRevisionIds: [],
+        selectedObjectIds: [],
+        relatedObjectIds: [],
+        renderedText,
+        contentHash: "legacy-hash-a",
+        contextVisibility: "providerOnly",
+        sourceRefs: [],
+        reason: "legacy",
+        anchorMessageId: "summary-user"
+      },
+      {
+        id: "legacy-summary-frame-b",
+        kind: "conversationSummary",
+        createdAt: "2026-07-22T00:02:00.000Z",
+        promptContractVersion: "morpho-agent-v3",
+        projectMemoryRevisionIds: [],
+        stageRecordRevisionIds: [],
+        directionRevisionIds: [],
+        selectedObjectIds: [],
+        relatedObjectIds: [],
+        renderedText,
+        contentHash: "legacy-hash-b",
+        contextVisibility: "providerOnly",
+        sourceRefs: [],
+        reason: "legacy",
+        anchorMessageId: "summary-user"
+      }
+    ];
+
+    const first = migrateWorkspaceToCurrentSchema(raw);
+    expect(first.status).toBe("ok");
+    if (first.status !== "ok") {
+      throw new Error(first.reason);
+    }
+    const migratedFrames = first.workspace.ai.providerContextFrames ?? [];
+    expect(migratedFrames).toHaveLength(1);
+    expect(migratedFrames[0]).toMatchObject({
+      id: `provider-frame-conversation-summary:${applied.revision.id}`,
+      placement: "conversationBaseline",
+      summaryRevisionId: applied.revision.id
+    });
+
+    const second = migrateWorkspaceToCurrentSchema(JSON.parse(JSON.stringify(first.workspace)));
+    expect(second.status).toBe("ok");
+    if (second.status !== "ok") {
+      throw new Error(second.reason);
+    }
+    expect(second.workspace.ai.providerContextFrames).toEqual(first.workspace.ai.providerContextFrames);
   });
 
   it("normalizes schema v15 workspace state idempotently across persisted JSON", () => {

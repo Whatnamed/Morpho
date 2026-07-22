@@ -64,6 +64,10 @@ AiJWS text behavior:
 - when `MORPHO_AI_WEB_SEARCH_ENABLED=true`, chat/research requests may provide provider web-search tooling where supported. Image generation never receives web search tools;
 - source links are shown only when the provider returns citation/annotation fields.
 - prompt cache fields stay disabled by default. Enable `MORPHO_AI_SUPPORTS_PROMPT_CACHE_KEY`, `MORPHO_AI_SUPPORTS_PROMPT_CACHE_RETENTION`, and the explicit key flag only after the current relay has passed the compatibility probe; a cache miss never changes Agent correctness.
+- each formal Agent user turn persists an immutable provider-visible input snapshot without keys, raw provider responses, cost data, or image Base64; old snapshots are replayed before current workspace state, while legacy input, image input, unavailable document snapshots, tool-profile changes, prompt-contract changes, and compaction are explicit cache boundaries;
+- provider-only Context Frames use persisted `sequence` / `placement`; post-tool state stays after its initiating user on replay, and one active Summary Frame is retained per summary revision;
+- the client and server share `src/shared/providerInputBudget.ts`, including active frames and tools in the 256k / 80% / 90% budget while keeping the 16k response reserve separate; prepare does not drop valid history;
+- cache status is `unavailable`, `miss`, `partialHit`, or `fullHit`. Retention is absent by default, `in_memory` is ignored, and only explicit capability-verified `24h` is forwarded. Without a live probe, AiJWS cache-field compatibility remains unverified.
 
 Image generation uses the GrsAI `MORPHO_GRS_*` group defined in `.env.example`.
 

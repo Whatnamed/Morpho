@@ -55,10 +55,17 @@ export function normalizeProviderTokenUsage(
   const reasoningTokens = nonNegativeInteger(outputDetails?.reasoning_tokens ?? completionDetails?.reasoning_tokens);
   const inputDetails = asRecord(usage.input_tokens_details);
   const promptDetails = asRecord(usage.prompt_tokens_details);
-  const cachedInputTokens =
-    nonNegativeInteger(usage.cached_input_tokens) ??
-    nonNegativeInteger(inputDetails?.cached_tokens) ??
-    nonNegativeInteger(promptDetails?.cached_tokens);
+  const cachedTokenCandidates = [
+    { present: "cached_input_tokens" in usage, value: usage.cached_input_tokens },
+    { present: inputDetails !== undefined && "cached_tokens" in inputDetails, value: inputDetails?.cached_tokens },
+    { present: promptDetails !== undefined && "cached_tokens" in promptDetails, value: promptDetails?.cached_tokens }
+  ];
+  if (cachedTokenCandidates.some((candidate) => candidate.present && nonNegativeInteger(candidate.value) === undefined)) {
+    return undefined;
+  }
+  const cachedInputTokens = cachedTokenCandidates
+    .map((candidate) => nonNegativeInteger(candidate.value))
+    .find((value): value is number => value !== undefined);
   if (cachedInputTokens !== undefined && cachedInputTokens > inputTokens) {
     return undefined;
   }
@@ -75,6 +82,22 @@ export function normalizeProviderTokenUsage(
     totalTokens,
     ...(reasoningTokens !== undefined && reasoningTokens <= outputTokens ? { reasoningTokens } : {})
   };
+}
+
+export function classifyProviderCacheStatus(
+  inputTokens: number,
+  cachedInputTokens: number | undefined
+): "unavailable" | "miss" | "partialHit" | "fullHit" {
+  if (cachedInputTokens === undefined) {
+    return "unavailable";
+  }
+  if (cachedInputTokens === 0) {
+    return "miss";
+  }
+  if (inputTokens > 0 && cachedInputTokens === inputTokens) {
+    return "fullHit";
+  }
+  return "partialHit";
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {

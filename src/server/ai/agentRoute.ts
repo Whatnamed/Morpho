@@ -7,7 +7,7 @@ export function filterAgentRequestForConfig(
     promptCache?: {
       supportsPromptCacheKey: boolean;
       supportsPromptCacheRetention: boolean;
-      promptCacheRetention?: "in_memory" | "24h";
+      promptCacheRetention?: "24h";
       promptCacheKeyEnabled: boolean;
     };
   }

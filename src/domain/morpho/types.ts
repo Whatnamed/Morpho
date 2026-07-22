@@ -809,6 +809,41 @@ export type AgentTrace = {
   responseId?: string;
 };
 
+export type ProviderInputSnapshotTextPartKind =
+  | "userDraft"
+  | "turnContract"
+  | "documentExtract"
+  | "other";
+
+export type ProviderInputSnapshotTextPart = {
+  kind: ProviderInputSnapshotTextPartKind;
+  text: string;
+};
+
+export type ProviderInputSnapshotAttachmentRef = {
+  objectId: string;
+  assetId?: string;
+  contentHash?: string;
+  mimeType?: string;
+};
+
+export type ProviderInputCacheBoundaryReason =
+  | "imageInput"
+  | "legacyProviderInput"
+  | "documentSnapshotUnavailable"
+  | "toolProfileChanged"
+  | "promptContractChanged"
+  | "compaction";
+
+export type ProviderInputSnapshot = {
+  schemaVersion: 1;
+  promptContractVersion: string;
+  textParts: ProviderInputSnapshotTextPart[];
+  attachmentRefs: ProviderInputSnapshotAttachmentRef[];
+  serializedTextHash: string;
+  cacheBoundaryReason?: ProviderInputCacheBoundaryReason;
+};
+
 export type AiMessage = {
   id: string;
   role: "assistant" | "user";
@@ -831,6 +866,7 @@ export type AiMessage = {
   memoryUpdateKeys?: ProjectMemoryKey[];
   stageRecordUpdateKeys?: StageRecordKey[];
   promptContractVersion?: string;
+  providerInputSnapshot?: ProviderInputSnapshot;
   taskStrategy?: AgentTaskStrategyKind;
   comparisonAnalysisId?: ComparisonAnalysisId;
   agentTrace?: AgentTrace;
@@ -849,10 +885,19 @@ export type ProviderContextFrameSourceRef = {
   title?: string;
 };
 
+export type ProviderContextFramePlacement =
+  | "conversationBaseline"
+  | "beforeUser"
+  | "afterUser"
+  | "beforeAssistant"
+  | "afterAssistant";
+
 export type ProviderContextFrame = {
   id: string;
   kind: ProviderContextFrameKind;
   createdAt: string;
+  sequence: number;
+  placement: ProviderContextFramePlacement;
   promptContractVersion: string;
   taskStrategy?: AgentTaskStrategyKind;
   projectMemoryRevisionIds: string[];
@@ -869,6 +914,7 @@ export type ProviderContextFrame = {
   sourceRefs: ProviderContextFrameSourceRef[];
   reason: string;
   anchorMessageId?: string;
+  summaryRevisionId?: string;
 };
 
 export type AgentTaskStrategyKind =

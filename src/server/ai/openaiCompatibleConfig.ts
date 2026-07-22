@@ -16,7 +16,7 @@ export type OpenAiCompatibleConfig = {
 export type PromptCacheProviderCapability = {
   supportsPromptCacheKey: boolean;
   supportsPromptCacheRetention: boolean;
-  promptCacheRetention?: "in_memory" | "24h";
+  promptCacheRetention?: "24h";
   promptCacheKeyEnabled: boolean;
 };
 
@@ -146,9 +146,9 @@ function parseReasoningEffort(value: string | undefined): "low" | "medium" | "hi
   return undefined;
 }
 
-function parsePromptCacheRetention(value: string | undefined): "in_memory" | "24h" | undefined {
+function parsePromptCacheRetention(value: string | undefined): "24h" | undefined {
   const normalized = value?.trim().toLowerCase();
-  return normalized === "in_memory" || normalized === "24h" ? normalized : undefined;
+  return normalized === "24h" ? normalized : undefined;
 }
 
 function trimTrailingSlash(value: string | undefined): string {

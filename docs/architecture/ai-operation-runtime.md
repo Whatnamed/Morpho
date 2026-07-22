@@ -8,6 +8,8 @@ The formal workspace Agent now uses `/api/ai/agent` with OpenAI-compatible Respo
 
 The current GrsAI boundary is text-to-image, image-to-image, and prompt-level directed edit. The request has no mask or inpainting parameter, so the UI and prompt compiler must not promise pixel-level local editing. A generated image always becomes a new object and never overwrites its source. The original Milestone 3 notes below remain historical where they mention MiMo or the compatibility route.
 
+Provider transcript follow-up: formal user messages retain an immutable provider-visible input snapshot without API keys, provider responses, cost data, or image Base64. The replay timeline uses deterministic frame sequence/placement, an explicit post-tool state boundary, and one active summary frame per summary revision. Client and server share the provider input token estimator. Prompt cache is off by default; `in_memory` is ignored, and only explicitly compatible `24h` retention may be sent after the relay capability flags are enabled.
+
 ## 1. Runtime 边界
 
 Operation 是受控、有限步骤的本地优先工作流，不是无限自主 Agent Loop。

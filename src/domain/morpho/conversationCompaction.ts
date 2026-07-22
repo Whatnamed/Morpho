@@ -3,7 +3,8 @@ import type {
   ConversationCompactionState,
   ConversationSummary,
   ConversationSummaryRevision,
-  MorphoWorkspace
+  MorphoWorkspace,
+  ProviderInputSnapshot
 } from "./types";
 import { MORPHO_AGENT_CONTEXT_POLICY, type MorphoAgentContextPolicy } from "./agentContextPolicy";
 import {
@@ -26,6 +27,7 @@ export type ConversationMessageForContext = {
   body: string;
   createdAt?: string;
   laneKey?: string;
+  providerInputSnapshot?: ProviderInputSnapshot;
 };
 
 export type ContinuousConversationContext = {
@@ -222,6 +224,7 @@ export function buildContinuousConversationContext(input: {
   fixedContextTokenEstimate?: number;
   imageTokenReserve?: number;
   outputTokenReserve?: number;
+  summaryAlreadyIncludedInFixedContext?: boolean;
   limits?: ConversationTokenLimits;
 }): ContinuousConversationContext {
   const limits = input.limits ?? DEFAULT_CONVERSATION_TOKEN_LIMITS;
@@ -235,7 +238,7 @@ export function buildContinuousConversationContext(input: {
     (input.fixedContextTokenEstimate ?? 0) +
     (input.imageTokenReserve ?? 0) +
     (input.outputTokenReserve ?? limits.responseReserveTokens) +
-    estimateConversationSummaryTokens(summaryRevision?.summary) +
+    (input.summaryAlreadyIncludedInFixedContext ? 0 : estimateConversationSummaryTokens(summaryRevision?.summary)) +
     estimateConversationMessageTokens(messages);
 
   return {
@@ -266,6 +269,7 @@ export function buildConversationCompactionPlan(input: {
   fixedContextTokenEstimate?: number;
   imageTokenReserve?: number;
   outputTokenReserve?: number;
+  summaryAlreadyIncludedInFixedContext?: boolean;
   limits?: ConversationTokenLimits;
   force?: "compact" | "emergency";
 }): ConversationCompactionPlan | undefined {
@@ -275,6 +279,7 @@ export function buildConversationCompactionPlan(input: {
     fixedContextTokenEstimate: input.fixedContextTokenEstimate,
     imageTokenReserve: input.imageTokenReserve,
     outputTokenReserve: input.outputTokenReserve,
+    summaryAlreadyIncludedInFixedContext: input.summaryAlreadyIncludedInFixedContext,
     limits
   });
   const pressure = input.force ?? (context.pressure === "compact" ? "compact" : undefined);
@@ -471,7 +476,8 @@ function toContextMessage(message: AiMessage): ConversationMessageForContext {
     role: message.role,
     body: message.body,
     createdAt: message.createdAt,
-    laneKey: message.conversationLaneKey
+    laneKey: message.conversationLaneKey,
+    ...(message.providerInputSnapshot ? { providerInputSnapshot: message.providerInputSnapshot } : {})
   };
 }
 
