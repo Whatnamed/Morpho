@@ -56,6 +56,102 @@ describe("Provider Context Frames", () => {
     expect(second.contentHash).toBe(first.contentHash);
   });
 
+  it("records a new state occurrence after A to B to A while retaining the content identity", () => {
+    const defaultA1 = createProviderContextFrame(frameInput({
+      sequence: 1,
+      defaultReferenceObjectId: "reference-a",
+      renderedText: "默认参考 A"
+    }));
+    const defaultB = createProviderContextFrame(frameInput({
+      sequence: 2,
+      defaultReferenceObjectId: "reference-b",
+      renderedText: "默认参考 B",
+      supersedesFrameId: defaultA1.id
+    }));
+    const defaultA2 = createProviderContextFrame(frameInput({
+      sequence: 3,
+      defaultReferenceObjectId: "reference-a",
+      renderedText: "默认参考 A",
+      supersedesFrameId: defaultB.id
+    }));
+    const repeatedA = createProviderContextFrame(frameInput({
+      sequence: 4,
+      defaultReferenceObjectId: "reference-a",
+      renderedText: "默认参考 A",
+      supersedesFrameId: defaultA2.id
+    }));
+
+    expect(defaultA2.contentHash).toBe(defaultA1.contentHash);
+    expect(defaultA2.id).not.toBe(defaultA1.id);
+    expect(
+      appendProviderContextFrame(
+        appendProviderContextFrame(
+          appendProviderContextFrame([defaultA1], defaultB),
+          defaultA2
+        ),
+        repeatedA
+      )
+    ).toEqual([defaultA1, defaultB, defaultA2]);
+  });
+
+  it("records primary-direction and runtime A to B to A occurrences without repeating adjacent values", () => {
+    const directionA1 = createProviderContextFrame(frameInput({
+      sequence: 1,
+      directionRevisionIds: ["direction-a"],
+      renderedText: "当前主方向 A"
+    }));
+    const directionB = createProviderContextFrame(frameInput({
+      sequence: 2,
+      directionRevisionIds: ["direction-b"],
+      renderedText: "当前主方向 B",
+      supersedesFrameId: directionA1.id
+    }));
+    const directionA2 = createProviderContextFrame(frameInput({
+      sequence: 3,
+      directionRevisionIds: ["direction-a"],
+      renderedText: "当前主方向 A",
+      supersedesFrameId: directionB.id
+    }));
+    expect(directionA2.contentHash).toBe(directionA1.contentHash);
+    expect(directionA2.id).not.toBe(directionA1.id);
+
+    const runtimeA1 = createProviderContextFrame(frameInput({
+      kind: "runtimeConfiguration",
+      sequence: 4,
+      renderedText: "Agent 模式：auto\nProvider Tool Profile：standard\nPrompt Contract：morpho-agent-test"
+    }));
+    const runtimeB = createProviderContextFrame(frameInput({
+      kind: "runtimeConfiguration",
+      sequence: 5,
+      renderedText: "Agent 模式：confirm\nProvider Tool Profile：standardWithWebSearch\nPrompt Contract：morpho-agent-test",
+      supersedesFrameId: runtimeA1.id
+    }));
+    const runtimeA2 = createProviderContextFrame(frameInput({
+      kind: "runtimeConfiguration",
+      sequence: 6,
+      renderedText: "Agent 模式：auto\nProvider Tool Profile：standard\nPrompt Contract：morpho-agent-test",
+      supersedesFrameId: runtimeB.id
+    }));
+    const repeatedRuntimeA = createProviderContextFrame(frameInput({
+      kind: "runtimeConfiguration",
+      sequence: 7,
+      renderedText: "Agent 模式：auto\nProvider Tool Profile：standard\nPrompt Contract：morpho-agent-test",
+      supersedesFrameId: runtimeA2.id
+    }));
+
+    expect(runtimeA2.contentHash).toBe(runtimeA1.contentHash);
+    expect(runtimeA2.id).not.toBe(runtimeA1.id);
+    expect(
+      appendProviderContextFrame(
+        appendProviderContextFrame(
+          appendProviderContextFrame([runtimeA1], runtimeB),
+          runtimeA2
+        ),
+        repeatedRuntimeA
+      )
+    ).toEqual([runtimeA1, runtimeB, runtimeA2]);
+  });
+
   it("keeps the latest project/runtime state while dropping stale turn frames outside the active history", () => {
     const oldState = createProviderContextFrame(
       frameInput({

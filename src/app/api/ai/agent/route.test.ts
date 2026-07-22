@@ -6,6 +6,8 @@ import { filterAgentRequestForConfig } from "@/server/ai/agentRoute";
 import type { OpenAiCompatibleResponseRequest } from "@/server/ai/openaiCompatibleProvider";
 import { readAgentRouteSse, type AgentRouteStreamEvent } from "@/shared/agentStreamProtocol";
 
+const routeConfig = vi.hoisted(() => ({ webSearchEnabled: true }));
+
 vi.mock("@/server/ai/openaiCompatibleConfig", () => ({
   loadOpenAiCompatibleConfig: () => ({
     status: "ok",
@@ -13,7 +15,7 @@ vi.mock("@/server/ai/openaiCompatibleConfig", () => ({
       apiKey: "test-key",
       baseUrl: "https://agent.example.test",
       model: "test-model",
-      webSearchEnabled: true,
+      webSearchEnabled: routeConfig.webSearchEnabled,
       contextPolicy: MORPHO_AGENT_CONTEXT_POLICY
     }
   })
@@ -49,6 +51,7 @@ vi.mock("@/server/ai/openaiCompatibleProvider", () => ({
 
 describe("agent route stream", () => {
   beforeEach(() => {
+    routeConfig.webSearchEnabled = true;
     guardAiRouteMock.mockReset();
     requireAiRouteUserMock.mockReset();
     streamOpenAiCompatibleResponseMock.mockReset();
@@ -109,6 +112,101 @@ describe("agent route stream", () => {
         ?.filter((tool) => tool.type === "function")
         .map((tool) => tool.name)
     ).toEqual(["read_selected_context"]);
+  });
+
+  it("reports the server-effective tool profile at turn start and completion", async () => {
+    routeConfig.webSearchEnabled = false;
+    const response = await POST(agentRequest({
+      tools: [
+        {
+          type: "function",
+          name: "search_web_evidence",
+          description: "Search",
+          parameters: { type: "object" }
+        }
+      ]
+    }));
+    const events: AgentRouteStreamEvent[] = [];
+    if (!response.body) {
+      throw new Error("Expected an SSE response body.");
+    }
+    await readAgentRouteSse(response.body, { onEvent: (event) => events.push(event) });
+
+    expect(events.find((event) => event.type === "turn-start")).toMatchObject({
+      effectiveToolProfile: "standard"
+    });
+    expect(
+      (streamOpenAiCompatibleResponseMock.mock.calls[0]?.[1] as OpenAiCompatibleResponseRequest).tools
+    ).toEqual([]);
+    expect(events.find((event) => event.type === "turn-complete")).toMatchObject({
+      result: {
+        providerDiagnostics: expect.objectContaining({ toolProfile: "standard" })
+      }
+    });
+
+    routeConfig.webSearchEnabled = true;
+    const enabled = await POST(agentRequest({
+      tools: [
+        {
+          type: "function",
+          name: "search_web_evidence",
+          description: "Search",
+          parameters: { type: "object" }
+        }
+      ]
+    }));
+    const enabledEvents: AgentRouteStreamEvent[] = [];
+    if (!enabled.body) {
+      throw new Error("Expected an SSE response body.");
+    }
+    await readAgentRouteSse(enabled.body, { onEvent: (event) => enabledEvents.push(event) });
+    expect(enabledEvents.find((event) => event.type === "turn-start")).toMatchObject({
+      effectiveToolProfile: "standardWithWebSearch"
+    });
+    expect(
+      (streamOpenAiCompatibleResponseMock.mock.calls[1]?.[1] as OpenAiCompatibleResponseRequest).tools
+        ?.some((tool) => tool.type === "function" && tool.name === "search_web_evidence")
+    ).toBe(true);
+  });
+
+  it("does not report a false tool boundary when the server keeps the same effective profile", async () => {
+    routeConfig.webSearchEnabled = false;
+    const response = await POST(agentRequest({
+      diagnostics: {
+        previousRequestState: {
+          promptContractVersion: "morpho-agent-v3",
+          toolProfile: "standard",
+          latestUserMessageId: "user-a"
+        },
+        requestState: {
+          promptContractVersion: "morpho-agent-v3",
+          toolProfile: "standardWithWebSearch",
+          latestUserMessageId: "user-b"
+        }
+      },
+      tools: [
+        {
+          type: "function",
+          name: "search_web_evidence",
+          description: "Search",
+          parameters: { type: "object" }
+        }
+      ]
+    }));
+    const events: AgentRouteStreamEvent[] = [];
+    if (!response.body) {
+      throw new Error("Expected an SSE response body.");
+    }
+    await readAgentRouteSse(response.body, { onEvent: (event) => events.push(event) });
+
+    expect(events.find((event) => event.type === "turn-complete")).toMatchObject({
+      result: {
+        providerDiagnostics: expect.objectContaining({
+          toolProfile: "standard",
+          providerInputBoundaryReasons: []
+        })
+      }
+    });
   });
 
   it("injects only an explicitly enabled compatible 24h cache retention", () => {

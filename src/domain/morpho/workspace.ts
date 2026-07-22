@@ -2124,7 +2124,11 @@ function normalizeProviderContextFrames(
       : normalizeFramePlacement(candidate.placement, candidate.anchorMessageId);
     const summaryRevisionId = kind === "conversationSummary"
       ? inferSummaryRevisionId(candidate, summaryRevisions, messages)
-      : undefined;
+      : placement === "conversationBaseline" &&
+          typeof candidate.summaryRevisionId === "string" &&
+          summaryRevisions[candidate.summaryRevisionId]
+        ? candidate.summaryRevisionId
+        : undefined;
     const summaryKey = kind === "conversationSummary"
       ? summaryRevisionId ?? `legacy:${candidate.contentHash}`
       : undefined;
@@ -2135,7 +2139,7 @@ function normalizeProviderContextFrames(
       summaryKeys.add(summaryKey);
     }
     return [{
-      id: summaryRevisionId
+      id: kind === "conversationSummary" && summaryRevisionId
         ? `provider-frame-conversation-summary:${summaryRevisionId}`
         : candidate.id,
       kind,

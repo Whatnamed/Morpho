@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import { createBlankWorkspace } from "./workspace";
+import { createProviderInputSnapshot } from "./providerInputSnapshot";
+import { estimateProviderInputTimelineBudget } from "@/shared/providerInputBudget";
 import {
   applyConversationSummaryRevision,
+  buildConversationSummarySourceText,
   buildContinuousConversationContext,
   buildConversationCompactionPlan,
   estimateConversationSummaryTokens,
   getUsableConversationMessages,
+  hashMessageIds,
   migrateLegacyCheckpointToConversationCompaction,
   parseConversationSummaryPayload,
   type ConversationTokenLimits
@@ -77,6 +81,50 @@ describe("continuous conversation compaction", () => {
     expect(context.pressure).toBe("prepare");
     expect(context.messages).toHaveLength(8);
     expect(buildConversationCompactionPlan({ workspace, limits })).toBeUndefined();
+  });
+
+  it("uses the real replayed document snapshot for the compact threshold", () => {
+    const largeSnapshot = createProviderInputSnapshot({
+      message: { content: [{ type: "input_text", text: "原始 Provider 文档" }] },
+      promptContractVersion: "morpho-agent-test",
+      textParts: [{ kind: "documentExtract", text: `材料资料：${"耐盐雾。".repeat(3_000)}` }]
+    });
+    const currentSnapshot = createProviderInputSnapshot({
+      message: { content: [{ type: "input_text", text: "当前问题" }] },
+      promptContractVersion: "morpho-agent-test"
+    });
+    const workspace = withMessages([
+      { ...message("u-1", "user", "短 UI 草稿"), providerInputSnapshot: largeSnapshot },
+      message("a-1", "assistant", "旧回答"),
+      { ...message("u-2", "user", "当前 UI 草稿"), providerInputSnapshot: currentSnapshot },
+      message("a-2", "assistant", "最近回答")
+    ]);
+    const budget = estimateProviderInputTimelineBudget({
+      input: [
+        { role: "system", content: [{ type: "input_text", text: "稳定规则" }] },
+        { role: "user", content: [{ type: "input_text", text: largeSnapshot.textParts[0]!.text }] },
+        { role: "assistant", content: [{ type: "output_text", text: "旧回答" }] },
+        { role: "user", content: [{ type: "input_text", text: "当前问题" }] }
+      ],
+      tools: [],
+      responseReserveTokens: 0
+    });
+
+    const plan = buildConversationCompactionPlan({ workspace, limits, providerTimelineBudget: budget });
+    expect(plan).toBeDefined();
+    expect(plan?.estimatedInputTokens).toBe(budget.totalInputTokens);
+    expect(plan?.sourceMessages.map((entry) => entry.id)).toEqual(["u-1", "a-1"]);
+
+    const compressedBudget = estimateProviderInputTimelineBudget({
+      input: [
+        { role: "system", content: [{ type: "input_text", text: "稳定规则" }] },
+        { role: "system", content: [{ type: "input_text", text: "Conversation Summary Frame: 耐盐雾约束已保留" }] },
+        { role: "user", content: [{ type: "input_text", text: "当前问题" }] }
+      ],
+      tools: [],
+      responseReserveTokens: 0
+    });
+    expect(compressedBudget.estimatedOccupancyTokens).toBeLessThan(limits.compactTokens);
   });
 
   it("summarizes the oldest complete range atomically and retains raw history for search", () => {
@@ -252,6 +300,40 @@ describe("continuous conversation compaction", () => {
     expect(
       parseConversationSummaryPayload(`\`\`\`json\n${JSON.stringify({ morphoConversationSummary: { ...summary, extra: true } })}\n\`\`\``)
     ).toMatchObject({ status: "failed" });
+  });
+
+  it("builds summary source from immutable provider-visible snapshots with bounded documents", () => {
+    const snapshot = createProviderInputSnapshot({
+      message: {
+        content: [{ type: "input_text", text: "发送时正文" }]
+      },
+      promptContractVersion: "morpho-agent-test",
+      textParts: [
+        { kind: "userDraft", text: "用户要求浮标外壳必须耐盐雾腐蚀。\n显式选择对象数：8" },
+        { kind: "turnContract", text: "本轮界面数量选择：3 个方向。" },
+        {
+          kind: "documentExtract",
+          text: `材料报告：\n${"耐盐雾约束。".repeat(1_000)}`
+        },
+        { kind: "other", text: "data:image/png;base64,very-secret-pixels" }
+      ],
+      attachmentRefs: [{ objectId: "image-ocean-buoy", assetId: "asset-buoy" }]
+    });
+    const source = buildConversationSummarySourceText({
+      role: "user",
+      body: "简短 UI 草稿，不含耐盐雾约束。",
+      providerInputSnapshot: snapshot
+    });
+
+    expect(source).toContain("耐盐雾腐蚀");
+    expect(source).toContain("这是当时随该回合提供的资料快照");
+    expect(source).toContain("image-ocean-buoy");
+    expect(source).not.toContain("very-secret-pixels");
+    expect(source).not.toContain("显式选择对象数：8");
+    expect(source).not.toContain("本轮界面数量选择");
+    expect(source).toContain("资料快照按摘要预算截断");
+    expect(buildConversationSummarySourceText({ role: "user", body: "没有快照时回退正文" })).toContain("没有快照时回退正文");
+    expect(hashMessageIds(["u-1", "a-1"])).toBe(hashMessageIds(["u-1", "a-1"]));
   });
 });
 

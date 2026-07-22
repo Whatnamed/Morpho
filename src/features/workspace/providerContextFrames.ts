@@ -28,7 +28,8 @@ export type ProviderContextFrameBuildInput = {
   projectId: string;
   strategy: AgentTaskStrategyKind;
   mode: MorphoAgentTurnMode;
-  toolProfile: "standard" | "standardWithWebSearch";
+  /** Only set after the server has confirmed the filtered provider tools. */
+  toolProfile?: ProviderToolProfile;
   promptContractVersion: string;
   userMessageId: string;
   context: TaskContextResult;
@@ -41,34 +42,52 @@ export type ProviderContextFrameBuildInput = {
   cacheBoundaryReason?: ProviderInputCacheBoundaryReason;
 };
 
+export type ProviderToolProfile = "standard" | "standardWithWebSearch";
+
+export type ProviderRequestBoundaryState = {
+  promptContractVersion: string;
+  toolProfile?: ProviderToolProfile;
+  summaryRevisionId?: string;
+  latestUserMessageId?: string;
+  providerInputPrefixHash?: string;
+  attachmentBoundary?: ProviderInputCacheBoundaryReason;
+};
+
+export type ProviderRuntimeConfiguration = {
+  mode: MorphoAgentTurnMode;
+  toolProfile: ProviderToolProfile;
+  promptContractVersion: string;
+};
+
 export function appendAgentProviderContextFrames(
   workspace: MorphoWorkspace,
   input: ProviderContextFrameBuildInput
 ): MorphoWorkspace {
   const previousFrames = workspace.ai.providerContextFrames ?? [];
-  const next = appendAgentProviderStateFrames(workspace, {
+  let next = workspace;
+  if (input.summaryRevision) {
+    next = ensureAgentConversationSummaryBaselines(next, {
+      projectId: input.projectId,
+      promptContractVersion: input.promptContractVersion,
+      summaryRevision: input.summaryRevision,
+      mode: input.mode,
+      toolProfile: input.toolProfile
+    });
+  }
+  next = appendAgentProviderStateFrames(next, {
     ...input,
+    workspace: next,
     framePlacement: input.framePlacement ?? "beforeUser"
   });
-  const beforeAdditionIds = new Set(previousFrames.map((frame) => frame.id));
-  const stateFrames = (next.ai.providerContextFrames ?? []).filter((frame) => !beforeAdditionIds.has(frame.id));
-  const summary = input.summaryRevision
-    ? createConversationSummaryFrame(input, next.ai.providerContextFrames ?? [])
-    : undefined;
+  const nextFrames = next.ai.providerContextFrames ?? previousFrames;
   const turnContext = createTurnContextFrame(
     input,
-    summary
-      ? [...(next.ai.providerContextFrames ?? previousFrames), summary]
-      : next.ai.providerContextFrames ?? previousFrames
+    nextFrames
   );
-  const additions = [...stateFrames, ...(summary ? [summary] : []), turnContext];
-  const nextFrames = additions.reduce(
-    (frames, frame) => appendProviderContextFrame(frames, frame),
-    next.ai.providerContextFrames ?? previousFrames
-  );
-  return nextFrames.length === previousFrames.length
-    ? workspace
-    : { ...next, ai: { ...next.ai, providerContextFrames: nextFrames } };
+  const appendedFrames = appendProviderContextFrame(nextFrames, turnContext);
+  return appendedFrames.length === nextFrames.length
+    ? next
+    : { ...next, ai: { ...next.ai, providerContextFrames: appendedFrames } };
 }
 
 export function appendAgentProviderStateFrames(
@@ -78,7 +97,9 @@ export function appendAgentProviderStateFrames(
   const previousFrames = workspace.ai.providerContextFrames ?? [];
   const projectState = createProjectStateFrame(input, previousFrames);
   const runtimeConfiguration = createRuntimeConfigurationFrame(input, previousFrames);
-  const additions = [projectState, runtimeConfiguration];
+  const additions = [projectState, runtimeConfiguration]
+    .filter((frame): frame is ProviderContextFrame => Boolean(frame))
+    .filter((frame) => !hasMatchingSummaryBaseline(previousFrames, frame, input.summaryRevision?.id));
   const nextFrames = additions.reduce(
     (frames, frame) => appendProviderContextFrame(frames, frame),
     [...previousFrames]
@@ -86,6 +107,146 @@ export function appendAgentProviderStateFrames(
   return nextFrames.length === previousFrames.length
     ? workspace
     : { ...workspace, ai: { ...workspace.ai, providerContextFrames: nextFrames } };
+}
+
+function hasMatchingSummaryBaseline(
+  frames: readonly ProviderContextFrame[],
+  frame: ProviderContextFrame,
+  summaryRevisionId: string | undefined
+): boolean {
+  if (!summaryRevisionId || (frame.kind !== "projectState" && frame.kind !== "runtimeConfiguration")) {
+    return false;
+  }
+  return frames.some(
+    (candidate) =>
+      candidate.kind === frame.kind &&
+      candidate.placement === "conversationBaseline" &&
+      candidate.summaryRevisionId === summaryRevisionId &&
+      candidate.contentHash === frame.contentHash
+  );
+}
+
+export function ensureAgentConversationSummaryBaselines(
+  workspace: MorphoWorkspace,
+  input: {
+    projectId: string;
+    promptContractVersion: string;
+    summaryRevision: ConversationSummaryRevision;
+    mode?: MorphoAgentTurnMode;
+    toolProfile?: ProviderToolProfile;
+  }
+): MorphoWorkspace {
+  const previousFrames = workspace.ai.providerContextFrames ?? [];
+  let frames = [...previousFrames];
+  const summaryExists = frames.some(
+    (frame) => frame.kind === "conversationSummary" && frame.summaryRevisionId === input.summaryRevision.id
+  );
+  if (!summaryExists) {
+    frames = appendProviderContextFrame(
+      frames,
+      createConversationSummaryFrame({
+        projectId: input.projectId,
+        promptContractVersion: input.promptContractVersion,
+        summaryRevision: input.summaryRevision
+      }, frames)
+    );
+  }
+
+  const hasProjectBaseline = frames.some(
+    (frame) =>
+      frame.kind === "projectState" &&
+      frame.placement === "conversationBaseline" &&
+      frame.summaryRevisionId === input.summaryRevision.id
+  );
+  if (!hasProjectBaseline) {
+    frames = appendProviderContextFrame(
+      frames,
+      createProjectStateFrame(
+        {
+          workspace,
+          projectId: input.projectId,
+          promptContractVersion: input.promptContractVersion,
+          framePlacement: "conversationBaseline",
+          summaryRevisionId: input.summaryRevision.id
+        },
+        frames
+      )
+    );
+  }
+
+  const runtime = input.toolProfile && input.mode
+    ? {
+        mode: input.mode,
+        toolProfile: input.toolProfile,
+        promptContractVersion: input.promptContractVersion
+      }
+    : getLatestProviderRuntimeConfiguration(frames);
+  const hasRuntimeBaseline = frames.some(
+    (frame) =>
+      frame.kind === "runtimeConfiguration" &&
+      frame.placement === "conversationBaseline" &&
+      frame.summaryRevisionId === input.summaryRevision.id
+  );
+  if (runtime && !hasRuntimeBaseline) {
+    const runtimeFrame = createRuntimeConfigurationFrame(
+      {
+        projectId: input.projectId,
+        promptContractVersion: runtime.promptContractVersion,
+        mode: runtime.mode,
+        toolProfile: runtime.toolProfile,
+        framePlacement: "conversationBaseline",
+        summaryRevisionId: input.summaryRevision.id
+      },
+      frames
+    );
+    if (runtimeFrame) {
+      frames = appendProviderContextFrame(frames, runtimeFrame);
+    }
+  }
+
+  return frames.length === previousFrames.length
+    ? workspace
+    : { ...workspace, ai: { ...workspace.ai, providerContextFrames: frames } };
+}
+
+export function appendAgentProviderRuntimeConfigurationFrame(
+  workspace: MorphoWorkspace,
+  input: {
+    projectId: string;
+    promptContractVersion: string;
+    mode: MorphoAgentTurnMode;
+    toolProfile: ProviderToolProfile;
+    userMessageId?: string;
+    framePlacement?: ProviderContextFramePlacement;
+    summaryRevisionId?: string;
+  }
+): MorphoWorkspace {
+  const frames = workspace.ai.providerContextFrames ?? [];
+  const runtime = createRuntimeConfigurationFrame(input, frames);
+  if (!runtime) {
+    return workspace;
+  }
+  const nextFrames = appendProviderContextFrame(frames, runtime);
+  return nextFrames.length === frames.length
+    ? workspace
+    : { ...workspace, ai: { ...workspace.ai, providerContextFrames: nextFrames } };
+}
+
+export function getLatestProviderRuntimeConfiguration(
+  frames: readonly ProviderContextFrame[]
+): ProviderRuntimeConfiguration | undefined {
+  const latest = latestFrame(frames, "runtimeConfiguration");
+  if (!latest) {
+    return undefined;
+  }
+  const mode = latest.renderedText.match(/Agent 模式[:：]\s*(auto|confirm)/)?.[1] as MorphoAgentTurnMode | undefined;
+  const toolProfile = latest.renderedText.match(
+    /Provider Tool Profile[:：]\s*(standardWithWebSearch|standard)/
+  )?.[1] as ProviderToolProfile | undefined;
+  const promptContractVersion = latest.renderedText.match(/Prompt Contract[:：]\s*(\S+)/)?.[1];
+  return mode && toolProfile && promptContractVersion
+    ? { mode, toolProfile, promptContractVersion }
+    : undefined;
 }
 
 export function buildAgentProviderInput(input: {
@@ -144,38 +305,60 @@ export function buildAgentProviderInput(input: {
 }
 
 export function getProviderInputReplayBoundaryReasons(
-  history: readonly { role: "user" | "assistant"; providerInputSnapshot?: ProviderInputSnapshot }[],
+  history: readonly {
+    id?: string;
+    role: "user" | "assistant";
+    providerInputSnapshot?: ProviderInputSnapshot;
+  }[],
   options: {
     currentPromptContractVersion?: string;
-    currentToolProfile?: "standard" | "standardWithWebSearch";
+    currentToolProfile?: ProviderToolProfile;
     frames?: readonly ProviderContextFrame[];
+    previousRequestState?: ProviderRequestBoundaryState;
+    currentRequestState?: ProviderRequestBoundaryState;
   } = {}
 ): ProviderInputCacheBoundaryReason[] {
   const reasons = new Set<ProviderInputCacheBoundaryReason>();
-  for (const message of history) {
-    if (message.role === "user" && !message.providerInputSnapshot) {
-      reasons.add("legacyProviderInput");
-    }
-    const reason = message.providerInputSnapshot?.cacheBoundaryReason;
-    if (reason) {
-      reasons.add(reason);
-    }
-    if (
-      message.providerInputSnapshot &&
-      options.currentPromptContractVersion &&
-      message.providerInputSnapshot.promptContractVersion !== options.currentPromptContractVersion
-    ) {
-      reasons.add("promptContractChanged");
-    }
+  const latestUser = [...history].reverse().find((message) => message.role === "user");
+  const current = options.currentRequestState;
+  const previous = options.previousRequestState;
+  const currentPromptContractVersion = current?.promptContractVersion ?? options.currentPromptContractVersion;
+  const currentToolProfile = current?.toolProfile ?? options.currentToolProfile;
+  const attachmentBoundary = current?.attachmentBoundary ?? latestUser?.providerInputSnapshot?.cacheBoundaryReason;
+  const crossedIntoCurrentUser =
+    !previous ||
+    !current?.latestUserMessageId ||
+    previous.latestUserMessageId !== current.latestUserMessageId;
+
+  if (latestUser && !latestUser.providerInputSnapshot) {
+    reasons.add("legacyProviderInput");
   }
-  if (options.currentToolProfile && options.frames?.some((frame) => {
-    if (frame.kind !== "runtimeConfiguration") {
-      return false;
-    }
-    const profile = frame.renderedText.match(/Provider Tool Profile[:：]\s*(standardWithWebSearch|standard)/)?.[1];
-    return profile !== undefined && profile !== options.currentToolProfile;
-  })) {
+  if (attachmentBoundary && crossedIntoCurrentUser) {
+    reasons.add(attachmentBoundary);
+  }
+  if (
+    latestUser?.providerInputSnapshot &&
+    currentPromptContractVersion &&
+    latestUser.providerInputSnapshot.promptContractVersion !== currentPromptContractVersion
+  ) {
+    reasons.add("promptContractChanged");
+  }
+  if (
+    previous?.promptContractVersion &&
+    currentPromptContractVersion &&
+    previous.promptContractVersion !== currentPromptContractVersion
+  ) {
+    reasons.add("promptContractChanged");
+  }
+  const previousToolProfile = previous?.toolProfile ?? latestProviderToolProfile(options.frames ?? []);
+  if (currentToolProfile && previousToolProfile && previousToolProfile !== currentToolProfile) {
     reasons.add("toolProfileChanged");
+  }
+  if (
+    previous &&
+    previous.summaryRevisionId !== current?.summaryRevisionId
+  ) {
+    reasons.add("compaction");
   }
   return [...reasons];
 }
@@ -201,7 +384,11 @@ function providerHistoryMessage(message: {
 }
 
 function createProjectStateFrame(
-  input: ProviderContextFrameBuildInput,
+  input: Pick<ProviderContextFrameBuildInput, "workspace" | "projectId" | "promptContractVersion"> & {
+    userMessageId?: string;
+    framePlacement?: ProviderContextFramePlacement;
+    summaryRevisionId?: string;
+  },
   previousFrames: readonly ProviderContextFrame[]
 ): ProviderContextFrame {
   const stableMemoryContext = buildStableProjectMemoryContext(input.workspace);
@@ -263,7 +450,10 @@ function createProjectStateFrame(
     supersedesFrameId: previous?.id,
     sourceRefs: buildStableProjectStateSourceRefs(memoryRevisionIds, currentDefinition?.id, primaryDirection?.id),
     reason: "项目结构化状态或长期项目事实发生变化",
-    anchorMessageId: input.userMessageId
+    ...(input.framePlacement !== "conversationBaseline" && input.userMessageId
+      ? { anchorMessageId: input.userMessageId }
+      : {}),
+    ...(input.summaryRevisionId ? { summaryRevisionId: input.summaryRevisionId } : {})
   });
 }
 
@@ -319,9 +509,17 @@ function createTurnContextFrame(
 }
 
 function createRuntimeConfigurationFrame(
-  input: ProviderContextFrameBuildInput,
+  input: Pick<ProviderContextFrameBuildInput, "projectId" | "promptContractVersion" | "mode"> & {
+    toolProfile?: ProviderToolProfile;
+    userMessageId?: string;
+    framePlacement?: ProviderContextFramePlacement;
+    summaryRevisionId?: string;
+  },
   previousFrames: readonly ProviderContextFrame[]
-): ProviderContextFrame {
+): ProviderContextFrame | undefined {
+  if (!input.toolProfile) {
+    return undefined;
+  }
   const previous = latestFrame(previousFrames, "runtimeConfiguration");
   return createProviderContextFrame({
     projectId: input.projectId,
@@ -343,19 +541,24 @@ function createRuntimeConfigurationFrame(
     supersedesFrameId: previous?.id,
     sourceRefs: [],
     reason: "会改变 Agent 执行语义的运行配置发生变化",
-    anchorMessageId: input.userMessageId
+    ...(input.framePlacement !== "conversationBaseline" && input.userMessageId
+      ? { anchorMessageId: input.userMessageId }
+      : {}),
+    ...(input.summaryRevisionId ? { summaryRevisionId: input.summaryRevisionId } : {})
   });
 }
 
 function createConversationSummaryFrame(
-  input: ProviderContextFrameBuildInput,
+  input: Pick<ProviderContextFrameBuildInput, "projectId" | "promptContractVersion"> & {
+    summaryRevision: ConversationSummaryRevision;
+  },
   previousFrames: readonly ProviderContextFrame[]
 ): ProviderContextFrame {
-  const summary = input.summaryRevision!.summary;
+  const summary = input.summaryRevision.summary;
   return createProviderContextFrame({
     projectId: input.projectId,
     kind: "conversationSummary",
-    createdAt: input.summaryRevision!.createdAt,
+    createdAt: input.summaryRevision.createdAt,
     sequence: nextProviderContextFrameSequence(previousFrames),
     placement: "conversationBaseline",
     promptContractVersion: input.promptContractVersion,
@@ -374,7 +577,7 @@ function createConversationSummaryFrame(
     ].join("\n"),
     sourceRefs: summary.referencedObjects.map((id) => ({ kind: "object", id })),
     reason: "Conversation Summary revision 已成为当前活动输入的一部分",
-    summaryRevisionId: input.summaryRevision!.id
+    summaryRevisionId: input.summaryRevision.id
   });
 }
 
@@ -419,6 +622,14 @@ function latestFrame(
   kind: ProviderContextFrame["kind"]
 ): ProviderContextFrame | undefined {
   return [...frames].sort((left, right) => left.sequence - right.sequence).reverse().find((frame) => frame.kind === kind);
+}
+
+function latestProviderToolProfile(frames: readonly ProviderContextFrame[]): ProviderToolProfile | undefined {
+  const latest = latestFrame(frames, "runtimeConfiguration");
+  const profile = latest?.renderedText.match(
+    /Provider Tool Profile[:：]\s*(standardWithWebSearch|standard)/
+  )?.[1];
+  return profile === "standard" || profile === "standardWithWebSearch" ? profile : undefined;
 }
 
 function extractDefaultReferenceObjectId(defaultReference: string): string | undefined {

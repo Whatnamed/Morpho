@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createProviderInputSnapshot } from "@/domain/morpho/providerInputSnapshot";
 
 import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
 import {
@@ -87,6 +88,36 @@ describe("agent conversation context", () => {
     expect(serialized).toContain("完整分块消息 1");
     expect(serialized).toContain("完整分块消息 9");
     expect(serialized).toContain("sourceMessageCount: 9");
+  });
+
+  it("sends provider-visible document snapshots to the summary request instead of only the UI body", () => {
+    const snapshot = createProviderInputSnapshot({
+      message: { content: [{ type: "input_text", text: "原始 Provider 输入" }] },
+      promptContractVersion: "morpho-agent-test",
+      textParts: [
+        { kind: "userDraft", text: "请保留海洋浮标的耐盐雾约束" },
+        { kind: "documentExtract", text: "材料摘录：外壳需要通过 720 小时盐雾测试。" }
+      ]
+    });
+    const input = buildAgentCheckpointCompactionInput({
+      messages: [
+        {
+          id: "message-1",
+          role: "user",
+          body: "继续这个方案",
+          providerInputSnapshot: snapshot
+        },
+        { id: "message-2", role: "assistant", body: "会保留约束。" }
+      ],
+      sourceStartMessageId: "message-1",
+      sourceEndMessageId: "message-2",
+      sourceMessageCount: 2
+    });
+
+    const serialized = JSON.stringify(input);
+    expect(serialized).toContain("720 小时盐雾测试");
+    expect(serialized).toContain("这是当时随该回合提供的资料快照");
+    expect(serialized).not.toContain("input_image");
   });
 });
 

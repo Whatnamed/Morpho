@@ -20,7 +20,11 @@ import {
 import { classifyProviderCacheStatus } from "@/server/ai/providerTokenUsage";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
 import { aiAccessDeniedResponse, guardAiRoute, requireAiRouteUser } from "@/server/auth/aiAccess";
-import { encodeAgentRouteSse, type AgentRouteStreamEvent } from "@/shared/agentStreamProtocol";
+import {
+  encodeAgentRouteSse,
+  type AgentProviderRequestState,
+  type AgentRouteStreamEvent
+} from "@/shared/agentStreamProtocol";
 
 export const runtime = "nodejs";
 
@@ -49,6 +53,12 @@ export async function POST(request: Request) {
 
   const filteredRequest = filterAgentRequestForConfig(validated.value, config.config);
   const filteredToolProfile = resolveProviderToolProfile(filteredRequest.tools);
+  const requestState = buildProviderRequestState(filteredRequest, filteredToolProfile);
+  const providerInputBoundaryReasons = resolveProviderInputBoundaryReasons(
+    filteredRequest.diagnostics?.previousRequestState,
+    requestState,
+    filteredRequest.diagnostics?.providerInputBoundaryReasons
+  );
   const generatedPromptCacheKey =
     validated.projectId &&
     config.config.promptCache?.supportsPromptCacheKey &&
@@ -67,6 +77,8 @@ export async function POST(request: Request) {
       ...filteredRequest.diagnostics,
       toolProfile: filteredToolProfile,
       stablePrefixHash: hashStablePrefix(firstSystemPrompt(filteredRequest)),
+      requestState,
+      providerInputBoundaryReasons,
       providerCacheKeyEnabled: config.config.promptCache?.promptCacheKeyEnabled ?? false,
       ...(config.config.promptCache?.promptCacheRetention
         ? { providerCacheRetention: config.config.promptCache.promptCacheRetention }
@@ -112,7 +124,8 @@ export async function POST(request: Request) {
           type: "turn-start",
           ...(validated.agentTurnId ? { agentTurnId: validated.agentTurnId } : {}),
           attemptId: attemptIds[0],
-          startedAt: new Date().toISOString()
+          startedAt: new Date().toISOString(),
+          effectiveToolProfile: filteredToolProfile
         });
         try {
           const execution = await executeAgentRequestWithContextBudget(providerRequest, {
@@ -155,6 +168,9 @@ export async function POST(request: Request) {
               context: execution.context,
               providerDiagnostics: {
                 ...execution.result.providerDiagnostics,
+                toolProfile: filteredToolProfile,
+                requestState,
+                providerInputBoundaryReasons,
                 providerCacheKeyEnabled: config.config.promptCache?.promptCacheKeyEnabled ?? false,
                 ...(config.config.promptCache?.promptCacheRetention
                   ? { providerCacheRetention: config.config.promptCache.promptCacheRetention }
@@ -283,6 +299,72 @@ function firstSystemPrompt(request: OpenAiCompatibleResponseRequest): string {
       Array.isArray(item.content)
   ) as { content: Array<{ text?: unknown }> } | undefined;
   return system?.content.map((part) => (typeof part.text === "string" ? part.text : "")).join("\n") ?? "";
+}
+
+function buildProviderRequestState(
+  request: OpenAiCompatibleResponseRequest,
+  toolProfile: "standard" | "standardWithWebSearch"
+): AgentProviderRequestState {
+  const supplied = request.diagnostics?.requestState;
+  return {
+    promptContractVersion:
+      typeof supplied?.promptContractVersion === "string" && supplied.promptContractVersion.trim()
+        ? supplied.promptContractVersion
+        : MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+    toolProfile,
+    ...(typeof supplied?.summaryRevisionId === "string" && supplied.summaryRevisionId
+      ? { summaryRevisionId: supplied.summaryRevisionId }
+      : {}),
+    ...(typeof supplied?.latestUserMessageId === "string" && supplied.latestUserMessageId
+      ? { latestUserMessageId: supplied.latestUserMessageId }
+      : {}),
+    providerInputPrefixHash: hashStablePrefix(
+      JSON.stringify(request.input, (key, value) => key === "image_url" ? "[image-input]" : value)
+    ),
+    ...(isProviderInputBoundaryReason(supplied?.attachmentBoundary)
+      ? { attachmentBoundary: supplied.attachmentBoundary }
+      : {})
+  };
+}
+
+function resolveProviderInputBoundaryReasons(
+  previous: AgentProviderRequestState | undefined,
+  current: AgentProviderRequestState,
+  supplied: readonly string[] | undefined
+): string[] {
+  const reasons = new Set<string>(
+    (supplied ?? []).filter((reason) =>
+      reason === "imageInput" ||
+      reason === "legacyProviderInput" ||
+      reason === "documentSnapshotUnavailable"
+    )
+  );
+  const crossedIntoCurrentUser =
+    !previous ||
+    !current.latestUserMessageId ||
+    previous.latestUserMessageId !== current.latestUserMessageId;
+  if (current.attachmentBoundary && crossedIntoCurrentUser) {
+    reasons.add(current.attachmentBoundary);
+  }
+  if (previous?.promptContractVersion && previous.promptContractVersion !== current.promptContractVersion) {
+    reasons.add("promptContractChanged");
+  }
+  if (previous?.toolProfile && previous.toolProfile !== current.toolProfile) {
+    reasons.add("toolProfileChanged");
+  }
+  if (previous && previous.summaryRevisionId !== current.summaryRevisionId) {
+    reasons.add("compaction");
+  }
+  return [...reasons];
+}
+
+function isProviderInputBoundaryReason(value: unknown): value is NonNullable<AgentProviderRequestState["attachmentBoundary"]> {
+  return value === "imageInput" ||
+    value === "legacyProviderInput" ||
+    value === "documentSnapshotUnavailable" ||
+    value === "toolProfileChanged" ||
+    value === "promptContractChanged" ||
+    value === "compaction";
 }
 
 function parseOptionalNonNegativeInteger(value: unknown): number | undefined {

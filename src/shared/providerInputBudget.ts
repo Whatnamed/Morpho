@@ -8,6 +8,20 @@ export type ProviderInputBudget = {
   imageCount: number;
 };
 
+/**
+ * A single estimate of the exact candidate Provider input, separated by the
+ * portions that can and cannot be reduced by conversation compaction.
+ */
+export type ProviderInputTimelineBudget = {
+  totalInputTokens: number;
+  fixedTokens: number;
+  compressibleHistoricalTokens: number;
+  currentTurnTokens: number;
+  responseReserveTokens: number;
+  estimatedOccupancyTokens: number;
+  imageCount: number;
+};
+
 export function estimateProviderInputTokens(input: {
   input: readonly unknown[];
   tools: readonly unknown[];
@@ -22,6 +36,42 @@ export function estimateProviderInputTokens(input: {
     responseReserveTokens,
     estimatedOccupancyTokens: inputTokens + responseReserveTokens,
     imageCount
+  };
+}
+
+/**
+ * Keep the threshold decision tied to the same fully materialized Provider
+ * payload that will be sent. Segment figures are explanatory; their sum is
+ * normalized back to totalInputTokens so framing JSON is never double-counted.
+ */
+export function estimateProviderInputTimelineBudget(input: {
+  input: readonly unknown[];
+  tools: readonly unknown[];
+  responseReserveTokens: number;
+}): ProviderInputTimelineBudget {
+  const total = estimateProviderInputTokens(input);
+  const currentUserIndex = findCurrentUserIndex(input.input);
+  const historicalItems = currentUserIndex < 0
+    ? []
+    : input.input.slice(0, currentUserIndex).filter(isConversationMessage);
+  const currentTurnItems = currentUserIndex < 0
+    ? input.input.filter((item) => !isSystemMessage(item))
+    : input.input.slice(currentUserIndex).filter((item) => !isSystemMessage(item));
+  const compressibleHistoricalTokens = estimateInputSegmentTokens(historicalItems);
+  const currentTurnTokens = estimateInputSegmentTokens(currentTurnItems);
+  const fixedTokens = Math.max(
+    0,
+    total.inputTokens - compressibleHistoricalTokens - currentTurnTokens
+  );
+
+  return {
+    totalInputTokens: total.inputTokens,
+    fixedTokens,
+    compressibleHistoricalTokens,
+    currentTurnTokens,
+    responseReserveTokens: total.responseReserveTokens,
+    estimatedOccupancyTokens: total.estimatedOccupancyTokens,
+    imageCount: total.imageCount
   };
 }
 
@@ -50,6 +100,35 @@ function countImageInputs(input: readonly unknown[]): number {
     ).length;
   }
   return count;
+}
+
+function estimateInputSegmentTokens(items: readonly unknown[]): number {
+  if (items.length === 0) {
+    return 0;
+  }
+  return estimateSerializedTokens(items) + countImageInputs(items) * PROVIDER_INPUT_IMAGE_TOKEN_RESERVE;
+}
+
+function findCurrentUserIndex(input: readonly unknown[]): number {
+  for (let index = input.length - 1; index >= 0; index -= 1) {
+    const item = input[index];
+    if (isConversationMessage(item) && item.role === "user") {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function isConversationMessage(value: unknown): value is Record<string, unknown> & { role: "system" | "user" | "assistant" } {
+  return (
+    isRecord(value) &&
+    (value.role === "system" || value.role === "user" || value.role === "assistant") &&
+    Array.isArray(value.content)
+  );
+}
+
+function isSystemMessage(value: unknown): boolean {
+  return isConversationMessage(value) && value.role === "system";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

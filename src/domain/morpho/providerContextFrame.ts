@@ -18,10 +18,21 @@ export function createProviderContextFrame(input: ProviderContextFrameInput): Pr
   const sequence = normalizeSequence(input.sequence);
   const canonical = canonicalFrameContent({ ...input, placement });
   const contentHash = stableHash(stableJson(canonical));
+  const occurrence = {
+    predecessorFrameId: input.supersedesFrameId,
+    sequence: sequence > 0 ? sequence : undefined,
+    anchorMessageId: input.anchorMessageId,
+    summaryRevisionId: input.kind === "conversationSummary" ? undefined : input.summaryRevisionId,
+    placement
+  };
   const frameId = input.kind === "conversationSummary" && input.summaryRevisionId
     ? `provider-frame-conversation-summary:${input.summaryRevisionId}`
     : input.kind === "projectState" || input.kind === "runtimeConfiguration"
-      ? `provider-frame-${input.kind}-${stableHash(stableJson({ projectId: input.projectId, contentHash }))}`
+      ? `provider-frame-${input.kind}-${stableHash(stableJson({
+          projectId: input.projectId,
+          contentHash,
+          occurrence
+        }))}`
       : `provider-frame-${input.kind}-${stableHash(
           stableJson({ projectId: input.projectId, canonical, anchorMessageId: input.anchorMessageId })
         )}`;
@@ -66,7 +77,9 @@ export function appendProviderContextFrame(
   if (
     latest &&
     (frame.kind === "projectState" || frame.kind === "runtimeConfiguration") &&
-    latest.contentHash === frame.contentHash
+    latest.contentHash === frame.contentHash &&
+    latest.placement === frame.placement &&
+    latest.summaryRevisionId === frame.summaryRevisionId
   ) {
     return [...frames];
   }
@@ -125,10 +138,30 @@ export function buildProviderContextFrameTimeline(input: {
   const activeSummary = input.activeSummaryRevisionId
     ? summaryFrames.find((frame) => frame.summaryRevisionId === input.activeSummaryRevisionId)
     : summaryFrames.at(-1);
+  const activeBaselines = new Map<"projectState" | "runtimeConfiguration", ProviderContextFrame>();
+  (['projectState', 'runtimeConfiguration'] as const).forEach((kind) => {
+    const baseline = sorted
+      .filter((frame) => frame.kind === kind && !frame.anchorMessageId)
+      .filter((frame) =>
+        activeSummary?.summaryRevisionId
+          ? frame.summaryRevisionId === activeSummary.summaryRevisionId
+          : !frame.summaryRevisionId
+      )
+      .at(-1);
+    if (baseline) {
+      activeBaselines.set(kind, baseline);
+    }
+  });
 
   return sorted.filter((frame) => {
     if (frame.kind === "conversationSummary") {
       return activeSummary?.id === frame.id;
+    }
+    if (
+      (frame.kind === "projectState" || frame.kind === "runtimeConfiguration") &&
+      !frame.anchorMessageId
+    ) {
+      return activeBaselines.get(frame.kind)?.id === frame.id;
     }
     if (!frame.anchorMessageId) {
       return true;
@@ -154,7 +187,7 @@ function canonicalFrameContent(
     placement: isTurnContext ? input.placement : undefined,
     promptContractVersion: input.promptContractVersion,
     taskStrategy,
-    summaryRevisionId: input.summaryRevisionId,
+    summaryRevisionId: input.kind === "conversationSummary" ? input.summaryRevisionId : undefined,
     projectMemoryRevisionIds: isRuntimeConfiguration ? [] : [...input.projectMemoryRevisionIds].sort(),
     stageRecordRevisionIds: isRuntimeConfiguration ? [] : [...input.stageRecordRevisionIds].sort(),
     designDefinitionRevisionId: isRuntimeConfiguration ? undefined : input.designDefinitionRevisionId,

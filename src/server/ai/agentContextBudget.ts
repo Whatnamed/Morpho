@@ -1,15 +1,13 @@
 import type {
   OpenAiCompatibleResponseRequest,
-  ResponseFunctionToolOutput,
-  ResponseMessageInput
+  ResponseFunctionToolOutput
 } from "./openaiCompatibleProvider";
 import {
   MORPHO_AGENT_CONTEXT_POLICY,
   type MorphoAgentContextPolicy
 } from "@/domain/morpho/agentContextPolicy";
 import {
-  estimateProviderInputTokens,
-  estimateProviderSerializedTokens
+  estimateProviderInputTimelineBudget
 } from "@/shared/providerInputBudget";
 
 export type AgentContextLimits = {
@@ -75,11 +73,11 @@ export function classifyAgentContextPressure(
 }
 
 export function estimateAgentContextTokens(request: OpenAiCompatibleResponseRequest): number {
-  return estimateProviderInputTokens({
+  return estimateProviderInputTimelineBudget({
     input: request.input,
     tools: request.tools ?? [],
     responseReserveTokens: 0
-  }).inputTokens;
+  }).totalInputTokens;
 }
 
 export function prepareAgentContextRequest(
@@ -90,9 +88,13 @@ export function prepareAgentContextRequest(
     force?: AgentContextCompactionMode;
   }
 ): PreparedAgentContextRequest {
-  const localEstimate = estimateAgentContextTokens(request);
-  const estimatedInputTokens = Math.max(localEstimate, options.baselineInputTokens ?? 0);
-  const estimatedOccupancyTokens = estimatedInputTokens + options.limits.responseReserveTokens;
+  const localBudget = estimateProviderInputTimelineBudget({
+    input: request.input,
+    tools: request.tools ?? [],
+    responseReserveTokens: options.limits.responseReserveTokens
+  });
+  const estimatedInputTokens = Math.max(localBudget.totalInputTokens, options.baselineInputTokens ?? 0);
+  const estimatedOccupancyTokens = estimatedInputTokens + localBudget.responseReserveTokens;
   const pressure =
     options.force === "emergency"
       ? "compact"
@@ -103,7 +105,7 @@ export function prepareAgentContextRequest(
       pressure,
       estimatedInputTokens,
       estimatedOccupancyTokens,
-      finalEstimatedInputTokens: localEstimate,
+      finalEstimatedInputTokens: localBudget.totalInputTokens,
       compressibleTokens: estimateCompressibleContextTokens(request),
       compacted: false,
       checkpointRequested: false
@@ -116,7 +118,7 @@ export function prepareAgentContextRequest(
       pressure,
       estimatedInputTokens,
       estimatedOccupancyTokens,
-      finalEstimatedInputTokens: localEstimate,
+      finalEstimatedInputTokens: localBudget.totalInputTokens,
       compressibleTokens: estimateCompressibleContextTokens(request),
       compacted: false,
       checkpointRequested: false
@@ -220,47 +222,11 @@ function isContextLimitError(error: unknown): boolean {
 }
 
 function estimateCompressibleContextTokens(request: OpenAiCompatibleResponseRequest): number {
-  const currentUserIndex = findCurrentUserMessageIndex(request.input);
-  const history = request.input
-    .slice(0, currentUserIndex)
-    .filter((item) => isResponseMessage(item) && item.role !== "system");
-  const protectedToolTailStart = findProtectedToolTailStart(request.input, currentUserIndex);
-  const completedToolHistory = request.input.slice(currentUserIndex + 1, protectedToolTailStart);
-  return estimateProviderSerializedTokens({
-    history,
-    completedToolHistory
-  });
-}
-
-function findProtectedToolTailStart(
-  input: OpenAiCompatibleResponseRequest["input"],
-  currentUserIndex: number
-): number {
-  const latestOutputCallIds = new Set<string>();
-  for (let index = input.length - 1; index > currentUserIndex; index -= 1) {
-    const item = input[index];
-    if (isFunctionToolOutput(item)) {
-      latestOutputCallIds.add(item.call_id);
-      continue;
-    }
-    if (latestOutputCallIds.size > 0) {
-      break;
-    }
-  }
-  if (latestOutputCallIds.size === 0) {
-    return input.length;
-  }
-
-  for (let index = currentUserIndex + 1; index < input.length; index += 1) {
-    const item = input[index];
-    if (
-      isAgentFunctionCall(item) &&
-      latestOutputCallIds.has(item.call_id)
-    ) {
-      return index;
-    }
-  }
-  return input.length;
+  return estimateProviderInputTimelineBudget({
+    input: request.input,
+    tools: request.tools ?? [],
+    responseReserveTokens: 0
+  }).compressibleHistoricalTokens;
 }
 
 function compactOldToolOutputs(
@@ -303,27 +269,6 @@ function compactOldToolOutputs(
   return changed ? compacted : items;
 }
 
-function findCurrentUserMessageIndex(input: OpenAiCompatibleResponseRequest["input"]): number {
-  for (let index = input.length - 1; index >= 0; index -= 1) {
-    const item = input[index];
-    if (isResponseMessage(item) && item.role === "user") {
-      return index;
-    }
-  }
-  return 0;
-}
-
-function isResponseMessage(value: OpenAiCompatibleResponseRequest["input"][number]): value is ResponseMessageInput {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "role" in value &&
-    (value.role === "system" || value.role === "user" || value.role === "assistant") &&
-    "content" in value &&
-    Array.isArray(value.content)
-  );
-}
-
 function isFunctionToolOutput(
   value: OpenAiCompatibleResponseRequest["input"][number]
 ): value is ResponseFunctionToolOutput {
@@ -334,21 +279,5 @@ function isFunctionToolOutput(
     value.type === "function_call_output" &&
     "output" in value &&
     typeof value.output === "string"
-  );
-}
-
-function isAgentFunctionCall(
-  value: OpenAiCompatibleResponseRequest["input"][number]
-): value is OpenAiCompatibleResponseRequest["input"][number] & {
-  type: "function_call";
-  call_id: string;
-} {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "type" in value &&
-    value.type === "function_call" &&
-    "call_id" in value &&
-    typeof value.call_id === "string"
   );
 }

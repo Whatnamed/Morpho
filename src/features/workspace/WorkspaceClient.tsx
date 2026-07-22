@@ -118,7 +118,7 @@ import {
   setDefaultReference,
   type CanvasLayerReorderAction
 } from "@/domain/morpho/workspace";
-import type { AgentTrace, CanvasInstance, MorphoWorkspace } from "@/domain/morpho/types";
+import type { AgentTrace, CanvasInstance, MorphoWorkspace, ProviderInputSnapshotTextPart } from "@/domain/morpho/types";
 import { createProviderInputSnapshot } from "@/domain/morpho/providerInputSnapshot";
 import { readClipboardAsImportPayload } from "./canvasClipboardImport";
 import type { ProviderCitation } from "@/server/ai/types";
@@ -222,7 +222,6 @@ import {
   applyConversationSummaryRevision,
   buildContinuousConversationContext,
   buildConversationCompactionPlan,
-  estimateConversationMessageTokens,
   parseConversationSummaryPayload,
   sanitizeConversationSummaryStreamForDisplay,
   type ConversationCompactionPlan,
@@ -320,15 +319,17 @@ import {
   shouldPromptForMemoryUpdate
 } from "./agentMemoryUpdateGuard";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
-import { resolveProviderToolProfile } from "@/server/ai/promptCache";
-import { estimateProviderInputTokens } from "@/shared/providerInputBudget";
+import { estimateProviderInputTimelineBudget } from "@/shared/providerInputBudget";
 import {
   appendAgentProviderContextFrames,
+  appendAgentProviderRuntimeConfigurationFrame,
   appendAgentProviderStateFrames,
   buildAgentProviderInput,
+  ensureAgentConversationSummaryBaselines,
   getProviderInputReplayBoundaryReasons,
   providerContextFrameMessage,
-  type ProviderContextFrameBuildInput
+  type ProviderContextFrameBuildInput,
+  type ProviderRequestBoundaryState
 } from "./providerContextFrames";
 import { appendAgentTurnMessages } from "./agentTurnMessages";
 import {
@@ -1719,8 +1720,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             estimatedInputTokens: compactionPlan.estimatedInputTokens,
             now: new Date().toISOString()
           });
+          const framed = result.status === "applied"
+            ? ensureAgentConversationSummaryBaselines(result.workspace, {
+                projectId: result.workspace.project.id,
+                promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+                summaryRevision: result.revision,
+                mode: agentTurnMode
+              })
+            : result.workspace;
           const next = updateAiMessage(
-            result.workspace,
+            framed,
             assistantMessageId,
             result.status === "applied"
               ? getManualCompactionStatusText("completed")
@@ -1843,23 +1852,30 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           controller.signal
         );
     const conversationTokenLimits = readConversationTokenLimitsOverride();
+    const directionContractText = directionPreviewCountContract?.source === "default"
+      ? `本轮界面数量选择：${selectedDirectionCount} 个方向，每方向 ${directionPreviewCountContract.requestedPreviewCount} 张，共 ${directionPreviewCountContract.totalItems} 张。`
+      : undefined;
+    const documentSnapshotText = documentResult.extracts.length > 0
+      ? `本轮本地文档提取：\n${documentResult.extracts
+          .map((extract) => `- ${extract.title}（${extract.objectId}）\n${extract.text.slice(0, 2200)}`)
+          .join("\n\n")}`
+      : undefined;
     const userInput = buildMorphoAgentUserInput({
-      draft: [
-        draft,
-        directionPreviewCountContract?.source === "default"
-          ? `\n\n本轮界面数量选择：${selectedDirectionCount} 个方向，每方向 ${directionPreviewCountContract.requestedPreviewCount} 张，共 ${directionPreviewCountContract.totalItems} 张。`
-          : "",
-        documentResult.extracts.length > 0
-          ? `\n\n本轮本地文档提取：\n${documentResult.extracts
-              .map((extract) => `- ${extract.title}（${extract.objectId}）\n${extract.text.slice(0, 2200)}`)
-              .join("\n\n")}`
-          : ""
-      ]
-        .filter(Boolean)
-        .join(""),
+      draft,
       context,
       providerTaskContext
     });
+    const providerInputTextParts: ProviderInputSnapshotTextPart[] = userInput.content
+      .filter((part): part is { type: "input_text"; text: string } => part.type === "input_text")
+      .map((part) => ({ kind: "userDraft" as const, text: part.text }));
+    if (directionContractText) {
+      userInput.content.push({ type: "input_text", text: directionContractText });
+      providerInputTextParts.push({ kind: "turnContract", text: directionContractText });
+    }
+    if (documentSnapshotText) {
+      userInput.content.push({ type: "input_text", text: documentSnapshotText });
+      providerInputTextParts.push({ kind: "documentExtract", text: documentSnapshotText });
+    }
     attachmentResult.attachments
       .filter((attachment) => attachment.status === "ready")
       .forEach((attachment) => {
@@ -1868,16 +1884,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           image_url: attachment.dataUrl
         });
       });
-    let fixedAgentContextTokenEstimate = estimateProviderInputTokens({
-      input: [userInput],
-      tools: buildMorphoAgentTools(true, {
-        allowComparisonAnalysis: isExplicitComparisonRequest(draft)
-      }),
-      responseReserveTokens: 0
-    }).inputTokens;
     const providerInputSnapshot = createProviderInputSnapshot({
       message: userInput,
       promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+      textParts: providerInputTextParts,
       attachmentRefs: attachmentResult.entries
         .filter((entry) => entry.status === "ready")
         .map((entry) => {
@@ -1937,9 +1947,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const stableSystemPrompt = buildMorphoAgentStableSystemPrompt();
     const preCompactionConversation = buildContinuousConversationContext({
       workspace: workspaceAtAgentStart,
-      fixedContextTokenEstimate: fixedAgentContextTokenEstimate,
-      imageTokenReserve: 0,
-      outputTokenReserve,
       limits: conversationTokenLimits
     });
     let providerFrameInput: ProviderContextFrameBuildInput = {
@@ -1947,7 +1954,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       projectId: workspaceAtAgentStart.project.id,
       strategy: strategy.kind,
       mode: agentTurnMode,
-      toolProfile: resolveProviderToolProfile(buildMorphoAgentTools(true)),
       promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
       userMessageId,
       context,
@@ -1974,30 +1980,18 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       userInput,
       activeSummaryRevisionId: preCompactionConversation.summaryRevision?.id
     });
-    const preCompactionBudget = estimateProviderInputTokens({
+    const allowStructuredComparison = isExplicitComparisonRequest(draft);
+    const initialTools = buildMorphoAgentTools(true, {
+      allowComparisonAnalysis: allowStructuredComparison
+    });
+    const preCompactionBudget = estimateProviderInputTimelineBudget({
       input: preCompactionInput,
-      tools: buildMorphoAgentTools(true, {
-        allowComparisonAnalysis: isExplicitComparisonRequest(draft)
-      }),
+      tools: initialTools,
       responseReserveTokens: outputTokenReserve
     });
-    const currentProviderText = userInput.content
-      .filter((part): part is { type: "input_text" | "output_text"; text: string } => "text" in part)
-      .map((part) => part.text)
-      .join("\n");
-    fixedAgentContextTokenEstimate = Math.max(
-      0,
-      preCompactionBudget.inputTokens - estimateConversationMessageTokens([
-        ...preCompactionHistory,
-        { body: currentProviderText }
-      ])
-    );
     const automaticCompactionPlan = buildConversationCompactionPlan({
       workspace: workspaceAtAgentStart,
-      fixedContextTokenEstimate: fixedAgentContextTokenEstimate,
-      imageTokenReserve: 0,
-      outputTokenReserve,
-      summaryAlreadyIncludedInFixedContext: true,
+      providerTimelineBudget: preCompactionBudget,
       limits: conversationTokenLimits
     });
     if (automaticCompactionPlan) {
@@ -2044,9 +2038,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           if (applied.status !== "applied") {
             throw new Error(applied.reason);
           }
-          const assistant = applied.workspace.ai.messages.find((message) => message.id === assistantMessageId);
+          const framed = ensureAgentConversationSummaryBaselines(applied.workspace, {
+            projectId: applied.workspace.project.id,
+            promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+            summaryRevision: applied.revision,
+            mode: agentTurnMode
+          });
+          const assistant = framed.ai.messages.find((message) => message.id === assistantMessageId);
           const completed = assistant?.agentTrace
-            ? updateAiMessage(applied.workspace, assistantMessageId, assistant.body, "streaming", {
+            ? updateAiMessage(framed, assistantMessageId, assistant.body, "streaming", {
                 agentTrace: finishLocalAgentToolActivity(
                   assistant.agentTrace,
                   compactionActivityId,
@@ -2054,7 +2054,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                   new Date().toISOString()
                 )
               })
-            : applied.workspace;
+            : framed;
           return { workspace: completed, value: completed };
         });
       } catch (error) {
@@ -2077,10 +2077,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
     const continuousConversation = buildContinuousConversationContext({
       workspace: workspaceAtAgentStart,
-      fixedContextTokenEstimate: fixedAgentContextTokenEstimate,
-      imageTokenReserve: 0,
-      outputTokenReserve,
-      summaryAlreadyIncludedInFixedContext: true,
       limits: conversationTokenLimits
     });
     const baseHistory = continuousConversation.messages.filter((message) => message.id !== userMessageId);
@@ -2111,23 +2107,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       userInput,
       activeSummaryRevisionId: conversationContext.summaryRevision?.id
     });
-    const initialProviderBudget = estimateProviderInputTokens({
+    const initialProviderBudget = estimateProviderInputTimelineBudget({
       input: conversationInput,
-      tools: buildMorphoAgentTools(true, {
-        allowComparisonAnalysis: isExplicitComparisonRequest(draft)
-      }),
+      tools: initialTools,
       responseReserveTokens: outputTokenReserve
     });
-    fixedAgentContextTokenEstimate = Math.max(
-      0,
-      initialProviderBudget.inputTokens - estimateConversationMessageTokens([
-        ...baseHistory,
-        { body: currentProviderText }
-      ])
-    );
     conversationContext = {
       ...conversationContext,
-      estimatedInputTokens: initialProviderBudget.inputTokens,
+      estimatedInputTokens: initialProviderBudget.totalInputTokens,
       pressure: initialProviderBudget.estimatedOccupancyTokens >= (conversationTokenLimits?.compactTokens ?? MORPHO_AGENT_CONTEXT_POLICY.compactTokens)
         ? "compact"
         : initialProviderBudget.estimatedOccupancyTokens >= (conversationTokenLimits?.prepareTokens ?? MORPHO_AGENT_CONTEXT_POLICY.prepareTokens)
@@ -2148,8 +2135,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const memoryUpdateEntryIds = new Set<string>();
     const memoryUpdateKeys = new Set<ProjectMemoryKey>();
     const stageRecordUpdateKeys = new Set<StageRecordKey>();
-    const allowStructuredComparison = isExplicitComparisonRequest(draft);
-    let contextBudgetBaselineTokens = 0;
+    let contextBudgetBaselineTokens = initialProviderBudget.totalInputTokens;
     const contextRuntime: {
       highestPressure: "normal" | "prepare" | "compact";
     } = {
@@ -2160,6 +2146,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     let previousToolSignature: string | undefined;
     let repeatedToolCallCount = 0;
     let latestProviderResponseId: string | undefined;
+    let latestProviderRequestState = getLatestProviderRequestState(workspaceAtAgentStart);
     const agentTurnStartedAt = Date.now();
     let emergencyGuardTriggered = false;
     let continuationCompactionAttempted = false;
@@ -2171,22 +2158,29 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       tools: ReturnType<typeof buildMorphoAgentTools>,
       continuation = false
     ): Promise<AgentRouteResult> {
+      const currentRequestState: ProviderRequestBoundaryState = {
+        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+        ...(conversationContext.summaryRevision
+          ? { summaryRevisionId: conversationContext.summaryRevision.id }
+          : {}),
+        latestUserMessageId: userMessageId,
+        ...(!continuation && providerInputSnapshot.cacheBoundaryReason
+          ? { attachmentBoundary: providerInputSnapshot.cacheBoundaryReason }
+          : {})
+      };
       const providerInputBoundaryReasons = new Set(
         getProviderInputReplayBoundaryReasons(
           [
             ...conversationContext.messages,
-            { role: "user", providerInputSnapshot }
+            { id: userMessageId, role: "user", providerInputSnapshot }
           ],
           {
-            currentPromptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
-            currentToolProfile: resolveProviderToolProfile(tools),
-            frames: workspaceAtAgentStart.ai.providerContextFrames ?? []
+            frames: workspaceAtAgentStart.ai.providerContextFrames ?? [],
+            previousRequestState: latestProviderRequestState,
+            currentRequestState
           }
         )
       );
-      if (conversationContext.summaryRevision) {
-        providerInputBoundaryReasons.add("compaction");
-      }
       const response = await fetch("/api/ai/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2199,7 +2193,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           contextBudgetBaselineTokens,
           diagnostics: {
             promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
-            toolProfile: resolveProviderToolProfile(tools),
             contextFrameCount: workspaceAtAgentStart.ai.providerContextFrames?.length ?? 0,
             appendedContextFrameCount:
               workspaceAtAgentStart.ai.providerContextFrames?.filter(
@@ -2208,6 +2201,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             ...(conversationContext.summaryRevision
               ? { conversationSummaryRevisionId: conversationContext.summaryRevision.id }
               : {}),
+            ...(latestProviderRequestState ? { previousRequestState: latestProviderRequestState } : {}),
+            requestState: currentRequestState,
             providerInputBoundaryReasons: [...providerInputBoundaryReasons]
           }
         }),
@@ -2250,6 +2245,42 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           signal: controller.signal,
           onEvent: (event) => {
             if (!attemptGuard.accept(event)) {
+              return;
+            }
+            if (event.type === "turn-start") {
+              const serverToolProfile = event.effectiveToolProfile;
+              if (serverToolProfile) {
+                workspaceAtAgentStart = commitWorkspaceNow((current) => {
+                  const next = conversationContext.summaryRevision
+                    ? ensureAgentConversationSummaryBaselines(current, {
+                        projectId: current.project.id,
+                        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+                        summaryRevision: conversationContext.summaryRevision,
+                        mode: agentTurnMode,
+                        toolProfile: serverToolProfile
+                      })
+                    : appendAgentProviderRuntimeConfigurationFrame(current, {
+                        projectId: current.project.id,
+                        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+                        mode: agentTurnMode,
+                        toolProfile: serverToolProfile,
+                        userMessageId,
+                        framePlacement: "beforeUser"
+                      });
+                  return { workspace: next, value: next };
+                });
+                conversationInput = [
+                  ...buildAgentProviderInput({
+                    stableSystemPrompt,
+                    frames: workspaceAtAgentStart.ai.providerContextFrames ?? [],
+                    history: conversationContext.messages,
+                    currentUserMessageId: userMessageId,
+                    userInput,
+                    activeSummaryRevisionId: conversationContext.summaryRevision?.id
+                  }),
+                  ...turnContinuationItems
+                ];
+              }
               return;
             }
             if (event.type === "turn-attempt-reset") {
@@ -2306,6 +2337,22 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         activeAttemptInputTokens,
         completeResult.usage?.inputTokens ?? 0
       );
+      const serverRequestState = toProviderRequestBoundaryState(completeResult.providerDiagnostics?.requestState);
+      if (serverRequestState) {
+        latestProviderRequestState = serverRequestState;
+        commitWorkspaceNow((current) => {
+          const assistant = current.ai.messages.find((message) => message.id === assistantMessageId);
+          if (!assistant?.agentTrace) {
+            return { workspace: current, value: undefined };
+          }
+          return {
+            workspace: updateAiMessage(current, assistantMessageId, assistant.body, "streaming", {
+              agentTrace: { ...assistant.agentTrace, providerRequestState: serverRequestState }
+            }),
+            value: undefined
+          };
+        });
+      }
       latestProviderResponseId = completeResult.responseId || latestProviderResponseId;
       if (
         completeResult.context?.pressure === "compact" ||
@@ -2334,7 +2381,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           projectId: currentWorkspace.project.id,
           strategy: strategy.kind,
           mode: agentTurnMode,
-          toolProfile: resolveProviderToolProfile(buildMorphoAgentTools(true)),
           promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
           userMessageId,
           context: refreshedContext,
@@ -2360,12 +2406,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
       continuationCompactionAttempted = true;
       const currentWorkspace = readWorkspaceNow();
+      const continuationBudget = estimateProviderInputTimelineBudget({
+        input: conversationInput,
+        tools: initialTools,
+        responseReserveTokens: outputTokenReserve
+      });
       const plan = buildConversationCompactionPlan({
         workspace: currentWorkspace,
-        fixedContextTokenEstimate: Math.max(fixedAgentContextTokenEstimate, contextBudgetBaselineTokens),
-        imageTokenReserve: 0,
-        outputTokenReserve,
-        summaryAlreadyIncludedInFixedContext: true,
+        providerTimelineBudget: continuationBudget,
         limits: conversationTokenLimits,
         force: "compact"
       });
@@ -2411,9 +2459,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         if (applied.status !== "applied") {
           throw new Error(applied.reason);
         }
-        const assistant = applied.workspace.ai.messages.find((message) => message.id === assistantMessageId);
+        const framed = ensureAgentConversationSummaryBaselines(applied.workspace, {
+          projectId: applied.workspace.project.id,
+          promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+          summaryRevision: applied.revision,
+          mode: agentTurnMode
+        });
+        const assistant = framed.ai.messages.find((message) => message.id === assistantMessageId);
         const next = assistant?.agentTrace
-          ? updateAiMessage(applied.workspace, assistantMessageId, assistant.body, "streaming", {
+          ? updateAiMessage(framed, assistantMessageId, assistant.body, "streaming", {
               agentTrace: finishLocalAgentToolActivity(
                 assistant.agentTrace,
                 activityId,
@@ -2421,15 +2475,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 new Date().toISOString()
               )
             })
-          : applied.workspace;
+          : framed;
         return { workspace: next, value: next };
       });
       const refreshed = buildContinuousConversationContext({
         workspace: compactedWorkspace,
-        fixedContextTokenEstimate: fixedAgentContextTokenEstimate,
-        imageTokenReserve: 0,
-        outputTokenReserve,
-        summaryAlreadyIncludedInFixedContext: true,
         limits: conversationTokenLimits
       });
       const framedCompactedWorkspace = commitWorkspaceNow((current) => {
@@ -2463,7 +2513,21 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }),
         ...turnContinuationItems
       ];
-      contextRuntime.highestPressure = refreshed.pressure;
+      const refreshedBudget = estimateProviderInputTimelineBudget({
+        input: conversationInput,
+        tools: initialTools,
+        responseReserveTokens: outputTokenReserve
+      });
+      conversationContext = {
+        ...conversationContext,
+        estimatedInputTokens: refreshedBudget.totalInputTokens,
+        pressure: refreshedBudget.estimatedOccupancyTokens >= (conversationTokenLimits?.compactTokens ?? MORPHO_AGENT_CONTEXT_POLICY.compactTokens)
+          ? "compact"
+          : refreshedBudget.estimatedOccupancyTokens >= (conversationTokenLimits?.prepareTokens ?? MORPHO_AGENT_CONTEXT_POLICY.prepareTokens)
+            ? "prepare"
+            : "normal"
+      };
+      contextRuntime.highestPressure = conversationContext.pressure;
       return true;
     }
 
@@ -3389,7 +3453,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         const completedTrace = currentMessage?.agentTrace
           ? {
               ...completeAgentTrace(currentMessage.agentTrace, "done", new Date().toISOString()),
-              ...(latestProviderResponseId ? { responseId: latestProviderResponseId } : {})
+              ...(latestProviderResponseId ? { responseId: latestProviderResponseId } : {}),
+              ...(latestProviderRequestState ? { providerRequestState: latestProviderRequestState } : {})
             }
           : undefined;
         let nextWorkspace = updateAiMessage(
@@ -6689,6 +6754,54 @@ function updateAiMessage(
       )
     }
   };
+}
+
+function getLatestProviderRequestState(workspace: MorphoWorkspace): ProviderRequestBoundaryState | undefined {
+  for (let index = workspace.ai.messages.length - 1; index >= 0; index -= 1) {
+    const state = workspace.ai.messages[index]?.agentTrace?.providerRequestState;
+    if (state) {
+      return state;
+    }
+  }
+  return undefined;
+}
+
+function toProviderRequestBoundaryState(value: {
+  promptContractVersion?: string;
+  toolProfile?: string;
+  summaryRevisionId?: string;
+  latestUserMessageId?: string;
+  providerInputPrefixHash?: string;
+  attachmentBoundary?: string;
+} | undefined): ProviderRequestBoundaryState | undefined {
+  if (!value?.promptContractVersion) {
+    return undefined;
+  }
+  const toolProfile = value.toolProfile === "standard" || value.toolProfile === "standardWithWebSearch"
+    ? value.toolProfile
+    : undefined;
+  const attachmentBoundary = isProviderInputBoundaryReason(value.attachmentBoundary)
+    ? value.attachmentBoundary
+    : undefined;
+  return {
+    promptContractVersion: value.promptContractVersion,
+    ...(toolProfile ? { toolProfile } : {}),
+    ...(value.summaryRevisionId ? { summaryRevisionId: value.summaryRevisionId } : {}),
+    ...(value.latestUserMessageId ? { latestUserMessageId: value.latestUserMessageId } : {}),
+    ...(value.providerInputPrefixHash ? { providerInputPrefixHash: value.providerInputPrefixHash } : {}),
+    ...(attachmentBoundary ? { attachmentBoundary } : {})
+  };
+}
+
+function isProviderInputBoundaryReason(
+  value: unknown
+): value is ProviderRequestBoundaryState["attachmentBoundary"] {
+  return value === "imageInput" ||
+    value === "legacyProviderInput" ||
+    value === "documentSnapshotUnavailable" ||
+    value === "toolProfileChanged" ||
+    value === "promptContractChanged" ||
+    value === "compaction";
 }
 
 function finishAgentToolActivityInWorkspace(

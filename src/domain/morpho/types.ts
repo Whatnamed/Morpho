@@ -807,6 +807,14 @@ export type AgentTrace = {
   status: "streaming" | "done" | "failed" | "cancelled";
   agentTurnId?: string;
   responseId?: string;
+  providerRequestState?: {
+    promptContractVersion: string;
+    toolProfile?: "standard" | "standardWithWebSearch";
+    summaryRevisionId?: string;
+    latestUserMessageId?: string;
+    providerInputPrefixHash?: string;
+    attachmentBoundary?: ProviderInputCacheBoundaryReason;
+  };
 };
 
 export type ProviderInputSnapshotTextPartKind =

@@ -12,6 +12,8 @@ import {
   sanitizeStructuredStreamForDisplay,
   stripStructuredBlocksContainingMarkers
 } from "./structuredBlocks";
+import { providerInputSnapshotText } from "./providerInputSnapshot";
+import type { ProviderInputTimelineBudget } from "@/shared/providerInputBudget";
 
 export const CONVERSATION_SUMMARY_MARKER = "morphoConversationSummary";
 
@@ -36,6 +38,7 @@ export type ContinuousConversationContext = {
   totalUsableMessageCount: number;
   coveredMessageCount: number;
   estimatedInputTokens: number;
+  estimatedOccupancyTokens: number;
   pressure: Exclude<ConversationPressure, "emergency">;
 };
 
@@ -68,6 +71,10 @@ const SUMMARY_LIMITS = {
   maxNextTurnAnchorChars: 600,
   maxTotalChars: 12_000
 } as const;
+
+const SUMMARY_DOCUMENT_ITEM_CHARS = 2_400;
+const SUMMARY_DOCUMENT_TOTAL_CHARS = 8_000;
+const SUMMARY_TEXT_PART_CHARS = 6_000;
 
 export function createEmptyConversationCompactionState(): ConversationCompactionState {
   return { coveredMessageCount: 0 };
@@ -225,6 +232,7 @@ export function buildContinuousConversationContext(input: {
   imageTokenReserve?: number;
   outputTokenReserve?: number;
   summaryAlreadyIncludedInFixedContext?: boolean;
+  providerTimelineBudget?: ProviderInputTimelineBudget;
   limits?: ConversationTokenLimits;
 }): ContinuousConversationContext {
   const limits = input.limits ?? DEFAULT_CONVERSATION_TOKEN_LIMITS;
@@ -234,12 +242,14 @@ export function buildContinuousConversationContext(input: {
     ? usableMessages.findIndex((message) => message.id === summaryRevision.sourceEndMessageId)
     : -1;
   const messages = usableMessages.slice(boundaryIndex + 1).map(toContextMessage);
-  const estimatedInputTokens =
+  const legacyEstimatedInputTokens =
     (input.fixedContextTokenEstimate ?? 0) +
     (input.imageTokenReserve ?? 0) +
     (input.outputTokenReserve ?? limits.responseReserveTokens) +
     (input.summaryAlreadyIncludedInFixedContext ? 0 : estimateConversationSummaryTokens(summaryRevision?.summary)) +
     estimateConversationMessageTokens(messages);
+  const estimatedInputTokens = input.providerTimelineBudget?.totalInputTokens ?? legacyEstimatedInputTokens;
+  const estimatedOccupancyTokens = input.providerTimelineBudget?.estimatedOccupancyTokens ?? estimatedInputTokens;
 
   return {
     summaryRevision,
@@ -247,7 +257,8 @@ export function buildContinuousConversationContext(input: {
     totalUsableMessageCount: usableMessages.length,
     coveredMessageCount: Math.max(0, boundaryIndex + 1),
     estimatedInputTokens,
-    pressure: classifyConversationPressure(estimatedInputTokens, limits)
+    estimatedOccupancyTokens,
+    pressure: classifyConversationPressure(estimatedOccupancyTokens, limits)
   };
 }
 
@@ -270,6 +281,7 @@ export function buildConversationCompactionPlan(input: {
   imageTokenReserve?: number;
   outputTokenReserve?: number;
   summaryAlreadyIncludedInFixedContext?: boolean;
+  providerTimelineBudget?: ProviderInputTimelineBudget;
   limits?: ConversationTokenLimits;
   force?: "compact" | "emergency";
 }): ConversationCompactionPlan | undefined {
@@ -280,6 +292,7 @@ export function buildConversationCompactionPlan(input: {
     imageTokenReserve: input.imageTokenReserve,
     outputTokenReserve: input.outputTokenReserve,
     summaryAlreadyIncludedInFixedContext: input.summaryAlreadyIncludedInFixedContext,
+    providerTimelineBudget: input.providerTimelineBudget,
     limits
   });
   const pressure = input.force ?? (context.pressure === "compact" ? "compact" : undefined);
@@ -422,8 +435,72 @@ export function getUsableConversationMessages(messages: readonly AiMessage[]): A
   );
 }
 
-export function estimateConversationMessageTokens(messages: readonly Pick<ConversationMessageForContext, "body">[]): number {
-  return messages.reduce((total, message) => total + estimateTextTokens(message.body) + 8, 0);
+export function estimateConversationMessageTokens(
+  messages: readonly Pick<ConversationMessageForContext, "role" | "body" | "providerInputSnapshot">[]
+): number {
+  return messages.reduce((total, message) => {
+    if (message.role === "user" && message.providerInputSnapshot) {
+      return total + providerInputSnapshotText(message.providerInputSnapshot)
+        .reduce((tokens, text) => tokens + estimateTextTokens(text) + 8, 0) +
+        message.providerInputSnapshot.attachmentRefs.length * 8_192;
+    }
+    return total + estimateTextTokens(message.body) + 8;
+  }, 0);
+}
+
+/**
+ * Produces the source text for a summary from the immutable provider snapshot,
+ * while keeping attachments as stable references rather than replaying pixels.
+ */
+export function buildConversationSummarySourceText(
+  message: Pick<ConversationMessageForContext, "role" | "body" | "providerInputSnapshot">
+): string {
+  if (message.role === "assistant") {
+    return `助手最终回复：\n${sanitizeSummarySourceText(message.body, SUMMARY_TEXT_PART_CHARS)}`;
+  }
+
+  const snapshot = message.providerInputSnapshot;
+  if (!snapshot) {
+    return `用户消息：\n${sanitizeSummarySourceText(message.body, SUMMARY_TEXT_PART_CHARS)}`;
+  }
+
+  const directParts: string[] = [];
+  const documentParts: string[] = [];
+  let remainingDocumentChars = SUMMARY_DOCUMENT_TOTAL_CHARS;
+  for (const part of snapshot.textParts) {
+    const cleaned = sanitizeSummarySourceText(part.text, SUMMARY_TEXT_PART_CHARS);
+    if (!cleaned) {
+      continue;
+    }
+    if (part.kind === "documentExtract" || /本轮本地文档提取[:：]/.test(cleaned)) {
+      if (remainingDocumentChars <= 0) {
+        continue;
+      }
+      const clipped = clipSummarySourceText(
+        cleaned,
+        Math.min(SUMMARY_DOCUMENT_ITEM_CHARS, remainingDocumentChars)
+      );
+      documentParts.push(clipped);
+      remainingDocumentChars -= clipped.length;
+      continue;
+    }
+    const meaningful = stripMechanicalTurnContract(cleaned);
+    if (meaningful) {
+      directParts.push(meaningful);
+    }
+  }
+
+  const attachmentRefs = [...new Set(snapshot.attachmentRefs.map((attachment) => attachment.objectId).filter(Boolean))].sort();
+  return [
+    "用户消息（Provider-visible）：",
+    directParts.join("\n\n") || "无可重放的文本。",
+    documentParts.length > 0
+      ? `这是当时随该回合提供的资料快照：\n${documentParts.join("\n\n")}`
+      : "",
+    attachmentRefs.length > 0
+      ? `当时附带图片资料（仅稳定引用，未重放像素）：${attachmentRefs.join("、")}`
+      : ""
+  ].filter(Boolean).join("\n\n");
 }
 
 export function estimateConversationSummaryTokens(summary: ConversationSummary | undefined): number {
@@ -479,6 +556,42 @@ function toContextMessage(message: AiMessage): ConversationMessageForContext {
     laneKey: message.conversationLaneKey,
     ...(message.providerInputSnapshot ? { providerInputSnapshot: message.providerInputSnapshot } : {})
   };
+}
+
+function sanitizeSummarySourceText(value: string, limit: number): string {
+  return clipSummarySourceText(
+    value
+      .replace(/data:[^\s]+;base64,[^\s]+/gi, "[已省略图片像素]")
+      .replace(/[A-Za-z0-9+/]{240,}={0,2}/g, "[已省略二进制片段]")
+      .replace(/\r\n/g, "\n")
+      .trim(),
+    limit
+  );
+}
+
+function stripMechanicalTurnContract(value: string): string {
+  return value
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim();
+      return !(
+        /^显式选择(?:对象|图片|文档)数：\d+/.test(trimmed) ||
+        /^本轮界面数量选择：/.test(trimmed) ||
+        /^如需更具体的对象摘要、方向、设计定义、默认参考或本地文档信息/.test(trimmed) ||
+        /^本轮图片授权对象数：\d+/.test(trimmed)
+      );
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function clipSummarySourceText(value: string, limit: number): string {
+  if (value.length <= limit) {
+    return value;
+  }
+  const suffix = "\n[资料快照按摘要预算截断]";
+  return `${value.slice(0, Math.max(0, limit - suffix.length)).trimEnd()}${suffix}`;
 }
 
 function parseSummary(value: unknown): ConversationSummary | undefined {

@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { createProviderInputSnapshot } from "@/domain/morpho/providerInputSnapshot";
 import { createProviderContextFrame, type ProviderContextFrameInput } from "@/domain/morpho/providerContextFrame";
-import { buildAgentProviderInput, getProviderInputReplayBoundaryReasons } from "./providerContextFrames";
+import { createBlankWorkspace, migrateWorkspaceToCurrentSchema } from "@/domain/morpho/workspace";
+import {
+  appendAgentProviderRuntimeConfigurationFrame,
+  buildAgentProviderInput,
+  ensureAgentConversationSummaryBaselines,
+  getProviderInputReplayBoundaryReasons
+} from "./providerContextFrames";
 
 function frameInput(overrides: Partial<ProviderContextFrameInput> = {}): ProviderContextFrameInput {
   return {
@@ -128,4 +134,222 @@ describe("Agent provider transcript reconstruction", () => {
       )
     ).toEqual(["promptContractChanged", "toolProfileChanged"]);
   });
+
+  it("creates one current state baseline per summary revision and restores it idempotently", () => {
+    const summaryA = summaryRevision("summary-a", "旧摘要上下文");
+    const oldState = createProviderContextFrame(frameInput({
+      sequence: 1,
+      anchorMessageId: "covered-user",
+      renderedText: "旧锚定项目状态"
+    }));
+    let workspace = createBlankWorkspace("project-ocean-buoy");
+    workspace = {
+      ...workspace,
+      ai: {
+        ...workspace.ai,
+        conversationSummaryRevisions: { [summaryA.id]: summaryA },
+        conversationCompaction: {
+          summaryRevisionId: summaryA.id,
+          coveredThroughMessageId: "covered-assistant",
+          coveredMessageCount: 2,
+          updatedAt: summaryA.createdAt,
+          sourceMessageIdsHash: summaryA.sourceMessageIdsHash
+        },
+        providerContextFrames: [oldState]
+      }
+    };
+    workspace = appendAgentProviderRuntimeConfigurationFrame(workspace, {
+      projectId: workspace.project.id,
+      promptContractVersion: "morpho-agent-test",
+      mode: "auto",
+      toolProfile: "standard",
+      userMessageId: "covered-user"
+    });
+    const compacted = ensureAgentConversationSummaryBaselines(workspace, {
+      projectId: workspace.project.id,
+      promptContractVersion: "morpho-agent-test",
+      summaryRevision: summaryA,
+      mode: "auto"
+    });
+    const compactedAgain = ensureAgentConversationSummaryBaselines(compacted, {
+      projectId: compacted.project.id,
+      promptContractVersion: "morpho-agent-test",
+      summaryRevision: summaryA,
+      mode: "auto"
+    });
+    const baselines = compactedAgain.ai.providerContextFrames?.filter(
+      (frame) => frame.placement === "conversationBaseline" && frame.summaryRevisionId === summaryA.id
+    ) ?? [];
+
+    expect(baselines.map((frame) => frame.kind).sort()).toEqual([
+      "conversationSummary",
+      "projectState",
+      "runtimeConfiguration"
+    ]);
+    expect(compactedAgain.ai.providerContextFrames).toEqual(compacted.ai.providerContextFrames);
+
+    const input = buildAgentProviderInput({
+      stableSystemPrompt: "稳定规则",
+      frames: compactedAgain.ai.providerContextFrames ?? [],
+      history: [{ id: "after-user", role: "user", body: "压缩后的问题" }],
+      currentUserMessageId: "current-user",
+      userInput: userMessage("当前问题"),
+      activeSummaryRevisionId: summaryA.id
+    });
+    const serialized = JSON.stringify(input);
+    expect(serialized).toContain("项目聊天摘要目标：旧摘要上下文");
+    expect(serialized).toContain("当前没有已确定主方向。");
+    expect(serialized).toContain("Provider Tool Profile：standard");
+    expect(serialized).not.toContain("旧锚定项目状态");
+
+    const summaryB = summaryRevision("summary-b", "新摘要上下文");
+    const withSecondRevision = ensureAgentConversationSummaryBaselines(
+      {
+        ...compactedAgain,
+        ai: {
+          ...compactedAgain.ai,
+          conversationSummaryRevisions: {
+            ...compactedAgain.ai.conversationSummaryRevisions,
+            [summaryB.id]: summaryB
+          },
+          conversationCompaction: {
+            ...compactedAgain.ai.conversationCompaction,
+            summaryRevisionId: summaryB.id,
+            coveredThroughMessageId: summaryB.sourceEndMessageId,
+            sourceMessageIdsHash: summaryB.sourceMessageIdsHash
+          }
+        }
+      },
+      {
+        projectId: compactedAgain.project.id,
+        promptContractVersion: "morpho-agent-test",
+        summaryRevision: summaryB,
+        mode: "auto"
+      }
+    );
+    expect(
+      withSecondRevision.ai.providerContextFrames?.filter(
+        (frame) => frame.placement === "conversationBaseline" && frame.summaryRevisionId === summaryB.id
+      )
+    ).toHaveLength(3);
+
+    const restored = migrateWorkspaceToCurrentSchema(JSON.parse(JSON.stringify(withSecondRevision)));
+    expect(restored.status).toBe("ok");
+    if (restored.status !== "ok") {
+      throw new Error(restored.reason);
+    }
+    expect(
+      ensureAgentConversationSummaryBaselines(restored.workspace, {
+        projectId: restored.workspace.project.id,
+        promptContractVersion: "morpho-agent-test",
+        summaryRevision: summaryB,
+        mode: "auto"
+      }).ai.providerContextFrames
+    ).toEqual(restored.workspace.ai.providerContextFrames);
+  });
+
+  it("reports only the boundary between adjacent provider requests", () => {
+    const imageSnapshot = createProviderInputSnapshot({
+      message: userMessage("图像分析"),
+      promptContractVersion: "morpho-agent-test",
+      attachmentRefs: [{ objectId: "image-buoy" }]
+    });
+    const plainSnapshot = createProviderInputSnapshot({
+      message: userMessage("继续讨论"),
+      promptContractVersion: "morpho-agent-test"
+    });
+    const previous = {
+      promptContractVersion: "morpho-agent-test",
+      toolProfile: "standard" as const,
+      latestUserMessageId: "user-before"
+    };
+    const imageCurrent = {
+      promptContractVersion: "morpho-agent-test",
+      toolProfile: "standard" as const,
+      latestUserMessageId: "user-image",
+      attachmentBoundary: "imageInput" as const
+    };
+
+    expect(
+      getProviderInputReplayBoundaryReasons(
+        [{ id: "user-image", role: "user", providerInputSnapshot: imageSnapshot }],
+        { previousRequestState: previous, currentRequestState: imageCurrent }
+      )
+    ).toEqual(["imageInput"]);
+    expect(
+      getProviderInputReplayBoundaryReasons(
+        [
+          { id: "user-image", role: "user", providerInputSnapshot: imageSnapshot },
+          { id: "user-plain", role: "user", providerInputSnapshot: plainSnapshot }
+        ],
+        {
+          previousRequestState: imageCurrent,
+          currentRequestState: {
+            promptContractVersion: "morpho-agent-test",
+            toolProfile: "standard",
+            latestUserMessageId: "user-plain"
+          }
+        }
+      )
+    ).toEqual([]);
+    expect(
+      getProviderInputReplayBoundaryReasons([], {
+        previousRequestState: {
+          promptContractVersion: "morpho-agent-test",
+          toolProfile: "standard",
+          summaryRevisionId: "summary-a"
+        },
+        currentRequestState: {
+          promptContractVersion: "morpho-agent-test",
+          toolProfile: "standardWithWebSearch",
+          summaryRevisionId: "summary-b"
+        }
+      })
+    ).toEqual(["toolProfileChanged", "compaction"]);
+    expect(
+      getProviderInputReplayBoundaryReasons([], {
+        previousRequestState: {
+          promptContractVersion: "morpho-agent-test",
+          toolProfile: "standardWithWebSearch",
+          summaryRevisionId: "summary-b"
+        },
+        currentRequestState: {
+          promptContractVersion: "morpho-agent-test",
+          toolProfile: "standardWithWebSearch",
+          summaryRevisionId: "summary-b"
+        }
+      })
+    ).toEqual([]);
+    expect(
+      getProviderInputReplayBoundaryReasons([], {
+        previousRequestState: {
+          promptContractVersion: "morpho-agent-test",
+          toolProfile: "standardWithWebSearch"
+        },
+        currentRequestState: {
+          promptContractVersion: "morpho-agent-test",
+          toolProfile: "standard"
+        }
+      })
+    ).toEqual(["toolProfileChanged"]);
+  });
 });
+
+function summaryRevision(id: string, goal: string) {
+  return {
+    id,
+    sourceStartMessageId: "covered-user",
+    sourceEndMessageId: "covered-assistant",
+    sourceMessageCount: 2,
+    sourceMessageIdsHash: `${id}-hash`,
+    createdAt: "2026-07-23T00:00:00.000Z",
+    summary: {
+      threadGoal: goal,
+      establishedContext: ["海洋浮标项目"],
+      decisionsAndReasons: ["保留高可见性"],
+      activeWork: ["继续验证"],
+      unresolvedQuestions: ["维护方式"],
+      referencedObjects: []
+    }
+  };
+}

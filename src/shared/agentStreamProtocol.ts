@@ -38,6 +38,15 @@ export type AgentStreamContext = {
   retried?: boolean;
 };
 
+export type AgentProviderRequestState = {
+  promptContractVersion: string;
+  toolProfile?: "standard" | "standardWithWebSearch";
+  summaryRevisionId?: string;
+  latestUserMessageId?: string;
+  providerInputPrefixHash?: string;
+  attachmentBoundary?: string;
+};
+
 export type AgentProviderDiagnostics = {
   promptContractVersion?: string;
   toolProfile?: "standard" | "standardWithWebSearch";
@@ -53,6 +62,8 @@ export type AgentProviderDiagnostics = {
   providerCacheRetention?: "24h";
   cacheStatus?: "unavailable" | "miss" | "partialHit" | "fullHit";
   providerInputBoundaryReasons?: string[];
+  previousRequestState?: AgentProviderRequestState;
+  requestState?: AgentProviderRequestState;
   compactedThisTurn?: boolean;
 };
 
@@ -86,6 +97,7 @@ export type AgentRouteStreamEvent =
       agentTurnId?: string;
       attemptId?: string;
       startedAt: string;
+      effectiveToolProfile?: "standard" | "standardWithWebSearch";
     }
   | {
       type: "turn-attempt-reset";

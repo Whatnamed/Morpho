@@ -6,9 +6,11 @@ import type {
   ImageRole,
   MorphoObject,
   MorphoWorkspace,
+  ProviderInputSnapshot,
   ProjectMemoryKey,
   StageRecordKey
 } from "@/domain/morpho/types";
+import { buildConversationSummarySourceText } from "@/domain/morpho/conversationCompaction";
 import type {
   ProviderCitation,
   ResponseFunctionTool,
@@ -783,7 +785,13 @@ export function buildAgentConversationPromptBlock(
 
 export function buildAgentCheckpointCompactionInput(input: {
   previousSummaryRevision?: ConversationSummaryRevision;
-  messages: Array<{ id?: string; role: "user" | "assistant"; body: string; createdAt?: string }>;
+  messages: Array<{
+    id?: string;
+    role: "user" | "assistant";
+    body: string;
+    createdAt?: string;
+    providerInputSnapshot?: ProviderInputSnapshot;
+  }>;
   sourceStartMessageId: string;
   sourceEndMessageId: string;
   sourceMessageCount: number;
@@ -791,7 +799,7 @@ export function buildAgentCheckpointCompactionInput(input: {
   const sourceMessages = input.messages
     .map((message) => {
       const metadata = [message.id, message.createdAt].filter(Boolean).join(" / ");
-      return `${message.role}${metadata ? ` (${metadata})` : ""}: ${message.body}`;
+      return `${message.role}${metadata ? ` (${metadata})` : ""}: ${buildConversationSummarySourceText(message)}`;
     })
     .join("\n");
   const previousSummary = input.previousSummaryRevision?.summary;
