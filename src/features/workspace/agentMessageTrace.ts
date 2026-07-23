@@ -1,6 +1,15 @@
 import type { AgentMessagePart, AgentTrace, AiMessage } from "@/domain/morpho/types";
 import type { AgentRouteStreamEvent } from "@/shared/agentStreamProtocol";
 
+export const AGENT_TRACE_MAX_PARTS = 96;
+export const AGENT_TRACE_MAX_TEXT_PART_CHARS = 24_000;
+export const AGENT_TRACE_MAX_ACTIVITY_DETAIL_CHARS = 2_000;
+
+const TRACE_TRUNCATION_PART_ID = "trace-truncation";
+const TEXT_TRUNCATION_MARKER = "\n[过程文本已截断]";
+const DETAIL_TRUNCATION_MARKER = "\n[活动详情已截断]";
+const PARTS_TRUNCATION_MARKER = "部分过程因持久化体积限制已截断。";
+
 export function createAgentTrace(startedAt: string): AgentTrace {
   return {
     startedAt,
@@ -193,7 +202,10 @@ function appendTextPart(
   if (trace.parts.some((candidate) => candidate.id === part.id)) {
     return trace;
   }
-  return { ...trace, parts: [...trace.parts, part] };
+  return appendBoundedPart(trace, {
+    ...part,
+    text: truncateText(part.text, AGENT_TRACE_MAX_TEXT_PART_CHARS, TEXT_TRUNCATION_MARKER)
+  });
 }
 
 function appendTextDelta(
@@ -205,7 +217,16 @@ function appendTextDelta(
   return {
     ...trace,
     parts: trace.parts.map((part) =>
-      part.id === partId && part.type === type ? { ...part, text: `${part.text}${delta}` } : part
+      part.id === partId && part.type === type
+        ? {
+            ...part,
+            text: truncateText(
+              `${part.text}${delta}`,
+              AGENT_TRACE_MAX_TEXT_PART_CHARS,
+              TEXT_TRUNCATION_MARKER
+            )
+          }
+        : part
     )
   };
 }
@@ -223,11 +244,23 @@ function upsertToolActivity(
   trace: AgentTrace,
   next: Extract<AgentMessagePart, { type: "toolActivity" }>
 ): AgentTrace {
+  const boundedNext = {
+    ...next,
+    ...(next.detail !== undefined
+      ? {
+          detail: truncateText(
+            next.detail,
+            AGENT_TRACE_MAX_ACTIVITY_DETAIL_CHARS,
+            DETAIL_TRUNCATION_MARKER
+          )
+        }
+      : {})
+  };
   const existing = trace.parts.find((part) => part.type === "toolActivity" && part.toolCallId === next.toolCallId);
   if (!existing) {
-    return { ...trace, parts: [...trace.parts, next] };
+    return appendBoundedPart(trace, boundedNext);
   }
-  return updateToolActivity(trace, next.toolCallId, next);
+  return updateToolActivity(trace, next.toolCallId, boundedNext);
 }
 
 function updateToolActivity(
@@ -235,10 +268,47 @@ function updateToolActivity(
   toolCallId: string,
   patch: Partial<Extract<AgentMessagePart, { type: "toolActivity" }>>
 ): AgentTrace {
+  const boundedPatch = patch.detail === undefined
+    ? patch
+    : {
+        ...patch,
+        detail: truncateText(
+          patch.detail,
+          AGENT_TRACE_MAX_ACTIVITY_DETAIL_CHARS,
+          DETAIL_TRUNCATION_MARKER
+        )
+      };
   return {
     ...trace,
     parts: trace.parts.map((part) =>
-      part.type === "toolActivity" && part.toolCallId === toolCallId ? { ...part, ...patch } : part
+      part.type === "toolActivity" && part.toolCallId === toolCallId ? { ...part, ...boundedPatch } : part
     )
   };
+}
+
+function appendBoundedPart(trace: AgentTrace, part: AgentMessagePart): AgentTrace {
+  if (trace.parts.length < AGENT_TRACE_MAX_PARTS - 1) {
+    return { ...trace, parts: [...trace.parts, part] };
+  }
+  if (trace.parts.some((candidate) => candidate.id === TRACE_TRUNCATION_PART_ID)) {
+    return trace;
+  }
+  const marker: AgentMessagePart = {
+    id: TRACE_TRUNCATION_PART_ID,
+    type: "commentary",
+    text: PARTS_TRUNCATION_MARKER,
+    state: "done",
+    createdAt: part.type === "toolActivity" ? part.startedAt : part.createdAt
+  };
+  return {
+    ...trace,
+    parts: [...trace.parts.slice(0, AGENT_TRACE_MAX_PARTS - 1), marker]
+  };
+}
+
+function truncateText(value: string, maxChars: number, marker: string): string {
+  if (value.length <= maxChars || value.endsWith(marker)) {
+    return value;
+  }
+  return `${value.slice(0, Math.max(0, maxChars - marker.length))}${marker}`;
 }

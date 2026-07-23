@@ -226,6 +226,72 @@ export type MorphoAgentToolArguments =
   | { name: "submit_memory_update"; args: SubmitMemoryUpdateArgs }
   | { name: "request_confirmation"; args: RequestConfirmationArgs };
 
+export type MorphoAgentToolName = MorphoAgentToolArguments["name"];
+
+export type ToolEffect = {
+  readOnly: boolean;
+  externalEvidence: boolean;
+  pendingDraftWrite: boolean;
+  reversibleWorkspaceWrite: boolean;
+  memoryWrite: boolean;
+  externalCost: boolean;
+  highImpactStateChange: boolean;
+};
+
+export const MORPHO_AGENT_TOOL_EFFECT_MATRIX = {
+  read_selected_context: toolEffect({ readOnly: true }),
+  read_project_memory: toolEffect({ readOnly: true }),
+  read_stage_record: toolEffect({ readOnly: true }),
+  search_project_conversation: toolEffect({ readOnly: true }),
+  search_web_evidence: toolEffect({ readOnly: true, externalEvidence: true }),
+  create_research_analysis: toolEffect({ reversibleWorkspaceWrite: true }),
+  create_design_definition_proposal: toolEffect({
+    pendingDraftWrite: true,
+    reversibleWorkspaceWrite: true
+  }),
+  create_concept_direction_proposal: toolEffect({
+    pendingDraftWrite: true,
+    reversibleWorkspaceWrite: true
+  }),
+  revise_selected_proposal_draft: toolEffect({ pendingDraftWrite: true }),
+  generate_visuals: toolEffect({ reversibleWorkspaceWrite: true, externalCost: true }),
+  create_comparison_analysis: toolEffect({ reversibleWorkspaceWrite: true }),
+  prepare_delivery_section_draft: toolEffect({ pendingDraftWrite: true }),
+  submit_memory_update: toolEffect({ memoryWrite: true }),
+  request_confirmation: toolEffect({ highImpactStateChange: true })
+} satisfies Record<MorphoAgentToolName, ToolEffect>;
+
+export type AgentToolExecutionPolicy =
+  | "execute"
+  | "requireConfirmation"
+  | "requireExplicitUserCommand"
+  | "confirmationOnly";
+
+export function getAgentToolEffect(name: MorphoAgentToolName): ToolEffect {
+  return MORPHO_AGENT_TOOL_EFFECT_MATRIX[name];
+}
+
+export function resolveAgentToolExecutionPolicy(input: {
+  name: MorphoAgentToolName;
+  mode: MorphoAgentTurnMode;
+  explicitUserCommand: boolean;
+}): AgentToolExecutionPolicy {
+  const effect = getAgentToolEffect(input.name);
+  if (input.name === "request_confirmation") {
+    return "confirmationOnly";
+  }
+  if ((effect.memoryWrite || effect.highImpactStateChange) && !input.explicitUserCommand) {
+    return "requireExplicitUserCommand";
+  }
+  if (effect.highImpactStateChange) {
+    return "requireConfirmation";
+  }
+  if (input.mode === "confirm" && (effect.reversibleWorkspaceWrite || effect.externalCost)) {
+    return "requireConfirmation";
+  }
+  return "execute";
+}
+
 export type MorphoAgentToolCallParseResult =
   | {
       status: "valid";
@@ -318,7 +384,6 @@ export function buildMorphoAgentTools(
   webSearchEnabled: boolean,
   options: { allowComparisonAnalysis?: boolean } = {}
 ): ResponseTool[] {
-  void options;
   const tools: ResponseTool[] = [
     readSelectedContextTool(),
     readProjectMemoryTool(),
@@ -630,7 +695,7 @@ export function buildMorphoAgentTools(
         properties: {
           items: {
             type: "array",
-            maxItems: 3,
+            maxItems: 8,
             items: {
               type: "object",
               additionalProperties: false,
@@ -712,7 +777,10 @@ export function buildMorphoAgentTools(
     );
   }
 
-  return tools;
+  const filteredTools = options.allowComparisonAnalysis === false
+    ? tools.filter((tool) => tool.type !== "function" || tool.name !== "create_comparison_analysis")
+    : tools;
+  return filteredTools.map(withAgentToolEffectDescription);
 }
 
 export function buildAgentDefaultMemoryPromptBlock(memory: AgentDefaultMemoryContext): string {
@@ -866,7 +934,35 @@ export function buildToolResultOutput(callId: string, result: unknown): Response
   return {
     type: "function_call_output",
     call_id: callId,
-    output: JSON.stringify(result)
+    output: JSON.stringify(normalizeTerminalToolResult(result))
+  };
+}
+
+function normalizeTerminalToolResult(result: unknown): Record<string, unknown> {
+  if (!isRecord(result)) {
+    return { status: "executed", result };
+  }
+  const rawStatus = typeof result.status === "string" ? result.status : undefined;
+  if (
+    rawStatus === "executed" ||
+    rawStatus === "failed" ||
+    rawStatus === "blocked" ||
+    rawStatus === "skippedDueToEarlierGuard" ||
+    rawStatus === "pendingConfirmation" ||
+    rawStatus === "cancelled"
+  ) {
+    return { ...result, status: rawStatus };
+  }
+  const status = rawStatus === "retryable" || rawStatus === "invalid_arguments"
+    ? "failed"
+    : rawStatus === "not_executed"
+      ? "skippedDueToEarlierGuard"
+      : "executed";
+  const { status: _status, ...rest } = result;
+  return {
+    status,
+    ...(rawStatus ? { outcome: rawStatus } : {}),
+    ...rest
   };
 }
 
@@ -919,6 +1015,43 @@ export function parseMorphoAgentToolArguments(call: AgentFunctionCall): MorphoAg
     default:
       throw new Error(`未支持的 Agent 工具：${call.name}`);
   }
+}
+
+function toolEffect(overrides: Partial<ToolEffect>): ToolEffect {
+  return {
+    readOnly: false,
+    externalEvidence: false,
+    pendingDraftWrite: false,
+    reversibleWorkspaceWrite: false,
+    memoryWrite: false,
+    externalCost: false,
+    highImpactStateChange: false,
+    ...overrides
+  };
+}
+
+function withAgentToolEffectDescription(tool: ResponseTool): ResponseTool {
+  if (tool.type !== "function" || !isMorphoAgentToolName(tool.name)) {
+    return tool;
+  }
+  const effect = getAgentToolEffect(tool.name);
+  const boundaries = [
+    effect.readOnly ? "read-only" : undefined,
+    effect.externalEvidence ? "external-evidence" : undefined,
+    effect.pendingDraftWrite ? "pending-draft" : undefined,
+    effect.reversibleWorkspaceWrite ? "reversible-workspace-write" : undefined,
+    effect.memoryWrite ? "user-evidence-memory-write" : undefined,
+    effect.externalCost ? "external-cost" : undefined,
+    effect.highImpactStateChange ? "confirmation-only" : undefined
+  ].filter((value): value is string => Boolean(value));
+  return {
+    ...tool,
+    description: `${tool.description}\nTool effect: ${boundaries.join(", ") || "conversation-control"}.`
+  };
+}
+
+function isMorphoAgentToolName(name: string): name is MorphoAgentToolName {
+  return Object.prototype.hasOwnProperty.call(MORPHO_AGENT_TOOL_EFFECT_MATRIX, name);
 }
 
 function functionTool(input: {
@@ -1098,12 +1231,14 @@ export function buildMorphoAgentToolArgumentRepairOutputs(
       result.call.callId,
       result.status === "invalid"
         ? {
-            status: "invalid_arguments",
+            status: "failed",
+            outcome: "invalid_arguments",
             error: result.error,
             retryable: true
           }
         : {
-            status: "not_executed",
+            status: "skippedDueToEarlierGuard",
+            outcome: "not_executed",
             reason: "同一响应中存在参数无效的工具调用；本批工具均未执行，请修正后重新调用。",
             retryable: true
           }
@@ -1634,8 +1769,8 @@ function validateSubmitMemoryUpdateArgs(toolName: string, value: unknown): asser
   const record = requireExactObject(toolName, value, ["items"], ["skippedReason"]);
   const items = requireArray(toolName, record, "items");
   requireOptionalString(toolName, record, "skippedReason");
-  if (items.length > 3) {
-    throw new Error(`Agent 工具 ${toolName} 的参数 items 最多 3 项。`);
+  if (items.length > 8) {
+    throw new Error(`Agent 工具 ${toolName} 的参数 items 最多 8 项。`);
   }
   if (items.length === 0) {
     if (typeof record.skippedReason !== "string") {

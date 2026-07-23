@@ -5,6 +5,13 @@ export type AgentStreamCitation = {
   snippet?: string;
 };
 
+export type AgentServerDirective =
+  | { kind: "requiredRead"; tools: Array<"read_project_memory" | "read_stage_record" | "search_project_conversation"> }
+  | { kind: "requiredReadFailed"; tools: Array<"read_project_memory" | "read_stage_record" | "search_project_conversation"> }
+  | { kind: "memoryUpdate"; memoryKinds: Array<"preference" | "avoidance" | "constraint" | "openQuestion"> }
+  | { kind: "toolArgumentRepair"; callIds: string[] }
+  | { kind: "finalize" };
+
 export type AgentStreamFunctionCall = {
   id: string;
   callId: string;
@@ -27,6 +34,14 @@ export type AgentStreamUsage = {
   reasoningTokens?: number;
 };
 
+export type AgentCacheItemManifest = {
+  type: string;
+  role?: "system" | "user" | "assistant";
+  semanticKind: string;
+  contentHash: string;
+  estimatedTokens: number;
+};
+
 export type AgentStreamContext = {
   estimatedInputTokens: number;
   estimatedOccupancyTokens: number;
@@ -35,6 +50,7 @@ export type AgentStreamContext = {
   pressure: "normal" | "prepare" | "compact";
   compacted: boolean;
   checkpointRequested: boolean;
+  budgetGeneration: number;
   retried?: boolean;
 };
 
@@ -45,6 +61,10 @@ export type AgentProviderRequestState = {
   latestUserMessageId?: string;
   providerInputPrefixHash?: string;
   attachmentBoundary?: string;
+  runtimeItem?: import("./agentRuntimeItem").AgentCanonicalRuntimeItem;
+  cacheItemManifest?: AgentCacheItemManifest[];
+  toolsHash?: string;
+  budgetGeneration?: number;
 };
 
 export type AgentProviderDiagnostics = {
@@ -65,6 +85,15 @@ export type AgentProviderDiagnostics = {
   previousRequestState?: AgentProviderRequestState;
   requestState?: AgentProviderRequestState;
   compactedThisTurn?: boolean;
+  commonPrefixItemCount?: number;
+  commonPrefixEstimatedTokens?: number;
+  firstMismatchKind?: string;
+  previousToolsHash?: string;
+  currentToolsHash?: string;
+  previousSummaryRevisionId?: string;
+  currentSummaryRevisionId?: string;
+  budgetGeneration?: number;
+  runtimeItemHash?: string;
 };
 
 export type AgentStreamResult = {
@@ -98,6 +127,11 @@ export type AgentRouteStreamEvent =
       attemptId?: string;
       startedAt: string;
       effectiveToolProfile?: "standard" | "standardWithWebSearch";
+      runtimeItem?: import("./agentRuntimeItem").AgentCanonicalRuntimeItem;
+      leaseId?: string;
+      leaseExpiresAt?: string;
+      providerCallCount?: number;
+      webSearchCallCount?: number;
     }
   | {
       type: "turn-attempt-reset";

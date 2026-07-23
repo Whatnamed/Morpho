@@ -22,6 +22,7 @@ import {
   normalizeConversationSummaryRevisions
 } from "./conversationCompaction";
 import { normalizeProviderInputSnapshot } from "./providerInputSnapshot";
+import { isValidCanonicalAgentRuntimeItem } from "@/shared/agentRuntimeItem";
 import initialCaseStudyWorkspaceFixture from "./caseStudy/currentCaseWorkspace.generated.json";
 import legacyNightrailTestFixture from "./caseStudy/legacyNightrailPristine.fixture.json";
 import type { ArtifactProposal, SourceSemanticSnapshot } from "../operations/types";
@@ -2166,7 +2167,10 @@ function normalizeProviderContextFrames(
       sourceRefs,
       reason: candidate.reason,
       ...(typeof candidate.anchorMessageId === "string" ? { anchorMessageId: candidate.anchorMessageId } : {}),
-      ...(summaryRevisionId ? { summaryRevisionId } : {})
+      ...(summaryRevisionId ? { summaryRevisionId } : {}),
+      ...(isValidCanonicalAgentRuntimeItem(candidate.runtimeItem)
+        ? { runtimeItem: candidate.runtimeItem }
+        : {})
     }];
   });
   return frames.sort((left, right) => left.sequence - right.sequence);

@@ -97,6 +97,7 @@ export type OpenAiCompatibleStreamHandlers = {
   onTextDelta?: (text: string) => void;
   onCitations?: (citations: ProviderCitation[]) => void;
   onEvent?: (event: OpenAiCompatibleAgentStreamEvent) => void;
+  onBufferedFallback?: (input: { semanticEventsEmitted: boolean }) => void;
 };
 
 export type { OpenAiCompatibleAgentStreamEvent } from "./openaiCompatibleResponsesStream";
@@ -207,10 +208,14 @@ export async function streamOpenAiCompatibleResponse(
     throw new OpenAiCompatibleProviderError(502, "Responses endpoint did not return an event stream.");
   }
 
+  let semanticEventsEmitted = false;
   try {
     const result = await parseOpenAiResponsesStream(response.body, {
       signal,
       onEvent: (event) => {
+        if (event.type !== "unknown") {
+          semanticEventsEmitted = true;
+        }
         handlers.onEvent?.(event);
         if (event.type === "final-delta") {
           handlers.onTextDelta?.(event.delta);
@@ -236,6 +241,7 @@ export async function streamOpenAiCompatibleResponse(
     return result;
   } catch (error) {
     if (error instanceof OpenAiCompatibleStreamError) {
+      handlers.onBufferedFallback?.({ semanticEventsEmitted });
       return executeBufferedResponsesFallback(config, request, handlers, signal);
     }
     throw error;

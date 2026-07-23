@@ -7,7 +7,8 @@ import {
   type MorphoAgentContextPolicy
 } from "@/domain/morpho/agentContextPolicy";
 import {
-  estimateProviderInputTimelineBudget
+  estimateProviderInputTimelineBudget,
+  type AgentContextBudgetState
 } from "@/shared/providerInputBudget";
 
 export type AgentContextLimits = {
@@ -29,6 +30,7 @@ export type PreparedAgentContextRequest = {
   compressibleTokens: number;
   compacted: boolean;
   checkpointRequested: boolean;
+  budgetGeneration: number;
 };
 
 export type AgentContextExecutionResult<T> = {
@@ -84,7 +86,7 @@ export function prepareAgentContextRequest(
   request: OpenAiCompatibleResponseRequest,
   options: {
     limits: AgentContextLimits;
-    baselineInputTokens?: number;
+    budgetState?: AgentContextBudgetState;
     force?: AgentContextCompactionMode;
   }
 ): PreparedAgentContextRequest {
@@ -93,7 +95,10 @@ export function prepareAgentContextRequest(
     tools: request.tools ?? [],
     responseReserveTokens: options.limits.responseReserveTokens
   });
-  const estimatedInputTokens = Math.max(localBudget.totalInputTokens, options.baselineInputTokens ?? 0);
+  const estimatedInputTokens = Math.max(
+    localBudget.totalInputTokens,
+    options.budgetState?.baselineInputTokens ?? 0
+  );
   const estimatedOccupancyTokens = estimatedInputTokens + localBudget.responseReserveTokens;
   const pressure =
     options.force === "emergency"
@@ -108,7 +113,8 @@ export function prepareAgentContextRequest(
       finalEstimatedInputTokens: localBudget.totalInputTokens,
       compressibleTokens: estimateCompressibleContextTokens(request),
       compacted: false,
-      checkpointRequested: false
+      checkpointRequested: false,
+      budgetGeneration: options.budgetState?.generation ?? 0
     };
   }
 
@@ -121,7 +127,8 @@ export function prepareAgentContextRequest(
       finalEstimatedInputTokens: localBudget.totalInputTokens,
       compressibleTokens: estimateCompressibleContextTokens(request),
       compacted: false,
-      checkpointRequested: false
+      checkpointRequested: false,
+      budgetGeneration: options.budgetState?.generation ?? 0
     };
   }
 
@@ -134,7 +141,8 @@ export function prepareAgentContextRequest(
     finalEstimatedInputTokens: estimateAgentContextTokens(compactedRequest),
     compressibleTokens: estimateCompressibleContextTokens(compactedRequest),
     compacted: compactedRequest !== request,
-    checkpointRequested: false
+    checkpointRequested: false,
+    budgetGeneration: options.budgetState?.generation ?? 0
   };
 }
 
@@ -142,14 +150,14 @@ export async function executeAgentRequestWithContextBudget<T>(
   request: OpenAiCompatibleResponseRequest,
   options: {
     limits: AgentContextLimits;
-    baselineInputTokens?: number;
+    budgetState?: AgentContextBudgetState;
     execute: (request: OpenAiCompatibleResponseRequest, attempt: AgentContextExecutionAttempt) => Promise<T>;
     onRetry?: (attempt: { failed: AgentContextExecutionAttempt; next: AgentContextExecutionAttempt }) => void;
   }
 ): Promise<AgentContextExecutionResult<T>> {
   const prepared = prepareAgentContextRequest(request, {
     limits: options.limits,
-    baselineInputTokens: options.baselineInputTokens
+    budgetState: options.budgetState
   });
   const initialAttempt: AgentContextExecutionAttempt = { index: 0, kind: "initial" };
   try {
@@ -164,6 +172,7 @@ export async function executeAgentRequestWithContextBudget<T>(
         compressibleTokens: prepared.compressibleTokens,
         compacted: prepared.compacted,
         checkpointRequested: prepared.checkpointRequested,
+        budgetGeneration: prepared.budgetGeneration,
         retried: false
       }
     };
@@ -173,7 +182,7 @@ export async function executeAgentRequestWithContextBudget<T>(
     }
     const emergency = prepareAgentContextRequest(request, {
       limits: options.limits,
-      baselineInputTokens: options.baselineInputTokens,
+      budgetState: options.budgetState,
       force: "emergency"
     });
     if (!emergency.compacted) {
@@ -192,6 +201,7 @@ export async function executeAgentRequestWithContextBudget<T>(
         compressibleTokens: emergency.compressibleTokens,
         compacted: emergency.compacted,
         checkpointRequested: false,
+        budgetGeneration: emergency.budgetGeneration,
         retried: true
       }
     };
@@ -226,7 +236,7 @@ function estimateCompressibleContextTokens(request: OpenAiCompatibleResponseRequ
     input: request.input,
     tools: request.tools ?? [],
     responseReserveTokens: 0
-  }).compressibleHistoricalTokens;
+  }).compressibleConversationTokens;
 }
 
 function compactOldToolOutputs(

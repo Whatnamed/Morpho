@@ -41,6 +41,7 @@ describe("workspace commit boundary", () => {
         contextObjectIds: [targetObjectId],
         conversationLaneKey: "lane:test",
         workIntent: "discussion",
+        agentTurnId: "turn-1",
         agentTrace: { ...createAgentTrace(startedAt), agentTurnId: "turn-1" }
       });
       return { workspace: next, value: undefined };

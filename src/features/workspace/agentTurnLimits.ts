@@ -1,20 +1,43 @@
 import type { ProviderCitation } from "@/server/ai/types";
 import type { WebSearchSource } from "@/server/ai/webSearch";
-import type { MorphoAgentToolArguments } from "./morphoAgent";
+import {
+  getAgentToolEffect,
+  type MorphoAgentToolArguments
+} from "./morphoAgent";
+import { buildToolResultOutput } from "./morphoAgent";
+import type { ResponseFunctionToolOutput } from "@/server/ai/openaiCompatibleProvider";
 
 export const AGENT_WEB_SEARCH_MAX_SOURCES_PER_CALL = 5;
 export const AGENT_TURN_EMERGENCY_MODEL_TURN_CEILING = 28;
 export const AGENT_TURN_EMERGENCY_DURATION_MS = 18 * 60 * 1000;
 export const AGENT_TURN_REPEAT_TOOL_CALL_LIMIT = 3;
 
+export type AgentFunctionCallTerminalStatus =
+  | "executed"
+  | "failed"
+  | "blocked"
+  | "skippedDueToEarlierGuard"
+  | "pendingConfirmation"
+  | "cancelled";
+
+export function completeUnresolvedAgentFunctionCalls(input: {
+  calls: readonly { callId: string }[];
+  outputs: readonly ResponseFunctionToolOutput[];
+  status: Exclude<AgentFunctionCallTerminalStatus, "executed">;
+  reason: string;
+}): ResponseFunctionToolOutput[] {
+  const completed = new Set(input.outputs.map((output) => output.call_id));
+  return [
+    ...input.outputs,
+    ...input.calls
+      .filter((call) => !completed.has(call.callId))
+      .map((call) => buildToolResultOutput(call.callId, { status: input.status, reason: input.reason }))
+  ];
+}
+
 export function isAgentMutatingTool(tool: MorphoAgentToolArguments["name"]): boolean {
-  return (
-    tool === "create_research_analysis" ||
-    tool === "create_design_definition_proposal" ||
-    tool === "create_concept_direction_proposal" ||
-    tool === "generate_visuals" ||
-    tool === "create_comparison_analysis"
-  );
+  const effect = getAgentToolEffect(tool);
+  return effect.reversibleWorkspaceWrite || effect.externalCost;
 }
 
 export function isRepeatedAgentToolCall(

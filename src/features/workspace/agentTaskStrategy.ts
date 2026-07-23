@@ -25,6 +25,87 @@ export type AgentReadIntent = {
   objectRevision: boolean;
 };
 
+export type RequiredAgentReadState = {
+  requiredTools: RequiredAgentReadToolName[];
+  completedTools: Set<RequiredAgentReadToolName>;
+  failedTools: Set<RequiredAgentReadToolName>;
+  reminderInserted: boolean;
+  repairAttempted: boolean;
+  exhausted: boolean;
+};
+
+export function createRequiredAgentReadState(
+  requiredTools: readonly RequiredAgentReadToolName[]
+): RequiredAgentReadState {
+  return {
+    requiredTools: [...new Set(requiredTools)],
+    completedTools: new Set(),
+    failedTools: new Set(),
+    reminderInserted: false,
+    repairAttempted: false,
+    exhausted: false
+  };
+}
+
+export function completeRequiredAgentRead(
+  state: RequiredAgentReadState,
+  toolName: RequiredAgentReadToolName
+): RequiredAgentReadState {
+  const completedTools = new Set(state.completedTools);
+  const failedTools = new Set(state.failedTools);
+  completedTools.add(toolName);
+  failedTools.delete(toolName);
+  return { ...state, completedTools, failedTools };
+}
+
+export function failRequiredAgentRead(
+  state: RequiredAgentReadState,
+  toolName: RequiredAgentReadToolName
+): { state: RequiredAgentReadState; retry: boolean } {
+  const failedTools = new Set(state.failedTools);
+  failedTools.add(toolName);
+  if (!state.repairAttempted) {
+    return {
+      retry: true,
+      state: { ...state, failedTools, repairAttempted: true, reminderInserted: true }
+    };
+  }
+  return {
+    retry: false,
+    state: { ...state, failedTools, exhausted: true }
+  };
+}
+
+export function advanceRequiredAgentReadState(
+  state: RequiredAgentReadState
+): {
+  state: RequiredAgentReadState;
+  action: "complete" | "remind" | "exhausted";
+  missingTools: RequiredAgentReadToolName[];
+} {
+  const missingTools = getMissingRequiredAgentReadTools(state.requiredTools, state.completedTools);
+  if (missingTools.length === 0) {
+    return { state, action: "complete", missingTools };
+  }
+  if (state.exhausted || state.reminderInserted) {
+    return { state: { ...state, exhausted: true }, action: "exhausted", missingTools };
+  }
+  return {
+    state: { ...state, reminderInserted: true },
+    action: "remind",
+    missingTools
+  };
+}
+
+export function buildRequiredAgentReadFailureNotice(
+  state: RequiredAgentReadState
+): string {
+  const failed = [...state.failedTools];
+  const missing = getMissingRequiredAgentReadTools(state.requiredTools, state.completedTools);
+  const tools = [...new Set([...failed, ...missing])];
+  return `读取失败，无法确认相关项目记录（${tools.join("、") || "所需来源"}）。本轮不会据此断言不存在或未记录。`;
+}
+
 export function resolveAgentReadIntent(
   draft: string,
   input: { hasSelectedObject?: boolean } = {}

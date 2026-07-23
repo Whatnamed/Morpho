@@ -192,12 +192,13 @@ describe("agent context budget", () => {
 
     const prepared = prepareAgentContextRequest(request, {
       limits,
-      baselineInputTokens: 220_000
+      budgetState: { generation: 3, baselineInputTokens: 220_000 }
     });
 
     expect(prepared.estimatedInputTokens).toBe(220_000);
     expect(prepared.estimatedOccupancyTokens).toBe(236_000);
     expect(prepared.pressure).toBe("compact");
+    expect(prepared.budgetGeneration).toBe(3);
   });
 
   it("retries a provider context limit exactly once with an emergency-compacted request", async () => {

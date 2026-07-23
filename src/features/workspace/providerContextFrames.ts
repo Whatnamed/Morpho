@@ -22,6 +22,8 @@ import type { MorphoAgentTurnMode } from "./morphoAgent";
 import { buildAgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
 import { buildAgentStrategyPolicyBlocks } from "./agentPromptRegistry";
 import type { AgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
+import type { AgentCanonicalRuntimeItem } from "@/shared/agentRuntimeItem";
+import type { AgentCacheItemManifest } from "@/shared/agentStreamProtocol";
 
 export type ProviderContextFrameBuildInput = {
   workspace: MorphoWorkspace;
@@ -30,6 +32,10 @@ export type ProviderContextFrameBuildInput = {
   mode: MorphoAgentTurnMode;
   /** Only set after the server has confirmed the filtered provider tools. */
   toolProfile?: ProviderToolProfile;
+  runtimeItem?: AgentCanonicalRuntimeItem;
+  cacheItemManifest?: AgentCacheItemManifest[];
+  toolsHash?: string;
+  budgetGeneration?: number;
   promptContractVersion: string;
   userMessageId: string;
   context: TaskContextResult;
@@ -51,12 +57,17 @@ export type ProviderRequestBoundaryState = {
   latestUserMessageId?: string;
   providerInputPrefixHash?: string;
   attachmentBoundary?: ProviderInputCacheBoundaryReason;
+  runtimeItem?: AgentCanonicalRuntimeItem;
+  cacheItemManifest?: AgentCacheItemManifest[];
+  toolsHash?: string;
+  budgetGeneration?: number;
 };
 
 export type ProviderRuntimeConfiguration = {
   mode: MorphoAgentTurnMode;
   toolProfile: ProviderToolProfile;
   promptContractVersion: string;
+  runtimeItem?: AgentCanonicalRuntimeItem;
 };
 
 export function appendAgentProviderContextFrames(
@@ -71,7 +82,8 @@ export function appendAgentProviderContextFrames(
       promptContractVersion: input.promptContractVersion,
       summaryRevision: input.summaryRevision,
       mode: input.mode,
-      toolProfile: input.toolProfile
+      toolProfile: input.toolProfile,
+      runtimeItem: input.runtimeItem
     });
   }
   next = appendAgentProviderStateFrames(next, {
@@ -98,8 +110,7 @@ export function appendAgentProviderStateFrames(
   const projectState = createProjectStateFrame(input, previousFrames);
   const runtimeConfiguration = createRuntimeConfigurationFrame(input, previousFrames);
   const additions = [projectState, runtimeConfiguration]
-    .filter((frame): frame is ProviderContextFrame => Boolean(frame))
-    .filter((frame) => !hasMatchingSummaryBaseline(previousFrames, frame, input.summaryRevision?.id));
+    .filter((frame): frame is ProviderContextFrame => Boolean(frame));
   const nextFrames = additions.reduce(
     (frames, frame) => appendProviderContextFrame(frames, frame),
     [...previousFrames]
@@ -107,23 +118,6 @@ export function appendAgentProviderStateFrames(
   return nextFrames.length === previousFrames.length
     ? workspace
     : { ...workspace, ai: { ...workspace.ai, providerContextFrames: nextFrames } };
-}
-
-function hasMatchingSummaryBaseline(
-  frames: readonly ProviderContextFrame[],
-  frame: ProviderContextFrame,
-  summaryRevisionId: string | undefined
-): boolean {
-  if (!summaryRevisionId || (frame.kind !== "projectState" && frame.kind !== "runtimeConfiguration")) {
-    return false;
-  }
-  return frames.some(
-    (candidate) =>
-      candidate.kind === frame.kind &&
-      candidate.placement === "conversationBaseline" &&
-      candidate.summaryRevisionId === summaryRevisionId &&
-      candidate.contentHash === frame.contentHash
-  );
 }
 
 export function ensureAgentConversationSummaryBaselines(
@@ -134,6 +128,7 @@ export function ensureAgentConversationSummaryBaselines(
     summaryRevision: ConversationSummaryRevision;
     mode?: MorphoAgentTurnMode;
     toolProfile?: ProviderToolProfile;
+    runtimeItem?: AgentCanonicalRuntimeItem;
   }
 ): MorphoWorkspace {
   const previousFrames = workspace.ai.providerContextFrames ?? [];
@@ -178,7 +173,8 @@ export function ensureAgentConversationSummaryBaselines(
     ? {
         mode: input.mode,
         toolProfile: input.toolProfile,
-        promptContractVersion: input.promptContractVersion
+        promptContractVersion: input.promptContractVersion,
+        ...(input.runtimeItem ? { runtimeItem: input.runtimeItem } : {})
       }
     : getLatestProviderRuntimeConfiguration(frames);
   const hasRuntimeBaseline = frames.some(
@@ -194,6 +190,7 @@ export function ensureAgentConversationSummaryBaselines(
         promptContractVersion: runtime.promptContractVersion,
         mode: runtime.mode,
         toolProfile: runtime.toolProfile,
+        ...(runtime.runtimeItem ? { runtimeItem: runtime.runtimeItem } : {}),
         framePlacement: "conversationBaseline",
         summaryRevisionId: input.summaryRevision.id
       },
@@ -219,6 +216,7 @@ export function appendAgentProviderRuntimeConfigurationFrame(
     userMessageId?: string;
     framePlacement?: ProviderContextFramePlacement;
     summaryRevisionId?: string;
+    runtimeItem?: AgentCanonicalRuntimeItem;
   }
 ): MorphoWorkspace {
   const frames = workspace.ai.providerContextFrames ?? [];
@@ -239,13 +237,21 @@ export function getLatestProviderRuntimeConfiguration(
   if (!latest) {
     return undefined;
   }
+  if (latest.runtimeItem) {
+    return {
+      mode: latest.runtimeItem.mode,
+      toolProfile: latest.runtimeItem.effectiveToolProfile,
+      promptContractVersion: latest.runtimeItem.promptContractVersion,
+      runtimeItem: latest.runtimeItem
+    };
+  }
   const mode = latest.renderedText.match(/Agent 模式[:：]\s*(auto|confirm)/)?.[1] as MorphoAgentTurnMode | undefined;
   const toolProfile = latest.renderedText.match(
     /Provider Tool Profile[:：]\s*(standardWithWebSearch|standard)/
   )?.[1] as ProviderToolProfile | undefined;
   const promptContractVersion = latest.renderedText.match(/Prompt Contract[:：]\s*(\S+)/)?.[1];
   return mode && toolProfile && promptContractVersion
-    ? { mode, toolProfile, promptContractVersion }
+    ? { mode, toolProfile, promptContractVersion, ...(latest.runtimeItem ? { runtimeItem: latest.runtimeItem } : {}) }
     : undefined;
 }
 
@@ -261,6 +267,7 @@ export function buildAgentProviderInput(input: {
   currentUserMessageId: string;
   userInput: ResponseMessageInput;
   activeSummaryRevisionId?: string;
+  serverManagedPrefix?: boolean;
 }): ResponseMessageInput[] {
   const activeMessageIds = new Set(input.history.map((message) => message.id));
   activeMessageIds.add(input.currentUserMessageId);
@@ -269,13 +276,11 @@ export function buildAgentProviderInput(input: {
     activeMessageIds,
     activeSummaryRevisionId: input.activeSummaryRevisionId
   });
-  const messages: ResponseMessageInput[] = [
-    {
-      role: "system",
-      content: [{ type: "input_text", text: input.stableSystemPrompt }]
-    }
-  ];
+  const messages: ResponseMessageInput[] = input.serverManagedPrefix === false
+    ? []
+    : [{ role: "system", content: [{ type: "input_text", text: input.stableSystemPrompt }] }];
   frames
+    .filter((frame) => input.serverManagedPrefix !== false || frame.kind !== "runtimeConfiguration")
     .filter((frame) => frame.placement === "conversationBaseline" || !frame.anchorMessageId)
     .forEach((frame) => messages.push(providerContextFrameMessage(frame)));
 
@@ -388,6 +393,7 @@ function createProjectStateFrame(
     userMessageId?: string;
     framePlacement?: ProviderContextFramePlacement;
     summaryRevisionId?: string;
+    runtimeItem?: AgentCanonicalRuntimeItem;
   },
   previousFrames: readonly ProviderContextFrame[]
 ): ProviderContextFrame {
@@ -435,7 +441,7 @@ function createProjectStateFrame(
       `项目：${input.workspace.project.title}`,
       `项目副标题：${input.workspace.project.subtitle || "无"}`,
       `当前工作重点：${input.workspace.projectContinuity.currentFocus.note}`,
-      renderMemoryDocuments(stableMemoryContext),
+      renderMemoryContext(stableMemoryContext),
       currentDefinition
         ? `当前设计定义：${currentDefinition.title}（${currentDefinition.summary}）`
         : "当前没有已应用设计定义。",
@@ -471,7 +477,9 @@ function createTurnContextFrame(
     ...input.context.visualBranches.map((branch) => branch.id)
   ]);
   const sequence = nextProviderContextFrameSequence(previousFrames);
-  const taskMemory = renderMemoryDocuments(input.defaultMemoryContext);
+  const stableMemoryContext = buildStableProjectMemoryContext(input.workspace);
+  const taskMemoryContext = buildAgentMemoryDeltaContext(input.defaultMemoryContext, stableMemoryContext);
+  const taskMemory = renderMemoryContext(taskMemoryContext);
   return createProviderContextFrame({
     projectId: input.projectId,
     kind: "turnContext",
@@ -480,10 +488,10 @@ function createTurnContextFrame(
     placement: input.framePlacement ?? "beforeUser",
     promptContractVersion: input.promptContractVersion,
     taskStrategy: input.strategy,
-    projectMemoryRevisionIds: input.defaultMemoryContext.documents
+    projectMemoryRevisionIds: taskMemoryContext.documents
       .map((document) => document.revisionId)
       .filter((id): id is string => Boolean(id)),
-    stageRecordRevisionIds: input.defaultMemoryContext.stageRecords
+    stageRecordRevisionIds: taskMemoryContext.stageRecords
       .map((record) => record.revisionId)
       .filter((id): id is string => Boolean(id)),
     directionRevisionIds: input.context.directionRevisions.map((revision) => revision.id).sort(),
@@ -514,6 +522,7 @@ function createRuntimeConfigurationFrame(
     userMessageId?: string;
     framePlacement?: ProviderContextFramePlacement;
     summaryRevisionId?: string;
+    runtimeItem?: AgentCanonicalRuntimeItem;
   },
   previousFrames: readonly ProviderContextFrame[]
 ): ProviderContextFrame | undefined {
@@ -533,7 +542,7 @@ function createRuntimeConfigurationFrame(
     directionRevisionIds: [],
     selectedObjectIds: [],
     relatedObjectIds: [],
-    renderedText: [
+    renderedText: input.runtimeItem?.renderedText ?? [
       `Agent 模式：${input.mode}`,
       `Provider Tool Profile：${input.toolProfile}`,
       `Prompt Contract：${input.promptContractVersion}`
@@ -544,7 +553,8 @@ function createRuntimeConfigurationFrame(
     ...(input.framePlacement !== "conversationBaseline" && input.userMessageId
       ? { anchorMessageId: input.userMessageId }
       : {}),
-    ...(input.summaryRevisionId ? { summaryRevisionId: input.summaryRevisionId } : {})
+    ...(input.summaryRevisionId ? { summaryRevisionId: input.summaryRevisionId } : {}),
+    ...(input.runtimeItem ? { runtimeItem: input.runtimeItem } : {})
   });
 }
 
@@ -582,18 +592,47 @@ function createConversationSummaryFrame(
 }
 
 function buildStableProjectMemoryContext(workspace: MorphoWorkspace): AgentDefaultMemoryContext {
-  const base = buildAgentDefaultMemoryContext(workspace, "historyAndMemory");
-  const delivery = buildAgentDefaultMemoryContext(workspace, "deliveryPreparation");
-  const documents = [...base.documents];
-  const outputPlan = delivery.documents.find((document) => document.key === "outputPlan");
-  if (outputPlan && !documents.some((document) => document.key === outputPlan.key)) {
-    documents.push(outputPlan);
-  }
-  return { documents, stageRecords: [] };
+  const core = buildAgentDefaultMemoryContext(workspace, "historyAndMemory");
+  return { documents: core.documents, stageRecords: [] };
 }
 
-function renderMemoryDocuments(context: AgentDefaultMemoryContext): string {
-  return context.documents
+export function buildAgentMemoryDeltaContext(
+  task: AgentDefaultMemoryContext,
+  stable: AgentDefaultMemoryContext
+): AgentDefaultMemoryContext {
+  const stableSections = new Set(
+    stable.documents.flatMap((document) =>
+      document.sections.map((section) => `${document.key}:${document.revisionId ?? "none"}:${section.key}`)
+    )
+  );
+  const documents = task.documents.flatMap((document) => {
+    const sections = document.sections.filter(
+      (section) => !stableSections.has(`${document.key}:${document.revisionId ?? "none"}:${section.key}`)
+    );
+    return sections.length > 0 ? [{ ...document, sections }] : [];
+  });
+  const stableStageSections = new Set(
+    stable.stageRecords.flatMap((record) =>
+      Object.keys(record.sections).map((sectionKey) => `${record.stage}:${record.revisionId ?? "none"}:${sectionKey}`)
+    )
+  );
+  const stageRecords = task.stageRecords.flatMap((record) => {
+    const sections = Object.fromEntries(
+      Object.entries(record.sections).filter(
+        ([sectionKey]) => !stableStageSections.has(`${record.stage}:${record.revisionId ?? "none"}:${sectionKey}`)
+      )
+    ) as typeof record.sections;
+    return Object.keys(sections).length > 0 ? [{ ...record, sections }] : [];
+  });
+  return {
+    documents,
+    stageRecords,
+    ...(task.defaultReference ? { defaultReference: task.defaultReference } : {})
+  };
+}
+
+function renderMemoryContext(context: AgentDefaultMemoryContext): string {
+  const documents = context.documents
     .filter((document) => !document.empty)
     .sort((left, right) => left.key.localeCompare(right.key))
     .map((document) => {
@@ -602,7 +641,18 @@ function renderMemoryDocuments(context: AgentDefaultMemoryContext): string {
         .join("；");
       return `${document.title}：${sections || "暂无"}`;
     })
-    .join("\n") || "当前没有可用的长期项目记忆文档。";
+    .join("\n");
+  const stageRecords = context.stageRecords
+    .filter((record) => !record.empty)
+    .sort((left, right) => left.stage.localeCompare(right.stage))
+    .map((record) => {
+      const sections = Object.entries(record.sections)
+        .flatMap(([key, items]) => (items ?? []).map((item) => `${key}：${item}`))
+        .join("；");
+      return `${record.stage}：${sections || "暂无"}`;
+    })
+    .join("\n");
+  return [documents, stageRecords].filter(Boolean).join("\n") || "本轮没有 Project State 之外的额外记忆 section。";
 }
 
 function buildStableProjectStateSourceRefs(

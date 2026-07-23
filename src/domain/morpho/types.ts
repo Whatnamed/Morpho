@@ -814,8 +814,19 @@ export type AgentTrace = {
     latestUserMessageId?: string;
     providerInputPrefixHash?: string;
     attachmentBoundary?: ProviderInputCacheBoundaryReason;
+    runtimeItem?: import("@/shared/agentRuntimeItem").AgentCanonicalRuntimeItem;
+    cacheItemManifest?: import("@/shared/agentStreamProtocol").AgentCacheItemManifest[];
+    toolsHash?: string;
+    budgetGeneration?: number;
   };
 };
+
+export type AgentTurnOutcome =
+  | "success"
+  | "cancelledBeforeExecution"
+  | "failedBeforeExecution"
+  | "partialSuccess"
+  | "pendingConfirmation";
 
 export type ProviderInputSnapshotTextPartKind =
   | "userDraft"
@@ -878,6 +889,10 @@ export type AiMessage = {
   taskStrategy?: AgentTaskStrategyKind;
   comparisonAnalysisId?: ComparisonAnalysisId;
   agentTrace?: AgentTrace;
+  agentTurnId?: string;
+  pairedMessageId?: string;
+  agentTurnOutcome?: AgentTurnOutcome;
+  agentTurnOutcomeSummary?: string;
   error?: string;
 };
 
@@ -923,6 +938,7 @@ export type ProviderContextFrame = {
   reason: string;
   anchorMessageId?: string;
   summaryRevisionId?: string;
+  runtimeItem?: import("@/shared/agentRuntimeItem").AgentCanonicalRuntimeItem;
 };
 
 export type AgentTaskStrategyKind =

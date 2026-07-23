@@ -1,5 +1,5 @@
 import type { AgentActivityKind } from "@/domain/morpho/types";
-import type { MorphoAgentToolArguments } from "./morphoAgent";
+import { getAgentToolEffect, type MorphoAgentToolArguments } from "./morphoAgent";
 
 export type AgentToolActivityDescriptor = {
   activityKind: AgentActivityKind;
@@ -17,6 +17,13 @@ type AgentToolActivityContext = {
 export function buildAgentToolActivityDescriptor(
   tool: MorphoAgentToolArguments,
   context: AgentToolActivityContext = {}
+): AgentToolActivityDescriptor {
+  return alignActivityWithToolEffect(tool, buildToolSpecificActivityDescriptor(tool, context));
+}
+
+function buildToolSpecificActivityDescriptor(
+  tool: MorphoAgentToolArguments,
+  context: AgentToolActivityContext
 ): AgentToolActivityDescriptor {
   switch (tool.name) {
     case "read_selected_context": {
@@ -106,6 +113,25 @@ export function buildAgentToolActivityDescriptor(
       return { activityKind: "confirmation", label: reason ?? "准备操作确认" };
     }
   }
+}
+
+function alignActivityWithToolEffect(
+  tool: MorphoAgentToolArguments,
+  descriptor: AgentToolActivityDescriptor
+): AgentToolActivityDescriptor {
+  const effect = getAgentToolEffect(tool.name);
+  const activityKind = effect.externalEvidence
+    ? "webSearch"
+    : effect.externalCost
+      ? "imageGeneration"
+      : effect.memoryWrite
+        ? "workspaceWrite"
+        : effect.highImpactStateChange
+          ? "confirmation"
+          : effect.readOnly
+            ? "contextRead"
+            : descriptor.activityKind;
+  return { ...descriptor, activityKind };
 }
 
 export function sanitizeAgentActivityDetail(value: string | undefined): string | undefined {

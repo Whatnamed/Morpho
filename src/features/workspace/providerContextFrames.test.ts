@@ -2,13 +2,21 @@ import { describe, expect, it } from "vitest";
 
 import { createProviderInputSnapshot } from "@/domain/morpho/providerInputSnapshot";
 import { createProviderContextFrame, type ProviderContextFrameInput } from "@/domain/morpho/providerContextFrame";
-import { createBlankWorkspace, migrateWorkspaceToCurrentSchema } from "@/domain/morpho/workspace";
+import {
+  buildAgentDefaultMemoryContext,
+  type AgentDefaultMemoryContext
+} from "@/domain/morpho/projectMemory";
+import { estimateProviderSerializedTokens } from "@/shared/providerInputBudget";
+import { createBlankWorkspace, createInitialWorkspace, migrateWorkspaceToCurrentSchema } from "@/domain/morpho/workspace";
 import {
   appendAgentProviderRuntimeConfigurationFrame,
+  appendAgentProviderStateFrames,
+  buildAgentMemoryDeltaContext,
   buildAgentProviderInput,
   ensureAgentConversationSummaryBaselines,
   getProviderInputReplayBoundaryReasons
 } from "./providerContextFrames";
+import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
 
 function frameInput(overrides: Partial<ProviderContextFrameInput> = {}): ProviderContextFrameInput {
   return {
@@ -248,6 +256,167 @@ describe("Agent provider transcript reconstruction", () => {
     ).toEqual(restored.workspace.ai.providerContextFrames);
   });
 
+  it("restores A after an intervening B even when summary baselines already contain A", () => {
+    const summaryA = summaryRevision("summary-a-b-a", "验证浮标状态恢复");
+    let workspace = createBlankWorkspace("project-ocean-buoy");
+    workspace = {
+      ...workspace,
+      project: { ...workspace.project, title: "浮标状态 A" },
+      ai: {
+        ...workspace.ai,
+        conversationSummaryRevisions: { [summaryA.id]: summaryA },
+        conversationCompaction: {
+          summaryRevisionId: summaryA.id,
+          coveredThroughMessageId: summaryA.sourceEndMessageId,
+          coveredMessageCount: summaryA.sourceMessageCount,
+          updatedAt: summaryA.createdAt,
+          sourceMessageIdsHash: summaryA.sourceMessageIdsHash
+        }
+      }
+    };
+    workspace = ensureAgentConversationSummaryBaselines(workspace, {
+      projectId: workspace.project.id,
+      promptContractVersion: "morpho-agent-test",
+      summaryRevision: summaryA,
+      mode: "auto",
+      toolProfile: "standard"
+    });
+
+    const appendState = (
+      current: typeof workspace,
+      title: string,
+      mode: "auto" | "confirm",
+      toolProfile: "standard" | "standardWithWebSearch",
+      userMessageId: string
+    ) => {
+      const titled = { ...current, project: { ...current.project, title } };
+      const context = buildTaskContext(titled, { kind: "general", draft: "继续", selectedObjectIds: [] });
+      return appendAgentProviderStateFrames(titled, {
+        workspace: titled,
+        projectId: titled.project.id,
+        strategy: "discussion",
+        mode,
+        toolProfile,
+        promptContractVersion: "morpho-agent-test",
+        userMessageId,
+        context,
+        providerTaskContext: buildProviderTaskContext(context),
+        defaultMemoryContext: buildAgentDefaultMemoryContext(titled, "discussion"),
+        summaryRevision: summaryA,
+        framePlacement: "beforeUser"
+      });
+    };
+
+    workspace = appendState(workspace, "浮标状态 B", "confirm", "standardWithWebSearch", "user-b");
+    workspace = appendState(workspace, "浮标状态 A", "auto", "standard", "user-a2");
+    const afterA2 = workspace.ai.providerContextFrames ?? [];
+    workspace = appendState(workspace, "浮标状态 A", "auto", "standard", "user-a3");
+
+    const projectA = (workspace.ai.providerContextFrames ?? []).filter(
+      (frame) => frame.kind === "projectState" && frame.renderedText.includes("项目：浮标状态 A")
+    );
+    const runtimeA = (workspace.ai.providerContextFrames ?? []).filter(
+      (frame) => frame.kind === "runtimeConfiguration" &&
+        frame.renderedText.includes("Agent 模式：auto") &&
+        frame.renderedText.includes("Provider Tool Profile：standard")
+    );
+
+    expect(projectA).toHaveLength(2);
+    expect(projectA[0]?.contentHash).toBe(projectA[1]?.contentHash);
+    expect(projectA[0]?.id).not.toBe(projectA[1]?.id);
+    expect(runtimeA).toHaveLength(2);
+    expect(runtimeA[0]?.contentHash).toBe(runtimeA[1]?.contentHash);
+    expect(runtimeA[0]?.id).not.toBe(runtimeA[1]?.id);
+    expect(workspace.ai.providerContextFrames).toEqual(afterA2);
+  });
+
+  it("restores the same default reference and primary direction after an intervening state", () => {
+    const summary = summaryRevision("summary-reference-a-b-a", "验证浮标方向与参考恢复");
+    let workspace = createInitialWorkspace();
+    const images = Object.values(workspace.objects).filter((object) => object.type === "image").slice(0, 2);
+    const directions = Object.values(workspace.objects)
+      .filter((object) => object.type === "conceptDirection")
+      .slice(0, 2);
+    if (images.length < 2 || directions.length < 2) {
+      throw new Error("Fixture requires two images and two concept directions.");
+    }
+    workspace = {
+      ...workspace,
+      project: { ...workspace.project, title: "海洋浮标" },
+      objects: {
+        ...workspace.objects,
+        [images[0]!.id]: { ...images[0]!, title: "浮标参考 A" },
+        [images[1]!.id]: { ...images[1]!, title: "浮标参考 B" },
+        [directions[0]!.id]: { ...directions[0]!, title: "浮标方向 A" },
+        [directions[1]!.id]: { ...directions[1]!, title: "浮标方向 B" }
+      },
+      workingState: {
+        ...workspace.workingState,
+        currentDefaultReferenceId: images[0]!.id,
+        primaryDirectionId: directions[0]!.id
+      },
+      ai: {
+        ...workspace.ai,
+        conversationSummaryRevisions: { [summary.id]: summary },
+        conversationCompaction: {
+          summaryRevisionId: summary.id,
+          coveredThroughMessageId: summary.sourceEndMessageId,
+          coveredMessageCount: summary.sourceMessageCount,
+          updatedAt: summary.createdAt,
+          sourceMessageIdsHash: summary.sourceMessageIdsHash
+        }
+      }
+    };
+    workspace = ensureAgentConversationSummaryBaselines(workspace, {
+      projectId: workspace.project.id,
+      promptContractVersion: "morpho-agent-test",
+      summaryRevision: summary,
+      mode: "auto",
+      toolProfile: "standard"
+    });
+
+    const appendState = (current: typeof workspace, imageId: string, directionId: string, messageId: string) => {
+      const changed = {
+        ...current,
+        workingState: {
+          ...current.workingState,
+          currentDefaultReferenceId: imageId,
+          primaryDirectionId: directionId
+        }
+      };
+      const context = buildTaskContext(changed, { kind: "general", draft: "继续", selectedObjectIds: [] });
+      return appendAgentProviderStateFrames(changed, {
+        workspace: changed,
+        projectId: changed.project.id,
+        strategy: "discussion",
+        mode: "auto",
+        toolProfile: "standard",
+        promptContractVersion: "morpho-agent-test",
+        userMessageId: messageId,
+        context,
+        providerTaskContext: buildProviderTaskContext(context),
+        defaultMemoryContext: buildAgentDefaultMemoryContext(changed, "discussion"),
+        summaryRevision: summary,
+        framePlacement: "beforeUser"
+      });
+    };
+
+    workspace = appendState(workspace, images[1]!.id, directions[1]!.id, "user-reference-b");
+    workspace = appendState(workspace, images[0]!.id, directions[0]!.id, "user-reference-a2");
+    const afterA2 = workspace.ai.providerContextFrames ?? [];
+    workspace = appendState(workspace, images[0]!.id, directions[0]!.id, "user-reference-a3");
+    const stateA = (workspace.ai.providerContextFrames ?? []).filter(
+      (frame) => frame.kind === "projectState" &&
+        frame.renderedText.includes("当前主方向：浮标方向 A") &&
+        frame.renderedText.includes("当前后续默认参考：浮标参考 A")
+    );
+
+    expect(stateA).toHaveLength(2);
+    expect(stateA[0]?.contentHash).toBe(stateA[1]?.contentHash);
+    expect(stateA[0]?.id).not.toBe(stateA[1]?.id);
+    expect(workspace.ai.providerContextFrames).toEqual(afterA2);
+  });
+
   it("reports only the boundary between adjacent provider requests", () => {
     const imageSnapshot = createProviderInputSnapshot({
       message: userMessage("图像分析"),
@@ -333,7 +502,54 @@ describe("Agent provider transcript reconstruction", () => {
       })
     ).toEqual(["toolProfileChanged"]);
   });
+
+  it("keeps only revision-and-section deltas in Turn Context memory", () => {
+    const stable: AgentDefaultMemoryContext = {
+      documents: [memoryDocument("projectOverview", "revision-overview", [
+        { key: "goal", title: "目标", items: ["海洋浮标长期监测"] },
+        { key: "constraints", title: "约束", items: ["耐盐雾"] }
+      ])],
+      stageRecords: []
+    };
+    const task: AgentDefaultMemoryContext = {
+      documents: [
+        memoryDocument("projectOverview", "revision-overview", [
+          { key: "goal", title: "目标", items: ["海洋浮标长期监测"] },
+          { key: "constraints", title: "约束", items: ["耐盐雾"] }
+        ]),
+        memoryDocument("outputPlan", "revision-output", [
+          { key: "gaps", title: "待补", items: ["维护场景示意"] }
+        ])
+      ],
+      stageRecords: []
+    };
+
+    const delta = buildAgentMemoryDeltaContext(task, stable);
+
+    expect(delta.documents.map((document) => document.key)).toEqual(["outputPlan"]);
+    expect(JSON.stringify(delta)).toContain("维护场景示意");
+    expect(JSON.stringify(delta)).not.toContain("海洋浮标长期监测");
+    expect(estimateProviderSerializedTokens(delta)).toBeLessThan(
+      estimateProviderSerializedTokens(task)
+    );
+  });
 });
+
+function memoryDocument(
+  key: "projectOverview" | "outputPlan",
+  revisionId: string,
+  sections: Array<{ key: string; title: string; items: string[] }>
+): AgentDefaultMemoryContext["documents"][number] {
+  return {
+    key,
+    title: key,
+    revisionId,
+    reviewRequired: false,
+    empty: false,
+    sections,
+    sourceRefs: []
+  };
+}
 
 function summaryRevision(id: string, goal: string) {
   return {

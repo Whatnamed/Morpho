@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AGENT_TRACE_MAX_ACTIVITY_DETAIL_CHARS,
+  AGENT_TRACE_MAX_PARTS,
+  AGENT_TRACE_MAX_TEXT_PART_CHARS,
   applyAgentStreamEventToTrace,
   completeAgentTrace,
   createAgentTrace,
@@ -125,5 +128,61 @@ describe("agent message trace", () => {
       expect.objectContaining({ id: "local-complete", source: "local", state: "done" }),
       expect.objectContaining({ id: "reasoning-new", attemptId: "attempt-b", text: "正确推理" })
     ]);
+  });
+
+  it("bounds persisted trace text, activity detail, and part count without touching the final message body", () => {
+    const now = "2026-07-13T00:00:00.000Z";
+    let trace = createAgentTrace(now);
+    trace = applyAgentStreamEventToTrace(trace, { type: "reasoning-start", partId: "long" }, now);
+    trace = applyAgentStreamEventToTrace(
+      trace,
+      { type: "reasoning-delta", partId: "long", delta: "x".repeat(AGENT_TRACE_MAX_TEXT_PART_CHARS + 500) },
+      now
+    );
+    trace = startLocalAgentToolActivity(
+      trace,
+      {
+        toolCallId: "detail",
+        toolName: "read_project_memory",
+        activityKind: "contextRead",
+        label: "读取项目记忆",
+        detail: "d".repeat(AGENT_TRACE_MAX_ACTIVITY_DETAIL_CHARS + 500)
+      },
+      now
+    );
+    for (let index = 0; index < AGENT_TRACE_MAX_PARTS + 20; index += 1) {
+      trace = applyAgentStreamEventToTrace(
+        trace,
+        { type: "commentary-start", partId: `part-${index}` },
+        now
+      );
+    }
+
+    const reasoning = trace.parts.find((part) => part.id === "long");
+    const activity = trace.parts.find((part) => part.id === "detail");
+    expect(reasoning?.type === "reasoning" ? reasoning.text.length : 0)
+      .toBeLessThanOrEqual(AGENT_TRACE_MAX_TEXT_PART_CHARS);
+    expect(reasoning?.type === "reasoning" ? reasoning.text : "").toContain("[过程文本已截断]");
+    expect(activity?.type === "toolActivity" ? activity.detail?.length : 0)
+      .toBeLessThanOrEqual(AGENT_TRACE_MAX_ACTIVITY_DETAIL_CHARS);
+    expect(trace.parts).toHaveLength(AGENT_TRACE_MAX_PARTS);
+    expect(trace.parts.at(-1)).toMatchObject({ id: "trace-truncation", type: "commentary" });
+  });
+
+  it("merges repeated activity events for the same provider call", () => {
+    const now = "2026-07-13T00:00:00.000Z";
+    let trace = createAgentTrace(now);
+    const start = {
+      type: "provider-tool-start" as const,
+      toolCallId: "same-call",
+      toolName: "web_search",
+      activityKind: "webSearch" as const,
+      label: "检索资料"
+    };
+    trace = applyAgentStreamEventToTrace(trace, start, now);
+    trace = applyAgentStreamEventToTrace(trace, { ...start, detail: "重复开始事件" }, now);
+
+    expect(trace.parts).toHaveLength(1);
+    expect(trace.parts[0]).toMatchObject({ toolCallId: "same-call", detail: "重复开始事件" });
   });
 });

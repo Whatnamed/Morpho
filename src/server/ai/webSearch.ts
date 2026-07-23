@@ -10,9 +10,20 @@ export type SearchWebEvidenceInput = {
   queries: string[];
   maxSources?: number;
   signal?: AbortSignal;
+  queryTimeoutMs?: number;
+  sourceTimeoutMs?: number;
 };
 
-export async function searchWebEvidence(input: SearchWebEvidenceInput): Promise<WebSearchSource[]> {
+export type SearchWebEvidenceResult = {
+  sources: WebSearchSource[];
+  failedSourceCount: number;
+  timedOutSourceCount: number;
+};
+
+export const WEB_SEARCH_QUERY_TIMEOUT_MS = 8_000;
+export const WEB_SEARCH_SOURCE_TIMEOUT_MS = 5_000;
+
+export async function searchWebEvidence(input: SearchWebEvidenceInput): Promise<SearchWebEvidenceResult> {
   const distinctQueries = Array.from(
     new Set(
       input.queries
@@ -22,11 +33,28 @@ export async function searchWebEvidence(input: SearchWebEvidenceInput): Promise<
     )
   );
   const maxSources = clampInteger(input.maxSources ?? 5, 1, 5);
+  const queryTimeoutMs = clampInteger(input.queryTimeoutMs ?? WEB_SEARCH_QUERY_TIMEOUT_MS, 100, 30_000);
+  const sourceTimeoutMs = clampInteger(input.sourceTimeoutMs ?? WEB_SEARCH_SOURCE_TIMEOUT_MS, 100, 30_000);
   const aggregated: WebSearchSource[] = [];
   const seenUrls = new Set<string>();
+  let failedSourceCount = 0;
+  let timedOutSourceCount = 0;
 
-  for (const query of distinctQueries) {
-    const searchResults = await searchDuckDuckGo(query, input.signal);
+  throwIfAborted(input.signal);
+  const queryResults = await Promise.allSettled(
+    distinctQueries.map((query) => searchDuckDuckGo(query, input.signal, queryTimeoutMs))
+  );
+  throwIfAborted(input.signal);
+  for (const result of queryResults) {
+    if (result.status === "rejected") {
+      if (result.reason instanceof WebSearchTimeoutError) {
+        timedOutSourceCount += 1;
+      } else {
+        failedSourceCount += 1;
+      }
+      continue;
+    }
+    const searchResults = result.value;
     for (const result of searchResults) {
       if (seenUrls.has(result.url)) {
         continue;
@@ -42,28 +70,41 @@ export async function searchWebEvidence(input: SearchWebEvidenceInput): Promise<
     }
   }
 
-  const enriched = await Promise.all(
-    aggregated.map(async (source) => ({
-      ...source,
-      excerpt: await fetchReadableExcerpt(source.url, input.signal)
-    }))
+  const excerptResults = await Promise.allSettled(
+    aggregated.map((source) => fetchReadableExcerpt(source.url, input.signal, sourceTimeoutMs))
   );
+  throwIfAborted(input.signal);
+  const sources = excerptResults.map((result, index) => {
+    const source = aggregated[index]!;
+    if (result.status === "fulfilled") {
+      return { ...source, ...(result.value ? { excerpt: result.value } : {}) };
+    }
+    if (result.reason instanceof WebSearchTimeoutError) {
+      timedOutSourceCount += 1;
+    } else {
+      failedSourceCount += 1;
+    }
+    return source;
+  });
 
-  return enriched;
+  return { sources, failedSourceCount, timedOutSourceCount };
 }
 
-async function searchDuckDuckGo(query: string, signal?: AbortSignal): Promise<WebSearchSource[]> {
+async function searchDuckDuckGo(
+  query: string,
+  signal: AbortSignal | undefined,
+  timeoutMs: number
+): Promise<WebSearchSource[]> {
   const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     headers: {
       "User-Agent": "Morpho/1.0 (+https://morpho.local)",
       Accept: "text/html,application/xhtml+xml"
-    },
-    signal
-  });
+    }
+  }, timeoutMs, signal);
 
   if (!response.ok) {
-    return [];
+    throw new Error(`Search request failed with ${response.status}.`);
   }
 
   const html = await response.text();
@@ -101,29 +142,81 @@ export function parseDuckDuckGoResults(html: string): WebSearchSource[] {
   return parsed.slice(0, 5);
 }
 
-async function fetchReadableExcerpt(url: string, signal?: AbortSignal): Promise<string | undefined> {
-  try {
-    const response = await fetch(`https://r.jina.ai/http://${url.replace(/^https?:\/\//, "")}`, {
+async function fetchReadableExcerpt(
+  url: string,
+  signal: AbortSignal | undefined,
+  timeoutMs: number
+): Promise<string | undefined> {
+  const response = await fetchWithTimeout(
+    `https://r.jina.ai/http://${url.replace(/^https?:\/\//, "")}`,
+    {
       headers: {
         "User-Agent": "Morpho/1.0 (+https://morpho.local)"
-      },
-      signal
-    });
-    if (!response.ok) {
-      return undefined;
-    }
-
-    const text = await response.text();
-    const excerpt = text
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .slice(0, 18)
-      .join(" ");
-    return excerpt ? excerpt.slice(0, 1200) : undefined;
-  } catch {
-    return undefined;
+      }
+    },
+    timeoutMs,
+    signal
+  );
+  if (!response.ok) {
+    throw new Error(`Source request failed with ${response.status}.`);
   }
+
+  const text = await response.text();
+  const excerpt = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 18)
+    .join(" ");
+  return excerpt ? excerpt.slice(0, 1200) : undefined;
+}
+
+class WebSearchTimeoutError extends Error {
+  constructor() {
+    super("Web search request timed out.");
+    this.name = "WebSearchTimeoutError";
+  }
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  parentSignal?: AbortSignal
+): Promise<Response> {
+  throwIfAborted(parentSignal);
+  const controller = new AbortController();
+  let timedOut = false;
+  const abortFromParent = () => controller.abort(parentSignal?.reason);
+  parentSignal?.addEventListener("abort", abortFromParent, { once: true });
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (parentSignal?.aborted) {
+      throw abortError(parentSignal.reason);
+    }
+    if (timedOut) {
+      throw new WebSearchTimeoutError();
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    parentSignal?.removeEventListener("abort", abortFromParent);
+  }
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw abortError(signal.reason);
+  }
+}
+
+function abortError(reason: unknown): Error {
+  return reason instanceof Error ? reason : new DOMException("The operation was aborted.", "AbortError");
 }
 
 function unwrapDuckDuckGoRedirect(value: string): string {

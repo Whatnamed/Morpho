@@ -423,8 +423,18 @@ export function applyConversationSummaryRevision(
 }
 
 export function getUsableConversationMessages(messages: readonly AiMessage[]): AiMessage[] {
+  const excludedTurnIds = new Set(
+    messages
+      .filter((message) =>
+        message.agentTurnId &&
+        (message.agentTurnOutcome === "cancelledBeforeExecution" ||
+          message.agentTurnOutcome === "failedBeforeExecution")
+      )
+      .map((message) => message.agentTurnId as string)
+  );
   return messages.filter(
     (message) =>
+      (!message.agentTurnId || !excludedTurnIds.has(message.agentTurnId)) &&
       message.contextVisibility !== "uiOnly" &&
       (message.role === "user" || message.role === "assistant") &&
       (message.role === "user"
@@ -432,7 +442,21 @@ export function getUsableConversationMessages(messages: readonly AiMessage[]): A
         : message.status === undefined || message.status === "done") &&
       !message.error &&
       message.body.trim().length > 0
-  );
+  ).map((message) => {
+    if (
+      message.role === "assistant" &&
+      (message.agentTurnOutcome === "partialSuccess" || message.agentTurnOutcome === "pendingConfirmation")
+    ) {
+      return {
+        ...message,
+        body: message.agentTurnOutcomeSummary?.trim() ||
+          (message.agentTurnOutcome === "partialSuccess"
+            ? "本轮仅部分完成；已执行结果保留，未完成部分需要后续确认。"
+            : "本轮停在待确认状态，尚未把待确认动作视为已完成。")
+      };
+    }
+    return message;
+  });
 }
 
 export function estimateConversationMessageTokens(
@@ -441,8 +465,7 @@ export function estimateConversationMessageTokens(
   return messages.reduce((total, message) => {
     if (message.role === "user" && message.providerInputSnapshot) {
       return total + providerInputSnapshotText(message.providerInputSnapshot)
-        .reduce((tokens, text) => tokens + estimateTextTokens(text) + 8, 0) +
-        message.providerInputSnapshot.attachmentRefs.length * 8_192;
+        .reduce((tokens, text) => tokens + estimateTextTokens(text) + 8, 0);
     }
     return total + estimateTextTokens(message.body) + 8;
   }, 0);

@@ -12,15 +12,72 @@ import {
   buildMorphoAgentToolArgumentRepairReminder,
   buildMorphoAgentSystemPrompt,
   buildMorphoAgentTools,
+  MORPHO_AGENT_TOOL_EFFECT_MATRIX,
   getDesignDefinitionDrafts,
   isExplicitComparisonRequest,
   normalizeGenerateVisualsForSelectedDirections,
   parseMorphoAgentToolCallBatch,
   parseMorphoAgentToolArguments,
+  resolveAgentToolExecutionPolicy,
   type AgentFunctionCall
 } from "./morphoAgent";
 
 describe("agent conversation context", () => {
+  it("defines an effect and registry boundary for every server-registered tool", () => {
+    const tools = buildMorphoAgentTools(true);
+    const functionTools = tools.filter((tool) => tool.type === "function");
+    const registeredNames = functionTools.map((tool) => tool.name).sort();
+    const effectNames = Object.keys(MORPHO_AGENT_TOOL_EFFECT_MATRIX).sort();
+
+    expect(registeredNames).toEqual(effectNames);
+    expect(functionTools.every((tool) => tool.description.includes("Tool effect:"))).toBe(true);
+    for (const effect of Object.values(MORPHO_AGENT_TOOL_EFFECT_MATRIX)) {
+      expect(Object.keys(effect).sort()).toEqual([
+        "externalCost",
+        "externalEvidence",
+        "highImpactStateChange",
+        "memoryWrite",
+        "pendingDraftWrite",
+        "readOnly",
+        "reversibleWorkspaceWrite"
+      ]);
+      expect(Object.values(effect).every((value) => typeof value === "boolean")).toBe(true);
+    }
+  });
+
+  it("derives auto, confirm, explicit-memory, paid, and high-impact policy from the effect matrix", () => {
+    expect(resolveAgentToolExecutionPolicy({
+      name: "read_project_memory",
+      mode: "confirm",
+      explicitUserCommand: false
+    })).toBe("execute");
+    expect(resolveAgentToolExecutionPolicy({
+      name: "generate_visuals",
+      mode: "auto",
+      explicitUserCommand: true
+    })).toBe("execute");
+    expect(resolveAgentToolExecutionPolicy({
+      name: "generate_visuals",
+      mode: "confirm",
+      explicitUserCommand: true
+    })).toBe("requireConfirmation");
+    expect(resolveAgentToolExecutionPolicy({
+      name: "submit_memory_update",
+      mode: "auto",
+      explicitUserCommand: false
+    })).toBe("requireExplicitUserCommand");
+    expect(resolveAgentToolExecutionPolicy({
+      name: "submit_memory_update",
+      mode: "auto",
+      explicitUserCommand: true
+    })).toBe("execute");
+    expect(resolveAgentToolExecutionPolicy({
+      name: "request_confirmation",
+      mode: "auto",
+      explicitUserCommand: false
+    })).toBe("confirmationOnly");
+  });
+
   it("places a source-bounded conversation summary behind real project state", () => {
     const prompt = buildAgentConversationPromptBlock({
       laneKey: "lane-1",
@@ -180,8 +237,8 @@ describe("Morpho agent tool argument validation", () => {
 
     expect(batch.map((entry) => entry.status)).toEqual(["valid", "invalid"]);
     expect(outputs).toEqual([
-      expect.objectContaining({ status: "not_executed", retryable: true }),
-      expect.objectContaining({ status: "invalid_arguments", retryable: true })
+      expect.objectContaining({ status: "skippedDueToEarlierGuard", outcome: "not_executed", retryable: true }),
+      expect.objectContaining({ status: "failed", outcome: "invalid_arguments", retryable: true })
     ]);
     expect(buildMorphoAgentToolArgumentRepairReminder(batch)).toContain("visualSignals");
     expect(buildMorphoAgentToolArgumentRepairReminder(batch)).toContain("重新调用本批仍需执行的全部工具");
@@ -300,7 +357,7 @@ describe("Morpho agent tool argument validation", () => {
     const tools = buildMorphoAgentTools(false, { allowComparisonAnalysis: false });
 
     expect(prompt).toContain("当用户多选草案或设计定义并要求分析但未明确要求比较时，读取完整选择内容后直接在对话中回答");
-    expect(JSON.stringify(tools)).toContain("create_comparison_analysis");
+    expect(JSON.stringify(tools)).not.toContain("create_comparison_analysis");
     expect(isExplicitComparisonRequest("分析这三个方案")).toBe(false);
     expect(isExplicitComparisonRequest("不要做对比卡片，只根据内容分析")).toBe(false);
     expect(isExplicitComparisonRequest("对比这三个方案")).toBe(true);

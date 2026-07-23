@@ -1,57 +1,63 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  resolveRequiredAgentMemoryUpdate,
-  shouldApplyAgentMemoryUpdate,
-  shouldPromptForMemoryUpdate
+  resolveRequiredAgentMemoryUpdates,
+  shouldPromptForMemoryUpdate,
+  validateAgentMemoryUpdateItems
 } from "./agentMemoryUpdateGuard";
 
 describe("Agent memory update guard", () => {
-  it("accepts only non-empty evidence quoted verbatim from the current user message", () => {
-    const candidate = resolveRequiredAgentMemoryUpdate("以后项目都保持低反光，并记住这个偏好。");
+  const draft = "以后统一低饱和，不要高反光，高度必须小于 1.2 米，跌倒求助方式还需确认";
 
-    expect(candidate).toMatchObject({ kind: "preference" });
-    expect(
-      shouldApplyAgentMemoryUpdate({
-        candidate,
-        draft: "以后项目都保持低反光，并记住这个偏好。",
-        items: [{ kind: "preference", evidenceQuote: "以后项目都保持低反光" }]
-      })
-    ).toBe(true);
-    expect(
-      shouldApplyAgentMemoryUpdate({
-        candidate,
-        draft: "以后项目都保持低反光，并记住这个偏好。",
-        items: [{ kind: "preference", evidenceQuote: "以后项目都使用高反光镜面" }]
-      })
-    ).toBe(false);
+  it("classifies all memory kinds independently in priority order", () => {
+    const candidates = resolveRequiredAgentMemoryUpdates(draft);
+
+    expect(candidates.map((candidate) => candidate.kind)).toEqual([
+      "preference",
+      "avoidance",
+      "constraint",
+      "openQuestion"
+    ]);
+    expect(candidates.map((candidate) => candidate.evidenceQuote)).toEqual([
+      "以后统一低饱和",
+      "不要高反光",
+      "高度必须小于 1.2 米",
+      "跌倒求助方式还需确认"
+    ]);
   });
 
-  it("keeps mismatched or empty submissions retryable", () => {
-    const candidate = resolveRequiredAgentMemoryUpdate("后续不要使用高反光镜面，整个项目都避免。");
+  it("accepts valid candidates while keeping an invalid quote retryable", () => {
+    const candidates = resolveRequiredAgentMemoryUpdates(draft);
+    const result = validateAgentMemoryUpdateItems({
+      candidates,
+      draft,
+      items: [
+        { kind: "preference", evidenceQuote: "以后统一低饱和" },
+        { kind: "avoidance", evidenceQuote: "不要高反光" },
+        { kind: "constraint", evidenceQuote: "高度必须小于 1.2 米" },
+        { kind: "openQuestion", evidenceQuote: "不存在的开放问题" }
+      ]
+    });
 
-    expect(candidate).toMatchObject({ kind: "avoidance" });
-    expect(
-      shouldApplyAgentMemoryUpdate({
-        candidate,
-        draft: "后续不要使用高反光镜面，整个项目都避免。",
-        items: [{ kind: "preference", evidenceQuote: "后续不要使用高反光镜面" }]
-      })
-    ).toBe(false);
-    expect(
-      shouldApplyAgentMemoryUpdate({
-        candidate,
-        draft: "后续不要使用高反光镜面，整个项目都避免。",
-        items: []
-      })
-    ).toBe(false);
-    expect(shouldPromptForMemoryUpdate({ candidate, reminderInserted: false, handled: false })).toBe(true);
+    expect(result.accepted).toHaveLength(3);
+    expect(result.handledCandidateIndexes).toEqual([0, 1, 2]);
+    expect(result.rejected).toEqual([
+      { itemIndex: 3, reason: "evidenceQuote 不是当前用户消息中的逐字原文。" }
+    ]);
+    expect(shouldPromptForMemoryUpdate({
+      candidates,
+      reminderInserted: false,
+      handledCandidateIndexes: new Set(result.handledCandidateIndexes)
+    })).toBe(true);
   });
 
   it("does not require a memory tool call for one-off wording", () => {
-    const candidate = resolveRequiredAgentMemoryUpdate("这次先把浮标外壳改成橙色，先试一下。");
-
-    expect(candidate).toBeUndefined();
-    expect(shouldPromptForMemoryUpdate({ candidate, reminderInserted: false, handled: false })).toBe(false);
+    const candidates = resolveRequiredAgentMemoryUpdates("这次先把浮标外壳改成橙色，先试一下。");
+    expect(candidates).toEqual([]);
+    expect(shouldPromptForMemoryUpdate({
+      candidates,
+      reminderInserted: false,
+      handledCandidateIndexes: new Set()
+    })).toBe(false);
   });
 });

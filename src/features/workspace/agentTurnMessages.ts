@@ -1,5 +1,6 @@
 import type {
   AgentTaskStrategyKind,
+  AgentTurnOutcome,
   AgentTrace,
   AiMessage,
   AiTaskMode,
@@ -23,6 +24,7 @@ type AppendAgentTurnMessagesInput = {
   agentTrace?: AgentTrace;
   contextVisibility?: AiMessage["contextVisibility"];
   providerInputSnapshot?: ProviderInputSnapshot;
+  agentTurnId: string;
 };
 
 export function appendAgentTurnMessages(
@@ -47,6 +49,8 @@ export function appendAgentTurnMessages(
           conversationLaneKey: input.conversationLaneKey,
           promptContractVersion: input.promptContractVersion,
           taskStrategy: input.taskStrategy,
+          agentTurnId: input.agentTurnId,
+          pairedMessageId: input.assistantMessageId,
           ...(input.providerInputSnapshot ? { providerInputSnapshot: input.providerInputSnapshot } : {})
         },
         {
@@ -62,9 +66,42 @@ export function appendAgentTurnMessages(
           conversationLaneKey: input.conversationLaneKey,
           promptContractVersion: input.promptContractVersion,
           taskStrategy: input.taskStrategy,
+          agentTurnId: input.agentTurnId,
+          pairedMessageId: input.userMessageId,
           ...(input.agentTrace ? { agentTrace: input.agentTrace } : {})
         }
       ]
+    }
+  };
+}
+
+export function finalizeAgentTurnOutcome(
+  workspace: MorphoWorkspace,
+  input: {
+    agentTurnId: string;
+    userMessageId: string;
+    assistantMessageId: string;
+    outcome: AgentTurnOutcome;
+    summary?: string;
+  }
+): MorphoWorkspace {
+  return {
+    ...workspace,
+    ai: {
+      ...workspace.ai,
+      messages: workspace.ai.messages.map((message) =>
+        message.id === input.userMessageId || message.id === input.assistantMessageId
+          ? {
+              ...message,
+              agentTurnId: input.agentTurnId,
+              pairedMessageId: message.id === input.userMessageId
+                ? input.assistantMessageId
+                : input.userMessageId,
+              agentTurnOutcome: input.outcome,
+              ...(input.summary ? { agentTurnOutcomeSummary: input.summary } : {})
+            }
+          : message
+      )
     }
   };
 }

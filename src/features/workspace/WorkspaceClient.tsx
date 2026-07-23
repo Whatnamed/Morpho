@@ -284,7 +284,6 @@ import {
 import {
   buildAgentCheckpointCompactionInput,
   buildMorphoAgentToolArgumentRepairOutputs,
-  buildMorphoAgentToolArgumentRepairReminder,
   buildMorphoAgentStableSystemPrompt,
   buildMorphoAgentTools,
   buildMorphoAgentUserInput,
@@ -293,6 +292,7 @@ import {
   isExplicitComparisonRequest,
   normalizeGenerateVisualsForSelectedDirections,
   parseMorphoAgentToolCallBatch,
+  resolveAgentToolExecutionPolicy,
   type AgentRouteResult,
   type CreateComparisonAnalysisArgs,
   type CreateConceptDirectionProposalArgs,
@@ -306,20 +306,28 @@ import {
   type SearchWebEvidenceArgs
 } from "./morphoAgent";
 import {
-  buildRequiredAgentReadReminder,
-  getMissingRequiredAgentReadTools,
+  advanceRequiredAgentReadState,
+  buildRequiredAgentReadFailureNotice,
+  completeRequiredAgentRead,
+  createRequiredAgentReadState,
+  failRequiredAgentRead,
   resolveAgentTaskStrategy,
   resolveRequiredAgentReadTools,
   type RequiredAgentReadToolName
 } from "./agentTaskStrategy";
 import {
-  buildRequiredAgentMemoryUpdateReminder,
-  resolveRequiredAgentMemoryUpdate,
-  shouldApplyAgentMemoryUpdate,
-  shouldPromptForMemoryUpdate
+  resolveRequiredAgentMemoryUpdates,
+  shouldPromptForMemoryUpdate,
+  validateAgentMemoryUpdateItems
 } from "./agentMemoryUpdateGuard";
+import type { AgentServerDirective } from "@/shared/agentStreamProtocol";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
-import { estimateProviderInputTimelineBudget } from "@/shared/providerInputBudget";
+import {
+  advanceAgentContextBudgetGeneration,
+  createAgentContextBudgetState,
+  estimateProviderInputTimelineBudget,
+  updateAgentContextBudgetBaseline
+} from "@/shared/providerInputBudget";
 import {
   appendAgentProviderContextFrames,
   appendAgentProviderRuntimeConfigurationFrame,
@@ -331,7 +339,7 @@ import {
   type ProviderContextFrameBuildInput,
   type ProviderRequestBoundaryState
 } from "./providerContextFrames";
-import { appendAgentTurnMessages } from "./agentTurnMessages";
+import { appendAgentTurnMessages, finalizeAgentTurnOutcome } from "./agentTurnMessages";
 import {
   applyAgentStreamEventsToTrace,
   completeAgentTrace,
@@ -351,12 +359,13 @@ import { commitWorkspaceStateNow } from "./workspaceCommitBoundary";
 import {
   AGENT_WEB_SEARCH_MAX_SOURCES_PER_CALL,
   buildAgentEmergencyFinalizationRequest,
+  completeUnresolvedAgentFunctionCalls,
   isRepeatedAgentToolCall,
-  isAgentMutatingTool,
   mergeAgentSearchCitations,
   shouldFinalizeAgentTurn,
   webSearchSourcesToCitations
 } from "./agentTurnLimits";
+import type { AgentCanonicalRuntimeItem } from "@/shared/agentRuntimeItem";
 import type { CanvasImportRequest, FocusArea } from "./tldraw/MorphoCanvas";
 import type { CanvasSelectionRequest } from "./tldraw/canvasSelection";
 
@@ -1664,6 +1673,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       const now = new Date().toISOString();
       const userMessageId = `ai-user-compact-${Date.now()}`;
       const assistantMessageId = `ai-assistant-compact-${Date.now()}`;
+      const manualCompactionTurnId = `manual-compact-${Date.now()}`;
       const controller = new AbortController();
 
       setAiDraft("");
@@ -1683,7 +1693,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           contextVisibility: "uiOnly",
           taskMode: "chatAnalysis",
           promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
-          taskStrategy: "discussion"
+          taskStrategy: "discussion",
+          agentTurnId: manualCompactionTurnId
         });
         return { workspace: next, value: undefined };
       });
@@ -1939,6 +1950,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
         taskStrategy: strategy.kind,
         providerInputSnapshot,
+        agentTurnId,
         agentTrace: initialAgentTrace
       });
       return { workspace: next, value: next };
@@ -2105,7 +2117,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       history: baseHistory,
       currentUserMessageId: userMessageId,
       userInput,
-      activeSummaryRevisionId: conversationContext.summaryRevision?.id
+      activeSummaryRevisionId: conversationContext.summaryRevision?.id,
+      serverManagedPrefix: false
     });
     const initialProviderBudget = estimateProviderInputTimelineBudget({
       input: conversationInput,
@@ -2128,14 +2141,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const requiredReadTools = resolveRequiredAgentReadTools(draft, {
       hasSelectedObject: selectedObjects.length > 0
     });
-    const completedReadTools = new Set<RequiredAgentReadToolName>();
-    const requiredMemoryUpdate = resolveRequiredAgentMemoryUpdate(draft);
+    let requiredReadState = createRequiredAgentReadState(requiredReadTools);
+    const requiredMemoryUpdates = resolveRequiredAgentMemoryUpdates(draft);
     let memoryUpdateReminderInserted = false;
-    let memoryUpdateHandled = !requiredMemoryUpdate;
+    const handledMemoryCandidateIndexes = new Set<number>();
     const memoryUpdateEntryIds = new Set<string>();
     const memoryUpdateKeys = new Set<ProjectMemoryKey>();
     const stageRecordUpdateKeys = new Set<StageRecordKey>();
-    let contextBudgetBaselineTokens = initialProviderBudget.totalInputTokens;
+    let contextBudgetState = createAgentContextBudgetState(initialProviderBudget.totalInputTokens);
     const contextRuntime: {
       highestPressure: "normal" | "prepare" | "compact";
     } = {
@@ -2147,15 +2160,35 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     let repeatedToolCallCount = 0;
     let latestProviderResponseId: string | undefined;
     let latestProviderRequestState = getLatestProviderRequestState(workspaceAtAgentStart);
+    let canonicalRuntimeItem = latestProviderRequestState?.runtimeItem;
+    let agentTurnLeaseId: string | undefined;
     const agentTurnStartedAt = Date.now();
     let emergencyGuardTriggered = false;
     let continuationCompactionAttempted = false;
     let requestSequence = 0;
     const streamedFinalTextByAttempt = new Map<string, string>();
+    let pendingServerDirective: AgentServerDirective | undefined;
+    let hasAgentToolResult = false;
+    let hadAgentToolFailure = false;
+    let pendingConfirmationCreated = false;
+
+    async function closeAgentTurnLease(
+      outcome: "success" | "cancelledBeforeExecution" | "failedBeforeExecution" | "partialSuccess" | "pendingConfirmation"
+    ): Promise<void> {
+      if (!agentTurnLeaseId) {
+        return;
+      }
+      const leaseId = agentTurnLeaseId;
+      agentTurnLeaseId = undefined;
+      await fetch("/api/ai/agent/lease", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leaseId, agentTurnId, outcome })
+      }).catch(() => undefined);
+    }
 
     async function requestAgentTurn(
       input: Array<unknown>,
-      tools: ReturnType<typeof buildMorphoAgentTools>,
       continuation = false
     ): Promise<AgentRouteResult> {
       const currentRequestState: ProviderRequestBoundaryState = {
@@ -2164,6 +2197,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           ? { summaryRevisionId: conversationContext.summaryRevision.id }
           : {}),
         latestUserMessageId: userMessageId,
+        budgetGeneration: contextBudgetState.generation,
         ...(!continuation && providerInputSnapshot.cacheBoundaryReason
           ? { attachmentBoundary: providerInputSnapshot.cacheBoundaryReason }
           : {})
@@ -2186,11 +2220,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           input,
-          tools,
           projectId: workspaceAtAgentStart.project.id,
           agentTurnId,
           continuation,
-          contextBudgetBaselineTokens,
+          ...(continuation && agentTurnLeaseId ? { leaseId: agentTurnLeaseId } : {}),
+          promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+          mode: agentTurnMode,
+          capabilityIntent: { comparisonAnalysis: allowStructuredComparison },
+          ...(canonicalRuntimeItem ? { previousRuntimeItem: canonicalRuntimeItem } : {}),
+          ...(pendingServerDirective ? { directive: pendingServerDirective } : {}),
+          contextBudgetState,
           diagnostics: {
             promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
             contextFrameCount: workspaceAtAgentStart.ai.providerContextFrames?.length ?? 0,
@@ -2208,6 +2247,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }),
         signal: controller.signal
       });
+      pendingServerDirective = undefined;
       const attemptGuard = createAgentAttemptGuard();
       const requestStreamKey = `legacy-${requestSequence++}`;
       let activeAttemptInputTokens = 0;
@@ -2248,8 +2288,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               return;
             }
             if (event.type === "turn-start") {
+              if (event.leaseId) {
+                agentTurnLeaseId = event.leaseId;
+              }
               const serverToolProfile = event.effectiveToolProfile;
-              if (serverToolProfile) {
+              if (serverToolProfile && event.runtimeItem) {
+                canonicalRuntimeItem = event.runtimeItem;
                 workspaceAtAgentStart = commitWorkspaceNow((current) => {
                   const next = conversationContext.summaryRevision
                     ? ensureAgentConversationSummaryBaselines(current, {
@@ -2257,29 +2301,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                         promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
                         summaryRevision: conversationContext.summaryRevision,
                         mode: agentTurnMode,
-                        toolProfile: serverToolProfile
+                        toolProfile: serverToolProfile,
+                        runtimeItem: event.runtimeItem
                       })
                     : appendAgentProviderRuntimeConfigurationFrame(current, {
                         projectId: current.project.id,
                         promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
                         mode: agentTurnMode,
                         toolProfile: serverToolProfile,
+                        runtimeItem: event.runtimeItem,
                         userMessageId,
                         framePlacement: "beforeUser"
                       });
                   return { workspace: next, value: next };
                 });
-                conversationInput = [
-                  ...buildAgentProviderInput({
-                    stableSystemPrompt,
-                    frames: workspaceAtAgentStart.ai.providerContextFrames ?? [],
-                    history: conversationContext.messages,
-                    currentUserMessageId: userMessageId,
-                    userInput,
-                    activeSummaryRevisionId: conversationContext.summaryRevision?.id
-                  }),
-                  ...turnContinuationItems
-                ];
               }
               return;
             }
@@ -2332,10 +2367,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           agentStreamFlushRef.current = null;
         }
       }
-      contextBudgetBaselineTokens = Math.max(
-        contextBudgetBaselineTokens,
-        activeAttemptInputTokens,
-        completeResult.usage?.inputTokens ?? 0
+      contextBudgetState = updateAgentContextBudgetBaseline(
+        contextBudgetState,
+        Math.max(activeAttemptInputTokens, completeResult.usage?.inputTokens ?? 0)
       );
       const serverRequestState = toProviderRequestBoundaryState(completeResult.providerDiagnostics?.requestState);
       if (serverRequestState) {
@@ -2453,7 +2487,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           summary: parsedSummary.summary,
           sourceMessageIds: plan.sourceMessages.map((message) => message.id),
           expectedPreviousRevisionId: plan.previousSummaryRevision?.id,
-          estimatedInputTokens: Math.max(plan.estimatedInputTokens, contextBudgetBaselineTokens),
+          estimatedInputTokens: plan.estimatedInputTokens,
           now: new Date().toISOString()
         });
         if (applied.status !== "applied") {
@@ -2509,7 +2543,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           history: refreshedHistory,
           currentUserMessageId: userMessageId,
           userInput,
-          activeSummaryRevisionId: conversationContext.summaryRevision?.id
+          activeSummaryRevisionId: conversationContext.summaryRevision?.id,
+          serverManagedPrefix: false
         }),
         ...turnContinuationItems
       ];
@@ -2518,6 +2553,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         tools: initialTools,
         responseReserveTokens: outputTokenReserve
       });
+      contextBudgetState = advanceAgentContextBudgetGeneration(
+        contextBudgetState,
+        refreshedBudget.totalInputTokens
+      );
       conversationContext = {
         ...conversationContext,
         estimatedInputTokens: refreshedBudget.totalInputTokens,
@@ -2562,11 +2601,21 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             return { workspace: next, value: undefined };
           });
           const finalizationRequest = buildAgentEmergencyFinalizationRequest(conversationInput);
+          pendingServerDirective = { kind: "finalize" };
           const finalization = await requestAgentTurn(
-            finalizationRequest.input,
-            finalizationRequest.tools,
+            conversationInput,
             finalizationRequest.continuation
           );
+          if (finalization.functionCalls.length > 0) {
+            const blockedFinalizationCalls = finalization.functionCalls.map((call) =>
+              buildToolResultOutput(call.callId, {
+                status: "blocked",
+                reason: "本轮已进入最终整理，不再执行新的工具调用。"
+              })
+            );
+            conversationInput = [...conversationInput, ...finalization.outputItems, ...blockedFinalizationCalls];
+            turnContinuationItems.push(...finalization.outputItems, ...blockedFinalizationCalls);
+          }
           finalText = finalization.outputText.trim() || finalText || "已停止继续执行，并保留已完成结果。";
           commitWorkspaceNow((current) => {
             const message = current.ai.messages.find((candidate) => candidate.id === assistantMessageId);
@@ -2585,17 +2634,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           });
           break;
         }
-        const tools = buildMorphoAgentTools(true, { allowComparisonAnalysis: allowStructuredComparison });
         let result: AgentRouteResult;
         try {
-          result = await requestAgentTurn(conversationInput, tools, modelTurnCount > 0);
+          result = await requestAgentTurn(conversationInput, modelTurnCount > 0);
         } catch (error) {
           if (
             error instanceof AgentTurnStreamError &&
             error.code === "context_limit" &&
             await compactConversationBeforeContinuation()
           ) {
-            result = await requestAgentTurn(conversationInput, tools, modelTurnCount > 0);
+            result = await requestAgentTurn(conversationInput, modelTurnCount > 0);
           } else {
             throw error;
           }
@@ -2608,68 +2656,65 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         turnContinuationItems.push(...result.outputItems);
 
         if (result.functionCalls.length === 0) {
-          const missingReadTools = getMissingRequiredAgentReadTools(requiredReadTools, completedReadTools);
-          if (missingReadTools.length > 0) {
-            const reminder = {
-              role: "system",
-              content: [
-                {
-                  type: "input_text",
-                  text: buildRequiredAgentReadReminder(missingReadTools)
-                }
-              ]
-            };
-            conversationInput = [...conversationInput, reminder];
-            turnContinuationItems.push(reminder);
+          const readTransition = advanceRequiredAgentReadState(requiredReadState);
+          requiredReadState = readTransition.state;
+          if (readTransition.action === "remind") {
+            pendingServerDirective = { kind: "requiredRead", tools: readTransition.missingTools };
             continue;
           }
+          if (readTransition.action === "exhausted") {
+            hadAgentToolFailure = true;
+            finalText = [
+              result.outputText.trim(),
+              buildRequiredAgentReadFailureNotice(requiredReadState)
+            ].filter(Boolean).join("\n\n");
+            break;
+          }
           if (
-            requiredMemoryUpdate &&
             shouldPromptForMemoryUpdate({
-              candidate: requiredMemoryUpdate,
+              candidates: requiredMemoryUpdates,
               reminderInserted: memoryUpdateReminderInserted,
-              handled: memoryUpdateHandled
+              handledCandidateIndexes: handledMemoryCandidateIndexes
             })
           ) {
-            const reminder = {
-              role: "system",
-              content: [
-                {
-                  type: "input_text",
-                  text: buildRequiredAgentMemoryUpdateReminder(requiredMemoryUpdate)
-                }
-              ]
-            };
             memoryUpdateReminderInserted = true;
-            conversationInput = [...conversationInput, reminder];
-            turnContinuationItems.push(reminder);
+            pendingServerDirective = {
+              kind: "memoryUpdate",
+              memoryKinds: requiredMemoryUpdates
+                .filter((_candidate, index) => !handledMemoryCandidateIndexes.has(index))
+                .map((candidate) => candidate.kind)
+            };
             continue;
           }
           finalText = result.outputText.trim() || "本次 Agent 未返回可显示文本。";
           break;
         }
 
-        const toolOutputs = [];
+        let toolOutputs: ReturnType<typeof buildToolResultOutput>[] = [];
         let pendingAgentActionCreated = false;
         const parsedCallBatch = parseMorphoAgentToolCallBatch(result.functionCalls);
         const invalidCalls = parsedCallBatch.filter((entry) => entry.status === "invalid");
         if (invalidCalls.length > 0) {
+          hadAgentToolFailure = true;
           toolArgumentRepairCount += 1;
           if (toolArgumentRepairCount > MAX_AGENT_TOOL_ARGUMENT_REPAIR_ATTEMPTS) {
             throw new Error("Agent 连续返回不符合工具 schema 的参数，已停止本轮以避免重复执行。");
           }
           const repairOutputs = buildMorphoAgentToolArgumentRepairOutputs(parsedCallBatch);
-          const repairReminder = {
-            role: "system",
-            content: [
-              {
-                type: "input_text",
-                text: buildMorphoAgentToolArgumentRepairReminder(parsedCallBatch)
-              }
-            ]
+          conversationInput = [...conversationInput, ...repairOutputs];
+          turnContinuationItems.push(...repairOutputs);
+          pendingServerDirective = {
+            kind: "toolArgumentRepair",
+            callIds: invalidCalls.map((entry) => entry.call.callId)
           };
-          conversationInput = [...conversationInput, ...repairOutputs, repairReminder];
-          turnContinuationItems.push(...repairOutputs, repairReminder);
+          for (const entry of invalidCalls) {
+            if (requiredReadTools.includes(entry.call.name as RequiredAgentReadToolName)) {
+              requiredReadState = failRequiredAgentRead(
+                requiredReadState,
+                entry.call.name as RequiredAgentReadToolName
+              ).state;
+            }
+          }
           const repairActivityId = `${agentTurnId}:tool-argument-repair:${toolArgumentRepairCount}`;
           commitWorkspaceNow((current) => {
             const message = current.ai.messages.find((candidate) => candidate.id === assistantMessageId);
@@ -2766,11 +2811,23 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           | undefined;
 
         for (const { call, parsed } of parsedCalls) {
+          if (controller.signal.aborted) {
+            toolOutputs = completeUnresolvedAgentFunctionCalls({
+              calls: parsedCalls.map((entry) => entry.call),
+              outputs: toolOutputs,
+              status: "cancelled",
+              reason: "用户取消了当前 Agent 回合。"
+            });
+            conversationInput = [...conversationInput, ...toolOutputs];
+            turnContinuationItems.push(...toolOutputs);
+            throw new DOMException("当前 Agent 回合已取消。", "AbortError");
+          }
           assertAgentTurnActive(controller.signal);
           const repetition = isRepeatedAgentToolCall(previousToolSignature, repeatedToolCallCount, parsed);
           previousToolSignature = repetition.signature;
           repeatedToolCallCount = repetition.repeatCount;
           if (repetition.exceeded) {
+            hadAgentToolFailure = true;
             toolOutputs.push(
               buildToolResultOutput(call.callId, {
                 status: "blocked",
@@ -2805,6 +2862,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             return { workspace: next, value: undefined };
           });
           if (parsed.name === "generate_visuals" && visualBatch?.status === "blocked") {
+            hadAgentToolFailure = true;
             toolOutputs.push(
               buildToolResultOutput(call.callId, {
                 status: "blocked",
@@ -2817,7 +2875,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             });
             continue;
           }
-          if (agentTurnMode === "confirm" && isAgentMutatingTool(parsed.name)) {
+          const executionPolicy = resolveAgentToolExecutionPolicy({
+            name: parsed.name,
+            mode: agentTurnMode,
+            explicitUserCommand: parsed.name !== "submit_memory_update" || requiredMemoryUpdates.length > 0
+          });
+          if (executionPolicy === "requireConfirmation") {
             const confirmationPlan =
               parsed.name === "generate_visuals" && visualBatch?.status === "ok" ? visualBatch.plan : undefined;
             setPendingConfirmation(
@@ -2848,6 +2911,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             );
             finalText = result.outputText.trim() || "已准备确认卡。确认前不会改变项目状态。";
             pendingAgentActionCreated = true;
+            pendingConfirmationCreated = true;
             commitWorkspaceNow((current) => {
               const next = finishAgentToolActivityInWorkspace(current, assistantMessageId, call.callId, "done");
               return { workspace: next, value: undefined };
@@ -2889,7 +2953,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                   })
                 })
               );
-              completedReadTools.add("read_project_memory");
+              requiredReadState = completeRequiredAgentRead(requiredReadState, "read_project_memory");
               break;
             }
             case "read_stage_record": {
@@ -2913,7 +2977,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                   }))
                 })
               );
-              completedReadTools.add("read_stage_record");
+              requiredReadState = completeRequiredAgentRead(requiredReadState, "read_stage_record");
               break;
             }
             case "search_project_conversation": {
@@ -2923,7 +2987,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                   searchProjectConversation(readWorkspaceNow(), parsed.args)
                 )
               );
-              completedReadTools.add("search_project_conversation");
+              requiredReadState = completeRequiredAgentRead(requiredReadState, "search_project_conversation");
               break;
             }
             case "revise_selected_proposal_draft": {
@@ -2960,14 +3024,19 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                   queries: args.queries,
                   maxSources: AGENT_WEB_SEARCH_MAX_SOURCES_PER_CALL,
                   agentTurnId,
-                  agentContinuation: true
+                  agentContinuation: true,
+                  leaseId: agentTurnLeaseId
                 }),
                 signal: controller.signal
               });
               if (!webSearchResponse.ok) {
                 throw new Error(await readErrorResponse(webSearchResponse));
               }
-              const webSearchResult = (await webSearchResponse.json()) as { sources: WebSearchSource[] };
+              const webSearchResult = (await webSearchResponse.json()) as {
+                sources: WebSearchSource[];
+                failedSourceCount?: number;
+                timedOutSourceCount?: number;
+              };
               const sourceCitations = webSearchSourcesToCitations(webSearchResult.sources);
               collectedCitations = mergeAgentSearchCitations(collectedCitations, sourceCitations);
               hasWebSearchEvidence = true;
@@ -2975,7 +3044,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 buildToolResultOutput(call.callId, {
                   reason: args.reason,
                   sources: webSearchResult.sources,
-                  citations: sourceCitations
+                  citations: sourceCitations,
+                  failedSourceCount: webSearchResult.failedSourceCount ?? 0,
+                  timedOutSourceCount: webSearchResult.timedOutSourceCount ?? 0
                 })
               );
               break;
@@ -3277,36 +3348,34 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                   note: "草稿尚未应用到交付章节。"
                 })
               );
+              pendingConfirmationCreated = true;
               break;
             }
             case "submit_memory_update": {
-              const memoryUpdateAuthorized = Boolean(
-                requiredMemoryUpdate &&
-                  (parsed.args.items.length === 0
-                    ? Boolean(parsed.args.skippedReason?.trim())
-                    : shouldApplyAgentMemoryUpdate({
-                      candidate: requiredMemoryUpdate,
-                      draft,
-                      items: parsed.args.items
-                    }))
-              );
-              if (!memoryUpdateAuthorized) {
-                if (requiredMemoryUpdate) {
+              const validation = validateAgentMemoryUpdateItems({
+                candidates: requiredMemoryUpdates,
+                draft,
+                items: parsed.args.items
+              });
+              const legalBatchSkip = parsed.args.items.length === 0 && Boolean(parsed.args.skippedReason?.trim());
+              if (requiredMemoryUpdates.length === 0 || (!legalBatchSkip && validation.accepted.length === 0)) {
+                if (requiredMemoryUpdates.length > 0) {
                   memoryUpdateReminderInserted = false;
                 }
                 toolOutputs.push(
                   buildToolResultOutput(call.callId, {
-                    status: requiredMemoryUpdate ? "retryable" : "skipped",
-                    retryable: Boolean(requiredMemoryUpdate),
-                    skippedReason: requiredMemoryUpdate
+                    status: requiredMemoryUpdates.length > 0 ? "retryable" : "skipped",
+                    retryable: requiredMemoryUpdates.length > 0,
+                    rejected: validation.rejected,
+                    skippedReason: requiredMemoryUpdates.length > 0
                       ? "记忆证据必须逐字来自当前用户消息；请修正 evidenceQuote，或传 items:[] 并填写 skippedReason。"
                       : "当前消息仅是一次性要求，不能写入项目记忆。"
                   })
                 );
                 break;
               }
-              if (parsed.args.items.length === 0) {
-                memoryUpdateHandled = true;
+              if (legalBatchSkip) {
+                requiredMemoryUpdates.forEach((_candidate, index) => handledMemoryCandidateIndexes.add(index));
                 toolOutputs.push(
                   buildToolResultOutput(call.callId, {
                     status: "skipped",
@@ -3315,6 +3384,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 );
                 break;
               }
+              const acceptedItems = validation.accepted.map(({ itemIndex, candidateIndex }) => {
+                handledMemoryCandidateIndexes.add(candidateIndex);
+                return parsed.args.items[itemIndex]!;
+              });
               const memoryUpdate = commitWorkspaceNow((current) => {
                 const authorization = buildSemanticPatchAuthorization(
                   buildSemanticPatchAuthorizationInput({
@@ -3329,7 +3402,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 const applied = applyConversationSemanticPatch(
                   current,
                   authorization,
-                  parsed.args.items.map((item) => ({
+                  acceptedItems.map((item) => ({
                     ...item,
                     relatedDecisionIds: []
                   }))
@@ -3343,21 +3416,25 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               });
               const memoryUpdateWasApplied = memoryUpdate.entries.length > 0;
               const memoryUpdateWasEquivalent = memoryUpdate.entries.length === 0 && memoryUpdate.rejected.length === 0;
-              if (memoryUpdateWasApplied || memoryUpdateWasEquivalent) {
-                memoryUpdateHandled = true;
-              } else {
+              for (const accepted of validation.accepted) {
+                const item = parsed.args.items[accepted.itemIndex];
+                if (item && memoryUpdate.rejected.some((rejected) => rejected.evidenceQuote === item.evidenceQuote)) {
+                  handledMemoryCandidateIndexes.delete(accepted.candidateIndex);
+                }
+              }
+              if ((!memoryUpdateWasApplied && !memoryUpdateWasEquivalent) || validation.rejected.length > 0) {
                 memoryUpdateReminderInserted = false;
               }
               toolOutputs.push(
                 buildToolResultOutput(call.callId, {
                   status: memoryUpdateWasApplied
-                    ? "recorded"
+                    ? validation.rejected.length > 0 ? "partial" : "recorded"
                     : memoryUpdateWasEquivalent
                       ? "skipped"
                       : "retryable",
-                  retryable: !memoryUpdateWasApplied && !memoryUpdateWasEquivalent,
+                  retryable: validation.rejected.length > 0 || (!memoryUpdateWasApplied && !memoryUpdateWasEquivalent),
                   entryIds: memoryUpdate.entries.map((entry) => entry.id),
-                  rejected: memoryUpdate.rejected
+                  rejected: [...validation.rejected, ...memoryUpdate.rejected]
                 })
               );
               break;
@@ -3394,13 +3471,28 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               );
               finalText = result.outputText.trim() || "已准备确认卡。确认前不会改变项目状态。";
               pendingAgentActionCreated = true;
+              pendingConfirmationCreated = true;
               break;
             }
               default:
                 parsed satisfies never;
             }
           } catch (error) {
+            hadAgentToolFailure = true;
             const reason = error instanceof Error ? normalizeAgentTurnErrorMessage(error.message) : "该操作未能完成。";
+            if (requiredReadTools.includes(parsed.name as RequiredAgentReadToolName)) {
+              const readFailure = failRequiredAgentRead(
+                requiredReadState,
+                parsed.name as RequiredAgentReadToolName
+              );
+              requiredReadState = readFailure.state;
+              if (readFailure.retry) {
+                pendingServerDirective = {
+                  kind: "requiredRead",
+                  tools: [parsed.name as RequiredAgentReadToolName]
+                };
+              }
+            }
             toolOutputs.push(
               buildToolResultOutput(call.callId, {
                 status: "failed",
@@ -3419,9 +3511,21 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             });
             continue;
           }
+          hasAgentToolResult = true;
           commitWorkspaceNow((current) => {
             const next = finishAgentToolActivityInWorkspace(current, assistantMessageId, call.callId, "done");
             return { workspace: next, value: undefined };
+          });
+        }
+
+        if (emergencyGuardTriggered || pendingAgentActionCreated) {
+          toolOutputs = completeUnresolvedAgentFunctionCalls({
+            calls: parsedCalls.map((entry) => entry.call),
+            outputs: toolOutputs,
+            status: "skippedDueToEarlierGuard",
+            reason: emergencyGuardTriggered
+              ? "前序调用触发重复或安全边界，后续调用未执行。"
+              : "前序调用进入待确认状态，后续调用未执行。"
           });
         }
 
@@ -3437,6 +3541,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }
 
         if (pendingAgentActionCreated) {
+          conversationInput = [...conversationInput, ...toolOutputs];
+          turnContinuationItems.push(...toolOutputs);
           break;
         }
 
@@ -3447,6 +3553,18 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           await compactConversationBeforeContinuation();
         }
       }
+      const turnOutcome = pendingConfirmationCreated
+        ? "pendingConfirmation" as const
+        : hadAgentToolFailure
+          ? hasAgentToolResult ? "partialSuccess" as const : "failedBeforeExecution" as const
+          : "success" as const;
+      const turnOutcomeSummary = turnOutcome === "partialSuccess"
+        ? "本轮已保留成功取得的工具结果；至少一个步骤失败或被阻断，未完成部分需要后续重试。"
+        : turnOutcome === "pendingConfirmation"
+          ? "本轮已停在待确认状态；确认前不把相关动作视为已完成。"
+          : turnOutcome === "failedBeforeExecution"
+            ? "本轮所需执行未成功完成，未把用户请求作为有效完成上下文。"
+            : undefined;
       commitWorkspaceNow((current) => {
         const replyText = finalText || "已完成当前执行。";
         const currentMessage = current.ai.messages.find((message) => message.id === assistantMessageId);
@@ -3481,8 +3599,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             citations: collectedCitations
           });
         }
+        nextWorkspace = finalizeAgentTurnOutcome(nextWorkspace, {
+          agentTurnId,
+          userMessageId,
+          assistantMessageId,
+          outcome: turnOutcome,
+          ...(turnOutcomeSummary ? { summary: turnOutcomeSummary } : {})
+        });
         return { workspace: nextWorkspace, value: undefined };
       });
+      await closeAgentTurnLease(turnOutcome);
     } catch (error) {
       const isCancelled = error instanceof DOMException && error.name === "AbortError";
       const message = isCancelled
@@ -3493,6 +3619,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       if (abortControllerRef.current === controller || abortControllerRef.current === null) {
         setAiDraft(draft);
       }
+      const turnOutcome = hasAgentToolResult
+        ? "partialSuccess" as const
+        : isCancelled
+          ? "cancelledBeforeExecution" as const
+          : "failedBeforeExecution" as const;
+      const turnOutcomeSummary = turnOutcome === "partialSuccess"
+        ? "本轮在中断前已保留部分工具结果；其余步骤未完成。"
+        : message;
       commitWorkspaceNow((current) => {
         const assistantMessage = current.ai.messages.find((candidate) => candidate.id === assistantMessageId);
         const trace = assistantMessage?.agentTrace
@@ -3502,11 +3636,25 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               new Date().toISOString()
             )
           : undefined;
-        const next = updateAiMessage(current, assistantMessageId, message, isCancelled ? "cancelled" : "failed", {
+        let next = updateAiMessage(
+          current,
+          assistantMessageId,
+          turnOutcome === "partialSuccess" ? turnOutcomeSummary : message,
+          turnOutcome === "partialSuccess" ? "done" : isCancelled ? "cancelled" : "failed",
+          {
           ...(trace ? { agentTrace: trace } : {})
+          }
+        );
+        next = finalizeAgentTurnOutcome(next, {
+          agentTurnId,
+          userMessageId,
+          assistantMessageId,
+          outcome: turnOutcome,
+          summary: turnOutcomeSummary
         });
         return { workspace: next, value: undefined };
       });
+      await closeAgentTurnLease(turnOutcome);
       setShowFailure(true);
     } finally {
       if (abortControllerRef.current === controller) {
@@ -6773,6 +6921,10 @@ function toProviderRequestBoundaryState(value: {
   latestUserMessageId?: string;
   providerInputPrefixHash?: string;
   attachmentBoundary?: string;
+  runtimeItem?: AgentCanonicalRuntimeItem;
+  cacheItemManifest?: ProviderRequestBoundaryState["cacheItemManifest"];
+  toolsHash?: string;
+  budgetGeneration?: number;
 } | undefined): ProviderRequestBoundaryState | undefined {
   if (!value?.promptContractVersion) {
     return undefined;
@@ -6789,7 +6941,11 @@ function toProviderRequestBoundaryState(value: {
     ...(value.summaryRevisionId ? { summaryRevisionId: value.summaryRevisionId } : {}),
     ...(value.latestUserMessageId ? { latestUserMessageId: value.latestUserMessageId } : {}),
     ...(value.providerInputPrefixHash ? { providerInputPrefixHash: value.providerInputPrefixHash } : {}),
-    ...(attachmentBoundary ? { attachmentBoundary } : {})
+    ...(attachmentBoundary ? { attachmentBoundary } : {}),
+    ...(value.runtimeItem ? { runtimeItem: value.runtimeItem } : {}),
+    ...(value.cacheItemManifest ? { cacheItemManifest: value.cacheItemManifest } : {}),
+    ...(value.toolsHash ? { toolsHash: value.toolsHash } : {}),
+    ...(value.budgetGeneration !== undefined ? { budgetGeneration: value.budgetGeneration } : {})
   };
 }
 

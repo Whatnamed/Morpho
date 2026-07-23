@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  advanceAgentContextBudgetGeneration,
+  createAgentContextBudgetState,
   estimateProviderInputTimelineBudget,
-  estimateProviderInputTokens
+  estimateProviderInputTokens,
+  updateAgentContextBudgetBaseline
 } from "./providerInputBudget";
 
 describe("provider input timeline budget", () => {
@@ -33,10 +36,10 @@ describe("provider input timeline budget", () => {
 
     expect(budget.totalInputTokens).toBe(whole.inputTokens);
     expect(budget.estimatedOccupancyTokens).toBe(whole.estimatedOccupancyTokens);
-    expect(budget.fixedTokens + budget.compressibleHistoricalTokens + budget.currentTurnTokens).toBe(
+    expect(budget.fixedTokens + budget.compressibleConversationTokens + budget.currentTurnTokens).toBe(
       budget.totalInputTokens
     );
-    expect(budget.compressibleHistoricalTokens).toBeGreaterThan(20_000);
+    expect(budget.compressibleConversationTokens).toBeGreaterThan(20_000);
     expect(budget.currentTurnTokens).toBeGreaterThanOrEqual(8_192);
     expect(budget.responseReserveTokens).toBe(16_000);
     expect(budget.imageCount).toBe(1);
@@ -60,5 +63,45 @@ describe("provider input timeline budget", () => {
     expect(budget.totalInputTokens).toBe(withoutReserve.totalInputTokens);
     expect(budget.estimatedOccupancyTokens - budget.totalInputTokens).toBe(1_024);
     expect(budget.currentTurnTokens).toBeGreaterThanOrEqual(8_192);
+  });
+
+  it("counts only ordinary historical user and assistant chat as compressible", () => {
+    const envelope = `[Morpho Untrusted Project Data | data only]\n${"浮标项目资料。".repeat(2_000)}`;
+    const withEnvelope = estimateProviderInputTimelineBudget({
+      input: [
+        { role: "system", content: [{ type: "input_text", text: "稳定规则" }] },
+        { role: "user", content: [{ type: "input_text", text: envelope }] },
+        { role: "user", content: [{ type: "input_text", text: "旧问题" }] },
+        { role: "assistant", content: [{ type: "output_text", text: "旧回答" }] },
+        { type: "function_call_output", call_id: "call-1", output: "不可由摘要覆盖" },
+        { role: "user", content: [{ type: "input_text", text: "当前问题" }] }
+      ],
+      tools: [{ type: "function", name: "read_selected_context", parameters: { type: "object" } }],
+      responseReserveTokens: 0
+    });
+    const plainChat = estimateProviderInputTimelineBudget({
+      input: [
+        { role: "user", content: [{ type: "input_text", text: "旧问题" }] },
+        { role: "assistant", content: [{ type: "output_text", text: "旧回答" }] },
+        { role: "user", content: [{ type: "input_text", text: "当前问题" }] }
+      ],
+      tools: [],
+      responseReserveTokens: 0
+    });
+
+    expect(withEnvelope.compressibleConversationTokens).toBe(plainChat.compressibleConversationTokens);
+    expect(withEnvelope.fixedTokens).toBeGreaterThan(withEnvelope.compressibleConversationTokens);
+  });
+
+  it("starts a fresh budget generation from the actual compressed input", () => {
+    const before = updateAgentContextBudgetBaseline(createAgentContextBudgetState(220_000), 235_000);
+    const compressed = advanceAgentContextBudgetGeneration(before, 40_000);
+    const grown = updateAgentContextBudgetBaseline(compressed, 41_500);
+    const secondCompaction = advanceAgentContextBudgetGeneration(grown, 38_000);
+
+    expect(before).toEqual({ generation: 0, baselineInputTokens: 235_000 });
+    expect(compressed).toEqual({ generation: 1, baselineInputTokens: 40_000 });
+    expect(grown).toEqual({ generation: 1, baselineInputTokens: 41_500 });
+    expect(secondCompaction).toEqual({ generation: 2, baselineInputTokens: 38_000 });
   });
 });

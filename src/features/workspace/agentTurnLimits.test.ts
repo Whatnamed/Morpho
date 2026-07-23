@@ -6,6 +6,7 @@ import {
   AGENT_TURN_REPEAT_TOOL_CALL_LIMIT,
   AGENT_WEB_SEARCH_MAX_SOURCES_PER_CALL,
   buildAgentEmergencyFinalizationRequest,
+  completeUnresolvedAgentFunctionCalls,
   isAgentMutatingTool,
   isRepeatedAgentToolCall,
   mergeAgentSearchCitations,
@@ -129,6 +130,19 @@ describe("agent turn limits", () => {
     expect(request.continuation).toBe(true);
     expect(request.input.slice(0, priorInput.length)).toEqual(priorInput);
     expect(request.input.at(-1)).toMatchObject({ role: "user" });
+  });
+
+  it("gives every call in a blocked batch one terminal output", () => {
+    const outputs = completeUnresolvedAgentFunctionCalls({
+      calls: [{ callId: "call-a" }, { callId: "call-b" }, { callId: "call-c" }],
+      outputs: [{ type: "function_call_output", call_id: "call-a", output: '{"status":"blocked"}' }],
+      status: "skippedDueToEarlierGuard",
+      reason: "前序调用触发安全边界。"
+    });
+
+    expect(outputs.map((output) => output.call_id)).toEqual(["call-a", "call-b", "call-c"]);
+    expect(JSON.parse(outputs[1]!.output)).toMatchObject({ status: "skippedDueToEarlierGuard" });
+    expect(JSON.parse(outputs[2]!.output)).toMatchObject({ status: "skippedDueToEarlierGuard" });
   });
 });
 

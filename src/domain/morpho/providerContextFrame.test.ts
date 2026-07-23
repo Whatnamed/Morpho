@@ -193,12 +193,13 @@ describe("Provider Context Frames", () => {
     expect(timeline.map((frame) => frame.renderedText)).toEqual(["当前项目状态", "当前回合"]);
   });
 
-  it("renders as provider-only system input rather than a normal chat bubble", () => {
+  it("renders project data in an escaped untrusted user envelope", () => {
     const frame = createProviderContextFrame(frameInput());
     const message = providerContextFrameMessage(frame);
 
-    expect(message.role).toBe("system");
-    expect(message.content[0]?.text).toContain("Project State Frame");
+    expect(message.role).toBe("user");
+    expect(message.content[0]?.text).toContain("Untrusted Project Data");
+    expect(message.content[0]?.text).toContain('"semanticKind":"projectState"');
     expect(message.content[0]?.text).toContain("当前项目状态");
   });
 

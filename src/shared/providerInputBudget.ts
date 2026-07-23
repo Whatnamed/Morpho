@@ -15,12 +15,44 @@ export type ProviderInputBudget = {
 export type ProviderInputTimelineBudget = {
   totalInputTokens: number;
   fixedTokens: number;
-  compressibleHistoricalTokens: number;
+  compressibleConversationTokens: number;
   currentTurnTokens: number;
   responseReserveTokens: number;
   estimatedOccupancyTokens: number;
   imageCount: number;
 };
+
+export type AgentContextBudgetState = {
+  generation: number;
+  baselineInputTokens: number;
+};
+
+export function createAgentContextBudgetState(inputTokens: number): AgentContextBudgetState {
+  return {
+    generation: 0,
+    baselineInputTokens: normalizeTokenCount(inputTokens)
+  };
+}
+
+export function updateAgentContextBudgetBaseline(
+  state: AgentContextBudgetState,
+  observedInputTokens: number
+): AgentContextBudgetState {
+  return {
+    ...state,
+    baselineInputTokens: Math.max(state.baselineInputTokens, normalizeTokenCount(observedInputTokens))
+  };
+}
+
+export function advanceAgentContextBudgetGeneration(
+  state: AgentContextBudgetState,
+  compressedInputTokens: number
+): AgentContextBudgetState {
+  return {
+    generation: state.generation + 1,
+    baselineInputTokens: normalizeTokenCount(compressedInputTokens)
+  };
+}
 
 export function estimateProviderInputTokens(input: {
   input: readonly unknown[];
@@ -53,21 +85,21 @@ export function estimateProviderInputTimelineBudget(input: {
   const currentUserIndex = findCurrentUserIndex(input.input);
   const historicalItems = currentUserIndex < 0
     ? []
-    : input.input.slice(0, currentUserIndex).filter(isConversationMessage);
+    : input.input.slice(0, currentUserIndex).filter(isCompressibleConversationMessage);
   const currentTurnItems = currentUserIndex < 0
     ? input.input.filter((item) => !isSystemMessage(item))
     : input.input.slice(currentUserIndex).filter((item) => !isSystemMessage(item));
-  const compressibleHistoricalTokens = estimateInputSegmentTokens(historicalItems);
+  const compressibleConversationTokens = estimateInputSegmentTokens(historicalItems);
   const currentTurnTokens = estimateInputSegmentTokens(currentTurnItems);
   const fixedTokens = Math.max(
     0,
-    total.inputTokens - compressibleHistoricalTokens - currentTurnTokens
+    total.inputTokens - compressibleConversationTokens - currentTurnTokens
   );
 
   return {
     totalInputTokens: total.inputTokens,
     fixedTokens,
-    compressibleHistoricalTokens,
+    compressibleConversationTokens,
     currentTurnTokens,
     responseReserveTokens: total.responseReserveTokens,
     estimatedOccupancyTokens: total.estimatedOccupancyTokens,
@@ -129,6 +161,28 @@ function isConversationMessage(value: unknown): value is Record<string, unknown>
 
 function isSystemMessage(value: unknown): boolean {
   return isConversationMessage(value) && value.role === "system";
+}
+
+function isCompressibleConversationMessage(value: unknown): boolean {
+  if (!isConversationMessage(value) || (value.role !== "user" && value.role !== "assistant")) {
+    return false;
+  }
+  return !messageText(value).startsWith("[Morpho Untrusted Project Data");
+}
+
+function messageText(value: Record<string, unknown>): string {
+  if (!Array.isArray(value.content)) {
+    return "";
+  }
+  return value.content
+    .filter(isRecord)
+    .map((part) => typeof part.text === "string" ? part.text : "")
+    .join("\n")
+    .trimStart();
+}
+
+function normalizeTokenCount(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -8,6 +8,7 @@ import {
   buildConversationSummarySourceText,
   buildContinuousConversationContext,
   buildConversationCompactionPlan,
+  estimateConversationMessageTokens,
   estimateConversationSummaryTokens,
   getUsableConversationMessages,
   hashMessageIds,
@@ -36,6 +37,64 @@ const summary: ConversationSummary = {
 };
 
 describe("continuous conversation compaction", () => {
+  it("excludes untouched failed turns and uses controlled summaries for partial outcomes", () => {
+    const failedUser = {
+      ...message("failed-u", "user", "未执行的请求"),
+      agentTurnId: "turn-failed",
+      pairedMessageId: "failed-a",
+      agentTurnOutcome: "failedBeforeExecution" as const
+    };
+    const failedAssistant = {
+      ...message("failed-a", "assistant", "原始错误详情"),
+      status: "failed" as const,
+      error: "原始错误详情",
+      agentTurnId: "turn-failed",
+      pairedMessageId: "failed-u",
+      agentTurnOutcome: "failedBeforeExecution" as const
+    };
+    const partialUser = {
+      ...message("partial-u", "user", "搜索并更新浮标约束"),
+      agentTurnId: "turn-partial",
+      pairedMessageId: "partial-a",
+      agentTurnOutcome: "partialSuccess" as const
+    };
+    const partialAssistant = {
+      ...message("partial-a", "assistant", "原始流式和工具细节不应重放"),
+      agentTurnId: "turn-partial",
+      pairedMessageId: "partial-u",
+      agentTurnOutcome: "partialSuccess" as const,
+      agentTurnOutcomeSummary: "已完成来源搜索；项目写入失败，仍需重试。"
+    };
+
+    const usable = getUsableConversationMessages([
+      failedUser,
+      failedAssistant,
+      partialUser,
+      partialAssistant
+    ]);
+
+    expect(usable.map((entry) => entry.id)).toEqual(["partial-u", "partial-a"]);
+    expect(usable[1]?.body).toBe("已完成来源搜索；项目写入失败，仍需重试。");
+  });
+
+  it("estimates historical image snapshots from stable references rather than pixel reserves", () => {
+    const snapshot = createProviderInputSnapshot({
+      message: {
+        content: [{ type: "input_text", text: "继续分析海洋浮标" }]
+      },
+      promptContractVersion: "morpho-agent-test",
+      attachmentRefs: [
+        { objectId: "image-buoy-a", assetId: "asset-a" },
+        { objectId: "image-buoy-b", assetId: "asset-b" }
+      ]
+    });
+    const estimated = estimateConversationMessageTokens([
+      { role: "user", body: "继续分析海洋浮标", providerInputSnapshot: snapshot }
+    ]);
+
+    expect(estimated).toBeLessThan(1_000);
+  });
+
   it("keeps every uncompressed message across lane labels below the prepare threshold", () => {
     const workspace = withMessages([
       message("m1", "user", "最早讨论", "lane-a"),

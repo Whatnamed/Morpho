@@ -11,39 +11,56 @@ import {
   createAgentContextLimits,
   executeAgentRequestWithContextBudget
 } from "@/server/ai/agentContextBudget";
-import { filterAgentRequestForConfig } from "@/server/ai/agentRoute";
 import {
   buildPromptCacheKey,
-  hashStablePrefix,
-  resolveProviderToolProfile
+  hashStablePrefix
 } from "@/server/ai/promptCache";
 import { classifyProviderCacheStatus } from "@/server/ai/providerTokenUsage";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
-import { aiAccessDeniedResponse, guardAiRoute, requireAiRouteUser } from "@/server/auth/aiAccess";
+import {
+  agentTurnLeaseDeniedResponse,
+  continueAgentTurnLease,
+  startAgentTurnLease
+} from "@/server/auth/agentTurnLease";
 import {
   encodeAgentRouteSse,
   type AgentProviderRequestState,
   type AgentRouteStreamEvent
 } from "@/shared/agentStreamProtocol";
+import type { AgentCanonicalRuntimeItem } from "@/shared/agentRuntimeItem";
+import {
+  buildAgentCacheItemManifest,
+  compareAgentCacheManifests,
+  hashAgentTools
+} from "@/server/ai/agentCacheManifest";
+import {
+  AgentProviderContractError,
+  buildAgentProviderContract,
+  parseAgentRouteRequest
+} from "@/server/ai/agentProviderContract";
 
 export const runtime = "nodejs";
+export const MAX_AGENT_REQUEST_BODY_BYTES = 36 * 1024 * 1024;
 
 export async function POST(request: Request) {
   let body: unknown;
   try {
-    body = await request.json();
+    const contentLength = Number(request.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > MAX_AGENT_REQUEST_BODY_BYTES) {
+      return NextResponse.json({ error: "Agent 请求体超过允许大小。" }, { status: 413 });
+    }
+    const rawBody = await request.text();
+    if (Buffer.byteLength(rawBody, "utf8") > MAX_AGENT_REQUEST_BODY_BYTES) {
+      return NextResponse.json({ error: "Agent 请求体超过允许大小。" }, { status: 413 });
+    }
+    body = JSON.parse(rawBody);
   } catch {
     return NextResponse.json({ error: "请求不是有效 JSON。" }, { status: 400 });
   }
 
-  const validated = validateAgentRouteRequest(body);
+  const validated = parseAgentRouteRequest(body);
   if (validated.status === "failed") {
     return NextResponse.json({ error: validated.reason }, { status: 400 });
-  }
-
-  const access = validated.agentContinuation ? await requireAiRouteUser() : await guardAiRoute("text");
-  if (access.status === "denied") {
-    return aiAccessDeniedResponse(access);
   }
 
   const config = loadOpenAiCompatibleConfig(process.env);
@@ -51,33 +68,68 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: config.reason }, { status: 503 });
   }
 
-  const filteredRequest = filterAgentRequestForConfig(validated.value, config.config);
-  const filteredToolProfile = resolveProviderToolProfile(filteredRequest.tools);
-  const requestState = buildProviderRequestState(filteredRequest, filteredToolProfile);
+  let contract;
+  try {
+    contract = buildAgentProviderContract({
+      request: validated.value,
+      webSearchEnabled: config.config.webSearchEnabled
+    });
+  } catch (error) {
+    if (error instanceof AgentProviderContractError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
+  }
+  const leaseAccess = validated.value.continuation
+    ? await continueAgentTurnLease({
+        leaseId: validated.value.leaseId!,
+        agentTurnId: validated.value.agentTurnId,
+        callKind: "provider"
+      })
+    : await startAgentTurnLease(validated.value.agentTurnId);
+  if (leaseAccess.status === "denied") {
+    return agentTurnLeaseDeniedResponse(leaseAccess);
+  }
+  const filteredToolProfile = contract.effectiveToolProfile;
+  const requestState = buildProviderRequestState(
+    contract.request,
+    filteredToolProfile,
+    contract.runtimeItem,
+    validated.value.contextBudgetState?.generation
+  );
+  const cacheManifestDiagnostics = compareAgentCacheManifests({
+    previous: contract.request.diagnostics?.previousRequestState,
+    current: requestState
+  });
   const providerInputBoundaryReasons = resolveProviderInputBoundaryReasons(
-    filteredRequest.diagnostics?.previousRequestState,
+    contract.request.diagnostics?.previousRequestState,
     requestState,
-    filteredRequest.diagnostics?.providerInputBoundaryReasons
+    contract.request.diagnostics?.providerInputBoundaryReasons
   );
   const generatedPromptCacheKey =
-    validated.projectId &&
     config.config.promptCache?.supportsPromptCacheKey &&
     config.config.promptCache.promptCacheKeyEnabled
       ? buildPromptCacheKey({
-          projectId: validated.projectId,
+          projectId: validated.value.projectId,
           model: config.config.model,
           promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
           toolProfile: filteredToolProfile
         })
       : undefined;
   const providerRequest: OpenAiCompatibleResponseRequest = {
-    ...filteredRequest,
+    ...contract.request,
     ...(generatedPromptCacheKey ? { promptCacheKey: generatedPromptCacheKey } : {}),
+    ...(config.config.promptCache?.supportsPromptCacheRetention && config.config.promptCache.promptCacheRetention
+      ? { promptCacheRetention: config.config.promptCache.promptCacheRetention }
+      : {}),
     diagnostics: {
-      ...filteredRequest.diagnostics,
+      ...contract.request.diagnostics,
       toolProfile: filteredToolProfile,
-      stablePrefixHash: hashStablePrefix(firstSystemPrompt(filteredRequest)),
+      stablePrefixHash: hashStablePrefix(
+        `${firstSystemPrompt(contract.request)}\n${contract.runtimeItem.renderedText}`
+      ),
       requestState,
+      ...cacheManifestDiagnostics,
       providerInputBoundaryReasons,
       providerCacheKeyEnabled: config.config.promptCache?.promptCacheKeyEnabled ?? false,
       ...(config.config.promptCache?.promptCacheRetention
@@ -86,8 +138,8 @@ export async function POST(request: Request) {
     }
   };
   const providerAbortController = new AbortController();
-  const attemptIds = [`provider-attempt-${crypto.randomUUID()}`, `provider-attempt-${crypto.randomUUID()}`] as const;
-  let activeAttemptIndex: 0 | 1 = 0;
+  const contextAttemptIds: [string, string | undefined] = [`provider-attempt-${crypto.randomUUID()}`, undefined];
+  let activeAttemptId = contextAttemptIds[0];
   let streamClosed = false;
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   const cleanup = () => {
@@ -122,18 +174,24 @@ export async function POST(request: Request) {
       void (async () => {
         enqueue({
           type: "turn-start",
-          ...(validated.agentTurnId ? { agentTurnId: validated.agentTurnId } : {}),
-          attemptId: attemptIds[0],
+          agentTurnId: validated.value.agentTurnId,
+          attemptId: contextAttemptIds[0],
           startedAt: new Date().toISOString(),
-          effectiveToolProfile: filteredToolProfile
+          effectiveToolProfile: filteredToolProfile,
+          runtimeItem: contract.runtimeItem,
+          leaseId: leaseAccess.lease.id,
+          leaseExpiresAt: leaseAccess.lease.expiresAt,
+          providerCallCount: leaseAccess.lease.providerCallCount,
+          webSearchCallCount: leaseAccess.lease.webSearchCallCount
         });
         try {
           const execution = await executeAgentRequestWithContextBudget(providerRequest, {
             limits: createAgentContextLimits(config.config.contextPolicy),
-            baselineInputTokens: validated.contextBudgetBaselineTokens,
+            budgetState: validated.value.contextBudgetState,
             execute: (preparedRequest, attempt) => {
-              activeAttemptIndex = attempt.index;
-              const attemptId = attemptIds[attempt.index];
+              let attemptId = contextAttemptIds[attempt.index] ?? `provider-attempt-${crypto.randomUUID()}`;
+              contextAttemptIds[attempt.index] = attemptId;
+              activeAttemptId = attemptId;
               return streamOpenAiCompatibleResponse(
                 config.config,
                 preparedRequest,
@@ -143,22 +201,40 @@ export async function POST(request: Request) {
                       return;
                     }
                     enqueue(addProviderAttemptId(event, attemptId));
+                  },
+                  onBufferedFallback: ({ semanticEventsEmitted }) => {
+                    if (!semanticEventsEmitted) {
+                      return;
+                    }
+                    const nextAttemptId = `provider-attempt-${crypto.randomUUID()}`;
+                    enqueue({
+                      type: "turn-attempt-reset",
+                      attemptId,
+                      nextAttemptId,
+                      message: "正在切换为完整响应重试"
+                    });
+                    attemptId = nextAttemptId;
+                    activeAttemptId = nextAttemptId;
+                    contextAttemptIds[attempt.index] = nextAttemptId;
                   }
                 },
                 providerAbortController.signal
               );
             },
             onRetry: ({ failed, next }) => {
-              activeAttemptIndex = next.index;
+              const failedAttemptId = contextAttemptIds[failed.index] ?? activeAttemptId;
+              const nextAttemptId = `provider-attempt-${crypto.randomUUID()}`;
+              contextAttemptIds[next.index] = nextAttemptId;
+              activeAttemptId = nextAttemptId;
               enqueue({
                 type: "turn-attempt-reset",
-                attemptId: attemptIds[failed.index],
-                nextAttemptId: attemptIds[next.index],
+                attemptId: failedAttemptId,
+                nextAttemptId,
                 message: "正在重新整理当前语境"
               });
             }
           });
-          const completedAttemptId = attemptIds[execution.context.retried ? 1 : 0];
+          const completedAttemptId = activeAttemptId;
           enqueue({ type: "context", context: execution.context });
           enqueue({
             type: "turn-complete",
@@ -170,6 +246,7 @@ export async function POST(request: Request) {
                 ...execution.result.providerDiagnostics,
                 toolProfile: filteredToolProfile,
                 requestState,
+                ...cacheManifestDiagnostics,
                 providerInputBoundaryReasons,
                 providerCacheKeyEnabled: config.config.promptCache?.promptCacheKeyEnabled ?? false,
                 ...(config.config.promptCache?.promptCacheRetention
@@ -184,7 +261,7 @@ export async function POST(request: Request) {
             }
           });
         } catch (error) {
-          enqueue({ ...providerErrorEvent(error), attemptId: attemptIds[activeAttemptIndex] });
+          enqueue({ ...providerErrorEvent(error), attemptId: activeAttemptId });
         } finally {
           cleanup();
           if (!streamClosed) {
@@ -250,44 +327,6 @@ function providerErrorEvent(error: unknown): Extract<AgentRouteStreamEvent, { ty
   };
 }
 
-function validateAgentRouteRequest(value: unknown):
-  | {
-      status: "ok";
-      value: OpenAiCompatibleResponseRequest;
-      projectId?: string;
-      agentTurnId?: string;
-      agentContinuation: boolean;
-      contextBudgetBaselineTokens?: number;
-    }
-  | { status: "failed"; reason: string } {
-  if (!isRecord(value) || !Array.isArray(value.input) || value.input.length === 0) {
-    return { status: "failed", reason: "input 缺失或为空。" };
-  }
-
-  const agentTurnId = typeof value.agentTurnId === "string" && value.agentTurnId.trim() ? value.agentTurnId : undefined;
-
-  return {
-    status: "ok",
-    projectId: typeof value.projectId === "string" && value.projectId.trim() ? value.projectId : undefined,
-    agentTurnId,
-    agentContinuation: value.continuation === true && Boolean(agentTurnId),
-    contextBudgetBaselineTokens: parseOptionalNonNegativeInteger(value.contextBudgetBaselineTokens),
-    value: {
-      input: value.input as OpenAiCompatibleResponseRequest["input"],
-      tools: Array.isArray(value.tools) ? (value.tools as OpenAiCompatibleResponseRequest["tools"]) : undefined,
-      previousResponseId: typeof value.previousResponseId === "string" ? value.previousResponseId : undefined,
-      promptCacheKey: typeof value.promptCacheKey === "string" ? value.promptCacheKey : undefined,
-      promptCacheRetention:
-        value.promptCacheRetention === "24h"
-          ? value.promptCacheRetention
-          : undefined,
-      diagnostics: isRecord(value.diagnostics)
-        ? (value.diagnostics as OpenAiCompatibleResponseRequest["diagnostics"])
-        : undefined
-    }
-  };
-}
-
 function firstSystemPrompt(request: OpenAiCompatibleResponseRequest): string {
   const system = request.input.find(
     (item) =>
@@ -303,7 +342,9 @@ function firstSystemPrompt(request: OpenAiCompatibleResponseRequest): string {
 
 function buildProviderRequestState(
   request: OpenAiCompatibleResponseRequest,
-  toolProfile: "standard" | "standardWithWebSearch"
+  toolProfile: "standard" | "standardWithWebSearch",
+  runtimeItem: AgentCanonicalRuntimeItem,
+  budgetGeneration?: number
 ): AgentProviderRequestState {
   const supplied = request.diagnostics?.requestState;
   return {
@@ -321,6 +362,10 @@ function buildProviderRequestState(
     providerInputPrefixHash: hashStablePrefix(
       JSON.stringify(request.input, (key, value) => key === "image_url" ? "[image-input]" : value)
     ),
+    runtimeItem,
+    cacheItemManifest: buildAgentCacheItemManifest(request.input),
+    toolsHash: hashAgentTools(request.tools),
+    ...(budgetGeneration !== undefined ? { budgetGeneration } : {}),
     ...(isProviderInputBoundaryReason(supplied?.attachmentBoundary)
       ? { attachmentBoundary: supplied.attachmentBoundary }
       : {})
@@ -365,14 +410,6 @@ function isProviderInputBoundaryReason(value: unknown): value is NonNullable<Age
     value === "toolProfileChanged" ||
     value === "promptContractChanged" ||
     value === "compaction";
-}
-
-function parseOptionalNonNegativeInteger(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function readableProviderDiagnostic(diagnostic: string | undefined): string | undefined {

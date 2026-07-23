@@ -4,7 +4,12 @@ import type { AiTaskMode, AiWorkIntent, MorphoObject } from "@/domain/morpho/typ
 import { createInitialWorkspace } from "@/domain/morpho/workspace";
 import { buildAgentPolicyBlocks, MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
 import {
+  advanceRequiredAgentReadState,
   buildRequiredAgentReadReminder,
+  buildRequiredAgentReadFailureNotice,
+  completeRequiredAgentRead,
+  createRequiredAgentReadState,
+  failRequiredAgentRead,
   getMissingRequiredAgentReadTools,
   resolveAgentReadIntent,
   resolveAgentTaskStrategy,
@@ -97,6 +102,26 @@ describe("Agent task strategy and prompt registry", () => {
 
     expect(missing).toEqual(["search_project_conversation", "read_stage_record"]);
     expect(buildRequiredAgentReadReminder(missing)).toContain("不得断言没有、不存在或未记录");
+  });
+
+  it("bounds required reads to one reminder and one failed retry", () => {
+    let state = createRequiredAgentReadState(["read_project_memory"]);
+    const reminder = advanceRequiredAgentReadState(state);
+    expect(reminder.action).toBe("remind");
+    state = reminder.state;
+    const exhaustedWithoutCall = advanceRequiredAgentReadState(state);
+    expect(exhaustedWithoutCall.action).toBe("exhausted");
+
+    state = createRequiredAgentReadState(["read_stage_record"]);
+    const firstFailure = failRequiredAgentRead(state, "read_stage_record");
+    expect(firstFailure.retry).toBe(true);
+    const secondFailure = failRequiredAgentRead(firstFailure.state, "read_stage_record");
+    expect(secondFailure.retry).toBe(false);
+    expect(secondFailure.state.exhausted).toBe(true);
+    expect(buildRequiredAgentReadFailureNotice(secondFailure.state)).toContain("读取失败，无法确认");
+    expect(
+      completeRequiredAgentRead(firstFailure.state, "read_stage_record").completedTools.has("read_stage_record")
+    ).toBe(true);
   });
 
   it("does not require memory reads for a conversation-history-only question", () => {
