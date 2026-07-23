@@ -1,39 +1,3 @@
-create table if not exists private.ai_agent_turn_leases (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  agent_turn_id text not null,
-  status text not null default 'active',
-  started_at timestamptz not null default now(),
-  expires_at timestamptz not null,
-  completed_at timestamptz,
-  provider_call_count integer not null default 1,
-  web_search_call_count integer not null default 0,
-  terminal_outcome text,
-  constraint ai_agent_turn_leases_turn_id_check
-    check (char_length(agent_turn_id) between 1 and 160 and agent_turn_id ~ '^[A-Za-z0-9._:-]+$'),
-  constraint ai_agent_turn_leases_status_check
-    check (status in (
-      'active',
-      'success',
-      'cancelledBeforeExecution',
-      'failedBeforeExecution',
-      'partialSuccess',
-      'pendingConfirmation',
-      'timedOut'
-    )),
-  constraint ai_agent_turn_leases_provider_count_check
-    check (provider_call_count between 1 and 32),
-  constraint ai_agent_turn_leases_search_count_check
-    check (web_search_call_count between 0 and 8),
-  unique (user_id, agent_turn_id)
-);
-
-create index if not exists ai_agent_turn_leases_active_expiry_idx
-on private.ai_agent_turn_leases (expires_at)
-where status = 'active';
-
-revoke all on table private.ai_agent_turn_leases from public, anon, authenticated;
-
 create or replace function public.start_agent_turn_lease(p_agent_turn_id text)
 returns table (
   allowed boolean,
@@ -46,7 +10,7 @@ returns table (
 )
 language plpgsql
 security definer
-set search_path = private, public, pg_temp
+set search_path = ''
 as $$
 declare
   current_user_id uuid := auth.uid();
@@ -64,9 +28,9 @@ begin
     raise exception 'invalid agent turn id' using errcode = '22023';
   end if;
 
-  update private.ai_agent_turn_leases
+  update private.ai_agent_turn_leases as lease
   set status = 'timedOut', terminal_outcome = 'timedOut', completed_at = now()
-  where user_id = current_user_id and status = 'active' and expires_at <= now();
+  where lease.user_id = current_user_id and lease.status = 'active' and lease.expires_at <= now();
 
   select * into access_row
   from public.app_user_access
@@ -151,7 +115,7 @@ returns table (
 )
 language plpgsql
 security definer
-set search_path = private, public, pg_temp
+set search_path = ''
 as $$
 declare
   current_user_id uuid := auth.uid();
@@ -179,10 +143,10 @@ begin
     return;
   end if;
   if lease_row.expires_at <= now() then
-    update private.ai_agent_turn_leases
+    update private.ai_agent_turn_leases as lease
     set status = 'timedOut', terminal_outcome = 'timedOut', completed_at = now()
-    where id = lease_row.id
-    returning * into lease_row;
+    where lease.id = lease_row.id
+    returning lease.* into lease_row;
     return query select false, 'expired', lease_row.id, lease_row.expires_at,
       lease_row.provider_call_count, lease_row.web_search_call_count;
     return;
@@ -198,74 +162,19 @@ begin
     return;
   end if;
 
-  update private.ai_agent_turn_leases
+  update private.ai_agent_turn_leases as lease
   set
-    provider_call_count = provider_call_count + case when p_call_kind = 'provider' then 1 else 0 end,
-    web_search_call_count = web_search_call_count + case when p_call_kind = 'web_search' then 1 else 0 end
-  where id = lease_row.id
-  returning * into lease_row;
+    provider_call_count = lease.provider_call_count + case when p_call_kind = 'provider' then 1 else 0 end,
+    web_search_call_count = lease.web_search_call_count + case when p_call_kind = 'web_search' then 1 else 0 end
+  where lease.id = lease_row.id
+  returning lease.* into lease_row;
 
   return query select true, null::text, lease_row.id, lease_row.expires_at,
     lease_row.provider_call_count, lease_row.web_search_call_count;
 end;
 $$;
 
-create or replace function public.complete_agent_turn_lease(
-  p_lease_id uuid,
-  p_agent_turn_id text,
-  p_outcome text
-)
-returns table (
-  completed boolean,
-  status_name text
-)
-language plpgsql
-security definer
-set search_path = private, public, pg_temp
-as $$
-declare
-  current_user_id uuid := auth.uid();
-  lease_row private.ai_agent_turn_leases%rowtype;
-begin
-  if current_user_id is null then
-    raise exception 'not authenticated' using errcode = '28000';
-  end if;
-  if p_outcome not in (
-    'success',
-    'cancelledBeforeExecution',
-    'failedBeforeExecution',
-    'partialSuccess',
-    'pendingConfirmation'
-  ) then
-    raise exception 'invalid agent turn outcome' using errcode = '22023';
-  end if;
-
-  select lease.* into lease_row
-  from private.ai_agent_turn_leases as lease
-  where lease.id = p_lease_id
-  for update;
-
-  if not found or lease_row.user_id <> current_user_id or lease_row.agent_turn_id <> p_agent_turn_id then
-    return query select false, 'invalid_lease';
-    return;
-  end if;
-  if lease_row.status <> 'active' then
-    return query select true, lease_row.status;
-    return;
-  end if;
-
-  update private.ai_agent_turn_leases
-  set status = p_outcome, terminal_outcome = p_outcome, completed_at = now()
-  where id = lease_row.id
-  returning * into lease_row;
-
-  return query select true, lease_row.status;
-end;
-$$;
-
-revoke all on function public.start_agent_turn_lease(text) from public;
-revoke all on function public.continue_agent_turn_lease(uuid, text, text) from public;
-revoke all on function public.complete_agent_turn_lease(uuid, text, text) from public;
+revoke all on function public.start_agent_turn_lease(text) from public, anon, authenticated;
+revoke all on function public.continue_agent_turn_lease(uuid, text, text) from public, anon, authenticated;
 grant execute on function public.start_agent_turn_lease(text) to authenticated;
 grant execute on function public.continue_agent_turn_lease(uuid, text, text) to authenticated;
-grant execute on function public.complete_agent_turn_lease(uuid, text, text) to authenticated;

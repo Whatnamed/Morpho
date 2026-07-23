@@ -1,4 +1,4 @@
-export type AgentToolProfile = "standard" | "standardWithWebSearch";
+export type AgentToolProfile = "standard" | "standardWithWebSearch" | "conversationSummary";
 export type AgentRuntimeMode = "auto" | "confirm";
 
 export type AgentCanonicalRuntimeItem = {
@@ -66,7 +66,11 @@ export function isValidCanonicalAgentRuntimeItem(value: unknown): value is Agent
   if (
     typeof item.id !== "string" || !/^agent-runtime-[a-z0-9]+$/.test(item.id) ||
     typeof item.contentHash !== "string" || !/^[a-z0-9]+$/.test(item.contentHash) ||
-    (item.effectiveToolProfile !== "standard" && item.effectiveToolProfile !== "standardWithWebSearch") ||
+    (
+      item.effectiveToolProfile !== "standard" &&
+      item.effectiveToolProfile !== "standardWithWebSearch" &&
+      item.effectiveToolProfile !== "conversationSummary"
+    ) ||
     (item.mode !== "auto" && item.mode !== "confirm") ||
     typeof item.promptContractVersion !== "string" || item.promptContractVersion.length > 120 ||
     item.placement !== "afterStableSystem" ||

@@ -27,7 +27,7 @@ import {
   type AgentProviderRequestState,
   type AgentRouteStreamEvent
 } from "@/shared/agentStreamProtocol";
-import type { AgentCanonicalRuntimeItem } from "@/shared/agentRuntimeItem";
+import type { AgentCanonicalRuntimeItem, AgentToolProfile } from "@/shared/agentRuntimeItem";
 import {
   buildAgentCacheItemManifest,
   compareAgentCacheManifests,
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
     }
     throw error;
   }
-  const leaseAccess = validated.value.continuation
+  const leaseAccess = validated.value.continuation || validated.value.leaseContinuation
     ? await continueAgentTurnLease({
         leaseId: validated.value.leaseId!,
         agentTurnId: validated.value.agentTurnId,
@@ -342,7 +342,7 @@ function firstSystemPrompt(request: OpenAiCompatibleResponseRequest): string {
 
 function buildProviderRequestState(
   request: OpenAiCompatibleResponseRequest,
-  toolProfile: "standard" | "standardWithWebSearch",
+  toolProfile: AgentToolProfile,
   runtimeItem: AgentCanonicalRuntimeItem,
   budgetGeneration?: number
 ): AgentProviderRequestState {

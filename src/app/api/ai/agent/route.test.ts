@@ -318,6 +318,45 @@ describe("agent route stream", () => {
     expect(body).toContain("event: turn-complete");
   });
 
+  it("reuses the same lease for a fresh Provider transcript without starting a second turn", async () => {
+    const response = await POST(agentRequest({
+      continuation: false,
+      leaseContinuation: true,
+      leaseId: "lease-1"
+    }));
+
+    expect(response.status).toBe(200);
+    expect(continueAgentTurnLeaseMock).toHaveBeenCalledWith({
+      leaseId: "lease-1",
+      agentTurnId: "agent-turn-1",
+      callKind: "provider"
+    });
+    expect(startAgentTurnLeaseMock).not.toHaveBeenCalled();
+    expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs conversation compaction through the server-owned no-tool profile", async () => {
+    const response = await POST(agentRequest({
+      input: [{
+        role: "user",
+        content: [{ type: "input_text", text: "sourceRange: message-1..message-2" }]
+      }],
+      directive: { kind: "conversationSummary" }
+    }));
+    const events: AgentRouteStreamEvent[] = [];
+    if (!response.body) {
+      throw new Error("Expected an SSE response body.");
+    }
+    await readAgentRouteSse(response.body, { onEvent: (event) => events.push(event) });
+
+    expect(events.find((event) => event.type === "turn-start")).toMatchObject({
+      effectiveToolProfile: "conversationSummary"
+    });
+    expect(
+      (streamOpenAiCompatibleResponseMock.mock.calls[0]?.[1] as OpenAiCompatibleResponseRequest).tools
+    ).toEqual([]);
+  });
+
   it("flushes turn-start before the provider completes", async () => {
     let finishProvider: (() => void) | undefined;
     streamOpenAiCompatibleResponseMock.mockImplementationOnce(

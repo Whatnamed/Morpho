@@ -238,9 +238,13 @@ export function getLatestProviderRuntimeConfiguration(
     return undefined;
   }
   if (latest.runtimeItem) {
+    const toolProfile = latest.runtimeItem.effectiveToolProfile;
+    if (toolProfile === "conversationSummary") {
+      return undefined;
+    }
     return {
       mode: latest.runtimeItem.mode,
-      toolProfile: latest.runtimeItem.effectiveToolProfile,
+      toolProfile,
       promptContractVersion: latest.runtimeItem.promptContractVersion,
       runtimeItem: latest.runtimeItem
     };

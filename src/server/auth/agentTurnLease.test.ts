@@ -93,16 +93,28 @@ describe("Agent Turn Lease access", () => {
 
   it("keeps ownership and counters atomic in the SQL contract", () => {
     const sql = readFileSync(
-      resolve(process.cwd(), "supabase/migrations/20260724023731_add_agent_turn_leases.sql"),
+      resolve(process.cwd(), "supabase/migrations/20260723200036_add_agent_turn_leases.sql"),
       "utf8"
     );
-    expect(sql).toContain("set search_path = private, public, pg_temp");
+    const correctionSql = readFileSync(
+      resolve(process.cwd(), "supabase/migrations/20260723200456_fix_agent_turn_lease_column_ambiguity.sql"),
+      "utf8"
+    );
+    expect(sql.match(/set search_path = ''/g)).toHaveLength(3);
     expect(sql).toContain("current_user_id uuid := auth.uid()");
     expect(sql).toContain("for update");
-    expect(sql).toContain("provider_call_count = provider_call_count + case");
-    expect(sql).toContain("web_search_call_count = web_search_call_count + case");
+    expect(sql).toContain("provider_call_count = lease.provider_call_count + case");
+    expect(sql).toContain("web_search_call_count = lease.web_search_call_count + case");
     expect(sql).toContain("lease_row.user_id <> current_user_id");
     expect(sql).toContain("lease_row.expires_at <= now()");
     expect(sql).toContain("revoke all on table private.ai_agent_turn_leases from public, anon, authenticated");
+    expect(sql).toContain(
+      "revoke all on function public.start_agent_turn_lease(text) from public, anon, authenticated"
+    );
+    expect(sql).toContain("where lease.user_id = current_user_id");
+    expect(correctionSql).toContain("create or replace function public.start_agent_turn_lease");
+    expect(correctionSql).toContain("create or replace function public.continue_agent_turn_lease");
+    expect(correctionSql).toContain("where lease.user_id = current_user_id");
+    expect(correctionSql).toContain("provider_call_count = lease.provider_call_count");
   });
 });

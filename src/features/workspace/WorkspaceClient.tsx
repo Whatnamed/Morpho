@@ -282,7 +282,6 @@ import {
   resolveExpectedVisualGenerationCount
 } from "./agentVisualGenerationBatch";
 import {
-  buildAgentCheckpointCompactionInput,
   buildMorphoAgentToolArgumentRepairOutputs,
   buildMorphoAgentStableSystemPrompt,
   buildMorphoAgentTools,
@@ -305,6 +304,7 @@ import {
   type RequestConfirmationArgs,
   type SearchWebEvidenceArgs
 } from "./morphoAgent";
+import { buildConversationSummaryAgentRequest } from "./conversationSummaryAgentRequest";
 import {
   advanceRequiredAgentReadState,
   buildRequiredAgentReadFailureNotice,
@@ -377,27 +377,55 @@ const MorphoCanvas = dynamic(() => import("./tldraw/MorphoCanvas").then((mod) =>
 async function requestConversationSummary(
   plan: ConversationCompactionPlan,
   signal: AbortSignal,
-  agentTurnId: string
-): Promise<ReturnType<typeof parseConversationSummaryPayload>> {
+  input: {
+    projectId: string;
+    agentTurnId: string;
+    mode: MorphoAgentTurnMode;
+    leaseId?: string;
+    onLeaseStarted?: (leaseId: string) => void;
+  }
+): Promise<{
+  parsed: ReturnType<typeof parseConversationSummaryPayload>;
+  leaseId?: string;
+}> {
   const response = await fetch("/api/ai/agent", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      input: buildAgentCheckpointCompactionInput({
-        previousSummaryRevision: plan.previousSummaryRevision,
-        messages: plan.sourceMessages,
-        sourceStartMessageId: plan.sourceStartMessageId,
-        sourceEndMessageId: plan.sourceEndMessageId,
-        sourceMessageCount: plan.sourceMessageCount
-      }),
-      tools: [],
-      agentTurnId,
-      continuation: false
-    }),
+    body: JSON.stringify(buildConversationSummaryAgentRequest({
+      plan,
+      projectId: input.projectId,
+      agentTurnId: input.agentTurnId,
+      mode: input.mode,
+      leaseId: input.leaseId
+    })),
     signal
   });
-  const result = await consumeAgentTurnStream(response, { signal });
-  return parseConversationSummaryPayload(result.outputText);
+  let leaseId = input.leaseId;
+  const result = await consumeAgentTurnStream(response, {
+    signal,
+    onEvent: (event) => {
+      if (event.type === "turn-start" && event.leaseId) {
+        leaseId = event.leaseId;
+        input.onLeaseStarted?.(event.leaseId);
+      }
+    }
+  });
+  return { parsed: parseConversationSummaryPayload(result.outputText), ...(leaseId ? { leaseId } : {}) };
+}
+
+async function closeAgentTurnLeaseRequest(input: {
+  leaseId?: string;
+  agentTurnId: string;
+  outcome: "success" | "cancelledBeforeExecution" | "failedBeforeExecution" | "partialSuccess" | "pendingConfirmation";
+}): Promise<void> {
+  if (!input.leaseId) {
+    return;
+  }
+  await fetch("/api/ai/agent/lease", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  }).catch(() => undefined);
 }
 
 const CONVERSATION_TOKEN_LIMITS_TEST_KEY = "morpho:test:conversation-token-limits";
@@ -1714,12 +1742,24 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return;
       }
 
+      let manualCompactionLeaseId: string | undefined;
+      let manualCompactionOutcome: "success" | "cancelledBeforeExecution" | "failedBeforeExecution" =
+        "failedBeforeExecution";
       try {
-        const parsedSummary = await requestConversationSummary(
+        const summaryRequest = await requestConversationSummary(
           compactionPlan,
           controller.signal,
-          `agent-compact-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+          {
+            projectId: workspace.project.id,
+            agentTurnId: manualCompactionTurnId,
+            mode: agentTurnMode,
+            onLeaseStarted: (leaseId) => {
+              manualCompactionLeaseId = leaseId;
+            }
+          }
         );
+        manualCompactionLeaseId = summaryRequest.leaseId ?? manualCompactionLeaseId;
+        const parsedSummary = summaryRequest.parsed;
         if (parsedSummary.status !== "ok") {
           throw new Error("模型没有返回可用的连续对话摘要。");
         }
@@ -1751,9 +1791,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         });
         if (!summaryApplied) {
           setShowFailure(true);
+        } else {
+          manualCompactionOutcome = "success";
         }
       } catch (error) {
         const isCancelled = error instanceof DOMException && error.name === "AbortError";
+        manualCompactionOutcome = isCancelled ? "cancelledBeforeExecution" : "failedBeforeExecution";
         commitWorkspaceNow((current) => {
           const next = updateAiMessage(
             current,
@@ -1767,6 +1810,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           setShowFailure(true);
         }
       } finally {
+        await closeAgentTurnLeaseRequest({
+          leaseId: manualCompactionLeaseId,
+          agentTurnId: manualCompactionTurnId,
+          outcome: manualCompactionOutcome
+        });
         if (abortControllerRef.current === controller) {
           abortControllerRef.current = null;
           setIsAiStreaming(false);
@@ -1932,6 +1980,19 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         .join(" ") || undefined
     );
     const agentTurnId = `agent-turn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    let agentTurnLeaseId: string | undefined;
+
+    async function closeAgentTurnLease(
+      outcome: "success" | "cancelledBeforeExecution" | "failedBeforeExecution" | "partialSuccess" | "pendingConfirmation"
+    ): Promise<void> {
+      if (!agentTurnLeaseId) {
+        return;
+      }
+      const leaseId = agentTurnLeaseId;
+      agentTurnLeaseId = undefined;
+      await closeAgentTurnLeaseRequest({ leaseId, agentTurnId, outcome });
+    }
+
     const initialAgentTrace = {
       ...createAgentTrace(now),
       agentTurnId
@@ -2031,11 +2092,21 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         };
       });
       try {
-        const parsedSummary = await requestConversationSummary(
+        const summaryRequest = await requestConversationSummary(
           automaticCompactionPlan,
           controller.signal,
-          `${agentTurnId}-summary`
+          {
+            projectId: workspaceAtAgentStart.project.id,
+            agentTurnId,
+            mode: agentTurnMode,
+            leaseId: agentTurnLeaseId,
+            onLeaseStarted: (leaseId) => {
+              agentTurnLeaseId = leaseId;
+            }
+          }
         );
+        agentTurnLeaseId = summaryRequest.leaseId ?? agentTurnLeaseId;
+        const parsedSummary = summaryRequest.parsed;
         if (parsedSummary.status !== "ok") {
           throw new Error("连续对话摘要未通过校验。");
         }
@@ -2070,6 +2141,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           return { workspace: completed, value: completed };
         });
       } catch (error) {
+        const isCancelled = error instanceof DOMException && error.name === "AbortError";
+        await closeAgentTurnLease(isCancelled ? "cancelledBeforeExecution" : "failedBeforeExecution");
         const message = error instanceof Error ? error.message : "连续对话压缩失败。";
         commitWorkspaceNow((current) => ({
           workspace: updateAiMessage(
@@ -2161,7 +2234,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     let latestProviderResponseId: string | undefined;
     let latestProviderRequestState = getLatestProviderRequestState(workspaceAtAgentStart);
     let canonicalRuntimeItem = latestProviderRequestState?.runtimeItem;
-    let agentTurnLeaseId: string | undefined;
     const agentTurnStartedAt = Date.now();
     let emergencyGuardTriggered = false;
     let continuationCompactionAttempted = false;
@@ -2172,25 +2244,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     let hadAgentToolFailure = false;
     let pendingConfirmationCreated = false;
 
-    async function closeAgentTurnLease(
-      outcome: "success" | "cancelledBeforeExecution" | "failedBeforeExecution" | "partialSuccess" | "pendingConfirmation"
-    ): Promise<void> {
-      if (!agentTurnLeaseId) {
-        return;
-      }
-      const leaseId = agentTurnLeaseId;
-      agentTurnLeaseId = undefined;
-      await fetch("/api/ai/agent/lease", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leaseId, agentTurnId, outcome })
-      }).catch(() => undefined);
-    }
-
     async function requestAgentTurn(
       input: Array<unknown>,
       continuation = false
     ): Promise<AgentRouteResult> {
+      const leaseContinuation = !continuation && Boolean(agentTurnLeaseId);
       const currentRequestState: ProviderRequestBoundaryState = {
         promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
         ...(conversationContext.summaryRevision
@@ -2223,7 +2281,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           projectId: workspaceAtAgentStart.project.id,
           agentTurnId,
           continuation,
-          ...(continuation && agentTurnLeaseId ? { leaseId: agentTurnLeaseId } : {}),
+          ...(leaseContinuation ? { leaseContinuation: true } : {}),
+          ...((continuation || leaseContinuation) && agentTurnLeaseId ? { leaseId: agentTurnLeaseId } : {}),
           promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
           mode: agentTurnMode,
           capabilityIntent: { comparisonAnalysis: allowStructuredComparison },
@@ -2292,7 +2351,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 agentTurnLeaseId = event.leaseId;
               }
               const serverToolProfile = event.effectiveToolProfile;
-              if (serverToolProfile && event.runtimeItem) {
+              if (serverToolProfile && serverToolProfile !== "conversationSummary" && event.runtimeItem) {
                 canonicalRuntimeItem = event.runtimeItem;
                 workspaceAtAgentStart = commitWorkspaceNow((current) => {
                   const next = conversationContext.summaryRevision
@@ -2478,7 +2537,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           value: undefined
         };
       });
-      const parsedSummary = await requestConversationSummary(plan, controller.signal, `${agentTurnId}-continuation-summary`);
+      if (!agentTurnLeaseId) {
+        throw new Error("继续执行前缺少有效的 Agent Turn Lease。");
+      }
+      const summaryRequest = await requestConversationSummary(plan, controller.signal, {
+        projectId: currentWorkspace.project.id,
+        agentTurnId,
+        mode: agentTurnMode,
+        leaseId: agentTurnLeaseId,
+        onLeaseStarted: (leaseId) => {
+          agentTurnLeaseId = leaseId;
+        }
+      });
+      agentTurnLeaseId = summaryRequest.leaseId ?? agentTurnLeaseId;
+      const parsedSummary = summaryRequest.parsed;
       if (parsedSummary.status !== "ok") {
         throw new Error("继续执行前的对话摘要未通过校验，原始历史已保留。");
       }

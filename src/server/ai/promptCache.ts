@@ -1,8 +1,9 @@
 import type { AgentProviderDiagnostics } from "@/shared/agentStreamProtocol";
+import type { AgentToolProfile } from "@/shared/agentRuntimeItem";
 import type { ResponseTool } from "./openaiCompatibleProvider";
 import { classifyProviderCacheStatus } from "./providerTokenUsage";
 
-export type ProviderToolProfile = "standard" | "standardWithWebSearch";
+export type ProviderToolProfile = AgentToolProfile;
 
 export function resolveProviderToolProfile(tools: readonly ResponseTool[] | undefined): ProviderToolProfile {
   return tools?.some((tool) => tool.type === "function" && tool.name === "search_web_evidence")

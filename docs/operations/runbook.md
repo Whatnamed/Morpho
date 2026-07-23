@@ -179,7 +179,7 @@ The remaining Security Advisor notices for `public.get_my_access_state()` and `p
 
 ### Agent Turn Lease Migration
 
-Deploy `supabase/migrations/20260724023731_add_agent_turn_leases.sql` before deploying Prompt Contract v3.3 application code. Without the migration, authenticated `/api/ai/agent` requests fail closed with an Agent Turn Lease service error; they must not fall back to the old client-trusted quota path.
+Deploy both `supabase/migrations/20260723200036_add_agent_turn_leases.sql` and `supabase/migrations/20260723200456_fix_agent_turn_lease_column_ambiguity.sql` before deploying Prompt Contract v3.3 application code. Without both migrations, authenticated `/api/ai/agent` requests fail closed with an Agent Turn Lease service error; they must not fall back to the old client-trusted quota path.
 
 This checkout does not store a Supabase project ref, access token, database password, or service-role key. On an authorized operator machine with the Supabase CLI already authenticated, link the intended project explicitly and review the target before pushing:
 
@@ -192,6 +192,8 @@ supabase migration list
 ```
 
 Do not paste credentials into the repository or shell history. Do not apply the migration to a project whose ref has not been independently checked. The migration creates only `private.ai_agent_turn_leases` and the three narrow RPCs `start_agent_turn_lease`, `continue_agent_turn_lease`, and `complete_agent_turn_lease`; no workspace or prompt body is uploaded.
+
+Conversation compaction is part of the same formal Agent turn. Its first Provider request creates the lease when needed; automatic and continuation compaction reuse that lease through the strict `leaseContinuation` path, then the normal Agent request continues with the same counters. `leaseContinuation` is not a Responses transcript continuation, cannot be combined with `continuation`, and never causes a second daily text reservation for the same user turn.
 
 After application, verify in the Supabase SQL editor or another authorized administrative connection:
 

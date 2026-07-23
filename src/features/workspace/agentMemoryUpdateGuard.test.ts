@@ -52,12 +52,26 @@ describe("Agent memory update guard", () => {
   });
 
   it("does not require a memory tool call for one-off wording", () => {
-    const candidates = resolveRequiredAgentMemoryUpdates("这次先把浮标外壳改成橙色，先试一下。");
+    expect(resolveRequiredAgentMemoryUpdates("这次先把浮标外壳改成橙色，先试一下。")).toEqual([]);
+    const candidates = resolveRequiredAgentMemoryUpdates(
+      "请读取当前项目记忆和阶段信息，再说明海洋浮标项目进展；不要修改项目。"
+    );
     expect(candidates).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates(
+      "这是一次性执行命令，不要写入长期偏好，也不要修改其他项目对象。"
+    )).toEqual([]);
     expect(shouldPromptForMemoryUpdate({
       candidates,
       reminderInserted: false,
       handledCandidateIndexes: new Set()
     })).toBe(false);
+  });
+
+  it("keeps stable memory clauses when the same request also has a one-off operation boundary", () => {
+    expect(resolveRequiredAgentMemoryUpdates(
+      "以后统一低饱和，不要修改其他项目对象。"
+    ).map((candidate) => [candidate.kind, candidate.evidenceQuote])).toEqual([
+      ["preference", "以后统一低饱和"]
+    ]);
   });
 });

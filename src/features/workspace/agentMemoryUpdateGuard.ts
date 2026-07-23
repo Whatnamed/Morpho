@@ -44,6 +44,11 @@ const LONG_TERM_SCOPE_MARKERS = [
   "偏好"
 ];
 
+const ONE_OFF_OPERATION_PATTERN =
+  /(?:不要|无需|不必|只|仅).{0,12}(?:调用|修改|改动|写入|记录|保存|创建|删除|更新|执行).{0,12}(?:工具|项目|对象|状态|画布|记忆|偏好|避免项|约束|开放问题|草稿)/;
+const EXPLICIT_LONG_TERM_OPERATION_SCOPE_PATTERN =
+  /以后|后续|后面|整个项目|接下来|始终|统一|长期(?:保持|遵守|采用|执行|使用)/;
+
 const KIND_RULES: Array<{
   kind: RequiredAgentMemoryUpdateKind;
   pattern: RegExp;
@@ -86,6 +91,12 @@ export function resolveRequiredAgentMemoryUpdates(draft: string): RequiredAgentM
 
   const candidates: RequiredAgentMemoryUpdate[] = [];
   for (const clause of splitEvidenceClauses(draft)) {
+    if (
+      ONE_OFF_OPERATION_PATTERN.test(clause.text) &&
+      !EXPLICIT_LONG_TERM_OPERATION_SCOPE_PATTERN.test(clause.text)
+    ) {
+      continue;
+    }
     const rule = KIND_RULES.find((candidate) => candidate.pattern.test(clause.text));
     if (!rule) {
       continue;

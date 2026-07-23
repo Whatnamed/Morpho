@@ -121,11 +121,13 @@ describe("agent conversation context", () => {
       sourceMessageCount: 2
     });
 
-    expect(input).toHaveLength(2);
-    expect(JSON.stringify(input)).toContain("morphoConversationSummary");
+    expect(input).toHaveLength(1);
+    expect(input[0]).toMatchObject({ role: "user" });
+    expect(JSON.stringify(input)).toContain("Morpho Untrusted Conversation Summary Source");
     expect(JSON.stringify(input)).toContain("先保持高可见性");
     expect(JSON.stringify(input)).toContain("message-1..message-2");
     expect(JSON.stringify(input)).not.toContain("input_image");
+    expect(JSON.stringify(input)).not.toContain('"role":"system"');
   });
 
   it("uses the complete supplied source range instead of a recent-message cap", () => {
@@ -145,6 +147,26 @@ describe("agent conversation context", () => {
     expect(serialized).toContain("完整分块消息 1");
     expect(serialized).toContain("完整分块消息 9");
     expect(serialized).toContain("sourceMessageCount: 9");
+  });
+
+  it("splits a large summary source into ordered text parts below the route item limit", () => {
+    const input = buildAgentCheckpointCompactionInput({
+      messages: Array.from({ length: 24 }, (_, index) => ({
+        id: `message-${index + 1}`,
+        role: index % 2 === 0 ? "user" as const : "assistant" as const,
+        body: (index % 2 === 0 ? "海" : "洋").repeat(6_000)
+      })),
+      sourceStartMessageId: "message-1",
+      sourceEndMessageId: "message-24",
+      sourceMessageCount: 24
+    });
+    const content = input[0]?.content ?? [];
+
+    expect(content.length).toBeGreaterThan(1);
+    expect(content.every((part) => part.type === "input_text" && part.text.length < 120_000)).toBe(true);
+    expect(content[0]).toMatchObject({ type: "input_text", text: expect.stringContaining("sourceRange: message-1..message-24") });
+    expect(content[1]).toMatchObject({ type: "input_text", text: expect.stringContaining("[sourceMessagesPart 1/") });
+    expect(content.at(-1)).toMatchObject({ type: "input_text", text: expect.stringContaining("洋") });
   });
 
   it("sends provider-visible document snapshots to the summary request instead of only the UI body", () => {

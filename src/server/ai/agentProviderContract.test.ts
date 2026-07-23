@@ -82,6 +82,146 @@ describe("Agent Provider Contract", () => {
     expect(next.request.input.slice(0, first.request.input.length)).toEqual(first.request.input);
   });
 
+  it("separates Provider transcript continuation from same-turn Lease reuse", () => {
+    expect(parseAgentRouteRequest(request({ leaseContinuation: true }))).toMatchObject({
+      status: "failed",
+      reason: expect.stringContaining("leaseId")
+    });
+    expect(parseAgentRouteRequest(request({
+      continuation: true,
+      leaseContinuation: true,
+      leaseId: "lease-1"
+    }))).toMatchObject({
+      status: "failed",
+      reason: expect.stringContaining("不能同时")
+    });
+    expect(parseAgentRouteRequest(request({ leaseId: "lease-1" }))).toMatchObject({
+      status: "failed",
+      reason: expect.stringContaining("首次")
+    });
+    expect(parseAgentRouteRequest(request({
+      leaseContinuation: true,
+      leaseId: "lease-1"
+    }))).toMatchObject({
+      status: "ok",
+      value: {
+        continuation: false,
+        leaseContinuation: true,
+        leaseId: "lease-1"
+      }
+    });
+  });
+
+  it("builds conversation compaction as a server-owned no-tool profile", () => {
+    const parsed = parseAgentRouteRequest(request({
+      input: [{
+        role: "user",
+        content: [
+          { type: "input_text", text: "[summary source]\nsourceRange: message-1..message-2" },
+          { type: "input_text", text: "[sourcePart 2/2]\nassistant: continue" }
+        ]
+      }],
+      directive: { kind: "conversationSummary" }
+    }));
+    if (parsed.status !== "ok") {
+      throw new Error(parsed.reason);
+    }
+    const contract = buildAgentProviderContract({ request: parsed.value, webSearchEnabled: true });
+
+    expect(contract.effectiveToolProfile).toBe("conversationSummary");
+    expect(contract.request.tools).toEqual([]);
+    expect(contract.runtimeItem.effectiveToolProfile).toBe("conversationSummary");
+    expect(contract.request.input.at(-1)).toMatchObject({ role: "system" });
+    expect(JSON.stringify(contract.request.input.at(-1))).toContain("morphoConversationSummary");
+    expect(parseAgentRouteRequest(request({
+      input: [{
+        role: "user",
+        content: Array.from({ length: 33 }, () => ({ type: "input_text", text: "source" }))
+      }],
+      directive: { kind: "conversationSummary" }
+    }))).toMatchObject({ status: "failed" });
+  });
+
+  it("rejects images, transcript replay, and elevated capabilities in summary mode", () => {
+    expect(parseAgentRouteRequest(request({
+      input: [{
+        role: "user",
+        content: [{ type: "input_image", image_url: "data:image/png;base64,iVBORw0KGgo=" }]
+      }],
+      directive: { kind: "conversationSummary" }
+    }))).toMatchObject({ status: "failed" });
+    expect(parseAgentRouteRequest(request({
+      input: [
+        { role: "user", content: [{ type: "input_text", text: "source" }] },
+        { role: "assistant", content: [{ type: "output_text", text: "answer" }] }
+      ],
+      directive: { kind: "conversationSummary" }
+    }))).toMatchObject({ status: "failed" });
+    expect(parseAgentRouteRequest(request({
+      directive: { kind: "conversationSummary" },
+      capabilityIntent: { comparisonAnalysis: true }
+    }))).toMatchObject({ status: "failed" });
+  });
+
+  it("accepts provider output messages with both type and role during tool continuation", () => {
+    const parsed = parseAgentRouteRequest(request({
+      input: [
+        { role: "user", content: [{ type: "input_text", text: "读取项目记忆" }] },
+        {
+          id: "message-after-tools",
+          type: "message",
+          role: "assistant",
+          status: "completed",
+          phase: "final_answer",
+          content: [{
+            type: "output_text",
+            text: "已读取项目记忆，准备继续回答。",
+            annotations: [],
+            logprobs: [{
+              token: "已",
+              logprob: -0.01,
+              bytes: [229, 183, 178],
+              top_logprobs: []
+            }]
+          }]
+        },
+        { role: "user", content: [{ type: "input_text", text: "继续" }] }
+      ]
+    }));
+
+    expect(parsed).toMatchObject({
+      status: "ok",
+      value: {
+        input: [
+          expect.objectContaining({ role: "user" }),
+          expect.objectContaining({ id: "message-after-tools", type: "message", role: "assistant" }),
+          expect.objectContaining({ role: "user" })
+        ]
+      }
+    });
+  });
+
+  it("accepts the official refusal content shape and rejects private output-text fields", () => {
+    expect(parseAgentRouteRequest(request({
+      input: [{
+        id: "message-refusal",
+        type: "message",
+        role: "assistant",
+        status: "completed",
+        content: [{ type: "refusal", refusal: "无法完成该请求。" }]
+      }]
+    }))).toMatchObject({ status: "ok" });
+    expect(parseAgentRouteRequest(request({
+      input: [{
+        id: "message-private-field",
+        type: "message",
+        role: "assistant",
+        status: "completed",
+        content: [{ type: "output_text", text: "ok", provider_private: true }]
+      }]
+    }))).toMatchObject({ status: "failed" });
+  });
+
   it("validates call/output pairing and image limits without accepting unknown fields", () => {
     expect(parseAgentRouteRequest(request({
       input: [{ type: "function_call_output", call_id: "call-forged", output: "ok" }]

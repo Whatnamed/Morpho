@@ -1,3 +1,5 @@
+import type { AgentToolProfile } from "./agentRuntimeItem";
+
 export type AgentStreamCitation = {
   title: string;
   url?: string;
@@ -10,6 +12,7 @@ export type AgentServerDirective =
   | { kind: "requiredReadFailed"; tools: Array<"read_project_memory" | "read_stage_record" | "search_project_conversation"> }
   | { kind: "memoryUpdate"; memoryKinds: Array<"preference" | "avoidance" | "constraint" | "openQuestion"> }
   | { kind: "toolArgumentRepair"; callIds: string[] }
+  | { kind: "conversationSummary" }
   | { kind: "finalize" };
 
 export type AgentStreamFunctionCall = {
@@ -56,7 +59,7 @@ export type AgentStreamContext = {
 
 export type AgentProviderRequestState = {
   promptContractVersion: string;
-  toolProfile?: "standard" | "standardWithWebSearch";
+  toolProfile?: AgentToolProfile;
   summaryRevisionId?: string;
   latestUserMessageId?: string;
   providerInputPrefixHash?: string;
@@ -69,7 +72,7 @@ export type AgentProviderRequestState = {
 
 export type AgentProviderDiagnostics = {
   promptContractVersion?: string;
-  toolProfile?: "standard" | "standardWithWebSearch";
+  toolProfile?: AgentToolProfile;
   stablePrefixHash?: string;
   previousStablePrefixHash?: string;
   contextFrameCount?: number;
@@ -126,7 +129,7 @@ export type AgentRouteStreamEvent =
       agentTurnId?: string;
       attemptId?: string;
       startedAt: string;
-      effectiveToolProfile?: "standard" | "standardWithWebSearch";
+      effectiveToolProfile?: AgentToolProfile;
       runtimeItem?: import("./agentRuntimeItem").AgentCanonicalRuntimeItem;
       leaseId?: string;
       leaseExpiresAt?: string;
