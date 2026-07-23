@@ -177,6 +177,48 @@ The CI workflow does not use `.env`, provider API keys, Vercel tokens, paid mode
 
 The remaining Security Advisor notices for `public.get_my_access_state()` and `public.reserve_ai_daily_quota(text)` are intentional and reviewed. They remain `SECURITY DEFINER` RPCs executable only by `authenticated`, because RLS blocks direct access to the qualification/quota tables and the application needs narrow current-user operations to read access state and atomically reserve quota. Both functions use fixed `search_path`, derive identity from `auth.uid()`, accept no cross-user identifier, use no dynamic SQL, and return only the caller's own state. Do not change them to `SECURITY INVOKER` or revoke `authenticated` execution just to remove the notices.
 
+### Agent Turn Lease Migration
+
+Deploy `supabase/migrations/20260724023731_add_agent_turn_leases.sql` before deploying Prompt Contract v3.3 application code. Without the migration, authenticated `/api/ai/agent` requests fail closed with an Agent Turn Lease service error; they must not fall back to the old client-trusted quota path.
+
+This checkout does not store a Supabase project ref, access token, database password, or service-role key. On an authorized operator machine with the Supabase CLI already authenticated, link the intended project explicitly and review the target before pushing:
+
+```powershell
+supabase link --project-ref <project-ref>
+supabase migration list
+supabase db push --dry-run
+supabase db push
+supabase migration list
+```
+
+Do not paste credentials into the repository or shell history. Do not apply the migration to a project whose ref has not been independently checked. The migration creates only `private.ai_agent_turn_leases` and the three narrow RPCs `start_agent_turn_lease`, `continue_agent_turn_lease`, and `complete_agent_turn_lease`; no workspace or prompt body is uploaded.
+
+After application, verify in the Supabase SQL editor or another authorized administrative connection:
+
+```sql
+select routine_name, security_type
+from information_schema.routines
+where routine_schema = 'public'
+  and routine_name in (
+    'start_agent_turn_lease',
+    'continue_agent_turn_lease',
+    'complete_agent_turn_lease'
+  )
+order by routine_name;
+
+select grantee, routine_name, privilege_type
+from information_schema.routine_privileges
+where specific_schema = 'public'
+  and routine_name in (
+    'start_agent_turn_lease',
+    'continue_agent_turn_lease',
+    'complete_agent_turn_lease'
+  )
+order by routine_name, grantee;
+```
+
+All three routines must be `SECURITY DEFINER`; only `authenticated` should have `EXECUTE`. Route and static migration checks run in the normal Vitest suite. Real acceptance must also verify one initial reservation, continuation without a second daily reservation, provider/search counter increments on the same lease, forged/cross-user/expired/closed rejection, and idempotent completion.
+
 The Supabase Free-plan leaked-password-protection advisor warning is a plan limitation. It is not fixed by changing application SQL or weakening authentication behavior.
 
 ## Archive And Backup
@@ -371,6 +413,7 @@ Local document extraction:
 /login                    Supabase email/password login and registration
 /projects/[projectId]     project workspace
 /api/ai/agent             formal OpenAI-compatible Responses Agent stream
+/api/ai/agent/lease       authenticated Agent turn completion
 /api/ai/chat              deprecated compatibility-only text route
 /api/ai/web-search        AiJWS web-search proxy
 /api/ai/image             GrsAI image generation proxy
