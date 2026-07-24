@@ -883,8 +883,20 @@ export function AiConversationPanel({
       </div>
 
       <button className="ai-toggle" type="button" aria-label={isOpen ? "收起 AI" : "打开 AI"} onClick={onToggleOpen}>
-        <div className="toggle-icon morpho-toggle-mark" aria-hidden="true">
-          M
+        <div
+          className={`toggle-icon morpho-toggle-mark${isOpen ? " is-open" : ""}`}
+          role="img"
+          aria-label="Morpho AI"
+        >
+          <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+            <g className="morpho-toggle-wing is-left">
+              <path d="M9.35 5.25C7.15 5.72 5.48 7.32 4.85 9.55C5.47 11.83 7.16 13.58 9.45 14.35" />
+            </g>
+            <g className="morpho-toggle-wing is-right">
+              <path d="M10.65 5.25C12.85 5.72 14.52 7.32 15.15 9.55C14.53 11.83 12.84 13.58 10.55 14.35" />
+            </g>
+            <path className="morpho-toggle-seam" d="M10 6.35V13.65" />
+          </svg>
         </div>
       </button>
     </>
