@@ -103,6 +103,8 @@ import {
   deleteObjects,
   deleteObject,
   clearDefaultReference,
+  clearVisualReviewMark,
+  collectDefaultReferenceReviewTargets,
   eliminateDirection,
   createVisualBranch,
   hideObjects,
@@ -144,7 +146,13 @@ import { usePersistentWorkspace } from "./usePersistentWorkspace";
 import { useWorkspaceAssetUrls } from "./useWorkspaceAssetUrls";
 import { compactObjectList, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
 import { getFloatingMenuPlacement, type SelectionToolbarPlacement } from "./selectionToolbar";
-import { shouldBlockSnapshotUndo } from "./workspaceUndo";
+import {
+  createSnapshotHistory,
+  pushSnapshotHistoryEntry,
+  redoSnapshotHistory,
+  undoSnapshotHistory,
+  type SnapshotHistory
+} from "./workspaceUndo";
 import { resolveWorkspaceShortcut } from "./workspaceShortcuts";
 import {
   buildPendingImageGenerationSlots,
@@ -412,7 +420,8 @@ async function requestConversationSummary(
       agentTurnId: input.agentTurnId,
       mode: input.mode,
       leaseId: input.leaseId,
-      leaseSequence: input.leaseSequence
+      leaseSequence: input.leaseSequence,
+      continuationToken: input.continuationToken
     })),
     signal
   });
@@ -637,7 +646,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const assetUrls = useWorkspaceAssetUrls(workspace.assets);
   const abortControllerRef = useRef<AbortController | null>(null);
   const agentStreamFlushRef = useRef<(() => void) | null>(null);
-  const objectOperationUndoStackRef = useRef<ObjectOperationUndoEntry[]>([]);
+  const objectOperationHistoryRef = useRef<SnapshotHistory<ObjectOperationUndoEntry>>(
+    createSnapshotHistory<ObjectOperationUndoEntry>()
+  );
   const detailNavigationUndoStackRef = useRef<DetailNavigationSnapshot[]>([]);
   useEffect(
     () => () => {
@@ -968,17 +979,33 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [handleDrawerChange, setWorkspace]
   );
 
+  const captureObjectOperationSnapshot = useCallback(
+    (): ObjectOperationUndoEntry => ({
+      workspace,
+      selectedObjectIds,
+      localEditObjectId,
+      pendingConfirmation
+    }),
+    [localEditObjectId, pendingConfirmation, selectedObjectIds, workspace]
+  );
+
   const pushObjectOperationUndo = useCallback(() => {
-    objectOperationUndoStackRef.current = [
-      ...objectOperationUndoStackRef.current.slice(-19),
-      {
-        workspace,
-        selectedObjectIds,
-        localEditObjectId,
-        pendingConfirmation
-      }
-    ];
-  }, [localEditObjectId, pendingConfirmation, selectedObjectIds, workspace]);
+    objectOperationHistoryRef.current = pushSnapshotHistoryEntry(
+      objectOperationHistoryRef.current,
+      captureObjectOperationSnapshot()
+    );
+  }, [captureObjectOperationSnapshot]);
+
+  const applyObjectOperationSnapshot = useCallback(
+    (entry: ObjectOperationUndoEntry) => {
+      setWorkspace(entry.workspace);
+      requestCanvasSelection(entry.selectedObjectIds);
+      setLocalEditObjectId(entry.localEditObjectId);
+      setPendingConfirmation(entry.pendingConfirmation);
+      setCanvasContextMenu(null);
+    },
+    [requestCanvasSelection, setWorkspace]
+  );
 
   const undoLastDetailNavigation = useCallback(() => {
     const restored = popDetailNavigation(detailNavigationUndoStackRef.current);
@@ -1002,27 +1029,49 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return true;
     }
 
-    const entry = objectOperationUndoStackRef.current.pop();
-    if (!entry) {
+    const result = undoSnapshotHistory(objectOperationHistoryRef.current, workspace, captureObjectOperationSnapshot);
+    if (result.status === "empty") {
       return false;
     }
 
-    if (shouldBlockSnapshotUndo(entry.workspace, workspace)) {
+    if (result.status === "blocked") {
       setCanvasContextMenu(null);
+      showWorkspaceNotice("撤销已暂停：此步早于 AI 生成的内容，AI 结果不进入撤销；撤销历史已保留。", 2600);
       return true;
     }
 
-    setWorkspace(entry.workspace);
-    requestCanvasSelection(entry.selectedObjectIds);
-    setLocalEditObjectId(entry.localEditObjectId);
-    setPendingConfirmation(entry.pendingConfirmation);
-    setCanvasContextMenu(null);
+    objectOperationHistoryRef.current = result.history;
+    applyObjectOperationSnapshot(result.entry);
     return true;
-  }, [requestCanvasSelection, setWorkspace, undoLastDetailNavigation, workspace]);
+  }, [applyObjectOperationSnapshot, captureObjectOperationSnapshot, showWorkspaceNotice, undoLastDetailNavigation, workspace]);
+
+  const redoLastObjectOperation = useCallback(() => {
+    const result = redoSnapshotHistory(objectOperationHistoryRef.current, workspace, captureObjectOperationSnapshot);
+    if (result.status === "empty") {
+      return false;
+    }
+
+    if (result.status === "blocked") {
+      setCanvasContextMenu(null);
+      showWorkspaceNotice("重做已暂停：撤销之后已有新内容创建，重做不会移除它们；历史已保留。", 2600);
+      return true;
+    }
+
+    objectOperationHistoryRef.current = result.history;
+    applyObjectOperationSnapshot(result.entry);
+    return true;
+  }, [applyObjectOperationSnapshot, captureObjectOperationSnapshot, showWorkspaceNotice, workspace]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.key.toLowerCase() !== "z") {
+      if (!(event.ctrlKey || event.metaKey)) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      const isUndo = key === "z" && !event.shiftKey;
+      const isRedo = (key === "z" && event.shiftKey) || (key === "y" && !event.shiftKey);
+      if (!isUndo && !isRedo) {
         return;
       }
 
@@ -1030,7 +1079,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return;
       }
 
-      if (!undoLastObjectOperation()) {
+      const handled = isUndo ? undoLastObjectOperation() : redoLastObjectOperation();
+      if (!handled) {
         return;
       }
 
@@ -1042,7 +1092,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     return () => {
       window.removeEventListener("keydown", handleKeyDown, { capture: true });
     };
-  }, [undoLastObjectOperation]);
+  }, [redoLastObjectOperation, undoLastObjectOperation]);
 
   const handleSelectionChange = useCallback(
     (objectIds: string[]) => {
@@ -4825,9 +4875,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
-    pushObjectOperationUndo();
-
     if (target.isDefaultReference) {
+      pushObjectOperationUndo();
       setWorkspace((current) =>
         clearDefaultReference(current, target.id, {
           reason: "用户在画布上明确取消后续默认参考。"
@@ -4837,13 +4886,33 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
+    const previousReference = Object.values(workspace.objects).find(
+      (object) => object.type === "image" && object.visibility === "active" && object.isDefaultReference
+    );
+    if (previousReference && previousReference.id !== target.id) {
+      // 替换已有锚点：按产品规则先给出“只替换 / 替换并标记待复核”两个选项，不直接改状态。
+      const reviewTargets = collectDefaultReferenceReviewTargets(workspace, previousReference.id, target.id);
+      setPendingConfirmation({
+        kind: "setDefaultReference",
+        targetObjectId: target.id,
+        targetTitle: target.title,
+        previousReferenceObjectId: previousReference.id,
+        previousReferenceTitle: previousReference.title,
+        reviewImageCount: reviewTargets.imageIds.length,
+        reviewCollectionCount: reviewTargets.collectionIds.length
+      });
+      setAiOpen(true);
+      return;
+    }
+
+    pushObjectOperationUndo();
     setWorkspace((current) =>
       setDefaultReference(current, target.id, {
         reason: "用户在画布上明确设为后续默认参考。"
       })
     );
     showWorkspaceNotice(`已设「${target.title}」为后续默认参考`);
-  }, [pushObjectOperationUndo, selectedObjects, setWorkspace, showWorkspaceNotice]);
+  }, [pushObjectOperationUndo, selectedObjects, setWorkspace, showWorkspaceNotice, workspace]);
 
   const handleConfirmPending = useCallback(async () => {
     if (!pendingConfirmation) {
@@ -5209,13 +5278,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
 
     if (pendingConfirmation.kind === "setDefaultReference") {
+      pushObjectOperationUndo();
       setWorkspace((current) =>
         setDefaultReference(current, pendingConfirmation.targetObjectId, {
-          reason: "用户在默认参考确认卡中明确替换后续默认参考。"
+          reason: "用户在默认参考确认卡中明确只替换后续默认参考。"
         })
       );
       setPendingConfirmation(null);
       setAiDraft("");
+      showWorkspaceNotice(`已替换后续默认参考为「${pendingConfirmation.targetTitle}」`);
       return;
     }
 
@@ -5256,7 +5327,58 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setLocalEditObjectId((current) => (current === pendingConfirmation.targetObjectId ? null : current));
     setPendingConfirmation(null);
     setAiDraft("");
-  }, [executeAgentVisualGenerationPlan, pendingConfirmation, setWorkspace, workspace]);
+  }, [executeAgentVisualGenerationPlan, pendingConfirmation, pushObjectOperationUndo, setWorkspace, showWorkspaceNotice, workspace]);
+
+  const handleConfirmPendingWithReviewMarks = useCallback(() => {
+    if (pendingConfirmation?.kind !== "setDefaultReference") {
+      return;
+    }
+
+    pushObjectOperationUndo();
+    setWorkspace((current) =>
+      setDefaultReference(current, pendingConfirmation.targetObjectId, {
+        reason: "用户在默认参考确认卡中选择替换默认参考，并标记直接延展素材待复核。",
+        markReplacedDerivativesForReview: true
+      })
+    );
+    setPendingConfirmation(null);
+    setAiDraft("");
+    showWorkspaceNotice(`已替换默认参考为「${pendingConfirmation.targetTitle}」，直接延展素材已标记待复核`);
+  }, [pendingConfirmation, pushObjectOperationUndo, setWorkspace, showWorkspaceNotice]);
+
+  const handleKeepReviewedVisual = useCallback(
+    (objectId: string) => {
+      const target = workspace.objects[objectId];
+      if (!target || (target.type !== "image" && target.type !== "imageCollection") || !target.pendingReview) {
+        return;
+      }
+
+      pushObjectOperationUndo();
+      setWorkspace((current) => clearVisualReviewMark(current, objectId));
+      showWorkspaceNotice(`已保留「${target.title}」，待复核标记已清除`);
+    },
+    [pushObjectOperationUndo, setWorkspace, showWorkspaceNotice, workspace.objects]
+  );
+
+  const handleRegenerateReviewedVisual = useCallback(
+    (objectId: string) => {
+      const target = workspace.objects[objectId];
+      if (!target || (target.type !== "image" && target.type !== "imageCollection")) {
+        return;
+      }
+
+      const newReferenceId = target.pendingReview?.newDefaultReferenceId;
+      const newReference = newReferenceId ? workspace.objects[newReferenceId] : undefined;
+      // 只填入可编辑的自然语言，不自动发送、不直接生成。
+      setAiOpen(true);
+      setTaskMode("imageGeneration");
+      setAiDraft(
+        `基于当前后续默认参考「${newReference?.title ?? "当前默认参考"}」重新生成「${target.title}」，保持原有用途与构图意图；作为新图生成，不替换原有素材。`
+      );
+      setAiInputFocusNonce((value) => value + 1);
+    },
+    [workspace.objects]
+  );
 
   const handleHideSelected = useCallback(() => {
     if (selectedObjects.length === 0) {
@@ -6580,6 +6702,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onRequestComparisonAction={handleRequestComparisonAction}
         onLocateObject={focusObject}
         onConfirmPending={handleConfirmPending}
+        onConfirmPendingSecondary={handleConfirmPendingWithReviewMarks}
         onCancelPending={() => setPendingConfirmation(null)}
         onFailureRetry={() => setShowFailure(false)}
         onOpenProjectRecords={openProjectRecords}
@@ -6606,6 +6729,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           onOpenDocumentReader={handleOpenDocumentReader}
           onPreviewObject={setDetailHoverObjectId}
           onLocateObject={locateObjectFromDetail}
+          onKeepReviewedVisual={handleKeepReviewedVisual}
+          onRegenerateReviewedVisual={handleRegenerateReviewedVisual}
         />
       ) : null}
     </main>
