@@ -57,6 +57,7 @@ export type ValidatedAgentRouteRequest = {
   leaseContinuation: boolean;
   leaseId?: string;
   leaseSequence?: number;
+  continuationToken?: string;
   promptContractVersion: typeof MORPHO_AGENT_PROMPT_CONTRACT_VERSION;
   mode: AgentRuntimeMode;
   capabilityIntent: AgentCapabilityIntent;
@@ -86,6 +87,7 @@ export function parseAgentRouteRequest(value: unknown):
     "leaseContinuation",
     "leaseId",
     "leaseSequence",
+    "continuationToken",
     "promptContractVersion",
     "mode",
     "capabilityIntent",
@@ -140,6 +142,15 @@ export function parseAgentRouteRequest(value: unknown):
   if (!value.continuation && !leaseContinuation && value.leaseSequence !== undefined) {
     return failed("首次 Agent 请求不能携带 leaseSequence。");
   }
+  const continuationToken = value.continuationToken === undefined
+    ? undefined
+    : boundedContinuationToken(value.continuationToken);
+  if (value.continuationToken !== undefined && !continuationToken) {
+    return failed("continuationToken 格式无效。");
+  }
+  if (!value.continuation && !leaseContinuation && continuationToken) {
+    return failed("首次 Agent 请求不能携带 continuationToken。");
+  }
   const capabilityIntent = parseCapabilityIntent(value.capabilityIntent);
   if (!capabilityIntent) {
     return failed("capabilityIntent 格式无效。");
@@ -188,6 +199,7 @@ export function parseAgentRouteRequest(value: unknown):
       leaseContinuation,
       ...(leaseId ? { leaseId } : {}),
       ...(leaseSequence !== undefined ? { leaseSequence } : {}),
+      ...(continuationToken ? { continuationToken } : {}),
       promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
       mode: value.mode,
       capabilityIntent,
@@ -280,6 +292,35 @@ function serverDirectiveMessage(directive: AgentServerDirective): ResponseMessag
               "Do not call tools. Summarize only verified completed results, failures, and remaining work."
             ].join("\n");
   return { role: "system", content: [{ type: "input_text", text }] };
+}
+
+/**
+ * Provider output items are hashed for continuation binding on the way out and
+ * re-hashed after `parseDynamicInput` on the way back in. Both sides must see the
+ * same normalized shape, so the outbound side reuses the inbound parsers.
+ * Returns undefined when an item is not a replayable Provider output item.
+ */
+export function normalizeProviderOutputItemsForBinding(
+  items: readonly unknown[]
+): unknown[] | undefined {
+  const normalized: unknown[] = [];
+  for (const raw of items) {
+    if (!isRecord(raw)) {
+      return undefined;
+    }
+    const parsed = raw.type === "message"
+      ? parseProviderOutputMessage(raw)
+      : raw.type === "function_call"
+        ? parseFunctionCall(raw)
+        : raw.type === "reasoning"
+          ? parseReasoningItem(raw)
+          : undefined;
+    if (!parsed) {
+      return undefined;
+    }
+    normalized.push(parsed);
+  }
+  return normalized;
 }
 
 export class AgentProviderContractError extends Error {
@@ -875,6 +916,15 @@ function isBoundedJsonArray(value: unknown, maxItems: number, maxChars: number):
 
 function boundedText(value: unknown): value is string {
   return typeof value === "string" && value.length <= MAX_TEXT_PART_CHARS;
+}
+
+function boundedContinuationToken(value: unknown): string | undefined {
+  return typeof value === "string" &&
+    value.length >= 16 &&
+    value.length <= 4_096 &&
+    /^[A-Za-z0-9._-]+$/.test(value)
+    ? value
+    : undefined;
 }
 
 function boundedIdentifier(value: unknown): string | undefined {

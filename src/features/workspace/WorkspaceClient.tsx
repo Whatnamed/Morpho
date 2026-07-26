@@ -387,8 +387,10 @@ async function requestConversationSummary(
     mode: MorphoAgentTurnMode;
     leaseId?: string;
     leaseSequence?: number;
+    continuationToken?: string;
     onLeaseStarted?: (leaseId: string) => void;
     onLeaseSequence?: (sequence: number) => void;
+    onContinuationToken?: (token: string) => void;
   }
 ): Promise<{
   parsed: ReturnType<typeof parseConversationSummaryPayload>;
@@ -417,6 +419,9 @@ async function requestConversationSummary(
       }
       if (event.type === "turn-start" && event.nextProviderSequence !== undefined) {
         input.onLeaseSequence?.(event.nextProviderSequence);
+      }
+      if (event.type === "turn-complete" && event.continuationToken) {
+        input.onContinuationToken?.(event.continuationToken);
       }
     }
   });
@@ -1992,6 +1997,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const agentTurnId = `agent-turn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     let agentTurnLeaseId: string | undefined;
     let nextAgentLeaseSequence: number | undefined;
+    // Signed proof of the previous Provider response. Every continuation in this
+    // turn has to return it so the server can verify the transcript is really its
+    // own output rather than something the client assembled.
+    let agentContinuationToken: string | undefined;
+    // A compaction rebuilds the transcript, so the next request is a fresh one even
+    // though the turn continues. Claiming exact continuation there would be a lie.
+    let providerTranscriptReset = false;
     // Web search consumes a lease sequence before it can fail. One resynchronization
     // per turn lets a lost response recover; Provider continuations stay strict.
     let webSearchSequenceResyncUsed = false;
@@ -2163,14 +2175,19 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             mode: agentTurnMode,
             leaseId: agentTurnLeaseId,
             leaseSequence: nextAgentLeaseSequence,
+            continuationToken: agentContinuationToken,
             onLeaseStarted: (leaseId) => {
               agentTurnLeaseId = leaseId;
             },
             onLeaseSequence: (sequence) => {
               nextAgentLeaseSequence = sequence;
+            },
+            onContinuationToken: (token) => {
+              agentContinuationToken = token;
             }
           }
         );
+        providerTranscriptReset = true;
         agentTurnLeaseId = summaryRequest.leaseId ?? agentTurnLeaseId;
         const parsedSummary = summaryRequest.parsed;
         if (parsedSummary.status !== "ok") {
@@ -2321,7 +2338,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       input: Array<unknown>,
       continuation = false
     ): Promise<AgentRouteResult> {
-      const leaseContinuation = !continuation && Boolean(agentTurnLeaseId);
+      const exactContinuation = continuation && !providerTranscriptReset;
+      providerTranscriptReset = false;
+      const leaseContinuation = !exactContinuation && Boolean(agentTurnLeaseId);
       const currentRequestState: ProviderRequestBoundaryState = {
         promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
         ...(conversationContext.summaryRevision
@@ -2329,7 +2348,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           : {}),
         latestUserMessageId: userMessageId,
         budgetGeneration: contextBudgetState.generation,
-        ...(!continuation && providerInputSnapshot.cacheBoundaryReason
+        ...(!exactContinuation && providerInputSnapshot.cacheBoundaryReason
           ? { attachmentBoundary: providerInputSnapshot.cacheBoundaryReason }
           : {})
       };
@@ -2353,11 +2372,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           input,
           projectId: workspaceAtAgentStart.project.id,
           agentTurnId,
-          continuation,
+          continuation: exactContinuation,
           ...(leaseContinuation ? { leaseContinuation: true } : {}),
-          ...((continuation || leaseContinuation) && agentTurnLeaseId ? { leaseId: agentTurnLeaseId } : {}),
-          ...((continuation || leaseContinuation) && nextAgentLeaseSequence !== undefined
+          ...((exactContinuation || leaseContinuation) && agentTurnLeaseId ? { leaseId: agentTurnLeaseId } : {}),
+          ...((exactContinuation || leaseContinuation) && nextAgentLeaseSequence !== undefined
             ? { leaseSequence: nextAgentLeaseSequence }
+            : {}),
+          ...((exactContinuation || leaseContinuation) && agentContinuationToken
+            ? { continuationToken: agentContinuationToken }
             : {}),
           promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
           mode: agentTurnMode,
@@ -2421,6 +2443,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           onEvent: (event) => {
             if (!attemptGuard.accept(event)) {
               return;
+            }
+            if (event.type === "turn-complete" && event.continuationToken) {
+              agentContinuationToken = event.continuationToken;
             }
             if (event.type === "turn-start") {
               if (event.leaseId) {
@@ -2641,13 +2666,18 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         mode: agentTurnMode,
         leaseId: agentTurnLeaseId,
         leaseSequence: nextAgentLeaseSequence,
+        continuationToken: agentContinuationToken,
         onLeaseStarted: (leaseId) => {
           agentTurnLeaseId = leaseId;
         },
         onLeaseSequence: (sequence) => {
           nextAgentLeaseSequence = sequence;
+        },
+        onContinuationToken: (token) => {
+          agentContinuationToken = token;
         }
       });
+      providerTranscriptReset = true;
       agentTurnLeaseId = summaryRequest.leaseId ?? agentTurnLeaseId;
       const parsedSummary = summaryRequest.parsed;
       if (parsedSummary.status !== "ok") {

@@ -37,8 +37,17 @@ import {
 import {
   AgentProviderContractError,
   buildAgentProviderContract,
+  normalizeProviderOutputItemsForBinding,
   parseAgentRouteRequest
 } from "@/server/ai/agentProviderContract";
+import {
+  agentContinuationFailureMessage,
+  hashAgentContinuationItems,
+  issueAgentContinuationToken,
+  resolveAgentContinuationSecret,
+  verifyAgentContinuationBinding,
+  verifyAgentContinuationToken
+} from "@/server/ai/agentContinuationToken";
 
 export const runtime = "nodejs";
 export const MAX_AGENT_REQUEST_BODY_BYTES = 36 * 1024 * 1024;
@@ -94,13 +103,58 @@ export async function POST(request: Request) {
     directive: validated.value.directive?.kind ?? null
   });
   const requestManifestHash = hashAgentTurnLeaseValue(requestState.cacheItemManifest ?? []);
+  const isSummaryRequest = validated.value.directive?.kind === "conversationSummary";
+  const continuationKind = isSummaryRequest
+    ? "conversationSummary" as const
+    : validated.value.continuation
+      ? "providerContinuation" as const
+      : "postCompaction" as const;
+  const continuationSecret = resolveAgentContinuationSecret(process.env);
+  // A continuation may only replay what the server itself produced. The lease
+  // sequence proves ordering; the signed binding proves causality.
+  if (validated.value.continuation || validated.value.leaseContinuation) {
+    const verified = verifyAgentContinuationToken({
+      token: validated.value.continuationToken,
+      secret: continuationSecret,
+      leaseId: validated.value.leaseId!,
+      agentTurnId: validated.value.agentTurnId,
+      expectedSequence: validated.value.leaseSequence!,
+      now: Date.now()
+    });
+    if (verified.status === "failed") {
+      return NextResponse.json(
+        { error: agentContinuationFailureMessage(verified.reason), reason: verified.reason },
+        { status: verified.reason === "secret_missing" ? 503 : 400 }
+      );
+    }
+    if (continuationKind === "providerContinuation") {
+      const bound = verifyAgentContinuationBinding({
+        claims: verified.claims,
+        parsedInput: validated.value.input
+      });
+      if (bound.status === "failed") {
+        return NextResponse.json(
+          { error: agentContinuationFailureMessage(bound.reason), reason: bound.reason },
+          { status: 400 }
+        );
+      }
+    }
+    // A fresh transcript is legitimate only right after a server-owned summary.
+    if (continuationKind === "postCompaction" && !verified.claims.summary) {
+      return NextResponse.json(
+        {
+          error: agentContinuationFailureMessage("transcript_not_summary"),
+          reason: "transcript_not_summary"
+        },
+        { status: 400 }
+      );
+    }
+  }
   const leaseAccess = validated.value.continuation || validated.value.leaseContinuation
     ? await continueAgentTurnLease({
         leaseId: validated.value.leaseId!,
         agentTurnId: validated.value.agentTurnId,
-        continuationKind: validated.value.directive?.kind === "conversationSummary"
-          ? "conversationSummary"
-          : "providerContinuation",
+        continuationKind,
         expectedSequence: validated.value.leaseSequence!,
         requestHash,
         requestManifestHash,
@@ -115,6 +169,7 @@ export async function POST(request: Request) {
   if (leaseAccess.status === "denied") {
     return agentTurnLeaseDeniedResponse(leaseAccess);
   }
+  const continuationInputHash = hashAgentContinuationItems(validated.value.input);
   const cacheManifestDiagnostics = compareAgentCacheManifests({
     previous: contract.request.diagnostics?.previousRequestState,
     current: requestState
@@ -255,9 +310,25 @@ export async function POST(request: Request) {
           });
           const completedAttemptId = activeAttemptId;
           enqueue({ type: "context", context: execution.context });
+          const boundOutputItems = normalizeProviderOutputItemsForBinding(execution.result.outputItems);
+          const continuationToken = continuationSecret && boundOutputItems
+            ? issueAgentContinuationToken({
+                secret: continuationSecret,
+                leaseId: leaseAccess.lease.id,
+                agentTurnId: validated.value.agentTurnId,
+                sequence: leaseAccess.lease.nextProviderSequence,
+                summary: isSummaryRequest,
+                inputItemCount: validated.value.input.length,
+                inputHash: continuationInputHash,
+                outputHash: hashAgentContinuationItems(boundOutputItems),
+                callIds: execution.result.functionCalls.map((call) => call.callId),
+                now: Date.now()
+              })
+            : undefined;
           enqueue({
             type: "turn-complete",
             attemptId: completedAttemptId,
+            ...(continuationToken ? { continuationToken } : {}),
             result: {
               ...execution.result,
               context: execution.context,

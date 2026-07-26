@@ -201,6 +201,11 @@ export type AgentRouteStreamEvent =
       type: "turn-complete";
       result: AgentStreamResult;
       attemptId?: string;
+      /**
+       * Signed proof of what this response actually was. The next Provider request
+       * in the same turn must return it; it is never persisted with the workspace.
+       */
+      continuationToken?: string;
     }
   | {
       type: "turn-error";
