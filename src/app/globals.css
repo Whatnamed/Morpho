@@ -5101,72 +5101,101 @@ button:disabled {
   right: 0;
   width: 286px;
   display: grid;
-  gap: 14px;
-  padding: 15px;
+  gap: 12px;
+  padding: 14px;
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
-  background: var(--surface-raised);
+  background: #fff;
   box-shadow: var(--shadow-popover);
 }
 
-.account-label,
-.account-status-grid span {
+.account-label {
   color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.account-status-grid span {
+  color: var(--text-secondary);
   font-size: 11px;
 }
 
 .account-popover strong {
   display: block;
-  margin-top: 3px;
+  margin-top: 2px;
   overflow-wrap: anywhere;
-  font-size: 13px;
+  font-size: 12.5px;
+  font-weight: 620;
 }
 
 .account-status-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-subtle);
+  gap: 6px 14px;
+  align-items: baseline;
+  padding-top: 10px;
+  border-top: 1px solid rgba(78, 68, 58, 0.08);
 }
 
 .account-status-grid strong {
   margin: 0;
+  font-size: 11px;
   text-align: right;
 }
 
 .account-signout {
-  justify-content: flex-start;
+  height: 28px;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid rgba(78, 68, 58, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.34);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 520;
+}
+
+.account-signout:hover:not(:disabled) {
+  background: var(--surface-muted);
+  color: var(--text-primary);
 }
 
 .access-notice {
-  max-width: 1180px;
-  margin: 0 auto 18px;
-}
-
-.access-notice {
-  padding: 20px;
+  padding: 12px 14px;
   border: 1px solid var(--border-subtle);
-  border-radius: 14px;
-  background: rgba(252, 251, 248, 0.82);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .access-notice.error {
-  border-color: rgba(166, 69, 58, 0.25);
+  border-color: rgba(166, 69, 58, 0.14);
+  background: rgba(166, 69, 58, 0.05);
+  color: var(--danger);
 }
 
 .access-notice strong {
   display: block;
-  margin-bottom: 8px;
-  font-size: 16px;
+  margin-bottom: 2px;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 620;
+}
+
+.access-notice.error strong {
+  color: var(--danger);
 }
 
 .access-notice p {
   max-width: 620px;
   margin: 0;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.7;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 
@@ -5367,7 +5396,6 @@ select:focus-visible {
 .archive-panel,
 .delivery-output-panel,
 .project-menu,
-.account-popover,
 .canvas-context-menu {
   background:
     linear-gradient(180deg, rgba(255, 254, 251, 0.98), rgba(248, 245, 239, 0.96)),
@@ -6853,7 +6881,8 @@ select:focus-visible {
 
 .project-preview-image {
   border-color: rgba(78, 68, 58, 0.12);
-  background: rgba(218, 214, 205, 0.9);
+  background: linear-gradient(135deg, #d3ccbd, #b0a692);
+  box-shadow: 0 2px 6px rgba(30, 24, 18, 0.12);
 }
 
 .project-preview-research,
@@ -8906,15 +8935,15 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
 }
 
 /* =====================================================================
-   Project home workspace shell (phome v3, 2026-07)
-   Speaks the workbench chrome language: warm glass surfaces, hairline
-   rgba(78,68,58) borders, 10/12/13/18 radii, accent-select active
-   states, small quiet type. Uniform project cards, light hero plate.
+   Project home workspace shell (phome v4, 2026-07)
+   Matches the Claude Design handoff (Project Home.dc.html): 264px quiet
+   sidebar, blue-grey active nav, plate hero split with a live canvas
+   thumbnail, flush 16/10 project cards, warm hairline borders.
    ===================================================================== */
 
 .phome {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-columns: 264px minmax(0, 1fr);
   height: 100vh;
   overflow: hidden;
   background: var(--canvas);
@@ -8923,11 +8952,10 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
 .phome-side {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 18px 14px 16px;
-  border-right: 1px solid rgba(78, 68, 58, 0.1);
-  background: rgba(252, 251, 248, 0.82);
-  backdrop-filter: blur(18px) saturate(1.05);
+  gap: 24px;
+  padding: 24px 16px 16px;
+  border-right: 1px solid rgba(78, 68, 58, 0.08);
+  background: rgba(252, 251, 248, 0.65);
   overflow-y: auto;
 }
 
@@ -8935,23 +8963,21 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 4px 6px 2px;
+  padding: 0 6px;
 }
 
 .phome-brand-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   flex: none;
-  border: 1px solid rgba(142, 76, 36, 0.18);
-  border-radius: 10px;
-  background: var(--accent-brand);
-  color: #fdfbf8;
-  font-size: 16px;
-  font-weight: 660;
-  letter-spacing: -0.02em;
+  border-radius: 999px;
+  background: var(--accent-brand-soft);
+  color: var(--accent-brand);
+  font-size: 13px;
+  font-weight: 680;
 }
 
 .phome-brand-copy {
@@ -8961,9 +8987,9 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
 }
 
 .phome-brand-copy strong {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 650;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
 }
 
 .phome-brand-copy small {
@@ -8981,147 +9007,125 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
 }
 
 .phome-side-label {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-bottom: 4px;
-  padding: 0 10px;
+  padding: 0 10px 6px;
   color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 640;
-  letter-spacing: 0.05em;
-}
-
-.phome-side-label::before {
-  content: "";
-  width: 5px;
-  height: 5px;
-  flex: none;
-  border-radius: 1.5px;
-  background: var(--accent-brand);
-  opacity: 0.55;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
 }
 
 .phome-side-item {
   display: flex;
   align-items: center;
   gap: 9px;
-  height: 34px;
+  height: 32px;
   padding: 0 10px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 9px;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 12.5px;
-  font-weight: 560;
+  font-size: 13px;
+  font-weight: 520;
   text-align: left;
-  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+  white-space: nowrap;
+  transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
 }
 
 .phome-side-item:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--surface-muted);
   color: var(--text-primary);
 }
 
 .phome-side-item.is-active {
-  background: var(--accent-select-soft);
-  color: var(--accent-select);
-  font-weight: 610;
+  background: rgba(228, 234, 235, 0.72);
+  color: #4c5c66;
+  font-weight: 600;
+}
+
+.phome-side-item.is-active:hover {
+  background: rgba(228, 234, 235, 0.72);
+  color: #4c5c66;
 }
 
 .phome-side-item.is-planned {
-  cursor: default;
-}
-
-.phome-side-item.is-planned:hover {
-  background: transparent;
-  color: var(--text-secondary);
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .phome-side-tag {
   margin-left: auto;
-  padding: 1px 7px;
-  border: 1px solid var(--border-subtle);
+  padding: 2px 6px;
+  border: 1px solid rgba(117, 83, 49, 0.12);
   border-radius: 999px;
+  background: rgba(241, 235, 225, 0.78);
   color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 560;
-  letter-spacing: 0.02em;
+  font-size: 9px;
+  font-weight: 650;
 }
 
 .phome-side-foot {
   display: grid;
-  gap: 12px;
+  gap: 2px;
   margin-top: auto;
-  padding-top: 14px;
-  border-top: 1px solid var(--border-subtle);
-}
-
-.phome-side-restore {
-  height: 36px;
-  justify-content: center;
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.72);
-  font-weight: 580;
-}
-
-.phome-side-restore:hover:not(:disabled) {
-  background: var(--surface-raised);
-  color: var(--text-primary);
 }
 
 .phome-side-restore:disabled {
   opacity: 0.55;
-  cursor: default;
+  cursor: not-allowed;
 }
 
 .phome-side-account {
   position: relative;
+  margin-top: 10px;
 }
 
 /* Fixed position escapes the sidebar scroll container, which would clip an
-   absolutely-positioned popover at the 240px column edge. */
+   absolutely-positioned popover at the 264px column edge. */
 .phome-side-account .account-popover {
   position: fixed;
   z-index: 60;
   top: auto;
-  bottom: 62px;
-  left: 12px;
+  bottom: 66px;
+  left: 16px;
   right: auto;
-  width: 268px;
+  width: 232px;
 }
 
 .phome-account-entry {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   width: 100%;
-  padding: 6px 8px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
+  padding: 8px 10px;
+  border: 1px solid rgba(78, 68, 58, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.5);
   cursor: pointer;
   text-align: left;
-  transition: background var(--duration-fast) var(--ease-out);
+  transition: background var(--duration-fast) ease;
 }
 
 .phome-account-entry:hover {
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--surface-muted);
+}
+
+.phome-account-entry > svg {
+  flex: none;
+  color: var(--text-muted);
 }
 
 .phome-account-avatar {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   flex: none;
-  border-radius: 50%;
+  border-radius: 999px;
   background: var(--accent-brand-soft);
   color: var(--accent-brand);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -9135,8 +9139,8 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
 .phome-account-copy strong {
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 12.5px;
-  font-weight: 580;
+  font-size: 12px;
+  font-weight: 620;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -9144,43 +9148,35 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
 .phome-account-copy small {
   overflow: hidden;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .phome-local-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 32px;
-  padding: 0 12px;
+  margin-top: 10px;
+  padding: 9px 10px;
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
-  background: var(--surface-muted);
+  background: rgba(255, 255, 255, 0.4);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .phome-main {
   min-width: 0;
   overflow-y: auto;
-  background:
-    radial-gradient(circle at 22% 0%, rgba(255, 255, 255, 0.85), transparent 34%),
-    radial-gradient(circle at 96% 100%, rgba(237, 230, 221, 0.6), transparent 30%),
-    radial-gradient(rgba(78, 68, 58, 0.045) 1px, transparent 1.4px),
-    var(--canvas);
-  background-size: auto, auto, 23px 23px, auto;
+  background-image: radial-gradient(circle at 30% 0%, rgba(255, 255, 255, 0.5), transparent 34%);
 }
 
 .phome-main-column {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  max-width: 1180px;
+  gap: 22px;
+  max-width: 1080px;
   min-height: 100%;
   margin: 0 auto;
-  padding: 28px 40px 36px;
+  padding: 30px 36px 24px;
 }
 
 .phome-topbar {
@@ -9188,43 +9184,49 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
   flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 14px;
+  gap: 18px;
+}
+
+.phome-topbar-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .phome-kicker {
   color: var(--text-muted);
   font-size: 11px;
-  font-weight: 640;
+  font-weight: 600;
   letter-spacing: 0.07em;
 }
 
 .phome-topbar-title h1 {
-  margin: 3px 0 0;
-  font-size: 24px;
+  margin: 0;
+  font-size: 26px;
   font-weight: 650;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
+  letter-spacing: 0;
+  line-height: 1.2;
 }
 
 .phome-controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
 }
 
 .phome-search {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  width: min(290px, 42vw);
-  height: 38px;
-  padding: 0 12px;
-  border: 1px solid var(--border-strong);
+  width: min(236px, 42vw);
+  height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--border-subtle);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.55);
   color: var(--text-muted);
-  transition: border-color var(--duration-fast) var(--ease-out);
+  transition: border-color var(--duration-fast) ease;
 }
 
 .phome-search:focus-within {
@@ -9237,25 +9239,44 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
   border: 0;
   background: transparent;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: 12.5px;
   outline: none;
 }
 
 .phome-search input::placeholder {
-  color: var(--text-muted);
+  color: #978f86;
+}
+
+.phome-sort {
+  position: relative;
+  display: inline-flex;
 }
 
 .phome-sort select {
-  height: 38px;
-  padding: 0 10px;
-  border: 1px solid var(--border-strong);
+  height: 34px;
+  padding: 0 28px 0 11px;
+  border: 1px solid var(--border-subtle);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.55);
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 12.5px;
+  font-size: 12px;
   outline: none;
-  transition: border-color var(--duration-fast) var(--ease-out);
+  appearance: none;
+  transition: border-color var(--duration-fast) ease;
+}
+
+.phome-sort::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  width: 8px;
+  height: 8px;
+  border-right: 1.5px solid var(--text-muted);
+  border-bottom: 1.5px solid var(--text-muted);
+  pointer-events: none;
+  transform: translateY(-70%) rotate(45deg);
 }
 
 .phome-sort select:hover,
@@ -9267,11 +9288,16 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
 .phome-create {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  height: 38px;
-  padding: 0 16px;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid rgba(142, 76, 36, 0.18);
   border-radius: 10px;
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 620;
+  box-shadow:
+    0 7px 18px rgba(142, 76, 36, 0.14),
+    0 1px 0 rgba(255, 255, 255, 0.12) inset;
 }
 
 .phome-restore-status,
@@ -9292,14 +9318,14 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
 .phome-restore-card {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 14px;
-  padding: 14px 18px;
-  border: 1px solid rgba(78, 68, 58, 0.1);
-  border-radius: 13px;
-  background: rgba(252, 251, 248, 0.92);
-  box-shadow: var(--shadow-float);
+  gap: 14px 18px;
+  padding: 16px 18px;
+  border: 1px solid rgba(142, 76, 36, 0.2);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 254, 251, 0.98), rgba(248, 245, 239, 0.96));
+  box-shadow: var(--shadow-object);
 }
 
 .phome-restore-card strong {
@@ -9311,6 +9337,29 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
   margin: 4px 0 0;
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+.phome-restore-actions button {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.phome-restore-actions .plain-button {
+  border: 1px solid rgba(78, 68, 58, 0.08);
+  background: rgba(255, 255, 255, 0.34);
+  font-weight: 520;
+}
+
+.phome-restore-actions .brand-button {
+  padding: 0 11px;
+  border: 1px solid rgba(142, 76, 36, 0.18);
+  font-weight: 620;
+  box-shadow:
+    0 7px 18px rgba(142, 76, 36, 0.14),
+    0 1px 0 rgba(255, 255, 255, 0.12) inset;
 }
 
 .phome-restore-note {
@@ -9329,82 +9378,74 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
 }
 
 .phome-section-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 630;
-  letter-spacing: 0.03em;
-}
-
-.phome-section-label::before {
-  content: "";
-  width: 5px;
-  height: 5px;
   flex: none;
-  border-radius: 1.5px;
-  background: var(--accent-brand);
-  opacity: 0.6;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
 }
 
 .phome-rule {
   flex: 1;
   height: 1px;
-  background: var(--border-subtle);
+  background: rgba(78, 68, 58, 0.1);
 }
 
 .phome-shelf-count {
+  flex: none;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .phome-hero {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .phome-hero-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 424px);
-  min-height: 226px;
+  grid-template-columns: minmax(0, 1fr) 42%;
+  align-items: stretch;
   padding: 0;
   border: 1px solid rgba(78, 68, 58, 0.1);
-  border-radius: var(--radius-xl);
-  background: linear-gradient(180deg, rgba(255, 254, 251, 0.97), rgba(248, 245, 239, 0.96));
-  box-shadow: 0 14px 42px rgba(30, 24, 18, 0.08);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 254, 251, 0.98), rgba(248, 245, 239, 0.96));
+  box-shadow: var(--shadow-panel);
   color: inherit;
   cursor: pointer;
   overflow: hidden;
   text-align: left;
-  transition: transform var(--duration-ui) var(--ease-out), box-shadow var(--duration-ui) var(--ease-out),
-    border-color var(--duration-ui) var(--ease-out);
+  transition:
+    box-shadow var(--duration-ui) var(--ease-out),
+    transform var(--duration-ui) var(--ease-out);
 }
 
 .phome-hero-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(78, 68, 58, 0.16);
-  box-shadow: 0 20px 52px rgba(30, 24, 18, 0.11);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-float);
+}
+
+.phome-hero-card:active {
+  transform: scale(0.995);
 }
 
 .phome-hero-copy {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 9px;
-  padding: 24px 28px 22px;
+  align-items: stretch;
+  padding: 26px 28px;
 }
 
 .phome-hero-copy h2 {
   margin: 0;
-  font-size: 22px;
-  font-weight: 650;
-  letter-spacing: -0.018em;
-  line-height: 1.22;
+  font-size: 20px;
+  font-weight: 640;
+  letter-spacing: 0;
+  line-height: 1.3;
 }
 
 .phome-hero-copy > p {
-  margin: 0;
+  margin: 8px 0 0;
   color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.6;
@@ -9413,71 +9454,77 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
 .phome-hero-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 16px;
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 12px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11px;
+}
+
+.phome-hero-meta span + span::before {
+  content: "·";
+  margin-right: 10px;
 }
 
 .phome-hero-signals {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 8px 20px;
-  margin-top: 2px;
+  align-items: center;
+  gap: 10px 22px;
+  margin-top: 18px;
 }
 
 .phome-hero-figure {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .phome-hero-figure strong {
   color: var(--text-primary);
-  font-size: 19px;
+  font-size: 20px;
   font-weight: 650;
-  letter-spacing: -0.02em;
   line-height: 1;
 }
 
 .phome-hero-figure small {
   color: var(--text-muted);
-  font-size: 11.5px;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
 }
 
 .phome-hero-note {
-  flex-basis: 100%;
-  padding-left: 9px;
-  border-left: 2px solid rgba(142, 76, 36, 0.35);
+  flex: 1;
+  min-width: 160px;
+  padding-left: 12px;
+  border-left: 2px solid rgba(120, 100, 82, 0.4);
   color: var(--text-secondary);
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.5;
 }
 
 .phome-hero-enter {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   margin-top: auto;
-  padding-top: 8px;
+  padding-top: 20px;
   color: var(--accent-brand);
   font-size: 13px;
-  font-weight: 610;
-  transition: color var(--duration-fast) var(--ease-out), gap var(--duration-fast) var(--ease-out);
+  font-weight: 600;
+  transition: color var(--duration-fast) ease, gap var(--duration-fast) ease;
 }
 
 .phome-hero-card:hover .phome-hero-enter {
   color: var(--accent-brand-hover);
-  gap: 10px;
+  gap: 9px;
 }
 
 .phome-hero-cover {
   align-self: stretch;
-  min-height: 0;
-  margin: 14px 14px 14px 0;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 1px 4px rgba(30, 24, 18, 0.05);
+  min-height: 252px;
+  border-left: 1px solid rgba(78, 68, 58, 0.08);
   overflow: hidden;
 }
 
@@ -9488,12 +9535,13 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
 
 .phome-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(252px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
   gap: 16px;
 }
 
 .phome-card {
   display: block;
+  min-width: 0;
 }
 
 .phome-card-open {
@@ -9501,50 +9549,65 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
   flex-direction: column;
   width: 100%;
   padding: 0;
-  border: 1px solid rgba(78, 68, 58, 0.1);
-  border-radius: 13px;
-  background: rgba(252, 251, 248, 0.92);
-  box-shadow: 0 1px 3px rgba(30, 24, 18, 0.04);
+  border: 1px solid rgba(78, 68, 58, 0.09);
+  border-radius: 14px;
+  background: rgba(255, 254, 251, 0.9);
+  box-shadow: var(--shadow-object);
   color: inherit;
   cursor: pointer;
   overflow: hidden;
   text-align: left;
-  transition: transform var(--duration-ui) var(--ease-out), box-shadow var(--duration-ui) var(--ease-out),
-    border-color var(--duration-ui) var(--ease-out);
+  transition:
+    box-shadow var(--duration-ui) var(--ease-out),
+    transform var(--duration-ui) var(--ease-out);
 }
 
 .phome-card-open:hover {
-  transform: translateY(-2px);
-  border-color: rgba(78, 68, 58, 0.16);
+  transform: translateY(-1px);
   box-shadow: var(--shadow-float);
 }
 
+.phome-card-open:active {
+  transform: scale(0.99);
+}
+
 .phome-card-cover {
-  height: 146px;
   flex: none;
-  margin: 10px 10px 0;
-  border: 1px solid var(--border-subtle);
-  border-radius: 9px;
-  overflow: hidden;
+  aspect-ratio: 16 / 10;
+  width: 100%;
+  border-bottom: 1px solid rgba(78, 68, 58, 0.07);
+}
+
+/* Covers read as small canvases: warm ground plus a dot grid. */
+.phome-hero-cover.project-canvas-preview,
+.phome-card-cover.project-canvas-preview {
+  background: #f7f5f1;
+}
+
+.phome-hero-cover .project-canvas-preview-grid,
+.phome-card-cover .project-canvas-preview-grid {
+  opacity: 1;
+  background-image: radial-gradient(rgba(77, 66, 54, 0.16) 1px, transparent 1.1px);
+  background-size: 16px 16px;
 }
 
 .phome-card-cover .project-canvas-preview-grid {
-  opacity: 0.6;
+  background-image: radial-gradient(rgba(77, 66, 54, 0.15) 1px, transparent 1.1px);
+  background-size: 14px 14px;
 }
 
 .phome-card-body {
-  display: grid;
-  gap: 6px;
+  display: block;
   width: 100%;
-  padding: 12px 15px 13px;
+  padding: 13px 15px 15px;
 }
 
 .phome-card-body h3 {
   margin: 0;
   overflow: hidden;
-  font-size: 13.5px;
-  font-weight: 630;
-  letter-spacing: -0.01em;
+  font-size: 14px;
+  font-weight: 620;
+  letter-spacing: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -9555,10 +9618,10 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   height: 38px;
-  margin: 0;
+  margin: 5px 0 0;
   color: var(--text-secondary);
   font-size: 12px;
-  line-height: 1.58;
+  line-height: 1.55;
   overflow: hidden;
 }
 
@@ -9567,24 +9630,18 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  margin-top: 11px;
   color: var(--text-muted);
   font-size: 11px;
 }
 
 .phome-card-meta span:first-child {
   overflow: hidden;
-  color: var(--accent-select);
-  font-weight: 580;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Blank canvases get a designed viewfinder mark instead of a bare white box. */
-.phome-hero-cover.is-empty,
-.phome-card-cover.is-empty {
-  background: var(--surface-muted);
-}
-
+/* Blank canvases: a single quiet viewfinder ring at the center. */
 .phome-hero-cover.is-empty::before,
 .phome-hero-cover.is-empty::after,
 .phome-card-cover.is-empty::before,
@@ -9597,15 +9654,13 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 36px;
-  height: 36px;
-  border: 1.5px dashed var(--border-strong);
-  border-radius: 10px;
-  background:
-    linear-gradient(var(--text-muted), var(--text-muted)) center / 12px 1.5px no-repeat,
-    linear-gradient(var(--text-muted), var(--text-muted)) center / 1.5px 12px no-repeat;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 999px;
+  background: none;
   box-shadow: none;
-  opacity: 0.75;
+  opacity: 1;
   transform: translate(-50%, -50%);
 }
 
@@ -9614,21 +9669,27 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  min-height: 218px;
-  padding: 20px;
-  border: 1px dashed var(--border-strong);
-  border-radius: 13px;
-  background: transparent;
+  gap: 9px;
+  min-height: 236px;
+  padding: 24px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.42);
   color: var(--text-secondary);
   cursor: pointer;
   text-align: center;
-  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+  transition:
+    background var(--duration-fast) ease,
+    box-shadow var(--duration-ui) var(--ease-out);
 }
 
-.phome-create-card:hover {
-  border-color: var(--accent-brand);
-  background: rgba(255, 255, 255, 0.55);
+.phome-create-card:hover:not(:disabled) {
+  background: var(--surface-muted);
+  box-shadow: var(--shadow-object);
+}
+
+.phome-create-card:active:not(:disabled) {
+  transform: scale(0.99);
 }
 
 .phome-create-card:disabled {
@@ -9642,9 +9703,9 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: 50%;
-  background: var(--accent-brand-soft);
-  color: var(--accent-brand);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
 }
 
 .phome-create-card strong {
@@ -9654,7 +9715,8 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
 }
 
 .phome-create-card > span:last-child {
-  font-size: 11.5px;
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--text-muted);
 }
 
@@ -9683,16 +9745,30 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
 
 .phome-foot {
   margin-top: auto;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-subtle);
+  padding-top: 14px;
+  border-top: 1px solid rgba(78, 68, 58, 0.08);
   color: var(--text-muted);
-  font-size: 11.5px;
+  font-size: 11px;
   line-height: 1.6;
+}
+
+.phome-foot.is-at-risk {
+  border-top-color: var(--border-strong);
+}
+
+.phome-foot-risk {
+  display: block;
+  margin-top: 4px;
+  color: var(--warning);
 }
 
 @media (max-width: 1120px) {
   .phome-hero-card {
-    grid-template-columns: minmax(0, 1fr) minmax(240px, 330px);
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 36%);
+  }
+
+  .phome-hero-cover {
+    min-height: 232px;
   }
 }
 
@@ -9736,6 +9812,11 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
     display: none;
   }
 
+  .phome-local-chip,
+  .phome-side-account {
+    margin-top: 0;
+  }
+
   .phome-side-account .account-popover {
     top: 58px;
     bottom: auto;
@@ -9750,7 +9831,8 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
   .phome-hero-cover {
     order: -1;
     min-height: 168px;
-    margin: 14px 14px 0;
+    border-left: 0;
+    border-bottom: 1px solid rgba(78, 68, 58, 0.08);
   }
 }
 
@@ -9777,4 +9859,234 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
   .phome-account-copy {
     display: none;
   }
+}
+
+/* Crash recovery surface: shown by app/global-error.tsx and the project error
+   boundary when the workspace cannot render. Deliberately plain — it must not
+   depend on canvas, panel, or workspace styles that may be part of the failure. */
+.crash-surface {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: 32px 20px;
+  background: var(--canvas);
+}
+
+.crash-card {
+  width: min(560px, 100%);
+  padding: 28px 30px 26px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-panel);
+  color: var(--text-primary);
+}
+
+.crash-kicker {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+}
+
+.crash-card h1 {
+  margin: 6px 0 14px;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.crash-card p {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.crash-card strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.crash-note {
+  color: var(--warning);
+}
+
+.crash-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+
+.crash-message {
+  margin: 14px 0 0;
+  font-size: 12.5px;
+}
+
+.crash-message.success {
+  color: var(--success);
+}
+
+.crash-message.warning {
+  color: var(--warning);
+}
+
+.crash-message.error {
+  color: var(--danger);
+}
+
+/* Project management on the home shelf: rename and delete. Kept quiet by
+   default so the shelf still reads as covers, not as a list of controls. */
+.phome-card-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.phome-card:hover .phome-card-actions,
+.phome-card:focus-within .phome-card-actions,
+.phome-hero:hover .phome-card-actions,
+.phome-hero:focus-within .phome-card-actions {
+  opacity: 1;
+}
+
+.phome-card-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.phome-card-action:hover:not(:disabled) {
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+}
+
+.phome-card-action.is-danger:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.phome-card-action:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.phome-card-action:focus-visible {
+  outline: 2px solid var(--selection-outline);
+  outline-offset: 1px;
+}
+
+.phome-restore-card.is-danger {
+  border-color: rgba(166, 69, 58, 0.24);
+}
+
+.phome-rename-field {
+  display: block;
+  margin-top: 8px;
+}
+
+.phome-rename-field input {
+  width: min(320px, 100%);
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12.5px;
+}
+
+.phome-rename-field input:focus-visible {
+  outline: 2px solid var(--selection-outline);
+  outline-offset: 1px;
+}
+
+.phome-delete-scope {
+  margin: 8px 0 0;
+  padding-left: 16px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.phome-restore-actions .brand-button.is-danger {
+  border-color: rgba(166, 69, 58, 0.28);
+  background: var(--danger);
+  box-shadow: 0 7px 18px rgba(166, 69, 58, 0.16);
+}
+
+.phome-restore-actions .plain-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Workspace-level data-safety banner: another tab holds this project, or the
+   browser has not promised to keep local data. Floats above the canvas like the
+   rest of the workspace chrome. */
+.workspace-banner {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: min(520px, calc(100vw - 40px));
+  padding: 10px 16px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(138, 104, 52, 0.28);
+  border-radius: var(--radius-lg);
+  background: var(--morpho-glass-bg);
+  backdrop-filter: var(--morpho-glass-blur);
+  box-shadow: var(--shadow-float);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.workspace-banner strong {
+  color: var(--warning);
+  font-size: 12.5px;
+  font-weight: 620;
+}
+
+.workspace-banner-dismiss {
+  align-self: center;
+  margin-top: 4px;
+  padding: 3px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.workspace-banner-dismiss:hover {
+  background: var(--surface-muted);
+}
+
+.workspace-banner-dismiss:focus-visible {
+  outline: 2px solid var(--selection-outline);
+  outline-offset: 1px;
 }
