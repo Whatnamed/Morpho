@@ -59,12 +59,28 @@ export type CatalogSnapshotResult =
       reason: string;
     };
 
+/**
+ * Why a local write failed. These need different words to the user because they
+ * need different actions: a full origin is fixed by exporting and deleting, a
+ * blocked one by leaving private mode, and an unverified write by not trusting
+ * this browser session with more work.
+ */
+export type StorageWriteFailureKind =
+  /** The origin's storage budget is spent. */
+  | "quotaExceeded"
+  /** The browser refused storage access outright. */
+  | "storageUnavailable"
+  /** The write was accepted and then read back as something else, or as nothing. */
+  | "writeNotVerified"
+  | "unknown";
+
 export type StorageWriteResult =
   | {
       status: "ok";
     }
   | {
       status: "failed";
+      kind: StorageWriteFailureKind;
       reason: string;
     };
 
@@ -90,6 +106,7 @@ export type ProjectPersistenceResult =
     }
   | {
       status: "failed";
+      kind: StorageWriteFailureKind;
       reason: string;
       stage: "workspace" | "catalog";
     };
@@ -181,15 +198,18 @@ export function persistProjectWorkspaceAndSummary(storage: Storage, workspace: M
     return {
       status: "failed",
       stage: "workspace",
+      kind: workspaceResult.kind,
       reason: workspaceResult.reason
     };
   }
 
   const loadedCatalog = loadLocalProjectCatalogSnapshot(storage);
   if (loadedCatalog.status === "failed") {
+    // The workspace itself is safely written; only the project list is stale.
     return {
       status: "failed",
       stage: "catalog",
+      kind: "unknown",
       reason: loadedCatalog.reason
     };
   }
@@ -202,6 +222,7 @@ export function persistProjectWorkspaceAndSummary(storage: Storage, workspace: M
     return {
       status: "failed",
       stage: "catalog",
+      kind: catalogResult.kind,
       reason: catalogResult.reason
     };
   }
@@ -324,17 +345,53 @@ function persistStorageValue(storage: Storage, key: string, value: string): Stor
   try {
     storage.setItem(key, value);
     if (storage.getItem(key) !== value) {
-      return {
-        status: "failed",
-        reason: `Storage write for ${key} could not be verified.`
-      };
+      // Safari private mode and some embedded webviews accept the write and
+      // store nothing. Nothing threw, so only the read-back catches it.
+      return storageWriteFailure("writeNotVerified");
     }
     return { status: "ok" };
-  } catch {
-    return {
-      status: "failed",
-      reason: `Storage write for ${key} failed.`
-    };
+  } catch (error) {
+    return storageWriteFailure(classifyStorageWriteError(error));
+  }
+}
+
+function classifyStorageWriteError(error: unknown): StorageWriteFailureKind {
+  if (typeof error !== "object" || error === null) {
+    return "unknown";
+  }
+
+  const { name, code } = error as { name?: unknown; code?: unknown };
+  // Chrome/Safari raise QuotaExceededError (code 22); Firefox raises
+  // NS_ERROR_DOM_QUOTA_REACHED (code 1014). Both mean the same thing here.
+  if (name === "QuotaExceededError" || name === "NS_ERROR_DOM_QUOTA_REACHED" || code === 22 || code === 1014) {
+    return "quotaExceeded";
+  }
+  if (name === "SecurityError" || name === "InvalidAccessError" || name === "InvalidStateError") {
+    return "storageUnavailable";
+  }
+
+  return "unknown";
+}
+
+/**
+ * User-facing wording. Storage keys stay out of it: which key failed is an
+ * internal storage mechanic, while "your change is not saved" is the fact the
+ * user has to act on.
+ */
+function storageWriteFailure(kind: StorageWriteFailureKind): StorageWriteResult {
+  return { status: "failed", kind, reason: describeStorageWriteFailure(kind) };
+}
+
+export function describeStorageWriteFailure(kind: StorageWriteFailureKind): string {
+  switch (kind) {
+    case "quotaExceeded":
+      return "浏览器本地存储空间已满，这次修改没有保存。";
+    case "storageUnavailable":
+      return "浏览器不允许保存本地数据，这次修改没有保存。";
+    case "writeNotVerified":
+      return "写入浏览器本地存储后无法读回，这次修改没有保存。";
+    case "unknown":
+      return "本地保存失败，这次修改没有保存。";
   }
 }
 
@@ -372,6 +429,17 @@ function migrateExistingCatalog(storage: Storage, catalog: LocalProjectCatalog):
         status: "ok",
         catalog: recoveredCatalog,
         didMigrate: true
+      };
+    }
+
+    // An empty catalog on a browser that has already installed the built-in case
+    // study is a user who deleted their projects, not a first run. Reinstalling
+    // here would resurrect a project they explicitly removed.
+    if (readCaseStudyMarker(storage)) {
+      return {
+        status: "ok",
+        catalog,
+        didMigrate: false
       };
     }
 

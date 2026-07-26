@@ -81,18 +81,19 @@ describe("workspace persistence controller", () => {
 
   it("surfaces workspace and catalog failures without pretending the project is saved", () => {
     const workspaceFailure = createWorkspacePersistenceController({
-      writer: () => ({ status: "failed", stage: "workspace", reason: "quota" })
+      writer: () => ({ status: "failed", stage: "workspace", kind: "quotaExceeded", reason: "quota" })
     });
     workspaceFailure.schedule(makeWorkspace("project-a", "draft"));
     expect(workspaceFailure.flush()).toMatchObject({
       phase: "error",
       isDirty: true,
       error: "quota",
-      failedStage: "workspace"
+      failedStage: "workspace",
+      failureKind: "quotaExceeded"
     });
 
     const catalogFailure = createWorkspacePersistenceController({
-      writer: () => ({ status: "failed", stage: "catalog", reason: "catalog blocked" })
+      writer: () => ({ status: "failed", stage: "catalog", kind: "unknown", reason: "catalog blocked" })
     });
     catalogFailure.schedule(makeWorkspace("project-a", "draft"));
     expect(catalogFailure.flush()).toMatchObject({
@@ -108,7 +109,7 @@ describe("workspace persistence controller", () => {
     const controller = createWorkspacePersistenceController({
       writer: (workspace) => {
         if (shouldFail) {
-          return { status: "failed", stage: "workspace", reason: `failed:${workspace.project.title}` };
+          return { status: "failed", stage: "workspace", kind: "unknown", reason: `failed:${workspace.project.title}` };
         }
         return { status: "ok", savedAt: "saved-after-retry" };
       }

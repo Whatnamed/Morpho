@@ -1,6 +1,12 @@
 import type { MorphoWorkspace } from "@/domain/morpho/types";
+import type { StorageWriteFailureKind } from "@/infrastructure/persistence/localProjectStore";
 
-export type WorkspacePersistencePhase = "loading" | "idle" | "saving" | "saved" | "error";
+/**
+ * `readOnly` is not a failure: another tab holds this project, so this tab
+ * deliberately never schedules a write. It is a phase rather than an error flag
+ * because "已保存" would be a lie here and "保存失败" would be a different lie.
+ */
+export type WorkspacePersistencePhase = "loading" | "idle" | "saving" | "saved" | "error" | "readOnly";
 
 export type WorkspacePersistenceState = {
   phase: WorkspacePersistencePhase;
@@ -8,6 +14,8 @@ export type WorkspacePersistenceState = {
   lastSavedAt?: string;
   error?: string;
   failedStage?: "workspace" | "catalog";
+  /** Why the write failed, so the UI can name the fix rather than the symptom. */
+  failureKind?: StorageWriteFailureKind;
 };
 
 export type WorkspacePersistenceWriteResult =
@@ -17,6 +25,7 @@ export type WorkspacePersistenceWriteResult =
     }
   | {
       status: "failed";
+      kind: StorageWriteFailureKind;
       reason: string;
       stage: "workspace" | "catalog";
     };
@@ -101,7 +110,8 @@ export function createWorkspacePersistenceController({
       isDirty: true,
       lastSavedAt: state.lastSavedAt,
       error: result.reason,
-      failedStage: result.stage
+      failedStage: result.stage,
+      failureKind: result.kind
     });
     return state;
   }
