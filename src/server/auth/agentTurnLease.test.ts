@@ -19,6 +19,17 @@ function client(row: unknown, options: { user?: boolean; error?: unknown } = {})
   };
 }
 
+/**
+ * Migration text is asserted line by line, so it has to be read in the line
+ * endings the assertions are written in. Git checks these files out with CRLF on
+ * Windows, which would otherwise fail every multi-line expectation on a fresh
+ * clone while passing in CI.
+ */
+function readMigration(name: string): string {
+  const sql = readFileSync(resolve(process.cwd(), "supabase/migrations", name), "utf8");
+  return sql.split("\r\n").join("\n");
+}
+
 describe("Agent Turn Lease access", () => {
   it("starts one lease through the atomic quota RPC", async () => {
     const mock = client({
@@ -189,10 +200,7 @@ describe("Agent Turn Lease access", () => {
   });
 
   it("counts a repeated first request as a real provider execution in the SQL contract", () => {
-    const sql = readFileSync(
-      resolve(process.cwd(), "supabase/migrations/20260726161500_bind_agent_turn_provider_execution.sql"),
-      "utf8"
-    );
+    const sql = readMigration("20260726161500_bind_agent_turn_provider_execution.sql");
 
     // The idempotent retry branch must advance the execution counter and sequence.
     const retryBranch = sql.slice(
@@ -218,14 +226,8 @@ describe("Agent Turn Lease access", () => {
   });
 
   it("keeps ownership and counters atomic in the SQL contract", () => {
-    const sql = readFileSync(
-      resolve(process.cwd(), "supabase/migrations/20260723200036_add_agent_turn_leases.sql"),
-      "utf8"
-    );
-    const correctionSql = readFileSync(
-      resolve(process.cwd(), "supabase/migrations/20260723200456_fix_agent_turn_lease_column_ambiguity.sql"),
-      "utf8"
-    );
+    const sql = readMigration("20260723200036_add_agent_turn_leases.sql");
+    const correctionSql = readMigration("20260723200456_fix_agent_turn_lease_column_ambiguity.sql");
     expect(sql.match(/set search_path = ''/g)).toHaveLength(3);
     expect(sql).toContain("current_user_id uuid := auth.uid()");
     expect(sql).toContain("for update");
@@ -245,10 +247,7 @@ describe("Agent Turn Lease access", () => {
   });
 
   it("defines a forward-only causal and idempotent lease migration with a 32-search safety cap", () => {
-    const sql = readFileSync(
-      resolve(process.cwd(), "supabase/migrations/20260726143030_harden_agent_turn_lease_causality.sql"),
-      "utf8"
-    );
+    const sql = readMigration("20260726143030_harden_agent_turn_lease_causality.sql");
 
     expect(sql).toContain("initial_request_hash");
     expect(sql).toContain("last_request_hash");
