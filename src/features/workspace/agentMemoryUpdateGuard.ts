@@ -180,15 +180,34 @@ function splitEvidenceClauses(draft: string): Array<{ text: string; start: numbe
   const pattern = /[^，。；,;!?！？\n]+/g;
   for (const match of draft.matchAll(pattern)) {
     const raw = match[0];
-    const leading = raw.length - raw.trimStart().length;
-    const text = raw.trim();
-    if (!text || match.index === undefined) {
+    if (match.index === undefined) {
       continue;
     }
-    const start = match.index + leading;
-    clauses.push({ text, start, end: start + text.length });
+    let segmentStart = 0;
+    for (const connector of raw.matchAll(/并且|同时|另外|而且|且/g)) {
+      if (connector.index === undefined) {
+        continue;
+      }
+      appendEvidenceClause(clauses, raw.slice(segmentStart, connector.index), match.index + segmentStart);
+      segmentStart = connector.index + connector[0].length;
+    }
+    appendEvidenceClause(clauses, raw.slice(segmentStart), match.index + segmentStart);
   }
   return clauses;
+}
+
+function appendEvidenceClause(
+  clauses: Array<{ text: string; start: number; end: number }>,
+  raw: string,
+  rawStart: number
+): void {
+  const leading = raw.length - raw.trimStart().length;
+  const text = raw.trim();
+  if (!text) {
+    return;
+  }
+  const start = rawStart + leading;
+  clauses.push({ text, start, end: start + text.length });
 }
 
 function rangesOverlap(firstStart: number, firstEnd: number, secondStart: number, secondEnd: number): boolean {

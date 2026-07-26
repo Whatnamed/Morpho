@@ -29,6 +29,7 @@ const continueAgentTurnLeaseMock = vi.fn();
 vi.mock("@/server/auth/agentTurnLease", () => ({
   startAgentTurnLease: (...args: unknown[]) => startAgentTurnLeaseMock(...args),
   continueAgentTurnLease: (...args: unknown[]) => continueAgentTurnLeaseMock(...args),
+  hashAgentTurnLeaseValue: (value: unknown) => `hash:${JSON.stringify(value)}`,
   agentTurnLeaseDeniedResponse: (result: { error: string; httpStatus: number }) =>
     Response.json({ error: result.error }, { status: result.httpStatus })
 }));
@@ -64,7 +65,8 @@ describe("agent route stream", () => {
         agentTurnId: "agent-turn-1",
         expiresAt: "2026-07-24T03:00:00.000Z",
         providerCallCount: 1,
-        webSearchCallCount: 0
+        webSearchCallCount: 0,
+        nextProviderSequence: 1
       }
     });
     continueAgentTurnLeaseMock.mockResolvedValue({
@@ -74,7 +76,8 @@ describe("agent route stream", () => {
         agentTurnId: "agent-turn-1",
         expiresAt: "2026-07-24T03:00:00.000Z",
         providerCallCount: 2,
-        webSearchCallCount: 0
+        webSearchCallCount: 0,
+        nextProviderSequence: 2
       }
     });
     streamOpenAiCompatibleResponseMock.mockImplementation(
@@ -304,11 +307,12 @@ describe("agent route stream", () => {
     const body = await response.text();
 
     expect(response.headers.get("Content-Type")).toContain("text/event-stream");
-    expect(continueAgentTurnLeaseMock).toHaveBeenCalledWith({
+    expect(continueAgentTurnLeaseMock).toHaveBeenCalledWith(expect.objectContaining({
       leaseId: "lease-1",
       agentTurnId: "agent-turn-1",
-      callKind: "provider"
-    });
+      continuationKind: "providerContinuation",
+      expectedSequence: 1
+    }));
     expect(startAgentTurnLeaseMock).not.toHaveBeenCalled();
     expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(1);
     expect(body).toContain("event: turn-start");
@@ -322,15 +326,17 @@ describe("agent route stream", () => {
     const response = await POST(agentRequest({
       continuation: false,
       leaseContinuation: true,
-      leaseId: "lease-1"
+      leaseId: "lease-1",
+      leaseSequence: 1
     }));
 
     expect(response.status).toBe(200);
-    expect(continueAgentTurnLeaseMock).toHaveBeenCalledWith({
+    expect(continueAgentTurnLeaseMock).toHaveBeenCalledWith(expect.objectContaining({
       leaseId: "lease-1",
       agentTurnId: "agent-turn-1",
-      callKind: "provider"
-    });
+      continuationKind: "providerContinuation",
+      expectedSequence: 1
+    }));
     expect(startAgentTurnLeaseMock).not.toHaveBeenCalled();
     expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(1);
   });
@@ -612,7 +618,7 @@ function agentRequest(overrides: Record<string, unknown> = {}): Request {
       promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
       mode: "auto",
       capabilityIntent: { comparisonAnalysis: false },
-      ...(continuation ? { leaseId: "lease-1", previousRuntimeItem } : {}),
+      ...(continuation ? { leaseId: "lease-1", leaseSequence: 1, previousRuntimeItem } : {}),
       ...overrides
     })
   });

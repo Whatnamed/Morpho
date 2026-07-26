@@ -13,6 +13,7 @@ vi.mock("@/server/auth/aiAccess", () => ({
 
 vi.mock("@/server/auth/agentTurnLease", () => ({
   continueAgentTurnLease: (...args: unknown[]) => continueAgentTurnLeaseMock(...args),
+  hashAgentTurnLeaseValue: (value: unknown) => `hash:${JSON.stringify(value)}`,
   agentTurnLeaseDeniedResponse: (result: { error: string; httpStatus: number }) =>
     Response.json({ error: result.error }, { status: result.httpStatus })
 }));
@@ -115,6 +116,7 @@ describe("web search route", () => {
           agentTurnId: "agent-turn-1",
           leaseId: "lease-1",
           agentContinuation: true,
+          leaseSequence: 1,
           queries: ["night rail constraints"]
         })
       })
@@ -124,7 +126,10 @@ describe("web search route", () => {
     expect(continueAgentTurnLeaseMock).toHaveBeenCalledWith({
       leaseId: "lease-1",
       agentTurnId: "agent-turn-1",
-      callKind: "web_search"
+      continuationKind: "webSearch",
+      expectedSequence: 1,
+      requestHash: 'hash:{"queries":["night rail constraints"],"maxSources":null}',
+      requestManifestHash: 'hash:{"kind":"webSearch","queryCount":1}'
     });
     expect(guardAiRouteMock).not.toHaveBeenCalled();
     expect(searchWebEvidenceMock).toHaveBeenCalledTimes(1);
@@ -172,6 +177,7 @@ describe("web search route", () => {
         agentTurnId: "agent-turn-forged",
         leaseId: "lease-forged",
         agentContinuation: true,
+        leaseSequence: 1,
         queries: ["ocean buoy constraints"]
       })
     }));

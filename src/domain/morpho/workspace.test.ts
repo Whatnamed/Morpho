@@ -33,8 +33,84 @@ import { recordDesignDefinitionProposal } from "../operations/operations";
 import { hasPendingDesignDefinitionRevisionProposal, reconcileWorkspaceDerivedState } from "./derivedState";
 import { buildContinuityRecordId, setConversationSemanticEntryManualState } from "./projectContinuity";
 import { applyConversationSummaryRevision } from "./conversationCompaction";
+import type { MorphoWorkspace } from "./types";
 
 describe("Morpho workspace domain boundaries", () => {
+  it("keeps only the latest full cache manifest and strips manifests from historical traces", () => {
+    const workspace = createInitialWorkspace();
+    const legacy = structuredClone(workspace) as MorphoWorkspace;
+    legacy.ai.messages = Array.from({ length: 100 }, (_, index) => ({
+      id: `message-${index}`,
+      role: "assistant",
+      body: `turn ${index}`,
+      status: "done",
+      agentTrace: {
+        startedAt: "2026-07-25T00:00:00.000Z",
+        completedAt: "2026-07-25T00:00:01.000Z",
+        status: "done",
+        parts: [],
+        providerRequestState: {
+          promptContractVersion: "test",
+          cacheItemManifest: [{
+            type: "message",
+            role: "user",
+            semanticKind: "userMessage",
+            contentHash: `hash-${index}`,
+            estimatedTokens: 20
+          }]
+        },
+        providerDiagnostics: {
+          cacheStatus: "partialHit",
+          commonPrefixItemCount: index,
+          previousRequestState: {
+            promptContractVersion: "test",
+            cacheItemManifest: [{
+              type: "message",
+              role: "user",
+              semanticKind: "userMessage",
+              contentHash: `previous-diagnostic-${index}`,
+              estimatedTokens: 20
+            }]
+          },
+          requestState: {
+            promptContractVersion: "test",
+            cacheItemManifest: [{
+              type: "message",
+              role: "user",
+              semanticKind: "userMessage",
+              contentHash: `current-diagnostic-${index}`,
+              estimatedTokens: 20
+            }]
+          }
+        }
+      }
+    })) as MorphoWorkspace["ai"]["messages"];
+    (legacy.ai as MorphoWorkspace["ai"] & Record<string, unknown>).latestProviderRequestState = {
+      promptContractVersion: "test",
+      cacheItemManifest: [{
+        type: "message",
+        role: "user",
+        semanticKind: "userMessage",
+        contentHash: "latest-hash",
+        estimatedTokens: 20
+      }]
+    };
+
+    const result = migrateWorkspaceToCurrentSchema(legacy);
+    if (result.status !== "ok") {
+      throw new Error(result.reason);
+    }
+
+    expect(JSON.stringify(result.workspace.ai.messages)).not.toContain("cacheItemManifest");
+    expect(JSON.stringify(result.workspace.ai.messages)).not.toContain("requestState");
+    expect(result.workspace.ai.messages[99]?.agentTrace?.providerDiagnostics).toMatchObject({
+      cacheStatus: "partialHit",
+      commonPrefixItemCount: 99
+    });
+    expect(result.workspace.ai.latestProviderRequestState?.cacheItemManifest).toHaveLength(1);
+    expect(JSON.stringify(result.workspace).length).toBeLessThan(JSON.stringify(legacy).length);
+  });
+
   it("creates a blank schema v15 project without depending on Nightrail seed object ids", () => {
     const workspace = createBlankWorkspace("project-empty-local");
 

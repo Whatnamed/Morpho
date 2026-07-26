@@ -105,3 +105,70 @@ export function finalizeAgentTurnOutcome(
     }
   };
 }
+
+export function finalizeAgentTurn(
+  workspace: MorphoWorkspace,
+  input: {
+    agentTurnId: string;
+    userMessageId: string;
+    assistantMessageId: string;
+    outcome: AgentTurnOutcome;
+    assistantBody: string;
+    assistantStatus: Exclude<AiMessage["status"], undefined | "streaming">;
+    traceStatus: Exclude<AgentTrace["status"], "streaming">;
+    summary?: string;
+    completedAt: string;
+    responseId?: string;
+    providerRequestState?: AgentTrace["providerRequestState"];
+  }
+): MorphoWorkspace {
+  const user = workspace.ai.messages.find((message) => message.id === input.userMessageId);
+  const assistant = workspace.ai.messages.find((message) => message.id === input.assistantMessageId);
+  if (
+    user?.agentTurnOutcome === input.outcome &&
+    assistant?.agentTurnOutcome === input.outcome &&
+    assistant.status !== "streaming"
+  ) {
+    return workspace;
+  }
+  const summary = input.summary?.trim().slice(0, 1_200);
+  return {
+    ...workspace,
+    ai: {
+      ...workspace.ai,
+      messages: workspace.ai.messages.map((message) => {
+        if (message.id !== input.userMessageId && message.id !== input.assistantMessageId) {
+          return message;
+        }
+        if (message.id === input.userMessageId) {
+          return {
+            ...message,
+            agentTurnId: input.agentTurnId,
+            pairedMessageId: input.assistantMessageId,
+            agentTurnOutcome: input.outcome,
+            ...(summary ? { agentTurnOutcomeSummary: summary } : {})
+          };
+        }
+        const agentTrace = message.agentTrace
+          ? {
+              ...message.agentTrace,
+              status: input.traceStatus,
+              completedAt: input.completedAt,
+              ...(input.responseId ? { responseId: input.responseId } : {}),
+              ...(input.providerRequestState ? { providerRequestState: input.providerRequestState } : {})
+            }
+          : undefined;
+        return {
+          ...message,
+          body: input.assistantBody,
+          status: input.assistantStatus,
+          agentTurnId: input.agentTurnId,
+          pairedMessageId: input.userMessageId,
+          agentTurnOutcome: input.outcome,
+          ...(summary ? { agentTurnOutcomeSummary: summary } : {}),
+          ...(agentTrace ? { agentTrace } : {})
+        };
+      })
+    }
+  };
+}

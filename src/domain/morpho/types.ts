@@ -807,18 +807,14 @@ export type AgentTrace = {
   status: "streaming" | "done" | "failed" | "cancelled";
   agentTurnId?: string;
   responseId?: string;
-  providerRequestState?: {
-    promptContractVersion: string;
-    toolProfile?: "standard" | "standardWithWebSearch";
-    summaryRevisionId?: string;
-    latestUserMessageId?: string;
-    providerInputPrefixHash?: string;
-    attachmentBoundary?: ProviderInputCacheBoundaryReason;
-    runtimeItem?: import("@/shared/agentRuntimeItem").AgentCanonicalRuntimeItem;
-    cacheItemManifest?: import("@/shared/agentStreamProtocol").AgentCacheItemManifest[];
-    toolsHash?: string;
-    budgetGeneration?: number;
-  };
+  providerRequestState?: Omit<
+    import("@/shared/agentStreamProtocol").AgentProviderRequestState,
+    "cacheItemManifest"
+  >;
+  providerDiagnostics?: Omit<
+    import("@/shared/agentStreamProtocol").AgentProviderDiagnostics,
+    "previousRequestState" | "requestState"
+  >;
 };
 
 export type AgentTurnOutcome =
@@ -1078,6 +1074,7 @@ export type MorphoWorkspace = {
     conversationCompaction: ConversationCompactionState;
     conversationSummaryRevisions: Record<string, ConversationSummaryRevision>;
     providerContextFrames?: ProviderContextFrame[];
+    latestProviderRequestState?: import("@/shared/agentStreamProtocol").AgentProviderRequestState;
     comparisonAnalyses?: Record<ComparisonAnalysisId, ComparisonAnalysis>;
   };
   ui: {

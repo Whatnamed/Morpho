@@ -3,7 +3,9 @@ import type {
   AiTaskMode,
   AiWorkIntent,
   MorphoObject,
-  MorphoWorkspace
+  MorphoWorkspace,
+  ProjectMemoryKey,
+  StageRecordKey
 } from "@/domain/morpho/types";
 import type { TaskContextKind } from "./taskContext";
 
@@ -18,6 +20,21 @@ export type RequiredAgentReadToolName =
   | "read_stage_record"
   | "search_project_conversation";
 
+export type RequiredAgentReadRequirement =
+  | {
+      tool: "read_project_memory";
+      requiredKeys: ProjectMemoryKey[];
+    }
+  | {
+      tool: "read_stage_record";
+      requiredStages: StageRecordKey[];
+    }
+  | {
+      tool: "search_project_conversation";
+      requiredMode: "earliest" | "latest" | "keyword";
+      keyword?: string;
+    };
+
 export type AgentReadIntent = {
   history: boolean;
   memory: boolean;
@@ -27,6 +44,7 @@ export type AgentReadIntent = {
 
 export type RequiredAgentReadState = {
   requiredTools: RequiredAgentReadToolName[];
+  requirements: RequiredAgentReadRequirement[];
   completedTools: Set<RequiredAgentReadToolName>;
   failedTools: Set<RequiredAgentReadToolName>;
   reminderInserted: boolean;
@@ -35,10 +53,14 @@ export type RequiredAgentReadState = {
 };
 
 export function createRequiredAgentReadState(
-  requiredTools: readonly RequiredAgentReadToolName[]
+  required: readonly (RequiredAgentReadToolName | RequiredAgentReadRequirement)[]
 ): RequiredAgentReadState {
+  const requirements = required.flatMap((item) =>
+    typeof item === "string" ? [defaultRequirement(item)] : [item]
+  );
   return {
-    requiredTools: [...new Set(requiredTools)],
+    requiredTools: [...new Set(requirements.map((item) => item.tool))],
+    requirements,
     completedTools: new Set(),
     failedTools: new Set(),
     reminderInserted: false,
@@ -122,18 +144,80 @@ export function resolveRequiredAgentReadTools(
   draft: string,
   input: { hasSelectedObject?: boolean } = {}
 ): RequiredAgentReadToolName[] {
+  return resolveRequiredAgentReadRequirements(draft, input).map((requirement) => requirement.tool);
+}
+
+export function resolveRequiredAgentReadRequirements(
+  draft: string,
+  input: { hasSelectedObject?: boolean } = {}
+): RequiredAgentReadRequirement[] {
   const intent = resolveAgentReadIntent(draft, input);
-  const required = new Set<RequiredAgentReadToolName>();
+  const requirements: RequiredAgentReadRequirement[] = [];
   if (intent.history) {
-    required.add("search_project_conversation");
+    const keyword = extractConversationKeyword(draft);
+    requirements.push({
+      tool: "search_project_conversation",
+      requiredMode: keyword ? "keyword" : /最早|一开始|最开始|项目是怎么开始/.test(draft) ? "earliest" : "latest",
+      ...(keyword ? { keyword } : {})
+    });
   }
   if (intent.memory || intent.stage) {
-    required.add("read_project_memory");
+    requirements.push({
+      tool: "read_project_memory",
+      requiredKeys: resolveRequiredMemoryKeys(draft, intent.stage)
+    });
   }
   if (intent.stage) {
-    required.add("read_stage_record");
+    requirements.push({
+      tool: "read_stage_record",
+      requiredStages: resolveRequiredStages(draft)
+    });
   }
-  return [...required];
+  return requirements;
+}
+
+export function validateRequiredAgentReadCall(
+  state: RequiredAgentReadState,
+  toolName: RequiredAgentReadToolName,
+  args: unknown
+): { satisfied: true } | { satisfied: false; reason: string } {
+  const requirement = state.requirements.find((candidate) => candidate.tool === toolName);
+  if (!requirement) {
+    return { satisfied: true };
+  }
+  const record = isRecord(args) ? args : {};
+  if (requirement.tool === "read_project_memory") {
+    const keys = stringSet(record.keys);
+    const missing = keys ? requirement.requiredKeys.filter((key) => !keys.has(key)) : [];
+    return missing.length === 0
+      ? { satisfied: true }
+      : { satisfied: false, reason: `项目记忆读取范围不足，仍需 keys: ${missing.join(", ")}。` };
+  }
+  if (requirement.tool === "read_stage_record") {
+    const stages = stringSet(record.stages);
+    const missing = stages ? requirement.requiredStages.filter((stage) => !stages.has(stage)) : [];
+    return missing.length === 0
+      ? { satisfied: true }
+      : { satisfied: false, reason: `阶段记录读取范围不足，仍需 stages: ${missing.join(", ")}。` };
+  }
+  if (record.mode !== requirement.requiredMode) {
+    return {
+      satisfied: false,
+      reason: `聊天查询模式不足，需要 mode: ${requirement.requiredMode}。`
+    };
+  }
+  if (
+    requirement.requiredMode === "keyword" &&
+    requirement.keyword &&
+    (typeof record.keyword !== "string" ||
+      !record.keyword.toLocaleLowerCase().includes(requirement.keyword.toLocaleLowerCase()))
+  ) {
+    return {
+      satisfied: false,
+      reason: `聊天查询缺少关键词：${requirement.keyword}。`
+    };
+  }
+  return { satisfied: true };
 }
 
 export function getMissingRequiredAgentReadTools(
@@ -239,4 +323,70 @@ function isConceptDirectionIntent(workIntent: AiWorkIntent, text: string): boole
     workIntent === "mergeConceptDirections" ||
     /概念方向|方向方案|拆分方向|合并方向/i.test(text)
   );
+}
+
+function defaultRequirement(tool: RequiredAgentReadToolName): RequiredAgentReadRequirement {
+  if (tool === "read_project_memory") {
+    return { tool, requiredKeys: [] };
+  }
+  if (tool === "read_stage_record") {
+    return { tool, requiredStages: [] };
+  }
+  return { tool, requiredMode: "latest" };
+}
+
+function resolveRequiredMemoryKeys(draft: string, stage: boolean): ProjectMemoryKey[] {
+  const keys = new Set<ProjectMemoryKey>();
+  if (/喜欢|偏好|不要|避免|反感|稳定要求/.test(draft)) {
+    keys.add("userPreferences");
+  }
+  if (/约束|限制|设计原则|当前设计原则/.test(draft)) {
+    keys.add("designBrief");
+  }
+  if (/开放问题|待确认问题|哪些问题没解决|还有哪些问题/.test(draft)) {
+    keys.add("openQuestions");
+  }
+  if (/决定|为什么淘汰|稳定决定/.test(draft)) {
+    keys.add("decisionLog");
+  }
+  if (stage || keys.size === 0) {
+    keys.add("projectOverview");
+  }
+  return [...keys];
+}
+
+function resolveRequiredStages(draft: string): StageRecordKey[] {
+  const stages = new Set<StageRecordKey>();
+  if (/开始|输入/.test(draft)) stages.add("startAndInput");
+  if (/探索/.test(draft)) stages.add("exploration");
+  if (/调研|研究/.test(draft)) stages.add("research");
+  if (/设计定义/.test(draft)) stages.add("designDefinition");
+  if (/方向|视觉/.test(draft)) stages.add("directionAndVisual");
+  if (/交付/.test(draft)) stages.add("deliveryPreparation");
+  if (stages.size === 0) {
+    return [
+      "startAndInput",
+      "exploration",
+      "research",
+      "designDefinition",
+      "directionAndVisual",
+      "deliveryPreparation"
+    ];
+  }
+  return [...stages];
+}
+
+function extractConversationKeyword(draft: string): string | undefined {
+  const match = draft.match(/第一次提到\s*([^，。！？?,]{1,80}?)(?:是|在|什么|何时|时候|[？?]|$)/);
+  return match?.[1]?.trim() || undefined;
+}
+
+function stringSet(value: unknown): Set<string> | undefined {
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
+    ? new Set(value)
+    : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

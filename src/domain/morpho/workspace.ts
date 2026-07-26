@@ -23,6 +23,7 @@ import {
 } from "./conversationCompaction";
 import { normalizeProviderInputSnapshot } from "./providerInputSnapshot";
 import { isValidCanonicalAgentRuntimeItem } from "@/shared/agentRuntimeItem";
+import type { AgentCacheItemManifest } from "@/shared/agentStreamProtocol";
 import initialCaseStudyWorkspaceFixture from "./caseStudy/currentCaseWorkspace.generated.json";
 import legacyNightrailTestFixture from "./caseStudy/legacyNightrailPristine.fixture.json";
 import type { ArtifactProposal, SourceSemanticSnapshot } from "../operations/types";
@@ -30,6 +31,7 @@ import type {
   AiDraftResult,
   AiMessage,
   AiSuggestionInput,
+  AgentTrace,
   AssembleAiContextInput,
   AssembledAiContext,
   AssetId,
@@ -62,6 +64,7 @@ import type {
   MorphoWorkspace,
   ObjectSnapshot,
   ProviderContextFrame,
+  ProviderInputCacheBoundaryReason,
   VisualBranchId,
   WorkspaceMigrationResult
 } from "./types";
@@ -2072,6 +2075,9 @@ function normalizeAiState(value: unknown): MorphoWorkspace["ai"] {
       migrated.revisions,
       messages
     ),
+    ...(normalizeLatestProviderRequestState(value.latestProviderRequestState)
+      ? { latestProviderRequestState: normalizeLatestProviderRequestState(value.latestProviderRequestState) }
+      : {}),
     comparisonAnalyses: isRecord(value.comparisonAnalyses)
       ? (value.comparisonAnalyses as MorphoWorkspace["ai"]["comparisonAnalyses"])
       : {}
@@ -2265,9 +2271,108 @@ function normalizeAiMessageContextVisibility(message: AiMessage): AiMessage {
 function normalizeAiMessage(message: AiMessage): AiMessage {
   const normalized = normalizeAiMessageContextVisibility(message);
   const providerInputSnapshot = normalizeProviderInputSnapshot(message.providerInputSnapshot);
-  return providerInputSnapshot
+  const snapshotNormalized = providerInputSnapshot
     ? { ...normalized, providerInputSnapshot }
     : normalized;
+  if (!snapshotNormalized.agentTrace) {
+    return snapshotNormalized;
+  }
+  const providerRequestState = snapshotNormalized.agentTrace.providerRequestState
+    ? stripHistoricalProviderRequestManifest(snapshotNormalized.agentTrace.providerRequestState)
+    : undefined;
+  const providerDiagnostics = snapshotNormalized.agentTrace.providerDiagnostics
+    ? stripHistoricalProviderDiagnosticStates(snapshotNormalized.agentTrace.providerDiagnostics)
+    : undefined;
+  return {
+    ...snapshotNormalized,
+    agentTrace: {
+      ...snapshotNormalized.agentTrace,
+      ...(providerRequestState ? { providerRequestState } : {}),
+      ...(providerDiagnostics ? { providerDiagnostics } : {})
+    }
+  };
+}
+
+function stripHistoricalProviderRequestManifest(
+  state: NonNullable<AgentTrace["providerRequestState"]>
+): NonNullable<AgentTrace["providerRequestState"]> {
+  const {
+    cacheItemManifest: _legacyManifest,
+    ...providerRequestState
+  } = state as typeof state & { cacheItemManifest?: unknown };
+  return providerRequestState;
+}
+
+function stripHistoricalProviderDiagnosticStates(
+  diagnostics: NonNullable<AgentTrace["providerDiagnostics"]>
+): NonNullable<AgentTrace["providerDiagnostics"]> {
+  const {
+    previousRequestState: _previousRequestState,
+    requestState: _requestState,
+    ...compact
+  } = diagnostics as typeof diagnostics & {
+    previousRequestState?: unknown;
+    requestState?: unknown;
+  };
+  return compact;
+}
+
+function normalizeLatestProviderRequestState(
+  value: unknown
+): MorphoWorkspace["ai"]["latestProviderRequestState"] {
+  if (!isRecord(value) || typeof value.promptContractVersion !== "string") {
+    return undefined;
+  }
+  const cacheItemManifest = Array.isArray(value.cacheItemManifest)
+    ? value.cacheItemManifest.flatMap((item) => {
+        if (
+          !isRecord(item) ||
+          typeof item.type !== "string" ||
+          typeof item.semanticKind !== "string" ||
+          typeof item.contentHash !== "string" ||
+          typeof item.estimatedTokens !== "number"
+        ) {
+          return [];
+        }
+        const role: AgentCacheItemManifest["role"] =
+          item.role === "system" || item.role === "user" || item.role === "assistant"
+          ? item.role
+          : undefined;
+        return [{
+          type: item.type,
+          ...(role ? { role } : {}),
+          semanticKind: item.semanticKind,
+          contentHash: item.contentHash,
+          estimatedTokens: item.estimatedTokens
+        }];
+      })
+    : undefined;
+  return {
+    promptContractVersion: value.promptContractVersion,
+    ...(value.toolProfile === "standard" ||
+      value.toolProfile === "standardWithWebSearch" ||
+      value.toolProfile === "conversationSummary"
+      ? { toolProfile: value.toolProfile }
+      : {}),
+    ...(typeof value.summaryRevisionId === "string" ? { summaryRevisionId: value.summaryRevisionId } : {}),
+    ...(typeof value.latestUserMessageId === "string" ? { latestUserMessageId: value.latestUserMessageId } : {}),
+    ...(typeof value.providerInputPrefixHash === "string" ? { providerInputPrefixHash: value.providerInputPrefixHash } : {}),
+    ...(isProviderInputCacheBoundaryReason(value.attachmentBoundary)
+      ? { attachmentBoundary: value.attachmentBoundary }
+      : {}),
+    ...(cacheItemManifest ? { cacheItemManifest } : {}),
+    ...(typeof value.toolsHash === "string" ? { toolsHash: value.toolsHash } : {}),
+    ...(typeof value.budgetGeneration === "number" ? { budgetGeneration: value.budgetGeneration } : {})
+  };
+}
+
+function isProviderInputCacheBoundaryReason(value: unknown): value is ProviderInputCacheBoundaryReason {
+  return value === "imageInput" ||
+    value === "legacyProviderInput" ||
+    value === "documentSnapshotUnavailable" ||
+    value === "toolProfileChanged" ||
+    value === "promptContractChanged" ||
+    value === "compaction";
 }
 
 function isLegacyUiOnlyAiMessage(message: AiMessage): boolean {

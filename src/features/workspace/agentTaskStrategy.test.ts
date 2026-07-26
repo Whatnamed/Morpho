@@ -13,6 +13,8 @@ import {
   getMissingRequiredAgentReadTools,
   resolveAgentReadIntent,
   resolveAgentTaskStrategy,
+  resolveRequiredAgentReadRequirements,
+  validateRequiredAgentReadCall,
   resolveRequiredAgentReadTools
 } from "./agentTaskStrategy";
 
@@ -136,6 +138,53 @@ describe("Agent task strategy and prompt registry", () => {
         "你看看项目记忆和阶段记录，告诉我项目现在做到哪了、已经形成了哪些稳定决定、还有哪些问题没解决"
       )
     ).toEqual(["read_project_memory", "read_stage_record"]);
+  });
+
+  it("requires structured memory keys, stages, and conversation query semantics", () => {
+    expect(resolveRequiredAgentReadRequirements(
+      "你记得我喜欢什么、之前说过不要什么，还有哪些开放问题？"
+    )).toEqual([
+      {
+        tool: "read_project_memory",
+        requiredKeys: ["userPreferences", "openQuestions"]
+      }
+    ]);
+    expect(resolveRequiredAgentReadRequirements(
+      "调研阶段得出了什么，方向阶段当前状态如何？"
+    )).toEqual([
+      {
+        tool: "read_project_memory",
+        requiredKeys: ["projectOverview"]
+      },
+      {
+        tool: "read_stage_record",
+        requiredStages: ["research", "directionAndVisual"]
+      }
+    ]);
+    expect(resolveRequiredAgentReadRequirements("第一次提到海洋浮标是什么时候？")).toEqual([
+      {
+        tool: "search_project_conversation",
+        requiredMode: "keyword",
+        keyword: "海洋浮标"
+      }
+    ]);
+  });
+
+  it("does not complete a required read when the tool arguments miss its scope", () => {
+    const requirements = resolveRequiredAgentReadRequirements(
+      "你记得我喜欢什么、之前说过不要什么，还有哪些开放问题？"
+    );
+    const state = createRequiredAgentReadState(requirements);
+
+    expect(validateRequiredAgentReadCall(state, "read_project_memory", {
+      keys: ["userPreferences"]
+    })).toMatchObject({
+      satisfied: false,
+      reason: expect.stringContaining("openQuestions")
+    });
+    expect(validateRequiredAgentReadCall(state, "read_project_memory", {
+      keys: ["userPreferences", "openQuestions"]
+    })).toMatchObject({ satisfied: true });
   });
 
   it("expands history, memory, and stage phrases without routing selected-object revisions to chat history", () => {

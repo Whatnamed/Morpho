@@ -47,13 +47,15 @@ describe("Conversation Summary Agent request", () => {
       projectId: "project-ocean-buoy",
       agentTurnId: "agent-turn-summary",
       mode: "confirm",
-      leaseId: "lease-existing"
+      leaseId: "lease-existing",
+      leaseSequence: 2
     });
 
     expect(request).toMatchObject({
       continuation: false,
       leaseContinuation: true,
-      leaseId: "lease-existing"
+      leaseId: "lease-existing",
+      leaseSequence: 2
     });
     expect(request).not.toHaveProperty("previousRuntimeItem");
   });

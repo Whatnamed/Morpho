@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 
 import { createServerSupabaseClient } from "@/infrastructure/supabase/server";
 
@@ -15,6 +16,7 @@ export type AgentTurnLease = {
   expiresAt: string;
   providerCallCount: number;
   webSearchCallCount: number;
+  nextProviderSequence: number;
 };
 
 export type AgentTurnLeaseResult =
@@ -45,20 +47,40 @@ type LeaseRpcRow = {
   expires_at: string | null;
   provider_call_count: number;
   web_search_call_count: number;
+  next_provider_sequence: number;
 };
 
-export async function startAgentTurnLease(agentTurnId: string): Promise<AgentTurnLeaseResult> {
+export type AgentTurnLeaseStartInput = {
+  agentTurnId: string;
+  initialRequestHash: string;
+  requestManifestHash: string;
+  runtimeItemId: string;
+};
+
+export type AgentTurnLeaseContinuationInput = {
+  leaseId: string;
+  agentTurnId: string;
+  continuationKind: "providerContinuation" | "conversationSummary" | "webSearch";
+  expectedSequence: number;
+  requestHash: string;
+  requestManifestHash: string;
+  runtimeItemId?: string;
+};
+
+export function hashAgentTurnLeaseValue(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+export async function startAgentTurnLease(input: AgentTurnLeaseStartInput): Promise<AgentTurnLeaseResult> {
   const client = await createLeaseClient();
   return client.status === "denied"
     ? client
-    : startAgentTurnLeaseForClient(client.client, agentTurnId);
+    : startAgentTurnLeaseForClient(client.client, input);
 }
 
-export async function continueAgentTurnLease(input: {
-  leaseId: string;
-  agentTurnId: string;
-  callKind: "provider" | "web_search";
-}): Promise<AgentTurnLeaseResult> {
+export async function continueAgentTurnLease(
+  input: AgentTurnLeaseContinuationInput
+): Promise<AgentTurnLeaseResult> {
   const client = await createLeaseClient();
   return client.status === "denied"
     ? client
@@ -97,23 +119,24 @@ export async function completeAgentTurnLease(input: {
 
 export async function startAgentTurnLeaseForClient(
   client: AgentTurnLeaseClient,
-  agentTurnId: string
+  input: AgentTurnLeaseStartInput
 ): Promise<AgentTurnLeaseResult> {
   const auth = await requireUser(client);
   if (auth) {
     return auth;
   }
-  const result = await client.rpc("start_agent_turn_lease", { p_agent_turn_id: agentTurnId }).single();
-  return normalizeLeaseResult(result, agentTurnId, "start");
+  const result = await client.rpc("start_agent_turn_lease", {
+    p_agent_turn_id: input.agentTurnId,
+    p_initial_request_hash: input.initialRequestHash,
+    p_request_manifest_hash: input.requestManifestHash,
+    p_runtime_item_id: input.runtimeItemId
+  }).single();
+  return normalizeLeaseResult(result, input.agentTurnId, "start");
 }
 
 export async function continueAgentTurnLeaseForClient(
   client: AgentTurnLeaseClient,
-  input: {
-    leaseId: string;
-    agentTurnId: string;
-    callKind: "provider" | "web_search";
-  }
+  input: AgentTurnLeaseContinuationInput
 ): Promise<AgentTurnLeaseResult> {
   const auth = await requireUser(client);
   if (auth) {
@@ -122,7 +145,11 @@ export async function continueAgentTurnLeaseForClient(
   const result = await client.rpc("continue_agent_turn_lease", {
     p_lease_id: input.leaseId,
     p_agent_turn_id: input.agentTurnId,
-    p_call_kind: input.callKind
+    p_continuation_kind: input.continuationKind,
+    p_expected_sequence: input.expectedSequence,
+    p_request_hash: input.requestHash,
+    p_request_manifest_hash: input.requestManifestHash,
+    p_runtime_item_id: input.runtimeItemId ?? null
   }).single();
   return normalizeLeaseResult(result, input.agentTurnId, "continue");
 }
@@ -170,7 +197,8 @@ function normalizeLeaseResult(
         agentTurnId,
         expiresAt: result.data.expires_at,
         providerCallCount: result.data.provider_call_count,
-        webSearchCallCount: result.data.web_search_call_count
+        webSearchCallCount: result.data.web_search_call_count,
+        nextProviderSequence: result.data.next_provider_sequence
       }
     };
   }
@@ -191,8 +219,13 @@ function normalizeLeaseResult(
       reason
     };
   }
-  if (reason === "turn_exists") {
-    return { status: "denied", httpStatus: 409, error: "该 Agent 回合已存在，请使用有效 Lease 继续。", reason };
+  if (
+    reason === "turn_exists" ||
+    reason === "request_hash_conflict" ||
+    reason === "sequence_replay" ||
+    reason === "sequence_skip"
+  ) {
+    return { status: "denied", httpStatus: 409, error: "Agent 回合请求与当前 Lease 顺序冲突。", reason };
   }
   return {
     status: "denied",
@@ -213,7 +246,8 @@ function isLeaseRpcRow(value: unknown): value is LeaseRpcRow {
     (value.lease_id === null || typeof value.lease_id === "string") &&
     (value.expires_at === null || typeof value.expires_at === "string") &&
     typeof value.provider_call_count === "number" &&
-    typeof value.web_search_call_count === "number";
+    typeof value.web_search_call_count === "number" &&
+    typeof value.next_provider_sequence === "number";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

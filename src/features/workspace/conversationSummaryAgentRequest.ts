@@ -10,6 +10,7 @@ export function buildConversationSummaryAgentRequest(input: {
   agentTurnId: string;
   mode: AgentRuntimeMode;
   leaseId?: string;
+  leaseSequence?: number;
 }) {
   return {
     input: buildAgentCheckpointCompactionInput({
@@ -23,7 +24,11 @@ export function buildConversationSummaryAgentRequest(input: {
     agentTurnId: input.agentTurnId,
     continuation: false as const,
     ...(input.leaseId
-      ? { leaseContinuation: true as const, leaseId: input.leaseId }
+      ? {
+          leaseContinuation: true as const,
+          leaseId: input.leaseId,
+          leaseSequence: input.leaseSequence
+        }
       : {}),
     promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
     mode: input.mode,

@@ -166,6 +166,7 @@ describe("Agent Provider Contract", () => {
       ],
       continuation: true,
       leaseId: "lease-1",
+      leaseSequence: 1,
       previousRuntimeItem: first.runtimeItem
     }));
     if (continuation.status !== "ok") {
@@ -185,7 +186,8 @@ describe("Agent Provider Contract", () => {
     expect(parseAgentRouteRequest(request({
       continuation: true,
       leaseContinuation: true,
-      leaseId: "lease-1"
+      leaseId: "lease-1",
+      leaseSequence: 1
     }))).toMatchObject({
       status: "failed",
       reason: expect.stringContaining("不能同时")
@@ -196,13 +198,15 @@ describe("Agent Provider Contract", () => {
     });
     expect(parseAgentRouteRequest(request({
       leaseContinuation: true,
-      leaseId: "lease-1"
+      leaseId: "lease-1",
+      leaseSequence: 1
     }))).toMatchObject({
       status: "ok",
       value: {
         continuation: false,
         leaseContinuation: true,
-        leaseId: "lease-1"
+        leaseId: "lease-1",
+        leaseSequence: 1
       }
     });
   });

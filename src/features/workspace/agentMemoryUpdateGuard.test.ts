@@ -74,4 +74,15 @@ describe("Agent memory update guard", () => {
       ["preference", "以后统一低饱和"]
     ]);
   });
+
+  it("extracts multiple memory kinds from one punctuation-free clause", () => {
+    expect(resolveRequiredAgentMemoryUpdates(
+      "后续保持低饱和并且不要高反光且高度不得超过 1.2 米"
+    ).map((candidate) => [candidate.kind, candidate.evidenceQuote])).toEqual([
+      ["preference", "后续保持低饱和"],
+      ["avoidance", "不要高反光"],
+      ["constraint", "高度不得超过 1.2 米"]
+    ]);
+    expect(resolveRequiredAgentMemoryUpdates("这张图先不要高反光")).toEqual([]);
+  });
 });

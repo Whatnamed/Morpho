@@ -20,6 +20,7 @@ import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agent
 import {
   agentTurnLeaseDeniedResponse,
   continueAgentTurnLease,
+  hashAgentTurnLeaseValue,
   startAgentTurnLease
 } from "@/server/auth/agentTurnLease";
 import {
@@ -80,16 +81,6 @@ export async function POST(request: Request) {
     }
     throw error;
   }
-  const leaseAccess = validated.value.continuation || validated.value.leaseContinuation
-    ? await continueAgentTurnLease({
-        leaseId: validated.value.leaseId!,
-        agentTurnId: validated.value.agentTurnId,
-        callKind: "provider"
-      })
-    : await startAgentTurnLease(validated.value.agentTurnId);
-  if (leaseAccess.status === "denied") {
-    return agentTurnLeaseDeniedResponse(leaseAccess);
-  }
   const filteredToolProfile = contract.effectiveToolProfile;
   const requestState = buildProviderRequestState(
     contract.request,
@@ -97,6 +88,33 @@ export async function POST(request: Request) {
     contract.runtimeItem,
     validated.value.contextBudgetState?.generation
   );
+  const requestHash = hashAgentTurnLeaseValue({
+    input: contract.request.input,
+    tools: contract.request.tools ?? [],
+    directive: validated.value.directive?.kind ?? null
+  });
+  const requestManifestHash = hashAgentTurnLeaseValue(requestState.cacheItemManifest ?? []);
+  const leaseAccess = validated.value.continuation || validated.value.leaseContinuation
+    ? await continueAgentTurnLease({
+        leaseId: validated.value.leaseId!,
+        agentTurnId: validated.value.agentTurnId,
+        continuationKind: validated.value.directive?.kind === "conversationSummary"
+          ? "conversationSummary"
+          : "providerContinuation",
+        expectedSequence: validated.value.leaseSequence!,
+        requestHash,
+        requestManifestHash,
+        runtimeItemId: contract.runtimeItem.id
+      })
+    : await startAgentTurnLease({
+        agentTurnId: validated.value.agentTurnId,
+        initialRequestHash: requestHash,
+        requestManifestHash,
+        runtimeItemId: contract.runtimeItem.id
+      });
+  if (leaseAccess.status === "denied") {
+    return agentTurnLeaseDeniedResponse(leaseAccess);
+  }
   const cacheManifestDiagnostics = compareAgentCacheManifests({
     previous: contract.request.diagnostics?.previousRequestState,
     current: requestState
@@ -182,7 +200,8 @@ export async function POST(request: Request) {
           leaseId: leaseAccess.lease.id,
           leaseExpiresAt: leaseAccess.lease.expiresAt,
           providerCallCount: leaseAccess.lease.providerCallCount,
-          webSearchCallCount: leaseAccess.lease.webSearchCallCount
+          webSearchCallCount: leaseAccess.lease.webSearchCallCount,
+          nextProviderSequence: leaseAccess.lease.nextProviderSequence
         });
         try {
           const execution = await executeAgentRequestWithContextBudget(providerRequest, {

@@ -28,14 +28,25 @@ describe("Agent Turn Lease access", () => {
       expires_at: "2026-07-24T03:00:00.000Z",
       provider_call_count: 1,
       web_search_call_count: 0,
+      next_provider_sequence: 1,
       text_request_count: 4
     });
 
-    await expect(startAgentTurnLeaseForClient(mock, "agent-turn-a")).resolves.toMatchObject({
+    await expect(startAgentTurnLeaseForClient(mock, {
+      agentTurnId: "agent-turn-a",
+      initialRequestHash: "a".repeat(64),
+      requestManifestHash: "b".repeat(64),
+      runtimeItemId: "agent-runtime-a"
+    })).resolves.toMatchObject({
       status: "allowed",
       lease: { id: "lease-a", providerCallCount: 1, webSearchCallCount: 0 }
     });
-    expect(mock.rpc).toHaveBeenCalledWith("start_agent_turn_lease", { p_agent_turn_id: "agent-turn-a" });
+    expect(mock.rpc).toHaveBeenCalledWith("start_agent_turn_lease", {
+      p_agent_turn_id: "agent-turn-a",
+      p_initial_request_hash: "a".repeat(64),
+      p_request_manifest_hash: "b".repeat(64),
+      p_runtime_item_id: "agent-runtime-a"
+    });
   });
 
   it("rejects forged, cross-user, expired and closed continuations without provider access", async () => {
@@ -46,12 +57,17 @@ describe("Agent Turn Lease access", () => {
         lease_id: null,
         expires_at: null,
         provider_call_count: 1,
-        web_search_call_count: 0
+        web_search_call_count: 0,
+        next_provider_sequence: 1
       });
       await expect(continueAgentTurnLeaseForClient(mock, {
         leaseId: "lease-forged",
         agentTurnId: "agent-turn-forged",
-        callKind: "provider"
+        continuationKind: "providerContinuation",
+        expectedSequence: 1,
+        requestHash: "c".repeat(64),
+        requestManifestHash: "d".repeat(64),
+        runtimeItemId: "agent-runtime-a"
       })).resolves.toMatchObject({ status: "denied", httpStatus: 403, reason });
     }
   });
@@ -63,17 +79,25 @@ describe("Agent Turn Lease access", () => {
       lease_id: "lease-a",
       expires_at: "2026-07-24T03:00:00.000Z",
       provider_call_count: 3,
-      web_search_call_count: 2
+      web_search_call_count: 2,
+      next_provider_sequence: 3
     });
     await expect(continueAgentTurnLeaseForClient(allowed, {
       leaseId: "lease-a",
       agentTurnId: "agent-turn-a",
-      callKind: "web_search"
+      continuationKind: "webSearch",
+      expectedSequence: 2,
+      requestHash: "c".repeat(64),
+      requestManifestHash: "d".repeat(64)
     })).resolves.toMatchObject({ status: "allowed", lease: { webSearchCallCount: 2 } });
     expect(allowed.rpc).toHaveBeenCalledWith("continue_agent_turn_lease", {
       p_lease_id: "lease-a",
       p_agent_turn_id: "agent-turn-a",
-      p_call_kind: "web_search"
+      p_continuation_kind: "webSearch",
+      p_expected_sequence: 2,
+      p_request_hash: "c".repeat(64),
+      p_request_manifest_hash: "d".repeat(64),
+      p_runtime_item_id: null
     });
 
     const limited = client({
@@ -82,12 +106,16 @@ describe("Agent Turn Lease access", () => {
       lease_id: "lease-a",
       expires_at: "2026-07-24T03:00:00.000Z",
       provider_call_count: 3,
-      web_search_call_count: 8
+      web_search_call_count: 32,
+      next_provider_sequence: 32
     });
     await expect(continueAgentTurnLeaseForClient(limited, {
       leaseId: "lease-a",
       agentTurnId: "agent-turn-a",
-      callKind: "web_search"
+      continuationKind: "webSearch",
+      expectedSequence: 32,
+      requestHash: "e".repeat(64),
+      requestManifestHash: "f".repeat(64)
     })).resolves.toMatchObject({ status: "denied", httpStatus: 429 });
   });
 
@@ -116,5 +144,31 @@ describe("Agent Turn Lease access", () => {
     expect(correctionSql).toContain("create or replace function public.continue_agent_turn_lease");
     expect(correctionSql).toContain("where lease.user_id = current_user_id");
     expect(correctionSql).toContain("provider_call_count = lease.provider_call_count");
+  });
+
+  it("defines a forward-only causal and idempotent lease migration with a 32-search safety cap", () => {
+    const sql = readFileSync(
+      resolve(process.cwd(), "supabase/migrations/20260726143030_harden_agent_turn_lease_causality.sql"),
+      "utf8"
+    );
+
+    expect(sql).toContain("initial_request_hash");
+    expect(sql).toContain("last_request_hash");
+    expect(sql).toContain("next_provider_sequence");
+    expect(sql).toContain("last_runtime_item_id");
+    expect(sql).toContain("last_continuation_kind");
+    expect(sql).toContain("p_initial_request_hash");
+    expect(sql).toContain("existing_lease.initial_request_hash = p_initial_request_hash");
+    expect(sql).toContain("'request_hash_conflict'");
+    expect(sql).toContain("p_expected_sequence < lease_row.next_provider_sequence");
+    expect(sql).toContain("p_expected_sequence > lease_row.next_provider_sequence");
+    expect(sql).toContain("'sequence_replay'");
+    expect(sql).toContain("'sequence_skip'");
+    expect(sql).toContain("p_continuation_kind not in ('providerContinuation', 'conversationSummary', 'webSearch')");
+    expect(sql).toContain("web_search_call_count >= 32");
+    expect(sql).toContain("check (web_search_call_count between 0 and 32)");
+    expect(sql.match(/set search_path = ''/g)).toHaveLength(3);
+    expect(sql).toContain("revoke all on function public.start_agent_turn_lease");
+    expect(sql).not.toMatch(/prompt|workspace|request_body|body_text/i);
   });
 });

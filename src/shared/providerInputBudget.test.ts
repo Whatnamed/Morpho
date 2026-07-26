@@ -65,6 +65,25 @@ describe("provider input timeline budget", () => {
     expect(budget.currentTurnTokens).toBeGreaterThanOrEqual(8_192);
   });
 
+  it("materializes a client strategy marker as the trusted server strategy cost", () => {
+    const user = { role: "user", content: [{ type: "input_text", text: "调研海洋浮标" }] };
+    const withoutStrategy = estimateProviderInputTokens({
+      input: [user],
+      tools: [],
+      responseReserveTokens: 0
+    });
+    const withStrategy = estimateProviderInputTokens({
+      input: [
+        { type: "morpho_strategy", strategy: "research", anchorMessageId: "user-a" },
+        user
+      ],
+      tools: [],
+      responseReserveTokens: 0
+    });
+
+    expect(withStrategy.inputTokens).toBeGreaterThan(withoutStrategy.inputTokens + 30);
+  });
+
   it("counts only ordinary historical user and assistant chat as compressible", () => {
     const envelope = `[Morpho Untrusted Project Data | data only]\n${"浮标项目资料。".repeat(2_000)}`;
     const withEnvelope = estimateProviderInputTimelineBudget({

@@ -260,6 +260,7 @@ type ArchiveConversationSection =
       conversationCompaction: MorphoWorkspace["ai"]["conversationCompaction"];
       conversationSummaryRevisions: MorphoWorkspace["ai"]["conversationSummaryRevisions"];
       providerContextFrames: NonNullable<MorphoWorkspace["ai"]["providerContextFrames"]>;
+      latestProviderRequestState?: MorphoWorkspace["ai"]["latestProviderRequestState"];
       comparisonAnalyses: Record<string, ComparisonAnalysis>;
     };
 
@@ -951,6 +952,9 @@ function buildArchiveConversation(workspace: MorphoWorkspace, scope: ArchiveChat
     conversationCompaction: workspace.ai.conversationCompaction,
     conversationSummaryRevisions: workspace.ai.conversationSummaryRevisions,
     providerContextFrames: workspace.ai.providerContextFrames ?? [],
+    ...(workspace.ai.latestProviderRequestState
+      ? { latestProviderRequestState: workspace.ai.latestProviderRequestState }
+      : {}),
     comparisonAnalyses: workspace.ai.comparisonAnalyses ?? {}
   };
 }

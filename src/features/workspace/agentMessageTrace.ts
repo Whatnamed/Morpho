@@ -1,5 +1,8 @@
 import type { AgentMessagePart, AgentTrace, AiMessage } from "@/domain/morpho/types";
-import type { AgentRouteStreamEvent } from "@/shared/agentStreamProtocol";
+import type {
+  AgentProviderDiagnostics,
+  AgentRouteStreamEvent
+} from "@/shared/agentStreamProtocol";
 
 export const AGENT_TRACE_MAX_PARTS = 96;
 export const AGENT_TRACE_MAX_TEXT_PART_CHARS = 24_000;
@@ -16,6 +19,20 @@ export function createAgentTrace(startedAt: string): AgentTrace {
     parts: [],
     status: "streaming"
   };
+}
+
+export function compactHistoricalProviderDiagnostics(
+  diagnostics: AgentProviderDiagnostics | undefined
+): AgentTrace["providerDiagnostics"] {
+  if (!diagnostics) {
+    return undefined;
+  }
+  const {
+    previousRequestState: _previousRequestState,
+    requestState: _requestState,
+    ...compact
+  } = diagnostics;
+  return compact;
 }
 
 export function applyAgentStreamEventToTrace(

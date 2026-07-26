@@ -56,6 +56,7 @@ export type ValidatedAgentRouteRequest = {
   continuation: boolean;
   leaseContinuation: boolean;
   leaseId?: string;
+  leaseSequence?: number;
   promptContractVersion: typeof MORPHO_AGENT_PROMPT_CONTRACT_VERSION;
   mode: AgentRuntimeMode;
   capabilityIntent: AgentCapabilityIntent;
@@ -84,6 +85,7 @@ export function parseAgentRouteRequest(value: unknown):
     "continuation",
     "leaseContinuation",
     "leaseId",
+    "leaseSequence",
     "promptContractVersion",
     "mode",
     "capabilityIntent",
@@ -128,6 +130,15 @@ export function parseAgentRouteRequest(value: unknown):
   }
   if (!value.continuation && !leaseContinuation && leaseId) {
     return failed("首次 Agent 请求不能携带 leaseId。");
+  }
+  const leaseSequence = value.leaseSequence === undefined
+    ? undefined
+    : boundedInteger(value.leaseSequence, 1, 10_000);
+  if ((value.continuation || leaseContinuation) && leaseSequence === undefined) {
+    return failed("Agent continuation 必须携带 leaseSequence。");
+  }
+  if (!value.continuation && !leaseContinuation && value.leaseSequence !== undefined) {
+    return failed("首次 Agent 请求不能携带 leaseSequence。");
   }
   const capabilityIntent = parseCapabilityIntent(value.capabilityIntent);
   if (!capabilityIntent) {
@@ -176,6 +187,7 @@ export function parseAgentRouteRequest(value: unknown):
       continuation: value.continuation,
       leaseContinuation,
       ...(leaseId ? { leaseId } : {}),
+      ...(leaseSequence !== undefined ? { leaseSequence } : {}),
       promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
       mode: value.mode,
       capabilityIntent,
@@ -881,6 +893,15 @@ function optionalIdentifier(value: unknown): string | undefined | null {
 
 function optionalInteger(value: unknown, max: number): number | undefined | null {
   return value === undefined ? undefined : isNonNegativeInteger(value, max) ? value : null;
+}
+
+function boundedInteger(value: unknown, min: number, max: number): number | undefined {
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= min &&
+    value <= max
+    ? value
+    : undefined;
 }
 
 function isNonNegativeInteger(value: unknown, max: number): value is number {

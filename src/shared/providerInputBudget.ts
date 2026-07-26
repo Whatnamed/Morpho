@@ -59,8 +59,12 @@ export function estimateProviderInputTokens(input: {
   tools: readonly unknown[];
   responseReserveTokens: number;
 }): ProviderInputBudget {
-  const imageCount = countImageInputs(input.input);
-  const serializedTokens = estimateSerializedTokens({ input: input.input, tools: input.tools });
+  const materializedInput = input.input.map((item) => {
+    const marker = parseAgentStrategyMarker(item);
+    return marker ? canonicalAgentStrategyMessage(marker) : item;
+  });
+  const imageCount = countImageInputs(materializedInput);
+  const serializedTokens = estimateSerializedTokens({ input: materializedInput, tools: input.tools });
   const inputTokens = PROVIDER_INPUT_BASE_TOKENS + serializedTokens + imageCount * PROVIDER_INPUT_IMAGE_TOKEN_RESERVE;
   const responseReserveTokens = Math.max(0, Math.floor(input.responseReserveTokens));
   return {
@@ -188,3 +192,7 @@ function normalizeTokenCount(value: number): number {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+import {
+  canonicalAgentStrategyMessage,
+  parseAgentStrategyMarker
+} from "./agentStrategyItem";

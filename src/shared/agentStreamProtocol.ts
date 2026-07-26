@@ -135,6 +135,7 @@ export type AgentRouteStreamEvent =
       leaseExpiresAt?: string;
       providerCallCount?: number;
       webSearchCallCount?: number;
+      nextProviderSequence?: number;
     }
   | {
       type: "turn-attempt-reset";

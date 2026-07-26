@@ -313,7 +313,8 @@ import {
   createRequiredAgentReadState,
   failRequiredAgentRead,
   resolveAgentTaskStrategy,
-  resolveRequiredAgentReadTools,
+  resolveRequiredAgentReadRequirements,
+  validateRequiredAgentReadCall,
   type RequiredAgentReadToolName
 } from "./agentTaskStrategy";
 import {
@@ -340,10 +341,11 @@ import {
   type ProviderContextFrameBuildInput,
   type ProviderRequestBoundaryState
 } from "./providerContextFrames";
-import { appendAgentTurnMessages, finalizeAgentTurnOutcome } from "./agentTurnMessages";
+import { appendAgentTurnMessages, finalizeAgentTurn } from "./agentTurnMessages";
 import {
   applyAgentStreamEventsToTrace,
   completeAgentTrace,
+  compactHistoricalProviderDiagnostics,
   createAgentTrace,
   finishLocalAgentToolActivity,
   startLocalAgentToolActivity,
@@ -383,7 +385,9 @@ async function requestConversationSummary(
     agentTurnId: string;
     mode: MorphoAgentTurnMode;
     leaseId?: string;
+    leaseSequence?: number;
     onLeaseStarted?: (leaseId: string) => void;
+    onLeaseSequence?: (sequence: number) => void;
   }
 ): Promise<{
   parsed: ReturnType<typeof parseConversationSummaryPayload>;
@@ -397,7 +401,8 @@ async function requestConversationSummary(
       projectId: input.projectId,
       agentTurnId: input.agentTurnId,
       mode: input.mode,
-      leaseId: input.leaseId
+      leaseId: input.leaseId,
+      leaseSequence: input.leaseSequence
     })),
     signal
   });
@@ -408,6 +413,9 @@ async function requestConversationSummary(
       if (event.type === "turn-start" && event.leaseId) {
         leaseId = event.leaseId;
         input.onLeaseStarted?.(event.leaseId);
+      }
+      if (event.type === "turn-start" && event.nextProviderSequence !== undefined) {
+        input.onLeaseSequence?.(event.nextProviderSequence);
       }
     }
   });
@@ -1982,6 +1990,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     );
     const agentTurnId = `agent-turn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     let agentTurnLeaseId: string | undefined;
+    let nextAgentLeaseSequence: number | undefined;
 
     async function closeAgentTurnLease(
       outcome: "success" | "cancelledBeforeExecution" | "failedBeforeExecution" | "partialSuccess" | "pendingConfirmation"
@@ -2100,8 +2109,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             agentTurnId,
             mode: agentTurnMode,
             leaseId: agentTurnLeaseId,
+            leaseSequence: nextAgentLeaseSequence,
             onLeaseStarted: (leaseId) => {
               agentTurnLeaseId = leaseId;
+            },
+            onLeaseSequence: (sequence) => {
+              nextAgentLeaseSequence = sequence;
             }
           }
         );
@@ -2145,12 +2158,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         await closeAgentTurnLease(isCancelled ? "cancelledBeforeExecution" : "failedBeforeExecution");
         const message = error instanceof Error ? error.message : "连续对话压缩失败。";
         commitWorkspaceNow((current) => ({
-          workspace: updateAiMessage(
-            current,
+          workspace: finalizeAgentTurn(current, {
+            agentTurnId,
+            userMessageId,
             assistantMessageId,
-            `连续对话压缩失败，原始历史未丢失。${message}`,
-            "failed"
-          ),
+            outcome: isCancelled ? "cancelledBeforeExecution" : "failedBeforeExecution",
+            assistantBody: `连续对话压缩失败，原始历史未丢失。${message}`,
+            assistantStatus: isCancelled ? "cancelled" : "failed",
+            traceStatus: isCancelled ? "cancelled" : "failed",
+            summary: isCancelled ? "自动压缩已取消，本轮未进入有效上下文。" : "自动压缩失败，本轮未进入有效上下文。",
+            completedAt: new Date().toISOString()
+          }),
           value: undefined
         }));
         setAiDraft(draft);
@@ -2212,10 +2230,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     let finalText = "";
     let collectedCitations: ProviderCitation[] = [];
     let hasWebSearchEvidence = false;
-    const requiredReadTools = resolveRequiredAgentReadTools(draft, {
+    const requiredReadRequirements = resolveRequiredAgentReadRequirements(draft, {
       hasSelectedObject: selectedObjects.length > 0
     });
-    let requiredReadState = createRequiredAgentReadState(requiredReadTools);
+    const requiredReadTools = requiredReadRequirements.map((requirement) => requirement.tool);
+    let requiredReadState = createRequiredAgentReadState(requiredReadRequirements);
     const requiredMemoryUpdates = resolveRequiredAgentMemoryUpdates(draft);
     let memoryUpdateReminderInserted = false;
     const handledMemoryCandidateIndexes = new Set<number>();
@@ -2284,6 +2303,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           continuation,
           ...(leaseContinuation ? { leaseContinuation: true } : {}),
           ...((continuation || leaseContinuation) && agentTurnLeaseId ? { leaseId: agentTurnLeaseId } : {}),
+          ...((continuation || leaseContinuation) && nextAgentLeaseSequence !== undefined
+            ? { leaseSequence: nextAgentLeaseSequence }
+            : {}),
           promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
           mode: agentTurnMode,
           capabilityIntent: { comparisonAnalysis: allowStructuredComparison },
@@ -2350,6 +2372,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             if (event.type === "turn-start") {
               if (event.leaseId) {
                 agentTurnLeaseId = event.leaseId;
+              }
+              if (event.nextProviderSequence !== undefined) {
+                nextAgentLeaseSequence = event.nextProviderSequence;
               }
               const serverToolProfile = event.effectiveToolProfile;
               if (serverToolProfile && serverToolProfile !== "conversationSummary" && event.runtimeItem) {
@@ -2432,17 +2457,33 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         Math.max(activeAttemptInputTokens, completeResult.usage?.inputTokens ?? 0)
       );
       const serverRequestState = toProviderRequestBoundaryState(completeResult.providerDiagnostics?.requestState);
-      if (serverRequestState) {
-        latestProviderRequestState = serverRequestState;
+      const providerDiagnostics = compactHistoricalProviderDiagnostics(completeResult.providerDiagnostics);
+      if (serverRequestState || providerDiagnostics) {
+        if (serverRequestState) {
+          latestProviderRequestState = serverRequestState;
+        }
         commitWorkspaceNow((current) => {
           const assistant = current.ai.messages.find((message) => message.id === assistantMessageId);
           if (!assistant?.agentTrace) {
             return { workspace: current, value: undefined };
           }
+          const updated = updateAiMessage(current, assistantMessageId, assistant.body, "streaming", {
+            agentTrace: {
+              ...assistant.agentTrace,
+              ...(serverRequestState
+                ? { providerRequestState: compactHistoricalProviderRequestState(serverRequestState) }
+                : {}),
+              ...(providerDiagnostics ? { providerDiagnostics } : {})
+            }
+          });
           return {
-            workspace: updateAiMessage(current, assistantMessageId, assistant.body, "streaming", {
-              agentTrace: { ...assistant.agentTrace, providerRequestState: serverRequestState }
-            }),
+            workspace: {
+              ...updated,
+              ai: {
+                ...updated.ai,
+                ...(serverRequestState ? { latestProviderRequestState: serverRequestState } : {})
+              }
+            },
             value: undefined
           };
         });
@@ -2546,8 +2587,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         agentTurnId,
         mode: agentTurnMode,
         leaseId: agentTurnLeaseId,
+        leaseSequence: nextAgentLeaseSequence,
         onLeaseStarted: (leaseId) => {
           agentTurnLeaseId = leaseId;
+        },
+        onLeaseSequence: (sequence) => {
+          nextAgentLeaseSequence = sequence;
         }
       });
       agentTurnLeaseId = summaryRequest.leaseId ?? agentTurnLeaseId;
@@ -3001,6 +3046,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               break;
             }
             case "read_project_memory": {
+              const coverage = validateRequiredAgentReadCall(
+                requiredReadState,
+                "read_project_memory",
+                parsed.args
+              );
+              if (!coverage.satisfied) {
+                throw new Error(coverage.reason);
+              }
               const current = readWorkspaceNow();
               const keys: ProjectMemoryKey[] = parsed.args.keys ?? [
                 "projectOverview",
@@ -3031,6 +3084,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               break;
             }
             case "read_stage_record": {
+              const coverage = validateRequiredAgentReadCall(
+                requiredReadState,
+                "read_stage_record",
+                parsed.args
+              );
+              if (!coverage.satisfied) {
+                throw new Error(coverage.reason);
+              }
               const current = readWorkspaceNow();
               const stages: StageRecordKey[] = parsed.args.stages ?? [
                 "startAndInput",
@@ -3055,6 +3116,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               break;
             }
             case "search_project_conversation": {
+              const coverage = validateRequiredAgentReadCall(
+                requiredReadState,
+                "search_project_conversation",
+                parsed.args
+              );
+              if (!coverage.satisfied) {
+                throw new Error(coverage.reason);
+              }
               toolOutputs.push(
                 buildToolResultOutput(
                   call.callId,
@@ -3099,12 +3168,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                   maxSources: AGENT_WEB_SEARCH_MAX_SOURCES_PER_CALL,
                   agentTurnId,
                   agentContinuation: true,
-                  leaseId: agentTurnLeaseId
+                  leaseId: agentTurnLeaseId,
+                  leaseSequence: nextAgentLeaseSequence
                 }),
                 signal: controller.signal
               });
               if (!webSearchResponse.ok) {
                 throw new Error(await readErrorResponse(webSearchResponse));
+              }
+              if (nextAgentLeaseSequence !== undefined) {
+                nextAgentLeaseSequence += 1;
               }
               const webSearchResult = (await webSearchResponse.json()) as {
                 sources: WebSearchSource[];
@@ -3648,31 +3721,45 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             : undefined;
       commitWorkspaceNow((current) => {
         const replyText = finalText || "已完成当前执行。";
-        const currentMessage = current.ai.messages.find((message) => message.id === assistantMessageId);
-        const completedTrace = currentMessage?.agentTrace
-          ? {
-              ...completeAgentTrace(currentMessage.agentTrace, "done", new Date().toISOString()),
-              ...(latestProviderResponseId ? { responseId: latestProviderResponseId } : {}),
-              ...(latestProviderRequestState ? { providerRequestState: latestProviderRequestState } : {})
-            }
-          : undefined;
-        let nextWorkspace = updateAiMessage(
+        const completedAt = new Date().toISOString();
+        let nextWorkspace = finalizeAgentTurn(
           current,
-          assistantMessageId,
-          sanitizeConversationSummaryStreamForDisplay(sanitizeConversationAssistantStreamForDisplay(replyText)) ||
-            "已完成当前执行。",
-          "done",
           {
-            ...(completedTrace ? { agentTrace: completedTrace } : {}),
-            ...(memoryUpdateEntryIds.size > 0
-              ? {
-                  continuityEntryIds: [...memoryUpdateEntryIds],
-                  memoryUpdateKeys: [...memoryUpdateKeys],
-                  stageRecordUpdateKeys: [...stageRecordUpdateKeys]
-                }
+            agentTurnId,
+            userMessageId,
+            assistantMessageId,
+            outcome: turnOutcome,
+            assistantBody: sanitizeConversationSummaryStreamForDisplay(
+              sanitizeConversationAssistantStreamForDisplay(replyText)
+            ) || "已完成当前执行。",
+            assistantStatus: turnOutcome === "failedBeforeExecution" ? "failed" : "done",
+            traceStatus: turnOutcome === "failedBeforeExecution" ? "failed" : "done",
+            ...(turnOutcomeSummary ? { summary: turnOutcomeSummary } : {}),
+            completedAt,
+            ...(latestProviderResponseId ? { responseId: latestProviderResponseId } : {}),
+            ...(latestProviderRequestState
+              ? { providerRequestState: compactHistoricalProviderRequestState(latestProviderRequestState) }
               : {})
           }
         );
+        if (memoryUpdateEntryIds.size > 0) {
+          nextWorkspace = {
+            ...nextWorkspace,
+            ai: {
+              ...nextWorkspace.ai,
+              messages: nextWorkspace.ai.messages.map((message) =>
+                message.id === assistantMessageId
+                  ? {
+                      ...message,
+                      continuityEntryIds: [...memoryUpdateEntryIds],
+                      memoryUpdateKeys: [...memoryUpdateKeys],
+                      stageRecordUpdateKeys: [...stageRecordUpdateKeys]
+                    }
+                  : message
+              )
+            }
+          };
+        }
         if (collectedCitations.length > 0) {
           nextWorkspace = storeMessageCitations(nextWorkspace, {
             messageId: assistantMessageId,
@@ -3680,13 +3767,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             citations: collectedCitations
           });
         }
-        nextWorkspace = finalizeAgentTurnOutcome(nextWorkspace, {
-          agentTurnId,
-          userMessageId,
-          assistantMessageId,
-          outcome: turnOutcome,
-          ...(turnOutcomeSummary ? { summary: turnOutcomeSummary } : {})
-        });
         return { workspace: nextWorkspace, value: undefined };
       });
       await closeAgentTurnLease(turnOutcome);
@@ -3709,30 +3789,24 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         ? "本轮在中断前已保留部分工具结果；其余步骤未完成。"
         : message;
       commitWorkspaceNow((current) => {
-        const assistantMessage = current.ai.messages.find((candidate) => candidate.id === assistantMessageId);
-        const trace = assistantMessage?.agentTrace
-          ? completeAgentTrace(
-              assistantMessage.agentTrace,
-              isCancelled ? "cancelled" : "failed",
-              new Date().toISOString()
-            )
-          : undefined;
-        let next = updateAiMessage(
+        const next = finalizeAgentTurn(
           current,
-          assistantMessageId,
-          turnOutcome === "partialSuccess" ? turnOutcomeSummary : message,
-          turnOutcome === "partialSuccess" ? "done" : isCancelled ? "cancelled" : "failed",
           {
-          ...(trace ? { agentTrace: trace } : {})
+            agentTurnId,
+            userMessageId,
+            assistantMessageId,
+            outcome: turnOutcome,
+            assistantBody: turnOutcome === "partialSuccess" ? turnOutcomeSummary : message,
+            assistantStatus: turnOutcome === "partialSuccess" ? "done" : isCancelled ? "cancelled" : "failed",
+            traceStatus: turnOutcome === "partialSuccess" ? "done" : isCancelled ? "cancelled" : "failed",
+            summary: turnOutcomeSummary,
+            completedAt: new Date().toISOString(),
+            ...(latestProviderResponseId ? { responseId: latestProviderResponseId } : {}),
+            ...(latestProviderRequestState
+              ? { providerRequestState: compactHistoricalProviderRequestState(latestProviderRequestState) }
+              : {})
           }
         );
-        next = finalizeAgentTurnOutcome(next, {
-          agentTurnId,
-          userMessageId,
-          assistantMessageId,
-          outcome: turnOutcome,
-          summary: turnOutcomeSummary
-        });
         return { workspace: next, value: undefined };
       });
       await closeAgentTurnLease(turnOutcome);
@@ -6986,13 +7060,23 @@ function updateAiMessage(
 }
 
 function getLatestProviderRequestState(workspace: MorphoWorkspace): ProviderRequestBoundaryState | undefined {
+  if (workspace.ai.latestProviderRequestState) {
+    return toProviderRequestBoundaryState(workspace.ai.latestProviderRequestState);
+  }
   for (let index = workspace.ai.messages.length - 1; index >= 0; index -= 1) {
     const state = workspace.ai.messages[index]?.agentTrace?.providerRequestState;
     if (state) {
-      return state;
+      return toProviderRequestBoundaryState(state);
     }
   }
   return undefined;
+}
+
+function compactHistoricalProviderRequestState(
+  state: ProviderRequestBoundaryState
+): NonNullable<MorphoWorkspace["ai"]["messages"][number]["agentTrace"]>["providerRequestState"] {
+  const { cacheItemManifest: _manifest, ...compact } = state;
+  return compact;
 }
 
 function toProviderRequestBoundaryState(value: {
