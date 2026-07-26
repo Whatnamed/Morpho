@@ -342,7 +342,12 @@ import {
   type ProviderContextFrameBuildInput,
   type ProviderRequestBoundaryState
 } from "./providerContextFrames";
-import { appendAgentTurnMessages, finalizeAgentTurn } from "./agentTurnMessages";
+import {
+  appendAgentTurnMessages,
+  createAgentTurnWorkLedger,
+  finalizeAgentTurn,
+  resolveAgentTurnOutcome
+} from "./agentTurnMessages";
 import {
   applyAgentStreamEventsToTrace,
   completeAgentTrace,
@@ -2331,7 +2336,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const streamedFinalTextByAttempt = new Map<string, string>();
     let pendingServerDirective: AgentServerDirective | undefined;
     let hasAgentToolResult = false;
-    let hadAgentToolFailure = false;
+    const agentWorkLedger = createAgentTurnWorkLedger();
+    const markAgentWorkUnresolved = (key: string, reason: string) =>
+      agentWorkLedger.markUnresolved(key, reason);
+    const resolveAgentWorkForTool = (toolName: string) => agentWorkLedger.resolveForTool(toolName);
     let pendingConfirmationCreated = false;
 
     async function requestAgentTurn(
@@ -2865,7 +2873,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             continue;
           }
           if (readTransition.action === "exhausted") {
-            hadAgentToolFailure = true;
+            markAgentWorkUnresolved("requiredRead", "本轮所需的项目资料读取未能完成。");
             finalText = [
               result.outputText.trim(),
               buildRequiredAgentReadFailureNotice(requiredReadState)
@@ -2897,7 +2905,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         const parsedCallBatch = parseMorphoAgentToolCallBatch(result.functionCalls);
         const invalidCalls = parsedCallBatch.filter((entry) => entry.status === "invalid");
         if (invalidCalls.length > 0) {
-          hadAgentToolFailure = true;
+          for (const entry of invalidCalls) {
+            markAgentWorkUnresolved(`repair:${entry.call.name}`, "工具参数不符合 schema，等待一次修复。");
+          }
           toolArgumentRepairCount += 1;
           if (toolArgumentRepairCount > MAX_AGENT_TOOL_ARGUMENT_REPAIR_ATTEMPTS) {
             throw new Error("Agent 连续返回不符合工具 schema 的参数，已停止本轮以避免重复执行。");
@@ -3029,7 +3039,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           previousToolSignature = repetition.signature;
           repeatedToolCallCount = repetition.repeatCount;
           if (repetition.exceeded) {
-            hadAgentToolFailure = true;
+            markAgentWorkUnresolved("guard:repeatedToolCall", "检测到连续重复调用，本轮已停止继续使用工具。");
             toolOutputs.push(
               buildToolResultOutput(call.callId, {
                 status: "blocked",
@@ -3064,7 +3074,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             return { workspace: next, value: undefined };
           });
           if (parsed.name === "generate_visuals" && visualBatch?.status === "blocked") {
-            hadAgentToolFailure = true;
+            markAgentWorkUnresolved(`tool:${parsed.name}`, visualBatch.reason);
             toolOutputs.push(
               buildToolResultOutput(call.callId, {
                 status: "blocked",
@@ -3692,8 +3702,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 parsed satisfies never;
             }
           } catch (error) {
-            hadAgentToolFailure = true;
             const reason = error instanceof Error ? normalizeAgentTurnErrorMessage(error.message) : "该操作未能完成。";
+            markAgentWorkUnresolved(`tool:${parsed.name}`, reason);
             if (requiredReadTools.includes(parsed.name as RequiredAgentReadToolName)) {
               const readFailure = failRequiredAgentRead(
                 requiredReadState,
@@ -3726,6 +3736,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             continue;
           }
           hasAgentToolResult = true;
+          resolveAgentWorkForTool(parsed.name);
           commitWorkspaceNow((current) => {
             const next = finishAgentToolActivityInWorkspace(current, assistantMessageId, call.callId, "done");
             return { workspace: next, value: undefined };
@@ -3767,11 +3778,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           await compactConversationBeforeContinuation();
         }
       }
-      const turnOutcome = pendingConfirmationCreated
-        ? "pendingConfirmation" as const
-        : hadAgentToolFailure
-          ? hasAgentToolResult ? "partialSuccess" as const : "failedBeforeExecution" as const
-          : "success" as const;
+      const turnOutcome = resolveAgentTurnOutcome({
+        pendingConfirmation: pendingConfirmationCreated,
+        unresolvedCount: agentWorkLedger.unresolvedCount(),
+        hasToolResult: hasAgentToolResult
+      });
       const turnOutcomeSummary = turnOutcome === "partialSuccess"
         ? "本轮已保留成功取得的工具结果；至少一个步骤失败或被阻断，未完成部分需要后续重试。"
         : turnOutcome === "pendingConfirmation"

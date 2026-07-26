@@ -27,6 +27,54 @@ type AppendAgentTurnMessagesInput = {
   agentTurnId: string;
 };
 
+/**
+ * Tracks what is still unresolved in a turn instead of whether anything ever
+ * failed. A schema repair or a retried read that later succeeds must not leave
+ * the whole turn marked partial for every future context.
+ */
+export type AgentTurnWorkLedger = {
+  markUnresolved(key: string, reason: string): void;
+  resolveForTool(toolName: string): void;
+  unresolvedCount(): number;
+  unresolvedReasons(): string[];
+};
+
+export function createAgentTurnWorkLedger(): AgentTurnWorkLedger {
+  const unresolved = new Map<string, string>();
+  return {
+    markUnresolved(key, reason) {
+      unresolved.set(key, reason);
+    },
+    resolveForTool(toolName) {
+      unresolved.delete(`tool:${toolName}`);
+      unresolved.delete(`repair:${toolName}`);
+    },
+    unresolvedCount() {
+      return unresolved.size;
+    },
+    unresolvedReasons() {
+      return [...unresolved.values()];
+    }
+  };
+}
+
+export function resolveAgentTurnOutcome(input: {
+  pendingConfirmation: boolean;
+  unresolvedCount: number;
+  hasToolResult: boolean;
+}): Extract<
+  AgentTurnOutcome,
+  "pendingConfirmation" | "partialSuccess" | "failedBeforeExecution" | "success"
+> {
+  if (input.pendingConfirmation) {
+    return "pendingConfirmation";
+  }
+  if (input.unresolvedCount === 0) {
+    return "success";
+  }
+  return input.hasToolResult ? "partialSuccess" : "failedBeforeExecution";
+}
+
 export function appendAgentTurnMessages(
   workspace: MorphoWorkspace,
   input: AppendAgentTurnMessagesInput

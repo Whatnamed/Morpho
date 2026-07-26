@@ -4,9 +4,72 @@ import { createInitialWorkspace } from "@/domain/morpho/workspace";
 import { getUsableConversationMessages } from "@/domain/morpho/conversationCompaction";
 import {
   appendAgentTurnMessages,
+  createAgentTurnWorkLedger,
   finalizeAgentTurn,
-  finalizeAgentTurnOutcome
+  finalizeAgentTurnOutcome,
+  resolveAgentTurnOutcome
 } from "./agentTurnMessages";
+
+describe("agent turn work ledger", () => {
+  it("treats a repaired tool call that then succeeds as a fully successful turn", () => {
+    const ledger = createAgentTurnWorkLedger();
+    ledger.markUnresolved("repair:read_project_memory", "工具参数不符合 schema，等待一次修复。");
+    expect(ledger.unresolvedCount()).toBe(1);
+
+    ledger.resolveForTool("read_project_memory");
+
+    expect(ledger.unresolvedCount()).toBe(0);
+    expect(resolveAgentTurnOutcome({
+      pendingConfirmation: false,
+      unresolvedCount: ledger.unresolvedCount(),
+      hasToolResult: true
+    })).toBe("success");
+  });
+
+  it("keeps a failed tool unresolved until the same tool succeeds", () => {
+    const ledger = createAgentTurnWorkLedger();
+    ledger.markUnresolved("tool:generate_visuals", "当前选择不满足生成条件。");
+    ledger.resolveForTool("read_stage_record");
+
+    expect(ledger.unresolvedReasons()).toEqual(["当前选择不满足生成条件。"]);
+    expect(resolveAgentTurnOutcome({
+      pendingConfirmation: false,
+      unresolvedCount: ledger.unresolvedCount(),
+      hasToolResult: true
+    })).toBe("partialSuccess");
+  });
+
+  it("never clears a required-read exhaustion or a repeat guard through later tool success", () => {
+    const ledger = createAgentTurnWorkLedger();
+    ledger.markUnresolved("requiredRead", "本轮所需的项目资料读取未能完成。");
+    ledger.markUnresolved("guard:repeatedToolCall", "检测到连续重复调用。");
+    ledger.resolveForTool("read_project_memory");
+    ledger.resolveForTool("search_project_conversation");
+
+    expect(ledger.unresolvedCount()).toBe(2);
+    expect(resolveAgentTurnOutcome({
+      pendingConfirmation: false,
+      unresolvedCount: ledger.unresolvedCount(),
+      hasToolResult: true
+    })).toBe("partialSuccess");
+  });
+
+  it("reports work that never produced a result as failed before execution", () => {
+    expect(resolveAgentTurnOutcome({
+      pendingConfirmation: false,
+      unresolvedCount: 1,
+      hasToolResult: false
+    })).toBe("failedBeforeExecution");
+  });
+
+  it("keeps pending confirmation ahead of any unresolved work", () => {
+    expect(resolveAgentTurnOutcome({
+      pendingConfirmation: true,
+      unresolvedCount: 2,
+      hasToolResult: true
+    })).toBe("pendingConfirmation");
+  });
+});
 
 describe("agent turn messages", () => {
   it("keeps the user draft and assistant placeholder in the workspace used for later agent writeback", () => {
