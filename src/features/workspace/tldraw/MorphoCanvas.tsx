@@ -1594,6 +1594,7 @@ export function areMorphoShapePropsEqual(left: MorphoShape["props"], right: Morp
     left.label === right.label &&
     left.imageVariant === right.imageVariant &&
     left.isDefaultReference === right.isDefaultReference &&
+    left.needsReview === right.needsReview &&
     left.isBeingLocallyEdited === right.isBeingLocallyEdited &&
     left.isInDesignTrace === right.isInDesignTrace &&
     left.isDetailReferenceHighlighted === right.isDetailReferenceHighlighted &&

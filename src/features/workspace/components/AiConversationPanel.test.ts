@@ -1075,6 +1075,52 @@ describe("AiConversationPanel", () => {
     }
     expect(html).not.toContain(">模型<");
   });
+
+  it("offers both replacement options when replacing an existing default reference", () => {
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        pendingConfirmation: {
+          kind: "setDefaultReference",
+          targetObjectId: "image-night-scenario",
+          targetTitle: "夜间场景",
+          previousReferenceObjectId: "image-soft-rail-v2",
+          previousReferenceTitle: "软轨方案 v2",
+          reviewImageCount: 3,
+          reviewCollectionCount: 1
+        },
+        onConfirmPendingSecondary: () => undefined
+      }))
+    );
+
+    expect(html).toContain("替换后续默认参考");
+    expect(html).toContain("软轨方案 v2");
+    expect(html).toContain("只替换默认参考");
+    expect(html).toContain("替换并标记相关素材待复核");
+    expect(html).toContain("3 张图");
+    expect(html).toContain("1 个合集");
+    expect(html).toContain("不会删除、重排或重新生成");
+  });
+
+  it("hides the review-mark option when the old anchor has no direct derivatives", () => {
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        pendingConfirmation: {
+          kind: "setDefaultReference",
+          targetObjectId: "image-night-scenario",
+          targetTitle: "夜间场景",
+          previousReferenceObjectId: "image-soft-rail-v2",
+          previousReferenceTitle: "软轨方案 v2",
+          reviewImageCount: 0,
+          reviewCollectionCount: 0
+        },
+        onConfirmPendingSecondary: () => undefined
+      }))
+    );
+
+    expect(html).toContain("只替换默认参考");
+    expect(html).not.toContain("替换并标记相关素材待复核");
+    expect(html).toContain("当前没有可标记的直接延展素材");
+  });
 });
 
 function makeProps(overrides: Partial<ComponentProps<typeof AiConversationPanel>>) {

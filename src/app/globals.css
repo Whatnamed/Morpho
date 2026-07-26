@@ -4176,6 +4176,57 @@ button:disabled {
   font-weight: 650;
 }
 
+.morpho-review-flag {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  right: 10px;
+  padding: 5px 7px;
+  border: 1px solid rgba(138, 104, 52, 0.3);
+  border-radius: 999px;
+  background: rgba(249, 243, 231, 0.92);
+  color: var(--warning);
+  font-size: 10px;
+  font-weight: 650;
+  pointer-events: none;
+}
+
+.detail-review-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(138, 104, 52, 0.22);
+  border-radius: var(--radius-md);
+  background: rgba(249, 243, 231, 0.55);
+}
+
+.detail-review-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.detail-review-badge {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border: 1px solid rgba(138, 104, 52, 0.3);
+  border-radius: 999px;
+  color: var(--warning);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.detail-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.detail-review-actions .detail-inline-action {
+  margin-top: 0;
+}
+
 .morpho-object-file {
   padding: 16px;
   border: 1px solid var(--border-subtle);

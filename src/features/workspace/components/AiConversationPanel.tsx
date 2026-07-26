@@ -42,6 +42,10 @@ export type PendingAiConfirmation =
       kind: "setDefaultReference";
       targetObjectId: string;
       targetTitle: string;
+      previousReferenceObjectId: string;
+      previousReferenceTitle: string;
+      reviewImageCount: number;
+      reviewCollectionCount: number;
     }
   | {
       kind: "deleteObject";
@@ -344,6 +348,7 @@ type AiConversationPanelProps = {
   onRequestComparisonAction?: (analysisId: string, action: ComparisonActionRequest, objectId?: string) => void;
   onLocateObject?: (objectId: string) => void;
   onConfirmPending: () => void;
+  onConfirmPendingSecondary?: () => void;
   onCancelPending: () => void;
   onFailureRetry: () => void;
   onOpenProjectRecords: (entryIds?: string[]) => void;
@@ -381,6 +386,7 @@ export function AiConversationPanel({
   onRequestComparisonAction,
   onLocateObject,
   onConfirmPending,
+  onConfirmPendingSecondary,
   onCancelPending,
   onFailureRetry,
   onOpenProjectRecords
@@ -388,6 +394,9 @@ export function AiConversationPanel({
   const confirmationTitle = pendingConfirmation ? getPendingConfirmationTitle(pendingConfirmation) : null;
   const confirmationBody = pendingConfirmation ? getPendingConfirmationBody(pendingConfirmation) : null;
   const confirmationActionLabel = pendingConfirmation ? getPendingConfirmationActionLabel(pendingConfirmation) : null;
+  const confirmationSecondaryActionLabel = pendingConfirmation
+    ? getPendingConfirmationSecondaryActionLabel(pendingConfirmation)
+    : null;
   const selectedDirectionCount = selectedObjects.filter((object) => object.type === "conceptDirection").length;
   const showDirectionPreviewCount = selectedDirectionCount > 0 && isImageTaskContext;
   const directionPreviewTotal = selectedDirectionCount * directionPreviewCount;
@@ -675,6 +684,11 @@ export function AiConversationPanel({
                 <button className="brand-button" type="button" onClick={onConfirmPending}>
                   {confirmationActionLabel}
                 </button>
+                {confirmationSecondaryActionLabel && onConfirmPendingSecondary ? (
+                  <button className="plain-button" type="button" onClick={onConfirmPendingSecondary}>
+                    {confirmationSecondaryActionLabel}
+                  </button>
+                ) : null}
                 <button className="plain-button" type="button" onClick={onCancelPending}>
                   取消
                 </button>
@@ -1032,8 +1046,10 @@ function getPendingConfirmationTitle(confirmation: PendingAiConfirmation): strin
 
 function getPendingConfirmationBody(confirmation: PendingAiConfirmation): string {
   switch (confirmation.kind) {
-    case "setDefaultReference":
-      return `用“${confirmation.targetTitle}”替换后续默认参考。之后相关生成会默认延续它的比例、结构、材质和视觉基线；已有图片、版本链和交付内容不会被替换。`;
+    case "setDefaultReference": {
+      const reviewScopeText = describeReviewScope(confirmation);
+      return `用“${confirmation.targetTitle}”替换当前后续默认参考“${confirmation.previousReferenceTitle}”。之后相关生成将以它为默认基线；已有素材不会被删除或替换。也可以同时把旧默认参考的直接延展素材标记为待复核${reviewScopeText}，标记不会删除、重排或重新生成任何内容。`;
+    }
     case "deleteObject": {
       const reasonText =
         confirmation.reasons.length > 0 ? ` 需要确认：${confirmation.reasons.join(" ")}` : "";
@@ -1060,6 +1076,29 @@ function getPendingConfirmationBody(confirmation: PendingAiConfirmation): string
     case "compareCreateKeyConclusion":
       return `本次 Compare 决策将针对“${confirmation.targetTitle}”写入真实状态；AI 比较摘要只读展示，不能自动成为用户理由。`;
   }
+}
+
+function describeReviewScope(
+  confirmation: Extract<PendingAiConfirmation, { kind: "setDefaultReference" }>
+): string {
+  const parts: string[] = [];
+  if (confirmation.reviewImageCount > 0) {
+    parts.push(`${confirmation.reviewImageCount} 张图`);
+  }
+  if (confirmation.reviewCollectionCount > 0) {
+    parts.push(`${confirmation.reviewCollectionCount} 个合集`);
+  }
+  return parts.length > 0 ? `（${parts.join("、")}）` : "（当前没有可标记的直接延展素材）";
+}
+
+export function getPendingConfirmationSecondaryActionLabel(confirmation: PendingAiConfirmation): string | null {
+  if (confirmation.kind !== "setDefaultReference") {
+    return null;
+  }
+
+  return confirmation.reviewImageCount + confirmation.reviewCollectionCount > 0
+    ? "替换并标记相关素材待复核"
+    : null;
 }
 
 function getPendingConfirmationActionLabel(confirmation: PendingAiConfirmation): string {

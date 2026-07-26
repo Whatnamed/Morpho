@@ -6,10 +6,13 @@ import { useState } from "react";
 import type {
   DecisionRecord,
   DirectionLineageRecord,
+  ImageCollectionObject,
+  ImageObject,
   MorphoObject,
   MorphoRelation,
   MorphoWorkspace,
   VisualBranchRecord,
+  VisualReviewMark,
   ResearchObject,
   AssetRecord
 } from "@/domain/morpho/types";
@@ -47,6 +50,8 @@ type BottomDetailBarProps = {
   onContinueQuestion: (text: string) => void;
   onPreviewObject?: (objectId: string | null) => void;
   onLocateObject?: (objectId: string) => void;
+  onKeepReviewedVisual?: (objectId: string) => void;
+  onRegenerateReviewedVisual?: (objectId: string) => void;
 };
 
 const tabs = ["信息", "来源", "版本", "关联", "决策"] as const;
@@ -315,7 +320,9 @@ export function BottomDetailBar({
   onArchiveVisualBranch,
   onRestoreVisualBranch,
   onPreviewObject,
-  onLocateObject
+  onLocateObject,
+  onKeepReviewedVisual,
+  onRegenerateReviewedVisual
 }: BottomDetailBarProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>("信息");
 
@@ -382,6 +389,20 @@ export function BottomDetailBar({
       </div>
       <div className="detail-content" role="tabpanel">
         <div className="detail-content-stack">
+          {visibleTab === "信息" &&
+          selectedObjects.length === 1 &&
+          (primary.type === "image" || primary.type === "imageCollection") &&
+          primary.pendingReview ? (
+            <PendingReviewSection
+              workspace={workspace}
+              object={primary}
+              pendingReview={primary.pendingReview}
+              onKeepReviewedVisual={onKeepReviewedVisual}
+              onRegenerateReviewedVisual={onRegenerateReviewedVisual}
+              onPreviewObject={onPreviewObject}
+              onLocateObject={onLocateObject}
+            />
+          ) : null}
           {renderDetail({
             workspace,
             tab: visibleTab,
@@ -437,6 +458,115 @@ export function BottomDetailBar({
           </div>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/** 待复核素材“查看被用在哪里”的确定性用途清单：交付引用、所属合集、后续延展图。 */
+export function buildVisualUsageRows(workspace: MorphoWorkspace, objectId: string): DetailRelationRow[] {
+  const rows: DetailRelationRow[] = [];
+
+  for (const reference of Object.values(workspace.deliveryReferences)) {
+    if (reference.sourceObjectId !== objectId) {
+      continue;
+    }
+    const deliveryObject = reference.deliveryObjectId ? workspace.objects[reference.deliveryObjectId] : undefined;
+    rows.push({
+      id: `usage-delivery-${reference.id}`,
+      objectId: deliveryObject?.id,
+      object: deliveryObject,
+      label: "交付引用",
+      title: deliveryObject?.title ?? "交付准备",
+      meta: `引用快照：${reference.snapshot.title}`
+    });
+  }
+
+  for (const object of Object.values(workspace.objects)) {
+    if (object.type === "imageCollection" && object.visibility === "active" && object.memberObjectIds.includes(objectId)) {
+      rows.push({
+        id: `usage-collection-${object.id}`,
+        objectId: object.id,
+        object,
+        label: "所属合集",
+        title: object.title,
+        meta: `成员 ${object.memberObjectIds.length} 张`
+      });
+    }
+  }
+
+  for (const relation of workspace.relations) {
+    if ((relation.kind === "version" || relation.kind === "source") && relation.fromObjectId === objectId) {
+      const derived = workspace.objects[relation.toObjectId];
+      if (derived && derived.visibility === "active") {
+        rows.push({
+          id: `usage-derived-${relation.id}`,
+          objectId: derived.id,
+          object: derived,
+          label: "后续延展",
+          title: derived.title,
+          meta: getObjectTypeLabel(derived)
+        });
+      }
+    }
+  }
+
+  return rows;
+}
+
+function PendingReviewSection({
+  workspace,
+  object,
+  pendingReview,
+  onKeepReviewedVisual,
+  onRegenerateReviewedVisual,
+  onPreviewObject,
+  onLocateObject
+}: {
+  workspace: MorphoWorkspace;
+  object: ImageObject | ImageCollectionObject;
+  pendingReview: VisualReviewMark;
+  onKeepReviewedVisual?: (objectId: string) => void;
+  onRegenerateReviewedVisual?: (objectId: string) => void;
+  onPreviewObject?: (objectId: string | null) => void;
+  onLocateObject?: (objectId: string) => void;
+}) {
+  const [showUsage, setShowUsage] = useState(false);
+  const previousReference = workspace.objects[pendingReview.previousDefaultReferenceId];
+  const newReference = workspace.objects[pendingReview.newDefaultReferenceId];
+  const usageRows = showUsage ? buildVisualUsageRows(workspace, object.id) : [];
+
+  return (
+    <div className="detail-review-section" aria-label="待复核">
+      <div className="detail-review-head">
+        <span className="detail-review-badge">待复核</span>
+        <span className="detail-meta">
+          后续默认参考已从「{previousReference?.title ?? "已删除对象"}」替换为「{newReference?.title ?? "已删除对象"}
+          」，这{object.type === "imageCollection" ? "组" : "张"}素材由旧默认参考直接延展而来。
+        </span>
+      </div>
+      <div className="detail-review-actions">
+        <button className="detail-inline-action" type="button" onClick={() => onKeepReviewedVisual?.(object.id)}>
+          保留
+        </button>
+        <button className="detail-inline-action" type="button" onClick={() => onRegenerateReviewedVisual?.(object.id)}>
+          基于新默认参考重新生成
+        </button>
+        <button
+          className="detail-inline-action"
+          type="button"
+          aria-expanded={showUsage}
+          onClick={() => setShowUsage((value) => !value)}
+        >
+          {showUsage ? "收起用途" : "查看被用在哪里"}
+        </button>
+      </div>
+      {showUsage ? (
+        usageRows.length > 0 ? (
+          <DetailRelationRows rows={usageRows} onPreviewObject={onPreviewObject} onLocateObject={onLocateObject} />
+        ) : (
+          <span className="detail-meta">当前没有交付引用、合集或后续延展使用它。</span>
+        )
+      ) : null}
     </div>
   );
 }

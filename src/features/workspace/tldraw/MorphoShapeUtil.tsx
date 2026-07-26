@@ -42,6 +42,7 @@ type MorphoShapeProps = {
   details: string[];
   imageVariant?: string;
   isDefaultReference?: boolean;
+  needsReview?: boolean;
   isBeingLocallyEdited?: boolean;
   isInDesignTrace?: boolean;
   isDetailReferenceHighlighted?: boolean;
@@ -85,6 +86,7 @@ export class MorphoShapeUtil extends BaseBoxShapeUtil<MorphoShape> {
     details: T.arrayOf(T.string),
     imageVariant: T.string.optional(),
     isDefaultReference: T.boolean.optional(),
+    needsReview: T.boolean.optional(),
     isBeingLocallyEdited: T.boolean.optional(),
     isInDesignTrace: T.boolean.optional(),
     isDetailReferenceHighlighted: T.boolean.optional(),
@@ -282,6 +284,8 @@ export function getMorphoShapeProps(
     details,
     imageVariant: object.type === "image" ? object.imageVariant : undefined,
     isDefaultReference: object.type === "image" ? object.isDefaultReference : undefined,
+    needsReview:
+      object.type === "image" || object.type === "imageCollection" ? Boolean(object.pendingReview) : undefined,
     isDetailReferenceHighlighted,
     assetUrl
   };
@@ -526,6 +530,7 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
     "morpho-object",
     `morpho-object-${props.morphoType}`,
     props.isDefaultReference ? "is-default-reference" : "",
+    props.needsReview ? "is-needs-review" : "",
     props.isBeingLocallyEdited ? "is-local-editing" : "",
     props.isInDesignTrace ? "is-design-trace" : "",
     props.isDetailReferenceHighlighted ? "is-detail-reference-highlighted" : ""
@@ -549,6 +554,7 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
           <span>{props.label}</span>
           <strong>{props.title}</strong>
         </div>
+        {props.needsReview ? <div className="morpho-review-flag">待复核</div> : null}
         {props.isBeingLocallyEdited ? (
           <div className="edit-annotation">
             <span />
@@ -687,6 +693,7 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
       <h3>{props.title}</h3>
       <p>{props.summary}</p>
       {props.details.length > 1 ? <small>{props.details[1]}</small> : null}
+      {props.needsReview ? <div className="morpho-review-flag">待复核</div> : null}
     </article>
   );
 }

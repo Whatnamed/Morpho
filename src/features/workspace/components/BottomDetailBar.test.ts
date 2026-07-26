@@ -7,6 +7,7 @@ import {
   buildRelatedDetailRows,
   buildSourceDetailRows,
   buildVersionDetailRows,
+  buildVisualUsageRows,
   buildConceptDirectionVersionDetail,
   BottomDetailBar,
   DetailRelationRows,
@@ -494,5 +495,63 @@ describe("BottomDetailBar selected object surface", () => {
     expect(html).toContain("修订 1");
     expect(html).not.toContain("A stable concept statement for review.");
     expect(html).not.toContain("Use fixed nodes as a resilient warning network.");
+  });
+
+  it("shows review actions for a pending-review image and lists deterministic usage rows", () => {
+    const base = createInitialWorkspace();
+    const seedImage = base.objects["image-soft-rail-v2"];
+    if (!seedImage || seedImage.type !== "image") {
+      throw new Error("Expected seed image.");
+    }
+    const reviewedImage = {
+      ...seedImage,
+      pendingReview: {
+        reason: "defaultReferenceReplaced" as const,
+        previousDefaultReferenceId: "image-soft-rail-v2",
+        newDefaultReferenceId: "image-night-scenario",
+        decisionId: "decision-test-review",
+        markedAt: "2026-07-26T00:00:00.000Z"
+      }
+    };
+    const workspace = {
+      ...base,
+      objects: {
+        ...base.objects,
+        [reviewedImage.id]: reviewedImage
+      }
+    };
+
+    const html = renderToStaticMarkup(
+      createElement(BottomDetailBar, {
+        workspace,
+        selectedObjects: [reviewedImage],
+        assets: workspace.assets,
+        hasPendingDesignDefinitionRevisionDraft: false,
+        relations: workspace.relations,
+        directionLineage: workspace.directionLineage,
+        visualBranches: workspace.visualBranches,
+        decisionRecords: workspace.decisionRecords,
+        activeDesignTrace: null,
+        onRenameVisualBranch: () => undefined,
+        onArchiveVisualBranch: () => undefined,
+        onRestoreVisualBranch: () => undefined,
+        onOpenDocumentReader: () => undefined,
+        onSaveKeyConclusionFromResearchItem: () => undefined,
+        onCopyItemToDraft: () => undefined,
+        onContinueQuestion: () => undefined,
+        onKeepReviewedVisual: () => undefined,
+        onRegenerateReviewedVisual: () => undefined
+      })
+    );
+
+    expect(html).toContain("待复核");
+    expect(html).toContain("保留");
+    expect(html).toContain("基于新默认参考重新生成");
+    expect(html).toContain("查看被用在哪里");
+
+    const usageRows = buildVisualUsageRows(workspace, reviewedImage.id);
+    expect(usageRows.every((row) => ["交付引用", "所属合集", "后续延展"].includes(row.label))).toBe(true);
+    // 种子项目中软轨方案 v2 存在延展图，用途清单不应为空。
+    expect(usageRows.length).toBeGreaterThan(0);
   });
 });
