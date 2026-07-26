@@ -1,0 +1,16 @@
+/* Morpho design tokens — the app-side install of docs/design/design-system.
+   Imported once at the top of src/app/globals.css; every --token is app-wide.
+
+   Sync rule (docs/design/README.md): tokens change in the design-system
+   project first, then the export overwrites docs/design/design-system/ and
+   this directory is updated to match. Do not let the two drift.
+
+   tokens/fonts.css is intentionally NOT imported: it pulls Geist from Google
+   Fonts for design-tool previews. The app serves Geist via next/font in
+   src/app/layout.tsx and overrides --font-sans in globals.css. */
+@import "./tokens/colors.css";
+@import "./tokens/typography.css";
+@import "./tokens/spacing.css";
+@import "./tokens/shape.css";
+@import "./tokens/elevation.css";
+@import "./tokens/motion.css";

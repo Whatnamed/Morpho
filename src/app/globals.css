@@ -1,51 +1,12 @@
+/* All design tokens come from the design-system install (single source;
+   see src/design-system/tokens.css for the sync rule). */
+@import "../design-system/tokens.css";
+
 :root {
-  --canvas: #f7f5f1;
-  --surface: #fcfbf8;
-  --surface-raised: #ffffff;
-  --surface-muted: #f0ece6;
-  --surface-selected: #eef1f1;
-  --text-primary: #211f1b;
-  --text-secondary: #69625a;
-  --text-muted: #978f86;
-  --border-subtle: #e4ded6;
-  --border-strong: #d4ccc2;
-  --accent-brand: #8e4c24;
-  --accent-brand-hover: #78401f;
-  --accent-brand-soft: #eee0d4;
-  --accent-select: #6d7f88;
-  --accent-select-soft: #e4eaeb;
-  --selection-outline: #6d7f88;
-  --success: #4e6b52;
-  --warning: #8a6834;
-  --danger: #a6453a;
-  --selection-halo: rgba(109, 127, 136, 0.18);
-  --selection-route: rgba(109, 127, 136, 0.06);
-  --relationship-line: rgba(109, 127, 136, 0.42);
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 18px;
-  --shadow-panel: 0 6px 24px rgba(30, 24, 18, 0.05);
-  --shadow-popover: 0 12px 36px rgba(30, 24, 18, 0.08);
-  --shadow-float: 0 10px 28px rgba(30, 24, 18, 0.07);
-  --shadow-object: 0 5px 16px rgba(30, 24, 18, 0.035);
-  --shadow-object-soft: 0 4px 14px rgba(30, 24, 18, 0.035);
-  --shadow-image: 0 1px 0 rgba(255, 255, 255, 0.35) inset, 0 14px 34px rgba(30, 24, 18, 0.1);
-  /*
-   * Shared frosted glass for AI panel + persistent chrome.
-   * Current: denser chrome recipe. More open alt:
-   *   --morpho-glass-bg: rgba(252, 251, 248, 0.72);
-   *   --morpho-glass-blur: blur(26px) saturate(1.08);
-   *   --morpho-glass-border: rgba(78, 68, 58, 0.09);
-   */
-  --morpho-glass-bg: rgba(252, 251, 248, 0.8);
-  --morpho-glass-blur: blur(18px) saturate(1.05);
-  --morpho-glass-border: rgba(78, 68, 58, 0.11);
-  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
-  --duration-fast: 140ms;
-  --duration-ui: 200ms;
-  --font-sans: Geist, Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    "Microsoft YaHei", sans-serif;
+  /* Geist is served locally by next/font (src/app/layout.tsx); the token
+     file's plain stack remains as the fallback when the variable is absent. */
+  --font-sans: var(--font-geist-sans, Geist), Inter, ui-sans-serif, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
 }
 
 * {

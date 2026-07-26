@@ -1,0 +1,90 @@
+/* Morpho colour system — mirrors src/app/globals.css :root exactly.
+   Light theme only. Do not author or imply a dark theme. */
+:root {
+  /* Surfaces — warm fog-white ground; pure white only for menus and popovers */
+  --canvas: #f7f5f1;
+  --surface: #fcfbf8;
+  --surface-raised: #ffffff;
+  --surface-muted: #f0ece6;
+  --surface-selected: #eef1f1;
+
+  /* Text — deep graphite, never absolute black */
+  --text-primary: #211f1b;
+  --text-secondary: #69625a;
+  --text-muted: #978f86;
+
+  /* Hairlines */
+  --border-subtle: #e4ded6;
+  --border-strong: #d4ccc2;
+
+  /* Brand accent — warm umber. Primary action, brand marks, delivery eyebrows. */
+  --accent-brand: #8e4c24;
+  --accent-brand-hover: #78401f;
+  --accent-brand-soft: #eee0d4;
+
+  /* Selection accent — muted blue-gray. Selection, focus, relations, active rows. */
+  --accent-select: #6d7f88;
+  --accent-select-soft: #e4eaeb;
+  --selection-outline: #6d7f88;
+  --selection-halo: rgba(109, 127, 136, 0.18);
+  --selection-route: rgba(109, 127, 136, 0.06);
+  --relationship-line: rgba(109, 127, 136, 0.42);
+
+  /* Semantic states — quiet: text colour plus a soft fill, never a saturated block */
+  --success: #4e6b52;
+  --warning: #8a6834;
+  --danger: #a6453a;
+
+  /* Frosted glass — one shared recipe for persistent chrome (clusters, rail,
+     selection toolbar, AI panel). Temporary drawers use denser surfaces. */
+  --morpho-glass-bg: rgba(252, 251, 248, 0.8); /* @kind color */
+  --morpho-glass-blur: blur(18px) saturate(1.05); /* @kind other */
+  --morpho-glass-border: rgba(78, 68, 58, 0.11); /* @kind color */
+}
+
+/* ---- Design-system additions (documented, not present in the app :root) ---- */
+:root {
+  /* Literal values the app repeats inline, named here so new work stays in step. */
+  --hairline-quiet: rgba(78, 68, 58, 0.08); /* @kind color */
+  --hairline: rgba(78, 68, 58, 0.1); /* @kind color */
+  --hairline-strong: rgba(78, 68, 58, 0.14); /* @kind color */
+
+  /* Canvas ground: solid fill + tldraw world-space dots + two soft washes. */
+  --canvas-grid-dot: rgba(77, 66, 54, 0.26); /* @kind color */
+  --canvas-wash: radial-gradient(circle at 34% 22%, rgba(255, 255, 255, 0.55), transparent 30%),
+                 linear-gradient(180deg, rgba(255, 255, 255, 0.4), rgba(247, 245, 241, 0.96)); /* @kind other */
+
+  /* Panel plate: the vertical gradient shared by drawers, dialogs and panels. */
+  --panel-plate: linear-gradient(180deg, rgba(255, 254, 251, 0.98), rgba(248, 245, 239, 0.96)); /* @kind other */
+
+  /* Stage-region presets (src/domain/morpho/stageRegions.ts). Fill is applied at
+     a per-region opacity via color-mix; border and title are used as-is. */
+  --stage-warm-sand-fill: rgb(238 224 201);
+  --stage-warm-sand-border: rgb(174 143 101);
+  --stage-warm-sand-title: rgb(122 91 57);
+  --stage-mist-blue-fill: rgb(213 227 234);
+  --stage-mist-blue-border: rgb(117 148 164);
+  --stage-mist-blue-title: rgb(73 107 125);
+  --stage-sage-fill: rgb(218 230 218);
+  --stage-sage-border: rgb(125 151 128);
+  --stage-sage-title: rgb(79 110 84);
+  --stage-violet-gray-fill: rgb(226 221 235);
+  --stage-violet-gray-border: rgb(143 128 163);
+  --stage-violet-gray-title: rgb(99 82 123);
+  --stage-clay-fill: rgb(238 218 206);
+  --stage-clay-border: rgb(174 126 102);
+  --stage-clay-title: rgb(128 82 61);
+  --stage-warm-gray-fill: rgb(228 225 219);
+  --stage-warm-gray-border: rgb(143 134 122);
+  --stage-warm-gray-title: rgb(97 89 79);
+
+  /* Canvas object material accents (globals.css "canvas card families" pass). */
+  --material-file-spine: rgba(109, 127, 136, 0.68); /* @kind color */
+  --material-fragment-rule: rgba(120, 100, 82, 0.52); /* @kind color */
+  --material-research-mark: rgba(142, 76, 36, 0.14); /* @kind color */
+  --material-conclusion-edge: rgba(138, 104, 52, 0.17); /* @kind color */
+  --material-conclusion-ink: rgba(138, 104, 52, 0.78); /* @kind color */
+  --material-draft-edge: rgba(142, 76, 36, 0.2); /* @kind color */
+  --material-delivery-edge: rgba(78, 107, 82, 0.18); /* @kind color */
+  --material-delivery-rule: rgba(78, 107, 82, 0.62); /* @kind color */
+}

@@ -1,0 +1,19 @@
+/* Morpho elevation. Depth comes from placement and surface contrast. */
+:root {
+  --shadow-panel: 0 6px 24px rgba(30, 24, 18, 0.05);
+  --shadow-popover: 0 12px 36px rgba(30, 24, 18, 0.08);
+  --shadow-float: 0 10px 28px rgba(30, 24, 18, 0.07);
+
+  /* Literal shadows the app repeats inline */
+  --shadow-object: 0 5px 16px rgba(30, 24, 18, 0.035);
+  --shadow-object-soft: 0 4px 14px rgba(30, 24, 18, 0.035);
+  --shadow-image: 0 1px 0 rgba(255, 255, 255, 0.35) inset, 0 14px 34px rgba(30, 24, 18, 0.1);
+  --shadow-drawer: 0 16px 40px rgba(30, 24, 18, 0.09);
+  --shadow-ai-panel: 0 18px 54px rgba(30, 24, 18, 0.11);
+  --shadow-toolbar: 0 14px 32px rgba(54, 45, 35, 0.12);
+  --shadow-dialog: 0 20px 56px rgba(30, 24, 18, 0.12);
+
+  /* Selection feedback — no lift */
+  --shadow-selected: 0 0 0 2px var(--selection-outline), 0 0 0 7px var(--selection-halo), 0 8px 28px rgba(30, 24, 18, 0.1);
+  --shadow-design-trace: 0 0 0 2px rgba(142, 76, 36, 0.34), 0 8px 28px rgba(142, 76, 36, 0.12);
+}

@@ -1,0 +1,42 @@
+/* Morpho type. The app sets one stack and uses raw sizes/weights inline;
+   the roles below name the combinations actually shipped. */
+:root {
+  --font-sans: Geist, Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Sizes in shipped use */
+  --size-nano: 9px;
+  --size-micro: 10px;
+  --size-label: 11px;
+  --size-body-s: 12px;
+  --size-body: 13px;
+  --size-body-l: 14px;
+  --size-title-s: 15px;
+  --size-title: 17px;
+  --size-heading: 20px;
+  --size-heading-l: 22px;
+  --size-display: 26px;
+
+  /* Weights. Morpho leans on 5xx–6xx; 700 only for the smallest markers. */
+  --weight-regular: 430; /* @kind other */
+  --weight-body: 500; /* @kind other */
+  --weight-medium: 540; /* @kind other */
+  --weight-mid: 560; /* @kind other */
+  --weight-title: 580; /* @kind other */
+  --weight-strong: 620; /* @kind other */
+  --weight-semibold: 650; /* @kind other */
+  --weight-heavy: 680; /* @kind other */
+
+  /* Tracking. Headline tracking is 0 across the product; only micro labels track out. */
+  --track-normal: 0; /* @kind other */
+  --track-heading: -0.02em; /* @kind other */
+  --track-label: 0.05em; /* @kind other */
+  --track-eyebrow: 0.07em; /* @kind other */
+  --track-marker: 0.1em; /* @kind other */
+
+  /* Line heights */
+  --leading-tight: 1.34; /* @kind other */
+  --leading-body: 1.55; /* @kind other */
+  --leading-chat: 1.72; /* @kind other */
+}
