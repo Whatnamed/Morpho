@@ -487,3 +487,46 @@ npm.cmd run build
 ```
 
 Do not add `--live` to prompt-cache tests unless `MORPHO_ALLOW_PAID_SMOKE_TESTS=true`.
+
+# Agent lease migrations pending deployment
+
+Two forward-only migrations must be applied in order before any Agent turn can run
+against the current code, which calls the new RPC signatures:
+
+```text
+supabase/migrations/20260726143030_harden_agent_turn_lease_causality.sql
+supabase/migrations/20260726161500_bind_agent_turn_provider_execution.sql
+```
+
+Until they are applied, `start_agent_turn_lease` and `continue_agent_turn_lease`
+do not exist with the expected argument lists and PostgREST answers `PGRST202`.
+The route reports that as "数据库尚未升级到当前 Agent Lease 契约" rather than a
+generic outage, so a 503 with that message means the migrations are missing.
+
+Apply them either through the Supabase Studio SQL Editor (paste each file in the
+order above) or through the CLI after the checks below pass:
+
+```powershell
+supabase --version
+supabase status
+supabase projects list
+supabase db push --dry-run
+```
+
+The dry run must list only these two migrations. If the CLI is absent, no project
+is linked, or the dry run lists anything else, stop without changing the remote
+database. Both files are safe to re-run: constraints are dropped before being
+re-added and the functions are `create or replace`.
+
+Verify after applying:
+
+```powershell
+supabase migration list
+```
+
+# Agent continuation signing key
+
+`MORPHO_AGENT_CONTINUATION_SECRET` is optional. When unset, the server derives a
+stable key from `MORPHO_AI_API_KEY`, so no new deployment variable is required. If
+it is set, every instance must share the same value — a per-instance secret makes
+continuations fail across instances.

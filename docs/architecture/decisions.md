@@ -680,3 +680,26 @@ Boundary: Supabase stores only user/turn/lease IDs, status, timestamps, terminal
 - Only `workspace.ai.latestProviderRequestState` retains the latest full cache item manifest.
 - Historical assistant traces retain compact request state and cache diagnostics but never duplicate full manifests.
 - Workspace normalization strips manifests from legacy traces. Full project backup/restore retains the latest state; human-readable archives do not need to expose cache internals.
+
+# 2026-07-26: Lease-bound Provider execution and signed continuation
+
+- A repeated first request with the same initial hash is a real Provider execution. `start_agent_turn_lease` advances `provider_call_count` and `next_provider_sequence` for it, charges the daily text quota only once per turn, and fails closed at the 32-call ceiling. Advancing the sequence retires the superseded attempt's continuations.
+- `postCompaction` is a distinct continuation kind. A transcript rebuilt after a summary is no longer recorded as an exact Provider transcript continuation, and it is accepted only directly after a server-owned `conversationSummary`.
+- Ordering is not causality. Every completed Provider response carries an HMAC binding over the request prefix, the exact output items, and the call ids that were made; an exact continuation is accepted only when the submitted input replays that binding. The token holds identifiers, counts and digests only, lives 20 minutes, and is never persisted with the workspace.
+- The signing key is `MORPHO_AGENT_CONTINUATION_SECRET` when set, otherwise a domain-separated derivation from `MORPHO_AI_API_KEY`. Both are server-only and stable across instances; a per-instance key would break continuations.
+- Web search consumes a lease sequence before it can fail, so every exit of the search route reports the sequence the server expects. A lost search response may resynchronize once per turn; Provider continuations stay strict because the binding already pins them.
+
+# 2026-07-26: Turn outcome from unresolved work
+
+- A turn keeps a ledger of unresolved work rather than a sticky "something failed" flag. A tool failure or a schema repair is cleared when the same tool later succeeds; a required-read exhaustion and the repeat guard end the turn and stay unresolved.
+- `partialSuccess` means work is still unresolved at the end of the turn, not that a recovered error occurred during it.
+
+# 2026-07-26: Context bounded by items as well as tokens
+
+- The client budget includes the server-managed prefix (stable System prompt and canonical Runtime item) because the server prepends it to every request. Tools are estimated with web search enabled, which over-counts when the server has it off; the server remains the final authority and still fails closed above the window.
+- The Provider rejects any request above 1024 input items regardless of tokens, so compaction pressure is whichever bound is closer: `compactTokens` or `compactItemCount` (880, with `prepareItemCount` 800).
+
+# 2026-07-26: Generated images are memory sources only when anchored
+
+- A generated image is projected into project memory and stage records as an outcome only when it is anchored in project semantics: generated from project objects, attached to a direction or visual branch, the current default reference, or used by a delivery reference.
+- A one-off trial generation stays on the canvas and in the factual continuity record of the event that produced it, but it is not projected as an established outcome. Canvas presence is visual organization, not meaning.

@@ -159,6 +159,103 @@ describe("Project Memory Kernel", () => {
     expect(getProjectMemoryHistory(removed.projectMemory, "userPreferences")).toHaveLength(2);
   });
 
+  it("keeps unanchored one-off generations out of project memory sources", () => {
+    const base = createBlankWorkspace("project-image-anchoring");
+    const image = (
+      id: string,
+      title: string,
+      generation: Partial<NonNullable<MorphoWorkspace["objects"][string] & { type: "image" }>["generation"]>
+    ) => ({
+      id,
+      type: "image" as const,
+      title,
+      summary: "",
+      createdBy: "ai" as const,
+      visibility: "active" as const,
+      role: "conceptImage" as const,
+      imageVariant: "detail" as const,
+      assetId: `asset-${id}`,
+      generation: {
+        operationId: `operation-${id}`,
+        modelId: "gpt-image-2",
+        modelLabel: "GPT Image 2",
+        aspectRatio: "1:1",
+        prompt: "…",
+        referenceObjectIds: [],
+        createdAt: "2026-07-13T12:00:00.000Z",
+        ...generation
+      }
+    });
+    const workspace: MorphoWorkspace = {
+      ...base,
+      objects: {
+        ...base.objects,
+        // Generated from project objects: a real project outcome.
+        [`image-anchored`]: image("image-anchored", "浮标主视角", {
+          referenceObjectIds: ["direction-buoy"]
+        }),
+        // A one-off trial generation with no link into the project.
+        [`image-free`]: image("image-free", "夜间柔光扶手", {})
+      }
+    };
+
+    const reconciled = reconcileProjectMemory(workspace, "2026-07-13T12:05:00.000Z");
+    const directionStage = getCurrentStageRecordRevision(reconciled.projectMemory, "directionAndVisual");
+    const sourceIds = directionStage?.sourceRefs.map((ref) => ref.id) ?? [];
+
+    expect(sourceIds).toContain("image-anchored");
+    expect(sourceIds).not.toContain("image-free");
+    // The object itself is untouched; only its meaning as a memory source changes.
+    expect(reconciled.objects["image-free"]?.visibility).toBe("active");
+  });
+
+  it("treats a direction, branch, delivery or default-reference image as an anchored outcome", () => {
+    const base = createBlankWorkspace("project-image-anchoring-links");
+    const generation = {
+      operationId: "operation-linked",
+      modelId: "gpt-image-2",
+      modelLabel: "GPT Image 2",
+      aspectRatio: "1:1",
+      prompt: "…",
+      referenceObjectIds: [],
+      createdAt: "2026-07-13T12:00:00.000Z"
+    };
+    const image = (id: string, extra: Record<string, unknown>) => ({
+      id,
+      type: "image" as const,
+      title: id,
+      summary: "",
+      createdBy: "ai" as const,
+      visibility: "active" as const,
+      role: "conceptImage" as const,
+      imageVariant: "detail" as const,
+      assetId: `asset-${id}`,
+      generation: { ...generation, ...extra }
+    });
+    const workspace: MorphoWorkspace = {
+      ...base,
+      objects: {
+        ...base.objects,
+        "image-by-direction": image("image-by-direction", { directionId: "direction-buoy" }),
+        "image-by-branch": image("image-by-branch", { visualBranchId: "branch-buoy" }),
+        "image-default": image("image-default", {}),
+        "image-unlinked": image("image-unlinked", {})
+      },
+      workingState: { ...base.workingState, currentDefaultReferenceId: "image-default" }
+    };
+
+    const reconciled = reconcileProjectMemory(workspace, "2026-07-13T12:06:00.000Z");
+    const sourceIds = getCurrentStageRecordRevision(reconciled.projectMemory, "directionAndVisual")
+      ?.sourceRefs.map((ref) => ref.id) ?? [];
+
+    expect(sourceIds).toEqual(expect.arrayContaining([
+      "image-by-direction",
+      "image-by-branch",
+      "image-default"
+    ]));
+    expect(sourceIds).not.toContain("image-unlinked");
+  });
+
   it("normalizes legacy cleared-default wording before projecting current memory and stage records", () => {
     const cleared = clearDefaultReference(createInitialWorkspace(), "image-soft-rail-v2", {
       reason: "用户明确取消后续默认参考。"

@@ -18898,7 +18898,7 @@
       },
       "directionAndVisual": {
         "stage": "directionAndVisual",
-        "currentRevisionId": "stage-directionAndVisual-115l19l",
+        "currentRevisionId": "stage-directionAndVisual-1ff3rjc",
         "updatedAt": "2026-07-05T05:54:53.363Z"
       },
       "deliveryPreparation": {
@@ -21169,6 +21169,637 @@
             "snapshot": {
               "title": "卫浴路径节点",
               "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "验证模块化转角节点"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-conceptDirection-1783503160642-jxmg2y",
+            "snapshot": {
+              "title": "conceptDirection operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-conceptDirection-1783671299081-wgn547",
+            "snapshot": {
+              "title": "conceptDirection operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783682031023-1fg5cv",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783686468463-ouu2iq",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783686507065-fh61f9",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783696442449-sbqoe2",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783696479592-f39ql2",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783696881931-azg5l3",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783696956308-lbvpwi",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783855268126-o6a3kx",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783855373229-t1376u",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783860462857-5lqor9",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783860534085-yoq0of",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783889211791-rivcoj",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "operation",
+            "id": "operation-image-1783889910968-moy113",
+            "snapshot": {
+              "title": "imageGeneration operation",
+              "status": "succeeded"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "definition-revision-design-definition-proposal-definition-1783669222059-1",
+            "snapshot": {
+              "title": "方案 A｜声学生态风险预警浮标系统",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "以可部署的海上浮标为前端，识别并分级生态声学风险，将水下感知转化为船舶与管理者可执行的减速、绕行或复核建议；面向多类受噪声影响海洋生物，而非单一旗舰物种。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "direction-revision-direction-proposal-direction-1783503160642-1-1",
+            "snapshot": {
+              "title": "方向 1｜岸海锚定式声学哨站",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "以固定部署的岸海边界节点为核心，通过长期驻留、持续监听与分级广播形成稳定的声学预警基础设施。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "direction-revision-direction-proposal-direction-1783503160642-2-1",
+            "snapshot": {
+              "title": "方向 2｜漂移拼接式避险浮标群",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "以可增减、可迁移的浮标群体构成动态网络，通过节点协同和临时拼接形成弹性避险与引导系统。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "direction-revision-direction-proposal-direction-1783503160642-3-1",
+            "snapshot": {
+              "title": "方向 3｜近人引导式声学交互终端",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "以近距离接触和具身引导为核心，把系统收束为人与环境之间的交互终端，强化可理解反馈与行动指引。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "direction-revision-direction-proposal-direction-1783671299082-1-1",
+            "snapshot": {
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "一件长期驻留、可被远距离辨识的海上公共基础设施产品；强调可靠存活与低干扰存在感。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "direction-revision-direction-proposal-direction-1783671299082-2-1",
+            "snapshot": {
+              "title": "方向 2｜声学哨兵：快速投放型模块浮标",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "一套可运输、可投放、可回收的轻量化声学哨兵；强调部署速度、任务适配与模块化扩展。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "revision",
+            "id": "direction-revision-direction-proposal-direction-1783671299082-3-1",
+            "snapshot": {
+              "title": "方向 3｜共航标：船舶交互型生态航标",
+              "revisionNumber": 1,
+              "status": "current",
+              "summarySnippet": "一件以航行者感知和行为改变为优先的交互式海上标志物；强调远距可读性、行动导向与共同航行的公共语义。"
+            },
+            "sourceAvailability": "active"
+          }
+        ],
+        "createdAt": "2026-07-05T05:54:53.363Z",
+        "reviewRequired": true
+      },
+      "stage-directionAndVisual-1ff3rjc": {
+        "id": "stage-directionAndVisual-1ff3rjc",
+        "stage": "directionAndVisual",
+        "previousRevisionId": "stage-directionAndVisual-115l19l",
+        "sections": {
+          "outputs": [
+            "已应用 3 个概念方向。",
+            "视觉生成完成 3 项。",
+            "视觉生成完成 1 项。",
+            "视觉生成完成 2 项。",
+            "方向 1｜守望塔：长期驻留型声学浮标（primary）",
+            "方向 2｜声学哨兵：快速投放型模块浮标（pendingPreview）",
+            "方向 3｜共航标：船舶交互型生态航标（pendingPreview）",
+            "已生成 13 个视觉对象"
+          ],
+          "decisions": [
+            "方向 1｜岸海锚定式声学哨站 已标记为 备选。",
+            "方向 1｜岸海锚定式声学哨站 已标记为 主方向。",
+            "方向 1｜守望塔：长期驻留型声学浮标 已标记为 主方向。",
+            "已清除「守望塔｜维护可达版」的后续默认参考。"
+          ],
+          "goalAndStatus": [
+            "视觉生成完成 2 项。"
+          ]
+        },
+        "sourceRefs": [
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-81",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference",
+              "summarySnippet": "用户在画布上明确取消后续默认参考。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-83",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference",
+              "summarySnippet": "用户在画布上明确取消后续默认参考。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-85",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference",
+              "summarySnippet": "用户在画布上明确取消后续默认参考。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-87",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference",
+              "summarySnippet": "用户在画布上明确取消后续默认参考。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-89",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference",
+              "summarySnippet": "用户在画布上明确取消后续默认参考。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDirectionStatus-direction-proposal-direction-1783503160642-1-59",
+            "snapshot": {
+              "title": "方向 1｜岸海锚定式声学哨站 -> alternative",
+              "status": "setDirectionStatus",
+              "summarySnippet": "用户在底部详情栏明确将该方向转为备选方向。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDirectionStatus-direction-proposal-direction-1783503160642-1-60",
+            "snapshot": {
+              "title": "方向 1｜岸海锚定式声学哨站 -> primary",
+              "status": "setDirectionStatus",
+              "summarySnippet": "用户在底部详情栏明确将该方向设为主方向。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDirectionStatus-direction-proposal-direction-1783503160642-1-61",
+            "snapshot": {
+              "title": "方向 1｜岸海锚定式声学哨站 -> alternative",
+              "status": "setDirectionStatus",
+              "summarySnippet": "用户在底部详情栏明确将该方向转为备选方向。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDirectionStatus-direction-proposal-direction-1783671299082-1-79",
+            "snapshot": {
+              "title": "方向 1｜守望塔：长期驻留型声学浮标 -> primary",
+              "status": "setDirectionStatus",
+              "summarySnippet": "用户在底部详情栏明确将该方向设为主方向。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783503160642-1",
+            "snapshot": {
+              "title": "方向 1｜岸海锚定式声学哨站",
+              "objectType": "conceptDirection",
+              "status": "alternative",
+              "visibility": "active",
+              "summarySnippet": "以固定部署的岸海边界节点为核心，通过长期驻留、持续监听与分级广播形成稳定的声学预警基础设施。"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783503160642-2",
+            "snapshot": {
+              "title": "方向 2｜漂移拼接式避险浮标群",
+              "objectType": "conceptDirection",
+              "status": "pendingPreview",
+              "visibility": "active",
+              "summarySnippet": "以可增减、可迁移的浮标群体构成动态网络，通过节点协同和临时拼接形成弹性避险与引导系统。"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783503160642-3",
+            "snapshot": {
+              "title": "方向 3｜近人引导式声学交互终端",
+              "objectType": "conceptDirection",
+              "status": "pendingPreview",
+              "visibility": "active",
+              "summarySnippet": "以近距离接触和具身引导为核心，把系统收束为人与环境之间的交互终端，强化可理解反馈与行动指引。"
+            },
+            "sourceAvailability": "missing"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-1",
+            "snapshot": {
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "objectType": "conceptDirection",
+              "visibility": "active",
+              "summarySnippet": "一件长期驻留、可被远距离辨识的海上公共基础设施产品；强调可靠存活与低干扰存在感。",
+              "createdAt": "2026-07-10T08:14:59.083Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-2",
+            "snapshot": {
+              "title": "方向 2｜声学哨兵：快速投放型模块浮标",
+              "objectType": "conceptDirection",
+              "visibility": "active",
+              "summarySnippet": "一套可运输、可投放、可回收的轻量化声学哨兵；强调部署速度、任务适配与模块化扩展。",
+              "createdAt": "2026-07-10T08:14:59.083Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-3",
+            "snapshot": {
+              "title": "方向 3｜共航标：船舶交互型生态航标",
+              "objectType": "conceptDirection",
+              "visibility": "active",
+              "summarySnippet": "一件以航行者感知和行为改变为优先的交互式海上标志物；强调远距可读性、行动导向与共同航行的公共语义。",
+              "createdAt": "2026-07-10T08:14:59.083Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-73398ac0fdbbfb4dc080443a67ad7257-jpg-a5293b00-c6e5-4e36-a419-83e46f840154",
+            "snapshot": {
+              "title": "73398ac0fdbbfb4dc080443a67ad7257.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-7add87e4d5b3af015eefc40e5cbdd858-jpg-f7b04d18-548d-4abf-b19e-e06d7ee8c933",
+            "snapshot": {
+              "title": "7add87e4d5b3af015eefc40e5cbdd858.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-8735393f661c7b763aab851f51ec9515-jpg-62496dcd-5275-4f6f-9315-66088de12ee8",
+            "snapshot": {
+              "title": "8735393f661c7b763aab851f51ec9515.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-asset-c8f9eefd0dc341b9cb432945fb811cd7-jpg-c885c98b-32da-45df-a668-8bf9eb20c9b8",
+            "snapshot": {
+              "title": "c8f9eefd0dc341b9cb432945fb811cd7.jpg",
+              "objectType": "image",
+              "status": "reference",
+              "visibility": "active",
+              "summarySnippet": "用户导入的原始图片。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+            "snapshot": {
+              "title": "守望塔｜纯产品预览",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "呈现长期驻留型声学浮标的稳定结构、耐候构造与低干扰公共设施气质。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095",
+            "snapshot": {
+              "title": "声学哨兵｜纯产品预览",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "呈现快速投放、模块化更换与回收运输导向的轻量化装备形态。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783682287791-jpg-d4f07c12-7497-4067-ad09-15baa6449672",
+            "snapshot": {
+              "title": "共航标｜纯产品预览",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "呈现以远距信号阅读和航行行为引导为核心的交互式航标产品气质。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131",
+            "snapshot": {
+              "title": "守望塔｜航标黄上部与隐藏式支脚",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "探索高可见航标上部、低干扰水下模块与陆地直立支撑的一体化产品主图。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783686836365-jpg-bd78734a-811a-4f87-a526-9a8e1862008e",
+            "snapshot": {
+              "title": "守望塔｜航标黄浮圈与三点维护支撑",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "补充另一种高可见上部和低干扰下部比例的产品主图，检验可陆地直立的整体结构。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783696461343-jpg-a7e57f25-1c72-4a46-a87a-c5364f38c79a",
+            "snapshot": {
+              "title": "守望塔优化｜整体式航标浮标",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "将当前概念收敛为成熟、可长期驻留的海工浮标，消除塑料叠层与陆地支脚感。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783696671929-jpg-b9c740ba-38db-4901-b771-631ba4e96464",
+            "snapshot": {
+              "title": "守望塔优化｜护舷式海工浮标",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "以连续浮体、工程法兰和单一航标色，建立更成熟的可维护海工形象。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783696937588-jpg-721675ec-7336-47de-894b-73f827a617ae",
+            "snapshot": {
+              "title": "守望塔｜基形保留 · 高可见上部",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "在保留参考图主体比例、塔身、圆形浮力环与下部吊舱基本形态的前提下，优化海面上部的警示色彩与海面下部低干扰分区。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783696973466-jpg-54f46fc4-284d-44bf-b483-3f470fed0a6f",
+            "snapshot": {
+              "title": "守望塔｜基形保留 · 警示分区",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "以纯产品主图复核基形不变前提下的上部警示色、下部低干扰配色与一体支脚。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783855353992-png-03cabcf6-e36e-4e6d-893d-46f0f6cdc146",
+            "snapshot": {
+              "title": "守望塔｜海况耐久版",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "在不改变既有警示色分区、塔式基形和可收纳弯曲支架语言的前提下，强化真实海上长期驻留设备的结构可信度。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+            "snapshot": {
+              "title": "守望塔｜维护可达版",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "以更清晰的维护、吊装和声学接口逻辑，验证同一产品语言下的另一种工程化表达。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783860534073-png-a896841d-2804-4ebc-885e-51bc95e6056f",
+            "snapshot": {
+              "title": "守望塔｜整合甲板版",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "将现有维护、吊装与陆地支撑部件收敛为一体化结构，验证简洁、专业的工业设备主图。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783860809826-png-c73887dc-9d04-420f-af1b-771c1e2c146f",
+            "snapshot": {
+              "title": "守望塔｜模块化下舱版",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "以清晰的上下功能分区和隐藏式维护支撑，探索更克制的模块化工程产品表达。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783889212798-png-18d08576-b883-4acc-b413-e98d58f29139",
+            "snapshot": {
+              "title": "夜间柔光扶手",
+              "objectType": "image",
+              "status": "conceptImage",
+              "visibility": "active",
+              "summarySnippet": "验证低眩光连续引导"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783889911958-png-2e05109c-693c-4f6f-bf8a-c62b70c92b83",
+            "snapshot": {
+              "title": "夜间柔光扶手",
+              "objectType": "image",
+              "status": "conceptImage",
+              "visibility": "active",
+              "summarySnippet": "验证低眩光连续引导"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead",
+            "snapshot": {
+              "title": "卫浴路径节点",
+              "objectType": "image",
+              "status": "conceptImage",
               "visibility": "active",
               "summarySnippet": "验证模块化转角节点"
             },

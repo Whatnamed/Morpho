@@ -140,3 +140,21 @@ The implementation follows the official [Prompt Caching guide](https://developer
 | Budget | Client strategy markers are estimated as their server-materialized canonical items; response reserve remains separate from input and compaction tail targets. |
 
 Remaining environment-dependent evidence is recorded in the runbook and task closeout. In particular, a migration is not considered deployed unless CLI installation, authentication, linked project ref, and dry-run scope are independently confirmed.
+
+# 2026-07-26 second-pass audit: lease causality, outcome and bounds
+
+Review of the 2026-07-26 convergence found that the lease proved ordering but not execution or causality. This pass closes that and four related gaps.
+
+| Area | Gap found | Closed contract |
+|---|---|---|
+| First-request idempotence | The retry branch returned the lease untouched while the route still ran a full Provider call, so the 32-call ceiling and provider counter only saw the first attempt. | The retry advances `provider_call_count` and the sequence atomically, charges the daily quota once per turn, and fails closed at the ceiling. |
+| Continuation causality | Only the sequence was checked; a client with a valid lease could rewrite history or invent `function_call` / `function_call_output` pairs and have the model treat forged tool results as real reads. | A signed binding over the request prefix, output items and issued call ids must be replayed; forged output, forged tool results and rewritten prefixes are rejected before leasing or Provider work. |
+| Post-compaction transcript | A rebuilt transcript was sent as an exact continuation. | It travels as `postCompaction` and is accepted only directly after a server-owned summary. |
+| Web-search sequence | The sequence was consumed before the search could fail, and failures returned no sequence, so one failed search stalled the rest of the turn. | Every exit reports the expected sequence; the client adopts it before judging the result, with one resynchronization per turn. |
+| Turn outcome | Any tool failure marked the whole turn `partialSuccess`, even after a successful repair. | Only work still unresolved at the end produces `partialSuccess`. |
+| Context bounds | The client estimate omitted the server-managed prefix, and compaction watched tokens only while the Provider rejects above 1024 items. | Estimates include the prefix; pressure is the closer of the token and item bounds. |
+| Memory sources | Every generated image counted as a project outcome. | Only images anchored in project semantics are projected as outcomes. |
+
+Verification on 2026-07-26: `npm.cmd run lint`, `npm.cmd run typecheck`, the full Vitest suite, `npm.cmd run test:prompt-cache`, two consecutive `npm.cmd run case-study:upgrade` runs with identical output hashes, and `npm.cmd run build`. No paid Provider request was made and `MORPHO_ALLOW_PAID_SMOKE_TESTS` stayed unset, so the live continuation, compaction and search paths are covered by deterministic tests rather than real calls. The Supabase migrations for this pass were not applied by this work; see the runbook.
+
+The case-study fixture keeps the three unanchored trial generations as objects and in the factual continuity entries that recorded generating them. They no longer appear in the projected stage outcome, which now counts 13 anchored visual objects instead of 16.

@@ -792,7 +792,7 @@ function addInferredStageContent(
   }
   if (stage === "directionAndVisual") {
     const directions = objectsOfType(workspace, "conceptDirection");
-    const images = objectsOfType(workspace, "image").filter((image) => Boolean(image.generation));
+    const images = anchoredGeneratedImages(workspace);
     if (directions.length > 0 || images.length > 0) {
       sections.outputs = uniqueText([
         ...(sections.outputs ?? []),
@@ -833,7 +833,7 @@ function inferredStageSourceRefs(workspace: ProjectionWorkspace, stage: StageRec
     case "directionAndVisual":
       return [
         ...objectsOfType(workspace, "conceptDirection").map(objectRef),
-        ...objectsOfType(workspace, "image").filter((image) => Boolean(image.generation)).map(objectRef)
+        ...anchoredGeneratedImages(workspace).map(objectRef)
       ].filter(isSourceRef);
     case "deliveryPreparation":
       return objectsOfType(workspace, "delivery").map(objectRef).filter(isSourceRef);
@@ -1063,6 +1063,39 @@ function stageSectionForCategory(category: ContinuityRecordEntry["category"]): k
 
 function stageSectionItemCount(sections: StageRecordSections): number {
   return Object.values(sections).reduce((total, items) => total + (items?.length ?? 0), 0);
+}
+
+/**
+ * A generated image counts as a stable project outcome only when it is anchored in
+ * the project's semantics: it was generated from project objects, belongs to a
+ * direction or visual branch, is the current default reference, or is used by a
+ * delivery reference. A one-off generation stays on the canvas but must not be
+ * projected into project memory as an established source — being present on the
+ * canvas is visual organization, not meaning.
+ */
+function anchoredGeneratedImages(
+  workspace: ProjectionWorkspace
+): Array<Extract<MorphoObject, { type: "image" }>> {
+  const deliverySourceIds = new Set(
+    Object.values(workspace.deliveryReferences)
+      .map((reference) => reference.sourceObjectId)
+      .filter((objectId): objectId is string => Boolean(objectId))
+  );
+  const directionReferenceIds = new Set(
+    Object.values(workspace.workingState.directionReferenceIds).flat()
+  );
+  return objectsOfType(workspace, "image").filter((image) => {
+    const generation = image.generation;
+    if (!generation) {
+      return false;
+    }
+    return generation.referenceObjectIds.length > 0 ||
+      Boolean(generation.directionId) ||
+      Boolean(generation.visualBranchId) ||
+      workspace.workingState.currentDefaultReferenceId === image.id ||
+      directionReferenceIds.has(image.id) ||
+      deliverySourceIds.has(image.id);
+  });
 }
 
 function objectsOfType<T extends MorphoObject["type"]>(
