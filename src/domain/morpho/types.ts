@@ -377,7 +377,17 @@ export type ImageObject = MorphoObjectBase & {
   directionId?: MorphoObjectId;
   visualBranchId?: VisualBranchId;
   isDefaultReference?: boolean;
+  pendingReview?: VisualReviewMark;
   generation?: ImageGenerationMetadata;
+};
+
+/** 待复核：因默认参考（主视觉锚点）替换等明确事件，需要用户重新判断的视觉素材。 */
+export type VisualReviewMark = {
+  reason: "defaultReferenceReplaced";
+  previousDefaultReferenceId: MorphoObjectId;
+  newDefaultReferenceId: MorphoObjectId;
+  decisionId: string;
+  markedAt: string;
 };
 
 export type ImageGenerationMetadata = {
@@ -438,6 +448,7 @@ export type ImageCollectionObject = MorphoObjectBase & {
   type: "imageCollection";
   memberObjectIds: MorphoObjectId[];
   expanded: boolean;
+  pendingReview?: VisualReviewMark;
 };
 
 export type ResearchObject = MorphoObjectBase & {

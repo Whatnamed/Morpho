@@ -65,7 +65,9 @@ import type {
   ObjectSnapshot,
   ProviderContextFrame,
   ProviderInputCacheBoundaryReason,
+  RelationKind,
   VisualBranchId,
+  VisualReviewMark,
   WorkspaceMigrationResult
 } from "./types";
 
@@ -998,10 +1000,91 @@ export function removeImageFromVisualBranch(
   };
 }
 
+/** 直接延展素材的角色：多角度 / 继续发展、展示主视觉、使用场景、CMF、细节、结构或设计示意。 */
+const DIRECT_DERIVATIVE_IMAGE_ROLES: ReadonlySet<ImageRole> = new Set<ImageRole>([
+  "conceptImage",
+  "primaryVisual",
+  "sceneVisual",
+  "cmfStudy",
+  "detailStudy",
+  "structureDiagram",
+  "interactionDiagram"
+]);
+
+const DERIVATIVE_LINK_RELATION_KINDS: ReadonlySet<RelationKind> = new Set<RelationKind>([
+  "source",
+  "usesReference",
+  "version"
+]);
+
+export type DefaultReferenceReviewTargets = {
+  imageIds: MorphoObjectId[];
+  collectionIds: MorphoObjectId[];
+};
+
+/**
+ * 只收集旧默认参考的直接延展素材：由旧锚点直接生成或引用旧锚点、
+ * 且角色属于延展表达的图片。研究资料、方向预览、普通候选与交付模块不进入。
+ * 成组素材标记合集，单张素材标记单张图。
+ */
+export function collectDefaultReferenceReviewTargets(
+  workspace: MorphoWorkspace,
+  previousReferenceId: MorphoObjectId,
+  nextReferenceId: MorphoObjectId
+): DefaultReferenceReviewTargets {
+  const derivedImageIds = new Set<MorphoObjectId>();
+  for (const object of Object.values(workspace.objects)) {
+    if (object.type !== "image" || object.visibility !== "active") {
+      continue;
+    }
+    if (object.id === previousReferenceId || object.id === nextReferenceId) {
+      continue;
+    }
+    if (!DIRECT_DERIVATIVE_IMAGE_ROLES.has(object.role)) {
+      continue;
+    }
+
+    const linkedByGeneration = object.generation?.referenceObjectIds?.includes(previousReferenceId) ?? false;
+    const linkedByRelation = workspace.relations.some(
+      (relation) =>
+        DERIVATIVE_LINK_RELATION_KINDS.has(relation.kind) &&
+        relation.fromObjectId === previousReferenceId &&
+        relation.toObjectId === object.id
+    );
+    if (linkedByGeneration || linkedByRelation) {
+      derivedImageIds.add(object.id);
+    }
+  }
+
+  const collectionIds: MorphoObjectId[] = [];
+  const groupedImageIds = new Set<MorphoObjectId>();
+  for (const object of Object.values(workspace.objects)) {
+    if (object.type !== "imageCollection" || object.visibility !== "active") {
+      continue;
+    }
+    const groupedMembers = object.memberObjectIds.filter((memberId) => derivedImageIds.has(memberId));
+    if (groupedMembers.length === 0) {
+      continue;
+    }
+    collectionIds.push(object.id);
+    groupedMembers.forEach((memberId) => groupedImageIds.add(memberId));
+  }
+
+  return {
+    imageIds: [...derivedImageIds].filter((imageId) => !groupedImageIds.has(imageId)),
+    collectionIds
+  };
+}
+
 export function setDefaultReference(
   workspace: MorphoWorkspace,
   objectId: MorphoObjectId,
-  options: { reason: string; comparison?: ComparisonDecisionMetadata }
+  options: {
+    reason: string;
+    comparison?: ComparisonDecisionMetadata;
+    /** 替换已有锚点时可选：把旧锚点的直接延展素材标记待复核。不删除、不重排、不重新生成。 */
+    markReplacedDerivativesForReview?: boolean;
+  }
 ): MorphoWorkspace {
   const object = workspace.objects[objectId];
 
@@ -1013,9 +1096,36 @@ export function setDefaultReference(
   const previousDefaultReference = Object.values(workspace.objects).find(
     (candidate) => candidate.type === "image" && candidate.isDefaultReference && candidate.id !== objectId
   );
+  const decisionId = makeDecisionId(workspace, "setDefaultReference", objectId);
+  const reviewTargets: DefaultReferenceReviewTargets =
+    options.markReplacedDerivativesForReview && previousDefaultReference
+      ? collectDefaultReferenceReviewTargets(workspace, previousDefaultReference.id, objectId)
+      : { imageIds: [], collectionIds: [] };
+  const reviewImageIdSet = new Set(reviewTargets.imageIds);
+  const reviewCollectionIdSet = new Set(reviewTargets.collectionIds);
+  const reviewMark: VisualReviewMark | null = previousDefaultReference
+    ? {
+        reason: "defaultReferenceReplaced",
+        previousDefaultReferenceId: previousDefaultReference.id,
+        newDefaultReferenceId: objectId,
+        decisionId,
+        markedAt: now
+      }
+    : null;
+
   const objects = Object.fromEntries(
     Object.entries(workspace.objects).map(([entryId, entry]) => {
+      if (entry.type === "imageCollection" && reviewMark && reviewCollectionIdSet.has(entry.id)) {
+        return [entryId, { ...entry, pendingReview: reviewMark, updatedAt: now }];
+      }
+
       if (entry.type !== "image") {
+        return [entryId, entry];
+      }
+
+      const nextIsDefaultReference = entry.id === objectId;
+      const shouldMarkForReview = Boolean(reviewMark) && reviewImageIdSet.has(entry.id);
+      if ((entry.isDefaultReference ?? false) === nextIsDefaultReference && !shouldMarkForReview) {
         return [entryId, entry];
       }
 
@@ -1023,7 +1133,8 @@ export function setDefaultReference(
         entryId,
         {
           ...entry,
-          isDefaultReference: entry.id === objectId,
+          isDefaultReference: nextIsDefaultReference,
+          ...(shouldMarkForReview && reviewMark ? { pendingReview: reviewMark } : {}),
           updatedAt: now
         } satisfies ImageObject
       ];
@@ -1041,7 +1152,7 @@ export function setDefaultReference(
       }
     : null;
 
-  const decisionId = makeDecisionId(workspace, "setDefaultReference", objectId);
+  const markedCount = reviewTargets.imageIds.length + reviewTargets.collectionIds.length;
   const updated = reconcileWorkspaceDerivedState({
     ...workspace,
     objects,
@@ -1052,10 +1163,13 @@ export function setDefaultReference(
         id: decisionId,
         kind: "setDefaultReference",
         createdAt: now,
-        summary: `设为后续默认参考：${object.title}`,
+        summary:
+          markedCount > 0
+            ? `设为后续默认参考：${object.title}；已标记 ${markedCount} 项直接延展素材待复核`
+            : `设为后续默认参考：${object.title}`,
         reason: options.reason,
         objectSnapshot: snapshotObject(object),
-        relatedObjectIds: [objectId],
+        relatedObjectIds: [objectId, ...reviewTargets.imageIds, ...reviewTargets.collectionIds],
         comparison: options.comparison
       }
     ]
@@ -1067,6 +1181,26 @@ export function setDefaultReference(
     decisionId,
     createdAt: now
   });
+}
+
+/** 用户对待复核素材选择“保留”：只清除待复核标记，不改变其他状态。 */
+export function clearVisualReviewMark(workspace: MorphoWorkspace, objectId: MorphoObjectId): MorphoWorkspace {
+  const object = workspace.objects[objectId];
+  if (!object || (object.type !== "image" && object.type !== "imageCollection") || !object.pendingReview) {
+    return workspace;
+  }
+
+  const { pendingReview: _cleared, ...rest } = object;
+  return {
+    ...workspace,
+    objects: {
+      ...workspace.objects,
+      [objectId]: {
+        ...rest,
+        updatedAt: new Date().toISOString()
+      } as MorphoObject
+    }
+  };
 }
 
 export function clearDefaultReference(
@@ -1090,7 +1224,7 @@ export function clearDefaultReference(
   const now = new Date().toISOString();
   const objects = Object.fromEntries(
     Object.entries(workspace.objects).map(([entryId, entry]) => {
-      if (entry.type !== "image") {
+      if (entry.type !== "image" || entry.id !== objectId || !entry.isDefaultReference) {
         return [entryId, entry];
       }
 
@@ -1098,7 +1232,7 @@ export function clearDefaultReference(
         entryId,
         {
           ...entry,
-          isDefaultReference: entry.id === objectId ? false : entry.isDefaultReference,
+          isDefaultReference: false,
           updatedAt: now
         } satisfies ImageObject
       ];
