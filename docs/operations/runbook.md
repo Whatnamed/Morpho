@@ -179,7 +179,16 @@ The remaining Security Advisor notices for `public.get_my_access_state()` and `p
 
 ### Agent Turn Lease Migration
 
-Deploy both `supabase/migrations/20260723200036_add_agent_turn_leases.sql` and `supabase/migrations/20260723200456_fix_agent_turn_lease_column_ambiguity.sql` before deploying Prompt Contract v3.3 application code. Without both migrations, authenticated `/api/ai/agent` requests fail closed with an Agent Turn Lease service error; they must not fall back to the old client-trusted quota path.
+Apply every checked-in lease migration, in filename order, before deploying the matching application code:
+
+```text
+supabase/migrations/20260723200036_add_agent_turn_leases.sql
+supabase/migrations/20260723200456_fix_agent_turn_lease_column_ambiguity.sql
+supabase/migrations/20260726143030_harden_agent_turn_lease_causality.sql
+supabase/migrations/20260726161500_bind_agent_turn_provider_execution.sql
+```
+
+The first two are the Prompt Contract v3.3 baseline. Without them, authenticated `/api/ai/agent` requests fail closed with an Agent Turn Lease service error; they must not fall back to the old client-trusted quota path. A missing or signature-changed RPC is reported as a deployment gap (`lease_contract_missing`), not a transient outage.
 
 This checkout does not store a Supabase project ref, access token, database password, or service-role key. On an authorized operator machine with the Supabase CLI already authenticated, link the intended project explicitly and review the target before pushing:
 
@@ -432,16 +441,19 @@ The current code does not include:
 - dynamic provider model-list fetching;
 - PPT/PDF/Figma generation or final delivery layout;
 - transcript replacement, transcript deletion, or user-managed chat-summary files;
-- deployment automation beyond the existing Vercel deployment and checked-in Cloudflare/OpenNext backup scripts.
-# Agent Lease migration verification
+- deployment automation beyond the existing Vercel deployment and checked-in Cloudflare/OpenNext backup scripts;
+- project search over full `documentExtract` text. Project search reads workspace JSON only; whole-document PDF/PPTX text stays in IndexedDB and is searchable only in the per-file document reader.
 
-The forward-only migration is:
+## Agent Lease Migration Verification
+
+The most recent forward-only lease migrations are:
 
 ```text
 supabase/migrations/20260726143030_harden_agent_turn_lease_causality.sql
+supabase/migrations/20260726161500_bind_agent_turn_provider_execution.sql
 ```
 
-Do not apply it from an unverified shell. Verify the CLI and linked project first:
+Do not apply them from an unverified shell. Verify the CLI and linked project first:
 
 ```powershell
 supabase --version
@@ -451,7 +463,7 @@ Get-Content supabase/.temp/project-ref
 supabase db push --dry-run
 ```
 
-The dry run must list only the intended pending migration. Then apply and verify:
+The dry run must list only the intended pending migrations. Then apply and verify:
 
 ```powershell
 supabase db push
@@ -460,7 +472,7 @@ supabase migration list
 
 If `supabase` is not installed, authentication is absent, the project ref cannot be independently matched, or dry-run lists unrelated migrations, stop without changing the remote database.
 
-# Agent continuity validation
+## Agent Continuity Validation
 
 Run from PowerShell 7:
 

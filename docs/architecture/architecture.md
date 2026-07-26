@@ -7,23 +7,38 @@ Morpho is a single Next.js App Router application in this repository root.
 Implemented routes:
 
 - `/` renders the local project homepage.
+- `/login` renders Supabase email/password sign-in and registration for closed-test access.
 - `/projects/[projectId]` renders the Morpho workspace for one local project.
 - `/api/ai/agent` is the formal workspace Agent route and streams OpenAI-compatible Responses SSE.
+- `/api/ai/agent/lease` completes one authenticated Agent Turn Lease with a declared turn outcome.
 - `/api/ai/chat` remains a deprecated compatibility route for isolated legacy tests; the formal workspace panel has no caller.
+- `/api/ai/web-search` proxies bounded provider web search for standalone searches and for lease-bound Agent continuations.
 - `/api/ai/image` proxies server-side GrsAI image generation and returns the generated image bytes.
 
 Important module boundaries:
 
 - `src/app/` owns Next.js routes.
+- `src/middleware.ts` owns authenticated route access and login redirects.
 - `src/features/projects/` owns the local project homepage UI.
 - `src/features/workspace/` owns the visible workbench experience.
-- `src/domain/morpho/` owns product-domain types, seed data, deterministic domain actions, import helpers, generation helpers, and queries.
+- `src/features/auth/` owns the login client.
+- `src/features/archive/` owns archive, editable backup, and restore clients.
+- `src/features/delivery-output/` owns the browser-only delivery output package client.
+- `src/domain/morpho/` owns product-domain types, the generated case-study fixture, deterministic domain actions, import helpers, generation helpers, and queries.
 - `src/infrastructure/persistence/` owns browser localStorage project catalog and workspace access.
 - `src/infrastructure/assets/` owns browser IndexedDB Blob storage and asset-save workflow.
+- `src/infrastructure/supabase/` owns browser/server Supabase clients and public configuration reading.
 - `src/server/ai/` owns AiJWS/OpenAI-compatible provider config, request validation, context conversion, and response normalization.
+- `src/server/auth/` owns account access state, AI quota guards, and the Agent Turn Lease contract.
 - `src/server/image/` owns GrsAI provider config, request validation, bounded polling, and remote image download.
 
-No database, authentication, cloud object storage, Supabase, multiplayer sync, export pipeline, or deployment automation is implemented.
+Implemented server-side state and deployment:
+
+- Supabase provides account identity, closed-test qualification, AI daily quota, and Agent Turn Leases through narrow `SECURITY DEFINER` RPCs. Forward-only SQL lives in `supabase/migrations/`.
+- Supabase stores no project content. Projects, canvases, files, images, and backups stay in browser localStorage and IndexedDB.
+- Vercel is the current production deployment path (`npm run build`). Cloudflare Workers via `@opennextjs/cloudflare` and `wrangler` is a retained opt-in backup path behind the `cf:*` scripts.
+- `.github/workflows/quality.yml` runs lint, typecheck, test, and build on `main` and pull requests, without provider keys or deployment.
+- Export exists as delivery output packages and archive/backup bundles (see the M7 and M8 sections). Cloud project sync, cloud file storage, multiplayer sync, and automatic Blob garbage collection remain unimplemented.
 
 ## Data Model
 
@@ -323,8 +338,11 @@ Parseable imported files are extracted locally after import:
 Asset panel and search are real workspace queries:
 
 - assets list imported images, files, links, generated images, and future document extracts;
-- search covers object titles/text, filenames, URLs/domains, concept/research/definition text, and delivery reference snapshots;
+- search covers object titles/text, filenames, URLs/domains, concept/research/definition text, document fragment bodies with their source file title/name, and delivery reference snapshots;
+- a matched row carries a bounded snippet windowed around the match, not the full matching text. A document fragment row also carries its source file snapshot and a resolved `active` / `hidden` / `missing` source state, so source location is offered only when the source object is still active;
 - hidden objects can be found and restored, but hidden objects are not included in default AI context.
+
+`searchWorkspace` is a synchronous pure query over workspace JSON. Full `documentExtract` text is not part of workspace JSON — it lives only as an IndexedDB Blob, capped at 120,000 characters per file — so whole-document PDF/PPTX text is currently searchable only through the document reader's per-file search, not through project search.
 
 ## AI Providers
 

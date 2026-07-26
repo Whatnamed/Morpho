@@ -41,7 +41,8 @@ Then read only the documents relevant to the task:
 * `docs/archive/` and `docs/design/archive/` are historical reference only.
 * Do not use archived v1, v2, or trial prototype files as current product requirements.
 * Do not reuse the `Nightfield`, “安静的仪器”, tactical-tool, or compact-field-tool content from the anchor HTML as official Morpho demo content.
-* Official demo content is `夜航 / Nightrail`, as defined in the UI prototype specification.
+* The deployable built-in project is `project-morpho-case-study`, generated from a real editable Morpho backup. Its content is intentionally real and may remain in progress.
+* `夜航 / Nightrail` is no longer official demo content. It survives only as a v1 illustration inside `Morpho_UI_原型设计说明_v1.md`, as the domain test fixture behind `createTestWorkspace()`, and as a guarded one-time migration fingerprint for the legacy `morpho.workspace.nightrail.v1` key. Do not write new Nightrail demo content or treat it as current product material.
 
 ## 3. Priority when documents conflict
 
