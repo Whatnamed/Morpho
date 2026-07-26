@@ -72,8 +72,17 @@ describe("acquireProjectWriteLease", () => {
     expect(other.status).toBe("granted");
   });
 
+  // `null`, not `undefined`: a default parameter fires on `undefined`, so passing
+  // it would reach for the ambient `navigator.locks` and make this assertion
+  // depend on the runtime. Node 24 has Web Locks and Node 22 does not.
   it("keeps writing possible when the browser has no Web Locks", async () => {
-    await expect(acquireProjectWriteLease("project-a", undefined)).resolves.toEqual({ status: "unsupported" });
+    await expect(acquireProjectWriteLease("project-a", null)).resolves.toEqual({ status: "unsupported" });
+  });
+
+  it("keeps writing possible when the lock manager cannot take requests", async () => {
+    await expect(acquireProjectWriteLease("project-a", {} as LockManagerLike)).resolves.toEqual({
+      status: "unsupported"
+    });
   });
 
   it("keeps writing possible when the lock request itself fails", async () => {

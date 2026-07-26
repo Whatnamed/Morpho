@@ -12,7 +12,7 @@ import {
 
 describe("readStorageDurability", () => {
   it("reports an unknown grant when the browser has no StorageManager", async () => {
-    await expect(readStorageDurability(undefined)).resolves.toBe("unknown");
+    await expect(readStorageDurability(null)).resolves.toBe("unknown");
   });
 
   it("reports an unknown grant when the StorageManager cannot answer", async () => {
@@ -62,7 +62,7 @@ describe("requestStorageDurability", () => {
 
   it("stays unknown when persistence cannot be requested at all", async () => {
     await expect(requestStorageDurability({})).resolves.toBe("unknown");
-    await expect(requestStorageDurability(undefined)).resolves.toBe("unknown");
+    await expect(requestStorageDurability(null)).resolves.toBe("unknown");
   });
 });
 

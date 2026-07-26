@@ -70,7 +70,10 @@ export function getStorageManager(): StorageManagerLike | undefined {
 
 /** Reads the current grant without prompting or requesting anything. */
 export async function readStorageDurability(
-  manager: StorageManagerLike | undefined = getStorageManager()
+  // Omitting this asks the browser. Passing `null` states that there is no
+  // StorageManager — `undefined` cannot say that, because a default parameter
+  // fires on `undefined` and would reach for the ambient one instead.
+  manager: StorageManagerLike | null | undefined = getStorageManager()
 ): Promise<StorageDurabilityStatus> {
   if (!manager?.persisted) {
     return "unknown";
@@ -92,7 +95,7 @@ export async function readStorageDurability(
  * would be a prompt with nothing behind it.
  */
 export async function requestStorageDurability(
-  manager: StorageManagerLike | undefined = getStorageManager()
+  manager: StorageManagerLike | null | undefined = getStorageManager()
 ): Promise<StorageDurabilityStatus> {
   const current = await readStorageDurability(manager);
   if (current === "persisted") {
@@ -111,7 +114,7 @@ export async function requestStorageDurability(
 }
 
 export async function estimateOriginStorage(
-  manager: StorageManagerLike | undefined = getStorageManager()
+  manager: StorageManagerLike | null | undefined = getStorageManager()
 ): Promise<OriginStorageUsage> {
   if (!manager?.estimate) {
     return { status: "unknown" };

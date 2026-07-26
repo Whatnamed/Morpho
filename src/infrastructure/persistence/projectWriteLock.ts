@@ -54,7 +54,10 @@ export function getLockManager(): LockManagerLike | undefined {
 
 export function acquireProjectWriteLease(
   projectId: string,
-  locks: LockManagerLike | undefined = getLockManager()
+  // Omitting this asks the browser. Passing `null` states that there is no lock
+  // manager — which `undefined` cannot express, because a default parameter
+  // fires on `undefined` and would silently reach for the ambient one instead.
+  locks: LockManagerLike | null | undefined = getLockManager()
 ): Promise<ProjectWriteLease> {
   if (!locks?.request) {
     return Promise.resolve({ status: "unsupported" });
