@@ -720,3 +720,41 @@ Boundary: Supabase stores only user/turn/lease IDs, status, timestamps, terminal
 - Restoring an editable backup adds about 1.2 KiB over the source project — regenerated runtime storage keys. Asset binaries live in IndexedDB and are not part of this budget.
 - Numbers come from `npm run measure:storage` (content cost, from case-study records) and `e2e/storage-capacity.spec.ts` (the browser's real grant). Both are reproducible; neither is hard-coded.
 
+# 2026-07-27: Storage durability is a separate risk from a failed write
+
+- A rejected write announces itself and leaves the previous data intact. Eviction announces nothing and leaves nothing: Safari clears script-writable storage after seven days without interaction, and Chromium evicts whole origins under disk pressure. The two failures need different mitigations, so they are modelled separately rather than folded into one "storage problem".
+- The only mitigations the platform offers are asking for persistence and, when the browser will not grant it, telling the user to keep an exported backup. `persist()` is requested once per session and never re-requested for an already-persisted origin, because Firefox raises a permission prompt for it and a prompt with nothing behind it teaches users to dismiss prompts.
+- Usage is read with `estimate()`, which is the only measurement covering IndexedDB. Counting localStorage alone understates real usage by orders of magnitude on any project that has generated images, because that is where the binaries live.
+- The pressure threshold is 80% of the origin quota, deliberately below full: a user warned at 99% has no room left to export a backup, and exporting allocates memory of its own.
+- `unknown` is a distinct status from `bestEffort`. When there is no StorageManager, or the call throws, nothing may be claimed in either direction and the UI says nothing.
+
+# 2026-07-27: One writer per project, across tabs
+
+- A workspace is held whole in React state and written back as a single localStorage value, so two tabs on the same project do not merge — the second tab's debounced write replaces everything the first tab did, including a completed Agent turn, while both tabs report "已保存". No storage-layer check can catch this afterwards, because the write that destroys the work is a perfectly valid write.
+- Web Locks is the primitive: origin-scoped, released automatically when the holding tab closes or crashes, and never outliving the browser session. A stored lock flag could strand a project read-only forever after a hard kill.
+- The request uses `ifAvailable: true`, so a second tab learns immediately that the project is taken instead of queueing behind the first tab for as long as it stays open.
+- The tab without the lease enters a `readOnly` phase rather than an error. "已保存" would be a lie there and "保存失败" a different one; what is true is that this tab deliberately never schedules a write.
+- A browser without Web Locks, or a rejected request, yields `unsupported` and keeps the previous unprotected behaviour. An unenforceable lock must never become the reason a workspace refuses to save — that would lose more work than it protects.
+- Pending writes are flushed before the lease is released, so the tab that takes over reads the latest state rather than the state as of the last debounce.
+
+# 2026-07-27: Local write failures are classified, not summarized
+
+- One sentence for every failure helps with none of them, because the fixes are opposite: a full origin is resolved by exporting and deleting, a blocked one by leaving private mode, and an unverified write by not trusting this browser session with more work. The store therefore reports a kind alongside the message.
+- `quotaExceeded` covers Chrome and Safari's `QuotaExceededError` (code 22) and Firefox's `NS_ERROR_DOM_QUOTA_REACHED` (code 1014). `storageUnavailable` covers `SecurityError`, `InvalidAccessError` and `InvalidStateError`. `writeNotVerified` comes from reading the value back and finding something else — Safari private mode and some embedded webviews accept a write, throw nothing, and store nothing, so only the read-back catches it.
+- The stage matters as much as the kind. A failed workspace write means the user's current work is unsaved; a failed catalog write means the work is already on disk and only the project list is stale. Urgent backup language in the second case is crying wolf, and users warned wrongly stop reading warnings.
+- The failure surface carries its own export, and it exports the in-memory workspace rather than the copy on disk: the two have diverged, and the in-memory one is the version that would otherwise be lost. Building the bundle only reads IndexedDB and allocates in memory, so it still works when localStorage is the thing that is full.
+- Storage keys stay out of user-facing text. Which key failed is an internal storage mechanic; "your change is not saved" is the fact the user has to act on.
+
+# 2026-07-27: A crashed workspace keeps a way out
+
+- The crash surface's purpose is to let the user leave with their data, not to explain the error. It offers an export before anything else.
+- `global-error.tsx` replaces the root layout, so it owns `<html>`/`<body>` and cannot inherit the layout's stylesheet import; it imports the stylesheet itself.
+- It identifies the project from `window.location.pathname` rather than route params, because the boundary can catch a failure that happened before the route segment resolved, and the export path only needs a localStorage key. The parse is deliberately conservative: offering an export for the wrong project id would produce a backup of something the user did not ask for, which is worse than offering none.
+
+# 2026-07-27: Deleting a project reclaims blobs only when ownership is provable
+
+- Deletion is the only way a user can reclaim local space, so it has to reclaim the part that actually costs space: the IndexedDB image blobs. A blob deleted out from under another project shows up as a permanently broken image with no way back, so the reclaim is gated on proof rather than assumption.
+- Ownership is computed before anything is removed: a blob is deleted only when no other stored workspace still references its storage key. The scan reads every `morpho.project.*.workspace.v1` entry rather than only catalogued ones, because a workspace missing from the catalog is still recoverable data and its references still count.
+- An unreadable neighbouring workspace is the absence of evidence, not evidence of absence. While any stored workspace fails to parse, nothing is reclaimed at all — reclaimed space is worth less than an image no project can ever get back.
+- Deletion is planned and shown before it is committed, including how many blobs it would remove, and the confirmation offers an export first.
+
