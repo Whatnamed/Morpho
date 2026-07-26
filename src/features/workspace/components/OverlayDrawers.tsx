@@ -24,7 +24,12 @@ import {
   getStageRecordHistory,
   reconcileProjectMemory
 } from "@/domain/morpho/projectMemory";
-import { getWorkspaceAssetItems, searchWorkspace, type WorkspaceAssetItem } from "@/domain/morpho/queries";
+import {
+  getWorkspaceAssetItems,
+  searchWorkspace,
+  type WorkspaceAssetItem,
+  type WorkspaceSearchObjectSource
+} from "@/domain/morpho/queries";
 import type { DrawerMode } from "./LeftRail";
 import { getObjectTypeLabel } from "../workspaceUi";
 import {
@@ -763,29 +768,50 @@ function SearchRows({
 
   return (
     <div className="asset-list">
-      {results.map((result) => (
-        <div className="result-row" key={result.kind === "object" ? result.objectId : result.referenceId}>
-          <div className="asset-kind-mark">{result.kind === "object" ? "对象" : "交付"}</div>
-          <div className="asset-row-body">
-            <div className="row-title-line">
-              <strong>{result.title}</strong>
-              {result.hidden ? <span className="row-status-chip">已隐藏</span> : null}
+      {results.map((result) => {
+        const source = result.kind === "object" ? result.source : undefined;
+        return (
+          <div className="result-row" key={result.kind === "object" ? result.objectId : result.referenceId}>
+            <div className="asset-kind-mark">{result.kind === "object" ? "对象" : "交付"}</div>
+            <div className="asset-row-body">
+              <div className="row-title-line">
+                <strong>{result.title}</strong>
+                {result.hidden ? <span className="row-status-chip">已隐藏</span> : null}
+              </div>
+              <p className="row-note">{result.summary}</p>
+              <div className="row-meta">
+                <span>{result.kind === "object" ? "画布内容" : "交付引用快照"}</span>
+                {source ? <span>{searchSourceLabel(source)}</span> : null}
+                {result.hidden ? <span>恢复后可回到画布</span> : null}
+              </div>
+              {result.kind === "object" ? (
+                <div className="row-action-line">
+                  <button className="plain-button row-action" type="button" onClick={() => onLocateObject(result.objectId)}>
+                    定位
+                  </button>
+                  {source && source.status === "active" ? (
+                    <button
+                      className="plain-button row-action"
+                      type="button"
+                      onClick={() => onLocateObject(source.fileObjectId)}
+                    >
+                      定位来源文档
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
-            <p className="row-note">{result.summary}</p>
-            <div className="row-meta">
-              <span>{result.kind === "object" ? "画布内容" : "交付引用快照"}</span>
-              {result.hidden ? <span>恢复后可回到画布</span> : null}
-            </div>
-            {result.kind === "object" ? (
-              <button className="plain-button row-action" type="button" onClick={() => onLocateObject(result.objectId)}>
-                定位
-              </button>
-            ) : null}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
+}
+
+function searchSourceLabel(source: WorkspaceSearchObjectSource): string {
+  const name = source.fileName ? ` · ${source.fileName}` : "";
+  const state = source.status === "hidden" ? "（来源已隐藏）" : source.status === "missing" ? "（来源已不可用）" : "";
+  return `来源：${source.fileTitle}${name}${state}`;
 }
 
 function focusAreaLabel(area: ProjectFocusArea): string {

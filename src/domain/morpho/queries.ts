@@ -7,6 +7,19 @@ import type {
   MorphoWorkspace
 } from "./types";
 
+/**
+ * A search row shows a bounded snippet, not the whole matching corpus. Document
+ * fragment bodies alone can reach 6,000 characters.
+ */
+const SEARCH_SUMMARY_MAX_CHARS = 160;
+
+export type WorkspaceSearchObjectSource = {
+  fileObjectId: MorphoObjectId;
+  fileTitle: string;
+  fileName?: string;
+  status: "active" | "hidden" | "missing";
+};
+
 export type WorkspaceSearchResult =
   | {
       kind: "object";
@@ -14,6 +27,7 @@ export type WorkspaceSearchResult =
       title: string;
       summary: string;
       hidden: boolean;
+      source?: WorkspaceSearchObjectSource;
     }
   | {
       kind: "deliveryReference";
@@ -33,13 +47,17 @@ export function searchWorkspace(workspace: MorphoWorkspace, query: string): Work
   const normalizedQuery = query.trim().toLowerCase();
   const objectResults = Object.values(workspace.objects)
     .filter((object) => matchesObject(object, normalizedQuery))
-    .map((object): WorkspaceSearchResult => ({
-      kind: "object",
-      objectId: object.id,
-      title: object.title,
-      summary: getSearchableObjectText(object),
-      hidden: object.visibility === "hidden"
-    }));
+    .map((object): WorkspaceSearchResult => {
+      const source = resolveObjectSearchSource(workspace, object);
+      return {
+        kind: "object",
+        objectId: object.id,
+        title: object.title,
+        summary: buildResultSummary(getSearchableObjectText(object), normalizedQuery),
+        hidden: object.visibility === "hidden",
+        ...(source ? { source } : {})
+      };
+    });
   const deliveryReferenceResults = Object.values(workspace.deliveryReferences)
     .filter((reference) => matchesDeliveryReference(reference, normalizedQuery))
     .map((reference): WorkspaceSearchResult => ({
@@ -95,6 +113,55 @@ function matchesDeliveryReference(reference: DeliveryReference, normalizedQuery:
     .includes(normalizedQuery);
 }
 
+/**
+ * A fragment keeps a snapshot of its source file so the row can name the source
+ * document even after that file is hidden or removed. Locating the source is a
+ * separate decision the UI makes from `status`.
+ */
+function resolveObjectSearchSource(
+  workspace: MorphoWorkspace,
+  object: MorphoObject
+): WorkspaceSearchObjectSource | undefined {
+  if (object.type !== "documentFragment") {
+    return undefined;
+  }
+
+  const sourceFile = workspace.objects[object.source.fileObjectId];
+  const status: WorkspaceSearchObjectSource["status"] =
+    !sourceFile || sourceFile.type !== "file"
+      ? "missing"
+      : sourceFile.visibility === "hidden"
+        ? "hidden"
+        : "active";
+
+  return {
+    fileObjectId: object.source.fileObjectId,
+    fileTitle: object.source.fileTitle,
+    ...(object.source.fileName ? { fileName: object.source.fileName } : {}),
+    status
+  };
+}
+
+/**
+ * Windows the snippet around the first match so a long body still shows why the
+ * row matched instead of only its opening characters.
+ */
+function buildResultSummary(searchableText: string, normalizedQuery: string): string {
+  const text = searchableText.replace(/\s+/g, " ").trim();
+  if (text.length <= SEARCH_SUMMARY_MAX_CHARS) {
+    return text;
+  }
+
+  const matchIndex = normalizedQuery ? text.toLowerCase().indexOf(normalizedQuery) : -1;
+  if (matchIndex < 0) {
+    return `${text.slice(0, SEARCH_SUMMARY_MAX_CHARS)}…`;
+  }
+
+  const start = Math.max(0, Math.min(matchIndex - 40, text.length - SEARCH_SUMMARY_MAX_CHARS));
+  const end = start + SEARCH_SUMMARY_MAX_CHARS;
+  return `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
+}
+
 function getSearchableObjectText(object: MorphoObject): string {
   switch (object.type) {
     case "image":
@@ -117,6 +184,14 @@ function getSearchableObjectText(object: MorphoObject): string {
         object.opportunities.join(" "),
         object.constraints.join(" "),
         object.openQuestions.join(" ")
+      ].join(" ");
+    case "documentFragment":
+      return [
+        object.title,
+        object.summary,
+        object.body,
+        object.source.fileTitle,
+        object.source.fileName ?? ""
       ].join(" ");
     case "keyConclusion":
       return [object.title, object.summary, object.body, object.note ?? ""].join(" ");

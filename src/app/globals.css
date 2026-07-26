@@ -995,6 +995,12 @@ button:disabled {
   margin-top: 8px;
 }
 
+.row-action-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
 .search-input {
   width: 100%;
   height: 40px;
