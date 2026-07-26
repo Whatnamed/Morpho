@@ -1991,6 +1991,58 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const agentTurnId = `agent-turn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     let agentTurnLeaseId: string | undefined;
     let nextAgentLeaseSequence: number | undefined;
+    // Web search consumes a lease sequence before it can fail. One resynchronization
+    // per turn lets a lost response recover; Provider continuations stay strict.
+    let webSearchSequenceResyncUsed = false;
+
+    async function requestAgentWebSearch(queries: string[]): Promise<{
+      sources: WebSearchSource[];
+      failedSourceCount?: number;
+      timedOutSourceCount?: number;
+    }> {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const response = await fetch("/api/ai/web-search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            queries,
+            maxSources: AGENT_WEB_SEARCH_MAX_SOURCES_PER_CALL,
+            agentTurnId,
+            agentContinuation: true,
+            leaseId: agentTurnLeaseId,
+            leaseSequence: nextAgentLeaseSequence
+          }),
+          signal: controller.signal
+        });
+        const payload = await readJsonPayload(response);
+        // The lease sequence is consumed before the search runs, so adopt whatever
+        // the server reports before deciding whether the search itself succeeded.
+        if (isRecord(payload) && typeof payload.nextProviderSequence === "number") {
+          nextAgentLeaseSequence = payload.nextProviderSequence;
+        }
+        if (response.ok && isRecord(payload) && Array.isArray(payload.sources)) {
+          return payload as unknown as {
+            sources: WebSearchSource[];
+            failedSourceCount?: number;
+            timedOutSourceCount?: number;
+          };
+        }
+        const canResync = !webSearchSequenceResyncUsed &&
+          isRecord(payload) &&
+          payload.reason === "sequence_replay" &&
+          typeof payload.nextProviderSequence === "number";
+        if (attempt === 0 && canResync) {
+          webSearchSequenceResyncUsed = true;
+          continue;
+        }
+        throw new Error(
+          (isRecord(payload) && typeof payload.error === "string" && payload.error) ||
+            response.statusText ||
+            "网页检索失败。"
+        );
+      }
+      throw new Error("网页检索未能完成。");
+    }
 
     async function closeAgentTurnLease(
       outcome: "success" | "cancelledBeforeExecution" | "failedBeforeExecution" | "partialSuccess" | "pendingConfirmation"
@@ -3160,30 +3212,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             }
             case "search_web_evidence": {
               const args = parsed.args;
-              const webSearchResponse = await fetch("/api/ai/web-search", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  queries: args.queries,
-                  maxSources: AGENT_WEB_SEARCH_MAX_SOURCES_PER_CALL,
-                  agentTurnId,
-                  agentContinuation: true,
-                  leaseId: agentTurnLeaseId,
-                  leaseSequence: nextAgentLeaseSequence
-                }),
-                signal: controller.signal
-              });
-              if (!webSearchResponse.ok) {
-                throw new Error(await readErrorResponse(webSearchResponse));
-              }
-              if (nextAgentLeaseSequence !== undefined) {
-                nextAgentLeaseSequence += 1;
-              }
-              const webSearchResult = (await webSearchResponse.json()) as {
-                sources: WebSearchSource[];
-                failedSourceCount?: number;
-                timedOutSourceCount?: number;
-              };
+              const webSearchResult = await requestAgentWebSearch(args.queries);
               const sourceCitations = webSearchSourcesToCitations(webSearchResult.sources);
               collectedCitations = mergeAgentSearchCitations(collectedCitations, sourceCitations);
               hasWebSearchEvidence = true;
@@ -7390,6 +7419,14 @@ function domainFromUrl(url: string | undefined): string | undefined {
 
   try {
     return new URL(url).hostname;
+  } catch {
+    return undefined;
+  }
+}
+
+async function readJsonPayload(response: Response): Promise<unknown> {
+  try {
+    return (await response.json()) as unknown;
   } catch {
     return undefined;
   }

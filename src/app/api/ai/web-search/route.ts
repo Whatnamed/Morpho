@@ -56,6 +56,11 @@ export async function POST(request: Request) {
     (body.agentTurnId !== undefined || body.leaseId !== undefined || body.leaseSequence !== undefined)) {
     return NextResponse.json({ error: "独立网页搜索不能伪造 Agent continuation。" }, { status: 400 });
   }
+  // The lease sequence is consumed before the search runs, so every exit below —
+  // success, cancellation and upstream failure alike — has to report the sequence
+  // the server now expects. Otherwise a failed search leaves the client one behind
+  // and the next Provider request is rejected as a replay.
+  let consumedLeaseSequence: { nextProviderSequence: number } | undefined;
   if (isAgentContinuation) {
     const leaseAccess = await continueAgentTurnLease({
       leaseId: leaseId!,
@@ -68,6 +73,7 @@ export async function POST(request: Request) {
     if (leaseAccess.status === "denied") {
       return agentTurnLeaseDeniedResponse(leaseAccess);
     }
+    consumedLeaseSequence = { nextProviderSequence: leaseAccess.lease.nextProviderSequence };
   } else {
     const quotaAccess = await guardAiRoute("text");
     if (quotaAccess.status === "denied") {
@@ -84,12 +90,15 @@ export async function POST(request: Request) {
       signal: request.signal
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, ...consumedLeaseSequence });
   } catch (error) {
     if (request.signal.aborted || (error instanceof Error && error.name === "AbortError")) {
-      return NextResponse.json({ error: "检索已取消。" }, { status: 499 });
+      return NextResponse.json({ error: "检索已取消。", ...consumedLeaseSequence }, { status: 499 });
     }
-    return NextResponse.json({ error: "外部检索失败，请稍后重试。" }, { status: 502 });
+    return NextResponse.json(
+      { error: "外部检索失败，请稍后重试。", ...consumedLeaseSequence },
+      { status: 502 }
+    );
   }
 }
 

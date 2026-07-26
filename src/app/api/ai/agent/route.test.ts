@@ -296,6 +296,20 @@ describe("agent route stream", () => {
     expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
   });
 
+  it("stops a repeated first request once the lease reports the provider execution ceiling", async () => {
+    startAgentTurnLeaseMock.mockResolvedValueOnce({
+      status: "denied",
+      httpStatus: 429,
+      error: "本轮 Agent 调用次数已达到安全上限。",
+      reason: "provider_limit"
+    });
+
+    const response = await POST(agentRequest());
+
+    expect(response.status).toBe(429);
+    expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
+  });
+
   it("requires the same valid lease for same-turn continuations and returns typed SSE", async () => {
     const response = await POST(
       agentRequest({

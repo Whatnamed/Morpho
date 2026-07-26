@@ -49,7 +49,8 @@ describe("web search route", () => {
         agentTurnId: "agent-turn-1",
         expiresAt: "2026-07-24T03:00:00.000Z",
         providerCallCount: 2,
-        webSearchCallCount: 1
+        webSearchCallCount: 1,
+        nextProviderSequence: 2
       }
     });
     searchWebEvidenceMock.mockReset();
@@ -157,6 +158,62 @@ describe("web search route", () => {
       failedSourceCount: 1,
       timedOutSourceCount: 2
     });
+  });
+
+  it("reports the consumed lease sequence on upstream failure and cancellation", async () => {
+    process.env.MORPHO_AI_PROVIDER = "aijws";
+    process.env.MORPHO_AI_BASE_URL = "https://api.aijws.com/v1";
+    process.env.MORPHO_AI_API_KEY = "test-key";
+    process.env.MORPHO_AI_WEB_SEARCH_ENABLED = "true";
+    searchWebEvidenceMock.mockRejectedValueOnce(new Error("upstream down"));
+
+    const failed = await POST(new Request("http://localhost/api/ai/web-search", {
+      method: "POST",
+      body: JSON.stringify({
+        agentTurnId: "agent-turn-1",
+        leaseId: "lease-1",
+        agentContinuation: true,
+        leaseSequence: 1,
+        queries: ["ocean buoy constraints"]
+      })
+    }));
+
+    expect(failed.status).toBe(502);
+    await expect(failed.json()).resolves.toMatchObject({ nextProviderSequence: 2 });
+
+    const abortError = new Error("aborted");
+    abortError.name = "AbortError";
+    searchWebEvidenceMock.mockRejectedValueOnce(abortError);
+
+    const cancelled = await POST(new Request("http://localhost/api/ai/web-search", {
+      method: "POST",
+      body: JSON.stringify({
+        agentTurnId: "agent-turn-1",
+        leaseId: "lease-1",
+        agentContinuation: true,
+        leaseSequence: 2,
+        queries: ["ocean buoy constraints"]
+      })
+    }));
+
+    expect(cancelled.status).toBe(499);
+    await expect(cancelled.json()).resolves.toMatchObject({ nextProviderSequence: 2 });
+  });
+
+  it("keeps standalone searches free of lease sequence reporting", async () => {
+    process.env.MORPHO_AI_PROVIDER = "aijws";
+    process.env.MORPHO_AI_BASE_URL = "https://api.aijws.com/v1";
+    process.env.MORPHO_AI_API_KEY = "test-key";
+    process.env.MORPHO_AI_WEB_SEARCH_ENABLED = "true";
+    searchWebEvidenceMock.mockRejectedValueOnce(new Error("upstream down"));
+
+    const response = await POST(new Request("http://localhost/api/ai/web-search", {
+      method: "POST",
+      body: JSON.stringify({ queries: ["ocean buoy constraints"] })
+    }));
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({ error: "外部检索失败，请稍后重试。" });
   });
 
   it("rejects a forged Agent continuation before external search", async () => {

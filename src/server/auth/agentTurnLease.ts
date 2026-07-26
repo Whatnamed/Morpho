@@ -19,6 +19,12 @@ export type AgentTurnLease = {
   nextProviderSequence: number;
 };
 
+export type AgentTurnLeaseContinuationKind =
+  | "providerContinuation"
+  | "conversationSummary"
+  | "webSearch"
+  | "postCompaction";
+
 export type AgentTurnLeaseResult =
   | { status: "allowed"; lease: AgentTurnLease }
   | {
@@ -26,6 +32,11 @@ export type AgentTurnLeaseResult =
       httpStatus: 401 | 403 | 409 | 429 | 503;
       error: string;
       reason?: string;
+      /**
+       * The lease sequence the server expects next. A caller that lost a response
+       * mid-flight needs this to resynchronize instead of retrying forever.
+       */
+      nextProviderSequence?: number;
     };
 
 type AgentTurnLeaseClient = {
@@ -60,7 +71,7 @@ export type AgentTurnLeaseStartInput = {
 export type AgentTurnLeaseContinuationInput = {
   leaseId: string;
   agentTurnId: string;
-  continuationKind: "providerContinuation" | "conversationSummary" | "webSearch";
+  continuationKind: AgentTurnLeaseContinuationKind;
   expectedSequence: number;
   requestHash: string;
   requestManifestHash: string;
@@ -157,7 +168,16 @@ export async function continueAgentTurnLeaseForClient(
 export function agentTurnLeaseDeniedResponse(
   result: Extract<AgentTurnLeaseResult, { status: "denied" }>
 ): NextResponse {
-  return NextResponse.json({ error: result.error }, { status: result.httpStatus });
+  return NextResponse.json(
+    {
+      error: result.error,
+      ...(result.reason ? { reason: result.reason } : {}),
+      ...(result.nextProviderSequence !== undefined
+        ? { nextProviderSequence: result.nextProviderSequence }
+        : {})
+    },
+    { status: result.httpStatus }
+  );
 }
 
 async function createLeaseClient(): Promise<
@@ -184,9 +204,20 @@ function normalizeLeaseResult(
   agentTurnId: string,
   operation: "start" | "continue"
 ): AgentTurnLeaseResult {
+  if (isMissingRpcError(result.error)) {
+    return {
+      status: "denied",
+      httpStatus: 503,
+      error: "数据库尚未升级到当前 Agent Lease 契约，请先应用最新的 Supabase migration。",
+      reason: "lease_contract_missing"
+    };
+  }
   if (result.error || !isLeaseRpcRow(result.data)) {
     return { status: "denied", httpStatus: 503, error: "Agent Turn Lease 服务暂时不可用，请稍后重试。" };
   }
+  const nextProviderSequence = result.data.next_provider_sequence > 0
+    ? { nextProviderSequence: result.data.next_provider_sequence }
+    : {};
   if (
     result.data.allowed && result.data.lease_id && result.data.expires_at
   ) {
@@ -204,10 +235,22 @@ function normalizeLeaseResult(
   }
   const reason = result.data.denial_reason ?? "unknown";
   if (reason === "quota_exceeded") {
-    return { status: "denied", httpStatus: 429, error: "今日文本 AI 额度已用完，请明天再试。", reason };
+    return {
+      status: "denied",
+      httpStatus: 429,
+      error: "今日文本 AI 额度已用完，请明天再试。",
+      reason,
+      ...nextProviderSequence
+    };
   }
   if (reason === "provider_limit" || reason === "web_search_limit") {
-    return { status: "denied", httpStatus: 429, error: "本轮 Agent 调用次数已达到安全上限。", reason };
+    return {
+      status: "denied",
+      httpStatus: 429,
+      error: "本轮 Agent 调用次数已达到安全上限。",
+      reason,
+      ...nextProviderSequence
+    };
   }
   if (reason === "pending" || reason === "blocked") {
     return {
@@ -225,7 +268,13 @@ function normalizeLeaseResult(
     reason === "sequence_replay" ||
     reason === "sequence_skip"
   ) {
-    return { status: "denied", httpStatus: 409, error: "Agent 回合请求与当前 Lease 顺序冲突。", reason };
+    return {
+      status: "denied",
+      httpStatus: 409,
+      error: "Agent 回合请求与当前 Lease 顺序冲突。",
+      reason,
+      ...nextProviderSequence
+    };
   }
   return {
     status: "denied",
@@ -235,8 +284,22 @@ function normalizeLeaseResult(
       : reason === "closed"
         ? "Agent Turn Lease 已结束，不能继续调用。"
         : "Agent Turn Lease 无效或不属于当前用户。",
-    reason
+    reason,
+    ...nextProviderSequence
   };
+}
+
+/**
+ * PostgREST reports a missing or signature-changed RPC as PGRST202. That is a
+ * deployment gap, not a transient outage, so it must not be reported as a
+ * generic "service unavailable".
+ */
+function isMissingRpcError(error: unknown): boolean {
+  if (!isRecord(error)) {
+    return false;
+  }
+  return error.code === "PGRST202" ||
+    (typeof error.message === "string" && /Could not find the function/i.test(error.message));
 }
 
 function isLeaseRpcRow(value: unknown): value is LeaseRpcRow {

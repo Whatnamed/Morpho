@@ -119,6 +119,104 @@ describe("Agent Turn Lease access", () => {
     })).resolves.toMatchObject({ status: "denied", httpStatus: 429 });
   });
 
+  it("reports a missing lease RPC as a deployment gap, not a transient outage", async () => {
+    const mock = client(null, {
+      error: { code: "PGRST202", message: "Could not find the function public.start_agent_turn_lease" }
+    });
+
+    await expect(startAgentTurnLeaseForClient(mock, {
+      agentTurnId: "agent-turn-a",
+      initialRequestHash: "a".repeat(64),
+      requestManifestHash: "b".repeat(64),
+      runtimeItemId: "agent-runtime-a"
+    })).resolves.toMatchObject({
+      status: "denied",
+      httpStatus: 503,
+      reason: "lease_contract_missing"
+    });
+  });
+
+  it("returns the expected next sequence when a continuation is rejected out of order", async () => {
+    const mock = client({
+      allowed: false,
+      denial_reason: "sequence_replay",
+      lease_id: "lease-a",
+      expires_at: "2026-07-24T03:00:00.000Z",
+      provider_call_count: 3,
+      web_search_call_count: 1,
+      next_provider_sequence: 4
+    });
+
+    await expect(continueAgentTurnLeaseForClient(mock, {
+      leaseId: "lease-a",
+      agentTurnId: "agent-turn-a",
+      continuationKind: "webSearch",
+      expectedSequence: 3,
+      requestHash: "c".repeat(64),
+      requestManifestHash: "d".repeat(64)
+    })).resolves.toMatchObject({
+      status: "denied",
+      httpStatus: 409,
+      reason: "sequence_replay",
+      nextProviderSequence: 4
+    });
+  });
+
+  it("accepts postCompaction as a distinct continuation kind", async () => {
+    const mock = client({
+      allowed: true,
+      denial_reason: null,
+      lease_id: "lease-a",
+      expires_at: "2026-07-24T03:00:00.000Z",
+      provider_call_count: 3,
+      web_search_call_count: 0,
+      next_provider_sequence: 4
+    });
+
+    await expect(continueAgentTurnLeaseForClient(mock, {
+      leaseId: "lease-a",
+      agentTurnId: "agent-turn-a",
+      continuationKind: "postCompaction",
+      expectedSequence: 3,
+      requestHash: "c".repeat(64),
+      requestManifestHash: "d".repeat(64),
+      runtimeItemId: "agent-runtime-a"
+    })).resolves.toMatchObject({ status: "allowed" });
+    expect(mock.rpc).toHaveBeenCalledWith(
+      "continue_agent_turn_lease",
+      expect.objectContaining({ p_continuation_kind: "postCompaction" })
+    );
+  });
+
+  it("counts a repeated first request as a real provider execution in the SQL contract", () => {
+    const sql = readFileSync(
+      resolve(process.cwd(), "supabase/migrations/20260726161500_bind_agent_turn_provider_execution.sql"),
+      "utf8"
+    );
+
+    // The idempotent retry branch must advance the execution counter and sequence.
+    const retryBranch = sql.slice(
+      sql.indexOf("existing_lease.initial_request_hash = p_initial_request_hash"),
+      sql.indexOf("case when existing_lease.status = 'active'")
+    );
+    expect(retryBranch).toContain("existing_lease.provider_call_count >= 32");
+    expect(retryBranch).toContain("'provider_limit'");
+    expect(retryBranch).toContain("provider_call_count = lease.provider_call_count + 1");
+    expect(retryBranch).toContain("next_provider_sequence = lease.next_provider_sequence + 1");
+    // The daily quota is still charged once per turn, never on a retry.
+    expect(retryBranch).not.toContain("text_request_count = daily_usage.text_request_count + 1");
+
+    expect(sql).toContain(
+      "p_continuation_kind not in (\n      'providerContinuation', 'conversationSummary', 'webSearch', 'postCompaction'\n    )"
+    );
+    expect(sql).toContain("'postCompaction'");
+    expect(sql).toContain("p_continuation_kind <> 'webSearch' and lease_row.provider_call_count >= 32");
+    expect(sql.match(/set search_path = ''/g)).toHaveLength(2);
+    expect(sql).toContain("current_user_id uuid := auth.uid()");
+    expect(sql).toContain("grant execute on function public.start_agent_turn_lease(text, text, text, text) to authenticated");
+    expect(sql).not.toMatch(/prompt|workspace|request_body|body_text/i);
+  });
+
   it("keeps ownership and counters atomic in the SQL contract", () => {
     const sql = readFileSync(
       resolve(process.cwd(), "supabase/migrations/20260723200036_add_agent_turn_leases.sql"),
