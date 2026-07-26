@@ -568,3 +568,16 @@ found, so the eventual fix has a test to turn green:
   `ui.lastSelectionIds` is stored correctly;
 - `.archive-panel` does not scroll, so the restore preview's confirm row falls
   below any window shorter than about 1000px.
+
+# Local storage capacity
+
+```powershell
+npm run measure:storage
+```
+
+Measures what real Morpho content costs in localStorage and writes
+`docs/operations/storage-footprint.generated.json`. Growth scenarios replicate
+records taken from the deployable case study rather than synthetic payloads. The
+matching browser-side measurement — the quota the browser actually grants — is in
+`e2e/storage-capacity.spec.ts` and prints to the acceptance run log.
+

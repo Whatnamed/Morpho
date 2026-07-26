@@ -711,3 +711,12 @@ Boundary: Supabase stores only user/turn/lease IDs, status, timestamps, terminal
 - The suite runs its own production server on its own port. Reusing a developer's dev server would inherit that session and Next refuses a second dev server in the same directory.
 - The seed workspace is regenerated from the domain code on every run rather than committed. A committed snapshot would drift from the schema; Playwright's loader cannot import the domain layer directly because of its bare JSON imports.
 - Defects the suite finds are recorded as `test.fail` expectations rather than deleted or worked around, so the fix has a test to turn green.
+
+# 2026-07-27: Local storage capacity, measured
+
+- Chromium grants this origin about 9.95 MiB of localStorage, not the 5 MiB commonly assumed. Quota is charged as `(key.length + value.length) * 2` — UTF-16 code units. Morpho's text is mostly Chinese, where UTF-8 sizing would overstate quota pressure by 50%, so every quota decision uses UTF-16.
+- The deployable case study alone occupies 1.67 MiB, about 17% of the quota, before the user does anything.
+- Measured growth per record, in quota bytes: a project memory revision 14.8 KiB, a context frame 3.7 KiB per turn, an object with its canvas instance 3.9 KiB, an Agent-trace turn 3.3 KiB, a plain chat message 0.8–1.3 KiB. Project memory revisions are the fastest-growing field by an order of magnitude and they accumulate monotonically.
+- Restoring an editable backup adds about 1.2 KiB over the source project — regenerated runtime storage keys. Asset binaries live in IndexedDB and are not part of this budget.
+- Numbers come from `npm run measure:storage` (content cost, from case-study records) and `e2e/storage-capacity.spec.ts` (the browser's real grant). Both are reproducible; neither is hard-coded.
+

@@ -11,6 +11,7 @@ import {
   persistProjectWorkspaceAndSummary,
   saveProjectWorkspace
 } from "./localProjectStore";
+import { createMemoryStorage } from "./memoryStorage";
 
 describe("local project catalog persistence", () => {
   it("replaces the sole pristine legacy Nightrail workspace with the current case study", () => {
@@ -259,32 +260,3 @@ describe("local project catalog persistence", () => {
     expect(storage.getItem(getProjectWorkspaceStorageKey("project-a"))).toBeTruthy();
   });
 });
-
-function createMemoryStorage(options: { failSetKeys?: string[] } = {}): Storage {
-  const values = new Map<string, string>();
-  const failSetKeys = new Set(options.failSetKeys ?? []);
-
-  return {
-    get length() {
-      return values.size;
-    },
-    clear() {
-      values.clear();
-    },
-    getItem(key: string) {
-      return values.get(key) ?? null;
-    },
-    key(index: number) {
-      return Array.from(values.keys())[index] ?? null;
-    },
-    removeItem(key: string) {
-      values.delete(key);
-    },
-    setItem(key: string, value: string) {
-      if (failSetKeys.has(key)) {
-        throw new Error(`Blocked write for ${key}`);
-      }
-      values.set(key, value);
-    }
-  };
-}
