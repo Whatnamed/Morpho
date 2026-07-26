@@ -9576,3 +9576,96 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
 .side-drawer .result-group-title:first-of-type {
   margin-top: 4px;
 }
+
+/* Blank-project starter: low-pressure first screen, never blocks canvas input. */
+.workspace-starter {
+  position: fixed;
+  inset: 0;
+  z-index: 24;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px 120px;
+  pointer-events: none;
+}
+
+.workspace-starter-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 430px;
+  padding: 30px 34px 26px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  background: rgba(252, 251, 248, 0.88);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(14px) saturate(1.04);
+  text-align: center;
+  animation: workspace-starter-in var(--duration-ui) var(--ease-out);
+}
+
+.workspace-starter-kicker {
+  color: var(--accent-brand);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+}
+
+.workspace-starter-card h2 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.workspace-starter-card > p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.workspace-starter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 10px;
+  pointer-events: auto;
+}
+
+.workspace-starter-actions .brand-button,
+.workspace-starter-actions .plain-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 16px;
+  font-size: 13px;
+}
+
+.workspace-starter-hint {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-starter-card {
+    animation: none;
+  }
+}
+
+@keyframes workspace-starter-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+

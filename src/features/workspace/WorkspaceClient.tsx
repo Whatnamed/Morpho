@@ -139,6 +139,7 @@ import { ProjectBundlePanel } from "./components/ProjectBundlePanel";
 import { ResearchDetailPanel } from "./components/ResearchDetailPanel";
 import { CanvasContextMenu, SelectionToolbar } from "./components/SelectionToolbar";
 import { TopControls } from "./components/TopControls";
+import { WorkspaceStarter } from "./components/WorkspaceStarter";
 import { usePersistentWorkspace } from "./usePersistentWorkspace";
 import { useWorkspaceAssetUrls } from "./useWorkspaceAssetUrls";
 import { compactObjectList, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
@@ -6044,6 +6045,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     />
   );
 
+  const showWorkspaceStarter =
+    persistenceState.phase !== "loading" &&
+    !persistenceState.migrationError &&
+    workspace.ai.messages.length === 0 &&
+    !Object.values(workspace.objects).some((object) => object.visibility === "active");
+
   return (
     <main className="workspace">
       <input
@@ -6107,6 +6114,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           }
         }}
       />
+
+      {showWorkspaceStarter ? (
+        <WorkspaceStarter
+          onStartChat={() => {
+            setAiOpen(true);
+            setAiInputFocusNonce((current) => current + 1);
+          }}
+          onImport={() => railImportInputRef.current?.click()}
+        />
+      ) : null}
 
       {detailProposal ? (
         <aside className="proposal-detail-dialog" aria-label="草案详情">
