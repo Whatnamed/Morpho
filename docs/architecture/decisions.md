@@ -703,3 +703,11 @@ Boundary: Supabase stores only user/turn/lease IDs, status, timestamps, terminal
 
 - A generated image is projected into project memory and stage records as an outcome only when it is anchored in project semantics: generated from project objects, attached to a direction or visual branch, the current default reference, or used by a delivery reference.
 - A one-off trial generation stays on the canvas and in the factual continuity record of the event that produced it, but it is not projected as an established outcome. Canvas presence is visual organization, not meaning.
+
+# 2026-07-27: Playwright for browser acceptance
+
+- Playwright is a core dependency for browser acceptance. Scope is deliberately narrow: the paths where a regression silently destroys or misrepresents project state — opening projects, canvas selection, hide/restore, anchor replacement, the undo block, reload restore, backup round trip, and Agent turn send/stream/cancel/fail plus 401 and 503.
+- No acceptance test may reach a paid model or image endpoint. Agent responses are intercepted at `window.fetch` and served as a real `ReadableStream` of SSE frames produced by the production encoder, so streaming and cancellation are exercised for real and a protocol change breaks the fixtures loudly.
+- The suite runs its own production server on its own port. Reusing a developer's dev server would inherit that session and Next refuses a second dev server in the same directory.
+- The seed workspace is regenerated from the domain code on every run rather than committed. A committed snapshot would drift from the schema; Playwright's loader cannot import the domain layer directly because of its bare JSON imports.
+- Defects the suite finds are recorded as `test.fail` expectations rather than deleted or worked around, so the fix has a test to turn green.

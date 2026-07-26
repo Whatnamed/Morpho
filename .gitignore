@@ -17,3 +17,9 @@ out/
 .DS_Store
 Thumbs.db
 temp/
+
+# Playwright acceptance run artifacts
+e2e/.artifacts/
+e2e/.seed/
+playwright-report/
+test-results/

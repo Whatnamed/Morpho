@@ -536,3 +536,35 @@ supabase migration list
 stable key from `MORPHO_AI_API_KEY`, so no new deployment variable is required. If
 it is set, every instance must share the same value — a per-instance secret makes
 continuations fail across instances.
+
+# Browser acceptance
+
+The acceptance suite runs a production server on port 3100 so it never collides
+with a developer's `npm run dev` — Next refuses a second dev server in the same
+directory — and it never inherits that server's Supabase session. Build first:
+
+```powershell
+npm run build
+npm run test:e2e
+```
+
+`npm run test:e2e:build` does both. First-time setup needs the browser binary:
+
+```powershell
+npx playwright install chromium
+```
+
+The suite starts its own server with `MORPHO_AUTH_REQUIRED=false` and empty
+provider keys. No test may reach a paid model or image endpoint: `/api/ai/agent`
+is intercepted in the page and answered from SSE frames built by the production
+encoder in `e2e/support/agentSse.ts`. The seed workspace is regenerated from the
+real domain code on every run by `e2e/globalSetup.ts` into `e2e/.seed/seed.json`,
+because Playwright's loader cannot resolve the case-study fixture's JSON imports.
+
+Two expectations are marked `test.fail` on purpose. They record defects the suite
+found, so the eventual fix has a test to turn green:
+
+- the canvas comes back with nothing selected after a reload, although
+  `ui.lastSelectionIds` is stored correctly;
+- `.archive-panel` does not scroll, so the restore preview's confirm row falls
+  below any window shorter than about 1000px.
