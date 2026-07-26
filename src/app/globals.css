@@ -10051,3 +10051,27 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
   outline: 2px solid var(--selection-outline);
   outline-offset: 1px;
 }
+
+.workspace-banner.is-error {
+  border-color: rgba(166, 69, 58, 0.32);
+}
+
+.workspace-banner.is-error strong {
+  color: var(--danger);
+}
+
+.workspace-banner-message {
+  margin-top: 2px;
+}
+
+.workspace-banner-message.success {
+  color: var(--success);
+}
+
+.workspace-banner-message.warning {
+  color: var(--warning);
+}
+
+.workspace-banner-message.error {
+  color: var(--danger);
+}

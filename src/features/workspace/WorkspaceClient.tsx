@@ -140,6 +140,7 @@ import { ProposalDraftCard } from "./components/ProposalDraftCard";
 import { ProjectBundlePanel } from "./components/ProjectBundlePanel";
 import { ResearchDetailPanel } from "./components/ResearchDetailPanel";
 import { CanvasContextMenu, SelectionToolbar } from "./components/SelectionToolbar";
+import { SaveFailureBanner } from "./components/SaveFailureBanner";
 import { TopControls } from "./components/TopControls";
 import { WorkspaceStarter } from "./components/WorkspaceStarter";
 import { usePersistentWorkspace } from "./usePersistentWorkspace";
@@ -601,6 +602,7 @@ function buildComparisonDecisionReason(confirmation: PendingComparisonConfirmati
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const router = useRouter();
   const [workspace, setWorkspace, persistenceState, flushWorkspace] = usePersistentWorkspace(projectId);
+  const [isStorageNoticeDismissed, setStorageNoticeDismissed] = useState(false);
   const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>(() => workspace.ui.lastSelectionIds);
   const [aiDraft, setAiDraft] = useState("");
   const [agentTurnMode, setAgentTurnMode] = useState<MorphoAgentTurnMode>("auto");
@@ -953,8 +955,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const handleManualSave = useCallback(() => {
     const result = flushWorkspace();
+    if (result.phase === "readOnly") {
+      showWorkspaceNotice("这个标签页是只读的，改动不会保存。", 2600);
+      return;
+    }
     showWorkspaceNotice(result.phase === "error" ? "本地保存失败" : "已保存", 1400);
   }, [flushWorkspace, showWorkspaceNotice]);
+
 
   useEffect(
     () => () => {
@@ -6230,6 +6237,30 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   return (
     <main className="workspace">
+      {/* Ordered by how much is at stake: an unsaved change outranks a read-only
+          tab, which outranks a browser that has merely not promised to keep data. */}
+      {persistenceState.phase === "error" && !persistenceState.migrationError ? (
+        <SaveFailureBanner
+          kind={persistenceState.failureKind ?? "unknown"}
+          stage={persistenceState.failedStage}
+          workspace={workspace}
+        />
+      ) : persistenceState.phase === "readOnly" ? (
+        <div className="workspace-banner" role="status">
+          <strong>这个项目已在另一个标签页打开</strong>
+          <span>
+            为了不让两个标签页互相覆盖，这里暂时只读：改动不会保存。关闭另一个标签页后刷新本页，即可继续编辑。
+          </span>
+        </div>
+      ) : persistenceState.storageDurability === "bestEffort" && !isStorageNoticeDismissed ? (
+        <div className="workspace-banner" role="status">
+          <strong>当前浏览器尚未允许长期保存</strong>
+          <span>长时间不打开，或设备空间紧张时，本地项目可能被浏览器清空。建议在“归档”里导出一份可恢复备份。</span>
+          <button className="workspace-banner-dismiss" type="button" onClick={() => setStorageNoticeDismissed(true)}>
+            知道了
+          </button>
+        </div>
+      ) : null}
       <input
         ref={railImportInputRef}
         className="sr-only"

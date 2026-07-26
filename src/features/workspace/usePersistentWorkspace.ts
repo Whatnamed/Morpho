@@ -14,6 +14,11 @@ import {
   persistProjectWorkspaceAndSummary
 } from "@/infrastructure/persistence/localProjectStore";
 import {
+  requestStorageDurability,
+  type StorageDurabilityStatus
+} from "@/infrastructure/persistence/storageDurability";
+import { acquireProjectWriteLease } from "@/infrastructure/persistence/projectWriteLock";
+import {
   createWorkspacePersistenceController,
   type WorkspacePersistenceController,
   type WorkspacePersistenceState
@@ -59,16 +64,41 @@ export function usePersistentWorkspace(projectId: string) {
   const [hasLoaded, setHasLoaded] = useState(false);
   const [workspace, setWorkspace] = useState<MorphoWorkspace>(() => createBlankWorkspace(projectId));
   const [persistence, setPersistence] = useState<WorkspacePersistenceState>({ phase: "loading", isDirty: false });
+  const [storageDurability, setStorageDurability] = useState<StorageDurabilityStatus>("unknown");
   const controllerRef = useRef<WorkspacePersistenceController | null>(null);
+  const releaseLeaseRef = useRef<(() => void) | null>(null);
 
-  useEffect(() => {
+  /** Pending writes go out before the lease does, so the next tab reads them. */
+  const releaseWorkspace = useCallback(() => {
     controllerRef.current?.flush();
     controllerRef.current?.dispose();
     controllerRef.current = null;
+    releaseLeaseRef.current?.();
+    releaseLeaseRef.current = null;
+  }, []);
+
+  // An evictable origin loses written work silently, so the grant is requested on
+  // the workspace route too — not only on the project home a deep link skips.
+  useEffect(() => {
+    let isCancelled = false;
+    void requestStorageDurability().then((durability) => {
+      if (!isCancelled) {
+        setStorageDurability(durability);
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    releaseWorkspace();
     let isCancelled = false;
 
     const timeoutId = window.setTimeout(() => {
-      void loadWorkspace(projectId).then((loaded) => {
+      void (async () => {
+        const loaded = await loadWorkspace(projectId);
         if (isCancelled) {
           return;
         }
@@ -80,22 +110,40 @@ export function usePersistentWorkspace(projectId: string) {
           return;
         }
 
+        // Two tabs on one project do not merge: the second tab's write replaces
+        // everything the first tab did. Whichever tab loses the lease stops
+        // writing entirely rather than racing for last-write-wins.
+        const lease = await acquireProjectWriteLease(projectId);
+        if (isCancelled) {
+          if (lease.status === "granted") {
+            lease.release();
+          }
+          return;
+        }
+
+        if (lease.status === "heldElsewhere") {
+          setPersistence({ phase: "readOnly", isDirty: false });
+          return;
+        }
+
+        if (lease.status === "granted") {
+          releaseLeaseRef.current = lease.release;
+        }
+
         controllerRef.current = createWorkspacePersistenceController({
           writer: (currentWorkspace) => persistProjectWorkspaceAndSummary(window.localStorage, currentWorkspace),
           onStateChange: setPersistence
         });
         setPersistence(controllerRef.current.getState());
-      });
+      })();
     }, 0);
 
     return () => {
       isCancelled = true;
       window.clearTimeout(timeoutId);
-      controllerRef.current?.flush();
-      controllerRef.current?.dispose();
-      controllerRef.current = null;
+      releaseWorkspace();
     };
-  }, [projectId]);
+  }, [projectId, releaseWorkspace]);
 
   useEffect(() => {
     if (!hasLoaded || loadResult.migrationError || typeof window === "undefined") {
@@ -141,5 +189,10 @@ export function usePersistentWorkspace(projectId: string) {
     });
   }, []);
 
-  return [workspace, setReconciledWorkspace, { ...persistence, migrationError: loadResult.migrationError }, flushWorkspace] as const;
+  return [
+    workspace,
+    setReconciledWorkspace,
+    { ...persistence, migrationError: loadResult.migrationError, storageDurability },
+    flushWorkspace
+  ] as const;
 }
