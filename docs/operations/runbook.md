@@ -18,6 +18,12 @@ npm.cmd run build
 
 Vercel must receive the values named in `.env.example`; never copy values from local `.env.local` into documentation, logs, or Git.
 
+Since 2026-07-27 the build self-hosts Geist through `next/font/google`
+(`src/app/layout.tsx`), so the **build machine needs outbound access to
+`fonts.googleapis.com` / `fonts.gstatic.com`** on the first uncached build. An
+offline build fails at font fetch; behind a proxy, set `HTTPS_PROXY` for the
+build shell.
+
 ## Cloudflare Workers Backup Capability
 
 Cloudflare/OpenNext remains a retained, opt-in backup capability and does not replace the Vercel production path. Normal `next dev`, validation, and production builds do not initialize OpenNext or read `.dev.vars`; only explicit `cf:*` commands enter that path. Keep the Cloudflare files and scripts intact. See [Cloudflare Workers deployment](./cloudflare-workers.md) for its separate configuration, preview, deployment, acceptance, and rollback flow.

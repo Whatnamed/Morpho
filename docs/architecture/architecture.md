@@ -21,7 +21,8 @@ Important module boundaries:
 - `src/middleware.ts` owns authenticated route access and login redirects.
 - `src/features/projects/` owns the local project homepage UI.
 - `src/features/workspace/` owns the visible workbench experience.
-- `src/features/auth/` owns the login client.
+- `src/features/auth/` owns the login client and its decorative sign-in scene.
+- `src/design-system/` owns the app-side design-token install (`tokens.css` + `tokens/*.css`, mirrored from `docs/design/design-system/`); `globals.css` imports it once and declares no tokens of its own.
 - `src/features/archive/` owns archive, editable backup, and restore clients.
 - `src/features/delivery-output/` owns the browser-only delivery output package client.
 - `src/domain/morpho/` owns product-domain types, the generated case-study fixture, deterministic domain actions, import helpers, generation helpers, and queries.

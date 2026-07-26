@@ -33,12 +33,18 @@ These documents guide implementation. They do not define database schema, AI rou
 
 ## Design-system package notes
 
-* `design-system/` is a reference export, not wired into the build. Its
-  `README.md` describes an optional `src/design-system` integration (import
-  tokens, delete the duplicated `:root` block); that is a separate code
-  decision, not part of this documentation set.
+* The token layer IS wired into the build (2026-07-27): `src/design-system/`
+  holds the app-side copy of `design-system/tokens/*.css` (minus `fonts.css`),
+  imported once at the top of `src/app/globals.css`, whose duplicated `:root`
+  block was removed. Token values change in the design-system project first,
+  then the export overwrites `docs/design/design-system/` **and**
+  `src/design-system/tokens/` is updated to match — keep the two copies
+  identical.
+* Component templates (`design-system/components/**`) remain reference-only
+  and are not part of the build.
 * `design-system/tokens/fonts.css` loads Geist from Google Fonts for
-  design-tool previews only — never import it into the app.
+  design-tool previews only — never import it into the app. The app serves
+  Geist via `next/font` in `src/app/layout.tsx`.
 * The project home (`.phome-*`) and the login screen are intentionally not
   componentised there yet; both were restyled from the same Claude Design
   project's handoff (see git history 6143297 / 57b0e41).

@@ -34,10 +34,17 @@ source: read from the locally mounted working copy (`Morpho/`), not fetched thro
 ## Sync history
 
 - 2026-07-26 — first association recorded; divergence between the v1 design docs and the shipped app catalogued.
+- 2026-07-27 — recorded repo-side (mirror into the design project on next
+  export): the login page and project home shipped from this project's handoff
+  (repo commits 6143297 / 57b0e41), so both now have a stable shipped reference
+  the design system does not model yet; the token layer was installed app-side
+  as `src/design-system/tokens/*.css` (commit 1070123) — future token changes
+  must update that copy together with this export.
 
 ## Not mirrored
 
-`src/features/projects/ProjectHomeClient.tsx` and the `.phome-*` styles (project
-home) are still being reworked upstream, so the design system does not model
-them yet. Auth, delivery panels and the document reader exist in the app but are
-documented rather than componentised — say so before designing against them.
+`src/features/projects/ProjectHomeClient.tsx` / `.phome-*` (project home) and
+`src/features/auth/` (login) shipped on 2026-07-27 from this project's handoff
+but are not componentised here yet — modelling them is the next sync task.
+Delivery panels and the document reader exist in the app but are documented
+rather than componentised — say so before designing against them.

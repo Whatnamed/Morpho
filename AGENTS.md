@@ -100,7 +100,7 @@ The anchor HTML is not production code. Do not copy its fixed layout, absolute p
 * Do not build a permanent three-column shell that narrows the canvas.
 * Do not create equal-width card grids, dashboard metric panels, stage progress widgets, colorful badge stacks, workflow wires, node ports, or large dashed stage boxes.
 * Different object types must retain different visual treatments.
-* Use design tokens rather than scattering arbitrary colors, spacing, shadows, and radii.
+* Use design tokens rather than scattering arbitrary colors, spacing, shadows, and radii. Tokens are declared once in `src/design-system/tokens/*.css` (imported by `globals.css`); do not re-declare them in `:root` elsewhere.
 * Use Chinese as the default product UI language unless a specific interface intentionally needs bilingual content.
 * Motion should explain state changes, not decorate.
 
