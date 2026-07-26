@@ -1,0 +1,21 @@
+/* Morpho shape. Softened, never inflated. */
+:root {
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 18px;
+
+  /* Real radii in shipped use, named for reuse */
+  --radius-control: 8px;      /* plain / brand buttons */
+  --radius-icon-button: 9px;  /* icon buttons, rail buttons, toolbar buttons */
+  --radius-cluster: 13px;     /* floating clusters */
+  --radius-rail: 16px;        /* left rail, stage regions */
+  --radius-object: 10px;      /* most canvas objects */
+  --radius-ai-panel: 22px;    /* AI conversation surface */
+  --radius-ai-input: 16px;    /* composer */
+  --radius-pill: 999px;
+
+  --blur-glass: blur(18px) saturate(1.05); /* @kind other */
+  --blur-toolbar: blur(20px) saturate(1.04); /* @kind other */
+  --blur-popover: blur(20px); /* @kind other */
+}

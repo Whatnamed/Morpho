@@ -1,0 +1,16 @@
+/* Morpho motion. Motion explains state change; it never decorates.
+   Two durations and one easing carry almost the whole product. */
+:root {
+  --duration-fast: 140ms; /* @kind other */
+  --duration-ui: 200ms; /* @kind other */
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1); /* @kind other */
+
+  /* Longer, named durations for the few places that need them */
+  --duration-collapse: 200ms; /* @kind other */
+  --duration-shimmer: 1700ms; /* @kind other */
+  --duration-pending-shimmer: 2600ms; /* @kind other */
+
+  --press-scale: 0.97; /* @kind other */
+  --hover-lift: -1px; /* @kind other */
+  --card-hover-lift: -2px; /* @kind other */
+}

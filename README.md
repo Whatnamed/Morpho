@@ -116,8 +116,8 @@ npm.cmd run build
 ### 设计规则
 
 - [`docs/design/README.md`](docs/design/README.md)
+- [`docs/design/design-system/docs/DESIGN-SYSTEM.md`](docs/design/design-system/docs/DESIGN-SYSTEM.md)
 - [`docs/design/Morpho_UI_原型设计说明_v1.md`](docs/design/Morpho_UI_原型设计说明_v1.md)
-- [`docs/design/Morpho_Light_Design_System_v1_CN_EN.md`](docs/design/Morpho_Light_Design_System_v1_CN_EN.md)
 - [`docs/design/references/morpho_workspace_anchor_v2.html`](docs/design/references/morpho_workspace_anchor_v2.html)
 
 ### 工程文档

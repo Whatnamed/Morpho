@@ -1,0 +1,10 @@
+/* Morpho design tokens. Import once, above your own rules.
+   In the app this is `@import "@/design-system/tokens.css";` at the top of
+   src/app/globals.css — every --token below is then available app-wide. */
+@import "./tokens/fonts.css";
+@import "./tokens/colors.css";
+@import "./tokens/typography.css";
+@import "./tokens/spacing.css";
+@import "./tokens/shape.css";
+@import "./tokens/elevation.css";
+@import "./tokens/motion.css";

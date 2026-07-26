@@ -33,8 +33,8 @@ Then read only the documents relevant to the task:
 ### Design rules
 
 * `docs/design/README.md`
+* `docs/design/design-system/docs/DESIGN-SYSTEM.md` (current design system; tokens in `design-system/tokens/*.css`)
 * `docs/design/Morpho_UI_原型设计说明_v1.md`
-* `docs/design/Morpho_Light_Design_System_v1_CN_EN.md`
 
 ### Historical materials
 
@@ -49,7 +49,7 @@ Then read only the documents relevant to the task:
 1. Explicit current product rules in `docs/product/00–05`
 2. `README_本次更新说明.md`
 3. UI behavior and required states in `Morpho_UI_原型设计说明_v1.md`
-4. Visual system and tokens in `Morpho_Light_Design_System_v1_CN_EN.md`
+4. Visual system and tokens in `docs/design/design-system/` (`docs/DESIGN-SYSTEM.md` + `tokens/*.css`; mirrors the shipped `src/app/globals.css` — the code wins on conflict)
 5. `references/morpho_workspace_anchor_v2.html` for visual and interaction feeling only
 6. Archived documents and earlier prototypes
 
@@ -94,7 +94,7 @@ The anchor HTML is not production code. Do not copy its fixed layout, absolute p
 
 ## 7. Visual implementation rules
 
-* Follow `Morpho_Light_Design_System_v1_CN_EN.md`.
+* Follow `docs/design/design-system/docs/DESIGN-SYSTEM.md`.
 * Preserve a warm, calm, light-mode, image-led workspace.
 * The canvas should read as the primary surface. Top controls, left rail, AI conversation, and detail surfaces should float above it.
 * Do not build a permanent three-column shell that narrows the canvas.

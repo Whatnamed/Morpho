@@ -1,0 +1,6 @@
+/* Morpho type source.
+   The app declares Geist first in --font-sans but ships no font binaries in the
+   repository; the browser falls back to Inter / system UI unless Geist is
+   installed. Geist is served from Google Fonts here so specimens and mocks
+   render as intended. Replace with local @font-face once the files exist. */
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap");

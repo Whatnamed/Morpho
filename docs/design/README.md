@@ -8,11 +8,15 @@ These documents guide implementation. They do not define database schema, AI rou
 
 ## Reading order
 
-1. `Morpho_UI_原型设计说明_v1.md`
-   Defines the required UI states, interaction presentation, example project, and prototype behavior.
+1. `design-system/docs/DESIGN-SYSTEM.md`
+   The current design system, exported from the Claude Design project and
+   verified against the shipped code (tokens mirror `src/app/globals.css`
+   `:root`; stage presets mirror `src/domain/morpho/stageRegions.ts`).
+   `design-system/README.md` explains the package layout;
+   `design-system/docs/SOURCE-MAP.md` maps every directory to repo files.
 
-2. `Morpho_Light_Design_System_v1_CN_EN.md`
-   Defines visual language, spatial composition, design tokens, object treatment, selection feedback, floating surfaces, and motion.
+2. `Morpho_UI_原型设计说明_v1.md`
+   Defines the required UI states, interaction presentation, example project, and prototype behavior.
 
 3. `references/morpho_workspace_anchor_v2.html`
    A visual and interaction anchor for canvas composition, overlay behavior, spacing, density, panning, zooming, selection feedback, and AI panel placement.
@@ -21,8 +25,23 @@ These documents guide implementation. They do not define database schema, AI rou
 
 * Product behavior and object semantics are defined by `docs/product/00–05`.
 * UI interaction presentation is defined by `Morpho_UI_原型设计说明_v1.md`.
-* Visual styling and spatial composition are defined by `Morpho_Light_Design_System_v1_CN_EN.md`.
+* Visual styling and spatial composition are defined by `design-system/`
+  (`docs/DESIGN-SYSTEM.md` plus `tokens/*.css`). The design system mirrors the
+  shipped app; where it and the code disagree, `src/app/globals.css` wins and
+  the design system should be re-exported.
 * The anchor HTML is visual reference only and must not override product rules or visual-system rules.
+
+## Design-system package notes
+
+* `design-system/` is a reference export, not wired into the build. Its
+  `README.md` describes an optional `src/design-system` integration (import
+  tokens, delete the duplicated `:root` block); that is a separate code
+  decision, not part of this documentation set.
+* `design-system/tokens/fonts.css` loads Geist from Google Fonts for
+  design-tool previews only — never import it into the app.
+* The project home (`.phome-*`) and the login screen are intentionally not
+  componentised there yet; both were restyled from the same Claude Design
+  project's handoff (see git history 6143297 / 57b0e41).
 
 ## Anchor HTML rules
 
@@ -56,4 +75,8 @@ The deployable built-in case study is generated from the current editable Morpho
 
 ## Archive
 
-`archive/` contains earlier visual experiments. Archived files must not be used as current visual requirements unless the user explicitly asks to revisit them.
+`archive/` contains earlier visual experiments and superseded documents,
+including `Morpho_Light_Design_System_v1_CN_EN.md` (the v1 design system,
+replaced by `design-system/` on 2026-07-27 — still the best statement of the
+original *why*, superseded on specifics). Archived files must not be used as
+current visual requirements unless the user explicitly asks to revisit them.

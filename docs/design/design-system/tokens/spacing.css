@@ -1,0 +1,32 @@
+/* Morpho spacing.
+   NOTE: the app does not declare a spacing scale in :root — every value is
+   written inline. These tokens name the rhythm actually used so new work stays
+   in step; they are a design-system addition, not an app token. */
+:root {
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 10px;
+  --space-5: 12px;
+  --space-6: 14px;
+  --space-7: 16px;
+  --space-8: 18px;
+  --space-9: 24px;
+  --space-10: 28px;
+
+  /* Fixed workspace geometry, read from globals.css */
+  --rail-width: 46px;
+  --rail-left: 25px;
+  --drawer-width: 340px;
+  --drawer-left: 84px;
+  --drawer-bottom: 82px;
+  --cluster-top: 22px;
+  --cluster-inset: 24px;
+  --ai-panel-width: min(426px, calc(100vw - 56px)); /* @kind other */
+  --ai-panel-height: min(640px, calc(100vh - 128px)); /* @kind other */
+  --ai-panel-min-height: 440px;
+  --ai-panel-right: 28px;
+  --ai-panel-bottom: 82px;
+  --search-layer-width: min(680px, calc(100vw - 64px)); /* @kind other */
+  --detail-popover-width: min(700px, calc(100vw - 560px)); /* @kind other */
+}
