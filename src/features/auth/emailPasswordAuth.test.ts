@@ -60,7 +60,7 @@ describe("submitEmailPasswordAuth", () => {
         password: "first",
         passwordConfirmation: "second"
       })
-    ).resolves.toEqual({ status: "error", message: "两次输入的密码不一致。" });
+    ).resolves.toEqual({ status: "error", message: "两次输入的密码不一致，请重新输入。" });
 
     expect(client.auth.signUp).not.toHaveBeenCalled();
   });

@@ -11,6 +11,7 @@ import {
   type EmailPasswordAuthMode
 } from "@/features/auth/emailPasswordAuth";
 import { createBrowserSupabaseClient } from "@/infrastructure/supabase/browser";
+import { LoginScene } from "./LoginScene";
 
 type LoginClientProps = {
   nextPath: string;
@@ -66,87 +67,92 @@ export function LoginClient({ nextPath, configError }: LoginClientProps) {
 
   return (
     <main className="login-page">
-      <section className="login-card" aria-label="Morpho 账号访问">
-        <div className="login-mark">
-          <span>M</span>
-        </div>
-        <p className="login-eyebrow">Morpho</p>
-        <h1>{mode === "sign-in" ? "登录以继续你的项目" : "创建 Morpho 账号"}</h1>
-        <p className="login-copy">
-          {mode === "sign-in" ? "使用你的邮箱和密码访问 Morpho。" : "使用邮箱和密码开始。"} 项目、画布、图片和文件仍保存在当前浏览器本地。
-        </p>
+      <LoginScene />
 
-        <div className="login-mode-switch" aria-label="账号操作">
-          <button type="button" aria-pressed={mode === "sign-in"} onClick={() => changeMode("sign-in")}>
-            登录
-          </button>
-          <button type="button" aria-pressed={mode === "sign-up"} onClick={() => changeMode("sign-up")}>
-            注册
-          </button>
-        </div>
+      <div className="login-brand">
+        <span className="login-brand-mark">M</span>
+        <span className="login-brand-name">Morpho</span>
+      </div>
 
-        <form className="login-form" onSubmit={submit}>
-          <label>
-            邮箱
-            <input
-              autoComplete="email"
-              inputMode="email"
-              name="email"
-              placeholder="name@example.com"
-              spellCheck={false}
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.currentTarget.value)}
-              required
-            />
-          </label>
-          <label>
-            密码
-            <input
-              autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
-              name="password"
-              placeholder={mode === "sign-in" ? "输入密码" : "设置密码"}
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.currentTarget.value)}
-              required
-            />
-          </label>
-          {mode === "sign-up" ? (
+      <section className="login-center" aria-label="Morpho 账号访问">
+        <div className="login-card">
+          <h1>{mode === "sign-in" ? "登录以继续你的项目" : "创建 Morpho 账号"}</h1>
+          <p className="login-copy">{mode === "sign-in" ? "使用你的邮箱和密码访问 Morpho。" : "使用邮箱和密码开始。"}</p>
+
+          <div className="login-mode-switch" aria-label="账号操作">
+            <button type="button" aria-pressed={mode === "sign-in"} onClick={() => changeMode("sign-in")}>
+              登录
+            </button>
+            <button type="button" aria-pressed={mode === "sign-up"} onClick={() => changeMode("sign-up")}>
+              注册
+            </button>
+          </div>
+
+          <form className="login-form" onSubmit={submit}>
             <label>
-              确认密码
+              <span>邮箱</span>
               <input
-                autoComplete="new-password"
-                name="password-confirmation"
-                placeholder="再次输入密码"
-                type="password"
-                value={passwordConfirmation}
-                onChange={(event) => setPasswordConfirmation(event.currentTarget.value)}
+                autoComplete="email"
+                inputMode="email"
+                name="email"
+                placeholder="name@example.com"
+                spellCheck={false}
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.currentTarget.value)}
                 required
               />
             </label>
-          ) : null}
+            <label>
+              <span>密码</span>
+              <input
+                autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
+                name="password"
+                placeholder={mode === "sign-in" ? "输入密码" : "设置密码"}
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.currentTarget.value)}
+                required
+              />
+            </label>
+            {mode === "sign-up" ? (
+              <label>
+                <span>确认密码</span>
+                <input
+                  autoComplete="new-password"
+                  name="password-confirmation"
+                  placeholder="再次输入密码"
+                  type="password"
+                  value={passwordConfirmation}
+                  onChange={(event) => setPasswordConfirmation(event.currentTarget.value)}
+                  required
+                />
+              </label>
+            ) : null}
 
-          {error ? (
-            <div className="login-error" role="alert">
-              <LockKeyhole size={15} />
-              {error}
-            </div>
-          ) : null}
+            {error ? (
+              <div className="login-error" role="alert">
+                <LockKeyhole size={14} />
+                <span>{error}</span>
+              </div>
+            ) : null}
 
-          <button className="brand-button login-submit" type="submit" disabled={isAuthSubmissionDisabled(isPending, configError)}>
-            {mode === "sign-in" ? "登录" : "创建账号"}
-            <ArrowRight size={15} />
-          </button>
-        </form>
+            <button className="login-submit" type="submit" disabled={isAuthSubmissionDisabled(isPending, configError)}>
+              {mode === "sign-in" ? (isPending ? "正在登录…" : "登录") : isPending ? "正在创建账号…" : "创建账号"}
+              <ArrowRight size={15} />
+            </button>
+          </form>
 
-        <p className="login-mode-copy">
-          {mode === "sign-in" ? "首次使用？" : "已有账号？"}
-          <button type="button" onClick={() => changeMode(mode === "sign-in" ? "sign-up" : "sign-in")}>
-            {mode === "sign-in" ? "创建账号" : "登录"}
-          </button>
-        </p>
+          <p className="login-mode-copy">
+            {mode === "sign-in" ? "首次使用？" : "已有账号？"}
+            <button type="button" onClick={() => changeMode(mode === "sign-in" ? "sign-up" : "sign-in")}>
+              {mode === "sign-in" ? "创建账号" : "登录"}
+            </button>
+          </p>
+        </div>
       </section>
+
+      <p className="login-foot">项目、画布、图片和文件保存在当前浏览器本地。</p>
     </main>
   );
 }

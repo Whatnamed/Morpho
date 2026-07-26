@@ -86,7 +86,7 @@ function validateEmailPasswordAuth(
   }
 
   if (mode === "sign-up" && password !== passwordConfirmation) {
-    return "两次输入的密码不一致。";
+    return "两次输入的密码不一致，请重新输入。";
   }
 
   return null;
