@@ -461,6 +461,41 @@ describe("agent route stream", () => {
     }));
   });
 
+  it("keeps a turn alive when the workspace carries a superseded prompt-contract request state", async () => {
+    const response = await POST(agentRequest({
+      diagnostics: {
+        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+        // Persisted by an earlier contract version; the client already reports the
+        // boundary. It must not wedge every future request with a 400.
+        previousRequestState: {
+          promptContractVersion: "morpho-agent-v3.2-2026-07-13",
+          toolProfile: "standard",
+          latestUserMessageId: "ai-user-agent-1784747580056",
+          providerInputPrefixHash: "5666i9"
+        },
+        providerInputBoundaryReasons: ["promptContractChanged"]
+      }
+    }));
+
+    expect(response.status).toBe(200);
+    expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("still rejects a malformed previous request state on the current contract", async () => {
+    const response = await POST(agentRequest({
+      diagnostics: {
+        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+        previousRequestState: {
+          promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+          unexpectedField: "prompt text"
+        }
+      }
+    }));
+
+    expect(response.status).toBe(400);
+    expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
+  });
+
   it("issues a continuation binding on every completed provider response", async () => {
     const response = await POST(agentRequest());
     const events = await collectAgentRouteEvents(response);

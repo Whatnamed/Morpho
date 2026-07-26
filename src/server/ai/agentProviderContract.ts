@@ -758,9 +758,15 @@ function parseDiagnostics(value: unknown): AgentProviderDiagnostics | undefined 
   const contextFrameCount = optionalInteger(value.contextFrameCount, 100_000);
   const appendedContextFrameCount = optionalInteger(value.appendedContextFrameCount, 10_000);
   const conversationSummaryRevisionId = optionalIdentifier(value.conversationSummaryRevisionId);
-  const previousRequestState = value.previousRequestState === undefined
+  // A previous request state carried over from an older Prompt Contract is history,
+  // not a malformed request. Rejecting it would permanently wedge any workspace that
+  // persisted one. Drop it instead, so the turn proceeds across the cache boundary
+  // the client already reports as promptContractChanged.
+  const supersededPreviousRequestState = isSupersededRequestState(value.previousRequestState);
+  const previousRequestStateInput = supersededPreviousRequestState ? undefined : value.previousRequestState;
+  const previousRequestState = previousRequestStateInput === undefined
     ? undefined
-    : parseRequestState(value.previousRequestState);
+    : parseRequestState(previousRequestStateInput);
   const requestState = value.requestState === undefined ? undefined : parseRequestState(value.requestState);
   const reasons = value.providerInputBoundaryReasons === undefined
     ? undefined
@@ -769,7 +775,7 @@ function parseDiagnostics(value: unknown): AgentProviderDiagnostics | undefined 
     contextFrameCount === null ||
     appendedContextFrameCount === null ||
     conversationSummaryRevisionId === null ||
-    (value.previousRequestState !== undefined && !previousRequestState) ||
+    (previousRequestStateInput !== undefined && !previousRequestState) ||
     (value.requestState !== undefined && !requestState) ||
     (value.providerInputBoundaryReasons !== undefined && !reasons) ||
     (value.compactedThisTurn !== undefined && typeof value.compactedThisTurn !== "boolean")
@@ -786,6 +792,13 @@ function parseDiagnostics(value: unknown): AgentProviderDiagnostics | undefined 
     ...(reasons ? { providerInputBoundaryReasons: reasons } : {}),
     ...(typeof value.compactedThisTurn === "boolean" ? { compactedThisTurn: value.compactedThisTurn } : {})
   };
+}
+
+function isSupersededRequestState(value: unknown): boolean {
+  return isRecord(value) &&
+    typeof value.promptContractVersion === "string" &&
+    value.promptContractVersion.length <= MAX_IDENTIFIER_CHARS &&
+    value.promptContractVersion !== MORPHO_AGENT_PROMPT_CONTRACT_VERSION;
 }
 
 function parseRequestState(value: unknown): AgentProviderRequestState | undefined {
