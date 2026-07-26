@@ -4,7 +4,8 @@ import type {
   ConversationSummary,
   ConversationSummaryRevision,
   MorphoWorkspace,
-  ProviderInputSnapshot
+  ProviderInputSnapshot,
+  AgentTaskStrategyKind
 } from "./types";
 import { MORPHO_AGENT_CONTEXT_POLICY, type MorphoAgentContextPolicy } from "./agentContextPolicy";
 import {
@@ -30,6 +31,7 @@ export type ConversationMessageForContext = {
   createdAt?: string;
   laneKey?: string;
   providerInputSnapshot?: ProviderInputSnapshot;
+  taskStrategy?: AgentTaskStrategyKind;
 };
 
 export type ContinuousConversationContext = {
@@ -577,6 +579,7 @@ function toContextMessage(message: AiMessage): ConversationMessageForContext {
     body: message.body,
     createdAt: message.createdAt,
     laneKey: message.conversationLaneKey,
+    ...(message.taskStrategy ? { taskStrategy: message.taskStrategy } : {}),
     ...(message.providerInputSnapshot ? { providerInputSnapshot: message.providerInputSnapshot } : {})
   };
 }

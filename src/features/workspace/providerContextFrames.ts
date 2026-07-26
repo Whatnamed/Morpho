@@ -20,10 +20,13 @@ import type { ResponseMessageInput } from "@/server/ai/openaiCompatibleProvider"
 import type { TaskContextResult, ProviderTaskContext } from "./taskContext";
 import type { MorphoAgentTurnMode } from "./morphoAgent";
 import { buildAgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
-import { buildAgentStrategyPolicyBlocks } from "./agentPromptRegistry";
 import type { AgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
 import type { AgentCanonicalRuntimeItem } from "@/shared/agentRuntimeItem";
 import type { AgentCacheItemManifest } from "@/shared/agentStreamProtocol";
+import {
+  createAgentStrategyMarker,
+  type AgentClientStrategyMarker
+} from "@/shared/agentStrategyItem";
 
 export type ProviderContextFrameBuildInput = {
   workspace: MorphoWorkspace;
@@ -267,12 +270,14 @@ export function buildAgentProviderInput(input: {
     role: "user" | "assistant";
     body: string;
     providerInputSnapshot?: ProviderInputSnapshot;
+    taskStrategy?: AgentTaskStrategyKind;
   }>;
   currentUserMessageId: string;
+  currentStrategy?: AgentTaskStrategyKind;
   userInput: ResponseMessageInput;
   activeSummaryRevisionId?: string;
   serverManagedPrefix?: boolean;
-}): ResponseMessageInput[] {
+}): Array<ResponseMessageInput | AgentClientStrategyMarker> {
   const activeMessageIds = new Set(input.history.map((message) => message.id));
   activeMessageIds.add(input.currentUserMessageId);
   const frames = buildProviderContextFrameTimeline({
@@ -280,7 +285,7 @@ export function buildAgentProviderInput(input: {
     activeMessageIds,
     activeSummaryRevisionId: input.activeSummaryRevisionId
   });
-  const messages: ResponseMessageInput[] = input.serverManagedPrefix === false
+  const messages: Array<ResponseMessageInput | AgentClientStrategyMarker> = input.serverManagedPrefix === false
     ? []
     : [{ role: "system", content: [{ type: "input_text", text: input.stableSystemPrompt }] }];
   frames
@@ -304,10 +309,22 @@ export function buildAgentProviderInput(input: {
 
   for (const message of input.history) {
     beforeByAnchor.get(message.id)?.forEach((frame) => messages.push(providerContextFrameMessage(frame)));
+    if (message.role === "user" && message.taskStrategy) {
+      messages.push(createAgentStrategyMarker({
+        strategy: message.taskStrategy,
+        anchorMessageId: message.id
+      }));
+    }
     messages.push(providerHistoryMessage(message));
     afterByAnchor.get(message.id)?.forEach((frame) => messages.push(providerContextFrameMessage(frame)));
   }
   beforeByAnchor.get(input.currentUserMessageId)?.forEach((frame) => messages.push(providerContextFrameMessage(frame)));
+  if (input.currentStrategy) {
+    messages.push(createAgentStrategyMarker({
+      strategy: input.currentStrategy,
+      anchorMessageId: input.currentUserMessageId
+    }));
+  }
   messages.push(input.userInput);
   afterByAnchor.get(input.currentUserMessageId)?.forEach((frame) => messages.push(providerContextFrameMessage(frame)));
   return messages;
@@ -512,7 +529,6 @@ function createTurnContextFrame(
       ...(input.cacheBoundaryReason ? [`本轮缓存边界：${input.cacheBoundaryReason}`] : []),
       taskMemory,
       selected.length > 0 ? `本轮相关对象：\n- ${selected.join("\n- ")}` : "本轮没有显式对象摘要。",
-      ...buildAgentStrategyPolicyBlocks(input.strategy)
     ].join("\n"),
     sourceRefs: relatedIds.map((id) => ({ kind: "object", id })),
     reason: "为当前用户回合提供授权范围和任务语义",

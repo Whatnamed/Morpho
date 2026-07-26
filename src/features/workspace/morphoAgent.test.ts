@@ -12,6 +12,7 @@ import {
   buildMorphoAgentToolArgumentRepairReminder,
   buildMorphoAgentSystemPrompt,
   buildMorphoAgentTools,
+  getComparisonToolExecutionBlockReason,
   MORPHO_AGENT_TOOL_EFFECT_MATRIX,
   getDesignDefinitionDrafts,
   isExplicitComparisonRequest,
@@ -376,13 +377,28 @@ describe("Morpho agent tool argument validation", () => {
       context,
       providerTaskContext: buildProviderTaskContext(context)
     });
-    const tools = buildMorphoAgentTools(false, { allowComparisonAnalysis: false });
+    const tools = buildMorphoAgentTools(false);
 
     expect(prompt).toContain("当用户多选草案或设计定义并要求分析但未明确要求比较时，读取完整选择内容后直接在对话中回答");
-    expect(JSON.stringify(tools)).not.toContain("create_comparison_analysis");
+    expect(JSON.stringify(tools)).toContain("create_comparison_analysis");
     expect(isExplicitComparisonRequest("分析这三个方案")).toBe(false);
     expect(isExplicitComparisonRequest("不要做对比卡片，只根据内容分析")).toBe(false);
     expect(isExplicitComparisonRequest("对比这三个方案")).toBe(true);
+  });
+
+  it("blocks an unsolicited or selection-free Compare tool call locally", () => {
+    expect(getComparisonToolExecutionBlockReason({
+      explicitComparisonRequested: false,
+      selectedObjectCount: 3
+    })).toContain("用户未明确要求比较");
+    expect(getComparisonToolExecutionBlockReason({
+      explicitComparisonRequested: true,
+      selectedObjectCount: 1
+    })).toContain("至少两个");
+    expect(getComparisonToolExecutionBlockReason({
+      explicitComparisonRequested: true,
+      selectedObjectCount: 2
+    })).toBeUndefined();
   });
 
   it("normalizes direction preview visual roles before operation validation", () => {

@@ -381,8 +381,7 @@ export function buildMorphoAgentUserInput(input: {
 }
 
 export function buildMorphoAgentTools(
-  webSearchEnabled: boolean,
-  options: { allowComparisonAnalysis?: boolean } = {}
+  webSearchEnabled: boolean
 ): ResponseTool[] {
   const tools: ResponseTool[] = [
     readSelectedContextTool(),
@@ -777,10 +776,20 @@ export function buildMorphoAgentTools(
     );
   }
 
-  const filteredTools = options.allowComparisonAnalysis === false
-    ? tools.filter((tool) => tool.type !== "function" || tool.name !== "create_comparison_analysis")
-    : tools;
-  return filteredTools.map(withAgentToolEffectDescription);
+  return tools.map(withAgentToolEffectDescription);
+}
+
+export function getComparisonToolExecutionBlockReason(input: {
+  explicitComparisonRequested: boolean;
+  selectedObjectCount: number;
+}): string | undefined {
+  if (!input.explicitComparisonRequested) {
+    return "Compare 已阻止：用户未明确要求比较，本轮只进行普通分析。";
+  }
+  if (input.selectedObjectCount < 2) {
+    return "Compare 已阻止：需要至少两个当前显式选择且可用的对象。";
+  }
+  return undefined;
 }
 
 export function buildAgentDefaultMemoryPromptBlock(memory: AgentDefaultMemoryContext): string {

@@ -288,6 +288,7 @@ import {
   buildMorphoAgentUserInput,
   buildToolResultOutput,
   getDesignDefinitionDrafts,
+  getComparisonToolExecutionBlockReason,
   isExplicitComparisonRequest,
   normalizeGenerateVisualsForSelectedDirections,
   parseMorphoAgentToolCallBatch,
@@ -2050,13 +2051,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       frames: workspaceAtAgentStart.ai.providerContextFrames ?? [],
       history: preCompactionHistory,
       currentUserMessageId: userMessageId,
+      currentStrategy: strategy.kind,
       userInput,
       activeSummaryRevisionId: preCompactionConversation.summaryRevision?.id
     });
     const allowStructuredComparison = isExplicitComparisonRequest(draft);
-    const initialTools = buildMorphoAgentTools(true, {
-      allowComparisonAnalysis: allowStructuredComparison
-    });
+    const initialTools = buildMorphoAgentTools(true);
     const preCompactionBudget = estimateProviderInputTimelineBudget({
       input: preCompactionInput,
       tools: initialTools,
@@ -2189,6 +2189,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       frames: workspaceAtAgentStart.ai.providerContextFrames ?? [],
       history: baseHistory,
       currentUserMessageId: userMessageId,
+      currentStrategy: strategy.kind,
       userInput,
       activeSummaryRevisionId: conversationContext.summaryRevision?.id,
       serverManagedPrefix: false
@@ -2614,6 +2615,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           frames: framedCompactedWorkspace.ai.providerContextFrames ?? [],
           history: refreshedHistory,
           currentUserMessageId: userMessageId,
+          currentStrategy: strategy.kind,
           userInput,
           activeSummaryRevisionId: conversationContext.summaryRevision?.id,
           serverManagedPrefix: false
@@ -3342,6 +3344,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               break;
             }
             case "create_comparison_analysis": {
+              const comparisonBlockReason = getComparisonToolExecutionBlockReason({
+                explicitComparisonRequested: allowStructuredComparison,
+                selectedObjectCount: selectedObjectIds.length
+              });
+              if (comparisonBlockReason) {
+                throw new Error(comparisonBlockReason);
+              }
               const args = parsed.args;
               const analysisId = commitWorkspaceNow((current) => {
                 const authorizationResult = buildComparisonAuthorization({

@@ -22,6 +22,10 @@ import {
 } from "@/shared/agentRuntimeItem";
 import type { AgentContextBudgetState } from "@/shared/providerInputBudget";
 import { estimateProviderInputTokens } from "@/shared/providerInputBudget";
+import {
+  canonicalAgentStrategyMessage,
+  parseAgentStrategyMarker
+} from "@/shared/agentStrategyItem";
 import type {
   AgentOutputItem,
   OpenAiCompatibleResponseRequest,
@@ -190,9 +194,7 @@ export function buildAgentProviderContract(input: {
   const summaryOnly = input.request.directive?.kind === "conversationSummary";
   const tools = summaryOnly
     ? []
-    : buildMorphoAgentTools(input.webSearchEnabled, {
-        allowComparisonAnalysis: input.request.capabilityIntent.comparisonAnalysis
-      });
+    : buildMorphoAgentTools(input.webSearchEnabled);
   const effectiveToolProfile: AgentToolProfile = summaryOnly
     ? "conversationSummary"
     : resolveProviderToolProfile(tools);
@@ -288,6 +290,15 @@ function parseDynamicInput(value: unknown[]):
     const raw = value[index];
     if (!isRecord(raw)) {
       return failed(`input[${index}] 必须是对象。`);
+    }
+    if (raw.type === "morpho_strategy") {
+      const marker = parseAgentStrategyMarker(raw);
+      const next = value[index + 1];
+      if (!marker || !isRecord(next) || next.role !== "user") {
+        return failed(`input[${index}] 的 strategy marker 格式或位置无效。`);
+      }
+      parsed.push(canonicalAgentStrategyMessage(marker));
+      continue;
     }
     if (raw.type === "message") {
       const outputMessage = parseProviderOutputMessage(raw);

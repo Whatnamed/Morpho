@@ -9,6 +9,7 @@ import {
 import { estimateProviderSerializedTokens } from "@/shared/providerInputBudget";
 import { createBlankWorkspace, createInitialWorkspace, migrateWorkspaceToCurrentSchema } from "@/domain/morpho/workspace";
 import {
+  appendAgentProviderContextFrames,
   appendAgentProviderRuntimeConfigurationFrame,
   appendAgentProviderStateFrames,
   buildAgentMemoryDeltaContext,
@@ -47,6 +48,31 @@ function userMessage(text: string) {
 }
 
 describe("Agent provider transcript reconstruction", () => {
+  it("keeps task strategy policy out of the untrusted turn context frame", () => {
+    const workspace = createInitialWorkspace();
+    const context = buildTaskContext(workspace, {
+      kind: "research",
+      draft: "调研海洋浮标",
+      selectedObjectIds: []
+    });
+    const next = appendAgentProviderContextFrames(workspace, {
+      workspace,
+      projectId: workspace.project.id,
+      strategy: "research",
+      mode: "auto",
+      promptContractVersion: "morpho-agent-test",
+      userMessageId: "user-research",
+      context,
+      providerTaskContext: buildProviderTaskContext(context),
+      defaultMemoryContext: buildAgentDefaultMemoryContext(workspace, "research")
+    });
+    const turnFrame = next.ai.providerContextFrames?.find(
+      (frame) => frame.kind === "turnContext" && frame.anchorMessageId === "user-research"
+    );
+
+    expect(turnFrame?.renderedText).toContain("本轮任务策略：research");
+    expect(turnFrame?.renderedText).not.toContain("先使用本地已授权资料");
+  });
   it("replays a persisted user snapshot so the next turn keeps the previous prefix", () => {
     const state = createProviderContextFrame(frameInput({ sequence: 1, renderedText: "项目状态" }));
     const turnA = createProviderContextFrame(
@@ -104,7 +130,9 @@ describe("Agent provider transcript reconstruction", () => {
       userInput: userMessage("用户 B")
     });
     const texts = input.map((item) =>
-      item.content.map((part) => ("text" in part ? part.text : "[image]")).join("\n")
+      "content" in item
+        ? item.content.map((part) => ("text" in part ? part.text : "[image]")).join("\n")
+        : ""
     );
     const userIndex = texts.findIndex((text) => text.includes("用户 A"));
     const postStateIndex = texts.findIndex((text) => text.includes("工具后的状态"));

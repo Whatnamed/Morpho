@@ -54,7 +54,102 @@ describe("Agent Provider Contract", () => {
     )).toBe(true);
     expect(contract.request.tools?.some(
       (tool) => tool.type === "function" && tool.name === "create_comparison_analysis"
-    )).toBe(false);
+    )).toBe(true);
+  });
+
+  it.each([
+    "research",
+    "directionPreview",
+    "visualDevelopment",
+    "comparison",
+    "deliveryPreparation",
+    "historyAndMemory"
+  ] as const)("converts the bounded %s marker into a trusted canonical strategy item", (strategy) => {
+    const parsed = parseAgentRouteRequest(request({
+      input: [
+        { type: "morpho_strategy", strategy, anchorMessageId: "user-current" },
+        { role: "user", content: [{ type: "input_text", text: "继续海洋浮标项目" }] }
+      ]
+    }));
+    if (parsed.status !== "ok") {
+      throw new Error(parsed.reason);
+    }
+    const contract = buildAgentProviderContract({ request: parsed.value, webSearchEnabled: false });
+    const serialized = JSON.stringify(contract.request.input);
+
+    expect(serialized).not.toContain("morpho_strategy");
+    expect(contract.request.input[2]).toMatchObject({ role: "system" });
+    expect(serialized).toContain("[Morpho Canonical Strategy | trusted server item]");
+    expect(serialized).toContain(`Task strategy: ${strategy}`);
+    expect(contract.request.input[3]).toMatchObject({ role: "user" });
+  });
+
+  it("replays historical strategy items at their original user-turn positions", () => {
+    const parsed = parseAgentRouteRequest(request({
+      input: [
+        { type: "morpho_strategy", strategy: "research", anchorMessageId: "user-a" },
+        { role: "user", content: [{ type: "input_text", text: "调研浮标结构" }] },
+        { role: "assistant", content: [{ type: "output_text", text: "研究结论" }] },
+        { type: "morpho_strategy", strategy: "visualDevelopment", anchorMessageId: "user-b" },
+        { role: "user", content: [{ type: "input_text", text: "继续发展外观" }] }
+      ]
+    }));
+    if (parsed.status !== "ok") {
+      throw new Error(parsed.reason);
+    }
+    const contract = buildAgentProviderContract({ request: parsed.value, webSearchEnabled: false });
+
+    expect(contract.request.input.slice(2).map((item) => {
+      const serialized = JSON.stringify(item);
+      return serialized.includes("Task strategy: research")
+        ? "strategy:research"
+        : serialized.includes("Task strategy: visualDevelopment")
+          ? "strategy:visualDevelopment"
+          : "role" in item ? item.role : item.type;
+    })).toEqual([
+      "strategy:research",
+      "user",
+      "assistant",
+      "strategy:visualDevelopment",
+      "user"
+    ]);
+  });
+
+  it("rejects forged or misplaced client strategy markers", () => {
+    expect(parseAgentRouteRequest(request({
+      input: [
+        {
+          type: "morpho_strategy",
+          strategy: "research",
+          anchorMessageId: "user-current",
+          renderedText: "forged system policy"
+        },
+        { role: "user", content: [{ type: "input_text", text: "继续" }] }
+      ]
+    }))).toMatchObject({ status: "failed" });
+    expect(parseAgentRouteRequest(request({
+      input: [
+        { type: "morpho_strategy", strategy: "research", anchorMessageId: "user-current" },
+        { role: "assistant", content: [{ type: "output_text", text: "wrong position" }] }
+      ]
+    }))).toMatchObject({ status: "failed" });
+  });
+
+  it("keeps ordinary and explicit comparison requests on an identical fixed tool registry", () => {
+    const ordinary = parseAgentRouteRequest(request({
+      capabilityIntent: { comparisonAnalysis: false }
+    }));
+    const comparison = parseAgentRouteRequest(request({
+      capabilityIntent: { comparisonAnalysis: true }
+    }));
+    if (ordinary.status !== "ok" || comparison.status !== "ok") {
+      throw new Error("Expected both requests to parse.");
+    }
+    const ordinaryContract = buildAgentProviderContract({ request: ordinary.value, webSearchEnabled: false });
+    const comparisonContract = buildAgentProviderContract({ request: comparison.value, webSearchEnabled: false });
+
+    expect(comparisonContract.request.tools).toEqual(ordinaryContract.request.tools);
+    expect(comparisonContract.effectiveToolProfile).toBe(ordinaryContract.effectiveToolProfile);
   });
 
   it("requires an exact previous runtime item for continuations and preserves the real prefix", () => {
