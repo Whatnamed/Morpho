@@ -661,3 +661,22 @@ Decision: `/api/ai/agent` constructs Prompt Contract v3.3, the stable System ite
 Reason: an authenticated browser must not be able to turn Morpho's Provider key into a general-purpose proxy, forge continuation to bypass daily quota, or elevate project text into trusted instructions. Responses and prompt caching also depend on exact ordered input, so the server-filtered Tool Profile and Runtime Item must be the items actually sent on the first call and replayed on continuation.
 
 Boundary: Supabase stores only user/turn/lease IDs, status, timestamps, terminal outcome, and bounded provider/search counters. It stores no prompt, workspace, transcript, object, document, or image data. RPCs derive identity only from `auth.uid()`, use a fixed `search_path`, lock quota/lease rows for atomic counters, expire after 20 minutes, and grant execution only to `authenticated`. `leaseContinuation` reuses quota and counters only; it never claims an exact Provider transcript continuation and cannot be combined with `continuation`. Stable high-impact state changes still require explicit user authority; exact user evidence authorizes memory writes, and Tool Effect metadata does not weaken existing product confirmation rules. Prompt/cache manifests persist hashes and semantic metadata only, trace persistence is bounded with truncation markers, and paid cache capability remains unverified until separately authorized.
+# 2026-07-26: Canonical strategy items and fixed Agent tools
+
+- Task strategy is a bounded client marker only: `{ type: "morpho_strategy", strategy, anchorMessageId }`.
+- The Agent route validates the marker, removes it from client input, and materializes a server-owned System item at the original user-turn position.
+- Historical user messages retain `taskStrategy`, so uncompressed transcript replay preserves strategy changes exactly. A conversation summary establishes the next baseline.
+- The standard Function Tool registry always includes `create_comparison_analysis`. Explicit comparison intent is enforced by local execution authorization, not by changing Provider tools or cache identity.
+
+# 2026-07-26: Causal Agent Turn Lease
+
+- Agent Turn Lease continuation is a sequence-checked capability, not a generic same-turn retry flag.
+- The database stores only SHA-256 request/manifest hashes, sequence counters, continuation kind, and canonical runtime item id. It never stores request bodies, workspace content, prompts, or credentials.
+- Initial retries are idempotent only for the same user, turn id, and initial request hash. Continuations use atomic sequence compare-and-swap and distinguish `providerContinuation`, `conversationSummary`, and `webSearch`.
+- The database web-search safety counter is 32. Local duplicate-query, source, timeout, and abort guards remain the primary bounded-execution controls.
+
+# 2026-07-26: Bounded Provider cache diagnostics
+
+- Only `workspace.ai.latestProviderRequestState` retains the latest full cache item manifest.
+- Historical assistant traces retain compact request state and cache diagnostics but never duplicate full manifests.
+- Workspace normalization strips manifests from legacy traces. Full project backup/restore retains the latest state; human-readable archives do not need to expose cache internals.

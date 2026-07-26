@@ -433,3 +433,45 @@ The current code does not include:
 - PPT/PDF/Figma generation or final delivery layout;
 - transcript replacement, transcript deletion, or user-managed chat-summary files;
 - deployment automation beyond the existing Vercel deployment and checked-in Cloudflare/OpenNext backup scripts.
+# Agent Lease migration verification
+
+The forward-only migration is:
+
+```text
+supabase/migrations/20260726143030_harden_agent_turn_lease_causality.sql
+```
+
+Do not apply it from an unverified shell. Verify the CLI and linked project first:
+
+```powershell
+supabase --version
+supabase status
+supabase projects list
+Get-Content supabase/.temp/project-ref
+supabase db push --dry-run
+```
+
+The dry run must list only the intended pending migration. Then apply and verify:
+
+```powershell
+supabase db push
+supabase migration list
+```
+
+If `supabase` is not installed, authentication is absent, the project ref cannot be independently matched, or dry-run lists unrelated migrations, stop without changing the remote database.
+
+# Agent continuity validation
+
+Run from PowerShell 7:
+
+```powershell
+npm.cmd run lint
+npm.cmd run typecheck
+npm.cmd test
+npm.cmd run test:prompt-cache
+npm.cmd run case-study:upgrade
+npm.cmd run case-study:upgrade
+npm.cmd run build
+```
+
+Do not add `--live` to prompt-cache tests unless `MORPHO_ALLOW_PAID_SMOKE_TESTS=true`.

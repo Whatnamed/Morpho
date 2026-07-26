@@ -125,3 +125,18 @@ Audit date: 2026-07-24. Prompt Contract `morpho-agent-v3.3-2026-07-24` closes th
 Acceptance on 2026-07-24 used the authenticated local ocean-buoy project at port 3000. Real Chrome turns covered text-only continuation, required reads, a multi-tool read/write turn, cancellation, a forced malformed read followed by one visible argument repair, a post-semantic streamed-to-buffered fallback with one final answer, and `/compact` through the strict no-tool summary profile. Four exact evidence records (preference, avoidance, constraint, and open question) were independently visible in project history and then withdrawn so they no longer affect current memory. The applied `OceanGuard：海洋航运噪音动态时空管理系统` definition remained current, with no main direction or default visual reference silently selected. `npm.cmd run lint`, `npm.cmd run typecheck`, all 138 Vitest files / 947 tests, all three Prompt Cache compatibility cases, and `npm.cmd run build` passed. The Chrome connector blocked the development-only localStorage threshold override, so that browser-only threshold trigger remains unverified; deterministic generation/reset tests cover it. The paid AiJWS cache-capability probe was not run.
 
 The implementation follows the official [Prompt Caching guide](https://developers.openai.com/api/docs/guides/prompt-caching), [Function Calling guide](https://developers.openai.com/api/docs/guides/function-calling), [Conversation State guide](https://developers.openai.com/api/docs/guides/conversation-state), [Next.js Backend for Frontend guidance](https://nextjs.org/docs/app/guides/backend-for-frontend), and [Supabase database function guidance](https://supabase.com/docs/guides/database/functions). The paid AiJWS cache-capability probe remains explicitly unverified unless separately authorized.
+# 2026-07-26 final convergence audit
+
+| Area | Closed contract |
+|---|---|
+| Strategy trust | Strategy policy is materialized by the server as a canonical System item; untrusted Turn Context carries only task data. |
+| Tool stability | Compare is always registered; only web-search enablement changes the normal tool profile; summary has no tools. |
+| Turn terminal state | The idempotent finalizer updates the pair outcome, assistant state, trace terminal state, and bounded partial/pending summary. Failed/cancelled pairs are excluded from usable context. |
+| Required Read | Requirements include exact memory keys, stage keys, and conversation mode/keyword. Insufficient calls receive one repair opportunity and cannot satisfy the read gate. |
+| Memory clauses | Chinese conjunctions split punctuation-free multi-kind clauses while one-off image instructions remain ineligible. |
+| Lease | Initial hash retries are idempotent; continuations are sequence/kind/hash checked; completion remains idempotent. |
+| Search count | Database safety cap is 32; the ninth legal search is no longer rejected by the old cap. |
+| Cache state | Only the latest request state stores a full manifest; historical traces remain bounded. |
+| Budget | Client strategy markers are estimated as their server-materialized canonical items; response reserve remains separate from input and compaction tail targets. |
+
+Remaining environment-dependent evidence is recorded in the runbook and task closeout. In particular, a migration is not considered deployed unless CLI installation, authentication, linked project ref, and dry-run scope are independently confirmed.
