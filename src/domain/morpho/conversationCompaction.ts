@@ -260,18 +260,34 @@ export function buildContinuousConversationContext(input: {
     coveredMessageCount: Math.max(0, boundaryIndex + 1),
     estimatedInputTokens,
     estimatedOccupancyTokens,
-    pressure: classifyConversationPressure(estimatedOccupancyTokens, limits)
+    pressure: classifyConversationPressure(
+      estimatedOccupancyTokens,
+      limits,
+      input.providerTimelineBudget?.projectedInputItemCount
+    )
   };
 }
 
+/**
+ * Pressure is whichever bound is closer: estimated tokens or projected Provider
+ * input items. Many short turns can hit the item ceiling while the token estimate
+ * is still low, and the Provider rejects that request outright.
+ */
 export function classifyConversationPressure(
   estimatedInputTokens: number,
-  limits: ConversationTokenLimits = DEFAULT_CONVERSATION_TOKEN_LIMITS
+  limits: ConversationTokenLimits = DEFAULT_CONVERSATION_TOKEN_LIMITS,
+  projectedInputItemCount?: number
 ): Exclude<ConversationPressure, "emergency"> {
-  if (estimatedInputTokens >= limits.compactTokens) {
+  if (
+    estimatedInputTokens >= limits.compactTokens ||
+    (projectedInputItemCount !== undefined && projectedInputItemCount >= limits.compactItemCount)
+  ) {
     return "compact";
   }
-  if (estimatedInputTokens >= limits.prepareTokens) {
+  if (
+    estimatedInputTokens >= limits.prepareTokens ||
+    (projectedInputItemCount !== undefined && projectedInputItemCount >= limits.prepareItemCount)
+  ) {
     return "prepare";
   }
   return "normal";

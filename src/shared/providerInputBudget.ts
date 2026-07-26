@@ -20,6 +20,12 @@ export type ProviderInputTimelineBudget = {
   responseReserveTokens: number;
   estimatedOccupancyTokens: number;
   imageCount: number;
+  /**
+   * Provider input items in the same payload the token figures describe. The
+   * Provider rejects a request above its item ceiling regardless of token count,
+   * so compaction has to watch this alongside tokens.
+   */
+  projectedInputItemCount: number;
 };
 
 export type AgentContextBudgetState = {
@@ -107,8 +113,26 @@ export function estimateProviderInputTimelineBudget(input: {
     currentTurnTokens,
     responseReserveTokens: total.responseReserveTokens,
     estimatedOccupancyTokens: total.estimatedOccupancyTokens,
-    imageCount: total.imageCount
+    imageCount: total.imageCount,
+    projectedInputItemCount: input.input.length
   };
+}
+
+/**
+ * The server prepends a stable System prompt and the canonical Runtime item to
+ * every Provider request. The client must include them when it decides whether to
+ * compact, otherwise it under-counts the payload it is about to cause.
+ */
+export function buildServerManagedPrefixItems(input: {
+  stableSystemPrompt: string;
+  runtimeItemText?: string;
+}): unknown[] {
+  return [
+    { role: "system", content: [{ type: "input_text", text: input.stableSystemPrompt }] },
+    ...(input.runtimeItemText
+      ? [{ role: "system", content: [{ type: "input_text", text: input.runtimeItemText }] }]
+      : [])
+  ];
 }
 
 export function estimateProviderSerializedTokens(value: unknown): number {

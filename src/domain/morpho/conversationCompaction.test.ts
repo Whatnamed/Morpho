@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import { createBlankWorkspace } from "./workspace";
 import { createProviderInputSnapshot } from "./providerInputSnapshot";
+import { MORPHO_AGENT_CONTEXT_POLICY } from "./agentContextPolicy";
 import { estimateProviderInputTimelineBudget } from "@/shared/providerInputBudget";
 import {
   applyConversationSummaryRevision,
   buildConversationSummarySourceText,
   buildContinuousConversationContext,
   buildConversationCompactionPlan,
+  classifyConversationPressure,
   estimateConversationMessageTokens,
   estimateConversationSummaryTokens,
   getUsableConversationMessages,
@@ -23,7 +25,9 @@ const limits: ConversationTokenLimits = {
   prepareTokens: 240,
   compactTokens: 420,
   targetUncompressedTokens: 90,
-  responseReserveTokens: 0
+  responseReserveTokens: 0,
+  prepareItemCount: 800,
+  compactItemCount: 880
 };
 
 const summary: ConversationSummary = {
@@ -184,6 +188,63 @@ describe("continuous conversation compaction", () => {
       responseReserveTokens: 0
     });
     expect(compressedBudget.estimatedOccupancyTokens).toBeLessThan(limits.compactTokens);
+  });
+
+  it("compacts on projected item count even when the token estimate stays low", () => {
+    // Production token thresholds, so the item ceiling is the only binding one.
+    const itemLimits: ConversationTokenLimits = {
+      ...limits,
+      windowTokens: 256_000,
+      prepareTokens: 204_800,
+      compactTokens: 230_400
+    };
+    // 450 very short exchanges: far below the token thresholds, but the Provider
+    // input item ceiling is the binding constraint.
+    const workspace = withMessages(longConversation(225, 1));
+    const shortItems = Array.from({ length: 906 }, (_value, index) => ({
+      role: index % 2 === 0 ? "user" : "assistant",
+      content: [{ type: index % 2 === 0 ? "input_text" : "output_text", text: "短" }]
+    }));
+    const itemHeavyBudget = estimateProviderInputTimelineBudget({
+      input: shortItems,
+      tools: [],
+      responseReserveTokens: 0
+    });
+
+    expect(itemHeavyBudget.estimatedOccupancyTokens).toBeLessThan(itemLimits.compactTokens);
+    expect(itemHeavyBudget.projectedInputItemCount).toBeGreaterThanOrEqual(itemLimits.compactItemCount);
+    expect(classifyConversationPressure(
+      itemHeavyBudget.estimatedOccupancyTokens,
+      itemLimits,
+      itemHeavyBudget.projectedInputItemCount
+    )).toBe("compact");
+
+    const plan = buildConversationCompactionPlan({
+      workspace,
+      limits: itemLimits,
+      providerTimelineBudget: itemHeavyBudget
+    });
+    expect(plan).toBeDefined();
+    expect(plan?.sourceMessages.length).toBeGreaterThan(0);
+    // Compaction removes history items, so the next request projects fewer items.
+    expect(plan!.remainingMessages.length).toBeLessThan(shortItems.length);
+  });
+
+  it("keeps item pressure below the thresholds for an ordinary transcript", () => {
+    const ordinary = estimateProviderInputTimelineBudget({
+      input: Array.from({ length: 20 }, () => ({
+        role: "user",
+        content: [{ type: "input_text", text: "短" }]
+      })),
+      tools: [],
+      responseReserveTokens: 0
+    });
+
+    expect(classifyConversationPressure(
+      ordinary.estimatedOccupancyTokens,
+      MORPHO_AGENT_CONTEXT_POLICY,
+      ordinary.projectedInputItemCount
+    )).toBe("normal");
   });
 
   it("summarizes the oldest complete range atomically and retains raw history for search", () => {

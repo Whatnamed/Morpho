@@ -223,6 +223,7 @@ import {
   applyConversationSummaryRevision,
   buildContinuousConversationContext,
   buildConversationCompactionPlan,
+  classifyConversationPressure,
   parseConversationSummaryPayload,
   sanitizeConversationSummaryStreamForDisplay,
   type ConversationCompactionPlan,
@@ -327,6 +328,7 @@ import type { AgentServerDirective } from "@/shared/agentStreamProtocol";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
 import {
   advanceAgentContextBudgetGeneration,
+  buildServerManagedPrefixItems,
   createAgentContextBudgetState,
   estimateProviderInputTimelineBudget,
   updateAgentContextBudgetBaseline
@@ -466,17 +468,24 @@ export function readConversationTokenLimitsOverride(): ConversationTokenLimits |
       parsed.prepareTokens,
       parsed.compactTokens,
       parsed.targetUncompressedTokens,
-      parsed.responseReserveTokens
+      parsed.responseReserveTokens,
+      parsed.prepareItemCount ?? MORPHO_AGENT_CONTEXT_POLICY.prepareItemCount,
+      parsed.compactItemCount ?? MORPHO_AGENT_CONTEXT_POLICY.compactItemCount
     ];
     if (!values.every((value) => Number.isSafeInteger(value) && (value ?? 0) > 0)) {
       return undefined;
     }
-    const limits = parsed as ConversationTokenLimits;
+    const limits: ConversationTokenLimits = {
+      ...(parsed as ConversationTokenLimits),
+      prepareItemCount: parsed.prepareItemCount ?? MORPHO_AGENT_CONTEXT_POLICY.prepareItemCount,
+      compactItemCount: parsed.compactItemCount ?? MORPHO_AGENT_CONTEXT_POLICY.compactItemCount
+    };
     if (
       limits.prepareTokens >= limits.compactTokens ||
       limits.compactTokens >= limits.windowTokens ||
       limits.targetUncompressedTokens >= limits.compactTokens ||
-      limits.responseReserveTokens >= limits.windowTokens
+      limits.responseReserveTokens >= limits.windowTokens ||
+      limits.prepareItemCount >= limits.compactItemCount
     ) {
       return undefined;
     }
@@ -2098,6 +2107,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     });
     const outputTokenReserve = conversationTokenLimits?.responseReserveTokens ?? MORPHO_AGENT_CONTEXT_POLICY.responseReserveTokens;
     const stableSystemPrompt = buildMorphoAgentStableSystemPrompt();
+    let latestProviderRequestState = getLatestProviderRequestState(workspaceAtAgentStart);
+    let canonicalRuntimeItem = latestProviderRequestState?.runtimeItem;
     const preCompactionConversation = buildContinuousConversationContext({
       workspace: workspaceAtAgentStart,
       limits: conversationTokenLimits
@@ -2132,15 +2143,32 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       currentUserMessageId: userMessageId,
       currentStrategy: strategy.kind,
       userInput,
-      activeSummaryRevisionId: preCompactionConversation.summaryRevision?.id
+      activeSummaryRevisionId: preCompactionConversation.summaryRevision?.id,
+      serverManagedPrefix: false
     });
     const allowStructuredComparison = isExplicitComparisonRequest(draft);
+    // Web search is estimated as enabled. That over-counts when the server has it
+    // off, which compacts slightly early rather than slightly late; the server
+    // remains the authority and still fails closed above the window.
     const initialTools = buildMorphoAgentTools(true);
-    const preCompactionBudget = estimateProviderInputTimelineBudget({
-      input: preCompactionInput,
-      tools: initialTools,
-      responseReserveTokens: outputTokenReserve
-    });
+    /**
+     * Estimate the payload the server will actually send: the stable System prompt
+     * and canonical Runtime item are prepended server-side, so a client estimate
+     * that omits them decides to compact later than it should.
+     */
+    const estimateTurnProviderBudget = (dynamicInput: readonly unknown[]) =>
+      estimateProviderInputTimelineBudget({
+        input: [
+          ...buildServerManagedPrefixItems({
+            stableSystemPrompt,
+            runtimeItemText: canonicalRuntimeItem?.renderedText
+          }),
+          ...dynamicInput
+        ],
+        tools: initialTools,
+        responseReserveTokens: outputTokenReserve
+      });
+    const preCompactionBudget = estimateTurnProviderBudget(preCompactionInput);
     const automaticCompactionPlan = buildConversationCompactionPlan({
       workspace: workspaceAtAgentStart,
       providerTimelineBudget: preCompactionBudget,
@@ -2287,19 +2315,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       activeSummaryRevisionId: conversationContext.summaryRevision?.id,
       serverManagedPrefix: false
     });
-    const initialProviderBudget = estimateProviderInputTimelineBudget({
-      input: conversationInput,
-      tools: initialTools,
-      responseReserveTokens: outputTokenReserve
-    });
+    const initialProviderBudget = estimateTurnProviderBudget(conversationInput);
     conversationContext = {
       ...conversationContext,
       estimatedInputTokens: initialProviderBudget.totalInputTokens,
-      pressure: initialProviderBudget.estimatedOccupancyTokens >= (conversationTokenLimits?.compactTokens ?? MORPHO_AGENT_CONTEXT_POLICY.compactTokens)
-        ? "compact"
-        : initialProviderBudget.estimatedOccupancyTokens >= (conversationTokenLimits?.prepareTokens ?? MORPHO_AGENT_CONTEXT_POLICY.prepareTokens)
-          ? "prepare"
-          : "normal"
+      pressure: classifyConversationPressure(
+        initialProviderBudget.estimatedOccupancyTokens,
+        conversationTokenLimits ?? MORPHO_AGENT_CONTEXT_POLICY,
+        initialProviderBudget.projectedInputItemCount
+      )
     };
     const turnContinuationItems: unknown[] = [];
     let finalText = "";
@@ -2327,8 +2351,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     let previousToolSignature: string | undefined;
     let repeatedToolCallCount = 0;
     let latestProviderResponseId: string | undefined;
-    let latestProviderRequestState = getLatestProviderRequestState(workspaceAtAgentStart);
-    let canonicalRuntimeItem = latestProviderRequestState?.runtimeItem;
     const agentTurnStartedAt = Date.now();
     let emergencyGuardTriggered = false;
     let continuationCompactionAttempted = false;
@@ -2627,11 +2649,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
       continuationCompactionAttempted = true;
       const currentWorkspace = readWorkspaceNow();
-      const continuationBudget = estimateProviderInputTimelineBudget({
-        input: conversationInput,
-        tools: initialTools,
-        responseReserveTokens: outputTokenReserve
-      });
+      const continuationBudget = estimateTurnProviderBudget(conversationInput);
       const plan = buildConversationCompactionPlan({
         workspace: currentWorkspace,
         providerTimelineBudget: continuationBudget,
@@ -2758,11 +2776,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }),
         ...turnContinuationItems
       ];
-      const refreshedBudget = estimateProviderInputTimelineBudget({
-        input: conversationInput,
-        tools: initialTools,
-        responseReserveTokens: outputTokenReserve
-      });
+      const refreshedBudget = estimateTurnProviderBudget(conversationInput);
       contextBudgetState = advanceAgentContextBudgetGeneration(
         contextBudgetState,
         refreshedBudget.totalInputTokens

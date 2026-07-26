@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   advanceAgentContextBudgetGeneration,
+  buildServerManagedPrefixItems,
   createAgentContextBudgetState,
   estimateProviderInputTimelineBudget,
   estimateProviderInputTokens,
@@ -110,6 +111,61 @@ describe("provider input timeline budget", () => {
 
     expect(withEnvelope.compressibleConversationTokens).toBe(plainChat.compressibleConversationTokens);
     expect(withEnvelope.fixedTokens).toBeGreaterThan(withEnvelope.compressibleConversationTokens);
+  });
+
+  it("matches the server payload once the server-managed prefix is included", () => {
+    const stableSystemPrompt = "Morpho 稳定系统规则".repeat(40);
+    const runtimeItemText = "canonical runtime item".repeat(20);
+    const dynamicInput = [
+      { role: "user", content: [{ type: "input_text", text: "海洋浮标的下一步" }] }
+    ];
+    const tools = [{ type: "function", name: "read_project_memory" }];
+
+    // What the server will actually send.
+    const serverPayload = [
+      { role: "system", content: [{ type: "input_text", text: stableSystemPrompt }] },
+      { role: "system", content: [{ type: "input_text", text: runtimeItemText }] },
+      ...dynamicInput
+    ];
+    const serverBudget = estimateProviderInputTokens({
+      input: serverPayload,
+      tools,
+      responseReserveTokens: 0
+    });
+    const clientBudget = estimateProviderInputTimelineBudget({
+      input: [
+        ...buildServerManagedPrefixItems({ stableSystemPrompt, runtimeItemText }),
+        ...dynamicInput
+      ],
+      tools,
+      responseReserveTokens: 0
+    });
+    const dynamicOnlyBudget = estimateProviderInputTimelineBudget({
+      input: dynamicInput,
+      tools,
+      responseReserveTokens: 0
+    });
+
+    expect(clientBudget.totalInputTokens).toBe(serverBudget.inputTokens);
+    // The prefix is fixed context, not compressible conversation.
+    expect(clientBudget.compressibleConversationTokens)
+      .toBe(dynamicOnlyBudget.compressibleConversationTokens);
+    expect(clientBudget.fixedTokens).toBeGreaterThan(dynamicOnlyBudget.fixedTokens);
+    // Omitting the prefix is exactly the under-count that made compaction late.
+    expect(dynamicOnlyBudget.totalInputTokens).toBeLessThan(serverBudget.inputTokens);
+  });
+
+  it("projects the Provider input item count alongside tokens", () => {
+    const items = Array.from({ length: 40 }, (_value, index) => ({
+      role: index % 2 === 0 ? "user" : "assistant",
+      content: [{ type: index % 2 === 0 ? "input_text" : "output_text", text: "短" }]
+    }));
+
+    expect(estimateProviderInputTimelineBudget({
+      input: items,
+      tools: [],
+      responseReserveTokens: 0
+    }).projectedInputItemCount).toBe(40);
   });
 
   it("starts a fresh budget generation from the actual compressed input", () => {
