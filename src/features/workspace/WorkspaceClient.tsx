@@ -10,10 +10,10 @@ import type {
   AssetRecord,
   CanvasView,
   ContinuityManualState,
-  DeliveryObject,
   MorphoObject
 } from "@/domain/morpho/types";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
+import type { ConversationTokenLimits } from "@/domain/morpho/conversationCompaction";
 import { MORPHO_AGENT_CONTEXT_POLICY } from "@/domain/morpho/agentContextPolicy";
 import { GRS_REFERENCE_IMAGE_LIMIT } from "@/domain/morpho/imageLimits";
 import { hasPendingDesignDefinitionRevisionProposal } from "@/domain/morpho/derivedState";
@@ -50,11 +50,6 @@ import {
   updateDeliverySection
 } from "@/domain/morpho/deliveryPreparation";
 import {
-  parseDeliverySectionDraftPayload,
-  sanitizeDeliverySectionDraftStreamForDisplay,
-  stripDeliverySectionDraftTechnicalBlocks
-} from "@/domain/morpho/deliverySectionDraftBlock";
-import {
   applyConceptDirectionProposal,
   applyDesignDefinitionProposal,
   applyResearchAnalysisProposal,
@@ -63,8 +58,6 @@ import {
   createArtifactProposalOperation,
   createImageGenerationOperation,
   createResearchOperation,
-  detectResearchSourceChanges,
-  failOperation,
   failImageGenerationOperation,
   getActiveOperation,
   interruptActiveOperations,
@@ -78,17 +71,9 @@ import {
   updateDesignDefinitionProposalDraft,
   updateResearchAnalysisProposalDraft
 } from "@/domain/operations/operations";
-import type { ArtifactProposal, ConceptDirectionProposal, OperationRecord, VisualGenerationPlan, VisualGenerationPlanItem } from "@/domain/operations/types";
-import { compileVisualGenerationPlan } from "@/domain/operations/imagePromptCompiler";
-import { parseConceptDirectionProposalPayload } from "@/domain/operations/conceptDirectionProposal";
-import { parseDesignDefinitionProposalPayload } from "@/domain/operations/designDefinitionProposal";
-import { parseResearchAnalysisProposalPayload } from "@/domain/operations/researchProposal";
+import type { ConceptDirectionProposal, OperationRecord, VisualGenerationPlan, VisualGenerationPlanItem } from "@/domain/operations/types";
 import { normalizeResearchItems } from "@/domain/operations/researchItems";
-import {
-  parseVisualGenerationPlanPayload,
-  validateRequestedPreviewCount,
-  validateVisualGenerationPlan
-} from "@/domain/operations/visualGenerationPlan";
+import { validateVisualGenerationPlan } from "@/domain/operations/visualGenerationPlan";
 import {
   archiveVisualBranch,
   attachDocumentExtractToFileObject,
@@ -104,7 +89,6 @@ import {
   eliminateDirection,
   createVisualBranch,
   hideObjects,
-  hideObject,
   markFileObjectParseFailed,
   markFileObjectParsing,
   removeImageFromVisualBranch,
@@ -116,10 +100,8 @@ import {
   setDefaultReference,
   type CanvasLayerReorderAction
 } from "@/domain/morpho/workspace";
-import type { AgentTrace, CanvasInstance, MorphoWorkspace, ProviderInputSnapshotTextPart } from "@/domain/morpho/types";
-import { createProviderInputSnapshot } from "@/domain/morpho/providerInputSnapshot";
+import type { CanvasInstance, MorphoWorkspace } from "@/domain/morpho/types";
 import { readClipboardAsImportPayload } from "./canvasClipboardImport";
-import type { ProviderCitation } from "@/server/ai/types";
 import { AiConversationPanel } from "./components/AiConversationPanel";
 import type { PendingAiConfirmation, PendingComparisonConfirmation } from "./components/AiConversationPanel";
 import { BottomDetailBar } from "./components/BottomDetailBar";
@@ -179,29 +161,16 @@ import {
 } from "@/features/delivery-output/deliveryOutputClient";
 import { readImageBlobDimensions, saveBlobAsLocalAsset } from "@/infrastructure/assets/localAssetWorkflow";
 import {
-  expectsConceptDirectionProposal,
-  expectsDesignDefinitionProposal,
   getAvailableAiWorkIntents,
   recommendAiTaskMode,
-  recommendAiWorkIntent,
-  resolveAiContextTask,
-  resolveTaskModeForSend,
-  resolveWorkIntentForSend
+  recommendAiWorkIntent
 } from "./aiTaskRouting";
 import { buildProposalDiscussionDraft, buildProposalRegenerationDraft } from "./proposalFollowupPrompts";
-import {
-  buildWebSearchOptions,
-  collectAiProviderImageAttachments,
-  resolveAiProviderImageObjectIds,
-  shouldAttachImagesForAiProvider
-} from "./aiAttachments";
-import { collectDocumentExtractsForAi } from "./documentContext";
 import { shouldAcceptDocumentReaderLoadResult } from "./documentReader";
 import { loadDocumentReaderExtractWithRecovery } from "./documentReaderRecovery";
 import {
   buildDocumentFragmentDraft,
   createDocumentFragmentWithContinuity,
-  resolveDocumentFragmentLocation,
   resolveDocumentFragmentSelection
 } from "./documentFragments";
 import { resolveComparisonWritebackSourceObjectIds } from "./comparisonDecision";
@@ -216,37 +185,13 @@ import {
   type ComparisonActionKind
 } from "./comparisonAction";
 import {
-  buildProviderComparisonBackgroundContext,
-  buildProviderTaskContext,
   buildTaskContext,
-  taskContextKindFromAiTask,
   type TaskContextDefaultReference
 } from "./taskContext";
 import { setConversationSemanticEntryManualState } from "@/domain/morpho/projectContinuity";
 import {
-  applyConversationSummaryRevision,
-  buildContinuousConversationContext,
-  buildConversationCompactionPlan,
-  classifyConversationPressure,
-  parseConversationSummaryPayload,
-  sanitizeConversationSummaryStreamForDisplay,
-  type ConversationCompactionPlan,
-  type ConversationTokenLimits
-} from "@/domain/morpho/conversationCompaction";
-import { buildAgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
-import {
-  buildConversationLaneKey,
-  resolveConversationLaneAnchors,
-  sanitizeConversationAssistantStreamForDisplay
-} from "@/domain/morpho/conversationCheckpoint";
-import {
   applyComparisonAnalysis,
-  resolveStoredComparisonSourceRefs,
   buildComparisonAuthorization,
-  buildComparisonAnalysisVisibleSummary,
-  parseComparisonAnalysisPayload,
-  sanitizeComparisonAssistantStreamForDisplay,
-  stripComparisonAnalysisBlock,
   validateComparisonAnalysis
 } from "@/domain/morpho/comparisonAnalysis";
 import type { ComparisonDecisionMetadata } from "@/domain/morpho/types";
@@ -257,15 +202,7 @@ import {
   getSiblingProposalPlacement
 } from "./proposalDraftPlacement";
 import { planDirectionPreviewPlacements, planVisualDevelopmentPlacements } from "./visualPreviewLayout";
-import {
-  getManualCompactionStatusText,
-  parseManualCompactCommand
-} from "./manualConversationCompaction";
-import {
-  classifyVisualGenerationIntent,
-  resolveVisualGenerationTarget,
-  type VisualGenerationIntent
-} from "./visualGenerationRouting";
+import { parseManualCompactCommand } from "./manualConversationCompaction";
 import {
   getDefaultImageGenerationSettings,
   inferGenerationAspectRatio,
@@ -279,104 +216,16 @@ import {
   mapWithConcurrency
 } from "./imageGenerationConcurrency";
 import {
-  buildAgentVisualGenerationBatch,
-  resolveExpectedVisualGenerationCount
-} from "./agentVisualGenerationBatch";
-import {
-  buildMorphoAgentToolArgumentRepairOutputs,
-  buildMorphoAgentStableSystemPrompt,
-  buildMorphoAgentTools,
-  buildMorphoAgentUserInput,
-  buildToolResultOutput,
   getDesignDefinitionDrafts,
-  isExplicitComparisonRequest,
-  normalizeGenerateVisualsForSelectedDirections,
-  parseMorphoAgentToolCallBatch,
-  resolveAgentToolExecutionPolicy,
-  type AgentRouteResult,
-  type CreateComparisonAnalysisArgs,
-  type CreateConceptDirectionProposalArgs,
-  type CreateDesignDefinitionProposalArgs,
-  type CreateResearchAnalysisArgs,
-  type GenerateVisualsArgs,
-  type MorphoAgentToolArguments,
-  type MorphoAgentTurnMode,
-  type RequestConfirmationArgs,
-  type SearchWebEvidenceArgs
+  type MorphoAgentTurnMode
 } from "./morphoAgent";
-import { storeMessageCitations, updateAiMessage } from "./aiConversationMessages";
-import {
-  executeAgentTool,
-  type AgentToolBatchState,
-  type AgentToolExecutorInput
-} from "./agentToolExecutors";
-import { createAgentTurnRuntimeState, createAgentTurnState } from "./agentTurnState";
+import { updateAiMessage } from "./aiConversationMessages";
 import type { AgentTurnHost } from "./agentTurnHost";
 import { runMorphoAgentTurn } from "./agentTurnRunner";
 import { runManualCompactionTurn } from "./manualCompactionTurn";
-import {
-  closeAgentTurnLease as closeAgentTurnLeaseWithState,
-  closeAgentTurnLeaseRequest,
-  requestAgentWebSearch as requestAgentWebSearchWithLease,
-  requestConversationSummary
-} from "./agentTurnLeaseClient";
-import {
-  createAgentTurnProviderRequestAdapter,
-  estimateAgentTurnProviderBudget
-} from "./agentTurnProviderRequest";
-import {
-  advanceRequiredAgentReadState,
-  buildRequiredAgentReadFailureNotice,
-  createRequiredAgentReadState,
-  failRequiredAgentRead,
-  resolveAgentTaskStrategy,
-  resolveRequiredAgentReadRequirements,
-  type RequiredAgentReadToolName
-} from "./agentTaskStrategy";
-import {
-  resolveRequiredAgentMemoryUpdates,
-  shouldPromptForMemoryUpdate
-} from "./agentMemoryUpdateGuard";
-import type { AgentServerDirective } from "@/shared/agentStreamProtocol";
-import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
-import {
-  createAgentContextBudgetState
-} from "@/shared/providerInputBudget";
-import {
-  appendAgentProviderContextFrames,
-  buildAgentProviderInput,
-  compactHistoricalProviderRequestState,
-  ensureAgentConversationSummaryBaselines,
-  getLatestProviderRequestState,
-  type ProviderContextFrameBuildInput
-} from "./providerContextFrames";
-import {
-  appendAgentTurnMessages,
-  createAgentTurnWorkLedger,
-  finalizeAgentTurn,
-  resolveAgentTurnOutcome
-} from "./agentTurnMessages";
-import {
-  completeAgentTrace,
-  createAgentTrace,
-  finishAgentToolActivityInWorkspace,
-  finishLocalAgentToolActivity,
-  startLocalAgentToolActivity
-} from "./agentMessageTrace";
-import { buildAgentToolActivityDescriptor, sanitizeAgentActivityDetail } from "./agentToolActivity";
-import { AgentTurnStreamError } from "./agentStreamClient";
+import { completeAgentTrace } from "./agentMessageTrace";
 import { commitWorkspaceStateNow } from "./workspaceCommitBoundary";
 import { readErrorResponse } from "./httpPayload";
-import {
-  assertAgentTurnActive,
-  buildAgentEmergencyFinalizationRequest,
-  completeUnresolvedAgentFunctionCalls,
-  isRepeatedAgentToolCall,
-  mergeAgentSearchCitations,
-  normalizeAgentTurnErrorMessage,
-  shouldFinalizeAgentTurn
-} from "./agentTurnLimits";
-import type { AgentCanonicalRuntimeItem } from "@/shared/agentRuntimeItem";
 import type { CanvasImportRequest, FocusArea } from "./tldraw/MorphoCanvas";
 import type { CanvasSelectionRequest } from "./tldraw/canvasSelection";
 
@@ -386,7 +235,6 @@ const MorphoCanvas = dynamic(() => import("./tldraw/MorphoCanvas").then((mod) =>
 });
 
 const CONVERSATION_TOKEN_LIMITS_TEST_KEY = "morpho:test:conversation-token-limits";
-const MAX_AGENT_TOOL_ARGUMENT_REPAIR_ATTEMPTS = 3;
 
 export function readConversationTokenLimitsOverride(): ConversationTokenLimits | undefined {
   if (process.env.NODE_ENV === "production" || typeof window === "undefined") {
@@ -1687,14 +1535,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [commitWorkspaceNow, effectiveImageGenerationSettings, setFocusRequest, setImageTaskStatus, setSelectedObjectIds, setWorkspace]
   );
 
-
-  const handleSendMorphoAgentTurn = useCallback(async () => {
-    const draft = aiDraft.trim();
-    if (!draft || isAiStreaming) {
-      return;
-    }
-
-    const agentTurnHost: AgentTurnHost = {
+  const agentTurnHost = useMemo<AgentTurnHost>(
+    () => ({
       commitWorkspace: commitWorkspaceNow,
       readWorkspace: readWorkspaceNow,
       ui: {
@@ -1734,7 +1576,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       executeVisualGenerationPlan: executeAgentVisualGenerationPlan,
       now: Date.now,
       randomSuffix: () => Math.random().toString(36).slice(2, 8)
-    };
+    }),
+    [commitWorkspaceNow, executeAgentVisualGenerationPlan, readWorkspaceNow]
+  );
+
+  const handleSendMorphoAgentTurn = useCallback(async () => {
+    const draft = aiDraft.trim();
+    if (!draft || isAiStreaming) {
+      return;
+    }
 
     if (parseManualCompactCommand(draft).matched) {
       await runManualCompactionTurn(
@@ -1761,15 +1611,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       agentTurnHost
     );
   }, [
+    agentTurnHost,
     agentTurnMode,
     aiDraft,
-    commitWorkspaceNow,
     directionPreviewCount,
     effectiveImageGenerationSettings.modelId,
-    executeAgentVisualGenerationPlan,
     isAiStreaming,
     pendingDeliveryDraftTarget,
-    readWorkspaceNow,
     recommendedTaskMode,
     recommendedWorkIntent,
     selectedObjectIds,
