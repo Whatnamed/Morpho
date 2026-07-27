@@ -318,6 +318,10 @@ import {
   requestConversationSummary
 } from "./agentTurnLeaseClient";
 import {
+  createAgentTurnProviderRequestAdapter,
+  estimateAgentTurnProviderBudget
+} from "./agentTurnProviderRequest";
+import {
   advanceRequiredAgentReadState,
   buildRequiredAgentReadFailureNotice,
   createRequiredAgentReadState,
@@ -333,25 +337,15 @@ import {
 import type { AgentServerDirective } from "@/shared/agentStreamProtocol";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
 import {
-  advanceAgentContextBudgetGeneration,
-  buildServerManagedPrefixItems,
-  createAgentContextBudgetState,
-  estimateProviderInputTimelineBudget,
-  updateAgentContextBudgetBaseline
+  createAgentContextBudgetState
 } from "@/shared/providerInputBudget";
 import {
   appendAgentProviderContextFrames,
-  appendAgentProviderRuntimeConfigurationFrame,
-  appendAgentProviderStateFrames,
   buildAgentProviderInput,
   compactHistoricalProviderRequestState,
   ensureAgentConversationSummaryBaselines,
   getLatestProviderRequestState,
-  getProviderInputReplayBoundaryReasons,
-  providerContextFrameMessage,
-  toProviderRequestBoundaryState,
-  type ProviderContextFrameBuildInput,
-  type ProviderRequestBoundaryState
+  type ProviderContextFrameBuildInput
 } from "./providerContextFrames";
 import {
   appendAgentTurnMessages,
@@ -360,21 +354,14 @@ import {
   resolveAgentTurnOutcome
 } from "./agentTurnMessages";
 import {
-  applyAgentStreamEventsToTrace,
   completeAgentTrace,
-  compactHistoricalProviderDiagnostics,
   createAgentTrace,
   finishAgentToolActivityInWorkspace,
   finishLocalAgentToolActivity,
   startLocalAgentToolActivity
 } from "./agentMessageTrace";
 import { buildAgentToolActivityDescriptor, sanitizeAgentActivityDetail } from "./agentToolActivity";
-import {
-  AgentTurnStreamError,
-  consumeAgentTurnStream,
-  createAgentAttemptGuard,
-  createAgentStreamEventBatcher
-} from "./agentStreamClient";
+import { AgentTurnStreamError } from "./agentStreamClient";
 import { commitWorkspaceStateNow } from "./workspaceCommitBoundary";
 import { readErrorResponse } from "./httpPayload";
 import {
@@ -2099,14 +2086,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
      * that omits them decides to compact later than it should.
      */
     const estimateTurnProviderBudget = (dynamicInput: readonly unknown[]) =>
-      estimateProviderInputTimelineBudget({
-        input: [
-          ...buildServerManagedPrefixItems({
-            stableSystemPrompt,
-            runtimeItemText: turnState.canonicalRuntimeItem?.renderedText
-          }),
-          ...dynamicInput
-        ],
+      estimateAgentTurnProviderBudget({
+        dynamicInput,
+        stableSystemPrompt,
+        runtimeItemText: turnState.canonicalRuntimeItem?.renderedText,
         tools: initialTools,
         responseReserveTokens: outputTokenReserve
       });
@@ -2285,438 +2268,38 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const resolveAgentWorkForTool = (toolName: string) =>
       runtimeState.agentWorkLedger.resolveForTool(toolName);
 
-    async function requestAgentTurn(
-      input: Array<unknown>,
-      continuation = false
-    ): Promise<AgentRouteResult> {
-      const exactContinuation = continuation && !turnState.providerTranscriptReset;
-      turnState.providerTranscriptReset = false;
-      const leaseContinuation = !exactContinuation && Boolean(turnState.agentTurnLeaseId);
-      const currentRequestState: ProviderRequestBoundaryState = {
-        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
-        ...(runtimeState.conversationContext.summaryRevision
-          ? { summaryRevisionId: runtimeState.conversationContext.summaryRevision.id }
-          : {}),
-        latestUserMessageId: userMessageId,
-        budgetGeneration: runtimeState.contextBudgetState.generation,
-        ...(!exactContinuation && providerInputSnapshot.cacheBoundaryReason
-          ? { attachmentBoundary: providerInputSnapshot.cacheBoundaryReason }
-          : {})
-      };
-      const providerInputBoundaryReasons = new Set(
-        getProviderInputReplayBoundaryReasons(
-          [
-            ...runtimeState.conversationContext.messages,
-            { id: userMessageId, role: "user", providerInputSnapshot }
-          ],
-          {
-            frames: turnState.workspaceAtAgentStart.ai.providerContextFrames ?? [],
-            previousRequestState: turnState.latestProviderRequestState,
-            currentRequestState
-          }
-        )
-      );
-      const response = await fetch("/api/ai/agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          input,
-          projectId: turnState.workspaceAtAgentStart.project.id,
-          agentTurnId,
-          continuation: exactContinuation,
-          ...(leaseContinuation ? { leaseContinuation: true } : {}),
-          ...((exactContinuation || leaseContinuation) && turnState.agentTurnLeaseId ? { leaseId: turnState.agentTurnLeaseId } : {}),
-          ...((exactContinuation || leaseContinuation) && turnState.nextAgentLeaseSequence !== undefined
-            ? { leaseSequence: turnState.nextAgentLeaseSequence }
-            : {}),
-          ...((exactContinuation || leaseContinuation) && turnState.agentContinuationToken
-            ? { continuationToken: turnState.agentContinuationToken }
-            : {}),
-          promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
-          mode: agentTurnMode,
-          capabilityIntent: { comparisonAnalysis: allowStructuredComparison },
-          ...(turnState.canonicalRuntimeItem ? { previousRuntimeItem: turnState.canonicalRuntimeItem } : {}),
-          ...(runtimeState.pendingServerDirective ? { directive: runtimeState.pendingServerDirective } : {}),
-          contextBudgetState: runtimeState.contextBudgetState,
-          diagnostics: {
-            promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
-            contextFrameCount: turnState.workspaceAtAgentStart.ai.providerContextFrames?.length ?? 0,
-            appendedContextFrameCount:
-              turnState.workspaceAtAgentStart.ai.providerContextFrames?.filter(
-                (frame) => frame.anchorMessageId === userMessageId
-              ).length ?? 0,
-            ...(runtimeState.conversationContext.summaryRevision
-              ? { conversationSummaryRevisionId: runtimeState.conversationContext.summaryRevision.id }
-              : {}),
-            ...(turnState.latestProviderRequestState ? { previousRequestState: turnState.latestProviderRequestState } : {}),
-            requestState: currentRequestState,
-            providerInputBoundaryReasons: [...providerInputBoundaryReasons]
-          }
-        }),
-        signal: controller.signal
-      });
-      runtimeState.pendingServerDirective = undefined;
-      const attemptGuard = createAgentAttemptGuard();
-      const requestStreamKey = `legacy-${runtimeState.requestSequence++}`;
-      let activeAttemptInputTokens = 0;
-      const batcher = createAgentStreamEventBatcher({
-        onFlush: (events) => {
-          const nowIso = new Date().toISOString();
-          const bodyChanged = events.some(
-            (event) => event.type === "final-delta" || event.type === "turn-attempt-reset"
-          );
-          commitWorkspaceNow((current) => {
-            const message = current.ai.messages.find((candidate) => candidate.id === assistantMessageId);
-            if (!message) {
-              return { workspace: current, value: undefined };
-            }
-            const trace = applyAgentStreamEventsToTrace(
-              message.agentTrace ?? { ...createAgentTrace(now), agentTurnId },
-              events,
-              nowIso
-            );
-            const body = bodyChanged
-              ? sanitizeConversationSummaryStreamForDisplay(
-                  sanitizeConversationAssistantStreamForDisplay(
-                    [...runtimeState.streamedFinalTextByAttempt.values()].join("")
-                  )
-                )
-              : message.body;
-            const next = updateAiMessage(current, assistantMessageId, body, "streaming", { agentTrace: trace });
-            return { workspace: next, value: undefined };
-          });
+    const providerRequestAdapter = createAgentTurnProviderRequestAdapter({
+      agentTurnId,
+      userMessageId,
+      assistantMessageId,
+      agentTurnMode,
+      allowStructuredComparison,
+      draft,
+      strategyKind: strategy.kind,
+      context,
+      conversationLaneKey,
+      providerInputSnapshot,
+      providerFrameInput,
+      stableSystemPrompt,
+      userInput,
+      initialTools,
+      outputTokenReserve,
+      conversationTokenLimits,
+      turnCreatedAt: now,
+      signal: controller.signal,
+      turnState,
+      runtimeState,
+      commitWorkspace: commitWorkspaceNow,
+      readWorkspace: readWorkspaceNow,
+      streamFlushSlot: {
+        get: () => agentStreamFlushRef.current,
+        set: (value) => {
+          agentStreamFlushRef.current = value;
         }
-      });
-      const flushBatch = () => batcher.flush();
-      agentStreamFlushRef.current = flushBatch;
-      let completeResult: AgentRouteResult;
-      try {
-        completeResult = await consumeAgentTurnStream(response, {
-          signal: controller.signal,
-          onEvent: (event) => {
-            if (!attemptGuard.accept(event)) {
-              return;
-            }
-            if (event.type === "turn-complete" && event.continuationToken) {
-              turnState.agentContinuationToken = event.continuationToken;
-            }
-            if (event.type === "turn-start") {
-              if (event.leaseId) {
-                turnState.agentTurnLeaseId = event.leaseId;
-              }
-              if (event.nextProviderSequence !== undefined) {
-                turnState.nextAgentLeaseSequence = event.nextProviderSequence;
-              }
-              const serverToolProfile = event.effectiveToolProfile;
-              if (serverToolProfile && serverToolProfile !== "conversationSummary" && event.runtimeItem) {
-                turnState.canonicalRuntimeItem = event.runtimeItem;
-                turnState.workspaceAtAgentStart = commitWorkspaceNow((current) => {
-                  const next = runtimeState.conversationContext.summaryRevision
-                    ? ensureAgentConversationSummaryBaselines(current, {
-                        projectId: current.project.id,
-                        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
-                        summaryRevision: runtimeState.conversationContext.summaryRevision,
-                        mode: agentTurnMode,
-                        toolProfile: serverToolProfile,
-                        runtimeItem: event.runtimeItem
-                      })
-                    : appendAgentProviderRuntimeConfigurationFrame(current, {
-                        projectId: current.project.id,
-                        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
-                        mode: agentTurnMode,
-                        toolProfile: serverToolProfile,
-                        runtimeItem: event.runtimeItem,
-                        userMessageId,
-                        framePlacement: "beforeUser"
-                      });
-                  return { workspace: next, value: next };
-                });
-              }
-              return;
-            }
-            if (event.type === "turn-attempt-reset") {
-              runtimeState.streamedFinalTextByAttempt.delete(event.attemptId);
-              activeAttemptInputTokens = 0;
-              batcher.push(event);
-              return;
-            }
-            if (event.type === "usage") {
-              activeAttemptInputTokens = Math.max(activeAttemptInputTokens, event.usage.inputTokens);
-              return;
-            }
-            if (event.type === "context") {
-              if (
-                event.context.pressure === "compact" ||
-                (event.context.pressure === "prepare" && runtimeState.highestPressure === "normal")
-              ) {
-                runtimeState.highestPressure = event.context.pressure;
-              }
-              return;
-            }
-            if (event.type === "final-delta") {
-              const attemptId = event.attemptId ?? attemptGuard.getActiveAttemptId() ?? requestStreamKey;
-              runtimeState.streamedFinalTextByAttempt.set(
-                attemptId,
-                `${runtimeState.streamedFinalTextByAttempt.get(attemptId) ?? ""}${event.delta}`
-              );
-              batcher.push(event);
-              return;
-            }
-            if (
-              event.type === "reasoning-start" ||
-              event.type === "reasoning-delta" ||
-              event.type === "reasoning-end" ||
-              event.type === "commentary-start" ||
-              event.type === "commentary-delta" ||
-              event.type === "commentary-end" ||
-              event.type === "provider-tool-start" ||
-              event.type === "provider-tool-update" ||
-              event.type === "provider-tool-end"
-            ) {
-              batcher.push(event);
-            }
-          }
-        });
-      } finally {
-        batcher.flush();
-        if (agentStreamFlushRef.current === flushBatch) {
-          agentStreamFlushRef.current = null;
-        }
-      }
-      runtimeState.contextBudgetState = updateAgentContextBudgetBaseline(
-        runtimeState.contextBudgetState,
-        Math.max(activeAttemptInputTokens, completeResult.usage?.inputTokens ?? 0)
-      );
-      const serverRequestState = toProviderRequestBoundaryState(completeResult.providerDiagnostics?.requestState);
-      const providerDiagnostics = compactHistoricalProviderDiagnostics(completeResult.providerDiagnostics);
-      if (serverRequestState || providerDiagnostics) {
-        if (serverRequestState) {
-          turnState.latestProviderRequestState = serverRequestState;
-        }
-        commitWorkspaceNow((current) => {
-          const assistant = current.ai.messages.find((message) => message.id === assistantMessageId);
-          if (!assistant?.agentTrace) {
-            return { workspace: current, value: undefined };
-          }
-          const updated = updateAiMessage(current, assistantMessageId, assistant.body, "streaming", {
-            agentTrace: {
-              ...assistant.agentTrace,
-              ...(serverRequestState
-                ? { providerRequestState: compactHistoricalProviderRequestState(serverRequestState) }
-                : {}),
-              ...(providerDiagnostics ? { providerDiagnostics } : {})
-            }
-          });
-          return {
-            workspace: {
-              ...updated,
-              ai: {
-                ...updated.ai,
-                ...(serverRequestState ? { latestProviderRequestState: serverRequestState } : {})
-              }
-            },
-            value: undefined
-          };
-        });
-      }
-      runtimeState.latestProviderResponseId = completeResult.responseId || runtimeState.latestProviderResponseId;
-      if (
-        completeResult.context?.pressure === "compact" ||
-        (completeResult.context?.pressure === "prepare" && runtimeState.highestPressure === "normal")
-      ) {
-        runtimeState.highestPressure = completeResult.context.pressure;
-      }
-      return completeResult;
-    }
-
-    function appendProjectStateFrameToConversationInput(): void {
-      if (context.kind === "comparison") {
-        return;
-      }
-      const current = readWorkspaceNow();
-      const refreshedContext = buildTaskContext(current, {
-        kind: context.kind,
-        draft,
-        selectedObjectIds: context.objectIds
-      });
-      const refreshedProviderTaskContext = buildProviderTaskContext(refreshedContext);
-      const beforeIds = new Set((current.ai.providerContextFrames ?? []).map((frame) => frame.id));
-      const nextWorkspace = commitWorkspaceNow((currentWorkspace) => {
-        const next = appendAgentProviderStateFrames(currentWorkspace, {
-          workspace: currentWorkspace,
-          projectId: currentWorkspace.project.id,
-          strategy: strategy.kind,
-          mode: agentTurnMode,
-          promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
-          userMessageId,
-          context: refreshedContext,
-          providerTaskContext: refreshedProviderTaskContext,
-          defaultMemoryContext: buildAgentDefaultMemoryContext(currentWorkspace, strategy.kind),
-          summaryRevision: runtimeState.conversationContext.summaryRevision,
-          framePlacement: "afterUser"
-        });
-        return { workspace: next, value: next };
-      });
-      turnState.workspaceAtAgentStart = nextWorkspace;
-      const addedFrames = (nextWorkspace.ai.providerContextFrames ?? []).filter((frame) => !beforeIds.has(frame.id));
-      if (addedFrames.length === 0) {
-        return;
-      }
-      const messages = addedFrames.map(providerContextFrameMessage);
-      runtimeState.conversationInput = [...runtimeState.conversationInput, ...messages];
-    }
-
-    async function compactConversationBeforeContinuation(): Promise<boolean> {
-      if (runtimeState.continuationCompactionAttempted) {
-        return false;
-      }
-      runtimeState.continuationCompactionAttempted = true;
-      const currentWorkspace = readWorkspaceNow();
-      const continuationBudget = estimateTurnProviderBudget(runtimeState.conversationInput);
-      const plan = buildConversationCompactionPlan({
-        workspace: currentWorkspace,
-        providerTimelineBudget: continuationBudget,
-        limits: conversationTokenLimits,
-        force: "compact"
-      });
-      if (!plan) {
-        return false;
-      }
-
-      const activityId = `${agentTurnId}:continuation-summary`;
-      commitWorkspaceNow((current) => {
-        const assistant = current.ai.messages.find((message) => message.id === assistantMessageId);
-        if (!assistant?.agentTrace) {
-          return { workspace: current, value: undefined };
-        }
-        return {
-          workspace: updateAiMessage(current, assistantMessageId, assistant.body, "streaming", {
-            agentTrace: startLocalAgentToolActivity(
-              assistant.agentTrace,
-              {
-                toolCallId: activityId,
-                toolName: "compact_conversation_history",
-                activityKind: "contextRead",
-                label: "整理讨论上下文",
-                detail: "继续执行前整理较早对话"
-              },
-              new Date().toISOString()
-            )
-          }),
-          value: undefined
-        };
-      });
-      if (!turnState.agentTurnLeaseId) {
-        throw new Error("继续执行前缺少有效的 Agent Turn Lease。");
-      }
-      const summaryRequest = await requestConversationSummary(plan, controller.signal, {
-        projectId: currentWorkspace.project.id,
-        agentTurnId,
-        mode: agentTurnMode,
-        leaseId: turnState.agentTurnLeaseId,
-        leaseSequence: turnState.nextAgentLeaseSequence,
-        continuationToken: turnState.agentContinuationToken,
-        onLeaseStarted: (leaseId) => {
-          turnState.agentTurnLeaseId = leaseId;
-        },
-        onLeaseSequence: (sequence) => {
-          turnState.nextAgentLeaseSequence = sequence;
-        },
-        onContinuationToken: (token) => {
-          turnState.agentContinuationToken = token;
-        }
-      });
-      turnState.providerTranscriptReset = true;
-      turnState.agentTurnLeaseId = summaryRequest.leaseId ?? turnState.agentTurnLeaseId;
-      const parsedSummary = summaryRequest.parsed;
-      if (parsedSummary.status !== "ok") {
-        throw new Error("继续执行前的对话摘要未通过校验，原始历史已保留。");
-      }
-      const compactedWorkspace = commitWorkspaceNow((current) => {
-        const applied = applyConversationSummaryRevision(current, {
-          summary: parsedSummary.summary,
-          sourceMessageIds: plan.sourceMessages.map((message) => message.id),
-          expectedPreviousRevisionId: plan.previousSummaryRevision?.id,
-          estimatedInputTokens: plan.estimatedInputTokens,
-          now: new Date().toISOString()
-        });
-        if (applied.status !== "applied") {
-          throw new Error(applied.reason);
-        }
-        const framed = ensureAgentConversationSummaryBaselines(applied.workspace, {
-          projectId: applied.workspace.project.id,
-          promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
-          summaryRevision: applied.revision,
-          mode: agentTurnMode
-        });
-        const assistant = framed.ai.messages.find((message) => message.id === assistantMessageId);
-        const next = assistant?.agentTrace
-          ? updateAiMessage(framed, assistantMessageId, assistant.body, "streaming", {
-              agentTrace: finishLocalAgentToolActivity(
-                assistant.agentTrace,
-                activityId,
-                { state: "done", detail: "原始历史仍可查询" },
-                new Date().toISOString()
-              )
-            })
-          : framed;
-        return { workspace: next, value: next };
-      });
-      const refreshed = buildContinuousConversationContext({
-        workspace: compactedWorkspace,
-        limits: conversationTokenLimits
-      });
-      const framedCompactedWorkspace = commitWorkspaceNow((current) => {
-        const next = appendAgentProviderContextFrames(current, {
-          ...providerFrameInput,
-          workspace: current,
-          defaultMemoryContext: buildAgentDefaultMemoryContext(current, strategy.kind),
-          summaryRevision: refreshed.summaryRevision
-        });
-        return { workspace: next, value: next };
-      });
-      turnState.workspaceAtAgentStart = framedCompactedWorkspace;
-      const refreshedHistory = refreshed.messages.filter((message) => message.id !== userMessageId);
-      runtimeState.conversationContext = {
-        laneKey: conversationLaneKey,
-        summaryRevision: refreshed.summaryRevision,
-        messages: refreshedHistory,
-        rawMessageCount: refreshedHistory.length,
-        coveredMessageCount: refreshed.coveredMessageCount,
-        estimatedInputTokens: refreshed.estimatedInputTokens,
-        pressure: refreshed.pressure
-      };
-      runtimeState.conversationInput = [
-        ...buildAgentProviderInput({
-          stableSystemPrompt,
-          frames: framedCompactedWorkspace.ai.providerContextFrames ?? [],
-          history: refreshedHistory,
-          currentUserMessageId: userMessageId,
-          currentStrategy: strategy.kind,
-          userInput,
-          activeSummaryRevisionId: runtimeState.conversationContext.summaryRevision?.id,
-          serverManagedPrefix: false
-        }),
-        ...runtimeState.turnContinuationItems
-      ];
-      const refreshedBudget = estimateTurnProviderBudget(runtimeState.conversationInput);
-      runtimeState.contextBudgetState = advanceAgentContextBudgetGeneration(
-        runtimeState.contextBudgetState,
-        refreshedBudget.totalInputTokens
-      );
-      runtimeState.conversationContext = {
-        ...runtimeState.conversationContext,
-        estimatedInputTokens: refreshedBudget.totalInputTokens,
-        pressure: refreshedBudget.estimatedOccupancyTokens >= (conversationTokenLimits?.compactTokens ?? MORPHO_AGENT_CONTEXT_POLICY.compactTokens)
-          ? "compact"
-          : refreshedBudget.estimatedOccupancyTokens >= (conversationTokenLimits?.prepareTokens ?? MORPHO_AGENT_CONTEXT_POLICY.prepareTokens)
-            ? "prepare"
-            : "normal"
-      };
-      runtimeState.highestPressure = runtimeState.conversationContext.pressure;
-      return true;
-    }
-
+      },
+      fetch,
+      nowIso: () => new Date().toISOString()
+    });
     try {
       while (true) {
         assertAgentTurnActive(controller.signal);
@@ -2749,7 +2332,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           });
           const finalizationRequest = buildAgentEmergencyFinalizationRequest(runtimeState.conversationInput);
           runtimeState.pendingServerDirective = { kind: "finalize" };
-          const finalization = await requestAgentTurn(
+          const finalization = await providerRequestAdapter.request(
             runtimeState.conversationInput,
             finalizationRequest.continuation
           );
@@ -2787,14 +2370,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }
         let result: AgentRouteResult;
         try {
-          result = await requestAgentTurn(runtimeState.conversationInput, runtimeState.modelTurnCount > 0);
+          result = await providerRequestAdapter.request(
+            runtimeState.conversationInput,
+            runtimeState.modelTurnCount > 0
+          );
         } catch (error) {
           if (
             error instanceof AgentTurnStreamError &&
             error.code === "context_limit" &&
-            await compactConversationBeforeContinuation()
+            await providerRequestAdapter.compactBeforeContinuation()
           ) {
-            result = await requestAgentTurn(runtimeState.conversationInput, runtimeState.modelTurnCount > 0);
+            result = await providerRequestAdapter.request(
+              runtimeState.conversationInput,
+              runtimeState.modelTurnCount > 0
+            );
           } else {
             throw error;
           }
@@ -3180,7 +2769,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         if (runtimeState.emergencyGuardTriggered) {
           runtimeState.conversationInput = [...runtimeState.conversationInput, ...toolOutputs];
           runtimeState.turnContinuationItems.push(...toolOutputs);
-          appendProjectStateFrameToConversationInput();
+          providerRequestAdapter.appendProjectStateFrame();
           continue;
         }
 
@@ -3196,9 +2785,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
         runtimeState.conversationInput = [...runtimeState.conversationInput, ...toolOutputs];
         runtimeState.turnContinuationItems.push(...toolOutputs);
-        appendProjectStateFrameToConversationInput();
+        providerRequestAdapter.appendProjectStateFrame();
         if (runtimeState.highestPressure === "compact") {
-          await compactConversationBeforeContinuation();
+          await providerRequestAdapter.compactBeforeContinuation();
         }
       }
       const turnOutcome = resolveAgentTurnOutcome({

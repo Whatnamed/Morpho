@@ -1,0 +1,670 @@
+import { MORPHO_AGENT_CONTEXT_POLICY } from "@/domain/morpho/agentContextPolicy";
+import {
+  applyConversationSummaryRevision,
+  buildContinuousConversationContext,
+  buildConversationCompactionPlan,
+  classifyConversationPressure,
+  sanitizeConversationSummaryStreamForDisplay,
+  type ConversationTokenLimits
+} from "@/domain/morpho/conversationCompaction";
+import { sanitizeConversationAssistantStreamForDisplay } from "@/domain/morpho/conversationCheckpoint";
+import { buildAgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
+import type {
+  AgentTaskStrategyKind,
+  MorphoWorkspace,
+  ProviderInputSnapshot
+} from "@/domain/morpho/types";
+import type { ResponseMessageInput } from "@/server/ai/openaiCompatibleProvider";
+import {
+  advanceAgentContextBudgetGeneration,
+  buildServerManagedPrefixItems,
+  estimateProviderInputTimelineBudget,
+  updateAgentContextBudgetBaseline
+} from "@/shared/providerInputBudget";
+import { updateAiMessage } from "./aiConversationMessages";
+import {
+  applyAgentStreamEventsToTrace,
+  compactHistoricalProviderDiagnostics,
+  createAgentTrace,
+  finishLocalAgentToolActivity,
+  startLocalAgentToolActivity
+} from "./agentMessageTrace";
+import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
+import {
+  consumeAgentTurnStream,
+  createAgentAttemptGuard,
+  createAgentStreamEventBatcher
+} from "./agentStreamClient";
+import { requestConversationSummary } from "./agentTurnLeaseClient";
+import type { AgentTurnRuntimeState, AgentTurnState } from "./agentTurnState";
+import type { AgentRouteResult, MorphoAgentTurnMode } from "./morphoAgent";
+import {
+  appendAgentProviderContextFrames,
+  appendAgentProviderRuntimeConfigurationFrame,
+  appendAgentProviderStateFrames,
+  buildAgentProviderInput,
+  compactHistoricalProviderRequestState,
+  ensureAgentConversationSummaryBaselines,
+  getProviderInputReplayBoundaryReasons,
+  providerContextFrameMessage,
+  toProviderRequestBoundaryState,
+  type ProviderContextFrameBuildInput,
+  type ProviderRequestBoundaryState
+} from "./providerContextFrames";
+import { buildProviderTaskContext, buildTaskContext, type TaskContextResult } from "./taskContext";
+import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
+
+export type AgentTurnStreamFlushSlot = {
+  get: () => (() => void) | null;
+  set: (value: (() => void) | null) => void;
+};
+
+export type AgentTurnProviderRequestAdapterInput = {
+  agentTurnId: string;
+  userMessageId: string;
+  assistantMessageId: string;
+  agentTurnMode: MorphoAgentTurnMode;
+  allowStructuredComparison: boolean;
+  draft: string;
+  strategyKind: AgentTaskStrategyKind;
+  context: TaskContextResult;
+  conversationLaneKey: string;
+  providerInputSnapshot: ProviderInputSnapshot;
+  providerFrameInput: ProviderContextFrameBuildInput;
+  stableSystemPrompt: string;
+  userInput: ResponseMessageInput;
+  initialTools: readonly unknown[];
+  outputTokenReserve: number;
+  conversationTokenLimits?: ConversationTokenLimits;
+  turnCreatedAt: string;
+  signal: AbortSignal;
+  turnState: AgentTurnState;
+  runtimeState: AgentTurnRuntimeState;
+  commitWorkspace: <T>(transform: WorkspaceCommitTransform<T>) => T;
+  readWorkspace: () => MorphoWorkspace;
+  streamFlushSlot: AgentTurnStreamFlushSlot;
+  fetch: typeof fetch;
+  nowIso: () => string;
+};
+
+export type AgentTurnProviderRequestAdapter = {
+  estimateBudget: (dynamicInput: readonly unknown[]) => ReturnType<typeof estimateProviderInputTimelineBudget>;
+  request: (input: Array<unknown>, continuation?: boolean) => Promise<AgentRouteResult>;
+  appendProjectStateFrame: () => void;
+  compactBeforeContinuation: () => Promise<boolean>;
+};
+
+export function estimateAgentTurnProviderBudget(input: {
+  dynamicInput: readonly unknown[];
+  stableSystemPrompt: string;
+  runtimeItemText?: string;
+  tools: readonly unknown[];
+  responseReserveTokens: number;
+}) {
+  return estimateProviderInputTimelineBudget({
+    input: [
+      ...buildServerManagedPrefixItems({
+        stableSystemPrompt: input.stableSystemPrompt,
+        runtimeItemText: input.runtimeItemText
+      }),
+      ...input.dynamicInput
+    ],
+    tools: input.tools,
+    responseReserveTokens: input.responseReserveTokens
+  });
+}
+
+export function createAgentTurnProviderRequestAdapter(
+  input: AgentTurnProviderRequestAdapterInput
+): AgentTurnProviderRequestAdapter {
+  const estimateBudget = (dynamicInput: readonly unknown[]) =>
+    estimateAgentTurnProviderBudget({
+      dynamicInput,
+      stableSystemPrompt: input.stableSystemPrompt,
+      runtimeItemText: input.turnState.canonicalRuntimeItem?.renderedText,
+      tools: input.initialTools,
+      responseReserveTokens: input.outputTokenReserve
+    });
+
+  return {
+    estimateBudget,
+    request: (conversationInput, continuation = false) =>
+      requestAgentTurnProvider(input, conversationInput, continuation),
+    appendProjectStateFrame: () => appendProjectStateFrameToConversationInput(input),
+    compactBeforeContinuation: () =>
+      compactConversationBeforeContinuation(input, estimateBudget)
+  };
+}
+
+export async function requestAgentTurnProvider(
+  input: AgentTurnProviderRequestAdapterInput,
+  conversationInput: Array<unknown>,
+  continuation = false
+): Promise<AgentRouteResult> {
+  const { runtimeState, turnState } = input;
+  const exactContinuation = continuation && !turnState.providerTranscriptReset;
+  turnState.providerTranscriptReset = false;
+  const leaseContinuation = !exactContinuation && Boolean(turnState.agentTurnLeaseId);
+  const currentRequestState: ProviderRequestBoundaryState = {
+    promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+    ...(runtimeState.conversationContext.summaryRevision
+      ? { summaryRevisionId: runtimeState.conversationContext.summaryRevision.id }
+      : {}),
+    latestUserMessageId: input.userMessageId,
+    budgetGeneration: runtimeState.contextBudgetState.generation,
+    ...(!exactContinuation && input.providerInputSnapshot.cacheBoundaryReason
+      ? { attachmentBoundary: input.providerInputSnapshot.cacheBoundaryReason }
+      : {})
+  };
+  const providerInputBoundaryReasons = new Set(
+    getProviderInputReplayBoundaryReasons(
+      [
+        ...runtimeState.conversationContext.messages,
+        {
+          id: input.userMessageId,
+          role: "user",
+          providerInputSnapshot: input.providerInputSnapshot
+        }
+      ],
+      {
+        frames: turnState.workspaceAtAgentStart.ai.providerContextFrames ?? [],
+        previousRequestState: turnState.latestProviderRequestState,
+        currentRequestState
+      }
+    )
+  );
+  const response = await input.fetch("/api/ai/agent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      input: conversationInput,
+      projectId: turnState.workspaceAtAgentStart.project.id,
+      agentTurnId: input.agentTurnId,
+      continuation: exactContinuation,
+      ...(leaseContinuation ? { leaseContinuation: true } : {}),
+      ...((exactContinuation || leaseContinuation) && turnState.agentTurnLeaseId
+        ? { leaseId: turnState.agentTurnLeaseId }
+        : {}),
+      ...((exactContinuation || leaseContinuation) && turnState.nextAgentLeaseSequence !== undefined
+        ? { leaseSequence: turnState.nextAgentLeaseSequence }
+        : {}),
+      ...((exactContinuation || leaseContinuation) && turnState.agentContinuationToken
+        ? { continuationToken: turnState.agentContinuationToken }
+        : {}),
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+      mode: input.agentTurnMode,
+      capabilityIntent: { comparisonAnalysis: input.allowStructuredComparison },
+      ...(turnState.canonicalRuntimeItem
+        ? { previousRuntimeItem: turnState.canonicalRuntimeItem }
+        : {}),
+      ...(runtimeState.pendingServerDirective
+        ? { directive: runtimeState.pendingServerDirective }
+        : {}),
+      contextBudgetState: runtimeState.contextBudgetState,
+      diagnostics: {
+        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+        contextFrameCount: turnState.workspaceAtAgentStart.ai.providerContextFrames?.length ?? 0,
+        appendedContextFrameCount:
+          turnState.workspaceAtAgentStart.ai.providerContextFrames?.filter(
+            (frame) => frame.anchorMessageId === input.userMessageId
+          ).length ?? 0,
+        ...(runtimeState.conversationContext.summaryRevision
+          ? {
+              conversationSummaryRevisionId:
+                runtimeState.conversationContext.summaryRevision.id
+            }
+          : {}),
+        ...(turnState.latestProviderRequestState
+          ? { previousRequestState: turnState.latestProviderRequestState }
+          : {}),
+        requestState: currentRequestState,
+        providerInputBoundaryReasons: [...providerInputBoundaryReasons]
+      }
+    }),
+    signal: input.signal
+  });
+  runtimeState.pendingServerDirective = undefined;
+  const attemptGuard = createAgentAttemptGuard();
+  const requestStreamKey = `legacy-${runtimeState.requestSequence++}`;
+  let activeAttemptInputTokens = 0;
+  const batcher = createAgentStreamEventBatcher({
+    onFlush: (events) => {
+      const nowIso = input.nowIso();
+      const bodyChanged = events.some(
+        (event) => event.type === "final-delta" || event.type === "turn-attempt-reset"
+      );
+      input.commitWorkspace((current) => {
+        const message = current.ai.messages.find(
+          (candidate) => candidate.id === input.assistantMessageId
+        );
+        if (!message) {
+          return { workspace: current, value: undefined };
+        }
+        const trace = applyAgentStreamEventsToTrace(
+          message.agentTrace ?? {
+            ...createAgentTrace(input.turnCreatedAt),
+            agentTurnId: input.agentTurnId
+          },
+          events,
+          nowIso
+        );
+        const body = bodyChanged
+          ? sanitizeConversationSummaryStreamForDisplay(
+              sanitizeConversationAssistantStreamForDisplay(
+                [...runtimeState.streamedFinalTextByAttempt.values()].join("")
+              )
+            )
+          : message.body;
+        return {
+          workspace: updateAiMessage(
+            current,
+            input.assistantMessageId,
+            body,
+            "streaming",
+            { agentTrace: trace }
+          ),
+          value: undefined
+        };
+      });
+    }
+  });
+  const flushBatch = () => batcher.flush();
+  input.streamFlushSlot.set(flushBatch);
+  let completeResult: AgentRouteResult;
+  try {
+    completeResult = await consumeAgentTurnStream(response, {
+      signal: input.signal,
+      onEvent: (event) => {
+        if (!attemptGuard.accept(event)) {
+          return;
+        }
+        if (event.type === "turn-complete" && event.continuationToken) {
+          turnState.agentContinuationToken = event.continuationToken;
+        }
+        if (event.type === "turn-start") {
+          if (event.leaseId) {
+            turnState.agentTurnLeaseId = event.leaseId;
+          }
+          if (event.nextProviderSequence !== undefined) {
+            turnState.nextAgentLeaseSequence = event.nextProviderSequence;
+          }
+          const serverToolProfile = event.effectiveToolProfile;
+          if (
+            serverToolProfile &&
+            serverToolProfile !== "conversationSummary" &&
+            event.runtimeItem
+          ) {
+            turnState.canonicalRuntimeItem = event.runtimeItem;
+            turnState.workspaceAtAgentStart = input.commitWorkspace((current) => {
+              const next = runtimeState.conversationContext.summaryRevision
+                ? ensureAgentConversationSummaryBaselines(current, {
+                    projectId: current.project.id,
+                    promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+                    summaryRevision: runtimeState.conversationContext.summaryRevision,
+                    mode: input.agentTurnMode,
+                    toolProfile: serverToolProfile,
+                    runtimeItem: event.runtimeItem
+                  })
+                : appendAgentProviderRuntimeConfigurationFrame(current, {
+                    projectId: current.project.id,
+                    promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+                    mode: input.agentTurnMode,
+                    toolProfile: serverToolProfile,
+                    runtimeItem: event.runtimeItem,
+                    userMessageId: input.userMessageId,
+                    framePlacement: "beforeUser"
+                  });
+              return { workspace: next, value: next };
+            });
+          }
+          return;
+        }
+        if (event.type === "turn-attempt-reset") {
+          runtimeState.streamedFinalTextByAttempt.delete(event.attemptId);
+          activeAttemptInputTokens = 0;
+          batcher.push(event);
+          return;
+        }
+        if (event.type === "usage") {
+          activeAttemptInputTokens = Math.max(
+            activeAttemptInputTokens,
+            event.usage.inputTokens
+          );
+          return;
+        }
+        if (event.type === "context") {
+          if (
+            event.context.pressure === "compact" ||
+            (event.context.pressure === "prepare" && runtimeState.highestPressure === "normal")
+          ) {
+            runtimeState.highestPressure = event.context.pressure;
+          }
+          return;
+        }
+        if (event.type === "final-delta") {
+          const attemptId =
+            event.attemptId ?? attemptGuard.getActiveAttemptId() ?? requestStreamKey;
+          runtimeState.streamedFinalTextByAttempt.set(
+            attemptId,
+            `${runtimeState.streamedFinalTextByAttempt.get(attemptId) ?? ""}${event.delta}`
+          );
+          batcher.push(event);
+          return;
+        }
+        if (
+          event.type === "reasoning-start" ||
+          event.type === "reasoning-delta" ||
+          event.type === "reasoning-end" ||
+          event.type === "commentary-start" ||
+          event.type === "commentary-delta" ||
+          event.type === "commentary-end" ||
+          event.type === "provider-tool-start" ||
+          event.type === "provider-tool-update" ||
+          event.type === "provider-tool-end"
+        ) {
+          batcher.push(event);
+        }
+      }
+    });
+  } finally {
+    batcher.flush();
+    if (input.streamFlushSlot.get() === flushBatch) {
+      input.streamFlushSlot.set(null);
+    }
+  }
+  runtimeState.contextBudgetState = updateAgentContextBudgetBaseline(
+    runtimeState.contextBudgetState,
+    Math.max(activeAttemptInputTokens, completeResult.usage?.inputTokens ?? 0)
+  );
+  const serverRequestState = toProviderRequestBoundaryState(
+    completeResult.providerDiagnostics?.requestState
+  );
+  const providerDiagnostics = compactHistoricalProviderDiagnostics(
+    completeResult.providerDiagnostics
+  );
+  if (serverRequestState || providerDiagnostics) {
+    if (serverRequestState) {
+      turnState.latestProviderRequestState = serverRequestState;
+    }
+    input.commitWorkspace((current) => {
+      const assistant = current.ai.messages.find(
+        (message) => message.id === input.assistantMessageId
+      );
+      if (!assistant?.agentTrace) {
+        return { workspace: current, value: undefined };
+      }
+      const updated = updateAiMessage(
+        current,
+        input.assistantMessageId,
+        assistant.body,
+        "streaming",
+        {
+          agentTrace: {
+            ...assistant.agentTrace,
+            ...(serverRequestState
+              ? {
+                  providerRequestState:
+                    compactHistoricalProviderRequestState(serverRequestState)
+                }
+              : {}),
+            ...(providerDiagnostics ? { providerDiagnostics } : {})
+          }
+        }
+      );
+      return {
+        workspace: {
+          ...updated,
+          ai: {
+            ...updated.ai,
+            ...(serverRequestState
+              ? { latestProviderRequestState: serverRequestState }
+              : {})
+          }
+        },
+        value: undefined
+      };
+    });
+  }
+  runtimeState.latestProviderResponseId =
+    completeResult.responseId || runtimeState.latestProviderResponseId;
+  if (
+    completeResult.context?.pressure === "compact" ||
+    (completeResult.context?.pressure === "prepare" &&
+      runtimeState.highestPressure === "normal")
+  ) {
+    runtimeState.highestPressure = completeResult.context.pressure;
+  }
+  return completeResult;
+}
+
+export function appendProjectStateFrameToConversationInput(
+  input: AgentTurnProviderRequestAdapterInput
+): void {
+  const { context, runtimeState, turnState } = input;
+  if (context.kind === "comparison") {
+    return;
+  }
+  const current = input.readWorkspace();
+  const refreshedContext = buildTaskContext(current, {
+    kind: context.kind,
+    draft: input.draft,
+    selectedObjectIds: context.objectIds
+  });
+  const refreshedProviderTaskContext = buildProviderTaskContext(refreshedContext);
+  const beforeIds = new Set(
+    (current.ai.providerContextFrames ?? []).map((frame) => frame.id)
+  );
+  const nextWorkspace = input.commitWorkspace((currentWorkspace) => {
+    const next = appendAgentProviderStateFrames(currentWorkspace, {
+      workspace: currentWorkspace,
+      projectId: currentWorkspace.project.id,
+      strategy: input.strategyKind,
+      mode: input.agentTurnMode,
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+      userMessageId: input.userMessageId,
+      context: refreshedContext,
+      providerTaskContext: refreshedProviderTaskContext,
+      defaultMemoryContext: buildAgentDefaultMemoryContext(
+        currentWorkspace,
+        input.strategyKind
+      ),
+      summaryRevision: runtimeState.conversationContext.summaryRevision,
+      framePlacement: "afterUser"
+    });
+    return { workspace: next, value: next };
+  });
+  turnState.workspaceAtAgentStart = nextWorkspace;
+  const addedFrames = (nextWorkspace.ai.providerContextFrames ?? []).filter(
+    (frame) => !beforeIds.has(frame.id)
+  );
+  if (addedFrames.length === 0) {
+    return;
+  }
+  runtimeState.conversationInput = [
+    ...runtimeState.conversationInput,
+    ...addedFrames.map(providerContextFrameMessage)
+  ];
+}
+
+export async function compactConversationBeforeContinuation(
+  input: AgentTurnProviderRequestAdapterInput,
+  estimateBudget: AgentTurnProviderRequestAdapter["estimateBudget"]
+): Promise<boolean> {
+  const { runtimeState, turnState } = input;
+  if (runtimeState.continuationCompactionAttempted) {
+    return false;
+  }
+  runtimeState.continuationCompactionAttempted = true;
+  const currentWorkspace = input.readWorkspace();
+  const continuationBudget = estimateBudget(runtimeState.conversationInput);
+  const plan = buildConversationCompactionPlan({
+    workspace: currentWorkspace,
+    providerTimelineBudget: continuationBudget,
+    limits: input.conversationTokenLimits,
+    force: "compact"
+  });
+  if (!plan) {
+    return false;
+  }
+
+  const activityId = `${input.agentTurnId}:continuation-summary`;
+  input.commitWorkspace((current) => {
+    const assistant = current.ai.messages.find(
+      (message) => message.id === input.assistantMessageId
+    );
+    if (!assistant?.agentTrace) {
+      return { workspace: current, value: undefined };
+    }
+    return {
+      workspace: updateAiMessage(
+        current,
+        input.assistantMessageId,
+        assistant.body,
+        "streaming",
+        {
+          agentTrace: startLocalAgentToolActivity(
+            assistant.agentTrace,
+            {
+              toolCallId: activityId,
+              toolName: "compact_conversation_history",
+              activityKind: "contextRead",
+              label: "整理讨论上下文",
+              detail: "继续执行前整理较早对话"
+            },
+            input.nowIso()
+          )
+        }
+      ),
+      value: undefined
+    };
+  });
+  if (!turnState.agentTurnLeaseId) {
+    throw new Error("继续执行前缺少有效的 Agent Turn Lease。");
+  }
+  const summaryRequest = await requestConversationSummary(
+    plan,
+    input.signal,
+    {
+      projectId: currentWorkspace.project.id,
+      agentTurnId: input.agentTurnId,
+      mode: input.agentTurnMode,
+      leaseId: turnState.agentTurnLeaseId,
+      leaseSequence: turnState.nextAgentLeaseSequence,
+      continuationToken: turnState.agentContinuationToken,
+      onLeaseStarted: (leaseId) => {
+        turnState.agentTurnLeaseId = leaseId;
+      },
+      onLeaseSequence: (sequence) => {
+        turnState.nextAgentLeaseSequence = sequence;
+      },
+      onContinuationToken: (token) => {
+        turnState.agentContinuationToken = token;
+      }
+    },
+    input.fetch
+  );
+  turnState.providerTranscriptReset = true;
+  turnState.agentTurnLeaseId = summaryRequest.leaseId ?? turnState.agentTurnLeaseId;
+  const parsedSummary = summaryRequest.parsed;
+  if (parsedSummary.status !== "ok") {
+    throw new Error("继续执行前的对话摘要未通过校验，原始历史已保留。");
+  }
+  const compactedWorkspace = input.commitWorkspace((current) => {
+    const applied = applyConversationSummaryRevision(current, {
+      summary: parsedSummary.summary,
+      sourceMessageIds: plan.sourceMessages.map((message) => message.id),
+      expectedPreviousRevisionId: plan.previousSummaryRevision?.id,
+      estimatedInputTokens: plan.estimatedInputTokens,
+      now: input.nowIso()
+    });
+    if (applied.status !== "applied") {
+      throw new Error(applied.reason);
+    }
+    const framed = ensureAgentConversationSummaryBaselines(applied.workspace, {
+      projectId: applied.workspace.project.id,
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+      summaryRevision: applied.revision,
+      mode: input.agentTurnMode
+    });
+    const assistant = framed.ai.messages.find(
+      (message) => message.id === input.assistantMessageId
+    );
+    const next = assistant?.agentTrace
+      ? updateAiMessage(
+          framed,
+          input.assistantMessageId,
+          assistant.body,
+          "streaming",
+          {
+            agentTrace: finishLocalAgentToolActivity(
+              assistant.agentTrace,
+              activityId,
+              { state: "done", detail: "原始历史仍可查询" },
+              input.nowIso()
+            )
+          }
+        )
+      : framed;
+    return { workspace: next, value: next };
+  });
+  const refreshed = buildContinuousConversationContext({
+    workspace: compactedWorkspace,
+    limits: input.conversationTokenLimits
+  });
+  const framedCompactedWorkspace = input.commitWorkspace((current) => {
+    const next = appendAgentProviderContextFrames(current, {
+      ...input.providerFrameInput,
+      workspace: current,
+      defaultMemoryContext: buildAgentDefaultMemoryContext(current, input.strategyKind),
+      summaryRevision: refreshed.summaryRevision
+    });
+    return { workspace: next, value: next };
+  });
+  turnState.workspaceAtAgentStart = framedCompactedWorkspace;
+  const refreshedHistory = refreshed.messages.filter(
+    (message) => message.id !== input.userMessageId
+  );
+  runtimeState.conversationContext = {
+    laneKey: input.conversationLaneKey,
+    summaryRevision: refreshed.summaryRevision,
+    messages: refreshedHistory,
+    rawMessageCount: refreshedHistory.length,
+    coveredMessageCount: refreshed.coveredMessageCount,
+    estimatedInputTokens: refreshed.estimatedInputTokens,
+    pressure: refreshed.pressure
+  };
+  runtimeState.conversationInput = [
+    ...buildAgentProviderInput({
+      stableSystemPrompt: input.stableSystemPrompt,
+      frames: framedCompactedWorkspace.ai.providerContextFrames ?? [],
+      history: refreshedHistory,
+      currentUserMessageId: input.userMessageId,
+      currentStrategy: input.strategyKind,
+      userInput: input.userInput,
+      activeSummaryRevisionId: runtimeState.conversationContext.summaryRevision?.id,
+      serverManagedPrefix: false
+    }),
+    ...runtimeState.turnContinuationItems
+  ];
+  const refreshedBudget = estimateBudget(runtimeState.conversationInput);
+  runtimeState.contextBudgetState = advanceAgentContextBudgetGeneration(
+    runtimeState.contextBudgetState,
+    refreshedBudget.totalInputTokens
+  );
+  runtimeState.conversationContext = {
+    ...runtimeState.conversationContext,
+    estimatedInputTokens: refreshedBudget.totalInputTokens,
+    pressure:
+      refreshedBudget.estimatedOccupancyTokens >=
+      (input.conversationTokenLimits?.compactTokens ??
+        MORPHO_AGENT_CONTEXT_POLICY.compactTokens)
+        ? "compact"
+        : refreshedBudget.estimatedOccupancyTokens >=
+            (input.conversationTokenLimits?.prepareTokens ??
+              MORPHO_AGENT_CONTEXT_POLICY.prepareTokens)
+          ? "prepare"
+          : "normal"
+  };
+  runtimeState.highestPressure = runtimeState.conversationContext.pressure;
+  return true;
+}
