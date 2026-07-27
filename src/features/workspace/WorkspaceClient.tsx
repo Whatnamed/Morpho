@@ -311,7 +311,9 @@ import {
   type AgentToolExecutorInput
 } from "./agentToolExecutors";
 import { createAgentTurnRuntimeState, createAgentTurnState } from "./agentTurnState";
+import type { AgentTurnHost } from "./agentTurnHost";
 import { runMorphoAgentTurn } from "./agentTurnRunner";
+import { runManualCompactionTurn } from "./manualCompactionTurn";
 import {
   closeAgentTurnLease as closeAgentTurnLeaseWithState,
   closeAgentTurnLeaseRequest,
@@ -1692,148 +1694,55 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
+    const agentTurnHost: AgentTurnHost = {
+      commitWorkspace: commitWorkspaceNow,
+      readWorkspace: readWorkspaceNow,
+      ui: {
+        setContextWarning,
+        clearPendingDeliveryDraftTarget: () => {
+          setPendingDeliveryDraftTarget(null);
+        },
+        setStreaming: setIsAiStreaming,
+        setDraft: setAiDraft,
+        setTaskMode,
+        openConversation: () => {
+          setAiOpen(true);
+        },
+        showFailure: () => {
+          setShowFailure(true);
+        },
+        setPendingConfirmation,
+        selectObjects: setSelectedObjectIds,
+        focusObject: (objectId) => {
+          setFocusRequest((current) => ({ objectId, nonce: current.nonce + 1 }));
+        },
+        openProposal: setActiveProposalId
+      },
+      abortSlot: {
+        get: () => abortControllerRef.current,
+        set: (value) => {
+          abortControllerRef.current = value;
+        }
+      },
+      streamFlushSlot: {
+        get: () => agentStreamFlushRef.current,
+        set: (value) => {
+          agentStreamFlushRef.current = value;
+        }
+      },
+      fetch,
+      executeVisualGenerationPlan: executeAgentVisualGenerationPlan,
+      now: Date.now,
+      randomSuffix: () => Math.random().toString(36).slice(2, 8)
+    };
+
     if (parseManualCompactCommand(draft).matched) {
-      const context = buildTaskContext(workspace, {
-        kind: "general",
-        draft,
-        selectedObjectIds
-      });
-      const conversationLaneAnchors = resolveConversationLaneAnchors(workspace, selectedObjectIds);
-      const conversationLaneKey = buildConversationLaneKey({
-        currentFocus: workspace.projectContinuity.currentFocus,
-        taskKind: context.kind,
-        anchorObjectIds: conversationLaneAnchors.anchorObjectIds,
-        targetDirectionIds: conversationLaneAnchors.targetDirectionIds,
-        visualBranchId: conversationLaneAnchors.visualBranchId
-      });
-      const compactionPlan = buildConversationCompactionPlan({ workspace, force: "compact" });
-      const now = new Date().toISOString();
-      const userMessageId = `ai-user-compact-${Date.now()}`;
-      const assistantMessageId = `ai-assistant-compact-${Date.now()}`;
-      const manualCompactionTurnId = `manual-compact-${Date.now()}`;
-      const controller = new AbortController();
-
-      setAiDraft("");
-      setAiOpen(true);
-      setIsAiStreaming(true);
-      abortControllerRef.current = controller;
-      commitWorkspaceNow((current) => {
-        const next = appendAgentTurnMessages(current, {
-          userMessageId,
-          assistantMessageId,
-          userBody: draft,
-          assistantBody: getManualCompactionStatusText("running"),
-          createdAt: now,
-          contextObjectIds: context.objectIds,
-          conversationLaneKey,
-          workIntent: "discussion",
-          contextVisibility: "uiOnly",
-          taskMode: "chatAnalysis",
-          promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
-          taskStrategy: "discussion",
-          agentTurnId: manualCompactionTurnId
-        });
-        return { workspace: next, value: undefined };
-      });
-
-      if (!compactionPlan) {
-        commitWorkspaceNow((current) => {
-          const next = updateAiMessage(
-            current,
-            assistantMessageId,
-            getManualCompactionStatusText("notNeeded"),
-            "done"
-          );
-          return { workspace: next, value: undefined };
-        });
-        abortControllerRef.current = null;
-        setIsAiStreaming(false);
-        return;
-      }
-
-      let manualCompactionLeaseId: string | undefined;
-      let manualCompactionOutcome: "success" | "cancelledBeforeExecution" | "failedBeforeExecution" =
-        "failedBeforeExecution";
-      try {
-        const summaryRequest = await requestConversationSummary(
-          compactionPlan,
-          controller.signal,
-          {
-            projectId: workspace.project.id,
-            agentTurnId: manualCompactionTurnId,
-            mode: agentTurnMode,
-            onLeaseStarted: (leaseId) => {
-              manualCompactionLeaseId = leaseId;
-            }
-          }
-        );
-        manualCompactionLeaseId = summaryRequest.leaseId ?? manualCompactionLeaseId;
-        const parsedSummary = summaryRequest.parsed;
-        if (parsedSummary.status !== "ok") {
-          throw new Error("模型没有返回可用的连续对话摘要。");
-        }
-        const summaryApplied = commitWorkspaceNow((current) => {
-          const result = applyConversationSummaryRevision(current, {
-            summary: parsedSummary.summary,
-            sourceMessageIds: compactionPlan.sourceMessages.map((message) => message.id),
-            expectedPreviousRevisionId: compactionPlan.previousSummaryRevision?.id,
-            estimatedInputTokens: compactionPlan.estimatedInputTokens,
-            now: new Date().toISOString()
-          });
-          const framed = result.status === "applied"
-            ? ensureAgentConversationSummaryBaselines(result.workspace, {
-                projectId: result.workspace.project.id,
-                promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
-                summaryRevision: result.revision,
-                mode: agentTurnMode
-              })
-            : result.workspace;
-          const next = updateAiMessage(
-            framed,
-            assistantMessageId,
-            result.status === "applied"
-              ? getManualCompactionStatusText("completed")
-              : getManualCompactionStatusText("failed"),
-            result.status === "applied" ? "done" : "failed"
-          );
-          return { workspace: next, value: result.status === "applied" };
-        });
-        if (!summaryApplied) {
-          setShowFailure(true);
-        } else {
-          manualCompactionOutcome = "success";
-        }
-      } catch (error) {
-        const isCancelled = error instanceof DOMException && error.name === "AbortError";
-        manualCompactionOutcome = isCancelled ? "cancelledBeforeExecution" : "failedBeforeExecution";
-        commitWorkspaceNow((current) => {
-          const next = updateAiMessage(
-            current,
-            assistantMessageId,
-            isCancelled ? "上下文压缩已取消。" : getManualCompactionStatusText("failed"),
-            isCancelled ? "done" : "failed"
-          );
-          return { workspace: next, value: undefined };
-        });
-        if (!isCancelled) {
-          setShowFailure(true);
-        }
-      } finally {
-        await closeAgentTurnLeaseRequest({
-          leaseId: manualCompactionLeaseId,
-          agentTurnId: manualCompactionTurnId,
-          outcome: manualCompactionOutcome
-        });
-        if (abortControllerRef.current === controller) {
-          abortControllerRef.current = null;
-          setIsAiStreaming(false);
-        } else if (abortControllerRef.current === null) {
-          setIsAiStreaming(false);
-        }
-      }
+      await runManualCompactionTurn(
+        { draft, selectedObjectIds, agentTurnMode },
+        agentTurnHost
+      );
       return;
     }
-
     await runMorphoAgentTurn(
       {
         draft,
@@ -1849,47 +1758,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         imageGenerationModelId: effectiveImageGenerationSettings.modelId,
         readConversationTokenLimits: readConversationTokenLimitsOverride
       },
-      {
-        commitWorkspace: commitWorkspaceNow,
-        readWorkspace: readWorkspaceNow,
-        ui: {
-          setContextWarning,
-          clearPendingDeliveryDraftTarget: () => {
-            setPendingDeliveryDraftTarget(null);
-          },
-          setStreaming: setIsAiStreaming,
-          setDraft: setAiDraft,
-          setTaskMode,
-          openConversation: () => {
-            setAiOpen(true);
-          },
-          showFailure: () => {
-            setShowFailure(true);
-          },
-          setPendingConfirmation,
-          selectObjects: setSelectedObjectIds,
-          focusObject: (objectId) => {
-            setFocusRequest((current) => ({ objectId, nonce: current.nonce + 1 }));
-          },
-          openProposal: setActiveProposalId
-        },
-        abortSlot: {
-          get: () => abortControllerRef.current,
-          set: (value) => {
-            abortControllerRef.current = value;
-          }
-        },
-        streamFlushSlot: {
-          get: () => agentStreamFlushRef.current,
-          set: (value) => {
-            agentStreamFlushRef.current = value;
-          }
-        },
-        fetch,
-        executeVisualGenerationPlan: executeAgentVisualGenerationPlan,
-        now: Date.now,
-        randomSuffix: () => Math.random().toString(36).slice(2, 8)
-      }
+      agentTurnHost
     );
   }, [
     agentTurnMode,
@@ -1906,8 +1775,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     selectedObjectIds,
     selectedObjects,
     taskMode,
-    workIntent,
-    workspace
+    workIntent
   ]);
 
   const openDeliveryPreparation = useCallback((deliveryObjectId?: string) => {
