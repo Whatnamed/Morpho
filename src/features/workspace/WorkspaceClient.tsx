@@ -2,7 +2,15 @@
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type SetStateAction
+} from "react";
 
 import type {
   AiTaskMode,
@@ -376,7 +384,35 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const router = useRouter();
   const [workspace, setWorkspace, persistenceState, flushWorkspace] = usePersistentWorkspace(projectId);
   const [isStorageNoticeDismissed, setStorageNoticeDismissed] = useState(false);
-  const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>(() => workspace.ui.lastSelectionIds);
+  const [selectedObjectSelection, setSelectedObjectSelection] = useState<{
+    projectId: string;
+    objectIds: string[];
+  }>(() => ({
+    projectId: workspace.project.id,
+    objectIds: workspace.ui.lastSelectionIds
+  }));
+  const selectedObjectProjectIdRef = useRef(projectId);
+  const selectedObjectIds = useMemo(
+    () =>
+      selectedObjectSelection.projectId === projectId && workspace.project.id === projectId
+        ? selectedObjectSelection.objectIds
+        : [],
+    [projectId, selectedObjectSelection, workspace.project.id]
+  );
+  const setSelectedObjectIds = useCallback(
+    (action: SetStateAction<string[]>) => {
+      const nextProjectId = selectedObjectProjectIdRef.current;
+      setSelectedObjectSelection((current) => {
+        const currentObjectIds = current.projectId === nextProjectId ? current.objectIds : [];
+        const nextObjectIds = typeof action === "function" ? action(currentObjectIds) : action;
+        return {
+          projectId: nextProjectId,
+          objectIds: [...nextObjectIds]
+        };
+      });
+    },
+    []
+  );
   const [aiDraft, setAiDraft] = useState("");
   const [agentTurnMode, setAgentTurnMode] = useState<MorphoAgentTurnMode>("auto");
   const [taskMode, setTaskMode] = useState<AiTaskMode>("chatAnalysis");
@@ -605,14 +641,32 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   );
 
   useEffect(() => {
+    selectedObjectProjectIdRef.current = projectId;
+    selectionHydratedProjectIdRef.current = null;
+  }, [projectId]);
+
+  useEffect(() => {
     const persistedSelection = workspace.ui.lastSelectionIds;
-    if (!shouldHydratePersistedSelection(selectionHydratedProjectIdRef.current, workspace.project.id)) {
+    if (
+      workspace.project.id !== projectId ||
+      !shouldHydratePersistedSelection({
+        hydratedProjectId: selectionHydratedProjectIdRef.current,
+        projectId: workspace.project.id,
+        workspaceLoaded: persistenceState.isWorkspaceLoaded
+      })
+    ) {
       return;
     }
 
     selectionHydratedProjectIdRef.current = workspace.project.id;
     requestCanvasSelection(persistedSelection);
-  }, [requestCanvasSelection, workspace.project.id, workspace.ui.lastSelectionIds]);
+  }, [
+    persistenceState.isWorkspaceLoaded,
+    projectId,
+    requestCanvasSelection,
+    workspace.project.id,
+    workspace.ui.lastSelectionIds
+  ]);
 
   const updateImageGenerationSettings = useCallback(
     (patch: { modelId?: string; aspectRatio?: GrsImageAspectRatio; sizeOption?: string }) => {
@@ -706,7 +760,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setSelectedObjectIds([objectId]);
     setFocusRequest((current) => ({ objectId, nonce: current.nonce + 1 }));
     handleDrawerChange(null);
-  }, [handleDrawerChange, selectedObjectIds]);
+  }, [handleDrawerChange, selectedObjectIds, setSelectedObjectIds]);
 
   const locateObjectFromDetail = useCallback(
     (objectId: string) => {
@@ -802,7 +856,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       nonce: current.nonce + 1
     }));
     return true;
-  }, []);
+  }, [setSelectedObjectIds]);
 
   const undoLastObjectOperation = useCallback(() => {
     if (undoLastDetailNavigation()) {
@@ -902,7 +956,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         };
       });
     },
-    [handleDrawerChange, setWorkspace]
+    [handleDrawerChange, setSelectedObjectIds, setWorkspace]
   );
 
   const handleInstancesChange = useCallback(
@@ -1577,7 +1631,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       now: Date.now,
       randomSuffix: () => Math.random().toString(36).slice(2, 8)
     }),
-    [commitWorkspaceNow, executeAgentVisualGenerationPlan, readWorkspaceNow]
+    [commitWorkspaceNow, executeAgentVisualGenerationPlan, readWorkspaceNow, setSelectedObjectIds]
   );
 
   const handleSendMorphoAgentTurn = useCallback(async () => {
@@ -1894,7 +1948,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         setFocusRequest((current) => ({ objectId: createdId, nonce: current.nonce + 1 }));
       }
     },
-    [applyDeliveryOperation]
+    [applyDeliveryOperation, setSelectedObjectIds]
   );
 
   const handleCreateDeliverySection = useCallback(
@@ -2334,7 +2388,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setAiDraft("");
       setTaskMode("chatAnalysis");
     }
-  }, [activeProposal, setWorkspace, workspace]);
+  }, [activeProposal, setSelectedObjectIds, setWorkspace, workspace]);
 
   const handleApplyProposalFromCanvas = useCallback(
     (proposalId: string, allowSourceChanged = false) => {
@@ -2453,7 +2507,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         setTaskMode("chatAnalysis");
       }
     },
-    [setWorkspace, workspace]
+    [setSelectedObjectIds, setWorkspace, workspace]
   );
 
   const handleRejectProposal = useCallback(
@@ -2463,7 +2517,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setDetailProposalId((current) => (current === proposalId ? null : current));
       setSelectedObjectIds((current) => current.filter((selectedId) => selectedId !== proposalId));
     },
-    [setWorkspace]
+    [setSelectedObjectIds, setWorkspace]
   );
 
   const handleSaveResearchProposalDraft = useCallback(
@@ -2980,7 +3034,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setLocalEditObjectId((current) => (current === pendingConfirmation.targetObjectId ? null : current));
     setPendingConfirmation(null);
     setAiDraft("");
-  }, [executeAgentVisualGenerationPlan, pendingConfirmation, pushObjectOperationUndo, setWorkspace, showWorkspaceNotice, workspace]);
+  }, [
+    executeAgentVisualGenerationPlan,
+    pendingConfirmation,
+    pushObjectOperationUndo,
+    setSelectedObjectIds,
+    setWorkspace,
+    showWorkspaceNotice,
+    workspace
+  ]);
 
   const handleConfirmPendingWithReviewMarks = useCallback(() => {
     if (pendingConfirmation?.kind !== "setDefaultReference") {
@@ -3056,7 +3118,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setActiveProposalId((current) => (current && removedIds.includes(current) ? null : current));
     setDetailProposalId((current) => (current && removedIds.includes(current) ? null : current));
     setCanvasContextMenu(null);
-  }, [pushObjectOperationUndo, selectedObjects, setWorkspace]);
+  }, [pushObjectOperationUndo, selectedObjects, setSelectedObjectIds, setWorkspace]);
 
   const handleRestoreObject = useCallback(
     (objectId: string) => {
@@ -3064,7 +3126,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setSelectedObjectIds([objectId]);
       focusObject(objectId);
     },
-    [focusObject, setWorkspace]
+    [focusObject, setSelectedObjectIds, setWorkspace]
   );
 
   const handleDeleteSelected = useCallback(() => {
@@ -3099,7 +3161,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setActiveProposalId((current) => (current && removedIds.includes(current) ? null : current));
     setDetailProposalId((current) => (current && removedIds.includes(current) ? null : current));
     setCanvasContextMenu(null);
-  }, [pushObjectOperationUndo, selectedObjects, setWorkspace]);
+  }, [pushObjectOperationUndo, selectedObjects, setSelectedObjectIds, setWorkspace]);
 
   const handleEliminateDirection = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "conceptDirection");
@@ -3192,7 +3254,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setFocusRequest((current) => ({ objectId: result.keyConclusion.id, nonce: current.nonce + 1 }));
       showWorkspaceNotice(`已保存关键结论「${result.keyConclusion.title}」`);
     },
-    [pushObjectOperationUndo, setWorkspace, showWorkspaceNotice, workspace]
+    [pushObjectOperationUndo, setSelectedObjectIds, setWorkspace, showWorkspaceNotice, workspace]
   );
 
   const handleOpenResearchDetail = useCallback(() => {
@@ -3225,7 +3287,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setFocusRequest((current) => ({ objectId: result.activeObjectIds[0], nonce: current.nonce + 1 }));
     }
     setActiveResearchDetailObjectId(null);
-  }, [selectedObjects, setWorkspace, workspace]);
+  }, [selectedObjects, setSelectedObjectIds, setWorkspace, workspace]);
 
   const handleApplyResearchExtractionSelection = useCallback(
     (selectedKeys: string[]) => {
@@ -3240,7 +3302,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         setFocusRequest((current) => ({ objectId: result.activeObjectIds[0], nonce: current.nonce + 1 }));
       }
     },
-    [activeResearchDetailObjectId, setWorkspace, workspace]
+    [activeResearchDetailObjectId, setSelectedObjectIds, setWorkspace, workspace]
   );
 
   const handleCopyItemToDraft = useCallback((text: string) => {
@@ -3433,7 +3495,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         showWorkspaceNotice(`已取消「${targetObject.title}」的后续默认参考`);
       }
     },
-    [pushObjectOperationUndo, setWorkspace, showWorkspaceNotice, workspace]
+    [pushObjectOperationUndo, setSelectedObjectIds, setWorkspace, showWorkspaceNotice, workspace]
   );
 
   const cleanupDocumentSourcePreview = useCallback(() => {
@@ -3529,7 +3591,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           );
         });
     },
-    [cleanupDocumentSourcePreview, setWorkspace, workspace]
+    [cleanupDocumentSourcePreview, setSelectedObjectIds, setWorkspace, workspace]
   );
 
   const handleOpenDeliveryReferenceReader = useCallback(
@@ -3624,7 +3686,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }));
       setFocusRequest((current) => ({ objectId: fragmentId, nonce: current.nonce + 1 }));
     },
-    [setWorkspace]
+    [setSelectedObjectIds, setWorkspace]
   );
 
   const handleCloseDocumentReader = useCallback(() => {

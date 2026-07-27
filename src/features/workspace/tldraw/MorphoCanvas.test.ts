@@ -38,7 +38,7 @@ describe("MorphoCanvas focus navigation", () => {
     expect(getSelectedMorphoShapeIds([morphoLike]).objectIds).toEqual(["definition-current"]);
   });
 
-  it("resolves a programmatic request to active Morpho shapes only and allows an empty request to clear selection", () => {
+  it("restores valid persisted selections while filtering hidden and missing objects", () => {
     const workspace = createInitialWorkspace();
     const visible = workspace.objects["image-soft-rail-v2"]!;
     const hidden = { ...workspace.objects["image-night-rail"]!, visibility: "hidden" as const };

@@ -26,8 +26,12 @@ export function popDetailNavigation(
   };
 }
 
-export function shouldHydratePersistedSelection(hydratedProjectId: string | null, projectId: string): boolean {
-  return hydratedProjectId !== projectId;
+export function shouldHydratePersistedSelection(input: {
+  hydratedProjectId: string | null;
+  projectId: string;
+  workspaceLoaded: boolean;
+}): boolean {
+  return input.workspaceLoaded && input.hydratedProjectId !== input.projectId;
 }
 
 export function shouldAcceptCanvasSelection(input: { documentVisible: boolean; windowFocused: boolean }): boolean {

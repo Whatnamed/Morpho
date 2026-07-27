@@ -38,13 +38,7 @@ test.describe("项目持久化", () => {
     expect(after.ui.lastSelectionIds).toEqual([seed.objectIds.keyConclusion]);
   });
 
-  // KNOWN GAP (2026-07-27): the workspace stores `ui.lastSelectionIds` across a
-  // reload and `shouldHydratePersistedSelection` exists to re-apply it, but the
-  // canvas comes back with nothing selected — the hydration runs against the blank
-  // placeholder workspace that `usePersistentWorkspace` renders before the stored
-  // one arrives. Kept as a failing expectation on purpose so the fix has a test to
-  // turn green; remove `test.fail` when the selection is re-applied.
-  test.fail("刷新后画布重新选中上次选择的对象", async ({ page }) => {
+  test("刷新后画布重新选中上次选择的对象", async ({ page }) => {
     const seed = await seedProject(page);
     await page.goto(`/projects/${seed.seedProjectId}`);
     await expect(page.locator(shapeSelector(seed.objectIds.keyConclusion))).toBeVisible();

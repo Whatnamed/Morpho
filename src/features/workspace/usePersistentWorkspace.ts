@@ -97,6 +97,11 @@ export function usePersistentWorkspace(projectId: string) {
     let isCancelled = false;
 
     const timeoutId = window.setTimeout(() => {
+      const blankWorkspace = createBlankWorkspace(projectId);
+      setLoadResult({ workspace: blankWorkspace });
+      setHasLoaded(false);
+      setWorkspace(blankWorkspace);
+      setPersistence({ phase: "loading", isDirty: false });
       void (async () => {
         const loaded = await loadWorkspace(projectId);
         if (isCancelled) {
@@ -189,10 +194,12 @@ export function usePersistentWorkspace(projectId: string) {
     });
   }, []);
 
+  const isWorkspaceLoaded = hasLoaded && !loadResult.migrationError && workspace.project.id === projectId;
+
   return [
     workspace,
     setReconciledWorkspace,
-    { ...persistence, migrationError: loadResult.migrationError, storageDurability },
+    { ...persistence, migrationError: loadResult.migrationError, storageDurability, isWorkspaceLoaded },
     flushWorkspace
   ] as const;
 }

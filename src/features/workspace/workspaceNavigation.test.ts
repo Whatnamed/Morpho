@@ -24,10 +24,38 @@ describe("workspace detail navigation", () => {
     expect(restored).toEqual({ snapshot: second, history: [first] });
   });
 
-  it("hydrates persisted selection only when the current project has not been hydrated", () => {
-    expect(shouldHydratePersistedSelection(null, "project-a")).toBe(true);
-    expect(shouldHydratePersistedSelection("project-a", "project-a")).toBe(false);
-    expect(shouldHydratePersistedSelection("project-a", "project-b")).toBe(true);
+  it("waits for a loaded project before hydrating persisted selection", () => {
+    expect(
+      shouldHydratePersistedSelection({
+        hydratedProjectId: null,
+        projectId: "project-a",
+        workspaceLoaded: false
+      })
+    ).toBe(false);
+    expect(
+      shouldHydratePersistedSelection({
+        hydratedProjectId: null,
+        projectId: "project-a",
+        workspaceLoaded: true
+      })
+    ).toBe(true);
+  });
+
+  it("hydrates once per loaded project and does not inherit the previous project", () => {
+    expect(
+      shouldHydratePersistedSelection({
+        hydratedProjectId: "project-a",
+        projectId: "project-a",
+        workspaceLoaded: true
+      })
+    ).toBe(false);
+    expect(
+      shouldHydratePersistedSelection({
+        hydratedProjectId: "project-a",
+        projectId: "project-b",
+        workspaceLoaded: true
+      })
+    ).toBe(true);
   });
 
   it("ignores transient canvas selection updates while the window is not active", () => {
