@@ -7493,110 +7493,6 @@ function storeMessageCitations(
   );
 }
 
-async function readAiEventStream(
-  body: ReadableStream<Uint8Array>,
-  onDelta: (body: string) => void
-): Promise<{ text: string; citations: ProviderCitation[] }> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let assistantBody = "";
-  const citations: ProviderCitation[] = [];
-  let isDone = false;
-
-  while (!isDone) {
-    const result = await reader.read();
-    isDone = result.done;
-    if (result.value) {
-      buffer += decoder.decode(result.value, { stream: !isDone });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-
-      for (const line of lines) {
-        const event = parseAiStreamEvent(line);
-        if (!event) {
-          continue;
-        }
-
-        if (event.type === "delta") {
-          assistantBody += event.text;
-          onDelta(assistantBody);
-        } else if (event.type === "citations") {
-          citations.push(...event.citations);
-        } else if (event.type === "error") {
-          throw new Error(event.message);
-        }
-      }
-    }
-  }
-
-  if (buffer.trim()) {
-    const event = parseAiStreamEvent(buffer);
-    if (event?.type === "delta") {
-      assistantBody += event.text;
-      onDelta(assistantBody);
-    } else if (event?.type === "citations") {
-      citations.push(...event.citations);
-    }
-  }
-
-  return { text: assistantBody, citations: dedupeCitations(citations) };
-}
-
-type AiStreamEvent =
-  | {
-      type: "delta";
-      text: string;
-    }
-  | {
-      type: "citations";
-      citations: ProviderCitation[];
-    }
-  | {
-      type: "done";
-    }
-  | {
-      type: "error";
-      message: string;
-    };
-
-function parseAiStreamEvent(line: string): AiStreamEvent | null {
-  const trimmed = line.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
-    if (!isRecord(parsed) || typeof parsed.type !== "string") {
-      return { type: "delta", text: trimmed };
-    }
-
-    if (parsed.type === "delta" && typeof parsed.text === "string") {
-      return { type: "delta", text: parsed.text };
-    }
-
-    if (parsed.type === "citations" && Array.isArray(parsed.citations)) {
-      return {
-        type: "citations",
-        citations: parsed.citations.filter(isProviderCitation)
-      };
-    }
-
-    if (parsed.type === "done") {
-      return { type: "done" };
-    }
-
-    if (parsed.type === "error" && typeof parsed.message === "string") {
-      return { type: "error", message: parsed.message };
-    }
-  } catch {
-    return { type: "delta", text: trimmed };
-  }
-
-  return null;
-}
-
 function normalizeAgentTurnErrorMessage(message: string): string {
   const normalized = message.toLowerCase();
   const looksLikeAuthError =
@@ -7610,22 +7506,6 @@ function normalizeAgentTurnErrorMessage(message: string): string {
   }
 
   return "登录状态失效，本轮已完成步骤已保留。请重新登录后重试。";
-}
-
-function isProviderCitation(value: unknown): value is ProviderCitation {
-  return isRecord(value) && typeof value.title === "string";
-}
-
-function dedupeCitations(citations: ProviderCitation[]): ProviderCitation[] {
-  const seen = new Set<string>();
-  return citations.filter((citation) => {
-    const key = citation.url ?? `${citation.title}:${citation.snippet ?? ""}`;
-    if (seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
 }
 
 function getAvailableCitationId(workspace: MorphoWorkspace, preferredId: string): string {
