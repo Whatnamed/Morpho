@@ -16,9 +16,16 @@ import {
 } from "./agentTurnLeaseClient";
 import { appendAgentTurnMessages } from "./agentTurnMessages";
 import { getManualCompactionStatusText } from "./manualConversationCompaction";
-import { ensureAgentConversationSummaryBaselines } from "./providerContextFrames";
+import {
+  ensureAgentConversationSummaryBaselines,
+  getLatestProviderRequestState
+} from "./providerContextFrames";
 import { buildTaskContext } from "./taskContext";
 import type { MorphoAgentTurnMode } from "./morphoAgent";
+import {
+  buildAgentCompactionContextMarkers
+} from "./agentTurnProviderRequest";
+import { buildConversationCompactionTailItems } from "./conversationSummaryAgentRequest";
 
 export type ManualCompactionTurnInput = {
   draft: string;
@@ -51,6 +58,11 @@ export async function runManualCompactionTurn(
     workspace,
     force: "compact"
   });
+  const previousProviderRequestState = getLatestProviderRequestState(workspace);
+  const retainedTailItems = compactionPlan
+    ? buildConversationCompactionTailItems({ messages: compactionPlan.remainingMessages, continuationItems: [] })
+    : [];
+  const contextMarkers = buildAgentCompactionContextMarkers(workspace);
   const now = new Date(host.now()).toISOString();
   const userMessageId = `ai-user-compact-${host.now()}`;
   const assistantMessageId = `ai-assistant-compact-${host.now()}`;
@@ -108,6 +120,10 @@ export async function runManualCompactionTurn(
         projectId: workspace.project.id,
         agentTurnId: manualCompactionTurnId,
         mode: input.agentTurnMode,
+        retainedTailItems,
+        contextMarkers,
+        previousTranscriptManifestHash: previousProviderRequestState?.transcriptManifestHash,
+        previousTranscriptSnapshotToken: previousProviderRequestState?.transcriptSnapshotToken,
         onLeaseStarted: (leaseId) => {
           manualCompactionLeaseId = leaseId;
         }
@@ -116,7 +132,7 @@ export async function runManualCompactionTurn(
     );
     manualCompactionLeaseId = summaryRequest.leaseId ?? manualCompactionLeaseId;
     const parsedSummary = summaryRequest.parsed;
-    if (parsedSummary.status !== "ok") {
+    if (parsedSummary.status !== "ok" || !summaryRequest.compactionReceipt) {
       throw new Error("模型没有返回可用的连续对话摘要。");
     }
     const summaryApplied = host.commitWorkspace((current) => {

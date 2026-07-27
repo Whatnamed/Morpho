@@ -4,7 +4,8 @@ import {
   buildAgentCompactionDescriptor,
   buildCompactionTranscriptMarker,
   buildConversationSummaryRevisionId,
-  hashConversationSummaryForReceipt
+  hashConversationSummaryForReceipt,
+  hashSourceMessageIds
 } from "@/shared/agentCompactionProtocol";
 import {
   hashAgentContinuationItems,
@@ -218,7 +219,7 @@ describe("agent continuation token", () => {
       sourceStartMessageId: "message-1",
       sourceEndMessageId: "message-2",
       sourceMessageCount: 2,
-      sourceMessageIdsHash: "source-hash",
+      sourceMessageIdsHash: hashSourceMessageIds(["message-1", "message-2"]),
       retainedTail,
       promptContractVersion: "morpho-agent-test"
     });
@@ -230,11 +231,12 @@ describe("agent continuation token", () => {
         sourceMessageIdsHash: descriptor.sourceMessageIdsHash,
         summaryHash
       }),
-      leaseId: "lease-1",
-      agentTurnId: "agent-turn-1",
-      sequence: 3,
-      expiresAt: 1_200_000
-    };
+        leaseId: "lease-1",
+        agentTurnId: "agent-turn-1",
+        sequence: 3,
+        expiresAt: 1_200_000,
+        receiptVersion: 2 as const
+      };
     const token = issue({
       summary: true,
       compactionReceipt: receipt,

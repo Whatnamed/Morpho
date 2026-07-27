@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
 import {
+  buildAgentCompactionDescriptor,
+  buildCompactionTranscriptMarker,
   createAgentContextStateMarker,
-  hashCompactionTail,
-  hashConversationSummaryForReceipt
+  hashConversationSummaryForReceipt,
+  hashSourceMessageIds
 } from "@/shared/agentCompactionProtocol";
 import { createProviderContextFrame } from "@/domain/morpho/providerContextFrame";
 import {
@@ -23,6 +25,20 @@ function request(overrides: Record<string, unknown> = {}) {
     capabilityIntent: { comparisonAnalysis: false },
     ...overrides
   };
+}
+
+function validCompactionDescriptor(sourceInput: unknown[] = [
+  { role: "user", content: [{ type: "input_text", text: "source" }] }
+]): ReturnType<typeof buildAgentCompactionDescriptor> {
+  return buildAgentCompactionDescriptor({
+    sourceStartMessageId: "message-1",
+    sourceEndMessageId: "message-2",
+    sourceMessageCount: 2,
+    sourceMessageIdsHash: hashSourceMessageIds(["message-1", "message-2"]),
+    retainedTail: [],
+    sourceInput,
+    promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION
+  });
 }
 
 describe("Agent Provider Contract", () => {
@@ -227,15 +243,14 @@ describe("Agent Provider Contract", () => {
         ]
       }],
       directive: { kind: "conversationSummary" },
-      compactionDescriptor: {
-        sourceStartMessageId: "message-1",
-        sourceEndMessageId: "message-2",
-        sourceMessageCount: 2,
-        sourceMessageIdsHash: "source-hash",
-        retainedTailCount: 0,
-        retainedTailHash: "tail-hash",
-        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION
-      }
+      compactionDescriptor: validCompactionDescriptor([{
+        role: "user",
+        content: [
+          { type: "input_text", text: "[summary source]\nsourceRange: message-1..message-2" },
+          { type: "input_text", text: "[sourcePart 2/2]\nassistant: continue" }
+        ]
+      }]),
+      compactionRetainedTail: []
     }));
     if (parsed.status !== "ok") {
       throw new Error(parsed.reason);
@@ -253,15 +268,7 @@ describe("Agent Provider Contract", () => {
         content: Array.from({ length: 33 }, () => ({ type: "input_text", text: "source" }))
       }],
       directive: { kind: "conversationSummary" },
-      compactionDescriptor: {
-        sourceStartMessageId: "message-1",
-        sourceEndMessageId: "message-2",
-        sourceMessageCount: 2,
-        sourceMessageIdsHash: "source-hash",
-        retainedTailCount: 0,
-        retainedTailHash: "tail-hash",
-        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION
-      }
+      compactionDescriptor: validCompactionDescriptor()
     }))).toMatchObject({ status: "failed" });
   });
 
@@ -279,15 +286,11 @@ describe("Agent Provider Contract", () => {
         { role: "assistant", content: [{ type: "output_text", text: "answer" }] }
       ],
       directive: { kind: "conversationSummary" },
-      compactionDescriptor: {
-        sourceStartMessageId: "message-1",
-        sourceEndMessageId: "message-2",
-        sourceMessageCount: 2,
-        sourceMessageIdsHash: "source-hash",
-        retainedTailCount: 0,
-        retainedTailHash: "tail-hash",
-        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION
-      }
+      compactionDescriptor: validCompactionDescriptor([
+        { role: "user", content: [{ type: "input_text", text: "source" }] },
+        { role: "assistant", content: [{ type: "output_text", text: "answer" }] }
+      ]),
+      compactionRetainedTail: []
     }))).toMatchObject({ status: "failed" });
     expect(parseAgentRouteRequest(request({
       directive: { kind: "conversationSummary" },
@@ -415,6 +418,41 @@ describe("Agent Provider Contract", () => {
     }))).toMatchObject({ status: "failed" });
   });
 
+  it("preserves the signed transcript manifest and snapshot state across diagnostics parsing", () => {
+    const manifestHash = "a".repeat(64);
+    const snapshotToken = "snapshot-token-1234567890";
+    const parsed = parseAgentRouteRequest(request({
+      diagnostics: {
+        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+        previousRequestState: {
+          promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+          transcriptManifestHash: manifestHash,
+          transcriptSnapshotToken: snapshotToken
+        },
+        requestState: {
+          promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+          transcriptManifestHash: manifestHash,
+          transcriptSnapshotToken: snapshotToken
+        }
+      }
+    }));
+    expect(parsed).toMatchObject({
+      status: "ok",
+      value: {
+        diagnostics: {
+          previousRequestState: {
+            transcriptManifestHash: manifestHash,
+            transcriptSnapshotToken: snapshotToken
+          },
+          requestState: {
+            transcriptManifestHash: manifestHash,
+            transcriptSnapshotToken: snapshotToken
+          }
+        }
+      }
+    });
+  });
+
   it("does not accept a compaction transcript marker outside postCompaction", () => {
     const summary = {
       threadGoal: "收拢海洋浮标上下文",
@@ -424,24 +462,15 @@ describe("Agent Provider Contract", () => {
       unresolvedQuestions: [],
       referencedObjects: ["buoy-object-1"]
     };
-    const descriptor = {
-      sourceStartMessageId: "message-1",
-      sourceEndMessageId: "message-2",
-      sourceMessageCount: 2,
-      sourceMessageIdsHash: "source-message-ids",
-      retainedTailCount: 0,
-      retainedTailHash: hashCompactionTail([]),
-      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION
-    };
+    const descriptor = validCompactionDescriptor();
     const summaryHash = hashConversationSummaryForReceipt(summary);
-    const marker = {
-      type: "morpho_compaction_transcript",
-      ...descriptor,
+    const marker = buildCompactionTranscriptMarker({
+      descriptor,
       summary,
       summaryHash,
       summaryRevisionId: "summary-revision-1",
       retainedTail: []
-    };
+    });
     expect(parseAgentRouteRequest(request({ input: [marker] }))).toMatchObject({
       status: "failed",
       reason: expect.stringContaining("postCompaction")

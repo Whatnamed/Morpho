@@ -40,6 +40,8 @@ export type ProviderContextFrameBuildInput = {
   cacheItemManifest?: AgentCacheItemManifest[];
   toolsHash?: string;
   budgetGeneration?: number;
+  transcriptManifestHash?: string;
+  transcriptSnapshotToken?: string;
   promptContractVersion: string;
   userMessageId: string;
   context: TaskContextResult;
@@ -65,6 +67,8 @@ export type ProviderRequestBoundaryState = {
   cacheItemManifest?: AgentCacheItemManifest[];
   toolsHash?: string;
   budgetGeneration?: number;
+  transcriptManifestHash?: string;
+  transcriptSnapshotToken?: string;
 };
 
 export type ProviderRuntimeConfiguration = {
@@ -107,6 +111,8 @@ export function toProviderRequestBoundaryState(value: {
   cacheItemManifest?: ProviderRequestBoundaryState["cacheItemManifest"];
   toolsHash?: string;
   budgetGeneration?: number;
+  transcriptManifestHash?: string;
+  transcriptSnapshotToken?: string;
 } | undefined): ProviderRequestBoundaryState | undefined {
   if (!value?.promptContractVersion) {
     return undefined;
@@ -127,7 +133,9 @@ export function toProviderRequestBoundaryState(value: {
     ...(value.runtimeItem ? { runtimeItem: value.runtimeItem } : {}),
     ...(value.cacheItemManifest ? { cacheItemManifest: value.cacheItemManifest } : {}),
     ...(value.toolsHash ? { toolsHash: value.toolsHash } : {}),
-    ...(value.budgetGeneration !== undefined ? { budgetGeneration: value.budgetGeneration } : {})
+    ...(value.budgetGeneration !== undefined ? { budgetGeneration: value.budgetGeneration } : {}),
+    ...(value.transcriptManifestHash ? { transcriptManifestHash: value.transcriptManifestHash } : {}),
+    ...(value.transcriptSnapshotToken ? { transcriptSnapshotToken: value.transcriptSnapshotToken } : {})
   };
 }
 

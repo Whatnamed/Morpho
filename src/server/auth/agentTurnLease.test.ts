@@ -242,6 +242,21 @@ describe("Agent Turn Lease access", () => {
     })).resolves.toMatchObject({ status: "denied", httpStatus: 403, reason: "inactive" });
   });
 
+  it("reports a missing read-only state RPC as lease_state_contract_missing", async () => {
+    const mock = client(null, {
+      error: { code: "PGRST202", message: "Could not find the function public.read_agent_turn_lease_state" }
+    });
+
+    await expect(readAgentTurnLeaseStateForClient(mock, {
+      leaseId: "lease-a",
+      agentTurnId: "agent-turn-a"
+    })).resolves.toMatchObject({
+      status: "denied",
+      httpStatus: 503,
+      reason: "lease_state_contract_missing"
+    });
+  });
+
   it("counts a repeated first request as a real provider execution in the SQL contract", () => {
     const sql = readMigration("20260726161500_bind_agent_turn_provider_execution.sql");
 
@@ -295,6 +310,9 @@ describe("Agent Turn Lease access", () => {
     expect(sql).toContain("security definer");
     expect(sql).toContain("set search_path = ''");
     expect(sql).toContain("current_user_id uuid := auth.uid()");
+    expect(sql).toContain("lease.user_id = current_user_id");
+    expect(sql).toContain("lease_row.status <> 'active'");
+    expect(sql).toContain("lease_row.expires_at <= now()");
     expect(sql).toContain("grant execute on function public.read_agent_turn_lease_state(uuid, text)");
     expect(sql).not.toMatch(/request_hash|manifest_hash|prompt|workspace|transcript|body/i);
   });

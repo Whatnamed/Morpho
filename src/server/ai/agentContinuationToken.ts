@@ -3,8 +3,18 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import {
   AGENT_COMPACTION_TRANSCRIPT_MARKER_TYPE,
   AGENT_CONTEXT_STATE_MARKER_TYPE,
+  AGENT_COMPACTION_RECEIPT_VERSION,
+  buildAgentTranscriptManifest,
+  hashAgentContextStateMarker,
+  hashAgentContextStateMarkerCausalBinding,
+  hashAgentProviderItems,
+  hashAgentProtocolValue,
+  hashAgentTranscriptRange,
   hashCompactionTail,
   hashConversationSummaryForReceipt,
+  parseAgentCompactionSourceEnvelope,
+  type AgentTranscriptManifest,
+  type AgentContextStateMarker,
   type AgentCompactionReceipt,
   type AgentCompactionTranscriptMarker
 } from "@/shared/agentCompactionProtocol";
@@ -23,8 +33,9 @@ import { MAX_AGENT_FUNCTION_CALLS } from "@/shared/agentFunctionCallLimits";
  * and digests: no prompt, transcript, workspace or tool content.
  */
 
-const CONTINUATION_TOKEN_VERSION = 2;
+const CONTINUATION_TOKEN_VERSION = 3;
 export const AGENT_CONTINUATION_TOKEN_TTL_MS = 20 * 60 * 1000;
+export const AGENT_TRANSCRIPT_SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
 
 export type AgentContinuationClaims = {
   v: number;
@@ -38,6 +49,10 @@ export type AgentContinuationClaims = {
   inputHash: string;
   outputHash: string;
   callIds: string[];
+  transcriptManifest: AgentTranscriptManifest;
+  authorizedContextMarkerHashes: string[];
+  previousSummaryHash?: string;
+  previousSummaryRevisionId?: string;
   exp: number;
   compactionReceipt?: AgentCompactionReceipt;
 };
@@ -62,7 +77,19 @@ export type AgentContinuationFailureReason =
   | "transcript_not_summary"
   | "compaction_receipt_missing"
   | "compaction_receipt_forged"
-  | "compaction_receipt_expired";
+  | "compaction_receipt_expired"
+  | "compaction_source_unverified"
+  | "compaction_source_forged"
+  | "context_marker_forged";
+
+export type AgentTranscriptSnapshotClaims = {
+  v: number;
+  projectId: string;
+  transcriptManifest: AgentTranscriptManifest;
+  previousSummaryHash?: string;
+  previousSummaryRevisionId?: string;
+  exp: number;
+};
 
 /**
  * Prefer an explicit secret. Otherwise derive a stable server-only key from the
@@ -90,20 +117,7 @@ export function resolveAgentContinuationSecret(
  * canonical key-sorted form.
  */
 export function hashAgentContinuationItems(items: readonly unknown[]): string {
-  return createHash("sha256").update(canonicalJson(items)).digest("hex");
-}
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(",")}]`;
-  }
-  if (isRecord(value)) {
-    const entries = Object.entries(value)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([first], [second]) => (first < second ? -1 : first > second ? 1 : 0));
-    return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`).join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
+  return hashAgentProviderItems(items);
 }
 
 export function issueAgentContinuationToken(
@@ -117,6 +131,10 @@ export function issueAgentContinuationToken(
     inputHash: string;
     outputHash: string;
     callIds: readonly string[];
+    transcriptManifest?: AgentTranscriptManifest;
+    authorizedContextMarkerHashes?: readonly string[];
+    previousSummaryHash?: string;
+    previousSummaryRevisionId?: string;
     compactionReceipt?: AgentCompactionReceipt;
     now: number;
   }
@@ -141,11 +159,74 @@ export function issueAgentContinuationToken(
     inputHash: input.inputHash,
     outputHash: input.outputHash,
     callIds: [...input.callIds],
+    transcriptManifest: input.transcriptManifest ?? buildAgentTranscriptManifest([]),
+    authorizedContextMarkerHashes: [...new Set(input.authorizedContextMarkerHashes ?? [])],
+    ...(input.previousSummaryHash ? { previousSummaryHash: input.previousSummaryHash } : {}),
+    ...(input.previousSummaryRevisionId ? { previousSummaryRevisionId: input.previousSummaryRevisionId } : {}),
     exp: input.compactionReceipt?.expiresAt ?? input.now + AGENT_CONTINUATION_TOKEN_TTL_MS,
     ...(input.compactionReceipt ? { compactionReceipt: input.compactionReceipt } : {})
   };
   const payload = base64Url(Buffer.from(JSON.stringify(claims), "utf8"));
   return `${payload}.${sign(payload, input.secret)}`;
+}
+
+export function issueAgentTranscriptSnapshotToken(input: {
+  secret: string;
+  projectId: string;
+  transcriptManifest: AgentTranscriptManifest;
+  previousSummaryHash?: string;
+  previousSummaryRevisionId?: string;
+  now: number;
+}): string {
+  const claims: AgentTranscriptSnapshotClaims = {
+    v: CONTINUATION_TOKEN_VERSION,
+    projectId: input.projectId,
+    transcriptManifest: input.transcriptManifest,
+    ...(input.previousSummaryHash ? { previousSummaryHash: input.previousSummaryHash } : {}),
+    ...(input.previousSummaryRevisionId ? { previousSummaryRevisionId: input.previousSummaryRevisionId } : {}),
+    exp: input.now + AGENT_TRANSCRIPT_SNAPSHOT_TTL_MS
+  };
+  const payload = base64Url(Buffer.from(JSON.stringify(claims), "utf8"));
+  return `${payload}.${sign(payload, input.secret)}`;
+}
+
+export function verifyAgentTranscriptSnapshotToken(input: {
+  token: string | undefined;
+  secret: string | undefined;
+  projectId: string;
+  now: number;
+}): { status: "ok"; claims: AgentTranscriptSnapshotClaims } | { status: "failed"; reason: AgentContinuationFailureReason } {
+  if (!input.secret) {
+    return failed("secret_missing");
+  }
+  if (!input.token) {
+    return failed("compaction_source_unverified");
+  }
+  const separator = input.token.lastIndexOf(".");
+  if (separator <= 0) {
+    return failed("compaction_source_forged");
+  }
+  const payload = input.token.slice(0, separator);
+  const signature = input.token.slice(separator + 1);
+  if (!matchesSignature(payload, signature, input.secret)) {
+    return failed("compaction_source_forged");
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
+  } catch {
+    return failed("compaction_source_forged");
+  }
+  if (!isTranscriptSnapshotClaims(parsed)) {
+    return failed("compaction_source_forged");
+  }
+  if (parsed.projectId !== input.projectId) {
+    return failed("compaction_source_forged");
+  }
+  if (parsed.exp <= input.now) {
+    return failed("compaction_source_unverified");
+  }
+  return { status: "ok", claims: parsed };
 }
 
 export function verifyAgentContinuationToken(input: {
@@ -222,11 +303,28 @@ export function verifyAgentContinuationBinding(input: {
   }
   const allowedCallIds = new Set(claims.callIds);
   const answeredCallIds = new Set<string>();
+  const seenContextMarkerHashes = new Set<string>();
   for (const item of tail.slice(outputEnd)) {
     if (isProviderOutputItem(item)) {
       return failed("output_forged");
     }
     if (isContextStateMarker(item)) {
+      const authorized = claims.authorizedContextMarkerHashes.includes(item.contentHash);
+      const causallyBound = item.causalBindingHash !== undefined &&
+        allowedCallIds.size > 0 &&
+        answeredCallIds.size === allowedCallIds.size &&
+        item.causalBindingHash === hashAgentContextStateMarkerCausalBinding({
+          marker: item,
+          outputHash: claims.outputHash,
+          callIds: claims.callIds,
+          terminalOutputHash: hashAgentProviderItems(
+            tail.slice(outputEnd).filter(isFunctionCallOutput)
+          )
+        });
+      if ((!causallyBound && (item.causalBindingHash !== undefined || !authorized)) || seenContextMarkerHashes.has(item.contentHash)) {
+        return failed("context_marker_forged");
+      }
+      seenContextMarkerHashes.add(item.contentHash);
       continue;
     }
     if (!isFunctionCallOutput(item)) {
@@ -284,15 +382,157 @@ export function verifyAgentCompactionBinding(input: {
     marker.sourceMessageIdsHash !== receipt.sourceMessageIdsHash ||
     marker.retainedTailCount !== receipt.retainedTailCount ||
     marker.retainedTailHash !== receipt.retainedTailHash ||
+    marker.sourceInputHash !== receipt.sourceInputHash ||
+    marker.sourceManifest.manifestHash !== receipt.sourceManifest.manifestHash ||
+    marker.retainedTailManifest.manifestHash !== receipt.retainedTailManifest.manifestHash ||
+    marker.transcriptRangeHash !== receipt.transcriptRangeHash ||
+    marker.contextMarkerHashes.length !== receipt.contextMarkerHashes.length ||
+    marker.contextMarkerHashes.some((hash) => !receipt.contextMarkerHashes.includes(hash)) ||
+    marker.receiptVersion !== receipt.receiptVersion ||
     marker.previousSummaryHash !== receipt.previousSummaryHash ||
     marker.previousSummaryRevisionId !== receipt.previousSummaryRevisionId ||
+    marker.previousTranscriptManifestHash !== receipt.previousTranscriptManifestHash ||
     hashConversationSummaryForReceipt(marker.summary) !== receipt.summaryHash ||
     hashCompactionTail(marker.retainedTail) !== receipt.retainedTailHash
   ) {
     return failed("compaction_receipt_forged");
   }
+  const retainedTailManifest = buildAgentTranscriptManifest(marker.retainedTail);
+  const parsedContextMarkers = input.parsedInput.filter(isContextStateMarker);
+  if (
+    retainedTailManifest.manifestHash !== marker.retainedTailManifest.manifestHash ||
+    marker.transcriptRangeHash !== hashAgentTranscriptRange(marker.sourceManifest, retainedTailManifest) ||
+    parsedContextMarkers.length !== receipt.contextMarkerHashes.length ||
+    parsedContextMarkers.some((contextMarker) => contextMarker.causalBindingHash !== undefined) ||
+    parsedContextMarkers.some((contextMarker) => !receipt.contextMarkerHashes.includes(contextMarker.contentHash)) ||
+    receipt.contextMarkerHashes.some((hash) => !parsedContextMarkers.some((marker) => marker.contentHash === hash))
+  ) {
+    return failed("compaction_receipt_forged");
+  }
   return { status: "ok" };
 }
+
+export function verifyAgentCompactionSourceBinding(input: {
+  claims: AgentContinuationClaims;
+  parsedInput: readonly unknown[];
+  descriptor: AgentCompactionDescriptorLike;
+  transcriptManifest: AgentTranscriptManifest;
+  contextMarkerHashes: readonly string[];
+  retainedTail: readonly unknown[];
+  allowFreshUserTail?: boolean;
+  previousSummaryHash?: string;
+  previousSummaryRevisionId?: string;
+}): { status: "ok" } | { status: "failed"; reason: AgentContinuationFailureReason } {
+  const descriptor = input.descriptor;
+  const sourceEnvelope = parseAgentCompactionSourceEnvelope(input.parsedInput[0]);
+  const retainedTailManifest = buildAgentTranscriptManifest(input.retainedTail);
+  const trustedPreviousSummaryHash =
+    input.claims.compactionReceipt?.summaryHash ?? input.claims.previousSummaryHash ?? input.previousSummaryHash;
+  const trustedPreviousSummaryRevisionId =
+    input.claims.compactionReceipt?.summaryRevisionId ??
+    input.claims.previousSummaryRevisionId ??
+    input.previousSummaryRevisionId;
+  if (
+    !sourceEnvelope ||
+    sourceEnvelope.sourceStartMessageId !== descriptor.sourceStartMessageId ||
+    sourceEnvelope.sourceEndMessageId !== descriptor.sourceEndMessageId ||
+    sourceEnvelope.sourceMessageCount !== descriptor.sourceMessageCount ||
+    sourceEnvelope.sourceMessageIdsHash !== descriptor.sourceMessageIdsHash ||
+    sourceEnvelope.sourceMessageIds.length !== descriptor.sourceMessageCount ||
+    descriptor.sourceManifest.itemCount !== descriptor.sourceMessageCount ||
+    descriptor.retainedTailCount !== input.retainedTail.length ||
+    hashCompactionTail(input.retainedTail) !== descriptor.retainedTailHash ||
+    retainedTailManifest.manifestHash !== descriptor.retainedTailManifest.manifestHash
+  ) {
+    return failed("compaction_source_forged");
+  }
+  const parsedSourceManifest = buildAgentTranscriptManifest(
+    sourceEnvelope.sourceMessages.flatMap((message) => message.providerItems)
+  );
+  if (
+    parsedSourceManifest.manifestHash !== descriptor.sourceManifest.manifestHash ||
+    parsedSourceManifest.itemCount !== descriptor.sourceManifest.itemCount ||
+    parsedSourceManifest.items.some((item, index) => !sameManifestItem(item, descriptor.sourceManifest.items[index]!))
+  ) {
+    return failed("compaction_source_forged");
+  }
+  if (hashAgentContinuationItems(input.parsedInput) !== descriptor.sourceInputHash) {
+    return failed("compaction_source_forged");
+  }
+  if (
+    descriptor.sourceManifest.manifestHash !== hashManifest(descriptor.sourceManifest) ||
+    descriptor.retainedTailManifest.manifestHash !== hashManifest(descriptor.retainedTailManifest) ||
+    descriptor.transcriptRangeHash !== hashAgentTranscriptRange(
+      descriptor.sourceManifest,
+      descriptor.retainedTailManifest
+    )
+  ) {
+    return failed("compaction_source_forged");
+  }
+  if (
+    descriptor.previousSummaryHash !== trustedPreviousSummaryHash ||
+    descriptor.previousSummaryRevisionId !== trustedPreviousSummaryRevisionId
+  ) {
+    return failed("compaction_source_forged");
+  }
+  if (
+    descriptor.contextMarkerHashes.length !== input.contextMarkerHashes.length ||
+    descriptor.contextMarkerHashes.some((hash) => !input.contextMarkerHashes.includes(hash))
+  ) {
+    return failed("compaction_source_forged");
+  }
+  if (
+    descriptor.previousTranscriptManifestHash !== input.transcriptManifest.manifestHash ||
+    descriptor.sourceMessageCount < 2 ||
+    descriptor.sourceMessageIdsHash.length !== 64
+  ) {
+    return failed("compaction_source_unverified");
+  }
+
+  const actualItems = [...descriptor.sourceManifest.items, ...descriptor.retainedTailManifest.items];
+  const expectedItems = input.transcriptManifest.items;
+  const commonLength = Math.min(actualItems.length, expectedItems.length);
+  for (let index = 0; index < commonLength; index += 1) {
+    if (!sameManifestItem(actualItems[index]!, expectedItems[index]!)) {
+      return failed("compaction_source_forged");
+    }
+  }
+  const extras = actualItems.slice(expectedItems.length);
+  if (extras.length > 0) {
+    if (input.allowFreshUserTail && extras.length === 1 && extras[0]?.kind === "message" && extras[0].role === "user") {
+      return { status: "ok" };
+    }
+    const allowedCallIds = new Set(input.claims.callIds);
+    const extraCallIds = extras.map((item) => item.callId);
+    if (
+      extras.some((item) => item.kind !== "functionCallOutput" || !item.callId || !allowedCallIds.has(item.callId)) ||
+      new Set(extraCallIds).size !== extraCallIds.length
+    ) {
+      return failed("compaction_source_forged");
+    }
+  }
+  if (actualItems.length < expectedItems.length) {
+    return failed("compaction_source_forged");
+  }
+  return { status: "ok" };
+}
+
+export type AgentCompactionDescriptorLike = {
+  sourceStartMessageId: string;
+  sourceEndMessageId: string;
+  sourceMessageCount: number;
+  sourceMessageIdsHash: string;
+  retainedTailCount: number;
+  retainedTailHash: string;
+  sourceInputHash: string;
+  sourceManifest: AgentTranscriptManifest;
+  retainedTailManifest: AgentTranscriptManifest;
+  transcriptRangeHash: string;
+  contextMarkerHashes: string[];
+  previousTranscriptManifestHash?: string;
+  previousSummaryHash?: string;
+  previousSummaryRevisionId?: string;
+};
 
 export function agentContinuationFailureMessage(reason: AgentContinuationFailureReason): string {
   if (reason === "secret_missing") {
@@ -309,6 +549,15 @@ export function agentContinuationFailureMessage(reason: AgentContinuationFailure
   }
   if (reason === "tool_result_missing" || reason === "exact_tail_rejected") {
     return "Agent continuation 的尾部不是服务端输出、唯一 terminal tool output 或严格 Morpho 状态 marker。";
+  }
+  if (reason === "context_marker_forged") {
+    return "Agent continuation 包含未被上一份服务端 Transcript 授权的 Context/State marker。";
+  }
+  if (reason === "compaction_source_unverified") {
+    return "Conversation Summary 的来源没有上一份服务端签名 Transcript 快照，原始历史未被删除。";
+  }
+  if (reason === "compaction_source_forged") {
+    return "Conversation Summary 的 source、retained tail 或 Transcript manifest 与上一份服务端记录不一致。";
   }
   if (reason === "compaction_receipt_missing" || reason === "compaction_receipt_forged" || reason === "compaction_receipt_expired") {
     return "压缩后的 Provider 请求缺少有效的签名压缩收据，原始历史未被删除。";
@@ -335,12 +584,15 @@ function isProviderOutputItem(value: unknown): boolean {
     (value.type === "message" || value.type === "reasoning" || value.type === "function_call");
 }
 
-function isContextStateMarker(value: unknown): boolean {
+function isContextStateMarker(value: unknown): value is AgentContextStateMarker {
   return isRecord(value) &&
     value.type === AGENT_CONTEXT_STATE_MARKER_TYPE &&
     typeof value.id === "string" &&
-    typeof value.contentHash === "string" &&
-    !("renderedText" in value);
+    isProtocolHash(value.contentHash) &&
+    (value.causalBindingHash === undefined || isProtocolHash(value.causalBindingHash)) &&
+    typeof value.dataText === "string" &&
+    !("renderedText" in value) &&
+    hashAgentContextStateMarker(value as unknown as AgentContextStateMarker) === value.contentHash;
 }
 
 function isCompactionTranscriptMarker(value: unknown): value is AgentCompactionTranscriptMarker {
@@ -367,6 +619,10 @@ function isContinuationClaims(value: unknown): value is AgentContinuationClaims 
       "inputHash",
       "outputHash",
       "callIds",
+      "transcriptManifest",
+      "authorizedContextMarkerHashes",
+      "previousSummaryHash",
+      "previousSummaryRevisionId",
       "exp",
       "compactionReceipt"
     ]).length === 0 &&
@@ -380,10 +636,19 @@ function isContinuationClaims(value: unknown): value is AgentContinuationClaims 
     value.inputItemCount >= 0 &&
     typeof value.inputHash === "string" &&
     typeof value.outputHash === "string" &&
+    isProtocolHash(value.inputHash) &&
+    isProtocolHash(value.outputHash) &&
     Array.isArray(value.callIds) &&
     value.callIds.length <= MAX_AGENT_FUNCTION_CALLS &&
     value.callIds.every((callId) => typeof callId === "string") &&
     new Set(value.callIds).size === value.callIds.length &&
+    isAgentTranscriptManifest(value.transcriptManifest) &&
+    Array.isArray(value.authorizedContextMarkerHashes) &&
+    value.authorizedContextMarkerHashes.every(isProtocolHash) &&
+    new Set(value.authorizedContextMarkerHashes).size === value.authorizedContextMarkerHashes.length &&
+    (value.previousSummaryHash === undefined || isProtocolHash(value.previousSummaryHash)) &&
+    (value.previousSummaryRevisionId === undefined || typeof value.previousSummaryRevisionId === "string") &&
+    (value.previousSummaryHash === undefined) === (value.previousSummaryRevisionId === undefined) &&
     typeof value.exp === "number" &&
     (value.summary
       ? isCompactionReceipt(value.compactionReceipt)
@@ -399,9 +664,16 @@ function isCompactionReceipt(value: unknown): value is AgentCompactionReceipt {
       "sourceMessageIdsHash",
       "retainedTailCount",
       "retainedTailHash",
+      "sourceInputHash",
+      "sourceManifest",
+      "retainedTailManifest",
+      "transcriptRangeHash",
+      "contextMarkerHashes",
+      "previousTranscriptManifestHash",
       "previousSummaryHash",
       "previousSummaryRevisionId",
       "promptContractVersion",
+      "receiptVersion",
       "summaryHash",
       "summaryRevisionId",
       "leaseId",
@@ -414,22 +686,77 @@ function isCompactionReceipt(value: unknown): value is AgentCompactionReceipt {
     typeof value.sourceMessageCount === "number" &&
     Number.isSafeInteger(value.sourceMessageCount) &&
     value.sourceMessageCount >= 2 &&
-    typeof value.sourceMessageIdsHash === "string" &&
+    isProtocolHash(value.sourceMessageIdsHash) &&
     typeof value.retainedTailCount === "number" &&
     Number.isSafeInteger(value.retainedTailCount) &&
     value.retainedTailCount >= 0 &&
-    typeof value.retainedTailHash === "string" &&
-    (value.previousSummaryHash === undefined || typeof value.previousSummaryHash === "string") &&
+    isProtocolHash(value.retainedTailHash) &&
+    isProtocolHash(value.sourceInputHash) &&
+    isAgentTranscriptManifest(value.sourceManifest) &&
+    isAgentTranscriptManifest(value.retainedTailManifest) &&
+    isProtocolHash(value.transcriptRangeHash) &&
+    Array.isArray(value.contextMarkerHashes) &&
+    value.contextMarkerHashes.every(isProtocolHash) &&
+    new Set(value.contextMarkerHashes).size === value.contextMarkerHashes.length &&
+    (value.previousTranscriptManifestHash === undefined || isProtocolHash(value.previousTranscriptManifestHash)) &&
+    (value.previousSummaryHash === undefined || isProtocolHash(value.previousSummaryHash)) &&
     (value.previousSummaryRevisionId === undefined || typeof value.previousSummaryRevisionId === "string") &&
     typeof value.promptContractVersion === "string" &&
-    typeof value.summaryHash === "string" &&
+    isProtocolHash(value.summaryHash) &&
     typeof value.summaryRevisionId === "string" &&
     typeof value.leaseId === "string" &&
     typeof value.agentTurnId === "string" &&
     typeof value.sequence === "number" &&
     Number.isSafeInteger(value.sequence) &&
     typeof value.expiresAt === "number" &&
-    Number.isSafeInteger(value.expiresAt);
+    Number.isSafeInteger(value.expiresAt) &&
+    value.receiptVersion === AGENT_COMPACTION_RECEIPT_VERSION;
+}
+
+function isTranscriptSnapshotClaims(value: unknown): value is AgentTranscriptSnapshotClaims {
+  return isRecord(value) &&
+    unknownKeys(value, [
+      "v",
+      "projectId",
+      "transcriptManifest",
+      "previousSummaryHash",
+      "previousSummaryRevisionId",
+      "exp"
+    ]).length === 0 &&
+    value.v === CONTINUATION_TOKEN_VERSION &&
+    typeof value.projectId === "string" &&
+    isAgentTranscriptManifest(value.transcriptManifest) &&
+    (value.previousSummaryHash === undefined || isProtocolHash(value.previousSummaryHash)) &&
+    (value.previousSummaryRevisionId === undefined || typeof value.previousSummaryRevisionId === "string") &&
+    (value.previousSummaryHash === undefined) === (value.previousSummaryRevisionId === undefined) &&
+    typeof value.exp === "number" &&
+    Number.isSafeInteger(value.exp);
+}
+
+function isAgentTranscriptManifest(value: unknown): value is AgentTranscriptManifest {
+  return isRecord(value) &&
+    unknownKeys(value, ["itemCount", "items", "manifestHash"]).length === 0 &&
+    typeof value.itemCount === "number" &&
+    Number.isSafeInteger(value.itemCount) &&
+    value.itemCount >= 0 &&
+    Array.isArray(value.items) &&
+    value.items.length === value.itemCount &&
+    value.items.every(isAgentTranscriptManifestItem) &&
+    isProtocolHash(value.manifestHash) &&
+    hashManifest(value as unknown as AgentTranscriptManifest) === value.manifestHash;
+}
+
+function isAgentTranscriptManifestItem(value: unknown): value is AgentTranscriptManifest["items"][number] {
+  return isRecord(value) &&
+    unknownKeys(value, ["kind", "hash", "role", "callId"]).length === 0 &&
+    (value.kind === "message" || value.kind === "providerOutput" || value.kind === "functionCallOutput") &&
+    isProtocolHash(value.hash) &&
+    (value.role === undefined || value.role === "user" || value.role === "assistant") &&
+    (value.callId === undefined || (typeof value.callId === "string" && value.callId.length > 0));
+}
+
+function isProtocolHash(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
 }
 
 function unknownKeys(value: Record<string, unknown>, allowed: readonly string[]): string[] {
@@ -443,4 +770,18 @@ function failed(reason: AgentContinuationFailureReason): { status: "failed"; rea
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hashManifest(manifest: AgentTranscriptManifest): string {
+  return hashAgentProtocolValue(manifest.items, "morpho-agent-transcript-manifest-v1");
+}
+
+function sameManifestItem(
+  left: AgentTranscriptManifest["items"][number],
+  right: AgentTranscriptManifest["items"][number]
+): boolean {
+  return left.kind === right.kind &&
+    left.hash === right.hash &&
+    left.role === right.role &&
+    left.callId === right.callId;
 }

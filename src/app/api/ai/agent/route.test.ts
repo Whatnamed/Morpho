@@ -7,16 +7,20 @@ import type { OpenAiCompatibleResponseRequest } from "@/server/ai/openaiCompatib
 import { readAgentRouteSse, type AgentRouteStreamEvent } from "@/shared/agentStreamProtocol";
 import { resolveCanonicalAgentRuntimeItem } from "@/shared/agentRuntimeItem";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
+import { buildAgentCheckpointCompactionInput } from "@/features/workspace/morphoAgent";
 import {
   AGENT_CONTINUATION_TOKEN_TTL_MS,
   hashAgentContinuationItems,
-  issueAgentContinuationToken
+  issueAgentContinuationToken,
+  issueAgentTranscriptSnapshotToken
 } from "@/server/ai/agentContinuationToken";
 import {
   buildAgentCompactionDescriptor,
+  buildAgentTranscriptManifest,
   buildCompactionTranscriptMarker,
   buildConversationSummaryRevisionId,
-  hashConversationSummaryForReceipt
+  hashConversationSummaryForReceipt,
+  hashSourceMessageIds
 } from "@/shared/agentCompactionProtocol";
 
 const CONTINUATION_SECRET = "test-continuation-secret";
@@ -40,12 +44,29 @@ const TEST_COMPACTION_SUMMARY = {
   referencedObjects: ["buoy-object-1"],
   nextTurnAnchor: "继续验证海洋浮标项目"
 };
+const TEST_SUMMARY_INPUT = buildAgentCheckpointCompactionInput({
+  messages: [
+    { id: "message-1", role: "user", body: "先记录浮标目标" },
+    { id: "message-2", role: "assistant", body: "已记录浮标目标。" }
+  ],
+  sourceStartMessageId: "message-1",
+  sourceEndMessageId: "message-2",
+  sourceMessageCount: 2
+});
+const TEST_PREVIOUS_TRANSCRIPT = [
+  { role: "user", content: [{ type: "input_text", text: "先记录浮标目标" }] },
+  { role: "assistant", content: [{ type: "output_text", text: "已记录浮标目标。" }] }
+];
+const TEST_PREVIOUS_TRANSCRIPT_MANIFEST = buildAgentTranscriptManifest(TEST_PREVIOUS_TRANSCRIPT);
 const TEST_COMPACTION_DESCRIPTOR = buildAgentCompactionDescriptor({
   sourceStartMessageId: "message-1",
   sourceEndMessageId: "message-2",
   sourceMessageCount: 2,
-  sourceMessageIdsHash: "source-message-ids",
+  sourceMessageIdsHash: hashSourceMessageIds(["message-1", "message-2"]),
   retainedTail: [],
+  sourceInput: TEST_SUMMARY_INPUT,
+  sourceManifest: TEST_PREVIOUS_TRANSCRIPT_MANIFEST,
+  previousTranscriptManifestHash: TEST_PREVIOUS_TRANSCRIPT_MANIFEST.manifestHash,
   promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION
 });
 
@@ -542,12 +563,16 @@ describe("agent route stream", () => {
 
   it("runs conversation compaction through the server-owned no-tool profile", async () => {
     const response = await POST(agentRequest({
-      input: [{
-        role: "user",
-        content: [{ type: "input_text", text: "sourceRange: message-1..message-2" }]
-      }],
+      input: TEST_SUMMARY_INPUT,
       directive: { kind: "conversationSummary" },
-      compactionDescriptor: TEST_COMPACTION_DESCRIPTOR
+      compactionDescriptor: TEST_COMPACTION_DESCRIPTOR,
+      compactionRetainedTail: [],
+      previousTranscriptSnapshotToken: issueAgentTranscriptSnapshotToken({
+        secret: CONTINUATION_SECRET,
+        projectId: "project-ocean-buoy",
+        transcriptManifest: TEST_PREVIOUS_TRANSCRIPT_MANIFEST,
+        now: Date.now()
+      })
     }));
     const events: AgentRouteStreamEvent[] = [];
     if (!response.body) {
@@ -842,11 +867,12 @@ function continuationTokenFor(overrides: {
           sourceMessageIdsHash: TEST_COMPACTION_DESCRIPTOR.sourceMessageIdsHash,
           summaryHash: hashConversationSummaryForReceipt(TEST_COMPACTION_SUMMARY)
         }),
-        leaseId: "lease-1",
-        agentTurnId: "agent-turn-1",
-        sequence: 1,
-        expiresAt: now + AGENT_CONTINUATION_TOKEN_TTL_MS
-      }
+         leaseId: "lease-1",
+         agentTurnId: "agent-turn-1",
+         sequence: 1,
+         expiresAt: now + AGENT_CONTINUATION_TOKEN_TTL_MS,
+         receiptVersion: 2 as const
+       }
     : undefined;
   return issueAgentContinuationToken({
     secret: CONTINUATION_SECRET,

@@ -104,7 +104,7 @@ export function canonicalAgentStrategyMessage(
   };
 }
 
-function isAgentTaskStrategyKind(value: unknown): value is AgentTaskStrategyKind {
+export function isAgentTaskStrategyKind(value: unknown): value is AgentTaskStrategyKind {
   return value === "discussion" ||
     value === "research" ||
     value === "designDefinition" ||

@@ -17,7 +17,8 @@ import { providerInputSnapshotText } from "./providerInputSnapshot";
 import type { ProviderInputTimelineBudget } from "@/shared/providerInputBudget";
 import {
   buildConversationSummaryRevisionId,
-  hashConversationSummaryForReceipt
+  hashConversationSummaryForReceipt,
+  hashSourceMessageIds
 } from "@/shared/agentCompactionProtocol";
 
 export const CONVERSATION_SUMMARY_MARKER = "morphoConversationSummary";
@@ -569,7 +570,7 @@ export function sanitizeConversationSummaryStreamForDisplay(text: string): strin
 }
 
 export function hashMessageIds(ids: readonly string[]): string {
-  return stableHash(ids.join("\n"));
+  return hashSourceMessageIds(ids);
 }
 
 function getUsableConversationSummaryRevision(
@@ -589,11 +590,15 @@ function getUsableConversationSummaryRevision(
   const sourceRange = usableMessages.slice(startIndex, endIndex + 1);
   if (
     sourceRange.length !== revision.sourceMessageCount ||
-    hashMessageIds(sourceRange.map((message) => message.id)) !== revision.sourceMessageIdsHash
+    !hashMessageIdsCompatible(sourceRange.map((message) => message.id), revision.sourceMessageIdsHash)
   ) {
     return undefined;
   }
   return revision;
+}
+
+function hashMessageIdsCompatible(ids: readonly string[], storedHash: string): boolean {
+  return hashMessageIds(ids) === storedHash || legacyHashMessageIds(ids) === storedHash;
 }
 
 function toContextMessage(message: AiMessage): ConversationMessageForContext {
@@ -765,6 +770,10 @@ function stableHash(value: string): string {
     hash = Math.imul(hash, 16777619);
   }
   return (hash >>> 0).toString(36);
+}
+
+function legacyHashMessageIds(ids: readonly string[]): string {
+  return stableHash(ids.join("\n"));
 }
 
 function stringValue(value: unknown): string | undefined {

@@ -18,8 +18,12 @@ import {
 } from "@/server/ai/promptCache";
 import { classifyProviderCacheStatus } from "@/server/ai/providerTokenUsage";
 import {
+  AGENT_COMPACTION_TRANSCRIPT_MARKER_TYPE,
   buildConversationSummaryRevisionId,
-  hashConversationSummaryForReceipt
+  buildAgentTranscriptManifest,
+  hashConversationSummaryForReceipt,
+  hashSourceMessageIds,
+  parseAgentCompactionSourceEnvelope
 } from "@/shared/agentCompactionProtocol";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
 import {
@@ -50,11 +54,16 @@ import {
   AGENT_CONTINUATION_TOKEN_TTL_MS,
   hashAgentContinuationItems,
   issueAgentContinuationToken,
+  issueAgentTranscriptSnapshotToken,
   resolveAgentContinuationSecret,
   verifyAgentCompactionBinding,
+  verifyAgentCompactionSourceBinding,
   verifyAgentContinuationBinding,
-  verifyAgentContinuationToken
+  verifyAgentContinuationToken,
+  verifyAgentTranscriptSnapshotToken,
+  type AgentContinuationClaims
 } from "@/server/ai/agentContinuationToken";
+import type { AgentTranscriptManifest } from "@/shared/agentCompactionProtocol";
 
 export const runtime = "nodejs";
 export const MAX_AGENT_REQUEST_BODY_BYTES = 36 * 1024 * 1024;
@@ -98,12 +107,28 @@ export async function POST(request: Request) {
     throw error;
   }
   const filteredToolProfile = contract.effectiveToolProfile;
-  const requestState = buildProviderRequestState(
+  const continuationSecret = resolveAgentContinuationSecret(process.env);
+  const transcriptManifest = buildAgentTranscriptManifest(contract.request.input);
+  const previousCompactionSummary = readPreviousCompactionSummaryBinding(validated.value.input);
+  const transcriptSnapshotToken = continuationSecret
+    ? issueAgentTranscriptSnapshotToken({
+        secret: continuationSecret,
+        projectId: validated.value.projectId,
+        transcriptManifest,
+        ...(previousCompactionSummary ?? {}),
+        now: Date.now()
+      })
+    : undefined;
+  const requestState = {
+    ...buildProviderRequestState(
     contract.request,
     filteredToolProfile,
     contract.runtimeItem,
     validated.value.contextBudgetState?.generation
-  );
+    ),
+    transcriptManifestHash: transcriptManifest.manifestHash,
+    ...(transcriptSnapshotToken ? { transcriptSnapshotToken } : {})
+  };
   const requestHash = hashAgentTurnLeaseValue({
     input: contract.request.input,
     tools: contract.request.tools ?? [],
@@ -117,7 +142,7 @@ export async function POST(request: Request) {
     : validated.value.continuation
       ? "providerContinuation" as const
       : "postCompaction" as const;
-  const continuationSecret = resolveAgentContinuationSecret(process.env);
+  let continuationClaims: AgentContinuationClaims | undefined;
   // A continuation may only replay what the server itself produced. The lease
   // sequence proves ordering; the signed binding proves causality.
   if (validated.value.continuation || validated.value.leaseContinuation) {
@@ -135,6 +160,7 @@ export async function POST(request: Request) {
         { status: verified.reason === "secret_missing" ? 503 : 400 }
       );
     }
+    continuationClaims = verified.claims;
     if (continuationKind === "providerContinuation") {
       if (verified.claims.summary) {
         return NextResponse.json(
@@ -168,6 +194,79 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
+    }
+  }
+  if (!validated.value.continuation && !validated.value.leaseContinuation && hasContextStateMarker(validated.value.input)) {
+    return NextResponse.json(
+      { error: agentContinuationFailureMessage("context_marker_forged"), reason: "context_marker_forged" },
+      { status: 400 }
+    );
+  }
+  if (isSummaryRequest) {
+    const snapshot = !continuationClaims && validated.value.previousTranscriptSnapshotToken
+      ? verifyAgentTranscriptSnapshotToken({
+          token: validated.value.previousTranscriptSnapshotToken,
+          secret: continuationSecret,
+          projectId: validated.value.projectId,
+          now: Date.now()
+        })
+      : undefined;
+    const snapshotManifest: AgentTranscriptManifest | undefined = snapshot?.status === "ok"
+      ? snapshot.claims.transcriptManifest
+      : undefined;
+    if (!continuationClaims && !snapshotManifest) {
+      const reason = snapshot?.status === "failed" ? snapshot.reason : "compaction_source_unverified";
+      return NextResponse.json(
+        { error: agentContinuationFailureMessage(reason), reason },
+        { status: reason === "secret_missing" ? 503 : 400 }
+      );
+    }
+    const sourceManifest = continuationClaims?.transcriptManifest ?? snapshotManifest;
+    if (!sourceManifest) {
+      return NextResponse.json(
+        { error: agentContinuationFailureMessage("compaction_source_unverified"), reason: "compaction_source_unverified" },
+        { status: 400 }
+      );
+    }
+    if (!summarySourceMetadataMatches(validated.value.input, validated.value.compactionDescriptor!)) {
+      return NextResponse.json(
+        { error: agentContinuationFailureMessage("compaction_source_forged"), reason: "compaction_source_forged" },
+        { status: 400 }
+      );
+    }
+    const sourceBinding = verifyAgentCompactionSourceBinding({
+      claims: continuationClaims ?? {
+        v: 3,
+        leaseId: "snapshot",
+        agentTurnId: validated.value.agentTurnId,
+        sequence: validated.value.leaseSequence ?? 1,
+        summary: true,
+        inputItemCount: validated.value.input.length,
+        inputHash: hashAgentContinuationItems(validated.value.input),
+        outputHash: hashAgentContinuationItems([]),
+        callIds: [],
+        transcriptManifest: sourceManifest,
+        authorizedContextMarkerHashes: [],
+        exp: Date.now() + 1
+      },
+      parsedInput: validated.value.input,
+      descriptor: validated.value.compactionDescriptor!,
+      transcriptManifest: sourceManifest,
+      contextMarkerHashes: validated.value.compactionContextMarkers?.map((marker) => marker.contentHash) ?? [],
+      retainedTail: validated.value.compactionRetainedTail ?? [],
+      allowFreshUserTail: !continuationClaims,
+      ...(snapshot?.status === "ok" && snapshot.claims.previousSummaryHash
+        ? {
+            previousSummaryHash: snapshot.claims.previousSummaryHash,
+            previousSummaryRevisionId: snapshot.claims.previousSummaryRevisionId
+          }
+        : {})
+    });
+    if (sourceBinding.status === "failed") {
+      return NextResponse.json(
+        { error: agentContinuationFailureMessage(sourceBinding.reason), reason: sourceBinding.reason },
+        { status: 400 }
+      );
     }
   }
   const leaseAccess = validated.value.continuation || validated.value.leaseContinuation
@@ -331,14 +430,21 @@ export async function POST(request: Request) {
           const completedAttemptId = activeAttemptId;
           enqueue({ type: "context", context: execution.context });
           const boundOutputItems = normalizeProviderOutputItemsForBinding(execution.result.outputItems);
+          const continuationTranscriptManifest = boundOutputItems
+            ? buildAgentTranscriptManifest([
+                ...validated.value.input,
+                ...boundOutputItems
+              ])
+            : undefined;
           const parsedSummary = isSummaryRequest
             ? parseConversationSummaryPayload(execution.result.outputText)
             : undefined;
           const compactionReceipt = isSummaryRequest &&
             validated.value.compactionDescriptor &&
             parsedSummary?.status === "ok"
-            ? {
-                ...validated.value.compactionDescriptor,
+             ? {
+                 receiptVersion: 2 as const,
+                 ...validated.value.compactionDescriptor,
                 summaryHash: hashConversationSummaryForReceipt(parsedSummary.summary),
                 summaryRevisionId: buildConversationSummaryRevisionId({
                   previousSummaryRevisionId: validated.value.compactionDescriptor.previousSummaryRevisionId,
@@ -363,7 +469,13 @@ export async function POST(request: Request) {
                 inputHash: continuationInputHash,
                 outputHash: hashAgentContinuationItems(boundOutputItems),
                 callIds: execution.result.functionCalls.map((call) => call.callId),
-                ...(compactionReceipt ? { compactionReceipt } : {}),
+                 transcriptManifest: continuationTranscriptManifest ?? buildAgentTranscriptManifest([]),
+                 authorizedContextMarkerHashes: [
+                   ...contextMarkerHashesFromInput(validated.value.input),
+                   ...(validated.value.compactionContextMarkers?.map((marker) => marker.contentHash) ?? [])
+                 ],
+                 ...(previousCompactionSummary ?? {}),
+                 ...(compactionReceipt ? { compactionReceipt } : {}),
                 now: Date.now()
               })
             : undefined;
@@ -371,6 +483,10 @@ export async function POST(request: Request) {
             type: "turn-complete",
             attemptId: completedAttemptId,
             ...(continuationToken ? { continuationToken } : {}),
+            ...(continuationTranscriptManifest
+              ? { transcriptManifestHash: continuationTranscriptManifest.manifestHash }
+              : {}),
+            ...(compactionReceipt ? { compactionReceipt } : {}),
             result: {
               ...execution.result,
               context: execution.context,
@@ -506,6 +622,12 @@ function buildProviderRequestState(
     ...(budgetGeneration !== undefined ? { budgetGeneration } : {}),
     ...(isProviderInputBoundaryReason(supplied?.attachmentBoundary)
       ? { attachmentBoundary: supplied.attachmentBoundary }
+      : {}),
+    ...(typeof supplied?.transcriptManifestHash === "string" && supplied.transcriptManifestHash
+      ? { transcriptManifestHash: supplied.transcriptManifestHash }
+      : {}),
+    ...(typeof supplied?.transcriptSnapshotToken === "string" && supplied.transcriptSnapshotToken
+      ? { transcriptSnapshotToken: supplied.transcriptSnapshotToken }
       : {})
   };
 }
@@ -562,4 +684,92 @@ function readableProviderDiagnostic(diagnostic: string | undefined): string | un
   }
 
   return trimmed.slice(0, 240);
+}
+
+function contextMarkerHashesFromInput(input: readonly unknown[]): string[] {
+  return [...new Set(input.flatMap((item) => {
+    if (typeof item === "object" && item !== null && !Array.isArray(item) &&
+      "type" in item && item.type === "morpho_context_state" &&
+      "contentHash" in item && typeof item.contentHash === "string") {
+      return [item.contentHash];
+    }
+    return [];
+  }))];
+}
+
+function readPreviousCompactionSummaryBinding(
+  input: readonly unknown[]
+): { previousSummaryHash: string; previousSummaryRevisionId: string } | undefined {
+  const markers = input.filter((item) =>
+    typeof item === "object" && item !== null && !Array.isArray(item) &&
+    "type" in item && item.type === AGENT_COMPACTION_TRANSCRIPT_MARKER_TYPE
+  );
+  if (markers.length !== 1) {
+    return undefined;
+  }
+  const marker = markers[0];
+  if (
+    typeof marker !== "object" || marker === null || Array.isArray(marker) ||
+    !("summaryHash" in marker) || typeof marker.summaryHash !== "string" ||
+    !/^[0-9a-f]{64}$/.test(marker.summaryHash) ||
+    !("summaryRevisionId" in marker) || typeof marker.summaryRevisionId !== "string" ||
+    !marker.summaryRevisionId
+  ) {
+    return undefined;
+  }
+  return {
+    previousSummaryHash: marker.summaryHash,
+    previousSummaryRevisionId: marker.summaryRevisionId
+  };
+}
+
+function hasContextStateMarker(input: readonly unknown[]): boolean {
+  return input.some((item) =>
+    typeof item === "object" && item !== null && !Array.isArray(item) &&
+    "type" in item && item.type === "morpho_context_state"
+  );
+}
+
+function summarySourceMetadataMatches(
+  input: readonly unknown[],
+  descriptor: {
+    sourceStartMessageId: string;
+    sourceEndMessageId: string;
+    sourceMessageCount: number;
+    sourceMessageIdsHash: string;
+  }
+): boolean {
+  const structuredSource = parseAgentCompactionSourceEnvelope(input[0]);
+  if (structuredSource) {
+    return structuredSource.sourceStartMessageId === descriptor.sourceStartMessageId &&
+      structuredSource.sourceEndMessageId === descriptor.sourceEndMessageId &&
+      structuredSource.sourceMessageCount === descriptor.sourceMessageCount &&
+      structuredSource.sourceMessageIdsHash === descriptor.sourceMessageIdsHash;
+  }
+  const first = input[0];
+  if (typeof first !== "object" || first === null || Array.isArray(first) ||
+    !("content" in first) || !Array.isArray(first.content)) {
+    return false;
+  }
+  const text = first.content
+    .filter((part): part is { text: string } => typeof part === "object" && part !== null &&
+      !Array.isArray(part) && "text" in part && typeof part.text === "string")
+    .map((part) => part.text)
+    .join("\n");
+  const match = text.match(/sourceMessageIds:\s*(\[[^\n]+\])/);
+  if (!match) {
+    return false;
+  }
+  let ids: unknown;
+  try {
+    ids = JSON.parse(match[1]!);
+  } catch {
+    return false;
+  }
+  return Array.isArray(ids) &&
+    ids.length === descriptor.sourceMessageCount &&
+    ids.every((id) => typeof id === "string") &&
+    ids[0] === descriptor.sourceStartMessageId &&
+    ids.at(-1) === descriptor.sourceEndMessageId &&
+    hashSourceMessageIds(ids) === descriptor.sourceMessageIdsHash;
 }

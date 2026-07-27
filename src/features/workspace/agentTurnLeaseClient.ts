@@ -3,6 +3,7 @@ import {
   type ConversationCompactionPlan
 } from "@/domain/morpho/conversationCompaction";
 import type { WebSearchSource } from "@/server/ai/webSearch";
+import type { AgentCompactionReceipt } from "@/shared/agentCompactionProtocol";
 import {
   buildConversationSummaryAgentRequest
 } from "./conversationSummaryAgentRequest";
@@ -44,14 +45,19 @@ export async function requestConversationSummary(
     leaseSequence?: number;
     continuationToken?: string;
     retainedTailItems?: readonly unknown[];
+    contextMarkers?: readonly import("@/shared/agentCompactionProtocol").AgentContextStateMarker[];
+    previousTranscriptManifestHash?: string;
+    previousTranscriptSnapshotToken?: string;
     onLeaseStarted?: (leaseId: string) => void;
     onLeaseSequence?: (sequence: number) => void;
     onContinuationToken?: (token: string) => void;
+    onCompactionReceipt?: (receipt: AgentCompactionReceipt) => void;
   },
   fetchImpl: typeof fetch = fetch
 ): Promise<{
   parsed: ReturnType<typeof parseConversationSummaryPayload>;
   leaseId?: string;
+  compactionReceipt?: AgentCompactionReceipt;
 }> {
   const response = await fetchImpl("/api/ai/agent", {
     method: "POST",
@@ -65,12 +71,16 @@ export async function requestConversationSummary(
         leaseId: input.leaseId,
         leaseSequence: input.leaseSequence,
         continuationToken: input.continuationToken,
-        retainedTailItems: input.retainedTailItems
+        retainedTailItems: input.retainedTailItems,
+        contextMarkers: input.contextMarkers,
+        previousTranscriptManifestHash: input.previousTranscriptManifestHash,
+        previousTranscriptSnapshotToken: input.previousTranscriptSnapshotToken
       })
     ),
     signal
   });
   let leaseId = input.leaseId;
+  let compactionReceipt: AgentCompactionReceipt | undefined;
   const result = await consumeAgentTurnStream(response, {
     signal,
     onEvent: (event) => {
@@ -84,10 +94,15 @@ export async function requestConversationSummary(
       if (event.type === "turn-complete" && event.continuationToken) {
         input.onContinuationToken?.(event.continuationToken);
       }
+      if (event.type === "turn-complete" && event.compactionReceipt) {
+        compactionReceipt = event.compactionReceipt;
+        input.onCompactionReceipt?.(event.compactionReceipt);
+      }
     }
   });
   return {
     parsed: parseConversationSummaryPayload(result.outputText),
+    ...(compactionReceipt ? { compactionReceipt } : {}),
     ...(leaseId ? { leaseId } : {})
   };
 }

@@ -16,12 +16,52 @@ import { createAgentTurnHostFake } from "./agentTurnHostFake";
 import { createAgentTurnWorkLedger } from "./agentTurnMessages";
 import {
   createAgentTurnProviderRequestAdapter,
+  classifyCompactionProgress,
   type AgentTurnProviderRequestAdapterInput
 } from "./agentTurnProviderRequest";
 import { createAgentTurnRuntimeState, createAgentTurnState } from "./agentTurnState";
 import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
 
 describe("Agent turn provider request adapter", () => {
+  it.each([
+    {
+      name: "token and item count both decrease",
+      before: { totalInputTokens: 500, projectedInputItemCount: 200 },
+      after: { totalInputTokens: 400, projectedInputItemCount: 180 },
+      expected: { status: "progress" }
+    },
+    {
+      name: "only tokens decrease",
+      before: { totalInputTokens: 500, projectedInputItemCount: 200 },
+      after: { totalInputTokens: 400, projectedInputItemCount: 200 },
+      expected: { status: "progress" }
+    },
+    {
+      name: "only item count decreases",
+      before: { totalInputTokens: 500, projectedInputItemCount: 200 },
+      after: { totalInputTokens: 500, projectedInputItemCount: 180 },
+      expected: { status: "progress" }
+    },
+    {
+      name: "token increase fails closed",
+      before: { totalInputTokens: 500, projectedInputItemCount: 200 },
+      after: { totalInputTokens: 501, projectedInputItemCount: 200 },
+      expected: { status: "blocked", reasonFragment: "token" }
+    },
+    {
+      name: "no metric progress fails closed",
+      before: { totalInputTokens: 500, projectedInputItemCount: 200 },
+      after: { totalInputTokens: 500, projectedInputItemCount: 200 },
+      expected: { status: "blocked", reasonFragment: "均没有下降" }
+    }
+  ])("requires strict compaction progress: $name", ({ before, after, expected }) => {
+    const result = classifyCompactionProgress(before, after);
+    expect(result).toMatchObject({ status: expected.status });
+    if (expected.reasonFragment) {
+      expect(result).toMatchObject({ reason: expect.stringContaining(expected.reasonFragment) });
+    }
+  });
+
   it("keeps initial, exact-continuation, and lease-continuation request bodies distinct", async () => {
     const initial = createFixture(textAnswerScript());
     await createAgentTurnProviderRequestAdapter(initial.input).request(["initial"]);

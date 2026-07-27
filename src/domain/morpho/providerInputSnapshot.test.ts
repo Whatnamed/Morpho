@@ -25,7 +25,7 @@ describe("provider input snapshots", () => {
     expect(snapshot.serializedTextHash).toBeTruthy();
   });
 
-  it("normalizes legacy snapshots without changing the immutable text hash contract", () => {
+  it("reissues legacy snapshots with the current SHA-256 text hash", () => {
     const snapshot = normalizeProviderInputSnapshot({
       schemaVersion: 1,
       promptContractVersion: "morpho-agent-test",
@@ -37,8 +37,9 @@ describe("provider input snapshots", () => {
     expect(snapshot).toMatchObject({
       schemaVersion: 1,
       promptContractVersion: "morpho-agent-test",
-      serializedTextHash: "stored-hash"
+      serializedTextHash: expect.stringMatching(/^[0-9a-f]{64}$/)
     });
+    expect(snapshot?.serializedTextHash).not.toBe("stored-hash");
     expect(snapshot?.textParts).toEqual([{ kind: "userDraft", text: "原始问题" }]);
   });
 

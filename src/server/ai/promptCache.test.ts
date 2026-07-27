@@ -10,7 +10,7 @@ describe("prompt cache helpers", () => {
       promptContractVersion: "morpho-agent-v3.2-2026-07-13",
       toolProfile: "standard"
     });
-    expect(key).toMatch(/^morpho:[a-z0-9]+:gpt-5\.6-terra:morpho-agent-v3\.2-2026-07-13:standard$/);
+    expect(key).toMatch(/^morpho:[0-9a-f]{64}:gpt-5\.6-terra:morpho-agent-v3\.2-2026-07-13:standard$/);
     expect(key).not.toContain("ocean-buoy");
     expect(key).not.toContain("用户");
   });

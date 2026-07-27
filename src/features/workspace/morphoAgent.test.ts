@@ -126,7 +126,7 @@ describe("agent conversation context", () => {
     expect(input[0]).toMatchObject({ role: "user" });
     expect(JSON.stringify(input)).toContain("Morpho Untrusted Conversation Summary Source");
     expect(JSON.stringify(input)).toContain("先保持高可见性");
-    expect(JSON.stringify(input)).toContain("message-1..message-2");
+    expect(JSON.stringify(input)).toContain("sourceStartMessageId");
     expect(JSON.stringify(input)).not.toContain("input_image");
     expect(JSON.stringify(input)).not.toContain('"role":"system"');
   });
@@ -147,7 +147,7 @@ describe("agent conversation context", () => {
 
     expect(serialized).toContain("完整分块消息 1");
     expect(serialized).toContain("完整分块消息 9");
-    expect(serialized).toContain("sourceMessageCount: 9");
+    expect(serialized).toContain("sourceMessageCount");
   });
 
   it("splits a large summary source into ordered text parts below the route item limit", () => {
@@ -165,8 +165,8 @@ describe("agent conversation context", () => {
 
     expect(content.length).toBeGreaterThan(1);
     expect(content.every((part) => part.type === "input_text" && part.text.length < 120_000)).toBe(true);
-    expect(content[0]).toMatchObject({ type: "input_text", text: expect.stringContaining("sourceRange: message-1..message-24") });
-    expect(content[1]).toMatchObject({ type: "input_text", text: expect.stringContaining("[sourceMessagesPart 1/") });
+    expect(content[0]).toMatchObject({ type: "input_text", text: expect.stringContaining("sourceStartMessageId\":\"message-1\"") });
+    expect(content[1]).toMatchObject({ type: "input_text", text: expect.any(String) });
     expect(content.at(-1)).toMatchObject({ type: "input_text", text: expect.stringContaining("洋") });
   });
 

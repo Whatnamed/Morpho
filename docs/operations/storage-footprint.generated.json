@@ -766,92 +766,92 @@
     {
       "key": "contextFrames",
       "label": "空白项目 + 120 个真实回合产生的 Context Frame",
-      "utf16Length": 232394,
-      "utf8Bytes": 344448,
-      "quotaBytes": 464888,
+      "utf16Length": 246309,
+      "utf8Bytes": 358363,
+      "quotaBytes": 492718,
       "structuralOverheadUtf16": 610,
       "segments": [
         {
           "path": "project",
           "utf16Length": 197,
           "utf8Bytes": 239,
-          "share": 0.0008476983054639965,
+          "share": 0.0007998083707862888,
           "count": 6
         },
         {
           "path": "workingState",
           "utf16Length": 293,
           "utf8Bytes": 293,
-          "share": 0.0012607898654870607,
+          "share": 0.0011895627037582875,
           "count": 12
         },
         {
           "path": "projectContinuity",
           "utf16Length": 229,
           "utf8Bytes": 263,
-          "share": 0.0009853954921383511,
+          "share": 0.000929726481776955,
           "count": 4
         },
         {
           "path": "projectMemory.documents",
           "utf16Length": 483,
           "utf8Bytes": 547,
-          "share": 0.002078366911366042,
+          "share": 0.001960951487765368,
           "count": 7
         },
         {
           "path": "projectMemory.revisions",
           "utf16Length": 355,
           "utf8Bytes": 447,
-          "share": 0.001527578164668623,
+          "share": 0.0014412790438027032,
           "count": 1
         },
         {
           "path": "projectMemory.stageRecords",
           "utf16Length": 131,
           "utf8Bytes": 131,
-          "share": 0.0005636978579481398,
+          "share": 0.0005318522668680397,
           "count": 1
         },
         {
           "path": "projectMemory.stageRevisions",
           "utf16Length": 219,
           "utf8Bytes": 253,
-          "share": 0.0009423651213026154,
+          "share": 0.0008891270720923718,
           "count": 1
         },
         {
           "path": "projectMemory.updatedAt",
           "utf16Length": 26,
           "utf8Bytes": 26,
-          "share": 0.00011187896417291324
+          "share": 0.00010555846517991628
         },
         {
           "path": "canvas.view",
           "utf16Length": 22,
           "utf8Bytes": 22,
-          "share": 0.0000946668158386189,
+          "share": 0.000089318701306083,
           "count": 3
         },
         {
           "path": "ai.conversationCompaction",
           "utf16Length": 25,
           "utf8Bytes": 25,
-          "share": 0.00010757592708933965,
+          "share": 0.00010149852421145797,
           "count": 1
         },
         {
           "path": "ai.providerContextFrames",
-          "utf16Length": 229648,
-          "utf8Bytes": 341436,
-          "share": 0.9881838601685069,
+          "utf16Length": 243563,
+          "utf8Bytes": 355351,
+          "share": 0.9888514021006135,
           "count": 121
         },
         {
           "path": "ui",
           "utf16Length": 119,
           "utf8Bytes": 119,
-          "share": 0.0005120614129452567,
+          "share": 0.00048313297524653993,
           "count": 5
         }
       ],
@@ -860,14 +860,14 @@
           "path": "ai.providerContextFrames[].renderedText",
           "utf16Length": 96690,
           "utf8Bytes": 203690,
-          "share": 0.4160606556107301,
+          "share": 0.39255569224023484,
           "count": 121
         },
         {
           "path": "projectMemory.revisions[].sections",
           "utf16Length": 143,
           "utf8Bytes": 235,
-          "share": 0.0006153343029510228,
+          "share": 0.0005805715584895395,
           "count": 1
         }
       ],
@@ -875,12 +875,12 @@
         "baselineKey": "blank",
         "units": 120,
         "unitLabel": "个回合",
-        "quotaBytesPerUnit": 3827,
+        "quotaBytesPerUnit": 4059,
         "topDeltas": [
           {
             "path": "ai.providerContextFrames",
-            "utf16Delta": 229646,
-            "quotaBytesPerUnit": 3827
+            "utf16Delta": 243561,
+            "quotaBytesPerUnit": 4059
           },
           {
             "path": "ai.providerContextFrames[].renderedText",

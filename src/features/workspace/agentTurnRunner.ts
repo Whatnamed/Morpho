@@ -23,6 +23,7 @@ import type {
 import { compileVisualGenerationPlan } from "@/domain/operations/imagePromptCompiler";
 import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
 import { createAgentContextBudgetState } from "@/shared/providerInputBudget";
+import { hashAgentProviderItems } from "@/shared/agentCompactionProtocol";
 import {
   collectAiProviderImageAttachments,
   resolveAiProviderImageObjectIds,
@@ -90,7 +91,9 @@ import { createAgentTurnRuntimeState, createAgentTurnState } from "./agentTurnSt
 import {
   createAgentTurnProviderRequestAdapter,
   AgentContextCompactionError,
-  estimateAgentTurnProviderBudget
+  buildAgentCompactionContextMarkers,
+  estimateAgentTurnProviderBudget,
+  rebuildAgentPostCompactionTranscript
 } from "./agentTurnProviderRequest";
 import {
   buildMorphoAgentToolArgumentRepairOutputs,
@@ -117,6 +120,7 @@ import { buildDeliverySectionContext } from "./deliveryPreparationUi";
 import { collectDocumentExtractsForAi } from "./documentContext";
 import { buildAgentVisualGenerationBatch, resolveExpectedVisualGenerationCount } from "./agentVisualGenerationBatch";
 import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
+import { buildConversationCompactionTailItems } from "./conversationSummaryAgentRequest";
 
 const MAX_AGENT_TOOL_ARGUMENT_REPAIR_ATTEMPTS = 3;
 
@@ -467,7 +471,13 @@ export async function runMorphoAgentTurn(
     providerTimelineBudget: preCompactionBudget,
     limits: conversationTokenLimits
   });
+  let automaticPostCompactionInput: unknown[] | undefined;
   if (automaticCompactionPlan) {
+    const automaticRetainedTailItems = buildConversationCompactionTailItems({
+      messages: automaticCompactionPlan.remainingMessages,
+      continuationItems: []
+    });
+    const automaticContextMarkers = buildAgentCompactionContextMarkers(turnState.workspaceAtAgentStart);
     const compactionActivityId = `${agentTurnId}:conversation-summary`;
     commitWorkspaceNow((current) => {
       const assistant = current.ai.messages.find((message) => message.id === assistantMessageId);
@@ -502,6 +512,12 @@ export async function runMorphoAgentTurn(
           leaseId: turnState.agentTurnLeaseId,
           leaseSequence: turnState.nextAgentLeaseSequence,
           continuationToken: turnState.agentContinuationToken,
+          retainedTailItems: automaticRetainedTailItems,
+          contextMarkers: automaticContextMarkers,
+          previousTranscriptManifestHash:
+            turnState.latestProviderTranscriptManifestHash ??
+            turnState.latestProviderRequestState?.transcriptManifestHash,
+          previousTranscriptSnapshotToken: turnState.latestProviderRequestState?.transcriptSnapshotToken,
           onLeaseStarted: (leaseId) => {
             turnState.agentTurnLeaseId = leaseId;
           },
@@ -514,10 +530,9 @@ export async function runMorphoAgentTurn(
           },
           fetch
         );
-      turnState.providerTranscriptReset = true;
       turnState.agentTurnLeaseId = summaryRequest.leaseId ?? turnState.agentTurnLeaseId;
       const parsedSummary = summaryRequest.parsed;
-      if (parsedSummary.status !== "ok") {
+      if (parsedSummary.status !== "ok" || !summaryRequest.compactionReceipt) {
         throw new Error("连续对话摘要未通过校验。");
       }
       turnState.workspaceAtAgentStart = commitWorkspaceNow((current) => {
@@ -550,6 +565,13 @@ export async function runMorphoAgentTurn(
           : framed;
         return { workspace: completed, value: completed };
       });
+      automaticPostCompactionInput = rebuildAgentPostCompactionTranscript({
+        contextMarkers: automaticContextMarkers,
+        receipt: summaryRequest.compactionReceipt,
+        summary: parsedSummary.summary,
+        retainedTailItems: automaticRetainedTailItems
+      });
+      turnState.providerTranscriptReset = true;
     } catch (error) {
       const isCancelled = error instanceof DOMException && error.name === "AbortError";
       await closeAgentTurnLease(isCancelled ? "cancelledBeforeExecution" : "failedBeforeExecution");
@@ -609,14 +631,23 @@ export async function runMorphoAgentTurn(
     activeSummaryRevisionId: initialConversationContext.summaryRevision?.id,
     serverManagedPrefix: false
   });
-  const initialProviderBudget = estimateTurnProviderBudget(initialConversationInput);
+  const effectiveConversationInput = automaticPostCompactionInput ?? initialConversationInput;
+  const effectiveProviderBudget = estimateTurnProviderBudget(effectiveConversationInput);
+  const effectiveConversation = buildContinuousConversationContext({
+    workspace: turnState.workspaceAtAgentStart,
+    limits: conversationTokenLimits
+  });
   initialConversationContext = {
     ...initialConversationContext,
-    estimatedInputTokens: initialProviderBudget.totalInputTokens,
+    summaryRevision: effectiveConversation.summaryRevision,
+    messages: effectiveConversation.messages.filter((message) => message.id !== userMessageId),
+    rawMessageCount: effectiveConversation.messages.filter((message) => message.id !== userMessageId).length,
+    coveredMessageCount: effectiveConversation.coveredMessageCount,
+    estimatedInputTokens: effectiveProviderBudget.totalInputTokens,
     pressure: classifyConversationPressure(
-      initialProviderBudget.estimatedOccupancyTokens,
+      effectiveProviderBudget.estimatedOccupancyTokens,
       conversationTokenLimits ?? MORPHO_AGENT_CONTEXT_POLICY,
-      initialProviderBudget.projectedInputItemCount
+      effectiveProviderBudget.projectedInputItemCount
     )
   };
   const requiredReadRequirements = resolveRequiredAgentReadRequirements(draft, {
@@ -626,9 +657,9 @@ export async function runMorphoAgentTurn(
   const requiredMemoryUpdates = resolveRequiredAgentMemoryUpdates(draft);
   const runtimeState = createAgentTurnRuntimeState({
     conversationContext: initialConversationContext,
-    conversationInput: initialConversationInput,
+    conversationInput: effectiveConversationInput,
     requiredReadState: createRequiredAgentReadState(requiredReadRequirements),
-    contextBudgetState: createAgentContextBudgetState(initialProviderBudget.totalInputTokens),
+    contextBudgetState: createAgentContextBudgetState(effectiveProviderBudget.totalInputTokens),
     agentWorkLedger: createAgentTurnWorkLedger()
   });
   const agentTurnStartedAt = host.now();
@@ -1173,7 +1204,11 @@ export async function runMorphoAgentTurn(
       if (runtimeState.emergencyGuardTriggered) {
         runtimeState.conversationInput = [...runtimeState.conversationInput, ...toolOutputs];
         runtimeState.turnContinuationItems.push(...toolOutputs);
-        providerRequestAdapter.appendProjectStateFrame();
+          providerRequestAdapter.appendProjectStateFrame({
+            outputHash: hashAgentProviderItems(result.outputItems),
+            callIds: result.functionCalls.map((call) => call.callId),
+            terminalOutputHash: hashAgentProviderItems(toolOutputs)
+          });
         continue;
       }
 
@@ -1189,7 +1224,11 @@ export async function runMorphoAgentTurn(
 
       runtimeState.conversationInput = [...runtimeState.conversationInput, ...toolOutputs];
       runtimeState.turnContinuationItems.push(...toolOutputs);
-      providerRequestAdapter.appendProjectStateFrame();
+      providerRequestAdapter.appendProjectStateFrame({
+        outputHash: hashAgentProviderItems(result.outputItems),
+        callIds: result.functionCalls.map((call) => call.callId),
+        terminalOutputHash: hashAgentProviderItems(toolOutputs)
+      });
       if (runtimeState.highestPressure === "compact") {
         const compaction = await providerRequestAdapter.compactBeforeContinuation();
         if (compaction.status === "blocked") {

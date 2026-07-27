@@ -4,7 +4,10 @@ import type {
   ProviderContextFramePlacement
 } from "./types";
 import {
+  bindAgentContextStateMarker,
   createAgentContextStateMarker,
+  hashAgentProtocolValue,
+  type AgentContextMarkerCausalBinding,
   type AgentContextStateMarker
 } from "@/shared/agentCompactionProtocol";
 
@@ -141,8 +144,14 @@ export function providerContextFrameMessage(frame: ProviderContextFrame): {
  * fixed, server-parseable state identity instead; the server materializes the
  * marker back into a data-only Provider message.
  */
-export function providerContextFrameContinuationMarker(frame: ProviderContextFrame): AgentContextStateMarker {
-  return createAgentContextStateMarker(frame);
+export function providerContextFrameContinuationMarker(
+  frame: ProviderContextFrame,
+  causalBinding?: AgentContextMarkerCausalBinding
+): AgentContextStateMarker {
+  const marker = createAgentContextStateMarker(frame);
+  return causalBinding
+    ? bindAgentContextStateMarker({ marker, ...causalBinding })
+    : marker;
 }
 
 export function buildProviderContextFrameTimeline(input: {
@@ -244,12 +253,7 @@ function stableJson(value: unknown): string {
 }
 
 function stableHash(value: string): string {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36);
+  return hashAgentProtocolValue(value, "morpho-agent-context-frame-v1");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

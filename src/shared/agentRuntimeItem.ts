@@ -1,4 +1,6 @@
 export type AgentToolProfile = "standard" | "standardWithWebSearch" | "conversationSummary";
+import { hashAgentProtocolValue } from "./agentCompactionProtocol";
+
 export type AgentRuntimeMode = "auto" | "confirm";
 
 export type AgentCanonicalRuntimeItem = {
@@ -64,8 +66,8 @@ export function isValidCanonicalAgentRuntimeItem(value: unknown): value is Agent
   }
   const item = value as Partial<AgentCanonicalRuntimeItem>;
   if (
-    typeof item.id !== "string" || !/^agent-runtime-[a-z0-9]+$/.test(item.id) ||
-    typeof item.contentHash !== "string" || !/^[a-z0-9]+$/.test(item.contentHash) ||
+    typeof item.id !== "string" || !/^agent-runtime-[0-9a-f]{64}$/.test(item.id) ||
+    typeof item.contentHash !== "string" || !/^[0-9a-f]{64}$/.test(item.contentHash) ||
     (
       item.effectiveToolProfile !== "standard" &&
       item.effectiveToolProfile !== "standardWithWebSearch" &&
@@ -77,7 +79,7 @@ export function isValidCanonicalAgentRuntimeItem(value: unknown): value is Agent
     typeof item.sequence !== "number" || !Number.isSafeInteger(item.sequence) || item.sequence < 1 || item.sequence > 10_000 ||
     typeof item.renderedText !== "string" || item.renderedText.length > 1_000 ||
     (item.predecessorItemId !== undefined &&
-      (typeof item.predecessorItemId !== "string" || !/^agent-runtime-[a-z0-9]+$/.test(item.predecessorItemId)))
+      (typeof item.predecessorItemId !== "string" || !/^agent-runtime-[0-9a-f]{64}$/.test(item.predecessorItemId)))
   ) {
     return false;
   }
@@ -124,12 +126,7 @@ function stableJson(value: Record<string, unknown>): string {
 }
 
 function stableHash(value: string): string {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36);
+  return hashAgentProtocolValue(value, "morpho-agent-runtime-v2");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

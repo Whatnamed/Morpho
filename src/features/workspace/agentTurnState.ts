@@ -17,6 +17,8 @@ export type AgentTurnState = {
   agentTurnLeaseId?: string;
   nextAgentLeaseSequence?: number;
   agentContinuationToken?: string;
+  /** Exact manifest from the latest signed Provider response in this turn. */
+  latestProviderTranscriptManifestHash?: string;
   providerTranscriptReset: boolean;
   webSearchSequenceResyncUsed: boolean;
   webSearchLeaseStateRecoveryUsed: boolean;

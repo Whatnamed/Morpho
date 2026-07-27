@@ -5,6 +5,7 @@ import type {
   ProviderInputSnapshotTextPart,
   ProviderInputSnapshotTextPartKind
 } from "./types";
+import { hashAgentProtocolValue } from "@/shared/agentCompactionProtocol";
 
 type ProviderInputTextContent = {
   type: "input_text" | "output_text";
@@ -45,9 +46,9 @@ export function normalizeProviderInputSnapshot(value: unknown): ProviderInputSna
   }
   const textParts = normalizeTextParts(value.textParts);
   const attachmentRefs = normalizeAttachmentRefs(value.attachmentRefs);
-  const serializedTextHash = typeof value.serializedTextHash === "string"
-    ? value.serializedTextHash
-    : hashProviderInputSnapshotText(textParts);
+  // Reissue the digest so legacy short hashes cannot remain part of a current
+  // provider-input boundary after a workspace is loaded.
+  const serializedTextHash = hashProviderInputSnapshotText(textParts);
   const cacheBoundaryReason = isCacheBoundaryReason(value.cacheBoundaryReason)
     ? value.cacheBoundaryReason
     : undefined;
@@ -66,7 +67,10 @@ export function providerInputSnapshotText(snapshot: ProviderInputSnapshot): stri
 }
 
 export function hashProviderInputSnapshotText(textParts: readonly ProviderInputSnapshotTextPart[]): string {
-  return stableHash(stableJson(textParts.map((part) => ({ kind: part.kind, text: part.text }))));
+  return hashAgentProtocolValue(
+    textParts.map((part) => ({ kind: part.kind, text: part.text })),
+    "morpho-agent-provider-input-snapshot-v2"
+  );
 }
 
 function normalizeTextParts(value: unknown): ProviderInputSnapshotTextPart[] {
@@ -110,29 +114,6 @@ function isCacheBoundaryReason(value: unknown): value is ProviderInputCacheBound
     value === "toolProfileChanged" ||
     value === "promptContractChanged" ||
     value === "compaction";
-}
-
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map(stableJson).join(",")}]`;
-  }
-  if (isRecord(value)) {
-    return `{${Object.keys(value)
-      .filter((key) => value[key] !== undefined)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
-}
-
-function stableHash(value: string): string {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

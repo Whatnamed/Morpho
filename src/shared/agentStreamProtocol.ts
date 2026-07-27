@@ -1,4 +1,5 @@
 import type { AgentToolProfile } from "./agentRuntimeItem";
+import type { AgentCompactionReceipt } from "./agentCompactionProtocol";
 
 export type AgentStreamCitation = {
   title: string;
@@ -68,6 +69,8 @@ export type AgentProviderRequestState = {
   cacheItemManifest?: AgentCacheItemManifest[];
   toolsHash?: string;
   budgetGeneration?: number;
+  transcriptManifestHash?: string;
+  transcriptSnapshotToken?: string;
 };
 
 export type AgentProviderDiagnostics = {
@@ -206,6 +209,9 @@ export type AgentRouteStreamEvent =
        * in the same turn must return it; it is never persisted with the workspace.
        */
       continuationToken?: string;
+      /** Manifest hash from the signed continuation claim, kept transiently for compaction. */
+      transcriptManifestHash?: string;
+      compactionReceipt?: AgentCompactionReceipt;
     }
   | {
       type: "turn-error";

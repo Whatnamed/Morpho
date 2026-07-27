@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { AiMessage, ConversationSummary, MorphoWorkspace } from "@/domain/morpho/types";
 import { createBlankWorkspace } from "@/domain/morpho/workspace";
 import type { AgentStreamResult } from "@/shared/agentStreamProtocol";
+import { hashConversationSummaryForReceipt } from "@/shared/agentCompactionProtocol";
 import { agentStreamScript, textAnswerScript } from "./agentStreamScripts";
 import type { AgentTurnHost } from "./agentTurnHost";
 import { createAgentTurnHostFake } from "./agentTurnHostFake";
@@ -95,7 +96,8 @@ function createFixture(
     workspace,
     routes: {
       "/api/ai/agent": async (request) => {
-        agentRequestBodies.push((await request.json()) as Record<string, unknown>);
+        const requestBody = (await request.json()) as Record<string, unknown>;
+        agentRequestBodies.push(requestBody);
         if (options.abortOnAgentRequest) {
           fake.abortSlot.get()?.abort();
         }
@@ -103,7 +105,10 @@ function createFixture(
         if (!script) {
           return Response.json({ error: "Unexpected summary request" }, { status: 500 });
         }
-        return new Response(script.body, {
+        const responseBody = script.body.includes("response-manual")
+          ? addCompactionReceipt(script.body, requestBody)
+          : script.body;
+        return new Response(responseBody, {
           headers: { "content-type": "text/event-stream" }
         });
       },
@@ -152,6 +157,32 @@ function createFixture(
     agentRequestBodies,
     leaseRequestBodies
   };
+}
+
+function addCompactionReceipt(body: string, requestBody: Record<string, unknown>): string {
+  const descriptor = requestBody.compactionDescriptor;
+  return body.split("\n").map((line) => {
+    if (!line.startsWith("data: ")) {
+      return line;
+    }
+    const event = JSON.parse(line.slice("data: ".length)) as Record<string, unknown>;
+    if (event.type !== "turn-complete") {
+      return line;
+    }
+    return `data: ${JSON.stringify({
+      ...event,
+      compactionReceipt: {
+        ...(descriptor && typeof descriptor === "object" ? descriptor : {}),
+        receiptVersion: 2,
+        summaryHash: hashConversationSummaryForReceipt(summary),
+        summaryRevisionId: "conversation-summary-test-receipt",
+        leaseId: "lease-manual",
+        agentTurnId: "manual-compact-test",
+        sequence: 1,
+        expiresAt: Date.now() + 20 * 60 * 1000
+      }
+    })}`;
+  }).join("\n");
 }
 
 function longConversationWorkspace(): MorphoWorkspace {
