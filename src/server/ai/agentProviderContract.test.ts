@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
 import {
+  createAgentContextStateMarker,
+  hashCompactionTail,
+  hashConversationSummaryForReceipt
+} from "@/shared/agentCompactionProtocol";
+import { createProviderContextFrame } from "@/domain/morpho/providerContextFrame";
+import {
   buildAgentProviderContract,
   parseAgentRouteRequest
 } from "./agentProviderContract";
@@ -220,7 +226,16 @@ describe("Agent Provider Contract", () => {
           { type: "input_text", text: "[sourcePart 2/2]\nassistant: continue" }
         ]
       }],
-      directive: { kind: "conversationSummary" }
+      directive: { kind: "conversationSummary" },
+      compactionDescriptor: {
+        sourceStartMessageId: "message-1",
+        sourceEndMessageId: "message-2",
+        sourceMessageCount: 2,
+        sourceMessageIdsHash: "source-hash",
+        retainedTailCount: 0,
+        retainedTailHash: "tail-hash",
+        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION
+      }
     }));
     if (parsed.status !== "ok") {
       throw new Error(parsed.reason);
@@ -237,7 +252,16 @@ describe("Agent Provider Contract", () => {
         role: "user",
         content: Array.from({ length: 33 }, () => ({ type: "input_text", text: "source" }))
       }],
-      directive: { kind: "conversationSummary" }
+      directive: { kind: "conversationSummary" },
+      compactionDescriptor: {
+        sourceStartMessageId: "message-1",
+        sourceEndMessageId: "message-2",
+        sourceMessageCount: 2,
+        sourceMessageIdsHash: "source-hash",
+        retainedTailCount: 0,
+        retainedTailHash: "tail-hash",
+        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION
+      }
     }))).toMatchObject({ status: "failed" });
   });
 
@@ -254,7 +278,16 @@ describe("Agent Provider Contract", () => {
         { role: "user", content: [{ type: "input_text", text: "source" }] },
         { role: "assistant", content: [{ type: "output_text", text: "answer" }] }
       ],
-      directive: { kind: "conversationSummary" }
+      directive: { kind: "conversationSummary" },
+      compactionDescriptor: {
+        sourceStartMessageId: "message-1",
+        sourceEndMessageId: "message-2",
+        sourceMessageCount: 2,
+        sourceMessageIdsHash: "source-hash",
+        retainedTailCount: 0,
+        retainedTailHash: "tail-hash",
+        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION
+      }
     }))).toMatchObject({ status: "failed" });
     expect(parseAgentRouteRequest(request({
       directive: { kind: "conversationSummary" },
@@ -334,6 +367,85 @@ describe("Agent Provider Contract", () => {
     expect(parseAgentRouteRequest(request({
       input: [{ role: "user", content: [{ type: "input_text", text: "ok", provider_private: true }] }]
     }))).toMatchObject({ status: "failed" });
+  });
+
+  it("rejects a 65-call transcript without silently slicing it", () => {
+    const calls = Array.from({ length: 65 }, (_, index) => ({
+      type: "function_call",
+      id: `fc-${index}`,
+      call_id: `call-${index}`,
+      name: "read_selected_context",
+      arguments: "{}"
+    }));
+    const outputs = calls.map((call) => ({
+      type: "function_call_output",
+      call_id: call.call_id,
+      output: "{}"
+    }));
+    expect(parseAgentRouteRequest(request({ input: [...calls, ...outputs] }))).toMatchObject({
+      status: "failed",
+      reason: expect.stringContaining("超过 64")
+    });
+  });
+
+  it("accepts only fixed-field Context/State markers and never client renderedText", () => {
+    const marker = createAgentContextStateMarker(createProviderContextFrame({
+      projectId: "project-ocean-buoy",
+      kind: "projectState",
+      createdAt: "2026-07-27T00:00:00.000Z",
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+      projectMemoryRevisionIds: ["memory-revision-1"],
+      stageRecordRevisionIds: [],
+      directionRevisionIds: [],
+      selectedObjectIds: [],
+      relatedObjectIds: ["buoy-object-1"],
+      sourceRefs: [{ kind: "object", id: "buoy-object-1", title: "浮标" }],
+      reason: "active project state",
+      renderedText: "不应进入 marker 的任意正文"
+    }));
+    const parsed = parseAgentRouteRequest(request({ input: [marker] }));
+    if (parsed.status !== "ok") {
+      throw new Error(parsed.reason);
+    }
+    const contract = buildAgentProviderContract({ request: parsed.value, webSearchEnabled: false });
+    expect(JSON.stringify(parsed.value.input)).not.toContain("renderedText");
+    expect(JSON.stringify(contract.request.input)).toContain("buoy-object-1");
+    expect(parseAgentRouteRequest(request({
+      input: [{ ...marker, renderedText: "forged" }]
+    }))).toMatchObject({ status: "failed" });
+  });
+
+  it("does not accept a compaction transcript marker outside postCompaction", () => {
+    const summary = {
+      threadGoal: "收拢海洋浮标上下文",
+      establishedContext: ["当前项目是海洋浮标"],
+      decisionsAndReasons: ["保留原始消息"],
+      activeWork: ["验证继续执行"],
+      unresolvedQuestions: [],
+      referencedObjects: ["buoy-object-1"]
+    };
+    const descriptor = {
+      sourceStartMessageId: "message-1",
+      sourceEndMessageId: "message-2",
+      sourceMessageCount: 2,
+      sourceMessageIdsHash: "source-message-ids",
+      retainedTailCount: 0,
+      retainedTailHash: hashCompactionTail([]),
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION
+    };
+    const summaryHash = hashConversationSummaryForReceipt(summary);
+    const marker = {
+      type: "morpho_compaction_transcript",
+      ...descriptor,
+      summary,
+      summaryHash,
+      summaryRevisionId: "summary-revision-1",
+      retainedTail: []
+    };
+    expect(parseAgentRouteRequest(request({ input: [marker] }))).toMatchObject({
+      status: "failed",
+      reason: expect.stringContaining("postCompaction")
+    });
   });
 
   it("keeps injected project, memory, object, and web text in an untrusted user envelope", () => {

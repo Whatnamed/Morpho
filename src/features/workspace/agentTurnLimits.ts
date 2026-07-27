@@ -6,6 +6,7 @@ import {
 } from "./morphoAgent";
 import { buildToolResultOutput } from "./morphoAgent";
 import type { ResponseFunctionToolOutput } from "@/server/ai/openaiCompatibleProvider";
+import { assertAgentFunctionCallCount } from "@/shared/agentFunctionCallLimits";
 
 export const AGENT_WEB_SEARCH_MAX_SOURCES_PER_CALL = 5;
 export const AGENT_TURN_EMERGENCY_MODEL_TURN_CEILING = 28;
@@ -47,6 +48,7 @@ export function completeUnresolvedAgentFunctionCalls(input: {
   status: Exclude<AgentFunctionCallTerminalStatus, "executed">;
   reason: string;
 }): ResponseFunctionToolOutput[] {
+  assertAgentFunctionCallCount(input.calls.length);
   const completed = new Set(input.outputs.map((output) => output.call_id));
   return [
     ...input.outputs,

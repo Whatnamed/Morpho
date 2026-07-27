@@ -13,7 +13,8 @@ import {
   buildProviderContextFrameTimeline,
   createProviderContextFrame,
   nextProviderContextFrameSequence,
-  providerContextFrameMessage
+  providerContextFrameMessage,
+  providerContextFrameContinuationMarker
 } from "@/domain/morpho/providerContextFrame";
 import { providerInputSnapshotText } from "@/domain/morpho/providerInputSnapshot";
 import type { ResponseMessageInput } from "@/server/ai/openaiCompatibleProvider";
@@ -779,4 +780,8 @@ function uniqueIds(values: readonly string[]): string[] {
   return [...new Set(values.filter(Boolean))].sort();
 }
 
-export { buildProviderContextFrameTimeline, providerContextFrameMessage };
+export {
+  buildProviderContextFrameTimeline,
+  providerContextFrameMessage,
+  providerContextFrameContinuationMarker
+};

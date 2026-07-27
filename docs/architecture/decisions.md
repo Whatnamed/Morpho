@@ -689,6 +689,13 @@ Boundary: Supabase stores only user/turn/lease IDs, status, timestamps, terminal
 - The signing key is `MORPHO_AGENT_CONTINUATION_SECRET` when set, otherwise a domain-separated derivation from `MORPHO_AI_API_KEY`. Both are server-only and stable across instances; a per-instance key would break continuations.
 - Web search consumes a lease sequence before it can fail, so every exit of the search route reports the sequence the server expects. A lost search response may resynchronize once per turn; Provider continuations stay strict because the binding already pins them.
 
+# 2026-07-27: Close signed Agent continuation and compaction boundaries
+
+- Provider transcript continuation is a v2 HMAC capability, not a sequence-only retry. The signed claim binds the unchanged prefix, exact Provider output, Call IDs, and compaction receipt scope; the parser accepts only fixed Morpho Context/State markers or unique terminal Call outputs after that output.
+- Conversation compaction uses a restricted descriptor and a server-created receipt. The receipt binds summary/tail hashes, source boundary, summary revision, prompt contract, lease/turn/sequence scope, and expiry. It is carried only inside the transient continuation token and is never written to Supabase or workspace message bodies.
+- A lost Agent web-search response gets one read-only `read_agent_turn_lease_state` recovery to refresh the sequence, then the failed search is submitted as a terminal tool result without replaying the query. A second transport loss or failed recovery terminates the turn safely; standalone search is unchanged.
+- Context compaction is bounded by both token and Item pressure, with at most two continuation compactions and a strict reduction requirement. The shared function-call ceiling is 64 across provider parsing, streaming, tool-batch finalization, and continuation signing; over-limit output fails closed before any Call executes.
+
 # 2026-07-26: Turn outcome from unresolved work
 
 - A turn keeps a ledger of unresolved work rather than a sticky "something failed" flag. A tool failure or a schema repair is cleared when the same tool later succeeds; a required-read exhaustion and the repeat guard end the turn and stay unresolved.

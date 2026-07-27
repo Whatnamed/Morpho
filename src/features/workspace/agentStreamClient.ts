@@ -7,7 +7,7 @@ import {
 export class AgentTurnStreamError extends Error {
   constructor(
     message: string,
-    readonly code?: "context_limit" | "interrupted"
+    readonly code?: "context_limit" | "function_call_limit" | "interrupted"
   ) {
     super(message);
     this.name = "AgentTurnStreamError";

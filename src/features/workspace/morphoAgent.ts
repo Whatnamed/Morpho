@@ -23,6 +23,7 @@ import type {
   AgentStreamOutputItem,
   AgentStreamResult
 } from "@/shared/agentStreamProtocol";
+import { assertAgentFunctionCallCount } from "@/shared/agentFunctionCallLimits";
 
 import type { ProviderTaskContext, TaskContextResult } from "./taskContext";
 import {
@@ -1223,6 +1224,7 @@ export function normalizeGenerateVisualsForSelectedDirections(
 export function parseMorphoAgentToolCallBatch(
   calls: readonly AgentFunctionCall[]
 ): MorphoAgentToolCallParseResult[] {
+  assertAgentFunctionCallCount(calls.length);
   return calls.map((call) => {
     try {
       return {

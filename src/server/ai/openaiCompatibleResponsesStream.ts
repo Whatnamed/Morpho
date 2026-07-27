@@ -7,6 +7,7 @@ import type {
 } from "./openaiCompatibleProvider";
 import type { AgentStreamActivityKind } from "@/shared/agentStreamProtocol";
 import { normalizeProviderTokenUsage } from "./providerTokenUsage";
+import { assertAgentFunctionCallCount } from "@/shared/agentFunctionCallLimits";
 
 type MessagePhase = "commentary" | "final";
 
@@ -313,9 +314,6 @@ export function createOpenAiCompatibleResponseAccumulator(
           const response = asRecord(record.response);
           responseId = stringValue(response?.id) ?? responseId;
           usage = extractUsage(response?.usage) ?? usage;
-          if (usage) {
-            emit({ type: "usage", usage });
-          }
           if (itemById.size === 0 && Array.isArray(response?.output)) {
             response.output.forEach((item, index) => {
               const itemRecord = asRecord(item);
@@ -374,6 +372,13 @@ export function createOpenAiCompatibleResponseAccumulator(
         webSearchCallCount: outputItems.filter((item) => item.type === "web_search_call").length,
         ...(usage ? { usage } : {})
       };
+      assertAgentFunctionCallCount(result.functionCalls.length);
+      result.functionCalls.forEach((functionCall) => {
+        emit({ type: "function-call-ready", functionCall });
+      });
+      if (usage) {
+        emit({ type: "usage", usage });
+      }
       return result;
     }
   };
@@ -383,7 +388,6 @@ export function createOpenAiCompatibleResponseAccumulator(
       return;
     }
     emittedFunctionCallIds.add(functionCall.callId);
-    emit({ type: "function-call-ready", functionCall });
   }
 
   function getMessageState(itemId: string): MessageStreamState {

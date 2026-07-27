@@ -15,6 +15,10 @@ import {
 } from "./structuredBlocks";
 import { providerInputSnapshotText } from "./providerInputSnapshot";
 import type { ProviderInputTimelineBudget } from "@/shared/providerInputBudget";
+import {
+  buildConversationSummaryRevisionId,
+  hashConversationSummaryForReceipt
+} from "@/shared/agentCompactionProtocol";
 
 export const CONVERSATION_SUMMARY_MARKER = "morphoConversationSummary";
 
@@ -392,7 +396,11 @@ export function applyConversationSummaryRevision(
   }
   const sourceMessageIdsHash = hashMessageIds(input.sourceMessageIds);
   const now = input.now ?? new Date().toISOString();
-  const revisionId = `conversation-summary-${stableHash(`${currentRevisionId ?? "root"}|${sourceMessageIdsHash}|${stableJson(validation.summary)}`)}`;
+  const revisionId = buildConversationSummaryRevisionId({
+    previousSummaryRevisionId: currentRevisionId,
+    sourceMessageIdsHash,
+    summaryHash: hashConversationSummaryForReceipt(validation.summary)
+  });
   if (workspace.ai.conversationSummaryRevisions[revisionId]) {
     return { status: "skipped", workspace, reason: "Conversation source range has already been summarized." };
   }

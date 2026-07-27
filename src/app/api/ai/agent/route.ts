@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { parseConversationSummaryPayload } from "@/domain/morpho/conversationCompaction";
 import { loadOpenAiCompatibleConfig } from "@/server/ai/openaiCompatibleConfig";
 import {
   OpenAiCompatibleProviderError,
@@ -16,6 +17,10 @@ import {
   hashStablePrefix
 } from "@/server/ai/promptCache";
 import { classifyProviderCacheStatus } from "@/server/ai/providerTokenUsage";
+import {
+  buildConversationSummaryRevisionId,
+  hashConversationSummaryForReceipt
+} from "@/shared/agentCompactionProtocol";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
 import {
   agentTurnLeaseDeniedResponse,
@@ -42,9 +47,11 @@ import {
 } from "@/server/ai/agentProviderContract";
 import {
   agentContinuationFailureMessage,
+  AGENT_CONTINUATION_TOKEN_TTL_MS,
   hashAgentContinuationItems,
   issueAgentContinuationToken,
   resolveAgentContinuationSecret,
+  verifyAgentCompactionBinding,
   verifyAgentContinuationBinding,
   verifyAgentContinuationToken
 } from "@/server/ai/agentContinuationToken";
@@ -100,7 +107,8 @@ export async function POST(request: Request) {
   const requestHash = hashAgentTurnLeaseValue({
     input: contract.request.input,
     tools: contract.request.tools ?? [],
-    directive: validated.value.directive?.kind ?? null
+    directive: validated.value.directive?.kind ?? null,
+    compactionDescriptor: validated.value.compactionDescriptor ?? null
   });
   const requestManifestHash = hashAgentTurnLeaseValue(requestState.cacheItemManifest ?? []);
   const isSummaryRequest = validated.value.directive?.kind === "conversationSummary";
@@ -128,6 +136,15 @@ export async function POST(request: Request) {
       );
     }
     if (continuationKind === "providerContinuation") {
+      if (verified.claims.summary) {
+        return NextResponse.json(
+          {
+            error: agentContinuationFailureMessage("transcript_not_summary"),
+            reason: "transcript_not_summary"
+          },
+          { status: 400 }
+        );
+      }
       const bound = verifyAgentContinuationBinding({
         claims: verified.claims,
         parsedInput: validated.value.input
@@ -139,15 +156,18 @@ export async function POST(request: Request) {
         );
       }
     }
-    // A fresh transcript is legitimate only right after a server-owned summary.
-    if (continuationKind === "postCompaction" && !verified.claims.summary) {
-      return NextResponse.json(
-        {
-          error: agentContinuationFailureMessage("transcript_not_summary"),
-          reason: "transcript_not_summary"
-        },
-        { status: 400 }
-      );
+    if (continuationKind === "postCompaction") {
+      const bound = verifyAgentCompactionBinding({
+        claims: verified.claims,
+        parsedInput: validated.value.input,
+        now: Date.now()
+      });
+      if (bound.status === "failed") {
+        return NextResponse.json(
+          { error: agentContinuationFailureMessage(bound.reason), reason: bound.reason },
+          { status: 400 }
+        );
+      }
     }
   }
   const leaseAccess = validated.value.continuation || validated.value.leaseContinuation
@@ -311,7 +331,28 @@ export async function POST(request: Request) {
           const completedAttemptId = activeAttemptId;
           enqueue({ type: "context", context: execution.context });
           const boundOutputItems = normalizeProviderOutputItemsForBinding(execution.result.outputItems);
-          const continuationToken = continuationSecret && boundOutputItems
+          const parsedSummary = isSummaryRequest
+            ? parseConversationSummaryPayload(execution.result.outputText)
+            : undefined;
+          const compactionReceipt = isSummaryRequest &&
+            validated.value.compactionDescriptor &&
+            parsedSummary?.status === "ok"
+            ? {
+                ...validated.value.compactionDescriptor,
+                summaryHash: hashConversationSummaryForReceipt(parsedSummary.summary),
+                summaryRevisionId: buildConversationSummaryRevisionId({
+                  previousSummaryRevisionId: validated.value.compactionDescriptor.previousSummaryRevisionId,
+                  sourceMessageIdsHash: validated.value.compactionDescriptor.sourceMessageIdsHash,
+                  summaryHash: hashConversationSummaryForReceipt(parsedSummary.summary)
+                }),
+                leaseId: leaseAccess.lease.id,
+                agentTurnId: validated.value.agentTurnId,
+                sequence: leaseAccess.lease.nextProviderSequence,
+                expiresAt: Date.now() + AGENT_CONTINUATION_TOKEN_TTL_MS
+              }
+            : undefined;
+          const continuationToken = continuationSecret && boundOutputItems &&
+            (!isSummaryRequest || compactionReceipt)
             ? issueAgentContinuationToken({
                 secret: continuationSecret,
                 leaseId: leaseAccess.lease.id,
@@ -322,6 +363,7 @@ export async function POST(request: Request) {
                 inputHash: continuationInputHash,
                 outputHash: hashAgentContinuationItems(boundOutputItems),
                 callIds: execution.result.functionCalls.map((call) => call.callId),
+                ...(compactionReceipt ? { compactionReceipt } : {}),
                 now: Date.now()
               })
             : undefined;
@@ -402,12 +444,18 @@ function providerErrorEvent(error: unknown): Extract<AgentRouteStreamEvent, { ty
     return {
       type: "turn-error",
       error:
-        error.status === 401 || error.status === 403
+        error.code === "function_call_limit"
+          ? "本次 Provider 返回超过 64 个工具调用，未执行。"
+          : error.status === 401 || error.status === 403
           ? "OpenAI-compatible Provider 鉴权失败，请检查 MORPHO_AI_API_KEY。"
           : error.status === 400
             ? "OpenAI-compatible Provider 请求格式不兼容，请检查模型、tools 或图片输入。"
             : readableProviderDiagnostic(error.diagnostic) ?? "OpenAI-compatible Provider 调用失败，请稍后重试。",
-      ...(error.code === "context_limit" ? { code: "context_limit" as const } : {})
+      ...(error.code === "context_limit"
+        ? { code: "context_limit" as const }
+        : error.code === "function_call_limit"
+          ? { code: "function_call_limit" as const }
+          : {})
     };
   }
 

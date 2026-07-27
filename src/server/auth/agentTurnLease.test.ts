@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   continueAgentTurnLeaseForClient,
+  readAgentTurnLeaseStateForClient,
   startAgentTurnLeaseForClient
 } from "./agentTurnLease";
 
@@ -199,6 +200,48 @@ describe("Agent Turn Lease access", () => {
     );
   });
 
+  it("reads only the active lease sequence and counters for transport recovery", async () => {
+    const mock = client({
+      active: true,
+      expires_at: "2026-07-24T03:00:00.000Z",
+      provider_call_count: 4,
+      web_search_call_count: 2,
+      next_provider_sequence: 7
+    });
+
+    await expect(readAgentTurnLeaseStateForClient(mock, {
+      leaseId: "lease-a",
+      agentTurnId: "agent-turn-a"
+    })).resolves.toEqual({
+      status: "allowed",
+      state: {
+        expiresAt: "2026-07-24T03:00:00.000Z",
+        providerCallCount: 4,
+        webSearchCallCount: 2,
+        nextProviderSequence: 7
+      }
+    });
+    expect(mock.rpc).toHaveBeenCalledWith("read_agent_turn_lease_state", {
+      p_lease_id: "lease-a",
+      p_agent_turn_id: "agent-turn-a"
+    });
+  });
+
+  it("treats an inactive or missing state RPC as a safe recovery failure", async () => {
+    const mock = client({
+      active: false,
+      expires_at: null,
+      provider_call_count: 0,
+      web_search_call_count: 0,
+      next_provider_sequence: 0
+    });
+
+    await expect(readAgentTurnLeaseStateForClient(mock, {
+      leaseId: "lease-a",
+      agentTurnId: "agent-turn-a"
+    })).resolves.toMatchObject({ status: "denied", httpStatus: 403, reason: "inactive" });
+  });
+
   it("counts a repeated first request as a real provider execution in the SQL contract", () => {
     const sql = readMigration("20260726161500_bind_agent_turn_provider_execution.sql");
 
@@ -244,6 +287,16 @@ describe("Agent Turn Lease access", () => {
     expect(correctionSql).toContain("create or replace function public.continue_agent_turn_lease");
     expect(correctionSql).toContain("where lease.user_id = current_user_id");
     expect(correctionSql).toContain("provider_call_count = lease.provider_call_count");
+  });
+
+  it("ships a read-only authenticated Lease state RPC with no transcript fields", () => {
+    const sql = readMigration("20260727180000_read_agent_turn_lease_state.sql");
+    expect(sql).toContain("create or replace function public.read_agent_turn_lease_state(");
+    expect(sql).toContain("security definer");
+    expect(sql).toContain("set search_path = ''");
+    expect(sql).toContain("current_user_id uuid := auth.uid()");
+    expect(sql).toContain("grant execute on function public.read_agent_turn_lease_state(uuid, text)");
+    expect(sql).not.toMatch(/request_hash|manifest_hash|prompt|workspace|transcript|body/i);
   });
 
   it("defines a forward-only causal and idempotent lease migration with a 32-search safety cap", () => {

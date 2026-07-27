@@ -78,6 +78,59 @@ describe("Agent turn lease client", () => {
     expect(state.nextAgentLeaseSequence).toBe(8);
   });
 
+  it("recovers a lost search response once without replaying the original search", async () => {
+    const state = createAgentTurnState(createTestWorkspace());
+    state.agentTurnLeaseId = "lease-unit";
+    state.nextAgentLeaseSequence = 4;
+    let searchCount = 0;
+    let recoveryCount = 0;
+    const fetchImpl: typeof fetch = async (input) => {
+      if (String(input).includes("/api/ai/web-search")) {
+        searchCount += 1;
+        throw new Error("transport reset");
+      }
+      recoveryCount += 1;
+      return Response.json({
+        active: true,
+        expiresAt: "2026-07-27T14:00:00.000Z",
+        providerCallCount: 3,
+        webSearchCallCount: 1,
+        nextProviderSequence: 5
+      });
+    };
+
+    await expect(requestAgentWebSearch({
+      queries: ["original query"],
+      agentTurnId: "turn-unit",
+      signal: new AbortController().signal,
+      state,
+      fetch: fetchImpl
+    })).rejects.toThrow("未重放");
+    expect(searchCount).toBe(1);
+    expect(recoveryCount).toBe(1);
+    expect(state.nextAgentLeaseSequence).toBe(5);
+    expect(state.webSearchLeaseStateRecoveryUsed).toBe(true);
+  });
+
+  it("fails closed when the one-shot search Lease recovery cannot read state", async () => {
+    const state = createAgentTurnState(createTestWorkspace());
+    state.agentTurnLeaseId = "lease-unit";
+    state.nextAgentLeaseSequence = 4;
+    const fetchImpl: typeof fetch = async (input) =>
+      String(input).includes("/api/ai/web-search")
+        ? Promise.reject(new Error("transport reset"))
+        : Response.json({ error: "inactive", reason: "inactive" }, { status: 403 });
+
+    await expect(requestAgentWebSearch({
+      queries: ["original query"],
+      agentTurnId: "turn-unit",
+      signal: new AbortController().signal,
+      state,
+      fetch: fetchImpl
+    })).rejects.toThrow("安全终止");
+    expect(state.webSearchLeaseStateRecoveryUsed).toBe(true);
+  });
+
   it("clears the active lease before a best-effort close request", async () => {
     const state = createAgentTurnState(createTestWorkspace());
     state.agentTurnLeaseId = "lease-unit";

@@ -1,5 +1,15 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
+import {
+  AGENT_COMPACTION_TRANSCRIPT_MARKER_TYPE,
+  AGENT_CONTEXT_STATE_MARKER_TYPE,
+  hashCompactionTail,
+  hashConversationSummaryForReceipt,
+  type AgentCompactionReceipt,
+  type AgentCompactionTranscriptMarker
+} from "@/shared/agentCompactionProtocol";
+import { MAX_AGENT_FUNCTION_CALLS } from "@/shared/agentFunctionCallLimits";
+
 /**
  * A Provider continuation claims that the submitted transcript is exactly the
  * previous request plus the model's own output plus the tool results for the calls
@@ -13,9 +23,8 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
  * and digests: no prompt, transcript, workspace or tool content.
  */
 
-const CONTINUATION_TOKEN_VERSION = 1;
-const CONTINUATION_TOKEN_TTL_MS = 20 * 60 * 1000;
-const MAX_BOUND_CALL_IDS = 64;
+const CONTINUATION_TOKEN_VERSION = 2;
+export const AGENT_CONTINUATION_TOKEN_TTL_MS = 20 * 60 * 1000;
 
 export type AgentContinuationClaims = {
   v: number;
@@ -30,6 +39,7 @@ export type AgentContinuationClaims = {
   outputHash: string;
   callIds: string[];
   exp: number;
+  compactionReceipt?: AgentCompactionReceipt;
 };
 
 export type AgentContinuationVerification =
@@ -47,7 +57,12 @@ export type AgentContinuationFailureReason =
   | "prefix_rewritten"
   | "output_forged"
   | "tool_result_forged"
-  | "transcript_not_summary";
+  | "tool_result_missing"
+  | "exact_tail_rejected"
+  | "transcript_not_summary"
+  | "compaction_receipt_missing"
+  | "compaction_receipt_forged"
+  | "compaction_receipt_expired";
 
 /**
  * Prefer an explicit secret. Otherwise derive a stable server-only key from the
@@ -102,9 +117,20 @@ export function issueAgentContinuationToken(
     inputHash: string;
     outputHash: string;
     callIds: readonly string[];
+    compactionReceipt?: AgentCompactionReceipt;
     now: number;
   }
 ): string {
+  if (input.callIds.length > MAX_AGENT_FUNCTION_CALLS) {
+    throw new Error(`超过 ${MAX_AGENT_FUNCTION_CALLS} 个工具调用，未签发 continuation。`);
+  }
+  const uniqueCallIds = new Set(input.callIds);
+  if (uniqueCallIds.size !== input.callIds.length) {
+    throw new Error("存在重复的工具调用 ID，未签发 continuation。");
+  }
+  if (input.summary && !input.compactionReceipt) {
+    throw new Error("Conversation Summary 缺少签名压缩收据，未签发 continuation。");
+  }
   const claims: AgentContinuationClaims = {
     v: CONTINUATION_TOKEN_VERSION,
     leaseId: input.leaseId,
@@ -114,8 +140,9 @@ export function issueAgentContinuationToken(
     inputItemCount: input.inputItemCount,
     inputHash: input.inputHash,
     outputHash: input.outputHash,
-    callIds: [...input.callIds].slice(0, MAX_BOUND_CALL_IDS),
-    exp: input.now + CONTINUATION_TOKEN_TTL_MS
+    callIds: [...input.callIds],
+    exp: input.compactionReceipt?.expiresAt ?? input.now + AGENT_CONTINUATION_TOKEN_TTL_MS,
+    ...(input.compactionReceipt ? { compactionReceipt: input.compactionReceipt } : {})
   };
   const payload = base64Url(Buffer.from(JSON.stringify(claims), "utf8"));
   return `${payload}.${sign(payload, input.secret)}`;
@@ -163,6 +190,9 @@ export function verifyAgentContinuationToken(input: {
   ) {
     return failed("token_scope");
   }
+  if (claims.summary && (!claims.compactionReceipt || claims.compactionReceipt.expiresAt <= input.now)) {
+    return failed(claims.compactionReceipt ? "compaction_receipt_expired" : "compaction_receipt_missing");
+  }
   return { status: "ok", claims };
 }
 
@@ -187,7 +217,7 @@ export function verifyAgentContinuationBinding(input: {
   while (outputEnd < tail.length && isProviderOutputItem(tail[outputEnd])) {
     outputEnd += 1;
   }
-  if (hashAgentContinuationItems(tail.slice(0, outputEnd)) !== claims.outputHash) {
+  if (outputEnd === 0 || hashAgentContinuationItems(tail.slice(0, outputEnd)) !== claims.outputHash) {
     return failed("output_forged");
   }
   const allowedCallIds = new Set(claims.callIds);
@@ -196,13 +226,70 @@ export function verifyAgentContinuationBinding(input: {
     if (isProviderOutputItem(item)) {
       return failed("output_forged");
     }
-    if (!isFunctionCallOutput(item)) {
+    if (isContextStateMarker(item)) {
       continue;
+    }
+    if (!isFunctionCallOutput(item)) {
+      return failed("exact_tail_rejected");
     }
     if (!allowedCallIds.has(item.call_id) || answeredCallIds.has(item.call_id)) {
       return failed("tool_result_forged");
     }
     answeredCallIds.add(item.call_id);
+  }
+  if (answeredCallIds.size !== allowedCallIds.size) {
+    return failed("tool_result_missing");
+  }
+  return { status: "ok" };
+}
+
+export function verifyAgentCompactionBinding(input: {
+  claims: AgentContinuationClaims;
+  parsedInput: readonly unknown[];
+  now: number;
+}): { status: "ok" } | { status: "failed"; reason: AgentContinuationFailureReason } {
+  const receipt = input.claims.compactionReceipt;
+  if (!input.claims.summary) {
+    return failed("transcript_not_summary");
+  }
+  if (!receipt) {
+    return failed("compaction_receipt_missing");
+  }
+  if (receipt.expiresAt <= input.now || receipt.expiresAt !== input.claims.exp) {
+    return failed("compaction_receipt_expired");
+  }
+  const markers = input.parsedInput.filter(isCompactionTranscriptMarker);
+  if (markers.length !== 1) {
+    return failed("compaction_receipt_forged");
+  }
+  const marker = markers[0]!;
+  const markerIndex = input.parsedInput.indexOf(marker);
+  if (
+    markerIndex < 0 ||
+    markerIndex !== input.parsedInput.length - 1 ||
+    input.parsedInput.some((item, index) => index !== markerIndex && !isContextStateMarker(item))
+  ) {
+    return failed("compaction_receipt_forged");
+  }
+  if (
+    marker.promptContractVersion !== receipt.promptContractVersion ||
+    receipt.leaseId !== input.claims.leaseId ||
+    receipt.agentTurnId !== input.claims.agentTurnId ||
+    receipt.sequence !== input.claims.sequence ||
+    marker.summaryHash !== receipt.summaryHash ||
+    marker.summaryRevisionId !== receipt.summaryRevisionId ||
+    marker.sourceStartMessageId !== receipt.sourceStartMessageId ||
+    marker.sourceEndMessageId !== receipt.sourceEndMessageId ||
+    marker.sourceMessageCount !== receipt.sourceMessageCount ||
+    marker.sourceMessageIdsHash !== receipt.sourceMessageIdsHash ||
+    marker.retainedTailCount !== receipt.retainedTailCount ||
+    marker.retainedTailHash !== receipt.retainedTailHash ||
+    marker.previousSummaryHash !== receipt.previousSummaryHash ||
+    marker.previousSummaryRevisionId !== receipt.previousSummaryRevisionId ||
+    hashConversationSummaryForReceipt(marker.summary) !== receipt.summaryHash ||
+    hashCompactionTail(marker.retainedTail) !== receipt.retainedTailHash
+  ) {
+    return failed("compaction_receipt_forged");
   }
   return { status: "ok" };
 }
@@ -219,6 +306,12 @@ export function agentContinuationFailureMessage(reason: AgentContinuationFailure
   }
   if (reason === "output_forged" || reason === "tool_result_forged") {
     return "Agent continuation 包含并非来自服务端上一次响应的模型输出或工具结果。";
+  }
+  if (reason === "tool_result_missing" || reason === "exact_tail_rejected") {
+    return "Agent continuation 的尾部不是服务端输出、唯一 terminal tool output 或严格 Morpho 状态 marker。";
+  }
+  if (reason === "compaction_receipt_missing" || reason === "compaction_receipt_forged" || reason === "compaction_receipt_expired") {
+    return "压缩后的 Provider 请求缺少有效的签名压缩收据，原始历史未被删除。";
   }
   return "Agent continuation 凭据无效或已过期，请重新发起本轮。";
 }
@@ -242,12 +335,41 @@ function isProviderOutputItem(value: unknown): boolean {
     (value.type === "message" || value.type === "reasoning" || value.type === "function_call");
 }
 
+function isContextStateMarker(value: unknown): boolean {
+  return isRecord(value) &&
+    value.type === AGENT_CONTEXT_STATE_MARKER_TYPE &&
+    typeof value.id === "string" &&
+    typeof value.contentHash === "string" &&
+    !("renderedText" in value);
+}
+
+function isCompactionTranscriptMarker(value: unknown): value is AgentCompactionTranscriptMarker {
+  return isRecord(value) &&
+    value.type === AGENT_COMPACTION_TRANSCRIPT_MARKER_TYPE &&
+    typeof value.summaryHash === "string" &&
+    Array.isArray(value.retainedTail) &&
+    !("renderedText" in value);
+}
+
 function isFunctionCallOutput(value: unknown): value is { call_id: string } {
   return isRecord(value) && value.type === "function_call_output" && typeof value.call_id === "string";
 }
 
 function isContinuationClaims(value: unknown): value is AgentContinuationClaims {
   return isRecord(value) &&
+    unknownKeys(value, [
+      "v",
+      "leaseId",
+      "agentTurnId",
+      "sequence",
+      "summary",
+      "inputItemCount",
+      "inputHash",
+      "outputHash",
+      "callIds",
+      "exp",
+      "compactionReceipt"
+    ]).length === 0 &&
     value.v === CONTINUATION_TOKEN_VERSION &&
     typeof value.leaseId === "string" &&
     typeof value.agentTurnId === "string" &&
@@ -259,8 +381,60 @@ function isContinuationClaims(value: unknown): value is AgentContinuationClaims 
     typeof value.inputHash === "string" &&
     typeof value.outputHash === "string" &&
     Array.isArray(value.callIds) &&
+    value.callIds.length <= MAX_AGENT_FUNCTION_CALLS &&
     value.callIds.every((callId) => typeof callId === "string") &&
-    typeof value.exp === "number";
+    new Set(value.callIds).size === value.callIds.length &&
+    typeof value.exp === "number" &&
+    (value.summary
+      ? isCompactionReceipt(value.compactionReceipt)
+      : value.compactionReceipt === undefined);
+}
+
+function isCompactionReceipt(value: unknown): value is AgentCompactionReceipt {
+  return isRecord(value) &&
+    unknownKeys(value, [
+      "sourceStartMessageId",
+      "sourceEndMessageId",
+      "sourceMessageCount",
+      "sourceMessageIdsHash",
+      "retainedTailCount",
+      "retainedTailHash",
+      "previousSummaryHash",
+      "previousSummaryRevisionId",
+      "promptContractVersion",
+      "summaryHash",
+      "summaryRevisionId",
+      "leaseId",
+      "agentTurnId",
+      "sequence",
+      "expiresAt"
+    ]).length === 0 &&
+    typeof value.sourceStartMessageId === "string" &&
+    typeof value.sourceEndMessageId === "string" &&
+    typeof value.sourceMessageCount === "number" &&
+    Number.isSafeInteger(value.sourceMessageCount) &&
+    value.sourceMessageCount >= 2 &&
+    typeof value.sourceMessageIdsHash === "string" &&
+    typeof value.retainedTailCount === "number" &&
+    Number.isSafeInteger(value.retainedTailCount) &&
+    value.retainedTailCount >= 0 &&
+    typeof value.retainedTailHash === "string" &&
+    (value.previousSummaryHash === undefined || typeof value.previousSummaryHash === "string") &&
+    (value.previousSummaryRevisionId === undefined || typeof value.previousSummaryRevisionId === "string") &&
+    typeof value.promptContractVersion === "string" &&
+    typeof value.summaryHash === "string" &&
+    typeof value.summaryRevisionId === "string" &&
+    typeof value.leaseId === "string" &&
+    typeof value.agentTurnId === "string" &&
+    typeof value.sequence === "number" &&
+    Number.isSafeInteger(value.sequence) &&
+    typeof value.expiresAt === "number" &&
+    Number.isSafeInteger(value.expiresAt);
+}
+
+function unknownKeys(value: Record<string, unknown>, allowed: readonly string[]): string[] {
+  const allowedSet = new Set(allowed);
+  return Object.keys(value).filter((key) => !allowedSet.has(key));
 }
 
 function failed(reason: AgentContinuationFailureReason): { status: "failed"; reason: AgentContinuationFailureReason } {

@@ -19,6 +19,7 @@ export type AgentTurnState = {
   agentContinuationToken?: string;
   providerTranscriptReset: boolean;
   webSearchSequenceResyncUsed: boolean;
+  webSearchLeaseStateRecoveryUsed: boolean;
   workspaceAtAgentStart: MorphoWorkspace;
   latestProviderRequestState?: ProviderRequestBoundaryState;
   canonicalRuntimeItem?: AgentCanonicalRuntimeItem;
@@ -55,7 +56,9 @@ export type AgentTurnRuntimeState = {
   repeatedToolCallCount: number;
   latestProviderResponseId?: string;
   emergencyGuardTriggered: boolean;
-  continuationCompactionAttempted: boolean;
+  continuationCompactionCount: number;
+  lastCompactionItemCount?: number;
+  lastCompactionTokenCount?: number;
   requestSequence: number;
   readonly streamedFinalTextByAttempt: Map<string, string>;
   pendingServerDirective?: AgentServerDirective;
@@ -68,6 +71,7 @@ export function createAgentTurnState(workspace: MorphoWorkspace): AgentTurnState
   return {
     providerTranscriptReset: false,
     webSearchSequenceResyncUsed: false,
+    webSearchLeaseStateRecoveryUsed: false,
     workspaceAtAgentStart: workspace
   };
 }
@@ -98,7 +102,7 @@ export function createAgentTurnRuntimeState(input: {
     toolArgumentRepairCount: 0,
     repeatedToolCallCount: 0,
     emergencyGuardTriggered: false,
-    continuationCompactionAttempted: false,
+    continuationCompactionCount: 0,
     requestSequence: 0,
     streamedFinalTextByAttempt: new Map(),
     hasAgentToolResult: false,

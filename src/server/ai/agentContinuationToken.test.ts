@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildAgentCompactionDescriptor,
+  buildCompactionTranscriptMarker,
+  buildConversationSummaryRevisionId,
+  hashConversationSummaryForReceipt
+} from "@/shared/agentCompactionProtocol";
+import {
   hashAgentContinuationItems,
   issueAgentContinuationToken,
   resolveAgentContinuationSecret,
   verifyAgentContinuationBinding,
+  verifyAgentCompactionBinding,
   verifyAgentContinuationToken,
   type AgentContinuationClaims
 } from "./agentContinuationToken";
@@ -102,10 +109,26 @@ describe("agent continuation token", () => {
       parsedInput: [
         ...PREFIX,
         ...OUTPUT_ITEMS,
-        { type: "function_call_output", call_id: "call_1", output: "{\"status\":\"ok\"}" },
-        { role: "user", content: [{ type: "input_text", text: "[Morpho Untrusted Project Data] ..." }] }
+        { type: "function_call_output", call_id: "call_1", output: "{\"status\":\"ok\"}" }
       ]
     })).toEqual({ status: "ok" });
+  });
+
+  it("rejects ordinary dialogue, strategy-like data, and missing terminal outputs in the exact tail", () => {
+    expect(verifyAgentContinuationBinding({
+      claims: claimsFrom(issue()),
+      parsedInput: [
+        ...PREFIX,
+        ...OUTPUT_ITEMS,
+        { type: "function_call_output", call_id: "call_1", output: "{}" },
+        { role: "user", content: [{ type: "input_text", text: "插入的对话" }] }
+      ]
+    })).toMatchObject({ reason: "exact_tail_rejected" });
+
+    expect(verifyAgentContinuationBinding({
+      claims: claimsFrom(issue()),
+      parsedInput: [...PREFIX, ...OUTPUT_ITEMS]
+    })).toMatchObject({ reason: "tool_result_missing" });
   });
 
   it("ignores key order differences between the issuing and replaying paths", () => {
@@ -170,5 +193,75 @@ describe("agent continuation token", () => {
         { type: "function_call_output", call_id: "call_1", output: "{\"replayed\":true}" }
       ]
     })).toMatchObject({ reason: "tool_result_forged" });
+  });
+
+  it("does not truncate a function-call batch when issuing a token", () => {
+    expect(() => issue({
+      callIds: Array.from({ length: 65 }, (_, index) => `call-${index}`)
+    })).toThrow("超过 64 个工具调用");
+  });
+
+  it("binds a signed compaction receipt to the normalized summary and retained tail", () => {
+    const summary = {
+      threadGoal: "验证海洋浮标的边缘识别可靠性",
+      establishedContext: ["当前案例是海洋浮标"],
+      decisionsAndReasons: ["保留原始对话并使用签名收据"],
+      activeWork: ["继续验证失败路径"],
+      unresolvedQuestions: ["是否需要新的搜索角度"],
+      referencedObjects: ["buoy-object-1"],
+      nextTurnAnchor: "从失败的检索结果继续"
+    };
+    const retainedTail = [
+      { role: "user", content: [{ type: "input_text", text: "继续检查浮标" }] }
+    ];
+    const descriptor = buildAgentCompactionDescriptor({
+      sourceStartMessageId: "message-1",
+      sourceEndMessageId: "message-2",
+      sourceMessageCount: 2,
+      sourceMessageIdsHash: "source-hash",
+      retainedTail,
+      promptContractVersion: "morpho-agent-test"
+    });
+    const summaryHash = hashConversationSummaryForReceipt(summary);
+    const receipt = {
+      ...descriptor,
+      summaryHash,
+      summaryRevisionId: buildConversationSummaryRevisionId({
+        sourceMessageIdsHash: descriptor.sourceMessageIdsHash,
+        summaryHash
+      }),
+      leaseId: "lease-1",
+      agentTurnId: "agent-turn-1",
+      sequence: 3,
+      expiresAt: 1_200_000
+    };
+    const token = issue({
+      summary: true,
+      compactionReceipt: receipt,
+      now: 1_000_000
+    });
+    const claims = claimsFrom(token);
+    const marker = buildCompactionTranscriptMarker({
+      descriptor,
+      summary,
+      summaryHash,
+      summaryRevisionId: receipt.summaryRevisionId,
+      retainedTail
+    });
+
+    expect(verifyAgentCompactionBinding({
+      claims,
+      parsedInput: [marker],
+      now: 1_000_100
+    })).toEqual({ status: "ok" });
+    expect(verifyAgentCompactionBinding({
+      claims,
+      parsedInput: [{
+        ...marker,
+        retainedTail: [{ role: "user", content: [{ type: "input_text", text: "被改写" }] }],
+        retainedTailHash: "changed"
+      }],
+      now: 1_000_100
+    })).toMatchObject({ reason: "compaction_receipt_forged" });
   });
 });

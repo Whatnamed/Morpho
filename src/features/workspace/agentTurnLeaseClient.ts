@@ -3,7 +3,9 @@ import {
   type ConversationCompactionPlan
 } from "@/domain/morpho/conversationCompaction";
 import type { WebSearchSource } from "@/server/ai/webSearch";
-import { buildConversationSummaryAgentRequest } from "./conversationSummaryAgentRequest";
+import {
+  buildConversationSummaryAgentRequest
+} from "./conversationSummaryAgentRequest";
 import { consumeAgentTurnStream } from "./agentStreamClient";
 import { AGENT_WEB_SEARCH_MAX_SOURCES_PER_CALL } from "./agentTurnLimits";
 import type { MorphoAgentTurnMode } from "./morphoAgent";
@@ -17,6 +19,20 @@ export type AgentTurnLeaseOutcome =
   | "partialSuccess"
   | "pendingConfirmation";
 
+export class AgentWebSearchRecoverableError extends Error {
+  constructor(message = "网页检索连接中断，本次检索未重放；将把失败结果交给 Agent 选择新的检索角度。") {
+    super(message);
+    this.name = "AgentWebSearchRecoverableError";
+  }
+}
+
+export class AgentWebSearchLeaseRecoveryError extends Error {
+  constructor(message = "网页检索连接中断且 Lease 状态恢复失败，本轮已安全终止。") {
+    super(message);
+    this.name = "AgentWebSearchLeaseRecoveryError";
+  }
+}
+
 export async function requestConversationSummary(
   plan: ConversationCompactionPlan,
   signal: AbortSignal,
@@ -27,6 +43,7 @@ export async function requestConversationSummary(
     leaseId?: string;
     leaseSequence?: number;
     continuationToken?: string;
+    retainedTailItems?: readonly unknown[];
     onLeaseStarted?: (leaseId: string) => void;
     onLeaseSequence?: (sequence: number) => void;
     onContinuationToken?: (token: string) => void;
@@ -47,7 +64,8 @@ export async function requestConversationSummary(
         mode: input.mode,
         leaseId: input.leaseId,
         leaseSequence: input.leaseSequence,
-        continuationToken: input.continuationToken
+        continuationToken: input.continuationToken,
+        retainedTailItems: input.retainedTailItems
       })
     ),
     signal
@@ -87,19 +105,41 @@ export async function requestAgentWebSearch(input: {
 }> {
   const fetchImpl = input.fetch ?? fetch;
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const response = await fetchImpl("/api/ai/web-search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        queries: input.queries,
-        maxSources: AGENT_WEB_SEARCH_MAX_SOURCES_PER_CALL,
-        agentTurnId: input.agentTurnId,
-        agentContinuation: true,
-        leaseId: input.state.agentTurnLeaseId,
-        leaseSequence: input.state.nextAgentLeaseSequence
-      }),
-      signal: input.signal
-    });
+    let response: Response;
+    try {
+      response = await fetchImpl("/api/ai/web-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          queries: input.queries,
+          maxSources: AGENT_WEB_SEARCH_MAX_SOURCES_PER_CALL,
+          agentTurnId: input.agentTurnId,
+          agentContinuation: true,
+          leaseId: input.state.agentTurnLeaseId,
+          leaseSequence: input.state.nextAgentLeaseSequence
+        }),
+        signal: input.signal
+      });
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+      if (input.state.webSearchLeaseStateRecoveryUsed) {
+        throw new AgentWebSearchLeaseRecoveryError();
+      }
+      input.state.webSearchLeaseStateRecoveryUsed = true;
+      try {
+        await recoverAgentWebSearchLeaseState({
+          agentTurnId: input.agentTurnId,
+          state: input.state,
+          signal: input.signal,
+          fetch: fetchImpl
+        });
+      } catch {
+        throw new AgentWebSearchLeaseRecoveryError();
+      }
+      throw new AgentWebSearchRecoverableError();
+    }
     const payload = await readJsonPayload(response);
     // A lease sequence is consumed before search starts, including failed searches.
     if (isRecord(payload) && typeof payload.nextProviderSequence === "number") {
@@ -128,6 +168,42 @@ export async function requestAgentWebSearch(input: {
     );
   }
   throw new Error("网页检索未能完成。");
+}
+
+async function recoverAgentWebSearchLeaseState(input: {
+  agentTurnId: string;
+  state: AgentTurnState;
+  signal: AbortSignal;
+  fetch: typeof fetch;
+}): Promise<void> {
+  if (!input.state.agentTurnLeaseId) {
+    throw new Error("missing lease");
+  }
+  const response = await input.fetch("/api/ai/agent/lease/state", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      leaseId: input.state.agentTurnLeaseId,
+      agentTurnId: input.agentTurnId
+    }),
+    signal: input.signal
+  });
+  const payload = await readJsonPayload(response);
+  if (
+    !response.ok ||
+    !isRecord(payload) ||
+    payload.active !== true ||
+    typeof payload.nextProviderSequence !== "number" ||
+    !Number.isSafeInteger(payload.nextProviderSequence) ||
+    payload.nextProviderSequence < 1
+  ) {
+    throw new Error("lease state unavailable");
+  }
+  input.state.nextAgentLeaseSequence = payload.nextProviderSequence;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 export async function closeAgentTurnLease(input: {

@@ -36,21 +36,28 @@ import {
   createAgentStreamEventBatcher
 } from "./agentStreamClient";
 import { requestConversationSummary } from "./agentTurnLeaseClient";
+import {
+  buildConversationCompactionTailItems
+} from "./conversationSummaryAgentRequest";
 import type { AgentTurnRuntimeState, AgentTurnState } from "./agentTurnState";
 import type { AgentRouteResult, MorphoAgentTurnMode } from "./morphoAgent";
 import {
   appendAgentProviderContextFrames,
   appendAgentProviderRuntimeConfigurationFrame,
   appendAgentProviderStateFrames,
-  buildAgentProviderInput,
   compactHistoricalProviderRequestState,
   ensureAgentConversationSummaryBaselines,
   getProviderInputReplayBoundaryReasons,
-  providerContextFrameMessage,
+  providerContextFrameContinuationMarker,
   toProviderRequestBoundaryState,
   type ProviderContextFrameBuildInput,
   type ProviderRequestBoundaryState
 } from "./providerContextFrames";
+import {
+  buildAgentCompactionDescriptor,
+  buildCompactionTranscriptMarker,
+  hashConversationSummaryForReceipt
+} from "@/shared/agentCompactionProtocol";
 import { buildProviderTaskContext, buildTaskContext, type TaskContextResult } from "./taskContext";
 import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
 
@@ -91,8 +98,20 @@ export type AgentTurnProviderRequestAdapter = {
   estimateBudget: (dynamicInput: readonly unknown[]) => ReturnType<typeof estimateProviderInputTimelineBudget>;
   request: (input: Array<unknown>, continuation?: boolean) => Promise<AgentRouteResult>;
   appendProjectStateFrame: () => void;
-  compactBeforeContinuation: () => Promise<boolean>;
+  compactBeforeContinuation: () => Promise<AgentCompactionResult>;
 };
+
+export type AgentCompactionResult =
+  | { status: "compacted"; pressure: "normal" | "prepare" | "compact" }
+  | { status: "not_needed"; reason: string }
+  | { status: "blocked"; reason: string };
+
+export class AgentContextCompactionError extends Error {
+  constructor(readonly reason: string) {
+    super(reason);
+    this.name = "AgentContextCompactionError";
+  }
+}
 
 export function estimateAgentTurnProviderBudget(input: {
   dynamicInput: readonly unknown[];
@@ -142,6 +161,26 @@ export async function requestAgentTurnProvider(
   continuation = false
 ): Promise<AgentRouteResult> {
   const { runtimeState, turnState } = input;
+  const candidateBudget = estimateAgentTurnProviderBudget({
+    dynamicInput: conversationInput,
+    stableSystemPrompt: input.stableSystemPrompt,
+    runtimeItemText: turnState.canonicalRuntimeItem?.renderedText,
+    tools: input.initialTools,
+    responseReserveTokens: input.outputTokenReserve
+  });
+  if (candidateBudget.projectedInputItemCount > 1_024) {
+    throw new AgentContextCompactionError("Provider Input Item 数量超过 1024，未发送请求。");
+  }
+  if (
+    continuation &&
+    classifyConversationPressure(
+      candidateBudget.estimatedOccupancyTokens,
+      input.conversationTokenLimits ?? MORPHO_AGENT_CONTEXT_POLICY,
+      candidateBudget.projectedInputItemCount
+    ) === "compact"
+  ) {
+    throw new AgentContextCompactionError("当前 Provider 输入仍处于 compact，未发送请求。");
+  }
   const exactContinuation = continuation && !turnState.providerTranscriptReset;
   turnState.providerTranscriptReset = false;
   const leaseContinuation = !exactContinuation && Boolean(turnState.agentTurnLeaseId);
@@ -482,21 +521,28 @@ export function appendProjectStateFrameToConversationInput(
   }
   runtimeState.conversationInput = [
     ...runtimeState.conversationInput,
-    ...addedFrames.map(providerContextFrameMessage)
+    ...addedFrames.map(providerContextFrameContinuationMarker)
   ];
 }
 
 export async function compactConversationBeforeContinuation(
   input: AgentTurnProviderRequestAdapterInput,
   estimateBudget: AgentTurnProviderRequestAdapter["estimateBudget"]
-): Promise<boolean> {
+): Promise<AgentCompactionResult> {
   const { runtimeState, turnState } = input;
-  if (runtimeState.continuationCompactionAttempted) {
-    return false;
+  if (runtimeState.continuationCompactionCount >= 2) {
+    return { status: "blocked", reason: "本回合已达到最多两次额外压缩，已安全停止继续发送。" };
   }
-  runtimeState.continuationCompactionAttempted = true;
   const currentWorkspace = input.readWorkspace();
   const continuationBudget = estimateBudget(runtimeState.conversationInput);
+  if (
+    continuationBudget.estimatedOccupancyTokens <
+      (input.conversationTokenLimits?.compactTokens ?? MORPHO_AGENT_CONTEXT_POLICY.compactTokens) &&
+    continuationBudget.projectedInputItemCount <
+      (input.conversationTokenLimits?.compactItemCount ?? MORPHO_AGENT_CONTEXT_POLICY.compactItemCount)
+  ) {
+    return { status: "not_needed", reason: "当前 Provider 输入未达到压缩阈值。" };
+  }
   const plan = buildConversationCompactionPlan({
     workspace: currentWorkspace,
     providerTimelineBudget: continuationBudget,
@@ -504,8 +550,27 @@ export async function compactConversationBeforeContinuation(
     force: "compact"
   });
   if (!plan) {
-    return false;
+    return { status: "blocked", reason: "当前上下文没有完整且安全的压缩边界，已停止继续发送。" };
   }
+  const retainedTailItems = buildConversationCompactionTailItems({
+    messages: plan.remainingMessages,
+    continuationItems: runtimeState.turnContinuationItems
+  });
+  const compactionDescriptor = buildAgentCompactionDescriptor({
+    sourceStartMessageId: plan.sourceStartMessageId,
+    sourceEndMessageId: plan.sourceEndMessageId,
+    sourceMessageCount: plan.sourceMessageCount,
+    sourceMessageIdsHash: plan.sourceMessageIdsHash,
+    retainedTail: retainedTailItems,
+    ...(plan.previousSummaryRevision
+      ? {
+          previousSummaryRevisionId: plan.previousSummaryRevision.id,
+          previousSummaryHash: hashConversationSummaryForReceipt(plan.previousSummaryRevision.summary)
+        }
+      : {}),
+    promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION
+  });
+  runtimeState.continuationCompactionCount += 1;
 
   const activityId = `${input.agentTurnId}:continuation-summary`;
   input.commitWorkspace((current) => {
@@ -551,6 +616,7 @@ export async function compactConversationBeforeContinuation(
       leaseId: turnState.agentTurnLeaseId,
       leaseSequence: turnState.nextAgentLeaseSequence,
       continuationToken: turnState.agentContinuationToken,
+      retainedTailItems,
       onLeaseStarted: (leaseId) => {
         turnState.agentTurnLeaseId = leaseId;
       },
@@ -567,7 +633,7 @@ export async function compactConversationBeforeContinuation(
   turnState.agentTurnLeaseId = summaryRequest.leaseId ?? turnState.agentTurnLeaseId;
   const parsedSummary = summaryRequest.parsed;
   if (parsedSummary.status !== "ok") {
-    throw new Error("继续执行前的对话摘要未通过校验，原始历史已保留。");
+    return { status: "blocked", reason: "继续执行前的对话摘要未通过校验，原始历史已保留。" };
   }
   const compactedWorkspace = input.commitWorkspace((current) => {
     const applied = applyConversationSummaryRevision(current, {
@@ -633,38 +699,44 @@ export async function compactConversationBeforeContinuation(
     estimatedInputTokens: refreshed.estimatedInputTokens,
     pressure: refreshed.pressure
   };
+  const summaryHash = hashConversationSummaryForReceipt(parsedSummary.summary);
+  const compactionMarker = buildCompactionTranscriptMarker({
+    descriptor: compactionDescriptor,
+    summary: parsedSummary.summary,
+    summaryHash,
+    summaryRevisionId: runtimeState.conversationContext.summaryRevision?.id ?? "",
+    retainedTail: retainedTailItems
+  });
+  if (!compactionMarker.summaryRevisionId) {
+    return { status: "blocked", reason: "压缩摘要未生成有效 revision，已停止继续发送。" };
+  }
   runtimeState.conversationInput = [
-    ...buildAgentProviderInput({
-      stableSystemPrompt: input.stableSystemPrompt,
-      frames: framedCompactedWorkspace.ai.providerContextFrames ?? [],
-      history: refreshedHistory,
-      currentUserMessageId: input.userMessageId,
-      currentStrategy: input.strategyKind,
-      userInput: input.userInput,
-      activeSummaryRevisionId: runtimeState.conversationContext.summaryRevision?.id,
-      serverManagedPrefix: false
-    }),
-    ...runtimeState.turnContinuationItems
+    ...(framedCompactedWorkspace.ai.providerContextFrames ?? []).map(providerContextFrameContinuationMarker),
+    compactionMarker
   ];
   const refreshedBudget = estimateBudget(runtimeState.conversationInput);
   runtimeState.contextBudgetState = advanceAgentContextBudgetGeneration(
     runtimeState.contextBudgetState,
     refreshedBudget.totalInputTokens
   );
+  const refreshedPressure = classifyConversationPressure(
+    refreshedBudget.estimatedOccupancyTokens,
+    input.conversationTokenLimits ?? MORPHO_AGENT_CONTEXT_POLICY,
+    refreshedBudget.projectedInputItemCount
+  );
+  const progressed =
+    refreshedBudget.totalInputTokens < continuationBudget.totalInputTokens ||
+    refreshedBudget.projectedInputItemCount < continuationBudget.projectedInputItemCount;
+  runtimeState.lastCompactionItemCount = refreshedBudget.projectedInputItemCount;
+  runtimeState.lastCompactionTokenCount = refreshedBudget.totalInputTokens;
+  if (!progressed) {
+    return { status: "blocked", reason: "压缩后 Provider 输入没有严格下降，已安全停止继续发送。" };
+  }
   runtimeState.conversationContext = {
     ...runtimeState.conversationContext,
     estimatedInputTokens: refreshedBudget.totalInputTokens,
-    pressure:
-      refreshedBudget.estimatedOccupancyTokens >=
-      (input.conversationTokenLimits?.compactTokens ??
-        MORPHO_AGENT_CONTEXT_POLICY.compactTokens)
-        ? "compact"
-        : refreshedBudget.estimatedOccupancyTokens >=
-            (input.conversationTokenLimits?.prepareTokens ??
-              MORPHO_AGENT_CONTEXT_POLICY.prepareTokens)
-          ? "prepare"
-          : "normal"
+    pressure: refreshedPressure
   };
   runtimeState.highestPressure = runtimeState.conversationContext.pressure;
-  return true;
+  return { status: "compacted", pressure: refreshedPressure };
 }

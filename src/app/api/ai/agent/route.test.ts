@@ -8,14 +8,46 @@ import { readAgentRouteSse, type AgentRouteStreamEvent } from "@/shared/agentStr
 import { resolveCanonicalAgentRuntimeItem } from "@/shared/agentRuntimeItem";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
 import {
+  AGENT_CONTINUATION_TOKEN_TTL_MS,
   hashAgentContinuationItems,
   issueAgentContinuationToken
 } from "@/server/ai/agentContinuationToken";
+import {
+  buildAgentCompactionDescriptor,
+  buildCompactionTranscriptMarker,
+  buildConversationSummaryRevisionId,
+  hashConversationSummaryForReceipt
+} from "@/shared/agentCompactionProtocol";
 
 const CONTINUATION_SECRET = "test-continuation-secret";
 const DEFAULT_CONTINUATION_INPUT = [
   { role: "user", content: [{ type: "input_text", text: "继续讨论" }] }
 ];
+const DEFAULT_CONTINUATION_OUTPUT_ITEMS = [
+  {
+    id: "msg_1",
+    type: "message",
+    role: "assistant",
+    content: [{ type: "output_text", text: "已完成上一轮读取。" }]
+  }
+];
+const TEST_COMPACTION_SUMMARY = {
+  threadGoal: "收拢海洋浮标项目的当前 Agent 上下文",
+  establishedContext: ["项目对象是海洋浮标"],
+  decisionsAndReasons: ["保留原始消息并签名压缩边界"],
+  activeWork: ["验证压缩后继续"],
+  unresolvedQuestions: [],
+  referencedObjects: ["buoy-object-1"],
+  nextTurnAnchor: "继续验证海洋浮标项目"
+};
+const TEST_COMPACTION_DESCRIPTOR = buildAgentCompactionDescriptor({
+  sourceStartMessageId: "message-1",
+  sourceEndMessageId: "message-2",
+  sourceMessageCount: 2,
+  sourceMessageIdsHash: "source-message-ids",
+  retainedTail: [],
+  promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION
+});
 
 const routeConfig = vi.hoisted(() => ({ webSearchEnabled: true }));
 
@@ -352,6 +384,7 @@ describe("agent route stream", () => {
       leaseContinuation: true,
       leaseId: "lease-1",
       leaseSequence: 1,
+      input: [testCompactionTranscriptMarker()],
       continuationToken: continuationTokenFor({ summary: true })
     }));
 
@@ -513,7 +546,8 @@ describe("agent route stream", () => {
         role: "user",
         content: [{ type: "input_text", text: "sourceRange: message-1..message-2" }]
       }],
-      directive: { kind: "conversationSummary" }
+      directive: { kind: "conversationSummary" },
+      compactionDescriptor: TEST_COMPACTION_DESCRIPTOR
     }));
     const events: AgentRouteStreamEvent[] = [];
     if (!response.body) {
@@ -791,7 +825,29 @@ function continuationTokenFor(overrides: {
   outputItems?: unknown[];
   callIds?: string[];
 } = {}): string {
-  const input = overrides.input ?? DEFAULT_CONTINUATION_INPUT;
+  const input = overrides.input ?? (
+    overrides.summary
+      ? [testCompactionTranscriptMarker()]
+      : DEFAULT_CONTINUATION_INPUT
+  );
+  const outputItems = overrides.outputItems ?? (
+    overrides.summary ? [] : DEFAULT_CONTINUATION_OUTPUT_ITEMS
+  );
+  const now = Date.now();
+  const compactionReceipt = overrides.summary
+    ? {
+        ...TEST_COMPACTION_DESCRIPTOR,
+        summaryHash: hashConversationSummaryForReceipt(TEST_COMPACTION_SUMMARY),
+        summaryRevisionId: buildConversationSummaryRevisionId({
+          sourceMessageIdsHash: TEST_COMPACTION_DESCRIPTOR.sourceMessageIdsHash,
+          summaryHash: hashConversationSummaryForReceipt(TEST_COMPACTION_SUMMARY)
+        }),
+        leaseId: "lease-1",
+        agentTurnId: "agent-turn-1",
+        sequence: 1,
+        expiresAt: now + AGENT_CONTINUATION_TOKEN_TTL_MS
+      }
+    : undefined;
   return issueAgentContinuationToken({
     secret: CONTINUATION_SECRET,
     leaseId: overrides.leaseId ?? "lease-1",
@@ -800,9 +856,10 @@ function continuationTokenFor(overrides: {
     summary: overrides.summary ?? false,
     inputItemCount: input.length,
     inputHash: hashAgentContinuationItems(input),
-    outputHash: hashAgentContinuationItems(overrides.outputItems ?? []),
+    outputHash: hashAgentContinuationItems(outputItems),
     callIds: overrides.callIds ?? [],
-    now: Date.now()
+    ...(compactionReceipt ? { compactionReceipt } : {}),
+    now
   });
 }
 
@@ -813,6 +870,11 @@ function agentRequest(
   const continuation = overrides.continuation === true;
   const leaseId = typeof overrides.leaseId === "string" ? overrides.leaseId : "lease-1";
   const agentTurnId = typeof overrides.agentTurnId === "string" ? overrides.agentTurnId : "agent-turn-1";
+  const input = Array.isArray(overrides.input)
+    ? overrides.input
+    : continuation
+      ? [...DEFAULT_CONTINUATION_INPUT, ...DEFAULT_CONTINUATION_OUTPUT_ITEMS]
+      : DEFAULT_CONTINUATION_INPUT;
   const previousRuntimeItem = continuation
     ? resolveCanonicalAgentRuntimeItem({
         projectId: "project-ocean-buoy",
@@ -824,7 +886,7 @@ function agentRequest(
   return new Request("http://localhost/api/ai/agent", {
     method: "POST",
     body: JSON.stringify({
-      input: DEFAULT_CONTINUATION_INPUT,
+      input,
       projectId: "project-ocean-buoy",
       agentTurnId: "agent-turn-1",
       continuation: false,
@@ -847,5 +909,19 @@ function agentRequest(
         : {}),
       ...overrides
     })
+  });
+}
+
+function testCompactionTranscriptMarker() {
+  const summaryHash = hashConversationSummaryForReceipt(TEST_COMPACTION_SUMMARY);
+  return buildCompactionTranscriptMarker({
+    descriptor: TEST_COMPACTION_DESCRIPTOR,
+    summary: TEST_COMPACTION_SUMMARY,
+    summaryHash,
+    summaryRevisionId: buildConversationSummaryRevisionId({
+      sourceMessageIdsHash: TEST_COMPACTION_DESCRIPTOR.sourceMessageIdsHash,
+      summaryHash
+    }),
+    retainedTail: []
   });
 }

@@ -82,6 +82,28 @@ describe("openai-compatible provider adapter", () => {
     }
   });
 
+  it("fails before exposing or executing a Provider response with more than 64 calls", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = async () => jsonResponse({
+      id: "resp_too_many_calls",
+      output: Array.from({ length: 65 }, (_, index) => ({
+        type: "function_call",
+        id: `fc_${index}`,
+        call_id: `call_${index}`,
+        name: "read_selected_context",
+        arguments: "{}"
+      }))
+    }) as unknown as Response;
+
+    try {
+      await expect(executeOpenAiCompatibleResponse(config(), request())).rejects.toMatchObject({
+        code: "function_call_limit"
+      });
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it("forwards prompt cache fields only when the provider capability is explicitly enabled", async () => {
     const calls: Array<Record<string, unknown>> = [];
     const originalFetch = global.fetch;

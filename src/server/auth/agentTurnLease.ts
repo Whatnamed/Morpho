@@ -19,6 +19,13 @@ export type AgentTurnLease = {
   nextProviderSequence: number;
 };
 
+export type AgentTurnLeaseState = {
+  expiresAt: string;
+  providerCallCount: number;
+  webSearchCallCount: number;
+  nextProviderSequence: number;
+};
+
 export type AgentTurnLeaseContinuationKind =
   | "providerContinuation"
   | "conversationSummary"
@@ -61,6 +68,14 @@ type LeaseRpcRow = {
   next_provider_sequence: number;
 };
 
+type LeaseStateRpcRow = {
+  active: boolean;
+  expires_at: string | null;
+  provider_call_count: number;
+  web_search_call_count: number;
+  next_provider_sequence: number;
+};
+
 export type AgentTurnLeaseStartInput = {
   agentTurnId: string;
   initialRequestHash: string;
@@ -96,6 +111,19 @@ export async function continueAgentTurnLease(
   return client.status === "denied"
     ? client
     : continueAgentTurnLeaseForClient(client.client, input);
+}
+
+export async function readAgentTurnLeaseState(input: {
+  leaseId: string;
+  agentTurnId: string;
+}): Promise<
+  | { status: "allowed"; state: AgentTurnLeaseState }
+  | Extract<AgentTurnLeaseResult, { status: "denied" }>
+> {
+  const client = await createLeaseClient();
+  return client.status === "denied"
+    ? client
+    : readAgentTurnLeaseStateForClient(client.client, input);
 }
 
 export async function completeAgentTurnLease(input: {
@@ -163,6 +191,51 @@ export async function continueAgentTurnLeaseForClient(
     p_runtime_item_id: input.runtimeItemId ?? null
   }).single();
   return normalizeLeaseResult(result, input.agentTurnId, "continue");
+}
+
+export async function readAgentTurnLeaseStateForClient(
+  client: AgentTurnLeaseClient,
+  input: { leaseId: string; agentTurnId: string }
+): Promise<
+  | { status: "allowed"; state: AgentTurnLeaseState }
+  | Extract<AgentTurnLeaseResult, { status: "denied" }>
+> {
+  const auth = await requireUser(client);
+  if (auth) {
+    return auth;
+  }
+  const result = await client.rpc("read_agent_turn_lease_state", {
+    p_lease_id: input.leaseId,
+    p_agent_turn_id: input.agentTurnId
+  }).single();
+  if (isMissingRpcError(result.error)) {
+    return {
+      status: "denied",
+      httpStatus: 503,
+      error: "数据库尚未升级到当前 Agent Lease 状态读取契约。",
+      reason: "lease_state_contract_missing"
+    };
+  }
+  if (result.error || !isLeaseStateRpcRow(result.data)) {
+    return { status: "denied", httpStatus: 503, error: "Agent Turn Lease 状态服务暂时不可用，请稍后重试。" };
+  }
+  if (!result.data.active || !result.data.expires_at) {
+    return {
+      status: "denied",
+      httpStatus: 403,
+      error: "Agent Turn Lease 无效、已结束或已过期。",
+      reason: "inactive"
+    };
+  }
+  return {
+    status: "allowed",
+    state: {
+      expiresAt: result.data.expires_at,
+      providerCallCount: result.data.provider_call_count,
+      webSearchCallCount: result.data.web_search_call_count,
+      nextProviderSequence: result.data.next_provider_sequence
+    }
+  };
 }
 
 export function agentTurnLeaseDeniedResponse(
@@ -307,6 +380,15 @@ function isLeaseRpcRow(value: unknown): value is LeaseRpcRow {
     typeof value.allowed === "boolean" &&
     (value.denial_reason === null || typeof value.denial_reason === "string") &&
     (value.lease_id === null || typeof value.lease_id === "string") &&
+    (value.expires_at === null || typeof value.expires_at === "string") &&
+    typeof value.provider_call_count === "number" &&
+    typeof value.web_search_call_count === "number" &&
+    typeof value.next_provider_sequence === "number";
+}
+
+function isLeaseStateRpcRow(value: unknown): value is LeaseStateRpcRow {
+  return isRecord(value) &&
+    typeof value.active === "boolean" &&
     (value.expires_at === null || typeof value.expires_at === "string") &&
     typeof value.provider_call_count === "number" &&
     typeof value.web_search_call_count === "number" &&

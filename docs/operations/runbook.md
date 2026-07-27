@@ -192,6 +192,7 @@ supabase/migrations/20260723200036_add_agent_turn_leases.sql
 supabase/migrations/20260723200456_fix_agent_turn_lease_column_ambiguity.sql
 supabase/migrations/20260726143030_harden_agent_turn_lease_causality.sql
 supabase/migrations/20260726161500_bind_agent_turn_provider_execution.sql
+supabase/migrations/20260727180000_read_agent_turn_lease_state.sql
 ```
 
 The first two are the Prompt Contract v3.3 baseline. Without them, authenticated `/api/ai/agent` requests fail closed with an Agent Turn Lease service error; they must not fall back to the old client-trusted quota path. A missing or signature-changed RPC is reported as a deployment gap (`lease_contract_missing`), not a transient outage.
@@ -206,7 +207,7 @@ supabase db push
 supabase migration list
 ```
 
-Do not paste credentials into the repository or shell history. Do not apply the migration to a project whose ref has not been independently checked. The migration creates only `private.ai_agent_turn_leases` and the three narrow RPCs `start_agent_turn_lease`, `continue_agent_turn_lease`, and `complete_agent_turn_lease`; no workspace or prompt body is uploaded.
+Do not paste credentials into the repository or shell history. Do not apply the migration to a project whose ref has not been independently checked. The migration creates only the narrow read-only RPC `read_agent_turn_lease_state` in addition to the existing lease RPCs; no workspace or prompt body is uploaded.
 
 Conversation compaction is part of the same formal Agent turn. Its first Provider request creates the lease when needed; automatic and continuation compaction reuse that lease through the strict `leaseContinuation` path, then the normal Agent request continues with the same counters. `leaseContinuation` is not a Responses transcript continuation, cannot be combined with `continuation`, and never causes a second daily text reservation for the same user turn.
 
@@ -219,7 +220,8 @@ where routine_schema = 'public'
   and routine_name in (
     'start_agent_turn_lease',
     'continue_agent_turn_lease',
-    'complete_agent_turn_lease'
+    'complete_agent_turn_lease',
+    'read_agent_turn_lease_state'
   )
 order by routine_name;
 
@@ -229,12 +231,13 @@ where specific_schema = 'public'
   and routine_name in (
     'start_agent_turn_lease',
     'continue_agent_turn_lease',
-    'complete_agent_turn_lease'
+    'complete_agent_turn_lease',
+    'read_agent_turn_lease_state'
   )
 order by routine_name, grantee;
 ```
 
-All three routines must be `SECURITY DEFINER`; only `authenticated` should have `EXECUTE`. Route and static migration checks run in the normal Vitest suite. Real acceptance must also verify one initial reservation, continuation without a second daily reservation, provider/search counter increments on the same lease, forged/cross-user/expired/closed rejection, and idempotent completion.
+All four routines must be `SECURITY DEFINER`; only `authenticated` should have `EXECUTE`. Route and static migration checks run in the normal Vitest suite. Real acceptance must also verify one initial reservation, continuation without a second daily reservation, provider/search counter increments on the same lease, forged/cross-user/expired/closed rejection, read-only search recovery, and idempotent completion.
 
 The Supabase Free-plan leaked-password-protection advisor warning is a plan limitation. It is not fixed by changing application SQL or weakening authentication behavior.
 
@@ -290,7 +293,7 @@ node --experimental-strip-types --env-file=.env.local scripts/probe-agent-respon
 
 The probe sends only synthetic inputs. It logs event names and writes only sanitized fixtures: no keys, headers, project data, image URLs, encrypted reasoning, or raw diagnostics. The optional `web-search` scenario is expected to report a clean failure if the active provider does not support it; do not replace that failure with a Chat Completions retry.
 
-For manual Agent acceptance, use a disposable local project. Verify a normal answer, a real tool loop beyond four model continuations, optional commentary, no-commentary tool execution, native/provider search activity when available, image generation, cancellation, user-controlled disclosure state, page refresh of a completed trace, and a clean browser console. The process disclosure must contain only real reasoning summaries, commentary, and activity; final text remains below it.
+For manual Agent acceptance, use the logged-in local `project-morpho-case-study` page and keep the case content focused on the ocean-buoy project. Verify a normal answer, a real tool loop beyond four model continuations, optional commentary, no-commentary tool execution, native/provider search activity when available, image generation, cancellation, user-controlled disclosure state, page refresh of a completed trace, and a clean browser console. The process disclosure must contain only real reasoning summaries, commentary, and activity; final text remains below it.
 
 ## AI Continuity Browser Acceptance
 
@@ -490,6 +493,7 @@ npm.cmd run test:prompt-cache
 npm.cmd run case-study:upgrade
 npm.cmd run case-study:upgrade
 npm.cmd run build
+git diff --check
 ```
 
 Do not add `--live` to prompt-cache tests unless `MORPHO_ALLOW_PAID_SMOKE_TESTS=true`.
@@ -536,6 +540,28 @@ supabase migration list
 stable key from `MORPHO_AI_API_KEY`, so no new deployment variable is required. If
 it is set, every instance must share the same value — a per-instance secret makes
 continuations fail across instances.
+
+# Final-round Agent migration and recovery checks
+
+The final forward-only migration is:
+
+```text
+supabase/migrations/20260727180000_read_agent_turn_lease_state.sql
+```
+
+It adds only `read_agent_turn_lease_state(uuid, text)`. The function is
+`SECURITY DEFINER` with `set search_path = ''`, derives ownership from
+`auth.uid()`, is executable only by `authenticated`, and returns no hashes,
+transcript, prompt, or project data. Run the full `supabase migration list` and
+`supabase db push --dry-run` checks above before applying it; if the CLI,
+authentication, project ref, or dry-run cannot be independently verified, leave
+the migration pending and do not change the remote database.
+
+For browser recovery acceptance, make one Agent search transport fail after
+the lease sequence is consumed. Confirm the browser calls the read-only state
+route once, does not replay the original query, and sends the failed search as
+a terminal tool result so the next Provider turn can choose another angle. A
+failed state read must stop the turn rather than issuing a second search.
 
 # Browser acceptance
 

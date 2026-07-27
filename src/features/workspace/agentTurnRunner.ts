@@ -67,6 +67,7 @@ import { buildAgentToolActivityDescriptor, sanitizeAgentActivityDetail } from ".
 import type { AgentTurnHost } from "./agentTurnHost";
 import {
   closeAgentTurnLease as closeAgentTurnLeaseWithState,
+  AgentWebSearchLeaseRecoveryError,
   requestAgentWebSearch as requestAgentWebSearchWithLease,
   requestConversationSummary
 } from "./agentTurnLeaseClient";
@@ -88,6 +89,7 @@ import {
 import { createAgentTurnRuntimeState, createAgentTurnState } from "./agentTurnState";
 import {
   createAgentTurnProviderRequestAdapter,
+  AgentContextCompactionError,
   estimateAgentTurnProviderBudget
 } from "./agentTurnProviderRequest";
 import {
@@ -667,6 +669,33 @@ export async function runMorphoAgentTurn(
     fetch,
     nowIso: () => new Date(host.now()).toISOString()
   });
+  const ensureProviderInputReady = async (continuation: boolean): Promise<void> => {
+    if (!continuation) {
+      return;
+    }
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const budget = providerRequestAdapter.estimateBudget(runtimeState.conversationInput);
+      const pressure = classifyConversationPressure(
+        budget.estimatedOccupancyTokens,
+        conversationTokenLimits ?? MORPHO_AGENT_CONTEXT_POLICY,
+        budget.projectedInputItemCount
+      );
+      runtimeState.conversationContext = {
+        ...runtimeState.conversationContext,
+        estimatedInputTokens: budget.totalInputTokens,
+        pressure
+      };
+      runtimeState.highestPressure = pressure;
+      if (budget.projectedInputItemCount <= 1_024 && pressure !== "compact") {
+        return;
+      }
+      const result = await providerRequestAdapter.compactBeforeContinuation();
+      if (result.status !== "compacted") {
+        throw new AgentContextCompactionError(result.reason);
+      }
+    }
+    throw new AgentContextCompactionError("压缩后 Provider 输入仍未低于共享 Context 边界，未发送请求。");
+  };
   try {
     while (true) {
       assertAgentTurnActive(controller.signal);
@@ -737,6 +766,7 @@ export async function runMorphoAgentTurn(
       }
       let result: AgentRouteResult;
       try {
+        await ensureProviderInputReady(runtimeState.modelTurnCount > 0);
         result = await providerRequestAdapter.request(
           runtimeState.conversationInput,
           runtimeState.modelTurnCount > 0
@@ -744,9 +774,13 @@ export async function runMorphoAgentTurn(
       } catch (error) {
         if (
           error instanceof AgentTurnStreamError &&
-          error.code === "context_limit" &&
-          await providerRequestAdapter.compactBeforeContinuation()
+          error.code === "context_limit"
         ) {
+          const compaction = await providerRequestAdapter.compactBeforeContinuation();
+          if (compaction.status !== "compacted") {
+            throw new AgentContextCompactionError(compaction.reason);
+          }
+          await ensureProviderInputReady(true);
           result = await providerRequestAdapter.request(
             runtimeState.conversationInput,
             runtimeState.modelTurnCount > 0
@@ -1081,6 +1115,9 @@ export async function runMorphoAgentTurn(
           });
           toolOutputs.push(buildToolResultOutput(call.callId, output));
         } catch (error) {
+          if (error instanceof AgentWebSearchLeaseRecoveryError) {
+            throw error;
+          }
           const reason = error instanceof Error ? normalizeAgentTurnErrorMessage(error.message) : "该操作未能完成。";
           markAgentWorkUnresolved(`tool:${parsed.name}`, reason);
           if (requiredReadTools.includes(parsed.name as RequiredAgentReadToolName)) {
@@ -1154,7 +1191,10 @@ export async function runMorphoAgentTurn(
       runtimeState.turnContinuationItems.push(...toolOutputs);
       providerRequestAdapter.appendProjectStateFrame();
       if (runtimeState.highestPressure === "compact") {
-        await providerRequestAdapter.compactBeforeContinuation();
+        const compaction = await providerRequestAdapter.compactBeforeContinuation();
+        if (compaction.status === "blocked") {
+          throw new AgentContextCompactionError(compaction.reason);
+        }
       }
     }
     const turnOutcome = resolveAgentTurnOutcome({

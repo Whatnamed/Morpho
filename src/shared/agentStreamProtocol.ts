@@ -210,7 +210,7 @@ export type AgentRouteStreamEvent =
   | {
       type: "turn-error";
       error: string;
-      code?: "context_limit" | "interrupted";
+      code?: "context_limit" | "function_call_limit" | "interrupted";
       attemptId?: string;
     };
 

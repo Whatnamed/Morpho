@@ -12,6 +12,7 @@ describe("Agent turn state", () => {
     expect(createAgentTurnState(workspace)).toEqual({
       providerTranscriptReset: false,
       webSearchSequenceResyncUsed: false,
+      webSearchLeaseStateRecoveryUsed: false,
       workspaceAtAgentStart: workspace
     });
   });

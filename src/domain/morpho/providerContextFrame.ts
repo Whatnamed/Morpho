@@ -3,6 +3,10 @@ import type {
   ProviderContextFrameKind,
   ProviderContextFramePlacement
 } from "./types";
+import {
+  createAgentContextStateMarker,
+  type AgentContextStateMarker
+} from "@/shared/agentCompactionProtocol";
 
 export type ProviderContextFrameInput = Omit<
   ProviderContextFrame,
@@ -130,6 +134,15 @@ export function providerContextFrameMessage(frame: ProviderContextFrame): {
       }
     ]
   };
+}
+
+/**
+ * Exact continuations cannot append an arbitrary user envelope. They carry the
+ * fixed, server-parseable state identity instead; the server materializes the
+ * marker back into a data-only Provider message.
+ */
+export function providerContextFrameContinuationMarker(frame: ProviderContextFrame): AgentContextStateMarker {
+  return createAgentContextStateMarker(frame);
 }
 
 export function buildProviderContextFrameTimeline(input: {

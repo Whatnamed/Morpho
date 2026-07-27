@@ -10,6 +10,10 @@ import {
   type NormalizedProviderTokenUsage
 } from "./providerTokenUsage";
 import type { AgentProviderDiagnostics } from "@/shared/agentStreamProtocol";
+import {
+  AgentFunctionCallLimitError,
+  assertAgentFunctionCallCount
+} from "@/shared/agentFunctionCallLimits";
 
 type OpenAiCompatibleProviderConfig = Pick<
   OpenAiCompatibleConfig,
@@ -116,15 +120,16 @@ export type AgentOutputItem = {
 };
 
 export class OpenAiCompatibleProviderError extends Error {
-  readonly code?: "context_limit";
+  readonly code?: "context_limit" | "function_call_limit";
 
   constructor(
     readonly status: number,
-    readonly diagnostic?: string
+    readonly diagnostic?: string,
+    code?: "context_limit" | "function_call_limit"
   ) {
     super(`OpenAI-compatible provider error (${status})`);
     this.name = "OpenAiCompatibleProviderError";
-    this.code = status === 413 || isContextLimitDiagnostic(diagnostic) ? "context_limit" : undefined;
+    this.code = code ?? (status === 413 || isContextLimitDiagnostic(diagnostic) ? "context_limit" : undefined);
   }
 }
 
@@ -240,6 +245,9 @@ export async function streamOpenAiCompatibleResponse(
     };
     return result;
   } catch (error) {
+    if (error instanceof AgentFunctionCallLimitError) {
+      throw new OpenAiCompatibleProviderError(400, error.message, "function_call_limit");
+    }
     if (error instanceof OpenAiCompatibleStreamError) {
       handlers.onBufferedFallback?.({ semanticEventsEmitted });
       return executeBufferedResponsesFallback(config, request, handlers, signal);
@@ -409,10 +417,19 @@ function resultFromRawResponse(
       usage?.cachedInputTokens
     )
   };
+  const functionCalls = extractFunctionCalls(raw.output);
+  try {
+    assertAgentFunctionCallCount(functionCalls.length);
+  } catch (error) {
+    if (error instanceof AgentFunctionCallLimitError) {
+      throw new OpenAiCompatibleProviderError(400, error.message, "function_call_limit");
+    }
+    throw error;
+  }
   return {
     responseId: typeof raw.id === "string" ? raw.id : "",
     outputText: extractOutputText(raw.output),
-    functionCalls: extractFunctionCalls(raw.output),
+    functionCalls,
     citations: extractCitations(raw.output),
     outputItems: extractOutputItems(raw.output),
     webSearchCallCount: Array.isArray(raw.output)
