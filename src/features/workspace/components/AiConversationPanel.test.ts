@@ -5,6 +5,7 @@ import type { ComponentProps } from "react";
 import type { PendingComparisonConfirmation } from "./AiConversationPanel";
 
 import { AiConversationPanel, getVisibleAiMessageBody, parseMarkdownBlocks } from "./AiConversationPanel";
+import { buildAiConversationPanelProps } from "./aiConversationPanelProps";
 import { createInitialWorkspace, hideObject } from "../../../domain/morpho/workspace";
 import { recordDesignDefinitionProposal } from "../../../domain/operations/operations";
 
@@ -1124,51 +1125,5 @@ describe("AiConversationPanel", () => {
 });
 
 function makeProps(overrides: Partial<ComponentProps<typeof AiConversationPanel>>) {
-  const workspace = createInitialWorkspace();
-  return {
-    workspace,
-    selectedObjects: [],
-    suggestions: [],
-    draft: "",
-    isOpen: true,
-    isImageTaskContext: false,
-    turnMode: "auto" as const,
-    isStreaming: false,
-    imageGenerationSettings: {
-      modelId: "nano-banana-fast",
-      modelLabel: "Nano Banana Fast",
-      points: 1,
-      aspectRatio: "1:1" as const,
-      sizeOption: undefined,
-      sizeOptions: [],
-      capabilities: ["textToImage" as const]
-    },
-    directionPreviewCount: 2 as const,
-    pendingConfirmation: null,
-    showFailure: false,
-    onToggleOpen: () => undefined,
-    onDraftChange: () => undefined,
-    onTurnModeChange: () => undefined,
-    onImageGenerationSettingsChange: () => undefined,
-    onDirectionPreviewCountChange: () => undefined,
-    onSuggestionClick: () => undefined,
-    onSendMessage: () => undefined,
-    onCancelRequest: () => undefined,
-    onApplyProposal: () => undefined,
-    onRejectProposal: () => undefined,
-    onContinueProposalDiscussion: () => undefined,
-    onRegenerateProposal: () => undefined,
-    onSaveResearchProposalDraft: () => undefined,
-    onSaveDesignDefinitionProposalDraft: () => undefined,
-    onSaveConceptDirectionProposalDraft: () => undefined,
-    onUpdatePendingKeyConclusion: () => undefined,
-    onUpdatePendingComparison: () => undefined,
-    onRequestComparisonAction: () => undefined,
-    onLocateObject: () => undefined,
-    onConfirmPending: () => undefined,
-    onCancelPending: () => undefined,
-    onFailureRetry: () => undefined,
-    onOpenProjectRecords: () => undefined,
-    ...overrides
-  };
+  return buildAiConversationPanelProps(overrides);
 }
