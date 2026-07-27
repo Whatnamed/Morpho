@@ -1,24 +1,30 @@
-import type {
-  AiMessage,
-  CanvasInstance,
-  MorphoObject,
-  MorphoWorkspace,
-  ProjectMemoryRevision,
-  ProviderContextFrame
-} from "@/domain/morpho/types";
+import type { MorphoWorkspace } from "@/domain/morpho/types";
 import { createBlankWorkspace, createCurrentCaseStudyWorkspace } from "@/domain/morpho/workspace";
 import { createEditableProjectBackupManifest } from "@/domain/morpho/projectArchive";
-import { buildAgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
-import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
-import { appendAgentProviderContextFrames } from "./providerContextFrames";
-import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
+import {
+  BLANK_PROJECT_ID,
+  buildMemoryRevisions,
+  buildMessages,
+  buildObjects,
+  buildRealContextFrames,
+  cloneJson,
+  withBlankBase
+} from "./workspaceScaleFixtures";
 
 /**
  * Measurement fixtures for `npm run measure:storage`.
  *
- * Every growth scenario replicates records taken from the deployable case study
- * rather than inventing payloads, so per-record sizes reflect real Morpho content
- * (Chinese prose, real agent traces, real context frames) instead of a guess.
+ * Growth scenarios are assembled from the shared builders in
+ * `workspaceScaleFixtures.ts`, which replicate records taken from the deployable
+ * case study rather than inventing payloads, so per-record sizes reflect real
+ * Morpho content (Chinese prose, real agent traces, real context frames) instead
+ * of a guess.
+ *
+ * Every scenario here grows along a single axis from a blank base, because storage
+ * cost is additive and `diffFootprints` derives per-unit growth from a one-axis
+ * delta. Time cost is not additive across axes — compound scenarios for the
+ * performance harness live in `performanceScenarios.ts` instead, so this file's
+ * output stays byte-stable.
  *
  * These workspaces are sized, not exercised. They are not valid product states:
  * cloned records keep dangling references to operations and citations that the
@@ -36,130 +42,6 @@ export type FootprintScenario = {
     unitLabel: string;
   };
 };
-
-const BLANK_PROJECT_ID = "project-footprint-base";
-
-function cloneJson<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function withBlankBase(mutate: (workspace: MorphoWorkspace) => void): MorphoWorkspace {
-  const workspace = createBlankWorkspace(BLANK_PROJECT_ID);
-  mutate(workspace);
-  return workspace;
-}
-
-function cycle<T>(source: readonly T[], count: number): T[] {
-  if (source.length === 0) {
-    throw new Error("Footprint scenario source is empty; regenerate the case study fixture.");
-  }
-  const result: T[] = [];
-  for (let index = 0; index < count; index += 1) {
-    result.push(cloneJson(source[index % source.length] as T));
-  }
-  return result;
-}
-
-function buildMessages(source: readonly AiMessage[], count: number): AiMessage[] {
-  return cycle(source, count).map((message, index) => ({
-    ...message,
-    id: `message-footprint-${index}`,
-    createdAt: "2026-07-01T00:00:00.000Z"
-  }));
-}
-
-/**
- * The case study backup predates provider context frames, so frames cannot be
- * cloned from it. They are produced by the real builder instead: each turn selects
- * different objects, which is what makes turnContext frames accumulate in practice
- * while projectState frames dedupe on unchanged project state.
- */
-function buildRealContextFrames(caseStudy: MorphoWorkspace, turns: number): ProviderContextFrame[] {
-  const selectableObjectIds = Object.values(caseStudy.objects)
-    .filter((object) => object.visibility === "active")
-    .map((object) => object.id);
-  const drafts = caseStudy.ai.messages
-    .filter((message) => message.role === "user" && message.body.length > 0)
-    .map((message) => message.body);
-  if (selectableObjectIds.length === 0 || drafts.length === 0) {
-    throw new Error("Case study has no selectable objects or user drafts; regenerate the fixture.");
-  }
-
-  let workspace = caseStudy;
-  for (let turn = 0; turn < turns; turn += 1) {
-    const selectedObjectIds = [
-      selectableObjectIds[turn % selectableObjectIds.length] as string,
-      selectableObjectIds[(turn + 1) % selectableObjectIds.length] as string
-    ];
-    const draft = drafts[turn % drafts.length] as string;
-    const context = buildTaskContext(workspace, {
-      kind: "general",
-      draft,
-      selectedObjectIds
-    });
-
-    workspace = appendAgentProviderContextFrames(workspace, {
-      workspace,
-      projectId: workspace.project.id,
-      strategy: "discussion",
-      mode: "auto",
-      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
-      userMessageId: `message-footprint-frame-${turn}`,
-      context,
-      providerTaskContext: buildProviderTaskContext(context),
-      defaultMemoryContext: buildAgentDefaultMemoryContext(workspace, "discussion")
-    });
-  }
-
-  return (workspace.ai.providerContextFrames ?? []).map((frame, index) => ({
-    ...frame,
-    createdAt: "2026-07-01T00:00:00.000Z",
-    sequence: index + 1
-  }));
-}
-
-function buildObjects(
-  source: readonly MorphoObject[],
-  instances: readonly CanvasInstance[],
-  count: number
-): { objects: Record<string, MorphoObject>; instances: CanvasInstance[] } {
-  const instanceByObjectId = new Map(instances.map((instance) => [instance.objectId, instance]));
-  const objects: Record<string, MorphoObject> = {};
-  const clonedInstances: CanvasInstance[] = [];
-
-  cycle(source, count).forEach((object, index) => {
-    const objectId = `object-footprint-${index}`;
-    objects[objectId] = { ...object, id: objectId } as MorphoObject;
-
-    const template = instanceByObjectId.get(object.id);
-    if (template) {
-      clonedInstances.push({
-        ...cloneJson(template),
-        id: `instance-footprint-${index}`,
-        objectId
-      });
-    }
-  });
-
-  return { objects, instances: clonedInstances };
-}
-
-function buildMemoryRevisions(
-  source: readonly ProjectMemoryRevision[],
-  count: number
-): Record<string, ProjectMemoryRevision> {
-  const revisions: Record<string, ProjectMemoryRevision> = {};
-  cycle(source, count).forEach((revision, index) => {
-    const id = `memory-revision-footprint-${index}`;
-    revisions[id] = {
-      ...revision,
-      id,
-      previousRevisionId: index === 0 ? undefined : `memory-revision-footprint-${index - 1}`,
-      createdAt: "2026-07-01T00:00:00.000Z"
-    };
-  });
-  return revisions;
-}
 
 /**
  * The workspace a restore writes back into localStorage. Asset binaries live in
