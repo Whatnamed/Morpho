@@ -65,6 +65,10 @@ import {
   type CanvasSelectionRequest
 } from "./canvasSelection";
 import { createWheelZoomFrameScheduler, type WheelZoomFrameScheduler } from "./wheelZoomFrameScheduler";
+import {
+  hasCanvasEditorSyncInputChange,
+  type CanvasEditorSyncInputs
+} from "./canvasEditorSyncInputs";
 
 export type FocusArea = "overview" | "research" | "definition" | "visual" | "delivery";
 
@@ -217,6 +221,7 @@ export function MorphoCanvas({
   const latestWorkspaceRef = useRef(workspace);
   const onLiveViewChangeRef = useRef(onLiveViewChange);
   const didSendStagesToBackRef = useRef(false);
+  const lastAppliedEditorSyncInputsRef = useRef<CanvasEditorSyncInputs | null>(null);
   const stageOpacityPreviewRef = useRef<string | null>(null);
   const [editorReadyEpoch, setEditorReadyEpoch] = useState(0);
   const traceObjectIds = useMemo(() => canvasTrace?.highlightedObjectIds ?? [], [canvasTrace]);
@@ -224,10 +229,22 @@ export function MorphoCanvas({
   const secondaryTraceObjectIds = useMemo(() => new Set(canvasTrace?.secondaryObjectIds ?? []), [canvasTrace]);
   const secondaryTraceEdgeKeys = useMemo(() => new Set(canvasTrace?.secondaryEdgeKeys ?? []), [canvasTrace]);
   const isChainTraceActive = canvasTrace?.mode === "chain";
+  const editorSyncInputs = useMemo<CanvasEditorSyncInputs>(
+    () => ({
+      workspace,
+      annotatedObjectId,
+      highlightedObjectId,
+      assetUrls,
+      traceObjectIds
+    }),
+    [annotatedObjectId, assetUrls, highlightedObjectId, traceObjectIds, workspace]
+  );
+  const latestEditorSyncInputsRef = useRef(editorSyncInputs);
 
   useLayoutEffect(() => {
     latestWorkspaceRef.current = workspace;
-  }, [workspace]);
+    latestEditorSyncInputsRef.current = editorSyncInputs;
+  }, [editorSyncInputs, workspace]);
   useLayoutEffect(() => {
     onLiveViewChangeRef.current = onLiveViewChange;
   }, [onLiveViewChange]);
@@ -501,6 +518,13 @@ export function MorphoCanvas({
 
   const syncWorkspaceToEditor = useCallback(
     (editor: Editor) => {
+      const {
+        workspace,
+        annotatedObjectId,
+        highlightedObjectId,
+        assetUrls,
+        traceObjectIds
+      } = latestEditorSyncInputsRef.current;
       const ensured = ensureStageRegions(workspace);
       const stageRegions = getStageRegions(ensured).filter((region) => region.isActivated);
       const shapes = editor.getCurrentPageShapes().filter(isMorphoShape);
@@ -634,8 +658,9 @@ export function MorphoCanvas({
           didSendStagesToBackRef.current = true;
         }
       }, MORPHO_EDITOR_SYNC_RUN_OPTIONS);
+      lastAppliedEditorSyncInputsRef.current = latestEditorSyncInputsRef.current;
     },
-    [annotatedObjectId, assetUrls, highlightedObjectId, traceObjectIds, workspace]
+    []
   );
 
   const getPagePoint = useCallback((clientX: number, clientY: number): CanvasPoint => {
@@ -897,12 +922,18 @@ export function MorphoCanvas({
 
   useEffect(() => {
     const editor = editorRef.current;
-    if (!editor) {
+    if (
+      !editor ||
+      !hasCanvasEditorSyncInputChange(
+        lastAppliedEditorSyncInputsRef.current,
+        latestEditorSyncInputsRef.current
+      )
+    ) {
       return;
     }
 
     syncWorkspaceToEditor(editor);
-  }, [syncWorkspaceToEditor]);
+  });
 
   useEffect(() => {
     const editor = editorRef.current;
