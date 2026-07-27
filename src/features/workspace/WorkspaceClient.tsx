@@ -124,7 +124,6 @@ import type { AgentTrace, CanvasInstance, MorphoWorkspace, ProviderInputSnapshot
 import { createProviderInputSnapshot } from "@/domain/morpho/providerInputSnapshot";
 import { readClipboardAsImportPayload } from "./canvasClipboardImport";
 import type { ProviderCitation } from "@/server/ai/types";
-import type { WebSearchSource } from "@/server/ai/webSearch";
 import { AiConversationPanel } from "./components/AiConversationPanel";
 import type { PendingAiConfirmation, PendingComparisonConfirmation } from "./components/AiConversationPanel";
 import { BottomDetailBar } from "./components/BottomDetailBar";
@@ -323,10 +322,15 @@ import {
   type RequestConfirmationArgs,
   type SearchWebEvidenceArgs
 } from "./morphoAgent";
-import { buildConversationSummaryAgentRequest } from "./conversationSummaryAgentRequest";
 import { storeMessageCitations, updateAiMessage } from "./aiConversationMessages";
 import { buildReadSelectedContextResult } from "./agentReadContextResult";
 import { createAgentTurnRuntimeState, createAgentTurnState } from "./agentTurnState";
+import {
+  closeAgentTurnLease as closeAgentTurnLeaseWithState,
+  closeAgentTurnLeaseRequest,
+  requestAgentWebSearch as requestAgentWebSearchWithLease,
+  requestConversationSummary
+} from "./agentTurnLeaseClient";
 import {
   advanceRequiredAgentReadState,
   buildRequiredAgentReadFailureNotice,
@@ -390,9 +394,8 @@ import {
   createAgentStreamEventBatcher
 } from "./agentStreamClient";
 import { commitWorkspaceStateNow } from "./workspaceCommitBoundary";
-import { isRecord, readErrorResponse, readJsonPayload } from "./httpPayload";
+import { readErrorResponse } from "./httpPayload";
 import {
-  AGENT_WEB_SEARCH_MAX_SOURCES_PER_CALL,
   assertAgentTurnActive,
   buildAgentEmergencyFinalizationRequest,
   completeUnresolvedAgentFunctionCalls,
@@ -410,72 +413,6 @@ const MorphoCanvas = dynamic(() => import("./tldraw/MorphoCanvas").then((mod) =>
   ssr: false,
   loading: () => <div className="workspace-canvas" aria-label="画布正在加载" />
 });
-
-async function requestConversationSummary(
-  plan: ConversationCompactionPlan,
-  signal: AbortSignal,
-  input: {
-    projectId: string;
-    agentTurnId: string;
-    mode: MorphoAgentTurnMode;
-    leaseId?: string;
-    leaseSequence?: number;
-    continuationToken?: string;
-    onLeaseStarted?: (leaseId: string) => void;
-    onLeaseSequence?: (sequence: number) => void;
-    onContinuationToken?: (token: string) => void;
-  }
-): Promise<{
-  parsed: ReturnType<typeof parseConversationSummaryPayload>;
-  leaseId?: string;
-}> {
-  const response = await fetch("/api/ai/agent", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(buildConversationSummaryAgentRequest({
-      plan,
-      projectId: input.projectId,
-      agentTurnId: input.agentTurnId,
-      mode: input.mode,
-      leaseId: input.leaseId,
-      leaseSequence: input.leaseSequence,
-      continuationToken: input.continuationToken
-    })),
-    signal
-  });
-  let leaseId = input.leaseId;
-  const result = await consumeAgentTurnStream(response, {
-    signal,
-    onEvent: (event) => {
-      if (event.type === "turn-start" && event.leaseId) {
-        leaseId = event.leaseId;
-        input.onLeaseStarted?.(event.leaseId);
-      }
-      if (event.type === "turn-start" && event.nextProviderSequence !== undefined) {
-        input.onLeaseSequence?.(event.nextProviderSequence);
-      }
-      if (event.type === "turn-complete" && event.continuationToken) {
-        input.onContinuationToken?.(event.continuationToken);
-      }
-    }
-  });
-  return { parsed: parseConversationSummaryPayload(result.outputText), ...(leaseId ? { leaseId } : {}) };
-}
-
-async function closeAgentTurnLeaseRequest(input: {
-  leaseId?: string;
-  agentTurnId: string;
-  outcome: "success" | "cancelledBeforeExecution" | "failedBeforeExecution" | "partialSuccess" | "pendingConfirmation";
-}): Promise<void> {
-  if (!input.leaseId) {
-    return;
-  }
-  await fetch("/api/ai/agent/lease", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input)
-  }).catch(() => undefined);
-}
 
 const CONVERSATION_TOKEN_LIMITS_TEST_KEY = "morpho:test:conversation-token-limits";
 const MAX_AGENT_TOOL_ARGUMENT_REPAIR_ATTEMPTS = 3;
@@ -2092,64 +2029,18 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     // Web search consumes a lease sequence before it can fail. One resynchronization
     // per turn lets a lost response recover; Provider continuations stay strict.
 
-    async function requestAgentWebSearch(queries: string[]): Promise<{
-      sources: WebSearchSource[];
-      failedSourceCount?: number;
-      timedOutSourceCount?: number;
-    }> {
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        const response = await fetch("/api/ai/web-search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            queries,
-            maxSources: AGENT_WEB_SEARCH_MAX_SOURCES_PER_CALL,
-            agentTurnId,
-            agentContinuation: true,
-            leaseId: turnState.agentTurnLeaseId,
-            leaseSequence: turnState.nextAgentLeaseSequence
-          }),
-          signal: controller.signal
-        });
-        const payload = await readJsonPayload(response);
-        // The lease sequence is consumed before the search runs, so adopt whatever
-        // the server reports before deciding whether the search itself succeeded.
-        if (isRecord(payload) && typeof payload.nextProviderSequence === "number") {
-          turnState.nextAgentLeaseSequence = payload.nextProviderSequence;
-        }
-        if (response.ok && isRecord(payload) && Array.isArray(payload.sources)) {
-          return payload as unknown as {
-            sources: WebSearchSource[];
-            failedSourceCount?: number;
-            timedOutSourceCount?: number;
-          };
-        }
-        const canResync = !turnState.webSearchSequenceResyncUsed &&
-          isRecord(payload) &&
-          payload.reason === "sequence_replay" &&
-          typeof payload.nextProviderSequence === "number";
-        if (attempt === 0 && canResync) {
-          turnState.webSearchSequenceResyncUsed = true;
-          continue;
-        }
-        throw new Error(
-          (isRecord(payload) && typeof payload.error === "string" && payload.error) ||
-            response.statusText ||
-            "网页检索失败。"
-        );
-      }
-      throw new Error("网页检索未能完成。");
-    }
+    const requestAgentWebSearch = (queries: string[]) =>
+      requestAgentWebSearchWithLease({
+        queries,
+        agentTurnId,
+        signal: controller.signal,
+        state: turnState
+      });
 
     async function closeAgentTurnLease(
       outcome: "success" | "cancelledBeforeExecution" | "failedBeforeExecution" | "partialSuccess" | "pendingConfirmation"
     ): Promise<void> {
-      if (!turnState.agentTurnLeaseId) {
-        return;
-      }
-      const leaseId = turnState.agentTurnLeaseId;
-      turnState.agentTurnLeaseId = undefined;
-      await closeAgentTurnLeaseRequest({ leaseId, agentTurnId, outcome });
+      await closeAgentTurnLeaseWithState({ state: turnState, agentTurnId, outcome });
     }
 
     const initialAgentTrace = {
