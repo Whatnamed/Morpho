@@ -561,13 +561,14 @@ encoder in `e2e/support/agentSse.ts`. The seed workspace is regenerated from the
 real domain code on every run by `e2e/globalSetup.ts` into `e2e/.seed/seed.json`,
 because Playwright's loader cannot resolve the case-study fixture's JSON imports.
 
-Two expectations are marked `test.fail` on purpose. They record defects the suite
-found, so the eventual fix has a test to turn green:
+The browser acceptance suite previously recorded two defects with `test.fail`.
+Both were fixed on July 27, 2026 and now run as ordinary Playwright regression
+tests:
 
-- the canvas comes back with nothing selected after a reload, although
+- persisted canvas selection is reapplied after a reload when
   `ui.lastSelectionIds` is stored correctly;
-- `.archive-panel` does not scroll, so the restore preview's confirm row falls
-  below any window shorter than about 1000px.
+- the restore preview remains reachable in a 1440x900 window because the
+  `.archive-panel` content area scrolls within the viewport.
 
 # Local storage capacity
 
@@ -614,4 +615,3 @@ npm run measure:perf -- --target=renderConversation
 A measurement that fails the trust gate is reported as untrusted and must not be
 cited as evidence for any optimization. Do not tune the harness until the number
 looks acceptable; record it as untrusted and say why.
-
