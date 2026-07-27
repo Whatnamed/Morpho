@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { createTestWorkspace } from "@/domain/morpho/workspace";
 import {
   AGENT_TRACE_MAX_ACTIVITY_DETAIL_CHARS,
   AGENT_TRACE_MAX_PARTS,
@@ -8,6 +9,7 @@ import {
   compactHistoricalProviderDiagnostics,
   completeAgentTrace,
   createAgentTrace,
+  finishAgentToolActivityInWorkspace,
   finishLocalAgentToolActivity,
   startLocalAgentToolActivity
 } from "./agentMessageTrace";
@@ -225,5 +227,54 @@ describe("agent message trace", () => {
 
     expect(trace.parts).toHaveLength(1);
     expect(trace.parts[0]).toMatchObject({ toolCallId: "same-call", detail: "重复开始事件" });
+  });
+
+  it("finishes a tool activity through the owning assistant message", () => {
+    const now = "2026-07-13T00:00:00.000Z";
+    const trace = startLocalAgentToolActivity(
+      createAgentTrace(now),
+      {
+        toolCallId: "call-unit",
+        toolName: "read_project_memory",
+        activityKind: "contextRead",
+        label: "Read project memory"
+      },
+      now
+    );
+    const workspace = createTestWorkspace();
+    const withMessage = {
+      ...workspace,
+      ai: {
+        ...workspace.ai,
+        messages: [
+          ...workspace.ai.messages,
+          {
+            id: "assistant-unit",
+            role: "assistant" as const,
+            body: "working",
+            status: "streaming" as const,
+            createdAt: now,
+            agentTrace: trace
+          }
+        ]
+      }
+    };
+
+    const next = finishAgentToolActivityInWorkspace(
+      withMessage,
+      "assistant-unit",
+      "call-unit",
+      "failed",
+      "expected failure"
+    );
+
+    expect(next.ai.messages.at(-1)?.agentTrace?.parts[0]).toMatchObject({
+      toolCallId: "call-unit",
+      state: "failed",
+      detail: "expected failure"
+    });
+    expect(finishAgentToolActivityInWorkspace(workspace, "missing", "call", "done")).toBe(
+      workspace
+    );
   });
 });

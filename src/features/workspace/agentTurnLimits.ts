@@ -12,6 +12,27 @@ export const AGENT_TURN_EMERGENCY_MODEL_TURN_CEILING = 28;
 export const AGENT_TURN_EMERGENCY_DURATION_MS = 18 * 60 * 1000;
 export const AGENT_TURN_REPEAT_TOOL_CALL_LIMIT = 3;
 
+export function assertAgentTurnActive(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+}
+
+export function normalizeAgentTurnErrorMessage(message: string): string {
+  const normalized = message.toLowerCase();
+  const looksLikeAuthError =
+    normalized.includes("sign in") ||
+    normalized.includes("login") ||
+    normalized.includes("unauthenticated") ||
+    message.includes("请先登录");
+
+  if (!looksLikeAuthError) {
+    return message;
+  }
+
+  return "登录状态失效，本轮已完成步骤已保留。请重新登录后重试。";
+}
+
 export type AgentFunctionCallTerminalStatus =
   | "executed"
   | "failed"

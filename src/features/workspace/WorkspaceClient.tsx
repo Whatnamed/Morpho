@@ -317,6 +317,7 @@ import {
   type SearchWebEvidenceArgs
 } from "./morphoAgent";
 import { buildConversationSummaryAgentRequest } from "./conversationSummaryAgentRequest";
+import { storeMessageCitations, updateAiMessage } from "./aiConversationMessages";
 import {
   advanceRequiredAgentReadState,
   buildRequiredAgentReadFailureNotice,
@@ -364,6 +365,7 @@ import {
   completeAgentTrace,
   compactHistoricalProviderDiagnostics,
   createAgentTrace,
+  finishAgentToolActivityInWorkspace,
   finishLocalAgentToolActivity,
   startLocalAgentToolActivity,
   updateLocalAgentToolActivity
@@ -376,12 +378,15 @@ import {
   createAgentStreamEventBatcher
 } from "./agentStreamClient";
 import { commitWorkspaceStateNow } from "./workspaceCommitBoundary";
+import { isRecord, readErrorResponse, readJsonPayload } from "./httpPayload";
 import {
   AGENT_WEB_SEARCH_MAX_SOURCES_PER_CALL,
+  assertAgentTurnActive,
   buildAgentEmergencyFinalizationRequest,
   completeUnresolvedAgentFunctionCalls,
   isRepeatedAgentToolCall,
   mergeAgentSearchCitations,
+  normalizeAgentTurnErrorMessage,
   shouldFinalizeAgentTurn,
   webSearchSourcesToCitations
 } from "./agentTurnLimits";
@@ -7280,42 +7285,6 @@ function constrainResearchEvidence(
   }));
 }
 
-function updateAiMessage(
-  workspace: MorphoWorkspace,
-  messageId: string,
-  body: string,
-  status: "streaming" | "done" | "failed" | "cancelled",
-  options: {
-    citationIds?: string[];
-    continuityEntryIds?: string[];
-    memoryUpdateKeys?: ProjectMemoryKey[];
-    stageRecordUpdateKeys?: StageRecordKey[];
-    agentTrace?: AgentTrace;
-  } = {}
-): MorphoWorkspace {
-  return {
-    ...workspace,
-    ai: {
-      ...workspace.ai,
-      messages: workspace.ai.messages.map((message) =>
-        message.id === messageId
-          ? {
-              ...message,
-              body,
-              status,
-              citationIds: options.citationIds ?? message.citationIds,
-              continuityEntryIds: options.continuityEntryIds ?? message.continuityEntryIds,
-              memoryUpdateKeys: options.memoryUpdateKeys ?? message.memoryUpdateKeys,
-              stageRecordUpdateKeys: options.stageRecordUpdateKeys ?? message.stageRecordUpdateKeys,
-              agentTrace: options.agentTrace ?? message.agentTrace,
-              error: status === "failed" ? body : undefined
-            }
-          : message
-      )
-    }
-  };
-}
-
 function getLatestProviderRequestState(workspace: MorphoWorkspace): ProviderRequestBoundaryState | undefined {
   if (workspace.ai.latestProviderRequestState) {
     return toProviderRequestBoundaryState(workspace.ai.latestProviderRequestState);
@@ -7382,28 +7351,6 @@ function isProviderInputBoundaryReason(
     value === "compaction";
 }
 
-function finishAgentToolActivityInWorkspace(
-  workspace: MorphoWorkspace,
-  messageId: string,
-  toolCallId: string,
-  state: "done" | "failed",
-  detail?: string
-): MorphoWorkspace {
-  const message = workspace.ai.messages.find((candidate) => candidate.id === messageId);
-  if (!message?.agentTrace) {
-    return workspace;
-  }
-  return updateAiMessage(workspace, messageId, message.body, "streaming", {
-    agentTrace: finishLocalAgentToolActivity(message.agentTrace, toolCallId, { state, detail }, new Date().toISOString())
-  });
-}
-
-function assertAgentTurnActive(signal: AbortSignal): void {
-  if (signal.aborted) {
-    throw new DOMException("Aborted", "AbortError");
-  }
-}
-
 function appendAiAssistantFailureMessage(
   workspace: MorphoWorkspace,
   prefix: string,
@@ -7452,105 +7399,6 @@ function appendAiAssistantNotice(
       ]
     }
   };
-}
-
-function storeMessageCitations(
-  workspace: MorphoWorkspace,
-  input: {
-    messageId: string;
-    operationId: string;
-    citations: ProviderCitation[];
-  }
-): MorphoWorkspace {
-  const now = new Date().toISOString();
-  const citationEntries = input.citations.map((citation, index) => {
-    const id = getAvailableCitationId(workspace, `${input.messageId}-citation-${index + 1}`);
-    return {
-      id,
-      operationId: input.operationId,
-      title: citation.title,
-      url: citation.url,
-      domain: citation.domain ?? domainFromUrl(citation.url),
-      snippet: citation.snippet,
-      retrievedAt: now
-    };
-  });
-
-  return updateAiMessage(
-    {
-      ...workspace,
-      citationSnapshots: {
-        ...workspace.citationSnapshots,
-        ...Object.fromEntries(citationEntries.map((citation) => [citation.id, citation]))
-      }
-    },
-    input.messageId,
-    workspace.ai.messages.find((message) => message.id === input.messageId)?.body ?? "",
-    "done",
-    {
-      citationIds: citationEntries.map((citation) => citation.id)
-    }
-  );
-}
-
-function normalizeAgentTurnErrorMessage(message: string): string {
-  const normalized = message.toLowerCase();
-  const looksLikeAuthError =
-    normalized.includes("sign in") ||
-    normalized.includes("login") ||
-    normalized.includes("unauthenticated") ||
-    message.includes("请先登录");
-
-  if (!looksLikeAuthError) {
-    return message;
-  }
-
-  return "登录状态失效，本轮已完成步骤已保留。请重新登录后重试。";
-}
-
-function getAvailableCitationId(workspace: MorphoWorkspace, preferredId: string): string {
-  if (!workspace.citationSnapshots[preferredId]) {
-    return preferredId;
-  }
-
-  let suffix = 2;
-  while (workspace.citationSnapshots[`${preferredId}-${suffix}`]) {
-    suffix += 1;
-  }
-  return `${preferredId}-${suffix}`;
-}
-
-function domainFromUrl(url: string | undefined): string | undefined {
-  if (!url) {
-    return undefined;
-  }
-
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return undefined;
-  }
-}
-
-async function readJsonPayload(response: Response): Promise<unknown> {
-  try {
-    return (await response.json()) as unknown;
-  } catch {
-    return undefined;
-  }
-}
-
-async function readErrorResponse(response: Response): Promise<string> {
-  try {
-    const payload = (await response.json()) as unknown;
-    if (isRecord(payload) && typeof payload.error === "string") {
-      return payload.error;
-    }
-  } catch {
-    // Fall through to status text.
-  }
-
-  return response.statusText || "AI 请求失败。";
 }
 
 async function collectImageReferenceDataUrls(
@@ -7836,6 +7684,3 @@ function isEditableDomTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && (target.tagName === "TEXTAREA" || target.tagName === "INPUT" || target.isContentEditable);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}

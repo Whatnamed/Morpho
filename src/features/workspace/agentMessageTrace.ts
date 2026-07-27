@@ -1,8 +1,9 @@
-import type { AgentMessagePart, AgentTrace, AiMessage } from "@/domain/morpho/types";
+import type { AgentMessagePart, AgentTrace, AiMessage, MorphoWorkspace } from "@/domain/morpho/types";
 import type {
   AgentProviderDiagnostics,
   AgentRouteStreamEvent
 } from "@/shared/agentStreamProtocol";
+import { updateAiMessage } from "./aiConversationMessages";
 
 export const AGENT_TRACE_MAX_PARTS = 96;
 export const AGENT_TRACE_MAX_TEXT_PART_CHARS = 24_000;
@@ -162,6 +163,27 @@ export function finishLocalAgentToolActivity(
     ...input,
     state: input.state ?? "done",
     completedAt: now
+  });
+}
+
+export function finishAgentToolActivityInWorkspace(
+  workspace: MorphoWorkspace,
+  messageId: string,
+  toolCallId: string,
+  state: "done" | "failed",
+  detail?: string
+): MorphoWorkspace {
+  const message = workspace.ai.messages.find((candidate) => candidate.id === messageId);
+  if (!message?.agentTrace) {
+    return workspace;
+  }
+  return updateAiMessage(workspace, messageId, message.body, "streaming", {
+    agentTrace: finishLocalAgentToolActivity(
+      message.agentTrace,
+      toolCallId,
+      { state, detail },
+      new Date().toISOString()
+    )
   });
 }
 

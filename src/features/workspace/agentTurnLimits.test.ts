@@ -5,17 +5,39 @@ import {
   AGENT_TURN_EMERGENCY_MODEL_TURN_CEILING,
   AGENT_TURN_REPEAT_TOOL_CALL_LIMIT,
   AGENT_WEB_SEARCH_MAX_SOURCES_PER_CALL,
+  assertAgentTurnActive,
   buildAgentEmergencyFinalizationRequest,
   completeUnresolvedAgentFunctionCalls,
   isAgentMutatingTool,
   isRepeatedAgentToolCall,
   mergeAgentSearchCitations,
+  normalizeAgentTurnErrorMessage,
   shouldFinalizeAgentTurn,
   webSearchSourcesToCitations
 } from "./agentTurnLimits";
 import type { MorphoAgentToolArguments } from "./morphoAgent";
 
 describe("agent turn limits", () => {
+  it("preserves the abort error identity expected by turn finalization", () => {
+    const active = new AbortController();
+    expect(() => assertAgentTurnActive(active.signal)).not.toThrow();
+
+    active.abort();
+    expect(() => assertAgentTurnActive(active.signal)).toThrowError(
+      expect.objectContaining({ name: "AbortError", message: "Aborted" })
+    );
+  });
+
+  it("normalizes only authentication failures", () => {
+    expect(normalizeAgentTurnErrorMessage("provider failed")).toBe("provider failed");
+    expect(normalizeAgentTurnErrorMessage("Please sign in again")).toBe(
+      "登录状态失效，本轮已完成步骤已保留。请重新登录后重试。"
+    );
+    expect(normalizeAgentTurnErrorMessage("请先登录后重试")).toBe(
+      "登录状态失效，本轮已完成步骤已保留。请重新登录后重试。"
+    );
+  });
+
   it("classifies only project-writing agent tools as mutating", () => {
     expect(isAgentMutatingTool("read_selected_context")).toBe(false);
     expect(isAgentMutatingTool("search_web_evidence")).toBe(false);
