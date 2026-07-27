@@ -14,10 +14,12 @@
     "case-study:upgrade": "node ./scripts/upgrade-current-case-study.mjs",
     "dev": "next dev",
     "lint": "eslint .",
+    "measure:perf": "node ./scripts/measure-performance.mjs",
+    "measure:perf:browser": "playwright test --project=perf --workers=1 --retries=0",
     "measure:storage": "node ./scripts/measure-storage-footprint.mjs",
     "start": "next start",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test --project=chromium",
     "test:e2e:build": "npm run build && playwright test",
     "test:prompt-cache": "node scripts/test-prompt-cache-compatibility.mjs",
     "typecheck": "tsc --noEmit"

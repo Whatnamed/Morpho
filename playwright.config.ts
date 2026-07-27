@@ -37,10 +37,26 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
+      // The performance baseline is measurement, not acceptance. It never runs in CI:
+      // a perf number from a shared, virtualized runner would be worse than no number
+      // because it would look official.
+      testIgnore: /performance-baseline\.spec\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         // Wide enough that the selection toolbar has somewhere to go without
         // colliding with the AI panel, which is what a design workstation looks like.
+        viewport: { width: 1440, height: 900 }
+      }
+    },
+    {
+      // Run via `npm run measure:perf:browser`, which pins --workers=1 (a measurement
+      // must not share the CPU with a parallel worker) and --retries=0 (a retried
+      // measurement is a different measurement).
+      name: "perf",
+      testMatch: /performance-baseline\.spec\.ts/,
+      timeout: 300_000,
+      use: {
+        ...devices["Desktop Chrome"],
         viewport: { width: 1440, height: 900 }
       }
     }
