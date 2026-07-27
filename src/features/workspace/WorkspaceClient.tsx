@@ -11,9 +11,7 @@ import type {
   CanvasView,
   ContinuityManualState,
   DeliveryObject,
-  MorphoObject,
-  ProjectMemoryKey,
-  StageRecordKey
+  MorphoObject
 } from "@/domain/morpho/types";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 import { MORPHO_AGENT_CONTEXT_POLICY } from "@/domain/morpho/agentContextPolicy";
@@ -40,7 +38,6 @@ import {
   applyDeliverySectionDraft,
   createDeliveryPreparation,
   createDeliverySection,
-  createDeliverySectionDraft,
   discardDeliverySectionDraft,
   moveDeliveryReference,
   moveDeliverySection,
@@ -55,8 +52,7 @@ import {
 import {
   parseDeliverySectionDraftPayload,
   sanitizeDeliverySectionDraftStreamForDisplay,
-  stripDeliverySectionDraftTechnicalBlocks,
-  validateDeliverySectionDraftPayload
+  stripDeliverySectionDraftTechnicalBlocks
 } from "@/domain/morpho/deliverySectionDraftBlock";
 import {
   applyConceptDirectionProposal,
@@ -226,11 +222,7 @@ import {
   taskContextKindFromAiTask,
   type TaskContextDefaultReference
 } from "./taskContext";
-import {
-  applyConversationSemanticPatch,
-  setConversationSemanticEntryManualState
-} from "@/domain/morpho/projectContinuity";
-import { buildSemanticPatchAuthorization } from "@/domain/morpho/conversationSemanticPatch";
+import { setConversationSemanticEntryManualState } from "@/domain/morpho/projectContinuity";
 import {
   applyConversationSummaryRevision,
   buildContinuousConversationContext,
@@ -241,14 +233,7 @@ import {
   type ConversationCompactionPlan,
   type ConversationTokenLimits
 } from "@/domain/morpho/conversationCompaction";
-import { searchProjectConversation } from "@/domain/morpho/conversationSearch";
-import {
-  buildAgentDefaultMemoryContext,
-  getCurrentProjectMemoryRevision,
-  getCurrentStageRecordRevision,
-  getProjectMemoryHistory,
-  getStageRecordHistory
-} from "@/domain/morpho/projectMemory";
+import { buildAgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
 import {
   buildConversationLaneKey,
   resolveConversationLaneAnchors,
@@ -265,9 +250,7 @@ import {
   validateComparisonAnalysis
 } from "@/domain/morpho/comparisonAnalysis";
 import type { ComparisonDecisionMetadata } from "@/domain/morpho/types";
-import { buildSemanticPatchAuthorizationInput } from "./workspaceSemanticPatch";
 import { applyResearchProposalWithSemanticPatch } from "./researchSemanticPatch";
-import { applySelectedProposalDraftRevision } from "./proposalDraftRevision";
 import {
   getPlacementNearObjects,
   getProposalPlacement,
@@ -306,7 +289,6 @@ import {
   buildMorphoAgentUserInput,
   buildToolResultOutput,
   getDesignDefinitionDrafts,
-  getComparisonToolExecutionBlockReason,
   isExplicitComparisonRequest,
   normalizeGenerateVisualsForSelectedDirections,
   parseMorphoAgentToolCallBatch,
@@ -323,7 +305,11 @@ import {
   type SearchWebEvidenceArgs
 } from "./morphoAgent";
 import { storeMessageCitations, updateAiMessage } from "./aiConversationMessages";
-import { buildReadSelectedContextResult } from "./agentReadContextResult";
+import {
+  executeAgentTool,
+  type AgentToolBatchState,
+  type AgentToolExecutorInput
+} from "./agentToolExecutors";
 import { createAgentTurnRuntimeState, createAgentTurnState } from "./agentTurnState";
 import {
   closeAgentTurnLease as closeAgentTurnLeaseWithState,
@@ -334,18 +320,15 @@ import {
 import {
   advanceRequiredAgentReadState,
   buildRequiredAgentReadFailureNotice,
-  completeRequiredAgentRead,
   createRequiredAgentReadState,
   failRequiredAgentRead,
   resolveAgentTaskStrategy,
   resolveRequiredAgentReadRequirements,
-  validateRequiredAgentReadCall,
   type RequiredAgentReadToolName
 } from "./agentTaskStrategy";
 import {
   resolveRequiredAgentMemoryUpdates,
-  shouldPromptForMemoryUpdate,
-  validateAgentMemoryUpdateItems
+  shouldPromptForMemoryUpdate
 } from "./agentMemoryUpdateGuard";
 import type { AgentServerDirective } from "@/shared/agentStreamProtocol";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
@@ -383,8 +366,7 @@ import {
   createAgentTrace,
   finishAgentToolActivityInWorkspace,
   finishLocalAgentToolActivity,
-  startLocalAgentToolActivity,
-  updateLocalAgentToolActivity
+  startLocalAgentToolActivity
 } from "./agentMessageTrace";
 import { buildAgentToolActivityDescriptor, sanitizeAgentActivityDetail } from "./agentToolActivity";
 import {
@@ -402,8 +384,7 @@ import {
   isRepeatedAgentToolCall,
   mergeAgentSearchCitations,
   normalizeAgentTurnErrorMessage,
-  shouldFinalizeAgentTurn,
-  webSearchSourcesToCitations
+  shouldFinalizeAgentTurn
 } from "./agentTurnLimits";
 import type { AgentCanonicalRuntimeItem } from "@/shared/agentRuntimeItem";
 import type { CanvasImportRequest, FocusArea } from "./tldraw/MorphoCanvas";
@@ -2861,7 +2842,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }
 
         let toolOutputs: ReturnType<typeof buildToolResultOutput>[] = [];
-        let pendingAgentActionCreated = false;
         const parsedCallBatch = parseMorphoAgentToolCallBatch(result.functionCalls);
         const invalidCalls = parsedCallBatch.filter((entry) => entry.status === "invalid");
         if (invalidCalls.length > 0) {
@@ -2976,11 +2956,58 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 })
               })
             : null;
-        let executedVisualBatch:
-          | {
-              createdObjectIds: string[];
+        const toolBatchState: AgentToolBatchState = {
+          visualBatch,
+          pendingAgentActionCreated: false
+        };
+        const toolExecutorInput: Omit<AgentToolExecutorInput, "callId"> = {
+          context,
+          providerTaskContext,
+          runtimeState,
+          batchState: toolBatchState,
+          commitWorkspace: commitWorkspaceNow,
+          readWorkspace: readWorkspaceNow,
+          draft,
+          modelOutputText: result.outputText,
+          userMessageId,
+          assistantMessageId,
+          userMessageCreatedAt: now,
+          selectedObjectIds,
+          selectedObjects,
+          allowStructuredComparison,
+          imageAttachmentObjectIds: attachmentResult.entries
+            .filter((entry) => entry.status === "ready")
+            .map((entry) => entry.objectId),
+          documentExtractObjectIds: documentResult.extracts.map((extract) => extract.objectId),
+          deliverySectionContext,
+          requiredMemoryUpdates,
+          imageGenerationModelId: effectiveImageGenerationSettings.modelId,
+          signal: controller.signal,
+          requestWebSearch: requestAgentWebSearch,
+          executeVisualGenerationPlan: executeAgentVisualGenerationPlan,
+          ui: {
+            selectObjects: setSelectedObjectIds,
+            focusObject: (objectId) => {
+              setFocusRequest((current) => ({ objectId, nonce: current.nonce + 1 }));
+            },
+            openProposal: setActiveProposalId,
+            clearPendingDeliveryDraftTarget: () => {
+              setPendingDeliveryDraftTarget(null);
+            },
+            requestConfirmation: (args, compiledVisualPlan) => {
+              setPendingConfirmation(
+                buildRequestedAgentActionConfirmation({
+                  args,
+                  compiledVisualPlan,
+                  workspace: readWorkspaceNow(),
+                  draft,
+                  contextObjectIds: context.objectIds,
+                  selectedObjects
+                })
+              );
             }
-          | undefined;
+          }
+        };
 
         for (const { call, parsed } of parsedCalls) {
           if (controller.signal.aborted) {
@@ -3082,7 +3109,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               })
             );
             runtimeState.finalText = result.outputText.trim() || "已准备确认卡。确认前不会改变项目状态。";
-            pendingAgentActionCreated = true;
+            toolBatchState.pendingAgentActionCreated = true;
             runtimeState.pendingConfirmationCreated = true;
             commitWorkspaceNow((current) => {
               const next = finishAgentToolActivityInWorkspace(current, assistantMessageId, call.callId, "done");
@@ -3091,576 +3118,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             break;
           }
           try {
-            switch (parsed.name) {
-            case "read_selected_context": {
-              toolOutputs.push(
-                buildToolResultOutput(call.callId, buildReadSelectedContextResult(context, providerTaskContext))
-              );
-              break;
-            }
-            case "read_project_memory": {
-              const coverage = validateRequiredAgentReadCall(
-                runtimeState.requiredReadState,
-                "read_project_memory",
-                parsed.args
-              );
-              if (!coverage.satisfied) {
-                throw new Error(coverage.reason);
-              }
-              const current = readWorkspaceNow();
-              const keys: ProjectMemoryKey[] = parsed.args.keys ?? [
-                "projectOverview",
-                "designBrief",
-                "userPreferences",
-                "decisionLog",
-                "rejectedDirections",
-                "openQuestions",
-                "outputPlan"
-              ];
-              toolOutputs.push(
-                buildToolResultOutput(call.callId, {
-                  documents: keys.map((key) => {
-                    const document = current.projectMemory.documents[key];
-                    const revision = getCurrentProjectMemoryRevision(current.projectMemory, key);
-                    return {
-                      key,
-                      title: document.title,
-                      revision,
-                      history: parsed.args.includeHistory
-                        ? getProjectMemoryHistory(current.projectMemory, key).slice(0, 5)
-                        : undefined
-                    };
-                  })
-                })
-              );
-              runtimeState.requiredReadState = completeRequiredAgentRead(runtimeState.requiredReadState, "read_project_memory");
-              break;
-            }
-            case "read_stage_record": {
-              const coverage = validateRequiredAgentReadCall(
-                runtimeState.requiredReadState,
-                "read_stage_record",
-                parsed.args
-              );
-              if (!coverage.satisfied) {
-                throw new Error(coverage.reason);
-              }
-              const current = readWorkspaceNow();
-              const stages: StageRecordKey[] = parsed.args.stages ?? [
-                "startAndInput",
-                "exploration",
-                "research",
-                "designDefinition",
-                "directionAndVisual",
-                "deliveryPreparation"
-              ];
-              toolOutputs.push(
-                buildToolResultOutput(call.callId, {
-                  records: stages.map((stage) => ({
-                    stage,
-                    revision: getCurrentStageRecordRevision(current.projectMemory, stage),
-                    history: parsed.args.includeHistory
-                      ? getStageRecordHistory(current.projectMemory, stage).slice(0, 5)
-                      : undefined
-                  }))
-                })
-              );
-              runtimeState.requiredReadState = completeRequiredAgentRead(runtimeState.requiredReadState, "read_stage_record");
-              break;
-            }
-            case "search_project_conversation": {
-              const coverage = validateRequiredAgentReadCall(
-                runtimeState.requiredReadState,
-                "search_project_conversation",
-                parsed.args
-              );
-              if (!coverage.satisfied) {
-                throw new Error(coverage.reason);
-              }
-              toolOutputs.push(
-                buildToolResultOutput(
-                  call.callId,
-                  searchProjectConversation(readWorkspaceNow(), parsed.args)
-                )
-              );
-              runtimeState.requiredReadState = completeRequiredAgentRead(runtimeState.requiredReadState, "search_project_conversation");
-              break;
-            }
-            case "revise_selected_proposal_draft": {
-              const revision = commitWorkspaceNow((current) => {
-                const result = applySelectedProposalDraftRevision(current, selectedObjectIds, parsed.args);
-                return { workspace: result.workspace, value: result };
-              });
-              if (revision.status === "updated") {
-                setSelectedObjectIds([revision.proposalId]);
-                setActiveProposalId(revision.proposalId);
-              }
-              toolOutputs.push(
-                buildToolResultOutput(
-                  call.callId,
-                  revision.status === "updated"
-                    ? {
-                        status: "updated",
-                        proposalId: revision.proposalId
-                      }
-                    : {
-                        status: "blocked",
-                        reason: revision.reason
-                      }
-                )
-              );
-              break;
-            }
-            case "search_web_evidence": {
-              const args = parsed.args;
-              const webSearchResult = await requestAgentWebSearch(args.queries);
-              const sourceCitations = webSearchSourcesToCitations(webSearchResult.sources);
-              runtimeState.collectedCitations = mergeAgentSearchCitations(runtimeState.collectedCitations, sourceCitations);
-              runtimeState.hasWebSearchEvidence = true;
-              toolOutputs.push(
-                buildToolResultOutput(call.callId, {
-                  reason: args.reason,
-                  sources: webSearchResult.sources,
-                  citations: sourceCitations,
-                  failedSourceCount: webSearchResult.failedSourceCount ?? 0,
-                  timedOutSourceCount: webSearchResult.timedOutSourceCount ?? 0
-                })
-              );
-              break;
-            }
-            case "create_research_analysis": {
-              const args = parsed.args;
-              const applied = commitWorkspaceNow((current) => {
-                const operationGate = canStartOperation(current);
-                if (operationGate.status === "blocked") {
-                  throw new Error(operationGate.reason);
-                }
-                const created = createResearchOperation(current, {
-                  userInput: draft,
-                  selectedObjectIds: context.objectIds,
-                  allowWebSearch: runtimeState.hasWebSearchEvidence
-                });
-                const proposalId = `proposal-research-${created.operation.id}-${Date.now()}`;
-                const result = applyResearchProposalWithSemanticPatch({
-                  workspace: created.workspace,
-                  proposal: {
-                    proposalId,
-                    operationId: created.operation.id,
-                    title: args.title,
-                    summary: args.summary,
-                    findings: normalizeResearchItems(args.findings),
-                    opportunities: normalizeResearchItems(args.opportunities),
-                    constraints: normalizeResearchItems(args.constraints),
-                    openQuestions: normalizeResearchItems(args.openQuestions),
-                    evidence: constrainResearchEvidence(args, context.objectIds, runtimeState.collectedCitations),
-                    sourceObjectIds: context.objectIds,
-                    citations: runtimeState.collectedCitations
-                  },
-                  position: getPlacementNearObjects(created.workspace, context.objectIds, {
-                    x: created.workspace.canvas.view.x + 220,
-                    y: created.workspace.canvas.view.y + 180
-                  }),
-                  context,
-                  draft,
-                  userMessageId,
-                  userMessageCreatedAt: now,
-                  assistantText: ""
-                });
-                return { workspace: result.workspace, value: result };
-              });
-              if (applied.status === "updated") {
-                setSelectedObjectIds([applied.researchObjectId]);
-                setFocusRequest((current) => ({ objectId: applied.researchObjectId, nonce: current.nonce + 1 }));
-              }
-              toolOutputs.push(
-                buildToolResultOutput(call.callId, {
-                  status: applied.status,
-                  researchObjectId: applied.status === "updated" ? applied.researchObjectId : undefined,
-                  reason: applied.status === "blocked" ? applied.reason : undefined
-                })
-              );
-              break;
-            }
-            case "create_design_definition_proposal": {
-              const args = parsed.args;
-              const recordedProposalIds = commitWorkspaceNow((current) => {
-                const operationGate = canStartOperation(current);
-                if (operationGate.status === "blocked") {
-                  throw new Error(operationGate.reason);
-                }
-                const operationId = `operation-designDefinition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-                const created = createArtifactProposalOperation(current, {
-                  operationId,
-                  type: "designDefinition",
-                  userInput: draft,
-                  selectedObjectIds: context.objectIds,
-                  workIntent: "createDesignDefinition"
-                });
-                const basedOnDefinitionId = current.workingState.currentDesignDefinitionId;
-                const basedOnDefinitionObject = basedOnDefinitionId ? current.objects[basedOnDefinitionId] : undefined;
-                const proposalPlacement = getProposalPlacement(created.workspace, context.objectIds, "definition");
-                const proposalIds: string[] = [];
-                let nextWorkspace = created.workspace;
-                for (const [proposalIndex, proposalDraft] of getDesignDefinitionDrafts(args).entries()) {
-                  const recorded = recordDesignDefinitionProposal(nextWorkspace, {
-                    operationId,
-                    workIntent: "createDesignDefinition",
-                    title: proposalDraft.title,
-                    summary: proposalDraft.summary,
-                    projectGoal: proposalDraft.projectGoal,
-                    targetUsers: proposalDraft.targetUsers,
-                    primaryScenarios: proposalDraft.primaryScenarios,
-                    coreProblem: proposalDraft.coreProblem,
-                    designPrinciples: proposalDraft.designPrinciples,
-                    constraints: normalizeResearchItems(proposalDraft.constraints),
-                    avoidDirections: proposalDraft.avoidDirections,
-                    opportunities: normalizeResearchItems(proposalDraft.opportunities),
-                    openQuestions: normalizeResearchItems(proposalDraft.openQuestions),
-                    changeNote: proposalDraft.changeNote,
-                    sourceObjectIds: context.objectIds,
-                    citations: runtimeState.collectedCitations,
-                    basedOnDesignDefinitionId:
-                      basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.id : undefined,
-                    basedOnRevisionId:
-                      basedOnDefinitionObject?.type === "designDefinition"
-                        ? basedOnDefinitionObject.currentRevisionId
-                        : undefined,
-                    position: getSiblingProposalPlacement(proposalPlacement, proposalIndex)
-                  });
-                  nextWorkspace = recorded.workspace;
-                  proposalIds.push(recorded.proposal.id);
-                }
-                return { workspace: nextWorkspace, value: proposalIds };
-              });
-              toolOutputs.push(
-                buildToolResultOutput(call.callId, {
-                  status: "created",
-                  proposalId: recordedProposalIds[0],
-                  proposalIds: recordedProposalIds
-                })
-              );
-              break;
-            }
-            case "create_concept_direction_proposal": {
-              const args = parsed.args;
-              const placed = commitWorkspaceNow((current) => {
-                const operationGate = canStartOperation(current);
-                if (operationGate.status === "blocked") {
-                  throw new Error(operationGate.reason);
-                }
-                const operationId = `operation-conceptDirection-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-                const created = createArtifactProposalOperation(current, {
-                  operationId,
-                  type: "conceptDirection",
-                  userInput: draft,
-                  selectedObjectIds: context.objectIds,
-                  workIntent: "createConceptDirections"
-                });
-                const basedOnDefinitionId = current.workingState.currentDesignDefinitionId;
-                const basedOnDefinitionObject = basedOnDefinitionId ? current.objects[basedOnDefinitionId] : undefined;
-                const result = recordAndApplyConceptDirectionProposal(created.workspace, {
-                  operationId,
-                  workIntent: "createConceptDirections",
-                  title: args.title,
-                  summary: args.summary,
-                  directions: args.directions,
-                  sourceObjectIds: context.objectIds,
-                  citations: runtimeState.collectedCitations,
-                  basedOnDesignDefinitionId:
-                    basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.id : undefined,
-                  basedOnRevisionId:
-                    basedOnDefinitionObject?.type === "designDefinition"
-                      ? basedOnDefinitionObject.currentRevisionId
-                      : undefined,
-                  position: getProposalPlacement(created.workspace, context.objectIds, "direction")
-                });
-                return { workspace: result.workspace, value: result };
-              });
-              if (placed.status === "updated") {
-                setSelectedObjectIds(placed.directions.map((direction) => direction.id));
-                if (placed.directions[0]) {
-                  setFocusRequest((current) => ({ objectId: placed.directions[0].id, nonce: current.nonce + 1 }));
-                }
-              }
-              toolOutputs.push(
-                buildToolResultOutput(call.callId, {
-                  status: placed.status === "updated" ? "applied" : "created",
-                  proposalId: placed.proposal.id,
-                  directionIds: placed.status === "updated" ? placed.directions.map((direction) => direction.id) : undefined,
-                  reason: placed.status === "blocked" ? placed.reason : undefined
-                })
-              );
-              break;
-            }
-            case "generate_visuals": {
-              if (!visualBatch || visualBatch.status !== "ok") {
-                throw new Error("图像生成批次没有通过完整性校验。");
-              }
-              if (executedVisualBatch) {
-                toolOutputs.push(
-                  buildToolResultOutput(call.callId, {
-                    status: "created",
-                    objectIds: executedVisualBatch.createdObjectIds,
-                    batched: true
-                  })
-                );
-                break;
-              }
-
-              const args = visualBatch.plan;
-              const generationResult = await executeAgentVisualGenerationPlan({
-                workspaceSnapshot: readWorkspaceNow(),
-                draft,
-                plan: args,
-                sourceObjectIds: context.objectIds,
-                selectedDirectionIds: selectedObjects
-                  .filter((object) => object.type === "conceptDirection")
-                  .map((object) => object.id),
-                selectedImageIds: selectedObjects.filter((object) => object.type === "image").map((object) => object.id),
-                requestedPreviewCount: visualBatch.expected.requestedPreviewCount,
-                onProgress: (message) => {
-                  commitWorkspaceNow((current) => {
-                    const assistant = current.ai.messages.find((candidate) => candidate.id === assistantMessageId);
-                    if (!assistant?.agentTrace) {
-                      return { workspace: current, value: undefined };
-                    }
-                    return {
-                      workspace: updateAiMessage(current, assistantMessageId, assistant.body, "streaming", {
-                        agentTrace: updateLocalAgentToolActivity(assistant.agentTrace, call.callId, {
-                          detail: message
-                        })
-                      }),
-                      value: undefined
-                    };
-                  });
-                },
-                signal: controller.signal
-              });
-              executedVisualBatch = generationResult;
-              toolOutputs.push(
-                buildToolResultOutput(call.callId, {
-                  status: "created",
-                  objectIds: generationResult.createdObjectIds,
-                  batched: true
-                })
-              );
-              break;
-            }
-            case "create_comparison_analysis": {
-              const comparisonBlockReason = getComparisonToolExecutionBlockReason({
-                explicitComparisonRequested: allowStructuredComparison,
-                selectedObjectCount: selectedObjectIds.length
-              });
-              if (comparisonBlockReason) {
-                throw new Error(comparisonBlockReason);
-              }
-              const args = parsed.args;
-              const analysisId = commitWorkspaceNow((current) => {
-                const authorizationResult = buildComparisonAuthorization({
-                  workspace: current,
-                  selectedObjectIds,
-                  userMessageId,
-                  assistantMessageId,
-                  createdAt: now,
-                  comparisonGoal: args.comparisonGoal,
-                  imageAttachmentObjectIds: attachmentResult.entries
-                    .filter((entry) => entry.status === "ready")
-                    .map((entry) => entry.objectId),
-                  documentExtractObjectIds: documentResult.extracts.map((extract) => extract.objectId),
-                  documentFragmentExtractObjectIds: context.documentFragmentExtracts.map(
-                    (fragment) => fragment.objectId
-                  )
-                });
-                if (!("authorization" in authorizationResult)) {
-                  throw new Error(
-                    authorizationResult.status === "blocked"
-                      ? authorizationResult.reason
-                      : "Compare authorization was not created."
-                  );
-                }
-                const validation = validateComparisonAnalysis(args, authorizationResult.authorization);
-                if (validation.status !== "ok") {
-                  throw new Error(validation.reason);
-                }
-                const next = applyComparisonAnalysis(current, validation.analysis);
-                return { workspace: next, value: validation.analysis.id };
-              });
-              toolOutputs.push(
-                buildToolResultOutput(call.callId, {
-                  status: "created",
-                  analysisId
-                })
-              );
-              break;
-            }
-            case "prepare_delivery_section_draft": {
-              if (!deliverySectionContext) {
-                throw new Error("当前没有已授权的交付章节上下文。");
-              }
-              const validation = validateDeliverySectionDraftPayload(parsed.args, {
-                deliveryObjectId: deliverySectionContext.deliveryObjectId,
-                sectionId: deliverySectionContext.sectionId,
-                referenceIds: deliverySectionContext.references.map((reference) => reference.referenceId)
-              });
-              if (validation.status !== "ok") {
-                throw new Error(validation.reason);
-              }
-              const draftResult = commitWorkspaceNow((current) => {
-                const created = createDeliverySectionDraft(current, {
-                  deliveryObjectId: deliverySectionContext.deliveryObjectId,
-                  sectionId: deliverySectionContext.sectionId,
-                  userMessageId,
-                  assistantMessageId,
-                  title: parsed.args.title,
-                  narrative: parsed.args.narrative,
-                  captions: parsed.args.captions,
-                  suggestedGaps: parsed.args.suggestedGaps,
-                  now: new Date().toISOString()
-                });
-                return { workspace: created.workspace, value: created };
-              });
-              if (draftResult.status !== "updated") {
-                throw new Error(draftResult.reason);
-              }
-              setPendingDeliveryDraftTarget(null);
-              toolOutputs.push(
-                buildToolResultOutput(call.callId, {
-                  status: "pendingConfirmation",
-                  draftId: draftResult.draftId,
-                  deliveryObjectId: deliverySectionContext.deliveryObjectId,
-                  sectionId: deliverySectionContext.sectionId,
-                  note: "草稿尚未应用到交付章节。"
-                })
-              );
-              runtimeState.pendingConfirmationCreated = true;
-              break;
-            }
-            case "submit_memory_update": {
-              const validation = validateAgentMemoryUpdateItems({
-                candidates: requiredMemoryUpdates,
-                draft,
-                items: parsed.args.items
-              });
-              const legalBatchSkip = parsed.args.items.length === 0 && Boolean(parsed.args.skippedReason?.trim());
-              if (requiredMemoryUpdates.length === 0 || (!legalBatchSkip && validation.accepted.length === 0)) {
-                if (requiredMemoryUpdates.length > 0) {
-                  runtimeState.memoryUpdateReminderInserted = false;
-                }
-                toolOutputs.push(
-                  buildToolResultOutput(call.callId, {
-                    status: requiredMemoryUpdates.length > 0 ? "retryable" : "skipped",
-                    retryable: requiredMemoryUpdates.length > 0,
-                    rejected: validation.rejected,
-                    skippedReason: requiredMemoryUpdates.length > 0
-                      ? "记忆证据必须逐字来自当前用户消息；请修正 evidenceQuote，或传 items:[] 并填写 skippedReason。"
-                      : "当前消息仅是一次性要求，不能写入项目记忆。"
-                  })
-                );
-                break;
-              }
-              if (legalBatchSkip) {
-                requiredMemoryUpdates.forEach((_candidate, index) => runtimeState.handledMemoryCandidateIndexes.add(index));
-                toolOutputs.push(
-                  buildToolResultOutput(call.callId, {
-                    status: "skipped",
-                    skippedReason: parsed.args.skippedReason
-                  })
-                );
-                break;
-              }
-              const acceptedItems = validation.accepted.map(({ itemIndex, candidateIndex }) => {
-                runtimeState.handledMemoryCandidateIndexes.add(candidateIndex);
-                return parsed.args.items[itemIndex]!;
-              });
-              const memoryUpdate = commitWorkspaceNow((current) => {
-                const authorization = buildSemanticPatchAuthorization(
-                  buildSemanticPatchAuthorizationInput({
-                    workspace: current,
-                    taskMode: "chatAnalysis",
-                    context,
-                    draft,
-                    userMessageId,
-                    userMessageCreatedAt: now
-                  })
-                );
-                const applied = applyConversationSemanticPatch(
-                  current,
-                  authorization,
-                  acceptedItems.map((item) => ({
-                    ...item,
-                    relatedDecisionIds: []
-                  }))
-                );
-                return { workspace: applied.workspace, value: applied };
-              });
-              memoryUpdate.entries.forEach((entry) => {
-                runtimeState.memoryUpdateEntryIds.add(entry.id);
-                runtimeState.stageRecordUpdateKeys.add(entry.stage);
-                runtimeState.memoryUpdateKeys.add(entry.category === "openQuestion" ? "openQuestions" : "userPreferences");
-              });
-              const memoryUpdateWasApplied = memoryUpdate.entries.length > 0;
-              const memoryUpdateWasEquivalent = memoryUpdate.entries.length === 0 && memoryUpdate.rejected.length === 0;
-              for (const accepted of validation.accepted) {
-                const item = parsed.args.items[accepted.itemIndex];
-                if (item && memoryUpdate.rejected.some((rejected) => rejected.evidenceQuote === item.evidenceQuote)) {
-                  runtimeState.handledMemoryCandidateIndexes.delete(accepted.candidateIndex);
-                }
-              }
-              if ((!memoryUpdateWasApplied && !memoryUpdateWasEquivalent) || validation.rejected.length > 0) {
-                runtimeState.memoryUpdateReminderInserted = false;
-              }
-              toolOutputs.push(
-                buildToolResultOutput(call.callId, {
-                  status: memoryUpdateWasApplied
-                    ? validation.rejected.length > 0 ? "partial" : "recorded"
-                    : memoryUpdateWasEquivalent
-                      ? "skipped"
-                      : "retryable",
-                  retryable: validation.rejected.length > 0 || (!memoryUpdateWasApplied && !memoryUpdateWasEquivalent),
-                  entryIds: memoryUpdate.entries.map((entry) => entry.id),
-                  rejected: [...validation.rejected, ...memoryUpdate.rejected]
-                })
-              );
-              break;
-            }
-            case "request_confirmation": {
-              const args = parsed.args;
-              const compiledVisualPlan = args.visualPlan
-                ? compileVisualGenerationPlan({
-                    workspace: readWorkspaceNow(),
-                    kind: args.visualPlan.kind,
-                    intents: args.visualPlan.items,
-                    selectedSourceObjectIds: context.objectIds,
-                    modelId: effectiveImageGenerationSettings.modelId,
-                    currentUserInput: draft
-                  })
-                : undefined;
-              setPendingConfirmation(
-                buildRequestedAgentActionConfirmation({
-                  args,
-                  compiledVisualPlan,
-                  workspace: readWorkspaceNow(),
-                  draft,
-                  contextObjectIds: context.objectIds,
-                  selectedObjects
-                })
-              );
-              toolOutputs.push(
-                buildToolResultOutput(call.callId, {
-                  status: "pendingConfirmation",
-                  action: args.action,
-                  reason: args.reason,
-                  impact: args.impact
-                })
-              );
-              runtimeState.finalText = result.outputText.trim() || "已准备确认卡。确认前不会改变项目状态。";
-              pendingAgentActionCreated = true;
-              runtimeState.pendingConfirmationCreated = true;
-              break;
-            }
-              default:
-                parsed satisfies never;
-            }
+            const output = await executeAgentTool({
+              ...toolExecutorInput,
+              callId: call.callId,
+              parsed
+            });
+            toolOutputs.push(buildToolResultOutput(call.callId, output));
           } catch (error) {
             const reason = error instanceof Error ? normalizeAgentTurnErrorMessage(error.message) : "该操作未能完成。";
             markAgentWorkUnresolved(`tool:${parsed.name}`, reason);
@@ -3703,7 +3166,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           });
         }
 
-        if (runtimeState.emergencyGuardTriggered || pendingAgentActionCreated) {
+        if (runtimeState.emergencyGuardTriggered || toolBatchState.pendingAgentActionCreated) {
           toolOutputs = completeUnresolvedAgentFunctionCalls({
             calls: parsedCalls.map((entry) => entry.call),
             outputs: toolOutputs,
@@ -3725,7 +3188,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           break;
         }
 
-        if (pendingAgentActionCreated) {
+        if (toolBatchState.pendingAgentActionCreated) {
           runtimeState.conversationInput = [...runtimeState.conversationInput, ...toolOutputs];
           runtimeState.turnContinuationItems.push(...toolOutputs);
           break;
