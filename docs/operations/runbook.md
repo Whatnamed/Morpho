@@ -581,3 +581,37 @@ records taken from the deployable case study rather than synthetic payloads. The
 matching browser-side measurement — the quota the browser actually grants — is in
 `e2e/storage-capacity.spec.ts` and prints to the acceptance run log.
 
+# Performance baseline
+
+Two halves. Run both on an idle machine: the Node half marks the whole run
+untrusted if the process was preempted, and the browser half shares the CPU with
+nothing else by design.
+
+```powershell
+npm run measure:perf
+```
+
+```powershell
+npm run measure:perf:browser
+```
+
+The browser half needs a production build first (`npm run build`) and Chromium
+(`npx playwright install chromium`). It runs as its own Playwright project and is
+excluded from `npm run test:e2e`, so it never runs in CI — a perf number from a
+shared runner would look official while meaning nothing.
+
+Outputs `docs/operations/performance-node.generated.json` and
+`docs/operations/performance-browser.generated.json`. The prose baseline that
+phase 4C is required to cite is `docs/architecture/performance-baseline.md`.
+
+To isolate one target — useful because an allocation-heavy target can otherwise
+push its garbage collection into a neighbour's measurement:
+
+```powershell
+npm run measure:perf -- --target=renderConversation
+```
+
+A measurement that fails the trust gate is reported as untrusted and must not be
+cited as evidence for any optimization. Do not tune the harness until the number
+looks acceptable; record it as untrusted and say why.
+
