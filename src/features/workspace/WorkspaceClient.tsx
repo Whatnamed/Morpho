@@ -210,7 +210,11 @@ import {
   resolveDocumentFragmentSelection
 } from "./documentFragments";
 import { resolveComparisonWritebackSourceObjectIds } from "./comparisonDecision";
-import { applyResearchExtractionSelection, getResearchExtractionRecommendationKeys } from "./researchExtraction";
+import {
+  applyResearchExtractionSelection,
+  constrainResearchEvidence,
+  getResearchExtractionRecommendationKeys
+} from "./researchExtraction";
 import {
   validateComparisonActionTarget,
   validateComparisonKeyConclusionSources,
@@ -265,7 +269,11 @@ import type { ComparisonDecisionMetadata } from "@/domain/morpho/types";
 import { buildSemanticPatchAuthorizationInput } from "./workspaceSemanticPatch";
 import { applyResearchProposalWithSemanticPatch } from "./researchSemanticPatch";
 import { applySelectedProposalDraftRevision } from "./proposalDraftRevision";
-import { getSiblingProposalPlacement } from "./proposalDraftPlacement";
+import {
+  getPlacementNearObjects,
+  getProposalPlacement,
+  getSiblingProposalPlacement
+} from "./proposalDraftPlacement";
 import { planDirectionPreviewPlacements, planVisualDevelopmentPlacements } from "./visualPreviewLayout";
 import {
   getManualCompactionStatusText,
@@ -312,12 +320,12 @@ import {
   type GenerateVisualsArgs,
   type MorphoAgentToolArguments,
   type MorphoAgentTurnMode,
-  type ReadSelectedContextResult,
   type RequestConfirmationArgs,
   type SearchWebEvidenceArgs
 } from "./morphoAgent";
 import { buildConversationSummaryAgentRequest } from "./conversationSummaryAgentRequest";
 import { storeMessageCitations, updateAiMessage } from "./aiConversationMessages";
+import { buildReadSelectedContextResult } from "./agentReadContextResult";
 import {
   advanceRequiredAgentReadState,
   buildRequiredAgentReadFailureNotice,
@@ -348,9 +356,12 @@ import {
   appendAgentProviderRuntimeConfigurationFrame,
   appendAgentProviderStateFrames,
   buildAgentProviderInput,
+  compactHistoricalProviderRequestState,
   ensureAgentConversationSummaryBaselines,
+  getLatestProviderRequestState,
   getProviderInputReplayBoundaryReasons,
   providerContextFrameMessage,
+  toProviderRequestBoundaryState,
   type ProviderContextFrameBuildInput,
   type ProviderRequestBoundaryState
 } from "./providerContextFrames";
@@ -6869,69 +6880,6 @@ function getProposalDraftCanvasPosition(
   return workspace.canvas.instances.find((instance) => instance.objectId === proposalId)?.position ?? fallback;
 }
 
-function getPlacementNearObjects(
-  workspace: MorphoWorkspace,
-  sourceObjectIds: string[],
-  fallback: { x: number; y: number }
-): { x: number; y: number } {
-  const sourceInstances = sourceObjectIds
-    .map((objectId) => workspace.canvas.instances.find((instance) => instance.objectId === objectId))
-    .filter((instance): instance is CanvasInstance => Boolean(instance));
-
-  if (sourceInstances.length === 0) {
-    return fallback;
-  }
-
-  const right = Math.max(...sourceInstances.map((instance) => instance.position.x + instance.size.w));
-  const top = Math.min(...sourceInstances.map((instance) => instance.position.y));
-  return {
-    x: right + 92,
-    y: top
-  };
-}
-
-function getProposalPlacement(
-  workspace: MorphoWorkspace,
-  sourceObjectIds: string[],
-  kind: "definition" | "direction"
-): { x: number; y: number } {
-  const fallback =
-    kind === "definition"
-      ? {
-          x: workspace.canvas.view.x + 280,
-          y: workspace.canvas.view.y + 180
-        }
-      : {
-          x: workspace.canvas.view.x + 420,
-          y: workspace.canvas.view.y + 220
-        };
-
-  return getPlacementNearObjects(workspace, sourceObjectIds, fallback);
-}
-
-function buildReadSelectedContextResult(
-  context: ReturnType<typeof buildTaskContext>,
-  providerTaskContext: ReturnType<typeof buildProviderTaskContext>
-): ReadSelectedContextResult {
-  return {
-    objectSummaries: context.semanticSummaries.map((summary) => ({
-      id: summary.id,
-      type: summary.type,
-      title: summary.title,
-      summary: summary.summary,
-      detail: summary.detail
-    })),
-    directDocumentTitles: context.documentFragmentExtracts.map((extract) => extract.title),
-    proposalDrafts: context.proposalDrafts,
-    imageObjectIds: [...context.imageObjectIds],
-    objectIds: [...context.objectIds],
-    defaultReference: providerTaskContext.defaultReference,
-    scopeNote: context.scopeNote,
-    designDefinitionTitle: providerTaskContext.designDefinition?.title,
-    directionTitles: providerTaskContext.directions.map((direction) => direction.title)
-  };
-}
-
 function getGeneratedImagePlacement(
   workspace: MorphoWorkspace,
   item: VisualGenerationPlanItem,
@@ -7268,87 +7216,6 @@ function applyRequestedAgentAction(
         ? appendAiAssistantFailureMessage(workspace, "agent-request-batch-generate", options.executeVisuals)
         : workspace;
   }
-}
-
-function constrainResearchEvidence(
-  args: CreateResearchAnalysisArgs,
-  sourceObjectIds: string[],
-  citations: ProviderCitation[]
-): CreateResearchAnalysisArgs["evidence"] {
-  const allowedObjectIds = new Set(sourceObjectIds);
-  const allowedCitationUrls = new Set(citations.map((citation) => citation.url).filter((url): url is string => Boolean(url)));
-
-  return args.evidence.map((entry) => ({
-    ...entry,
-    sourceObjectIds: entry.sourceObjectIds.filter((objectId) => allowedObjectIds.has(objectId)),
-    citationUrls: entry.citationUrls.filter((url) => allowedCitationUrls.has(url))
-  }));
-}
-
-function getLatestProviderRequestState(workspace: MorphoWorkspace): ProviderRequestBoundaryState | undefined {
-  if (workspace.ai.latestProviderRequestState) {
-    return toProviderRequestBoundaryState(workspace.ai.latestProviderRequestState);
-  }
-  for (let index = workspace.ai.messages.length - 1; index >= 0; index -= 1) {
-    const state = workspace.ai.messages[index]?.agentTrace?.providerRequestState;
-    if (state) {
-      return toProviderRequestBoundaryState(state);
-    }
-  }
-  return undefined;
-}
-
-function compactHistoricalProviderRequestState(
-  state: ProviderRequestBoundaryState
-): NonNullable<MorphoWorkspace["ai"]["messages"][number]["agentTrace"]>["providerRequestState"] {
-  const { cacheItemManifest: _manifest, ...compact } = state;
-  return compact;
-}
-
-function toProviderRequestBoundaryState(value: {
-  promptContractVersion?: string;
-  toolProfile?: string;
-  summaryRevisionId?: string;
-  latestUserMessageId?: string;
-  providerInputPrefixHash?: string;
-  attachmentBoundary?: string;
-  runtimeItem?: AgentCanonicalRuntimeItem;
-  cacheItemManifest?: ProviderRequestBoundaryState["cacheItemManifest"];
-  toolsHash?: string;
-  budgetGeneration?: number;
-} | undefined): ProviderRequestBoundaryState | undefined {
-  if (!value?.promptContractVersion) {
-    return undefined;
-  }
-  const toolProfile = value.toolProfile === "standard" || value.toolProfile === "standardWithWebSearch"
-    ? value.toolProfile
-    : undefined;
-  const attachmentBoundary = isProviderInputBoundaryReason(value.attachmentBoundary)
-    ? value.attachmentBoundary
-    : undefined;
-  return {
-    promptContractVersion: value.promptContractVersion,
-    ...(toolProfile ? { toolProfile } : {}),
-    ...(value.summaryRevisionId ? { summaryRevisionId: value.summaryRevisionId } : {}),
-    ...(value.latestUserMessageId ? { latestUserMessageId: value.latestUserMessageId } : {}),
-    ...(value.providerInputPrefixHash ? { providerInputPrefixHash: value.providerInputPrefixHash } : {}),
-    ...(attachmentBoundary ? { attachmentBoundary } : {}),
-    ...(value.runtimeItem ? { runtimeItem: value.runtimeItem } : {}),
-    ...(value.cacheItemManifest ? { cacheItemManifest: value.cacheItemManifest } : {}),
-    ...(value.toolsHash ? { toolsHash: value.toolsHash } : {}),
-    ...(value.budgetGeneration !== undefined ? { budgetGeneration: value.budgetGeneration } : {})
-  };
-}
-
-function isProviderInputBoundaryReason(
-  value: unknown
-): value is ProviderRequestBoundaryState["attachmentBoundary"] {
-  return value === "imageInput" ||
-    value === "legacyProviderInput" ||
-    value === "documentSnapshotUnavailable" ||
-    value === "toolProfileChanged" ||
-    value === "promptContractChanged" ||
-    value === "compaction";
 }
 
 function appendAiAssistantFailureMessage(

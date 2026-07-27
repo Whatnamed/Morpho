@@ -14,8 +14,11 @@ import {
   appendAgentProviderStateFrames,
   buildAgentMemoryDeltaContext,
   buildAgentProviderInput,
+  compactHistoricalProviderRequestState,
   ensureAgentConversationSummaryBaselines,
-  getProviderInputReplayBoundaryReasons
+  getLatestProviderRequestState,
+  getProviderInputReplayBoundaryReasons,
+  toProviderRequestBoundaryState
 } from "./providerContextFrames";
 import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
 
@@ -48,6 +51,46 @@ function userMessage(text: string) {
 }
 
 describe("Agent provider transcript reconstruction", () => {
+  it("normalizes the latest request boundary and strips historical manifests", () => {
+    const workspace = createInitialWorkspace();
+    const requestState = {
+      promptContractVersion: "agent-v1",
+      toolProfile: "standard" as const,
+      attachmentBoundary: "imageInput" as const,
+      cacheItemManifest: [
+        {
+          type: "message",
+          semanticKind: "conversation",
+          contentHash: "hash-unit",
+          estimatedTokens: 12
+        }
+      ],
+      budgetGeneration: 2
+    };
+    const withLatest = {
+      ...workspace,
+      ai: {
+        ...workspace.ai,
+        latestProviderRequestState: requestState
+      }
+    };
+
+    expect(getLatestProviderRequestState(withLatest)).toEqual(requestState);
+    expect(compactHistoricalProviderRequestState(requestState)).toEqual({
+      promptContractVersion: "agent-v1",
+      toolProfile: "standard",
+      attachmentBoundary: "imageInput",
+      budgetGeneration: 2
+    });
+    expect(
+      toProviderRequestBoundaryState({
+        promptContractVersion: "agent-v1",
+        toolProfile: "unknown",
+        attachmentBoundary: "unknown"
+      })
+    ).toEqual({ promptContractVersion: "agent-v1" });
+  });
+
   it("keeps task strategy policy out of the untrusted turn context frame", () => {
     const workspace = createInitialWorkspace();
     const context = buildTaskContext(workspace, {

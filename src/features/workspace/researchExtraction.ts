@@ -1,6 +1,8 @@
 import type { CanvasPoint, CanvasSize, MorphoObjectId, MorphoWorkspace, ResearchObject } from "@/domain/morpho/types";
 import { getResearchItemParts, normalizeResearchItem } from "@/domain/operations/researchItems";
 import { buildKeyConclusionDraftFromResearchSource, createKeyConclusion, hideObject, restoreObject } from "@/domain/morpho/workspace";
+import type { ProviderCitation } from "@/server/ai/types";
+import type { CreateResearchAnalysisArgs } from "./morphoAgent";
 
 export type ResearchExtractionKind = "finding" | "opportunity" | "constraint" | "openQuestion";
 
@@ -22,6 +24,23 @@ export type ApplyResearchExtractionSelectionResult = {
   hiddenCount: number;
   skippedCount: number;
 };
+
+export function constrainResearchEvidence(
+  args: CreateResearchAnalysisArgs,
+  sourceObjectIds: string[],
+  citations: ProviderCitation[]
+): CreateResearchAnalysisArgs["evidence"] {
+  const allowedObjectIds = new Set(sourceObjectIds);
+  const allowedCitationUrls = new Set(
+    citations.map((citation) => citation.url).filter((url): url is string => Boolean(url))
+  );
+
+  return args.evidence.map((entry) => ({
+    ...entry,
+    sourceObjectIds: entry.sourceObjectIds.filter((objectId) => allowedObjectIds.has(objectId)),
+    citationUrls: entry.citationUrls.filter((url) => allowedCitationUrls.has(url))
+  }));
+}
 
 const researchSectionConfigs: Array<{
   kind: ResearchExtractionKind;

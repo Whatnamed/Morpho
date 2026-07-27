@@ -4,6 +4,7 @@ import { createInitialWorkspace } from "@/domain/morpho/workspace";
 
 import {
   applyResearchExtractionSelection,
+  constrainResearchEvidence,
   getResearchExtractionCardSize,
   getResearchExtractionItems,
   getResearchExtractionKey,
@@ -11,6 +12,38 @@ import {
 } from "./researchExtraction";
 
 describe("researchExtraction", () => {
+  it("keeps only evidence references authorized by the current turn", () => {
+    const evidence = constrainResearchEvidence(
+      {
+        title: "Research",
+        summary: "Summary",
+        findings: ["Finding"],
+        opportunities: [],
+        constraints: [],
+        openQuestions: [],
+        evidence: [
+          {
+            claim: "Claim",
+            sourceObjectIds: ["allowed-object", "stale-object"],
+            citationUrls: ["https://allowed.example/source", "https://stale.example/source"],
+            confidence: "supported"
+          }
+        ]
+      },
+      ["allowed-object"],
+      [{ title: "Allowed", url: "https://allowed.example/source" }]
+    );
+
+    expect(evidence).toEqual([
+      {
+        claim: "Claim",
+        sourceObjectIds: ["allowed-object"],
+        citationUrls: ["https://allowed.example/source"],
+        confidence: "supported"
+      }
+    ]);
+  });
+
   it("creates canvas key conclusion cards for selected research items", () => {
     const workspace = createInitialWorkspace();
     const result = applyResearchExtractionSelection(workspace, "research-night-path", [

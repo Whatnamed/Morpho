@@ -73,6 +73,74 @@ export type ProviderRuntimeConfiguration = {
   runtimeItem?: AgentCanonicalRuntimeItem;
 };
 
+export function getLatestProviderRequestState(
+  workspace: MorphoWorkspace
+): ProviderRequestBoundaryState | undefined {
+  if (workspace.ai.latestProviderRequestState) {
+    return toProviderRequestBoundaryState(workspace.ai.latestProviderRequestState);
+  }
+  for (let index = workspace.ai.messages.length - 1; index >= 0; index -= 1) {
+    const state = workspace.ai.messages[index]?.agentTrace?.providerRequestState;
+    if (state) {
+      return toProviderRequestBoundaryState(state);
+    }
+  }
+  return undefined;
+}
+
+export function compactHistoricalProviderRequestState(
+  state: ProviderRequestBoundaryState
+): NonNullable<MorphoWorkspace["ai"]["messages"][number]["agentTrace"]>["providerRequestState"] {
+  const { cacheItemManifest: _manifest, ...compact } = state;
+  return compact;
+}
+
+export function toProviderRequestBoundaryState(value: {
+  promptContractVersion?: string;
+  toolProfile?: string;
+  summaryRevisionId?: string;
+  latestUserMessageId?: string;
+  providerInputPrefixHash?: string;
+  attachmentBoundary?: string;
+  runtimeItem?: AgentCanonicalRuntimeItem;
+  cacheItemManifest?: ProviderRequestBoundaryState["cacheItemManifest"];
+  toolsHash?: string;
+  budgetGeneration?: number;
+} | undefined): ProviderRequestBoundaryState | undefined {
+  if (!value?.promptContractVersion) {
+    return undefined;
+  }
+  const toolProfile = value.toolProfile === "standard" || value.toolProfile === "standardWithWebSearch"
+    ? value.toolProfile
+    : undefined;
+  const attachmentBoundary = isProviderInputBoundaryReason(value.attachmentBoundary)
+    ? value.attachmentBoundary
+    : undefined;
+  return {
+    promptContractVersion: value.promptContractVersion,
+    ...(toolProfile ? { toolProfile } : {}),
+    ...(value.summaryRevisionId ? { summaryRevisionId: value.summaryRevisionId } : {}),
+    ...(value.latestUserMessageId ? { latestUserMessageId: value.latestUserMessageId } : {}),
+    ...(value.providerInputPrefixHash ? { providerInputPrefixHash: value.providerInputPrefixHash } : {}),
+    ...(attachmentBoundary ? { attachmentBoundary } : {}),
+    ...(value.runtimeItem ? { runtimeItem: value.runtimeItem } : {}),
+    ...(value.cacheItemManifest ? { cacheItemManifest: value.cacheItemManifest } : {}),
+    ...(value.toolsHash ? { toolsHash: value.toolsHash } : {}),
+    ...(value.budgetGeneration !== undefined ? { budgetGeneration: value.budgetGeneration } : {})
+  };
+}
+
+function isProviderInputBoundaryReason(
+  value: unknown
+): value is ProviderRequestBoundaryState["attachmentBoundary"] {
+  return value === "imageInput" ||
+    value === "legacyProviderInput" ||
+    value === "documentSnapshotUnavailable" ||
+    value === "toolProfileChanged" ||
+    value === "promptContractChanged" ||
+    value === "compaction";
+}
+
 export function appendAgentProviderContextFrames(
   workspace: MorphoWorkspace,
   input: ProviderContextFrameBuildInput
