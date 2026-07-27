@@ -26,6 +26,29 @@
 
 **复测结论：** 4B 的计算路径与批次行为没有发现结构性漂移；浏览器高档位尾延迟保留为 4C 的对照观察，不掩盖、不提前归因。
 
+### 4C-1：Project Memory 语义触发（`037c545`）
+
+`usePersistentWorkspace` 现在只在 Project Memory 的真实投影输入变化时运行 reconcile。画布位置、UI 状态，以及已有消息的正文、状态和 trace 更新直接保留现有记忆；消息增删、对象、revision、decision、continuity、working state 等语义变化仍完整投影。
+
+Node 新增 `reconcile:guardedMessageBody` 目标，按同一轮校准比较：
+
+| 场景 | 完整 reconcile p50 | 语义门 p50 | 节省 | 可信 |
+|---|---:|---:|---:|---|
+| objects300 | 4.065 ms | 0.000336 ms | 99.992% | 两者均可信 |
+| objects500 | 5.989 ms | 0.000342 ms | 99.994% | 两者均可信 |
+| compound500Dangling | 8.990 ms | 0.004115 ms | **99.954%** | 两者均可信 |
+
+生产浏览器同轮对照（4B 复测 → 4C-1）：
+
+| 场景 | 拖动慢事件 p95 | Agent 慢事件 p95 | Agent 最长阻塞 | Agent commit |
+|---|---:|---:|---:|---:|
+| objects100 | 9.9 → 6.4 ms | 55.2 → 48.6 ms | 6.1 → 0.0 ms | 19 → 19 |
+| objects300 | 17.8 → 11.0 ms | 68.5 → 66.0 ms | 19.1 → 16.8 ms | 19 → 19 |
+| objects500 | 20.4 → 15.4 ms | 102.4 → 79.7 ms | 53.9 → 30.5 ms | 19 → 19 |
+| compound500 | 32.5 → 26.1 ms | 155.3 → 136.2 ms | 107.4 → 87.9 ms | 19 → 19 |
+
+**裁决：** 语义门确实消除了流式正文与画布持久化中的完整 reconcile 成本；objects300/500 的拖动 p95 已回到 16.7 ms 帧预算内。compound500 仍有 136.2 ms 的 Agent 尾延迟，且 Node 侧 560 条消息完整渲染仍约 35 ms，所以下一刀只处理不变历史消息的重复渲染。持久化仍不动。
+
 ---
 
 ## 一、结论速览
