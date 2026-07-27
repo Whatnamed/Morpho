@@ -7,7 +7,11 @@ import {
   parseWorkspace,
   serializeWorkspace
 } from "@/domain/morpho/workspace";
-import { createEmptyProjectMemoryState, reconcileProjectMemory } from "@/domain/morpho/projectMemory";
+import {
+  createEmptyProjectMemoryState,
+  reconcileProjectMemory,
+  reconcileProjectMemoryAfterWorkspaceChange
+} from "@/domain/morpho/projectMemory";
 import { interruptActiveOperations } from "@/domain/operations/operations";
 import { createMemoryStorage } from "@/infrastructure/persistence/memoryStorage";
 import {
@@ -76,9 +80,8 @@ export const PERFORMANCE_TARGETS: BenchmarkTarget[] = [
     key: "reconcile:steady",
     label: "reconcileProjectMemory（投影命中，无写入）",
     unit: "ms/次",
-    // The ~20 Hz streaming case, and the headline number. Every setWorkspace goes
-    // through setReconciledWorkspace (usePersistentWorkspace.ts:188), and during an
-    // agent stream the 48 ms batcher drives it inside flushSync.
+    // The 4A raw projection cost. Phase 4C keeps this target so the semantic guard
+    // can be compared against the exact full-reconciliation path it avoids.
     prepare: (scenario) => {
       const settled = reconcileProjectMemory(scenario.workspace, FIXED_NOW);
       return {
@@ -86,6 +89,31 @@ export const PERFORMANCE_TARGETS: BenchmarkTarget[] = [
         // The referential short-circuit at projectMemory.ts:209 must hold, otherwise
         // this is silently measuring the cold path instead.
         verify: (output) => output === settled
+      };
+    }
+  },
+  {
+    key: "reconcile:guardedMessageBody",
+    label: "Project Memory 语义门（已有消息正文更新）",
+    unit: "ms/次",
+    prepare: (scenario) => {
+      const settled = reconcileProjectMemory(scenario.workspace, FIXED_NOW);
+      const targetMessage = settled.ai.messages.at(-1);
+      if (!targetMessage) {
+        return null;
+      }
+      const bodyUpdated: MorphoWorkspace = {
+        ...settled,
+        ai: {
+          ...settled.ai,
+          messages: settled.ai.messages.map((message) =>
+            message.id === targetMessage.id ? { ...message, body: `${message.body} stream` } : message
+          )
+        }
+      };
+      return {
+        run: () => reconcileProjectMemoryAfterWorkspaceChange(settled, bodyUpdated, FIXED_NOW),
+        verify: (output) => output === bodyUpdated
       };
     }
   },

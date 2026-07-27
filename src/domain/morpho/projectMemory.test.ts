@@ -8,8 +8,10 @@ import {
   getCurrentStageRecordRevision,
   getProjectMemoryHistory,
   getStageRecordHistory,
+  hasProjectMemoryProjectionInputChange,
   normalizeProjectMemoryState,
-  reconcileProjectMemory
+  reconcileProjectMemory,
+  reconcileProjectMemoryAfterWorkspaceChange
 } from "./projectMemory";
 import type { AiMessage, MorphoWorkspace, ProjectMemoryKey } from "./types";
 import { clearDefaultReference, createBlankWorkspace, createInitialWorkspace } from "./workspace";
@@ -25,6 +27,67 @@ const MEMORY_KEYS: ProjectMemoryKey[] = [
 ];
 
 describe("Project Memory Kernel", () => {
+  it("skips projection work for canvas, UI, and existing-message body updates", () => {
+    const workspace = reconcileProjectMemory(createInitialWorkspace(), "2026-07-13T12:00:00.000Z");
+    const targetMessage = workspace.ai.messages.at(-1);
+    if (!targetMessage) {
+      throw new Error("Expected the fixture to contain an AI message.");
+    }
+    const next: MorphoWorkspace = {
+      ...workspace,
+      canvas: {
+        ...workspace.canvas,
+        view: { ...workspace.canvas.view, x: workspace.canvas.view.x + 10 }
+      },
+      ui: {
+        ...workspace.ui,
+        lastSelectionIds: [Object.keys(workspace.objects)[0] ?? "missing-object"]
+      },
+      ai: {
+        ...workspace.ai,
+        messages: workspace.ai.messages.map((message) =>
+          message.id === targetMessage.id ? { ...message, body: `${message.body} stream` } : message
+        )
+      }
+    };
+
+    expect(hasProjectMemoryProjectionInputChange(workspace, next)).toBe(false);
+    const reconciled = reconcileProjectMemoryAfterWorkspaceChange(
+      workspace,
+      next,
+      "2026-07-13T12:01:00.000Z"
+    );
+    expect(reconciled).toBe(next);
+    expect(reconciled.projectMemory).toBe(workspace.projectMemory);
+  });
+
+  it("reprojects when a message identity or semantic projection input changes", () => {
+    const workspace = reconcileProjectMemory(createInitialWorkspace(), "2026-07-13T12:00:00.000Z");
+    const withMessage: MorphoWorkspace = {
+      ...workspace,
+      ai: {
+        ...workspace.ai,
+        messages: [...workspace.ai.messages, message("projection-message", "user", "新的项目证据")]
+      }
+    };
+    const withProjectChange: MorphoWorkspace = {
+      ...workspace,
+      project: { ...workspace.project, subtitle: "更新后的项目目标" }
+    };
+
+    expect(hasProjectMemoryProjectionInputChange(workspace, withMessage)).toBe(true);
+    expect(hasProjectMemoryProjectionInputChange(workspace, withProjectChange)).toBe(true);
+
+    const reconciled = reconcileProjectMemoryAfterWorkspaceChange(
+      workspace,
+      withProjectChange,
+      "2026-07-13T12:01:00.000Z"
+    );
+    expect(JSON.stringify(getCurrentProjectMemoryRevision(reconciled.projectMemory, "projectOverview")?.sections)).toContain(
+      "更新后的项目目标"
+    );
+  });
+
   it("projects seven current documents and only stages that actually have project facts", () => {
     const workspace = reconcileProjectMemory(createInitialWorkspace(), "2026-07-13T12:00:00.000Z");
 

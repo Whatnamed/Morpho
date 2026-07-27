@@ -157,6 +157,7 @@ type ProjectionWorkspace = Pick<
   | "deliveryReferences"
   | "projectContinuity"
   | "workingState"
+  | "visualBranches"
   | "ai"
 >;
 
@@ -207,6 +208,49 @@ export function normalizeProjectMemoryState(
 export function reconcileProjectMemory(workspace: MorphoWorkspace, now = new Date().toISOString()): MorphoWorkspace {
   const projectMemory = reconcileProjectMemoryState(workspace, workspace.projectMemory, now);
   return projectMemory === workspace.projectMemory ? workspace : { ...workspace, projectMemory };
+}
+
+export function hasProjectMemoryProjectionInputChange(
+  previous: MorphoWorkspace,
+  next: MorphoWorkspace
+): boolean {
+  if (previous === next) {
+    return false;
+  }
+
+  return (
+    previous.project !== next.project ||
+    previous.objects !== next.objects ||
+    previous.designDefinitionRevisions !== next.designDefinitionRevisions ||
+    previous.directionRevisions !== next.directionRevisions ||
+    previous.decisionRecords !== next.decisionRecords ||
+    previous.deliveryReferences !== next.deliveryReferences ||
+    previous.projectContinuity !== next.projectContinuity ||
+    previous.workingState !== next.workingState ||
+    previous.visualBranches !== next.visualBranches ||
+    previous.projectMemory !== next.projectMemory ||
+    // Memory validity only reads whether a referenced message ID still exists;
+    // streamed body, status, and trace updates are not projection inputs.
+    !haveSameMessageIdentitySequence(previous.ai.messages, next.ai.messages)
+  );
+}
+
+export function reconcileProjectMemoryAfterWorkspaceChange(
+  previous: MorphoWorkspace,
+  next: MorphoWorkspace,
+  now = new Date().toISOString()
+): MorphoWorkspace {
+  return hasProjectMemoryProjectionInputChange(previous, next) ? reconcileProjectMemory(next, now) : next;
+}
+
+function haveSameMessageIdentitySequence(
+  previous: MorphoWorkspace["ai"]["messages"],
+  next: MorphoWorkspace["ai"]["messages"]
+): boolean {
+  if (previous === next) {
+    return true;
+  }
+  return previous.length === next.length && previous.every((message, index) => message.id === next[index]?.id);
 }
 
 export function reconcileProjectMemoryState(
