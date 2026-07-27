@@ -39,7 +39,7 @@ Implemented server-side state and deployment:
 - Supabase stores no project content. Projects, canvases, files, images, and backups stay in browser localStorage and IndexedDB.
 - Vercel is the current production deployment path (`npm run build`). Cloudflare Workers via `@opennextjs/cloudflare` and `wrangler` is a retained opt-in backup path behind the `cf:*` scripts.
 - `.github/workflows/quality.yml` runs lint, typecheck, test, and build on `main` and pull requests, without provider keys or deployment.
-- Export exists as delivery output packages and archive/backup bundles (see the M7 and M8 sections). Cloud project sync, cloud file storage, multiplayer sync, and automatic Blob garbage collection remain unimplemented.
+- Export exists as delivery output packages and archive/backup bundles (see the M7 and M8 sections). Project deletion can explicitly reclaim previewed, provably exclusive Blobs; cloud project sync, cloud file storage, multiplayer sync, and object-level or automatic Blob garbage collection remain unimplemented.
 
 ## Data Model
 
@@ -271,7 +271,7 @@ Binary files are not stored in localStorage. Imported images/files and generated
 - workspace objects reference assets by `assetId`;
 - assets contain filename, MIME type, size, creation time, storage key, source type, and optional intrinsic image dimensions.
 
-The current code does not implement asset garbage collection. Deleting a canvas object does not delete Blob data.
+Project deletion implements previewed, ownership-checked cleanup of Blobs used exclusively by that project. Deleting a canvas object does not delete Blob data, and object-level or orphan-sweep garbage collection is not implemented. The prerequisites and fail-closed design are recorded in [`asset-gc-evaluation.md`](asset-gc-evaluation.md).
 
 The deployable starter is `project-morpho-case-study`, generated from an editable backup. Its public case-study assets are hash-addressed under `public/case-study/current/assets/`; first use fetches, verifies, and writes them into the same IndexedDB BlobStore used by ordinary projects. The installer is idempotent and only removes the two known legacy Nightrail seed keys after a confirmed pristine replacement.
 
