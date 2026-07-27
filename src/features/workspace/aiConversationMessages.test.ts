@@ -31,6 +31,7 @@ describe("AI conversation messages", () => {
       agentTrace: trace
     });
     expect(failed.ai.messages.slice(0, -1)).toEqual(workspace.ai.messages.slice(0, -1));
+    expect(withTrace.ai.messages.slice(0, -1).every((message, index) => message === workspace.ai.messages[index])).toBe(true);
   });
 
   it("stores citation snapshots and resolves deterministic id collisions", () => {

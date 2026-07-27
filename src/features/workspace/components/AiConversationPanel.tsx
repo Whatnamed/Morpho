@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
+import { memo, useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronDown, ChevronLeft, Send, Square } from "lucide-react";
 
 import type {
@@ -522,24 +522,11 @@ export function AiConversationPanel({
         <div className="ai-scroll-shell">
           <div className="ai-scroll" ref={scrollRef} onScroll={updateScrollBottomVisibility}>
             {workspace.ai.messages.map((message) => {
-              const isPlaceholderThinking =
-                message.role === "assistant" &&
-                message.status === "streaming" &&
-                (!message.body.trim() || isAgentThinkingPlaceholder(message.body));
               const projectRecordFeedback = getProjectRecordFeedback(message);
 
               return (
               <div className={`ai-message ${message.role}`} key={message.id} data-message-id={message.id}>
-                {message.agentTrace ? (
-                  <AgentProcessDisclosure trace={message.agentTrace} renderText={renderAgentProcessText} />
-                ) : null}
-                {message.agentTrace ? (
-                  message.body.trim() ? <MarkdownContent body={getVisibleAiMessageBody(message.body)} /> : null
-                ) : isPlaceholderThinking ? (
-                  <ThinkingIndicator />
-                ) : (
-                  <MarkdownContent body={getVisibleAiMessageBody(message.body)} />
-                )}
+                <AiMessageContent message={message} />
                 {message.comparisonAnalysisId ? (
                   <ComparisonAnalysisCard
                     analysis={workspace.ai.comparisonAnalyses?.[message.comparisonAnalysisId]}
@@ -930,6 +917,30 @@ function ThinkingIndicator() {
     </div>
   );
 }
+
+// Stream updates replace only the active message object. Keeping the expensive
+// trace and Markdown subtree behind that identity boundary avoids reparsing history.
+const AiMessageContent = memo(function AiMessageContent({ message }: { message: AiMessage }) {
+  const isPlaceholderThinking =
+    message.role === "assistant" &&
+    message.status === "streaming" &&
+    (!message.body.trim() || isAgentThinkingPlaceholder(message.body));
+
+  return (
+    <>
+      {message.agentTrace ? (
+        <AgentProcessDisclosure trace={message.agentTrace} renderText={renderAgentProcessText} />
+      ) : null}
+      {message.agentTrace ? (
+        message.body.trim() ? <MarkdownContent body={getVisibleAiMessageBody(message.body)} /> : null
+      ) : isPlaceholderThinking ? (
+        <ThinkingIndicator />
+      ) : (
+        <MarkdownContent body={getVisibleAiMessageBody(message.body)} />
+      )}
+    </>
+  );
+});
 
 function renderAgentProcessText(text: string): ReactNode {
   return <MarkdownContent body={text} />;
