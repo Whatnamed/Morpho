@@ -8389,18 +8389,24 @@ select:focus-visible {
 .archive-panel {
   display: flex;
   flex-direction: column;
+  max-height: calc(100vh - 112px);
+  min-height: 0;
   overflow: hidden;
 }
 
 .archive-panel-body {
   display: grid;
+  flex: 1 1 auto;
   gap: 12px;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 0 16px 16px;
 }
 
 .archive-panel-head {
+  flex: 0 0 auto;
   padding: 16px 16px 12px;
 }
 

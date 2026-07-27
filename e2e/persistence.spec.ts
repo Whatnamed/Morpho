@@ -83,10 +83,7 @@ test.describe("项目持久化", () => {
     );
     expect(projectKeysBeforeConfirm).toHaveLength(1);
 
-    // The archive panel does not scroll, so its confirm row falls below a 900px
-    // viewport once the restore preview is open (see the reachability test below).
-    // Give the window the height a user would need until that is fixed.
-    await page.setViewportSize({ width: 1440, height: 1200 });
+    await preview.getByRole("button", { name: "确认恢复" }).scrollIntoViewIfNeeded();
     await preview.getByRole("button", { name: "确认恢复" }).click();
 
     await expect
@@ -114,11 +111,7 @@ test.describe("项目持久化", () => {
     expect(Object.keys(restored.objects).sort()).toEqual(Object.keys(original.objects).sort());
   });
 
-  // KNOWN GAP (2026-07-27): `.archive-panel` is ~975px tall with `overflow-y:
-  // hidden`, so opening the restore preview pushes 取消/确认恢复 to y≈928 — off
-  // screen and unreachable on any window shorter than that, with no way to scroll
-  // to them. Kept as a failing expectation so the fix has a test to turn green.
-  test.fail("恢复预览的确认按钮在 900px 高的窗口里可点", async ({ page }) => {
+  test("恢复预览的确认按钮在 900px 高的窗口里可点", async ({ page }) => {
     const seed = await seedTextOnlyProject(page);
     await page.goto(`/projects/${seed.textOnly.projectId}`);
     await expect(page.locator(".morpho-shape-host").first()).toBeVisible();
@@ -134,11 +127,21 @@ test.describe("项目持久化", () => {
     await download.saveAs(backupPath);
     await panel.locator('input[type="file"]').setInputFiles(backupPath);
 
-    const confirmRestore = page.locator(".restore-preview-card").getByRole("button", { name: "确认恢复" });
+    const preview = page.locator(".restore-preview-card");
+    const cancelRestore = preview.getByRole("button", { name: "取消" });
+    const confirmRestore = preview.getByRole("button", { name: "确认恢复" });
     await expect(confirmRestore).toBeVisible({ timeout: 20_000 });
-    const box = await confirmRestore.boundingBox();
-    const viewport = page.viewportSize();
-    expect(box).not.toBeNull();
-    expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(viewport?.height ?? 0);
+    await confirmRestore.scrollIntoViewIfNeeded();
+    await expect(cancelRestore).toBeInViewport();
+    await expect(confirmRestore).toBeInViewport();
+    await confirmRestore.click();
+
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() => Object.keys(window.localStorage).filter((key) => key.startsWith("morpho.project.")).length),
+        { timeout: 30_000 }
+      )
+      .toBe(2);
   });
 });
