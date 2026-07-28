@@ -20,6 +20,7 @@ import { classifyProviderCacheStatus } from "@/server/ai/providerTokenUsage";
 import {
   AGENT_COMPACTION_TRANSCRIPT_MARKER_TYPE,
   AGENT_COMPACTION_RECEIPT_VERSION,
+  AGENT_TRANSCRIPT_MESSAGE_TYPE,
   buildAgentContextMarkerManifest,
   buildAgentDurableTranscriptManifest,
   createAgentTranscriptMessageItem,
@@ -42,6 +43,7 @@ import {
   agentTurnLeaseDeniedResponse,
   continueAgentTurnLease,
   hashAgentTurnLeaseValue,
+  markAgentTurnProviderFailure,
   startAgentTurnLease
 } from "@/server/auth/agentTurnLease";
 import {
@@ -665,7 +667,24 @@ export async function POST(request: Request) {
             }
           });
         } catch (error) {
-          enqueue({ ...providerErrorEvent(error), attemptId: activeAttemptId });
+          const providerFailureOutcome = error instanceof DOMException && error.name === "AbortError"
+            ? "cancelledDuringProvider" as const
+            : "failedDuringProvider" as const;
+          const failureProof = await markAgentTurnProviderFailure({
+            leaseId: leaseAccess.lease.id,
+            agentTurnId: validated.value.agentTurnId,
+            outcome: providerFailureOutcome,
+            expectedProviderSequence: leaseAccess.lease.nextProviderSequence
+          });
+          const event = providerErrorEvent(error);
+          enqueue({
+            ...event,
+            error: failureProof.status === "marked"
+              ? event.error
+              : `${event.error} Provider 失败终态未能建立，Lease 保持待恢复状态。`,
+            ...(failureProof.status === "marked" ? { providerFailureOutcome } : {}),
+            attemptId: activeAttemptId
+          });
         } finally {
           cleanup();
           if (!streamClosed) {
@@ -1005,8 +1024,14 @@ function verifyAgentDurableTranscriptRequest(input: {
   if (input.summaryRequest || input.continuation || input.leaseContinuation) {
     return { status: "ok" };
   }
+  if (hasUnwrappedConversationOrProviderMessage(input.input)) {
+    return { status: "failed", reason: "durable_replay_unverified" };
+  }
   const replayMessages = transcriptMessages.filter((message) => message.replayMode === "durableReplay");
-  if (replayMessages.length === 0) {
+  const hasPreviousSnapshot = Boolean(
+    input.previousRequestState?.transcriptSnapshotToken || input.previousRequestState?.transcriptManifestHash
+  );
+  if (replayMessages.length === 0 && !hasPreviousSnapshot) {
     return { status: "ok" };
   }
   if (!input.secret) {
@@ -1031,6 +1056,22 @@ function verifyAgentDurableTranscriptRequest(input: {
     return { status: "failed", reason: "durable_replay_unverified" };
   }
   return { status: "ok" };
+}
+
+function hasUnwrappedConversationOrProviderMessage(items: readonly unknown[]) {
+  return items.some((item) => {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      return false;
+    }
+    if ("type" in item && item.type === AGENT_TRANSCRIPT_MESSAGE_TYPE) {
+      return false;
+    }
+    if (readAgentContextStateMarkerCandidate(item)) {
+      return false;
+    }
+    return ("type" in item && item.type === "message") ||
+      ("role" in item && (item.role === "user" || item.role === "assistant"));
+  });
 }
 
 function collectAgentTranscriptMessages(

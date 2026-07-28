@@ -609,6 +609,9 @@ export async function requestAgentTurnProvider(
           }
           return;
         }
+        if (event.type === "turn-error" && event.providerFailureOutcome) {
+          turnState.providerFailureOutcome = event.providerFailureOutcome;
+        }
         if (event.type === "turn-attempt-reset") {
           runtimeState.streamedFinalTextByAttempt.delete(event.attemptId);
           activeAttemptInputTokens = 0;

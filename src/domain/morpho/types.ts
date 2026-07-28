@@ -832,6 +832,8 @@ export type AgentTurnOutcome =
   | "success"
   | "cancelledBeforeExecution"
   | "failedBeforeExecution"
+  | "cancelledDuringProvider"
+  | "failedDuringProvider"
   | "partialSuccess"
   | "pendingConfirmation";
 
@@ -876,6 +878,26 @@ export type ProviderOutputSnapshot = {
   contentHash: string;
 };
 
+export type AgentTurnClosureRecovery = {
+  schemaVersion: 1;
+  leaseId: string;
+  agentTurnId: string;
+  userMessageId: string;
+  assistantMessageId: string;
+  closureRequestId: string;
+  outcome: AgentTurnOutcome;
+  /** Exact serialized request; retries must send these bytes unchanged. */
+  requestBody: string;
+  assistantBody: string;
+  assistantStatus: "done" | "failed" | "cancelled";
+  traceStatus: "done" | "failed" | "cancelled";
+  summary?: string;
+  completedAt: string;
+  responseId?: string;
+  providerRequestState?: AgentTrace["providerRequestState"];
+  latestProviderRequestState?: import("@/shared/agentStreamProtocol").AgentProviderRequestState;
+};
+
 export type AiMessage = {
   id: string;
   role: "assistant" | "user";
@@ -908,6 +930,8 @@ export type AiMessage = {
   agentTurnOutcome?: AgentTurnOutcome;
   agentTurnOutcomeSummary?: string;
   agentTurnOutcomeItem?: import("@/shared/agentCompactionProtocol").AgentTurnOutcomeItem;
+  /** Internal opaque state for exact idempotent Closure recovery; never sent to the model. */
+  agentTurnClosureRecovery?: AgentTurnClosureRecovery;
   error?: string;
 };
 

@@ -3,7 +3,9 @@ import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  completeAgentTurnLeaseForClient,
   continueAgentTurnLeaseForClient,
+  markAgentTurnProviderFailureForClient,
   readAgentTurnLeaseStateForClient,
   startAgentTurnLeaseForClient
 } from "./agentTurnLease";
@@ -257,6 +259,49 @@ describe("Agent Turn Lease access", () => {
     });
   });
 
+  it("binds every closure request to the provider sequence that created its proof", async () => {
+    const mock = client({
+      completed: true,
+      status_name: "success",
+      replayed: false,
+      denial_reason: null
+    });
+
+    await expect(completeAgentTurnLeaseForClient(mock, {
+      leaseId: "lease-a",
+      agentTurnId: "agent-turn-a",
+      outcome: "success",
+      closureRequestId: "closure-a",
+      closureRequestHash: "a".repeat(64),
+      expectedProviderSequence: 3
+    })).resolves.toEqual({ status: "completed", statusName: "success", replayed: false });
+    expect(mock.rpc).toHaveBeenCalledWith("complete_agent_turn_lease", {
+      p_lease_id: "lease-a",
+      p_agent_turn_id: "agent-turn-a",
+      p_outcome: "success",
+      p_closure_request_id: "closure-a",
+      p_closure_request_hash: "a".repeat(64),
+      p_expected_provider_sequence: 3
+    });
+  });
+
+  it("records a provider failure only through the sequence-bound failure RPC", async () => {
+    const mock = client({ marked: true, replayed: false, denial_reason: null });
+
+    await expect(markAgentTurnProviderFailureForClient(mock, {
+      leaseId: "lease-a",
+      agentTurnId: "agent-turn-a",
+      outcome: "failedDuringProvider",
+      expectedProviderSequence: 3
+    })).resolves.toEqual({ status: "marked", replayed: false });
+    expect(mock.rpc).toHaveBeenCalledWith("mark_agent_turn_provider_failure", {
+      p_lease_id: "lease-a",
+      p_agent_turn_id: "agent-turn-a",
+      p_outcome: "failedDuringProvider",
+      p_expected_provider_sequence: 3
+    });
+  });
+
   it("counts a repeated first request as a real provider execution in the SQL contract", () => {
     const sql = readMigration("20260726161500_bind_agent_turn_provider_execution.sql");
 
@@ -335,6 +380,33 @@ describe("Agent Turn Lease access", () => {
     expect(sql.match(/set search_path = ''/g)).toHaveLength(3);
     expect(sql.match(/current_user_id uuid := auth.uid\(\)/g)).toHaveLength(3);
     expect(sql).toContain("to authenticated");
+    expect(sql).not.toMatch(/prompt|workspace|request_body|body_text|transcript_text/i);
+  });
+
+  it("makes closure sequence and provider-failure proofs atomic in the forward-only SQL contract", () => {
+    const sql = readMigration("20260728203000_harden_agent_turn_closure_sequence.sql");
+
+    expect(sql).toContain("closure_provider_sequence integer");
+    expect(sql).toContain("provider_failure_outcome text");
+    expect(sql).toContain("provider_failure_sequence integer");
+    expect(sql).toContain("provider_failure_outcome is not null and provider_failure_sequence is not null");
+    expect(sql).toContain("'failedDuringProvider'");
+    expect(sql).toContain("'cancelledDuringProvider'");
+    expect(sql).toContain("create or replace function public.mark_agent_turn_provider_failure(");
+    expect(sql).toContain("p_expected_provider_sequence integer");
+    expect(sql).toContain("lease_row.next_provider_sequence <> p_expected_provider_sequence");
+    expect(sql).toContain("lease_row.provider_failure_outcome is distinct from p_outcome");
+    expect(sql).toContain("lease_row.provider_failure_sequence is distinct from p_expected_provider_sequence");
+    expect(sql).toContain("lease_row.closure_provider_sequence = p_expected_provider_sequence");
+    expect(sql).toContain("lease_row.next_provider_sequence <> p_expected_provider_sequence");
+    expect(sql).toContain("closure_provider_sequence = p_expected_provider_sequence");
+    expect(sql).toContain("provider_failure_outcome = p_outcome");
+    expect(sql).toContain("provider_failure_sequence = p_expected_provider_sequence");
+    expect(sql).toContain("drop function if exists public.complete_agent_turn_lease(uuid, text, text, text, text)");
+    expect(sql).toContain("grant execute on function public.complete_agent_turn_lease(uuid, text, text, text, text, integer)");
+    expect(sql).toContain("grant execute on function public.mark_agent_turn_provider_failure(uuid, text, text, integer)");
+    expect(sql.match(/set search_path = ''/g)).toHaveLength(2);
+    expect(sql.match(/current_user_id uuid := auth.uid\(\)/g)).toHaveLength(2);
     expect(sql).not.toMatch(/prompt|workspace|request_body|body_text|transcript_text/i);
   });
 

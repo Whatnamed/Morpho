@@ -26,6 +26,8 @@ export type AgentTurnLeaseOutcome =
   | "success"
   | "cancelledBeforeExecution"
   | "failedBeforeExecution"
+  | "cancelledDuringProvider"
+  | "failedDuringProvider"
   | "partialSuccess"
   | "pendingConfirmation";
 
@@ -431,20 +433,79 @@ export async function closeAgentTurnLease(input: {
   if (proofRequired && (!input.snapshot || !input.state.turnClosureToken)) {
     throw new Error("Agent Turn Closure 缺少服务端签名 Proof，Lease 保持待恢复状态。");
   }
+  const providerFailure = input.outcome === "cancelledDuringProvider" ||
+    input.outcome === "failedDuringProvider";
+  if (providerFailure && input.state.nextAgentLeaseSequence === undefined) {
+    throw new Error("Provider 失败终态缺少 Lease sequence，Lease 保持待恢复状态。");
+  }
   const closureRequestId = input.state.closureRequestId ?? createClosureRequestId(input.agentTurnId);
   input.state.closureRequestId = closureRequestId;
-  const result = await closeAgentTurnLeaseRequest({
+  const requestInput = {
     leaseId,
     agentTurnId: input.agentTurnId,
     outcome: input.outcome,
     closureRequestId,
+    ...(providerFailure ? { leaseSequence: input.state.nextAgentLeaseSequence } : {}),
     snapshot: input.snapshot,
     fetch: input.fetch
-  });
+  };
+  const requestBody = serializeAgentTurnClosureRequest(requestInput);
+  input.state.closureRequestBody = requestBody;
+  const result = await closeAgentTurnLeaseRequest({ ...requestInput, requestBody });
   input.state.agentTurnLeaseId = undefined;
   input.state.turnClosureToken = undefined;
   input.state.closureRequestId = undefined;
+  input.state.closureRequestBody = undefined;
   return result;
+}
+
+export async function finalizePendingAgentTurnClosureProof(input: {
+  state: AgentTurnState;
+  agentTurnId: string;
+  projectId: string;
+  userMessageId: string;
+  assistantMessageId: string;
+  continuationInput: readonly unknown[];
+  fetch?: typeof fetch;
+}): Promise<void> {
+  const leaseId = input.state.agentTurnLeaseId;
+  const leaseSequence = input.state.nextAgentLeaseSequence;
+  const closureToken = input.state.turnClosureToken;
+  const continuationToken = input.state.agentContinuationToken;
+  const requestState = input.state.latestProviderRequestState;
+  const providerOutputSnapshot = input.state.latestAssistantProviderOutputSnapshot;
+  if (!leaseId || leaseSequence === undefined || !closureToken || !continuationToken ||
+    !requestState?.transcriptSnapshotToken || !requestState.transcriptManifestHash ||
+    !providerOutputSnapshot) {
+    throw new Error("Pending Closure 缺少服务端签名的 Provider/Transcript 证明，Lease 保持待恢复状态。");
+  }
+  const response = await (input.fetch ?? fetch)("/api/ai/agent/lease/finalize-function-calls", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      leaseId,
+      agentTurnId: input.agentTurnId,
+      leaseSequence,
+      closureToken,
+      continuationToken,
+      continuationInput: input.continuationInput,
+      projectId: input.projectId,
+      userMessageId: input.userMessageId,
+      assistantMessageId: input.assistantMessageId,
+      transcriptSnapshotToken: requestState.transcriptSnapshotToken,
+      transcriptManifestHash: requestState.transcriptManifestHash,
+      providerOutputSnapshot
+    })
+  });
+  const payload = await readJsonPayload(response);
+  if (!response.ok || !isRecord(payload) || payload.status !== "pendingConfirmation" ||
+    typeof payload.closureToken !== "string") {
+    throw new Error(
+      (isRecord(payload) && typeof payload.error === "string" && payload.error) ||
+      "Pending Closure Proof 无法建立，Lease 保持待恢复状态。"
+    );
+  }
+  input.state.turnClosureToken = payload.closureToken;
 }
 
 export async function markAgentTurnToolExecutionStarted(input: {
@@ -484,6 +545,7 @@ export async function closeAgentTurnLeaseRequest(input: {
   agentTurnId: string;
   outcome: AgentTurnLeaseOutcome;
   closureRequestId?: string;
+  leaseSequence?: number;
   snapshot?: {
     projectId: string;
     userMessageId: string;
@@ -493,6 +555,9 @@ export async function closeAgentTurnLeaseRequest(input: {
     closureToken: string;
     providerOutputSnapshot: import("@/domain/morpho/types").ProviderOutputSnapshot;
   };
+  /** Internal exact-replay override used only by persisted Closure recovery. */
+  requestBody?: string;
+  expectsOutcomeSnapshot?: boolean;
   fetch?: typeof fetch;
 }): Promise<AgentTurnOutcomeSnapshotResult | undefined> {
   if (!input.leaseId) {
@@ -500,11 +565,12 @@ export async function closeAgentTurnLeaseRequest(input: {
   }
   const fetchImpl = input.fetch ?? fetch;
   const closureRequestId = input.closureRequestId ?? createClosureRequestId(input.agentTurnId);
-  const requestBody = JSON.stringify({
+  const requestBody = input.requestBody ?? serializeAgentTurnClosureRequest({
     leaseId: input.leaseId,
     agentTurnId: input.agentTurnId,
     outcome: input.outcome,
     closureRequestId,
+    ...(input.leaseSequence !== undefined ? { leaseSequence: input.leaseSequence } : {}),
     ...(input.snapshot ?? {})
   });
   let response: Response | undefined;
@@ -533,7 +599,7 @@ export async function closeAgentTurnLeaseRequest(input: {
       "Agent Turn Closure 失败，Lease 保持待恢复状态。"
     );
   }
-  if (!input.snapshot) {
+  if (!(input.expectsOutcomeSnapshot ?? Boolean(input.snapshot))) {
     return undefined;
   }
   const outcomeItem = parseAgentTurnOutcomeItem(payload.outcomeItem);
@@ -548,6 +614,70 @@ export async function closeAgentTurnLeaseRequest(input: {
     transcriptManifestHash: payload.transcriptManifestHash,
     expiresAt: payload.expiresAt
   };
+}
+
+export async function recoverAgentTurnClosureRequest(input: {
+  requestBody: string;
+  fetch?: typeof fetch;
+}): Promise<AgentTurnOutcomeSnapshotResult | undefined> {
+  if (input.requestBody.length < 2 || input.requestBody.length > 2_000_000) {
+    throw new Error("Agent Turn Closure 恢复请求无效。");
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input.requestBody);
+  } catch {
+    throw new Error("Agent Turn Closure 恢复请求无效。");
+  }
+  if (!isRecord(parsed) || typeof parsed.leaseId !== "string" ||
+    typeof parsed.agentTurnId !== "string" || typeof parsed.closureRequestId !== "string" ||
+    !isAgentTurnLeaseOutcome(parsed.outcome)) {
+    throw new Error("Agent Turn Closure 恢复请求无效。");
+  }
+  const proofOutcome = parsed.outcome === "success" || parsed.outcome === "partialSuccess" ||
+    parsed.outcome === "pendingConfirmation";
+  return closeAgentTurnLeaseRequest({
+    leaseId: parsed.leaseId,
+    agentTurnId: parsed.agentTurnId,
+    outcome: parsed.outcome,
+    closureRequestId: parsed.closureRequestId,
+    requestBody: input.requestBody,
+    expectsOutcomeSnapshot: proofOutcome,
+    fetch: input.fetch
+  });
+}
+
+function serializeAgentTurnClosureRequest(input: {
+  leaseId: string;
+  agentTurnId: string;
+  outcome: AgentTurnLeaseOutcome;
+  closureRequestId: string;
+  leaseSequence?: number;
+  snapshot?: {
+    projectId: string;
+    userMessageId: string;
+    assistantMessageId: string;
+    transcriptSnapshotToken: string;
+    transcriptManifestHash: string;
+    closureToken: string;
+    providerOutputSnapshot: import("@/domain/morpho/types").ProviderOutputSnapshot;
+  };
+}): string {
+  return JSON.stringify({
+    leaseId: input.leaseId,
+    agentTurnId: input.agentTurnId,
+    outcome: input.outcome,
+    closureRequestId: input.closureRequestId,
+    ...(input.leaseSequence !== undefined ? { leaseSequence: input.leaseSequence } : {}),
+    ...(input.snapshot ?? {})
+  });
+}
+
+function isAgentTurnLeaseOutcome(value: unknown): value is AgentTurnLeaseOutcome {
+  return value === "success" || value === "cancelledBeforeExecution" ||
+    value === "failedBeforeExecution" || value === "cancelledDuringProvider" ||
+    value === "failedDuringProvider" || value === "partialSuccess" ||
+    value === "pendingConfirmation";
 }
 
 function createClosureRequestId(agentTurnId: string): string {

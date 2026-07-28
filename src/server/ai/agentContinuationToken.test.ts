@@ -26,6 +26,7 @@ import {
   verifyAgentContinuationBinding,
   verifyAgentCompactionBinding,
   verifyAgentContinuationToken,
+  verifyAgentPendingFunctionCallClosureBinding,
   verifyAgentTranscriptSnapshotToken,
   verifyAgentTurnClosureToken,
   type AgentContinuationClaims
@@ -117,6 +118,60 @@ describe("agent continuation token", () => {
     expect(verify({ now: 1_000_000 + 21 * 60 * 1000 })).toEqual({ status: "failed", reason: "token_expired" });
   });
 
+  it("keeps incomplete closure tokens finalizer-only and binds finalized pending proofs to their outcome", () => {
+    const incomplete = issueAgentTurnClosureToken({
+      secret: SECRET,
+      userId: USER_ID,
+      projectId: "project-a",
+      leaseId: "lease-1",
+      agentTurnId: "agent-turn-1",
+      leaseSequence: 3,
+      currentUserMessageId: "user-a",
+      assistantMessageId: "assistant-a",
+      transcriptManifestHash: "a".repeat(64),
+      providerOutputSnapshotHash: "b".repeat(64),
+      terminalFunctionCalls: false,
+      now: 1_000_000
+    });
+    const base = {
+      token: incomplete,
+      secret: SECRET,
+      userId: USER_ID,
+      projectId: "project-a",
+      leaseId: "lease-1",
+      agentTurnId: "agent-turn-1",
+      currentUserMessageId: "user-a",
+      assistantMessageId: "assistant-a",
+      transcriptManifestHash: "a".repeat(64),
+      providerOutputSnapshotHash: "b".repeat(64),
+      now: 1_000_001
+    };
+    expect(verifyAgentTurnClosureToken(base)).toEqual({ status: "failed", reason: "tool_result_missing" });
+    expect(verifyAgentTurnClosureToken({ ...base, allowIncompleteTerminalFunctionCalls: true }))
+      .toMatchObject({ status: "ok", claims: { terminalFunctionCalls: false } });
+
+    const finalized = issueAgentTurnClosureToken({
+      secret: SECRET,
+      userId: USER_ID,
+      projectId: "project-a",
+      leaseId: "lease-1",
+      agentTurnId: "agent-turn-1",
+      leaseSequence: 3,
+      currentUserMessageId: "user-a",
+      assistantMessageId: "assistant-a",
+      transcriptManifestHash: "a".repeat(64),
+      providerOutputSnapshotHash: "b".repeat(64),
+      terminalFunctionCalls: true,
+      requiredOutcome: "pendingConfirmation",
+      terminalOutputHash: "c".repeat(64),
+      now: 1_000_000
+    });
+    expect(verifyAgentTurnClosureToken({ ...base, token: finalized, expectedOutcome: "pendingConfirmation" }))
+      .toMatchObject({ status: "ok", claims: { requiredOutcome: "pendingConfirmation" } });
+    expect(verifyAgentTurnClosureToken({ ...base, token: finalized, expectedOutcome: "success" }))
+      .toEqual({ status: "failed", reason: "token_scope" });
+  });
+
   it("resolves an explicit secret and otherwise derives one from the provider key", () => {
     expect(resolveAgentContinuationSecret({ MORPHO_AGENT_CONTINUATION_SECRET: " explicit " }))
       .toBe("explicit");
@@ -169,6 +224,34 @@ describe("agent continuation token", () => {
         { type: "function_call_output", call_id: "call_1", output: "{\"status\":\"ok\"}" }
       ]
     })).toEqual({ status: "ok" });
+  });
+
+  it("requires canonical terminal output JSON and at least one pending-confirmation result for closure finalization", () => {
+    const claims = claimsFrom(issue());
+    expect(verifyAgentPendingFunctionCallClosureBinding({
+      claims,
+      parsedInput: [
+        ...PREFIX,
+        ...OUTPUT_ITEMS,
+        { type: "function_call_output", call_id: "call_1", output: "{\"status\":\"pendingConfirmation\"}" }
+      ]
+    })).toMatchObject({ status: "ok", terminalOutputHash: expect.any(String) });
+    expect(verifyAgentPendingFunctionCallClosureBinding({
+      claims,
+      parsedInput: [
+        ...PREFIX,
+        ...OUTPUT_ITEMS,
+        { type: "function_call_output", call_id: "call_1", output: "{\"status\":\"executed\"}" }
+      ]
+    })).toEqual({ status: "failed", reason: "tool_result_missing" });
+    expect(verifyAgentPendingFunctionCallClosureBinding({
+      claims,
+      parsedInput: [
+        ...PREFIX,
+        ...OUTPUT_ITEMS,
+        { type: "function_call_output", call_id: "call_1", output: "{\"status\":\"invented\"}" }
+      ]
+    })).toEqual({ status: "failed", reason: "tool_result_forged" });
   });
 
   it("rejects ordinary dialogue, strategy-like data, and missing terminal outputs in the exact tail", () => {

@@ -140,7 +140,9 @@ describe("agent turn messages", () => {
 
   it.each([
     ["failedBeforeExecution", "failed"],
-    ["cancelledBeforeExecution", "cancelled"]
+    ["cancelledBeforeExecution", "cancelled"],
+    ["failedDuringProvider", "failed"],
+    ["cancelledDuringProvider", "cancelled"]
   ] as const)("finalizes %s once and removes the whole pair from usable context", (outcome, status) => {
     const workspace = appendAgentTurnMessages(createInitialWorkspace(), {
       userMessageId: `user-${outcome}`,

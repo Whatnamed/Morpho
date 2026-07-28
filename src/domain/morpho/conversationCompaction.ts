@@ -457,8 +457,13 @@ export function getUsableConversationMessages(messages: readonly AiMessage[]): A
     messages
       .filter((message) =>
         message.agentTurnId &&
-        (message.agentTurnOutcome === "cancelledBeforeExecution" ||
+        (message.agentTurnClosureRecovery !== undefined ||
+          (message.role === "assistant" && !message.agentTurnOutcome &&
+            (message.status === "failed" || Boolean(message.error))) ||
+          message.agentTurnOutcome === "cancelledBeforeExecution" ||
           message.agentTurnOutcome === "failedBeforeExecution" ||
+          message.agentTurnOutcome === "cancelledDuringProvider" ||
+          message.agentTurnOutcome === "failedDuringProvider" ||
           ((message.agentTurnOutcome === "partialSuccess" || message.agentTurnOutcome === "pendingConfirmation") &&
             message.role === "assistant" && !message.agentTurnOutcomeItem))
       )

@@ -130,6 +130,14 @@ export type AgentTurnClosureClaims = {
   transcriptManifestHash: string;
   providerOutputSnapshotHash: string;
   terminalFunctionCalls: boolean;
+  /**
+   * Present only on a server-finalized closure proof for a pending tool batch.
+   * Normal no-tool closure tokens intentionally omit this so existing success
+   * and partial-success flows remain wire-compatible.
+   */
+  requiredOutcome?: "pendingConfirmation";
+  /** Hash of the exact terminal outputs proven by the finalizer. */
+  terminalOutputHash?: string;
   issuedAt: number;
   exp: number;
 };
@@ -179,8 +187,14 @@ export function issueAgentTurnClosureToken(input: {
   transcriptManifestHash: string;
   providerOutputSnapshotHash: string;
   terminalFunctionCalls: boolean;
+  requiredOutcome?: "pendingConfirmation";
+  terminalOutputHash?: string;
   now: number;
 }): string {
+  if ((input.requiredOutcome === undefined) !== (input.terminalOutputHash === undefined) ||
+    (input.requiredOutcome !== undefined && !input.terminalFunctionCalls)) {
+    throw new Error("Pending Closure Token 必须同时绑定 terminalOutputHash，并且只能在终态工具输出已证明后签发。");
+  }
   const claims: AgentTurnClosureClaims = {
     v: TURN_CLOSURE_TOKEN_VERSION,
     userId: input.userId,
@@ -193,6 +207,8 @@ export function issueAgentTurnClosureToken(input: {
     transcriptManifestHash: input.transcriptManifestHash,
     providerOutputSnapshotHash: input.providerOutputSnapshotHash,
     terminalFunctionCalls: input.terminalFunctionCalls,
+    ...(input.requiredOutcome ? { requiredOutcome: input.requiredOutcome } : {}),
+    ...(input.terminalOutputHash ? { terminalOutputHash: input.terminalOutputHash } : {}),
     issuedAt: input.now,
     exp: input.now + AGENT_TURN_CLOSURE_TOKEN_TTL_MS
   };
@@ -211,6 +227,12 @@ export function verifyAgentTurnClosureToken(input: {
   assistantMessageId: string;
   transcriptManifestHash: string;
   providerOutputSnapshotHash?: string;
+  expectedOutcome?: AgentTurnOutcome;
+  /**
+   * Reserved for the server-only function-call finalizer. All ordinary Closure
+   * callers must continue to reject an incomplete (`false`) token.
+   */
+  allowIncompleteTerminalFunctionCalls?: boolean;
   now: number;
   allowExpired?: boolean;
 }): AgentTurnClosureVerification {
@@ -254,10 +276,64 @@ export function verifyAgentTurnClosureToken(input: {
   ) {
     return failed("token_scope");
   }
-  if (!claims.terminalFunctionCalls) {
+  if ((input.expectedOutcome === "pendingConfirmation" || claims.requiredOutcome !== undefined) &&
+    claims.requiredOutcome !== input.expectedOutcome) {
+    return failed("token_scope");
+  }
+  if (!input.allowIncompleteTerminalFunctionCalls && !claims.terminalFunctionCalls) {
     return failed("tool_result_missing");
   }
   return { status: "ok", claims };
+}
+
+/**
+ * A confirm-mode turn deliberately stops after producing terminal tool outputs
+ * instead of making another Provider request. This verifier upgrades that
+ * already-signed Provider continuation into a Closure proof without accepting
+ * client-invented calls, results, or a non-pending outcome.
+ */
+export function verifyAgentPendingFunctionCallClosureBinding(input: {
+  claims: AgentContinuationClaims;
+  parsedInput: readonly unknown[];
+}): { status: "ok"; terminalOutputHash: string } | { status: "failed"; reason: AgentContinuationFailureReason } {
+  if (input.claims.summary || input.claims.callIds.length === 0) {
+    return failed("tool_result_missing");
+  }
+  const binding = verifyAgentContinuationBinding(input);
+  if (binding.status === "failed") {
+    return binding;
+  }
+  const terminalOutputs = continuationTerminalFunctionOutputs(input.claims, input.parsedInput);
+  if (terminalOutputs.length !== input.claims.callIds.length) {
+    return failed("tool_result_missing");
+  }
+  let hasPendingConfirmation = false;
+  for (const output of terminalOutputs) {
+    const terminalStatus = parseCanonicalTerminalFunctionOutputStatus(output);
+    if (!terminalStatus) {
+      return failed("tool_result_forged");
+    }
+    hasPendingConfirmation ||= terminalStatus === "pendingConfirmation";
+  }
+  if (!hasPendingConfirmation) {
+    return failed("tool_result_missing");
+  }
+  return {
+    status: "ok",
+    terminalOutputHash: hashAgentProviderItems(terminalOutputs)
+  };
+}
+
+function continuationTerminalFunctionOutputs(
+  claims: AgentContinuationClaims,
+  parsedInput: readonly unknown[]
+): unknown[] {
+  const tail = parsedInput.slice(claims.inputItemCount);
+  let providerOutputCount = 0;
+  while (providerOutputCount < tail.length && isProviderOutputItem(tail[providerOutputCount])) {
+    providerOutputCount += 1;
+  }
+  return tail.slice(providerOutputCount).filter(isFunctionCallOutput);
 }
 
 export function issueAgentContinuationToken(
@@ -1108,6 +1184,35 @@ function isFunctionCallOutput(value: unknown): value is { call_id: string } {
   return isRecord(value) && value.type === "function_call_output" && typeof value.call_id === "string";
 }
 
+const CANONICAL_TERMINAL_FUNCTION_CALL_STATUSES = new Set([
+  "executed",
+  "failed",
+  "blocked",
+  "skippedDueToEarlierGuard",
+  "pendingConfirmation",
+  "cancelled"
+]);
+
+function parseCanonicalTerminalFunctionOutputStatus(value: unknown): string | undefined {
+  if (!isRecord(value) ||
+    unknownKeys(value, ["type", "call_id", "output"]).length > 0 ||
+    value.type !== "function_call_output" ||
+    typeof value.call_id !== "string" || value.call_id.length < 1 || value.call_id.length > 160 ||
+    !/^[A-Za-z0-9._:-]+$/.test(value.call_id) ||
+    typeof value.output !== "string" || value.output.length > 120_000) {
+    return undefined;
+  }
+  try {
+    const parsed: unknown = JSON.parse(value.output);
+    return isRecord(parsed) && typeof parsed.status === "string" &&
+      CANONICAL_TERMINAL_FUNCTION_CALL_STATUSES.has(parsed.status)
+      ? parsed.status
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function isContinuationClaims(value: unknown): value is AgentContinuationClaims {
   return isRecord(value) &&
     unknownKeys(value, [
@@ -1193,6 +1298,8 @@ function isTurnClosureClaims(value: unknown): value is AgentTurnClosureClaims {
       "transcriptManifestHash",
       "providerOutputSnapshotHash",
       "terminalFunctionCalls",
+      "requiredOutcome",
+      "terminalOutputHash",
       "issuedAt",
       "exp"
     ]).length === 0 &&
@@ -1207,6 +1314,10 @@ function isTurnClosureClaims(value: unknown): value is AgentTurnClosureClaims {
     isProtocolHash(value.transcriptManifestHash) &&
     isProtocolHash(value.providerOutputSnapshotHash) &&
     typeof value.terminalFunctionCalls === "boolean" &&
+    (value.requiredOutcome === undefined || value.requiredOutcome === "pendingConfirmation") &&
+    (value.terminalOutputHash === undefined || isProtocolHash(value.terminalOutputHash)) &&
+    (value.requiredOutcome === undefined) === (value.terminalOutputHash === undefined) &&
+    (value.requiredOutcome === undefined || value.terminalFunctionCalls === true) &&
     typeof value.issuedAt === "number" && Number.isSafeInteger(value.issuedAt) &&
     typeof value.exp === "number" && Number.isSafeInteger(value.exp) &&
     value.exp > value.issuedAt;

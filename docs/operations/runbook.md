@@ -194,6 +194,7 @@ supabase/migrations/20260726143030_harden_agent_turn_lease_causality.sql
 supabase/migrations/20260726161500_bind_agent_turn_provider_execution.sql
 supabase/migrations/20260727180000_read_agent_turn_lease_state.sql
 supabase/migrations/20260728174500_bind_agent_turn_closure.sql
+supabase/migrations/20260728203000_harden_agent_turn_closure_sequence.sql
 ```
 
 The first two are the Prompt Contract v3.3 baseline. Without them, authenticated `/api/ai/agent` requests fail closed with an Agent Turn Lease service error; they must not fall back to the old client-trusted quota path. A missing or signature-changed RPC is reported as a deployment gap (`lease_contract_missing`), not a transient outage.
@@ -226,7 +227,8 @@ where routine_schema = 'public'
     'complete_agent_turn_lease',
     'read_agent_turn_lease_state',
     'read_agent_turn_closure_state',
-    'mark_agent_turn_tool_execution_started'
+    'mark_agent_turn_tool_execution_started',
+    'mark_agent_turn_provider_failure'
   )
 order by routine_name;
 
@@ -239,12 +241,13 @@ where specific_schema = 'public'
     'complete_agent_turn_lease',
     'read_agent_turn_lease_state',
     'read_agent_turn_closure_state',
-    'mark_agent_turn_tool_execution_started'
+    'mark_agent_turn_tool_execution_started',
+    'mark_agent_turn_provider_failure'
   )
 order by routine_name, grantee;
 ```
 
-All six routines must be `SECURITY DEFINER`; only `authenticated` should have `EXECUTE`. Route and static migration checks run in the normal Vitest suite. Real acceptance must also verify one initial reservation, continuation without a second daily reservation, provider/search counter increments on the same lease, forged/cross-user/expired/closed rejection, read-only search recovery, tool execution marking, BeforeExecution rejection after execution, and exact idempotent closure recovery with conflict rejection.
+All seven routines must be `SECURITY DEFINER`; only `authenticated` should have `EXECUTE`. Route and static migration checks run in the normal Vitest suite. Real acceptance must also verify one initial reservation, continuation without a second daily reservation, provider/search counter increments on the same lease, forged/cross-user/expired/closed rejection, read-only search recovery, tool execution marking, BeforeExecution rejection after execution, exact-sequence Provider failure marking, and exact idempotent closure recovery with conflict rejection.
 
 The Supabase Free-plan leaked-password-protection advisor warning is a plan limitation. It is not fixed by changing application SQL or weakening authentication behavior.
 
@@ -470,6 +473,7 @@ supabase/migrations/20260726143030_harden_agent_turn_lease_causality.sql
 supabase/migrations/20260726161500_bind_agent_turn_provider_execution.sql
 supabase/migrations/20260727180000_read_agent_turn_lease_state.sql
 supabase/migrations/20260728174500_bind_agent_turn_closure.sql
+supabase/migrations/20260728203000_harden_agent_turn_closure_sequence.sql
 ```
 
 Do not apply them from an unverified shell. Verify the CLI and linked project first:
@@ -518,6 +522,7 @@ supabase/migrations/20260726143030_harden_agent_turn_lease_causality.sql
 supabase/migrations/20260726161500_bind_agent_turn_provider_execution.sql
 supabase/migrations/20260727180000_read_agent_turn_lease_state.sql
 supabase/migrations/20260728174500_bind_agent_turn_closure.sql
+supabase/migrations/20260728203000_harden_agent_turn_closure_sequence.sql
 ```
 
 Until they are applied, one or more Lease/Closure RPCs do not exist with the

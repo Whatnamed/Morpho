@@ -62,9 +62,14 @@ test.describe("AI 回合", () => {
     await expect
       .poll(async () => {
         const stored = await readStoredWorkspace(page);
-        return stored.ai.messages.filter((message) => message.role === "assistant").at(-1)?.body;
+        const assistant = stored.ai.messages.filter((message) => message.role === "assistant").at(-1);
+        return {
+          body: assistant?.body,
+          status: assistant?.status,
+          outcome: assistant?.agentTurnOutcome
+        };
       })
-      .toContain(answer);
+      .toMatchObject({ body: answer, status: "done", outcome: "success" });
 
     const stored = await readStoredWorkspace(page);
     const assistant = stored.ai.messages.filter((message) => message.role === "assistant").at(-1);

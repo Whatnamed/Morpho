@@ -229,6 +229,8 @@ export type AgentRouteStreamEvent =
       type: "turn-error";
       error: string;
       code?: "context_limit" | "function_call_limit" | "interrupted";
+      /** Server-recorded terminal failure for a Provider call that already consumed the Lease. */
+      providerFailureOutcome?: "cancelledDuringProvider" | "failedDuringProvider";
       attemptId?: string;
     };
 

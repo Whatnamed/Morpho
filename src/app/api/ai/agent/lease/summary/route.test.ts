@@ -47,7 +47,8 @@ describe("Conversation Summary-only closure route", () => {
       leaseId: "lease-a",
       agentTurnId: "turn-a",
       outcome: "success",
-      closureRequestId: "summary-close-a"
+      closureRequestId: "summary-close-a",
+      expectedProviderSequence: 2
     }));
   });
 });

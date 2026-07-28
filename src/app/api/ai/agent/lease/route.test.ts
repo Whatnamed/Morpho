@@ -10,6 +10,7 @@ import {
   createAgentTranscriptMessageItem
 } from "@/shared/agentCompactionProtocol";
 import { createProviderOutputSnapshot } from "@/domain/morpho/providerInputSnapshot";
+import { hashAgentTurnLeaseValue } from "@/server/auth/agentTurnLease";
 
 import { POST } from "./route";
 
@@ -73,6 +74,40 @@ describe("Agent Turn Lease completion route", () => {
     });
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ reason: "execution_already_started" });
+    expect(completeMock).toHaveBeenCalledWith(expect.objectContaining({
+      expectedProviderSequence: 0
+    }));
+  });
+
+  it.each(["failedDuringProvider", "cancelledDuringProvider"])(
+    "closes %s only against the server-recorded Provider failure sequence",
+    async (outcome) => {
+      const response = await request({
+        leaseId: "lease-a",
+        agentTurnId: "agent-turn-a",
+        closureRequestId: "closure-a",
+        leaseSequence: 3,
+        outcome
+      });
+
+      expect(response.status).toBe(200);
+      expect(completeMock).toHaveBeenCalledWith(expect.objectContaining({
+        outcome,
+        expectedProviderSequence: 3
+      }));
+    }
+  );
+
+  it("rejects a DuringProvider outcome without its exact Lease sequence", async () => {
+    const response = await request({
+      leaseId: "lease-a",
+      agentTurnId: "agent-turn-a",
+      closureRequestId: "closure-a",
+      outcome: "failedDuringProvider"
+    });
+
+    expect(response.status).toBe(400);
+    expect(completeMock).not.toHaveBeenCalled();
   });
 
   it("replaces intermediate Provider text with a signed partial-success outcome", async () => {
@@ -87,6 +122,9 @@ describe("Agent Turn Lease completion route", () => {
       assistantMessageId: "assistant-a"
     });
     expect(JSON.stringify(payload)).not.toContain(proof.providerSnapshot.text);
+    expect(completeMock).toHaveBeenCalledWith(expect.objectContaining({
+      expectedProviderSequence: 1
+    }));
     const verified = verifyAgentTranscriptSnapshotToken({
       token: payload.transcriptSnapshotToken,
       secret: SECRET,
@@ -107,11 +145,35 @@ describe("Agent Turn Lease completion route", () => {
     }
   });
 
-  it.each([
-    ["success", "工具执行前：我会完成全部动作。"],
-    ["pendingConfirmation", "本轮停在待确认状态。确认前不把相关动作视为已完成。"]
-  ])("produces the server-authoritative %s outcome", async (outcome, expectedText) => {
+  it("keeps existing proof Closure request hashes stable when no explicit sequence field is sent", async () => {
     const proof = createProof();
+    const closureBody = { ...proof.body, outcome: "success" };
+
+    const response = await request(closureBody);
+
+    expect(response.status).toBe(200);
+    expect(readClosureMock).toHaveBeenCalledWith(expect.objectContaining({
+      closureRequestHash: hashAgentTurnLeaseValue({
+        leaseId: closureBody.leaseId,
+        agentTurnId: closureBody.agentTurnId,
+        outcome: closureBody.outcome,
+        closureRequestId: closureBody.closureRequestId,
+        closureToken: closureBody.closureToken,
+        projectId: closureBody.projectId,
+        userMessageId: closureBody.userMessageId,
+        assistantMessageId: closureBody.assistantMessageId,
+        transcriptSnapshotToken: closureBody.transcriptSnapshotToken,
+        transcriptManifestHash: closureBody.transcriptManifestHash,
+        providerOutputSnapshot: closureBody.providerOutputSnapshot
+      })
+    }));
+  });
+
+  it.each([
+    ["success", "工具执行前：我会完成全部动作。", false],
+    ["pendingConfirmation", "本轮停在待确认状态。确认前不把相关动作视为已完成。", true]
+  ])("produces the server-authoritative %s outcome", async (outcome, expectedText, pendingProof) => {
+    const proof = createProof({ pendingProof });
     const response = await request({ ...proof.body, outcome });
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
@@ -166,7 +228,7 @@ describe("Agent Turn Lease completion route", () => {
   });
 });
 
-function createProof(overrides: { userId?: string; closureNow?: number } = {}) {
+function createProof(overrides: { userId?: string; closureNow?: number; pendingProof?: boolean } = {}) {
   const providerSnapshot = createProviderOutputSnapshot("工具执行前：我会完成全部动作。");
   const transcriptManifest = buildAgentDurableTranscriptManifest([
     createAgentTranscriptMessageItem({
@@ -203,6 +265,9 @@ function createProof(overrides: { userId?: string; closureNow?: number } = {}) {
     transcriptManifestHash: transcriptManifest.manifestHash,
     providerOutputSnapshotHash: providerSnapshot.contentHash,
     terminalFunctionCalls: true,
+    ...(overrides.pendingProof
+      ? { requiredOutcome: "pendingConfirmation" as const, terminalOutputHash: "d".repeat(64) }
+      : {}),
     now: overrides.closureNow ?? Date.now()
   });
   return {

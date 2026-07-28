@@ -22,6 +22,10 @@ export type AgentTurnState = {
   turnClosureToken?: string;
   /** Stable across the single network recovery attempt for turn closure. */
   closureRequestId?: string;
+  /** Exact serialized Closure request retained until the server confirms it. */
+  closureRequestBody?: string;
+  /** Terminal Provider failure recorded by the server for the current Lease sequence. */
+  providerFailureOutcome?: "cancelledDuringProvider" | "failedDuringProvider";
   /** Exact manifest from the latest signed Provider response in this turn. */
   latestProviderTranscriptManifestHash?: string;
   providerTranscriptReset: boolean;

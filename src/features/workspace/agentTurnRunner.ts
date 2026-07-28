@@ -18,11 +18,16 @@ import {
   hashProviderImageDataUrl
 } from "@/domain/morpho/providerInputSnapshot";
 import type {
+  AgentTrace,
+  AgentTurnClosureRecovery,
+  AgentTurnOutcome,
+  AiMessage,
   AiTaskMode,
   AiWorkIntent,
   MorphoObject,
   ProviderInputSnapshotTextPart
 } from "@/domain/morpho/types";
+
 import { compileVisualGenerationPlan } from "@/domain/operations/imagePromptCompiler";
 import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
 import { createAgentContextBudgetState } from "@/shared/providerInputBudget";
@@ -72,9 +77,11 @@ import type { AgentTurnHost } from "./agentTurnHost";
 import {
   closeAgentTurnLease as closeAgentTurnLeaseWithState,
   AgentWebSearchLeaseRecoveryError,
+  finalizePendingAgentTurnClosureProof,
   markAgentTurnToolExecutionStarted,
   requestAgentWebSearch as requestAgentWebSearchWithLease,
-  requestConversationSummary
+  requestConversationSummary,
+  recoverAgentTurnClosureRequest
 } from "./agentTurnLeaseClient";
 import {
   assertAgentTurnActive,
@@ -128,6 +135,18 @@ import { buildAgentVisualGenerationBatch, resolveExpectedVisualGenerationCount }
 import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
 import { buildConversationCompactionTailItems } from "./conversationSummaryAgentRequest";
 
+type AgentTurnTerminalCandidate = {
+  outcome: AgentTurnOutcome;
+  assistantBody: string;
+  assistantStatus: Exclude<AiMessage["status"], undefined | "streaming">;
+  traceStatus: Exclude<AgentTrace["status"], "streaming">;
+  summary?: string;
+  completedAt: string;
+  responseId?: string;
+  providerRequestState?: AgentTrace["providerRequestState"];
+  showFailure: boolean;
+};
+
 const MAX_AGENT_TOOL_ARGUMENT_REPAIR_ATTEMPTS = 3;
 
 export type AgentTurnDeliveryDraftTarget = {
@@ -168,7 +187,7 @@ export async function runMorphoAgentTurn(
     imageGenerationModelId,
     readConversationTokenLimits
   } = input;
-  const workspace = host.readWorkspace();
+  let workspace = host.readWorkspace();
   const commitWorkspaceNow = host.commitWorkspace;
   const readWorkspaceNow = host.readWorkspace;
   const executeAgentVisualGenerationPlan = host.executeVisualGenerationPlan;
@@ -193,6 +212,69 @@ export async function runMorphoAgentTurn(
       host.ui.showFailure();
     }
   };
+  const pendingClosure = workspace.ai.messages.find(
+    (message) => message.role === "assistant" && message.agentTurnClosureRecovery
+  )?.agentTurnClosureRecovery;
+  if (pendingClosure) {
+    try {
+      const outcomeSnapshot = await recoverAgentTurnClosureRequest({
+        requestBody: pendingClosure.requestBody,
+        fetch
+      });
+      commitWorkspaceNow((current) => {
+        const recoveredRequestState = pendingClosure.latestProviderRequestState && outcomeSnapshot
+          ? {
+              ...pendingClosure.latestProviderRequestState,
+              transcriptSnapshotToken: outcomeSnapshot.transcriptSnapshotToken,
+              transcriptManifestHash: outcomeSnapshot.transcriptManifestHash,
+              transcriptSnapshotExpiresAt: outcomeSnapshot.expiresAt
+            }
+          : pendingClosure.latestProviderRequestState;
+        let nextWorkspace = finalizeAgentTurn(current, {
+          agentTurnId: pendingClosure.agentTurnId,
+          userMessageId: pendingClosure.userMessageId,
+          assistantMessageId: pendingClosure.assistantMessageId,
+          outcome: pendingClosure.outcome,
+          assistantBody: outcomeSnapshot?.outcomeItem.text ?? pendingClosure.assistantBody,
+          assistantStatus: pendingClosure.assistantStatus,
+          traceStatus: pendingClosure.traceStatus,
+          ...(pendingClosure.summary ? { summary: pendingClosure.summary } : {}),
+          completedAt: pendingClosure.completedAt,
+          ...(pendingClosure.responseId ? { responseId: pendingClosure.responseId } : {}),
+          ...(pendingClosure.providerRequestState
+            ? { providerRequestState: pendingClosure.providerRequestState }
+            : {})
+        });
+        nextWorkspace = {
+          ...nextWorkspace,
+          ai: {
+            ...nextWorkspace.ai,
+            ...(recoveredRequestState ? { latestProviderRequestState: recoveredRequestState } : {}),
+            messages: nextWorkspace.ai.messages.map((message) => {
+              if (message.id !== pendingClosure.assistantMessageId) {
+                return message;
+              }
+              const {
+                agentTurnClosureRecovery: _recoveredClosure,
+                error: _closureError,
+                ...recoveredMessage
+              } = message;
+              return {
+                ...recoveredMessage,
+                ...(outcomeSnapshot ? { agentTurnOutcomeItem: outcomeSnapshot.outcomeItem } : {})
+              };
+            })
+          }
+        };
+        return { workspace: nextWorkspace, value: undefined };
+      });
+      workspace = readWorkspaceNow();
+    } catch {
+      setAiDraft(draft);
+      setShowFailure(true);
+      return;
+    }
+  }
   const abortControllerRef = {
     get current() {
       return host.abortSlot.get();
@@ -388,17 +470,19 @@ export async function runMorphoAgentTurn(
     });
 
   async function closeAgentTurnLease(
-    outcome: "success" | "cancelledBeforeExecution" | "failedBeforeExecution" | "partialSuccess" | "pendingConfirmation"
-  ): Promise<void> {
+    outcome: "success" | "cancelledBeforeExecution" | "failedBeforeExecution" |
+      "cancelledDuringProvider" | "failedDuringProvider" | "partialSuccess" | "pendingConfirmation"
+  ) {
     const transcriptSnapshotToken = turnState.latestProviderRequestState?.transcriptSnapshotToken;
     const transcriptManifestHash = turnState.latestProviderRequestState?.transcriptManifestHash;
     const closureToken = turnState.turnClosureToken;
     const hasCurrentAssistantSnapshot = Boolean(turnState.latestAssistantProviderOutputSnapshot);
+    const proofRequired = outcome === "success" || outcome === "partialSuccess" || outcome === "pendingConfirmation";
     const outcomeSnapshot = await closeAgentTurnLeaseWithState({
       state: turnState,
       agentTurnId,
       outcome,
-      ...(transcriptSnapshotToken && transcriptManifestHash && closureToken &&
+      ...(proofRequired && transcriptSnapshotToken && transcriptManifestHash && closureToken &&
       hasCurrentAssistantSnapshot && turnState.latestAssistantProviderOutputSnapshot
         ? {
             snapshot: {
@@ -415,7 +499,7 @@ export async function runMorphoAgentTurn(
       fetch
     });
     if (!outcomeSnapshot || !turnState.latestProviderRequestState) {
-      return;
+      return outcomeSnapshot;
     }
     turnState.latestProviderRequestState = {
       ...turnState.latestProviderRequestState,
@@ -423,27 +507,7 @@ export async function runMorphoAgentTurn(
       transcriptManifestHash: outcomeSnapshot.transcriptManifestHash,
       transcriptSnapshotExpiresAt: outcomeSnapshot.expiresAt
     };
-    commitWorkspaceNow((current) => ({
-      workspace: {
-        ...current,
-        ai: {
-          ...current.ai,
-          latestProviderRequestState: turnState.latestProviderRequestState,
-          messages: current.ai.messages.map((message) => {
-            if (message.id !== assistantMessageId) {
-              return message;
-            }
-            const { providerOutputSnapshot: _intermediateProviderSnapshot, ...withoutIntermediate } = message;
-            return {
-              ...withoutIntermediate,
-              ...(outcome === "success" ? {} : { body: outcomeSnapshot.outcomeItem.text }),
-              agentTurnOutcomeItem: outcomeSnapshot.outcomeItem
-            };
-          })
-        }
-      },
-      value: undefined
-    }));
+    return outcomeSnapshot;
   }
 
   const initialAgentTrace = {
@@ -835,8 +899,10 @@ export async function runMorphoAgentTurn(
     }
     throw new AgentContextCompactionError("压缩后 Provider 输入仍未低于共享 Context 边界，未发送请求。");
   };
+  let terminalCandidate: AgentTurnTerminalCandidate | undefined;
   try {
-    while (true) {
+    try {
+      while (true) {
       assertAgentTurnActive(controller.signal);
       if (
         shouldFinalizeAgentTurn({
@@ -1349,112 +1415,215 @@ export async function runMorphoAgentTurn(
         }
       }
     }
-    const turnOutcome = resolveAgentTurnOutcome({
-      pendingConfirmation: runtimeState.pendingConfirmationCreated,
-      unresolvedCount: runtimeState.agentWorkLedger.unresolvedCount(),
-      hasToolResult: runtimeState.hasAgentToolResult
-    });
-    const turnOutcomeSummary = turnOutcome === "partialSuccess"
-      ? "本轮已保留成功取得的工具结果；至少一个步骤失败或被阻断，未完成部分需要后续重试。"
-      : turnOutcome === "pendingConfirmation"
-        ? "本轮已停在待确认状态；确认前不把相关动作视为已完成。"
-        : turnOutcome === "failedBeforeExecution"
-          ? "本轮所需执行未成功完成，未把用户请求作为有效完成上下文。"
-          : undefined;
-    commitWorkspaceNow((current) => {
+      const turnOutcome = resolveAgentTurnOutcome({
+        pendingConfirmation: runtimeState.pendingConfirmationCreated,
+        unresolvedCount: runtimeState.agentWorkLedger.unresolvedCount(),
+        hasToolResult: runtimeState.hasAgentToolResult
+      });
+      const turnOutcomeSummary = turnOutcome === "partialSuccess"
+        ? "本轮已保留成功取得的工具结果；至少一个步骤失败或被阻断，未完成部分需要后续重试。"
+        : turnOutcome === "pendingConfirmation"
+          ? "本轮已停在待确认状态；确认前不把相关动作视为已完成。"
+          : turnOutcome === "failedBeforeExecution"
+            ? "本轮所需执行未成功完成，未把用户请求作为有效完成上下文。"
+            : undefined;
       const replyText = runtimeState.finalText || "已完成当前执行。";
-      const completedAt = new Date(host.now()).toISOString();
-      let nextWorkspace = finalizeAgentTurn(
-        current,
-        {
+      terminalCandidate = {
+        outcome: turnOutcome,
+        assistantBody: sanitizeConversationSummaryStreamForDisplay(
+          sanitizeConversationAssistantStreamForDisplay(replyText)
+        ) || "已完成当前执行。",
+        assistantStatus: turnOutcome === "failedBeforeExecution" ? "failed" : "done",
+        traceStatus: turnOutcome === "failedBeforeExecution" ? "failed" : "done",
+        ...(turnOutcomeSummary ? { summary: turnOutcomeSummary } : {}),
+        completedAt: new Date(host.now()).toISOString(),
+        ...(runtimeState.latestProviderResponseId ? { responseId: runtimeState.latestProviderResponseId } : {}),
+        ...(turnState.latestProviderRequestState
+          ? { providerRequestState: compactHistoricalProviderRequestState(turnState.latestProviderRequestState) }
+          : {}),
+        showFailure: turnOutcome === "failedBeforeExecution"
+      };
+    } catch (error) {
+      const isCancelled = error instanceof DOMException && error.name === "AbortError";
+      const message = isCancelled
+        ? "当前 Agent 回合已取消。原输入、选择和已完成步骤已保留。"
+        : error instanceof Error
+          ? error.message
+          : "当前 Agent 回合失败。";
+      if (abortControllerRef.current === controller || abortControllerRef.current === null) {
+        setAiDraft(draft);
+      }
+      const turnOutcome: AgentTurnOutcome = turnState.providerFailureOutcome ??
+        (runtimeState.hasAgentToolResult
+          ? "partialSuccess"
+          : isCancelled
+            ? "cancelledBeforeExecution"
+            : "failedBeforeExecution");
+      const turnOutcomeSummary = turnOutcome === "partialSuccess"
+        ? "本轮在中断前已保留部分工具结果；其余步骤未完成。"
+        : message;
+      const cancelled = turnOutcome === "cancelledBeforeExecution" || turnOutcome === "cancelledDuringProvider";
+      terminalCandidate = {
+        outcome: turnOutcome,
+        assistantBody: turnOutcome === "partialSuccess" ? turnOutcomeSummary : message,
+        assistantStatus: turnOutcome === "partialSuccess" ? "done" : cancelled ? "cancelled" : "failed",
+        traceStatus: turnOutcome === "partialSuccess" ? "done" : cancelled ? "cancelled" : "failed",
+        summary: turnOutcomeSummary,
+        completedAt: new Date(host.now()).toISOString(),
+        ...(runtimeState.latestProviderResponseId ? { responseId: runtimeState.latestProviderResponseId } : {}),
+        ...(turnState.latestProviderRequestState
+          ? { providerRequestState: compactHistoricalProviderRequestState(turnState.latestProviderRequestState) }
+          : {}),
+        showFailure: true
+      };
+    }
+
+    if (!terminalCandidate) {
+      throw new Error("Agent Turn 未形成可关闭的候选终态。");
+    }
+
+    try {
+      if (terminalCandidate.outcome === "pendingConfirmation") {
+        await finalizePendingAgentTurnClosureProof({
+          state: turnState,
           agentTurnId,
+          projectId: workspace.project.id,
           userMessageId,
           assistantMessageId,
-          outcome: turnOutcome,
-          assistantBody: sanitizeConversationSummaryStreamForDisplay(
-            sanitizeConversationAssistantStreamForDisplay(replyText)
-          ) || "已完成当前执行。",
-          assistantStatus: turnOutcome === "failedBeforeExecution" ? "failed" : "done",
-          traceStatus: turnOutcome === "failedBeforeExecution" ? "failed" : "done",
-          ...(turnOutcomeSummary ? { summary: turnOutcomeSummary } : {}),
-          completedAt,
-          ...(runtimeState.latestProviderResponseId ? { responseId: runtimeState.latestProviderResponseId } : {}),
-          ...(turnState.latestProviderRequestState
-            ? { providerRequestState: compactHistoricalProviderRequestState(turnState.latestProviderRequestState) }
-            : {})
-        }
-      );
-      if (runtimeState.memoryUpdateEntryIds.size > 0) {
-        nextWorkspace = {
-          ...nextWorkspace,
-          ai: {
-            ...nextWorkspace.ai,
-            messages: nextWorkspace.ai.messages.map((message) =>
-              message.id === assistantMessageId
-                ? {
-                    ...message,
-                    continuityEntryIds: [...runtimeState.memoryUpdateEntryIds],
-                    memoryUpdateKeys: [...runtimeState.memoryUpdateKeys],
-                    stageRecordUpdateKeys: [...runtimeState.stageRecordUpdateKeys]
-                  }
-                : message
-            )
-          }
-        };
-      }
-      if (runtimeState.collectedCitations.length > 0) {
-        nextWorkspace = storeMessageCitations(nextWorkspace, {
-          messageId: assistantMessageId,
-          operationId: assistantMessageId,
-          citations: runtimeState.collectedCitations
+          continuationInput: runtimeState.conversationInput,
+          fetch
         });
       }
-      return { workspace: nextWorkspace, value: undefined };
-    });
-    if (!turnState.closureRequestId) {
-      await closeAgentTurnLease(turnOutcome);
-    }
-  } catch (error) {
-    const isCancelled = error instanceof DOMException && error.name === "AbortError";
-    const message = isCancelled
-      ? "当前 Agent 回合已取消。原输入、选择和已完成步骤已保留。"
-      : error instanceof Error
-        ? error.message
-        : "当前 Agent 回合失败。";
-    if (abortControllerRef.current === controller || abortControllerRef.current === null) {
-      setAiDraft(draft);
-    }
-    const turnOutcome = runtimeState.hasAgentToolResult
-      ? "partialSuccess" as const
-      : isCancelled
-        ? "cancelledBeforeExecution" as const
-        : "failedBeforeExecution" as const;
-    const turnOutcomeSummary = turnOutcome === "partialSuccess"
-      ? "本轮在中断前已保留部分工具结果；其余步骤未完成。"
-      : message;
-    commitWorkspaceNow((current) => {
-      const next = finalizeAgentTurn(
-        current,
-        {
+      const outcomeSnapshot = await closeAgentTurnLease(terminalCandidate.outcome);
+      const candidate = terminalCandidate;
+      commitWorkspaceNow((current) => {
+        let nextWorkspace = finalizeAgentTurn(current, {
           agentTurnId,
           userMessageId,
           assistantMessageId,
-          outcome: turnOutcome,
-          assistantBody: turnOutcome === "partialSuccess" ? turnOutcomeSummary : message,
-          assistantStatus: turnOutcome === "partialSuccess" ? "done" : isCancelled ? "cancelled" : "failed",
-          traceStatus: turnOutcome === "partialSuccess" ? "done" : isCancelled ? "cancelled" : "failed",
-          summary: turnOutcomeSummary,
-          completedAt: new Date(host.now()).toISOString(),
-          ...(runtimeState.latestProviderResponseId ? { responseId: runtimeState.latestProviderResponseId } : {}),
-          ...(turnState.latestProviderRequestState
-            ? { providerRequestState: compactHistoricalProviderRequestState(turnState.latestProviderRequestState) }
-            : {})
+          outcome: candidate.outcome,
+          assistantBody: outcomeSnapshot?.outcomeItem.text ?? candidate.assistantBody,
+          assistantStatus: candidate.assistantStatus,
+          traceStatus: candidate.traceStatus,
+          ...(candidate.summary ? { summary: candidate.summary } : {}),
+          completedAt: candidate.completedAt,
+          ...(candidate.responseId ? { responseId: candidate.responseId } : {}),
+          ...(candidate.providerRequestState ? { providerRequestState: candidate.providerRequestState } : {})
+        });
+        if (turnState.latestProviderRequestState) {
+          nextWorkspace = {
+            ...nextWorkspace,
+            ai: {
+              ...nextWorkspace.ai,
+              latestProviderRequestState: turnState.latestProviderRequestState
+            }
+          };
         }
-      );
-      return { workspace: next, value: undefined };
-    });
-    await closeAgentTurnLease(turnOutcome);
-    setShowFailure(true);
+        if (outcomeSnapshot) {
+          nextWorkspace = {
+            ...nextWorkspace,
+            ai: {
+              ...nextWorkspace.ai,
+              messages: nextWorkspace.ai.messages.map((message) =>
+                message.id === assistantMessageId
+                  ? { ...message, agentTurnOutcomeItem: outcomeSnapshot.outcomeItem }
+                  : message
+              )
+            }
+          };
+        }
+        if (runtimeState.memoryUpdateEntryIds.size > 0) {
+          nextWorkspace = {
+            ...nextWorkspace,
+            ai: {
+              ...nextWorkspace.ai,
+              messages: nextWorkspace.ai.messages.map((message) =>
+                message.id === assistantMessageId
+                  ? {
+                      ...message,
+                      continuityEntryIds: [...runtimeState.memoryUpdateEntryIds],
+                      memoryUpdateKeys: [...runtimeState.memoryUpdateKeys],
+                      stageRecordUpdateKeys: [...runtimeState.stageRecordUpdateKeys]
+                    }
+                  : message
+              )
+            }
+          };
+        }
+        if (runtimeState.collectedCitations.length > 0) {
+          nextWorkspace = storeMessageCitations(nextWorkspace, {
+            messageId: assistantMessageId,
+            operationId: assistantMessageId,
+            citations: runtimeState.collectedCitations
+          });
+        }
+        return { workspace: nextWorkspace, value: undefined };
+      });
+    } catch {
+      const closureRecovery: AgentTurnClosureRecovery | undefined =
+        turnState.agentTurnLeaseId && turnState.closureRequestId && turnState.closureRequestBody
+          ? {
+              schemaVersion: 1,
+              leaseId: turnState.agentTurnLeaseId,
+              agentTurnId,
+              userMessageId,
+              assistantMessageId,
+              closureRequestId: turnState.closureRequestId,
+              outcome: terminalCandidate.outcome,
+              requestBody: turnState.closureRequestBody,
+              assistantBody: terminalCandidate.assistantBody,
+              assistantStatus: terminalCandidate.assistantStatus,
+              traceStatus: terminalCandidate.traceStatus,
+              ...(terminalCandidate.summary ? { summary: terminalCandidate.summary } : {}),
+              completedAt: terminalCandidate.completedAt,
+              ...(terminalCandidate.responseId ? { responseId: terminalCandidate.responseId } : {}),
+              ...(terminalCandidate.providerRequestState
+                ? { providerRequestState: terminalCandidate.providerRequestState }
+                : {}),
+              ...(turnState.latestProviderRequestState
+                ? { latestProviderRequestState: turnState.latestProviderRequestState }
+                : {})
+            }
+          : undefined;
+      commitWorkspaceNow((current) => {
+        const assistant = current.ai.messages.find((message) => message.id === assistantMessageId);
+        const pendingTrace = assistant?.agentTrace
+          ? {
+              ...assistant.agentTrace,
+              status: "failed" as const,
+              completedAt: new Date(host.now()).toISOString()
+            }
+          : undefined;
+        const pendingWorkspace = updateAiMessage(
+            current,
+            assistantMessageId,
+            "本轮执行已结束，但终态待恢复。原候选终态已保留，恢复前不会进入后续上下文。",
+            "failed",
+            pendingTrace ? { agentTrace: pendingTrace } : {}
+          );
+        return {
+          workspace: closureRecovery
+            ? {
+                ...pendingWorkspace,
+                ai: {
+                  ...pendingWorkspace.ai,
+                  messages: pendingWorkspace.ai.messages.map((message) =>
+                    message.id === assistantMessageId
+                      ? { ...message, agentTurnClosureRecovery: closureRecovery }
+                      : message
+                  )
+                }
+              }
+            : pendingWorkspace,
+          value: undefined
+        };
+      });
+      setShowFailure(true);
+      return;
+    }
+    if (terminalCandidate.showFailure) {
+      setShowFailure(true);
+    }
   } finally {
     if (abortControllerRef.current === controller) {
       abortControllerRef.current = null;

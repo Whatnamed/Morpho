@@ -79,7 +79,8 @@ export async function POST(request: Request) {
       agentTurnId: body.agentTurnId,
       outcome: "success",
       closureRequestId: body.closureRequestId,
-      closureRequestHash
+      closureRequestHash,
+      expectedProviderSequence: body.leaseSequence
     });
     if (completed.status === "denied") {
       return NextResponse.json({ error: completed.error }, { status: completed.httpStatus });

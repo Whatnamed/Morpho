@@ -7,8 +7,14 @@ export type AgentTurnLeaseOutcome =
   | "success"
   | "cancelledBeforeExecution"
   | "failedBeforeExecution"
+  | "cancelledDuringProvider"
+  | "failedDuringProvider"
   | "partialSuccess"
   | "pendingConfirmation";
+
+export type AgentTurnProviderFailureOutcome =
+  | "cancelledDuringProvider"
+  | "failedDuringProvider";
 
 export type AgentTurnLease = {
   id: string;
@@ -83,6 +89,12 @@ type LeaseClosureRpcRow = {
   denial_reason: string | null;
 };
 
+type LeaseProviderFailureRpcRow = {
+  marked: boolean;
+  replayed: boolean;
+  denial_reason: string | null;
+};
+
 type LeaseClosureStateRpcRow = {
   state_name: "none" | "match" | "conflict" | "invalid_lease";
   status_name: string | null;
@@ -145,6 +157,7 @@ export async function completeAgentTurnLease(input: {
   outcome: AgentTurnLeaseOutcome;
   closureRequestId: string;
   closureRequestHash: string;
+  expectedProviderSequence: number;
 }): Promise<
   | { status: "completed"; statusName: string; replayed: boolean }
   | { status: "denied"; httpStatus: 401 | 403 | 409 | 429 | 503; error: string; reason?: string }
@@ -153,16 +166,34 @@ export async function completeAgentTurnLease(input: {
   if (client.status === "denied") {
     return client;
   }
-  const auth = await requireUser(client.client);
+  return completeAgentTurnLeaseForClient(client.client, input);
+}
+
+export async function completeAgentTurnLeaseForClient(
+  client: AgentTurnLeaseClient,
+  input: {
+    leaseId: string;
+    agentTurnId: string;
+    outcome: AgentTurnLeaseOutcome;
+    closureRequestId: string;
+    closureRequestHash: string;
+    expectedProviderSequence: number;
+  }
+): Promise<
+  | { status: "completed"; statusName: string; replayed: boolean }
+  | { status: "denied"; httpStatus: 401 | 403 | 409 | 429 | 503; error: string; reason?: string }
+> {
+  const auth = await requireUser(client);
   if (auth) {
     return auth;
   }
-  const result = await client.client.rpc("complete_agent_turn_lease", {
+  const result = await client.rpc("complete_agent_turn_lease", {
     p_lease_id: input.leaseId,
     p_agent_turn_id: input.agentTurnId,
     p_outcome: input.outcome,
     p_closure_request_id: input.closureRequestId,
-    p_closure_request_hash: input.closureRequestHash
+    p_closure_request_hash: input.closureRequestHash,
+    p_expected_provider_sequence: input.expectedProviderSequence
   }).single();
   if (isMissingRpcError(result.error)) {
     return {
@@ -188,9 +219,77 @@ export async function completeAgentTurnLease(input: {
     httpStatus: reason === "closure_conflict" ? 409 : 403,
     error: reason === "closure_conflict"
       ? "Agent Turn Closure 请求与已保存终态冲突。"
+      : reason === "sequence_conflict"
+        ? "Agent Turn Closure Proof 已过期，不能关闭当前 Lease。"
+        : reason === "provider_failure_unverified"
+          ? "Agent Turn 缺少服务端 Provider 失败证明，不能关闭。"
       : reason === "execution_already_started"
         ? "Agent Turn 已开始执行，不能声明为执行前终止。"
         : "Agent Turn Lease 无效或不能关闭。",
+    reason
+  };
+}
+
+export async function markAgentTurnProviderFailure(input: {
+  leaseId: string;
+  agentTurnId: string;
+  outcome: AgentTurnProviderFailureOutcome;
+  expectedProviderSequence: number;
+}): Promise<
+  | { status: "marked"; replayed: boolean }
+  | { status: "denied"; httpStatus: 401 | 403 | 409 | 429 | 503; error: string; reason?: string }
+> {
+  const client = await createLeaseClient();
+  return client.status === "denied"
+    ? client
+    : markAgentTurnProviderFailureForClient(client.client, input);
+}
+
+export async function markAgentTurnProviderFailureForClient(
+  client: AgentTurnLeaseClient,
+  input: {
+    leaseId: string;
+    agentTurnId: string;
+    outcome: AgentTurnProviderFailureOutcome;
+    expectedProviderSequence: number;
+  }
+): Promise<
+  | { status: "marked"; replayed: boolean }
+  | { status: "denied"; httpStatus: 401 | 403 | 409 | 429 | 503; error: string; reason?: string }
+> {
+  const auth = await requireUser(client);
+  if (auth) {
+    return auth;
+  }
+  const result = await client.rpc("mark_agent_turn_provider_failure", {
+    p_lease_id: input.leaseId,
+    p_agent_turn_id: input.agentTurnId,
+    p_outcome: input.outcome,
+    p_expected_provider_sequence: input.expectedProviderSequence
+  }).single();
+  if (isMissingRpcError(result.error)) {
+    return {
+      status: "denied",
+      httpStatus: 503,
+      error: "数据库尚未升级到当前 Agent Provider 失败证明契约。",
+      reason: "provider_failure_contract_missing"
+    };
+  }
+  if (result.error || !isLeaseProviderFailureRpcRow(result.data)) {
+    return { status: "denied", httpStatus: 503, error: "Agent Provider 失败证明服务暂时不可用，请稍后重试。" };
+  }
+  if (result.data.marked) {
+    return { status: "marked", replayed: result.data.replayed };
+  }
+  const reason = result.data.denial_reason ?? "invalid_lease";
+  return {
+    status: "denied",
+    httpStatus: reason === "sequence_conflict" || reason === "provider_failure_conflict" ? 409 : 403,
+    error: reason === "sequence_conflict"
+      ? "Agent Provider 失败证明已过期。"
+      : reason === "provider_failure_conflict"
+        ? "Agent Provider 失败证明与已保存状态冲突。"
+        : "Agent Turn Lease 无效或不能记录 Provider 失败。",
     reason
   };
 }
@@ -502,6 +601,13 @@ function isLeaseClosureRpcRow(value: unknown): value is LeaseClosureRpcRow {
   return isRecord(value) &&
     typeof value.completed === "boolean" &&
     typeof value.status_name === "string" &&
+    typeof value.replayed === "boolean" &&
+    (value.denial_reason === null || typeof value.denial_reason === "string");
+}
+
+function isLeaseProviderFailureRpcRow(value: unknown): value is LeaseProviderFailureRpcRow {
+  return isRecord(value) &&
+    typeof value.marked === "boolean" &&
     typeof value.replayed === "boolean" &&
     (value.denial_reason === null || typeof value.denial_reason === "string");
 }

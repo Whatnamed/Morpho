@@ -76,10 +76,38 @@ describe("continuous conversation compaction", () => {
         outcome: "partialSuccess"
       })
     };
+    const recoveryUser = {
+      ...message("recovery-u", "user", "等待 Closure 恢复的请求"),
+      agentTurnId: "turn-recovery",
+      pairedMessageId: "recovery-a"
+    };
+    const recoveryAssistant = {
+      ...message("recovery-a", "assistant", "终态待恢复"),
+      status: "failed" as const,
+      error: "终态待恢复",
+      agentTurnId: "turn-recovery",
+      pairedMessageId: "recovery-u",
+      agentTurnClosureRecovery: {
+        schemaVersion: 1 as const,
+        leaseId: "lease-recovery",
+        agentTurnId: "turn-recovery",
+        userMessageId: "recovery-u",
+        assistantMessageId: "recovery-a",
+        closureRequestId: "closure-recovery",
+        outcome: "success" as const,
+        requestBody: "{}",
+        assistantBody: "候选回复",
+        assistantStatus: "done" as const,
+        traceStatus: "done" as const,
+        completedAt: "2026-07-28T00:00:00.000Z"
+      }
+    };
 
     const usable = getUsableConversationMessages([
       failedUser,
       failedAssistant,
+      recoveryUser,
+      recoveryAssistant,
       partialUser,
       partialAssistant
     ]);

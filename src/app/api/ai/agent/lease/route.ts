@@ -22,6 +22,10 @@ const PROOF_OUTCOMES = new Set<AgentTurnLeaseOutcome>([
   "partialSuccess",
   "pendingConfirmation"
 ]);
+const PROVIDER_FAILURE_OUTCOMES = new Set<AgentTurnLeaseOutcome>([
+  "cancelledDuringProvider",
+  "failedDuringProvider"
+]);
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -33,6 +37,7 @@ export async function POST(request: Request) {
   if (!isRecord(body) || Object.keys(body).some((key) => ![
     "leaseId",
     "agentTurnId",
+    "leaseSequence",
     "outcome",
     "closureRequestId",
     "closureToken",
@@ -51,6 +56,7 @@ export async function POST(request: Request) {
   }
 
   const proofRequired = PROOF_OUTCOMES.has(body.outcome);
+  const providerFailure = PROVIDER_FAILURE_OUTCOMES.has(body.outcome);
   const proofFieldsValid = isIdentifier(body.projectId) &&
     isIdentifier(body.userMessageId) &&
     isIdentifier(body.assistantMessageId) &&
@@ -64,6 +70,16 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+  if (providerFailure && (!Number.isSafeInteger(body.leaseSequence) ||
+    (body.leaseSequence as number) < 1 || (body.leaseSequence as number) > 10_000)) {
+    return NextResponse.json(
+      { error: "Provider 执行后终态缺少精确 Lease sequence。", reason: "closure_sequence_missing" },
+      { status: 400 }
+    );
+  }
+  if (!providerFailure && body.leaseSequence !== undefined) {
+    return NextResponse.json({ error: "当前 Closure Outcome 不能携带 Lease sequence。" }, { status: 400 });
+  }
   if (!proofRequired && [
     body.projectId,
     body.userMessageId,
@@ -74,7 +90,7 @@ export async function POST(request: Request) {
     body.providerOutputSnapshot
   ].some((value) => value !== undefined)) {
     return NextResponse.json(
-      { error: "执行前终止不能携带执行后 Closure Proof。" },
+      { error: "无签名 Outcome 的终止不能携带执行后 Closure Proof。" },
       { status: 400 }
     );
   }
@@ -87,6 +103,7 @@ export async function POST(request: Request) {
   const closureRequestHash = hashAgentTurnLeaseValue({
     leaseId: body.leaseId,
     agentTurnId: body.agentTurnId,
+    ...(body.leaseSequence !== undefined ? { leaseSequence: body.leaseSequence } : {}),
     outcome: body.outcome,
     closureRequestId: body.closureRequestId,
     closureToken: body.closureToken ?? null,
@@ -124,6 +141,7 @@ export async function POST(request: Request) {
   }
 
   let outcomeSnapshot: ReturnType<typeof finalizeAgentTranscriptSnapshotOutcomeToken> | undefined;
+  let expectedProviderSequence = providerFailure ? body.leaseSequence as number : 0;
   if (proofRequired && proofFieldsValid) {
     const providerOutputSnapshot = normalizeProviderOutputSnapshot(body.providerOutputSnapshot)!;
     const secret = resolveAgentContinuationSecret(process.env);
@@ -138,6 +156,7 @@ export async function POST(request: Request) {
       assistantMessageId: body.assistantMessageId as string,
       transcriptManifestHash: body.transcriptManifestHash as string,
       providerOutputSnapshotHash: providerOutputSnapshot.contentHash,
+      expectedOutcome: body.outcome,
       now: Date.now(),
       ...(replayed ? { allowExpired: true } : {})
     });
@@ -147,6 +166,7 @@ export async function POST(request: Request) {
         { status: closure.reason === "secret_missing" ? 503 : 400 }
       );
     }
+    expectedProviderSequence = closure.claims.leaseSequence;
     const snapshotProof = verifyAgentTranscriptSnapshotToken({
       token: body.transcriptSnapshotToken as string,
       secret,
@@ -192,7 +212,8 @@ export async function POST(request: Request) {
       agentTurnId: body.agentTurnId,
       outcome: body.outcome,
       closureRequestId: body.closureRequestId,
-      closureRequestHash
+      closureRequestHash,
+      expectedProviderSequence
     });
     if (result.status === "denied") {
       return NextResponse.json(
@@ -220,6 +241,8 @@ function isOutcome(value: unknown): value is AgentTurnLeaseOutcome {
   return value === "success" ||
     value === "cancelledBeforeExecution" ||
     value === "failedBeforeExecution" ||
+    value === "cancelledDuringProvider" ||
+    value === "failedDuringProvider" ||
     value === "partialSuccess" ||
     value === "pendingConfirmation";
 }

@@ -116,6 +116,7 @@ vi.mock("@/server/ai/openaiCompatibleConfig", () => ({
 
 const startAgentTurnLeaseMock = vi.fn();
 const continueAgentTurnLeaseMock = vi.fn();
+const markAgentTurnProviderFailureMock = vi.fn();
 const requireAiRouteUserMock = vi.fn();
 
 vi.mock("@/server/auth/aiAccess", () => ({
@@ -125,6 +126,7 @@ vi.mock("@/server/auth/aiAccess", () => ({
 vi.mock("@/server/auth/agentTurnLease", () => ({
   startAgentTurnLease: (...args: unknown[]) => startAgentTurnLeaseMock(...args),
   continueAgentTurnLease: (...args: unknown[]) => continueAgentTurnLeaseMock(...args),
+  markAgentTurnProviderFailure: (...args: unknown[]) => markAgentTurnProviderFailureMock(...args),
   hashAgentTurnLeaseValue: (value: unknown) => `hash:${JSON.stringify(value)}`,
   agentTurnLeaseDeniedResponse: (result: { error: string; httpStatus: number }) =>
     Response.json({ error: result.error }, { status: result.httpStatus })
@@ -154,6 +156,7 @@ describe("agent route stream", () => {
     routeConfig.webSearchEnabled = true;
     startAgentTurnLeaseMock.mockReset();
     continueAgentTurnLeaseMock.mockReset();
+    markAgentTurnProviderFailureMock.mockReset();
     requireAiRouteUserMock.mockReset();
     streamOpenAiCompatibleResponseMock.mockReset();
     requireAiRouteUserMock.mockResolvedValue({ status: "allowed", userId: TEST_USER_ID });
@@ -179,6 +182,7 @@ describe("agent route stream", () => {
         nextProviderSequence: 2
       }
     });
+    markAgentTurnProviderFailureMock.mockResolvedValue({ status: "marked", replayed: false });
     streamOpenAiCompatibleResponseMock.mockImplementation(
       async (_config: unknown, _request: unknown, handlers: { onEvent?: (event: unknown) => void }) => {
         handlers.onEvent?.({ type: "reasoning-start", partId: "reasoning-1" });
@@ -1123,6 +1127,68 @@ describe("agent route stream", () => {
     expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
   });
 
+  it("rejects omitting every signed durable replay message before lease work", async () => {
+    const signedHistory = [createAgentTranscriptMessageItem({
+      messageId: "user-1",
+      role: "user",
+      replayMode: "durableReplay",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "已签名的历史问题" }] }]
+    })];
+    const manifest = buildAgentDurableTranscriptManifest(signedHistory);
+    const token = issueAgentTranscriptSnapshotToken({
+      secret: CONTINUATION_SECRET,
+      projectId: "project-ocean-buoy",
+      userId: TEST_USER_ID,
+      transcriptManifest: manifest,
+      now: Date.now()
+    });
+    const current = createAgentTranscriptMessageItem({
+      messageId: "user-current",
+      role: "user",
+      replayMode: "liveInput",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "当前问题" }] }]
+    });
+
+    const response = await POST(agentRequest({
+      input: [current],
+      currentUserMessageId: "user-current",
+      diagnostics: durableReplayDiagnostics(manifest.manifestHash, token)
+    }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ reason: "durable_replay_unverified" });
+    expect(startAgentTurnLeaseMock).not.toHaveBeenCalled();
+    expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["raw User message", { role: "user", content: [{ type: "input_text", text: "未封装的额外用户消息" }] }],
+    ["raw Assistant message", { role: "assistant", content: [{ type: "output_text", text: "未封装的额外助手消息" }] }],
+    ["raw Provider message", {
+      id: "provider-message-extra",
+      type: "message",
+      role: "assistant",
+      content: [{ type: "output_text", text: "未封装的 Provider 消息" }]
+    }]
+  ])("rejects a %s outside the transcript wrapper before lease work", async (_label, extraMessage) => {
+    const current = createAgentTranscriptMessageItem({
+      messageId: "user-current",
+      role: "user",
+      replayMode: "liveInput",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "当前问题" }] }]
+    });
+
+    const response = await POST(agentRequest({
+      input: [extraMessage, current],
+      currentUserMessageId: "user-current"
+    }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ reason: "durable_replay_unverified" });
+    expect(startAgentTurnLeaseMock).not.toHaveBeenCalled();
+    expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
+  });
+
   it("rejects modified ordinary history before lease work", async () => {
     const signedUser = createAgentTranscriptMessageItem({
       messageId: "user-1",
@@ -1791,6 +1857,30 @@ describe("agent route stream", () => {
     expect(body).toContain("event: turn-start");
     expect(body).toContain("event: turn-error");
     expect(body).toContain('"code":"context_limit"');
+    expect(body).toContain('"providerFailureOutcome":"failedDuringProvider"');
+    expect(markAgentTurnProviderFailureMock).toHaveBeenCalledWith({
+      leaseId: "lease-1",
+      agentTurnId: "agent-turn-1",
+      outcome: "failedDuringProvider",
+      expectedProviderSequence: 1
+    });
+  });
+
+  it("records an aborted Provider call before emitting its cancelled terminal outcome", async () => {
+    streamOpenAiCompatibleResponseMock.mockRejectedValue(
+      new DOMException("provider request aborted", "AbortError")
+    );
+
+    const response = await POST(agentRequest());
+    const body = await response.text();
+
+    expect(body).toContain('"providerFailureOutcome":"cancelledDuringProvider"');
+    expect(markAgentTurnProviderFailureMock).toHaveBeenCalledWith({
+      leaseId: "lease-1",
+      agentTurnId: "agent-turn-1",
+      outcome: "cancelledDuringProvider",
+      expectedProviderSequence: 1
+    });
   });
 
   it("resets the visible attempt before replaying a buffered fallback after semantic SSE", async () => {

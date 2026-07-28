@@ -499,6 +499,12 @@ export function canonicalAgentTurnOutcomeText(
   if (outcome === "cancelledBeforeExecution") {
     return "本轮在完成执行前已取消，不作为后续模型上下文中的已完成结果。";
   }
+  if (outcome === "cancelledDuringProvider") {
+    return "本轮在 Provider 执行期间已取消，不作为后续模型上下文中的已完成结果。";
+  }
+  if (outcome === "failedDuringProvider") {
+    return "本轮在 Provider 执行期间失败，不作为后续模型上下文中的已完成结果。";
+  }
   return "本轮在完成执行前失败，不作为后续模型上下文中的已完成结果。";
 }
 
@@ -557,7 +563,8 @@ function isBoundedIdentifier(value: unknown): value is string {
 
 function isAgentTurnOutcome(value: unknown): value is AgentTurnOutcome {
   return value === "success" || value === "partialSuccess" || value === "pendingConfirmation" ||
-    value === "cancelledBeforeExecution" || value === "failedBeforeExecution";
+    value === "cancelledBeforeExecution" || value === "failedBeforeExecution" ||
+    value === "cancelledDuringProvider" || value === "failedDuringProvider";
 }
 
 export function createAgentTranscriptMessageItem(input: {
