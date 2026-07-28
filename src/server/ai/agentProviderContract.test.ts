@@ -5,10 +5,17 @@ import {
   buildAgentCompactionDescriptor,
   buildCompactionTranscriptMarker,
   createAgentContextStateMarker,
+  createAgentTranscriptMessageItem,
+  createAgentTurnOutcomeItem,
   hashConversationSummaryForReceipt,
   hashSourceMessageIds
 } from "@/shared/agentCompactionProtocol";
 import { createProviderContextFrame } from "@/domain/morpho/providerContextFrame";
+import {
+  createProviderInputSnapshot,
+  hashProviderImageDataUrl,
+  providerInputSnapshotDurableContent
+} from "@/domain/morpho/providerInputSnapshot";
 import {
   buildAgentProviderContract,
   parseAgentRouteRequest
@@ -370,6 +377,56 @@ describe("Agent Provider Contract", () => {
     }))).toMatchObject({ status: "failed" });
     expect(parseAgentRouteRequest(request({
       input: [{ role: "user", content: [{ type: "input_text", text: "ok", provider_private: true }] }]
+    }))).toMatchObject({ status: "failed" });
+  });
+
+  it("requires exact live image references and durable-only signed outcome replay", () => {
+    const dataUrl = "data:image/png;base64,iVBORw0KGgo=";
+    const snapshot = createProviderInputSnapshot({
+      message: {
+        content: [
+          { type: "input_text", text: "分析海洋浮标参考图" },
+          { type: "input_image", image_url: dataUrl }
+        ]
+      },
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+      attachmentRefs: [{
+        objectId: "buoy-reference",
+        contentHash: hashProviderImageDataUrl(dataUrl),
+        mimeType: "image/png"
+      }]
+    });
+    expect(parseAgentRouteRequest(request({
+      input: [createAgentTranscriptMessageItem({
+        messageId: "user-image",
+        role: "user",
+        replayMode: "liveInput",
+        providerItems: [{
+          role: "user",
+          content: [
+            { type: "input_text", text: "分析海洋浮标参考图" },
+            { type: "input_image", image_url: dataUrl },
+            { type: "input_image", image_url: dataUrl }
+          ]
+        }],
+        durableProviderItems: [{ role: "user", content: providerInputSnapshotDurableContent(snapshot) }]
+      })]
+    }))).toMatchObject({ status: "failed" });
+
+    const outcomeItem = createAgentTurnOutcomeItem({
+      agentTurnId: "agent-turn-previous",
+      userMessageId: "user-previous",
+      assistantMessageId: "assistant-previous",
+      outcome: "partialSuccess"
+    });
+    expect(parseAgentRouteRequest(request({
+      input: [createAgentTranscriptMessageItem({
+        messageId: "assistant-previous",
+        role: "assistant",
+        replayMode: "liveInput",
+        providerItems: [outcomeItem],
+        durableProviderItems: [outcomeItem]
+      })]
     }))).toMatchObject({ status: "failed" });
   });
 

@@ -18,11 +18,15 @@ import {
 } from "@/server/ai/agentContinuationToken";
 import {
   buildAgentDurableTranscriptManifest,
+  buildAgentContextMarkerManifest,
   buildAgentCompactionDescriptor,
   buildAgentTranscriptManifest,
   buildCompactionTranscriptMarker,
   buildConversationSummaryRevisionId,
+  bindAgentContextStateMarker,
   createAgentTranscriptMessageItem,
+  createAgentTurnOutcomeItem,
+  hashAgentProviderItems,
   hashConversationSummaryForReceipt,
   hashSourceMessageIds
 } from "@/shared/agentCompactionProtocol";
@@ -37,8 +41,10 @@ import {
   hashProviderImageDataUrl,
   providerInputSnapshotDurableContent
 } from "@/domain/morpho/providerInputSnapshot";
+import { rebuildAgentPostCompactionTranscript } from "@/features/workspace/agentTurnProviderRequest";
 
 const CONTINUATION_SECRET = "test-continuation-secret";
+const TEST_USER_ID = "user-ocean-buoy";
 const DEFAULT_CONTINUATION_INPUT = [
   { role: "user", content: [{ type: "input_text", text: "继续讨论" }] }
 ];
@@ -110,6 +116,11 @@ vi.mock("@/server/ai/openaiCompatibleConfig", () => ({
 
 const startAgentTurnLeaseMock = vi.fn();
 const continueAgentTurnLeaseMock = vi.fn();
+const requireAiRouteUserMock = vi.fn();
+
+vi.mock("@/server/auth/aiAccess", () => ({
+  requireAiRouteUser: (...args: unknown[]) => requireAiRouteUserMock(...args)
+}));
 
 vi.mock("@/server/auth/agentTurnLease", () => ({
   startAgentTurnLease: (...args: unknown[]) => startAgentTurnLeaseMock(...args),
@@ -143,7 +154,9 @@ describe("agent route stream", () => {
     routeConfig.webSearchEnabled = true;
     startAgentTurnLeaseMock.mockReset();
     continueAgentTurnLeaseMock.mockReset();
+    requireAiRouteUserMock.mockReset();
     streamOpenAiCompatibleResponseMock.mockReset();
+    requireAiRouteUserMock.mockResolvedValue({ status: "allowed", userId: TEST_USER_ID });
     startAgentTurnLeaseMock.mockResolvedValue({
       status: "allowed",
       lease: {
@@ -528,6 +541,7 @@ describe("agent route stream", () => {
       token: state?.transcriptSnapshotToken,
       secret: CONTINUATION_SECRET,
       projectId: "project-ocean-buoy",
+      userId: TEST_USER_ID,
       now: Date.now()
     });
 
@@ -719,6 +733,7 @@ describe("agent route stream", () => {
       token: state?.transcriptSnapshotToken,
       secret: CONTINUATION_SECRET,
       projectId: "project-ocean-buoy",
+      userId: TEST_USER_ID,
       now: Date.now()
     });
     expect(verified.status).toBe("ok");
@@ -739,6 +754,9 @@ describe("agent route stream", () => {
     expect(verified.claims.contextMarkerHashes).toEqual([
       providerContextFrameContinuationMarker(frame).contentHash
     ]);
+    expect(verified.claims.contextMarkerManifest).toEqual(
+      buildAgentContextMarkerManifest([providerContextFrameContinuationMarker(frame)])
+    );
     expect(complete.transcriptSnapshotToken).toBe(state?.transcriptSnapshotToken);
 
     const marker = providerContextFrameContinuationMarker(frame);
@@ -768,13 +786,44 @@ describe("agent route stream", () => {
       previousTranscriptManifestHash: state?.transcriptManifestHash,
       previousTranscriptSnapshotToken: state?.transcriptSnapshotToken
     });
+    streamOpenAiCompatibleResponseMock.mockResolvedValueOnce({
+      responseId: "response-cross-turn-summary",
+      outputText: `\`\`\`json\n${JSON.stringify({ morphoConversationSummary: TEST_COMPACTION_SUMMARY })}\n\`\`\``,
+      functionCalls: [],
+      citations: [],
+      webSearchCallCount: 0,
+      outputItems: []
+    });
     const summaryResponse = await POST(agentRequest(summaryRequest));
     expect(summaryResponse.status).toBe(200);
-    await summaryResponse.text();
-    expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(2);
+    const summaryEvents = await collectAgentRouteEvents(summaryResponse);
+    const summaryComplete = summaryEvents.find((event) => event.type === "turn-complete");
+    if (!summaryComplete || summaryComplete.type !== "turn-complete" ||
+      !summaryComplete.compactionReceipt || !summaryComplete.continuationToken) {
+      throw new Error("Expected cross-turn compaction receipt.");
+    }
+    const postCompactionInput = rebuildAgentPostCompactionTranscript({
+      contextMarkers: [marker],
+      receipt: summaryComplete.compactionReceipt,
+      summary: TEST_COMPACTION_SUMMARY,
+      retainedTailItems: [currentUser]
+    });
+    const postResponse = await POST(agentRequest({
+      input: postCompactionInput,
+      projectId: "project-ocean-buoy",
+      agentTurnId: "agent-turn-next",
+      assistantMessageId: "assistant-after-cross-turn-compaction",
+      leaseContinuation: true,
+      leaseId: "lease-1",
+      leaseSequence: 1,
+      continuationToken: summaryComplete.continuationToken
+    }));
+    expect(postResponse.status).toBe(200);
+    await postResponse.text();
+    expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(3);
   });
 
-  it("compacts an image turn through stable references without persisting Base64", async () => {
+  it("replays an image turn through ordinary text and later compaction without persisting Base64", async () => {
     const imageBase64 = "b2NlYW4tYnVveS1yZWZlcmVuY2UtcGl4ZWxz";
     const dataUrl = `data:image/png;base64,${imageBase64}`;
     const userSnapshot = createProviderInputSnapshot({
@@ -833,6 +882,7 @@ describe("agent route stream", () => {
       token: state?.transcriptSnapshotToken,
       secret: CONTINUATION_SECRET,
       projectId: "project-ocean-buoy",
+      userId: TEST_USER_ID,
       now: Date.now()
     });
     expect(verified.status).toBe("ok");
@@ -840,6 +890,58 @@ describe("agent route stream", () => {
       return;
     }
     expect(JSON.stringify(verified.claims.transcriptManifest)).not.toContain(imageBase64);
+
+    const durableImageHistory = createAgentTranscriptMessageItem({
+      messageId: "user-image-turn",
+      role: "user",
+      replayMode: "durableReplay",
+      providerItems: [{ role: "user", content: providerInputSnapshotDurableContent(userSnapshot) }],
+      durableProviderItems: [{ role: "user", content: providerInputSnapshotDurableContent(userSnapshot) }]
+    });
+    const firstAssistantHistory = createAgentTranscriptMessageItem({
+      messageId: "assistant-image-turn",
+      role: "assistant",
+      replayMode: "durableReplay",
+      providerItems: [{
+        role: "assistant",
+        content: [{ type: "output_text", text: complete.assistantProviderOutputSnapshot.text }]
+      }]
+    });
+    const secondUser = createAgentTranscriptMessageItem({
+      messageId: "user-after-image",
+      role: "user",
+      replayMode: "liveInput",
+      providerItems: [{
+        role: "user",
+        content: [{ type: "input_text", text: "继续讨论这张浮标图的识别边界" }]
+      }],
+      durableProviderItems: [{
+        role: "user",
+        content: [{ type: "input_text", text: "继续讨论这张浮标图的识别边界" }]
+      }]
+    });
+    const ordinaryResponse = await POST(agentRequest({
+      input: [durableImageHistory, firstAssistantHistory, secondUser],
+      agentTurnId: "agent-turn-after-image",
+      assistantMessageId: "assistant-after-image",
+      diagnostics: {
+        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+        previousRequestState: state
+      }
+    }));
+    if (ordinaryResponse.status !== 200) {
+      throw new Error(JSON.stringify(await ordinaryResponse.json()));
+    }
+    expect(ordinaryResponse.status).toBe(200);
+    const ordinaryEvents = await collectAgentRouteEvents(ordinaryResponse);
+    const ordinaryComplete = ordinaryEvents.find((event) => event.type === "turn-complete");
+    expect(ordinaryComplete).not.toHaveProperty("verifiedImageReferences");
+    if (!ordinaryComplete || ordinaryComplete.type !== "turn-complete" ||
+      !ordinaryComplete.assistantProviderOutputSnapshot) {
+      throw new Error("Expected ordinary image-history turn completion.");
+    }
+    const ordinaryState = ordinaryComplete.result.providerDiagnostics?.requestState;
+    expect(ordinaryState?.transcriptSnapshotToken).not.toContain(imageBase64);
 
     const summaryRequest = buildConversationSummaryAgentRequest({
       plan: {
@@ -850,12 +952,24 @@ describe("agent route stream", () => {
             role: "assistant",
             body: "界面清理后的文本",
             providerOutputSnapshot: complete.assistantProviderOutputSnapshot
+          },
+          { id: "user-after-image", role: "user", body: "继续讨论这张浮标图的识别边界" },
+          {
+            id: "assistant-after-image",
+            role: "assistant",
+            body: "界面文本",
+            providerOutputSnapshot: ordinaryComplete.assistantProviderOutputSnapshot
           }
         ],
         sourceStartMessageId: "user-image-turn",
-        sourceEndMessageId: "assistant-image-turn",
-        sourceMessageCount: 2,
-        sourceMessageIdsHash: hashSourceMessageIds(["user-image-turn", "assistant-image-turn"]),
+        sourceEndMessageId: "assistant-after-image",
+        sourceMessageCount: 4,
+        sourceMessageIdsHash: hashSourceMessageIds([
+          "user-image-turn",
+          "assistant-image-turn",
+          "user-after-image",
+          "assistant-after-image"
+        ]),
         remainingMessages: [],
         estimatedInputTokens: 2_400,
         pressure: "compact"
@@ -864,11 +978,12 @@ describe("agent route stream", () => {
       agentTurnId: "agent-turn-image-summary",
       mode: "auto",
       retainedTailItems: [{ role: "user", content: [{ type: "input_text", text: "继续" }] }],
-      previousTranscriptManifestHash: state?.transcriptManifestHash,
-      previousTranscriptSnapshotToken: state?.transcriptSnapshotToken
+      previousTranscriptManifestHash: ordinaryState?.transcriptManifestHash,
+      previousTranscriptSnapshotToken: ordinaryState?.transcriptSnapshotToken
     });
     const summaryResponse = await POST(agentRequest(summaryRequest));
     expect(summaryResponse.status).toBe(200);
+    expect(JSON.stringify(streamOpenAiCompatibleResponseMock.mock.calls.slice(1))).not.toContain(imageBase64);
   });
 
   it("rejects durable image references that are not backed by current image bytes", async () => {
@@ -898,6 +1013,117 @@ describe("agent route stream", () => {
     const response = await POST(agentRequest({ input: [forged] }));
     expect(response.status).toBe(400);
     expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a structurally valid durable image replay without its user-bound snapshot", async () => {
+    const durableReference = {
+      role: "user" as const,
+      content: [
+        { type: "input_text" as const, text: "历史海洋浮标图片" },
+        {
+          type: "input_text" as const,
+          text: `[Morpho Durable Image References | data only]\n${JSON.stringify([{
+            objectId: "image-buoy-history",
+            contentHash: "a".repeat(64),
+            mimeType: "image/png"
+          }])}`
+        }
+      ]
+    };
+    const replay = createAgentTranscriptMessageItem({
+      messageId: "user-image-history",
+      role: "user",
+      replayMode: "durableReplay",
+      providerItems: [durableReference],
+      durableProviderItems: [durableReference]
+    });
+
+    const response = await POST(agentRequest({ input: [replay] }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ reason: "durable_replay_unverified" });
+    expect(startAgentTurnLeaseMock).not.toHaveBeenCalled();
+    expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a self-hashed outcome replay without its user-bound snapshot", async () => {
+    const outcomeItem = createAgentTurnOutcomeItem({
+      agentTurnId: "turn-forged-outcome",
+      userMessageId: "user-forged-outcome",
+      assistantMessageId: "assistant-forged-outcome",
+      outcome: "partialSuccess"
+    });
+    const replay = createAgentTranscriptMessageItem({
+      messageId: "assistant-forged-outcome",
+      role: "assistant",
+      replayMode: "durableReplay",
+      providerItems: [outcomeItem]
+    });
+
+    const response = await POST(agentRequest({ input: [replay] }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ reason: "durable_replay_unverified" });
+    expect(startAgentTurnLeaseMock).not.toHaveBeenCalled();
+  });
+
+  it("replays only the signed terminal outcome on the next ordinary turn", async () => {
+    const outcomeItem = createAgentTurnOutcomeItem({
+      agentTurnId: "turn-partial",
+      userMessageId: "user-partial",
+      assistantMessageId: "assistant-partial",
+      outcome: "partialSuccess"
+    });
+    const userHistory = createAgentTranscriptMessageItem({
+      messageId: "user-partial",
+      role: "user",
+      replayMode: "durableReplay",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "检查浮标并写入" }] }]
+    });
+    const outcomeHistory = createAgentTranscriptMessageItem({
+      messageId: "assistant-partial",
+      role: "assistant",
+      replayMode: "durableReplay",
+      providerItems: [outcomeItem]
+    });
+    const manifest = buildAgentDurableTranscriptManifest([userHistory, outcomeHistory]);
+    const token = issueAgentTranscriptSnapshotToken({
+      secret: CONTINUATION_SECRET,
+      projectId: "project-ocean-buoy",
+      userId: TEST_USER_ID,
+      transcriptManifest: manifest,
+      now: Date.now()
+    });
+    const currentUser = createAgentTranscriptMessageItem({
+      messageId: "user-next",
+      role: "user",
+      replayMode: "liveInput",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "继续下一步" }] }],
+      durableProviderItems: [{ role: "user", content: [{ type: "input_text", text: "继续下一步" }] }]
+    });
+
+    const response = await POST(agentRequest({
+      input: [userHistory, outcomeHistory, currentUser],
+      diagnostics: {
+        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+        previousRequestState: {
+          promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+          toolProfile: "standardWithWebSearch",
+          providerInputPrefixHash: "d".repeat(64),
+          transcriptManifestHash: manifest.manifestHash,
+          transcriptSnapshotToken: token
+        }
+      }
+    }));
+
+    if (response.status !== 200) {
+      throw new Error(JSON.stringify(await response.json()));
+    }
+    expect(response.status).toBe(200);
+    await response.text();
+    const providerRequest = streamOpenAiCompatibleResponseMock.mock.calls[0]?.[1] as OpenAiCompatibleResponseRequest;
+    expect(JSON.stringify(providerRequest.input)).toContain(outcomeItem.text);
+    expect(JSON.stringify(providerRequest.input)).not.toContain("工具执行前");
   });
 
   it("rejects a self-consistent compaction marker not authorized by the prior snapshot before lease work", async () => {
@@ -939,8 +1165,9 @@ describe("agent route stream", () => {
       previousTranscriptSnapshotToken: issueAgentTranscriptSnapshotToken({
         secret: CONTINUATION_SECRET,
         projectId: "project-ocean-buoy",
+        userId: TEST_USER_ID,
         transcriptManifest: TEST_PREVIOUS_TRANSCRIPT_MANIFEST,
-        contextMarkerHashes: [],
+        contextMarkerManifest: [],
         now: Date.now()
       })
     });
@@ -954,6 +1181,62 @@ describe("agent route stream", () => {
     expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
   });
 
+  it("rejects A-B snapshot context authorization replayed as B-A before lease work", async () => {
+    const markerFor = (sequence: number) => providerContextFrameContinuationMarker(createProviderContextFrame({
+      projectId: "project-ocean-buoy",
+      kind: "projectState",
+      createdAt: `2026-07-28T00:0${sequence}:00.000Z`,
+      sequence,
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+      projectMemoryRevisionIds: [`memory-ordered-${sequence}`],
+      stageRecordRevisionIds: [],
+      directionRevisionIds: [],
+      selectedObjectIds: ["buoy-object-1"],
+      relatedObjectIds: ["buoy-object-1"],
+      renderedText: `海洋浮标有序状态 ${sequence}`,
+      sourceRefs: [{ kind: "object", id: "buoy-object-1", title: "海洋浮标" }],
+      reason: `ordered snapshot ${sequence}`
+    }));
+    const markerA = markerFor(1);
+    const markerB = markerFor(2);
+    const summaryRequest = buildConversationSummaryAgentRequest({
+      plan: {
+        sourceMessages: [
+          { id: "message-1", role: "user", body: "先记录浮标目标" },
+          { id: "message-2", role: "assistant", body: "已记录浮标目标。" }
+        ],
+        sourceStartMessageId: "message-1",
+        sourceEndMessageId: "message-2",
+        sourceMessageCount: 2,
+        sourceMessageIdsHash: hashSourceMessageIds(["message-1", "message-2"]),
+        remainingMessages: [],
+        estimatedInputTokens: 2_400,
+        pressure: "compact"
+      },
+      projectId: "project-ocean-buoy",
+      agentTurnId: "agent-turn-swapped-markers",
+      mode: "auto",
+      retainedTailItems: [],
+      contextMarkers: [markerB, markerA],
+      previousTranscriptManifestHash: TEST_PREVIOUS_TRANSCRIPT_MANIFEST.manifestHash,
+      previousTranscriptSnapshotToken: issueAgentTranscriptSnapshotToken({
+        secret: CONTINUATION_SECRET,
+        projectId: "project-ocean-buoy",
+        userId: TEST_USER_ID,
+        transcriptManifest: TEST_PREVIOUS_TRANSCRIPT_MANIFEST,
+        contextMarkerManifest: buildAgentContextMarkerManifest([markerA, markerB]),
+        now: Date.now()
+      })
+    });
+
+    const response = await POST(agentRequest(summaryRequest));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ reason: "context_marker_forged" });
+    expect(startAgentTurnLeaseMock).not.toHaveBeenCalled();
+    expect(continueAgentTurnLeaseMock).not.toHaveBeenCalled();
+  });
+
   it("runs conversation compaction through the server-owned no-tool profile", async () => {
     const response = await POST(agentRequest({
       input: TEST_SUMMARY_INPUT,
@@ -963,6 +1246,7 @@ describe("agent route stream", () => {
       previousTranscriptSnapshotToken: issueAgentTranscriptSnapshotToken({
         secret: CONTINUATION_SECRET,
         projectId: "project-ocean-buoy",
+        userId: TEST_USER_ID,
         transcriptManifest: TEST_PREVIOUS_TRANSCRIPT_MANIFEST,
         now: Date.now()
       })
@@ -979,6 +1263,128 @@ describe("agent route stream", () => {
     expect(
       (streamOpenAiCompatibleResponseMock.mock.calls[0]?.[1] as OpenAiCompatibleResponseRequest).tools
     ).toEqual([]);
+  });
+
+  it("accepts a causal marker after the signed compaction transcript through the real route", async () => {
+    const providerCall = {
+      type: "function_call",
+      id: "function-call-causal",
+      call_id: "call-causal",
+      name: "read_project_memory",
+      arguments: "{}"
+    };
+    const terminalOutput = {
+      type: "function_call_output",
+      call_id: "call-causal",
+      output: JSON.stringify({ status: "ok", memory: "海洋浮标" })
+    };
+    const causalMarker = bindAgentContextStateMarker({
+      marker: providerContextFrameContinuationMarker(createProviderContextFrame({
+        projectId: "project-ocean-buoy",
+        kind: "projectState",
+        createdAt: "2026-07-28T03:00:00.000Z",
+        sequence: 9,
+        placement: "afterAssistant",
+        anchorMessageId: "assistant-message-1",
+        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+        projectMemoryRevisionIds: ["memory-causal"],
+        stageRecordRevisionIds: [],
+        directionRevisionIds: [],
+        selectedObjectIds: ["buoy-object-1"],
+        relatedObjectIds: ["buoy-object-1"],
+        renderedText: "工具完成后的海洋浮标项目状态",
+        sourceRefs: [{ kind: "object", id: "buoy-object-1", title: "海洋浮标" }],
+        reason: "causal route integration"
+      })),
+      outputHash: hashAgentProviderItems([providerCall]),
+      callIds: ["call-causal"],
+      terminalOutputHash: hashAgentProviderItems([terminalOutput])
+    });
+    const previousManifest = buildAgentTranscriptManifest([
+      ...TEST_PREVIOUS_TRANSCRIPT,
+      providerCall
+    ]);
+    const sourceToken = issueAgentContinuationToken({
+      secret: CONTINUATION_SECRET,
+      leaseId: "lease-1",
+      agentTurnId: "agent-turn-causal-compaction",
+      sequence: 1,
+      summary: false,
+      inputItemCount: TEST_PREVIOUS_TRANSCRIPT.length,
+      inputHash: hashAgentContinuationItems(TEST_PREVIOUS_TRANSCRIPT),
+      outputHash: hashAgentProviderItems([providerCall]),
+      callIds: ["call-causal"],
+      transcriptManifest: previousManifest,
+      compactionContextMarkerManifest: [],
+      now: Date.now()
+    });
+    const summaryRequest = buildConversationSummaryAgentRequest({
+      plan: {
+        sourceMessages: [
+          { id: "message-1", role: "user", body: "先记录浮标目标" },
+          { id: "message-2", role: "assistant", body: "已记录浮标目标。" }
+        ],
+        sourceStartMessageId: "message-1",
+        sourceEndMessageId: "message-2",
+        sourceMessageCount: 2,
+        sourceMessageIdsHash: hashSourceMessageIds(["message-1", "message-2"]),
+        remainingMessages: [],
+        estimatedInputTokens: 2_400,
+        pressure: "compact"
+      },
+      projectId: "project-ocean-buoy",
+      agentTurnId: "agent-turn-causal-compaction",
+      mode: "auto",
+      leaseId: "lease-1",
+      leaseSequence: 1,
+      continuationToken: sourceToken,
+      retainedTailItems: [providerCall, terminalOutput],
+      contextMarkers: [causalMarker],
+      previousTranscriptManifestHash: previousManifest.manifestHash
+    });
+    streamOpenAiCompatibleResponseMock.mockResolvedValueOnce({
+      responseId: "response-summary-causal",
+      outputText: `\`\`\`json\n${JSON.stringify({ morphoConversationSummary: TEST_COMPACTION_SUMMARY })}\n\`\`\``,
+      functionCalls: [],
+      citations: [],
+      webSearchCallCount: 0,
+      outputItems: []
+    });
+
+    const summaryResponse = await POST(agentRequest(summaryRequest));
+    expect(summaryResponse.status).toBe(200);
+    const summaryEvents = await collectAgentRouteEvents(summaryResponse);
+    const summaryComplete = summaryEvents.find((event) => event.type === "turn-complete");
+    if (!summaryComplete || summaryComplete.type !== "turn-complete" ||
+      !summaryComplete.compactionReceipt || !summaryComplete.continuationToken) {
+      throw new Error(`Expected signed causal compaction completion: ${JSON.stringify(summaryEvents)}`);
+    }
+    const postCompactionInput = rebuildAgentPostCompactionTranscript({
+      contextMarkers: [causalMarker],
+      receipt: summaryComplete.compactionReceipt,
+      summary: TEST_COMPACTION_SUMMARY,
+      retainedTailItems: [providerCall, terminalOutput]
+    });
+    expect(postCompactionInput.map((item) =>
+      typeof item === "object" && item !== null && "type" in item ? item.type : undefined
+    )).toEqual(["morpho_compaction_transcript", "morpho_context_state"]);
+
+    const postResponse = await POST(agentRequest({
+      input: postCompactionInput,
+      projectId: "project-ocean-buoy",
+      agentTurnId: "agent-turn-causal-compaction",
+      assistantMessageId: "assistant-after-causal-compaction",
+      leaseContinuation: true,
+      leaseId: "lease-1",
+      leaseSequence: 2,
+      continuationToken: summaryComplete.continuationToken
+    }));
+
+    expect(postResponse.status).toBe(200);
+    await postResponse.text();
+    expect(continueAgentTurnLeaseMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      continuationKind: "postCompaction"
+    }));
   });
 
   it("flushes turn-start before the provider completes", async () => {

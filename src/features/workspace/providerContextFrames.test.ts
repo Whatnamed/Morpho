@@ -166,7 +166,11 @@ describe("Agent provider transcript reconstruction", () => {
       userInput: userMessage("输入 B")
     });
 
-    expect(next.slice(0, first.length)).toEqual(first);
+    const withoutReplayPhase = (item: unknown) =>
+      typeof item === "object" && item !== null && "type" in item && item.type === "morpho_transcript_message"
+        ? { ...item, replayMode: "durableReplay" }
+        : item;
+    expect(next.slice(0, first.length).map(withoutReplayPhase)).toEqual(first.map(withoutReplayPhase));
     expect(next.map((item) => JSON.stringify(item)).join("\n")).toContain("Provider-visible enhanced input A");
     expect(getProviderInputReplayBoundaryReasons([{ role: "user", providerInputSnapshot: snapshot }])).toEqual([]);
   });

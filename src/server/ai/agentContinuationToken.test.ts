@@ -5,6 +5,7 @@ import { createHmac } from "node:crypto";
 import { createProviderContextFrame } from "@/domain/morpho/providerContextFrame";
 import {
   buildAgentCompactionDescriptor,
+  buildAgentContextMarkerManifest,
   buildAgentTranscriptManifest,
   buildCompactionTranscriptMarker,
   buildConversationSummaryRevisionId,
@@ -16,6 +17,7 @@ import {
 } from "@/shared/agentCompactionProtocol";
 import {
   hashAgentContinuationItems,
+  finalizeAgentTranscriptSnapshotOutcomeToken,
   issueAgentContinuationToken,
   issueAgentTranscriptSnapshotToken,
   refreshAgentTranscriptSnapshotToken,
@@ -26,8 +28,10 @@ import {
   verifyAgentTranscriptSnapshotToken,
   type AgentContinuationClaims
 } from "./agentContinuationToken";
+import { createProviderOutputSnapshot } from "@/domain/morpho/providerInputSnapshot";
 
 const SECRET = "continuation-secret";
+const USER_ID = "user-ocean-buoy";
 const PREFIX = [{ role: "user", content: [{ type: "input_text", text: "海洋浮标的避免项有哪些" }] }];
 const OUTPUT_ITEMS = [
   {
@@ -237,7 +241,10 @@ describe("agent continuation token", () => {
       relatedObjectIds: [],
       sourceRefs: [],
       reason: `ordered marker ${sequence}`,
-      renderedText: `海洋浮标状态 ${sequence}`
+      renderedText: `海洋浮标状态 ${sequence}`,
+      ...(sequence === 2
+        ? { placement: "afterAssistant" as const, anchorMessageId: "assistant-tail" }
+        : {})
     })));
     const descriptor = buildAgentCompactionDescriptor({
       sourceStartMessageId: "message-1",
@@ -265,8 +272,8 @@ describe("agent continuation token", () => {
     const token = issue({
       summary: true,
       compactionReceipt: receipt,
-      appendableContextMarkerHashes: contextMarkers.map((contextMarker) => contextMarker.contentHash),
-      compactionContextMarkerHashes: contextMarkers.map((contextMarker) => contextMarker.contentHash),
+      appendableContextMarkerManifest: buildAgentContextMarkerManifest(contextMarkers),
+      compactionContextMarkerManifest: buildAgentContextMarkerManifest(contextMarkers),
       now: 1_000_000
     });
     const claims = claimsFrom(token);
@@ -280,12 +287,17 @@ describe("agent continuation token", () => {
 
     expect(verifyAgentCompactionBinding({
       claims,
-      parsedInput: [...contextMarkers, marker],
+      parsedInput: [contextMarkers[0]!, marker, contextMarkers[1]!],
       now: 1_000_100
     })).toEqual({ status: "ok" });
     expect(verifyAgentCompactionBinding({
       claims,
-      parsedInput: [contextMarkers[1]!, contextMarkers[0]!, marker],
+      parsedInput: [contextMarkers[1]!, marker, contextMarkers[0]!],
+      now: 1_000_100
+    })).toMatchObject({ reason: "compaction_receipt_forged" });
+    expect(verifyAgentCompactionBinding({
+      claims,
+      parsedInput: [contextMarkers[0]!, contextMarkers[1]!, marker],
       now: 1_000_100
     })).toMatchObject({ reason: "compaction_receipt_forged" });
     expect(verifyAgentCompactionBinding({
@@ -309,6 +321,7 @@ describe("agent continuation token", () => {
     const token = issueAgentTranscriptSnapshotToken({
       secret: SECRET,
       projectId: "project-ocean-buoy",
+      userId: USER_ID,
       transcriptManifest: manifest,
       now: issuedAt
     });
@@ -318,35 +331,58 @@ describe("agent continuation token", () => {
       token,
       secret: SECRET,
       projectId: "project-ocean-buoy",
+      userId: USER_ID,
       now
     })).toMatchObject({ status: "failed", reason: "compaction_source_unverified" });
     const refreshed = refreshAgentTranscriptSnapshotToken({
       token,
       secret: SECRET,
       projectId: "project-ocean-buoy",
-      transcriptManifest: manifest,
+      userId: USER_ID,
       now
     });
     expect(refreshed.status).toBe("ok");
     if (refreshed.status !== "ok") {
       return;
     }
+    expect(refreshed.claims.refreshUntil).toBe(issuedAt + 180 * 24 * 60 * 60 * 1_000);
     expect(verifyAgentTranscriptSnapshotToken({
       token: refreshed.token,
       secret: SECRET,
       projectId: "project-ocean-buoy",
+      userId: USER_ID,
       now
     })).toMatchObject({ status: "ok" });
+    expect(verifyAgentTranscriptSnapshotToken({
+      token: refreshed.token,
+      secret: SECRET,
+      projectId: "project-ocean-buoy",
+      userId: "user-other",
+      now
+    })).toMatchObject({ status: "failed", reason: "compaction_source_forged" });
+    const refreshedAgain = refreshAgentTranscriptSnapshotToken({
+      token: refreshed.token,
+      secret: SECRET,
+      projectId: "project-ocean-buoy",
+      userId: USER_ID,
+      now: issuedAt + 50 * 60 * 60 * 1_000
+    });
+    expect(refreshedAgain).toMatchObject({
+      status: "ok",
+      claims: { refreshUntil: issuedAt + 180 * 24 * 60 * 60 * 1_000 }
+    });
     expect(refreshAgentTranscriptSnapshotToken({
       token,
       secret: SECRET,
       projectId: "project-other",
+      userId: USER_ID,
       now
     })).toMatchObject({ status: "failed", reason: "compaction_source_forged" });
     expect(refreshAgentTranscriptSnapshotToken({
       token: `${token}x`,
       secret: SECRET,
       projectId: "project-ocean-buoy",
+      userId: USER_ID,
       now
     })).toMatchObject({ status: "failed", reason: "compaction_source_forged" });
     const swappedIdManifest = buildAgentTranscriptManifest([createAgentTranscriptMessageItem({
@@ -358,9 +394,17 @@ describe("agent continuation token", () => {
       token,
       secret: SECRET,
       projectId: "project-ocean-buoy",
+      userId: USER_ID,
       transcriptManifest: swappedIdManifest,
       now
     })).toMatchObject({ status: "failed", reason: "compaction_source_forged" });
+    expect(refreshAgentTranscriptSnapshotToken({
+      token,
+      secret: SECRET,
+      projectId: "project-ocean-buoy",
+      userId: USER_ID,
+      now: issuedAt + 181 * 24 * 60 * 60 * 1_000
+    })).toMatchObject({ status: "failed", reason: "compaction_source_unverified" });
   });
 
   it("upgrades a signed legacy text manifest to the message-id protocol", () => {
@@ -388,6 +432,7 @@ describe("agent continuation token", () => {
       token: legacyToken,
       secret: SECRET,
       projectId: "project-ocean-buoy",
+      userId: USER_ID,
       transcriptManifest: candidate,
       now: 1_000_000 + 25 * 60 * 60 * 1_000
     });
@@ -395,7 +440,112 @@ describe("agent continuation token", () => {
     if (refreshed.status !== "ok") {
       return;
     }
-    expect(refreshed.claims.v).toBe(2);
+    expect(refreshed.claims.v).toBe(3);
     expect(refreshed.claims.transcriptManifest).toEqual(candidate);
+    expect(refreshed.claims.refreshUntil).toBe(1_000_000 + 180 * 24 * 60 * 60 * 1_000);
+    expect(refreshAgentTranscriptSnapshotToken({
+      token: refreshed.token,
+      secret: SECRET,
+      projectId: "project-ocean-buoy",
+      userId: USER_ID,
+      now: 1_000_000 + 181 * 24 * 60 * 60 * 1_000
+    })).toMatchObject({ status: "failed", reason: "compaction_source_unverified" });
+  });
+
+  it.each([
+    "success",
+    "partialSuccess",
+    "pendingConfirmation",
+    "cancelledBeforeExecution",
+    "failedBeforeExecution"
+  ] as const)("signs %s as the authoritative assistant outcome", (outcome) => {
+    const providerSnapshot = createProviderOutputSnapshot("Provider 已签名的成功回复");
+    const manifest = buildAgentTranscriptManifest([
+      createAgentTranscriptMessageItem({
+        messageId: "user-outcome",
+        role: "user",
+        providerItems: [{ role: "user", content: [{ type: "input_text", text: "检查浮标" }] }]
+      }),
+      createAgentTranscriptMessageItem({
+        messageId: "assistant-outcome",
+        role: "assistant",
+        providerItems: [{
+          role: "assistant",
+          content: [{ type: "output_text", text: providerSnapshot.text }]
+        }]
+      })
+    ]);
+    const token = issueAgentTranscriptSnapshotToken({
+      secret: SECRET,
+      projectId: "project-ocean-buoy",
+      userId: USER_ID,
+      transcriptManifest: manifest,
+      now: 1_000_000
+    });
+
+    const finalized = finalizeAgentTranscriptSnapshotOutcomeToken({
+      token,
+      secret: SECRET,
+      projectId: "project-ocean-buoy",
+      userId: USER_ID,
+      agentTurnId: "turn-outcome",
+      userMessageId: "user-outcome",
+      assistantMessageId: "assistant-outcome",
+      outcome,
+      ...(outcome === "success" ? { successProviderOutputSnapshot: providerSnapshot } : {}),
+      now: 1_000_100
+    });
+
+    expect(finalized.status).toBe("ok");
+    if (finalized.status === "ok") {
+      expect(finalized.outcomeItem).toMatchObject({ outcome, assistantMessageId: "assistant-outcome" });
+      expect(finalized.claims.transcriptManifest.items).toContainEqual(expect.objectContaining({
+        kind: "outcome",
+        messageId: "assistant-outcome"
+      }));
+      expect(finalized.claims.transcriptManifest.items).not.toContainEqual(expect.objectContaining({
+        kind: "message",
+        messageId: "assistant-outcome"
+      }));
+    }
+  });
+
+  it("rejects a forged success body that was not in the signed Provider snapshot", () => {
+    const signedSnapshot = createProviderOutputSnapshot("签名回复");
+    const manifest = buildAgentTranscriptManifest([
+      createAgentTranscriptMessageItem({
+        messageId: "user-outcome",
+        role: "user",
+        providerItems: [{ role: "user", content: [{ type: "input_text", text: "检查浮标" }] }]
+      }),
+      createAgentTranscriptMessageItem({
+        messageId: "assistant-outcome",
+        role: "assistant",
+        providerItems: [{
+          role: "assistant",
+          content: [{ type: "output_text", text: signedSnapshot.text }]
+        }]
+      })
+    ]);
+    const token = issueAgentTranscriptSnapshotToken({
+      secret: SECRET,
+      projectId: "project-ocean-buoy",
+      userId: USER_ID,
+      transcriptManifest: manifest,
+      now: 1_000_000
+    });
+
+    expect(finalizeAgentTranscriptSnapshotOutcomeToken({
+      token,
+      secret: SECRET,
+      projectId: "project-ocean-buoy",
+      userId: USER_ID,
+      agentTurnId: "turn-outcome",
+      userMessageId: "user-outcome",
+      assistantMessageId: "assistant-outcome",
+      outcome: "success",
+      successProviderOutputSnapshot: createProviderOutputSnapshot("伪造回复"),
+      now: 1_000_100
+    })).toMatchObject({ status: "failed", reason: "compaction_source_forged" });
   });
 });

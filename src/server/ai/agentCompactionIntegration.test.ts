@@ -42,6 +42,7 @@ import {
 const PROJECT_ID = "project-ocean-buoy";
 const AGENT_TURN_ID = "agent-turn-compaction-integration";
 const SECRET = "compaction-integration-secret";
+const USER_ID = "user-ocean-buoy";
 
 const sourceMessages = [
   {
@@ -119,6 +120,7 @@ function buildSummaryRequest() {
   const snapshotToken = issueAgentTranscriptSnapshotToken({
     secret: SECRET,
     projectId: PROJECT_ID,
+    userId: USER_ID,
     transcriptManifest: expectedTranscriptManifest,
     now: 1_000_000
   });
@@ -149,7 +151,7 @@ function parseSummaryRequest() {
 function sourceClaims(marker: AgentContextStateMarker): AgentContinuationClaims {
   const input = parseSummaryRequest().parsed.value.input;
   return {
-    v: 4,
+    v: 5,
     leaseId: "lease-summary",
     agentTurnId: AGENT_TURN_ID,
     sequence: 1,
@@ -162,6 +164,9 @@ function sourceClaims(marker: AgentContextStateMarker): AgentContinuationClaims 
     prefixContextMarkerHashes: [],
     appendableContextMarkerHashes: [],
     compactionContextMarkerHashes: [marker.contentHash],
+    prefixContextMarkerManifest: [],
+    appendableContextMarkerManifest: [],
+    compactionContextMarkerManifest: buildAgentContextMarkerManifest([marker]),
     exp: 1_002_000
   };
 }
@@ -222,9 +227,9 @@ describe("Agent compaction protocol integration", () => {
       outputHash: hashAgentContinuationItems([]),
       callIds: [],
       transcriptManifest: expectedTranscriptManifest,
-      prefixContextMarkerHashes: [],
-      appendableContextMarkerHashes: [marker.contentHash],
-      compactionContextMarkerHashes: [marker.contentHash],
+      prefixContextMarkerManifest: [],
+      appendableContextMarkerManifest: buildAgentContextMarkerManifest([marker]),
+      compactionContextMarkerManifest: buildAgentContextMarkerManifest([marker]),
       compactionReceipt: receipt,
       now: 1_000_000
     });
@@ -288,6 +293,52 @@ describe("Agent compaction protocol integration", () => {
     expect(postTranscriptManifest.items.slice(0, retainedTail.length)).toEqual(
       buildAgentTranscriptManifest(retainedTail).items
     );
+  });
+
+  it("rejects snapshot-authorized context markers when their source order is swapped", () => {
+    const markerA = contextMarker();
+    const markerB = createAgentContextStateMarker(createProviderContextFrame({
+      projectId: PROJECT_ID,
+      kind: "projectState",
+      createdAt: "2026-07-27T00:02:00.000Z",
+      sequence: 2,
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+      projectMemoryRevisionIds: ["memory-buoy-2"],
+      stageRecordRevisionIds: [],
+      directionRevisionIds: [],
+      selectedObjectIds: ["buoy-object-1"],
+      relatedObjectIds: ["buoy-object-1"],
+      sourceRefs: [{ kind: "object", id: "buoy-object-1", title: "海洋浮标" }],
+      reason: "ordered snapshot marker B",
+      renderedText: "海洋浮标有序状态 B"
+    }));
+    const request = buildConversationSummaryAgentRequest({
+      plan: plan(),
+      projectId: PROJECT_ID,
+      agentTurnId: AGENT_TURN_ID,
+      mode: "auto",
+      retainedTailItems: retainedTail,
+      contextMarkers: [markerB, markerA],
+      previousTranscriptManifestHash: expectedTranscriptManifest.manifestHash
+    });
+    const parsed = parseAgentRouteRequest(request);
+    if (parsed.status !== "ok") {
+      throw new Error(parsed.reason);
+    }
+    const claims: AgentContinuationClaims = {
+      ...sourceClaims(markerA),
+      compactionContextMarkerHashes: [markerA.contentHash, markerB.contentHash],
+      compactionContextMarkerManifest: buildAgentContextMarkerManifest([markerA, markerB])
+    };
+
+    expect(verifyAgentCompactionSourceBinding({
+      claims,
+      parsedInput: parsed.value.input,
+      descriptor: parsed.value.compactionDescriptor!,
+      transcriptManifest: expectedTranscriptManifest,
+      contextMarkers: [markerB, markerA],
+      retainedTail: parsed.value.compactionRetainedTail ?? []
+    })).toMatchObject({ status: "failed", reason: "context_marker_forged" });
   });
 
   it("rejects source edits, retained-tail edits, summary edits, and forged self-consistent markers", () => {
@@ -455,9 +506,9 @@ describe("Agent compaction protocol integration", () => {
       inputHash: hashAgentContinuationItems(exactPrefix),
       outputHash: hashAgentContinuationItems(providerOutput),
       callIds: [],
-      prefixContextMarkerHashes: [],
-      appendableContextMarkerHashes: [],
-      compactionContextMarkerHashes: [marker.contentHash],
+      prefixContextMarkerManifest: [],
+      appendableContextMarkerManifest: [],
+      compactionContextMarkerManifest: buildAgentContextMarkerManifest([marker]),
       now: 1_000_000
     });
     const exactClaims = verifyAgentContinuationToken({
@@ -487,8 +538,8 @@ describe("Agent compaction protocol integration", () => {
       inputHash: hashAgentContinuationItems(prefixWithMarker),
       outputHash: hashAgentContinuationItems(providerOutput),
       callIds: [],
-      prefixContextMarkerHashes: [marker.contentHash],
-      compactionContextMarkerHashes: [marker.contentHash],
+      prefixContextMarkerManifest: buildAgentContextMarkerManifest([marker]),
+      compactionContextMarkerManifest: buildAgentContextMarkerManifest([marker]),
       now: 1_000_000
     });
     const prefixMarkerClaims = verifyAgentContinuationToken({
@@ -736,7 +787,8 @@ describe("Agent compaction protocol integration", () => {
       outputHash: hashAgentContinuationItems([currentCall]),
       callIds: ["current-call-id"],
       transcriptManifest: previousManifest,
-      compactionContextMarkerHashes: []
+      compactionContextMarkerHashes: [],
+      compactionContextMarkerManifest: []
     };
 
     expect(verifyAgentCompactionSourceBinding({

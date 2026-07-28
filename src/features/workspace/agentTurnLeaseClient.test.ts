@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import type { ConversationCompactionPlan } from "@/domain/morpho/conversationCompaction";
 import { createTestWorkspace } from "@/domain/morpho/workspace";
+import {
+  createAgentTranscriptMessageItem,
+  createAgentTurnOutcomeItem
+} from "@/shared/agentCompactionProtocol";
 import { agentStreamScript } from "./agentStreamScripts";
 import { createAgentTurnHostFake } from "./agentTurnHostFake";
 import {
@@ -153,6 +157,51 @@ describe("Agent turn lease client", () => {
     expect(state.agentTurnLeaseId).toBeUndefined();
   });
 
+  it("returns the server-signed terminal outcome snapshot when lease completion proves it", async () => {
+    const state = createAgentTurnState(createTestWorkspace());
+    state.agentTurnLeaseId = "lease-unit";
+    const outcomeItem = createAgentTurnOutcomeItem({
+      agentTurnId: "turn-unit",
+      userMessageId: "user-unit",
+      assistantMessageId: "assistant-unit",
+      outcome: "partialSuccess"
+    });
+    let requestBody: Record<string, unknown> | undefined;
+    const result = await closeAgentTurnLease({
+      state,
+      agentTurnId: "turn-unit",
+      outcome: "partialSuccess",
+      snapshot: {
+        projectId: "project-ocean-buoy",
+        userMessageId: "user-unit",
+        assistantMessageId: "assistant-unit",
+        transcriptSnapshotToken: "snapshot-token-unit"
+      },
+      fetch: async (_request, init) => {
+        requestBody = JSON.parse(String(init?.body ?? "{}"));
+        return Response.json({
+          status: "partial_success",
+          outcomeItem,
+          transcriptSnapshotToken: "snapshot-token-final",
+          transcriptManifestHash: "a".repeat(64),
+          expiresAt: 123
+        });
+      }
+    });
+
+    expect(requestBody).toMatchObject({
+      projectId: "project-ocean-buoy",
+      transcriptSnapshotToken: "snapshot-token-unit",
+      outcome: "partialSuccess"
+    });
+    expect(result).toEqual({
+      outcomeItem,
+      transcriptSnapshotToken: "snapshot-token-final",
+      transcriptManifestHash: "a".repeat(64),
+      expiresAt: 123
+    });
+  });
+
   it("projects lease and continuation updates from summary streams", async () => {
     const script = agentStreamScript([
       {
@@ -204,7 +253,105 @@ describe("Agent turn lease client", () => {
       parsed: { status: "empty" }
     });
   });
+
+  it("uses a current unexpired snapshot directly without refreshing it", async () => {
+    const calls: string[] = [];
+    const token = clientSnapshotToken({ v: 3, exp: Date.now() + 60_000 });
+    const fetchImpl: typeof fetch = async (request) => {
+      calls.push(String(request));
+      return new Response(agentStreamScript([{ type: "turn-complete", result: emptyAgentResult() }]).body, {
+        headers: { "content-type": "text/event-stream" }
+      });
+    };
+
+    await requestConversationSummary(compactionPlan(), new AbortController().signal, {
+      projectId: "project-ocean-buoy",
+      agentTurnId: "turn-current-snapshot",
+      mode: "auto",
+      previousTranscriptSnapshotToken: token
+    }, fetchImpl);
+
+    expect(calls).toEqual(["/api/ai/agent"]);
+  });
+
+  it("refreshes an expired current snapshot without a candidate manifest", async () => {
+    const bodies: unknown[] = [];
+    const expired = clientSnapshotToken({ v: 3, exp: Date.now() - 1 });
+    const refreshed = clientSnapshotToken({ v: 3, exp: Date.now() + 60_000 });
+    const fetchImpl: typeof fetch = async (request, init) => {
+      bodies.push(JSON.parse(String(init?.body ?? "{}")));
+      if (String(request).includes("/snapshot/refresh")) {
+        return Response.json({
+          transcriptSnapshotToken: refreshed,
+          transcriptManifestHash: "b".repeat(64)
+        });
+      }
+      return new Response(agentStreamScript([{ type: "turn-complete", result: emptyAgentResult() }]).body, {
+        headers: { "content-type": "text/event-stream" }
+      });
+    };
+
+    await requestConversationSummary(compactionPlan(), new AbortController().signal, {
+      projectId: "project-ocean-buoy",
+      agentTurnId: "turn-expired-snapshot",
+      mode: "auto",
+      previousTranscriptSnapshotToken: expired
+    }, fetchImpl);
+
+    expect(bodies[0]).toEqual({ projectId: "project-ocean-buoy", token: expired });
+  });
+
+  it("excludes the fresh user from a legacy snapshot upgrade candidate", async () => {
+    const freshUser = createAgentTranscriptMessageItem({
+      messageId: "user-fresh",
+      role: "user",
+      replayMode: "liveInput",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "当前新问题" }] }],
+      durableProviderItems: [{ role: "user", content: [{ type: "input_text", text: "当前新问题" }] }]
+    });
+    let refreshBody: Record<string, unknown> | undefined;
+    const fetchImpl: typeof fetch = async (request, init) => {
+      if (String(request).includes("/snapshot/refresh")) {
+        refreshBody = JSON.parse(String(init?.body ?? "{}"));
+        return Response.json({
+          transcriptSnapshotToken: clientSnapshotToken({ v: 3, exp: Date.now() + 60_000 }),
+          transcriptManifestHash: "c".repeat(64)
+        });
+      }
+      return new Response(agentStreamScript([{ type: "turn-complete", result: emptyAgentResult() }]).body, {
+        headers: { "content-type": "text/event-stream" }
+      });
+    };
+
+    await requestConversationSummary(compactionPlan(), new AbortController().signal, {
+      projectId: "project-ocean-buoy",
+      agentTurnId: "turn-legacy-snapshot",
+      mode: "auto",
+      previousTranscriptSnapshotToken: clientSnapshotToken({ v: 2, exp: Date.now() - 1 }),
+      retainedTailItems: [freshUser],
+      freshUserMessageId: "user-fresh"
+    }, fetchImpl);
+
+    expect(refreshBody?.transcriptManifest).toEqual(expect.objectContaining({
+      items: expect.not.arrayContaining([expect.objectContaining({ messageId: "user-fresh" })])
+    }));
+  });
 });
+
+function clientSnapshotToken(claims: { v: number; exp: number }): string {
+  return `${Buffer.from(JSON.stringify(claims), "utf8").toString("base64url")}.signature`;
+}
+
+function emptyAgentResult() {
+  return {
+    responseId: "response-summary",
+    outputText: "No structured summary",
+    functionCalls: [],
+    citations: [],
+    webSearchCallCount: 0,
+    outputItems: []
+  };
+}
 
 function compactionPlan(): ConversationCompactionPlan {
   return {
