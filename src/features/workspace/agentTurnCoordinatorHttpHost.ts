@@ -64,7 +64,7 @@ export function createAgentTurnCoordinatorHttpHost(
           status: "denied",
           code: error.code,
           error: error.message,
-          recoverable: false
+          recoverable: isRetryableHttpFailure(response.status, error.code)
         };
       }
       if (contentType.includes("application/json")) {
@@ -210,6 +210,12 @@ function routeError(status: number, body: unknown, fallback: string): Error & { 
   const code = isRecord(body) && typeof body.code === "string" ? body.code : `http_${status}`;
   const message = isRecord(body) && typeof body.error === "string" ? body.error : fallback;
   return Object.assign(new Error(message), { code });
+}
+
+function isRetryableHttpFailure(status: number, code: string): boolean {
+  return (
+    status === 500 || status === 502 || status === 503 || status === 504
+  ) && code !== "provider_unavailable" && code !== "journal_contract_missing";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

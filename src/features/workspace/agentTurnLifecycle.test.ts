@@ -226,6 +226,39 @@ describe("Provider and display inputs", () => {
     });
   });
 
+  it("terminates explicitly when awaitingNextRequest payload was not received", () => {
+    const state = apply(startProviderRequest(requesting()), {
+      type: "PROVIDER_OUTPUT_UNAVAILABLE",
+      ...request1
+    });
+    expect(state).toMatchObject({
+      phase: "terminal",
+      serverExecutionStatus: "awaitingNextRequest",
+      providerOutput: { kind: "none" },
+      outcome: {
+        kind: "failed",
+        reasons: ["providerContinuationPayloadUnavailable"]
+      }
+    });
+  });
+
+  it("preserves partial success when a later Continuation payload is unavailable", () => {
+    let state = withToolCallingOutput(true);
+    state = startProviderRequest(state, request2);
+    state = apply(state, {
+      type: "PROVIDER_OUTPUT_UNAVAILABLE",
+      ...request2
+    });
+    expect(state).toMatchObject({
+      phase: "terminal",
+      providerOutput: { kind: "none" },
+      outcome: {
+        kind: "partiallyCompleted",
+        reasons: ["providerContinuationPayloadUnavailable"]
+      }
+    });
+  });
+
   it("records an SSE display activity without deciding a terminal outcome", () => {
     const state = apply(startProviderRequest(requesting()), {
       type: "STREAM_ACTIVITY_OBSERVED",

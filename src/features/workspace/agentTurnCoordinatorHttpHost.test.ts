@@ -92,6 +92,26 @@ describe("A+ Coordinator HTTP Host", () => {
     });
   });
 
+  it("distinguishes temporary Journal outages from terminal Provider configuration", async () => {
+    const responses = [
+      Response.json({ error: "temporary", code: "journal_unavailable" }, { status: 503 }),
+      Response.json({ error: "missing config", code: "provider_unavailable" }, { status: 503 })
+    ];
+    const host = createAgentTurnCoordinatorHttpHost({
+      fetch: vi.fn(async () => responses.shift()!)
+    });
+    await expect(host.executeExternalRequest(requestInput(), vi.fn())).resolves.toMatchObject({
+      status: "denied",
+      code: "journal_unavailable",
+      recoverable: true
+    });
+    await expect(host.executeExternalRequest(requestInput(), vi.fn())).resolves.toMatchObject({
+      status: "denied",
+      code: "provider_unavailable",
+      recoverable: false
+    });
+  });
+
   it("queries the minimal Journal snapshot by Turn and local Project ID", async () => {
     const fetchMock = vi.fn(async (_url: string | URL | Request) =>
       Response.json(snapshot({ status: "externallyCompleted", terminalAt: "now" }))

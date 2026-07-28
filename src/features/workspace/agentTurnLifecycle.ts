@@ -171,6 +171,12 @@ export type AgentTurnEvent =
       producedUserVisibleEffect: boolean;
     }
   | {
+      type: "PROVIDER_OUTPUT_UNAVAILABLE";
+      turnId: string;
+      requestId: string;
+      stepSequence: number;
+    }
+  | {
       type: "EXTERNAL_ERROR_RECORDED";
       turnId: string;
       requestId: string;
@@ -395,6 +401,8 @@ export function reduceAgentTurnLifecycle(
         : state.phase === "requestingProvider" && state.serverExecutionStatus === "providerRunning"
           ? externalRequestMismatch(state, event.requestId, event.stepSequence)
           : illegal(state, event);
+    case "PROVIDER_OUTPUT_UNAVAILABLE":
+      return markProviderOutputUnavailable(state, event.requestId, event.stepSequence, event);
     case "EXTERNAL_ERROR_RECORDED":
       if (!matchesExternalRequest(state, event.requestId, event.stepSequence)) {
         return externalRequestMismatch(state, event.requestId, event.stepSequence);
@@ -692,6 +700,47 @@ function startToolBatch(
       stepSequence: state.providerOutput.stepSequence
     },
     activeToolBatch: { declaredCallIds: [...declaredCallIds], results: [] }
+  });
+}
+
+function markProviderOutputUnavailable(
+  state: Exclude<AgentTurnLifecycleState, { phase: "terminal" }>,
+  requestId: string,
+  stepSequence: number,
+  event: AgentTurnEvent
+): AgentTurnTransitionResult {
+  if (
+    state.phase !== "requestingProvider" ||
+    state.serverExecutionStatus !== "providerRunning" ||
+    state.providerOutput.kind !== "none"
+  ) {
+    return illegal(state, event);
+  }
+  if (!matchesExternalRequest(state, requestId, stepSequence, true)) {
+    return externalRequestMismatch(state, requestId, stepSequence);
+  }
+  const failed = {
+    ...state,
+    serverExecutionStatus: "awaitingNextRequest" as const,
+    externalRequest: { kind: "settled" as const, requestId, stepSequence },
+    fault: {
+      kind: "present" as const,
+      faultId: `${requestId}:providerContinuationPayloadUnavailable`,
+      error: {
+        kind: "terminal" as const,
+        code: "providerContinuationPayloadUnavailable",
+        message: "Provider continuation payload was not received by this client.",
+        recoverable: false as const
+      }
+    }
+  };
+  const hasSuccessfulEffect = Boolean(
+    failed.providerEffectProduced ||
+    failed.toolBatches.some((batch) => batch.outcome.executedCount > 0)
+  );
+  return terminal(failed, {
+    kind: hasSuccessfulEffect ? "partiallyCompleted" : "failed",
+    reasons: ["providerContinuationPayloadUnavailable"]
   });
 }
 

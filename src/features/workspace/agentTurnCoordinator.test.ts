@@ -127,10 +127,15 @@ describe("A+ AgentTurnCoordinator", () => {
 
   it("rejects a stale Request SSE event without mutating the new Request", async () => {
     const host = new FakeHost();
+    const displayEvents: AgentTurnRequestStreamEvent[] = [];
     host.queueStarted({ status: "awaitingNextRequest", output: true, toolCallIds: ["call-a"] });
     const secondCompletion = createDeferred<AgentTurnCoordinatorTransportResult>();
     host.queueHandshake({ status: "started", complete: () => secondCompletion.promise });
-    const coordinator = await initializedCoordinator(host, ["request-1", "request-2"]);
+    const coordinator = await initializedCoordinator(
+      host,
+      ["request-1", "request-2"],
+      (event) => displayEvents.push(event)
+    );
     await coordinator.startInitialRequest(providerRequest());
     const second = coordinator.startContinuation(providerRequest("next"));
     await waitFor(() => coordinator.getLifecycleSnapshot()?.externalRequest.kind === "active");
@@ -143,8 +148,56 @@ describe("A+ AgentTurnCoordinator", () => {
       event: { type: "final-delta", delta: "stale" }
     });
     expect(coordinator.getLifecycleSnapshot()).toEqual(before);
+    expect(displayEvents).toHaveLength(2);
     secondCompletion.resolve({ status: "interrupted", code: "stop" });
     await second;
+  });
+
+  it("forwards validated text, Tool Call IDs and process events exactly once", async () => {
+    const host = new FakeHost();
+    const displayEvents: AgentTurnRequestStreamEvent[] = [];
+    host.queueStarted({
+      status: "awaitingNextRequest",
+      output: true,
+      toolCallIds: ["call-a", "call-b"],
+      activity: true
+    });
+    const coordinator = await initializedCoordinator(
+      host,
+      ["request-1"],
+      (event) => displayEvents.push(event)
+    );
+    await coordinator.startInitialRequest(providerRequest());
+    expect(displayEvents.filter((event) => event.type === "streamActivity")).toHaveLength(1);
+    expect(displayEvents.filter((event) => event.type === "providerOutput")).toEqual([
+      expect.objectContaining({
+        outputText: "visible output",
+        toolCallIds: ["call-a", "call-b"]
+      })
+    ]);
+    expect(displayEvents.filter((event) => event.type === "serverStatus")).toHaveLength(1);
+  });
+
+  it("keeps pre-interruption display output local and immutable", async () => {
+    const host = new FakeHost();
+    const displayEvents: AgentTurnRequestStreamEvent[] = [];
+    let mutationSucceeded = true;
+    host.queueStarted({ status: "externallyCompleted", output: true, finalFrameReceived: false });
+    const coordinator = await initializedCoordinator(host, ["request-1"], (event) => {
+      mutationSucceeded = Reflect.set(event, "requestId", "mutated");
+      displayEvents.push(event);
+    });
+    await coordinator.startInitialRequest(providerRequest());
+    expect(mutationSucceeded).toBe(false);
+    expect(displayEvents).toContainEqual(expect.objectContaining({
+      type: "providerOutput",
+      outputText: "visible output",
+      requestId: "request-1"
+    }));
+    expect(coordinator.getLifecycleSnapshot()).toMatchObject({
+      phase: "terminal",
+      outcome: { kind: "completed" }
+    });
   });
 
   it("rejects a stale Query result after a newer Request starts", async () => {
@@ -238,6 +291,23 @@ describe("A+ AgentTurnCoordinator", () => {
     });
   });
 
+  it("terminates without replay when awaitingNextRequest payload was lost", async () => {
+    const host = new FakeHost();
+    host.queueStarted({ status: "awaitingNextRequest", output: false, finalFrameReceived: false });
+    const coordinator = await initializedCoordinator(host, ["request-1"]);
+    await coordinator.startInitialRequest(providerRequest());
+    expect(coordinator.getLifecycleSnapshot()).toMatchObject({
+      phase: "terminal",
+      providerOutput: { kind: "none" },
+      outcome: {
+        kind: "failed",
+        reasons: ["providerContinuationPayloadUnavailable"]
+      }
+    });
+    expect(host.executions).toHaveLength(1);
+    expect(host.externalExecutionCount).toBe(1);
+  });
+
   it("keeps a providerRunning Journal recovery non-terminal", async () => {
     const host = new FakeHost();
     host.queueStarted({ status: "providerRunning", output: false, interrupted: true });
@@ -269,6 +339,49 @@ describe("A+ AgentTurnCoordinator", () => {
     await coordinator.retryActiveRequest();
     expect(host.externalExecutionCount).toBe(1);
     expect(host.executions).toHaveLength(2);
+  });
+
+  it.each([
+    ["quota_exceeded", "quotaExceeded", false],
+    ["provider_limit", "quotaExceeded", false],
+    ["sequence_conflict", "conflict", false],
+    ["provider_unavailable", "terminal", false]
+  ] as const)("classifies %s as %s", async (code, kind, recoverable) => {
+    const host = new FakeHost();
+    host.queueHandshake({ status: "denied", code, error: code, recoverable });
+    const coordinator = await initializedCoordinator(host, ["request-1"]);
+    const result = await coordinator.startInitialRequest(providerRequest());
+    expect(result).toMatchObject({ status: "denied", code, recoverable });
+    expect(coordinator.getLifecycleSnapshot()).toMatchObject({
+      phase: "terminal",
+      fault: { kind: "present", error: { kind, code } }
+    });
+  });
+
+  it("keeps a temporary Journal denial retryable and reuses the same Request", async () => {
+    const host = new FakeHost();
+    host.queueHandshake({
+      status: "denied",
+      code: "journal_unavailable",
+      error: "temporary",
+      recoverable: true
+    });
+    host.queueStarted({ status: "externallyCompleted", output: true });
+    const coordinator = await initializedCoordinator(host, ["request-1", "request-never-used"]);
+    await expect(coordinator.startInitialRequest(providerRequest())).resolves.toMatchObject({
+      status: "denied",
+      code: "journal_unavailable",
+      recoverable: true,
+      lifecycle: { phase: "recovering", fault: { error: { kind: "retryable" } } }
+    });
+    await expect(coordinator.retryActiveRequest()).resolves.toMatchObject({
+      status: "ok",
+      lifecycle: { phase: "terminal", outcome: { kind: "completed" } }
+    });
+    expect(host.executions.map(({ requestId, stepSequence }) => [requestId, stepSequence])).toEqual([
+      ["request-1", 1],
+      ["request-1", 1]
+    ]);
   });
 
   it("fails deterministically on a Journal Turn/Project binding mismatch", async () => {
@@ -461,22 +574,25 @@ class FakeHost implements AgentTurnCoordinatorHost {
 function createCoordinator(
   host: FakeHost,
   requestIds: string[],
-  reducer?: typeof reduceAgentTurnLifecycle
+  reducer?: typeof reduceAgentTurnLifecycle,
+  onDisplayEvent?: (event: AgentTurnRequestStreamEvent) => void
 ): AgentTurnCoordinator {
   return new AgentTurnCoordinator({
     localProjectId: "project-a",
     creationIdempotencyKey: "creation-a",
     host,
     createRequestId: () => requestIds.shift() ?? "request-fallback",
-    ...(reducer ? { reducer } : {})
+    ...(reducer ? { reducer } : {}),
+    ...(onDisplayEvent ? { onDisplayEvent } : {})
   });
 }
 
 async function initializedCoordinator(
   host: FakeHost,
-  requestIds: string[]
+  requestIds: string[],
+  onDisplayEvent?: (event: AgentTurnRequestStreamEvent) => void
 ): Promise<AgentTurnCoordinator> {
-  const coordinator = createCoordinator(host, requestIds);
+  const coordinator = createCoordinator(host, requestIds, undefined, onDisplayEvent);
   const initialized = await coordinator.initialize();
   if (initialized.status !== "ok") throw new Error(initialized.error);
   return coordinator;

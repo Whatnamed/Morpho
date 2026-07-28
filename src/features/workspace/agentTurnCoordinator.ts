@@ -6,6 +6,7 @@ import type {
 import {
   createAgentTurnLifecycleState,
   reduceAgentTurnLifecycle,
+  type AgentTurnError,
   type AgentTurnEvent,
   type AgentTurnLifecycleState,
   type AgentTurnTransitionResult
@@ -45,7 +46,7 @@ export type AgentTurnCoordinatorExecutionHandshake =
       status: "denied";
       code: string;
       error: string;
-      recoverable: false;
+      recoverable: boolean;
     }>;
 
 export type AgentTurnCoordinatorTransportResult =
@@ -63,7 +64,7 @@ export type AgentTurnCoordinatorActionResult =
       status: "denied";
       code: string;
       error: string;
-      recoverable: false;
+      recoverable: boolean;
       lifecycle?: AgentTurnLifecycleState;
     }>;
 
@@ -95,6 +96,7 @@ export class AgentTurnCoordinator {
       host: AgentTurnCoordinatorHost;
       createRequestId: () => string;
       reducer?: Reducer;
+      onDisplayEvent?: (event: AgentTurnRequestStreamEvent) => void;
     }>
   ) {}
 
@@ -144,6 +146,14 @@ export class AgentTurnCoordinator {
     }
     if (this.executionInFlight || !this.activeRequest.retryAllowed) {
       return this.denied("request_in_flight", "当前 Request 尚未进入可重试状态。");
+    }
+    if (this.lifecycle.phase === "recovering") {
+      const resolved = this.dispatch({
+        type: "RECOVERY_RESOLVED",
+        turnId: this.lifecycle.turnId,
+        faultId: this.lifecycle.faultId
+      });
+      if (resolved.status === "denied") return resolved;
     }
     return this.executeActiveRequest(true);
   }
@@ -225,14 +235,28 @@ export class AgentTurnCoordinator {
         return this.denied("stale_request_result", "旧 Request 的握手结果已被拒绝。");
       }
       if (handshake.status === "denied") {
-        const recorded = this.recordHandshakeFailure(active, handshake);
+        const classified = classifyHandshakeFailure(handshake);
+        const recorded = this.recordHandshakeFailure(active, handshake, classified);
+        if (recorded.status === "denied") return recorded;
+        if (classified.kind === "retryable") {
+          const recovery = this.dispatch({
+            type: "RECOVERY_STARTED",
+            turnId: lifecycle.turnId,
+            faultId: `${active.requestId}:${handshake.code}`
+          });
+          if (recovery.status === "denied") return recovery;
+          active.retryAllowed = true;
+          return this.denied(handshake.code, handshake.error, true);
+        }
         if (!retry && !active.lifecycleStarted && recorded.status === "ok") {
           const finalized = this.dispatch({ type: "TURN_FINALIZED", turnId: lifecycle.turnId });
           this.activeRequest = undefined;
-          return finalized.status === "denied" ? finalized : this.ok();
+          return finalized.status === "denied"
+            ? finalized
+            : this.denied(handshake.code, handshake.error);
         }
         active.retryAllowed = false;
-        return recorded;
+        return this.denied(handshake.code, handshake.error);
       }
       if (!active.lifecycleStarted) {
         const started = this.dispatch({
@@ -324,6 +348,7 @@ export class AgentTurnCoordinator {
       default:
         return assertNever(event);
     }
+    if (result.status === "ok") this.forwardDisplayEvent(event);
     return result;
   }
 
@@ -387,6 +412,20 @@ export class AgentTurnCoordinator {
       this.activeRequest.lifecycleStarted = true;
     }
     this.serverSnapshot = cloneSnapshot(snapshot);
+    if (
+      snapshot.status === "awaitingNextRequest" &&
+      this.lifecycle?.providerOutput.kind === "none"
+    ) {
+      const unavailable = this.dispatch({
+        type: "PROVIDER_OUTPUT_UNAVAILABLE",
+        turnId: lifecycle.turnId,
+        requestId: expected.requestId,
+        stepSequence: expected.stepSequence
+      });
+      if (unavailable.status === "denied") return unavailable;
+      this.settleLocalRequest(expected.requestId, expected.stepSequence);
+      return this.ok(this.lastRequest);
+    }
     const observed = this.observeServerStatus(
       expected.requestId,
       expected.stepSequence,
@@ -445,7 +484,8 @@ export class AgentTurnCoordinator {
 
   private recordHandshakeFailure(
     active: ActiveRequest,
-    failure: Extract<AgentTurnCoordinatorExecutionHandshake, { status: "denied" }>
+    failure: Extract<AgentTurnCoordinatorExecutionHandshake, { status: "denied" }>,
+    error: Exclude<AgentTurnError, { kind: "cancelled" }>
   ): AgentTurnCoordinatorActionResult {
     const lifecycle = this.lifecycle!;
     const event: AgentTurnEvent = active.lifecycleStarted
@@ -455,25 +495,24 @@ export class AgentTurnCoordinator {
           requestId: active.requestId,
           stepSequence: active.stepSequence,
           faultId: `${active.requestId}:${failure.code}`,
-          error: {
-            kind: "conflict",
-            code: failure.code,
-            message: failure.error,
-            recoverable: false
-          }
+          error
         }
       : {
           type: "ERROR_RECORDED",
           turnId: lifecycle.turnId,
           faultId: `${active.requestId}:${failure.code}`,
-          error: {
-            kind: "conflict",
-            code: failure.code,
-            message: failure.error,
-            recoverable: false
-          }
+          error
         };
     return this.dispatch(event);
+  }
+
+  private forwardDisplayEvent(event: AgentTurnRequestStreamEvent): void {
+    if (!this.input.onDisplayEvent) return;
+    try {
+      this.input.onDisplayEvent(immutableClone(event));
+    } catch {
+      // Display consumers are observational and cannot affect lifecycle authority.
+    }
   }
 
   private recordCoordinatorConflict(code: string, error: string): AgentTurnCoordinatorActionResult {
@@ -512,15 +551,50 @@ export class AgentTurnCoordinator {
     };
   }
 
-  private denied(code: string, error: string): AgentTurnCoordinatorActionResult {
+  private denied(
+    code: string,
+    error: string,
+    recoverable = false
+  ): AgentTurnCoordinatorActionResult {
     return {
       status: "denied",
       code,
       error,
-      recoverable: false,
+      recoverable,
       ...(this.lifecycle ? { lifecycle: immutableClone(this.lifecycle) } : {})
     };
   }
+}
+
+function classifyHandshakeFailure(
+  failure: Extract<AgentTurnCoordinatorExecutionHandshake, { status: "denied" }>
+): Exclude<AgentTurnError, { kind: "cancelled" }> {
+  const base = { code: failure.code, message: failure.error };
+  if (failure.code === "quota_exceeded" || failure.code === "provider_limit") {
+    return { kind: "quotaExceeded", ...base, recoverable: false };
+  }
+  if (
+    failure.recoverable ||
+    failure.code === "journal_unavailable" ||
+    failure.code === "supabase_unavailable" ||
+    failure.code === "auth_unavailable"
+  ) {
+    return { kind: "retryable", ...base, recoverable: true };
+  }
+  if (
+    failure.code === "not_found" ||
+    failure.code === "creation_key_conflict" ||
+    failure.code === "request_id_conflict" ||
+    failure.code === "sequence_conflict" ||
+    failure.code === "sequence_replay" ||
+    failure.code === "sequence_skip" ||
+    failure.code === "terminal_turn" ||
+    failure.code === "status_conflict" ||
+    failure.code === "request_not_latest"
+  ) {
+    return { kind: "conflict", ...base, recoverable: false };
+  }
+  return { kind: "terminal", ...base, recoverable: false };
 }
 
 function copyProviderRequest(request: APlusAgentProviderRequest): APlusAgentProviderRequest {
