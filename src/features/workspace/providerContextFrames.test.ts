@@ -65,7 +65,9 @@ describe("Agent provider transcript reconstruction", () => {
           estimatedTokens: 12
         }
       ],
-      budgetGeneration: 2
+      budgetGeneration: 2,
+      transcriptManifestHash: "a".repeat(64),
+      transcriptSnapshotToken: "snapshot-token-1234567890"
     };
     const withLatest = {
       ...workspace,
@@ -82,6 +84,18 @@ describe("Agent provider transcript reconstruction", () => {
       attachmentBoundary: "imageInput",
       budgetGeneration: 2
     });
+    const restored = migrateWorkspaceToCurrentSchema(JSON.parse(JSON.stringify(withLatest)));
+    expect(restored.status).toBe("ok");
+    if (restored.status === "ok") {
+      expect(getLatestProviderRequestState(restored.workspace)).toMatchObject({
+        transcriptManifestHash: "a".repeat(64),
+        transcriptSnapshotToken: "snapshot-token-1234567890"
+      });
+      expect(restored.workspace.ai.messages.some((message) =>
+        message.agentTrace?.providerRequestState &&
+        "transcriptSnapshotToken" in message.agentTrace.providerRequestState
+      )).toBe(false);
+    }
     expect(
       toProviderRequestBoundaryState({
         promptContractVersion: "agent-v1",

@@ -173,7 +173,7 @@ function addCompactionReceipt(body: string, requestBody: Record<string, unknown>
       ...event,
       compactionReceipt: {
         ...(descriptor && typeof descriptor === "object" ? descriptor : {}),
-        receiptVersion: 2,
+        receiptVersion: 3,
         summaryHash: hashConversationSummaryForReceipt(summary),
         summaryRevisionId: "conversation-summary-test-receipt",
         leaseId: "lease-manual",

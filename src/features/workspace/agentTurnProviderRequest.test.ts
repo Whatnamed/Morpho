@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildAgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
 import { createProviderInputSnapshot } from "@/domain/morpho/providerInputSnapshot";
+import { createProviderContextFrame } from "@/domain/morpho/providerContextFrame";
 import { createTestWorkspace } from "@/domain/morpho/workspace";
 import type { ResponseMessageInput } from "@/server/ai/openaiCompatibleProvider";
 import type {
@@ -16,6 +17,8 @@ import { createAgentTurnHostFake } from "./agentTurnHostFake";
 import { createAgentTurnWorkLedger } from "./agentTurnMessages";
 import {
   createAgentTurnProviderRequestAdapter,
+  buildAgentCompactionContextMarkers,
+  buildAgentCompactionFreshContextFrames,
   classifyCompactionProgress,
   type AgentTurnProviderRequestAdapterInput
 } from "./agentTurnProviderRequest";
@@ -101,6 +104,104 @@ describe("Agent turn provider request adapter", () => {
       continuationToken: "token-reset"
     });
     expect(lease.input.turnState.providerTranscriptReset).toBe(false);
+  });
+
+  it("compacts the frame event log to the current effective context timeline", () => {
+    const workspace = createTestWorkspace();
+    const visibleMessages = workspace.ai.messages.filter((message) => message.contextVisibility !== "uiOnly");
+    const oldAnchor = "message-old-covered";
+    const currentAnchor = visibleMessages.at(-1)?.id;
+    if (!currentAnchor) {
+      throw new Error("Expected one fixture message.");
+    }
+    const frame = (input: {
+      kind: "projectState" | "runtimeConfiguration" | "turnContext";
+      sequence: number;
+      renderedText: string;
+      anchorMessageId?: string;
+    }) => createProviderContextFrame({
+      projectId: workspace.project.id,
+      kind: input.kind,
+      createdAt: "2026-07-28T00:00:00.000Z",
+      sequence: input.sequence,
+      placement: input.anchorMessageId ? "beforeUser" : "conversationBaseline",
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+      ...(input.kind === "turnContext" ? { taskStrategy: "research" as const } : {}),
+      projectMemoryRevisionIds: [],
+      stageRecordRevisionIds: [],
+      directionRevisionIds: [],
+      selectedObjectIds: [],
+      relatedObjectIds: [],
+      renderedText: input.renderedText,
+      sourceRefs: [],
+      reason: "context compaction test",
+      ...(input.anchorMessageId ? { anchorMessageId: input.anchorMessageId } : {})
+    });
+    const withFrames = {
+      ...workspace,
+      ai: {
+        ...workspace.ai,
+        providerContextFrames: [
+          frame({ kind: "projectState", sequence: 1, renderedText: "旧项目状态" }),
+          frame({ kind: "turnContext", sequence: 2, renderedText: "旧回合上下文", anchorMessageId: oldAnchor }),
+          frame({ kind: "runtimeConfiguration", sequence: 3, renderedText: "旧运行配置" }),
+          frame({ kind: "projectState", sequence: 4, renderedText: "当前项目状态" }),
+          frame({ kind: "runtimeConfiguration", sequence: 5, renderedText: "当前运行配置" }),
+          frame({ kind: "turnContext", sequence: 6, renderedText: "当前回合上下文", anchorMessageId: currentAnchor })
+        ]
+      }
+    };
+    const markers = buildAgentCompactionContextMarkers(withFrames, {
+      sourceMessageIds: [oldAnchor]
+    });
+
+    expect(markers.map((marker) => marker.dataText)).toEqual([
+      "当前项目状态",
+      "当前运行配置",
+      "当前回合上下文"
+    ]);
+  });
+
+  it("keeps an unbound current-turn frame in the retained data tail instead of authorizing a marker", () => {
+    const workspace = createTestWorkspace();
+    const currentAnchor = workspace.ai.messages.find(
+      (message) => message.contextVisibility !== "uiOnly"
+    )?.id;
+    if (!currentAnchor) {
+      throw new Error("Expected one fixture message.");
+    }
+    const freshFrame = createProviderContextFrame({
+      projectId: workspace.project.id,
+      kind: "turnContext",
+      createdAt: "2026-07-28T00:00:00.000Z",
+      sequence: 1,
+      placement: "beforeUser",
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+      taskStrategy: "research",
+      projectMemoryRevisionIds: [],
+      stageRecordRevisionIds: [],
+      directionRevisionIds: [],
+      selectedObjectIds: [],
+      relatedObjectIds: [],
+      renderedText: "当前海洋浮标回合上下文",
+      sourceRefs: [],
+      reason: "fresh context compaction test",
+      anchorMessageId: currentAnchor
+    });
+    const withFrame = {
+      ...workspace,
+      ai: {
+        ...workspace.ai,
+        providerContextFrames: [freshFrame]
+      }
+    };
+    const options = {
+      sourceMessageIds: [] as string[],
+      freshAnchorMessageIds: [currentAnchor]
+    };
+
+    expect(buildAgentCompactionContextMarkers(withFrame, options)).toEqual([]);
+    expect(buildAgentCompactionFreshContextFrames(withFrame, options)).toEqual([freshFrame]);
   });
 
   it("sends a pending directive once and clears it after fetch resolves", async () => {

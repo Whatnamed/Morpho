@@ -23,7 +23,8 @@ import {
 import { buildTaskContext } from "./taskContext";
 import type { MorphoAgentTurnMode } from "./morphoAgent";
 import {
-  buildAgentCompactionContextMarkers
+  buildAgentCompactionContextMarkers,
+  buildAgentCompactionFreshContextFrames
 } from "./agentTurnProviderRequest";
 import { buildConversationCompactionTailItems } from "./conversationSummaryAgentRequest";
 
@@ -59,10 +60,17 @@ export async function runManualCompactionTurn(
     force: "compact"
   });
   const previousProviderRequestState = getLatestProviderRequestState(workspace);
+  const compactionContextOptions = compactionPlan
+    ? { sourceMessageIds: compactionPlan.sourceMessages.map((message) => message.id) }
+    : undefined;
   const retainedTailItems = compactionPlan
-    ? buildConversationCompactionTailItems({ messages: compactionPlan.remainingMessages, continuationItems: [] })
+    ? buildConversationCompactionTailItems({
+        messages: compactionPlan.remainingMessages,
+        continuationItems: [],
+        contextFrames: buildAgentCompactionFreshContextFrames(workspace, compactionContextOptions)
+      })
     : [];
-  const contextMarkers = buildAgentCompactionContextMarkers(workspace);
+  const contextMarkers = buildAgentCompactionContextMarkers(workspace, compactionContextOptions);
   const now = new Date(host.now()).toISOString();
   const userMessageId = `ai-user-compact-${host.now()}`;
   const assistantMessageId = `ai-assistant-compact-${host.now()}`;

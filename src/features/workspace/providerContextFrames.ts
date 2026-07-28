@@ -96,7 +96,12 @@ export function getLatestProviderRequestState(
 export function compactHistoricalProviderRequestState(
   state: ProviderRequestBoundaryState
 ): NonNullable<MorphoWorkspace["ai"]["messages"][number]["agentTrace"]>["providerRequestState"] {
-  const { cacheItemManifest: _manifest, ...compact } = state;
+  const {
+    cacheItemManifest: _manifest,
+    transcriptManifestHash: _transcriptManifestHash,
+    transcriptSnapshotToken: _transcriptSnapshotToken,
+    ...compact
+  } = state;
   return compact;
 }
 

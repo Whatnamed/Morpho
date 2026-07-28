@@ -691,10 +691,16 @@ Boundary: Supabase stores only user/turn/lease IDs, status, timestamps, terminal
 
 # 2026-07-27: Close signed Agent continuation and compaction boundaries
 
-- Provider transcript continuation is a v3 HMAC capability, not a sequence-only retry. The signed claim binds the unchanged prefix, exact Provider output, Call IDs, domain-separated SHA-256 transcript digests, and compaction receipt scope; the parser accepts only fixed Morpho Context/State markers or unique terminal Call outputs after the output. Tool-created state markers bind the signed Call batch and terminal output digest.
-- Conversation compaction uses a restricted descriptor and a server-created v2 receipt. The receipt binds SHA-256 summary/tail/source/manifest hashes, a continuous source boundary, previous-summary identity, summary revision, prompt contract, lease/turn/sequence scope, and expiry. It is carried only inside the transient continuation token and is never written to Supabase or workspace message bodies.
+- Provider transcript continuation is a v4 HMAC capability, not a sequence-only retry. The signed claim binds the unchanged prefix, exact Provider output, Call IDs, domain-separated SHA-256 transcript digests, and compaction receipt scope; prefix markers and appendable markers are separate sets, so an old prefix marker cannot be replayed at the tail. Tool-created state markers bind the signed Call batch and every unique terminal output.
+- Conversation compaction uses a restricted descriptor and a server-created v3 receipt. The receipt binds SHA-256 summary/tail/source/manifest hashes, a continuous source boundary, previous-summary identity, summary revision, prompt contract, lease/turn/sequence scope, and expiry. It is carried only inside the transient continuation token and is never written to Supabase or workspace message bodies.
 - A lost Agent web-search response gets one read-only `read_agent_turn_lease_state` recovery to refresh the sequence, then the failed search is submitted as a terminal tool result without replaying the query. A second transport loss or failed recovery terminates the turn safely; standalone search is unchanged.
 - Context compaction is bounded by both token and Item pressure, with at most two continuation compactions and a strict reduction requirement. The shared function-call ceiling is 64 across provider parsing, streaming, tool-batch finalization, and continuation signing; over-limit output fails closed before any Call executes.
+
+# 2026-07-28: Close cross-turn transcript and Context authority
+
+- Every completed non-summary Provider request signs a 24-hour output-inclusive durable transcript snapshot and persists it only in `workspace.ai.latestProviderRequestState`; historical traces strip both its manifest hash and token. The durable manifest canonicalizes user/assistant messages and strategy items while omitting request-local Provider reasoning, Calls, and terminal outputs.
+- Summary source envelope v2 has no client-authored `summaryText` or parallel `taskStrategy`. The server derives the Provider-visible source from canonical items, verifies the previous summary body against the prior signed summary hash/revision, and requires every signed Call to have exactly one terminal output before compaction.
+- A Summary may carry only Context marker hashes authorized by the prior continuation/snapshot or newly bound to the complete current Call batch and terminal outputs. The post-compaction input keeps only the effective frame timeline; fresh current-turn frames remain receipt-bound data, and a completed post-compaction request includes those retained frame identities in its closed snapshot.
 
 # 2026-07-26: Turn outcome from unresolved work
 

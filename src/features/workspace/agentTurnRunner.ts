@@ -92,6 +92,7 @@ import {
   createAgentTurnProviderRequestAdapter,
   AgentContextCompactionError,
   buildAgentCompactionContextMarkers,
+  buildAgentCompactionFreshContextFrames,
   estimateAgentTurnProviderBudget,
   rebuildAgentPostCompactionTranscript
 } from "./agentTurnProviderRequest";
@@ -473,11 +474,24 @@ export async function runMorphoAgentTurn(
   });
   let automaticPostCompactionInput: unknown[] | undefined;
   if (automaticCompactionPlan) {
+    const automaticContextOptions = {
+      sourceMessageIds: automaticCompactionPlan.sourceMessages.map((message) => message.id),
+      providerInput: preCompactionInput,
+      freshAnchorMessageIds: [userMessageId]
+    };
+    const automaticFreshContextFrames = buildAgentCompactionFreshContextFrames(
+      turnState.workspaceAtAgentStart,
+      automaticContextOptions
+    );
     const automaticRetainedTailItems = buildConversationCompactionTailItems({
       messages: automaticCompactionPlan.remainingMessages,
-      continuationItems: []
+      continuationItems: [],
+      contextFrames: automaticFreshContextFrames
     });
-    const automaticContextMarkers = buildAgentCompactionContextMarkers(turnState.workspaceAtAgentStart);
+    const automaticContextMarkers = buildAgentCompactionContextMarkers(
+      turnState.workspaceAtAgentStart,
+      automaticContextOptions
+    );
     const compactionActivityId = `${agentTurnId}:conversation-summary`;
     commitWorkspaceNow((current) => {
       const assistant = current.ai.messages.find((message) => message.id === assistantMessageId);

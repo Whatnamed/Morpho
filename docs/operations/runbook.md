@@ -211,6 +211,8 @@ Do not paste credentials into the repository or shell history. Do not apply the 
 
 Conversation compaction is part of the same formal Agent turn. Its first Provider request creates the lease when needed; automatic and continuation compaction reuse that lease through the strict `leaseContinuation` path, then the normal Agent request continues with the same counters. `leaseContinuation` is not a Responses transcript continuation, cannot be combined with `continuation`, and never causes a second daily text reservation for the same user turn.
 
+Cross-turn compaction requires the latest output-inclusive transcript snapshot from `workspace.ai.latestProviderRequestState`. Only that latest slot retains the 24-hour token and manifest hash; historical traces deliberately strip them. Summary source text is rebuilt from canonical signed Provider items, Context markers must come from the prior signed marker manifest or a complete Call/terminal-output causal binding, and all checks occur before the Lease RPC. A deployment that changes the snapshot protocol fails closed on older tokens; one successfully completed normal Agent request creates the current snapshot version.
+
 After application, verify in the Supabase SQL editor or another authorized administrative connection:
 
 ```sql

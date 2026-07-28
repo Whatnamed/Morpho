@@ -2432,8 +2432,14 @@ function stripHistoricalProviderRequestManifest(
 ): NonNullable<AgentTrace["providerRequestState"]> {
   const {
     cacheItemManifest: _legacyManifest,
+    transcriptManifestHash: _transcriptManifestHash,
+    transcriptSnapshotToken: _transcriptSnapshotToken,
     ...providerRequestState
-  } = state as typeof state & { cacheItemManifest?: unknown };
+  } = state as typeof state & {
+    cacheItemManifest?: unknown;
+    transcriptManifestHash?: unknown;
+    transcriptSnapshotToken?: unknown;
+  };
   return providerRequestState;
 }
 
@@ -2496,7 +2502,14 @@ function normalizeLatestProviderRequestState(
       : {}),
     ...(cacheItemManifest ? { cacheItemManifest } : {}),
     ...(typeof value.toolsHash === "string" ? { toolsHash: value.toolsHash } : {}),
-    ...(typeof value.budgetGeneration === "number" ? { budgetGeneration: value.budgetGeneration } : {})
+    ...(typeof value.budgetGeneration === "number" ? { budgetGeneration: value.budgetGeneration } : {}),
+    ...(typeof value.transcriptManifestHash === "string" && /^[0-9a-f]{64}$/.test(value.transcriptManifestHash)
+      ? { transcriptManifestHash: value.transcriptManifestHash }
+      : {}),
+    ...(typeof value.transcriptSnapshotToken === "string" &&
+      value.transcriptSnapshotToken.length >= 16 && value.transcriptSnapshotToken.length <= 512_000
+      ? { transcriptSnapshotToken: value.transcriptSnapshotToken }
+      : {})
   };
 }
 

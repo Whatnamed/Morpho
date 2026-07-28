@@ -4,14 +4,17 @@ import {
   buildContinuousConversationContext,
   buildConversationCompactionPlan,
   classifyConversationPressure,
+  getUsableConversationMessages,
   sanitizeConversationSummaryStreamForDisplay,
   type ConversationTokenLimits
 } from "@/domain/morpho/conversationCompaction";
+import { buildProviderContextFrameTimeline } from "@/domain/morpho/providerContextFrame";
 import { sanitizeConversationAssistantStreamForDisplay } from "@/domain/morpho/conversationCheckpoint";
 import { buildAgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
 import type {
   AgentTaskStrategyKind,
   MorphoWorkspace,
+  ProviderContextFrame,
   ProviderInputSnapshot
 } from "@/domain/morpho/types";
 import type { ResponseMessageInput } from "@/server/ai/openaiCompatibleProvider";
@@ -55,7 +58,9 @@ import {
 } from "./providerContextFrames";
 import {
   type AgentCompactionReceipt,
+  AGENT_CONTEXT_STATE_MARKER_TYPE,
   buildCompactionTranscriptMarker,
+  type AgentContextStateMarker,
   type AgentContextMarkerCausalBinding
 } from "@/shared/agentCompactionProtocol";
 import { buildProviderTaskContext, buildTaskContext, type TaskContextResult } from "./taskContext";
@@ -138,9 +143,91 @@ export function classifyCompactionProgress(
 }
 
 export function buildAgentCompactionContextMarkers(
-  workspace: MorphoWorkspace
+  workspace: MorphoWorkspace,
+  options: AgentCompactionContextOptions = {}
 ): ReturnType<typeof providerContextFrameContinuationMarker>[] {
-  return (workspace.ai.providerContextFrames ?? []).map((frame) => providerContextFrameContinuationMarker(frame));
+  const inputMarkers = contextMarkersFromProviderInput(options.providerInput ?? []);
+  return selectAgentCompactionContextFrames(workspace, options)
+    .filter((frame) => !isFreshUnboundContextFrame(frame, options, inputMarkers))
+    .map((frame) => inputMarkers.get(providerContextFrameContinuationMarker(frame).contentHash) ??
+      providerContextFrameContinuationMarker(frame));
+}
+
+export function buildAgentCompactionFreshContextFrames(
+  workspace: MorphoWorkspace,
+  options: AgentCompactionContextOptions = {}
+): ProviderContextFrame[] {
+  const inputMarkers = contextMarkersFromProviderInput(options.providerInput ?? []);
+  return selectAgentCompactionContextFrames(workspace, options)
+    .filter((frame) => isFreshUnboundContextFrame(frame, options, inputMarkers));
+}
+
+type AgentCompactionContextOptions = {
+  sourceMessageIds?: readonly string[];
+  providerInput?: readonly unknown[];
+  freshAnchorMessageIds?: readonly string[];
+};
+
+function selectAgentCompactionContextFrames(
+  workspace: MorphoWorkspace,
+  options: AgentCompactionContextOptions
+): ProviderContextFrame[] {
+  const frames = workspace.ai.providerContextFrames ?? [];
+  const usableMessages = getUsableConversationMessages(workspace.ai.messages);
+  const coveredIds = new Set([
+    ...usableMessages
+      .slice(0, workspace.ai.conversationCompaction.coveredMessageCount)
+      .map((message) => message.id),
+    ...(options.sourceMessageIds ?? [])
+  ]);
+  const activeMessageIds = new Set(
+    usableMessages.filter((message) => !coveredIds.has(message.id)).map((message) => message.id)
+  );
+  const timeline = buildProviderContextFrameTimeline({
+    frames,
+    activeMessageIds,
+    summaryCoveredMessageIds: coveredIds,
+    activeSummaryRevisionId: workspace.ai.conversationCompaction.summaryRevisionId
+  }).filter((frame) => frame.kind !== "conversationSummary");
+  const latestStateFrames = (["projectState", "runtimeConfiguration"] as const).flatMap((kind) => {
+    const latest = [...frames]
+      .filter((frame) => frame.kind === kind)
+      .sort((left, right) => left.sequence - right.sequence)
+      .at(-1);
+    return latest ? [latest] : [];
+  });
+  return [...new Map(
+    [...timeline, ...latestStateFrames]
+      .sort((left, right) => left.sequence - right.sequence)
+      .map((frame) => [frame.id, frame])
+  ).values()];
+}
+
+function contextMarkersFromProviderInput(
+  input: readonly unknown[]
+): Map<string, AgentContextStateMarker> {
+  return new Map(input.flatMap((item): Array<[string, AgentContextStateMarker]> => {
+    if (
+      typeof item !== "object" || item === null || Array.isArray(item) ||
+      !("type" in item) || item.type !== AGENT_CONTEXT_STATE_MARKER_TYPE ||
+      !("contentHash" in item) || typeof item.contentHash !== "string"
+    ) {
+      return [];
+    }
+    return [[item.contentHash, item as AgentContextStateMarker]];
+  }));
+}
+
+function isFreshUnboundContextFrame(
+  frame: ProviderContextFrame,
+  options: AgentCompactionContextOptions,
+  inputMarkers: ReadonlyMap<string, AgentContextStateMarker>
+): boolean {
+  if (!frame.anchorMessageId || !options.freshAnchorMessageIds?.includes(frame.anchorMessageId)) {
+    return false;
+  }
+  const marker = inputMarkers.get(providerContextFrameContinuationMarker(frame).contentHash);
+  return !marker?.causalBindingHash;
 }
 
 export function rebuildAgentPostCompactionTranscript(input: {
@@ -602,11 +689,16 @@ export async function compactConversationBeforeContinuation(
   if (!plan) {
     return { status: "blocked", reason: "当前上下文没有完整且安全的压缩边界，已停止继续发送。" };
   }
+  const compactionContextOptions = {
+    sourceMessageIds: plan.sourceMessages.map((message) => message.id),
+    providerInput: runtimeState.conversationInput
+  };
   const retainedTailItems = buildConversationCompactionTailItems({
     messages: plan.remainingMessages,
-    continuationItems: runtimeState.turnContinuationItems
+    continuationItems: runtimeState.turnContinuationItems,
+    contextFrames: buildAgentCompactionFreshContextFrames(currentWorkspace, compactionContextOptions)
   });
-  const contextMarkers = buildAgentCompactionContextMarkers(currentWorkspace);
+  const contextMarkers = buildAgentCompactionContextMarkers(currentWorkspace, compactionContextOptions);
   runtimeState.continuationCompactionCount += 1;
 
   const activityId = `${input.agentTurnId}:continuation-summary`;
