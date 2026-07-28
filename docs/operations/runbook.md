@@ -288,6 +288,13 @@ supabase db push
 supabase migration list
 ```
 
+Before editing this migration in place or deploying the Stage 2 revision, inspect the verified
+remote migration list. If `20260729012105` has never been applied, the checked-in migration remains
+the single forward application. If an earlier form of `20260729012105` is already recorded remotely,
+do not expect changed file contents to run again: create a later forward-only migration that adds
+`execution_started_at`, `execution_expires_at`, their constraint, and the revised read/acquire/settle
+RPC definitions. Never repair this by deleting remote migration history or applying unrelated SQL.
+
 Stop without changing the remote database if the CLI is missing, authentication is unavailable,
 the linked ref is not independently verified, or the dry run contains unrelated migrations. A
 missing A+ contract fails the new routes closed with `journal_contract_missing`; it does not fall
@@ -313,9 +320,14 @@ For isolated Stage 2 client checks, validated current-request display events may
 the Coordinator's optional `onDisplayEvent` sink. It is not a lifecycle or persistence input.
 When recovery reads `awaitingNextRequest` but the matching Provider payload was never observed,
 the client must terminate with `providerContinuationPayloadUnavailable`; do not synthesize output,
-Tool Calls, or replay the external request. Treat `journal_unavailable` as retryable with the same
+Tool Calls, or replay the external request. Existing Fault and Tool/Persistence/unresolved-work
+reasons must remain in the reducer-derived Outcome. Treat `journal_unavailable` as retryable with the same
 Request ID and sequence, while quota, conflict, and terminal Provider/contract denials remain
-non-retryable according to their typed lifecycle error.
+non-retryable according to their typed lifecycle error. If a deterministic denial occurs after
+Provider execution already started, the Coordinator immediately queries the Journal: terminal
+status finalizes locally, while `providerRunning` becomes query-only
+`external_execution_pending_reconciliation`. `journal_query_failed` is recoverable and must be
+retried as a status query, never as a new Provider execution.
 
 The Supabase Free-plan leaked-password-protection advisor warning is a plan limitation. It is not fixed by changing application SQL or weakening authentication behavior.
 

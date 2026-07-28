@@ -456,11 +456,24 @@ a later external failure retains the reducer's partial-completion semantics.
 current client never observed the matching Provider output, the Coordinator emits
 `PROVIDER_OUTPUT_UNAVAILABLE`. The reducer creates no fake output or Tool Call, performs no replay,
 and terminates the local Turn as `failed` or `partiallyCompleted` with
-`providerContinuationPayloadUnavailable`, depending on earlier visible or Tool effects.
+`providerContinuationPayloadUnavailable`, depending on earlier visible or Tool effects. This event
+uses the same Fault merge invariant as every other error: an existing different Fault is preserved,
+and payload loss is added as a separate Outcome reason. The normal Outcome derivation retains Tool
+failure, persistence failure, unresolved work, and the existing Fault reason instead of replacing
+them with a payload-only result.
 Handshake denials are likewise typed before entering the reducer: quota and Provider-limit
 denials are `quotaExceeded`, deterministic identity/sequence/status denials are `conflict`,
 transient Journal/Auth/Supabase unavailability is `retryable`, and remaining deterministic
 Provider/contract failures are `terminal`.
+
+If an exact retry is deterministically denied after its lifecycle request already started, the
+Coordinator does not leave the caller to infer a second recovery action and never starts Provider
+again. It immediately reconciles the same Request ID and sequence against the Journal. A terminal
+Journal status is observed and finalized through the reducer; `providerRunning` returns the explicit
+recoverable `external_execution_pending_reconciliation` state with Provider retry disabled and
+query-only reconciliation still available. A transient Journal query failure is itself reported as
+recoverable, and a later status query continues with the same Request identity without external
+re-execution.
 
 No Stage 2 Feature Flag is introduced because neither the current UI nor the existing
 `agentTurnRunner.ts` imports or calls the A+ Coordinator or its routes. The existing B-style Runtime
