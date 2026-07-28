@@ -259,6 +259,48 @@ describe("Provider and display inputs", () => {
     });
   });
 
+  it("does not overwrite an existing Fault when Provider payload is unavailable", () => {
+    let state = startProviderRequest(requesting());
+    state = apply(state, {
+      type: "EXTERNAL_ERROR_RECORDED",
+      ...request1,
+      faultId: fault1,
+      error: terminalError
+    });
+    state = apply(state, {
+      type: "PROVIDER_OUTPUT_UNAVAILABLE",
+      ...request1
+    });
+    expect(state).toMatchObject({
+      phase: "terminal",
+      fault: { kind: "present", faultId: fault1, error: terminalError },
+      outcome: {
+        kind: "failed",
+        reasons: expect.arrayContaining(["terminal", "providerContinuationPayloadUnavailable"])
+      }
+    });
+  });
+
+  it("preserves Tool failure reasons when a later Provider payload is unavailable", () => {
+    let state = finalizeBatch(
+      withToolCallingOutput(),
+      ["call-a", "call-b"],
+      [executed("call-a"), failed("call-b")]
+    );
+    state = startProviderRequest(state, request2);
+    state = apply(state, {
+      type: "PROVIDER_OUTPUT_UNAVAILABLE",
+      ...request2
+    });
+    expect(state).toMatchObject({
+      phase: "terminal",
+      outcome: {
+        kind: "partiallyCompleted",
+        reasons: expect.arrayContaining(["toolCallFailed", "providerContinuationPayloadUnavailable"])
+      }
+    });
+  });
+
   it("records an SSE display activity without deciding a terminal outcome", () => {
     const state = apply(startProviderRequest(requesting()), {
       type: "STREAM_ACTIVITY_OBSERVED",

@@ -74,6 +74,7 @@ type ActiveRequest = {
   providerRequest: APlusAgentProviderRequest;
   lifecycleStarted: boolean;
   retryAllowed: boolean;
+  reconciliationOnly: boolean;
 };
 
 type Reducer = (
@@ -204,7 +205,8 @@ export class AgentTurnCoordinator {
       stepSequence,
       providerRequest: copyProviderRequest(providerRequest),
       lifecycleStarted: false,
-      retryAllowed: false
+      retryAllowed: false,
+      reconciliationOnly: false
     };
     return this.executeActiveRequest(false);
   }
@@ -256,6 +258,10 @@ export class AgentTurnCoordinator {
             : this.denied(handshake.code, handshake.error);
         }
         active.retryAllowed = false;
+        if (active.lifecycleStarted) {
+          active.reconciliationOnly = true;
+          return this.recover(active, generation, { allowProviderRetry: false });
+        }
         return this.denied(handshake.code, handshake.error);
       }
       if (!active.lifecycleStarted) {
@@ -354,7 +360,8 @@ export class AgentTurnCoordinator {
 
   private async recover(
     expected: Pick<ActiveRequest, "requestId" | "stepSequence">,
-    generation: number
+    generation: number,
+    options: Readonly<{ allowProviderRetry?: boolean }> = {}
   ): Promise<AgentTurnCoordinatorActionResult> {
     const lifecycle = this.lifecycle;
     if (!lifecycle) return this.denied("not_initialized", "Coordinator 尚未创建 Server Turn。");
@@ -365,7 +372,7 @@ export class AgentTurnCoordinator {
         localProjectId: this.input.localProjectId
       });
     } catch {
-      return this.denied("journal_query_failed", "Server Turn Journal 查询失败。");
+      return this.denied("journal_query_failed", "Server Turn Journal 查询失败，可安全重试状态查询。", true);
     }
     if (generation !== this.syncGeneration) {
       return this.denied("stale_query_result", "旧 Request 的 Journal 查询结果已被拒绝。");
@@ -433,7 +440,16 @@ export class AgentTurnCoordinator {
     );
     if (observed.status === "denied") return observed;
     if (snapshot.status === "providerRunning" && this.activeRequest) {
-      this.activeRequest.retryAllowed = true;
+      const allowProviderRetry =
+        options.allowProviderRetry !== false && !this.activeRequest.reconciliationOnly;
+      this.activeRequest.retryAllowed = allowProviderRetry;
+      if (!allowProviderRetry) {
+        return this.denied(
+          "external_execution_pending_reconciliation",
+          "不可重试的 Request 拒绝已发生；外部执行状态仍待 Journal 收敛，请继续查询状态。",
+          true
+        );
+      }
     }
     return this.ok(this.activeRequest ?? expected);
   }

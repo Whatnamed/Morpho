@@ -384,6 +384,111 @@ describe("A+ AgentTurnCoordinator", () => {
     ]);
   });
 
+  it("reconciles a non-retryable denial after execution started without rerunning Provider", async () => {
+    const host = new FakeHost();
+    host.queueStarted({ status: "providerRunning", output: false, interrupted: true });
+    host.queueHandshake({
+      status: "denied",
+      code: "request_id_conflict",
+      error: "server contract changed",
+      recoverable: false
+    });
+    const coordinator = await initializedCoordinator(host, ["request-1"]);
+    await coordinator.startInitialRequest(providerRequest());
+    host.queryOverride = async () => snapshot({
+      status: "externallyFailed",
+      latestRequestId: "request-1",
+      latestStepSequence: 1,
+      terminalAt: "2026-07-29T01:03:00.000Z",
+      failureCode: "external_execution_state_unknown"
+    });
+
+    await expect(coordinator.retryActiveRequest()).resolves.toMatchObject({
+      status: "ok",
+      lifecycle: {
+        phase: "terminal",
+        fault: { kind: "present", error: { kind: "conflict", code: "request_id_conflict" } },
+        outcome: { kind: "failed" }
+      }
+    });
+    expect(host.executions).toHaveLength(2);
+    expect(host.externalExecutionCount).toBe(1);
+    expect(host.queryServerTurn).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a non-retryable denial query-only while Journal still reports providerRunning", async () => {
+    const host = new FakeHost();
+    host.queueStarted({ status: "providerRunning", output: false, interrupted: true });
+    host.queueHandshake({
+      status: "denied",
+      code: "request_id_conflict",
+      error: "server contract changed",
+      recoverable: false
+    });
+    const coordinator = await initializedCoordinator(host, ["request-1"]);
+    await coordinator.startInitialRequest(providerRequest());
+
+    await expect(coordinator.retryActiveRequest()).resolves.toMatchObject({
+      status: "denied",
+      code: "external_execution_pending_reconciliation",
+      recoverable: true,
+      lifecycle: {
+        phase: "requestingProvider",
+        serverExecutionStatus: "providerRunning",
+        fault: { kind: "present", error: { kind: "conflict" } }
+      }
+    });
+    await expect(coordinator.retryActiveRequest()).resolves.toMatchObject({
+      status: "denied",
+      code: "request_in_flight",
+      recoverable: false
+    });
+    await expect(coordinator.recoverServerExecutionStatus()).resolves.toMatchObject({
+      status: "denied",
+      code: "external_execution_pending_reconciliation",
+      recoverable: true
+    });
+    await expect(coordinator.retryActiveRequest()).resolves.toMatchObject({
+      status: "denied",
+      code: "request_in_flight"
+    });
+    expect(host.executions).toHaveLength(2);
+    expect(host.externalExecutionCount).toBe(1);
+    expect(host.queryServerTurn).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps Journal query failure recoverable and resumes by query without rerunning Provider", async () => {
+    const host = new FakeHost();
+    let queryAttempt = 0;
+    host.queryOverride = async () => {
+      queryAttempt += 1;
+      if (queryAttempt === 1) throw new Error("temporary Journal outage");
+      return snapshot({
+        status: "externallyFailed",
+        latestRequestId: "request-1",
+        latestStepSequence: 1,
+        terminalAt: "2026-07-29T01:03:00.000Z",
+        failureCode: "external_execution_state_unknown"
+      });
+    };
+    host.queueStarted({ status: "providerRunning", output: false, interrupted: true });
+    const coordinator = await initializedCoordinator(host, ["request-1"]);
+
+    await expect(coordinator.startInitialRequest(providerRequest())).resolves.toMatchObject({
+      status: "denied",
+      code: "journal_query_failed",
+      recoverable: true,
+      lifecycle: { phase: "requestingProvider", serverExecutionStatus: "providerRunning" }
+    });
+    await expect(coordinator.recoverServerExecutionStatus()).resolves.toMatchObject({
+      status: "ok",
+      lifecycle: { phase: "terminal", outcome: { kind: "failed" } }
+    });
+    expect(host.executions).toHaveLength(1);
+    expect(host.externalExecutionCount).toBe(1);
+    expect(host.queryServerTurn).toHaveBeenCalledTimes(2);
+  });
+
   it("fails deterministically on a Journal Turn/Project binding mismatch", async () => {
     const host = new FakeHost();
     host.queueStarted({ status: "providerRunning", output: false, interrupted: true });

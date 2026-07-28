@@ -574,7 +574,13 @@ function buildOutcomeReasons(
     batches.some((batch) => batch.unresolvedWorkIds.length > 0) ||
     state.unresolvedWorkIds.length
   ) reasons.push("unresolvedWork");
-  if (state.fault.kind === "present") reasons.push(state.fault.error.kind);
+  if (state.fault.kind === "present") {
+    reasons.push(
+      state.fault.error.code === "providerContinuationPayloadUnavailable"
+        ? state.fault.error.code
+        : state.fault.error.kind
+    );
+  }
   return [...new Set(reasons)];
 }
 
@@ -719,28 +725,31 @@ function markProviderOutputUnavailable(
   if (!matchesExternalRequest(state, requestId, stepSequence, true)) {
     return externalRequestMismatch(state, requestId, stepSequence);
   }
+  const faultId = `${requestId}:providerContinuationPayloadUnavailable`;
+  const error = {
+    kind: "terminal" as const,
+    code: "providerContinuationPayloadUnavailable",
+    message: "Provider continuation payload was not received by this client.",
+    recoverable: false as const
+  };
+  const merged = mergeFault(state.fault, faultId, error);
   const failed = {
     ...state,
     serverExecutionStatus: "awaitingNextRequest" as const,
     externalRequest: { kind: "settled" as const, requestId, stepSequence },
-    fault: {
-      kind: "present" as const,
-      faultId: `${requestId}:providerContinuationPayloadUnavailable`,
-      error: {
-        kind: "terminal" as const,
-        code: "providerContinuationPayloadUnavailable",
-        message: "Provider continuation payload was not received by this client.",
-        recoverable: false as const
-      }
-    }
+    // A different unresolved Fault keeps authority; payload loss remains an Outcome reason.
+    fault: merged.ok ? merged.fault : state.fault
   };
-  const hasSuccessfulEffect = Boolean(
-    failed.providerEffectProduced ||
-    failed.toolBatches.some((batch) => batch.outcome.executedCount > 0)
-  );
+  const outcome = deriveOverallOutcome(failed);
+  if (!outcome) {
+    return transitionError(
+      "insufficientTerminalFacts",
+      "Unavailable Provider payload did not produce a terminal Outcome."
+    );
+  }
   return terminal(failed, {
-    kind: hasSuccessfulEffect ? "partiallyCompleted" : "failed",
-    reasons: ["providerContinuationPayloadUnavailable"]
+    ...outcome,
+    reasons: addUnique(outcome.reasons, "providerContinuationPayloadUnavailable")
   });
 }
 
