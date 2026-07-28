@@ -2,6 +2,8 @@ import type {
   ConversationCompactionPlan,
   ConversationMessageForContext
 } from "@/domain/morpho/conversationCompaction";
+import { providerContextFrameMessage } from "@/domain/morpho/providerContextFrame";
+import type { ProviderContextFrame } from "@/domain/morpho/types";
 import type { ResponseMessageInput } from "@/server/ai/openaiCompatibleProvider";
 import type { AgentRuntimeMode } from "@/shared/agentRuntimeItem";
 import {
@@ -15,7 +17,8 @@ import { createAgentStrategyMarker } from "@/shared/agentStrategyItem";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
 import {
   buildAgentCheckpointCompactionInput,
-  buildConversationSummarySourceProviderInput
+  buildConversationSummarySourceProviderInput,
+  buildConversationSummarySourceProviderItems
 } from "./morphoAgent";
 
 export function buildConversationSummaryAgentRequest(input: {
@@ -47,7 +50,7 @@ export function buildConversationSummaryAgentRequest(input: {
     retainedTail: retainedTailItems,
     sourceInput: summaryInput,
     sourceManifest: buildAgentTranscriptManifest(
-      input.plan.sourceMessages.flatMap((message) => buildConversationSummarySourceProviderInput(message))
+      input.plan.sourceMessages.flatMap((message) => buildConversationSummarySourceProviderItems(message))
     ),
     contextMarkers: input.contextMarkers,
     previousTranscriptManifestHash: input.previousTranscriptManifestHash,
@@ -94,9 +97,22 @@ export function buildConversationSummaryAgentRequest(input: {
 export function buildConversationCompactionTailItems(input: {
   messages: readonly ConversationMessageForContext[];
   continuationItems: readonly unknown[];
+  contextFrames?: readonly ProviderContextFrame[];
 }): unknown[] {
+  const contextFrames = input.contextFrames ?? [];
+  const unanchoredFrames = contextFrames.filter((frame) => !frame.anchorMessageId);
   return [
-    ...input.messages.flatMap((message) => conversationMessageToProviderInput(message)),
+    ...unanchoredFrames.map(providerContextFrameMessage),
+    ...input.messages.flatMap((message) => {
+      const anchored = contextFrames.filter((frame) => frame.anchorMessageId === message.id);
+      const before = anchored.filter((frame) => frame.placement === "beforeUser" || frame.placement === "beforeAssistant");
+      const after = anchored.filter((frame) => frame.placement === "afterUser" || frame.placement === "afterAssistant");
+      return [
+        ...before.map(providerContextFrameMessage),
+        ...conversationMessageToProviderInput(message),
+        ...after.map(providerContextFrameMessage)
+      ];
+    }),
     ...input.continuationItems
   ];
 }

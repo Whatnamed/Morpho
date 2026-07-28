@@ -19,11 +19,14 @@ import {
 import { classifyProviderCacheStatus } from "@/server/ai/providerTokenUsage";
 import {
   AGENT_COMPACTION_TRANSCRIPT_MARKER_TYPE,
+  AGENT_COMPACTION_RECEIPT_VERSION,
+  buildAgentDurableTranscriptManifest,
   buildConversationSummaryRevisionId,
   buildAgentTranscriptManifest,
   hashConversationSummaryForReceipt,
   hashSourceMessageIds,
-  parseAgentCompactionSourceEnvelope
+  parseAgentCompactionSourceEnvelope,
+  readAgentContextStateMarkerCandidate
 } from "@/shared/agentCompactionProtocol";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
 import {
@@ -47,6 +50,7 @@ import {
   AgentProviderContractError,
   buildAgentProviderContract,
   normalizeProviderOutputItemsForBinding,
+  parseAgentContextStateMarker,
   parseAgentRouteRequest
 } from "@/server/ai/agentProviderContract";
 import {
@@ -109,16 +113,15 @@ export async function POST(request: Request) {
   const filteredToolProfile = contract.effectiveToolProfile;
   const continuationSecret = resolveAgentContinuationSecret(process.env);
   const transcriptManifest = buildAgentTranscriptManifest(contract.request.input);
-  const previousCompactionSummary = readPreviousCompactionSummaryBinding(validated.value.input);
-  const transcriptSnapshotToken = continuationSecret
-    ? issueAgentTranscriptSnapshotToken({
-        secret: continuationSecret,
-        projectId: validated.value.projectId,
-        transcriptManifest,
-        ...(previousCompactionSummary ?? {}),
-        now: Date.now()
-      })
-    : undefined;
+  const durableInputManifest = buildAgentDurableTranscriptManifest(contract.request.input);
+  const previousCompactionSummary = readPreviousCompactionSummaryBinding(validated.value.input) ??
+    readVerifiedPreviousSnapshotSummary({
+      state: validated.value.diagnostics?.previousRequestState,
+      secret: continuationSecret,
+      projectId: validated.value.projectId,
+      now: Date.now()
+    });
+  const requestContextMarkerHashes = contextMarkerHashesForSnapshot(validated.value.input);
   const requestState = {
     ...buildProviderRequestState(
     contract.request,
@@ -126,8 +129,7 @@ export async function POST(request: Request) {
     contract.runtimeItem,
     validated.value.contextBudgetState?.generation
     ),
-    transcriptManifestHash: transcriptManifest.manifestHash,
-    ...(transcriptSnapshotToken ? { transcriptSnapshotToken } : {})
+    transcriptManifestHash: durableInputManifest.manifestHash
   };
   const requestHash = hashAgentTurnLeaseValue({
     input: contract.request.input,
@@ -236,7 +238,7 @@ export async function POST(request: Request) {
     }
     const sourceBinding = verifyAgentCompactionSourceBinding({
       claims: continuationClaims ?? {
-        v: 3,
+        v: 4,
         leaseId: "snapshot",
         agentTurnId: validated.value.agentTurnId,
         sequence: validated.value.leaseSequence ?? 1,
@@ -246,13 +248,19 @@ export async function POST(request: Request) {
         outputHash: hashAgentContinuationItems([]),
         callIds: [],
         transcriptManifest: sourceManifest,
-        authorizedContextMarkerHashes: [],
+        prefixContextMarkerHashes: snapshot?.status === "ok"
+          ? snapshot.claims.contextMarkerHashes
+          : [],
+        appendableContextMarkerHashes: [],
+        compactionContextMarkerHashes: snapshot?.status === "ok"
+          ? snapshot.claims.contextMarkerHashes
+          : [],
         exp: Date.now() + 1
       },
       parsedInput: validated.value.input,
       descriptor: validated.value.compactionDescriptor!,
       transcriptManifest: sourceManifest,
-      contextMarkerHashes: validated.value.compactionContextMarkers?.map((marker) => marker.contentHash) ?? [],
+      contextMarkers: validated.value.compactionContextMarkers ?? [],
       retainedTail: validated.value.compactionRetainedTail ?? [],
       allowFreshUserTail: !continuationClaims,
       ...(snapshot?.status === "ok" && snapshot.claims.previousSummaryHash
@@ -436,6 +444,37 @@ export async function POST(request: Request) {
                 ...boundOutputItems
               ])
             : undefined;
+          const closedAssistantText = execution.result.outputText.trim();
+          const closedTranscriptManifest = !isSummaryRequest
+            ? buildAgentDurableTranscriptManifest([
+                ...contract.request.input,
+                ...(closedAssistantText
+                  ? [{
+                      role: "assistant" as const,
+                      content: [{ type: "output_text" as const, text: closedAssistantText }]
+                    }]
+                  : [])
+              ])
+            : undefined;
+          const closedTranscriptSnapshotToken = continuationSecret && closedTranscriptManifest
+            ? issueAgentTranscriptSnapshotToken({
+                secret: continuationSecret,
+                projectId: validated.value.projectId,
+                transcriptManifest: closedTranscriptManifest,
+                contextMarkerHashes: requestContextMarkerHashes,
+                ...(previousCompactionSummary ?? {}),
+                now: Date.now()
+              })
+            : undefined;
+          const completedRequestState = closedTranscriptManifest
+            ? {
+                ...requestState,
+                transcriptManifestHash: closedTranscriptManifest.manifestHash,
+                ...(closedTranscriptSnapshotToken
+                  ? { transcriptSnapshotToken: closedTranscriptSnapshotToken }
+                  : {})
+              }
+            : requestState;
           const parsedSummary = isSummaryRequest
             ? parseConversationSummaryPayload(execution.result.outputText)
             : undefined;
@@ -443,7 +482,7 @@ export async function POST(request: Request) {
             validated.value.compactionDescriptor &&
             parsedSummary?.status === "ok"
              ? {
-                 receiptVersion: 2 as const,
+                 receiptVersion: AGENT_COMPACTION_RECEIPT_VERSION,
                  ...validated.value.compactionDescriptor,
                 summaryHash: hashConversationSummaryForReceipt(parsedSummary.summary),
                 summaryRevisionId: buildConversationSummaryRevisionId({
@@ -470,10 +509,13 @@ export async function POST(request: Request) {
                 outputHash: hashAgentContinuationItems(boundOutputItems),
                 callIds: execution.result.functionCalls.map((call) => call.callId),
                  transcriptManifest: continuationTranscriptManifest ?? buildAgentTranscriptManifest([]),
-                 authorizedContextMarkerHashes: [
-                   ...contextMarkerHashesFromInput(validated.value.input),
-                   ...(validated.value.compactionContextMarkers?.map((marker) => marker.contentHash) ?? [])
-                 ],
+                 prefixContextMarkerHashes: contextMarkerHashesFromInput(validated.value.input),
+                 appendableContextMarkerHashes: isSummaryRequest
+                   ? validated.value.compactionContextMarkers?.map((marker) => marker.contentHash) ?? []
+                   : [],
+                 compactionContextMarkerHashes: isSummaryRequest
+                   ? validated.value.compactionContextMarkers?.map((marker) => marker.contentHash) ?? []
+                   : requestContextMarkerHashes,
                  ...(previousCompactionSummary ?? {}),
                  ...(compactionReceipt ? { compactionReceipt } : {}),
                 now: Date.now()
@@ -486,6 +528,9 @@ export async function POST(request: Request) {
             ...(continuationTranscriptManifest
               ? { transcriptManifestHash: continuationTranscriptManifest.manifestHash }
               : {}),
+            ...(closedTranscriptSnapshotToken
+              ? { transcriptSnapshotToken: closedTranscriptSnapshotToken }
+              : {}),
             ...(compactionReceipt ? { compactionReceipt } : {}),
             result: {
               ...execution.result,
@@ -493,7 +538,7 @@ export async function POST(request: Request) {
               providerDiagnostics: {
                 ...execution.result.providerDiagnostics,
                 toolProfile: filteredToolProfile,
-                requestState,
+                requestState: completedRequestState,
                 ...cacheManifestDiagnostics,
                 providerInputBoundaryReasons,
                 providerCacheKeyEnabled: config.config.promptCache?.promptCacheKeyEnabled ?? false,
@@ -695,6 +740,58 @@ function contextMarkerHashesFromInput(input: readonly unknown[]): string[] {
     }
     return [];
   }))];
+}
+
+function contextMarkerHashesForSnapshot(input: readonly unknown[]): string[] {
+  return [...new Set(input.flatMap(contextMarkerHashesFromSnapshotItem))];
+}
+
+function contextMarkerHashesFromSnapshotItem(item: unknown): string[] {
+  if (
+    typeof item === "object" && item !== null && !Array.isArray(item) &&
+    "type" in item && item.type === AGENT_COMPACTION_TRANSCRIPT_MARKER_TYPE &&
+    "retainedTail" in item && Array.isArray(item.retainedTail)
+  ) {
+    return item.retainedTail.flatMap(contextMarkerHashesFromSnapshotItem);
+  }
+  const candidate = typeof item === "object" && item !== null && !Array.isArray(item) &&
+    "type" in item && item.type === "morpho_context_state"
+    ? item as Record<string, unknown>
+    : readAgentContextStateMarkerCandidate(item);
+  if (!candidate) {
+    return [];
+  }
+  const marker = parseAgentContextStateMarker(candidate);
+  return marker ? [marker.contentHash] : [];
+}
+
+function readVerifiedPreviousSnapshotSummary(input: {
+  state?: AgentProviderRequestState;
+  secret?: string;
+  projectId: string;
+  now: number;
+}): { previousSummaryHash: string; previousSummaryRevisionId: string } | undefined {
+  if (!input.state?.transcriptSnapshotToken || !input.state.transcriptManifestHash) {
+    return undefined;
+  }
+  const verified = verifyAgentTranscriptSnapshotToken({
+    token: input.state.transcriptSnapshotToken,
+    secret: input.secret,
+    projectId: input.projectId,
+    now: input.now
+  });
+  if (
+    verified.status !== "ok" ||
+    verified.claims.transcriptManifest.manifestHash !== input.state.transcriptManifestHash ||
+    !verified.claims.previousSummaryHash ||
+    !verified.claims.previousSummaryRevisionId
+  ) {
+    return undefined;
+  }
+  return {
+    previousSummaryHash: verified.claims.previousSummaryHash,
+    previousSummaryRevisionId: verified.claims.previousSummaryRevisionId
+  };
 }
 
 function readPreviousCompactionSummaryBinding(

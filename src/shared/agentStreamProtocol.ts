@@ -211,6 +211,8 @@ export type AgentRouteStreamEvent =
       continuationToken?: string;
       /** Manifest hash from the signed continuation claim, kept transiently for compaction. */
       transcriptManifestHash?: string;
+      /** Output-inclusive durable snapshot persisted only in the latest request-state slot. */
+      transcriptSnapshotToken?: string;
       compactionReceipt?: AgentCompactionReceipt;
     }
   | {

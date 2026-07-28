@@ -235,7 +235,7 @@ describe("agent continuation token", () => {
         agentTurnId: "agent-turn-1",
         sequence: 3,
         expiresAt: 1_200_000,
-        receiptVersion: 2 as const
+        receiptVersion: 3 as const
       };
     const token = issue({
       summary: true,

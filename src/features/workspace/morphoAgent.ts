@@ -10,7 +10,6 @@ import type {
   ProjectMemoryKey,
   StageRecordKey
 } from "@/domain/morpho/types";
-import { buildConversationSummarySourceText } from "@/domain/morpho/conversationCompaction";
 import { providerInputSnapshotText } from "@/domain/morpho/providerInputSnapshot";
 import type {
   ProviderCitation,
@@ -30,6 +29,10 @@ import {
   AGENT_COMPACTION_SOURCE_ENVELOPE_VERSION,
   hashSourceMessageIds
 } from "@/shared/agentCompactionProtocol";
+import {
+  canonicalAgentStrategyMessage,
+  createAgentStrategyMarker
+} from "@/shared/agentStrategyItem";
 
 import type { ProviderTaskContext, TaskContextResult } from "./taskContext";
 import {
@@ -890,9 +893,7 @@ export function buildAgentCheckpointCompactionInput(input: {
     id: message.id ?? "",
     role: message.role,
     ...(message.createdAt ? { createdAt: message.createdAt } : {}),
-    ...(message.taskStrategy ? { taskStrategy: message.taskStrategy } : {}),
-    summaryText: buildConversationSummarySourceText(message),
-    providerItems: buildConversationSummarySourceProviderInput(message)
+    providerItems: buildConversationSummarySourceProviderItems(message)
   }));
   const sourcePayload = {
     version: AGENT_COMPACTION_SOURCE_ENVELOPE_VERSION,
@@ -946,6 +947,27 @@ export function buildConversationSummarySourceProviderInput(
       text: message.body
     }]
   }];
+}
+
+export function buildConversationSummarySourceProviderItems(
+  message: {
+    id?: string;
+    role: "user" | "assistant";
+    body: string;
+    providerInputSnapshot?: ProviderInputSnapshot;
+    taskStrategy?: AgentTaskStrategyKind;
+  }
+): ResponseMessageInput[] {
+  const strategyItem = message.role === "user" && message.taskStrategy && message.id
+    ? [canonicalAgentStrategyMessage(createAgentStrategyMarker({
+        strategy: message.taskStrategy,
+        anchorMessageId: message.id
+      }))]
+    : [];
+  return [
+    ...strategyItem,
+    ...buildConversationSummarySourceProviderInput(message)
+  ];
 }
 
 function splitBoundedText(value: string, maxChars: number): string[] {

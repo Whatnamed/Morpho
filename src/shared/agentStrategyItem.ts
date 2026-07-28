@@ -104,6 +104,31 @@ export function canonicalAgentStrategyMessage(
   };
 }
 
+export function parseCanonicalAgentStrategyMessage(
+  value: unknown
+): AgentClientStrategyMarker | undefined {
+  if (!isRecord(value) || value.role !== "system" || !Array.isArray(value.content) || value.content.length !== 1) {
+    return undefined;
+  }
+  const part = value.content[0];
+  if (!isRecord(part) || part.type !== "input_text" || typeof part.text !== "string") {
+    return undefined;
+  }
+  const strategy = part.text.match(/^Task strategy: (.+)$/m)?.[1];
+  const anchorMessageId = part.text.match(/^Anchor message: (.+)$/m)?.[1];
+  const marker = parseAgentStrategyMarker({
+    type: "morpho_strategy",
+    strategy,
+    anchorMessageId
+  });
+  if (!marker) {
+    return undefined;
+  }
+  return JSON.stringify(value) === JSON.stringify(canonicalAgentStrategyMessage(marker))
+    ? marker
+    : undefined;
+}
+
 export function isAgentTaskStrategyKind(value: unknown): value is AgentTaskStrategyKind {
   return value === "discussion" ||
     value === "research" ||

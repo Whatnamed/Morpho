@@ -196,7 +196,9 @@ describe("agent conversation context", () => {
 
     const serialized = JSON.stringify(input);
     expect(serialized).toContain("720 小时盐雾测试");
-    expect(serialized).toContain("这是当时随该回合提供的资料快照");
+    expect(serialized).toContain("请保留海洋浮标的耐盐雾约束");
+    expect(serialized).not.toContain("继续这个方案");
+    expect(serialized).not.toContain("这是当时随该回合提供的资料快照");
     expect(serialized).not.toContain("input_image");
   });
 });

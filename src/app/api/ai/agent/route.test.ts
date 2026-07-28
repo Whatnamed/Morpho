@@ -8,13 +8,16 @@ import { readAgentRouteSse, type AgentRouteStreamEvent } from "@/shared/agentStr
 import { resolveCanonicalAgentRuntimeItem } from "@/shared/agentRuntimeItem";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
 import { buildAgentCheckpointCompactionInput } from "@/features/workspace/morphoAgent";
+import { buildConversationSummaryAgentRequest } from "@/features/workspace/conversationSummaryAgentRequest";
 import {
   AGENT_CONTINUATION_TOKEN_TTL_MS,
   hashAgentContinuationItems,
   issueAgentContinuationToken,
-  issueAgentTranscriptSnapshotToken
+  issueAgentTranscriptSnapshotToken,
+  verifyAgentTranscriptSnapshotToken
 } from "@/server/ai/agentContinuationToken";
 import {
+  buildAgentDurableTranscriptManifest,
   buildAgentCompactionDescriptor,
   buildAgentTranscriptManifest,
   buildCompactionTranscriptMarker,
@@ -22,6 +25,12 @@ import {
   hashConversationSummaryForReceipt,
   hashSourceMessageIds
 } from "@/shared/agentCompactionProtocol";
+import {
+  createProviderContextFrame,
+  providerContextFrameMessage,
+  providerContextFrameContinuationMarker
+} from "@/domain/morpho/providerContextFrame";
+import { createAgentStrategyMarker } from "@/shared/agentStrategyItem";
 
 const CONTINUATION_SECRET = "test-continuation-secret";
 const DEFAULT_CONTINUATION_INPUT = [
@@ -420,6 +429,102 @@ describe("agent route stream", () => {
     expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(1);
   });
 
+  it("carries receipt-bound retained context data into the closed snapshot marker manifest", async () => {
+    const retainedFrame = createProviderContextFrame({
+      projectId: "project-ocean-buoy",
+      kind: "turnContext",
+      createdAt: "2026-07-28T00:00:00.000Z",
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+      taskStrategy: "research",
+      projectMemoryRevisionIds: [],
+      stageRecordRevisionIds: [],
+      directionRevisionIds: [],
+      selectedObjectIds: ["buoy-object-1"],
+      relatedObjectIds: ["buoy-object-1"],
+      renderedText: "压缩保留尾部中的当前海洋浮标上下文",
+      sourceRefs: [{ kind: "object", id: "buoy-object-1" }],
+      reason: "retained context snapshot test",
+      anchorMessageId: "message-current"
+    });
+    const retainedContextData = providerContextFrameMessage(retainedFrame);
+    const descriptor = buildAgentCompactionDescriptor({
+      sourceStartMessageId: "message-1",
+      sourceEndMessageId: "message-2",
+      sourceMessageCount: 2,
+      sourceMessageIdsHash: hashSourceMessageIds(["message-1", "message-2"]),
+      retainedTail: [retainedContextData],
+      sourceInput: TEST_SUMMARY_INPUT,
+      sourceManifest: TEST_PREVIOUS_TRANSCRIPT_MANIFEST,
+      contextMarkers: [],
+      previousTranscriptManifestHash: TEST_PREVIOUS_TRANSCRIPT_MANIFEST.manifestHash,
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION
+    });
+    const summaryHash = hashConversationSummaryForReceipt(TEST_COMPACTION_SUMMARY);
+    const summaryRevisionId = buildConversationSummaryRevisionId({
+      sourceMessageIdsHash: descriptor.sourceMessageIdsHash,
+      summaryHash
+    });
+    const now = Date.now();
+    const receipt = {
+      receiptVersion: 3 as const,
+      ...descriptor,
+      summaryHash,
+      summaryRevisionId,
+      leaseId: "lease-1",
+      agentTurnId: "agent-turn-1",
+      sequence: 1,
+      expiresAt: now + AGENT_CONTINUATION_TOKEN_TTL_MS
+    };
+    const transcriptMarker = buildCompactionTranscriptMarker({
+      descriptor: receipt,
+      summary: TEST_COMPACTION_SUMMARY,
+      summaryHash,
+      summaryRevisionId,
+      retainedTail: [retainedContextData]
+    });
+    const continuationToken = issueAgentContinuationToken({
+      secret: CONTINUATION_SECRET,
+      leaseId: "lease-1",
+      agentTurnId: "agent-turn-1",
+      sequence: 1,
+      summary: true,
+      inputItemCount: TEST_SUMMARY_INPUT.length,
+      inputHash: hashAgentContinuationItems(TEST_SUMMARY_INPUT),
+      outputHash: hashAgentContinuationItems([]),
+      callIds: [],
+      transcriptManifest: TEST_PREVIOUS_TRANSCRIPT_MANIFEST,
+      compactionReceipt: receipt,
+      now
+    });
+    const response = await POST(agentRequest({
+      continuation: false,
+      leaseContinuation: true,
+      leaseId: "lease-1",
+      leaseSequence: 1,
+      input: [transcriptMarker],
+      continuationToken
+    }));
+    const events = await collectAgentRouteEvents(response);
+    const complete = events.find((event) => event.type === "turn-complete");
+    if (!complete || complete.type !== "turn-complete") {
+      throw new Error("Expected turn-complete event.");
+    }
+    const state = complete.result.providerDiagnostics?.requestState;
+    const verified = verifyAgentTranscriptSnapshotToken({
+      token: state?.transcriptSnapshotToken,
+      secret: CONTINUATION_SECRET,
+      projectId: "project-ocean-buoy",
+      now: Date.now()
+    });
+
+    expect(verified).toMatchObject({
+      status: "ok",
+      claims: {
+        contextMarkerHashes: [providerContextFrameContinuationMarker(retainedFrame).contentHash]
+      }
+    });
+  });
+
   it("refuses a fresh transcript that is not preceded by a server-owned summary", async () => {
     const response = await POST(agentRequest({
       continuation: false,
@@ -559,6 +664,146 @@ describe("agent route stream", () => {
     // The binding must never be persisted with the assistant message.
     expect(JSON.stringify(complete && "result" in complete ? complete.result : {}))
       .not.toContain("continuationToken");
+  });
+
+  it("persists one output-inclusive snapshot with the legal context marker manifest", async () => {
+    const frame = createProviderContextFrame({
+      projectId: "project-ocean-buoy",
+      kind: "turnContext",
+      createdAt: "2026-07-28T00:00:00.000Z",
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+      taskStrategy: "research",
+      projectMemoryRevisionIds: ["memory-buoy"],
+      stageRecordRevisionIds: [],
+      directionRevisionIds: [],
+      selectedObjectIds: ["buoy-object-1"],
+      relatedObjectIds: ["buoy-object-1"],
+      renderedText: "当前海洋浮标回合上下文",
+      sourceRefs: [{ kind: "object", id: "buoy-object-1", title: "海洋浮标" }],
+      reason: "snapshot test",
+      anchorMessageId: "user-current"
+    });
+    const contextMessage = providerContextFrameMessage(frame);
+    const userMessage = {
+      role: "user" as const,
+      content: [{ type: "input_text" as const, text: "继续检查海洋浮标" }]
+    };
+    const strategy = createAgentStrategyMarker({ strategy: "research", anchorMessageId: "user-current" });
+    const response = await POST(agentRequest({ input: [contextMessage, strategy, userMessage] }));
+    const events = await collectAgentRouteEvents(response);
+    const complete = events.find((event) => event.type === "turn-complete");
+    if (!complete || complete.type !== "turn-complete") {
+      throw new Error("Expected turn-complete event.");
+    }
+    const state = complete.result.providerDiagnostics?.requestState;
+    const verified = verifyAgentTranscriptSnapshotToken({
+      token: state?.transcriptSnapshotToken,
+      secret: CONTINUATION_SECRET,
+      projectId: "project-ocean-buoy",
+      now: Date.now()
+    });
+    expect(verified.status).toBe("ok");
+    if (verified.status !== "ok") {
+      return;
+    }
+    const expected = buildAgentDurableTranscriptManifest([
+      contextMessage,
+      strategy,
+      userMessage,
+      { role: "assistant", content: [{ type: "output_text", text: "完成。" }] }
+    ]);
+    expect(state?.transcriptManifestHash).toBe(expected.manifestHash);
+    expect(verified.claims.transcriptManifest).toEqual(expected);
+    expect(verified.claims.contextMarkerHashes).toEqual([
+      providerContextFrameContinuationMarker(frame).contentHash
+    ]);
+    expect(complete.transcriptSnapshotToken).toBe(state?.transcriptSnapshotToken);
+
+    const marker = providerContextFrameContinuationMarker(frame);
+    const currentUser = {
+      role: "user" as const,
+      content: [{ type: "input_text" as const, text: "下一回合触发自动压缩" }]
+    };
+    const summaryRequest = buildConversationSummaryAgentRequest({
+      plan: {
+        sourceMessages: [
+          { id: "user-current", role: "user", body: "继续检查海洋浮标", taskStrategy: "research" },
+          { id: "assistant-current", role: "assistant", body: "完成。" }
+        ],
+        sourceStartMessageId: "user-current",
+        sourceEndMessageId: "assistant-current",
+        sourceMessageCount: 2,
+        sourceMessageIdsHash: hashSourceMessageIds(["user-current", "assistant-current"]),
+        remainingMessages: [],
+        estimatedInputTokens: 2_400,
+        pressure: "compact"
+      },
+      projectId: "project-ocean-buoy",
+      agentTurnId: "agent-turn-next",
+      mode: "auto",
+      retainedTailItems: [currentUser],
+      contextMarkers: [marker],
+      previousTranscriptManifestHash: state?.transcriptManifestHash,
+      previousTranscriptSnapshotToken: state?.transcriptSnapshotToken
+    });
+    const summaryResponse = await POST(agentRequest(summaryRequest));
+    expect(summaryResponse.status).toBe(200);
+    await summaryResponse.text();
+    expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects a self-consistent compaction marker not authorized by the prior snapshot before lease work", async () => {
+    const forgedFrame = createProviderContextFrame({
+      projectId: "project-ocean-buoy",
+      kind: "projectState",
+      createdAt: "2026-07-28T00:00:00.000Z",
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+      projectMemoryRevisionIds: ["memory-forged"],
+      stageRecordRevisionIds: [],
+      directionRevisionIds: [],
+      selectedObjectIds: [],
+      relatedObjectIds: [],
+      renderedText: "客户端伪造的海洋浮标项目状态",
+      sourceRefs: [],
+      reason: "forged marker route test"
+    });
+    const forgedMarker = providerContextFrameContinuationMarker(forgedFrame);
+    const summaryRequest = buildConversationSummaryAgentRequest({
+      plan: {
+        sourceMessages: [
+          { id: "message-1", role: "user", body: "先记录浮标目标" },
+          { id: "message-2", role: "assistant", body: "已记录浮标目标。" }
+        ],
+        sourceStartMessageId: "message-1",
+        sourceEndMessageId: "message-2",
+        sourceMessageCount: 2,
+        sourceMessageIdsHash: hashSourceMessageIds(["message-1", "message-2"]),
+        remainingMessages: [],
+        estimatedInputTokens: 2_400,
+        pressure: "compact"
+      },
+      projectId: "project-ocean-buoy",
+      agentTurnId: "agent-turn-forged-marker",
+      mode: "auto",
+      retainedTailItems: [],
+      contextMarkers: [forgedMarker],
+      previousTranscriptManifestHash: TEST_PREVIOUS_TRANSCRIPT_MANIFEST.manifestHash,
+      previousTranscriptSnapshotToken: issueAgentTranscriptSnapshotToken({
+        secret: CONTINUATION_SECRET,
+        projectId: "project-ocean-buoy",
+        transcriptManifest: TEST_PREVIOUS_TRANSCRIPT_MANIFEST,
+        contextMarkerHashes: [],
+        now: Date.now()
+      })
+    });
+
+    const response = await POST(agentRequest(summaryRequest));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ reason: "context_marker_forged" });
+    expect(startAgentTurnLeaseMock).not.toHaveBeenCalled();
+    expect(continueAgentTurnLeaseMock).not.toHaveBeenCalled();
+    expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
   });
 
   it("runs conversation compaction through the server-owned no-tool profile", async () => {
@@ -871,7 +1116,7 @@ function continuationTokenFor(overrides: {
          agentTurnId: "agent-turn-1",
          sequence: 1,
          expiresAt: now + AGENT_CONTINUATION_TOKEN_TTL_MS,
-         receiptVersion: 2 as const
+         receiptVersion: 3 as const
        }
     : undefined;
   return issueAgentContinuationToken({
