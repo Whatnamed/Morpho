@@ -206,7 +206,7 @@ describe("Provider and display inputs", () => {
     expect(outcome(finalizeTurn(withProviderOutput()))).toBe("completed");
   });
 
-  it("does not treat externallyCompleted as the overall local outcome", () => {
+  it("lets the client reducer classify externallyCompleted without usable output as failed", () => {
     let state = startProviderRequest(requesting());
     state = apply(state, {
       type: "SERVER_EXECUTION_STATUS_OBSERVED",
@@ -214,7 +214,16 @@ describe("Provider and display inputs", () => {
       status: "externallyCompleted"
     });
     const result = reduceAgentTurnLifecycle(state, { type: "TURN_FINALIZED", turnId });
-    expect(result).toMatchObject({ ok: false, error: { code: "insufficientTerminalFacts" } });
+    expect(result).toMatchObject({
+      ok: true,
+      state: {
+        phase: "terminal",
+        outcome: {
+          kind: "failed",
+          reasons: ["externalExecutionCompletedWithoutUsableOutcome"]
+        }
+      }
+    });
   });
 
   it("records an SSE display activity without deciding a terminal outcome", () => {
@@ -334,6 +343,50 @@ describe("Provider and display inputs", () => {
       ok: false,
       error: { code: "invalidServerStatusTransition" }
     });
+  });
+});
+
+describe("Preparation boundaries", () => {
+  it("requires PREPARATION_COMPLETED before the first Provider request", () => {
+    expect(reduceAgentTurnLifecycle(createAgentTurnLifecycleState(turnId), {
+      type: "PROVIDER_REQUEST_STARTED",
+      turnId,
+      ...request1
+    })).toMatchObject({ ok: false, error: { code: "illegalTransition" } });
+  });
+
+  it("does not complete preparation while a Fault is unresolved", () => {
+    const state = apply(createAgentTurnLifecycleState(turnId), {
+      type: "ERROR_RECORDED",
+      faultId: fault1,
+      error: terminalError
+    });
+    expect(reduceAgentTurnLifecycle(state, {
+      type: "PREPARATION_COMPLETED",
+      turnId
+    })).toMatchObject({ ok: false, error: { code: "unresolvedFaultConflict" } });
+  });
+
+  it("finalizes a terminal preparation Fault as failed", () => {
+    const state = apply(createAgentTurnLifecycleState(turnId), {
+      type: "ERROR_RECORDED",
+      faultId: fault1,
+      error: terminalError
+    });
+    expect(outcome(finalizeTurn(state))).toBe("failed");
+  });
+
+  it("recovers a retryable preparation Fault before preparation continues", () => {
+    let state = apply(createAgentTurnLifecycleState(turnId), {
+      type: "ERROR_RECORDED",
+      faultId: fault1,
+      error: retryableError
+    });
+    state = apply(state, { type: "RECOVERY_STARTED", faultId: fault1 });
+    state = apply(state, { type: "RECOVERY_RESOLVED", faultId: fault1 });
+    expect(state).toMatchObject({ phase: "preparing", fault: { kind: "none" } });
+    state = apply(state, { type: "PREPARATION_COMPLETED" });
+    expect(state.phase).toBe("requestingProvider");
   });
 });
 
@@ -704,6 +757,35 @@ describe("Error and recovery boundaries", () => {
     });
   });
 
+  it("does not start Provider execution while a Fault is unresolved", () => {
+    let state = apply(requesting(), {
+      type: "ERROR_RECORDED",
+      faultId: fault1,
+      error: terminalError
+    });
+    expect(reduceAgentTurnLifecycle(state, {
+      type: "PROVIDER_REQUEST_STARTED",
+      turnId,
+      ...request1
+    })).toMatchObject({ ok: false, error: { code: "unresolvedFaultConflict" } });
+
+    state = apply(state, { type: "TURN_FINALIZED" });
+    expect(outcome(state)).toBe("failed");
+  });
+
+  it("does not start a Tool Batch while a Fault is unresolved", () => {
+    const state = apply(withToolCallingOutput(), {
+      type: "ERROR_RECORDED",
+      faultId: fault1,
+      error: terminalError
+    });
+    expect(reduceAgentTurnLifecycle(state, {
+      type: "TOOL_BATCH_STARTED",
+      turnId,
+      declaredCallIds: ["a"]
+    })).toMatchObject({ ok: false, error: { code: "unresolvedFaultConflict" } });
+  });
+
   it("accepts only an identical repeated fault fact idempotently", () => {
     const state = apply(requesting(), {
       type: "ERROR_RECORDED",
@@ -766,6 +848,43 @@ describe("Error and recovery boundaries", () => {
     });
     expect(result).toMatchObject({ ok: false, error: { code: "externalRequestMismatch" } });
     expect(state.fault).toEqual({ kind: "none" });
+  });
+
+  it("rejects retryable recovery after the external request is already failed", () => {
+    let state = startProviderRequest(requesting());
+    state = apply(state, {
+      type: "SERVER_EXECUTION_STATUS_OBSERVED",
+      ...request1,
+      status: "externallyFailed"
+    });
+    expect(reduceAgentTurnLifecycle(state, {
+      type: "EXTERNAL_ERROR_RECORDED",
+      turnId,
+      ...request1,
+      faultId: fault1,
+      error: retryableError
+    })).toMatchObject({
+      ok: false,
+      error: { code: "invalidServerStatusTransition" }
+    });
+  });
+
+  it("terminalizes recovery if the external request fails while recovery is active", () => {
+    let state = startProviderRequest(requesting());
+    state = apply(state, {
+      type: "EXTERNAL_ERROR_RECORDED",
+      ...request1,
+      faultId: fault1,
+      error: retryableError
+    });
+    state = apply(state, { type: "RECOVERY_STARTED", faultId: fault1 });
+    state = apply(state, {
+      type: "SERVER_EXECUTION_STATUS_OBSERVED",
+      ...request1,
+      status: "externallyFailed"
+    });
+    state = apply(state, { type: "RECOVERY_RESOLVED", faultId: fault1 });
+    expect(outcome(state)).toBe("failed");
   });
 
   it("does not inherit failure state into a new Turn", () => {
@@ -837,5 +956,155 @@ describe("Compaction lifecycle semantics", () => {
       error: terminalError
     });
     expect(outcome(state)).toBe("failed");
+  });
+});
+
+describe("Reachable state viability matrix", () => {
+  it("gives every reachable Phase × Server Status × Fault class a progress, recovery, or terminal path", () => {
+    const preparationFault = apply(createAgentTurnLifecycleState(turnId), {
+      type: "ERROR_RECORDED",
+      faultId: fault1,
+      error: retryableError
+    });
+    const compacting = apply(requesting(), {
+      type: "COMPACTION_STARTED",
+      mode: "automatic"
+    });
+    const providerRunning = startProviderRequest(requesting());
+    const providerRunningFault = apply(providerRunning, {
+      type: "EXTERNAL_ERROR_RECORDED",
+      ...request1,
+      faultId: fault1,
+      error: retryableError
+    });
+    const providerFailed = apply(providerRunning, {
+      type: "SERVER_EXECUTION_STATUS_OBSERVED",
+      ...request1,
+      status: "externallyFailed"
+    });
+    const providerOutputRunning = apply(providerRunning, {
+      type: "PROVIDER_OUTPUT_RECEIVED",
+      ...request1,
+      producedUserVisibleEffect: true
+    });
+    const awaiting = withToolCallingOutput();
+    const awaitingFault = apply(awaiting, {
+      type: "ERROR_RECORDED",
+      faultId: fault1,
+      error: retryableError
+    });
+    const awaitingRecovery = apply(awaitingFault, {
+      type: "RECOVERY_STARTED",
+      faultId: fault1
+    });
+    const executing = apply(awaiting, {
+      type: "TOOL_BATCH_STARTED",
+      declaredCallIds: ["matrix-call"]
+    });
+    const awaitingConfirmation = finalizeBatch(
+      withToolCallingOutput(),
+      ["matrix-pending"],
+      [pending("matrix-pending")]
+    );
+    const cancellingRunning = apply(providerRunning, {
+      type: "CANCELLATION_REQUESTED",
+      reason: "matrix cancellation"
+    });
+
+    const cases: Array<{
+      label: string;
+      state: AgentTurnLifecycleState;
+      event: AgentTurnEvent;
+    }> = [
+      {
+        label: "preparing/created/no-fault can continue",
+        state: createAgentTurnLifecycleState(turnId),
+        event: { type: "PREPARATION_COMPLETED", turnId }
+      },
+      {
+        label: "preparing/created/retryable-fault can recover",
+        state: preparationFault,
+        event: { type: "RECOVERY_STARTED", turnId, faultId: fault1 }
+      },
+      {
+        label: "compacting/created/no-fault can continue",
+        state: compacting,
+        event: { type: "COMPACTION_COMPLETED", turnId }
+      },
+      {
+        label: "requesting/created/no-fault can start",
+        state: requesting(),
+        event: { type: "PROVIDER_REQUEST_STARTED", turnId, ...request1 }
+      },
+      {
+        label: "requesting/running/no-fault can receive output",
+        state: providerRunning,
+        event: {
+          type: "PROVIDER_OUTPUT_RECEIVED",
+          turnId,
+          ...request1,
+          producedUserVisibleEffect: false
+        }
+      },
+      {
+        label: "requesting/running/retryable-fault can recover",
+        state: providerRunningFault,
+        event: { type: "RECOVERY_STARTED", turnId, faultId: fault1 }
+      },
+      {
+        label: "requesting/failed/no-fault can terminate",
+        state: providerFailed,
+        event: { type: "TURN_FINALIZED", turnId }
+      },
+      {
+        label: "continuing/running/no-fault can observe completion",
+        state: providerOutputRunning,
+        event: {
+          type: "SERVER_EXECUTION_STATUS_OBSERVED",
+          turnId,
+          ...request1,
+          status: "externallyCompleted"
+        }
+      },
+      {
+        label: "continuing/awaiting/no-fault can start Continuation",
+        state: awaiting,
+        event: { type: "PROVIDER_REQUEST_STARTED", turnId, ...request2 }
+      },
+      {
+        label: "continuing/awaiting/retryable-fault can recover",
+        state: awaitingFault,
+        event: { type: "RECOVERY_STARTED", turnId, faultId: fault1 }
+      },
+      {
+        label: "executing/awaiting/no-fault can cancel and settle its batch",
+        state: executing,
+        event: { type: "CANCELLATION_REQUESTED", turnId, reason: "matrix cancellation" }
+      },
+      {
+        label: "awaiting-confirmation/awaiting/no-fault can terminate",
+        state: awaitingConfirmation,
+        event: { type: "TURN_FINALIZED", turnId }
+      },
+      {
+        label: "recovering/awaiting/retryable-fault can resolve",
+        state: awaitingRecovery,
+        event: { type: "RECOVERY_RESOLVED", turnId, faultId: fault1 }
+      },
+      {
+        label: "cancelling/running/no-fault can observe cancellation",
+        state: cancellingRunning,
+        event: {
+          type: "SERVER_EXECUTION_STATUS_OBSERVED",
+          turnId,
+          ...request1,
+          status: "externallyCancelled"
+        }
+      }
+    ];
+
+    for (const item of cases) {
+      expect(reduceAgentTurnLifecycle(item.state, item.event), item.label).toMatchObject({ ok: true });
+    }
   });
 });

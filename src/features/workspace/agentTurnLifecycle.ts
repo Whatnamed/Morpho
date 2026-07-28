@@ -348,7 +348,13 @@ export function reduceAgentTurnLifecycle(
 
   switch (event.type) {
     case "PREPARATION_COMPLETED":
-      return state.phase === "preparing" ? success({ ...state, phase: "requestingProvider" }) : illegal(state, event);
+      if (state.phase !== "preparing") return illegal(state, event);
+      return state.fault.kind === "none"
+        ? success({ ...state, phase: "requestingProvider" })
+        : transitionError(
+            "unresolvedFaultConflict",
+            `Fault ${state.fault.faultId} must be resolved before preparation can complete.`
+          );
     case "COMPACTION_STARTED":
       return startCompaction(state, event.mode, event);
     case "COMPACTION_COMPLETED":
@@ -406,6 +412,12 @@ export function reduceAgentTurnLifecycle(
           `External errors are not legal from ${state.serverExecutionStatus}.`
         );
       }
+      if (state.serverExecutionStatus === "externallyFailed" && event.error.kind === "retryable") {
+        return transitionError(
+          "invalidServerStatusTransition",
+          "An externallyFailed request is terminal and cannot enter retryable recovery."
+        );
+      }
       return recordFault(state, event.faultId, event.error);
     case "TOOL_BATCH_STARTED":
       return startToolBatch(state, event.declaredCallIds, event);
@@ -436,14 +448,11 @@ export function reduceAgentTurnLifecycle(
     case "RECOVERY_STARTED":
       return startRecovery(state, event.faultId, event);
     case "RECOVERY_RESOLVED":
-      return state.phase === "recovering" && state.faultId === event.faultId
-        ? success({ ...state, phase: state.resumePhase, fault: { kind: "none" } })
-        : state.phase === "recovering"
-          ? transitionError("unresolvedFaultConflict", `Recovery does not match fault ${state.faultId}.`)
-          : illegal(state, event);
+      return resolveRecovery(state, event.faultId, event);
     case "TURN_FINALIZED": {
       if (
         state.phase !== "requestingProvider" &&
+        state.phase !== "preparing" &&
         state.phase !== "continuing" &&
         state.phase !== "awaitingConfirmation" &&
         state.phase !== "cancelling"
@@ -481,6 +490,8 @@ function deriveOverallOutcome(
   const hasSuccessfulEffect = Boolean(
     state.providerEffectProduced || batches.some((batch) => batch.executedCount > 0)
   );
+  const hasEmptyExternalCompletion =
+    state.serverExecutionStatus === "externallyCompleted" && !hasSuccessfulEffect;
   const hasPending =
     state.confirmation.kind === "pending" &&
     batches.some((batch) => batch.pendingConfirmationCount > 0);
@@ -495,6 +506,7 @@ function deriveOverallOutcome(
       batches.some((batch) => batch.failedCount > 0) ||
       batches.some((batch) => batch.hasPersistenceFailure) ||
       state.persistence === "failed" ||
+      hasEmptyExternalCompletion ||
       (state.fault.kind === "present" && state.fault.error.kind !== "cancelled")
   );
   const hasUnresolved = Boolean(
@@ -539,6 +551,11 @@ function buildOutcomeReasons(
   if (cancellationReason) reasons.push(cancellationReason);
   if (state.serverExecutionStatus === "externallyFailed") reasons.push("externalExecutionFailed");
   if (state.serverExecutionStatus === "externallyCancelled") reasons.push("externalExecutionCancelled");
+  if (
+    state.serverExecutionStatus === "externallyCompleted" &&
+    !state.providerEffectProduced &&
+    !batches.some((batch) => batch.executedCount > 0)
+  ) reasons.push("externalExecutionCompletedWithoutUsableOutcome");
   if (batches.some((batch) => batch.failedCount > 0)) reasons.push("toolCallFailed");
   if (batches.some((batch) => batch.cancelledCount > 0)) reasons.push("toolCallCancelled");
   if (
@@ -600,11 +617,17 @@ function startProviderRequest(
   stepSequence: number,
   event: AgentTurnEvent
 ): AgentTurnTransitionResult {
+  if (state.fault.kind === "present") {
+    return transitionError(
+      "unresolvedFaultConflict",
+      `Fault ${state.fault.faultId} must be resolved before starting Provider execution.`
+    );
+  }
   if (!requestId.trim() || !Number.isInteger(stepSequence) || stepSequence < 1) {
     return transitionError("invalidEvent", "Provider request identity and step sequence must be valid.");
   }
   const isInitial =
-    (state.phase === "preparing" || state.phase === "requestingProvider") &&
+    state.phase === "requestingProvider" &&
     state.serverExecutionStatus === "created" &&
     state.externalRequest.kind === "none" &&
     stepSequence === 1;
@@ -641,6 +664,12 @@ function startToolBatch(
   declaredCallIds: readonly string[],
   event: AgentTurnEvent
 ): AgentTurnTransitionResult {
+  if (state.fault.kind === "present") {
+    return transitionError(
+      "unresolvedFaultConflict",
+      `Fault ${state.fault.faultId} must be resolved before starting local Tools.`
+    );
+  }
   if (
     state.phase !== "continuing" ||
     state.serverExecutionStatus !== "awaitingNextRequest" ||
@@ -759,6 +788,40 @@ function startRecovery(
   });
 }
 
+function resolveRecovery(
+  state: Exclude<AgentTurnLifecycleState, { phase: "terminal" }>,
+  faultId: string,
+  event: AgentTurnEvent
+): AgentTurnTransitionResult {
+  if (state.phase !== "recovering") return illegal(state, event);
+  if (state.faultId !== faultId) {
+    return transitionError(
+      "unresolvedFaultConflict",
+      `Recovery does not match fault ${state.faultId}.`
+    );
+  }
+  const recovered = { ...state, fault: { kind: "none" } as const };
+  if (
+    state.serverExecutionStatus === "externallyCompleted" ||
+    state.serverExecutionStatus === "externallyCancelled" ||
+    state.serverExecutionStatus === "externallyFailed"
+  ) {
+    return terminal(
+      recovered,
+      deriveOverallOutcome(recovered) ?? {
+        kind: "failed",
+        reasons: ["externalExecutionTerminatedWithoutUsableOutcome"]
+      }
+    );
+  }
+  return success({
+    ...recovered,
+    phase: state.serverExecutionStatus === "awaitingNextRequest"
+      ? "continuing"
+      : state.resumePhase
+  });
+}
+
 function requestCancellation(
   state: Exclude<AgentTurnLifecycleState, { phase: "terminal" }>,
   reason: string
@@ -810,6 +873,26 @@ function observeServerStatus(
     return transitionError(
       "invalidServerStatusTransition",
       `${state.phase} requires awaitingNextRequest external status.`
+    );
+  }
+  if (
+    status === "awaitingNextRequest" &&
+    (
+      state.phase !== "continuing" ||
+      state.providerOutput.kind === "none" ||
+      state.providerOutput.requestId !== requestId ||
+      state.providerOutput.stepSequence !== stepSequence
+    )
+  ) {
+    return transitionError(
+      "invalidServerStatusTransition",
+      "awaitingNextRequest requires the matching Provider output first."
+    );
+  }
+  if (state.phase === "compacting" && status !== state.serverExecutionStatus) {
+    return transitionError(
+      "invalidServerStatusTransition",
+      "Server external status cannot advance while the Turn is compacting."
     );
   }
   if (!isServerStatusTransitionAllowed(state.serverExecutionStatus, status)) {

@@ -7,7 +7,7 @@ This document is the durable implementation ledger for converging the Morpho Age
 | Field | Value |
 |---|---|
 | Decision date | 2026-07-28 |
-| Current state | Stage 1 — lifecycle model revised, not wired, awaiting independent re-audit |
+| Current state | Stage 1 — final lifecycle revision implemented, not wired, awaiting independent re-audit |
 | Current formal working branch | `refactor/agent-runtime-a-plus` |
 | B implementation archive branch | `archive/agent-runtime-b` |
 | B implementation archive tag | `agent-runtime-b-final-2026-07-28-f27a410` |
@@ -274,6 +274,12 @@ The lifecycle phases are `preparing`, `compacting`, `requestingProvider`,
 `compacting` and `recovering` carry a required resume phase. `terminal` carries the
 complete Overall Local Agent Turn Outcome and is absorbing.
 
+`preparing` is a mandatory gate rather than an optional alias for Provider startup. The first
+Provider request can start only after `PREPARATION_COMPLETED` has moved the Turn to
+`requestingProvider`. A terminal, conflict, or quota preparation fault can finalize the Turn as
+`failed`; a retryable preparation fault may enter Recovery and must resolve before preparation
+can complete. No unresolved preparation fault can be bypassed by starting Provider execution.
+
 The implemented event vocabulary is:
 
 - preparation: `PREPARATION_COMPLETED`;
@@ -342,12 +348,23 @@ fault has a stable `faultId`. A different fault cannot overwrite it; identical r
 Recovery starts and resolves only the matching retryable fault. `cancelled` cannot enter the generic
 fault channel and must use the explicit cancellation event.
 
+An unresolved fault is also an execution gate: it blocks `PREPARATION_COMPLETED`,
+`PROVIDER_REQUEST_STARTED`, `TOOL_BATCH_STARTED`, and ordinary Continuation startup. External
+facts already in flight may still be observed so the Turn can settle accurately. A retryable
+external error may recover while its request remains running, but `externallyFailed` itself is
+terminal and cannot be relabeled retryable. If external execution reaches any terminal Server
+status while Recovery is active, `RECOVERY_RESOLVED` derives and enters the Overall Local terminal
+outcome instead of returning to an unusable Phase/Server-status combination. Recovery from
+`awaitingNextRequest` resumes in `continuing`, where the next legal action is explicit.
+
 Core reducer invariants are: pure and deterministic transitions; no input mutation; one active
 phase; strict phase/event legality; complete Tool Call set validation; no contradictory terminal
 facts; terminal absorption; no successful effect erased by later failure or cancellation; and
-no Server or SSE status masquerading as Overall Local Agent Turn Outcome. The 71 focused Vitest
+no Server or SSE status masquerading as Overall Local Agent Turn Outcome. The 80 focused Vitest
 cases cover the required basic, Provider/display, Tool Batch, Outcome, error/recovery, and three-mode
-compaction matrices, including the five Stage 1 audit-revision boundaries.
+compaction matrices, both audit-revision rounds, and a table-driven viability matrix over every
+reachable Phase, Server-status, and Fault class. Each reachable class has an explicit continue,
+recover, or terminal path; illegal combinations and bypass attempts are rejected deterministically.
 
 Stage 1 replaces Boolean-at-end reasoning only at the tested design-contract boundary. The
 existing B-style Runtime, old outcome resolver, Closure/Lease paths, and compaction execution
