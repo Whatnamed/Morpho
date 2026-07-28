@@ -317,6 +317,27 @@ describe("Agent Turn Lease access", () => {
     expect(sql).not.toMatch(/request_hash|manifest_hash|prompt|workspace|transcript|body/i);
   });
 
+  it("ships atomic idempotent closure and execution-state proofs", () => {
+    const sql = readMigration("20260728174500_bind_agent_turn_closure.sql");
+    expect(sql).toContain("tool_execution_started boolean not null default false");
+    expect(sql).toContain("closure_request_id text");
+    expect(sql).toContain("closure_request_hash text");
+    expect(sql).toContain("closure_outcome text");
+    expect(sql).toContain("create or replace function public.complete_agent_turn_lease(");
+    expect(sql).toContain("lease_row.closure_request_id = p_closure_request_id");
+    expect(sql).toContain("lease_row.closure_request_hash = p_closure_request_hash");
+    expect(sql).toContain("'closure_conflict'");
+    expect(sql).toContain("lease_row.provider_call_count > 0");
+    expect(sql).toContain("lease_row.web_search_call_count > 0");
+    expect(sql).toContain("lease_row.tool_execution_started");
+    expect(sql).toContain("create or replace function public.read_agent_turn_closure_state(");
+    expect(sql).toContain("create or replace function public.mark_agent_turn_tool_execution_started(");
+    expect(sql.match(/set search_path = ''/g)).toHaveLength(3);
+    expect(sql.match(/current_user_id uuid := auth.uid\(\)/g)).toHaveLength(3);
+    expect(sql).toContain("to authenticated");
+    expect(sql).not.toMatch(/prompt|workspace|request_body|body_text|transcript_text/i);
+  });
+
   it("defines a forward-only causal and idempotent lease migration with a 32-search safety cap", () => {
     const sql = readMigration("20260726143030_harden_agent_turn_lease_causality.sql");
 
