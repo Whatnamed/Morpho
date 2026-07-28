@@ -87,9 +87,7 @@ export function parseAPlusAgentProviderRequest(value: unknown):
   }
   const previousRuntimeItem = value.previousRuntimeItem === undefined
     ? undefined
-    : isValidCanonicalAgentRuntimeItem(value.previousRuntimeItem)
-      ? value.previousRuntimeItem
-      : undefined;
+    : parseCanonicalRuntimeItem(value.previousRuntimeItem);
   if (value.previousRuntimeItem !== undefined && !previousRuntimeItem) {
     return failed("previousRuntimeItem 不是有效的 canonical Runtime Item。");
   }
@@ -274,6 +272,37 @@ function canonicalize(value: unknown): unknown {
 
 function failed(reason: string): { status: "failed"; reason: string } {
   return { status: "failed", reason };
+}
+
+function parseCanonicalRuntimeItem(value: unknown): AgentCanonicalRuntimeItem | undefined {
+  if (
+    !isRecord(value) ||
+    unknownKeys(value, [
+      "id",
+      "contentHash",
+      "effectiveToolProfile",
+      "mode",
+      "promptContractVersion",
+      "placement",
+      "sequence",
+      "renderedText",
+      "predecessorItemId"
+    ]).length > 0 ||
+    !isValidCanonicalAgentRuntimeItem(value)
+  ) {
+    return undefined;
+  }
+  return {
+    id: value.id,
+    contentHash: value.contentHash,
+    effectiveToolProfile: value.effectiveToolProfile,
+    mode: value.mode,
+    promptContractVersion: value.promptContractVersion,
+    placement: value.placement,
+    sequence: value.sequence,
+    renderedText: value.renderedText,
+    ...(value.predecessorItemId ? { predecessorItemId: value.predecessorItemId } : {})
+  };
 }
 
 function unknownKeys(value: Record<string, unknown>, allowed: readonly string[]): string[] {

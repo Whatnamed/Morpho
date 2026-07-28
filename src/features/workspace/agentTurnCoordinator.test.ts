@@ -7,6 +7,7 @@ import type {
   AgentTurnRequestStreamEvent,
   ServerExternalExecutionStatus
 } from "@/shared/agentTurnJournalProtocol";
+import { resolveCanonicalAgentRuntimeItem } from "@/shared/agentRuntimeItem";
 import {
   reduceAgentTurnLifecycle,
   type AgentTurnEvent
@@ -286,20 +287,42 @@ describe("A+ AgentTurnCoordinator", () => {
     const host = new FakeHost();
     host.queueStarted({ status: "externallyCompleted", output: true });
     const coordinator = await initializedCoordinator(host, ["request-1"]);
+    const previousRuntimeItem = resolveCanonicalAgentRuntimeItem({
+      projectId: "project-a",
+      mode: "auto",
+      effectiveToolProfile: "standard",
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION
+    });
     const unsafe = {
       ...providerRequest(),
+      previousRuntimeItem: {
+        ...previousRuntimeItem,
+        workspace: { secret: "nested-workspace" },
+        toolResult: { secret: "nested-tool" }
+      },
       workspace: { secret: "workspace" },
       toolResult: { secret: "tool" },
       memory: { secret: "memory" },
       summary: { secret: "summary" }
-    } as APlusAgentProviderRequest & Record<string, unknown>;
+    } as unknown as APlusAgentProviderRequest & Record<string, unknown>;
     await coordinator.startInitialRequest(unsafe);
     const sent = host.executions[0]?.providerRequest;
     expect(Object.keys(sent ?? {}).sort()).toEqual([
       "capabilityIntent",
       "input",
       "mode",
+      "previousRuntimeItem",
       "promptContractVersion"
+    ]);
+    expect(Object.keys(sent?.previousRuntimeItem ?? {}).sort()).toEqual([
+      "contentHash",
+      "effectiveToolProfile",
+      "id",
+      "mode",
+      "placement",
+      "promptContractVersion",
+      "renderedText",
+      "sequence"
     ]);
     expect(JSON.stringify(sent)).not.toMatch(/workspace|toolResult|"memory"|"summary"/i);
   });

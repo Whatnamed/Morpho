@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createMorphoAgentContextPolicy } from "@/domain/morpho/agentContextPolicy";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
+import { resolveCanonicalAgentRuntimeItem } from "@/shared/agentRuntimeItem";
 import type {
   AcquireAgentTurnRequestResult,
   ReadAgentTurnJournalResult,
@@ -58,6 +59,30 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
       expect(provider).not.toHaveBeenCalled();
     }
   );
+
+  it("rejects local fields hidden inside a canonical Runtime Item", async () => {
+    const store = new FakeJournal();
+    const provider = vi.fn(async () => providerResult());
+    const previousRuntimeItem = resolveCanonicalAgentRuntimeItem({
+      projectId: "project-a",
+      mode: "auto",
+      effectiveToolProfile: "standard",
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION
+    });
+    const response = await call(makeHandler(store, provider), {
+      ...validBody(),
+      providerRequest: {
+        ...providerRequest("hello"),
+        previousRuntimeItem: {
+          ...previousRuntimeItem,
+          workspace: { secret: "must-not-cross-route" }
+        }
+      }
+    });
+    expect(response.status).toBe(400);
+    expect(store.acquire).not.toHaveBeenCalled();
+    expect(provider).not.toHaveBeenCalled();
+  });
 
   it("hides a cross-user execution attempt as 404", async () => {
     const store = new FakeJournal();

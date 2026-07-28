@@ -535,7 +535,21 @@ function copyProviderRequest(request: APlusAgentProviderRequest): APlusAgentProv
       comparisonAnalysis: request.capabilityIntent.comparisonAnalysis
     },
     ...(request.previousRuntimeItem
-      ? { previousRuntimeItem: structuredClone(request.previousRuntimeItem) }
+      ? {
+          previousRuntimeItem: {
+            id: request.previousRuntimeItem.id,
+            contentHash: request.previousRuntimeItem.contentHash,
+            effectiveToolProfile: request.previousRuntimeItem.effectiveToolProfile,
+            mode: request.previousRuntimeItem.mode,
+            promptContractVersion: request.previousRuntimeItem.promptContractVersion,
+            placement: request.previousRuntimeItem.placement,
+            sequence: request.previousRuntimeItem.sequence,
+            renderedText: request.previousRuntimeItem.renderedText,
+            ...(request.previousRuntimeItem.predecessorItemId
+              ? { predecessorItemId: request.previousRuntimeItem.predecessorItemId }
+              : {})
+          }
+        }
       : {})
   };
 }

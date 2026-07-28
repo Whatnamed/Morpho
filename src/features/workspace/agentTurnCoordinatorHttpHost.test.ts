@@ -105,6 +105,18 @@ describe("A+ Coordinator HTTP Host", () => {
       `http://localhost/api/ai/agent/turns/${TURN_ID}?localProjectId=project-a`
     );
   });
+
+  it("rejects an out-of-contract Journal snapshot", async () => {
+    const host = createAgentTurnCoordinatorHttpHost({
+      fetch: vi.fn(async () => Response.json(snapshot({
+        counters: { provider: -1, webSearch: 0, image: 0 }
+      })))
+    });
+    await expect(host.queryServerTurn({
+      serverTurnId: TURN_ID,
+      localProjectId: "project-a"
+    })).rejects.toMatchObject({ code: "http_200" });
+  });
 });
 
 function requestInput() {

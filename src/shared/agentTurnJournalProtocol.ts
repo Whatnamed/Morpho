@@ -103,20 +103,36 @@ export function isAgentTurnJournalSnapshot(value: unknown): value is AgentTurnJo
   return typeof value.serverTurnId === "string" &&
     typeof value.localProjectId === "string" &&
     isServerExternalExecutionStatus(value.status) &&
-    (value.latestRequestId === null || typeof value.latestRequestId === "string") &&
-    typeof value.latestStepSequence === "number" &&
-    Number.isSafeInteger(value.latestStepSequence) &&
-    value.latestStepSequence >= 0 &&
-    typeof value.counters.provider === "number" &&
-    Number.isSafeInteger(value.counters.provider) &&
-    typeof value.counters.webSearch === "number" &&
-    Number.isSafeInteger(value.counters.webSearch) &&
-    typeof value.counters.image === "number" &&
-    Number.isSafeInteger(value.counters.image) &&
+    (value.latestRequestId === null || isBoundedIdentifier(value.latestRequestId)) &&
+    isBoundedInteger(value.latestStepSequence, 0, 10_000) &&
+    isBoundedInteger(value.counters.provider, 0, 32) &&
+    isBoundedInteger(value.counters.webSearch, 0, 32) &&
+    isBoundedInteger(value.counters.image, 0, 32) &&
     typeof value.createdAt === "string" &&
     typeof value.updatedAt === "string" &&
     (value.terminalAt === null || typeof value.terminalAt === "string") &&
-    (value.failureCode === undefined || typeof value.failureCode === "string");
+    (value.failureCode === undefined || isBoundedFailureCode(value.failureCode));
+}
+
+function isBoundedIdentifier(value: unknown): value is string {
+  return typeof value === "string" &&
+    value.length >= 1 &&
+    value.length <= 160 &&
+    /^[A-Za-z0-9._:-]+$/.test(value);
+}
+
+function isBoundedFailureCode(value: unknown): value is string {
+  return typeof value === "string" &&
+    value.length >= 1 &&
+    value.length <= 80 &&
+    /^[A-Za-z0-9._:-]+$/.test(value);
+}
+
+function isBoundedInteger(value: unknown, minimum: number, maximum: number): value is number {
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= minimum &&
+    value <= maximum;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
