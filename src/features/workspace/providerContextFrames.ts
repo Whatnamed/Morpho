@@ -6,7 +6,8 @@ import type {
   ProviderContextFramePlacement,
   ProviderContextFrameSourceRef,
   ProviderInputCacheBoundaryReason,
-  ProviderInputSnapshot
+  ProviderInputSnapshot,
+  ProviderOutputSnapshot
 } from "@/domain/morpho/types";
 import {
   appendProviderContextFrame,
@@ -16,7 +17,10 @@ import {
   providerContextFrameMessage,
   providerContextFrameContinuationMarker
 } from "@/domain/morpho/providerContextFrame";
-import { providerInputSnapshotText } from "@/domain/morpho/providerInputSnapshot";
+import {
+  providerInputSnapshotDurableContent,
+  providerInputSnapshotText
+} from "@/domain/morpho/providerInputSnapshot";
 import type { ResponseMessageInput } from "@/server/ai/openaiCompatibleProvider";
 import type { TaskContextResult, ProviderTaskContext } from "./taskContext";
 import type { MorphoAgentTurnMode } from "./morphoAgent";
@@ -24,6 +28,10 @@ import { buildAgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
 import type { AgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
 import type { AgentCanonicalRuntimeItem } from "@/shared/agentRuntimeItem";
 import type { AgentCacheItemManifest } from "@/shared/agentStreamProtocol";
+import {
+  createAgentTranscriptMessageItem,
+  type AgentTranscriptMessageItem
+} from "@/shared/agentCompactionProtocol";
 import {
   createAgentStrategyMarker,
   type AgentClientStrategyMarker
@@ -352,14 +360,16 @@ export function buildAgentProviderInput(input: {
     role: "user" | "assistant";
     body: string;
     providerInputSnapshot?: ProviderInputSnapshot;
+    providerOutputSnapshot?: ProviderOutputSnapshot;
     taskStrategy?: AgentTaskStrategyKind;
   }>;
   currentUserMessageId: string;
   currentStrategy?: AgentTaskStrategyKind;
+  currentProviderInputSnapshot?: ProviderInputSnapshot;
   userInput: ResponseMessageInput;
   activeSummaryRevisionId?: string;
   serverManagedPrefix?: boolean;
-}): Array<ResponseMessageInput | AgentClientStrategyMarker> {
+}): Array<ResponseMessageInput | AgentClientStrategyMarker | AgentTranscriptMessageItem> {
   const activeMessageIds = new Set(input.history.map((message) => message.id));
   activeMessageIds.add(input.currentUserMessageId);
   const frames = buildProviderContextFrameTimeline({
@@ -367,7 +377,7 @@ export function buildAgentProviderInput(input: {
     activeMessageIds,
     activeSummaryRevisionId: input.activeSummaryRevisionId
   });
-  const messages: Array<ResponseMessageInput | AgentClientStrategyMarker> = input.serverManagedPrefix === false
+  const messages: Array<ResponseMessageInput | AgentClientStrategyMarker | AgentTranscriptMessageItem> = input.serverManagedPrefix === false
     ? []
     : [{ role: "system", content: [{ type: "input_text", text: input.stableSystemPrompt }] }];
   frames
@@ -391,23 +401,42 @@ export function buildAgentProviderInput(input: {
 
   for (const message of input.history) {
     beforeByAnchor.get(message.id)?.forEach((frame) => messages.push(providerContextFrameMessage(frame)));
-    if (message.role === "user" && message.taskStrategy) {
-      messages.push(createAgentStrategyMarker({
+    const strategy = message.role === "user" && message.taskStrategy
+      ? [createAgentStrategyMarker({
         strategy: message.taskStrategy,
         anchorMessageId: message.id
-      }));
-    }
-    messages.push(providerHistoryMessage(message));
+      })]
+      : [];
+    const historyMessage = providerHistoryMessage(message);
+    messages.push(createAgentTranscriptMessageItem({
+      messageId: message.id,
+      role: message.role,
+      providerItems: [...strategy, historyMessage],
+      durableProviderItems: [...strategy, historyMessage]
+    }));
     afterByAnchor.get(message.id)?.forEach((frame) => messages.push(providerContextFrameMessage(frame)));
   }
   beforeByAnchor.get(input.currentUserMessageId)?.forEach((frame) => messages.push(providerContextFrameMessage(frame)));
-  if (input.currentStrategy) {
-    messages.push(createAgentStrategyMarker({
+  const currentStrategy = input.currentStrategy
+    ? [createAgentStrategyMarker({
       strategy: input.currentStrategy,
       anchorMessageId: input.currentUserMessageId
-    }));
-  }
-  messages.push(input.userInput);
+    })]
+    : [];
+  messages.push(createAgentTranscriptMessageItem({
+    messageId: input.currentUserMessageId,
+    role: "user",
+    providerItems: [...currentStrategy, input.userInput],
+    durableProviderItems: [
+      ...currentStrategy,
+      {
+        role: "user",
+        content: input.currentProviderInputSnapshot
+          ? providerInputSnapshotDurableContent(input.currentProviderInputSnapshot)
+          : input.userInput.content
+      }
+    ]
+  }));
   afterByAnchor.get(input.currentUserMessageId)?.forEach((frame) => messages.push(providerContextFrameMessage(frame)));
   return messages;
 }
@@ -475,15 +504,22 @@ function providerHistoryMessage(message: {
   role: "user" | "assistant";
   body: string;
   providerInputSnapshot?: ProviderInputSnapshot;
+  providerOutputSnapshot?: ProviderOutputSnapshot;
 }): ResponseMessageInput {
   if (message.role === "user" && message.providerInputSnapshot) {
-    const textParts = providerInputSnapshotText(message.providerInputSnapshot);
-    if (textParts.length > 0) {
+    const content = providerInputSnapshotDurableContent(message.providerInputSnapshot);
+    if (content.length > 0) {
       return {
         role: "user",
-        content: textParts.map((text) => ({ type: "input_text" as const, text }))
+        content
       };
     }
+  }
+  if (message.role === "assistant" && message.providerOutputSnapshot) {
+    return {
+      role: "assistant",
+      content: [{ type: "output_text", text: message.providerOutputSnapshot.text }]
+    };
   }
   return {
     role: message.role,

@@ -7,10 +7,14 @@ import type {
   MorphoObject,
   MorphoWorkspace,
   ProviderInputSnapshot,
+  ProviderOutputSnapshot,
   ProjectMemoryKey,
   StageRecordKey
 } from "@/domain/morpho/types";
-import { providerInputSnapshotText } from "@/domain/morpho/providerInputSnapshot";
+import {
+  providerInputSnapshotDurableContent,
+  providerInputSnapshotText
+} from "@/domain/morpho/providerInputSnapshot";
 import type {
   ProviderCitation,
   ResponseFunctionTool,
@@ -878,6 +882,7 @@ export function buildAgentCheckpointCompactionInput(input: {
     body: string;
     createdAt?: string;
     providerInputSnapshot?: ProviderInputSnapshot;
+    providerOutputSnapshot?: ProviderOutputSnapshot;
     taskStrategy?: AgentTaskStrategyKind;
   }>;
   sourceStartMessageId: string;
@@ -927,18 +932,25 @@ export function buildConversationSummarySourceProviderInput(
       role: "user" | "assistant";
       body: string;
       providerInputSnapshot?: ProviderInputSnapshot;
+      providerOutputSnapshot?: ProviderOutputSnapshot;
     },
-    "role" | "body" | "providerInputSnapshot"
+    "role" | "body" | "providerInputSnapshot" | "providerOutputSnapshot"
   >
 ): ResponseMessageInput[] {
   if (message.role === "user" && message.providerInputSnapshot) {
-    const textParts = providerInputSnapshotText(message.providerInputSnapshot);
-    if (textParts.length > 0) {
+    const content = providerInputSnapshotDurableContent(message.providerInputSnapshot);
+    if (content.length > 0) {
       return [{
         role: "user",
-        content: textParts.map((text) => ({ type: "input_text" as const, text }))
+        content
       }];
     }
+  }
+  if (message.role === "assistant" && message.providerOutputSnapshot) {
+    return [{
+      role: "assistant",
+      content: [{ type: "output_text", text: message.providerOutputSnapshot.text }]
+    }];
   }
   return [{
     role: message.role,
@@ -955,6 +967,7 @@ export function buildConversationSummarySourceProviderItems(
     role: "user" | "assistant";
     body: string;
     providerInputSnapshot?: ProviderInputSnapshot;
+    providerOutputSnapshot?: ProviderOutputSnapshot;
     taskStrategy?: AgentTaskStrategyKind;
   }
 ): ResponseMessageInput[] {

@@ -13,7 +13,10 @@ import {
   sanitizeConversationAssistantStreamForDisplay
 } from "@/domain/morpho/conversationCheckpoint";
 import { buildAgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
-import { createProviderInputSnapshot } from "@/domain/morpho/providerInputSnapshot";
+import {
+  createProviderInputSnapshot,
+  hashProviderImageDataUrl
+} from "@/domain/morpho/providerInputSnapshot";
 import type {
   AiTaskMode,
   AiWorkIntent,
@@ -332,10 +335,14 @@ export async function runMorphoAgentTurn(
       .map((entry) => {
         const object = workspace.objects[entry.objectId];
         const asset = object && "assetId" in object && object.assetId ? workspace.assets[object.assetId] : undefined;
+        const attachment = attachmentResult.attachments.find((candidate) =>
+          candidate.id === entry.attachmentId || candidate.objectIds?.includes(entry.objectId)
+        );
         return {
           objectId: entry.objectId,
           ...(asset?.id ? { assetId: asset.id } : {}),
-          ...(asset?.mimeType ? { mimeType: asset.mimeType } : {})
+          ...(attachment?.dataUrl ? { contentHash: hashProviderImageDataUrl(attachment.dataUrl) } : {}),
+          ...(attachment?.mimeType ? { mimeType: attachment.mimeType } : asset?.mimeType ? { mimeType: asset.mimeType } : {})
         };
       }),
     ...(attachmentResult.attachments.length > 0
@@ -444,6 +451,7 @@ export async function runMorphoAgentTurn(
     history: preCompactionHistory,
     currentUserMessageId: userMessageId,
     currentStrategy: strategy.kind,
+    currentProviderInputSnapshot: providerInputSnapshot,
     userInput,
     activeSummaryRevisionId: preCompactionConversation.summaryRevision?.id,
     serverManagedPrefix: false
@@ -532,6 +540,26 @@ export async function runMorphoAgentTurn(
             turnState.latestProviderTranscriptManifestHash ??
             turnState.latestProviderRequestState?.transcriptManifestHash,
           previousTranscriptSnapshotToken: turnState.latestProviderRequestState?.transcriptSnapshotToken,
+          onTranscriptSnapshotRefreshed: (token, manifestHash) => {
+            if (!turnState.latestProviderRequestState) {
+              return;
+            }
+            turnState.latestProviderRequestState = {
+              ...turnState.latestProviderRequestState,
+              transcriptSnapshotToken: token,
+              transcriptManifestHash: manifestHash
+            };
+            commitWorkspaceNow((current) => ({
+              workspace: {
+                ...current,
+                ai: {
+                  ...current.ai,
+                  latestProviderRequestState: turnState.latestProviderRequestState
+                }
+              },
+              value: undefined
+            }));
+          },
           onLeaseStarted: (leaseId) => {
             turnState.agentTurnLeaseId = leaseId;
           },
@@ -641,6 +669,7 @@ export async function runMorphoAgentTurn(
     history: baseHistory,
     currentUserMessageId: userMessageId,
     currentStrategy: strategy.kind,
+    currentProviderInputSnapshot: providerInputSnapshot,
     userInput,
     activeSummaryRevisionId: initialConversationContext.summaryRevision?.id,
     serverManagedPrefix: false

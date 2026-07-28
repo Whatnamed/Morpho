@@ -1,6 +1,7 @@
 import type {
   AgentTrace,
   MorphoWorkspace,
+  ProviderOutputSnapshot,
   ProjectMemoryKey,
   StageRecordKey
 } from "@/domain/morpho/types";
@@ -17,6 +18,7 @@ export function updateAiMessage(
     memoryUpdateKeys?: ProjectMemoryKey[];
     stageRecordUpdateKeys?: StageRecordKey[];
     agentTrace?: AgentTrace;
+    providerOutputSnapshot?: ProviderOutputSnapshot;
   } = {}
 ): MorphoWorkspace {
   return {
@@ -34,6 +36,7 @@ export function updateAiMessage(
               memoryUpdateKeys: options.memoryUpdateKeys ?? message.memoryUpdateKeys,
               stageRecordUpdateKeys: options.stageRecordUpdateKeys ?? message.stageRecordUpdateKeys,
               agentTrace: options.agentTrace ?? message.agentTrace,
+              providerOutputSnapshot: options.providerOutputSnapshot ?? message.providerOutputSnapshot,
               error: status === "failed" ? body : undefined
             }
           : message

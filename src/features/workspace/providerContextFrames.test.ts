@@ -186,11 +186,7 @@ describe("Agent provider transcript reconstruction", () => {
       currentUserMessageId: "user-b",
       userInput: userMessage("用户 B")
     });
-    const texts = input.map((item) =>
-      "content" in item
-        ? item.content.map((part) => ("text" in part ? part.text : "[image]")).join("\n")
-        : ""
-    );
+    const texts = input.map((item) => JSON.stringify(item));
     const userIndex = texts.findIndex((text) => text.includes("用户 A"));
     const postStateIndex = texts.findIndex((text) => text.includes("工具后的状态"));
     const assistantIndex = texts.findIndex((text) => text.includes("回答 A"));

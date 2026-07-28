@@ -5,6 +5,7 @@ import type {
   ConversationSummaryRevision,
   MorphoWorkspace,
   ProviderInputSnapshot,
+  ProviderOutputSnapshot,
   AgentTaskStrategyKind
 } from "./types";
 import { MORPHO_AGENT_CONTEXT_POLICY, type MorphoAgentContextPolicy } from "./agentContextPolicy";
@@ -36,6 +37,7 @@ export type ConversationMessageForContext = {
   createdAt?: string;
   laneKey?: string;
   providerInputSnapshot?: ProviderInputSnapshot;
+  providerOutputSnapshot?: ProviderOutputSnapshot;
   taskStrategy?: AgentTaskStrategyKind;
 };
 
@@ -487,14 +489,18 @@ export function getUsableConversationMessages(messages: readonly AiMessage[]): A
 }
 
 export function estimateConversationMessageTokens(
-  messages: readonly Pick<ConversationMessageForContext, "role" | "body" | "providerInputSnapshot">[]
+  messages: readonly Pick<ConversationMessageForContext, "role" | "body" | "providerInputSnapshot" | "providerOutputSnapshot">[]
 ): number {
   return messages.reduce((total, message) => {
     if (message.role === "user" && message.providerInputSnapshot) {
       return total + providerInputSnapshotText(message.providerInputSnapshot)
         .reduce((tokens, text) => tokens + estimateTextTokens(text) + 8, 0);
     }
-    return total + estimateTextTokens(message.body) + 8;
+    return total + estimateTextTokens(
+      message.role === "assistant" && message.providerOutputSnapshot
+        ? message.providerOutputSnapshot.text
+        : message.body
+    ) + 8;
   }, 0);
 }
 
@@ -503,10 +509,13 @@ export function estimateConversationMessageTokens(
  * while keeping attachments as stable references rather than replaying pixels.
  */
 export function buildConversationSummarySourceText(
-  message: Pick<ConversationMessageForContext, "role" | "body" | "providerInputSnapshot">
+  message: Pick<ConversationMessageForContext, "role" | "body" | "providerInputSnapshot" | "providerOutputSnapshot">
 ): string {
   if (message.role === "assistant") {
-    return `助手最终回复：\n${sanitizeSummarySourceText(message.body, SUMMARY_TEXT_PART_CHARS)}`;
+    return `助手最终回复：\n${sanitizeSummarySourceText(
+      message.providerOutputSnapshot?.text ?? message.body,
+      SUMMARY_TEXT_PART_CHARS
+    )}`;
   }
 
   const snapshot = message.providerInputSnapshot;
@@ -609,7 +618,8 @@ function toContextMessage(message: AiMessage): ConversationMessageForContext {
     createdAt: message.createdAt,
     laneKey: message.conversationLaneKey,
     ...(message.taskStrategy ? { taskStrategy: message.taskStrategy } : {}),
-    ...(message.providerInputSnapshot ? { providerInputSnapshot: message.providerInputSnapshot } : {})
+    ...(message.providerInputSnapshot ? { providerInputSnapshot: message.providerInputSnapshot } : {}),
+    ...(message.providerOutputSnapshot ? { providerOutputSnapshot: message.providerOutputSnapshot } : {})
   };
 }
 

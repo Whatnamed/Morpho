@@ -22,6 +22,7 @@ import {
   buildAgentTranscriptManifest,
   buildCompactionTranscriptMarker,
   buildConversationSummaryRevisionId,
+  createAgentTranscriptMessageItem,
   hashConversationSummaryForReceipt,
   hashSourceMessageIds
 } from "@/shared/agentCompactionProtocol";
@@ -31,6 +32,11 @@ import {
   providerContextFrameContinuationMarker
 } from "@/domain/morpho/providerContextFrame";
 import { createAgentStrategyMarker } from "@/shared/agentStrategyItem";
+import {
+  createProviderInputSnapshot,
+  hashProviderImageDataUrl,
+  providerInputSnapshotDurableContent
+} from "@/domain/morpho/providerInputSnapshot";
 
 const CONTINUATION_SECRET = "test-continuation-secret";
 const DEFAULT_CONTINUATION_INPUT = [
@@ -63,8 +69,16 @@ const TEST_SUMMARY_INPUT = buildAgentCheckpointCompactionInput({
   sourceMessageCount: 2
 });
 const TEST_PREVIOUS_TRANSCRIPT = [
-  { role: "user", content: [{ type: "input_text", text: "先记录浮标目标" }] },
-  { role: "assistant", content: [{ type: "output_text", text: "已记录浮标目标。" }] }
+  createAgentTranscriptMessageItem({
+    messageId: "message-1",
+    role: "user",
+    providerItems: [{ role: "user", content: [{ type: "input_text", text: "先记录浮标目标" }] }]
+  }),
+  createAgentTranscriptMessageItem({
+    messageId: "message-2",
+    role: "assistant",
+    providerItems: [{ role: "assistant", content: [{ type: "output_text", text: "已记录浮标目标。" }] }]
+  })
 ];
 const TEST_PREVIOUS_TRANSCRIPT_MANIFEST = buildAgentTranscriptManifest(TEST_PREVIOUS_TRANSCRIPT);
 const TEST_COMPACTION_DESCRIPTOR = buildAgentCompactionDescriptor({
@@ -466,7 +480,7 @@ describe("agent route stream", () => {
     });
     const now = Date.now();
     const receipt = {
-      receiptVersion: 3 as const,
+      receiptVersion: 4 as const,
       ...descriptor,
       summaryHash,
       summaryRevisionId,
@@ -689,7 +703,12 @@ describe("agent route stream", () => {
       content: [{ type: "input_text" as const, text: "继续检查海洋浮标" }]
     };
     const strategy = createAgentStrategyMarker({ strategy: "research", anchorMessageId: "user-current" });
-    const response = await POST(agentRequest({ input: [contextMessage, strategy, userMessage] }));
+    const wrappedUserMessage = createAgentTranscriptMessageItem({
+      messageId: "user-current",
+      role: "user",
+      providerItems: [strategy, userMessage]
+    });
+    const response = await POST(agentRequest({ input: [contextMessage, wrappedUserMessage] }));
     const events = await collectAgentRouteEvents(response);
     const complete = events.find((event) => event.type === "turn-complete");
     if (!complete || complete.type !== "turn-complete") {
@@ -708,9 +727,12 @@ describe("agent route stream", () => {
     }
     const expected = buildAgentDurableTranscriptManifest([
       contextMessage,
-      strategy,
-      userMessage,
-      { role: "assistant", content: [{ type: "output_text", text: "完成。" }] }
+      wrappedUserMessage,
+      createAgentTranscriptMessageItem({
+        messageId: "assistant-message-1",
+        role: "assistant",
+        providerItems: [{ role: "assistant", content: [{ type: "output_text", text: "完成。" }] }]
+      })
     ]);
     expect(state?.transcriptManifestHash).toBe(expected.manifestHash);
     expect(verified.claims.transcriptManifest).toEqual(expected);
@@ -728,12 +750,12 @@ describe("agent route stream", () => {
       plan: {
         sourceMessages: [
           { id: "user-current", role: "user", body: "继续检查海洋浮标", taskStrategy: "research" },
-          { id: "assistant-current", role: "assistant", body: "完成。" }
+          { id: "assistant-message-1", role: "assistant", body: "完成。" }
         ],
         sourceStartMessageId: "user-current",
-        sourceEndMessageId: "assistant-current",
+        sourceEndMessageId: "assistant-message-1",
         sourceMessageCount: 2,
-        sourceMessageIdsHash: hashSourceMessageIds(["user-current", "assistant-current"]),
+        sourceMessageIdsHash: hashSourceMessageIds(["user-current", "assistant-message-1"]),
         remainingMessages: [],
         estimatedInputTokens: 2_400,
         pressure: "compact"
@@ -750,6 +772,132 @@ describe("agent route stream", () => {
     expect(summaryResponse.status).toBe(200);
     await summaryResponse.text();
     expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("compacts an image turn through stable references without persisting Base64", async () => {
+    const imageBase64 = "b2NlYW4tYnVveS1yZWZlcmVuY2UtcGl4ZWxz";
+    const dataUrl = `data:image/png;base64,${imageBase64}`;
+    const userSnapshot = createProviderInputSnapshot({
+      message: {
+        content: [
+          { type: "input_text", text: "分析这张海洋浮标参考图" },
+          { type: "input_image", image_url: dataUrl }
+        ]
+      },
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+      attachmentRefs: [{
+        objectId: "image-buoy-reference",
+        assetId: "asset-buoy-reference",
+        contentHash: hashProviderImageDataUrl(dataUrl),
+        mimeType: "image/png"
+      }]
+    });
+    const userMessage = createAgentTranscriptMessageItem({
+      messageId: "user-image-turn",
+      role: "user",
+      providerItems: [{
+        role: "user",
+        content: [
+          { type: "input_text", text: "分析这张海洋浮标参考图" },
+          { type: "input_image", image_url: dataUrl }
+        ]
+      }],
+      durableProviderItems: [{
+        role: "user",
+        content: providerInputSnapshotDurableContent(userSnapshot)
+      }]
+    });
+    const response = await POST(agentRequest({
+      input: [userMessage],
+      assistantMessageId: "assistant-image-turn"
+    }));
+    const events = await collectAgentRouteEvents(response);
+    const complete = events.find((event) => event.type === "turn-complete");
+    expect(complete).toMatchObject({
+      verifiedImageReferences: [{
+        messageId: "user-image-turn",
+        attachmentRefs: [expect.objectContaining({
+          objectId: "image-buoy-reference",
+          contentHash: hashProviderImageDataUrl(dataUrl),
+          mimeType: "image/png"
+        })]
+      }],
+      assistantProviderOutputSnapshot: expect.objectContaining({ text: "完成。" })
+    });
+    if (!complete || complete.type !== "turn-complete") {
+      throw new Error("Expected turn-complete event.");
+    }
+    const state = complete.result.providerDiagnostics?.requestState;
+    expect(state?.transcriptSnapshotToken).not.toContain(imageBase64);
+    const verified = verifyAgentTranscriptSnapshotToken({
+      token: state?.transcriptSnapshotToken,
+      secret: CONTINUATION_SECRET,
+      projectId: "project-ocean-buoy",
+      now: Date.now()
+    });
+    expect(verified.status).toBe("ok");
+    if (verified.status !== "ok" || !complete.assistantProviderOutputSnapshot) {
+      return;
+    }
+    expect(JSON.stringify(verified.claims.transcriptManifest)).not.toContain(imageBase64);
+
+    const summaryRequest = buildConversationSummaryAgentRequest({
+      plan: {
+        sourceMessages: [
+          { id: "user-image-turn", role: "user", body: "显示文本", providerInputSnapshot: userSnapshot },
+          {
+            id: "assistant-image-turn",
+            role: "assistant",
+            body: "界面清理后的文本",
+            providerOutputSnapshot: complete.assistantProviderOutputSnapshot
+          }
+        ],
+        sourceStartMessageId: "user-image-turn",
+        sourceEndMessageId: "assistant-image-turn",
+        sourceMessageCount: 2,
+        sourceMessageIdsHash: hashSourceMessageIds(["user-image-turn", "assistant-image-turn"]),
+        remainingMessages: [],
+        estimatedInputTokens: 2_400,
+        pressure: "compact"
+      },
+      projectId: "project-ocean-buoy",
+      agentTurnId: "agent-turn-image-summary",
+      mode: "auto",
+      retainedTailItems: [{ role: "user", content: [{ type: "input_text", text: "继续" }] }],
+      previousTranscriptManifestHash: state?.transcriptManifestHash,
+      previousTranscriptSnapshotToken: state?.transcriptSnapshotToken
+    });
+    const summaryResponse = await POST(agentRequest(summaryRequest));
+    expect(summaryResponse.status).toBe(200);
+  });
+
+  it("rejects durable image references that are not backed by current image bytes", async () => {
+    const forged = createAgentTranscriptMessageItem({
+      messageId: "user-forged-image-ref",
+      role: "user",
+      providerItems: [{
+        role: "user",
+        content: [{ type: "input_text", text: "没有图片" }]
+      }],
+      durableProviderItems: [{
+        role: "user",
+        content: [
+          { type: "input_text", text: "没有图片" },
+          {
+            type: "input_text",
+            text: `[Morpho Durable Image References | data only]\n${JSON.stringify([{
+              objectId: "forged-image",
+              contentHash: "a".repeat(64),
+              mimeType: "image/png"
+            }])}`
+          }
+        ]
+      }]
+    });
+
+    const response = await POST(agentRequest({ input: [forged] }));
+    expect(response.status).toBe(400);
+    expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
   });
 
   it("rejects a self-consistent compaction marker not authorized by the prior snapshot before lease work", async () => {
@@ -1116,7 +1264,7 @@ function continuationTokenFor(overrides: {
          agentTurnId: "agent-turn-1",
          sequence: 1,
          expiresAt: now + AGENT_CONTINUATION_TOKEN_TTL_MS,
-         receiptVersion: 3 as const
+         receiptVersion: 4 as const
        }
     : undefined;
   return issueAgentContinuationToken({
@@ -1160,6 +1308,7 @@ function agentRequest(
       input,
       projectId: "project-ocean-buoy",
       agentTurnId: "agent-turn-1",
+      assistantMessageId: "assistant-message-1",
       continuation: false,
       promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
       mode: "auto",

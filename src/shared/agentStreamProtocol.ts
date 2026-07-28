@@ -1,5 +1,6 @@
 import type { AgentToolProfile } from "./agentRuntimeItem";
 import type { AgentCompactionReceipt } from "./agentCompactionProtocol";
+import type { ProviderOutputSnapshot } from "@/domain/morpho/types";
 
 export type AgentStreamCitation = {
   title: string;
@@ -213,6 +214,11 @@ export type AgentRouteStreamEvent =
       transcriptManifestHash?: string;
       /** Output-inclusive durable snapshot persisted only in the latest request-state slot. */
       transcriptSnapshotToken?: string;
+      assistantProviderOutputSnapshot?: ProviderOutputSnapshot;
+      verifiedImageReferences?: Array<{
+        messageId: string;
+        attachmentRefs: import("@/domain/morpho/types").ProviderInputSnapshotAttachmentRef[];
+      }>;
       compactionReceipt?: AgentCompactionReceipt;
     }
   | {

@@ -21,13 +21,19 @@ import {
   AGENT_COMPACTION_TRANSCRIPT_MARKER_TYPE,
   AGENT_COMPACTION_RECEIPT_VERSION,
   buildAgentDurableTranscriptManifest,
+  createAgentTranscriptMessageItem,
   buildConversationSummaryRevisionId,
   buildAgentTranscriptManifest,
   hashConversationSummaryForReceipt,
   hashSourceMessageIds,
   parseAgentCompactionSourceEnvelope,
+  parseAgentTranscriptMessageItem,
   readAgentContextStateMarkerCandidate
 } from "@/shared/agentCompactionProtocol";
+import {
+  createProviderOutputSnapshot,
+  parseProviderInputSnapshotDurableReferences
+} from "@/domain/morpho/providerInputSnapshot";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
 import {
   agentTurnLeaseDeniedResponse,
@@ -70,6 +76,27 @@ import {
 import type { AgentTranscriptManifest } from "@/shared/agentCompactionProtocol";
 
 export const runtime = "nodejs";
+
+function collectVerifiedImageReferences(items: readonly unknown[]) {
+  return items.flatMap((item) => {
+    const transcriptMessage = parseAgentTranscriptMessageItem(item);
+    if (!transcriptMessage || transcriptMessage.role !== "user") {
+      return [];
+    }
+    const attachmentRefs = transcriptMessage.durableProviderItems.flatMap((providerItem) => {
+      if (!providerItem || typeof providerItem !== "object" || !("content" in providerItem) ||
+        !Array.isArray(providerItem.content)) {
+        return [];
+      }
+      return providerItem.content.flatMap((part) =>
+        part && typeof part === "object" && "text" in part && typeof part.text === "string"
+          ? parseProviderInputSnapshotDurableReferences(part.text)
+          : []
+      );
+    });
+    return attachmentRefs.length > 0 ? [{ messageId: transcriptMessage.messageId, attachmentRefs }] : [];
+  });
+}
 export const MAX_AGENT_REQUEST_BODY_BYTES = 36 * 1024 * 1024;
 
 export async function POST(request: Request) {
@@ -113,7 +140,7 @@ export async function POST(request: Request) {
   const filteredToolProfile = contract.effectiveToolProfile;
   const continuationSecret = resolveAgentContinuationSecret(process.env);
   const transcriptManifest = buildAgentTranscriptManifest(contract.request.input);
-  const durableInputManifest = buildAgentDurableTranscriptManifest(contract.request.input);
+  const durableInputManifest = buildAgentDurableTranscriptManifest(validated.value.input);
   const previousCompactionSummary = readPreviousCompactionSummaryBinding(validated.value.input) ??
     readVerifiedPreviousSnapshotSummary({
       state: validated.value.diagnostics?.previousRequestState,
@@ -445,14 +472,22 @@ export async function POST(request: Request) {
               ])
             : undefined;
           const closedAssistantText = execution.result.outputText.trim();
+          const assistantProviderOutputSnapshot = closedAssistantText
+            ? createProviderOutputSnapshot(closedAssistantText)
+            : undefined;
+          const verifiedImageReferences = collectVerifiedImageReferences(validated.value.input);
           const closedTranscriptManifest = !isSummaryRequest
             ? buildAgentDurableTranscriptManifest([
-                ...contract.request.input,
-                ...(closedAssistantText
-                  ? [{
-                      role: "assistant" as const,
-                      content: [{ type: "output_text" as const, text: closedAssistantText }]
-                    }]
+                ...validated.value.input,
+                ...(assistantProviderOutputSnapshot && validated.value.assistantMessageId
+                  ? [createAgentTranscriptMessageItem({
+                      messageId: validated.value.assistantMessageId,
+                      role: "assistant",
+                      providerItems: [{
+                        role: "assistant" as const,
+                        content: [{ type: "output_text" as const, text: assistantProviderOutputSnapshot.text }]
+                      }]
+                    })]
                   : [])
               ])
             : undefined;
@@ -531,6 +566,10 @@ export async function POST(request: Request) {
             ...(closedTranscriptSnapshotToken
               ? { transcriptSnapshotToken: closedTranscriptSnapshotToken }
               : {}),
+            ...(assistantProviderOutputSnapshot
+              ? { assistantProviderOutputSnapshot }
+              : {}),
+            ...(verifiedImageReferences.length > 0 ? { verifiedImageReferences } : {}),
             ...(compactionReceipt ? { compactionReceipt } : {}),
             result: {
               ...execution.result,

@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   createProviderInputSnapshot,
+  hashProviderImageDataUrl,
   normalizeProviderInputSnapshot,
+  parseProviderInputSnapshotDurableReferences,
+  providerInputSnapshotDurableContent,
   providerInputSnapshotText
 } from "./providerInputSnapshot";
 
@@ -56,5 +59,35 @@ describe("provider input snapshots", () => {
     expect(providerInputSnapshotText(snapshot)).toEqual(["发送时的文档摘录"]);
     expect(JSON.stringify(snapshot)).not.toContain("后来文档内容");
     expect(JSON.stringify(snapshot)).not.toContain("api-key");
+  });
+
+  it("replays images as verified stable references without persisting Base64", () => {
+    const dataUrl = "data:image/png;base64,verified-buoy-pixels";
+    const snapshot = createProviderInputSnapshot({
+      message: {
+        content: [
+          { type: "input_text", text: "检查海洋浮标参考图" },
+          { type: "input_image", image_url: dataUrl }
+        ]
+      },
+      promptContractVersion: "morpho-agent-test",
+      attachmentRefs: [{
+        objectId: "image-buoy",
+        assetId: "asset-buoy",
+        contentHash: hashProviderImageDataUrl(dataUrl),
+        mimeType: "image/png"
+      }]
+    });
+
+    const durable = providerInputSnapshotDurableContent(snapshot);
+    expect(JSON.stringify(durable)).not.toContain("verified-buoy-pixels");
+    expect(parseProviderInputSnapshotDurableReferences(durable.at(-1)?.text ?? "")).toEqual([
+      expect.objectContaining({
+        objectId: "image-buoy",
+        assetId: "asset-buoy",
+        contentHash: hashProviderImageDataUrl(dataUrl),
+        mimeType: "image/png"
+      })
+    ]);
   });
 });

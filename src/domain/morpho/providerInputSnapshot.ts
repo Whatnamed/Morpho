@@ -66,6 +66,77 @@ export function providerInputSnapshotText(snapshot: ProviderInputSnapshot): stri
   return snapshot.textParts.map((part) => part.text);
 }
 
+export function providerInputSnapshotDurableContent(snapshot: ProviderInputSnapshot): ProviderInputTextContent[] {
+  const text = providerInputSnapshotText(snapshot).map((part) => ({ type: "input_text" as const, text: part }));
+  const refs = snapshot.attachmentRefs
+    .filter((ref) => ref.contentHash && ref.mimeType)
+    .map((ref) => ({
+      objectId: ref.objectId,
+      ...(ref.assetId ? { assetId: ref.assetId } : {}),
+      contentHash: ref.contentHash!,
+      mimeType: ref.mimeType!
+    }));
+  return refs.length > 0
+    ? [...text, {
+        type: "input_text",
+        text: `[Morpho Durable Image References | data only]\n${JSON.stringify(refs)}`
+      }]
+    : text;
+}
+
+export function parseProviderInputSnapshotDurableReferences(
+  text: string
+): ProviderInputSnapshotAttachmentRef[] {
+  const prefix = "[Morpho Durable Image References | data only]\n";
+  if (!text.startsWith(prefix)) {
+    return [];
+  }
+  try {
+    const parsed: unknown = JSON.parse(text.slice(prefix.length));
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    const refs = parsed.map((entry): ProviderInputSnapshotAttachmentRef | undefined => {
+      if (!isRecord(entry) || typeof entry.objectId !== "string" || entry.objectId.length < 1 ||
+        (entry.assetId !== undefined && typeof entry.assetId !== "string") ||
+        typeof entry.contentHash !== "string" || !/^[0-9a-f]{64}$/.test(entry.contentHash) ||
+        typeof entry.mimeType !== "string" || !/^image\/[A-Za-z0-9.+-]+$/.test(entry.mimeType)) {
+        return undefined;
+      }
+      return {
+        objectId: entry.objectId,
+        ...(entry.assetId ? { assetId: entry.assetId } : {}),
+        contentHash: entry.contentHash,
+        mimeType: entry.mimeType
+      };
+    });
+    return refs.every((ref): ref is ProviderInputSnapshotAttachmentRef => Boolean(ref)) ? refs : [];
+  } catch {
+    return [];
+  }
+}
+
+export function hashProviderImageDataUrl(dataUrl: string): string {
+  return hashAgentProtocolValue(dataUrl, "morpho-agent-provider-image-content-v1");
+}
+
+export function createProviderOutputSnapshot(text: string): import("./types").ProviderOutputSnapshot {
+  return {
+    schemaVersion: 1,
+    text,
+    contentHash: hashAgentProtocolValue(text, "morpho-agent-provider-output-snapshot-v1")
+  };
+}
+
+export function normalizeProviderOutputSnapshot(value: unknown): import("./types").ProviderOutputSnapshot | undefined {
+  if (!isRecord(value) || value.schemaVersion !== 1 || typeof value.text !== "string" ||
+    typeof value.contentHash !== "string") {
+    return undefined;
+  }
+  const snapshot = createProviderOutputSnapshot(value.text);
+  return snapshot.contentHash === value.contentHash ? snapshot : undefined;
+}
+
 export function hashProviderInputSnapshotText(textParts: readonly ProviderInputSnapshotTextPart[]): string {
   return hashAgentProtocolValue(
     textParts.map((part) => ({ kind: part.kind, text: part.text })),

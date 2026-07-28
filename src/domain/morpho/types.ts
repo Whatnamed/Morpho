@@ -870,6 +870,12 @@ export type ProviderInputSnapshot = {
   cacheBoundaryReason?: ProviderInputCacheBoundaryReason;
 };
 
+export type ProviderOutputSnapshot = {
+  schemaVersion: 1;
+  text: string;
+  contentHash: string;
+};
+
 export type AiMessage = {
   id: string;
   role: "assistant" | "user";
@@ -893,6 +899,7 @@ export type AiMessage = {
   stageRecordUpdateKeys?: StageRecordKey[];
   promptContractVersion?: string;
   providerInputSnapshot?: ProviderInputSnapshot;
+  providerOutputSnapshot?: ProviderOutputSnapshot;
   taskStrategy?: AgentTaskStrategyKind;
   comparisonAnalysisId?: ComparisonAnalysisId;
   agentTrace?: AgentTrace;

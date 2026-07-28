@@ -21,7 +21,10 @@ import {
   normalizeConversationCompactionState,
   normalizeConversationSummaryRevisions
 } from "./conversationCompaction";
-import { normalizeProviderInputSnapshot } from "./providerInputSnapshot";
+import {
+  normalizeProviderInputSnapshot,
+  normalizeProviderOutputSnapshot
+} from "./providerInputSnapshot";
 import { isValidCanonicalAgentRuntimeItem } from "@/shared/agentRuntimeItem";
 import type { AgentCacheItemManifest } from "@/shared/agentStreamProtocol";
 import initialCaseStudyWorkspaceFixture from "./caseStudy/currentCaseWorkspace.generated.json";
@@ -2405,9 +2408,12 @@ function normalizeAiMessageContextVisibility(message: AiMessage): AiMessage {
 function normalizeAiMessage(message: AiMessage): AiMessage {
   const normalized = normalizeAiMessageContextVisibility(message);
   const providerInputSnapshot = normalizeProviderInputSnapshot(message.providerInputSnapshot);
-  const snapshotNormalized = providerInputSnapshot
-    ? { ...normalized, providerInputSnapshot }
-    : normalized;
+  const providerOutputSnapshot = normalizeProviderOutputSnapshot(message.providerOutputSnapshot);
+  const snapshotNormalized = {
+    ...normalized,
+    ...(providerInputSnapshot ? { providerInputSnapshot } : {}),
+    ...(providerOutputSnapshot ? { providerOutputSnapshot } : {})
+  };
   if (!snapshotNormalized.agentTrace) {
     return snapshotNormalized;
   }

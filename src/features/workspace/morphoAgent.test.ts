@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { createInitialWorkspace } from "@/domain/morpho/workspace";
-import { createProviderInputSnapshot } from "@/domain/morpho/providerInputSnapshot";
+import {
+  createProviderInputSnapshot,
+  createProviderOutputSnapshot
+} from "@/domain/morpho/providerInputSnapshot";
 
 import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
 import {
@@ -12,6 +15,7 @@ import {
   buildMorphoAgentToolArgumentRepairReminder,
   buildMorphoAgentSystemPrompt,
   buildMorphoAgentTools,
+  buildConversationSummarySourceProviderItems,
   getComparisonToolExecutionBlockReason,
   MORPHO_AGENT_TOOL_EFFECT_MATRIX,
   getDesignDefinitionDrafts,
@@ -24,6 +28,24 @@ import {
 } from "./morphoAgent";
 
 describe("agent conversation context", () => {
+  it("uses the immutable Provider output when display sanitization changes assistant text", () => {
+    const rawProviderText = [
+      "普通说明。",
+      "```json",
+      '{"morphoConversationCheckpoint":{"internal":"hidden"}}',
+      "```"
+    ].join("\n");
+    const items = buildConversationSummarySourceProviderItems({
+      id: "assistant-buoy-raw",
+      role: "assistant",
+      body: "普通说明。",
+      providerOutputSnapshot: createProviderOutputSnapshot(rawProviderText)
+    });
+
+    expect(JSON.stringify(items)).toContain("morphoConversationCheckpoint");
+    expect(JSON.stringify(items)).toContain("普通说明。");
+  });
+
   it("defines an effect and registry boundary for every server-registered tool", () => {
     const tools = buildMorphoAgentTools(true);
     const functionTools = tools.filter((tool) => tool.type === "function");
