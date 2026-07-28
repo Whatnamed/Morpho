@@ -34,18 +34,19 @@ That proof goal is disproportionate for Morpho's current local-first product. Th
 
 The server remains authoritative for:
 
-- authenticated identity and user/project ownership;
-- prevention of cross-user or cross-project Turn reuse;
+- authenticated identity;
+- binding each Server Turn to the authenticated user and that Turn's client-supplied local `projectId`;
+- prevention of Server Turn reuse by another user or under another client-supplied local `projectId`;
 - Provider, Search, and Image credentials;
 - Provider, Search, and Image quotas and call counters;
 - request idempotency and duplicate-execution or duplicate-charge protection;
 - valid `turnId`, `requestId`, `requestHash`, and `stepSequence` values;
-- server-side external-execution state and the final Server Turn status;
+- Server External Execution Status for Provider, Search, Image, and other server-side external work;
 - a server-owned Prompt Contract and Tool Registry;
 - bounded external execution;
-- confirmation before high-impact or externally costly server operations.
+- server validation of confirmation before externally costly or server-side high-impact operations.
 
-The target server state is a minimal Server Turn Journal. SSE can report progress, but reconnect and recovery query the journal for authoritative server execution state.
+The target server state is a minimal Server Turn Journal. The binding above does not prove ownership of a browser-local project. This migration does not add a server-side project registry, a project ownership table, a binding between local Workspaces and `auth.users`, or cloud Workspace persistence. SSE can report progress, but reconnect and recovery query the journal for authoritative Server External Execution Status.
 
 ### Client local-first scope
 
@@ -56,15 +57,47 @@ The client owns and correctly persists:
 - local Tool Results and locally executed effects;
 - Project Memory and Stage Records;
 - Context Frames and Summary Revisions;
+- local confirmation state governed by the Tool Effect Matrix and product rules;
+- the Overall Local Agent Turn Outcome;
 - project continuity and other local project state.
 
 Normal Morpho UI use must still save these records accurately, restore them correctly, and follow product rules. A+ changes the security-proof boundary; it does not relax product correctness or recovery expectations.
+
+### Split status authority
+
+The Server Turn Journal is authoritative only for Server External Execution Status. Its conceptual status domain is:
+
+```ts
+type ServerExecutionStatus =
+  | "created"
+  | "providerRunning"
+  | "awaitingNextRequest"
+  | "externallyCompleted"
+  | "externallyCancelled"
+  | "externallyFailed";
+```
+
+These names define the architecture boundary, not an implemented Stage 0 schema. Stage 2 may refine storage details without expanding server authority beyond external execution.
+
+The Stage 1 client reducer is the sole authority for the Overall Local Agent Turn Outcome. It combines:
+
+- Server External Execution Status;
+- local Tool Batch Outcome;
+- local Pending Confirmation or other confirmation state;
+- local Workspace persistence and effect results.
+
+The user-visible outcome includes semantic states such as `completed`, `partiallyCompleted`, `pendingConfirmation`, `cancelled`, and `failed`; exact event and type names are a Stage 1 deliverable. The Server Turn Journal must not claim authority over local Tool Results, local Workspace effects, Pending Confirmation, or the overall user-visible Agent Turn outcome. Server status and local outcome require an explicit mapping; neither may overwrite or masquerade as the other.
+
+Confirmation also has two distinct authorities:
+
+- local project high-impact operations are confirmed and enforced by the client Tool Effect Matrix and product rules;
+- externally costly or server-side high-impact operations require confirmation that the server validates before execution.
 
 ### Audit classification rule
 
 Later audits must use this boundary and must not classify the mere ability to edit one's own local project, chat, or Tool Result as a P0. A client-side modification becomes a required security fix when it can:
 
-- access another user or project;
+- access another user's data or reuse a Server Turn across authenticated users or client-supplied local `projectId` values;
 - bypass authentication;
 - expose a server credential;
 - bypass quota or cause duplicate charging;
@@ -103,16 +136,18 @@ These are product capabilities, not B-style proof mechanisms, and none is schedu
 
 - Auth remains server-verified.
 - API keys remain server-only.
-- Every Server Turn remains bound to its authenticated user and project.
+- Every Server Turn remains bound to its authenticated user and the Turn's client-supplied local `projectId`; this is not proof of project ownership.
 - Quota remains server-enforced.
 - Provider, Search, and Image call counters remain authoritative.
-- Idempotency remains enforced for external work and Turn completion.
+- Idempotency remains enforced for external work and Server External Execution Status transitions.
 - `requestHash` remains server-validated.
 - `stepSequence` remains monotonic and server-validated.
 - The Tool Registry and Prompt Contract remain server-owned.
-- High-impact and externally costly actions retain their confirmation boundary.
+- Local high-impact Workspace actions retain client-side Tool Effect Matrix and product confirmation enforcement.
+- Externally costly and server-side high-impact actions retain server-validated confirmation.
 - Execution remains bounded by call, duration, and provider limits.
-- The Server Turn status remains queryable and authoritative after SSE interruption.
+- Server External Execution Status remains queryable and authoritative after SSE interruption.
+- The client reducer remains the sole authority for Overall Local Agent Turn Outcome.
 - Untrusted client content remains user data and cannot become server System or Tool authority.
 
 ## 6. Guarantees Explicitly Dropped
@@ -152,12 +187,12 @@ This section defines the destination boundary. Stage 0 does not delete or alter 
 | Auth, quota, and external-call counters — `src/server/auth/aiAccess.ts` and `agentTurnLease.ts` | Yes | Yes | No | Retain security and cost controls while reducing Lease state to the A+ journal core. |
 | Host Fake and behavior tests — `agentTurnHostFake.ts`, `agentTurnRunner.test.ts`, `e2e/agent-turn.spec.ts` | Yes | Yes | No | Preserve test seams and behavior evidence; replace assertions coupled only to B proofs. |
 | Agent Turn Runner — `agentTurnRunner.ts` | No | Yes | No | Converge orchestration on one explicit Turn Lifecycle and event flow. |
-| AgentTurnState — `agentTurnState.ts` | No | Yes | No | Separate local runtime state, Server Turn state, and proof-only fields. |
+| AgentTurnState — `agentTurnState.ts` | No | Yes | No | Separate Overall Local Agent Turn Outcome, Server External Execution Status, and proof-only fields. |
 | Agent Turn Host — `agentTurnHost.ts` | Yes | Yes | No | Preserve the host abstraction while adapting abort, stream, and Coordinator boundaries. |
-| Lease — `agentTurnLeaseClient.ts`, `src/server/auth/agentTurnLease.ts`, `app/api/ai/agent/lease/**` | No | Yes | Split | Keep user/project binding, counters, idempotency, sequence, and minimum status; remove Closure overlays later. |
+| Lease — `agentTurnLeaseClient.ts`, `src/server/auth/agentTurnLease.ts`, `app/api/ai/agent/lease/**` | No | Yes | Split | Keep per-Turn authenticated-user/local-`projectId` binding, counters, idempotency, sequence, and Server External Execution Status; remove Closure overlays later. |
 | Request Sequence — `agentTurnState.ts`, `agentTurnProviderRequest.ts`, `agentTurnLease.ts` | No | Yes | No | Give one meaning to request and step sequencing across client and server. |
-| Outcome Resolver — `agentTurnMessages.ts` | No | Yes | No | Replace end-of-loop Boolean assembly with the lifecycle reducer's terminal outcome. |
-| Abort — `agentTurnRunner.ts`, `agentStreamClient.ts`, Agent route | No | Yes | No | Decouple stopping SSE consumption from authoritative server completion. |
+| Outcome Resolver — `agentTurnMessages.ts` | No | Yes | No | Make the lifecycle reducer the sole authority for Overall Local Agent Turn Outcome instead of assembling it from end-of-loop Booleans. |
+| Abort — `agentTurnRunner.ts`, `agentStreamClient.ts`, Agent route | No | Yes | No | Decouple stopping SSE consumption from authoritative Server External Execution Status. |
 | Recovery — Turn Runner, Lease client, `lease/state/route.ts` | No | Yes | Split | Query and resume one Turn lifecycle instead of recovering only Closure candidates. |
 | Compaction lifecycle — Turn Runner, Provider Request, `manualCompactionTurn.ts` | No | Yes | Split | Unify automatic, pre-continuation, and manual terminal semantics while preserving Summary Revisions. |
 | SSE protocol — `src/shared/agentStreamProtocol.ts` and Agent route | Yes | Yes | Split | Keep streaming display; remove Snapshot/Lease/Closure authority from events. |
@@ -168,7 +203,7 @@ This section defines the destination boundary. Stage 0 does not delete or alter 
 | Complete Transcript Manifest validation | No | No | Yes | Ordered local-history authenticity is outside the A+ server boundary. |
 | Tool Result Causal Binding — `agentContinuationToken.ts` | No | No | Yes | Local Tool Results no longer require server cryptographic authenticity. |
 | Context Marker strong causal proof — `agentCompactionProtocol.ts` and `agentContinuationToken.ts` | No | No | Yes | Context Frames remain local product data without a server hash chain. |
-| Closure Token and Closure Proof Chain — token, Lease client/route, Closure SQL | No | No | Yes | Minimal idempotent Server Turn status replaces client-history Closure proof. |
+| Closure Token and Closure Proof Chain — token, Lease client/route, Closure SQL | No | No | Yes | Minimal idempotent Server External Execution Status replaces client-history Closure proof without deciding the Overall Local Agent Turn Outcome. |
 | Function Call special Finalizer — `lease/finalize-function-calls/route.ts` | No | No | Yes | Unified Tool Batch Outcome replaces the Pending Confirmation-only protocol. |
 | Finalizer-specific recovery — `AgentTurnClosureRecovery` and exact Closure candidate replay | No | No | Yes | Recovery becomes general Turn status/retry handling. |
 | B-only Compaction Receipt proof — `agentCompactionProtocol.ts`, token, `lease/summary/route.ts` | No | No | Yes | Compaction correctness remains, but local-history authenticity proof does not. |
@@ -196,9 +231,9 @@ The table records expected product behavior to preserve during migration. `Not r
 | 12 | Provider failure | The Turn ends failed or partial according to effects already committed; retry starts cleanly. | Not re-verified in Stage 0 | Failure-marker and classification gaps are scenarios 2 and 3 in Section 9. | Stage 1 and Stage 3 |
 | 13 | Tool failure | The failed call is visible and the batch outcome reflects unresolved work. | Not re-verified in Stage 0 | Outcome convergence is scenarios 3 and 4 in Section 9. | Stage 1 and Stage 3 |
 | 14 | Partial success | Successful effects remain, failed work remains explicit, and the Turn is not labeled full success. | Not re-verified in Stage 0 | Outcome convergence is scenarios 3 and 4 in Section 9. | Stage 1 and Stage 3 |
-| 15 | User cancellation | Cancellation stops further work while preserving authoritative server terminal state and completed local effects. | Not re-verified in Stage 0 | Cancellation/SSE gap is scenario 1 in Section 9. | Stage 2 and Stage 3 |
-| 16 | Network interruption | Reconnect queries Server Turn state and never replays chargeable external work accidentally. | Not re-verified in Stage 0 | Recovery convergence is scenario 6 in Section 9. | Stage 2 and Stage 3 |
-| 17 | Page refresh | Persisted local state and the Server Turn Journal reconstruct one coherent Turn status. | Not re-verified in Stage 0 | Recovery convergence is scenarios 6 and 7 in Section 9. | Stage 2 and Stage 3 |
+| 15 | User cancellation | Cancellation stops further work while preserving authoritative Server External Execution Status and completed local effects; the client reducer derives the overall cancelled or partial outcome. | Not re-verified in Stage 0 | Cancellation/SSE gap is scenario 1 in Section 9. | Stage 2 and Stage 3 |
+| 16 | Network interruption | Reconnect queries Server External Execution Status and never replays chargeable external work accidentally; the client reducer retains overall-outcome authority. | Not re-verified in Stage 0 | Recovery convergence is scenario 6 in Section 9. | Stage 2 and Stage 3 |
+| 17 | Page refresh | Persisted local state and Server External Execution Status provide separate inputs to reconstruct one Overall Local Agent Turn Outcome. | Not re-verified in Stage 0 | Recovery convergence is scenarios 6 and 7 in Section 9. | Stage 2 and Stage 3 |
 | 18 | Automatic compaction | Compaction advances one valid Summary Revision boundary or leaves the previous boundary unchanged. | Not re-verified in Stage 0 | Protocol divergence is scenario 5 in Section 9. | Stage 3 |
 | 19 | Pre-continuation compaction | Compaction before continuation uses the same lifecycle and terminal semantics as other compaction. | Not re-verified in Stage 0 | Protocol divergence is scenario 5 in Section 9. | Stage 3 |
 | 20 | Manual compaction | Manual compaction uses the same outcome and persistence contract without masquerading as a normal Agent answer. | Not re-verified in Stage 0 | Protocol divergence is scenario 5 in Section 9. | Stage 3 |
@@ -214,7 +249,7 @@ These findings are migration acceptance scenarios, not seven independent Stage 0
 
 | # | Existing symptom | A+ stage expected to resolve it | Later acceptance criterion | Stage 0 |
 |---:|---|---|---|---|
-| 1 | When the user cancels a Provider stream, stopping SSE consumption can lose observation of the server's actual terminal state. | Stage 2 establishes the journal; Stage 3 unifies Abort/SSE/recovery. | Cancellation may stop display immediately, but a later query returns the one authoritative Server Turn terminal state; no external work is replayed merely because SSE ended. | Not fixed in Stage 0. |
+| 1 | When the user cancels a Provider stream, stopping SSE consumption can lose observation of the server's actual external-execution state. | Stage 2 establishes the journal; Stage 3 unifies Abort/SSE/recovery. | Cancellation may stop display immediately, but a later query returns authoritative Server External Execution Status; no external work is replayed merely because SSE ended, and the client reducer combines that status with local effects to derive the overall outcome. | Not fixed in Stage 0. |
 | 2 | A Provider Failure Marker can behave as one-shot mutable client state and contaminate a later retry. | Stage 1 lifecycle events/reducer; Stage 3 retry and recovery wiring. | Failure belongs to one Turn event history; a retry starts from an explicit new or resumed state and cannot inherit a stale failure marker. | Not fixed in Stage 0. |
 | 3 | A Turn can execute a tool and later be classified as `failedBeforeExecution`. | Stage 1 unified outcome model. | Any recorded tool or external effect makes `failedBeforeExecution` impossible; the reducer emits the appropriate partial, failed-during-execution, cancelled, or pending outcome and preserves successful effects. | Not fixed in Stage 0. |
 | 4 | Tool Batch terminal handling has a special Finalizer only for `pendingConfirmation`. | Stage 1 defines one Tool Batch Outcome; Stage 3 wires all tool paths to it. | Success, partial success, failure, cancellation, and Pending Confirmation use the same batch-finalization contract with one terminal output per call and no Pending-only protocol. | Not fixed in Stage 0. |
@@ -229,7 +264,8 @@ Every stage receives one independent commit, then stops for independent audit. W
 ### Stage 1 — One Turn Lifecycle
 
 - Define explicit Turn events and terminal states.
-- Implement a pure reducer.
+- Implement a pure reducer as the sole authority for Overall Local Agent Turn Outcome.
+- Define an explicit mapping from Server External Execution Status, local Tool Batch Outcome, local confirmation state, and local persistence results into that outcome.
 - Define one Tool Batch Outcome covering every terminal call state.
 - Replace Boolean-at-end outcome reasoning at the design boundary.
 - Do not add the client Coordinator or Server Turn Journal in this stage.
@@ -237,8 +273,10 @@ Every stage receives one independent commit, then stops for independent audit. W
 ### Stage 2 — A+ Coordinator and Server Turn Journal
 
 - Add one client Coordinator as the owner of Turn orchestration.
-- Add the minimal Server Turn Journal for identity/project binding, request identity/hash, sequence, external counters, idempotency, and terminal server status.
-- Make server state queryable after SSE interruption.
+- Add the minimal Server Turn Journal for binding each Server Turn to the authenticated user and that Turn's client-supplied local `projectId`, request identity/hash, sequence, external counters, idempotency, and Server External Execution Status.
+- Do not add a server-side project registry, project ownership table, local Workspace ownership proof, or cloud Workspace persistence.
+- Make Server External Execution Status queryable after SSE interruption without making it an Overall Local Agent Turn Outcome.
+- Keep local Tool Results, local Workspace effects, Pending Confirmation, and the overall user-visible outcome outside Server Turn Journal authority.
 - Do not yet unify every Tool, Compaction, Abort, or Recovery path.
 
 ### Stage 3 — Unified Runtime Lifecycles
@@ -271,10 +309,11 @@ The following gates apply to every stage:
 
 - Did the commit remain inside the declared stage?
 - Did it reintroduce the B objective of proving client-local history or Tool Result integrity?
-- Did it create two authoritative Turn-state sources?
+- Did it create two authorities for Overall Local Agent Turn Outcome, or let Server External Execution Status masquerade as that outcome?
 - Is the terminal outcome derived by an explicit lifecycle/reducer rather than Boolean fields assembled at the end?
 - Is SSE still display-only rather than authoritative terminal state?
-- Are Auth, user/project isolation, API keys, quota, idempotency, counters, request hash/sequence, and external-action confirmation preserved?
+- Are Auth, per-Turn authenticated-user/local-`projectId` binding, API keys, quota, idempotency, counters, request hash/sequence, and server-side external-action confirmation preserved without inventing project ownership?
+- Are local high-impact confirmation and server-validated external/high-impact confirmation kept distinct?
 - Are all capabilities in Section 4 preserved?
 - Did the stage add coupling that belongs to the next stage?
 - Do tests protect user behavior and retained security, or only temporary implementation details?
@@ -282,8 +321,8 @@ The following gates apply to every stage:
 | Stage | Required audit evidence before proceeding |
 |---|---|
 | Stage 0 | Archive branch and tag point to the pre-Stage-0 baseline; only the three architecture documents changed; the A+ supersession is explicit; Stage 1 implementation has not started and no Stage 1 production/runtime changes are present. |
-| Stage 1 | One lifecycle vocabulary, explicit events, pure reducer, and unified Tool Batch Outcome exist; no Coordinator or Server Journal was smuggled in; reducer tests cover failure, cancellation, partial success, and Pending Confirmation. |
-| Stage 2 | One Coordinator owns client orchestration; one minimal journal owns server external state; idempotency and isolation tests pass; SSE loss is recoverable by state query; no local-history authenticity proof is reintroduced. |
+| Stage 1 | One lifecycle vocabulary, explicit events, pure reducer, and unified Tool Batch Outcome exist; the reducer alone owns Overall Local Agent Turn Outcome; no Coordinator or Server Journal was smuggled in; reducer tests cover failure, cancellation, partial success, and Pending Confirmation. |
+| Stage 2 | One Coordinator owns client orchestration; one minimal journal owns only Server External Execution Status; authenticated-user/local-`projectId` binding, idempotency, and isolation tests pass; no project registry or ownership claim is added; SSE loss is recoverable by state query; no local-history authenticity proof or second overall-outcome authority is introduced. |
 | Stage 3 | Tool, compaction, SSE, Abort, and Recovery paths use the common lifecycle; the seven scenarios in Section 9 pass; preserved capabilities and successful local effects survive failure/reconnect. |
 | Stage 4 | Only one Runtime is reachable; B routes/RPCs/claims/flags and implementation-bound tests are removed; full behavior and retained-security acceptance passes; archive refs remain unchanged. |
 
@@ -293,18 +332,18 @@ The matrix classifies the relevant 2026-07-24 through 2026-07-28 decisions again
 
 | Date and prior decision | Topic | Status | A+ disposition |
 |---|---|---|---|
-| 2026-07-24 — `Make The Server Authoritative For Agent Provider Contracts And Turn Leases` | Server authority | Narrowed | Retain Auth, server-owned Prompt/Tool Contract, keys, limits, user/project binding, and external-call accounting. Supersede authority over the authenticity of browser-owned Transcript and continuity content. |
+| 2026-07-24 — `Make The Server Authoritative For Agent Provider Contracts And Turn Leases` | Server authority | Narrowed | Retain Auth, server-owned Prompt/Tool Contract, keys, limits, binding each Turn to its authenticated user and client-supplied local `projectId`, and external-call accounting. This is not browser-local project ownership. Supersede authority over the authenticity of browser-owned Transcript and continuity content. |
 | 2026-07-26 — `Canonical strategy items and fixed Agent tools` | Server Tool authority | Retained | Strategy remains bounded input and the Tool Registry remains server-owned; local project text never becomes trusted System or Tool policy. |
-| 2026-07-26 — `Causal Agent Turn Lease` | Lease | Narrowed | Retain atomic counters, user/project binding, request hash, sequence, and idempotency. Supersede use of Lease metadata as proof that client-local history and results are causally authentic. |
+| 2026-07-26 — `Causal Agent Turn Lease` | Lease | Narrowed | Retain atomic counters, per-Turn authenticated-user/local-`projectId` binding, request hash, sequence, and idempotency. Supersede use of Lease metadata as proof that client-local history and results are causally authentic. |
 | 2026-07-26 — `Lease-bound Provider execution and signed continuation` | Causal continuation | Narrowed | Retain binding of chargeable execution to a valid Turn and sequence. Supersede HMAC proof of the complete client prefix, Provider output replay, local Call results, and post-compaction local transcript. |
 | 2026-07-27 — `Close signed Agent continuation and compaction boundaries` (product/security boundary) | Bounded execution and compaction behavior | Retained | Retain call ceilings, strict compaction reduction, Summary Revision correctness, and no duplicate external execution. |
 | 2026-07-27 — `Close signed Agent continuation and compaction boundaries` (proof boundary) | Causal continuation, Context Marker, Compaction Receipt | Superseded | v5 continuation manifests, v4 Receipt proof, and Context Marker causal chains are not A+ requirements. |
 | 2026-07-28 — `Close cross-turn transcript and Context authority` (product boundary) | Context Frames, summaries, and terminal outcome semantics | Retained | Raw chat, Provider Context Frames, Summary Revisions, and explicit terminal outcomes remain local-first product data. |
 | 2026-07-28 — `Close cross-turn transcript and Context authority` (proof boundary) | Transcript Snapshot and cross-turn authority | Superseded | Snapshot refresh and server proof of the complete browser-owned Transcript, Context, and durable replay are outside the A+ boundary. |
-| 2026-07-28 — `Require complete transcript and idempotent Turn Closure proofs` (server boundary) | Idempotent Server Turn completion | Retained | The minimal Server Turn Journal remains authoritative and idempotent for server external execution and terminal status. |
+| 2026-07-28 — `Require complete transcript and idempotent Turn Closure proofs` (server boundary) | Idempotent Server External Execution Status | Retained | The minimal Server Turn Journal remains authoritative and idempotent only for server external execution; the client reducer owns Overall Local Agent Turn Outcome. |
 | 2026-07-28 — `Require complete transcript and idempotent Turn Closure proofs` (proof boundary) | Closure proof | Superseded | Closure Tokens, proof chains, and full-manifest validation of local history and Tool Results are not retained. |
 | 2026-07-28 implementation under the Closure decision | Function Call Finalizer | Historical only | The Pending Confirmation-only Finalizer is a B-proof implementation consequence, not the target contract. Unified Tool Batch Outcome replaces it. |
-| 2026-07-27/28 recovery clauses under continuation and Closure decisions | Recovery | Narrowed | Retain no-duplicate external execution, idempotent retry, and server-status lookup. Supersede exact Closure-candidate replay, Finalizer-specific recovery, and Snapshot refresh as the general recovery model. |
+| 2026-07-27/28 recovery clauses under continuation and Closure decisions | Recovery | Narrowed | Retain no-duplicate external execution, idempotent retry, and Server External Execution Status lookup. The client reducer combines that lookup with local state. Supersede exact Closure-candidate replay, Finalizer-specific recovery, and Snapshot refresh as the general recovery model. |
 | 2026-07-26 — `Turn outcome from unresolved work` | Outcome semantics | Retained | Preserve the distinction between resolved failures, unresolved work, partial success, and full success; express it through the Stage 1 reducer. |
 | 2026-07-26 — `Context bounded by items as well as tokens` | Context and compaction limits | Retained | Token/item pressure and server fail-closed limits remain Context Policy; they do not require a local-history proof chain. |
 
