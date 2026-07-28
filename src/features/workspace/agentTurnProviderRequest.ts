@@ -38,7 +38,10 @@ import {
   createAgentAttemptGuard,
   createAgentStreamEventBatcher
 } from "./agentStreamClient";
-import { requestConversationSummary } from "./agentTurnLeaseClient";
+import {
+  prepareAgentDurableCheckpoint,
+  requestConversationSummary
+} from "./agentTurnLeaseClient";
 import {
   buildConversationCompactionTailItems
 } from "./conversationSummaryAgentRequest";
@@ -60,6 +63,8 @@ import {
   type AgentCompactionReceipt,
   AGENT_CONTEXT_STATE_MARKER_TYPE,
   buildCompactionTranscriptMarker,
+  buildAgentTranscriptManifest,
+  parseAgentTranscriptMessageItem,
   type AgentContextStateMarker,
   type AgentContextMarkerCausalBinding
 } from "@/shared/agentCompactionProtocol";
@@ -330,6 +335,34 @@ export async function requestAgentTurnProvider(
   const exactContinuation = continuation && !turnState.providerTranscriptReset;
   turnState.providerTranscriptReset = false;
   const leaseContinuation = !exactContinuation && Boolean(turnState.agentTurnLeaseId);
+  if (!exactContinuation && !leaseContinuation) {
+    const preparedRequestState = await prepareAgentDurableCheckpoint({
+      projectId: turnState.workspaceAtAgentStart.project.id,
+      requestState: turnState.latestProviderRequestState,
+      legacyTranscriptManifest: buildAgentTranscriptManifest(
+        conversationInput.filter((item) =>
+          parseAgentTranscriptMessageItem(item)?.messageId !== input.userMessageId
+        )
+      ),
+      signal: input.signal,
+      fetch: input.fetch
+    });
+    if (preparedRequestState !== turnState.latestProviderRequestState) {
+      turnState.latestProviderRequestState = preparedRequestState;
+      input.commitWorkspace((current) => ({
+        workspace: {
+          ...current,
+          ai: {
+            ...current.ai,
+            ...(preparedRequestState
+              ? { latestProviderRequestState: preparedRequestState }
+              : {})
+          }
+        },
+        value: undefined
+      }));
+    }
+  }
   const currentRequestState: ProviderRequestBoundaryState = {
     promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
     ...(runtimeState.conversationContext.summaryRevision
@@ -337,6 +370,25 @@ export async function requestAgentTurnProvider(
       : {}),
     latestUserMessageId: input.userMessageId,
     budgetGeneration: runtimeState.contextBudgetState.generation,
+    ...(turnState.latestProviderRequestState?.transcriptSnapshotToken
+      ? {
+          transcriptSnapshotToken: turnState.latestProviderRequestState.transcriptSnapshotToken,
+          ...(turnState.latestProviderRequestState.transcriptManifestHash
+            ? { transcriptManifestHash: turnState.latestProviderRequestState.transcriptManifestHash }
+            : {}),
+          ...(turnState.latestProviderRequestState.transcriptSnapshotExpiresAt
+            ? {
+                transcriptSnapshotExpiresAt:
+                  turnState.latestProviderRequestState.transcriptSnapshotExpiresAt
+              }
+            : {})
+        }
+      : {}),
+    ...(turnState.latestProviderRequestState?.transcriptStartMessageId
+      ? { transcriptStartMessageId: turnState.latestProviderRequestState.transcriptStartMessageId }
+      : !turnState.latestProviderRequestState?.transcriptSnapshotToken
+        ? { transcriptStartMessageId: input.userMessageId }
+        : {}),
     ...(!exactContinuation && input.providerInputSnapshot.cacheBoundaryReason
       ? { attachmentBoundary: input.providerInputSnapshot.cacheBoundaryReason }
       : {})
@@ -366,6 +418,7 @@ export async function requestAgentTurnProvider(
       projectId: turnState.workspaceAtAgentStart.project.id,
       agentTurnId: input.agentTurnId,
       assistantMessageId: input.assistantMessageId,
+      currentUserMessageId: input.userMessageId,
       continuation: exactContinuation,
       ...(leaseContinuation ? { leaseContinuation: true } : {}),
       ...((exactContinuation || leaseContinuation) && turnState.agentTurnLeaseId
@@ -466,6 +519,17 @@ export async function requestAgentTurnProvider(
         }
         if (event.type === "turn-complete" && event.continuationToken) {
           turnState.agentContinuationToken = event.continuationToken;
+        }
+        if (event.type === "turn-complete" && event.turnClosureToken) {
+          turnState.turnClosureToken = event.turnClosureToken;
+        }
+        if (event.type === "turn-complete" && event.transcriptSnapshotToken &&
+          event.transcriptManifestHash) {
+          turnState.latestProviderRequestState = {
+            ...currentRequestState,
+            transcriptSnapshotToken: event.transcriptSnapshotToken,
+            transcriptManifestHash: event.transcriptManifestHash
+          };
         }
         if (event.type === "turn-complete" && event.transcriptManifestHash) {
           turnState.latestProviderTranscriptManifestHash = event.transcriptManifestHash;

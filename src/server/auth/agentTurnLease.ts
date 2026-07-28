@@ -76,6 +76,19 @@ type LeaseStateRpcRow = {
   next_provider_sequence: number;
 };
 
+type LeaseClosureRpcRow = {
+  completed: boolean;
+  status_name: string;
+  replayed: boolean;
+  denial_reason: string | null;
+};
+
+type LeaseClosureStateRpcRow = {
+  state_name: "none" | "match" | "conflict" | "invalid_lease";
+  status_name: string | null;
+  closure_outcome: string | null;
+};
+
 export type AgentTurnLeaseStartInput = {
   agentTurnId: string;
   initialRequestHash: string;
@@ -130,9 +143,11 @@ export async function completeAgentTurnLease(input: {
   leaseId: string;
   agentTurnId: string;
   outcome: AgentTurnLeaseOutcome;
+  closureRequestId: string;
+  closureRequestHash: string;
 }): Promise<
-  | { status: "completed"; statusName: string }
-  | { status: "denied"; httpStatus: 401 | 403 | 409 | 429 | 503; error: string }
+  | { status: "completed"; statusName: string; replayed: boolean }
+  | { status: "denied"; httpStatus: 401 | 403 | 409 | 429 | 503; error: string; reason?: string }
 > {
   const client = await createLeaseClient();
   if (client.status === "denied") {
@@ -145,15 +160,103 @@ export async function completeAgentTurnLease(input: {
   const result = await client.client.rpc("complete_agent_turn_lease", {
     p_lease_id: input.leaseId,
     p_agent_turn_id: input.agentTurnId,
-    p_outcome: input.outcome
+    p_outcome: input.outcome,
+    p_closure_request_id: input.closureRequestId,
+    p_closure_request_hash: input.closureRequestHash
   }).single();
-  if (result.error || !isRecord(result.data) ||
-    typeof result.data.completed !== "boolean" || typeof result.data.status_name !== "string") {
+  if (isMissingRpcError(result.error)) {
+    return {
+      status: "denied",
+      httpStatus: 503,
+      error: "数据库尚未升级到当前 Agent Closure 契约。",
+      reason: "closure_contract_missing"
+    };
+  }
+  if (result.error || !isLeaseClosureRpcRow(result.data)) {
     return { status: "denied", httpStatus: 503, error: "Agent 回合状态服务暂时不可用，请稍后重试。" };
   }
-  return result.data.completed
-    ? { status: "completed", statusName: result.data.status_name }
-    : { status: "denied", httpStatus: 403, error: "Agent Turn Lease 无效或不属于当前用户。" };
+  if (result.data.completed) {
+    return {
+      status: "completed",
+      statusName: result.data.status_name,
+      replayed: result.data.replayed
+    };
+  }
+  const reason = result.data.denial_reason ?? "invalid_lease";
+  return {
+    status: "denied",
+    httpStatus: reason === "closure_conflict" ? 409 : 403,
+    error: reason === "closure_conflict"
+      ? "Agent Turn Closure 请求与已保存终态冲突。"
+      : reason === "execution_already_started"
+        ? "Agent Turn 已开始执行，不能声明为执行前终止。"
+        : "Agent Turn Lease 无效或不能关闭。",
+    reason
+  };
+}
+
+export async function readAgentTurnClosureState(input: {
+  leaseId: string;
+  agentTurnId: string;
+  closureRequestId: string;
+  closureRequestHash: string;
+}): Promise<
+  | { status: "read"; stateName: LeaseClosureStateRpcRow["state_name"]; statusName?: string; outcome?: string }
+  | { status: "denied"; httpStatus: 401 | 403 | 409 | 429 | 503; error: string; reason?: string }
+> {
+  const client = await createLeaseClient();
+  if (client.status === "denied") {
+    return client;
+  }
+  const auth = await requireUser(client.client);
+  if (auth) {
+    return auth;
+  }
+  const result = await client.client.rpc("read_agent_turn_closure_state", {
+    p_lease_id: input.leaseId,
+    p_agent_turn_id: input.agentTurnId,
+    p_closure_request_id: input.closureRequestId,
+    p_closure_request_hash: input.closureRequestHash
+  }).single();
+  if (isMissingRpcError(result.error)) {
+    return {
+      status: "denied",
+      httpStatus: 503,
+      error: "数据库尚未升级到当前 Agent Closure 恢复契约。",
+      reason: "closure_state_contract_missing"
+    };
+  }
+  if (result.error || !isLeaseClosureStateRpcRow(result.data)) {
+    return { status: "denied", httpStatus: 503, error: "Agent Closure 状态服务暂时不可用，请稍后重试。" };
+  }
+  return {
+    status: "read",
+    stateName: result.data.state_name,
+    ...(result.data.status_name ? { statusName: result.data.status_name } : {}),
+    ...(result.data.closure_outcome ? { outcome: result.data.closure_outcome } : {})
+  };
+}
+
+export async function markAgentTurnToolExecutionStarted(input: {
+  leaseId: string;
+  agentTurnId: string;
+}): Promise<{ status: "marked" } | { status: "denied"; httpStatus: 401 | 403 | 409 | 429 | 503; error: string }> {
+  const client = await createLeaseClient();
+  if (client.status === "denied") {
+    return client;
+  }
+  const auth = await requireUser(client.client);
+  if (auth) {
+    return auth;
+  }
+  const result = await client.client.rpc("mark_agent_turn_tool_execution_started", {
+    p_lease_id: input.leaseId,
+    p_agent_turn_id: input.agentTurnId
+  }).single();
+  if (result.error || !isRecord(result.data) || result.data.marked !== true) {
+    return { status: "denied", httpStatus: 403, error: "Agent Tool 执行状态无法建立，已停止执行。" };
+  }
+  return { status: "marked" };
 }
 
 export async function startAgentTurnLeaseForClient(
@@ -393,6 +496,22 @@ function isLeaseStateRpcRow(value: unknown): value is LeaseStateRpcRow {
     typeof value.provider_call_count === "number" &&
     typeof value.web_search_call_count === "number" &&
     typeof value.next_provider_sequence === "number";
+}
+
+function isLeaseClosureRpcRow(value: unknown): value is LeaseClosureRpcRow {
+  return isRecord(value) &&
+    typeof value.completed === "boolean" &&
+    typeof value.status_name === "string" &&
+    typeof value.replayed === "boolean" &&
+    (value.denial_reason === null || typeof value.denial_reason === "string");
+}
+
+function isLeaseClosureStateRpcRow(value: unknown): value is LeaseClosureStateRpcRow {
+  return isRecord(value) &&
+    (value.state_name === "none" || value.state_name === "match" ||
+      value.state_name === "conflict" || value.state_name === "invalid_lease") &&
+    (value.status_name === null || typeof value.status_name === "string") &&
+    (value.closure_outcome === null || typeof value.closure_outcome === "string");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

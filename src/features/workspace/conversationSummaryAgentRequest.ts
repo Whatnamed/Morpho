@@ -33,6 +33,7 @@ export function buildConversationSummaryAgentRequest(input: {
   contextMarkers?: readonly AgentContextStateMarker[];
   previousTranscriptManifestHash?: string;
   previousTranscriptSnapshotToken?: string;
+  currentUserMessageId?: string;
 }) {
   const retainedTailItems = input.retainedTailItems ?? [];
   const summaryInput = buildAgentCheckpointCompactionInput({
@@ -70,6 +71,7 @@ export function buildConversationSummaryAgentRequest(input: {
     }),
     projectId: input.projectId,
     agentTurnId: input.agentTurnId,
+    ...(input.currentUserMessageId ? { currentUserMessageId: input.currentUserMessageId } : {}),
     continuation: false as const,
     ...(input.leaseId
       ? {

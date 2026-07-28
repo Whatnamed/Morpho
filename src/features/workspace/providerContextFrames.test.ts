@@ -18,6 +18,7 @@ import {
   ensureAgentConversationSummaryBaselines,
   getLatestProviderRequestState,
   getProviderInputReplayBoundaryReasons,
+  selectAgentDurableConversationHistory,
   toProviderRequestBoundaryState
 } from "./providerContextFrames";
 import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
@@ -51,6 +52,21 @@ function userMessage(text: string) {
 }
 
 describe("Agent provider transcript reconstruction", () => {
+  it("starts legacy workspaces at a new authenticated transcript boundary", () => {
+    const messages = [{ id: "old-user" }, { id: "old-assistant" }, { id: "new-user" }];
+
+    expect(selectAgentDurableConversationHistory(messages, undefined)).toEqual([]);
+    expect(selectAgentDurableConversationHistory(messages, {
+      promptContractVersion: "agent-v1",
+      transcriptSnapshotToken: "signed-legacy-or-current-token"
+    })).toEqual(messages);
+    expect(selectAgentDurableConversationHistory(messages, {
+      promptContractVersion: "agent-v1",
+      transcriptSnapshotToken: "signed-current-token",
+      transcriptStartMessageId: "old-assistant"
+    })).toEqual([{ id: "old-assistant" }, { id: "new-user" }]);
+  });
+
   it("normalizes the latest request boundary and strips historical manifests", () => {
     const workspace = createInitialWorkspace();
     const requestState = {

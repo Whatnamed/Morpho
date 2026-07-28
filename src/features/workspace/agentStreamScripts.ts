@@ -4,6 +4,7 @@ import {
   type AgentStreamFunctionCall,
   type AgentStreamResult
 } from "@/shared/agentStreamProtocol";
+import { createProviderOutputSnapshot } from "@/domain/morpho/providerInputSnapshot";
 
 /** Deterministic Agent response scripts shared by unit and browser tests. */
 export type MockAgentScript = {
@@ -32,6 +33,7 @@ export function textAnswerScript(options: { text?: string; partId?: string } = {
       type: "turn-start",
       agentTurnId: "turn-e2e-1",
       startedAt: STARTED_AT,
+      leaseId: "lease-e2e-1",
       providerCallCount: 1,
       nextProviderSequence: 2
     },
@@ -41,6 +43,10 @@ export function textAnswerScript(options: { text?: string; partId?: string } = {
     { type: "final-end", partId },
     {
       type: "turn-complete",
+      turnClosureToken: "closure-token-unit",
+      transcriptSnapshotToken: "snapshot-token-unit",
+      transcriptManifestHash: "a".repeat(64),
+      assistantProviderOutputSnapshot: createProviderOutputSnapshot(text),
       result: buildStreamResult({ outputText: text })
     }
   ]);
@@ -92,6 +98,7 @@ export function functionCallScript(
       agentTurnId: "turn-unit-tools",
       attemptId: "attempt-unit-tools",
       startedAt: STARTED_AT,
+      leaseId: "lease-unit-tools",
       providerCallCount: 1,
       nextProviderSequence: 2
     },
@@ -106,7 +113,11 @@ export function functionCallScript(
       type: "turn-complete",
       result,
       attemptId: "attempt-unit-tools",
-      continuationToken: "continuation-unit-tools"
+      continuationToken: "continuation-unit-tools",
+      turnClosureToken: "closure-token-unit-tools",
+      transcriptSnapshotToken: "snapshot-token-unit-tools",
+      transcriptManifestHash: "b".repeat(64),
+      assistantProviderOutputSnapshot: createProviderOutputSnapshot(result.outputText)
     }
   ]);
 }

@@ -29,7 +29,6 @@ import {
   hashSourceMessageIds,
   parseAgentCompactionSourceEnvelope,
   parseAgentTranscriptMessageItem,
-  parseAgentTurnOutcomeItem,
   readAgentContextStateMarkerCandidate,
   type AgentContextStateMarker,
   type AgentTranscriptManifestItem
@@ -66,8 +65,10 @@ import {
 import {
   agentContinuationFailureMessage,
   AGENT_CONTINUATION_TOKEN_TTL_MS,
+  AGENT_TRANSCRIPT_SNAPSHOT_TTL_MS,
   hashAgentContinuationItems,
   issueAgentContinuationToken,
+  issueAgentTurnClosureToken,
   issueAgentTranscriptSnapshotToken,
   resolveAgentContinuationSecret,
   verifyAgentCompactionBinding,
@@ -244,12 +245,17 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  const durableReplayBinding = verifySignedDurableReplaySources({
+  const durableReplayBinding = verifyAgentDurableTranscriptRequest({
     input: validated.value.input,
+    compactionRetainedTail: validated.value.compactionRetainedTail,
     previousRequestState: validated.value.diagnostics?.previousRequestState,
     secret: continuationSecret,
     projectId: validated.value.projectId,
     userId: userAccess.userId,
+    currentUserMessageId: validated.value.currentUserMessageId,
+    summaryRequest: isSummaryRequest,
+    continuation: validated.value.continuation,
+    leaseContinuation: validated.value.leaseContinuation,
     now: Date.now()
   });
   if (durableReplayBinding.status === "failed") {
@@ -527,6 +533,7 @@ export async function POST(request: Request) {
                   : [])
               ])
             : undefined;
+          const snapshotIssuedAt = Date.now();
           const closedTranscriptSnapshotToken = continuationSecret && closedTranscriptManifest
             ? issueAgentTranscriptSnapshotToken({
                 secret: continuationSecret,
@@ -535,7 +542,7 @@ export async function POST(request: Request) {
                 transcriptManifest: closedTranscriptManifest,
                 contextMarkerManifest: requestContextMarkerManifest,
                 ...(previousCompactionSummary ?? {}),
-                now: Date.now()
+                now: snapshotIssuedAt
               })
             : undefined;
           const completedRequestState = closedTranscriptManifest
@@ -543,7 +550,11 @@ export async function POST(request: Request) {
                 ...requestState,
                 transcriptManifestHash: closedTranscriptManifest.manifestHash,
                 ...(closedTranscriptSnapshotToken
-                  ? { transcriptSnapshotToken: closedTranscriptSnapshotToken }
+                  ? {
+                      transcriptSnapshotToken: closedTranscriptSnapshotToken,
+                      transcriptSnapshotExpiresAt:
+                        snapshotIssuedAt + AGENT_TRANSCRIPT_SNAPSHOT_TTL_MS
+                    }
                   : {})
               }
             : requestState;
@@ -595,6 +606,27 @@ export async function POST(request: Request) {
                 now: Date.now()
               })
             : undefined;
+          const turnClosureToken = continuationSecret &&
+            !isSummaryRequest &&
+            closedTranscriptManifest &&
+            assistantProviderOutputSnapshot &&
+            validated.value.currentUserMessageId &&
+            validated.value.assistantMessageId
+            ? issueAgentTurnClosureToken({
+                secret: continuationSecret,
+                userId: userAccess.userId,
+                projectId: validated.value.projectId,
+                leaseId: leaseAccess.lease.id,
+                agentTurnId: validated.value.agentTurnId,
+                leaseSequence: leaseAccess.lease.nextProviderSequence,
+                currentUserMessageId: validated.value.currentUserMessageId,
+                assistantMessageId: validated.value.assistantMessageId,
+                transcriptManifestHash: closedTranscriptManifest.manifestHash,
+                providerOutputSnapshotHash: assistantProviderOutputSnapshot.contentHash,
+                terminalFunctionCalls: execution.result.functionCalls.length === 0,
+                now: Date.now()
+              })
+            : undefined;
           enqueue({
             type: "turn-complete",
             attemptId: completedAttemptId,
@@ -605,6 +637,7 @@ export async function POST(request: Request) {
             ...(closedTranscriptSnapshotToken
               ? { transcriptSnapshotToken: closedTranscriptSnapshotToken }
               : {}),
+            ...(turnClosureToken ? { turnClosureToken } : {}),
             ...(assistantProviderOutputSnapshot
               ? { assistantProviderOutputSnapshot }
               : {}),
@@ -751,6 +784,14 @@ function buildProviderRequestState(
       : {}),
     ...(typeof supplied?.transcriptSnapshotToken === "string" && supplied.transcriptSnapshotToken
       ? { transcriptSnapshotToken: supplied.transcriptSnapshotToken }
+      : {}),
+    ...(typeof supplied?.transcriptSnapshotExpiresAt === "number" &&
+    Number.isSafeInteger(supplied.transcriptSnapshotExpiresAt) &&
+    supplied.transcriptSnapshotExpiresAt > 0
+      ? { transcriptSnapshotExpiresAt: supplied.transcriptSnapshotExpiresAt }
+      : {}),
+    ...(typeof supplied?.transcriptStartMessageId === "string" && supplied.transcriptStartMessageId
+      ? { transcriptStartMessageId: supplied.transcriptStartMessageId }
       : {})
   };
 }
@@ -916,33 +957,55 @@ function sameTranscriptManifestItem(
     left.anchorMessageId === right.anchorMessageId;
 }
 
-function verifySignedDurableReplaySources(input: {
+function verifyAgentDurableTranscriptRequest(input: {
   input: readonly unknown[];
+  compactionRetainedTail?: readonly unknown[];
   previousRequestState?: AgentProviderRequestState;
   secret?: string;
   projectId: string;
   userId: string;
+  currentUserMessageId?: string;
+  summaryRequest: boolean;
+  continuation: boolean;
+  leaseContinuation: boolean;
   now: number;
-}): { status: "ok" } | { status: "failed"; reason: "secret_missing" | "durable_replay_unverified" } {
-  const replayMessages = input.input.flatMap((item) => {
-    const message = parseAgentTranscriptMessageItem(item);
-    if (!message || message.replayMode !== "durableReplay") {
-      return [];
-    }
-    const requiresSignedSource = message.durableProviderItems.some((providerItem) => {
-      if (parseAgentTurnOutcomeItem(providerItem)) {
-        return true;
-      }
-      return typeof providerItem === "object" && providerItem !== null && !Array.isArray(providerItem) &&
-        "content" in providerItem && Array.isArray(providerItem.content) &&
-        providerItem.content.some((part) =>
-          typeof part === "object" && part !== null && !Array.isArray(part) &&
-          "text" in part && typeof part.text === "string" &&
-          parseProviderInputSnapshotDurableReferences(part.text).length > 0
-        );
-    });
-    return requiresSignedSource ? [message] : [];
-  });
+}): { status: "ok" } | {
+  status: "failed";
+  reason: "secret_missing" | "durable_replay_unverified" | "live_input_invalid";
+} {
+  const transcriptMessages = collectAgentTranscriptMessages([
+    ...input.input,
+    ...(input.compactionRetainedTail ?? [])
+  ]);
+  const liveMessages = transcriptMessages.filter((message) => message.replayMode === "liveInput");
+  const messageIds = transcriptMessages.map((message) => message.messageId);
+  const duplicateMessageId = new Set(messageIds).size !== messageIds.length;
+  const currentLive = liveMessages[0];
+  const summaryWithoutFreshInput = input.summaryRequest && !input.currentUserMessageId;
+  const signedLegacyContinuationWithoutLiveInput =
+    (input.continuation || input.leaseContinuation) &&
+    !input.currentUserMessageId &&
+    liveMessages.length === 0;
+  if (
+    (summaryWithoutFreshInput || signedLegacyContinuationWithoutLiveInput
+      ? liveMessages.length !== 0
+      : !input.currentUserMessageId || liveMessages.length !== 1 ||
+        currentLive?.role !== "user" ||
+        currentLive.messageId !== input.currentUserMessageId ||
+        transcriptMessages.at(-1)?.messageId !== input.currentUserMessageId ||
+        transcriptMessages.some((message) =>
+          message.messageId !== input.currentUserMessageId && message.replayMode !== "durableReplay"
+        ))
+  ) {
+    return { status: "failed", reason: "live_input_invalid" };
+  }
+  if (duplicateMessageId) {
+    return { status: "failed", reason: "durable_replay_unverified" };
+  }
+  if (input.summaryRequest || input.continuation || input.leaseContinuation) {
+    return { status: "ok" };
+  }
+  const replayMessages = transcriptMessages.filter((message) => message.replayMode === "durableReplay");
   if (replayMessages.length === 0) {
     return { status: "ok" };
   }
@@ -960,18 +1023,33 @@ function verifySignedDurableReplaySources(input: {
     snapshot.claims.transcriptManifest.manifestHash !== input.previousRequestState?.transcriptManifestHash) {
     return { status: "failed", reason: "durable_replay_unverified" };
   }
-  for (const message of replayMessages) {
-    const actual = buildAgentDurableTranscriptManifest([message]).items;
-    const signed = snapshot.claims.transcriptManifest.items.filter((item) =>
-      item.messageId === message.messageId
-    );
-    if (actual.length !== signed.length || actual.some((item, index) =>
-      !sameTranscriptManifestItem(item, signed[index])
-    )) {
-      return { status: "failed", reason: "durable_replay_unverified" };
-    }
+  const actual = buildAgentDurableTranscriptManifest(replayMessages).items;
+  const signed = snapshot.claims.transcriptManifest.items;
+  if (actual.length !== signed.length || actual.some((item, index) =>
+    !sameTranscriptManifestItem(item, signed[index])
+  )) {
+    return { status: "failed", reason: "durable_replay_unverified" };
   }
   return { status: "ok" };
+}
+
+function collectAgentTranscriptMessages(
+  items: readonly unknown[]
+): NonNullable<ReturnType<typeof parseAgentTranscriptMessageItem>>[] {
+  return items.flatMap((item) => {
+    const message = parseAgentTranscriptMessageItem(item);
+    if (message) {
+      return [message];
+    }
+    if (
+      typeof item === "object" && item !== null && !Array.isArray(item) &&
+      "type" in item && item.type === AGENT_COMPACTION_TRANSCRIPT_MARKER_TYPE &&
+      "retainedTail" in item && Array.isArray(item.retainedTail)
+    ) {
+      return collectAgentTranscriptMessages(item.retainedTail);
+    }
+    return [];
+  });
 }
 
 function readPreviousCompactionSummaryBinding(

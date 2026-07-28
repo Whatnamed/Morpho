@@ -72,6 +72,7 @@ import type { AgentTurnHost } from "./agentTurnHost";
 import {
   closeAgentTurnLease as closeAgentTurnLeaseWithState,
   AgentWebSearchLeaseRecoveryError,
+  markAgentTurnToolExecutionStarted,
   requestAgentWebSearch as requestAgentWebSearchWithLease,
   requestConversationSummary
 } from "./agentTurnLeaseClient";
@@ -118,6 +119,7 @@ import {
   compactHistoricalProviderRequestState,
   ensureAgentConversationSummaryBaselines,
   getLatestProviderRequestState,
+  selectAgentDurableConversationHistory,
   type ProviderContextFrameBuildInput
 } from "./providerContextFrames";
 import { buildDeliverySectionContext } from "./deliveryPreparationUi";
@@ -389,21 +391,24 @@ export async function runMorphoAgentTurn(
     outcome: "success" | "cancelledBeforeExecution" | "failedBeforeExecution" | "partialSuccess" | "pendingConfirmation"
   ): Promise<void> {
     const transcriptSnapshotToken = turnState.latestProviderRequestState?.transcriptSnapshotToken;
+    const transcriptManifestHash = turnState.latestProviderRequestState?.transcriptManifestHash;
+    const closureToken = turnState.turnClosureToken;
     const hasCurrentAssistantSnapshot = Boolean(turnState.latestAssistantProviderOutputSnapshot);
     const outcomeSnapshot = await closeAgentTurnLeaseWithState({
       state: turnState,
       agentTurnId,
       outcome,
-      ...(transcriptSnapshotToken && hasCurrentAssistantSnapshot
+      ...(transcriptSnapshotToken && transcriptManifestHash && closureToken &&
+      hasCurrentAssistantSnapshot && turnState.latestAssistantProviderOutputSnapshot
         ? {
             snapshot: {
               projectId: workspace.project.id,
               userMessageId,
               assistantMessageId,
               transcriptSnapshotToken,
-              ...(outcome === "success" && turnState.latestAssistantProviderOutputSnapshot
-                ? { successProviderOutputSnapshot: turnState.latestAssistantProviderOutputSnapshot }
-                : {})
+              transcriptManifestHash,
+              closureToken,
+              providerOutputSnapshot: turnState.latestAssistantProviderOutputSnapshot
             }
           }
         : {}),
@@ -415,7 +420,8 @@ export async function runMorphoAgentTurn(
     turnState.latestProviderRequestState = {
       ...turnState.latestProviderRequestState,
       transcriptSnapshotToken: outcomeSnapshot.transcriptSnapshotToken,
-      transcriptManifestHash: outcomeSnapshot.transcriptManifestHash
+      transcriptManifestHash: outcomeSnapshot.transcriptManifestHash,
+      transcriptSnapshotExpiresAt: outcomeSnapshot.expiresAt
     };
     commitWorkspaceNow((current) => ({
       workspace: {
@@ -493,7 +499,10 @@ export async function runMorphoAgentTurn(
     const next = appendAgentProviderContextFrames(current, { ...providerFrameInput, workspace: current });
     return { workspace: next, value: next };
   });
-  const preCompactionHistory = preCompactionConversation.messages.filter((message) => message.id !== userMessageId);
+  const preCompactionHistory = selectAgentDurableConversationHistory(
+    preCompactionConversation.messages.filter((message) => message.id !== userMessageId),
+    turnState.latestProviderRequestState
+  );
   const preCompactionInput = buildAgentProviderInput({
     stableSystemPrompt,
     frames: turnState.workspaceAtAgentStart.ai.providerContextFrames ?? [],
@@ -666,7 +675,6 @@ export async function runMorphoAgentTurn(
       turnState.providerTranscriptReset = true;
     } catch (error) {
       const isCancelled = error instanceof DOMException && error.name === "AbortError";
-      await closeAgentTurnLease(isCancelled ? "cancelledBeforeExecution" : "failedBeforeExecution");
       const message = error instanceof Error ? error.message : "连续对话压缩失败。";
       commitWorkspaceNow((current) => ({
         workspace: finalizeAgentTurn(current, {
@@ -693,7 +701,10 @@ export async function runMorphoAgentTurn(
     workspace: turnState.workspaceAtAgentStart,
     limits: conversationTokenLimits
   });
-  const baseHistory = continuousConversation.messages.filter((message) => message.id !== userMessageId);
+  const baseHistory = selectAgentDurableConversationHistory(
+    continuousConversation.messages.filter((message) => message.id !== userMessageId),
+    turnState.latestProviderRequestState
+  );
   let initialConversationContext = {
     laneKey: conversationLaneKey,
     summaryRevision: continuousConversation.summaryRevision,
@@ -730,11 +741,15 @@ export async function runMorphoAgentTurn(
     workspace: turnState.workspaceAtAgentStart,
     limits: conversationTokenLimits
   });
+  const effectiveHistory = selectAgentDurableConversationHistory(
+    effectiveConversation.messages.filter((message) => message.id !== userMessageId),
+    turnState.latestProviderRequestState
+  );
   initialConversationContext = {
     ...initialConversationContext,
     summaryRevision: effectiveConversation.summaryRevision,
-    messages: effectiveConversation.messages.filter((message) => message.id !== userMessageId),
-    rawMessageCount: effectiveConversation.messages.filter((message) => message.id !== userMessageId).length,
+    messages: effectiveHistory,
+    rawMessageCount: effectiveHistory.length,
     coveredMessageCount: effectiveConversation.coveredMessageCount,
     estimatedInputTokens: effectiveProviderBudget.totalInputTokens,
     pressure: classifyConversationPressure(
@@ -1232,6 +1247,11 @@ export async function runMorphoAgentTurn(
           break;
         }
         try {
+          await markAgentTurnToolExecutionStarted({
+            state: turnState,
+            agentTurnId,
+            fetch
+          });
           const output = await executeAgentTool({
             ...toolExecutorInput,
             callId: call.callId,
@@ -1391,7 +1411,9 @@ export async function runMorphoAgentTurn(
       }
       return { workspace: nextWorkspace, value: undefined };
     });
-    await closeAgentTurnLease(turnOutcome);
+    if (!turnState.closureRequestId) {
+      await closeAgentTurnLease(turnOutcome);
+    }
   } catch (error) {
     const isCancelled = error instanceof DOMException && error.name === "AbortError";
     const message = isCancelled

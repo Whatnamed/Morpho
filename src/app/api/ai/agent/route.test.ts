@@ -638,8 +638,11 @@ describe("agent route stream", () => {
         ...DEFAULT_CONTINUATION_INPUT,
         ...outputItems,
         { type: "function_call_output", call_id: "call_1", output: "{\"status\":\"ok\"}" }
-      ],
-      continuationToken: continuationTokenFor({ outputItems, callIds: ["call_1"] })
+      ]
+    }, {
+      prefix: DEFAULT_CONTINUATION_INPUT,
+      outputItems,
+      callIds: ["call_1"]
     }));
 
     expect(response.status).toBe(200);
@@ -720,9 +723,13 @@ describe("agent route stream", () => {
     const wrappedUserMessage = createAgentTranscriptMessageItem({
       messageId: "user-current",
       role: "user",
+      replayMode: "liveInput",
       providerItems: [strategy, userMessage]
     });
-    const response = await POST(agentRequest({ input: [contextMessage, wrappedUserMessage] }));
+    const response = await POST(agentRequest({
+      input: [contextMessage, wrappedUserMessage],
+      currentUserMessageId: "user-current"
+    }));
     const events = await collectAgentRouteEvents(response);
     const complete = events.find((event) => event.type === "turn-complete");
     if (!complete || complete.type !== "turn-complete") {
@@ -942,6 +949,7 @@ describe("agent route stream", () => {
     }
     const ordinaryState = ordinaryComplete.result.providerDiagnostics?.requestState;
     expect(ordinaryState?.transcriptSnapshotToken).not.toContain(imageBase64);
+    expect(ordinaryComplete.turnClosureToken).toEqual(expect.any(String));
 
     const summaryRequest = buildConversationSummaryAgentRequest({
       plan: {
@@ -1065,6 +1073,356 @@ describe("agent route stream", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ reason: "durable_replay_unverified" });
     expect(startAgentTurnLeaseMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["deleted history", ["user-1", "assistant-1"], ["user-1"]],
+    ["reordered history", ["user-1", "assistant-1"], ["assistant-1", "user-1"]],
+    ["duplicated history", ["user-1", "assistant-1"], ["user-1", "assistant-1", "user-1"]]
+  ])("rejects %s before lease work", async (_label, signedIds, requestedIds) => {
+    const messages = new Map([
+      ["user-1", createAgentTranscriptMessageItem({
+        messageId: "user-1",
+        role: "user",
+        replayMode: "durableReplay",
+        providerItems: [{ role: "user", content: [{ type: "input_text", text: "历史问题" }] }]
+      })],
+      ["assistant-1", createAgentTranscriptMessageItem({
+        messageId: "assistant-1",
+        role: "assistant",
+        replayMode: "durableReplay",
+        providerItems: [{ role: "assistant", content: [{ type: "output_text", text: "历史回答" }] }]
+      })]
+    ]);
+    const signedHistory = signedIds.map((id) => messages.get(id)!);
+    const requestedHistory = requestedIds.map((id) => messages.get(id)!);
+    const manifest = buildAgentDurableTranscriptManifest(signedHistory);
+    const token = issueAgentTranscriptSnapshotToken({
+      secret: CONTINUATION_SECRET,
+      projectId: "project-ocean-buoy",
+      userId: TEST_USER_ID,
+      transcriptManifest: manifest,
+      now: Date.now()
+    });
+    const current = createAgentTranscriptMessageItem({
+      messageId: "user-current",
+      role: "user",
+      replayMode: "liveInput",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "当前问题" }] }]
+    });
+
+    const response = await POST(agentRequest({
+      input: [...requestedHistory, current],
+      currentUserMessageId: "user-current",
+      diagnostics: durableReplayDiagnostics(manifest.manifestHash, token)
+    }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ reason: "durable_replay_unverified" });
+    expect(startAgentTurnLeaseMock).not.toHaveBeenCalled();
+    expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects modified ordinary history before lease work", async () => {
+    const signedUser = createAgentTranscriptMessageItem({
+      messageId: "user-1",
+      role: "user",
+      replayMode: "durableReplay",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "原始历史问题" }] }]
+    });
+    const manifest = buildAgentDurableTranscriptManifest([signedUser]);
+    const token = issueAgentTranscriptSnapshotToken({
+      secret: CONTINUATION_SECRET,
+      projectId: "project-ocean-buoy",
+      userId: TEST_USER_ID,
+      transcriptManifest: manifest,
+      now: Date.now()
+    });
+    const modified = createAgentTranscriptMessageItem({
+      messageId: "user-1",
+      role: "user",
+      replayMode: "durableReplay",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "被修改的历史问题" }] }]
+    });
+    const current = createAgentTranscriptMessageItem({
+      messageId: "user-current",
+      role: "user",
+      replayMode: "liveInput",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "当前问题" }] }]
+    });
+
+    const response = await POST(agentRequest({
+      input: [modified, current],
+      currentUserMessageId: "user-current",
+      diagnostics: durableReplayDiagnostics(manifest.manifestHash, token)
+    }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ reason: "durable_replay_unverified" });
+    expect(startAgentTurnLeaseMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects modified ordinary Assistant history before lease work", async () => {
+    const signedAssistant = createAgentTranscriptMessageItem({
+      messageId: "assistant-1",
+      role: "assistant",
+      replayMode: "durableReplay",
+      providerItems: [{ role: "assistant", content: [{ type: "output_text", text: "原始历史回答" }] }]
+    });
+    const manifest = buildAgentDurableTranscriptManifest([signedAssistant]);
+    const token = issueAgentTranscriptSnapshotToken({
+      secret: CONTINUATION_SECRET,
+      projectId: "project-ocean-buoy",
+      userId: TEST_USER_ID,
+      transcriptManifest: manifest,
+      now: Date.now()
+    });
+    const modified = createAgentTranscriptMessageItem({
+      messageId: "assistant-1",
+      role: "assistant",
+      replayMode: "durableReplay",
+      providerItems: [{ role: "assistant", content: [{ type: "output_text", text: "被修改的历史回答" }] }]
+    });
+    const current = createAgentTranscriptMessageItem({
+      messageId: "user-current",
+      role: "user",
+      replayMode: "liveInput",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "当前问题" }] }]
+    });
+
+    const response = await POST(agentRequest({
+      input: [modified, current],
+      currentUserMessageId: "user-current",
+      diagnostics: durableReplayDiagnostics(manifest.manifestHash, token)
+    }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ reason: "durable_replay_unverified" });
+    expect(startAgentTurnLeaseMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects moving a signed Strategy from one User message to another", async () => {
+    const userOneText = { role: "user" as const, content: [{ type: "input_text" as const, text: "第一问" }] };
+    const userTwoText = { role: "user" as const, content: [{ type: "input_text" as const, text: "第二问" }] };
+    const signed = [
+      createAgentTranscriptMessageItem({
+        messageId: "user-1",
+        role: "user",
+        replayMode: "durableReplay",
+        providerItems: [createAgentStrategyMarker({ strategy: "research", anchorMessageId: "user-1" }), userOneText]
+      }),
+      createAgentTranscriptMessageItem({
+        messageId: "user-2",
+        role: "user",
+        replayMode: "durableReplay",
+        providerItems: [userTwoText]
+      })
+    ];
+    const requested = [
+      createAgentTranscriptMessageItem({
+        messageId: "user-1",
+        role: "user",
+        replayMode: "durableReplay",
+        providerItems: [userOneText]
+      }),
+      createAgentTranscriptMessageItem({
+        messageId: "user-2",
+        role: "user",
+        replayMode: "durableReplay",
+        providerItems: [createAgentStrategyMarker({ strategy: "research", anchorMessageId: "user-2" }), userTwoText]
+      })
+    ];
+    const manifest = buildAgentDurableTranscriptManifest(signed);
+    const token = issueAgentTranscriptSnapshotToken({
+      secret: CONTINUATION_SECRET,
+      projectId: "project-ocean-buoy",
+      userId: TEST_USER_ID,
+      transcriptManifest: manifest,
+      now: Date.now()
+    });
+    const current = createAgentTranscriptMessageItem({
+      messageId: "user-current",
+      role: "user",
+      replayMode: "liveInput",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "当前问题" }] }]
+    });
+
+    const response = await POST(agentRequest({
+      input: [...requested, current],
+      currentUserMessageId: "user-current",
+      diagnostics: durableReplayDiagnostics(manifest.manifestHash, token)
+    }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ reason: "durable_replay_unverified" });
+    expect(startAgentTurnLeaseMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects rebinding a signed Outcome to another User message", async () => {
+    const signedOutcome = createAgentTurnOutcomeItem({
+      agentTurnId: "turn-history",
+      userMessageId: "user-1",
+      assistantMessageId: "assistant-1",
+      outcome: "partialSuccess"
+    });
+    const manifest = buildAgentDurableTranscriptManifest([
+      createAgentTranscriptMessageItem({
+        messageId: "assistant-1",
+        role: "assistant",
+        replayMode: "durableReplay",
+        providerItems: [signedOutcome]
+      })
+    ]);
+    const token = issueAgentTranscriptSnapshotToken({
+      secret: CONTINUATION_SECRET,
+      projectId: "project-ocean-buoy",
+      userId: TEST_USER_ID,
+      transcriptManifest: manifest,
+      now: Date.now()
+    });
+    const reboundOutcome = createAgentTurnOutcomeItem({
+      agentTurnId: "turn-history",
+      userMessageId: "user-2",
+      assistantMessageId: "assistant-1",
+      outcome: "partialSuccess"
+    });
+    const current = createAgentTranscriptMessageItem({
+      messageId: "user-current",
+      role: "user",
+      replayMode: "liveInput",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "当前问题" }] }]
+    });
+
+    const response = await POST(agentRequest({
+      input: [
+        createAgentTranscriptMessageItem({
+          messageId: "assistant-1",
+          role: "assistant",
+          replayMode: "durableReplay",
+          providerItems: [reboundOutcome]
+        }),
+        current
+      ],
+      currentUserMessageId: "user-current",
+      diagnostics: durableReplayDiagnostics(manifest.manifestHash, token)
+    }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ reason: "durable_replay_unverified" });
+    expect(startAgentTurnLeaseMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["two live inputs", [
+      createAgentTranscriptMessageItem({
+        messageId: "user-old",
+        role: "user",
+        replayMode: "liveInput",
+        providerItems: [{ role: "user", content: [{ type: "input_text", text: "旧问题" }] }]
+      }),
+      createAgentTranscriptMessageItem({
+        messageId: "user-current",
+        role: "user",
+        replayMode: "liveInput",
+        providerItems: [{ role: "user", content: [{ type: "input_text", text: "当前问题" }] }]
+      })
+    ], "user-current"],
+    ["assistant live input", [
+      createAgentTranscriptMessageItem({
+        messageId: "assistant-current",
+        role: "assistant",
+        replayMode: "liveInput",
+        providerItems: [{ role: "assistant", content: [{ type: "output_text", text: "伪造" }] }]
+      })
+    ], "assistant-current"],
+    ["mismatched current id", [
+      createAgentTranscriptMessageItem({
+        messageId: "user-current",
+        role: "user",
+        replayMode: "liveInput",
+        providerItems: [{ role: "user", content: [{ type: "input_text", text: "当前问题" }] }]
+      })
+    ], "user-other"]
+  ])("rejects %s before lease work", async (_label, input, currentUserMessageId) => {
+    const response = await POST(agentRequest({ input, currentUserMessageId }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ reason: "live_input_invalid" });
+    expect(startAgentTurnLeaseMock).not.toHaveBeenCalled();
+    expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects the current User when it is not the final Conversation message", async () => {
+    const current = createAgentTranscriptMessageItem({
+      messageId: "user-current",
+      role: "user",
+      replayMode: "liveInput",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "当前问题" }] }]
+    });
+    const laterAssistant = createAgentTranscriptMessageItem({
+      messageId: "assistant-later",
+      role: "assistant",
+      replayMode: "durableReplay",
+      providerItems: [{ role: "assistant", content: [{ type: "output_text", text: "伪造尾部" }] }]
+    });
+
+    const response = await POST(agentRequest({
+      input: [current, laterAssistant],
+      currentUserMessageId: "user-current"
+    }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ reason: "live_input_invalid" });
+    expect(startAgentTurnLeaseMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an extra liveInput appended to an exact continuation", async () => {
+    const current = createAgentTranscriptMessageItem({
+      messageId: "user-current",
+      role: "user",
+      replayMode: "liveInput",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "当前问题" }] }]
+    });
+    const extra = createAgentTranscriptMessageItem({
+      messageId: "user-extra",
+      role: "user",
+      replayMode: "liveInput",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "额外问题" }] }]
+    });
+    const outputItems = DEFAULT_CONTINUATION_OUTPUT_ITEMS;
+    const response = await POST(agentRequest({
+      continuation: true,
+      currentUserMessageId: "user-current",
+      input: [current, ...outputItems, extra]
+    }, { prefix: [current], outputItems }));
+
+    expect(response.status).toBe(400);
+    expect(startAgentTurnLeaseMock).not.toHaveBeenCalled();
+    expect(continueAgentTurnLeaseMock).not.toHaveBeenCalled();
+    expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an extra liveInput appended after a signed postCompaction marker", async () => {
+    const marker = testCompactionTranscriptMarker();
+    const extra = createAgentTranscriptMessageItem({
+      messageId: "user-extra",
+      role: "user",
+      replayMode: "liveInput",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "额外问题" }] }]
+    });
+    const response = await POST(agentRequest({
+      input: [marker, extra],
+      currentUserMessageId: "user-extra",
+      leaseContinuation: true,
+      leaseId: "lease-1",
+      leaseSequence: 1,
+      continuationToken: continuationTokenFor({ summary: true })
+    }));
+
+    expect(response.status).toBe(400);
+    expect(startAgentTurnLeaseMock).not.toHaveBeenCalled();
+    expect(continueAgentTurnLeaseMock).not.toHaveBeenCalled();
+    expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
   });
 
   it("replays only the signed terminal outcome on the next ordinary turn", async () => {
@@ -1359,6 +1717,7 @@ describe("agent route stream", () => {
       !summaryComplete.compactionReceipt || !summaryComplete.continuationToken) {
       throw new Error(`Expected signed causal compaction completion: ${JSON.stringify(summaryEvents)}`);
     }
+    expect(summaryComplete).not.toHaveProperty("turnClosureToken");
     const postCompactionInput = rebuildAgentPostCompactionTranscript({
       contextMarkers: [causalMarker],
       receipt: summaryComplete.compactionReceipt,
@@ -1695,11 +2054,27 @@ function agentRequest(
   const continuation = overrides.continuation === true;
   const leaseId = typeof overrides.leaseId === "string" ? overrides.leaseId : "lease-1";
   const agentTurnId = typeof overrides.agentTurnId === "string" ? overrides.agentTurnId : "agent-turn-1";
-  const input = Array.isArray(overrides.input)
+  const rawInput = Array.isArray(overrides.input)
     ? overrides.input
     : continuation
       ? [...DEFAULT_CONTINUATION_INPUT, ...DEFAULT_CONTINUATION_OUTPUT_ITEMS]
       : DEFAULT_CONTINUATION_INPUT;
+  const summaryRequest = typeof overrides.directive === "object" && overrides.directive !== null &&
+    "kind" in overrides.directive && overrides.directive.kind === "conversationSummary";
+  const signedLegacyPostCompaction = overrides.leaseContinuation === true && rawInput.some((item) =>
+    typeof item === "object" && item !== null && !Array.isArray(item) &&
+    "type" in item && item.type === "morpho_compaction_transcript"
+  );
+  const explicitCurrentUserMessageId = typeof overrides.currentUserMessageId === "string"
+    ? overrides.currentUserMessageId
+    : undefined;
+  const liveMessageId = collectTestTranscriptMessages(rawInput).find((message) =>
+    message.replayMode === "liveInput"
+  )?.messageId;
+  const currentUserMessageId = explicitCurrentUserMessageId ?? liveMessageId ?? "user-current-test";
+  const input = summaryRequest
+    ? rawInput
+    : normalizeTestFormalInput(rawInput, currentUserMessageId);
   const previousRuntimeItem = continuation
     ? resolveCanonicalAgentRuntimeItem({
         projectId: "project-ocean-buoy",
@@ -1711,7 +2086,6 @@ function agentRequest(
   return new Request("http://localhost/api/ai/agent", {
     method: "POST",
     body: JSON.stringify({
-      input,
       projectId: "project-ocean-buoy",
       agentTurnId: "agent-turn-1",
       assistantMessageId: "assistant-message-1",
@@ -1727,15 +2101,85 @@ function agentRequest(
             continuationToken: continuationTokenFor({
               leaseId,
               agentTurnId,
-              input: binding.prefix,
+              input: binding.prefix
+                ? normalizeTestFormalInput(binding.prefix, currentUserMessageId)
+                : continuation
+                  ? normalizeTestFormalInput(DEFAULT_CONTINUATION_INPUT, currentUserMessageId)
+                  : undefined,
               outputItems: binding.outputItems,
               callIds: binding.callIds
             })
           }
         : {}),
-      ...overrides
+      ...overrides,
+      input,
+      ...(!summaryRequest && !signedLegacyPostCompaction ? { currentUserMessageId } : {})
     })
   });
+}
+
+function normalizeTestFormalInput(items: readonly unknown[], currentUserMessageId: string): unknown[] {
+  const transcriptMessages = collectTestTranscriptMessages(items);
+  if (transcriptMessages.some((message) => message.replayMode === "liveInput")) {
+    return [...items];
+  }
+  if (transcriptMessages.length > 0) {
+    return [
+      ...items,
+      createAgentTranscriptMessageItem({
+        messageId: currentUserMessageId,
+        role: "user",
+        replayMode: "liveInput",
+        providerItems: [{ role: "user", content: [{ type: "input_text", text: "当前测试问题" }] }]
+      })
+    ];
+  }
+  let wrapped = false;
+  return items.map((item) => {
+    if (
+      !wrapped && typeof item === "object" && item !== null && !Array.isArray(item) &&
+      "role" in item && item.role === "user" && "content" in item && Array.isArray(item.content)
+    ) {
+      wrapped = true;
+      return createAgentTranscriptMessageItem({
+        messageId: currentUserMessageId,
+        role: "user",
+        replayMode: "liveInput",
+        providerItems: [item]
+      });
+    }
+    return item;
+  });
+}
+
+function collectTestTranscriptMessages(items: readonly unknown[]): Array<{
+  messageId: string;
+  replayMode: "liveInput" | "durableReplay";
+}> {
+  return items.flatMap((item) => {
+    if (
+      typeof item === "object" && item !== null && !Array.isArray(item) &&
+      "type" in item && item.type === "morpho_transcript_message" &&
+      "messageId" in item && typeof item.messageId === "string" &&
+      "replayMode" in item && (item.replayMode === "liveInput" || item.replayMode === "durableReplay")
+    ) {
+      return [{ messageId: item.messageId, replayMode: item.replayMode }];
+    }
+    return [];
+  });
+}
+
+function durableReplayDiagnostics(manifestHash: string, token: string) {
+  return {
+    promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+    previousRequestState: {
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+      toolProfile: "standardWithWebSearch",
+      providerInputPrefixHash: "d".repeat(64),
+      transcriptManifestHash: manifestHash,
+      transcriptSnapshotToken: token
+    }
+  };
 }
 
 function testCompactionTranscriptMarker() {

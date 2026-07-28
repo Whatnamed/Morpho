@@ -14,10 +14,12 @@ import {
 import {
   buildConversationSummaryAgentRequest
 } from "./conversationSummaryAgentRequest";
+import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
 import { consumeAgentTurnStream } from "./agentStreamClient";
 import { AGENT_WEB_SEARCH_MAX_SOURCES_PER_CALL } from "./agentTurnLimits";
 import type { MorphoAgentTurnMode } from "./morphoAgent";
 import type { AgentTurnState } from "./agentTurnState";
+import type { ProviderRequestBoundaryState } from "./providerContextFrames";
 import { isRecord, readJsonPayload } from "./httpPayload";
 
 export type AgentTurnLeaseOutcome =
@@ -39,6 +41,40 @@ export class AgentWebSearchLeaseRecoveryError extends Error {
     super(message);
     this.name = "AgentWebSearchLeaseRecoveryError";
   }
+}
+
+export async function prepareAgentDurableCheckpoint(input: {
+  projectId: string;
+  requestState?: ProviderRequestBoundaryState;
+  legacyTranscriptManifest?: AgentTranscriptManifest;
+  signal: AbortSignal;
+  fetch?: typeof fetch;
+  now?: number;
+}): Promise<ProviderRequestBoundaryState | undefined> {
+  const state = input.requestState;
+  const token = state?.transcriptSnapshotToken;
+  if (!state || !token) {
+    return state;
+  }
+  const requirement = readSnapshotRefreshRequirement(token, input.now ?? Date.now());
+  if (requirement === "none") {
+    return state;
+  }
+  const refreshed = await refreshTranscriptSnapshot({
+    projectId: input.projectId,
+    token,
+    ...(requirement === "legacy" && input.legacyTranscriptManifest
+      ? { transcriptManifest: input.legacyTranscriptManifest }
+      : {}),
+    signal: input.signal,
+    fetch: input.fetch ?? fetch
+  });
+  return {
+    ...state,
+    transcriptSnapshotToken: refreshed.token,
+    transcriptManifestHash: refreshed.manifestHash,
+    transcriptSnapshotExpiresAt: refreshed.expiresAt
+  };
 }
 
 export async function requestConversationSummary(
@@ -66,6 +102,8 @@ export async function requestConversationSummary(
 ): Promise<{
   parsed: ReturnType<typeof parseConversationSummaryPayload>;
   leaseId?: string;
+  leaseSequence?: number;
+  continuationToken?: string;
   compactionReceipt?: AgentCompactionReceipt;
 }> {
   let previousTranscriptSnapshotToken = input.previousTranscriptSnapshotToken;
@@ -80,12 +118,11 @@ export async function requestConversationSummary(
     retainedTailItems: input.retainedTailItems,
     contextMarkers: input.contextMarkers,
     previousTranscriptManifestHash: input.previousTranscriptManifestHash,
-    previousTranscriptSnapshotToken
+    previousTranscriptSnapshotToken,
+    currentUserMessageId: input.freshUserMessageId
   });
-  const refreshRequirement = previousTranscriptSnapshotToken && !input.continuationToken
-    ? readSnapshotRefreshRequirement(previousTranscriptSnapshotToken, Date.now())
-    : "none";
-  if (previousTranscriptSnapshotToken && refreshRequirement !== "none") {
+  if (previousTranscriptSnapshotToken && !input.continuationToken) {
+    const refreshRequirement = readSnapshotRefreshRequirement(previousTranscriptSnapshotToken, Date.now());
     const legacyManifest = refreshRequirement === "legacy"
       ? buildAgentTranscriptManifest([
           ...summaryRequest.input,
@@ -94,16 +131,29 @@ export async function requestConversationSummary(
           )
         ])
       : undefined;
-    const refreshed = await refreshTranscriptSnapshot({
+    const prepared = await prepareAgentDurableCheckpoint({
       projectId: input.projectId,
-      token: previousTranscriptSnapshotToken,
-      ...(legacyManifest ? { transcriptManifest: legacyManifest } : {}),
+      requestState: {
+        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+        transcriptSnapshotToken: previousTranscriptSnapshotToken,
+        ...(input.previousTranscriptManifestHash
+          ? { transcriptManifestHash: input.previousTranscriptManifestHash }
+          : {})
+      },
+      ...(legacyManifest ? { legacyTranscriptManifest: legacyManifest } : {}),
       signal,
       fetch: fetchImpl
     });
-    previousTranscriptSnapshotToken = refreshed.token;
-    input.onTranscriptSnapshotRefreshed?.(refreshed.token, refreshed.manifestHash);
-    summaryRequest = { ...summaryRequest, previousTranscriptSnapshotToken };
+    if (prepared?.transcriptSnapshotToken !== previousTranscriptSnapshotToken) {
+      previousTranscriptSnapshotToken = prepared?.transcriptSnapshotToken;
+      if (previousTranscriptSnapshotToken && prepared?.transcriptManifestHash) {
+        input.onTranscriptSnapshotRefreshed?.(
+          previousTranscriptSnapshotToken,
+          prepared.transcriptManifestHash
+        );
+        summaryRequest = { ...summaryRequest, previousTranscriptSnapshotToken };
+      }
+    }
   }
   const response = await fetchImpl("/api/ai/agent", {
     method: "POST",
@@ -112,6 +162,8 @@ export async function requestConversationSummary(
     signal
   });
   let leaseId = input.leaseId;
+  let leaseSequence = input.leaseSequence;
+  let summaryContinuationToken = input.continuationToken;
   let compactionReceipt: AgentCompactionReceipt | undefined;
   const result = await consumeAgentTurnStream(response, {
     signal,
@@ -121,9 +173,11 @@ export async function requestConversationSummary(
         input.onLeaseStarted?.(event.leaseId);
       }
       if (event.type === "turn-start" && event.nextProviderSequence !== undefined) {
+        leaseSequence = event.nextProviderSequence;
         input.onLeaseSequence?.(event.nextProviderSequence);
       }
       if (event.type === "turn-complete" && event.continuationToken) {
+        summaryContinuationToken = event.continuationToken;
         input.onContinuationToken?.(event.continuationToken);
       }
       if (event.type === "turn-complete" && event.compactionReceipt) {
@@ -135,8 +189,51 @@ export async function requestConversationSummary(
   return {
     parsed: parseConversationSummaryPayload(result.outputText),
     ...(compactionReceipt ? { compactionReceipt } : {}),
+    ...(leaseSequence !== undefined ? { leaseSequence } : {}),
+    ...(summaryContinuationToken ? { continuationToken: summaryContinuationToken } : {}),
     ...(leaseId ? { leaseId } : {})
   };
+}
+
+export async function closeAgentConversationSummaryLeaseRequest(input: {
+  leaseId: string;
+  agentTurnId: string;
+  leaseSequence: number;
+  continuationToken: string;
+  closureRequestId: string;
+  fetch?: typeof fetch;
+}): Promise<void> {
+  const requestBody = JSON.stringify({
+    leaseId: input.leaseId,
+    agentTurnId: input.agentTurnId,
+    leaseSequence: input.leaseSequence,
+    continuationToken: input.continuationToken,
+    closureRequestId: input.closureRequestId
+  });
+  let response: Response | undefined;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      response = await (input.fetch ?? fetch)("/api/ai/agent/lease/summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: requestBody
+      });
+      break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (!response) {
+    throw lastError instanceof Error ? lastError : new Error("Summary Closure 网络恢复失败。");
+  }
+  const payload = await readJsonPayload(response);
+  if (!response.ok || !isRecord(payload) || payload.status !== "success") {
+    throw new Error(
+      (isRecord(payload) && typeof payload.error === "string" && payload.error) ||
+      "Summary Closure 未被服务端确认。"
+    );
+  }
 }
 
 async function refreshTranscriptSnapshot(input: {
@@ -145,7 +242,7 @@ async function refreshTranscriptSnapshot(input: {
   transcriptManifest?: AgentTranscriptManifest;
   signal: AbortSignal;
   fetch: typeof fetch;
-}): Promise<{ token: string; manifestHash: string }> {
+}): Promise<{ token: string; manifestHash: string; expiresAt: number }> {
   const response = await input.fetch("/api/ai/agent/snapshot/refresh", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -159,7 +256,8 @@ async function refreshTranscriptSnapshot(input: {
   const payload = await readJsonPayload(response);
   if (!response.ok || !isRecord(payload) ||
     typeof payload.transcriptSnapshotToken !== "string" ||
-    typeof payload.transcriptManifestHash !== "string") {
+    typeof payload.transcriptManifestHash !== "string" ||
+    typeof payload.expiresAt !== "number") {
     throw new Error(
       (isRecord(payload) && typeof payload.error === "string" && payload.error) ||
       "Transcript Snapshot 刷新失败，未消耗 Agent Lease。"
@@ -167,7 +265,8 @@ async function refreshTranscriptSnapshot(input: {
   }
   return {
     token: payload.transcriptSnapshotToken,
-    manifestHash: payload.transcriptManifestHash
+    manifestHash: payload.transcriptManifestHash,
+    expiresAt: payload.expiresAt
   };
 }
 
@@ -316,7 +415,9 @@ export async function closeAgentTurnLease(input: {
     userMessageId: string;
     assistantMessageId: string;
     transcriptSnapshotToken: string;
-    successProviderOutputSnapshot?: import("@/domain/morpho/types").ProviderOutputSnapshot;
+    transcriptManifestHash: string;
+    closureToken: string;
+    providerOutputSnapshot: import("@/domain/morpho/types").ProviderOutputSnapshot;
   };
   fetch?: typeof fetch;
 }): Promise<AgentTurnOutcomeSnapshotResult | undefined> {
@@ -324,14 +425,51 @@ export async function closeAgentTurnLease(input: {
     return;
   }
   const leaseId = input.state.agentTurnLeaseId;
-  input.state.agentTurnLeaseId = undefined;
-  return closeAgentTurnLeaseRequest({
+  const proofRequired = input.outcome === "success" ||
+    input.outcome === "partialSuccess" ||
+    input.outcome === "pendingConfirmation";
+  if (proofRequired && (!input.snapshot || !input.state.turnClosureToken)) {
+    throw new Error("Agent Turn Closure 缺少服务端签名 Proof，Lease 保持待恢复状态。");
+  }
+  const closureRequestId = input.state.closureRequestId ?? createClosureRequestId(input.agentTurnId);
+  input.state.closureRequestId = closureRequestId;
+  const result = await closeAgentTurnLeaseRequest({
     leaseId,
     agentTurnId: input.agentTurnId,
     outcome: input.outcome,
+    closureRequestId,
     snapshot: input.snapshot,
     fetch: input.fetch
   });
+  input.state.agentTurnLeaseId = undefined;
+  input.state.turnClosureToken = undefined;
+  input.state.closureRequestId = undefined;
+  return result;
+}
+
+export async function markAgentTurnToolExecutionStarted(input: {
+  state: AgentTurnState;
+  agentTurnId: string;
+  fetch?: typeof fetch;
+}): Promise<void> {
+  if (!input.state.agentTurnLeaseId) {
+    throw new Error("Agent Tool 执行缺少活动 Lease，已停止执行。");
+  }
+  const response = await (input.fetch ?? fetch)("/api/ai/agent/lease/tool", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      leaseId: input.state.agentTurnLeaseId,
+      agentTurnId: input.agentTurnId
+    })
+  });
+  const payload = await readJsonPayload(response);
+  if (!response.ok || !isRecord(payload) || payload.status !== "marked") {
+    throw new Error(
+      (isRecord(payload) && typeof payload.error === "string" && payload.error) ||
+      "Agent Tool 执行状态无法建立，已停止执行。"
+    );
+  }
 }
 
 export type AgentTurnOutcomeSnapshotResult = {
@@ -345,12 +483,15 @@ export async function closeAgentTurnLeaseRequest(input: {
   leaseId?: string;
   agentTurnId: string;
   outcome: AgentTurnLeaseOutcome;
+  closureRequestId?: string;
   snapshot?: {
     projectId: string;
     userMessageId: string;
     assistantMessageId: string;
     transcriptSnapshotToken: string;
-    successProviderOutputSnapshot?: import("@/domain/morpho/types").ProviderOutputSnapshot;
+    transcriptManifestHash: string;
+    closureToken: string;
+    providerOutputSnapshot: import("@/domain/morpho/types").ProviderOutputSnapshot;
   };
   fetch?: typeof fetch;
 }): Promise<AgentTurnOutcomeSnapshotResult | undefined> {
@@ -358,28 +499,48 @@ export async function closeAgentTurnLeaseRequest(input: {
     return;
   }
   const fetchImpl = input.fetch ?? fetch;
-  const response = await fetchImpl("/api/ai/agent/lease", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      leaseId: input.leaseId,
-      agentTurnId: input.agentTurnId,
-      outcome: input.outcome,
-      ...(input.snapshot ?? {})
-    })
-  }).catch(() => undefined);
-  if (!response?.ok || !input.snapshot) {
-    return undefined;
+  const closureRequestId = input.closureRequestId ?? createClosureRequestId(input.agentTurnId);
+  const requestBody = JSON.stringify({
+    leaseId: input.leaseId,
+    agentTurnId: input.agentTurnId,
+    outcome: input.outcome,
+    closureRequestId,
+    ...(input.snapshot ?? {})
+  });
+  let response: Response | undefined;
+  let networkError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      response = await fetchImpl("/api/ai/agent/lease", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: requestBody
+      });
+      break;
+    } catch (error) {
+      networkError = error;
+    }
+  }
+  if (!response) {
+    throw networkError instanceof Error
+      ? networkError
+      : new Error("Agent Turn Closure 网络恢复失败，Lease 保持待恢复状态。");
   }
   const payload = await readJsonPayload(response);
-  if (!isRecord(payload)) {
+  if (!response.ok || !isRecord(payload)) {
+    throw new Error(
+      (isRecord(payload) && typeof payload.error === "string" && payload.error) ||
+      "Agent Turn Closure 失败，Lease 保持待恢复状态。"
+    );
+  }
+  if (!input.snapshot) {
     return undefined;
   }
   const outcomeItem = parseAgentTurnOutcomeItem(payload.outcomeItem);
   if (!outcomeItem || typeof payload.transcriptSnapshotToken !== "string" ||
     typeof payload.transcriptManifestHash !== "string" ||
     typeof payload.expiresAt !== "number") {
-    return undefined;
+    throw new Error("Agent Turn Closure 响应缺少签名 Outcome，Lease 保持待恢复状态。");
   }
   return {
     outcomeItem,
@@ -387,4 +548,10 @@ export async function closeAgentTurnLeaseRequest(input: {
     transcriptManifestHash: payload.transcriptManifestHash,
     expiresAt: payload.expiresAt
   };
+}
+
+function createClosureRequestId(agentTurnId: string): string {
+  const random = globalThis.crypto?.randomUUID?.().replace(/-/g, "") ??
+    Math.random().toString(36).slice(2);
+  return `closure-${agentTurnId}-${random}`.slice(0, 160);
 }

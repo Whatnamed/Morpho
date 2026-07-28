@@ -44,9 +44,11 @@ import type { AgentTurnOutcome } from "@/domain/morpho/types";
  */
 
 const CONTINUATION_TOKEN_VERSION = 5;
+const TURN_CLOSURE_TOKEN_VERSION = 1;
 const LEGACY_TRANSCRIPT_SNAPSHOT_TOKEN_VERSION = 2;
 const LEGACY_CONTINUATION_SNAPSHOT_VERSION = 4;
 export const AGENT_CONTINUATION_TOKEN_TTL_MS = 20 * 60 * 1000;
+export const AGENT_TURN_CLOSURE_TOKEN_TTL_MS = AGENT_CONTINUATION_TOKEN_TTL_MS;
 export const AGENT_TRANSCRIPT_SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
 export const AGENT_TRANSCRIPT_SNAPSHOT_REFRESH_TTL_MS = 180 * 24 * 60 * 60 * 1000;
 
@@ -99,6 +101,7 @@ export type AgentContinuationFailureReason =
   | "compaction_source_unverified"
   | "compaction_source_forged"
   | "durable_replay_unverified"
+  | "live_input_invalid"
   | "context_marker_forged";
 
 export type AgentTranscriptSnapshotClaims = {
@@ -114,6 +117,26 @@ export type AgentTranscriptSnapshotClaims = {
   exp: number;
   refreshUntil?: number;
 };
+
+export type AgentTurnClosureClaims = {
+  v: number;
+  userId: string;
+  projectId: string;
+  leaseId: string;
+  agentTurnId: string;
+  leaseSequence: number;
+  currentUserMessageId: string;
+  assistantMessageId: string;
+  transcriptManifestHash: string;
+  providerOutputSnapshotHash: string;
+  terminalFunctionCalls: boolean;
+  issuedAt: number;
+  exp: number;
+};
+
+export type AgentTurnClosureVerification =
+  | { status: "ok"; claims: AgentTurnClosureClaims }
+  | { status: "failed"; reason: AgentContinuationFailureReason };
 
 /**
  * Prefer an explicit secret. Otherwise derive a stable server-only key from the
@@ -142,6 +165,99 @@ export function resolveAgentContinuationSecret(
  */
 export function hashAgentContinuationItems(items: readonly unknown[]): string {
   return hashAgentProviderItems(items);
+}
+
+export function issueAgentTurnClosureToken(input: {
+  secret: string;
+  userId: string;
+  projectId: string;
+  leaseId: string;
+  agentTurnId: string;
+  leaseSequence: number;
+  currentUserMessageId: string;
+  assistantMessageId: string;
+  transcriptManifestHash: string;
+  providerOutputSnapshotHash: string;
+  terminalFunctionCalls: boolean;
+  now: number;
+}): string {
+  const claims: AgentTurnClosureClaims = {
+    v: TURN_CLOSURE_TOKEN_VERSION,
+    userId: input.userId,
+    projectId: input.projectId,
+    leaseId: input.leaseId,
+    agentTurnId: input.agentTurnId,
+    leaseSequence: input.leaseSequence,
+    currentUserMessageId: input.currentUserMessageId,
+    assistantMessageId: input.assistantMessageId,
+    transcriptManifestHash: input.transcriptManifestHash,
+    providerOutputSnapshotHash: input.providerOutputSnapshotHash,
+    terminalFunctionCalls: input.terminalFunctionCalls,
+    issuedAt: input.now,
+    exp: input.now + AGENT_TURN_CLOSURE_TOKEN_TTL_MS
+  };
+  const payload = base64Url(Buffer.from(JSON.stringify(claims), "utf8"));
+  return `${payload}.${sign(payload, input.secret)}`;
+}
+
+export function verifyAgentTurnClosureToken(input: {
+  token: string | undefined;
+  secret: string | undefined;
+  userId: string;
+  projectId: string;
+  leaseId: string;
+  agentTurnId: string;
+  currentUserMessageId: string;
+  assistantMessageId: string;
+  transcriptManifestHash: string;
+  providerOutputSnapshotHash?: string;
+  now: number;
+  allowExpired?: boolean;
+}): AgentTurnClosureVerification {
+  if (!input.secret) {
+    return failed("secret_missing");
+  }
+  if (!input.token) {
+    return failed("token_missing");
+  }
+  const separator = input.token.lastIndexOf(".");
+  if (separator <= 0) {
+    return failed("token_malformed");
+  }
+  const payload = input.token.slice(0, separator);
+  const signature = input.token.slice(separator + 1);
+  if (!matchesSignature(payload, signature, input.secret)) {
+    return failed("token_signature");
+  }
+  let claims: unknown;
+  try {
+    claims = JSON.parse(Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
+  } catch {
+    return failed("token_malformed");
+  }
+  if (!isTurnClosureClaims(claims)) {
+    return failed("token_malformed");
+  }
+  if (!input.allowExpired && claims.exp <= input.now) {
+    return failed("token_expired");
+  }
+  if (
+    claims.userId !== input.userId ||
+    claims.projectId !== input.projectId ||
+    claims.leaseId !== input.leaseId ||
+    claims.agentTurnId !== input.agentTurnId ||
+    claims.currentUserMessageId !== input.currentUserMessageId ||
+    claims.assistantMessageId !== input.assistantMessageId ||
+    claims.transcriptManifestHash !== input.transcriptManifestHash ||
+    (input.providerOutputSnapshotHash !== undefined &&
+      claims.providerOutputSnapshotHash !== input.providerOutputSnapshotHash)
+  ) {
+    return failed("token_scope");
+  }
+  if (!claims.terminalFunctionCalls) {
+    return failed("tool_result_missing");
+  }
+  return { status: "ok", claims };
 }
 
 export function issueAgentContinuationToken(
@@ -933,7 +1049,10 @@ export function agentContinuationFailureMessage(reason: AgentContinuationFailure
     return "Agent continuation 包含未被上一份服务端 Transcript 授权的 Context/State marker。";
   }
   if (reason === "durable_replay_unverified") {
-    return "历史图片稳定引用未被上一份用户绑定的服务端 Transcript 授权。";
+    return "完整历史 Transcript 未被上一份用户绑定的服务端 Snapshot 授权。";
+  }
+  if (reason === "live_input_invalid") {
+    return "当前用户消息没有通过唯一 liveInput 合同校验。";
   }
   if (reason === "compaction_source_unverified") {
     return "Conversation Summary 的来源没有上一份服务端签名 Transcript 快照，原始历史未被删除。";
@@ -1058,6 +1177,39 @@ function isContinuationClaims(value: unknown): value is AgentContinuationClaims 
     (value.summary
       ? isCompactionReceipt(value.compactionReceipt)
       : value.compactionReceipt === undefined);
+}
+
+function isTurnClosureClaims(value: unknown): value is AgentTurnClosureClaims {
+  return isRecord(value) &&
+    unknownKeys(value, [
+      "v",
+      "userId",
+      "projectId",
+      "leaseId",
+      "agentTurnId",
+      "leaseSequence",
+      "currentUserMessageId",
+      "assistantMessageId",
+      "transcriptManifestHash",
+      "providerOutputSnapshotHash",
+      "terminalFunctionCalls",
+      "issuedAt",
+      "exp"
+    ]).length === 0 &&
+    value.v === TURN_CLOSURE_TOKEN_VERSION &&
+    typeof value.userId === "string" && value.userId.length > 0 &&
+    typeof value.projectId === "string" && value.projectId.length > 0 &&
+    typeof value.leaseId === "string" && value.leaseId.length > 0 &&
+    typeof value.agentTurnId === "string" && value.agentTurnId.length > 0 &&
+    typeof value.leaseSequence === "number" && Number.isSafeInteger(value.leaseSequence) && value.leaseSequence > 0 &&
+    typeof value.currentUserMessageId === "string" && value.currentUserMessageId.length > 0 &&
+    typeof value.assistantMessageId === "string" && value.assistantMessageId.length > 0 &&
+    isProtocolHash(value.transcriptManifestHash) &&
+    isProtocolHash(value.providerOutputSnapshotHash) &&
+    typeof value.terminalFunctionCalls === "boolean" &&
+    typeof value.issuedAt === "number" && Number.isSafeInteger(value.issuedAt) &&
+    typeof value.exp === "number" && Number.isSafeInteger(value.exp) &&
+    value.exp > value.issuedAt;
 }
 
 function isCompactionReceipt(value: unknown): value is AgentCompactionReceipt {

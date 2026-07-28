@@ -48,7 +48,11 @@ describe("manual conversation compaction turn", () => {
       status: "done"
     });
     expect(fixture.leaseRequestBodies).toEqual([
-      expect.objectContaining({ outcome: "success", leaseId: "lease-manual" })
+      expect.objectContaining({
+        leaseId: "lease-manual",
+        leaseSequence: 1,
+        continuationToken: "summary-continuation-token"
+      })
     ]);
     expect(uiValues(fixture, "failure")).toEqual([]);
   });
@@ -112,9 +116,9 @@ function createFixture(
           headers: { "content-type": "text/event-stream" }
         });
       },
-      "/api/ai/agent/lease": async (request) => {
+      "/api/ai/agent/lease/summary": async (request) => {
         leaseRequestBodies.push((await request.json()) as Record<string, unknown>);
-        return Response.json({ ok: true });
+        return Response.json({ status: "success" });
       }
     }
   });
@@ -219,10 +223,12 @@ function summaryScript() {
       type: "turn-start",
       agentTurnId: "manual-compact-unit",
       startedAt: "2026-07-27T00:00:00.000Z",
-      leaseId: "lease-manual"
+      leaseId: "lease-manual",
+      nextProviderSequence: 1
     },
     {
       type: "turn-complete",
+      continuationToken: "summary-continuation-token",
       result: streamResult(outputText)
     }
   ]);

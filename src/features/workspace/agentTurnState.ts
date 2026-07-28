@@ -18,6 +18,10 @@ export type AgentTurnState = {
   agentTurnLeaseId?: string;
   nextAgentLeaseSequence?: number;
   agentContinuationToken?: string;
+  /** Latest server-issued proof authorized to close this ordinary Agent turn. */
+  turnClosureToken?: string;
+  /** Stable across the single network recovery attempt for turn closure. */
+  closureRequestId?: string;
   /** Exact manifest from the latest signed Provider response in this turn. */
   latestProviderTranscriptManifestHash?: string;
   providerTranscriptReset: boolean;

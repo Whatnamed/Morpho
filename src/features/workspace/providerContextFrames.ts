@@ -77,6 +77,8 @@ export type ProviderRequestBoundaryState = {
   budgetGeneration?: number;
   transcriptManifestHash?: string;
   transcriptSnapshotToken?: string;
+  transcriptSnapshotExpiresAt?: number;
+  transcriptStartMessageId?: string;
 };
 
 export type ProviderRuntimeConfiguration = {
@@ -108,6 +110,8 @@ export function compactHistoricalProviderRequestState(
     cacheItemManifest: _manifest,
     transcriptManifestHash: _transcriptManifestHash,
     transcriptSnapshotToken: _transcriptSnapshotToken,
+    transcriptSnapshotExpiresAt: _transcriptSnapshotExpiresAt,
+    transcriptStartMessageId: _transcriptStartMessageId,
     ...compact
   } = state;
   return compact;
@@ -126,6 +130,8 @@ export function toProviderRequestBoundaryState(value: {
   budgetGeneration?: number;
   transcriptManifestHash?: string;
   transcriptSnapshotToken?: string;
+  transcriptSnapshotExpiresAt?: number;
+  transcriptStartMessageId?: string;
 } | undefined): ProviderRequestBoundaryState | undefined {
   if (!value?.promptContractVersion) {
     return undefined;
@@ -148,8 +154,26 @@ export function toProviderRequestBoundaryState(value: {
     ...(value.toolsHash ? { toolsHash: value.toolsHash } : {}),
     ...(value.budgetGeneration !== undefined ? { budgetGeneration: value.budgetGeneration } : {}),
     ...(value.transcriptManifestHash ? { transcriptManifestHash: value.transcriptManifestHash } : {}),
-    ...(value.transcriptSnapshotToken ? { transcriptSnapshotToken: value.transcriptSnapshotToken } : {})
+    ...(value.transcriptSnapshotToken ? { transcriptSnapshotToken: value.transcriptSnapshotToken } : {}),
+    ...(typeof value.transcriptSnapshotExpiresAt === "number"
+      ? { transcriptSnapshotExpiresAt: value.transcriptSnapshotExpiresAt }
+      : {}),
+    ...(value.transcriptStartMessageId ? { transcriptStartMessageId: value.transcriptStartMessageId } : {})
   };
+}
+
+export function selectAgentDurableConversationHistory<T extends { id: string }>(
+  messages: readonly T[],
+  state: ProviderRequestBoundaryState | undefined
+): T[] {
+  if (!state?.transcriptSnapshotToken) {
+    return [];
+  }
+  if (!state.transcriptStartMessageId) {
+    return [...messages];
+  }
+  const startIndex = messages.findIndex((message) => message.id === state.transcriptStartMessageId);
+  return startIndex < 0 ? [...messages] : messages.slice(startIndex);
 }
 
 function isProviderInputBoundaryReason(

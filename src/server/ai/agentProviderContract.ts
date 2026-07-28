@@ -87,6 +87,7 @@ export type ValidatedAgentRouteRequest = {
   projectId: string;
   agentTurnId: string;
   assistantMessageId?: string;
+  currentUserMessageId?: string;
   continuation: boolean;
   leaseContinuation: boolean;
   leaseId?: string;
@@ -122,6 +123,7 @@ export function parseAgentRouteRequest(value: unknown):
     "projectId",
     "agentTurnId",
     "assistantMessageId",
+    "currentUserMessageId",
     "continuation",
     "leaseContinuation",
     "leaseId",
@@ -155,6 +157,12 @@ export function parseAgentRouteRequest(value: unknown):
     : boundedIdentifier(value.assistantMessageId);
   if (value.assistantMessageId !== undefined && !assistantMessageId) {
     return failed("assistantMessageId 格式无效。");
+  }
+  const currentUserMessageId = value.currentUserMessageId === undefined
+    ? undefined
+    : boundedIdentifier(value.currentUserMessageId);
+  if (value.currentUserMessageId !== undefined && !currentUserMessageId) {
+    return failed("currentUserMessageId 格式无效。");
   }
   if (value.promptContractVersion !== MORPHO_AGENT_PROMPT_CONTRACT_VERSION) {
     return failed(`不支持的 Prompt Contract Version：${String(value.promptContractVersion ?? "缺失")}。`);
@@ -302,6 +310,7 @@ export function parseAgentRouteRequest(value: unknown):
       projectId,
       agentTurnId,
       ...(assistantMessageId ? { assistantMessageId } : {}),
+      ...(currentUserMessageId ? { currentUserMessageId } : {}),
       continuation: value.continuation,
       leaseContinuation,
       ...(leaseId ? { leaseId } : {}),
@@ -1678,7 +1687,9 @@ function parseRequestState(value: unknown): AgentProviderRequestState | undefine
     "toolsHash",
     "budgetGeneration",
     "transcriptManifestHash",
-    "transcriptSnapshotToken"
+    "transcriptSnapshotToken",
+    "transcriptSnapshotExpiresAt",
+    "transcriptStartMessageId"
   ]).length > 0) {
     return undefined;
   }
@@ -1698,6 +1709,11 @@ function parseRequestState(value: unknown): AgentProviderRequestState | undefine
   const transcriptSnapshotToken = value.transcriptSnapshotToken === undefined
     ? undefined
     : boundedTranscriptSnapshotToken(value.transcriptSnapshotToken);
+  const transcriptSnapshotExpiresAt = optionalInteger(
+    value.transcriptSnapshotExpiresAt,
+    Number.MAX_SAFE_INTEGER
+  );
+  const transcriptStartMessageId = optionalIdentifier(value.transcriptStartMessageId);
   if (
     summaryRevisionId === null || latestUserMessageId === null || providerInputPrefixHash === null ||
     (
@@ -1712,6 +1728,8 @@ function parseRequestState(value: unknown): AgentProviderRequestState | undefine
     toolsHash === null ||
     budgetGeneration === null ||
     transcriptManifestHash === null ||
+    transcriptSnapshotExpiresAt === null ||
+    transcriptStartMessageId === null ||
     (value.transcriptSnapshotToken !== undefined && !transcriptSnapshotToken)
   ) {
     return undefined;
@@ -1728,7 +1746,9 @@ function parseRequestState(value: unknown): AgentProviderRequestState | undefine
     ...(toolsHash ? { toolsHash } : {}),
     ...(budgetGeneration !== undefined ? { budgetGeneration } : {}),
     ...(transcriptManifestHash ? { transcriptManifestHash } : {}),
-    ...(transcriptSnapshotToken ? { transcriptSnapshotToken } : {})
+    ...(transcriptSnapshotToken ? { transcriptSnapshotToken } : {}),
+    ...(transcriptSnapshotExpiresAt !== undefined ? { transcriptSnapshotExpiresAt } : {}),
+    ...(transcriptStartMessageId ? { transcriptStartMessageId } : {})
   };
 }
 

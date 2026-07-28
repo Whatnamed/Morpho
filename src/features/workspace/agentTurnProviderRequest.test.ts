@@ -36,6 +36,71 @@ import { createAgentTurnRuntimeState, createAgentTurnState } from "./agentTurnSt
 import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
 
 describe("Agent turn provider request adapter", () => {
+  it("persists the current user as the first trusted transcript boundary for an unsigned workspace", async () => {
+    const fixture = createFixture(textAnswerScript());
+
+    await createAgentTurnProviderRequestAdapter(fixture.input).request(["initial"]);
+
+    expect(fixture.requestBodies[0]).toMatchObject({
+      currentUserMessageId: "message-user",
+      diagnostics: {
+        requestState: {
+          transcriptStartMessageId: "message-user"
+        }
+      }
+    });
+  });
+
+  it("refreshes a 25-hour durable checkpoint before the next ordinary Provider request", async () => {
+    const refreshedToken = clientSnapshotToken({ v: 3, exp: Date.now() + 60_000 });
+    const fixture = createFixture(textAnswerScript(), {
+      snapshotRefresh: () => Response.json({
+        transcriptSnapshotToken: refreshedToken,
+        transcriptManifestHash: "b".repeat(64),
+        expiresAt: Date.now() + 60_000
+      })
+    });
+    fixture.input.turnState.latestProviderRequestState = {
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+      transcriptManifestHash: "a".repeat(64),
+      transcriptSnapshotToken: clientSnapshotToken({ v: 3, exp: Date.now() - 1 })
+    };
+
+    await createAgentTurnProviderRequestAdapter(fixture.input).request(["initial"]);
+
+    expect(fixture.routeCalls).toEqual([
+      "/api/ai/agent/snapshot/refresh",
+      "/api/ai/agent"
+    ]);
+    expect(fixture.requestBodies[0]).toMatchObject({
+      currentUserMessageId: "message-user",
+      diagnostics: {
+        previousRequestState: {
+          transcriptSnapshotToken: refreshedToken,
+          transcriptManifestHash: "b".repeat(64)
+        }
+      }
+    });
+  });
+
+  it("does not send an ordinary Provider request when checkpoint refresh fails", async () => {
+    const fixture = createFixture(textAnswerScript(), {
+      snapshotRefresh: () => Response.json({ error: "refresh rejected" }, { status: 400 })
+    });
+    fixture.input.turnState.latestProviderRequestState = {
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+      transcriptManifestHash: "a".repeat(64),
+      transcriptSnapshotToken: clientSnapshotToken({ v: 3, exp: Date.now() - 1 })
+    };
+
+    await expect(
+      createAgentTurnProviderRequestAdapter(fixture.input).request(["initial"])
+    ).rejects.toThrow("refresh rejected");
+
+    expect(fixture.routeCalls).toEqual(["/api/ai/agent/snapshot/refresh"]);
+    expect(fixture.requestBodies).toEqual([]);
+  });
+
   it.each([
     {
       name: "token and item count both decrease",
@@ -424,17 +489,26 @@ describe("Agent turn provider request adapter", () => {
   });
 });
 
-function createFixture(script: { body: string }) {
+function createFixture(
+  script: { body: string },
+  options: { snapshotRefresh?: () => Response | Promise<Response> } = {}
+) {
   const workspace = createTestWorkspace();
   const requestBodies: Array<Record<string, unknown>> = [];
+  const routeCalls: string[] = [];
   const host = createAgentTurnHostFake({
     workspace,
     routes: {
       "/api/ai/agent": async (request) => {
+        routeCalls.push("/api/ai/agent");
         requestBodies.push((await request.json()) as Record<string, unknown>);
         return new Response(script.body, {
           headers: { "content-type": "text/event-stream" }
         });
+      },
+      "/api/ai/agent/snapshot/refresh": async () => {
+        routeCalls.push("/api/ai/agent/snapshot/refresh");
+        return options.snapshotRefresh?.() ?? Response.json({ error: "unexpected refresh" }, { status: 500 });
       }
     }
   });
@@ -502,7 +576,11 @@ function createFixture(script: { body: string }) {
     fetch: host.fetch,
     nowIso: () => "2026-07-27T00:00:01.000Z"
   };
-  return { host, input, requestBodies };
+  return { host, input, requestBodies, routeCalls };
+}
+
+function clientSnapshotToken(claims: { v: number; exp: number }): string {
+  return `${Buffer.from(JSON.stringify(claims), "utf8").toString("base64url")}.signature`;
 }
 
 function usage(inputTokens: number) {

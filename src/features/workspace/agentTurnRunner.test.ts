@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 import { createTestWorkspace } from "@/domain/morpho/workspace";
 import type { AgentStreamFunctionCall } from "@/shared/agentStreamProtocol";
+import { createAgentTurnOutcomeItem } from "@/shared/agentCompactionProtocol";
 import { functionCallScript, textAnswerScript } from "./agentStreamScripts";
 import type { AgentTurnHost } from "./agentTurnHost";
 import { createAgentTurnHostFake } from "./agentTurnHostFake";
@@ -39,7 +40,9 @@ describe("Morpho Agent turn runner", () => {
     expect(fixture.requestBodies[1]).toMatchObject({
       directive: { kind: "requiredRead", tools: ["read_project_memory"] }
     });
-    expect(latestTurnAssistant(fixture.workspace()).body).toContain("读取失败，无法确认相关项目记录");
+    expect(latestTurnAssistant(fixture.workspace()).body).toBe(
+      "本轮在完成执行前失败，不作为后续模型上下文中的已完成结果。"
+    );
   });
 
   it("stops after the fourth invalid tool-argument batch", async () => {
@@ -54,7 +57,9 @@ describe("Morpho Agent turn runner", () => {
 
     expect(fixture.requestBodies).toHaveLength(4);
     expect(latestTurnAssistant(fixture.workspace())).toMatchObject({ status: "failed" });
-    expect(latestTurnAssistant(fixture.workspace()).body).toContain("连续返回不符合工具 schema");
+    expect(latestTurnAssistant(fixture.workspace()).body).toBe(
+      "本轮在完成执行前失败，不作为后续模型上下文中的已完成结果。"
+    );
     expect(uiValues(fixture, "failure")).toEqual([true]);
   });
 
@@ -122,7 +127,7 @@ describe("Morpho Agent turn runner", () => {
     expect(fixture.webSearchCount()).toBe(1);
     expect(latestTurnAssistant(fixture.workspace())).toMatchObject({
       status: "done",
-      body: expect.stringContaining("已保留部分工具结果")
+      body: "本轮仅部分完成。已完成结果已保留，未完成步骤需要后续重试。"
     });
     expect(uiValues(fixture, "draft")).toContain(fixture.input.draft);
     expect(fixture.fake.abortSlot.get()).toBeNull();
@@ -184,7 +189,31 @@ function createFixture(
           headers: { "content-type": "text/event-stream" }
         });
       },
-      "/api/ai/agent/lease": () => Response.json({ ok: true })
+      "/api/ai/agent/lease/tool": () => Response.json({ status: "marked" }),
+      "/api/ai/agent/lease": async (request) => {
+        const body = await request.json() as Record<string, unknown>;
+        if (typeof body.projectId !== "string") {
+          return Response.json({ status: body.outcome });
+        }
+        return Response.json({
+          status: body.outcome,
+          outcomeItem: createAgentTurnOutcomeItem({
+            agentTurnId: String(body.agentTurnId),
+            userMessageId: String(body.userMessageId),
+            assistantMessageId: String(body.assistantMessageId),
+            outcome: body.outcome as "success" | "partialSuccess" | "pendingConfirmation",
+            ...(body.outcome === "success" && body.providerOutputSnapshot &&
+            typeof body.providerOutputSnapshot === "object" &&
+            "text" in body.providerOutputSnapshot &&
+            typeof body.providerOutputSnapshot.text === "string"
+              ? { successText: body.providerOutputSnapshot.text }
+              : {})
+          }),
+          transcriptSnapshotToken: "snapshot-token-final",
+          transcriptManifestHash: "c".repeat(64),
+          expiresAt: Date.now() + 60_000
+        });
+      }
     }
   });
   fake.setFetchRoute("/api/ai/web-search", async (request) => {

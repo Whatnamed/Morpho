@@ -20,12 +20,14 @@ import {
   finalizeAgentTranscriptSnapshotOutcomeToken,
   issueAgentContinuationToken,
   issueAgentTranscriptSnapshotToken,
+  issueAgentTurnClosureToken,
   refreshAgentTranscriptSnapshotToken,
   resolveAgentContinuationSecret,
   verifyAgentContinuationBinding,
   verifyAgentCompactionBinding,
   verifyAgentContinuationToken,
   verifyAgentTranscriptSnapshotToken,
+  verifyAgentTurnClosureToken,
   type AgentContinuationClaims
 } from "./agentContinuationToken";
 import { createProviderOutputSnapshot } from "@/domain/morpho/providerInputSnapshot";
@@ -75,6 +77,46 @@ function claimsFrom(token: string): AgentContinuationClaims {
 }
 
 describe("agent continuation token", () => {
+  it("binds short-lived closure proof to user, project, lease, turn, messages and Provider snapshot", () => {
+    const token = issueAgentTurnClosureToken({
+      secret: SECRET,
+      userId: USER_ID,
+      projectId: "project-a",
+      leaseId: "lease-1",
+      agentTurnId: "agent-turn-1",
+      leaseSequence: 3,
+      currentUserMessageId: "user-a",
+      assistantMessageId: "assistant-a",
+      transcriptManifestHash: "a".repeat(64),
+      providerOutputSnapshotHash: "b".repeat(64),
+      terminalFunctionCalls: true,
+      now: 1_000_000
+    });
+    const verify = (overrides: Partial<Parameters<typeof verifyAgentTurnClosureToken>[0]> = {}) =>
+      verifyAgentTurnClosureToken({
+        token,
+        secret: SECRET,
+        userId: USER_ID,
+        projectId: "project-a",
+        leaseId: "lease-1",
+        agentTurnId: "agent-turn-1",
+        currentUserMessageId: "user-a",
+        assistantMessageId: "assistant-a",
+        transcriptManifestHash: "a".repeat(64),
+        providerOutputSnapshotHash: "b".repeat(64),
+        now: 1_000_001,
+        ...overrides
+      });
+
+    expect(verify()).toMatchObject({ status: "ok" });
+    expect(verify({ leaseId: "lease-2" })).toEqual({ status: "failed", reason: "token_scope" });
+    expect(verify({ agentTurnId: "agent-turn-2" })).toEqual({ status: "failed", reason: "token_scope" });
+    expect(verify({ userId: "user-other" })).toEqual({ status: "failed", reason: "token_scope" });
+    expect(verify({ projectId: "project-other" })).toEqual({ status: "failed", reason: "token_scope" });
+    expect(verify({ assistantMessageId: "assistant-other" })).toEqual({ status: "failed", reason: "token_scope" });
+    expect(verify({ now: 1_000_000 + 21 * 60 * 1000 })).toEqual({ status: "failed", reason: "token_expired" });
+  });
+
   it("resolves an explicit secret and otherwise derives one from the provider key", () => {
     expect(resolveAgentContinuationSecret({ MORPHO_AGENT_CONTINUATION_SECRET: " explicit " }))
       .toBe("explicit");

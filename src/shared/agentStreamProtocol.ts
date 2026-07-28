@@ -72,6 +72,8 @@ export type AgentProviderRequestState = {
   budgetGeneration?: number;
   transcriptManifestHash?: string;
   transcriptSnapshotToken?: string;
+  transcriptSnapshotExpiresAt?: number;
+  transcriptStartMessageId?: string;
 };
 
 export type AgentProviderDiagnostics = {
@@ -214,6 +216,8 @@ export type AgentRouteStreamEvent =
       transcriptManifestHash?: string;
       /** Output-inclusive durable snapshot persisted only in the latest request-state slot. */
       transcriptSnapshotToken?: string;
+      /** Short-lived proof binding the latest non-summary Provider result to this lease and turn. */
+      turnClosureToken?: string;
       assistantProviderOutputSnapshot?: ProviderOutputSnapshot;
       verifiedImageReferences?: Array<{
         messageId: string;

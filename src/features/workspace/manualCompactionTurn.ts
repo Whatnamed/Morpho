@@ -10,7 +10,7 @@ import { updateAiMessage } from "./aiConversationMessages";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
 import type { AgentTurnHost } from "./agentTurnHost";
 import {
-  closeAgentTurnLeaseRequest,
+  closeAgentConversationSummaryLeaseRequest,
   requestConversationSummary,
   type AgentTurnLeaseOutcome
 } from "./agentTurnLeaseClient";
@@ -116,6 +116,8 @@ export async function runManualCompactionTurn(
   }
 
   let manualCompactionLeaseId: string | undefined;
+  let manualCompactionLeaseSequence: number | undefined;
+  let manualCompactionContinuationToken: string | undefined;
   let manualCompactionOutcome: Extract<
     AgentTurnLeaseOutcome,
     "success" | "cancelledBeforeExecution" | "failedBeforeExecution"
@@ -157,6 +159,8 @@ export async function runManualCompactionTurn(
       host.fetch
     );
     manualCompactionLeaseId = summaryRequest.leaseId ?? manualCompactionLeaseId;
+    manualCompactionLeaseSequence = summaryRequest.leaseSequence;
+    manualCompactionContinuationToken = summaryRequest.continuationToken;
     const parsedSummary = summaryRequest.parsed;
     if (parsedSummary.status !== "ok" || !summaryRequest.compactionReceipt) {
       throw new Error("模型没有返回可用的连续对话摘要。");
@@ -213,12 +217,17 @@ export async function runManualCompactionTurn(
       host.ui.showFailure();
     }
   } finally {
-    await closeAgentTurnLeaseRequest({
-      leaseId: manualCompactionLeaseId,
-      agentTurnId: manualCompactionTurnId,
-      outcome: manualCompactionOutcome,
-      fetch: host.fetch
-    });
+    if (manualCompactionOutcome === "success" && manualCompactionLeaseId &&
+      manualCompactionLeaseSequence !== undefined && manualCompactionContinuationToken) {
+      await closeAgentConversationSummaryLeaseRequest({
+        leaseId: manualCompactionLeaseId,
+        agentTurnId: manualCompactionTurnId,
+        leaseSequence: manualCompactionLeaseSequence,
+        continuationToken: manualCompactionContinuationToken,
+        closureRequestId: `summary-closure-${manualCompactionTurnId}`.slice(0, 160),
+        fetch: host.fetch
+      });
+    }
     if (host.abortSlot.get() === controller) {
       host.abortSlot.set(null);
       host.ui.setStreaming(false);

@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { ConversationCompactionPlan } from "@/domain/morpho/conversationCompaction";
+import { createProviderOutputSnapshot } from "@/domain/morpho/providerInputSnapshot";
 import { createTestWorkspace } from "@/domain/morpho/workspace";
 import {
   createAgentTranscriptMessageItem,
@@ -8,14 +9,78 @@ import {
 } from "@/shared/agentCompactionProtocol";
 import { agentStreamScript } from "./agentStreamScripts";
 import { createAgentTurnHostFake } from "./agentTurnHostFake";
+import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
 import {
   closeAgentTurnLease,
+  prepareAgentDurableCheckpoint,
   requestAgentWebSearch,
   requestConversationSummary
 } from "./agentTurnLeaseClient";
 import { createAgentTurnState } from "./agentTurnState";
 
 describe("Agent turn lease client", () => {
+  it("uses an unexpired durable checkpoint without refreshing an ordinary request", async () => {
+    const token = clientSnapshotToken({ v: 3, exp: Date.now() + 60_000 });
+    const fetchImpl = vi.fn<typeof fetch>();
+
+    const prepared = await prepareAgentDurableCheckpoint({
+      projectId: "project-ocean-buoy",
+      requestState: {
+        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+        transcriptManifestHash: "a".repeat(64),
+        transcriptSnapshotToken: token
+      },
+      signal: new AbortController().signal,
+      fetch: fetchImpl
+    });
+
+    expect(prepared).toMatchObject({ transcriptSnapshotToken: token });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("refreshes an expired durable checkpoint before an ordinary request", async () => {
+    const expired = clientSnapshotToken({ v: 3, exp: Date.now() - 1 });
+    const refreshed = clientSnapshotToken({ v: 3, exp: Date.now() + 60_000 });
+    const fetchImpl: typeof fetch = async () => Response.json({
+      transcriptSnapshotToken: refreshed,
+      transcriptManifestHash: "b".repeat(64),
+      expiresAt: Date.now() + 60_000
+    });
+
+    const prepared = await prepareAgentDurableCheckpoint({
+      projectId: "project-ocean-buoy",
+      requestState: {
+        promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+        transcriptManifestHash: "a".repeat(64),
+        transcriptSnapshotToken: expired
+      },
+      signal: new AbortController().signal,
+      fetch: fetchImpl
+    });
+
+    expect(prepared).toMatchObject({
+      transcriptSnapshotToken: refreshed,
+      transcriptManifestHash: "b".repeat(64),
+      transcriptSnapshotExpiresAt: expect.any(Number)
+    });
+  });
+
+  it("fails closed before an ordinary request when durable checkpoint refresh fails", async () => {
+    const state = {
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+      transcriptManifestHash: "a".repeat(64),
+      transcriptSnapshotToken: clientSnapshotToken({ v: 3, exp: Date.now() - 1 })
+    };
+
+    await expect(prepareAgentDurableCheckpoint({
+      projectId: "project-ocean-buoy",
+      requestState: state,
+      signal: new AbortController().signal,
+      fetch: async () => Response.json({ error: "refresh rejected" }, { status: 400 })
+    })).rejects.toThrow("refresh rejected");
+    expect(state.transcriptManifestHash).toBe("a".repeat(64));
+  });
+
   it("resynchronizes one replayed web-search sequence and adopts it before retrying", async () => {
     const workspace = createTestWorkspace();
     const state = createAgentTurnState(workspace);
@@ -135,7 +200,7 @@ describe("Agent turn lease client", () => {
     expect(state.webSearchLeaseStateRecoveryUsed).toBe(true);
   });
 
-  it("clears the active lease before a best-effort close request", async () => {
+  it("retains the active lease when closure proof is missing", async () => {
     const state = createAgentTurnState(createTestWorkspace());
     state.agentTurnLeaseId = "lease-unit";
     let leaseObservedDuringFetch: string | undefined;
@@ -151,15 +216,16 @@ describe("Agent turn lease client", () => {
         outcome: "partialSuccess",
         fetch: fetchImpl
       })
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow("缺少服务端签名 Proof");
 
     expect(leaseObservedDuringFetch).toBeUndefined();
-    expect(state.agentTurnLeaseId).toBeUndefined();
+    expect(state.agentTurnLeaseId).toBe("lease-unit");
   });
 
   it("returns the server-signed terminal outcome snapshot when lease completion proves it", async () => {
     const state = createAgentTurnState(createTestWorkspace());
     state.agentTurnLeaseId = "lease-unit";
+    state.turnClosureToken = "closure-token-unit";
     const outcomeItem = createAgentTurnOutcomeItem({
       agentTurnId: "turn-unit",
       userMessageId: "user-unit",
@@ -175,7 +241,10 @@ describe("Agent turn lease client", () => {
         projectId: "project-ocean-buoy",
         userMessageId: "user-unit",
         assistantMessageId: "assistant-unit",
-        transcriptSnapshotToken: "snapshot-token-unit"
+        transcriptSnapshotToken: "snapshot-token-unit",
+        transcriptManifestHash: "b".repeat(64),
+        closureToken: "closure-token-unit",
+        providerOutputSnapshot: createProviderOutputSnapshot("provider answer")
       },
       fetch: async (_request, init) => {
         requestBody = JSON.parse(String(init?.body ?? "{}"));
@@ -192,6 +261,7 @@ describe("Agent turn lease client", () => {
     expect(requestBody).toMatchObject({
       projectId: "project-ocean-buoy",
       transcriptSnapshotToken: "snapshot-token-unit",
+      closureToken: "closure-token-unit",
       outcome: "partialSuccess"
     });
     expect(result).toEqual({
@@ -200,6 +270,56 @@ describe("Agent turn lease client", () => {
       transcriptManifestHash: "a".repeat(64),
       expiresAt: 123
     });
+    expect(state.agentTurnLeaseId).toBeUndefined();
+    expect(state.turnClosureToken).toBeUndefined();
+  });
+
+  it("retries a lost closure response once with the same request id", async () => {
+    const state = createAgentTurnState(createTestWorkspace());
+    state.agentTurnLeaseId = "lease-unit";
+    state.turnClosureToken = "closure-token-unit";
+    const outcomeItem = createAgentTurnOutcomeItem({
+      agentTurnId: "turn-unit",
+      userMessageId: "user-unit",
+      assistantMessageId: "assistant-unit",
+      outcome: "partialSuccess"
+    });
+    const bodies: Array<Record<string, unknown>> = [];
+    let attempts = 0;
+
+    await closeAgentTurnLease({
+      state,
+      agentTurnId: "turn-unit",
+      outcome: "partialSuccess",
+      snapshot: {
+        projectId: "project-ocean-buoy",
+        userMessageId: "user-unit",
+        assistantMessageId: "assistant-unit",
+        transcriptSnapshotToken: "snapshot-token-unit",
+        transcriptManifestHash: "b".repeat(64),
+        closureToken: "closure-token-unit",
+        providerOutputSnapshot: createProviderOutputSnapshot("provider answer")
+      },
+      fetch: async (_request, init) => {
+        bodies.push(JSON.parse(String(init?.body ?? "{}")));
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error("response lost");
+        }
+        return Response.json({
+          status: "partialSuccess",
+          replayed: true,
+          outcomeItem,
+          transcriptSnapshotToken: "snapshot-token-final",
+          transcriptManifestHash: "a".repeat(64),
+          expiresAt: 123
+        });
+      }
+    });
+
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]?.closureRequestId).toBe(bodies[1]?.closureRequestId);
+    expect(state.agentTurnLeaseId).toBeUndefined();
   });
 
   it("projects lease and continuation updates from summary streams", async () => {
@@ -283,7 +403,8 @@ describe("Agent turn lease client", () => {
       if (String(request).includes("/snapshot/refresh")) {
         return Response.json({
           transcriptSnapshotToken: refreshed,
-          transcriptManifestHash: "b".repeat(64)
+          transcriptManifestHash: "b".repeat(64),
+          expiresAt: Date.now() + 60_000
         });
       }
       return new Response(agentStreamScript([{ type: "turn-complete", result: emptyAgentResult() }]).body, {
@@ -315,7 +436,8 @@ describe("Agent turn lease client", () => {
         refreshBody = JSON.parse(String(init?.body ?? "{}"));
         return Response.json({
           transcriptSnapshotToken: clientSnapshotToken({ v: 3, exp: Date.now() + 60_000 }),
-          transcriptManifestHash: "c".repeat(64)
+          transcriptManifestHash: "c".repeat(64),
+          expiresAt: Date.now() + 60_000
         });
       }
       return new Response(agentStreamScript([{ type: "turn-complete", result: emptyAgentResult() }]).body, {

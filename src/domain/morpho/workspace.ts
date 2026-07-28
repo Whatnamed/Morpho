@@ -2444,11 +2444,15 @@ function stripHistoricalProviderRequestManifest(
     cacheItemManifest: _legacyManifest,
     transcriptManifestHash: _transcriptManifestHash,
     transcriptSnapshotToken: _transcriptSnapshotToken,
+    transcriptSnapshotExpiresAt: _transcriptSnapshotExpiresAt,
+    transcriptStartMessageId: _transcriptStartMessageId,
     ...providerRequestState
   } = state as typeof state & {
     cacheItemManifest?: unknown;
     transcriptManifestHash?: unknown;
     transcriptSnapshotToken?: unknown;
+    transcriptSnapshotExpiresAt?: unknown;
+    transcriptStartMessageId?: unknown;
   };
   return providerRequestState;
 }
@@ -2519,6 +2523,14 @@ function normalizeLatestProviderRequestState(
     ...(typeof value.transcriptSnapshotToken === "string" &&
       value.transcriptSnapshotToken.length >= 16 && value.transcriptSnapshotToken.length <= 512_000
       ? { transcriptSnapshotToken: value.transcriptSnapshotToken }
+      : {}),
+    ...(typeof value.transcriptSnapshotExpiresAt === "number" &&
+      Number.isSafeInteger(value.transcriptSnapshotExpiresAt) && value.transcriptSnapshotExpiresAt > 0
+      ? { transcriptSnapshotExpiresAt: value.transcriptSnapshotExpiresAt }
+      : {}),
+    ...(typeof value.transcriptStartMessageId === "string" &&
+      value.transcriptStartMessageId.length >= 1 && value.transcriptStartMessageId.length <= 160
+      ? { transcriptStartMessageId: value.transcriptStartMessageId }
       : {})
   };
 }
