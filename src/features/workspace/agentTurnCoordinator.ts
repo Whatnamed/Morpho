@@ -6,6 +6,7 @@ import type {
 import {
   createAgentTurnLifecycleState,
   reduceAgentTurnLifecycle,
+  validateAgentTurnProviderRequestStart,
   type AgentTurnError,
   type AgentTurnEvent,
   type AgentTurnLifecycleState,
@@ -199,6 +200,14 @@ export class AgentTurnCoordinator {
       return this.denied("invalid_request_id", "Request ID 生成器返回了空标识。");
     }
     const stepSequence = (this.lastRequest?.stepSequence ?? 0) + 1;
+    const validation = validateAgentTurnProviderRequestStart(
+      this.lifecycle,
+      requestId,
+      stepSequence
+    );
+    if (!validation.ok) {
+      return this.denied(validation.error.code, validation.error.message);
+    }
     this.syncGeneration += 1;
     this.activeRequest = {
       requestId,
@@ -238,6 +247,11 @@ export class AgentTurnCoordinator {
       }
       if (handshake.status === "denied") {
         const classified = classifyHandshakeFailure(handshake);
+        if (active.lifecycleStarted && classified.kind !== "retryable") {
+          active.retryAllowed = false;
+          active.reconciliationOnly = true;
+          return this.recover(active, generation, { allowProviderRetry: false });
+        }
         const recorded = this.recordHandshakeFailure(active, handshake, classified);
         if (recorded.status === "denied") return recorded;
         if (classified.kind === "retryable") {
@@ -258,10 +272,6 @@ export class AgentTurnCoordinator {
             : this.denied(handshake.code, handshake.error);
         }
         active.retryAllowed = false;
-        if (active.lifecycleStarted) {
-          active.reconciliationOnly = true;
-          return this.recover(active, generation, { allowProviderRetry: false });
-        }
         return this.denied(handshake.code, handshake.error);
       }
       if (!active.lifecycleStarted) {
@@ -407,6 +417,14 @@ export class AgentTurnCoordinator {
         "journal_request_mismatch",
         "Journal 返回了不匹配的 Request ID 或 Sequence。"
       );
+    }
+    if (this.lifecycle?.phase === "recovering") {
+      const resolved = this.dispatch({
+        type: "RECOVERY_RESOLVED",
+        turnId: lifecycle.turnId,
+        faultId: this.lifecycle.faultId
+      });
+      if (resolved.status === "denied") return resolved;
     }
     if (this.activeRequest && !this.activeRequest.lifecycleStarted) {
       const started = this.dispatch({

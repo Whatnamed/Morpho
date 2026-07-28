@@ -229,6 +229,54 @@ export type AgentTurnTransitionResult =
   | { ok: true; state: AgentTurnLifecycleState }
   | { ok: false; error: AgentTurnTransitionError };
 
+export type AgentTurnProviderRequestStartValidation =
+  | { ok: true }
+  | { ok: false; error: AgentTurnTransitionError };
+
+export function validateAgentTurnProviderRequestStart(
+  state: AgentTurnLifecycleState,
+  requestId: string,
+  stepSequence: number
+): AgentTurnProviderRequestStartValidation {
+  if (state.fault.kind === "present") {
+    return validationFailure(
+      "unresolvedFaultConflict",
+      `Fault ${state.fault.faultId} must be resolved before starting Provider execution.`
+    );
+  }
+  if (!requestId.trim() || !Number.isInteger(stepSequence) || stepSequence < 1) {
+    return validationFailure(
+      "invalidEvent",
+      "Provider request identity and step sequence must be valid."
+    );
+  }
+  const isInitial =
+    state.phase === "requestingProvider" &&
+    state.serverExecutionStatus === "created" &&
+    state.externalRequest.kind === "none" &&
+    stepSequence === 1;
+  const isContinuation =
+    state.phase === "continuing" &&
+    state.serverExecutionStatus === "awaitingNextRequest" &&
+    state.externalRequest.kind === "settled" &&
+    requestId !== state.externalRequest.requestId &&
+    stepSequence === state.externalRequest.stepSequence + 1;
+  if (isInitial || isContinuation) return { ok: true };
+  if (
+    state.externalRequest.kind !== "none" &&
+    stepSequence <= state.externalRequest.stepSequence
+  ) {
+    return validationFailure(
+      "externalStepSequenceConflict",
+      `External step ${stepSequence} is not newer than ${state.externalRequest.stepSequence}.`
+    );
+  }
+  return validationFailure(
+    "illegalTransition",
+    `PROVIDER_REQUEST_STARTED is not legal from ${state.phase}.`
+  );
+}
+
 export function createAgentTurnLifecycleState(turnId: string): AgentTurnLifecycleState {
   return {
     phase: "preparing",
@@ -370,7 +418,7 @@ export function reduceAgentTurnLifecycle(
         ? terminal(state, { kind: "cancelled", reasons: [event.reason] })
         : illegal(state, event);
     case "PROVIDER_REQUEST_STARTED":
-      return startProviderRequest(state, event.requestId, event.stepSequence, event);
+      return startProviderRequest(state, event.requestId, event.stepSequence);
     case "SERVER_EXECUTION_STATUS_OBSERVED":
       return observeServerStatus(state, event.requestId, event.stepSequence, event.status);
     case "STREAM_ACTIVITY_OBSERVED":
@@ -623,41 +671,10 @@ function failCompaction(
 function startProviderRequest(
   state: Exclude<AgentTurnLifecycleState, { phase: "terminal" }>,
   requestId: string,
-  stepSequence: number,
-  event: AgentTurnEvent
+  stepSequence: number
 ): AgentTurnTransitionResult {
-  if (state.fault.kind === "present") {
-    return transitionError(
-      "unresolvedFaultConflict",
-      `Fault ${state.fault.faultId} must be resolved before starting Provider execution.`
-    );
-  }
-  if (!requestId.trim() || !Number.isInteger(stepSequence) || stepSequence < 1) {
-    return transitionError("invalidEvent", "Provider request identity and step sequence must be valid.");
-  }
-  const isInitial =
-    state.phase === "requestingProvider" &&
-    state.serverExecutionStatus === "created" &&
-    state.externalRequest.kind === "none" &&
-    stepSequence === 1;
-  const isContinuation =
-    state.phase === "continuing" &&
-    state.serverExecutionStatus === "awaitingNextRequest" &&
-    state.externalRequest.kind === "settled" &&
-    requestId !== state.externalRequest.requestId &&
-    stepSequence === state.externalRequest.stepSequence + 1;
-  if (!isInitial && !isContinuation) {
-    if (
-      state.externalRequest.kind !== "none" &&
-      stepSequence <= state.externalRequest.stepSequence
-    ) {
-      return transitionError(
-        "externalStepSequenceConflict",
-        `External step ${stepSequence} is not newer than ${state.externalRequest.stepSequence}.`
-      );
-    }
-    return illegal(state, event);
-  }
+  const validation = validateAgentTurnProviderRequestStart(state, requestId, stepSequence);
+  if (!validation.ok) return { ok: false, error: validation.error };
   return success({
     ...state,
     phase: "requestingProvider",
@@ -1096,7 +1113,21 @@ function transitionError(
   code: AgentTurnTransitionError["code"],
   message: string
 ): AgentTurnTransitionResult {
-  return { ok: false, error: { kind: "conflict", code, message, recoverable: false } };
+  return { ok: false, error: lifecycleConflict(code, message) };
+}
+
+function validationFailure(
+  code: AgentTurnTransitionError["code"],
+  message: string
+): AgentTurnProviderRequestStartValidation {
+  return { ok: false, error: lifecycleConflict(code, message) };
+}
+
+function lifecycleConflict(
+  code: AgentTurnTransitionError["code"],
+  message: string
+): AgentTurnTransitionError {
+  return { kind: "conflict", code, message, recoverable: false };
 }
 
 function aggregationError(

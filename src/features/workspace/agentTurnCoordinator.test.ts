@@ -407,7 +407,7 @@ describe("A+ AgentTurnCoordinator", () => {
       status: "ok",
       lifecycle: {
         phase: "terminal",
-        fault: { kind: "present", error: { kind: "conflict", code: "request_id_conflict" } },
+        fault: { kind: "none" },
         outcome: { kind: "failed" }
       }
     });
@@ -435,7 +435,7 @@ describe("A+ AgentTurnCoordinator", () => {
       lifecycle: {
         phase: "requestingProvider",
         serverExecutionStatus: "providerRunning",
-        fault: { kind: "present", error: { kind: "conflict" } }
+        fault: { kind: "none" }
       }
     });
     await expect(coordinator.retryActiveRequest()).resolves.toMatchObject({
@@ -455,6 +455,148 @@ describe("A+ AgentTurnCoordinator", () => {
     expect(host.executions).toHaveLength(2);
     expect(host.externalExecutionCount).toBe(1);
     expect(host.queryServerTurn).toHaveBeenCalledTimes(3);
+  });
+
+  it("continues cleanly when retry denial reconciles to awaitingNextRequest with local output", async () => {
+    const host = new FakeHost();
+    host.queueStarted({ status: "providerRunning", output: true, interrupted: true });
+    host.queueHandshake({
+      status: "denied",
+      code: "request_id_conflict",
+      error: "server contract changed",
+      recoverable: false
+    });
+    const coordinator = await initializedCoordinator(host, ["request-1"]);
+    await coordinator.startInitialRequest(providerRequest());
+    host.queryOverride = async () => snapshot({
+      status: "awaitingNextRequest",
+      latestRequestId: "request-1",
+      latestStepSequence: 1
+    });
+
+    await expect(coordinator.retryActiveRequest()).resolves.toMatchObject({
+      status: "ok",
+      lifecycle: {
+        phase: "continuing",
+        serverExecutionStatus: "awaitingNextRequest",
+        providerOutput: { kind: "received" },
+        fault: { kind: "none" }
+      }
+    });
+    expect(host.executions).toHaveLength(2);
+    expect(host.externalExecutionCount).toBe(1);
+  });
+
+  it("blocks unresolved Faults before a Continuation reaches the Host", async () => {
+    const host = new FakeHost();
+    const completion = createDeferred<AgentTurnCoordinatorTransportResult>();
+    host.queueHandshake({ status: "started", complete: () => completion.promise });
+    const coordinator = await initializedCoordinator(host, ["request-1", "request-2"]);
+    const first = coordinator.startInitialRequest(providerRequest());
+    await waitFor(() => host.executions.length === 1);
+    host.emit("request-1", {
+      type: "providerOutput",
+      requestId: "request-1",
+      stepSequence: 1,
+      outputText: "visible output",
+      producedUserVisibleEffect: true,
+      toolCallIds: ["call-a"]
+    });
+    host.emit("request-1", {
+      type: "externalError",
+      requestId: "request-1",
+      stepSequence: 1,
+      code: "provider_contract_invalid"
+    });
+    host.emit("request-1", {
+      type: "serverStatus",
+      requestId: "request-1",
+      stepSequence: 1,
+      status: "awaitingNextRequest"
+    });
+    completion.resolve({ status: "ended", finalFrameReceived: true });
+    await first;
+    expect(coordinator.getLifecycleSnapshot()).toMatchObject({
+      phase: "continuing",
+      serverExecutionStatus: "awaitingNextRequest",
+      fault: { kind: "present" }
+    });
+
+    await expect(coordinator.startContinuation(providerRequest("next"))).resolves.toMatchObject({
+      status: "denied",
+      code: "unresolvedFaultConflict"
+    });
+    expect(host.executeExternalRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves Recovery before interpreting a providerRunning Journal query", async () => {
+    const { coordinator, host } = await recoveringCoordinator(false);
+    host.queryOverride = async () => snapshot({
+      status: "providerRunning",
+      latestRequestId: "request-1",
+      latestStepSequence: 1
+    });
+    await expect(coordinator.recoverServerExecutionStatus()).resolves.toMatchObject({
+      status: "ok",
+      lifecycle: { phase: "requestingProvider", serverExecutionStatus: "providerRunning", fault: { kind: "none" } }
+    });
+    expect(host.externalExecutionCount).toBe(1);
+  });
+
+  it("resolves Recovery before accepting awaitingNextRequest with local output", async () => {
+    const { coordinator, host } = await recoveringCoordinator(true);
+    host.queryOverride = async () => snapshot({
+      status: "awaitingNextRequest",
+      latestRequestId: "request-1",
+      latestStepSequence: 1
+    });
+    await expect(coordinator.recoverServerExecutionStatus()).resolves.toMatchObject({
+      status: "ok",
+      lifecycle: {
+        phase: "continuing",
+        serverExecutionStatus: "awaitingNextRequest",
+        providerOutput: { kind: "received" },
+        fault: { kind: "none" }
+      }
+    });
+    expect(host.externalExecutionCount).toBe(1);
+  });
+
+  it("resolves Recovery before terminating an unavailable awaitingNextRequest payload", async () => {
+    const { coordinator, host } = await recoveringCoordinator(false);
+    host.queryOverride = async () => snapshot({
+      status: "awaitingNextRequest",
+      latestRequestId: "request-1",
+      latestStepSequence: 1
+    });
+    await expect(coordinator.recoverServerExecutionStatus()).resolves.toMatchObject({
+      status: "ok",
+      lifecycle: {
+        phase: "terminal",
+        outcome: { kind: "failed", reasons: ["providerContinuationPayloadUnavailable"] }
+      }
+    });
+    expect(host.externalExecutionCount).toBe(1);
+  });
+
+  it.each([
+    ["externallyCompleted", "completed"],
+    ["externallyCancelled", "partiallyCompleted"],
+    ["externallyFailed", "partiallyCompleted"]
+  ] as const)("resolves Recovery before finalizing %s", async (status, outcomeKind) => {
+    const { coordinator, host } = await recoveringCoordinator(true);
+    host.queryOverride = async () => snapshot({
+      status,
+      latestRequestId: "request-1",
+      latestStepSequence: 1,
+      terminalAt: "2026-07-29T01:03:00.000Z",
+      ...(status === "externallyFailed" ? { failureCode: "provider_failed" } : {})
+    });
+    await expect(coordinator.recoverServerExecutionStatus()).resolves.toMatchObject({
+      status: "ok",
+      lifecycle: { phase: "terminal", serverExecutionStatus: status, outcome: { kind: outcomeKind } }
+    });
+    expect(host.externalExecutionCount).toBe(1);
   });
 
   it("keeps Journal query failure recoverable and resumes by query without rerunning Provider", async () => {
@@ -701,6 +843,29 @@ async function initializedCoordinator(
   const initialized = await coordinator.initialize();
   if (initialized.status !== "ok") throw new Error(initialized.error);
   return coordinator;
+}
+
+async function recoveringCoordinator(
+  output: boolean
+): Promise<{ coordinator: AgentTurnCoordinator; host: FakeHost }> {
+  const host = new FakeHost();
+  host.queueStarted({ status: "providerRunning", output, interrupted: true });
+  host.queueHandshake({
+    status: "denied",
+    code: "journal_unavailable",
+    error: "temporary",
+    recoverable: true
+  });
+  const coordinator = await initializedCoordinator(host, ["request-1"]);
+  await coordinator.startInitialRequest(providerRequest());
+  const retry = await coordinator.retryActiveRequest();
+  expect(retry).toMatchObject({
+    status: "denied",
+    code: "journal_unavailable",
+    recoverable: true,
+    lifecycle: { phase: "recovering" }
+  });
+  return { coordinator, host };
 }
 
 function providerRequest(text = "hello"): APlusAgentProviderRequest {
