@@ -388,7 +388,56 @@ export async function runMorphoAgentTurn(
   async function closeAgentTurnLease(
     outcome: "success" | "cancelledBeforeExecution" | "failedBeforeExecution" | "partialSuccess" | "pendingConfirmation"
   ): Promise<void> {
-    await closeAgentTurnLeaseWithState({ state: turnState, agentTurnId, outcome, fetch });
+    const transcriptSnapshotToken = turnState.latestProviderRequestState?.transcriptSnapshotToken;
+    const hasCurrentAssistantSnapshot = Boolean(turnState.latestAssistantProviderOutputSnapshot);
+    const outcomeSnapshot = await closeAgentTurnLeaseWithState({
+      state: turnState,
+      agentTurnId,
+      outcome,
+      ...(transcriptSnapshotToken && hasCurrentAssistantSnapshot
+        ? {
+            snapshot: {
+              projectId: workspace.project.id,
+              userMessageId,
+              assistantMessageId,
+              transcriptSnapshotToken,
+              ...(outcome === "success" && turnState.latestAssistantProviderOutputSnapshot
+                ? { successProviderOutputSnapshot: turnState.latestAssistantProviderOutputSnapshot }
+                : {})
+            }
+          }
+        : {}),
+      fetch
+    });
+    if (!outcomeSnapshot || !turnState.latestProviderRequestState) {
+      return;
+    }
+    turnState.latestProviderRequestState = {
+      ...turnState.latestProviderRequestState,
+      transcriptSnapshotToken: outcomeSnapshot.transcriptSnapshotToken,
+      transcriptManifestHash: outcomeSnapshot.transcriptManifestHash
+    };
+    commitWorkspaceNow((current) => ({
+      workspace: {
+        ...current,
+        ai: {
+          ...current.ai,
+          latestProviderRequestState: turnState.latestProviderRequestState,
+          messages: current.ai.messages.map((message) => {
+            if (message.id !== assistantMessageId) {
+              return message;
+            }
+            const { providerOutputSnapshot: _intermediateProviderSnapshot, ...withoutIntermediate } = message;
+            return {
+              ...withoutIntermediate,
+              ...(outcome === "success" ? {} : { body: outcomeSnapshot.outcomeItem.text }),
+              agentTurnOutcomeItem: outcomeSnapshot.outcomeItem
+            };
+          })
+        }
+      },
+      value: undefined
+    }));
   }
 
   const initialAgentTrace = {
@@ -540,6 +589,7 @@ export async function runMorphoAgentTurn(
             turnState.latestProviderTranscriptManifestHash ??
             turnState.latestProviderRequestState?.transcriptManifestHash,
           previousTranscriptSnapshotToken: turnState.latestProviderRequestState?.transcriptSnapshotToken,
+          freshUserMessageId: userMessageId,
           onTranscriptSnapshotRefreshed: (token, manifestHash) => {
             if (!turnState.latestProviderRequestState) {
               return;

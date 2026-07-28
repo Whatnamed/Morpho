@@ -4,6 +4,7 @@ import { createBlankWorkspace } from "./workspace";
 import { createProviderInputSnapshot } from "./providerInputSnapshot";
 import { MORPHO_AGENT_CONTEXT_POLICY } from "./agentContextPolicy";
 import { estimateProviderInputTimelineBudget } from "@/shared/providerInputBudget";
+import { createAgentTurnOutcomeItem } from "@/shared/agentCompactionProtocol";
 import {
   applyConversationSummaryRevision,
   buildConversationSummarySourceText,
@@ -67,7 +68,13 @@ describe("continuous conversation compaction", () => {
       agentTurnId: "turn-partial",
       pairedMessageId: "partial-u",
       agentTurnOutcome: "partialSuccess" as const,
-      agentTurnOutcomeSummary: "已完成来源搜索；项目写入失败，仍需重试。"
+      agentTurnOutcomeSummary: "已完成来源搜索；项目写入失败，仍需重试。",
+      agentTurnOutcomeItem: createAgentTurnOutcomeItem({
+        agentTurnId: "turn-partial",
+        userMessageId: "partial-u",
+        assistantMessageId: "partial-a",
+        outcome: "partialSuccess"
+      })
     };
 
     const usable = getUsableConversationMessages([
@@ -78,7 +85,7 @@ describe("continuous conversation compaction", () => {
     ]);
 
     expect(usable.map((entry) => entry.id)).toEqual(["partial-u", "partial-a"]);
-    expect(usable[1]?.body).toBe("已完成来源搜索；项目写入失败，仍需重试。");
+    expect(usable[1]?.body).toBe(partialAssistant.agentTurnOutcomeItem.text);
   });
 
   it("estimates historical image snapshots from stable references rather than pixel reserves", () => {

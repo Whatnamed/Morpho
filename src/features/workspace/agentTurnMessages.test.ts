@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { createInitialWorkspace } from "@/domain/morpho/workspace";
 import { getUsableConversationMessages } from "@/domain/morpho/conversationCompaction";
+import { createProviderOutputSnapshot } from "@/domain/morpho/providerInputSnapshot";
+import { createAgentTurnOutcomeItem } from "@/shared/agentCompactionProtocol";
 import {
   appendAgentTurnMessages,
   createAgentTurnWorkLedger,
@@ -156,7 +158,16 @@ describe("agent turn messages", () => {
         parts: []
       }
     });
-    const finalized = finalizeAgentTurn(workspace, {
+    const withIntermediateProviderText = {
+      ...workspace,
+      ai: {
+        ...workspace.ai,
+        messages: workspace.ai.messages.map((message) => message.role === "assistant"
+          ? { ...message, providerOutputSnapshot: createProviderOutputSnapshot("工具执行前的 Provider 原文") }
+          : message)
+      }
+    };
+    const finalized = finalizeAgentTurn(withIntermediateProviderText, {
       agentTurnId: `turn-${outcome}`,
       userMessageId: `user-${outcome}`,
       assistantMessageId: `assistant-${outcome}`,
@@ -221,11 +232,29 @@ describe("agent turn messages", () => {
       completedAt: "2026-07-25T00:01:00.000Z"
     });
 
+    expect(finalized.ai.messages.at(-1)?.providerOutputSnapshot).toBeUndefined();
     expect(getUsableConversationMessages(finalized.ai.messages)
+      .filter((message) => message.agentTurnId === `turn-${outcome}`)).toEqual([]);
+    const outcomeItem = createAgentTurnOutcomeItem({
+      agentTurnId: `turn-${outcome}`,
+      userMessageId: `user-${outcome}`,
+      assistantMessageId: `assistant-${outcome}`,
+      outcome
+    });
+    const proven = {
+      ...finalized,
+      ai: {
+        ...finalized.ai,
+        messages: finalized.ai.messages.map((message) => message.id === `assistant-${outcome}`
+          ? { ...message, agentTurnOutcomeItem: outcomeItem }
+          : message)
+      }
+    };
+    expect(getUsableConversationMessages(proven.ai.messages)
       .filter((message) => message.agentTurnId === `turn-${outcome}`)
       .map((message) => message.body)).toEqual([
       "处理海洋浮标资料",
-      summary
+      outcomeItem.text
     ]);
   });
 });

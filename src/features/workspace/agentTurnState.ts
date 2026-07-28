@@ -2,6 +2,7 @@ import type { ConversationMessageForContext } from "@/domain/morpho/conversation
 import type {
   ConversationSummaryRevision,
   MorphoWorkspace,
+  ProviderOutputSnapshot,
   ProjectMemoryKey,
   StageRecordKey
 } from "@/domain/morpho/types";
@@ -24,6 +25,7 @@ export type AgentTurnState = {
   webSearchLeaseStateRecoveryUsed: boolean;
   workspaceAtAgentStart: MorphoWorkspace;
   latestProviderRequestState?: ProviderRequestBoundaryState;
+  latestAssistantProviderOutputSnapshot?: ProviderOutputSnapshot;
   canonicalRuntimeItem?: AgentCanonicalRuntimeItem;
 };
 

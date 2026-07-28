@@ -471,6 +471,7 @@ export async function requestAgentTurnProvider(
           turnState.latestProviderTranscriptManifestHash = event.transcriptManifestHash;
         }
         if (event.type === "turn-complete" && event.assistantProviderOutputSnapshot) {
+          turnState.latestAssistantProviderOutputSnapshot = event.assistantProviderOutputSnapshot;
           input.commitWorkspace((current) => {
             const assistant = current.ai.messages.find((message) => message.id === input.assistantMessageId);
             return {

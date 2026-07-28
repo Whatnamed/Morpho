@@ -206,8 +206,12 @@ export function finalizeAgentTurn(
               ...(input.providerRequestState ? { providerRequestState: input.providerRequestState } : {})
             }
           : undefined;
+        const { providerOutputSnapshot: intermediateProviderSnapshot, ...assistantMessage } = message;
         return {
-          ...message,
+          ...assistantMessage,
+          ...(input.outcome === "success" && intermediateProviderSnapshot
+            ? { providerOutputSnapshot: intermediateProviderSnapshot }
+            : {}),
           body: input.assistantBody,
           status: input.assistantStatus,
           agentTurnId: input.agentTurnId,

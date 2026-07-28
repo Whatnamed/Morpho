@@ -883,6 +883,7 @@ export function buildAgentCheckpointCompactionInput(input: {
     createdAt?: string;
     providerInputSnapshot?: ProviderInputSnapshot;
     providerOutputSnapshot?: ProviderOutputSnapshot;
+    agentTurnOutcomeItem?: import("@/shared/agentCompactionProtocol").AgentTurnOutcomeItem;
     taskStrategy?: AgentTaskStrategyKind;
   }>;
   sourceStartMessageId: string;
@@ -933,10 +934,11 @@ export function buildConversationSummarySourceProviderInput(
       body: string;
       providerInputSnapshot?: ProviderInputSnapshot;
       providerOutputSnapshot?: ProviderOutputSnapshot;
+      agentTurnOutcomeItem?: import("@/shared/agentCompactionProtocol").AgentTurnOutcomeItem;
     },
-    "role" | "body" | "providerInputSnapshot" | "providerOutputSnapshot"
+    "role" | "body" | "providerInputSnapshot" | "providerOutputSnapshot" | "agentTurnOutcomeItem"
   >
-): ResponseMessageInput[] {
+): unknown[] {
   if (message.role === "user" && message.providerInputSnapshot) {
     const content = providerInputSnapshotDurableContent(message.providerInputSnapshot);
     if (content.length > 0) {
@@ -945,6 +947,9 @@ export function buildConversationSummarySourceProviderInput(
         content
       }];
     }
+  }
+  if (message.role === "assistant" && message.agentTurnOutcomeItem) {
+    return [message.agentTurnOutcomeItem];
   }
   if (message.role === "assistant" && message.providerOutputSnapshot) {
     return [{
@@ -968,9 +973,10 @@ export function buildConversationSummarySourceProviderItems(
     body: string;
     providerInputSnapshot?: ProviderInputSnapshot;
     providerOutputSnapshot?: ProviderOutputSnapshot;
+    agentTurnOutcomeItem?: import("@/shared/agentCompactionProtocol").AgentTurnOutcomeItem;
     taskStrategy?: AgentTaskStrategyKind;
   }
-): ResponseMessageInput[] {
+): unknown[] {
   const strategyItem = message.role === "user" && message.taskStrategy && message.id
     ? [canonicalAgentStrategyMessage(createAgentStrategyMarker({
         strategy: message.taskStrategy,

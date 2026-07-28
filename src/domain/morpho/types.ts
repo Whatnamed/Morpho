@@ -907,6 +907,7 @@ export type AiMessage = {
   pairedMessageId?: string;
   agentTurnOutcome?: AgentTurnOutcome;
   agentTurnOutcomeSummary?: string;
+  agentTurnOutcomeItem?: import("@/shared/agentCompactionProtocol").AgentTurnOutcomeItem;
   error?: string;
 };
 

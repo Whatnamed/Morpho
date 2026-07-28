@@ -26,6 +26,7 @@ import {
   normalizeProviderOutputSnapshot
 } from "./providerInputSnapshot";
 import { isValidCanonicalAgentRuntimeItem } from "@/shared/agentRuntimeItem";
+import { parseAgentTurnOutcomeItem } from "@/shared/agentCompactionProtocol";
 import type { AgentCacheItemManifest } from "@/shared/agentStreamProtocol";
 import initialCaseStudyWorkspaceFixture from "./caseStudy/currentCaseWorkspace.generated.json";
 import legacyNightrailTestFixture from "./caseStudy/legacyNightrailPristine.fixture.json";
@@ -2409,10 +2410,13 @@ function normalizeAiMessage(message: AiMessage): AiMessage {
   const normalized = normalizeAiMessageContextVisibility(message);
   const providerInputSnapshot = normalizeProviderInputSnapshot(message.providerInputSnapshot);
   const providerOutputSnapshot = normalizeProviderOutputSnapshot(message.providerOutputSnapshot);
+  const agentTurnOutcomeItem = parseAgentTurnOutcomeItem(message.agentTurnOutcomeItem);
+  const { agentTurnOutcomeItem: _unverifiedOutcomeItem, ...withoutUnverifiedOutcomeItem } = normalized;
   const snapshotNormalized = {
-    ...normalized,
+    ...withoutUnverifiedOutcomeItem,
     ...(providerInputSnapshot ? { providerInputSnapshot } : {}),
-    ...(providerOutputSnapshot ? { providerOutputSnapshot } : {})
+    ...(providerOutputSnapshot ? { providerOutputSnapshot } : {}),
+    ...(agentTurnOutcomeItem ? { agentTurnOutcomeItem } : {})
   };
   if (!snapshotNormalized.agentTrace) {
     return snapshotNormalized;

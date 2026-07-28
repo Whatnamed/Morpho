@@ -38,6 +38,7 @@ export type ConversationMessageForContext = {
   laneKey?: string;
   providerInputSnapshot?: ProviderInputSnapshot;
   providerOutputSnapshot?: ProviderOutputSnapshot;
+  agentTurnOutcomeItem?: import("@/shared/agentCompactionProtocol").AgentTurnOutcomeItem;
   taskStrategy?: AgentTaskStrategyKind;
 };
 
@@ -457,7 +458,9 @@ export function getUsableConversationMessages(messages: readonly AiMessage[]): A
       .filter((message) =>
         message.agentTurnId &&
         (message.agentTurnOutcome === "cancelledBeforeExecution" ||
-          message.agentTurnOutcome === "failedBeforeExecution")
+          message.agentTurnOutcome === "failedBeforeExecution" ||
+          ((message.agentTurnOutcome === "partialSuccess" || message.agentTurnOutcome === "pendingConfirmation") &&
+            message.role === "assistant" && !message.agentTurnOutcomeItem))
       )
       .map((message) => message.agentTurnId as string)
   );
@@ -478,7 +481,7 @@ export function getUsableConversationMessages(messages: readonly AiMessage[]): A
     ) {
       return {
         ...message,
-        body: message.agentTurnOutcomeSummary?.trim() ||
+        body: message.agentTurnOutcomeItem?.text || message.agentTurnOutcomeSummary?.trim() ||
           (message.agentTurnOutcome === "partialSuccess"
             ? "本轮仅部分完成；已执行结果保留，未完成部分需要后续确认。"
             : "本轮停在待确认状态，尚未把待确认动作视为已完成。")
@@ -489,7 +492,8 @@ export function getUsableConversationMessages(messages: readonly AiMessage[]): A
 }
 
 export function estimateConversationMessageTokens(
-  messages: readonly Pick<ConversationMessageForContext, "role" | "body" | "providerInputSnapshot" | "providerOutputSnapshot">[]
+  messages: readonly Pick<ConversationMessageForContext,
+    "role" | "body" | "providerInputSnapshot" | "providerOutputSnapshot" | "agentTurnOutcomeItem">[]
 ): number {
   return messages.reduce((total, message) => {
     if (message.role === "user" && message.providerInputSnapshot) {
@@ -497,8 +501,8 @@ export function estimateConversationMessageTokens(
         .reduce((tokens, text) => tokens + estimateTextTokens(text) + 8, 0);
     }
     return total + estimateTextTokens(
-      message.role === "assistant" && message.providerOutputSnapshot
-        ? message.providerOutputSnapshot.text
+      message.role === "assistant" && (message.agentTurnOutcomeItem || message.providerOutputSnapshot)
+        ? message.agentTurnOutcomeItem?.text ?? message.providerOutputSnapshot!.text
         : message.body
     ) + 8;
   }, 0);
@@ -509,11 +513,12 @@ export function estimateConversationMessageTokens(
  * while keeping attachments as stable references rather than replaying pixels.
  */
 export function buildConversationSummarySourceText(
-  message: Pick<ConversationMessageForContext, "role" | "body" | "providerInputSnapshot" | "providerOutputSnapshot">
+  message: Pick<ConversationMessageForContext,
+    "role" | "body" | "providerInputSnapshot" | "providerOutputSnapshot" | "agentTurnOutcomeItem">
 ): string {
   if (message.role === "assistant") {
     return `助手最终回复：\n${sanitizeSummarySourceText(
-      message.providerOutputSnapshot?.text ?? message.body,
+      message.agentTurnOutcomeItem?.text ?? message.providerOutputSnapshot?.text ?? message.body,
       SUMMARY_TEXT_PART_CHARS
     )}`;
   }
@@ -619,7 +624,8 @@ function toContextMessage(message: AiMessage): ConversationMessageForContext {
     laneKey: message.conversationLaneKey,
     ...(message.taskStrategy ? { taskStrategy: message.taskStrategy } : {}),
     ...(message.providerInputSnapshot ? { providerInputSnapshot: message.providerInputSnapshot } : {}),
-    ...(message.providerOutputSnapshot ? { providerOutputSnapshot: message.providerOutputSnapshot } : {})
+    ...(message.providerOutputSnapshot ? { providerOutputSnapshot: message.providerOutputSnapshot } : {}),
+    ...(message.agentTurnOutcomeItem ? { agentTurnOutcomeItem: message.agentTurnOutcomeItem } : {})
   };
 }
 
