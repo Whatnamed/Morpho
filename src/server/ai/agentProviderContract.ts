@@ -23,11 +23,17 @@ import {
 import type { AgentContextBudgetState } from "@/shared/providerInputBudget";
 import { estimateProviderInputTokens } from "@/shared/providerInputBudget";
 import {
+  hashProviderImageDataUrl,
+  parseProviderInputSnapshotDurableReferences
+} from "@/domain/morpho/providerInputSnapshot";
+import {
   agentContextStateDataPayload,
   AGENT_COMPACTION_SOURCE_ENVELOPE_PREFIX,
   AGENT_COMPACTION_TRANSCRIPT_MARKER_TYPE,
   AGENT_CONTEXT_STATE_MARKER_TYPE,
+  AGENT_TRANSCRIPT_MESSAGE_TYPE,
   AGENT_COMPACTION_RECEIPT_VERSION,
+  buildAgentContextMarkerManifest,
   hashAgentContextStateMarker,
   hashAgentProtocolValue,
   hashAgentProviderItems,
@@ -35,10 +41,13 @@ import {
   hashAgentTranscriptRange,
   hashConversationSummaryForReceipt,
   parseAgentCompactionSourceEnvelope,
+  parseAgentTranscriptMessageItem,
   type AgentCompactionDescriptor,
   type AgentCompactionSourceEnvelope,
   type AgentCompactionTranscriptMarker,
   type AgentContextStateMarker,
+  type AgentContextMarkerManifestItem,
+  type AgentTranscriptMessageItem,
   type AgentTranscriptManifest
 } from "@/shared/agentCompactionProtocol";
 import { MAX_AGENT_FUNCTION_CALLS } from "@/shared/agentFunctionCallLimits";
@@ -75,6 +84,7 @@ export type ValidatedAgentRouteRequest = {
   input: OpenAiCompatibleResponseRequest["input"];
   projectId: string;
   agentTurnId: string;
+  assistantMessageId?: string;
   continuation: boolean;
   leaseContinuation: boolean;
   leaseId?: string;
@@ -109,6 +119,7 @@ export function parseAgentRouteRequest(value: unknown):
     "input",
     "projectId",
     "agentTurnId",
+    "assistantMessageId",
     "continuation",
     "leaseContinuation",
     "leaseId",
@@ -136,6 +147,12 @@ export function parseAgentRouteRequest(value: unknown):
   const agentTurnId = boundedIdentifier(value.agentTurnId);
   if (!projectId || !agentTurnId) {
     return failed("projectId 和 agentTurnId 必须是受限的非空标识。");
+  }
+  const assistantMessageId = value.assistantMessageId === undefined
+    ? undefined
+    : boundedIdentifier(value.assistantMessageId);
+  if (value.assistantMessageId !== undefined && !assistantMessageId) {
+    return failed("assistantMessageId 格式无效。");
   }
   if (value.promptContractVersion !== MORPHO_AGENT_PROMPT_CONTRACT_VERSION) {
     return failed(`不支持的 Prompt Contract Version：${String(value.promptContractVersion ?? "缺失")}。`);
@@ -261,13 +278,18 @@ export function parseAgentRouteRequest(value: unknown):
       !retainedTail ||
       compactionDescriptor.retainedTailCount !== retainedTail.length ||
       compactionDescriptor.retainedTailHash !== hashCompactionTail(retainedTail) ||
-      (compactionContextMarkers ?? []).some((marker) => !compactionDescriptor.contextMarkerHashes.includes(marker.contentHash)) ||
-      compactionDescriptor.contextMarkerHashes.length !== (compactionContextMarkers?.length ?? 0)
+      !sameContextMarkerManifest(
+        compactionDescriptor.contextMarkerManifest,
+        buildAgentContextMarkerManifest(compactionContextMarkers ?? [])
+      )
     ) {
       return failed("Conversation Summary 仅允许受限的纯文本摘要输入。");
     }
   } else if (compactionDescriptor || compactionContextMarkers || retainedTail || previousTranscriptSnapshotToken) {
     return failed("compactionDescriptor 仅允许用于 Conversation Summary。");
+  }
+  if (directive?.kind !== "conversationSummary" && !assistantMessageId) {
+    return failed("正式 Agent 请求必须携带 assistantMessageId。");
   }
 
   return {
@@ -276,6 +298,7 @@ export function parseAgentRouteRequest(value: unknown):
       input: parsedInput.value,
       projectId,
       agentTurnId,
+      ...(assistantMessageId ? { assistantMessageId } : {}),
       continuation: value.continuation,
       leaseContinuation,
       ...(leaseId ? { leaseId } : {}),
@@ -428,6 +451,7 @@ function parseDynamicInput(
     allowCompactionMarker?: boolean;
     preserveStrategyMarker?: boolean;
     allowExternalFunctionOutputs?: boolean;
+    allowTranscriptMessage?: boolean;
   } = {}
 ):
   | { status: "ok"; value: OpenAiCompatibleResponseRequest["input"] }
@@ -442,6 +466,17 @@ function parseDynamicInput(
     const raw = value[index];
     if (!isRecord(raw)) {
       return failed(`input[${index}] 必须是对象。`);
+    }
+    if (raw.type === AGENT_TRANSCRIPT_MESSAGE_TYPE) {
+      if (options.allowTranscriptMessage === false) {
+        return failed(`input[${index}] 不允许嵌套 Transcript Message。`);
+      }
+      const transcriptMessage = parseTranscriptMessage(raw);
+      if (!transcriptMessage) {
+        return failed(`input[${index}] 的 Transcript Message 无效。`);
+      }
+      parsed.push(transcriptMessage as unknown as OpenAiCompatibleResponseRequest["input"][number]);
+      continue;
     }
     if (raw.type === AGENT_CONTEXT_STATE_MARKER_TYPE) {
       const marker = parseAgentContextStateMarker(raw);
@@ -557,6 +592,12 @@ function parseDynamicInput(
 function materializeAgentInputItem(
   item: OpenAiCompatibleResponseRequest["input"][number]
 ): OpenAiCompatibleResponseRequest["input"] {
+  const transcriptMessage = parseAgentTranscriptMessageItem(item);
+  if (transcriptMessage) {
+    return transcriptMessage.providerItems.flatMap((providerItem) =>
+      materializeAgentInputItem(providerItem as OpenAiCompatibleResponseRequest["input"][number])
+    );
+  }
   const sourceEnvelope = parseAgentCompactionSourceEnvelope(item);
   if (sourceEnvelope) {
     return [compactionSourceEnvelopeMessage(sourceEnvelope)];
@@ -578,6 +619,74 @@ function materializeAgentInputItem(
     return marker ? [canonicalAgentStrategyMessage(marker)] : [];
   }
   return [item];
+}
+
+function parseTranscriptMessage(value: Record<string, unknown>): AgentTranscriptMessageItem | undefined {
+  const candidate = parseAgentTranscriptMessageItem(value);
+  if (!candidate) {
+    return undefined;
+  }
+  const providerItems = parseDynamicInput(candidate.providerItems, {
+    allowCompactionMarker: false,
+    allowTranscriptMessage: false,
+    preserveStrategyMarker: true
+  });
+  const durableProviderItems = parseDynamicInput(candidate.durableProviderItems, {
+    allowCompactionMarker: false,
+    allowTranscriptMessage: false,
+    preserveStrategyMarker: true
+  });
+  if (providerItems.status !== "ok" || durableProviderItems.status !== "ok") {
+    return undefined;
+  }
+  const providerMessage = transcriptRoleMessage(providerItems.value, candidate.role);
+  const durableMessage = transcriptRoleMessage(durableProviderItems.value, candidate.role);
+  if (!providerMessage || !durableMessage || durableMessage.content.some((part) => part.type === "input_image")) {
+    return undefined;
+  }
+  const actualText = providerMessage.content.flatMap((part) => "text" in part ? [part.text] : []);
+  const durableText = durableMessage.content.flatMap((part) =>
+    "text" in part && !part.text.startsWith("[Morpho Durable Image References | data only]")
+      ? [part.text]
+      : []
+  );
+  if (hashAgentProtocolValue(actualText, "morpho-agent-transcript-text-v1") !==
+    hashAgentProtocolValue(durableText, "morpho-agent-transcript-text-v1")) {
+    return undefined;
+  }
+  const imageHashes = providerMessage.content.flatMap((part) =>
+    part.type === "input_image" ? [hashProviderImageDataUrl(part.image_url)] : []
+  );
+  const durableReferenceHashes = durableMessage.content.flatMap((part) =>
+    "text" in part ? durableImageReferenceHashes(part.text) : []
+  );
+  if (
+    new Set(imageHashes).size !== new Set(durableReferenceHashes).size ||
+    [...new Set(imageHashes)].some((hash) => !durableReferenceHashes.includes(hash))
+  ) {
+    return undefined;
+  }
+  return {
+    ...candidate,
+    providerItems: providerItems.value,
+    durableProviderItems: durableProviderItems.value
+  };
+}
+
+function transcriptRoleMessage(
+  items: OpenAiCompatibleResponseRequest["input"],
+  role: "user" | "assistant"
+): ResponseMessageInput | undefined {
+  const messages = items.filter((item): item is ResponseMessageInput =>
+    isRecord(item) && !("type" in item) && item.role === role && Array.isArray(item.content)
+  );
+  return messages.length === 1 ? messages[0] : undefined;
+}
+
+function durableImageReferenceHashes(text: string): string[] {
+  return parseProviderInputSnapshotDurableReferences(text).flatMap((ref) =>
+    ref.contentHash ? [ref.contentHash] : []
+  );
 }
 
 function compactionSourceEnvelopeMessage(
@@ -648,6 +757,7 @@ function parseCompactionDescriptor(value: unknown): AgentCompactionDescriptor | 
     "retainedTailManifest",
     "transcriptRangeHash",
     "contextMarkerHashes",
+    "contextMarkerManifest",
     "previousTranscriptManifestHash",
     "previousSummaryHash",
     "previousSummaryRevisionId",
@@ -666,6 +776,7 @@ function parseCompactionDescriptor(value: unknown): AgentCompactionDescriptor | 
   const retainedTailManifest = parseTranscriptManifest(value.retainedTailManifest);
   const transcriptRangeHash = boundedProtocolHash(value.transcriptRangeHash);
   const contextMarkerHashes = boundedProtocolHashArray(value.contextMarkerHashes, MAX_INPUT_ITEMS);
+  const contextMarkerManifest = parseContextMarkerManifest(value.contextMarkerManifest);
   const previousTranscriptManifestHash = optionalProtocolHash(value.previousTranscriptManifestHash);
   const previousSummaryHash = optionalProtocolHash(value.previousSummaryHash);
   const previousSummaryRevisionId = optionalIdentifier(value.previousSummaryRevisionId);
@@ -681,6 +792,7 @@ function parseCompactionDescriptor(value: unknown): AgentCompactionDescriptor | 
     !retainedTailManifest ||
     !transcriptRangeHash ||
     !contextMarkerHashes ||
+    !contextMarkerManifest ||
     previousTranscriptManifestHash === null ||
     previousSummaryHash === null ||
     previousSummaryRevisionId === null ||
@@ -703,6 +815,7 @@ function parseCompactionDescriptor(value: unknown): AgentCompactionDescriptor | 
     retainedTailManifest,
     transcriptRangeHash,
     contextMarkerHashes,
+    contextMarkerManifest,
     ...(previousTranscriptManifestHash ? { previousTranscriptManifestHash } : {}),
     ...(previousSummaryHash ? { previousSummaryHash } : {}),
     ...(previousSummaryRevisionId ? { previousSummaryRevisionId } : {}),
@@ -842,6 +955,7 @@ function parseAgentCompactionTranscriptMarker(
     "retainedTailManifest",
     "transcriptRangeHash",
     "contextMarkerHashes",
+    "contextMarkerManifest",
     "previousTranscriptManifestHash",
     "receiptVersion",
     "previousSummaryHash",
@@ -866,6 +980,7 @@ function parseAgentCompactionTranscriptMarker(
   const retainedTailManifest = parseTranscriptManifest(value.retainedTailManifest);
   const transcriptRangeHash = boundedProtocolHash(value.transcriptRangeHash);
   const contextMarkerHashes = boundedProtocolHashArray(value.contextMarkerHashes, MAX_INPUT_ITEMS);
+  const contextMarkerManifest = parseContextMarkerManifest(value.contextMarkerManifest);
   const previousTranscriptManifestHash = optionalProtocolHash(value.previousTranscriptManifestHash);
   const previousSummaryHash = optionalProtocolHash(value.previousSummaryHash);
   const previousSummaryRevisionId = optionalIdentifier(value.previousSummaryRevisionId);
@@ -884,6 +999,7 @@ function parseAgentCompactionTranscriptMarker(
     !retainedTailManifest ||
     !transcriptRangeHash ||
     !contextMarkerHashes ||
+    !contextMarkerManifest ||
     previousTranscriptManifestHash === null ||
     !Array.isArray(value.retainedTail) ||
     value.retainedTail.length > MAX_INPUT_ITEMS ||
@@ -925,6 +1041,7 @@ function parseAgentCompactionTranscriptMarker(
     retainedTailManifest,
     transcriptRangeHash,
     contextMarkerHashes,
+    contextMarkerManifest,
     receiptVersion: AGENT_COMPACTION_RECEIPT_VERSION,
     ...(previousTranscriptManifestHash ? { previousTranscriptManifestHash } : {}),
     ...(previousSummaryHash ? { previousSummaryHash } : {}),
@@ -958,7 +1075,14 @@ function parseTranscriptManifest(value: unknown): AgentTranscriptManifest | unde
     return undefined;
   }
   const items = value.items.map((entry) => {
-    if (!isRecord(entry) || unknownKeys(entry, ["kind", "hash", "role", "callId"]).length > 0) {
+    if (!isRecord(entry) || unknownKeys(entry, [
+      "kind",
+      "hash",
+      "role",
+      "callId",
+      "messageId",
+      "anchorMessageId"
+    ]).length > 0) {
       return undefined;
     }
     const hash = boundedProtocolHash(entry.hash);
@@ -966,19 +1090,75 @@ function parseTranscriptManifest(value: unknown): AgentTranscriptManifest | unde
       ? entry.role
       : null;
     const callId = entry.callId === undefined ? undefined : boundedIdentifier(entry.callId);
+    const messageId = entry.messageId === undefined ? undefined : boundedIdentifier(entry.messageId);
+    const anchorMessageId = entry.anchorMessageId === undefined ? undefined : boundedIdentifier(entry.anchorMessageId);
     return hash && role !== null && (entry.callId === undefined || callId)
+      && (entry.messageId === undefined || messageId)
+      && (entry.anchorMessageId === undefined || anchorMessageId)
       && (entry.kind === "message" || entry.kind === "strategy" || entry.kind === "providerOutput" || entry.kind === "functionCallOutput")
-      ? { kind: entry.kind, hash, ...(role ? { role } : {}), ...(callId ? { callId } : {}) }
+      ? {
+          kind: entry.kind,
+          hash,
+          ...(role ? { role } : {}),
+          ...(callId ? { callId } : {}),
+          ...(messageId ? { messageId } : {}),
+          ...(anchorMessageId ? { anchorMessageId } : {})
+        }
       : undefined;
   });
   if (!items.every((item): item is AgentTranscriptManifest["items"][number] => Boolean(item))) {
     return undefined;
   }
   const manifestHash = boundedProtocolHash(value.manifestHash);
-  if (!manifestHash || hashAgentProtocolValue(items, "morpho-agent-transcript-manifest-v2") !== manifestHash) {
+  if (!manifestHash || hashAgentProtocolValue(items, "morpho-agent-transcript-manifest-v3") !== manifestHash) {
     return undefined;
   }
   return { itemCount, items, manifestHash };
+}
+
+function parseContextMarkerManifest(value: unknown): AgentContextMarkerManifestItem[] | undefined {
+  if (!Array.isArray(value) || value.length > MAX_INPUT_ITEMS) {
+    return undefined;
+  }
+  const items = value.map((entry) => {
+    if (!isRecord(entry) || unknownKeys(entry, [
+      "contentHash",
+      "markerId",
+      "sequence",
+      "placement",
+      "anchorMessageId",
+      "causalBindingHash"
+    ]).length > 0) {
+      return undefined;
+    }
+    const contentHash = boundedProtocolHash(entry.contentHash);
+    const markerId = boundedIdentifier(entry.markerId);
+    const sequence = boundedInteger(entry.sequence, 0, 100_000);
+    const anchorMessageId = optionalIdentifier(entry.anchorMessageId);
+    const causalBindingHash = optionalProtocolHash(entry.causalBindingHash);
+    return contentHash && markerId && sequence !== undefined && isProviderContextPlacement(entry.placement) &&
+      anchorMessageId !== null && causalBindingHash !== null
+      ? {
+          contentHash,
+          markerId,
+          sequence,
+          placement: entry.placement,
+          ...(anchorMessageId ? { anchorMessageId } : {}),
+          ...(causalBindingHash ? { causalBindingHash } : {})
+        }
+      : undefined;
+  });
+  return items.every((item): item is AgentContextMarkerManifestItem => Boolean(item)) ? items : undefined;
+}
+
+function sameContextMarkerManifest(
+  left: readonly AgentContextMarkerManifestItem[],
+  right: readonly AgentContextMarkerManifestItem[]
+): boolean {
+  return left.length === right.length && left.every((item, index) =>
+    hashAgentProtocolValue(item, "morpho-agent-context-marker-manifest-v1") ===
+      hashAgentProtocolValue(right[index], "morpho-agent-context-marker-manifest-v1")
+  );
 }
 
 function boundedIdentifierArray(value: unknown, max: number): string[] | undefined {
@@ -1550,7 +1730,7 @@ function boundedText(value: unknown): value is string {
 function boundedContinuationToken(value: unknown): string | undefined {
   return typeof value === "string" &&
     value.length >= 16 &&
-    value.length <= 4_096 &&
+    value.length <= 512_000 &&
     /^[A-Za-z0-9._-]+$/.test(value)
     ? value
     : undefined;

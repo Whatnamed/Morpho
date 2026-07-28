@@ -10,6 +10,15 @@ import type {
   AgentStreamResult
 } from "@/shared/agentStreamProtocol";
 import { createAgentContextBudgetState } from "@/shared/providerInputBudget";
+import {
+  bindAgentContextStateMarker,
+  buildAgentCompactionDescriptor,
+  buildConversationSummaryRevisionId,
+  createAgentContextStateMarker,
+  hashAgentProtocolValue,
+  hashConversationSummaryForReceipt,
+  type AgentCompactionReceipt
+} from "@/shared/agentCompactionProtocol";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
 import { agentStreamScript, textAnswerScript, turnErrorScript } from "./agentStreamScripts";
 import { createRequiredAgentReadState } from "./agentTaskStrategy";
@@ -20,6 +29,7 @@ import {
   buildAgentCompactionContextMarkers,
   buildAgentCompactionFreshContextFrames,
   classifyCompactionProgress,
+  rebuildAgentPostCompactionTranscript,
   type AgentTurnProviderRequestAdapterInput
 } from "./agentTurnProviderRequest";
 import { createAgentTurnRuntimeState, createAgentTurnState } from "./agentTurnState";
@@ -204,6 +214,79 @@ describe("Agent turn provider request adapter", () => {
     expect(buildAgentCompactionFreshContextFrames(withFrame, options)).toEqual([freshFrame]);
   });
 
+  it("places a tool-causal state marker after the compacted terminal output", () => {
+    const workspace = createTestWorkspace();
+    const frame = createProviderContextFrame({
+      projectId: workspace.project.id,
+      kind: "projectState",
+      createdAt: "2026-07-28T02:00:00.000Z",
+      sequence: 7,
+      placement: "afterAssistant",
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
+      projectMemoryRevisionIds: ["memory-after-tool"],
+      stageRecordRevisionIds: [],
+      directionRevisionIds: [],
+      selectedObjectIds: [],
+      relatedObjectIds: [],
+      renderedText: "工具完成后的海洋浮标状态",
+      sourceRefs: [],
+      reason: "tool causal order"
+    });
+    const marker = bindAgentContextStateMarker({
+      marker: createAgentContextStateMarker(frame),
+      outputHash: hashAgentProtocolValue("provider-call"),
+      callIds: ["call-buoy-write"],
+      terminalOutputHash: hashAgentProtocolValue("terminal-output")
+    });
+    const tail = [{
+      type: "function_call_output",
+      call_id: "call-buoy-write",
+      output: "{\"status\":\"executed\"}"
+    }];
+    const descriptor = buildAgentCompactionDescriptor({
+      sourceStartMessageId: "message-1",
+      sourceEndMessageId: "message-2",
+      sourceMessageCount: 2,
+      sourceMessageIdsHash: hashAgentProtocolValue(["message-1", "message-2"]),
+      retainedTail: tail,
+      contextMarkers: [marker],
+      promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION
+    });
+    const summary = {
+      threadGoal: "保持海洋浮标工具状态的因果顺序",
+      establishedContext: [],
+      decisionsAndReasons: [],
+      activeWork: [],
+      unresolvedQuestions: [],
+      referencedObjects: [],
+      nextTurnAnchor: "继续"
+    };
+    const summaryHash = hashConversationSummaryForReceipt(summary);
+    const receipt: AgentCompactionReceipt = {
+      ...descriptor,
+      receiptVersion: 4,
+      summaryHash,
+      summaryRevisionId: buildConversationSummaryRevisionId({
+        sourceMessageIdsHash: descriptor.sourceMessageIdsHash,
+        summaryHash
+      }),
+      leaseId: "lease-order",
+      agentTurnId: "turn-order",
+      sequence: 2,
+      expiresAt: Date.now() + 60_000
+    };
+
+    const rebuilt = rebuildAgentPostCompactionTranscript({
+      contextMarkers: [marker],
+      receipt,
+      summary,
+      retainedTailItems: tail
+    });
+    expect(rebuilt[0]).toMatchObject({ type: "morpho_compaction_transcript" });
+    expect(JSON.stringify(rebuilt[0])).toContain("call-buoy-write");
+    expect(rebuilt[1]).toEqual(marker);
+  });
+
   it("sends a pending directive once and clears it after fetch resolves", async () => {
     const fixture = createFixture(textAnswerScript());
     fixture.input.runtimeState.pendingServerDirective = { kind: "finalize" };
@@ -286,6 +369,58 @@ describe("Agent turn provider request adapter", () => {
       ["attempt-b", "kept"]
     ]);
     expect(fixture.input.runtimeState.contextBudgetState.baselineInputTokens).toBe(150);
+  });
+
+  it("persists server-verified image references on the originating user message", async () => {
+    const contentHash = "a".repeat(64);
+    const script = agentStreamScript([
+      {
+        type: "turn-start",
+        agentTurnId: "turn-provider-unit",
+        startedAt: "2026-07-27T00:00:00.000Z",
+        providerCallCount: 1,
+        nextProviderSequence: 2
+      },
+      {
+        type: "turn-complete",
+        verifiedImageReferences: [{
+          messageId: "message-user",
+          attachmentRefs: [{
+            objectId: "image-buoy-reference",
+            assetId: "asset-buoy-reference",
+            contentHash,
+            mimeType: "image/png"
+          }]
+        }],
+        result: streamResult("完成", 20)
+      }
+    ] satisfies AgentRouteStreamEvent[]);
+    const fixture = createFixture(script);
+    fixture.host.commitWorkspace((workspace) => ({
+      workspace: {
+        ...workspace,
+        ai: {
+          ...workspace.ai,
+          messages: [{
+            ...workspace.ai.messages[0]!,
+            id: "message-user",
+            role: "user",
+            body: "分析海洋浮标参考图",
+            providerInputSnapshot: fixture.input.providerInputSnapshot
+          }, ...workspace.ai.messages]
+        }
+      },
+      value: undefined
+    }));
+
+    await createAgentTurnProviderRequestAdapter(fixture.input).request([]);
+
+    expect(fixture.host.readWorkspace().ai.messages.find((message) => message.id === "message-user")
+      ?.providerInputSnapshot?.attachmentRefs).toEqual([expect.objectContaining({
+        objectId: "image-buoy-reference",
+        contentHash,
+        mimeType: "image/png"
+      })]);
   });
 });
 

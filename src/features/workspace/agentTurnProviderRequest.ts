@@ -147,10 +147,14 @@ export function buildAgentCompactionContextMarkers(
   options: AgentCompactionContextOptions = {}
 ): ReturnType<typeof providerContextFrameContinuationMarker>[] {
   const inputMarkers = contextMarkersFromProviderInput(options.providerInput ?? []);
-  return selectAgentCompactionContextFrames(workspace, options)
+  const markers = selectAgentCompactionContextFrames(workspace, options)
     .filter((frame) => !isFreshUnboundContextFrame(frame, options, inputMarkers))
     .map((frame) => inputMarkers.get(providerContextFrameContinuationMarker(frame).contentHash) ??
       providerContextFrameContinuationMarker(frame));
+  return [
+    ...markers.filter((marker) => !contextMarkerFollowsCompactedTail(marker)),
+    ...markers.filter(contextMarkerFollowsCompactedTail)
+  ];
 }
 
 export function buildAgentCompactionFreshContextFrames(
@@ -236,16 +240,25 @@ export function rebuildAgentPostCompactionTranscript(input: {
   summary: Parameters<typeof buildCompactionTranscriptMarker>[0]["summary"];
   retainedTailItems: readonly unknown[];
 }): unknown[] {
+  const before = input.contextMarkers.filter((marker) => !contextMarkerFollowsCompactedTail(marker));
+  const after = input.contextMarkers.filter(contextMarkerFollowsCompactedTail);
   return [
-    ...input.contextMarkers,
+    ...before,
     buildCompactionTranscriptMarker({
       descriptor: input.receipt,
       summary: input.summary,
       summaryHash: input.receipt.summaryHash,
       summaryRevisionId: input.receipt.summaryRevisionId,
       retainedTail: input.retainedTailItems
-    })
+    }),
+    ...after
   ];
+}
+
+function contextMarkerFollowsCompactedTail(marker: AgentContextStateMarker): boolean {
+  return Boolean(marker.causalBindingHash) ||
+    marker.placement === "afterUser" ||
+    marker.placement === "afterAssistant";
 }
 
 export function estimateAgentTurnProviderBudget(input: {
@@ -352,6 +365,7 @@ export async function requestAgentTurnProvider(
       input: conversationInput,
       projectId: turnState.workspaceAtAgentStart.project.id,
       agentTurnId: input.agentTurnId,
+      assistantMessageId: input.assistantMessageId,
       continuation: exactContinuation,
       ...(leaseContinuation ? { leaseContinuation: true } : {}),
       ...((exactContinuation || leaseContinuation) && turnState.agentTurnLeaseId
@@ -455,6 +469,42 @@ export async function requestAgentTurnProvider(
         }
         if (event.type === "turn-complete" && event.transcriptManifestHash) {
           turnState.latestProviderTranscriptManifestHash = event.transcriptManifestHash;
+        }
+        if (event.type === "turn-complete" && event.assistantProviderOutputSnapshot) {
+          input.commitWorkspace((current) => {
+            const assistant = current.ai.messages.find((message) => message.id === input.assistantMessageId);
+            return {
+              workspace: assistant
+                ? updateAiMessage(current, input.assistantMessageId, assistant.body, assistant.status ?? "streaming", {
+                    providerOutputSnapshot: event.assistantProviderOutputSnapshot
+                  })
+                : current,
+              value: undefined
+            };
+          });
+        }
+        if (event.type === "turn-complete" && event.verifiedImageReferences) {
+          input.commitWorkspace((current) => ({
+            workspace: {
+              ...current,
+              ai: {
+                ...current.ai,
+                messages: current.ai.messages.map((message) => {
+                  const verified = event.verifiedImageReferences?.find((item) => item.messageId === message.id);
+                  return verified && message.providerInputSnapshot
+                    ? {
+                        ...message,
+                        providerInputSnapshot: {
+                          ...message.providerInputSnapshot,
+                          attachmentRefs: verified.attachmentRefs
+                        }
+                      }
+                    : message;
+                })
+              }
+            },
+            value: undefined
+          }));
         }
         if (event.type === "turn-start") {
           if (event.leaseId) {
@@ -751,6 +801,26 @@ export async function compactConversationBeforeContinuation(
         turnState.latestProviderTranscriptManifestHash ??
         turnState.latestProviderRequestState?.transcriptManifestHash,
       previousTranscriptSnapshotToken: turnState.latestProviderRequestState?.transcriptSnapshotToken,
+      onTranscriptSnapshotRefreshed: (token, manifestHash) => {
+        if (!turnState.latestProviderRequestState) {
+          return;
+        }
+        turnState.latestProviderRequestState = {
+          ...turnState.latestProviderRequestState,
+          transcriptSnapshotToken: token,
+          transcriptManifestHash: manifestHash
+        };
+        input.commitWorkspace((current) => ({
+          workspace: {
+            ...current,
+            ai: {
+              ...current.ai,
+              latestProviderRequestState: turnState.latestProviderRequestState
+            }
+          },
+          value: undefined
+        }));
+      },
       onLeaseStarted: (leaseId) => {
         turnState.agentTurnLeaseId = leaseId;
       },

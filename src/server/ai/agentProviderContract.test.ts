@@ -19,6 +19,7 @@ function request(overrides: Record<string, unknown> = {}) {
     input: [{ role: "user", content: [{ type: "input_text", text: "继续讨论海洋浮标" }] }],
     projectId: "project-ocean-buoy",
     agentTurnId: "agent-turn-1",
+    assistantMessageId: "assistant-message-1",
     continuation: false,
     promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
     mode: "auto",

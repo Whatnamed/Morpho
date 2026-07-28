@@ -23,11 +23,13 @@ import {
 } from "./agentContinuationToken";
 import {
   buildAgentTranscriptManifest,
+  buildAgentContextMarkerManifest,
   buildAgentCompactionDescriptor,
   buildCompactionTranscriptMarker,
   buildConversationSummaryRevisionId,
   bindAgentContextStateMarker,
   createAgentContextStateMarker,
+  createAgentTranscriptMessageItem,
   hashConversationSummaryForReceipt,
   hashAgentTranscriptRange,
   hashSourceMessageIds,
@@ -61,7 +63,11 @@ const retainedTail = [{
   content: [{ type: "input_text" as const, text: "继续检查浮标的搜索失败处理" }]
 }];
 const expectedTranscriptManifest = buildAgentTranscriptManifest([
-  ...sourceMessages.flatMap((message) => buildConversationSummarySourceProviderItems(message)),
+  ...sourceMessages.map((message) => createAgentTranscriptMessageItem({
+    messageId: message.id,
+    role: message.role,
+    providerItems: buildConversationSummarySourceProviderItems(message)
+  })),
   ...retainedTail
 ]);
 
@@ -186,7 +192,7 @@ describe("Agent compaction protocol integration", () => {
     expect(sourceBinding).toEqual({ status: "ok" });
 
     const receipt = {
-      receiptVersion: 3 as const,
+      receiptVersion: 4 as const,
       ...descriptor,
       summaryHash,
       summaryRevisionId: buildConversationSummaryRevisionId({
@@ -239,6 +245,7 @@ describe("Agent compaction protocol integration", () => {
       input: [marker, compactionMarker],
       projectId: PROJECT_ID,
       agentTurnId: AGENT_TURN_ID,
+      assistantMessageId: "assistant-post-compaction",
       continuation: false,
       leaseContinuation: true,
       leaseId: receipt.leaseId,
@@ -370,7 +377,7 @@ describe("Agent compaction protocol integration", () => {
     const summary = summaryPayload();
     const summaryHash = hashConversationSummaryForReceipt(summary);
     const receipt = {
-      receiptVersion: 3 as const,
+      receiptVersion: 4 as const,
       ...originalDescriptor,
       summaryHash,
       summaryRevisionId: buildConversationSummaryRevisionId({
@@ -427,7 +434,8 @@ describe("Agent compaction protocol integration", () => {
     }));
     const forgedContextDescriptor = {
       ...originalDescriptor,
-      contextMarkerHashes: [forgedMarker.contentHash]
+      contextMarkerHashes: [forgedMarker.contentHash],
+      contextMarkerManifest: buildAgentContextMarkerManifest([forgedMarker])
     };
     expect(verifyAgentCompactionSourceBinding({
       claims,
@@ -700,7 +708,11 @@ describe("Agent compaction protocol integration", () => {
       currentOutput
     ];
     const previousManifest = buildAgentTranscriptManifest([
-      ...sourceMessages.flatMap((message) => buildConversationSummarySourceProviderItems(message)),
+      ...sourceMessages.map((message) => createAgentTranscriptMessageItem({
+        messageId: message.id,
+        role: message.role,
+        providerItems: buildConversationSummarySourceProviderItems(message)
+      })),
       ...retainedTail,
       historicalCall,
       historicalOutput,
@@ -735,5 +747,41 @@ describe("Agent compaction protocol integration", () => {
       contextMarkers: [causalMarker],
       retainedTail: parsed.value.compactionRetainedTail ?? []
     })).toEqual({ status: "ok" });
+  });
+
+  it("rejects a self-consistent source boundary that swaps workspace message ids", () => {
+    const marker = contextMarker();
+    const forgedPlan: ConversationCompactionPlan = {
+      ...plan(),
+      sourceMessages: sourceMessages.map((message, index) => ({
+        ...message,
+        id: `forged-message-${index + 1}`
+      })),
+      sourceStartMessageId: "forged-message-1",
+      sourceEndMessageId: "forged-message-2",
+      sourceMessageIdsHash: hashSourceMessageIds(["forged-message-1", "forged-message-2"])
+    };
+    const request = buildConversationSummaryAgentRequest({
+      plan: forgedPlan,
+      projectId: PROJECT_ID,
+      agentTurnId: AGENT_TURN_ID,
+      mode: "auto",
+      retainedTailItems: retainedTail,
+      contextMarkers: [marker],
+      previousTranscriptManifestHash: expectedTranscriptManifest.manifestHash
+    });
+    const parsed = parseAgentRouteRequest(request);
+    if (parsed.status !== "ok") {
+      throw new Error(parsed.reason);
+    }
+
+    expect(verifyAgentCompactionSourceBinding({
+      claims: sourceClaims(marker),
+      parsedInput: parsed.value.input,
+      descriptor: parsed.value.compactionDescriptor!,
+      transcriptManifest: expectedTranscriptManifest,
+      contextMarkers: [marker],
+      retainedTail: parsed.value.compactionRetainedTail ?? []
+    })).toMatchObject({ status: "failed", reason: "compaction_source_forged" });
   });
 });

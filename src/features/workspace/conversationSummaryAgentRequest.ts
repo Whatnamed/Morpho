@@ -9,6 +9,7 @@ import type { AgentRuntimeMode } from "@/shared/agentRuntimeItem";
 import {
   buildAgentCompactionDescriptor,
   buildAgentTranscriptManifest,
+  createAgentTranscriptMessageItem,
   hashConversationSummaryForReceipt,
   type AgentContextStateMarker
 } from "@/shared/agentCompactionProtocol";
@@ -17,8 +18,7 @@ import { createAgentStrategyMarker } from "@/shared/agentStrategyItem";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
 import {
   buildAgentCheckpointCompactionInput,
-  buildConversationSummarySourceProviderInput,
-  buildConversationSummarySourceProviderItems
+  buildConversationSummarySourceProviderInput
 } from "./morphoAgent";
 
 export function buildConversationSummaryAgentRequest(input: {
@@ -49,9 +49,7 @@ export function buildConversationSummaryAgentRequest(input: {
     sourceMessageIdsHash: input.plan.sourceMessageIdsHash,
     retainedTail: retainedTailItems,
     sourceInput: summaryInput,
-    sourceManifest: buildAgentTranscriptManifest(
-      input.plan.sourceMessages.flatMap((message) => buildConversationSummarySourceProviderItems(message))
-    ),
+    sourceManifest: buildAgentTranscriptManifest(summaryInput),
     contextMarkers: input.contextMarkers,
     previousTranscriptManifestHash: input.previousTranscriptManifestHash,
     ...(input.plan.previousSummaryRevision
@@ -121,8 +119,13 @@ function conversationMessageToProviderInput(message: ConversationMessageForConte
   const strategy = message.role === "user" && message.taskStrategy
     ? [createAgentStrategyMarker({ strategy: message.taskStrategy, anchorMessageId: message.id })]
     : [];
-  return [
+  const providerItems = [
     ...strategy,
     ...buildConversationSummarySourceProviderInput(message)
   ];
+  return [createAgentTranscriptMessageItem({
+    messageId: message.id,
+    role: message.role,
+    providerItems
+  })];
 }

@@ -4,6 +4,7 @@ import {
   AGENT_COMPACTION_TRANSCRIPT_MARKER_TYPE,
   AGENT_CONTEXT_STATE_MARKER_TYPE,
   AGENT_COMPACTION_RECEIPT_VERSION,
+  buildAgentContextMarkerManifest,
   buildAgentTranscriptManifest,
   hashAgentContextStateMarker,
   hashAgentContextStateMarkerCausalBinding,
@@ -34,8 +35,10 @@ import { MAX_AGENT_FUNCTION_CALLS } from "@/shared/agentFunctionCallLimits";
  */
 
 const CONTINUATION_TOKEN_VERSION = 4;
+const TRANSCRIPT_SNAPSHOT_TOKEN_VERSION = 2;
 export const AGENT_CONTINUATION_TOKEN_TTL_MS = 20 * 60 * 1000;
 export const AGENT_TRANSCRIPT_SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
+export const AGENT_TRANSCRIPT_SNAPSHOT_REFRESH_TTL_MS = 180 * 24 * 60 * 60 * 1000;
 
 export type AgentContinuationClaims = {
   v: number;
@@ -91,7 +94,9 @@ export type AgentTranscriptSnapshotClaims = {
   contextMarkerHashes: string[];
   previousSummaryHash?: string;
   previousSummaryRevisionId?: string;
+  issuedAt?: number;
   exp: number;
+  refreshUntil?: number;
 };
 
 /**
@@ -192,13 +197,15 @@ export function issueAgentTranscriptSnapshotToken(input: {
   now: number;
 }): string {
   const claims: AgentTranscriptSnapshotClaims = {
-    v: CONTINUATION_TOKEN_VERSION,
+    v: TRANSCRIPT_SNAPSHOT_TOKEN_VERSION,
     projectId: input.projectId,
     transcriptManifest: input.transcriptManifest,
     contextMarkerHashes: [...new Set(input.contextMarkerHashes ?? [])],
     ...(input.previousSummaryHash ? { previousSummaryHash: input.previousSummaryHash } : {}),
     ...(input.previousSummaryRevisionId ? { previousSummaryRevisionId: input.previousSummaryRevisionId } : {}),
-    exp: input.now + AGENT_TRANSCRIPT_SNAPSHOT_TTL_MS
+    issuedAt: input.now,
+    exp: input.now + AGENT_TRANSCRIPT_SNAPSHOT_TTL_MS,
+    refreshUntil: input.now + AGENT_TRANSCRIPT_SNAPSHOT_REFRESH_TTL_MS
   };
   const payload = base64Url(Buffer.from(JSON.stringify(claims), "utf8"));
   return `${payload}.${sign(payload, input.secret)}`;
@@ -210,6 +217,87 @@ export function verifyAgentTranscriptSnapshotToken(input: {
   projectId: string;
   now: number;
 }): { status: "ok"; claims: AgentTranscriptSnapshotClaims } | { status: "failed"; reason: AgentContinuationFailureReason } {
+  const decoded = decodeAgentTranscriptSnapshotToken(input);
+  if (decoded.status === "failed") {
+    return decoded;
+  }
+  const parsed = decoded.claims;
+  if (parsed.projectId !== input.projectId) {
+    return failed("compaction_source_forged");
+  }
+  if (parsed.exp <= input.now) {
+    return failed("compaction_source_unverified");
+  }
+  return { status: "ok", claims: parsed };
+}
+
+export function refreshAgentTranscriptSnapshotToken(input: {
+  token: string | undefined;
+  secret: string | undefined;
+  projectId: string;
+  now: number;
+  transcriptManifest?: AgentTranscriptManifest;
+}): { status: "ok"; token: string; claims: AgentTranscriptSnapshotClaims } |
+  { status: "failed"; reason: AgentContinuationFailureReason } {
+  const decoded = decodeAgentTranscriptSnapshotToken(input);
+  if (decoded.status === "failed") {
+    return decoded;
+  }
+  const claims = decoded.claims;
+  if (claims.projectId !== input.projectId) {
+    return failed("compaction_source_forged");
+  }
+  const refreshUntil = claims.refreshUntil ?? claims.exp + AGENT_TRANSCRIPT_SNAPSHOT_REFRESH_TTL_MS;
+  if (refreshUntil <= input.now || !input.secret) {
+    return failed("compaction_source_unverified");
+  }
+  const transcriptManifest = input.transcriptManifest ?? claims.transcriptManifest;
+  if (input.transcriptManifest && (
+    !isAgentTranscriptManifest(input.transcriptManifest) ||
+    !isCurrentAgentTranscriptManifest(input.transcriptManifest) ||
+    !sameUpgradeableManifest(claims.transcriptManifest, input.transcriptManifest)
+  )) {
+    return failed("compaction_source_forged");
+  }
+  const refreshedClaims: AgentTranscriptSnapshotClaims = {
+    v: TRANSCRIPT_SNAPSHOT_TOKEN_VERSION,
+    projectId: claims.projectId,
+    transcriptManifest,
+    contextMarkerHashes: claims.contextMarkerHashes,
+    ...(claims.previousSummaryHash && claims.previousSummaryRevisionId
+      ? {
+          previousSummaryHash: claims.previousSummaryHash,
+          previousSummaryRevisionId: claims.previousSummaryRevisionId
+        }
+      : {}),
+    issuedAt: input.now,
+    exp: input.now + AGENT_TRANSCRIPT_SNAPSHOT_TTL_MS,
+    refreshUntil: input.now + AGENT_TRANSCRIPT_SNAPSHOT_REFRESH_TTL_MS
+  };
+  return {
+    status: "ok",
+    token: issueAgentTranscriptSnapshotToken({
+      secret: input.secret,
+      projectId: claims.projectId,
+      transcriptManifest,
+      contextMarkerHashes: claims.contextMarkerHashes,
+      ...(claims.previousSummaryHash && claims.previousSummaryRevisionId
+        ? {
+            previousSummaryHash: claims.previousSummaryHash,
+            previousSummaryRevisionId: claims.previousSummaryRevisionId
+          }
+        : {}),
+      now: input.now
+    }),
+    claims: refreshedClaims
+  };
+}
+
+function decodeAgentTranscriptSnapshotToken(input: {
+  token: string | undefined;
+  secret: string | undefined;
+}): { status: "ok"; claims: AgentTranscriptSnapshotClaims } |
+  { status: "failed"; reason: AgentContinuationFailureReason } {
   if (!input.secret) {
     return failed("secret_missing");
   }
@@ -233,12 +321,6 @@ export function verifyAgentTranscriptSnapshotToken(input: {
   }
   if (!isTranscriptSnapshotClaims(parsed)) {
     return failed("compaction_source_forged");
-  }
-  if (parsed.projectId !== input.projectId) {
-    return failed("compaction_source_forged");
-  }
-  if (parsed.exp <= input.now) {
-    return failed("compaction_source_unverified");
   }
   return { status: "ok", claims: parsed };
 }
@@ -415,8 +497,7 @@ export function verifyAgentCompactionBinding(input: {
     marker.sourceManifest.manifestHash !== receipt.sourceManifest.manifestHash ||
     marker.retainedTailManifest.manifestHash !== receipt.retainedTailManifest.manifestHash ||
     marker.transcriptRangeHash !== receipt.transcriptRangeHash ||
-    marker.contextMarkerHashes.length !== receipt.contextMarkerHashes.length ||
-    marker.contextMarkerHashes.some((hash) => !receipt.contextMarkerHashes.includes(hash)) ||
+    !sameContextMarkerManifest(marker.contextMarkerManifest, receipt.contextMarkerManifest) ||
     marker.receiptVersion !== receipt.receiptVersion ||
     marker.previousSummaryHash !== receipt.previousSummaryHash ||
     marker.previousSummaryRevisionId !== receipt.previousSummaryRevisionId ||
@@ -431,10 +512,12 @@ export function verifyAgentCompactionBinding(input: {
   if (
     retainedTailManifest.manifestHash !== marker.retainedTailManifest.manifestHash ||
     marker.transcriptRangeHash !== hashAgentTranscriptRange(marker.sourceManifest, retainedTailManifest) ||
-    parsedContextMarkers.length !== receipt.contextMarkerHashes.length ||
+    parsedContextMarkers.length !== receipt.contextMarkerManifest.length ||
     parsedContextMarkers.some((contextMarker) => contextMarker.causalBindingHash !== undefined) ||
-    parsedContextMarkers.some((contextMarker) => !receipt.contextMarkerHashes.includes(contextMarker.contentHash)) ||
-    receipt.contextMarkerHashes.some((hash) => !parsedContextMarkers.some((marker) => marker.contentHash === hash))
+    !sameContextMarkerManifest(
+      buildAgentContextMarkerManifest(parsedContextMarkers),
+      receipt.contextMarkerManifest
+    )
   ) {
     return failed("compaction_receipt_forged");
   }
@@ -480,10 +563,17 @@ export function verifyAgentCompactionSourceBinding(input: {
   const parsedSourceManifest = buildAgentTranscriptManifest(
     sourceEnvelope.sourceMessages.flatMap((message) => message.providerItems)
   );
+  const sourceManifestWithMessageIds = buildAgentTranscriptManifest([input.parsedInput[0]]);
+  const signedSourceMessageIds = sourceManifestWithMessageIds.items
+    .filter((item) => item.kind === "message")
+    .map((item) => item.messageId);
   if (
-    parsedSourceManifest.manifestHash !== descriptor.sourceManifest.manifestHash ||
-    parsedSourceManifest.itemCount !== descriptor.sourceManifest.itemCount ||
-    parsedSourceManifest.items.some((item, index) => !sameManifestItem(item, descriptor.sourceManifest.items[index]!))
+    sourceManifestWithMessageIds.manifestHash !== descriptor.sourceManifest.manifestHash ||
+    sourceManifestWithMessageIds.itemCount !== descriptor.sourceManifest.itemCount ||
+    sourceManifestWithMessageIds.items.some((item, index) => !sameManifestItem(item, descriptor.sourceManifest.items[index]!)) ||
+    signedSourceMessageIds.length !== sourceEnvelope.sourceMessageIds.length ||
+    signedSourceMessageIds.some((messageId, index) => messageId !== sourceEnvelope.sourceMessageIds[index]) ||
+    parsedSourceManifest.items.some((item, index) => item.hash !== sourceManifestWithMessageIds.items[index]?.hash)
   ) {
     return failed("compaction_source_forged");
   }
@@ -509,8 +599,10 @@ export function verifyAgentCompactionSourceBinding(input: {
     return failed("compaction_source_forged");
   }
   if (
-    descriptor.contextMarkerHashes.length !== input.contextMarkers.length ||
-    descriptor.contextMarkerHashes.some((hash) => !input.contextMarkers.some((marker) => marker.contentHash === hash))
+    !sameContextMarkerManifest(
+      descriptor.contextMarkerManifest,
+      buildAgentContextMarkerManifest(input.contextMarkers)
+    )
   ) {
     return failed("compaction_source_forged");
   }
@@ -601,6 +693,7 @@ export type AgentCompactionDescriptorLike = {
   retainedTailManifest: AgentTranscriptManifest;
   transcriptRangeHash: string;
   contextMarkerHashes: string[];
+  contextMarkerManifest: AgentCompactionReceipt["contextMarkerManifest"];
   previousTranscriptManifestHash?: string;
   previousSummaryHash?: string;
   previousSummaryRevisionId?: string;
@@ -752,6 +845,7 @@ function isCompactionReceipt(value: unknown): value is AgentCompactionReceipt {
       "retainedTailManifest",
       "transcriptRangeHash",
       "contextMarkerHashes",
+      "contextMarkerManifest",
       "previousTranscriptManifestHash",
       "previousSummaryHash",
       "previousSummaryRevisionId",
@@ -781,6 +875,8 @@ function isCompactionReceipt(value: unknown): value is AgentCompactionReceipt {
     Array.isArray(value.contextMarkerHashes) &&
     value.contextMarkerHashes.every(isProtocolHash) &&
     new Set(value.contextMarkerHashes).size === value.contextMarkerHashes.length &&
+    Array.isArray(value.contextMarkerManifest) &&
+    value.contextMarkerManifest.every(isContextMarkerManifestItem) &&
     (value.previousTranscriptManifestHash === undefined || isProtocolHash(value.previousTranscriptManifestHash)) &&
     (value.previousSummaryHash === undefined || isProtocolHash(value.previousSummaryHash)) &&
     (value.previousSummaryRevisionId === undefined || typeof value.previousSummaryRevisionId === "string") &&
@@ -805,9 +901,11 @@ function isTranscriptSnapshotClaims(value: unknown): value is AgentTranscriptSna
       "contextMarkerHashes",
       "previousSummaryHash",
       "previousSummaryRevisionId",
-      "exp"
+      "issuedAt",
+      "exp",
+      "refreshUntil"
     ]).length === 0 &&
-    value.v === CONTINUATION_TOKEN_VERSION &&
+    (value.v === TRANSCRIPT_SNAPSHOT_TOKEN_VERSION || value.v === CONTINUATION_TOKEN_VERSION) &&
     typeof value.projectId === "string" &&
     isAgentTranscriptManifest(value.transcriptManifest) &&
     Array.isArray(value.contextMarkerHashes) &&
@@ -816,8 +914,14 @@ function isTranscriptSnapshotClaims(value: unknown): value is AgentTranscriptSna
     (value.previousSummaryHash === undefined || isProtocolHash(value.previousSummaryHash)) &&
     (value.previousSummaryRevisionId === undefined || typeof value.previousSummaryRevisionId === "string") &&
     (value.previousSummaryHash === undefined) === (value.previousSummaryRevisionId === undefined) &&
+    (value.issuedAt === undefined || (typeof value.issuedAt === "number" && Number.isSafeInteger(value.issuedAt))) &&
     typeof value.exp === "number" &&
-    Number.isSafeInteger(value.exp);
+    Number.isSafeInteger(value.exp) &&
+    (value.refreshUntil === undefined ||
+      (typeof value.refreshUntil === "number" && Number.isSafeInteger(value.refreshUntil) && value.refreshUntil > value.exp)) &&
+    (value.v === TRANSCRIPT_SNAPSHOT_TOKEN_VERSION
+      ? value.issuedAt !== undefined && value.refreshUntil !== undefined
+      : value.issuedAt === undefined && value.refreshUntil === undefined);
 }
 
 function isAgentTranscriptManifest(value: unknown): value is AgentTranscriptManifest {
@@ -829,17 +933,45 @@ function isAgentTranscriptManifest(value: unknown): value is AgentTranscriptMani
     Array.isArray(value.items) &&
     value.items.length === value.itemCount &&
     value.items.every(isAgentTranscriptManifestItem) &&
-    isProtocolHash(value.manifestHash) &&
-    hashManifest(value as unknown as AgentTranscriptManifest) === value.manifestHash;
+    isProtocolHash(value.manifestHash) && (
+      hashManifest(value as unknown as AgentTranscriptManifest) === value.manifestHash ||
+      hashLegacyManifest(value as unknown as AgentTranscriptManifest) === value.manifestHash
+    );
+}
+
+function isCurrentAgentTranscriptManifest(value: AgentTranscriptManifest): boolean {
+  return hashManifest(value) === value.manifestHash;
 }
 
 function isAgentTranscriptManifestItem(value: unknown): value is AgentTranscriptManifest["items"][number] {
   return isRecord(value) &&
-    unknownKeys(value, ["kind", "hash", "role", "callId"]).length === 0 &&
+    unknownKeys(value, ["kind", "hash", "role", "callId", "messageId", "anchorMessageId"]).length === 0 &&
     (value.kind === "message" || value.kind === "strategy" || value.kind === "providerOutput" || value.kind === "functionCallOutput") &&
     isProtocolHash(value.hash) &&
     (value.role === undefined || value.role === "user" || value.role === "assistant") &&
-    (value.callId === undefined || (typeof value.callId === "string" && value.callId.length > 0));
+    (value.callId === undefined || (typeof value.callId === "string" && value.callId.length > 0)) &&
+    (value.messageId === undefined || (typeof value.messageId === "string" && value.messageId.length > 0)) &&
+    (value.anchorMessageId === undefined || (typeof value.anchorMessageId === "string" && value.anchorMessageId.length > 0));
+}
+
+function isContextMarkerManifestItem(value: unknown): boolean {
+  return isRecord(value) &&
+    unknownKeys(value, [
+      "contentHash",
+      "markerId",
+      "sequence",
+      "placement",
+      "anchorMessageId",
+      "causalBindingHash"
+    ]).length === 0 &&
+    isProtocolHash(value.contentHash) &&
+    typeof value.markerId === "string" && value.markerId.length > 0 &&
+    typeof value.sequence === "number" && Number.isSafeInteger(value.sequence) && value.sequence >= 0 &&
+    (value.placement === "conversationBaseline" || value.placement === "beforeUser" ||
+      value.placement === "afterUser" || value.placement === "beforeAssistant" ||
+      value.placement === "afterAssistant") &&
+    (value.anchorMessageId === undefined || (typeof value.anchorMessageId === "string" && value.anchorMessageId.length > 0)) &&
+    (value.causalBindingHash === undefined || isProtocolHash(value.causalBindingHash));
 }
 
 function isProtocolHash(value: unknown): value is string {
@@ -860,7 +992,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function hashManifest(manifest: AgentTranscriptManifest): string {
+  return hashAgentProtocolValue(manifest.items, "morpho-agent-transcript-manifest-v3");
+}
+
+function hashLegacyManifest(manifest: AgentTranscriptManifest): string {
   return hashAgentProtocolValue(manifest.items, "morpho-agent-transcript-manifest-v2");
+}
+
+function sameUpgradeableManifest(
+  previous: AgentTranscriptManifest,
+  candidate: AgentTranscriptManifest
+): boolean {
+  return previous.items.length === candidate.items.length && previous.items.every((item, index) => {
+    const next = candidate.items[index];
+    return Boolean(next) && item.kind === next.kind && item.hash === next.hash &&
+      item.role === next.role && item.callId === next.callId &&
+      (item.messageId === undefined || item.messageId === next.messageId) &&
+      (item.anchorMessageId === undefined || item.anchorMessageId === next.anchorMessageId);
+  });
 }
 
 function sameManifestItem(
@@ -870,5 +1019,17 @@ function sameManifestItem(
   return left.kind === right.kind &&
     left.hash === right.hash &&
     left.role === right.role &&
-    left.callId === right.callId;
+    left.callId === right.callId &&
+    left.messageId === right.messageId &&
+    left.anchorMessageId === right.anchorMessageId;
+}
+
+function sameContextMarkerManifest(
+  left: readonly import("@/shared/agentCompactionProtocol").AgentContextMarkerManifestItem[],
+  right: readonly import("@/shared/agentCompactionProtocol").AgentContextMarkerManifestItem[]
+): boolean {
+  return left.length === right.length && left.every((item, index) =>
+    hashAgentProtocolValue(item, "morpho-agent-context-marker-manifest-v1") ===
+      hashAgentProtocolValue(right[index], "morpho-agent-context-marker-manifest-v1")
+  );
 }

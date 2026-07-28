@@ -1,19 +1,29 @@
 import { describe, expect, it } from "vitest";
 
+import { createHmac } from "node:crypto";
+
+import { createProviderContextFrame } from "@/domain/morpho/providerContextFrame";
 import {
   buildAgentCompactionDescriptor,
+  buildAgentTranscriptManifest,
   buildCompactionTranscriptMarker,
   buildConversationSummaryRevisionId,
+  createAgentTranscriptMessageItem,
+  createAgentContextStateMarker,
+  hashAgentProtocolValue,
   hashConversationSummaryForReceipt,
   hashSourceMessageIds
 } from "@/shared/agentCompactionProtocol";
 import {
   hashAgentContinuationItems,
   issueAgentContinuationToken,
+  issueAgentTranscriptSnapshotToken,
+  refreshAgentTranscriptSnapshotToken,
   resolveAgentContinuationSecret,
   verifyAgentContinuationBinding,
   verifyAgentCompactionBinding,
   verifyAgentContinuationToken,
+  verifyAgentTranscriptSnapshotToken,
   type AgentContinuationClaims
 } from "./agentContinuationToken";
 
@@ -215,12 +225,27 @@ describe("agent continuation token", () => {
     const retainedTail = [
       { role: "user", content: [{ type: "input_text", text: "继续检查浮标" }] }
     ];
+    const contextMarkers = [1, 2].map((sequence) => createAgentContextStateMarker(createProviderContextFrame({
+      projectId: "project-ocean-buoy",
+      kind: "projectState",
+      createdAt: `2026-07-28T0${sequence}:00:00.000Z`,
+      promptContractVersion: "morpho-agent-test",
+      projectMemoryRevisionIds: [`memory-${sequence}`],
+      stageRecordRevisionIds: [],
+      directionRevisionIds: [],
+      selectedObjectIds: [],
+      relatedObjectIds: [],
+      sourceRefs: [],
+      reason: `ordered marker ${sequence}`,
+      renderedText: `海洋浮标状态 ${sequence}`
+    })));
     const descriptor = buildAgentCompactionDescriptor({
       sourceStartMessageId: "message-1",
       sourceEndMessageId: "message-2",
       sourceMessageCount: 2,
       sourceMessageIdsHash: hashSourceMessageIds(["message-1", "message-2"]),
       retainedTail,
+      contextMarkers,
       promptContractVersion: "morpho-agent-test"
     });
     const summaryHash = hashConversationSummaryForReceipt(summary);
@@ -235,11 +260,13 @@ describe("agent continuation token", () => {
         agentTurnId: "agent-turn-1",
         sequence: 3,
         expiresAt: 1_200_000,
-        receiptVersion: 3 as const
+        receiptVersion: 4 as const
       };
     const token = issue({
       summary: true,
       compactionReceipt: receipt,
+      appendableContextMarkerHashes: contextMarkers.map((contextMarker) => contextMarker.contentHash),
+      compactionContextMarkerHashes: contextMarkers.map((contextMarker) => contextMarker.contentHash),
       now: 1_000_000
     });
     const claims = claimsFrom(token);
@@ -253,9 +280,14 @@ describe("agent continuation token", () => {
 
     expect(verifyAgentCompactionBinding({
       claims,
-      parsedInput: [marker],
+      parsedInput: [...contextMarkers, marker],
       now: 1_000_100
     })).toEqual({ status: "ok" });
+    expect(verifyAgentCompactionBinding({
+      claims,
+      parsedInput: [contextMarkers[1]!, contextMarkers[0]!, marker],
+      now: 1_000_100
+    })).toMatchObject({ reason: "compaction_receipt_forged" });
     expect(verifyAgentCompactionBinding({
       claims,
       parsedInput: [{
@@ -265,5 +297,105 @@ describe("agent continuation token", () => {
       }],
       now: 1_000_100
     })).toMatchObject({ reason: "compaction_receipt_forged" });
+  });
+
+  it("refreshes a 25-hour-old snapshot without weakening project or signature scope", () => {
+    const manifest = buildAgentTranscriptManifest([createAgentTranscriptMessageItem({
+      messageId: "user-buoy-1",
+      role: "user",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "海洋浮标" }] }]
+    })]);
+    const issuedAt = 1_000_000;
+    const token = issueAgentTranscriptSnapshotToken({
+      secret: SECRET,
+      projectId: "project-ocean-buoy",
+      transcriptManifest: manifest,
+      now: issuedAt
+    });
+    const now = issuedAt + 25 * 60 * 60 * 1_000;
+
+    expect(verifyAgentTranscriptSnapshotToken({
+      token,
+      secret: SECRET,
+      projectId: "project-ocean-buoy",
+      now
+    })).toMatchObject({ status: "failed", reason: "compaction_source_unverified" });
+    const refreshed = refreshAgentTranscriptSnapshotToken({
+      token,
+      secret: SECRET,
+      projectId: "project-ocean-buoy",
+      transcriptManifest: manifest,
+      now
+    });
+    expect(refreshed.status).toBe("ok");
+    if (refreshed.status !== "ok") {
+      return;
+    }
+    expect(verifyAgentTranscriptSnapshotToken({
+      token: refreshed.token,
+      secret: SECRET,
+      projectId: "project-ocean-buoy",
+      now
+    })).toMatchObject({ status: "ok" });
+    expect(refreshAgentTranscriptSnapshotToken({
+      token,
+      secret: SECRET,
+      projectId: "project-other",
+      now
+    })).toMatchObject({ status: "failed", reason: "compaction_source_forged" });
+    expect(refreshAgentTranscriptSnapshotToken({
+      token: `${token}x`,
+      secret: SECRET,
+      projectId: "project-ocean-buoy",
+      now
+    })).toMatchObject({ status: "failed", reason: "compaction_source_forged" });
+    const swappedIdManifest = buildAgentTranscriptManifest([createAgentTranscriptMessageItem({
+      messageId: "user-buoy-forged",
+      role: "user",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "海洋浮标" }] }]
+    })]);
+    expect(refreshAgentTranscriptSnapshotToken({
+      token,
+      secret: SECRET,
+      projectId: "project-ocean-buoy",
+      transcriptManifest: swappedIdManifest,
+      now
+    })).toMatchObject({ status: "failed", reason: "compaction_source_forged" });
+  });
+
+  it("upgrades a signed legacy text manifest to the message-id protocol", () => {
+    const candidate = buildAgentTranscriptManifest([createAgentTranscriptMessageItem({
+      messageId: "user-buoy-legacy",
+      role: "user",
+      providerItems: [{ role: "user", content: [{ type: "input_text", text: "旧海洋浮标项目" }] }]
+    })]);
+    const legacyItems = candidate.items.map(({ messageId: _messageId, anchorMessageId: _anchor, ...item }) => item);
+    const legacyManifest = {
+      itemCount: legacyItems.length,
+      items: legacyItems,
+      manifestHash: hashAgentProtocolValue(legacyItems, "morpho-agent-transcript-manifest-v2")
+    };
+    const payload = Buffer.from(JSON.stringify({
+      v: 4,
+      projectId: "project-ocean-buoy",
+      transcriptManifest: legacyManifest,
+      contextMarkerHashes: [],
+      exp: 1_000_000 + 24 * 60 * 60 * 1_000
+    }), "utf8").toString("base64url");
+    const legacyToken = `${payload}.${createHmac("sha256", SECRET).update(payload).digest("base64url")}`;
+
+    const refreshed = refreshAgentTranscriptSnapshotToken({
+      token: legacyToken,
+      secret: SECRET,
+      projectId: "project-ocean-buoy",
+      transcriptManifest: candidate,
+      now: 1_000_000 + 25 * 60 * 60 * 1_000
+    });
+    expect(refreshed.status).toBe("ok");
+    if (refreshed.status !== "ok") {
+      return;
+    }
+    expect(refreshed.claims.v).toBe(2);
+    expect(refreshed.claims.transcriptManifest).toEqual(candidate);
   });
 });
