@@ -3,7 +3,11 @@ import {
   type ConversationCompactionPlan
 } from "@/domain/morpho/conversationCompaction";
 import type { WebSearchSource } from "@/server/ai/webSearch";
-import type { AgentCompactionReceipt } from "@/shared/agentCompactionProtocol";
+import {
+  buildAgentTranscriptManifest,
+  type AgentCompactionReceipt,
+  type AgentTranscriptManifest
+} from "@/shared/agentCompactionProtocol";
 import {
   buildConversationSummaryAgentRequest
 } from "./conversationSummaryAgentRequest";
@@ -48,6 +52,7 @@ export async function requestConversationSummary(
     contextMarkers?: readonly import("@/shared/agentCompactionProtocol").AgentContextStateMarker[];
     previousTranscriptManifestHash?: string;
     previousTranscriptSnapshotToken?: string;
+    onTranscriptSnapshotRefreshed?: (token: string, manifestHash: string) => void;
     onLeaseStarted?: (leaseId: string) => void;
     onLeaseSequence?: (sequence: number) => void;
     onContinuationToken?: (token: string) => void;
@@ -59,24 +64,39 @@ export async function requestConversationSummary(
   leaseId?: string;
   compactionReceipt?: AgentCompactionReceipt;
 }> {
+  let previousTranscriptSnapshotToken = input.previousTranscriptSnapshotToken;
+  let summaryRequest = buildConversationSummaryAgentRequest({
+    plan,
+    projectId: input.projectId,
+    agentTurnId: input.agentTurnId,
+    mode: input.mode,
+    leaseId: input.leaseId,
+    leaseSequence: input.leaseSequence,
+    continuationToken: input.continuationToken,
+    retainedTailItems: input.retainedTailItems,
+    contextMarkers: input.contextMarkers,
+    previousTranscriptManifestHash: input.previousTranscriptManifestHash,
+    previousTranscriptSnapshotToken
+  });
+  if (previousTranscriptSnapshotToken && !input.continuationToken) {
+    const refreshed = await refreshTranscriptSnapshot({
+      projectId: input.projectId,
+      token: previousTranscriptSnapshotToken,
+      transcriptManifest: buildAgentTranscriptManifest([
+        ...summaryRequest.input,
+        ...(summaryRequest.compactionRetainedTail ?? [])
+      ]),
+      signal,
+      fetch: fetchImpl
+    });
+    previousTranscriptSnapshotToken = refreshed.token;
+    input.onTranscriptSnapshotRefreshed?.(refreshed.token, refreshed.manifestHash);
+    summaryRequest = { ...summaryRequest, previousTranscriptSnapshotToken };
+  }
   const response = await fetchImpl("/api/ai/agent", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(
-      buildConversationSummaryAgentRequest({
-        plan,
-        projectId: input.projectId,
-        agentTurnId: input.agentTurnId,
-        mode: input.mode,
-        leaseId: input.leaseId,
-        leaseSequence: input.leaseSequence,
-        continuationToken: input.continuationToken,
-        retainedTailItems: input.retainedTailItems,
-        contextMarkers: input.contextMarkers,
-        previousTranscriptManifestHash: input.previousTranscriptManifestHash,
-        previousTranscriptSnapshotToken: input.previousTranscriptSnapshotToken
-      })
-    ),
+    body: JSON.stringify(summaryRequest),
     signal
   });
   let leaseId = input.leaseId;
@@ -104,6 +124,38 @@ export async function requestConversationSummary(
     parsed: parseConversationSummaryPayload(result.outputText),
     ...(compactionReceipt ? { compactionReceipt } : {}),
     ...(leaseId ? { leaseId } : {})
+  };
+}
+
+async function refreshTranscriptSnapshot(input: {
+  projectId: string;
+  token: string;
+  transcriptManifest: AgentTranscriptManifest;
+  signal: AbortSignal;
+  fetch: typeof fetch;
+}): Promise<{ token: string; manifestHash: string }> {
+  const response = await input.fetch("/api/ai/agent/snapshot/refresh", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      projectId: input.projectId,
+      token: input.token,
+      transcriptManifest: input.transcriptManifest
+    }),
+    signal: input.signal
+  });
+  const payload = await readJsonPayload(response);
+  if (!response.ok || !isRecord(payload) ||
+    typeof payload.transcriptSnapshotToken !== "string" ||
+    typeof payload.transcriptManifestHash !== "string") {
+    throw new Error(
+      (isRecord(payload) && typeof payload.error === "string" && payload.error) ||
+      "Transcript Snapshot 刷新失败，未消耗 Agent Lease。"
+    );
+  }
+  return {
+    token: payload.transcriptSnapshotToken,
+    manifestHash: payload.transcriptManifestHash
   };
 }
 

@@ -132,6 +132,24 @@ export async function runManualCompactionTurn(
         contextMarkers,
         previousTranscriptManifestHash: previousProviderRequestState?.transcriptManifestHash,
         previousTranscriptSnapshotToken: previousProviderRequestState?.transcriptSnapshotToken,
+        onTranscriptSnapshotRefreshed: (token, manifestHash) => {
+          host.commitWorkspace((current) => ({
+            workspace: {
+              ...current,
+              ai: {
+                ...current.ai,
+                latestProviderRequestState: current.ai.latestProviderRequestState
+                  ? {
+                      ...current.ai.latestProviderRequestState,
+                      transcriptSnapshotToken: token,
+                      transcriptManifestHash: manifestHash
+                    }
+                  : current.ai.latestProviderRequestState
+              }
+            },
+            value: undefined
+          }));
+        },
         onLeaseStarted: (leaseId) => {
           manualCompactionLeaseId = leaseId;
         }

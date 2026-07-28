@@ -211,7 +211,7 @@ Do not paste credentials into the repository or shell history. Do not apply the 
 
 Conversation compaction is part of the same formal Agent turn. Its first Provider request creates the lease when needed; automatic and continuation compaction reuse that lease through the strict `leaseContinuation` path, then the normal Agent request continues with the same counters. `leaseContinuation` is not a Responses transcript continuation, cannot be combined with `continuation`, and never causes a second daily text reservation for the same user turn.
 
-Cross-turn compaction requires the latest output-inclusive transcript snapshot from `workspace.ai.latestProviderRequestState`. Only that latest slot retains the 24-hour token and manifest hash; historical traces deliberately strip them. Summary source text is rebuilt from canonical signed Provider items, Context markers must come from the prior signed marker manifest or a complete Call/terminal-output causal binding, and all checks occur before the Lease RPC. A deployment that changes the snapshot protocol fails closed on older tokens; one successfully completed normal Agent request creates the current snapshot version.
+Cross-turn compaction requires the latest output-inclusive transcript checkpoint from `workspace.ai.latestProviderRequestState`. Only that latest slot retains its token and manifest hash; historical traces deliberately strip them. Before an out-of-turn summary, `/api/ai/agent/snapshot/refresh` verifies the signature, project, refresh lifetime and optional compatible protocol-upgrade manifest, then renews the 24-hour ordinary-use window without Provider execution or Lease consumption. Summary source text is rebuilt from message-ID-bound canonical Provider items. Historical images use server-verified stable object/asset/content-hash/MIME references rather than Base64, Assistant history uses its immutable Provider-output snapshot, and ordered Context markers must come from the prior signed manifest or a complete Call/terminal-output causal binding. All checks occur before the Lease RPC.
 
 After application, verify in the Supabase SQL editor or another authorized administrative connection:
 
@@ -436,6 +436,7 @@ Local document extraction:
 /projects/[projectId]     project workspace
 /api/ai/agent             formal OpenAI-compatible Responses Agent stream
 /api/ai/agent/lease       authenticated Agent turn completion
+/api/ai/agent/snapshot/refresh  signed transcript checkpoint renewal; no Provider or Lease
 /api/ai/chat              deprecated compatibility-only text route
 /api/ai/web-search        AiJWS web-search proxy
 /api/ai/image             GrsAI image generation proxy
