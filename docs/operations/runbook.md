@@ -324,10 +324,17 @@ Tool Calls, or replay the external request. Existing Fault and Tool/Persistence/
 reasons must remain in the reducer-derived Outcome. Treat `journal_unavailable` as retryable with the same
 Request ID and sequence, while quota, conflict, and terminal Provider/contract denials remain
 non-retryable according to their typed lifecycle error. If a deterministic denial occurs after
-Provider execution already started, the Coordinator immediately queries the Journal: terminal
-status finalizes locally, while `providerRunning` becomes query-only
+Provider execution already started, treat it as a Coordinator diagnostic and immediately query the
+Journal before recording any lifecycle conflict: terminal status finalizes locally,
+`awaitingNextRequest` follows the matching local-payload rule, while `providerRunning` becomes query-only
 `external_execution_pending_reconciliation`. `journal_query_failed` is recoverable and must be
 retried as a status query, never as a new Provider execution.
+
+Before every new Host execution, the Coordinator must pass the same pure Provider-start validation
+used by the lifecycle reducer. An unresolved Fault must therefore fail before the request Route is
+called. When querying during `recovering`, dispatch `RECOVERY_RESOLVED` for the matching Fault before
+observing `providerRunning`, `awaitingNextRequest`, or any external terminal status; do not send
+status or payload-loss events directly into the recovering phase.
 
 The Supabase Free-plan leaked-password-protection advisor warning is a plan limitation. It is not fixed by changing application SQL or weakening authentication behavior.
 

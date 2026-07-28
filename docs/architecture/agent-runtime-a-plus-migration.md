@@ -468,12 +468,24 @@ Provider/contract failures are `terminal`.
 
 If an exact retry is deterministically denied after its lifecycle request already started, the
 Coordinator does not leave the caller to infer a second recovery action and never starts Provider
-again. It immediately reconciles the same Request ID and sequence against the Journal. A terminal
-Journal status is observed and finalized through the reducer; `providerRunning` returns the explicit
+again. The denial remains a Coordinator diagnostic rather than prematurely becoming a lifecycle
+Fault. The Coordinator immediately reconciles the same Request ID and sequence against the Journal;
+only a binding mismatch or an otherwise illegal reconciliation records a conflict. A terminal
+Journal status is observed and finalized through the reducer, `awaitingNextRequest` continues when
+the matching local output exists or takes the payload-unavailable terminal path when it does not,
+and `providerRunning` returns the explicit
 recoverable `external_execution_pending_reconciliation` state with Provider retry disabled and
 query-only reconciliation still available. A transient Journal query failure is itself reported as
 recoverable, and a later status query continues with the same Request identity without external
 re-execution.
+
+Provider acquisition also has a shared pure preflight used by both the Coordinator and the reducer.
+The Coordinator applies it before calling the Host, so an unresolved Fault, illegal phase/status,
+invalid identity, or invalid sequence cannot obtain server execution authority before the reducer
+rejects the same transition. When a Journal query succeeds while the lifecycle is `recovering`, the
+Coordinator first emits the matching `RECOVERY_RESOLVED` event and only then interprets the queried
+server status. Running resumes a safe request phase, awaiting status follows the local-payload rule,
+and every external terminal status finalizes through ordinary reducer events.
 
 No Stage 2 Feature Flag is introduced because neither the current UI nor the existing
 `agentTurnRunner.ts` imports or calls the A+ Coordinator or its routes. The existing B-style Runtime
