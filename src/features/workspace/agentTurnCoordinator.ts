@@ -406,7 +406,8 @@ export class AgentTurnCoordinator {
       this.activeRequest.retryAllowed = true;
       return this.denied(
         "request_not_observed",
-        "Journal 尚未观察到该 Request；重试必须复用原 Request ID、Sequence 和内容。"
+        "Journal 尚未观察到该 Request；重试必须复用原 Request ID、Sequence 和内容。",
+        true
       );
     }
     if (

@@ -82,6 +82,31 @@ describe("A+ AgentTurnCoordinator", () => {
     expect(host.executions[1]).toEqual(host.executions[0]);
   });
 
+  it("marks an unobserved Request recoverable and retries the same identity", async () => {
+    const host = new FakeHost();
+    host.queueTransportFailure();
+    host.queueStarted({ status: "externallyCompleted", output: true });
+    const coordinator = await initializedCoordinator(host, ["request-1", "request-never-used"]);
+
+    await expect(coordinator.startInitialRequest(providerRequest("same body"))).resolves.toMatchObject({
+      status: "denied",
+      code: "request_not_observed",
+      recoverable: true
+    });
+    await expect(coordinator.retryActiveRequest()).resolves.toMatchObject({
+      status: "ok",
+      requestId: "request-1",
+      stepSequence: 1,
+      lifecycle: { phase: "terminal", outcome: { kind: "completed" } }
+    });
+    expect(host.executions).toHaveLength(2);
+    expect(host.executions.map(({ requestId, stepSequence }) => [requestId, stepSequence])).toEqual([
+      ["request-1", 1],
+      ["request-1", 1]
+    ]);
+    expect(host.externalExecutionCount).toBe(1);
+  });
+
   it("uses a fresh Request ID for a new Continuation", async () => {
     const host = new FakeHost();
     host.queueStarted({ status: "awaitingNextRequest", output: true, toolCallIds: ["call-a"] });
@@ -745,6 +770,12 @@ class FakeHost implements AgentTurnCoordinatorHost {
 
   queueHandshake(handshake: AgentTurnCoordinatorExecutionHandshake): void {
     this.handshakes.push(handshake);
+  }
+
+  queueTransportFailure(): void {
+    this.handshakes.push(() => {
+      throw new Error("transport failed before Journal observed the Request");
+    });
   }
 
   queueStarted(options: {
