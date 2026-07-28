@@ -1,5 +1,5 @@
 export type AgentToolProfile = "standard" | "standardWithWebSearch" | "conversationSummary";
-import { hashAgentProtocolValue } from "./agentCompactionProtocol";
+import { sha256Hex } from "./agentProtocolHash";
 
 export type AgentRuntimeMode = "auto" | "confirm";
 
@@ -126,7 +126,7 @@ function stableJson(value: Record<string, unknown>): string {
 }
 
 function stableHash(value: string): string {
-  return hashAgentProtocolValue(value, "morpho-agent-runtime-v2");
+  return sha256Hex(`morpho-agent-runtime-v2\u0000${JSON.stringify(value)}`);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,10 +1,6 @@
-export type ServerExternalExecutionStatus =
-  | "created"
-  | "providerRunning"
-  | "awaitingNextRequest"
-  | "externallyCompleted"
-  | "externallyCancelled"
-  | "externallyFailed";
+import type { ServerExternalExecutionStatus } from "@/shared/agentTurnJournalProtocol";
+
+export type { ServerExternalExecutionStatus } from "@/shared/agentTurnJournalProtocol";
 
 export type AgentTurnError =
   | { kind: "retryable"; code: string; message: string; recoverable: true }
