@@ -7,7 +7,7 @@ This document is the durable implementation ledger for converging the Morpho Age
 | Field | Value |
 |---|---|
 | Decision date | 2026-07-28 |
-| Current state | Stage 2 — A+ Coordinator and minimal Server Turn Journal implemented in an isolated, default-unwired path; independent audit pending |
+| Current state | Stage 2 — audit revision implemented in an isolated, default-unwired path; independent re-audit pending |
 | Current formal working branch | `refactor/agent-runtime-a-plus` |
 | B implementation archive branch | `archive/agent-runtime-b` |
 | B implementation archive tag | `agent-runtime-b-final-2026-07-28-f27a410` |
@@ -15,7 +15,7 @@ This document is the durable implementation ledger for converging the Morpho Age
 | Baseline short SHA | `f27a410` |
 | Stage 0 complete | Yes — the decision, archive references, migration ledger, and historical-audit status are recorded in the Stage 0 documentation commit |
 | Stage 1 complete | Yes — independently audited at `8d7c2df442ea1ccfb012e35691c2df8430a85f52` |
-| Stage 2 implementation | Complete — independent audit pending |
+| Stage 2 implementation | Audit revision complete — independent re-audit pending |
 | A+ Coordinator | Implemented in an isolated, default-unwired path |
 | Server Turn Journal | Implemented; remote Migration application remains an operator deployment step |
 | Implementation runtime | Existing B-style runtime remains active |
@@ -381,7 +381,7 @@ Stage 3 work.
 
 ### Stage 2 — A+ Coordinator and Server Turn Journal
 
-Stage 2 is implemented and awaits independent audit. The one client orchestration owner is
+Stage 2's audit revision is implemented and awaits independent re-audit. The one client orchestration owner is
 `src/features/workspace/agentTurnCoordinator.ts`; its concrete fetch adapter is
 `src/features/workspace/agentTurnCoordinatorHttpHost.ts`. The Coordinator creates a Server Turn,
 owns one in-memory Stage 1 lifecycle, allocates Request IDs and strictly increasing step sequences,
@@ -390,6 +390,14 @@ rejects stale stream/query results, and exposes deep-frozen lifecycle snapshots.
 change is an event sent to `reduceAgentTurnLifecycle`; the Coordinator has no second Outcome
 resolver and cannot accept an Overall Local Agent Turn Outcome from its caller. It has no React,
 UI, localStorage, Workspace-schema, Supabase, or API-key dependency.
+
+Validated current-request stream events are also copied to an optional `onDisplayEvent` observer.
+This display sink receives deep-frozen text, Tool Call IDs, process activity, and server-status
+events only after Request ID and sequence validation; stale or reducer-rejected events are not
+forwarded. The sink is observational and local-only: it cannot submit lifecycle events, change the
+Journal, persist Tool Results, or provide an Overall Local Agent Turn Outcome. A sink exception is
+isolated from lifecycle progression, while already observed display events remain available to the
+caller if the stream later ends or recovery is required.
 
 The minimal Journal is introduced by
 `supabase/migrations/20260729012105_add_agent_turn_journal.sql`. It uses the private
@@ -426,6 +434,15 @@ returns the existing snapshot without external execution or another counter/quot
 sequence, terminal-state, and binding conflicts do not execute. Search and Image counters exist but
 remain zero until Stage 3 connects their real server paths; Stage 2 never fabricates them.
 
+Every acquired request records `execution_started_at` and a fixed 15-minute
+`execution_expires_at`. Authenticated read and exact replay lock the relevant Journal rows before
+checking that deadline. An expired `providerRunning` request converges atomically to
+`externallyFailed` with bounded code `external_execution_state_unknown`; it is never re-executed,
+and Provider counters or daily quota are not incremented again. Settlement uses a bounded
+three-attempt retry for transient Journal unavailability. If all attempts fail, the request remains
+recoverable through the same read/replay deadline convergence instead of treating SSE completion
+as authoritative Journal settlement.
+
 Only the server request execution path advances `providerRunning` to `awaitingNextRequest`,
 `externallyCompleted`, `externallyCancelled`, or `externallyFailed`; the HTTP request schema accepts
 neither arbitrary status nor counters. The stream task settles the Journal independently of final
@@ -434,6 +451,16 @@ Journal and emits `SERVER_EXECUTION_STATUS_OBSERVED` into the Stage 1 reducer. A
 completion with no locally observed usable Provider output is finalized as
 `externalExecutionCompletedWithoutUsableOutcome`; no response text is invented. Local output plus
 a later external failure retains the reducer's partial-completion semantics.
+
+`awaitingNextRequest` has a stricter payload rule: if the Journal confirms that status but the
+current client never observed the matching Provider output, the Coordinator emits
+`PROVIDER_OUTPUT_UNAVAILABLE`. The reducer creates no fake output or Tool Call, performs no replay,
+and terminates the local Turn as `failed` or `partiallyCompleted` with
+`providerContinuationPayloadUnavailable`, depending on earlier visible or Tool effects.
+Handshake denials are likewise typed before entering the reducer: quota and Provider-limit
+denials are `quotaExceeded`, deterministic identity/sequence/status denials are `conflict`,
+transient Journal/Auth/Supabase unavailability is `retryable`, and remaining deterministic
+Provider/contract failures are `terminal`.
 
 No Stage 2 Feature Flag is introduced because neither the current UI nor the existing
 `agentTurnRunner.ts` imports or calls the A+ Coordinator or its routes. The existing B-style Runtime

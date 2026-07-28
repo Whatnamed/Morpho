@@ -265,6 +265,15 @@ counters, timestamps, revision, and an optional bounded failure code. It does no
 messages, Provider output, Tool arguments/results, Workspace content, Memory, Summary, confirmation
 state, local Outcome, or raw errors.
 
+Each acquired Provider request records `execution_started_at` and an
+`execution_expires_at` exactly 15 minutes later. Authenticated Journal reads and exact request
+replays take row locks and atomically converge an expired `provider_running` request to
+`externally_failed` with `external_execution_state_unknown`. That convergence must not invoke the
+Provider again or increment the Provider counter or daily quota. The request route retries a
+transient settlement failure at most twice after the initial attempt; exhausted settlement retry
+is not proof of external success or failure, so later query/replay performs the deadline-based
+convergence.
+
 Do not treat the checked-in file as proof that a remote database has been migrated. On an
 authorized PowerShell 7 machine, verify the CLI identity and intended project before applying it:
 
@@ -299,6 +308,14 @@ no A+ Feature Flag or new environment variable in Stage 2: the current UI and
 state. The existing `/api/ai/agent` B-style Runtime remains the active default. Do not wire the A+
 Coordinator into production flows or remove Lease/Closure/Snapshot code until later stages pass
 their own audits.
+
+For isolated Stage 2 client checks, validated current-request display events may be observed via
+the Coordinator's optional `onDisplayEvent` sink. It is not a lifecycle or persistence input.
+When recovery reads `awaitingNextRequest` but the matching Provider payload was never observed,
+the client must terminate with `providerContinuationPayloadUnavailable`; do not synthesize output,
+Tool Calls, or replay the external request. Treat `journal_unavailable` as retryable with the same
+Request ID and sequence, while quota, conflict, and terminal Provider/contract denials remain
+non-retryable according to their typed lifecycle error.
 
 The Supabase Free-plan leaked-password-protection advisor warning is a plan limitation. It is not fixed by changing application SQL or weakening authentication behavior.
 
