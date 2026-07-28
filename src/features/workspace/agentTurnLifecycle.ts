@@ -21,7 +21,11 @@ export type ToolCallTerminalResult =
       persistence: "notRequired" | "succeeded" | "failed";
       unresolvedWorkIds: readonly string[];
     }
-  | { status: "failed"; callId: string; error: AgentTurnError }
+  | {
+      status: "failed";
+      callId: string;
+      error: Exclude<AgentTurnError, { kind: "cancelled" }>;
+    }
   | { status: "cancelled"; callId: string; reason: string }
   | {
       status: "pendingConfirmation";
@@ -81,13 +85,21 @@ type ResumablePhase = "preparing" | "requestingProvider" | "continuing";
 
 type FaultState =
   | { kind: "none" }
-  | { kind: "present"; error: AgentTurnError };
+  | { kind: "present"; faultId: string; error: AgentTurnError };
 
 type ConfirmationState =
   | { kind: "none" }
-  | { kind: "pending"; callIds: readonly string[] }
-  | { kind: "accepted"; callIds: readonly string[] }
-  | { kind: "rejected"; callIds: readonly string[] };
+  | { kind: "pending"; callIds: readonly string[] };
+
+type ExternalRequestState =
+  | { kind: "none"; lastStepSequence: 0 }
+  | { kind: "active"; requestId: string; stepSequence: number }
+  | { kind: "settled"; requestId: string; stepSequence: number };
+
+type ProviderOutputState =
+  | { kind: "none" }
+  | { kind: "received"; requestId: string; stepSequence: number }
+  | { kind: "consumed"; requestId: string; stepSequence: number };
 
 type FinalizedToolBatch = {
   declaredCallIds: readonly string[];
@@ -98,7 +110,8 @@ type FinalizedToolBatch = {
 type AgentTurnFacts = {
   turnId: string;
   serverExecutionStatus: ServerExternalExecutionStatus;
-  providerOutputReceived: boolean;
+  externalRequest: ExternalRequestState;
+  providerOutput: ProviderOutputState;
   providerEffectProduced: boolean;
   persistence: "notRequired" | "pending" | "succeeded" | "failed";
   unresolvedWorkIds: readonly string[];
@@ -127,6 +140,7 @@ export type AgentTurnLifecycleState =
   | (AgentTurnFacts & { phase: "cancelling"; reason: string })
   | (AgentTurnFacts & {
       phase: "recovering";
+      faultId: string;
       error: Extract<AgentTurnError, { kind: "retryable" }>;
       resumePhase: ResumablePhase;
     })
@@ -136,37 +150,60 @@ export type AgentTurnEvent =
   | { type: "PREPARATION_COMPLETED"; turnId: string }
   | { type: "COMPACTION_STARTED"; turnId: string; mode: AgentTurnCompactionMode }
   | { type: "COMPACTION_COMPLETED"; turnId: string }
-  | { type: "COMPACTION_FAILED"; turnId: string; error: AgentTurnError }
+  | { type: "COMPACTION_FAILED"; turnId: string; faultId: string; error: AgentTurnError }
   | { type: "COMPACTION_CANCELLED"; turnId: string; reason: string }
-  | { type: "PROVIDER_REQUEST_STARTED"; turnId: string }
+  | { type: "PROVIDER_REQUEST_STARTED"; turnId: string; requestId: string; stepSequence: number }
   | {
       type: "SERVER_EXECUTION_STATUS_OBSERVED";
       turnId: string;
+      requestId: string;
+      stepSequence: number;
       status: ServerExternalExecutionStatus;
     }
-  | { type: "STREAM_ACTIVITY_OBSERVED"; turnId: string; sequence: number }
+  | {
+      type: "STREAM_ACTIVITY_OBSERVED";
+      turnId: string;
+      requestId: string;
+      stepSequence: number;
+      sequence: number;
+    }
   | {
       type: "PROVIDER_OUTPUT_RECEIVED";
       turnId: string;
+      requestId: string;
+      stepSequence: number;
       producedUserVisibleEffect: boolean;
+    }
+  | {
+      type: "EXTERNAL_ERROR_RECORDED";
+      turnId: string;
+      requestId: string;
+      stepSequence: number;
+      faultId: string;
+      error: Exclude<AgentTurnError, { kind: "cancelled" }>;
     }
   | { type: "TOOL_BATCH_STARTED"; turnId: string; declaredCallIds: readonly string[] }
   | { type: "TOOL_CALL_TERMINATED"; turnId: string; result: ToolCallTerminalResult }
   | { type: "TOOL_BATCH_FINALIZED"; turnId: string }
-  | {
-      type: "CONFIRMATION_RESOLVED";
-      turnId: string;
-      resolution: "accepted" | "rejected";
-    }
   | { type: "LOCAL_PERSISTENCE_REQUIRED"; turnId: string }
   | { type: "LOCAL_PERSISTENCE_SUCCEEDED"; turnId: string }
-  | { type: "LOCAL_PERSISTENCE_FAILED"; turnId: string; error: AgentTurnError }
+  | {
+      type: "LOCAL_PERSISTENCE_FAILED";
+      turnId: string;
+      faultId: string;
+      error: Exclude<AgentTurnError, { kind: "cancelled" }>;
+    }
   | { type: "UNRESOLVED_WORK_RECORDED"; turnId: string; workId: string }
   | { type: "UNRESOLVED_WORK_RESOLVED"; turnId: string; workId: string }
-  | { type: "ERROR_RECORDED"; turnId: string; error: AgentTurnError }
+  | {
+      type: "ERROR_RECORDED";
+      turnId: string;
+      faultId: string;
+      error: Exclude<AgentTurnError, { kind: "cancelled" }>;
+    }
   | { type: "CANCELLATION_REQUESTED"; turnId: string; reason: string }
-  | { type: "RECOVERY_STARTED"; turnId: string }
-  | { type: "RECOVERY_RESOLVED"; turnId: string }
+  | { type: "RECOVERY_STARTED"; turnId: string; faultId: string }
+  | { type: "RECOVERY_RESOLVED"; turnId: string; faultId: string }
   | { type: "TURN_FINALIZED"; turnId: string };
 
 export type AgentTurnTransitionError = {
@@ -175,6 +212,9 @@ export type AgentTurnTransitionError = {
     | "turnMismatch"
     | "illegalTransition"
     | "invalidEvent"
+    | "externalRequestMismatch"
+    | "externalStepSequenceConflict"
+    | "unresolvedFaultConflict"
     | "conflictingToolResult"
     | "invalidServerStatusTransition"
     | "incompleteToolBatch"
@@ -192,7 +232,8 @@ export function createAgentTurnLifecycleState(turnId: string): AgentTurnLifecycl
     phase: "preparing",
     turnId,
     serverExecutionStatus: "created",
-    providerOutputReceived: false,
+    externalRequest: { kind: "none", lastStepSequence: 0 },
+    providerOutput: { kind: "none" },
     providerEffectProduced: false,
     persistence: "notRequired",
     unresolvedWorkIds: [],
@@ -315,41 +356,63 @@ export function reduceAgentTurnLifecycle(
         ? success({ ...state, phase: state.resumePhase })
         : illegal(state, event);
     case "COMPACTION_FAILED":
-      return failCompaction(state, event.error, event);
+      return failCompaction(state, event.faultId, event.error, event);
     case "COMPACTION_CANCELLED":
       return state.phase === "compacting"
         ? terminal(state, { kind: "cancelled", reasons: [event.reason] })
         : illegal(state, event);
     case "PROVIDER_REQUEST_STARTED":
-      return state.phase === "preparing" || state.phase === "continuing"
-        ? success({ ...state, phase: "requestingProvider" })
-        : illegal(state, event);
+      return startProviderRequest(state, event.requestId, event.stepSequence, event);
     case "SERVER_EXECUTION_STATUS_OBSERVED":
-      return observeServerStatus(state, event.status);
+      return observeServerStatus(state, event.requestId, event.stepSequence, event.status);
     case "STREAM_ACTIVITY_OBSERVED":
       if (state.phase !== "requestingProvider" && state.phase !== "continuing") {
         return illegal(state, event);
+      }
+      if (!matchesExternalRequest(state, event.requestId, event.stepSequence, true)) {
+        return externalRequestMismatch(state, event.requestId, event.stepSequence);
       }
       return event.sequence > state.streamActivitySequence
         ? success({ ...state, streamActivitySequence: event.sequence })
         : transitionError("invalidEvent", "Stream activity sequence must increase.");
     case "PROVIDER_OUTPUT_RECEIVED":
-      return state.phase === "requestingProvider" && state.serverExecutionStatus === "providerRunning"
+      return state.phase === "requestingProvider" &&
+        state.serverExecutionStatus === "providerRunning" &&
+        matchesExternalRequest(state, event.requestId, event.stepSequence, true)
         ? success({
             ...state,
             phase: "continuing",
-            providerOutputReceived: true,
-            providerEffectProduced: event.producedUserVisibleEffect
+            providerOutput: {
+              kind: "received",
+              requestId: event.requestId,
+              stepSequence: event.stepSequence
+            },
+            providerEffectProduced:
+              state.providerEffectProduced || event.producedUserVisibleEffect
           })
-        : illegal(state, event);
+        : state.phase === "requestingProvider" && state.serverExecutionStatus === "providerRunning"
+          ? externalRequestMismatch(state, event.requestId, event.stepSequence)
+          : illegal(state, event);
+    case "EXTERNAL_ERROR_RECORDED":
+      if (!matchesExternalRequest(state, event.requestId, event.stepSequence)) {
+        return externalRequestMismatch(state, event.requestId, event.stepSequence);
+      }
+      if (
+        state.serverExecutionStatus !== "providerRunning" &&
+        state.serverExecutionStatus !== "externallyFailed"
+      ) {
+        return transitionError(
+          "invalidServerStatusTransition",
+          `External errors are not legal from ${state.serverExecutionStatus}.`
+        );
+      }
+      return recordFault(state, event.faultId, event.error);
     case "TOOL_BATCH_STARTED":
       return startToolBatch(state, event.declaredCallIds, event);
     case "TOOL_CALL_TERMINATED":
       return recordToolResult(state, event.result, event);
     case "TOOL_BATCH_FINALIZED":
       return finalizeToolBatch(state, event);
-    case "CONFIRMATION_RESOLVED":
-      return resolveConfirmation(state, event.resolution, event);
     case "LOCAL_PERSISTENCE_REQUIRED":
       return success({ ...state, persistence: "pending" });
     case "LOCAL_PERSISTENCE_SUCCEEDED":
@@ -358,7 +421,7 @@ export function reduceAgentTurnLifecycle(
         : illegal(state, event);
     case "LOCAL_PERSISTENCE_FAILED":
       return state.persistence === "pending"
-        ? success({ ...state, persistence: "failed", fault: { kind: "present", error: event.error } })
+        ? recordFault({ ...state, persistence: "failed" }, event.faultId, event.error)
         : illegal(state, event);
     case "UNRESOLVED_WORK_RECORDED":
       return success({ ...state, unresolvedWorkIds: addUnique(state.unresolvedWorkIds, event.workId) });
@@ -367,15 +430,17 @@ export function reduceAgentTurnLifecycle(
         ? success({ ...state, unresolvedWorkIds: state.unresolvedWorkIds.filter((id) => id !== event.workId) })
         : transitionError("invalidEvent", `Unknown unresolved work ${event.workId}.`);
     case "ERROR_RECORDED":
-      return success({ ...state, fault: { kind: "present", error: event.error } });
+      return recordFault(state, event.faultId, event.error);
     case "CANCELLATION_REQUESTED":
       return requestCancellation(state, event.reason);
     case "RECOVERY_STARTED":
-      return startRecovery(state, event);
+      return startRecovery(state, event.faultId, event);
     case "RECOVERY_RESOLVED":
-      return state.phase === "recovering"
+      return state.phase === "recovering" && state.faultId === event.faultId
         ? success({ ...state, phase: state.resumePhase, fault: { kind: "none" } })
-        : illegal(state, event);
+        : state.phase === "recovering"
+          ? transitionError("unresolvedFaultConflict", `Recovery does not match fault ${state.faultId}.`)
+          : illegal(state, event);
     case "TURN_FINALIZED": {
       if (
         state.phase !== "requestingProvider" &&
@@ -423,8 +488,7 @@ function deriveOverallOutcome(
     options.cancellationReason ||
       (state.phase === "cancelling" && state.reason) ||
       state.serverExecutionStatus === "externallyCancelled" ||
-      batches.some((batch) => batch.cancelledCount > 0) ||
-      state.confirmation.kind === "rejected"
+      batches.some((batch) => batch.cancelledCount > 0)
   );
   const hasFailure = Boolean(
     state.serverExecutionStatus === "externallyFailed" ||
@@ -435,9 +499,7 @@ function deriveOverallOutcome(
   );
   const hasUnresolved = Boolean(
     state.unresolvedWorkIds.length ||
-      batches.some((batch) => batch.unresolvedWorkIds.length > 0) ||
-      (state.confirmation.kind === "accepted" &&
-        batches.some((batch) => batch.pendingConfirmationCount > 0))
+      batches.some((batch) => batch.unresolvedWorkIds.length > 0)
   );
   const hasIncomplete = hasPending || hasCancellation || hasFailure || hasUnresolved;
   const reasons = buildOutcomeReasons(
@@ -479,7 +541,6 @@ function buildOutcomeReasons(
   if (state.serverExecutionStatus === "externallyCancelled") reasons.push("externalExecutionCancelled");
   if (batches.some((batch) => batch.failedCount > 0)) reasons.push("toolCallFailed");
   if (batches.some((batch) => batch.cancelledCount > 0)) reasons.push("toolCallCancelled");
-  if (state.confirmation.kind === "rejected") reasons.push("confirmationRejected");
   if (
     batches.some((batch) => batch.pendingConfirmationCount > 0) &&
     state.confirmation.kind === "pending"
@@ -490,8 +551,7 @@ function buildOutcomeReasons(
   ) reasons.push("persistenceFailed");
   if (
     batches.some((batch) => batch.unresolvedWorkIds.length > 0) ||
-    state.unresolvedWorkIds.length ||
-    state.confirmation.kind === "accepted"
+    state.unresolvedWorkIds.length
   ) reasons.push("unresolvedWork");
   if (state.fault.kind === "present") reasons.push(state.fault.error.kind);
   return [...new Set(reasons)];
@@ -505,23 +565,75 @@ function startCompaction(
   if (state.phase !== "preparing" && state.phase !== "requestingProvider" && state.phase !== "continuing") {
     return illegal(state, event);
   }
+  if (state.serverExecutionStatus === "providerRunning") {
+    return transitionError("invalidServerStatusTransition", "Compaction cannot start while Provider execution is running.");
+  }
+  if (state.fault.kind === "present") {
+    return transitionError("unresolvedFaultConflict", `Fault ${state.fault.faultId} must be resolved first.`);
+  }
   return success({ ...state, phase: "compacting", mode, resumePhase: state.phase });
 }
 
 function failCompaction(
   state: Exclude<AgentTurnLifecycleState, { phase: "terminal" }>,
+  faultId: string,
   error: AgentTurnError,
   event: AgentTurnEvent
 ): AgentTurnTransitionResult {
   if (state.phase !== "compacting") return illegal(state, event);
-  const failed = { ...state, fault: { kind: "present", error } as const };
-  if (error.kind === "retryable") {
-    return success({ ...failed, phase: "recovering", error, resumePhase: state.resumePhase });
+  if (!faultId.trim()) {
+    return transitionError("invalidEvent", "Fault ID must not be empty.");
   }
   if (error.kind === "cancelled") {
-    return terminal(failed, deriveOverallOutcome(failed, { cancellationReason: error.message })!);
+    return transitionError("invalidEvent", "Cancelled compaction must use COMPACTION_CANCELLED.");
+  }
+  const failed = { ...state, fault: { kind: "present", faultId, error } as const };
+  if (error.kind === "retryable") {
+    return success({ ...failed, phase: "recovering", faultId, error, resumePhase: state.resumePhase });
   }
   return terminal(failed, deriveOverallOutcome(failed)!);
+}
+
+function startProviderRequest(
+  state: Exclude<AgentTurnLifecycleState, { phase: "terminal" }>,
+  requestId: string,
+  stepSequence: number,
+  event: AgentTurnEvent
+): AgentTurnTransitionResult {
+  if (!requestId.trim() || !Number.isInteger(stepSequence) || stepSequence < 1) {
+    return transitionError("invalidEvent", "Provider request identity and step sequence must be valid.");
+  }
+  const isInitial =
+    (state.phase === "preparing" || state.phase === "requestingProvider") &&
+    state.serverExecutionStatus === "created" &&
+    state.externalRequest.kind === "none" &&
+    stepSequence === 1;
+  const isContinuation =
+    state.phase === "continuing" &&
+    state.serverExecutionStatus === "awaitingNextRequest" &&
+    state.externalRequest.kind === "settled" &&
+    requestId !== state.externalRequest.requestId &&
+    stepSequence === state.externalRequest.stepSequence + 1;
+  if (!isInitial && !isContinuation) {
+    if (
+      state.externalRequest.kind !== "none" &&
+      stepSequence <= state.externalRequest.stepSequence
+    ) {
+      return transitionError(
+        "externalStepSequenceConflict",
+        `External step ${stepSequence} is not newer than ${state.externalRequest.stepSequence}.`
+      );
+    }
+    return illegal(state, event);
+  }
+  return success({
+    ...state,
+    phase: "requestingProvider",
+    serverExecutionStatus: "providerRunning",
+    externalRequest: { kind: "active", requestId, stepSequence },
+    providerOutput: { kind: "none" },
+    streamActivitySequence: 0
+  });
 }
 
 function startToolBatch(
@@ -529,7 +641,14 @@ function startToolBatch(
   declaredCallIds: readonly string[],
   event: AgentTurnEvent
 ): AgentTurnTransitionResult {
-  if (state.phase !== "continuing") return illegal(state, event);
+  if (
+    state.phase !== "continuing" ||
+    state.serverExecutionStatus !== "awaitingNextRequest" ||
+    state.externalRequest.kind !== "settled" ||
+    state.providerOutput.kind !== "received" ||
+    state.providerOutput.requestId !== state.externalRequest.requestId ||
+    state.providerOutput.stepSequence !== state.externalRequest.stepSequence
+  ) return illegal(state, event);
   const duplicate = findDuplicate(declaredCallIds);
   if (duplicate) return transitionError("conflictingToolResult", `Duplicate declared Call ID ${duplicate}.`);
   const previouslyDeclared = new Set(state.toolBatches.flatMap((batch) => batch.declaredCallIds));
@@ -543,6 +662,11 @@ function startToolBatch(
   return success({
     ...state,
     phase: "executingTools",
+    providerOutput: {
+      kind: "consumed",
+      requestId: state.providerOutput.requestId,
+      stepSequence: state.providerOutput.stepSequence
+    },
     activeToolBatch: { declaredCallIds: [...declaredCallIds], results: [] }
   });
 }
@@ -607,21 +731,9 @@ function finalizeToolBatch(
   });
 }
 
-function resolveConfirmation(
-  state: Exclude<AgentTurnLifecycleState, { phase: "terminal" }>,
-  resolution: "accepted" | "rejected",
-  event: AgentTurnEvent
-): AgentTurnTransitionResult {
-  if (state.phase !== "awaitingConfirmation") return illegal(state, event);
-  return success({
-    ...state,
-    phase: "continuing",
-    confirmation: { kind: resolution, callIds: state.callIds }
-  });
-}
-
 function startRecovery(
   state: Exclude<AgentTurnLifecycleState, { phase: "terminal" }>,
+  faultId: string,
   event: AgentTurnEvent
 ): AgentTurnTransitionResult {
   if (
@@ -631,12 +743,17 @@ function startRecovery(
   ) {
     return illegal(state, event);
   }
-  if (state.fault.kind !== "present" || state.fault.error.kind !== "retryable") {
+  if (
+    state.fault.kind !== "present" ||
+    state.fault.faultId !== faultId ||
+    state.fault.error.kind !== "retryable"
+  ) {
     return transitionError("invalidEvent", "Only an explicitly retryable error can enter recovery.");
   }
   return success({
     ...state,
     phase: "recovering",
+    faultId,
     error: state.fault.error,
     resumePhase: state.phase
   });
@@ -659,16 +776,11 @@ function requestCancellation(
       return transitionError("incompleteToolBatch", `${aggregated.error.code}: ${aggregated.error.callId}`);
     }
     const { activeToolBatch, ...facts } = state;
-    const pendingCallIds = results
-      .filter((result) => result.status === "pendingConfirmation")
-      .map((result) => result.callId);
     return success({
       ...facts,
       phase: "cancelling",
       reason,
-      confirmation: pendingCallIds.length
-        ? { kind: "rejected", callIds: pendingCallIds }
-        : facts.confirmation,
+      confirmation: { kind: "none" },
       toolBatches: [
         ...facts.toolBatches,
         {
@@ -679,20 +791,40 @@ function requestCancellation(
       ]
     });
   }
-  return success({ ...state, phase: "cancelling", reason });
+  return success({ ...state, phase: "cancelling", reason, confirmation: { kind: "none" } });
 }
 
 function observeServerStatus(
   state: Exclude<AgentTurnLifecycleState, { phase: "terminal" }>,
+  requestId: string,
+  stepSequence: number,
   status: ServerExternalExecutionStatus
 ): AgentTurnTransitionResult {
+  if (!matchesExternalRequest(state, requestId, stepSequence)) {
+    return externalRequestMismatch(state, requestId, stepSequence);
+  }
+  if (
+    (state.phase === "executingTools" || state.phase === "awaitingConfirmation") &&
+    status !== "awaitingNextRequest"
+  ) {
+    return transitionError(
+      "invalidServerStatusTransition",
+      `${state.phase} requires awaitingNextRequest external status.`
+    );
+  }
   if (!isServerStatusTransitionAllowed(state.serverExecutionStatus, status)) {
     return transitionError(
       "invalidServerStatusTransition",
       `${state.serverExecutionStatus} cannot transition to ${status}.`
     );
   }
-  return success({ ...state, serverExecutionStatus: status });
+  return success({
+    ...state,
+    serverExecutionStatus: status,
+    externalRequest: status === "providerRunning"
+      ? { kind: "active", requestId, stepSequence }
+      : { kind: "settled", requestId, stepSequence }
+  });
 }
 
 function isServerStatusTransitionAllowed(
@@ -703,12 +835,68 @@ function isServerStatusTransitionAllowed(
   const allowed: Record<ServerExternalExecutionStatus, readonly ServerExternalExecutionStatus[]> = {
     created: ["providerRunning", "externallyCancelled", "externallyFailed"],
     providerRunning: ["awaitingNextRequest", "externallyCompleted", "externallyCancelled", "externallyFailed"],
-    awaitingNextRequest: ["providerRunning", "externallyCompleted", "externallyCancelled", "externallyFailed"],
+    awaitingNextRequest: ["externallyCompleted", "externallyCancelled", "externallyFailed"],
     externallyCompleted: [],
     externallyCancelled: [],
     externallyFailed: []
   };
   return allowed[current].includes(next);
+}
+
+function matchesExternalRequest(
+  state: AgentTurnLifecycleState,
+  requestId: string,
+  stepSequence: number,
+  requireActive = false
+): boolean {
+  return state.externalRequest.kind !== "none" &&
+    (!requireActive || state.externalRequest.kind === "active") &&
+    state.externalRequest.requestId === requestId &&
+    state.externalRequest.stepSequence === stepSequence;
+}
+
+function externalRequestMismatch(
+  state: AgentTurnLifecycleState,
+  requestId: string,
+  stepSequence: number
+): AgentTurnTransitionResult {
+  const active = state.externalRequest.kind === "none"
+    ? "none"
+    : `${state.externalRequest.requestId}/${state.externalRequest.stepSequence}`;
+  return transitionError(
+    "externalRequestMismatch",
+    `External event ${requestId}/${stepSequence} does not match ${active}.`
+  );
+}
+
+function recordFault(
+  state: Exclude<AgentTurnLifecycleState, { phase: "terminal" }>,
+  faultId: string,
+  error: AgentTurnError
+): AgentTurnTransitionResult {
+  if (!faultId.trim()) {
+    return transitionError("invalidEvent", "Fault ID must not be empty.");
+  }
+  if (error.kind === "cancelled") {
+    return transitionError("invalidEvent", "Cancellation must use CANCELLATION_REQUESTED.");
+  }
+  if (state.fault.kind === "none") {
+    return success({ ...state, fault: { kind: "present", faultId, error } });
+  }
+  if (state.fault.faultId === faultId && sameAgentTurnError(state.fault.error, error)) {
+    return success(state);
+  }
+  return transitionError(
+    "unresolvedFaultConflict",
+    `Fault ${state.fault.faultId} must be resolved before recording ${faultId}.`
+  );
+}
+
+function sameAgentTurnError(left: AgentTurnError, right: AgentTurnError): boolean {
+  return left.kind === right.kind &&
+    left.code === right.code &&
+    left.message === right.message &&
+    left.recoverable === right.recoverable;
 }
 
 function sameToolCallResult(left: ToolCallTerminalResult, right: ToolCallTerminalResult): boolean {

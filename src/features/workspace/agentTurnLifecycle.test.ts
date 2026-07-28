@@ -11,30 +11,33 @@ import {
 } from "./agentTurnLifecycle";
 
 const turnId = "turn-1";
-const retryableError: AgentTurnError = {
+const request1 = { requestId: "request-1", stepSequence: 1 } as const;
+const request2 = { requestId: "request-2", stepSequence: 2 } as const;
+const fault1 = "fault-1";
+const retryableError = {
   kind: "retryable",
   code: "networkInterrupted",
   message: "temporary network interruption",
   recoverable: true
-};
-const terminalError: AgentTurnError = {
+} satisfies AgentTurnError;
+const terminalError = {
   kind: "terminal",
   code: "invalidProviderResponse",
   message: "provider response is terminally invalid",
   recoverable: false
-};
-const conflictError: AgentTurnError = {
+} satisfies AgentTurnError;
+const conflictError = {
   kind: "conflict",
   code: "sequenceConflict",
   message: "request sequence conflicts",
   recoverable: false
-};
-const quotaError: AgentTurnError = {
+} satisfies AgentTurnError;
+const quotaError = {
   kind: "quotaExceeded",
   code: "quotaExceeded",
   message: "quota exceeded",
   recoverable: false
-};
+} satisfies AgentTurnError;
 
 type EventWithoutTurnId<T> = T extends { turnId: string } ? Omit<T, "turnId"> : never;
 
@@ -52,32 +55,51 @@ function requesting(): AgentTurnLifecycleState {
   return apply(createAgentTurnLifecycleState(turnId), { type: "PREPARATION_COMPLETED" });
 }
 
+function startProviderRequest(
+  state: AgentTurnLifecycleState,
+  request: typeof request1 | typeof request2 = request1
+): AgentTurnLifecycleState {
+  return apply(state, { type: "PROVIDER_REQUEST_STARTED", ...request });
+}
+
 function withProviderOutput(): AgentTurnLifecycleState {
-  let state = apply(requesting(), {
-    type: "SERVER_EXECUTION_STATUS_OBSERVED",
-    status: "providerRunning"
-  });
+  let state = startProviderRequest(requesting());
   state = apply(state, {
     type: "PROVIDER_OUTPUT_RECEIVED",
+    ...request1,
     producedUserVisibleEffect: true
   });
   return apply(state, {
     type: "SERVER_EXECUTION_STATUS_OBSERVED",
+    ...request1,
     status: "externallyCompleted"
   });
 }
 
-function withToolCallingOutput(): AgentTurnLifecycleState {
-  let state = apply(requesting(), {
-    type: "SERVER_EXECUTION_STATUS_OBSERVED",
-    status: "providerRunning"
-  });
+function withToolCallingOutput(producedUserVisibleEffect = false): AgentTurnLifecycleState {
+  let state = startProviderRequest(requesting());
   state = apply(state, {
     type: "PROVIDER_OUTPUT_RECEIVED",
-    producedUserVisibleEffect: false
+    ...request1,
+    producedUserVisibleEffect
   });
   return apply(state, {
     type: "SERVER_EXECUTION_STATUS_OBSERVED",
+    ...request1,
+    status: "awaitingNextRequest"
+  });
+}
+
+function withContinuationToolOutput(state: AgentTurnLifecycleState): AgentTurnLifecycleState {
+  let next = startProviderRequest(state, request2);
+  next = apply(next, {
+    type: "PROVIDER_OUTPUT_RECEIVED",
+    ...request2,
+    producedUserVisibleEffect: false
+  });
+  return apply(next, {
+    type: "SERVER_EXECUTION_STATUS_OBSERVED",
+    ...request2,
     status: "awaitingNextRequest"
   });
 }
@@ -140,7 +162,8 @@ describe("Agent Turn lifecycle foundations", () => {
       phase: "preparing",
       turnId,
       serverExecutionStatus: "created",
-      providerOutputReceived: false,
+      externalRequest: { kind: "none", lastStepSequence: 0 },
+      providerOutput: { kind: "none" },
       unresolvedWorkIds: [],
       fault: { kind: "none" }
     });
@@ -162,8 +185,8 @@ describe("Agent Turn lifecycle foundations", () => {
   });
 
   it("is deterministic for identical state and event inputs", () => {
-    const state = requesting();
-    const event = { type: "STREAM_ACTIVITY_OBSERVED", turnId, sequence: 1 } as const;
+    const state = startProviderRequest(requesting());
+    const event = { type: "STREAM_ACTIVITY_OBSERVED", turnId, ...request1, sequence: 1 } as const;
     expect(reduceAgentTurnLifecycle(state, event)).toEqual(reduceAgentTurnLifecycle(state, event));
   });
 
@@ -171,7 +194,8 @@ describe("Agent Turn lifecycle foundations", () => {
     const terminal = finalizeTurn(withProviderOutput());
     const result = reduceAgentTurnLifecycle(terminal, {
       type: "PROVIDER_REQUEST_STARTED",
-      turnId
+      turnId,
+      ...request2
     });
     expect(result).toMatchObject({ ok: false, error: { code: "illegalTransition" } });
   });
@@ -183,12 +207,10 @@ describe("Provider and display inputs", () => {
   });
 
   it("does not treat externallyCompleted as the overall local outcome", () => {
-    let state = apply(requesting(), {
-      type: "SERVER_EXECUTION_STATUS_OBSERVED",
-      status: "providerRunning"
-    });
+    let state = startProviderRequest(requesting());
     state = apply(state, {
       type: "SERVER_EXECUTION_STATUS_OBSERVED",
+      ...request1,
       status: "externallyCompleted"
     });
     const result = reduceAgentTurnLifecycle(state, { type: "TURN_FINALIZED", turnId });
@@ -196,25 +218,203 @@ describe("Provider and display inputs", () => {
   });
 
   it("records an SSE display activity without deciding a terminal outcome", () => {
-    const state = apply(requesting(), { type: "STREAM_ACTIVITY_OBSERVED", sequence: 7 });
+    const state = apply(startProviderRequest(requesting()), {
+      type: "STREAM_ACTIVITY_OBSERVED",
+      ...request1,
+      sequence: 7
+    });
     expect(state).toMatchObject({ phase: "requestingProvider", streamActivitySequence: 7 });
   });
 
   it("rejects regressing a terminal Server external status", () => {
-    let state = apply(requesting(), {
-      type: "SERVER_EXECUTION_STATUS_OBSERVED",
-      status: "providerRunning"
-    });
+    let state = startProviderRequest(requesting());
     state = apply(state, {
       type: "SERVER_EXECUTION_STATUS_OBSERVED",
+      ...request1,
       status: "externallyCompleted"
     });
     const result = reduceAgentTurnLifecycle(state, {
       type: "SERVER_EXECUTION_STATUS_OBSERVED",
       turnId,
+      ...request1,
       status: "providerRunning"
     });
     expect(result).toMatchObject({ ok: false, error: { code: "invalidServerStatusTransition" } });
+  });
+
+  it("preserves an earlier Provider effect across a textless Continuation and later failure", () => {
+    let state = withToolCallingOutput(true);
+    state = startProviderRequest(state, request2);
+    state = apply(state, {
+      type: "PROVIDER_OUTPUT_RECEIVED",
+      ...request2,
+      producedUserVisibleEffect: false
+    });
+    state = apply(state, {
+      type: "SERVER_EXECUTION_STATUS_OBSERVED",
+      ...request2,
+      status: "externallyFailed"
+    });
+    expect(state.providerEffectProduced).toBe(true);
+    expect(outcome(finalizeTurn(state))).toBe("partiallyCompleted");
+  });
+
+  it.each([
+    {
+      label: "status",
+      event: {
+        type: "SERVER_EXECUTION_STATUS_OBSERVED",
+        turnId,
+        ...request1,
+        status: "externallyFailed"
+      } as const
+    },
+    {
+      label: "output",
+      event: {
+        type: "PROVIDER_OUTPUT_RECEIVED",
+        turnId,
+        ...request1,
+        producedUserVisibleEffect: true
+      } as const
+    },
+    {
+      label: "failure",
+      event: {
+        type: "EXTERNAL_ERROR_RECORDED",
+        turnId,
+        ...request1,
+        faultId: "stale-provider-fault",
+        error: retryableError
+      } as const
+    }
+  ])("rejects a stale same-Turn Provider $label event from an earlier request", ({ event }) => {
+    const state = startProviderRequest(withToolCallingOutput(), request2);
+    const result = reduceAgentTurnLifecycle(state, event);
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "externalRequestMismatch", recoverable: false }
+    });
+  });
+
+  it("scopes SSE activity sequence to the active Provider request", () => {
+    let state = apply(startProviderRequest(requesting()), {
+      type: "STREAM_ACTIVITY_OBSERVED",
+      ...request1,
+      sequence: 9
+    });
+    state = apply(state, {
+      type: "PROVIDER_OUTPUT_RECEIVED",
+      ...request1,
+      producedUserVisibleEffect: false
+    });
+    state = apply(state, {
+      type: "SERVER_EXECUTION_STATUS_OBSERVED",
+      ...request1,
+      status: "awaitingNextRequest"
+    });
+    state = startProviderRequest(state, request2);
+    state = apply(state, {
+      type: "STREAM_ACTIVITY_OBSERVED",
+      ...request2,
+      sequence: 1
+    });
+    expect(state.streamActivitySequence).toBe(1);
+  });
+
+  it("rejects an external error after that request already completed", () => {
+    const state = withProviderOutput();
+    expect(reduceAgentTurnLifecycle(state, {
+      type: "EXTERNAL_ERROR_RECORDED",
+      turnId,
+      ...request1,
+      faultId: "late-error",
+      error: terminalError
+    })).toMatchObject({
+      ok: false,
+      error: { code: "invalidServerStatusTransition" }
+    });
+  });
+});
+
+describe("Phase and Server status guards", () => {
+  it.each(["externallyCompleted", "externallyCancelled", "externallyFailed"] as const)(
+    "does not start a new Provider request after %s",
+    (status) => {
+      let state = startProviderRequest(requesting());
+      state = apply(state, {
+        type: "SERVER_EXECUTION_STATUS_OBSERVED",
+        ...request1,
+        status
+      });
+      expect(reduceAgentTurnLifecycle(state, {
+        type: "PROVIDER_REQUEST_STARTED",
+        turnId,
+        ...request2
+      })).toMatchObject({ ok: false, error: { code: "illegalTransition" } });
+    }
+  );
+
+  it("starts a Continuation only from awaitingNextRequest with the next sequence", () => {
+    const state = withToolCallingOutput();
+    expect(startProviderRequest(state, request2)).toMatchObject({
+      phase: "requestingProvider",
+      serverExecutionStatus: "providerRunning",
+      externalRequest: { kind: "active", ...request2 }
+    });
+    expect(reduceAgentTurnLifecycle(state, {
+      type: "PROVIDER_REQUEST_STARTED",
+      turnId,
+      requestId: "request-gap",
+      stepSequence: 3
+    })).toMatchObject({ ok: false, error: { code: "illegalTransition" } });
+  });
+
+  it("does not start a Tool Batch after external execution is terminal", () => {
+    let state = startProviderRequest(requesting());
+    state = apply(state, {
+      type: "PROVIDER_OUTPUT_RECEIVED",
+      ...request1,
+      producedUserVisibleEffect: false
+    });
+    state = apply(state, {
+      type: "SERVER_EXECUTION_STATUS_OBSERVED",
+      ...request1,
+      status: "externallyCompleted"
+    });
+    expect(reduceAgentTurnLifecycle(state, {
+      type: "TOOL_BATCH_STARTED",
+      turnId,
+      declaredCallIds: ["a"]
+    })).toMatchObject({ ok: false, error: { code: "illegalTransition" } });
+  });
+
+  it("does not start Compaction while Provider execution is running", () => {
+    const state = startProviderRequest(requesting());
+    expect(reduceAgentTurnLifecycle(state, {
+      type: "COMPACTION_STARTED",
+      turnId,
+      mode: "automatic"
+    })).toMatchObject({
+      ok: false,
+      error: { code: "invalidServerStatusTransition" }
+    });
+  });
+
+  it("does not accept a terminal Server status while executing local Tools", () => {
+    const state = apply(withToolCallingOutput(), {
+      type: "TOOL_BATCH_STARTED",
+      declaredCallIds: ["a"]
+    });
+    expect(reduceAgentTurnLifecycle(state, {
+      type: "SERVER_EXECUTION_STATUS_OBSERVED",
+      turnId,
+      ...request1,
+      status: "externallyCompleted"
+    })).toMatchObject({
+      ok: false,
+      error: { code: "invalidServerStatusTransition" }
+    });
   });
 });
 
@@ -264,14 +464,14 @@ describe("Tool Batch aggregation", () => {
   });
 
   it("allows an identical Call terminal event idempotently", () => {
-    let state = apply(withProviderOutput(), { type: "TOOL_BATCH_STARTED", declaredCallIds: ["a"] });
+    let state = apply(withToolCallingOutput(), { type: "TOOL_BATCH_STARTED", declaredCallIds: ["a"] });
     state = apply(state, { type: "TOOL_CALL_TERMINATED", result: executed("a") });
     const repeated = apply(state, { type: "TOOL_CALL_TERMINATED", result: executed("a") });
     expect(repeated).toEqual(state);
   });
 
   it("rejects conflicting terminal facts for the same Call", () => {
-    let state = apply(withProviderOutput(), { type: "TOOL_BATCH_STARTED", declaredCallIds: ["a"] });
+    let state = apply(withToolCallingOutput(), { type: "TOOL_BATCH_STARTED", declaredCallIds: ["a"] });
     state = apply(state, { type: "TOOL_CALL_TERMINATED", result: executed("a") });
     const result = reduceAgentTurnLifecycle(state, {
       type: "TOOL_CALL_TERMINATED",
@@ -282,13 +482,15 @@ describe("Tool Batch aggregation", () => {
   });
 
   it("preserves earlier batch facts across a continuation batch", () => {
-    let state = finalizeBatch(withProviderOutput(), ["a"], [executed("a")]);
+    let state = finalizeBatch(withToolCallingOutput(), ["a"], [executed("a")]);
+    state = withContinuationToolOutput(state);
     state = finalizeBatch(state, ["b"], [failed("b")]);
     expect(outcome(finalizeTurn(state))).toBe("partiallyCompleted");
   });
 
   it("rejects reuse of a terminal Call ID in a later batch", () => {
-    const state = finalizeBatch(withProviderOutput(), ["a"], [executed("a")]);
+    let state = finalizeBatch(withToolCallingOutput(), ["a"], [executed("a")]);
+    state = withContinuationToolOutput(state);
     const result = reduceAgentTurnLifecycle(state, {
       type: "TOOL_BATCH_STARTED",
       turnId,
@@ -301,20 +503,17 @@ describe("Tool Batch aggregation", () => {
 describe("Overall Local Agent Turn Outcome", () => {
   it("keeps a successful tool effect when the Provider later fails", () => {
     let state = finalizeBatch(withToolCallingOutput(), ["a"], [executed("a")]);
-    state = apply(state, { type: "PROVIDER_REQUEST_STARTED" });
+    state = startProviderRequest(state, request2);
     state = apply(state, {
       type: "SERVER_EXECUTION_STATUS_OBSERVED",
-      status: "providerRunning"
-    });
-    state = apply(state, {
-      type: "SERVER_EXECUTION_STATUS_OBSERVED",
+      ...request2,
       status: "externallyFailed"
     });
     expect(outcome(finalizeTurn(state))).toBe("partiallyCompleted");
   });
 
   it("returns partiallyCompleted when cancellation follows success", () => {
-    const state = finalizeBatch(withProviderOutput(), ["a"], [executed("a")]);
+    const state = finalizeBatch(withToolCallingOutput(), ["a"], [executed("a")]);
     const cancelling = apply(state, { type: "CANCELLATION_REQUESTED", reason: "stop" });
     expect(outcome(finalizeTurn(cancelling))).toBe("partiallyCompleted");
   });
@@ -325,7 +524,11 @@ describe("Overall Local Agent Turn Outcome", () => {
   });
 
   it("returns failed for a terminal fault without a successful effect", () => {
-    let state = apply(requesting(), { type: "ERROR_RECORDED", error: terminalError });
+    const state = apply(requesting(), {
+      type: "ERROR_RECORDED",
+      faultId: fault1,
+      error: terminalError
+    });
     expect(outcome(finalizeTurn(state))).toBe("failed");
   });
 
@@ -336,7 +539,7 @@ describe("Overall Local Agent Turn Outcome", () => {
   });
 
   it("returns pendingConfirmation only while a real pending Call exists", () => {
-    let state = finalizeBatch(withProviderOutput(), ["a"], [pending("a")]);
+    let state = finalizeBatch(withToolCallingOutput(true), ["a"], [pending("a")]);
     expect(state).toMatchObject({ phase: "awaitingConfirmation" });
     expect(outcome(finalizeTurn(state))).toBe("partiallyCompleted");
 
@@ -344,37 +547,45 @@ describe("Overall Local Agent Turn Outcome", () => {
     expect(outcome(finalizeTurn(state))).toBe("pendingConfirmation");
   });
 
-  it("turns rejected confirmation into cancellation rather than Pending", () => {
-    let state = finalizeBatch(withToolCallingOutput(), ["a"], [pending("a")]);
-    state = apply(state, { type: "CONFIRMATION_RESOLVED", resolution: "rejected" });
-    expect(outcome(finalizeTurn(state))).toBe("cancelled");
-  });
-
-  it("refuses to finalize an accepted but unexecuted confirmation", () => {
-    let state = finalizeBatch(withToolCallingOutput(), ["a"], [pending("a")]);
-    state = apply(state, { type: "CONFIRMATION_RESOLVED", resolution: "accepted" });
-    expect(reduceAgentTurnLifecycle(state, { type: "TURN_FINALIZED", turnId })).toMatchObject({
-      ok: false,
-      error: { code: "insufficientTerminalFacts" }
+  it("ends the current Turn at Pending and requires later execution to use a new Turn", () => {
+    const pendingTurn = finalizeTurn(
+      finalizeBatch(withToolCallingOutput(), ["a"], [pending("a")])
+    );
+    expect(outcome(pendingTurn)).toBe("pendingConfirmation");
+    expect(createAgentTurnLifecycleState("confirmation-execution-turn")).toMatchObject({
+      phase: "preparing",
+      confirmation: { kind: "none" },
+      toolBatches: []
     });
+    expect(reduceAgentTurnLifecycle(pendingTurn, {
+      type: "PROVIDER_REQUEST_STARTED",
+      turnId,
+      ...request2
+    })).toMatchObject({ ok: false, error: { code: "illegalTransition" } });
   });
 
   it("lets a local persistence failure make a successful Turn partial", () => {
     let state = apply(withProviderOutput(), { type: "LOCAL_PERSISTENCE_REQUIRED" });
-    state = apply(state, { type: "LOCAL_PERSISTENCE_FAILED", error: terminalError });
+    state = apply(state, {
+      type: "LOCAL_PERSISTENCE_FAILED",
+      faultId: fault1,
+      error: terminalError
+    });
     expect(outcome(finalizeTurn(state))).toBe("partiallyCompleted");
   });
 
   it("does not let external completion override a local Tool failure", () => {
-    const state = finalizeBatch(withProviderOutput(), ["a"], [failed("a")]);
-    expect(outcome(finalizeTurn(state))).toBe("partiallyCompleted");
+    let state = finalizeBatch(withToolCallingOutput(), ["a"], [failed("a")]);
+    state = apply(state, {
+      type: "SERVER_EXECUTION_STATUS_OBSERVED",
+      ...request1,
+      status: "externallyCompleted"
+    });
+    expect(outcome(finalizeTurn(state))).toBe("failed");
   });
 
   it("waits for running external execution to stop before finalizing cancellation", () => {
-    let state = apply(requesting(), {
-      type: "SERVER_EXECUTION_STATUS_OBSERVED",
-      status: "providerRunning"
-    });
+    let state = startProviderRequest(requesting());
     state = apply(state, { type: "CANCELLATION_REQUESTED", reason: "stop" });
     expect(reduceAgentTurnLifecycle(state, { type: "TURN_FINALIZED", turnId })).toMatchObject({
       ok: false,
@@ -382,6 +593,7 @@ describe("Overall Local Agent Turn Outcome", () => {
     });
     state = apply(state, {
       type: "SERVER_EXECUTION_STATUS_OBSERVED",
+      ...request1,
       status: "externallyCancelled"
     });
     expect(outcome(finalizeTurn(state))).toBe("cancelled");
@@ -389,13 +601,10 @@ describe("Overall Local Agent Turn Outcome", () => {
 
   it("does not let external failure erase a successful local effect", () => {
     let state = finalizeBatch(withToolCallingOutput(), ["a"], [executed("a")]);
-    state = apply(state, { type: "PROVIDER_REQUEST_STARTED" });
+    state = startProviderRequest(state, request2);
     state = apply(state, {
       type: "SERVER_EXECUTION_STATUS_OBSERVED",
-      status: "providerRunning"
-    });
-    state = apply(state, {
-      type: "SERVER_EXECUTION_STATUS_OBSERVED",
+      ...request2,
       status: "externallyFailed"
     });
     const terminal = finalizeTurn(state);
@@ -406,7 +615,11 @@ describe("Overall Local Agent Turn Outcome", () => {
   });
 
   it("propagates a Tool-local persistence failure into partial completion", () => {
-    const state = finalizeBatch(withProviderOutput(), ["a"], [executed("a", { persistence: "failed" })]);
+    const state = finalizeBatch(
+      withToolCallingOutput(),
+      ["a"],
+      [executed("a", { persistence: "failed" })]
+    );
     expect(outcome(finalizeTurn(state))).toBe("partiallyCompleted");
   });
 });
@@ -418,34 +631,149 @@ describe("Error and recovery boundaries", () => {
   });
 
   it("allows only retryable errors to enter recovering", () => {
-    let retryable = apply(requesting(), { type: "ERROR_RECORDED", error: retryableError });
-    retryable = apply(retryable, { type: "RECOVERY_STARTED" });
+    let retryable = apply(requesting(), {
+      type: "ERROR_RECORDED",
+      faultId: fault1,
+      error: retryableError
+    });
+    retryable = apply(retryable, { type: "RECOVERY_STARTED", faultId: fault1 });
     expect(retryable).toMatchObject({ phase: "recovering", error: { kind: "retryable" } });
 
-    const conflicted = apply(requesting(), { type: "ERROR_RECORDED", error: conflictError });
-    expect(reduceAgentTurnLifecycle(conflicted, { type: "RECOVERY_STARTED", turnId })).toMatchObject({
+    const conflicted = apply(requesting(), {
+      type: "ERROR_RECORDED",
+      faultId: fault1,
+      error: conflictError
+    });
+    expect(reduceAgentTurnLifecycle(conflicted, {
+      type: "RECOVERY_STARTED",
+      turnId,
+      faultId: fault1
+    })).toMatchObject({
       ok: false,
       error: { code: "invalidEvent", recoverable: false }
     });
   });
 
   it("does not classify quotaExceeded as ordinary retryable", () => {
-    const state = apply(requesting(), { type: "ERROR_RECORDED", error: quotaError });
-    expect(reduceAgentTurnLifecycle(state, { type: "RECOVERY_STARTED", turnId })).toMatchObject({
+    const state = apply(requesting(), {
+      type: "ERROR_RECORDED",
+      faultId: fault1,
+      error: quotaError
+    });
+    expect(reduceAgentTurnLifecycle(state, {
+      type: "RECOVERY_STARTED",
+      turnId,
+      faultId: fault1
+    })).toMatchObject({
       ok: false,
       error: { code: "invalidEvent" }
     });
   });
 
   it("clears a retryable fault only through explicit recovery resolution", () => {
-    let state = apply(requesting(), { type: "ERROR_RECORDED", error: retryableError });
-    state = apply(state, { type: "RECOVERY_STARTED" });
-    state = apply(state, { type: "RECOVERY_RESOLVED" });
+    let state = apply(requesting(), {
+      type: "ERROR_RECORDED",
+      faultId: fault1,
+      error: retryableError
+    });
+    state = apply(state, { type: "RECOVERY_STARTED", faultId: fault1 });
+    state = apply(state, { type: "RECOVERY_RESOLVED", faultId: fault1 });
     expect(state).toMatchObject({ phase: "requestingProvider", fault: { kind: "none" } });
   });
 
+  it("does not let a later retryable fault overwrite an unresolved terminal fault", () => {
+    const state = apply(requesting(), {
+      type: "ERROR_RECORDED",
+      faultId: "terminal-fault",
+      error: terminalError
+    });
+    const result = reduceAgentTurnLifecycle(state, {
+      type: "ERROR_RECORDED",
+      turnId,
+      faultId: "retryable-fault",
+      error: retryableError
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "unresolvedFaultConflict", recoverable: false }
+    });
+    expect(state.fault).toMatchObject({
+      kind: "present",
+      faultId: "terminal-fault",
+      error: { kind: "terminal" }
+    });
+  });
+
+  it("accepts only an identical repeated fault fact idempotently", () => {
+    const state = apply(requesting(), {
+      type: "ERROR_RECORDED",
+      faultId: fault1,
+      error: retryableError
+    });
+    const repeated = apply(state, {
+      type: "ERROR_RECORDED",
+      faultId: fault1,
+      error: retryableError
+    });
+    expect(repeated).toEqual(state);
+    expect(reduceAgentTurnLifecycle(state, {
+      type: "ERROR_RECORDED",
+      turnId,
+      faultId: fault1,
+      error: terminalError
+    })).toMatchObject({ ok: false, error: { code: "unresolvedFaultConflict" } });
+  });
+
+  it("resolves only the matching retryable Fault ID", () => {
+    let state = apply(requesting(), {
+      type: "ERROR_RECORDED",
+      faultId: fault1,
+      error: retryableError
+    });
+    state = apply(state, { type: "RECOVERY_STARTED", faultId: fault1 });
+    expect(reduceAgentTurnLifecycle(state, {
+      type: "RECOVERY_RESOLVED",
+      turnId,
+      faultId: "other-fault"
+    })).toMatchObject({ ok: false, error: { code: "unresolvedFaultConflict" } });
+    state = apply(state, { type: "RECOVERY_RESOLVED", faultId: fault1 });
+    expect(state.fault).toEqual({ kind: "none" });
+  });
+
+  it("rejects cancelled errors from the generic fault channel", () => {
+    const result = reduceAgentTurnLifecycle(requesting(), {
+      type: "ERROR_RECORDED",
+      turnId,
+      faultId: "cancelled-fault",
+      error: {
+        kind: "cancelled",
+        code: "userCancelled",
+        message: "cancelled",
+        recoverable: false
+      }
+    } as unknown as AgentTurnEvent);
+    expect(result).toMatchObject({ ok: false, error: { code: "invalidEvent" } });
+  });
+
+  it("rejects stale same-Turn external failures by request identity", () => {
+    const state = startProviderRequest(withToolCallingOutput(), request2);
+    const result = reduceAgentTurnLifecycle(state, {
+      type: "EXTERNAL_ERROR_RECORDED",
+      turnId,
+      ...request1,
+      faultId: "old-attempt-failure",
+      error: retryableError
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: "externalRequestMismatch" } });
+    expect(state.fault).toEqual({ kind: "none" });
+  });
+
   it("does not inherit failure state into a new Turn", () => {
-    const failedTurn = apply(requesting(), { type: "ERROR_RECORDED", error: terminalError });
+    const failedTurn = apply(requesting(), {
+      type: "ERROR_RECORDED",
+      faultId: fault1,
+      error: terminalError
+    });
     expect(failedTurn.fault.kind).toBe("present");
     expect(createAgentTurnLifecycleState("turn-2").fault).toEqual({ kind: "none" });
   });
@@ -454,6 +782,7 @@ describe("Error and recovery boundaries", () => {
     const result = reduceAgentTurnLifecycle(requesting(), {
       type: "ERROR_RECORDED",
       turnId: "stale-turn",
+      faultId: fault1,
       error: terminalError
     });
     expect(result).toMatchObject({ ok: false, error: { code: "turnMismatch" } });
@@ -478,7 +807,11 @@ describe("Compaction lifecycle semantics", () => {
 
   it("does not fabricate compaction success after a retryable failure", () => {
     let state = apply(requesting(), { type: "COMPACTION_STARTED", mode: "automatic" });
-    state = apply(state, { type: "COMPACTION_FAILED", error: retryableError });
+    state = apply(state, {
+      type: "COMPACTION_FAILED",
+      faultId: fault1,
+      error: retryableError
+    });
     expect(state).toMatchObject({ phase: "recovering", fault: { kind: "present" } });
   });
 
@@ -498,7 +831,11 @@ describe("Compaction lifecycle semantics", () => {
 
   it("makes a terminal compaction failure failed rather than completed", () => {
     let state = apply(requesting(), { type: "COMPACTION_STARTED", mode: "automatic" });
-    state = apply(state, { type: "COMPACTION_FAILED", error: terminalError });
+    state = apply(state, {
+      type: "COMPACTION_FAILED",
+      faultId: fault1,
+      error: terminalError
+    });
     expect(outcome(state)).toBe("failed");
   });
 });
