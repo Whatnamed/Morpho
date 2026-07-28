@@ -7,16 +7,17 @@ This document is the durable implementation ledger for converging the Morpho Age
 | Field | Value |
 |---|---|
 | Decision date | 2026-07-28 |
-| Current state | Stage 0 — architecture decision and baseline archival |
+| Current state | Stage 1 — lifecycle model implemented, not wired |
 | Current formal working branch | `refactor/agent-runtime-a-plus` |
 | B implementation archive branch | `archive/agent-runtime-b` |
 | B implementation archive tag | `agent-runtime-b-final-2026-07-28-f27a410` |
 | Baseline full SHA | `f27a4102e94730ec56a476b349dda4710a67b514` |
 | Baseline short SHA | `f27a410` |
 | Stage 0 complete | Yes — the decision, archive references, migration ledger, and historical-audit status are recorded in the Stage 0 documentation commit |
+| Stage 1 complete | Yes — the pure lifecycle contract and its reducer tests are implemented without Runtime wiring |
 | Implementation runtime | Existing B-style runtime remains active |
-| Later stages | Not started |
-| Next allowed stage | Stage 1 only after independent audit |
+| Later stages | Stage 2, Stage 3, and Stage 4 not started |
+| Next allowed stage | Stage 2 only after independent audit |
 
 The formal decision is recorded in [Technical Decisions](./decisions.md). The earlier [AI Continuity Convergence Audit](./ai-continuity-convergence-audit.md) remains historical evidence.
 
@@ -263,12 +264,76 @@ Every stage receives one independent commit, then stops for independent audit. W
 
 ### Stage 1 — One Turn Lifecycle
 
-- Define explicit Turn events and terminal states.
-- Implement a pure reducer as the sole authority for Overall Local Agent Turn Outcome.
-- Define an explicit mapping from Server External Execution Status, local Tool Batch Outcome, local confirmation state, and local persistence results into that outcome.
-- Define one Tool Batch Outcome covering every terminal call state.
-- Replace Boolean-at-end outcome reasoning at the design boundary.
-- Do not add the client Coordinator or Server Turn Journal in this stage.
+Stage 1 is implemented as an independently testable architecture contract in
+`src/features/workspace/agentTurnLifecycle.ts`, with its transition matrix in
+`src/features/workspace/agentTurnLifecycle.test.ts`. It is intentionally not imported by
+`agentTurnRunner.ts` or any other active Runtime path.
+
+The lifecycle phases are `preparing`, `compacting`, `requestingProvider`,
+`executingTools`, `awaitingConfirmation`, `continuing`, `cancelling`, `recovering`, and `terminal`.
+`compacting` and `recovering` carry a required resume phase. `terminal` carries the
+complete Overall Local Agent Turn Outcome and is absorbing.
+
+The implemented event vocabulary is:
+
+- preparation: `PREPARATION_COMPLETED`;
+- compaction: `COMPACTION_STARTED`, `COMPACTION_COMPLETED`, `COMPACTION_FAILED`, and
+  `COMPACTION_CANCELLED`, with one vocabulary for automatic, pre-Continuation, and manual modes;
+- Provider and server observation: `PROVIDER_REQUEST_STARTED`,
+  `SERVER_EXECUTION_STATUS_OBSERVED`, `STREAM_ACTIVITY_OBSERVED`, and
+  `PROVIDER_OUTPUT_RECEIVED`;
+- local tools and confirmation: `TOOL_BATCH_STARTED`, `TOOL_CALL_TERMINATED`,
+  `TOOL_BATCH_FINALIZED`, and `CONFIRMATION_RESOLVED`;
+- local effects and lifecycle control: `LOCAL_PERSISTENCE_REQUIRED`,
+  `LOCAL_PERSISTENCE_SUCCEEDED`, `LOCAL_PERSISTENCE_FAILED`,
+  `UNRESOLVED_WORK_RECORDED`, `UNRESOLVED_WORK_RESOLVED`, `ERROR_RECORDED`,
+  `CANCELLATION_REQUESTED`, `RECOVERY_STARTED`, `RECOVERY_RESOLVED`, and `TURN_FINALIZED`.
+
+Each local Tool Call has exactly one strict terminal result: `executed`, `failed`,
+`cancelled`, or `pendingConfirmation`, keyed by a stable `callId`. Executed results record
+local-effect, persistence, and unresolved-work facts. Failed results carry the typed error;
+Pending results carry a confirmation ID and are not treated as executed. No B proof field is
+part of this contract.
+
+The pure Tool Batch aggregator produces `completed`, `partiallyCompleted`,
+`pendingConfirmation`, `cancelled`, or `failed`, together with counts, persistence-failure,
+and unresolved-work facts. It validates the declared Call set before aggregation: duplicate
+declarations, duplicate result submissions, missing terminal results, and undeclared results
+are deterministic conflicts. Within the reducer, an identical repeated Call terminal fact is
+idempotent, while a different terminal fact for that Call is rejected.
+
+The reducer alone derives the Overall Local Agent Turn Outcome as `completed`,
+`partiallyCompleted`, `pendingConfirmation`, `cancelled`, or `failed`. A successful Provider
+or local Tool effect followed by failure, cancellation, Pending Confirmation, persistence
+failure, or unresolved work remains `partiallyCompleted`. `pendingConfirmation` requires an
+actual unconfirmed Tool Call. Cancellation with no successful effect is `cancelled`; a terminal
+fault with no successful effect or Pending work is `failed`. A caller cannot pass an Outcome to
+`TURN_FINALIZED`.
+
+`ServerExternalExecutionStatus` retains the Stage 0 domain (`created`, `providerRunning`,
+`awaitingNextRequest`, `externallyCompleted`, `externallyCancelled`, and `externallyFailed`).
+The reducer accepts it only through `SERVER_EXECUTION_STATUS_OBSERVED`, validates its own
+transition order, and combines it with local facts. An observed server completion does not
+finalize the Turn, and an observed server failure cannot erase a successful local effect. SSE
+activity changes display-observation state only and cannot decide the terminal Outcome.
+
+Errors are discriminated as `retryable`, `terminal`, `cancelled`, `conflict`, or
+`quotaExceeded`. Only `retryable` carries `recoverable: true`; deterministic conflicts and
+quota exhaustion cannot enter ordinary recovery. Every event is Turn-bound, so stale facts
+from another Turn are rejected, and creating a new Turn starts with no inherited fault.
+
+Core reducer invariants are: pure and deterministic transitions; no input mutation; one active
+phase; strict phase/event legality; complete Tool Call set validation; no contradictory terminal
+facts; terminal absorption; no successful effect erased by later failure or cancellation; and
+no Server or SSE status masquerading as Overall Local Agent Turn Outcome. The 54 focused Vitest
+cases cover the required basic, Provider/display, Tool Batch, Outcome, error/recovery, and three-mode
+compaction matrices.
+
+Stage 1 replaces Boolean-at-end reasoning only at the tested design-contract boundary. The
+existing B-style Runtime, old outcome resolver, Closure/Lease paths, and compaction execution
+remain active and unchanged. Client Coordinator implementation, Server Turn Journal, Runtime
+wiring, and real-flow migration have not begun. Stage 2 is allowed only after independent Stage 1
+audit.
 
 ### Stage 2 — A+ Coordinator and Server Turn Journal
 
