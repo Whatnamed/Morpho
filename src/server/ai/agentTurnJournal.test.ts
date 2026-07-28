@@ -344,6 +344,32 @@ describe("A+ Server Turn Journal SQL contract", () => {
     expect(sql).toContain("result_decision := 'replayed'");
   });
 
+  it("bounds providerRunning execution and converges expired requests without replay", () => {
+    const sql = readMigration();
+    expect(sql).toContain("execution_started_at timestamptz not null");
+    expect(sql).toContain("execution_expires_at timestamptz not null");
+    expect(sql).toContain("now() + interval '15 minutes'");
+    expect(sql.match(/execution_expires_at <= now\(\)/g)).toHaveLength(3);
+    expect(sql.match(/external_execution_state_unknown/g)?.length).toBeGreaterThanOrEqual(6);
+
+    const read = sql.slice(
+      sql.indexOf("create or replace function public.read_agent_turn_journal"),
+      sql.indexOf("create or replace function public.acquire_agent_turn_request")
+    );
+    expect(read).toContain("for update;");
+    expect(read).toContain("server_execution_status = 'externally_failed'");
+
+    const acquire = sql.slice(
+      sql.indexOf("create or replace function public.acquire_agent_turn_request"),
+      sql.indexOf("create or replace function public.settle_agent_turn_request")
+    );
+    expect(acquire.indexOf("execution_expires_at <= now()")).toBeLessThan(
+      acquire.indexOf("result_decision := 'replayed'")
+    );
+    expect(acquire.match(/public\.reserve_ai_daily_quota\('text'\)/g)).toHaveLength(1);
+    expect(acquire.match(/provider_call_count = journal\.provider_call_count \+ 1/g)).toHaveLength(1);
+  });
+
   it("hardens all exposed RPCs and grants only the authenticated role", () => {
     const sql = readMigration();
     expect(sql.match(/security definer/g)).toHaveLength(4);

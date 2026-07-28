@@ -44,6 +44,7 @@ export type AgentTurnRequestRouteDependencies = Readonly<{
   acquireRequest: typeof acquireAgentTurnRequest;
   settleRequest: typeof settleAgentTurnRequest;
   streamProvider: typeof streamOpenAiCompatibleResponse;
+  waitForSettlementRetry?: (delayMs: number) => Promise<void>;
 }>;
 
 type RouteContext = { params: Promise<{ turnId: string }> };
@@ -310,11 +311,53 @@ function settle(
   status: "awaitingNextRequest" | "externallyCompleted" | "externallyCancelled" | "externallyFailed",
   failureCode?: string
 ): Promise<SettleAgentTurnRequestResult> {
-  return input.dependencies.settleRequest({
-    ...input.identity,
-    status,
-    ...(failureCode ? { failureCode } : {})
-  });
+  return settleWithBoundedRetry(input, status, failureCode);
+}
+
+async function settleWithBoundedRetry(
+  input: {
+    identity: {
+      serverTurnId: string;
+      localProjectId: string;
+      requestId: string;
+      stepSequence: number;
+    };
+    dependencies: AgentTurnRequestRouteDependencies;
+  },
+  status: "awaitingNextRequest" | "externallyCompleted" | "externallyCancelled" | "externallyFailed",
+  failureCode?: string
+): Promise<SettleAgentTurnRequestResult> {
+  const delays = [25, 75] as const;
+  for (let attempt = 0; ; attempt += 1) {
+    let result: SettleAgentTurnRequestResult;
+    try {
+      result = await input.dependencies.settleRequest({
+        ...input.identity,
+        status,
+        ...(failureCode ? { failureCode } : {})
+      });
+    } catch {
+      if (attempt >= delays.length) {
+        return {
+          status: "denied",
+          httpStatus: 503,
+          code: "journal_unavailable",
+          error: "Server Turn Journal 结算暂时不可用。",
+          recoverable: false
+        };
+      }
+      await (input.dependencies.waitForSettlementRetry ?? wait)(delays[attempt]!);
+      continue;
+    }
+    if (result.status === "ok" || result.httpStatus !== 503 || attempt >= delays.length) {
+      return result;
+    }
+    await (input.dependencies.waitForSettlementRetry ?? wait)(delays[attempt]!);
+  }
+}
+
+function wait(delayMs: number): Promise<void> {
+  return new Promise((resolvePromise) => setTimeout(resolvePromise, delayMs));
 }
 
 function boundedProviderFailureCode(error: unknown): string {

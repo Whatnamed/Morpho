@@ -85,6 +85,8 @@ create table if not exists private.agent_turn_request_journal (
   request_hash text not null,
   execution_status text not null default 'provider_running',
   bounded_failure_code text,
+  execution_started_at timestamptz not null,
+  execution_expires_at timestamptz not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   terminal_at timestamptz,
@@ -96,6 +98,8 @@ create table if not exists private.agent_turn_request_journal (
     check (step_sequence between 1 and 10000),
   constraint agent_turn_request_hash_check
     check (request_hash ~ '^[0-9a-f]{64}$'),
+  constraint agent_turn_request_execution_window_check
+    check (execution_expires_at > execution_started_at),
   constraint agent_turn_request_status_check
     check (execution_status in (
       'provider_running',
@@ -251,6 +255,7 @@ as $$
 declare
   current_user_id uuid := auth.uid();
   journal_row private.agent_turn_journal%rowtype;
+  request_row private.agent_turn_request_journal%rowtype;
 begin
   if current_user_id is null then
     raise exception 'not authenticated' using errcode = '28000';
@@ -261,7 +266,8 @@ begin
   from private.agent_turn_journal as journal
   where journal.server_turn_id = p_server_turn_id
     and journal.user_id = current_user_id
-    and journal.local_project_id = p_local_project_id;
+    and journal.local_project_id = p_local_project_id
+  for update;
 
   if not found then
     return query select
@@ -279,6 +285,39 @@ begin
       null::timestamptz,
       null::text;
     return;
+  end if;
+
+  if journal_row.server_execution_status = 'provider_running' and
+    journal_row.latest_request_id is not null then
+    select request.*
+    into request_row
+    from private.agent_turn_request_journal as request
+    where request.server_turn_id = journal_row.server_turn_id
+      and request.request_id = journal_row.latest_request_id
+      and request.step_sequence = journal_row.latest_step_sequence
+    for update;
+
+    if found and request_row.execution_status = 'provider_running' and
+      request_row.execution_expires_at <= now() then
+      update private.agent_turn_request_journal as request
+      set
+        execution_status = 'externally_failed',
+        bounded_failure_code = 'external_execution_state_unknown',
+        updated_at = now(),
+        terminal_at = now()
+      where request.server_turn_id = request_row.server_turn_id
+        and request.request_id = request_row.request_id;
+
+      update private.agent_turn_journal as journal
+      set
+        server_execution_status = 'externally_failed',
+        bounded_failure_code = 'external_execution_state_unknown',
+        terminal_at = now(),
+        revision = journal.revision + 1,
+        updated_at = now()
+      where journal.server_turn_id = journal_row.server_turn_id
+      returning journal.* into journal_row;
+    end if;
   end if;
 
   return query select
@@ -328,6 +367,7 @@ as $$
 declare
   current_user_id uuid := auth.uid();
   journal_row private.agent_turn_journal%rowtype;
+  running_request private.agent_turn_request_journal%rowtype;
   request_by_id private.agent_turn_request_journal%rowtype;
   request_by_sequence private.agent_turn_request_journal%rowtype;
   quota_allowed boolean;
@@ -372,11 +412,45 @@ begin
     return;
   end if;
 
+  if journal_row.server_execution_status = 'provider_running' and
+    journal_row.latest_request_id is not null then
+    select request.*
+    into running_request
+    from private.agent_turn_request_journal as request
+    where request.server_turn_id = journal_row.server_turn_id
+      and request.request_id = journal_row.latest_request_id
+      and request.step_sequence = journal_row.latest_step_sequence
+    for update;
+
+    if found and running_request.execution_status = 'provider_running' and
+      running_request.execution_expires_at <= now() then
+      update private.agent_turn_request_journal as request
+      set
+        execution_status = 'externally_failed',
+        bounded_failure_code = 'external_execution_state_unknown',
+        updated_at = now(),
+        terminal_at = now()
+      where request.server_turn_id = running_request.server_turn_id
+        and request.request_id = running_request.request_id;
+
+      update private.agent_turn_journal as journal
+      set
+        server_execution_status = 'externally_failed',
+        bounded_failure_code = 'external_execution_state_unknown',
+        terminal_at = now(),
+        revision = journal.revision + 1,
+        updated_at = now()
+      where journal.server_turn_id = journal_row.server_turn_id
+      returning journal.* into journal_row;
+    end if;
+  end if;
+
   select request.*
   into request_by_id
   from private.agent_turn_request_journal as request
   where request.server_turn_id = p_server_turn_id
-    and request.request_id = p_request_id;
+    and request.request_id = p_request_id
+  for update;
 
   if found then
     if request_by_id.step_sequence = p_step_sequence and request_by_id.request_hash = p_request_hash then
@@ -390,7 +464,8 @@ begin
     into request_by_sequence
     from private.agent_turn_request_journal as request
     where request.server_turn_id = p_server_turn_id
-      and request.step_sequence = p_step_sequence;
+      and request.step_sequence = p_step_sequence
+    for update;
 
     if found then
       result_denial := 'sequence_conflict';
@@ -423,13 +498,17 @@ begin
           request_id,
           step_sequence,
           request_hash,
-          execution_status
+          execution_status,
+          execution_started_at,
+          execution_expires_at
         ) values (
           p_server_turn_id,
           p_request_id,
           p_step_sequence,
           p_request_hash,
-          'provider_running'
+          'provider_running',
+          now(),
+          now() + interval '15 minutes'
         );
 
         update private.agent_turn_journal as journal
@@ -565,6 +644,28 @@ begin
     request_row.bounded_failure_code is not distinct from p_failure_code then
     result_decision := 'replayed';
     result_denial := null;
+  elsif request_row.execution_status = 'provider_running' and
+    request_row.execution_expires_at <= now() then
+    update private.agent_turn_request_journal as request
+    set
+      execution_status = 'externally_failed',
+      bounded_failure_code = 'external_execution_state_unknown',
+      updated_at = now(),
+      terminal_at = now()
+    where request.server_turn_id = request_row.server_turn_id
+      and request.request_id = request_row.request_id;
+
+    update private.agent_turn_journal as journal
+    set
+      server_execution_status = 'externally_failed',
+      bounded_failure_code = 'external_execution_state_unknown',
+      terminal_at = now(),
+      revision = journal.revision + 1,
+      updated_at = now()
+    where journal.server_turn_id = journal_row.server_turn_id
+    returning journal.* into journal_row;
+
+    result_denial := 'status_conflict';
   elsif request_row.execution_status <> 'provider_running' or
     journal_row.server_execution_status <> 'provider_running' then
     result_denial := 'status_conflict';

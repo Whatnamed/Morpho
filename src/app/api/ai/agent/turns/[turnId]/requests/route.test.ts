@@ -172,6 +172,33 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
     expect(store.settle).toHaveBeenCalledWith(expect.objectContaining({ status: "externallyCompleted" }));
   });
 
+  it("retries transient Journal settlement failures within a fixed bound", async () => {
+    const store = new FakeJournal();
+    const waitForSettlementRetry = vi.fn(async (_delayMs: number) => undefined);
+    let attempt = 0;
+    const settleRequest: AgentTurnRequestRouteDependencies["settleRequest"] = vi.fn(async (input) => {
+      attempt += 1;
+      if (attempt < 3) {
+        return {
+          status: "denied",
+          httpStatus: 503,
+          code: "journal_unavailable",
+          error: "temporary",
+          recoverable: false
+        } as const;
+      }
+      return store.settle(input);
+    });
+    const response = await call(makeHandler(store, vi.fn(async () => providerResult()), {
+      settleRequest,
+      waitForSettlementRetry
+    }), validBody());
+    await response.text();
+    expect(settleRequest).toHaveBeenCalledTimes(3);
+    expect(waitForSettlementRetry.mock.calls.map(([delay]) => delay)).toEqual([25, 75]);
+    expect(store.snapshot.status).toBe("externallyCompleted");
+  });
+
   it("settles a Provider Tool Call as awaitingNextRequest without executing local Tools", async () => {
     const store = new FakeJournal();
     const provider = vi.fn(async () => providerResult({
