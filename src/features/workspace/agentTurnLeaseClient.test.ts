@@ -322,6 +322,34 @@ describe("Agent turn lease client", () => {
     expect(state.agentTurnLeaseId).toBeUndefined();
   });
 
+  it("stops after one closure recovery attempt and retains the lease", async () => {
+    const state = createAgentTurnState(createTestWorkspace());
+    state.agentTurnLeaseId = "lease-unit";
+    state.turnClosureToken = "closure-token-unit";
+    const fetchImpl = vi.fn<typeof fetch>().mockRejectedValue(new Error("network unavailable"));
+
+    await expect(closeAgentTurnLease({
+      state,
+      agentTurnId: "turn-unit",
+      outcome: "success",
+      snapshot: {
+        projectId: "project-ocean-buoy",
+        userMessageId: "user-unit",
+        assistantMessageId: "assistant-unit",
+        transcriptSnapshotToken: "snapshot-token-unit",
+        transcriptManifestHash: "b".repeat(64),
+        closureToken: "closure-token-unit",
+        providerOutputSnapshot: createProviderOutputSnapshot("provider answer")
+      },
+      fetch: fetchImpl
+    })).rejects.toThrow("network unavailable");
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(state.agentTurnLeaseId).toBe("lease-unit");
+    expect(state.turnClosureToken).toBe("closure-token-unit");
+    expect(state.closureRequestId).toEqual(expect.any(String));
+  });
+
   it("projects lease and continuation updates from summary streams", async () => {
     const script = agentStreamScript([
       {

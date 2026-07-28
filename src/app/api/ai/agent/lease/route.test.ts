@@ -108,6 +108,21 @@ describe("Agent Turn Lease completion route", () => {
   });
 
   it.each([
+    ["success", "工具执行前：我会完成全部动作。"],
+    ["pendingConfirmation", "本轮停在待确认状态。确认前不把相关动作视为已完成。"]
+  ])("produces the server-authoritative %s outcome", async (outcome, expectedText) => {
+    const proof = createProof();
+    const response = await request({ ...proof.body, outcome });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      outcomeItem: {
+        outcome,
+        text: expectedText
+      }
+    });
+  });
+
+  it.each([
     ["leaseId", "lease-other"],
     ["agentTurnId", "agent-turn-other"],
     ["projectId", "project-other"],

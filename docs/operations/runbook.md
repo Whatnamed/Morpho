@@ -193,6 +193,7 @@ supabase/migrations/20260723200456_fix_agent_turn_lease_column_ambiguity.sql
 supabase/migrations/20260726143030_harden_agent_turn_lease_causality.sql
 supabase/migrations/20260726161500_bind_agent_turn_provider_execution.sql
 supabase/migrations/20260727180000_read_agent_turn_lease_state.sql
+supabase/migrations/20260728174500_bind_agent_turn_closure.sql
 ```
 
 The first two are the Prompt Contract v3.3 baseline. Without them, authenticated `/api/ai/agent` requests fail closed with an Agent Turn Lease service error; they must not fall back to the old client-trusted quota path. A missing or signature-changed RPC is reported as a deployment gap (`lease_contract_missing`), not a transient outage.
@@ -207,7 +208,7 @@ supabase db push
 supabase migration list
 ```
 
-Do not paste credentials into the repository or shell history. Do not apply the migration to a project whose ref has not been independently checked. The migration creates only the narrow read-only RPC `read_agent_turn_lease_state` in addition to the existing lease RPCs; no workspace or prompt body is uploaded.
+Do not paste credentials into the repository or shell history. Do not apply the migration to a project whose ref has not been independently checked. The latest migration adds only execution/closure booleans, IDs, hashes, outcome and timestamps plus narrow authenticated RPCs; no prompt, transcript, workspace, image, or tool body is uploaded.
 
 Conversation compaction is part of the same formal Agent turn. Its first Provider request creates the lease when needed; automatic and continuation compaction reuse that lease through the strict `leaseContinuation` path, then the normal Agent request continues with the same counters. `leaseContinuation` is not a Responses transcript continuation, cannot be combined with `continuation`, and never causes a second daily text reservation for the same user turn.
 
@@ -223,7 +224,9 @@ where routine_schema = 'public'
     'start_agent_turn_lease',
     'continue_agent_turn_lease',
     'complete_agent_turn_lease',
-    'read_agent_turn_lease_state'
+    'read_agent_turn_lease_state',
+    'read_agent_turn_closure_state',
+    'mark_agent_turn_tool_execution_started'
   )
 order by routine_name;
 
@@ -234,12 +237,14 @@ where specific_schema = 'public'
     'start_agent_turn_lease',
     'continue_agent_turn_lease',
     'complete_agent_turn_lease',
-    'read_agent_turn_lease_state'
+    'read_agent_turn_lease_state',
+    'read_agent_turn_closure_state',
+    'mark_agent_turn_tool_execution_started'
   )
 order by routine_name, grantee;
 ```
 
-All four routines must be `SECURITY DEFINER`; only `authenticated` should have `EXECUTE`. Route and static migration checks run in the normal Vitest suite. Real acceptance must also verify one initial reservation, continuation without a second daily reservation, provider/search counter increments on the same lease, forged/cross-user/expired/closed rejection, read-only search recovery, and idempotent completion.
+All six routines must be `SECURITY DEFINER`; only `authenticated` should have `EXECUTE`. Route and static migration checks run in the normal Vitest suite. Real acceptance must also verify one initial reservation, continuation without a second daily reservation, provider/search counter increments on the same lease, forged/cross-user/expired/closed rejection, read-only search recovery, tool execution marking, BeforeExecution rejection after execution, and exact idempotent closure recovery with conflict rejection.
 
 The Supabase Free-plan leaked-password-protection advisor warning is a plan limitation. It is not fixed by changing application SQL or weakening authentication behavior.
 
@@ -463,6 +468,8 @@ The most recent forward-only lease migrations are:
 ```text
 supabase/migrations/20260726143030_harden_agent_turn_lease_causality.sql
 supabase/migrations/20260726161500_bind_agent_turn_provider_execution.sql
+supabase/migrations/20260727180000_read_agent_turn_lease_state.sql
+supabase/migrations/20260728174500_bind_agent_turn_closure.sql
 ```
 
 Do not apply them from an unverified shell. Verify the CLI and linked project first:
@@ -503,16 +510,18 @@ Do not add `--live` to prompt-cache tests unless `MORPHO_ALLOW_PAID_SMOKE_TESTS=
 
 # Agent lease migrations pending deployment
 
-Two forward-only migrations must be applied in order before any Agent turn can run
-against the current code, which calls the new RPC signatures:
+The current forward-only Agent Lease migrations must be applied in order before an
+Agent turn can use the matching RPC signatures:
 
 ```text
 supabase/migrations/20260726143030_harden_agent_turn_lease_causality.sql
 supabase/migrations/20260726161500_bind_agent_turn_provider_execution.sql
+supabase/migrations/20260727180000_read_agent_turn_lease_state.sql
+supabase/migrations/20260728174500_bind_agent_turn_closure.sql
 ```
 
-Until they are applied, `start_agent_turn_lease` and `continue_agent_turn_lease`
-do not exist with the expected argument lists and PostgREST answers `PGRST202`.
+Until they are applied, one or more Lease/Closure RPCs do not exist with the
+expected argument lists and PostgREST answers `PGRST202`.
 The route reports that as "数据库尚未升级到当前 Agent Lease 契约" rather than a
 generic outage, so a 503 with that message means the migrations are missing.
 
@@ -526,10 +535,10 @@ supabase projects list
 supabase db push --dry-run
 ```
 
-The dry run must list only these two migrations. If the CLI is absent, no project
+The dry run must list only the intended pending migrations. If the CLI is absent, no project
 is linked, or the dry run lists anything else, stop without changing the remote
-database. Both files are safe to re-run: constraints are dropped before being
-re-added and the functions are `create or replace`.
+database. These are forward-only migrations; review the dry run rather than
+replaying already-recorded files manually.
 
 Verify after applying:
 

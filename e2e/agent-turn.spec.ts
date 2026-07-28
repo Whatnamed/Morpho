@@ -100,10 +100,13 @@ test.describe("AI 回合", () => {
         (await readStoredWorkspace(page)).ai.messages.some((message) => message.body.includes("这一轮我会中途取消。"))
       )
       .toBe(true);
+    await expect.poll(async () => {
+      const stored = await readStoredWorkspace(page);
+      return stored.ai.messages.filter((message) => message.role === "assistant").at(-1)?.status;
+    }).not.toBe("streaming");
     const stored = await readStoredWorkspace(page);
-    const assistant = stored.ai.messages.filter((message) => message.role === "assistant").at(-1);
-    expect(assistant?.status).not.toBe("streaming");
-    expect(assistant?.agentTurnOutcome).not.toBe("success");
+    expect(stored.ai.messages.filter((message) => message.role === "assistant").at(-1)?.agentTurnOutcome)
+      .not.toBe("success");
   });
 
   test("流内错误显示失败提示，不写入成功结论", async ({ page }) => {

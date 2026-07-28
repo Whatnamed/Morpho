@@ -61,6 +61,27 @@ export async function installAgentMock(page: Page): Promise<void> {
       return new DOMException("The operation was aborted.", "AbortError");
     }
 
+    function stableJson(value: unknown): string {
+      if (Array.isArray(value)) {
+        return `[${value.map(stableJson).join(",")}]`;
+      }
+      if (value && typeof value === "object") {
+        return `{${Object.entries(value as Record<string, unknown>)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
+          .join(",")}}`;
+      }
+      return JSON.stringify(value);
+    }
+
+    async function hashOutcomeItem(value: unknown): Promise<string> {
+      const bytes = new TextEncoder().encode(
+        `morpho-agent-turn-outcome-v1\u0000${stableJson(value)}`
+      );
+      const digest = await crypto.subtle.digest("SHA-256", bytes);
+      return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+
     window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       if (!url.includes("/api/ai/agent")) {
@@ -75,8 +96,57 @@ export async function installAgentMock(page: Page): Promise<void> {
       }
       state.calls.push({ url, method: init?.method ?? "GET", body });
 
+      if (url.includes("/api/ai/agent/lease/tool")) {
+        return new Response(JSON.stringify({ status: "marked" }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+      if (url.includes("/api/ai/agent/lease/summary")) {
+        return new Response(JSON.stringify({ status: "success" }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
       if (url.includes("/api/ai/agent/lease")) {
-        return new Response(JSON.stringify({ status: "completed" }), {
+        const closure = body && typeof body === "object"
+          ? body as Record<string, unknown>
+          : {};
+        if (typeof closure.projectId !== "string") {
+          return new Response(JSON.stringify({ status: closure.outcome }), {
+            status: 200,
+            headers: { "content-type": "application/json" }
+          });
+        }
+        const providerSnapshot = closure.providerOutputSnapshot &&
+          typeof closure.providerOutputSnapshot === "object"
+          ? closure.providerOutputSnapshot as Record<string, unknown>
+          : {};
+        const outcome = String(closure.outcome);
+        const text = outcome === "success"
+          ? String(providerSnapshot.text ?? "")
+          : outcome === "partialSuccess"
+            ? "本轮仅部分完成。已完成结果已保留，未完成步骤需要后续重试。"
+            : "本轮停在待确认状态。确认前不把相关动作视为已完成。";
+        const unsignedOutcome = {
+          type: "morpho_turn_outcome",
+          agentTurnId: String(closure.agentTurnId),
+          userMessageId: String(closure.userMessageId),
+          assistantMessageId: String(closure.assistantMessageId),
+          outcome,
+          text
+        };
+        const outcomeItem = {
+          ...unsignedOutcome,
+          contentHash: await hashOutcomeItem(unsignedOutcome)
+        };
+        return new Response(JSON.stringify({
+          status: outcome,
+          outcomeItem,
+          transcriptSnapshotToken: "snapshot-token-e2e-final",
+          transcriptManifestHash: "c".repeat(64),
+          expiresAt: Date.now() + 60_000
+        }), {
           status: 200,
           headers: { "content-type": "application/json" }
         });
