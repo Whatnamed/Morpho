@@ -1,5 +1,7 @@
 # AI Continuity Convergence Audit
 
+> Status (2026-07-28): This document is retained as historical audit evidence. Its continuity and correctness findings remain useful, but the complete B-style client transcript, tool-result, context-marker, compaction, and closure proof direction developed afterward has been narrowed by the A+ trust-boundary decision. The current implementation ledger is [Agent Runtime A+ Migration](./agent-runtime-a-plus-migration.md); this note does not claim that the historical findings are wrong or already resolved.
+
 Date: 2026-07-21
 Baseline HEAD: `fafa9694dd5257924afde7cf8d103874ea9fd7a1`
 Target: Morpho v3.2 AI continuity, memory, Agent, and image-generation contract.
