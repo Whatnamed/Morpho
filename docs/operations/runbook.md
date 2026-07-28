@@ -249,6 +249,57 @@ order by routine_name, grantee;
 
 All seven routines must be `SECURITY DEFINER`; only `authenticated` should have `EXECUTE`. Route and static migration checks run in the normal Vitest suite. Real acceptance must also verify one initial reservation, continuation without a second daily reservation, provider/search counter increments on the same lease, forged/cross-user/expired/closed rejection, read-only search recovery, tool execution marking, BeforeExecution rejection after execution, exact-sequence Provider failure marking, and exact idempotent closure recovery with conflict rejection.
 
+### A+ Stage 2 Server Turn Journal Migration
+
+Stage 2 adds this forward-only migration for the isolated A+ path:
+
+```text
+supabase/migrations/20260729012105_add_agent_turn_journal.sql
+```
+
+It creates only the private `agent_turn_journal` and `agent_turn_request_journal` tables and
+narrow current-user RPCs. The Journal binds a Server Turn to `auth.uid()` and a client-supplied
+local project ID; it does not prove ownership of that browser-local project or create a project
+registry. It stores identifiers, a server-computed Request Hash, sequence, external status and
+counters, timestamps, revision, and an optional bounded failure code. It does not store prompts,
+messages, Provider output, Tool arguments/results, Workspace content, Memory, Summary, confirmation
+state, local Outcome, or raw errors.
+
+Do not treat the checked-in file as proof that a remote database has been migrated. On an
+authorized PowerShell 7 machine, verify the CLI identity and intended project before applying it:
+
+```powershell
+supabase --version
+supabase projects list
+supabase link --project-ref <verified-project-ref>
+Get-Content supabase/.temp/project-ref
+supabase migration list
+supabase db push --dry-run
+supabase db push
+supabase migration list
+```
+
+Stop without changing the remote database if the CLI is missing, authentication is unavailable,
+the linked ref is not independently verified, or the dry run contains unrelated migrations. A
+missing A+ contract fails the new routes closed with `journal_contract_missing`; it does not fall
+back to the B Lease or a client-trusted path.
+
+The isolated Stage 2 API is:
+
+```text
+POST /api/ai/agent/turns
+GET  /api/ai/agent/turns/[turnId]?localProjectId=<local-project-id>
+POST /api/ai/agent/turns/[turnId]/requests
+```
+
+Use the authenticated `GET` request only to diagnose minimal Server External Execution Status.
+The response contains no user ID, Request Hash, Provider body, or local project content. There is
+no A+ Feature Flag or new environment variable in Stage 2: the current UI and
+`agentTurnRunner.ts` do not call this path, so leaving those callers unwired is the safe disabled
+state. The existing `/api/ai/agent` B-style Runtime remains the active default. Do not wire the A+
+Coordinator into production flows or remove Lease/Closure/Snapshot code until later stages pass
+their own audits.
+
 The Supabase Free-plan leaked-password-protection advisor warning is a plan limitation. It is not fixed by changing application SQL or weakening authentication behavior.
 
 ## Archive And Backup
@@ -445,6 +496,8 @@ Local document extraction:
 /api/ai/agent             formal OpenAI-compatible Responses Agent stream
 /api/ai/agent/lease       authenticated Agent turn completion
 /api/ai/agent/snapshot/refresh  signed transcript checkpoint renewal; no Provider or Lease
+/api/ai/agent/turns       isolated A+ Stage 2 Server Turn creation; not called by the current UI
+/api/ai/agent/turns/[turnId]  isolated A+ Stage 2 Journal query and Provider-request resource
 /api/ai/chat              deprecated compatibility-only text route
 /api/ai/web-search        AiJWS web-search proxy
 /api/ai/image             GrsAI image generation proxy

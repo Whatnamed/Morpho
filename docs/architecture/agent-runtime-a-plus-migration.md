@@ -7,17 +7,20 @@ This document is the durable implementation ledger for converging the Morpho Age
 | Field | Value |
 |---|---|
 | Decision date | 2026-07-28 |
-| Current state | Stage 1 — final lifecycle revision implemented, not wired, awaiting independent re-audit |
+| Current state | Stage 2 — A+ Coordinator and minimal Server Turn Journal implemented in an isolated, default-unwired path; independent audit pending |
 | Current formal working branch | `refactor/agent-runtime-a-plus` |
 | B implementation archive branch | `archive/agent-runtime-b` |
 | B implementation archive tag | `agent-runtime-b-final-2026-07-28-f27a410` |
 | Baseline full SHA | `f27a4102e94730ec56a476b349dda4710a67b514` |
 | Baseline short SHA | `f27a410` |
 | Stage 0 complete | Yes — the decision, archive references, migration ledger, and historical-audit status are recorded in the Stage 0 documentation commit |
-| Stage 1 complete | Implementation complete — independent re-audit pending; Stage 2 is not yet allowed |
+| Stage 1 complete | Yes — independently audited at `8d7c2df442ea1ccfb012e35691c2df8430a85f52` |
+| Stage 2 implementation | Complete — independent audit pending |
+| A+ Coordinator | Implemented in an isolated, default-unwired path |
+| Server Turn Journal | Implemented; remote Migration application remains an operator deployment step |
 | Implementation runtime | Existing B-style runtime remains active |
-| Later stages | Stage 2, Stage 3, and Stage 4 not started |
-| Next allowed stage | Stage 2 only after independent audit |
+| Later stages | Stage 3 and Stage 4 not started |
+| Next allowed stage | Stage 3 only after an independent Stage 2 audit passes |
 
 The formal decision is recorded in [Technical Decisions](./decisions.md). The earlier [AI Continuity Convergence Audit](./ai-continuity-convergence-audit.md) remains historical evidence.
 
@@ -78,7 +81,9 @@ type ServerExecutionStatus =
   | "externallyFailed";
 ```
 
-These names define the architecture boundary, not an implemented Stage 0 schema. Stage 2 may refine storage details without expanding server authority beyond external execution.
+These names define the architecture boundary. Stage 2 implements one explicit shared mapping between
+the camel-case client protocol and snake-case Journal storage without expanding server authority
+beyond external execution.
 
 The Stage 1 client reducer is the sole authority for the Overall Local Agent Turn Outcome. It combines:
 
@@ -368,20 +373,72 @@ the same Fault merge rule as every other error source: a different unresolved Fa
 rejected as a conflict, while an identical Fault replay advances idempotently to the appropriate
 recovering or terminal phase.
 
-Stage 1 replaces Boolean-at-end reasoning only at the tested design-contract boundary. The
-existing B-style Runtime, old outcome resolver, Closure/Lease paths, and compaction execution
-remain active and unchanged. Client Coordinator implementation, Server Turn Journal, Runtime
-wiring, and real-flow migration have not begun. This revision does not itself pass the audit gate:
-Stage 2 remains disallowed until an independent Stage 1 re-audit passes.
+Stage 1 replaces Boolean-at-end reasoning only at the tested design-contract boundary. It passed
+independent audit at `8d7c2df442ea1ccfb012e35691c2df8430a85f52`. The existing B-style Runtime,
+old outcome resolver, Closure/Lease paths, and compaction execution remain active and unchanged.
+Stage 2 adds the isolated components recorded below; Runtime wiring and real-flow migration remain
+Stage 3 work.
 
 ### Stage 2 — A+ Coordinator and Server Turn Journal
 
-- Add one client Coordinator as the owner of Turn orchestration.
-- Add the minimal Server Turn Journal for binding each Server Turn to the authenticated user and that Turn's client-supplied local `projectId`, request identity/hash, sequence, external counters, idempotency, and Server External Execution Status.
-- Do not add a server-side project registry, project ownership table, local Workspace ownership proof, or cloud Workspace persistence.
-- Make Server External Execution Status queryable after SSE interruption without making it an Overall Local Agent Turn Outcome.
-- Keep local Tool Results, local Workspace effects, Pending Confirmation, and the overall user-visible outcome outside Server Turn Journal authority.
-- Do not yet unify every Tool, Compaction, Abort, or Recovery path.
+Stage 2 is implemented and awaits independent audit. The one client orchestration owner is
+`src/features/workspace/agentTurnCoordinator.ts`; its concrete fetch adapter is
+`src/features/workspace/agentTurnCoordinatorHttpHost.ts`. The Coordinator creates a Server Turn,
+owns one in-memory Stage 1 lifecycle, allocates Request IDs and strictly increasing step sequences,
+allows at most one active request, retries with the same identity and sanitized Provider request,
+rejects stale stream/query results, and exposes deep-frozen lifecycle snapshots. Every lifecycle
+change is an event sent to `reduceAgentTurnLifecycle`; the Coordinator has no second Outcome
+resolver and cannot accept an Overall Local Agent Turn Outcome from its caller. It has no React,
+UI, localStorage, Workspace-schema, Supabase, or API-key dependency.
+
+The minimal Journal is introduced by
+`supabase/migrations/20260729012105_add_agent_turn_journal.sql`. It uses the private
+`agent_turn_journal` Turn table and private `agent_turn_request_journal` request-idempotency table,
+plus narrow authenticated RPCs for create, read, atomic request acquisition, and settlement. Each
+Turn is bound to `auth.uid()` and its client-supplied `localProjectId`; this is not project ownership
+and no project registry, ownership relation, Workspace-to-`auth.users` binding, or cloud Workspace
+record is added. Direct table access is revoked. The query response exposes only the Turn ID, local
+project ID, Server External Execution Status, latest request identity/sequence, Provider/Search/Image
+counters, timestamps, optional bounded failure code, and no user ID or Request Hash.
+
+The Journal stores no messages, transcript, system or user prompt, Provider output, Tool arguments
+or results, Workspace object, Memory, Summary, Context Frame, confirmation state, local persistence
+result, Overall Local Agent Turn Outcome, raw Provider error, stack trace, Transcript Snapshot,
+Closure Proof, HMAC transcript claim, Compaction Receipt, or local-history authenticity proof.
+Request Hash is a server-computed stable SHA-256 over the actual external contract: model,
+reasoning setting, canonical Provider input, and server-owned Tool Contract. It means only “the same
+external request body was replayed”; the Journal stores the digest, not its input.
+
+The stable resource API is:
+
+```text
+POST /api/ai/agent/turns
+GET  /api/ai/agent/turns/[turnId]?localProjectId=...
+POST /api/ai/agent/turns/[turnId]/requests
+```
+
+Creation is idempotent for one authenticated user, `localProjectId`, and
+`creationIdempotencyKey`; a conflicting project binding is a deterministic non-recoverable `409`.
+Request acquisition locks the Turn row in one database transaction, checks exact Request ID, Hash,
+sequence, current status, Provider limit, and daily quota before inserting the request. Exactly one
+concurrent caller receives execution authority and increments the Provider counter. Exact replay
+returns the existing snapshot without external execution or another counter/quota mutation; Hash,
+sequence, terminal-state, and binding conflicts do not execute. Search and Image counters exist but
+remain zero until Stage 3 connects their real server paths; Stage 2 never fabricates them.
+
+Only the server request execution path advances `providerRunning` to `awaitingNextRequest`,
+`externallyCompleted`, `externallyCancelled`, or `externallyFailed`; the HTTP request schema accepts
+neither arbitrary status nor counters. The stream task settles the Journal independently of final
+SSE consumption. When the stream ends early or lacks a final frame, the Coordinator queries the
+Journal and emits `SERVER_EXECUTION_STATUS_OBSERVED` into the Stage 1 reducer. A recovered external
+completion with no locally observed usable Provider output is finalized as
+`externalExecutionCompletedWithoutUsableOutcome`; no response text is invented. Local output plus
+a later external failure retains the reducer's partial-completion semantics.
+
+No Stage 2 Feature Flag is introduced because neither the current UI nor the existing
+`agentTurnRunner.ts` imports or calls the A+ Coordinator or its routes. The existing B-style Runtime
+remains the active default. Stage 2 does not unify all Tool, Compaction, Abort, or Recovery paths,
+does not delete B code, and does not start Stage 3.
 
 ### Stage 3 — Unified Runtime Lifecycles
 
