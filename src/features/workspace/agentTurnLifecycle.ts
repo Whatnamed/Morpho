@@ -598,13 +598,12 @@ function failCompaction(
   event: AgentTurnEvent
 ): AgentTurnTransitionResult {
   if (state.phase !== "compacting") return illegal(state, event);
-  if (!faultId.trim()) {
-    return transitionError("invalidEvent", "Fault ID must not be empty.");
-  }
   if (error.kind === "cancelled") {
     return transitionError("invalidEvent", "Cancelled compaction must use COMPACTION_CANCELLED.");
   }
-  const failed = { ...state, fault: { kind: "present", faultId, error } as const };
+  const merged = mergeFault(state.fault, faultId, error);
+  if (!merged.ok) return merged.result;
+  const failed = { ...state, fault: merged.fault };
   if (error.kind === "retryable") {
     return success({ ...failed, phase: "recovering", faultId, error, resumePhase: state.resumePhase });
   }
@@ -957,22 +956,46 @@ function recordFault(
   faultId: string,
   error: AgentTurnError
 ): AgentTurnTransitionResult {
+  const merged = mergeFault(state.fault, faultId, error);
+  return merged.ok
+    ? success({ ...state, fault: merged.fault })
+    : merged.result;
+}
+
+type FaultMergeResult =
+  | { ok: true; fault: Extract<FaultState, { kind: "present" }> }
+  | { ok: false; result: AgentTurnTransitionResult };
+
+function mergeFault(
+  current: FaultState,
+  faultId: string,
+  error: AgentTurnError
+): FaultMergeResult {
   if (!faultId.trim()) {
-    return transitionError("invalidEvent", "Fault ID must not be empty.");
+    return {
+      ok: false,
+      result: transitionError("invalidEvent", "Fault ID must not be empty.")
+    };
   }
   if (error.kind === "cancelled") {
-    return transitionError("invalidEvent", "Cancellation must use CANCELLATION_REQUESTED.");
+    return {
+      ok: false,
+      result: transitionError("invalidEvent", "Cancellation must use CANCELLATION_REQUESTED.")
+    };
   }
-  if (state.fault.kind === "none") {
-    return success({ ...state, fault: { kind: "present", faultId, error } });
+  if (current.kind === "none") {
+    return { ok: true, fault: { kind: "present", faultId, error } };
   }
-  if (state.fault.faultId === faultId && sameAgentTurnError(state.fault.error, error)) {
-    return success(state);
+  if (current.faultId === faultId && sameAgentTurnError(current.error, error)) {
+    return { ok: true, fault: current };
   }
-  return transitionError(
-    "unresolvedFaultConflict",
-    `Fault ${state.fault.faultId} must be resolved before recording ${faultId}.`
-  );
+  return {
+    ok: false,
+    result: transitionError(
+      "unresolvedFaultConflict",
+      `Fault ${current.faultId} must be resolved before recording ${faultId}.`
+    )
+  };
 }
 
 function sameAgentTurnError(left: AgentTurnError, right: AgentTurnError): boolean {

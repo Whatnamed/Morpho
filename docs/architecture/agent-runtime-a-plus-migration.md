@@ -360,11 +360,13 @@ outcome instead of returning to an unusable Phase/Server-status combination. Rec
 Core reducer invariants are: pure and deterministic transitions; no input mutation; one active
 phase; strict phase/event legality; complete Tool Call set validation; no contradictory terminal
 facts; terminal absorption; no successful effect erased by later failure or cancellation; and
-no Server or SSE status masquerading as Overall Local Agent Turn Outcome. The 80 focused Vitest
+no Server or SSE status masquerading as Overall Local Agent Turn Outcome. The 83 focused Vitest
 cases cover the required basic, Provider/display, Tool Batch, Outcome, error/recovery, and three-mode
-compaction matrices, both audit-revision rounds, and a table-driven viability matrix over every
-reachable Phase, Server-status, and Fault class. Each reachable class has an explicit continue,
-recover, or terminal path; illegal combinations and bypass attempts are rejected deterministically.
+compaction matrices, all audit-revision rounds, and a table-driven viability matrix over
+representative reachable Phase, Server-status, and Fault classes. The Compaction failure path uses
+the same Fault merge rule as every other error source: a different unresolved Fault is preserved and
+rejected as a conflict, while an identical Fault replay advances idempotently to the appropriate
+recovering or terminal phase.
 
 Stage 1 replaces Boolean-at-end reasoning only at the tested design-contract boundary. The
 existing B-style Runtime, old outcome resolver, Closure/Lease paths, and compaction execution

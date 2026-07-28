@@ -957,10 +957,51 @@ describe("Compaction lifecycle semantics", () => {
     });
     expect(outcome(state)).toBe("failed");
   });
+
+  it("does not let Compaction Failure overwrite an existing different Fault", () => {
+    let state = apply(requesting(), { type: "COMPACTION_STARTED", mode: "automatic" });
+    state = apply(state, {
+      type: "ERROR_RECORDED",
+      faultId: "terminal-fault-a",
+      error: terminalError
+    });
+    const beforeFailure = structuredClone(state);
+    const result = reduceAgentTurnLifecycle(state, {
+      type: "COMPACTION_FAILED",
+      turnId,
+      faultId: "retryable-fault-b",
+      error: retryableError
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "unresolvedFaultConflict", recoverable: false }
+    });
+    expect(state).toEqual(beforeFailure);
+    expect(state).toMatchObject({
+      phase: "compacting",
+      fault: { kind: "present", faultId: "terminal-fault-a", error: { kind: "terminal" } }
+    });
+  });
+
+  it.each([
+    ["retryable", retryableError, "recovering"],
+    ["terminal", terminalError, "terminal"]
+  ] as const)(
+    "idempotently applies an identical %s Compaction Fault to the correct phase",
+    (_label, error, expectedPhase) => {
+      let state = apply(requesting(), { type: "COMPACTION_STARTED", mode: "automatic" });
+      state = apply(state, { type: "ERROR_RECORDED", faultId: fault1, error });
+      state = apply(state, { type: "COMPACTION_FAILED", faultId: fault1, error });
+      expect(state).toMatchObject({
+        phase: expectedPhase,
+        fault: { kind: "present", faultId: fault1, error: { kind: error.kind } }
+      });
+    }
+  );
 });
 
-describe("Reachable state viability matrix", () => {
-  it("gives every reachable Phase × Server Status × Fault class a progress, recovery, or terminal path", () => {
+describe("Representative reachable state viability matrix", () => {
+  it("gives representative Phase × Server Status × Fault classes a progress, recovery, or terminal path", () => {
     const preparationFault = apply(createAgentTurnLifecycleState(turnId), {
       type: "ERROR_RECORDED",
       faultId: fault1,
