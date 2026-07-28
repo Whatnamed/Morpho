@@ -361,6 +361,7 @@ export function buildAgentProviderInput(input: {
     body: string;
     providerInputSnapshot?: ProviderInputSnapshot;
     providerOutputSnapshot?: ProviderOutputSnapshot;
+    agentTurnOutcomeItem?: import("@/shared/agentCompactionProtocol").AgentTurnOutcomeItem;
     taskStrategy?: AgentTaskStrategyKind;
   }>;
   currentUserMessageId: string;
@@ -411,6 +412,7 @@ export function buildAgentProviderInput(input: {
     messages.push(createAgentTranscriptMessageItem({
       messageId: message.id,
       role: message.role,
+      replayMode: "durableReplay",
       providerItems: [...strategy, historyMessage],
       durableProviderItems: [...strategy, historyMessage]
     }));
@@ -426,6 +428,7 @@ export function buildAgentProviderInput(input: {
   messages.push(createAgentTranscriptMessageItem({
     messageId: input.currentUserMessageId,
     role: "user",
+    replayMode: "liveInput",
     providerItems: [...currentStrategy, input.userInput],
     durableProviderItems: [
       ...currentStrategy,
@@ -505,7 +508,8 @@ function providerHistoryMessage(message: {
   body: string;
   providerInputSnapshot?: ProviderInputSnapshot;
   providerOutputSnapshot?: ProviderOutputSnapshot;
-}): ResponseMessageInput {
+  agentTurnOutcomeItem?: import("@/shared/agentCompactionProtocol").AgentTurnOutcomeItem;
+}): unknown {
   if (message.role === "user" && message.providerInputSnapshot) {
     const content = providerInputSnapshotDurableContent(message.providerInputSnapshot);
     if (content.length > 0) {
@@ -514,6 +518,9 @@ function providerHistoryMessage(message: {
         content
       };
     }
+  }
+  if (message.role === "assistant" && message.agentTurnOutcomeItem) {
+    return message.agentTurnOutcomeItem;
   }
   if (message.role === "assistant" && message.providerOutputSnapshot) {
     return {

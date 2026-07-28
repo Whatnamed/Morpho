@@ -126,6 +126,7 @@ function conversationMessageToProviderInput(message: ConversationMessageForConte
   return [createAgentTranscriptMessageItem({
     messageId: message.id,
     role: message.role,
+    replayMode: "durableReplay",
     providerItems
   })];
 }

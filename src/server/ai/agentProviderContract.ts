@@ -32,6 +32,7 @@ import {
   AGENT_COMPACTION_TRANSCRIPT_MARKER_TYPE,
   AGENT_CONTEXT_STATE_MARKER_TYPE,
   AGENT_TRANSCRIPT_MESSAGE_TYPE,
+  AGENT_TURN_OUTCOME_ITEM_TYPE,
   AGENT_COMPACTION_RECEIPT_VERSION,
   buildAgentContextMarkerManifest,
   hashAgentContextStateMarker,
@@ -42,6 +43,7 @@ import {
   hashConversationSummaryForReceipt,
   parseAgentCompactionSourceEnvelope,
   parseAgentTranscriptMessageItem,
+  parseAgentTurnOutcomeItem,
   type AgentCompactionDescriptor,
   type AgentCompactionSourceEnvelope,
   type AgentCompactionTranscriptMarker,
@@ -259,7 +261,8 @@ export function parseAgentRouteRequest(value: unknown):
     const parsedRetainedTail = parseDynamicInput(value.compactionRetainedTail, {
       allowCompactionMarker: false,
       allowExternalFunctionOutputs: true,
-      preserveStrategyMarker: true
+      preserveStrategyMarker: true,
+      allowOutcomeItem: true
     });
     if (parsedRetainedTail.status === "failed") {
       return failed(`compactionRetainedTail 无效：${parsedRetainedTail.reason}`);
@@ -452,6 +455,7 @@ function parseDynamicInput(
     preserveStrategyMarker?: boolean;
     allowExternalFunctionOutputs?: boolean;
     allowTranscriptMessage?: boolean;
+    allowOutcomeItem?: boolean;
   } = {}
 ):
   | { status: "ok"; value: OpenAiCompatibleResponseRequest["input"] }
@@ -476,6 +480,17 @@ function parseDynamicInput(
         return failed(`input[${index}] 的 Transcript Message 无效。`);
       }
       parsed.push(transcriptMessage as unknown as OpenAiCompatibleResponseRequest["input"][number]);
+      continue;
+    }
+    if (raw.type === AGENT_TURN_OUTCOME_ITEM_TYPE) {
+      if (!options.allowOutcomeItem) {
+        return failed(`input[${index}] 不允许直接提交 Agent Turn Outcome Item。`);
+      }
+      const outcomeItem = parseAgentTurnOutcomeItem(raw);
+      if (!outcomeItem) {
+        return failed(`input[${index}] 的 Agent Turn Outcome Item 无效。`);
+      }
+      parsed.push(outcomeItem as unknown as OpenAiCompatibleResponseRequest["input"][number]);
       continue;
     }
     if (raw.type === AGENT_CONTEXT_STATE_MARKER_TYPE) {
@@ -598,6 +613,13 @@ function materializeAgentInputItem(
       materializeAgentInputItem(providerItem as OpenAiCompatibleResponseRequest["input"][number])
     );
   }
+  const outcomeItem = parseAgentTurnOutcomeItem(item);
+  if (outcomeItem) {
+    return [{
+      role: "assistant",
+      content: [{ type: "output_text", text: outcomeItem.text }]
+    }];
+  }
   const sourceEnvelope = parseAgentCompactionSourceEnvelope(item);
   if (sourceEnvelope) {
     return [compactionSourceEnvelopeMessage(sourceEnvelope)];
@@ -629,12 +651,14 @@ function parseTranscriptMessage(value: Record<string, unknown>): AgentTranscript
   const providerItems = parseDynamicInput(candidate.providerItems, {
     allowCompactionMarker: false,
     allowTranscriptMessage: false,
-    preserveStrategyMarker: true
+    preserveStrategyMarker: true,
+    allowOutcomeItem: true
   });
   const durableProviderItems = parseDynamicInput(candidate.durableProviderItems, {
     allowCompactionMarker: false,
     allowTranscriptMessage: false,
-    preserveStrategyMarker: true
+    preserveStrategyMarker: true,
+    allowOutcomeItem: true
   });
   if (providerItems.status !== "ok" || durableProviderItems.status !== "ok") {
     return undefined;
@@ -644,12 +668,28 @@ function parseTranscriptMessage(value: Record<string, unknown>): AgentTranscript
   if (!providerMessage || !durableMessage || durableMessage.content.some((part) => part.type === "input_image")) {
     return undefined;
   }
-  const actualText = providerMessage.content.flatMap((part) => "text" in part ? [part.text] : []);
-  const durableText = durableMessage.content.flatMap((part) =>
-    "text" in part && !part.text.startsWith("[Morpho Durable Image References | data only]")
-      ? [part.text]
-      : []
-  );
+  const providerOutcomeItems = providerItems.value
+    .map(parseAgentTurnOutcomeItem)
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
+  const durableOutcomeItems = durableProviderItems.value
+    .map(parseAgentTurnOutcomeItem)
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
+  if (providerOutcomeItems.length > 0 || durableOutcomeItems.length > 0) {
+    if (
+      candidate.replayMode !== "durableReplay" ||
+      candidate.role !== "assistant" ||
+      providerItems.value.length !== 1 ||
+      durableProviderItems.value.length !== 1 ||
+      providerOutcomeItems.length !== 1 ||
+      durableOutcomeItems.length !== 1 ||
+      providerOutcomeItems[0]!.assistantMessageId !== candidate.messageId ||
+      providerOutcomeItems[0]!.contentHash !== durableOutcomeItems[0]!.contentHash
+    ) {
+      return undefined;
+    }
+  }
+  const actualText = transcriptOrdinaryText(providerMessage);
+  const durableText = transcriptOrdinaryText(durableMessage);
   if (hashAgentProtocolValue(actualText, "morpho-agent-transcript-text-v1") !==
     hashAgentProtocolValue(durableText, "morpho-agent-transcript-text-v1")) {
     return undefined;
@@ -657,12 +697,24 @@ function parseTranscriptMessage(value: Record<string, unknown>): AgentTranscript
   const imageHashes = providerMessage.content.flatMap((part) =>
     part.type === "input_image" ? [hashProviderImageDataUrl(part.image_url)] : []
   );
-  const durableReferenceHashes = durableMessage.content.flatMap((part) =>
-    "text" in part ? durableImageReferenceHashes(part.text) : []
-  );
-  if (
-    new Set(imageHashes).size !== new Set(durableReferenceHashes).size ||
-    [...new Set(imageHashes)].some((hash) => !durableReferenceHashes.includes(hash))
+  const providerReferences = durableImageReferences(providerMessage);
+  const durableReferences = durableImageReferences(durableMessage);
+  if (!providerReferences || !durableReferences) {
+    return undefined;
+  }
+  const durableReferenceHashes = durableReferences.map((ref) => ref.contentHash!);
+  if (candidate.replayMode === "liveInput") {
+    if (
+      providerReferences.length > 0 ||
+      imageHashes.length !== durableReferenceHashes.length ||
+      imageHashes.some((hash, index) => hash !== durableReferenceHashes[index])
+    ) {
+      return undefined;
+    }
+  } else if (
+    imageHashes.length > 0 ||
+    hashAgentProtocolValue(providerReferences, "morpho-agent-durable-image-references-v1") !==
+      hashAgentProtocolValue(durableReferences, "morpho-agent-durable-image-references-v1")
   ) {
     return undefined;
   }
@@ -673,20 +725,45 @@ function parseTranscriptMessage(value: Record<string, unknown>): AgentTranscript
   };
 }
 
+function transcriptOrdinaryText(message: ResponseMessageInput): string[] {
+  return message.content.flatMap((part) =>
+    "text" in part && !isDurableImageReferenceBlock(part.text) ? [part.text] : []
+  );
+}
+
+function durableImageReferences(
+  message: ResponseMessageInput
+): import("@/domain/morpho/types").ProviderInputSnapshotAttachmentRef[] | undefined {
+  const blocks = message.content.flatMap((part) =>
+    "text" in part && isDurableImageReferenceBlock(part.text) ? [part.text] : []
+  );
+  const references = blocks.flatMap((text) => parseProviderInputSnapshotDurableReferences(text));
+  if (blocks.some((text) => parseProviderInputSnapshotDurableReferences(text).length === 0)) {
+    return undefined;
+  }
+  return references;
+}
+
+function isDurableImageReferenceBlock(text: string): boolean {
+  return text.startsWith("[Morpho Durable Image References | data only]\n");
+}
+
 function transcriptRoleMessage(
   items: OpenAiCompatibleResponseRequest["input"],
   role: "user" | "assistant"
 ): ResponseMessageInput | undefined {
-  const messages = items.filter((item): item is ResponseMessageInput =>
-    isRecord(item) && !("type" in item) && item.role === role && Array.isArray(item.content)
-  );
+  const messages = items.flatMap((item): ResponseMessageInput[] => {
+    const outcomeItem = parseAgentTurnOutcomeItem(item);
+    if (outcomeItem) {
+      return role === "assistant"
+        ? [{ role: "assistant", content: [{ type: "output_text", text: outcomeItem.text }] }]
+        : [];
+    }
+    return isRecord(item) && !("type" in item) && item.role === role && Array.isArray(item.content)
+      ? [item as ResponseMessageInput]
+      : [];
+  });
   return messages.length === 1 ? messages[0] : undefined;
-}
-
-function durableImageReferenceHashes(text: string): string[] {
-  return parseProviderInputSnapshotDurableReferences(text).flatMap((ref) =>
-    ref.contentHash ? [ref.contentHash] : []
-  );
 }
 
 function compactionSourceEnvelopeMessage(
@@ -1014,7 +1091,8 @@ function parseAgentCompactionTranscriptMarker(
   const parsedTail = parseDynamicInput(value.retainedTail, {
     allowStrategyMarker: true,
     preserveStrategyMarker: true,
-    allowCompactionMarker: false
+    allowCompactionMarker: false,
+    allowOutcomeItem: true
   });
   if (
     parsedTail.status !== "ok" ||

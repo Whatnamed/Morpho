@@ -4,8 +4,13 @@ import {
   AGENT_COMPACTION_TRANSCRIPT_MARKER_TYPE,
   AGENT_CONTEXT_STATE_MARKER_TYPE,
   AGENT_COMPACTION_RECEIPT_VERSION,
+  AGENT_TRANSCRIPT_SNAPSHOT_PROTOCOL_VERSION,
   buildAgentContextMarkerManifest,
+  buildAgentDurableTranscriptManifest,
   buildAgentTranscriptManifest,
+  buildAgentTranscriptManifestFromItems,
+  createAgentTranscriptMessageItem,
+  createAgentTurnOutcomeItem,
   hashAgentContextStateMarker,
   hashAgentContextStateMarkerCausalBinding,
   hashAgentProviderItems,
@@ -15,11 +20,15 @@ import {
   hashConversationSummaryForReceipt,
   parseAgentCompactionSourceEnvelope,
   type AgentTranscriptManifest,
+  type AgentContextMarkerManifestItem,
+  type AgentTurnOutcomeItem,
   type AgentContextStateMarker,
   type AgentCompactionReceipt,
   type AgentCompactionTranscriptMarker
 } from "@/shared/agentCompactionProtocol";
 import { MAX_AGENT_FUNCTION_CALLS } from "@/shared/agentFunctionCallLimits";
+import { normalizeProviderOutputSnapshot } from "@/domain/morpho/providerInputSnapshot";
+import type { AgentTurnOutcome } from "@/domain/morpho/types";
 
 /**
  * A Provider continuation claims that the submitted transcript is exactly the
@@ -34,8 +43,9 @@ import { MAX_AGENT_FUNCTION_CALLS } from "@/shared/agentFunctionCallLimits";
  * and digests: no prompt, transcript, workspace or tool content.
  */
 
-const CONTINUATION_TOKEN_VERSION = 4;
-const TRANSCRIPT_SNAPSHOT_TOKEN_VERSION = 2;
+const CONTINUATION_TOKEN_VERSION = 5;
+const LEGACY_TRANSCRIPT_SNAPSHOT_TOKEN_VERSION = 2;
+const LEGACY_CONTINUATION_SNAPSHOT_VERSION = 4;
 export const AGENT_CONTINUATION_TOKEN_TTL_MS = 20 * 60 * 1000;
 export const AGENT_TRANSCRIPT_SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
 export const AGENT_TRANSCRIPT_SNAPSHOT_REFRESH_TTL_MS = 180 * 24 * 60 * 60 * 1000;
@@ -56,6 +66,9 @@ export type AgentContinuationClaims = {
   prefixContextMarkerHashes: string[];
   appendableContextMarkerHashes: string[];
   compactionContextMarkerHashes: string[];
+  prefixContextMarkerManifest: AgentContextMarkerManifestItem[];
+  appendableContextMarkerManifest: AgentContextMarkerManifestItem[];
+  compactionContextMarkerManifest: AgentContextMarkerManifestItem[];
   previousSummaryHash?: string;
   previousSummaryRevisionId?: string;
   exp: number;
@@ -85,13 +98,16 @@ export type AgentContinuationFailureReason =
   | "compaction_receipt_expired"
   | "compaction_source_unverified"
   | "compaction_source_forged"
+  | "durable_replay_unverified"
   | "context_marker_forged";
 
 export type AgentTranscriptSnapshotClaims = {
   v: number;
   projectId: string;
+  userId?: string;
   transcriptManifest: AgentTranscriptManifest;
   contextMarkerHashes: string[];
+  contextMarkerManifest?: AgentContextMarkerManifestItem[];
   previousSummaryHash?: string;
   previousSummaryRevisionId?: string;
   issuedAt?: number;
@@ -143,6 +159,9 @@ export function issueAgentContinuationToken(
     prefixContextMarkerHashes?: readonly string[];
     appendableContextMarkerHashes?: readonly string[];
     compactionContextMarkerHashes?: readonly string[];
+    prefixContextMarkerManifest?: readonly AgentContextMarkerManifestItem[];
+    appendableContextMarkerManifest?: readonly AgentContextMarkerManifestItem[];
+    compactionContextMarkerManifest?: readonly AgentContextMarkerManifestItem[];
     previousSummaryHash?: string;
     previousSummaryRevisionId?: string;
     compactionReceipt?: AgentCompactionReceipt;
@@ -159,8 +178,23 @@ export function issueAgentContinuationToken(
   if (input.summary && !input.compactionReceipt) {
     throw new Error("Conversation Summary 缺少签名压缩收据，未签发 continuation。");
   }
-  const prefixContextMarkerHashes = [...new Set(input.prefixContextMarkerHashes ?? [])];
-  const appendableContextMarkerHashes = [...new Set(input.appendableContextMarkerHashes ?? [])];
+  const prefixContextMarkerManifest = normalizeMarkerManifestForIssue(
+    input.prefixContextMarkerManifest,
+    input.prefixContextMarkerHashes,
+    "prefix"
+  );
+  const appendableContextMarkerManifest = normalizeMarkerManifestForIssue(
+    input.appendableContextMarkerManifest,
+    input.appendableContextMarkerHashes,
+    "appendable"
+  );
+  const compactionContextMarkerManifest = normalizeMarkerManifestForIssue(
+    input.compactionContextMarkerManifest,
+    input.compactionContextMarkerHashes,
+    "compaction"
+  );
+  const prefixContextMarkerHashes = prefixContextMarkerManifest.map((marker) => marker.contentHash);
+  const appendableContextMarkerHashes = appendableContextMarkerManifest.map((marker) => marker.contentHash);
   if (appendableContextMarkerHashes.some((hash) => prefixContextMarkerHashes.includes(hash))) {
     throw new Error("Context marker 不能同时属于 prefix 与 appendable 集合。");
   }
@@ -177,7 +211,10 @@ export function issueAgentContinuationToken(
     transcriptManifest: input.transcriptManifest ?? buildAgentTranscriptManifest([]),
     prefixContextMarkerHashes,
     appendableContextMarkerHashes,
-    compactionContextMarkerHashes: [...new Set(input.compactionContextMarkerHashes ?? [])],
+    compactionContextMarkerHashes: compactionContextMarkerManifest.map((marker) => marker.contentHash),
+    prefixContextMarkerManifest,
+    appendableContextMarkerManifest,
+    compactionContextMarkerManifest,
     ...(input.previousSummaryHash ? { previousSummaryHash: input.previousSummaryHash } : {}),
     ...(input.previousSummaryRevisionId ? { previousSummaryRevisionId: input.previousSummaryRevisionId } : {}),
     exp: input.compactionReceipt?.expiresAt ?? input.now + AGENT_CONTINUATION_TOKEN_TTL_MS,
@@ -190,22 +227,36 @@ export function issueAgentContinuationToken(
 export function issueAgentTranscriptSnapshotToken(input: {
   secret: string;
   projectId: string;
+  userId: string;
   transcriptManifest: AgentTranscriptManifest;
   contextMarkerHashes?: readonly string[];
+  contextMarkerManifest?: readonly AgentContextMarkerManifestItem[];
   previousSummaryHash?: string;
   previousSummaryRevisionId?: string;
   now: number;
+  issuedAt?: number;
+  expiresAt?: number;
+  refreshUntil?: number;
 }): string {
+  const contextMarkerManifest = normalizeMarkerManifestForIssue(
+    input.contextMarkerManifest,
+    input.contextMarkerHashes,
+    "snapshot"
+  );
+  const issuedAt = input.issuedAt ?? input.now;
+  const refreshUntil = input.refreshUntil ?? issuedAt + AGENT_TRANSCRIPT_SNAPSHOT_REFRESH_TTL_MS;
   const claims: AgentTranscriptSnapshotClaims = {
-    v: TRANSCRIPT_SNAPSHOT_TOKEN_VERSION,
+    v: AGENT_TRANSCRIPT_SNAPSHOT_PROTOCOL_VERSION,
     projectId: input.projectId,
+    userId: input.userId,
     transcriptManifest: input.transcriptManifest,
-    contextMarkerHashes: [...new Set(input.contextMarkerHashes ?? [])],
+    contextMarkerHashes: contextMarkerManifest.map((marker) => marker.contentHash),
+    contextMarkerManifest,
     ...(input.previousSummaryHash ? { previousSummaryHash: input.previousSummaryHash } : {}),
     ...(input.previousSummaryRevisionId ? { previousSummaryRevisionId: input.previousSummaryRevisionId } : {}),
-    issuedAt: input.now,
-    exp: input.now + AGENT_TRANSCRIPT_SNAPSHOT_TTL_MS,
-    refreshUntil: input.now + AGENT_TRANSCRIPT_SNAPSHOT_REFRESH_TTL_MS
+    issuedAt,
+    exp: input.expiresAt ?? Math.min(input.now + AGENT_TRANSCRIPT_SNAPSHOT_TTL_MS, refreshUntil),
+    refreshUntil
   };
   const payload = base64Url(Buffer.from(JSON.stringify(claims), "utf8"));
   return `${payload}.${sign(payload, input.secret)}`;
@@ -215,6 +266,7 @@ export function verifyAgentTranscriptSnapshotToken(input: {
   token: string | undefined;
   secret: string | undefined;
   projectId: string;
+  userId: string;
   now: number;
 }): { status: "ok"; claims: AgentTranscriptSnapshotClaims } | { status: "failed"; reason: AgentContinuationFailureReason } {
   const decoded = decodeAgentTranscriptSnapshotToken(input);
@@ -222,7 +274,8 @@ export function verifyAgentTranscriptSnapshotToken(input: {
     return decoded;
   }
   const parsed = decoded.claims;
-  if (parsed.projectId !== input.projectId) {
+  if (parsed.projectId !== input.projectId || parsed.userId !== input.userId ||
+    parsed.v !== AGENT_TRANSCRIPT_SNAPSHOT_PROTOCOL_VERSION) {
     return failed("compaction_source_forged");
   }
   if (parsed.exp <= input.now) {
@@ -235,6 +288,7 @@ export function refreshAgentTranscriptSnapshotToken(input: {
   token: string | undefined;
   secret: string | undefined;
   projectId: string;
+  userId: string;
   now: number;
   transcriptManifest?: AgentTranscriptManifest;
 }): { status: "ok"; token: string; claims: AgentTranscriptSnapshotClaims } |
@@ -244,52 +298,192 @@ export function refreshAgentTranscriptSnapshotToken(input: {
     return decoded;
   }
   const claims = decoded.claims;
-  if (claims.projectId !== input.projectId) {
+  if (claims.projectId !== input.projectId || (claims.userId !== undefined && claims.userId !== input.userId)) {
     return failed("compaction_source_forged");
   }
-  const refreshUntil = claims.refreshUntil ?? claims.exp + AGENT_TRANSCRIPT_SNAPSHOT_REFRESH_TTL_MS;
+  const issuedAt = claims.issuedAt ?? claims.exp - AGENT_TRANSCRIPT_SNAPSHOT_TTL_MS;
+  const refreshUntil = claims.refreshUntil ?? issuedAt + AGENT_TRANSCRIPT_SNAPSHOT_REFRESH_TTL_MS;
   if (refreshUntil <= input.now || !input.secret) {
     return failed("compaction_source_unverified");
   }
+  const currentVersion = claims.v === AGENT_TRANSCRIPT_SNAPSHOT_PROTOCOL_VERSION;
   const transcriptManifest = input.transcriptManifest ?? claims.transcriptManifest;
-  if (input.transcriptManifest && (
-    !isAgentTranscriptManifest(input.transcriptManifest) ||
-    !isCurrentAgentTranscriptManifest(input.transcriptManifest) ||
-    !sameUpgradeableManifest(claims.transcriptManifest, input.transcriptManifest)
-  )) {
+  if ((currentVersion && input.transcriptManifest) || (!currentVersion && !input.transcriptManifest) ||
+    (input.transcriptManifest && (
+      !isAgentTranscriptManifest(input.transcriptManifest) ||
+      !isCurrentAgentTranscriptManifest(input.transcriptManifest) ||
+      !sameUpgradeableManifest(claims.transcriptManifest, input.transcriptManifest)
+    ))) {
     return failed("compaction_source_forged");
   }
+  const expiresAt = Math.min(input.now + AGENT_TRANSCRIPT_SNAPSHOT_TTL_MS, refreshUntil);
+  const contextMarkerManifest = claims.contextMarkerManifest ?? [];
+  if (!claims.contextMarkerManifest && claims.contextMarkerHashes.length > 0) {
+    return failed("context_marker_forged");
+  }
   const refreshedClaims: AgentTranscriptSnapshotClaims = {
-    v: TRANSCRIPT_SNAPSHOT_TOKEN_VERSION,
+    v: AGENT_TRANSCRIPT_SNAPSHOT_PROTOCOL_VERSION,
     projectId: claims.projectId,
+    userId: input.userId,
     transcriptManifest,
-    contextMarkerHashes: claims.contextMarkerHashes,
+    contextMarkerHashes: contextMarkerManifest.map((marker) => marker.contentHash),
+    contextMarkerManifest,
     ...(claims.previousSummaryHash && claims.previousSummaryRevisionId
       ? {
           previousSummaryHash: claims.previousSummaryHash,
           previousSummaryRevisionId: claims.previousSummaryRevisionId
         }
       : {}),
-    issuedAt: input.now,
-    exp: input.now + AGENT_TRANSCRIPT_SNAPSHOT_TTL_MS,
-    refreshUntil: input.now + AGENT_TRANSCRIPT_SNAPSHOT_REFRESH_TTL_MS
+    issuedAt,
+    exp: expiresAt,
+    refreshUntil
   };
   return {
     status: "ok",
     token: issueAgentTranscriptSnapshotToken({
       secret: input.secret,
       projectId: claims.projectId,
+      userId: input.userId,
       transcriptManifest,
-      contextMarkerHashes: claims.contextMarkerHashes,
+      contextMarkerManifest,
       ...(claims.previousSummaryHash && claims.previousSummaryRevisionId
         ? {
             previousSummaryHash: claims.previousSummaryHash,
             previousSummaryRevisionId: claims.previousSummaryRevisionId
           }
         : {}),
-      now: input.now
+      now: input.now,
+      issuedAt,
+      expiresAt,
+      refreshUntil
     }),
     claims: refreshedClaims
+  };
+}
+
+export function finalizeAgentTranscriptSnapshotOutcomeToken(input: {
+  token: string | undefined;
+  secret: string | undefined;
+  projectId: string;
+  userId: string;
+  agentTurnId: string;
+  userMessageId: string;
+  assistantMessageId: string;
+  outcome: AgentTurnOutcome;
+  successProviderOutputSnapshot?: unknown;
+  now: number;
+}): { status: "ok"; token: string; claims: AgentTranscriptSnapshotClaims; outcomeItem: AgentTurnOutcomeItem } |
+  { status: "failed"; reason: AgentContinuationFailureReason } {
+  const verified = verifyAgentTranscriptSnapshotToken({
+    token: input.token,
+    secret: input.secret,
+    projectId: input.projectId,
+    userId: input.userId,
+    now: input.now
+  });
+  if (verified.status === "failed") {
+    return verified;
+  }
+  const claims = verified.claims;
+  const userItems = claims.transcriptManifest.items.filter((item) =>
+    item.messageId === input.userMessageId && item.role === "user"
+  );
+  const assistantItems = claims.transcriptManifest.items.filter((item) =>
+    item.messageId === input.assistantMessageId
+  );
+  const latestUserMessageId = [...claims.transcriptManifest.items].reverse().find((item) =>
+    item.kind === "message" && item.role === "user"
+  )?.messageId;
+  const lastUserIndex = claims.transcriptManifest.items.reduce((last, item, index) =>
+    item.messageId === input.userMessageId ? index : last
+  , -1);
+  const firstAssistantIndex = claims.transcriptManifest.items.findIndex((item) =>
+    item.messageId === input.assistantMessageId
+  );
+  if (userItems.length === 0 || assistantItems.length === 0 ||
+    latestUserMessageId !== input.userMessageId || firstAssistantIndex <= lastUserIndex ||
+    assistantItems.some((item) =>
+    item.role !== "assistant" || (item.kind !== "message" && item.kind !== "outcome")
+  )) {
+    return failed("compaction_source_forged");
+  }
+  const successSnapshot = input.outcome === "success"
+    ? normalizeProviderOutputSnapshot(input.successProviderOutputSnapshot)
+    : undefined;
+  if (input.outcome === "success" && !successSnapshot) {
+    return failed("compaction_source_unverified");
+  }
+  const outcomeItem = createAgentTurnOutcomeItem({
+    agentTurnId: input.agentTurnId,
+    userMessageId: input.userMessageId,
+    assistantMessageId: input.assistantMessageId,
+    outcome: input.outcome,
+    ...(successSnapshot ? { successText: successSnapshot.text } : {})
+  });
+  const outcomeManifest = buildAgentDurableTranscriptManifest([
+    createAgentTranscriptMessageItem({
+      messageId: input.assistantMessageId,
+      role: "assistant",
+      replayMode: "durableReplay",
+      providerItems: [outcomeItem]
+    })
+  ]);
+  if (outcomeManifest.items.length !== 1) {
+    return failed("compaction_source_forged");
+  }
+  if (input.outcome === "success" && assistantItems.some((item) => item.kind === "message")) {
+    const signedSuccessManifest = buildAgentDurableTranscriptManifest([
+      createAgentTranscriptMessageItem({
+        messageId: input.assistantMessageId,
+        role: "assistant",
+        replayMode: "durableReplay",
+        providerItems: [{
+          role: "assistant",
+          content: [{ type: "output_text", text: successSnapshot!.text }]
+        }]
+      })
+    ]);
+    if (!sameManifestItems(assistantItems, signedSuccessManifest.items)) {
+      return failed("compaction_source_forged");
+    }
+  } else if (input.outcome === "success" && !sameManifestItems(assistantItems, outcomeManifest.items)) {
+    return failed("compaction_source_forged");
+  }
+  const insertionIndex = firstAssistantIndex >= 0 ? firstAssistantIndex : lastUserIndex + 1;
+  const withoutAssistant = claims.transcriptManifest.items.filter((item) =>
+    item.messageId !== input.assistantMessageId
+  );
+  const precedingAssistantItems = claims.transcriptManifest.items
+    .slice(0, insertionIndex)
+    .filter((item) => item.messageId === input.assistantMessageId).length;
+  const normalizedInsertionIndex = Math.max(0, insertionIndex - precedingAssistantItems);
+  const transcriptManifest = buildAgentTranscriptManifestFromItems([
+    ...withoutAssistant.slice(0, normalizedInsertionIndex),
+    ...outcomeManifest.items,
+    ...withoutAssistant.slice(normalizedInsertionIndex)
+  ]);
+  const token = issueAgentTranscriptSnapshotToken({
+    secret: input.secret!,
+    projectId: input.projectId,
+    userId: input.userId,
+    transcriptManifest,
+    contextMarkerManifest: claims.contextMarkerManifest ?? [],
+    ...(claims.previousSummaryHash && claims.previousSummaryRevisionId
+      ? {
+          previousSummaryHash: claims.previousSummaryHash,
+          previousSummaryRevisionId: claims.previousSummaryRevisionId
+        }
+      : {}),
+    now: input.now,
+    issuedAt: claims.issuedAt,
+    expiresAt: claims.exp,
+    refreshUntil: claims.refreshUntil
+  });
+  return {
+    status: "ok",
+    token,
+    claims: { ...claims, transcriptManifest },
+    outcomeItem
   };
 }
 
@@ -392,11 +586,10 @@ export function verifyAgentContinuationBinding(input: {
   const prefixMarkerHashes = parsedInput
     .slice(0, claims.inputItemCount)
     .filter(isContextStateMarker)
-    .map((marker) => marker.contentHash);
-  if (
-    prefixMarkerHashes.length !== claims.prefixContextMarkerHashes.length ||
-    prefixMarkerHashes.some((hash) => !claims.prefixContextMarkerHashes.includes(hash))
-  ) {
+  if (!sameContextMarkerManifest(
+    buildAgentContextMarkerManifest(prefixMarkerHashes),
+    claims.prefixContextMarkerManifest
+  )) {
     return failed("context_marker_forged");
   }
   const tail = parsedInput.slice(claims.inputItemCount);
@@ -410,13 +603,18 @@ export function verifyAgentContinuationBinding(input: {
   const allowedCallIds = new Set(claims.callIds);
   const answeredCallIds = new Set<string>();
   const seenContextMarkerHashes = new Set<string>();
+  let appendableMarkerIndex = 0;
   for (const item of tail.slice(outputEnd)) {
     if (isProviderOutputItem(item)) {
       return failed("output_forged");
     }
     if (isContextStateMarker(item)) {
       const replayedPrefixMarker = claims.prefixContextMarkerHashes.includes(item.contentHash);
-      const appendable = claims.appendableContextMarkerHashes.includes(item.contentHash);
+      const appendable = claims.appendableContextMarkerManifest[appendableMarkerIndex];
+      const matchesAppendable = Boolean(appendable) && sameContextMarkerManifest(
+        buildAgentContextMarkerManifest([item]),
+        [appendable!]
+      );
       const causallyBound = item.causalBindingHash !== undefined &&
         allowedCallIds.size > 0 &&
         answeredCallIds.size === allowedCallIds.size &&
@@ -430,10 +628,13 @@ export function verifyAgentContinuationBinding(input: {
         });
       if (
         replayedPrefixMarker ||
-        (!causallyBound && (item.causalBindingHash !== undefined || !appendable)) ||
+        (!causallyBound && (item.causalBindingHash !== undefined || !matchesAppendable)) ||
         seenContextMarkerHashes.has(item.contentHash)
       ) {
         return failed("context_marker_forged");
+      }
+      if (matchesAppendable) {
+        appendableMarkerIndex += 1;
       }
       seenContextMarkerHashes.add(item.contentHash);
       continue;
@@ -473,11 +674,23 @@ export function verifyAgentCompactionBinding(input: {
   }
   const marker = markers[0]!;
   const markerIndex = input.parsedInput.indexOf(marker);
-  if (
-    markerIndex < 0 ||
-    markerIndex !== input.parsedInput.length - 1 ||
-    input.parsedInput.some((item, index) => index !== markerIndex && !isContextStateMarker(item))
-  ) {
+  const expectedBefore = receipt.contextMarkerManifest.filter((contextMarker) =>
+    !contextMarkerFollowsCompactedTail(contextMarker)
+  );
+  const expectedAfter = receipt.contextMarkerManifest.filter(contextMarkerFollowsCompactedTail);
+  const before = input.parsedInput.slice(0, markerIndex);
+  const after = input.parsedInput.slice(markerIndex + 1);
+  if (markerIndex !== expectedBefore.length ||
+    before.some((item) => !isContextStateMarker(item)) ||
+    after.some((item) => !isContextStateMarker(item)) ||
+    !sameContextMarkerManifest(
+      buildAgentContextMarkerManifest(before.filter(isContextStateMarker)),
+      expectedBefore
+    ) ||
+    !sameContextMarkerManifest(
+      buildAgentContextMarkerManifest(after.filter(isContextStateMarker)),
+      expectedAfter
+    )) {
     return failed("compaction_receipt_forged");
   }
   if (
@@ -513,7 +726,6 @@ export function verifyAgentCompactionBinding(input: {
     retainedTailManifest.manifestHash !== marker.retainedTailManifest.manifestHash ||
     marker.transcriptRangeHash !== hashAgentTranscriptRange(marker.sourceManifest, retainedTailManifest) ||
     parsedContextMarkers.length !== receipt.contextMarkerManifest.length ||
-    parsedContextMarkers.some((contextMarker) => contextMarker.causalBindingHash !== undefined) ||
     !sameContextMarkerManifest(
       buildAgentContextMarkerManifest(parsedContextMarkers),
       receipt.contextMarkerManifest
@@ -611,13 +823,15 @@ export function verifyAgentCompactionSourceBinding(input: {
     (item) => isFunctionCallOutput(item) && signedCallIds.has(item.call_id)
   );
   const terminalOutputHash = hashAgentProviderItems(terminalOutputs);
-  const allowedMarkerHashes = new Set([
-    ...input.claims.compactionContextMarkerHashes
-  ]);
-  for (const marker of input.contextMarkers) {
-    if (allowedMarkerHashes.has(marker.contentHash)) {
-      continue;
-    }
+  const priorMarkerManifest = input.claims.compactionContextMarkerManifest;
+  const actualMarkerManifest = buildAgentContextMarkerManifest(input.contextMarkers);
+  if (!sameContextMarkerManifest(
+    actualMarkerManifest.slice(0, priorMarkerManifest.length),
+    priorMarkerManifest
+  )) {
+    return failed("context_marker_forged");
+  }
+  for (const marker of input.contextMarkers.slice(priorMarkerManifest.length)) {
     if (
       !marker.causalBindingHash ||
       input.claims.callIds.length === 0 ||
@@ -718,6 +932,9 @@ export function agentContinuationFailureMessage(reason: AgentContinuationFailure
   if (reason === "context_marker_forged") {
     return "Agent continuation 包含未被上一份服务端 Transcript 授权的 Context/State marker。";
   }
+  if (reason === "durable_replay_unverified") {
+    return "历史图片稳定引用未被上一份用户绑定的服务端 Transcript 授权。";
+  }
   if (reason === "compaction_source_unverified") {
     return "Conversation Summary 的来源没有上一份服务端签名 Transcript 快照，原始历史未被删除。";
   }
@@ -788,6 +1005,9 @@ function isContinuationClaims(value: unknown): value is AgentContinuationClaims 
       "prefixContextMarkerHashes",
       "appendableContextMarkerHashes",
       "compactionContextMarkerHashes",
+      "prefixContextMarkerManifest",
+      "appendableContextMarkerManifest",
+      "compactionContextMarkerManifest",
       "previousSummaryHash",
       "previousSummaryRevisionId",
       "exp",
@@ -822,6 +1042,15 @@ function isContinuationClaims(value: unknown): value is AgentContinuationClaims 
     Array.isArray(value.compactionContextMarkerHashes) &&
     value.compactionContextMarkerHashes.every(isProtocolHash) &&
     new Set(value.compactionContextMarkerHashes).size === value.compactionContextMarkerHashes.length &&
+    Array.isArray(value.prefixContextMarkerManifest) &&
+    value.prefixContextMarkerManifest.every(isContextMarkerManifestItem) &&
+    markerManifestHashesMatch(value.prefixContextMarkerManifest, value.prefixContextMarkerHashes) &&
+    Array.isArray(value.appendableContextMarkerManifest) &&
+    value.appendableContextMarkerManifest.every(isContextMarkerManifestItem) &&
+    markerManifestHashesMatch(value.appendableContextMarkerManifest, value.appendableContextMarkerHashes) &&
+    Array.isArray(value.compactionContextMarkerManifest) &&
+    value.compactionContextMarkerManifest.every(isContextMarkerManifestItem) &&
+    markerManifestHashesMatch(value.compactionContextMarkerManifest, value.compactionContextMarkerHashes) &&
     (value.previousSummaryHash === undefined || isProtocolHash(value.previousSummaryHash)) &&
     (value.previousSummaryRevisionId === undefined || typeof value.previousSummaryRevisionId === "string") &&
     (value.previousSummaryHash === undefined) === (value.previousSummaryRevisionId === undefined) &&
@@ -897,20 +1126,30 @@ function isTranscriptSnapshotClaims(value: unknown): value is AgentTranscriptSna
     unknownKeys(value, [
       "v",
       "projectId",
+      "userId",
       "transcriptManifest",
       "contextMarkerHashes",
+      "contextMarkerManifest",
       "previousSummaryHash",
       "previousSummaryRevisionId",
       "issuedAt",
       "exp",
       "refreshUntil"
     ]).length === 0 &&
-    (value.v === TRANSCRIPT_SNAPSHOT_TOKEN_VERSION || value.v === CONTINUATION_TOKEN_VERSION) &&
+    (value.v === AGENT_TRANSCRIPT_SNAPSHOT_PROTOCOL_VERSION ||
+      value.v === LEGACY_TRANSCRIPT_SNAPSHOT_TOKEN_VERSION ||
+      value.v === LEGACY_CONTINUATION_SNAPSHOT_VERSION) &&
     typeof value.projectId === "string" &&
+    (value.userId === undefined || (typeof value.userId === "string" && value.userId.length > 0)) &&
     isAgentTranscriptManifest(value.transcriptManifest) &&
     Array.isArray(value.contextMarkerHashes) &&
     value.contextMarkerHashes.every(isProtocolHash) &&
     new Set(value.contextMarkerHashes).size === value.contextMarkerHashes.length &&
+    (value.contextMarkerManifest === undefined || (
+      Array.isArray(value.contextMarkerManifest) &&
+      value.contextMarkerManifest.every(isContextMarkerManifestItem) &&
+      markerManifestHashesMatch(value.contextMarkerManifest, value.contextMarkerHashes)
+    )) &&
     (value.previousSummaryHash === undefined || isProtocolHash(value.previousSummaryHash)) &&
     (value.previousSummaryRevisionId === undefined || typeof value.previousSummaryRevisionId === "string") &&
     (value.previousSummaryHash === undefined) === (value.previousSummaryRevisionId === undefined) &&
@@ -918,10 +1157,14 @@ function isTranscriptSnapshotClaims(value: unknown): value is AgentTranscriptSna
     typeof value.exp === "number" &&
     Number.isSafeInteger(value.exp) &&
     (value.refreshUntil === undefined ||
-      (typeof value.refreshUntil === "number" && Number.isSafeInteger(value.refreshUntil) && value.refreshUntil > value.exp)) &&
-    (value.v === TRANSCRIPT_SNAPSHOT_TOKEN_VERSION
-      ? value.issuedAt !== undefined && value.refreshUntil !== undefined
-      : value.issuedAt === undefined && value.refreshUntil === undefined);
+      (typeof value.refreshUntil === "number" && Number.isSafeInteger(value.refreshUntil) && value.refreshUntil >= value.exp)) &&
+    (value.v === AGENT_TRANSCRIPT_SNAPSHOT_PROTOCOL_VERSION
+      ? value.userId !== undefined && value.contextMarkerManifest !== undefined &&
+        value.issuedAt !== undefined && value.refreshUntil !== undefined
+      : value.userId === undefined && value.contextMarkerManifest === undefined &&
+        (value.v === LEGACY_TRANSCRIPT_SNAPSHOT_TOKEN_VERSION
+          ? value.issuedAt !== undefined && value.refreshUntil !== undefined
+          : value.issuedAt === undefined && value.refreshUntil === undefined));
 }
 
 function isAgentTranscriptManifest(value: unknown): value is AgentTranscriptManifest {
@@ -946,7 +1189,8 @@ function isCurrentAgentTranscriptManifest(value: AgentTranscriptManifest): boole
 function isAgentTranscriptManifestItem(value: unknown): value is AgentTranscriptManifest["items"][number] {
   return isRecord(value) &&
     unknownKeys(value, ["kind", "hash", "role", "callId", "messageId", "anchorMessageId"]).length === 0 &&
-    (value.kind === "message" || value.kind === "strategy" || value.kind === "providerOutput" || value.kind === "functionCallOutput") &&
+    (value.kind === "message" || value.kind === "strategy" || value.kind === "providerOutput" ||
+      value.kind === "functionCallOutput" || value.kind === "outcome") &&
     isProtocolHash(value.hash) &&
     (value.role === undefined || value.role === "user" || value.role === "assistant") &&
     (value.callId === undefined || (typeof value.callId === "string" && value.callId.length > 0)) &&
@@ -976,6 +1220,38 @@ function isContextMarkerManifestItem(value: unknown): boolean {
 
 function isProtocolHash(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+}
+
+function normalizeMarkerManifestForIssue(
+  manifest: readonly AgentContextMarkerManifestItem[] | undefined,
+  hashes: readonly string[] | undefined,
+  label: string
+): AgentContextMarkerManifestItem[] {
+  const normalized = manifest ? manifest.map((item) => ({ ...item })) : [];
+  if (normalized.some((item) => !isContextMarkerManifestItem(item)) ||
+    new Set(normalized.map((item) => item.contentHash)).size !== normalized.length) {
+    throw new Error(`${label} Context marker manifest 无效。`);
+  }
+  const normalizedHashes = normalized.map((item) => item.contentHash);
+  if (hashes && (
+    hashes.length !== normalizedHashes.length ||
+    hashes.some((hash, index) => hash !== normalizedHashes[index])
+  )) {
+    throw new Error(`${label} Context marker hash 与有序 manifest 不一致。`);
+  }
+  return normalized;
+}
+
+function markerManifestHashesMatch(manifest: unknown[], hashes: unknown[]): boolean {
+  return manifest.length === hashes.length && manifest.every((item, index) =>
+    isRecord(item) && item.contentHash === hashes[index]
+  );
+}
+
+function contextMarkerFollowsCompactedTail(marker: AgentContextMarkerManifestItem): boolean {
+  return marker.causalBindingHash !== undefined ||
+    marker.placement === "afterUser" ||
+    marker.placement === "afterAssistant";
 }
 
 function unknownKeys(value: Record<string, unknown>, allowed: readonly string[]): string[] {
@@ -1022,6 +1298,15 @@ function sameManifestItem(
     left.callId === right.callId &&
     left.messageId === right.messageId &&
     left.anchorMessageId === right.anchorMessageId;
+}
+
+function sameManifestItems(
+  left: readonly AgentTranscriptManifest["items"][number][],
+  right: readonly AgentTranscriptManifest["items"][number][]
+): boolean {
+  return left.length === right.length && left.every((item, index) =>
+    Boolean(right[index]) && sameManifestItem(item, right[index]!)
+  );
 }
 
 function sameContextMarkerManifest(

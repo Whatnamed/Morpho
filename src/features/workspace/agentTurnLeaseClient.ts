@@ -5,6 +5,9 @@ import {
 import type { WebSearchSource } from "@/server/ai/webSearch";
 import {
   buildAgentTranscriptManifest,
+  parseAgentTranscriptMessageItem,
+  parseAgentTurnOutcomeItem,
+  AGENT_TRANSCRIPT_SNAPSHOT_PROTOCOL_VERSION,
   type AgentCompactionReceipt,
   type AgentTranscriptManifest
 } from "@/shared/agentCompactionProtocol";
@@ -52,6 +55,7 @@ export async function requestConversationSummary(
     contextMarkers?: readonly import("@/shared/agentCompactionProtocol").AgentContextStateMarker[];
     previousTranscriptManifestHash?: string;
     previousTranscriptSnapshotToken?: string;
+    freshUserMessageId?: string;
     onTranscriptSnapshotRefreshed?: (token: string, manifestHash: string) => void;
     onLeaseStarted?: (leaseId: string) => void;
     onLeaseSequence?: (sequence: number) => void;
@@ -78,14 +82,22 @@ export async function requestConversationSummary(
     previousTranscriptManifestHash: input.previousTranscriptManifestHash,
     previousTranscriptSnapshotToken
   });
-  if (previousTranscriptSnapshotToken && !input.continuationToken) {
+  const refreshRequirement = previousTranscriptSnapshotToken && !input.continuationToken
+    ? readSnapshotRefreshRequirement(previousTranscriptSnapshotToken, Date.now())
+    : "none";
+  if (previousTranscriptSnapshotToken && refreshRequirement !== "none") {
+    const legacyManifest = refreshRequirement === "legacy"
+      ? buildAgentTranscriptManifest([
+          ...summaryRequest.input,
+          ...(summaryRequest.compactionRetainedTail ?? []).filter((item) =>
+            parseAgentTranscriptMessageItem(item)?.messageId !== input.freshUserMessageId
+          )
+        ])
+      : undefined;
     const refreshed = await refreshTranscriptSnapshot({
       projectId: input.projectId,
       token: previousTranscriptSnapshotToken,
-      transcriptManifest: buildAgentTranscriptManifest([
-        ...summaryRequest.input,
-        ...(summaryRequest.compactionRetainedTail ?? [])
-      ]),
+      ...(legacyManifest ? { transcriptManifest: legacyManifest } : {}),
       signal,
       fetch: fetchImpl
     });
@@ -130,7 +142,7 @@ export async function requestConversationSummary(
 async function refreshTranscriptSnapshot(input: {
   projectId: string;
   token: string;
-  transcriptManifest: AgentTranscriptManifest;
+  transcriptManifest?: AgentTranscriptManifest;
   signal: AbortSignal;
   fetch: typeof fetch;
 }): Promise<{ token: string; manifestHash: string }> {
@@ -140,7 +152,7 @@ async function refreshTranscriptSnapshot(input: {
     body: JSON.stringify({
       projectId: input.projectId,
       token: input.token,
-      transcriptManifest: input.transcriptManifest
+      ...(input.transcriptManifest ? { transcriptManifest: input.transcriptManifest } : {})
     }),
     signal: input.signal
   });
@@ -157,6 +169,28 @@ async function refreshTranscriptSnapshot(input: {
     token: payload.transcriptSnapshotToken,
     manifestHash: payload.transcriptManifestHash
   };
+}
+
+function readSnapshotRefreshRequirement(
+  token: string,
+  now: number
+): "none" | "current" | "legacy" {
+  try {
+    const payload = token.split(".")[0];
+    if (!payload) {
+      return "legacy";
+    }
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const parsed: unknown = JSON.parse(globalThis.atob(padded));
+    if (!isRecord(parsed) || parsed.v !== AGENT_TRANSCRIPT_SNAPSHOT_PROTOCOL_VERSION ||
+      typeof parsed.exp !== "number") {
+      return "legacy";
+    }
+    return parsed.exp > now ? "none" : "current";
+  } catch {
+    return "legacy";
+  }
 }
 
 export async function requestAgentWebSearch(input: {
@@ -277,38 +311,80 @@ export async function closeAgentTurnLease(input: {
   state: AgentTurnState;
   agentTurnId: string;
   outcome: AgentTurnLeaseOutcome;
+  snapshot?: {
+    projectId: string;
+    userMessageId: string;
+    assistantMessageId: string;
+    transcriptSnapshotToken: string;
+    successProviderOutputSnapshot?: import("@/domain/morpho/types").ProviderOutputSnapshot;
+  };
   fetch?: typeof fetch;
-}): Promise<void> {
+}): Promise<AgentTurnOutcomeSnapshotResult | undefined> {
   if (!input.state.agentTurnLeaseId) {
     return;
   }
   const leaseId = input.state.agentTurnLeaseId;
   input.state.agentTurnLeaseId = undefined;
-  await closeAgentTurnLeaseRequest({
+  return closeAgentTurnLeaseRequest({
     leaseId,
     agentTurnId: input.agentTurnId,
     outcome: input.outcome,
+    snapshot: input.snapshot,
     fetch: input.fetch
   });
 }
+
+export type AgentTurnOutcomeSnapshotResult = {
+  outcomeItem: import("@/shared/agentCompactionProtocol").AgentTurnOutcomeItem;
+  transcriptSnapshotToken: string;
+  transcriptManifestHash: string;
+  expiresAt: number;
+};
 
 export async function closeAgentTurnLeaseRequest(input: {
   leaseId?: string;
   agentTurnId: string;
   outcome: AgentTurnLeaseOutcome;
+  snapshot?: {
+    projectId: string;
+    userMessageId: string;
+    assistantMessageId: string;
+    transcriptSnapshotToken: string;
+    successProviderOutputSnapshot?: import("@/domain/morpho/types").ProviderOutputSnapshot;
+  };
   fetch?: typeof fetch;
-}): Promise<void> {
+}): Promise<AgentTurnOutcomeSnapshotResult | undefined> {
   if (!input.leaseId) {
     return;
   }
   const fetchImpl = input.fetch ?? fetch;
-  await fetchImpl("/api/ai/agent/lease", {
+  const response = await fetchImpl("/api/ai/agent/lease", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       leaseId: input.leaseId,
       agentTurnId: input.agentTurnId,
-      outcome: input.outcome
+      outcome: input.outcome,
+      ...(input.snapshot ?? {})
     })
   }).catch(() => undefined);
+  if (!response?.ok || !input.snapshot) {
+    return undefined;
+  }
+  const payload = await readJsonPayload(response);
+  if (!isRecord(payload)) {
+    return undefined;
+  }
+  const outcomeItem = parseAgentTurnOutcomeItem(payload.outcomeItem);
+  if (!outcomeItem || typeof payload.transcriptSnapshotToken !== "string" ||
+    typeof payload.transcriptManifestHash !== "string" ||
+    typeof payload.expiresAt !== "number") {
+    return undefined;
+  }
+  return {
+    outcomeItem,
+    transcriptSnapshotToken: payload.transcriptSnapshotToken,
+    transcriptManifestHash: payload.transcriptManifestHash,
+    expiresAt: payload.expiresAt
+  };
 }
