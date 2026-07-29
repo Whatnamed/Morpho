@@ -311,6 +311,99 @@ describe("A+ Tool Batch integration", () => {
     }));
   });
 
+  it("treats a delivery draft as a completed local write and replays it without a second draft", async () => {
+    const fake = createAgentTurnHostFake({ workspace: createTestWorkspace() });
+    const host = hostFromFake(fake);
+    const delivery = Object.values(fake.getWorkspace().objects)
+      .find((object) => object.type === "delivery");
+    if (!delivery || delivery.type !== "delivery") throw new Error("Fixture 缺少 delivery object。");
+    const section = delivery.sections.find((candidate) => candidate.referenceIds.length > 0);
+    if (!section) throw new Error("Fixture 缺少带引用的 delivery section。");
+    const call: APlusToolCall = {
+      callId: "call-delivery-draft",
+      name: "prepare_delivery_section_draft",
+      argumentsText: JSON.stringify({
+        title: "交付章节草案",
+        narrative: "这份草案先保存在本地，等待用户在交付面板中应用或放弃。",
+        captions: section.referenceIds.slice(0, 1).map((referenceId) => ({
+          referenceId,
+          caption: "核心参考"
+        })),
+        suggestedGaps: []
+      })
+    };
+    const turnInput: RunMorphoAgentTurnAPlusInput = {
+      ...standardInput(),
+      draft: "为当前交付章节准备草案",
+      pendingDeliveryDraftTarget: {
+        deliveryObjectId: delivery.id,
+        sectionId: section.id
+      }
+    };
+    const prepared = await prepareAgentTurnProductAPlus(turnInput, host);
+    const first = AgentTurnCoordinator.restore({
+      snapshot: executingSnapshot([call]),
+      host: coordinatorHost(),
+      createRequestId: () => "unused"
+    });
+    if (first.status !== "ok") throw new Error(first.reason);
+
+    await expect(executeAgentToolBatchAPlus({
+      toolCalls: [call],
+      providerOutputText: "",
+      coordinator: first.coordinator,
+      host,
+      turnInput,
+      prepared,
+      externalRequest: {
+        serverTurnId: TURN_ID,
+        localProjectId: fake.getWorkspace().project.id,
+        ...REQUEST
+      },
+      requestWebSearch: async () => ({ sources: [] }),
+      onCallTerminal: async () => false
+    })).rejects.toThrow("Recovery Record");
+    expect(Object.keys(fake.getWorkspace().deliverySectionDrafts)).toHaveLength(1);
+
+    const second = AgentTurnCoordinator.restore({
+      snapshot: executingSnapshot([call]),
+      host: coordinatorHost(),
+      createRequestId: () => "unused"
+    });
+    if (second.status !== "ok") throw new Error(second.reason);
+    const recovered = await executeAgentToolBatchAPlus({
+      toolCalls: [call],
+      providerOutputText: "",
+      coordinator: second.coordinator,
+      host,
+      turnInput,
+      prepared,
+      externalRequest: {
+        serverTurnId: TURN_ID,
+        localProjectId: fake.getWorkspace().project.id,
+        ...REQUEST
+      },
+      requestWebSearch: async () => ({ sources: [] })
+    });
+
+    expect(recovered.status).toBe("completed");
+    expect(recovered.terminalResults).toEqual([
+      expect.objectContaining({
+        callId: call.callId,
+        status: "executed",
+        localEffect: "produced",
+        persistence: "succeeded"
+      })
+    ]);
+    expect(recovered.continuationItems.at(-1)).toEqual(expect.objectContaining({
+      type: "function_call_output",
+      callId: call.callId,
+      output: expect.stringContaining('"status":"draftCreated"')
+    }));
+    expect(Object.keys(fake.getWorkspace().deliverySectionDrafts)).toHaveLength(1);
+    expect(fake.getEvents().filter((event) => event.name === "confirmation")).toHaveLength(0);
+  });
+
 });
 
 function executingSnapshot(calls: readonly APlusToolCall[]): AgentTurnCoordinatorRecoverySnapshot {

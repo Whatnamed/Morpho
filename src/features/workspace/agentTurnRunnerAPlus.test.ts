@@ -475,6 +475,47 @@ describe("A+ Agent turn runner", () => {
     );
   });
 
+  it("completes a delivery draft Tool as a persisted local write and continues the Turn", async () => {
+    const fixture = createFixture([]);
+    const delivery = Object.values(fixture.fake.getWorkspace().objects)
+      .find((object) => object.type === "delivery");
+    if (!delivery || delivery.type !== "delivery") throw new Error("Fixture 缺少 delivery object。");
+    const section = delivery.sections.find((candidate) => candidate.referenceIds.length > 0);
+    if (!section) throw new Error("Fixture 缺少带引用的 delivery section。");
+    fixture.input.draft = "为当前交付章节创建草案";
+    fixture.input.pendingDeliveryDraftTarget = {
+      deliveryObjectId: delivery.id,
+      sectionId: section.id
+    };
+    fixture.coordinatorHost.appendScripts([
+      {
+        status: "awaitingNextRequest",
+        toolCalls: [deliveryToolCall("call-delivery-runner", section.referenceIds[0]!)]
+      },
+      { status: "externallyCompleted", outputText: "交付章节草案已准备好。" }
+    ]);
+
+    await runMorphoAgentTurnAPlus(fixture.input, fixture.host, fixture.dependencies);
+
+    expect(Object.keys(fixture.fake.getWorkspace().deliverySectionDrafts)).toHaveLength(1);
+    expect(fixture.coordinatorHost.executions[1]?.providerRequest.continuationItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "function_call_output",
+          callId: "call-delivery-runner",
+          output: expect.stringContaining('"status":"draftCreated"')
+        })
+      ])
+    );
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      body: "交付章节草案已准备好。",
+      status: "done",
+      agentTurnOutcome: "success"
+    });
+    expect(fixture.fake.getEvents().filter((event) => event.name === "confirmation")).toHaveLength(0);
+    expect(fixture.store.record).toBeUndefined();
+  });
+
   it("does not report full success when a local write happened but durable persistence failed", async () => {
     const fixture = createFixture([
       {
@@ -513,7 +554,15 @@ class CoordinatorHostFake implements AgentTurnCoordinatorHost {
   private index = 0;
   private snapshot: AgentTurnJournalSnapshot = snapshotFor("created", null, 0, 0);
 
-  constructor(private readonly scripts: readonly Script[]) {}
+  private readonly scripts: Script[];
+
+  constructor(scripts: readonly Script[]) {
+    this.scripts = [...scripts];
+  }
+
+  appendScripts(scripts: readonly Script[]): void {
+    this.scripts.push(...scripts);
+  }
 
   async createServerTurn(input: { localProjectId: string }): Promise<{
     snapshot: AgentTurnJournalSnapshot;
@@ -776,6 +825,19 @@ function visualToolCall(callId: string): APlusToolCall {
           role: "preview"
         }
       ]
+    })
+  };
+}
+
+function deliveryToolCall(callId: string, referenceId: string): APlusToolCall {
+  return {
+    callId,
+    name: "prepare_delivery_section_draft",
+    argumentsText: JSON.stringify({
+      title: "交付章节草案",
+      narrative: "这份草案等待用户在交付面板中应用或放弃。",
+      captions: [{ referenceId, caption: "核心参考" }],
+      suggestedGaps: []
     })
   };
 }

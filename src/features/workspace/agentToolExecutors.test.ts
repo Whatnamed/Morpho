@@ -231,8 +231,8 @@ describe("Agent tool executors", () => {
       parsed
     });
 
-    expect(first).toMatchObject({ status: "pendingConfirmation" });
-    expect(second).toMatchObject({ status: "pendingConfirmation", recovered: true });
+    expect(first).toMatchObject({ status: "draftCreated" });
+    expect(second).toMatchObject({ status: "draftCreated", recovered: true });
     expect(Object.keys(fixture.host.getWorkspace().deliverySectionDrafts)).toHaveLength(1);
   });
 

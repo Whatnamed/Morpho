@@ -708,14 +708,13 @@ function executePrepareDeliverySectionDraft(
     throw new Error(result.reason);
   }
   input.ui.clearPendingDeliveryDraftTarget();
-  input.runtimeState.pendingConfirmationCreated = true;
   return {
-    status: "pendingConfirmation",
+    status: "draftCreated",
     draftId: result.draftId,
     deliveryObjectId: sectionContext.deliveryObjectId,
     sectionId: sectionContext.sectionId,
     ...(result.recovered ? { recovered: true } : {}),
-    note: "草稿尚未应用到交付章节。"
+    note: "草稿已创建，等待用户在交付面板中应用或放弃。"
   };
 }
 
