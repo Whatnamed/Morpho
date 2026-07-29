@@ -25,7 +25,9 @@ const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   it("returns 401 without acquiring, counting, or invoking Provider", async () => {
     const store = new FakeJournal();
-    const provider = vi.fn(async () => providerResult());
+    const provider = vi.fn<AgentTurnRequestRouteDependencies["streamProvider"]>(
+      async () => providerResult()
+    );
     const handler = makeHandler(store, provider, {
       authenticate: async () => ({ status: "denied", httpStatus: 401, error: "login" })
     });
@@ -38,7 +40,9 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
 
   it("returns 503 for missing Provider config before acquisition", async () => {
     const store = new FakeJournal();
-    const provider = vi.fn(async () => providerResult());
+    const provider = vi.fn<AgentTurnRequestRouteDependencies["streamProvider"]>(
+      async () => providerResult()
+    );
     const handler = makeHandler(store, provider, {
       loadConfig: () => ({ status: "failed", reason: "missing config" })
     });
@@ -142,7 +146,9 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
 
   it("computes a stable SHA-256 on the server and calls Provider once", async () => {
     const store = new FakeJournal();
-    const provider = vi.fn(async () => providerResult());
+    const provider = vi.fn<AgentTurnRequestRouteDependencies["streamProvider"]>(
+      async () => providerResult()
+    );
     const handler = makeHandler(store, provider);
     const response = await call(handler, validBody());
     expect(response.status).toBe(200);
@@ -152,8 +158,33 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
       requestHash: expect.stringMatching(/^[0-9a-f]{64}$/)
     }));
     expect(provider).toHaveBeenCalledTimes(1);
+    expect(provider.mock.calls[0]?.[1]).not.toHaveProperty("promptCacheKey");
+    expect(provider.mock.calls[0]?.[1]).not.toHaveProperty("promptCacheRetention");
     expect(store.snapshot.counters.provider).toBe(1);
     expect(store.snapshot.status).toBe("externallyCompleted");
+  });
+
+  it("adds an opaque server cache hint before hashing and Provider execution", async () => {
+    const store = new FakeJournal();
+    const provider = vi.fn<AgentTurnRequestRouteDependencies["streamProvider"]>(
+      async () => providerResult()
+    );
+    const handler = makeHandler(store, provider, {
+      loadConfig: () => config({ promptCacheEnabled: true })
+    });
+    const response = await call(handler, validBody());
+    await response.text();
+
+    const externalRequest = provider.mock.calls[0]?.[1];
+    expect(externalRequest).toMatchObject({
+      promptCacheKey: expect.stringMatching(/^morpho-pc-v1-[0-9a-f]{48}$/),
+      promptCacheRetention: "24h"
+    });
+    expect(externalRequest?.promptCacheKey).not.toContain("user-a");
+    expect(externalRequest?.promptCacheKey).not.toContain("project-a");
+    expect(store.acquire).toHaveBeenCalledWith(expect.objectContaining({
+      requestHash: expect.stringMatching(/^[0-9a-f]{64}$/)
+    }));
   });
 
   it("does not execute or count an exact Request replay", async () => {
@@ -540,7 +571,7 @@ function makeHandler(
   });
 }
 
-function config() {
+function config(options: { promptCacheEnabled?: boolean } = {}) {
   return {
     status: "ok" as const,
     config: {
@@ -548,7 +579,19 @@ function config() {
       baseUrl: "https://provider.test/v1",
       model: "test-model",
       webSearchEnabled: false,
-      contextPolicy: createMorphoAgentContextPolicy()
+      contextPolicy: createMorphoAgentContextPolicy(),
+      promptCache: options.promptCacheEnabled
+        ? {
+            supportsPromptCacheKey: true,
+            supportsPromptCacheRetention: true,
+            promptCacheKeyEnabled: true,
+            promptCacheRetention: "24h" as const
+          }
+        : {
+            supportsPromptCacheKey: false,
+            supportsPromptCacheRetention: false,
+            promptCacheKeyEnabled: false
+          }
     }
   };
 }

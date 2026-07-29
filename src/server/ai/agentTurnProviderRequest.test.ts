@@ -110,6 +110,51 @@ describe("A+ Provider continuation contract", () => {
       providerRequest: secondContract.request
     }));
   });
+
+  it("covers enabled Prompt Cache Hint fields without changing disabled hashes", () => {
+    const parsed = parseAPlusAgentProviderRequest(
+      providerRequestWithOutput('{"status":"completed"}')
+    );
+    expect(parsed.status).toBe("ok");
+    if (parsed.status === "failed") return;
+    const contract = buildAPlusAgentProviderContract({
+      localProjectId: "project-local",
+      request: parsed.value,
+      webSearchEnabled: false
+    });
+    const baseline = hashAPlusAgentExternalRequest({
+      model: "provider-test-model",
+      providerRequest: contract.request
+    });
+
+    expect(hashAPlusAgentExternalRequest({
+      model: "provider-test-model",
+      providerRequest: { ...contract.request }
+    })).toBe(baseline);
+    expect(hashAPlusAgentExternalRequest({
+      model: "provider-test-model",
+      providerRequest: {
+        ...contract.request,
+        promptCacheKey: "morpho-pc-v1-one",
+        promptCacheRetention: "24h"
+      }
+    })).not.toBe(baseline);
+    expect(hashAPlusAgentExternalRequest({
+      model: "provider-test-model",
+      providerRequest: {
+        ...contract.request,
+        promptCacheKey: "morpho-pc-v1-two",
+        promptCacheRetention: "24h"
+      }
+    })).not.toBe(hashAPlusAgentExternalRequest({
+      model: "provider-test-model",
+      providerRequest: {
+        ...contract.request,
+        promptCacheKey: "morpho-pc-v1-one",
+        promptCacheRetention: "24h"
+      }
+    }));
+  });
 });
 
 describe("A+ Provider Tool boundary", () => {

@@ -264,6 +264,12 @@ export type AiRouteValidationResult =
       reason: string;
     };
 
+export const MORPHO_INDEPENDENT_CHAT_PROMPT_CONTRACT_VERSION = "morpho-chat-v1-2026-07-29";
+export const MORPHO_INDEPENDENT_CHAT_STABLE_SYSTEM_PREFIX = [
+  "你是 Morpho 的连续工作台 AI，只能回复文本、分析、提出建议和生成可编辑草稿。",
+  "你不能直接创建、删除、隐藏对象，不能更改方向状态，不能替换默认参考，不能创建交付引用，不能写入项目记忆。"
+].join("\n");
+
 export function validateAiRouteRequest(value: unknown): AiRouteValidationResult {
   if (!isRecord(value)) {
     return { status: "failed", reason: "请求格式无效。" };
@@ -356,8 +362,7 @@ export function buildMorphoSystemPrompt(request: AiRouteRequest): string {
       : "- 本次没有显式对象。";
 
   return [
-    "你是 Morpho 的连续工作台 AI，只能回复文本、分析、提出建议和生成可编辑草稿。",
-    "你不能直接创建、删除、隐藏对象，不能更改方向状态，不能替换默认参考，不能创建交付引用，不能写入项目记忆。",
+    MORPHO_INDEPENDENT_CHAT_STABLE_SYSTEM_PREFIX,
     `本次任务类型：${request.task}`,
     `本次执行模式：${request.taskMode}`,
     `本次工作意图：${request.workIntent ?? "discussion"}`,

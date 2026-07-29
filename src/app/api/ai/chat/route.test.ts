@@ -9,7 +9,13 @@ vi.mock("@/server/ai/openaiCompatibleConfig", () => ({
       apiKey: "test-key",
       baseUrl: "https://api.aijws.com/v1",
       model: "gpt-5.4",
-      webSearchEnabled: true
+      webSearchEnabled: true,
+      promptCache: {
+        supportsPromptCacheKey: true,
+        supportsPromptCacheRetention: true,
+        promptCacheKeyEnabled: true,
+        promptCacheRetention: "24h"
+      }
     }
   })
 }));
@@ -41,6 +47,7 @@ describe("AI chat route", () => {
     guardAiRouteMock.mockReset();
     guardAiRouteMock.mockResolvedValue({
       status: "allowed",
+      userId: "user-a",
       usage: {
         role: "tester",
         accessStatus: "active",
@@ -117,7 +124,9 @@ describe("AI chat route", () => {
             ])
           })
         ]),
-        tools: [expect.objectContaining({ type: "web_search_preview" })]
+        tools: [expect.objectContaining({ type: "web_search_preview" })],
+        promptCacheKey: expect.stringMatching(/^morpho-pc-v1-[0-9a-f]{48}$/),
+        promptCacheRetention: "24h"
       }),
       expect.any(Object),
       expect.any(AbortSignal)
@@ -177,6 +186,10 @@ describe("AI chat route", () => {
     expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(streamOpenAiCompatibleResponseMock.mock.calls[0][1])).toContain("input_image");
     expect(JSON.stringify(streamOpenAiCompatibleResponseMock.mock.calls[1][1])).not.toContain("input_image");
+    expect(streamOpenAiCompatibleResponseMock.mock.calls[1][1]).toMatchObject({
+      promptCacheKey: streamOpenAiCompatibleResponseMock.mock.calls[0][1].promptCacheKey,
+      promptCacheRetention: "24h"
+    });
   });
 });
 

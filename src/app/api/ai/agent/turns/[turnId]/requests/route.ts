@@ -27,6 +27,7 @@ import {
   loadOpenAiCompatibleConfig,
   type OpenAiCompatibleConfigResult
 } from "@/server/ai/openaiCompatibleConfig";
+import { withServerPromptCacheHint } from "@/server/ai/providerPromptCacheHint";
 import {
   OpenAiCompatibleProviderError,
   streamOpenAiCompatibleResponse,
@@ -144,10 +145,20 @@ export function createAgentTurnRequestPostHandler(
       }
       throw error;
     }
+    const externalProviderRequest = withServerPromptCacheHint({
+      config: config.config,
+      request: contract.request,
+      namespace: "agent",
+      userId: auth.userId,
+      localProjectId: parsedBody.value.localProjectId,
+      promptContractVersion: providerRequest.value.promptContractVersion,
+      toolProfile: contract.effectiveToolProfile,
+      stableSystemPrefix: contract.stableSystemPrompt
+    });
     const requestHash = hashAPlusAgentExternalRequest({
       model: config.config.model,
       reasoningEffort: config.config.reasoningEffort,
-      providerRequest: contract.request
+      providerRequest: externalProviderRequest
     });
     const identity = {
       serverTurnId: turnId,
@@ -166,7 +177,7 @@ export function createAgentTurnRequestPostHandler(
 
     return createProviderStreamResponse({
       identity,
-      providerRequest: contract.request,
+      providerRequest: externalProviderRequest,
       config: config.config,
       dependencies
     });

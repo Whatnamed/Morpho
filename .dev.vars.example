@@ -11,6 +11,7 @@ MORPHO_AI_API_KEY=
 MORPHO_AI_MODEL=gpt-5.6-terra
 MORPHO_AI_REASONING_EFFORT=high
 MORPHO_AI_WEB_SEARCH_ENABLED=true
+# Optional server-generated Provider partition hints only; never a security or cache-hit proof.
 MORPHO_AI_SUPPORTS_PROMPT_CACHE_KEY=false
 MORPHO_AI_SUPPORTS_PROMPT_CACHE_RETENTION=false
 MORPHO_AI_PROMPT_CACHE_KEY_ENABLED=false

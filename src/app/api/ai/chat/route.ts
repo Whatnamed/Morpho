@@ -8,7 +8,14 @@ import {
   type ProviderCitation,
   type ResponseMessageInput
 } from "@/server/ai/openaiCompatibleProvider";
-import { buildMorphoSystemPrompt, buildProviderMessages, validateAiRouteRequest } from "@/server/ai/request";
+import { withServerPromptCacheHint } from "@/server/ai/providerPromptCacheHint";
+import {
+  MORPHO_INDEPENDENT_CHAT_PROMPT_CONTRACT_VERSION,
+  MORPHO_INDEPENDENT_CHAT_STABLE_SYSTEM_PREFIX,
+  buildMorphoSystemPrompt,
+  buildProviderMessages,
+  validateAiRouteRequest
+} from "@/server/ai/request";
 import type { AiRouteRequest } from "@/server/ai/request";
 import type { ProviderChatMessage } from "@/server/ai/types";
 import { aiAccessDeniedResponse, guardAiRoute } from "@/server/auth/aiAccess";
@@ -39,13 +46,19 @@ export async function POST(request: Request) {
   }
 
   const webSearch = config.config.webSearchEnabled ? validated.value.webSearch : undefined;
-  const providerRequest = buildOpenAiCompatibleChatRequest(validated.value, Boolean(webSearch?.enabled));
+  const providerRequest = buildServerChatProviderRequest({
+    request: validated.value,
+    includeWebSearch: Boolean(webSearch?.enabled),
+    config: config.config,
+    userId: access.userId
+  });
 
   return new Response(
     createNdjsonChatStream({
       config: config.config,
       providerRequest,
       originalRequest: validated.value,
+      userId: access.userId,
       signal: request.signal
     }),
     {
@@ -55,6 +68,23 @@ export async function POST(request: Request) {
       }
     }
   );
+}
+
+function buildServerChatProviderRequest(input: {
+  request: AiRouteRequest;
+  includeWebSearch: boolean;
+  config: Parameters<typeof streamOpenAiCompatibleResponse>[0];
+  userId: string;
+}): OpenAiCompatibleResponseRequest {
+  return withServerPromptCacheHint({
+    config: input.config,
+    request: buildOpenAiCompatibleChatRequest(input.request, input.includeWebSearch),
+    namespace: "chat",
+    userId: input.userId,
+    promptContractVersion: MORPHO_INDEPENDENT_CHAT_PROMPT_CONTRACT_VERSION,
+    toolProfile: input.includeWebSearch ? "chatWithWebSearch" : "chat",
+    stableSystemPrefix: MORPHO_INDEPENDENT_CHAT_STABLE_SYSTEM_PREFIX
+  });
 }
 
 function buildOpenAiCompatibleChatRequest(request: AiRouteRequest, includeWebSearch: boolean): OpenAiCompatibleResponseRequest {
@@ -108,6 +138,7 @@ function createNdjsonChatStream(input: {
   config: Parameters<typeof streamOpenAiCompatibleResponse>[0];
   providerRequest: OpenAiCompatibleResponseRequest;
   originalRequest: AiRouteRequest;
+  userId: string;
   signal: AbortSignal;
 }): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
@@ -158,10 +189,12 @@ function createNdjsonChatStream(input: {
           }
 
           await runProviderStream(
-            buildOpenAiCompatibleChatRequest(
-              stripImageInputsFromAiRouteRequest(input.originalRequest),
-              Boolean(input.originalRequest.webSearch?.enabled)
-            ),
+            buildServerChatProviderRequest({
+              request: stripImageInputsFromAiRouteRequest(input.originalRequest),
+              includeWebSearch: Boolean(input.originalRequest.webSearch?.enabled),
+              config: input.config,
+              userId: input.userId
+            }),
             "图片像素没有被当前文本模型接受；这次先基于对象摘要和已解析文档继续回复。"
           );
         }

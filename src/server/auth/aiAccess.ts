@@ -19,6 +19,7 @@ export type AiUsageSnapshot = {
 export type AiRouteAccessResult =
   | {
       status: "allowed";
+      userId: string;
       usage: AiUsageSnapshot;
     }
   | {
@@ -137,6 +138,7 @@ export async function reserveAiQuotaForRequest(client: AiAccessClient, kind: AiQ
   if (reservation.data.allowed) {
     return {
       status: "allowed",
+      userId: userResult.data.user.id,
       usage
     };
   }

@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { ConversationSummary } from "@/domain/morpho/types";
 import { loadOpenAiCompatibleConfig } from "@/server/ai/openaiCompatibleConfig";
 import type { AgentTurnExternalActionSnapshot } from "@/shared/agentTurnExternalActionProtocol";
-import { createAgentTurnCompactionActionPostHandler } from "./route";
+import {
+  createAgentTurnCompactionActionPostHandler,
+  type AgentTurnCompactionActionDependencies
+} from "./route";
 
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 const ACTION_ID = "compact:manual:1";
@@ -47,7 +50,7 @@ describe("A+ compaction action route", () => {
       replayed: false,
       snapshot: actionSnapshot("externallyCompleted")
     }));
-    const execute = vi.fn(async () => ({
+    const execute = vi.fn<AgentTurnCompactionActionDependencies["execute"]>(async () => ({
       responseId: "response-1",
       outputText: `\`\`\`json\n${JSON.stringify({ morphoConversationSummary: SUMMARY })}\n\`\`\``,
       functionCalls: [],
@@ -79,6 +82,34 @@ describe("A+ compaction action route", () => {
     }));
   });
 
+  it("uses the same server-only cache hint boundary for Summary execution", async () => {
+    const execute = vi.fn<AgentTurnCompactionActionDependencies["execute"]>(async () => ({
+      responseId: "response-cache",
+      outputText: `\`\`\`json\n${JSON.stringify({ morphoConversationSummary: SUMMARY })}\n\`\`\``,
+      functionCalls: [], citations: [], webSearchCallCount: 0, outputItems: []
+    }));
+    const handler = createAgentTurnCompactionActionPostHandler({
+      authenticate: async () => ({ status: "allowed", userId: "user-a" }),
+      acquire: async () => ({
+        status: "ok", executionGranted: true, replayed: false,
+        snapshot: actionSnapshot("running")
+      }),
+      settle: async () => ({
+        status: "ok", replayed: false,
+        snapshot: actionSnapshot("externallyCompleted")
+      }),
+      loadConfig: () => validConfig(true),
+      execute
+    });
+
+    const response = await handler(compactionRequest(), routeContext());
+    expect(response.status).toBe(200);
+    expect(execute.mock.calls[0]?.[1]).toMatchObject({
+      promptCacheKey: expect.stringMatching(/^morpho-pc-v1-[0-9a-f]{48}$/),
+      promptCacheRetention: "24h"
+    });
+  });
+
   it("never re-executes a completed Summary when the payload is unavailable", async () => {
     const execute = vi.fn();
     const handler = createAgentTurnCompactionActionPostHandler({
@@ -105,11 +136,19 @@ describe("A+ compaction action route", () => {
   });
 });
 
-function validConfig() {
+function validConfig(promptCacheEnabled = false) {
   return loadOpenAiCompatibleConfig({
     MORPHO_AI_API_KEY: "test-key",
     MORPHO_AI_BASE_URL: "https://provider.test/v1",
-    MORPHO_AI_MODEL: "test-model"
+    MORPHO_AI_MODEL: "test-model",
+    ...(promptCacheEnabled
+      ? {
+          MORPHO_AI_SUPPORTS_PROMPT_CACHE_KEY: "true",
+          MORPHO_AI_SUPPORTS_PROMPT_CACHE_RETENTION: "true",
+          MORPHO_AI_PROMPT_CACHE_KEY_ENABLED: "true",
+          MORPHO_AI_PROMPT_CACHE_RETENTION: "24h"
+        }
+      : {})
   });
 }
 

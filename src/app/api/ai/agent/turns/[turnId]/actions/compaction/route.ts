@@ -19,6 +19,7 @@ import {
 } from "@/server/ai/agentTurnRouteSupport";
 import { loadOpenAiCompatibleConfig, type OpenAiCompatibleConfigResult } from "@/server/ai/openaiCompatibleConfig";
 import { executeOpenAiCompatibleResponse } from "@/server/ai/openaiCompatibleProvider";
+import { withServerPromptCacheHint } from "@/server/ai/providerPromptCacheHint";
 import { requireAiRouteUser, type AiRouteUserAccessResult } from "@/server/auth/aiAccess";
 
 export const runtime = "nodejs";
@@ -70,24 +71,33 @@ export function createAgentTurnCompactionActionPostHandler(
         { status: 503 }
       );
     }
-    const providerRequest = {
-      input: [
-        {
-          role: "system" as const,
-          content: [{ type: "input_text" as const, text: COMPACTION_SYSTEM_PROMPT }]
-        },
-        {
-          role: "user" as const,
-          content: [{ type: "input_text" as const, text: JSON.stringify({
-            previousSummary: body.previousSummary ?? null,
-            sourceStartMessageId: body.sourceStartMessageId,
-            sourceEndMessageId: body.sourceEndMessageId,
-            sourceMessageCount: body.messages.length,
-            messages: body.messages
-          }) }]
-        }
-      ]
-    };
+    const providerRequest = withServerPromptCacheHint({
+      config: config.config,
+      namespace: "compaction",
+      userId: auth.userId,
+      localProjectId: body.localProjectId,
+      promptContractVersion: COMPACTION_PROMPT_CONTRACT_VERSION,
+      toolProfile: "conversationSummary",
+      stableSystemPrefix: COMPACTION_SYSTEM_PROMPT,
+      request: {
+        input: [
+          {
+            role: "system" as const,
+            content: [{ type: "input_text" as const, text: COMPACTION_SYSTEM_PROMPT }]
+          },
+          {
+            role: "user" as const,
+            content: [{ type: "input_text" as const, text: JSON.stringify({
+              previousSummary: body.previousSummary ?? null,
+              sourceStartMessageId: body.sourceStartMessageId,
+              sourceEndMessageId: body.sourceEndMessageId,
+              sourceMessageCount: body.messages.length,
+              messages: body.messages
+            }) }]
+          }
+        ]
+      }
+    });
     const identity = {
       serverTurnId: turnId,
       localProjectId: body.localProjectId,
@@ -158,6 +168,7 @@ const COMPACTION_SYSTEM_PROMPT = [
   "The JSON object must contain threadGoal, establishedContext, decisionsAndReasons, activeWork, unresolvedQuestions, referencedObjects, and optional nextTurnAnchor.",
   "All list values are concise strings. Do not invent object IDs, decisions, or facts."
 ].join("\n");
+const COMPACTION_PROMPT_CONTRACT_VERSION = "morpho-agent-compaction-v1-2026-07-29";
 
 type CompactionBody = {
   localProjectId: string;

@@ -63,6 +63,7 @@ export type APlusAgentProviderContract = Readonly<{
   request: OpenAiCompatibleResponseRequest;
   runtimeItem: AgentCanonicalRuntimeItem;
   effectiveToolProfile: AgentToolProfile;
+  stableSystemPrompt: string;
 }>;
 
 export type APlusExternalToolActionClaim = Readonly<{
@@ -153,11 +154,12 @@ export function buildAPlusAgentProviderContract(input: {
     promptContractVersion: input.request.promptContractVersion,
     previous: input.request.previousRuntimeItem
   });
+  const stableSystemPrompt = buildMorphoAgentStableSystemPrompt();
   const request: OpenAiCompatibleResponseRequest = {
     input: [
       {
         role: "system",
-        content: [{ type: "input_text", text: buildMorphoAgentStableSystemPrompt() }]
+        content: [{ type: "input_text", text: stableSystemPrompt }]
       },
       canonicalAgentRuntimeMessage(runtimeItem),
       ...input.request.input.map(copyProviderMessage),
@@ -176,7 +178,7 @@ export function buildAPlusAgentProviderContract(input: {
   if (budget.inputTokens > MORPHO_AGENT_CONTEXT_POLICY.windowTokens) {
     throw new APlusAgentProviderRequestError("Provider Input 超出 Morpho 允许的 Context Window。", 413);
   }
-  return { request, runtimeItem, effectiveToolProfile };
+  return { request, runtimeItem, effectiveToolProfile, stableSystemPrompt };
 }
 
 function parseContinuationItems(value: unknown):
@@ -272,7 +274,13 @@ export function hashAPlusAgentExternalRequest(input: {
     model: input.model,
     reasoningEffort: input.reasoningEffort ?? null,
     input: input.providerRequest.input,
-    tools: input.providerRequest.tools ?? []
+    tools: input.providerRequest.tools ?? [],
+    ...(input.providerRequest.promptCacheKey
+      ? { promptCacheKey: input.providerRequest.promptCacheKey }
+      : {}),
+    ...(input.providerRequest.promptCacheRetention
+      ? { promptCacheRetention: input.providerRequest.promptCacheRetention }
+      : {})
   });
   return createHash("sha256").update(canonical).digest("hex");
 }

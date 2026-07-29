@@ -36,6 +36,7 @@ describe("AI image route auth guard", () => {
     guardAiRouteMock.mockReset();
     guardAiRouteMock.mockResolvedValue({
       status: "allowed",
+      userId: "user-a",
       usage: {
         role: "tester",
         accessStatus: "active",

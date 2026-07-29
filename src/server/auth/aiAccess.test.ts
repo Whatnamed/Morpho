@@ -116,6 +116,7 @@ describe("AI access and quota guard", () => {
 
     await expect(reserveAiQuotaForRequest(client, "text")).resolves.toMatchObject({
       status: "allowed",
+      userId: "user-a",
       usage: {
         textRequestCount: 3,
         imageRequestCount: 1
