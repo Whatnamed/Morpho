@@ -74,6 +74,7 @@ import {
   recordAndApplyConceptDirectionProposal,
   recordDesignDefinitionProposal,
   recordImageGenerationPlan,
+  recordImageGenerationOperationResult,
   setCurrentDesignDefinition,
   updateConceptDirectionProposalDraft,
   updateDesignDefinitionProposalDraft,
@@ -229,8 +230,18 @@ import {
 } from "./morphoAgent";
 import { updateAiMessage } from "./aiConversationMessages";
 import type { AgentTurnHost } from "./agentTurnHost";
-import { runMorphoAgentTurn } from "./agentTurnRunner";
-import { runManualCompactionTurn } from "./manualCompactionTurn";
+import {
+  buildAPlusImageBatchIdentity,
+  buildAPlusImageChildActionId,
+  findAPlusImageResultObjectId
+} from "./agentExternalActionClientAPlus";
+import {
+  acknowledgeSelectedPendingAgentConfirmation,
+  cancelSelectedMorphoAgentTurn,
+  recoverSelectedAgentRuntime,
+  runSelectedManualCompactionTurn,
+  runSelectedMorphoAgentTurn
+} from "./agentRuntimeSelector";
 import { completeAgentTrace } from "./agentMessageTrace";
 import { commitWorkspaceStateNow } from "./workspaceCommitBoundary";
 import { readErrorResponse } from "./httpPayload";
@@ -1257,6 +1268,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       requestedPreviewCount?: number;
       onProgress?: (message: string) => void;
       signal: AbortSignal;
+      aPlusExternalAction?: Readonly<{
+        serverTurnId: string;
+        localProjectId: string;
+        requestId: string;
+        stepSequence: number;
+        actionId: string;
+      }>;
     }) => {
       const requestedGenerationCount =
         input.plan.kind === "directionPreview"
@@ -1276,30 +1294,52 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         throw new Error(validatedPlan.reason);
       }
 
-      const operationId = `operation-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const clientRequestId = `client-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const aPlusBatchIdentity = input.aPlusExternalAction
+        ? await buildAPlusImageBatchIdentity(
+            input.aPlusExternalAction.serverTurnId,
+            input.aPlusExternalAction.actionId
+          )
+        : undefined;
+      const operationId = aPlusBatchIdentity?.operationId ??
+        `operation-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const clientRequestId = aPlusBatchIdentity?.clientRequestId ??
+        `client-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const generationSettings = resolveImageGenerationSettingsForVisualIntent({
         intent: input.plan.kind === "directionPreview" ? "directionPreview" : "visualDevelopment",
         aspectRatio: effectiveImageGenerationSettings.aspectRatio
       });
       const workspaceAtPlanCommit = commitWorkspaceNow((current) => {
-        const operationCreated = createImageGenerationOperation(current, {
-          operationId,
-          clientRequestId,
-          prompt: input.draft,
-          selectedObjectIds: input.sourceObjectIds,
-          imagePixels: false,
-          modelId: generationSettings.modelId,
-          modelLabel: generationSettings.modelLabel,
-          aspectRatio: generationSettings.aspectRatio,
-          sizeOption: generationSettings.sizeOption,
-          referenceObjectIds: input.sourceObjectIds,
-          requestedPreviewCount: input.plan.kind === "directionPreview" ? requestedGenerationCount : undefined
-        });
-        const workspaceWithPlan = recordImageGenerationPlan(operationCreated.workspace, {
-          operationId,
-          plan: validatedPlan.plan
-        });
+        const existingOperation = aPlusBatchIdentity ? current.operations[operationId] : undefined;
+        if (existingOperation && existingOperation.type !== "imageGeneration") {
+          throw new Error("A+ 图像 Operation ID 与现有非图像 Operation 冲突。");
+        }
+        const existingPlan = existingOperation?.imageGeneration?.plan;
+        if (existingPlan && JSON.stringify(existingPlan) !== JSON.stringify(validatedPlan.plan)) {
+          throw new Error("A+ 图像 Operation 的恢复计划与原计划不一致。");
+        }
+        const workspaceWithOperation = existingOperation
+          ? current
+          : createImageGenerationOperation(current, {
+              operationId,
+              clientRequestId,
+              prompt: input.draft,
+              selectedObjectIds: input.sourceObjectIds,
+              imagePixels: false,
+              modelId: generationSettings.modelId,
+              modelLabel: generationSettings.modelLabel,
+              aspectRatio: generationSettings.aspectRatio,
+              sizeOption: generationSettings.sizeOption,
+              referenceObjectIds: input.sourceObjectIds,
+              requestedPreviewCount: input.plan.kind === "directionPreview"
+                ? requestedGenerationCount
+                : undefined
+            }).workspace;
+        const workspaceWithPlan = existingPlan
+          ? workspaceWithOperation
+          : recordImageGenerationPlan(workspaceWithOperation, {
+              operationId,
+              plan: validatedPlan.plan
+            });
         return { workspace: workspaceWithPlan, value: workspaceWithPlan };
       });
 
@@ -1359,6 +1399,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
       type AgentItemResult =
         | {
+            status: "existing";
+            index: number;
+            item: (typeof validatedPlan.plan.items)[number];
+            objectId: string;
+          }
+        | {
             status: "ok";
             index: number;
             item: (typeof validatedPlan.plan.items)[number];
@@ -1374,7 +1420,24 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           };
 
       const applyAgentItemResult = async (result: AgentItemResult) => {
-        if (result.status === "ok") {
+        if (result.status === "existing") {
+          if (!createdObjectIds.includes(result.objectId)) createdObjectIds.push(result.objectId);
+          commitWorkspaceNow((current) => {
+            const operation = current.operations[operationId];
+            const knownResultIds = operation?.type === "imageGeneration"
+              ? operation.imageGeneration?.resultObjectIds ?? []
+              : [];
+            return {
+              workspace: knownResultIds.includes(result.objectId)
+                ? current
+                : recordImageGenerationOperationResult(current, {
+                    operationId,
+                    resultObjectId: result.objectId
+                  }),
+              value: undefined
+            };
+          });
+        } else if (result.status === "ok") {
           const createdObjectId = commitWorkspaceNow((current) => {
             const committed = applyImageGenerationResultCommit(current, {
               status: "succeeded",
@@ -1448,6 +1511,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           validatedPlan.plan.items,
           IMAGE_GENERATION_MAX_CONCURRENCY,
           async (item, itemIndex): Promise<AgentItemResult> => {
+            const itemClientRequestId = `${clientRequestId}-${item.id}`;
+            const existingObjectId = input.aPlusExternalAction
+              ? findAPlusImageResultObjectId(workspaceAtPlanCommit, itemClientRequestId)
+              : undefined;
+            if (existingObjectId) {
+              completedCount += 1;
+              publishProgress();
+              return {
+                status: "existing",
+                index: itemIndex,
+                item,
+                objectId: existingObjectId
+              };
+            }
             inFlightCount += 1;
             publishProgress();
             try {
@@ -1464,24 +1541,41 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 })
               );
 
-              const itemClientRequestId = `${clientRequestId}-${item.id}`;
-              const imageResponse = await fetch("/api/ai/image", {
+              const imageInput = {
+                modelId: generationSettings.modelId,
+                prompt: item.prompt,
+                images: referenceImages.images,
+                aspectRatio: generationSettings.aspectRatio,
+                sizeOption: generationSettings.sizeOption,
+                referenceObjectIds: item.referenceObjectIds,
+                directionObjectId: item.targetDirectionId,
+                visualBranchId: item.visualBranchId,
+                operationId,
+                clientRequestId: itemClientRequestId
+              };
+              const aPlusActionId = input.aPlusExternalAction
+                ? await buildAPlusImageChildActionId(input.aPlusExternalAction.actionId, item.id)
+                : undefined;
+              const imageResponse = await fetch(
+                input.aPlusExternalAction
+                  ? `/api/ai/agent/turns/${encodeURIComponent(input.aPlusExternalAction.serverTurnId)}/actions/image`
+                  : "/api/ai/image",
+                {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  modelId: generationSettings.modelId,
-                  prompt: item.prompt,
-                  images: referenceImages.images,
-                  aspectRatio: generationSettings.aspectRatio,
-                  sizeOption: generationSettings.sizeOption,
-                  referenceObjectIds: item.referenceObjectIds,
-                  directionObjectId: item.targetDirectionId,
-                  visualBranchId: item.visualBranchId,
-                  operationId,
-                  clientRequestId: itemClientRequestId
-                }),
+                body: JSON.stringify(input.aPlusExternalAction && aPlusActionId
+                  ? {
+                      localProjectId: input.aPlusExternalAction.localProjectId,
+                      requestId: input.aPlusExternalAction.requestId,
+                      stepSequence: input.aPlusExternalAction.stepSequence,
+                      actionId: aPlusActionId,
+                      claimCallId: input.aPlusExternalAction.actionId,
+                      input: imageInput
+                    }
+                  : imageInput),
                 signal: input.signal
-              });
+                }
+              );
               const providerTaskId = imageResponse.headers.get("X-Morpho-Provider-Task-Id") || undefined;
               if (providerTaskId) {
                 lastProviderTaskId = providerTaskId;
@@ -1563,11 +1657,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
       const lastCreatedObjectId = createdObjectIds.at(-1) ?? createdObjectIds[0];
       const completedWorkspace = commitWorkspaceNow((current) => {
-        const completed = completeImageGenerationOperation(current, {
-          operationId,
-          providerTaskId: lastProviderTaskId,
-          resultObjectId: lastCreatedObjectId
-        });
+        const operation = current.operations[operationId];
+        const completed = operation?.type === "imageGeneration" && operation.status === "succeeded"
+          ? current
+          : completeImageGenerationOperation(current, {
+              operationId,
+              providerTaskId: lastProviderTaskId,
+              resultObjectId: lastCreatedObjectId
+            });
         return { workspace: completed, value: completed };
       });
       setSelectedObjectIds(createdObjectIds);
@@ -1593,6 +1690,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     () => ({
       commitWorkspace: commitWorkspaceNow,
       readWorkspace: readWorkspaceNow,
+      persistWorkspace: flushWorkspace,
       ui: {
         setContextWarning,
         clearPendingDeliveryDraftTarget: () => {
@@ -1631,8 +1729,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       now: Date.now,
       randomSuffix: () => Math.random().toString(36).slice(2, 8)
     }),
-    [commitWorkspaceNow, executeAgentVisualGenerationPlan, readWorkspaceNow, setSelectedObjectIds]
+    [commitWorkspaceNow, executeAgentVisualGenerationPlan, flushWorkspace, readWorkspaceNow, setSelectedObjectIds]
   );
+
+  const recoveredAgentRuntimeProjectRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!persistenceState.isWorkspaceLoaded || recoveredAgentRuntimeProjectRef.current === projectId) {
+      return;
+    }
+    recoveredAgentRuntimeProjectRef.current = projectId;
+    void recoverSelectedAgentRuntime(projectId, agentTurnHost);
+  }, [agentTurnHost, persistenceState.isWorkspaceLoaded, projectId]);
 
   const handleSendMorphoAgentTurn = useCallback(async () => {
     const draft = aiDraft.trim();
@@ -1640,30 +1747,25 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
+    const turnInput = {
+      draft,
+      taskMode,
+      recommendedTaskMode,
+      workIntent,
+      recommendedWorkIntent,
+      selectedObjectIds,
+      selectedObjects,
+      pendingDeliveryDraftTarget,
+      directionPreviewCount,
+      agentTurnMode,
+      imageGenerationModelId: effectiveImageGenerationSettings.modelId,
+      readConversationTokenLimits: readConversationTokenLimitsOverride
+    };
     if (parseManualCompactCommand(draft).matched) {
-      await runManualCompactionTurn(
-        { draft, selectedObjectIds, agentTurnMode },
-        agentTurnHost
-      );
+      await runSelectedManualCompactionTurn(turnInput, agentTurnHost);
       return;
     }
-    await runMorphoAgentTurn(
-      {
-        draft,
-        taskMode,
-        recommendedTaskMode,
-        workIntent,
-        recommendedWorkIntent,
-        selectedObjectIds,
-        selectedObjects,
-        pendingDeliveryDraftTarget,
-        directionPreviewCount,
-        agentTurnMode,
-        imageGenerationModelId: effectiveImageGenerationSettings.modelId,
-        readConversationTokenLimits: readConversationTokenLimitsOverride
-      },
-      agentTurnHost
-    );
+    await runSelectedMorphoAgentTurn(turnInput, agentTurnHost);
   }, [
     agentTurnHost,
     agentTurnMode,
@@ -2000,7 +2102,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [applyDeliveryOperation]
   );
 
-  const handleCancelAiRequest = useCallback(() => {
+  const handleCancelAiRequest = useCallback(async () => {
+    if (await cancelSelectedMorphoAgentTurn(projectId)) {
+      return;
+    }
     agentStreamFlushRef.current?.();
     agentStreamFlushRef.current = null;
     abortControllerRef.current?.abort();
@@ -2033,7 +2138,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       next = interruptActiveOperations(next, "用户停止了当前 AI 任务。原输入、已保存对象和已有结果会保留。");
       return { workspace: next, value: undefined };
     });
-  }, [commitWorkspaceNow]);
+  }, [commitWorkspaceNow, projectId]);
 
   const handleSuggestionClick = useCallback(
     (suggestion: Suggestion) => {
@@ -2625,6 +2730,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     if (!pendingConfirmation) {
       return;
     }
+    await acknowledgeSelectedPendingAgentConfirmation(projectId);
 
     if (pendingConfirmation.kind === "batchGenerateVisuals" || pendingConfirmation.kind === "agentGenerateVisuals") {
       const controller = new AbortController();
@@ -3037,6 +3143,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   }, [
     executeAgentVisualGenerationPlan,
     pendingConfirmation,
+    projectId,
     pushObjectOperationUndo,
     setSelectedObjectIds,
     setWorkspace,
@@ -3056,10 +3163,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         markReplacedDerivativesForReview: true
       })
     );
+    void acknowledgeSelectedPendingAgentConfirmation(projectId);
     setPendingConfirmation(null);
     setAiDraft("");
     showWorkspaceNotice(`已替换默认参考为「${pendingConfirmation.targetTitle}」，直接延展素材已标记待复核`);
-  }, [pendingConfirmation, pushObjectOperationUndo, setWorkspace, showWorkspaceNotice]);
+  }, [pendingConfirmation, projectId, pushObjectOperationUndo, setWorkspace, showWorkspaceNotice]);
 
   const handleKeepReviewedVisual = useCallback(
     (objectId: string) => {
@@ -4442,7 +4550,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onLocateObject={focusObject}
         onConfirmPending={handleConfirmPending}
         onConfirmPendingSecondary={handleConfirmPendingWithReviewMarks}
-        onCancelPending={() => setPendingConfirmation(null)}
+        onCancelPending={() => {
+          void acknowledgeSelectedPendingAgentConfirmation(projectId);
+          setPendingConfirmation(null);
+        }}
         onFailureRetry={() => setShowFailure(false)}
         onOpenProjectRecords={openProjectRecords}
       />

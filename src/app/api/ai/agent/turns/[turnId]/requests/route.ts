@@ -17,8 +17,10 @@ import {
 } from "@/server/ai/agentTurnRouteSupport";
 import {
   APlusAgentProviderRequestError,
+  buildAPlusExternalToolActionClaims,
   buildAPlusAgentProviderContract,
   hashAPlusAgentExternalRequest,
+  normalizeAPlusProviderToolCalls,
   parseAPlusAgentProviderRequest
 } from "@/server/ai/agentTurnProviderRequest";
 import {
@@ -30,6 +32,7 @@ import {
   streamOpenAiCompatibleResponse,
   type OpenAiCompatibleStreamHandlers
 } from "@/server/ai/openaiCompatibleProvider";
+import { registerAgentTurnExternalRequest } from "@/server/ai/agentTurnExternalCancellation";
 import { requireAiRouteUser, type AiRouteUserAccessResult } from "@/server/auth/aiAccess";
 import type {
   AgentTurnRequestStreamEvent,
@@ -92,6 +95,18 @@ export function createAgentTurnRequestPostHandler(
     if (providerRequest.status === "failed") {
       return invalidRequestResponse(providerRequest.reason, "invalid_provider_request");
     }
+    const stepSequence = parsedBody.value.stepSequence as number;
+    if (
+      (stepSequence === 1 && providerRequest.value.continuationItems.length > 0) ||
+      (stepSequence > 1 && providerRequest.value.continuationItems.length === 0)
+    ) {
+      return invalidRequestResponse(
+        stepSequence === 1
+          ? "首次 A+ Request 不能携带 Continuation Tool Items。"
+          : "A+ Continuation 必须携带完整 Tool Call 和本地终态 Result。",
+        "invalid_provider_continuation"
+      );
+    }
 
     const auth = await dependencies.authenticate();
     if (auth.status === "denied") {
@@ -137,7 +152,7 @@ export function createAgentTurnRequestPostHandler(
       serverTurnId: turnId,
       localProjectId: parsedBody.value.localProjectId,
       requestId: parsedBody.value.requestId,
-      stepSequence: parsedBody.value.stepSequence as number
+      stepSequence
     };
     const acquired: AcquireAgentTurnRequestResult = await dependencies.acquireRequest({
       ...identity,
@@ -149,7 +164,6 @@ export function createAgentTurnRequestPostHandler(
     }
 
     return createProviderStreamResponse({
-      request,
       identity,
       providerRequest: contract.request,
       config: config.config,
@@ -161,7 +175,6 @@ export function createAgentTurnRequestPostHandler(
 export const POST = createAgentTurnRequestPostHandler();
 
 function createProviderStreamResponse(input: {
-  request: Request;
   identity: {
     serverTurnId: string;
     localProjectId: string;
@@ -174,13 +187,9 @@ function createProviderStreamResponse(input: {
 }): Response {
   const abortController = new AbortController();
   let closed = false;
-  const abortFromRequest = () => abortController.abort(input.request.signal.reason);
-  if (input.request.signal.aborted) {
-    abortFromRequest();
-  } else {
-    input.request.signal.addEventListener("abort", abortFromRequest, { once: true });
-  }
-  const cleanup = () => input.request.signal.removeEventListener("abort", abortFromRequest);
+  // Transport disconnect is only a display detach. External execution is
+  // cancelled exclusively through the explicit cancellation endpoint.
+  const unregister = registerAgentTurnExternalRequest(input.identity, abortController);
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -221,19 +230,28 @@ function createProviderStreamResponse(input: {
             handlers,
             abortController.signal
           );
-          const toolCallIds = result.functionCalls.map((call) => call.callId);
+          const toolCalls = normalizeAPlusProviderToolCalls(result.functionCalls);
+          const toolCallIds = toolCalls.map((call) => call.callId);
           enqueue({
             type: "providerOutput",
             requestId: input.identity.requestId,
             stepSequence: input.identity.stepSequence,
             outputText: result.outputText,
             producedUserVisibleEffect: result.outputText.trim().length > 0,
-            toolCallIds
+            toolCallIds,
+            toolCalls
           });
           const nextStatus: ServerExternalExecutionStatus = toolCallIds.length > 0
             ? "awaitingNextRequest"
             : "externallyCompleted";
-          const settled = await settle(input, nextStatus);
+          const settled = await settle(
+            input,
+            nextStatus,
+            undefined,
+            nextStatus === "awaitingNextRequest"
+              ? buildAPlusExternalToolActionClaims(toolCalls)
+              : undefined
+          );
           if (settled.status === "ok") {
             enqueue({
               type: "serverStatus",
@@ -250,7 +268,8 @@ function createProviderStreamResponse(input: {
             });
           }
         } catch (error) {
-          const cancelled = error instanceof DOMException && error.name === "AbortError";
+          const cancelled = abortController.signal.aborted ||
+            (error instanceof Error && error.name === "AbortError");
           const nextStatus = cancelled ? "externallyCancelled" as const : "externallyFailed" as const;
           const failureCode = cancelled ? undefined : boundedProviderFailureCode(error);
           const settled = await settle(input, nextStatus, failureCode);
@@ -269,7 +288,7 @@ function createProviderStreamResponse(input: {
             });
           }
         } finally {
-          cleanup();
+          unregister();
           if (!closed) {
             try {
               controller.close();
@@ -282,8 +301,6 @@ function createProviderStreamResponse(input: {
     },
     cancel() {
       closed = true;
-      cleanup();
-      abortController.abort(new DOMException("A+ Agent stream consumer cancelled.", "AbortError"));
     }
   });
 
@@ -309,9 +326,10 @@ function settle(
     dependencies: AgentTurnRequestRouteDependencies;
   },
   status: "awaitingNextRequest" | "externallyCompleted" | "externallyCancelled" | "externallyFailed",
-  failureCode?: string
+  failureCode?: string,
+  toolClaims?: Parameters<typeof settleAgentTurnRequest>[0]["toolClaims"]
 ): Promise<SettleAgentTurnRequestResult> {
-  return settleWithBoundedRetry(input, status, failureCode);
+  return settleWithBoundedRetry(input, status, failureCode, toolClaims);
 }
 
 async function settleWithBoundedRetry(
@@ -325,7 +343,8 @@ async function settleWithBoundedRetry(
     dependencies: AgentTurnRequestRouteDependencies;
   },
   status: "awaitingNextRequest" | "externallyCompleted" | "externallyCancelled" | "externallyFailed",
-  failureCode?: string
+  failureCode?: string,
+  toolClaims?: Parameters<typeof settleAgentTurnRequest>[0]["toolClaims"]
 ): Promise<SettleAgentTurnRequestResult> {
   const delays = [25, 75] as const;
   for (let attempt = 0; ; attempt += 1) {
@@ -334,7 +353,8 @@ async function settleWithBoundedRetry(
       result = await input.dependencies.settleRequest({
         ...input.identity,
         status,
-        ...(failureCode ? { failureCode } : {})
+        ...(failureCode ? { failureCode } : {}),
+        ...(toolClaims !== undefined ? { toolClaims } : {})
       });
     } catch {
       if (attempt >= delays.length) {

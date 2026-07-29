@@ -156,7 +156,12 @@ describe("Agent tool executors", () => {
       parsed
     });
 
-    expect(first).toEqual({ status: "created", objectIds: ["image-created-a"], batched: true });
+    expect(first).toEqual({
+      status: "created",
+      objectIds: ["image-created-a"],
+      failedItems: [],
+      batched: true
+    });
     expect(second).toEqual(first);
     expect(executionCount).toBe(1);
   });

@@ -13,6 +13,7 @@ import type {
   AgentTurnJournalSnapshot,
   ServerExternalExecutionStatus
 } from "@/shared/agentTurnJournalProtocol";
+import { requestAgentTurnExternalCancellation } from "@/server/ai/agentTurnExternalCancellation";
 import { createAgentTurnGetHandler } from "../route";
 import {
   createAgentTurnRequestPostHandler,
@@ -80,6 +81,38 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
       }
     });
     expect(response.status).toBe(400);
+    expect(store.acquire).not.toHaveBeenCalled();
+    expect(provider).not.toHaveBeenCalled();
+  });
+
+  it("rejects Continuation Items on the initial Provider step", async () => {
+    const store = new FakeJournal();
+    const provider = vi.fn(async () => providerResult());
+    const response = await call(makeHandler(store, provider), {
+      ...validBody(),
+      providerRequest: {
+        ...providerRequest("hello"),
+        continuationItems: continuationPair()
+      }
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: "invalid_provider_continuation" });
+    expect(store.acquire).not.toHaveBeenCalled();
+    expect(provider).not.toHaveBeenCalled();
+  });
+
+  it("requires exact Continuation Items after the initial Provider step", async () => {
+    const store = new FakeJournal();
+    const provider = vi.fn(async () => providerResult());
+    const response = await call(makeHandler(store, provider), {
+      ...validBody(),
+      requestId: "request-continuation",
+      stepSequence: 2
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: "invalid_provider_continuation" });
     expect(store.acquire).not.toHaveBeenCalled();
     expect(provider).not.toHaveBeenCalled();
   });
@@ -219,6 +252,95 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
     expect(store.snapshot.status).toBe("awaitingNextRequest");
     expect(store.settle).toHaveBeenCalledWith(expect.objectContaining({ status: "awaitingNextRequest" }));
     expect(JSON.stringify(store)).not.toContain("toolResult");
+  });
+
+  it("streams validated Tool payload and atomically records only bounded paid-action claims", async () => {
+    const store = new FakeJournal();
+    const provider = vi.fn(async () => providerResult({
+      outputText: "",
+      functionCalls: [{
+        id: "item-search",
+        callId: "call-search",
+        name: "search_web_evidence",
+        argumentsText: JSON.stringify({ queries: ["  local-first workspace  "] })
+      }]
+    }));
+
+    const response = await call(makeHandler(store, provider), validBody());
+    const events = parseSse(await response.text());
+
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "providerOutput",
+      toolCallIds: ["call-search"],
+      toolCalls: [{
+        callId: "call-search",
+        name: "search_web_evidence",
+        argumentsText: JSON.stringify({ queries: ["  local-first workspace  "] })
+      }]
+    }));
+    expect(store.settle).toHaveBeenCalledWith(expect.objectContaining({
+      status: "awaitingNextRequest",
+      toolClaims: [{
+        toolCallId: "call-search",
+        actionKind: "webSearch",
+        claimHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+        maxActionCount: 1
+      }]
+    }));
+  });
+
+  it("treats SSE consumer cancellation as display detach rather than external cancellation", async () => {
+    const store = new FakeJournal();
+    const deferred = createDeferred<OpenAiCompatibleResponseResult>();
+    let providerSignal: AbortSignal | undefined;
+    const provider: AgentTurnRequestRouteDependencies["streamProvider"] = vi.fn(
+      async (_config, _request, _handlers, signal) => {
+        providerSignal = signal;
+        return deferred.promise;
+      }
+    );
+    const response = await call(makeHandler(store, provider), validBody());
+    await waitFor(() => providerSignal !== undefined);
+
+    await response.body?.cancel("display detached");
+    expect(providerSignal?.aborted).toBe(false);
+
+    deferred.resolve(providerResult());
+    await waitFor(() => store.snapshot.status === "externallyCompleted");
+    expect(store.snapshot.status).toBe("externallyCompleted");
+  });
+
+  it("settles an explicit registered cancellation as externallyCancelled", async () => {
+    const store = new FakeJournal();
+    let providerSignal: AbortSignal | undefined;
+    const provider: AgentTurnRequestRouteDependencies["streamProvider"] = vi.fn(
+      async (_config, _request, _handlers, signal) => {
+        providerSignal = signal;
+        return new Promise<OpenAiCompatibleResponseResult>((_resolve, reject) => {
+          signal.addEventListener("abort", () => {
+            const error = new Error("cancelled by explicit endpoint");
+            error.name = "AbortError";
+            reject(error);
+          }, { once: true });
+        });
+      }
+    );
+    const response = await call(makeHandler(store, provider), validBody());
+    await waitFor(() => providerSignal !== undefined);
+
+    expect(requestAgentTurnExternalCancellation({
+      serverTurnId: TURN_ID,
+      requestId: "request-a",
+      stepSequence: 1
+    })).toBe(true);
+
+    const events = parseSse(await response.text());
+    expect(providerSignal?.aborted).toBe(true);
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "serverStatus",
+      status: "externallyCancelled"
+    }));
+    expect(store.snapshot.status).toBe("externallyCancelled");
   });
 
   it("records only a bounded failure code when Provider execution fails", async () => {
@@ -379,6 +501,7 @@ class FakeJournal {
     stepSequence: number;
     status: Exclude<ServerExternalExecutionStatus, "created" | "providerRunning">;
     failureCode?: string;
+    toolClaims?: readonly unknown[];
   }): Promise<SettleAgentTurnRequestResult> => {
     const terminal = input.status.startsWith("externally");
     this.snapshot = snapshot({
@@ -446,6 +569,22 @@ function providerRequest(text: string) {
     mode: "auto",
     capabilityIntent: { comparisonAnalysis: false }
   };
+}
+
+function continuationPair() {
+  return [
+    {
+      type: "function_call",
+      callId: "call-memory",
+      name: "read_project_memory",
+      argumentsText: "{}"
+    },
+    {
+      type: "function_call_output",
+      callId: "call-memory",
+      output: '{"status":"completed"}'
+    }
+  ];
 }
 
 function providerResult(

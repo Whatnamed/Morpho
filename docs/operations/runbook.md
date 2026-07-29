@@ -54,6 +54,25 @@ The two `NEXT_PUBLIC_SUPABASE_*` values are public browser configuration, not se
 
 With `MORPHO_AUTH_REQUIRED=true`, missing public Supabase configuration fails closed: `/login` renders the configuration error with no variable values, while `/` and `/projects/*` redirect to `/login` instead of rendering protected content. `/api/ai/*` retains its 503 configuration failure behavior. Set `MORPHO_AUTH_REQUIRED=false` only for explicit local authentication bypass.
 
+Stage 3 has one temporary, public build-time Runtime selector:
+
+```text
+NEXT_PUBLIC_MORPHO_AGENT_RUNTIME=b
+```
+
+Unset, empty, invalid, or `b` keeps the existing B-style Runtime active. This is the production
+default. To exercise the complete A+ Stage 3 path in a local or isolated Preview build, set exactly:
+
+```text
+NEXT_PUBLIC_MORPHO_AGENT_RUNTIME=a-plus-stage3
+```
+
+Restart `next dev` or rebuild/redeploy after changing any `NEXT_PUBLIC_*` value. There is no UI,
+URL, or request-body override. To disable A+ again, remove the variable or set it to `b`, then
+restart/rebuild. Do not enable A+ in production before Stage 3 passes independent audit and Stage 4
+performs the formal cutover. Delete this selector during Stage 4; it is not a permanent compatibility
+mode.
+
 Text chat and agent turns use the AiJWS / OpenAI-compatible `MORPHO_AI_*` group defined in `.env.example`. Its current example model is `gpt-5.6-terra`.
 
 `MORPHO_AI_*` configures the formal `/api/ai/agent` Responses path, the compatibility-only `/api/ai/chat` route, and related web-search gating. The server also accepts `AIJWS_API_KEY`, `AIJWS_BASE_URL`, and `AIJWS_MODEL` as compatibility aliases. MiMo variables are no longer used for text AI.
@@ -310,11 +329,10 @@ POST /api/ai/agent/turns/[turnId]/requests
 
 Use the authenticated `GET` request only to diagnose minimal Server External Execution Status.
 The response contains no user ID, Request Hash, Provider body, or local project content. There is
-no A+ Feature Flag or new environment variable in Stage 2: the current UI and
-`agentTurnRunner.ts` do not call this path, so leaving those callers unwired is the safe disabled
-state. The existing `/api/ai/agent` B-style Runtime remains the active default. Do not wire the A+
-Coordinator into production flows or remove Lease/Closure/Snapshot code until later stages pass
-their own audits.
+no A+ Feature Flag in the independently audited Stage 2 baseline. Stage 3 now reaches this resource
+only through the one default-off selector documented in Environment. The existing `/api/ai/agent`
+B-style Runtime remains active when the selector is unset or `b`. Do not remove
+Lease/Closure/Snapshot code until the Stage 4 cutover passes its own audit.
 
 For isolated Stage 2 client checks, validated current-request display events may be observed via
 the Coordinator's optional `onDisplayEvent` sink. It is not a lifecycle or persistence input.
@@ -335,6 +353,156 @@ used by the lifecycle reducer. An unresolved Fault must therefore fail before th
 called. When querying during `recovering`, dispatch `RECOVERY_RESOLVED` for the matching Fault before
 observing `providerRunning`, `awaitingNextRequest`, or any external terminal status; do not send
 status or payload-loss events directly into the recovering phase.
+
+### A+ Stage 3 External Action Journal Migration And Verification
+
+Stage 3 adds one later, forward-only Migration:
+
+```text
+supabase/migrations/20260729093000_add_agent_turn_external_actions.sql
+```
+
+Migration order is fixed:
+
+```text
+20260729012105_add_agent_turn_journal.sql
+20260729093000_add_agent_turn_external_actions.sql
+```
+
+Never edit the remote migration ledger and never rely on changed contents of an already recorded
+Migration. In particular, do not modify or reapply
+`20260729012105_add_agent_turn_journal.sql`. If a verified remote has an older form of either
+contract, create a new later forward-only Migration. Do not delete a remote Migration row, reset the
+database, or paste unrelated SQL to make local and remote histories appear equal.
+
+This Stage 3 implementation does **not** apply either Migration remotely. On an explicitly
+authorized PowerShell 7 operator machine, verify identity, target, order, and dry-run output first:
+
+```powershell
+supabase --version
+supabase projects list
+supabase link --project-ref <verified-project-ref>
+Get-Content supabase/.temp/project-ref
+supabase migration list
+supabase db push --dry-run
+supabase db push
+supabase migration list
+```
+
+Stop before `db push` if the CLI is unauthenticated, the linked project ref is not independently
+verified, the Stage 2 Migration is absent/out of order, or the dry run contains anything outside the
+intended forward sequence. A checked-in SQL file or successful static test is not evidence that a
+remote database has been upgraded.
+
+After an authorized application, verify the private tables, RLS, routine security, and grants in the
+Supabase SQL editor:
+
+```sql
+select n.nspname as schema_name, c.relname, c.relrowsecurity
+from pg_catalog.pg_class as c
+join pg_catalog.pg_namespace as n on n.oid = c.relnamespace
+where n.nspname = 'private'
+  and c.relname in (
+    'agent_turn_external_action_claim',
+    'agent_turn_external_action_journal'
+  )
+order by c.relname;
+
+select routine_name, security_type
+from information_schema.routines
+where routine_schema = 'public'
+  and routine_name in (
+    'settle_agent_turn_request_with_action_claims',
+    'acquire_agent_turn_external_action',
+    'read_agent_turn_external_action',
+    'settle_agent_turn_external_action'
+  )
+order by routine_name;
+
+select routine_name, grantee, privilege_type
+from information_schema.routine_privileges
+where routine_schema = 'public'
+  and routine_name in (
+    'settle_agent_turn_request_with_action_claims',
+    'acquire_agent_turn_external_action',
+    'read_agent_turn_external_action',
+    'settle_agent_turn_external_action'
+  )
+order by routine_name, grantee;
+```
+
+Both tables must have RLS enabled and no direct `public`, `anon`, or `authenticated` table grants.
+All four routines must be `SECURITY DEFINER` with fixed empty `search_path`; only `authenticated`
+has `EXECUTE`. The functions derive the user from `auth.uid()` and bind every operation to that
+user's Server Turn and the Turn's client-supplied local project ID. This is not browser-local project
+ownership and adds no project registry or cloud Workspace.
+
+With A+ explicitly enabled, the Stage 3 resources are:
+
+```text
+POST /api/ai/agent/turns
+GET  /api/ai/agent/turns/[turnId]?localProjectId=<local-project-id>
+POST /api/ai/agent/turns/[turnId]/requests
+POST /api/ai/agent/turns/[turnId]/requests/cancel
+POST /api/ai/agent/turns/[turnId]/actions/web-search
+POST /api/ai/agent/turns/[turnId]/actions/image
+POST /api/ai/agent/turns/[turnId]/actions/compaction
+```
+
+Use only authenticated requests. Search/Image calls also require the bounded Tool Claim that the
+server stored atomically when it observed and settled the Provider Tool Call. External Action ID +
+Hash replay is read-only with respect to provider execution, Counters, and quota. A completed Search
+may replay one bounded expiring receipt. A completed Image or Compaction whose payload was lost
+returns `external_action_result_unavailable`; do not retry it under a new Action ID merely to recover
+the payload.
+
+For an authorized diagnostic connection, inspect only bounded status and identity fields:
+
+```sql
+select server_turn_id, local_project_id, server_execution_status,
+       latest_request_id, latest_step_sequence,
+       provider_call_count, web_search_call_count, image_call_count,
+       bounded_failure_code, updated_at, terminal_at
+from private.agent_turn_journal
+order by updated_at desc
+limit 20;
+
+select server_turn_id, request_id, step_sequence, action_id, action_kind,
+       execution_status, bounded_failure_code,
+       execution_started_at, execution_expires_at, updated_at, terminal_at
+from private.agent_turn_external_action_journal
+order by updated_at desc
+limit 50;
+```
+
+Interpret recovery states as follows:
+
+- `request_not_observed`: the local Recovery Record has an exact active Request, while the Journal
+  remains `created` with `latest_request_id is null` and `latest_step_sequence = 0`. Retry only the
+  same Request ID, sequence, and body; do not allocate a new identity.
+- query-only reconciliation: `providerRunning` or `running` means the external owner may still be
+  executing. Query the Journal or allow its deadline convergence; do not call Provider, Search,
+  Image, or Compaction again.
+- a Search replay that returns `202 running` is polled only for a short bounded window by repeating
+  the exact same Action ID, identity, and request body. This is a Journal query/replay, not a new
+  Search. If it remains running, surface `external_action_running`; never allocate a recovery ID.
+- `awaitingNextRequest`: resume only when the browser Recovery Record still has the matching Tool
+  payload. Missing payload ends locally as `providerContinuationPayloadUnavailable`; it does not
+  rerun Provider.
+- external terminal status: observe it through the client reducer. It does not decide the local Tool
+  result, Workspace persistence, pending confirmation, or Overall Local Agent Turn Outcome.
+
+On page load, A+ validates the project-bound local Recovery Record, restores the Coordinator, then
+queries the Server Turn Journal before retrying or resuming. Exact request bodies, large observed
+Tool payloads, Continuation items, and confirmation payloads are SHA-256-verified IndexedDB values;
+`localStorage` contains only their bounded references and lifecycle metadata. A deterministic local
+record/message/project conflict is cleared from the active scheduling slot and shown as failure so
+the next legal Turn is not blocked. A local persistence failure instead retains the record for
+diagnosis and does not report full success.
+
+The A+ selector remains default-off after applying the Migration. Database readiness does not switch
+the product Runtime. Production remains on B until the independent Stage 3 audit passes and Stage 4
+explicitly performs cutover and deletion.
 
 The Supabase Free-plan leaked-password-protection advisor warning is a plan limitation. It is not fixed by changing application SQL or weakening authentication behavior.
 
@@ -532,8 +700,12 @@ Local document extraction:
 /api/ai/agent             formal OpenAI-compatible Responses Agent stream
 /api/ai/agent/lease       authenticated Agent turn completion
 /api/ai/agent/snapshot/refresh  signed transcript checkpoint renewal; no Provider or Lease
-/api/ai/agent/turns       isolated A+ Stage 2 Server Turn creation; not called by the current UI
-/api/ai/agent/turns/[turnId]  isolated A+ Stage 2 Journal query and Provider-request resource
+/api/ai/agent/turns       A+ Server Turn creation; reached only when the default-off Stage 3 selector is explicit
+/api/ai/agent/turns/[turnId]  A+ Journal query and Provider-request resource
+/api/ai/agent/turns/[turnId]/requests/cancel  explicit exact-Request external cancellation attempt
+/api/ai/agent/turns/[turnId]/actions/web-search  claim-bound idempotent A+ Search action
+/api/ai/agent/turns/[turnId]/actions/image  claim-bound idempotent A+ Image action
+/api/ai/agent/turns/[turnId]/actions/compaction  idempotent A+ Summary Provider action
 /api/ai/chat              deprecated compatibility-only text route
 /api/ai/web-search        AiJWS web-search proxy
 /api/ai/image             GrsAI image generation proxy

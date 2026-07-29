@@ -7,7 +7,7 @@ This document is the durable implementation ledger for converging the Morpho Age
 | Field | Value |
 |---|---|
 | Decision date | 2026-07-28 |
-| Current state | Stage 2 — audit revision implemented in an isolated, default-unwired path; independent re-audit pending |
+| Current state | Stage 3 implemented; independent audit pending |
 | Current formal working branch | `refactor/agent-runtime-a-plus` |
 | B implementation archive branch | `archive/agent-runtime-b` |
 | B implementation archive tag | `agent-runtime-b-final-2026-07-28-f27a410` |
@@ -15,12 +15,13 @@ This document is the durable implementation ledger for converging the Morpho Age
 | Baseline short SHA | `f27a410` |
 | Stage 0 complete | Yes — the decision, archive references, migration ledger, and historical-audit status are recorded in the Stage 0 documentation commit |
 | Stage 1 complete | Yes — independently audited at `8d7c2df442ea1ccfb012e35691c2df8430a85f52` |
-| Stage 2 implementation | Audit revision complete — independent re-audit pending |
-| A+ Coordinator | Implemented in an isolated, default-unwired path |
-| Server Turn Journal | Implemented; remote Migration application remains an operator deployment step |
-| Implementation runtime | Existing B-style runtime remains active |
-| Later stages | Stage 3 and Stage 4 not started |
-| Next allowed stage | Stage 3 only after an independent Stage 2 audit passes |
+| Stage 2 complete | Yes — independently audited at `895f1c26a3753342f78df155b99f992984adfa05` |
+| Stage 3 implementation | Complete; independent audit pending |
+| A+ Runtime | Complete but default-off behind the one temporary Stage 3 selector |
+| Active production runtime | Existing B-style runtime |
+| Server journals | Server Turn Journal plus External Action Journal implemented; remote Migration application remains an operator deployment step |
+| Stage 4 | Not started |
+| Next allowed stage | Stage 4 only after an independent Stage 3 audit passes |
 
 The formal decision is recorded in [Technical Decisions](./decisions.md). The earlier [AI Continuity Convergence Audit](./ai-continuity-convergence-audit.md) remains historical evidence.
 
@@ -365,23 +366,24 @@ outcome instead of returning to an unusable Phase/Server-status combination. Rec
 Core reducer invariants are: pure and deterministic transitions; no input mutation; one active
 phase; strict phase/event legality; complete Tool Call set validation; no contradictory terminal
 facts; terminal absorption; no successful effect erased by later failure or cancellation; and
-no Server or SSE status masquerading as Overall Local Agent Turn Outcome. The 83 focused Vitest
-cases cover the required basic, Provider/display, Tool Batch, Outcome, error/recovery, and three-mode
+no Server or SSE status masquerading as Overall Local Agent Turn Outcome. The focused Vitest
+matrix covers the required basic, Provider/display, Tool Batch, Outcome, error/recovery, and three-mode
 compaction matrices, all audit-revision rounds, and a table-driven viability matrix over
 representative reachable Phase, Server-status, and Fault classes. The Compaction failure path uses
 the same Fault merge rule as every other error source: a different unresolved Fault is preserved and
 rejected as a conflict, while an identical Fault replay advances idempotently to the appropriate
 recovering or terminal phase.
 
-Stage 1 replaces Boolean-at-end reasoning only at the tested design-contract boundary. It passed
-independent audit at `8d7c2df442ea1ccfb012e35691c2df8430a85f52`. The existing B-style Runtime,
-old outcome resolver, Closure/Lease paths, and compaction execution remain active and unchanged.
-Stage 2 adds the isolated components recorded below; Runtime wiring and real-flow migration remain
-Stage 3 work.
+Stage 1 passed independent audit at `8d7c2df442ea1ccfb012e35691c2df8430a85f52` as the
+tested design-contract boundary. Stage 2 then added the isolated components recorded below. Stage 3
+now connects those A+ components behind the default-off selector described later; the existing
+B-style Runtime, old outcome resolver, Closure/Lease paths, and compaction execution remain present
+and remain the active production default.
 
 ### Stage 2 — A+ Coordinator and Server Turn Journal
 
-Stage 2's audit revision is implemented and awaits independent re-audit. The one client orchestration owner is
+Stage 2 is complete and was independently audited at
+`895f1c26a3753342f78df155b99f992984adfa05`. The one client orchestration owner is
 `src/features/workspace/agentTurnCoordinator.ts`; its concrete fetch adapter is
 `src/features/workspace/agentTurnCoordinatorHttpHost.ts`. The Coordinator creates a Server Turn,
 owns one in-memory Stage 1 lifecycle, allocates Request IDs and strictly increasing step sequences,
@@ -487,17 +489,160 @@ Coordinator first emits the matching `RECOVERY_RESOLVED` event and only then int
 server status. Running resumes a safe request phase, awaiting status follows the local-payload rule,
 and every external terminal status finalizes through ordinary reducer events.
 
-No Stage 2 Feature Flag is introduced because neither the current UI nor the existing
-`agentTurnRunner.ts` imports or calls the A+ Coordinator or its routes. The existing B-style Runtime
-remains the active default. Stage 2 does not unify all Tool, Compaction, Abort, or Recovery paths,
-does not delete B code, and does not start Stage 3.
+At the audited Stage 2 baseline no Feature Flag existed, and neither the UI nor the existing
+`agentTurnRunner.ts` called the A+ Coordinator or its Routes. That baseline did not unify Tool,
+Compaction, Abort, or Recovery paths and deleted no B code. Stage 3 starts only in the following
+section and preserves the default B production path.
 
 ### Stage 3 — Unified Runtime Lifecycles
 
-- Route Tool execution, Tool Batch finalization, all compaction modes, SSE, Abort, and Recovery through the common lifecycle.
-- Remove specialized terminal/recovery behavior from active paths.
-- Preserve local project effects and every capability in Section 4.
-- Do not delete the old B-only implementation surface yet.
+Stage 3 is implemented and awaits independent audit. The A+ Runtime is complete but default-off;
+the existing B-style Runtime remains the active production default. No B-only Runner, Lease,
+Closure, Snapshot, Manifest, Continuation, Finalizer, Receipt, RPC, Route, Workspace field, or test
+has been deleted. Stage 4 has not started.
+
+#### Runtime entry and one client scheduler
+
+`WorkspaceClient.tsx` still has one send, cancel, confirmation, image-generation, and manual-
+compaction product entry. `agentRuntimeSelector.ts` selects either the existing
+`agentTurnRunner.ts` or `agentTurnRunnerAPlus.ts`. The only temporary selector is
+`NEXT_PUBLIC_MORPHO_AGENT_RUNTIME`: unset or `b` selects B; the exact value
+`a-plus-stage3` selects A+ for local or Preview verification. There is no UI switch, URL switch,
+request-body switch, or second A+ flag. This temporary selector is a Stage 4 deletion item.
+
+The A+ Runner never writes lifecycle state directly and has no second Outcome resolver. It invokes
+explicit Coordinator methods for Provider start/retry/query, Tool Batch start/call terminal/batch
+finalization, local persistence, unresolved work, Compaction, cancellation, local error, and Turn
+finalization. Every such method emits one Stage 1 event through `reduceAgentTurnLifecycle`; only the
+reducer derives `completed`, `partiallyCompleted`, `pendingConfirmation`, `cancelled`, or `failed`.
+The A+ message adapter maps that terminal local outcome to existing persisted message vocabulary
+only after local Message/Trace/Workspace persistence has been attempted.
+
+#### Provider, Stream, and local Tool contract
+
+The A+ Provider request accepts bounded client-owned `user`/`assistant` messages and exact
+Continuation items (`function_call` plus `function_call_output`). The server continues to add its
+own System Prompt and fixed Tool Registry. It rejects client System roles, client Tool schemas,
+unknown fields, excess items/bytes/depth, malformed Call IDs, unknown Tool names, duplicate Calls,
+and incomplete Continuation pairs. Request Hash covers the stable model/reasoning/input/tool
+contract actually sent externally, including local Tool Result Continuation items; that hash proves
+only exact external-request replay, not the truth of a local Tool Result.
+
+The transient `providerOutput` display event now carries the validated Tool payload
+(`callId`, registered `name`, and bounded JSON `argumentsText`) as well as visible text and Call IDs.
+The payload is not written to the Server Turn Journal. SSE remains display-only for reasoning,
+commentary, activity, text, citations, Tool observation, and status hints. A stale Request event is
+rejected, a display sink exception cannot change lifecycle state, ending local SSE consumption does
+not cancel external execution, and missing terminal frames reconcile through the Journal.
+
+`agentToolBatchAPlus.ts` validates the complete Call set before one `TOOL_BATCH_STARTED`, reuses the
+existing Tool schemas, `AGENT_TOOL_EXECUTORS`, Tool Effect Matrix, execution-policy/confirmation
+rules, Workspace commit boundary, Message Trace, Search adapter, and image-generation adapter, and
+records exactly one terminal result per declared Call:
+
+| Tool fact | Lifecycle terminal mapping |
+|---|---|
+| Successful read | `executed`, no local effect, persistence `notRequired` |
+| Successful local write | `executed`, local effect `produced`, persistence `succeeded` |
+| Local effect followed by save failure | `executed`, effect preserved, persistence `failed` plus the shared persistence Fault |
+| Schema or executor failure | `failed` with a bounded typed terminal error |
+| Not-yet-run work after cancellation | `cancelled`; already completed Calls remain unchanged |
+| Confirmation required | `pendingConfirmation`; remaining Calls terminate and the current Turn ends |
+| Partially successful image batch | `executed` with successful object IDs retained and failed items recorded as unresolved work |
+
+All Calls then pass through the single `TOOL_BATCH_FINALIZED` aggregator. Executed, failed, and
+cancelled results get bounded Provider-visible outputs; a pending confirmation is never reported as
+executed and never continues the same Provider loop. User acceptance or rejection is a new explicit
+local action and does not reopen the terminal Turn. The A+ path does not call the Pending-only
+Function Call Finalizer, Closure Finalizer, Closure-candidate recovery, or Snapshot refresh.
+
+#### Local Recovery Record and reconciliation
+
+`agentTurnRecoveryStore.ts` is a versioned browser-local Recovery Record. `localStorage` contains
+only the bounded identity/state index; exact retry requests, large Provider Tool payloads, runtime
+Continuation data, and pending-confirmation payloads are stored as SHA-256-verified IndexedDB
+references. The record contains no API key, authenticated user ID, React value, AbortController,
+Fetch object, B Token, Closure/Snapshot/Manifest/Receipt, or invented Server status. The Coordinator
+owns explicit export/restore validation, and deterministic record/binding conflicts are cleared from
+the active scheduling slot so a later legal Turn is not permanently blocked.
+
+The record is updated after Server Turn creation, pre-request identity creation, Provider output,
+Tool/batch facts, Compaction apply state, cancellation/query reconciliation, and local persistence.
+It is cleared only when the reducer is terminal, Message/Trace/Workspace persistence succeeded, and
+there is no terminal pending-confirmation card to restore. Save failure retains the record and shows
+failure. Refresh recovery validates project/message identity, restores the Coordinator, queries the
+Journal before deciding execution, and follows these rules:
+
+- `created` with no observed request permits only an exact same-ID/sequence/body retry;
+- `providerRunning` is query-only and never re-executes Provider;
+- `awaitingNextRequest` resumes the saved Tool payload, while missing payload terminates with
+  `providerContinuationPayloadUnavailable` and no fabricated Tool;
+- Tool-complete/Continuation-unknown recovery queries first and never re-runs the Tool;
+- every external terminal status is observed by the reducer and cannot overwrite local outcome;
+- deterministic identity, sequence, project binding, terminal-state, Summary-revision, or external-
+  action Hash conflict is non-retryable and cannot remain on the ordinary retry schedule.
+
+#### Cancellation and the unified Compaction lifecycle
+
+Cancellation first emits `CANCELLATION_REQUESTED`, stops new local work and display consumption,
+then calls an explicit authenticated cancellation Route on the exact latest Request. Cancellation is
+best-effort and process-local at the Provider adapter; the Coordinator always queries the Journal
+afterward. A local `AbortController` never fabricates `externallyCancelled`. If the Provider actually
+completed, the Journal retains `externallyCompleted`, while the reducer separately derives a local
+cancelled or partial outcome from already completed effects.
+
+`agentCompactionOrchestratorAPlus.ts` is the one core for `automatic`, `preContinuation`, and
+`manual`. Each mode emits `COMPACTION_STARTED`, performs one server-authorized External Action,
+validates the Summary, applies one deterministic Summary Revision using
+`expectedPreviousRevisionId`, records the applied revision in Recovery before durable save, and ends
+with `COMPACTION_COMPLETED`, `COMPACTION_FAILED`, or `COMPACTION_CANCELLED`. Raw chat and retained
+tail remain. Replay cannot create another revision; conflicts do not overwrite a newer revision;
+failure/cancellation leave the previous revision authoritative. Manual Compaction uses a UI-only
+Turn message and is not represented as an ordinary Agent answer. A+ requires no Compaction Receipt,
+Transcript Snapshot, Manifest, continuation-token proof, or Closure call.
+
+#### Minimal External Action Journal
+
+The forward-only Migration
+`supabase/migrations/20260729093000_add_agent_turn_external_actions.sql` adds private
+`agent_turn_external_action_claim` and `agent_turn_external_action_journal` tables plus four narrow
+authenticated RPCs. It does not alter `20260729012105_add_agent_turn_journal.sql`. A Provider
+request settlement atomically stores only bounded server-observed Search/Image Tool Claims; raw
+arguments and local results are absent. Search/Image acquisition must match that claim, the owning
+authenticated user's Server Turn, client-supplied local `projectId`, latest Request/sequence, stable
+Action ID, server-computed Action Hash, action kind, and remaining claim limit. Compaction has the
+same stable external-action identity but no local Tool claim.
+
+The tables have no direct client grants. RPCs derive identity from `auth.uid()`, use fixed empty
+`search_path`, lock Turn/Request/Claim/Action rows, enforce deadlines and terminal absorption, and
+grant execution only to `authenticated`. Exact Action ID + Hash replay returns the existing state
+without another action, quota reservation, or Counter increment; changed identity/Hash is a
+non-retryable conflict. Search stores only a bounded 24-hour result receipt so a lost response can
+be replayed without another query. Image binary and Summary bodies are not Journal data: if their
+completed payload is lost, A+ reports that Tool/Compaction result unavailable and never repeats the
+paid call. Provider, Web Search, and Image counters remain Server Turn Journal facts. The Migration
+is committed but is not applied remotely by Stage 3.
+
+An A+ image batch also derives its local Operation ID and client request IDs from the Server Turn
+and parent Tool Call. Refresh therefore reuses the exact child Action Hash. Before contacting the
+server, the browser recognizes an already persisted child image by that stable client request ID and
+keeps the existing object rather than generating or writing it twice.
+
+#### Stage 3 acceptance evidence
+
+The seven Section 9 scenarios are explicitly exercised by
+`agentRuntimeAPlusAcceptance.test.ts`, with end-to-end runtime evidence in
+`agentTurnRunnerAPlus.test.ts`, lifecycle matrices in `agentTurnLifecycle.test.ts`, Coordinator
+retry/query/conflict matrices in `agentTurnCoordinator.test.ts`, all three real Compaction modes in
+`agentCompactionOrchestratorAPlus.test.ts`, local refresh payload integrity in
+`agentTurnRecoveryStore.test.ts`, exact Search replay polling in
+`agentExternalActionClientAPlus.test.ts`, and Search/Image/Compaction/Cancel/Provider Route tests. Coverage
+includes cancellation without duplicate Provider execution, clean new-Turn Fault state, local Tool
+success followed by Provider failure, the seven Tool Batch outcome classes, three Compaction modes,
+SSE detach, refresh/query/exact retry/payload loss, external-action replay, and deterministic
+conflicts that do not block a fresh Turn. The Workspace-level Runner test begins at the same one
+Agent input contract and observes Message, Trace, Tool, Workspace, persistence, and reducer Outcome.
+All external providers are fakes; Stage 3 performs no paid Provider, Search, or Image call.
 
 ### Stage 4 — Cutover and Deletion
 

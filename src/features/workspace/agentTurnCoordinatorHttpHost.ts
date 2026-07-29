@@ -18,6 +18,7 @@ export function createAgentTurnCoordinatorHttpHost(
 ): AgentTurnCoordinatorHost {
   const fetchRequest = options.fetch ?? fetch;
   const baseUrl = options.baseUrl?.replace(/\/$/, "") ?? "";
+  const activeRequests = new Map<string, AbortController>();
 
   return {
     async createServerTurn(input) {
@@ -39,12 +40,16 @@ export function createAgentTurnCoordinatorHttpHost(
 
     async executeExternalRequest(input, observer): Promise<AgentTurnCoordinatorExecutionHandshake> {
       let response: Response;
+      const requestKey = externalRequestKey(input);
+      const abortController = new AbortController();
+      activeRequests.set(requestKey, abortController);
       try {
         response = await fetchRequest(
           `${baseUrl}/api/ai/agent/turns/${encodeURIComponent(input.serverTurnId)}/requests`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            signal: abortController.signal,
             body: JSON.stringify({
               localProjectId: input.localProjectId,
               requestId: input.requestId,
@@ -54,10 +59,12 @@ export function createAgentTurnCoordinatorHttpHost(
           }
         );
       } catch {
+        activeRequests.delete(requestKey);
         throw new Error("A+ Request transport failed before response headers.");
       }
       const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
       if (!response.ok) {
+        activeRequests.delete(requestKey);
         const body = await readJson(response);
         const error = routeError(response.status, body, "A+ Provider Request 被拒绝。");
         return {
@@ -68,6 +75,7 @@ export function createAgentTurnCoordinatorHttpHost(
         };
       }
       if (contentType.includes("application/json")) {
+        activeRequests.delete(requestKey);
         const body = await readJson(response);
         if (isRecord(body) && body.replayed === true && isAgentTurnJournalSnapshot(body)) {
           return { status: "replayed" };
@@ -80,6 +88,7 @@ export function createAgentTurnCoordinatorHttpHost(
         };
       }
       if (!response.body || !contentType.includes("text/event-stream")) {
+        activeRequests.delete(requestKey);
         return {
           status: "denied",
           code: "invalid_stream_response",
@@ -89,7 +98,13 @@ export function createAgentTurnCoordinatorHttpHost(
       }
       return {
         status: "started",
-        complete: () => consumeAgentTurnStream(response.body!, observer)
+        complete: async () => {
+          try {
+            return await consumeAgentTurnStream(response.body!, observer);
+          } finally {
+            activeRequests.delete(requestKey);
+          }
+        }
       };
     },
 
@@ -103,8 +118,39 @@ export function createAgentTurnCoordinatorHttpHost(
         throw routeError(response.status, body, "Server Turn Journal 查询失败。");
       }
       return body;
+    },
+
+    async cancelExternalRequest(input): Promise<void> {
+      try {
+        await fetchRequest(
+          `${baseUrl}/api/ai/agent/turns/${encodeURIComponent(input.serverTurnId)}/requests/cancel`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              localProjectId: input.localProjectId,
+              requestId: input.requestId,
+              stepSequence: input.stepSequence
+            })
+          }
+        );
+      } finally {
+        // Explicit cancellation was sent first. Aborting this Fetch only stops
+        // local display consumption and does not itself settle server status.
+        activeRequests.get(externalRequestKey(input))?.abort(
+          new DOMException("A+ local display detached after cancellation request.", "AbortError")
+        );
+      }
     }
   };
+}
+
+function externalRequestKey(input: {
+  serverTurnId: string;
+  requestId: string;
+  stepSequence: number;
+}): string {
+  return `${input.serverTurnId}:${input.requestId}:${input.stepSequence}`;
 }
 
 async function consumeAgentTurnStream(
@@ -184,10 +230,15 @@ function isAgentTurnRequestStreamEvent(value: unknown): value is AgentTurnReques
     return Number.isSafeInteger(value.sequence) && "event" in value;
   }
   if (value.type === "providerOutput") {
+    if (!Array.isArray(value.toolCallIds) || !Array.isArray(value.toolCalls)) return false;
+    const toolCallIds = value.toolCallIds;
+    const toolCalls = value.toolCalls;
     return typeof value.outputText === "string" &&
       typeof value.producedUserVisibleEffect === "boolean" &&
-      Array.isArray(value.toolCallIds) &&
-      value.toolCallIds.every((callId) => typeof callId === "string");
+      toolCallIds.every((callId) => typeof callId === "string") &&
+      toolCalls.every(isAPlusToolCall) &&
+      toolCalls.length === toolCallIds.length &&
+      toolCalls.every((call, index) => isRecord(call) && call.callId === toolCallIds[index]);
   }
   if (value.type === "serverStatus") {
     return isServerExternalExecutionStatus(value.status) && value.status !== "created";
@@ -196,6 +247,14 @@ function isAgentTurnRequestStreamEvent(value: unknown): value is AgentTurnReques
     return typeof value.code === "string";
   }
   return false;
+}
+
+function isAPlusToolCall(value: unknown): boolean {
+  return isRecord(value) &&
+    Object.keys(value).every((key) => ["callId", "name", "argumentsText"].includes(key)) &&
+    typeof value.callId === "string" &&
+    typeof value.name === "string" &&
+    typeof value.argumentsText === "string";
 }
 
 async function readJson(response: Response): Promise<unknown> {

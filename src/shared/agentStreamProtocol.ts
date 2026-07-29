@@ -366,7 +366,7 @@ function decodeAgentRouteEvent(value: string): AgentRouteStreamEvent | undefined
   }
 }
 
-function isAgentRouteStreamEvent(value: unknown): value is AgentRouteStreamEvent {
+export function isAgentRouteStreamEvent(value: unknown): value is AgentRouteStreamEvent {
   return (
     typeof value === "object" &&
     value !== null &&

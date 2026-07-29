@@ -49,13 +49,37 @@ export type APlusAgentProviderMessage = Readonly<{
   content: readonly (APlusAgentTextPart | APlusAgentImagePart)[];
 }>;
 
+export type APlusAgentFunctionCallItem = Readonly<{
+  type: "function_call";
+  callId: string;
+  name: string;
+  argumentsText: string;
+}>;
+
+export type APlusAgentFunctionResultItem = Readonly<{
+  type: "function_call_output";
+  callId: string;
+  output: string;
+}>;
+
+export type APlusAgentContinuationItem =
+  | APlusAgentFunctionCallItem
+  | APlusAgentFunctionResultItem;
+
+export type APlusToolCall = Readonly<{
+  callId: string;
+  name: string;
+  argumentsText: string;
+}>;
+
 /**
- * Stage 2 intentionally accepts only bounded Provider messages. Local Tool
- * Results, Workspace objects, Memory, Summary revisions and confirmation state
- * are not fields in this transport contract.
+ * A+ accepts bounded client-owned Provider messages plus exact continuation
+ * items. The server validates their shape and includes them in the request
+ * hash, but does not treat local Tool Results as authenticated server facts.
  */
 export type APlusAgentProviderRequest = Readonly<{
   input: readonly APlusAgentProviderMessage[];
+  continuationItems?: readonly APlusAgentContinuationItem[];
   promptContractVersion: string;
   mode: AgentRuntimeMode;
   capabilityIntent: Readonly<{ comparisonAnalysis: boolean }>;
@@ -77,6 +101,7 @@ export type AgentTurnRequestStreamEvent =
       outputText: string;
       producedUserVisibleEffect: boolean;
       toolCallIds: readonly string[];
+      toolCalls: readonly APlusToolCall[];
     }>
   | Readonly<{
       type: "serverStatus";

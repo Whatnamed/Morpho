@@ -267,6 +267,45 @@ describe("A+ Server Turn Journal service", () => {
     });
   });
 
+  it("atomically settles awaitingNextRequest with the exact bounded paid-action claims", async () => {
+    const mock = client(row({
+      decision: "updated",
+      status_name: "awaiting_next_request",
+      latest_request_id: "request-a",
+      latest_step_sequence: 1,
+      provider_call_count: 1
+    }));
+    const claimHash = "b".repeat(64);
+
+    await expect(settleAgentTurnRequestForClient(mock, {
+      serverTurnId: TURN_ID,
+      localProjectId: "project-a",
+      requestId: "request-a",
+      stepSequence: 1,
+      status: "awaitingNextRequest",
+      toolClaims: [{
+        toolCallId: "call-images",
+        actionKind: "image",
+        claimHash,
+        maxActionCount: 3
+      }]
+    })).resolves.toMatchObject({
+      status: "ok",
+      snapshot: { status: "awaitingNextRequest" }
+    });
+    expect(mock.rpc).toHaveBeenCalledWith(
+      "settle_agent_turn_request_with_action_claims",
+      expect.objectContaining({
+        p_claims: [{
+          toolCallId: "call-images",
+          actionKind: "image",
+          claimHash,
+          maxActionCount: 3
+        }]
+      })
+    );
+  });
+
   it("reports a missing RPC as a deployment gap", async () => {
     const mock = client(null, {
       error: { code: "PGRST202", message: "Could not find the function public.create_agent_turn_journal" }

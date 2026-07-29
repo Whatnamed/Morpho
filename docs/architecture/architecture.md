@@ -4,6 +4,11 @@
 
 Morpho is a single Next.js App Router application in this repository root.
 
+The existing B-style Agent Runtime remains the active production default. Stage 3 also implements
+one complete A+ audit path behind the single build-time value
+`NEXT_PUBLIC_MORPHO_AGENT_RUNTIME=a-plus-stage3`; unset, invalid, or `b` selects B. The selector has
+no UI/URL/request override and is scheduled for deletion during Stage 4 after formal cutover.
+
 Implemented routes:
 
 - `/` renders the local project homepage.
@@ -11,6 +16,11 @@ Implemented routes:
 - `/projects/[projectId]` renders the Morpho workspace for one local project.
 - `/api/ai/agent` is the formal workspace Agent route and streams OpenAI-compatible Responses SSE.
 - `/api/ai/agent/lease` completes one authenticated Agent Turn Lease with a declared turn outcome.
+- `/api/ai/agent/turns` creates or reads the minimal A+ Server Turn Journal resource.
+- `/api/ai/agent/turns/[turnId]/requests` starts exact idempotent A+ Provider requests; its explicit
+  `/cancel` child attempts cancellation without treating SSE detach as external cancellation.
+- `/api/ai/agent/turns/[turnId]/actions/web-search`, `/image`, and `/compaction` execute bounded,
+  idempotent A+ external actions through the private External Action Journal.
 - `/api/ai/chat` remains a deprecated compatibility route for isolated legacy tests; the formal workspace panel has no caller.
 - `/api/ai/web-search` proxies bounded provider web search for standalone searches and for lease-bound Agent continuations.
 - `/api/ai/image` proxies server-side GrsAI image generation and returns the generated image bytes.
@@ -30,12 +40,15 @@ Important module boundaries:
 - `src/infrastructure/assets/` owns browser IndexedDB Blob storage and asset-save workflow.
 - `src/infrastructure/supabase/` owns browser/server Supabase clients and public configuration reading.
 - `src/server/ai/` owns AiJWS/OpenAI-compatible provider config, request validation, context conversion, and response normalization.
-- `src/server/auth/` owns account access state, AI quota guards, and the Agent Turn Lease contract.
+- `src/server/auth/` owns account access state, AI quota guards, and the existing Agent Turn Lease contract.
 - `src/server/image/` owns GrsAI provider config, request validation, bounded polling, and remote image download.
 
 Implemented server-side state and deployment:
 
-- Supabase provides account identity, closed-test qualification, AI daily quota, and Agent Turn Leases through narrow `SECURITY DEFINER` RPCs. Forward-only SQL lives in `supabase/migrations/`.
+- Supabase provides account identity, closed-test qualification, AI daily quota, the active B Agent
+  Turn Leases, and the default-off A+ Server Turn/Request/External Action Journals through narrow
+  `SECURITY DEFINER` RPCs. Forward-only SQL lives in `supabase/migrations/`; the Stage 3 Migration is
+  checked in but remote application remains a separate authorized operator step.
 - Supabase stores no project content. Projects, canvases, files, images, and backups stay in browser localStorage and IndexedDB.
 - Vercel is the current production deployment path (`npm run build`). Cloudflare Workers via `@opennextjs/cloudflare` and `wrangler` is a retained opt-in backup path behind the `cf:*` scripts.
 - `.github/workflows/quality.yml` runs lint, typecheck, test, and build on `main` and pull requests, without provider keys or deployment.

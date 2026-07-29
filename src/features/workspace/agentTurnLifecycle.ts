@@ -1,4 +1,7 @@
-import type { ServerExternalExecutionStatus } from "@/shared/agentTurnJournalProtocol";
+import {
+  isServerExternalExecutionStatus,
+  type ServerExternalExecutionStatus
+} from "@/shared/agentTurnJournalProtocol";
 
 export type { ServerExternalExecutionStatus } from "@/shared/agentTurnJournalProtocol";
 
@@ -77,6 +80,17 @@ export type OverallLocalAgentTurnOutcome = {
 
 export type AgentTurnCompactionMode = "automatic" | "preContinuation" | "manual";
 
+export type AgentTurnCompactionCompletion =
+  | Readonly<{ kind: "applied"; revisionId: string }>
+  | Readonly<{ kind: "notNeeded" }>;
+
+export type AgentTurnCompactionFact = Readonly<{
+  actionId: string;
+  mode: AgentTurnCompactionMode;
+  expectedPreviousRevisionId?: string;
+  completion: AgentTurnCompactionCompletion;
+}>;
+
 type ResumablePhase = "preparing" | "requestingProvider" | "continuing";
 
 type FaultState =
@@ -115,6 +129,7 @@ type AgentTurnFacts = {
   fault: FaultState;
   confirmation: ConfirmationState;
   toolBatches: readonly FinalizedToolBatch[];
+  compactions: readonly AgentTurnCompactionFact[];
 };
 
 type ActiveToolBatch = {
@@ -127,6 +142,8 @@ export type AgentTurnLifecycleState =
   | (AgentTurnFacts & {
       phase: "compacting";
       mode: AgentTurnCompactionMode;
+      actionId: string;
+      expectedPreviousRevisionId?: string;
       resumePhase: ResumablePhase;
     })
   | (AgentTurnFacts & { phase: "requestingProvider" })
@@ -144,10 +161,21 @@ export type AgentTurnLifecycleState =
 
 export type AgentTurnEvent =
   | { type: "PREPARATION_COMPLETED"; turnId: string }
-  | { type: "COMPACTION_STARTED"; turnId: string; mode: AgentTurnCompactionMode }
-  | { type: "COMPACTION_COMPLETED"; turnId: string }
-  | { type: "COMPACTION_FAILED"; turnId: string; faultId: string; error: AgentTurnError }
-  | { type: "COMPACTION_CANCELLED"; turnId: string; reason: string }
+  | {
+      type: "COMPACTION_STARTED";
+      turnId: string;
+      mode: AgentTurnCompactionMode;
+      actionId: string;
+      expectedPreviousRevisionId?: string;
+    }
+  | {
+      type: "COMPACTION_COMPLETED";
+      turnId: string;
+      actionId: string;
+      completion: AgentTurnCompactionCompletion;
+    }
+  | { type: "COMPACTION_FAILED"; turnId: string; actionId: string; faultId: string; error: AgentTurnError }
+  | { type: "COMPACTION_CANCELLED"; turnId: string; actionId: string; reason: string }
   | { type: "PROVIDER_REQUEST_STARTED"; turnId: string; requestId: string; stepSequence: number }
   | {
       type: "SERVER_EXECUTION_STATUS_OBSERVED";
@@ -290,8 +318,107 @@ export function createAgentTurnLifecycleState(turnId: string): AgentTurnLifecycl
     streamActivitySequence: 0,
     fault: { kind: "none" },
     confirmation: { kind: "none" },
-    toolBatches: []
+    toolBatches: [],
+    compactions: []
   };
+}
+
+export function parseAgentTurnLifecycleState(value: unknown): AgentTurnLifecycleState | undefined {
+  if (!isRecord(value) || typeof value.turnId !== "string" || !value.turnId.trim()) return undefined;
+  if (!isServerExternalExecutionStatus(value.serverExecutionStatus)) return undefined;
+  const externalRequest = parseExternalRequest(value.externalRequest);
+  const providerOutput = parseProviderOutput(value.providerOutput);
+  const fault = parseFault(value.fault);
+  const confirmation = parseConfirmation(value.confirmation);
+  const unresolvedWorkIds = parseUniqueStrings(value.unresolvedWorkIds, 256);
+  if (
+    !externalRequest ||
+    !providerOutput ||
+    !fault ||
+    !confirmation ||
+    !unresolvedWorkIds ||
+    typeof value.providerEffectProduced !== "boolean" ||
+    !["notRequired", "pending", "succeeded", "failed"].includes(String(value.persistence)) ||
+    !isBoundedInteger(value.streamActivitySequence, 0, 1_000_000) ||
+    !Array.isArray(value.toolBatches) ||
+    value.toolBatches.length > 64 ||
+    !Array.isArray(value.compactions) ||
+    value.compactions.length > 64
+  ) return undefined;
+  const toolBatches = value.toolBatches.map(parseFinalizedToolBatch);
+  const compactions = value.compactions.map(parseCompactionFact);
+  if (toolBatches.some((batch) => !batch) || compactions.some((fact) => !fact)) return undefined;
+  const common: AgentTurnFacts = {
+    turnId: value.turnId,
+    serverExecutionStatus: value.serverExecutionStatus,
+    externalRequest,
+    providerOutput,
+    providerEffectProduced: value.providerEffectProduced,
+    persistence: value.persistence as AgentTurnFacts["persistence"],
+    unresolvedWorkIds,
+    streamActivitySequence: value.streamActivitySequence,
+    fault,
+    confirmation,
+    toolBatches: toolBatches as FinalizedToolBatch[],
+    compactions: compactions as AgentTurnCompactionFact[]
+  };
+  switch (value.phase) {
+    case "preparing":
+    case "requestingProvider":
+    case "continuing":
+      return { ...common, phase: value.phase };
+    case "compacting":
+      return isCompactionMode(value.mode) &&
+        isResumablePhase(value.resumePhase) &&
+        isBoundedString(value.actionId, 160) &&
+        (value.expectedPreviousRevisionId === undefined || isBoundedString(value.expectedPreviousRevisionId, 160))
+        ? {
+            ...common,
+            phase: "compacting",
+            mode: value.mode,
+            actionId: value.actionId,
+            ...(value.expectedPreviousRevisionId
+              ? { expectedPreviousRevisionId: value.expectedPreviousRevisionId }
+              : {}),
+            resumePhase: value.resumePhase
+          }
+        : undefined;
+    case "executingTools": {
+      const activeToolBatch = parseActiveToolBatch(value.activeToolBatch);
+      return activeToolBatch
+        ? { ...common, phase: "executingTools", activeToolBatch }
+        : undefined;
+    }
+    case "awaitingConfirmation": {
+      const callIds = parseUniqueStrings(value.callIds, 64);
+      return callIds && callIds.length > 0
+        ? { ...common, phase: "awaitingConfirmation", callIds }
+        : undefined;
+    }
+    case "cancelling":
+      return typeof value.reason === "string" && value.reason.trim()
+        ? { ...common, phase: "cancelling", reason: value.reason }
+        : undefined;
+    case "recovering": {
+      const error = parseAgentTurnError(value.error);
+      return typeof value.faultId === "string" && value.faultId.trim() &&
+        error?.kind === "retryable" && isResumablePhase(value.resumePhase)
+        ? {
+            ...common,
+            phase: "recovering",
+            faultId: value.faultId,
+            error,
+            resumePhase: value.resumePhase
+          }
+        : undefined;
+    }
+    case "terminal": {
+      const outcome = parseOverallOutcome(value.outcome);
+      return outcome ? { ...common, phase: "terminal", outcome } : undefined;
+    }
+    default:
+      return undefined;
+  }
 }
 
 export function aggregateToolBatchOutcome(
@@ -406,17 +533,23 @@ export function reduceAgentTurnLifecycle(
             `Fault ${state.fault.faultId} must be resolved before preparation can complete.`
           );
     case "COMPACTION_STARTED":
-      return startCompaction(state, event.mode, event);
+      return startCompaction(
+        state,
+        event.mode,
+        event.actionId,
+        event.expectedPreviousRevisionId,
+        event
+      );
     case "COMPACTION_COMPLETED":
-      return state.phase === "compacting"
-        ? success({ ...state, phase: state.resumePhase })
-        : illegal(state, event);
+      return completeCompaction(state, event.actionId, event.completion, event);
     case "COMPACTION_FAILED":
-      return failCompaction(state, event.faultId, event.error, event);
+      return failCompaction(state, event.actionId, event.faultId, event.error, event);
     case "COMPACTION_CANCELLED":
-      return state.phase === "compacting"
+      return state.phase === "compacting" && state.actionId === event.actionId
         ? terminal(state, { kind: "cancelled", reasons: [event.reason] })
-        : illegal(state, event);
+        : state.phase === "compacting"
+          ? transitionError("invalidEvent", "Compaction cancellation action identity does not match.")
+          : illegal(state, event);
     case "PROVIDER_REQUEST_STARTED":
       return startProviderRequest(state, event.requestId, event.stepSequence);
     case "SERVER_EXECUTION_STATUS_OBSERVED":
@@ -512,7 +645,11 @@ export function reduceAgentTurnLifecycle(
         return illegal(state, event);
       }
       const outcome = deriveOverallOutcome(state);
-      if (outcome?.kind === "completed" && state.serverExecutionStatus !== "externallyCompleted") {
+      if (
+        outcome?.kind === "completed" &&
+        state.serverExecutionStatus !== "externallyCompleted" &&
+        state.compactions.length === 0
+      ) {
         return transitionError(
           "insufficientTerminalFacts",
           "A completed Turn requires externallyCompleted Server execution."
@@ -540,7 +677,9 @@ function deriveOverallOutcome(
 ): OverallLocalAgentTurnOutcome | null {
   const batches = state.toolBatches.map((batch) => batch.outcome);
   const hasSuccessfulEffect = Boolean(
-    state.providerEffectProduced || batches.some((batch) => batch.executedCount > 0)
+    state.providerEffectProduced ||
+      batches.some((batch) => batch.executedCount > 0) ||
+      state.compactions.length > 0
   );
   const hasEmptyExternalCompletion =
     state.serverExecutionStatus === "externallyCompleted" && !hasSuccessfulEffect;
@@ -635,6 +774,8 @@ function buildOutcomeReasons(
 function startCompaction(
   state: Exclude<AgentTurnLifecycleState, { phase: "terminal" }>,
   mode: AgentTurnCompactionMode,
+  actionId: string,
+  expectedPreviousRevisionId: string | undefined,
   event: AgentTurnEvent
 ): AgentTurnTransitionResult {
   if (state.phase !== "preparing" && state.phase !== "requestingProvider" && state.phase !== "continuing") {
@@ -646,16 +787,65 @@ function startCompaction(
   if (state.fault.kind === "present") {
     return transitionError("unresolvedFaultConflict", `Fault ${state.fault.faultId} must be resolved first.`);
   }
-  return success({ ...state, phase: "compacting", mode, resumePhase: state.phase });
+  if (!isBoundedString(actionId, 160) ||
+    (expectedPreviousRevisionId !== undefined && !isBoundedString(expectedPreviousRevisionId, 160))) {
+    return transitionError("invalidEvent", "Compaction action identity is invalid.");
+  }
+  if (state.compactions.some((fact) => fact.actionId === actionId)) {
+    return transitionError("invalidEvent", `Compaction action ${actionId} already completed.`);
+  }
+  return success({
+    ...state,
+    phase: "compacting",
+    mode,
+    actionId,
+    ...(expectedPreviousRevisionId ? { expectedPreviousRevisionId } : {}),
+    resumePhase: state.phase
+  });
+}
+
+function completeCompaction(
+  state: Exclude<AgentTurnLifecycleState, { phase: "terminal" }>,
+  actionId: string,
+  completion: AgentTurnCompactionCompletion,
+  event: AgentTurnEvent
+): AgentTurnTransitionResult {
+  if (state.phase !== "compacting") return illegal(state, event);
+  if (state.actionId !== actionId) {
+    return transitionError("invalidEvent", "Compaction completion action identity does not match.");
+  }
+  if (
+    completion.kind === "applied" && !isBoundedString(completion.revisionId, 160)
+  ) {
+    return transitionError("invalidEvent", "Applied Summary revision identity is invalid.");
+  }
+  const fact: AgentTurnCompactionFact = {
+    actionId,
+    mode: state.mode,
+    ...(state.expectedPreviousRevisionId
+      ? { expectedPreviousRevisionId: state.expectedPreviousRevisionId }
+      : {}),
+    completion
+  };
+  const { actionId: _actionId, expectedPreviousRevisionId: _expected, mode: _mode, resumePhase, ...facts } = state;
+  return success({
+    ...facts,
+    phase: resumePhase,
+    compactions: [...state.compactions, fact]
+  });
 }
 
 function failCompaction(
   state: Exclude<AgentTurnLifecycleState, { phase: "terminal" }>,
+  actionId: string,
   faultId: string,
   error: AgentTurnError,
   event: AgentTurnEvent
 ): AgentTurnTransitionResult {
   if (state.phase !== "compacting") return illegal(state, event);
+  if (state.actionId !== actionId) {
+    return transitionError("invalidEvent", "Compaction failure action identity does not match.");
+  }
   if (error.kind === "cancelled") {
     return transitionError("invalidEvent", "Cancelled compaction must use COMPACTION_CANCELLED.");
   }
@@ -1135,6 +1325,230 @@ function aggregationError(
   callId: string
 ): ToolBatchAggregationResult {
   return { ok: false, error: { kind: "conflict", code, callId, recoverable: false } };
+}
+
+function parseExternalRequest(value: unknown): ExternalRequestState | undefined {
+  if (!isRecord(value)) return undefined;
+  if (value.kind === "none") {
+    return value.lastStepSequence === 0 ? { kind: "none", lastStepSequence: 0 } : undefined;
+  }
+  if (
+    (value.kind === "active" || value.kind === "settled") &&
+    typeof value.requestId === "string" &&
+    value.requestId.trim() &&
+    isBoundedInteger(value.stepSequence, 1, 10_000)
+  ) {
+    return { kind: value.kind, requestId: value.requestId, stepSequence: value.stepSequence };
+  }
+  return undefined;
+}
+
+function parseProviderOutput(value: unknown): ProviderOutputState | undefined {
+  if (!isRecord(value)) return undefined;
+  if (value.kind === "none") return { kind: "none" };
+  if (
+    (value.kind === "received" || value.kind === "consumed") &&
+    typeof value.requestId === "string" &&
+    value.requestId.trim() &&
+    isBoundedInteger(value.stepSequence, 1, 10_000)
+  ) {
+    return { kind: value.kind, requestId: value.requestId, stepSequence: value.stepSequence };
+  }
+  return undefined;
+}
+
+function parseFault(value: unknown): FaultState | undefined {
+  if (!isRecord(value)) return undefined;
+  if (value.kind === "none") return { kind: "none" };
+  const error = parseAgentTurnError(value.error);
+  return value.kind === "present" && typeof value.faultId === "string" && value.faultId.trim() && error
+    ? { kind: "present", faultId: value.faultId, error }
+    : undefined;
+}
+
+function parseConfirmation(value: unknown): ConfirmationState | undefined {
+  if (!isRecord(value)) return undefined;
+  if (value.kind === "none") return { kind: "none" };
+  const callIds = parseUniqueStrings(value.callIds, 64);
+  return value.kind === "pending" && callIds && callIds.length > 0
+    ? { kind: "pending", callIds }
+    : undefined;
+}
+
+function parseFinalizedToolBatch(value: unknown): FinalizedToolBatch | undefined {
+  if (!isRecord(value)) return undefined;
+  const declaredCallIds = parseUniqueStrings(value.declaredCallIds, 64);
+  const results = parseToolResults(value.results, 64);
+  if (!declaredCallIds || !results) return undefined;
+  const aggregated = aggregateToolBatchOutcome(declaredCallIds, results);
+  if (!aggregated.ok || JSON.stringify(aggregated.outcome) !== JSON.stringify(value.outcome)) {
+    return undefined;
+  }
+  return { declaredCallIds, results, outcome: aggregated.outcome };
+}
+
+function parseCompactionFact(value: unknown): AgentTurnCompactionFact | undefined {
+  if (
+    !isRecord(value) ||
+    !isBoundedString(value.actionId, 160) ||
+    !isCompactionMode(value.mode) ||
+    (value.expectedPreviousRevisionId !== undefined &&
+      !isBoundedString(value.expectedPreviousRevisionId, 160)) ||
+    !isRecord(value.completion)
+  ) return undefined;
+  let completion: AgentTurnCompactionCompletion;
+  if (value.completion.kind === "notNeeded") {
+    completion = { kind: "notNeeded" };
+  } else if (
+    value.completion.kind === "applied" &&
+    isBoundedString(value.completion.revisionId, 160)
+  ) {
+    completion = { kind: "applied", revisionId: value.completion.revisionId };
+  } else {
+    return undefined;
+  }
+  return {
+    actionId: value.actionId,
+    mode: value.mode,
+    ...(value.expectedPreviousRevisionId
+      ? { expectedPreviousRevisionId: value.expectedPreviousRevisionId }
+      : {}),
+    completion
+  };
+}
+
+function parseActiveToolBatch(value: unknown): ActiveToolBatch | undefined {
+  if (!isRecord(value)) return undefined;
+  const declaredCallIds = parseUniqueStrings(value.declaredCallIds, 64);
+  const results = parseToolResults(value.results, 64);
+  if (!declaredCallIds || !results) return undefined;
+  const declared = new Set(declaredCallIds);
+  return results.every((result) => declared.has(result.callId))
+    ? { declaredCallIds, results }
+    : undefined;
+}
+
+function parseToolResults(
+  value: unknown,
+  maxItems: number
+): ToolCallTerminalResult[] | undefined {
+  if (!Array.isArray(value) || value.length > maxItems) return undefined;
+  const results = value.map(parseToolCallTerminalResult);
+  if (results.some((result) => !result)) return undefined;
+  const parsed = results as ToolCallTerminalResult[];
+  return new Set(parsed.map((result) => result.callId)).size === parsed.length
+    ? parsed
+    : undefined;
+}
+
+function parseToolCallTerminalResult(value: unknown): ToolCallTerminalResult | undefined {
+  if (!isRecord(value) || typeof value.callId !== "string" || !value.callId.trim()) return undefined;
+  if (value.status === "executed") {
+    const unresolvedWorkIds = parseUniqueStrings(value.unresolvedWorkIds, 256);
+    return (value.localEffect === "none" || value.localEffect === "produced") &&
+      (value.persistence === "notRequired" || value.persistence === "succeeded" || value.persistence === "failed") &&
+      unresolvedWorkIds
+      ? {
+          status: "executed",
+          callId: value.callId,
+          localEffect: value.localEffect,
+          persistence: value.persistence,
+          unresolvedWorkIds
+        }
+      : undefined;
+  }
+  if (value.status === "failed") {
+    const error = parseAgentTurnError(value.error);
+    return error && error.kind !== "cancelled"
+      ? { status: "failed", callId: value.callId, error }
+      : undefined;
+  }
+  if (value.status === "cancelled") {
+    return typeof value.reason === "string" && value.reason.trim()
+      ? { status: "cancelled", callId: value.callId, reason: value.reason }
+      : undefined;
+  }
+  if (value.status === "pendingConfirmation") {
+    const unresolvedWorkIds = parseUniqueStrings(value.unresolvedWorkIds, 256);
+    return typeof value.confirmationId === "string" && value.confirmationId.trim() && unresolvedWorkIds
+      ? {
+          status: "pendingConfirmation",
+          callId: value.callId,
+          confirmationId: value.confirmationId,
+          unresolvedWorkIds
+        }
+      : undefined;
+  }
+  return undefined;
+}
+
+function parseAgentTurnError(value: unknown): AgentTurnError | undefined {
+  if (
+    !isRecord(value) ||
+    typeof value.code !== "string" ||
+    !value.code.trim() ||
+    typeof value.message !== "string" ||
+    !value.message.trim()
+  ) return undefined;
+  if (value.kind === "retryable" && value.recoverable === true) {
+    return { kind: "retryable", code: value.code, message: value.message, recoverable: true };
+  }
+  if (
+    (value.kind === "terminal" || value.kind === "cancelled" ||
+      value.kind === "conflict" || value.kind === "quotaExceeded") &&
+    value.recoverable === false
+  ) {
+    return {
+      kind: value.kind,
+      code: value.code,
+      message: value.message,
+      recoverable: false
+    } as AgentTurnError;
+  }
+  return undefined;
+}
+
+function parseOverallOutcome(value: unknown): OverallLocalAgentTurnOutcome | undefined {
+  if (!isRecord(value)) return undefined;
+  const reasons = parseUniqueStrings(value.reasons, 256);
+  return reasons &&
+    ["completed", "partiallyCompleted", "pendingConfirmation", "cancelled", "failed"]
+      .includes(String(value.kind))
+    ? { kind: value.kind as OverallLocalAgentTurnOutcomeKind, reasons }
+    : undefined;
+}
+
+function parseUniqueStrings(value: unknown, maxItems: number): string[] | undefined {
+  if (
+    !Array.isArray(value) ||
+    value.length > maxItems ||
+    !value.every((item) => typeof item === "string" && item.length >= 1 && item.length <= 240)
+  ) return undefined;
+  return new Set(value).size === value.length ? [...value] : undefined;
+}
+
+function isBoundedInteger(
+  value: unknown,
+  minimum: number,
+  maximum: number
+): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= minimum && value <= maximum;
+}
+
+function isBoundedString(value: unknown, maximum: number): value is string {
+  return typeof value === "string" && value.length >= 1 && value.length <= maximum;
+}
+
+function isCompactionMode(value: unknown): value is AgentTurnCompactionMode {
+  return value === "automatic" || value === "preContinuation" || value === "manual";
+}
+
+function isResumablePhase(value: unknown): value is ResumablePhase {
+  return value === "preparing" || value === "requestingProvider" || value === "continuing";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function assertNever(value: never): never {

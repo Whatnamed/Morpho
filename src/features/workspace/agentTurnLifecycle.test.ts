@@ -14,6 +14,8 @@ const turnId = "turn-1";
 const request1 = { requestId: "request-1", stepSequence: 1 } as const;
 const request2 = { requestId: "request-2", stepSequence: 2 } as const;
 const fault1 = "fault-1";
+const compactionActionId = "compaction-1";
+const compactionCompletion = { kind: "applied", revisionId: "summary-revision-1" } as const;
 const retryableError = {
   kind: "retryable",
   code: "networkInterrupted",
@@ -522,7 +524,8 @@ describe("Phase and Server status guards", () => {
     expect(reduceAgentTurnLifecycle(state, {
       type: "COMPACTION_STARTED",
       turnId,
-      mode: "automatic"
+      mode: "automatic",
+      actionId: compactionActionId
     })).toMatchObject({
       ok: false,
       error: { code: "invalidServerStatusTransition" }
@@ -985,7 +988,11 @@ describe("Error and recovery boundaries", () => {
 
 describe("Compaction lifecycle semantics", () => {
   it("enters compacting with an explicit resume phase", () => {
-    const state = apply(requesting(), { type: "COMPACTION_STARTED", mode: "automatic" });
+    const state = apply(requesting(), {
+      type: "COMPACTION_STARTED",
+      mode: "automatic",
+      actionId: compactionActionId
+    });
     expect(state).toMatchObject({
       phase: "compacting",
       mode: "automatic",
@@ -994,15 +1001,33 @@ describe("Compaction lifecycle semantics", () => {
   });
 
   it("returns to the captured phase after successful compaction", () => {
-    let state = apply(requesting(), { type: "COMPACTION_STARTED", mode: "preContinuation" });
-    state = apply(state, { type: "COMPACTION_COMPLETED" });
+    let state = apply(requesting(), {
+      type: "COMPACTION_STARTED",
+      mode: "preContinuation",
+      actionId: compactionActionId
+    });
+    state = apply(state, {
+      type: "COMPACTION_COMPLETED",
+      actionId: compactionActionId,
+      completion: compactionCompletion
+    });
     expect(state.phase).toBe("requestingProvider");
+    expect(state.compactions).toEqual([{
+      actionId: compactionActionId,
+      mode: "preContinuation",
+      completion: compactionCompletion
+    }]);
   });
 
   it("does not fabricate compaction success after a retryable failure", () => {
-    let state = apply(requesting(), { type: "COMPACTION_STARTED", mode: "automatic" });
+    let state = apply(requesting(), {
+      type: "COMPACTION_STARTED",
+      mode: "automatic",
+      actionId: compactionActionId
+    });
     state = apply(state, {
       type: "COMPACTION_FAILED",
+      actionId: compactionActionId,
       faultId: fault1,
       error: retryableError
     });
@@ -1010,23 +1035,40 @@ describe("Compaction lifecycle semantics", () => {
   });
 
   it("makes compaction cancellation terminal and never completed", () => {
-    let state = apply(requesting(), { type: "COMPACTION_STARTED", mode: "manual" });
-    state = apply(state, { type: "COMPACTION_CANCELLED", reason: "user cancelled compaction" });
+    let state = apply(requesting(), {
+      type: "COMPACTION_STARTED",
+      mode: "manual",
+      actionId: compactionActionId
+    });
+    state = apply(state, {
+      type: "COMPACTION_CANCELLED",
+      actionId: compactionActionId,
+      reason: "user cancelled compaction"
+    });
     expect(outcome(state)).toBe("cancelled");
   });
 
   it.each(["automatic", "preContinuation", "manual"] as const)(
     "uses the same compacting vocabulary for %s compaction",
     (mode) => {
-      const state = apply(requesting(), { type: "COMPACTION_STARTED", mode });
+      const state = apply(requesting(), {
+        type: "COMPACTION_STARTED",
+        mode,
+        actionId: `${compactionActionId}-${mode}`
+      });
       expect(state).toMatchObject({ phase: "compacting", mode });
     }
   );
 
   it("makes a terminal compaction failure failed rather than completed", () => {
-    let state = apply(requesting(), { type: "COMPACTION_STARTED", mode: "automatic" });
+    let state = apply(requesting(), {
+      type: "COMPACTION_STARTED",
+      mode: "automatic",
+      actionId: compactionActionId
+    });
     state = apply(state, {
       type: "COMPACTION_FAILED",
+      actionId: compactionActionId,
       faultId: fault1,
       error: terminalError
     });
@@ -1034,7 +1076,11 @@ describe("Compaction lifecycle semantics", () => {
   });
 
   it("does not let Compaction Failure overwrite an existing different Fault", () => {
-    let state = apply(requesting(), { type: "COMPACTION_STARTED", mode: "automatic" });
+    let state = apply(requesting(), {
+      type: "COMPACTION_STARTED",
+      mode: "automatic",
+      actionId: compactionActionId
+    });
     state = apply(state, {
       type: "ERROR_RECORDED",
       faultId: "terminal-fault-a",
@@ -1044,6 +1090,7 @@ describe("Compaction lifecycle semantics", () => {
     const result = reduceAgentTurnLifecycle(state, {
       type: "COMPACTION_FAILED",
       turnId,
+      actionId: compactionActionId,
       faultId: "retryable-fault-b",
       error: retryableError
     });
@@ -1064,9 +1111,18 @@ describe("Compaction lifecycle semantics", () => {
   ] as const)(
     "idempotently applies an identical %s Compaction Fault to the correct phase",
     (_label, error, expectedPhase) => {
-      let state = apply(requesting(), { type: "COMPACTION_STARTED", mode: "automatic" });
+      let state = apply(requesting(), {
+        type: "COMPACTION_STARTED",
+        mode: "automatic",
+        actionId: compactionActionId
+      });
       state = apply(state, { type: "ERROR_RECORDED", faultId: fault1, error });
-      state = apply(state, { type: "COMPACTION_FAILED", faultId: fault1, error });
+      state = apply(state, {
+        type: "COMPACTION_FAILED",
+        actionId: compactionActionId,
+        faultId: fault1,
+        error
+      });
       expect(state).toMatchObject({
         phase: expectedPhase,
         fault: { kind: "present", faultId: fault1, error: { kind: error.kind } }
@@ -1084,7 +1140,8 @@ describe("Representative reachable state viability matrix", () => {
     });
     const compacting = apply(requesting(), {
       type: "COMPACTION_STARTED",
-      mode: "automatic"
+      mode: "automatic",
+      actionId: compactionActionId
     });
     const providerRunning = startProviderRequest(requesting());
     const providerRunningFault = apply(providerRunning, {
@@ -1145,7 +1202,12 @@ describe("Representative reachable state viability matrix", () => {
       {
         label: "compacting/created/no-fault can continue",
         state: compacting,
-        event: { type: "COMPACTION_COMPLETED", turnId }
+        event: {
+          type: "COMPACTION_COMPLETED",
+          turnId,
+          actionId: compactionActionId,
+          completion: compactionCompletion
+        }
       },
       {
         label: "requesting/created/no-fault can start",

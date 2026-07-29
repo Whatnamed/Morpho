@@ -1,16 +1,21 @@
-import type {
-  APlusAgentProviderRequest,
-  AgentTurnJournalSnapshot,
-  AgentTurnRequestStreamEvent
+import {
+  isAgentTurnJournalSnapshot,
+  type APlusAgentProviderRequest,
+  type AgentTurnJournalSnapshot,
+  type AgentTurnRequestStreamEvent
 } from "@/shared/agentTurnJournalProtocol";
 import {
   createAgentTurnLifecycleState,
+  parseAgentTurnLifecycleState,
   reduceAgentTurnLifecycle,
   validateAgentTurnProviderRequestStart,
   type AgentTurnError,
+  type AgentTurnCompactionCompletion,
+  type AgentTurnCompactionMode,
   type AgentTurnEvent,
   type AgentTurnLifecycleState,
-  type AgentTurnTransitionResult
+  type AgentTurnTransitionResult,
+  type ToolCallTerminalResult
 } from "./agentTurnLifecycle";
 
 export type AgentTurnCoordinatorHost = Readonly<{
@@ -35,6 +40,12 @@ export type AgentTurnCoordinatorHost = Readonly<{
     serverTurnId: string;
     localProjectId: string;
   }): Promise<AgentTurnJournalSnapshot>;
+  cancelExternalRequest?(input: {
+    serverTurnId: string;
+    localProjectId: string;
+    requestId: string;
+    stepSequence: number;
+  }): Promise<void>;
 }>;
 
 export type AgentTurnCoordinatorExecutionHandshake =
@@ -78,6 +89,25 @@ type ActiveRequest = {
   reconciliationOnly: boolean;
 };
 
+type ProviderOutputEvent = Extract<AgentTurnRequestStreamEvent, { type: "providerOutput" }>;
+
+export const AGENT_TURN_COORDINATOR_RECOVERY_VERSION = 1 as const;
+
+export type AgentTurnCoordinatorRecoverySnapshot = Readonly<{
+  recordVersion: typeof AGENT_TURN_COORDINATOR_RECOVERY_VERSION;
+  localProjectId: string;
+  creationIdempotencyKey: string;
+  lifecycle: AgentTurnLifecycleState;
+  serverSnapshot: AgentTurnJournalSnapshot;
+  latestProviderOutput?: ProviderOutputEvent;
+  activeRequest?: Readonly<ActiveRequest>;
+  lastRequest?: Readonly<Pick<ActiveRequest, "requestId" | "stepSequence">>;
+}>;
+
+export type RestoreAgentTurnCoordinatorResult =
+  | Readonly<{ status: "ok"; coordinator: AgentTurnCoordinator }>
+  | Readonly<{ status: "failed"; reason: string }>;
+
 type Reducer = (
   state: AgentTurnLifecycleState,
   event: AgentTurnEvent
@@ -90,6 +120,7 @@ export class AgentTurnCoordinator {
   private lastRequest: Pick<ActiveRequest, "requestId" | "stepSequence"> | undefined;
   private executionInFlight = false;
   private syncGeneration = 0;
+  private latestProviderOutput: ProviderOutputEvent | undefined;
 
   constructor(
     private readonly input: Readonly<{
@@ -99,8 +130,43 @@ export class AgentTurnCoordinator {
       createRequestId: () => string;
       reducer?: Reducer;
       onDisplayEvent?: (event: AgentTurnRequestStreamEvent) => void;
+      onRecoverySnapshotChanged?: (snapshot: AgentTurnCoordinatorRecoverySnapshot) => void;
     }>
   ) {}
+
+  static restore(input: Readonly<{
+    snapshot: unknown;
+    host: AgentTurnCoordinatorHost;
+    createRequestId: () => string;
+    onDisplayEvent?: (event: AgentTurnRequestStreamEvent) => void;
+    onRecoverySnapshotChanged?: (snapshot: AgentTurnCoordinatorRecoverySnapshot) => void;
+  }>): RestoreAgentTurnCoordinatorResult {
+    const parsed = parseCoordinatorRecoverySnapshot(input.snapshot);
+    if (parsed.status === "failed") return parsed;
+    const coordinator = new AgentTurnCoordinator({
+      localProjectId: parsed.value.localProjectId,
+      creationIdempotencyKey: parsed.value.creationIdempotencyKey,
+      host: input.host,
+      createRequestId: input.createRequestId,
+      ...(input.onDisplayEvent ? { onDisplayEvent: input.onDisplayEvent } : {}),
+      ...(input.onRecoverySnapshotChanged
+        ? { onRecoverySnapshotChanged: input.onRecoverySnapshotChanged }
+        : {})
+    });
+    coordinator.lifecycle = immutableClone(parsed.value.lifecycle);
+    coordinator.serverSnapshot = cloneSnapshot(parsed.value.serverSnapshot);
+    coordinator.latestProviderOutput = parsed.value.latestProviderOutput
+      ? immutableClone(parsed.value.latestProviderOutput)
+      : undefined;
+    coordinator.activeRequest = parsed.value.activeRequest
+      ? copyActiveRequest(parsed.value.activeRequest)
+      : undefined;
+    coordinator.lastRequest = parsed.value.lastRequest
+      ? { ...parsed.value.lastRequest }
+      : undefined;
+    coordinator.notifyRecoverySnapshotChanged();
+    return { status: "ok", coordinator };
+  }
 
   async initialize(): Promise<AgentTurnCoordinatorActionResult> {
     if (this.lifecycle) {
@@ -179,6 +245,170 @@ export class AgentTurnCoordinator {
     return this.serverSnapshot ? immutableClone(this.serverSnapshot) : undefined;
   }
 
+  getProviderOutputSnapshot(): ProviderOutputEvent | undefined {
+    return this.latestProviderOutput ? immutableClone(this.latestProviderOutput) : undefined;
+  }
+
+  exportRecoverySnapshot(): AgentTurnCoordinatorRecoverySnapshot | undefined {
+    if (!this.lifecycle || !this.serverSnapshot) return undefined;
+    return immutableClone({
+      recordVersion: AGENT_TURN_COORDINATOR_RECOVERY_VERSION,
+      localProjectId: this.input.localProjectId,
+      creationIdempotencyKey: this.input.creationIdempotencyKey,
+      lifecycle: this.lifecycle,
+      serverSnapshot: this.serverSnapshot,
+      ...(this.latestProviderOutput ? { latestProviderOutput: this.latestProviderOutput } : {}),
+      ...(this.activeRequest ? { activeRequest: this.activeRequest } : {}),
+      ...(this.lastRequest ? { lastRequest: this.lastRequest } : {})
+    });
+  }
+
+  beginToolBatch(declaredCallIds: readonly string[]): AgentTurnCoordinatorActionResult {
+    return this.dispatch({
+      type: "TOOL_BATCH_STARTED",
+      turnId: this.requireTurnId(),
+      declaredCallIds: [...declaredCallIds]
+    });
+  }
+
+  recordToolCallTerminalResult(
+    result: ToolCallTerminalResult
+  ): AgentTurnCoordinatorActionResult {
+    return this.dispatch({
+      type: "TOOL_CALL_TERMINATED",
+      turnId: this.requireTurnId(),
+      result: immutableClone(result)
+    });
+  }
+
+  finalizeToolBatch(): AgentTurnCoordinatorActionResult {
+    return this.dispatch({ type: "TOOL_BATCH_FINALIZED", turnId: this.requireTurnId() });
+  }
+
+  markLocalPersistenceRequired(): AgentTurnCoordinatorActionResult {
+    return this.dispatch({ type: "LOCAL_PERSISTENCE_REQUIRED", turnId: this.requireTurnId() });
+  }
+
+  markLocalPersistenceSucceeded(): AgentTurnCoordinatorActionResult {
+    return this.dispatch({ type: "LOCAL_PERSISTENCE_SUCCEEDED", turnId: this.requireTurnId() });
+  }
+
+  markLocalPersistenceFailed(
+    faultId: string,
+    error: Exclude<AgentTurnError, { kind: "cancelled" }>
+  ): AgentTurnCoordinatorActionResult {
+    return this.dispatch({
+      type: "LOCAL_PERSISTENCE_FAILED",
+      turnId: this.requireTurnId(),
+      faultId,
+      error
+    });
+  }
+
+  recordUnresolvedWork(workId: string): AgentTurnCoordinatorActionResult {
+    return this.dispatch({
+      type: "UNRESOLVED_WORK_RECORDED",
+      turnId: this.requireTurnId(),
+      workId
+    });
+  }
+
+  resolveUnresolvedWork(workId: string): AgentTurnCoordinatorActionResult {
+    return this.dispatch({
+      type: "UNRESOLVED_WORK_RESOLVED",
+      turnId: this.requireTurnId(),
+      workId
+    });
+  }
+
+  startCompaction(
+    mode: AgentTurnCompactionMode,
+    actionId: string,
+    expectedPreviousRevisionId?: string
+  ): AgentTurnCoordinatorActionResult {
+    return this.dispatch({
+      type: "COMPACTION_STARTED",
+      turnId: this.requireTurnId(),
+      mode,
+      actionId,
+      ...(expectedPreviousRevisionId ? { expectedPreviousRevisionId } : {})
+    });
+  }
+
+  completeCompaction(
+    actionId: string,
+    completion: AgentTurnCompactionCompletion
+  ): AgentTurnCoordinatorActionResult {
+    return this.dispatch({
+      type: "COMPACTION_COMPLETED",
+      turnId: this.requireTurnId(),
+      actionId,
+      completion
+    });
+  }
+
+  failCompaction(
+    actionId: string,
+    faultId: string,
+    error: AgentTurnError
+  ): AgentTurnCoordinatorActionResult {
+    return this.dispatch({
+      type: "COMPACTION_FAILED",
+      turnId: this.requireTurnId(),
+      actionId,
+      faultId,
+      error
+    });
+  }
+
+  cancelCompaction(actionId: string, reason: string): AgentTurnCoordinatorActionResult {
+    return this.dispatch({
+      type: "COMPACTION_CANCELLED",
+      turnId: this.requireTurnId(),
+      actionId,
+      reason
+    });
+  }
+
+  async requestCancellation(reason: string): Promise<AgentTurnCoordinatorActionResult> {
+    if (!this.lifecycle) return this.denied("not_initialized", "Coordinator 尚未创建 Server Turn。");
+    const active = this.activeRequest;
+    const cancelled = this.dispatch({
+      type: "CANCELLATION_REQUESTED",
+      turnId: this.lifecycle.turnId,
+      reason
+    });
+    if (cancelled.status === "denied") return cancelled;
+    if (!active) return this.ok(this.lastRequest);
+    try {
+      await this.input.host.cancelExternalRequest?.({
+        serverTurnId: this.lifecycle.turnId,
+        localProjectId: this.input.localProjectId,
+        requestId: active.requestId,
+        stepSequence: active.stepSequence
+      });
+    } catch {
+      // Cancellation is best-effort; Journal query remains authoritative.
+    }
+    return this.recover(active, this.syncGeneration, { allowProviderRetry: false });
+  }
+
+  recordLocalError(
+    faultId: string,
+    error: Exclude<AgentTurnError, { kind: "cancelled" }>
+  ): AgentTurnCoordinatorActionResult {
+    return this.dispatch({
+      type: "ERROR_RECORDED",
+      turnId: this.requireTurnId(),
+      faultId,
+      error
+    });
+  }
+
+  finalizeTurn(): AgentTurnCoordinatorActionResult {
+    return this.dispatch({ type: "TURN_FINALIZED", turnId: this.requireTurnId() });
+  }
+
   private async startNewRequest(
     providerRequest: APlusAgentProviderRequest,
     kind: "initial" | "continuation"
@@ -209,6 +439,7 @@ export class AgentTurnCoordinator {
       return this.denied(validation.error.code, validation.error.message);
     }
     this.syncGeneration += 1;
+    this.latestProviderOutput = undefined;
     this.activeRequest = {
       requestId,
       stepSequence,
@@ -217,6 +448,7 @@ export class AgentTurnCoordinator {
       retryAllowed: false,
       reconciliationOnly: false
     };
+    this.notifyRecoverySnapshotChanged();
     return this.executeActiveRequest(false);
   }
 
@@ -336,35 +568,23 @@ export class AgentTurnCoordinator {
         });
         break;
       case "externalError":
-        if (event.code === "provider_cancelled") {
-          result = this.dispatch({
-            type: "CANCELLATION_REQUESTED",
-            turnId: lifecycle.turnId,
-            reason: "providerCancelled"
-          });
-        } else {
-          result = this.dispatch({
-            type: "EXTERNAL_ERROR_RECORDED",
-            turnId: lifecycle.turnId,
-            requestId: event.requestId,
-            stepSequence: event.stepSequence,
-            faultId: `${event.requestId}:${event.code}`,
-            error: {
-              kind: "terminal",
-              code: event.code,
-              message: "Server external execution failed.",
-              recoverable: false
-            }
-          });
-        }
+        // SSE errors are display hints. Journal query owns external settlement.
+        result = this.ok(this.activeRequest);
         break;
       case "serverStatus":
-        result = this.observeServerStatus(event.requestId, event.stepSequence, event.status);
+        // SSE status is never authoritative; transport completion queries Journal.
+        result = this.ok(this.activeRequest);
         break;
       default:
         return assertNever(event);
     }
-    if (result.status === "ok") this.forwardDisplayEvent(event);
+    if (result.status === "ok") {
+      if (event.type === "providerOutput") {
+        this.latestProviderOutput = immutableClone(event);
+        this.notifyRecoverySnapshotChanged();
+      }
+      this.forwardDisplayEvent(event);
+    }
     return result;
   }
 
@@ -515,6 +735,7 @@ export class AgentTurnCoordinator {
     ) {
       this.activeRequest = undefined;
     }
+    this.notifyRecoverySnapshotChanged();
   }
 
   private recordHandshakeFailure(
@@ -561,6 +782,10 @@ export class AgentTurnCoordinator {
     return recorded.status === "denied" ? recorded : this.denied(code, error);
   }
 
+  private requireTurnId(): string {
+    return this.lifecycle?.turnId ?? "";
+  }
+
   private dispatch(event: AgentTurnEvent): AgentTurnCoordinatorActionResult {
     if (!this.lifecycle) return this.denied("not_initialized", "Coordinator 尚未创建 Server Turn。");
     const reduced = (this.input.reducer ?? reduceAgentTurnLifecycle)(this.lifecycle, event);
@@ -568,7 +793,20 @@ export class AgentTurnCoordinator {
       return this.denied(reduced.error.code, reduced.error.message);
     }
     this.lifecycle = reduced.state;
+    this.notifyRecoverySnapshotChanged();
     return this.ok();
+  }
+
+  private notifyRecoverySnapshotChanged(): void {
+    if (!this.input.onRecoverySnapshotChanged) return;
+    const snapshot = this.exportRecoverySnapshot();
+    if (!snapshot) return;
+    try {
+      this.input.onRecoverySnapshotChanged(snapshot);
+    } catch {
+      // The Runner translates durable storage failures into explicit Lifecycle
+      // facts; a callback cannot mutate Coordinator authority.
+    }
   }
 
   private ok(
@@ -638,6 +876,11 @@ function copyProviderRequest(request: APlusAgentProviderRequest): APlusAgentProv
       role: message.role,
       content: message.content.map((part) => ({ ...part }))
     })),
+    ...(request.continuationItems
+      ? {
+          continuationItems: request.continuationItems.map((item) => ({ ...item }))
+        }
+      : {}),
     promptContractVersion: request.promptContractVersion,
     mode: request.mode,
     capabilityIntent: {
@@ -661,6 +904,189 @@ function copyProviderRequest(request: APlusAgentProviderRequest): APlusAgentProv
         }
       : {})
   };
+}
+
+function copyActiveRequest(request: Readonly<ActiveRequest>): ActiveRequest {
+  return {
+    requestId: request.requestId,
+    stepSequence: request.stepSequence,
+    providerRequest: copyProviderRequest(request.providerRequest),
+    lifecycleStarted: request.lifecycleStarted,
+    retryAllowed: request.retryAllowed,
+    reconciliationOnly: request.reconciliationOnly
+  };
+}
+
+function parseCoordinatorRecoverySnapshot(value: unknown):
+  | { status: "ok"; value: AgentTurnCoordinatorRecoverySnapshot }
+  | { status: "failed"; reason: string } {
+  if (
+    !isRecord(value) ||
+    value.recordVersion !== AGENT_TURN_COORDINATOR_RECOVERY_VERSION ||
+    !isBoundedIdentifier(value.localProjectId) ||
+    !isBoundedIdentifier(value.creationIdempotencyKey) ||
+    !isAgentTurnJournalSnapshot(value.serverSnapshot) ||
+    value.serverSnapshot.localProjectId !== value.localProjectId ||
+    !isRecord(value.lifecycle)
+  ) {
+    return restoreFailure("Coordinator Recovery Snapshot 结构无效。");
+  }
+  const lifecycle = parseAgentTurnLifecycleState(value.lifecycle);
+  if (!lifecycle || lifecycle.turnId !== value.serverSnapshot.serverTurnId) {
+    return restoreFailure("Coordinator Lifecycle Snapshot 无效或 Turn 不匹配。");
+  }
+  const activeRequest = value.activeRequest === undefined
+    ? undefined
+    : parseActiveRequest(value.activeRequest);
+  if (value.activeRequest !== undefined && !activeRequest) {
+    return restoreFailure("Coordinator Active Request 无效。");
+  }
+  const lastRequest = value.lastRequest === undefined
+    ? undefined
+    : parseRequestIdentity(value.lastRequest);
+  if (value.lastRequest !== undefined && !lastRequest) {
+    return restoreFailure("Coordinator Last Request 无效。");
+  }
+  const latestProviderOutput = value.latestProviderOutput === undefined
+    ? undefined
+    : parseProviderOutputEvent(value.latestProviderOutput);
+  if (value.latestProviderOutput !== undefined && !latestProviderOutput) {
+    return restoreFailure("Coordinator Provider Output Snapshot 无效。");
+  }
+  if (lifecycle.phase === "terminal" && activeRequest) {
+    return restoreFailure("Terminal Coordinator 不能保留活动 Request。");
+  }
+  if (
+    activeRequest?.lifecycleStarted &&
+    (
+      lifecycle.externalRequest.kind === "none" ||
+      lifecycle.externalRequest.requestId !== activeRequest.requestId ||
+      lifecycle.externalRequest.stepSequence !== activeRequest.stepSequence
+    )
+  ) {
+    return restoreFailure("活动 Request 与 Lifecycle 身份不一致。");
+  }
+  return {
+    status: "ok",
+    value: immutableClone({
+      recordVersion: AGENT_TURN_COORDINATOR_RECOVERY_VERSION,
+      localProjectId: value.localProjectId,
+      creationIdempotencyKey: value.creationIdempotencyKey,
+      lifecycle,
+      serverSnapshot: value.serverSnapshot,
+      ...(latestProviderOutput ? { latestProviderOutput } : {}),
+      ...(activeRequest ? { activeRequest } : {}),
+      ...(lastRequest ? { lastRequest } : {})
+    })
+  };
+}
+
+function parseProviderOutputEvent(value: unknown): ProviderOutputEvent | undefined {
+  if (
+    !isRecord(value) ||
+    value.type !== "providerOutput" ||
+    !isBoundedIdentifier(value.requestId) ||
+    !isBoundedStepSequence(value.stepSequence) ||
+    typeof value.outputText !== "string" ||
+    value.outputText.length > 240_000 ||
+    typeof value.producedUserVisibleEffect !== "boolean" ||
+    !Array.isArray(value.toolCallIds) ||
+    !Array.isArray(value.toolCalls) ||
+    value.toolCallIds.length !== value.toolCalls.length ||
+    value.toolCallIds.length > 64
+  ) return undefined;
+  const toolCallIds = value.toolCallIds;
+  const toolCalls = value.toolCalls;
+  if (
+    !toolCallIds.every(isBoundedIdentifier) ||
+    new Set(toolCallIds).size !== toolCallIds.length ||
+    !toolCalls.every((call, index) =>
+      isRecord(call) &&
+      call.callId === toolCallIds[index] &&
+      isBoundedIdentifier(call.callId) &&
+      isBoundedIdentifier(call.name) &&
+      typeof call.argumentsText === "string" &&
+      call.argumentsText.length >= 2 &&
+      call.argumentsText.length <= 120_000
+    )
+  ) return undefined;
+  return immutableClone(value) as ProviderOutputEvent;
+}
+
+function parseActiveRequest(value: unknown): ActiveRequest | undefined {
+  if (
+    !isRecord(value) ||
+    !isBoundedIdentifier(value.requestId) ||
+    !isBoundedStepSequence(value.stepSequence) ||
+    typeof value.lifecycleStarted !== "boolean" ||
+    typeof value.retryAllowed !== "boolean" ||
+    typeof value.reconciliationOnly !== "boolean" ||
+    !isProviderRequestShape(value.providerRequest)
+  ) return undefined;
+  return copyActiveRequest({
+    requestId: value.requestId,
+    stepSequence: value.stepSequence,
+    providerRequest: value.providerRequest,
+    lifecycleStarted: value.lifecycleStarted,
+    retryAllowed: value.retryAllowed,
+    reconciliationOnly: value.reconciliationOnly
+  });
+}
+
+function parseRequestIdentity(
+  value: unknown
+): Pick<ActiveRequest, "requestId" | "stepSequence"> | undefined {
+  return isRecord(value) &&
+    isBoundedIdentifier(value.requestId) &&
+    isBoundedStepSequence(value.stepSequence)
+    ? { requestId: value.requestId, stepSequence: value.stepSequence }
+    : undefined;
+}
+
+function isProviderRequestShape(value: unknown): value is APlusAgentProviderRequest {
+  if (!isRecord(value)) return false;
+  try {
+    // Legal image-bearing A+ requests can approach the 24 MiB aggregate image
+    // boundary. Persistence stores this payload in IndexedDB and restores it
+    // before Coordinator validation.
+    if (JSON.stringify(value).length > 32 * 1024 * 1024) return false;
+  } catch {
+    return false;
+  }
+  return Array.isArray(value.input) &&
+    value.input.length >= 1 &&
+    value.input.every((message) =>
+      isRecord(message) &&
+      (message.role === "user" || message.role === "assistant") &&
+      Array.isArray(message.content)
+    ) &&
+    (value.continuationItems === undefined || Array.isArray(value.continuationItems)) &&
+    typeof value.promptContractVersion === "string" &&
+    (value.mode === "auto" || value.mode === "confirm") &&
+    isRecord(value.capabilityIntent) &&
+    typeof value.capabilityIntent.comparisonAnalysis === "boolean";
+}
+
+function restoreFailure(reason: string): { status: "failed"; reason: string } {
+  return { status: "failed", reason };
+}
+
+function isBoundedIdentifier(value: unknown): value is string {
+  return typeof value === "string" &&
+    value.length >= 1 &&
+    value.length <= 160 &&
+    /^[A-Za-z0-9._:-]+$/.test(value);
+}
+
+function isBoundedStepSequence(value: unknown): value is number {
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= 1 &&
+    value <= 10_000;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function cloneSnapshot(snapshot: AgentTurnJournalSnapshot): AgentTurnJournalSnapshot {

@@ -5,6 +5,7 @@ import {
   commitWorkspaceStateNow,
   type WorkspaceCommitTransform
 } from "./workspaceCommitBoundary";
+import type { WorkspacePersistenceState } from "./workspacePersistence";
 
 export type MutableSlot<T> = {
   get: () => T;
@@ -23,6 +24,7 @@ export type AgentFetchRoute = (request: Request) => Response | Promise<Response>
 export type AgentTurnHostFake = {
   commitWorkspace: <T>(transform: WorkspaceCommitTransform<T>) => T;
   readWorkspace: () => MorphoWorkspace;
+  persistWorkspace: () => WorkspacePersistenceState;
   fetch: typeof fetch;
   setFetchRoute: (path: string, route: AgentFetchRoute) => void;
   recordUiCall: (name: string, value?: unknown) => void;
@@ -40,6 +42,7 @@ export function createAgentTurnHostFake(options: {
   routes?: Record<string, AgentFetchRoute>;
   now?: number;
   randomSuffix?: string;
+  persistenceState?: WorkspacePersistenceState;
 }): AgentTurnHostFake {
   let workspace = options.workspace;
   let sequence = 0;
@@ -78,6 +81,15 @@ export function createAgentTurnHostFake(options: {
         workspace: current,
         value: current
       })),
+    persistWorkspace: () => {
+      const state = options.persistenceState ?? {
+        phase: "saved" as const,
+        isDirty: false,
+        lastSavedAt: new Date(options.now ?? 1_700_000_000_000).toISOString()
+      };
+      record({ kind: "workspaceCommit", name: "persist", value: state });
+      return state;
+    },
     fetch: fakeFetch,
     setFetchRoute: (path, route) => routes.set(path, route),
     recordUiCall: (name, value) => record({ kind: "ui", name, value }),

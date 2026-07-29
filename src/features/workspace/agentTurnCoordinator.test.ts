@@ -525,13 +525,8 @@ describe("A+ AgentTurnCoordinator", () => {
       stepSequence: 1,
       outputText: "visible output",
       producedUserVisibleEffect: true,
-      toolCallIds: ["call-a"]
-    });
-    host.emit("request-1", {
-      type: "externalError",
-      requestId: "request-1",
-      stepSequence: 1,
-      code: "provider_contract_invalid"
+      toolCallIds: ["call-a"],
+      toolCalls: toolCallsForIds(["call-a"])
     });
     host.emit("request-1", {
       type: "serverStatus",
@@ -539,8 +534,19 @@ describe("A+ AgentTurnCoordinator", () => {
       stepSequence: 1,
       status: "awaitingNextRequest"
     });
+    host.queryOverride = async () => snapshot({
+      status: "awaitingNextRequest",
+      latestRequestId: "request-1",
+      latestStepSequence: 1
+    });
     completion.resolve({ status: "ended", finalFrameReceived: true });
     await first;
+    expect(coordinator.recordLocalError("local-terminal-fault", {
+      kind: "terminal",
+      code: "provider_contract_invalid",
+      message: "Provider contract is invalid.",
+      recoverable: false
+    })).toMatchObject({ status: "ok" });
     expect(coordinator.getLifecycleSnapshot()).toMatchObject({
       phase: "continuing",
       serverExecutionStatus: "awaitingNextRequest",
@@ -806,7 +812,8 @@ class FakeHost implements AgentTurnCoordinatorHost {
               stepSequence: input.stepSequence,
               outputText: "visible output",
               producedUserVisibleEffect: true,
-              toolCallIds: options.toolCallIds ?? []
+              toolCallIds: options.toolCallIds ?? [],
+              toolCalls: toolCallsForIds(options.toolCallIds ?? [])
             });
           } else if ((options.toolCallIds?.length ?? 0) > 0) {
             observer({
@@ -815,7 +822,8 @@ class FakeHost implements AgentTurnCoordinatorHost {
               stepSequence: input.stepSequence,
               outputText: "",
               producedUserVisibleEffect: false,
-              toolCallIds: options.toolCallIds ?? []
+              toolCallIds: options.toolCallIds ?? [],
+              toolCalls: toolCallsForIds(options.toolCallIds ?? [])
             });
           }
           this.snapshot = snapshot({
@@ -847,6 +855,14 @@ class FakeHost implements AgentTurnCoordinatorHost {
   emit(requestId: string, event: AgentTurnRequestStreamEvent): void {
     this.observers.get(requestId)?.(event);
   }
+}
+
+function toolCallsForIds(callIds: readonly string[]) {
+  return callIds.map((callId) => ({
+    callId,
+    name: "read_selected_context",
+    argumentsText: "{}"
+  }));
 }
 
 function createCoordinator(

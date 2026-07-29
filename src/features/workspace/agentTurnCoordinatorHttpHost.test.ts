@@ -36,7 +36,8 @@ describe("A+ Coordinator HTTP Host", () => {
           stepSequence: 1,
           outputText: "answer",
           producedUserVisibleEffect: true,
-          toolCallIds: []
+          toolCallIds: [],
+          toolCalls: []
         }));
         controller.enqueue(frame({
           type: "serverStatus",

@@ -4,6 +4,7 @@ import {
   type AgentTurnJournalSnapshot,
   type ServerExternalExecutionStatus
 } from "@/shared/agentTurnJournalProtocol";
+import type { APlusExternalToolActionClaim } from "./agentTurnProviderRequest";
 
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9._:-]+$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -127,6 +128,7 @@ export async function settleAgentTurnRequest(input: {
   stepSequence: number;
   status: Exclude<ServerExternalExecutionStatus, "created" | "providerRunning">;
   failureCode?: string;
+  toolClaims?: readonly APlusExternalToolActionClaim[];
 }): Promise<SettleAgentTurnRequestResult> {
   const client = await createJournalClient();
   return client.status === "denied"
@@ -244,6 +246,7 @@ export async function settleAgentTurnRequestForClient(
     stepSequence: number;
     status: Exclude<ServerExternalExecutionStatus, "created" | "providerRunning">;
     failureCode?: string;
+    toolClaims?: readonly APlusExternalToolActionClaim[];
   }
 ): Promise<SettleAgentTurnRequestResult> {
   const auth = await requireUser(client);
@@ -255,18 +258,34 @@ export async function settleAgentTurnRequestForClient(
     !Number.isSafeInteger(input.stepSequence) ||
     input.stepSequence < 1 ||
     !isSettleStatus(input.status) ||
-    (input.failureCode !== undefined && !isBoundedFailureCode(input.failureCode))
+    (input.failureCode !== undefined && !isBoundedFailureCode(input.failureCode)) ||
+    (input.toolClaims !== undefined && !isToolClaims(input.toolClaims, input.status))
   ) {
     return conflict("invalid_settlement", "A+ Provider Request 终态参数无效。");
   }
-  const result = await client.rpc("settle_agent_turn_request", {
+  const result = await client.rpc(
+    input.toolClaims === undefined
+      ? "settle_agent_turn_request"
+      : "settle_agent_turn_request_with_action_claims",
+    {
     p_server_turn_id: input.serverTurnId,
     p_local_project_id: input.localProjectId,
     p_request_id: input.requestId,
     p_step_sequence: input.stepSequence,
     p_status: toDatabaseStatus(input.status),
-    p_failure_code: input.failureCode ?? null
-  }).single();
+    p_failure_code: input.failureCode ?? null,
+    ...(input.toolClaims !== undefined
+      ? {
+          p_claims: input.toolClaims.map((claim) => ({
+            toolCallId: claim.toolCallId,
+            actionKind: claim.actionKind === "webSearch" ? "web_search" : "image",
+            claimHash: claim.claimHash,
+            maxActionCount: claim.maxActionCount
+          }))
+        }
+      : {})
+    }
+  ).single();
   if (isMissingRpcError(result.error)) {
     return unavailable("journal_contract_missing", "数据库尚未升级到 A+ Request Journal 契约。");
   }
@@ -281,6 +300,24 @@ export async function settleAgentTurnRequestForClient(
     replayed: result.data.decision === "replayed",
     snapshot: snapshotFromRow(result.data)
   };
+}
+
+function isToolClaims(
+  value: readonly APlusExternalToolActionClaim[],
+  status: Exclude<ServerExternalExecutionStatus, "created" | "providerRunning">
+): boolean {
+  if (status !== "awaitingNextRequest" || value.length > 64) return false;
+  const callIds = new Set<string>();
+  return value.every((claim) =>
+    isIdentifier(claim.toolCallId) &&
+    !callIds.has(claim.toolCallId) &&
+    (callIds.add(claim.toolCallId), true) &&
+    (claim.actionKind === "webSearch" || claim.actionKind === "image") &&
+    SHA256_PATTERN.test(claim.claimHash) &&
+    Number.isSafeInteger(claim.maxActionCount) &&
+    claim.maxActionCount >= 1 &&
+    claim.maxActionCount <= 32
+  );
 }
 
 function snapshotFromRow(row: JournalSnapshotRow): AgentTurnJournalSnapshot {

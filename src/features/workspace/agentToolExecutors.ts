@@ -78,11 +78,21 @@ export type ExecuteAgentVisualGenerationPlan = (input: {
   requestedPreviewCount?: number;
   onProgress?: (message: string) => void;
   signal: AbortSignal;
+  aPlusExternalAction?: Readonly<{
+    serverTurnId: string;
+    localProjectId: string;
+    requestId: string;
+    stepSequence: number;
+    actionId: string;
+  }>;
 }) => Promise<AgentVisualGenerationExecution>;
 
 export type AgentToolBatchState = {
   visualBatch: AgentVisualGenerationBatch | null;
-  executedVisualBatch?: Pick<AgentVisualGenerationExecution, "createdObjectIds">;
+  executedVisualBatch?: Pick<
+    AgentVisualGenerationExecution,
+    "createdObjectIds" | "failedItems"
+  >;
   pendingAgentActionCreated: boolean;
 };
 
@@ -518,6 +528,7 @@ async function executeGenerateVisuals(
     return {
       status: "created",
       objectIds: input.batchState.executedVisualBatch.createdObjectIds,
+      failedItems: input.batchState.executedVisualBatch.failedItems,
       batched: true
     };
   }
@@ -566,6 +577,7 @@ async function executeGenerateVisuals(
   return {
     status: "created",
     objectIds: generationResult.createdObjectIds,
+    failedItems: generationResult.failedItems,
     batched: true
   };
 }

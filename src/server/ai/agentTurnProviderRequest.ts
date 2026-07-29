@@ -8,10 +8,13 @@ import {
 } from "@/features/workspace/morphoAgent";
 import type {
   APlusAgentImagePart,
+  APlusAgentContinuationItem,
   APlusAgentProviderMessage,
   APlusAgentProviderRequest,
-  APlusAgentTextPart
+  APlusAgentTextPart,
+  APlusToolCall
 } from "@/shared/agentTurnJournalProtocol";
+import { MAX_AGENT_FUNCTION_CALLS } from "@/shared/agentFunctionCallLimits";
 import {
   canonicalAgentRuntimeMessage,
   isValidCanonicalAgentRuntimeItem,
@@ -24,6 +27,9 @@ import { estimateProviderInputTokens } from "@/shared/providerInputBudget";
 
 import type {
   OpenAiCompatibleResponseRequest,
+  AgentOutputItem,
+  ProviderFunctionCall,
+  ResponseFunctionToolOutput,
   ResponseMessageInput
 } from "./openaiCompatibleProvider";
 
@@ -33,10 +39,20 @@ const MAX_TEXT_PART_CHARS = 120_000;
 const MAX_IMAGE_COUNT = 4;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_TOTAL_IMAGE_BYTES = 24 * 1024 * 1024;
+const MAX_CONTINUATION_ITEMS = 64;
+const MAX_FUNCTION_ARGUMENT_CHARS = 120_000;
+const MAX_FUNCTION_OUTPUT_CHARS = 120_000;
+const MAX_FUNCTION_ARGUMENT_DEPTH = 12;
 const IMAGE_DATA_URL = /^data:image\/(png|jpeg|webp|gif);base64,([A-Za-z0-9+/=]+)$/;
+const REGISTERED_TOOL_NAMES = new Set(
+  buildMorphoAgentTools(true).flatMap((tool) =>
+    tool.type === "function" ? [tool.name] : []
+  )
+);
 
 export type ValidatedAPlusAgentProviderRequest = Readonly<{
   input: APlusAgentProviderRequest["input"];
+  continuationItems: readonly APlusAgentContinuationItem[];
   promptContractVersion: typeof MORPHO_AGENT_PROMPT_CONTRACT_VERSION;
   mode: AgentRuntimeMode;
   capabilityIntent: Readonly<{ comparisonAnalysis: boolean }>;
@@ -49,6 +65,13 @@ export type APlusAgentProviderContract = Readonly<{
   effectiveToolProfile: AgentToolProfile;
 }>;
 
+export type APlusExternalToolActionClaim = Readonly<{
+  toolCallId: string;
+  actionKind: "webSearch" | "image";
+  claimHash: string;
+  maxActionCount: number;
+}>;
+
 export function parseAPlusAgentProviderRequest(value: unknown):
   | { status: "ok"; value: ValidatedAPlusAgentProviderRequest }
   | { status: "failed"; reason: string } {
@@ -57,6 +80,7 @@ export function parseAPlusAgentProviderRequest(value: unknown):
   }
   const unknown = unknownKeys(value, [
     "input",
+    "continuationItems",
     "promptContractVersion",
     "mode",
     "capabilityIntent",
@@ -85,6 +109,10 @@ export function parseAPlusAgentProviderRequest(value: unknown):
   if (parsedInput.status === "failed") {
     return parsedInput;
   }
+  const continuationItems = parseContinuationItems(value.continuationItems);
+  if (continuationItems.status === "failed") {
+    return continuationItems;
+  }
   const previousRuntimeItem = value.previousRuntimeItem === undefined
     ? undefined
     : parseCanonicalRuntimeItem(value.previousRuntimeItem);
@@ -96,6 +124,7 @@ export function parseAPlusAgentProviderRequest(value: unknown):
     status: "ok",
     value: {
       input: parsedInput.value,
+      continuationItems: continuationItems.value,
       promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
       mode: value.mode,
       capabilityIntent: {
@@ -131,7 +160,8 @@ export function buildAPlusAgentProviderContract(input: {
         content: [{ type: "input_text", text: buildMorphoAgentStableSystemPrompt() }]
       },
       canonicalAgentRuntimeMessage(runtimeItem),
-      ...input.request.input.map(copyProviderMessage)
+      ...input.request.input.map(copyProviderMessage),
+      ...input.request.continuationItems.map(copyContinuationItem)
     ],
     tools
   };
@@ -149,6 +179,89 @@ export function buildAPlusAgentProviderContract(input: {
   return { request, runtimeItem, effectiveToolProfile };
 }
 
+function parseContinuationItems(value: unknown):
+  | { status: "ok"; value: readonly APlusAgentContinuationItem[] }
+  | { status: "failed"; reason: string } {
+  if (value === undefined) return { status: "ok", value: [] };
+  if (!Array.isArray(value) || value.length > MAX_CONTINUATION_ITEMS) {
+    return failed(`continuationItems 最多包含 ${MAX_CONTINUATION_ITEMS} 个 Item。`);
+  }
+  const parsed: APlusAgentContinuationItem[] = [];
+  const callIds = new Set<string>();
+  for (let index = 0; index < value.length; index += 1) {
+    const item = value[index];
+    if (!isRecord(item) || (item.type !== "function_call" && item.type !== "function_call_output")) {
+      return failed(`continuationItems[${index}] 类型无效。`);
+    }
+    if (!isBoundedIdentifier(item.callId)) {
+      return failed(`continuationItems[${index}].callId 无效。`);
+    }
+    if (item.type === "function_call") {
+      if (
+        unknownKeys(item, ["type", "callId", "name", "argumentsText"]).length > 0 ||
+        typeof item.name !== "string" ||
+        !REGISTERED_TOOL_NAMES.has(item.name) ||
+        typeof item.argumentsText !== "string" ||
+        item.argumentsText.length < 2 ||
+        item.argumentsText.length > MAX_FUNCTION_ARGUMENT_CHARS ||
+        !isBoundedJsonObject(item.argumentsText)
+      ) {
+        return failed(`continuationItems[${index}] Function Call 无效。`);
+      }
+      if (callIds.has(item.callId)) {
+        return failed(`continuationItems 包含重复 Function Call：${item.callId}。`);
+      }
+      callIds.add(item.callId);
+      parsed.push({
+        type: "function_call",
+        callId: item.callId,
+        name: item.name,
+        argumentsText: item.argumentsText
+      });
+      continue;
+    }
+    if (
+      unknownKeys(item, ["type", "callId", "output"]).length > 0 ||
+      typeof item.output !== "string" ||
+      item.output.length < 1 ||
+      item.output.length > MAX_FUNCTION_OUTPUT_CHARS ||
+      !callIds.has(item.callId)
+    ) {
+      return failed(`continuationItems[${index}] Function Result 无效或缺少前置 Call。`);
+    }
+    parsed.push({ type: "function_call_output", callId: item.callId, output: item.output });
+  }
+  const resultIds = new Set(
+    parsed.filter((item) => item.type === "function_call_output").map((item) => item.callId)
+  );
+  if ([...callIds].some((callId) => !resultIds.has(callId))) {
+    return failed("continuationItems 中每个 Function Call 都必须有一个终态 Result。");
+  }
+  return { status: "ok", value: parsed };
+}
+
+function isBoundedJsonObject(value: string): boolean {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return isRecord(parsed) && jsonDepth(parsed) <= MAX_FUNCTION_ARGUMENT_DEPTH;
+  } catch {
+    return false;
+  }
+}
+
+function jsonDepth(value: unknown): number {
+  if (Array.isArray(value)) {
+    return 1 + value.reduce((max, item) => Math.max(max, jsonDepth(item)), 0);
+  }
+  if (isRecord(value)) {
+    return 1 + Object.values(value).reduce<number>(
+      (max, item) => Math.max(max, jsonDepth(item)),
+      0
+    );
+  }
+  return 0;
+}
+
 export function hashAPlusAgentExternalRequest(input: {
   model: string;
   reasoningEffort?: string;
@@ -162,6 +275,94 @@ export function hashAPlusAgentExternalRequest(input: {
     tools: input.providerRequest.tools ?? []
   });
   return createHash("sha256").update(canonical).digest("hex");
+}
+
+/**
+ * Persists only a bounded authorization claim derived from the server-observed
+ * Provider call. Raw arguments stay out of the Journal. Local Tool Results are
+ * still client-owned and are not authenticated by this claim.
+ */
+export function buildAPlusExternalToolActionClaims(
+  toolCalls: readonly APlusToolCall[]
+): readonly APlusExternalToolActionClaim[] {
+  return toolCalls.flatMap<APlusExternalToolActionClaim>((call) => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(call.argumentsText) as unknown;
+    } catch {
+      return [];
+    }
+    if (call.name === "search_web_evidence" && isRecord(parsed)) {
+      const queries = Array.isArray(parsed.queries)
+        ? parsed.queries
+            .filter((query): query is string => typeof query === "string")
+            .map((query) => query.trim())
+        : [];
+      if (
+        queries.length < 1 || queries.length > 3 ||
+        queries.some((query) => query.length < 1 || query.length > 300) ||
+        new Set(queries).size !== queries.length
+      ) return [];
+      return [{
+        toolCallId: call.callId,
+        actionKind: "webSearch" as const,
+        claimHash: hashAPlusExternalToolActionClaim({
+          actionKind: "webSearch",
+          toolCallId: call.callId,
+          queries
+        }),
+        maxActionCount: 1
+      }];
+    }
+    if (call.name === "generate_visuals" && isRecord(parsed) && Array.isArray(parsed.items)) {
+      const count = parsed.items.length;
+      if (count < 1 || count > 32) return [];
+      return [{
+        toolCallId: call.callId,
+        actionKind: "image" as const,
+        claimHash: hashAPlusExternalToolActionClaim({
+          actionKind: "image",
+          toolCallId: call.callId
+        }),
+        maxActionCount: count
+      }];
+    }
+    return [];
+  });
+}
+
+export function hashAPlusExternalToolActionClaim(input: Readonly<
+  | { actionKind: "webSearch"; toolCallId: string; queries: readonly string[] }
+  | { actionKind: "image"; toolCallId: string }
+>): string {
+  return createHash("sha256").update(canonicalJson(input)).digest("hex");
+}
+
+export function normalizeAPlusProviderToolCalls(
+  calls: readonly ProviderFunctionCall[]
+): APlusToolCall[] {
+  if (calls.length > MAX_AGENT_FUNCTION_CALLS) {
+    throw new APlusAgentProviderRequestError("Provider 返回的 Tool Call 数量超过安全上限。");
+  }
+  const seen = new Set<string>();
+  return calls.map((call) => {
+    if (
+      !isBoundedIdentifier(call.callId) ||
+      seen.has(call.callId) ||
+      !REGISTERED_TOOL_NAMES.has(call.name) ||
+      call.argumentsText.length < 2 ||
+      call.argumentsText.length > MAX_FUNCTION_ARGUMENT_CHARS ||
+      !isBoundedJsonObject(call.argumentsText)
+    ) {
+      throw new APlusAgentProviderRequestError("Provider 返回了无效或重复的 Tool Call Payload。");
+    }
+    seen.add(call.callId);
+    return {
+      callId: call.callId,
+      name: call.name,
+      argumentsText: call.argumentsText
+    };
+  });
 }
 
 export class APlusAgentProviderRequestError extends Error {
@@ -319,4 +520,28 @@ function copyProviderMessage(message: APlusAgentProviderMessage): ResponseMessag
     role: message.role,
     content: message.content.map((part) => ({ ...part }))
   };
+}
+
+function copyContinuationItem(
+  item: APlusAgentContinuationItem
+): AgentOutputItem | ResponseFunctionToolOutput {
+  return item.type === "function_call"
+    ? {
+        type: "function_call",
+        call_id: item.callId,
+        name: item.name,
+        arguments: item.argumentsText
+      }
+    : {
+        type: "function_call_output",
+        call_id: item.callId,
+        output: item.output
+      };
+}
+
+function isBoundedIdentifier(value: unknown): value is string {
+  return typeof value === "string" &&
+    value.length >= 1 &&
+    value.length <= 160 &&
+    /^[A-Za-z0-9._:-]+$/.test(value);
 }
