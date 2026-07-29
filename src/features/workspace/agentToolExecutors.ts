@@ -302,7 +302,11 @@ function executeReviseSelectedProposalDraft(
   if (revision.status === "updated") {
     input.ui.selectObjects([revision.proposalId]);
     input.ui.openProposal(revision.proposalId);
-    return { status: "updated", proposalId: revision.proposalId };
+    return {
+      status: "updated",
+      proposalId: revision.proposalId,
+      ...(revision.recovered ? { recovered: true } : {})
+    };
   }
   return { status: "blocked", reason: revision.reason };
 }
@@ -683,6 +687,7 @@ function executePrepareDeliverySectionDraft(
     const created = createDeliverySectionDraft(current, {
       deliveryObjectId: sectionContext.deliveryObjectId,
       sectionId: sectionContext.sectionId,
+      draftId: `delivery-draft-${input.stableOperationId}`,
       userMessageId: input.userMessageId,
       assistantMessageId: input.assistantMessageId,
       title: input.parsed.args.title,
@@ -703,6 +708,7 @@ function executePrepareDeliverySectionDraft(
     draftId: result.draftId,
     deliveryObjectId: sectionContext.deliveryObjectId,
     sectionId: sectionContext.sectionId,
+    ...(result.recovered ? { recovered: true } : {}),
     note: "草稿尚未应用到交付章节。"
   };
 }

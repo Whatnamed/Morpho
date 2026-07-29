@@ -584,6 +584,26 @@ describe("delivery preparation domain operations", () => {
     if (draft.status !== "updated") {
       throw new Error(draft.reason);
     }
+    const replayedDraft = createDeliverySectionDraft(draft.workspace, {
+      deliveryObjectId: delivery.id,
+      sectionId,
+      userMessageId: "user-draft-1",
+      assistantMessageId: "assistant-draft-1",
+      draftId: draft.draftId,
+      narrative: "本次内容不会产生第二份草案。",
+      captions: [],
+      suggestedGaps: [],
+      now: "2026-07-02T08:41:30.000Z"
+    });
+    expect(replayedDraft).toMatchObject({
+      status: "updated",
+      draftId: draft.draftId,
+      recovered: true
+    });
+    if (replayedDraft.status !== "updated") {
+      throw new Error(replayedDraft.reason);
+    }
+    expect(replayedDraft.workspace).toBe(draft.workspace);
     expect((draft.workspace.objects[delivery.id] as DeliveryObject).gaps.some((gap) => gap.label === "补充夜间安装示意")).toBe(false);
 
     const applied = applyDeliverySectionDraft(draft.workspace, {

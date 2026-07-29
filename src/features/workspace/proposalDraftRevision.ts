@@ -11,6 +11,7 @@ export type ApplySelectedProposalDraftRevisionResult =
       status: "updated";
       workspace: MorphoWorkspace;
       proposalId: string;
+      recovered?: boolean;
     }
   | {
       status: "blocked";
@@ -61,6 +62,15 @@ export function applySelectedProposalDraftRevision(
     };
   }
 
+  if (isRevisionAlreadyApplied(proposal, args)) {
+    return {
+      status: "updated",
+      workspace,
+      proposalId: args.proposalId,
+      recovered: true
+    };
+  }
+
   switch (args.proposalType) {
     case "researchAnalysis":
       if (proposal.type !== "researchAnalysis") {
@@ -100,4 +110,43 @@ export function applySelectedProposalDraftRevision(
         proposalId: args.proposalId
       };
   }
+}
+
+function isRevisionAlreadyApplied(
+  proposal: NonNullable<MorphoWorkspace["artifactProposals"][string]>,
+  args: ReviseSelectedProposalDraftArgs
+): boolean {
+  switch (args.proposalType) {
+    case "researchAnalysis":
+      return proposal.type === "researchAnalysis" &&
+        proposal.title === args.title &&
+        proposal.summary === args.summary &&
+        sameJson(proposal.findings, args.findings) &&
+        sameJson(proposal.opportunities, args.opportunities) &&
+        sameJson(proposal.constraints, args.constraints) &&
+        sameJson(proposal.openQuestions, args.openQuestions);
+    case "designDefinition":
+      return proposal.type === "designDefinition" &&
+        proposal.title === args.title &&
+        proposal.summary === args.summary &&
+        proposal.projectGoal === args.projectGoal &&
+        sameJson(proposal.targetUsers, args.targetUsers) &&
+        sameJson(proposal.primaryScenarios, args.primaryScenarios) &&
+        proposal.coreProblem === args.coreProblem &&
+        sameJson(proposal.designPrinciples, args.designPrinciples) &&
+        sameJson(proposal.constraints, args.constraints) &&
+        sameJson(proposal.avoidDirections, args.avoidDirections) &&
+        sameJson(proposal.opportunities, args.opportunities) &&
+        sameJson(proposal.openQuestions, args.openQuestions) &&
+        proposal.changeNote === args.changeNote;
+    case "conceptDirection":
+      return proposal.type === "conceptDirection" &&
+        proposal.title === args.title &&
+        proposal.summary === args.summary &&
+        sameJson(proposal.directions, args.directions);
+  }
+}
+
+function sameJson(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }

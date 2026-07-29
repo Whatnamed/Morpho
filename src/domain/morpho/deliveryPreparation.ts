@@ -68,6 +68,7 @@ type DraftOperationResult =
       status: "updated";
       workspace: MorphoWorkspace;
       draftId: string;
+      recovered?: boolean;
     }
   | {
       status: "blocked";
@@ -830,6 +831,8 @@ export function createDeliverySectionDraft(
     narrative: string;
     captions: Array<{ referenceId: DeliveryReferenceId; caption: string }>;
     suggestedGaps: Array<{ label: string }>;
+    /** Stable replay identity supplied by A+ Tool execution. */
+    draftId?: string;
     now?: string;
   }
 ): DraftOperationResult {
@@ -859,7 +862,22 @@ export function createDeliverySectionDraft(
   }
 
   const now = input.now ?? new Date().toISOString();
-  const draftId = nextAvailableId(workspace.deliverySectionDrafts, `delivery-draft-${target.id}-${section.id}-${input.assistantMessageId}`);
+  const draftId = input.draftId?.trim() || nextAvailableId(
+    workspace.deliverySectionDrafts,
+    `delivery-draft-${target.id}-${section.id}-${input.assistantMessageId}`
+  );
+  const existing = workspace.deliverySectionDrafts[draftId];
+  if (existing) {
+    if (
+      existing.deliveryObjectId !== target.id ||
+      existing.sectionId !== section.id ||
+      existing.userMessageId !== input.userMessageId ||
+      existing.assistantMessageId !== input.assistantMessageId
+    ) {
+      return { status: "blocked", workspace, reason: "交付章节草案的稳定操作身份已经被其他草案占用。" };
+    }
+    return { status: "updated", workspace, draftId, recovered: true };
+  }
   const draft: DeliverySectionDraft = {
     id: draftId,
     deliveryObjectId: target.id,
