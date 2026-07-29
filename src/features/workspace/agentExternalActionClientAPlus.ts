@@ -30,6 +30,35 @@ export type APlusExternalActionDescriptor = Readonly<{
   requestHash: string;
 }>;
 
+export type APlusRestoredImageActionDescriptor = Readonly<
+  APlusExternalActionDescriptor & { callId?: string }
+>;
+
+export function createAPlusImageRestoredActionCursor(
+  restoredAction: APlusRestoredImageActionDescriptor | undefined
+): Readonly<{
+  hasPending: () => boolean;
+  match: (parentActionId: string, childActionId: string) => APlusRestoredImageActionDescriptor | undefined;
+  consumeAfterLocalCommit: (parentActionId: string, childActionId: string) => boolean;
+}> {
+  let pending = restoredAction;
+  const matches = (parentActionId: string, childActionId: string) =>
+    pending?.actionKind === "image" &&
+    pending.actionId === childActionId &&
+    pending.callId === parentActionId;
+
+  return {
+    hasPending: () => pending !== undefined,
+    match: (parentActionId, childActionId) =>
+      matches(parentActionId, childActionId) ? pending : undefined,
+    consumeAfterLocalCommit: (parentActionId, childActionId) => {
+      if (!matches(parentActionId, childActionId)) return false;
+      pending = undefined;
+      return true;
+    }
+  };
+}
+
 export class APlusExternalActionRunningError extends Error {
   readonly code = "external_action_running" as const;
   readonly status = "running" as const;

@@ -234,12 +234,14 @@ import {
   buildAPlusImageBatchIdentity,
   buildAPlusImageChildActionId,
   classifyAPlusImageResponse,
+  createAPlusImageRestoredActionCursor,
   createAPlusExternalActionRunningError,
   findAPlusImageResultObjectId,
   hashAPlusExternalActionBody,
   isAPlusExternalActionRunningError,
   postAPlusExternalAction,
-  type APlusExternalActionDescriptor
+  type APlusExternalActionDescriptor,
+  type APlusRestoredImageActionDescriptor
 } from "./agentExternalActionClientAPlus";
 import {
   acknowledgeSelectedPendingAgentConfirmation,
@@ -1283,7 +1285,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         stepSequence: number;
         actionId: string;
       }>;
-      restoredExternalAction?: Readonly<APlusExternalActionDescriptor & { callId?: string }>;
+      restoredExternalAction?: APlusRestoredImageActionDescriptor;
       onExternalActionIntent?: (input: Readonly<{
         actionId: string;
         action: APlusExternalActionDescriptor;
@@ -1393,6 +1395,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       let lastProviderTaskId: string | undefined;
       const createdObjectIds: string[] = [];
       const failedItems: string[] = [];
+      const restoredActionCursor = createAPlusImageRestoredActionCursor(input.restoredExternalAction);
       const totalItems = validatedPlan.plan.items.length;
       let completedCount = 0;
       let inFlightCount = 0;
@@ -1410,7 +1413,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         input.onProgress?.(message);
       };
 
-      type AgentItemResult =
+      type AgentItemResult = Readonly<{ aPlusActionId?: string }> & (
         | {
             status: "existing";
             index: number;
@@ -1430,7 +1433,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             index: number;
             item: (typeof validatedPlan.plan.items)[number];
             reason: string;
-          };
+          }
+      );
 
       const applyAgentItemResult = async (result: AgentItemResult) => {
         if (result.status === "existing") {
@@ -1517,6 +1521,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         setPendingImageGenerationSlots((current) =>
           removePendingImageGenerationSlot(current, operationId, result.item.id)
         );
+        if (input.aPlusExternalAction && result.aPlusActionId) {
+          restoredActionCursor.consumeAfterLocalCommit(
+            input.aPlusExternalAction.actionId,
+            result.aPlusActionId
+          );
+        }
       };
 
       try {
@@ -1538,19 +1548,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 status: "existing",
                 index: itemIndex,
                 item,
+                aPlusActionId,
                 objectId: existingObjectId
               };
             }
             inFlightCount += 1;
             publishProgress();
             try {
-              const restoredAction = input.aPlusExternalAction && aPlusActionId &&
-                input.restoredExternalAction?.actionKind === "image" &&
-                input.restoredExternalAction.actionId === aPlusActionId &&
-                input.restoredExternalAction.callId === input.aPlusExternalAction.actionId
-                ? input.restoredExternalAction
+              const restoredAction = input.aPlusExternalAction && aPlusActionId
+                ? restoredActionCursor.match(input.aPlusExternalAction.actionId, aPlusActionId)
                 : undefined;
-              if (input.restoredExternalAction && !restoredAction) {
+              if (restoredActionCursor.hasPending() && !restoredAction) {
                 throw aPlusExternalActionPayloadError(
                   "A+ Image 的持久化 Action 不属于当前恢复的 Image 项，不能重新构造请求。"
                 );
@@ -1677,6 +1685,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 status: "ok",
                 index: itemIndex,
                 item,
+                aPlusActionId,
                 asset: saved.asset,
                 sourceObjectIds: referenceImages.sourceObjectIds,
                 providerTaskId
@@ -1692,7 +1701,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 throw itemError;
               }
               const reason = itemError instanceof Error ? itemError.message : "图像生成失败";
-              return { status: "failed", index: itemIndex, item, reason };
+              return { status: "failed", index: itemIndex, item, aPlusActionId, reason };
             } finally {
               inFlightCount = Math.max(0, inFlightCount - 1);
               completedCount += 1;

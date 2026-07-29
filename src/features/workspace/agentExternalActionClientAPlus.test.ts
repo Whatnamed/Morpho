@@ -5,6 +5,7 @@ import {
   buildAPlusImageBatchIdentity,
   buildAPlusImageChildActionId,
   classifyAPlusImageResponse,
+  createAPlusImageRestoredActionCursor,
   findAPlusImageResultObjectId,
   hashAPlusExternalActionBody,
   isAPlusExternalActionRunningError,
@@ -62,6 +63,79 @@ describe("A+ External Action client", () => {
 
     expect(findAPlusImageResultObjectId(restored, clientRequestId)).toBe(image.id);
     expect(findAPlusImageResultObjectId(restored, "different-request")).toBeUndefined();
+  });
+
+  it("consumes one restored image child only after its Workspace result is committed, then advances", async () => {
+    const parentActionId = "call-image-batch";
+    const batch = await buildAPlusImageBatchIdentity(identity.serverTurnId, parentActionId);
+    const [actionA, actionB, actionC] = await Promise.all(
+      ["item-a", "item-b", "item-c"].map((itemId) =>
+        buildAPlusImageChildActionId(parentActionId, itemId)
+      )
+    );
+    const restoredBBody = JSON.stringify({ actionId: actionB, input: { prompt: "B" } });
+    const restoredB = {
+      actionId: actionB!,
+      actionKind: "image" as const,
+      callId: parentActionId,
+      requestBody: restoredBBody,
+      requestHash: await hashAPlusExternalActionBody(restoredBBody)
+    };
+    const cursor = createAPlusImageRestoredActionCursor(restoredB);
+    let workspace = createTestWorkspace();
+    const template = Object.values(workspace.objects).find((object) => object.type === "image");
+    if (!template || template.type !== "image") throw new Error("Fixture 缺少 image object。");
+    const persistImageResult = (itemId: string) => {
+      const objectId = `image-recovered-${itemId}`;
+      workspace = {
+        ...workspace,
+        objects: {
+          ...workspace.objects,
+          [objectId]: {
+            ...template,
+            id: objectId,
+            generation: {
+              modelId: "test-image-model",
+              modelLabel: "Test Image Model",
+              aspectRatio: "1:1",
+              prompt: itemId,
+              referenceObjectIds: [],
+              clientRequestId: `${batch.clientRequestId}-${itemId}`,
+              createdAt: "2026-07-29T00:00:00.000Z"
+            }
+          }
+        }
+      };
+    };
+
+    persistImageResult("item-a");
+    expect(findAPlusImageResultObjectId(workspace, `${batch.clientRequestId}-item-a`)).toBeDefined();
+    expect(cursor.consumeAfterLocalCommit(parentActionId, actionA!)).toBe(false);
+    expect(cursor.match(parentActionId, actionB!)).toBe(restoredB);
+
+    persistImageResult("item-b");
+    expect(cursor.consumeAfterLocalCommit(parentActionId, actionB!)).toBe(true);
+    expect(cursor.hasPending()).toBe(false);
+    expect(cursor.match(parentActionId, actionC!)).toBeUndefined();
+
+    const freshCBody = JSON.stringify({ actionId: actionC, input: { prompt: "C" } });
+    const persistedActions = [{
+      actionId: actionC!,
+      requestHash: await hashAPlusExternalActionBody(freshCBody)
+    }];
+    persistImageResult("item-c");
+    expect(persistedActions).toEqual([{
+      actionId: actionC,
+      requestHash: await hashAPlusExternalActionBody(freshCBody)
+    }]);
+    expect(persistedActions[0]?.requestHash).not.toBe(restoredB.requestHash);
+    expect(["item-a", "item-b", "item-c"].map((itemId) =>
+      findAPlusImageResultObjectId(workspace, `${batch.clientRequestId}-${itemId}`)
+    )).toEqual([
+      "image-recovered-item-a",
+      "image-recovered-item-b",
+      "image-recovered-item-c"
+    ]);
   });
 
   it("polls a running Search only by replaying the exact same action identity and body", async () => {
