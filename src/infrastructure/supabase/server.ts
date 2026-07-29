@@ -91,7 +91,7 @@ export async function clearProxySupabaseAuthCookies(
       path: "/",
       sameSite: "lax",
       httpOnly: false,
-      secure: isSecureProxyRequest(request)
+      secure: true
     }
   ];
 
@@ -105,16 +105,6 @@ export async function clearProxySupabaseAuthCookies(
   }
 
   copySupabaseAuthResponseHeaders(SUPABASE_AUTH_NO_CACHE_HEADERS, response.headers);
-}
-
-function isSecureProxyRequest(request: NextRequest): boolean {
-  const forwardedProtocol = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
-  return (
-    process.env.VERCEL === "1" ||
-    request.nextUrl.protocol === "https:" ||
-    new URL(request.url).protocol === "https:" ||
-    forwardedProtocol === "https"
-  );
 }
 
 export function getSupabaseAuthStorageKey(supabaseUrl: string): string {
