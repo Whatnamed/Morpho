@@ -772,7 +772,8 @@ Stage 4. The later independent audit accepted Stage 3 at the SHA recorded above.
 
 ### Stage 4 — Cutover and Deletion
 
-Stage 4 is implemented on `refactor/agent-runtime-a-plus` and awaits final independent audit:
+Stage 4 is implemented on `refactor/agent-runtime-a-plus` and awaits final independent re-audit after
+the release-gate and neutral Provider cache-hint revision:
 
 - `WorkspaceClient.tsx` calls the canonical `agentTurnRunner.ts` directly. The Selector,
   `NEXT_PUBLIC_MORPHO_AGENT_RUNTIME`, and both old public Runner names are gone.
@@ -787,6 +788,17 @@ Stage 4 is implemented on `refactor/agent-runtime-a-plus` and awaits final indep
 - `20260729190000_remove_agent_runtime_b_proofs.sql` is the forward-only cleanup Migration. It drops
   only B Lease RPCs and `private.ai_agent_turn_leases`; it does not modify migration history or the
   A+ Turn/Request/External Action Journal. It is checked in but was not applied remotely by Stage 4.
+- Remote database release is explicitly split into Phase A (the exact accepted Stage 3 checkout
+  applies only the two additive A+ Journal Migrations), Phase B (the sole A+ application passes
+  authenticated no-cost create/query and fail-closed checks), and Phase C (the Stage 4 checkout
+  applies only the irreversible B cleanup). A current Stage 4 `db push` must never be used as a
+  shortcut for Phase A.
+- Optional Provider Prompt Cache Hints are restored as neutral server-generated performance
+  partitions for A+, independent Chat, and Compaction. Their opaque keys cover authenticated user,
+  local project where applicable, model, Prompt Contract, Tool Profile, and stable system prefix;
+  optional retention is emitted only for an explicitly supported capability. The actual hint fields
+  enter the exact external request/action hash. They do not prove identity, project ownership,
+  client data, replay safety, external completion, or cache hit.
 - Architecture tests assert one reachable Runtime, absence of B routes/protocols/flags, preservation
   of A+ and independent AI routes, and the one-way Workspace compatibility boundary. Migration tests
   assert the cleanup cannot drop A+ journal objects.

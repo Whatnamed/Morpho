@@ -887,3 +887,35 @@ Boundary: `archive/agent-runtime-b` and
 in this ledger as historical records and are superseded only for current implementation authority.
 Stage 4 does not merge `main`, move archive refs, apply a remote Migration, change deployment
 environment variables, or call paid Providers.
+
+## 2026-07-29: Separate A+ Database Release Phases and Restore Neutral Cache Hints
+
+Decision: The A+ database release is a three-phase operator gate. Phase A uses the exact independently
+accepted Stage 3 commit `4c52cc5cfa7db5fcdcbf1765acfd8795c6e1f1dc` in a detached release worktree,
+so `supabase db push --dry-run --linked` and the authorized push can contain only the two additive
+Turn/Request and External Action Journal Migrations. Phase B deploys the sole A+ application and must
+pass authenticated no-cost Turn create/query plus missing-Provider fail-closed checks before any B
+database object is removed. Phase C runs from the clean audited Stage 4 release checkout and may apply
+only `20260729190000_remove_agent_runtime_b_proofs.sql`. Phase C is the irreversible database rollback
+boundary. Morpho never simulates a target version by editing the remote migration ledger, copying SQL,
+or modifying an applied Migration.
+
+Decision: Optional Provider Prompt Cache Hints are server-generated neutral performance partitions.
+When the configured relay explicitly supports them, the opaque key covers authenticated user, the
+client-supplied local project ID where applicable, model, Prompt Contract, Tool Profile, and stable
+system prefix; optional `24h` retention is sent only when that capability is enabled. The actual hint
+fields enter the A+ external Request Hash and Compaction Action Hash. Independent Chat rebuilds the
+same server hint for its image-to-text fallback. Disabled mode adds no fields, and the existing
+Provider compatibility retry strips unsupported fields after an eligible `400`.
+
+Reason: A Stage 4 checkout contains both additive A+ contracts and destructive B cleanup, while the
+Supabase CLI pushes all pending local Migrations rather than offering an upper target version. A
+single push would erase the coexistence window needed to prove the sole A+ deployment against the
+real Journal. Cache settings had the opposite defect: environment variables advertised an opt-in
+capability, but no current A+/Chat caller generated the fields, so configuration could not affect
+runtime behavior.
+
+Boundary: A Provider cache key is not authentication, project ownership, request idempotency, cache-
+hit proof, or Server External Execution Status. Cache miss and the one-time unsupported-field fallback
+do not change local or server authority. This revision does not apply a remote Migration, deploy an
+application, call a paid Provider, merge `main`, move archive refs, or authorize Phase A/B/C.

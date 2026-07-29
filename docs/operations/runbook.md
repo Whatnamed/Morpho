@@ -77,7 +77,7 @@ AiJWS text behavior:
 - selected parsed file objects can also send bounded local `documentExtract` text to AiJWS for visual planning when `taskMode === "imageGeneration"` and the current task context authorizes them;
 - when `MORPHO_AI_WEB_SEARCH_ENABLED=true`, chat/research requests may provide provider web-search tooling where supported. Image generation never receives web search tools;
 - source links are shown only when the provider returns citation/annotation fields.
-- prompt cache fields stay disabled by default. Enable `MORPHO_AI_SUPPORTS_PROMPT_CACHE_KEY`, `MORPHO_AI_SUPPORTS_PROMPT_CACHE_RETENTION`, and the explicit key flag only after the current relay has passed the compatibility probe; a cache miss never changes Agent correctness.
+- Provider Prompt Cache Hints stay disabled by default. After the current relay passes a compatibility probe, enable only the capabilities it actually supports and use `MORPHO_AI_PROMPT_CACHE_KEY_ENABLED=true` to opt into the opaque server-generated partition key. `24h` retention is sent only when both retention support and `MORPHO_AI_PROMPT_CACHE_RETENTION=24h` are configured. These fields are performance hints, not identity, project ownership, idempotency, cache-hit, or execution proofs; a cache miss never changes correctness.
 - each formal Agent user turn persists an immutable provider-visible input snapshot without keys, raw provider responses, cost data, or image Base64; old snapshots are replayed before current workspace state, while legacy input, image input, unavailable document snapshots, tool-profile changes, prompt-contract changes, and compaction are explicit cache boundaries;
 - provider-only Context Frames use persisted `sequence` / `placement`; post-tool state stays after its initiating user on replay, and one active Summary Frame is retained per summary revision;
 - the client and server share `src/shared/providerInputBudget.ts`, including active frames and tools in the 256k / 80% / 90% budget while keeping the 16k response reserve separate; prepare does not drop valid history;
@@ -220,19 +220,11 @@ transient settlement failure at most twice after the initial attempt; exhausted 
 is not proof of external success or failure, so later query/replay performs the deadline-based
 convergence.
 
-Do not treat the checked-in file as proof that a remote database has been migrated. On an
-authorized PowerShell 7 machine, verify the CLI identity and intended project before applying it:
-
-```powershell
-supabase --version
-supabase projects list
-supabase link --project-ref <verified-project-ref>
-Get-Content supabase/.temp/project-ref
-supabase migration list
-supabase db push --dry-run
-supabase db push
-supabase migration list
-```
+Do not treat the checked-in file as proof that a remote database has been migrated. Do not run
+`supabase db push` from the current Stage 4 checkout to deploy only this Migration: that checkout
+also contains the later External Action Journal and irreversible B cleanup. Use Phase A in
+"Agent Runtime A+ Migration Verification" below, which pins the independently accepted Stage 3
+release checkout and dry-runs the complete additive pair before any remote write.
 
 Before editing this migration in place or deploying the Stage 2 revision, inspect the verified
 remote migration list. If `20260729012105` has never been applied, the checked-in migration remains
@@ -301,24 +293,13 @@ Migration. In particular, do not modify or reapply
 contract, create a new later forward-only Migration. Do not delete a remote Migration row, reset the
 database, or paste unrelated SQL to make local and remote histories appear equal.
 
-This Stage 3 implementation does **not** apply either Migration remotely. On an explicitly
-authorized PowerShell 7 operator machine, verify identity, target, order, and dry-run output first:
-
-```powershell
-supabase --version
-supabase projects list
-supabase link --project-ref <verified-project-ref>
-Get-Content supabase/.temp/project-ref
-supabase migration list
-supabase db push --dry-run
-supabase db push
-supabase migration list
-```
-
-Stop before `db push` if the CLI is unauthenticated, the linked project ref is not independently
-verified, the Stage 2 Migration is absent/out of order, or the dry run contains anything outside the
-intended forward sequence. A checked-in SQL file or successful static test is not evidence that a
-remote database has been upgraded.
+This Stage 3 implementation did **not** apply either Migration remotely. The current Stage 4
+checkout also contains the later irreversible cleanup, so it is not a safe source for an additive-
+only `db push`. Follow Phase A in "Agent Runtime A+ Migration Verification" below. Stop before any
+remote write if the CLI is unauthenticated, the linked ref is not independently verified, the Stage
+2 Migration is absent/out of order, or the dry run contains anything outside the two intended
+additive files. A checked-in SQL file or successful static test is not evidence that a remote
+database has been upgraded.
 
 After an authorized application, verify the private tables, RLS, routine security, and grants in the
 Supabase SQL editor:
@@ -672,7 +653,8 @@ The current code does not include:
 
 ## Agent Runtime A+ Migration Verification
 
-The current forward-only A+ migration order is fixed:
+The current forward-only A+ migration order is fixed, but it must be released in three separately
+authorized phases:
 
 ```text
 supabase/migrations/20260729012105_add_agent_turn_journal.sql
@@ -680,35 +662,193 @@ supabase/migrations/20260729093000_add_agent_turn_external_actions.sql
 supabase/migrations/20260729190000_remove_agent_runtime_b_proofs.sql
 ```
 
-Stage 4 did not apply these files remotely. On an authorized operator machine, use PowerShell 7 and
-verify the CLI, account, intended project, linked project ref, migration history, and dry-run before
-changing a remote database:
+Stage 4 did not apply any of these files remotely. Supabase CLI `db push` applies every pending local
+Migration and has no supported "stop at this version" option. Therefore Phase A uses the exact
+independently accepted Stage 3 commit, which contains the two additive A+ Migrations but not the
+cleanup. This is a release checkout, not a manual SQL copy and not a modified migration ledger. The
+command shape below matches the official
+[Supabase CLI `db push` interface](https://supabase.com/docs/reference/cli/supabase-db-push)
+for `--linked` and `--dry-run`; use a currently supported CLI version on the authorized operator
+machine.
+
+### Phase A — additive A+ database contract only
+
+From a clean repository checkout in PowerShell 7:
 
 ```powershell
+$ErrorActionPreference = 'Stop'
+$stage3Release = '4c52cc5cfa7db5fcdcbf1765acfd8795c6e1f1dc'
+$repo = (Resolve-Path .).Path
+$phaseA = Join-Path (Split-Path $repo -Parent) 'Morpho-db-phase-a'
+$projectRef = '<independently-verified-project-ref>'
+
+if (Test-Path -LiteralPath $phaseA) { throw "Phase A worktree already exists: $phaseA" }
+git cat-file -e "$stage3Release^{commit}"
+git worktree add --detach $phaseA $stage3Release
+Set-Location $phaseA
+if (git status --short) { throw 'Phase A checkout is not clean.' }
+
+$additive = @(
+  'supabase/migrations/20260729012105_add_agent_turn_journal.sql',
+  'supabase/migrations/20260729093000_add_agent_turn_external_actions.sql'
+)
+$additive | ForEach-Object { if (-not (Test-Path -LiteralPath $_)) { throw "Missing $_" } }
+if (Test-Path -LiteralPath 'supabase/migrations/20260729190000_remove_agent_runtime_b_proofs.sql') {
+  throw 'Cleanup Migration must not exist in the Phase A release checkout.'
+}
+
 supabase --version
-supabase status
 supabase projects list
-Get-Content supabase/.temp/project-ref
-supabase migration list
-supabase db push --dry-run
+supabase link --project-ref $projectRef
+if ((Get-Content -LiteralPath 'supabase/.temp/project-ref' -Raw).Trim() -ne $projectRef) {
+  throw 'Linked Supabase project does not match the independently verified ref.'
+}
+supabase migration list --linked
+supabase db push --dry-run --linked
 ```
 
-The dry run must target the independently verified project and list only expected pending files in
-filename order. If the CLI is unavailable, authentication is missing, the project identity cannot be
-matched, or unrelated migrations appear, stop. Do not edit historical migrations, paste credentials,
-or apply the Stage 4 cleanup manually out of order. Only after a separate deployment authorization:
+Expected dry-run result: exactly
+`20260729012105_add_agent_turn_journal.sql` followed by
+`20260729093000_add_agent_turn_external_actions.sql`. If it lists an older B Migration, the cleanup
+Migration, any unrelated file, or nothing when the A+ tables are not independently known to exist,
+stop and investigate the remote history. After a separate Phase A authorization:
 
 ```powershell
-supabase db push
-supabase migration list
+supabase db push --linked
+supabase migration list --linked
 ```
 
-After application, an authorized administrative query should confirm that
-`private.agent_turn_journal`, `private.agent_turn_request_journal`, and
-`private.agent_turn_external_action_journal` remain present with RLS and no direct client grants.
-The retired `private.ai_agent_turn_leases` table and B Lease/Closure RPC names must be absent. The
-A+ RPCs remain `SECURITY DEFINER`, use fixed empty `search_path`, derive identity from `auth.uid()`,
-and grant execution only to `authenticated`.
+Verify both additive versions are recorded, then run the Stage 2/3 SQL checks above. All A+ Journal
+tables must exist with RLS and no direct `public`, `anon`, or `authenticated` table grants; A+ RPCs
+must remain `SECURITY DEFINER`, use fixed empty `search_path`, derive identity from `auth.uid()`, and
+grant execution only to `authenticated`. The B Lease table/RPCs must still exist at this phase, and
+the currently deployed B production Runtime must still pass its existing no-cost smoke checks.
+
+Return to the original checkout before removing the disposable release worktree:
+
+```powershell
+Set-Location $repo
+git worktree remove $phaseA
+```
+
+### Phase B — sole A+ application deployment and no-cost health checks
+
+Deploy the audited Stage 4 application only after Phase A passes. First use an authenticated preview
+or staging deployment with `MORPHO_AI_API_KEY` and image Provider keys absent. In the same-origin
+browser DevTools console, with a real authenticated session, create and query a Turn without invoking
+a Provider:
+
+```javascript
+const localProjectId = `health-${crypto.randomUUID()}`;
+const creationIdempotencyKey = `health-${crypto.randomUUID()}`;
+const created = await fetch('/api/ai/agent/turns', {
+  method: 'POST',
+  credentials: 'include',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ localProjectId, creationIdempotencyKey })
+}).then(async (response) => ({ status: response.status, body: await response.json() }));
+if (created.status !== 200 || created.body.status !== 'created') throw created;
+
+const queried = await fetch(
+  `/api/ai/agent/turns/${created.body.serverTurnId}?localProjectId=${encodeURIComponent(localProjectId)}`,
+  { credentials: 'include' }
+).then(async (response) => ({ status: response.status, body: await response.json() }));
+if (queried.status !== 200 || queried.body.status !== 'created') throw queried;
+```
+
+Then POST one syntactically valid A+ Provider Request to that Turn. With Provider keys intentionally
+absent it must return `503` with `code = provider_unavailable`; the Journal must remain `created`, all
+external counters must remain zero, and deployment logs must show no Provider, Search, or Image call.
+Do not add a key merely to make this health check pass. Also verify:
+
+```javascript
+const requestId = `health-request-${crypto.randomUUID()}`;
+const unavailable = await fetch(
+  `/api/ai/agent/turns/${created.body.serverTurnId}/requests`,
+  {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      localProjectId,
+      requestId,
+      stepSequence: 1,
+      providerRequest: {
+        input: [{
+          role: 'user',
+          content: [{ type: 'input_text', text: 'No-cost deployment health check.' }]
+        }],
+        promptContractVersion: 'morpho-agent-v3.3-2026-07-24',
+        mode: 'auto',
+        capabilityIntent: { comparisonAnalysis: false }
+      }
+    })
+  }
+).then(async (response) => ({ status: response.status, body: await response.json() }));
+if (unavailable.status !== 503 || unavailable.body.code !== 'provider_unavailable') {
+  throw unavailable;
+}
+
+const afterFailClosed = await fetch(
+  `/api/ai/agent/turns/${created.body.serverTurnId}?localProjectId=${encodeURIComponent(localProjectId)}`,
+  { credentials: 'include' }
+).then((response) => response.json());
+if (
+  afterFailClosed.status !== 'created' ||
+  afterFailClosed.counters.provider !== 0 ||
+  afterFailClosed.counters.webSearch !== 0 ||
+  afterFailClosed.counters.image !== 0
+) throw afterFailClosed;
+```
+
+Also verify:
+
+- the formal workspace has no Runtime selector and uses only `/api/ai/agent/turns/**`;
+- retired B HTTP resources return `404` and application logs contain no calls to B Lease/Closure RPCs;
+- create/query logs contain no `journal_contract_missing`, missing-table, missing-function, RLS, or
+  grant errors;
+- the normal authenticated application can open, persist, and reload a browser-local project without
+  server-side project registration.
+
+Only after these checks pass may the separately configured production deployment receive normal
+Provider credentials. A paid Provider smoke is a distinct explicit authorization and is not required
+for this database cutover gate.
+
+### Phase C — irreversible B database cleanup
+
+Phase C is a separate authorization after the sole A+ deployment has remained healthy for the agreed
+validation window. Use the clean audited Stage 4 release checkout, not the Stage 3 Phase A worktree:
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$projectRef = '<independently-verified-project-ref>'
+if (git status --short) { throw 'Stage 4 release checkout is not clean.' }
+git rev-parse HEAD
+supabase --version
+supabase projects list
+supabase link --project-ref $projectRef
+if ((Get-Content -LiteralPath 'supabase/.temp/project-ref' -Raw).Trim() -ne $projectRef) {
+  throw 'Linked Supabase project does not match the independently verified ref.'
+}
+supabase migration list --linked
+supabase db push --dry-run --linked
+```
+
+Expected dry-run result: exactly
+`20260729190000_remove_agent_runtime_b_proofs.sql`. If either additive Migration is still pending,
+anything unrelated appears, or the release SHA is not the audited SHA recorded for this deployment,
+stop. After a separate Phase C authorization:
+
+```powershell
+supabase db push --linked
+supabase migration list --linked
+```
+
+Re-run the A+ table/RLS/RPC/grant checks and the authenticated create/query health check. The retired
+`private.ai_agent_turn_leases` table and B Lease/Closure RPC names must now be absent while all A+
+Journal objects remain. This cleanup is the irreversible database rollback boundary: after Phase C,
+rollback means deploying a new forward Migration and an explicitly audited application strategy;
+do not restore B by deleting migration history, editing an applied file, or pasting old SQL manually.
 
 ## Agent Runtime Validation
 
