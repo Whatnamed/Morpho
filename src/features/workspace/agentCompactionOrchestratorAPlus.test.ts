@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { applyConversationSummaryRevision } from "@/domain/morpho/conversationCompaction";
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 import { createTestWorkspace } from "@/domain/morpho/workspace";
 import type { AgentTurnJournalSnapshot } from "@/shared/agentTurnJournalProtocol";
@@ -151,16 +152,23 @@ describe("A+ unified Compaction orchestrator", () => {
       coordinator: fixture.coordinator,
       host: fixture.host,
       localProjectId: "project-test",
-      force: true,
       signal: new AbortController().signal,
       restoredExternalAction: first.externalAction
     });
 
     expect(resumed.status).toBe("applied");
+    expect(fixture.requestBodies[1]).toBe(fixture.requestBodies[0]);
+    if (resumed.status !== "applied") throw new Error("Expected restored Compaction to apply.");
+    expect(fixture.host.readWorkspace().ai.conversationSummaryRevisions[resumed.revisionId])
+      .toMatchObject({
+        sourceStartMessageId: "u1",
+        sourceEndMessageId: "a1",
+        estimatedInputTokens: first.externalAction.compactionApplyBoundary?.estimatedInputTokens
+      });
     expect(fixture.coordinator.getLifecycleSnapshot()?.phase).toBe("requestingProvider");
   });
 
-  it("keeps Compaction ambiguous after acquire and replays the exact body once", async () => {
+  it("rejects a restored Summary when an original source message changed", async () => {
     const fixture = await createFixture({ ambiguousOnce: true });
     const order: string[] = [];
     let persistedAction: APlusExternalActionDescriptor | undefined;
@@ -215,10 +223,117 @@ describe("A+ unified Compaction orchestrator", () => {
       restoredExternalAction: persistedAction
     });
 
-    expect(resumed.status).toBe("applied");
+    expect(resumed).toMatchObject({
+      status: "failed",
+      code: "compaction_source_changed"
+    });
+    expect(Object.keys(fixture.host.readWorkspace().ai.conversationSummaryRevisions)).toHaveLength(0);
     expect(fixture.externalExecutionCount).toBe(1);
     expect(fixture.requestBodies).toHaveLength(2);
     expect(fixture.requestBodies[0]).toBe(fixture.requestBodies[1]);
+  });
+
+  it("applies the original source range and preserves append-only tail messages", async () => {
+    const fixture = await createFixture({ ambiguousOnce: true });
+    let persistedAction: APlusExternalActionDescriptor | undefined;
+    const first = await runAgentCompactionAPlus({
+      mode: "automatic",
+      actionId: "compact:automatic:append-tail",
+      coordinator: fixture.coordinator,
+      host: fixture.host,
+      localProjectId: "project-test",
+      force: true,
+      signal: new AbortController().signal,
+      onExternalActionIntent: (action) => {
+        persistedAction = action;
+        return true;
+      }
+    });
+    expect(first.status).toBe("running");
+    if (!persistedAction) throw new Error("Expected the Compaction descriptor to persist before fetch.");
+    fixture.host.commitWorkspace((current) => ({
+      workspace: {
+        ...current,
+        ai: {
+          ...current.ai,
+          messages: [
+            ...current.ai.messages,
+            { id: "u3", role: "user", body: "追加问题", createdAt: "2026-07-29T00:00:04.000Z" },
+            { id: "a3", role: "assistant", body: "追加回答", status: "done", createdAt: "2026-07-29T00:00:05.000Z" }
+          ]
+        }
+      },
+      value: undefined
+    }));
+
+    const resumed = await runAgentCompactionAPlus({
+      mode: "automatic",
+      actionId: "compact:automatic:append-tail",
+      coordinator: fixture.coordinator,
+      host: fixture.host,
+      localProjectId: "project-test",
+      signal: new AbortController().signal,
+      restoredExternalAction: persistedAction
+    });
+
+    expect(resumed.status).toBe("applied");
+    if (resumed.status !== "applied") throw new Error("Expected append-only recovery to apply.");
+    const workspace = fixture.host.readWorkspace();
+    expect(workspace.ai.messages.map((message) => message.id)).toEqual([
+      "u1", "a1", "u2", "a2", "u3", "a3"
+    ]);
+    expect(workspace.ai.conversationSummaryRevisions[resumed.revisionId]).toMatchObject({
+      sourceStartMessageId: "u1",
+      sourceEndMessageId: "a1",
+      sourceMessageCount: 2
+    });
+    expect(fixture.requestBodies[1]).toBe(fixture.requestBodies[0]);
+  });
+
+  it("rejects a restored Summary when the base Summary Revision changed", async () => {
+    const fixture = await createFixture({ ambiguousOnce: true });
+    let persistedAction: APlusExternalActionDescriptor | undefined;
+    const first = await runAgentCompactionAPlus({
+      mode: "automatic",
+      actionId: "compact:automatic:revision-conflict",
+      coordinator: fixture.coordinator,
+      host: fixture.host,
+      localProjectId: "project-test",
+      force: true,
+      signal: new AbortController().signal,
+      onExternalActionIntent: (action) => {
+        persistedAction = action;
+        return true;
+      }
+    });
+    expect(first.status).toBe("running");
+    if (!persistedAction) throw new Error("Expected the Compaction descriptor to persist before fetch.");
+    fixture.host.commitWorkspace((current) => {
+      const applied = applyConversationSummaryRevision(current, {
+        summary: summaryFixture(),
+        sourceMessageIds: ["u1", "a1"],
+        estimatedInputTokens: 10,
+        now: "2026-07-29T00:00:06.000Z"
+      });
+      if (applied.status !== "applied") throw new Error(applied.reason);
+      return { workspace: applied.workspace, value: undefined };
+    });
+
+    const resumed = await runAgentCompactionAPlus({
+      mode: "automatic",
+      actionId: "compact:automatic:revision-conflict",
+      coordinator: fixture.coordinator,
+      host: fixture.host,
+      localProjectId: "project-test",
+      signal: new AbortController().signal,
+      restoredExternalAction: persistedAction
+    });
+
+    expect(resumed).toMatchObject({
+      status: "failed",
+      code: "summary_revision_conflict"
+    });
+    expect(Object.keys(fixture.host.readWorkspace().ai.conversationSummaryRevisions)).toHaveLength(1);
   });
 });
 
@@ -332,6 +447,17 @@ function conversationWorkspace(): MorphoWorkspace {
         { id: "a2", role: "assistant", body: "保持 local-first。", status: "done", createdAt: "2026-07-29T00:00:03.000Z" }
       ]
     }
+  };
+}
+
+function summaryFixture() {
+  return {
+    threadGoal: "收敛产品方向",
+    establishedContext: ["项目保持连续画布"],
+    decisionsAndReasons: ["保留 local-first 边界"],
+    activeWork: ["验证 A+ Runtime"],
+    unresolvedQuestions: ["等待独立审计"],
+    referencedObjects: []
   };
 }
 

@@ -943,6 +943,9 @@ async function recordCompactionResult(
         actionKind: result.externalAction.actionKind,
         requestBody: result.externalAction.requestBody,
         requestHash: result.externalAction.requestHash,
+        ...(result.externalAction.compactionApplyBoundary
+          ? { compactionApplyBoundary: result.externalAction.compactionApplyBoundary }
+          : {}),
         lastObservedAt: new Date(session.host.now()).toISOString()
       }
     } : { pendingExternalAction: undefined })
@@ -977,6 +980,9 @@ async function persistExternalActionIntent(
       ...(callId ? { callId } : {}),
       requestBody: action.requestBody,
       requestHash: action.requestHash,
+      ...(action.compactionApplyBoundary
+        ? { compactionApplyBoundary: action.compactionApplyBoundary }
+        : {}),
       lastObservedAt: new Date(session.host.now()).toISOString()
     }
   }));

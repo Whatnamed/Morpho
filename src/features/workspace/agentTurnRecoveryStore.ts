@@ -11,11 +11,13 @@ import type {
   APlusAgentContinuationItem,
   APlusAgentProviderRequest
 } from "@/shared/agentTurnJournalProtocol";
+import { hashSourceMessageIds } from "@/shared/agentCompactionProtocol";
 import type { PendingAiConfirmation } from "./components/AiConversationPanel";
 import type { AgentTurnCoordinatorRecoverySnapshot } from "./agentTurnCoordinator";
 import type { AgentTurnCompactionMode } from "./agentTurnLifecycle";
 import type { MorphoAgentTurnMode } from "./morphoAgent";
 import type {
+  APlusCompactionApplyBoundary,
   APlusExternalActionKind,
   APlusExternalActionStatus
 } from "./agentExternalActionClientAPlus";
@@ -105,6 +107,7 @@ export type APlusTurnRecoveryMetadata = Readonly<{
     callId?: string;
     requestBody: string;
     requestHash: string;
+    compactionApplyBoundary?: APlusCompactionApplyBoundary;
     lastObservedAt: string;
   }>;
   toolExecutionIntents?: readonly Readonly<{
@@ -571,6 +574,7 @@ function isPersistedToolExecutionIntent(value: unknown): boolean {
 }
 
 function isPersistedExternalActionMetadata(value: unknown): boolean {
+  const applyBoundary = isRecord(value) ? value.compactionApplyBoundary : undefined;
   return isRecord(value) &&
     (value.status === "acquired" ||
       value.status === "running" ||
@@ -584,7 +588,30 @@ function isPersistedExternalActionMetadata(value: unknown): boolean {
     (value.callId === undefined || isIdentifier(value.callId)) &&
     typeof value.requestHash === "string" &&
     /^[0-9a-f]{64}$/.test(value.requestHash) &&
+    (applyBoundary === undefined || (
+      value.actionKind === "compaction" && isCompactionApplyBoundary(applyBoundary)
+    )) &&
     typeof value.lastObservedAt === "string";
+}
+
+function isCompactionApplyBoundary(value: unknown): value is APlusCompactionApplyBoundary {
+  if (!isRecord(value) ||
+    !isIdentifier(value.sourceStartMessageId) ||
+    !isIdentifier(value.sourceEndMessageId) ||
+    !Array.isArray(value.sourceMessageIds) ||
+    value.sourceMessageIds.length < 2 ||
+    value.sourceMessageIds.length > 128 ||
+    !value.sourceMessageIds.every(isIdentifier) ||
+    new Set(value.sourceMessageIds).size !== value.sourceMessageIds.length ||
+    value.sourceMessageIds[0] !== value.sourceStartMessageId ||
+    value.sourceMessageIds.at(-1) !== value.sourceEndMessageId ||
+    typeof value.sourceMessageIdsHash !== "string" ||
+    hashSourceMessageIds(value.sourceMessageIds) !== value.sourceMessageIdsHash ||
+    (value.expectedPreviousRevisionId !== undefined && !isIdentifier(value.expectedPreviousRevisionId)) ||
+    !Number.isSafeInteger(value.estimatedInputTokens) ||
+    (value.estimatedInputTokens as number) < 0
+  ) return false;
+  return true;
 }
 
 function isPersistedActiveRequest(value: unknown): value is PersistedActiveRequest {

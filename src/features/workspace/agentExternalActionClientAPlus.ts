@@ -14,6 +14,15 @@ export type APlusExternalActionStatus =
 
 export type APlusImageResponseKind = "running" | "payload" | "jsonError";
 
+export type APlusCompactionApplyBoundary = Readonly<{
+  sourceStartMessageId: string;
+  sourceEndMessageId: string;
+  sourceMessageIds: readonly string[];
+  sourceMessageIdsHash: string;
+  expectedPreviousRevisionId?: string;
+  estimatedInputTokens: number;
+}>;
+
 export function classifyAPlusImageResponse(
   status: number,
   contentType: string | null
@@ -28,6 +37,7 @@ export type APlusExternalActionDescriptor = Readonly<{
   actionKind: APlusExternalActionKind;
   requestBody: string;
   requestHash: string;
+  compactionApplyBoundary?: APlusCompactionApplyBoundary;
 }>;
 
 export type APlusRestoredImageActionDescriptor = Readonly<

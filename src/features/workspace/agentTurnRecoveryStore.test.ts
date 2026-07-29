@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { hashSourceMessageIds } from "@/shared/agentCompactionProtocol";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
+import { hashAPlusExternalActionBody } from "./agentExternalActionClientAPlus";
 import {
   createAgentTurnLifecycleState,
   reduceAgentTurnLifecycle
@@ -100,6 +102,52 @@ describe("A+ local Recovery Store", () => {
     await expect(fixture.store.load("project-test")).resolves.toEqual({
       status: "invalid",
       reason: "external_action_request_payload_unavailable: A+ External Action 原始请求 Body 缺失或校验失败。"
+    });
+  });
+
+  it("round-trips the client-only Compaction apply boundary with the exact request payload", async () => {
+    const fixture = createFixture();
+    const requestBody = JSON.stringify({
+      localProjectId: "project-test",
+      requestId: "request-1",
+      stepSequence: 1,
+      actionId: "compact:automatic:1",
+      mode: "automatic",
+      sourceStartMessageId: "u1",
+      sourceEndMessageId: "a1",
+      messages: [
+        { id: "u1", role: "user", body: "问题" },
+        { id: "a1", role: "assistant", body: "回答" }
+      ]
+    });
+    const sourceMessageIds = ["u1", "a1"];
+    const record: APlusTurnRecoveryRecord = {
+      ...recoveryRecord("exact request"),
+      metadata: {
+        ...recoveryRecord("exact request").metadata,
+        pendingExternalAction: {
+          status: "running",
+          actionId: "compact:automatic:1",
+          actionKind: "compaction",
+          requestBody,
+          requestHash: await hashAPlusExternalActionBody(requestBody),
+          compactionApplyBoundary: {
+            sourceStartMessageId: "u1",
+            sourceEndMessageId: "a1",
+            sourceMessageIds,
+            sourceMessageIdsHash: hashSourceMessageIds(sourceMessageIds),
+            estimatedInputTokens: 42
+          },
+          lastObservedAt: "2026-07-29T00:00:00.000Z"
+        }
+      }
+    };
+
+    await fixture.store.save(record);
+
+    await expect(fixture.store.load("project-test")).resolves.toEqual({
+      status: "ok",
+      record
     });
   });
 
