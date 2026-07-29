@@ -7,6 +7,7 @@ import {
   classifyAPlusImageResponse,
   findAPlusImageResultObjectId,
   hashAPlusExternalActionBody,
+  isAPlusExternalActionRunningError,
   postAPlusExternalAction,
   requestAgentWebSearchAPlus
 } from "./agentExternalActionClientAPlus";
@@ -136,13 +137,18 @@ describe("A+ External Action client", () => {
       signal: new AbortController().signal,
       waitForReplay: async () => undefined
     });
-    await expect(first).rejects.toMatchObject({
+    let firstError: unknown;
+    try {
+      await first;
+    } catch (error) {
+      firstError = error;
+    }
+    expect(firstError).toMatchObject({
       code: "external_action_running",
-      action: {
-        actionId: "call-search-ambiguous",
-        actionKind: "webSearch"
-      }
+      action: { actionId: "call-search-ambiguous", actionKind: "webSearch" }
     });
+    if (!isAPlusExternalActionRunningError(firstError)) throw new Error("Expected an ambiguous Search Action.");
+    expect(firstError.action.requestHash).toBe(await hashAPlusExternalActionBody(requestBodies[0]!));
 
     const second = await requestAgentWebSearchAPlus({
       fetch: fetchMock,
@@ -175,22 +181,26 @@ describe("A+ External Action client", () => {
       });
     });
 
-    await expect(postAPlusExternalAction({
-      fetch: fetchMock,
-      url: "/api/ai/agent/turns/turn/actions/image",
-      actionId: "image-action-ambiguous",
-      actionKind: "image",
-      requestBody,
-      signal: new AbortController().signal,
-      message: "图像任务请求响应丢失。"
-    })).rejects.toMatchObject({
-      code: "external_action_running",
-      action: {
+    let firstError: unknown;
+    try {
+      await postAPlusExternalAction({
+        fetch: fetchMock,
+        url: "/api/ai/agent/turns/turn/actions/image",
         actionId: "image-action-ambiguous",
         actionKind: "image",
-        requestBody
-      }
+        requestBody,
+        signal: new AbortController().signal,
+        message: "图像任务请求响应丢失。"
+      });
+    } catch (error) {
+      firstError = error;
+    }
+    expect(firstError).toMatchObject({
+      code: "external_action_running",
+      action: { actionId: "image-action-ambiguous", actionKind: "image", requestBody }
     });
+    if (!isAPlusExternalActionRunningError(firstError)) throw new Error("Expected an ambiguous Image Action.");
+    expect(firstError.action.requestHash).toBe(await hashAPlusExternalActionBody(requestBody));
     const replayed = await postAPlusExternalAction({
       fetch: fetchMock,
       url: "/api/ai/agent/turns/turn/actions/image",

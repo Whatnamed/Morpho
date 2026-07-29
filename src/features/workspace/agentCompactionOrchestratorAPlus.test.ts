@@ -4,6 +4,7 @@ import type { MorphoWorkspace } from "@/domain/morpho/types";
 import { createTestWorkspace } from "@/domain/morpho/workspace";
 import type { AgentTurnJournalSnapshot } from "@/shared/agentTurnJournalProtocol";
 import { runAgentCompactionAPlus } from "./agentCompactionOrchestratorAPlus";
+import { hashAPlusExternalActionBody } from "./agentExternalActionClientAPlus";
 import { AgentTurnCoordinator, type AgentTurnCoordinatorHost } from "./agentTurnCoordinator";
 import type { AgentTurnHost } from "./agentTurnHost";
 import { createAgentTurnHostFake } from "./agentTurnHostFake";
@@ -138,6 +139,8 @@ describe("A+ unified Compaction orchestrator", () => {
 
     expect(first.status).toBe("running");
     expect(fixture.coordinator.getLifecycleSnapshot()?.phase).toBe("compacting");
+    if (first.status !== "running") throw new Error("Expected an ambiguous Compaction Action.");
+    expect(first.externalAction.requestHash).toBe(await hashAPlusExternalActionBody(fixture.requestBodies[0]!));
 
     const resumed = await runAgentCompactionAPlus({
       mode: "automatic",
