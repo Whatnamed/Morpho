@@ -9,7 +9,7 @@
 
 > **v3.2 AI 连续性收口（2026-07-13）**：本轮明确替换“按阶段 / lane 截断聊天”“固定消息数 checkpoint”“项目记忆等于七份模型自由改写的 Markdown”“阶段记录等于 Continuity Events”“Agent 临场直写最终图片 Prompt”“UI 快捷数量等于能力上限”等旧理解。当前基线是一个连续 Agent 会话、Token 驱动自动压缩、来源驱动的项目记忆和阶段记录、统一任务策略，以及结构化视觉计划与确定性 Prompt 编译链。
 
-> **Milestone 3 工程补充（2026-06-25）**：AI Operation Runtime 是对 03 / 04 / 05 的工程实现补充，不覆盖既有产品规则。Operation 是受控、有限步骤的工作流，不是无限自主 Agent Loop；Proposal 必须经用户确认后才可成为正式领域对象。M3.2 中，chat / research 可使用真实选中图片输入和 provider web search；联网由模型在工具可用时判断是否需要，imageGeneration 永不启用联网工具。Citation 只来自 provider 返回的真实来源快照。正式面板当前统一走 `/api/ai/agent` Responses，旧 `/api/ai/chat` 仅保留兼容用途。
+> **Milestone 3 工程补充（2026-06-25，当前路由由 A+ 收口）**：AI Operation Runtime 是对 03 / 04 / 05 的工程实现补充，不覆盖既有产品规则。Operation 是受控、有限步骤的工作流，不是无限自主 Agent Loop；Proposal 必须经用户确认后才可成为正式领域对象。M3.2 中，chat / research 可使用真实选中图片输入和 provider web search；联网由模型在工具可用时判断是否需要，imageGeneration 永不启用联网工具。Citation 只来自 provider 返回的真实来源快照。正式面板当前统一走 `/api/ai/agent/turns/**` A+ Responses 资源；独立 `/api/ai/chat` 不服务正式面板。
 
 ---
 

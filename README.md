@@ -21,6 +21,7 @@ Morpho is an AI-assisted concept-development workspace for product and industria
 - Morpho 领域对象、画布实例、资产、项目 catalog、本地持久化和语义状态边界；
 - `schemaVersion: 15` 的 local-first 数据底座，包括隐藏、删除、淘汰、后续默认参考、交付稳定引用、安全迁移、IndexedDB 二进制资产、连续 AI 消息、Agent 过程、轻量 Operation / Proposal 状态、来源语义快照、关键结论、唯一当前有效设计定义、方向 create / revise / split / merge、方向内 VisualBranch、正式图片角色和可重建工作状态、连续会话压缩、项目记忆与阶段记录修订；
 - Supabase 仅保存账号身份、测试资格和 AI 每日额度；邮箱密码注册的测试用户自动成为 active tester，文本/生图额度为 `500 / 100`；
+- Workspace 正式使用唯一的 A+ Agent Runtime：客户端 Turn Lifecycle/Coordinator 汇总本地工具、确认与持久化结果，服务端 Turn Journal 只权威记录外部执行状态；不存在 Runtime Selector 或 B fallback；
 - 通过 AiJWS OpenAI-compatible 路径的服务端文本 AI route，支持普通文本、显式选中图片的视觉理解输入，以及受控 web search citation 事件；当前示例模型为 `gpt-5.6-terra`；
 - 服务端 GrsAI 图像生成 route，图像任务按意图自动分流模型（方向批量预览用 `nano-banana-2-lite`，视觉发展/迭代/定向修改/场景/细节及未知意图用 `gpt-image-2`）；`MORPHO_GRS_DEFAULT_MODEL` 仅为服务端默认与兼容回退，不代表所有图像任务固定使用该模型；成功结果会保存为新的本地资产和新的图像对象；当前链路支持参考图和图生图，也支持基于提示词的定向修改，但没有 mask/inpainting 参数，不承诺像素级局部锁定；
 - 当前正式环境已部署到 Vercel；Cloudflare/OpenNext 文件保留为备用能力，不是当前正式环境。
@@ -88,7 +89,12 @@ http://127.0.0.1:3000/projects/project-morpho-case-study
 
 Morpho 的正式 Agent 使用固定内部 Context Policy：`256000` window、`204800` prepare、`230400` compact、`16000` target uncompressed、独立的 `16000` response reserve。项目记忆的有界当前投影和当前任务阶段记录每轮通过 provider-only Context Frame 进入 Agent；稳定系统前缀不携带项目正文，完整历史、revision、来源细节和历史决定按需通过工具读取。Prompt cache key/retention 默认关闭，只有兼容性探针通过且显式开启时才发送；缓存未命中或 Provider 不返回 cached tokens 不影响正确性。生产环境不读取 `MORPHO_AI_CONTEXT_*` 阈值变量，客户端与服务端共享 `src/domain/morpho/agentContextPolicy.ts`；仅非生产浏览器验收可使用 localStorage override，验收后应删除。
 
-Provider transcript replay persists an immutable provider-visible input snapshot on each formal user turn. Replay prefers that snapshot over current selection, memory, document, or image state; old image pixels are not resent automatically, and legacy/document/image drift is reported as a cache boundary. Context Frames carry deterministic sequence and placement, so pre-turn state, user input, post-tool state, and assistant history retain causal order. Cache diagnostics distinguish `unavailable`, `miss`, `partialHit`, and `fullHit`; retention remains absent by default and only an explicit compatible `24h` value is forwarded.
+Formal user turns retain a bounded provider-visible input snapshot for product continuity, while
+Provider Context Frames carry deterministic sequence and placement for project state, turn scope,
+runtime configuration, and Summary Revisions. These are browser-local product data, not signed
+server proofs. Old image pixels are not resent automatically. Cache diagnostics distinguish
+`unavailable`, `miss`, `partialHit`, and `fullHit`; retention remains absent by default and only an
+explicit compatible `24h` value is forwarded.
 
 常用检查：
 

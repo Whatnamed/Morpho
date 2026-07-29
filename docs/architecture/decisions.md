@@ -855,3 +855,35 @@ Decision: A recovered A+ Compaction never rebuilds its Summary apply boundary fr
 Reason: A batch-wide immutable Image descriptor prevents safe progress after a restored middle child completes. Replaying a Compaction request while applying its Summary to a newly computed local Plan binds one external result to different source data. Treating the Image descriptor as a post-commit cursor and the Compaction request as the immutable local apply source closes both refresh windows without making local Workspace history server-authoritative.
 
 Boundary: This remains a browser-local Stage 3 continuity correction. The Compaction apply metadata is not sent to or trusted by the server, append-only validation does not authenticate local chat, and the client reducer retains Overall Outcome authority. No Route, Server Journal, Supabase Migration, remote deployment, Runtime default, or B code changes here. Stage 4 remains unauthorized pending independent Stage 3 audit.
+
+## 2026-07-29: Cut Over to the Sole A+ Agent Runtime
+
+Decision: Stage 3 passed independent audit at
+`4c52cc5cfa7db5fcdcbf1765acfd8795c6e1f1dc`. `WorkspaceClient.tsx` now imports the canonical
+`agentTurnRunner.ts` directly. The temporary Runtime selector, its public environment variable, the
+B Runner fallback, and any UI, URL, or request-body switching path are deleted. Historical
+`NEXT_PUBLIC_MORPHO_AGENT_RUNTIME` values are ignored rather than acting as a rollback switch.
+
+Decision: The B client/server proof chain and its dedicated Routes, RPC clients, implementations,
+and proof-bound tests are removed. The remaining formal Agent resources are the A+ Server Turn,
+Request, cancellation, Search, Image, and Compaction resources under `/api/ai/agent/turns`. The
+server continues to protect authenticated identity, per-Turn binding to the authenticated user and
+client-supplied local project ID, Provider credentials, quota/counters, idempotency, bounded external
+execution, and Server External Execution Status. The client Lifecycle reducer remains the sole
+authority for Overall Local Agent Turn Outcome, including local Tool, confirmation, and persistence
+facts.
+
+Decision: Workspace schema-v15 normalization is the one-way browser compatibility boundary. It
+accepts old backups but drops retired Closure Recovery, signed terminal Outcome, and Provider Request
+State fields while preserving raw chat, Summary Revisions, Context Frames, traces, project content,
+and assets. Those proof fields are absent from canonical types and new archives. The forward-only
+`20260729190000_remove_agent_runtime_b_proofs.sql` Migration drops only the retired B Lease table and
+RPCs after the A+ Journal Migrations; it does not alter the Server Turn/Request/External Action
+Journals and was not applied remotely by this Stage 4 implementation.
+
+Boundary: `archive/agent-runtime-b` and
+`agent-runtime-b-final-2026-07-28-f27a410` remain fixed at
+`f27a4102e94730ec56a476b349dda4710a67b514`. Earlier Stage 3 selector and B-proof decisions remain
+in this ledger as historical records and are superseded only for current implementation authority.
+Stage 4 does not merge `main`, move archive refs, apply a remote Migration, change deployment
+environment variables, or call paid Providers.

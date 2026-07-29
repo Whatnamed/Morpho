@@ -142,7 +142,7 @@ If selected images span multiple directions, the existing explicit-target-direct
 
 ### Historical MiMo planning stage
 
-The historical planning path accepted authorized `imageGeneration` request attachments and local `documentExtracts`; the formal workspace path now uses `/api/ai/agent` Responses SSE.
+The historical planning path accepted authorized `imageGeneration` request attachments and local `documentExtracts`; the formal workspace path now uses A+ `/api/ai/agent/turns/**` Responses SSE.
 
 For visual planning, MiMo can receive:
 
@@ -295,7 +295,7 @@ The recommended acceptance path avoids paid-provider usage:
 1. run local dev server;
 2. open the current real browser project at `/projects/project-morpho-case-study`;
 3. preload or manipulate selection state through real UI or seeded local storage;
-4. intercept the active `/api/ai/agent` and `/api/ai/image` routes;
+4. intercept the active `/api/ai/agent/turns/**` and `/api/ai/image` routes;
 5. assert request payloads and visible UI status;
 6. return mocked provider plan JSON and mocked image bytes.
 

@@ -241,7 +241,7 @@ read_stage_record
 正式 AI 面板只使用一套 Agent Runtime：
 
 ```text
-/api/ai/agent
+/api/ai/agent/turns/**
 + Responses 流式协议
 + Function Tools
 + 一个 Context Builder

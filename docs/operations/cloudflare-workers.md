@@ -95,7 +95,7 @@ With `MORPHO_ALLOW_PAID_SMOKE_TESTS=false`, verify the following in the local Wr
 1. `/login` renders and contains login and registration controls.
 2. An unauthenticated request to `/` or a project route redirects to `/login?next=...`.
 3. Static assets load and the tldraw client bundle loads.
-4. Unauthenticated `POST` requests to `/api/ai/chat`, `/api/ai/agent`, and `/api/ai/image` return `401`.
+4. Unauthenticated `POST` requests to `/api/ai/chat`, `/api/ai/agent/turns`, and `/api/ai/image` return `401`.
 5. No page returns an unexpected `500`, and Wrangler reports no Node API, module-resolution, or bundle error.
 6. Stop preview after verification so no local Worker process remains.
 

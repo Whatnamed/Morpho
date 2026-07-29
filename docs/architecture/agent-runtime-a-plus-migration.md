@@ -7,7 +7,7 @@ This document is the durable implementation ledger for converging the Morpho Age
 | Field | Value |
 |---|---|
 | Decision date | 2026-07-28 |
-| Current state | Stage 3 revised implementation; independent re-audit pending |
+| Current state | Stage 4 cutover/deletion implemented; final independent audit pending |
 | Current formal working branch | `refactor/agent-runtime-a-plus` |
 | B implementation archive branch | `archive/agent-runtime-b` |
 | B implementation archive tag | `agent-runtime-b-final-2026-07-28-f27a410` |
@@ -16,12 +16,12 @@ This document is the durable implementation ledger for converging the Morpho Age
 | Stage 0 complete | Yes — the decision, archive references, migration ledger, and historical-audit status are recorded in the Stage 0 documentation commit |
 | Stage 1 complete | Yes — independently audited at `8d7c2df442ea1ccfb012e35691c2df8430a85f52` |
 | Stage 2 complete | Yes — independently audited at `895f1c26a3753342f78df155b99f992984adfa05` |
-| Stage 3 implementation | Revised for recovery convergence; independent audit follow-up pending |
-| A+ Runtime | Implemented but default-off behind the one temporary Stage 3 selector |
-| Active production runtime | Existing B-style runtime |
+| Stage 3 implementation | Independently accepted at `4c52cc5cfa7db5fcdcbf1765acfd8795c6e1f1dc` |
+| A+ Runtime | The only reachable Runtime on this working branch |
+| Active working-branch runtime | Canonical A+ `agentTurnRunner.ts`; no selector or B fallback |
 | Server journals | Server Turn Journal plus External Action Journal implemented; remote Migration application remains an operator deployment step |
-| Stage 4 | Not started |
-| Next allowed stage | Stage 4 only after an independent Stage 3 audit passes |
+| Stage 4 | Implemented in three scoped commits; final audit pending |
+| Next allowed stage | Final Stage 4 audit only; no Stage 5 or `main` merge is authorized here |
 
 The formal decision is recorded in [Technical Decisions](./decisions.md). The earlier [AI Continuity Convergence Audit](./ai-continuity-convergence-audit.md) remains historical evidence.
 
@@ -172,7 +172,9 @@ This section defines the destination boundary. Stage 0 does not delete or alter 
 
 ## 7. Module Classification
 
-`Yes` identifies the target disposition of the responsibility, not permission to change it in Stage 0. `Split` means the named module mixes retained logic with logic that must be adapted or removed later; it must not be deleted wholesale.
+This table is the pre-cutover classification used to control the migration. `Split` identified a
+mixed module whose product/security responsibilities had to be retained before the B-only portion
+could be removed.
 
 | Module or responsibility | Keep | Adapt | Remove later | Reason |
 |---|---:|---:|---:|---|
@@ -214,9 +216,14 @@ This section defines the destination boundary. Stage 0 does not delete or alter 
 | Function Call special Finalizer — `lease/finalize-function-calls/route.ts` | No | No | Yes | Unified Tool Batch Outcome replaces the Pending Confirmation-only protocol. |
 | Finalizer-specific recovery — `AgentTurnClosureRecovery` and exact Closure candidate replay | No | No | Yes | Recovery becomes general Turn status/retry handling. |
 | B-only Compaction Receipt proof — `agentCompactionProtocol.ts`, token, `lease/summary/route.ts` | No | No | Yes | Compaction correctness remains, but local-history authenticity proof does not. |
-| Legacy Claims and version branches — `agentContinuationToken.ts` and `agentTurnProviderRequest.ts` | No | No | Yes | Compatibility branches used only by the retired proof chain leave in Stage 4. |
+| Legacy Claims and version branches — `agentContinuationToken.ts` and `agentTurnProviderRequest.ts` | No | No | Yes | Stage 4 deleted compatibility branches used only by the retired proof chain. |
 
-Several files are deliberately mixed and must not be deleted wholesale. In particular, `morphoAgent.ts`, `agentProviderContract.ts`, `providerContextFrames.ts`, `agentTurnProviderRequest.ts`, `agentCompactionProtocol.ts`, `agentStreamProtocol.ts`, `agentTurnLease.ts`, and the main Agent route contain both retained product/security logic and B-only proof logic. Later stages split or adapt them before Stage 4 deletion.
+Stage 4 completed those splits. Fixed Tool schemas/effects remain in `morphoAgent.ts`; Context Frames
+remain untrusted product data; bounded provider execution and server Prompt/Tool ownership remain in
+`agentTurnProviderRequest.ts`; display SSE remains in `agentStreamProtocol.ts`; deterministic product
+hashes moved to `agentProductHash.ts`. The B Provider Contract, Lease, Continuation, Compaction Proof,
+old Agent Route, Snapshot Refresh, special Finalizers, and their implementation-bound tests were
+deleted rather than retained as commented compatibility code.
 
 ## 8. Current Runtime Behavior Baseline
 
@@ -375,10 +382,10 @@ rejected as a conflict, while an identical Fault replay advances idempotently to
 recovering or terminal phase.
 
 Stage 1 passed independent audit at `8d7c2df442ea1ccfb012e35691c2df8430a85f52` as the
-tested design-contract boundary. Stage 2 then added the isolated components recorded below. Stage 3
-now connects those A+ components behind the default-off selector described later; the existing
-B-style Runtime, old outcome resolver, Closure/Lease paths, and compaction execution remain present
-and remain the active production default.
+tested design-contract boundary. Stage 2 then added the isolated components recorded below, and
+Stage 3 connected them behind a temporary default-off selector. Stage 4 later removed that selector,
+the B Runtime, old outcome resolver, Closure/Lease paths, and B compaction execution; the historical
+Stage 2/3 sections below retain the staged evidence rather than describing the current entry point.
 
 ### Stage 2 — A+ Coordinator and Server Turn Journal
 
@@ -496,19 +503,16 @@ section and preserves the default B production path.
 
 ### Stage 3 — Unified Runtime Lifecycles
 
-Stage 3 has a revised implementation and awaits independent re-audit. The A+ Runtime is implemented but default-off;
-the existing B-style Runtime remains the active production default. No B-only Runner, Lease,
-Closure, Snapshot, Manifest, Continuation, Finalizer, Receipt, RPC, Route, Workspace field, or test
-has been deleted. Stage 4 has not started.
+Stage 3 was independently accepted at
+`4c52cc5cfa7db5fcdcbf1765acfd8795c6e1f1dc`. The following subsections retain the historical
+Stage 3 implementation and audit evidence. Its temporary selector and parallel B Runtime were
+subsequently removed by Stage 4.
 
 #### Runtime entry and one client scheduler
 
-`WorkspaceClient.tsx` still has one send, cancel, confirmation, image-generation, and manual-
-compaction product entry. `agentRuntimeSelector.ts` selects either the existing
-`agentTurnRunner.ts` or `agentTurnRunnerAPlus.ts`. The only temporary selector is
-`NEXT_PUBLIC_MORPHO_AGENT_RUNTIME`: unset or `b` selects B; the exact value
-`a-plus-stage3` selects A+ for local or Preview verification. There is no UI switch, URL switch,
-request-body switch, or second A+ flag. This temporary selector is a Stage 4 deletion item.
+At the Stage 3 audit baseline, `WorkspaceClient.tsx` had one product entry and a temporary
+`agentRuntimeSelector.ts` chose B or A+. Stage 4 deleted that selector and environment variable;
+`WorkspaceClient.tsx` now imports the canonical `agentTurnRunner.ts` directly.
 
 The A+ Runner never writes lifecycle state directly and has no second Outcome resolver. It invokes
 explicit Coordinator methods for Provider start/retry/query, Tool Batch start/call terminal/batch
@@ -597,7 +601,7 @@ afterward. A local `AbortController` never fabricates `externallyCancelled`. If 
 completed, the Journal retains `externallyCompleted`, while the reducer separately derives a local
 cancelled or partial outcome from already completed effects.
 
-`agentCompactionOrchestratorAPlus.ts` is the one core for `automatic`, `preContinuation`, and
+`agentCompactionOrchestrator.ts` is the one core for `automatic`, `preContinuation`, and
 `manual`. Each mode emits `COMPACTION_STARTED`, performs one server-authorized External Action,
 validates the Summary, applies one deterministic Summary Revision using
 `expectedPreviousRevisionId`, records the applied revision in Recovery before durable save, and ends
@@ -640,9 +644,9 @@ keeps the existing object rather than generating or writing it twice.
 `agentRuntimeAPlusAcceptance.test.ts` remains the reducer/aggregator contract matrix; it is not by
 itself evidence that every Section 9 scenario is wired through the real Runner. End-to-end runtime
 evidence is in
-`agentTurnRunnerAPlus.test.ts`, lifecycle matrices in `agentTurnLifecycle.test.ts`, Coordinator
+`agentTurnRunner.test.ts`, lifecycle matrices in `agentTurnLifecycle.test.ts`, Coordinator
 retry/query/conflict matrices in `agentTurnCoordinator.test.ts`, all three real Compaction modes in
-`agentCompactionOrchestratorAPlus.test.ts`, local refresh payload integrity in
+`agentCompactionOrchestrator.test.ts`, local refresh payload integrity in
 `agentTurnRecoveryStore.test.ts`, exact Search replay polling in
 `agentExternalActionClientAPlus.test.ts`, and Search/Image/Compaction/Cancel/Provider Route tests. Coverage
 now includes same-page Provider resume, query-only Search replay to a Receipt, `202` Image response
@@ -653,14 +657,14 @@ seven Tool Batch outcome classes, three Compaction modes, SSE detach, refresh/qu
 loss, and deterministic conflicts that do not block a fresh Turn. The Workspace-level Runner tests
 begin at the same Agent input contract and observe Message, Trace, Tool, Workspace, persistence, and
 reducer Outcome. All external providers are fakes; Stage 3 performs no paid Provider, Search, or Image call.
-The independent audit must still verify the aggregate evidence before Stage 4 is allowed.
+The subsequent independent audit accepted the aggregate Stage 3 evidence at the SHA recorded above.
 
 #### Stage 3 recovery-convergence revision
 
-The follow-up implementation keeps Stage 4 blocked and closes the three recovery boundaries identified
-by the Stage 3 audit:
+At that Stage 3 checkpoint, the follow-up implementation kept Stage 4 blocked while closing the three
+recovery boundaries identified by audit:
 
-- `resumeMorphoAgentTurnAPlus` and the Selector/Workspace failure retry perform an explicit query-only
+- `resumeMorphoAgentTurnAPlus` and the temporary Selector/Workspace failure retry perform an explicit query-only
   reconciliation for an active Session. A `providerRunning` result never starts a second Provider;
   an external terminal or `awaitingNextRequest` result drives the existing Session forward, and a
   pending query leaves streaming false so the current page remains usable.
@@ -675,14 +679,14 @@ by the Stage 3 audit:
   effect/Operation IDs from `serverTurnId + callId`; recovery first detects an existing effect before
   executing again. The record never claims server authority over local effects or Overall Outcome.
 
-This revision changes only Stage 3 runtime, local Recovery, tests, and architecture ledger wording. It
-does not apply the Supabase Migration remotely, change the Server Journal schema, delete B Runtime, or
-start Stage 4. It is awaiting independent re-audit.
+That revision changed only Stage 3 runtime, local Recovery, tests, and architecture ledger wording. It
+did not apply the Supabase Migration remotely, change the Server Journal schema, delete B Runtime, or
+start Stage 4; later Stage 3 revisions and the final audit closed this gate.
 
 #### Stage 3 recovery boundary micro-fixes
 
-The next focused revision closes the three remaining P1 boundaries from the independent review while
-keeping Stage 4 blocked:
+The next historical Stage 3 revision closed the three remaining P1 boundaries from the independent
+review while keeping Stage 4 blocked at that checkpoint:
 
 - A running or response-ambiguous External Action now calls the optional non-terminal UI port. The
   Workspace keeps an explicit `外部任务仍在执行 / 再次检查` entry through repeated `pending` checks;
@@ -701,9 +705,9 @@ keeping Stage 4 blocked:
   stable operation/request identities. Delivery, revision, Memory, Comparison, Visual, and effect-
   matrix audit tests cover the crash/replay boundary.
 
-These micro-fixes change only Stage 3 runtime, local domain idempotency, tests, and the architecture
-ledger. They do not apply the Supabase Migration remotely, change the Server Journal schema, delete B
-Runtime, or start Stage 4. Stage 3 remains subject to independent re-audit.
+Those micro-fixes changed only Stage 3 runtime, local domain idempotency, tests, and the architecture
+ledger. They did not apply the Supabase Migration remotely, change the Server Journal schema, delete B
+Runtime, or start Stage 4; later Stage 3 revisions and the final audit closed this gate.
 
 #### Stage 3 write-ahead recovery and delivery-outcome revision
 
@@ -719,8 +723,8 @@ independent review:
   `external_action_request_payload_unavailable`.
 - Because the Recovery Record has one current External Action descriptor, A+ Image child Actions are
   submitted serially. Each next child replaces the descriptor only after the preceding child has
-  returned and its local result handling has settled. The B default path retains its existing bounded
-  image concurrency. A future parallel A+ implementation must persist every in-flight child descriptor
+  returned and its local result handling has settled. At that checkpoint, the B default path retained
+  its existing bounded image concurrency. A future parallel A+ implementation must persist every in-flight child descriptor
   before restoring parallel submission.
 - `prepare_delivery_section_draft` is a low-impact local pending-draft write, not the reserved
   `pendingConfirmation` lifecycle state. A successful call records one `executed` Tool terminal,
@@ -733,9 +737,9 @@ independent review:
 Tests cover a page disappearing while the first Search response never arrives, exact Compaction request
 replay with an explicit local-source conflict after conversation data changes, persisted Image descriptor
 forwarding after current settings change, missing External Action payloads, Delivery Batch terminal loss/replay, and full Runner
-Continuation after Delivery Draft creation. This revision does not change a Route, Server Journal,
-Supabase schema, or remote deployment; it does not switch the default Runtime, delete B, or start
-Stage 4. Stage 3 remains subject to independent re-audit.
+Continuation after Delivery Draft creation. That revision did not change a Route, Server Journal,
+Supabase schema, or remote deployment; it did not switch the default Runtime, delete B, or start
+Stage 4. Later Stage 3 revisions and the final audit closed this gate.
 
 #### Stage 3 recovered-batch and Compaction apply-boundary revision
 
@@ -763,21 +767,38 @@ Focused tests exercise `A existing -> restore B -> persist B -> write/send C`, e
 Compaction with no current Plan, append-only tail preservation, source-content conflict, Summary
 Revision conflict, and Recovery Store round-trip of the client apply boundary. This revision changes
 only Stage 3 client runtime, browser-local Recovery metadata, tests, and architecture ledger wording.
-It changes no Route, Server Journal, Supabase Migration, Runtime default, or B code and does not start
-Stage 4. Stage 3 remains subject to independent re-audit.
+It changed no Route, Server Journal, Supabase Migration, Runtime default, or B code and did not start
+Stage 4. The later independent audit accepted Stage 3 at the SHA recorded above.
 
 ### Stage 4 — Cutover and Deletion
 
-- Switch to the single accepted Runtime.
-- Delete B-only proof protocols, old flags, obsolete RPCs/routes, legacy claims/version branches, and implementation-binding tests.
-- Replace deleted proof tests with product behavior and retained-security tests.
-- Finish with one Runtime and no long-lived compatibility flag.
+Stage 4 is implemented on `refactor/agent-runtime-a-plus` and awaits final independent audit:
+
+- `WorkspaceClient.tsx` calls the canonical `agentTurnRunner.ts` directly. The Selector,
+  `NEXT_PUBLIC_MORPHO_AGENT_RUNTIME`, and both old public Runner names are gone.
+- B Client/Server Lease, Continuation, Snapshot/Manifest, Context Marker causal proof, Compaction
+  Receipt, Closure, special Function Call Finalizer, old Agent/Web Search routes, and proof-bound
+  tests are deleted. The fixed Tool Registry, Context Policy, Summary Revision, raw chat, Provider
+  snapshots, Trace, Project Memory/Stage Records, local Tool product rules, Auth/quota, Provider
+  secrets, request identity/sequence, counters, and both A+ Journals remain.
+- Canonical Workspace types no longer retain `AgentTurnClosureRecovery`, signed Outcome items, or
+  Provider Request State. Schema-v15 normalization explicitly discards those legacy browser fields
+  while preserving product data, so old local projects open without keeping a second state source.
+- `20260729190000_remove_agent_runtime_b_proofs.sql` is the forward-only cleanup Migration. It drops
+  only B Lease RPCs and `private.ai_agent_turn_leases`; it does not modify migration history or the
+  A+ Turn/Request/External Action Journal. It is checked in but was not applied remotely by Stage 4.
+- Architecture tests assert one reachable Runtime, absence of B routes/protocols/flags, preservation
+  of A+ and independent AI routes, and the one-way Workspace compatibility boundary. Migration tests
+  assert the cleanup cannot drop A+ journal objects.
+
+The B code remains available only through Git history, `archive/agent-runtime-b`, and the annotated
+tag `agent-runtime-b-final-2026-07-28-f27a410`; Stage 4 does not move either archive reference.
 
 ## 11. Deletion Policy
 
 - The B implementation is permanently archived in `archive/agent-runtime-b` and `agent-runtime-b-final-2026-07-28-f27a410`.
-- The formal branch keeps the existing implementation until the new Runtime passes its staged acceptance gates.
-- After Stage 4 acceptance, obsolete code is deleted from the formal branch.
+- The formal branch kept the existing implementation until Stage 3 passed its staged acceptance gates.
+- Stage 4 deleted obsolete code after that Stage 3 pass; final acceptance is still an external audit gate.
 - Morpho will not maintain two Runtimes long term.
 - Morpho will not keep a long-lived Runtime Feature Flag.
 - Dead code, legacy branches, and commented-out implementations are not archival mechanisms.

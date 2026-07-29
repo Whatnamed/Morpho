@@ -8,7 +8,7 @@
 2. **Token 驱动自动压缩**：接近 Provider 有效上下文上限时才压缩；系统保存摘要版本与覆盖边界，后续携带摘要和边界后的完整消息，原始聊天永不删除。
 3. **来源驱动的项目记忆**：七类项目记忆保留为当前有效、可版本化、可追溯的阅读投影；结构化对象、修订、决定、操作与交付状态仍是权威事实源，Markdown 只用于阅读和导出。
 4. **当前有效阶段记录**：六类阶段记录保存各阶段目前成立的结论、依据、风险与下一步；Continuity Events 保存历史，两者不再互相冒充，也不形成独立阶段聊天。
-5. **统一 Agent Runtime**：正式 AI 面板只使用 `/api/ai/agent`、Responses 流式协议、统一 Context Builder、Prompt Registry、Memory Kernel 与确认策略；旧 `/api/ai/chat` 不再服务正式面板。
+5. **统一 Agent Runtime**：正式 AI 面板只使用 `/api/ai/agent/turns/**` A+ 资源、Responses 流式协议、统一 Context Builder、Prompt Registry、Memory Kernel 与确认策略；独立 `/api/ai/chat` 不服务正式面板。
 6. **统一图像计划与 Prompt 编译**：Agent 输出结构化视觉意图，Morpho 确定性解析参考图并按图片角色、方向、设计定义、项目偏好和目标模型编译最终 Provider Prompt。
 7. **数量快捷项不是能力上限**：`1 / 2 / 4 / 6` 只保留为 UI 快捷项；用户明确要求 `3 / 5 / 9 / 12` 或四个以上方向时允许透明分批执行，仅受真实 Provider、配额、并发和防失控约束。
 8. **后台记录可读但无需手工管理**：项目记录区默认展示当前项目记忆和已发生阶段记录，并可追溯来源和历史修订；用户仍通过真实对象、明确状态和自然语言决定项目事实。

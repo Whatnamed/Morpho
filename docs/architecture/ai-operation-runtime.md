@@ -4,7 +4,7 @@
 
 ## 2026-07-22 Current Runtime Addendum
 
-The formal workspace Agent now uses `/api/ai/agent` with OpenAI-compatible Responses SSE. `/api/ai/chat` is compatibility-only and has no formal-panel caller. Current turns use a byte-stable system prefix and deterministic tool profile; project state, task scope, runtime configuration, and conversation summaries are appended as provider-only Context Frames and are preserved in full editable backups. The fixed `256000 / 204800 / 230400` Context Policy separates the `16000` uncompressed-tail target from the `16000` response reserve.
+The formal workspace Agent now uses the A+ resources under `/api/ai/agent/turns` with OpenAI-compatible Responses SSE. `/api/ai/chat` is independent and has no formal-panel caller. Current turns use a byte-stable system prefix and deterministic tool profile; project state, task scope, runtime configuration, and conversation summaries are appended as provider-only Context Frames and are preserved in full editable backups. The fixed `256000 / 204800 / 230400` Context Policy separates the `16000` uncompressed-tail target from the `16000` response reserve.
 
 The current GrsAI boundary is text-to-image, image-to-image, and prompt-level directed edit. The request has no mask or inpainting parameter, so the UI and prompt compiler must not promise pixel-level local editing. A generated image always becomes a new object and never overwrites its source. The original Milestone 3 notes below remain historical where they mention MiMo or the compatibility route.
 

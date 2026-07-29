@@ -4,30 +4,29 @@
 
 Morpho is a single Next.js App Router application in this repository root.
 
-The existing B-style Agent Runtime remains the active production default. Stage 3 also implements
-one revised A+ audit path behind the single build-time value
-`NEXT_PUBLIC_MORPHO_AGENT_RUNTIME=a-plus-stage3`; unset, invalid, or `b` selects B. The selector has
-no UI/URL/request override and is scheduled for deletion during Stage 4 after formal cutover.
+The workspace has one Agent Runtime. `WorkspaceClient.tsx` calls the canonical
+`agentTurnRunner.ts` directly; there is no Runtime selector, environment flag, B fallback, UI/URL
+switch, or request-body override. The client Coordinator and Turn Lifecycle reducer own
+orchestration and Overall Local Agent Turn Outcome. The Server Turn Journal owns only Server
+External Execution Status.
 
 Implemented routes:
 
 - `/` renders the local project homepage.
 - `/login` renders Supabase email/password sign-in and registration for closed-test access.
 - `/projects/[projectId]` renders the Morpho workspace for one local project.
-- `/api/ai/agent` is the formal workspace Agent route and streams OpenAI-compatible Responses SSE.
-- `/api/ai/agent/lease` completes one authenticated Agent Turn Lease with a declared turn outcome.
-- `/api/ai/agent/turns` creates or reads the minimal A+ Server Turn Journal resource.
+- `/api/ai/agent/turns` creates the Server Turn Journal resource used by the workspace Agent.
+- `/api/ai/agent/turns/[turnId]` reads minimal Server External Execution Status.
 - `/api/ai/agent/turns/[turnId]/requests` starts exact idempotent A+ Provider requests; its explicit
   `/cancel` child attempts cancellation without treating SSE detach as external cancellation.
 - `/api/ai/agent/turns/[turnId]/actions/web-search`, `/image`, and `/compaction` execute bounded,
   idempotent A+ external actions through the private External Action Journal.
-- `/api/ai/chat` remains a deprecated compatibility route for isolated legacy tests; the formal workspace panel has no caller.
-- `/api/ai/web-search` proxies bounded provider web search for standalone searches and for lease-bound Agent continuations.
+- `/api/ai/chat` remains an independent bounded text route; the workspace Agent does not use it.
 - `/api/ai/image` proxies server-side GrsAI image generation and returns the generated image bytes.
 
-Stage 3 A+ audit-path details:
+Agent Runtime details:
 
-- `agentTurnRunnerAPlus.ts` uses the Stage 2 Coordinator and the Stage 1 reducer; the Server Turn
+- `agentTurnRunner.ts` uses the Coordinator and reducer; the Server Turn
   Journal owns only Server External Execution Status, while the client derives the Overall Local
   Agent Turn Outcome from local Tool, confirmation, and persistence facts.
 - A same-page running or ambiguous External Action keeps a visible query-only Resume entry. Search,
@@ -35,7 +34,7 @@ Stage 3 A+ audit-path details:
   non-abort response loss as `running`, and recover only with the persisted Action ID, serialized Body,
   and Body Hash. A missing/mismatched Body fails explicitly instead of being regenerated from current
   Workspace state. The current A+ Image path serializes child Actions so the one current descriptor
-  always names the only in-flight child; the default B path retains its existing bounded concurrency.
+  always names the only in-flight child.
 - Browser-local writes remain product-correctness effects. Every Tool Effect Matrix write has an
   explicit replay strategy: stable Operation/client-request IDs, stable delivery Draft IDs,
   final-value comparison, semantic dedupe, or stable Analysis ID overwrite. These strategies do not
@@ -57,15 +56,15 @@ Important module boundaries:
 - `src/infrastructure/assets/` owns browser IndexedDB Blob storage and asset-save workflow.
 - `src/infrastructure/supabase/` owns browser/server Supabase clients and public configuration reading.
 - `src/server/ai/` owns AiJWS/OpenAI-compatible provider config, request validation, context conversion, and response normalization.
-- `src/server/auth/` owns account access state, AI quota guards, and the existing Agent Turn Lease contract.
+- `src/server/auth/` owns account access state and AI quota guards.
 - `src/server/image/` owns GrsAI provider config, request validation, bounded polling, and remote image download.
 
 Implemented server-side state and deployment:
 
-- Supabase provides account identity, closed-test qualification, AI daily quota, the active B Agent
-  Turn Leases, and the default-off A+ Server Turn/Request/External Action Journals through narrow
-  `SECURITY DEFINER` RPCs. Forward-only SQL lives in `supabase/migrations/`; the Stage 3 Migration is
-  checked in but remote application remains a separate authorized operator step.
+- Supabase provides account identity, closed-test qualification, AI daily quota, and the Server
+  Turn/Request/External Action Journals through narrow `SECURITY DEFINER` RPCs. Forward-only SQL
+  lives in `supabase/migrations/`. The Stage 4 cleanup Migration removes the retired B Lease table
+  and RPCs; remote application remains a separate authorized operator step.
 - Supabase stores no project content. Projects, canvases, files, images, and backups stay in browser localStorage and IndexedDB.
 - Vercel is the current production deployment path (`npm run build`). Cloudflare Workers via `@opennextjs/cloudflare` and `wrangler` is a retained opt-in backup path behind the `cf:*` scripts.
 - `.github/workflows/quality.yml` runs lint, typecheck, test, and build on `main` and pull requests, without provider keys or deployment.
@@ -107,6 +106,12 @@ Operation persistence is intentionally lightweight:
 - workspace JSON stores operation status, summaries, input snapshots, proposal records, citation snapshots, and IndexedDB artifact references;
 - workspace JSON does not store raw webpages, full document extracts, page preview binaries, provider raw responses, API keys, or response headers;
 - interrupted operations are recoverable as local state, but they are not treated as background server jobs after refresh.
+
+Schema-v15 loading is also the one-way compatibility boundary for retired B browser fields. It
+drops old Closure Recovery, signed terminal Outcome, and Provider Request State records while
+preserving raw chat, Summary Revisions, Provider Context Frames, Provider input/output snapshots,
+Agent traces, project data, and assets. Those dropped fields are not part of the canonical type or
+archive format and are never regenerated.
 
 Canvas rendering is separated from Morpho domain state:
 
@@ -195,25 +200,25 @@ The following bullets explain why legacy checkpoint fields still exist and how o
 - checkpoint writes update only `workspace.ai.conversationCheckpoints` and the assistant message `conversationCheckpointId`; they never write project records, current focus, objects, revisions, directions, default references, delivery references, or DecisionRecords;
 - visible assistant text strips both complete and trailing partial checkpoint/semantic technical JSON blocks, and a saved checkpoint shows only the lightweight `已整理当前讨论脉络` message.
 - the controlled Agent path now uses one deterministic project-wide summary boundary instead of lane-filtered or last-eight history; Agent user/assistant messages may retain lane and discussion labels for traceability, but those labels are not a semantic history boundary;
-- `/api/ai/agent` estimates the complete provider request, including system text, recent messages, tool schemas, tool outputs, image reserves, and an optional previous actual input-token baseline;
+- the A+ request route estimates the complete provider request, including system text, recent messages, tool schemas, tool outputs, image reserves, and an optional previous actual input-token baseline;
 - the default Agent budget is Morpho's fixed 256,000-token internal window, checkpoint preparation at 204,800 tokens, mandatory request compaction at 230,400 tokens, and a 16,000-token target for the compressible discussion/tool-history portion. Preparation is non-destructive; only the compact threshold advances a validated summary boundary;
 - preparation keeps real project context, the current user input, the current selection, the current project summary, every complete post-boundary project message, and the latest unresolved tool-output group. Older completed tool outputs are shortened without replaying their tools;
 - Responses token usage is normalized to one internal shape. When a valid provider total and output count omit input tokens, input is derived as `total - output`; malformed or negative usage is discarded. A provider context-limit failure triggers one server-side emergency-compacted retry of the same provider request, never a replay of client-side mutations, image generation, Proposal application, or other completed tools;
 - when a mandatory-compaction response does not contain a valid checkpoint, the client may request one checkpoint-only continuation with no tools or images. Failure of that optional refresh does not invalidate the already completed visible Agent result.
-- an exact `/compact` input gathers all eligible project messages after the existing summary boundary and rolls them through bounded summary-only Agent requests with no tools or images. The visible assistant message moves from `正在压缩当前上下文…` only after all chunks complete; partial failure keeps the previous summary and reports failure. A successful result writes only the final project summary and does not mutate canvas objects.
+- an exact `/compact` input gathers all eligible project messages after the existing summary boundary and rolls them through bounded summary-only Agent requests with no tools or images. The write-ahead descriptor binds the original source message IDs, fingerprints, expected previous revision, token estimate, and boundary IDs. Recovery may retain newly appended tail messages, but changed or missing source messages and a changed summary revision fail explicitly. A successful result writes only the final project summary and does not mutate canvas objects.
 
 Agent streaming additions:
 
-- `/api/ai/agent` now emits typed SSE while the provider is still running, including provider reasoning summaries, optional commentary, final text deltas, native hosted-tool activity, function-call readiness, citations, usage, context metadata, heartbeat, completion, and post-start errors;
-- normal Agent turns and the exact `/compact` command consume that one SSE protocol through the shared `agentStreamClient`; there is no JSON response variant for this route;
+- `/api/ai/agent/turns/[turnId]/requests` emits typed SSE while the provider is still running, including provider reasoning summaries, optional commentary, final text deltas, native hosted-tool activity, function-call readiness, citations, usage, context metadata, heartbeat, completion, and post-start errors;
+- normal Agent turns consume that SSE protocol through the Coordinator Host. Compaction is a bounded External Action with its own Journal route and persisted write-ahead descriptor;
 - `src/server/ai/openaiCompatibleResponsesStream.ts` is the isolated Responses compatibility parser. It handles arbitrary byte boundaries, CRLF/multiline SSE data, heartbeats, `[DONE]`, unknown events, cancellation, provider failure, and early disconnect without saving raw SSE into workspace data;
 - Responses is the only Agent protocol for all configured OpenAI-compatible endpoints, including AiJWS. Transient stream and gateway failures retry `/responses`; a streamed request can recover through a buffered `/responses` request, never `/chat/completions`. System/user history uses `input_text`, while persisted assistant history uses the Responses-compatible `output_text` content type;
 - Morpho keeps all Agent function tools at `strict: false` for the current compatibility provider because its complex JSON Schema handling returns 502 during valid continuation calls. The existing client-side parser remains the authoritative strict field, type, enum, and business-rule validator before local tool execution;
 - assistant messages may persist `agentTrace` ordered parts. Reasoning stores only provider-returned summaries. Explicit `commentary` and `final_answer` phases are authoritative; unphased Responses text is buffered until turn completion and becomes commentary only when that turn also contains a tool call. Tool activities come from actual provider or local-tool execution. Final text remains in `AiMessage.body`;
 - every provider attempt has a stable `attemptId`. A context-limit retry emits `turn-attempt-reset`; the client removes failed-attempt provider-only increments, ignores late events from that attempt, retains completed Morpho work, and uses only successful-attempt usage and terminal output;
-- the route owns the provider `AbortController`; request abort and response-reader cancellation both abort the upstream fetch and stop heartbeat/parser work;
+- the request route owns the provider `AbortController`; explicit cancellation calls its exact Request resource, while an SSE reader detach alone does not claim external cancellation;
 - client and server share `src/shared/providerInputBudget.ts`; cache diagnostics use four states (`unavailable`, `miss`, `partialHit`, `fullHit`) and prompt-cache retention is absent by default, with only explicit compatible `24h` forwarded;
-- the client continues to execute workspace tools locally, updates one stable tool activity per `toolCallId`, and merges all provider continuations into the same assistant message and `agentTurnId`. Agent writes pass through a functional latest-workspace commit boundary, so streamed trace, concurrent user edits, operation/continuity changes, and tool results cannot overwrite one another;
+- the client executes workspace tools locally, updates one stable tool activity per `toolCallId`, and merges provider continuations into the same assistant message and `agentTurnId`. Agent writes pass through a functional latest-workspace commit boundary, so streamed trace, concurrent user edits, operation/continuity changes, and tool results cannot overwrite one another;
 - text deltas are merged by part and flushed about every 48ms, while tool start/end remains immediate. The process disclosure keeps ordered parts mounted for a 200ms lightweight collapse, follows the internal scroll only near the bottom, uses 220-320px bounded scrolling with fades, and disables shimmer/transitions for reduced motion;
 - normal Agent execution has no four-turn product limit and no per-turn accumulated web-search-call limit. Hosted provider searches and local `search_web_evidence` results may continue while the task still has evidence gaps; each local search response remains bounded to five sources, while URL/content citation deduplication and context compaction bound the accumulated payload;
 - validated visual plans are not routed to confirmation merely because the current Agent turn has already generated a fixed number of images. Each image still passes plan/reference validation and the existing provider quota, four-request concurrency, pending-slot, per-item commit, failure-isolation, and cancellation paths;
@@ -280,10 +285,10 @@ Schema v15 is the current runtime contract and supersedes lane-local checkpoint 
 - DecisionRecords remain append-only and are classified against current structured state as `current`, `superseded`, `historical`, or `reviewRequired`; current Agent memory and the default drawer view do not treat every record as current;
 - generated images record structured intent, compiled prompt, reference-resolution diagnostics, prompt-contract version, model settings, and operation/provider provenance;
 - Provider input keeps a byte-stable system prefix and deterministic `standard` / `standardWithWebSearch` tool profiles. Cache key/retention fields are opt-in and relay-compatible; missing cache metadata is observable as unavailable but never affects correctness;
-- every completed non-summary Provider response replaces `workspace.ai.latestProviderRequestState` with one output-inclusive signed transcript checkpoint. Its ordinary-use window is 24 hours; authenticated `/api/ai/agent/snapshot/refresh` can renew the user/project-bound checkpoint without Provider or Lease work, but never beyond its original fixed 180-day deadline. Its durable manifest binds workspace message IDs, canonical user/assistant facts, strategy items, stable image references and terminal outcomes, excludes request-local reasoning/Call/terminal-output items and image Base64, and is stripped from historical Agent traces;
-- every fresh ordinary request prepares that checkpoint before building Provider input. An unexpired v3 token is reused; an expired or compatible legacy token is refreshed first and the token/hash/expiry state is replaced atomically. Refresh failure sends no Agent request and creates no Lease. The route permits exactly one final `liveInput` user message whose ID equals `currentUserMessageId`, then compares the entire ordered durable history against the authenticated prior Snapshot before any Lease, Provider, search, or tool work. A legacy workspace with no signed Snapshot keeps raw chat searchable but begins a new trusted transcript at the current user message instead of uploading unverified history;
-- compaction source envelope v2 carries only message IDs, roles, timestamps, canonical Provider items, and the previous structured summary. `/api/ai/agent` deterministically materializes the Provider-visible summary source from those verified items and rejects independent summary text, strategy fields, or a previous-summary body whose hash is not in the prior signed state;
-- compaction carries only the effective Context Frame timeline: the active post-summary turn frames plus the latest project/runtime state. Both the prior continuation/snapshot and receipt bind an ordered marker manifest; baseline markers precede the summary/tail, while after-message and tool-causal markers follow the retained terminal outputs. Typed markers must match the prior ordered claim or be appended by the current complete Call/terminal-output causal binding;
+- every A+ Provider request is built from bounded browser-local conversation, Summary Revision, Context Frames, selected project inputs, and exact Continuation items. The server validates shape, size, Tool names, Call IDs, and exact replay hash, but does not prove that browser-local history or Tool Results are true;
+- the Server Turn/Request Journal binds an exact request to the authenticated user and client-supplied local project ID. It owns Provider acquisition, counters, deadline convergence, and Server External Execution Status; it stores no transcript, local Tool Result, confirmation, Workspace effect, or Overall Local Agent Turn Outcome;
+- Compaction source/apply metadata is persisted before POST. Recovery replays the original Body and applies its Summary only to the original source IDs when their fingerprints and expected previous revision still match; appended tail messages survive, while source change or revision conflict fails without rebinding the old Summary to a new plan;
+- Provider Context Frames remain browser-local, untrusted product context. They are retained for continuity and editable backup, not signed or accepted as causal proof by the server;
 - GrsAI image planning distinguishes `textToImage`, `imageToImage`, and prompt-level `directedEdit`. The current request has no mask/inpainting field, so `maskedLocalEdit` is unavailable and no pixel-level local-edit guarantee is exposed;
 - editable backups default to full conversation scope and preserve raw chat, summary revisions, legacy checkpoints, memory/stage revisions, Continuity Events, Agent Trace, citations, Compare analyses, and image provenance;
 - the generated current-case fixture is upgraded with `npm.cmd run case-study:upgrade`; repeated upgrades must produce the same workspace hash.
@@ -383,17 +388,17 @@ Asset panel and search are real workspace queries:
 
 Text Agent:
 
-- The formal workspace panel calls only `/api/ai/agent`; the route streams Responses reasoning summaries, commentary, function calls, citations, usage, context pressure, and final text over typed SSE. Lease-bound web-search recovery uses `/api/ai/agent/lease/state` only for one read-only sequence refresh.
+- The formal workspace panel calls the canonical A+ Turn resources under `/api/ai/agent/turns`; Provider Requests stream Responses reasoning summaries, commentary, function calls, citations, usage, context pressure, and final text over typed SSE.
 - `/api/ai/chat` is retained only for compatibility tests and has no formal-panel caller. Delivery section drafting, research, design definitions, directions, comparison, memory updates, and visual planning all use Agent tools or deterministic domain services.
 - Context is one continuous project conversation. Selection, focus, direction, branch, and the legacy lane key affect strategy and provenance only; they never filter formal history.
 - Below the prepare threshold, every uncompressed user/assistant message enters the request. After compaction, the current summary revision plus every complete message after its covered boundary enter the request. Raw messages are never deleted.
 - The fixed Morpho policy is a 256,000-token window, 204,800 prepare threshold, 230,400 compact threshold, and 16,000 target uncompressed tail. Production does not read context-threshold environment variables; only the non-production localStorage override is available for low-threshold browser acceptance.
 - A valid summary revision is applied atomically with source range, count, hash, previous revision, and boundary metadata. Failed summary validation leaves the prior boundary unchanged. A provider context-limit error may trigger one client summary/retry after the server's replay-safe tool-output retry.
-- Provider transcript continuation uses a v5 HMAC token. Its exact tail admits only the signed Provider output, one terminal output per signed function call, and server-authorized ordered typed Context/State markers; tool-created markers additionally bind the signed Call batch and terminal outputs. Ordinary messages, new Calls, strategy markers, unknown Items, and missing terminal outputs fail before the Lease RPC. The token contains no transcript body and expires after 20 minutes.
-- Conversation compaction carries a bounded source/tail `CompactionDescriptor` whose protocol digests are domain-separated SHA-256. A successful server-normalized summary produces a signed v4 receipt containing summary and tail hashes, revision/boundary metadata, Lease/Turn/Sequence scope, Prompt Contract, ordered Context marker manifest, and expiry. The receipt is kept in the transient token only; raw messages remain local and post-compaction replay re-hashes the strict before/compaction/after segments and retained tail before counting the Lease.
-- Lease-bound Agent web search treats a transport-level lost response as a failed terminal tool result after at most one read-only Lease-state recovery; it never replays the original query. Recovery failure ends the turn safely, while standalone web search does not use this recovery path. The read-only state RPC returns only active expiry, counters, and next sequence.
-- Every completed non-summary Provider response also issues a 20-minute Closure Token bound to user, project, Lease, Turn, Lease sequence, current user/assistant message IDs, the closed transcript manifest hash, the Provider-output snapshot hash, and terminal Function Call state. `success`, `partialSuccess`, and `pendingConfirmation` require that token plus the matching current transcript Snapshot and Provider-output snapshot. A confirm-mode Call batch uses `/api/ai/agent/lease/finalize-function-calls` to prove the exact signed continuation and one canonical terminal output per Call, then replaces the incomplete token with a `pendingConfirmation`-only Closure proof. Summary responses never issue this ordinary-turn capability; manual Summary completion uses a separate Summary-receipt endpoint.
-- `/api/ai/agent/lease` uses a stable `closureRequestId` and a server-computed request hash. Supabase stores only that ID/hash, outcome, proof sequence, terminal status, tool-execution flag, and an exact-sequence Provider failure marker. Exact retries return the same logical outcome across instances; a reused ID with different proof or outcome conflicts. BeforeExecution outcomes are accepted only when the locked Lease row proves zero Provider/search execution and no marked tool execution; Provider transport failure/cancellation can close only when the row records the same outcome at the current sequence. The client retains the exact serialized Closure request until confirmation, retries the same bytes once immediately, and persists an unresolved request locally for recovery before the next formal turn. No candidate outcome enters normal model history before Closure succeeds.
+- Provider continuation uses exact `function_call` / `function_call_output` items from the local Tool Batch. The server validates their bounded syntax and registered Tool names but deliberately does not attest local Tool truth or Workspace effects.
+- Provider Requests and Search/Image/Compaction Actions use stable IDs plus server-computed Body hashes. Exact replays are idempotent; identity, hash, sequence, binding, limit, and terminal-state conflicts do not execute externally.
+- Search, Image, and Compaction persist the exact Action descriptor and durable Body before POST. Ambiguous responses become query-only recovery against the same Journal identity; no recovery path allocates a replacement ID to repeat an external action.
+- Image child Actions are serial. A restored descriptor is consumed only after its matching child has completed local handling, after which the next child writes and flushes its own descriptor before send.
+- The client Lifecycle reducer alone derives `completed`, `partiallyCompleted`, `pendingConfirmation`, `cancelled`, or `failed` from Server status plus local Tool, confirmation, and persistence facts. The server never accepts or stores that Overall Local Agent Turn Outcome.
 - Context pressure is classified from both tokens and Provider Item count. A continuation can perform at most two additional compactions, and only a strict token or Item reduction permits another Provider request; the server and client both fail closed above 1,024 Items. Provider and local tool-batch handling share `MAX_AGENT_FUNCTION_CALLS = 64`; a 65-call response is rejected before execution or continuation signing.
 - Explicit history, memory, and progress questions are guarded: the Agent must complete `search_project_conversation`, `read_project_memory`, and/or `read_stage_record` as required before a final answer can be accepted.
 - Task Strategy resolves discussion, research, design definition, concept direction, direction preview, visual development, comparison, delivery preparation, and history/memory. A versioned Prompt Registry composes shared authority, continuity, memory, and task policies.

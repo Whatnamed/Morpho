@@ -54,28 +54,17 @@ The two `NEXT_PUBLIC_SUPABASE_*` values are public browser configuration, not se
 
 With `MORPHO_AUTH_REQUIRED=true`, missing public Supabase configuration fails closed: `/login` renders the configuration error with no variable values, while `/` and `/projects/*` redirect to `/login` instead of rendering protected content. `/api/ai/*` retains its 503 configuration failure behavior. Set `MORPHO_AUTH_REQUIRED=false` only for explicit local authentication bypass.
 
-Stage 3 has one temporary, public build-time Runtime selector:
-
-```text
-NEXT_PUBLIC_MORPHO_AGENT_RUNTIME=b
-```
-
-Unset, empty, invalid, or `b` keeps the existing B-style Runtime active. This is the production
-default. To exercise the complete A+ Stage 3 path in a local or isolated Preview build, set exactly:
-
-```text
-NEXT_PUBLIC_MORPHO_AGENT_RUNTIME=a-plus-stage3
-```
-
-Restart `next dev` or rebuild/redeploy after changing any `NEXT_PUBLIC_*` value. There is no UI,
-URL, or request-body override. To disable A+ again, remove the variable or set it to `b`, then
-restart/rebuild. Do not enable A+ in production before Stage 3 passes independent audit and Stage 4
-performs the formal cutover. Delete this selector during Stage 4; it is not a permanent compatibility
-mode.
+The workspace has one Agent Runtime and no Runtime environment selector. Historical
+`NEXT_PUBLIC_MORPHO_AGENT_RUNTIME` values such as `b` or `a-plus-stage3` are not read by the
+application and do not provide a rollback path. Remove that variable from deployment settings when
+convenient; leaving an old value present does not change the selected Runtime.
 
 Text chat and agent turns use the AiJWS / OpenAI-compatible `MORPHO_AI_*` group defined in `.env.example`. Its current example model is `gpt-5.6-terra`.
 
-`MORPHO_AI_*` configures the formal `/api/ai/agent` Responses path, the compatibility-only `/api/ai/chat` route, and related web-search gating. The server also accepts `AIJWS_API_KEY`, `AIJWS_BASE_URL`, and `AIJWS_MODEL` as compatibility aliases. MiMo variables are no longer used for text AI.
+`MORPHO_AI_*` configures the formal A+ Provider Request path under
+`/api/ai/agent/turns/[turnId]/requests`, the independent `/api/ai/chat` route, and related web-search
+gating. The server also accepts `AIJWS_API_KEY`, `AIJWS_BASE_URL`, and `AIJWS_MODEL` as compatibility
+aliases. MiMo variables are no longer used for text AI.
 
 AiJWS text behavior:
 
@@ -118,12 +107,14 @@ Current implemented behavior:
   - visual development / directed edit / scene / detail / unknown → `gpt-image-2`;
 - catalog of selectable models still lives in `src/domain/morpho/grsImageModels.ts`;
 - `MORPHO_GRS_DEFAULT_MODEL` is server default/fallback only, not a global override of the intent router;
-- multi-item plans generate with up to **4 concurrent** GrsAI requests (`IMAGE_GENERATION_MAX_CONCURRENCY`);
+- the formal Agent serializes Image child Actions so each in-flight child has one durable write-ahead
+  descriptor; non-Agent visual workflows may still use the shared four-request concurrency helper;
 - `nano-banana-*` profiles send `replyType: "json"` and send `imageSize` only when the selected model supports a size option;
 - `gpt-image-2` sends pixel-style `aspectRatio`, `replyType: "json"`, and no `imageSize`;
 - generated image assets store intrinsic width, height, and aspect ratio when the browser can read them.
 - image generation operations store operation IDs and client request IDs; uncertain network responses are not automatically resubmitted.
-- direction-preview and visual-development generation use Agent structured visual intent, deterministic reference resolution, local Prompt compilation, and then call GrsAI per plan item with concurrency capped at 4;
+- direction-preview and visual-development generation use Agent structured visual intent,
+  deterministic reference resolution, local Prompt compilation, and one journaled child Action at a time;
 - `1`, `2`, `4`, and `6` are UI shortcuts only. Explicit positive counts and more than three selected directions are valid;
 - image-generation metadata records requested count, structured intent, compiled prompt, prompt-contract version, reference-resolution omissions, model settings, successful result IDs, and per-item failures.
 - the current GRSAI request supports text-to-image, image-to-image, and prompt-level directed edit. It has no mask/inpainting field; UI and prompts must not promise pixel-level local editing, and sources are never overwritten.
@@ -136,7 +127,8 @@ Research operations can read selected parsed file extracts, selected image pixel
 
 AI continuity and Project Memory:
 
-- the formal panel calls only `/api/ai/agent`; `/api/ai/chat` is compatibility-only;
+- the formal panel calls only A+ resources under `/api/ai/agent/turns`; `/api/ai/chat` is independent
+  and has no formal-panel caller;
 - all uncompressed project messages participate below the Token threshold. Lane, focus, selection, direction, and branch do not filter history;
 - automatic compaction persists a validated summary revision and covered boundary before older messages leave provider input. Raw messages remain in the workspace and `search_project_conversation` can still return them;
 - explicit history, memory, and progress questions must complete their required read tools before final text is accepted;
@@ -148,7 +140,8 @@ AI continuity and Project Memory:
 
 Delivery preparation drafts:
 
-- delivery drafting uses `/api/ai/agent` and the `prepare_delivery_section_draft` tool, with only the current section's frozen `deliverySectionContext` snapshots authorized;
+- delivery drafting uses the A+ Provider Request path and the `prepare_delivery_section_draft` tool,
+  with only the current section's frozen `deliverySectionContext` snapshots authorized;
 - web search is disabled for this intent even if `MORPHO_AI_WEB_SEARCH_ENABLED=true`;
 - the browser does not send selected image pixels, full source files, full `documentExtract` text, normal task context, or Compare context for delivery section drafts;
 - locally validated `prepare_delivery_section_draft` arguments create only a pending draft; section narrative, captions, suggested gaps, DecisionRecord, and continuity event are written only when the user applies it.
@@ -201,72 +194,6 @@ The CI workflow does not use `.env`, provider API keys, Vercel tokens, paid mode
 ## Supabase Security Notes
 
 The remaining Security Advisor notices for `public.get_my_access_state()` and `public.reserve_ai_daily_quota(text)` are intentional and reviewed. They remain `SECURITY DEFINER` RPCs executable only by `authenticated`, because RLS blocks direct access to the qualification/quota tables and the application needs narrow current-user operations to read access state and atomically reserve quota. Both functions use fixed `search_path`, derive identity from `auth.uid()`, accept no cross-user identifier, use no dynamic SQL, and return only the caller's own state. Do not change them to `SECURITY INVOKER` or revoke `authenticated` execution just to remove the notices.
-
-### Agent Turn Lease Migration
-
-Apply every checked-in lease migration, in filename order, before deploying the matching application code:
-
-```text
-supabase/migrations/20260723200036_add_agent_turn_leases.sql
-supabase/migrations/20260723200456_fix_agent_turn_lease_column_ambiguity.sql
-supabase/migrations/20260726143030_harden_agent_turn_lease_causality.sql
-supabase/migrations/20260726161500_bind_agent_turn_provider_execution.sql
-supabase/migrations/20260727180000_read_agent_turn_lease_state.sql
-supabase/migrations/20260728174500_bind_agent_turn_closure.sql
-supabase/migrations/20260728203000_harden_agent_turn_closure_sequence.sql
-```
-
-The first two are the Prompt Contract v3.3 baseline. Without them, authenticated `/api/ai/agent` requests fail closed with an Agent Turn Lease service error; they must not fall back to the old client-trusted quota path. A missing or signature-changed RPC is reported as a deployment gap (`lease_contract_missing`), not a transient outage.
-
-This checkout does not store a Supabase project ref, access token, database password, or service-role key. On an authorized operator machine with the Supabase CLI already authenticated, link the intended project explicitly and review the target before pushing:
-
-```powershell
-supabase link --project-ref <project-ref>
-supabase migration list
-supabase db push --dry-run
-supabase db push
-supabase migration list
-```
-
-Do not paste credentials into the repository or shell history. Do not apply the migration to a project whose ref has not been independently checked. The latest migration adds only execution/closure booleans, IDs, hashes, outcome and timestamps plus narrow authenticated RPCs; no prompt, transcript, workspace, image, or tool body is uploaded.
-
-Conversation compaction is part of the same formal Agent turn. Its first Provider request creates the lease when needed; automatic and continuation compaction reuse that lease through the strict `leaseContinuation` path, then the normal Agent request continues with the same counters. `leaseContinuation` is not a Responses transcript continuation, cannot be combined with `continuation`, and never causes a second daily text reservation for the same user turn.
-
-Cross-turn compaction requires the latest output-inclusive transcript checkpoint from `workspace.ai.latestProviderRequestState`. Only that latest slot retains its token and manifest hash; historical traces deliberately strip them. Before an out-of-turn summary, authenticated `/api/ai/agent/snapshot/refresh` verifies the signature, user, project, fixed 180-day deadline and any compatible legacy upgrade manifest, then renews the 24-hour ordinary-use window without Provider execution or Lease consumption. Current unexpired checkpoints are not refreshed, and current expired checkpoints do not accept a client candidate manifest. Summary source text is rebuilt from message-ID-bound canonical Provider items. Historical images use server-verified stable object/asset/content-hash/MIME references rather than Base64; signed terminal outcomes replace intermediate Assistant Provider prose; ordered Context markers must come from the prior signed manifest or a complete Call/terminal-output causal binding. All checks occur before the Lease RPC.
-
-After application, verify in the Supabase SQL editor or another authorized administrative connection:
-
-```sql
-select routine_name, security_type
-from information_schema.routines
-where routine_schema = 'public'
-  and routine_name in (
-    'start_agent_turn_lease',
-    'continue_agent_turn_lease',
-    'complete_agent_turn_lease',
-    'read_agent_turn_lease_state',
-    'read_agent_turn_closure_state',
-    'mark_agent_turn_tool_execution_started',
-    'mark_agent_turn_provider_failure'
-  )
-order by routine_name;
-
-select grantee, routine_name, privilege_type
-from information_schema.routine_privileges
-where specific_schema = 'public'
-  and routine_name in (
-    'start_agent_turn_lease',
-    'continue_agent_turn_lease',
-    'complete_agent_turn_lease',
-    'read_agent_turn_lease_state',
-    'read_agent_turn_closure_state',
-    'mark_agent_turn_tool_execution_started',
-    'mark_agent_turn_provider_failure'
-  )
-order by routine_name, grantee;
-```
-
-All seven routines must be `SECURITY DEFINER`; only `authenticated` should have `EXECUTE`. Route and static migration checks run in the normal Vitest suite. Real acceptance must also verify one initial reservation, continuation without a second daily reservation, provider/search counter increments on the same lease, forged/cross-user/expired/closed rejection, read-only search recovery, tool execution marking, BeforeExecution rejection after execution, exact-sequence Provider failure marking, and exact idempotent closure recovery with conflict rejection.
 
 ### A+ Stage 2 Server Turn Journal Migration
 
@@ -329,10 +256,9 @@ POST /api/ai/agent/turns/[turnId]/requests
 
 Use the authenticated `GET` request only to diagnose minimal Server External Execution Status.
 The response contains no user ID, Request Hash, Provider body, or local project content. There is
-no A+ Feature Flag in the independently audited Stage 2 baseline. Stage 3 now reaches this resource
-only through the one default-off selector documented in Environment. The existing `/api/ai/agent`
-B-style Runtime remains active when the selector is unset or `b`. Do not remove
-Lease/Closure/Snapshot code until the Stage 4 cutover passes its own audit.
+no A+ Feature Flag in the independently audited Stage 2 baseline. Stage 4 has now made these
+resources the sole formal Runtime path and removed the temporary Stage 3 selector and retired
+Lease/Closure/Snapshot implementation.
 
 For isolated Stage 2 client checks, validated current-request display events may be observed via
 the Coordinator's optional `onDisplayEvent` sink. It is not a lifecycle or persistence input.
@@ -437,7 +363,7 @@ has `EXECUTE`. The functions derive the user from `auth.uid()` and bind every op
 user's Server Turn and the Turn's client-supplied local project ID. This is not browser-local project
 ownership and adds no project registry or cloud Workspace.
 
-With A+ explicitly enabled, the Stage 3 resources are:
+The sole formal Agent resources are:
 
 ```text
 POST /api/ai/agent/turns
@@ -500,9 +426,24 @@ record/message/project conflict is cleared from the active scheduling slot and s
 the next legal Turn is not blocked. A local persistence failure instead retains the record for
 diagnosis and does not report full success.
 
-The A+ selector remains default-off after applying the Migration. Database readiness does not switch
-the product Runtime. Production remains on B until the independent Stage 3 audit passes and Stage 4
-explicitly performs cutover and deletion.
+Stage 4 removed Runtime selection. Database readiness does not choose a client Runtime; the A+
+Routes are the only formal Agent resources in this checkout. Applying any pending Migration remains
+a separate, explicitly authorized operator action.
+
+### Stage 4 B-Proof Cleanup Migration
+
+Stage 4 adds this forward-only cleanup Migration after the two A+ Journal Migrations:
+
+```text
+supabase/migrations/20260729012105_add_agent_turn_journal.sql
+supabase/migrations/20260729093000_add_agent_turn_external_actions.sql
+supabase/migrations/20260729190000_remove_agent_runtime_b_proofs.sql
+```
+
+The cleanup drops only the retired B Lease table and its public RPCs. It does not drop or alter the
+Server Turn, Request, or External Action Journal. It has been checked in but was not applied to any
+remote database as part of Stage 4. Do not edit or replay older migration files to simulate cleanup;
+use the fixed forward-only order above after the operator verification procedure below.
 
 The Supabase Free-plan leaked-password-protection advisor warning is a plan limitation. It is not fixed by changing application SQL or weakening authentication behavior.
 
@@ -568,7 +509,8 @@ Start a development server with real local configuration. Use the already-open C
 npm.cmd run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
-Open `http://127.0.0.1:3000/projects/project-morpho-case-study`. Formal panel traffic must use `/api/ai/agent`; no workspace action may call `/api/ai/chat`.
+Open `http://127.0.0.1:3000/projects/project-morpho-case-study`. Formal panel traffic must stay
+under `/api/ai/agent/turns`; no workspace action may call `/api/ai/chat`.
 
 Minimum acceptance:
 
@@ -577,7 +519,11 @@ Minimum acceptance:
 3. Continue several turns while changing selection, direction, VisualBranch, Current Focus, and delivery-panel visibility; verify one continuous conversation remains and earlier discussion is still recalled.
 4. State one explicit stable preference and one avoidance. Verify only the exact user-backed items enter `偏好与避免项`, specific update feedback appears, source navigation works, and an AI suggestion/one-off generation request does not become a preference.
 5. Confirm a primary/alternative/eliminated direction decision and verify Decision Log, Rejected Directions, relevant Stage Record, revision chain, and restore semantics.
-6. Run visual development for 3 images, then four directions with 3 previews each. Run one batch with default reference excluded, plus scene, CMF, and detail tasks. Verify complete plans, bounded concurrent execution, partial-result retention, no source overwrite, one Agent Trace, and persisted intent/compiledPrompt/reference/model provenance. Paid calls require `MORPHO_ALLOW_PAID_SMOKE_TESTS=true`.
+6. Run visual development for 3 images, then four directions with 3 previews each. Run one batch with
+   default reference excluded, plus scene, CMF, and detail tasks. Verify complete plans, serial
+   write-ahead child execution, partial-result retention, no source overwrite, one Agent Trace, and
+   persisted intent/compiledPrompt/reference/model provenance. Paid calls require
+   `MORPHO_ALLOW_PAID_SMOKE_TESTS=true` and explicit user authorization.
 7. Generate a delivery-section draft. Verify `prepare_delivery_section_draft` uses frozen section references and creates a pending draft; no delivery content changes before explicit apply.
 8. Export an editable backup, inspect it, restore a new copy, and verify raw chat, compaction, Memory/Stage revisions, traces, citations, Compare records, assets, and generation provenance survive.
 
@@ -626,7 +572,9 @@ Delivery preparation mock acceptance for M6:
 - edit a caption/note, move a reference, remove a reference, add a manual gap, resolve/reopen/remove the gap, close/reopen the panel, and verify content persists;
 - modify a source image title or role and hide a source file behind a document fragment, then verify old snapshots remain readable and source states show updated/hidden without automatic refresh;
 - click `更新为当前版本` on a source-updated reference, confirm that only that reference snapshot/fingerprint updates, caption/note remain, the source object is unchanged, and a DecisionRecord plus delivery continuity event are written;
-- monitor `/api/ai/agent`, click `生成本节说明草稿`, and verify the Agent calls `prepare_delivery_section_draft` against only the current frozen section references, without selected image Base64, Blob URLs, or full source-file text;
+- monitor `/api/ai/agent/turns/**`, click `生成本节说明草稿`, and verify the Agent calls
+  `prepare_delivery_section_draft` against only the current frozen section references, without
+  selected image Base64, Blob URLs, or full source-file text;
 - return a valid delivery tool call and verify a pending draft appears with no section narrative/caption/gap write before `应用草稿`;
 - apply the draft and verify narrative, listed captions, suggested gaps, DecisionRecord, and continuity event are written;
 - return malformed tool arguments, an unauthorized reference ID, or too many gaps and verify no delivery draft/content/DecisionRecord/memory update/Compare analysis is written.
@@ -697,17 +645,14 @@ Local document extraction:
 /                         project homepage
 /login                    Supabase email/password login and registration
 /projects/[projectId]     project workspace
-/api/ai/agent             formal OpenAI-compatible Responses Agent stream
-/api/ai/agent/lease       authenticated Agent turn completion
-/api/ai/agent/snapshot/refresh  signed transcript checkpoint renewal; no Provider or Lease
-/api/ai/agent/turns       A+ Server Turn creation; reached only when the default-off Stage 3 selector is explicit
-/api/ai/agent/turns/[turnId]  A+ Journal query and Provider-request resource
+/api/ai/agent/turns       formal Server Turn creation
+/api/ai/agent/turns/[turnId]  Server External Execution Status query
+/api/ai/agent/turns/[turnId]/requests  exact idempotent Provider Request stream
 /api/ai/agent/turns/[turnId]/requests/cancel  explicit exact-Request external cancellation attempt
 /api/ai/agent/turns/[turnId]/actions/web-search  claim-bound idempotent A+ Search action
 /api/ai/agent/turns/[turnId]/actions/image  claim-bound idempotent A+ Image action
 /api/ai/agent/turns/[turnId]/actions/compaction  idempotent A+ Summary Provider action
-/api/ai/chat              deprecated compatibility-only text route
-/api/ai/web-search        AiJWS web-search proxy
+/api/ai/chat              independent bounded text route; no formal-panel caller
 /api/ai/image             GrsAI image generation proxy
 ```
 
@@ -725,121 +670,63 @@ The current code does not include:
 - deployment automation beyond the existing Vercel deployment and checked-in Cloudflare/OpenNext backup scripts;
 - project search over full `documentExtract` text. Project search reads workspace JSON only; whole-document PDF/PPTX text stays in IndexedDB and is searchable only in the per-file document reader.
 
-## Agent Lease Migration Verification
+## Agent Runtime A+ Migration Verification
 
-The most recent forward-only lease migrations are:
+The current forward-only A+ migration order is fixed:
 
 ```text
-supabase/migrations/20260726143030_harden_agent_turn_lease_causality.sql
-supabase/migrations/20260726161500_bind_agent_turn_provider_execution.sql
-supabase/migrations/20260727180000_read_agent_turn_lease_state.sql
-supabase/migrations/20260728174500_bind_agent_turn_closure.sql
-supabase/migrations/20260728203000_harden_agent_turn_closure_sequence.sql
+supabase/migrations/20260729012105_add_agent_turn_journal.sql
+supabase/migrations/20260729093000_add_agent_turn_external_actions.sql
+supabase/migrations/20260729190000_remove_agent_runtime_b_proofs.sql
 ```
 
-Do not apply them from an unverified shell. Verify the CLI and linked project first:
+Stage 4 did not apply these files remotely. On an authorized operator machine, use PowerShell 7 and
+verify the CLI, account, intended project, linked project ref, migration history, and dry-run before
+changing a remote database:
 
 ```powershell
 supabase --version
 supabase status
 supabase projects list
 Get-Content supabase/.temp/project-ref
+supabase migration list
 supabase db push --dry-run
 ```
 
-The dry run must list only the intended pending migrations. Then apply and verify:
+The dry run must target the independently verified project and list only expected pending files in
+filename order. If the CLI is unavailable, authentication is missing, the project identity cannot be
+matched, or unrelated migrations appear, stop. Do not edit historical migrations, paste credentials,
+or apply the Stage 4 cleanup manually out of order. Only after a separate deployment authorization:
 
 ```powershell
 supabase db push
 supabase migration list
 ```
 
-If `supabase` is not installed, authentication is absent, the project ref cannot be independently matched, or dry-run lists unrelated migrations, stop without changing the remote database.
+After application, an authorized administrative query should confirm that
+`private.agent_turn_journal`, `private.agent_turn_request_journal`, and
+`private.agent_turn_external_action_journal` remain present with RLS and no direct client grants.
+The retired `private.ai_agent_turn_leases` table and B Lease/Closure RPC names must be absent. The
+A+ RPCs remain `SECURITY DEFINER`, use fixed empty `search_path`, derive identity from `auth.uid()`,
+and grant execution only to `authenticated`.
 
-## Agent Continuity Validation
+## Agent Runtime Validation
 
-Run from PowerShell 7:
+Run from PowerShell 7 without paid Provider flags:
 
 ```powershell
 npm.cmd run lint
 npm.cmd run typecheck
 npm.cmd test
-npm.cmd run test:prompt-cache
-npm.cmd run case-study:upgrade
-npm.cmd run case-study:upgrade
 npm.cmd run build
+npm.cmd run test:e2e
 git diff --check
 ```
 
-Do not add `--live` to prompt-cache tests unless `MORPHO_ALLOW_PAID_SMOKE_TESTS=true`.
-
-# Agent lease migrations pending deployment
-
-The current forward-only Agent Lease migrations must be applied in order before an
-Agent turn can use the matching RPC signatures:
-
-```text
-supabase/migrations/20260726143030_harden_agent_turn_lease_causality.sql
-supabase/migrations/20260726161500_bind_agent_turn_provider_execution.sql
-supabase/migrations/20260727180000_read_agent_turn_lease_state.sql
-supabase/migrations/20260728174500_bind_agent_turn_closure.sql
-supabase/migrations/20260728203000_harden_agent_turn_closure_sequence.sql
-```
-
-Until they are applied, one or more Lease/Closure RPCs do not exist with the
-expected argument lists and PostgREST answers `PGRST202`.
-The route reports that as "数据库尚未升级到当前 Agent Lease 契约" rather than a
-generic outage, so a 503 with that message means the migrations are missing.
-
-Apply them either through the Supabase Studio SQL Editor (paste each file in the
-order above) or through the CLI after the checks below pass:
-
-```powershell
-supabase --version
-supabase status
-supabase projects list
-supabase db push --dry-run
-```
-
-The dry run must list only the intended pending migrations. If the CLI is absent, no project
-is linked, or the dry run lists anything else, stop without changing the remote
-database. These are forward-only migrations; review the dry run rather than
-replaying already-recorded files manually.
-
-Verify after applying:
-
-```powershell
-supabase migration list
-```
-
-# Agent continuation signing key
-
-`MORPHO_AGENT_CONTINUATION_SECRET` is optional. When unset, the server derives a
-stable key from `MORPHO_AI_API_KEY`, so no new deployment variable is required. If
-it is set, every instance must share the same value — a per-instance secret makes
-continuations fail across instances.
-
-# Final-round Agent migration and recovery checks
-
-The final forward-only migration is:
-
-```text
-supabase/migrations/20260727180000_read_agent_turn_lease_state.sql
-```
-
-It adds only `read_agent_turn_lease_state(uuid, text)`. The function is
-`SECURITY DEFINER` with `set search_path = ''`, derives ownership from
-`auth.uid()`, is executable only by `authenticated`, and returns no hashes,
-transcript, prompt, or project data. Run the full `supabase migration list` and
-`supabase db push --dry-run` checks above before applying it; if the CLI,
-authentication, project ref, or dry-run cannot be independently verified, leave
-the migration pending and do not change the remote database.
-
-For browser recovery acceptance, make one Agent search transport fail after
-the lease sequence is consumed. Confirm the browser calls the read-only state
-route once, does not replay the original query, and sends the failed search as
-a terminal tool result so the next Provider turn can choose another angle. A
-failed state read must stop the turn rather than issuing a second search.
+The architecture-boundary tests additionally require one canonical Runner import, no Runtime
+selector or old environment flag, no B Agent/Lease/Snapshot/web-search Routes, no B proof modules,
+and the forward-only Workspace normalization boundary. Do not add `--live` to any Provider smoke
+test unless `MORPHO_ALLOW_PAID_SMOKE_TESTS=true` and the user has explicitly authorized paid calls.
 
 # Browser acceptance
 
@@ -859,9 +746,10 @@ npx playwright install chromium
 ```
 
 The suite starts its own server with `MORPHO_AUTH_REQUIRED=false` and empty
-provider keys. No test may reach a paid model or image endpoint: `/api/ai/agent`
-is intercepted in the page and answered from SSE frames built by the production
-encoder in `e2e/support/agentSse.ts`. The seed workspace is regenerated from the
+provider keys. No test may reach a paid model or image endpoint: the A+ resources under
+`/api/ai/agent/turns/**` are intercepted in the page and answered by an in-browser Turn/Request/
+External Action Journal mock. Provider Request SSE frames use the production A+ encoder through
+`e2e/support/agentSse.ts`. The seed workspace is regenerated from the
 real domain code on every run by `e2e/globalSetup.ts` into `e2e/.seed/seed.json`,
 because Playwright's loader cannot resolve the case-study fixture's JSON imports.
 

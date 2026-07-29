@@ -139,7 +139,7 @@ compactTokens=230400
 targetUncompressedTokens=16000
 ```
 
-The 204,800 and 230,400 values are trigger thresholds, not retained context sizes. The fixed policy is shared by the client and `/api/ai/agent`; production environment variables cannot change it. `targetUncompressedTokens` limits the compressible discussion and completed-tool-history portion after compaction. The non-compressible system contract, current user input, current selected image inputs, real project state, and latest unresolved tool-output group remain protected even when they make the complete provider request larger than the target.
+The 204,800 and 230,400 values are trigger thresholds, not retained context sizes. The fixed policy is shared by the client and A+ Provider Request route; production environment variables cannot change it. `targetUncompressedTokens` limits the compressible discussion and completed-tool-history portion after compaction. The non-compressible system contract, current user input, current selected image inputs, real project state, and latest unresolved tool-output group remain protected even when they make the complete provider request larger than the target.
 
 At prepare pressure, older completed tool outputs and excess history are shortened toward the target. At compact pressure, history is reduced further and the provider is explicitly asked for a refreshed checkpoint.
 
