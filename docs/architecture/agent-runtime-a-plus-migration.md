@@ -7,7 +7,7 @@ This document is the durable implementation ledger for converging the Morpho Age
 | Field | Value |
 |---|---|
 | Decision date | 2026-07-28 |
-| Current state | Stage 4 cutover/deletion implemented; final independent audit pending |
+| Current state | Stage 5 merge/release candidate preparation in progress |
 | Current formal working branch | `refactor/agent-runtime-a-plus` |
 | B implementation archive branch | `archive/agent-runtime-b` |
 | B implementation archive tag | `agent-runtime-b-final-2026-07-28-f27a410` |
@@ -20,8 +20,8 @@ This document is the durable implementation ledger for converging the Morpho Age
 | A+ Runtime | The only reachable Runtime on this working branch |
 | Active working-branch runtime | Canonical A+ `agentTurnRunner.ts`; no selector or B fallback |
 | Server journals | Server Turn Journal plus External Action Journal implemented; remote Migration application remains an operator deployment step |
-| Stage 4 | Implemented in three scoped commits; final audit pending |
-| Next allowed stage | Final Stage 4 audit only; no Stage 5 or `main` merge is authorized here |
+| Stage 4 | Complete — independently accepted at `1ec902ecfd09c6b0abfe7b58230321e880321e94` |
+| Next allowed stage | Draft PR, GitHub CI, and Preview validation only; do not merge `main` or execute Phase A/B/C without later independent authorization |
 
 The formal decision is recorded in [Technical Decisions](./decisions.md). The earlier [AI Continuity Convergence Audit](./ai-continuity-convergence-audit.md) remains historical evidence.
 
@@ -772,8 +772,9 @@ Stage 4. The later independent audit accepted Stage 3 at the SHA recorded above.
 
 ### Stage 4 — Cutover and Deletion
 
-Stage 4 is implemented on `refactor/agent-runtime-a-plus` and awaits final independent re-audit after
-the release-gate and neutral Provider cache-hint revision:
+Stage 4 was independently accepted on `refactor/agent-runtime-a-plus` at
+`1ec902ecfd09c6b0abfe7b58230321e880321e94` after the release-gate and neutral Provider
+cache-hint revision:
 
 - `WorkspaceClient.tsx` calls the canonical `agentTurnRunner.ts` directly. The Selector,
   `NEXT_PUBLIC_MORPHO_AGENT_RUNTIME`, and both old public Runner names are gone.
@@ -806,11 +807,76 @@ the release-gate and neutral Provider cache-hint revision:
 The B code remains available only through Git history, `archive/agent-runtime-b`, and the annotated
 tag `agent-runtime-b-final-2026-07-28-f27a410`; Stage 4 does not move either archive reference.
 
+### Stage 5 — Merge and Release Candidate Gate
+
+Stage 5 prepares a reviewable merge candidate without authorizing a source merge, database release,
+or production cutover.
+
+#### Accepted baselines
+
+```text
+Stage 3:
+4c52cc5cfa7db5fcdcbf1765acfd8795c6e1f1dc
+
+Stage 4:
+1ec902ecfd09c6b0abfe7b58230321e880321e94
+
+main baseline:
+f27a4102e94730ec56a476b349dda4710a67b514
+```
+
+At the start of Stage 5, `refactor/agent-runtime-a-plus` was 42 commits ahead of `origin/main` and
+zero commits behind. The `main` baseline was the direct ancestor and there was no `main`-side
+development to absorb, merge, or reconcile.
+
+#### Stage 5 responsibilities
+
+- Freeze the A+ merge candidate while preserving every Stage 0–4 audited SHA.
+- Run the complete local quality, production-build, browser, Case Study, architecture-boundary, and
+  Route acceptance suite against the final Release Candidate HEAD.
+- Create a Draft PR as the GitHub CI, Vercel Preview, review, and complete 42+1 commit-range container.
+- Require GitHub Actions and Vercel Preview to pass without Provider credentials, paid calls, remote
+  Supabase changes, or production deployment.
+- Keep `main`, production, all three database release phases, and both B archive refs unchanged.
+
+#### Source merge and production release remain separate
+
+Creating a Draft PR does not authorize production deployment. Before Phase A completes, this branch
+must not enter `main`: updating `main` may trigger Vercel Production while the sole A+ application
+still depends on Server Turn Journal and External Action Journal contracts that have not been applied
+remotely.
+
+The release order remains:
+
+1. Complete the Stage 5 Release Candidate, local verification, CI, Preview, and review gate.
+2. Separately authorize and execute Phase A from the accepted Stage 3 checkout, applying only the two
+   additive A+ Journal Migrations.
+3. After Phase A passes, separately authorize the `main` fast-forward and Phase B sole-A+ deployment
+   plus authenticated no-cost health checks.
+4. After an agreed healthy A+ window, separately authorize Phase C irreversible B database cleanup.
+
+#### Future merge policy
+
+The later authorized source merge must be fast-forward only so every audited commit SHA remains
+reachable unchanged. Do not squash, rebase, rewrite the 42 migration commits, use GitHub Squash and
+Merge, or use GitHub Rebase and Merge. The Draft PR is only a review and CI container. A later
+authorized task may execute:
+
+```powershell
+git checkout main
+git pull --ff-only origin main
+git merge --ff-only refactor/agent-runtime-a-plus
+git push origin main
+```
+
+Stage 5 does not execute those commands and does not authorize Phase A, Phase B, or Phase C.
+
 ## 11. Deletion Policy
 
 - The B implementation is permanently archived in `archive/agent-runtime-b` and `agent-runtime-b-final-2026-07-28-f27a410`.
 - The formal branch kept the existing implementation until Stage 3 passed its staged acceptance gates.
-- Stage 4 deleted obsolete code after that Stage 3 pass; final acceptance is still an external audit gate.
+- Stage 4 deleted obsolete code after that Stage 3 pass and was independently accepted at the SHA
+  recorded above; Stage 5 preserves that accepted code baseline unchanged.
 - Morpho will not maintain two Runtimes long term.
 - Morpho will not keep a long-lived Runtime Feature Flag.
 - Dead code, legacy branches, and commented-out implementations are not archival mechanisms.
