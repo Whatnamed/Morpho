@@ -244,13 +244,13 @@ import {
   type APlusRestoredImageActionDescriptor
 } from "./agentExternalActionClientAPlus";
 import {
-  acknowledgeSelectedPendingAgentConfirmation,
-  cancelSelectedMorphoAgentTurn,
-  recoverSelectedAgentRuntime,
-  resumeSelectedAgentRuntime,
-  runSelectedManualCompactionTurn,
-  runSelectedMorphoAgentTurn
-} from "./agentRuntimeSelector";
+  acknowledgeMorphoAgentPendingConfirmationAPlus,
+  cancelMorphoAgentTurnAPlus,
+  recoverMorphoAgentTurnAPlus,
+  resumeMorphoAgentTurnAPlus,
+  runManualCompactionTurnAPlus,
+  runMorphoAgentTurnAPlus
+} from "./agentTurnRunnerAPlus";
 import { completeAgentTrace } from "./agentMessageTrace";
 import { commitWorkspaceStateNow } from "./workspaceCommitBoundary";
 import { readErrorResponse } from "./httpPayload";
@@ -1842,7 +1842,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
     recoveredAgentRuntimeProjectRef.current = projectId;
-    void recoverSelectedAgentRuntime(projectId, agentTurnHost);
+    void recoverMorphoAgentTurnAPlus(projectId, agentTurnHost);
   }, [agentTurnHost, persistenceState.isWorkspaceLoaded, projectId]);
 
   const handleSendMorphoAgentTurn = useCallback(async () => {
@@ -1852,7 +1852,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
 
     if (showRecoveryPending) {
-      const recoveryResult = await resumeSelectedAgentRuntime(projectId, agentTurnHost);
+      const recoveryResult = await resumeMorphoAgentTurnAPlus(projectId, agentTurnHost);
       if (recoveryResult === "pending") {
         setShowFailure(false);
         setShowRecoveryPending(true);
@@ -1882,10 +1882,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       readConversationTokenLimits: readConversationTokenLimitsOverride
     };
     if (parseManualCompactCommand(draft).matched) {
-      await runSelectedManualCompactionTurn(turnInput, agentTurnHost);
+      await runManualCompactionTurnAPlus(turnInput, agentTurnHost);
       return;
     }
-    await runSelectedMorphoAgentTurn(turnInput, agentTurnHost);
+    await runMorphoAgentTurnAPlus(turnInput, agentTurnHost);
   }, [
     agentTurnHost,
     agentTurnMode,
@@ -2225,7 +2225,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   );
 
   const handleCancelAiRequest = useCallback(async () => {
-    if (await cancelSelectedMorphoAgentTurn(projectId)) {
+    if (await cancelMorphoAgentTurnAPlus(projectId)) {
       return;
     }
     agentStreamFlushRef.current?.();
@@ -2852,7 +2852,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     if (!pendingConfirmation) {
       return;
     }
-    await acknowledgeSelectedPendingAgentConfirmation(projectId);
+    await acknowledgeMorphoAgentPendingConfirmationAPlus(projectId);
 
     if (pendingConfirmation.kind === "batchGenerateVisuals" || pendingConfirmation.kind === "agentGenerateVisuals") {
       const controller = new AbortController();
@@ -3285,7 +3285,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         markReplacedDerivativesForReview: true
       })
     );
-    void acknowledgeSelectedPendingAgentConfirmation(projectId);
+    void acknowledgeMorphoAgentPendingConfirmationAPlus(projectId);
     setPendingConfirmation(null);
     setAiDraft("");
     showWorkspaceNotice(`已替换默认参考为「${pendingConfirmation.targetTitle}」，直接延展素材已标记待复核`);
@@ -4674,13 +4674,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onConfirmPending={handleConfirmPending}
         onConfirmPendingSecondary={handleConfirmPendingWithReviewMarks}
         onCancelPending={() => {
-          void acknowledgeSelectedPendingAgentConfirmation(projectId);
+          void acknowledgeMorphoAgentPendingConfirmationAPlus(projectId);
           setPendingConfirmation(null);
         }}
         onFailureRetry={() => {
           void (async () => {
             setShowFailure(false);
-            const result = await resumeSelectedAgentRuntime(projectId, agentTurnHost);
+            const result = await resumeMorphoAgentTurnAPlus(projectId, agentTurnHost);
             setShowRecoveryPending(result === "pending");
             setShowFailure(result === "failed");
           })();
