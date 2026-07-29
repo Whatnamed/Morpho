@@ -25,6 +25,20 @@ Implemented routes:
 - `/api/ai/web-search` proxies bounded provider web search for standalone searches and for lease-bound Agent continuations.
 - `/api/ai/image` proxies server-side GrsAI image generation and returns the generated image bytes.
 
+Stage 3 A+ audit-path details:
+
+- `agentTurnRunnerAPlus.ts` uses the Stage 2 Coordinator and the Stage 1 reducer; the Server Turn
+  Journal owns only Server External Execution Status, while the client derives the Overall Local
+  Agent Turn Outcome from local Tool, confirmation, and persistence facts.
+- A same-page running or ambiguous External Action keeps a visible query-only Resume entry. Search,
+  Image, and Compaction classify a non-abort POST response loss as `running` and replay the exact
+  Action ID, serialized Body, and Body Hash; this protects one acquisition/counter settlement without
+  treating transport loss as a confirmed failure.
+- Browser-local writes remain product-correctness effects. Every Tool Effect Matrix write has an
+  explicit replay strategy: stable Operation/client-request IDs, stable delivery Draft IDs,
+  final-value comparison, semantic dedupe, or stable Analysis ID overwrite. These strategies do not
+  make local Workspace state server-authoritative.
+
 Important module boundaries:
 
 - `src/app/` owns Next.js routes.

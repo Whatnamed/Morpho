@@ -679,6 +679,32 @@ This revision changes only Stage 3 runtime, local Recovery, tests, and architect
 does not apply the Supabase Migration remotely, change the Server Journal schema, delete B Runtime, or
 start Stage 4. It is awaiting independent re-audit.
 
+#### Stage 3 recovery boundary micro-fixes
+
+The next focused revision closes the three remaining P1 boundaries from the independent review while
+keeping Stage 4 blocked:
+
+- A running or response-ambiguous External Action now calls the optional non-terminal UI port. The
+  Workspace keeps an explicit `外部任务仍在执行 / 再次检查` entry through repeated `pending` checks;
+  only `recovered`, `none`, or a terminal failure closes or changes that entry. Sending a new message
+  while that entry is present performs Resume first rather than silently returning because an active
+  Session exists.
+- Search, Image, and Compaction POST transport failures after the request attempt are classified as
+  ambiguous `running` Actions. The browser retains the same Action ID, serialized Body, and SHA-256
+  Body Hash and replays that exact request/query identity. Abort remains a user cancellation, and
+  explicit server terminal/conflict responses remain terminal. Tests assert one simulated external
+  acquisition and identical replay bodies for all three actions.
+- Every Tool marked `pendingDraftWrite`, `reversibleWorkspaceWrite`, or `memoryWrite` now has a recorded
+  replay strategy. Delivery section drafts use a stable Draft ID; proposal revision recognizes already-
+  applied final values; semantic Memory Patch uses its existing dedupe key; Comparison overwrites its
+  stable analysis ID; Research, Design Definition, Concept Direction, and Visual Tools retain their
+  stable operation/request identities. Delivery, revision, Memory, Comparison, Visual, and effect-
+  matrix audit tests cover the crash/replay boundary.
+
+These micro-fixes change only Stage 3 runtime, local domain idempotency, tests, and the architecture
+ledger. They do not apply the Supabase Migration remotely, change the Server Journal schema, delete B
+Runtime, or start Stage 4. Stage 3 remains subject to independent re-audit.
+
 ### Stage 4 — Cutover and Deletion
 
 - Switch to the single accepted Runtime.
