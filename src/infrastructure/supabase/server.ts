@@ -81,7 +81,8 @@ export function applyProxySupabaseCookieUpdates(
 export async function clearProxySupabaseAuthCookies(
   request: NextRequest,
   response: NextResponse,
-  supabaseUrl: string
+  supabaseUrl: string,
+  originalCookieNames: readonly string[] = request.cookies.getAll().map(({ name }) => name)
 ): Promise<void> {
   const storageKey = getSupabaseAuthStorageKey(supabaseUrl);
   const cookieRoots = [storageKey, `${storageKey}-code-verifier`, `${storageKey}-user`];
@@ -90,13 +91,13 @@ export async function clearProxySupabaseAuthCookies(
       path: "/",
       sameSite: "lax",
       httpOnly: false,
-      secure: request.nextUrl.protocol === "https:"
+      secure: isSecureProxyRequest(request)
     }
   ];
 
   for (const cookieRoot of cookieRoots) {
     await clearAuthCookiesAtScopes({
-      getAll: () => request.cookies.getAll(),
+      getAll: () => originalCookieNames.map((name) => ({ name, value: "" })),
       setAll: (cookiesToSet, headers) => applyProxySupabaseCookieUpdates(request, response, cookiesToSet, headers),
       storageKey: cookieRoot,
       scopes
@@ -104,6 +105,11 @@ export async function clearProxySupabaseAuthCookies(
   }
 
   copySupabaseAuthResponseHeaders(SUPABASE_AUTH_NO_CACHE_HEADERS, response.headers);
+}
+
+function isSecureProxyRequest(request: NextRequest): boolean {
+  const forwardedProtocol = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+  return request.nextUrl.protocol === "https:" || new URL(request.url).protocol === "https:" || forwardedProtocol === "https";
 }
 
 export function getSupabaseAuthStorageKey(supabaseUrl: string): string {

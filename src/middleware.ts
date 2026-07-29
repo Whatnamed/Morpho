@@ -23,6 +23,7 @@ export async function middleware(request: NextRequest) {
     return responseForAuthDecision(initialDecision, request);
   }
 
+  const originalCookieNames = request.cookies.getAll().map(({ name }) => name);
   const response = NextResponse.next({ request });
   const supabase = createProxySupabaseClient(request, response);
   if (supabase.status === "failed") {
@@ -47,7 +48,7 @@ export async function middleware(request: NextRequest) {
   } = await supabase.client.auth.getUser();
   const errorKind = classifyAuthSessionError(error);
   if (errorKind === "terminal-stale-session" && auth.supabase.status === "ok") {
-    await clearProxySupabaseAuthCookies(request, response, auth.supabase.url);
+    await clearProxySupabaseAuthCookies(request, response, auth.supabase.url, originalCookieNames);
   } else if (errorKind === "unknown") {
     console.error(
       JSON.stringify({

@@ -91,4 +91,31 @@ describe("Supabase proxy cookie handling", () => {
   it("derives the exact public Supabase auth storage key without accepting unrelated cookie names", () => {
     expect(getSupabaseAuthStorageKey("https://example.supabase.co")).toBe("sb-example-auth-token");
   });
+
+  it("keeps cleanup Secure behind an HTTPS forwarding proxy and uses the pre-refresh cookie-name snapshot", async () => {
+    const request = new NextRequest("http://internal-preview/projects/project-a", {
+      headers: {
+        cookie: "sb-example-auth-token.0=stale-session",
+        "x-forwarded-proto": "https"
+      }
+    });
+    const originalCookieNames = request.cookies.getAll().map(({ name }) => name);
+    const response = NextResponse.next({ request });
+    request.cookies.delete("sb-example-auth-token.0");
+
+    await clearProxySupabaseAuthCookies(
+      request,
+      response,
+      "https://example.supabase.co",
+      originalCookieNames
+    );
+
+    expect(response.cookies.get("sb-example-auth-token.0")).toMatchObject({
+      value: "",
+      maxAge: 0,
+      path: "/",
+      sameSite: "lax",
+      secure: true
+    });
+  });
 });

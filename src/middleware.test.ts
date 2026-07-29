@@ -46,9 +46,18 @@ describe("authentication middleware recovery", () => {
         data: { user: null },
         error: { name: "AuthSessionMissingError" }
       });
-    createProxySupabaseClientMock.mockImplementation(
-      () => ({ status: "ok", client: { auth: { getUser } } }) as never
-    );
+    let proxyRequestIndex = 0;
+    createProxySupabaseClientMock.mockImplementation((request, response) => {
+      if (proxyRequestIndex++ === 0) {
+        response.cookies.set("sb-example-auth-token.0", "", {
+          maxAge: 0,
+          path: "/",
+          sameSite: "lax"
+        });
+        request.cookies.delete("sb-example-auth-token.0");
+      }
+      return { status: "ok", client: { auth: { getUser } } } as never;
+    });
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     const first = await middleware(
@@ -59,7 +68,13 @@ describe("authentication middleware recovery", () => {
     const second = await middleware(new NextRequest("https://morpho.example/projects/project-a"));
 
     expect(first.headers.get("location")).toBe("https://morpho.example/login?next=%2Fprojects%2Fproject-a");
-    expect(first.cookies.get("sb-example-auth-token.0")).toMatchObject({ value: "", maxAge: 0, path: "/" });
+    expect(first.cookies.get("sb-example-auth-token.0")).toMatchObject({
+      value: "",
+      maxAge: 0,
+      path: "/",
+      sameSite: "lax",
+      secure: true
+    });
     expect(first.cookies.get("morpho-preference")).toBeUndefined();
     expect(second.headers.get("location")).toBe("https://morpho.example/login?next=%2Fprojects%2Fproject-a");
     expect(second.cookies.getAll()).toEqual([]);
