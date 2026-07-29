@@ -734,9 +734,20 @@ git worktree remove $phaseA
 ### Phase B — sole A+ application deployment and no-cost health checks
 
 Deploy the audited Stage 4 application only after Phase A passes. First use an authenticated preview
-or staging deployment with `MORPHO_AI_API_KEY` and image Provider keys absent. In the same-origin
-browser DevTools console, with a real authenticated session, create and query a Turn without invoking
-a Provider:
+or staging deployment with **every accepted text Provider credential absent**:
+
+- `MORPHO_AI_API_KEY` must not exist in that Preview/Staging scope;
+- the compatible `AIJWS_API_KEY` alias must not exist either;
+- every image Provider credential must also be absent (currently `MORPHO_GRS_API_KEY`).
+
+Do not remove only `MORPHO_AI_API_KEY`: `AIJWS_API_KEY` is still an accepted credential and would
+allow a real Provider call. Before deploying or sending the health request, inspect the Vercel
+Environment Variables list for the exact Preview/Staging scope and confirm that neither text Key name
+and no image Provider Key name is present. Check names and scope only; do not print, read, copy, or
+echo any credential value into a terminal, script, log, screenshot, or audit note.
+
+In the same-origin browser DevTools console, with a real authenticated session, create and query a
+Turn without invoking a Provider:
 
 ```javascript
 const localProjectId = `health-${crypto.randomUUID()}`;
@@ -756,14 +767,14 @@ const queried = await fetch(
 if (queried.status !== 200 || queried.body.status !== 'created') throw queried;
 ```
 
-Then POST one syntactically valid A+ Provider Request to that Turn. With Provider keys intentionally
-absent it must return `503` with `code = provider_unavailable`; the Journal must remain `created`, all
-external counters must remain zero, and deployment logs must show no Provider, Search, or Image call.
-Do not add a key merely to make this health check pass. Also verify:
+Then POST one syntactically valid A+ Provider Request to that Turn. With all accepted text and image
+Provider credentials intentionally absent it must return `503` with `code = provider_unavailable`;
+the Journal must remain `created`, all external counters must remain zero, and deployment logs must
+show no Provider, Search, or Image call. Do not add a key merely to make this health check pass.
 
 ```javascript
 const requestId = `health-request-${crypto.randomUUID()}`;
-const unavailable = await fetch(
+const unavailableResponse = await fetch(
   `/api/ai/agent/turns/${created.body.serverTurnId}/requests`,
   {
     method: 'POST',
@@ -784,7 +795,15 @@ const unavailable = await fetch(
       }
     })
   }
-).then(async (response) => ({ status: response.status, body: await response.json() }));
+);
+const unavailableContentType = unavailableResponse.headers.get('content-type') ?? '';
+const unavailable = {
+  status: unavailableResponse.status,
+  contentType: unavailableContentType,
+  body: unavailableContentType.includes('application/json')
+    ? await unavailableResponse.json()
+    : { error: 'Unexpected non-JSON response. Stop and inspect deployment credentials/logs.' }
+};
 if (unavailable.status !== 503 || unavailable.body.code !== 'provider_unavailable') {
   throw unavailable;
 }
