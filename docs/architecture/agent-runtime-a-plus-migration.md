@@ -705,6 +705,38 @@ These micro-fixes change only Stage 3 runtime, local domain idempotency, tests, 
 ledger. They do not apply the Supabase Migration remotely, change the Server Journal schema, delete B
 Runtime, or start Stage 4. Stage 3 remains subject to independent re-audit.
 
+#### Stage 3 write-ahead recovery and delivery-outcome revision
+
+The next focused revision closes the remaining recovery and Tool Batch semantics found by the latest
+independent review:
+
+- Search, Image, and Compaction now build the stable Action ID, exact serialized Body, and SHA-256
+  Body Hash before the first POST. The complete descriptor is written to the browser-local Recovery
+  Store and the write is flushed successfully before the request may leave the page. A refresh reuses
+  only that persisted Body after matching Action kind/ID, Tool Call binding where applicable, and Hash;
+  it never rebuilds Search queries, Image references/model settings, or Compaction messages from the
+  current Workspace. Missing, damaged, or mismatched payloads stop with
+  `external_action_request_payload_unavailable`.
+- Because the Recovery Record has one current External Action descriptor, A+ Image child Actions are
+  submitted serially. Each next child replaces the descriptor only after the preceding child has
+  returned and its local result handling has settled. The B default path retains its existing bounded
+  image concurrency. A future parallel A+ implementation must persist every in-flight child descriptor
+  before restoring parallel submission.
+- `prepare_delivery_section_draft` is a low-impact local pending-draft write, not the reserved
+  `pendingConfirmation` lifecycle state. A successful call records one `executed` Tool terminal,
+  requires durable Workspace persistence, returns `draftCreated` to the Provider, and leaves Apply or
+  Discard as a later independent user action. Stable Draft identity keeps refresh replay idempotent.
+- The local-write strategy audit now derives the complete expected Tool set from
+  `MORPHO_AGENT_TOOL_EFFECT_MATRIX`; adding a new pending-draft, reversible-Workspace, or Memory write
+  without an explicit replay strategy fails the test instead of escaping a hand-maintained name list.
+
+Tests cover a page disappearing while the first Search response never arrives, exact Compaction replay
+after local conversation data changes, persisted Image descriptor forwarding after current settings
+change, missing External Action payloads, Delivery Batch terminal loss/replay, and full Runner
+Continuation after Delivery Draft creation. This revision does not change a Route, Server Journal,
+Supabase schema, or remote deployment; it does not switch the default Runtime, delete B, or start
+Stage 4. Stage 3 remains subject to independent re-audit.
+
 ### Stage 4 — Cutover and Deletion
 
 - Switch to the single accepted Runtime.

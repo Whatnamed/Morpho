@@ -31,13 +31,16 @@ Stage 3 A+ audit-path details:
   Journal owns only Server External Execution Status, while the client derives the Overall Local
   Agent Turn Outcome from local Tool, confirmation, and persistence facts.
 - A same-page running or ambiguous External Action keeps a visible query-only Resume entry. Search,
-  Image, and Compaction classify a non-abort POST response loss as `running` and replay the exact
-  Action ID, serialized Body, and Body Hash; this protects one acquisition/counter settlement without
-  treating transport loss as a confirmed failure.
+  Image, and Compaction persist the full Action descriptor and flush it before POST, classify a
+  non-abort response loss as `running`, and recover only with the persisted Action ID, serialized Body,
+  and Body Hash. A missing/mismatched Body fails explicitly instead of being regenerated from current
+  Workspace state. The current A+ Image path serializes child Actions so the one current descriptor
+  always names the only in-flight child; the default B path retains its existing bounded concurrency.
 - Browser-local writes remain product-correctness effects. Every Tool Effect Matrix write has an
   explicit replay strategy: stable Operation/client-request IDs, stable delivery Draft IDs,
   final-value comparison, semantic dedupe, or stable Analysis ID overwrite. These strategies do not
-  make local Workspace state server-authoritative.
+  make local Workspace state server-authoritative. Delivery Draft creation is an executed local write;
+  Apply/Discard remains a later independent user action rather than a Pending Confirmation Turn.
 
 Important module boundaries:
 
