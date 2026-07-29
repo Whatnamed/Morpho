@@ -6,7 +6,7 @@ import {
   type ConversationTokenLimits
 } from "@/domain/morpho/conversationCompaction";
 import type { MorphoWorkspace } from "@/domain/morpho/types";
-import { hashSourceMessageIds } from "@/shared/agentCompactionProtocol";
+import { hashSourceMessageIds } from "@/shared/agentProductHash";
 import type { AgentTurnCoordinator, AgentTurnCoordinatorActionResult } from "./agentTurnCoordinator";
 import type { AgentTurnHost } from "./agentTurnHost";
 import type { AgentTurnCompactionMode } from "./agentTurnLifecycle";
@@ -49,7 +49,7 @@ export type AgentCompactionAPlusResult = Readonly<
   | { status: "failed"; actionId: string; code: string; reason: string }
 >;
 
-export async function runAgentCompactionAPlus(input: Readonly<{
+export async function runAgentCompaction(input: Readonly<{
   mode: AgentTurnCompactionMode;
   actionId: string;
   coordinator: AgentTurnCoordinator;

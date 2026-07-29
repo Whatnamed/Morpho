@@ -1,41 +1,24 @@
+
 import type {
   AgentTaskStrategyKind,
   ConversationSummaryRevision,
   MorphoWorkspace,
   ProviderContextFrame,
   ProviderContextFramePlacement,
-  ProviderContextFrameSourceRef,
-  ProviderInputCacheBoundaryReason,
-  ProviderInputSnapshot,
-  ProviderOutputSnapshot
+  ProviderContextFrameSourceRef
 } from "@/domain/morpho/types";
 import {
   appendProviderContextFrame,
   buildProviderContextFrameTimeline,
   createProviderContextFrame,
   nextProviderContextFrameSequence,
-  providerContextFrameMessage,
-  providerContextFrameContinuationMarker
+  providerContextFrameMessage
 } from "@/domain/morpho/providerContextFrame";
-import {
-  providerInputSnapshotDurableContent,
-  providerInputSnapshotText
-} from "@/domain/morpho/providerInputSnapshot";
-import type { ResponseMessageInput } from "@/server/ai/openaiCompatibleProvider";
 import type { TaskContextResult, ProviderTaskContext } from "./taskContext";
 import type { MorphoAgentTurnMode } from "./morphoAgent";
 import { buildAgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
 import type { AgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
 import type { AgentCanonicalRuntimeItem } from "@/shared/agentRuntimeItem";
-import type { AgentCacheItemManifest } from "@/shared/agentStreamProtocol";
-import {
-  createAgentTranscriptMessageItem,
-  type AgentTranscriptMessageItem
-} from "@/shared/agentCompactionProtocol";
-import {
-  createAgentStrategyMarker,
-  type AgentClientStrategyMarker
-} from "@/shared/agentStrategyItem";
 
 export type ProviderContextFrameBuildInput = {
   workspace: MorphoWorkspace;
@@ -45,11 +28,6 @@ export type ProviderContextFrameBuildInput = {
   /** Only set after the server has confirmed the filtered provider tools. */
   toolProfile?: ProviderToolProfile;
   runtimeItem?: AgentCanonicalRuntimeItem;
-  cacheItemManifest?: AgentCacheItemManifest[];
-  toolsHash?: string;
-  budgetGeneration?: number;
-  transcriptManifestHash?: string;
-  transcriptSnapshotToken?: string;
   promptContractVersion: string;
   userMessageId: string;
   context: TaskContextResult;
@@ -59,27 +37,9 @@ export type ProviderContextFrameBuildInput = {
   framePlacement?: ProviderContextFramePlacement;
   attachmentCount?: number;
   documentSnapshotAvailable?: boolean;
-  cacheBoundaryReason?: ProviderInputCacheBoundaryReason;
 };
 
 export type ProviderToolProfile = "standard" | "standardWithWebSearch";
-
-export type ProviderRequestBoundaryState = {
-  promptContractVersion: string;
-  toolProfile?: ProviderToolProfile;
-  summaryRevisionId?: string;
-  latestUserMessageId?: string;
-  providerInputPrefixHash?: string;
-  attachmentBoundary?: ProviderInputCacheBoundaryReason;
-  runtimeItem?: AgentCanonicalRuntimeItem;
-  cacheItemManifest?: AgentCacheItemManifest[];
-  toolsHash?: string;
-  budgetGeneration?: number;
-  transcriptManifestHash?: string;
-  transcriptSnapshotToken?: string;
-  transcriptSnapshotExpiresAt?: number;
-  transcriptStartMessageId?: string;
-};
 
 export type ProviderRuntimeConfiguration = {
   mode: MorphoAgentTurnMode;
@@ -87,105 +47,6 @@ export type ProviderRuntimeConfiguration = {
   promptContractVersion: string;
   runtimeItem?: AgentCanonicalRuntimeItem;
 };
-
-export function getLatestProviderRequestState(
-  workspace: MorphoWorkspace
-): ProviderRequestBoundaryState | undefined {
-  if (workspace.ai.latestProviderRequestState) {
-    return toProviderRequestBoundaryState(workspace.ai.latestProviderRequestState);
-  }
-  for (let index = workspace.ai.messages.length - 1; index >= 0; index -= 1) {
-    const state = workspace.ai.messages[index]?.agentTrace?.providerRequestState;
-    if (state) {
-      return toProviderRequestBoundaryState(state);
-    }
-  }
-  return undefined;
-}
-
-export function compactHistoricalProviderRequestState(
-  state: ProviderRequestBoundaryState
-): NonNullable<MorphoWorkspace["ai"]["messages"][number]["agentTrace"]>["providerRequestState"] {
-  const {
-    cacheItemManifest: _manifest,
-    transcriptManifestHash: _transcriptManifestHash,
-    transcriptSnapshotToken: _transcriptSnapshotToken,
-    transcriptSnapshotExpiresAt: _transcriptSnapshotExpiresAt,
-    transcriptStartMessageId: _transcriptStartMessageId,
-    ...compact
-  } = state;
-  return compact;
-}
-
-export function toProviderRequestBoundaryState(value: {
-  promptContractVersion?: string;
-  toolProfile?: string;
-  summaryRevisionId?: string;
-  latestUserMessageId?: string;
-  providerInputPrefixHash?: string;
-  attachmentBoundary?: string;
-  runtimeItem?: AgentCanonicalRuntimeItem;
-  cacheItemManifest?: ProviderRequestBoundaryState["cacheItemManifest"];
-  toolsHash?: string;
-  budgetGeneration?: number;
-  transcriptManifestHash?: string;
-  transcriptSnapshotToken?: string;
-  transcriptSnapshotExpiresAt?: number;
-  transcriptStartMessageId?: string;
-} | undefined): ProviderRequestBoundaryState | undefined {
-  if (!value?.promptContractVersion) {
-    return undefined;
-  }
-  const toolProfile = value.toolProfile === "standard" || value.toolProfile === "standardWithWebSearch"
-    ? value.toolProfile
-    : undefined;
-  const attachmentBoundary = isProviderInputBoundaryReason(value.attachmentBoundary)
-    ? value.attachmentBoundary
-    : undefined;
-  return {
-    promptContractVersion: value.promptContractVersion,
-    ...(toolProfile ? { toolProfile } : {}),
-    ...(value.summaryRevisionId ? { summaryRevisionId: value.summaryRevisionId } : {}),
-    ...(value.latestUserMessageId ? { latestUserMessageId: value.latestUserMessageId } : {}),
-    ...(value.providerInputPrefixHash ? { providerInputPrefixHash: value.providerInputPrefixHash } : {}),
-    ...(attachmentBoundary ? { attachmentBoundary } : {}),
-    ...(value.runtimeItem ? { runtimeItem: value.runtimeItem } : {}),
-    ...(value.cacheItemManifest ? { cacheItemManifest: value.cacheItemManifest } : {}),
-    ...(value.toolsHash ? { toolsHash: value.toolsHash } : {}),
-    ...(value.budgetGeneration !== undefined ? { budgetGeneration: value.budgetGeneration } : {}),
-    ...(value.transcriptManifestHash ? { transcriptManifestHash: value.transcriptManifestHash } : {}),
-    ...(value.transcriptSnapshotToken ? { transcriptSnapshotToken: value.transcriptSnapshotToken } : {}),
-    ...(typeof value.transcriptSnapshotExpiresAt === "number"
-      ? { transcriptSnapshotExpiresAt: value.transcriptSnapshotExpiresAt }
-      : {}),
-    ...(value.transcriptStartMessageId ? { transcriptStartMessageId: value.transcriptStartMessageId } : {})
-  };
-}
-
-export function selectAgentDurableConversationHistory<T extends { id: string }>(
-  messages: readonly T[],
-  state: ProviderRequestBoundaryState | undefined
-): T[] {
-  if (!state?.transcriptSnapshotToken) {
-    return [];
-  }
-  if (!state.transcriptStartMessageId) {
-    return [...messages];
-  }
-  const startIndex = messages.findIndex((message) => message.id === state.transcriptStartMessageId);
-  return startIndex < 0 ? [...messages] : messages.slice(startIndex);
-}
-
-function isProviderInputBoundaryReason(
-  value: unknown
-): value is ProviderRequestBoundaryState["attachmentBoundary"] {
-  return value === "imageInput" ||
-    value === "legacyProviderInput" ||
-    value === "documentSnapshotUnavailable" ||
-    value === "toolProfileChanged" ||
-    value === "promptContractChanged" ||
-    value === "compaction";
-}
 
 export function appendAgentProviderContextFrames(
   workspace: MorphoWorkspace,
@@ -376,188 +237,6 @@ export function getLatestProviderRuntimeConfiguration(
     : undefined;
 }
 
-export function buildAgentProviderInput(input: {
-  stableSystemPrompt: string;
-  frames: readonly ProviderContextFrame[];
-  history: Array<{
-    id: string;
-    role: "user" | "assistant";
-    body: string;
-    providerInputSnapshot?: ProviderInputSnapshot;
-    providerOutputSnapshot?: ProviderOutputSnapshot;
-    agentTurnOutcomeItem?: import("@/shared/agentCompactionProtocol").AgentTurnOutcomeItem;
-    taskStrategy?: AgentTaskStrategyKind;
-  }>;
-  currentUserMessageId: string;
-  currentStrategy?: AgentTaskStrategyKind;
-  currentProviderInputSnapshot?: ProviderInputSnapshot;
-  userInput: ResponseMessageInput;
-  activeSummaryRevisionId?: string;
-  serverManagedPrefix?: boolean;
-}): Array<ResponseMessageInput | AgentClientStrategyMarker | AgentTranscriptMessageItem> {
-  const activeMessageIds = new Set(input.history.map((message) => message.id));
-  activeMessageIds.add(input.currentUserMessageId);
-  const frames = buildProviderContextFrameTimeline({
-    frames: input.frames,
-    activeMessageIds,
-    activeSummaryRevisionId: input.activeSummaryRevisionId
-  });
-  const messages: Array<ResponseMessageInput | AgentClientStrategyMarker | AgentTranscriptMessageItem> = input.serverManagedPrefix === false
-    ? []
-    : [{ role: "system", content: [{ type: "input_text", text: input.stableSystemPrompt }] }];
-  frames
-    .filter((frame) => input.serverManagedPrefix !== false || frame.kind !== "runtimeConfiguration")
-    .filter((frame) => frame.placement === "conversationBaseline" || !frame.anchorMessageId)
-    .forEach((frame) => messages.push(providerContextFrameMessage(frame)));
-
-  const beforeByAnchor = new Map<string, ProviderContextFrame[]>();
-  const afterByAnchor = new Map<string, ProviderContextFrame[]>();
-  for (const frame of frames) {
-    if (!frame.anchorMessageId || frame.placement === "conversationBaseline") {
-      continue;
-    }
-    const target = frame.placement === "afterUser" || frame.placement === "afterAssistant"
-      ? afterByAnchor
-      : beforeByAnchor;
-    const anchored = target.get(frame.anchorMessageId) ?? [];
-    anchored.push(frame);
-    target.set(frame.anchorMessageId, anchored);
-  }
-
-  for (const message of input.history) {
-    beforeByAnchor.get(message.id)?.forEach((frame) => messages.push(providerContextFrameMessage(frame)));
-    const strategy = message.role === "user" && message.taskStrategy
-      ? [createAgentStrategyMarker({
-        strategy: message.taskStrategy,
-        anchorMessageId: message.id
-      })]
-      : [];
-    const historyMessage = providerHistoryMessage(message);
-    messages.push(createAgentTranscriptMessageItem({
-      messageId: message.id,
-      role: message.role,
-      replayMode: "durableReplay",
-      providerItems: [...strategy, historyMessage],
-      durableProviderItems: [...strategy, historyMessage]
-    }));
-    afterByAnchor.get(message.id)?.forEach((frame) => messages.push(providerContextFrameMessage(frame)));
-  }
-  beforeByAnchor.get(input.currentUserMessageId)?.forEach((frame) => messages.push(providerContextFrameMessage(frame)));
-  const currentStrategy = input.currentStrategy
-    ? [createAgentStrategyMarker({
-      strategy: input.currentStrategy,
-      anchorMessageId: input.currentUserMessageId
-    })]
-    : [];
-  messages.push(createAgentTranscriptMessageItem({
-    messageId: input.currentUserMessageId,
-    role: "user",
-    replayMode: "liveInput",
-    providerItems: [...currentStrategy, input.userInput],
-    durableProviderItems: [
-      ...currentStrategy,
-      {
-        role: "user",
-        content: input.currentProviderInputSnapshot
-          ? providerInputSnapshotDurableContent(input.currentProviderInputSnapshot)
-          : input.userInput.content
-      }
-    ]
-  }));
-  afterByAnchor.get(input.currentUserMessageId)?.forEach((frame) => messages.push(providerContextFrameMessage(frame)));
-  return messages;
-}
-
-export function getProviderInputReplayBoundaryReasons(
-  history: readonly {
-    id?: string;
-    role: "user" | "assistant";
-    providerInputSnapshot?: ProviderInputSnapshot;
-  }[],
-  options: {
-    currentPromptContractVersion?: string;
-    currentToolProfile?: ProviderToolProfile;
-    frames?: readonly ProviderContextFrame[];
-    previousRequestState?: ProviderRequestBoundaryState;
-    currentRequestState?: ProviderRequestBoundaryState;
-  } = {}
-): ProviderInputCacheBoundaryReason[] {
-  const reasons = new Set<ProviderInputCacheBoundaryReason>();
-  const latestUser = [...history].reverse().find((message) => message.role === "user");
-  const current = options.currentRequestState;
-  const previous = options.previousRequestState;
-  const currentPromptContractVersion = current?.promptContractVersion ?? options.currentPromptContractVersion;
-  const currentToolProfile = current?.toolProfile ?? options.currentToolProfile;
-  const attachmentBoundary = current?.attachmentBoundary ?? latestUser?.providerInputSnapshot?.cacheBoundaryReason;
-  const crossedIntoCurrentUser =
-    !previous ||
-    !current?.latestUserMessageId ||
-    previous.latestUserMessageId !== current.latestUserMessageId;
-
-  if (latestUser && !latestUser.providerInputSnapshot) {
-    reasons.add("legacyProviderInput");
-  }
-  if (attachmentBoundary && crossedIntoCurrentUser) {
-    reasons.add(attachmentBoundary);
-  }
-  if (
-    latestUser?.providerInputSnapshot &&
-    currentPromptContractVersion &&
-    latestUser.providerInputSnapshot.promptContractVersion !== currentPromptContractVersion
-  ) {
-    reasons.add("promptContractChanged");
-  }
-  if (
-    previous?.promptContractVersion &&
-    currentPromptContractVersion &&
-    previous.promptContractVersion !== currentPromptContractVersion
-  ) {
-    reasons.add("promptContractChanged");
-  }
-  const previousToolProfile = previous?.toolProfile ?? latestProviderToolProfile(options.frames ?? []);
-  if (currentToolProfile && previousToolProfile && previousToolProfile !== currentToolProfile) {
-    reasons.add("toolProfileChanged");
-  }
-  if (
-    previous &&
-    previous.summaryRevisionId !== current?.summaryRevisionId
-  ) {
-    reasons.add("compaction");
-  }
-  return [...reasons];
-}
-
-function providerHistoryMessage(message: {
-  role: "user" | "assistant";
-  body: string;
-  providerInputSnapshot?: ProviderInputSnapshot;
-  providerOutputSnapshot?: ProviderOutputSnapshot;
-  agentTurnOutcomeItem?: import("@/shared/agentCompactionProtocol").AgentTurnOutcomeItem;
-}): unknown {
-  if (message.role === "user" && message.providerInputSnapshot) {
-    const content = providerInputSnapshotDurableContent(message.providerInputSnapshot);
-    if (content.length > 0) {
-      return {
-        role: "user",
-        content
-      };
-    }
-  }
-  if (message.role === "assistant" && message.agentTurnOutcomeItem) {
-    return message.agentTurnOutcomeItem;
-  }
-  if (message.role === "assistant" && message.providerOutputSnapshot) {
-    return {
-      role: "assistant",
-      content: [{ type: "output_text", text: message.providerOutputSnapshot.text }]
-    };
-  }
-  return {
-    role: message.role,
-    content: [{ type: message.role === "assistant" ? "output_text" : "input_text", text: message.body }]
-  };
-}
-
 function createProjectStateFrame(
   input: Pick<ProviderContextFrameBuildInput, "workspace" | "projectId" | "promptContractVersion"> & {
     userMessageId?: string;
@@ -675,7 +354,6 @@ function createTurnContextFrame(
       `本轮默认参考授权：${input.context.defaultReference.reason}`,
       `本轮图片授权对象数：${input.context.imageObjectIds.length}；实际图片输入数：${input.attachmentCount ?? 0}`,
       `本轮文档对象数：${input.context.documentObjectIds.length}；文档快照：${input.documentSnapshotAvailable === false ? "不可重放" : "已纳入"}`,
-      ...(input.cacheBoundaryReason ? [`本轮缓存边界：${input.cacheBoundaryReason}`] : []),
       taskMemory,
       selected.length > 0 ? `本轮相关对象：\n- ${selected.join("\n- ")}` : "本轮没有显式对象摘要。",
     ].join("\n"),
@@ -862,6 +540,5 @@ function uniqueIds(values: readonly string[]): string[] {
 
 export {
   buildProviderContextFrameTimeline,
-  providerContextFrameMessage,
-  providerContextFrameContinuationMarker
+  providerContextFrameMessage
 };

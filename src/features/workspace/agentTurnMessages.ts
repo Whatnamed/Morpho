@@ -167,7 +167,6 @@ export function finalizeAgentTurn(
     summary?: string;
     completedAt: string;
     responseId?: string;
-    providerRequestState?: AgentTrace["providerRequestState"];
   }
 ): MorphoWorkspace {
   const user = workspace.ai.messages.find((message) => message.id === input.userMessageId);
@@ -202,8 +201,7 @@ export function finalizeAgentTurn(
               ...message.agentTrace,
               status: input.traceStatus,
               completedAt: input.completedAt,
-              ...(input.responseId ? { responseId: input.responseId } : {}),
-              ...(input.providerRequestState ? { providerRequestState: input.providerRequestState } : {})
+              ...(input.responseId ? { responseId: input.responseId } : {})
             }
           : undefined;
         const { providerOutputSnapshot: intermediateProviderSnapshot, ...assistantMessage } = message;

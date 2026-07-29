@@ -41,7 +41,7 @@ import {
   mergeAgentSearchCitations,
   webSearchSourcesToCitations
 } from "./agentTurnLimits";
-import type { AgentTurnRuntimeState } from "./agentTurnState";
+import type { AgentTurnRuntimeState } from "./agentTurnRuntimeState";
 import type { AgentVisualGenerationBatch } from "./agentVisualGenerationBatch";
 import { buildDeliverySectionContext } from "./deliveryPreparationUi";
 import { applySelectedProposalDraftRevision } from "./proposalDraftRevision";

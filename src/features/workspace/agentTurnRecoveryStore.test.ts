@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { hashSourceMessageIds } from "@/shared/agentCompactionProtocol";
+import { hashSourceMessageIds } from "@/shared/agentProductHash";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
 import { hashAPlusExternalActionBody } from "./agentExternalActionClientAPlus";
 import {

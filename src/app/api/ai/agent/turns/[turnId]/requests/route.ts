@@ -34,9 +34,10 @@ import {
 } from "@/server/ai/openaiCompatibleProvider";
 import { registerAgentTurnExternalRequest } from "@/server/ai/agentTurnExternalCancellation";
 import { requireAiRouteUser, type AiRouteUserAccessResult } from "@/server/auth/aiAccess";
-import type {
-  AgentTurnRequestStreamEvent,
-  ServerExternalExecutionStatus
+import {
+  encodeAgentTurnRequestSse,
+  type AgentTurnRequestStreamEvent,
+  type ServerExternalExecutionStatus
 } from "@/shared/agentTurnJournalProtocol";
 
 export const runtime = "nodejs";
@@ -196,7 +197,7 @@ function createProviderStreamResponse(input: {
       const enqueue = (event: AgentTurnRequestStreamEvent) => {
         if (closed) return;
         try {
-          controller.enqueue(encodeSse(event));
+          controller.enqueue(encodeAgentTurnRequestSse(event));
         } catch {
           closed = true;
         }
@@ -387,8 +388,4 @@ function boundedProviderFailureCode(error: unknown): string {
     return `provider_http_${Math.max(0, Math.min(999, error.status))}`;
   }
   return "provider_execution_failed";
-}
-
-function encodeSse(event: AgentTurnRequestStreamEvent): Uint8Array {
-  return new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`);
 }

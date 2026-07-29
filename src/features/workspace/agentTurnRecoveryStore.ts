@@ -11,7 +11,7 @@ import type {
   APlusAgentContinuationItem,
   APlusAgentProviderRequest
 } from "@/shared/agentTurnJournalProtocol";
-import { hashSourceMessageIds } from "@/shared/agentCompactionProtocol";
+import { hashSourceMessageIds } from "@/shared/agentProductHash";
 import type { PendingAiConfirmation } from "./components/AiConversationPanel";
 import type { AgentTurnCoordinatorRecoverySnapshot } from "./agentTurnCoordinator";
 import type { AgentTurnCompactionMode } from "./agentTurnLifecycle";

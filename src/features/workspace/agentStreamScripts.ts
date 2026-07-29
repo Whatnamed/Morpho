@@ -32,10 +32,7 @@ export function textAnswerScript(options: { text?: string; partId?: string } = {
     {
       type: "turn-start",
       agentTurnId: "turn-e2e-1",
-      startedAt: STARTED_AT,
-      leaseId: "lease-e2e-1",
-      providerCallCount: 1,
-      nextProviderSequence: 2
+      startedAt: STARTED_AT
     },
     { type: "final-start", partId },
     { type: "final-delta", partId, delta: text.slice(0, Math.ceil(text.length / 2)) },
@@ -43,9 +40,6 @@ export function textAnswerScript(options: { text?: string; partId?: string } = {
     { type: "final-end", partId },
     {
       type: "turn-complete",
-      turnClosureToken: "closure-token-unit",
-      transcriptSnapshotToken: "snapshot-token-unit",
-      transcriptManifestHash: "a".repeat(64),
       assistantProviderOutputSnapshot: createProviderOutputSnapshot(text),
       result: buildStreamResult({ outputText: text })
     }
@@ -58,9 +52,7 @@ export function openEndedScript(): MockAgentScript {
     {
       type: "turn-start",
       agentTurnId: "turn-e2e-cancel",
-      startedAt: STARTED_AT,
-      providerCallCount: 1,
-      nextProviderSequence: 2
+      startedAt: STARTED_AT
     },
     { type: "reasoning-start", partId: "part-reasoning-1" },
     { type: "reasoning-delta", partId: "part-reasoning-1", delta: "正在分析…" },
@@ -73,9 +65,7 @@ export function turnErrorScript(message = "模型返回异常，本轮未完成�
     {
       type: "turn-start",
       agentTurnId: "turn-e2e-error",
-      startedAt: STARTED_AT,
-      providerCallCount: 1,
-      nextProviderSequence: 2
+      startedAt: STARTED_AT
     },
     { type: "final-start", partId: "part-final-err" },
     { type: "final-delta", partId: "part-final-err", delta: "开始处理…" },
@@ -97,10 +87,7 @@ export function functionCallScript(
       type: "turn-start",
       agentTurnId: "turn-unit-tools",
       attemptId: "attempt-unit-tools",
-      startedAt: STARTED_AT,
-      leaseId: "lease-unit-tools",
-      providerCallCount: 1,
-      nextProviderSequence: 2
+      startedAt: STARTED_AT
     },
     ...functionCalls.map(
       (functionCall): AgentRouteStreamEvent => ({
@@ -113,10 +100,6 @@ export function functionCallScript(
       type: "turn-complete",
       result,
       attemptId: "attempt-unit-tools",
-      continuationToken: "continuation-unit-tools",
-      turnClosureToken: "closure-token-unit-tools",
-      transcriptSnapshotToken: "snapshot-token-unit-tools",
-      transcriptManifestHash: "b".repeat(64),
       assistantProviderOutputSnapshot: createProviderOutputSnapshot(result.outputText)
     }
   ]);

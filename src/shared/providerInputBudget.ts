@@ -114,27 +114,8 @@ export function estimateProviderInputTimelineBudget(input: {
     responseReserveTokens: total.responseReserveTokens,
     estimatedOccupancyTokens: total.estimatedOccupancyTokens,
     imageCount: total.imageCount,
-    projectedInputItemCount: input.input.reduce<number>(
-      (total: number, item) => total + materializedProviderInputItemCount(item),
-      0
-    )
+    projectedInputItemCount: input.input.length
   };
-}
-
-function materializedProviderInputItemCount(value: unknown): number {
-  if (!isRecord(value)) {
-    return 1;
-  }
-  if (value.type === "morpho_context_state") {
-    return 1;
-  }
-  if (value.type === "morpho_compaction_transcript" && Array.isArray(value.retainedTail)) {
-    return 1 + value.retainedTail.reduce(
-      (total, item) => total + materializedProviderInputItemCount(item),
-      0
-    );
-  }
-  return 1;
 }
 
 /**

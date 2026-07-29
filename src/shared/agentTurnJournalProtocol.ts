@@ -116,6 +116,10 @@ export type AgentTurnRequestStreamEvent =
       code: string;
     }>;
 
+export function encodeAgentTurnRequestSse(event: AgentTurnRequestStreamEvent): Uint8Array {
+  return new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`);
+}
+
 export function isServerExternalExecutionStatus(
   value: unknown
 ): value is ServerExternalExecutionStatus {

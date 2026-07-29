@@ -1,335 +1,765 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
-import type { MorphoWorkspace } from "@/domain/morpho/types";
 import { createTestWorkspace } from "@/domain/morpho/workspace";
-import type { AgentStreamFunctionCall } from "@/shared/agentStreamProtocol";
-import { createAgentTurnOutcomeItem } from "@/shared/agentCompactionProtocol";
-import { agentStreamScript, functionCallScript, textAnswerScript } from "./agentStreamScripts";
+import type {
+  AgentTurnJournalSnapshot,
+  AgentTurnRequestStreamEvent,
+  APlusToolCall
+} from "@/shared/agentTurnJournalProtocol";
+import type {
+  AgentTurnCoordinatorExecutionHandshake,
+  AgentTurnCoordinatorHost
+} from "./agentTurnCoordinator";
 import type { AgentTurnHost } from "./agentTurnHost";
 import { createAgentTurnHostFake } from "./agentTurnHostFake";
 import {
+  detachMorphoAgentTurnForPageUnload,
+  cancelMorphoAgentTurn,
+  recoverMorphoAgentTurn,
+  resumeMorphoAgentTurn,
   runMorphoAgentTurn,
-  type RunMorphoAgentTurnInput
+  type AgentTurnRunnerAPlusDependencies
 } from "./agentTurnRunner";
+import type { RunMorphoAgentTurnAPlusInput } from "./agentTurnProductPreparationAPlus";
+import type {
+  AgentTurnRecoveryStore,
+  APlusTurnRecoveryRecord
+} from "./agentTurnRecoveryStore";
+import type { WorkspacePersistenceState } from "./workspacePersistence";
 
-describe("Morpho Agent turn runner", () => {
-  it("completes a text-only turn through the host boundary", async () => {
-    const fixture = createFixture([textAnswerScript({ text: "已完成当前讨论。" })]);
+const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
+const LOCAL_PROJECT_ID = createTestWorkspace().project.id;
 
-    await runMorphoAgentTurn(fixture.input, fixture.host);
+afterEach(() => {
+  detachMorphoAgentTurnForPageUnload(LOCAL_PROJECT_ID);
+});
 
-    expect(latestTurnAssistant(fixture.workspace())).toMatchObject({
-      body: "已完成当前讨论。",
-      status: "done"
-    });
-    expect(fixture.requestBodies).toHaveLength(1);
-    expect(fixture.fake.abortSlot.get()).toBeNull();
-    expect(uiValues(fixture, "streaming")).toEqual([true, false]);
-  });
-
-  it("keeps the original candidate terminal state pending when Closure recovery loses both responses", async () => {
-    let closureAvailable = false;
+describe("A+ Agent turn runner", () => {
+  it("runs the Workspace entry through Coordinator, display, persistence and reducer outcome", async () => {
     const fixture = createFixture([
-      textAnswerScript({ text: "原候选成功回复。" }),
-      textAnswerScript({ text: "恢复后继续的新回复。" })
-    ], {
-      onClosure: (requestBody) => {
-        if (closureAvailable) {
-          return successfulClosureResponse(requestBody);
-        }
-        throw new TypeError("simulated closure transport loss");
-      }
-    });
-
-    await runMorphoAgentTurn(fixture.input, fixture.host);
-
-    expect(fixture.closureRequestBodies).toHaveLength(2);
-    expect(fixture.closureRequestBodies[0]).toBe(fixture.closureRequestBodies[1]);
-    expect(JSON.parse(fixture.closureRequestBodies[0]!)).toMatchObject({ outcome: "success" });
-    expect(latestTurnAssistant(fixture.workspace())).toMatchObject({
-      body: "本轮执行已结束，但终态待恢复。原候选终态已保留，恢复前不会进入后续上下文。",
-      status: "failed"
-    });
-    expect(latestTurnAssistant(fixture.workspace())).not.toHaveProperty("agentTurnOutcome");
-    expect(latestTurnAssistant(fixture.workspace()).agentTurnClosureRecovery).toMatchObject({
-      outcome: "success",
-      requestBody: fixture.closureRequestBodies[0]
-    });
-    expect(uiValues(fixture, "failure")).toEqual([true]);
-
-    closureAvailable = true;
-    fixture.advanceTime();
-    fixture.input.draft = "继续讨论当前项目";
-    await runMorphoAgentTurn(fixture.input, fixture.host);
-
-    expect(fixture.closureRequestBodies[2]).toBe(fixture.closureRequestBodies[0]);
-    const recovered = fixture.workspace().ai.messages.find(
-      (message) => message.role === "assistant" && message.body === "原候选成功回复。"
-    );
-    expect(recovered).toMatchObject({ status: "done", agentTurnOutcome: "success" });
-    expect(recovered).not.toHaveProperty("agentTurnClosureRecovery");
-    expect(latestTurnAssistant(fixture.workspace()).body).toBe("恢复后继续的新回复。");
-  });
-
-  it("reminds once for a required read and then finishes with an honest failure notice", async () => {
-    const fixture = createFixture([
-      textAnswerScript({ text: "我先直接回答。" }),
-      textAnswerScript({ text: "仍未读取。" })
+      { status: "externallyCompleted", outputText: "A+ 已完成当前讨论。" }
     ]);
-    fixture.input.draft = "项目记忆里记住了什么";
 
-    await runMorphoAgentTurn(fixture.input, fixture.host);
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
 
-    expect(fixture.requestBodies).toHaveLength(2);
-    expect(fixture.requestBodies[1]).toMatchObject({
-      directive: { kind: "requiredRead", tools: ["read_project_memory"] }
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      body: "A+ 已完成当前讨论。",
+      status: "done",
+      agentTurnOutcome: "success"
     });
-    expect(latestTurnAssistant(fixture.workspace()).body).toBe(
-      "仍未读取。\n\n读取失败，无法确认相关项目记录（read_project_memory）。本轮不会据此断言不存在或未记录。"
-    );
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+    expect(fixture.store.record).toBeUndefined();
+    expect(fixture.fake.getEvents().filter((event) => event.name === "persist").length).toBeGreaterThan(0);
   });
 
-  it.each([
-    ["failedDuringProvider", undefined, "failed"],
-    ["cancelledDuringProvider", "interrupted", "cancelled"]
-  ] as const)("closes a server-recorded %s outcome at the exact Provider sequence", async (
-    outcome,
-    code,
-    expectedStatus
-  ) => {
-    const fixture = createFixture([agentStreamScript([
+  it("preserves a Server Turn creation error and releases the project for a clean retry", async () => {
+    const fixture = createFixture([]);
+    fixture.coordinatorHost.createError = new Error("请先登录 Morpho。");
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      body: "请先登录 Morpho。",
+      status: "failed",
+      agentTurnOutcome: "failedBeforeExecution"
+    });
+    fixture.coordinatorHost.createError = undefined;
+    fixture.coordinatorHost.appendScripts([
+      { status: "externallyCompleted", outputText: "重新登录后已完成。" }
+    ]);
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      body: "重新登录后已完成。",
+      status: "done",
+      agentTurnOutcome: "success"
+    });
+  });
+
+  it("keeps a bounded stream failure detail in the failed assistant message", async () => {
+    const fixture = createFixture([{
+      status: "externallyFailed",
+      externalErrorCode: "模型返回异常，本轮未完成。"
+    }]);
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      body: "模型返回异常，本轮未完成。",
+      status: "failed",
+      agentTurnOutcome: "failedDuringProvider"
+    });
+  });
+
+  it("keeps a successful local Tool effect when the Provider continuation fails", async () => {
+    const fixture = createFixture([
       {
-        type: "turn-start",
-        startedAt: "2026-07-01T00:00:00.000Z",
-        leaseId: "lease-provider-failure",
-        providerCallCount: 1,
-        nextProviderSequence: 2
+        status: "awaitingNextRequest",
+        outputText: "我先建立研究草案。",
+        toolCalls: [researchToolCall("call-research")]
       },
-      {
-        type: "turn-error",
-        error: outcome === "cancelledDuringProvider" ? "当前执行已取消。" : "Provider 连接失败。",
-        ...(code ? { code } : {}),
-        providerFailureOutcome: outcome
-      }
-    ])]);
+      { status: "externallyFailed" }
+    ]);
 
-    await runMorphoAgentTurn(fixture.input, fixture.host);
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
 
-    expect(JSON.parse(fixture.closureRequestBodies[0]!)).toMatchObject({
-      outcome,
-      leaseSequence: 2
+    const assistant = latestAssistant(fixture.fake.getWorkspace());
+    expect(assistant).toMatchObject({
+      status: "done",
+      agentTurnOutcome: "partialSuccess"
     });
-    expect(latestTurnAssistant(fixture.workspace())).toMatchObject({
-      agentTurnOutcome: outcome,
-      status: expectedStatus
-    });
-  });
-
-  it("stops after the fourth invalid tool-argument batch", async () => {
-    const scripts = Array.from({ length: 4 }, (_, index) =>
-      functionCallScript([
-        toolCall("create_research_analysis", {}, `invalid-${index + 1}`)
+    expect(assistant?.agentTrace?.parts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "toolActivity",
+        toolCallId: "call-research",
+        source: "local",
+        state: "done"
+      })
+    ]));
+    expect(Object.values(fixture.fake.getWorkspace().objects).some((object) =>
+      object.type === "research"
+    )).toBe(true);
+    expect(fixture.coordinatorHost.executions.map((execution) => execution.stepSequence)).toEqual([1, 2]);
+    expect(fixture.coordinatorHost.executions[1]?.providerRequest.continuationItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "function_call", callId: "call-research" }),
+        expect.objectContaining({ type: "function_call_output", callId: "call-research" })
       ])
     );
-    const fixture = createFixture(scripts);
-
-    await runMorphoAgentTurn(fixture.input, fixture.host);
-
-    expect(fixture.requestBodies).toHaveLength(4);
-    expect(latestTurnAssistant(fixture.workspace())).toMatchObject({ status: "failed" });
-    expect(latestTurnAssistant(fixture.workspace()).body).toBe(
-      "Agent 连续返回不符合工具 schema 的参数，已停止本轮以避免重复执行。"
-    );
-    expect(uiValues(fixture, "failure")).toEqual([true]);
   });
 
-  it("short-circuits a confirm-mode write before later calls can execute", async () => {
+  it("retries request_not_observed with the exact Request ID, Sequence and body", async () => {
     const fixture = createFixture([
-      functionCallScript(
-        [
-          toolCall(
-            "create_research_analysis",
-            {
-              title: "待确认研究",
-              summary: "尚未写入",
-              findings: [],
-              opportunities: [],
-              constraints: [],
-              openQuestions: [],
-              evidence: []
-            },
-            "confirm-write"
-          ),
-          toolCall(
-            "search_web_evidence",
-            { queries: ["must not run"], reason: "后续调用" },
-            "after-confirmation"
-          )
-        ],
-        { outputText: "等待用户确认。" }
-      )
+      { status: "transportFailure" },
+      { status: "externallyCompleted", outputText: "安全重试完成。" }
     ]);
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    expect(fixture.coordinatorHost.executions).toHaveLength(2);
+    expect(fixture.coordinatorHost.executions[1]).toEqual(fixture.coordinatorHost.executions[0]);
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      body: "安全重试完成。",
+      agentTurnOutcome: "success"
+    });
+  });
+
+  it("restores a terminal Pending Confirmation card without reopening the old Turn", async () => {
+    const fixture = createFixture([{
+      status: "awaitingNextRequest",
+      outputText: "这个写入需要确认。",
+      toolCalls: [researchToolCall("call-confirm")]
+    }]);
     fixture.input.agentTurnMode = "confirm";
-    const researchCountBefore = objectsOfType(fixture.workspace(), "research");
 
-    await runMorphoAgentTurn(fixture.input, fixture.host);
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      agentTurnOutcome: "partialSuccess"
+    });
+    expect(fixture.store.record?.coordinator.lifecycle.phase).toBe("terminal");
+    const before = fixture.fake.getEvents().filter((event) => event.name === "confirmation").length;
 
-    expect(objectsOfType(fixture.workspace(), "research")).toBe(researchCountBefore);
-    expect(fixture.webSearchCount()).toBe(0);
-    expect(uiValues(fixture, "confirmation")).toEqual([
-      expect.objectContaining({ kind: "agentCreateResearchAnalysis" })
-    ]);
-    expect(latestTurnAssistant(fixture.workspace())).toMatchObject({ status: "done" });
+    await recoverMorphoAgentTurn(
+      fixture.fake.getWorkspace().project.id,
+      fixture.host,
+      fixture.dependencies
+    );
+
+    expect(fixture.fake.getEvents().filter((event) => event.name === "confirmation").length).toBe(before + 1);
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
   });
 
-  it("preserves a successful first tool when the batch is aborted before the next call", async () => {
+  it("uses query-only reconciliation after refresh while Provider is still running", async () => {
+    const fixture = createFixture([{ status: "providerRunning" }]);
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(fixture.store.record).toBeDefined();
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+    expect(fixture.fake.getEvents().filter((event) => event.name === "streaming").at(-1)).toEqual(
+      expect.objectContaining({ value: [false] })
+    );
+    detachMorphoAgentTurnForPageUnload(fixture.fake.getWorkspace().project.id);
+
+    const recovered = await recoverMorphoAgentTurn(
+      fixture.fake.getWorkspace().project.id,
+      fixture.host,
+      fixture.dependencies
+    );
+
+    expect(recovered).toBe("pending");
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+  });
+
+  it("resumes an active provider-running session on the same page and permits the next Turn", async () => {
     const fixture = createFixture([
-      functionCallScript([
-        toolCall(
-          "search_web_evidence",
-          { queries: ["abort after search"], reason: "测试中止" },
-          "search-before-abort"
-        ),
-        toolCall("read_selected_context", {}, "cancelled-read")
-      ])
-    ], {
-      onWebSearch: (_request, fake) => {
-        fake.abortSlot.get()?.abort();
+      { status: "providerRunning" },
+      { status: "externallyCompleted", outputText: "下一回合已完成。" }
+    ]);
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+
+    fixture.coordinatorHost.setJournalStatus("externallyCompleted");
+    const resumed = await resumeMorphoAgentTurn(
+      fixture.fake.getWorkspace().project.id,
+      fixture.host,
+      fixture.dependencies
+    );
+    expect(resumed).toBe("recovered");
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+    expect(fixture.store.record).toBeUndefined();
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(fixture.coordinatorHost.executions).toHaveLength(2);
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      body: "下一回合已完成。",
+      agentTurnOutcome: "success"
+    });
+  });
+
+  it("keeps the same-page recovery entry through repeated pending checks", async () => {
+    const fixture = createFixture([
+      { status: "providerRunning" },
+      { status: "externallyCompleted", outputText: "检查后下一回合完成。" }
+    ]);
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    const firstCheck = await resumeMorphoAgentTurn(
+      fixture.fake.getWorkspace().project.id,
+      fixture.host,
+      fixture.dependencies
+    );
+    expect(firstCheck).toBe("pending");
+    expect(fixture.fake.getEvents().filter((event) => event.name === "recoveryPending")).not.toHaveLength(0);
+
+    fixture.coordinatorHost.setJournalStatus("externallyCompleted");
+    await expect(resumeMorphoAgentTurn(
+      fixture.fake.getWorkspace().project.id,
+      fixture.host,
+      fixture.dependencies
+    )).resolves.toBe("recovered");
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      body: "检查后下一回合完成。",
+      agentTurnOutcome: "success"
+    });
+  });
+
+  it("replays a running Search Action from the Runner and executes it only once", async () => {
+    const fixture = createFixture([
+      {
+        status: "awaitingNextRequest",
+        toolCalls: [searchToolCall("call-search-running")]
+      },
+      { status: "externallyCompleted", outputText: "Search Receipt 已恢复。" }
+    ]);
+    let running = true;
+    const requestBodies: string[] = [];
+    fixture.fake.setFetchRoute(
+      `/api/ai/agent/turns/${TURN_ID}/actions/web-search`,
+      async (_request) => {
+        requestBodies.push(_request.body ? await _request.clone().text() : "");
+        if (running) {
+          return Response.json({ replayed: true, action: { status: "running" } }, { status: 202 });
+        }
         return Response.json({
-          sources: [{ title: "Source", url: "https://example.com/source" }],
-          nextProviderSequence: 3
+          replayed: true,
+          sources: [{ title: "Morpho", url: "https://example.com/morpho" }],
+          failedSourceCount: 0,
+          timedOutSourceCount: 0
         });
       }
-    });
+    );
 
-    await runMorphoAgentTurn(fixture.input, fixture.host);
-
-    expect(fixture.webSearchCount()).toBe(1);
-    expect(latestTurnAssistant(fixture.workspace())).toMatchObject({
-      status: "done",
-      body: "本轮仅部分完成。已完成结果已保留，未完成步骤需要后续重试。"
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(fixture.store.record?.metadata.pendingExternalAction).toMatchObject({
+      status: "running",
+      actionKind: "webSearch",
+      callId: "call-search-running"
     });
-    expect(uiValues(fixture, "draft")).toContain(fixture.input.draft);
-    expect(fixture.fake.abortSlot.get()).toBeNull();
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+
+    running = false;
+    const resumed = await resumeMorphoAgentTurn(
+      fixture.fake.getWorkspace().project.id,
+      fixture.host,
+      fixture.dependencies
+    );
+    expect(resumed).toBe("recovered");
+
+    expect(fixture.coordinatorHost.executions).toHaveLength(2);
+    expect(new Set(requestBodies)).toHaveProperty("size", 1);
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      body: "Search Receipt 已恢复。",
+      agentTurnOutcome: "success"
+    });
   });
 
-  it("uses a finalization request after the emergency model-turn ceiling", async () => {
-    const toolScripts = Array.from({ length: 28 }, (_, index) =>
-      functionCallScript([
-        index % 2 === 0
-          ? toolCall("read_selected_context", {}, `read-${index}`)
-          : toolCall(
-              "search_project_conversation",
-              { mode: "latest", limit: 1 },
-              `conversation-${index}`
-            )
-      ])
-    );
+  it("persists the exact Search request before send and recovers when the first page never receives a response", async () => {
     const fixture = createFixture([
-      ...toolScripts,
-      textAnswerScript({ text: "已整理此前取得的结果。" })
+      {
+        status: "awaitingNextRequest",
+        toolCalls: [searchToolCall("call-search-page-loss")]
+      },
+      { status: "externallyCompleted", outputText: "Search 已从发送前快照恢复。" }
+    ]);
+    const requestBodies: string[] = [];
+    fixture.fake.setFetchRoute(
+      `/api/ai/agent/turns/${TURN_ID}/actions/web-search`,
+      async (request) => {
+        requestBodies.push(await request.clone().text());
+        if (requestBodies.length === 1) {
+          return new Promise<Response>(() => undefined);
+        }
+        return Response.json({
+          replayed: true,
+          sources: [{ title: "Morpho", url: "https://example.com/morpho" }],
+          failedSourceCount: 0,
+          timedOutSourceCount: 0
+        });
+      }
+    );
+
+    void runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    await waitForCondition(() =>
+      fixture.store.record?.metadata.pendingExternalAction?.status === "acquired"
+    );
+    const persistedBody = fixture.store.record?.metadata.pendingExternalAction?.requestBody;
+    expect(persistedBody).toBeTruthy();
+    expect(requestBodies).toEqual([persistedBody]);
+
+    detachMorphoAgentTurnForPageUnload(fixture.fake.getWorkspace().project.id);
+    const recovered = await recoverMorphoAgentTurn(
+      fixture.fake.getWorkspace().project.id,
+      fixture.host,
+      fixture.dependencies
+    );
+
+    expect(recovered).toBe("recovered");
+    expect(requestBodies).toEqual([persistedBody, persistedBody]);
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      body: "Search 已从发送前快照恢复。",
+      agentTurnOutcome: "success"
+    });
+  });
+
+  it("restores Search citations and Required Read facts before a later Research Tool", async () => {
+    const fixture = createFixture([
+      {
+        status: "awaitingNextRequest",
+        toolCalls: [searchToolCall("call-search-facts")]
+      },
+      {
+        status: "providerRunning",
+        outputText: "继续建立研究草案。",
+        toolCalls: [researchToolCall("call-research-after-refresh")]
+      },
+      { status: "externallyCompleted", outputText: "研究草案已完成。" }
+    ]);
+    fixture.fake.setFetchRoute(
+      `/api/ai/agent/turns/${TURN_ID}/actions/web-search`,
+      () => Response.json({
+        replayed: true,
+        sources: [{ title: "Morpho", url: "https://example.com/morpho" }],
+        failedSourceCount: 0,
+        timedOutSourceCount: 0
+      })
+    );
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(fixture.store.record?.metadata.runtime.facts.hasWebSearchEvidence).toBe(true);
+    expect(fixture.store.record?.metadata.runtime.facts.collectedCitations).toHaveLength(1);
+    expect(fixture.coordinatorHost.executions).toHaveLength(2);
+
+    detachMorphoAgentTurnForPageUnload(fixture.fake.getWorkspace().project.id);
+    const refreshed = await recoverMorphoAgentTurn(
+      fixture.fake.getWorkspace().project.id,
+      fixture.host,
+      fixture.dependencies
+    );
+    expect(refreshed).toBe("pending");
+    fixture.coordinatorHost.setJournalStatus("awaitingNextRequest");
+
+    await expect(resumeMorphoAgentTurn(
+      fixture.fake.getWorkspace().project.id,
+      fixture.host,
+      fixture.dependencies
+    )).resolves.toBe("recovered");
+
+    const research = Object.values(fixture.fake.getWorkspace().objects)
+      .find((object) => object.type === "research" && object.provenance?.didUseWebSearch);
+    expect(research).toMatchObject({
+      type: "research",
+      provenance: { didUseWebSearch: true }
+    });
+  });
+
+  it("cancels local display, requests server cancellation, queries Journal, and never repeats Provider", async () => {
+    const fixture = createFixture([{ status: "providerRunning" }]);
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+
+    const cancelled = await cancelMorphoAgentTurn(
+      fixture.fake.getWorkspace().project.id,
+      "用户停止了 Provider Stream。"
+    );
+
+    expect(cancelled).toBe(true);
+    expect(fixture.coordinatorHost.cancelCalls).toBe(1);
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      status: "cancelled",
+      agentTurnOutcome: "cancelledDuringProvider"
+    });
+    expect(fixture.fake.getEvents()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "streaming", value: [false] })
+    ]));
+  });
+
+  it("gives every invalid Tool call one failed result and continues with bounded output", async () => {
+    const fixture = createFixture([
+      {
+        status: "awaitingNextRequest",
+        toolCalls: [{
+          callId: "call-invalid",
+          name: "create_research_analysis",
+          argumentsText: "{}"
+        }]
+      },
+      { status: "externallyCompleted", outputText: "已说明无法执行该 Tool。" }
     ]);
 
-    await runMorphoAgentTurn(fixture.input, fixture.host);
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
 
-    expect(fixture.requestBodies).toHaveLength(29);
-    expect(fixture.requestBodies.at(-1)).toMatchObject({
-      directive: { kind: "finalize" }
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      agentTurnOutcome: "partialSuccess"
     });
-    expect(latestTurnAssistant(fixture.workspace())).toMatchObject({
-      body: "已整理此前取得的结果。",
-      status: "done"
+    const continuation = fixture.coordinatorHost.executions[1]?.providerRequest.continuationItems;
+    expect(continuation).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "function_call", callId: "call-invalid" }),
+      expect.objectContaining({
+        type: "function_call_output",
+        callId: "call-invalid",
+        output: expect.stringContaining("invalid_tool_arguments")
+      })
+    ]));
+  });
+
+  it("finalizes a mixed multi-Tool batch with exactly one terminal output per Call", async () => {
+    const fixture = createFixture([
+      {
+        status: "awaitingNextRequest",
+        toolCalls: [
+          {
+            callId: "call-read",
+            name: "read_project_memory",
+            argumentsText: "{}"
+          },
+          {
+            callId: "call-invalid",
+            name: "create_research_analysis",
+            argumentsText: "{}"
+          }
+        ]
+      },
+      { status: "externallyCompleted", outputText: "已综合可用结果。" }
+    ]);
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    const continuation = fixture.coordinatorHost.executions[1]?.providerRequest.continuationItems ?? [];
+    expect(continuation.filter((item) => item.type === "function_call_output")).toEqual([
+      expect.objectContaining({ callId: "call-read" }),
+      expect.objectContaining({
+        callId: "call-invalid",
+        output: expect.stringContaining("invalid_tool_arguments")
+      })
+    ]);
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      agentTurnOutcome: "partialSuccess"
     });
+  });
+
+  it("keeps successful Image items and marks failed items as unresolved partial work", async () => {
+    const fixture = createFixture([
+      {
+        status: "awaitingNextRequest",
+        toolCalls: [visualToolCall("call-visual")]
+      },
+      { status: "externallyCompleted", outputText: "已保留成功生成项。" }
+    ], {
+      visualGenerationResult: {
+        createdObjectIds: ["image-created-a"],
+        failedItems: [{ itemId: "visual-b", reason: "provider failed" }]
+      }
+    });
+    fixture.input.draft = "生成两张方向图";
+    fixture.input.directionPreviewCount = 2;
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      agentTurnOutcome: "partialSuccess"
+    });
+    expect(fixture.coordinatorHost.executions[1]?.providerRequest.continuationItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "function_call_output",
+          callId: "call-visual",
+          output: expect.stringContaining("failedItems")
+        })
+      ])
+    );
+  });
+
+  it("completes a delivery draft Tool as a persisted local write and continues the Turn", async () => {
+    const fixture = createFixture([]);
+    const delivery = Object.values(fixture.fake.getWorkspace().objects)
+      .find((object) => object.type === "delivery");
+    if (!delivery || delivery.type !== "delivery") throw new Error("Fixture 缺少 delivery object。");
+    const section = delivery.sections.find((candidate) => candidate.referenceIds.length > 0);
+    if (!section) throw new Error("Fixture 缺少带引用的 delivery section。");
+    fixture.input.draft = "为当前交付章节创建草案";
+    fixture.input.pendingDeliveryDraftTarget = {
+      deliveryObjectId: delivery.id,
+      sectionId: section.id
+    };
+    fixture.coordinatorHost.appendScripts([
+      {
+        status: "awaitingNextRequest",
+        toolCalls: [deliveryToolCall("call-delivery-runner", section.referenceIds[0]!)]
+      },
+      { status: "externallyCompleted", outputText: "交付章节草案已准备好。" }
+    ]);
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    expect(Object.keys(fixture.fake.getWorkspace().deliverySectionDrafts)).toHaveLength(1);
+    expect(fixture.coordinatorHost.executions[1]?.providerRequest.continuationItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "function_call_output",
+          callId: "call-delivery-runner",
+          output: expect.stringContaining('"status":"draftCreated"')
+        })
+      ])
+    );
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      body: "交付章节草案已准备好。",
+      status: "done",
+      agentTurnOutcome: "success"
+    });
+    expect(fixture.fake.getEvents().filter((event) => event.name === "confirmation")).toHaveLength(0);
+    expect(fixture.store.record).toBeUndefined();
+  });
+
+  it("does not report full success when a local write happened but durable persistence failed", async () => {
+    const fixture = createFixture([
+      {
+        status: "awaitingNextRequest",
+        outputText: "先写入研究草案。",
+        toolCalls: [researchToolCall("call-persistence")]
+      }
+    ], {
+      persistenceStates: [savedPersistence(), failedPersistence()]
+    });
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    expect(Object.values(fixture.fake.getWorkspace().objects).some((object) =>
+      object.type === "research"
+    )).toBe(true);
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      agentTurnOutcome: "partialSuccess"
+    });
+    expect(fixture.store.record).toBeDefined();
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
   });
 });
 
+type Script =
+  | Readonly<{ status: "transportFailure" }>
+  | Readonly<{
+      status: "providerRunning" | "awaitingNextRequest" | "externallyCompleted" | "externallyFailed";
+      outputText?: string;
+      toolCalls?: readonly APlusToolCall[];
+      externalErrorCode?: string;
+    }>;
+
+class CoordinatorHostFake implements AgentTurnCoordinatorHost {
+  readonly executions: Array<Parameters<AgentTurnCoordinatorHost["executeExternalRequest"]>[0]> = [];
+  cancelCalls = 0;
+  createError: Error | undefined;
+  private index = 0;
+  private snapshot: AgentTurnJournalSnapshot = snapshotFor("created", null, 0, 0);
+
+  private readonly scripts: Script[];
+
+  constructor(scripts: readonly Script[]) {
+    this.scripts = [...scripts];
+  }
+
+  appendScripts(scripts: readonly Script[]): void {
+    this.scripts.push(...scripts);
+  }
+
+  async createServerTurn(input: { localProjectId: string }): Promise<{
+    snapshot: AgentTurnJournalSnapshot;
+    replayed: boolean;
+  }> {
+    if (this.createError) throw this.createError;
+    this.snapshot = snapshotFor("created", null, 0, 0, input.localProjectId);
+    return { snapshot: this.snapshot, replayed: false };
+  }
+
+  async executeExternalRequest(
+    input: Parameters<AgentTurnCoordinatorHost["executeExternalRequest"]>[0],
+    observer: (event: AgentTurnRequestStreamEvent) => void
+  ): Promise<AgentTurnCoordinatorExecutionHandshake> {
+    this.executions.push(structuredClone(input));
+    const script = this.scripts[this.index++];
+    if (!script) throw new Error("Unexpected A+ execution.");
+    if (script.status === "transportFailure") throw new Error("headers unavailable");
+    return {
+      status: "started",
+      complete: async () => {
+        const toolCalls = script.toolCalls ?? [];
+        if (
+          script.status !== "externallyFailed" &&
+          (script.status !== "providerRunning" || Boolean(script.outputText?.trim()) || toolCalls.length > 0)
+        ) {
+          observer({
+            type: "providerOutput",
+            requestId: input.requestId,
+            stepSequence: input.stepSequence,
+            outputText: script.outputText ?? "",
+            producedUserVisibleEffect: Boolean(script.outputText?.trim()),
+            toolCallIds: toolCalls.map((call) => call.callId),
+            toolCalls
+          });
+        }
+        if (script.externalErrorCode) {
+          observer({
+            type: "externalError",
+            requestId: input.requestId,
+            stepSequence: input.stepSequence,
+            code: script.externalErrorCode
+          });
+        }
+        this.snapshot = snapshotFor(
+          script.status,
+          input.requestId,
+          input.stepSequence,
+          this.snapshot.counters.provider + 1,
+          input.localProjectId
+        );
+        return script.status === "providerRunning"
+          ? { status: "interrupted", code: "display_detached" }
+          : { status: "ended", finalFrameReceived: true };
+      }
+    };
+  }
+
+  async queryServerTurn(): Promise<AgentTurnJournalSnapshot> {
+    return structuredClone(this.snapshot);
+  }
+
+  setJournalStatus(status: AgentTurnJournalSnapshot["status"]): void {
+    this.snapshot = snapshotFor(
+      status,
+      this.snapshot.latestRequestId,
+      this.snapshot.latestStepSequence,
+      this.snapshot.counters.provider,
+      this.snapshot.localProjectId
+    );
+  }
+
+  async cancelExternalRequest(): Promise<void> {
+    this.cancelCalls += 1;
+    this.snapshot = snapshotFor(
+      "externallyCancelled",
+      this.snapshot.latestRequestId,
+      this.snapshot.latestStepSequence,
+      this.snapshot.counters.provider,
+      this.snapshot.localProjectId
+    );
+  }
+}
+
+class MemoryRecoveryStore implements AgentTurnRecoveryStore {
+  record: APlusTurnRecoveryRecord | undefined;
+
+  async save(record: APlusTurnRecoveryRecord): Promise<void> {
+    this.record = structuredClone(record);
+  }
+
+  async load(localProjectId: string): Promise<
+    | { status: "none" }
+    | { status: "ok"; record: APlusTurnRecoveryRecord }
+  > {
+    return this.record?.localProjectId === localProjectId
+      ? { status: "ok", record: structuredClone(this.record) }
+      : { status: "none" };
+  }
+
+  async clear(): Promise<void> {
+    this.record = undefined;
+  }
+}
+
 function createFixture(
-  scripts: Array<{ body: string }>,
+  scripts: readonly Script[],
   options: {
-    workspace?: MorphoWorkspace;
-    onWebSearch?: (
-      request: Request,
-      fake: ReturnType<typeof createAgentTurnHostFake>
-    ) => Response | Promise<Response>;
-    onClosure?: (requestBody: string) => Response | Promise<Response>;
+    persistenceStates?: WorkspacePersistenceState[];
+    visualGenerationResult?: Readonly<{
+      createdObjectIds: string[];
+      failedItems: unknown[];
+    }>;
   } = {}
 ) {
-  const requestBodies: Array<Record<string, unknown>> = [];
-  const closureRequestBodies: string[] = [];
-  let scriptIndex = 0;
-  let webSearchCalls = 0;
-  const fake = createAgentTurnHostFake({
-    workspace: options.workspace ?? createTestWorkspace(),
-    routes: {
-      "/api/ai/agent": async (request) => {
-        requestBodies.push((await request.json()) as Record<string, unknown>);
-        const script = scripts[scriptIndex++];
-        if (!script) {
-          return Response.json({ error: "Unexpected Agent request" }, { status: 500 });
-        }
-        return new Response(script.body, {
-          headers: { "content-type": "text/event-stream" }
-        });
-      },
-      "/api/ai/agent/lease/tool": () => Response.json({ status: "marked" }),
-      "/api/ai/agent/lease/finalize-function-calls": () => Response.json({
-        status: "pendingConfirmation",
-        closureToken: "closure-token-unit-tools-finalized"
-      }),
-      "/api/ai/agent/snapshot/refresh": () => Response.json({
-        transcriptSnapshotToken: "snapshot-token-refreshed",
-        transcriptManifestHash: "c".repeat(64),
-        expiresAt: Date.now() + 60_000
-      }),
-      "/api/ai/agent/lease": async (request) => {
-        const requestBody = await request.text();
-        closureRequestBodies.push(requestBody);
-        if (options.onClosure) {
-          return options.onClosure(requestBody);
-        }
-        return successfulClosureResponse(requestBody);
-      }
-    }
-  });
-  fake.setFetchRoute("/api/ai/web-search", async (request) => {
-    webSearchCalls += 1;
-    return options.onWebSearch
-      ? options.onWebSearch(request, fake)
-      : Response.json({ sources: [], nextProviderSequence: 2 });
-  });
-  const ui = {
-    setContextWarning: (value: string | undefined) =>
-      fake.recordUiCall("warning", value),
-    clearPendingDeliveryDraftTarget: () => fake.recordUiCall("clearDeliveryTarget"),
-    setStreaming: (value: boolean) => fake.recordUiCall("streaming", value),
-    setDraft: (value: string) => fake.recordUiCall("draft", value),
-    setTaskMode: (value: RunMorphoAgentTurnInput["taskMode"]) =>
-      fake.recordUiCall("taskMode", value),
-    openConversation: () => fake.recordUiCall("openConversation"),
-    showFailure: () => fake.recordUiCall("failure", true),
-    setPendingConfirmation: (value: Parameters<AgentTurnHost["ui"]["setPendingConfirmation"]>[0]) =>
-      fake.recordUiCall("confirmation", value),
-    selectObjects: (objectIds: string[]) => fake.recordUiCall("selection", objectIds),
-    focusObject: (objectId: string) => fake.recordUiCall("focus", objectId),
-    openProposal: (proposalId: string) => fake.recordUiCall("proposal", proposalId)
-  } satisfies AgentTurnHost["ui"];
-  let now = fake.now();
+  const fake = createAgentTurnHostFake({ workspace: createTestWorkspace() });
+  const persistenceStates = [...(options.persistenceStates ?? [])];
   const host: AgentTurnHost = {
     commitWorkspace: fake.commitWorkspace,
     readWorkspace: fake.readWorkspace,
-    ui,
+    persistWorkspace: () => persistenceStates.shift() ?? fake.persistWorkspace(),
+    ui: {
+      setContextWarning: fake.createUiRecorder("warning"),
+      clearPendingDeliveryDraftTarget: fake.createUiRecorder("clearDelivery"),
+      setStreaming: fake.createUiRecorder("streaming"),
+      setDraft: fake.createUiRecorder("draft"),
+      setTaskMode: fake.createUiRecorder("taskMode"),
+      openConversation: fake.createUiRecorder("openConversation"),
+      showFailure: fake.createUiRecorder("failure"),
+      showRecoveryPending: fake.createUiRecorder("recoveryPending"),
+      setPendingConfirmation: fake.createUiRecorder("confirmation"),
+      selectObjects: fake.createUiRecorder("selection"),
+      focusObject: fake.createUiRecorder("focus"),
+      openProposal: fake.createUiRecorder("proposal")
+    },
     abortSlot: fake.abortSlot,
     streamFlushSlot: fake.streamFlushSlot,
     fetch: fake.fetch,
     executeVisualGenerationPlan: async ({ workspaceSnapshot }) => ({
       workspace: workspaceSnapshot,
-      createdObjectIds: [],
-      failedItems: []
+      createdObjectIds: options.visualGenerationResult?.createdObjectIds ?? [],
+      failedItems: options.visualGenerationResult?.failedItems ?? []
     }),
-    now: () => now,
+    now: fake.now,
     randomSuffix: fake.randomSuffix
   };
-  const input: RunMorphoAgentTurnInput = {
+  const coordinatorHost = new CoordinatorHostFake(scripts);
+  const store = new MemoryRecoveryStore();
+  const ids = ["creation-a", "request-1", "request-2", "request-3"];
+  const dependencies: AgentTurnRunnerAPlusDependencies = {
+    coordinatorHost,
+    recoveryStore: store,
+    createId: () => ids.shift() ?? "request-fallback"
+  };
+  const input: RunMorphoAgentTurnAPlusInput = {
     draft: "讨论当前项目",
     taskMode: "chatAnalysis",
     recommendedTaskMode: "chatAnalysis",
@@ -343,78 +773,133 @@ function createFixture(
     imageGenerationModelId: "test-image-model",
     readConversationTokenLimits: () => undefined
   };
+  return { fake, host, input, coordinatorHost, store, dependencies };
+}
+
+function savedPersistence(): WorkspacePersistenceState {
   return {
-    fake,
-    host,
-    input,
-    requestBodies,
-    closureRequestBodies,
-    workspace: fake.getWorkspace,
-    webSearchCount: () => webSearchCalls,
-    advanceTime: () => {
-      now += 1;
-    }
+    phase: "saved",
+    isDirty: false,
+    lastSavedAt: "2026-07-29T00:00:00.000Z"
   };
 }
 
-function successfulClosureResponse(requestBody: string): Response {
-  const body = JSON.parse(requestBody) as Record<string, unknown>;
-  if (typeof body.projectId !== "string") {
-    return Response.json({ status: body.outcome });
-  }
-  return Response.json({
-    status: body.outcome,
-    outcomeItem: createAgentTurnOutcomeItem({
-      agentTurnId: String(body.agentTurnId),
-      userMessageId: String(body.userMessageId),
-      assistantMessageId: String(body.assistantMessageId),
-      outcome: body.outcome as "success" | "partialSuccess" | "pendingConfirmation",
-      ...(body.outcome === "success" && body.providerOutputSnapshot &&
-      typeof body.providerOutputSnapshot === "object" &&
-      "text" in body.providerOutputSnapshot &&
-      typeof body.providerOutputSnapshot.text === "string"
-        ? { successText: body.providerOutputSnapshot.text }
-        : {})
-    }),
-    transcriptSnapshotToken: "snapshot-token-final",
-    transcriptManifestHash: "c".repeat(64),
-    expiresAt: Date.now() + 60_000
-  });
+function failedPersistence(): WorkspacePersistenceState {
+  return {
+    phase: "error",
+    isDirty: true,
+    error: "simulated persistence failure"
+  };
 }
 
-function toolCall(
-  name: string,
-  args: unknown,
-  callId: string
-): AgentStreamFunctionCall {
+async function waitForCondition(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error("Timed out waiting for the A+ Recovery barrier.");
+}
+
+function snapshotFor(
+  status: AgentTurnJournalSnapshot["status"],
+  latestRequestId: string | null,
+  latestStepSequence: number,
+  providerCount: number,
+  localProjectId = "project-test"
+): AgentTurnJournalSnapshot {
   return {
-    id: `item-${callId}`,
+    serverTurnId: TURN_ID,
+    localProjectId,
+    status,
+    latestRequestId,
+    latestStepSequence,
+    counters: { provider: providerCount, webSearch: 0, image: 0 },
+    createdAt: "2026-07-29T00:00:00.000Z",
+    updatedAt: "2026-07-29T00:00:00.000Z",
+    terminalAt: status.startsWith("externally") ? "2026-07-29T00:00:00.000Z" : null
+  };
+}
+
+function latestAssistant(workspace: ReturnType<typeof createTestWorkspace>) {
+  return [...workspace.ai.messages].reverse().find((message) => message.role === "assistant");
+}
+
+function researchToolCall(callId: string): APlusToolCall {
+  return {
     callId,
-    name,
-    argumentsText: JSON.stringify(args)
+    name: "create_research_analysis",
+    argumentsText: JSON.stringify({
+      title: "研究草案",
+      summary: "本地效果必须保留。",
+      findings: [],
+      opportunities: [],
+      constraints: [],
+      openQuestions: [],
+      evidence: []
+    })
   };
 }
 
-function latestTurnAssistant(workspace: MorphoWorkspace) {
-  const message = [...workspace.ai.messages]
-    .reverse()
-    .find((candidate) => candidate.id.startsWith("ai-assistant-agent-"));
-  if (!message) {
-    throw new Error("Agent assistant message was not created.");
-  }
-  return message;
+function visualToolCall(callId: string): APlusToolCall {
+  return {
+    callId,
+    name: "generate_visuals",
+    argumentsText: JSON.stringify({
+      kind: "visualDevelopment",
+      items: [
+        {
+          id: "visual-a",
+          title: "方向图 A",
+          purpose: "验证 A+ 图像生命周期",
+          requestedReferenceObjectIds: [],
+          changeGoals: [],
+          preserve: [],
+          allowToChange: [],
+          productForm: [],
+          materialsAndCmf: [],
+          environmentAndLighting: [],
+          avoid: [],
+          role: "preview"
+        },
+        {
+          id: "visual-b",
+          title: "方向图 B",
+          purpose: "验证部分失败",
+          requestedReferenceObjectIds: [],
+          changeGoals: [],
+          preserve: [],
+          allowToChange: [],
+          productForm: [],
+          materialsAndCmf: [],
+          environmentAndLighting: [],
+          avoid: [],
+          role: "preview"
+        }
+      ]
+    })
+  };
 }
 
-function uiValues(
-  fixture: ReturnType<typeof createFixture>,
-  name: string
-): unknown[] {
-  return fixture.fake
-    .getEvents()
-    .filter((event) => event.kind === "ui" && event.name === name)
-    .map((event) => event.value);
+function deliveryToolCall(callId: string, referenceId: string): APlusToolCall {
+  return {
+    callId,
+    name: "prepare_delivery_section_draft",
+    argumentsText: JSON.stringify({
+      title: "交付章节草案",
+      narrative: "这份草案等待用户在交付面板中应用或放弃。",
+      captions: [{ referenceId, caption: "核心参考" }],
+      suggestedGaps: []
+    })
+  };
 }
 
-function objectsOfType(workspace: MorphoWorkspace, type: MorphoWorkspace["objects"][string]["type"]) {
-  return Object.values(workspace.objects).filter((object) => object.type === type).length;
+function searchToolCall(callId: string): APlusToolCall {
+  return {
+    callId,
+    name: "search_web_evidence",
+    argumentsText: JSON.stringify({
+      reason: "验证 Search 恢复",
+      queries: ["Morpho A+ runtime"]
+    })
+  };
 }

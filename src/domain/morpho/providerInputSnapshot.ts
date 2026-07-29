@@ -5,7 +5,7 @@ import type {
   ProviderInputSnapshotTextPart,
   ProviderInputSnapshotTextPartKind
 } from "./types";
-import { hashAgentProtocolValue } from "@/shared/agentCompactionProtocol";
+import { hashProductValue } from "@/shared/agentProductHash";
 
 type ProviderInputTextContent = {
   type: "input_text" | "output_text";
@@ -117,14 +117,14 @@ export function parseProviderInputSnapshotDurableReferences(
 }
 
 export function hashProviderImageDataUrl(dataUrl: string): string {
-  return hashAgentProtocolValue(dataUrl, "morpho-agent-provider-image-content-v1");
+  return hashProductValue(dataUrl, "morpho-agent-provider-image-content-v1");
 }
 
 export function createProviderOutputSnapshot(text: string): import("./types").ProviderOutputSnapshot {
   return {
     schemaVersion: 1,
     text,
-    contentHash: hashAgentProtocolValue(text, "morpho-agent-provider-output-snapshot-v1")
+    contentHash: hashProductValue(text, "morpho-agent-provider-output-snapshot-v1")
   };
 }
 
@@ -138,7 +138,7 @@ export function normalizeProviderOutputSnapshot(value: unknown): import("./types
 }
 
 export function hashProviderInputSnapshotText(textParts: readonly ProviderInputSnapshotTextPart[]): string {
-  return hashAgentProtocolValue(
+  return hashProductValue(
     textParts.map((part) => ({ kind: part.kind, text: part.text })),
     "morpho-agent-provider-input-snapshot-v2"
   );

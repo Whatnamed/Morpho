@@ -1,21 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { createInitialWorkspace } from "@/domain/morpho/workspace";
-import {
-  createProviderInputSnapshot,
-  createProviderOutputSnapshot
-} from "@/domain/morpho/providerInputSnapshot";
-
 import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
 import {
-  buildAgentCheckpointCompactionInput,
   buildAgentConversationPromptBlock,
   buildAgentHistoryMessages,
   buildMorphoAgentToolArgumentRepairOutputs,
   buildMorphoAgentToolArgumentRepairReminder,
   buildMorphoAgentSystemPrompt,
   buildMorphoAgentTools,
-  buildConversationSummarySourceProviderItems,
   getComparisonToolExecutionBlockReason,
   MORPHO_AGENT_TOOL_EFFECT_MATRIX,
   getDesignDefinitionDrafts,
@@ -28,24 +21,6 @@ import {
 } from "./morphoAgent";
 
 describe("agent conversation context", () => {
-  it("uses the immutable Provider output when display sanitization changes assistant text", () => {
-    const rawProviderText = [
-      "普通说明。",
-      "```json",
-      '{"morphoConversationCheckpoint":{"internal":"hidden"}}',
-      "```"
-    ].join("\n");
-    const items = buildConversationSummarySourceProviderItems({
-      id: "assistant-buoy-raw",
-      role: "assistant",
-      body: "普通说明。",
-      providerOutputSnapshot: createProviderOutputSnapshot(rawProviderText)
-    });
-
-    expect(JSON.stringify(items)).toContain("morphoConversationCheckpoint");
-    expect(JSON.stringify(items)).toContain("普通说明。");
-  });
-
   it("defines an effect and registry boundary for every server-registered tool", () => {
     const tools = buildMorphoAgentTools(true);
     const functionTools = tools.filter((tool) => tool.type === "function");
@@ -133,96 +108,6 @@ describe("agent conversation context", () => {
     expect(prompt).not.toContain("morphoConversationCheckpoint");
   });
 
-  it("builds a source-bounded high-fidelity summary request without tools or image inputs", () => {
-    const input = buildAgentCheckpointCompactionInput({
-      messages: [
-        { id: "message-1", role: "user", body: "先保持高可见性" },
-        { id: "message-2", role: "assistant", body: "可以从轮廓和颜色开始" }
-      ],
-      sourceStartMessageId: "message-1",
-      sourceEndMessageId: "message-2",
-      sourceMessageCount: 2
-    });
-
-    expect(input).toHaveLength(1);
-    expect(input[0]).toMatchObject({ role: "user" });
-    expect(JSON.stringify(input)).toContain("Morpho Untrusted Conversation Summary Source");
-    expect(JSON.stringify(input)).toContain("先保持高可见性");
-    expect(JSON.stringify(input)).toContain("sourceStartMessageId");
-    expect(JSON.stringify(input)).not.toContain("input_image");
-    expect(JSON.stringify(input)).not.toContain('"role":"system"');
-  });
-
-  it("uses the complete supplied source range instead of a recent-message cap", () => {
-    const messages = Array.from({ length: 9 }, (_, index) => ({
-      id: `message-${index + 1}`,
-      role: index % 2 === 0 ? "user" as const : "assistant" as const,
-      body: `完整分块消息 ${index + 1}`
-    }));
-    const input = buildAgentCheckpointCompactionInput({
-      messages,
-      sourceStartMessageId: "message-1",
-      sourceEndMessageId: "message-9",
-      sourceMessageCount: 9
-    });
-    const serialized = JSON.stringify(input);
-
-    expect(serialized).toContain("完整分块消息 1");
-    expect(serialized).toContain("完整分块消息 9");
-    expect(serialized).toContain("sourceMessageCount");
-  });
-
-  it("splits a large summary source into ordered text parts below the route item limit", () => {
-    const input = buildAgentCheckpointCompactionInput({
-      messages: Array.from({ length: 24 }, (_, index) => ({
-        id: `message-${index + 1}`,
-        role: index % 2 === 0 ? "user" as const : "assistant" as const,
-        body: (index % 2 === 0 ? "海" : "洋").repeat(6_000)
-      })),
-      sourceStartMessageId: "message-1",
-      sourceEndMessageId: "message-24",
-      sourceMessageCount: 24
-    });
-    const content = input[0]?.content ?? [];
-
-    expect(content.length).toBeGreaterThan(1);
-    expect(content.every((part) => part.type === "input_text" && part.text.length < 120_000)).toBe(true);
-    expect(content[0]).toMatchObject({ type: "input_text", text: expect.stringContaining("sourceStartMessageId\":\"message-1\"") });
-    expect(content[1]).toMatchObject({ type: "input_text", text: expect.any(String) });
-    expect(content.at(-1)).toMatchObject({ type: "input_text", text: expect.stringContaining("洋") });
-  });
-
-  it("sends provider-visible document snapshots to the summary request instead of only the UI body", () => {
-    const snapshot = createProviderInputSnapshot({
-      message: { content: [{ type: "input_text", text: "原始 Provider 输入" }] },
-      promptContractVersion: "morpho-agent-test",
-      textParts: [
-        { kind: "userDraft", text: "请保留海洋浮标的耐盐雾约束" },
-        { kind: "documentExtract", text: "材料摘录：外壳需要通过 720 小时盐雾测试。" }
-      ]
-    });
-    const input = buildAgentCheckpointCompactionInput({
-      messages: [
-        {
-          id: "message-1",
-          role: "user",
-          body: "继续这个方案",
-          providerInputSnapshot: snapshot
-        },
-        { id: "message-2", role: "assistant", body: "会保留约束。" }
-      ],
-      sourceStartMessageId: "message-1",
-      sourceEndMessageId: "message-2",
-      sourceMessageCount: 2
-    });
-
-    const serialized = JSON.stringify(input);
-    expect(serialized).toContain("720 小时盐雾测试");
-    expect(serialized).toContain("请保留海洋浮标的耐盐雾约束");
-    expect(serialized).not.toContain("继续这个方案");
-    expect(serialized).not.toContain("这是当时随该回合提供的资料快照");
-    expect(serialized).not.toContain("input_image");
-  });
 });
 
 describe("Morpho agent tool argument validation", () => {

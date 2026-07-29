@@ -6,7 +6,6 @@ import {
   AGENT_TRACE_MAX_PARTS,
   AGENT_TRACE_MAX_TEXT_PART_CHARS,
   applyAgentStreamEventToTrace,
-  compactHistoricalProviderDiagnostics,
   completeAgentTrace,
   createAgentTrace,
   finishAgentToolActivityInWorkspace,
@@ -15,46 +14,6 @@ import {
 } from "./agentMessageTrace";
 
 describe("agent message trace", () => {
-  it("keeps compact cache diagnostics without retaining either full request manifest", () => {
-    const diagnostics = compactHistoricalProviderDiagnostics({
-      cacheStatus: "partialHit",
-      commonPrefixItemCount: 12,
-      commonPrefixEstimatedTokens: 4_200,
-      firstMismatchKind: "contextFrame",
-      providerInputBoundaryReasons: ["compaction"],
-      budgetGeneration: 3,
-      previousRequestState: {
-        promptContractVersion: "agent-v1",
-        cacheItemManifest: [{
-          type: "message",
-          semanticKind: "conversation",
-          contentHash: "previous",
-          estimatedTokens: 100
-        }]
-      },
-      requestState: {
-        promptContractVersion: "agent-v1",
-        cacheItemManifest: [{
-          type: "message",
-          semanticKind: "conversation",
-          contentHash: "current",
-          estimatedTokens: 120
-        }]
-      }
-    });
-
-    expect(diagnostics).toEqual({
-      cacheStatus: "partialHit",
-      commonPrefixItemCount: 12,
-      commonPrefixEstimatedTokens: 4_200,
-      firstMismatchKind: "contextFrame",
-      providerInputBoundaryReasons: ["compaction"],
-      budgetGeneration: 3
-    });
-    expect(diagnostics).not.toHaveProperty("previousRequestState");
-    expect(diagnostics).not.toHaveProperty("requestState");
-  });
-
   it("preserves provider reasoning, commentary, and local tool activities in received order", () => {
     let trace = createAgentTrace("2026-07-13T00:00:00.000Z");
     trace = applyAgentStreamEventToTrace(trace, { type: "reasoning-start", partId: "reasoning-1" }, trace.startedAt);

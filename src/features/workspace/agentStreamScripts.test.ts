@@ -33,7 +33,6 @@ describe("Agent stream scripts", () => {
 
     expect(script.events.at(-1)).toMatchObject({
       type: "turn-complete",
-      continuationToken: "continuation-unit-tools",
       result: {
         responseId: "response-e2e-1",
         functionCalls: [{ callId: "call-read-1", name: "read_project_memory" }]

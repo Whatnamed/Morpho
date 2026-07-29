@@ -1,5 +1,4 @@
 import type { AgentToolProfile } from "./agentRuntimeItem";
-import type { AgentCompactionReceipt } from "./agentCompactionProtocol";
 import type { ProviderOutputSnapshot } from "@/domain/morpho/types";
 
 export type AgentStreamCitation = {
@@ -39,14 +38,6 @@ export type AgentStreamUsage = {
   reasoningTokens?: number;
 };
 
-export type AgentCacheItemManifest = {
-  type: string;
-  role?: "system" | "user" | "assistant";
-  semanticKind: string;
-  contentHash: string;
-  estimatedTokens: number;
-};
-
 export type AgentStreamContext = {
   estimatedInputTokens: number;
   estimatedOccupancyTokens: number;
@@ -59,50 +50,15 @@ export type AgentStreamContext = {
   retried?: boolean;
 };
 
-export type AgentProviderRequestState = {
-  promptContractVersion: string;
-  toolProfile?: AgentToolProfile;
-  summaryRevisionId?: string;
-  latestUserMessageId?: string;
-  providerInputPrefixHash?: string;
-  attachmentBoundary?: string;
-  runtimeItem?: import("./agentRuntimeItem").AgentCanonicalRuntimeItem;
-  cacheItemManifest?: AgentCacheItemManifest[];
-  toolsHash?: string;
-  budgetGeneration?: number;
-  transcriptManifestHash?: string;
-  transcriptSnapshotToken?: string;
-  transcriptSnapshotExpiresAt?: number;
-  transcriptStartMessageId?: string;
-};
-
 export type AgentProviderDiagnostics = {
   promptContractVersion?: string;
   toolProfile?: AgentToolProfile;
-  stablePrefixHash?: string;
-  previousStablePrefixHash?: string;
-  contextFrameCount?: number;
-  appendedContextFrameCount?: number;
-  conversationSummaryRevisionId?: string;
   cachedInputTokens?: number;
   uncachedInputTokens?: number;
   cacheHitRatio?: number;
   providerCacheKeyEnabled?: boolean;
   providerCacheRetention?: "24h";
   cacheStatus?: "unavailable" | "miss" | "partialHit" | "fullHit";
-  providerInputBoundaryReasons?: string[];
-  previousRequestState?: AgentProviderRequestState;
-  requestState?: AgentProviderRequestState;
-  compactedThisTurn?: boolean;
-  commonPrefixItemCount?: number;
-  commonPrefixEstimatedTokens?: number;
-  firstMismatchKind?: string;
-  previousToolsHash?: string;
-  currentToolsHash?: string;
-  previousSummaryRevisionId?: string;
-  currentSummaryRevisionId?: string;
-  budgetGeneration?: number;
-  runtimeItemHash?: string;
 };
 
 export type AgentStreamResult = {
@@ -137,11 +93,6 @@ export type AgentRouteStreamEvent =
       startedAt: string;
       effectiveToolProfile?: AgentToolProfile;
       runtimeItem?: import("./agentRuntimeItem").AgentCanonicalRuntimeItem;
-      leaseId?: string;
-      leaseExpiresAt?: string;
-      providerCallCount?: number;
-      webSearchCallCount?: number;
-      nextProviderSequence?: number;
     }
   | {
       type: "turn-attempt-reset";
@@ -207,30 +158,16 @@ export type AgentRouteStreamEvent =
       type: "turn-complete";
       result: AgentStreamResult;
       attemptId?: string;
-      /**
-       * Signed proof of what this response actually was. The next Provider request
-       * in the same turn must return it; it is never persisted with the workspace.
-       */
-      continuationToken?: string;
-      /** Manifest hash from the signed continuation claim, kept transiently for compaction. */
-      transcriptManifestHash?: string;
-      /** Output-inclusive durable snapshot persisted only in the latest request-state slot. */
-      transcriptSnapshotToken?: string;
-      /** Short-lived proof binding the latest non-summary Provider result to this lease and turn. */
-      turnClosureToken?: string;
       assistantProviderOutputSnapshot?: ProviderOutputSnapshot;
       verifiedImageReferences?: Array<{
         messageId: string;
         attachmentRefs: import("@/domain/morpho/types").ProviderInputSnapshotAttachmentRef[];
       }>;
-      compactionReceipt?: AgentCompactionReceipt;
     }
   | {
       type: "turn-error";
       error: string;
       code?: "context_limit" | "function_call_limit" | "interrupted";
-      /** Server-recorded terminal failure for a Provider call that already consumed the Lease. */
-      providerFailureOutcome?: "cancelledDuringProvider" | "failedDuringProvider";
       attemptId?: string;
     };
 

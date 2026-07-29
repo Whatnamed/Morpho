@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { DEFAULT_CONVERSATION_TOKEN_LIMITS } from "./conversationCompaction";
 import { MORPHO_AGENT_CONTEXT_POLICY, createMorphoAgentContextPolicy } from "./agentContextPolicy";
-import { createAgentContextLimits } from "@/server/ai/agentContextBudget";
 
 describe("Morpho Agent context policy", () => {
   it("keeps the fixed 256k policy and its threshold math in one source", () => {
@@ -30,13 +29,6 @@ describe("Morpho Agent context policy", () => {
 
   it("is shared by client compaction and server request budgeting", () => {
     expect(DEFAULT_CONVERSATION_TOKEN_LIMITS).toBe(MORPHO_AGENT_CONTEXT_POLICY);
-    expect(createAgentContextLimits()).toEqual({
-      windowTokens: MORPHO_AGENT_CONTEXT_POLICY.windowTokens,
-      prepareTokens: MORPHO_AGENT_CONTEXT_POLICY.prepareTokens,
-      compactTokens: MORPHO_AGENT_CONTEXT_POLICY.compactTokens,
-      targetUncompressedTokens: MORPHO_AGENT_CONTEXT_POLICY.targetUncompressedTokens,
-      responseReserveTokens: MORPHO_AGENT_CONTEXT_POLICY.responseReserveTokens
-    });
     expect(createMorphoAgentContextPolicy()).toEqual(MORPHO_AGENT_CONTEXT_POLICY);
   });
 });

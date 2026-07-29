@@ -244,13 +244,13 @@ import {
   type APlusRestoredImageActionDescriptor
 } from "./agentExternalActionClientAPlus";
 import {
-  acknowledgeMorphoAgentPendingConfirmationAPlus,
-  cancelMorphoAgentTurnAPlus,
-  recoverMorphoAgentTurnAPlus,
-  resumeMorphoAgentTurnAPlus,
-  runManualCompactionTurnAPlus,
-  runMorphoAgentTurnAPlus
-} from "./agentTurnRunnerAPlus";
+  acknowledgeMorphoAgentPendingConfirmation,
+  cancelMorphoAgentTurn,
+  recoverMorphoAgentTurn,
+  resumeMorphoAgentTurn,
+  runManualCompactionTurn,
+  runMorphoAgentTurn
+} from "./agentTurnRunner";
 import { completeAgentTrace } from "./agentMessageTrace";
 import { commitWorkspaceStateNow } from "./workspaceCommitBoundary";
 import { readErrorResponse } from "./httpPayload";
@@ -1842,7 +1842,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
     recoveredAgentRuntimeProjectRef.current = projectId;
-    void recoverMorphoAgentTurnAPlus(projectId, agentTurnHost);
+    void recoverMorphoAgentTurn(projectId, agentTurnHost);
   }, [agentTurnHost, persistenceState.isWorkspaceLoaded, projectId]);
 
   const handleSendMorphoAgentTurn = useCallback(async () => {
@@ -1852,7 +1852,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
 
     if (showRecoveryPending) {
-      const recoveryResult = await resumeMorphoAgentTurnAPlus(projectId, agentTurnHost);
+      const recoveryResult = await resumeMorphoAgentTurn(projectId, agentTurnHost);
       if (recoveryResult === "pending") {
         setShowFailure(false);
         setShowRecoveryPending(true);
@@ -1882,10 +1882,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       readConversationTokenLimits: readConversationTokenLimitsOverride
     };
     if (parseManualCompactCommand(draft).matched) {
-      await runManualCompactionTurnAPlus(turnInput, agentTurnHost);
+      await runManualCompactionTurn(turnInput, agentTurnHost);
       return;
     }
-    await runMorphoAgentTurnAPlus(turnInput, agentTurnHost);
+    await runMorphoAgentTurn(turnInput, agentTurnHost);
   }, [
     agentTurnHost,
     agentTurnMode,
@@ -2225,7 +2225,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   );
 
   const handleCancelAiRequest = useCallback(async () => {
-    if (await cancelMorphoAgentTurnAPlus(projectId)) {
+    if (await cancelMorphoAgentTurn(projectId)) {
       return;
     }
     agentStreamFlushRef.current?.();
@@ -2852,7 +2852,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     if (!pendingConfirmation) {
       return;
     }
-    await acknowledgeMorphoAgentPendingConfirmationAPlus(projectId);
+    await acknowledgeMorphoAgentPendingConfirmation(projectId);
 
     if (pendingConfirmation.kind === "batchGenerateVisuals" || pendingConfirmation.kind === "agentGenerateVisuals") {
       const controller = new AbortController();
@@ -3285,7 +3285,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         markReplacedDerivativesForReview: true
       })
     );
-    void acknowledgeMorphoAgentPendingConfirmationAPlus(projectId);
+    void acknowledgeMorphoAgentPendingConfirmation(projectId);
     setPendingConfirmation(null);
     setAiDraft("");
     showWorkspaceNotice(`已替换默认参考为「${pendingConfirmation.targetTitle}」，直接延展素材已标记待复核`);
@@ -4674,13 +4674,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onConfirmPending={handleConfirmPending}
         onConfirmPendingSecondary={handleConfirmPendingWithReviewMarks}
         onCancelPending={() => {
-          void acknowledgeMorphoAgentPendingConfirmationAPlus(projectId);
+          void acknowledgeMorphoAgentPendingConfirmation(projectId);
           setPendingConfirmation(null);
         }}
         onFailureRetry={() => {
           void (async () => {
             setShowFailure(false);
-            const result = await resumeMorphoAgentTurnAPlus(projectId, agentTurnHost);
+            const result = await resumeMorphoAgentTurn(projectId, agentTurnHost);
             setShowRecoveryPending(result === "pending");
             setShowFailure(result === "failed");
           })();

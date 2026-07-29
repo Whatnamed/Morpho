@@ -22,20 +22,6 @@ export function createAgentTrace(startedAt: string): AgentTrace {
   };
 }
 
-export function compactHistoricalProviderDiagnostics(
-  diagnostics: AgentProviderDiagnostics | undefined
-): AgentTrace["providerDiagnostics"] {
-  if (!diagnostics) {
-    return undefined;
-  }
-  const {
-    previousRequestState: _previousRequestState,
-    requestState: _requestState,
-    ...compact
-  } = diagnostics;
-  return compact;
-}
-
 export function applyAgentStreamEventToTrace(
   trace: AgentTrace,
   event: AgentRouteStreamEvent,

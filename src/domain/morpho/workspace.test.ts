@@ -36,7 +36,7 @@ import { applyConversationSummaryRevision } from "./conversationCompaction";
 import type { MorphoWorkspace } from "./types";
 
 describe("Morpho workspace domain boundaries", () => {
-  it("keeps only the latest full cache manifest and strips manifests from historical traces", () => {
+  it("drops legacy B proof fields while preserving product messages and compact diagnostics", () => {
     const workspace = createInitialWorkspace();
     const legacy = structuredClone(workspace) as MorphoWorkspace;
     legacy.ai.messages = Array.from({ length: 100 }, (_, index) => ({
@@ -104,10 +104,11 @@ describe("Morpho workspace domain boundaries", () => {
     expect(JSON.stringify(result.workspace.ai.messages)).not.toContain("cacheItemManifest");
     expect(JSON.stringify(result.workspace.ai.messages)).not.toContain("requestState");
     expect(result.workspace.ai.messages[99]?.agentTrace?.providerDiagnostics).toMatchObject({
-      cacheStatus: "partialHit",
-      commonPrefixItemCount: 99
+      cacheStatus: "partialHit"
     });
-    expect(result.workspace.ai.latestProviderRequestState?.cacheItemManifest).toHaveLength(1);
+    expect(result.workspace.ai).not.toHaveProperty("latestProviderRequestState");
+    expect(result.workspace.ai.messages).toHaveLength(100);
+    expect(result.workspace.ai.messages[99]?.body).toBe("turn 99");
     expect(JSON.stringify(result.workspace).length).toBeLessThan(JSON.stringify(legacy).length);
   });
 

@@ -6,15 +6,9 @@ import type {
   ImageRole,
   MorphoObject,
   MorphoWorkspace,
-  ProviderInputSnapshot,
-  ProviderOutputSnapshot,
   ProjectMemoryKey,
   StageRecordKey
 } from "@/domain/morpho/types";
-import {
-  providerInputSnapshotDurableContent,
-  providerInputSnapshotText
-} from "@/domain/morpho/providerInputSnapshot";
 import type {
   ProviderCitation,
   ResponseFunctionTool,
@@ -28,15 +22,6 @@ import type {
   AgentStreamResult
 } from "@/shared/agentStreamProtocol";
 import { assertAgentFunctionCallCount } from "@/shared/agentFunctionCallLimits";
-import {
-  AGENT_COMPACTION_SOURCE_ENVELOPE_PREFIX,
-  AGENT_COMPACTION_SOURCE_ENVELOPE_VERSION,
-  hashSourceMessageIds
-} from "@/shared/agentCompactionProtocol";
-import {
-  canonicalAgentStrategyMessage,
-  createAgentStrategyMarker
-} from "@/shared/agentStrategyItem";
 
 import type { ProviderTaskContext, TaskContextResult } from "./taskContext";
 import {
@@ -872,140 +857,6 @@ export function buildAgentConversationPromptBlock(
     );
   }
   return lines.join("\n");
-}
-
-export function buildAgentCheckpointCompactionInput(input: {
-  previousSummaryRevision?: ConversationSummaryRevision;
-  messages: Array<{
-    id?: string;
-    role: "user" | "assistant";
-    body: string;
-    createdAt?: string;
-    providerInputSnapshot?: ProviderInputSnapshot;
-    providerOutputSnapshot?: ProviderOutputSnapshot;
-    agentTurnOutcomeItem?: import("@/shared/agentCompactionProtocol").AgentTurnOutcomeItem;
-    taskStrategy?: AgentTaskStrategyKind;
-  }>;
-  sourceStartMessageId: string;
-  sourceEndMessageId: string;
-  sourceMessageCount: number;
-}): ResponseMessageInput[] {
-  const maxSourcePartChars = 100_000;
-  const previousSummary = input.previousSummaryRevision?.summary;
-  const sourceMessageIds = input.messages
-    .map((message) => message.id)
-    .filter((id): id is string => Boolean(id));
-  const sourceMessages = input.messages.map((message) => ({
-    id: message.id ?? "",
-    role: message.role,
-    ...(message.createdAt ? { createdAt: message.createdAt } : {}),
-    providerItems: buildConversationSummarySourceProviderItems(message)
-  }));
-  const sourcePayload = {
-    version: AGENT_COMPACTION_SOURCE_ENVELOPE_VERSION,
-    sourceStartMessageId: input.sourceStartMessageId,
-    sourceEndMessageId: input.sourceEndMessageId,
-    sourceMessageCount: input.sourceMessageCount,
-    sourceMessageIds,
-    sourceMessageIdsHash: hashSourceMessageIds(sourceMessageIds),
-    ...(previousSummary ? { previousSummary } : {}),
-    sourceMessages
-  };
-  const serializedSource = JSON.stringify(sourcePayload);
-  const sourceParts = splitBoundedText(
-    `${AGENT_COMPACTION_SOURCE_ENVELOPE_PREFIX}${serializedSource}`,
-    maxSourcePartChars
-  );
-  return [
-    {
-      role: "user",
-      content: sourceParts.map((text) => ({
-        type: "input_text" as const,
-        text
-      }))
-    }
-  ];
-}
-
-export function buildConversationSummarySourceProviderInput(
-  message: Pick<
-    {
-      role: "user" | "assistant";
-      body: string;
-      providerInputSnapshot?: ProviderInputSnapshot;
-      providerOutputSnapshot?: ProviderOutputSnapshot;
-      agentTurnOutcomeItem?: import("@/shared/agentCompactionProtocol").AgentTurnOutcomeItem;
-    },
-    "role" | "body" | "providerInputSnapshot" | "providerOutputSnapshot" | "agentTurnOutcomeItem"
-  >
-): unknown[] {
-  if (message.role === "user" && message.providerInputSnapshot) {
-    const content = providerInputSnapshotDurableContent(message.providerInputSnapshot);
-    if (content.length > 0) {
-      return [{
-        role: "user",
-        content
-      }];
-    }
-  }
-  if (message.role === "assistant" && message.agentTurnOutcomeItem) {
-    return [message.agentTurnOutcomeItem];
-  }
-  if (message.role === "assistant" && message.providerOutputSnapshot) {
-    return [{
-      role: "assistant",
-      content: [{ type: "output_text", text: message.providerOutputSnapshot.text }]
-    }];
-  }
-  return [{
-    role: message.role,
-    content: [{
-      type: message.role === "assistant" ? "output_text" as const : "input_text" as const,
-      text: message.body
-    }]
-  }];
-}
-
-export function buildConversationSummarySourceProviderItems(
-  message: {
-    id?: string;
-    role: "user" | "assistant";
-    body: string;
-    providerInputSnapshot?: ProviderInputSnapshot;
-    providerOutputSnapshot?: ProviderOutputSnapshot;
-    agentTurnOutcomeItem?: import("@/shared/agentCompactionProtocol").AgentTurnOutcomeItem;
-    taskStrategy?: AgentTaskStrategyKind;
-  }
-): unknown[] {
-  const strategyItem = message.role === "user" && message.taskStrategy && message.id
-    ? [canonicalAgentStrategyMessage(createAgentStrategyMarker({
-        strategy: message.taskStrategy,
-        anchorMessageId: message.id
-      }))]
-    : [];
-  return [
-    ...strategyItem,
-    ...buildConversationSummarySourceProviderInput(message)
-  ];
-}
-
-function splitBoundedText(value: string, maxChars: number): string[] {
-  const parts: string[] = [];
-  let start = 0;
-  while (start < value.length) {
-    let end = Math.min(value.length, start + maxChars);
-    if (
-      end < value.length &&
-      end > start &&
-      /[\uD800-\uDBFF]/.test(value[end - 1]!) &&
-      /[\uDC00-\uDFFF]/.test(value[end]!)
-    ) {
-      end -= 1;
-    }
-    parts.push(value.slice(start, end));
-    start = end;
-  }
-  return parts.length > 0 ? parts : [""];
 }
 
 export function buildMorphoAgentInitialTools(): ResponseTool[] {

@@ -4,7 +4,7 @@ import { applyConversationSummaryRevision } from "@/domain/morpho/conversationCo
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 import { createTestWorkspace } from "@/domain/morpho/workspace";
 import type { AgentTurnJournalSnapshot } from "@/shared/agentTurnJournalProtocol";
-import { runAgentCompactionAPlus } from "./agentCompactionOrchestratorAPlus";
+import { runAgentCompaction } from "./agentCompactionOrchestrator";
 import {
   hashAPlusExternalActionBody,
   type APlusExternalActionDescriptor
@@ -23,7 +23,7 @@ describe("A+ unified Compaction orchestrator", () => {
       const fixture = await createFixture();
       const beforeIds = fixture.host.readWorkspace().ai.messages.map((message) => message.id);
 
-      const result = await runAgentCompactionAPlus({
+      const result = await runAgentCompaction({
         mode,
         actionId: `compact:${mode}:1`,
         coordinator: fixture.coordinator,
@@ -54,7 +54,7 @@ describe("A+ unified Compaction orchestrator", () => {
     controller.abort();
     const before = fixture.host.readWorkspace();
 
-    const result = await runAgentCompactionAPlus({
+    const result = await runAgentCompaction({
       mode: "manual",
       actionId: "compact:manual:cancel",
       coordinator: fixture.coordinator,
@@ -80,7 +80,7 @@ describe("A+ unified Compaction orchestrator", () => {
     const persistWorkspace = fixture.host.persistWorkspace;
     if (!persistWorkspace) throw new Error("Fixture 缺少 Workspace persistence host。");
 
-    const result = await runAgentCompactionAPlus({
+    const result = await runAgentCompaction({
       mode: "preContinuation",
       actionId: "compact:pre-continuation:recovery-order",
       coordinator: fixture.coordinator,
@@ -109,7 +109,7 @@ describe("A+ unified Compaction orchestrator", () => {
   it("keeps an applied Revision and reports failure when its Recovery Record cannot persist", async () => {
     const fixture = await createFixture();
 
-    const result = await runAgentCompactionAPlus({
+    const result = await runAgentCompaction({
       mode: "manual",
       actionId: "compact:manual:recovery-failure",
       coordinator: fixture.coordinator,
@@ -131,7 +131,7 @@ describe("A+ unified Compaction orchestrator", () => {
 
   it("keeps Compaction pending on a 202 replay and converges on the same Action", async () => {
     const fixture = await createFixture({ runningOnce: true });
-    const first = await runAgentCompactionAPlus({
+    const first = await runAgentCompaction({
       mode: "automatic",
       actionId: "compact:automatic:running",
       coordinator: fixture.coordinator,
@@ -146,7 +146,7 @@ describe("A+ unified Compaction orchestrator", () => {
     if (first.status !== "running") throw new Error("Expected an ambiguous Compaction Action.");
     expect(first.externalAction.requestHash).toBe(await hashAPlusExternalActionBody(fixture.requestBodies[0]!));
 
-    const resumed = await runAgentCompactionAPlus({
+    const resumed = await runAgentCompaction({
       mode: "automatic",
       actionId: "compact:automatic:running",
       coordinator: fixture.coordinator,
@@ -179,7 +179,7 @@ describe("A+ unified Compaction orchestrator", () => {
         return fixture.host.fetch(url, init);
       }
     };
-    const first = await runAgentCompactionAPlus({
+    const first = await runAgentCompaction({
       mode: "automatic",
       actionId: "compact:automatic:ambiguous",
       coordinator: fixture.coordinator,
@@ -212,7 +212,7 @@ describe("A+ unified Compaction orchestrator", () => {
       value: undefined
     }));
 
-    const resumed = await runAgentCompactionAPlus({
+    const resumed = await runAgentCompaction({
       mode: "automatic",
       actionId: "compact:automatic:ambiguous",
       coordinator: fixture.coordinator,
@@ -236,7 +236,7 @@ describe("A+ unified Compaction orchestrator", () => {
   it("applies the original source range and preserves append-only tail messages", async () => {
     const fixture = await createFixture({ ambiguousOnce: true });
     let persistedAction: APlusExternalActionDescriptor | undefined;
-    const first = await runAgentCompactionAPlus({
+    const first = await runAgentCompaction({
       mode: "automatic",
       actionId: "compact:automatic:append-tail",
       coordinator: fixture.coordinator,
@@ -266,7 +266,7 @@ describe("A+ unified Compaction orchestrator", () => {
       value: undefined
     }));
 
-    const resumed = await runAgentCompactionAPlus({
+    const resumed = await runAgentCompaction({
       mode: "automatic",
       actionId: "compact:automatic:append-tail",
       coordinator: fixture.coordinator,
@@ -293,7 +293,7 @@ describe("A+ unified Compaction orchestrator", () => {
   it("rejects a restored Summary when the base Summary Revision changed", async () => {
     const fixture = await createFixture({ ambiguousOnce: true });
     let persistedAction: APlusExternalActionDescriptor | undefined;
-    const first = await runAgentCompactionAPlus({
+    const first = await runAgentCompaction({
       mode: "automatic",
       actionId: "compact:automatic:revision-conflict",
       coordinator: fixture.coordinator,
@@ -319,7 +319,7 @@ describe("A+ unified Compaction orchestrator", () => {
       return { workspace: applied.workspace, value: undefined };
     });
 
-    const resumed = await runAgentCompactionAPlus({
+    const resumed = await runAgentCompaction({
       mode: "automatic",
       actionId: "compact:automatic:revision-conflict",
       coordinator: fixture.coordinator,

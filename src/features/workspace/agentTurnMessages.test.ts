@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { createInitialWorkspace } from "@/domain/morpho/workspace";
 import { getUsableConversationMessages } from "@/domain/morpho/conversationCompaction";
 import { createProviderOutputSnapshot } from "@/domain/morpho/providerInputSnapshot";
-import { createAgentTurnOutcomeItem } from "@/shared/agentCompactionProtocol";
 import {
   appendAgentTurnMessages,
   createAgentTurnWorkLedger,
@@ -236,27 +235,10 @@ describe("agent turn messages", () => {
 
     expect(finalized.ai.messages.at(-1)?.providerOutputSnapshot).toBeUndefined();
     expect(getUsableConversationMessages(finalized.ai.messages)
-      .filter((message) => message.agentTurnId === `turn-${outcome}`)).toEqual([]);
-    const outcomeItem = createAgentTurnOutcomeItem({
-      agentTurnId: `turn-${outcome}`,
-      userMessageId: `user-${outcome}`,
-      assistantMessageId: `assistant-${outcome}`,
-      outcome
-    });
-    const proven = {
-      ...finalized,
-      ai: {
-        ...finalized.ai,
-        messages: finalized.ai.messages.map((message) => message.id === `assistant-${outcome}`
-          ? { ...message, agentTurnOutcomeItem: outcomeItem }
-          : message)
-      }
-    };
-    expect(getUsableConversationMessages(proven.ai.messages)
       .filter((message) => message.agentTurnId === `turn-${outcome}`)
       .map((message) => message.body)).toEqual([
       "处理海洋浮标资料",
-      outcomeItem.text
+      summary
     ]);
   });
 });

@@ -1,16 +1,9 @@
 import type { Page } from "@playwright/test";
 
 /**
- * Replaces `window.fetch` for the Agent endpoints only.
- *
- * Intercepting at fetch rather than at the network lets the mock hand back a real
- * `ReadableStream` that emits SSE frames over time, so streaming and cancellation
- * are exercised for real instead of being simulated by a single whole-body reply.
- * Everything above fetch — stream reader, attempt guard, trace assembly, workspace
- * writes, lease completion — is the production code path.
- *
- * The frames themselves come from the production SSE encoder (see
- * `e2e/support/agentSse.ts`), so a protocol change fails the suite loudly.
+ * Replaces `window.fetch` only for the canonical Agent Turn Journal endpoints.
+ * The mock returns real A+ SSE streams, so the production Coordinator, reducer,
+ * display adapter, persistence, cancellation, and recovery paths stay in use.
  */
 
 export type AgentMockResponse =
@@ -18,12 +11,6 @@ export type AgentMockResponse =
       kind: "stream";
       chunks: string[];
       chunkDelayMs?: number;
-      /**
-       * Emit this many frames and then hold the stream open until
-       * `releaseAgentStream` is called. Without it, assertions about the
-       * in-flight state race the stream finishing: the stop control appears and
-       * disappears again, and a slow poll can miss the window entirely.
-       */
       holdAfterChunks?: number;
     }
   | { kind: "hang" }
@@ -35,12 +22,27 @@ export type AgentMockCall = {
   body: unknown;
 };
 
+type MockJournal = {
+  serverTurnId: string;
+  localProjectId: string;
+  status: "created" | "providerRunning" | "awaitingNextRequest" | "externallyCompleted" | "externallyCancelled" | "externallyFailed";
+  latestRequestId: string | null;
+  latestStepSequence: number;
+  counters: { provider: number; webSearch: number; image: number };
+  createdAt: string;
+  updatedAt: string;
+  terminalAt: string | null;
+  failureCode?: string;
+};
+
 declare global {
   interface Window {
     __morphoAgentMock?: {
       response: AgentMockResponse;
       calls: AgentMockCall[];
       held: boolean;
+      journal?: MockJournal;
+      turnCount: number;
     };
   }
 }
@@ -50,163 +52,162 @@ export async function installAgentMock(page: Page): Promise<void> {
     const state: NonNullable<Window["__morphoAgentMock"]> = {
       response: { kind: "httpError", status: 503, error: "验收 Mock 尚未配置本轮响应。" },
       calls: [],
-      held: false
+      held: false,
+      turnCount: 0
     };
     window.__morphoAgentMock = state;
 
     const realFetch = window.fetch.bind(window);
+    const jsonHeaders = { "content-type": "application/json" };
     const sseHeaders = { "content-type": "text/event-stream; charset=utf-8" };
 
     function abortError(): DOMException {
       return new DOMException("The operation was aborted.", "AbortError");
     }
 
-    function stableJson(value: unknown): string {
-      if (Array.isArray(value)) {
-        return `[${value.map(stableJson).join(",")}]`;
-      }
-      if (value && typeof value === "object") {
-        return `{${Object.entries(value as Record<string, unknown>)
-          .sort(([left], [right]) => left.localeCompare(right))
-          .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
-          .join(",")}}`;
-      }
-      return JSON.stringify(value);
+    function json(body: unknown, status = 200): Response {
+      return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
     }
 
-    async function hashOutcomeItem(value: unknown): Promise<string> {
-      const bytes = new TextEncoder().encode(
-        `morpho-agent-turn-outcome-v1\u0000${stableJson(value)}`
-      );
-      const digest = await crypto.subtle.digest("SHA-256", bytes);
-      return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    function requestPath(url: string): string {
+      return new URL(url, window.location.origin).pathname;
+    }
+
+    function readBody(init?: RequestInit): unknown {
+      try {
+        return init?.body ? JSON.parse(String(init.body)) : undefined;
+      } catch {
+        return undefined;
+      }
+    }
+
+    function record(url: string, init: RequestInit | undefined, body: unknown): void {
+      state.calls.push({ url, method: init?.method ?? "GET", body });
+    }
+
+    function updateJournal(
+      status: MockJournal["status"],
+      patch: Partial<MockJournal> = {}
+    ): MockJournal | undefined {
+      if (!state.journal) return undefined;
+      const terminal = status === "externallyCompleted" || status === "externallyCancelled" || status === "externallyFailed";
+      state.journal = {
+        ...state.journal,
+        ...patch,
+        status,
+        updatedAt: new Date().toISOString(),
+        terminalAt: terminal ? new Date().toISOString() : null
+      };
+      return state.journal;
     }
 
     window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      if (!url.includes("/api/ai/agent")) {
+      const path = requestPath(url);
+      if (!path.startsWith("/api/ai/agent/turns")) {
         return realFetch(input, init);
       }
 
-      let body: unknown;
-      try {
-        body = init?.body ? JSON.parse(String(init.body)) : undefined;
-      } catch {
-        body = undefined;
-      }
-      state.calls.push({ url, method: init?.method ?? "GET", body });
+      const body = readBody(init);
+      record(url, init, body);
 
-      if (url.includes("/api/ai/agent/lease/tool")) {
-        return new Response(JSON.stringify({ status: "marked" }), {
-          status: 200,
-          headers: { "content-type": "application/json" }
-        });
+      if (state.response.kind === "httpError") {
+        return json({ error: state.response.error }, state.response.status);
       }
-      if (url.includes("/api/ai/agent/lease/summary")) {
-        return new Response(JSON.stringify({ status: "success" }), {
-          status: 200,
-          headers: { "content-type": "application/json" }
-        });
+
+      if (path === "/api/ai/agent/turns" && (init?.method ?? "GET") === "POST") {
+        const value = body && typeof body === "object" ? body as Record<string, unknown> : {};
+        state.turnCount += 1;
+        const now = new Date().toISOString();
+        state.journal = {
+          serverTurnId: `00000000-0000-4000-8000-${String(state.turnCount).padStart(12, "0")}`,
+          localProjectId: String(value.localProjectId ?? "project-e2e"),
+          status: "created",
+          latestRequestId: null,
+          latestStepSequence: 0,
+          counters: { provider: 0, webSearch: 0, image: 0 },
+          createdAt: now,
+          updatedAt: now,
+          terminalAt: null
+        };
+        return json({ ...state.journal, replayed: false });
       }
-      if (url.includes("/api/ai/agent/lease")) {
-        const closure = body && typeof body === "object"
-          ? body as Record<string, unknown>
-          : {};
-        if (typeof closure.projectId !== "string") {
-          return new Response(JSON.stringify({ status: closure.outcome }), {
-            status: 200,
-            headers: { "content-type": "application/json" }
+
+      if (!state.journal || !path.includes(state.journal.serverTurnId)) {
+        return json({ error: "Server Turn Journal 不存在。", code: "turn_not_found" }, 404);
+      }
+
+      if (path.endsWith("/requests/cancel") && init?.method === "POST") {
+        return json(updateJournal("externallyCancelled"));
+      }
+
+      if (path.endsWith("/requests") && init?.method === "POST") {
+        const value = body && typeof body === "object" ? body as Record<string, unknown> : {};
+        const requestId = String(value.requestId ?? "request-e2e");
+        const stepSequence = Number(value.stepSequence ?? 1);
+        updateJournal("providerRunning", {
+          latestRequestId: requestId,
+          latestStepSequence: stepSequence,
+          counters: { ...state.journal.counters, provider: state.journal.counters.provider + 1 }
+        });
+
+        const signal = init.signal ?? undefined;
+        if (signal?.aborted) throw abortError();
+        if (state.response.kind === "hang") {
+          return new Promise<Response>((_resolve, reject) => {
+            signal?.addEventListener("abort", () => reject(abortError()), { once: true });
           });
         }
-        const providerSnapshot = closure.providerOutputSnapshot &&
-          typeof closure.providerOutputSnapshot === "object"
-          ? closure.providerOutputSnapshot as Record<string, unknown>
-          : {};
-        const outcome = String(closure.outcome);
-        const text = outcome === "success"
-          ? String(providerSnapshot.text ?? "")
-          : outcome === "partialSuccess"
-            ? "本轮仅部分完成。已完成结果已保留，未完成步骤需要后续重试。"
-            : "本轮停在待确认状态。确认前不把相关动作视为已完成。";
-        const unsignedOutcome = {
-          type: "morpho_turn_outcome",
-          agentTurnId: String(closure.agentTurnId),
-          userMessageId: String(closure.userMessageId),
-          assistantMessageId: String(closure.assistantMessageId),
-          outcome,
-          text
-        };
-        const outcomeItem = {
-          ...unsignedOutcome,
-          contentHash: await hashOutcomeItem(unsignedOutcome)
-        };
-        return new Response(JSON.stringify({
-          status: outcome,
-          outcomeItem,
-          transcriptSnapshotToken: "snapshot-token-e2e-final",
-          transcriptManifestHash: "c".repeat(64),
-          expiresAt: Date.now() + 60_000
-        }), {
-          status: 200,
-          headers: { "content-type": "application/json" }
-        });
-      }
 
-      const signal = init?.signal ?? undefined;
-      const response = state.response;
-
-      if (signal?.aborted) {
-        throw abortError();
-      }
-
-      if (response.kind === "httpError") {
-        return new Response(JSON.stringify({ error: response.error }), {
-          status: response.status,
-          headers: { "content-type": "application/json" }
-        });
-      }
-
-      if (response.kind === "hang") {
-        return new Promise<Response>((_resolve, reject) => {
-          signal?.addEventListener("abort", () => reject(abortError()), { once: true });
-        });
-      }
-
-      const encoder = new TextEncoder();
-      const chunks = [...response.chunks];
-      const delay = response.chunkDelayMs ?? 30;
-      const holdAfter = response.holdAfterChunks;
-      let emitted = 0;
-      const stream = new ReadableStream<Uint8Array>({
-        async pull(controller) {
-          const next = chunks.shift();
-          if (next === undefined) {
-            controller.close();
-            return;
-          }
-          if (holdAfter !== undefined && emitted === holdAfter) {
-            while (state.held) {
-              if (signal?.aborted) {
-                controller.close();
-                return;
-              }
-              await new Promise((resolve) => window.setTimeout(resolve, 25));
+        const encoder = new TextEncoder();
+        const terminalStatus: MockJournal["status"] = state.response.chunks.some((chunk) =>
+          chunk.includes('"status":"externallyFailed"')
+        ) ? "externallyFailed" : "externallyCompleted";
+        const chunks = state.response.chunks.map((chunk) => chunk
+          .replace(/"requestId":"[^"]+"/g, `"requestId":${JSON.stringify(requestId)}`)
+          .replace(/"stepSequence":\d+/g, `"stepSequence":${stepSequence}`));
+        const delay = state.response.chunkDelayMs ?? 30;
+        const holdAfter = state.response.holdAfterChunks;
+        let emitted = 0;
+        const stream = new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            const next = chunks.shift();
+            if (next === undefined) {
+              updateJournal(terminalStatus, terminalStatus === "externallyFailed"
+                ? { failureCode: "provider_execution_failed" }
+                : {});
+              controller.close();
+              return;
             }
+            if (holdAfter !== undefined && emitted === holdAfter) {
+              while (state.held) {
+                if (signal?.aborted) {
+                  controller.close();
+                  return;
+                }
+                await new Promise((resolve) => window.setTimeout(resolve, 25));
+              }
+            }
+            await new Promise((resolve) => window.setTimeout(resolve, delay));
+            if (signal?.aborted) {
+              controller.close();
+              return;
+            }
+            controller.enqueue(encoder.encode(next));
+            emitted += 1;
+          },
+          cancel() {
+            chunks.length = 0;
           }
-          await new Promise((resolve) => window.setTimeout(resolve, delay));
-          if (signal?.aborted) {
-            controller.close();
-            return;
-          }
-          controller.enqueue(encoder.encode(next));
-          emitted += 1;
-        },
-        cancel() {
-          chunks.length = 0;
-        }
-      });
+        });
+        return new Response(stream, { status: 200, headers: sseHeaders });
+      }
 
-      return new Response(stream, { status: 200, headers: sseHeaders });
+      if ((init?.method ?? "GET") === "GET") {
+        return json(state.journal);
+      }
+
+      return json({ error: `未配置的 A+ 验收路由：${path}` }, 501);
     };
   });
 }
@@ -221,12 +222,9 @@ export async function setAgentResponse(page: Page, response: AgentMockResponse):
   }, response);
 }
 
-/** Lets a held stream finish. */
 export async function releaseAgentStream(page: Page): Promise<void> {
   await page.evaluate(() => {
-    if (window.__morphoAgentMock) {
-      window.__morphoAgentMock.held = false;
-    }
+    if (window.__morphoAgentMock) window.__morphoAgentMock.held = false;
   });
 }
 
@@ -236,5 +234,7 @@ export async function agentCalls(page: Page): Promise<AgentMockCall[]> {
 
 export async function agentTurnCallCount(page: Page): Promise<number> {
   const calls = await agentCalls(page);
-  return calls.filter((call) => !call.url.includes("/lease")).length;
+  return calls.filter((call) =>
+    new URL(call.url, "http://localhost").pathname.endsWith("/requests") && call.method === "POST"
+  ).length;
 }

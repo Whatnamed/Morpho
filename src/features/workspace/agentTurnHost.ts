@@ -28,7 +28,7 @@ export type AgentTurnUiPort = {
 export type AgentTurnHost = {
   commitWorkspace: <T>(transform: WorkspaceCommitTransform<T>) => T;
   readWorkspace: () => MorphoWorkspace;
-  /** A+ requires an explicit durable flush; legacy B callers may omit it. */
+  /** Production hosts provide an explicit durable flush; lightweight test hosts may omit it. */
   persistWorkspace?: () => WorkspacePersistenceState;
   ui: AgentTurnUiPort;
   abortSlot: MutableSlot<AbortController | null>;
@@ -40,10 +40,10 @@ export type AgentTurnHost = {
 };
 
 /**
- * A+ callers must keep an explicit resume affordance when an external action
- * is still running or its response is ambiguous. Legacy test/host ports that
- * predate the optional method retain the old failure affordance as a safe
- * fallback instead of silently losing the recovery entry point.
+ * Runtime callers must keep an explicit resume affordance when an external
+ * action is still running or its response is ambiguous. Minimal test hosts
+ * without the optional method retain the failure affordance as a safe fallback
+ * instead of silently losing the recovery entry point.
  */
 export function showAgentTurnRecoveryPending(ui: AgentTurnUiPort): void {
   if (ui.showRecoveryPending) {

@@ -1,23 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { createTestWorkspace } from "@/domain/morpho/workspace";
 import { createAgentContextBudgetState } from "@/shared/providerInputBudget";
 import { createRequiredAgentReadState } from "./agentTaskStrategy";
 import { createAgentTurnWorkLedger } from "./agentTurnMessages";
-import { createAgentTurnRuntimeState, createAgentTurnState } from "./agentTurnState";
+import { createAgentTurnRuntimeState } from "./agentTurnRuntimeState";
 
-describe("Agent turn state", () => {
-  it("starts the lease lifecycle with the current request-boundary workspace", () => {
-    const workspace = createTestWorkspace();
-    expect(createAgentTurnState(workspace)).toEqual({
-      providerTranscriptReset: false,
-      webSearchSequenceResyncUsed: false,
-      webSearchLeaseStateRecoveryUsed: false,
-      workspaceAtAgentStart: workspace
-    });
-  });
-
-  it("retains the identity of containers captured by turn closures", () => {
+describe("Agent turn runtime state", () => {
+  it("retains the identity of mutable product-state containers", () => {
     const requiredReadState = createRequiredAgentReadState(["read_project_memory"]);
     const contextBudgetState = createAgentContextBudgetState(1200);
     const agentWorkLedger = createAgentTurnWorkLedger();

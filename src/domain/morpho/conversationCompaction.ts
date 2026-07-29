@@ -18,9 +18,9 @@ import { providerInputSnapshotText } from "./providerInputSnapshot";
 import type { ProviderInputTimelineBudget } from "@/shared/providerInputBudget";
 import {
   buildConversationSummaryRevisionId,
-  hashConversationSummaryForReceipt,
+  hashConversationSummary,
   hashSourceMessageIds
-} from "@/shared/agentCompactionProtocol";
+} from "@/shared/agentProductHash";
 
 export const CONVERSATION_SUMMARY_MARKER = "morphoConversationSummary";
 
@@ -38,7 +38,6 @@ export type ConversationMessageForContext = {
   laneKey?: string;
   providerInputSnapshot?: ProviderInputSnapshot;
   providerOutputSnapshot?: ProviderOutputSnapshot;
-  agentTurnOutcomeItem?: import("@/shared/agentCompactionProtocol").AgentTurnOutcomeItem;
   taskStrategy?: AgentTaskStrategyKind;
 };
 
@@ -403,7 +402,7 @@ export function applyConversationSummaryRevision(
   const revisionId = buildConversationSummaryRevisionId({
     previousSummaryRevisionId: currentRevisionId,
     sourceMessageIdsHash,
-    summaryHash: hashConversationSummaryForReceipt(validation.summary)
+    summaryHash: hashConversationSummary(validation.summary)
   });
   if (workspace.ai.conversationSummaryRevisions[revisionId]) {
     return { status: "skipped", workspace, reason: "Conversation source range has already been summarized." };
@@ -457,15 +456,12 @@ export function getUsableConversationMessages(messages: readonly AiMessage[]): A
     messages
       .filter((message) =>
         message.agentTurnId &&
-        (message.agentTurnClosureRecovery !== undefined ||
-          (message.role === "assistant" && !message.agentTurnOutcome &&
+        ((message.role === "assistant" && !message.agentTurnOutcome &&
             (message.status === "failed" || Boolean(message.error))) ||
           message.agentTurnOutcome === "cancelledBeforeExecution" ||
           message.agentTurnOutcome === "failedBeforeExecution" ||
           message.agentTurnOutcome === "cancelledDuringProvider" ||
-          message.agentTurnOutcome === "failedDuringProvider" ||
-          ((message.agentTurnOutcome === "partialSuccess" || message.agentTurnOutcome === "pendingConfirmation") &&
-            message.role === "assistant" && !message.agentTurnOutcomeItem))
+          message.agentTurnOutcome === "failedDuringProvider")
       )
       .map((message) => message.agentTurnId as string)
   );
@@ -486,7 +482,7 @@ export function getUsableConversationMessages(messages: readonly AiMessage[]): A
     ) {
       return {
         ...message,
-        body: message.agentTurnOutcomeItem?.text || message.agentTurnOutcomeSummary?.trim() ||
+        body: message.agentTurnOutcomeSummary?.trim() ||
           (message.agentTurnOutcome === "partialSuccess"
             ? "本轮仅部分完成；已执行结果保留，未完成部分需要后续确认。"
             : "本轮停在待确认状态，尚未把待确认动作视为已完成。")
@@ -498,7 +494,7 @@ export function getUsableConversationMessages(messages: readonly AiMessage[]): A
 
 export function estimateConversationMessageTokens(
   messages: readonly Pick<ConversationMessageForContext,
-    "role" | "body" | "providerInputSnapshot" | "providerOutputSnapshot" | "agentTurnOutcomeItem">[]
+    "role" | "body" | "providerInputSnapshot" | "providerOutputSnapshot">[]
 ): number {
   return messages.reduce((total, message) => {
     if (message.role === "user" && message.providerInputSnapshot) {
@@ -506,8 +502,8 @@ export function estimateConversationMessageTokens(
         .reduce((tokens, text) => tokens + estimateTextTokens(text) + 8, 0);
     }
     return total + estimateTextTokens(
-      message.role === "assistant" && (message.agentTurnOutcomeItem || message.providerOutputSnapshot)
-        ? message.agentTurnOutcomeItem?.text ?? message.providerOutputSnapshot!.text
+      message.role === "assistant" && message.providerOutputSnapshot
+        ? message.providerOutputSnapshot.text
         : message.body
     ) + 8;
   }, 0);
@@ -519,11 +515,11 @@ export function estimateConversationMessageTokens(
  */
 export function buildConversationSummarySourceText(
   message: Pick<ConversationMessageForContext,
-    "role" | "body" | "providerInputSnapshot" | "providerOutputSnapshot" | "agentTurnOutcomeItem">
+    "role" | "body" | "providerInputSnapshot" | "providerOutputSnapshot">
 ): string {
   if (message.role === "assistant") {
     return `助手最终回复：\n${sanitizeSummarySourceText(
-      message.agentTurnOutcomeItem?.text ?? message.providerOutputSnapshot?.text ?? message.body,
+      message.providerOutputSnapshot?.text ?? message.body,
       SUMMARY_TEXT_PART_CHARS
     )}`;
   }
@@ -629,8 +625,7 @@ function toContextMessage(message: AiMessage): ConversationMessageForContext {
     laneKey: message.conversationLaneKey,
     ...(message.taskStrategy ? { taskStrategy: message.taskStrategy } : {}),
     ...(message.providerInputSnapshot ? { providerInputSnapshot: message.providerInputSnapshot } : {}),
-    ...(message.providerOutputSnapshot ? { providerOutputSnapshot: message.providerOutputSnapshot } : {}),
-    ...(message.agentTurnOutcomeItem ? { agentTurnOutcomeItem: message.agentTurnOutcomeItem } : {})
+    ...(message.providerOutputSnapshot ? { providerOutputSnapshot: message.providerOutputSnapshot } : {})
   };
 }
 

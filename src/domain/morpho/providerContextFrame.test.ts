@@ -199,7 +199,7 @@ describe("Provider Context Frames", () => {
 
     expect(message.role).toBe("user");
     expect(message.content[0]?.text).toContain("Untrusted Project Data");
-    expect(message.content[0]?.text).toContain('"semanticKind":"projectState"');
+    expect(message.content[0]?.text).toContain('"kind":"projectState"');
     expect(message.content[0]?.text).toContain("当前项目状态");
   });
 

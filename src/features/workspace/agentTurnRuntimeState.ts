@@ -1,41 +1,14 @@
 import type { ConversationMessageForContext } from "@/domain/morpho/conversationCompaction";
 import type {
   ConversationSummaryRevision,
-  MorphoWorkspace,
-  ProviderOutputSnapshot,
   ProjectMemoryKey,
   StageRecordKey
 } from "@/domain/morpho/types";
 import type { ProviderCitation } from "@/server/ai/types";
-import type { AgentCanonicalRuntimeItem } from "@/shared/agentRuntimeItem";
 import type { AgentServerDirective } from "@/shared/agentStreamProtocol";
 import type { AgentContextBudgetState } from "@/shared/providerInputBudget";
 import type { RequiredAgentReadState } from "./agentTaskStrategy";
 import type { AgentTurnWorkLedger } from "./agentTurnMessages";
-import type { ProviderRequestBoundaryState } from "./providerContextFrames";
-
-export type AgentTurnState = {
-  agentTurnLeaseId?: string;
-  nextAgentLeaseSequence?: number;
-  agentContinuationToken?: string;
-  /** Latest server-issued proof authorized to close this ordinary Agent turn. */
-  turnClosureToken?: string;
-  /** Stable across the single network recovery attempt for turn closure. */
-  closureRequestId?: string;
-  /** Exact serialized Closure request retained until the server confirms it. */
-  closureRequestBody?: string;
-  /** Terminal Provider failure recorded by the server for the current Lease sequence. */
-  providerFailureOutcome?: "cancelledDuringProvider" | "failedDuringProvider";
-  /** Exact manifest from the latest signed Provider response in this turn. */
-  latestProviderTranscriptManifestHash?: string;
-  providerTranscriptReset: boolean;
-  webSearchSequenceResyncUsed: boolean;
-  webSearchLeaseStateRecoveryUsed: boolean;
-  workspaceAtAgentStart: MorphoWorkspace;
-  latestProviderRequestState?: ProviderRequestBoundaryState;
-  latestAssistantProviderOutputSnapshot?: ProviderOutputSnapshot;
-  canonicalRuntimeItem?: AgentCanonicalRuntimeItem;
-};
 
 export type AgentTurnConversationContext = {
   laneKey: string;
@@ -78,15 +51,6 @@ export type AgentTurnRuntimeState = {
   readonly agentWorkLedger: AgentTurnWorkLedger;
   pendingConfirmationCreated: boolean;
 };
-
-export function createAgentTurnState(workspace: MorphoWorkspace): AgentTurnState {
-  return {
-    providerTranscriptReset: false,
-    webSearchSequenceResyncUsed: false,
-    webSearchLeaseStateRecoveryUsed: false,
-    workspaceAtAgentStart: workspace
-  };
-}
 
 export function createAgentTurnRuntimeState(input: {
   conversationContext: AgentTurnConversationContext;
