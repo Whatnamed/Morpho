@@ -1,8 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { loadAuthRuntimeConfig } from "@/infrastructure/supabase/env";
-import { createProxySupabaseClient } from "@/infrastructure/supabase/server";
-import { resolveAuthRouteDecision, type AuthRouteDecision } from "@/server/auth/middlewareAccess";
+import { clearProxySupabaseAuthCookies, createProxySupabaseClient } from "@/infrastructure/supabase/server";
+import {
+  classifyAuthSessionError,
+  resolveAuthRouteDecision,
+  toSafeAuthErrorLogFields
+} from "@/server/auth/middlewareAccess";
+import { responseForAuthDecision } from "@/server/auth/middlewareResponse";
 
 export async function middleware(request: NextRequest) {
   const auth = loadAuthRuntimeConfig(process.env);
@@ -37,13 +42,27 @@ export async function middleware(request: NextRequest) {
   }
 
   const {
-    data: { user }
+    data: { user },
+    error
   } = await supabase.client.auth.getUser();
+  const errorKind = classifyAuthSessionError(error);
+  if (errorKind === "terminal-stale-session" && auth.supabase.status === "ok") {
+    await clearProxySupabaseAuthCookies(request, response, auth.supabase.url);
+  } else if (errorKind === "unknown") {
+    console.error(
+      JSON.stringify({
+        event: "morpho_auth_session_load_failed",
+        kind: errorKind,
+        ...toSafeAuthErrorLogFields(error)
+      })
+    );
+  }
+
   const decision = resolveAuthRouteDecision({
     auth,
     pathname,
     search: request.nextUrl.search,
-    session: user ? "authenticated" : "anonymous"
+    session: errorKind === "none" && user ? "authenticated" : "anonymous"
   });
 
   return responseForAuthDecision(decision, request, response);
@@ -52,23 +71,3 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: ["/((?!api|auth|_next/static|_next/image|favicon.ico).*)"]
 };
-
-function responseForAuthDecision(decision: AuthRouteDecision, request: NextRequest, response?: NextResponse) {
-  if (decision.type === "load-session") {
-    throw new Error("Authentication session must be loaded before resolving a middleware response.");
-  }
-
-  if (decision.type === "next") {
-    return response ?? NextResponse.next({ request });
-  }
-
-  if (decision.type === "redirect-after-login") {
-    return NextResponse.redirect(new URL(decision.nextPath, request.url));
-  }
-
-  const redirectUrl = request.nextUrl.clone();
-  redirectUrl.pathname = "/login";
-  redirectUrl.search = "";
-  redirectUrl.searchParams.set("next", decision.nextPath);
-  return NextResponse.redirect(redirectUrl);
-}

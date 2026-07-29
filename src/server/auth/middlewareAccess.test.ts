@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { loadAuthRuntimeConfig } from "@/infrastructure/supabase/env";
-import { resolveAuthRouteDecision } from "./middlewareAccess";
+import { classifyAuthSessionError, resolveAuthRouteDecision, toSafeAuthErrorLogFields } from "./middlewareAccess";
 
 const configuredEnvironment = {
   MORPHO_AUTH_REQUIRED: "true",
@@ -84,5 +84,51 @@ describe("resolveAuthRouteDecision", () => {
       type: "redirect-to-login",
       nextPath: "/projects/project-nightrail?view=canvas"
     });
+  });
+});
+
+describe("classifyAuthSessionError", () => {
+  it("recognizes only the exact terminal stale refresh-token code", () => {
+    expect(
+      classifyAuthSessionError({
+        name: "AuthApiError",
+        code: "refresh_token_not_found",
+        status: 400,
+        message: "Invalid Refresh Token: Refresh Token Not Found"
+      })
+    ).toBe("terminal-stale-session");
+
+    expect(
+      classifyAuthSessionError({
+        name: "AuthRetryableFetchError",
+        code: "refresh_token_timeout",
+        status: 503
+      })
+    ).toBe("unknown");
+  });
+
+  it("keeps a clean anonymous session distinct from an unknown auth failure", () => {
+    expect(classifyAuthSessionError(null)).toBe("none");
+    expect(classifyAuthSessionError({ name: "AuthSessionMissingError" })).toBe("session-missing");
+    expect(classifyAuthSessionError(new Error("network failed"))).toBe("unknown");
+  });
+
+  it("produces log fields without messages, tokens or user identifiers", () => {
+    const fields = toSafeAuthErrorLogFields({
+      name: "AuthApiError",
+      code: "unexpected_auth_failure",
+      status: 503,
+      message: "secret-bearing upstream detail",
+      refresh_token: "must-not-appear",
+      user_id: "must-not-appear"
+    });
+
+    expect(fields).toEqual({
+      name: "AuthApiError",
+      code: "unexpected_auth_failure",
+      status: 503
+    });
+    expect(JSON.stringify(fields)).not.toContain("secret-bearing");
+    expect(JSON.stringify(fields)).not.toContain("must-not-appear");
   });
 });
