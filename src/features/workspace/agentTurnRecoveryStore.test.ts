@@ -92,6 +92,15 @@ describe("A+ local Recovery Store", () => {
       status: "ok",
       record: withHash
     });
+
+    const externalActionRef = [...fixture.payloadValues.keys()]
+      .find((ref) => ref.includes("external-action:"));
+    if (!externalActionRef) throw new Error("Fixture 缺少 External Action payload ref。");
+    fixture.payloadValues.delete(externalActionRef);
+    await expect(fixture.store.load("project-test")).resolves.toEqual({
+      status: "invalid",
+      reason: "external_action_request_payload_unavailable: A+ External Action 原始请求 Body 缺失或校验失败。"
+    });
   });
 
   it("reports malformed metadata as invalid instead of silently treating it as absent", async () => {

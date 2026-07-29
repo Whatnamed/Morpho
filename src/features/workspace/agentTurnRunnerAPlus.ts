@@ -10,7 +10,11 @@ import type {
 } from "@/shared/agentTurnJournalProtocol";
 import { storeMessageCitations } from "./aiConversationMessages";
 import { runAgentCompactionAPlus } from "./agentCompactionOrchestratorAPlus";
-import { requestAgentWebSearchAPlus } from "./agentExternalActionClientAPlus";
+import {
+  hashAPlusExternalActionBody,
+  requestAgentWebSearchAPlus,
+  type APlusExternalActionDescriptor
+} from "./agentExternalActionClientAPlus";
 import { executeAgentToolBatchAPlus } from "./agentToolBatchAPlus";
 import {
   AgentTurnCoordinator,
@@ -462,6 +466,7 @@ export async function runManualCompactionTurnAPlus(
       limits: input.readConversationTokenLimits(),
       force: true,
       signal: restoredProduct.prepared.controller.signal,
+      onExternalActionIntent: (action) => persistExternalActionIntent(session, action),
       onSummaryApplied: ({ revisionId }) => recordAppliedCompaction(
         recovery,
         "manual",
@@ -581,6 +586,11 @@ async function driveSession(session: APlusSession): Promise<void> {
         localProjectId: session.localProjectId,
         limits: session.turnInput.readConversationTokenLimits(),
         signal: session.prepared.controller.signal,
+        ...(session.recovery.metadata.pendingExternalAction?.actionKind === "compaction" &&
+          session.recovery.metadata.pendingExternalAction.actionId === metadata.actionId
+          ? { restoredExternalAction: session.recovery.metadata.pendingExternalAction }
+          : {}),
+        onExternalActionIntent: (action) => persistExternalActionIntent(session, action),
         onSummaryApplied: ({ revisionId }) => recordAppliedCompaction(
           session.recovery,
           metadata.mode,
@@ -669,6 +679,11 @@ async function driveSession(session: APlusSession): Promise<void> {
           fetch: session.host.fetch,
           ...input
         }),
+        ...(session.recovery.metadata.pendingExternalAction
+          ? { restoredPendingExternalAction: session.recovery.metadata.pendingExternalAction }
+          : {}),
+        onExternalActionIntent: ({ callId, action }) =>
+          persistExternalActionIntent(session, action, callId),
         ...(session.recovery.metadata.pendingConfirmation
           ? { restoredPendingConfirmation: session.recovery.metadata.pendingConfirmation }
           : {}),
@@ -884,6 +899,7 @@ async function maybeCompact(
     localProjectId: session.localProjectId,
     limits: session.turnInput.readConversationTokenLimits(),
     signal: session.prepared.controller.signal,
+    onExternalActionIntent: (action) => persistExternalActionIntent(session, action),
     onSummaryApplied: ({ revisionId }) => recordAppliedCompaction(
       session.recovery,
       mode,
@@ -932,6 +948,39 @@ async function recordCompactionResult(
     } : { pendingExternalAction: undefined })
   }));
   await session.recovery.flush();
+}
+
+async function persistExternalActionIntent(
+  session: APlusSession,
+  action: APlusExternalActionDescriptor,
+  callId?: string
+): Promise<boolean> {
+  if (await hashAPlusExternalActionBody(action.requestBody) !== action.requestHash) return false;
+  const existing = session.recovery.metadata.pendingExternalAction;
+  const sameAction = existing &&
+    existing.actionId === action.actionId &&
+    existing.actionKind === action.actionKind &&
+    existing.requestHash === action.requestHash &&
+    existing.callId === callId;
+  const nextSerializedImageItem = existing &&
+    existing.actionKind === "image" &&
+    action.actionKind === "image" &&
+    existing.callId === callId &&
+    Boolean(callId);
+  if (existing && !sameAction && !nextSerializedImageItem) return false;
+  session.recovery.updateMetadata((metadata) => ({
+    ...metadata,
+    pendingExternalAction: {
+      status: "acquired",
+      actionId: action.actionId,
+      actionKind: action.actionKind,
+      ...(callId ? { callId } : {}),
+      requestBody: action.requestBody,
+      requestHash: action.requestHash,
+      lastObservedAt: new Date(session.host.now()).toISOString()
+    }
+  }));
+  return session.recovery.flush();
 }
 
 async function recordAppliedCompaction(

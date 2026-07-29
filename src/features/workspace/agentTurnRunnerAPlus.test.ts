@@ -257,6 +257,54 @@ describe("A+ Agent turn runner", () => {
     });
   });
 
+  it("persists the exact Search request before send and recovers when the first page never receives a response", async () => {
+    const fixture = createFixture([
+      {
+        status: "awaitingNextRequest",
+        toolCalls: [searchToolCall("call-search-page-loss")]
+      },
+      { status: "externallyCompleted", outputText: "Search 已从发送前快照恢复。" }
+    ]);
+    const requestBodies: string[] = [];
+    fixture.fake.setFetchRoute(
+      `/api/ai/agent/turns/${TURN_ID}/actions/web-search`,
+      async (request) => {
+        requestBodies.push(await request.clone().text());
+        if (requestBodies.length === 1) {
+          return new Promise<Response>(() => undefined);
+        }
+        return Response.json({
+          replayed: true,
+          sources: [{ title: "Morpho", url: "https://example.com/morpho" }],
+          failedSourceCount: 0,
+          timedOutSourceCount: 0
+        });
+      }
+    );
+
+    void runMorphoAgentTurnAPlus(fixture.input, fixture.host, fixture.dependencies);
+    await waitForCondition(() =>
+      fixture.store.record?.metadata.pendingExternalAction?.status === "acquired"
+    );
+    const persistedBody = fixture.store.record?.metadata.pendingExternalAction?.requestBody;
+    expect(persistedBody).toBeTruthy();
+    expect(requestBodies).toEqual([persistedBody]);
+
+    detachMorphoAgentTurnAPlusForPageUnload(fixture.fake.getWorkspace().project.id);
+    const recovered = await recoverMorphoAgentTurnAPlus(
+      fixture.fake.getWorkspace().project.id,
+      fixture.host,
+      fixture.dependencies
+    );
+
+    expect(recovered).toBe("recovered");
+    expect(requestBodies).toEqual([persistedBody, persistedBody]);
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      body: "Search 已从发送前快照恢复。",
+      agentTurnOutcome: "success"
+    });
+  });
+
   it("restores Search citations and Required Read facts before a later Research Tool", async () => {
     const fixture = createFixture([
       {
@@ -642,6 +690,14 @@ function failedPersistence(): WorkspacePersistenceState {
     isDirty: true,
     error: "simulated persistence failure"
   };
+}
+
+async function waitForCondition(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error("Timed out waiting for the A+ Recovery barrier.");
 }
 
 function snapshotFor(

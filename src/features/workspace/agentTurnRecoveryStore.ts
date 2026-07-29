@@ -354,14 +354,22 @@ export function createAgentTurnRecoveryStore(options: Readonly<{
           payloadStore,
           persisted.metadata.runtimePayload
         );
+        const externalActionPayloadUnavailable = Boolean(
+          (pendingExternalAction && pendingExternalActionBody === undefined) ||
+          (pendingExternalAction && pendingExternalActionBody !== undefined &&
+            await sha256Hex(pendingExternalActionBody) !== pendingExternalAction.requestHash)
+        );
+        if (externalActionPayloadUnavailable) {
+          return {
+            status: "invalid",
+            reason: "external_action_request_payload_unavailable: A+ External Action 原始请求 Body 缺失或校验失败。"
+          };
+        }
         if (
           (active && providerRequest === undefined) ||
           (latestProviderOutputReference && latestProviderOutputPayload === undefined) ||
           (confirmation && confirmationValue === undefined) ||
-          (pendingExternalAction && pendingExternalActionBody === undefined) ||
           (!pendingExternalAction && pendingExternalActionPayloadReference !== undefined) ||
-          (pendingExternalAction && pendingExternalActionBody !== undefined &&
-            await sha256Hex(pendingExternalActionBody) !== pendingExternalAction.requestHash) ||
           runtimePayload === undefined
         ) {
           return { status: "invalid", reason: "A+ Recovery payload 缺失或校验失败。" };

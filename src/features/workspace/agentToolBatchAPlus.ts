@@ -58,11 +58,18 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
     actionId: string;
     queries: string[];
     signal: AbortSignal;
+    preparedAction?: APlusExternalActionDescriptor;
+    onBeforeSend?: (action: APlusExternalActionDescriptor) => Promise<boolean> | boolean;
   }) => Promise<{
     sources: Array<{ title: string; url: string; domain?: string; snippet?: string; excerpt?: string }>;
     failedSourceCount?: number;
     timedOutSourceCount?: number;
   }>;
+  restoredPendingExternalAction?: Readonly<APlusExternalActionDescriptor & { callId?: string }>;
+  onExternalActionIntent?: (input: Readonly<{
+    callId: string;
+    action: APlusExternalActionDescriptor;
+  }>) => Promise<boolean> | boolean;
   restoredPendingConfirmation?: AgentToolBatchAPlusResult["pendingConfirmation"];
   onCallTerminal?: (input: Readonly<{
     terminal: ToolCallTerminalResult;
@@ -100,6 +107,15 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
     argumentsText: call.argumentsText
   }));
   const parsedCalls = parseMorphoAgentToolCallBatch(calls);
+  if (input.restoredPendingExternalAction && !hasMatchingExternalActionCall(
+    input.restoredPendingExternalAction,
+    parsedCalls
+  )) {
+    throw new AgentToolBatchAPlusError(
+      "external_action_request_payload_unavailable",
+      "A+ External Action 的持久化请求 Body 没有对应的 Tool Call，不能猜测新的请求。"
+    );
+  }
   const selectedDirectionCount = input.turnInput.selectedObjects
     .filter((object) => object.type === "conceptDirection").length;
   const validVisualCalls = parsedCalls.flatMap((entry) =>
@@ -280,7 +296,8 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
           parsed: entry.parsed,
           callId,
           batchState,
-          capturedConfirmation
+          capturedConfirmation,
+          restoredExternalAction: input.restoredPendingExternalAction
         });
         if (input.onCallIntent && !await input.onCallIntent({
           callId,
@@ -357,17 +374,20 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
             break;
           } else {
             const message = error instanceof Error ? error.message.slice(0, 800) : "Tool 执行失败。";
+            const code = isRecord(error) && typeof error.code === "string"
+              ? error.code.slice(0, 80)
+              : "tool_execution_failed";
             terminal = {
               status: "failed",
               callId,
               error: {
                 kind: "terminal",
-                code: "tool_execution_failed",
+                code,
                 message,
                 recoverable: false
               }
             };
-            providerResult = { status: "failed", code: "tool_execution_failed", error: message };
+            providerResult = { status: "failed", code, error: message };
           }
         }
       }
@@ -462,12 +482,30 @@ function sameOrderedIds(left: readonly string[], right: readonly string[]): bool
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
+function hasMatchingExternalActionCall(
+  action: Readonly<APlusExternalActionDescriptor & { callId?: string }>,
+  parsedCalls: ReturnType<typeof parseMorphoAgentToolCallBatch>
+): boolean {
+  return parsedCalls.some((entry) => {
+    if (entry.status !== "valid") return false;
+    if (action.callId && action.callId !== entry.call.callId) return false;
+    if (action.actionKind === "webSearch") {
+      return entry.parsed.name === "search_web_evidence" && action.actionId === entry.call.callId;
+    }
+    if (action.actionKind === "image") {
+      return entry.parsed.name === "generate_visuals" && Boolean(action.callId);
+    }
+    return false;
+  });
+}
+
 function buildExecutorInput(input: Readonly<{
   input: Parameters<typeof executeAgentToolBatchAPlus>[0];
   parsed: MorphoAgentToolArguments;
   callId: string;
   batchState: AgentToolBatchState;
   capturedConfirmation: { value?: PendingAiConfirmation };
+  restoredExternalAction?: Readonly<APlusExternalActionDescriptor & { callId?: string }>;
 }>): AgentToolExecutorInput {
   const { prepared, host, turnInput, externalRequest } = input.input;
   return {
@@ -495,18 +533,56 @@ function buildExecutorInput(input: Readonly<{
     requiredMemoryUpdates: prepared.requiredMemoryUpdates,
     imageGenerationModelId: turnInput.imageGenerationModelId,
     signal: prepared.controller.signal,
-    requestWebSearch: (queries) => input.input.requestWebSearch({
-      identity: externalRequest,
-      actionId: input.callId,
-      queries,
-      signal: prepared.controller.signal
-    }),
+    requestWebSearch: (queries) => {
+      const restoredAction = input.parsed.name === "search_web_evidence" &&
+        input.restoredExternalAction?.actionKind === "webSearch" &&
+        input.restoredExternalAction.actionId === input.callId &&
+        (!input.restoredExternalAction.callId || input.restoredExternalAction.callId === input.callId)
+        ? input.restoredExternalAction
+        : undefined;
+      return input.input.requestWebSearch({
+        identity: externalRequest,
+        actionId: input.callId,
+        queries,
+        signal: prepared.controller.signal,
+        ...(restoredAction ? { preparedAction: restoredAction } : {}),
+        ...(!restoredAction && input.input.onExternalActionIntent
+          ? {
+              onBeforeSend: (action: APlusExternalActionDescriptor) =>
+                input.input.onExternalActionIntent!({ callId: input.callId, action })
+            }
+          : {})
+      });
+    },
     executeVisualGenerationPlan: (visualInput) => host.executeVisualGenerationPlan({
       ...visualInput,
       aPlusExternalAction: {
         ...externalRequest,
         actionId: input.callId
-      }
+      },
+      ...(
+        input.parsed.name === "generate_visuals" &&
+        input.restoredExternalAction?.actionKind === "image" &&
+        input.restoredExternalAction.callId === input.callId
+          ? { restoredExternalAction: input.restoredExternalAction }
+          : {}
+      ),
+      ...(
+        input.parsed.name === "generate_visuals" &&
+        !(input.restoredExternalAction?.actionKind === "image" &&
+          input.restoredExternalAction.callId === input.callId) &&
+        input.input.onExternalActionIntent
+          ? {
+              onExternalActionIntent: (actionInput: Readonly<{
+                actionId: string;
+                action: APlusExternalActionDescriptor;
+              }>) => input.input.onExternalActionIntent!({
+                callId: input.callId,
+                action: actionInput.action
+              })
+            }
+          : {}
+      )
     }),
     ui: {
       selectObjects: host.ui.selectObjects,

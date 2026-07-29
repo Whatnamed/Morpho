@@ -22,7 +22,8 @@ import {
 } from "./agentTurnProductPreparationAPlus";
 import {
   APlusExternalActionRunningError,
-  createAPlusExternalActionRunningError
+  createAPlusExternalActionRunningError,
+  hashAPlusExternalActionBody
 } from "./agentExternalActionClientAPlus";
 
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
@@ -181,6 +182,71 @@ describe("A+ Tool Batch integration", () => {
     expect(restored.coordinator.getLifecycleSnapshot()?.phase).toBe("executingTools");
   });
 
+  it("passes the persisted Image body through recovery instead of rebuilding it from current inputs", async () => {
+    const call = visualCall("call-image-restored-body");
+    const originalBody = JSON.stringify({
+      localProjectId: "project-test",
+      requestId: REQUEST.requestId,
+      stepSequence: REQUEST.stepSequence,
+      actionId: "img:restored-child",
+      claimCallId: call.callId,
+      input: {
+        modelId: "original-image-model",
+        prompt: "original prompt",
+        images: ["data:image/png;base64,original"],
+        referenceObjectIds: ["reference-before-refresh"]
+      }
+    });
+    const persistedAction = {
+      actionId: "img:restored-child",
+      actionKind: "image" as const,
+      requestBody: originalBody,
+      requestHash: await hashAPlusExternalActionBody(originalBody),
+      callId: call.callId
+    };
+    const fake = createAgentTurnHostFake({ workspace: createTestWorkspace() });
+    const baseHost = hostFromFake(fake);
+    let observedBody: string | undefined;
+    const host: AgentTurnHost = {
+      ...baseHost,
+      executeVisualGenerationPlan: async (input) => {
+        observedBody = input.restoredExternalAction?.requestBody;
+        return {
+          workspace: input.workspaceSnapshot,
+          createdObjectIds: ["image-restored"],
+          failedItems: []
+        };
+      }
+    };
+    const turnInput = { ...standardInput(), imageGenerationModelId: "model-changed-after-refresh" };
+    const prepared = await prepareAgentTurnProductAPlus(turnInput, host);
+    const restored = AgentTurnCoordinator.restore({
+      snapshot: executingSnapshot([call]),
+      host: coordinatorHost(),
+      createRequestId: () => "unused"
+    });
+    if (restored.status !== "ok") throw new Error(restored.reason);
+
+    const result = await executeAgentToolBatchAPlus({
+      toolCalls: [call],
+      providerOutputText: "",
+      coordinator: restored.coordinator,
+      host,
+      turnInput,
+      prepared,
+      externalRequest: {
+        serverTurnId: TURN_ID,
+        localProjectId: fake.getWorkspace().project.id,
+        ...REQUEST
+      },
+      requestWebSearch: async () => ({ sources: [] }),
+      restoredPendingExternalAction: persistedAction
+    });
+
+    expect(result.status).toBe("completed");
+    expect(observedBody).toBe(originalBody);
+  });
+
   it("reconstructs a persisted local effect when the Tool terminal was lost", async () => {
     const call = researchCall("call-crash-window");
     const fake = createAgentTurnHostFake({ workspace: createTestWorkspace() });
@@ -244,6 +310,7 @@ describe("A+ Tool Batch integration", () => {
       output: expect.stringContaining('"recovered":true')
     }));
   });
+
 });
 
 function executingSnapshot(calls: readonly APlusToolCall[]): AgentTurnCoordinatorRecoverySnapshot {

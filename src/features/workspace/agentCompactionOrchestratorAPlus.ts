@@ -10,6 +10,7 @@ import type { AgentTurnHost } from "./agentTurnHost";
 import type { AgentTurnCompactionMode } from "./agentTurnLifecycle";
 import {
   createAPlusExternalActionRunningError,
+  hashAPlusExternalActionBody,
   isAPlusExternalActionRunningError,
   postAPlusExternalAction,
   type APlusExternalActionDescriptor
@@ -32,6 +33,8 @@ export async function runAgentCompactionAPlus(input: Readonly<{
   limits?: ConversationTokenLimits;
   force?: boolean;
   signal: AbortSignal;
+  restoredExternalAction?: APlusExternalActionDescriptor;
+  onExternalActionIntent?: (action: APlusExternalActionDescriptor) => Promise<boolean> | boolean;
   onSummaryApplied?: (input: Readonly<{
     actionId: string;
     revisionId: string;
@@ -51,6 +54,12 @@ export async function runAgentCompactionAPlus(input: Readonly<{
       input.actionId,
       expectedPreviousRevisionId
     ));
+  } else if (!input.restoredExternalAction) {
+    return fail(
+      input,
+      "external_action_request_payload_unavailable",
+      "A+ Compaction 已进入恢复阶段，但原始 External Action 请求 Body 不可用，不能重新构造。"
+    );
   }
   if (!plan) {
     requireOk(input.coordinator.completeCompaction(input.actionId, { kind: "notNeeded" }));
@@ -61,7 +70,7 @@ export async function runAgentCompactionAPlus(input: Readonly<{
   if (!server) throw new Error("Compaction 缺少 Server Turn Journal Snapshot。");
   const requestId = server.latestRequestId ?? input.actionId;
   const stepSequence = server.latestStepSequence > 0 ? server.latestStepSequence : 1;
-  const requestBody = JSON.stringify({
+  const generatedRequestBody = JSON.stringify({
     localProjectId: input.localProjectId,
     requestId,
     stepSequence,
@@ -79,6 +88,37 @@ export async function runAgentCompactionAPlus(input: Readonly<{
       body: message.body
     }))
   });
+  let externalAction: APlusExternalActionDescriptor;
+  if (input.restoredExternalAction) {
+    if (
+      input.restoredExternalAction.actionKind !== "compaction" ||
+      input.restoredExternalAction.actionId !== input.actionId ||
+      await hashAPlusExternalActionBody(input.restoredExternalAction.requestBody) !==
+        input.restoredExternalAction.requestHash
+    ) {
+      return fail(
+        input,
+        "external_action_request_payload_unavailable",
+        "A+ Compaction 的持久化请求 Body 缺失、损坏或 Action 身份不匹配。"
+      );
+    }
+    externalAction = input.restoredExternalAction;
+  } else {
+    externalAction = {
+      actionId: input.actionId,
+      actionKind: "compaction",
+      requestBody: generatedRequestBody,
+      requestHash: await hashAPlusExternalActionBody(generatedRequestBody)
+    };
+    if (input.onExternalActionIntent && !await input.onExternalActionIntent(externalAction)) {
+      return fail(
+        input,
+        "external_action_intent_persistence_failed",
+        "A+ Compaction External Action 身份未能在发送前写入 Recovery Record。"
+      );
+    }
+  }
+  const requestBody = externalAction.requestBody;
   let response: Response;
   try {
     response = await postAPlusExternalAction({
@@ -103,9 +143,9 @@ export async function runAgentCompactionAPlus(input: Readonly<{
   const body = await readJson(response);
   if (response.status === 202) {
     const running = await createAPlusExternalActionRunningError({
-      actionId: input.actionId,
-      actionKind: "compaction",
-      requestBody,
+      actionId: externalAction.actionId,
+      actionKind: externalAction.actionKind,
+      requestBody: externalAction.requestBody,
       message: isRecord(body) && typeof body.error === "string"
         ? body.error
         : "Compaction 仍在服务器执行；本地只进行同身份查询，不重复执行。"

@@ -26,6 +26,7 @@ import { compileVisualGenerationPlan } from "@/domain/operations/imagePromptComp
 import { normalizeResearchItems } from "@/domain/operations/researchItems";
 import type { VisualGenerationPlan } from "@/domain/operations/types";
 import { updateAiMessage } from "./aiConversationMessages";
+import type { APlusExternalActionDescriptor } from "./agentExternalActionClientAPlus";
 import { updateLocalAgentToolActivity } from "./agentMessageTrace";
 import {
   resolveRequiredAgentMemoryUpdates,
@@ -85,6 +86,11 @@ export type ExecuteAgentVisualGenerationPlan = (input: {
     stepSequence: number;
     actionId: string;
   }>;
+  restoredExternalAction?: Readonly<APlusExternalActionDescriptor & { callId?: string }>;
+  onExternalActionIntent?: (input: Readonly<{
+    actionId: string;
+    action: APlusExternalActionDescriptor;
+  }>) => Promise<boolean> | boolean;
 }) => Promise<AgentVisualGenerationExecution>;
 
 export type AgentToolBatchState = {

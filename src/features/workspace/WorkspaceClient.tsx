@@ -236,8 +236,10 @@ import {
   classifyAPlusImageResponse,
   createAPlusExternalActionRunningError,
   findAPlusImageResultObjectId,
+  hashAPlusExternalActionBody,
   isAPlusExternalActionRunningError,
-  postAPlusExternalAction
+  postAPlusExternalAction,
+  type APlusExternalActionDescriptor
 } from "./agentExternalActionClientAPlus";
 import {
   acknowledgeSelectedPendingAgentConfirmation,
@@ -1281,6 +1283,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         stepSequence: number;
         actionId: string;
       }>;
+      restoredExternalAction?: Readonly<APlusExternalActionDescriptor & { callId?: string }>;
+      onExternalActionIntent?: (input: Readonly<{
+        actionId: string;
+        action: APlusExternalActionDescriptor;
+      }>) => Promise<boolean> | boolean;
     }) => {
       const requestedGenerationCount =
         input.plan.kind === "directionPreview"
@@ -1515,9 +1522,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       try {
         await mapWithConcurrency(
           validatedPlan.plan.items,
-          IMAGE_GENERATION_MAX_CONCURRENCY,
+          input.aPlusExternalAction ? 1 : IMAGE_GENERATION_MAX_CONCURRENCY,
           async (item, itemIndex): Promise<AgentItemResult> => {
             const itemClientRequestId = `${clientRequestId}-${item.id}`;
+            const aPlusActionId = input.aPlusExternalAction
+              ? await buildAPlusImageChildActionId(input.aPlusExternalAction.actionId, item.id)
+              : undefined;
             const existingObjectId = input.aPlusExternalAction
               ? findAPlusImageResultObjectId(workspaceAtPlanCommit, itemClientRequestId)
               : undefined;
@@ -1534,16 +1544,42 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             inFlightCount += 1;
             publishProgress();
             try {
-              const referenceImages = await collectImageReferenceDataUrls(
-                workspaceAtPlanCommit,
-                item.referenceObjectIds,
-                input.signal
-              );
+              const restoredAction = input.aPlusExternalAction && aPlusActionId &&
+                input.restoredExternalAction?.actionKind === "image" &&
+                input.restoredExternalAction.actionId === aPlusActionId &&
+                input.restoredExternalAction.callId === input.aPlusExternalAction.actionId
+                ? input.restoredExternalAction
+                : undefined;
+              if (input.restoredExternalAction && !restoredAction) {
+                throw aPlusExternalActionPayloadError(
+                  "A+ Image 的持久化 Action 不属于当前恢复的 Image 项，不能重新构造请求。"
+                );
+              }
+              const restoredImagePayload = restoredAction
+                ? parsePersistedAPlusImageRequestBody(restoredAction.requestBody)
+                : undefined;
+              if (restoredAction && (
+                await hashAPlusExternalActionBody(restoredAction.requestBody) !== restoredAction.requestHash ||
+                !restoredImagePayload
+              )) {
+                throw aPlusExternalActionPayloadError(
+                  "A+ Image 的持久化请求 Body 缺失、损坏或校验失败。"
+                );
+              }
+              const referenceImages = restoredImagePayload
+                ? { images: [], sourceObjectIds: restoredImagePayload.sourceObjectIds }
+                : await collectImageReferenceDataUrls(
+                    workspaceAtPlanCommit,
+                    item.referenceObjectIds,
+                    input.signal
+                  );
               setWorkspace((current) =>
                 markImageGenerationOperationSubmitted(current, {
                   operationId,
                   referenceObjectIds: item.referenceObjectIds,
-                  imagePixels: referenceImages.images.length > 0
+                  imagePixels: restoredImagePayload
+                    ? restoredImagePayload.imageCount > 0
+                    : referenceImages.images.length > 0
                 })
               );
 
@@ -1559,19 +1595,32 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 operationId,
                 clientRequestId: itemClientRequestId
               };
-              const aPlusActionId = input.aPlusExternalAction
-                ? await buildAPlusImageChildActionId(input.aPlusExternalAction.actionId, item.id)
-                : undefined;
-              const imageRequestBody = JSON.stringify(input.aPlusExternalAction && aPlusActionId
-                ? {
-                    localProjectId: input.aPlusExternalAction.localProjectId,
-                    requestId: input.aPlusExternalAction.requestId,
-                    stepSequence: input.aPlusExternalAction.stepSequence,
-                    actionId: aPlusActionId,
-                    claimCallId: input.aPlusExternalAction.actionId,
-                    input: imageInput
-                  }
-                : imageInput);
+              const imageRequestBody = restoredAction
+                ? restoredAction.requestBody
+                : JSON.stringify(input.aPlusExternalAction && aPlusActionId
+                    ? {
+                        localProjectId: input.aPlusExternalAction.localProjectId,
+                        requestId: input.aPlusExternalAction.requestId,
+                        stepSequence: input.aPlusExternalAction.stepSequence,
+                        actionId: aPlusActionId,
+                        claimCallId: input.aPlusExternalAction.actionId,
+                        input: imageInput
+                      }
+                    : imageInput);
+              if (input.aPlusExternalAction && aPlusActionId && !restoredAction && input.onExternalActionIntent) {
+                const action: APlusExternalActionDescriptor = {
+                  actionId: aPlusActionId,
+                  actionKind: "image",
+                  requestBody: imageRequestBody,
+                  requestHash: await hashAPlusExternalActionBody(imageRequestBody)
+                };
+                if (!await input.onExternalActionIntent({ actionId: aPlusActionId, action })) {
+                  throw aPlusExternalActionPayloadError(
+                    "A+ Image Action 身份未能在发送前写入 Recovery Record。",
+                    "external_action_intent_persistence_failed"
+                  );
+                }
+              }
               const imageResponse = input.aPlusExternalAction && aPlusActionId
                 ? await postAPlusExternalAction({
                     fetch,
@@ -1637,6 +1686,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 throw itemError;
               }
               if (isAPlusExternalActionRunningError(itemError)) {
+                throw itemError;
+              }
+              if (isAPlusExternalActionBarrierError(itemError)) {
                 throw itemError;
               }
               const reason = itemError instanceof Error ? itemError.message : "图像生成失败";
@@ -5018,6 +5070,49 @@ function appendAiAssistantNotice(
       ]
     }
   };
+}
+
+function parsePersistedAPlusImageRequestBody(
+  requestBody: string
+): Readonly<{ sourceObjectIds: string[]; imageCount: number }> | undefined {
+  try {
+    const parsed = JSON.parse(requestBody) as unknown;
+    if (!isWorkspaceRecord(parsed) || !isWorkspaceRecord(parsed.input)) return undefined;
+    const referenceObjectIds = parsed.input.referenceObjectIds;
+    const images = parsed.input.images;
+    if (
+      !Array.isArray(referenceObjectIds) ||
+      !referenceObjectIds.every((value) => typeof value === "string") ||
+      !Array.isArray(images) ||
+      !images.every((value) => typeof value === "string")
+    ) {
+      return undefined;
+    }
+    return {
+      sourceObjectIds: [...referenceObjectIds],
+      imageCount: images.length
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function aPlusExternalActionPayloadError(
+  message: string,
+  code = "external_action_request_payload_unavailable"
+): Error & { code: string } {
+  return Object.assign(new Error(message), { code });
+}
+
+function isWorkspaceRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isAPlusExternalActionBarrierError(value: unknown): boolean {
+  return isWorkspaceRecord(value) && (
+    value.code === "external_action_request_payload_unavailable" ||
+    value.code === "external_action_intent_persistence_failed"
+  );
 }
 
 async function collectImageReferenceDataUrls(

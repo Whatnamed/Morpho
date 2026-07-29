@@ -4,7 +4,10 @@ import type { MorphoWorkspace } from "@/domain/morpho/types";
 import { createTestWorkspace } from "@/domain/morpho/workspace";
 import type { AgentTurnJournalSnapshot } from "@/shared/agentTurnJournalProtocol";
 import { runAgentCompactionAPlus } from "./agentCompactionOrchestratorAPlus";
-import { hashAPlusExternalActionBody } from "./agentExternalActionClientAPlus";
+import {
+  hashAPlusExternalActionBody,
+  type APlusExternalActionDescriptor
+} from "./agentExternalActionClientAPlus";
 import { AgentTurnCoordinator, type AgentTurnCoordinatorHost } from "./agentTurnCoordinator";
 import type { AgentTurnHost } from "./agentTurnHost";
 import { createAgentTurnHostFake } from "./agentTurnHostFake";
@@ -149,7 +152,8 @@ describe("A+ unified Compaction orchestrator", () => {
       host: fixture.host,
       localProjectId: "project-test",
       force: true,
-      signal: new AbortController().signal
+      signal: new AbortController().signal,
+      restoredExternalAction: first.externalAction
     });
 
     expect(resumed.status).toBe("applied");
@@ -158,28 +162,57 @@ describe("A+ unified Compaction orchestrator", () => {
 
   it("keeps Compaction ambiguous after acquire and replays the exact body once", async () => {
     const fixture = await createFixture({ ambiguousOnce: true });
+    const order: string[] = [];
+    let persistedAction: APlusExternalActionDescriptor | undefined;
+    const host: AgentTurnHost = {
+      ...fixture.host,
+      fetch: async (url, init) => {
+        order.push("fetch");
+        return fixture.host.fetch(url, init);
+      }
+    };
     const first = await runAgentCompactionAPlus({
       mode: "automatic",
       actionId: "compact:automatic:ambiguous",
       coordinator: fixture.coordinator,
-      host: fixture.host,
+      host,
       localProjectId: "project-test",
       force: true,
-      signal: new AbortController().signal
+      signal: new AbortController().signal,
+      onExternalActionIntent: (action) => {
+        order.push("persist");
+        persistedAction = action;
+        return true;
+      }
     });
 
     expect(first.status).toBe("running");
     expect(fixture.coordinator.getLifecycleSnapshot()?.phase).toBe("compacting");
     expect(fixture.externalExecutionCount).toBe(1);
+    expect(order.slice(0, 2)).toEqual(["persist", "fetch"]);
+    if (!persistedAction) throw new Error("Expected the Compaction descriptor to persist before fetch.");
+    fixture.host.commitWorkspace((current) => ({
+      workspace: {
+        ...current,
+        ai: {
+          ...current.ai,
+          messages: current.ai.messages.map((message, index) =>
+            index === 0 ? { ...message, body: `${message.body}（刷新后被本地修改）` } : message
+          )
+        }
+      },
+      value: undefined
+    }));
 
     const resumed = await runAgentCompactionAPlus({
       mode: "automatic",
       actionId: "compact:automatic:ambiguous",
       coordinator: fixture.coordinator,
-      host: fixture.host,
+      host,
       localProjectId: "project-test",
       force: true,
-      signal: new AbortController().signal
+      signal: new AbortController().signal,
+      restoredExternalAction: persistedAction
     });
 
     expect(resumed.status).toBe("applied");

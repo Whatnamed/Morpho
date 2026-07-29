@@ -75,6 +75,27 @@ export async function hashAPlusExternalActionBody(value: string): Promise<string
   return sha256Hex(value);
 }
 
+export async function buildAPlusWebSearchActionDescriptor(input: Readonly<{
+  identity: APlusExternalRequestIdentity;
+  actionId: string;
+  queries: string[];
+}>): Promise<APlusExternalActionDescriptor> {
+  const requestBody = JSON.stringify({
+    localProjectId: input.identity.localProjectId,
+    requestId: input.identity.requestId,
+    stepSequence: input.identity.stepSequence,
+    actionId: input.actionId,
+    queries: input.queries,
+    maxSources: 5
+  });
+  return {
+    actionId: input.actionId,
+    actionKind: "webSearch",
+    requestBody,
+    requestHash: await hashAPlusExternalActionBody(requestBody)
+  };
+}
+
 /**
  * POST an A+ External Action while preserving the ambiguity boundary. Once a
  * request has been handed to fetch, a non-abort rejection cannot prove that
@@ -116,6 +137,8 @@ export async function requestAgentWebSearchAPlus(input: Readonly<{
   actionId: string;
   queries: string[];
   signal: AbortSignal;
+  preparedAction?: APlusExternalActionDescriptor;
+  onBeforeSend?: (action: APlusExternalActionDescriptor) => Promise<boolean> | boolean;
   waitForReplay?: (delayMs: number, signal: AbortSignal) => Promise<void>;
 }>): Promise<{
   sources: Array<{ title: string; url: string; domain?: string; snippet?: string; excerpt?: string }>;
@@ -123,14 +146,24 @@ export async function requestAgentWebSearchAPlus(input: Readonly<{
   timedOutSourceCount?: number;
 }> {
   const url = `/api/ai/agent/turns/${encodeURIComponent(input.identity.serverTurnId)}/actions/web-search`;
-  const bodyText = JSON.stringify({
-    localProjectId: input.identity.localProjectId,
-    requestId: input.identity.requestId,
-    stepSequence: input.identity.stepSequence,
-    actionId: input.actionId,
-    queries: input.queries,
-    maxSources: 5
-  });
+  const preparedAction = input.preparedAction ?? await buildAPlusWebSearchActionDescriptor(input);
+  if (
+    preparedAction.actionKind !== "webSearch" ||
+    preparedAction.actionId !== input.actionId ||
+    await hashAPlusExternalActionBody(preparedAction.requestBody) !== preparedAction.requestHash
+  ) {
+    throw externalActionError(
+      "external_action_request_payload_unavailable",
+      "A+ Search Action 的持久化请求 Body 缺失、损坏或身份不匹配。"
+    );
+  }
+  if (!input.preparedAction && input.onBeforeSend && !await input.onBeforeSend(preparedAction)) {
+    throw externalActionError(
+      "external_action_intent_persistence_failed",
+      "A+ Search Action 身份未能在发送前写入 Recovery Record。"
+    );
+  }
+  const bodyText = preparedAction.requestBody;
   const replayDelays = [100, 300, 900] as const;
   for (let attempt = 0; ; attempt += 1) {
     const response = await postAPlusExternalAction({
