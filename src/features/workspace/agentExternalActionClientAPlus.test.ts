@@ -6,6 +6,8 @@ import {
   buildAPlusImageChildActionId,
   classifyAPlusImageResponse,
   findAPlusImageResultObjectId,
+  hashAPlusExternalActionBody,
+  postAPlusExternalAction,
   requestAgentWebSearchAPlus
 } from "./agentExternalActionClientAPlus";
 
@@ -107,6 +109,101 @@ describe("A+ External Action client", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(new Set(fetchMock.mock.calls.map((call) => call[1]?.body))).toHaveProperty("size", 1);
+  });
+
+  it("treats a Search response loss as ambiguous and replays the same body", async () => {
+    const requestBodies: string[] = [];
+    let acquiredCount = 0;
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (_url, init) => {
+      requestBodies.push(typeof init?.body === "string" ? init.body : "");
+      if (requestBodies.length === 1) {
+        acquiredCount += 1;
+        throw new TypeError("connection reset after acquire");
+      }
+      return Response.json({
+        replayed: true,
+        sources: [{ title: "Morpho", url: "https://example.com/morpho" }],
+        failedSourceCount: 0,
+        timedOutSourceCount: 0
+      });
+    });
+
+    const first = requestAgentWebSearchAPlus({
+      fetch: fetchMock,
+      identity,
+      actionId: "call-search-ambiguous",
+      queries: ["local-first agent runtime"],
+      signal: new AbortController().signal,
+      waitForReplay: async () => undefined
+    });
+    await expect(first).rejects.toMatchObject({
+      code: "external_action_running",
+      action: {
+        actionId: "call-search-ambiguous",
+        actionKind: "webSearch"
+      }
+    });
+
+    const second = await requestAgentWebSearchAPlus({
+      fetch: fetchMock,
+      identity,
+      actionId: "call-search-ambiguous",
+      queries: ["local-first agent runtime"],
+      signal: new AbortController().signal,
+      waitForReplay: async () => undefined
+    });
+    expect(second.sources).toHaveLength(1);
+    expect(acquiredCount).toBe(1);
+    expect(requestBodies[0]).toBe(requestBodies[1]);
+    const requestHash = await hashAPlusExternalActionBody(requestBodies[0]!);
+    expect(requestHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("classifies an Image response loss as an ambiguous running Action", async () => {
+    const requestBody = JSON.stringify({ actionId: "image-action-ambiguous", input: { prompt: "test" } });
+    const requestBodies: string[] = [];
+    let acquiredCount = 0;
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (_url, init) => {
+      requestBodies.push(typeof init?.body === "string" ? init.body : "");
+      if (requestBodies.length === 1) {
+        acquiredCount += 1;
+        throw new TypeError("connection reset after acquire");
+      }
+      return new Response(new Blob(["image-bytes"], { type: "image/png" }), {
+        status: 200,
+        headers: { "Content-Type": "image/png" }
+      });
+    });
+
+    await expect(postAPlusExternalAction({
+      fetch: fetchMock,
+      url: "/api/ai/agent/turns/turn/actions/image",
+      actionId: "image-action-ambiguous",
+      actionKind: "image",
+      requestBody,
+      signal: new AbortController().signal,
+      message: "图像任务请求响应丢失。"
+    })).rejects.toMatchObject({
+      code: "external_action_running",
+      action: {
+        actionId: "image-action-ambiguous",
+        actionKind: "image",
+        requestBody
+      }
+    });
+    const replayed = await postAPlusExternalAction({
+      fetch: fetchMock,
+      url: "/api/ai/agent/turns/turn/actions/image",
+      actionId: "image-action-ambiguous",
+      actionKind: "image",
+      requestBody,
+      signal: new AbortController().signal,
+      message: "图像任务请求响应丢失。"
+    });
+    expect(replayed.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(acquiredCount).toBe(1);
+    expect(requestBodies[0]).toBe(requestBodies[1]);
   });
 
   it("classifies Image 202 JSON as running instead of an image payload", () => {

@@ -10,6 +10,8 @@ import type { AgentTurnHost } from "./agentTurnHost";
 import type { AgentTurnCompactionMode } from "./agentTurnLifecycle";
 import {
   createAPlusExternalActionRunningError,
+  isAPlusExternalActionRunningError,
+  postAPlusExternalAction,
   type APlusExternalActionDescriptor
 } from "./agentExternalActionClientAPlus";
 
@@ -79,19 +81,22 @@ export async function runAgentCompactionAPlus(input: Readonly<{
   });
   let response: Response;
   try {
-    response = await input.host.fetch(
-      `/api/ai/agent/turns/${encodeURIComponent(server.serverTurnId)}/actions/compaction`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: requestBody,
-        signal: input.signal
-      }
-    );
+    response = await postAPlusExternalAction({
+      fetch: input.host.fetch,
+      url: `/api/ai/agent/turns/${encodeURIComponent(server.serverTurnId)}/actions/compaction`,
+      actionId: input.actionId,
+      actionKind: "compaction",
+      requestBody,
+      signal: input.signal,
+      message: "Compaction 请求响应丢失，服务器状态未知；本地只进行同身份查询，不重复压缩。"
+    });
   } catch (error) {
     if (input.signal.aborted || isAbortError(error)) {
       requireOk(input.coordinator.cancelCompaction(input.actionId, "用户取消了 Compaction。"));
       return { status: "cancelled", actionId: input.actionId };
+    }
+    if (isAPlusExternalActionRunningError(error)) {
+      return { status: "running", actionId: input.actionId, externalAction: error.action };
     }
     return fail(input, "compaction_transport_failed", "Compaction 网络请求失败。");
   }

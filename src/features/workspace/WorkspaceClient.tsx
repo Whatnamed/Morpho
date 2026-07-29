@@ -236,7 +236,8 @@ import {
   classifyAPlusImageResponse,
   createAPlusExternalActionRunningError,
   findAPlusImageResultObjectId,
-  isAPlusExternalActionRunningError
+  isAPlusExternalActionRunningError,
+  postAPlusExternalAction
 } from "./agentExternalActionClientAPlus";
 import {
   acknowledgeSelectedPendingAgentConfirmation,
@@ -1571,17 +1572,22 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                     input: imageInput
                   }
                 : imageInput);
-              const imageResponse = await fetch(
-                input.aPlusExternalAction
-                  ? `/api/ai/agent/turns/${encodeURIComponent(input.aPlusExternalAction.serverTurnId)}/actions/image`
-                  : "/api/ai/image",
-                {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: imageRequestBody,
-                signal: input.signal
-                }
-              );
+              const imageResponse = input.aPlusExternalAction && aPlusActionId
+                ? await postAPlusExternalAction({
+                    fetch,
+                    url: `/api/ai/agent/turns/${encodeURIComponent(input.aPlusExternalAction.serverTurnId)}/actions/image`,
+                    actionId: aPlusActionId,
+                    actionKind: "image",
+                    requestBody: imageRequestBody,
+                    signal: input.signal,
+                    message: "图像任务请求响应丢失，服务器状态未知；本地只进行同身份查询，不重复生成。"
+                  })
+                : await fetch("/api/ai/image", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: imageRequestBody,
+                    signal: input.signal
+                  });
               const providerTaskId = imageResponse.headers.get("X-Morpho-Provider-Task-Id") || undefined;
               if (providerTaskId) {
                 lastProviderTaskId = providerTaskId;

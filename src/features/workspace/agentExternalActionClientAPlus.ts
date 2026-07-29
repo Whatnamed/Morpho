@@ -75,6 +75,41 @@ export async function hashAPlusExternalActionBody(value: string): Promise<string
   return sha256Hex(value);
 }
 
+/**
+ * POST an A+ External Action while preserving the ambiguity boundary. Once a
+ * request has been handed to fetch, a non-abort rejection cannot prove that
+ * the server did not acquire the Action. Surface it as a query-only running
+ * result so the caller can replay the exact same identity and body.
+ */
+export async function postAPlusExternalAction(input: Readonly<{
+  fetch: typeof fetch;
+  url: string;
+  actionId: string;
+  actionKind: APlusExternalActionKind;
+  requestBody: string;
+  signal: AbortSignal;
+  message: string;
+}>): Promise<Response> {
+  try {
+    return await input.fetch(input.url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: input.requestBody,
+      signal: input.signal
+    });
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
+    throw await createAPlusExternalActionRunningError({
+      actionId: input.actionId,
+      actionKind: input.actionKind,
+      requestBody: input.requestBody,
+      message: input.message
+    });
+  }
+}
+
 export async function requestAgentWebSearchAPlus(input: Readonly<{
   fetch: typeof fetch;
   identity: APlusExternalRequestIdentity;
@@ -98,11 +133,14 @@ export async function requestAgentWebSearchAPlus(input: Readonly<{
   });
   const replayDelays = [100, 300, 900] as const;
   for (let attempt = 0; ; attempt += 1) {
-    const response = await input.fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: bodyText,
-      signal: input.signal
+    const response = await postAPlusExternalAction({
+      fetch: input.fetch,
+      url,
+      actionId: input.actionId,
+      actionKind: "webSearch",
+      requestBody: bodyText,
+      signal: input.signal,
+      message: "Search 请求响应丢失，服务器状态未知；本地只进行同身份查询，不重复调用外部 Search。"
     });
     const body = await readJson(response);
     if (response.status === 202 && attempt < replayDelays.length) {
@@ -192,6 +230,10 @@ function waitForReplay(delayMs: number, signal: AbortSignal): Promise<void> {
     };
     signal.addEventListener("abort", abort, { once: true });
   });
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 async function sha256Hex(value: string): Promise<string> {

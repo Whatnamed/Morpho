@@ -152,15 +152,60 @@ describe("A+ unified Compaction orchestrator", () => {
     expect(resumed.status).toBe("applied");
     expect(fixture.coordinator.getLifecycleSnapshot()?.phase).toBe("requestingProvider");
   });
+
+  it("keeps Compaction ambiguous after acquire and replays the exact body once", async () => {
+    const fixture = await createFixture({ ambiguousOnce: true });
+    const first = await runAgentCompactionAPlus({
+      mode: "automatic",
+      actionId: "compact:automatic:ambiguous",
+      coordinator: fixture.coordinator,
+      host: fixture.host,
+      localProjectId: "project-test",
+      force: true,
+      signal: new AbortController().signal
+    });
+
+    expect(first.status).toBe("running");
+    expect(fixture.coordinator.getLifecycleSnapshot()?.phase).toBe("compacting");
+    expect(fixture.externalExecutionCount).toBe(1);
+
+    const resumed = await runAgentCompactionAPlus({
+      mode: "automatic",
+      actionId: "compact:automatic:ambiguous",
+      coordinator: fixture.coordinator,
+      host: fixture.host,
+      localProjectId: "project-test",
+      force: true,
+      signal: new AbortController().signal
+    });
+
+    expect(resumed.status).toBe("applied");
+    expect(fixture.externalExecutionCount).toBe(1);
+    expect(fixture.requestBodies).toHaveLength(2);
+    expect(fixture.requestBodies[0]).toBe(fixture.requestBodies[1]);
+  });
 });
 
-async function createFixture(options: { abortRoute?: boolean; runningOnce?: boolean } = {}) {
+async function createFixture(options: {
+  abortRoute?: boolean;
+  runningOnce?: boolean;
+  ambiguousOnce?: boolean;
+} = {}) {
   const fake = createAgentTurnHostFake({ workspace: conversationWorkspace() });
   let running = options.runningOnce === true;
+  let ambiguous = options.ambiguousOnce === true;
+  let externalExecutionCount = 0;
+  const requestBodies: string[] = [];
   fake.setFetchRoute(
     `/api/ai/agent/turns/${TURN_ID}/actions/compaction`,
-    () => {
+    async (request) => {
       if (options.abortRoute) throw new DOMException("cancelled", "AbortError");
+      requestBodies.push(await request.clone().text());
+      if (ambiguous) {
+        ambiguous = false;
+        externalExecutionCount += 1;
+        throw new TypeError("connection reset after acquire");
+      }
       if (running) {
         running = false;
         return Response.json({
@@ -226,7 +271,15 @@ async function createFixture(options: { abortRoute?: boolean; runningOnce?: bool
   });
   const initialized = await coordinator.initialize();
   if (initialized.status === "denied") throw new Error(initialized.error);
-  return { fake, host, coordinator };
+  return {
+    fake,
+    host,
+    coordinator,
+    requestBodies,
+    get externalExecutionCount() {
+      return externalExecutionCount;
+    }
+  };
 }
 
 function conversationWorkspace(): MorphoWorkspace {
