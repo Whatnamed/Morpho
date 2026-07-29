@@ -48,6 +48,52 @@ describe("A+ local Recovery Store", () => {
     });
   });
 
+  it("stores a pending External Action body behind a verified payload reference", async () => {
+    const fixture = createFixture();
+    const record: APlusTurnRecoveryRecord = {
+      ...recoveryRecord("exact request"),
+      metadata: {
+        ...recoveryRecord("exact request").metadata,
+        pendingExternalAction: {
+          status: "running",
+          actionId: "image-action-1",
+          actionKind: "image",
+          requestBody: "image-body-".repeat(200_000),
+          requestHash: "".padStart(64, "0"),
+          lastObservedAt: "2026-07-29T00:00:00.000Z"
+        }
+      }
+    };
+    const { subtle } = crypto;
+    const digest = await subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(record.metadata.pendingExternalAction!.requestBody)
+    );
+    const requestHash = [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+    const withHash: APlusTurnRecoveryRecord = {
+      ...record,
+      metadata: {
+        ...record.metadata,
+        pendingExternalAction: {
+          ...record.metadata.pendingExternalAction!,
+          requestHash
+        }
+      }
+    };
+
+    await fixture.store.save(withHash);
+
+    const metadata = [...fixture.storageValues.values()][0] ?? "";
+    expect(metadata).not.toContain("image-body-");
+    expect([...fixture.payloadValues.values()].some((value) => value.startsWith("image-body-"))).toBe(true);
+    await expect(fixture.store.load("project-test")).resolves.toEqual({
+      status: "ok",
+      record: withHash
+    });
+  });
+
   it("reports malformed metadata as invalid instead of silently treating it as absent", async () => {
     const fixture = createFixture();
     fixture.storageValues.set(

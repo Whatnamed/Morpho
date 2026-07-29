@@ -160,8 +160,13 @@ type PersistedRecoveryRecord = Readonly<{
     activeRequest?: PersistedActiveRequest;
     latestProviderOutputPayload?: PersistedPayloadReference;
   };
-  metadata: Omit<APlusTurnRecoveryMetadata, "pendingConfirmation" | "runtime"> & {
+  metadata: Omit<APlusTurnRecoveryMetadata, "pendingConfirmation" | "pendingExternalAction" | "runtime"> & {
     pendingConfirmation?: PersistedConfirmationReference;
+    pendingExternalAction?: Omit<
+      NonNullable<APlusTurnRecoveryMetadata["pendingExternalAction"]>,
+      "requestBody"
+    >;
+    pendingExternalActionPayload?: PersistedPayloadReference;
     runtimePayload: PersistedPayloadReference;
   };
   updatedAt: string;
@@ -226,6 +231,15 @@ export function createAgentTurnRecoveryStore(options: Readonly<{
             MAX_METADATA_BYTES
           )
         : undefined;
+      const pendingExternalAction = record.metadata.pendingExternalAction;
+      const pendingExternalActionPayload = pendingExternalAction
+        ? await persistPayload(
+            payloadStore,
+            `external-action:${record.serverTurnId}:${pendingExternalAction.actionId}`,
+            pendingExternalAction.requestBody,
+            MAX_PROVIDER_PAYLOAD_BYTES
+          )
+        : undefined;
       const runtimePayload = await persistPayload(
         payloadStore,
         `runtime:${record.serverTurnId}`,
@@ -239,9 +253,16 @@ export function createAgentTurnRecoveryStore(options: Readonly<{
       } = record.coordinator;
       const {
         pendingConfirmation: _pendingConfirmation,
+        pendingExternalAction: _pendingExternalAction,
         runtime: _runtime,
         ...metadata
       } = record.metadata;
+      const persistedExternalAction = pendingExternalAction
+        ? (() => {
+            const { requestBody: _requestBody, ...descriptor } = pendingExternalAction;
+            return descriptor;
+          })()
+        : undefined;
       const persisted: PersistedRecoveryRecord = {
         recordVersion: A_PLUS_TURN_RECOVERY_RECORD_VERSION,
         localProjectId: record.localProjectId,
@@ -268,13 +289,19 @@ export function createAgentTurnRecoveryStore(options: Readonly<{
         metadata: {
           ...metadata,
           runtimePayload,
-          ...(record.metadata.pendingConfirmation && confirmation
+            ...(record.metadata.pendingConfirmation && confirmation
             ? {
                 pendingConfirmation: {
                   confirmationId: record.metadata.pendingConfirmation.confirmationId,
                   callId: record.metadata.pendingConfirmation.callId,
                   payload: confirmation
                 }
+              }
+            : {}),
+          ...(persistedExternalAction && pendingExternalActionPayload
+            ? {
+                pendingExternalAction: persistedExternalAction,
+                pendingExternalActionPayload
               }
             : {})
         },
@@ -317,6 +344,11 @@ export function createAgentTurnRecoveryStore(options: Readonly<{
         const confirmation = persisted.metadata.pendingConfirmation;
         const confirmationValue = confirmation
           ? await loadVerifiedPayload(payloadStore, confirmation.payload)
+            : undefined;
+        const pendingExternalAction = persisted.metadata.pendingExternalAction;
+        const pendingExternalActionPayloadReference = persisted.metadata.pendingExternalActionPayload;
+        const pendingExternalActionBody = pendingExternalActionPayloadReference
+          ? await loadVerifiedPayload(payloadStore, pendingExternalActionPayloadReference)
           : undefined;
         const runtimePayload = await loadVerifiedPayload(
           payloadStore,
@@ -326,6 +358,10 @@ export function createAgentTurnRecoveryStore(options: Readonly<{
           (active && providerRequest === undefined) ||
           (latestProviderOutputReference && latestProviderOutputPayload === undefined) ||
           (confirmation && confirmationValue === undefined) ||
+          (pendingExternalAction && pendingExternalActionBody === undefined) ||
+          (!pendingExternalAction && pendingExternalActionPayloadReference !== undefined) ||
+          (pendingExternalAction && pendingExternalActionBody !== undefined &&
+            await sha256Hex(pendingExternalActionBody) !== pendingExternalAction.requestHash) ||
           runtimePayload === undefined
         ) {
           return { status: "invalid", reason: "A+ Recovery payload 缺失或校验失败。" };
@@ -337,6 +373,8 @@ export function createAgentTurnRecoveryStore(options: Readonly<{
         } = persisted.coordinator;
         const {
           pendingConfirmation: _confirmation,
+          pendingExternalAction: _pendingExternalAction,
+          pendingExternalActionPayload: _pendingExternalActionPayload,
           runtimePayload: _runtimePayload,
           ...metadata
         } = persisted.metadata;
@@ -382,6 +420,14 @@ export function createAgentTurnRecoveryStore(options: Readonly<{
                     confirmationId: confirmation.confirmationId,
                     callId: confirmation.callId,
                     value: JSON.parse(confirmationValue) as PendingAiConfirmation
+                  }
+                }
+              : {}),
+            ...(pendingExternalAction && pendingExternalActionBody !== undefined
+              ? {
+                  pendingExternalAction: {
+                    ...pendingExternalAction,
+                    requestBody: pendingExternalActionBody
                   }
                 }
               : {})
@@ -489,8 +535,12 @@ function isPersistedRecoveryRecord(
   if (latestProviderOutput !== undefined && !isPayloadReference(latestProviderOutput)) return false;
   const confirmation = value.metadata.pendingConfirmation;
   const pendingExternalAction = value.metadata.pendingExternalAction;
+  const pendingExternalActionPayload = value.metadata.pendingExternalActionPayload;
   const toolExecutionIntents = value.metadata.toolExecutionIntents;
-  return (pendingExternalAction === undefined || isPersistedExternalAction(pendingExternalAction)) &&
+  return (pendingExternalAction === undefined || isPersistedExternalActionMetadata(pendingExternalAction)) &&
+    (pendingExternalAction === undefined
+      ? pendingExternalActionPayload === undefined
+      : isPayloadReference(pendingExternalActionPayload)) &&
     (toolExecutionIntents === undefined || (
       Array.isArray(toolExecutionIntents) &&
       toolExecutionIntents.length <= 128 &&
@@ -512,7 +562,7 @@ function isPersistedToolExecutionIntent(value: unknown): boolean {
     typeof value.observedAt === "string";
 }
 
-function isPersistedExternalAction(value: unknown): boolean {
+function isPersistedExternalActionMetadata(value: unknown): boolean {
   return isRecord(value) &&
     (value.status === "acquired" ||
       value.status === "running" ||
@@ -524,8 +574,6 @@ function isPersistedExternalAction(value: unknown): boolean {
     isIdentifier(value.actionId) &&
     (value.actionKind === "webSearch" || value.actionKind === "image" || value.actionKind === "compaction") &&
     (value.callId === undefined || isIdentifier(value.callId)) &&
-    typeof value.requestBody === "string" &&
-    utf8Length(value.requestBody) <= MAX_PROVIDER_PAYLOAD_BYTES &&
     typeof value.requestHash === "string" &&
     /^[0-9a-f]{64}$/.test(value.requestHash) &&
     typeof value.lastObservedAt === "string";
@@ -581,6 +629,7 @@ function payloadReferences(record: PersistedRecoveryRecord): string[] {
     record.coordinator.activeRequest?.providerPayload.ref,
     record.coordinator.latestProviderOutputPayload?.ref,
     record.metadata.pendingConfirmation?.payload.ref,
+    record.metadata.pendingExternalActionPayload?.ref,
     record.metadata.runtimePayload.ref
   ].filter((value): value is string => Boolean(value));
 }
