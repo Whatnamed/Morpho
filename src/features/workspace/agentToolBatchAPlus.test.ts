@@ -20,6 +20,10 @@ import {
   prepareAgentTurnProductAPlus,
   type RunMorphoAgentTurnAPlusInput
 } from "./agentTurnProductPreparationAPlus";
+import {
+  APlusExternalActionRunningError,
+  createAPlusExternalActionRunningError
+} from "./agentExternalActionClientAPlus";
 
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 const REQUEST = { requestId: "request-1", stepSequence: 1 } as const;
@@ -81,6 +85,165 @@ describe("A+ Tool Batch integration", () => {
     expect(lifecycle?.phase).toBe("continuing");
     expect(lifecycle?.toolBatches.at(-1)?.outcome.kind).toBe("partiallyCompleted");
   });
+
+  it("does not terminate a Tool Call while its external Search Action is still running", async () => {
+    const call: APlusToolCall = {
+      callId: "call-search-running",
+      name: "search_web_evidence",
+      argumentsText: JSON.stringify({
+        reason: "验证运行中的 Search",
+        queries: ["Morpho A+"]
+      })
+    };
+    const fake = createAgentTurnHostFake({ workspace: createTestWorkspace() });
+    const host = hostFromFake(fake);
+    const turnInput = standardInput();
+    const prepared = await prepareAgentTurnProductAPlus(turnInput, host);
+    const restored = AgentTurnCoordinator.restore({
+      snapshot: executingSnapshot([call]),
+      host: coordinatorHost(),
+      createRequestId: () => "unused"
+    });
+    if (restored.status !== "ok") throw new Error(restored.reason);
+
+    const result = await executeAgentToolBatchAPlus({
+      toolCalls: [call],
+      providerOutputText: "",
+      coordinator: restored.coordinator,
+      host,
+      turnInput,
+      prepared,
+      externalRequest: {
+        serverTurnId: TURN_ID,
+        localProjectId: fake.getWorkspace().project.id,
+        ...REQUEST
+      },
+      requestWebSearch: async () => {
+        throw new APlusExternalActionRunningError({
+          actionId: call.callId,
+          actionKind: "webSearch",
+          requestBody: "{\"actionId\":\"call-search-running\"}",
+          requestHash: "a".repeat(64)
+        }, "Search 仍在执行。");
+      }
+    });
+
+    expect(result.status).toBe("externalActionRunning");
+    expect(result.terminalResults).toEqual([]);
+    expect(restored.coordinator.getLifecycleSnapshot()?.phase).toBe("executingTools");
+  });
+
+  it("does not turn an Image 202 Action into a failed Tool terminal", async () => {
+    const call = visualCall("call-image-running");
+    const fake = createAgentTurnHostFake({ workspace: createTestWorkspace() });
+    const baseHost = hostFromFake(fake);
+    const host: AgentTurnHost = {
+      ...baseHost,
+      executeVisualGenerationPlan: async () => {
+        throw await createAPlusExternalActionRunningError({
+          actionId: call.callId,
+          actionKind: "image",
+          requestBody: "{\"actionId\":\"call-image-running\"}",
+          message: "Image 仍在服务器执行。"
+        });
+      }
+    };
+    const turnInput = standardInput();
+    const prepared = await prepareAgentTurnProductAPlus(turnInput, host);
+    const restored = AgentTurnCoordinator.restore({
+      snapshot: executingSnapshot([call]),
+      host: coordinatorHost(),
+      createRequestId: () => "unused"
+    });
+    if (restored.status !== "ok") throw new Error(restored.reason);
+
+    const result = await executeAgentToolBatchAPlus({
+      toolCalls: [call],
+      providerOutputText: "",
+      coordinator: restored.coordinator,
+      host,
+      turnInput,
+      prepared,
+      externalRequest: {
+        serverTurnId: TURN_ID,
+        localProjectId: fake.getWorkspace().project.id,
+        ...REQUEST
+      },
+      requestWebSearch: async () => ({ sources: [] })
+    });
+
+    expect(result.status).toBe("externalActionRunning");
+    expect(result.externalAction).toMatchObject({
+      actionKind: "image",
+      callId: call.callId
+    });
+    expect(result.terminalResults).toEqual([]);
+    expect(restored.coordinator.getLifecycleSnapshot()?.phase).toBe("executingTools");
+  });
+
+  it("reconstructs a persisted local effect when the Tool terminal was lost", async () => {
+    const call = researchCall("call-crash-window");
+    const fake = createAgentTurnHostFake({ workspace: createTestWorkspace() });
+    const host = hostFromFake(fake);
+    const turnInput = standardInput();
+    const prepared = await prepareAgentTurnProductAPlus(turnInput, host);
+    const first = AgentTurnCoordinator.restore({
+      snapshot: executingSnapshot([call]),
+      host: coordinatorHost(),
+      createRequestId: () => "unused"
+    });
+    if (first.status !== "ok") throw new Error(first.reason);
+
+    await expect(executeAgentToolBatchAPlus({
+      toolCalls: [call],
+      providerOutputText: "",
+      coordinator: first.coordinator,
+      host,
+      turnInput,
+      prepared,
+      externalRequest: {
+        serverTurnId: TURN_ID,
+        localProjectId: fake.getWorkspace().project.id,
+        ...REQUEST
+      },
+      requestWebSearch: async () => ({ sources: [] }),
+      onCallTerminal: async () => false
+    })).rejects.toThrow("Recovery Record");
+
+    const before = Object.values(fake.getWorkspace().objects)
+      .filter((object) => object.type === "research").length;
+    const second = AgentTurnCoordinator.restore({
+      snapshot: executingSnapshot([call]),
+      host: coordinatorHost(),
+      createRequestId: () => "unused"
+    });
+    if (second.status !== "ok") throw new Error(second.reason);
+    const recovered = await executeAgentToolBatchAPlus({
+      toolCalls: [call],
+      providerOutputText: "",
+      coordinator: second.coordinator,
+      host,
+      turnInput,
+      prepared,
+      externalRequest: {
+        serverTurnId: TURN_ID,
+        localProjectId: fake.getWorkspace().project.id,
+        ...REQUEST
+      },
+      requestWebSearch: async () => ({ sources: [] })
+    });
+
+    expect(recovered.terminalResults).toEqual([
+      expect.objectContaining({ callId: call.callId, status: "executed" })
+    ]);
+    expect(Object.values(fake.getWorkspace().objects)
+      .filter((object) => object.type === "research")).toHaveLength(before);
+    expect(recovered.continuationItems.at(-1)).toEqual(expect.objectContaining({
+      type: "function_call_output",
+      callId: call.callId,
+      output: expect.stringContaining('"recovered":true')
+    }));
+  });
 });
 
 function executingSnapshot(calls: readonly APlusToolCall[]): AgentTurnCoordinatorRecoverySnapshot {
@@ -100,7 +263,8 @@ function executingSnapshot(calls: readonly APlusToolCall[]): AgentTurnCoordinato
     type: "TOOL_BATCH_STARTED",
     declaredCallIds: calls.map((call) => call.callId)
   });
-  lifecycle = apply(lifecycle, {
+  if (calls.some((call) => call.callId === "call-completed")) {
+    lifecycle = apply(lifecycle, {
     type: "TOOL_CALL_TERMINATED",
     result: {
       status: "executed",
@@ -109,7 +273,8 @@ function executingSnapshot(calls: readonly APlusToolCall[]): AgentTurnCoordinato
       persistence: "succeeded",
       unresolvedWorkIds: []
     }
-  });
+    });
+  }
   return {
     recordVersion: 1,
     localProjectId: "project-test",
@@ -192,6 +357,30 @@ function researchCall(callId: string): APlusToolCall {
       constraints: [],
       openQuestions: [],
       evidence: []
+    })
+  };
+}
+
+function visualCall(callId: string): APlusToolCall {
+  return {
+    callId,
+    name: "generate_visuals",
+    argumentsText: JSON.stringify({
+      kind: "visualDevelopment",
+      items: [{
+        id: "visual-running",
+        title: "运行中的图像",
+        purpose: "验证 Image running 不进入 Tool 终态",
+        requestedReferenceObjectIds: [],
+        changeGoals: [],
+        preserve: [],
+        allowToChange: [],
+        productForm: [],
+        materialsAndCmf: [],
+        environmentAndLighting: [],
+        avoid: [],
+        role: "preview"
+      }]
     })
   };
 }

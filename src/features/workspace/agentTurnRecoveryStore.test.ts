@@ -168,7 +168,28 @@ function recoveryRecord(text: string): APlusTurnRecoveryRecord {
         executionWorkIntent: "discussion",
         imageAttachmentObjectIds: [],
         documentExtractObjectIds: [],
-        allowStructuredComparison: false
+        allowStructuredComparison: false,
+        facts: {
+          requiredReadState: {
+            requiredTools: [],
+            requirements: [],
+            completedTools: [],
+            failedTools: [],
+            reminderInserted: false,
+            repairAttempted: false,
+            exhausted: false
+          },
+          collectedCitations: [],
+          hasWebSearchEvidence: false,
+          memoryUpdateReminderInserted: false,
+          handledMemoryCandidateIndexes: [],
+          memoryUpdateEntryIds: [],
+          memoryUpdateKeys: [],
+          stageRecordUpdateKeys: [],
+          finalText: "",
+          pendingConfirmationCreated: false,
+          hasAgentToolResult: false
+        }
       }
     },
     updatedAt: "2026-07-29T00:00:00.000Z"

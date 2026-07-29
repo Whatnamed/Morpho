@@ -4,6 +4,7 @@ import { createTestWorkspace } from "@/domain/morpho/workspace";
 import {
   buildAPlusImageBatchIdentity,
   buildAPlusImageChildActionId,
+  classifyAPlusImageResponse,
   findAPlusImageResultObjectId,
   requestAgentWebSearchAPlus
 } from "./agentExternalActionClientAPlus";
@@ -106,5 +107,11 @@ describe("A+ External Action client", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(new Set(fetchMock.mock.calls.map((call) => call[1]?.body))).toHaveProperty("size", 1);
+  });
+
+  it("classifies Image 202 JSON as running instead of an image payload", () => {
+    expect(classifyAPlusImageResponse(202, "application/json")).toBe("running");
+    expect(classifyAPlusImageResponse(200, "application/json")).toBe("jsonError");
+    expect(classifyAPlusImageResponse(200, "image/png")).toBe("payload");
   });
 });

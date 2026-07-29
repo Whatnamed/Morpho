@@ -223,6 +223,7 @@ function createFixture() {
   });
   const input: AgentToolExecutorInput = {
     callId: "call-fixture",
+    stableOperationId: "a-plus-effect-turn-fixture-call-fixture",
     context,
     providerTaskContext: buildProviderTaskContext(context),
     runtimeState,

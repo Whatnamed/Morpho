@@ -123,14 +123,51 @@ describe("A+ unified Compaction orchestrator", () => {
       persistence: "failed"
     });
   });
+
+  it("keeps Compaction pending on a 202 replay and converges on the same Action", async () => {
+    const fixture = await createFixture({ runningOnce: true });
+    const first = await runAgentCompactionAPlus({
+      mode: "automatic",
+      actionId: "compact:automatic:running",
+      coordinator: fixture.coordinator,
+      host: fixture.host,
+      localProjectId: "project-test",
+      force: true,
+      signal: new AbortController().signal
+    });
+
+    expect(first.status).toBe("running");
+    expect(fixture.coordinator.getLifecycleSnapshot()?.phase).toBe("compacting");
+
+    const resumed = await runAgentCompactionAPlus({
+      mode: "automatic",
+      actionId: "compact:automatic:running",
+      coordinator: fixture.coordinator,
+      host: fixture.host,
+      localProjectId: "project-test",
+      force: true,
+      signal: new AbortController().signal
+    });
+
+    expect(resumed.status).toBe("applied");
+    expect(fixture.coordinator.getLifecycleSnapshot()?.phase).toBe("requestingProvider");
+  });
 });
 
-async function createFixture(options: { abortRoute?: boolean } = {}) {
+async function createFixture(options: { abortRoute?: boolean; runningOnce?: boolean } = {}) {
   const fake = createAgentTurnHostFake({ workspace: conversationWorkspace() });
+  let running = options.runningOnce === true;
   fake.setFetchRoute(
     `/api/ai/agent/turns/${TURN_ID}/actions/compaction`,
     () => {
       if (options.abortRoute) throw new DOMException("cancelled", "AbortError");
+      if (running) {
+        running = false;
+        return Response.json({
+          code: "external_action_running",
+          error: "Compaction 仍在服务器执行。"
+        }, { status: 202 });
+      }
       return Response.json({
         summary: {
           threadGoal: "收敛产品方向",
