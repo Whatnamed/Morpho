@@ -730,11 +730,40 @@ independent review:
   `MORPHO_AGENT_TOOL_EFFECT_MATRIX`; adding a new pending-draft, reversible-Workspace, or Memory write
   without an explicit replay strategy fails the test instead of escaping a hand-maintained name list.
 
-Tests cover a page disappearing while the first Search response never arrives, exact Compaction replay
-after local conversation data changes, persisted Image descriptor forwarding after current settings
-change, missing External Action payloads, Delivery Batch terminal loss/replay, and full Runner
+Tests cover a page disappearing while the first Search response never arrives, exact Compaction request
+replay with an explicit local-source conflict after conversation data changes, persisted Image descriptor
+forwarding after current settings change, missing External Action payloads, Delivery Batch terminal loss/replay, and full Runner
 Continuation after Delivery Draft creation. This revision does not change a Route, Server Journal,
 Supabase schema, or remote deployment; it does not switch the default Runtime, delete B, or start
+Stage 4. Stage 3 remains subject to independent re-audit.
+
+#### Stage 3 recovered-batch and Compaction apply-boundary revision
+
+The final focused Stage 3 revision closes two continuity gaps discovered after the write-ahead audit:
+
+- A restored Image child descriptor is now a one-time pending cursor, not an immutable batch-wide
+  rejection gate. Already persisted children are skipped by stable `clientRequestId`; the matching
+  restored child reuses the exact persisted Body; and its descriptor is consumed only after that
+  child's local Workspace/Operation result handling settles. The next child must then build, persist,
+  and flush its own descriptor before POST. A page loss between children therefore converges through
+  the already persisted result and advances without duplicate images, Hash conflict, or
+  `external_action_request_payload_unavailable`.
+- A recovered Compaction no longer computes or uses a new Workspace Plan. Its SHA-256-verified request
+  Body supplies the original message IDs, roles, bodies, and source endpoints, while client-only
+  write-ahead metadata preserves the matching Source ID Hash, expected previous Summary Revision, and
+  original token estimate without changing the server Route body. Recovery requires the request and
+  metadata to agree before querying the same Action.
+- The Summary apply boundary accepts only append-only messages beyond the original source range. A
+  changed, missing, or reordered original message returns `compaction_source_changed`; a changed or
+  missing base Summary Revision returns `summary_revision_conflict`. A currently unnecessary
+  Compaction Plan does not discard an already persisted Action, and an old Summary is never bound to a
+  newly computed source range.
+
+Focused tests exercise `A existing -> restore B -> persist B -> write/send C`, exact restored
+Compaction with no current Plan, append-only tail preservation, source-content conflict, Summary
+Revision conflict, and Recovery Store round-trip of the client apply boundary. This revision changes
+only Stage 3 client runtime, browser-local Recovery metadata, tests, and architecture ledger wording.
+It changes no Route, Server Journal, Supabase Migration, Runtime default, or B code and does not start
 Stage 4. Stage 3 remains subject to independent re-audit.
 
 ### Stage 4 — Cutover and Deletion
