@@ -7,7 +7,7 @@ This document is the durable implementation ledger for converging the Morpho Age
 | Field | Value |
 |---|---|
 | Decision date | 2026-07-28 |
-| Current state | Stage 3 implemented; independent audit pending |
+| Current state | Stage 3 revised implementation; independent re-audit pending |
 | Current formal working branch | `refactor/agent-runtime-a-plus` |
 | B implementation archive branch | `archive/agent-runtime-b` |
 | B implementation archive tag | `agent-runtime-b-final-2026-07-28-f27a410` |
@@ -16,8 +16,8 @@ This document is the durable implementation ledger for converging the Morpho Age
 | Stage 0 complete | Yes — the decision, archive references, migration ledger, and historical-audit status are recorded in the Stage 0 documentation commit |
 | Stage 1 complete | Yes — independently audited at `8d7c2df442ea1ccfb012e35691c2df8430a85f52` |
 | Stage 2 complete | Yes — independently audited at `895f1c26a3753342f78df155b99f992984adfa05` |
-| Stage 3 implementation | Complete; independent audit pending |
-| A+ Runtime | Complete but default-off behind the one temporary Stage 3 selector |
+| Stage 3 implementation | Revised for recovery convergence; independent audit follow-up pending |
+| A+ Runtime | Implemented but default-off behind the one temporary Stage 3 selector |
 | Active production runtime | Existing B-style runtime |
 | Server journals | Server Turn Journal plus External Action Journal implemented; remote Migration application remains an operator deployment step |
 | Stage 4 | Not started |
@@ -496,7 +496,7 @@ section and preserves the default B production path.
 
 ### Stage 3 — Unified Runtime Lifecycles
 
-Stage 3 is implemented and awaits independent audit. The A+ Runtime is complete but default-off;
+Stage 3 has a revised implementation and awaits independent re-audit. The A+ Runtime is implemented but default-off;
 the existing B-style Runtime remains the active production default. No B-only Runner, Lease,
 Closure, Snapshot, Manifest, Continuation, Finalizer, Receipt, RPC, Route, Workspace field, or test
 has been deleted. Stage 4 has not started.
@@ -578,6 +578,12 @@ Journal before deciding execution, and follows these rules:
 - `awaitingNextRequest` resumes the saved Tool payload, while missing payload terminates with
   `providerContinuationPayloadUnavailable` and no fabricated Tool;
 - Tool-complete/Continuation-unknown recovery queries first and never re-runs the Tool;
+- an active same-page Session exposes an explicit Resume/Reconcile operation; query-only pauses set
+  streaming false, retain the Session, and do not make a later legal Turn wait for a page refresh;
+- a Search, Image, or Compaction External Action in `running` is not a Tool or Compaction terminal;
+  its stable Action ID, kind, request body/hash, Call binding, and observed status are retained for
+  exact same-identity replay/query until a receipt, payload, unavailable result, cancellation, or
+  failure is observed;
 - every external terminal status is observed by the reducer and cannot overwrite local outcome;
 - deterministic identity, sequence, project binding, terminal-state, Summary-revision, or external-
   action Hash conflict is non-retryable and cannot remain on the ordinary retry schedule.
@@ -595,7 +601,8 @@ cancelled or partial outcome from already completed effects.
 `manual`. Each mode emits `COMPACTION_STARTED`, performs one server-authorized External Action,
 validates the Summary, applies one deterministic Summary Revision using
 `expectedPreviousRevisionId`, records the applied revision in Recovery before durable save, and ends
-with `COMPACTION_COMPLETED`, `COMPACTION_FAILED`, or `COMPACTION_CANCELLED`. Raw chat and retained
+with `COMPACTION_COMPLETED`, `COMPACTION_FAILED`, or `COMPACTION_CANCELLED`; a `202 running` response
+keeps the lifecycle in `compacting` and is resumed with the same Action identity. Raw chat and retained
 tail remain. Replay cannot create another revision; conflicts do not overwrite a newer revision;
 failure/cancellation leave the previous revision authoritative. Manual Compaction uses a UI-only
 Turn message and is not represented as an ordinary Agent answer. A+ requires no Compaction Receipt,
@@ -630,19 +637,47 @@ keeps the existing object rather than generating or writing it twice.
 
 #### Stage 3 acceptance evidence
 
-The seven Section 9 scenarios are explicitly exercised by
-`agentRuntimeAPlusAcceptance.test.ts`, with end-to-end runtime evidence in
+`agentRuntimeAPlusAcceptance.test.ts` remains the reducer/aggregator contract matrix; it is not by
+itself evidence that every Section 9 scenario is wired through the real Runner. End-to-end runtime
+evidence is in
 `agentTurnRunnerAPlus.test.ts`, lifecycle matrices in `agentTurnLifecycle.test.ts`, Coordinator
 retry/query/conflict matrices in `agentTurnCoordinator.test.ts`, all three real Compaction modes in
 `agentCompactionOrchestratorAPlus.test.ts`, local refresh payload integrity in
 `agentTurnRecoveryStore.test.ts`, exact Search replay polling in
 `agentExternalActionClientAPlus.test.ts`, and Search/Image/Compaction/Cancel/Provider Route tests. Coverage
-includes cancellation without duplicate Provider execution, clean new-Turn Fault state, local Tool
-success followed by Provider failure, the seven Tool Batch outcome classes, three Compaction modes,
-SSE detach, refresh/query/exact retry/payload loss, external-action replay, and deterministic
-conflicts that do not block a fresh Turn. The Workspace-level Runner test begins at the same one
-Agent input contract and observes Message, Trace, Tool, Workspace, persistence, and reducer Outcome.
-All external providers are fakes; Stage 3 performs no paid Provider, Search, or Image call.
+now includes same-page Provider resume, query-only Search replay to a Receipt, `202` Image response
+classification without Blob parsing, Compaction running convergence, persisted local-effect recovery
+without a duplicate object, restored Search citations and runtime facts, cancellation without duplicate
+Provider execution, clean new-Turn Fault state, local Tool success followed by Provider failure, the
+seven Tool Batch outcome classes, three Compaction modes, SSE detach, refresh/query/exact retry/payload
+loss, and deterministic conflicts that do not block a fresh Turn. The Workspace-level Runner tests
+begin at the same Agent input contract and observe Message, Trace, Tool, Workspace, persistence, and
+reducer Outcome. All external providers are fakes; Stage 3 performs no paid Provider, Search, or Image call.
+The independent audit must still verify the aggregate evidence before Stage 4 is allowed.
+
+#### Stage 3 recovery-convergence revision
+
+The follow-up implementation keeps Stage 4 blocked and closes the three recovery boundaries identified
+by the Stage 3 audit:
+
+- `resumeMorphoAgentTurnAPlus` and the Selector/Workspace failure retry perform an explicit query-only
+  reconciliation for an active Session. A `providerRunning` result never starts a second Provider;
+  an external terminal or `awaitingNextRequest` result drives the existing Session forward, and a
+  pending query leaves streaming false so the current page remains usable.
+- Search, Image, and Compaction share the bounded External Action status vocabulary. `running` is
+  persisted as a non-terminal pending action with its stable identity/body/hash and, when applicable,
+  Tool Call binding. Search replays the same receipt request; Image checks status and Content-Type
+  before reading a Blob; Compaction keeps `compacting` until the same Action converges. None of these
+  query/replay paths reserves quota or starts a second external execution.
+- Recovery Record v2 stores the serializable runtime facts consumed by later Steps, including Required
+  Read state, citations, web-search evidence, Memory/Stage update keys, final text, and confirmation
+  flags. Tool execution intent is flushed before local execution, and local write Tools derive stable
+  effect/Operation IDs from `serverTurnId + callId`; recovery first detects an existing effect before
+  executing again. The record never claims server authority over local effects or Overall Outcome.
+
+This revision changes only Stage 3 runtime, local Recovery, tests, and architecture ledger wording. It
+does not apply the Supabase Migration remotely, change the Server Journal schema, delete B Runtime, or
+start Stage 4. It is awaiting independent re-audit.
 
 ### Stage 4 — Cutover and Deletion
 

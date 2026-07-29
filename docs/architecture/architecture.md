@@ -5,7 +5,7 @@
 Morpho is a single Next.js App Router application in this repository root.
 
 The existing B-style Agent Runtime remains the active production default. Stage 3 also implements
-one complete A+ audit path behind the single build-time value
+one revised A+ audit path behind the single build-time value
 `NEXT_PUBLIC_MORPHO_AGENT_RUNTIME=a-plus-stage3`; unset, invalid, or `b` selects B. The selector has
 no UI/URL/request override and is scheduled for deletion during Stage 4 after formal cutover.
 
