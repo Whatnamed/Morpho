@@ -109,7 +109,12 @@ export async function clearProxySupabaseAuthCookies(
 
 function isSecureProxyRequest(request: NextRequest): boolean {
   const forwardedProtocol = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
-  return request.nextUrl.protocol === "https:" || new URL(request.url).protocol === "https:" || forwardedProtocol === "https";
+  return (
+    process.env.VERCEL === "1" ||
+    request.nextUrl.protocol === "https:" ||
+    new URL(request.url).protocol === "https:" ||
+    forwardedProtocol === "https"
+  );
 }
 
 export function getSupabaseAuthStorageKey(supabaseUrl: string): string {

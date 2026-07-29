@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   applyProxySupabaseCookieUpdates,
@@ -8,6 +8,10 @@ import {
 } from "./server";
 
 describe("Supabase proxy cookie handling", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("applies refreshed cookies and only the required auth cache headers", () => {
     const request = new NextRequest("https://morpho.example/projects/project-a");
     const response = NextResponse.next({ request });
@@ -109,6 +113,24 @@ describe("Supabase proxy cookie handling", () => {
       "https://example.supabase.co",
       originalCookieNames
     );
+
+    expect(response.cookies.get("sb-example-auth-token.0")).toMatchObject({
+      value: "",
+      maxAge: 0,
+      path: "/",
+      sameSite: "lax",
+      secure: true
+    });
+  });
+
+  it("keeps cleanup Secure in Vercel when the runtime exposes an internal HTTP request", async () => {
+    vi.stubEnv("VERCEL", "1");
+    const request = new NextRequest("http://internal-preview/projects/project-a", {
+      headers: { cookie: "sb-example-auth-token.0=stale-session" }
+    });
+    const response = NextResponse.next({ request });
+
+    await clearProxySupabaseAuthCookies(request, response, "https://example.supabase.co");
 
     expect(response.cookies.get("sb-example-auth-token.0")).toMatchObject({
       value: "",
