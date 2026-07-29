@@ -36,16 +36,13 @@ describe("Agent tool executors", () => {
       submit_memory_update: "semantic patch dedupe"
     };
 
-    expect(Object.keys(strategies).sort()).toEqual([
-      "create_comparison_analysis",
-      "create_concept_direction_proposal",
-      "create_design_definition_proposal",
-      "create_research_analysis",
-      "generate_visuals",
-      "prepare_delivery_section_draft",
-      "revise_selected_proposal_draft",
-      "submit_memory_update"
-    ]);
+    const allWriteTools = Object.entries(MORPHO_AGENT_TOOL_EFFECT_MATRIX)
+      .filter(([, effect]) =>
+        effect.pendingDraftWrite || effect.reversibleWorkspaceWrite || effect.memoryWrite
+      )
+      .map(([name]) => name)
+      .sort();
+    expect(Object.keys(strategies).sort()).toEqual(allWriteTools);
     for (const [name, _strategy] of Object.entries(strategies)) {
       const effect = getAgentToolEffect(name as keyof typeof MORPHO_AGENT_TOOL_EFFECT_MATRIX);
       expect(effect.pendingDraftWrite || effect.reversibleWorkspaceWrite || effect.memoryWrite).toBe(true);
