@@ -1018,6 +1018,17 @@ describe("AiConversationPanel", () => {
     expect(html).not.toContain("原图和修改要求已保留");
   });
 
+  it("keeps a query-only recovery entry visible while an external action is pending", () => {
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({ showRecoveryPending: true }))
+    );
+
+    expect(html).toContain("外部任务仍在执行");
+    expect(html).toContain("服务端还没有报告终态");
+    expect(html).toContain(">再次检查<");
+    expect(html).not.toContain(">重试<");
+  });
+
   it("keeps image-generation failure copy specific to image tasks", () => {
     const workspace = createInitialWorkspace();
     const html = renderToStaticMarkup(

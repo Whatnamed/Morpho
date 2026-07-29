@@ -20,7 +20,7 @@ import {
 } from "./agentTurnCoordinator";
 import { createAgentTurnCoordinatorHttpHost } from "./agentTurnCoordinatorHttpHost";
 import { createAgentTurnDisplayAdapterAPlus } from "./agentTurnDisplayAdapterAPlus";
-import type { AgentTurnHost } from "./agentTurnHost";
+import { showAgentTurnRecoveryPending, type AgentTurnHost } from "./agentTurnHost";
 import type { AgentTurnLifecycleState } from "./agentTurnLifecycle";
 import { finalizeAgentTurn } from "./agentTurnMessages";
 import { appendAgentTurnMessages } from "./agentTurnMessages";
@@ -143,6 +143,7 @@ export async function runMorphoAgentTurnAPlus(
     }
     if (coordinator.getLifecycleSnapshot()?.phase === "compacting") {
       session.host.ui.setStreaming(false);
+      showAgentTurnRecoveryPending(session.host.ui);
       return;
     }
     await maybeCompact(session, "automatic");
@@ -152,6 +153,7 @@ export async function runMorphoAgentTurnAPlus(
     }
     if (coordinator.getLifecycleSnapshot()?.phase === "compacting") {
       session.host.ui.setStreaming(false);
+      showAgentTurnRecoveryPending(session.host.ui);
       return;
     }
     const started = await coordinator.startInitialRequest(prepared.providerRequest);
@@ -478,6 +480,7 @@ export async function runManualCompactionTurnAPlus(
         summaryApplyState: "notApplied"
       });
       host.ui.setStreaming(false);
+      showAgentTurnRecoveryPending(host.ui);
       return;
     }
     recovery.updateMetadata((metadata) => ({
@@ -588,6 +591,7 @@ async function driveSession(session: APlusSession): Promise<void> {
       await recordCompactionResult(session, result, metadata);
       if (result.status === "running") {
         session.host.ui.setStreaming(false);
+        showAgentTurnRecoveryPending(session.host.ui);
         return;
       }
       continue;
@@ -599,6 +603,7 @@ async function driveSession(session: APlusSession): Promise<void> {
       // The server owns the in-flight execution. Refresh recovery and later
       // user actions are query-only; the Provider call is never started twice.
       session.host.ui.setStreaming(false);
+      showAgentTurnRecoveryPending(session.host.ui);
       return;
     }
     if (
@@ -609,6 +614,7 @@ async function driveSession(session: APlusSession): Promise<void> {
       // request is running.  Wait for Journal to say awaitingNextRequest
       // before executing any local effect.
       session.host.ui.setStreaming(false);
+      showAgentTurnRecoveryPending(session.host.ui);
       return;
     }
     if (
@@ -740,6 +746,7 @@ async function driveSession(session: APlusSession): Promise<void> {
       if (batch.status === "pendingConfirmation") continue;
       if (batch.status === "externalActionRunning") {
         session.host.ui.setStreaming(false);
+        showAgentTurnRecoveryPending(session.host.ui);
         return;
       }
       if (session.prepared.controller.signal.aborted) {
@@ -756,6 +763,7 @@ async function driveSession(session: APlusSession): Promise<void> {
       if (!afterCompaction || afterCompaction.phase === "terminal") continue;
       if (afterCompaction.phase === "compacting") {
         session.host.ui.setStreaming(false);
+        showAgentTurnRecoveryPending(session.host.ui);
         return;
       }
       const continuationRequest = continuationProviderRequest(
@@ -773,6 +781,7 @@ async function driveSession(session: APlusSession): Promise<void> {
       await maybeCompact(session, "preContinuation");
       if (session.coordinator.getLifecycleSnapshot()?.phase === "compacting") {
         session.host.ui.setStreaming(false);
+        showAgentTurnRecoveryPending(session.host.ui);
         return;
       }
       const continued = await session.coordinator.startContinuation(
@@ -833,7 +842,7 @@ async function reconcileRequestResult(
     // intentionally retained so the explicit Resume action can reconcile it
     // later, but it must not look like an endlessly streaming turn.
     session.host.ui.setStreaming(false);
-    session.host.ui.showFailure();
+    showAgentTurnRecoveryPending(session.host.ui);
     return false;
   }
   await terminateDeniedSession(session, result);

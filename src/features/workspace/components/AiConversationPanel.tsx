@@ -291,6 +291,7 @@ type AiConversationPanelProps = {
   directionPreviewCount: 1 | 2 | 4 | 6;
   pendingConfirmation: PendingAiConfirmation | null;
   showFailure: boolean;
+  showRecoveryPending: boolean;
   imageTaskStatus?: {
     state: "preparing" | "submitting" | "waiting" | "downloading" | "succeeded" | "failed" | "cancelled";
     message: string;
@@ -369,6 +370,7 @@ export function AiConversationPanel({
   directionPreviewCount,
   pendingConfirmation,
   showFailure,
+  showRecoveryPending,
   imageTaskStatus,
   contextWarning,
   migrationError,
@@ -495,7 +497,7 @@ export function AiConversationPanel({
     } else {
       setShowScrollBottom(true);
     }
-  }, [isOpen, workspace.ai.messages, activeProposal?.id, pendingConfirmation?.kind, showFailure]);
+  }, [isOpen, workspace.ai.messages, activeProposal?.id, pendingConfirmation?.kind, showFailure, showRecoveryPending]);
 
   useEffect(() => {
     resizeDraftTextarea();
@@ -678,6 +680,18 @@ export function AiConversationPanel({
                 ) : null}
                 <button className="plain-button" type="button" onClick={onCancelPending}>
                   取消
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {showRecoveryPending ? (
+            <div className="failure-card recovery-pending-card" role="status" aria-live="polite">
+              <strong>外部任务仍在执行</strong>
+              <p>服务端还没有报告终态。再次检查只会查询同一个任务，不会重复执行或重复计费。</p>
+              <div className="failure-actions">
+                <button className="plain-button" type="button" onClick={onFailureRetry}>
+                  再次检查
                 </button>
               </div>
             </div>

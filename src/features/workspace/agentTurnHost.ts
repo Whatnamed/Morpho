@@ -17,6 +17,8 @@ export type AgentTurnUiPort = {
   setTaskMode: (value: AiTaskMode) => void;
   openConversation: () => void;
   showFailure: () => void;
+  /** Keep a query-only external action visible without presenting it as terminal failure. */
+  showRecoveryPending?: () => void;
   setPendingConfirmation: (value: PendingAiConfirmation) => void;
   selectObjects: (objectIds: string[]) => void;
   focusObject: (objectId: string) => void;
@@ -36,3 +38,17 @@ export type AgentTurnHost = {
   now: () => number;
   randomSuffix: () => string;
 };
+
+/**
+ * A+ callers must keep an explicit resume affordance when an external action
+ * is still running or its response is ambiguous. Legacy test/host ports that
+ * predate the optional method retain the old failure affordance as a safe
+ * fallback instead of silently losing the recovery entry point.
+ */
+export function showAgentTurnRecoveryPending(ui: AgentTurnUiPort): void {
+  if (ui.showRecoveryPending) {
+    ui.showRecoveryPending();
+    return;
+  }
+  ui.showFailure();
+}

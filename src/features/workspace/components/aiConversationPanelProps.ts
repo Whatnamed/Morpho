@@ -38,6 +38,7 @@ export function buildAiConversationPanelProps(
     directionPreviewCount: 2 as const,
     pendingConfirmation: null,
     showFailure: false,
+    showRecoveryPending: false,
     onToggleOpen: () => undefined,
     onDraftChange: () => undefined,
     onTurnModeChange: () => undefined,

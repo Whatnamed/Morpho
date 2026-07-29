@@ -447,6 +447,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [traceStartObjectId, setTraceStartObjectId] = useState<string | null>(null);
   const [canvasTraceMode, setCanvasTraceMode] = useState<"direct" | "chain">("direct");
   const [showFailure, setShowFailure] = useState(false);
+  const [showRecoveryPending, setShowRecoveryPending] = useState(false);
   const [contextWarning, setContextWarning] = useState<string | undefined>();
   const [isAiStreaming, setIsAiStreaming] = useState(false);
   const [imageTaskStatus, setImageTaskStatus] = useState<ImageTaskStatus | null>(null);
@@ -1734,7 +1735,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           setAiOpen(true);
         },
         showFailure: () => {
+          setShowRecoveryPending(false);
           setShowFailure(true);
+        },
+        showRecoveryPending: () => {
+          setShowFailure(false);
+          setShowRecoveryPending(true);
         },
         setPendingConfirmation,
         selectObjects: setSelectedObjectIds,
@@ -1778,6 +1784,22 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
+    if (showRecoveryPending) {
+      const recoveryResult = await resumeSelectedAgentRuntime(projectId, agentTurnHost);
+      if (recoveryResult === "pending") {
+        setShowFailure(false);
+        setShowRecoveryPending(true);
+        return;
+      }
+      if (recoveryResult === "failed") {
+        setShowRecoveryPending(false);
+        setShowFailure(true);
+        return;
+      }
+      setShowRecoveryPending(false);
+      setShowFailure(false);
+    }
+
     const turnInput = {
       draft,
       taskMode,
@@ -1810,7 +1832,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     selectedObjectIds,
     selectedObjects,
     taskMode,
-    workIntent
+    workIntent,
+    projectId,
+    showRecoveryPending
   ]);
 
   const openDeliveryPreparation = useCallback((deliveryObjectId?: string) => {
@@ -4556,6 +4580,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         directionPreviewCount={directionPreviewCount}
         pendingConfirmation={pendingConfirmation}
         showFailure={showFailure}
+        showRecoveryPending={showRecoveryPending}
         imageTaskStatus={imageTaskStatus}
         contextWarning={contextWarning}
         migrationError={persistenceState.migrationError}
@@ -4587,7 +4612,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }}
         onFailureRetry={() => {
           void (async () => {
+            setShowFailure(false);
             const result = await resumeSelectedAgentRuntime(projectId, agentTurnHost);
+            setShowRecoveryPending(result === "pending");
             setShowFailure(result === "failed");
           })();
         }}

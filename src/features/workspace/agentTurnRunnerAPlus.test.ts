@@ -178,6 +178,35 @@ describe("A+ Agent turn runner", () => {
     });
   });
 
+  it("keeps the same-page recovery entry through repeated pending checks", async () => {
+    const fixture = createFixture([
+      { status: "providerRunning" },
+      { status: "externallyCompleted", outputText: "检查后下一回合完成。" }
+    ]);
+
+    await runMorphoAgentTurnAPlus(fixture.input, fixture.host, fixture.dependencies);
+    const firstCheck = await resumeMorphoAgentTurnAPlus(
+      fixture.fake.getWorkspace().project.id,
+      fixture.host,
+      fixture.dependencies
+    );
+    expect(firstCheck).toBe("pending");
+    expect(fixture.fake.getEvents().filter((event) => event.name === "recoveryPending")).not.toHaveLength(0);
+
+    fixture.coordinatorHost.setJournalStatus("externallyCompleted");
+    await expect(resumeMorphoAgentTurnAPlus(
+      fixture.fake.getWorkspace().project.id,
+      fixture.host,
+      fixture.dependencies
+    )).resolves.toBe("recovered");
+
+    await runMorphoAgentTurnAPlus(fixture.input, fixture.host, fixture.dependencies);
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      body: "检查后下一回合完成。",
+      agentTurnOutcome: "success"
+    });
+  });
+
   it("replays a running Search Action from the Runner and executes it only once", async () => {
     const fixture = createFixture([
       {
@@ -557,6 +586,7 @@ function createFixture(
       setTaskMode: fake.createUiRecorder("taskMode"),
       openConversation: fake.createUiRecorder("openConversation"),
       showFailure: fake.createUiRecorder("failure"),
+      showRecoveryPending: fake.createUiRecorder("recoveryPending"),
       setPendingConfirmation: fake.createUiRecorder("confirmation"),
       selectObjects: fake.createUiRecorder("selection"),
       focusObject: fake.createUiRecorder("focus"),
