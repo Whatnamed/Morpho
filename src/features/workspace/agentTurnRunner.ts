@@ -1156,6 +1156,7 @@ export async function runMorphoAgentTurn(
         pendingAgentActionCreated: false
       };
       const toolExecutorInput: Omit<AgentToolExecutorInput, "callId"> = {
+        stableOperationId: `legacy-effect-${agentTurnId}`,
         context,
         providerTaskContext,
         runtimeState,
@@ -1321,6 +1322,7 @@ export async function runMorphoAgentTurn(
           const output = await executeAgentTool({
             ...toolExecutorInput,
             callId: call.callId,
+            stableOperationId: `legacy-effect-${agentTurnId}-${call.callId}`,
             parsed
           });
           toolOutputs.push(buildToolResultOutput(call.callId, output));

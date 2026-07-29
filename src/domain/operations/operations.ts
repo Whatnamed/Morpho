@@ -35,6 +35,7 @@ const CONCEPT_DIRECTION_CARD_WIDTH = 320;
 const CONCEPT_DIRECTION_CARD_GAP = 32;
 
 export type CreateResearchOperationInput = {
+  operationId?: string;
   userInput: string;
   selectedObjectIds: string[];
   allowWebSearch: boolean;
@@ -256,7 +257,7 @@ export function createResearchOperation(
   input: CreateResearchOperationInput
 ): CreateResearchOperationResult {
   const now = new Date().toISOString();
-  const operationId = nextRecordId(workspace.operations, "operation-research");
+  const operationId = input.operationId ?? nextRecordId(workspace.operations, "operation-research");
   const objectSnapshots = input.selectedObjectIds
     .map((objectId) => workspace.objects[objectId])
     .filter((object) => Boolean(object))

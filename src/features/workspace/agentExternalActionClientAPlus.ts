@@ -1,6 +1,80 @@
 import type { APlusExternalRequestIdentity } from "./agentToolBatchAPlus";
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 
+export type APlusExternalActionKind = "webSearch" | "image" | "compaction";
+
+export type APlusExternalActionStatus =
+  | "acquired"
+  | "running"
+  | "completedWithPayload"
+  | "completedPayloadUnavailable"
+  | "cancelled"
+  | "failed"
+  | "conflict";
+
+export type APlusImageResponseKind = "running" | "payload" | "jsonError";
+
+export function classifyAPlusImageResponse(
+  status: number,
+  contentType: string | null
+): APlusImageResponseKind {
+  if (status === 202) return "running";
+  if ((contentType ?? "").toLowerCase().includes("application/json")) return "jsonError";
+  return "payload";
+}
+
+export type APlusExternalActionDescriptor = Readonly<{
+  actionId: string;
+  actionKind: APlusExternalActionKind;
+  requestBody: string;
+  requestHash: string;
+}>;
+
+export class APlusExternalActionRunningError extends Error {
+  readonly code = "external_action_running" as const;
+  readonly status = "running" as const;
+
+  constructor(readonly action: APlusExternalActionDescriptor, message: string) {
+    super(message);
+    this.name = "APlusExternalActionRunningError";
+  }
+}
+
+export function isAPlusExternalActionRunningError(
+  error: unknown
+): error is APlusExternalActionRunningError {
+  return error instanceof APlusExternalActionRunningError || (
+    isRecord(error) &&
+    error.code === "external_action_running" &&
+    isRecord(error.action) &&
+    typeof error.action.actionId === "string" &&
+    typeof error.action.actionKind === "string" &&
+    typeof error.action.requestBody === "string" &&
+    typeof error.action.requestHash === "string"
+  );
+}
+
+export async function createAPlusExternalActionRunningError(input: Readonly<{
+  actionId: string;
+  actionKind: APlusExternalActionKind;
+  requestBody: string;
+  message: string;
+}>): Promise<APlusExternalActionRunningError> {
+  return new APlusExternalActionRunningError(
+    {
+      actionId: input.actionId,
+      actionKind: input.actionKind,
+      requestBody: input.requestBody,
+      requestHash: await hashAPlusExternalActionBody(input.requestBody)
+    },
+    input.message
+  );
+}
+
+export async function hashAPlusExternalActionBody(value: string): Promise<string> {
+  return sha256Hex(value);
+}
+
 export async function requestAgentWebSearchAPlus(input: Readonly<{
   fetch: typeof fetch;
   identity: APlusExternalRequestIdentity;
@@ -36,10 +110,12 @@ export async function requestAgentWebSearchAPlus(input: Readonly<{
       continue;
     }
     if (response.status === 202) {
-      throw externalActionError(
-        "external_action_running",
-        "Search 仍在服务器执行；本地只进行过同身份查询，未重复调用外部 Search。"
-      );
+      throw await createAPlusExternalActionRunningError({
+        actionId: input.actionId,
+        actionKind: "webSearch",
+        requestBody: bodyText,
+        message: "Search 仍在服务器执行；本地只进行过同身份查询，未重复调用外部 Search。"
+      });
     }
     if (!response.ok || !isSearchResponse(body)) {
       throw externalActionError(

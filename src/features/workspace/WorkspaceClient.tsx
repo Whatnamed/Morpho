@@ -233,12 +233,16 @@ import type { AgentTurnHost } from "./agentTurnHost";
 import {
   buildAPlusImageBatchIdentity,
   buildAPlusImageChildActionId,
-  findAPlusImageResultObjectId
+  classifyAPlusImageResponse,
+  createAPlusExternalActionRunningError,
+  findAPlusImageResultObjectId,
+  isAPlusExternalActionRunningError
 } from "./agentExternalActionClientAPlus";
 import {
   acknowledgeSelectedPendingAgentConfirmation,
   cancelSelectedMorphoAgentTurn,
   recoverSelectedAgentRuntime,
+  resumeSelectedAgentRuntime,
   runSelectedManualCompactionTurn,
   runSelectedMorphoAgentTurn
 } from "./agentRuntimeSelector";
@@ -1556,6 +1560,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               const aPlusActionId = input.aPlusExternalAction
                 ? await buildAPlusImageChildActionId(input.aPlusExternalAction.actionId, item.id)
                 : undefined;
+              const imageRequestBody = JSON.stringify(input.aPlusExternalAction && aPlusActionId
+                ? {
+                    localProjectId: input.aPlusExternalAction.localProjectId,
+                    requestId: input.aPlusExternalAction.requestId,
+                    stepSequence: input.aPlusExternalAction.stepSequence,
+                    actionId: aPlusActionId,
+                    claimCallId: input.aPlusExternalAction.actionId,
+                    input: imageInput
+                  }
+                : imageInput);
               const imageResponse = await fetch(
                 input.aPlusExternalAction
                   ? `/api/ai/agent/turns/${encodeURIComponent(input.aPlusExternalAction.serverTurnId)}/actions/image`
@@ -1563,22 +1577,31 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(input.aPlusExternalAction && aPlusActionId
-                  ? {
-                      localProjectId: input.aPlusExternalAction.localProjectId,
-                      requestId: input.aPlusExternalAction.requestId,
-                      stepSequence: input.aPlusExternalAction.stepSequence,
-                      actionId: aPlusActionId,
-                      claimCallId: input.aPlusExternalAction.actionId,
-                      input: imageInput
-                    }
-                  : imageInput),
+                body: imageRequestBody,
                 signal: input.signal
                 }
               );
               const providerTaskId = imageResponse.headers.get("X-Morpho-Provider-Task-Id") || undefined;
               if (providerTaskId) {
                 lastProviderTaskId = providerTaskId;
+              }
+              const imageResponseKind = classifyAPlusImageResponse(
+                imageResponse.status,
+                imageResponse.headers.get("Content-Type")
+              );
+              if (imageResponseKind === "running") {
+                if (!input.aPlusExternalAction || !aPlusActionId) {
+                  throw new Error("图像任务仍在执行，但缺少 A+ Action 身份，无法安全恢复。");
+                }
+                throw await createAPlusExternalActionRunningError({
+                  actionId: aPlusActionId,
+                  actionKind: "image",
+                  requestBody: imageRequestBody,
+                  message: "图像任务仍在服务器执行；本地只进行同身份查询，不重复生成。"
+                });
+              }
+              if (imageResponseKind === "jsonError") {
+                throw new Error(await readErrorResponse(imageResponse));
               }
               if (!imageResponse.ok) {
                 throw new Error(await readErrorResponse(imageResponse));
@@ -1606,6 +1629,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               if (itemError instanceof DOMException && itemError.name === "AbortError") {
                 throw itemError;
               }
+              if (isAPlusExternalActionRunningError(itemError)) {
+                throw itemError;
+              }
               const reason = itemError instanceof Error ? itemError.message : "图像生成失败";
               return { status: "failed", index: itemIndex, item, reason };
             } finally {
@@ -1618,21 +1644,26 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         );
       } catch (error) {
         const isCancelled = error instanceof DOMException && error.name === "AbortError";
+        const isExternalActionRunning = isAPlusExternalActionRunningError(error);
         const reason = isCancelled
           ? "图像任务已取消。原输入、来源对象和已有结果已保留。"
           : error instanceof Error
             ? error.message
             : "图像任务失败。";
-        commitWorkspaceNow((current) => {
-          const failed = failImageGenerationOperation(current, {
-            operationId,
-            status: isCancelled ? "cancelled" : "failed",
-            reason,
-            providerTaskId: lastProviderTaskId
+        if (!isExternalActionRunning) {
+          commitWorkspaceNow((current) => {
+            const failed = failImageGenerationOperation(current, {
+              operationId,
+              status: isCancelled ? "cancelled" : "failed",
+              reason,
+              providerTaskId: lastProviderTaskId
+            });
+            return { workspace: failed, value: undefined };
           });
-          return { workspace: failed, value: undefined };
-        });
-        setImageTaskStatus({ state: isCancelled ? "cancelled" : "failed", message: reason });
+          setImageTaskStatus({ state: isCancelled ? "cancelled" : "failed", message: reason });
+        } else {
+          setImageTaskStatus({ state: "waiting", message: reason });
+        }
         throw error;
       } finally {
         setPendingImageGenerationSlots((current) =>
@@ -4554,7 +4585,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           void acknowledgeSelectedPendingAgentConfirmation(projectId);
           setPendingConfirmation(null);
         }}
-        onFailureRetry={() => setShowFailure(false)}
+        onFailureRetry={() => {
+          void (async () => {
+            const result = await resumeSelectedAgentRuntime(projectId, agentTurnHost);
+            setShowFailure(result === "failed");
+          })();
+        }}
         onOpenProjectRecords={openProjectRecords}
       />
 

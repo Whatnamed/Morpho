@@ -28,7 +28,9 @@ import { createAgentTrace } from "./agentMessageTrace";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
 import {
   prepareAgentTurnProductAPlus,
+  createEmptyAgentTurnRecoveryFacts,
   restorePreparedAgentTurnProductAPlus,
+  snapshotAgentTurnRuntimeFacts,
   type PreparedAgentTurnAPlus,
   type RunMorphoAgentTurnAPlusInput
 } from "./agentTurnProductPreparationAPlus";
@@ -64,6 +66,7 @@ type ActiveAPlusSession = Readonly<{
   controller: AbortController;
   host: AgentTurnHost;
   finish: () => Promise<void>;
+  resume: () => Promise<"recovered" | "pending" | "failed">;
 }>;
 
 const activeSessions = new Map<string, ActiveAPlusSession>();
@@ -138,9 +141,17 @@ export async function runMorphoAgentTurnAPlus(
       await finalizeSession(session);
       return;
     }
+    if (coordinator.getLifecycleSnapshot()?.phase === "compacting") {
+      session.host.ui.setStreaming(false);
+      return;
+    }
     await maybeCompact(session, "automatic");
     if (coordinator.getLifecycleSnapshot()?.phase === "terminal") {
       await finalizeSession(session);
+      return;
+    }
+    if (coordinator.getLifecycleSnapshot()?.phase === "compacting") {
+      session.host.ui.setStreaming(false);
       return;
     }
     const started = await coordinator.startInitialRequest(prepared.providerRequest);
@@ -162,7 +173,8 @@ export async function recoverMorphoAgentTurnAPlus(
   host: AgentTurnHost,
   dependencies: AgentTurnRunnerAPlusDependencies = {}
 ): Promise<"none" | "recovered" | "pending" | "failed"> {
-  if (activeSessions.has(localProjectId)) return "pending";
+  const active = activeSessions.get(localProjectId);
+  if (active) return active.resume();
   const store = dependencies.recoveryStore ?? createAgentTurnRecoveryStore();
   const loaded = await store.load(localProjectId);
   if (loaded.status === "none") return "none";
@@ -230,7 +242,8 @@ export async function recoverMorphoAgentTurnAPlus(
       return "recovered";
     }
     const compactionRecovered = recoverInterruptedCompaction(session);
-    if (!compactionRecovered) {
+    const restoredPhase = restored.coordinator.getLifecycleSnapshot()?.phase;
+    if (!compactionRecovered && restoredPhase !== "compacting" && restoredPhase !== "executingTools") {
       const snapshot = restored.coordinator.exportRecoverySnapshot();
       if (snapshot?.activeRequest || snapshot?.lastRequest) {
         const queried = await restored.coordinator.recoverServerExecutionStatus();
@@ -249,6 +262,21 @@ export async function recoverMorphoAgentTurnAPlus(
     const lifecycle = restored.coordinator.getLifecycleSnapshot();
     if (lifecycle?.phase === "terminal") activeSessions.delete(localProjectId);
   }
+}
+
+/**
+ * Reconciles an A+ Session that is still owned by the current page.  This is
+ * deliberately query-only: an active Provider Request is never started a
+ * second time after the SSE/display transport has gone away.
+ */
+export async function resumeMorphoAgentTurnAPlus(
+  localProjectId: string,
+  host: AgentTurnHost,
+  dependencies: AgentTurnRunnerAPlusDependencies = {}
+): Promise<"none" | "recovered" | "pending" | "failed"> {
+  const active = activeSessions.get(localProjectId);
+  if (active) return active.resume();
+  return recoverMorphoAgentTurnAPlus(localProjectId, host, dependencies);
 }
 
 export async function cancelMorphoAgentTurnAPlus(
@@ -372,7 +400,8 @@ export async function runManualCompactionTurnAPlus(
     executionWorkIntent: "discussion",
     imageAttachmentObjectIds: [],
     documentExtractObjectIds: [],
-    allowStructuredComparison: false
+    allowStructuredComparison: false,
+    facts: createEmptyAgentTurnRecoveryFacts()
   };
   const restoredProduct = restorePreparedAgentTurnProductAPlus(runtime, host);
   const createId = dependencies.createId ?? createRuntimeId;
@@ -414,6 +443,7 @@ export async function runManualCompactionTurnAPlus(
     recovery
   };
   installActiveSession(session);
+  let keepSessionForRecovery = false;
   try {
     const initialized = await coordinator.initialize();
     if (initialized.status === "denied") {
@@ -437,6 +467,19 @@ export async function runManualCompactionTurnAPlus(
         revisionId
       )
     });
+    if (result.status === "running") {
+      keepSessionForRecovery = true;
+      await recordCompactionResult(session, result, {
+        mode: "manual",
+        actionId,
+        ...(workspace.ai.conversationCompaction.summaryRevisionId
+          ? { expectedPreviousRevisionId: workspace.ai.conversationCompaction.summaryRevisionId }
+          : {}),
+        summaryApplyState: "notApplied"
+      });
+      host.ui.setStreaming(false);
+      return;
+    }
     recovery.updateMetadata((metadata) => ({
       ...metadata,
       compaction: {
@@ -480,7 +523,7 @@ export async function runManualCompactionTurnAPlus(
   } catch (error) {
     await terminateUnexpectedSession(session, error);
   } finally {
-    activeSessions.delete(localProjectId);
+    if (!keepSessionForRecovery) activeSessions.delete(localProjectId);
   }
 }
 
@@ -515,12 +558,56 @@ async function driveSession(session: APlusSession): Promise<void> {
       if (!await reconcileRequestResult(session, recovered, false)) return;
       continue;
     }
+    if (lifecycle.phase === "compacting") {
+      const metadata = session.recovery.metadata.compaction;
+      if (!metadata) {
+        await terminateDeniedSession(session, {
+          status: "denied",
+          code: "compaction_recovery_metadata_missing",
+          error: "Compaction 正在执行，但缺少可重放的 Action 身份。",
+          recoverable: false,
+          lifecycle
+        });
+        return;
+      }
+      const result = await runAgentCompactionAPlus({
+        mode: metadata.mode,
+        actionId: metadata.actionId,
+        coordinator: session.coordinator,
+        host: session.host,
+        localProjectId: session.localProjectId,
+        limits: session.turnInput.readConversationTokenLimits(),
+        signal: session.prepared.controller.signal,
+        onSummaryApplied: ({ revisionId }) => recordAppliedCompaction(
+          session.recovery,
+          metadata.mode,
+          metadata.actionId,
+          revisionId
+        )
+      });
+      await recordCompactionResult(session, result, metadata);
+      if (result.status === "running") {
+        session.host.ui.setStreaming(false);
+        return;
+      }
+      continue;
+    }
     if (
       lifecycle.phase === "requestingProvider" &&
       lifecycle.serverExecutionStatus === "providerRunning"
     ) {
       // The server owns the in-flight execution. Refresh recovery and later
       // user actions are query-only; the Provider call is never started twice.
+      return;
+    }
+    if (
+      lifecycle.phase === "continuing" &&
+      lifecycle.serverExecutionStatus === "providerRunning"
+    ) {
+      // A streamed Tool payload is still display-only while the external
+      // request is running.  Wait for Journal to say awaitingNextRequest
+      // before executing any local effect.
+      session.host.ui.setStreaming(false);
       return;
     }
     if (
@@ -578,16 +665,41 @@ async function driveSession(session: APlusSession): Promise<void> {
         ...(session.recovery.metadata.pendingConfirmation
           ? { restoredPendingConfirmation: session.recovery.metadata.pendingConfirmation }
           : {}),
-        onCallTerminal: async ({ continuationItem, pendingConfirmation }) => {
+        onCallTerminal: async ({ terminal, continuationItem, pendingConfirmation }) => {
           session.recovery.updateMetadata((metadata) => ({
             ...metadata,
             runtime: {
               ...metadata.runtime,
+              facts: snapshotAgentTurnRuntimeFacts(session.prepared.runtimeState),
               continuationItems: continuationItem
                 ? mergeContinuationItems(metadata.runtime.continuationItems, [continuationItem])
                 : metadata.runtime.continuationItems
             },
-            ...(pendingConfirmation ? { pendingConfirmation } : {})
+            ...(pendingConfirmation ? { pendingConfirmation } : {}),
+            toolExecutionIntents: mergeToolExecutionIntent(
+              metadata.toolExecutionIntents,
+              {
+                callId: terminal.callId,
+                stableOperationId: `a-plus-effect-${lifecycle.turnId}-${terminal.callId}`,
+                status: "terminal",
+                observedAt: new Date(session.host.now()).toISOString()
+              }
+            )
+          }));
+          return session.recovery.flush();
+        },
+        onCallIntent: async ({ callId, stableOperationId }) => {
+          session.recovery.updateMetadata((metadata) => ({
+            ...metadata,
+            toolExecutionIntents: mergeToolExecutionIntent(
+              metadata.toolExecutionIntents,
+              {
+                callId,
+                stableOperationId,
+                status: "intent",
+                observedAt: new Date(session.host.now()).toISOString()
+              }
+            )
           }));
           return session.recovery.flush();
         }
@@ -596,6 +708,7 @@ async function driveSession(session: APlusSession): Promise<void> {
         ...metadata,
         runtime: {
           ...metadata.runtime,
+          facts: snapshotAgentTurnRuntimeFacts(session.prepared.runtimeState),
           continuationItems: mergeContinuationItems(
             metadata.runtime.continuationItems,
             batch.continuationItems
@@ -603,10 +716,31 @@ async function driveSession(session: APlusSession): Promise<void> {
         },
         ...(batch.pendingConfirmation
           ? { pendingConfirmation: batch.pendingConfirmation }
+          : {}),
+        ...(batch.status !== "externalActionRunning"
+          ? { pendingExternalAction: undefined }
           : {})
       }));
+      if (batch.status === "externalActionRunning" && batch.externalAction) {
+        session.recovery.updateMetadata((metadata) => ({
+          ...metadata,
+          pendingExternalAction: {
+            status: "running",
+            actionId: batch.externalAction!.actionId,
+            actionKind: batch.externalAction!.actionKind,
+            callId: batch.externalAction!.callId,
+            requestBody: batch.externalAction!.requestBody,
+            requestHash: batch.externalAction!.requestHash,
+            lastObservedAt: new Date(session.host.now()).toISOString()
+          }
+        }));
+      }
       await session.recovery.flush();
       if (batch.status === "pendingConfirmation") continue;
+      if (batch.status === "externalActionRunning") {
+        session.host.ui.setStreaming(false);
+        return;
+      }
       if (session.prepared.controller.signal.aborted) {
         await session.coordinator.requestCancellation("用户停止了 Tool Batch。");
         continue;
@@ -619,6 +753,10 @@ async function driveSession(session: APlusSession): Promise<void> {
       await maybeCompact(session, "preContinuation");
       const afterCompaction = session.coordinator.getLifecycleSnapshot();
       if (!afterCompaction || afterCompaction.phase === "terminal") continue;
+      if (afterCompaction.phase === "compacting") {
+        session.host.ui.setStreaming(false);
+        return;
+      }
       const continuationRequest = continuationProviderRequest(
         session.recovery.metadata.runtime
       );
@@ -632,6 +770,10 @@ async function driveSession(session: APlusSession): Promise<void> {
       session.recovery.metadata.runtime.continuationItems.length > 0
     ) {
       await maybeCompact(session, "preContinuation");
+      if (session.coordinator.getLifecycleSnapshot()?.phase === "compacting") {
+        session.host.ui.setStreaming(false);
+        return;
+      }
       const continued = await session.coordinator.startContinuation(
         continuationProviderRequest(session.recovery.metadata.runtime)
       );
@@ -671,6 +813,7 @@ async function reconcileRequestResult(
   result: AgentTurnCoordinatorActionResult,
   allowExactRetry: boolean
 ): Promise<boolean> {
+  syncRecoveryRuntimeFacts(session);
   await session.recovery.flush();
   if (result.status === "ok") return true;
   if (result.code === "request_not_observed" && result.recoverable && allowExactRetry) {
@@ -685,6 +828,10 @@ async function reconcileRequestResult(
       result.code === "external_execution_pending_reconciliation" ||
       result.code === "external_action_running")
   ) {
+    // A query-only pause must leave the current page usable.  The session is
+    // intentionally retained so the explicit Resume action can reconcile it
+    // later, but it must not look like an endlessly streaming turn.
+    session.host.ui.setStreaming(false);
     session.host.ui.showFailure();
     return false;
   }
@@ -692,11 +839,21 @@ async function reconcileRequestResult(
   return false;
 }
 
+function syncRecoveryRuntimeFacts(session: APlusSession): void {
+  session.recovery.updateMetadata((metadata) => ({
+    ...metadata,
+    runtime: {
+      ...metadata.runtime,
+      facts: snapshotAgentTurnRuntimeFacts(session.prepared.runtimeState)
+    }
+  }));
+}
+
 async function maybeCompact(
   session: APlusSession,
   mode: "automatic" | "preContinuation"
-): Promise<void> {
-  if (!buildConversationCompactionPlan({ workspace: session.host.readWorkspace() })) return;
+): Promise<Awaited<ReturnType<typeof runAgentCompactionAPlus>> | undefined> {
+  if (!buildConversationCompactionPlan({ workspace: session.host.readWorkspace() })) return undefined;
   const actionId = `compact:${mode}:${createRuntimeId()}`;
   const previousRevisionId = session.host.readWorkspace().ai.conversationCompaction.summaryRevisionId;
   session.recovery.updateMetadata((metadata) => ({
@@ -724,15 +881,45 @@ async function maybeCompact(
       revisionId
     )
   });
-  session.recovery.updateMetadata((metadata) => ({
-    ...metadata,
+  await recordCompactionResult(session, result, {
+    mode,
+    actionId,
+    ...(previousRevisionId ? { expectedPreviousRevisionId: previousRevisionId } : {}),
+    summaryApplyState: "notApplied"
+  });
+  return result;
+}
+
+async function recordCompactionResult(
+  session: APlusSession,
+  result: Awaited<ReturnType<typeof runAgentCompactionAPlus>>,
+  metadata: NonNullable<APlusTurnRecoveryMetadata["compaction"]>
+): Promise<void> {
+  session.recovery.updateMetadata((current) => ({
+    ...current,
     compaction: {
-      mode,
-      actionId,
-      ...(previousRevisionId ? { expectedPreviousRevisionId: previousRevisionId } : {}),
-      summaryApplyState: result.status === "applied" ? "applied" : result.status === "failed" ? "failed" : "notApplied",
+      mode: metadata.mode,
+      actionId: metadata.actionId,
+      ...(metadata.expectedPreviousRevisionId
+        ? { expectedPreviousRevisionId: metadata.expectedPreviousRevisionId }
+        : {}),
+      summaryApplyState: result.status === "applied"
+        ? "applied"
+        : result.status === "failed"
+          ? "failed"
+          : metadata.summaryApplyState,
       ...(result.status === "applied" ? { appliedRevisionId: result.revisionId } : {})
-    }
+    },
+    ...(result.status === "running" ? {
+      pendingExternalAction: {
+        status: "running" as const,
+        actionId: result.externalAction.actionId,
+        actionKind: result.externalAction.actionKind,
+        requestBody: result.externalAction.requestBody,
+        requestHash: result.externalAction.requestHash,
+        lastObservedAt: new Date(session.host.now()).toISOString()
+      }
+    } : { pendingExternalAction: undefined })
   }));
   await session.recovery.flush();
 }
@@ -773,17 +960,10 @@ function recoverInterruptedCompaction(session: APlusSession): boolean {
     }));
     return true;
   }
-  requireCoordinatorOk(session.coordinator.failCompaction(
-    lifecycle.actionId,
-    `${lifecycle.actionId}:result_unavailable`,
-    {
-      kind: "terminal",
-      code: "compaction_result_unavailable_after_refresh",
-      message: "Compaction 的外部结果在刷新后不可恢复；旧 Summary Revision 保持不变。",
-      recoverable: false
-    }
-  ));
-  return true;
+  // Keep the lifecycle in `compacting` until the same Action ID is queried
+  // again.  A refresh must not turn a still-running server action into a
+  // local failure or create a second compaction request.
+  return false;
 }
 
 async function persistInitialWorkspace(session: APlusSession): Promise<void> {
@@ -989,7 +1169,8 @@ function buildRecoveryRuntime(
     executionWorkIntent: prepared.executionWorkIntent,
     imageAttachmentObjectIds: [...prepared.imageAttachmentObjectIds],
     documentExtractObjectIds: [...prepared.documentExtractObjectIds],
-    allowStructuredComparison: prepared.allowStructuredComparison
+    allowStructuredComparison: prepared.allowStructuredComparison,
+    facts: snapshotAgentTurnRuntimeFacts(prepared.runtimeState)
   };
 }
 
@@ -1014,6 +1195,14 @@ function mergeContinuationItems(
   return [...previous.map((item) => ({ ...item })), ...additions.map((item) => ({ ...item }))];
 }
 
+function mergeToolExecutionIntent(
+  previous: APlusTurnRecoveryMetadata["toolExecutionIntents"],
+  next: NonNullable<APlusTurnRecoveryMetadata["toolExecutionIntents"]>[number]
+): NonNullable<APlusTurnRecoveryMetadata["toolExecutionIntents"]> {
+  const existing = previous?.filter((intent) => intent.callId !== next.callId) ?? [];
+  return [...existing, { ...next }];
+}
+
 function continuationItemKey(item: APlusAgentContinuationItem): string {
   return `${item.type}:${item.callId}`;
 }
@@ -1027,8 +1216,44 @@ function installActiveSession(session: APlusSession): void {
     coordinator: session.coordinator,
     controller: session.prepared.controller,
     host: session.host,
-    finish: () => driveSessionSerialized(session)
+    finish: () => driveSessionSerialized(session),
+    resume: () => resumeActiveSession(session)
   });
+}
+
+async function resumeActiveSession(
+  session: APlusSession
+): Promise<"recovered" | "pending" | "failed"> {
+  const lifecycle = session.coordinator.getLifecycleSnapshot();
+  if (!lifecycle) {
+    session.host.ui.setStreaming(false);
+    session.host.ui.showFailure();
+    return "failed";
+  }
+  if (lifecycle.phase === "terminal") {
+    await finalizeSession(session);
+    activeSessions.delete(session.localProjectId);
+    return "recovered";
+  }
+  session.host.ui.setStreaming(true);
+  try {
+    if (lifecycle.phase !== "compacting" && lifecycle.phase !== "executingTools") {
+      const reconciled = await session.coordinator.recoverServerExecutionStatus();
+      if (!await reconcileRequestResult(session, reconciled, false)) {
+        return "pending";
+      }
+    }
+    await driveSessionSerialized(session);
+    const next = session.coordinator.getLifecycleSnapshot();
+    if (next?.phase === "terminal") {
+      activeSessions.delete(session.localProjectId);
+      return "recovered";
+    }
+    return "pending";
+  } catch (error) {
+    await terminateUnexpectedSession(session, error);
+    return "failed";
+  }
 }
 
 function requireCoordinatorOk(result: AgentTurnCoordinatorActionResult): void {

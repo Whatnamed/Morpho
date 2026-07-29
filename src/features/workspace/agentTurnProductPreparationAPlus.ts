@@ -57,7 +57,10 @@ import {
   type ProviderContextFrameBuildInput
 } from "./providerContextFrames";
 import { buildProviderTaskContext, buildTaskContext, type ProviderTaskContext, type TaskContextResult } from "./taskContext";
-import type { APlusTurnRecoveryRuntime } from "./agentTurnRecoveryStore";
+import type {
+  APlusTurnRecoveryFacts,
+  APlusTurnRecoveryRuntime
+} from "./agentTurnRecoveryStore";
 
 export type APlusAgentTurnDeliveryDraftTarget = {
   deliveryObjectId: string;
@@ -97,6 +100,85 @@ export type PreparedAgentTurnAPlus = Readonly<{
   allowStructuredComparison: boolean;
   controller: AbortController;
 }>;
+
+export function createEmptyAgentTurnRecoveryFacts(): APlusTurnRecoveryFacts {
+  return {
+    requiredReadState: {
+      requiredTools: [],
+      requirements: [],
+      completedTools: [],
+      failedTools: [],
+      reminderInserted: false,
+      repairAttempted: false,
+      exhausted: false
+    },
+    collectedCitations: [],
+    hasWebSearchEvidence: false,
+    memoryUpdateReminderInserted: false,
+    handledMemoryCandidateIndexes: [],
+    memoryUpdateEntryIds: [],
+    memoryUpdateKeys: [],
+    stageRecordUpdateKeys: [],
+    finalText: "",
+    pendingConfirmationCreated: false,
+    hasAgentToolResult: false
+  };
+}
+
+export function snapshotAgentTurnRuntimeFacts(
+  state: AgentTurnRuntimeState
+): APlusTurnRecoveryFacts {
+  return {
+    requiredReadState: {
+      requiredTools: [...state.requiredReadState.requiredTools],
+      requirements: structuredClone(state.requiredReadState.requirements),
+      completedTools: [...state.requiredReadState.completedTools],
+      failedTools: [...state.requiredReadState.failedTools],
+      reminderInserted: state.requiredReadState.reminderInserted,
+      repairAttempted: state.requiredReadState.repairAttempted,
+      exhausted: state.requiredReadState.exhausted
+    },
+    collectedCitations: structuredClone(state.collectedCitations),
+    hasWebSearchEvidence: state.hasWebSearchEvidence,
+    memoryUpdateReminderInserted: state.memoryUpdateReminderInserted,
+    handledMemoryCandidateIndexes: [...state.handledMemoryCandidateIndexes],
+    memoryUpdateEntryIds: [...state.memoryUpdateEntryIds],
+    memoryUpdateKeys: [...state.memoryUpdateKeys],
+    stageRecordUpdateKeys: [...state.stageRecordUpdateKeys],
+    finalText: state.finalText,
+    pendingConfirmationCreated: state.pendingConfirmationCreated,
+    hasAgentToolResult: state.hasAgentToolResult
+  };
+}
+
+export function restoreAgentTurnRuntimeFacts(
+  state: AgentTurnRuntimeState,
+  facts: APlusTurnRecoveryFacts
+): void {
+  state.requiredReadState = {
+    requiredTools: [...facts.requiredReadState.requiredTools],
+    requirements: [...structuredClone(facts.requiredReadState.requirements)],
+    completedTools: new Set(facts.requiredReadState.completedTools),
+    failedTools: new Set(facts.requiredReadState.failedTools),
+    reminderInserted: facts.requiredReadState.reminderInserted,
+    repairAttempted: facts.requiredReadState.repairAttempted,
+    exhausted: facts.requiredReadState.exhausted
+  };
+  state.collectedCitations = [...structuredClone(facts.collectedCitations)];
+  state.hasWebSearchEvidence = facts.hasWebSearchEvidence;
+  state.memoryUpdateReminderInserted = facts.memoryUpdateReminderInserted;
+  state.handledMemoryCandidateIndexes.clear();
+  facts.handledMemoryCandidateIndexes.forEach((index) => state.handledMemoryCandidateIndexes.add(index));
+  state.memoryUpdateEntryIds.clear();
+  facts.memoryUpdateEntryIds.forEach((id) => state.memoryUpdateEntryIds.add(id));
+  state.memoryUpdateKeys.clear();
+  facts.memoryUpdateKeys.forEach((key) => state.memoryUpdateKeys.add(key));
+  state.stageRecordUpdateKeys.clear();
+  facts.stageRecordUpdateKeys.forEach((key) => state.stageRecordUpdateKeys.add(key));
+  state.finalText = facts.finalText;
+  state.pendingConfirmationCreated = facts.pendingConfirmationCreated;
+  state.hasAgentToolResult = facts.hasAgentToolResult;
+}
 
 export async function prepareAgentTurnProductAPlus(
   input: RunMorphoAgentTurnAPlusInput,
@@ -440,6 +522,7 @@ export function restorePreparedAgentTurnProductAPlus(
     contextBudgetState: createAgentContextBudgetState(conversation.estimatedInputTokens),
     agentWorkLedger: createAgentTurnWorkLedger()
   });
+  restoreAgentTurnRuntimeFacts(runtimeState, runtime.facts);
   const deliveryCandidate = turnInput.pendingDeliveryDraftTarget
     ? workspace.objects[turnInput.pendingDeliveryDraftTarget.deliveryObjectId]
     : undefined;

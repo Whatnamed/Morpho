@@ -5,6 +5,7 @@ import {
   cancelMorphoAgentTurnAPlus,
   recoverMorphoAgentTurnAPlus,
   runManualCompactionTurnAPlus,
+  resumeMorphoAgentTurnAPlus,
   runMorphoAgentTurnAPlus,
   type AgentTurnRunnerAPlusDependencies
 } from "./agentTurnRunnerAPlus";
@@ -68,6 +69,19 @@ export async function recoverSelectedAgentRuntime(
 ): Promise<"none" | "recovered" | "pending" | "failed"> {
   if (!isAPlusAgentRuntimeSelected(options)) return "none";
   return recoverMorphoAgentTurnAPlus(
+    localProjectId,
+    host,
+    options.aPlusDependencies
+  );
+}
+
+export async function resumeSelectedAgentRuntime(
+  localProjectId: string,
+  host: AgentTurnHost,
+  options: AgentRuntimeSelectorOptions = {}
+): Promise<"none" | "recovered" | "pending" | "failed"> {
+  if (!isAPlusAgentRuntimeSelected(options)) return "none";
+  return resumeMorphoAgentTurnAPlus(
     localProjectId,
     host,
     options.aPlusDependencies

@@ -9,6 +9,10 @@ import {
   type AgentToolExecutorInput
 } from "./agentToolExecutors";
 import { buildAgentToolActivityDescriptor } from "./agentToolActivity";
+import {
+  isAPlusExternalActionRunningError,
+  type APlusExternalActionDescriptor
+} from "./agentExternalActionClientAPlus";
 import type { AgentTurnCoordinator, AgentTurnCoordinatorActionResult } from "./agentTurnCoordinator";
 import type { AgentTurnHost } from "./agentTurnHost";
 import type { ToolCallTerminalResult } from "./agentTurnLifecycle";
@@ -30,9 +34,10 @@ export type APlusExternalRequestIdentity = Readonly<{
 }>;
 
 export type AgentToolBatchAPlusResult = Readonly<{
-  status: "completed" | "pendingConfirmation" | "cancelled" | "failed";
+  status: "completed" | "pendingConfirmation" | "cancelled" | "failed" | "externalActionRunning";
   continuationItems: readonly APlusAgentContinuationItem[];
   terminalResults: readonly ToolCallTerminalResult[];
+  externalAction?: Readonly<APlusExternalActionDescriptor & { callId: string }>;
   pendingConfirmation?: Readonly<{
     confirmationId: string;
     callId: string;
@@ -63,6 +68,10 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
     terminal: ToolCallTerminalResult;
     continuationItem?: APlusAgentContinuationItem;
     pendingConfirmation?: NonNullable<AgentToolBatchAPlusResult["pendingConfirmation"]>;
+  }>) => Promise<boolean>;
+  onCallIntent?: (input: Readonly<{
+    callId: string;
+    stableOperationId: string;
   }>) => Promise<boolean>;
 }>): Promise<AgentToolBatchAPlusResult> {
   const callIds = input.toolCalls.map((call) => call.callId);
@@ -131,6 +140,7 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
     argumentsText: call.argumentsText
   }));
   let pendingConfirmation: AgentToolBatchAPlusResult["pendingConfirmation"];
+  let runningExternalAction: Readonly<APlusExternalActionDescriptor & { callId: string }> | undefined;
   let stopRemaining = false;
 
   for (const entry of parsedCalls) {
@@ -272,6 +282,15 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
           batchState,
           capturedConfirmation
         });
+        if (input.onCallIntent && !await input.onCallIntent({
+          callId,
+          stableOperationId: executorInput.stableOperationId
+        })) {
+          throw new AgentToolBatchAPlusError(
+            "recovery_record_persistence_failed",
+            "Tool Call 执行意图无法写入 A+ Recovery Record。"
+          );
+        }
         try {
           const result = await executeAgentTool({ ...executorInput, parsed: entry.parsed });
           providerResult = result;
@@ -333,6 +352,9 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
           if (input.prepared.controller.signal.aborted || isAbortError(error)) {
             terminal = { status: "cancelled", callId, reason: "用户取消了当前 Tool。" };
             providerResult = { status: "cancelled", reason: terminal.reason };
+          } else if (isAPlusExternalActionRunningError(error)) {
+            runningExternalAction = { ...error.action, callId };
+            break;
           } else {
             const message = error instanceof Error ? error.message.slice(0, 800) : "Tool 执行失败。";
             terminal = {
@@ -382,6 +404,15 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
         "Tool Call 终态无法写入 A+ Recovery Record。"
       );
     }
+  }
+
+  if (runningExternalAction) {
+    return {
+      status: "externalActionRunning",
+      continuationItems,
+      terminalResults,
+      externalAction: runningExternalAction
+    };
   }
 
   requireOk(input.coordinator.finalizeToolBatch());
@@ -441,6 +472,7 @@ function buildExecutorInput(input: Readonly<{
   const { prepared, host, turnInput, externalRequest } = input.input;
   return {
     callId: input.callId,
+    stableOperationId: `a-plus-effect-${externalRequest.serverTurnId}-${input.callId}`,
     context: prepared.context,
     providerTaskContext: prepared.providerTaskContext,
     runtimeState: prepared.runtimeState,

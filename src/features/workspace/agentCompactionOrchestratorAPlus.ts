@@ -8,11 +8,16 @@ import type { ConversationSummary } from "@/domain/morpho/types";
 import type { AgentTurnCoordinator, AgentTurnCoordinatorActionResult } from "./agentTurnCoordinator";
 import type { AgentTurnHost } from "./agentTurnHost";
 import type { AgentTurnCompactionMode } from "./agentTurnLifecycle";
+import {
+  createAPlusExternalActionRunningError,
+  type APlusExternalActionDescriptor
+} from "./agentExternalActionClientAPlus";
 
 export type AgentCompactionAPlusResult = Readonly<
   | { status: "notNeeded"; actionId: string }
   | { status: "applied"; actionId: string; revisionId: string }
   | { status: "cancelled"; actionId: string }
+  | { status: "running"; actionId: string; externalAction: APlusExternalActionDescriptor }
   | { status: "failed"; actionId: string; reason: string }
 >;
 
@@ -37,11 +42,14 @@ export async function runAgentCompactionAPlus(input: Readonly<{
     ...(input.force ? { force: "compact" as const } : {})
   });
   const expectedPreviousRevisionId = plan?.previousSummaryRevision?.id;
-  requireOk(input.coordinator.startCompaction(
-    input.mode,
-    input.actionId,
-    expectedPreviousRevisionId
-  ));
+  const currentLifecycle = input.coordinator.getLifecycleSnapshot();
+  if (!(currentLifecycle?.phase === "compacting" && currentLifecycle.actionId === input.actionId)) {
+    requireOk(input.coordinator.startCompaction(
+      input.mode,
+      input.actionId,
+      expectedPreviousRevisionId
+    ));
+  }
   if (!plan) {
     requireOk(input.coordinator.completeCompaction(input.actionId, { kind: "notNeeded" }));
     return { status: "notNeeded", actionId: input.actionId };
@@ -51,6 +59,24 @@ export async function runAgentCompactionAPlus(input: Readonly<{
   if (!server) throw new Error("Compaction 缺少 Server Turn Journal Snapshot。");
   const requestId = server.latestRequestId ?? input.actionId;
   const stepSequence = server.latestStepSequence > 0 ? server.latestStepSequence : 1;
+  const requestBody = JSON.stringify({
+    localProjectId: input.localProjectId,
+    requestId,
+    stepSequence,
+    actionId: input.actionId,
+    mode: input.mode,
+    ...(expectedPreviousRevisionId ? { expectedPreviousRevisionId } : {}),
+    ...(plan.previousSummaryRevision
+      ? { previousSummary: plan.previousSummaryRevision.summary }
+      : {}),
+    sourceStartMessageId: plan.sourceStartMessageId,
+    sourceEndMessageId: plan.sourceEndMessageId,
+    messages: plan.sourceMessages.map((message) => ({
+      id: message.id,
+      role: message.role,
+      body: message.body
+    }))
+  });
   let response: Response;
   try {
     response = await input.host.fetch(
@@ -58,24 +84,7 @@ export async function runAgentCompactionAPlus(input: Readonly<{
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          localProjectId: input.localProjectId,
-          requestId,
-          stepSequence,
-          actionId: input.actionId,
-          mode: input.mode,
-          ...(expectedPreviousRevisionId ? { expectedPreviousRevisionId } : {}),
-          ...(plan.previousSummaryRevision
-            ? { previousSummary: plan.previousSummaryRevision.summary }
-            : {}),
-          sourceStartMessageId: plan.sourceStartMessageId,
-          sourceEndMessageId: plan.sourceEndMessageId,
-          messages: plan.sourceMessages.map((message) => ({
-            id: message.id,
-            role: message.role,
-            body: message.body
-          }))
-        }),
+        body: requestBody,
         signal: input.signal
       }
     );
@@ -87,6 +96,17 @@ export async function runAgentCompactionAPlus(input: Readonly<{
     return fail(input, "compaction_transport_failed", "Compaction 网络请求失败。");
   }
   const body = await readJson(response);
+  if (response.status === 202) {
+    const running = await createAPlusExternalActionRunningError({
+      actionId: input.actionId,
+      actionKind: "compaction",
+      requestBody,
+      message: isRecord(body) && typeof body.error === "string"
+        ? body.error
+        : "Compaction 仍在服务器执行；本地只进行同身份查询，不重复执行。"
+    });
+    return { status: "running", actionId: input.actionId, externalAction: running.action };
+  }
   if (!response.ok || !isRecord(body) || !("summary" in body)) {
     if (response.status === 499 || input.signal.aborted) {
       requireOk(input.coordinator.cancelCompaction(input.actionId, "用户取消了 Compaction。"));

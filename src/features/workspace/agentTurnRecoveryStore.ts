@@ -1,5 +1,11 @@
 import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
-import type { AiTaskMode, AiWorkIntent } from "@/domain/morpho/types";
+import type {
+  AiTaskMode,
+  AiWorkIntent,
+  ProjectMemoryKey,
+  StageRecordKey
+} from "@/domain/morpho/types";
+import type { ProviderCitation } from "@/server/ai/types";
 import type { ConversationTokenLimits } from "@/domain/morpho/conversationCompaction";
 import type {
   APlusAgentContinuationItem,
@@ -9,12 +15,43 @@ import type { PendingAiConfirmation } from "./components/AiConversationPanel";
 import type { AgentTurnCoordinatorRecoverySnapshot } from "./agentTurnCoordinator";
 import type { AgentTurnCompactionMode } from "./agentTurnLifecycle";
 import type { MorphoAgentTurnMode } from "./morphoAgent";
+import type {
+  APlusExternalActionKind,
+  APlusExternalActionStatus
+} from "./agentExternalActionClientAPlus";
+import type {
+  RequiredAgentReadRequirement,
+  RequiredAgentReadToolName
+} from "./agentTaskStrategy";
 
-const STORAGE_PREFIX = "morpho.agent-runtime-a-plus.recovery.v1";
+const STORAGE_PREFIX = "morpho.agent-runtime-a-plus.recovery.v2";
+const LEGACY_STORAGE_PREFIX = "morpho.agent-runtime-a-plus.recovery.v1";
 const MAX_METADATA_BYTES = 2 * 1024 * 1024;
 const MAX_PROVIDER_PAYLOAD_BYTES = 32 * 1024 * 1024;
 
-export const A_PLUS_TURN_RECOVERY_RECORD_VERSION = 1 as const;
+export const A_PLUS_TURN_RECOVERY_RECORD_VERSION = 2 as const;
+
+export type APlusTurnRecoveryFacts = Readonly<{
+  requiredReadState: Readonly<{
+    requiredTools: readonly RequiredAgentReadToolName[];
+    requirements: readonly RequiredAgentReadRequirement[];
+    completedTools: readonly RequiredAgentReadToolName[];
+    failedTools: readonly RequiredAgentReadToolName[];
+    reminderInserted: boolean;
+    repairAttempted: boolean;
+    exhausted: boolean;
+  }>;
+  collectedCitations: readonly ProviderCitation[];
+  hasWebSearchEvidence: boolean;
+  memoryUpdateReminderInserted: boolean;
+  handledMemoryCandidateIndexes: readonly number[];
+  memoryUpdateEntryIds: readonly string[];
+  memoryUpdateKeys: readonly ProjectMemoryKey[];
+  stageRecordUpdateKeys: readonly StageRecordKey[];
+  finalText: string;
+  pendingConfirmationCreated: boolean;
+  hasAgentToolResult: boolean;
+}>;
 
 export type APlusTurnRecoveryRuntime = Readonly<{
   input: Readonly<{
@@ -42,6 +79,7 @@ export type APlusTurnRecoveryRuntime = Readonly<{
   imageAttachmentObjectIds: readonly string[];
   documentExtractObjectIds: readonly string[];
   allowStructuredComparison: boolean;
+  facts: APlusTurnRecoveryFacts;
 }>;
 
 export type APlusTurnRecoveryMetadata = Readonly<{
@@ -60,6 +98,21 @@ export type APlusTurnRecoveryMetadata = Readonly<{
     summaryApplyState: "notApplied" | "applied" | "failed";
     appliedRevisionId?: string;
   }>;
+  pendingExternalAction?: Readonly<{
+    status: APlusExternalActionStatus;
+    actionId: string;
+    actionKind: APlusExternalActionKind;
+    callId?: string;
+    requestBody: string;
+    requestHash: string;
+    lastObservedAt: string;
+  }>;
+  toolExecutionIntents?: readonly Readonly<{
+    callId: string;
+    stableOperationId: string;
+    status: "intent" | "terminal";
+    observedAt: string;
+  }>[];
   localPersistence: "notRequired" | "required" | "succeeded" | "failed";
   runtime: APlusTurnRecoveryRuntime;
 }>;
@@ -238,7 +291,12 @@ export function createAgentTurnRecoveryStore(options: Readonly<{
     async load(localProjectId) {
       if (!isIdentifier(localProjectId)) return { status: "invalid", reason: "项目 ID 无效。" };
       const raw = storage.getItem(recoveryKey(localProjectId));
-      if (raw === null) return { status: "none" };
+      if (raw === null) {
+        if (storage.getItem(legacyRecoveryKey(localProjectId)) !== null) {
+          return { status: "invalid", reason: "A+ Recovery Record 仍是 v1，必须重新建立 v2 恢复边界。" };
+        }
+        return { status: "none" };
+      }
       if (!raw || utf8Length(raw) > MAX_METADATA_BYTES) {
         return { status: "invalid", reason: "A+ Recovery Record 元数据无效或过大。" };
       }
@@ -339,6 +397,7 @@ export function createAgentTurnRecoveryStore(options: Readonly<{
     async clear(localProjectId) {
       const persisted = readPersisted(storage, localProjectId);
       storage.removeItem(recoveryKey(localProjectId));
+      storage.removeItem(legacyRecoveryKey(localProjectId));
       if (persisted) {
         await Promise.all(payloadReferences(persisted).map((ref) => payloadStore.delete(ref)));
       }
@@ -429,12 +488,47 @@ function isPersistedRecoveryRecord(
   const latestProviderOutput = value.coordinator.latestProviderOutputPayload;
   if (latestProviderOutput !== undefined && !isPayloadReference(latestProviderOutput)) return false;
   const confirmation = value.metadata.pendingConfirmation;
-  return confirmation === undefined || (
+  const pendingExternalAction = value.metadata.pendingExternalAction;
+  const toolExecutionIntents = value.metadata.toolExecutionIntents;
+  return (pendingExternalAction === undefined || isPersistedExternalAction(pendingExternalAction)) &&
+    (toolExecutionIntents === undefined || (
+      Array.isArray(toolExecutionIntents) &&
+      toolExecutionIntents.length <= 128 &&
+      toolExecutionIntents.every(isPersistedToolExecutionIntent)
+    )) &&
+    (confirmation === undefined || (
     isRecord(confirmation) &&
     isIdentifier(confirmation.confirmationId) &&
     isIdentifier(confirmation.callId) &&
     isPayloadReference(confirmation.payload)
-  );
+  ));
+}
+
+function isPersistedToolExecutionIntent(value: unknown): boolean {
+  return isRecord(value) &&
+    isIdentifier(value.callId) &&
+    isIdentifier(value.stableOperationId) &&
+    (value.status === "intent" || value.status === "terminal") &&
+    typeof value.observedAt === "string";
+}
+
+function isPersistedExternalAction(value: unknown): boolean {
+  return isRecord(value) &&
+    (value.status === "acquired" ||
+      value.status === "running" ||
+      value.status === "completedWithPayload" ||
+      value.status === "completedPayloadUnavailable" ||
+      value.status === "cancelled" ||
+      value.status === "failed" ||
+      value.status === "conflict") &&
+    isIdentifier(value.actionId) &&
+    (value.actionKind === "webSearch" || value.actionKind === "image" || value.actionKind === "compaction") &&
+    (value.callId === undefined || isIdentifier(value.callId)) &&
+    typeof value.requestBody === "string" &&
+    utf8Length(value.requestBody) <= MAX_PROVIDER_PAYLOAD_BYTES &&
+    typeof value.requestHash === "string" &&
+    /^[0-9a-f]{64}$/.test(value.requestHash) &&
+    typeof value.lastObservedAt === "string";
 }
 
 function isPersistedActiveRequest(value: unknown): value is PersistedActiveRequest {
@@ -515,7 +609,65 @@ function isRecoveryRuntime(value: unknown): value is APlusTurnRecoveryRuntime {
     value.imageAttachmentObjectIds.every(isIdentifier) &&
     Array.isArray(value.documentExtractObjectIds) &&
     value.documentExtractObjectIds.every(isIdentifier) &&
-    typeof value.allowStructuredComparison === "boolean";
+    typeof value.allowStructuredComparison === "boolean" &&
+    isRecoveryFacts(value.facts);
+}
+
+function isRecoveryFacts(value: unknown): value is APlusTurnRecoveryFacts {
+  if (!isRecord(value) || !isRecord(value.requiredReadState)) return false;
+  const reads = value.requiredReadState;
+  return Array.isArray(reads.requiredTools) &&
+    reads.requiredTools.every((tool) =>
+      tool === "read_project_memory" ||
+      tool === "read_stage_record" ||
+      tool === "search_project_conversation"
+    ) &&
+    Array.isArray(reads.requirements) &&
+    reads.requirements.every(isRecoveryReadRequirement) &&
+    Array.isArray(reads.completedTools) &&
+    reads.completedTools.every((tool) => typeof tool === "string") &&
+    Array.isArray(reads.failedTools) &&
+    reads.failedTools.every((tool) => typeof tool === "string") &&
+    typeof reads.reminderInserted === "boolean" &&
+    typeof reads.repairAttempted === "boolean" &&
+    typeof reads.exhausted === "boolean" &&
+    Array.isArray(value.collectedCitations) &&
+    value.collectedCitations.length <= 512 &&
+    value.collectedCitations.every(isRecoveryCitation) &&
+    typeof value.hasWebSearchEvidence === "boolean" &&
+    typeof value.memoryUpdateReminderInserted === "boolean" &&
+    Array.isArray(value.handledMemoryCandidateIndexes) &&
+    value.handledMemoryCandidateIndexes.every((item) => Number.isSafeInteger(item) && item >= 0) &&
+    Array.isArray(value.memoryUpdateEntryIds) &&
+    value.memoryUpdateEntryIds.every(isIdentifier) &&
+    Array.isArray(value.memoryUpdateKeys) &&
+    value.memoryUpdateKeys.every(isIdentifier) &&
+    Array.isArray(value.stageRecordUpdateKeys) &&
+    value.stageRecordUpdateKeys.every(isIdentifier) &&
+    typeof value.finalText === "string" && value.finalText.length <= 240_000 &&
+    typeof value.pendingConfirmationCreated === "boolean" &&
+    typeof value.hasAgentToolResult === "boolean";
+}
+
+function isRecoveryReadRequirement(value: unknown): value is RequiredAgentReadRequirement {
+  if (!isRecord(value) || typeof value.tool !== "string") return false;
+  if (value.tool === "read_project_memory") {
+    return Array.isArray(value.requiredKeys) && value.requiredKeys.every(isIdentifier);
+  }
+  if (value.tool === "read_stage_record") {
+    return Array.isArray(value.requiredStages) && value.requiredStages.every(isIdentifier);
+  }
+  return value.tool === "search_project_conversation" &&
+    (value.requiredMode === "earliest" || value.requiredMode === "latest" || value.requiredMode === "keyword") &&
+    (value.keyword === undefined || typeof value.keyword === "string");
+}
+
+function isRecoveryCitation(value: unknown): value is ProviderCitation {
+  return isRecord(value) &&
+    typeof value.title === "string" &&
+    (value.url === undefined || typeof value.url === "string") &&
+    (value.domain === undefined || typeof value.domain === "string") &&
+    (value.snippet === undefined || typeof value.snippet === "string");
 }
 
 function isRecoveryProviderOutput(
@@ -553,6 +705,10 @@ function isRecoveryProviderOutput(
 
 function recoveryKey(localProjectId: string): string {
   return `${STORAGE_PREFIX}.${localProjectId}`;
+}
+
+function legacyRecoveryKey(localProjectId: string): string {
+  return `${LEGACY_STORAGE_PREFIX}.${localProjectId}`;
 }
 
 async function sha256Hex(value: string): Promise<string> {

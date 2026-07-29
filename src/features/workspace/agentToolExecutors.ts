@@ -101,6 +101,8 @@ type DeliverySectionContext = ReturnType<typeof buildDeliverySectionContext>;
 
 export type AgentToolExecutorInput = {
   callId: string;
+  /** Stable local effect identity for refresh/replay idempotency. */
+  stableOperationId: string;
   context: TaskContextResult;
   providerTaskContext: ProviderTaskContext;
   runtimeState: AgentTurnRuntimeState;
@@ -332,17 +334,27 @@ function executeCreateResearchAnalysis(
   }
 ) {
   const args = input.parsed.args;
+  const existingOperation = input.readWorkspace().operations[input.stableOperationId];
+  if (existingOperation && existingOperation.proposalIds.length > 0) {
+    const existingProposalId = existingOperation.proposalIds[0];
+    return {
+      status: "updated",
+      researchObjectId: existingProposalId,
+      recovered: true
+    };
+  }
   const applied = input.commitWorkspace((current) => {
     const operationGate = canStartOperation(current);
     if (operationGate.status === "blocked") {
       throw new Error(operationGate.reason);
     }
     const created = createResearchOperation(current, {
+      operationId: input.stableOperationId,
       userInput: input.draft,
       selectedObjectIds: input.context.objectIds,
       allowWebSearch: input.runtimeState.hasWebSearchEvidence
     });
-    const proposalId = `proposal-research-${created.operation.id}-${Date.now()}`;
+    const proposalId = `proposal-research-${input.stableOperationId}`;
     const result = applyResearchProposalWithSemanticPatch({
       workspace: created.workspace,
       proposal: {
@@ -391,12 +403,21 @@ function executeCreateDesignDefinitionProposal(
   }
 ) {
   const args = input.parsed.args;
+  const existingOperation = input.readWorkspace().operations[input.stableOperationId];
+  if (existingOperation && existingOperation.proposalIds.length > 0) {
+    return {
+      status: "created",
+      proposalId: existingOperation.proposalIds[0],
+      proposalIds: [...existingOperation.proposalIds],
+      recovered: true
+    };
+  }
   const proposalIds = input.commitWorkspace((current) => {
     const operationGate = canStartOperation(current);
     if (operationGate.status === "blocked") {
       throw new Error(operationGate.reason);
     }
-    const operationId = `operation-designDefinition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const operationId = input.stableOperationId;
     const created = createArtifactProposalOperation(current, {
       operationId,
       type: "designDefinition",
@@ -417,6 +438,7 @@ function executeCreateDesignDefinitionProposal(
     let nextWorkspace = created.workspace;
     for (const [proposalIndex, proposalDraft] of getDesignDefinitionDrafts(args).entries()) {
       const recorded = recordDesignDefinitionProposal(nextWorkspace, {
+        proposalId: `${input.stableOperationId}-proposal-${proposalIndex + 1}`,
         operationId,
         workIntent: "createDesignDefinition",
         title: proposalDraft.title,
@@ -461,12 +483,25 @@ function executeCreateConceptDirectionProposal(
   }
 ) {
   const args = input.parsed.args;
+  const existingOperation = input.readWorkspace().operations[input.stableOperationId];
+  const existingProposalId = existingOperation?.proposalIds[0];
+  const existingProposal = existingProposalId
+    ? input.readWorkspace().artifactProposals[existingProposalId]
+    : undefined;
+  if (existingProposal?.type === "conceptDirection") {
+    return {
+      status: "applied",
+      proposalId: existingProposal.id,
+      directionIds: [],
+      recovered: true
+    };
+  }
   const placed = input.commitWorkspace((current) => {
     const operationGate = canStartOperation(current);
     if (operationGate.status === "blocked") {
       throw new Error(operationGate.reason);
     }
-    const operationId = `operation-conceptDirection-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const operationId = input.stableOperationId;
     const created = createArtifactProposalOperation(current, {
       operationId,
       type: "conceptDirection",
@@ -479,6 +514,7 @@ function executeCreateConceptDirectionProposal(
       ? current.objects[basedOnDefinitionId]
       : undefined;
     const result = recordAndApplyConceptDirectionProposal(created.workspace, {
+      proposalId: `${input.stableOperationId}-proposal`,
       operationId,
       workIntent: "createConceptDirections",
       title: args.title,
