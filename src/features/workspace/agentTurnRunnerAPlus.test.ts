@@ -136,6 +136,9 @@ describe("A+ Agent turn runner", () => {
     await runMorphoAgentTurnAPlus(fixture.input, fixture.host, fixture.dependencies);
     expect(fixture.store.record).toBeDefined();
     expect(fixture.coordinatorHost.executions).toHaveLength(1);
+    expect(fixture.fake.getEvents().filter((event) => event.name === "streaming").at(-1)).toEqual(
+      expect.objectContaining({ value: [false] })
+    );
     detachMorphoAgentTurnAPlusForPageUnload(fixture.fake.getWorkspace().project.id);
 
     const recovered = await recoverMorphoAgentTurnAPlus(

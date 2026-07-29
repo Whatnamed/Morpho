@@ -598,6 +598,7 @@ async function driveSession(session: APlusSession): Promise<void> {
     ) {
       // The server owns the in-flight execution. Refresh recovery and later
       // user actions are query-only; the Provider call is never started twice.
+      session.host.ui.setStreaming(false);
       return;
     }
     if (
