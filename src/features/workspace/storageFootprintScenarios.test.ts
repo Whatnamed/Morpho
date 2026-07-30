@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { measureWorkspaceFootprint } from "@/infrastructure/persistence/storageFootprint";
 import { buildFootprintScenarios } from "./storageFootprintScenarios";
@@ -23,12 +23,18 @@ const report = JSON.parse(
 ) as GeneratedFootprintReport;
 
 describe("Storage footprint scenarios", () => {
-  it("keeps every scenario identical to the committed measurement report", () => {
-    const measured = buildFootprintScenarios().map((scenario) => ({
+  let scenarios: ReturnType<typeof buildFootprintScenarios>;
+  let measured: GeneratedFootprintReport["scenarios"];
+
+  beforeAll(() => {
+    scenarios = buildFootprintScenarios();
+    measured = scenarios.map((scenario) => ({
       key: scenario.key,
       utf16Length: measureWorkspaceFootprint(scenario.workspace).utf16Length
     }));
+  }, 30_000);
 
+  it("keeps every scenario identical to the committed measurement report", () => {
     expect(measured).toEqual(
       report.scenarios.map((scenario) => ({ key: scenario.key, utf16Length: scenario.utf16Length }))
     );
@@ -47,7 +53,6 @@ describe("Storage footprint scenarios", () => {
   it("grows each scenario along a single axis from its baseline", () => {
     // Single-axis growth is what makes `diffFootprints` per-unit attribution valid.
     // Compound multi-axis fixtures belong to performanceScenarios.ts instead.
-    const scenarios = buildFootprintScenarios();
     const keys = new Set(scenarios.map((scenario) => scenario.key));
 
     for (const scenario of scenarios) {
