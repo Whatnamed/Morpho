@@ -7,7 +7,7 @@ This document is the durable implementation ledger for converging the Morpho Age
 | Field | Value |
 |---|---|
 | Decision date | 2026-07-28 |
-| Current state | Stage 5 merge/release candidate preparation in progress |
+| Current state | Phase A applied and database-verified; Phase B main cutover and Production acceptance pending |
 | Current formal working branch | `refactor/agent-runtime-a-plus` |
 | B implementation archive branch | `archive/agent-runtime-b` |
 | B implementation archive tag | `agent-runtime-b-final-2026-07-28-f27a410` |
@@ -19,9 +19,9 @@ This document is the durable implementation ledger for converging the Morpho Age
 | Stage 3 implementation | Independently accepted at `4c52cc5cfa7db5fcdcbf1765acfd8795c6e1f1dc` |
 | A+ Runtime | The only reachable Runtime on this working branch |
 | Active working-branch runtime | Canonical A+ `agentTurnRunner.ts`; no selector or B fallback |
-| Server journals | Server Turn Journal plus External Action Journal implemented; remote Migration application remains an operator deployment step |
+| Server journals | Server Turn Journal plus External Action Journal implemented; the two additive A+ Migrations are applied and database-verified |
 | Stage 4 | Complete — independently accepted at `1ec902ecfd09c6b0abfe7b58230321e880321e94` |
-| Next allowed stage | Draft PR, GitHub CI, and Preview validation only; do not merge `main` or execute Phase A/B/C without later independent authorization |
+| Next allowed stage | Phase B strict fast-forward to `main` and no-paid Production acceptance under the final-release authorization; Phase C remains deferred |
 
 The formal decision is recorded in [Technical Decisions](./decisions.md). The earlier [AI Continuity Convergence Audit](./ai-continuity-convergence-audit.md) remains historical evidence.
 
@@ -962,21 +962,82 @@ function/table, Closure, Provider Failure, Lease State, RLS, or Grant error. No 
 Search, or Image request was sent. The earlier log is therefore classified as a stale pre-existing
 browser session now covered by the branch recovery fix, not as a new Production failure.
 
+#### Phase A additive database acceptance
+
+Phase A was applied and database-verified at `2026-07-30T02:16:40Z` with the fixed Supabase CLI
+`2.109.1`, the accepted Stage 3 checkout
+`4c52cc5cfa7db5fcdcbf1765acfd8795c6e1f1dc`, and the previously verified `morpho` project
+(`lpra...uavb`). Historical Runtime B reconciliation remained applied and verified, and the accepted
+authentication-recovery boundary remained unchanged.
+
+The write-ahead Migration List showed all five reconciled Runtime B versions applied and exactly the
+following two A+ versions pending. Their accepted Git blobs were rechecked before the write:
+
+| Additive Migration | Accepted Git blob |
+|---|---|
+| `20260729012105_add_agent_turn_journal.sql` | `c3752c9cbdf2b733ccd68ef4a7462bf36633c044` |
+| `20260729093000_add_agent_turn_external_actions.sql` | `b952991ec3316357dd8af54bef0fd896b01ba21a` |
+
+The strict dry-run contained those two files in that order and no historical B Migration, cleanup,
+seed, roles, or other Migration. One official `db push --linked` applied that exact set successfully;
+there was no retry, Repair, reset, rollback, manual Migration SQL, or other remote write. The final
+Migration List records both versions on local and remote, and the final dry-run reports that the
+remote database is up to date. The irreversible
+`20260729190000_remove_agent_runtime_b_proofs.sql` cleanup is not applied.
+
+Read-only catalog verification confirmed all four private A+ objects and their complete column,
+type, nullability, default, primary-key, unique, foreign-key, check-constraint, and index definitions:
+
+```text
+private.agent_turn_journal
+private.agent_turn_request_journal
+private.agent_turn_external_action_claim
+private.agent_turn_external_action_journal
+```
+
+The two External Action tables have RLS enabled exactly as defined, with zero policies and no direct
+`PUBLIC`, `anon`, or `authenticated` table grants; the Turn and Request journals likewise expose no
+direct grants. All eight A+ RPC identity signatures are present with no extra overload, use
+`SECURITY DEFINER` plus fixed empty `search_path`, grant `EXECUTE` only to `authenticated` and the
+owner, and deny `PUBLIC` and `anon`. Function-definition checks matched the authenticated-user/local-
+project binding, creation/request/action idempotency, request and action Hash identity, contiguous
+Sequence, bounded counters and quota, execution-expiry fail-closed behavior, Action Claim consumption,
+and bounded Web Search receipt contracts. The schema contains no Prompt, Transcript, Workspace,
+Image Base64, credential, or key payload column.
+
+The Runtime B compatibility boundary is still intact: the Lease table has its 23 columns and 18
+constraints, all seven exact final RPCs remain `SECURITY DEFINER` with fixed empty `search_path` and
+the intended Execute ACL, no obsolete overload appeared, and active B Leases were zero before and
+after the additive release. Database lint completed with no Error; it reported only three existing
+`warning extra` notices for unread local PL/pgSQL variables. Post-apply application verification
+passed lint, TypeScript checking, 176 Vitest files with 1,421 tests, production build, and all 18
+Playwright tests without sending an Agent, Provider, Search, or Image request.
+
+The retained Phase A evidence bundle is
+`C:\Users\hasee\AppData\Local\Temp\morpho-a-plus-final-release-20260730-100137`.
+
 ```text
 Historical Runtime B database reconciliation:
-Applied and independently verifiable
+Applied and verified
 
 Authentication recovery regression:
-Fixed on the A+ branch; Preview accepted
+Accepted
 
 Production B fresh-session health:
 Passed without paid provider calls
 
 Phase A:
-Not executed
+Applied and database-verified
+
+A+ additive migrations:
+20260729012105
+20260729093000
+
+B cleanup:
+Not applied
 
 Next allowed action:
-Independent audit of the database reconciliation and authentication recovery.
+Phase B main cutover and Production acceptance.
 ```
 
 ## 11. Deletion Policy
