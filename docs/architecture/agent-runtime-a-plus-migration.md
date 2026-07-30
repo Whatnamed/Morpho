@@ -871,6 +871,114 @@ git push origin main
 
 Stage 5 does not execute those commands and does not authorize Phase A, Phase B, or Phase C.
 
+#### Historical Runtime B database reconciliation
+
+The production Runtime B schema and migration ledger were reconciled against the fixed B baseline
+`f27a4102e94730ec56a476b349dda4710a67b514`. This was a bounded repair of historical B state, not
+Phase A and not an A+ schema release.
+
+The five local Migration files were verified byte-for-byte against the B baseline before any ledger
+or schema action:
+
+| Migration | Baseline Git blob | Reconciliation mode |
+|---|---|---|
+| `20260726143030_harden_agent_turn_lease_causality.sql` | `0e2c5af62fb8a5c7110f672129311a2b059b961a` | History-only Repair |
+| `20260726161500_bind_agent_turn_provider_execution.sql` | `616ace498b471ae474cead2952654fa5bdd9a28f` | History-only Repair |
+| `20260727180000_read_agent_turn_lease_state.sql` | `bbbe9631b23b10f3fe20b90f8d073c9e65e613a3` | Normal Backfill |
+| `20260728174500_bind_agent_turn_closure.sql` | `4e167ece1f7667dc87489773e0a878572f0ccd32` | Normal Backfill |
+| `20260728203000_harden_agent_turn_closure_sequence.sql` | `0fd81b724ea61a5e320b95d1e8196d2b37ea1185` | Normal Backfill |
+
+Before Repair, all five versions lacked a remote migration-history entry. Read-only schema comparison
+proved that the first two Migration effects already existed and matched the baseline, so only
+`20260726143030` and `20260726161500` were marked `applied` through History-only Repair. The immediate
+post-Repair history showed those two versions applied while the later three remained pending.
+
+The next fixed-CLI dry-run contained exactly these three normal Backfill files and no others:
+
+```text
+20260727180000_read_agent_turn_lease_state.sql
+20260728174500_bind_agent_turn_closure.sql
+20260728203000_harden_agent_turn_closure_sequence.sql
+```
+
+One official `db push` then applied that exact set. There was no retry, manual SQL, reset, rollback,
+or additional schema write. The final migration history records all five Runtime B versions as
+applied. Independent post-apply checks confirmed the audited 13 critical fields, 13 critical
+constraints, and seven final RPC signatures; zero obsolete overloads; `SECURITY DEFINER` plus fixed
+empty `search_path`; and the intended `authenticated`/`postgres` `EXECUTE` grants. All audited data-
+anomaly aggregates are zero, and the final remote database lint reported no schema errors.
+
+The A+ Turn, Request, and External Action Journal objects remained absent, and the Runtime B cleanup
+Migration remained unapplied. A read-only Stage 3 readiness dry-run from
+`4c52cc5cfa7db5fcdcbf1765acfd8795c6e1f1dc` contained only:
+
+```text
+20260729012105_add_agent_turn_journal.sql
+20260729093000_add_agent_turn_external_actions.sql
+```
+
+The retained evidence bundle is
+`C:\Users\hasee\AppData\Local\Temp\morpho-b-reconcile-20260729-234644`.
+
+#### Authentication recovery and no-paid health acceptance
+
+Production logs recorded four historical middleware failures at `2026-07-29T16:00:41Z` with the
+exact Supabase Auth code `refresh_token_not_found`. The A+ branch audit found two convergence gaps:
+`getUser()` errors were not classified, leaving a terminal stale session to retry indefinitely, and
+redirect responses did not preserve Supabase `Set-Cookie` writes and the narrowly required
+`Cache-Control`, `Expires`, and `Pragma` headers from the middleware response.
+
+The minimal branch fix starts at
+`a66d3274a595ad896d013a0d2b8a3f9ca000691e` and converges at
+`f971d48a214354e4b4f4c1beaca2940a2a4e0a9a`. It accepts only an `AuthApiError` whose code is exactly
+`refresh_token_not_found` as terminal. It expires only the current Supabase project's known auth
+cookie root and chunks, preserves strict cookie attributes, keeps unknown/network errors fail-closed
+without deleting the session, and copies only the response cookies and authentication-related
+anti-cache headers into a new redirect. Logs include only sanitized error metadata.
+
+Local verification passed lint, TypeScript checking, 176 Vitest files with 1,421 tests, production
+build, Case Study upgrade, and all 18 Playwright tests. A real `@supabase/ssr` integration test uses
+the Supabase Auth service's actual terminal error response shape without storing a real refresh token and proves
+that the resulting redirect expires the stale cookie securely. The deterministic integration path
+is also the Preview test substitute for the exact terminal-stale case: a controlled random invalid
+token in the live Preview was classified by Supabase as `validation_failed`, so the middleware
+correctly kept that different error fail-closed rather than misclassifying or clearing it.
+
+The final Preview deployment for `f971d48a214354e4b4f4c1beaca2940a2a4e0a9a` was Ready. Anonymous
+login/protected-route behavior had no loop; a normal authenticated session opened the project
+directory and `project-morpho-case-study`; and three reloads retained the exact project path, one
+Canvas application, one enabled AI input, the idle state, and the directory's `42` canvas objects and
+`21` visual assets. Its acceptance window contained no hydration, Supabase, or authentication error
+and no `refresh_token_not_found`.
+
+Production was not redeployed. The immutable origin of the existing `main` deployment at
+`f27a4102e94730ec56a476b349dda4710a67b514` supplied a fresh origin with no prior Morpho cookie or
+local-storage state. After a normal login, `project-morpho-case-study` passed three independent reloads
+between `2026-07-30T01:03:02Z` and `2026-07-30T01:10:46Z`. Each reload returned the exact project path,
+one Canvas application, one enabled AI input, the same project title, and idle status; the directory
+still reported `42` canvas objects and `21` visual assets. In that exact Production deployment/time
+window, runtime-log queries found no new `refresh_token_not_found`, session-load failure, missing
+function/table, Closure, Provider Failure, Lease State, RLS, or Grant error. No Agent, Provider,
+Search, or Image request was sent. The earlier log is therefore classified as a stale pre-existing
+browser session now covered by the branch recovery fix, not as a new Production failure.
+
+```text
+Historical Runtime B database reconciliation:
+Applied and independently verifiable
+
+Authentication recovery regression:
+Fixed on the A+ branch; Preview accepted
+
+Production B fresh-session health:
+Passed without paid provider calls
+
+Phase A:
+Not executed
+
+Next allowed action:
+Independent audit of the database reconciliation and authentication recovery.
+```
+
 ## 11. Deletion Policy
 
 - The B implementation is permanently archived in `archive/agent-runtime-b` and `agent-runtime-b-final-2026-07-28-f27a410`.
