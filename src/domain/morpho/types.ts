@@ -336,13 +336,20 @@ export type ConceptDirectionStatus = "pendingPreview" | "primary" | "alternative
 
 export type KeyConclusionState = "active" | "needsVerification" | "superseded" | "archived";
 
-export const KEY_CONCLUSION_CATEGORIES = [
+export const ASSIGNABLE_KEY_CONCLUSION_CATEGORIES = [
   "finding",
   "opportunity",
   "constraint",
   "openQuestion",
-  "unknown"
 ] as const;
+
+export type AssignableKeyConclusionCategory = (typeof ASSIGNABLE_KEY_CONCLUSION_CATEGORIES)[number];
+
+export function isAssignableKeyConclusionCategory(value: unknown): value is AssignableKeyConclusionCategory {
+  return ASSIGNABLE_KEY_CONCLUSION_CATEGORIES.includes(value as AssignableKeyConclusionCategory);
+}
+
+export const KEY_CONCLUSION_CATEGORIES = [...ASSIGNABLE_KEY_CONCLUSION_CATEGORIES, "unknown"] as const;
 
 export type KeyConclusionCategory = (typeof KEY_CONCLUSION_CATEGORIES)[number];
 
@@ -739,7 +746,7 @@ export type ComparisonKeyConclusionCandidate = {
   title: string;
   summary: string;
   body: string;
-  category: KeyConclusionCategory;
+  category: AssignableKeyConclusionCategory;
   sourceObjectIds: MorphoObjectId[];
   evidence: ComparisonObjectEvidence[];
   confidence: KeyConclusionObject["confidence"];

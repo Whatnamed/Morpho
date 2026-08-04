@@ -1,4 +1,4 @@
-import { isKeyConclusionCategory } from "./types";
+import { isAssignableKeyConclusionCategory } from "./types";
 import type {
   ComparisonAnalysis,
   ComparisonKeyConclusionCandidate,
@@ -422,7 +422,7 @@ function parseKeyConclusionCandidate(value: unknown): ComparisonKeyConclusionCan
     typeof value.title !== "string" ||
     typeof value.summary !== "string" ||
     typeof value.body !== "string" ||
-    !isKeyConclusionCategory(value.category) ||
+    !isAssignableKeyConclusionCategory(value.category) ||
     !Array.isArray(value.sourceObjectIds) ||
     !Array.isArray(value.evidence) ||
     !isConfidence(value.confidence)

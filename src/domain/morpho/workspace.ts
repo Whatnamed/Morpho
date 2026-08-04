@@ -58,6 +58,7 @@ import type {
   FileParseStatus,
   ImageObject,
   ImageRole,
+  AssignableKeyConclusionCategory,
   KeyConclusionCategory,
   KeyConclusionObject,
   ComparisonDecisionMetadata,
@@ -114,7 +115,7 @@ export type ResearchKeyConclusionSource =
   | {
       kind: "evidence";
       index: number;
-      category: KeyConclusionCategory;
+      category: AssignableKeyConclusionCategory;
     };
 
 export type KeyConclusionDraftFromResearchResult =
@@ -126,7 +127,7 @@ export type KeyConclusionDraftFromResearchResult =
         summary: string;
         sourceObjectIds: MorphoObjectId[];
         citationIds: string[];
-        category: KeyConclusionCategory;
+        category: AssignableKeyConclusionCategory;
         confidence: KeyConclusionObject["confidence"];
         state?: "active" | "needsVerification";
         note: string;
@@ -1283,7 +1284,7 @@ export function createKeyConclusion(
     summary?: string;
     sourceObjectIds: MorphoObjectId[];
     citationIds?: string[];
-    category: KeyConclusionCategory;
+    category: AssignableKeyConclusionCategory;
     confidence: KeyConclusionObject["confidence"];
     state?: KeyConclusionObject["state"];
     note?: string;
@@ -1775,8 +1776,8 @@ function inferLegacyKeyConclusionCategory(
       .map(normalizeLegacyCategoryText)
       .filter(Boolean)
   );
-  const matches = new Set<Exclude<KeyConclusionCategory, "unknown">>();
-  const researchSections: Array<[Exclude<KeyConclusionCategory, "unknown">, string]> = [
+  const matches = new Set<AssignableKeyConclusionCategory>();
+  const researchSections: Array<[AssignableKeyConclusionCategory, string]> = [
     ["finding", "findings"],
     ["opportunity", "opportunities"],
     ["constraint", "constraints"],
@@ -1806,7 +1807,7 @@ function inferLegacyKeyConclusionCategory(
 
   const note = typeof rawObject.note === "string" ? rawObject.note : "";
   // legacy schema compatibility only: old extraction notes are a migration hint, not a runtime semantic source.
-  const legacyNoteMarkers: Array<{ marker: string; category: Exclude<KeyConclusionCategory, "unknown"> }> = [
+  const legacyNoteMarkers: Array<{ marker: string; category: AssignableKeyConclusionCategory }> = [
     { marker: "发现第", category: "finding" },
     { marker: "机会点第", category: "opportunity" },
     { marker: "约束第", category: "constraint" },

@@ -3,12 +3,15 @@
 import { memo, useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronDown, ChevronLeft, Send, Square } from "lucide-react";
 
-import { isKeyConclusionCategory, KEY_CONCLUSION_CATEGORIES } from "@/domain/morpho/types";
+import {
+  ASSIGNABLE_KEY_CONCLUSION_CATEGORIES,
+  isAssignableKeyConclusionCategory
+} from "@/domain/morpho/types";
 import type {
+  AssignableKeyConclusionCategory,
   AiMessage,
   ComparisonAnalysis,
   ComparisonSourceRef,
-  KeyConclusionCategory,
   MorphoObject,
   MorphoWorkspace
 } from "@/domain/morpho/types";
@@ -44,7 +47,7 @@ type PendingKeyConclusionDraft = {
   title: string;
   body: string;
   summary: string;
-  category: KeyConclusionCategory;
+  category: AssignableKeyConclusionCategory;
   confidence: "supported" | "partial" | "needsVerification";
 };
 
@@ -83,7 +86,7 @@ export type PendingAiConfirmation =
       conclusionTitle: string;
       body: string;
       summary: string;
-      category: KeyConclusionCategory;
+      category: AssignableKeyConclusionCategory | null;
       citationIds: string[];
       confidence: "supported" | "partial" | "needsVerification";
       state?: "active" | "needsVerification";
@@ -376,6 +379,7 @@ export function AiConversationPanel({
   const confirmationSecondaryActionLabel = pendingConfirmation
     ? getPendingConfirmationSecondaryActionLabel(pendingConfirmation)
     : null;
+  const isKeyConclusionCategoryMissing = pendingConfirmation?.kind === "createKeyConclusion" && !pendingConfirmation.category;
   const selectedDirectionCount = selectedObjects.filter((object) => object.type === "conceptDirection").length;
   const showDirectionPreviewCount = selectedDirectionCount > 0 && isImageTaskContext;
   const directionPreviewTotal = selectedDirectionCount * directionPreviewCount;
@@ -617,15 +621,18 @@ export function AiConversationPanel({
                   <label>
                     <span>类别</span>
                     <select
-                      value={pendingConfirmation.category}
+                      value={pendingConfirmation.category ?? ""}
                       onChange={(event) => {
                         const category = event.currentTarget.value;
-                        if (isKeyConclusionCategory(category)) {
+                        if (!category) {
+                          onUpdatePendingKeyConclusion({ category: null });
+                        } else if (isAssignableKeyConclusionCategory(category)) {
                           onUpdatePendingKeyConclusion({ category });
                         }
                       }}
                     >
-                      {KEY_CONCLUSION_CATEGORIES.map((category) => (
+                      <option value="">请选择类别</option>
+                      {ASSIGNABLE_KEY_CONCLUSION_CATEGORIES.map((category) => (
                         <option key={category} value={category}>
                           {getKeyConclusionCategoryLabel(category)}
                         </option>
@@ -641,7 +648,7 @@ export function AiConversationPanel({
                     />
                   </label>
                   <span className="confirm-meta">
-                    类别：{getKeyConclusionCategoryLabel(pendingConfirmation.category)} · 来源：{pendingConfirmation.sourceObjectIds.join("、") || "无"} · 引用：
+                    类别：{pendingConfirmation.category ? getKeyConclusionCategoryLabel(pendingConfirmation.category) : "请选择类别"} · 来源：{pendingConfirmation.sourceObjectIds.join("、") || "无"} · 引用：
                     {pendingConfirmation.citationIds.join("、") || "无"} · 置信度：{pendingConfirmation.confidence}
                   </span>
                 </div>
@@ -665,7 +672,12 @@ export function AiConversationPanel({
                 </div>
               ) : null}
               <div className="confirm-actions">
-                <button className="brand-button" type="button" onClick={onConfirmPending}>
+                <button
+                  className="brand-button"
+                  type="button"
+                  disabled={isKeyConclusionCategoryMissing}
+                  onClick={onConfirmPending}
+                >
                   {confirmationActionLabel}
                 </button>
                 {confirmationSecondaryActionLabel && onConfirmPendingSecondary ? (
@@ -1077,8 +1089,10 @@ function getPendingConfirmationBody(confirmation: PendingAiConfirmation): string
     }
     case "batchGenerateVisuals":
       return `将基于当前语境批量生成 ${confirmation.itemCount} 张新图像。${confirmation.reason} ${confirmation.impact} 这只会创建新的图像对象，不会覆盖来源图、默认参考、交付引用或已有版本链。`;
-    case "createKeyConclusion":
-      return `将从“${confirmation.sourceTitle}”保存一条用户确认的${getKeyConclusionCategoryLabel(confirmation.category)}：“${confirmation.conclusionTitle}”。它会创建新的关键结论对象、来源关系和决策记录；不会自动改写设计定义、概念方向、默认参考、交付引用或长期项目记忆。`;
+    case "createKeyConclusion": {
+      const categoryLabel = confirmation.category ? getKeyConclusionCategoryLabel(confirmation.category) : "待选择类别";
+      return `将从“${confirmation.sourceTitle}”保存一条用户确认的${categoryLabel}：“${confirmation.conclusionTitle}”。它会创建新的关键结论对象、来源关系和决策记录；不会自动改写设计定义、概念方向、默认参考、交付引用或长期项目记忆。`;
+    }
     case "agentCreateResearchAnalysis":
     case "agentCreateDesignDefinitionProposal":
     case "agentCreateConceptDirectionProposal":

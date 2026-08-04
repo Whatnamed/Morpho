@@ -1,3 +1,4 @@
+import { isAssignableKeyConclusionCategory } from "../../domain/morpho/types";
 import type { MorphoObject, MorphoObjectId, MorphoWorkspace } from "../../domain/morpho/types";
 
 export type ComparisonActionKind =
@@ -29,9 +30,12 @@ export function validateComparisonActionTarget(
   }
 
   if (action === "createKeyConclusion") {
-    return analysis.keyConclusionCandidate
+    if (!analysis.keyConclusionCandidate) {
+      return { status: "blocked", reason: "Comparison analysis has no key conclusion candidate." };
+    }
+    return isAssignableKeyConclusionCategory(analysis.keyConclusionCandidate.category)
       ? { status: "ok" }
-      : { status: "blocked", reason: "Comparison analysis has no key conclusion candidate." };
+      : { status: "blocked", reason: "Key conclusion candidate must have an assignable category." };
   }
 
   if (!objectId || !analysis.sourceObjectIds.includes(objectId)) {
@@ -94,6 +98,9 @@ export function validateComparisonKeyConclusionSources(
   const candidateIds = candidate?.sourceObjectIds;
   if (!analysis || !candidateIds || !candidate) {
     return { status: "blocked", reason: "Comparison analysis has no key conclusion candidate." };
+  }
+  if (!isAssignableKeyConclusionCategory(candidate.category)) {
+    return { status: "blocked", reason: "Key conclusion candidate must have an assignable category." };
   }
   if (candidateIds.length === 0 || candidateIds.length !== new Set(candidateIds).size) {
     return { status: "blocked", reason: "Key conclusion candidate must have non-empty unique sources." };

@@ -110,7 +110,7 @@ import {
   type ResearchKeyConclusionSource,
   type CanvasLayerReorderAction
 } from "@/domain/morpho/workspace";
-import type { CanvasInstance, KeyConclusionCategory, MorphoWorkspace } from "@/domain/morpho/types";
+import type { AssignableKeyConclusionCategory, CanvasInstance, MorphoWorkspace } from "@/domain/morpho/types";
 import { readClipboardAsImportPayload } from "./canvasClipboardImport";
 import { AiConversationPanel } from "./components/AiConversationPanel";
 import type { PendingAiConfirmation, PendingComparisonConfirmation } from "./components/AiConversationPanel";
@@ -3232,6 +3232,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
 
     if (pendingConfirmation.kind === "createKeyConclusion") {
+      if (!pendingConfirmation.category) {
+        showWorkspaceNotice("请选择关键结论类别后再保存。");
+        return;
+      }
       const result = createKeyConclusion(workspace, {
         title: pendingConfirmation.conclusionTitle,
         body: pendingConfirmation.body,
@@ -5277,7 +5281,7 @@ function buildKeyConclusionDraftFromObject(object: MorphoObject):
       title: string;
       body: string;
       summary: string;
-      category: KeyConclusionCategory;
+      category: AssignableKeyConclusionCategory | null;
       confidence: "supported" | "partial" | "needsVerification";
       state?: "active" | "needsVerification";
       note: string;
@@ -5293,7 +5297,10 @@ function buildKeyConclusionDraftFromObject(object: MorphoObject):
             ? { category: "constraint" as const, text: object.constraints[0] }
             : object.openQuestions[0]
               ? { category: "openQuestion" as const, text: object.openQuestions[0] }
-              : { category: "unknown" as const, text: object.summary };
+              : null;
+      if (!primaryClaim) {
+        return null;
+      }
       return {
         title: truncateForTitle(primaryClaim.text || object.title, "关键结论"),
         summary: primaryClaim.text || object.summary,
@@ -5309,7 +5316,7 @@ function buildKeyConclusionDraftFromObject(object: MorphoObject):
         title: truncateForTitle(object.title || object.summary, "关键结论"),
         summary: object.summary,
         body: object.body,
-        category: "unknown",
+        category: null,
         confidence: "needsVerification",
         state: "needsVerification",
         note: `用户从文本对象“${object.title}”中保留关键结论，后续仍需复核。`
@@ -5319,7 +5326,7 @@ function buildKeyConclusionDraftFromObject(object: MorphoObject):
         title: truncateForTitle(object.editableTitle || object.title, "关键结论"),
         summary: object.summary,
         body: [object.description, object.summary, object.url].filter(Boolean).join("\n\n"),
-        category: "unknown",
+        category: null,
         confidence: "needsVerification",
         state: "needsVerification",
         note: `用户从链接对象“${object.title}”中保留关键结论，后续仍需复核来源有效性。`
@@ -5329,7 +5336,7 @@ function buildKeyConclusionDraftFromObject(object: MorphoObject):
         title: truncateForTitle(object.title, "关键结论"),
         summary: object.summary,
         body: [object.summary, object.fileName, object.mimeType].filter(Boolean).join("\n\n"),
-        category: "unknown",
+        category: null,
         confidence: "needsVerification",
         state: "needsVerification",
         note: `用户从文件对象“${object.title}”中保留关键结论，后续仍需复核原始资料。`
