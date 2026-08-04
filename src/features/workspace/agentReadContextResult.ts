@@ -11,6 +11,7 @@ export function buildReadSelectedContextResult(
       type: summary.type,
       title: summary.title,
       summary: summary.summary,
+      category: summary.category,
       detail: summary.detail
     })),
     directDocumentTitles: context.documentFragmentExtracts.map((extract) => extract.title),

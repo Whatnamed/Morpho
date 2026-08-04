@@ -309,6 +309,7 @@ export type ReadSelectedContextResult = {
     type: MorphoObject["type"];
     title: string;
     summary: string;
+    category?: Extract<MorphoObject, { type: "keyConclusion" }>["category"];
     detail?: string;
   }>;
   directDocumentTitles: string[];

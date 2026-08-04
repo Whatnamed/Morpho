@@ -8,7 +8,7 @@ import {
   type ProjectArchiveDiagnostic,
   type ProjectArchiveDiagnosticSeverity
 } from "./projectArchive";
-import type { AssetId, AssetRecord, MorphoWorkspace } from "./types";
+import type { AssetId, AssetRecord, KeyConclusionCategory, MorphoWorkspace } from "./types";
 import { migrateWorkspaceToCurrentSchema } from "./workspace";
 
 export const PROJECT_BUNDLE_FORMAT = "morpho-project-bundle";
@@ -718,7 +718,7 @@ function buildRichArchiveProjectOverview(manifest: HumanReadableArchiveManifest)
     ...listOrEmpty(
       manifest.archive.keyConclusions.map(
         (item) =>
-          `- ${item.title}｜${item.state}｜${item.confidence}：${item.summary}\n  来源对象：${joinValues(item.sourceObjectIds)}；引用：${joinValues(item.citationIds)}\n  ${item.body}`
+          `- ${item.title}｜类别：${keyConclusionCategoryLabel(item.category)}｜${item.state}｜${item.confidence}：${item.summary}\n  来源对象：${joinValues(item.sourceObjectIds)}；引用：${joinValues(item.citationIds)}\n  ${item.body}`
       ),
       "暂无关键结论"
     ),
@@ -971,6 +971,21 @@ function sourceIndexLabel(item: HumanReadableArchiveManifest["archive"]["researc
 
 function listOrEmpty(lines: string[], empty: string): string[] {
   return lines.length > 0 ? lines : [`- ${empty}`];
+}
+
+function keyConclusionCategoryLabel(category: KeyConclusionCategory): string {
+  switch (category) {
+    case "finding":
+      return "发现";
+    case "opportunity":
+      return "机会点";
+    case "constraint":
+      return "约束";
+    case "openQuestion":
+      return "待验证";
+    case "unknown":
+      return "待分类";
+  }
 }
 
 function bulletList(label: string, values: readonly string[] | undefined): string {

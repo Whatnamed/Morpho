@@ -65,7 +65,7 @@ export function getResearchExtractionItems(workspace: MorphoWorkspace, researchI
       if (!text) {
         return [];
       }
-      const linkedObjects = findLinkedKeyConclusions(workspace, research, section.kind, index);
+      const linkedObjects = findLinkedKeyConclusions(workspace, research, section.kind, index, text);
       const activeObjectId = linkedObjects.find((object) => object.visibility === "active")?.id;
       const hiddenObjectId = linkedObjects.find((object) => object.visibility === "hidden")?.id;
 
@@ -171,6 +171,7 @@ export function applyResearchExtractionSelection(
         summary: item.text,
         sourceObjectIds: draft.draft.sourceObjectIds,
         citationIds: draft.draft.citationIds,
+        category: draft.draft.category,
         confidence: draft.draft.confidence,
         state: draft.draft.state,
         note: draft.draft.note,
@@ -207,29 +208,18 @@ function findLinkedKeyConclusions(
   workspace: MorphoWorkspace,
   research: ResearchObject,
   kind: ResearchExtractionKind,
-  index: number
+  index: number,
+  text: string
 ) {
-  const noteMarker = `${formatResearchSourceKind(kind)}第 ${index + 1}条`;
+  const normalizedText = normalizeResearchItem(text) ?? text.trim();
 
   return Object.values(workspace.objects).filter(
     (object) =>
       object.type === "keyConclusion" &&
       object.sourceObjectIds.includes(research.id) &&
-      (object.note?.includes(noteMarker) ?? false)
+      object.category === kind &&
+      [object.body, object.summary].some((candidate) => (normalizeResearchItem(candidate) ?? candidate.trim()) === normalizedText)
   );
-}
-
-function formatResearchSourceKind(kind: ResearchExtractionKind): string {
-  switch (kind) {
-    case "finding":
-      return "发现";
-    case "opportunity":
-      return "机会点";
-    case "constraint":
-      return "约束";
-    case "openQuestion":
-      return "待验证问题";
-  }
 }
 
 export function getResearchExtractionCardSize(text: string): CanvasSize {

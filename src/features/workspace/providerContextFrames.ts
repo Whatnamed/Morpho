@@ -318,7 +318,7 @@ function createTurnContextFrame(
 ): ProviderContextFrame {
   const selected = [...input.context.semanticSummaries]
     .sort((left, right) => left.id.localeCompare(right.id))
-    .map((summary) => `${summary.title}（${summary.id}）：${summary.summary}`);
+    .map((summary) => `${summary.title}（${summary.id}）${summary.category ? ` [category=${summary.category}]` : ""}：${summary.summary}`);
   const relatedIds = uniqueIds([
     ...input.context.objectIds,
     ...input.context.documentObjectIds,

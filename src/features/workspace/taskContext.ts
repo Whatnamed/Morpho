@@ -2,6 +2,7 @@ import type {
   AiContextTask,
   ConceptDirectionRevision,
   DesignDefinitionRevision,
+  KeyConclusionCategory,
   MorphoObject,
   MorphoObjectId,
   MorphoObjectType,
@@ -26,6 +27,7 @@ export type TaskContextSummary = {
   type: MorphoObjectType;
   title: string;
   summary: string;
+  category?: KeyConclusionCategory;
   detail?: string;
 };
 
@@ -642,6 +644,7 @@ function summarizeObject(object: MorphoObject | undefined): TaskContextSummary |
     type: object.type,
     title: object.title,
     summary: object.summary,
+    ...(object.type === "keyConclusion" ? { category: object.category } : {}),
     detail: detailForObject(object)
   };
 }
@@ -651,7 +654,7 @@ function detailForObject(object: MorphoObject): string | undefined {
     case "text":
       return object.body.slice(0, 800);
     case "keyConclusion":
-      return object.body;
+      return `category=${object.category} / ${object.body}`;
     case "documentFragment":
       return [
         object.body.slice(0, 800),

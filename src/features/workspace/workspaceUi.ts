@@ -1,4 +1,4 @@
-import type { AiWorkIntent, ImageRole, MorphoObject, MorphoObjectId } from "@/domain/morpho/types";
+import type { AiWorkIntent, ImageRole, KeyConclusionCategory, MorphoObject, MorphoObjectId } from "@/domain/morpho/types";
 
 export type Suggestion = {
   label: string;
@@ -38,6 +38,21 @@ export function getObjectTypeLabel(object: MorphoObject): string {
       return "交付准备";
     default:
       return "对象";
+  }
+}
+
+export function getKeyConclusionCategoryLabel(category: KeyConclusionCategory): string {
+  switch (category) {
+    case "finding":
+      return "发现";
+    case "opportunity":
+      return "机会点";
+    case "constraint":
+      return "约束";
+    case "openQuestion":
+      return "待验证";
+    case "unknown":
+      return "待分类";
   }
 }
 

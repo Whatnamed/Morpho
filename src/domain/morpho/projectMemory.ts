@@ -635,11 +635,13 @@ function projectDecisionLog(workspace: ProjectionWorkspace): ProjectedDocument {
       section(
         "decisions",
         "当前项目决定",
-        currentDecisions.map((decision) =>
-          [decision.summary, decision.reason ? `原因：${decision.reason}` : "", `时间：${decision.createdAt}`]
+        currentDecisions.map((decision) => {
+          const decisionObject = decision.objectSnapshot?.id ? workspace.objects[decision.objectSnapshot.id] : undefined;
+          const category = decisionObject?.type === "keyConclusion" ? `类别：${decisionObject.category}` : "";
+          return [decision.summary, category, decision.reason ? `原因：${decision.reason}` : "", `时间：${decision.createdAt}`]
             .filter(Boolean)
-            .join("；")
-        )
+            .join("；");
+        })
       )
     ]),
     sourceRefs: uniqueSourceRefs(

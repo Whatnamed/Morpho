@@ -2,6 +2,7 @@ import type {
   AssetRecord,
   DeliveryReference,
   DeliveryReferenceId,
+  KeyConclusionCategory,
   MorphoObject,
   MorphoObjectId,
   MorphoWorkspace
@@ -26,6 +27,7 @@ export type WorkspaceSearchResult =
       objectId: MorphoObjectId;
       title: string;
       summary: string;
+      category?: KeyConclusionCategory;
       hidden: boolean;
       source?: WorkspaceSearchObjectSource;
     }
@@ -54,6 +56,7 @@ export function searchWorkspace(workspace: MorphoWorkspace, query: string): Work
         objectId: object.id,
         title: object.title,
         summary: buildResultSummary(getSearchableObjectText(object), normalizedQuery),
+        ...(object.type === "keyConclusion" ? { category: object.category } : {}),
         hidden: object.visibility === "hidden",
         ...(source ? { source } : {})
       };
@@ -194,7 +197,7 @@ function getSearchableObjectText(object: MorphoObject): string {
         object.source.fileName ?? ""
       ].join(" ");
     case "keyConclusion":
-      return [object.title, object.summary, object.body, object.note ?? ""].join(" ");
+      return [object.title, object.summary, object.body, object.category, keyConclusionCategorySearchLabel(object.category), object.note ?? ""].join(" ");
     case "designDefinition":
       return [object.title, object.summary, object.problem, object.principles.join(" "), object.avoid.join(" ")].join(" ");
     case "conceptDirection":
@@ -203,5 +206,20 @@ function getSearchableObjectText(object: MorphoObject): string {
       return [object.title, object.summary, object.gaps.map((gap) => gap.label).join(" ")].join(" ");
     default:
       return object.title;
+  }
+}
+
+function keyConclusionCategorySearchLabel(category: KeyConclusionCategory): string {
+  switch (category) {
+    case "finding":
+      return "发现";
+    case "opportunity":
+      return "机会点";
+    case "constraint":
+      return "约束";
+    case "openQuestion":
+      return "待验证";
+    case "unknown":
+      return "待分类";
   }
 }

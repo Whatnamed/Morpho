@@ -17,14 +17,13 @@ import type {
   AssetRecord
 } from "@/domain/morpho/types";
 import type { DesignTraceResult } from "@/domain/morpho/designTrace";
+import type { ResearchKeyConclusionSource } from "@/domain/morpho/workspace";
 import {
   resolveDocumentFragmentLocation,
   resolveDocumentFragmentSourceAvailability,
   type DocumentReaderInitialLocation
 } from "../documentFragments";
-import { getObjectTypeLabel } from "../workspaceUi";
-
-type ResearchSourceKind = "finding" | "opportunity" | "constraint" | "openQuestion" | "evidence";
+import { getKeyConclusionCategoryLabel, getObjectTypeLabel } from "../workspaceUi";
 
 type BottomDetailBarProps = {
   workspace: MorphoWorkspace;
@@ -43,9 +42,7 @@ type BottomDetailBarProps = {
   onOpenDocumentReader: (fileObjectId: string, initialLocation?: DocumentReaderInitialLocation | null) => void;
   onSaveKeyConclusionFromResearchItem: (input: {
     researchObjectId: string;
-    sourceKind: ResearchSourceKind;
-    index: number;
-  }) => void;
+  } & ResearchKeyConclusionSource) => void;
   onCopyItemToDraft: (text: string) => void;
   onContinueQuestion: (text: string) => void;
   onPreviewObject?: (objectId: string | null) => void;
@@ -693,7 +690,7 @@ function renderDetail(input: {
     if (object.type === "keyConclusion") {
       return (
         <>
-          <strong>{getObjectTypeLabel(object)}</strong> · {object.summary}
+          <strong>{getObjectTypeLabel(object)} · {getKeyConclusionCategoryLabel(object.category)}</strong> · {object.summary}
           <span className="detail-meta">
             来源：{object.sourceObjectIds.length} 项 · 引用：{object.citationIds.length} 项 · 状态：
             {object.state}

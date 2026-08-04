@@ -31,7 +31,7 @@ import {
   type WorkspaceSearchObjectSource
 } from "@/domain/morpho/queries";
 import type { DrawerMode } from "./LeftRail";
-import { getObjectTypeLabel } from "../workspaceUi";
+import { getKeyConclusionCategoryLabel, getObjectTypeLabel } from "../workspaceUi";
 import {
   getLeftRailPopoverPosition,
   type LeftRailAnchor,
@@ -740,7 +740,7 @@ function ObjectRows({
               {object.visibility === "hidden" ? <span className="row-status-chip">已隐藏</span> : null}
             </div>
             <div className="row-meta">
-              <span>{getObjectTypeLabel(object)}</span>
+              <span>{object.type === "keyConclusion" ? getKeyConclusionCategoryLabel(object.category) : getObjectTypeLabel(object)}</span>
               <span>{object.visibility === "hidden" ? "不参与默认 AI 语境" : "画布对象"}</span>
             </div>
             {onObjectAction ? (
@@ -780,7 +780,13 @@ function SearchRows({
               </div>
               <p className="row-note">{result.summary}</p>
               <div className="row-meta">
-                <span>{result.kind === "object" ? "画布内容" : "交付引用快照"}</span>
+                <span>
+                  {result.kind === "object"
+                    ? result.category
+                      ? getKeyConclusionCategoryLabel(result.category)
+                      : "画布内容"
+                    : "交付引用快照"}
+                </span>
                 {source ? <span>{searchSourceLabel(source)}</span> : null}
                 {result.hidden ? <span>恢复后可回到画布</span> : null}
               </div>

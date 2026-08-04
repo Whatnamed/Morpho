@@ -20,7 +20,7 @@ import type { CanvasInstance, MorphoObject, MorphoObjectType, MorphoWorkspace } 
 import { hasPendingDesignDefinitionRevisionProposal } from "../../../domain/morpho/derivedState";
 import { deriveDeliveryPreparationSignals } from "../../../domain/morpho/deliveryPreparation";
 import { getResearchItemParts } from "../../../domain/operations/researchItems";
-import { getObjectTypeLabel } from "../workspaceUi";
+import { getKeyConclusionCategoryLabel, getObjectTypeLabel } from "../workspaceUi";
 
 export const MORPHO_SHAPE_TYPE = "morpho-object";
 
@@ -367,12 +367,12 @@ function getKeyConclusionShapeSize(instance: CanvasInstance, object: Extract<Mor
   const titleLineCount = estimateLineCount(parts.title, Math.max(12, Math.floor(contentWidth / 12)));
   const detailLineCount = parts.detail ? estimateLineCount(parts.detail, Math.max(14, Math.floor(contentWidth / 11))) : 0;
   const estimatedHeight = 16 + 12 + 9 + titleLineCount * 18 + (parts.detail ? 5 + detailLineCount * 17 : 0) + 16;
-  const extractedLabel = getResearchExtractedKeyConclusionLabel(object.note);
-  const compactHeight = extractedLabel
+  const hasStructuredCategory = object.category !== "unknown";
+  const compactHeight = hasStructuredCategory
     ? Math.min(156, Math.max(108, Math.ceil(estimatedHeight)))
     : Math.ceil(estimatedHeight);
   const isPreviouslyAutoSizedExtraction =
-    Boolean(extractedLabel) &&
+    hasStructuredCategory &&
     instance.size.w >= 280 &&
     instance.size.w <= 340 &&
     instance.size.h > compactHeight &&
@@ -404,28 +404,7 @@ function getMorphoShapeLabel(object: MorphoObject): string {
     return getObjectTypeLabel(object);
   }
 
-  return getResearchExtractedKeyConclusionLabel(object.note) ?? getObjectTypeLabel(object);
-}
-
-function getResearchExtractedKeyConclusionLabel(note?: string): string | undefined {
-  if (!note) {
-    return undefined;
-  }
-
-  if (note.includes("发现第")) {
-    return "发现";
-  }
-  if (note.includes("机会点第")) {
-    return "机会点";
-  }
-  if (note.includes("约束第")) {
-    return "约束";
-  }
-  if (note.includes("待验证问题第")) {
-    return "待验证";
-  }
-
-  return undefined;
+  return getKeyConclusionCategoryLabel(object.category);
 }
 
 function isContentHeightAdaptiveObject(object: MorphoObject): boolean {
