@@ -6,7 +6,7 @@ As of 2026-08-04, the repository contains one formal A+ Agent Runtime. The curre
 truth is the code on `main` plus the documents listed below; historical milestone documents are
 not alternate implementation guides.
 
-- `schemaVersion` is 15 and project data remains browser-local first.
+- `schemaVersion` is 16 and project data remains browser-local first.
 - `main` and `refactor/agent-runtime-a-plus` are closed at the same release commit.
 - A+ Phase A and Phase B are complete; the repository is in the healthy observation window before
   Phase C.

@@ -81,7 +81,7 @@ Implemented server-side state and deployment:
 
 ## Data Model
 
-Structured workspace data is schema version `15`.
+Structured workspace data is schema version `16`.
 
 Current workspace state includes:
 
@@ -116,11 +116,15 @@ Operation persistence is intentionally lightweight:
 - workspace JSON does not store raw webpages, full document extracts, page preview binaries, provider raw responses, API keys, or response headers;
 - interrupted operations are recoverable as local state, but they are not treated as background server jobs after refresh.
 
-Schema-v15 loading is also the one-way compatibility boundary for retired B browser fields. It
-drops old Closure Recovery, signed terminal Outcome, and Provider Request State records while
-preserving raw chat, Summary Revisions, Provider Context Frames, Provider input/output snapshots,
-Agent traces, project data, and assets. Those dropped fields are not part of the canonical type or
-archive format and are never regenerated.
+Schema-v16 loading is the one-way compatibility boundary for retired B browser fields and the
+formal key-conclusion category model. It accepts v1-v15 workspace data through pure migration,
+preserves valid legacy categories, derives a category only from an exact source research item or
+the explicitly isolated old-note fallback, and stores `unknown` when the legacy evidence is not
+enough. Current runtime code never infers category from title, body, or note. It also drops old
+Closure Recovery, signed terminal Outcome, and Provider Request State records while preserving raw
+chat, Summary Revisions, Provider Context Frames, Provider input/output snapshots, Agent traces,
+project data, and assets. Those dropped fields are not part of the canonical type or archive format
+and are never regenerated.
 
 Canvas rendering is separated from Morpho domain state:
 
@@ -278,9 +282,9 @@ M6 additions:
 - `prepareDeliverySection` sends only the current section delivery reference snapshots in `deliverySectionContext`, does not send web search, normal task context, Compare context, live source objects, full files, or full document extracts, and creates only a pending draft until the user applies it;
 - the floating delivery preparation panel supports package creation, section editing, explicit add-selected-object references, captions, gaps, stale-reference refresh, and draft apply/discard without becoming an export editor or slide layout engine.
 
-## Schema v15 AI Continuity And Memory
+## Schema v16 AI Continuity, Memory, And Key Conclusions
 
-Schema v15 is the current runtime contract and supersedes lane-local checkpoint selection:
+Schema v16 is the current runtime contract and supersedes lane-local checkpoint selection:
 
 - `conversationLaneKey` and legacy checkpoints remain labels and migration evidence only;
 - `ConversationCompactionState` points to a revisioned project-wide summary boundary, while all original `ai.messages` remain persisted and searchable;
@@ -300,9 +304,10 @@ Schema v15 is the current runtime contract and supersedes lane-local checkpoint 
 - Provider Context Frames remain browser-local, untrusted product context. They are retained for continuity and editable backup, not signed or accepted as causal proof by the server;
 - GrsAI image planning distinguishes `textToImage`, `imageToImage`, and prompt-level `directedEdit`. The current request has no mask/inpainting field, so `maskedLocalEdit` is unavailable and no pixel-level local-edit guarantee is exposed;
 - editable backups default to full conversation scope and preserve raw chat, summary revisions, legacy checkpoints, memory/stage revisions, Continuity Events, Agent Trace, citations, Compare analyses, and image provenance;
+- `KeyConclusionObject.category` is a formal union of `finding`, `opportunity`, `constraint`, `openQuestion`, and compatibility-only `unknown`. New manual, research-extraction, Compare, and Agent-confirmed writes must carry the category explicitly; UI, search, task Context, provider summaries, project Memory, and human-readable bundles read this field directly. The old extraction-note markers are migration-only compatibility hints and are not runtime semantics;
 - the generated current-case fixture is upgraded with `npm.cmd run case-study:upgrade`; repeated upgrades must produce the same workspace hash.
 
-No new runtime dependency or external service was introduced for schema v15.
+No new runtime dependency or external service was introduced for schema v16.
 
 ## Local-First Persistence
 

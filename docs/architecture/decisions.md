@@ -936,3 +936,23 @@ Boundary: A Provider cache key is not authentication, project ownership, request
 hit proof, or Server External Execution Status. Cache miss and the one-time unsupported-field fallback
 do not change local or server authority. This revision does not apply a remote Migration, deploy an
 application, call a paid Provider, merge `main`, move archive refs, or authorize Phase A/B/C.
+
+## 2026-08-04: Formalize Key Conclusion Categories In Schema 16
+
+Decision: upgrade the workspace to `schemaVersion: 16` and make `KeyConclusionObject.category` a
+required `KeyConclusionCategory` union: `finding`, `opportunity`, `constraint`, `openQuestion`, or
+compatibility-only `unknown`. Manual confirmation, research extraction, Compare writeback, Agent
+confirmation, search, Context, Memory, and bundle projections use the field directly.
+
+Reason: key conclusions are retained semantic objects, so their domain category cannot remain an
+implicit presentation convention encoded in a title, body, or human note. Explicit categories keep
+the same conclusion body semantically distinct when the category changes and let UI or provider
+context display the same fact without re-parsing legacy prose.
+
+Migration boundary: v1-v15 reads are pure and preserve an existing valid category. For missing
+legacy categories, migration first accepts an exact normalized body/summary match to a research
+item scoped by `sourceObjectIds`, then uses the old extraction note markers only as a compatibility
+fallback; all otherwise-unproven values become `unknown`. Current v16 normalization does not read
+notes or infer from free text. This decision changes only browser-local domain data and its
+projections; it does not change A+ journals, Agent Journal or External Action Journal contracts,
+database migrations, Phase C, auth, providers, model routing, or deployment.
