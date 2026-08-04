@@ -8223,6 +8223,25 @@ select:focus-visible {
   line-height: 1.45;
 }
 
+.detail-key-conclusion-category {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.detail-key-conclusion-category select {
+  min-height: 28px;
+  padding: 4px 26px 4px 9px;
+  border: 1px solid rgba(78, 68, 58, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--text-primary);
+  font: inherit;
+}
+
 .detail-inline-action {
   margin-top: 0;
   min-height: 28px;

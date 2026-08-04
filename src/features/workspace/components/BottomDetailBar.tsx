@@ -3,18 +3,21 @@
 import { BookOpen } from "lucide-react";
 import { useState } from "react";
 
-import type {
-  DecisionRecord,
-  DirectionLineageRecord,
-  ImageCollectionObject,
-  ImageObject,
-  MorphoObject,
-  MorphoRelation,
-  MorphoWorkspace,
-  VisualBranchRecord,
-  VisualReviewMark,
-  ResearchObject,
-  AssetRecord
+import {
+  ASSIGNABLE_KEY_CONCLUSION_CATEGORIES,
+  isAssignableKeyConclusionCategory,
+  type DecisionRecord,
+  type DirectionLineageRecord,
+  type ImageCollectionObject,
+  type ImageObject,
+  type MorphoObject,
+  type MorphoRelation,
+  type MorphoWorkspace,
+  type VisualBranchRecord,
+  type VisualReviewMark,
+  type ResearchObject,
+  type AssetRecord,
+  type AssignableKeyConclusionCategory
 } from "@/domain/morpho/types";
 import type { DesignTraceResult } from "@/domain/morpho/designTrace";
 import type { ResearchKeyConclusionSource } from "@/domain/morpho/workspace";
@@ -49,6 +52,7 @@ type BottomDetailBarProps = {
   onLocateObject?: (objectId: string) => void;
   onKeepReviewedVisual?: (objectId: string) => void;
   onRegenerateReviewedVisual?: (objectId: string) => void;
+  onSetKeyConclusionCategory?: (objectId: string, category: AssignableKeyConclusionCategory) => void;
 };
 
 const tabs = ["信息", "来源", "版本", "关联", "决策"] as const;
@@ -319,7 +323,8 @@ export function BottomDetailBar({
   onPreviewObject,
   onLocateObject,
   onKeepReviewedVisual,
-  onRegenerateReviewedVisual
+  onRegenerateReviewedVisual,
+  onSetKeyConclusionCategory
 }: BottomDetailBarProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>("信息");
 
@@ -418,7 +423,8 @@ export function BottomDetailBar({
             onArchiveVisualBranch,
             onRestoreVisualBranch,
             onPreviewObject,
-            onLocateObject
+            onLocateObject,
+            onSetKeyConclusionCategory
           })}
           {visibleTab === "关联" && activeDesignTrace ? <DesignTraceSummary trace={activeDesignTrace} /> : null}
         </div>
@@ -658,6 +664,7 @@ function renderDetail(input: {
   onRenameVisualBranch: BottomDetailBarProps["onRenameVisualBranch"];
   onArchiveVisualBranch: BottomDetailBarProps["onArchiveVisualBranch"];
   onRestoreVisualBranch: BottomDetailBarProps["onRestoreVisualBranch"];
+  onSetKeyConclusionCategory?: BottomDetailBarProps["onSetKeyConclusionCategory"];
   onPreviewObject?: (objectId: string | null) => void;
   onLocateObject?: (objectId: string) => void;
 }) {
@@ -675,6 +682,7 @@ function renderDetail(input: {
     hasPendingDesignDefinitionRevisionDraft,
     fragmentSourceState,
     fragmentLocation,
+    onSetKeyConclusionCategory,
     onPreviewObject,
     onLocateObject
   } = input;
@@ -695,6 +703,30 @@ function renderDetail(input: {
             来源：{object.sourceObjectIds.length} 项 · 引用：{object.citationIds.length} 项 · 状态：
             {object.state}
           </span>
+          {object.category === "unknown" ? (
+            <label className="detail-key-conclusion-category">
+              <span>类别</span>
+              <select
+                aria-label="关键结论类别"
+                value=""
+                onChange={(event) => {
+                  const category = event.currentTarget.value;
+                  if (isAssignableKeyConclusionCategory(category)) {
+                    onSetKeyConclusionCategory?.(object.id, category);
+                  }
+                }}
+              >
+                <option value="" disabled>
+                  待分类
+                </option>
+                {ASSIGNABLE_KEY_CONCLUSION_CATEGORIES.map((category) => (
+                  <option key={category} value={category}>
+                    {getKeyConclusionCategoryLabel(category)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           {object.supersededById ? <span className="detail-meta">已有更新结论替代该条。</span> : null}
           {object.note ? <span className="detail-meta">备注：{object.note}</span> : null}
         </>

@@ -105,6 +105,7 @@ import {
   reorderCanvasInstances,
   restoreObject,
   restoreVisualBranch,
+  setKeyConclusionCategory,
   setConceptDirectionStatus,
   setDefaultReference,
   type ResearchKeyConclusionSource,
@@ -132,7 +133,7 @@ import { TopControls } from "./components/TopControls";
 import { WorkspaceStarter } from "./components/WorkspaceStarter";
 import { usePersistentWorkspace } from "./usePersistentWorkspace";
 import { useWorkspaceAssetUrls } from "./useWorkspaceAssetUrls";
-import { compactObjectList, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
+import { compactObjectList, getKeyConclusionCategoryLabel, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
 import { getFloatingMenuPlacement, type SelectionToolbarPlacement } from "./selectionToolbar";
 import {
   createSnapshotHistory,
@@ -3446,6 +3447,25 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     showWorkspaceNotice(`已将「${target.title}」设为备选方向`);
   }, [pushObjectOperationUndo, selectedObjects, setWorkspace, showWorkspaceNotice]);
 
+  const handleSetKeyConclusionCategory = useCallback(
+    (objectId: string, category: AssignableKeyConclusionCategory) => {
+      const target = workspace.objects[objectId];
+      if (!target || target.type !== "keyConclusion") {
+        return;
+      }
+
+      pushObjectOperationUndo();
+      setWorkspace((current) => {
+        const result = setKeyConclusionCategory(current, objectId, category, {
+          reason: "用户在关键结论详情中补充类别。"
+        });
+        return result.status === "updated" ? result.workspace : current;
+      });
+      showWorkspaceNotice(`已将关键结论「${target.title}」归为${getKeyConclusionCategoryLabel(category)}`);
+    },
+    [pushObjectOperationUndo, setWorkspace, showWorkspaceNotice, workspace.objects]
+  );
+
   const handleRestoreDirectionAsAlternative = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "conceptDirection");
     if (!target) {
@@ -4717,6 +4737,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           onArchiveVisualBranch={handleArchiveVisualBranch}
           onRestoreVisualBranch={handleRestoreVisualBranch}
           onSaveKeyConclusionFromResearchItem={handleSaveKeyConclusionFromResearchItem}
+          onSetKeyConclusionCategory={handleSetKeyConclusionCategory}
           onCopyItemToDraft={handleCopyItemToDraft}
           onContinueQuestion={handleContinueQuestion}
           onOpenDocumentReader={handleOpenDocumentReader}

@@ -26,7 +26,7 @@ import {
   normalizeProviderOutputSnapshot
 } from "./providerInputSnapshot";
 import { isValidCanonicalAgentRuntimeItem } from "@/shared/agentRuntimeItem";
-import { isKeyConclusionCategory } from "./types";
+import { isAssignableKeyConclusionCategory, isKeyConclusionCategory } from "./types";
 import initialCaseStudyWorkspaceFixture from "./caseStudy/currentCaseWorkspace.generated.json";
 import legacyNightrailTestFixture from "./caseStudy/legacyNightrailPristine.fixture.json";
 import type { ArtifactProposal, SourceSemanticSnapshot } from "../operations/types";
@@ -139,6 +139,18 @@ export type KeyConclusionDraftFromResearchResult =
     };
 
 export type SetKeyConclusionStateResult =
+  | {
+      status: "updated";
+      workspace: MorphoWorkspace;
+      keyConclusion: KeyConclusionObject;
+    }
+  | {
+      status: "blocked";
+      workspace: MorphoWorkspace;
+      reason: string;
+    };
+
+export type SetKeyConclusionCategoryResult =
   | {
       status: "updated";
       workspace: MorphoWorkspace;
@@ -1440,6 +1452,70 @@ export function buildKeyConclusionDraftFromResearchSource(
         source.index + 1
       }条中保留关键结论。`
     }
+  };
+}
+
+export function setKeyConclusionCategory(
+  workspace: MorphoWorkspace,
+  objectId: MorphoObjectId,
+  nextCategory: AssignableKeyConclusionCategory,
+  options: { reason?: string } = {}
+): SetKeyConclusionCategoryResult {
+  const target = workspace.objects[objectId];
+  if (!target || target.type !== "keyConclusion") {
+    return {
+      status: "blocked",
+      workspace,
+      reason: "目标关键结论不存在。"
+    };
+  }
+
+  if (!isAssignableKeyConclusionCategory(nextCategory)) {
+    return {
+      status: "blocked",
+      workspace,
+      reason: "关键结论只能改为四个可分配类别之一。"
+    };
+  }
+
+  if (target.category === nextCategory) {
+    return {
+      status: "updated",
+      workspace,
+      keyConclusion: target
+    };
+  }
+
+  const now = new Date().toISOString();
+  const updatedConclusion: KeyConclusionObject = {
+    ...target,
+    category: nextCategory,
+    updatedAt: now
+  };
+  const nextWorkspace = reconcileWorkspaceDerivedState({
+    ...workspace,
+    objects: {
+      ...workspace.objects,
+      [target.id]: updatedConclusion
+    },
+    decisionRecords: [
+      ...workspace.decisionRecords,
+      {
+        id: makeDecisionId(workspace, "setKeyConclusionCategory", target.id),
+        kind: "setKeyConclusionCategory",
+        createdAt: now,
+        summary: `更新关键结论类别：${target.title} → ${nextCategory}`,
+        reason: options.reason,
+        objectSnapshot: snapshotObject(updatedConclusion),
+        relatedObjectIds: [target.id]
+      }
+    ]
+  });
+
+  return {
+    status: "updated",
+    workspace: nextWorkspace,
+    keyConclusion: nextWorkspace.objects[target.id] as KeyConclusionObject
   };
 }
 

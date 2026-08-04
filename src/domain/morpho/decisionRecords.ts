@@ -1,4 +1,5 @@
 import type { DecisionRecord, DecisionKind, MorphoWorkspace } from "./types";
+import { isAssignableKeyConclusionCategory } from "./types";
 
 export type DecisionRecordState = "current" | "superseded" | "historical" | "reviewRequired";
 
@@ -88,6 +89,21 @@ export function classifyDecisionRecord(
         ? current(record)
         : superseded(record, "图片角色已被后续决定改变。");
     }
+    case "setKeyConclusionCategory": {
+      if (!target || target.type !== "keyConclusion") {
+        return review(record, "关键结论决策的目标对象已不存在。");
+      }
+      if (target.visibility !== "active") {
+        return review(record, "关键结论当前不可见，无法确认这条决定仍有效。");
+      }
+      const desiredCategory = parseKeyConclusionCategory(record.summary);
+      if (!desiredCategory) {
+        return review(record, "关键结论类别决策没有可识别的目标类别。");
+      }
+      return target.category === desiredCategory
+        ? current(record)
+        : superseded(record, "关键结论类别已被后续决定改变。");
+    }
     case "createKeyConclusion":
     case "setKeyConclusionState": {
       if (!target || target.type !== "keyConclusion") {
@@ -146,6 +162,11 @@ function parseKeyConclusionState(summary: string): "active" | "superseded" | "ne
   return match?.[1] as "active" | "superseded" | "needsVerification" | undefined;
 }
 
+function parseKeyConclusionCategory(summary: string) {
+  const match = summary.match(/(?:->|→)\s*([a-zA-Z][a-zA-Z0-9]*)\s*$/);
+  return match && isAssignableKeyConclusionCategory(match[1]) ? match[1] : undefined;
+}
+
 function current(record: DecisionRecord): ClassifiedDecisionRecord {
   return { record, state: "current" };
 }
@@ -189,6 +210,8 @@ export function decisionKindLabel(kind: DecisionKind): string {
       return "图片角色";
     case "createKeyConclusion":
       return "保留关键结论";
+    case "setKeyConclusionCategory":
+      return "关键结论类别";
     case "setKeyConclusionState":
       return "关键结论状态";
     default:

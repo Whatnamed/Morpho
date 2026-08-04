@@ -694,6 +694,7 @@ export type DeliverySectionDraft = {
 
 export type DecisionKind =
   | "createKeyConclusion"
+  | "setKeyConclusionCategory"
   | "setKeyConclusionState"
   | "applyDesignDefinition"
   | "applyConceptDirection"
