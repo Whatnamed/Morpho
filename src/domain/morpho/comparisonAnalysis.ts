@@ -1,5 +1,6 @@
 import { isAssignableKeyConclusionCategory } from "./types";
 import type {
+  AssignableComparisonKeyConclusionCandidate,
   ComparisonAnalysis,
   ComparisonKeyConclusionCandidate,
   ComparisonObjectEntry,
@@ -62,7 +63,7 @@ export type ParsedComparisonAnalysisPayload = {
   objectComparisons: ComparisonObjectEntry[];
   recommendedQuestions: string[];
   evidenceLimits: string[];
-  keyConclusionCandidate?: ComparisonKeyConclusionCandidate;
+  keyConclusionCandidate?: AssignableComparisonKeyConclusionCandidate;
 };
 
 export function resolveComparisonSelection(
@@ -416,7 +417,7 @@ function parseObjectComparison(value: unknown): ComparisonObjectEntry | undefine
   };
 }
 
-function parseKeyConclusionCandidate(value: unknown): ComparisonKeyConclusionCandidate | undefined {
+function parseKeyConclusionCandidate(value: unknown): AssignableComparisonKeyConclusionCandidate | undefined {
   if (
     !isRecord(value) ||
     typeof value.title !== "string" ||

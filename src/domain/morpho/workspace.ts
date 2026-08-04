@@ -46,6 +46,10 @@ import type {
   ConceptDirectionObject,
   ConceptDirectionStatus,
   ComparisonAnalysis,
+  ComparisonKeyConclusionCandidate,
+  ComparisonObjectEntry,
+  ComparisonObjectEvidence,
+  ComparisonSourceRef,
   DeliveryObject,
   DeliveryGap,
   DeliveryReference,
@@ -2289,25 +2293,168 @@ function normalizeComparisonAnalyses(value: unknown): MorphoWorkspace["ai"]["com
 
   return Object.fromEntries(
     Object.entries(value).flatMap(([analysisId, rawAnalysis]) => {
-      if (!isRecord(rawAnalysis)) {
-        return [];
-      }
-      const rawCandidate = rawAnalysis.keyConclusionCandidate;
-      if (!isRecord(rawCandidate)) {
-        return [[analysisId, rawAnalysis as unknown as ComparisonAnalysis]];
-      }
-      return [[
-        analysisId,
-        {
-          ...rawAnalysis,
-          keyConclusionCandidate: {
-            ...rawCandidate,
-            category: isKeyConclusionCategory(rawCandidate.category) ? rawCandidate.category : "unknown"
-          }
-        } as ComparisonAnalysis
-      ]];
+      const normalizedAnalysis = normalizeComparisonAnalysis(analysisId, rawAnalysis);
+      return normalizedAnalysis ? [[analysisId, normalizedAnalysis]] : [];
     })
   );
+}
+
+function normalizeComparisonAnalysis(analysisId: string, value: unknown): ComparisonAnalysis | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const keyConclusionCandidate = isRecord(value.keyConclusionCandidate)
+    ? normalizeComparisonKeyConclusionCandidate(value.keyConclusionCandidate)
+    : undefined;
+
+  return {
+    id: stringValue(value.id, analysisId),
+    assistantMessageId: stringValue(value.assistantMessageId),
+    userMessageId: stringValue(value.userMessageId),
+    createdAt: stringValue(value.createdAt),
+    updatedAt: stringValue(value.updatedAt),
+    sourceObjectIds: getStringArray(value.sourceObjectIds),
+    sourceRefs: normalizeComparisonSourceRefs(value.sourceRefs),
+    comparisonGoal: stringValue(value.comparisonGoal),
+    conclusionSummary: stringValue(value.conclusionSummary),
+    objectComparisons: normalizeComparisonObjectEntries(value.objectComparisons),
+    recommendedQuestions: getStringArray(value.recommendedQuestions),
+    evidenceLimits: getStringArray(value.evidenceLimits),
+    ...(keyConclusionCandidate ? { keyConclusionCandidate } : {})
+  };
+}
+
+function normalizeComparisonKeyConclusionCandidate(value: Record<string, unknown>): ComparisonKeyConclusionCandidate | undefined {
+  if (
+    typeof value.title !== "string" ||
+    typeof value.summary !== "string" ||
+    typeof value.body !== "string"
+  ) {
+    return undefined;
+  }
+  const confidence = normalizeComparisonConfidence(value.confidence);
+  if (!confidence) {
+    return undefined;
+  }
+
+  return {
+    title: value.title,
+    summary: value.summary,
+    body: value.body,
+    category: isKeyConclusionCategory(value.category) ? value.category : "unknown",
+    sourceObjectIds: getStringArray(value.sourceObjectIds),
+    evidence: normalizeComparisonObjectEvidence(value.evidence),
+    confidence,
+    ...(typeof value.note === "string" ? { note: value.note } : {})
+  };
+}
+
+function normalizeComparisonObjectEvidence(value: unknown): ComparisonObjectEvidence[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((candidate) => {
+    if (
+      !isRecord(candidate) ||
+      typeof candidate.objectId !== "string" ||
+      typeof candidate.label !== "string" ||
+      typeof candidate.evidence !== "string"
+    ) {
+      return [];
+    }
+    return [{
+      objectId: candidate.objectId,
+      label: candidate.label,
+      evidence: candidate.evidence
+    }];
+  });
+}
+
+function normalizeComparisonObjectEntries(value: unknown): ComparisonObjectEntry[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((candidate) => {
+    if (
+      !isRecord(candidate) ||
+      typeof candidate.objectId !== "string" ||
+      typeof candidate.title !== "string" ||
+      typeof candidate.summary !== "string"
+    ) {
+      return [];
+    }
+    const evidenceBasis = normalizeComparisonEvidenceBasis(candidate.evidenceBasis);
+    return [{
+      objectId: candidate.objectId,
+      title: candidate.title,
+      ...(evidenceBasis ? { evidenceBasis } : {}),
+      summary: candidate.summary,
+      strengths: getStringArray(candidate.strengths),
+      risks: getStringArray(candidate.risks),
+      evidence: getStringArray(candidate.evidence)
+    }];
+  });
+}
+
+function normalizeComparisonSourceRefs(value: unknown): ComparisonSourceRef[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((candidate) => {
+    if (
+      !isRecord(candidate) ||
+      typeof candidate.objectId !== "string" ||
+      typeof candidate.title !== "string" ||
+      typeof candidate.summary !== "string"
+    ) {
+      return [];
+    }
+    const objectType = normalizeComparisonObjectType(candidate.objectType);
+    const availability = normalizeComparisonSourceAvailability(candidate.availability);
+    if (!objectType || !availability) {
+      return [];
+    }
+    return [{
+      objectId: candidate.objectId,
+      objectType,
+      title: candidate.title,
+      summary: candidate.summary,
+      availability
+    }];
+  });
+}
+
+function normalizeComparisonObjectType(value: unknown): MorphoObjectType | undefined {
+  const objectTypes: readonly MorphoObjectType[] = [
+    "image",
+    "file",
+    "text",
+    "link",
+    "imageCollection",
+    "research",
+    "keyConclusion",
+    "documentFragment",
+    "proposalDraft",
+    "designDefinition",
+    "conceptDirection",
+    "delivery"
+  ];
+  return objectTypes.find((objectType) => objectType === value);
+}
+
+function normalizeComparisonSourceAvailability(value: unknown): ComparisonSourceRef["availability"] | undefined {
+  return value === "active" || value === "hidden" || value === "missing" ? value : undefined;
+}
+
+function normalizeComparisonEvidenceBasis(value: unknown): ComparisonObjectEntry["evidenceBasis"] {
+  return value === "pixels" || value === "objectSummary" || value === "documentExtract" || value === "documentFragment"
+    ? value
+    : undefined;
+}
+
+function normalizeComparisonConfidence(value: unknown): ComparisonKeyConclusionCandidate["confidence"] | undefined {
+  return value === "supported" || value === "partial" || value === "needsVerification" ? value : undefined;
 }
 
 function normalizeProviderContextFrames(

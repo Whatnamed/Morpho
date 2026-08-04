@@ -20,6 +20,7 @@ import type {
   ContinuityManualState,
   MorphoObject
 } from "@/domain/morpho/types";
+import { isAssignableKeyConclusionCategory } from "@/domain/morpho/types";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 import type { ConversationTokenLimits } from "@/domain/morpho/conversationCompaction";
 import { MORPHO_AGENT_CONTEXT_POLICY } from "@/domain/morpho/agentContextPolicy";
@@ -3635,6 +3636,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       if (action === "createKeyConclusion") {
         const keyConclusionCandidate = analysis.keyConclusionCandidate;
         if (!keyConclusionCandidate) {
+          return;
+        }
+        if (!isAssignableKeyConclusionCategory(keyConclusionCandidate.category)) {
+          showWorkspaceNotice("Compare 候选关键结论仍是待分类状态，不能直接保存。");
           return;
         }
 

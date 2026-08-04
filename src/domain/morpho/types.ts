@@ -747,11 +747,15 @@ export type ComparisonKeyConclusionCandidate = {
   title: string;
   summary: string;
   body: string;
-  category: AssignableKeyConclusionCategory;
+  category: KeyConclusionCategory;
   sourceObjectIds: MorphoObjectId[];
   evidence: ComparisonObjectEvidence[];
   confidence: KeyConclusionObject["confidence"];
   note?: string;
+};
+
+export type AssignableComparisonKeyConclusionCandidate = Omit<ComparisonKeyConclusionCandidate, "category"> & {
+  category: AssignableKeyConclusionCategory;
 };
 
 export type ComparisonAnalysis = {
