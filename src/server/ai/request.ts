@@ -1,4 +1,5 @@
-import type { AiWorkIntent } from "@/domain/morpho/types";
+import { isKeyConclusionCategory } from "@/domain/morpho/types";
+import type { AiWorkIntent, KeyConclusionCategory } from "@/domain/morpho/types";
 
 import type { ProviderChatMessage, ProviderWebSearchOptions } from "./types";
 
@@ -7,6 +8,7 @@ export type AiRouteObjectSummary = {
   type: string;
   title: string;
   summary: string;
+  category?: KeyConclusionCategory;
 };
 
 export type AiRouteAttachmentRepresentation = "single" | "contactSheet";
@@ -357,7 +359,11 @@ export function buildMorphoSystemPrompt(request: AiRouteRequest): string {
   const objectLines =
     request.objectSummaries.length > 0
       ? request.objectSummaries
-          .map((object) => `- ${object.id} / ${object.type} / ${object.title}: ${object.summary}`)
+          .map((object) => {
+            const prefix = `- ${object.id} / ${object.type}`;
+            const category = object.category ? ` / category=${object.category}` : "";
+            return `${prefix}${category} / ${object.title}: ${object.summary}`;
+          })
           .join("\n")
       : "- 本次没有显式对象。";
 
@@ -801,7 +807,8 @@ function isObjectSummary(value: unknown): value is AiRouteObjectSummary {
     typeof value.id === "string" &&
     typeof value.type === "string" &&
     typeof value.title === "string" &&
-    typeof value.summary === "string"
+    typeof value.summary === "string" &&
+    (value.category === undefined || isKeyConclusionCategory(value.category))
   );
 }
 
@@ -913,7 +920,7 @@ function buildComparisonAnalysisInstruction(request: AiRouteRequest): string {
     "File objects can only be treated as readable evidence when a documentExtract is included in this request. Otherwise do not pretend the file was read.",
     "Image objects only support true visual evidence when this request includes actual pixels or contact sheets. Otherwise mention the evidence limit explicitly and do not claim visual findings from the image itself.",
     "Each objectComparison must include evidenceBasis: \"pixels\" only when that source id is in attachedImageObjectIds, \"documentExtract\" only when that file id is in attachedDocumentObjectIds, \"documentFragment\" only when that selected source id is included in documentFragmentExtracts in this request, otherwise \"objectSummary\".",
-    "JSON shape: { \"morphoComparisonAnalysis\": { \"comparisonGoal\": string, \"conclusionSummary\": string, \"objectComparisons\": [{ \"objectId\": string, \"title\": string, \"evidenceBasis\": \"pixels\" | \"objectSummary\" | \"documentExtract\" | \"documentFragment\", \"summary\": string, \"strengths\": string[], \"risks\": string[], \"evidence\": string[] }], \"recommendedQuestions\": string[], \"evidenceLimits\": string[], \"keyConclusionCandidate\"?: { \"title\": string, \"summary\": string, \"body\": string, \"sourceObjectIds\": string[], \"evidence\": [{ \"objectId\": string, \"label\": string, \"evidence\": string }], \"confidence\": \"supported\" | \"partial\" | \"needsVerification\", \"note\"?: string } } }",
+    "JSON shape: { \"morphoComparisonAnalysis\": { \"comparisonGoal\": string, \"conclusionSummary\": string, \"objectComparisons\": [{ \"objectId\": string, \"title\": string, \"evidenceBasis\": \"pixels\" | \"objectSummary\" | \"documentExtract\" | \"documentFragment\", \"summary\": string, \"strengths\": string[], \"risks\": string[], \"evidence\": string[] }], \"recommendedQuestions\": string[], \"evidenceLimits\": string[], \"keyConclusionCandidate\"?: { \"title\": string, \"summary\": string, \"body\": string, \"category\": \"finding\" | \"opportunity\" | \"constraint\" | \"openQuestion\" | \"unknown\", \"sourceObjectIds\": string[], \"evidence\": [{ \"objectId\": string, \"label\": string, \"evidence\": string }], \"confidence\": \"supported\" | \"partial\" | \"needsVerification\", \"note\"?: string } } }",
     "objectComparisons must cover every selected source exactly once.",
     "keyConclusionCandidate is optional and only a candidate draft. Its sourceObjectIds must be non-empty selected ids that have true text evidence in this request: attachedDocumentObjectIds, selected ids present in documentFragmentExtracts, research, or existing keyConclusion sources only. Its evidence entries must all use those same sourceObjectIds. It never means a real keyConclusion was created."
   ].join("\n");

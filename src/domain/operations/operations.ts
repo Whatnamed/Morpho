@@ -2582,6 +2582,7 @@ function buildSemanticFingerprint(object: MorphoObject): string {
     case "keyConclusion":
       return stableStringify({
         body: object.body,
+        category: object.category,
         state: object.state,
         supersededById: object.supersededById,
         confidence: object.confidence

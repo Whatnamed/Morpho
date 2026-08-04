@@ -629,7 +629,7 @@ function validateBackupSnapshot(
     diagnostics.push({
       code: "invalid_workspace_snapshot",
       severity: "error",
-      message: "schema 15 editable backups must include Project Memory and Stage Records.",
+      message: "schema 15+ editable backups must include Project Memory and Stage Records.",
       path: "workspaceSnapshot.projectMemory"
     });
   }
@@ -712,7 +712,7 @@ function validateEditableBackupScope(
       diagnostics.push({
         code: "invalid_backup_scope",
         severity: "error",
-        message: "schema 15 editable backups must include conversation compaction state and summary revisions.",
+        message: "schema 15+ editable backups must include conversation compaction state and summary revisions.",
         path: "workspaceSnapshot.ai"
       });
     }

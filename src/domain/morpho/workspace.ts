@@ -26,6 +26,7 @@ import {
   normalizeProviderOutputSnapshot
 } from "./providerInputSnapshot";
 import { isValidCanonicalAgentRuntimeItem } from "@/shared/agentRuntimeItem";
+import { isKeyConclusionCategory } from "./types";
 import initialCaseStudyWorkspaceFixture from "./caseStudy/currentCaseWorkspace.generated.json";
 import legacyNightrailTestFixture from "./caseStudy/legacyNightrailPristine.fixture.json";
 import type { ArtifactProposal, SourceSemanticSnapshot } from "../operations/types";
@@ -44,6 +45,7 @@ import type {
   CanvasSize,
   ConceptDirectionObject,
   ConceptDirectionStatus,
+  ComparisonAnalysis,
   DeliveryObject,
   DeliveryGap,
   DeliveryReference,
@@ -56,6 +58,7 @@ import type {
   FileParseStatus,
   ImageObject,
   ImageRole,
+  KeyConclusionCategory,
   KeyConclusionObject,
   ComparisonDecisionMetadata,
   ConversationSummaryRevision,
@@ -73,7 +76,7 @@ import type {
 } from "./types";
 
 const DEFAULT_REFERENCE_HIDDEN_MESSAGE = "当前后续默认参考已隐藏，请先恢复或替换后再用于相关生成。";
-const CURRENT_SCHEMA_VERSION = 15;
+const CURRENT_SCHEMA_VERSION = 16;
 
 export type DeleteObjectResult =
   | {
@@ -111,6 +114,7 @@ export type ResearchKeyConclusionSource =
   | {
       kind: "evidence";
       index: number;
+      category: KeyConclusionCategory;
     };
 
 export type KeyConclusionDraftFromResearchResult =
@@ -122,6 +126,7 @@ export type KeyConclusionDraftFromResearchResult =
         summary: string;
         sourceObjectIds: MorphoObjectId[];
         citationIds: string[];
+        category: KeyConclusionCategory;
         confidence: KeyConclusionObject["confidence"];
         state?: "active" | "needsVerification";
         note: string;
@@ -1278,6 +1283,7 @@ export function createKeyConclusion(
     summary?: string;
     sourceObjectIds: MorphoObjectId[];
     citationIds?: string[];
+    category: KeyConclusionCategory;
     confidence: KeyConclusionObject["confidence"];
     state?: KeyConclusionObject["state"];
     note?: string;
@@ -1293,6 +1299,7 @@ export function createKeyConclusion(
     type: "keyConclusion",
     title: input.title,
     summary: input.summary ?? input.body,
+    category: input.category,
     body: input.body,
     createdBy: "user",
     visibility: "active",
@@ -1397,6 +1404,7 @@ export function buildKeyConclusionDraftFromResearchSource(
         title: truncateForTitle(evidence.claim, "关键结论"),
         summary: evidence.claim,
         body: evidence.claim,
+        category: source.category,
         sourceObjectIds: evidence.sourceObjectIds.filter((sourceObjectId) => Boolean(workspace.objects[sourceObjectId])),
         citationIds: [...evidence.citationIds],
         confidence: evidence.confidence,
@@ -1422,6 +1430,7 @@ export function buildKeyConclusionDraftFromResearchSource(
       title: truncateForTitle(content, "关键结论"),
       summary: content,
       body: content,
+      category: source.kind,
       sourceObjectIds: [research.id],
       citationIds: [...(research.provenance?.citationIds ?? [])],
       confidence,
@@ -1673,110 +1682,11 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
     };
   }
 
-  if (value.schemaVersion === 14) {
+  if (typeof value.schemaVersion === "number" && value.schemaVersion >= 5 && value.schemaVersion <= 15) {
     return {
       status: "ok",
       workspace: normalizeCurrentWorkspace({
-        ...(structuredClone(value) as Record<string, unknown>),
-        schemaVersion: CURRENT_SCHEMA_VERSION
-      }),
-      didMigrate: true
-    };
-  }
-
-  if (value.schemaVersion === 13) {
-    return {
-      status: "ok",
-      workspace: normalizeCurrentWorkspace({
-        ...(structuredClone(value) as Record<string, unknown>),
-        schemaVersion: CURRENT_SCHEMA_VERSION
-      }),
-      didMigrate: true
-    };
-  }
-
-  if (value.schemaVersion === 12) {
-    return {
-      status: "ok",
-      workspace: normalizeCurrentWorkspace({
-        ...(structuredClone(value) as Record<string, unknown>),
-        schemaVersion: CURRENT_SCHEMA_VERSION
-      }),
-      didMigrate: true
-    };
-  }
-
-  if (value.schemaVersion === 11) {
-    return {
-      status: "ok",
-      workspace: normalizeCurrentWorkspace({
-        ...(structuredClone(value) as Record<string, unknown>),
-        schemaVersion: CURRENT_SCHEMA_VERSION
-      }),
-      didMigrate: true
-    };
-  }
-
-  if (value.schemaVersion === 10) {
-    return {
-      status: "ok",
-      workspace: normalizeCurrentWorkspace({
-        ...(structuredClone(value) as Record<string, unknown>),
-        schemaVersion: CURRENT_SCHEMA_VERSION
-      }),
-      didMigrate: true
-    };
-  }
-
-  if (value.schemaVersion === 9) {
-    return {
-      status: "ok",
-      workspace: normalizeCurrentWorkspace({
-        ...(structuredClone(value) as Record<string, unknown>),
-        schemaVersion: CURRENT_SCHEMA_VERSION
-      }),
-      didMigrate: true
-    };
-  }
-
-  if (value.schemaVersion === 8) {
-    return {
-      status: "ok",
-      workspace: normalizeCurrentWorkspace({
-        ...(structuredClone(value) as Record<string, unknown>),
-        schemaVersion: CURRENT_SCHEMA_VERSION
-      }),
-      didMigrate: true
-    };
-  }
-
-  if (value.schemaVersion === 7) {
-    return {
-      status: "ok",
-      workspace: normalizeCurrentWorkspace({
-        ...(structuredClone(value) as Record<string, unknown>),
-        schemaVersion: CURRENT_SCHEMA_VERSION
-      }),
-      didMigrate: true
-    };
-  }
-
-  if (value.schemaVersion === 6) {
-    return {
-      status: "ok",
-      workspace: normalizeCurrentWorkspace({
-        ...(structuredClone(value) as Record<string, unknown>),
-        schemaVersion: CURRENT_SCHEMA_VERSION
-      }),
-      didMigrate: true
-    };
-  }
-
-  if (value.schemaVersion === 5) {
-    return {
-      status: "ok",
-      workspace: normalizeCurrentWorkspace({
-        ...(structuredClone(value) as Record<string, unknown>),
+        ...migrateLegacyKeyConclusionCategories(value),
         schemaVersion: CURRENT_SCHEMA_VERSION
       }),
       didMigrate: true
@@ -1828,6 +1738,86 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
     workspace: migrateV4Workspace(migrateV2WorkspaceToV4(migrated)),
     didMigrate: true
   };
+}
+
+function migrateLegacyKeyConclusionCategories(value: Record<string, unknown>): Record<string, unknown> {
+  const cloned = structuredClone(value) as Record<string, unknown>;
+  const rawObjects = isRecord(cloned.objects) ? cloned.objects : {};
+
+  return {
+    ...cloned,
+    objects: Object.fromEntries(
+      Object.entries(rawObjects).map(([objectId, rawObject]) => {
+        if (!isRecord(rawObject) || (rawObject.type !== "keyConclusion" && rawObject.type !== "insight")) {
+          return [objectId, rawObject];
+        }
+        return [objectId, {
+          ...rawObject,
+          category: inferLegacyKeyConclusionCategory(rawObject, rawObjects)
+        }];
+      })
+    )
+  };
+}
+
+function inferLegacyKeyConclusionCategory(
+  rawObject: Record<string, unknown>,
+  rawObjects: Record<string, unknown>
+): KeyConclusionCategory {
+  if (isKeyConclusionCategory(rawObject.category)) {
+    return rawObject.category;
+  }
+
+  const sourceObjectIds = new Set(getStringArray(rawObject.sourceObjectIds));
+  const contentCandidates = new Set(
+    [rawObject.body, rawObject.summary]
+      .filter((value): value is string => typeof value === "string")
+      .map(normalizeLegacyCategoryText)
+      .filter(Boolean)
+  );
+  const matches = new Set<Exclude<KeyConclusionCategory, "unknown">>();
+  const researchSections: Array<[Exclude<KeyConclusionCategory, "unknown">, string]> = [
+    ["finding", "findings"],
+    ["opportunity", "opportunities"],
+    ["constraint", "constraints"],
+    ["openQuestion", "openQuestions"]
+  ];
+
+  if (contentCandidates.size > 0) {
+    for (const [researchId, rawResearch] of Object.entries(rawObjects)) {
+      if (!isRecord(rawResearch) || rawResearch.type !== "research") {
+        continue;
+      }
+      if (sourceObjectIds.size === 0 || !sourceObjectIds.has(researchId)) {
+        continue;
+      }
+
+      for (const [category, field] of researchSections) {
+        if (getStringArray(rawResearch[field]).some((item) => contentCandidates.has(normalizeLegacyCategoryText(item)))) {
+          matches.add(category);
+        }
+      }
+    }
+  }
+
+  if (matches.size === 1) {
+    return [...matches][0];
+  }
+
+  const note = typeof rawObject.note === "string" ? rawObject.note : "";
+  // legacy schema compatibility only: old extraction notes are a migration hint, not a runtime semantic source.
+  const legacyNoteMarkers: Array<{ marker: string; category: Exclude<KeyConclusionCategory, "unknown"> }> = [
+    { marker: "发现第", category: "finding" },
+    { marker: "机会点第", category: "opportunity" },
+    { marker: "约束第", category: "constraint" },
+    { marker: "待验证问题第", category: "openQuestion" }
+  ];
+  const noteMatch = legacyNoteMarkers.find(({ marker }) => note.includes(marker));
+  return noteMatch?.category ?? "unknown";
+}
+
+function normalizeLegacyCategoryText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
 }
 
 function migrateV1Workspace(value: Record<string, unknown>): Record<string, unknown> | null {
@@ -1995,6 +1985,7 @@ function migrateV4Workspace(value: Record<string, unknown>): MorphoWorkspace {
         body: stringValue(rawObject.body, stringValue(rawObject.summary)),
         createdBy: rawObject.createdBy === "ai" ? "ai" : "user",
         visibility: rawObject.visibility === "hidden" ? "hidden" : "active",
+        category: inferLegacyKeyConclusionCategory(rawObject, rawObjects),
         state,
         confidence: rawObject.confidence === "supported" || rawObject.confidence === "partial" ? rawObject.confidence : "supported",
         sourceObjectIds: [],
@@ -2210,10 +2201,36 @@ function normalizeAiState(value: unknown): MorphoWorkspace["ai"] {
       migrated.revisions,
       messages
     ),
-    comparisonAnalyses: isRecord(value.comparisonAnalyses)
-      ? (value.comparisonAnalyses as MorphoWorkspace["ai"]["comparisonAnalyses"])
-      : {}
+    comparisonAnalyses: normalizeComparisonAnalyses(value.comparisonAnalyses)
   };
+}
+
+function normalizeComparisonAnalyses(value: unknown): MorphoWorkspace["ai"]["comparisonAnalyses"] {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([analysisId, rawAnalysis]) => {
+      if (!isRecord(rawAnalysis)) {
+        return [];
+      }
+      const rawCandidate = rawAnalysis.keyConclusionCandidate;
+      if (!isRecord(rawCandidate)) {
+        return [[analysisId, rawAnalysis as unknown as ComparisonAnalysis]];
+      }
+      return [[
+        analysisId,
+        {
+          ...rawAnalysis,
+          keyConclusionCandidate: {
+            ...rawCandidate,
+            category: isKeyConclusionCategory(rawCandidate.category) ? rawCandidate.category : "unknown"
+          }
+        } as ComparisonAnalysis
+      ]];
+    })
+  );
 }
 
 function normalizeProviderContextFrames(
@@ -2531,7 +2548,9 @@ function normalizeCurrentWorkspace(value: Record<string, unknown>): MorphoWorksp
         ? sourceProject.createdAt
         : new Date().toISOString();
   const canvasView = cloned.ui?.canvasView ?? cloned.canvas?.view ?? { x: 0, y: 0, zoom: 1 };
-  const objects = normalizeObjectsForSchemaV13(normalizeObjectsForSchemaV7(cloned.objects ?? {}));
+  const objects = normalizeObjectsForSchemaV16(
+    normalizeObjectsForSchemaV13(normalizeObjectsForSchemaV7(cloned.objects ?? {}))
+  );
   const rawProject = sourceProject;
   const project = {
     id: typeof rawProject.id === "string" ? rawProject.id : "project-nightrail",
@@ -2663,6 +2682,23 @@ function normalizeObjectsForSchemaV7(objects: Record<MorphoObjectId, MorphoObjec
         {
           ...object,
           role: normalizeImageRole(object.role)
+        }
+      ];
+    })
+  );
+}
+
+function normalizeObjectsForSchemaV16(objects: Record<MorphoObjectId, MorphoObject>): Record<MorphoObjectId, MorphoObject> {
+  return Object.fromEntries(
+    Object.entries(objects).map(([objectId, object]) => {
+      if (object.type !== "keyConclusion") {
+        return [objectId, object];
+      }
+      return [
+        objectId,
+        {
+          ...object,
+          category: isKeyConclusionCategory(object.category) ? object.category : "unknown"
         }
       ];
     })
@@ -2806,6 +2842,7 @@ function buildSemanticFingerprint(object: MorphoObject): string {
     case "keyConclusion":
       return stableStringify({
         body: object.body,
+        category: object.category,
         state: object.state,
         supersededById: object.supersededById,
         confidence: object.confidence

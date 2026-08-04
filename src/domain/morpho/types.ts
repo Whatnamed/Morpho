@@ -336,6 +336,20 @@ export type ConceptDirectionStatus = "pendingPreview" | "primary" | "alternative
 
 export type KeyConclusionState = "active" | "needsVerification" | "superseded" | "archived";
 
+export const KEY_CONCLUSION_CATEGORIES = [
+  "finding",
+  "opportunity",
+  "constraint",
+  "openQuestion",
+  "unknown"
+] as const;
+
+export type KeyConclusionCategory = (typeof KEY_CONCLUSION_CATEGORIES)[number];
+
+export function isKeyConclusionCategory(value: unknown): value is KeyConclusionCategory {
+  return KEY_CONCLUSION_CATEGORIES.includes(value as KeyConclusionCategory);
+}
+
 export type DeliverySection = {
   id: string;
   title: string;
@@ -469,6 +483,7 @@ export type ResearchObject = MorphoObjectBase & {
 
 export type KeyConclusionObject = MorphoObjectBase & {
   type: "keyConclusion";
+  category: KeyConclusionCategory;
   body: string;
   state: KeyConclusionState;
   confidence: ResearchEvidence["confidence"];
@@ -724,6 +739,7 @@ export type ComparisonKeyConclusionCandidate = {
   title: string;
   summary: string;
   body: string;
+  category: KeyConclusionCategory;
   sourceObjectIds: MorphoObjectId[];
   evidence: ComparisonObjectEvidence[];
   confidence: KeyConclusionObject["confidence"];
@@ -1046,7 +1062,7 @@ export type ProjectWorkingState = {
 };
 
 export type MorphoWorkspace = {
-  schemaVersion: 15;
+  schemaVersion: 16;
   project: {
     id: string;
     title: string;

@@ -1,3 +1,4 @@
+import { isKeyConclusionCategory } from "./types";
 import type {
   ComparisonAnalysis,
   ComparisonKeyConclusionCandidate,
@@ -421,13 +422,14 @@ function parseKeyConclusionCandidate(value: unknown): ComparisonKeyConclusionCan
     typeof value.title !== "string" ||
     typeof value.summary !== "string" ||
     typeof value.body !== "string" ||
+    !isKeyConclusionCategory(value.category) ||
     !Array.isArray(value.sourceObjectIds) ||
     !Array.isArray(value.evidence) ||
     !isConfidence(value.confidence)
   ) {
     return undefined;
   }
-  if (!hasOnlyAllowedKeys(value, ["title", "summary", "body", "sourceObjectIds", "evidence", "confidence", "note"])) {
+  if (!hasOnlyAllowedKeys(value, ["title", "summary", "body", "category", "sourceObjectIds", "evidence", "confidence", "note"])) {
     return undefined;
   }
   const evidence = value.evidence.map(parseCandidateEvidence);
@@ -438,6 +440,7 @@ function parseKeyConclusionCandidate(value: unknown): ComparisonKeyConclusionCan
     title: value.title.trim(),
     summary: value.summary.trim(),
     body: value.body.trim(),
+    category: value.category,
     sourceObjectIds: uniqueStrings(value.sourceObjectIds.filter((item): item is string => typeof item === "string" && item.trim().length > 0)),
     evidence: evidence.filter(isDefined),
     confidence: value.confidence,
