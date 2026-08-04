@@ -47,7 +47,7 @@ describe("Storage footprint scenarios", () => {
     // only alongside a recorded decision.
     const byKey = new Map(report.scenarios.map((scenario) => [scenario.key, scenario.utf16Length]));
     expect(byKey.get("blank")).toBe(2748);
-    expect(byKey.get("caseStudy")).toBe(875346);
+    expect(byKey.get("caseStudy")).toBe(893176);
   });
 
   it("grows each scenario along a single axis from its baseline", () => {

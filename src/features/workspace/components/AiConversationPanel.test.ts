@@ -305,6 +305,7 @@ describe("AiConversationPanel", () => {
                   title: "夜间连续导向优先于装饰复杂度",
                   summary: "优先保留连续导向。",
                   body: "夜间连续导向优先于装饰复杂度。",
+                  category: "finding",
                   sourceObjectIds: ["direction-soft-rail"],
                   evidence: [
                     {
@@ -592,6 +593,7 @@ describe("AiConversationPanel", () => {
         title: "夜间连续导向优先于装饰复杂度",
         body: "夜间连续导向优先于装饰复杂度。",
         summary: "优先保留连续导向。",
+        category: "finding",
         confidence: "partial"
       }
     };

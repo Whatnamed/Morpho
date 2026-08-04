@@ -49,6 +49,14 @@ describe("Morpho workspace query helpers", () => {
     expect(results).toEqual([]);
   });
 
+  it("returns the formal key conclusion category in search results", () => {
+    const result = searchWorkspace(createInitialWorkspace(), "unknown").find(
+      (item) => item.kind === "object" && item.objectId === "insight-continuous-support"
+    );
+
+    expect(result).toMatchObject({ kind: "object", category: "unknown" });
+  });
+
   it("finds a document fragment by Chinese body text and reports its source document", () => {
     const workspace = withDocumentFragment(createInitialWorkspace(), {
       body: "夜间起夜时，走廊照明的第一段亮度必须低于卧室阈值，否则使用者会被强光唤醒。"

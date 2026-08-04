@@ -73,6 +73,31 @@ describe("Provider Context Frames", () => {
     });
   });
 
+  it("includes the formal key conclusion category in the selected turn context", () => {
+    const workspace = createInitialWorkspace();
+    const context = buildTaskContext(workspace, {
+      kind: "general",
+      draft: "继续讨论当前关键结论",
+      selectedObjectIds: ["insight-continuous-support"]
+    });
+    const next = appendAgentProviderContextFrames(workspace, {
+      workspace,
+      projectId: workspace.project.id,
+      strategy: "research",
+      mode: "auto",
+      toolProfile: "standard",
+      promptContractVersion: "morpho-agent-test",
+      userMessageId: "user-key-conclusion-category",
+      context,
+      providerTaskContext: buildProviderTaskContext(context),
+      defaultMemoryContext: buildAgentDefaultMemoryContext(workspace, "research")
+    });
+
+    expect(next.ai.providerContextFrames?.find(
+      (frame) => frame.kind === "turnContext" && frame.anchorMessageId === "user-key-conclusion-category"
+    )?.renderedText).toContain("[category=unknown]");
+  });
+
   it("serializes a frame as untrusted product data without a B context marker proof", () => {
     const frame = createProviderContextFrame(frameInput());
     const text = providerContextFrameMessage(frame).content[0].text;

@@ -215,6 +215,7 @@ function makeAnalysis(): ComparisonAnalysis {
       title: "Candidate",
       summary: "Candidate summary",
       body: "Candidate body",
+      category: "finding",
       sourceObjectIds: ["direction-soft-rail"],
       evidence: [{ objectId: "direction-soft-rail", label: "Direction", evidence: "Evidence" }],
       confidence: "partial"
@@ -265,6 +266,7 @@ function makeTextEvidenceAnalysis(input: {
       title: "Candidate",
       summary: "Candidate summary",
       body: "Candidate body",
+      category: "finding",
       sourceObjectIds: [...input.sourceObjectIds],
       evidence: input.evidenceObjectIds.map((objectId) => ({
         objectId,

@@ -93,6 +93,7 @@ describe("comparison analysis domain rules", () => {
             title: "Candidate",
             summary: "Candidate summary",
             body: "Candidate body",
+            category: "finding",
             sourceObjectIds: [fragment.id],
             evidence: [{ objectId: fragment.id, label: "Fragment", evidence: fragment.body }],
             confidence: "partial"
@@ -297,6 +298,7 @@ describe("comparison analysis domain rules", () => {
           title: "候选结论",
           summary: "结论摘要",
           body: "结论正文",
+          category: "finding",
           sourceObjectIds: ["file-course-brief"],
           evidence: [
             {
@@ -362,6 +364,7 @@ describe("comparison analysis domain rules", () => {
           title: "候选结论",
           summary: "结论摘要",
           body: "结论正文",
+          category: "finding",
           sourceObjectIds: ["direction-soft-rail"],
           evidence: [
             {
@@ -427,6 +430,7 @@ describe("comparison analysis domain rules", () => {
             title: "candidate",
             summary: "candidate summary",
             body: "candidate body",
+            category: "finding",
             sourceObjectIds: ["direction-soft-rail"],
             evidence: [{ objectId: "file-course-brief", label: "brief", evidence: "actual text" }],
             confidence: "partial"
@@ -444,6 +448,7 @@ describe("comparison analysis domain rules", () => {
             title: "candidate",
             summary: "candidate summary",
             body: "candidate body",
+            category: "finding",
             sourceObjectIds: [],
             evidence: [{ objectId: "file-course-brief", label: "brief", evidence: "actual text" }],
             confidence: "partial"
@@ -461,6 +466,7 @@ describe("comparison analysis domain rules", () => {
             title: "candidate",
             summary: "candidate summary",
             body: "candidate body",
+            category: "finding",
             sourceObjectIds: ["file-course-brief"],
             evidence: [{ objectId: "file-course-brief", label: "brief", evidence: "actual text" }],
             confidence: "partial"

@@ -40,10 +40,11 @@ describe("M7-A project archive and backup manifests", () => {
     expect(backup.manifest.createdAt).toBe(NOW);
     expect(archive.manifest.sourceProject.id).toBe("project-blank");
     expect(backup.manifest.sourceProject.id).toBe(seeded.project.id);
-    expect(archive.manifest.workspaceSchemaVersion).toBe(15);
-    expect(backup.manifest.workspaceSchemaVersion).toBe(15);
+    expect(archive.manifest.workspaceSchemaVersion).toBe(16);
+    expect(backup.manifest.workspaceSchemaVersion).toBe(16);
     expect(archive.manifest.archive).toBeDefined();
     expect(backup.manifest.workspaceSnapshot).toBeDefined();
+    expect(backup.manifest.workspaceSnapshot.objects["insight-continuous-support"]).toMatchObject({ category: "unknown" });
     expect("workspaceSnapshot" in archive.manifest).toBe(false);
     expect("archive" in backup.manifest).toBe(false);
   });
@@ -112,6 +113,7 @@ describe("M7-A project archive and backup manifests", () => {
       "link-source",
       "text-note"
     ]);
+    expect(archive.manifest.archive.keyConclusions.find((item) => item.id === "key-conclusion-light")).toMatchObject({ category: "finding" });
   });
 
   test("audits all workspace assets and every known asset reference without leaking runtime storage keys", () => {
@@ -167,6 +169,7 @@ describe("M7-A project archive and backup manifests", () => {
     expect(archive.manifest.archive.visualObjects.find((object) => object.id === "image-hidden")?.visibility).toBe("hidden");
     expect(backup.manifest.workspaceSnapshot.objects["image-hidden"]).toBeDefined();
     expect(backup.manifest.workspaceSnapshot.objects["direction-eliminated"]).toMatchObject({ status: "eliminated" });
+    expect(backup.manifest.workspaceSnapshot.objects["key-conclusion-light"]).toMatchObject({ category: "finding" });
     expect(blockedBackup.diagnostics.some((diagnostic) => diagnostic.code === "missing_asset_metadata")).toBe(true);
     expect(blockedBackup.diagnostics.some((diagnostic) => diagnostic.code === "referenced_asset_missing_inventory_entry")).toBe(true);
   });
@@ -628,6 +631,7 @@ function createFixtureWorkspace(options: { includeMissingMetadata?: boolean } = 
         title: "Soft light conclusion",
         summary: "Use soft light",
         body: "Use soft reflected light as the main emotional driver.",
+        category: "finding",
         createdBy: "user",
         visibility: "active",
         state: "active",

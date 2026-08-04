@@ -2,9 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import { createInitialWorkspace } from "../../domain/morpho/workspace";
 
-import { getObjectTypeLabel, getSuggestionsForSelection } from "./workspaceUi";
+import { getKeyConclusionCategoryLabel, getObjectTypeLabel, getSuggestionsForSelection } from "./workspaceUi";
 
 describe("workspace suggestions", () => {
+  it("labels all formal key conclusion categories", () => {
+    expect(getKeyConclusionCategoryLabel("finding")).toBe("发现");
+    expect(getKeyConclusionCategoryLabel("opportunity")).toBe("机会点");
+    expect(getKeyConclusionCategoryLabel("constraint")).toBe("约束");
+    expect(getKeyConclusionCategoryLabel("openQuestion")).toBe("待验证");
+    expect(getKeyConclusionCategoryLabel("unknown")).toBe("待分类");
+  });
+
   it("labels document fragments distinctly from generic objects", () => {
     const workspace = createInitialWorkspace();
 

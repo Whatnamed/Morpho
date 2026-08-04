@@ -54,6 +54,8 @@ describe("researchExtraction", () => {
     expect(result.createdCount).toBe(2);
     expect(result.activeObjectIds).toHaveLength(2);
     expect(result.workspace.canvas.instances.some((instance) => instance.objectId === result.activeObjectIds[0])).toBe(true);
+    expect(result.workspace.objects[result.activeObjectIds[0]]).toMatchObject({ type: "keyConclusion", category: "finding" });
+    expect(result.workspace.objects[result.activeObjectIds[1]]).toMatchObject({ type: "keyConclusion", category: "opportunity" });
 
     const items = getResearchExtractionItems(result.workspace, "research-night-path");
     expect(items.find((item) => item.key === getResearchExtractionKey("finding", 0))?.activeObjectId).toBe(result.activeObjectIds[0]);
@@ -132,6 +134,39 @@ describe("researchExtraction", () => {
     expect(second.createdCount).toBe(0);
     expect(second.restoredCount).toBe(0);
     expect(second.activeObjectIds).toEqual(first.activeObjectIds);
+  });
+
+  it("keeps extraction linkage on the formal category and content, not the historical note", () => {
+    const workspace = createInitialWorkspace();
+    const first = applyResearchExtractionSelection(workspace, "research-night-path", [getResearchExtractionKey("finding", 0)]);
+    const objectId = first.activeObjectIds[0];
+    const object = first.workspace.objects[objectId];
+
+    if (!object || object.type !== "keyConclusion") {
+      throw new Error("Expected an extracted key conclusion.");
+    }
+
+    const noteChanged = {
+      ...first.workspace,
+      objects: {
+        ...first.workspace.objects,
+        [object.id]: { ...object, note: "用户从研究对象的机会点第 1 条中保留关键结论。" }
+      }
+    };
+    expect(getResearchExtractionItems(noteChanged, "research-night-path").find(
+      (item) => item.key === getResearchExtractionKey("finding", 0)
+    )?.activeObjectId).toBe(object.id);
+
+    const categoryChanged = {
+      ...first.workspace,
+      objects: {
+        ...first.workspace.objects,
+        [object.id]: { ...object, category: "opportunity" as const }
+      }
+    };
+    expect(getResearchExtractionItems(categoryChanged, "research-night-path").find(
+      (item) => item.key === getResearchExtractionKey("finding", 0)
+    )?.activeObjectId).toBeUndefined();
   });
 
   it("hides previously extracted cards and restores them when selected again", () => {

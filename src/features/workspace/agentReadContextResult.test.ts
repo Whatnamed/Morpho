@@ -7,10 +7,8 @@ import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
 describe("read selected context result", () => {
   it("projects the bounded task context without sharing mutable arrays", () => {
     const workspace = createTestWorkspace();
-    const selectedObjectId = Object.values(workspace.objects).find(
-      (object) => object.visibility === "active"
-    )?.id;
-    expect(selectedObjectId).toBeDefined();
+    const selectedObjectId = "insight-continuous-support";
+    expect(workspace.objects[selectedObjectId]?.type).toBe("keyConclusion");
     const context = buildTaskContext(workspace, {
       kind: "general",
       draft: "Discuss the selection",
@@ -23,12 +21,13 @@ describe("read selected context result", () => {
     expect(result.objectIds).not.toBe(context.objectIds);
     expect(result.imageObjectIds).toEqual(context.imageObjectIds);
     expect(result.objectSummaries).toEqual(
-      context.semanticSummaries.map(({ id, type, title, summary, detail }) => ({
+      context.semanticSummaries.map(({ id, type, title, summary, detail, category }) => ({
         id,
         type,
         title,
         summary,
-        detail
+        detail,
+        category
       }))
     );
   });

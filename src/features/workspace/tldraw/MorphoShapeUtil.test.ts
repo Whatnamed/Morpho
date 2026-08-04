@@ -283,6 +283,7 @@ describe("MorphoShapeUtil", () => {
       title: "问题必须在起足够成立，因此后续设计无需再反复证明“海洋噪音值得做”。",
       summary: "问题必须在起足够成立，因此后续设计无需再反复证明“海洋噪音值得做”。",
       body: "问题必须在起足够成立，因此后续设计无需再反复证明“海洋噪音值得做”。",
+      category: "finding",
       createdBy: "user",
       visibility: "active",
       state: "active",
@@ -306,34 +307,31 @@ describe("MorphoShapeUtil", () => {
     expect(props.details).toEqual([]);
   });
 
-  it("uses the research item type as the label for extracted key conclusions", () => {
-    const workspace = createInitialWorkspace();
-    const research = workspace.objects["research-night-path"];
-    if (!research || research.type !== "research") {
-      throw new Error("Expected seed workspace to include a research object.");
-    }
+  it("uses the explicit key conclusion category instead of legacy note markers", () => {
     const cases = [
-      ["发现第", "发现"],
-      ["机会点第", "机会点"],
-      ["约束第", "约束"],
-      ["待验证问题第", "待验证"]
+      ["finding", "发现", "用户从研究对象的机会点第 1 条中保留关键结论。"],
+      ["opportunity", "机会点", "用户从研究对象的发现第 1 条中保留关键结论。"],
+      ["constraint", "约束", "用户从研究对象的待验证问题第 1 条中保留关键结论。"],
+      ["openQuestion", "待验证", "用户从研究对象的约束第 1 条中保留关键结论。"],
+      ["unknown", "待分类", "用户从研究对象的发现第 1 条中保留关键结论。"]
     ] as const;
 
-    for (const [noteKind, expectedLabel] of cases) {
+    for (const [category, expectedLabel, note] of cases) {
       const keyConclusion: KeyConclusionObject = {
         id: `key-${expectedLabel}-label`,
         type: "keyConclusion",
         title: "把海域风险转译成港航管理可以执行的避让建议。",
         summary: "把海域风险转译成港航管理可以执行的避让建议。",
         body: "把海域风险转译成港航管理可以执行的避让建议。",
+        category,
         createdBy: "user",
         visibility: "active",
         state: "active",
         confidence: "partial",
-        sourceObjectIds: [research.id],
+        sourceObjectIds: ["research-night-path"],
         citationIds: [],
         confirmedAt: "2026-07-07T00:00:00.000Z",
-        note: `用户从研究对象“${research.title}”的${noteKind} 1条中保留关键结论。`,
+        note,
         createdAt: "2026-07-07T00:00:00.000Z",
         updatedAt: "2026-07-07T00:00:00.000Z"
       };
@@ -355,6 +353,7 @@ describe("MorphoShapeUtil", () => {
       title: "围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。",
       summary: "围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。",
       body: "围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。",
+      category: "finding",
       createdBy: "user",
       visibility: "active",
       state: "active",
@@ -388,6 +387,7 @@ describe("MorphoShapeUtil", () => {
         "作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。",
       body:
         "作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。",
+      category: "openQuestion",
       createdBy: "user",
       visibility: "active",
       state: "needsVerification",

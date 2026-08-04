@@ -29,7 +29,11 @@ import {
   updateCanvasInstancePosition
 } from "./workspace";
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "./imports";
-import { recordDesignDefinitionProposal } from "../operations/operations";
+import {
+  createArtifactProposalOperation,
+  detectResearchSourceChanges,
+  recordDesignDefinitionProposal
+} from "../operations/operations";
 import { hasPendingDesignDefinitionRevisionProposal, reconcileWorkspaceDerivedState } from "./derivedState";
 import { buildContinuityRecordId, setConversationSemanticEntryManualState } from "./projectContinuity";
 import { applyConversationSummaryRevision } from "./conversationCompaction";
@@ -112,10 +116,10 @@ describe("Morpho workspace domain boundaries", () => {
     expect(JSON.stringify(result.workspace).length).toBeLessThan(JSON.stringify(legacy).length);
   });
 
-  it("creates a blank schema v15 project without depending on Nightrail seed object ids", () => {
+  it("creates a blank schema v16 project without depending on Nightrail seed object ids", () => {
     const workspace = createBlankWorkspace("project-empty-local");
 
-    expect(workspace.schemaVersion).toBe(15);
+    expect(workspace.schemaVersion).toBe(16);
     expect(workspace.project.id).toBe("project-empty-local");
     expect(workspace.objects["image-soft-rail-v2"]).toBeUndefined();
     expect(workspace.canvas.instances).toEqual([]);
@@ -205,6 +209,7 @@ describe("Morpho workspace domain boundaries", () => {
       summary: "夜间起身路径需要连续导向与支撑。",
       body: sourceObject.body,
       sourceObjectIds: [sourceObject.id],
+      category: "finding",
       confidence: "needsVerification",
       state: "needsVerification",
       note: "用户从文本输入中明确保留该结论。",
@@ -279,7 +284,8 @@ describe("Morpho workspace domain boundaries", () => {
 
     const evidenceDraft = buildKeyConclusionDraftFromResearchSource(enrichedWorkspace, "research-night-path", {
       kind: "evidence",
-      index: 1
+      index: 1,
+      category: "finding"
     });
     expect(evidenceDraft.status).toBe("ready");
     if (evidenceDraft.status !== "ready") {
@@ -936,7 +942,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(imported.workspace.assets["asset-file-a"]?.sourceType).toBe("originalFile");
   });
 
-  it("migrates v1 workspace data to schema v14 without mutating the source object", () => {
+  it("migrates v1 workspace data to schema v16 without mutating the source object", () => {
     const legacyWorkspace = {
       schemaVersion: 1,
       project: {
@@ -983,7 +989,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.status).toBe("ok");
     expect(legacyWorkspace).toEqual(before);
     if (result.status === "ok") {
-      expect(result.workspace.schemaVersion).toBe(15);
+      expect(result.workspace.schemaVersion).toBe(16);
       expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
       expect(result.workspace.objects["image-a"]?.visibility).toBe("active");
       expect(result.workspace.objects["image-a"]).toMatchObject({
@@ -1011,7 +1017,7 @@ describe("Morpho workspace domain boundaries", () => {
     }
   });
 
-  it("migrates v8 project continuity entries to v14 deterministic active entries without inventing semantic patches", () => {
+  it("migrates v8 project continuity entries to v16 deterministic active entries without inventing semantic patches", () => {
     const workspace = createInitialWorkspace();
     const v8Workspace = {
       ...workspace,
@@ -1053,7 +1059,7 @@ describe("Morpho workspace domain boundaries", () => {
       throw new Error(result.reason);
     }
     expect(result.didMigrate).toBe(true);
-    expect(result.workspace.schemaVersion).toBe(15);
+    expect(result.workspace.schemaVersion).toBe(16);
     expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
     expect(result.workspace.projectContinuity.schemaVersion).toBe(2);
     expect(result.workspace.projectContinuity.recordEntries).toEqual([
@@ -1070,7 +1076,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.workspace.decisionRecords).toEqual(workspace.decisionRecords);
   });
 
-  it("migrates v11 workspaces to v14 without inventing document fragments or rewriting compare/checkpoint state", () => {
+  it("migrates v11 workspaces to v16 without inventing document fragments or rewriting compare/checkpoint state", () => {
     const workspace = createInitialWorkspace();
     const v11Workspace = {
       ...workspace,
@@ -1133,7 +1139,7 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(15);
+    expect(result.workspace.schemaVersion).toBe(16);
     expect(Object.values(result.workspace.objects).filter((object) => object.type === "documentFragment")).toHaveLength(
       documentFragmentCountBefore
     );
@@ -1202,7 +1208,7 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(15);
+    expect(result.workspace.schemaVersion).toBe(16);
     expect(result.workspace.ai.messages[0]).toMatchObject({
       id: "assistant-trace",
       body: "完成。",
@@ -1216,7 +1222,7 @@ describe("Morpho workspace domain boundaries", () => {
     });
   });
 
-  it("migrates v9 workspaces to v14 by adding empty conversation checkpoints without rewriting messages or project continuity", () => {
+  it("migrates v9 workspaces to v16 by adding empty conversation checkpoints without rewriting messages or project continuity", () => {
     const workspace = createInitialWorkspace();
     const v9Workspace = {
       ...workspace,
@@ -1249,7 +1255,7 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(15);
+    expect(result.workspace.schemaVersion).toBe(16);
     expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
     expect(result.workspace.ai.messages).toEqual(v9Workspace.ai.messages);
     expect(result.workspace.ai.messages[0]).not.toHaveProperty("conversationLaneKey");
@@ -1605,7 +1611,134 @@ describe("Morpho workspace domain boundaries", () => {
     expect(second.workspace.ai.providerContextFrames).toEqual(first.workspace.ai.providerContextFrames);
   });
 
-  it("normalizes schema v15 workspace state idempotently across persisted JSON", () => {
+  it("migrates legacy key conclusion categories from source content, then old notes, without mutating the input", () => {
+    const legacyWorkspace = JSON.parse(JSON.stringify(createInitialWorkspace())) as Record<string, unknown>;
+    legacyWorkspace.schemaVersion = 15;
+    const objects = legacyWorkspace.objects as Record<string, Record<string, unknown>>;
+    const research = objects["research-night-path"];
+    const sourceConclusion = objects["insight-continuous-support"];
+    const sourceConclusionId = "insight-continuous-support";
+
+    if (!research || !sourceConclusion) {
+      throw new Error("Expected legacy research and key conclusion fixtures.");
+    }
+
+    const withoutCategory = (overrides: Record<string, unknown>) => {
+      const object = { ...sourceConclusion, ...overrides };
+      delete object.category;
+      return object;
+    };
+    const structuredCategories = [
+      ["finding", "findings"],
+      ["opportunity", "opportunities"],
+      ["constraint", "constraints"],
+      ["openQuestion", "openQuestions"]
+    ] as const;
+    for (const [category, field] of structuredCategories) {
+      const content = (research[field] as string[])[0];
+      objects[`legacy-structured-${category}`] = withoutCategory({
+        id: `legacy-structured-${category}`,
+        body: content,
+        summary: content,
+        sourceObjectIds: [research.id]
+      });
+    }
+    objects["legacy-note-category"] = withoutCategory({
+      id: "legacy-note-category",
+      body: "一段没有对应研究条目的旧结论。",
+      summary: "一段没有对应研究条目的旧结论。",
+      sourceObjectIds: [research.id],
+      note: "用户从研究对象的机会点第 1 条中保留关键结论。"
+    });
+    objects["legacy-unknown-category"] = withoutCategory({
+      id: "legacy-unknown-category",
+      body: "无法证明类别的旧结论。",
+      summary: "无法证明类别的旧结论。",
+      sourceObjectIds: [research.id]
+    });
+    objects["legacy-preserved-category"] = {
+      ...withoutCategory({
+        id: "legacy-preserved-category",
+        body: (research.findings as string[])[0],
+        summary: (research.findings as string[])[0],
+        sourceObjectIds: [research.id]
+      }),
+      category: "constraint"
+    };
+    const before = structuredClone(legacyWorkspace);
+
+    const result = migrateWorkspaceToCurrentSchema(legacyWorkspace);
+
+    expect(result.status).toBe("ok");
+    expect(legacyWorkspace).toEqual(before);
+    if (result.status !== "ok") {
+      throw new Error(result.reason);
+    }
+    expect(result.workspace.schemaVersion).toBe(16);
+    for (const [category] of structuredCategories) {
+      expect(result.workspace.objects[`legacy-structured-${category}`]).toMatchObject({ category });
+    }
+    expect(result.workspace.objects["legacy-note-category"]).toMatchObject({ category: "opportunity" });
+    expect(result.workspace.objects["legacy-unknown-category"]).toMatchObject({ category: "unknown" });
+    expect(result.workspace.objects["legacy-preserved-category"]).toMatchObject({ category: "constraint" });
+    expect(result.workspace.objects[sourceConclusionId]).toMatchObject({
+      id: sourceConclusionId,
+      sourceObjectIds: sourceConclusion.sourceObjectIds,
+      createdAt: sourceConclusion.createdAt,
+      updatedAt: sourceConclusion.updatedAt
+    });
+    expect(result.workspace.relations).toEqual(before.relations);
+    expect(result.workspace.canvas).toEqual(before.canvas);
+    expect(result.workspace.decisionRecords).toEqual(before.decisionRecords);
+    expect(result.workspace.projectContinuity).toEqual(before.projectContinuity);
+    expect(result.workspace.projectMemory).toEqual(before.projectMemory);
+    expect(result.workspace.deliveryReferences).toEqual(before.deliveryReferences);
+  });
+
+  it("does not use legacy notes to normalize an already-current workspace", () => {
+    const currentWorkspace = JSON.parse(JSON.stringify(createInitialWorkspace())) as Record<string, unknown>;
+    const objects = currentWorkspace.objects as Record<string, Record<string, unknown>>;
+    currentWorkspace.schemaVersion = 16;
+    objects["insight-continuous-support"] = {
+      ...objects["insight-continuous-support"],
+      category: "invalid-category",
+      note: "用户从研究对象的机会点第 1 条中保留关键结论。"
+    };
+
+    const result = migrateWorkspaceToCurrentSchema(currentWorkspace);
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") {
+      throw new Error(result.reason);
+    }
+    expect(result.didMigrate).toBe(false);
+    expect(result.workspace.objects["insight-continuous-support"]).toMatchObject({ category: "unknown" });
+  });
+
+  it("treats a key conclusion category change as a source semantic change even when its body is unchanged", () => {
+    const workspace = createInitialWorkspace();
+    const created = createArtifactProposalOperation(workspace, {
+      operationId: "operation-key-conclusion-category-fingerprint",
+      type: "designDefinition",
+      userInput: "以当前关键结论为依据整理定义。",
+      selectedObjectIds: ["insight-continuous-support"]
+    });
+    const sourceObject = created.workspace.objects["insight-continuous-support"];
+    if (!sourceObject || sourceObject.type !== "keyConclusion") {
+      throw new Error("Expected a key conclusion source.");
+    }
+    const changedWorkspace: MorphoWorkspace = {
+      ...created.workspace,
+      objects: {
+        ...created.workspace.objects,
+        "insight-continuous-support": { ...sourceObject, category: "finding" }
+      }
+    };
+
+    expect(detectResearchSourceChanges(changedWorkspace, created.operation.id)).toContain("来源对象的语义内容已变化");
+  });
+
+  it("normalizes schema v16 workspace state idempotently across persisted JSON", () => {
     const first = migrateWorkspaceToCurrentSchema(JSON.parse(JSON.stringify(createInitialWorkspace())));
     expect(first.status).toBe("ok");
     if (first.status !== "ok") {

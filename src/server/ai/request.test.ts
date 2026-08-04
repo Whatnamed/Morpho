@@ -34,6 +34,28 @@ describe("AiJWS chat route request conversion", () => {
     expect(prompt).toContain("不能声称完成真实视觉分析");
   });
 
+  it("passes formal key conclusion categories into the provider object summary", () => {
+    const prompt = buildMorphoSystemPrompt({
+      draft: "继续整理这条关键结论",
+      task: "general",
+      taskMode: "chatAnalysis",
+      workIntent: "discussion",
+      messages: [],
+      objectSummaries: [
+        {
+          id: "key-conclusion-a",
+          type: "keyConclusion",
+          title: "低施工是前提",
+          summary: "避免大面积开墙",
+          category: "constraint"
+        }
+      ],
+      attachments: []
+    });
+
+    expect(prompt).toContain("key-conclusion-a / keyConclusion / category=constraint");
+  });
+
   it("keeps a sanitized attachment boundary out of provider messages", () => {
     const result = validateAiRouteRequest({
       draft: "Analyze this image",

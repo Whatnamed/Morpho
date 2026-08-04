@@ -90,6 +90,7 @@ describe("project bundle domain contracts", () => {
 
     expect(readBundleText(bundle, "project-overview.md")).toContain("Keep riders oriented with a warm navigation cue");
     expect(readBundleText(bundle, "project-overview.md")).toContain("Warmer low glare lighting improves perceived safety");
+    expect(readBundleText(bundle, "project-overview.md")).toContain("类别：发现");
     expect(readBundleText(bundle, "project-overview.md")).toContain("Sheltered Beacon");
     expect(readBundleText(bundle, "project-overview.md")).toContain("Cold Tech Plinth");
     expect(readBundleText(bundle, "project-overview.md")).toContain("Default Night Reference");
@@ -152,8 +153,43 @@ describe("project bundle domain contracts", () => {
     expect(plan.workspace.assets["asset-cover"]?.storageKey).toBe("blob:restored:asset-cover");
     expect(plan.workspace.assets["asset-brief"]?.storageKey).toBe("blob:restored:asset-brief");
     expect(plan.workspace.assets["asset-link"]?.storageKey).toBe("blob:restored:asset-link");
+    expect(plan.workspace.objects["conclusion-safety"]).toMatchObject({ category: "finding" });
     expect(plan.assetWrites.map((item) => item.assetId).sort()).toEqual(["asset-brief", "asset-cover"]);
     expect(new TextDecoder().decode(plan.assetWrites[0]?.bytes ?? new Uint8Array())).not.toHaveLength(0);
+
+    const legacySnapshot = structuredClone(backupManifest.workspaceSnapshot);
+    legacySnapshot.schemaVersion = 15 as MorphoWorkspace["schemaVersion"];
+    const legacyConclusion = legacySnapshot.objects["conclusion-safety"];
+    if (!legacyConclusion || legacyConclusion.type !== "keyConclusion") {
+      throw new Error("Expected the backup fixture to include a key conclusion.");
+    }
+    const legacyResearch = legacySnapshot.objects["research-night"];
+    if (!legacyResearch || legacyResearch.type !== "research") {
+      throw new Error("Expected the backup fixture to include its research source.");
+    }
+    const { category: _legacyCategory, ...legacyConclusionWithoutCategory } = legacyConclusion;
+    legacySnapshot.objects["conclusion-safety"] = {
+      ...legacyConclusionWithoutCategory,
+      body: legacyResearch.findings[0],
+      summary: legacyResearch.findings[0]
+    } as typeof legacyConclusion;
+    const legacyManifest = {
+      ...backupManifest,
+      workspaceSchemaVersion: 15 as MorphoWorkspace["schemaVersion"],
+      workspaceSnapshot: legacySnapshot
+    } as EditableProjectBackupManifest;
+    const legacyPlan = planEditableProjectBackupRestore(legacyManifest, mapBundleFiles(bundleResult.bundle), {
+      restoredAt: NOW,
+      projectId: "project-restored-legacy",
+      projectTitle: "Night Study（旧备份恢复）",
+      createRuntimeStorageKey: (assetId) => `blob:restored:legacy:${assetId}`
+    });
+
+    expect(legacyPlan.status).toBe("ok");
+    if (legacyPlan.status === "ok") {
+      expect(legacyPlan.workspace.schemaVersion).toBe(16);
+      expect(legacyPlan.workspace.objects["conclusion-safety"]).toMatchObject({ category: "finding" });
+    }
   });
 });
 
@@ -188,6 +224,7 @@ function createBundleFixtureWorkspace(): MorphoWorkspace {
     title: "Warm light supports safety",
     summary: "Warmer low glare lighting improves perceived safety",
     body: "Riders report better orientation when the stop edge has a warmer visual anchor.",
+    category: "finding" as const,
     state: "active" as const,
     confidence: "supported" as const,
     sourceObjectIds: ["research-night"],

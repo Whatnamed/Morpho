@@ -283,6 +283,7 @@ function createOutputFixtureWorkspace(): MorphoWorkspace {
         title: "Stable conclusion",
         summary: "Conclusion summary",
         body: "Conclusion body for copy only.",
+        category: "finding",
         createdBy: "user",
         visibility: "active",
         state: "active",
