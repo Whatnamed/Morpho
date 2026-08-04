@@ -23,6 +23,7 @@ import {
   clearDefaultReference,
   setConceptDirectionStatus,
   setDefaultReference,
+  setKeyConclusionCategory,
   setKeyConclusionState,
   setImageRole,
   reorderCanvasInstances,
@@ -44,6 +45,35 @@ describe("Morpho workspace domain boundaries", () => {
   it("keeps unknown outside the assignable key conclusion category set", () => {
     expect(["finding", "opportunity", "constraint", "openQuestion"].every(isAssignableKeyConclusionCategory)).toBe(true);
     expect(isAssignableKeyConclusionCategory("unknown")).toBe(false);
+  });
+
+  it("lets a recovered unknown conclusion be manually assigned to an allowed category", () => {
+    const workspace = createInitialWorkspace();
+    const source = Object.values(workspace.objects).find((object) => object.type === "keyConclusion");
+    if (!source || source.type !== "keyConclusion") {
+      throw new Error("seed key conclusion missing");
+    }
+    const recoveredWorkspace = {
+      ...workspace,
+      objects: {
+        ...workspace.objects,
+        [source.id]: { ...source, category: "unknown" as const }
+      }
+    };
+
+    const result = setKeyConclusionCategory(recoveredWorkspace, source.id, "opportunity", {
+      reason: "用户补充类别。"
+    });
+
+    expect(result.status).toBe("updated");
+    if (result.status !== "updated") {
+      return;
+    }
+    expect(result.keyConclusion.category).toBe("opportunity");
+    expect(result.workspace.decisionRecords.at(-1)).toMatchObject({
+      kind: "setKeyConclusionCategory",
+      summary: expect.stringContaining("→ opportunity")
+    });
   });
 
   it("drops legacy B proof fields while preserving product messages and compact diagnostics", () => {

@@ -397,6 +397,52 @@ describe("BottomDetailBar selected object surface", () => {
     expect(html).not.toContain("设为后续默认参考");
   });
 
+  it("offers only assignable categories for a recovered unknown conclusion", () => {
+    const workspace = createInitialWorkspace();
+    const source = Object.values(workspace.objects).find((object) => object.type === "keyConclusion");
+    if (!source || source.type !== "keyConclusion") {
+      throw new Error("seed key conclusion missing");
+    }
+    const unknownConclusion = { ...source, category: "unknown" as const };
+    const recoveredWorkspace = {
+      ...workspace,
+      objects: {
+        ...workspace.objects,
+        [source.id]: unknownConclusion
+      }
+    };
+
+    const html = renderToStaticMarkup(
+      createElement(BottomDetailBar, {
+        workspace: recoveredWorkspace,
+        selectedObjects: [unknownConclusion],
+        assets: recoveredWorkspace.assets,
+        hasPendingDesignDefinitionRevisionDraft: false,
+        relations: recoveredWorkspace.relations,
+        directionLineage: recoveredWorkspace.directionLineage,
+        visualBranches: recoveredWorkspace.visualBranches,
+        decisionRecords: recoveredWorkspace.decisionRecords,
+        activeDesignTrace: null,
+        onRenameVisualBranch: () => undefined,
+        onArchiveVisualBranch: () => undefined,
+        onRestoreVisualBranch: () => undefined,
+        onOpenDocumentReader: () => undefined,
+        onSaveKeyConclusionFromResearchItem: () => undefined,
+        onCopyItemToDraft: () => undefined,
+        onContinueQuestion: () => undefined,
+        onSetKeyConclusionCategory: () => undefined
+      })
+    );
+
+    expect(html).toContain('aria-label="关键结论类别"');
+    expect(html).toContain("待分类");
+    expect(html).toContain("发现");
+    expect(html).toContain("机会点");
+    expect(html).toContain("约束");
+    expect(html).toContain("待验证");
+    expect(html).not.toContain('value="unknown"');
+  });
+
   it("renders parsed document reader as a real detail action", () => {
     const workspace = createInitialWorkspace();
     const parsedFile = {
