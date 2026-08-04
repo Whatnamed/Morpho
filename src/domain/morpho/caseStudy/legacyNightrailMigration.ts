@@ -28,7 +28,7 @@ const LEGACY_NIGHTRAIL_OBJECT_IDS = [
 ] as const;
 
 const LEGACY_NIGHTRAIL_ASSET_IDS = ["asset-course-brief", "asset-course-brief-extract"] as const;
-const LEGACY_NIGHTRAIL_PRISTINE_FINGERPRINT = "8e4b8bee";
+const LEGACY_NIGHTRAIL_PRISTINE_FINGERPRINT = "68a36896";
 
 export const LEGACY_NIGHTRAIL_OBSOLETE_STORAGE_KEYS = ["seed:course-brief", "seed:course-brief-extract"] as const;
 

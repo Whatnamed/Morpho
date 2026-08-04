@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 15,
+  "schemaVersion": 16,
   "project": {
     "id": "project-morpho-case-study",
     "title": "测试",
@@ -386,6 +386,7 @@
     "key-conclusion": {
       "id": "key-conclusion",
       "type": "keyConclusion",
+      "category": "finding",
       "title": "保护对象扩展：本地研究把受害对象从鲸豚扩展到鱼类、海龟和无脊椎动物，显著增强了课题的生态与公共价值论据。",
       "summary": "保护对象扩展：本地研究把受害对象从鲸豚扩展到鱼类、海龟和无脊椎动物，显著增强了课题的生态与公共价值论据。",
       "body": "保护对象扩展：本地研究把受害对象从鲸豚扩展到鱼类、海龟和无脊椎动物，显著增强了课题的生态与公共价值论据。",
@@ -411,6 +412,7 @@
     "key-conclusion-2": {
       "id": "key-conclusion-2",
       "type": "keyConclusion",
+      "category": "finding",
       "title": "热点可预测性：生物热点并非随机分布，而是与海山、峡谷、大陆架边缘及可建模海洋锋面相关，说明系统可以先做风险地图再做实时验证。",
       "summary": "热点可预测性：生物热点并非随机分布，而是与海山、峡谷、大陆架边缘及可建模海洋锋面相关，说明系统可以先做风险地图再做实时验证。",
       "body": "热点可预测性：生物热点并非随机分布，而是与海山、峡谷、大陆架边缘及可建模海洋锋面相关，说明系统可以先做风险地图再做实时验证。",
@@ -436,6 +438,7 @@
     "key-conclusion-3": {
       "id": "key-conclusion-3",
       "type": "keyConclusion",
+      "category": "opportunity",
       "title": "系统定位收束：把课题表述为“动态海洋声学避难所网络”或“声学生态风险预警浮标系统”，能同时容纳生态论据与产品边界。",
       "summary": "系统定位收束：把课题表述为“动态海洋声学避难所网络”或“声学生态风险预警浮标系统”，能同时容纳生态论据与产品边界。",
       "body": "系统定位收束：把课题表述为“动态海洋声学避难所网络”或“声学生态风险预警浮标系统”，能同时容纳生态论据与产品边界。",
@@ -461,6 +464,7 @@
     "key-conclusion-4": {
       "id": "key-conclusion-4",
       "type": "keyConclusion",
+      "category": "opportunity",
       "title": "交互层级明确：将产品输出分成水下感知、海面信号和后台管理三层，有利于后续建立展板叙事和产品架构。",
       "summary": "交互层级明确：将产品输出分成水下感知、海面信号和后台管理三层，有利于后续建立展板叙事和产品架构。",
       "body": "交互层级明确：将产品输出分成水下感知、海面信号和后台管理三层，有利于后续建立展板叙事和产品架构。",
@@ -486,6 +490,7 @@
     "key-conclusion-5": {
       "id": "key-conclusion-5",
       "type": "keyConclusion",
+      "category": "constraint",
       "title": "生态对象扩大：已选文档显示受航运低频噪音影响的不仅是鲸豚，也包括鱼类、海龟和部分无脊椎动物，设计目标不应只围绕单一旗舰物种。",
       "summary": "生态对象扩大：已选文档显示受航运低频噪音影响的不仅是鲸豚，也包括鱼类、海龟和部分无脊椎动物，设计目标不应只围绕单一旗舰物种。",
       "body": "生态对象扩大：已选文档显示受航运低频噪音影响的不仅是鲸豚，也包括鱼类、海龟和部分无脊椎动物，设计目标不应只围绕单一旗舰物种。",
@@ -511,6 +516,7 @@
     "key-conclusion-6": {
       "id": "key-conclusion-6",
       "type": "keyConclusion",
+      "category": "openQuestion",
       "title": "作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。",
       "summary": "作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。",
       "body": "作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。",
@@ -16626,7 +16632,7 @@
       "decisionLog": {
         "key": "decisionLog",
         "title": "决策记录",
-        "currentRevisionId": "memory-decisionLog-guguyh",
+        "currentRevisionId": "memory-decisionLog-1w6zpjk",
         "updatedAt": "2026-07-05T05:54:53.363Z"
       },
       "rejectedDirections": {
@@ -18878,6 +18884,589 @@
         "basis": "deterministic",
         "createdAt": "2026-07-05T05:54:53.363Z",
         "reviewRequired": false
+      },
+      "memory-decisionLog-1w6zpjk": {
+        "id": "memory-decisionLog-1w6zpjk",
+        "documentKey": "decisionLog",
+        "previousRevisionId": "memory-decisionLog-guguyh",
+        "sections": [
+          {
+            "key": "decisions",
+            "title": "当前项目决定",
+            "items": [
+              "删除 cc4786dd96012fd9156c2d5e901a8414.jpg；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-05T12:23:20.010Z",
+              "删除 f27b01e25d7b34487408433f26241c95.jpg；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-05T12:25:15.087Z",
+              "删除 海洋噪音浮标项目前期研究与设计定义支撑性判断；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T09:24:25.395Z",
+              "保留关键结论：可保留为核心结论的一点，不是“做一个能消除海洋噪音的万能浮标”，而是“做一个面向海洋噪音热点的动态监测与管理节点”。；类别：finding；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 1条中保留关键结论。；时间：2026-07-07T11:11:52.954Z",
+              "保留关键结论：问题必要性已足够成立，因此后续设计无需再反复证明“海洋噪音是否值得做”，而应转向“在什么场景、为谁、以什么边界来做”。；类别：finding；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 2条中保留关键结论。；时间：2026-07-07T11:11:52.955Z",
+              "保留关键结论：系统策略层面可以明确采用时空动态管理逻辑：在关键季节、关键航道、迁徙走廊、繁殖海域或施工缓冲区内进行针对性监测和提示。；类别：opportunity；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 3条中保留关键结论。；时间：2026-07-07T11:11:52.955Z",
+              "保留关键结论：产品层面最稳妥的角色定义是感知+上传+提示+协同，而不是直接声学干预海洋环境。；类别：opportunity；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 4条中保留关键结论。；时间：2026-07-07T11:11:52.955Z",
+              "保留关键结论：将后续设计定义收束为一个具体场景下的“动态海洋声学监测与提示浮标系统”，能同时保留研究深度与课程展板叙事清晰度。；类别：constraint；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的机会点第 1条中保留关键结论。；时间：2026-07-07T11:11:52.955Z",
+              "保留关键结论：围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。；类别：openQuestion；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的机会点第 2条中保留关键结论。；时间：2026-07-07T11:11:52.956Z",
+              "删除 没有默认参考、额外文档原文或图片证据进入本次语境；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T11:22:16.189Z",
+              "删除 本次结果应提炼“可保留的关键结论”，同时说明哪些判断仍需在设计定义阶段继续收束；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T11:22:16.189Z",
+              "删除 系统输出应以哪种行为为主：数据记录、风险告警、航行提示、管理建议，还是多角色分层输出？；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T11:22:16.190Z",
+              "删除 课程项目希望更偏现实工程约束，还是更偏概念性系统设计表达？；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T11:22:16.190Z",
+              "保留关键结论：可保留为核心结论的一点，不是“做一个能消除海洋噪音的万能浮标”，而是“做一个面向海洋噪音热点的动态监测与管理节点”。；类别：finding；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 1条中保留关键结论。；时间：2026-07-07T11:22:26.123Z",
+              "保留关键结论：系统策略层面可以明确采用时空动态管理逻辑：在关键季节、关键航道、迁徙走廊、繁殖海域或施工缓冲区内进行针对性监测和提示。；类别：finding；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 3条中保留关键结论。；时间：2026-07-07T11:22:26.123Z",
+              "保留关键结论：产品层面最稳妥的角色定义是感知+上传+提示+协同，而不是直接声学干预海洋环境。；类别：opportunity；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 4条中保留关键结论。；时间：2026-07-07T11:22:26.124Z",
+              "保留关键结论：真正的设计缺口已经转移到产品边界定义：它究竟更像科研监测基础设施、航运警示设施、港航管理节点，还是面向公众传播的教育性装置。；类别：opportunity；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的发现第 6条中保留关键结论。；时间：2026-07-07T11:22:26.124Z",
+              "保留关键结论：围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。；类别：constraint；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的机会点第 2条中保留关键结论。；时间：2026-07-07T11:22:26.124Z",
+              "保留关键结论：如果后续继续细化，可把“浮标”定义为系统中可见、可部署、可沟通的关键节点，从而把服务、基础设施和产品外观统一起来。；类别：openQuestion；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界”的机会点第 3条中保留关键结论。；时间：2026-07-07T11:22:26.124Z",
+              "删除 图片合集 · 6 张；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T11:41:16.879Z",
+              "删除 海洋噪音浮标课设：设计定义前的研究与分析；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T12:14:39.187Z",
+              "删除 海洋噪音浮标课设：关键结论与证据边界；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T12:14:39.187Z",
+              "删除 本次结果应提炼“可保留的关键结论”，同时说明哪些判断仍需在设计定义阶段继续收束；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T12:14:39.188Z",
+              "删除 优先场景应锁定在哪一种：鲸类迁徙航道、季节性繁殖海域、港口附近航道，还是海洋施工缓冲区？；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T12:14:39.188Z",
+              "删除 核心目标用户是谁：科研团队、港航管理方、施工运营方、船员，还是公众教育场景中的访客？；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T12:14:39.188Z",
+              "保留关键结论：保护对象扩展：本地研究把受害对象从鲸豚扩展到鱼类、海龟和无脊椎动物，显著增强了课题的生态与公共价值论据。；类别：finding；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界（重建）”的发现第 1条中保留关键结论。；时间：2026-07-07T12:31:25.238Z",
+              "保留关键结论：热点可预测性：生物热点并非随机分布，而是与海山、峡谷、大陆架边缘及可建模海洋锋面相关，说明系统可以先做风险地图再做实时验证。；类别：finding；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界（重建）”的发现第 2条中保留关键结论。；时间：2026-07-07T12:31:25.239Z",
+              "保留关键结论：系统定位收束：把课题表述为“动态海洋声学避难所网络”或“声学生态风险预警浮标系统”，能同时容纳生态论据与产品边界。；类别：opportunity；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界（重建）”的机会点第 1条中保留关键结论。；时间：2026-07-07T12:31:25.239Z",
+              "保留关键结论：交互层级明确：将产品输出分成水下感知、海面信号和后台管理三层，有利于后续建立展板叙事和产品架构。；类别：opportunity；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界（重建）”的机会点第 2条中保留关键结论。；时间：2026-07-07T12:31:25.240Z",
+              "保留关键结论：生态对象扩大：已选文档显示受航运低频噪音影响的不仅是鲸豚，也包括鱼类、海龟和部分无脊椎动物，设计目标不应只围绕单一旗舰物种。；类别：constraint；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界（重建）”的约束第 1条中保留关键结论。；时间：2026-07-07T12:31:25.240Z",
+              "保留关键结论：作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。；类别：openQuestion；原因：用户从研究对象“海洋噪音浮标课设：关键结论与证据边界（重建）”的待验证问题第 1条中保留关键结论。；时间：2026-07-07T12:31:25.241Z",
+              "删除 海洋噪音浮标课设：设计定义草案三方案（重建）；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-07T14:59:54.032Z",
+              "删除 方向 1｜岸海锚定式声学哨站；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-09T13:39:14.705Z",
+              "删除 方向 2｜漂移拼接式避险浮标群；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-09T13:39:14.706Z",
+              "删除 方向 3｜近人引导式声学交互终端；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-09T13:39:14.707Z",
+              "删除 方案 B｜动态海洋声学避难所网络；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-10T07:00:38.769Z",
+              "删除 方案 B｜动态海洋声学避难所网络；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-10T07:39:07.724Z",
+              "删除 方案 C｜海上工程声学合规守望系统；原因：用户在对象详情栏直接删除该对象。；时间：2026-07-10T07:39:07.725Z",
+              "应用设计定义：方案 A｜声学生态风险预警浮标系统；时间：2026-07-10T07:41:04.835Z",
+              "设为当前设计定义：方案 A｜声学生态风险预警浮标系统；原因：用户明确将该方案设为当前设计定义。；时间：2026-07-10T08:13:13.670Z",
+              "保存概念方向：声学生态风险预警浮标系统｜三种实体产品方向；时间：2026-07-10T08:14:59.083Z",
+              "方向 1｜守望塔：长期驻留型声学浮标 -> primary；原因：用户在底部详情栏明确将该方向设为主方向。；时间：2026-07-10T11:35:52.046Z",
+              "清除后续默认参考：守望塔｜维护可达版；原因：用户在画布上明确取消后续默认参考。；时间：2026-07-12T12:21:05.711Z",
+              "清除后续默认参考：守望塔｜维护可达版；原因：用户在画布上明确取消后续默认参考。；时间：2026-07-12T12:21:12.051Z",
+              "清除后续默认参考：守望塔｜维护可达版；原因：用户在画布上明确取消后续默认参考。；时间：2026-07-12T12:42:15.167Z",
+              "清除后续默认参考：守望塔｜维护可达版；原因：用户在画布上明确取消后续默认参考。；时间：2026-07-12T12:42:16.990Z",
+              "清除后续默认参考：守望塔｜维护可达版；原因：用户在画布上明确取消后续默认参考。；时间：2026-07-12T12:45:41.492Z"
+            ]
+          }
+        ],
+        "sourceRefs": [
+          {
+            "kind": "decision",
+            "id": "decision-apply-concept-direction-78",
+            "snapshot": {
+              "title": "保存概念方向：声学生态风险预警浮标系统｜三种实体产品方向",
+              "status": "applyConceptDirection"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-apply-design-definition-75",
+            "snapshot": {
+              "title": "应用设计定义：方案 A｜声学生态风险预警浮标系统",
+              "status": "applyDesignDefinition"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-2-28",
+            "snapshot": {
+              "title": "保留关键结论：系统策略层面可以明确采用时空动态管理逻辑：在关键季节、关键航道、迁徙走廊、繁殖海域或施工缓冲区内进行针对性监测和提示。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-2-49",
+            "snapshot": {
+              "title": "保留关键结论：热点可预测性：生物热点并非随机分布，而是与海山、峡谷、大陆架边缘及可建模海洋锋面相关，说明系统可以先做风险地图再做实时验证。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-2-8",
+            "snapshot": {
+              "title": "保留关键结论：问题必要性已足够成立，因此后续设计无需再反复证明“海洋噪音是否值得做”，而应转向“在什么场景、为谁、以什么边界来做”。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-27",
+            "snapshot": {
+              "title": "保留关键结论：可保留为核心结论的一点，不是“做一个能消除海洋噪音的万能浮标”，而是“做一个面向海洋噪音热点的动态监测与管理节点”。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-3-29",
+            "snapshot": {
+              "title": "保留关键结论：产品层面最稳妥的角色定义是感知+上传+提示+协同，而不是直接声学干预海洋环境。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-3-50",
+            "snapshot": {
+              "title": "保留关键结论：系统定位收束：把课题表述为“动态海洋声学避难所网络”或“声学生态风险预警浮标系统”，能同时容纳生态论据与产品边界。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-3-9",
+            "snapshot": {
+              "title": "保留关键结论：系统策略层面可以明确采用时空动态管理逻辑：在关键季节、关键航道、迁徙走廊、繁殖海域或施工缓冲区内进行针对性监测和提示。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-4-10",
+            "snapshot": {
+              "title": "保留关键结论：产品层面最稳妥的角色定义是感知+上传+提示+协同，而不是直接声学干预海洋环境。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-4-30",
+            "snapshot": {
+              "title": "保留关键结论：真正的设计缺口已经转移到产品边界定义：它究竟更像科研监测基础设施、航运警示设施、港航管理节点，还是面向公众传播的教育性装置。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-4-51",
+            "snapshot": {
+              "title": "保留关键结论：交互层级明确：将产品输出分成水下感知、海面信号和后台管理三层，有利于后续建立展板叙事和产品架构。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-48",
+            "snapshot": {
+              "title": "保留关键结论：保护对象扩展：本地研究把受害对象从鲸豚扩展到鱼类、海龟和无脊椎动物，显著增强了课题的生态与公共价值论据。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-5-11",
+            "snapshot": {
+              "title": "保留关键结论：将后续设计定义收束为一个具体场景下的“动态海洋声学监测与提示浮标系统”，能同时保留研究深度与课程展板叙事清晰度。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-5-31",
+            "snapshot": {
+              "title": "保留关键结论：围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-5-52",
+            "snapshot": {
+              "title": "保留关键结论：生态对象扩大：已选文档显示受航运低频噪音影响的不仅是鲸豚，也包括鱼类、海龟和部分无脊椎动物，设计目标不应只围绕单一旗舰物种。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-6-12",
+            "snapshot": {
+              "title": "保留关键结论：围绕“时空动态管理”建立概念亮点，有助于避免落入静态设备或空泛环保装置的常见表达。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-6-32",
+            "snapshot": {
+              "title": "保留关键结论：如果后续继续细化，可把“浮标”定义为系统中可见、可部署、可沟通的关键节点，从而把服务、基础设施和产品外观统一起来。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-6-53",
+            "snapshot": {
+              "title": "保留关键结论：作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-createKeyConclusion-key-conclusion-7",
+            "snapshot": {
+              "title": "保留关键结论：可保留为核心结论的一点，不是“做一个能消除海洋噪音的万能浮标”，而是“做一个面向海洋噪音热点的动态监测与管理节点”。",
+              "status": "createKeyConclusion"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-design-definition-proposal-definition-1783431536319-56",
+            "snapshot": {
+              "title": "删除 海洋噪音浮标课设：设计定义草案三方案（重建）",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-design-definition-proposal-definition-1783491915333-67",
+            "snapshot": {
+              "title": "删除 方案 B｜动态海洋声学避难所网络",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-design-definition-proposal-definition-1783666931192-2-71",
+            "snapshot": {
+              "title": "删除 方案 B｜动态海洋声学避难所网络",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-design-definition-proposal-definition-1783666931192-3-72",
+            "snapshot": {
+              "title": "删除 方案 C｜海上工程声学合规守望系统",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-direction-proposal-direction-1783503160642-1-62",
+            "snapshot": {
+              "title": "删除 方向 1｜岸海锚定式声学哨站",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-direction-proposal-direction-1783503160642-2-63",
+            "snapshot": {
+              "title": "删除 方向 2｜漂移拼接式避险浮标群",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-direction-proposal-direction-1783503160642-3-64",
+            "snapshot": {
+              "title": "删除 方向 3｜近人引导式声学交互终端",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-image-asset-cc4786dd96012fd9156c2d5e901a8414-jpg-4491f369-be21-4b56-ba4b-92c1e9ad766d-1",
+            "snapshot": {
+              "title": "删除 cc4786dd96012fd9156c2d5e901a8414.jpg",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-image-asset-f27b01e25d7b34487408433f26241c95-jpg-7a65cfe1-69f0-4771-9f79-9133faab973d-2",
+            "snapshot": {
+              "title": "删除 f27b01e25d7b34487408433f26241c95.jpg",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-image-collection-36",
+            "snapshot": {
+              "title": "删除 图片合集 · 6 张",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-10-26",
+            "snapshot": {
+              "title": "删除 课程项目希望更偏现实工程约束，还是更偏概念性系统设计表达？",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-7-23",
+            "snapshot": {
+              "title": "删除 没有默认参考、额外文档原文或图片证据进入本次语境",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-7-45",
+            "snapshot": {
+              "title": "删除 本次结果应提炼“可保留的关键结论”，同时说明哪些判断仍需在设计定义阶段继续收束",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-8-24",
+            "snapshot": {
+              "title": "删除 本次结果应提炼“可保留的关键结论”，同时说明哪些判断仍需在设计定义阶段继续收束",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-8-46",
+            "snapshot": {
+              "title": "删除 优先场景应锁定在哪一种：鲸类迁徙航道、季节性繁殖海域、港口附近航道，还是海洋施工缓冲区？",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-9-25",
+            "snapshot": {
+              "title": "删除 系统输出应以哪种行为为主：数据记录、风险告警、航行提示、管理建议，还是多角色分层输出？",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-key-conclusion-9-47",
+            "snapshot": {
+              "title": "删除 核心目标用户是谁：科研团队、港航管理方、施工运营方、船员，还是公众教育场景中的访客？",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-research-proposal-research-operation-research-1783412122557-6",
+            "snapshot": {
+              "title": "删除 海洋噪音浮标项目前期研究与设计定义支撑性判断",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-research-proposal-research-operation-research-2-1783416125896-37",
+            "snapshot": {
+              "title": "删除 海洋噪音浮标课设：设计定义前的研究与分析",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-deleteObject-research-proposal-research-operation-research-3-1783422035914-38",
+            "snapshot": {
+              "title": "删除 海洋噪音浮标课设：关键结论与证据边界",
+              "status": "deleteObject"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-set-current-design-definition-3",
+            "snapshot": {
+              "title": "设为当前设计定义：方案 A｜声学生态风险预警浮标系统",
+              "status": "applyDesignDefinition"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-81",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-83",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-85",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-87",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDefaultReference-image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b-89",
+            "snapshot": {
+              "title": "清除后续默认参考：守望塔｜维护可达版",
+              "status": "setDefaultReference"
+            }
+          },
+          {
+            "kind": "decision",
+            "id": "decision-setDirectionStatus-direction-proposal-direction-1783671299082-1-79",
+            "snapshot": {
+              "title": "方向 1｜守望塔：长期驻留型声学浮标 -> primary",
+              "status": "setDirectionStatus"
+            }
+          },
+          {
+            "kind": "object",
+            "id": "design-definition-proposal-definition-1783669222059-2",
+            "snapshot": {
+              "title": "方案 B｜动态海洋声学避难所网络",
+              "objectType": "designDefinition",
+              "visibility": "active",
+              "summarySnippet": "以风险地图与动态管理边界为核心，将分布式声学监测、生态热点预测和保护区治理联结为一个可更新的区域级避难所网络。",
+              "createdAt": "2026-07-10T07:40:54.956Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-1",
+            "snapshot": {
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "objectType": "conceptDirection",
+              "visibility": "active",
+              "summarySnippet": "一件长期驻留、可被远距离辨识的海上公共基础设施产品；强调可靠存活与低干扰存在感。",
+              "createdAt": "2026-07-10T08:14:59.083Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-2",
+            "snapshot": {
+              "title": "方向 2｜声学哨兵：快速投放型模块浮标",
+              "objectType": "conceptDirection",
+              "visibility": "active",
+              "summarySnippet": "一套可运输、可投放、可回收的轻量化声学哨兵；强调部署速度、任务适配与模块化扩展。",
+              "createdAt": "2026-07-10T08:14:59.083Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "direction-proposal-direction-1783671299082-3",
+            "snapshot": {
+              "title": "方向 3｜共航标：船舶交互型生态航标",
+              "objectType": "conceptDirection",
+              "visibility": "active",
+              "summarySnippet": "一件以航行者感知和行为改变为优先的交互式海上标志物；强调远距可读性、行动导向与共同航行的公共语义。",
+              "createdAt": "2026-07-10T08:14:59.083Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+            "snapshot": {
+              "title": "守望塔｜维护可达版",
+              "objectType": "image",
+              "visibility": "active",
+              "summarySnippet": "以更清晰的维护、吊装和声学接口逻辑，验证同一产品语言下的另一种工程化表达。"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion",
+            "snapshot": {
+              "title": "保护对象扩展：本地研究把受害对象从鲸豚扩展到鱼类、海龟和无脊椎动物，显著增强了课题的生态与公共价值论据。",
+              "objectType": "keyConclusion",
+              "visibility": "active",
+              "summarySnippet": "保护对象扩展：本地研究把受害对象从鲸豚扩展到鱼类、海龟和无脊椎动物，显著增强了课题的生态与公共价值论据。",
+              "createdAt": "2026-07-07T12:31:25.238Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-2",
+            "snapshot": {
+              "title": "热点可预测性：生物热点并非随机分布，而是与海山、峡谷、大陆架边缘及可建模海洋锋面相关，说明系统可以先做风险地图再做实时验证。",
+              "objectType": "keyConclusion",
+              "visibility": "active",
+              "summarySnippet": "热点可预测性：生物热点并非随机分布，而是与海山、峡谷、大陆架边缘及可建模海洋锋面相关，说明系统可以先做风险地图再做实时验证。",
+              "createdAt": "2026-07-07T12:31:25.239Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-3",
+            "snapshot": {
+              "title": "系统定位收束：把课题表述为“动态海洋声学避难所网络”或“声学生态风险预警浮标系统”，能同时容纳生态论据与产品边界。",
+              "objectType": "keyConclusion",
+              "visibility": "active",
+              "summarySnippet": "系统定位收束：把课题表述为“动态海洋声学避难所网络”或“声学生态风险预警浮标系统”，能同时容纳生态论据与产品边界。",
+              "createdAt": "2026-07-07T12:31:25.239Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-4",
+            "snapshot": {
+              "title": "交互层级明确：将产品输出分成水下感知、海面信号和后台管理三层，有利于后续建立展板叙事和产品架构。",
+              "objectType": "keyConclusion",
+              "visibility": "active",
+              "summarySnippet": "交互层级明确：将产品输出分成水下感知、海面信号和后台管理三层，有利于后续建立展板叙事和产品架构。",
+              "createdAt": "2026-07-07T12:31:25.240Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-5",
+            "snapshot": {
+              "title": "生态对象扩大：已选文档显示受航运低频噪音影响的不仅是鲸豚，也包括鱼类、海龟和部分无脊椎动物，设计目标不应只围绕单一旗舰物种。",
+              "objectType": "keyConclusion",
+              "visibility": "active",
+              "summarySnippet": "生态对象扩大：已选文档显示受航运低频噪音影响的不仅是鲸豚，也包括鱼类、海龟和部分无脊椎动物，设计目标不应只围绕单一旗舰物种。",
+              "createdAt": "2026-07-07T12:31:25.240Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "key-conclusion-6",
+            "snapshot": {
+              "title": "作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。",
+              "objectType": "keyConclusion",
+              "visibility": "active",
+              "summarySnippet": "作用链闭环：浮标监测到高风险声学事件后，系统触发的是航线建议、速度限制、施工暂停还是仅数据上报？这个决定会改变产品定义。",
+              "createdAt": "2026-07-07T12:31:25.241Z"
+            },
+            "sourceAvailability": "active"
+          },
+          {
+            "kind": "object",
+            "id": "research-proposal-research-operation-research-4-1783427445958",
+            "snapshot": {
+              "title": "海洋噪音浮标课设：关键结论与证据边界（重建）",
+              "objectType": "research",
+              "visibility": "active",
+              "summarySnippet": "基于已选本地文档、展板要求和少量外部案例，可保留的关键结论集中在：该课题可以被合理定义为一个面向声敏海洋生物热点的动态声学监测/预警/管理系统；浮标最可信的角色是被动声学感知、数据上传与管理触发节点，而不是单体装置直接消除大范围海洋噪音。证据足以支持设计收束方向、系统角色判断和展板叙事框架，但不足以直接推出具体工程参数、单一外形、长期部署能力或治理成效量化。"
+            },
+            "sourceAvailability": "active"
+          }
+        ],
+        "basis": "deterministic",
+        "createdAt": "2026-07-05T05:54:53.363Z",
+        "reviewRequired": true
       }
     },
     "stageRecords": {
