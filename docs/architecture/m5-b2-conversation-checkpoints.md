@@ -1,5 +1,9 @@
 # M5-B2 Conversation Checkpoints
 
+> **Historical milestone document**：本文件记录 M5-B2 的 lane-scoped checkpoint 方案。该方案已被
+> v3.2 的项目级连续会话与 A+ Runtime 收口替代；当前代码仍保留兼容字段和迁移读取，不得把本文件
+> 的 checkpoint/lane 边界当作当前实现或新功能依据。
+
 ## Scope
 
 M5-B2 adds automatic short-term conversation checkpoints for long ordinary chat discussion/comparison turns. The goal is to keep the next request coherent without sending the entire visible transcript to the provider.

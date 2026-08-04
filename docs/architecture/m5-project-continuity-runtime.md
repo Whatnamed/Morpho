@@ -1,5 +1,11 @@
 # M5-A Project Continuity Runtime
 
+> **Historical milestone document**：本文件记录 M5-A 当时的连续性实现边界。它保留迁移和数据职责
+> 证据，但不作为当前 Runtime 指南；当前连续 Agent、Memory Kernel、阶段记录与压缩边界以
+> [`architecture.md`](./architecture.md)、[`decisions.md`](./decisions.md) 和
+> [`agent-runtime-a-plus-migration.md`](./agent-runtime-a-plus-migration.md) 为准。保留的
+> `conversationCheckpoints` 与 lane 字段是兼容/审计数据，不代表 lane 隔离仍是正式会话机制。
+
 ## Scope
 
 M5-A implements the schema v8 project-continuity foundation in local workspace JSON. It adds a single structured continuity entry point at `workspace.projectContinuity` and removes the old runtime dependence on `project.currentFocus` and `workspace.stageRecords`.

@@ -1,5 +1,8 @@
 # M5-B1 Conversation Semantic Records
 
+> **Historical milestone document**：本文件记录 M5-B1 的语义记录方案和当时的路由边界。它只用于
+> 迁移、兼容和决策溯源；当前正式面板 Runtime、工具和受控写入边界以 A+ 迁移账本及当前架构文档为准。
+
 ## Scope
 
 M5-B1 upgrades workspace data to schema v9 and lets Morpho write a small, controlled subset of explicit user conversation into `workspace.projectContinuity.recordEntries`.

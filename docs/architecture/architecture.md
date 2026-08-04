@@ -4,6 +4,15 @@
 
 Morpho is a single Next.js App Router application in this repository root.
 
+## Current release status
+
+The current formal Runtime is the sole A+ Runtime. A+ Phase A and Phase B are complete, `main` and
+`refactor/agent-runtime-a-plus` are aligned at the same release commit, and the project is in the
+healthy observation window before Phase C. The earliest read-only observation audit is
+`2026-08-06 10:28:24 Asia/Shanghai`; Phase C is not authorized and its B-cleanup Migration remains
+unapplied. The phase ledger and release evidence live in
+[`agent-runtime-a-plus-migration.md`](./agent-runtime-a-plus-migration.md).
+
 The workspace has one Agent Runtime. `WorkspaceClient.tsx` calls the canonical
 `agentTurnRunner.ts` directly; there is no Runtime selector, environment flag, B fallback, UI/URL
 switch, or request-body override. The client Coordinator and Turn Lifecycle reducer own
@@ -63,8 +72,8 @@ Implemented server-side state and deployment:
 
 - Supabase provides account identity, closed-test qualification, AI daily quota, and the Server
   Turn/Request/External Action Journals through narrow `SECURITY DEFINER` RPCs. Forward-only SQL
-  lives in `supabase/migrations/`. The Stage 4 cleanup Migration removes the retired B Lease table
-  and RPCs; remote application remains a separate authorized operator step.
+  lives in `supabase/migrations/`. The checked-in Stage 4 cleanup Migration would remove the retired
+  B Lease table and RPCs; it remains unapplied until the separately authorized Phase C gate.
 - Supabase stores no project content. Projects, canvases, files, images, and backups stay in browser localStorage and IndexedDB.
 - Vercel is the current production deployment path (`npm run build`). Cloudflare Workers via `@opennextjs/cloudflare` and `wrangler` is a retained opt-in backup path behind the `cf:*` scripts.
 - `.github/workflows/quality.yml` runs lint, typecheck, test, and build on `main` and pull requests, without provider keys or deployment.

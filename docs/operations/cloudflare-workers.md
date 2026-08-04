@@ -1,5 +1,9 @@
 # Cloudflare Workers Deployment
 
+> **Current deployment status (2026-08-04)**: Cloudflare/OpenNext is a retained, opt-in backup
+> capability. Vercel is Morpho's formal production environment; this document describes an optional
+> independent Worker path and must not be read as evidence of the current production deployment.
+
 ## Architecture
 
 Morpho uses Next.js with `@opennextjs/cloudflare` to package the complete App Router application as a Cloudflare Worker. This keeps route handlers, Supabase server-side session checks, streaming AI responses, and Next.js routing available. It is not a static export and does not use Cloudflare Pages.

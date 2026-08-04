@@ -1,14 +1,16 @@
 # Morpho Agent Runtime A+ Migration
 
-This document is the durable implementation ledger for converging the Morpho Agent Runtime on the A+ trust boundary. It records migration scope and audit gates; it is not authorization to implement a later stage early.
+This document is the durable implementation ledger for converging the Morpho Agent Runtime on the A+ trust boundary. It records migration scope, release evidence, and audit gates; it is not authorization to implement or execute a later stage early.
 
 ## 1. Status
 
 | Field | Value |
 |---|---|
 | Decision date | 2026-07-28 |
-| Current state | Phase A applied and database-verified; Phase B main cutover and Production acceptance pending |
-| Current formal working branch | `refactor/agent-runtime-a-plus` |
+| Current state | Phase A complete; Phase B complete; healthy observation window active; Phase C deferred and unauthorized |
+| Current formal working branch | `main` |
+| A+ branch relation | `main` and `refactor/agent-runtime-a-plus` are kept fast-forward-aligned; the A+ runtime release baseline is recorded below |
+| Phase B A+ runtime SHA | `c7820091ca63bcca333071dcd77308e093a525f8` |
 | B implementation archive branch | `archive/agent-runtime-b` |
 | B implementation archive tag | `agent-runtime-b-final-2026-07-28-f27a410` |
 | Baseline full SHA | `f27a4102e94730ec56a476b349dda4710a67b514` |
@@ -21,7 +23,9 @@ This document is the durable implementation ledger for converging the Morpho Age
 | Active working-branch runtime | Canonical A+ `agentTurnRunner.ts`; no selector or B fallback |
 | Server journals | Server Turn Journal plus External Action Journal implemented; the two additive A+ Migrations are applied and database-verified |
 | Stage 4 | Complete — independently accepted at `1ec902ecfd09c6b0abfe7b58230321e880321e94` |
-| Next allowed stage | Phase B strict fast-forward to `main` and no-paid Production acceptance under the final-release authorization; Phase C remains deferred |
+| Phase B acceptance | Sole A+ Vercel Production deployment and authenticated no-cost health acceptance completed; no paid Provider smoke was required |
+| Observation gate | Healthy observation window active; earliest read-only audit `2026-08-06 10:28:24 Asia/Shanghai` |
+| Next allowed stage | Phase C前只读观察审计；Phase C cleanup remains separately unauthorized |
 
 The formal decision is recorded in [Technical Decisions](./decisions.md). The earlier [AI Continuity Convergence Audit](./ai-continuity-convergence-audit.md) remains historical evidence.
 
@@ -809,6 +813,11 @@ tag `agent-runtime-b-final-2026-07-28-f27a410`; Stage 4 does not move either arc
 
 ### Stage 5 — Merge and Release Candidate Gate
 
+> **Historical planning status**：本节记录 Phase A 之前的 Stage 5 release-candidate 计划和当时的
+> 发布顺序。该计划已经完成并由下方的 Phase A、Phase B 与观察窗口记录收口；其中“不得合并
+> `main`”等措辞只描述当时的冻结状态，不是当前分支状态。当前唯一可执行的后续事项是
+> Phase C 前只读观察审计，不能据此自动执行 Phase C。
+
 Stage 5 prepares a reviewable merge candidate without authorizing a source merge, database release,
 or production cutover.
 
@@ -1016,6 +1025,9 @@ Playwright tests without sending an Agent, Provider, Search, or Image request.
 The retained Phase A evidence bundle is
 `C:\Users\hasee\AppData\Local\Temp\morpho-a-plus-final-release-20260730-100137`.
 
+The following is the Phase A closeout snapshot recorded on 2026-07-30. Its `Next allowed action`
+line is historical; the current Phase B and observation status is recorded in the next section.
+
 ```text
 Historical Runtime B database reconciliation:
 Applied and verified
@@ -1039,6 +1051,28 @@ Not applied
 Next allowed action:
 Phase B main cutover and Production acceptance.
 ```
+
+#### Phase B main cutover and Production acceptance
+
+Phase B is complete. The A+ runtime release at
+`c7820091ca63bcca333071dcd77308e093a525f8` was strict fast-forwarded into `main`, and the
+documentation closeout keeps `main` and `refactor/agent-runtime-a-plus` fast-forward-aligned. The
+current production application is the sole A+ Runtime on Vercel; no B Runtime selector, fallback, or
+formal-panel call path was reintroduced.
+
+The authenticated no-cost Production acceptance was completed after Phase A. It covered the A+
+Turn create/query boundary and the missing-Provider fail-closed path without making a paid Provider,
+Search, or Image call. The Server Turn/Request/External Action Journal contract remained the only
+server-side authority for external execution status, while local project content and the overall
+local Turn outcome remained browser-owned.
+
+The B compatibility database objects remain intentionally present. The irreversible
+`20260729190000_remove_agent_runtime_b_proofs.sql` Migration has not been applied, and Phase C is
+not authorized. The repository is therefore in the healthy observation window. Before the earliest
+observation time of `2026-08-06 10:28:24 Asia/Shanghai`, no Phase C write is permitted. After that
+time, the only remaining task is a separately recorded read-only audit of real A+ Journal, Request,
+External Action, continuity/recovery, duplicate-execution, hanging-state, authentication, database,
+and residual-B-runtime evidence; that audit does not itself authorize cleanup.
 
 ## 11. Deletion Policy
 

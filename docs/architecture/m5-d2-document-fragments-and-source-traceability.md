@@ -1,5 +1,8 @@
 # M5-D2 Document Fragments And Source Traceability
 
+> **Historical milestone document**：本文件记录 M5-D2 文档片段与来源追溯的阶段实现。数据与阅读器
+> 设计可用于理解现有兼容边界；当前 Agent 入口、连续性和发布状态以当前架构文档为准。
+
 ## Scope
 
 M5-D2 adds `documentFragment` as a first-class Morpho object created only by an explicit user action inside the document reader.

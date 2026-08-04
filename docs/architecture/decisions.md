@@ -1,5 +1,15 @@
 # Morpho Technical Decisions
 
+## Reading status
+
+This is a chronological decision ledger. The latest A+ entries and the current implementation
+documents are authoritative for present behavior. Earlier entries remain valuable historical
+evidence, but any entry that mentions a Runtime Selector, B proof chain, `/api/ai/agent` as the
+formal single route, lane-scoped history boundaries, or pre-v3.2 model defaults has been superseded
+or narrowed by the later A+ decisions below. Do not use those older entries as current implementation
+guidance. The current release/phase state is maintained in
+[`agent-runtime-a-plus-migration.md`](./agent-runtime-a-plus-migration.md).
+
 ## 2026-06-23: Use Next.js App Router
 
 Decision: use `next`, `react`, and `react-dom` for the formal application foundation.
@@ -620,6 +630,9 @@ Status update (2026-07-14): Vercel is the active deployment target. The normal N
 
 ## 2026-07-13: Converge AI Continuity, Memory, Agent, And Image Planning In Schema 15
 
+> **Status**：产品连续性、Schema 15、Memory Kernel 与图像计划边界仍是当前规则；本节中旧的正式
+> `/api/ai/agent` 单路由表达已被 2026-07-29 的 A+ Turn resources 决策替代。
+
 Decision: upgrade the workspace to `schemaVersion: 15` and make `/api/ai/agent` plus OpenAI-compatible Responses the only formal AI-panel runtime. Replace lane-filtered recent history with one project-wide compaction boundary, add a source-driven revisioned Memory Kernel and current Stage Records, resolve task strategy through a versioned Prompt Registry, and compile structured visual intent through deterministic reference resolution and `ImagePromptCompiler` before `/api/ai/image`.
 
 Reason: the previous checkpoint, memory-view, legacy chat, and model-authored image-prompt paths could each work in isolation while disagreeing about what the Agent knew, what counted as project memory, which path owned delivery drafting, and why an image used particular references. One runtime and one persisted contract are required so history questions, progress questions, semantic updates, delivery drafts, visual batches, backup/restore, and the generated case study behave consistently.
@@ -805,6 +818,10 @@ Boundary: Morpho continues to guarantee authenticated identity and per-Turn bind
 Supersession: this decision supersedes or narrows the 2026-07-26 through 2026-07-28 implementation boundaries that require complete cryptographic proof of client Transcript, Tool Result, Context Marker, Compaction, and Closure integrity. Those decisions remain in this ledger as historical records and are not deleted. Their identity, server-secret, quota, Provider-call restriction, idempotency, user-isolation, bounded-execution, and external-cost protections remain effective. The migration and precise per-decision disposition are governed by [Agent Runtime A+ Migration](./agent-runtime-a-plus-migration.md).
 
 ## 2026-07-29: Stage A+ Behind One Default-Off Runtime Selector
+
+> **Historical / superseded**：本节记录 Stage 3 当时的临时 selector 方案。它已被
+> [2026-07-29 的 Sole A+ Runtime 决策](#2026-07-29-cut-over-to-the-sole-a-agent-runtime)替代；
+> `NEXT_PUBLIC_MORPHO_AGENT_RUNTIME`、B fallback 和 selector 不属于当前实现，也不是回滚开关。
 
 Decision: Stage 3 introduces one complete A+ Runtime behind the single temporary build-time selector `NEXT_PUBLIC_MORPHO_AGENT_RUNTIME`. Unset, invalid, or `b` selects the existing B-style Runtime; only `a-plus-stage3` selects A+ for local or Preview audit. `WorkspaceClient` keeps one product entry and delegates send, manual compaction, cancellation, refresh recovery, pending-confirmation acknowledgement, Search, and Image work through the selected Runtime. A+ orchestration is owned by the Stage 2 Coordinator and every Tool, persistence, unresolved-work, Compaction, cancellation, recovery, and finalization transition goes through the Stage 1 reducer. The selector is temporary and must be deleted with the B path during Stage 4 rather than becoming a long-lived compatibility mode.
 

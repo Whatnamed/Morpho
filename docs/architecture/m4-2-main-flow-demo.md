@@ -4,7 +4,10 @@ Date: 2026-06-26
 
 This document records the implemented M4.2 vertical slice. It is an engineering status note, not a replacement for the product definition.
 
-Historical note: text AI has since moved from MiMo to the AiJWS / OpenAI-compatible `/api/ai/agent` route, and the deployable built-in project is now `project-morpho-case-study`. The `project-nightrail` path below is the M4.2-era demo project and is not a current route. See `architecture.md` and `../operations/runbook.md` for current behavior.
+Historical note: text AI has since moved from MiMo to the AiJWS / OpenAI-compatible A+ resources under
+`/api/ai/agent/turns/**`, and the deployable built-in project is now `project-morpho-case-study`. The
+`project-nightrail` path below is the M4.2-era demo project and is not a current route. See
+`architecture.md` and `../operations/runbook.md` for current behavior.
 
 ## Implemented Flow
 

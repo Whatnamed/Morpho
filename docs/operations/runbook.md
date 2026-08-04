@@ -1,5 +1,19 @@
 # Morpho Runbook
 
+## Current release status
+
+As of 2026-08-04, A+ Phase A and Phase B are complete. The sole A+ application is the current
+Vercel Production Runtime, `main` and `refactor/agent-runtime-a-plus` are aligned at the same
+release commit, and the repository is in the healthy observation window before Phase C. The
+earliest read-only observation audit is `2026-08-06 10:28:24 Asia/Shanghai`.
+
+Phase C is not authorized or executed. Do not run
+`20260729190000_remove_agent_runtime_b_proofs.sql`, `supabase db push`, repair, reset, rollback,
+or any remote database write as part of ordinary verification. After the observation time, the
+remaining task is a separately recorded read-only audit of A+ Journal/Request/External Action
+records, continuity and recovery, duplicate or hanging execution, authentication/database health,
+and residual B-runtime dependencies. That audit does not grant Phase C authorization.
+
 ## Install
 
 Use the repository `.npmrc` registry setting.
@@ -721,8 +735,9 @@ supabase migration list --linked
 Verify both additive versions are recorded, then run the Stage 2/3 SQL checks above. All A+ Journal
 tables must exist with RLS and no direct `public`, `anon`, or `authenticated` table grants; A+ RPCs
 must remain `SECURITY DEFINER`, use fixed empty `search_path`, derive identity from `auth.uid()`, and
-grant execution only to `authenticated`. The B Lease table/RPCs must still exist at this phase, and
-the currently deployed B production Runtime must still pass its existing no-cost smoke checks.
+grant execution only to `authenticated`. At the time Phase A was executed, the B Lease table/RPCs
+were intentionally retained and the then-current production application passed its no-cost smoke
+checks. That is historical Phase A context; the current production application is A+.
 
 Return to the original checkout before removing the disposable release worktree:
 
@@ -733,8 +748,14 @@ git worktree remove $phaseA
 
 ### Phase B — sole A+ application deployment and no-cost health checks
 
-Deploy the audited Stage 4 application only after Phase A passes. First use an authenticated preview
-or staging deployment with **every accepted text Provider credential absent**:
+**Status (2026-08-04): complete.** The audited Stage 4 application was deployed as the sole A+
+Vercel Production Runtime after Phase A. The authenticated no-cost Turn create/query and missing-
+Provider fail-closed acceptance passed without paid Provider, Search, or Image calls. The current
+branch and release state are recorded in [`agent-runtime-a-plus-migration.md`](../architecture/agent-runtime-a-plus-migration.md).
+
+The procedure below is retained as the Phase B audit record. It describes how the gate was executed;
+it is not a request to add credentials or rerun paid traffic. The first deployment step used an
+authenticated preview or staging deployment with **every accepted text Provider credential absent**:
 
 - `MORPHO_AI_API_KEY` must not exist in that Preview/Staging scope;
 - the compatible `AIJWS_API_KEY` alias must not exist either;
@@ -829,14 +850,18 @@ Also verify:
 - the normal authenticated application can open, persist, and reload a browser-local project without
   server-side project registration.
 
-Only after these checks pass may the separately configured production deployment receive normal
-Provider credentials. A paid Provider smoke is a distinct explicit authorization and is not required
-for this database cutover gate.
+These checks passed for Phase B. Normal production credentials and real usage remain outside the
+no-cost cutover gate; a paid Provider smoke is a distinct explicit authorization and is not required
+for this database release. The system is now in the healthy observation window, and Phase C remains
+deferred until the separately scheduled read-only audit and a new explicit authorization.
 
 ### Phase C — irreversible B database cleanup
 
-Phase C is a separate authorization after the sole A+ deployment has remained healthy for the agreed
-validation window. Use the clean audited Stage 4 release checkout, not the Stage 3 Phase A worktree:
+**Status (2026-08-04): not authorized and not executed.** Phase C is a separate authorization after
+the sole A+ deployment has remained healthy for the agreed validation window. The earliest read-only
+observation audit is `2026-08-06 10:28:24 Asia/Shanghai`; reaching that time does not authorize the
+cleanup. If later authorized, use the clean audited Stage 4 release checkout, not the Stage 3 Phase A
+worktree:
 
 ```powershell
 $ErrorActionPreference = 'Stop'

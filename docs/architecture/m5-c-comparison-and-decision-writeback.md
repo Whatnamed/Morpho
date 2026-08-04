@@ -1,5 +1,8 @@
 # M5-C Comparison And Decision Writeback
 
+> **Historical milestone document**：本文件保留 M5-C 比较与决定写回的阶段实现记录。产品语义仍受
+> 当前 v3.2 规则约束；正式面板的当前执行入口和路由以 A+ 架构文档为准。
+
 ## Scope
 
 M5-C implements Compare as a local workspace operation: explicit selected sources are analyzed, the user confirms a concrete decision, and only then Morpho writes real domain state.

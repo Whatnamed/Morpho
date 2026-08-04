@@ -26,6 +26,15 @@ Morpho is an AI-assisted concept-development workspace for product and industria
 - 服务端 GrsAI 图像生成 route，图像任务按意图自动分流模型（方向批量预览用 `nano-banana-2-lite`，视觉发展/迭代/定向修改/场景/细节及未知意图用 `gpt-image-2`）；`MORPHO_GRS_DEFAULT_MODEL` 仅为服务端默认与兼容回退，不代表所有图像任务固定使用该模型；成功结果会保存为新的本地资产和新的图像对象；当前链路支持参考图和图生图，也支持基于提示词的定向修改，但没有 mask/inpainting 参数，不承诺像素级局部锁定；
 - 当前正式环境已部署到 Vercel；Cloudflare/OpenNext 文件保留为备用能力，不是当前正式环境。
 
+### 发布与项目进度状态
+
+截至 2026-08-04，正式 A+ Runtime 已在 `main` 收口：`main` 与
+`refactor/agent-runtime-a-plus` 指向同一发布提交，A+ Phase A 与 Phase B 已完成，当前处于
+Phase C 前的健康观察窗口。Phase C 尚未授权，B 数据库清理 Migration 尚未执行；最早的只读观察审计时间为
+`2026-08-06 10:28:24 Asia/Shanghai`。详细的迁移证据、观察边界和后续唯一事项见
+[`docs/architecture/agent-runtime-a-plus-migration.md`](docs/architecture/agent-runtime-a-plus-migration.md)
+与 [`docs/operations/runbook.md`](docs/operations/runbook.md)。
+
 当前 AiJWS 文本 AI 在 `对话与分析` 或 `研究任务` 中会读取显式选中的 active 图片资产：少量图片逐张发送，较多图片自动整理为总览图以覆盖全部选中资料；隐藏图片、未选旧图和整张画布不会默认发送。`MORPHO_AI_WEB_SEARCH_ENABLED=true` 时，chat/research 可使用 provider 的 web-search 能力；`imageGeneration` 永不提供联网工具。来源列表只展示 provider 返回的 citation，不从模型正文猜测。GrsAI 图像生成按静态模型 catalog 和服务端 profile 组装请求；`nano-banana-*` 与 `gpt-image-2` 请求字段分开处理，不混用 `imageSize`。
 
 当前受控 AI Operation Runtime 覆盖研究、图像生成、设计定义草案和概念方向草案。Operation 只保存轻量状态、输入快照、语义来源快照、Proposal、citation snapshot 和 IndexedDB artifact 引用；不会保存原始 provider payload、大附件或网页正文。保存或应用草案前必须由用户确认。
@@ -130,6 +139,8 @@ npm.cmd run build
 
 - [`docs/architecture/architecture.md`](docs/architecture/architecture.md)
 - [`docs/architecture/decisions.md`](docs/architecture/decisions.md)
+- [`docs/architecture/README.md`](docs/architecture/README.md)
+- [`docs/architecture/agent-runtime-a-plus-migration.md`](docs/architecture/agent-runtime-a-plus-migration.md)
 - [`docs/operations/runbook.md`](docs/operations/runbook.md)
 
 ## 官方示例项目

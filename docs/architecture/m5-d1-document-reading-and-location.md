@@ -1,5 +1,8 @@
 # M5-D1 Document Reading And Text Location
 
+> **Historical milestone document**：本文件记录 M5-D1 文档阅读器的阶段实现。其本地阅读/定位产品
+> 边界仍可参考，但其中出现的旧 AI 路由或阶段上下文描述不属于当前正式 Runtime 指南。
+
 ## Scope
 
 M5-D1 adds a lightweight workspace reader for already-parsed local file objects.

@@ -1,5 +1,9 @@
 # M6 Delivery Preparation And Stable References
 
+> **Historical milestone document**：本文件记录 M6 交付准备与稳定引用的阶段实现。交付产品规则仍以
+> `docs/product/05_...` 为准，正式面板 Runtime 和 AI 路由以 A+ 当前架构文档为准；不要把本文件中
+> 的旧兼容路由描述当作当前调用关系。
+
 ## Scope
 
 M6 implements delivery preparation as a local, editable workspace loop. It is not final export, automatic presentation generation, PDF/PPT/Figma production, archive, restore, collaboration, cloud sync, or final layout.
