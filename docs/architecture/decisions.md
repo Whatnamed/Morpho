@@ -943,7 +943,8 @@ Decision: upgrade the workspace to `schemaVersion: 16` and make `KeyConclusionOb
 required `KeyConclusionCategory` union: `finding`, `opportunity`, `constraint`, `openQuestion`, or
 recovery-only `unknown`. New writes use the separate `AssignableKeyConclusionCategory` subset of the
 first four values; manual confirmation starts with no selected category and cannot be confirmed until
-one of those four values is selected. Manual confirmation, research extraction, Compare writeback,
+one of those four values is selected. Recovered `unknown` conclusions remain manually reclassifiable
+from the object detail surface, but no new write path offers `unknown`. Manual confirmation, research extraction, Compare writeback,
 Agent confirmation, search, Context, Memory, and bundle projections use the field directly.
 
 Reason: key conclusions are retained semantic objects, so their domain category cannot remain an
