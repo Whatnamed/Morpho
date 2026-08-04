@@ -64,7 +64,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 MORPHO_AUTH_REQUIRED=true
 ```
 
-The two `NEXT_PUBLIC_SUPABASE_*` values are public browser configuration, not secrets. Never use a Supabase service-role key in this application. Supabase stores only account identity, tester eligibility, and AI daily-quota state. Projects, canvases, files, images, and backups remain local in browser localStorage / IndexedDB and are not cloud-synced.
+The two `NEXT_PUBLIC_SUPABASE_*` values are public browser configuration, not secrets. Never use a Supabase service-role key in this application. Supabase stores account identity, tester eligibility, AI daily-quota state, and the minimal A+ Server Turn / Request / External Action Journals. It does not store projects, canvases, files, images, chat bodies, project memory, or the overall local Turn Outcome; projects and backups remain local in browser localStorage / IndexedDB and are not cloud-synced.
 
 With `MORPHO_AUTH_REQUIRED=true`, missing public Supabase configuration fails closed: `/login` renders the configuration error with no variable values, while `/` and `/projects/*` redirect to `/login` instead of rendering protected content. `/api/ai/*` retains its 503 configuration failure behavior. Set `MORPHO_AUTH_REQUIRED=false` only for explicit local authentication bypass.
 
@@ -234,11 +234,10 @@ transient settlement failure at most twice after the initial attempt; exhausted 
 is not proof of external success or failure, so later query/replay performs the deadline-based
 convergence.
 
-Do not treat the checked-in file as proof that a remote database has been migrated. Do not run
-`supabase db push` from the current Stage 4 checkout to deploy only this Migration: that checkout
-also contains the later External Action Journal and irreversible B cleanup. Use Phase A in
-"Agent Runtime A+ Migration Verification" below, which pins the independently accepted Stage 3
-release checkout and dry-runs the complete additive pair before any remote write.
+The two additive A+ migrations described in this section were later applied and database-verified
+by Phase A. Do not rerun them from the current Stage 4 checkout. The historical Phase A procedure
+below pins the independently accepted Stage 3 release checkout and records the exact dry-run/write
+boundary; it is retained for audit evidence, not as a pending current operation.
 
 Before editing this migration in place or deploying the Stage 2 revision, inspect the verified
 remote migration list. If `20260729012105` has never been applied, the checked-in migration remains
@@ -307,12 +306,11 @@ Migration. In particular, do not modify or reapply
 contract, create a new later forward-only Migration. Do not delete a remote Migration row, reset the
 database, or paste unrelated SQL to make local and remote histories appear equal.
 
-This Stage 3 implementation did **not** apply either Migration remotely. The current Stage 4
-checkout also contains the later irreversible cleanup, so it is not a safe source for an additive-
-only `db push`. Follow Phase A in "Agent Runtime A+ Migration Verification" below. Stop before any
-remote write if the CLI is unauthenticated, the linked ref is not independently verified, the Stage
-2 Migration is absent/out of order, or the dry run contains anything outside the two intended
-additive files. A checked-in SQL file or successful static test is not evidence that a remote
+At the time of the Stage 3 implementation, neither Migration had been applied remotely. Phase A
+later applied and database-verified the complete additive pair; the current Stage 4 checkout still
+contains the later irreversible cleanup and is not a safe source for an additive-only `db push`.
+The Phase A commands in the later verification section are historical audit evidence and must not
+be rerun. A checked-in SQL file or successful static test is not, by itself, evidence that a remote
 database has been upgraded.
 
 After an authorized application, verify the private tables, RLS, routine security, and grants in the
@@ -667,8 +665,20 @@ The current code does not include:
 
 ## Agent Runtime A+ Migration Verification
 
-The current forward-only A+ migration order is fixed, but it must be released in three separately
-authorized phases:
+The current remote state is:
+
+- `20260729012105_add_agent_turn_journal.sql`: applied and database-verified;
+- `20260729093000_add_agent_turn_external_actions.sql`: applied and database-verified;
+- `20260729190000_remove_agent_runtime_b_proofs.sql`: not applied;
+- Phase A and Phase B: complete;
+- healthy observation window: active;
+- Phase C: not authorized and not executed.
+
+The three files below remain the fixed forward-only release order. The Phase A and Phase B
+subsections are historical audit procedures for the completed gates, not pending operations. Do not
+rerun Phase A or issue a remote database write from this section. The only currently executable
+follow-up is the separately recorded read-only observation audit after `2026-08-06 10:28:24
+Asia/Shanghai`; it does not authorize Phase C.
 
 ```text
 supabase/migrations/20260729012105_add_agent_turn_journal.sql
@@ -676,16 +686,20 @@ supabase/migrations/20260729093000_add_agent_turn_external_actions.sql
 supabase/migrations/20260729190000_remove_agent_runtime_b_proofs.sql
 ```
 
-Stage 4 did not apply any of these files remotely. Supabase CLI `db push` applies every pending local
-Migration and has no supported "stop at this version" option. Therefore Phase A uses the exact
-independently accepted Stage 3 commit, which contains the two additive A+ Migrations but not the
-cleanup. This is a release checkout, not a manual SQL copy and not a modified migration ledger. The
-command shape below matches the official
+Historical Phase A pre-write state: Stage 4 had not applied these files remotely. Supabase CLI
+`db push` applies every pending local Migration and has no supported "stop at this version" option.
+Therefore the completed Phase A used the exact independently accepted Stage 3 commit, which
+contained the two additive A+ Migrations but not the cleanup. This was a release checkout, not a
+manual SQL copy and not a modified migration ledger. The command shape below matches the official
 [Supabase CLI `db push` interface](https://supabase.com/docs/reference/cli/supabase-db-push)
-for `--linked` and `--dry-run`; use a currently supported CLI version on the authorized operator
-machine.
+for `--linked` and `--dry-run`; it is retained as a historical record only.
 
 ### Phase A — additive A+ database contract only
+
+**Historical execution record — complete; do not rerun.** Phase A applied and verified both additive
+Migrations. The PowerShell and SQL commands in this subsection document the exact release gate used
+at that time; they are not current instructions to create another worktree, run `supabase db push`,
+or write to the remote database.
 
 From a clean repository checkout in PowerShell 7:
 
@@ -721,25 +735,26 @@ supabase migration list --linked
 supabase db push --dry-run --linked
 ```
 
-Expected dry-run result: exactly
+The historical dry-run result was exactly
 `20260729012105_add_agent_turn_journal.sql` followed by
 `20260729093000_add_agent_turn_external_actions.sql`. If it lists an older B Migration, the cleanup
 Migration, any unrelated file, or nothing when the A+ tables are not independently known to exist,
-stop and investigate the remote history. After a separate Phase A authorization:
+the historical release was stopped and investigated. The historical execution then used:
 
 ```powershell
 supabase db push --linked
 supabase migration list --linked
 ```
 
-Verify both additive versions are recorded, then run the Stage 2/3 SQL checks above. All A+ Journal
-tables must exist with RLS and no direct `public`, `anon`, or `authenticated` table grants; A+ RPCs
-must remain `SECURITY DEFINER`, use fixed empty `search_path`, derive identity from `auth.uid()`, and
-grant execution only to `authenticated`. At the time Phase A was executed, the B Lease table/RPCs
+The historical post-apply verification confirmed both additive versions and the Stage 2/3 SQL checks.
+All A+ Journal tables had RLS and no direct `public`, `anon`, or `authenticated` table grants; A+ RPCs
+remained `SECURITY DEFINER`, used fixed empty `search_path`, derived identity from `auth.uid()`, and
+granted execution only to `authenticated`. At the time Phase A was executed, the B Lease table/RPCs
 were intentionally retained and the then-current production application passed its no-cost smoke
 checks. That is historical Phase A context; the current production application is A+.
 
-Return to the original checkout before removing the disposable release worktree:
+The historical execution then returned to the original checkout before removing the disposable
+release worktree:
 
 ```powershell
 Set-Location $repo
