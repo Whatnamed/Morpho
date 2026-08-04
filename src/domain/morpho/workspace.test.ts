@@ -15,6 +15,7 @@ import {
   hideObjects,
   hideObject,
   migrateWorkspaceToCurrentSchema,
+  parseWorkspace,
   archiveVisualBranch,
   assignImageToVisualBranch,
   removeImageFromVisualBranch,
@@ -74,6 +75,42 @@ describe("Morpho workspace domain boundaries", () => {
       kind: "setKeyConclusionCategory",
       summary: expect.stringContaining("→ opportunity")
     });
+  });
+
+  it("preserves unknown on a historical Compare candidate during workspace parsing", () => {
+    const workspace = structuredClone(createInitialWorkspace());
+    workspace.ai.comparisonAnalyses = {
+      "comparison-history": {
+        id: "comparison-history",
+        assistantMessageId: "assistant-history",
+        userMessageId: "user-history",
+        createdAt: "2026-07-01T10:00:00.000Z",
+        updatedAt: "2026-07-01T10:00:00.000Z",
+        sourceObjectIds: ["research-night-path"],
+        sourceRefs: [],
+        comparisonGoal: "历史比较",
+        conclusionSummary: "历史候选",
+        objectComparisons: [],
+        recommendedQuestions: [],
+        evidenceLimits: [],
+        keyConclusionCandidate: {
+          title: "历史候选",
+          summary: "历史候选摘要",
+          body: "历史候选正文",
+          category: "unknown",
+          sourceObjectIds: ["research-night-path"],
+          evidence: [{ objectId: "research-night-path", label: "研究", evidence: "历史依据" }],
+          confidence: "partial"
+        }
+      }
+    };
+
+    const parsed = parseWorkspace(JSON.stringify(workspace));
+    expect(parsed.status).toBe("ok");
+    if (parsed.status !== "ok") {
+      throw new Error(parsed.reason);
+    }
+    expect(parsed.workspace.ai.comparisonAnalyses?.["comparison-history"]?.keyConclusionCandidate?.category).toBe("unknown");
   });
 
   it("drops legacy B proof fields while preserving product messages and compact diagnostics", () => {

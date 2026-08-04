@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { classifyDecisionRecords } from "./decisionRecords";
-import { setConceptDirectionStatus, setDefaultReference, createInitialWorkspace } from "./workspace";
+import { createInitialWorkspace, setConceptDirectionStatus, setDefaultReference, setKeyConclusionCategory } from "./workspace";
 
 describe("decision record classification", () => {
   it("marks an earlier direction status as superseded after a later status change", () => {
@@ -46,6 +46,41 @@ describe("decision record classification", () => {
     });
   });
 
+  it("marks the first manual key-conclusion category assignment as current", () => {
+    const target = getUnknownKeyConclusion(createInitialWorkspace());
+    const result = setKeyConclusionCategory(target.workspace, target.object.id, "finding", {
+      reason: "用户补充类别。"
+    });
+    if (result.status !== "updated") {
+      throw new Error(result.reason);
+    }
+
+    const record = classifyDecisionRecords(result.workspace).find(
+      (item) => item.record.kind === "setKeyConclusionCategory"
+    );
+    expect(record).toMatchObject({ state: "current" });
+  });
+
+  it("marks an earlier key-conclusion category assignment as superseded after a later change", () => {
+    const target = getUnknownKeyConclusion(createInitialWorkspace());
+    const first = setKeyConclusionCategory(target.workspace, target.object.id, "finding");
+    if (first.status !== "updated") {
+      throw new Error(first.reason);
+    }
+    const second = setKeyConclusionCategory(first.workspace, target.object.id, "opportunity");
+    if (second.status !== "updated") {
+      throw new Error(second.reason);
+    }
+
+    const classified = classifyDecisionRecords(second.workspace);
+    expect(classified.find((item) => item.record.summary.endsWith("→ finding"))).toMatchObject({
+      state: "superseded"
+    });
+    expect(classified.find((item) => item.record.summary.endsWith("→ opportunity"))).toMatchObject({
+      state: "current"
+    });
+  });
+
   it("does not call a decision current when its source object cannot be resolved", () => {
     const workspace = createInitialWorkspace();
     const withMissingDecision = {
@@ -77,4 +112,21 @@ function withAvailableImages(workspace: ReturnType<typeof createInitialWorkspace
     }
   }
   return { ...workspace, objects };
+}
+
+function getUnknownKeyConclusion(workspace: ReturnType<typeof createInitialWorkspace>) {
+  const object = Object.values(workspace.objects).find((candidate) => candidate.type === "keyConclusion");
+  if (!object || object.type !== "keyConclusion") {
+    throw new Error("Expected a key conclusion fixture.");
+  }
+  return {
+    workspace: {
+      ...workspace,
+      objects: {
+        ...workspace.objects,
+        [object.id]: { ...object, category: "unknown" as const }
+      }
+    },
+    object
+  };
 }

@@ -73,7 +73,7 @@ describe("comparison action target validation", () => {
     if (!analysis?.keyConclusionCandidate) {
       throw new Error("missing Compare candidate");
     }
-    analysis.keyConclusionCandidate.category = "unknown" as never;
+    analysis.keyConclusionCandidate.category = "unknown";
 
     expect(validateComparisonActionTarget(workspace, "comparison-a", "createKeyConclusion")).toMatchObject({
       status: "blocked",
