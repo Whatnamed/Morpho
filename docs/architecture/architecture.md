@@ -119,8 +119,9 @@ Operation persistence is intentionally lightweight:
 Schema-v16 loading is the one-way compatibility boundary for retired B browser fields and the
 formal key-conclusion category model. It accepts v1-v15 workspace data through pure migration,
 preserves valid legacy categories, derives a category only from an exact source research item or
-the explicitly isolated old-note fallback, and stores `unknown` when the legacy evidence is not
-enough. Current runtime code never infers category from title, body, or note. It also drops old
+the explicitly isolated old-note fallback, and stores recovery-only `unknown` when the legacy
+evidence is not enough. New writes use only the four assignable categories and never default to
+`unknown`; current runtime code never infers category from title, body, or note. It also drops old
 Closure Recovery, signed terminal Outcome, and Provider Request State records while preserving raw
 chat, Summary Revisions, Provider Context Frames, Provider input/output snapshots, Agent traces,
 project data, and assets. Those dropped fields are not part of the canonical type or archive format
@@ -304,7 +305,7 @@ Schema v16 is the current runtime contract and supersedes lane-local checkpoint 
 - Provider Context Frames remain browser-local, untrusted product context. They are retained for continuity and editable backup, not signed or accepted as causal proof by the server;
 - GrsAI image planning distinguishes `textToImage`, `imageToImage`, and prompt-level `directedEdit`. The current request has no mask/inpainting field, so `maskedLocalEdit` is unavailable and no pixel-level local-edit guarantee is exposed;
 - editable backups default to full conversation scope and preserve raw chat, summary revisions, legacy checkpoints, memory/stage revisions, Continuity Events, Agent Trace, citations, Compare analyses, and image provenance;
-- `KeyConclusionObject.category` is a formal union of `finding`, `opportunity`, `constraint`, `openQuestion`, and compatibility-only `unknown`. New manual, research-extraction, Compare, and Agent-confirmed writes must carry the category explicitly; UI, search, task Context, provider summaries, project Memory, and human-readable bundles read this field directly. The old extraction-note markers are migration-only compatibility hints and are not runtime semantics;
+- `KeyConclusionObject.category` stores the five-value `KeyConclusionCategory` union (`finding`, `opportunity`, `constraint`, `openQuestion`, and recovery-only `unknown`), while new writes accept only the four-value `AssignableKeyConclusionCategory` subset. Manual, research-extraction, Compare, and Agent-confirmed writes must carry one of those four categories explicitly; an unclassified confirmation starts at `请选择类别` and cannot be confirmed. UI, search, task Context, provider summaries, project Memory, and human-readable bundles read the stored field directly. The old extraction-note markers are migration-only compatibility hints and are not runtime semantics;
 - the generated current-case fixture is upgraded with `npm.cmd run case-study:upgrade`; repeated upgrades must produce the same workspace hash.
 
 No new runtime dependency or external service was introduced for schema v16.

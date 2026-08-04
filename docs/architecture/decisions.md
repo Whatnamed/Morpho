@@ -941,8 +941,10 @@ application, call a paid Provider, merge `main`, move archive refs, or authorize
 
 Decision: upgrade the workspace to `schemaVersion: 16` and make `KeyConclusionObject.category` a
 required `KeyConclusionCategory` union: `finding`, `opportunity`, `constraint`, `openQuestion`, or
-compatibility-only `unknown`. Manual confirmation, research extraction, Compare writeback, Agent
-confirmation, search, Context, Memory, and bundle projections use the field directly.
+recovery-only `unknown`. New writes use the separate `AssignableKeyConclusionCategory` subset of the
+first four values; manual confirmation starts with no selected category and cannot be confirmed until
+one of those four values is selected. Manual confirmation, research extraction, Compare writeback,
+Agent confirmation, search, Context, Memory, and bundle projections use the field directly.
 
 Reason: key conclusions are retained semantic objects, so their domain category cannot remain an
 implicit presentation convention encoded in a title, body, or human note. Explicit categories keep
