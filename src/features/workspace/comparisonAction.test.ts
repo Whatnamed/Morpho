@@ -67,6 +67,20 @@ describe("comparison action target validation", () => {
     });
   });
 
+  it("blocks a recovered Compare candidate that still has unknown category", () => {
+    const workspace = withAnalysis(createInitialWorkspace(), makeAnalysis());
+    const analysis = workspace.ai.comparisonAnalyses?.["comparison-a"];
+    if (!analysis?.keyConclusionCandidate) {
+      throw new Error("missing Compare candidate");
+    }
+    analysis.keyConclusionCandidate.category = "unknown" as never;
+
+    expect(validateComparisonActionTarget(workspace, "comparison-a", "createKeyConclusion")).toMatchObject({
+      status: "blocked",
+      reason: "Key conclusion candidate must have an assignable category."
+    });
+  });
+
   it("blocks historical key-conclusion candidates backed only by direction summaries", () => {
     const workspace = withAnalysis(createInitialWorkspace(), makeAnalysis());
 

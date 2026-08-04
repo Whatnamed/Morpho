@@ -37,9 +37,15 @@ import {
 import { hasPendingDesignDefinitionRevisionProposal, reconcileWorkspaceDerivedState } from "./derivedState";
 import { buildContinuityRecordId, setConversationSemanticEntryManualState } from "./projectContinuity";
 import { applyConversationSummaryRevision } from "./conversationCompaction";
+import { isAssignableKeyConclusionCategory } from "./types";
 import type { MorphoWorkspace } from "./types";
 
 describe("Morpho workspace domain boundaries", () => {
+  it("keeps unknown outside the assignable key conclusion category set", () => {
+    expect(["finding", "opportunity", "constraint", "openQuestion"].every(isAssignableKeyConclusionCategory)).toBe(true);
+    expect(isAssignableKeyConclusionCategory("unknown")).toBe(false);
+  });
+
   it("drops legacy B proof fields while preserving product messages and compact diagnostics", () => {
     const workspace = createInitialWorkspace();
     const legacy = structuredClone(workspace) as MorphoWorkspace;

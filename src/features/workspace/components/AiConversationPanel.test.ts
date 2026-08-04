@@ -2,7 +2,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ComponentProps } from "react";
-import type { PendingComparisonConfirmation } from "./AiConversationPanel";
+import type { PendingAiConfirmation, PendingComparisonConfirmation } from "./AiConversationPanel";
 
 import { AiConversationPanel, getVisibleAiMessageBody, parseMarkdownBlocks } from "./AiConversationPanel";
 import { buildAiConversationPanelProps } from "./aiConversationPanelProps";
@@ -603,6 +603,31 @@ describe("AiConversationPanel", () => {
     expect(html).toContain("确认 Compare 决策");
     expect(html).toContain("来源对象：direction-soft-rail、direction-support-island、image-soft-rail-v2");
   });
+
+  it("requires an assignable category before confirming a new key conclusion", () => {
+    const pendingConfirmation: PendingAiConfirmation = {
+      kind: "createKeyConclusion",
+      sourceObjectIds: ["text-a"],
+      sourceTitle: "文本来源",
+      conclusionTitle: "待分类结论",
+      body: "需要用户明确归类。",
+      summary: "需要用户明确归类。",
+      category: null,
+      citationIds: [],
+      confidence: "needsVerification",
+      state: "needsVerification",
+      note: "等待用户分类。"
+    };
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({ pendingConfirmation }))
+    );
+
+    expect(html).toContain("请选择类别");
+    expect(html).toContain('value=""');
+    expect(html).toContain("disabled=\"\"");
+    expect(html).not.toContain(">待分类<");
+  });
+
   it("shows the normal send action when no AI work is active", () => {
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({

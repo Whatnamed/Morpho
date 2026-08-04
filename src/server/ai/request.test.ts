@@ -676,6 +676,21 @@ describe("AiJWS chat route request conversion", () => {
     expect(prompt).toContain("短期讨论连续性");
   });
 
+  it("limits Compare key conclusion output to assignable categories", () => {
+    const prompt = buildMorphoSystemPrompt({
+      draft: "比较这两个方向。",
+      task: "general",
+      taskMode: "chatAnalysis",
+      workIntent: "comparison",
+      messages: [],
+      objectSummaries: [],
+      attachments: []
+    });
+
+    expect(prompt).toContain('"category": "finding" | "opportunity" | "constraint" | "openQuestion"');
+    expect(prompt).not.toContain('"category": "finding" | "opportunity" | "constraint" | "openQuestion" | "unknown"');
+  });
+
   it("keeps bounded structured task context in the AiJWS system prompt", () => {
     const result = validateAiRouteRequest({
       draft: "基于当前定义继续生成方向预览",

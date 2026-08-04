@@ -222,6 +222,33 @@ describe("comparison analysis domain rules", () => {
     expect(parsed.status).toBe("blockedByProposal");
   });
 
+  it("rejects unknown as a new Compare key conclusion category", () => {
+    const parsed = parseComparisonAnalysisPayload([
+      "```json",
+      JSON.stringify({
+        morphoComparisonAnalysis: {
+          comparisonGoal: "比较",
+          conclusionSummary: "候选",
+          objectComparisons: [],
+          recommendedQuestions: [],
+          evidenceLimits: [],
+          keyConclusionCandidate: {
+            title: "候选结论",
+            summary: "候选摘要",
+            body: "候选正文",
+            category: "unknown",
+            sourceObjectIds: ["research-a"],
+            evidence: [{ objectId: "research-a", label: "研究", evidence: "依据" }],
+            confidence: "partial"
+          }
+        }
+      }),
+      "```"
+    ].join("\n"));
+
+    expect(parsed).toMatchObject({ status: "failed", reason: "morphoComparisonAnalysis has an invalid schema." });
+  });
+
   it("builds a readable fallback when a compare reply contains only the structured payload", () => {
     const visible = buildComparisonAnalysisVisibleSummary({
       comparisonGoal: "compare",
