@@ -70,6 +70,20 @@ const defaultServices: DocumentReaderControllerServices = {
 
 type ReadyDocumentSourcePreview = Extract<DocumentSourcePreview, { status: "ready" }>;
 
+type DocumentSourcePreviewLease = {
+  preview: ReadyDocumentSourcePreview;
+  released: boolean;
+};
+
+function releasePreviewLease(lease: DocumentSourcePreviewLease | null): void {
+  if (!lease || lease.released) {
+    return;
+  }
+
+  lease.released = true;
+  revokeDocumentSourcePreview(lease.preview);
+}
+
 export function useDocumentReaderController({
   workspace,
   updateWorkspace,
@@ -81,7 +95,7 @@ export function useDocumentReaderController({
   const stateRef = useRef<DocumentReaderControllerState | null>(null);
   const requestIdRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const ownedSourcePreviewRef = useRef<ReadyDocumentSourcePreview | null>(null);
+  const ownedSourcePreviewRef = useRef<DocumentSourcePreviewLease | null>(null);
   const mountedRef = useRef(true);
 
   const replaceState = useCallback((next: DocumentReaderControllerState | null) => {
@@ -103,11 +117,9 @@ export function useDocumentReaderController({
   );
 
   const releaseOwnedSourcePreview = useCallback(() => {
-    const preview = ownedSourcePreviewRef.current;
+    const lease = ownedSourcePreviewRef.current;
     ownedSourcePreviewRef.current = null;
-    if (preview) {
-      revokeDocumentSourcePreview(preview);
-    }
+    releasePreviewLease(lease);
   }, []);
 
   const invalidateReader = useCallback(
@@ -161,8 +173,7 @@ export function useDocumentReaderController({
       });
 
       const workspaceSnapshot = workspace;
-      let resolvedSourcePreview: DocumentSourcePreview | undefined;
-      let didRevokeResolvedSourcePreview = false;
+      let sourcePreviewLease: DocumentSourcePreviewLease | null = null;
       const sourcePreviewPromise = services
         .loadDocumentSourcePreview(
           workspaceSnapshot,
@@ -171,10 +182,17 @@ export function useDocumentReaderController({
           abortController.signal
         )
         .then((sourcePreview) => {
-          resolvedSourcePreview = sourcePreview;
-          if (!isCurrentRequest(fileObjectId, requestId, abortController)) {
-            revokeDocumentSourcePreview(sourcePreview);
-            didRevokeResolvedSourcePreview = true;
+          if (sourcePreview.status === "ready") {
+            const lease: DocumentSourcePreviewLease = {
+              preview: sourcePreview,
+              released: false
+            };
+            sourcePreviewLease = lease;
+            if (isCurrentRequest(fileObjectId, requestId, abortController)) {
+              ownedSourcePreviewRef.current = lease;
+            } else {
+              releasePreviewLease(lease);
+            }
           }
           return sourcePreview;
         });
@@ -191,17 +209,16 @@ export function useDocumentReaderController({
       ])
         .then(([result, sourcePreview]) => {
           if (!isCurrentRequest(fileObjectId, requestId, abortController)) {
-            if (!didRevokeResolvedSourcePreview) {
-              revokeDocumentSourcePreview(sourcePreview);
-            }
+            releasePreviewLease(sourcePreviewLease);
             return;
           }
 
-          ownedSourcePreviewRef.current = sourcePreview.status === "ready" ? sourcePreview : null;
           updateState((current) => {
             if (!current || current.fileObjectId !== fileObjectId || current.requestId !== requestId) {
-              revokeDocumentSourcePreview(sourcePreview);
-              ownedSourcePreviewRef.current = null;
+              if (ownedSourcePreviewRef.current === sourcePreviewLease) {
+                ownedSourcePreviewRef.current = null;
+              }
+              releasePreviewLease(sourcePreviewLease);
               return current;
             }
             if (result.status === "loaded") {
@@ -227,10 +244,10 @@ export function useDocumentReaderController({
           });
         })
         .catch((error: unknown) => {
-          if (resolvedSourcePreview && !didRevokeResolvedSourcePreview) {
-            revokeDocumentSourcePreview(resolvedSourcePreview);
-            didRevokeResolvedSourcePreview = true;
+          if (ownedSourcePreviewRef.current === sourcePreviewLease) {
+            ownedSourcePreviewRef.current = null;
           }
+          releasePreviewLease(sourcePreviewLease);
           if (error instanceof DOMException && error.name === "AbortError") {
             return;
           }

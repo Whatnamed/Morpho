@@ -154,6 +154,38 @@ describe("useDocumentReaderController", () => {
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:file-a");
   });
 
+  it("immediately revokes a ready preview when closed while extraction is still pending", async () => {
+    const workspace = createReaderWorkspace("project-reader", "file-a");
+    const extract = deferred<DocumentReaderLoadResult>();
+    const preview = deferred<DocumentSourcePreview>();
+    const services = createServices({
+      loadExtract: vi.fn(() => extract.promise),
+      loadPreview: vi.fn(() => preview.promise)
+    });
+    const harness = await renderController({ initialWorkspace: workspace, services });
+
+    act(() => harness.current().open("file-a"));
+    await act(async () => {
+      preview.resolve(readyPreview("file-a"));
+      await settleAsyncWork();
+    });
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+
+    act(() => harness.current().close());
+
+    expect(harness.current().state).toBeNull();
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:file-a");
+
+    await act(async () => {
+      extract.resolve(loadedResult(workspace, "file-a", "late text"));
+      await settleAsyncWork();
+    });
+
+    expect(harness.current().state).toBeNull();
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+  });
+
   it("aborts the request and revokes the owned URL on unmount", async () => {
     const workspace = createReaderWorkspace("project-reader", "file-a");
     let signal: AbortSignal | undefined;
@@ -172,6 +204,36 @@ describe("useDocumentReaderController", () => {
 
     expect(signal?.aborted).toBe(true);
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:file-a");
+  });
+
+  it("immediately revokes a ready preview on unmount while extraction is still pending", async () => {
+    const workspace = createReaderWorkspace("project-reader", "file-a");
+    const extract = deferred<DocumentReaderLoadResult>();
+    const preview = deferred<DocumentSourcePreview>();
+    const services = createServices({
+      loadExtract: vi.fn(() => extract.promise),
+      loadPreview: vi.fn(() => preview.promise)
+    });
+    const harness = await renderController({ initialWorkspace: workspace, services });
+
+    act(() => harness.current().open("file-a"));
+    await act(async () => {
+      preview.resolve(readyPreview("file-a"));
+      await settleAsyncWork();
+    });
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+
+    await harness.unmount();
+
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:file-a");
+
+    await act(async () => {
+      extract.resolve(loadedResult(workspace, "file-a", "late text"));
+      await settleAsyncWork();
+    });
+
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
   });
 
   it("shows a current non-Abort error and ignores an older request error", async () => {
