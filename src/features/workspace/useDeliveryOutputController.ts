@@ -133,6 +133,9 @@ export function useDeliveryOutputController({
           blobStore,
           download: true
         });
+        if (activeOperationRef.current !== operation) {
+          return;
+        }
         if (result.status !== "ok") {
           setMessage({
             tone: result.status === "blocked" ? "warning" : "error",
@@ -154,6 +157,9 @@ export function useDeliveryOutputController({
               : "输出包已导出。包含章节结构、素材、图注、来源映射和待补内容。"
         });
       } catch {
+        if (activeOperationRef.current !== operation) {
+          return;
+        }
         setMessage({
           tone: "error",
           text: "交付输出包导出失败，请稍后重试。"

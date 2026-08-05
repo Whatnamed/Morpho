@@ -111,6 +111,35 @@ describe("useDeliveryOutputController", () => {
     expect(harness.current().busyLabel).toBeNull();
   });
 
+  it("does not let an older export overwrite a newer inspect result", async () => {
+    const workspace = createDeliveryWorkspace("project-a", "delivery-a", "delivery-b");
+    const exportPending = deferred<ExportDeliveryOutputResult>();
+    const exportResult = successfulExport(workspace, "delivery-a");
+    const inspectResult = successfulPreflight(workspace, "delivery-b");
+    const exportPackage = vi.fn(() => exportPending.promise);
+    const inspect = vi.fn(async () => inspectResult);
+    const harness = await renderController(createInput({ workspace, inspect, exportPackage }));
+    let exportRun!: Promise<void>;
+
+    await act(async () => {
+      exportRun = harness.current().exportPackage("delivery-a");
+    });
+    await act(async () => {
+      await harness.current().inspect("delivery-b");
+    });
+    expect(harness.current().preflight).toBe(inspectResult);
+    expect(harness.current().message).toBeNull();
+
+    await act(async () => {
+      exportPending.resolve(exportResult);
+      await exportRun;
+    });
+
+    expect(harness.current().preflight).toBe(inspectResult);
+    expect(harness.current().message).toBeNull();
+    expect(harness.current().busyLabel).toBeNull();
+  });
+
   it("exports with the latest rendered workspace", async () => {
     const initialWorkspace = createDeliveryWorkspace("project-old", "delivery-a");
     const latestWorkspace = createDeliveryWorkspace("project-latest", "delivery-a");
@@ -292,6 +321,17 @@ function successfulPreflight(
       openGaps: result.manifest.gaps.filter((gap) => gap.status === "open").length,
       pendingDrafts: result.manifest.pendingSectionDrafts.length
     }
+  };
+}
+
+function successfulExport(
+  workspace: MorphoWorkspace,
+  deliveryObjectId: string
+): Extract<ExportDeliveryOutputResult, { status: "ok" }> {
+  const preflight = successfulPreflight(workspace, deliveryObjectId);
+  return {
+    ...preflight,
+    file: new File(["delivery output"], `${deliveryObjectId}.zip`, { type: "application/zip" })
   };
 }
 
