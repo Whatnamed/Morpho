@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { hashMessageIds } from "./conversationCompaction";
+import { applyConversationSummaryRevision, hashMessageIds } from "./conversationCompaction";
 import { createBlankWorkspace, migrateWorkspaceToCurrentSchema } from "./workspace";
 
 const LEGACY_MESSAGES = [
@@ -150,6 +150,71 @@ describe("Schema 17 legacy workspace compatibility", () => {
     expect(result.workspace.ai).not.toHaveProperty("conversationCheckpoints");
   });
 
+  it("migrates a valid checkpoint instead of trusting an orphaned summary revision", () => {
+    const legacy = createLegacyWorkspace();
+    const ai = legacy.ai as Record<string, unknown>;
+    const orphan = createOrphanSummaryRevision();
+    ai.conversationCompaction = {
+      summaryRevisionId: "missing-current-summary",
+      coveredThroughMessageId: "missing-assistant",
+      coveredMessageCount: 2,
+      sourceMessageIdsHash: "corrupted-hash"
+    };
+    ai.conversationSummaryRevisions = { [orphan.id]: orphan };
+
+    const result = migrateWorkspaceToCurrentSchema(legacy);
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") {
+      throw new Error(result.reason);
+    }
+    const activeRevisionId = result.workspace.ai.conversationCompaction.summaryRevisionId;
+    expect(activeRevisionId).toMatch(/^conversation-summary-migrated-/);
+    expect(activeRevisionId).not.toBe(orphan.id);
+    expect(result.workspace.ai.conversationSummaryRevisions).toHaveProperty(orphan.id);
+    expect(result.workspace.ai.conversationSummaryRevisions).toHaveProperty(activeRevisionId!);
+  });
+
+  it("clears an invalid active pointer while preserving orphan history and allowing a new summary", () => {
+    const legacy = createLegacyWorkspace({ checkpoint: undefined });
+    const ai = legacy.ai as Record<string, unknown>;
+    const orphan = createOrphanSummaryRevision();
+    ai.conversationCompaction = {
+      summaryRevisionId: "missing-current-summary",
+      coveredThroughMessageId: "missing-assistant",
+      coveredMessageCount: 2,
+      sourceMessageIdsHash: "corrupted-hash"
+    };
+    ai.conversationSummaryRevisions = { [orphan.id]: orphan };
+
+    const result = migrateWorkspaceToCurrentSchema(legacy);
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") {
+      throw new Error(result.reason);
+    }
+    expect(result.workspace.ai.conversationSummaryRevisions).toHaveProperty(orphan.id);
+    expect(result.workspace.ai.conversationCompaction).toMatchObject({ coveredMessageCount: 0 });
+    expect(result.workspace.ai.conversationCompaction.summaryRevisionId).toBeUndefined();
+    expect(result.workspace.ai.conversationCompaction.coveredThroughMessageId).toBeUndefined();
+
+    const reapplied = applyConversationSummaryRevision(result.workspace, {
+      summary: {
+        threadGoal: "重新建立当前摘要",
+        establishedContext: ["旧的孤立摘要仍作为历史记录保留。"],
+        decisionsAndReasons: [],
+        activeWork: ["继续处理当前项目讨论。"],
+        unresolvedQuestions: [],
+        referencedObjects: []
+      },
+      sourceMessageIds: LEGACY_MESSAGES.slice(0, 2).map((message) => message.id),
+      expectedPreviousRevisionId: undefined,
+      now: "2026-07-10T10:05:00.000Z"
+    });
+
+    expect(reapplied.status).toBe("applied");
+  });
+
   it.each([
     ["missing start", { sourceStartMessageId: "missing" }],
     ["missing end", { sourceEndMessageId: "missing" }],
@@ -230,4 +295,24 @@ function createLegacyWorkspace(options: {
   ai.conversationCompaction = { coveredMessageCount: 0 };
   ai.conversationSummaryRevisions = {};
   return legacy;
+}
+
+function createOrphanSummaryRevision() {
+  const sourceMessages = LEGACY_MESSAGES.slice(0, 2);
+  return {
+    id: "orphan-summary",
+    summary: {
+      threadGoal: "历史摘要仍可被读取",
+      establishedContext: ["这是一份没有被当前 compaction state 指向的历史摘要。"],
+      decisionsAndReasons: [],
+      activeWork: ["保留历史证据。"],
+      unresolvedQuestions: [],
+      referencedObjects: []
+    },
+    sourceStartMessageId: sourceMessages[0]!.id,
+    sourceEndMessageId: sourceMessages[1]!.id,
+    sourceMessageCount: sourceMessages.length,
+    sourceMessageIdsHash: hashMessageIds(sourceMessages.map((message) => message.id)),
+    createdAt: "2026-07-10T10:04:30.000Z"
+  };
 }

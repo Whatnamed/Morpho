@@ -8,6 +8,7 @@ import type {
 import {
   getUsableConversationMessages,
   hashMessageIds,
+  createEmptyConversationCompactionState,
   normalizeConversationCompactionState,
   normalizeConversationSummaryRevisions,
   validateConversationSummary
@@ -109,7 +110,7 @@ export function migrateLegacyConversationCheckpoint(input: {
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
     .find((candidate) => isMigratableCheckpoint(candidate, usableMessages, legacyMessages));
   if (!checkpoint) {
-    return { state, revisions };
+    return { state: createEmptyConversationCompactionState(), revisions };
   }
 
   const endIndex = usableMessages.findIndex((message) => message.id === checkpoint.sourceEndMessageId);
@@ -299,27 +300,28 @@ function hasValidCurrentSummary(input: {
   revisions: Record<string, ConversationSummaryRevision>;
   usableMessages: readonly AiMessage[];
 }): boolean {
-  const stateRevision = input.state.summaryRevisionId
-    ? input.revisions[input.state.summaryRevisionId]
-    : undefined;
-  const candidates = stateRevision
-    ? [stateRevision, ...Object.values(input.revisions).filter((revision) => revision.id !== stateRevision.id)]
-    : Object.values(input.revisions);
+  if (!input.state.summaryRevisionId) {
+    return false;
+  }
 
-  return candidates.some((revision) => {
-    const startIndex = input.usableMessages.findIndex((message) => message.id === revision.sourceStartMessageId);
-    const endIndex = input.usableMessages.findIndex((message) => message.id === revision.sourceEndMessageId);
-    if (
-      startIndex < 0 ||
-      endIndex < startIndex ||
-      revision.sourceMessageCount !== endIndex - startIndex + 1 ||
-      input.usableMessages[endIndex]?.role !== "assistant"
-    ) {
-      return false;
-    }
-    const ids = input.usableMessages.slice(startIndex, endIndex + 1).map((message) => message.id);
-    return hashMessageIds(ids) === revision.sourceMessageIdsHash || legacyHashMessageIds(ids) === revision.sourceMessageIdsHash;
-  });
+  const revision = input.revisions[input.state.summaryRevisionId];
+  if (!revision || input.state.coveredThroughMessageId !== revision.sourceEndMessageId) {
+    return false;
+  }
+
+  const startIndex = input.usableMessages.findIndex((message) => message.id === revision.sourceStartMessageId);
+  const endIndex = input.usableMessages.findIndex((message) => message.id === revision.sourceEndMessageId);
+  if (
+    startIndex < 0 ||
+    endIndex < startIndex ||
+    revision.sourceMessageCount !== endIndex - startIndex + 1 ||
+    input.usableMessages[endIndex]?.role !== "assistant"
+  ) {
+    return false;
+  }
+
+  const ids = input.usableMessages.slice(startIndex, endIndex + 1).map((message) => message.id);
+  return hashMessageIds(ids) === revision.sourceMessageIdsHash || legacyHashMessageIds(ids) === revision.sourceMessageIdsHash;
 }
 
 function uniqueText(values: readonly string[]): string[] {
