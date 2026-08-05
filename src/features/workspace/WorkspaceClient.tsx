@@ -3716,7 +3716,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       onOpenResearchDetail={handleOpenResearchDetail}
       onAutoSelectResearch={handleAutoSelectResearch}
       onOpenDocumentReader={() => { const primary = toolbarObjects[0]; if (primary?.type === "file") handleOpenDocumentReader(primary.id); else if (primary?.type === "documentFragment") handleOpenDocumentReader(primary.source.fileObjectId); }}
-       onOpenDeliveryPreparation={() => openDeliveryPreparationFromSelection(toolbarObjects[0]?.type === "delivery" ? toolbarObjects[0].id : undefined)}
+      onOpenDeliveryPreparation={() => openDeliveryPreparationFromSelection(toolbarObjects[0]?.type === "delivery" ? toolbarObjects[0].id : undefined)}
       onLocalEdit={handleLocalEdit}
       onReferenceIntent={handleReferenceIntent}
       onHide={handleHideSelected}
@@ -3928,7 +3928,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }
         onSearch={() => handleDrawerChange("search")}
         onFocusOverview={() => focusArea("overview")}
-         onOpenDeliveryPreparation={() => openDeliveryPreparationFromSelection()}
+        onOpenDeliveryPreparation={() => openDeliveryPreparationFromSelection()}
         onOpenProjectBundles={() => {
           closeDeliveryOutput();
           toggleProjectBundle();
