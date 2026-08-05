@@ -21,6 +21,7 @@ try {
 
   diagnostics.project.workspaceSchemaVersion = workspace.schemaVersion;
   diagnostics.workspaceFingerprint = currentCase.CURRENT_CASE_STUDY_FINGERPRINT;
+  delete diagnostics.chat.checkpointCount;
   diagnostics.chat.summaryRevisionCount = Object.keys(workspace.ai.conversationSummaryRevisions).length;
   diagnostics.projectMemory = {
     currentDocumentCount: memoryDocuments.length,
