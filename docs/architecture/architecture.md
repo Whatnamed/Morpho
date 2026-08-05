@@ -60,6 +60,13 @@ Important module boundaries:
 - `src/design-system/` owns the app-side design-token install (`tokens.css` + `tokens/*.css`, mirrored from `docs/design/design-system/`); `globals.css` imports it once and declares no tokens of its own.
 - `src/features/archive/` owns archive, editable backup, and restore clients.
 - `src/features/delivery-output/` owns the browser-only delivery output package client.
+- WorkspaceClient decomposition phase 1 keeps page composition in `WorkspaceClient.tsx` while
+  `useProjectBundleController.ts` owns Project Bundle panel state and async orchestration and
+  `useDeliveryOutputController.ts` owns Delivery Output panel state, preflight concurrency, and
+  export orchestration. Both controllers delegate package construction, validation, restore, and
+  download behavior to the existing feature clients. Document Reader orchestration remains in
+  `WorkspaceClient.tsx` for a later isolated phase; no product behavior, workspace persistence,
+  backup format, or delivery output contract changed in this phase.
 - `src/domain/morpho/` owns product-domain types, the generated case-study fixture, deterministic domain actions, import helpers, generation helpers, and queries.
 - `src/infrastructure/persistence/` owns browser localStorage project catalog and workspace access.
 - `src/infrastructure/assets/` owns browser IndexedDB Blob storage and asset-save workflow.
