@@ -134,6 +134,7 @@ import { TopControls } from "./components/TopControls";
 import { WorkspaceStarter } from "./components/WorkspaceStarter";
 import { usePersistentWorkspace } from "./usePersistentWorkspace";
 import { useDeliveryOutputController } from "./useDeliveryOutputController";
+import { useProjectBundleController } from "./useProjectBundleController";
 import { useWorkspaceAssetUrls } from "./useWorkspaceAssetUrls";
 import { compactObjectList, getKeyConclusionCategoryLabel, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
 import { getFloatingMenuPlacement, type SelectionToolbarPlacement } from "./selectionToolbar";
@@ -159,14 +160,6 @@ import {
 } from "./workspaceNavigation";
 import { buildDeliverySectionContext, getDeliveryObjects, type DeliveryReferenceReaderTransition } from "./deliveryPreparationUi";
 import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
-import {
-  downloadProjectBundleFile,
-  exportEditableProjectBackupBundle,
-  exportHumanReadableArchiveBundle,
-  inspectEditableProjectBackupBundle,
-  type InspectedEditableProjectBackupBundle,
-  restoreEditableProjectBackupBundle
-} from "@/features/archive/projectBundleClient";
 import { readImageBlobDimensions, saveBlobAsLocalAsset } from "@/infrastructure/assets/localAssetWorkflow";
 import {
   getAvailableAiWorkIntents,
@@ -406,6 +399,44 @@ function buildComparisonDecisionReason(confirmation: PendingComparisonConfirmati
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const router = useRouter();
   const [workspace, setWorkspace, persistenceState, flushWorkspace] = usePersistentWorkspace(projectId);
+  const handleProjectBundleWorkspaceRestored = useCallback(
+    ({ projectId: restoredProjectId }: { projectId: string }) => {
+      startTransition(() => {
+        router.push(`/projects/${encodeURIComponent(restoredProjectId)}`);
+      });
+    },
+    [router]
+  );
+  const {
+    isOpen: isDeliveryOutputOpen,
+    busyLabel: deliveryOutputBusyLabel,
+    message: deliveryOutputMessage,
+    preflight: deliveryOutputPreflight,
+    close: closeDeliveryOutput,
+    toggle: toggleDeliveryOutput,
+    inspect: inspectDeliveryOutput,
+    exportPackage: exportDeliveryOutput
+  } = useDeliveryOutputController({ workspace });
+  const {
+    isOpen: isProjectBundleOpen,
+    archiveIncludeFullChat,
+    archiveIncludeContinuity,
+    busyLabel: bundleBusyLabel,
+    message: bundleMessage,
+    inspectedBackup,
+    close: closeProjectBundle,
+    toggle: toggleProjectBundle,
+    setArchiveIncludeFullChat,
+    setArchiveIncludeContinuity,
+    exportEditableBackup,
+    exportReadableArchive,
+    inspectBackup,
+    clearInspectedBackup,
+    restoreBackup
+  } = useProjectBundleController({
+    workspace,
+    onWorkspaceRestored: handleProjectBundleWorkspaceRestored
+  });
   const [isStorageNoticeDismissed, setStorageNoticeDismissed] = useState(false);
   const [selectedObjectSelection, setSelectedObjectSelection] = useState<{
     projectId: string;
@@ -499,16 +530,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [focusRequest, setFocusRequest] = useState<FocusRequest>({ nonce: 0 });
   const [selectionRequest, setSelectionRequest] = useState<CanvasSelectionRequest>({ objectIds: [], nonce: 0 });
   const [documentReader, setDocumentReader] = useState<DocumentReaderUiState | null>(null);
-  const [bundlePanelOpen, setBundlePanelOpen] = useState(false);
-  const [archiveIncludeFullChat, setArchiveIncludeFullChat] = useState(false);
-  const [archiveIncludeContinuity, setArchiveIncludeContinuity] = useState(false);
-  const [bundleBusyLabel, setBundleBusyLabel] = useState<string | null>(null);
-  const [bundleMessage, setBundleMessage] = useState<{
-    tone: "neutral" | "success" | "warning" | "error";
-    text: string;
-  } | null>(null);
-  const [inspectedBackup, setInspectedBackup] = useState<InspectedEditableProjectBackupBundle | null>(null);
-  const deliveryOutputController = useDeliveryOutputController({ workspace });
   const documentReaderRequestRef = useRef(0);
   const documentReaderAbortRef = useRef<AbortController | null>(null);
   const documentSourcePreviewUrlRef = useRef<string | null>(null);
@@ -1907,148 +1928,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
     setDeliveryPanelOpen(true);
   }, [activeDeliveryObjectId, selectedObjects]);
-
-  const handleExportHumanArchive = useCallback(async () => {
-    setBundleBusyLabel("正在导出可读归档…");
-    setBundleMessage(null);
-    setInspectedBackup(null);
-    try {
-      const result = await exportHumanReadableArchiveBundle(workspace, {
-        blobStore: indexedDbBlobStore,
-        chat: archiveIncludeFullChat ? "full" : "none",
-        projectContinuity: archiveIncludeContinuity ? "current" : "none"
-      });
-      if (result.status !== "ok") {
-        setBundleMessage({
-          tone: result.status === "blocked" ? "warning" : "error",
-          text: result.reason
-        });
-        return;
-      }
-      downloadProjectBundleFile(result.file);
-      setBundleMessage({
-        tone: result.diagnostics.some((diagnostic) => diagnostic.severity === "warning") ? "warning" : "success",
-        text: summarizeBundleDiagnostics("归档已导出。", result.diagnostics)
-      });
-    } catch {
-      setBundleMessage({
-        tone: "error",
-        text: "归档导出失败，请稍后重试。"
-      });
-    } finally {
-      setBundleBusyLabel(null);
-    }
-  }, [archiveIncludeContinuity, archiveIncludeFullChat, workspace]);
-
-  const handleExportEditableBackup = useCallback(async () => {
-    setBundleBusyLabel("正在导出可编辑备份…");
-    setBundleMessage(null);
-    setInspectedBackup(null);
-    try {
-      const result = await exportEditableProjectBackupBundle(workspace, {
-        blobStore: indexedDbBlobStore,
-        chat: "full",
-        projectContinuity: "current"
-      });
-      if (result.status !== "ok") {
-        setBundleMessage({
-          tone: result.status === "blocked" ? "warning" : "error",
-          text: result.reason
-        });
-        return;
-      }
-      downloadProjectBundleFile(result.file);
-      setBundleMessage({
-        tone: result.diagnostics.some((diagnostic) => diagnostic.severity === "warning") ? "warning" : "success",
-        text: summarizeBundleDiagnostics("备份已导出。", result.diagnostics)
-      });
-    } catch {
-      setBundleMessage({
-        tone: "error",
-        text: "备份导出失败，请稍后重试。"
-      });
-    } finally {
-      setBundleBusyLabel(null);
-    }
-  }, [workspace]);
-
-  const handleInspectEditableBackup = useCallback(async (file: File) => {
-    setBundleBusyLabel("正在读取备份包…");
-    setBundleMessage(null);
-    setInspectedBackup(null);
-    try {
-      const result = await inspectEditableProjectBackupBundle(file);
-      if (result.status !== "ok") {
-        setBundleMessage({
-          tone: "error",
-          text: result.reason
-        });
-        return;
-      }
-      setInspectedBackup(result.backup);
-      setBundleMessage({
-        tone: result.preview.warningCount > 0 ? "warning" : "neutral",
-        text:
-          result.preview.warningCount > 0
-            ? `备份已读取，有 ${result.preview.warningCount} 条 warning。确认后将恢复为新项目副本。`
-            : "备份已读取。请确认后恢复为新项目副本。"
-      });
-    } catch {
-      setBundleMessage({
-        tone: "error",
-        text: "无法读取备份包。文件可能损坏，或不是 Morpho 可编辑备份。"
-      });
-    } finally {
-      setBundleBusyLabel(null);
-    }
-  }, []);
-
-  const handleCancelRestorePreview = useCallback(() => {
-    setInspectedBackup(null);
-    setBundleMessage(null);
-  }, []);
-
-  const handleConfirmRestoreEditableBackup = useCallback(async () => {
-    if (!inspectedBackup) {
-      setBundleMessage({
-        tone: "error",
-        text: "请先选择并预览一个可编辑备份包。"
-      });
-      return;
-    }
-
-    setBundleBusyLabel("正在恢复可编辑备份…");
-    setBundleMessage(null);
-    try {
-      const result = await restoreEditableProjectBackupBundle(inspectedBackup, {
-        blobStore: indexedDbBlobStore,
-        storage: window.localStorage
-      });
-      if (result.status !== "ok") {
-        setBundleMessage({
-          tone: "error",
-          text: result.reason
-        });
-        return;
-      }
-      setInspectedBackup(null);
-      setBundlePanelOpen(false);
-      setBundleMessage({
-        tone: "success",
-        text: "备份已恢复为新的项目副本。"
-      });
-      startTransition(() => {
-        router.push(`/projects/${encodeURIComponent(result.projectId)}`);
-      });
-    } catch {
-      setBundleMessage({
-        tone: "error",
-        text: "恢复备份失败，请重新选择备份包后再试。"
-      });
-    } finally {
-      setBundleBusyLabel(null);
-    }
-  }, [inspectedBackup, router]);
 
   const applyDeliveryOperation = useCallback(
     (operation: (current: MorphoWorkspace) => { status: "updated"; workspace: MorphoWorkspace } | { status: "blocked"; workspace: MorphoWorkspace; reason: string }) => {
@@ -3948,12 +3827,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setDeliveryPanelOpen(false);
       return true;
     }
-    if (deliveryOutputController.isOpen) {
-      deliveryOutputController.close();
+    if (isDeliveryOutputOpen) {
+      closeDeliveryOutput();
       return true;
     }
-    if (bundlePanelOpen) {
-      setBundlePanelOpen(false);
+    if (isProjectBundleOpen) {
+      closeProjectBundle();
       return true;
     }
     if (projectMenuOpen) {
@@ -3969,10 +3848,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   }, [
     activeDrawer,
     activeResearchDetailObjectId,
-    bundlePanelOpen,
+    closeDeliveryOutput,
+    closeProjectBundle,
     canvasContextMenu,
     clearCanvasSelection,
-    deliveryOutputController,
+    isDeliveryOutputOpen,
+    isProjectBundleOpen,
     deliveryPanelOpen,
     detailConceptDirectionId,
     detailDesignDefinitionId,
@@ -4176,8 +4057,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           activeDrawer ?? "none",
           aiOpen ? "ai" : "x",
           deliveryPanelOpen ? "delivery" : "x",
-          deliveryOutputController.isOpen ? "output" : "x",
-          bundlePanelOpen ? "bundle" : "x",
+          isDeliveryOutputOpen ? "output" : "x",
+          isProjectBundleOpen ? "bundle" : "x",
           documentReader ? "reader" : "x",
           detailProposal ? "proposal" : "x",
           detailDesignDefinition ? "def" : "x",
@@ -4305,13 +4186,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onFocusOverview={() => focusArea("overview")}
         onOpenDeliveryPreparation={() => openDeliveryPreparation()}
         onOpenProjectBundles={() => {
-          setBundleMessage(null);
-          deliveryOutputController.close();
-          setBundlePanelOpen((current) => !current);
+          closeDeliveryOutput();
+          toggleProjectBundle();
         }}
         onOpenDeliveryOutput={() => {
-          setBundlePanelOpen(false);
-          deliveryOutputController.toggle();
+          closeProjectBundle();
+          toggleDeliveryOutput();
         }}
         projectMenuOpen={projectMenuOpen}
         projectRenameDraft={projectRenameDraft}
@@ -4325,34 +4205,34 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onProjectRenameConfirm={handleConfirmProjectRename}
         onOpenProjectHome={handleOpenProjectHome}
       />
-      {deliveryOutputController.isOpen ? (
+      {isDeliveryOutputOpen ? (
         <DeliveryOutputPanel
           workspace={workspace}
           selectedObjectIds={selectedObjectIds}
           activeDeliveryObjectId={activeDeliveryObjectId}
-          busyLabel={deliveryOutputController.busyLabel}
-          message={deliveryOutputController.message}
-          preflight={deliveryOutputController.preflight}
-          onClose={deliveryOutputController.close}
-          onInspect={deliveryOutputController.inspect}
-          onExport={deliveryOutputController.exportPackage}
+          busyLabel={deliveryOutputBusyLabel}
+          message={deliveryOutputMessage}
+          preflight={deliveryOutputPreflight}
+          onClose={closeDeliveryOutput}
+          onInspect={inspectDeliveryOutput}
+          onExport={exportDeliveryOutput}
         />
       ) : null}
-      {bundlePanelOpen ? (
+      {isProjectBundleOpen ? (
         <ProjectBundlePanel
           archiveIncludeFullChat={archiveIncludeFullChat}
           archiveIncludeContinuity={archiveIncludeContinuity}
           restorePreview={inspectedBackup?.preview ?? null}
           busyLabel={bundleBusyLabel}
           message={bundleMessage}
-          onClose={() => setBundlePanelOpen(false)}
+          onClose={closeProjectBundle}
           onArchiveIncludeFullChatChange={setArchiveIncludeFullChat}
           onArchiveIncludeContinuityChange={setArchiveIncludeContinuity}
-          onExportArchive={handleExportHumanArchive}
-          onExportBackup={handleExportEditableBackup}
-          onInspectBackup={handleInspectEditableBackup}
-          onCancelRestorePreview={handleCancelRestorePreview}
-          onConfirmRestoreBackup={handleConfirmRestoreEditableBackup}
+          onExportArchive={exportReadableArchive}
+          onExportBackup={exportEditableBackup}
+          onInspectBackup={inspectBackup}
+          onCancelRestorePreview={clearInspectedBackup}
+          onConfirmRestoreBackup={restoreBackup}
         />
       ) : null}
       <LeftRail
@@ -4913,18 +4793,6 @@ function makeTaskObjectSummaries(summaries: Array<{ id: string; type: string; ti
     title: summary.title,
     summary: summary.detail ? `${summary.summary}\n${summary.detail}` : summary.summary
   }));
-}
-
-function summarizeBundleDiagnostics(base: string, diagnostics: Array<{ severity: "info" | "warning" | "error" }>): string {
-  const warningCount = diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length;
-  const errorCount = diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
-  if (errorCount > 0) {
-    return `${base} 另有 ${errorCount} 条错误诊断。`;
-  }
-  if (warningCount > 0) {
-    return `${base} 另有 ${warningCount} 条 warning，请检查包内说明。`;
-  }
-  return base;
 }
 
 function summarizeTaskDefaultReferenceStatus(status: TaskContextDefaultReference): string {
