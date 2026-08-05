@@ -133,6 +133,7 @@ import { SaveFailureBanner } from "./components/SaveFailureBanner";
 import { TopControls } from "./components/TopControls";
 import { WorkspaceStarter } from "./components/WorkspaceStarter";
 import { usePersistentWorkspace } from "./usePersistentWorkspace";
+import { useDeliveryOutputController } from "./useDeliveryOutputController";
 import { useWorkspaceAssetUrls } from "./useWorkspaceAssetUrls";
 import { compactObjectList, getKeyConclusionCategoryLabel, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
 import { getFloatingMenuPlacement, type SelectionToolbarPlacement } from "./selectionToolbar";
@@ -166,11 +167,6 @@ import {
   type InspectedEditableProjectBackupBundle,
   restoreEditableProjectBackupBundle
 } from "@/features/archive/projectBundleClient";
-import {
-  exportDeliveryOutputPackage,
-  inspectDeliveryOutputPackage,
-  type InspectDeliveryOutputResult
-} from "@/features/delivery-output/deliveryOutputClient";
 import { readImageBlobDimensions, saveBlobAsLocalAsset } from "@/infrastructure/assets/localAssetWorkflow";
 import {
   getAvailableAiWorkIntents,
@@ -512,14 +508,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     text: string;
   } | null>(null);
   const [inspectedBackup, setInspectedBackup] = useState<InspectedEditableProjectBackupBundle | null>(null);
-  const [deliveryOutputPanelOpen, setDeliveryOutputPanelOpen] = useState(false);
-  const [deliveryOutputBusyLabel, setDeliveryOutputBusyLabel] = useState<string | null>(null);
-  const [deliveryOutputMessage, setDeliveryOutputMessage] = useState<{
-    tone: "neutral" | "success" | "warning" | "error";
-    text: string;
-  } | null>(null);
-  const [deliveryOutputPreflight, setDeliveryOutputPreflight] = useState<InspectDeliveryOutputResult | null>(null);
-  const deliveryOutputInspectRequestRef = useRef(0);
+  const deliveryOutputController = useDeliveryOutputController({ workspace });
   const documentReaderRequestRef = useRef(0);
   const documentReaderAbortRef = useRef<AbortController | null>(null);
   const documentSourcePreviewUrlRef = useRef<string | null>(null);
@@ -1918,85 +1907,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
     setDeliveryPanelOpen(true);
   }, [activeDeliveryObjectId, selectedObjects]);
-
-  const handleInspectDeliveryOutput = useCallback(async (deliveryObjectId: string) => {
-    const requestId = deliveryOutputInspectRequestRef.current + 1;
-    deliveryOutputInspectRequestRef.current = requestId;
-    setDeliveryOutputBusyLabel("正在检查素材状态…");
-    setDeliveryOutputMessage(null);
-    try {
-      const result = await inspectDeliveryOutputPackage(workspace, {
-        deliveryObjectId,
-        blobStore: indexedDbBlobStore
-      });
-      if (deliveryOutputInspectRequestRef.current !== requestId) {
-        return;
-      }
-      setDeliveryOutputPreflight(result);
-      if (result.status === "blocked" || result.status === "failed") {
-        setDeliveryOutputMessage({
-          tone: result.status === "blocked" ? "warning" : "error",
-          text: result.reason
-        });
-      }
-    } catch {
-      if (deliveryOutputInspectRequestRef.current !== requestId) {
-        return;
-      }
-      setDeliveryOutputPreflight({
-        status: "failed",
-        reason: "导出前检查失败，请稍后重试。",
-        diagnostics: []
-      });
-      setDeliveryOutputMessage({
-        tone: "error",
-        text: "导出前检查失败，请稍后重试。"
-      });
-    } finally {
-      if (deliveryOutputInspectRequestRef.current === requestId) {
-        setDeliveryOutputBusyLabel(null);
-      }
-    }
-  }, [workspace]);
-
-  const handleExportDeliveryOutput = useCallback(async (deliveryObjectId: string) => {
-    setDeliveryOutputBusyLabel("正在导出交付输出包…");
-    setDeliveryOutputMessage(null);
-    try {
-      const result = await exportDeliveryOutputPackage(workspace, {
-        deliveryObjectId,
-        blobStore: indexedDbBlobStore,
-        download: true
-      });
-      if (result.status !== "ok") {
-        setDeliveryOutputMessage({
-          tone: result.status === "blocked" ? "warning" : "error",
-          text: result.reason
-        });
-        return;
-      }
-      setDeliveryOutputPreflight({
-        status: "ok",
-        manifest: result.manifest,
-        diagnostics: result.diagnostics,
-        summary: result.summary
-      });
-      setDeliveryOutputMessage({
-        tone: result.summary.missingOrMismatchedAssets > 0 ? "warning" : "success",
-        text:
-          result.summary.missingOrMismatchedAssets > 0
-            ? `输出包已导出，但有 ${result.summary.missingOrMismatchedAssets} 项素材未完整带出。请查看压缩包中的 asset-index.md 和 gaps-and-next-steps.md。`
-            : "输出包已导出。包含章节结构、素材、图注、来源映射和待补内容。"
-      });
-    } catch {
-      setDeliveryOutputMessage({
-        tone: "error",
-        text: "交付输出包导出失败，请稍后重试。"
-      });
-    } finally {
-      setDeliveryOutputBusyLabel(null);
-    }
-  }, [workspace]);
 
   const handleExportHumanArchive = useCallback(async () => {
     setBundleBusyLabel("正在导出可读归档…");
@@ -4038,8 +3948,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setDeliveryPanelOpen(false);
       return true;
     }
-    if (deliveryOutputPanelOpen) {
-      setDeliveryOutputPanelOpen(false);
+    if (deliveryOutputController.isOpen) {
+      deliveryOutputController.close();
       return true;
     }
     if (bundlePanelOpen) {
@@ -4062,7 +3972,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     bundlePanelOpen,
     canvasContextMenu,
     clearCanvasSelection,
-    deliveryOutputPanelOpen,
+    deliveryOutputController,
     deliveryPanelOpen,
     detailConceptDirectionId,
     detailDesignDefinitionId,
@@ -4266,7 +4176,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           activeDrawer ?? "none",
           aiOpen ? "ai" : "x",
           deliveryPanelOpen ? "delivery" : "x",
-          deliveryOutputPanelOpen ? "output" : "x",
+          deliveryOutputController.isOpen ? "output" : "x",
           bundlePanelOpen ? "bundle" : "x",
           documentReader ? "reader" : "x",
           detailProposal ? "proposal" : "x",
@@ -4396,14 +4306,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onOpenDeliveryPreparation={() => openDeliveryPreparation()}
         onOpenProjectBundles={() => {
           setBundleMessage(null);
-          setDeliveryOutputPanelOpen(false);
+          deliveryOutputController.close();
           setBundlePanelOpen((current) => !current);
         }}
         onOpenDeliveryOutput={() => {
-          setDeliveryOutputMessage(null);
-          setDeliveryOutputPreflight(null);
           setBundlePanelOpen(false);
-          setDeliveryOutputPanelOpen((current) => !current);
+          deliveryOutputController.toggle();
         }}
         projectMenuOpen={projectMenuOpen}
         projectRenameDraft={projectRenameDraft}
@@ -4417,17 +4325,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onProjectRenameConfirm={handleConfirmProjectRename}
         onOpenProjectHome={handleOpenProjectHome}
       />
-      {deliveryOutputPanelOpen ? (
+      {deliveryOutputController.isOpen ? (
         <DeliveryOutputPanel
           workspace={workspace}
           selectedObjectIds={selectedObjectIds}
           activeDeliveryObjectId={activeDeliveryObjectId}
-          busyLabel={deliveryOutputBusyLabel}
-          message={deliveryOutputMessage}
-          preflight={deliveryOutputPreflight}
-          onClose={() => setDeliveryOutputPanelOpen(false)}
-          onInspect={handleInspectDeliveryOutput}
-          onExport={handleExportDeliveryOutput}
+          busyLabel={deliveryOutputController.busyLabel}
+          message={deliveryOutputController.message}
+          preflight={deliveryOutputController.preflight}
+          onClose={deliveryOutputController.close}
+          onInspect={deliveryOutputController.inspect}
+          onExport={deliveryOutputController.exportPackage}
         />
       ) : null}
       {bundlePanelOpen ? (
