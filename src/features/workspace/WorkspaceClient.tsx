@@ -121,7 +121,7 @@ import { ConceptDirectionDetail } from "./components/ConceptDirectionDetail";
 import { DesignDefinitionDetail } from "./components/DesignDefinitionDetail";
 import { DeliveryPreparationPanel } from "./components/DeliveryPreparationPanel";
 import { DeliveryOutputPanel } from "./components/DeliveryOutputPanel";
-import { DocumentReaderPanel, type DocumentReaderExtractFragmentResult, type DocumentSourcePreview } from "./components/DocumentReaderPanel";
+import { DocumentReaderPanel, type DocumentReaderExtractFragmentResult } from "./components/DocumentReaderPanel";
 import { LeftRail, type DrawerMode } from "./components/LeftRail";
 import { OverlayDrawers } from "./components/OverlayDrawers";
 import type { LeftRailAnchor } from "./leftRailPopoverPlacement";
@@ -169,6 +169,11 @@ import {
 import { buildProposalDiscussionDraft, buildProposalRegenerationDraft } from "./proposalFollowupPrompts";
 import { shouldAcceptDocumentReaderLoadResult } from "./documentReader";
 import { loadDocumentReaderExtractWithRecovery } from "./documentReaderRecovery";
+import {
+  loadDocumentSourcePreview,
+  revokeDocumentSourcePreview,
+  type DocumentSourcePreview
+} from "./documentSourcePreview";
 import {
   buildDocumentFragmentDraft,
   createDocumentFragmentWithContinuity,
@@ -5012,70 +5017,6 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 function makeGeneratedImageFileName(mimeType: string): string {
   const extension = mimeType.includes("jpeg") ? "jpg" : mimeType.includes("webp") ? "webp" : "png";
   return `grs-result-${Date.now()}.${extension}`;
-}
-
-async function loadDocumentSourcePreview(
-  workspace: MorphoWorkspace,
-  fileObjectId: string,
-  blobStore: { get(storageKey: string): Promise<Blob | null> },
-  signal: AbortSignal
-): Promise<DocumentSourcePreview> {
-  const file = workspace.objects[fileObjectId];
-  if (!file || file.type !== "file") {
-    return { status: "missing", message: "源文件对象不可用。" };
-  }
-
-  const asset = file.assetId ? workspace.assets[file.assetId] : undefined;
-  if (!asset || asset.sourceType !== "originalFile") {
-    return {
-      status: "missing",
-      fileName: file.fileName ?? file.title,
-      mimeType: file.mimeType,
-      message: "源文件资产不可用；下方仍可查看已保存的解析文本。"
-    };
-  }
-
-  const mimeType = asset.mimeType || file.mimeType || "";
-  const fileName = file.fileName ?? asset.fileName;
-  if (!canPreviewOriginalDocument(mimeType)) {
-    return {
-      status: "unsupported",
-      fileName,
-      mimeType,
-      message: "当前文件类型暂不能在工作台内预览原版式；下方仍可查看已提取的解析文本。"
-    };
-  }
-
-  const blob = await blobStore.get(asset.storageKey);
-  if (signal.aborted) {
-    throw new DOMException("Aborted", "AbortError");
-  }
-
-  if (!blob) {
-    return {
-      status: "missing",
-      fileName,
-      mimeType,
-      message: "源文件 Blob 缺失；下方仍可查看已保存的解析文本。"
-    };
-  }
-
-  return {
-    status: "ready",
-    url: URL.createObjectURL(blob),
-    mimeType,
-    fileName
-  };
-}
-
-function revokeDocumentSourcePreview(preview: DocumentSourcePreview): void {
-  if (preview.status === "ready") {
-    URL.revokeObjectURL(preview.url);
-  }
-}
-
-function canPreviewOriginalDocument(mimeType: string): boolean {
-  return mimeType.startsWith("image/") || mimeType.startsWith("text/") || mimeType === "application/pdf";
 }
 
 function buildKeyConclusionDraftFromObject(object: MorphoObject):

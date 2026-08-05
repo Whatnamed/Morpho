@@ -11,24 +11,11 @@ import {
   type DocumentSearchMatch
 } from "../documentReader";
 import { DOCUMENT_FRAGMENT_LIMITS, type DocumentReaderInitialLocation } from "../documentFragments";
+import type { DocumentSourcePreview } from "../documentSourcePreview";
 
 export type DocumentReaderExtractFragmentResult =
   | { status: "created"; fragmentId: string }
   | { status: "blocked"; reason: string };
-
-export type DocumentSourcePreview =
-  | {
-      status: "ready";
-      url: string;
-      mimeType: string;
-      fileName: string;
-    }
-  | {
-      status: "unsupported" | "missing";
-      fileName?: string;
-      mimeType?: string;
-      message: string;
-    };
 
 type DocumentReaderPanelProps = {
   file: FileObject;
