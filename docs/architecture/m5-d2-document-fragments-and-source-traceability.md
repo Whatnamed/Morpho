@@ -83,6 +83,12 @@ The UI cannot provide arbitrary body text or offsets to bypass validation. Inval
 
 `DocumentReaderPanel` supports block selection, selection clearing, editable fragment title, extraction feedback, and source-range highlighting when opened from an existing fragment.
 
+The current workspace composition keeps those local interactions in `DocumentReaderPanel`, while
+`useDocumentReaderController` owns the transient Reader session, extract recovery, request
+identity/cancellation, source-preview Object URL lifecycle, and explicit fragment-creation
+orchestration. Delivery Reference navigation plus the final canvas selection/focus after
+`在画布中查看` remain page-level responsibilities in `WorkspaceClient`.
+
 Creating a fragment happens only when the user clicks the extraction button. Opening, closing, reading, searching, selecting blocks, changing search results, or locating a source range does not create objects, AI messages, provider calls, operations, Compare analyses, DecisionRecords, checkpoints, current-focus updates, or project-memory writes.
 
 After successful extraction:

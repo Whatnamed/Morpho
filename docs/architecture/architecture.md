@@ -64,9 +64,15 @@ Important module boundaries:
   `useProjectBundleController.ts` owns Project Bundle panel state and async orchestration and
   `useDeliveryOutputController.ts` owns Delivery Output panel state, preflight concurrency, and
   export orchestration. Both controllers delegate package construction, validation, restore, and
-  download behavior to the existing feature clients. Document Reader orchestration remains in
-  `WorkspaceClient.tsx` for a later isolated phase; no product behavior, workspace persistence,
-  backup format, or delivery output contract changed in this phase.
+  download behavior to the existing feature clients.
+- WorkspaceClient decomposition phase 2 moves Document Reader session state, request identity,
+  cancellation, source-preview Blob/Object URL ownership, extract loading/recovery orchestration,
+  and document-fragment creation orchestration into `useDocumentReaderController.ts`.
+  `documentSourcePreview.ts` owns preview MIME checks and Object URL creation/revocation, while the
+  controller continues to delegate extract recovery and fragment domain behavior to the existing
+  Reader modules. Delivery Reference navigation and canvas selection/focus remain page-level in
+  `WorkspaceClient.tsx`; no schema, import format, fragment contract, or visible Reader behavior
+  changed.
 - `src/domain/morpho/` owns product-domain types, the generated case-study fixture, deterministic domain actions, import helpers, generation helpers, and queries.
 - `src/infrastructure/persistence/` owns browser localStorage project catalog and workspace access.
 - `src/infrastructure/assets/` owns browser IndexedDB Blob storage and asset-save workflow.
