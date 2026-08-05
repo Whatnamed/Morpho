@@ -42,23 +42,6 @@ import { getImageCanvasSize } from "@/domain/morpho/imageSizing";
 import { createDocumentExtractFile, parseDocumentFile, shouldAttemptDocumentParse } from "@/domain/morpho/documentParsing";
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "@/domain/morpho/imports";
 import {
-  addDeliveryGap,
-  addObjectsToDeliverySection,
-  applyDeliverySectionDraft,
-  createDeliveryPreparation,
-  createDeliverySection,
-  discardDeliverySectionDraft,
-  moveDeliveryReference,
-  moveDeliverySection,
-  refreshDeliveryReferenceSnapshot,
-  removeDeliveryGap,
-  removeDeliveryReference,
-  removeDeliverySection,
-  setDeliveryGapStatus,
-  updateDeliveryReferenceEditorial,
-  updateDeliverySection
-} from "@/domain/morpho/deliveryPreparation";
-import {
   applyConceptDirectionProposal,
   applyDesignDefinitionProposal,
   applyResearchAnalysisProposal,
@@ -158,7 +141,7 @@ import {
   shouldHydratePersistedSelection,
   type DetailNavigationSnapshot
 } from "./workspaceNavigation";
-import { buildDeliverySectionContext, getDeliveryObjects, type DeliveryReferenceReaderTransition } from "./deliveryPreparationUi";
+import type { DeliveryReferenceReaderTransition } from "./deliveryPreparationUi";
 import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
 import { readImageBlobDimensions, saveBlobAsLocalAsset } from "@/infrastructure/assets/localAssetWorkflow";
 import {
@@ -168,6 +151,7 @@ import {
 } from "./aiTaskRouting";
 import { buildProposalDiscussionDraft, buildProposalRegenerationDraft } from "./proposalFollowupPrompts";
 import { useDocumentReaderController } from "./useDocumentReaderController";
+import { useDeliveryPreparationController } from "./useDeliveryPreparationController";
 import { resolveComparisonWritebackSourceObjectIds } from "./comparisonDecision";
 import {
   applyResearchExtractionSelection,
@@ -474,10 +458,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   );
   const [directionPreviewCount, setDirectionPreviewCount] = useState<1 | 2 | 4 | 6>(2);
   const [imageGenerationAspectMode, setImageGenerationAspectMode] = useState<"auto" | "manual">("auto");
-  const [deliveryPanelOpen, setDeliveryPanelOpen] = useState(false);
-  const [requestedActiveDeliveryObjectId, setActiveDeliveryObjectId] = useState<string | null>(null);
-  const [activeDeliverySectionId, setActiveDeliverySectionId] = useState<string | null>(null);
-  const [pendingDeliveryDraftTarget, setPendingDeliveryDraftTarget] = useState<{ deliveryObjectId: string; sectionId: string } | null>(null);
   const commitWorkspaceNow = useCallback(
     <T,>(transform: (current: MorphoWorkspace) => { workspace: MorphoWorkspace; value: T }): T =>
       commitWorkspaceStateNow(setWorkspace, transform),
@@ -545,6 +525,32 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     });
     return ids;
   }, [workspace.canvas.instances, workspace.objects]);
+  const handleDeliveryCreatedCanvasFocus = useCallback(
+    (deliveryObjectId: string) => {
+      setSelectedObjectIds([deliveryObjectId]);
+      setFocusRequest((current) => ({ objectId: deliveryObjectId, nonce: current.nonce + 1 }));
+    },
+    [setSelectedObjectIds]
+  );
+  const deliveryPreparation = useDeliveryPreparationController({
+    projectId,
+    workspace,
+    updateWorkspace: setWorkspace,
+    onBlocked: setContextWarning,
+    onDeliveryCreated: handleDeliveryCreatedCanvasFocus
+  });
+  const {
+    isOpen: deliveryPanelOpen,
+    activeDeliveryObjectId,
+    activeSectionId: activeDeliverySectionId,
+    pendingDraftTarget: pendingDeliveryDraftTarget,
+    open: openDeliveryPreparationController,
+    close: closeDeliveryPreparation,
+    selectDelivery: selectDeliveryPreparation,
+    selectSection: selectDeliverySection,
+    clearPendingDraftTarget,
+    requestSectionDraft
+  } = deliveryPreparation;
   const activeResearchDetailObject = useMemo(() => {
     if (!activeResearchDetailObjectId) {
       return null;
@@ -627,15 +633,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     return revision ? { object, revision } : null;
   }, [detailConceptDirectionId, workspace.directionRevisions, workspace.objects]);
   const activeOperation = useMemo(() => getActiveOperation(workspace), [workspace]);
-  const deliveryObjects = useMemo(() => getDeliveryObjects(workspace), [workspace]);
-  const activeDeliveryObjectId = useMemo(
-    () =>
-      requestedActiveDeliveryObjectId &&
-      deliveryObjects.some((delivery) => delivery.id === requestedActiveDeliveryObjectId)
-        ? requestedActiveDeliveryObjectId
-        : deliveryObjects[0]?.id ?? null,
-    [deliveryObjects, requestedActiveDeliveryObjectId]
-  );
   const isImageTaskMode = taskMode === "imageGeneration";
   const inferredImageAspectRatio = useMemo(
     () => inferGenerationAspectRatio(workspace, selectedObjectIds),
@@ -1783,9 +1780,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       persistWorkspace: flushWorkspace,
       ui: {
         setContextWarning,
-        clearPendingDeliveryDraftTarget: () => {
-          setPendingDeliveryDraftTarget(null);
-        },
+        clearPendingDeliveryDraftTarget: clearPendingDraftTarget,
         setStreaming: setIsAiStreaming,
         setDraft: setAiDraft,
         setTaskMode,
@@ -1824,7 +1819,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       now: Date.now,
       randomSuffix: () => Math.random().toString(36).slice(2, 8)
     }),
-    [commitWorkspaceNow, executeAgentVisualGenerationPlan, flushWorkspace, readWorkspaceNow, setSelectedObjectIds]
+    [
+      commitWorkspaceNow,
+      clearPendingDraftTarget,
+      executeAgentVisualGenerationPlan,
+      flushWorkspace,
+      readWorkspaceNow,
+      setSelectedObjectIds
+    ]
   );
 
   const recoveredAgentRuntimeProjectRef = useRef<string | null>(null);
@@ -1895,103 +1897,27 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     showRecoveryPending
   ]);
 
-  const openDeliveryPreparation = useCallback((deliveryObjectId?: string) => {
-    const targetId = deliveryObjectId ?? selectedObjects.find((object) => object.type === "delivery")?.id ?? activeDeliveryObjectId;
-    if (targetId) {
-      setActiveDeliveryObjectId(targetId);
-    }
-    setDeliveryPanelOpen(true);
-  }, [activeDeliveryObjectId, selectedObjects]);
-
-  const applyDeliveryOperation = useCallback(
-    (operation: (current: MorphoWorkspace) => { status: "updated"; workspace: MorphoWorkspace } | { status: "blocked"; workspace: MorphoWorkspace; reason: string }) => {
-      let blockedReason: string | undefined;
-      setWorkspace((current) => {
-        const result = operation(current);
-        if (result.status === "blocked") {
-          blockedReason = result.reason;
-          return current;
-        }
-        return result.workspace;
-      });
-      setContextWarning(blockedReason);
+  const openDeliveryPreparationFromSelection = useCallback(
+    (deliveryObjectId?: string) => {
+      const targetId =
+        deliveryObjectId ?? selectedObjects.find((object) => object.type === "delivery")?.id ?? activeDeliveryObjectId;
+      openDeliveryPreparationController(targetId ?? undefined);
     },
-    [setWorkspace]
-  );
-
-  const handleCreateDelivery = useCallback(
-    (input: { title: string; format: "board" | "presentation" }) => {
-      let createdId: string | undefined;
-      applyDeliveryOperation((current) => {
-        const result = createDeliveryPreparation(current, {
-          title: input.title,
-          format: input.format,
-          position: {
-            x: current.canvas.view.x + 220,
-            y: current.canvas.view.y + 180
-          }
-        });
-        if (result.status === "updated") {
-          createdId = result.deliveryObjectId;
-        }
-        return result;
-      });
-      if (createdId) {
-        setActiveDeliveryObjectId(createdId);
-        setSelectedObjectIds([createdId]);
-        setFocusRequest((current) => ({ objectId: createdId, nonce: current.nonce + 1 }));
-      }
-    },
-    [applyDeliveryOperation, setSelectedObjectIds]
-  );
-
-  const handleCreateDeliverySection = useCallback(
-    (input: { deliveryObjectId: string; title: string; purpose?: string }) => {
-      applyDeliveryOperation((current) =>
-        createDeliverySection(current, {
-          deliveryObjectId: input.deliveryObjectId,
-          title: input.title,
-          purpose: input.purpose
-        })
-      );
-    },
-    [applyDeliveryOperation]
+    [activeDeliveryObjectId, openDeliveryPreparationController, selectedObjects]
   );
 
   const handleRequestDeliverySectionDraft = useCallback(
     (input: { deliveryObjectId: string; sectionId: string }) => {
-      const delivery = workspace.objects[input.deliveryObjectId];
-      if (!delivery || delivery.type !== "delivery") {
-        setContextWarning("交付准备包不可用。");
+      const result = requestSectionDraft(input);
+      if (result.status !== "ready") {
         return;
       }
-      const context = buildDeliverySectionContext(workspace, delivery, input.sectionId);
-      if (!context || context.references.length === 0) {
-        setContextWarning("请先为本章节加入至少一项交付引用。");
-        return;
-      }
-      setPendingDeliveryDraftTarget(input);
-      setActiveDeliveryObjectId(input.deliveryObjectId);
       setAiOpen(true);
       setTaskMode("chatAnalysis");
       handleWorkIntentChange("prepareDeliverySection");
-      setAiDraft(`请基于“${context.sectionTitle}”这一节的交付引用快照，生成一份本节说明草稿，并给出必要的图注和待补内容建议。`);
+      setAiDraft(result.prompt);
     },
-    [handleWorkIntentChange, workspace]
-  );
-
-  const handleApplyDeliveryDraft = useCallback(
-    (input: { deliveryObjectId: string; draftId: string }) => {
-      applyDeliveryOperation((current) => applyDeliverySectionDraft(current, input));
-    },
-    [applyDeliveryOperation]
-  );
-
-  const handleDiscardDeliveryDraft = useCallback(
-    (input: { deliveryObjectId: string; draftId: string }) => {
-      applyDeliveryOperation((current) => discardDeliverySectionDraft(current, input));
-    },
-    [applyDeliveryOperation]
+    [handleWorkIntentChange, requestSectionDraft]
   );
 
   const handleCancelAiRequest = useCallback(async () => {
@@ -3569,14 +3495,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const handleOpenDeliveryReferenceReader = useCallback(
     (transition: DeliveryReferenceReaderTransition) => {
-      setActiveDeliveryObjectId(transition.activeDeliveryObjectId);
-      setActiveDeliverySectionId(transition.activeSectionId);
+      selectDeliveryPreparation(transition.activeDeliveryObjectId);
+      selectDeliverySection(transition.activeSectionId);
       if (transition.closeDeliveryPanel) {
-        setDeliveryPanelOpen(false);
+        closeDeliveryPreparation();
       }
       handleOpenDocumentReader(transition.fileObjectId, transition.initialLocation);
     },
-    [handleOpenDocumentReader]
+    [closeDeliveryPreparation, handleOpenDocumentReader, selectDeliveryPreparation, selectDeliverySection]
   );
 
   const documentReaderFile = documentReader ? workspace.objects[documentReader.fileObjectId] : undefined;
@@ -3641,7 +3567,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return true;
     }
     if (deliveryPanelOpen) {
-      setDeliveryPanelOpen(false);
+      closeDeliveryPreparation();
       return true;
     }
     if (isDeliveryOutputOpen) {
@@ -3671,6 +3597,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     clearCanvasSelection,
     isDeliveryOutputOpen,
     isProjectBundleOpen,
+    closeDeliveryPreparation,
     deliveryPanelOpen,
     detailConceptDirectionId,
     detailDesignDefinitionId,
@@ -3789,7 +3716,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       onOpenResearchDetail={handleOpenResearchDetail}
       onAutoSelectResearch={handleAutoSelectResearch}
       onOpenDocumentReader={() => { const primary = toolbarObjects[0]; if (primary?.type === "file") handleOpenDocumentReader(primary.id); else if (primary?.type === "documentFragment") handleOpenDocumentReader(primary.source.fileObjectId); }}
-      onOpenDeliveryPreparation={() => openDeliveryPreparation(toolbarObjects[0]?.type === "delivery" ? toolbarObjects[0].id : undefined)}
+       onOpenDeliveryPreparation={() => openDeliveryPreparationFromSelection(toolbarObjects[0]?.type === "delivery" ? toolbarObjects[0].id : undefined)}
       onLocalEdit={handleLocalEdit}
       onReferenceIntent={handleReferenceIntent}
       onHide={handleHideSelected}
@@ -4001,7 +3928,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }
         onSearch={() => handleDrawerChange("search")}
         onFocusOverview={() => focusArea("overview")}
-        onOpenDeliveryPreparation={() => openDeliveryPreparation()}
+         onOpenDeliveryPreparation={() => openDeliveryPreparationFromSelection()}
         onOpenProjectBundles={() => {
           closeDeliveryOutput();
           toggleProjectBundle();
@@ -4217,52 +4144,27 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           activeDeliveryObjectId={activeDeliveryObjectId}
           activeDeliverySectionId={activeDeliverySectionId}
           isStreaming={isAiStreaming}
-          onClose={() => setDeliveryPanelOpen(false)}
-          onCreateDelivery={handleCreateDelivery}
-          onSelectDelivery={(deliveryObjectId) => {
-            setActiveDeliveryObjectId(deliveryObjectId);
-            setActiveDeliverySectionId(null);
-          }}
-          onSelectDeliverySection={setActiveDeliverySectionId}
+          onClose={deliveryPreparation.close}
+          onCreateDelivery={deliveryPreparation.createDelivery}
+          onSelectDelivery={deliveryPreparation.selectDelivery}
+          onSelectDeliverySection={deliveryPreparation.selectSection}
           onLocateObject={focusObject}
           onOpenDeliveryReferenceReader={handleOpenDeliveryReferenceReader}
-          onAddSelectedObjects={(input) =>
-            applyDeliveryOperation((current) =>
-              addObjectsToDeliverySection(current, {
-                ...input
-              })
-            )
-          }
-          onCreateSection={handleCreateDeliverySection}
-          onUpdateSection={(input) => applyDeliveryOperation((current) => updateDeliverySection(current, input))}
-          onMoveSection={(input) => applyDeliveryOperation((current) => moveDeliverySection(current, input))}
-          onRemoveSection={(input) => applyDeliveryOperation((current) => removeDeliverySection(current, input))}
-          onMoveReference={(input) => applyDeliveryOperation((current) => moveDeliveryReference(current, input))}
-          onRemoveReference={(input) => applyDeliveryOperation((current) => removeDeliveryReference(current, input))}
-          onUpdateReferenceEditorial={(input) =>
-            applyDeliveryOperation((current) => updateDeliveryReferenceEditorial(current, input))
-          }
-          onRefreshReference={(input) =>
-            applyDeliveryOperation((current) =>
-              refreshDeliveryReferenceSnapshot(current, {
-                ...input,
-                reason: "用户在交付准备面板中确认更新为当前版本。"
-              })
-            )
-          }
-          onAddGap={(input) =>
-            applyDeliveryOperation((current) =>
-              addDeliveryGap(current, {
-                ...input,
-                origin: "manual"
-              })
-            )
-          }
-          onSetGapStatus={(input) => applyDeliveryOperation((current) => setDeliveryGapStatus(current, input))}
-          onRemoveGap={(input) => applyDeliveryOperation((current) => removeDeliveryGap(current, input))}
+          onAddSelectedObjects={deliveryPreparation.addSelectedObjects}
+          onCreateSection={deliveryPreparation.createSection}
+          onUpdateSection={deliveryPreparation.updateSection}
+          onMoveSection={deliveryPreparation.moveSection}
+          onRemoveSection={deliveryPreparation.removeSection}
+          onMoveReference={deliveryPreparation.moveReference}
+          onRemoveReference={deliveryPreparation.removeReference}
+          onUpdateReferenceEditorial={deliveryPreparation.updateReferenceEditorial}
+          onRefreshReference={deliveryPreparation.refreshReference}
+          onAddGap={deliveryPreparation.addGap}
+          onSetGapStatus={deliveryPreparation.setGapStatus}
+          onRemoveGap={deliveryPreparation.removeGap}
           onRequestSectionDraft={handleRequestDeliverySectionDraft}
-          onApplyDraft={handleApplyDeliveryDraft}
-          onDiscardDraft={handleDiscardDeliveryDraft}
+          onApplyDraft={deliveryPreparation.applyDraft}
+          onDiscardDraft={deliveryPreparation.discardDraft}
         />
       ) : null}
 
