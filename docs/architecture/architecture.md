@@ -73,6 +73,12 @@ Important module boundaries:
   Reader modules. Delivery Reference navigation and canvas selection/focus remain page-level in
   `WorkspaceClient.tsx`; no schema, import format, fragment contract, or visible Reader behavior
   changed.
+- WorkspaceClient decomposition phase 3 moves Delivery Preparation session state, active delivery
+  fallback, pending section-draft target, and deterministic mutation wiring into
+  `useDeliveryPreparationController.ts`. The controller delegates all Delivery domain behavior to
+  the existing domain functions; AI panel composition, Document Reader navigation, canvas selection
+  and focus remain page-level, and `DeliveryPreparationPanel` keeps its local form and presentation
+  state. No schema, backup, import, draft, output, or visible UI contract changed.
 - `src/domain/morpho/` owns product-domain types, the generated case-study fixture, deterministic domain actions, import helpers, generation helpers, and queries.
 - `src/infrastructure/persistence/` owns browser localStorage project catalog and workspace access.
 - `src/infrastructure/assets/` owns browser IndexedDB Blob storage and asset-save workflow.
