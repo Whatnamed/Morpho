@@ -6,7 +6,7 @@ As of 2026-08-04, the repository contains one formal A+ Agent Runtime. The curre
 truth is the code on `main` plus the documents listed below; historical milestone documents are
 not alternate implementation guides.
 
-- `schemaVersion` is 16 and project data remains browser-local first.
+- `schemaVersion` is 17 and project data remains browser-local first.
 - `main` and `refactor/agent-runtime-a-plus` are closed at the same release commit.
 - A+ Phase A and Phase B are complete; the repository is in the healthy observation window before
   Phase C.
@@ -77,6 +77,6 @@ These materials remain for migration traceability but are not current architectu
 
 The current A+ Runtime is `WorkspaceClient.tsx → agentTurnRunner.ts → AgentTurnCoordinator →
 /api/ai/agent/turns/**`. `/api/ai/chat` remains an independent bounded text route with no formal
-workspace-panel caller. Compatibility fields such as `conversationCheckpoints` and `laneKey` stay
-in the schema and migration code where needed for local compatibility and audit; their presence
-does not restore the superseded runtime.
+workspace-panel caller. Retired `conversationCheckpoints`, message lane/checkpoint metadata, and
+`imageVariant` stay only in the local legacy compatibility boundary and historical fixtures where
+needed for migration and audit; they are not part of the current schema or runtime.

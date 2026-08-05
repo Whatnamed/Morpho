@@ -19,7 +19,7 @@ Morpho is an AI-assisted concept-development workspace for product and industria
 - 浮动顶部控件、左侧窄工具轨、右下连续 AI 对话面板；
 - 选中对象后出现的底部详情栏；
 - Morpho 领域对象、画布实例、资产、项目 catalog、本地持久化和语义状态边界；
-- `schemaVersion: 16` 的 local-first 数据底座，包括隐藏、删除、淘汰、后续默认参考、交付稳定引用、安全迁移、IndexedDB 二进制资产、连续 AI 消息、Agent 过程、轻量 Operation / Proposal 状态、来源语义快照、正式关键结论类别、唯一当前有效设计定义、方向 create / revise / split / merge、方向内 VisualBranch、正式图片角色和可重建工作状态、连续会话压缩、项目记忆与阶段记录修订；
+- `schemaVersion: 17` 的 local-first 数据底座，包括隐藏、删除、淘汰、后续默认参考、交付稳定引用、安全迁移、IndexedDB 二进制资产、连续 AI 消息、Agent 过程、轻量 Operation / Proposal 状态、来源语义快照、正式关键结论类别、唯一当前有效设计定义、方向 create / revise / split / merge、方向内 VisualBranch、正式图片角色和可重建工作状态、连续会话压缩、项目记忆与阶段记录修订；旧 checkpoint/lane/imageVariant 只在兼容迁移边界读取并在当前数据中剥离；
 - Supabase 保存账号身份、测试资格、AI 每日额度，以及最小化的 A+ Server Turn / Request / External Action Journals；不保存项目、画布、文件、图片、聊天正文、项目记忆或整体本地 Turn Outcome。邮箱密码注册的测试用户自动成为 active tester，文本/生图额度为 `500 / 100`；
 - Workspace 正式使用唯一的 A+ Agent Runtime：客户端 Turn Lifecycle/Coordinator 汇总本地工具、确认与持久化结果，服务端 Turn Journal 只权威记录外部执行状态；不存在 Runtime Selector 或 B fallback；
 - 通过 AiJWS OpenAI-compatible 路径的服务端文本 AI route，支持普通文本、显式选中图片的视觉理解输入，以及受控 web search citation 事件；当前示例模型为 `gpt-5.6-terra`；

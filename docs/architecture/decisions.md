@@ -959,3 +959,24 @@ fallback; all otherwise-unproven values become `unknown`. Current v16 normalizat
 notes or infer from free text. This decision changes only browser-local domain data and its
 projections; it does not change A+ journals, Agent Journal or External Action Journal contracts,
 database migrations, Phase C, auth, providers, model routing, or deployment.
+
+## 2026-08-05: Isolate Legacy Conversation Checkpoints And Image Variants In Schema 17
+
+Decision: upgrade the canonical workspace to `schemaVersion: 17`. Current `AiMessage` no longer
+stores `conversationLaneKey` or `conversationCheckpointId`; current `workspace.ai` no longer stores
+`conversationCheckpoints`; and `ImageObject` no longer stores `imageVariant`. Retired input shapes
+and migration logic live only in `src/domain/morpho/legacyWorkspaceCompatibility.ts`.
+
+Migration from v1-v16 is deterministic and idempotent. A valid current summary is preserved. Only
+when no valid current summary exists may one structurally valid old checkpoint range become one
+deterministic project-wide summary revision; invalid or unprovable ranges produce no summary and no
+fake messages. Old messages keep their IDs, bodies, order, and pair links, while retired metadata
+and image variants are stripped. An already-current schema-17 workspace strips retired fields but
+does not interpret them.
+
+Decision: current Agent preparation, append, search, provider prompts, backups, archives, generated
+case-study data, imports, and image generation use only the canonical project-wide conversation and
+image-role model. `chat: none` clears messages, compaction, summary revisions, provider frames, and
+Compare analyses. Legacy schema 1-16 backups are inspected, restored as a new copy, and migrated at
+the restore boundary. This decision does not change A+ leases/journals/RPCs, Provider Transcript
+contracts, image routing, quotas, authentication, database migrations, or deployment.

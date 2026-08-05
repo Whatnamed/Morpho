@@ -81,7 +81,7 @@ Implemented server-side state and deployment:
 
 ## Data Model
 
-Structured workspace data is schema version `16`.
+Structured workspace data is schema version `17`.
 
 Current workspace state includes:
 
@@ -94,7 +94,6 @@ Current workspace state includes:
 - persisted workspace UI state in `workspace.ui`;
 - continuous AI messages in `workspace.ai.messages`.
 - optional ordered Agent process traces in `AiMessage.agentTrace`.
-- legacy conversation checkpoints in `workspace.ai.conversationCheckpoints` for migration and audit compatibility;
 - project-wide compaction state and revisioned summaries in `workspace.ai.conversationCompaction` and `workspace.ai.conversationSummaryRevisions`;
 - append-only provider-only Context Frames in `workspace.ai.providerContextFrames` for project state, turn scope, runtime configuration, and conversation summaries;
 - immutable provider-visible user snapshots in `AiMessage.providerInputSnapshot`, plus deterministic frame `sequence` / `placement` metadata for transcript replay;
@@ -116,12 +115,17 @@ Operation persistence is intentionally lightweight:
 - workspace JSON does not store raw webpages, full document extracts, page preview binaries, provider raw responses, API keys, or response headers;
 - interrupted operations are recoverable as local state, but they are not treated as background server jobs after refresh.
 
-Schema-v16 loading is the one-way compatibility boundary for retired B browser fields and the
-formal key-conclusion category model. It accepts v1-v15 workspace data through pure migration,
+Schema-v17 loading is the one-way compatibility boundary for retired B browser fields, old
+conversation checkpoint/lane metadata, `imageVariant`, and the formal key-conclusion category
+model. It accepts v1-v16 workspace data through pure migration,
 preserves valid legacy categories, derives a category only from an exact source research item or
 the explicitly isolated old-note fallback, and stores recovery-only `unknown` when the legacy
 evidence is not enough. New writes use only the four assignable categories and never default to
-`unknown`; current runtime code never infers category from title, body, or note. It also drops old
+`unknown`; current runtime code never infers category from title, body, or note. It strips old
+checkpoint collections and message metadata, removes `imageVariant` without inferring an image
+role, and migrates at most one structurally valid legacy checkpoint range into a deterministic
+project-wide summary only when no valid current summary exists. An already-current schema-17
+workspace only strips retired fields and never interprets them. It also drops old
 Closure Recovery, signed terminal Outcome, and Provider Request State records while preserving raw
 chat, Summary Revisions, Provider Context Frames, Provider input/output snapshots, Agent traces,
 project data, and assets. Those dropped fields are not part of the canonical type or archive format
@@ -213,12 +217,12 @@ The following bullets explain why legacy checkpoint fields still exist and how o
 - `morphoConversationCheckpoint` is parsed and validated independently from `morphoProjectContinuityPatch`; either valid block may succeed if the other fails;
 - checkpoint writes update only `workspace.ai.conversationCheckpoints` and the assistant message `conversationCheckpointId`; they never write project records, current focus, objects, revisions, directions, default references, delivery references, or DecisionRecords;
 - visible assistant text strips both complete and trailing partial checkpoint/semantic technical JSON blocks, and a saved checkpoint shows only the lightweight `已整理当前讨论脉络` message.
-- the controlled Agent path now uses one deterministic project-wide summary boundary instead of lane-filtered or last-eight history; Agent user/assistant messages may retain lane and discussion labels for traceability, but those labels are not a semantic history boundary;
+- the current Agent path uses one deterministic project-wide summary boundary instead of lane-filtered or last-eight history; current user/assistant messages do not write lane or checkpoint metadata;
 - the A+ request route estimates the complete provider request, including system text, recent messages, tool schemas, tool outputs, image reserves, and an optional previous actual input-token baseline;
-- the default Agent budget is Morpho's fixed 256,000-token internal window, checkpoint preparation at 204,800 tokens, mandatory request compaction at 230,400 tokens, and a 16,000-token target for the compressible discussion/tool-history portion. Preparation is non-destructive; only the compact threshold advances a validated summary boundary;
+- the default Agent budget is Morpho's fixed 256,000-token internal window, summary preparation at 204,800 tokens, mandatory request compaction at 230,400 tokens, and a 16,000-token target for the compressible discussion/tool-history portion. Preparation is non-destructive; only the compact threshold advances a validated summary boundary;
 - preparation keeps real project context, the current user input, the current selection, the current project summary, every complete post-boundary project message, and the latest unresolved tool-output group. Older completed tool outputs are shortened without replaying their tools;
 - Responses token usage is normalized to one internal shape. When a valid provider total and output count omit input tokens, input is derived as `total - output`; malformed or negative usage is discarded. A provider context-limit failure triggers one server-side emergency-compacted retry of the same provider request, never a replay of client-side mutations, image generation, Proposal application, or other completed tools;
-- when a mandatory-compaction response does not contain a valid checkpoint, the client may request one checkpoint-only continuation with no tools or images. Failure of that optional refresh does not invalidate the already completed visible Agent result.
+- when a mandatory-compaction response does not contain a valid summary, the compaction write is skipped and the already completed visible Agent result remains valid.
 - an exact `/compact` input gathers all eligible project messages after the existing summary boundary and rolls them through bounded summary-only Agent requests with no tools or images. The write-ahead descriptor binds the original source message IDs, fingerprints, expected previous revision, token estimate, and boundary IDs. Recovery may retain newly appended tail messages, but changed or missing source messages and a changed summary revision fail explicitly. A successful result writes only the final project summary and does not mutate canvas objects.
 
 Agent streaming additions:
@@ -246,7 +250,7 @@ M5-C additions:
 - legacy schema-v11 compatibility tests still cover `/api/ai/chat` comparison payloads; the formal panel now creates Compare analysis through the Agent `create_comparison_analysis` tool with the same local authorization and validation;
 - model `objectComparisons` carry `evidenceBasis`, and local validation rejects mismatches against actual pixels/document extracts/object summaries;
 - `keyConclusionCandidate` is candidate-only and may use only selected true text evidence sources: sent document extracts, research objects, or existing key conclusions;
-- same-reply design-definition or concept-direction Proposal JSON suppresses Compare writes, semantic patches, checkpoints, and Compare decision entry points;
+- same-reply design-definition or concept-direction Proposal JSON suppresses Compare writes, semantic patches, and Compare decision entry points;
 - confirmed Compare decisions write normal `DecisionRecord` entries with lightweight `ComparisonDecisionMetadata`; the full Compare body is not copied into decisions or project memory.
 
 M5-D1 additions:
@@ -257,7 +261,7 @@ M5-D1 additions:
 - the reader opens from the bottom detail bar for an active parsed file with a valid `documentExtract` asset. It reads only the IndexedDB Blob referenced by `file.extractedAssetId`;
 - unparsed, parsing, failed, hidden, missing-extract, wrong-asset-type, missing-asset, and Blob-read-failed states are explicit and do not trigger reparsing, provider calls, or workspace repair;
 - parser counts such as `extractedPageCount` may be displayed as counts only. Without a persisted page/slide source map, the reader locates only extract blocks, paragraphs, snippets, and character ranges and must not expose page/slide jump claims;
-- opening, searching, navigating, and closing the reader do not change selection, task mode, current focus, AI messages, conversation checkpoints, semantic records, Compare analyses, DecisionRecords, operations, or project continuity.
+- opening, searching, navigating, and closing the reader do not change selection, task mode, current focus, AI messages, retired checkpoint metadata, semantic records, Compare analyses, DecisionRecords, operations, or project continuity.
 
 M5-D2 additions:
 
@@ -283,11 +287,15 @@ M6 additions:
 - `prepareDeliverySection` sends only the current section delivery reference snapshots in `deliverySectionContext`, does not send web search, normal task context, Compare context, live source objects, full files, or full document extracts, and creates only a pending draft until the user applies it;
 - the floating delivery preparation panel supports package creation, section editing, explicit add-selected-object references, captions, gaps, stale-reference refresh, and draft apply/discard without becoming an export editor or slide layout engine.
 
-## Schema v16 AI Continuity, Memory, And Key Conclusions
+## Schema v17 AI Continuity, Memory, And Key Conclusions
 
-Schema v16 is the current runtime contract and supersedes lane-local checkpoint selection:
+Schema v17 is the current runtime contract and supersedes lane-local checkpoint selection:
 
-- `conversationLaneKey` and legacy checkpoints remain labels and migration evidence only;
+- current Agent preparation, append, search, and provider context are project-wide; no lane key or
+  checkpoint result participates in current history selection;
+- legacy checkpoint/lane/image compatibility types are isolated in
+  `src/domain/morpho/legacyWorkspaceCompatibility.ts` and are not imported by current business
+  modules;
 - `ConversationCompactionState` points to a revisioned project-wide summary boundary, while all original `ai.messages` remain persisted and searchable;
 - `ProjectMemoryState` contains seven document descriptors, current revision pointers, immutable history, source refs, basis, and `reviewRequired`;
 - stage records use six possible project areas but create current revisions only for stages with real content; Compare writes back to the relevant stage and never becomes a stage;
@@ -304,11 +312,11 @@ Schema v16 is the current runtime contract and supersedes lane-local checkpoint 
 - Compaction source/apply metadata is persisted before POST. Recovery replays the original Body and applies its Summary only to the original source IDs when their fingerprints and expected previous revision still match; appended tail messages survive, while source change or revision conflict fails without rebinding the old Summary to a new plan;
 - Provider Context Frames remain browser-local, untrusted product context. They are retained for continuity and editable backup, not signed or accepted as causal proof by the server;
 - GrsAI image planning distinguishes `textToImage`, `imageToImage`, and prompt-level `directedEdit`. The current request has no mask/inpainting field, so `maskedLocalEdit` is unavailable and no pixel-level local-edit guarantee is exposed;
-- editable backups default to full conversation scope and preserve raw chat, summary revisions, legacy checkpoints, memory/stage revisions, Continuity Events, Agent Trace, citations, Compare analyses, and image provenance;
+- editable backups default to full conversation scope and preserve canonical raw chat, summary revisions, memory/stage revisions, Continuity Events, Agent Trace, citations, Compare analyses, and image provenance; schema 1-16 backups are inspected and migrated through the legacy compatibility boundary before restore;
 - `KeyConclusionObject.category` stores the five-value `KeyConclusionCategory` union (`finding`, `opportunity`, `constraint`, `openQuestion`, and recovery-only `unknown`), while new writes accept only the four-value `AssignableKeyConclusionCategory` subset. Manual, research-extraction, Compare, and Agent-confirmed writes must carry one of those four categories explicitly; an unclassified confirmation starts at `请选择类别` and cannot be confirmed. Recovered `unknown` conclusions remain visible as `待分类` and can be manually assigned one of the four categories from the detail surface. UI, search, task Context, provider summaries, project Memory, and human-readable bundles read the stored field directly. The old extraction-note markers are migration-only compatibility hints and are not runtime semantics;
 - the generated current-case fixture is upgraded with `npm.cmd run case-study:upgrade`; repeated upgrades must produce the same workspace hash.
 
-No new runtime dependency or external service was introduced for schema v16.
+No new runtime dependency or external service was introduced for schema v17.
 
 ## Local-First Persistence
 
@@ -405,7 +413,7 @@ Text Agent:
 
 - The formal workspace panel calls the canonical A+ Turn resources under `/api/ai/agent/turns`; Provider Requests stream Responses reasoning summaries, commentary, function calls, citations, usage, context pressure, and final text over typed SSE.
 - `/api/ai/chat` is retained only for compatibility tests and has no formal-panel caller. Delivery section drafting, research, design definitions, directions, comparison, memory updates, and visual planning all use Agent tools or deterministic domain services.
-- Context is one continuous project conversation. Selection, focus, direction, branch, and the legacy lane key affect strategy and provenance only; they never filter formal history.
+- Context is one continuous project conversation. Selection, focus, direction, and branch affect strategy and provenance only; they never filter formal history.
 - Below the prepare threshold, every uncompressed user/assistant message enters the request. After compaction, the current summary revision plus every complete message after its covered boundary enter the request. Raw messages are never deleted.
 - The fixed Morpho policy is a 256,000-token window, 204,800 prepare threshold, 230,400 compact threshold, and 16,000 target uncompressed tail. Production does not read context-threshold environment variables; only the non-production localStorage override is available for low-threshold browser acceptance.
 - A valid summary revision is applied atomically with source range, count, hash, previous revision, and boundary metadata. Failed summary validation leaves the prior boundary unchanged. A provider context-limit error may trigger one client summary/retry after the server's replay-safe tool-output retry.

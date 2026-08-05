@@ -4,7 +4,9 @@
 > 证据，但不作为当前 Runtime 指南；当前连续 Agent、Memory Kernel、阶段记录与压缩边界以
 > [`architecture.md`](./architecture.md)、[`decisions.md`](./decisions.md) 和
 > [`agent-runtime-a-plus-migration.md`](./agent-runtime-a-plus-migration.md) 为准。保留的
-> `conversationCheckpoints` 与 lane 字段是兼容/审计数据，不代表 lane 隔离仍是正式会话机制。
+> Schema 17 only accepts `conversationCheckpoints`, message lane/checkpoint metadata, and
+> `imageVariant` inside the isolated legacy compatibility boundary; these fields are not current
+> schema or formal conversation semantics.
 
 ## Scope
 
@@ -114,7 +116,10 @@ See `docs/architecture/m5-b1-conversation-semantic-records.md` for the full cont
 
 ## M5-B2 Boundary
 
-M5-B2 adds short-term conversation checkpoints in `workspace.ai.conversationCheckpoints`. These checkpoints are not project continuity entries, do not enter memory views or the project-record drawer, and do not affect `currentFocus`, validity, source availability, or stage-record grouping.
+M5-B2 historically added short-term conversation checkpoints in `workspace.ai.conversationCheckpoints`.
+Schema 17 strips them from the canonical workspace; when a structurally valid old range exists and
+no current summary is present, migration creates one project-wide summary revision without writing
+project continuity, memory, stage, or other semantic state.
 
 Project continuity remains responsible for real project facts and long-term explicit semantic records. Conversation checkpoints only summarize the current discussion lane for the next ordinary chat request. See `docs/architecture/m5-b2-conversation-checkpoints.md`.
 

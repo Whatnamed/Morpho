@@ -149,7 +149,7 @@ AI continuity and Project Memory:
 - `submit_memory_update` accepts only locally authorized exact quotes from the current persisted user message. AI suggestions and one-off requests are rejected as stable preferences;
 - deterministic project facts project into seven current Memory documents and only actually occurred Stage Records. Current versions, source refs, revision chains, and `reviewRequired` are visible under `项目记录`;
 - successful writes show only specific feedback such as `已更新项目偏好`, `已记录设计决定`, or `已更新方向与视觉发展记录`; no write means no feedback;
-- legacy `conversationCheckpoints` and lane keys remain in backups and migrations but do not select formal Agent history.
+- schema 1-16 backups may contain retired checkpoint/lane/image compatibility fields, but restore inspects and migrates them into the schema-17 canonical workspace before the new copy is returned; current backups never emit those fields.
 
 
 Delivery preparation drafts:
@@ -602,6 +602,15 @@ Legacy single-project key read for a one-time pristine-Nightrail migration:
 ```text
 morpho.workspace.nightrail.v1
 ```
+
+Current structured workspace data is schema version `17`. v1 through v16 reads are pure and
+idempotent. Schema 17 strips old `conversationCheckpoints`, message lane/checkpoint metadata, and
+`imageVariant`; a valid old checkpoint range becomes one deterministic project-wide summary only
+when no valid current summary exists. Current schema 17 loading never interprets retired fields.
+Editable backup restore follows inspect -> restore as a new copy -> migrate, while `chat: none`
+clears messages, compaction, summary revisions, provider frames, and Compare analyses.
+
+The following paragraph is historical schema detail retained for migration traceability:
 
 Structured workspace data is schema version `16`. v1 through v15 workspace data is migrated through pure migration functions. v6 normalizes image roles to `reference`, `preview`, `conceptImage`, `primaryVisual`, `sceneVisual`, `cmfStudy`, `detailStudy`, `structureDiagram`, `interactionDiagram`, and `deliveryAsset`; old `main`, `scenario`, `cmf`, `detail`, and `diagram` values are migration-only inputs. v7 adds parse metadata to file objects and stores extracted document text as separate IndexedDB assets. v8 adds `workspace.projectContinuity`, migrates legacy `project.currentFocus` into structured `currentFocus`, and retires legacy `stageRecords` instead of converting them into a second stage-history source. v9 adds controlled conversation semantic record fields and message source refs; old v8 entries become `origin: deterministicEvent` and `manualState: active` without fabricated semantic metadata. v10 adds `workspace.ai.conversationCheckpoints`; old v9 messages are preserved, no checkpoint is invented, no old message receives a fabricated `conversationLaneKey`, and `projectContinuity` is unchanged. v11 adds `workspace.ai.comparisonAnalyses` plus assistant-message linkage for local Compare cards; old messages are preserved without fabricated comparison links. v12 adds `documentFragment` support and fragment source relations without fabricating historical fragments or changing existing files/messages/checkpoints/Compare analyses/DecisionRecords/project-continuity records. v13 upgrades delivery preparation with sections, stable section references, gaps, and pending delivery section drafts. v14 adds optional ordered assistant `agentTrace` records and preserves all prior message bodies, citations, checkpoints, Compare analyses, and project-continuity state without fabricating trace parts. v15 adds project-wide conversation compaction, revisioned summaries, seven revisioned Project Memory documents, six possible revisioned Stage Records, and structured image-generation provenance. v16 adds the stored `KeyConclusionCategory` union (`finding`, `opportunity`, `constraint`, `openQuestion`, `unknown`) plus the new-write-only `AssignableKeyConclusionCategory` subset of the first four values. Legacy or damaged stored values may normalize to `unknown`; new manual, research, Compare, and Agent-confirmed writes cannot use it, and an unclassified confirmation remains at `请选择类别` until the user selects one of the four assignable values. Recovered `unknown` conclusions remain `待分类` and can be manually reclassified from object details. Legacy key conclusions migrate from exact source research matches, then the compatibility-only old-note markers, otherwise `unknown`; current runtime never infers the category from free text. Migration success writes the new project workspace and catalog. Migration failure preserves old raw data and shows a recoverable warning instead of silently resetting to seed data.
 
