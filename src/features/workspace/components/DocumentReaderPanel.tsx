@@ -12,10 +12,9 @@ import {
 } from "../documentReader";
 import { DOCUMENT_FRAGMENT_LIMITS, type DocumentReaderInitialLocation } from "../documentFragments";
 import type { DocumentSourcePreview } from "../documentSourcePreview";
+import type { DocumentReaderExtractFragmentResult } from "../useDocumentReaderController";
 
-export type DocumentReaderExtractFragmentResult =
-  | { status: "created"; fragmentId: string }
-  | { status: "blocked"; reason: string };
+export type { DocumentReaderExtractFragmentResult } from "../useDocumentReaderController";
 
 type DocumentReaderPanelProps = {
   file: FileObject;

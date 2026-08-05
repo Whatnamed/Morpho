@@ -121,7 +121,7 @@ import { ConceptDirectionDetail } from "./components/ConceptDirectionDetail";
 import { DesignDefinitionDetail } from "./components/DesignDefinitionDetail";
 import { DeliveryPreparationPanel } from "./components/DeliveryPreparationPanel";
 import { DeliveryOutputPanel } from "./components/DeliveryOutputPanel";
-import { DocumentReaderPanel, type DocumentReaderExtractFragmentResult } from "./components/DocumentReaderPanel";
+import { DocumentReaderPanel } from "./components/DocumentReaderPanel";
 import { LeftRail, type DrawerMode } from "./components/LeftRail";
 import { OverlayDrawers } from "./components/OverlayDrawers";
 import type { LeftRailAnchor } from "./leftRailPopoverPlacement";
@@ -167,18 +167,7 @@ import {
   recommendAiWorkIntent
 } from "./aiTaskRouting";
 import { buildProposalDiscussionDraft, buildProposalRegenerationDraft } from "./proposalFollowupPrompts";
-import { shouldAcceptDocumentReaderLoadResult } from "./documentReader";
-import { loadDocumentReaderExtractWithRecovery } from "./documentReaderRecovery";
-import {
-  loadDocumentSourcePreview,
-  revokeDocumentSourcePreview,
-  type DocumentSourcePreview
-} from "./documentSourcePreview";
-import {
-  buildDocumentFragmentDraft,
-  createDocumentFragmentWithContinuity,
-  resolveDocumentFragmentSelection
-} from "./documentFragments";
+import { useDocumentReaderController } from "./useDocumentReaderController";
 import { resolveComparisonWritebackSourceObjectIds } from "./comparisonDecision";
 import {
   applyResearchExtractionSelection,
@@ -329,22 +318,6 @@ type ImageTaskStatus = {
 function isActiveImageTaskStatus(state: ImageTaskState): boolean {
   return state === "preparing" || state === "submitting" || state === "waiting" || state === "downloading";
 }
-
-type DocumentReaderUiState = {
-  fileObjectId: string;
-  requestId: number;
-  status: "loading" | "loaded" | "blocked" | "error";
-  text: string;
-  message?: string;
-  extractAsset?: AssetRecord;
-  sourcePreview?: DocumentSourcePreview;
-  createdFragmentId?: string;
-  initialLocation?: {
-    startOffset: number;
-    endOffset: number;
-    label: string;
-  } | null;
-};
 
 type ObjectOperationUndoEntry = {
   workspace: MorphoWorkspace;
@@ -534,10 +507,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const selectionHydratedProjectIdRef = useRef<string | null>(null);
   const [focusRequest, setFocusRequest] = useState<FocusRequest>({ nonce: 0 });
   const [selectionRequest, setSelectionRequest] = useState<CanvasSelectionRequest>({ objectIds: [], nonce: 0 });
-  const [documentReader, setDocumentReader] = useState<DocumentReaderUiState | null>(null);
-  const documentReaderRequestRef = useRef(0);
-  const documentReaderAbortRef = useRef<AbortController | null>(null);
-  const documentSourcePreviewUrlRef = useRef<string | null>(null);
   const railImportInputRef = useRef<HTMLInputElement | null>(null);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [projectRenameDraft, setProjectRenameDraft] = useState(workspace.project.title);
@@ -3560,184 +3529,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [pushObjectOperationUndo, setSelectedObjectIds, setWorkspace, showWorkspaceNotice, workspace]
   );
 
-  const cleanupDocumentSourcePreview = useCallback(() => {
-    if (documentSourcePreviewUrlRef.current) {
-      URL.revokeObjectURL(documentSourcePreviewUrlRef.current);
-      documentSourcePreviewUrlRef.current = null;
-    }
-  }, []);
-
-  const handleOpenDocumentReader = useCallback(
-    (fileObjectId: string, initialLocation?: { startOffset: number; endOffset: number; label: string } | null) => {
-      documentReaderAbortRef.current?.abort();
-      cleanupDocumentSourcePreview();
-      const requestId = documentReaderRequestRef.current + 1;
-      documentReaderRequestRef.current = requestId;
-      const abortController = new AbortController();
-      documentReaderAbortRef.current = abortController;
-      setSelectedObjectIds([]);
-      setLocalEditObjectId(null);
-      setCanvasContextMenu(null);
-
-      setDocumentReader({
-        fileObjectId,
-        requestId,
-        status: "loading",
-        text: "",
-        initialLocation
-      });
-
-      void Promise.all([
-        loadDocumentReaderExtractWithRecovery(
-          workspace,
-          fileObjectId,
-          indexedDbBlobStore,
-          abortController.signal,
-          setWorkspace
-        ),
-        loadDocumentSourcePreview(workspace, fileObjectId, indexedDbBlobStore, abortController.signal)
-      ])
-        .then(
-        ([result, sourcePreview]) => {
-          setDocumentReader((current) => {
-            if (
-              !current ||
-              !shouldAcceptDocumentReaderLoadResult(
-                { openFileObjectId: current.fileObjectId, requestId: current.requestId },
-                { fileObjectId, requestId }
-              )
-            ) {
-              revokeDocumentSourcePreview(sourcePreview);
-              return current;
-            }
-
-            documentSourcePreviewUrlRef.current = sourcePreview.status === "ready" ? sourcePreview.url : null;
-            if (result.status === "loaded") {
-              return {
-                ...current,
-                status: "loaded",
-                text: result.text,
-                extractAsset: result.asset,
-                sourcePreview,
-                initialLocation,
-                message: undefined
-              };
-            }
-
-            return {
-              ...current,
-              status: result.status,
-              text: "",
-              extractAsset: undefined,
-              sourcePreview,
-              initialLocation: undefined,
-              message: result.message
-            };
-          });
-        }
-        )
-        .catch((error) => {
-          if (error instanceof DOMException && error.name === "AbortError") {
-            return;
-          }
-
-          setDocumentReader((current) =>
-            current && current.fileObjectId === fileObjectId && current.requestId === requestId
-              ? {
-                  ...current,
-                  status: "error",
-                  text: "",
-                  message: error instanceof Error ? error.message : "文档阅读器打开失败。"
-                }
-              : current
-          );
-        });
-    },
-    [cleanupDocumentSourcePreview, setSelectedObjectIds, setWorkspace, workspace]
-  );
-
-  const handleOpenDeliveryReferenceReader = useCallback(
-    (transition: DeliveryReferenceReaderTransition) => {
-      setActiveDeliveryObjectId(transition.activeDeliveryObjectId);
-      setActiveDeliverySectionId(transition.activeSectionId);
-      if (transition.closeDeliveryPanel) {
-        setDeliveryPanelOpen(false);
-      }
-      handleOpenDocumentReader(transition.fileObjectId, transition.initialLocation);
-    },
-    [handleOpenDocumentReader]
-  );
-
-  const handleExtractDocumentFragment = useCallback(
-    (input: { blockIds: string[]; title: string; summary: string }): DocumentReaderExtractFragmentResult => {
-      if (!documentReader || documentReader.status !== "loaded") {
-        return { status: "blocked", reason: "Document reader is not ready." };
-      }
-
-      const file = workspace.objects[documentReader.fileObjectId];
-      if (!file || file.type !== "file") {
-        return { status: "blocked", reason: "Document fragment source file is unavailable." };
-      }
-
-      const selection = resolveDocumentFragmentSelection(workspace, {
-        fileObjectId: file.id,
-        extractAssetId: documentReader.extractAsset?.id ?? file.extractedAssetId ?? "",
-        blockIds: input.blockIds,
-        title: input.title,
-        sourceText: documentReader.text
-      });
-      if (selection.status !== "ready") {
-        setDocumentReader((current) =>
-          current && current.fileObjectId === file.id
-            ? {
-                ...current,
-                status: "loaded",
-                message: selection.reason,
-                createdFragmentId: undefined
-              }
-            : current
-        );
-        return { status: "blocked", reason: selection.reason };
-      }
-
-      const draft = buildDocumentFragmentDraft(workspace, selection, {
-        title: input.title,
-        summary: input.summary
-      });
-      if (draft.status !== "ready") {
-        setDocumentReader((current) =>
-          current && current.fileObjectId === file.id
-            ? {
-                ...current,
-                status: "loaded",
-                message: draft.reason,
-                createdFragmentId: undefined
-              }
-            : current
-        );
-        return { status: "blocked", reason: draft.reason };
-      }
-
-      const created = createDocumentFragmentWithContinuity(workspace, draft.draft);
-      setWorkspace(created.workspace);
-      setDocumentReader((current) =>
-        current && current.fileObjectId === file.id
-          ? {
-              ...current,
-              status: "loaded",
-              createdFragmentId: created.fragment.id,
-              message: "已提取到画布"
-            }
-          : current
-      );
-      return { status: "created", fragmentId: created.fragment.id };
-    },
-    [documentReader, setWorkspace, workspace]
-  );
-
   const handleViewCreatedDocumentFragment = useCallback(
     (fragmentId: string) => {
-      setDocumentReader(null);
       setSelectedObjectIds([fragmentId]);
       setWorkspace((current) => ({
         ...current,
@@ -3751,20 +3544,39 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [setSelectedObjectIds, setWorkspace]
   );
 
-  const handleCloseDocumentReader = useCallback(() => {
-    documentReaderAbortRef.current?.abort();
-    documentReaderAbortRef.current = null;
-    documentReaderRequestRef.current += 1;
-    cleanupDocumentSourcePreview();
-    setDocumentReader(null);
-  }, [cleanupDocumentSourcePreview]);
+  const {
+    state: documentReader,
+    open: openDocumentReader,
+    close: handleCloseDocumentReader,
+    extractFragment: handleExtractDocumentFragment,
+    viewCreatedFragment: handleViewCreatedDocumentFragmentFromReader
+  } = useDocumentReaderController({
+    workspace,
+    updateWorkspace: setWorkspace,
+    blobStore: indexedDbBlobStore,
+    onViewCreatedFragment: handleViewCreatedDocumentFragment
+  });
 
-  useEffect(
-    () => () => {
-      documentReaderAbortRef.current?.abort();
-      cleanupDocumentSourcePreview();
+  const handleOpenDocumentReader = useCallback(
+    (fileObjectId: string, initialLocation?: Parameters<typeof openDocumentReader>[1]) => {
+      setSelectedObjectIds([]);
+      setLocalEditObjectId(null);
+      setCanvasContextMenu(null);
+      openDocumentReader(fileObjectId, initialLocation);
     },
-    [cleanupDocumentSourcePreview]
+    [openDocumentReader, setSelectedObjectIds]
+  );
+
+  const handleOpenDeliveryReferenceReader = useCallback(
+    (transition: DeliveryReferenceReaderTransition) => {
+      setActiveDeliveryObjectId(transition.activeDeliveryObjectId);
+      setActiveDeliverySectionId(transition.activeSectionId);
+      if (transition.closeDeliveryPanel) {
+        setDeliveryPanelOpen(false);
+      }
+      handleOpenDocumentReader(transition.fileObjectId, transition.initialLocation);
+    },
+    [handleOpenDocumentReader]
   );
 
   const documentReaderFile = documentReader ? workspace.objects[documentReader.fileObjectId] : undefined;
@@ -4392,7 +4204,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           initialLocation={documentReaderInitialLocation}
           createdFragmentId={documentReader.createdFragmentId}
           onExtractFragment={handleExtractDocumentFragment}
-          onViewCreatedFragment={handleViewCreatedDocumentFragment}
+          onViewCreatedFragment={handleViewCreatedDocumentFragmentFromReader}
           onClose={handleCloseDocumentReader}
         />
       ) : null}
