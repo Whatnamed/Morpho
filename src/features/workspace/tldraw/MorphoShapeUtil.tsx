@@ -523,7 +523,7 @@ function MorphoShapeCard({ shape }: { shape: MorphoShape }) {
             // eslint-disable-next-line @next/next/no-img-element
             <img src={props.assetUrl} alt="" />
           ) : (
-            renderVisual()
+            renderImagePlaceholder()
           )}
         </div>
         <div className="morpho-image-label">
@@ -679,6 +679,25 @@ function RoleLabel({ label }: { label: string }) {
     <div className="morpho-role-label">
       <span />
       {label}
+    </div>
+  );
+}
+
+const MORPHO_IMAGE_PLACEHOLDER_LABEL = "图片暂不可用";
+
+export function renderImagePlaceholder() {
+  return (
+    <div
+      className="morpho-image-placeholder"
+      role="img"
+      aria-label={MORPHO_IMAGE_PLACEHOLDER_LABEL}
+    >
+      <svg viewBox="0 0 160 120" aria-hidden="true">
+        <rect x="22" y="18" width="116" height="84" rx="8" fill="none" stroke="currentColor" strokeWidth="3" />
+        <path d="m35 86 26-27 19 19 15-16 30 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="105" cy="43" r="8" fill="none" stroke="currentColor" strokeWidth="3" />
+      </svg>
+      <span>{MORPHO_IMAGE_PLACEHOLDER_LABEL}</span>
     </div>
   );
 }

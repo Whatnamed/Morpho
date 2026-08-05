@@ -7,6 +7,7 @@ import { createInitialWorkspace } from "../../../domain/morpho/workspace";
 import {
   getAdaptiveMorphoShapeSize,
   getMorphoShapeProps,
+  renderImagePlaceholder,
   resolveAutoGrowHeight,
   shouldAutoGrowMorphoShape
 } from "./MorphoShapeUtil";
@@ -47,6 +48,17 @@ describe("MorphoShapeUtil", () => {
 
     expect(props.morphoType).toBe("image");
     expect(props.details).toEqual([]);
+  });
+
+  it("uses a neutral accessible placeholder when an image asset is unavailable", () => {
+    expect(renderImagePlaceholder()).toMatchObject({
+      type: "div",
+      props: {
+        className: "morpho-image-placeholder",
+        role: "img",
+        "aria-label": "图片暂不可用"
+      }
+    });
   });
 
   it("marks an object referenced from the detail bar for a local canvas highlight", () => {
