@@ -1,10 +1,20 @@
-import { sanitizeConversationAssistantStreamForDisplay } from "@/domain/morpho/conversationCheckpoint";
+import { sanitizeStructuredStreamForDisplay } from "@/domain/morpho/structuredBlocks";
 import type { AgentTurnRequestStreamEvent } from "@/shared/agentTurnJournalProtocol";
 import { isAgentRouteStreamEvent } from "@/shared/agentStreamProtocol";
 import { updateAiMessage } from "./aiConversationMessages";
 import { applyAgentStreamEventToTrace } from "./agentMessageTrace";
 import type { AgentTurnHost } from "./agentTurnHost";
 import type { PreparedAgentTurnAPlus } from "./agentTurnProductPreparationAPlus";
+
+const AI_MESSAGE_TECHNICAL_MARKERS = [
+  "morphoConversationSummary",
+  "morphoProjectContinuityPatch",
+  "morphoDesignDefinitionProposal",
+  "morphoConceptDirectionProposal",
+  "morphoComparisonAnalysis",
+  "morphoDeliverySectionDraft",
+  "morphoResearchProposal"
+] as const;
 
 export function createAgentTurnDisplayAdapterAPlus(input: Readonly<{
   host: AgentTurnHost;
@@ -40,7 +50,7 @@ export function createAgentTurnDisplayAdapterAPlus(input: Readonly<{
         new Date(input.host.now()).toISOString()
       );
       const body = activity.type === "final-delta"
-        ? sanitizeConversationAssistantStreamForDisplay(`${message.body}${activity.delta}`)
+        ? sanitizeStructuredStreamForDisplay(`${message.body}${activity.delta}`, AI_MESSAGE_TECHNICAL_MARKERS)
         : message.body;
       return {
         workspace: updateAiMessage(current, message.id, body, "streaming", { agentTrace: nextTrace }),
@@ -88,7 +98,7 @@ function updateAssistant(
   input: Readonly<{ host: AgentTurnHost; prepared: PreparedAgentTurnAPlus }>,
   body: string
 ): void {
-  const visible = sanitizeConversationAssistantStreamForDisplay(body);
+  const visible = sanitizeStructuredStreamForDisplay(body, AI_MESSAGE_TECHNICAL_MARKERS);
   input.host.commitWorkspace((current) => {
     const message = current.ai.messages.find((candidate) => candidate.id === input.prepared.assistantMessageId);
     if (!message) return { workspace: current, value: undefined };

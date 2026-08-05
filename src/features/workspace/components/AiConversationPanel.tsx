@@ -1390,7 +1390,6 @@ export function getVisibleAiMessageBody(body: string): string {
 
 const AI_MESSAGE_TECHNICAL_MARKERS = [
   "morphoProjectContinuityPatch",
-  "morphoConversationCheckpoint",
   "morphoDesignDefinitionProposal",
   "morphoConceptDirectionProposal",
   "morphoComparisonAnalysis",

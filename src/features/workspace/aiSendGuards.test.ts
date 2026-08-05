@@ -7,7 +7,7 @@ import {
 } from "./aiSendGuards";
 
 describe("workspace AI send guards", () => {
-  it("suppresses compare, semantic patch, checkpoint, and decision entry when a comparison reply contains a proposal block", () => {
+  it("suppresses compare, semantic patch, and decision entry when a comparison reply contains a proposal block", () => {
     const reply = [
       "Compare prose.",
       "```json",
@@ -32,16 +32,6 @@ describe("workspace AI send guards", () => {
           ]
         }
       }),
-      "```",
-      "```json",
-      JSON.stringify({
-        morphoConversationCheckpoint: {
-          threadGoal: "Continue comparison.",
-          progress: ["Compared objects."],
-          openThreads: [],
-          nextTurnAnchor: "Ask user to decide."
-        }
-      }),
       "```"
     ].join("\n");
 
@@ -49,7 +39,6 @@ describe("workspace AI send guards", () => {
       hasBlockingProposalBlock: true,
       allowComparisonAnalysis: false,
       allowSemanticPatch: false,
-      allowConversationCheckpoint: false,
       allowComparisonDecisionEntry: false
     });
   });
@@ -59,7 +48,6 @@ describe("workspace AI send guards", () => {
       hasBlockingProposalBlock: false,
       allowComparisonAnalysis: true,
       allowSemanticPatch: true,
-      allowConversationCheckpoint: true,
       allowComparisonDecisionEntry: true
     });
   });

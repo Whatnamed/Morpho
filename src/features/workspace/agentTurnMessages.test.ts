@@ -82,7 +82,6 @@ describe("agent turn messages", () => {
       assistantBody: "",
       createdAt: "2026-07-05T00:00:00.000Z",
       contextObjectIds: ["direction-soft-rail"],
-      conversationLaneKey: "conversation|focus=directionAndVisual|task=general",
       workIntent: "discussion",
       agentTurnId: "agent-turn-a",
       agentTrace: {
@@ -101,7 +100,6 @@ describe("agent turn messages", () => {
         contextObjectIds: ["direction-soft-rail"],
         taskMode: "chatAnalysis",
         workIntent: "discussion",
-        conversationLaneKey: "conversation|focus=directionAndVisual|task=general",
         agentTurnId: "agent-turn-a",
         pairedMessageId: "assistant-agent-turn"
       },
@@ -113,7 +111,6 @@ describe("agent turn messages", () => {
         contextObjectIds: ["direction-soft-rail"],
         taskMode: "chatAnalysis",
         workIntent: "discussion",
-        conversationLaneKey: "conversation|focus=directionAndVisual|task=general",
         agentTurnId: "agent-turn-a",
         pairedMessageId: "user-agent-turn",
         agentTrace: {
@@ -150,7 +147,6 @@ describe("agent turn messages", () => {
       assistantBody: "",
       createdAt: "2026-07-25T00:00:00.000Z",
       contextObjectIds: [],
-      conversationLaneKey: "conversation|project=ocean-buoy",
       workIntent: "discussion",
       agentTurnId: `turn-${outcome}`,
       agentTrace: {
@@ -217,7 +213,6 @@ describe("agent turn messages", () => {
       assistantBody: "",
       createdAt: "2026-07-25T00:00:00.000Z",
       contextObjectIds: [],
-      conversationLaneKey: "conversation|project=ocean-buoy",
       workIntent: "discussion",
       agentTurnId: `turn-${outcome}`
     });

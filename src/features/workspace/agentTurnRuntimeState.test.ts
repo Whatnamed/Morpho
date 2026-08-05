@@ -12,7 +12,6 @@ describe("Agent turn runtime state", () => {
     const agentWorkLedger = createAgentTurnWorkLedger();
     const state = createAgentTurnRuntimeState({
       conversationContext: {
-        laneKey: "lane-unit",
         messages: [],
         rawMessageCount: 0,
         coveredMessageCount: 0,

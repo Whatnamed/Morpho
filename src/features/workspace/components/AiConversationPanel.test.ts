@@ -151,7 +151,7 @@ describe("AiConversationPanel", () => {
     expect(html).not.toContain("citation-link-minimal");
   });
 
-  it("does not expose deprecated lane checkpoint feedback or checkpoint content", () => {
+  it("does not expose deprecated conversation checkpoint feedback", () => {
     const workspace = createInitialWorkspace();
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
@@ -159,33 +159,12 @@ describe("AiConversationPanel", () => {
           ...workspace,
           ai: {
             ...workspace.ai,
-            conversationCheckpoints: [
-              {
-                id: "conversation-checkpoint-1",
-                laneKey: "lane-direction",
-                focusArea: "directionAndVisual",
-                focusUpdatedAt: "2026-07-01T08:00:00.000Z",
-                taskKind: "general",
-                anchorObjectIds: [],
-                targetDirectionIds: [],
-                sourceStartMessageId: "ai-user-1",
-                sourceEndMessageId: "ai-assistant-1",
-                sourceMessageCount: 8,
-                createdAt: "2026-07-01T08:05:00.000Z",
-                updatedAt: "2026-07-01T08:05:00.000Z",
-                threadGoal: "当前讨论聚焦在柔光轨道方向的转角连续性。",
-                progress: ["已讨论到低位导光需要保持连续。"],
-                openThreads: ["仍待确认转角施工复杂度。"],
-                nextTurnAnchor: "下一步比较转角结构。"
-              }
-            ],
             messages: [
               {
                 id: "ai-assistant-checkpoint-feedback",
                 role: "assistant",
                 body: "继续从转角连续性说。",
-                status: "done",
-                conversationCheckpointId: "conversation-checkpoint-1"
+                status: "done"
               }
             ]
           }
@@ -196,7 +175,6 @@ describe("AiConversationPanel", () => {
     expect(html).not.toContain("已整理当前讨论脉络");
     expect(html).not.toContain("后续同一工作重点的对话会使用这份讨论整理与最近消息保持连续");
     expect(html).not.toContain("当前讨论聚焦在柔光轨道方向的转角连续性");
-    expect(html).not.toContain("morphoConversationCheckpoint");
   });
 
   it("keeps canvas-placed proposals out of the chat editor surface", () => {

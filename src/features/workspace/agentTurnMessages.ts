@@ -16,7 +16,6 @@ type AppendAgentTurnMessagesInput = {
   assistantBody: string;
   createdAt: string;
   contextObjectIds: string[];
-  conversationLaneKey: string;
   workIntent: AiWorkIntent;
   taskMode?: AiTaskMode;
   promptContractVersion?: string;
@@ -94,7 +93,6 @@ export function appendAgentTurnMessages(
           taskMode: input.taskMode ?? "chatAnalysis",
           workIntent: input.workIntent,
           contextVisibility: input.contextVisibility ?? "model",
-          conversationLaneKey: input.conversationLaneKey,
           promptContractVersion: input.promptContractVersion,
           taskStrategy: input.taskStrategy,
           agentTurnId: input.agentTurnId,
@@ -111,7 +109,6 @@ export function appendAgentTurnMessages(
           taskMode: input.taskMode ?? "chatAnalysis",
           workIntent: input.workIntent,
           contextVisibility: input.contextVisibility ?? "model",
-          conversationLaneKey: input.conversationLaneKey,
           promptContractVersion: input.promptContractVersion,
           taskStrategy: input.taskStrategy,
           agentTurnId: input.agentTurnId,

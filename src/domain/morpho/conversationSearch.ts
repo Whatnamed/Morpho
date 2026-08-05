@@ -20,7 +20,6 @@ export type ConversationSearchMessage = {
   body: string;
   createdAt?: string;
   status?: AiMessage["status"];
-  conversationLaneKey?: string;
 };
 
 export type ConversationSearchMatch = {
@@ -111,8 +110,7 @@ function toSearchMessage(message: AiMessage): ConversationSearchMessage {
     role: message.role,
     body: message.body,
     createdAt: message.createdAt,
-    status: message.status,
-    conversationLaneKey: message.conversationLaneKey
+    status: message.status
   };
 }
 

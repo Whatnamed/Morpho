@@ -2,10 +2,6 @@ import {
   buildContinuousConversationContext,
   type ConversationTokenLimits
 } from "@/domain/morpho/conversationCompaction";
-import {
-  buildConversationLaneKey,
-  resolveConversationLaneAnchors
-} from "@/domain/morpho/conversationCheckpoint";
 import { buildAgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
 import {
   createProviderInputSnapshot,
@@ -211,17 +207,6 @@ export async function prepareAgentTurnProductAPlus(
     selectedObjectIds: input.pendingDeliveryDraftTarget ? [] : input.selectedObjectIds
   });
   const providerTaskContext = buildProviderTaskContext(context);
-  const laneAnchors = resolveConversationLaneAnchors(
-    workspace,
-    input.pendingDeliveryDraftTarget ? [] : input.selectedObjectIds
-  );
-  const conversationLaneKey = buildConversationLaneKey({
-    currentFocus: workspace.projectContinuity.currentFocus,
-    taskKind: context.kind,
-    anchorObjectIds: laneAnchors.anchorObjectIds,
-    targetDirectionIds: laneAnchors.targetDirectionIds,
-    visualBranchId: laneAnchors.visualBranchId
-  });
   const controller = new AbortController();
   const createdAt = new Date(host.now()).toISOString();
   const suffix = host.randomSuffix();
@@ -310,7 +295,6 @@ export async function prepareAgentTurnProductAPlus(
       assistantBody: "",
       createdAt,
       contextObjectIds: context.objectIds,
-      conversationLaneKey,
       workIntent: executionWorkIntent,
       taskMode: executionTaskMode,
       promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
@@ -382,7 +366,6 @@ export async function prepareAgentTurnProductAPlus(
   const requiredMemoryUpdates = resolveRequiredAgentMemoryUpdates(input.draft);
   const runtimeState = createAgentTurnRuntimeState({
     conversationContext: {
-      laneKey: conversationLaneKey,
       ...(conversation.summaryRevision ? { summaryRevision: conversation.summaryRevision } : {}),
       messages: conversation.messages,
       rawMessageCount: conversation.totalUsableMessageCount,
@@ -487,17 +470,6 @@ export function restorePreparedAgentTurnProductAPlus(
       : turnInput.selectedObjectIds
   });
   const providerTaskContext = buildProviderTaskContext(context);
-  const laneAnchors = resolveConversationLaneAnchors(
-    workspace,
-    turnInput.pendingDeliveryDraftTarget ? [] : turnInput.selectedObjectIds
-  );
-  const conversationLaneKey = buildConversationLaneKey({
-    currentFocus: workspace.projectContinuity.currentFocus,
-    taskKind: context.kind,
-    anchorObjectIds: laneAnchors.anchorObjectIds,
-    targetDirectionIds: laneAnchors.targetDirectionIds,
-    visualBranchId: laneAnchors.visualBranchId
-  });
   const conversation = buildContinuousConversationContext({
     workspace,
     limits: runtime.input.conversationTokenLimits
@@ -505,7 +477,6 @@ export function restorePreparedAgentTurnProductAPlus(
   const controller = new AbortController();
   const runtimeState = createAgentTurnRuntimeState({
     conversationContext: {
-      laneKey: conversationLaneKey,
       ...(conversation.summaryRevision ? { summaryRevision: conversation.summaryRevision } : {}),
       messages: conversation.messages,
       rawMessageCount: conversation.totalUsableMessageCount,

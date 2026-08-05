@@ -407,7 +407,6 @@ function createFixture() {
   });
   const runtimeState = createAgentTurnRuntimeState({
     conversationContext: {
-      laneKey: "project",
       messages: [],
       rawMessageCount: 0,
       coveredMessageCount: 0,

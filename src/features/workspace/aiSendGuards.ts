@@ -8,7 +8,6 @@ export type SameReplyStructuredWritePolicy = {
   hasBlockingProposalBlock: boolean;
   allowComparisonAnalysis: boolean;
   allowSemanticPatch: boolean;
-  allowConversationCheckpoint: boolean;
   allowComparisonDecisionEntry: boolean;
 };
 
@@ -30,7 +29,6 @@ export function buildSameReplyStructuredWritePolicy(
     hasBlockingProposalBlock,
     allowComparisonAnalysis: executionWorkIntent === "comparison" && !hasBlockingProposalBlock,
     allowSemanticPatch: !hasBlockingProposalBlock,
-    allowConversationCheckpoint: !hasBlockingProposalBlock,
     allowComparisonDecisionEntry: executionWorkIntent === "comparison" && !hasBlockingProposalBlock
   };
 }

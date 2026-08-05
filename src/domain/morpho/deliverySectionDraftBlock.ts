@@ -41,7 +41,6 @@ const BLOCKING_PROPOSAL_KEYS = [
   "morphoConceptDirectionProposal",
   "morphoComparisonAnalysis",
   "morphoProjectContinuityPatch",
-  "morphoConversationCheckpoint",
   "morphoResearchProposal"
 ] as const;
 const DELIVERY_TECHNICAL_MARKERS = [DELIVERY_DRAFT_MARKER, ...BLOCKING_PROPOSAL_KEYS] as const;

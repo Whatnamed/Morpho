@@ -1,8 +1,4 @@
 import { buildConversationCompactionPlan } from "@/domain/morpho/conversationCompaction";
-import {
-  buildConversationLaneKey,
-  resolveConversationLaneAnchors
-} from "@/domain/morpho/conversationCheckpoint";
 import type { AgentTurnOutcome, AiMessage } from "@/domain/morpho/types";
 import type {
   APlusAgentContinuationItem,
@@ -342,14 +338,6 @@ export async function runManualCompactionTurn(
     draft: input.draft,
     selectedObjectIds: input.selectedObjectIds
   });
-  const anchors = resolveConversationLaneAnchors(workspace, input.selectedObjectIds);
-  const laneKey = buildConversationLaneKey({
-    currentFocus: workspace.projectContinuity.currentFocus,
-    taskKind: context.kind,
-    anchorObjectIds: anchors.anchorObjectIds,
-    targetDirectionIds: anchors.targetDirectionIds,
-    visualBranchId: anchors.visualBranchId
-  });
   const now = new Date(host.now()).toISOString();
   const suffix = host.randomSuffix();
   const localAgentTurnId = `a-plus-manual-compact-${host.now()}-${suffix}`;
@@ -363,7 +351,6 @@ export async function runManualCompactionTurn(
       assistantBody: getManualCompactionStatusText("running"),
       createdAt: now,
       contextObjectIds: context.objectIds,
-      conversationLaneKey: laneKey,
       workIntent: "discussion",
       taskMode: "chatAnalysis",
       contextVisibility: "uiOnly",

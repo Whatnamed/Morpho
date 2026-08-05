@@ -11,7 +11,6 @@ import type { RequiredAgentReadState } from "./agentTaskStrategy";
 import type { AgentTurnWorkLedger } from "./agentTurnMessages";
 
 export type AgentTurnConversationContext = {
-  laneKey: string;
   summaryRevision?: ConversationSummaryRevision;
   messages: ConversationMessageForContext[];
   rawMessageCount: number;

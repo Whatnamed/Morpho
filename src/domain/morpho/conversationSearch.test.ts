@@ -76,9 +76,9 @@ describe("project conversation search", () => {
         ...workspace.ai,
         messages: [
           ...workspace.ai.messages,
-          { ...item("ui-only", "user", "diagnostic ui-only", "10:06", "lane-c"), contextVisibility: "uiOnly" },
-          { ...item("failed", "assistant", "diagnostic failed", "10:07", "lane-c"), status: "failed", error: "upstream" },
-          { ...item("cancelled", "assistant", "diagnostic cancelled", "10:08", "lane-c"), status: "cancelled" }
+          { ...item("ui-only", "user", "diagnostic ui-only", "10:06"), contextVisibility: "uiOnly" },
+          { ...item("failed", "assistant", "diagnostic failed", "10:07"), status: "failed", error: "upstream" },
+          { ...item("cancelled", "assistant", "diagnostic cancelled", "10:08"), status: "cancelled" }
         ]
       }
     };
@@ -98,12 +98,12 @@ describe("project conversation search", () => {
 function fixture(): MorphoWorkspace {
   const workspace = createBlankWorkspace("project-search-test");
   const messages: AiMessage[] = [
-    item("m1", "user", "最早先讨论夜间路径。", "10:00", "lane-a"),
-    item("m2", "assistant", "先梳理路径与扶持边界。", "10:01", "lane-a"),
-    item("m3", "user", "后来为什么把柔光轨道设为默认参考？", "10:02", "lane-b"),
-    item("m4", "assistant", "因为它最能保持主方向的一致性，所以设置默认参考。", "10:03", "lane-b"),
-    item("m5", "user", "现在进度到哪里？", "10:04", "lane-c"),
-    { ...item("m6", "assistant", "未完成内容", "10:05", "lane-c"), status: "streaming" }
+    item("m1", "user", "最早先讨论夜间路径。", "10:00"),
+    item("m2", "assistant", "先梳理路径与扶持边界。", "10:01"),
+    item("m3", "user", "后来为什么把柔光轨道设为默认参考？", "10:02"),
+    item("m4", "assistant", "因为它最能保持主方向的一致性，所以设置默认参考。", "10:03"),
+    item("m5", "user", "现在进度到哪里？", "10:04"),
+    { ...item("m6", "assistant", "未完成内容", "10:05"), status: "streaming" }
   ];
   return { ...workspace, ai: { ...workspace.ai, messages } };
 }
@@ -112,15 +112,13 @@ function item(
   id: string,
   role: "user" | "assistant",
   body: string,
-  time: string,
-  conversationLaneKey: string
+  time: string
 ): AiMessage {
   return {
     id,
     role,
     body,
     createdAt: `2026-07-13T${time}:00.000Z`,
-    conversationLaneKey,
     status: "done"
   };
 }

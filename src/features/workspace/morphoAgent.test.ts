@@ -78,7 +78,6 @@ describe("agent conversation context", () => {
 
   it("places a source-bounded conversation summary behind real project state", () => {
     const prompt = buildAgentConversationPromptBlock({
-      laneKey: "lane-1",
       summaryRevision: {
         id: "summary-1",
         sourceStartMessageId: "message-1",
@@ -105,7 +104,6 @@ describe("agent conversation context", () => {
     expect(prompt).toContain("当前用户输入 > 真实项目状态与 Memory Kernel");
     expect(prompt).toContain("继续收敛当前浮标概念方向");
     expect(prompt).not.toContain("summarySourceRange: message-1..message-8");
-    expect(prompt).not.toContain("morphoConversationCheckpoint");
   });
 
 });

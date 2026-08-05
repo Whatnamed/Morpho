@@ -32,7 +32,6 @@ import {
 import { buildAgentDefaultMemoryContext, type AgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
 
 export type AgentConversationContext = {
-  laneKey: string;
   summaryRevision?: ConversationSummaryRevision;
   messages: Array<{ id?: string; role: "user" | "assistant"; body: string; createdAt?: string }>;
   rawMessageCount: number;

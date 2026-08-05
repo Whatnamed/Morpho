@@ -45,7 +45,6 @@ export type AgentStreamContext = {
   compressibleTokens: number;
   pressure: "normal" | "prepare" | "compact";
   compacted: boolean;
-  checkpointRequested: boolean;
   budgetGeneration: number;
   retried?: boolean;
 };
