@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 16,
+  "schemaVersion": 17,
   "project": {
     "id": "project-morpho-case-study",
     "title": "测试",
@@ -17,7 +17,6 @@
       "createdBy": "user",
       "visibility": "active",
       "role": "reference",
-      "imageVariant": "path",
       "assetId": "asset-jpg-cf696804-574f-4489-a970-de5cff405dfb",
       "isDefaultReference": false,
       "updatedAt": "2026-07-12T12:45:41.492Z"
@@ -87,7 +86,6 @@
       "createdBy": "user",
       "visibility": "active",
       "role": "reference",
-      "imageVariant": "path",
       "assetId": "asset-7add87e4d5b3af015eefc40e5cbdd858-jpg-f7b04d18-548d-4abf-b19e-e06d7ee8c933",
       "updatedAt": "2026-07-12T12:45:41.492Z",
       "isDefaultReference": false
@@ -100,7 +98,6 @@
       "createdBy": "user",
       "visibility": "active",
       "role": "reference",
-      "imageVariant": "path",
       "assetId": "asset-73398ac0fdbbfb4dc080443a67ad7257-jpg-a5293b00-c6e5-4e36-a419-83e46f840154",
       "isDefaultReference": false,
       "updatedAt": "2026-07-12T12:45:41.492Z"
@@ -113,7 +110,6 @@
       "createdBy": "user",
       "visibility": "active",
       "role": "reference",
-      "imageVariant": "path",
       "assetId": "asset-8735393f661c7b763aab851f51ec9515-jpg-62496dcd-5275-4f6f-9315-66088de12ee8",
       "isDefaultReference": false,
       "updatedAt": "2026-07-12T12:45:41.492Z"
@@ -126,7 +122,6 @@
       "createdBy": "user",
       "visibility": "active",
       "role": "reference",
-      "imageVariant": "path",
       "assetId": "asset-c8f9eefd0dc341b9cb432945fb811cd7-jpg-c885c98b-32da-45df-a668-8bf9eb20c9b8",
       "isDefaultReference": false,
       "updatedAt": "2026-07-12T12:45:41.492Z"
@@ -706,7 +701,6 @@
       "createdBy": "ai",
       "visibility": "active",
       "role": "conceptImage",
-      "imageVariant": "rail",
       "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
       "directionId": "direction-proposal-direction-1783671299082-1",
       "generation": {
@@ -775,7 +769,6 @@
       "createdBy": "ai",
       "visibility": "active",
       "role": "conceptImage",
-      "imageVariant": "rail",
       "assetId": "asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095",
       "directionId": "direction-proposal-direction-1783671299082-2",
       "generation": {
@@ -844,7 +837,6 @@
       "createdBy": "ai",
       "visibility": "active",
       "role": "conceptImage",
-      "imageVariant": "rail",
       "assetId": "asset-grs-result-1783682287791-jpg-d4f07c12-7497-4067-ad09-15baa6449672",
       "directionId": "direction-proposal-direction-1783671299082-3",
       "generation": {
@@ -913,7 +905,6 @@
       "createdBy": "ai",
       "visibility": "active",
       "role": "conceptImage",
-      "imageVariant": "rail",
       "assetId": "asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131",
       "directionId": "direction-proposal-direction-1783671299082-1",
       "generation": {
@@ -968,7 +959,6 @@
       "createdBy": "ai",
       "visibility": "active",
       "role": "conceptImage",
-      "imageVariant": "rail",
       "assetId": "asset-grs-result-1783686836365-jpg-bd78734a-811a-4f87-a526-9a8e1862008e",
       "directionId": "direction-proposal-direction-1783671299082-1",
       "generation": {
@@ -1023,7 +1013,6 @@
       "createdBy": "ai",
       "visibility": "active",
       "role": "conceptImage",
-      "imageVariant": "rail",
       "assetId": "asset-grs-result-1783696461343-jpg-a7e57f25-1c72-4a46-a87a-c5364f38c79a",
       "directionId": "direction-proposal-direction-1783671299082-1",
       "generation": {
@@ -1070,7 +1059,6 @@
       "createdBy": "ai",
       "visibility": "active",
       "role": "conceptImage",
-      "imageVariant": "rail",
       "assetId": "asset-grs-result-1783696671929-jpg-b9c740ba-38db-4901-b771-631ba4e96464",
       "directionId": "direction-proposal-direction-1783671299082-1",
       "generation": {
@@ -1117,7 +1105,6 @@
       "createdBy": "ai",
       "visibility": "active",
       "role": "conceptImage",
-      "imageVariant": "rail",
       "assetId": "asset-grs-result-1783696937588-jpg-721675ec-7336-47de-894b-73f827a617ae",
       "directionId": "direction-proposal-direction-1783671299082-1",
       "generation": {
@@ -1164,7 +1151,6 @@
       "createdBy": "ai",
       "visibility": "active",
       "role": "conceptImage",
-      "imageVariant": "rail",
       "assetId": "asset-grs-result-1783696973466-jpg-54f46fc4-284d-44bf-b483-3f470fed0a6f",
       "directionId": "direction-proposal-direction-1783671299082-1",
       "generation": {
@@ -1211,7 +1197,6 @@
       "createdBy": "ai",
       "visibility": "active",
       "role": "conceptImage",
-      "imageVariant": "rail",
       "assetId": "asset-grs-result-1783855353992-png-03cabcf6-e36e-4e6d-893d-46f0f6cdc146",
       "directionId": "direction-proposal-direction-1783671299082-1",
       "generation": {
@@ -1259,7 +1244,6 @@
       "createdBy": "ai",
       "visibility": "active",
       "role": "conceptImage",
-      "imageVariant": "rail",
       "assetId": "asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
       "directionId": "direction-proposal-direction-1783671299082-1",
       "generation": {
@@ -1307,7 +1291,6 @@
       "createdBy": "ai",
       "visibility": "active",
       "role": "conceptImage",
-      "imageVariant": "rail",
       "assetId": "asset-grs-result-1783860534073-png-a896841d-2804-4ebc-885e-51bc95e6056f",
       "directionId": "direction-proposal-direction-1783671299082-1",
       "generation": {
@@ -1355,7 +1338,6 @@
       "createdBy": "ai",
       "visibility": "active",
       "role": "conceptImage",
-      "imageVariant": "rail",
       "assetId": "asset-grs-result-1783860809826-png-c73887dc-9d04-420f-af1b-771c1e2c146f",
       "directionId": "direction-proposal-direction-1783671299082-1",
       "generation": {
@@ -1484,7 +1466,6 @@
       "createdBy": "ai",
       "visibility": "active",
       "role": "conceptImage",
-      "imageVariant": "rail",
       "assetId": "asset-grs-result-1783889212798-png-18d08576-b883-4acc-b413-e98d58f29139",
       "generation": {
         "modelId": "gpt-image-2",
@@ -1523,7 +1504,6 @@
       "createdBy": "ai",
       "visibility": "active",
       "role": "conceptImage",
-      "imageVariant": "rail",
       "assetId": "asset-grs-result-1783889911958-png-2e05109c-693c-4f6f-bf8a-c62b70c92b83",
       "generation": {
         "modelId": "gpt-image-2",
@@ -1570,7 +1550,6 @@
       "createdBy": "ai",
       "visibility": "active",
       "role": "conceptImage",
-      "imageVariant": "rail",
       "assetId": "asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead",
       "generation": {
         "modelId": "gpt-image-2",
@@ -24518,8 +24497,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783693500646",
@@ -24532,8 +24510,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-user-compact-1783694432905",
@@ -24546,7 +24523,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none",
         "contextVisibility": "uiOnly"
       },
       {
@@ -24561,8 +24537,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none",
-        "conversationCheckpointId": "conversation-checkpoint-conversation-focus-directionAndVisual-epoch-2026-07-10T12-33-56-370Z-task-genera-20260710144043",
         "contextVisibility": "uiOnly"
       },
       {
@@ -24575,8 +24549,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783695959852",
@@ -24589,8 +24562,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-user-agent-1783696009742",
@@ -24602,8 +24574,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783696009742",
@@ -24616,8 +24587,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-user-agent-1783696177984",
@@ -24629,8 +24599,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783696177984",
@@ -24644,7 +24613,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none",
         "error": "请先登录 Morpho。"
       },
       {
@@ -24657,8 +24625,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783696192925",
@@ -24672,7 +24639,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none",
         "error": "请先登录 Morpho。"
       },
       {
@@ -24685,8 +24651,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783696196279",
@@ -24700,7 +24665,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none",
         "error": "请先登录 Morpho。"
       },
       {
@@ -24713,8 +24677,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783696198944",
@@ -24728,7 +24691,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none",
         "error": "请先登录 Morpho。"
       },
       {
@@ -24741,8 +24703,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783696328573",
@@ -24755,8 +24716,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-user-agent-1783696406832",
@@ -24768,8 +24728,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783696406832",
@@ -24782,8 +24741,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-user-agent-1783696848711",
@@ -24795,8 +24753,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T15:17:51.934Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783696848711",
@@ -24809,8 +24766,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T15:17:51.934Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-clipboard-empty-1783853075530",
@@ -24836,8 +24792,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T15:22:53.470Z|task=general|objects=image-generated-asset-grs-result-1783696973466-jpg-54f46fc4-284d-44bf-b483-3f470fed0a6f|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783855027796",
@@ -24850,8 +24805,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T15:22:53.470Z|task=general|objects=image-generated-asset-grs-result-1783696973466-jpg-54f46fc4-284d-44bf-b483-3f470fed0a6f|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-user-agent-1783855231980",
@@ -24863,8 +24817,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T15:22:53.470Z|task=general|objects=image-generated-asset-grs-result-1783696973466-jpg-54f46fc4-284d-44bf-b483-3f470fed0a6f|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783855231980",
@@ -24877,8 +24830,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T15:22:53.470Z|task=general|objects=image-generated-asset-grs-result-1783696973466-jpg-54f46fc4-284d-44bf-b483-3f470fed0a6f|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-user-agent-1783860167521",
@@ -24891,8 +24843,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:42:16.990Z|task=general|objects=image-generated-asset-grs-result-1783855353992-png-03cabcf6-e36e-4e6d-893d-46f0f6cdc146,image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783860167521",
@@ -24907,7 +24858,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:42:16.990Z|task=general|objects=image-generated-asset-grs-result-1783855353992-png-03cabcf6-e36e-4e6d-893d-46f0f6cdc146,image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b|directions=direction-proposal-direction-1783671299082-1|branch=none",
         "comparisonAnalysisId": "comparison-ai-assistant-agent-1783860167521"
       },
       {
@@ -24917,8 +24867,7 @@
         "createdAt": "2026-07-12T12:45:05.666Z",
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:44:27.770Z|task=general|objects=none|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783860305666",
@@ -24928,8 +24877,7 @@
         "status": "done",
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:44:27.770Z|task=general|objects=none|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-user-agent-1783860428638",
@@ -24942,8 +24890,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:45:41.492Z|task=general|objects=image-generated-asset-grs-result-1783855353992-png-03cabcf6-e36e-4e6d-893d-46f0f6cdc146,image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783860428638",
@@ -24957,8 +24904,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:45:41.492Z|task=general|objects=image-generated-asset-grs-result-1783855353992-png-03cabcf6-e36e-4e6d-893d-46f0f6cdc146,image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-user-agent-1783873628001",
@@ -24972,8 +24918,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:53:29.839Z|task=general|objects=image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b,image-generated-asset-grs-result-1783860534073-png-a896841d-2804-4ebc-885e-51bc95e6056f,image-generated-asset-grs-result-1783860809826-png-c73887dc-9d04-420f-af1b-771c1e2c146f|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783873628001",
@@ -24989,7 +24934,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:53:29.839Z|task=general|objects=image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b,image-generated-asset-grs-result-1783860534073-png-a896841d-2804-4ebc-885e-51bc95e6056f,image-generated-asset-grs-result-1783860809826-png-c73887dc-9d04-420f-af1b-771c1e2c146f|directions=direction-proposal-direction-1783671299082-1|branch=none",
         "error": "当前 Agent 回合超过允许的执行步数，请收窄任务范围后重试。"
       },
       {
@@ -24999,8 +24943,7 @@
         "createdAt": "2026-07-12T20:11:49.830Z",
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:53:29.839Z|task=general|objects=none|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783887109830",
@@ -25011,7 +24954,6 @@
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:53:29.839Z|task=general|objects=none|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T20:11:49.830Z",
           "parts": [
@@ -25061,8 +25003,7 @@
         "createdAt": "2026-07-12T20:13:07.647Z",
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:53:29.839Z|task=general|objects=none|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783887187647",
@@ -25073,7 +25014,6 @@
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:53:29.839Z|task=general|objects=none|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T20:13:07.647Z",
           "parts": [],
@@ -25090,8 +25030,7 @@
         "createdAt": "2026-07-12T20:13:34.819Z",
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:53:29.839Z|task=general|objects=none|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783887214819",
@@ -25102,7 +25041,6 @@
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:53:29.839Z|task=general|objects=none|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T20:13:34.819Z",
           "parts": [
@@ -25152,8 +25090,7 @@
         "createdAt": "2026-07-12T20:18:22.431Z",
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:53:29.839Z|task=general|objects=none|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783887502431",
@@ -25164,7 +25101,6 @@
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:53:29.839Z|task=general|objects=none|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T20:18:22.431Z",
           "parts": [
@@ -25214,8 +25150,7 @@
         "createdAt": "2026-07-12T20:23:04.982Z",
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:53:29.839Z|task=general|objects=none|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783887784982",
@@ -25226,7 +25161,6 @@
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:53:29.839Z|task=general|objects=none|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T20:23:04.982Z",
           "parts": [
@@ -25356,8 +25290,7 @@
         "createdAt": "2026-07-12T20:28:11.517Z",
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:53:29.839Z|task=general|objects=none|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783888091517",
@@ -25368,7 +25301,6 @@
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T12:53:29.839Z|task=general|objects=none|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T20:28:11.517Z",
           "parts": [
@@ -25537,8 +25469,7 @@
           "direction-proposal-direction-1783671299082-1"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=research|epoch=2026-07-12T20:28:14.794Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783888284250",
@@ -25552,7 +25483,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=research|epoch=2026-07-12T20:28:14.794Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T20:31:24.250Z",
           "parts": [
@@ -25598,8 +25528,7 @@
         "createdAt": "2026-07-12T20:33:48.817Z",
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=research|epoch=2026-07-12T20:31:26.821Z|task=general|objects=none|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783888428817",
@@ -25610,7 +25539,6 @@
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=research|epoch=2026-07-12T20:31:26.821Z|task=general|objects=none|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T20:33:48.817Z",
           "parts": [
@@ -25657,8 +25585,7 @@
         "createdAt": "2026-07-12T20:46:50.384Z",
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=research|epoch=2026-07-12T20:31:26.821Z|task=general|objects=none|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783889210384",
@@ -25669,7 +25596,6 @@
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=research|epoch=2026-07-12T20:31:26.821Z|task=general|objects=none|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T20:46:50.384Z",
           "parts": [
@@ -25715,8 +25641,7 @@
         "createdAt": "2026-07-12T20:58:29.623Z",
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:46:53.003Z|task=general|objects=none|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783889909623",
@@ -25727,7 +25652,6 @@
         "contextObjectIds": [],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:46:53.003Z|task=general|objects=none|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T20:58:29.623Z",
           "parts": [
@@ -25775,8 +25699,7 @@
           "image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783890134509",
@@ -25789,7 +25712,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T21:02:14.509Z",
           "parts": [
@@ -25838,8 +25760,7 @@
           "image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783890160968",
@@ -25852,7 +25773,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T21:02:40.968Z",
           "parts": [
@@ -25901,8 +25821,7 @@
           "image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783890178425",
@@ -25915,7 +25834,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T21:02:58.425Z",
           "parts": [
@@ -25964,8 +25882,7 @@
           "image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783890251396",
@@ -25978,7 +25895,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T21:04:11.396Z",
           "parts": [
@@ -26027,8 +25943,7 @@
           "image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783890271566",
@@ -26041,7 +25956,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T21:04:31.566Z",
           "parts": [
@@ -26090,8 +26004,7 @@
           "image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783890332540",
@@ -26104,7 +26017,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T21:05:32.540Z",
           "parts": [
@@ -26153,8 +26065,7 @@
           "image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783890377939",
@@ -26167,7 +26078,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T21:06:17.939Z",
           "parts": [
@@ -26216,8 +26126,7 @@
           "image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783890415968",
@@ -26230,7 +26139,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T21:06:55.968Z",
           "parts": [
@@ -26279,8 +26187,7 @@
           "image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783890460012",
@@ -26293,7 +26200,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T21:07:40.012Z",
           "parts": [
@@ -26320,8 +26226,7 @@
           "image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783890564232",
@@ -26334,7 +26239,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T21:09:24.232Z",
           "parts": [],
@@ -26353,8 +26257,7 @@
           "image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783890654199",
@@ -26367,7 +26270,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T21:10:54.199Z",
           "parts": [
@@ -26395,8 +26297,7 @@
           "image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead"
         ],
         "taskMode": "chatAnalysis",
-        "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none"
+        "workIntent": "discussion"
       },
       {
         "id": "ai-assistant-agent-1783890765395",
@@ -26409,7 +26310,6 @@
         ],
         "taskMode": "chatAnalysis",
         "workIntent": "discussion",
-        "conversationLaneKey": "conversation|focus=directionAndVisual|epoch=2026-07-12T20:58:32.335Z|task=general|objects=image-generated-asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead|directions=none|branch=none",
         "agentTrace": {
           "startedAt": "2026-07-12T21:12:45.395Z",
           "parts": [
@@ -26427,34 +26327,6 @@
           "completedAt": "2026-07-12T21:12:46.853Z",
           "responseId": "mock-response-3"
         }
-      }
-    ],
-    "conversationCheckpoints": [
-      {
-        "id": "conversation-checkpoint-conversation-focus-directionAndVisual-epoch-2026-07-10T12-33-56-370Z-task-genera-20260710144043",
-        "laneKey": "conversation|focus=directionAndVisual|epoch=2026-07-10T12:33:56.370Z|task=general|objects=image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131|directions=direction-proposal-direction-1783671299082-1|branch=none",
-        "focusArea": "directionAndVisual",
-        "focusUpdatedAt": "2026-07-10T12:33:56.370Z",
-        "taskKind": "general",
-        "anchorObjectIds": [
-          "image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131"
-        ],
-        "targetDirectionIds": [
-          "direction-proposal-direction-1783671299082-1"
-        ],
-        "sourceStartMessageId": "ai-user-agent-1783693500646",
-        "sourceEndMessageId": "ai-assistant-compact-1783694432905",
-        "sourceMessageCount": 4,
-        "createdAt": "2026-07-10T14:40:43.101Z",
-        "updatedAt": "2026-07-10T14:40:43.101Z",
-        "threadGoal": "确认上下文链路正常且不对画布对象执行创建、修改或删除操作。",
-        "progress": [
-          "已按要求回复“上下文链路正常”。",
-          "未执行任何画布对象操作。",
-          "当前用户请求压缩讨论脉络。"
-        ],
-        "openThreads": [],
-        "nextTurnAnchor": "等待用户后续指令。"
       }
     ],
     "conversationCompaction": {

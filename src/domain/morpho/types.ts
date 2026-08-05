@@ -22,26 +22,6 @@ export type VisualBranchId = string;
 export type ComparisonAnalysisId = string;
 export type AiTaskMode = "chatAnalysis" | "imageGeneration" | "researchOperation";
 
-export type ConversationCheckpoint = {
-  id: string;
-  laneKey: string;
-  focusArea: ProjectFocusArea;
-  focusUpdatedAt: string;
-  taskKind: "research" | "general" | "directionPreview" | "visualDevelopment" | "designDefinition" | "conceptDirection" | "comparison";
-  anchorObjectIds: MorphoObjectId[];
-  targetDirectionIds: MorphoObjectId[];
-  visualBranchId?: VisualBranchId;
-  sourceStartMessageId: string;
-  sourceEndMessageId: string;
-  sourceMessageCount: number;
-  createdAt: string;
-  updatedAt: string;
-  threadGoal: string;
-  progress: string[];
-  openThreads: string[];
-  nextTurnAnchor?: string;
-};
-
 export type ConversationSummary = {
   threadGoal: string;
   establishedContext: string[];
@@ -393,7 +373,6 @@ export type MorphoObjectBase = {
 export type ImageObject = MorphoObjectBase & {
   type: "image";
   role: ImageRole;
-  imageVariant: "path" | "rail" | "detail" | "scenario" | "cmf" | "supportIsland" | "softGuide";
   assetId?: AssetId;
   directionId?: MorphoObjectId;
   visualBranchId?: VisualBranchId;
@@ -915,8 +894,6 @@ export type AiMessage = {
   proposalId?: string;
   citationIds?: string[];
   continuityEntryIds?: string[];
-  conversationLaneKey?: string;
-  conversationCheckpointId?: string;
   conversationSummaryRevisionId?: string;
   memoryUpdateKeys?: ProjectMemoryKey[];
   stageRecordUpdateKeys?: StageRecordKey[];
@@ -1074,7 +1051,7 @@ export type ProjectWorkingState = {
 };
 
 export type MorphoWorkspace = {
-  schemaVersion: 16;
+  schemaVersion: 17;
   project: {
     id: string;
     title: string;
@@ -1111,7 +1088,6 @@ export type MorphoWorkspace = {
   };
   ai: {
     messages: AiMessage[];
-    conversationCheckpoints: ConversationCheckpoint[];
     conversationCompaction: ConversationCompactionState;
     conversationSummaryRevisions: Record<string, ConversationSummaryRevision>;
     providerContextFrames?: ProviderContextFrame[];

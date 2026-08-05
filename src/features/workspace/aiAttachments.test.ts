@@ -159,7 +159,6 @@ function imageObject(id: string, assetId: string, visibility: "active" | "hidden
     createdBy: "user" as const,
     visibility,
     role: "reference" as const,
-    imageVariant: "path" as const,
     assetId
   };
 }

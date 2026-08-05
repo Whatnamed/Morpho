@@ -243,7 +243,6 @@ function createOutputFixtureWorkspace(): MorphoWorkspace {
         createdBy: "ai",
         visibility: "active",
         role: "primaryVisual",
-        imageVariant: "rail",
         assetId: "asset-hero",
         createdAt: NOW,
         updatedAt: NOW

@@ -150,7 +150,6 @@ function createFixtureWorkspace(options: { includeReferenceOnlyLink?: boolean; t
         createdBy: "user",
         visibility: "active",
         role: "reference",
-        imageVariant: "path",
         assetId: "asset-image"
       },
       "file-card": {

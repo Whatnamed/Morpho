@@ -35,7 +35,10 @@ describe("current case study", () => {
     expect(messages.filter((message) => message.role === "assistant")).toHaveLength(diagnostics.chat.assistantMessageCount);
     expect(messages.some((message) => (message.agentTrace?.parts.length ?? 0) > 0)).toBe(true);
     expect(messages.some((message) => (message.citationIds?.length ?? 0) > 0)).toBe(true);
-    expect(currentCaseStudyWorkspace.ai.conversationCheckpoints).toHaveLength(diagnostics.chat.checkpointCount);
+    expect(Object.keys(currentCaseStudyWorkspace.ai.conversationSummaryRevisions)).toHaveLength(
+      diagnostics.chat.summaryRevisionCount
+    );
+    expect(JSON.stringify(currentCaseStudyWorkspace)).not.toContain("conversationCheckpoints");
   });
 
   it("ships every generated binary asset with matching size and hash", async () => {

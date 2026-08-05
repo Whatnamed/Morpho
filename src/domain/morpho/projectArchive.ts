@@ -129,7 +129,6 @@ export type ArchiveVisualObject = {
   visibility: ImageObject["visibility"];
   assetId?: ImageObject["assetId"];
   role: ImageObject["role"];
-  imageVariant: ImageObject["imageVariant"];
   directionId?: ImageObject["directionId"];
   directionTitle?: string;
   visualBranchId?: ImageObject["visualBranchId"];
@@ -256,7 +255,6 @@ type ArchiveConversationSection =
   | {
       mode: "full";
       messages: AiMessage[];
-      conversationCheckpoints: MorphoWorkspace["ai"]["conversationCheckpoints"];
       conversationCompaction: MorphoWorkspace["ai"]["conversationCompaction"];
       conversationSummaryRevisions: MorphoWorkspace["ai"]["conversationSummaryRevisions"];
       providerContextFrames: NonNullable<MorphoWorkspace["ai"]["providerContextFrames"]>;
@@ -439,7 +437,6 @@ function sanitizeBackupAiState(
 
   return {
     messages: [],
-    conversationCheckpoints: [],
     conversationCompaction: { coveredMessageCount: 0 },
     conversationSummaryRevisions: {},
     providerContextFrames: [],
@@ -696,11 +693,11 @@ function validateEditableBackupScope(
   }
 
   const ai = isRecord(workspaceSnapshot.ai) ? workspaceSnapshot.ai : undefined;
-  if (!ai || !Array.isArray(ai.messages) || !Array.isArray(ai.conversationCheckpoints) || !isRecord(ai.comparisonAnalyses)) {
+  if (!ai || !Array.isArray(ai.messages) || !isRecord(ai.comparisonAnalyses)) {
     diagnostics.push({
       code: "invalid_backup_scope",
       severity: "error",
-      message: "workspaceSnapshot.ai must include messages, conversationCheckpoints, and comparisonAnalyses.",
+      message: "workspaceSnapshot.ai must include messages and comparisonAnalyses.",
       path: "workspaceSnapshot.ai"
     });
   } else {
@@ -719,14 +716,18 @@ function validateEditableBackupScope(
     if (
       options.chat === "none" &&
       (ai.messages.length > 0 ||
-        ai.conversationCheckpoints.length > 0 ||
         Object.keys(ai.comparisonAnalyses).length > 0 ||
-        (isRecord(ai.conversationSummaryRevisions) && Object.keys(ai.conversationSummaryRevisions).length > 0))
+        (isRecord(ai.conversationSummaryRevisions) && Object.keys(ai.conversationSummaryRevisions).length > 0) ||
+        (isRecord(ai.conversationCompaction) &&
+          (typeof ai.conversationCompaction.summaryRevisionId === "string" ||
+            typeof ai.conversationCompaction.coveredThroughMessageId === "string" ||
+            ai.conversationCompaction.coveredMessageCount !== 0)) ||
+        (Array.isArray(ai.providerContextFrames) && ai.providerContextFrames.length > 0))
     ) {
       diagnostics.push({
         code: "backup_chat_scope_mismatch",
         severity: "error",
-        message: "options.chat = none requires empty ai.messages, ai.conversationCheckpoints, and ai.comparisonAnalyses.",
+        message: "options.chat = none requires empty messages, compaction, summaries, provider frames, and comparison analyses.",
         path: "workspaceSnapshot.ai"
       });
     }
@@ -867,7 +868,6 @@ function buildArchiveVisualObjects(workspace: MorphoWorkspace): ArchiveVisualObj
         visibility: image.visibility,
         assetId: image.assetId,
         role: image.role,
-        imageVariant: image.imageVariant,
         directionId: image.directionId,
         directionTitle: direction?.type === "conceptDirection" ? direction.title : undefined,
         visualBranchId: image.visualBranchId,
@@ -947,7 +947,6 @@ function buildArchiveConversation(workspace: MorphoWorkspace, scope: ArchiveChat
   return {
     mode: "full",
     messages: workspace.ai.messages,
-    conversationCheckpoints: workspace.ai.conversationCheckpoints,
     conversationCompaction: workspace.ai.conversationCompaction,
     conversationSummaryRevisions: workspace.ai.conversationSummaryRevisions,
     providerContextFrames: workspace.ai.providerContextFrames ?? [],

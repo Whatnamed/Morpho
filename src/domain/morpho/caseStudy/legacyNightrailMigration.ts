@@ -28,7 +28,7 @@ const LEGACY_NIGHTRAIL_OBJECT_IDS = [
 ] as const;
 
 const LEGACY_NIGHTRAIL_ASSET_IDS = ["asset-course-brief", "asset-course-brief-extract"] as const;
-const LEGACY_NIGHTRAIL_PRISTINE_FINGERPRINT = "68a36896";
+const LEGACY_NIGHTRAIL_PRISTINE_FINGERPRINT = "d1471aac";
 
 export const LEGACY_NIGHTRAIL_OBSOLETE_STORAGE_KEYS = ["seed:course-brief", "seed:course-brief-extract"] as const;
 
@@ -60,11 +60,12 @@ export function isPristineLegacyNightrailWorkspace(workspace: MorphoWorkspace): 
     providerContextFrames: _providerContextFrames,
     ...legacyAi
   } = workspace.ai;
-  return fingerprintStructuredValue({
+  const fingerprint = fingerprintStructuredValue({
     ...withoutMemory,
     schemaVersion: 14,
     ai: legacyAi
-  }) === LEGACY_NIGHTRAIL_PRISTINE_FINGERPRINT;
+  });
+  return fingerprint === LEGACY_NIGHTRAIL_PRISTINE_FINGERPRINT;
 }
 
 function sameSortedIds(actual: string[], expected: readonly string[]): boolean {

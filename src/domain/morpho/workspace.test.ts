@@ -189,10 +189,10 @@ describe("Morpho workspace domain boundaries", () => {
     expect(JSON.stringify(result.workspace).length).toBeLessThan(JSON.stringify(legacy).length);
   });
 
-  it("creates a blank schema v16 project without depending on Nightrail seed object ids", () => {
+  it("creates a blank schema v17 project without depending on Nightrail seed object ids", () => {
     const workspace = createBlankWorkspace("project-empty-local");
 
-    expect(workspace.schemaVersion).toBe(16);
+    expect(workspace.schemaVersion).toBe(17);
     expect(workspace.project.id).toBe("project-empty-local");
     expect(workspace.objects["image-soft-rail-v2"]).toBeUndefined();
     expect(workspace.canvas.instances).toEqual([]);
@@ -200,7 +200,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(workspace.operations).toEqual({});
     expect(workspace.artifactProposals).toEqual({});
     expect(workspace.citationSnapshots).toEqual({});
-    expect(workspace.ai.conversationCheckpoints).toEqual([]);
+    expect(workspace.ai).not.toHaveProperty("conversationCheckpoints");
     expect(workspace.ai.comparisonAnalyses).toEqual({});
     expect(workspace.projectContinuity.currentFocus.area).toBe("startAndInput");
     expect(workspace.projectContinuity.recordEntries).toEqual([]);
@@ -1062,8 +1062,8 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.status).toBe("ok");
     expect(legacyWorkspace).toEqual(before);
     if (result.status === "ok") {
-      expect(result.workspace.schemaVersion).toBe(16);
-      expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
+      expect(result.workspace.schemaVersion).toBe(17);
+      expect(result.workspace.ai).not.toHaveProperty("conversationCheckpoints");
       expect(result.workspace.objects["image-a"]?.visibility).toBe("active");
       expect(result.workspace.objects["image-a"]).toMatchObject({
         type: "image",
@@ -1132,8 +1132,8 @@ describe("Morpho workspace domain boundaries", () => {
       throw new Error(result.reason);
     }
     expect(result.didMigrate).toBe(true);
-    expect(result.workspace.schemaVersion).toBe(16);
-    expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
+    expect(result.workspace.schemaVersion).toBe(17);
+    expect(result.workspace.ai).not.toHaveProperty("conversationCheckpoints");
     expect(result.workspace.projectContinuity.schemaVersion).toBe(2);
     expect(result.workspace.projectContinuity.recordEntries).toEqual([
       expect.objectContaining({
@@ -1149,7 +1149,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.workspace.decisionRecords).toEqual(workspace.decisionRecords);
   });
 
-  it("migrates v11 workspaces to v16 without inventing document fragments or rewriting compare/checkpoint state", () => {
+  it("migrates v11 workspaces to v17 without inventing document fragments or rewriting compare state", () => {
     const workspace = createInitialWorkspace();
     const v11Workspace = {
       ...workspace,
@@ -1212,12 +1212,12 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(16);
+    expect(result.workspace.schemaVersion).toBe(17);
     expect(Object.values(result.workspace.objects).filter((object) => object.type === "documentFragment")).toHaveLength(
       documentFragmentCountBefore
     );
     expect(result.workspace.ai.messages).toEqual(v11Workspace.ai.messages);
-    expect(result.workspace.ai.conversationCheckpoints).toEqual(v11Workspace.ai.conversationCheckpoints);
+    expect(result.workspace.ai).not.toHaveProperty("conversationCheckpoints");
     expect(result.workspace.ai.comparisonAnalyses).toEqual(v11Workspace.ai.comparisonAnalyses);
 
     const second = migrateWorkspaceToCurrentSchema(result.workspace);
@@ -1281,7 +1281,7 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(16);
+    expect(result.workspace.schemaVersion).toBe(17);
     expect(result.workspace.ai.messages[0]).toMatchObject({
       id: "assistant-trace",
       body: "完成。",
@@ -1328,8 +1328,8 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(16);
-    expect(result.workspace.ai.conversationCheckpoints).toEqual([]);
+    expect(result.workspace.schemaVersion).toBe(17);
+    expect(result.workspace.ai).not.toHaveProperty("conversationCheckpoints");
     expect(result.workspace.ai.messages).toEqual(v9Workspace.ai.messages);
     expect(result.workspace.ai.messages[0]).not.toHaveProperty("conversationLaneKey");
     expect(result.workspace.projectContinuity).toEqual(workspace.projectContinuity);
@@ -1340,7 +1340,6 @@ describe("Morpho workspace domain boundaries", () => {
       throw new Error(second.reason);
     }
     expect(second.didMigrate).toBe(false);
-    expect(second.workspace.ai.conversationCheckpoints).toEqual([]);
   });
 
   it("marks only recognizable legacy compaction notices as UI-only during migration", () => {
@@ -1389,99 +1388,6 @@ describe("Morpho workspace domain boundaries", () => {
       undefined
     ]);
     expect(migrateWorkspaceToCurrentSchema(result.workspace)).toMatchObject({ didMigrate: false });
-  });
-
-  it("normalizes current v10 checkpoint storage by dropping invalid checkpoint records", () => {
-    const workspace = createInitialWorkspace();
-    const currentWorkspace = {
-      ...workspace,
-      ai: {
-        ...workspace.ai,
-        messages: [
-          {
-            id: "message-1",
-            role: "user",
-            body: "继续讨论柔光轨道方向。",
-            createdAt: "2026-07-01T08:00:00.000Z",
-            status: "done",
-            taskMode: "chatAnalysis",
-            conversationLaneKey: "lane-valid"
-          },
-          {
-            id: "message-2",
-            role: "assistant",
-            body: "可以继续比较转角和光带连续性。",
-            createdAt: "2026-07-01T08:01:00.000Z",
-            status: "done",
-            taskMode: "chatAnalysis",
-            conversationLaneKey: "lane-valid"
-          }
-        ],
-        conversationCheckpoints: [
-          {
-            id: "checkpoint-valid",
-            laneKey: "lane-valid",
-            focusArea: workspace.projectContinuity.currentFocus.area,
-            focusUpdatedAt: workspace.projectContinuity.currentFocus.updatedAt,
-            taskKind: "general",
-            anchorObjectIds: ["image-a"],
-            targetDirectionIds: [],
-            sourceStartMessageId: "message-1",
-            sourceEndMessageId: "message-2",
-            sourceMessageCount: 2,
-            createdAt: "2026-07-01T08:02:00.000Z",
-            updatedAt: "2026-07-01T08:02:00.000Z",
-            threadGoal: "当前讨论聚焦于柔光轨道方向的短期表达收敛。",
-            progress: ["已经讨论到转角处需要保持光带连续。"],
-            openThreads: ["仍待确认扶手触点是否过于家居化。"],
-            nextTurnAnchor: "下一步继续比较转角方案。"
-          },
-          {
-            id: "checkpoint-invalid-extra",
-            laneKey: "lane-invalid",
-            focusArea: workspace.projectContinuity.currentFocus.area,
-            focusUpdatedAt: workspace.projectContinuity.currentFocus.updatedAt,
-            taskKind: "general",
-            anchorObjectIds: [],
-            targetDirectionIds: [],
-            sourceStartMessageId: "message-1",
-            sourceEndMessageId: "message-2",
-            sourceMessageCount: 2,
-            createdAt: "2026-07-01T08:03:00.000Z",
-            updatedAt: "2026-07-01T08:03:00.000Z",
-            threadGoal: "当前讨论聚焦于不应被保留的外部注入字段。",
-            progress: ["已经尝试写入外部字段。"],
-            openThreads: ["仍待确认是否会被过滤。"],
-            stateWrite: true
-          },
-          {
-            id: "checkpoint-invalid-kind",
-            laneKey: "lane-invalid-kind",
-            focusArea: workspace.projectContinuity.currentFocus.area,
-            focusUpdatedAt: workspace.projectContinuity.currentFocus.updatedAt,
-            taskKind: "unexpectedTaskKind",
-            anchorObjectIds: [],
-            targetDirectionIds: [],
-            sourceStartMessageId: "message-1",
-            sourceEndMessageId: "message-2",
-            sourceMessageCount: 2,
-            createdAt: "2026-07-01T08:04:00.000Z",
-            updatedAt: "2026-07-01T08:04:00.000Z",
-            threadGoal: "当前讨论聚焦于非法任务类型。",
-            progress: ["已经构造了非法任务类型。"],
-            openThreads: ["仍待确认是否会被过滤。"]
-          }
-        ]
-      }
-    };
-
-    const result = migrateWorkspaceToCurrentSchema(currentWorkspace);
-
-    expect(result.status).toBe("ok");
-    if (result.status !== "ok") {
-      throw new Error(result.reason);
-    }
-    expect(result.workspace.ai.conversationCheckpoints).toEqual([currentWorkspace.ai.conversationCheckpoints[0]]);
   });
 
   it("repairs collided continuity IDs and remaps saved message references without losing either record", () => {
@@ -1747,7 +1653,7 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(16);
+    expect(result.workspace.schemaVersion).toBe(17);
     for (const [category] of structuredCategories) {
       expect(result.workspace.objects[`legacy-structured-${category}`]).toMatchObject({ category });
     }
@@ -1771,7 +1677,7 @@ describe("Morpho workspace domain boundaries", () => {
   it("does not use legacy notes to normalize an already-current workspace", () => {
     const currentWorkspace = JSON.parse(JSON.stringify(createInitialWorkspace())) as Record<string, unknown>;
     const objects = currentWorkspace.objects as Record<string, Record<string, unknown>>;
-    currentWorkspace.schemaVersion = 16;
+    currentWorkspace.schemaVersion = 17;
     objects["insight-continuous-support"] = {
       ...objects["insight-continuous-support"],
       category: "invalid-category",

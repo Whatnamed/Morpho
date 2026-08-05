@@ -223,7 +223,6 @@ function createClientFixtureWorkspace(options: { textOnly?: boolean; noSections?
         createdBy: "ai",
         visibility: "active",
         role: "primaryVisual",
-        imageVariant: "rail",
         assetId: "asset-hero",
         createdAt: NOW,
         updatedAt: NOW

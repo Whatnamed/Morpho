@@ -25,7 +25,6 @@ describe("research success semantic patch", () => {
             taskMode: "researchOperation" as const
           }
         ],
-        conversationCheckpoints: [],
         comparisonAnalyses: {}
       }
     };

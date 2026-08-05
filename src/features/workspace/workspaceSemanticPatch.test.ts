@@ -286,7 +286,6 @@ describe("workspace conversation semantic patch helpers", () => {
             taskMode: "researchOperation" as const
           }
         ],
-        conversationCheckpoints: [],
         comparisonAnalyses: {}
       }
     };

@@ -187,8 +187,78 @@ describe("project bundle domain contracts", () => {
 
     expect(legacyPlan.status).toBe("ok");
     if (legacyPlan.status === "ok") {
-      expect(legacyPlan.workspace.schemaVersion).toBe(16);
+      expect(legacyPlan.workspace.schemaVersion).toBe(17);
       expect(legacyPlan.workspace.objects["conclusion-safety"]).toMatchObject({ category: "finding" });
+    }
+
+    const legacyConversationManifest = JSON.parse(JSON.stringify(backupManifest)) as EditableProjectBackupManifest;
+    Object.assign(legacyConversationManifest, { workspaceSchemaVersion: 16 });
+    const legacyConversationSnapshot = legacyConversationManifest.workspaceSnapshot;
+    Object.assign(legacyConversationSnapshot, { schemaVersion: 16 });
+    const legacyConversationAi = legacyConversationSnapshot.ai;
+    Object.assign(legacyConversationAi, {
+      messages: [
+        {
+          id: "legacy-user",
+          role: "user",
+          body: "继续验证夜间路径。",
+          createdAt: NOW,
+          status: "done",
+          conversationLaneKey: "legacy-lane",
+          pairedMessageId: "legacy-assistant"
+        },
+        {
+          id: "legacy-assistant",
+          role: "assistant",
+          body: "路径连续性仍然成立。",
+          createdAt: NOW,
+          status: "done",
+          conversationLaneKey: "legacy-lane",
+          conversationCheckpointId: "legacy-checkpoint",
+          pairedMessageId: "legacy-user"
+        }
+      ],
+      conversationCheckpoints: [{
+        id: "legacy-checkpoint",
+        laneKey: "legacy-lane",
+        focusArea: "directionAndVisual",
+        focusUpdatedAt: NOW,
+        taskKind: "general",
+        anchorObjectIds: ["image-default"],
+        targetDirectionIds: ["direction-current"],
+        sourceStartMessageId: "legacy-user",
+        sourceEndMessageId: "legacy-assistant",
+        sourceMessageCount: 2,
+        createdAt: NOW,
+        updatedAt: NOW,
+        threadGoal: "继续验证夜间路径",
+        progress: ["路径连续性已经确认。"],
+        openThreads: ["还需确认维护方式。"]
+      }],
+      conversationCompaction: { coveredMessageCount: 0 },
+      conversationSummaryRevisions: {}
+    });
+    Object.assign(legacyConversationSnapshot.objects["image-default"], { imageVariant: "path" });
+    const restoredLegacyConversation = planEditableProjectBackupRestore(
+      legacyConversationManifest,
+      mapBundleFiles(bundleResult.bundle),
+      {
+        restoredAt: NOW,
+        projectId: "project-restored-conversation-legacy",
+        projectTitle: "Night Study（旧会话恢复）",
+        createRuntimeStorageKey: (assetId) => `blob:restored:conversation:${assetId}`
+      }
+    );
+
+    expect(restoredLegacyConversation.status).toBe("ok");
+    if (restoredLegacyConversation.status === "ok") {
+      expect(restoredLegacyConversation.workspace.schemaVersion).toBe(17);
+      expect(restoredLegacyConversation.workspace.ai).not.toHaveProperty("conversationCheckpoints");
+      expect(Object.keys(restoredLegacyConversation.workspace.ai.conversationSummaryRevisions)).toHaveLength(1);
+      expect(restoredLegacyConversation.workspace.ai.conversationCompaction.summaryRevisionId).toBeDefined();
+      expect(restoredLegacyConversation.workspace.ai.messages[0]).not.toHaveProperty("conversationLaneKey");
+      expect(restoredLegacyConversation.workspace.ai.messages[1]).not.toHaveProperty("conversationCheckpointId");
+      expect(restoredLegacyConversation.workspace.objects["image-default"]).not.toHaveProperty("imageVariant");
     }
   });
 });
@@ -315,7 +385,6 @@ function createBundleFixtureWorkspace(): MorphoWorkspace {
     title: "Default Night Reference",
     summary: "Warm beacon preview for the primary direction.",
     role: "conceptImage" as const,
-    imageVariant: "path" as const,
     assetId: coverAsset.id,
     directionId: activeDirection.id,
     visualBranchId: "branch-main",
@@ -588,25 +657,6 @@ function createBundleFixtureWorkspace(): MorphoWorkspace {
       messages: [
         { id: "msg-1", role: "user", body: "Keep the warmer direction.", createdAt: NOW },
         { id: "msg-2", role: "assistant", body: "Recorded for the project.", createdAt: NOW }
-      ],
-      conversationCheckpoints: [
-        {
-          id: "checkpoint-1",
-          laneKey: "general",
-          focusArea: "directionAndVisual",
-          focusUpdatedAt: NOW,
-          taskKind: "general",
-          anchorObjectIds: [],
-          targetDirectionIds: [],
-          sourceStartMessageId: "msg-1",
-          sourceEndMessageId: "msg-2",
-          sourceMessageCount: 2,
-          createdAt: NOW,
-          updatedAt: NOW,
-          threadGoal: "Refine the direction",
-          progress: ["Choose the warmer route"],
-          openThreads: []
-        }
       ],
       comparisonAnalyses: {}
     },

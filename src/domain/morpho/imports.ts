@@ -160,7 +160,6 @@ function createObjectForAsset(workspace: MorphoWorkspace, asset: AssetRecord, in
       createdBy: asset.sourceType === "aiGeneratedImage" ? "ai" : "user",
       visibility: "active",
       role: asset.sourceType === "aiGeneratedImage" ? "preview" : "reference",
-      imageVariant: "path",
       assetId: asset.id
     } satisfies ImageObject;
   }

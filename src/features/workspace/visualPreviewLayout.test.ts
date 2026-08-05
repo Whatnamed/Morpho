@@ -61,7 +61,6 @@ describe("direction preview layout planning", () => {
             createdAt: "2026-06-30T00:00:00.000Z",
             updatedAt: "2026-06-30T00:00:00.000Z",
             role: "conceptImage" as const,
-            imageVariant: "rail" as const,
             directionId: placement.targetDirectionId
           }
         },
@@ -158,7 +157,6 @@ describe("direction preview layout planning", () => {
       createdBy: "ai",
       visibility: "active",
       role: "conceptImage",
-      imageVariant: "rail",
       directionId: "direction-a"
     };
     workspace.canvas.instances.push(

@@ -35,7 +35,6 @@ export type ConversationMessageForContext = {
   role: "user" | "assistant";
   body: string;
   createdAt?: string;
-  laneKey?: string;
   providerInputSnapshot?: ProviderInputSnapshot;
   providerOutputSnapshot?: ProviderOutputSnapshot;
   taskStrategy?: AgentTaskStrategyKind;
@@ -115,72 +114,6 @@ export function normalizeConversationSummaryRevisions(value: unknown): Record<st
     }
   }
   return revisions;
-}
-
-export function migrateLegacyCheckpointToConversationCompaction(input: {
-  messages: AiMessage[];
-  checkpoints: MorphoWorkspace["ai"]["conversationCheckpoints"];
-  state: ConversationCompactionState;
-  revisions: Record<string, ConversationSummaryRevision>;
-}): {
-  state: ConversationCompactionState;
-  revisions: Record<string, ConversationSummaryRevision>;
-} {
-  if (input.state.summaryRevisionId || Object.keys(input.revisions).length > 0) {
-    return { state: input.state, revisions: input.revisions };
-  }
-
-  const usableMessages = getUsableConversationMessages(input.messages);
-  const checkpoint = [...input.checkpoints]
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-    .find((candidate) => usableMessages.some((message) => message.id === candidate.sourceEndMessageId));
-  if (!checkpoint) {
-    return { state: input.state, revisions: input.revisions };
-  }
-  const endIndex = usableMessages.findIndex((message) => message.id === checkpoint.sourceEndMessageId);
-  const startIndex = usableMessages.findIndex((message) => message.id === checkpoint.sourceStartMessageId);
-  if (endIndex < 0) {
-    return { state: input.state, revisions: input.revisions };
-  }
-  const sourceStartIndex = startIndex >= 0 && startIndex <= endIndex ? startIndex : 0;
-  const sourceMessages = usableMessages.slice(sourceStartIndex, endIndex + 1);
-  if (sourceMessages.length === 0) {
-    return { state: input.state, revisions: input.revisions };
-  }
-
-  const sourceMessageIdsHash = hashMessageIds(sourceMessages.map((message) => message.id));
-  const id = `conversation-summary-migrated-${stableHash(`${checkpoint.id}|${sourceMessageIdsHash}`)}`;
-  const revision: ConversationSummaryRevision = {
-    id,
-    summary: {
-      threadGoal: checkpoint.threadGoal,
-      establishedContext: uniqueText(checkpoint.progress),
-      decisionsAndReasons: [],
-      activeWork: uniqueText(checkpoint.progress),
-      unresolvedQuestions: uniqueText(checkpoint.openThreads),
-      referencedObjects: uniqueText([
-        ...checkpoint.anchorObjectIds,
-        ...checkpoint.targetDirectionIds,
-        ...(checkpoint.visualBranchId ? [checkpoint.visualBranchId] : [])
-      ]),
-      nextTurnAnchor: checkpoint.nextTurnAnchor
-    },
-    sourceStartMessageId: sourceMessages[0]!.id,
-    sourceEndMessageId: sourceMessages.at(-1)!.id,
-    sourceMessageCount: sourceMessages.length,
-    sourceMessageIdsHash,
-    createdAt: checkpoint.updatedAt
-  };
-  return {
-    state: {
-      summaryRevisionId: id,
-      coveredThroughMessageId: revision.sourceEndMessageId,
-      coveredMessageCount: endIndex + 1,
-      updatedAt: checkpoint.updatedAt,
-      sourceMessageIdsHash
-    },
-    revisions: { ...input.revisions, [id]: revision }
-  };
 }
 
 export function parseConversationSummaryPayload(text: string): ParseConversationSummaryResult {
@@ -622,7 +555,6 @@ function toContextMessage(message: AiMessage): ConversationMessageForContext {
     role: message.role,
     body: message.body,
     createdAt: message.createdAt,
-    laneKey: message.conversationLaneKey,
     ...(message.taskStrategy ? { taskStrategy: message.taskStrategy } : {}),
     ...(message.providerInputSnapshot ? { providerInputSnapshot: message.providerInputSnapshot } : {}),
     ...(message.providerOutputSnapshot ? { providerOutputSnapshot: message.providerOutputSnapshot } : {})

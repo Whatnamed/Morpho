@@ -331,7 +331,6 @@ describe("delivery preparation domain operations", () => {
           createdBy: "ai",
           visibility: "active",
           role: "primaryVisual",
-          imageVariant: "rail",
           assetId: "asset-image-old",
           createdAt: now,
           updatedAt: now
@@ -687,7 +686,7 @@ describe("delivery preparation schema migration", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(16);
+    expect(result.workspace.schemaVersion).toBe(17);
     expect(Object.values(result.workspace.objects).some((object) => object.type === "delivery")).toBe(false);
     expect(result.workspace.deliverySectionDrafts).toEqual({});
   });
@@ -697,7 +696,7 @@ describe("delivery preparation schema migration", () => {
     const legacyDelivery = workspace.objects["delivery-board-a1"] as DeliveryObject;
     const legacy: MorphoWorkspace = {
       ...workspace,
-      schemaVersion: 12 as 16,
+      schemaVersion: 12 as 17,
       objects: {
         ...workspace.objects,
         [legacyDelivery.id]: {

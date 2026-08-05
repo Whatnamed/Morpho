@@ -621,7 +621,7 @@ function buildArchiveDirectionsAndVisuals(
       ? manifest.archive.visualObjects.map((item) => {
           const asset = item.assetId ? assetState.get(item.assetId) : undefined;
           const assetLabel = asset ? `${asset.portableBundleKey} · ${asset.availability}` : "无关联资产";
-          return `- ${item.title}: ${item.role} / ${item.imageVariant} / ${item.visibility} / ${assetLabel}`;
+          return `- ${item.title}: ${item.role} / ${item.visibility} / ${assetLabel}`;
         })
       : ["- 暂无视觉对象"];
   return ["# 方向与视觉路线", "", "## 方向", "", ...directionLines, "", "## 视觉对象", "", ...visualLines].join("\n");
@@ -750,7 +750,7 @@ function buildRichArchiveProjectOverview(manifest: HumanReadableArchiveManifest)
     ...listOrEmpty(
       defaultReferences.map(
         (item) =>
-          `- ${item.title}｜${item.role}｜${item.imageVariant}｜方向：${item.directionTitle ?? item.directionId ?? "未关联方向"}｜分支：${item.visualBranchLabel ?? item.visualBranchId ?? "未关联分支"}`
+          `- ${item.title}｜${item.role}｜方向：${item.directionTitle ?? item.directionId ?? "未关联方向"}｜分支：${item.visualBranchLabel ?? item.visualBranchId ?? "未关联分支"}`
       ),
       "暂无默认参考图"
     ),
@@ -828,7 +828,7 @@ function buildRichArchiveDirectionsAndVisuals(
   const visualLines = manifest.archive.visualObjects.map((item) => {
     const asset = item.assetId ? assetState.get(item.assetId) : undefined;
     const assetLabel = asset ? `${asset.portableBundleKey}｜${asset.availability}` : "无关联资产";
-    return `- ${item.title}｜role=${item.role}｜variant=${item.imageVariant}｜visibility=${item.visibility}｜direction=${item.directionTitle ?? item.directionId ?? "无"}｜branch=${item.visualBranchLabel ?? item.visualBranchId ?? "无"}｜defaultReference=${yesNo(item.isDefaultReference)}｜relations=${joinValues(item.relatedRelationKinds)}｜asset=${assetLabel}`;
+    return `- ${item.title}｜role=${item.role}｜visibility=${item.visibility}｜direction=${item.directionTitle ?? item.directionId ?? "无"}｜branch=${item.visualBranchLabel ?? item.visualBranchId ?? "无"}｜defaultReference=${yesNo(item.isDefaultReference)}｜relations=${joinValues(item.relatedRelationKinds)}｜asset=${assetLabel}`;
   });
 
   return [

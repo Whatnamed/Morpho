@@ -5,7 +5,6 @@
     "agentTraceCount": 22,
     "agentTracePartCount": 76,
     "assistantMessageCount": 102,
-    "checkpointCount": 1,
     "citationCount": 18,
     "userMessageCount": 82,
     "summaryRevisionCount": 1
@@ -29,12 +28,12 @@
     "sourceId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
     "subtitle": "从一句话、图片、文件或链接开始。",
     "title": "测试",
-    "workspaceSchemaVersion": 16
+    "workspaceSchemaVersion": 17
   },
   "referenceOnlyAssetCount": 0,
   "resourceBytes": 40880166,
   "sizeMismatchCount": 0,
-  "workspaceFingerprint": "747007f1",
+  "workspaceFingerprint": "c1cc7dce",
   "projectMemory": {
     "currentDocumentCount": 5,
     "currentStageRecordCount": 5,

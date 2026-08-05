@@ -236,7 +236,6 @@ describe("Project Memory Kernel", () => {
       createdBy: "ai" as const,
       visibility: "active" as const,
       role: "conceptImage" as const,
-      imageVariant: "detail" as const,
       assetId: `asset-${id}`,
       generation: {
         operationId: `operation-${id}`,
@@ -291,7 +290,6 @@ describe("Project Memory Kernel", () => {
       createdBy: "ai" as const,
       visibility: "active" as const,
       role: "conceptImage" as const,
-      imageVariant: "detail" as const,
       assetId: `asset-${id}`,
       generation: { ...generation, ...extra }
     });

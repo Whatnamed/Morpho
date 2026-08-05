@@ -40,8 +40,8 @@ describe("M7-A project archive and backup manifests", () => {
     expect(backup.manifest.createdAt).toBe(NOW);
     expect(archive.manifest.sourceProject.id).toBe("project-blank");
     expect(backup.manifest.sourceProject.id).toBe(seeded.project.id);
-    expect(archive.manifest.workspaceSchemaVersion).toBe(16);
-    expect(backup.manifest.workspaceSchemaVersion).toBe(16);
+    expect(archive.manifest.workspaceSchemaVersion).toBe(17);
+    expect(backup.manifest.workspaceSchemaVersion).toBe(17);
     expect(archive.manifest.archive).toBeDefined();
     expect(backup.manifest.workspaceSnapshot).toBeDefined();
     expect(backup.manifest.workspaceSnapshot.objects["insight-continuous-support"]).toMatchObject({ category: "unknown" });
@@ -79,7 +79,6 @@ describe("M7-A project archive and backup manifests", () => {
       expect.objectContaining({
         id: "image-hidden",
         role: "preview",
-        imageVariant: "rail",
         directionId: "direction-primary",
         directionTitle: "Direction Primary",
         visualBranchId: "branch-primary",
@@ -90,7 +89,6 @@ describe("M7-A project archive and backup manifests", () => {
       expect.objectContaining({
         id: "image-visible",
         role: "primaryVisual",
-        imageVariant: "path",
         directionId: "direction-primary",
         directionTitle: "Direction Primary",
         visualBranchId: "branch-primary",
@@ -258,7 +256,7 @@ describe("M7-A project archive and backup manifests", () => {
     expect(backup.manifest.workspaceSnapshot.projectMemory).toEqual(workspace.projectMemory);
   });
 
-  test("backup chat full preserves messages, checkpoints, and compare analyses", () => {
+  test("backup chat full preserves messages, summaries, and compare analyses", () => {
     const workspace = createFixtureWorkspace({ includeMissingMetadata: false });
     const backup = createEditableProjectBackupManifest(workspace, { createdAt: NOW, chat: "full" });
 
@@ -269,7 +267,7 @@ describe("M7-A project archive and backup manifests", () => {
 
     expect(backup.manifest.options.chat).toBe("full");
     expect(backup.manifest.workspaceSnapshot.ai.messages).toEqual(workspace.ai.messages);
-    expect(backup.manifest.workspaceSnapshot.ai.conversationCheckpoints).toEqual(workspace.ai.conversationCheckpoints);
+    expect(backup.manifest.workspaceSnapshot.ai.conversationSummaryRevisions).toEqual(workspace.ai.conversationSummaryRevisions);
     expect(backup.manifest.workspaceSnapshot.ai.comparisonAnalyses).toEqual(workspace.ai.comparisonAnalyses);
   });
 
@@ -324,6 +322,31 @@ describe("M7-A project archive and backup manifests", () => {
     expect(validation.diagnostics.some((diagnostic) => diagnostic.code === "backup_chat_scope_mismatch")).toBe(true);
   });
 
+  test("backup validator rejects chat none when only compaction or provider frames remain", () => {
+    const workspace = createFixtureWorkspace({ includeMissingMetadata: false });
+    const backup = createEditableProjectBackupManifest(workspace, { createdAt: NOW, chat: "none" });
+
+    expect(backup.status).toBe("ok");
+    if (backup.status !== "ok") {
+      throw new Error("backup creation should be ready for assertions");
+    }
+
+    const tampered = {
+      ...backup.manifest,
+      workspaceSnapshot: {
+        ...backup.manifest.workspaceSnapshot,
+        ai: {
+          ...backup.manifest.workspaceSnapshot.ai,
+          conversationCompaction: { coveredMessageCount: 1 },
+          providerContextFrames: [{}]
+        }
+      }
+    };
+    const validation = validateEditableProjectBackupManifest(tampered);
+    expect(validation.status).toBe("failed");
+    expect(validation.diagnostics.some((diagnostic) => diagnostic.code === "backup_chat_scope_mismatch")).toBe(true);
+  });
+
   test("backup validator rejects invalid full chat snapshot structure", () => {
     const workspace = createFixtureWorkspace({ includeMissingMetadata: false });
     const backup = createEditableProjectBackupManifest(workspace, { createdAt: NOW, chat: "full" });
@@ -339,7 +362,9 @@ describe("M7-A project archive and backup manifests", () => {
         ...backup.manifest.workspaceSnapshot,
         ai: {
           messages: "bad",
-          conversationCheckpoints: [],
+          conversationCompaction: { coveredMessageCount: 0 },
+          conversationSummaryRevisions: {},
+          providerContextFrames: [],
           comparisonAnalyses: {}
         }
       }
@@ -528,7 +553,6 @@ function createFixtureWorkspace(options: { includeMissingMetadata?: boolean } = 
         createdBy: "user",
         visibility: "active",
         role: "primaryVisual",
-        imageVariant: "path",
         assetId: visibleImage.id,
         directionId: "direction-primary",
         visualBranchId: "branch-primary",
@@ -542,7 +566,6 @@ function createFixtureWorkspace(options: { includeMissingMetadata?: boolean } = 
         createdBy: "ai",
         visibility: "hidden",
         role: "preview",
-        imageVariant: "rail",
         assetId: hiddenImage.id,
         directionId: "direction-primary",
         visualBranchId: "branch-primary"
@@ -927,25 +950,6 @@ function createFixtureWorkspace(options: { includeMissingMetadata?: boolean } = 
           body: "Keep the warmer route and drop the clinical branch",
           createdAt: NOW,
           continuityEntryIds: ["continuity-decision"]
-        }
-      ],
-      conversationCheckpoints: [
-        {
-          id: "checkpoint-1",
-          laneKey: "direction",
-          focusArea: "directionAndVisual",
-          focusUpdatedAt: NOW,
-          taskKind: "comparison",
-          anchorObjectIds: ["direction-primary"],
-          targetDirectionIds: ["direction-primary", "direction-eliminated"],
-          sourceStartMessageId: "msg-user",
-          sourceEndMessageId: "msg-assistant",
-          sourceMessageCount: 2,
-          createdAt: NOW,
-          updatedAt: NOW,
-          threadGoal: "Compare directions",
-          progress: ["Eliminate the clinical branch"],
-          openThreads: []
         }
       ],
       comparisonAnalyses: {}

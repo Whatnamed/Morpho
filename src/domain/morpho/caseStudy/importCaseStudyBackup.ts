@@ -30,7 +30,6 @@ export type CaseStudyImportReport = {
     agentTraceCount: number;
     agentTracePartCount: number;
     assistantMessageCount: number;
-    checkpointCount: number;
     citationCount: number;
     userMessageCount: number;
   };
@@ -309,7 +308,6 @@ function createReport(input: {
       agentTraceCount: messages.filter((message) => Boolean(message.agentTrace)).length,
       agentTracePartCount: messages.reduce((count, message) => count + (message.agentTrace?.parts.length ?? 0), 0),
       assistantMessageCount: messages.filter((message) => message.role === "assistant").length,
-      checkpointCount: input.workspace.ai.conversationCheckpoints.length,
       citationCount: messages.reduce((count, message) => count + (message.citationIds?.length ?? 0), 0),
       userMessageCount: messages.filter((message) => message.role === "user").length
     },

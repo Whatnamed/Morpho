@@ -103,7 +103,6 @@ export function createGeneratedImageFromAsset(
     createdBy: "ai",
     visibility: "active",
     role: input.role ?? input.generation.role ?? "preview",
-    imageVariant: "rail",
     assetId: input.asset.id,
     directionId,
     visualBranchId,

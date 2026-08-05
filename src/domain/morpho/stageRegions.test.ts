@@ -47,7 +47,7 @@ describe("stage region membership", () => {
       canvas: { ...workspace.canvas, stageRegions: undefined }
     };
     const ensured = ensureStageRegions(withoutRegions);
-    expect(ensured.schemaVersion).toBe(16);
+    expect(ensured.schemaVersion).toBe(17);
     expect(ensured.canvas.stageRegions).toHaveLength(4);
   });
 
@@ -292,6 +292,5 @@ function asResearchImage(): MorphoObject {
     createdBy: "user",
     visibility: "active",
     role: "reference",
-    imageVariant: "path"
   };
 }

@@ -245,7 +245,6 @@ describe("MorphoCanvas focus navigation", () => {
       summary: "Summary",
       label: "鍙傝€冨浘",
       details: [],
-      imageVariant: "rail",
       isDefaultReference: true,
       isBeingLocallyEdited: false,
       isInDesignTrace: false,

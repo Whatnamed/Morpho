@@ -14,7 +14,6 @@ import {
   estimateConversationSummaryTokens,
   getUsableConversationMessages,
   hashMessageIds,
-  migrateLegacyCheckpointToConversationCompaction,
   parseConversationSummaryPayload,
   type ConversationTokenLimits
 } from "./conversationCompaction";
@@ -99,18 +98,17 @@ describe("continuous conversation compaction", () => {
     expect(estimated).toBeLessThan(1_000);
   });
 
-  it("keeps every uncompressed message across lane labels below the prepare threshold", () => {
+  it("keeps every uncompressed message across the project-wide context below the prepare threshold", () => {
     const workspace = withMessages([
-      message("m1", "user", "最早讨论", "lane-a"),
-      message("m2", "assistant", "最早回答", "lane-a"),
-      message("m3", "user", "切到另一对象后继续", "lane-b"),
-      message("m4", "assistant", "仍属于同一项目会话", "lane-b")
+      message("m1", "user", "最早讨论"),
+      message("m2", "assistant", "最早回答"),
+      message("m3", "user", "切到另一对象后继续"),
+      message("m4", "assistant", "仍属于同一项目会话")
     ]);
     const context = buildContinuousConversationContext({ workspace, limits });
 
     expect(context.pressure).toBe("normal");
     expect(context.messages.map((entry) => entry.id)).toEqual(["m1", "m2", "m3", "m4"]);
-    expect(context.messages.map((entry) => entry.laneKey)).toEqual(["lane-a", "lane-a", "lane-b", "lane-b"]);
   });
 
   it("keeps UI-only compaction notices visible but out of model context and summary ranges", () => {
@@ -359,43 +357,6 @@ describe("continuous conversation compaction", () => {
     }
   });
 
-  it("migrates the newest usable legacy checkpoint once and idempotently", () => {
-    const messages = [message("u1", "user", "旧问题"), message("a1", "assistant", "旧回答")];
-    const checkpoint: MorphoWorkspace["ai"]["conversationCheckpoints"][number] = {
-      id: "legacy-checkpoint",
-      laneKey: "lane-old",
-      focusArea: "directionAndVisual",
-      focusUpdatedAt: "2026-07-10T00:00:00.000Z",
-      taskKind: "general",
-      anchorObjectIds: [],
-      targetDirectionIds: [],
-      sourceStartMessageId: "u1",
-      sourceEndMessageId: "a1",
-      sourceMessageCount: 2,
-      createdAt: "2026-07-10T00:00:00.000Z",
-      updatedAt: "2026-07-10T00:00:00.000Z",
-      threadGoal: "延续旧讨论",
-      progress: ["已确认低眩光"],
-      openThreads: ["安装方式"]
-    };
-    const migrated = migrateLegacyCheckpointToConversationCompaction({
-      messages,
-      checkpoints: [checkpoint],
-      state: { coveredMessageCount: 0 },
-      revisions: {}
-    });
-    expect(migrated.state.coveredThroughMessageId).toBe("a1");
-    expect(Object.values(migrated.revisions)[0]?.summary.threadGoal).toBe("延续旧讨论");
-    expect(
-      migrateLegacyCheckpointToConversationCompaction({
-        messages,
-        checkpoints: [checkpoint],
-        state: migrated.state,
-        revisions: migrated.revisions
-      })
-    ).toEqual(migrated);
-  });
-
   it("does not advance the compaction boundary when summary validation fails", () => {
     const workspace = withMessages(longConversation(6, 90));
     const plan = buildConversationCompactionPlan({ workspace, limits });
@@ -465,20 +426,19 @@ function withMessages(messages: AiMessage[]): MorphoWorkspace {
   };
 }
 
-function message(id: string, role: "user" | "assistant", body: string, laneKey = "lane-a"): AiMessage {
+function message(id: string, role: "user" | "assistant", body: string): AiMessage {
   return {
     id,
     role,
     body,
     createdAt: `2026-07-13T10:${id.replace(/\D/g, "").padStart(2, "0")}:00.000Z`,
-    conversationLaneKey: laneKey,
     status: "done"
   };
 }
 
 function longConversation(exchangeCount: number, bodyLength: number): AiMessage[] {
   return Array.from({ length: exchangeCount }, (_, index) => [
-    message(`u-${index + 1}`, "user", `用户第 ${index + 1} 轮 ${"要".repeat(bodyLength)}`, `lane-${index % 2}`),
-    message(`a-${index + 1}`, "assistant", `助手第 ${index + 1} 轮 ${"答".repeat(bodyLength)}`, `lane-${index % 2}`)
+    message(`u-${index + 1}`, "user", `用户第 ${index + 1} 轮 ${"要".repeat(bodyLength)}`),
+    message(`a-${index + 1}`, "assistant", `助手第 ${index + 1} 轮 ${"答".repeat(bodyLength)}`)
   ]).flat();
 }

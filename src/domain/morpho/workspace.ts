@@ -17,10 +17,13 @@ import {
 } from "./projectMemory";
 import {
   createEmptyConversationCompactionState,
-  migrateLegacyCheckpointToConversationCompaction,
   normalizeConversationCompactionState,
   normalizeConversationSummaryRevisions
 } from "./conversationCompaction";
+import {
+  migrateLegacyConversationCheckpoint,
+  stripLegacyWorkspaceCompatibilityFields
+} from "./legacyWorkspaceCompatibility";
 import {
   normalizeProviderInputSnapshot,
   normalizeProviderOutputSnapshot
@@ -81,7 +84,7 @@ import type {
 } from "./types";
 
 const DEFAULT_REFERENCE_HIDDEN_MESSAGE = "当前后续默认参考已隐藏，请先恢复或替换后再用于相关生成。";
-const CURRENT_SCHEMA_VERSION = 16;
+const CURRENT_SCHEMA_VERSION = 17;
 
 export type DeleteObjectResult =
   | {
@@ -252,7 +255,6 @@ export function createBlankWorkspace(projectId: string): MorphoWorkspace {
     },
     ai: {
       messages: [],
-      conversationCheckpoints: [],
       conversationCompaction: createEmptyConversationCompactionState(),
       conversationSummaryRevisions: {},
       providerContextFrames: [],
@@ -1763,11 +1765,14 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
     };
   }
 
-  if (typeof value.schemaVersion === "number" && value.schemaVersion >= 5 && value.schemaVersion <= 15) {
+  if (typeof value.schemaVersion === "number" && value.schemaVersion >= 5 && value.schemaVersion <= 16) {
+    const migratedLegacyWorkspace = migrateLegacyWorkspaceToSchema17(
+      migrateLegacyKeyConclusionCategories(value)
+    );
     return {
       status: "ok",
       workspace: normalizeCurrentWorkspace({
-        ...migrateLegacyKeyConclusionCategories(value),
+        ...migratedLegacyWorkspace,
         schemaVersion: CURRENT_SCHEMA_VERSION
       }),
       didMigrate: true
@@ -1818,6 +1823,28 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
     status: "ok",
     workspace: migrateV4Workspace(migrateV2WorkspaceToV4(migrated)),
     didMigrate: true
+  };
+}
+
+function migrateLegacyWorkspaceToSchema17(value: Record<string, unknown>): Record<string, unknown> {
+  const rawAi = isRecord(value.ai) ? value.ai : {};
+  const stripped = stripLegacyWorkspaceCompatibilityFields(value);
+  const normalizedAi = normalizeAiState(stripped.ai);
+  const migratedConversation = migrateLegacyConversationCheckpoint({
+    legacyMessages: rawAi.messages,
+    legacyCheckpoints: rawAi.conversationCheckpoints,
+    currentMessages: normalizedAi.messages,
+    state: normalizedAi.conversationCompaction,
+    revisions: normalizedAi.conversationSummaryRevisions
+  });
+
+  return {
+    ...stripped,
+    ai: {
+      ...normalizedAi,
+      conversationCompaction: migratedConversation.state,
+      conversationSummaryRevisions: migratedConversation.revisions
+    }
   };
 }
 
@@ -2251,7 +2278,6 @@ function normalizeAiState(value: unknown): MorphoWorkspace["ai"] {
   if (!isRecord(value)) {
     return {
       messages: [],
-      conversationCheckpoints: [],
       conversationCompaction: createEmptyConversationCompactionState(),
       conversationSummaryRevisions: {},
       providerContextFrames: [],
@@ -2262,24 +2288,15 @@ function normalizeAiState(value: unknown): MorphoWorkspace["ai"] {
   const messages = Array.isArray(value.messages)
     ? (value.messages as AiMessage[]).map(normalizeAiMessage)
     : [];
-  const conversationCheckpoints = Array.isArray(value.conversationCheckpoints)
-      ? value.conversationCheckpoints.filter(isConversationCheckpoint)
-      : [];
-  const migrated = migrateLegacyCheckpointToConversationCompaction({
-    messages,
-    checkpoints: conversationCheckpoints,
-    state: normalizeConversationCompactionState(value.conversationCompaction),
-    revisions: normalizeConversationSummaryRevisions(value.conversationSummaryRevisions)
-  });
+  const conversationSummaryRevisions = normalizeConversationSummaryRevisions(value.conversationSummaryRevisions);
 
   return {
     messages,
-    conversationCheckpoints,
-    conversationCompaction: migrated.state,
-    conversationSummaryRevisions: migrated.revisions,
+    conversationCompaction: normalizeConversationCompactionState(value.conversationCompaction),
+    conversationSummaryRevisions,
     providerContextFrames: normalizeProviderContextFrames(
       value.providerContextFrames,
-      migrated.revisions,
+      conversationSummaryRevisions,
       messages
     ),
     comparisonAnalyses: normalizeComparisonAnalyses(value.comparisonAnalyses)
@@ -2705,66 +2722,10 @@ function isLegacyUiOnlyAiMessage(message: AiMessage): boolean {
   ].includes(message.body.trim());
 }
 
-function isConversationCheckpoint(value: unknown): value is MorphoWorkspace["ai"]["conversationCheckpoints"][number] {
-  if (!isRecord(value)) {
-    return false;
-  }
-  if (
-    !hasOnlyAllowedKeys(value, [
-      "id",
-      "laneKey",
-      "focusArea",
-      "focusUpdatedAt",
-      "taskKind",
-      "anchorObjectIds",
-      "targetDirectionIds",
-      "visualBranchId",
-      "sourceStartMessageId",
-      "sourceEndMessageId",
-      "sourceMessageCount",
-      "createdAt",
-      "updatedAt",
-      "threadGoal",
-      "progress",
-      "openThreads",
-      "nextTurnAnchor"
-    ])
-  ) {
-    return false;
-  }
-
-  return (
-    stringFieldsPresent(value, [
-      "id",
-      "laneKey",
-      "focusUpdatedAt",
-      "sourceStartMessageId",
-      "sourceEndMessageId",
-      "createdAt",
-      "updatedAt",
-      "threadGoal"
-    ]) &&
-    isProjectFocusArea(value.focusArea) &&
-    isConversationCheckpointTaskKind(value.taskKind) &&
-    Array.isArray(value.anchorObjectIds) &&
-    value.anchorObjectIds.every((item) => typeof item === "string") &&
-    Array.isArray(value.targetDirectionIds) &&
-    value.targetDirectionIds.every((item) => typeof item === "string") &&
-    (value.visualBranchId === undefined || typeof value.visualBranchId === "string") &&
-    typeof value.sourceMessageCount === "number" &&
-    Number.isFinite(value.sourceMessageCount) &&
-    value.sourceMessageCount >= 0 &&
-    Array.isArray(value.progress) &&
-    value.progress.every((item) => typeof item === "string") &&
-    Array.isArray(value.openThreads) &&
-    value.openThreads.every((item) => typeof item === "string") &&
-    (value.nextTurnAnchor === undefined || typeof value.nextTurnAnchor === "string")
-  );
-}
-
 function normalizeCurrentWorkspace(value: Record<string, unknown>): MorphoWorkspace {
-  const cloned = structuredClone(value) as Partial<MorphoWorkspace>;
-  const sourceProject = isRecord(value.project) ? value.project : {};
+  const canonicalValue = stripLegacyWorkspaceCompatibilityFields(value);
+  const cloned = structuredClone(canonicalValue) as Partial<MorphoWorkspace>;
+  const sourceProject = isRecord(canonicalValue.project) ? canonicalValue.project : {};
   const now =
     typeof sourceProject.updatedAt === "string"
       ? sourceProject.updatedAt
@@ -3428,15 +3389,6 @@ function getDeliveryReferenceAssetId(source: MorphoObject): AssetId | undefined 
   }
 }
 
-function stringFieldsPresent(value: Record<string, unknown>, keys: readonly string[]): boolean {
-  return keys.every((key) => typeof value[key] === "string" && value[key].trim().length > 0);
-}
-
-function hasOnlyAllowedKeys(value: Record<string, unknown>, allowedKeys: readonly string[]): boolean {
-  const allowed = new Set(allowedKeys);
-  return Object.keys(value).every((key) => allowed.has(key));
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -3449,18 +3401,6 @@ function isProjectFocusArea(value: unknown): value is MorphoWorkspace["projectCo
     value === "designDefinition" ||
     value === "directionAndVisual" ||
     value === "deliveryPreparation"
-  );
-}
-
-function isConversationCheckpointTaskKind(value: unknown): value is MorphoWorkspace["ai"]["conversationCheckpoints"][number]["taskKind"] {
-  return (
-    value === "research" ||
-    value === "general" ||
-    value === "directionPreview" ||
-    value === "visualDevelopment" ||
-    value === "designDefinition" ||
-    value === "conceptDirection" ||
-    value === "comparison"
   );
 }
 
