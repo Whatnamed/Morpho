@@ -101,6 +101,7 @@ describe("DeliveryPreparationPanel", () => {
       })
     );
 
+    expect(findButton(container, "加入当前选中对象").disabled).toBe(true);
     const draftButton = findButton(container, "生成本节说明草稿");
     expect(draftButton.disabled).toBe(false);
     await act(async () => {
