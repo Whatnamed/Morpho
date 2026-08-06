@@ -79,6 +79,12 @@ Important module boundaries:
   the existing domain functions; AI panel composition, Document Reader navigation, canvas selection
   and focus remain page-level, and `DeliveryPreparationPanel` keeps its local form and presentation
   state. No schema, backup, import, draft, output, or visible UI contract changed.
+- WorkspaceClient decomposition phase 4 moves transient drawer, project-menu, context-menu,
+  detail-surface, and research-detail session state into `useWorkspaceSurfaceController.ts`. The
+  controller owns deterministic top-surface close ordering and project-switch isolation, while
+  canvas selection/focus, routing, domain mutations, AI state, and the four existing feature
+  controllers remain page-level. No visible UI, shortcut priority, schema, or domain contract
+  changed.
 - `src/domain/morpho/` owns product-domain types, the generated case-study fixture, deterministic domain actions, import helpers, generation helpers, and queries.
 - `src/infrastructure/persistence/` owns browser localStorage project catalog and workspace access.
 - `src/infrastructure/assets/` owns browser IndexedDB Blob storage and asset-save workflow.
