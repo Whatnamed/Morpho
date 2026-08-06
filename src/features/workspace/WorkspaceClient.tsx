@@ -105,9 +105,8 @@ import { DesignDefinitionDetail } from "./components/DesignDefinitionDetail";
 import { DeliveryPreparationPanel } from "./components/DeliveryPreparationPanel";
 import { DeliveryOutputPanel } from "./components/DeliveryOutputPanel";
 import { DocumentReaderPanel } from "./components/DocumentReaderPanel";
-import { LeftRail, type DrawerMode } from "./components/LeftRail";
+import { LeftRail } from "./components/LeftRail";
 import { OverlayDrawers } from "./components/OverlayDrawers";
-import type { LeftRailAnchor } from "./leftRailPopoverPlacement";
 import { ProposalDraftCard } from "./components/ProposalDraftCard";
 import { ProjectBundlePanel } from "./components/ProjectBundlePanel";
 import { ResearchDetailPanel } from "./components/ResearchDetailPanel";
@@ -152,6 +151,10 @@ import {
 import { buildProposalDiscussionDraft, buildProposalRegenerationDraft } from "./proposalFollowupPrompts";
 import { useDocumentReaderController } from "./useDocumentReaderController";
 import { useDeliveryPreparationController } from "./useDeliveryPreparationController";
+import {
+  useWorkspaceSurfaceController,
+  type WorkspaceExternalSurfacePorts
+} from "./useWorkspaceSurfaceController";
 import { resolveComparisonWritebackSourceObjectIds } from "./comparisonDecision";
 import {
   applyResearchExtractionSelection,
@@ -361,6 +364,40 @@ function buildComparisonDecisionReason(confirmation: PendingComparisonConfirmati
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const router = useRouter();
   const [workspace, setWorkspace, persistenceState, flushWorkspace] = usePersistentWorkspace(projectId);
+  const workspaceSurface = useWorkspaceSurfaceController({
+    projectId,
+    projectTitle: workspace.project.id === projectId ? workspace.project.title : "未命名项目"
+  });
+  const {
+    activeDrawer,
+    drawerAnchor,
+    highlightedContinuityEntryIds,
+    projectMenuOpen,
+    projectRenameDraft,
+    canvasContextMenu,
+    detailProposalId,
+    detailDesignDefinitionId,
+    detailConceptDirectionId,
+    activeResearchDetailObjectId,
+    changeDrawer,
+    openProjectRecords,
+    toggleProjectMenu,
+    setProjectRenameDraft,
+    consumeProjectRename,
+    openCanvasContextMenu,
+    closeCanvasContextMenu,
+    canDismissCanvasContextMenu,
+    openProposalDetail,
+    closeProposalDetail,
+    closeProposalDetailIf,
+    openDesignDefinitionDetail,
+    closeDesignDefinitionDetail,
+    openConceptDirectionDetail,
+    closeConceptDirectionDetail,
+    openResearchDetail,
+    closeResearchDetail,
+    closeTopSurface
+  } = workspaceSurface;
   const handleProjectBundleWorkspaceRestored = useCallback(
     ({ projectId: restoredProjectId }: { projectId: string }) => {
       startTransition(() => {
@@ -434,16 +471,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [taskMode, setTaskMode] = useState<AiTaskMode>("chatAnalysis");
   const workIntent = workspace.ui.workIntent;
   const [aiOpen, setAiOpen] = useState(true);
-  const [activeDrawer, setActiveDrawer] = useState<DrawerMode>(null);
-  const [drawerAnchor, setDrawerAnchor] = useState<LeftRailAnchor | null>(null);
-  const [highlightContinuityEntryIds, setHighlightContinuityEntryIds] = useState<string[]>([]);
   const [localEditObjectId, setLocalEditObjectId] = useState<string | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingAiConfirmation | null>(null);
   const [textPrompt, setTextPrompt] = useState<WorkspaceTextPrompt | null>(null);
   const [activeProposalId, setActiveProposalId] = useState<string | null>(null);
-  const [detailProposalId, setDetailProposalId] = useState<string | null>(null);
-  const [detailDesignDefinitionId, setDetailDesignDefinitionId] = useState<string | null>(null);
-  const [detailConceptDirectionId, setDetailConceptDirectionId] = useState<string | null>(null);
   const [detailHoverObjectId, setDetailHoverObjectId] = useState<string | null>(null);
   const [traceStartObjectId, setTraceStartObjectId] = useState<string | null>(null);
   const [canvasTraceMode, setCanvasTraceMode] = useState<"direct" | "chain">("direct");
@@ -488,18 +519,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [focusRequest, setFocusRequest] = useState<FocusRequest>({ nonce: 0 });
   const [selectionRequest, setSelectionRequest] = useState<CanvasSelectionRequest>({ objectIds: [], nonce: 0 });
   const railImportInputRef = useRef<HTMLInputElement | null>(null);
-  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
-  const [projectRenameDraft, setProjectRenameDraft] = useState(workspace.project.title);
-  const [canvasContextMenu, setCanvasContextMenu] = useState<{
-    x: number;
-    y: number;
-    objectId: string | null;
-    stageId: string | null;
-    pagePosition: { x: number; y: number };
-    openedAt: number;
-  } | null>(null);
   const pendingImportPositionRef = useRef<{ x: number; y: number } | null>(null);
-  const [activeResearchDetailObjectId, setActiveResearchDetailObjectId] = useState<string | null>(null);
   const [aiInputFocusNonce, setAiInputFocusNonce] = useState(0);
   const [manualSaveNotice, setManualSaveNotice] = useState<string | null>(null);
   const manualSaveNoticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -714,50 +734,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [setWorkspace]
   );
 
-  const handleDrawerChange = useCallback((drawer: DrawerMode, anchor?: LeftRailAnchor) => {
-    setDrawerAnchor(drawer ? anchor ?? null : null);
-    setActiveDrawer(drawer);
-  }, []);
-
-  useEffect(() => {
-    if (!activeDrawer) {
-      return;
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        handleDrawerChange(null);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeDrawer, handleDrawerChange]);
-
-  useEffect(() => {
-    if (!activeDrawer) {
-      return;
-    }
-
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!(event.target instanceof Element)) {
-        return;
-      }
-
-      if (event.target.closest(".left-rail, .project-map, .side-drawer, .search-layer")) {
-        return;
-      }
-
-      handleDrawerChange(null);
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown, true);
-    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
-  }, [activeDrawer, handleDrawerChange]);
-
   const focusArea = useCallback((area: FocusArea) => {
     setFocusRequest((current) => ({ area, nonce: current.nonce + 1 }));
-    handleDrawerChange(null);
-  }, [handleDrawerChange]);
+    changeDrawer(null);
+  }, [changeDrawer]);
 
   const focusObject = useCallback((objectId: string, options: { rememberView?: boolean } = {}) => {
     if (options.rememberView) {
@@ -768,8 +748,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
     setSelectedObjectIds([objectId]);
     setFocusRequest((current) => ({ objectId, nonce: current.nonce + 1 }));
-    handleDrawerChange(null);
-  }, [handleDrawerChange, selectedObjectIds, setSelectedObjectIds]);
+    changeDrawer(null);
+  }, [changeDrawer, selectedObjectIds, setSelectedObjectIds]);
 
   const locateObjectFromDetail = useCallback(
     (objectId: string) => {
@@ -808,18 +788,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     []
   );
 
-  const openProjectRecords = useCallback((entryIds: string[] = []) => {
-    setHighlightContinuityEntryIds(entryIds);
-    handleDrawerChange("records");
-  }, [handleDrawerChange]);
-
   const handleSetContinuityEntryManualState = useCallback(
     (entryId: string, manualState: ContinuityManualState) => {
       setWorkspace((current) => setConversationSemanticEntryManualState(current, entryId, manualState));
-      setHighlightContinuityEntryIds([entryId]);
-      handleDrawerChange("records");
+      openProjectRecords([entryId]);
     },
-    [handleDrawerChange, setWorkspace]
+    [openProjectRecords, setWorkspace]
   );
 
   const captureObjectOperationSnapshot = useCallback(
@@ -845,9 +819,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       requestCanvasSelection(entry.selectedObjectIds);
       setLocalEditObjectId(entry.localEditObjectId);
       setPendingConfirmation(entry.pendingConfirmation);
-      setCanvasContextMenu(null);
+      closeCanvasContextMenu();
     },
-    [requestCanvasSelection, setWorkspace]
+    [closeCanvasContextMenu, requestCanvasSelection, setWorkspace]
   );
 
   const undoLastDetailNavigation = useCallback(() => {
@@ -878,7 +852,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
 
     if (result.status === "blocked") {
-      setCanvasContextMenu(null);
+      closeCanvasContextMenu();
       showWorkspaceNotice("撤销已暂停：此步早于 AI 生成的内容，AI 结果不进入撤销；撤销历史已保留。", 2600);
       return true;
     }
@@ -886,7 +860,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     objectOperationHistoryRef.current = result.history;
     applyObjectOperationSnapshot(result.entry);
     return true;
-  }, [applyObjectOperationSnapshot, captureObjectOperationSnapshot, showWorkspaceNotice, undoLastDetailNavigation, workspace]);
+  }, [applyObjectOperationSnapshot, captureObjectOperationSnapshot, closeCanvasContextMenu, showWorkspaceNotice, undoLastDetailNavigation, workspace]);
 
   const redoLastObjectOperation = useCallback(() => {
     const result = redoSnapshotHistory(objectOperationHistoryRef.current, workspace, captureObjectOperationSnapshot);
@@ -895,7 +869,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
 
     if (result.status === "blocked") {
-      setCanvasContextMenu(null);
+      closeCanvasContextMenu();
       showWorkspaceNotice("重做已暂停：撤销之后已有新内容创建，重做不会移除它们；历史已保留。", 2600);
       return true;
     }
@@ -903,7 +877,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     objectOperationHistoryRef.current = result.history;
     applyObjectOperationSnapshot(result.entry);
     return true;
-  }, [applyObjectOperationSnapshot, captureObjectOperationSnapshot, showWorkspaceNotice, workspace]);
+  }, [applyObjectOperationSnapshot, captureObjectOperationSnapshot, closeCanvasContextMenu, showWorkspaceNotice, workspace]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -940,7 +914,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const handleSelectionChange = useCallback(
     (objectIds: string[]) => {
       setSelectedObjectIds(objectIds);
-      setCanvasContextMenu(null);
+      closeCanvasContextMenu();
       setTraceStartObjectId((current) => {
         if (!current || (objectIds.length === 1 && objectIds[0] === current)) {
           return current;
@@ -949,7 +923,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return null;
       });
       if (objectIds.length === 0) {
-        handleDrawerChange(null);
+        changeDrawer(null);
       }
       setWorkspace((current) => {
         if (current.ui.lastSelectionIds.join("|") === objectIds.join("|")) {
@@ -965,7 +939,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         };
       });
     },
-    [handleDrawerChange, setSelectedObjectIds, setWorkspace]
+    [changeDrawer, closeCanvasContextMenu, setSelectedObjectIds, setWorkspace]
   );
 
   const handleInstancesChange = useCallback(
@@ -1194,10 +1168,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     router.push("/");
   }, [router]);
   const handleConfirmProjectRename = useCallback(() => {
-    const title = projectRenameDraft.trim();
-    if (!title || title === workspace.project.title) {
-      setProjectMenuOpen(false);
-      setProjectRenameDraft(workspace.project.title);
+    const result = consumeProjectRename();
+    if (result.status !== "rename") {
       return;
     }
 
@@ -1205,18 +1177,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       ...current,
       project: {
         ...current.project,
-        title
+        title: result.title
       }
     }));
-    setProjectMenuOpen(false);
-  }, [projectRenameDraft, setWorkspace, workspace.project.title]);
+  }, [consumeProjectRename, setWorkspace]);
 
   const handleReorderSelectedLayers = useCallback(
     (action: CanvasLayerReorderAction) => {
       setWorkspace((current) => reorderCanvasInstances(current, selectedObjectIds, action));
-      setCanvasContextMenu(null);
+      closeCanvasContextMenu();
     },
-    [selectedObjectIds, setWorkspace]
+    [closeCanvasContextMenu, selectedObjectIds, setWorkspace]
   );
 
   const handleCopySelectedSummary = useCallback(() => {
@@ -2225,7 +2196,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         setSelectedObjectIds([result.researchObject.id]);
         setFocusRequest((current) => ({ objectId: result.researchObject.id, nonce: current.nonce + 1 }));
         setActiveProposalId(null);
-        setDetailProposalId(null);
+        closeProposalDetail();
       } else {
         setWorkspace(
           appendAiAssistantFailureMessage(
@@ -2256,7 +2227,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         setSelectedObjectIds([result.designDefinitionObject.id]);
         setFocusRequest((current) => ({ objectId: result.designDefinitionObject.id, nonce: current.nonce + 1 }));
         setActiveProposalId(null);
-        setDetailProposalId(null);
+        closeProposalDetail();
       } else {
         setWorkspace(
           appendAiAssistantFailureMessage(
@@ -2296,7 +2267,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           setFocusRequest((current) => ({ objectId: result.directions[0].id, nonce: current.nonce + 1 }));
         }
         setActiveProposalId(null);
-        setDetailProposalId(null);
+        closeProposalDetail();
       } else {
         setWorkspace(
           appendAiAssistantFailureMessage(
@@ -2311,7 +2282,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setAiDraft("");
       setTaskMode("chatAnalysis");
     }
-  }, [activeProposal, setSelectedObjectIds, setWorkspace, workspace]);
+  }, [activeProposal, closeProposalDetail, setSelectedObjectIds, setWorkspace, workspace]);
 
   const handleApplyProposalFromCanvas = useCallback(
     (proposalId: string, allowSourceChanged = false) => {
@@ -2343,7 +2314,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           setSelectedObjectIds([result.researchObject.id]);
           setFocusRequest((current) => ({ objectId: result.researchObject.id, nonce: current.nonce + 1 }));
           setActiveProposalId(null);
-          setDetailProposalId(null);
+          closeProposalDetail();
         } else {
           setWorkspace(
             appendAiAssistantFailureMessage(
@@ -2374,7 +2345,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           setSelectedObjectIds([result.designDefinitionObject.id]);
           setFocusRequest((current) => ({ objectId: result.designDefinitionObject.id, nonce: current.nonce + 1 }));
           setActiveProposalId(null);
-          setDetailProposalId(null);
+          closeProposalDetail();
         } else {
           setWorkspace(
             appendAiAssistantFailureMessage(
@@ -2414,7 +2385,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             setFocusRequest((current) => ({ objectId: result.directions[0].id, nonce: current.nonce + 1 }));
           }
           setActiveProposalId(null);
-          setDetailProposalId(null);
+          closeProposalDetail();
         } else {
           setWorkspace(
             appendAiAssistantFailureMessage(
@@ -2430,17 +2401,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         setTaskMode("chatAnalysis");
       }
     },
-    [setSelectedObjectIds, setWorkspace, workspace]
+    [closeProposalDetail, setSelectedObjectIds, setWorkspace, workspace]
   );
 
   const handleRejectProposal = useCallback(
     (proposalId: string) => {
       setWorkspace((current) => rejectArtifactProposal(current, proposalId, "用户明确放弃当前草案。"));
       setActiveProposalId((current) => (current === proposalId ? null : current));
-      setDetailProposalId((current) => (current === proposalId ? null : current));
+      closeProposalDetailIf([proposalId]);
       setSelectedObjectIds((current) => current.filter((selectedId) => selectedId !== proposalId));
     },
-    [setSelectedObjectIds, setWorkspace]
+    [closeProposalDetailIf, setSelectedObjectIds, setWorkspace]
   );
 
   const handleSaveResearchProposalDraft = useCallback(
@@ -3048,9 +3019,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setSelectedObjectIds((current) => current.filter((selectedId) => !removedIds.includes(selectedId)));
     setLocalEditObjectId((current) => (current && removedIds.includes(current) ? null : current));
     setActiveProposalId((current) => (current && removedIds.includes(current) ? null : current));
-    setDetailProposalId((current) => (current && removedIds.includes(current) ? null : current));
-    setCanvasContextMenu(null);
-  }, [pushObjectOperationUndo, selectedObjects, setSelectedObjectIds, setWorkspace]);
+    closeProposalDetailIf(removedIds);
+    closeCanvasContextMenu();
+  }, [closeCanvasContextMenu, closeProposalDetailIf, pushObjectOperationUndo, selectedObjects, setSelectedObjectIds, setWorkspace]);
 
   const handleRestoreObject = useCallback(
     (objectId: string) => {
@@ -3091,9 +3062,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       current?.kind === "deleteObject" && removedIds.includes(current.targetObjectId) ? null : current
     );
     setActiveProposalId((current) => (current && removedIds.includes(current) ? null : current));
-    setDetailProposalId((current) => (current && removedIds.includes(current) ? null : current));
-    setCanvasContextMenu(null);
-  }, [pushObjectOperationUndo, selectedObjects, setSelectedObjectIds, setWorkspace]);
+    closeProposalDetailIf(removedIds);
+    closeCanvasContextMenu();
+  }, [closeCanvasContextMenu, closeProposalDetailIf, pushObjectOperationUndo, selectedObjects, setSelectedObjectIds, setWorkspace]);
 
   const handleEliminateDirection = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "conceptDirection");
@@ -3215,8 +3186,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
-    setActiveResearchDetailObjectId(research.id);
-  }, [selectedObjects]);
+    openResearchDetail(research.id);
+  }, [openResearchDetail, selectedObjects]);
 
   const handleAutoSelectResearch = useCallback(() => {
     const research = selectedObjects.length === 1 && selectedObjects[0]?.type === "research" ? selectedObjects[0] : undefined;
@@ -3238,8 +3209,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setSelectedObjectIds(result.activeObjectIds);
       setFocusRequest((current) => ({ objectId: result.activeObjectIds[0], nonce: current.nonce + 1 }));
     }
-    setActiveResearchDetailObjectId(null);
-  }, [selectedObjects, setSelectedObjectIds, setWorkspace, workspace]);
+    closeResearchDetail();
+  }, [closeResearchDetail, selectedObjects, setSelectedObjectIds, setWorkspace, workspace]);
 
   const handleApplyResearchExtractionSelection = useCallback(
     (selectedKeys: string[]) => {
@@ -3487,10 +3458,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     (fileObjectId: string, initialLocation?: Parameters<typeof openDocumentReader>[1]) => {
       setSelectedObjectIds([]);
       setLocalEditObjectId(null);
-      setCanvasContextMenu(null);
+      closeCanvasContextMenu();
       openDocumentReader(fileObjectId, initialLocation);
     },
-    [openDocumentReader, setSelectedObjectIds]
+    [closeCanvasContextMenu, openDocumentReader, setSelectedObjectIds]
   );
 
   const handleOpenDeliveryReferenceReader = useCallback(
@@ -3513,7 +3484,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
 
     requestCanvasSelection(activeCanvasObjectIds);
-    setCanvasContextMenu(null);
+    closeCanvasContextMenu();
     setWorkspace((current) => ({
       ...current,
       ui: {
@@ -3522,7 +3493,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
     }));
     return true;
-  }, [activeCanvasObjectIds, requestCanvasSelection, setWorkspace]);
+  }, [activeCanvasObjectIds, closeCanvasContextMenu, requestCanvasSelection, setWorkspace]);
 
   const clearCanvasSelection = useCallback(() => {
     if (selectedObjectIds.length === 0) {
@@ -3530,7 +3501,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
 
     requestCanvasSelection([]);
-    setCanvasContextMenu(null);
+    closeCanvasContextMenu();
     setWorkspace((current) => ({
       ...current,
       ui: {
@@ -3539,73 +3510,32 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
     }));
     return true;
-  }, [requestCanvasSelection, selectedObjectIds.length, setWorkspace]);
+  }, [closeCanvasContextMenu, requestCanvasSelection, selectedObjectIds.length, setWorkspace]);
 
   const closeTopWorkspaceSurface = useCallback(() => {
-    if (canvasContextMenu) {
-      setCanvasContextMenu(null);
-      return true;
-    }
-    if (detailProposalId) {
-      setDetailProposalId(null);
-      return true;
-    }
-    if (detailDesignDefinitionId) {
-      setDetailDesignDefinitionId(null);
-      return true;
-    }
-    if (detailConceptDirectionId) {
-      setDetailConceptDirectionId(null);
-      return true;
-    }
-    if (activeResearchDetailObjectId) {
-      setActiveResearchDetailObjectId(null);
-      return true;
-    }
-    if (documentReader) {
-      handleCloseDocumentReader();
-      return true;
-    }
-    if (deliveryPanelOpen) {
-      closeDeliveryPreparation();
-      return true;
-    }
-    if (isDeliveryOutputOpen) {
-      closeDeliveryOutput();
-      return true;
-    }
-    if (isProjectBundleOpen) {
-      closeProjectBundle();
-      return true;
-    }
-    if (projectMenuOpen) {
-      setProjectMenuOpen(false);
-      return true;
-    }
-    if (activeDrawer) {
-      handleDrawerChange(null);
-      return true;
-    }
-
-    return clearCanvasSelection();
+    const ports: WorkspaceExternalSurfacePorts = {
+      documentReaderOpen: Boolean(documentReader),
+      closeDocumentReader: handleCloseDocumentReader,
+      deliveryPreparationOpen: deliveryPanelOpen,
+      closeDeliveryPreparation,
+      deliveryOutputOpen: isDeliveryOutputOpen,
+      closeDeliveryOutput,
+      projectBundleOpen: isProjectBundleOpen,
+      closeProjectBundle,
+      clearCanvasSelection
+    };
+    return closeTopSurface(ports);
   }, [
-    activeDrawer,
-    activeResearchDetailObjectId,
+    clearCanvasSelection,
+    closeDeliveryPreparation,
     closeDeliveryOutput,
     closeProjectBundle,
-    canvasContextMenu,
-    clearCanvasSelection,
-    isDeliveryOutputOpen,
-    isProjectBundleOpen,
-    closeDeliveryPreparation,
+    closeTopSurface,
     deliveryPanelOpen,
-    detailConceptDirectionId,
-    detailDesignDefinitionId,
-    detailProposalId,
     documentReader,
     handleCloseDocumentReader,
-    handleDrawerChange,
-    projectMenuOpen
+    isDeliveryOutputOpen,
+    isProjectBundleOpen
   ]);
 
   useEffect(() => {
@@ -3699,6 +3629,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         margin: 18
       })
       : null;
+  const handleOpenProposalDetail = useCallback(
+    (proposalId: string) => {
+      setActiveProposalId(proposalId);
+      openProposalDetail(proposalId);
+    },
+    [openProposalDetail]
+  );
   const renderSelectionToolbar = (
     toolbarObjects: MorphoObject[],
     placement: SelectionToolbarPlacement,
@@ -3721,12 +3658,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       onReferenceIntent={handleReferenceIntent}
       onHide={handleHideSelected}
       onDelete={handleDeleteSelected}
-      onOpenProposalDetail={() => { const object = toolbarObjects.find((item) => item.type === "proposalDraft"); if (object?.type === "proposalDraft") { setDetailDesignDefinitionId(null); setDetailConceptDirectionId(null); setActiveProposalId(object.proposalId); setDetailProposalId(object.proposalId); } }}
+      onOpenProposalDetail={() => { const object = toolbarObjects.find((item) => item.type === "proposalDraft"); if (object?.type === "proposalDraft") handleOpenProposalDetail(object.proposalId); }}
       onApplyProposal={() => { const object = toolbarObjects.find((item) => item.type === "proposalDraft"); if (object?.type === "proposalDraft") handleApplyProposalFromCanvas(object.proposalId); }}
       onRejectProposal={() => { const object = toolbarObjects.find((item) => item.type === "proposalDraft"); if (object?.type === "proposalDraft") handleRejectProposal(object.proposalId); }}
       onContinueProposalDiscussion={() => { const object = toolbarObjects.find((item) => item.type === "proposalDraft"); if (object?.type === "proposalDraft") handleContinueProposalDiscussion(object.proposalId); }}
-      onOpenDesignDefinitionDetail={() => { const object = toolbarObjects.find((item) => item.type === "designDefinition"); if (object?.type === "designDefinition") { setDetailProposalId(null); setDetailConceptDirectionId(null); setDetailDesignDefinitionId(object.id); } }}
-      onOpenConceptDirectionDetail={() => { const object = toolbarObjects.find((item) => item.type === "conceptDirection"); if (object?.type === "conceptDirection") { setDetailProposalId(null); setDetailDesignDefinitionId(null); setDetailConceptDirectionId(object.id); } }}
+      onOpenDesignDefinitionDetail={() => { const object = toolbarObjects.find((item) => item.type === "designDefinition"); if (object?.type === "designDefinition") openDesignDefinitionDetail(object.id); }}
+      onOpenConceptDirectionDetail={() => { const object = toolbarObjects.find((item) => item.type === "conceptDirection"); if (object?.type === "conceptDirection") openConceptDirectionDetail(object.id); }}
       onSetCurrentDesignDefinition={() => { const object = toolbarObjects.find((item) => item.type === "designDefinition"); if (object?.type === "designDefinition") setWorkspace((current) => setCurrentDesignDefinition(current, object.id)); }}
       onReviseDirection={handleReviseDirectionIntent}
       onSplitDirection={handleSplitDirectionIntent}
@@ -3816,13 +3753,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onLiveViewChange={handleCanvasLiveViewChange}
         onImportRequest={handleImportRequest}
         onContextMenuRequest={(request) => {
-          setCanvasContextMenu({
+          openCanvasContextMenu({
             x: request.x,
             y: request.y,
             objectId: request.objectId,
             stageId: request.stageId,
-            pagePosition: request.pagePosition,
-            openedAt: Date.now()
+            pagePosition: request.pagePosition
           });
           if (request.objectId && !selectedObjectIds.includes(request.objectId)) {
             requestCanvasSelection([request.objectId]);
@@ -3850,7 +3786,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             className="proposal-detail-close"
             type="button"
             aria-label="关闭草案详情"
-            onClick={() => setDetailProposalId(null)}
+            onClick={closeProposalDetail}
           >
             ×
           </button>
@@ -3874,7 +3810,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             className="proposal-detail-close"
             type="button"
             aria-label="关闭设计定义详情"
-            onClick={() => setDetailDesignDefinitionId(null)}
+            onClick={closeDesignDefinitionDetail}
           >
             ×
           </button>
@@ -3891,7 +3827,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             className="proposal-detail-close"
             type="button"
             aria-label="关闭概念方向详情"
-            onClick={() => setDetailConceptDirectionId(null)}
+            onClick={closeConceptDirectionDetail}
           >
             ×
           </button>
@@ -3926,7 +3862,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             }
           })
         }
-        onSearch={() => handleDrawerChange("search")}
+        onSearch={() => changeDrawer("search")}
         onFocusOverview={() => focusArea("overview")}
         onOpenDeliveryPreparation={() => openDeliveryPreparationFromSelection()}
         onOpenProjectBundles={() => {
@@ -3939,12 +3875,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }}
         projectMenuOpen={projectMenuOpen}
         projectRenameDraft={projectRenameDraft}
-        onProjectMenuToggle={() => {
-          if (!projectMenuOpen) {
-            setProjectRenameDraft(workspace.project.title);
-          }
-          setProjectMenuOpen((current) => !current);
-        }}
+        onProjectMenuToggle={toggleProjectMenu}
         onProjectRenameDraftChange={setProjectRenameDraft}
         onProjectRenameConfirm={handleConfirmProjectRename}
         onOpenProjectHome={handleOpenProjectHome}
@@ -3981,14 +3912,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       ) : null}
       <LeftRail
         activeDrawer={activeDrawer}
-        onDrawerChange={handleDrawerChange}
+        onDrawerChange={changeDrawer}
         onAddToCanvas={handleRailAddToCanvas}
       />
       <OverlayDrawers
         mode={activeDrawer}
         workspace={workspace}
-        highlightedRecordIds={highlightContinuityEntryIds}
-        onClose={() => handleDrawerChange(null)}
+        highlightedRecordIds={highlightedContinuityEntryIds}
+        onClose={() => changeDrawer(null)}
         onFocusArea={focusArea}
         onRestoreObject={handleRestoreObject}
         onLocateObject={focusObject}
@@ -4003,23 +3934,23 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           onPointerDownCapture={(event) => {
             event.preventDefault();
             event.stopPropagation();
-            if (Date.now() - canvasContextMenu.openedAt < 220) {
+            if (!canDismissCanvasContextMenu()) {
               return;
             }
-            setCanvasContextMenu(null);
+            closeCanvasContextMenu();
           }}
           onContextMenuCapture={(event) => {
             event.preventDefault();
             event.stopPropagation();
-            if (Date.now() - canvasContextMenu.openedAt < 220) {
+            if (!canDismissCanvasContextMenu()) {
               return;
             }
-            setCanvasContextMenu(null);
+            closeCanvasContextMenu();
           }}
           onWheelCapture={(event) => {
             event.preventDefault();
             event.stopPropagation();
-            setCanvasContextMenu(null);
+            closeCanvasContextMenu();
           }}
         />
       ) : null}
@@ -4031,7 +3962,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           selectedObjects={contextMenuObjects}
           stage={contextMenuStage}
           hasSelection={selectedObjectIds.length > 0}
-          onClose={() => setCanvasContextMenu(null)}
+          onClose={closeCanvasContextMenu}
           onCopySummary={handleCopySelectedSummary}
           onAskAi={handleAskAi}
           onLocalEdit={handleLocalEdit}
@@ -4068,11 +3999,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             if (proposalObject?.type !== "proposalDraft") {
               return;
             }
-            setDetailDesignDefinitionId(null);
-            setDetailConceptDirectionId(null);
-            setActiveProposalId(proposalObject.proposalId);
-            setDetailProposalId(proposalObject.proposalId);
-            setCanvasContextMenu(null);
+            handleOpenProposalDetail(proposalObject.proposalId);
+            closeCanvasContextMenu();
           }}
           onApplyProposal={() => {
             const proposalObject = contextMenuObjects.find((object) => object.type === "proposalDraft");
@@ -4080,7 +4008,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               return;
             }
             handleApplyProposalFromCanvas(proposalObject.proposalId);
-            setCanvasContextMenu(null);
+            closeCanvasContextMenu();
           }}
           onRejectProposal={() => {
             const proposalObject = contextMenuObjects.find((object) => object.type === "proposalDraft");
@@ -4088,7 +4016,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               return;
             }
             handleRejectProposal(proposalObject.proposalId);
-            setCanvasContextMenu(null);
+            closeCanvasContextMenu();
           }}
           onContinueProposalDiscussion={() => {
             const proposalObject = contextMenuObjects.find((object) => object.type === "proposalDraft");
@@ -4096,25 +4024,21 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               return;
             }
             handleContinueProposalDiscussion(proposalObject.proposalId);
-            setCanvasContextMenu(null);
+            closeCanvasContextMenu();
           }}
           onOpenDesignDefinitionDetail={() => {
             const definition = contextMenuObjects.find((object) => object.type === "designDefinition");
             if (definition?.type === "designDefinition") {
-              setDetailProposalId(null);
-              setDetailConceptDirectionId(null);
-              setDetailDesignDefinitionId(definition.id);
+              openDesignDefinitionDetail(definition.id);
             }
-            setCanvasContextMenu(null);
+            closeCanvasContextMenu();
           }}
           onOpenConceptDirectionDetail={() => {
             const direction = contextMenuObjects.find((object) => object.type === "conceptDirection");
             if (direction?.type === "conceptDirection") {
-              setDetailProposalId(null);
-              setDetailDesignDefinitionId(null);
-              setDetailConceptDirectionId(direction.id);
+              openConceptDirectionDetail(direction.id);
             }
-            setCanvasContextMenu(null);
+            closeCanvasContextMenu();
           }}
         />
       ) : null}
@@ -4172,7 +4096,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         <ResearchDetailPanel
           workspace={workspace}
           research={activeResearchDetailObject}
-          onClose={() => setActiveResearchDetailObjectId(null)}
+          onClose={closeResearchDetail}
           onApplySelection={handleApplyResearchExtractionSelection}
         />
       ) : null}
