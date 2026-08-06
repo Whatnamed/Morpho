@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { createInitialWorkspace } from "@/domain/morpho/workspace";
-import type { MorphoWorkspace } from "@/domain/morpho/types";
+import type { AssetRecord, MorphoWorkspace } from "@/domain/morpho/types";
+import type { ArtifactProposal, OperationRecord, SourceCitation } from "@/domain/operations/types";
 import { popDetailNavigation, pushDetailNavigation } from "./workspaceNavigation";
 import {
   SNAPSHOT_HISTORY_LIMIT,
@@ -247,6 +248,24 @@ describe("workspace object-operation undo history", () => {
     expect(shouldBlockSnapshotUndo(snapshot, current)).toBe(true);
   });
 
+  it("blocks snapshot undo for each AI-created record collection", () => {
+    const snapshot = createInitialWorkspace();
+    const asset = createAiAsset();
+    const operation = createAiOperation(snapshot.project.id);
+    const proposal = createAiProposal(operation.id);
+    const citation = createAiCitation(operation.id);
+    const cases: Array<[string, MorphoWorkspace]> = [
+      ["asset", { ...snapshot, assets: { ...snapshot.assets, [asset.id]: asset } }],
+      ["operation", { ...snapshot, operations: { ...snapshot.operations, [operation.id]: operation } }],
+      ["artifact proposal", { ...snapshot, artifactProposals: { ...snapshot.artifactProposals, [proposal.id]: proposal } }],
+      ["citation snapshot", { ...snapshot, citationSnapshots: { ...snapshot.citationSnapshots, [citation.id]: citation } }]
+    ];
+
+    for (const [label, current] of cases) {
+      expect(shouldBlockSnapshotUndo(snapshot, current), label).toBe(true);
+    }
+  });
+
   it("allows snapshot undo when no project content was created after the snapshot", () => {
     const snapshot = createInitialWorkspace();
     const current = {
@@ -263,3 +282,68 @@ describe("workspace object-operation undo history", () => {
     expect(shouldBlockSnapshotUndo(snapshot, current)).toBe(false);
   });
 });
+
+function createAiAsset(): AssetRecord {
+  return {
+    id: "asset-ai-result",
+    fileName: "ai-result.png",
+    mimeType: "image/png",
+    size: 1,
+    createdAt: "2026-08-07T00:00:00.000Z",
+    storageKey: "asset-ai-result",
+    sourceType: "aiGeneratedImage"
+  };
+}
+
+function createAiOperation(projectId: string): OperationRecord {
+  return {
+    id: "operation-ai-result",
+    type: "research",
+    projectId,
+    createdAt: "2026-08-07T00:00:00.000Z",
+    updatedAt: "2026-08-07T00:00:00.000Z",
+    status: "succeeded",
+    userInput: "AI research",
+    inputSnapshot: {
+      userInput: "AI research",
+      selectedObjectIds: [],
+      sourceSnapshots: [],
+      objectSnapshots: []
+    },
+    allowedCapabilities: { webSearch: false, imagePixels: false },
+    steps: [],
+    events: [],
+    sourceIds: [],
+    proposalIds: [],
+    retryable: false
+  };
+}
+
+function createAiProposal(operationId: string): ArtifactProposal {
+  return {
+    id: "proposal-ai-result",
+    type: "researchAnalysis",
+    operationId,
+    status: "pending",
+    sourceSnapshots: [],
+    sourceObjectIds: [],
+    citationIds: [],
+    createdAt: "2026-08-07T00:00:00.000Z",
+    title: "AI research proposal",
+    summary: "AI result",
+    findings: [],
+    opportunities: [],
+    constraints: [],
+    openQuestions: [],
+    evidence: []
+  };
+}
+
+function createAiCitation(operationId: string): SourceCitation {
+  return {
+    id: "citation-ai-result",
+    operationId,
+    title: "AI source",
+    retrievedAt: "2026-08-07T00:00:00.000Z"
+  };
+}

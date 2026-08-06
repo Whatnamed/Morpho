@@ -164,14 +164,20 @@ describe("useWorkspaceSelectionNavigationController", () => {
     });
     const staleRequest = harness.current().requestCanvasSelection;
     const staleFocus = harness.current().focusObject;
+    const staleSetSelectedObjectIds = harness.current().setSelectedObjectIds;
+    const staleLocateObjectFromDetail = harness.current().locateObjectFromDetail;
 
     await harness.rerender({ projectId: "project-new", workspace: oldWorkspace, workspaceReady: false });
     act(() => {
       staleRequest(["stale-request"]);
       staleFocus("stale-focus");
+      staleSetSelectedObjectIds(["stale-selected"]);
+      staleLocateObjectFromDetail("stale-locate");
       harness.current().requestCanvasSelection(["new-request"]);
+      harness.current().setSelectedObjectIds(["new-selected"]);
       harness.current().focusArea("research");
       harness.current().focusObject("new-object", { rememberView: true });
+      harness.current().locateObjectFromDetail("new-locate");
       harness.current().observeCanvasView({ x: 400, y: 400, zoom: 3 });
       harness.current().commitCanvasView({ x: 400, y: 400, zoom: 3 });
       expect(harness.current().clearCanvasSelection()).toBe(false);

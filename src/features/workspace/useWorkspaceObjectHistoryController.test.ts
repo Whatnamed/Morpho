@@ -56,7 +56,14 @@ describe("useWorkspaceObjectHistoryController", () => {
   });
 
   it("gives detail navigation undo priority over object history", async () => {
-    const detailUndo = vi.fn(() => true);
+    let detailUndoAvailable = true;
+    const detailUndo = vi.fn(() => {
+      if (!detailUndoAvailable) {
+        return false;
+      }
+      detailUndoAvailable = false;
+      return true;
+    });
     const harness = await renderController({
       projectId: "project-a",
       workspace: createBlankWorkspace("project-a"),
@@ -68,6 +75,10 @@ describe("useWorkspaceObjectHistoryController", () => {
     expect(harness.current().undo()).toBe(true);
     expect(detailUndo).toHaveBeenCalledTimes(1);
     expect(harness.applied()).toHaveLength(0);
+
+    expect(harness.current().undo()).toBe(true);
+    expect(detailUndo).toHaveBeenCalledTimes(2);
+    expect(harness.applied()).toHaveLength(1);
   });
 
   it("blocks undo and redo after AI content without consuming the protected history", async () => {
@@ -136,11 +147,38 @@ describe("useWorkspaceObjectHistoryController", () => {
     act(() => window.dispatchEvent(shiftRedoEvent));
     expect(shiftRedoEvent.defaultPrevented).toBe(true);
 
+    const metaUndoEvent = new KeyboardEvent("keydown", { key: "z", metaKey: true, cancelable: true });
+    act(() => window.dispatchEvent(metaUndoEvent));
+    expect(metaUndoEvent.defaultPrevented).toBe(true);
+
+    const metaShiftRedoEvent = new KeyboardEvent("keydown", {
+      key: "z",
+      metaKey: true,
+      shiftKey: true,
+      cancelable: true
+    });
+    act(() => window.dispatchEvent(metaShiftRedoEvent));
+    expect(metaShiftRedoEvent.defaultPrevented).toBe(true);
+
+    const metaUndoForYEvent = new KeyboardEvent("keydown", { key: "z", metaKey: true, cancelable: true });
+    act(() => window.dispatchEvent(metaUndoForYEvent));
+    expect(metaUndoForYEvent.defaultPrevented).toBe(true);
+
+    const metaRedoYEvent = new KeyboardEvent("keydown", { key: "y", metaKey: true, cancelable: true });
+    act(() => window.dispatchEvent(metaRedoYEvent));
+    expect(metaRedoYEvent.defaultPrevented).toBe(true);
+
     const input = document.createElement("input");
     document.body.appendChild(input);
     const editableEvent = new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true, cancelable: true });
     act(() => input.dispatchEvent(editableEvent));
     expect(editableEvent.defaultPrevented).toBe(false);
+
+    const textarea = document.createElement("textarea");
+    document.body.appendChild(textarea);
+    const textareaEvent = new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true, cancelable: true });
+    act(() => textarea.dispatchEvent(textareaEvent));
+    expect(textareaEvent.defaultPrevented).toBe(false);
 
     const editableContent = document.createElement("div");
     editableContent.contentEditable = "true";
