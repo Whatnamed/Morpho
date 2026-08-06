@@ -88,6 +88,24 @@ describe("useWorkspaceObjectHistoryController", () => {
     expect(harness.notices()).toHaveLength(2);
   });
 
+  it("blocks redo after an AI result appears on the undone branch", async () => {
+    const harness = await renderController({ projectId: "project-a", workspace: createBlankWorkspace("project-a"), workspaceReady: true });
+
+    act(() => harness.current().pushUndoSnapshot());
+    act(() => harness.setWorkspace(renameProject(harness.workspace(), "after")));
+    expect(harness.current().undo()).toBe(true);
+    act(() => harness.setWorkspace(appendAiMessage(harness.workspace(), "ai-after-undo")));
+
+    expect(harness.current().redo()).toBe(true);
+    expect(harness.notices()).toEqual([
+      {
+        message: "重做已暂停：撤销之后已有新内容创建，重做不会移除它们；历史已保留。",
+        durationMs: 2600
+      }
+    ]);
+    expect(harness.closedContextMenuCount()).toBe(1);
+  });
+
   it("owns keyboard undo and redo, but leaves editable targets and empty history alone", async () => {
     const harness = await renderController({ projectId: "project-a", workspace: createBlankWorkspace("project-a"), workspaceReady: true });
     const emptyUndo = new KeyboardEvent("keydown", { key: "z", ctrlKey: true, cancelable: true });
@@ -107,11 +125,34 @@ describe("useWorkspaceObjectHistoryController", () => {
     expect(redoEvent.defaultPrevented).toBe(true);
     expect(harness.applied()).toHaveLength(2);
 
+    const undoAgainEvent = new KeyboardEvent("keydown", { key: "z", ctrlKey: true, cancelable: true });
+    act(() => window.dispatchEvent(undoAgainEvent));
+    const shiftRedoEvent = new KeyboardEvent("keydown", {
+      key: "z",
+      ctrlKey: true,
+      shiftKey: true,
+      cancelable: true
+    });
+    act(() => window.dispatchEvent(shiftRedoEvent));
+    expect(shiftRedoEvent.defaultPrevented).toBe(true);
+
     const input = document.createElement("input");
     document.body.appendChild(input);
     const editableEvent = new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true, cancelable: true });
     act(() => input.dispatchEvent(editableEvent));
     expect(editableEvent.defaultPrevented).toBe(false);
+
+    const editableContent = document.createElement("div");
+    editableContent.contentEditable = "true";
+    document.body.appendChild(editableContent);
+    const contentEditableEvent = new KeyboardEvent("keydown", {
+      key: "z",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true
+    });
+    act(() => editableContent.dispatchEvent(contentEditableEvent));
+    expect(contentEditableEvent.defaultPrevented).toBe(false);
   });
 
   it("does not intercept shortcuts or retain history while switching projects", async () => {

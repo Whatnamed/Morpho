@@ -85,6 +85,10 @@ describe("useWorkspaceSelectionNavigationController", () => {
       workspaceReady: true
     });
 
+    act(() => harness.current().focusArea("visual"));
+    expect(harness.current().selectedObjectIds).toEqual(["object-a"]);
+    expect(harness.current().focusRequest).toMatchObject({ area: "visual" });
+
     act(() => harness.current().observeCanvasView(liveView));
     expect(harness.workspace().canvas.view).toEqual(initialView);
 
@@ -159,10 +163,12 @@ describe("useWorkspaceSelectionNavigationController", () => {
       harness.current().observeCanvasView({ x: 99, y: 99, zoom: 2 });
     });
     const staleRequest = harness.current().requestCanvasSelection;
+    const staleFocus = harness.current().focusObject;
 
     await harness.rerender({ projectId: "project-new", workspace: oldWorkspace, workspaceReady: false });
     act(() => {
       staleRequest(["stale-request"]);
+      staleFocus("stale-focus");
       harness.current().requestCanvasSelection(["new-request"]);
       harness.current().focusArea("research");
       harness.current().focusObject("new-object", { rememberView: true });
