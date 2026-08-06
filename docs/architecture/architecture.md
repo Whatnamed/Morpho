@@ -85,6 +85,16 @@ Important module boundaries:
   canvas selection/focus, routing, domain mutations, AI state, and the four existing feature
   controllers remain page-level. No visible UI, shortcut priority, schema, or domain contract
   changed.
+- WorkspaceClient decomposition phase 5 moves the project-aware selection session, persisted
+  selection hydration, canvas selection/focus request nonces, live versus committed canvas View,
+  and detail-location undo into `useWorkspaceSelectionNavigationController.ts`. Manual object
+  Snapshot History and the Ctrl/Cmd undo/redo boundary live in the generic
+  `useWorkspaceObjectHistoryController.ts`; it delegates page-specific snapshot capture and
+  restoration back to `WorkspaceClient.tsx`, while preserving detail-navigation priority and AI
+  content protection. Both controllers clear transient history across project/readiness changes,
+  and keep same-project ready updates intact. `WorkspaceClient.tsx` remains responsible for
+  canvas Trace, surface coordination, domain mutations, AI state, confirmations, and component
+  composition. No visible UI, schema, persistence format, or domain contract changed.
 - `src/domain/morpho/` owns product-domain types, the generated case-study fixture, deterministic domain actions, import helpers, generation helpers, and queries.
 - `src/infrastructure/persistence/` owns browser localStorage project catalog and workspace access.
 - `src/infrastructure/assets/` owns browser IndexedDB Blob storage and asset-save workflow.
