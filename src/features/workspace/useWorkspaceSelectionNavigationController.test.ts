@@ -105,7 +105,7 @@ describe("useWorkspaceSelectionNavigationController", () => {
     act(() => expect(harness.current().undoDetailNavigation()).toBe(true));
     expect(harness.current().selectedObjectIds).toEqual(["object-a"]);
     expect(harness.current().focusRequest).toMatchObject({
-      view: initialView,
+      view: liveView,
       selectionObjectIds: ["object-a"]
     });
     expect(harness.current().undoDetailNavigation()).toBe(false);
