@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useState } from "react";
 
 import type { DrawerMode } from "./components/LeftRail";
 import type { LeftRailAnchor } from "./leftRailPopoverPlacement";
@@ -47,6 +47,7 @@ export type WorkspaceExternalSurfacePorts = {
 export type UseWorkspaceSurfaceControllerInput = {
   projectId: string;
   projectTitle: string;
+  workspaceReady: boolean;
   now?: () => number;
 };
 
@@ -87,9 +88,15 @@ export type WorkspaceSurfaceController = {
 const DRAWER_DISMISS_SELECTORS = ".left-rail, .project-map, .side-drawer, .search-layer";
 const CANVAS_CONTEXT_MENU_DISMISS_DELAY_MS = 220;
 
+type CommittedWorkspaceSurfaceSession = {
+  projectId: string;
+  workspaceReady: boolean;
+};
+
 export function useWorkspaceSurfaceController({
   projectId,
   projectTitle,
+  workspaceReady,
   now = Date.now
 }: UseWorkspaceSurfaceControllerInput): WorkspaceSurfaceController {
   const [activeDrawerState, setActiveDrawerState] = useState<DrawerMode>(null);
@@ -102,17 +109,40 @@ export function useWorkspaceSurfaceController({
   const [detailDesignDefinitionIdState, setDetailDesignDefinitionIdState] = useState<string | null>(null);
   const [detailConceptDirectionIdState, setDetailConceptDirectionIdState] = useState<string | null>(null);
   const [activeResearchDetailObjectIdState, setActiveResearchDetailObjectIdState] = useState<string | null>(null);
-  const committedProjectIdRef = useRef(projectId);
+  const [committedSession, commitSession] = useReducer(
+    (_current: CommittedWorkspaceSurfaceSession, next: CommittedWorkspaceSurfaceSession) => next,
+    { projectId, workspaceReady }
+  );
 
-  // The marker represents the project whose reset effect has committed. Until then,
-  // the render gate keeps the previous project's transient surfaces invisible.
-  // eslint-disable-next-line react-hooks/refs
-  const sessionMatchesProject = committedProjectIdRef.current === projectId;
+  // The marker represents the project/readiness pair whose reset effect has committed.
+  // Until then, the render gate keeps transient surfaces invisible during the switch.
+  const sessionMatchesProject =
+    committedSession.projectId === projectId && committedSession.workspaceReady && workspaceReady;
 
-  const changeDrawer = useCallback((drawer: DrawerMode, anchor?: LeftRailAnchor) => {
-    setDrawerAnchorState(drawer ? anchor ?? null : null);
-    setActiveDrawerState(drawer);
+  const resetSurfaceState = useCallback((nextProjectTitle: string) => {
+    setActiveDrawerState(null);
+    setDrawerAnchorState(null);
+    setHighlightedContinuityEntryIdsState([]);
+    setProjectMenuOpenState(false);
+    setProjectRenameDraftState(nextProjectTitle);
+    setCanvasContextMenuState(null);
+    setDetailProposalIdState(null);
+    setDetailDesignDefinitionIdState(null);
+    setDetailConceptDirectionIdState(null);
+    setActiveResearchDetailObjectIdState(null);
   }, []);
+
+  const changeDrawer = useCallback(
+    (drawer: DrawerMode, anchor?: LeftRailAnchor) => {
+      if (!sessionMatchesProject) {
+        return;
+      }
+
+      setDrawerAnchorState(drawer ? anchor ?? null : null);
+      setActiveDrawerState(drawer);
+    },
+    [sessionMatchesProject]
+  );
 
   const openDrawer = useCallback(
     (drawer: Exclude<DrawerMode, null>, anchor?: LeftRailAnchor) => {
@@ -127,28 +157,47 @@ export function useWorkspaceSurfaceController({
 
   const openProjectRecords = useCallback(
     (entryIds: string[] = []) => {
+      if (!sessionMatchesProject) {
+        return;
+      }
+
       setHighlightedContinuityEntryIdsState([...entryIds]);
       changeDrawer("records");
     },
-    [changeDrawer]
+    [changeDrawer, sessionMatchesProject]
   );
 
   const toggleProjectMenu = useCallback(() => {
+    if (!sessionMatchesProject) {
+      return;
+    }
+
     if (!projectMenuOpenState) {
       setProjectRenameDraftState(projectTitle);
     }
     setProjectMenuOpenState((current) => !current);
-  }, [projectMenuOpenState, projectTitle]);
+  }, [projectMenuOpenState, projectTitle, sessionMatchesProject]);
 
   const closeProjectMenu = useCallback(() => {
     setProjectMenuOpenState(false);
   }, []);
 
-  const setProjectRenameDraft = useCallback((value: string) => {
-    setProjectRenameDraftState(value);
-  }, []);
+  const setProjectRenameDraft = useCallback(
+    (value: string) => {
+      if (!sessionMatchesProject) {
+        return;
+      }
+
+      setProjectRenameDraftState(value);
+    },
+    [sessionMatchesProject]
+  );
 
   const consumeProjectRename = useCallback((): ProjectRenameIntent => {
+    if (!sessionMatchesProject) {
+      return { status: "unchanged" };
+    }
+
     const title = projectRenameDraftState.trim();
     if (!title || title === projectTitle) {
       setProjectMenuOpenState(false);
@@ -158,17 +207,21 @@ export function useWorkspaceSurfaceController({
 
     setProjectMenuOpenState(false);
     return { status: "rename", title };
-  }, [projectRenameDraftState, projectTitle]);
+  }, [projectRenameDraftState, projectTitle, sessionMatchesProject]);
 
   const openCanvasContextMenu = useCallback(
     (request: WorkspaceCanvasContextMenuRequest) => {
+      if (!sessionMatchesProject) {
+        return;
+      }
+
       setCanvasContextMenuState({
         ...request,
         pagePosition: { ...request.pagePosition },
         openedAt: now()
       });
     },
-    [now]
+    [now, sessionMatchesProject]
   );
 
   const closeCanvasContextMenu = useCallback(() => {
@@ -177,15 +230,24 @@ export function useWorkspaceSurfaceController({
 
   const canDismissCanvasContextMenu = useCallback(
     (timestamp = now()) =>
-      canvasContextMenuState !== null && timestamp - canvasContextMenuState.openedAt >= CANVAS_CONTEXT_MENU_DISMISS_DELAY_MS,
-    [canvasContextMenuState, now]
+      sessionMatchesProject &&
+      canvasContextMenuState !== null &&
+      timestamp - canvasContextMenuState.openedAt >= CANVAS_CONTEXT_MENU_DISMISS_DELAY_MS,
+    [canvasContextMenuState, now, sessionMatchesProject]
   );
 
-  const openProposalDetail = useCallback((proposalId: string) => {
-    setDetailProposalIdState(proposalId);
-    setDetailDesignDefinitionIdState(null);
-    setDetailConceptDirectionIdState(null);
-  }, []);
+  const openProposalDetail = useCallback(
+    (proposalId: string) => {
+      if (!sessionMatchesProject) {
+        return;
+      }
+
+      setDetailProposalIdState(proposalId);
+      setDetailDesignDefinitionIdState(null);
+      setDetailConceptDirectionIdState(null);
+    },
+    [sessionMatchesProject]
+  );
 
   const closeProposalDetail = useCallback(() => {
     setDetailProposalIdState(null);
@@ -195,29 +257,50 @@ export function useWorkspaceSurfaceController({
     setDetailProposalIdState((current) => (current && proposalIds.includes(current) ? null : current));
   }, []);
 
-  const openDesignDefinitionDetail = useCallback((objectId: string) => {
-    setDetailProposalIdState(null);
-    setDetailDesignDefinitionIdState(objectId);
-    setDetailConceptDirectionIdState(null);
-  }, []);
+  const openDesignDefinitionDetail = useCallback(
+    (objectId: string) => {
+      if (!sessionMatchesProject) {
+        return;
+      }
+
+      setDetailProposalIdState(null);
+      setDetailDesignDefinitionIdState(objectId);
+      setDetailConceptDirectionIdState(null);
+    },
+    [sessionMatchesProject]
+  );
 
   const closeDesignDefinitionDetail = useCallback(() => {
     setDetailDesignDefinitionIdState(null);
   }, []);
 
-  const openConceptDirectionDetail = useCallback((objectId: string) => {
-    setDetailProposalIdState(null);
-    setDetailDesignDefinitionIdState(null);
-    setDetailConceptDirectionIdState(objectId);
-  }, []);
+  const openConceptDirectionDetail = useCallback(
+    (objectId: string) => {
+      if (!sessionMatchesProject) {
+        return;
+      }
+
+      setDetailProposalIdState(null);
+      setDetailDesignDefinitionIdState(null);
+      setDetailConceptDirectionIdState(objectId);
+    },
+    [sessionMatchesProject]
+  );
 
   const closeConceptDirectionDetail = useCallback(() => {
     setDetailConceptDirectionIdState(null);
   }, []);
 
-  const openResearchDetail = useCallback((objectId: string) => {
-    setActiveResearchDetailObjectIdState(objectId);
-  }, []);
+  const openResearchDetail = useCallback(
+    (objectId: string) => {
+      if (!sessionMatchesProject) {
+        return;
+      }
+
+      setActiveResearchDetailObjectIdState(objectId);
+    },
+    [sessionMatchesProject]
+  );
 
   const closeResearchDetail = useCallback(() => {
     setActiveResearchDetailObjectIdState(null);
@@ -297,22 +380,15 @@ export function useWorkspaceSurfaceController({
   );
 
   useEffect(() => {
-    if (committedProjectIdRef.current === projectId) {
+    if (committedSession.projectId === projectId && committedSession.workspaceReady === workspaceReady) {
       return;
     }
 
-    committedProjectIdRef.current = projectId;
-    setActiveDrawerState(null);
-    setDrawerAnchorState(null);
-    setHighlightedContinuityEntryIdsState([]);
-    setProjectMenuOpenState(false);
-    setProjectRenameDraftState(projectTitle);
-    setCanvasContextMenuState(null);
-    setDetailProposalIdState(null);
-    setDetailDesignDefinitionIdState(null);
-    setDetailConceptDirectionIdState(null);
-    setActiveResearchDetailObjectIdState(null);
-  }, [projectId, projectTitle]);
+    commitSession({ projectId, workspaceReady });
+    // The external workspace session changed; clear all transient surfaces before exposing it.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    resetSurfaceState(projectTitle);
+  }, [committedSession, commitSession, projectId, projectTitle, resetSurfaceState, workspaceReady]);
 
   useEffect(() => {
     if (!sessionMatchesProject || !activeDrawerState) {
@@ -355,7 +431,7 @@ export function useWorkspaceSurfaceController({
     drawerAnchor: sessionMatchesProject ? drawerAnchorState : null,
     highlightedContinuityEntryIds: sessionMatchesProject ? highlightedContinuityEntryIdsState : [],
     projectMenuOpen: sessionMatchesProject ? projectMenuOpenState : false,
-    projectRenameDraft: sessionMatchesProject ? projectRenameDraftState : projectTitle,
+    projectRenameDraft: sessionMatchesProject ? projectRenameDraftState : "",
     canvasContextMenu: sessionMatchesProject ? canvasContextMenuState : null,
     detailProposalId: sessionMatchesProject ? detailProposalIdState : null,
     detailDesignDefinitionId: sessionMatchesProject ? detailDesignDefinitionIdState : null,

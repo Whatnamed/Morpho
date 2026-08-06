@@ -366,7 +366,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [workspace, setWorkspace, persistenceState, flushWorkspace] = usePersistentWorkspace(projectId);
   const workspaceSurface = useWorkspaceSurfaceController({
     projectId,
-    projectTitle: workspace.project.id === projectId ? workspace.project.title : "未命名项目"
+    projectTitle: workspace.project.title,
+    workspaceReady: persistenceState.isWorkspaceLoaded && workspace.project.id === projectId
   });
   const {
     activeDrawer,

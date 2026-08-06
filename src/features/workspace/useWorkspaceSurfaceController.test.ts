@@ -310,7 +310,6 @@ describe("useWorkspaceSurfaceController", () => {
         drawerAnchor: null,
         highlightedContinuityEntryIds: [],
         projectMenuOpen: false,
-        projectRenameDraft: "新项目",
         canvasContextMenu: null,
         detailProposalId: null,
         detailDesignDefinitionId: null,
@@ -319,6 +318,78 @@ describe("useWorkspaceSurfaceController", () => {
       });
       expect(snapshot.projectRenameDraft).not.toContain("旧项目");
     }
+    expect(harness.current().projectRenameDraft).toBe("新项目");
+  });
+
+  it("keeps all surfaces closed throughout the asynchronous project switch", async () => {
+    const harness = await renderController(
+      createInput({ projectId: "project-old", projectTitle: "旧项目", workspaceReady: true })
+    );
+
+    act(() => {
+      harness.current().openProjectRecords(["old-record"]);
+      harness.current().toggleProjectMenu();
+      harness.current().openCanvasContextMenu(makeContextRequest());
+      harness.current().openProposalDetail("old-proposal");
+      harness.current().openResearchDetail("old-research");
+    });
+
+    await harness.rerender(
+      createInput({ projectId: "project-new", projectTitle: "旧项目", workspaceReady: false })
+    );
+    let unreadyRenameResult: ReturnType<WorkspaceSurfaceController["consumeProjectRename"]> | undefined;
+    act(() => {
+      openEverySurface(harness);
+      harness.current().setProjectRenameDraft("未命名项目");
+      unreadyRenameResult = harness.current().consumeProjectRename();
+    });
+    expect(unreadyRenameResult).toEqual({ status: "unchanged" });
+    expect(harness.current()).toMatchObject({
+      activeDrawer: null,
+      drawerAnchor: null,
+      highlightedContinuityEntryIds: [],
+      projectMenuOpen: false,
+      projectRenameDraft: "",
+      canvasContextMenu: null,
+      detailProposalId: null,
+      detailDesignDefinitionId: null,
+      detailConceptDirectionId: null,
+      activeResearchDetailObjectId: null
+    });
+
+    await harness.rerender(
+      createInput({ projectId: "project-new", projectTitle: "未命名项目", workspaceReady: false })
+    );
+    act(() => {
+      openEverySurface(harness);
+    });
+    expect(harness.current()).toMatchObject({
+      activeDrawer: null,
+      projectMenuOpen: false,
+      projectRenameDraft: "",
+      canvasContextMenu: null,
+      detailProposalId: null,
+      activeResearchDetailObjectId: null
+    });
+
+    await harness.rerender(
+      createInput({ projectId: "project-new", projectTitle: "真实新项目", workspaceReady: true })
+    );
+    expect(harness.current()).toMatchObject({
+      activeDrawer: null,
+      drawerAnchor: null,
+      highlightedContinuityEntryIds: [],
+      projectMenuOpen: false,
+      projectRenameDraft: "真实新项目",
+      canvasContextMenu: null,
+      detailProposalId: null,
+      detailDesignDefinitionId: null,
+      detailConceptDirectionId: null,
+      activeResearchDetailObjectId: null
+    });
+
+    act(() => harness.current().toggleProjectMenu());
+    expect(harness.current()).toMatchObject({ projectMenuOpen: true, projectRenameDraft: "真实新项目" });
   });
 
   it("keeps surface sessions during an update within the same project", async () => {
@@ -340,13 +411,27 @@ describe("useWorkspaceSurfaceController", () => {
 });
 
 function createInput(
-  overrides: Partial<UseWorkspaceSurfaceControllerInput> = {}
-): UseWorkspaceSurfaceControllerInput {
+  overrides: Partial<SurfaceTestInput> = {}
+): SurfaceTestInput {
   return {
     projectId: "project-a",
     projectTitle: "项目 A",
+    workspaceReady: true,
     ...overrides
   };
+}
+
+type SurfaceTestInput = UseWorkspaceSurfaceControllerInput & {
+  workspaceReady: boolean;
+};
+
+function openEverySurface(harness: Awaited<ReturnType<typeof renderController>>) {
+  harness.current().openDrawer("records");
+  harness.current().openProjectRecords(["loading-record"]);
+  harness.current().toggleProjectMenu();
+  harness.current().openCanvasContextMenu(makeContextRequest());
+  harness.current().openProposalDetail("loading-proposal");
+  harness.current().openResearchDetail("loading-research");
 }
 
 async function renderController(initialInput: UseWorkspaceSurfaceControllerInput) {
