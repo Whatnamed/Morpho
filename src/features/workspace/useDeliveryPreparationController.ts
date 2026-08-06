@@ -167,6 +167,9 @@ export function useDeliveryPreparationController({
     const delivery = deliveryObjects.find((candidate) => candidate.id === activeDeliveryObjectId);
     return delivery?.sections.some((section) => section.id === activeSectionIdState) ? activeSectionIdState : null;
   }, [activeDeliveryObjectId, activeSectionIdState, deliveryObjects]);
+  // The ref marks the project whose session reset effect has committed; it is not a render data source.
+  // eslint-disable-next-line react-hooks/refs
+  const sessionMatchesProject = projectIdRef.current === currentProjectId && workspaceMatchesProject;
 
   const readLatestWorkspace = useCallback(
     () => commitWorkspaceStateNow(updateWorkspace, (current) => ({ workspace: current, value: current })),
@@ -374,10 +377,10 @@ export function useDeliveryPreparationController({
   }, [currentProjectId, onBlocked]);
 
   return {
-    isOpen: isOpenState && workspaceMatchesProject,
-    activeDeliveryObjectId,
-    activeSectionId,
-    pendingDraftTarget: workspaceMatchesProject ? pendingDraftTargetState : null,
+    isOpen: sessionMatchesProject ? isOpenState : false,
+    activeDeliveryObjectId: sessionMatchesProject ? activeDeliveryObjectId : null,
+    activeSectionId: sessionMatchesProject ? activeSectionId : null,
+    pendingDraftTarget: sessionMatchesProject ? pendingDraftTargetState : null,
     open,
     close,
     selectDelivery,

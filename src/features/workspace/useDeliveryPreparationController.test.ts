@@ -478,22 +478,25 @@ describe("useDeliveryPreparationController", () => {
     expect(harness.current().pendingDraftTarget).toBeNull();
   });
 
-  it("clears active and pending delivery state when the project changes", async () => {
+  it("clears active and pending delivery state without exposing it during a project change", async () => {
     const harness = await renderController({ initialWorkspace: createInitialWorkspace() });
     const delivery = getDelivery(harness.workspace(), "delivery-board-a1");
     const sectionId = delivery.sections[0]?.id;
     if (!sectionId) {
       throw new Error("Expected a delivery section.");
     }
-    const added = harness.current().addSelectedObjects({
-      deliveryObjectId: delivery.id,
-      sectionId,
-      sourceObjectIds: ["research-night-path"]
+    let added!: ReturnType<DeliveryPreparationController["addSelectedObjects"]>;
+    act(() => {
+      added = harness.current().addSelectedObjects({
+        deliveryObjectId: delivery.id,
+        sectionId,
+        sourceObjectIds: ["research-night-path"]
+      });
     });
     if (added.status !== "updated") {
       throw new Error(added.reason);
     }
-    harness.current().open(delivery.id);
+    act(() => harness.current().open(delivery.id));
     let draftRequest!: ReturnType<DeliveryPreparationController["requestSectionDraft"]>;
     act(() => {
       draftRequest = harness.current().requestSectionDraft({ deliveryObjectId: delivery.id, sectionId });
@@ -501,10 +504,19 @@ describe("useDeliveryPreparationController", () => {
     expect(draftRequest.status).toBe("ready");
     expect(harness.current().pendingDraftTarget).not.toBeNull();
 
+    const snapshotStart = harness.snapshots().length;
     act(() => {
       harness.switchProject("project-delivery-new", createBlankWorkspace("project-delivery-new"));
     });
 
+    const newProjectSnapshots = harness.snapshots().slice(snapshotStart).filter((snapshot) => snapshot.projectId === "project-delivery-new");
+    expect(newProjectSnapshots.length).toBeGreaterThan(0);
+    for (const snapshot of newProjectSnapshots) {
+      expect(snapshot.isOpen).toBe(false);
+      expect(snapshot.activeDeliveryObjectId).toBeNull();
+      expect(snapshot.activeSectionId).toBeNull();
+      expect(snapshot.pendingDraftTarget).toBeNull();
+    }
     expect(harness.current().isOpen).toBe(false);
     expect(harness.current().activeDeliveryObjectId).toBeNull();
     expect(harness.current().activeSectionId).toBeNull();
@@ -516,11 +528,15 @@ type RenderControllerInput = Omit<UseDeliveryPreparationControllerInput, "worksp
   initialWorkspace: MorphoWorkspace;
 };
 
+type ControllerSnapshot = { projectId: string } &
+  Pick<DeliveryPreparationController, "isOpen" | "activeDeliveryObjectId" | "activeSectionId" | "pendingDraftTarget">;
+
 async function renderController(initialInput: RenderControllerInput) {
   let controller: DeliveryPreparationController | null = null;
   let workspace = initialInput.initialWorkspace;
   let updateWorkspace: Dispatch<SetStateAction<MorphoWorkspace>> | null = null;
   let setProjectId: Dispatch<SetStateAction<string>> | null = null;
+  const snapshots: ControllerSnapshot[] = [];
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -532,11 +548,19 @@ async function renderController(initialInput: RenderControllerInput) {
     workspace = currentWorkspace;
     updateWorkspace = setCurrentWorkspace;
     setProjectId = setCurrentProjectId;
-    controller = useDeliveryPreparationController({
+    const currentController = useDeliveryPreparationController({
       ...input,
       projectId: currentProjectId,
       workspace: currentWorkspace,
       updateWorkspace: setCurrentWorkspace
+    });
+    controller = currentController;
+    snapshots.push({
+      projectId: currentProjectId,
+      isOpen: currentController.isOpen,
+      activeDeliveryObjectId: currentController.activeDeliveryObjectId,
+      activeSectionId: currentController.activeSectionId,
+      pendingDraftTarget: currentController.pendingDraftTarget
     });
     return null;
   }
@@ -553,6 +577,7 @@ async function renderController(initialInput: RenderControllerInput) {
       return controller;
     },
     workspace: () => workspace,
+    snapshots: () => [...snapshots],
     updateWorkspace: (action: SetStateAction<MorphoWorkspace>) => {
       if (!updateWorkspace) {
         throw new Error("Workspace setter is unavailable.");
