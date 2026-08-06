@@ -9,7 +9,6 @@ import { createBlankWorkspace } from "@/domain/morpho/workspace";
 import type { WorkspaceSnapshotEntry } from "./workspaceUndo";
 import {
   useWorkspaceObjectHistoryController,
-  type UseWorkspaceObjectHistoryControllerInput,
   type WorkspaceObjectHistoryController
 } from "./useWorkspaceObjectHistoryController";
 
@@ -34,13 +33,13 @@ describe("useWorkspaceObjectHistoryController", () => {
 
     harness.setLabel("before");
     act(() => harness.current().pushUndoSnapshot());
-    harness.setWorkspace(renameProject(harness.workspace(), "after"));
+    act(() => harness.setWorkspace(renameProject(harness.workspace(), "after")));
     harness.setLabel("after");
 
     expect(harness.current().undo()).toBe(true);
     expect(harness.applied().map((entry) => entry.label)).toEqual(["before"]);
 
-    harness.setWorkspace(harness.applied()[0]?.workspace ?? before);
+    act(() => harness.setWorkspace(harness.applied()[0]?.workspace ?? before));
     expect(harness.current().redo()).toBe(true);
     expect(harness.applied().map((entry) => entry.label)).toEqual(["before", "after"]);
   });
@@ -50,7 +49,7 @@ describe("useWorkspaceObjectHistoryController", () => {
 
     harness.setLabel("latest");
     act(() => harness.current().pushUndoSnapshot());
-    harness.setWorkspace(renameProject(harness.workspace(), "same-project-update"));
+    act(() => harness.setWorkspace(renameProject(harness.workspace(), "same-project-update")));
     harness.setLabel("current");
     expect(harness.current().undo()).toBe(true);
     expect(harness.applied().at(-1)?.label).toBe("latest");
@@ -75,7 +74,7 @@ describe("useWorkspaceObjectHistoryController", () => {
     const harness = await renderController({ projectId: "project-a", workspace: createBlankWorkspace("project-a"), workspaceReady: true });
 
     act(() => harness.current().pushUndoSnapshot());
-    harness.setWorkspace(appendAiMessage(harness.workspace(), "ai-after-manual"));
+    act(() => harness.setWorkspace(appendAiMessage(harness.workspace(), "ai-after-manual")));
     expect(harness.current().undo()).toBe(true);
     expect(harness.closedContextMenuCount()).toBe(1);
     expect(harness.notices()).toEqual([
@@ -96,13 +95,13 @@ describe("useWorkspaceObjectHistoryController", () => {
     expect(emptyUndo.defaultPrevented).toBe(false);
 
     act(() => harness.current().pushUndoSnapshot());
-    harness.setWorkspace(renameProject(harness.workspace(), "after"));
+    act(() => harness.setWorkspace(renameProject(harness.workspace(), "after")));
     const undoEvent = new KeyboardEvent("keydown", { key: "z", metaKey: true, cancelable: true });
     act(() => window.dispatchEvent(undoEvent));
     expect(undoEvent.defaultPrevented).toBe(true);
     expect(harness.applied()).toHaveLength(1);
 
-    harness.setWorkspace(harness.applied()[0]?.workspace ?? createBlankWorkspace("project-a"));
+    act(() => harness.setWorkspace(harness.applied()[0]?.workspace ?? createBlankWorkspace("project-a")));
     const redoEvent = new KeyboardEvent("keydown", { key: "y", ctrlKey: true, cancelable: true });
     act(() => window.dispatchEvent(redoEvent));
     expect(redoEvent.defaultPrevented).toBe(true);
@@ -139,7 +138,13 @@ describe("useWorkspaceObjectHistoryController", () => {
 });
 
 type TestEntry = WorkspaceSnapshotEntry & { label: string };
-type HistoryTestInput = Omit<UseWorkspaceObjectHistoryControllerInput<TestEntry>, "captureCurrent" | "applyEntry" | "updateWorkspace"> & {
+type HistoryTestInput = {
+  projectId: string;
+  workspace: MorphoWorkspace;
+  workspaceReady: boolean;
+  undoDetailNavigation?: () => boolean;
+  closeCanvasContextMenu?: () => void;
+  showNotice?: (message: string, durationMs?: number) => void;
   initialLabel?: string;
 };
 
@@ -189,7 +194,7 @@ async function renderController(initialInput: HistoryTestInput) {
     const closeCanvasContextMenu = currentInput.closeCanvasContextMenu ?? (() => {
       closedContextMenuCount += 1;
     });
-    const showNotice = currentInput.showNotice ?? ((message: string, durationMs: number) => {
+    const showNotice = currentInput.showNotice ?? ((message: string, durationMs = 1600) => {
       notices.push({ message, durationMs });
     });
 
@@ -201,8 +206,7 @@ async function renderController(initialInput: HistoryTestInput) {
       applyEntry,
       undoDetailNavigation,
       closeCanvasContextMenu,
-      showNotice,
-      updateWorkspace
+      showNotice
     });
     return null;
   }

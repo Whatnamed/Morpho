@@ -45,6 +45,7 @@ export type WorkspaceSelectionNavigationController = {
   undoDetailNavigation: () => boolean;
   commitCanvasView: (view: CanvasView) => void;
   observeCanvasView: (view: CanvasView) => void;
+  getLatestCanvasView: () => CanvasView;
   clearCanvasSelection: () => boolean;
   selectAllCanvasObjects: (objectIds: string[]) => boolean;
 };
@@ -144,7 +145,6 @@ export function useWorkspaceSelectionNavigationController({
 
     const persistedSelection = [...workspace.ui.lastSelectionIds];
     hydratedProjectIdRef.current = workspace.project.id;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectionSession({ projectId: workspace.project.id, objectIds: [...persistedSelection] });
     setSelectionRequestState((current) => ({
       objectIds: [...persistedSelection],
@@ -349,6 +349,11 @@ export function useWorkspaceSelectionNavigationController({
     [isCurrentSession, projectId, updateWorkspace]
   );
 
+  const getLatestCanvasView = useCallback(
+    () => (isCurrentSession() ? { ...latestCanvasViewRef.current } : { ...workspace.canvas.view }),
+    [isCurrentSession, workspace.canvas.view]
+  );
+
   const clearCanvasSelection = useCallback(() => {
     if (!isCurrentSession() || selectedObjectIds.length === 0) {
       return false;
@@ -408,6 +413,7 @@ export function useWorkspaceSelectionNavigationController({
     undoDetailNavigation,
     commitCanvasView,
     observeCanvasView,
+    getLatestCanvasView,
     clearCanvasSelection,
     selectAllCanvasObjects
   };

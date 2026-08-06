@@ -8,8 +8,7 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
-  type SetStateAction
+  useState
 } from "react";
 
 import type {
@@ -120,13 +119,6 @@ import { useProjectBundleController } from "./useProjectBundleController";
 import { useWorkspaceAssetUrls } from "./useWorkspaceAssetUrls";
 import { compactObjectList, getKeyConclusionCategoryLabel, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
 import { getFloatingMenuPlacement, type SelectionToolbarPlacement } from "./selectionToolbar";
-import {
-  createSnapshotHistory,
-  pushSnapshotHistoryEntry,
-  redoSnapshotHistory,
-  undoSnapshotHistory,
-  type SnapshotHistory
-} from "./workspaceUndo";
 import { resolveWorkspaceShortcut } from "./workspaceShortcuts";
 import {
   buildPendingImageGenerationSlots,
@@ -134,12 +126,6 @@ import {
   type PendingImageGenerationSlot
 } from "./pendingImageGenerationSlots";
 import { applyImageGenerationResultCommit } from "./imageGenerationResultCommit";
-import {
-  popDetailNavigation,
-  pushDetailNavigation,
-  shouldHydratePersistedSelection,
-  type DetailNavigationSnapshot
-} from "./workspaceNavigation";
 import type { DeliveryReferenceReaderTransition } from "./deliveryPreparationUi";
 import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
 import { readImageBlobDimensions, saveBlobAsLocalAsset } from "@/infrastructure/assets/localAssetWorkflow";
@@ -155,6 +141,10 @@ import {
   useWorkspaceSurfaceController,
   type WorkspaceExternalSurfacePorts
 } from "./useWorkspaceSurfaceController";
+import {
+  useWorkspaceSelectionNavigationController
+} from "./useWorkspaceSelectionNavigationController";
+import { useWorkspaceObjectHistoryController } from "./useWorkspaceObjectHistoryController";
 import { resolveComparisonWritebackSourceObjectIds } from "./comparisonDecision";
 import {
   applyResearchExtractionSelection,
@@ -228,7 +218,6 @@ import { completeAgentTrace } from "./agentMessageTrace";
 import { commitWorkspaceStateNow } from "./workspaceCommitBoundary";
 import { readErrorResponse } from "./httpPayload";
 import type { CanvasImportRequest, FocusArea } from "./tldraw/MorphoCanvas";
-import type { CanvasSelectionRequest } from "./tldraw/canvasSelection";
 
 const MorphoCanvas = dynamic(() => import("./tldraw/MorphoCanvas").then((mod) => mod.MorphoCanvas), {
   ssr: false,
@@ -278,14 +267,6 @@ export function readConversationTokenLimitsOverride(): ConversationTokenLimits |
     return undefined;
   }
 }
-
-type FocusRequest = {
-  area?: FocusArea;
-  objectId?: string;
-  view?: CanvasView;
-  selectionObjectIds?: string[];
-  nonce: number;
-};
 
 type WorkspaceClientProps = {
   projectId: string;
@@ -364,10 +345,11 @@ function buildComparisonDecisionReason(confirmation: PendingComparisonConfirmati
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const router = useRouter();
   const [workspace, setWorkspace, persistenceState, flushWorkspace] = usePersistentWorkspace(projectId);
+  const workspaceReady = persistenceState.isWorkspaceLoaded && workspace.project.id === projectId;
   const workspaceSurface = useWorkspaceSurfaceController({
     projectId,
     projectTitle: workspace.project.title,
-    workspaceReady: persistenceState.isWorkspaceLoaded && workspace.project.id === projectId
+    workspaceReady
   });
   const {
     activeDrawer,
@@ -399,6 +381,29 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     closeResearchDetail,
     closeTopSurface
   } = workspaceSurface;
+  const {
+    selectedObjectIds,
+    selectionRequest,
+    focusRequest,
+    setSelectedObjectIds,
+    requestCanvasSelection,
+    acceptCanvasSelection,
+    focusArea: requestFocusArea,
+    focusObject: requestFocusObject,
+    requestObjectFocus,
+    locateObjectFromDetail: requestLocateObjectFromDetail,
+    undoDetailNavigation,
+    commitCanvasView,
+    observeCanvasView,
+    getLatestCanvasView,
+    clearCanvasSelection: clearControllerCanvasSelection,
+    selectAllCanvasObjects: selectAllControllerCanvasObjects
+  } = useWorkspaceSelectionNavigationController({
+    projectId,
+    workspace,
+    workspaceReady,
+    updateWorkspace: setWorkspace
+  });
   const handleProjectBundleWorkspaceRestored = useCallback(
     ({ projectId: restoredProjectId }: { projectId: string }) => {
       startTransition(() => {
@@ -438,35 +443,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     onWorkspaceRestored: handleProjectBundleWorkspaceRestored
   });
   const [isStorageNoticeDismissed, setStorageNoticeDismissed] = useState(false);
-  const [selectedObjectSelection, setSelectedObjectSelection] = useState<{
-    projectId: string;
-    objectIds: string[];
-  }>(() => ({
-    projectId: workspace.project.id,
-    objectIds: workspace.ui.lastSelectionIds
-  }));
-  const selectedObjectProjectIdRef = useRef(projectId);
-  const selectedObjectIds = useMemo(
-    () =>
-      selectedObjectSelection.projectId === projectId && workspace.project.id === projectId
-        ? selectedObjectSelection.objectIds
-        : [],
-    [projectId, selectedObjectSelection, workspace.project.id]
-  );
-  const setSelectedObjectIds = useCallback(
-    (action: SetStateAction<string[]>) => {
-      const nextProjectId = selectedObjectProjectIdRef.current;
-      setSelectedObjectSelection((current) => {
-        const currentObjectIds = current.projectId === nextProjectId ? current.objectIds : [];
-        const nextObjectIds = typeof action === "function" ? action(currentObjectIds) : action;
-        return {
-          projectId: nextProjectId,
-          objectIds: [...nextObjectIds]
-        };
-      });
-    },
-    []
-  );
   const [aiDraft, setAiDraft] = useState("");
   const [agentTurnMode, setAgentTurnMode] = useState<MorphoAgentTurnMode>("auto");
   const [taskMode, setTaskMode] = useState<AiTaskMode>("chatAnalysis");
@@ -502,10 +478,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const assetUrls = useWorkspaceAssetUrls(workspace.assets);
   const abortControllerRef = useRef<AbortController | null>(null);
   const agentStreamFlushRef = useRef<(() => void) | null>(null);
-  const objectOperationHistoryRef = useRef<SnapshotHistory<ObjectOperationUndoEntry>>(
-    createSnapshotHistory<ObjectOperationUndoEntry>()
-  );
-  const detailNavigationUndoStackRef = useRef<DetailNavigationSnapshot[]>([]);
   useEffect(
     () => () => {
       agentStreamFlushRef.current?.();
@@ -515,10 +487,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     },
     []
   );
-  const latestCanvasViewRef = useRef<CanvasView>(workspace.canvas.view);
-  const selectionHydratedProjectIdRef = useRef<string | null>(null);
-  const [focusRequest, setFocusRequest] = useState<FocusRequest>({ nonce: 0 });
-  const [selectionRequest, setSelectionRequest] = useState<CanvasSelectionRequest>({ objectIds: [], nonce: 0 });
   const railImportInputRef = useRef<HTMLInputElement | null>(null);
   const pendingImportPositionRef = useRef<{ x: number; y: number } | null>(null);
   const [aiInputFocusNonce, setAiInputFocusNonce] = useState(0);
@@ -529,10 +497,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     () => compactObjectList(workspace.objects, selectedObjectIds),
     [selectedObjectIds, workspace.objects]
   );
-  const requestCanvasSelection = useCallback((objectIds: string[]) => {
-    const nextObjectIds = [...objectIds];
-    setSelectionRequest((current) => ({ objectIds: nextObjectIds, nonce: current.nonce + 1 }));
-  }, []);
   const activeCanvasObjectIds = useMemo(() => {
     const ids: string[] = [];
     const seen = new Set<string>();
@@ -549,9 +513,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const handleDeliveryCreatedCanvasFocus = useCallback(
     (deliveryObjectId: string) => {
       setSelectedObjectIds([deliveryObjectId]);
-      setFocusRequest((current) => ({ objectId: deliveryObjectId, nonce: current.nonce + 1 }));
+      requestObjectFocus(deliveryObjectId);
     },
-    [setSelectedObjectIds]
+    [requestObjectFocus, setSelectedObjectIds]
   );
   const deliveryPreparation = useDeliveryPreparationController({
     projectId,
@@ -670,34 +634,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [imageGenerationAspectMode, imageGenerationSettings, inferredImageAspectRatio]
   );
 
-  useEffect(() => {
-    selectedObjectProjectIdRef.current = projectId;
-    selectionHydratedProjectIdRef.current = null;
-  }, [projectId]);
-
-  useEffect(() => {
-    const persistedSelection = workspace.ui.lastSelectionIds;
-    if (
-      workspace.project.id !== projectId ||
-      !shouldHydratePersistedSelection({
-        hydratedProjectId: selectionHydratedProjectIdRef.current,
-        projectId: workspace.project.id,
-        workspaceLoaded: persistenceState.isWorkspaceLoaded
-      })
-    ) {
-      return;
-    }
-
-    selectionHydratedProjectIdRef.current = workspace.project.id;
-    requestCanvasSelection(persistedSelection);
-  }, [
-    persistenceState.isWorkspaceLoaded,
-    projectId,
-    requestCanvasSelection,
-    workspace.project.id,
-    workspace.ui.lastSelectionIds
-  ]);
-
   const updateImageGenerationSettings = useCallback(
     (patch: { modelId?: string; aspectRatio?: GrsImageAspectRatio; sizeOption?: string }) => {
       if (patch.aspectRatio) {
@@ -735,28 +671,28 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [setWorkspace]
   );
 
-  const focusArea = useCallback((area: FocusArea) => {
-    setFocusRequest((current) => ({ area, nonce: current.nonce + 1 }));
-    changeDrawer(null);
-  }, [changeDrawer]);
+  const focusArea = useCallback(
+    (area: FocusArea) => {
+      requestFocusArea(area);
+      changeDrawer(null);
+    },
+    [changeDrawer, requestFocusArea]
+  );
 
-  const focusObject = useCallback((objectId: string, options: { rememberView?: boolean } = {}) => {
-    if (options.rememberView) {
-      detailNavigationUndoStackRef.current = pushDetailNavigation(detailNavigationUndoStackRef.current, {
-        view: latestCanvasViewRef.current,
-        selectedObjectIds
-      });
-    }
-    setSelectedObjectIds([objectId]);
-    setFocusRequest((current) => ({ objectId, nonce: current.nonce + 1 }));
-    changeDrawer(null);
-  }, [changeDrawer, selectedObjectIds, setSelectedObjectIds]);
+  const focusObject = useCallback(
+    (objectId: string, options: { rememberView?: boolean } = {}) => {
+      requestFocusObject(objectId, options);
+      changeDrawer(null);
+    },
+    [changeDrawer, requestFocusObject]
+  );
 
   const locateObjectFromDetail = useCallback(
     (objectId: string) => {
-      focusObject(objectId, { rememberView: true });
+      requestLocateObjectFromDetail(objectId);
+      changeDrawer(null);
     },
-    [focusObject]
+    [changeDrawer, requestLocateObjectFromDetail]
   );
 
   const showWorkspaceNotice = useCallback((message: string, durationMs = 1600) => {
@@ -807,13 +743,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [localEditObjectId, pendingConfirmation, selectedObjectIds, workspace]
   );
 
-  const pushObjectOperationUndo = useCallback(() => {
-    objectOperationHistoryRef.current = pushSnapshotHistoryEntry(
-      objectOperationHistoryRef.current,
-      captureObjectOperationSnapshot()
-    );
-  }, [captureObjectOperationSnapshot]);
-
   const applyObjectOperationSnapshot = useCallback(
     (entry: ObjectOperationUndoEntry) => {
       setWorkspace(entry.workspace);
@@ -825,96 +754,24 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [closeCanvasContextMenu, requestCanvasSelection, setWorkspace]
   );
 
-  const undoLastDetailNavigation = useCallback(() => {
-    const restored = popDetailNavigation(detailNavigationUndoStackRef.current);
-    if (!restored) {
-      return false;
-    }
-
-    detailNavigationUndoStackRef.current = restored.history;
-    latestCanvasViewRef.current = restored.snapshot.view;
-    setSelectedObjectIds(restored.snapshot.selectedObjectIds);
-    setFocusRequest((current) => ({
-      view: restored.snapshot.view,
-      selectionObjectIds: restored.snapshot.selectedObjectIds,
-      nonce: current.nonce + 1
-    }));
-    return true;
-  }, [setSelectedObjectIds]);
-
-  const undoLastObjectOperation = useCallback(() => {
-    if (undoLastDetailNavigation()) {
-      return true;
-    }
-
-    const result = undoSnapshotHistory(objectOperationHistoryRef.current, workspace, captureObjectOperationSnapshot);
-    if (result.status === "empty") {
-      return false;
-    }
-
-    if (result.status === "blocked") {
-      closeCanvasContextMenu();
-      showWorkspaceNotice("撤销已暂停：此步早于 AI 生成的内容，AI 结果不进入撤销；撤销历史已保留。", 2600);
-      return true;
-    }
-
-    objectOperationHistoryRef.current = result.history;
-    applyObjectOperationSnapshot(result.entry);
-    return true;
-  }, [applyObjectOperationSnapshot, captureObjectOperationSnapshot, closeCanvasContextMenu, showWorkspaceNotice, undoLastDetailNavigation, workspace]);
-
-  const redoLastObjectOperation = useCallback(() => {
-    const result = redoSnapshotHistory(objectOperationHistoryRef.current, workspace, captureObjectOperationSnapshot);
-    if (result.status === "empty") {
-      return false;
-    }
-
-    if (result.status === "blocked") {
-      closeCanvasContextMenu();
-      showWorkspaceNotice("重做已暂停：撤销之后已有新内容创建，重做不会移除它们；历史已保留。", 2600);
-      return true;
-    }
-
-    objectOperationHistoryRef.current = result.history;
-    applyObjectOperationSnapshot(result.entry);
-    return true;
-  }, [applyObjectOperationSnapshot, captureObjectOperationSnapshot, closeCanvasContextMenu, showWorkspaceNotice, workspace]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey)) {
-        return;
-      }
-
-      const key = event.key.toLowerCase();
-      const isUndo = key === "z" && !event.shiftKey;
-      const isRedo = (key === "z" && event.shiftKey) || (key === "y" && !event.shiftKey);
-      if (!isUndo && !isRedo) {
-        return;
-      }
-
-      if (isEditableDomTarget(event.target)) {
-        return;
-      }
-
-      const handled = isUndo ? undoLastObjectOperation() : redoLastObjectOperation();
-      if (!handled) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-    };
-
-    window.addEventListener("keydown", handleKeyDown, { capture: true });
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown, { capture: true });
-    };
-  }, [redoLastObjectOperation, undoLastObjectOperation]);
+  const {
+    pushUndoSnapshot: pushObjectOperationUndo,
+    undo: undoLastObjectOperation,
+    redo: redoLastObjectOperation
+  } = useWorkspaceObjectHistoryController<ObjectOperationUndoEntry>({
+    projectId,
+    workspace,
+    workspaceReady,
+    captureCurrent: captureObjectOperationSnapshot,
+    applyEntry: applyObjectOperationSnapshot,
+    undoDetailNavigation,
+    closeCanvasContextMenu,
+    showNotice: showWorkspaceNotice
+  });
 
   const handleSelectionChange = useCallback(
     (objectIds: string[]) => {
-      setSelectedObjectIds(objectIds);
+      acceptCanvasSelection(objectIds);
       closeCanvasContextMenu();
       setTraceStartObjectId((current) => {
         if (!current || (objectIds.length === 1 && objectIds[0] === current)) {
@@ -926,21 +783,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       if (objectIds.length === 0) {
         changeDrawer(null);
       }
-      setWorkspace((current) => {
-        if (current.ui.lastSelectionIds.join("|") === objectIds.join("|")) {
-          return current;
-        }
-
-        return {
-          ...current,
-          ui: {
-            ...current.ui,
-            lastSelectionIds: objectIds
-          }
-        };
-      });
     },
-    [changeDrawer, closeCanvasContextMenu, setSelectedObjectIds, setWorkspace]
+    [acceptCanvasSelection, changeDrawer, closeCanvasContextMenu]
   );
 
   const handleInstancesChange = useCallback(
@@ -981,40 +825,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [setWorkspace]
   );
 
-  const handleCanvasViewChange = useCallback(
-    (view: MorphoWorkspace["canvas"]["view"]) => {
-      latestCanvasViewRef.current = view;
-      setWorkspace((current) => {
-        if (
-          current.canvas.view.x === view.x &&
-          current.canvas.view.y === view.y &&
-          current.canvas.view.zoom === view.zoom &&
-          current.ui.canvasView.x === view.x &&
-          current.ui.canvasView.y === view.y &&
-          current.ui.canvasView.zoom === view.zoom
-        ) {
-          return current;
-        }
-
-        return {
-          ...current,
-          canvas: {
-            ...current.canvas,
-            view
-          },
-          ui: {
-            ...current.ui,
-            canvasView: view
-          }
-        };
-      });
-    },
-    [setWorkspace]
-  );
+  const handleCanvasViewChange = useCallback((view: CanvasView) => {
+    commitCanvasView(view);
+  }, [commitCanvasView]);
 
   const handleCanvasLiveViewChange = useCallback((view: CanvasView) => {
-    latestCanvasViewRef.current = view;
-  }, []);
+    observeCanvasView(view);
+  }, [observeCanvasView]);
 
   const handleImportRequest = useCallback(
     async (request: CanvasImportRequest) => {
@@ -1130,9 +947,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const handleContextMenuPaste = useCallback(
     async (pagePosition?: { x: number; y: number }) => {
+      const latestCanvasView = getLatestCanvasView();
       const position = pagePosition ?? {
-        x: latestCanvasViewRef.current.x + 160,
-        y: latestCanvasViewRef.current.y + 160
+        x: latestCanvasView.x + 160,
+        y: latestCanvasView.y + 160
       };
       const result = await readClipboardAsImportPayload();
       // Clipboard feedback is transient chrome — never write into the AI conversation.
@@ -1151,16 +969,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         text: result.text
       });
     },
-    [handleImportRequest, showWorkspaceNotice]
+    [getLatestCanvasView, handleImportRequest, showWorkspaceNotice]
   );
 
   const handleContextMenuImportFiles = useCallback((pagePosition?: { x: number; y: number }) => {
+    const latestCanvasView = getLatestCanvasView();
     pendingImportPositionRef.current = pagePosition ?? {
-      x: latestCanvasViewRef.current.x + 180,
-      y: latestCanvasViewRef.current.y + 180
+      x: latestCanvasView.x + 180,
+      y: latestCanvasView.y + 180
     };
     railImportInputRef.current?.click();
-  }, []);
+  }, [getLatestCanvasView]);
 
   const handleSelectAllVisibleObjects = useCallback(() => {
     requestCanvasSelection(activeCanvasObjectIds);
@@ -1727,7 +1546,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return { workspace: completed, value: completed };
       });
       setSelectedObjectIds(createdObjectIds);
-      setFocusRequest((current) => ({ objectId: lastCreatedObjectId, nonce: current.nonce + 1 }));
+      requestObjectFocus(lastCreatedObjectId);
       setImageTaskStatus({
         state: "succeeded",
         message:
@@ -1742,7 +1561,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         failedItems
       };
     },
-    [commitWorkspaceNow, effectiveImageGenerationSettings, setFocusRequest, setImageTaskStatus, setSelectedObjectIds, setWorkspace]
+    [
+      commitWorkspaceNow,
+      effectiveImageGenerationSettings,
+      requestObjectFocus,
+      setImageTaskStatus,
+      setSelectedObjectIds,
+      setWorkspace
+    ]
   );
 
   const agentTurnHost = useMemo<AgentTurnHost>(
@@ -1770,7 +1596,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         setPendingConfirmation,
         selectObjects: setSelectedObjectIds,
         focusObject: (objectId) => {
-          setFocusRequest((current) => ({ objectId, nonce: current.nonce + 1 }));
+          requestObjectFocus(objectId);
         },
         openProposal: setActiveProposalId
       },
@@ -1797,6 +1623,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       executeAgentVisualGenerationPlan,
       flushWorkspace,
       readWorkspaceNow,
+      requestObjectFocus,
       setSelectedObjectIds
     ]
   );
@@ -2194,8 +2021,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             activeProposal.id
           )
         );
-        setSelectedObjectIds([result.researchObject.id]);
-        setFocusRequest((current) => ({ objectId: result.researchObject.id, nonce: current.nonce + 1 }));
+        requestFocusObject(result.researchObject.id);
         setActiveProposalId(null);
         closeProposalDetail();
       } else {
@@ -2225,8 +2051,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             activeProposal.id
           )
         );
-        setSelectedObjectIds([result.designDefinitionObject.id]);
-        setFocusRequest((current) => ({ objectId: result.designDefinitionObject.id, nonce: current.nonce + 1 }));
+        requestFocusObject(result.designDefinitionObject.id);
         setActiveProposalId(null);
         closeProposalDetail();
       } else {
@@ -2265,7 +2090,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         );
         setSelectedObjectIds(result.directions.map((direction) => direction.id));
         if (result.directions[0]) {
-          setFocusRequest((current) => ({ objectId: result.directions[0].id, nonce: current.nonce + 1 }));
+          requestObjectFocus(result.directions[0].id);
         }
         setActiveProposalId(null);
         closeProposalDetail();
@@ -2283,7 +2108,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setAiDraft("");
       setTaskMode("chatAnalysis");
     }
-  }, [activeProposal, closeProposalDetail, setSelectedObjectIds, setWorkspace, workspace]);
+  }, [activeProposal, closeProposalDetail, requestFocusObject, requestObjectFocus, setSelectedObjectIds, setWorkspace, workspace]);
 
   const handleApplyProposalFromCanvas = useCallback(
     (proposalId: string, allowSourceChanged = false) => {
@@ -2312,8 +2137,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               proposal.id
             )
           );
-          setSelectedObjectIds([result.researchObject.id]);
-          setFocusRequest((current) => ({ objectId: result.researchObject.id, nonce: current.nonce + 1 }));
+          requestFocusObject(result.researchObject.id);
           setActiveProposalId(null);
           closeProposalDetail();
         } else {
@@ -2343,8 +2167,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               proposal.id
             )
           );
-          setSelectedObjectIds([result.designDefinitionObject.id]);
-          setFocusRequest((current) => ({ objectId: result.designDefinitionObject.id, nonce: current.nonce + 1 }));
+          requestFocusObject(result.designDefinitionObject.id);
           setActiveProposalId(null);
           closeProposalDetail();
         } else {
@@ -2383,7 +2206,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           );
           setSelectedObjectIds(result.directions.map((direction) => direction.id));
           if (result.directions[0]) {
-            setFocusRequest((current) => ({ objectId: result.directions[0].id, nonce: current.nonce + 1 }));
+            requestObjectFocus(result.directions[0].id);
           }
           setActiveProposalId(null);
           closeProposalDetail();
@@ -2402,7 +2225,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         setTaskMode("chatAnalysis");
       }
     },
-    [closeProposalDetail, setSelectedObjectIds, setWorkspace, workspace]
+    [closeProposalDetail, requestFocusObject, requestObjectFocus, setSelectedObjectIds, setWorkspace, workspace]
   );
 
   const handleRejectProposal = useCallback(
@@ -2710,7 +2533,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }
         setSelectedObjectIds(placed.directions.map((direction) => direction.id));
         if (placed.directions[0]) {
-          setFocusRequest((focus) => ({ objectId: placed.directions[0].id, nonce: focus.nonce + 1 }));
+          requestObjectFocus(placed.directions[0].id);
         }
         return appendAiAssistantNotice(
           placed.workspace,
@@ -2916,8 +2739,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       });
 
       setWorkspace(result.workspace);
-      setSelectedObjectIds([result.keyConclusion.id]);
-      setFocusRequest((current) => ({ objectId: result.keyConclusion.id, nonce: current.nonce + 1 }));
+      requestFocusObject(result.keyConclusion.id);
       setPendingConfirmation(null);
       setAiDraft("");
       setTaskMode("chatAnalysis");
@@ -2941,6 +2763,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     pendingConfirmation,
     projectId,
     pushObjectOperationUndo,
+    requestFocusObject,
+    requestObjectFocus,
     setSelectedObjectIds,
     setWorkspace,
     showWorkspaceNotice,
@@ -3174,11 +2998,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }
       });
       setWorkspace(result.workspace);
-      setSelectedObjectIds([result.keyConclusion.id]);
-      setFocusRequest((current) => ({ objectId: result.keyConclusion.id, nonce: current.nonce + 1 }));
+      requestFocusObject(result.keyConclusion.id);
       showWorkspaceNotice(`已保存关键结论「${result.keyConclusion.title}」`);
     },
-    [pushObjectOperationUndo, setSelectedObjectIds, setWorkspace, showWorkspaceNotice, workspace]
+    [pushObjectOperationUndo, requestFocusObject, setWorkspace, showWorkspaceNotice, workspace]
   );
 
   const handleOpenResearchDetail = useCallback(() => {
@@ -3208,10 +3031,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setWorkspace(result.workspace);
     if (result.activeObjectIds.length > 0) {
       setSelectedObjectIds(result.activeObjectIds);
-      setFocusRequest((current) => ({ objectId: result.activeObjectIds[0], nonce: current.nonce + 1 }));
+      requestObjectFocus(result.activeObjectIds[0]);
     }
     closeResearchDetail();
-  }, [closeResearchDetail, selectedObjects, setSelectedObjectIds, setWorkspace, workspace]);
+  }, [closeResearchDetail, requestObjectFocus, selectedObjects, setSelectedObjectIds, setWorkspace, workspace]);
 
   const handleApplyResearchExtractionSelection = useCallback(
     (selectedKeys: string[]) => {
@@ -3223,10 +3046,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setWorkspace(result.workspace);
       if (result.activeObjectIds.length > 0) {
         setSelectedObjectIds(result.activeObjectIds);
-        setFocusRequest((current) => ({ objectId: result.activeObjectIds[0], nonce: current.nonce + 1 }));
+        requestObjectFocus(result.activeObjectIds[0]);
       }
     },
-    [activeResearchDetailObjectId, setSelectedObjectIds, setWorkspace, workspace]
+    [activeResearchDetailObjectId, requestObjectFocus, setSelectedObjectIds, setWorkspace, workspace]
   );
 
   const handleCopyItemToDraft = useCallback((text: string) => {
@@ -3330,8 +3153,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           comparison: comparisonMetadata
         });
         setWorkspace(result.workspace);
-        setSelectedObjectIds([result.keyConclusion.id]);
-        setFocusRequest((current) => ({ objectId: result.keyConclusion.id, nonce: current.nonce + 1 }));
+       requestFocusObject(result.keyConclusion.id);
         showWorkspaceNotice(`已保存关键结论「${result.keyConclusion.title}」`);
         return;
       }
@@ -3424,22 +3246,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         showWorkspaceNotice(`已取消「${targetObject.title}」的后续默认参考`);
       }
     },
-    [pushObjectOperationUndo, setSelectedObjectIds, setWorkspace, showWorkspaceNotice, workspace]
+    [pushObjectOperationUndo, requestFocusObject, setWorkspace, showWorkspaceNotice, workspace]
   );
 
   const handleViewCreatedDocumentFragment = useCallback(
     (fragmentId: string) => {
-      setSelectedObjectIds([fragmentId]);
-      setWorkspace((current) => ({
-        ...current,
-        ui: {
-          ...current.ui,
-          lastSelectionIds: [fragmentId]
-        }
-      }));
-      setFocusRequest((current) => ({ objectId: fragmentId, nonce: current.nonce + 1 }));
+      acceptCanvasSelection([fragmentId]);
+      requestObjectFocus(fragmentId);
     },
-    [setSelectedObjectIds, setWorkspace]
+    [acceptCanvasSelection, requestObjectFocus]
   );
 
   const {
@@ -3480,38 +3295,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const documentReaderFile = documentReader ? workspace.objects[documentReader.fileObjectId] : undefined;
   const documentReaderInitialLocation = documentReader?.initialLocation ?? null;
   const selectAllCanvasObjects = useCallback(() => {
-    if (activeCanvasObjectIds.length === 0) {
-      return false;
+    const handled = selectAllControllerCanvasObjects(activeCanvasObjectIds);
+    if (handled) {
+      closeCanvasContextMenu();
     }
-
-    requestCanvasSelection(activeCanvasObjectIds);
-    closeCanvasContextMenu();
-    setWorkspace((current) => ({
-      ...current,
-      ui: {
-        ...current.ui,
-        lastSelectionIds: activeCanvasObjectIds
-      }
-    }));
-    return true;
-  }, [activeCanvasObjectIds, closeCanvasContextMenu, requestCanvasSelection, setWorkspace]);
+    return handled;
+  }, [activeCanvasObjectIds, closeCanvasContextMenu, selectAllControllerCanvasObjects]);
 
   const clearCanvasSelection = useCallback(() => {
-    if (selectedObjectIds.length === 0) {
-      return false;
+    const handled = clearControllerCanvasSelection();
+    if (handled) {
+      closeCanvasContextMenu();
     }
-
-    requestCanvasSelection([]);
-    closeCanvasContextMenu();
-    setWorkspace((current) => ({
-      ...current,
-      ui: {
-        ...current.ui,
-        lastSelectionIds: []
-      }
-    }));
-    return true;
-  }, [closeCanvasContextMenu, requestCanvasSelection, selectedObjectIds.length, setWorkspace]);
+    return handled;
+  }, [clearControllerCanvasSelection, closeCanvasContextMenu]);
 
   const closeTopWorkspaceSurface = useCallback(() => {
     const ports: WorkspaceExternalSurfacePorts = {
@@ -3971,7 +3768,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           onHide={handleHideSelected}
           onDelete={handleDeleteSelected}
           onReorderLayer={handleReorderSelectedLayers}
-          onClearSelection={() => requestCanvasSelection([])}
+          onClearSelection={clearCanvasSelection}
           onFocusOverview={() => focusArea("overview")}
           onPasteHere={() => {
             void handleContextMenuPaste(canvasContextMenu.pagePosition);
@@ -4807,9 +4604,5 @@ function comparisonActionFromPending(confirmation: PendingComparisonConfirmation
     case "compareCreateKeyConclusion":
       return "createKeyConclusion";
   }
-}
-
-function isEditableDomTarget(target: EventTarget | null): boolean {
-  return target instanceof HTMLElement && (target.tagName === "TEXTAREA" || target.tagName === "INPUT" || target.isContentEditable);
 }
 
