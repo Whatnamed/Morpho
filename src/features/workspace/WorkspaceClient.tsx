@@ -47,7 +47,6 @@ import {
   createArtifactProposalOperation,
   createResearchOperation,
   getActiveOperation,
-  interruptActiveOperations,
   rejectArtifactProposal,
   recordAndApplyConceptDirectionProposal,
   recordDesignDefinitionProposal,
@@ -159,7 +158,6 @@ import {
   getProposalPlacement,
   getSiblingProposalPlacement
 } from "./proposalDraftPlacement";
-import { parseManualCompactCommand } from "./manualConversationCompaction";
 import {
   getDefaultImageGenerationSettings,
   inferGenerationAspectRatio,
@@ -170,24 +168,13 @@ import {
   getDesignDefinitionDrafts,
   type MorphoAgentTurnMode
 } from "./morphoAgent";
-import { updateAiMessage } from "./aiConversationMessages";
-import type { AgentTurnHost } from "./agentTurnHost";
-import {
-  acknowledgeMorphoAgentPendingConfirmation,
-  cancelMorphoAgentTurn,
-  recoverMorphoAgentTurn,
-  resumeMorphoAgentTurn,
-  runManualCompactionTurn,
-  runMorphoAgentTurn
-} from "./agentTurnRunner";
-import { completeAgentTrace } from "./agentMessageTrace";
 import { commitWorkspaceStateNow } from "./workspaceCommitBoundary";
+import { useWorkspaceAgentRuntimeController } from "./useWorkspaceAgentRuntimeController";
 import {
   useWorkspaceVisualGenerationController
 } from "./useWorkspaceVisualGenerationController";
 import type { PendingImageGenerationSlot } from "./pendingImageGenerationSlots";
 import type {
-  ImageTaskState,
   ImageTaskStatus
 } from "./workspaceVisualGenerationExecution";
 import type { CanvasImportRequest, FocusArea } from "./tldraw/MorphoCanvas";
@@ -248,10 +235,6 @@ type WorkspaceClientProps = {
 type SaveResearchKeyConclusionInput = {
   researchObjectId: string;
 } & ResearchKeyConclusionSource;
-
-function isActiveImageTaskStatus(state: ImageTaskState): boolean {
-  return state === "preparing" || state === "submitting" || state === "waiting" || state === "downloading";
-}
 
 type ObjectOperationUndoEntry = {
   workspace: MorphoWorkspace;
@@ -421,10 +404,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [detailHoverObjectId, setDetailHoverObjectId] = useState<string | null>(null);
   const [traceStartObjectId, setTraceStartObjectId] = useState<string | null>(null);
   const [canvasTraceMode, setCanvasTraceMode] = useState<"direct" | "chain">("direct");
-  const [showFailure, setShowFailure] = useState(false);
-  const [showRecoveryPending, setShowRecoveryPending] = useState(false);
   const [contextWarning, setContextWarning] = useState<string | undefined>();
-  const [isAiStreaming, setIsAiStreaming] = useState(false);
   const [imageTaskStatus, setImageTaskStatus] = useState<ImageTaskStatus | null>(null);
   const [pendingImageGenerationSlots, setPendingImageGenerationSlots] = useState<PendingImageGenerationSlot[]>([]);
   const [imageGenerationSettings, setImageGenerationSettings] = useState<ImageGenerationSettings>(() =>
@@ -442,17 +422,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [commitWorkspaceNow]
   );
   const assetUrls = useWorkspaceAssetUrls(workspace.assets);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const agentStreamFlushRef = useRef<(() => void) | null>(null);
-  useEffect(
-    () => () => {
-      agentStreamFlushRef.current?.();
-      agentStreamFlushRef.current = null;
-      abortControllerRef.current?.abort();
-      abortControllerRef.current = null;
-    },
-    [projectId, workspaceReady]
-  );
   const railImportInputRef = useRef<HTMLInputElement | null>(null);
   const pendingImportPositionRef = useRef<{ x: number; y: number } | null>(null);
   const [aiInputFocusNonce, setAiInputFocusNonce] = useState(0);
@@ -1024,96 +993,38 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     focusObject: requestObjectFocus
   });
   const executeVisualGenerationPlan = visualGeneration.executeVisualGenerationPlan;
-  const agentTurnHost = useMemo<AgentTurnHost>(
-    () => ({
-      commitWorkspace: commitWorkspaceNow,
-      readWorkspace: readWorkspaceNow,
-      persistWorkspace: flushWorkspace,
-      ui: {
-        setContextWarning,
-        clearPendingDeliveryDraftTarget: clearPendingDraftTarget,
-        setStreaming: setIsAiStreaming,
-        setDraft: setAiDraft,
-        setTaskMode,
-        openConversation: () => {
-          setAiOpen(true);
-        },
-        showFailure: () => {
-          setShowRecoveryPending(false);
-          setShowFailure(true);
-        },
-        showRecoveryPending: () => {
-          setShowFailure(false);
-          setShowRecoveryPending(true);
-        },
-        setPendingConfirmation,
-        selectObjects: setSelectedObjectIds,
-        focusObject: (objectId) => {
-          requestObjectFocus(objectId);
-        },
-        openProposal: setActiveProposalId
-      },
-      abortSlot: {
-        get: () => abortControllerRef.current,
-        set: (value) => {
-          abortControllerRef.current = value;
-        }
-      },
-      streamFlushSlot: {
-        get: () => agentStreamFlushRef.current,
-        set: (value) => {
-          agentStreamFlushRef.current = value;
-        }
-      },
-      fetch,
-      executeVisualGenerationPlan,
-      now: Date.now,
-      randomSuffix: () => Math.random().toString(36).slice(2, 8)
-    }),
-    [
-      commitWorkspaceNow,
-      clearPendingDraftTarget,
-      executeVisualGenerationPlan,
-      flushWorkspace,
-      readWorkspaceNow,
-      requestObjectFocus,
-      setSelectedObjectIds
-    ]
-  );
+  const {
+    isStreaming: isAiStreaming,
+    showFailure,
+    showRecoveryPending,
+    send: sendAgentTurn,
+    retryRecovery,
+    cancel: cancelAiRequest,
+    acknowledgePendingConfirmation,
+    beginLocalAbortableTask,
+    finishLocalAbortableTask
+  } = useWorkspaceAgentRuntimeController({
+    projectId,
+    workspaceReady,
+    commitWorkspace: commitWorkspaceNow,
+    readWorkspace: readWorkspaceNow,
+    persistWorkspace: flushWorkspace,
+    executeVisualGenerationPlan,
+    setContextWarning,
+    clearPendingDeliveryDraftTarget: clearPendingDraftTarget,
+    setDraft: setAiDraft,
+    setTaskMode,
+    openConversation: () => setAiOpen(true),
+    setPendingConfirmation,
+    selectObjects: setSelectedObjectIds,
+    focusObject: requestObjectFocus,
+    openProposal: setActiveProposalId,
+    setImageTaskStatus
+  });
 
-  const recoveredAgentRuntimeProjectRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!persistenceState.isWorkspaceLoaded || recoveredAgentRuntimeProjectRef.current === projectId) {
-      return;
-    }
-    recoveredAgentRuntimeProjectRef.current = projectId;
-    void recoverMorphoAgentTurn(projectId, agentTurnHost);
-  }, [agentTurnHost, persistenceState.isWorkspaceLoaded, projectId]);
-
-  const handleSendMorphoAgentTurn = useCallback(async () => {
-    const draft = aiDraft.trim();
-    if (!draft || isAiStreaming) {
-      return;
-    }
-
-    if (showRecoveryPending) {
-      const recoveryResult = await resumeMorphoAgentTurn(projectId, agentTurnHost);
-      if (recoveryResult === "pending") {
-        setShowFailure(false);
-        setShowRecoveryPending(true);
-        return;
-      }
-      if (recoveryResult === "failed") {
-        setShowRecoveryPending(false);
-        setShowFailure(true);
-        return;
-      }
-      setShowRecoveryPending(false);
-      setShowFailure(false);
-    }
-
+  const handleSendMorphoAgentTurn = useCallback(() => {
     const turnInput = {
-      draft,
+      draft: aiDraft,
       taskMode,
       recommendedTaskMode,
       workIntent,
@@ -1126,27 +1037,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       imageGenerationModelId: effectiveImageGenerationSettings.modelId,
       readConversationTokenLimits: readConversationTokenLimitsOverride
     };
-    if (parseManualCompactCommand(draft).matched) {
-      await runManualCompactionTurn(turnInput, agentTurnHost);
-      return;
-    }
-    await runMorphoAgentTurn(turnInput, agentTurnHost);
+    return sendAgentTurn(turnInput);
   }, [
-    agentTurnHost,
     agentTurnMode,
     aiDraft,
     directionPreviewCount,
     effectiveImageGenerationSettings.modelId,
-    isAiStreaming,
     pendingDeliveryDraftTarget,
     recommendedTaskMode,
     recommendedWorkIntent,
+    sendAgentTurn,
     selectedObjectIds,
     selectedObjects,
     taskMode,
-    workIntent,
-    projectId,
-    showRecoveryPending
+    workIntent
   ]);
 
   const openDeliveryPreparationFromSelection = useCallback(
@@ -1172,43 +1076,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [handleWorkIntentChange, requestSectionDraft]
   );
 
-  const handleCancelAiRequest = useCallback(async () => {
-    if (await cancelMorphoAgentTurn(projectId)) {
-      return;
-    }
-    agentStreamFlushRef.current?.();
-    agentStreamFlushRef.current = null;
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
-    setIsAiStreaming(false);
-    setImageTaskStatus((current) =>
-      current && isActiveImageTaskStatus(current.state)
-        ? {
-            state: "cancelled",
-            message: "当前 AI 任务已停止。原输入、已保存对象和已有结果会保留。"
-          }
-        : current
-    );
-    commitWorkspaceNow((current) => {
-      const activeMessage = [...current.ai.messages]
-        .reverse()
-        .find((message) => message.status === "streaming" && message.agentTrace);
-      let next = current;
-      if (activeMessage?.agentTrace) {
-        next = updateAiMessage(
-          next,
-          activeMessage.id,
-          activeMessage.body || "当前 Agent 回合已取消。原输入、选择和已完成步骤已保留。",
-          "cancelled",
-          {
-            agentTrace: completeAgentTrace(activeMessage.agentTrace, "cancelled", new Date().toISOString())
-          }
-        );
-      }
-      next = interruptActiveOperations(next, "用户停止了当前 AI 任务。原输入、已保存对象和已有结果会保留。");
-      return { workspace: next, value: undefined };
-    });
-  }, [commitWorkspaceNow, projectId]);
+  const handleCancelAiRequest = cancelAiRequest;
 
   const handleSuggestionClick = useCallback(
     (suggestion: Suggestion) => {
@@ -1796,13 +1664,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     if (!pendingConfirmation) {
       return;
     }
-    await acknowledgeMorphoAgentPendingConfirmation(projectId);
+    await acknowledgePendingConfirmation();
 
     if (pendingConfirmation.kind === "batchGenerateVisuals" || pendingConfirmation.kind === "agentGenerateVisuals") {
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-      setIsAiStreaming(true);
-      setShowFailure(false);
+      const localTask = beginLocalAbortableTask();
+      if (!localTask) {
+        return;
+      }
       setPendingConfirmation(null);
       setAiDraft("");
       setImageTaskStatus({
@@ -1818,8 +1686,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           sourceObjectIds: pendingConfirmation.sourceObjectIds,
           selectedDirectionIds: pendingConfirmation.selectedDirectionIds,
           selectedImageIds: pendingConfirmation.selectedImageIds,
-          signal: controller.signal
+          signal: localTask.signal
         });
+        if (!localTask.isCurrent()) {
+          return;
+        }
         setWorkspace(() =>
           appendAiAssistantNotice(
             result.workspace,
@@ -1830,6 +1701,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           )
         );
       } catch (error) {
+        if (!localTask.isCurrent()) {
+          return;
+        }
         const isCancelled = error instanceof DOMException && error.name === "AbortError";
         const message = isCancelled
           ? "批量图像生成已取消。"
@@ -1842,8 +1716,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           appendAiAssistantFailureMessage(current, "agent-batch-generate-visuals", message)
         );
       } finally {
-        abortControllerRef.current = null;
-        setIsAiStreaming(false);
+        finishLocalAbortableTask(localTask.controller);
       }
       return;
     }
@@ -2040,10 +1913,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         })
       );
       if (pendingConfirmation.action === "batchGenerateVisuals" && pendingConfirmation.visualPlan) {
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-        setIsAiStreaming(true);
-        setShowFailure(false);
+        const localTask = beginLocalAbortableTask();
+        if (!localTask) {
+          return;
+        }
         setPendingConfirmation(null);
         setAiDraft("");
         try {
@@ -2054,12 +1927,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             sourceObjectIds: pendingConfirmation.sourceObjectIds,
             selectedDirectionIds: pendingConfirmation.selectedDirectionIds,
             selectedImageIds: pendingConfirmation.selectedImageIds,
-            signal: controller.signal
+            signal: localTask.signal
           });
+          if (!localTask.isCurrent()) {
+            return;
+          }
           setWorkspace(() => result.workspace);
         } finally {
-          abortControllerRef.current = null;
-          setIsAiStreaming(false);
+          finishLocalAbortableTask(localTask.controller);
         }
       }
       setPendingConfirmation(null);
@@ -2212,9 +2087,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setPendingConfirmation(null);
     setAiDraft("");
   }, [
+    acknowledgePendingConfirmation,
+    beginLocalAbortableTask,
     executeVisualGenerationPlan,
+    finishLocalAbortableTask,
     pendingConfirmation,
-    projectId,
     pushObjectOperationUndo,
     requestFocusObject,
     requestObjectFocus,
@@ -2236,11 +2113,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         markReplacedDerivativesForReview: true
       })
     );
-    void acknowledgeMorphoAgentPendingConfirmation(projectId);
+    void acknowledgePendingConfirmation();
     setPendingConfirmation(null);
     setAiDraft("");
     showWorkspaceNotice(`已替换默认参考为「${pendingConfirmation.targetTitle}」，直接延展素材已标记待复核`);
-  }, [pendingConfirmation, projectId, pushObjectOperationUndo, setWorkspace, showWorkspaceNotice]);
+  }, [acknowledgePendingConfirmation, pendingConfirmation, pushObjectOperationUndo, setWorkspace, showWorkspaceNotice]);
 
   const handleKeepReviewedVisual = useCallback(
     (objectId: string) => {
@@ -3394,17 +3271,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onConfirmPending={handleConfirmPending}
         onConfirmPendingSecondary={handleConfirmPendingWithReviewMarks}
         onCancelPending={() => {
-          void acknowledgeMorphoAgentPendingConfirmation(projectId);
+          void acknowledgePendingConfirmation();
           setPendingConfirmation(null);
         }}
-        onFailureRetry={() => {
-          void (async () => {
-            setShowFailure(false);
-            const result = await resumeMorphoAgentTurn(projectId, agentTurnHost);
-            setShowRecoveryPending(result === "pending");
-            setShowFailure(result === "failed");
-          })();
-        }}
+        onFailureRetry={retryRecovery}
         onOpenProjectRecords={openProjectRecords}
       />
 

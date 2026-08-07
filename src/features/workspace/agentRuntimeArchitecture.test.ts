@@ -8,8 +8,11 @@ describe("Agent Runtime architecture boundary", () => {
   it("exposes one canonical client runtime with no selector or public B entry", () => {
     const workspaceClient = source("src/features/workspace/WorkspaceClient.tsx");
 
-    expect(workspaceClient).toContain('from "./agentTurnRunner"');
-    expect(workspaceClient).toContain("runMorphoAgentTurn(");
+    expect(workspaceClient).toContain('from "./useWorkspaceAgentRuntimeController"');
+    expect(workspaceClient).toContain("useWorkspaceAgentRuntimeController({");
+    expect(workspaceClient).not.toContain('from "./agentTurnRunner"');
+    expect(workspaceClient).not.toContain("runMorphoAgentTurn(");
+    expect(source("src/features/workspace/useWorkspaceAgentRuntimeController.ts")).toContain("runMorphoAgentTurn(");
     expect(exists("src/features/workspace/agentTurnRunner.ts")).toBe(true);
     expect(exists("src/features/workspace/agentTurnRunnerAPlus.ts")).toBe(false);
     expect(exists("src/features/workspace/agentRuntimeSelector.ts")).toBe(false);
