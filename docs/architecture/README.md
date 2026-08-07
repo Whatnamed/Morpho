@@ -33,13 +33,13 @@ runtime names, model defaults, or deployment claims into current work without re
 
 | Document | State | Use |
 |---|---|---|
-| [`agent-runtime-a-plus-migration.md`](./agent-runtime-a-plus-migration.md) | Phase A complete; Phase B complete; observation window active; Phase C deferred and unauthorized | Current A+ trust boundary, release evidence, phase ledger, and the one remaining observation gate |
+| [`agent-runtime-a-plus-migration.md`](./agent-runtime-a-plus-migration.md) | Phase A, Phase B, Phase C Observation, and Phase C Cleanup complete; A+ is the sole Production Agent Runtime | Final A+ trust boundary, release evidence, phase ledger, and historical cleanup record |
 
 This ledger records that the two additive migrations
 `20260729012105_add_agent_turn_journal.sql` and
-`20260729093000_add_agent_turn_external_actions.sql` were applied and verified. The irreversible
-`20260729190000_remove_agent_runtime_b_proofs.sql` cleanup was not applied. The Phase C-before
-observation audit is not an automatic authorization to run that cleanup.
+`20260729093000_add_agent_turn_external_actions.sql` were applied and verified, followed by the
+irreversible `20260729190000_remove_agent_runtime_b_proofs.sql` cleanup exactly once. Phase C
+observation and cleanup are complete; do not rerun, repair, or recreate the cleanup migration.
 
 ## Historical milestones and audit evidence
 
