@@ -980,3 +980,28 @@ image-role model. `chat: none` clears messages, compaction, summary revisions, p
 Compare analyses. Legacy schema 1-16 backups are inspected, restored as a new copy, and migrated at
 the restore boundary. This decision does not change A+ leases/journals/RPCs, Provider Transcript
 contracts, image routing, quotas, authentication, database migrations, or deployment.
+
+## 2026-08-08: Centralize Pending Confirmation Ownership Without Changing Its Product Contract
+
+Decision: the shared `PendingAiConfirmation` model lives in the neutral
+`src/features/workspace/workspaceConfirmation.ts` module, and the workspace owns one
+project/readiness-scoped confirmation slot through
+`useWorkspaceConfirmationController.ts`. Local actions, Compare decisions, and Agent A+ tool
+results request the slot atomically; a request never overwrites a different pending confirmation.
+The generic execution controller owns confirm/cancel, current-workspace revalidation, secondary
+default-reference review, key-conclusion edits, Agent acknowledgement ordering, visual-task
+ownership, and page effects, while the Compare controller remains the authority for Compare
+writeback.
+
+Boundary: local and Compare confirmations never acknowledge an Agent turn. Agent confirmation
+must preflight the current project, acquire a local visual task before acknowledgement when
+needed, acknowledge before any writeback or external generation, recheck session and bindings,
+and leave the card and workspace untouched when acknowledgement fails. Durable A+ recovery is
+not discarded when a local confirmation occupies the slot; it remains resumable after the slot is
+released. Default-reference requests bind exact review target IDs, Agent proposal requests bind
+source and design-definition revision facts, and visual plans revalidate all current references.
+Project/readiness transitions clear transient confirmation state and stale callbacks fail closed;
+same-project rerenders preserve it. Object-operation undo snapshots contain no pending
+confirmation, and only successful reversible writes create one snapshot. This is a runtime
+ownership and orchestration change only: no schema, persistence format, Provider route, A+ Journal
+contract, or visible confirmation-card product contract changes.

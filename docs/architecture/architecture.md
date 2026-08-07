@@ -168,6 +168,26 @@ Important module boundaries:
   applying the existing domain action. Compare elimination no longer uses the comparison-specific
   text prompt; ordinary canvas elimination remains on its existing prompt path. No schema,
   provider, or A+ runtime contract changed.
+- WorkspaceClient decomposition phase 6-F moves the shared Pending Confirmation model into the
+  neutral `workspaceConfirmation.ts` module and gives the page one project-scoped confirmation
+  slot through `useWorkspaceConfirmationController.ts`. Local, Agent A+, and Compare producers
+  all request that slot without overwriting an existing value; an occupied Agent request becomes
+  an explicit terminal `confirmation_slot_occupied`, while a colliding durable A+ recovery record
+  remains recoverable until the local or Compare confirmation is resolved. Generic confirm, cancel,
+  secondary default-reference review, key-conclusion editing, current-workspace revalidation,
+  Agent acknowledgement, visual-task ownership, and UI effects live in
+  `useWorkspaceConfirmationExecutionController.ts`; Compare remains authoritative for its own
+  decision confirmation. Agent acknowledgement is required before Agent writeback or external
+  visual generation, local and Compare confirmations do not acknowledge an Agent turn, and failed
+  acknowledgement leaves the confirmation card and workspace unchanged. Default-reference
+  confirmations bind the exact target, previous default, and review image/collection IDs;
+  Agent proposal confirmations bind source objects and, when based on the current design
+  definition, its exact ID and revision. Project/readiness transitions clear the slot and stale
+  callbacks fail closed, while same-project rerenders preserve it. Successful reversible writes
+  create one object-operation undo entry; request, cancel, blocked, and failed-ack paths do not
+  include or restore pending confirmation state. `WorkspaceClient.tsx` now only composes the
+  controllers and dispatches Compare versus generic confirmation callbacks. No schema,
+  persistence format, Provider, A+ protocol, or visible confirmation-card contract changed.
 - `src/domain/morpho/` owns product-domain types, the generated case-study fixture, deterministic domain actions, import helpers, generation helpers, and queries.
 - `src/infrastructure/persistence/` owns browser localStorage project catalog and workspace access.
 - `src/infrastructure/assets/` owns browser IndexedDB Blob storage and asset-save workflow.
