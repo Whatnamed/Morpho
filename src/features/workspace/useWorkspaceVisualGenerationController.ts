@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
@@ -10,9 +10,11 @@ import {
 import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
 import type { ExecuteAgentVisualGenerationPlan } from "./agentToolExecutors";
 import {
+  createStaleVisualGenerationExecutionError,
   executeWorkspaceVisualGenerationPlan,
   type ImageTaskStatus,
-  type WorkspaceVisualGenerationExecutionPorts
+  type WorkspaceVisualGenerationExecutionPorts,
+  type WorkspaceVisualGenerationExecutionSession
 } from "./workspaceVisualGenerationExecution";
 import type { ImageGenerationSettings } from "./imageGenerationSettings";
 import type { PendingImageGenerationSlot } from "./pendingImageGenerationSlots";
@@ -26,9 +28,10 @@ export type WorkspaceVisualGenerationControllerServices = {
 };
 
 export type UseWorkspaceVisualGenerationControllerInput = {
+  projectId: string;
+  workspaceReady: boolean;
   effectiveImageGenerationSettings: ImageGenerationSettings;
   commitWorkspace: <T>(transform: WorkspaceCommitTransform<T>) => T;
-  updateWorkspace: (update: (current: MorphoWorkspace) => MorphoWorkspace) => void;
   setPendingImageGenerationSlots: (
     update: (current: PendingImageGenerationSlot[]) => PendingImageGenerationSlot[]
   ) => void;
@@ -65,6 +68,16 @@ function resolveServices(
 export function useWorkspaceVisualGenerationController(
   input: UseWorkspaceVisualGenerationControllerInput
 ): WorkspaceVisualGenerationController {
+  const {
+    projectId,
+    workspaceReady,
+    effectiveImageGenerationSettings,
+    commitWorkspace: commitWorkspaceInput,
+    setPendingImageGenerationSlots: setPendingImageGenerationSlotsInput,
+    setImageTaskStatus: setImageTaskStatusInput,
+    selectObjects: selectObjectsInput,
+    focusObject: focusObjectInput
+  } = input;
   const serviceFetch = input.services?.fetch;
   const serviceNow = input.services?.now;
   const serviceRandomSuffix = input.services?.randomSuffix;
@@ -89,37 +102,118 @@ export function useWorkspaceVisualGenerationController(
     ]
   );
 
-  const executeVisualGenerationPlan = useCallback<ExecuteAgentVisualGenerationPlan>(
-    (executionInput) => {
-      const ports: WorkspaceVisualGenerationExecutionPorts = {
-        fetch: services.fetch,
-        commitWorkspace: input.commitWorkspace,
-        updateWorkspace: input.updateWorkspace,
-        updatePendingImageGenerationSlots: input.setPendingImageGenerationSlots,
-        setImageTaskStatus: input.setImageTaskStatus,
-        saveGeneratedAsset: services.saveGeneratedAsset,
-        readReferenceAsset: services.readReferenceAsset,
-        selectObjects: input.selectObjects,
-        focusObject: input.focusObject,
-        now: services.now,
-        randomSuffix: services.randomSuffix
-      };
-      return executeWorkspaceVisualGenerationPlan(
-        executionInput,
-        input.effectiveImageGenerationSettings,
-        ports
-      );
+  const session = useMemo<WorkspaceVisualGenerationExecutionSession>(
+    () => ({
+      projectId,
+      workspaceReady,
+      generation: Symbol("visual-generation-session")
+    }),
+    [projectId, workspaceReady]
+  );
+  const currentSessionRef = useRef(session);
+
+  useLayoutEffect(() => {
+    currentSessionRef.current = session;
+    if (!session.workspaceReady) {
+      setPendingImageGenerationSlotsInput(() => []);
+      setImageTaskStatusInput(null);
+    }
+  }, [setImageTaskStatusInput, setPendingImageGenerationSlotsInput, session]);
+
+  const getCurrentSession = useCallback(() => currentSessionRef.current, []);
+  const assertCurrentSession = useCallback(
+    (expectedSession: WorkspaceVisualGenerationExecutionSession) => {
+      const currentSession = currentSessionRef.current;
+      if (
+        currentSession !== expectedSession ||
+        !currentSession.workspaceReady ||
+        currentSession.projectId !== expectedSession.projectId
+      ) {
+        throw createStaleVisualGenerationExecutionError();
+      }
     },
+    []
+  );
+  const commitWorkspace = useCallback(
+    <T,>(expectedSession: WorkspaceVisualGenerationExecutionSession, transform: WorkspaceCommitTransform<T>) => {
+      assertCurrentSession(expectedSession);
+      return commitWorkspaceInput((current) => {
+        assertCurrentSession(expectedSession);
+        if (current.project.id !== expectedSession.projectId) {
+          throw createStaleVisualGenerationExecutionError();
+        }
+        return transform(current);
+      });
+    },
+    [assertCurrentSession, commitWorkspaceInput]
+  );
+  const updatePendingImageGenerationSlots = useCallback(
+    (
+      expectedSession: WorkspaceVisualGenerationExecutionSession,
+      update: (current: PendingImageGenerationSlot[]) => PendingImageGenerationSlot[]
+    ) => {
+      assertCurrentSession(expectedSession);
+      setPendingImageGenerationSlotsInput((current) => {
+        assertCurrentSession(expectedSession);
+        return update(current);
+      });
+    },
+    [assertCurrentSession, setPendingImageGenerationSlotsInput]
+  );
+  const setImageTaskStatus = useCallback(
+    (expectedSession: WorkspaceVisualGenerationExecutionSession, status: ImageTaskStatus | null) => {
+      assertCurrentSession(expectedSession);
+      setImageTaskStatusInput(status);
+    },
+    [assertCurrentSession, setImageTaskStatusInput]
+  );
+  const selectObjects = useCallback(
+    (expectedSession: WorkspaceVisualGenerationExecutionSession, objectIds: string[]) => {
+      assertCurrentSession(expectedSession);
+      selectObjectsInput(objectIds);
+    },
+    [assertCurrentSession, selectObjectsInput]
+  );
+  const focusObject = useCallback(
+    (expectedSession: WorkspaceVisualGenerationExecutionSession, objectId: string) => {
+      assertCurrentSession(expectedSession);
+      focusObjectInput(objectId);
+    },
+    [assertCurrentSession, focusObjectInput]
+  );
+  const ports = useMemo<WorkspaceVisualGenerationExecutionPorts>(
+    () => ({
+      fetch: services.fetch,
+      getCurrentSession,
+      assertCurrentSession,
+      commitWorkspace,
+      updatePendingImageGenerationSlots,
+      setImageTaskStatus,
+      saveGeneratedAsset: services.saveGeneratedAsset,
+      readReferenceAsset: services.readReferenceAsset,
+      selectObjects,
+      focusObject,
+      now: services.now,
+      randomSuffix: services.randomSuffix
+    }),
     [
-      input.commitWorkspace,
-      input.focusObject,
-      input.selectObjects,
-      input.setImageTaskStatus,
-      input.setPendingImageGenerationSlots,
-      input.updateWorkspace,
-      input.effectiveImageGenerationSettings,
-      services
+      assertCurrentSession,
+      commitWorkspace,
+      focusObject,
+      getCurrentSession,
+      selectObjects,
+      services,
+      setImageTaskStatus,
+      updatePendingImageGenerationSlots
     ]
+  );
+  const executeVisualGenerationPlan = useCallback<ExecuteAgentVisualGenerationPlan>(
+    (executionInput) => executeWorkspaceVisualGenerationPlan(
+      executionInput,
+      effectiveImageGenerationSettings,
+      ports
+    ),
+    [effectiveImageGenerationSettings, ports]
   );
 
   return { executeVisualGenerationPlan };

@@ -69,10 +69,7 @@ describe("useWorkspaceVisualGenerationController", () => {
     const harness = createControllerHarness();
     const rendered = await renderController(createInput(harness, resolveGenerationSettings({ aspectRatio: "1:1" })));
     const execution = rendered.current().executeVisualGenerationPlan(createPlanInput(harness));
-    await act(async () => {
-      await Promise.resolve();
-      rendered.unmount();
-    });
+    await rendered.unmount();
     harness.response.resolve(new Response(new Blob(["image"], { type: "image/png" }), {
       status: 200,
       headers: { "Content-Type": "image/png" }
@@ -318,4 +315,12 @@ function deferred<T>() {
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error("Timed out waiting for the controller harness.");
 }

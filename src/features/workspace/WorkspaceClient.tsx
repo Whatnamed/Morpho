@@ -451,7 +451,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       abortControllerRef.current?.abort();
       abortControllerRef.current = null;
     },
-    []
+    [projectId, workspaceReady]
   );
   const railImportInputRef = useRef<HTMLInputElement | null>(null);
   const pendingImportPositionRef = useRef<{ x: number; y: number } | null>(null);
@@ -1014,9 +1014,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   }, [setWorkspace, workspace.project.id, workspace.objects]);
 
   const visualGeneration = useWorkspaceVisualGenerationController({
+    projectId,
+    workspaceReady,
     effectiveImageGenerationSettings,
     commitWorkspace: commitWorkspaceNow,
-    updateWorkspace: setWorkspace,
     setPendingImageGenerationSlots,
     setImageTaskStatus,
     selectObjects: setSelectedObjectIds,

@@ -22,6 +22,7 @@ import {
 import type {
   ImageTaskStatus,
   WorkspaceVisualGenerationExecutionPorts,
+  WorkspaceVisualGenerationExecutionSession,
   WorkspaceVisualGenerationPlanInput
 } from "./workspaceVisualGenerationExecution";
 import { executeWorkspaceVisualGenerationPlan } from "./workspaceVisualGenerationExecution";
@@ -305,9 +306,11 @@ describe("workspace visual generation execution core", () => {
 
   it("fails closed when a new A+ action has no intent persistence callback", async () => {
     const harness = createExecutionHarness();
+    const input = createAPlusInput(harness, 1);
+    delete input.onExternalActionIntent;
 
     await expect(executeWorkspaceVisualGenerationPlan(
-      createAPlusInput(harness, 1),
+      input,
       resolveGenerationSettings({ aspectRatio: "1:1" }),
       harness.ports
     )).rejects.toMatchObject({ code: "external_action_intent_persistence_unavailable" });
@@ -556,17 +559,20 @@ describe("workspace visual generation execution core", () => {
   it("does not fabricate reference pixels when an image asset is missing", async () => {
     const readReferenceAsset = vi.fn(async () => null);
     const harness = createExecutionHarness({ readReferenceAsset });
-    harness.ports.updateWorkspace((current) => {
+    harness.ports.commitWorkspace(harness.session, (current) => {
       const image = current.objects["image-soft-rail-v2"];
-      if (!image || image.type !== "image") return current;
+      if (!image || image.type !== "image") return { workspace: current, value: undefined };
       const referenceAsset = makeAsset("reference-asset");
       return {
-        ...current,
-        assets: { ...current.assets, [referenceAsset.id]: referenceAsset },
-        objects: {
-          ...current.objects,
-          [image.id]: { ...image, assetId: referenceAsset.id }
-        }
+        workspace: {
+          ...current,
+          assets: { ...current.assets, [referenceAsset.id]: referenceAsset },
+          objects: {
+            ...current.objects,
+            [image.id]: { ...image, assetId: referenceAsset.id }
+          }
+        },
+        value: undefined
       };
     });
     const input = createVisualInput(harness, 1);
@@ -605,17 +611,20 @@ describe("workspace visual generation execution core", () => {
       const harness = createExecutionHarness({
         readReferenceAsset: async () => new Blob(["reference"], { type: "image/png" })
       });
-      harness.ports.updateWorkspace((current) => {
+      harness.ports.commitWorkspace(harness.session, (current) => {
         const image = current.objects["image-soft-rail-v2"];
-        if (!image || image.type !== "image") return current;
+        if (!image || image.type !== "image") return { workspace: current, value: undefined };
         const referenceAsset = makeAsset("reference-asset");
         return {
-          ...current,
-          assets: { ...current.assets, [referenceAsset.id]: referenceAsset },
-          objects: {
-            ...current.objects,
-            [image.id]: { ...image, assetId: referenceAsset.id }
-          }
+          workspace: {
+            ...current,
+            assets: { ...current.assets, [referenceAsset.id]: referenceAsset },
+            objects: {
+              ...current.objects,
+              [image.id]: { ...image, assetId: referenceAsset.id }
+            }
+          },
+          value: undefined
         };
       });
       const input = createVisualInput(harness, 1);
@@ -683,7 +692,10 @@ describe("workspace visual generation execution core", () => {
         }
       }
     };
-    harness.ports.updateWorkspace(() => conflictingWorkspace);
+    harness.ports.commitWorkspace(harness.session, () => ({
+      workspace: conflictingWorkspace,
+      value: undefined
+    }));
 
     await expect(executeWorkspaceVisualGenerationPlan(
       createAPlusInput(harness, 1),
@@ -729,6 +741,7 @@ type ExecutionRequest = {
 type ExecutionHarness = {
   readonly workspace: MorphoWorkspace;
   readonly ports: WorkspaceVisualGenerationExecutionPorts;
+  readonly session: WorkspaceVisualGenerationExecutionSession;
   readonly requests: ExecutionRequest[];
   readonly imageTaskStatuses: ImageTaskStatus[];
   readonly pendingImageGenerationSlots: PendingImageGenerationSlot[];
@@ -756,6 +769,11 @@ function createExecutionHarness(options: {
   const imageTaskStatuses: ImageTaskStatus[] = [];
   const selectedObjectIds: string[] = [];
   const events: string[] = [];
+  const session: WorkspaceVisualGenerationExecutionSession = {
+    projectId: currentWorkspace.project.id,
+    workspaceReady: true,
+    generation: Symbol("test-visual-generation-session")
+  };
 
   const fakeFetch: typeof fetch = async (input, init) => {
     const url = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
@@ -777,6 +795,7 @@ function createExecutionHarness(options: {
       return currentWorkspace;
     },
     ports: undefined as unknown as WorkspaceVisualGenerationExecutionPorts,
+    session,
     requests,
     imageTaskStatuses,
     get pendingImageGenerationSlots() {
@@ -797,7 +816,19 @@ function createExecutionHarness(options: {
 
   const ports: WorkspaceVisualGenerationExecutionPorts = {
     fetch: fakeFetch,
-    commitWorkspace: <T,>(transform: WorkspaceCommitTransform<T>) => {
+    getCurrentSession: () => session,
+    assertCurrentSession: (expectedSession) => {
+      if (expectedSession !== session) {
+        throw new Error("test session changed");
+      }
+    },
+    commitWorkspace: <T,>(
+      expectedSession: WorkspaceVisualGenerationExecutionSession,
+      transform: WorkspaceCommitTransform<T>
+    ) => {
+      if (expectedSession !== session) {
+        throw new Error("test session changed");
+      }
       events.push("workspace:commit");
       commitCount += 1;
       if (options.failCommitAt === commitCount) {
@@ -807,15 +838,17 @@ function createExecutionHarness(options: {
       currentWorkspace = result.workspace;
       return result.value;
     },
-    updateWorkspace: (update) => {
-      events.push("workspace:update");
-      currentWorkspace = update(currentWorkspace);
-    },
-    updatePendingImageGenerationSlots: (update) => {
+    updatePendingImageGenerationSlots: (expectedSession, update) => {
+      if (expectedSession !== session) {
+        throw new Error("test session changed");
+      }
       events.push("pending:update");
       pendingImageGenerationSlots = update(pendingImageGenerationSlots);
     },
-    setImageTaskStatus: (status) => {
+    setImageTaskStatus: (expectedSession, status) => {
+      if (expectedSession !== session) {
+        throw new Error("test session changed");
+      }
       if (status) imageTaskStatuses.push(status);
     },
     saveGeneratedAsset: options.saveGeneratedAsset ?? (async (_file) => {
@@ -826,10 +859,16 @@ function createExecutionHarness(options: {
       };
     }),
     readReferenceAsset: options.readReferenceAsset ?? (async () => null),
-    selectObjects: (objectIds) => {
+    selectObjects: (expectedSession, objectIds) => {
+      if (expectedSession !== session) {
+        throw new Error("test session changed");
+      }
       selectedObjectIds.splice(0, selectedObjectIds.length, ...objectIds);
     },
-    focusObject: (objectId) => {
+    focusObject: (expectedSession, objectId) => {
+      if (expectedSession !== session) {
+        throw new Error("test session changed");
+      }
       focusedObjectId = objectId;
     },
     now: () => 1_700_000_000_000,
@@ -908,6 +947,7 @@ function createAPlusInput(
       stepSequence: 1,
       actionId: "parent-call"
     },
+    onExternalActionIntent: () => true,
     ...overrides
   };
 }
