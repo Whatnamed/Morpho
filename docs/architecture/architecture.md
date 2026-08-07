@@ -141,6 +141,19 @@ Important module boundaries:
   initiating project and invalidated on cancel or lifecycle transition. IndexedDB writes cannot
   be physically cancelled by this boundary, so a stale completed blob may remain orphaned;
   object-level Blob garbage collection is intentionally outside this phase.
+- WorkspaceClient decomposition phase 6-D moves Proposal review orchestration into the React-free
+  `workspaceProposalWorkflow.ts` core and the
+  `useWorkspaceProposalWorkflowController.ts` React wiring layer. The core delegates apply,
+  reject, and the three supported draft-update operations to the existing domain actions and
+  normalizes their selection/focus and assistant-message results; `deliveryPlan` remains an
+  explicit unsupported proposal type. The controller is the single entry point for chat,
+  canvas, and detail-surface review actions, owns the project-scoped transient active proposal,
+  and commits through the current-workspace functional boundary so stale callbacks fail closed.
+  Source-changed proposals require the explicit review opt-in, while base-superseded and
+  target-unavailable proposals remain blocked. Surface detail ownership stays with the Surface
+  controller, selection/focus ownership stays with the Selection controller, and discussion or
+  regeneration only opens the existing AI draft/task/work-intent flow without sending or applying
+  a proposal. No schema, provider, A+ runtime, persistence, or visible product contract changed.
 - `src/domain/morpho/` owns product-domain types, the generated case-study fixture, deterministic domain actions, import helpers, generation helpers, and queries.
 - `src/infrastructure/persistence/` owns browser localStorage project catalog and workspace access.
 - `src/infrastructure/assets/` owns browser IndexedDB Blob storage and asset-save workflow.
