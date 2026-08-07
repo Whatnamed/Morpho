@@ -2,17 +2,17 @@
 
 ## Current status
 
-As of 2026-08-04, the repository contains one formal A+ Agent Runtime. The current source of
-truth is the code on `main` plus the documents listed below; historical milestone documents are
-not alternate implementation guides.
+As of the final documentation closeout, the repository contains one formal A+ Agent Runtime. The
+current source of truth is the code on `main` plus the documents listed below; historical milestone
+documents are not alternate implementation guides.
 
 - `schemaVersion` is 17 and project data remains browser-local first.
-- `main` and `refactor/agent-runtime-a-plus` are closed at the same release commit.
-- A+ Phase A and Phase B are complete; the repository is in the healthy observation window before
-  Phase C.
-- The earliest scheduled read-only observation audit is `2026-08-06 10:28:24 Asia/Shanghai`.
-- Phase C is not authorized or executed. The checked-in B cleanup Migration and B archive remain
-  in place for the separately authorized future gate.
+- A+ Phase A, Phase B, Phase C Observation, and Phase C Cleanup are complete.
+- A+ is the sole Production Agent Runtime.
+- The Runtime B database table/RPC contract has been removed; historical B Migrations, archive
+  references, and recovery evidence remain only as historical or recovery records.
+- The Phase C cleanup acceptance baseline is recorded in the migration ledger and is not an assertion
+  about the current `main` or current Production Deployment.
 
 ## How to use this folder
 

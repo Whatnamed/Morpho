@@ -2,14 +2,20 @@
 
 This document is the durable implementation ledger for converging the Morpho Agent Runtime on the A+ trust boundary. It records migration scope, release evidence, and audit gates; it is not authorization to implement or execute a later stage early.
 
+> **Final closeout status (2026-08-07)**: Phase A, Phase B, Phase C Observation, and Phase C
+> Cleanup are complete. A+ is the sole Production Agent Runtime. The Runtime B application/runtime
+> path is retired, and the Runtime B database compatibility contract was removed by
+> `20260729190000_remove_agent_runtime_b_proofs.sql`. No further Runtime B cleanup or migration is
+> required.
+
 ## 1. Status
 
 | Field | Value |
 |---|---|
 | Decision date | 2026-07-28 |
-| Current state | Phase A complete; Phase B complete; healthy observation window active; Phase C deferred and unauthorized |
+| Current state | Phase A, Phase B, Phase C Observation, and Phase C Cleanup complete; A+ is the sole Production Agent Runtime |
 | Current formal working branch | `main` |
-| A+ branch relation | `main` and `refactor/agent-runtime-a-plus` are kept fast-forward-aligned; the A+ runtime release baseline is recorded below |
+| Repository/deployment boundary | Current `main` and its Production deployment are the live source of truth; the Phase C cleanup acceptance baseline is recorded separately below and is not the current `main` by implication |
 | Phase B A+ runtime SHA | `c7820091ca63bcca333071dcd77308e093a525f8` |
 | B implementation archive branch | `archive/agent-runtime-b` |
 | B implementation archive tag | `agent-runtime-b-final-2026-07-28-f27a410` |
@@ -24,8 +30,35 @@ This document is the durable implementation ledger for converging the Morpho Age
 | Server journals | Server Turn Journal plus External Action Journal implemented; the two additive A+ Migrations are applied and database-verified |
 | Stage 4 | Complete — independently accepted at `1ec902ecfd09c6b0abfe7b58230321e880321e94` |
 | Phase B acceptance | Sole A+ Vercel Production deployment and authenticated no-cost health acceptance completed; no paid Provider smoke was required |
-| Observation gate | Healthy observation window active; earliest read-only audit `2026-08-06 10:28:24 Asia/Shanghai` |
-| Next allowed stage | Phase C前只读观察审计；Phase C cleanup remains separately unauthorized |
+| Observation gate | Complete — real A+ Journal activity, continuation, reload, sequence, and Production health were accepted |
+| Phase C Cleanup | Complete — Cleanup Migration applied exactly once; Runtime B database contract removed |
+| Next allowed stage | No further Agent Runtime A+ migration phase is pending; future changes are normal A+ product development |
+
+```text
+Agent Runtime A+ Migration:
+CLOSED
+
+Phase A:
+COMPLETE
+
+Phase B:
+COMPLETE
+
+Phase C Observation:
+COMPLETE
+
+Phase C Cleanup:
+COMPLETE
+
+Runtime B:
+RETIRED AND DATABASE CONTRACT REMOVED
+
+A+:
+SOLE PRODUCTION RUNTIME
+```
+
+Historical Runtime B artifacts remain only where required for migration history, archive evidence,
+and recovery records. They are not an executable fallback or a second source of runtime state.
 
 The formal decision is recorded in [Technical Decisions](./decisions.md). The earlier [AI Continuity Convergence Audit](./ai-continuity-convergence-audit.md) remains historical evidence.
 
@@ -790,9 +823,10 @@ cache-hint revision:
 - Canonical Workspace types no longer retain `AgentTurnClosureRecovery`, signed Outcome items, or
   Provider Request State. Schema-v15 normalization explicitly discards those legacy browser fields
   while preserving product data, so old local projects open without keeping a second state source.
-- `20260729190000_remove_agent_runtime_b_proofs.sql` is the forward-only cleanup Migration. It drops
-  only B Lease RPCs and `private.ai_agent_turn_leases`; it does not modify migration history or the
-  A+ Turn/Request/External Action Journal. It is checked in but was not applied remotely by Stage 4.
+- At the Stage 4 release boundary, `20260729190000_remove_agent_runtime_b_proofs.sql` was the
+  forward-only cleanup Migration. It drops only B Lease RPCs and `private.ai_agent_turn_leases`; it
+  does not modify migration history or the A+ Turn/Request/External Action Journal. The later,
+  separately authorized Phase C Cleanup applied that unchanged Migration exactly once.
 - Remote database release is explicitly split into Phase A (the exact accepted Stage 3 checkout
   applies only the two additive A+ Journal Migrations), Phase B (the sole A+ application passes
   authenticated no-cost create/query and fail-closed checks), and Phase C (the Stage 4 checkout
@@ -814,9 +848,8 @@ tag `agent-runtime-b-final-2026-07-28-f27a410`; Stage 4 does not move either arc
 ### Stage 5 — Merge and Release Candidate Gate
 
 > **Historical planning status**：本节记录 Phase A 之前的 Stage 5 release-candidate 计划和当时的
-> 发布顺序。该计划已经完成并由下方的 Phase A、Phase B 与观察窗口记录收口；其中“不得合并
-> `main`”等措辞只描述当时的冻结状态，不是当前分支状态。当前唯一可执行的后续事项是
-> Phase C 前只读观察审计，不能据此自动执行 Phase C。
+> 发布顺序。该计划已经完成并由下方的 Phase A、Phase B、Observation 与 Phase C Cleanup 记录
+> 收口；其中“不得合并 `main`”等措辞只描述当时的冻结状态，不是当前分支状态。
 
 Stage 5 prepares a reviewable merge candidate without authorizing a source merge, database release,
 or production cutover.
@@ -1052,13 +1085,14 @@ Next allowed action:
 Phase B main cutover and Production acceptance.
 ```
 
-#### Phase B main cutover and Production acceptance
+#### Historical Phase B main cutover and Production acceptance
 
-Phase B is complete. The A+ runtime release at
-`c7820091ca63bcca333071dcd77308e093a525f8` was strict fast-forwarded into `main`, and the
-documentation closeout keeps `main` and `refactor/agent-runtime-a-plus` fast-forward-aligned. The
-current production application is the sole A+ Runtime on Vercel; no B Runtime selector, fallback, or
-formal-panel call path was reintroduced.
+Phase B completed the A+ main cutover. The A+ runtime release at
+`c7820091ca63bcca333071dcd77308e093a525f8` was strict fast-forwarded into `main` during the
+then-current release. The current repository and Production deployment may contain later
+normal product/documentation commits; the Phase C cleanup acceptance baseline is recorded separately
+and must not be mistaken for current `main`. The Production application remains the sole A+ Runtime
+on Vercel; no B Runtime selector, fallback, or formal-panel call path was reintroduced.
 
 The authenticated no-cost Production acceptance was completed after Phase A. It covered the A+
 Turn create/query boundary and the missing-Provider fail-closed path without making a paid Provider,
@@ -1066,13 +1100,49 @@ Search, or Image call. The Server Turn/Request/External Action Journal contract 
 server-side authority for external execution status, while local project content and the overall
 local Turn outcome remained browser-owned.
 
-The B compatibility database objects remain intentionally present. The irreversible
-`20260729190000_remove_agent_runtime_b_proofs.sql` Migration has not been applied, and Phase C is
-not authorized. The repository is therefore in the healthy observation window. Before the earliest
-observation time of `2026-08-06 10:28:24 Asia/Shanghai`, no Phase C write is permitted. After that
-time, the only remaining task is a separately recorded read-only audit of real A+ Journal, Request,
-External Action, continuity/recovery, duplicate-execution, hanging-state, authentication, database,
-and residual-B-runtime evidence; that audit does not itself authorize cleanup.
+The statements above are the historical Phase B acceptance boundary. They describe the period when
+the B compatibility database objects were intentionally retained; they are not the current database
+state.
+
+#### Phase C Observation and final Cleanup
+
+Phase C Observation completed after the initial read-only audit was correctly blocked by an empty A+
+Journal. Subsequent real Production use created the required Journal records. The accepted boundary
+audit classified all post-cutover changes as Class A = 0, found zero executable Runtime B references
+and zero post-A+ Runtime B writes, and the controlled Probe verified:
+
+- real Tool to Provider continuation;
+- reload without replay;
+- contiguous request sequence;
+- no External Action, Web Search, or Image invocation in the bounded probe;
+- terminal A+ Turns and healthy Production logs.
+
+The separate Phase C Cleanup then applied the unchanged forward-only Migration
+`20260729190000_remove_agent_runtime_b_proofs.sql` exactly once. The remote Migration History is 16;
+`private.ai_agent_turn_leases` and all seven Runtime B RPCs are removed; the four A+ Journal/External
+Action tables and their existing data/security boundaries remain intact. Cleanup acceptance recorded:
+
+```text
+A+ Turn: 7 -> 8
+A+ Request: 10 -> 11
+New Turn: externally_completed
+New Request: externally_completed
+Web Search: 0
+Image: 0
+Unfinalized: 0
+Expired Running: 0
+Orphan: 0
+Sequence anomaly: 0
+Runtime Error: 0 observed
+5xx: 0 observed
+Runtime B RPC invocation: 0 observed
+Missing B table/function error: 0 observed
+```
+
+The protected Recovery Export, Recovery Bundle, and long-term Evidence packages remain outside the
+repository. No further Agent Runtime A+ migration phase is pending. Future changes are normal
+product development and must use the A+ runtime contract; historical Runtime B artifacts remain only
+for migration history, archive evidence, and forward-recovery records.
 
 ## 11. Deletion Policy
 

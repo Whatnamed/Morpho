@@ -1,18 +1,37 @@
 # Morpho Runbook
 
-## Current release status
+## Current Agent Runtime Release State
 
-As of 2026-08-04, A+ Phase A and Phase B are complete. The sole A+ application is the current
-Vercel Production Runtime, `main` and `refactor/agent-runtime-a-plus` are aligned at the same
-release commit, and the repository is in the healthy observation window before Phase C. The
-earliest read-only observation audit is `2026-08-06 10:28:24 Asia/Shanghai`.
+As of the final closeout, A+ is the sole Production Agent Runtime:
 
-Phase C is not authorized or executed. Do not run
-`20260729190000_remove_agent_runtime_b_proofs.sql`, `supabase db push`, repair, reset, rollback,
-or any remote database write as part of ordinary verification. After the observation time, the
-remaining task is a separately recorded read-only audit of A+ Journal/Request/External Action
-records, continuity and recovery, duplicate or hanging execution, authentication/database health,
-and residual B-runtime dependencies. That audit does not grant Phase C authorization.
+```text
+Phase A:
+complete
+
+Phase B:
+complete
+
+Phase C observation:
+complete
+
+Phase C cleanup:
+complete
+
+Runtime B database table/RPC contract:
+removed
+```
+
+`20260729190000_remove_agent_runtime_b_proofs.sql` has already been applied in Production. Do not
+re-run it manually, repair it, recreate B objects manually, or restore B by altering Migration
+History. No Runtime B migration or cleanup command should be run again.
+
+If a future incident genuinely requires B restoration, use only a new forward Migration, a new
+independent authorization, the archived B contract, and the separately recorded Forward-Recovery
+Playbook. Never roll back Migration History or paste historical SQL into a SQL editor.
+
+The Phase C cleanup acceptance baseline (`3dcbbe989dc0606d363750e4f201c5c83f6dd1ab`) is historical
+release evidence, not an assertion that it is the current `main`. Always verify the current repository
+and Production deployment identity before a future change.
 
 ## Install
 
@@ -433,10 +452,10 @@ supabase/migrations/20260729093000_add_agent_turn_external_actions.sql
 supabase/migrations/20260729190000_remove_agent_runtime_b_proofs.sql
 ```
 
-The cleanup drops only the retired B Lease table and its public RPCs. It does not drop or alter the
-Server Turn, Request, or External Action Journal. It has been checked in but was not applied to any
-remote database as part of Stage 4. Do not edit or replay older migration files to simulate cleanup;
-use the fixed forward-only order above after the operator verification procedure below.
+At the Stage 4 release boundary, the cleanup dropped only the retired B Lease table and its public
+RPCs; it did not drop or alter the Server Turn, Request, or External Action Journal. It was checked in
+but was not applied to a remote database as part of Stage 4. The later Phase C record below documents
+the separate Production application. Do not edit or replay older Migration files to simulate cleanup.
 
 The Supabase Free-plan leaked-password-protection advisor warning is a plan limitation. It is not fixed by changing application SQL or weakening authentication behavior.
 
@@ -674,20 +693,19 @@ The current code does not include:
 
 ## Agent Runtime A+ Migration Verification
 
-The current remote state is:
+The final remote state is:
 
 - `20260729012105_add_agent_turn_journal.sql`: applied and database-verified;
 - `20260729093000_add_agent_turn_external_actions.sql`: applied and database-verified;
-- `20260729190000_remove_agent_runtime_b_proofs.sql`: not applied;
-- Phase A and Phase B: complete;
-- healthy observation window: active;
-- Phase C: not authorized and not executed.
+- `20260729190000_remove_agent_runtime_b_proofs.sql`: applied exactly once and database-verified;
+- Remote Migration History: 16;
+- Phase A, Phase B, Phase C Observation, and Phase C Cleanup: complete;
+- Runtime B Lease table and seven Runtime B RPCs: removed;
+- A+ four-table Journal/External Action contract: retained and healthy.
 
-The three files below remain the fixed forward-only release order. The Phase A and Phase B
-subsections are historical audit procedures for the completed gates, not pending operations. Do not
-rerun Phase A or issue a remote database write from this section. The only currently executable
-follow-up is the separately recorded read-only observation audit after `2026-08-06 10:28:24
-Asia/Shanghai`; it does not authorize Phase C.
+The three files below remain in the checked-in ledger as historical forward-only migrations. The
+Phase A, Phase B, and Phase C subsections are historical audit records, not pending operations. Do
+not rerun any of them or issue another remote database write from this section.
 
 ```text
 supabase/migrations/20260729012105_add_agent_turn_journal.sql
@@ -874,18 +892,18 @@ Also verify:
 - the normal authenticated application can open, persist, and reload a browser-local project without
   server-side project registration.
 
-These checks passed for Phase B. Normal production credentials and real usage remain outside the
-no-cost cutover gate; a paid Provider smoke is a distinct explicit authorization and is not required
-for this database release. The system is now in the healthy observation window, and Phase C remains
-deferred until the separately scheduled read-only audit and a new explicit authorization.
+These checks passed for Phase B. Normal production credentials and real usage remained outside the
+no-cost cutover gate; a paid Provider smoke was a distinct explicit authorization and was not required
+for that database release. The subsequent Observation and Phase C Cleanup records below document the
+completed later gates.
 
 ### Phase C — irreversible B database cleanup
 
-**Status (2026-08-04): not authorized and not executed.** Phase C is a separate authorization after
-the sole A+ deployment has remained healthy for the agreed validation window. The earliest read-only
-observation audit is `2026-08-06 10:28:24 Asia/Shanghai`; reaching that time does not authorize the
-cleanup. If later authorized, use the clean audited Stage 4 release checkout, not the Stage 3 Phase A
-worktree:
+**Historical execution record — complete; do not rerun.** Phase C was separately authorized after
+the healthy observation window. The fixed Cleanup Migration was applied exactly once in Production;
+the remote Migration History is 16, the B Lease table and seven B RPCs are absent, and all four A+
+Journal/External Action tables remain intact. The command block below is retained only as an audit
+record of the executed gate. It is not a current instruction and must not be repeated:
 
 ```powershell
 $ErrorActionPreference = 'Stop'
@@ -902,21 +920,21 @@ supabase migration list --linked
 supabase db push --dry-run --linked
 ```
 
-Expected dry-run result: exactly
-`20260729190000_remove_agent_runtime_b_proofs.sql`. If either additive Migration is still pending,
-anything unrelated appears, or the release SHA is not the audited SHA recorded for this deployment,
-stop. After a separate Phase C authorization:
+Historical expected dry-run result: exactly
+`20260729190000_remove_agent_runtime_b_proofs.sql`. The historical execution stopped on any
+unexpected pending Migration or source identity mismatch and proceeded only after separate Phase C
+authorization:
 
 ```powershell
 supabase db push --linked
 supabase migration list --linked
 ```
 
-Re-run the A+ table/RLS/RPC/grant checks and the authenticated create/query health check. The retired
-`private.ai_agent_turn_leases` table and B Lease/Closure RPC names must now be absent while all A+
-Journal objects remain. This cleanup is the irreversible database rollback boundary: after Phase C,
-rollback means deploying a new forward Migration and an explicitly audited application strategy;
-do not restore B by deleting migration history, editing an applied file, or pasting old SQL manually.
+The post-cleanup A+ table/RLS/RPC/grant checks and authenticated health check passed. The retired
+`private.ai_agent_turn_leases` table and B Lease/Closure RPC names are absent while all A+ Journal
+objects remain. This cleanup is the irreversible database rollback boundary: any future recovery
+means a new forward Migration and an explicitly audited application strategy; do not restore B by
+deleting migration history, editing an applied file, or pasting old SQL manually.
 
 ## Agent Runtime Validation
 

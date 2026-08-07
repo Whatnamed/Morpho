@@ -6,11 +6,11 @@ Morpho is a single Next.js App Router application in this repository root.
 
 ## Current release status
 
-The current formal Runtime is the sole A+ Runtime. A+ Phase A and Phase B are complete, `main` and
-`refactor/agent-runtime-a-plus` are aligned at the same release commit, and the project is in the
-healthy observation window before Phase C. The earliest read-only observation audit is
-`2026-08-06 10:28:24 Asia/Shanghai`; Phase C is not authorized and its B-cleanup Migration remains
-unapplied. The phase ledger and release evidence live in
+The current formal Runtime is the sole A+ Runtime. A+ Phase A, Phase B, Phase C Observation, and
+Phase C Cleanup are complete; the Runtime B database table/RPC contract has been removed. Historical
+Runtime B Migrations, archive references, and recovery evidence remain only for history and recovery.
+The Phase C cleanup acceptance baseline is recorded in the phase ledger and is not an assertion about
+the current `main` or current Production Deployment. The phase ledger and release evidence live in
 [`agent-runtime-a-plus-migration.md`](./agent-runtime-a-plus-migration.md).
 
 The workspace has one Agent Runtime. `WorkspaceClient.tsx` calls the canonical

@@ -28,10 +28,10 @@ Morpho is an AI-assisted concept-development workspace for product and industria
 
 ### 发布与项目进度状态
 
-截至 2026-08-04，正式 A+ Runtime 已在 `main` 收口：`main` 与
-`refactor/agent-runtime-a-plus` 指向同一发布提交，A+ Phase A 与 Phase B 已完成，当前处于
-Phase C 前的健康观察窗口。Phase C 尚未授权，B 数据库清理 Migration 尚未执行；最早的只读观察审计时间为
-`2026-08-06 10:28:24 Asia/Shanghai`。详细的迁移证据、观察边界和后续唯一事项见
+截至 2026-08-07，A+ Runtime迁移项目已正式收口：Phase A、Phase B、Phase C Observation
+和 Phase C Cleanup 全部完成；A+ 是唯一 Production Runtime，Runtime B 数据库合同已移除。
+Phase C Cleanup 的验收基线是 `3dcbbe989dc0606d363750e4f201c5c83f6dd1ab`，不等同于当前
+`main` 或当前 Production Deployment。详细的迁移证据、观察边界和历史执行记录见
 [`docs/architecture/agent-runtime-a-plus-migration.md`](docs/architecture/agent-runtime-a-plus-migration.md)
 与 [`docs/operations/runbook.md`](docs/operations/runbook.md)。
 
