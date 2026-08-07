@@ -22,6 +22,8 @@ export type PendingAiConfirmation =
       previousReferenceTitle: string;
       reviewImageCount: number;
       reviewCollectionCount: number;
+      reviewImageIds: string[];
+      reviewCollectionIds: string[];
     }
   | {
       kind: "deleteObject";
@@ -73,6 +75,8 @@ export type PendingAiConfirmation =
       args: CreateDesignDefinitionProposalArgs;
       sourceObjectIds: string[];
       citations: ProviderCitation[];
+      basedOnDesignDefinitionId?: string;
+      basedOnRevisionId?: string;
     }
   | {
       kind: "agentCreateConceptDirectionProposal";
@@ -83,6 +87,8 @@ export type PendingAiConfirmation =
       args: CreateConceptDirectionProposalArgs;
       sourceObjectIds: string[];
       citations: ProviderCitation[];
+      basedOnDesignDefinitionId?: string;
+      basedOnRevisionId?: string;
     }
   | {
       kind: "agentCreateComparisonAnalysis";

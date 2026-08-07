@@ -8,7 +8,6 @@ import {
   isAssignableKeyConclusionCategory
 } from "@/domain/morpho/types";
 import type {
-  AssignableKeyConclusionCategory,
   AiMessage,
   ComparisonAnalysis,
   ComparisonSourceRef,
@@ -32,14 +31,9 @@ import { resolveStoredComparisonSourceRefs } from "@/domain/morpho/comparisonAna
 import { sanitizeStructuredStreamForDisplay } from "@/domain/morpho/structuredBlocks";
 import type { Suggestion } from "../workspaceUi";
 import type {
-  CreateComparisonAnalysisArgs,
-  CreateConceptDirectionProposalArgs,
-  CreateDesignDefinitionProposalArgs,
-  CreateResearchAnalysisArgs,
   MorphoAgentTurnMode,
   RequestConfirmationArgs
 } from "../morphoAgent";
-import type { ProviderCitation } from "@/server/ai/types";
 import { AgentProcessDisclosure } from "./AgentProcessDisclosure";
 import { getKeyConclusionCategoryLabel } from "../workspaceUi";
 import type {

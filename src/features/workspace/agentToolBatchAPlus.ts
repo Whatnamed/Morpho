@@ -251,6 +251,7 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
       if (executionPolicy === "requireConfirmation") {
         const confirmationValue = buildPendingAgentActionConfirmation({
           parsed: entry.parsed,
+          workspace: input.host.readWorkspace(),
           compiledVisualPlan:
             entry.parsed.name === "generate_visuals" && visualBatch?.status === "ok"
               ? visualBatch.plan

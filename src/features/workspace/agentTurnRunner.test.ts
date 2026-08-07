@@ -195,6 +195,37 @@ describe("A+ Agent turn runner", () => {
     expect(fixture.coordinatorHost.executions).toHaveLength(1);
   });
 
+  it("keeps A+ recovery recoverable when a local confirmation already occupies the slot", async () => {
+    const fixture = createFixture([{
+      status: "awaitingNextRequest",
+      outputText: "这个写入需要确认。",
+      toolCalls: [researchToolCall("call-confirm-collision")]
+    }]);
+    fixture.input.agentTurnMode = "confirm";
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    const occupiedHost: AgentTurnHost = {
+      ...fixture.host,
+      ui: {
+        ...fixture.host.ui,
+        requestPendingConfirmation: () => ({
+          status: "rejected" as const,
+          code: "confirmation_slot_occupied" as const,
+          origin: "agent" as const
+        })
+      }
+    };
+
+    await recoverMorphoAgentTurn(
+      fixture.fake.getWorkspace().project.id,
+      occupiedHost,
+      fixture.dependencies
+    );
+
+    expect(fixture.fake.getEvents().filter((event) => event.name === "recoveryPending")).not.toHaveLength(0);
+    expect(fixture.store.record).toBeDefined();
+  });
+
   it("detaches a stale host without finalizing a failed turn into the new workspace", async () => {
     const fixture = createFixture([
       { status: "externallyCompleted", outputText: "旧页面结果" }

@@ -1104,7 +1104,9 @@ describe("AiConversationPanel", () => {
           previousReferenceObjectId: "image-soft-rail-v2",
           previousReferenceTitle: "软轨方案 v2",
           reviewImageCount: 3,
-          reviewCollectionCount: 1
+          reviewCollectionCount: 1,
+          reviewImageIds: ["image-derived-1", "image-derived-2", "image-derived-3"],
+          reviewCollectionIds: ["collection-derived"]
         },
         onConfirmPendingSecondary: () => undefined
       }))
@@ -1129,7 +1131,9 @@ describe("AiConversationPanel", () => {
           previousReferenceObjectId: "image-soft-rail-v2",
           previousReferenceTitle: "软轨方案 v2",
           reviewImageCount: 0,
-          reviewCollectionCount: 0
+          reviewCollectionCount: 0,
+          reviewImageIds: [],
+          reviewCollectionIds: []
         },
         onConfirmPendingSecondary: () => undefined
       }))

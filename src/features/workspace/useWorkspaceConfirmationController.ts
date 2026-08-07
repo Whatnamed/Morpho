@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 import {
@@ -28,6 +28,7 @@ export type WorkspaceConfirmationController = Readonly<{
     updater: (current: PendingAiConfirmation) => PendingAiConfirmation,
     expected?: PendingAiConfirmation
   ) => boolean;
+  ownsPendingConfirmation: (expected: PendingAiConfirmation) => boolean;
   clearPendingConfirmation: (expected?: PendingAiConfirmation) => boolean;
 }>;
 
@@ -51,20 +52,17 @@ export function useWorkspaceConfirmationController({
   const previousSessionRef = useRef<ConfirmationSession>(session);
 
   useLayoutEffect(() => {
+    const sessionChanged = previousSessionRef.current !== session;
+    previousSessionRef.current = session;
     currentSessionRef.current = session;
     latestWorkspaceRef.current = workspace;
-    pendingConfirmationRef.current = pendingConfirmation;
-  }, [pendingConfirmation, session, workspace]);
-
-  useEffect(() => {
-    if (previousSessionRef.current === session) {
+    if (sessionChanged) {
+      pendingConfirmationRef.current = null;
+      setPendingConfirmation(null);
       return;
     }
-
-    previousSessionRef.current = session;
-    pendingConfirmationRef.current = null;
-    setPendingConfirmation(null);
-  }, [session]);
+    pendingConfirmationRef.current = pendingConfirmation;
+  }, [pendingConfirmation, session, workspace]);
 
   const isCurrentSession = useCallback((expectedSession: ConfirmationSession): boolean => {
     const current = currentSessionRef.current;
@@ -112,6 +110,12 @@ export function useWorkspaceConfirmationController({
     [isCurrentSession, session]
   );
 
+  const ownsPendingConfirmation = useCallback(
+    (expected: PendingAiConfirmation): boolean =>
+      isCurrentSession(session) && pendingConfirmationRef.current === expected,
+    [isCurrentSession, session]
+  );
+
   const clearPendingConfirmation = useCallback(
     (expected?: PendingAiConfirmation): boolean => {
       if (!isCurrentSession(session)) {
@@ -132,6 +136,7 @@ export function useWorkspaceConfirmationController({
     pendingConfirmation,
     requestPendingConfirmation,
     updatePendingConfirmation,
+    ownsPendingConfirmation,
     clearPendingConfirmation
   };
 }

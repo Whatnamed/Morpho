@@ -30,6 +30,56 @@ const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 const REQUEST = { requestId: "request-1", stepSequence: 1 } as const;
 
 describe("A+ Tool Batch integration", () => {
+  it("fails closed when the confirmation slot is already occupied", async () => {
+    const call = researchCall("call-slot-occupied");
+    const fake = createAgentTurnHostFake({ workspace: createTestWorkspace() });
+    const baseHost = hostFromFake(fake);
+    const host: AgentTurnHost = {
+      ...baseHost,
+      ui: {
+        ...baseHost.ui,
+        requestPendingConfirmation: () => ({
+          status: "rejected" as const,
+          code: "confirmation_slot_occupied" as const,
+          origin: "agent" as const
+        })
+      }
+    };
+    const turnInput = { ...standardInput(), agentTurnMode: "confirm" as const };
+    const prepared = await prepareAgentTurnProductAPlus(turnInput, host);
+    const restored = AgentTurnCoordinator.restore({
+      snapshot: executingSnapshot([call]),
+      host: coordinatorHost(),
+      createRequestId: () => "unused"
+    });
+    if (restored.status !== "ok") throw new Error(restored.reason);
+
+    const result = await executeAgentToolBatchAPlus({
+      toolCalls: [call],
+      providerOutputText: "",
+      coordinator: restored.coordinator,
+      host,
+      turnInput,
+      prepared,
+      externalRequest: {
+        serverTurnId: TURN_ID,
+        localProjectId: fake.getWorkspace().project.id,
+        ...REQUEST
+      },
+      requestWebSearch: async () => ({ sources: [] })
+    });
+
+    expect(result.pendingConfirmation).toBeUndefined();
+    expect(result.terminalResults).toEqual([
+      expect.objectContaining({
+        callId: call.callId,
+        status: "failed",
+        error: expect.objectContaining({ code: "confirmation_slot_occupied" })
+      })
+    ]);
+    expect(result.status).toBe("failed");
+  });
+
   it("restores an executing batch, skips completed Calls, and finalizes only missing Calls", async () => {
     const calls: APlusToolCall[] = [
       researchCall("call-completed"),

@@ -37,17 +37,10 @@ import {
 } from "@/domain/morpho/stageRegions";
 import { collectPrimaryCanvasTrace } from "./tldraw/primaryCanvasTrace";
 import {
-  applyDesignDefinitionProposal,
-  canStartOperation,
-  createArtifactProposalOperation,
-  createResearchOperation,
   getActiveOperation,
-  recordAndApplyConceptDirectionProposal,
-  recordDesignDefinitionProposal,
   setCurrentDesignDefinition,
 } from "@/domain/operations/operations";
 import type { ConceptDirectionProposal, OperationRecord } from "@/domain/operations/types";
-import { normalizeResearchItems } from "@/domain/operations/researchItems";
 import {
   archiveVisualBranch,
   assignImageToVisualBranch,
@@ -55,7 +48,6 @@ import {
   createKeyConclusion,
   createAiDraftFromSuggestion,
   deleteObjects,
-  deleteObject,
   clearDefaultReference,
   clearVisualReviewMark,
   collectDefaultReferenceReviewTargets,
@@ -124,25 +116,12 @@ import {
 } from "./useWorkspaceImportController";
 import {
   applyResearchExtractionSelection,
-  constrainResearchEvidence,
   getResearchExtractionRecommendationKeys
 } from "./researchExtraction";
 import {
-  buildTaskContext,
   type TaskContextDefaultReference
 } from "./taskContext";
 import { setConversationSemanticEntryManualState } from "@/domain/morpho/projectContinuity";
-import {
-  applyComparisonAnalysis,
-  buildComparisonAuthorization,
-  validateComparisonAnalysis
-} from "@/domain/morpho/comparisonAnalysis";
-import { applyResearchProposalWithSemanticPatch } from "./researchSemanticPatch";
-import {
-  getPlacementNearObjects,
-  getProposalPlacement,
-  getSiblingProposalPlacement
-} from "./proposalDraftPlacement";
 import {
   getDefaultImageGenerationSettings,
   inferGenerationAspectRatio,
@@ -150,7 +129,6 @@ import {
   type ImageGenerationSettings
 } from "./imageGenerationSettings";
 import {
-  getDesignDefinitionDrafts,
   type MorphoAgentTurnMode
 } from "./morphoAgent";
 import { commitWorkspaceStateNow } from "./workspaceCommitBoundary";
@@ -161,6 +139,7 @@ import {
   useWorkspaceVisualGenerationController
 } from "./useWorkspaceVisualGenerationController";
 import { useWorkspaceConfirmationController } from "./useWorkspaceConfirmationController";
+import { useWorkspaceConfirmationExecutionController } from "./useWorkspaceConfirmationExecutionController";
 import type { PendingImageGenerationSlot } from "./pendingImageGenerationSlots";
 import type {
   ImageTaskStatus
@@ -376,6 +355,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     pendingConfirmation,
     requestPendingConfirmation,
     updatePendingConfirmation,
+    ownsPendingConfirmation: confirmationControllerOwnsPendingConfirmation,
     clearPendingConfirmation
   } = useWorkspaceConfirmationController({
     projectId,
@@ -1033,6 +1013,30 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setImageTaskStatus
   });
 
+  const confirmationExecution = useWorkspaceConfirmationExecutionController({
+    projectId,
+    workspace,
+    workspaceReady,
+    pendingConfirmation,
+    ownsPendingConfirmation: confirmationControllerOwnsPendingConfirmation,
+    updatePendingConfirmation,
+    clearPendingConfirmation,
+    commitWorkspace: commitWorkspaceNow,
+    readWorkspace: readWorkspaceNow,
+    pushUndoSnapshot: pushObjectOperationUndo,
+    setSelectedObjectIds,
+    setLocalEditObjectId,
+    setAiDraft,
+    setTaskMode,
+    showNotice: showWorkspaceNotice,
+    requestObjectFocus,
+    setImageTaskStatus,
+    executeVisualGenerationPlan,
+    beginLocalAbortableTask,
+    finishLocalAbortableTask,
+    acknowledgePendingConfirmation
+  });
+
   const handleSendMorphoAgentTurn = useCallback(() => {
     const turnInput = {
       draft: aiDraft,
@@ -1345,7 +1349,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         previousReferenceObjectId: previousReference.id,
         previousReferenceTitle: previousReference.title,
         reviewImageCount: reviewTargets.imageIds.length,
-        reviewCollectionCount: reviewTargets.collectionIds.length
+        reviewCollectionCount: reviewTargets.collectionIds.length,
+        reviewImageIds: [...reviewTargets.imageIds],
+        reviewCollectionIds: [...reviewTargets.collectionIds]
       })) {
         return;
       }
@@ -1361,381 +1367,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     );
     showWorkspaceNotice(`已设「${target.title}」为后续默认参考`);
   }, [pushObjectOperationUndo, requestLocalPendingConfirmation, selectedObjects, setWorkspace, showWorkspaceNotice, workspace]);
-
-  const handleConfirmPending = useCallback(async () => {
-    if (!pendingConfirmation) {
-      return;
-    }
-    if (isComparisonPendingConfirmation(pendingConfirmation)) {
-      comparisonDecision.confirm();
-      return;
-    }
-    await acknowledgePendingConfirmation();
-
-    if (pendingConfirmation.kind === "batchGenerateVisuals" || pendingConfirmation.kind === "agentGenerateVisuals") {
-      const localTask = beginLocalAbortableTask();
-      if (!localTask) {
-        return;
-      }
-      clearPendingConfirmation(pendingConfirmation);
-      setAiDraft("");
-      setImageTaskStatus({
-        state: "preparing",
-        message: `正在批量生成 ${pendingConfirmation.plan.items.length} 张图像`
-      });
-
-      try {
-        const result = await executeVisualGenerationPlan({
-          workspaceSnapshot: workspace,
-          draft: pendingConfirmation.draft,
-          plan: pendingConfirmation.plan,
-          sourceObjectIds: pendingConfirmation.sourceObjectIds,
-          selectedDirectionIds: pendingConfirmation.selectedDirectionIds,
-          selectedImageIds: pendingConfirmation.selectedImageIds,
-          signal: localTask.signal
-        });
-        if (!localTask.isCurrent()) {
-          return;
-        }
-        setWorkspace(() =>
-          appendAiAssistantNotice(
-            result.workspace,
-            "agent-batch-generate-visuals",
-            result.failedItems.length > 0
-              ? `已按确认生成并保存 ${result.createdObjectIds.length} 张新图像，另有 ${result.failedItems.length} 项失败。`
-              : `已按确认生成并保存 ${result.createdObjectIds.length} 张新图像。`
-          )
-        );
-      } catch (error) {
-        if (!localTask.isCurrent()) {
-          return;
-        }
-        const isCancelled = error instanceof DOMException && error.name === "AbortError";
-        const message = isCancelled
-          ? "批量图像生成已取消。"
-          : error instanceof Error
-            ? error.message
-            : "批量图像生成失败。";
-        setAiDraft(pendingConfirmation.draft);
-        setImageTaskStatus({ state: isCancelled ? "cancelled" : "failed", message });
-        setWorkspace((current) =>
-          appendAiAssistantFailureMessage(current, "agent-batch-generate-visuals", message)
-        );
-      } finally {
-        finishLocalAbortableTask(localTask.controller);
-      }
-      return;
-    }
-
-    if (pendingConfirmation.kind === "agentCreateResearchAnalysis") {
-      setWorkspace((current) => {
-        const operationGate = canStartOperation(current);
-        if (operationGate.status === "blocked") {
-          return appendAiAssistantFailureMessage(current, "agent-confirm-research", operationGate.reason);
-        }
-        const created = createResearchOperation(current, {
-          userInput: pendingConfirmation.draft,
-          selectedObjectIds: pendingConfirmation.sourceObjectIds,
-          allowWebSearch: pendingConfirmation.citations.length > 0
-        });
-        const proposalId = `proposal-research-${created.operation.id}-${Date.now()}`;
-        const applied = applyResearchProposalWithSemanticPatch({
-          workspace: created.workspace,
-          proposal: {
-            proposalId,
-            operationId: created.operation.id,
-            title: pendingConfirmation.args.title,
-            summary: pendingConfirmation.args.summary,
-            findings: normalizeResearchItems(pendingConfirmation.args.findings),
-            opportunities: normalizeResearchItems(pendingConfirmation.args.opportunities),
-            constraints: normalizeResearchItems(pendingConfirmation.args.constraints),
-            openQuestions: normalizeResearchItems(pendingConfirmation.args.openQuestions),
-            evidence: constrainResearchEvidence(
-              pendingConfirmation.args,
-              pendingConfirmation.sourceObjectIds,
-              pendingConfirmation.citations
-            ),
-            sourceObjectIds: pendingConfirmation.sourceObjectIds,
-            citations: pendingConfirmation.citations
-          },
-          position: getPlacementNearObjects(created.workspace, pendingConfirmation.sourceObjectIds, {
-            x: created.workspace.canvas.view.x + 220,
-            y: created.workspace.canvas.view.y + 180
-          }),
-          context: buildTaskContext(current, {
-            kind: "general",
-            draft: pendingConfirmation.draft,
-            selectedObjectIds: pendingConfirmation.sourceObjectIds
-          }),
-          draft: pendingConfirmation.draft,
-          userMessageId: `ai-user-confirm-${Date.now()}`,
-          userMessageCreatedAt: new Date().toISOString(),
-          assistantText: ""
-        });
-        return applied.workspace;
-      });
-      clearPendingConfirmation(pendingConfirmation);
-      setAiDraft("");
-      return;
-    }
-
-    if (pendingConfirmation.kind === "agentCreateDesignDefinitionProposal") {
-      setWorkspace((current) => {
-        const operationGate = canStartOperation(current);
-        if (operationGate.status === "blocked") {
-          return appendAiAssistantFailureMessage(current, "agent-confirm-definition", operationGate.reason);
-        }
-        const operationId = `operation-designDefinition-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        const created = createArtifactProposalOperation(current, {
-          operationId,
-          type: "designDefinition",
-          userInput: pendingConfirmation.draft,
-          selectedObjectIds: pendingConfirmation.sourceObjectIds,
-          workIntent: "createDesignDefinition"
-        });
-        const basedOnDefinitionId = current.workingState.currentDesignDefinitionId;
-        const basedOnDefinitionObject = basedOnDefinitionId ? current.objects[basedOnDefinitionId] : undefined;
-        const proposalPlacement = getProposalPlacement(created.workspace, pendingConfirmation.sourceObjectIds, "definition");
-        let nextWorkspace = created.workspace;
-        for (const [proposalIndex, proposalDraft] of getDesignDefinitionDrafts(pendingConfirmation.args).entries()) {
-          const recorded = recordDesignDefinitionProposal(nextWorkspace, {
-            operationId,
-            workIntent: "createDesignDefinition",
-            title: proposalDraft.title,
-            summary: proposalDraft.summary,
-            projectGoal: proposalDraft.projectGoal,
-            targetUsers: proposalDraft.targetUsers,
-            primaryScenarios: proposalDraft.primaryScenarios,
-            coreProblem: proposalDraft.coreProblem,
-            designPrinciples: proposalDraft.designPrinciples,
-            constraints: proposalDraft.constraints,
-            avoidDirections: proposalDraft.avoidDirections,
-            opportunities: proposalDraft.opportunities,
-            openQuestions: proposalDraft.openQuestions,
-            changeNote: proposalDraft.changeNote,
-            sourceObjectIds: pendingConfirmation.sourceObjectIds,
-            citations: pendingConfirmation.citations,
-            basedOnDesignDefinitionId:
-              basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.id : undefined,
-            basedOnRevisionId:
-              basedOnDefinitionObject?.type === "designDefinition"
-                ? basedOnDefinitionObject.currentRevisionId
-                : undefined,
-            position: getSiblingProposalPlacement(proposalPlacement, proposalIndex)
-          });
-          nextWorkspace = recorded.workspace;
-        }
-        return nextWorkspace;
-      });
-      clearPendingConfirmation(pendingConfirmation);
-      setAiDraft("");
-      return;
-    }
-
-    if (pendingConfirmation.kind === "agentCreateConceptDirectionProposal") {
-      setWorkspace((current) => {
-        const operationGate = canStartOperation(current);
-        if (operationGate.status === "blocked") {
-          return appendAiAssistantFailureMessage(current, "agent-confirm-direction", operationGate.reason);
-        }
-        const operationId = `operation-conceptDirection-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        const created = createArtifactProposalOperation(current, {
-          operationId,
-          type: "conceptDirection",
-          userInput: pendingConfirmation.draft,
-          selectedObjectIds: pendingConfirmation.sourceObjectIds,
-          workIntent: "createConceptDirections"
-        });
-        const basedOnDefinitionId = current.workingState.currentDesignDefinitionId;
-        const basedOnDefinitionObject = basedOnDefinitionId ? current.objects[basedOnDefinitionId] : undefined;
-        const placed = recordAndApplyConceptDirectionProposal(created.workspace, {
-          operationId,
-          workIntent: "createConceptDirections",
-          title: pendingConfirmation.args.title,
-          summary: pendingConfirmation.args.summary,
-          directions: pendingConfirmation.args.directions,
-          sourceObjectIds: pendingConfirmation.sourceObjectIds,
-          citations: pendingConfirmation.citations,
-          basedOnDesignDefinitionId: basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.id : undefined,
-          basedOnRevisionId: basedOnDefinitionObject?.type === "designDefinition" ? basedOnDefinitionObject.currentRevisionId : undefined,
-          position: getProposalPlacement(created.workspace, pendingConfirmation.sourceObjectIds, "direction")
-        });
-        if (placed.status === "blocked") {
-          return appendAiAssistantFailureMessage(placed.workspace, "agent-confirm-direction", placed.reason, placed.proposal.id);
-        }
-        setSelectedObjectIds(placed.directions.map((direction) => direction.id));
-        if (placed.directions[0]) {
-          requestObjectFocus(placed.directions[0].id);
-        }
-        return appendAiAssistantNotice(
-          placed.workspace,
-          "agent-confirm-direction-applied",
-          `已应用到画布：${placed.directions.length} 个概念方向。我已选中并定位到第一个方向。`,
-          placed.proposal.id
-        );
-      });
-      clearPendingConfirmation(pendingConfirmation);
-      setAiDraft("");
-      return;
-    }
-
-    if (pendingConfirmation.kind === "agentCreateComparisonAnalysis") {
-      setWorkspace((current) => {
-        const authorizationResult = buildComparisonAuthorization({
-          workspace: current,
-          selectedObjectIds: pendingConfirmation.selectedObjectIds,
-          userMessageId: pendingConfirmation.userMessageId,
-          assistantMessageId: pendingConfirmation.assistantMessageId,
-          createdAt: new Date().toISOString(),
-          comparisonGoal: pendingConfirmation.args.comparisonGoal,
-          imageAttachmentObjectIds: pendingConfirmation.imageAttachmentObjectIds,
-          documentExtractObjectIds: pendingConfirmation.documentExtractObjectIds,
-          documentFragmentExtractObjectIds: pendingConfirmation.documentFragmentExtractObjectIds
-        });
-        if (!("authorization" in authorizationResult)) {
-          return appendAiAssistantFailureMessage(
-            current,
-            "agent-confirm-comparison",
-            authorizationResult.status === "blocked" ? authorizationResult.reason : "Compare authorization was not created."
-          );
-        }
-        const validation = validateComparisonAnalysis(pendingConfirmation.args, authorizationResult.authorization);
-        if (validation.status !== "ok") {
-          return appendAiAssistantFailureMessage(current, "agent-confirm-comparison", validation.reason);
-        }
-        return applyComparisonAnalysis(current, validation.analysis);
-      });
-      clearPendingConfirmation(pendingConfirmation);
-      setAiDraft("");
-      return;
-    }
-
-    if (pendingConfirmation.kind === "agentRequestedAction") {
-      setWorkspace((current) =>
-        applyRequestedAgentAction(current, pendingConfirmation, {
-          executeVisuals: pendingConfirmation.visualPlan
-            ? undefined
-            : "缺少可执行的视觉生成计划，未改变项目状态。"
-        })
-      );
-      if (pendingConfirmation.action === "batchGenerateVisuals" && pendingConfirmation.visualPlan) {
-        const localTask = beginLocalAbortableTask();
-        if (!localTask) {
-          return;
-        }
-        clearPendingConfirmation(pendingConfirmation);
-        setAiDraft("");
-        try {
-          const result = await executeVisualGenerationPlan({
-            workspaceSnapshot: workspace,
-            draft: pendingConfirmation.draft,
-            plan: pendingConfirmation.visualPlan,
-            sourceObjectIds: pendingConfirmation.sourceObjectIds,
-            selectedDirectionIds: pendingConfirmation.selectedDirectionIds,
-            selectedImageIds: pendingConfirmation.selectedImageIds,
-            signal: localTask.signal
-          });
-          if (!localTask.isCurrent()) {
-            return;
-          }
-          setWorkspace(() => result.workspace);
-        } finally {
-          finishLocalAbortableTask(localTask.controller);
-        }
-      }
-      clearPendingConfirmation(pendingConfirmation);
-      setAiDraft("");
-      return;
-    }
-
-    if (pendingConfirmation.kind === "setDefaultReference") {
-      pushObjectOperationUndo();
-      setWorkspace((current) =>
-        setDefaultReference(current, pendingConfirmation.targetObjectId, {
-          reason: "用户在默认参考确认卡中明确只替换后续默认参考。"
-        })
-      );
-      clearPendingConfirmation(pendingConfirmation);
-      setAiDraft("");
-      showWorkspaceNotice(`已替换后续默认参考为「${pendingConfirmation.targetTitle}」`);
-      return;
-    }
-
-    if (pendingConfirmation.kind === "createKeyConclusion") {
-      if (!pendingConfirmation.category) {
-        showWorkspaceNotice("请选择关键结论类别后再保存。");
-        return;
-      }
-      const result = createKeyConclusion(workspace, {
-        title: pendingConfirmation.conclusionTitle,
-        body: pendingConfirmation.body,
-        summary: pendingConfirmation.summary,
-        sourceObjectIds: pendingConfirmation.sourceObjectIds,
-        citationIds: pendingConfirmation.citationIds,
-        category: pendingConfirmation.category,
-        confidence: pendingConfirmation.confidence,
-        state: pendingConfirmation.state,
-        note: pendingConfirmation.note,
-        position: {
-          x: workspace.canvas.view.x + 240,
-          y: workspace.canvas.view.y + 180
-        }
-      });
-
-      setWorkspace(result.workspace);
-      requestFocusObject(result.keyConclusion.id);
-      clearPendingConfirmation(pendingConfirmation);
-      setAiDraft("");
-      setTaskMode("chatAnalysis");
-      return;
-    }
-
-    setWorkspace((current) => {
-      const result = deleteObject(current, pendingConfirmation.targetObjectId, {
-        confirmed: true,
-        reason: "用户在确认卡中确认删除该对象。"
-      });
-
-      return result.workspace;
-    });
-    setSelectedObjectIds((current) => current.filter((selectedId) => selectedId !== pendingConfirmation.targetObjectId));
-    setLocalEditObjectId((current) => (current === pendingConfirmation.targetObjectId ? null : current));
-    clearPendingConfirmation(pendingConfirmation);
-    setAiDraft("");
-  }, [
-    acknowledgePendingConfirmation,
-    beginLocalAbortableTask,
-    clearPendingConfirmation,
-    comparisonDecision,
-    executeVisualGenerationPlan,
-    finishLocalAbortableTask,
-    pendingConfirmation,
-    pushObjectOperationUndo,
-    requestFocusObject,
-    requestObjectFocus,
-    setSelectedObjectIds,
-    setWorkspace,
-    showWorkspaceNotice,
-    workspace
-  ]);
-
-  const handleConfirmPendingWithReviewMarks = useCallback(() => {
-    if (pendingConfirmation?.kind !== "setDefaultReference") {
-      return;
-    }
-
-    pushObjectOperationUndo();
-    setWorkspace((current) =>
-      setDefaultReference(current, pendingConfirmation.targetObjectId, {
-        reason: "用户在默认参考确认卡中选择替换默认参考，并标记直接延展素材待复核。",
-        markReplacedDerivativesForReview: true
-      })
-    );
-    void acknowledgePendingConfirmation();
-    clearPendingConfirmation(pendingConfirmation);
-    setAiDraft("");
-    showWorkspaceNotice(`已替换默认参考为「${pendingConfirmation.targetTitle}」，直接延展素材已标记待复核`);
-  }, [acknowledgePendingConfirmation, pendingConfirmation, pushObjectOperationUndo, setWorkspace, showWorkspaceNotice]);
 
   const handleKeepReviewedVisual = useCallback(
     (objectId: string) => {
@@ -2027,20 +1658,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setAiDraft(`请继续追问：${text}`);
   }, [handleWorkIntentChange]);
 
-  const handleUpdatePendingKeyConclusion = useCallback(
-    (patch: Partial<Extract<PendingAiConfirmation, { kind: "createKeyConclusion" }>>) => {
-      updatePendingConfirmation((current) =>
-        current.kind === "createKeyConclusion"
-          ? {
-              ...current,
-              ...patch
-            }
-          : current
-      );
-    },
-    [updatePendingConfirmation]
-  );
-
   const handleViewCreatedDocumentFragment = useCallback(
     (fragmentId: string) => {
       acceptCanvasSelection([fragmentId]);
@@ -2265,6 +1882,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     !persistenceState.migrationError &&
     workspace.ai.messages.length === 0 &&
     !Object.values(workspace.objects).some((object) => object.visibility === "active");
+
+  const handleConfirmPending = useCallback(async () => {
+    if (pendingConfirmation && isComparisonPendingConfirmation(pendingConfirmation)) {
+      comparisonDecision.confirm();
+      return;
+    }
+    await confirmationExecution.confirm();
+  }, [comparisonDecision, confirmationExecution, pendingConfirmation]);
 
   return (
     <main className="workspace">
@@ -2712,21 +2337,18 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onSaveResearchProposalDraft={saveResearchDraft}
         onSaveDesignDefinitionProposalDraft={saveDesignDefinitionDraft}
         onSaveConceptDirectionProposalDraft={saveConceptDirectionDraft}
-        onUpdatePendingKeyConclusion={handleUpdatePendingKeyConclusion}
+        onUpdatePendingKeyConclusion={confirmationExecution.updatePendingKeyConclusion}
         onUpdatePendingComparison={comparisonDecision.updatePendingReason}
         onRequestComparisonAction={comparisonDecision.requestAction}
         onLocateObject={focusObject}
         onConfirmPending={handleConfirmPending}
-        onConfirmPendingSecondary={handleConfirmPendingWithReviewMarks}
+        onConfirmPendingSecondary={confirmationExecution.confirmWithReviewMarks}
         onCancelPending={() => {
           if (pendingConfirmation && isComparisonPendingConfirmation(pendingConfirmation)) {
             comparisonDecision.cancel();
             return;
           }
-          void acknowledgePendingConfirmation();
-          if (pendingConfirmation) {
-            clearPendingConfirmation(pendingConfirmation);
-          }
+          void confirmationExecution.cancel();
         }}
         onFailureRetry={retryRecovery}
         onOpenProjectRecords={openProjectRecords}
@@ -2929,94 +2551,6 @@ function summarizeTaskDefaultReferenceStatus(status: TaskContextDefaultReference
     case "notIncluded":
       return status.objectId ? `notIncluded:${status.objectId}:${status.reason}` : `notIncluded:${status.reason}`;
   }
-}
-
-function applyRequestedAgentAction(
-  workspace: MorphoWorkspace,
-  confirmation: Extract<PendingAiConfirmation, { kind: "agentRequestedAction" }>,
-  options: { executeVisuals?: string }
-): MorphoWorkspace {
-  switch (confirmation.action) {
-    case "applyDesignDefinition": {
-      if (!confirmation.targetObjectId) {
-        return appendAiAssistantFailureMessage(workspace, "agent-request-apply-definition", "缺少要应用的设计定义 proposal。");
-      }
-      const result = applyDesignDefinitionProposal(workspace, confirmation.targetObjectId, {});
-      return result.status === "updated"
-        ? result.workspace
-        : appendAiAssistantFailureMessage(workspace, "agent-request-apply-definition", result.reason);
-    }
-    case "setDirectionPrimary":
-      return confirmation.targetObjectId
-        ? setConceptDirectionStatus(workspace, confirmation.targetObjectId, "primary", confirmation.reason)
-        : appendAiAssistantFailureMessage(workspace, "agent-request-primary", "缺少要设为主方向的对象。");
-    case "setDirectionAlternative":
-      return confirmation.targetObjectId
-        ? setConceptDirectionStatus(workspace, confirmation.targetObjectId, "alternative", confirmation.reason)
-        : appendAiAssistantFailureMessage(workspace, "agent-request-alternative", "缺少要设为备选方向的对象。");
-    case "eliminateDirection":
-      return confirmation.targetObjectId
-        ? eliminateDirection(workspace, confirmation.targetObjectId, { reason: confirmation.reason })
-        : appendAiAssistantFailureMessage(workspace, "agent-request-eliminate", "缺少要淘汰的方向对象。");
-    case "setDefaultReference":
-      return confirmation.targetObjectId
-        ? setDefaultReference(workspace, confirmation.targetObjectId, { reason: confirmation.reason })
-        : appendAiAssistantFailureMessage(workspace, "agent-request-default-reference", "缺少要设为默认参考的图像对象。");
-    case "batchGenerateVisuals":
-      return options.executeVisuals
-        ? appendAiAssistantFailureMessage(workspace, "agent-request-batch-generate", options.executeVisuals)
-        : workspace;
-  }
-}
-
-function appendAiAssistantFailureMessage(
-  workspace: MorphoWorkspace,
-  prefix: string,
-  body: string,
-  proposalId?: string
-): MorphoWorkspace {
-  return {
-    ...workspace,
-    ai: {
-      ...workspace.ai,
-      messages: [
-        ...workspace.ai.messages,
-        {
-          id: `${prefix}-${Date.now()}`,
-          role: "assistant",
-          body,
-          status: "failed",
-          createdAt: new Date().toISOString(),
-          proposalId
-        }
-      ]
-    }
-  };
-}
-
-function appendAiAssistantNotice(
-  workspace: MorphoWorkspace,
-  prefix: string,
-  body: string,
-  proposalId?: string
-): MorphoWorkspace {
-  return {
-    ...workspace,
-    ai: {
-      ...workspace.ai,
-      messages: [
-        ...workspace.ai.messages,
-        {
-          id: `${prefix}-${Date.now()}`,
-          role: "assistant",
-          body,
-          status: "done",
-          createdAt: new Date().toISOString(),
-          proposalId
-        }
-      ]
-    }
-  };
 }
 
 function buildKeyConclusionDraftFromObject(object: MorphoObject):

@@ -9,6 +9,7 @@ import type {
 
 export function buildPendingAgentActionConfirmation(input: {
   parsed: MorphoAgentToolArguments;
+  workspace: MorphoWorkspace;
   compiledVisualPlan?: VisualGenerationPlan;
   draft: string;
   contextObjectIds: string[];
@@ -42,7 +43,8 @@ export function buildPendingAgentActionConfirmation(input: {
         draft: input.draft,
         args: input.parsed.args,
         sourceObjectIds: [...input.contextObjectIds],
-        citations: [...input.citations]
+        citations: [...input.citations],
+        ...getDesignDefinitionBase(input.workspace)
       };
     case "create_concept_direction_proposal":
       return {
@@ -53,7 +55,8 @@ export function buildPendingAgentActionConfirmation(input: {
         draft: input.draft,
         args: input.parsed.args,
         sourceObjectIds: [...input.contextObjectIds],
-        citations: [...input.citations]
+        citations: [...input.citations],
+        ...getDesignDefinitionBase(input.workspace)
       };
     case "create_comparison_analysis":
       return {
@@ -133,4 +136,18 @@ export function buildRequestedAgentActionConfirmation(input: {
       .filter((object) => object.type === "image")
       .map((object) => object.id)
   };
+}
+
+function getDesignDefinitionBase(workspace: MorphoWorkspace): {
+  basedOnDesignDefinitionId?: string;
+  basedOnRevisionId?: string;
+} {
+  const baseId = workspace.workingState.currentDesignDefinitionId;
+  const base = baseId ? workspace.objects[baseId] : undefined;
+  return base?.type === "designDefinition"
+    ? {
+        basedOnDesignDefinitionId: base.id,
+        basedOnRevisionId: base.currentRevisionId
+      }
+    : {};
 }
