@@ -169,7 +169,7 @@ export async function runMorphoAgentTurn(
   } finally {
     const lifecycle = coordinator.getLifecycleSnapshot();
     if (!lifecycle || lifecycle.phase === "terminal" || prepared.controller.signal.aborted) {
-      activeSessions.delete(localProjectId);
+      releaseActiveSession(localProjectId, coordinator);
     }
   }
 }
@@ -266,7 +266,9 @@ export async function recoverMorphoAgentTurn(
     return "failed";
   } finally {
     const lifecycle = restored.coordinator.getLifecycleSnapshot();
-    if (lifecycle?.phase === "terminal") activeSessions.delete(localProjectId);
+    if (lifecycle?.phase === "terminal") {
+      releaseActiveSession(localProjectId, restored.coordinator);
+    }
   }
 }
 
@@ -300,10 +302,12 @@ export async function cancelMorphoAgentTurn(
     // The compaction orchestrator observes the AbortSignal and emits the one
     // authoritative COMPACTION_CANCELLED event.
     await active.finish();
+    releaseTerminalActiveSession(localProjectId, active.coordinator);
     return true;
   }
   await active.coordinator.requestCancellation(reason);
   await active.finish();
+  releaseTerminalActiveSession(localProjectId, active.coordinator);
   return true;
 }
 
@@ -522,7 +526,7 @@ export async function runManualCompactionTurn(
   } catch (error) {
     await terminateUnexpectedSession(session, error);
   } finally {
-    if (!keepSessionForRecovery) activeSessions.delete(localProjectId);
+    if (!keepSessionForRecovery) releaseActiveSession(localProjectId, coordinator);
   }
 }
 
@@ -1331,6 +1335,25 @@ function installActiveSession(session: APlusSession): void {
   });
 }
 
+function releaseActiveSession(
+  localProjectId: string,
+  coordinator: AgentTurnCoordinator
+): void {
+  const active = activeSessions.get(localProjectId);
+  if (active?.coordinator !== coordinator) return;
+  activeSessions.delete(localProjectId);
+}
+
+function releaseTerminalActiveSession(
+  localProjectId: string,
+  coordinator: AgentTurnCoordinator
+): void {
+  const active = activeSessions.get(localProjectId);
+  if (active?.coordinator !== coordinator) return;
+  if (coordinator.getLifecycleSnapshot()?.phase !== "terminal") return;
+  releaseActiveSession(localProjectId, coordinator);
+}
+
 async function resumeActiveSession(
   session: APlusSession
 ): Promise<"recovered" | "pending" | "failed"> {
@@ -1342,7 +1365,7 @@ async function resumeActiveSession(
   }
   if (lifecycle.phase === "terminal") {
     await finalizeSession(session);
-    activeSessions.delete(session.localProjectId);
+    releaseActiveSession(session.localProjectId, session.coordinator);
     return "recovered";
   }
   session.host.ui.setStreaming(true);
@@ -1356,7 +1379,7 @@ async function resumeActiveSession(
     await driveSessionSerialized(session);
     const next = session.coordinator.getLifecycleSnapshot();
     if (next?.phase === "terminal") {
-      activeSessions.delete(session.localProjectId);
+      releaseActiveSession(session.localProjectId, session.coordinator);
       return "recovered";
     }
     return "pending";
