@@ -191,6 +191,26 @@ describe("A+ Agent turn runner", () => {
     expect(fixture.coordinatorHost.executions).toHaveLength(1);
   });
 
+  it("currently allows a stale host to finalize into a newly opened workspace", async () => {
+    const fixture = createFixture([
+      { status: "externallyCompleted", outputText: "旧页面结果" }
+    ]);
+    const releaseCompletion = fixture.coordinatorHost.deferNextCompletion();
+    const run = runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    await waitForCondition(() => fixture.coordinatorHost.executions.length === 1);
+    const current = fixture.fake.getWorkspace();
+    current.project = { ...current.project, id: "project-new" };
+    releaseCompletion();
+    await run;
+
+    expect(fixture.fake.getWorkspace().project.id).toBe("project-new");
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      body: "旧页面结果",
+      agentTurnOutcome: "success"
+    });
+  });
+
   it("resumes an active provider-running session on the same page and permits the next Turn", async () => {
     const fixture = createFixture([
       { status: "providerRunning" },
@@ -593,6 +613,7 @@ class CoordinatorHostFake implements AgentTurnCoordinatorHost {
   readonly executions: Array<Parameters<AgentTurnCoordinatorHost["executeExternalRequest"]>[0]> = [];
   cancelCalls = 0;
   createError: Error | undefined;
+  private deferredCompletion: { promise: Promise<void>; resolve: () => void } | undefined;
   private index = 0;
   private snapshot: AgentTurnJournalSnapshot = snapshotFor("created", null, 0, 0);
 
@@ -604,6 +625,15 @@ class CoordinatorHostFake implements AgentTurnCoordinatorHost {
 
   appendScripts(scripts: readonly Script[]): void {
     this.scripts.push(...scripts);
+  }
+
+  deferNextCompletion(): () => void {
+    let resolve!: () => void;
+    const promise = new Promise<void>((resolvePromise) => {
+      resolve = resolvePromise;
+    });
+    this.deferredCompletion = { promise, resolve };
+    return resolve;
   }
 
   async createServerTurn(input: { localProjectId: string }): Promise<{
@@ -626,6 +656,9 @@ class CoordinatorHostFake implements AgentTurnCoordinatorHost {
     return {
       status: "started",
       complete: async () => {
+        const deferred = this.deferredCompletion;
+        this.deferredCompletion = undefined;
+        if (deferred) await deferred.promise;
         const toolCalls = script.toolCalls ?? [];
         if (
           script.status !== "externallyFailed" &&
