@@ -9,42 +9,54 @@ import type { PendingAiConfirmation } from "./workspaceConfirmation";
 
 export type AgentRequestedActionConfirmation = Extract<PendingAiConfirmation, { kind: "agentRequestedAction" }>;
 
+export type AgentRequestedActionExecutionResult =
+  | { status: "applied"; workspace: MorphoWorkspace }
+  | { status: "blocked"; workspace: MorphoWorkspace; reason: string };
+
 export function applyRequestedAgentAction(
   workspace: MorphoWorkspace,
   confirmation: AgentRequestedActionConfirmation,
   options: { executeVisuals?: string }
-): MorphoWorkspace {
+): AgentRequestedActionExecutionResult {
   switch (confirmation.action) {
     case "applyDesignDefinition": {
       if (!confirmation.targetObjectId) {
-        return appendAiAssistantFailureMessage(workspace, "agent-request-apply-definition", "缺少要应用的设计定义 proposal。");
+        return blocked(workspace, "缺少要应用的设计定义 proposal。");
       }
       const result = applyDesignDefinitionProposal(workspace, confirmation.targetObjectId, {});
       return result.status === "updated"
-        ? result.workspace
-        : appendAiAssistantFailureMessage(workspace, "agent-request-apply-definition", result.reason);
+        ? applied(result.workspace)
+        : blocked(result.workspace, result.reason);
     }
     case "setDirectionPrimary":
       return confirmation.targetObjectId
-        ? setConceptDirectionStatus(workspace, confirmation.targetObjectId, "primary", confirmation.reason)
-        : appendAiAssistantFailureMessage(workspace, "agent-request-primary", "缺少要设为主方向的对象。");
+        ? applied(setConceptDirectionStatus(workspace, confirmation.targetObjectId, "primary", confirmation.reason))
+        : blocked(workspace, "缺少要设为主方向的对象。");
     case "setDirectionAlternative":
       return confirmation.targetObjectId
-        ? setConceptDirectionStatus(workspace, confirmation.targetObjectId, "alternative", confirmation.reason)
-        : appendAiAssistantFailureMessage(workspace, "agent-request-alternative", "缺少要设为备选方向的对象。");
+        ? applied(setConceptDirectionStatus(workspace, confirmation.targetObjectId, "alternative", confirmation.reason))
+        : blocked(workspace, "缺少要设为备选方向的对象。");
     case "eliminateDirection":
       return confirmation.targetObjectId
-        ? eliminateDirection(workspace, confirmation.targetObjectId, { reason: confirmation.reason })
-        : appendAiAssistantFailureMessage(workspace, "agent-request-eliminate", "缺少要淘汰的方向对象。");
+        ? applied(eliminateDirection(workspace, confirmation.targetObjectId, { reason: confirmation.reason }))
+        : blocked(workspace, "缺少要淘汰的方向对象。");
     case "setDefaultReference":
       return confirmation.targetObjectId
-        ? setDefaultReference(workspace, confirmation.targetObjectId, { reason: confirmation.reason })
-        : appendAiAssistantFailureMessage(workspace, "agent-request-default-reference", "缺少要设为默认参考的图像对象。");
+        ? applied(setDefaultReference(workspace, confirmation.targetObjectId, { reason: confirmation.reason }))
+        : blocked(workspace, "缺少要设为默认参考的图像对象。");
     case "batchGenerateVisuals":
       return options.executeVisuals
-        ? appendAiAssistantFailureMessage(workspace, "agent-request-batch-generate", options.executeVisuals)
-        : workspace;
+        ? blocked(workspace, options.executeVisuals)
+        : applied(workspace);
   }
+}
+
+function applied(workspace: MorphoWorkspace): AgentRequestedActionExecutionResult {
+  return { status: "applied", workspace };
+}
+
+function blocked(workspace: MorphoWorkspace, reason: string): AgentRequestedActionExecutionResult {
+  return { status: "blocked", workspace, reason };
 }
 
 export function appendAiAssistantFailureMessage(

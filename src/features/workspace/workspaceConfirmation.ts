@@ -1,4 +1,7 @@
-import type { AssignableKeyConclusionCategory } from "@/domain/morpho/types";
+import type {
+  AssignableKeyConclusionCategory,
+  ConceptDirectionStatus
+} from "@/domain/morpho/types";
 import type {
   CreateComparisonAnalysisArgs,
   CreateConceptDirectionProposalArgs,
@@ -121,6 +124,8 @@ export type PendingAiConfirmation =
       impact: string;
       action: RequestConfirmationArgs["action"];
       targetObjectId?: string;
+      previousReferenceObjectId: string | null;
+      boundTargetStatus?: ConceptDirectionStatus;
       visualPlan?: VisualGenerationPlan;
       draft: string;
       sourceObjectIds: string[];

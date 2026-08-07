@@ -197,9 +197,13 @@ export type ApplyResearchProposalResult =
       reason: string;
     };
 
-type ApplyProposalOptions = {
+export type ApplyProposalOptions = {
   allowSourceChanged?: boolean;
 };
+
+export type DesignDefinitionProposalApplyPreflightResult =
+  | { status: "ready" }
+  | { status: "blocked"; reason: string };
 
 export type CreateImageGenerationOperationInput = Omit<
   ImageGenerationOperationMetadata,
@@ -1043,6 +1047,20 @@ export function applyDesignDefinitionProposal(
   options: ApplyProposalOptions = {}
 ): ApplyDesignDefinitionProposalResult {
   const proposal = workspace.artifactProposals[proposalId];
+  const preflight = validateDesignDefinitionProposalApplication(workspace, proposalId, options);
+  if (preflight.status !== "ready") {
+    const designReview = proposal?.type === "designDefinition" && proposal.status === "pending"
+      ? evaluateDesignDefinitionProposalReviewState(workspace, proposal)
+      : null;
+    return {
+      status: "blocked",
+      workspace: designReview
+        ? updateProposalReviewState(workspace, proposal.id, designReview.state, designReview.details)
+        : workspace,
+      reason: preflight.reason
+    };
+  }
+
   if (!proposal || proposal.type !== "designDefinition") {
     return {
       status: "blocked",
@@ -1051,23 +1069,7 @@ export function applyDesignDefinitionProposal(
     };
   }
 
-  if (proposal.status !== "pending") {
-    return {
-      status: "blocked",
-      workspace,
-      reason: "设计定义草案已被处理。"
-    };
-  }
-
   const now = new Date().toISOString();
-  const designReview = evaluateDesignDefinitionProposalReviewState(workspace, proposal);
-  if (designReview && (designReview.state !== "sourceChanged" || !options.allowSourceChanged)) {
-    return {
-      status: "blocked",
-      workspace: updateProposalReviewState(workspace, proposal.id, designReview.state, designReview.details),
-      reason: designReview.reason
-    };
-  }
 
   const shouldReviseExistingDefinition = proposal.workIntent !== "createDesignDefinition";
   const currentDefinitionId = shouldReviseExistingDefinition
@@ -1266,6 +1268,28 @@ export function applyDesignDefinitionProposal(
       createdAt: now
     })
   };
+}
+
+export function validateDesignDefinitionProposalApplication(
+  workspace: MorphoWorkspace,
+  proposalId: string,
+  options: ApplyProposalOptions = {}
+): DesignDefinitionProposalApplyPreflightResult {
+  const proposal = workspace.artifactProposals[proposalId];
+  if (!proposal || proposal.type !== "designDefinition") {
+    return { status: "blocked", reason: "设计定义草案不存在。" };
+  }
+
+  if (proposal.status !== "pending") {
+    return { status: "blocked", reason: "设计定义草案已被处理。" };
+  }
+
+  const designReview = evaluateDesignDefinitionProposalReviewState(workspace, proposal);
+  if (designReview && (designReview.state !== "sourceChanged" || !options.allowSourceChanged)) {
+    return { status: "blocked", reason: designReview.reason };
+  }
+
+  return { status: "ready" };
 }
 
 export function setCurrentDesignDefinition(

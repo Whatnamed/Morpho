@@ -118,6 +118,10 @@ export function buildRequestedAgentActionConfirmation(input: {
   const proposal = input.args.targetObjectId
     ? input.workspace.artifactProposals[input.args.targetObjectId]
     : undefined;
+  const previousReferenceObjectId = Object.values(input.workspace.objects).find(
+    (object) => object.type === "image" && object.isDefaultReference
+  )?.id ?? null;
+  const boundTargetStatus = target?.type === "conceptDirection" ? target.status : undefined;
 
   return {
     kind: "agentRequestedAction",
@@ -126,6 +130,8 @@ export function buildRequestedAgentActionConfirmation(input: {
     impact: input.args.impact,
     action: input.args.action,
     targetObjectId: input.args.targetObjectId,
+    previousReferenceObjectId,
+    boundTargetStatus,
     visualPlan: input.compiledVisualPlan,
     draft: input.draft,
     sourceObjectIds: [...input.contextObjectIds],

@@ -14,7 +14,8 @@ import {
   createArtifactProposalOperation,
   createResearchOperation,
   recordAndApplyConceptDirectionProposal,
-  recordDesignDefinitionProposal
+  recordDesignDefinitionProposal,
+  validateDesignDefinitionProposalApplication
 } from "@/domain/operations/operations";
 import { normalizeResearchItems } from "@/domain/operations/researchItems";
 import { validateVisualGenerationPlan } from "@/domain/operations/visualGenerationPlan";
@@ -572,22 +573,44 @@ function preflightRequestedAgentAction(
         ? visualPreflight(workspace, confirmation.visualPlan, confirmation.sourceObjectIds, confirmation.selectedDirectionIds, confirmation.selectedImageIds)
         : { status: "blocked", reason: "缺少已绑定的视觉生成计划，请重新发起确认。" };
     case "applyDesignDefinition":
-      return confirmation.targetObjectId && workspace.artifactProposals[confirmation.targetObjectId]
-        ? { status: "ready" }
-        : { status: "blocked", reason: "设计定义 proposal 已不可用，请重新发起确认。" };
+      if (!confirmation.targetObjectId) {
+        return { status: "blocked", reason: "设计定义 proposal 已不可用，请重新发起确认。" };
+      }
+      {
+        const validation = validateDesignDefinitionProposalApplication(workspace, confirmation.targetObjectId);
+        return validation.status === "ready"
+          ? validation
+          : { status: "blocked", reason: `${validation.reason} 请重新发起确认。` };
+      }
     case "setDirectionPrimary":
     case "setDirectionAlternative":
     case "eliminateDirection": {
       const target = confirmation.targetObjectId ? workspace.objects[confirmation.targetObjectId] : undefined;
-      return target?.type === "conceptDirection" && target.visibility === "active"
+      if (target?.type !== "conceptDirection" || target.visibility !== "active") {
+        return { status: "blocked", reason: "方向对象已不可用，请重新发起确认。" };
+      }
+      if (
+        !Object.prototype.hasOwnProperty.call(confirmation, "boundTargetStatus") ||
+        confirmation.boundTargetStatus === undefined
+      ) {
+        return { status: "blocked", reason: "方向状态绑定已失效，请重新发起确认。" };
+      }
+      return target.status === confirmation.boundTargetStatus
         ? { status: "ready" }
-        : { status: "blocked", reason: "方向对象已不可用，请重新发起确认。" };
+        : { status: "blocked", reason: "方向状态已变化，请重新发起确认。" };
     }
     case "setDefaultReference": {
       const target = confirmation.targetObjectId ? workspace.objects[confirmation.targetObjectId] : undefined;
-      return target?.type === "image" && target.visibility === "active"
+      if (target?.type !== "image" || target.visibility !== "active") {
+        return { status: "blocked", reason: "默认参考图像已不可用，请重新发起确认。" };
+      }
+      if (!Object.prototype.hasOwnProperty.call(confirmation, "previousReferenceObjectId")) {
+        return { status: "blocked", reason: "默认参考条件无法恢复，请重新发起确认。" };
+      }
+      const currentPreviousReferenceObjectId = getCurrentDefaultReferenceObjectId(workspace);
+      return currentPreviousReferenceObjectId === confirmation.previousReferenceObjectId
         ? { status: "ready" }
-        : { status: "blocked", reason: "默认参考图像已不可用，请重新发起确认。" };
+        : { status: "blocked", reason: "当前默认参考已变化，请重新发起确认。" };
     }
   }
 }
@@ -795,13 +818,14 @@ function applyConfirmation(
       }
       return { workspace: applyComparisonAnalysis(workspace, validation.analysis), result: { status: "applied", clearDraft: true } };
     }
-    case "agentRequestedAction":
-      return {
-        workspace: applyRequestedAgentAction(workspace, confirmation, {
-          executeVisuals: confirmation.visualPlan ? undefined : "缺少可执行的视觉生成计划，未改变项目状态。"
-        }),
-        result: { status: "applied", clearDraft: true }
-      };
+    case "agentRequestedAction": {
+      const execution = applyRequestedAgentAction(workspace, confirmation, {
+        executeVisuals: confirmation.visualPlan ? undefined : "缺少可执行的视觉生成计划，未改变项目状态。"
+      });
+      return execution.status === "applied"
+        ? { workspace: execution.workspace, result: { status: "applied", clearDraft: true } }
+        : { workspace: execution.workspace, result: { status: "blocked", reason: execution.reason } };
+    }
     case "batchGenerateVisuals":
     case "agentGenerateVisuals":
     case "compareSetPrimary":
@@ -836,4 +860,10 @@ function appendNotice(workspace: MorphoWorkspace, body: string): MorphoWorkspace
 
 function sameIdSet(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((id) => right.includes(id));
+}
+
+function getCurrentDefaultReferenceObjectId(workspace: MorphoWorkspace): string | null {
+  return Object.values(workspace.objects).find(
+    (object) => object.type === "image" && object.isDefaultReference
+  )?.id ?? null;
 }
