@@ -128,11 +128,14 @@ function isCurrentTextEvidenceSource(workspace: MorphoWorkspace, objectId: Morph
   if (!object) {
     return false;
   }
+  if (object.visibility !== "active") {
+    return false;
+  }
   if (object.type === "research" || object.type === "keyConclusion") {
     return true;
   }
   if (object.type === "documentFragment") {
-    return object.visibility === "active" && object.body.trim().length > 0;
+    return object.body.trim().length > 0;
   }
   return (
     object.type === "file" &&

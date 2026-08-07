@@ -199,6 +199,23 @@ describe("comparison decision workflow", () => {
     };
     expect(applyConfirmedComparisonDecision(removedAnalysis, optional.confirmation).status).toBe("blocked");
   });
+
+  it("blocks key-conclusion writeback when its text evidence becomes hidden", () => {
+    const workspace = withAnalysis(createInitialWorkspace(), makeWorkflowAnalysis());
+    const prepared = prepareComparisonDecision(workspace, "comparison-workflow", "createKeyConclusion");
+    if (prepared.status !== "ready") {
+      throw new Error(prepared.reason);
+    }
+
+    const hiddenEvidenceWorkspace = hideObject(workspace, "research-night-path");
+    const result = applyConfirmedComparisonDecision(hiddenEvidenceWorkspace, prepared.confirmation);
+
+    expect(result.status).toBe("blocked");
+    if (result.status === "blocked") {
+      expect(result.workspace.objects).toEqual(hiddenEvidenceWorkspace.objects);
+      expect(result.workspace.decisionRecords).toEqual(hiddenEvidenceWorkspace.decisionRecords);
+    }
+  });
 });
 
 function withAnalysis(workspace: MorphoWorkspace, analysis: ComparisonAnalysis): MorphoWorkspace {

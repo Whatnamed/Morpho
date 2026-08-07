@@ -119,6 +119,53 @@ describe("comparison action target validation", () => {
     ).toMatchObject({ status: "ok" });
   });
 
+  it("blocks hidden research, key-conclusion, and parsed-file evidence", () => {
+    const base = createInitialWorkspace();
+
+    expect(
+      validateComparisonKeyConclusionSources(
+        withAnalysis(
+          hideObject(base, "research-night-path"),
+          makeTextEvidenceAnalysis({
+            sourceObjectIds: ["research-night-path"],
+            evidenceObjectIds: ["research-night-path"]
+          })
+        ),
+        "comparison-text",
+        ["research-night-path"]
+      )
+    ).toMatchObject({ status: "blocked" });
+
+    expect(
+      validateComparisonKeyConclusionSources(
+        withAnalysis(
+          hideObject(base, "insight-low-construction"),
+          makeTextEvidenceAnalysis({
+            sourceObjectIds: ["insight-low-construction"],
+            evidenceObjectIds: ["insight-low-construction"]
+          })
+        ),
+        "comparison-text",
+        ["insight-low-construction"]
+      )
+    ).toMatchObject({ status: "blocked" });
+
+    const parsedFileWorkspace = withParsedFile(base, "file-course-brief");
+    expect(
+      validateComparisonKeyConclusionSources(
+        withAnalysis(
+          hideObject(parsedFileWorkspace, "file-course-brief"),
+          makeTextEvidenceAnalysis({
+            sourceObjectIds: ["file-course-brief"],
+            evidenceObjectIds: ["file-course-brief"]
+          })
+        ),
+        "comparison-text",
+        ["file-course-brief"]
+      )
+    ).toMatchObject({ status: "blocked" });
+  });
+
   it("blocks historical key-conclusion candidates with image, direction, unparsed file, or mismatched evidence ids", () => {
     const base = createInitialWorkspace();
     expect(
