@@ -61,6 +61,15 @@ describe("useWorkspaceAgentRuntimeController", () => {
     expect(runnerMocks.recover).toHaveBeenCalledTimes(1);
   });
 
+  it("waits for workspace readiness before the first recovery", async () => {
+    runnerMocks.recover.mockResolvedValue("none");
+    const harness = await renderController(createInput({ workspaceReady: false }));
+
+    expect(runnerMocks.recover).not.toHaveBeenCalled();
+    await harness.rerender(createInput({ workspaceReady: true }));
+    expect(runnerMocks.recover).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps an old recovery result from changing the next project session", async () => {
     const oldRecovery = deferred<void>();
     runnerMocks.recover
@@ -126,6 +135,23 @@ describe("useWorkspaceAgentRuntimeController", () => {
     expect(harness.current().isStreaming).toBe(false);
   });
 
+  it("preserves stream flush ownership when an old Host cleans up after a switch", async () => {
+    runnerMocks.recover.mockResolvedValue("none");
+    const harness = await renderController(createInput({ projectId: "project-a" }));
+    const oldHost = runnerMocks.recover.mock.calls[0]?.[1] as AgentTurnHost;
+    const oldFlush = vi.fn();
+    const newFlush = vi.fn();
+    oldHost.streamFlushSlot.set(oldFlush);
+
+    await harness.rerender(createInput({ projectId: "project-b", workspace: createBlankWorkspace("project-b") }));
+    const newHost = runnerMocks.recover.mock.calls[1]?.[1] as AgentTurnHost;
+    newHost.streamFlushSlot.set(newFlush);
+    oldHost.streamFlushSlot.set(null);
+
+    expect(oldFlush).toHaveBeenCalledTimes(1);
+    expect(newHost.streamFlushSlot.get()).toBe(newFlush);
+  });
+
   it("uses recovery resume as the first send action and blocks a new turn while pending", async () => {
     runnerMocks.recover.mockResolvedValue("none");
     runnerMocks.resume.mockResolvedValue("pending");
@@ -141,6 +167,54 @@ describe("useWorkspaceAgentRuntimeController", () => {
     expect(runnerMocks.run).not.toHaveBeenCalled();
     expect(runnerMocks.manual).not.toHaveBeenCalled();
     expect(harness.current().showRecoveryPending).toBe(true);
+  });
+
+  it("keeps a same-project send alive across an ordinary rerender", async () => {
+    runnerMocks.recover.mockResolvedValue("none");
+    const completion = deferred<void>();
+    runnerMocks.run.mockImplementationOnce(async (_input: RunMorphoAgentTurnAPlusInput, host: AgentTurnHost) => {
+      host.ui.setStreaming(true);
+      await completion.promise;
+      host.ui.setStreaming(false);
+    });
+    const harness = await renderController(createInput());
+    let send!: Promise<void>;
+    await act(async () => {
+      send = harness.current().send(createTurnInput("继续分析"));
+      await Promise.resolve();
+    });
+    await harness.rerender(createInput({ projectId: "project-a", workspace: harness.workspace() }));
+    completion.resolve();
+    await act(async () => {
+      await send;
+    });
+
+    expect(runnerMocks.run).toHaveBeenCalledTimes(1);
+    expect(harness.current().isStreaming).toBe(false);
+  });
+
+  it("maps retry results to the current failure and recovery chrome", async () => {
+    runnerMocks.recover.mockResolvedValue("none");
+    runnerMocks.resume
+      .mockResolvedValueOnce("pending")
+      .mockResolvedValueOnce("failed")
+      .mockResolvedValueOnce("recovered")
+      .mockResolvedValueOnce("none");
+    const harness = await renderController(createInput());
+    const host = runnerMocks.recover.mock.calls[0]?.[1] as AgentTurnHost;
+
+    act(() => host.ui.showFailure());
+    await act(async () => harness.current().retryRecovery());
+    expect(harness.current()).toMatchObject({ showFailure: false, showRecoveryPending: true });
+
+    await act(async () => harness.current().retryRecovery());
+    expect(harness.current()).toMatchObject({ showFailure: true, showRecoveryPending: false });
+
+    await act(async () => harness.current().retryRecovery());
+    expect(harness.current()).toMatchObject({ showFailure: false, showRecoveryPending: false });
+
+    await act(async () => harness.current().retryRecovery());
+    expect(harness.current()).toMatchObject({ showFailure: false, showRecoveryPending: false });
   });
 
   it("dispatches manual compaction and ordinary turns through the same Controller boundary", async () => {
