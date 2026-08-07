@@ -40,4 +40,39 @@ describe("canvasClipboardImport", () => {
     } as Clipboard);
     expect(empty).toEqual({ status: "empty" });
   });
+
+  it("reads a clipboard image as an importable file", async () => {
+    const image = new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" });
+    const result = await readClipboardAsImportPayload({
+      read: async () => [{
+        types: ["image/png"],
+        getType: async () => image
+      }]
+    } as unknown as Clipboard);
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0]).toMatchObject({ name: "paste.png", type: "image/png" });
+      expect(result.text).toBeUndefined();
+    }
+  });
+
+  it("recognizes a clipboard URL and reports denied access", async () => {
+    await expect(readClipboardAsImportPayload({
+      readText: async () => "https://example.com/from-clipboard"
+    } as Clipboard)).resolves.toMatchObject({
+      status: "ok",
+      url: "https://example.com/from-clipboard"
+    });
+
+    await expect(readClipboardAsImportPayload({
+      read: async () => {
+        throw new Error("permission denied");
+      }
+    } as unknown as Clipboard)).resolves.toEqual({
+      status: "denied",
+      reason: expect.stringContaining("剪贴板")
+    });
+  });
 });

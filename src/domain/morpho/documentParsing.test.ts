@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { strToU8, zipSync } from "fflate";
 
-import { parseDocumentFile, shouldAttemptDocumentParse } from "./documentParsing";
+import {
+  createDocumentExtractFile,
+  isDocumentExtractAssetSource,
+  parseDocumentFile,
+  shouldAttemptDocumentParse
+} from "./documentParsing";
 
 describe("document parsing", () => {
   it("parses Markdown and TXT files as document extracts", async () => {
@@ -60,6 +65,17 @@ describe("document parsing", () => {
       status: "failed",
       reason: expect.stringContaining("PDF")
     });
+  });
+
+  it("creates a text extract file and identifies its asset source", () => {
+    const original = new File(["brief"], "brief.pptx", {
+      type: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    });
+    const extract = createDocumentExtractFile(original, "提取结果");
+
+    expect(extract).toMatchObject({ name: "brief.extract.txt", type: "text/plain" });
+    expect(isDocumentExtractAssetSource("documentExtract")).toBe(true);
+    expect(isDocumentExtractAssetSource("originalFile")).toBe(false);
   });
 });
 
