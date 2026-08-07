@@ -29,6 +29,7 @@ import type {
   APlusTurnRecoveryRecord
 } from "./agentTurnRecoveryStore";
 import type { WorkspacePersistenceState } from "./workspacePersistence";
+import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
 
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 const LOCAL_PROJECT_ID = createTestWorkspace().project.id;
@@ -200,7 +201,7 @@ describe("A+ Agent turn runner", () => {
     ]);
     const host: AgentTurnHost = {
       ...fixture.host,
-      commitWorkspace: <T,>(transform) => {
+      commitWorkspace: <T,>(transform: WorkspaceCommitTransform<T>) => {
         if (fixture.fake.getWorkspace().project.id !== LOCAL_PROJECT_ID) {
           throw createAgentTurnHostSessionDetachedError();
         }
