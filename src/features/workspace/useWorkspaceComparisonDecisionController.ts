@@ -77,6 +77,7 @@ export function useWorkspaceComparisonDecisionController({
   );
   const currentSessionRef = useRef<ComparisonDecisionSession>(session);
   const latestWorkspaceRef = useRef<MorphoWorkspace>(workspace);
+  const latestPendingConfirmationRef = useRef<PendingAiConfirmation | null>(pendingConfirmation);
   const pendingOwnerSessionRef = useRef<ComparisonDecisionSession | null>(null);
   const previousSessionRef = useRef<ComparisonDecisionSession>(session);
   const [pendingOwnerSessionState, setPendingOwnerSessionState] = useState<ComparisonDecisionSession | null>(null);
@@ -84,7 +85,8 @@ export function useWorkspaceComparisonDecisionController({
   useLayoutEffect(() => {
     currentSessionRef.current = session;
     latestWorkspaceRef.current = workspace;
-  }, [session, workspace]);
+    latestPendingConfirmationRef.current = pendingConfirmation;
+  }, [pendingConfirmation, session, workspace]);
 
   useEffect(() => {
     if (previousSessionRef.current === session) {
@@ -148,6 +150,11 @@ export function useWorkspaceComparisonDecisionController({
   const requestAction = useCallback(
     (analysisId: string, action: ComparisonActionRequest, objectId?: string) => {
       if (!isCurrentSession(session)) {
+        return;
+      }
+
+      if (latestPendingConfirmationRef.current !== null) {
+        showNotice("请先处理当前待确认操作，再发起 Compare 决策。");
         return;
       }
 

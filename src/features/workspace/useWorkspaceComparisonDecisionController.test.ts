@@ -59,6 +59,29 @@ describe("useWorkspaceComparisonDecisionController", () => {
     }
   });
 
+  it("does not overwrite an existing non-Compare confirmation", async () => {
+    const harness = createHarness(withAnalysis(createInitialWorkspace(), makeAnalysis()));
+    harness.pending = {
+      kind: "deleteObject",
+      targetObjectId: "direction-support-island",
+      targetTitle: "支撑岛",
+      reasons: ["已有待确认操作"]
+    };
+    const rendered = await renderController(createInput(harness));
+    const before = structuredClone(harness.workspace);
+    const originalPending = structuredClone(harness.pending);
+
+    rendered.current().requestAction("comparison-controller", "setPrimary", "direction-support-island");
+    await rendered.rerender(createInput(harness));
+
+    expect(harness.pending).toEqual(originalPending);
+    expect(harness.workspace).toEqual(before);
+    expect(harness.commitCalls).toBe(0);
+    expect(harness.undoCalls).toBe(0);
+    expect(harness.aiOpenCalls).toBe(0);
+    expect(harness.notices.at(-1)).toContain("请先处理当前待确认操作");
+  });
+
   it("confirms an optional-reason action exactly once and returns UI effects", async () => {
     const harness = createHarness(withAnalysis(createInitialWorkspace(), makeAnalysis()));
     const rendered = await renderController(createInput(harness));
@@ -102,6 +125,24 @@ describe("useWorkspaceComparisonDecisionController", () => {
     expect(harness.undoCalls).toBe(0);
     expect(harness.pending?.kind).toBe("compareEliminate");
     expect(harness.notices.at(-1)).toContain("理由");
+  });
+
+  it("cancels a Compare confirmation without workspace, undo, or decision writes", async () => {
+    const harness = createHarness(withAnalysis(createInitialWorkspace(), makeAnalysis()));
+    const rendered = await renderController(createInput(harness));
+
+    rendered.current().requestAction("comparison-controller", "setPrimary", "direction-support-island");
+    await rendered.rerender(createInput(harness));
+    const before = structuredClone(harness.workspace);
+
+    rendered.current().cancel();
+    await rendered.rerender(createInput(harness));
+
+    expect(harness.pending).toBeNull();
+    expect(harness.workspace).toEqual(before);
+    expect(harness.workspace.decisionRecords).toEqual(before.decisionRecords);
+    expect(harness.commitCalls).toBe(0);
+    expect(harness.undoCalls).toBe(0);
   });
 
   it("revalidates the current workspace before confirming", async () => {
