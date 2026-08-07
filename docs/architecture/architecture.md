@@ -13,11 +13,12 @@ The Phase C cleanup acceptance baseline is recorded in the phase ledger and is n
 the current `main` or current Production Deployment. The phase ledger and release evidence live in
 [`agent-runtime-a-plus-migration.md`](./agent-runtime-a-plus-migration.md).
 
-The workspace has one Agent Runtime. `WorkspaceClient.tsx` calls the canonical
-`agentTurnRunner.ts` directly; there is no Runtime selector, environment flag, B fallback, UI/URL
-switch, or request-body override. The client Coordinator and Turn Lifecycle reducer own
-orchestration and Overall Local Agent Turn Outcome. The Server Turn Journal owns only Server
-External Execution Status.
+The workspace has one Agent Runtime. `WorkspaceClient.tsx` uses
+`useWorkspaceAgentRuntimeController.ts`, which constructs the project-scoped guarded Host and
+delegates to the canonical `agentTurnRunner.ts`; there is no Runtime selector, environment flag, B
+fallback, UI/URL switch, or request-body override. The client Coordinator and Turn Lifecycle
+reducer own orchestration and Overall Local Agent Turn Outcome. The Server Turn Journal owns only
+Server External Execution Status.
 
 Implemented routes:
 
@@ -107,10 +108,23 @@ Important module boundaries:
   transient state, while A+ Recovery descriptors remain durable for query-only recovery. The
   controller supplies the guarded workspace commit boundary, transient status updates, asset
   storage, and browser fetch services while preserving the existing
-  `ExecuteAgentVisualGenerationPlan` return contract. `WorkspaceClient.tsx` keeps the Agent Turn
-  Host and Phase 6-B runtime lifecycle, and remains responsible for page composition and the
-  surrounding AI confirmation flow. No schema, provider route, or visible image-generation
-  behavior changed.
+  `ExecuteAgentVisualGenerationPlan` return contract. `WorkspaceClient.tsx` remains responsible
+  for page composition and the surrounding AI confirmation flow. No schema, provider route, or
+  visible image-generation behavior changed.
+- WorkspaceClient decomposition phase 6-B moves normal A+ Agent page/session orchestration into
+  `useWorkspaceAgentRuntimeController.ts`. The controller owns the project-scoped Host,
+  initial Recovery, send/manual compact/resume/retry/cancel dispatch, runtime display state,
+  pending Recovery acknowledgement, and the owned abort/stream-flush slots used by Agent and
+  confirmed local visual tasks. Its Host carries `{ projectId, workspaceReady, generation }`; a
+  project or readiness boundary detaches the old session, flushes and locally aborts its display
+  work, removes only that project's local Runner ownership, and resets runtime chrome. Guarded
+  Host reads, persistence, UI effects, and functional Workspace commits fail closed with
+  `agent_turn_host_session_detached`, including a project-ID recheck inside the commit updater,
+  so stale work cannot mutate the next project or create a duplicate Provider/external action.
+  `WorkspaceClient.tsx` still assembles the full A+ turn input and owns Pending Confirmation,
+  `imageTaskStatus`, and visual-confirmation business rules. The Runner, Provider protocol,
+  Recovery format, persistence/schema, and Context/Compaction strategy are unchanged apart from
+  recognizing detached Host sessions as non-failure page teardown. No visible UI contract changed.
 - `src/domain/morpho/` owns product-domain types, the generated case-study fixture, deterministic domain actions, import helpers, generation helpers, and queries.
 - `src/infrastructure/persistence/` owns browser localStorage project catalog and workspace access.
 - `src/infrastructure/assets/` owns browser IndexedDB Blob storage and asset-save workflow.
