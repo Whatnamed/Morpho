@@ -5,7 +5,14 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import type { MorphoWorkspace } from "@/domain/morpho/types";
-import { collectDefaultReferenceReviewTargets, createInitialWorkspace } from "@/domain/morpho/workspace";
+import {
+  clearDefaultReference,
+  collectDefaultReferenceReviewTargets,
+  createBlankWorkspace,
+  createInitialWorkspace,
+  setDefaultReference
+} from "@/domain/morpho/workspace";
+import { recordDesignDefinitionProposal } from "@/domain/operations/operations";
 import type { PendingAiConfirmation } from "./workspaceConfirmation";
 import {
   useWorkspaceConfirmationController,
@@ -178,6 +185,142 @@ describe("useWorkspaceConfirmationExecutionController", () => {
       expect(target.status).toBe("primary");
     }
   });
+
+  it("blocks Agent design-definition actions before acknowledgement when the proposal is no longer applicable", async () => {
+    const initial = createInitialWorkspace();
+    const processed = recordDesignDefinitionProposal(initial, createDefinitionProposalInput({
+      proposalId: "agent-processed-definition"
+    }));
+    const processedWorkspace = {
+      ...processed.workspace,
+      artifactProposals: {
+        ...processed.workspace.artifactProposals,
+        [processed.proposal.id]: { ...processed.proposal, status: "applied" as const }
+      }
+    };
+
+    const sourceBase = createBlankWorkspace("agent-source-review");
+    const sourceWorkspace = {
+      ...sourceBase,
+      objects: {
+        ...sourceBase.objects,
+        "agent-source": {
+          id: "agent-source",
+          type: "text" as const,
+          title: "来源",
+          summary: "摘要",
+          body: "原始内容",
+          createdBy: "user" as const,
+          visibility: "active" as const
+        }
+      }
+    };
+    const sourceProposal = recordDesignDefinitionProposal(sourceWorkspace, createDefinitionProposalInput({
+      proposalId: "agent-source-definition",
+      sourceObjectIds: ["agent-source"]
+    }));
+    const sourceChangedWorkspace = {
+      ...sourceProposal.workspace,
+      objects: {
+        ...sourceProposal.workspace.objects,
+        "agent-source": {
+          ...sourceProposal.workspace.objects["agent-source"],
+          body: "修改后的内容"
+        }
+      }
+    };
+
+    const baseProposal = recordDesignDefinitionProposal(initial, createDefinitionProposalInput({
+      proposalId: "agent-base-definition",
+      basedOnDesignDefinitionId: "definition-current",
+      basedOnRevisionId: "stale-definition-revision"
+    }));
+
+    for (const [workspace, proposalId] of [
+      [processedWorkspace, processed.proposal.id],
+      [sourceChangedWorkspace, sourceProposal.proposal.id],
+      [baseProposal.workspace, baseProposal.proposal.id]
+    ] as const) {
+      const confirmation = createAgentDefinitionConfirmation(workspace, proposalId);
+      const harness = createExecutionHarness(workspace, confirmation);
+      const rendered = await renderExecution(harness);
+
+      await act(async () => rendered.current.confirm());
+
+      expect(harness.acknowledge).not.toHaveBeenCalled();
+      expect(harness.commitCalls).toBe(0);
+      expect(harness.undoCalls).toBe(0);
+      expect(harness.pending).toBe(confirmation);
+      expect(harness.notices.at(-1)).toContain("重新发起确认");
+    }
+  });
+
+  it("blocks Agent default-reference actions when the previous default identity has changed", async () => {
+    const workspace = createInitialWorkspace();
+    const previous = getDefaultImage(workspace);
+    const target = getActiveImage(workspace, previous.id);
+    const replacement = getActiveImage(workspace, previous.id, target.id);
+    const withoutDefault = clearDefaultReference(workspace, previous.id, { reason: "用户先清除默认参考。" });
+    const scenarios = [
+      {
+        confirmationWorkspace: workspace,
+        changedWorkspace: setDefaultReference(workspace, replacement.id, { reason: "用户先改了默认参考。" }),
+        expectedDefaultId: replacement.id
+      },
+      {
+        confirmationWorkspace: workspace,
+        changedWorkspace: withoutDefault,
+        expectedDefaultId: null
+      },
+      {
+        confirmationWorkspace: withoutDefault,
+        changedWorkspace: setDefaultReference(withoutDefault, replacement.id, { reason: "用户后来设置了默认参考。" }),
+        expectedDefaultId: replacement.id
+      }
+    ];
+
+    for (const scenario of scenarios) {
+      const confirmation = createAgentDefaultReferenceConfirmation(scenario.confirmationWorkspace, target.id);
+      const harness = createExecutionHarness(scenario.changedWorkspace, confirmation);
+      const rendered = await renderExecution(harness);
+
+      await act(async () => rendered.current.confirm());
+
+      expect(harness.acknowledge).not.toHaveBeenCalled();
+      expect(harness.commitCalls).toBe(0);
+      expect(harness.undoCalls).toBe(0);
+      expect(harness.pending).toBe(confirmation);
+      expect(getCurrentDefaultImageId(harness.workspace)).toBe(scenario.expectedDefaultId);
+      expect(harness.notices.at(-1)).toContain("默认参考已变化");
+    }
+  });
+
+  it("blocks Agent direction actions when the bound status has changed", async () => {
+    const workspace = createInitialWorkspace();
+    const confirmation = createAgentConfirmation(workspace);
+    const target = workspace.objects[confirmation.targetObjectId!];
+    if (!target || target.type !== "conceptDirection") throw new Error("Expected a concept direction target");
+    const changedWorkspace = {
+      ...workspace,
+      objects: {
+        ...workspace.objects,
+        [target.id]: {
+          ...target,
+          status: target.status === "primary" ? "alternative" as const : "primary" as const
+        }
+      }
+    };
+    const harness = createExecutionHarness(changedWorkspace, confirmation);
+    const rendered = await renderExecution(harness);
+
+    await act(async () => rendered.current.confirm());
+
+    expect(harness.acknowledge).not.toHaveBeenCalled();
+    expect(harness.commitCalls).toBe(0);
+    expect(harness.undoCalls).toBe(0);
+    expect(harness.pending).toBe(confirmation);
+    expect(harness.notices.at(-1)).toContain("方向状态已变化");
+  });
 });
 
 type SlotRenderer = {
@@ -326,7 +469,13 @@ function createDefaultReferenceConfirmation(workspace: MorphoWorkspace): Extract
   };
 }
 
-function createAgentConfirmation(): Extract<PendingAiConfirmation, { kind: "agentRequestedAction" }> {
+function createAgentConfirmation(
+  workspace: MorphoWorkspace = createInitialWorkspace()
+): Extract<PendingAiConfirmation, { kind: "agentRequestedAction" }> {
+  const target = workspace.objects["direction-support-island"];
+  const previousReferenceObjectId = Object.values(workspace.objects).find(
+    (object) => object.type === "image" && object.isDefaultReference
+  )?.id ?? null;
   return {
     kind: "agentRequestedAction",
     targetTitle: "方向 B",
@@ -334,9 +483,102 @@ function createAgentConfirmation(): Extract<PendingAiConfirmation, { kind: "agen
     impact: "更新方向状态",
     action: "setDirectionPrimary",
     targetObjectId: "direction-support-island",
+    previousReferenceObjectId,
+    boundTargetStatus: target?.type === "conceptDirection" ? target.status : undefined,
     draft: "设为主方向",
     sourceObjectIds: [],
     selectedDirectionIds: ["direction-support-island"],
     selectedImageIds: []
   };
+}
+
+function createAgentDefinitionConfirmation(
+  workspace: MorphoWorkspace,
+  proposalId: string
+): Extract<PendingAiConfirmation, { kind: "agentRequestedAction" }> {
+  const proposal = workspace.artifactProposals[proposalId];
+  if (!proposal || proposal.type !== "designDefinition") throw new Error("Expected a design definition proposal");
+  return {
+    kind: "agentRequestedAction",
+    targetTitle: proposal.title,
+    reason: "用户已明确确认",
+    impact: "应用设计定义",
+    action: "applyDesignDefinition",
+    targetObjectId: proposalId,
+    previousReferenceObjectId: null,
+    draft: "应用设计定义",
+    sourceObjectIds: [...proposal.sourceObjectIds],
+    selectedDirectionIds: [],
+    selectedImageIds: []
+  };
+}
+
+function createAgentDefaultReferenceConfirmation(
+  workspace: MorphoWorkspace,
+  targetObjectId: string
+): Extract<PendingAiConfirmation, { kind: "agentRequestedAction" }> {
+  const target = workspace.objects[targetObjectId];
+  const previous = Object.values(workspace.objects).find(
+    (object) => object.type === "image" && object.isDefaultReference
+  );
+  if (!target || target.type !== "image") throw new Error("Expected an image target");
+  return {
+    kind: "agentRequestedAction",
+    targetTitle: target.title,
+    reason: "用户已明确确认",
+    impact: "更新默认参考",
+    action: "setDefaultReference",
+    targetObjectId,
+    previousReferenceObjectId: previous?.type === "image" ? previous.id : null,
+    draft: "设为默认参考",
+    sourceObjectIds: [],
+    selectedDirectionIds: [],
+    selectedImageIds: []
+  };
+}
+
+function createDefinitionProposalInput(overrides: {
+  proposalId: string;
+  sourceObjectIds?: string[];
+  basedOnDesignDefinitionId?: string;
+  basedOnRevisionId?: string;
+}) {
+  return {
+    ...overrides,
+    sourceObjectIds: overrides.sourceObjectIds ?? [],
+    title: "Agent 设计定义",
+    summary: "Agent 设计定义摘要。",
+    projectGoal: "Agent 设计目标。",
+    targetUsers: ["用户"],
+    primaryScenarios: ["场景"],
+    coreProblem: "Agent 设计问题。",
+    designPrinciples: ["原则"],
+    constraints: [],
+    avoidDirections: [],
+    opportunities: [],
+    openQuestions: [],
+    citations: []
+  };
+}
+
+function getDefaultImage(workspace: MorphoWorkspace) {
+  const image = Object.values(workspace.objects).find(
+    (object) => object.type === "image" && object.isDefaultReference
+  );
+  if (!image || image.type !== "image") throw new Error("Expected a default image");
+  return image;
+}
+
+function getCurrentDefaultImageId(workspace: MorphoWorkspace): string | null {
+  return Object.values(workspace.objects).find(
+    (object) => object.type === "image" && object.isDefaultReference
+  )?.id ?? null;
+}
+
+function getActiveImage(workspace: MorphoWorkspace, ...excludedIds: string[]) {
+  const image = Object.values(workspace.objects).find(
+    (object) => object.type === "image" && object.visibility === "active" && !excludedIds.includes(object.id)
+  );
+  if (!image || image.type !== "image") throw new Error("Expected an active image");
+  return image;
 }
