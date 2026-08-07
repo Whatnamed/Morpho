@@ -1005,3 +1005,17 @@ same-project rerenders preserve it. Object-operation undo snapshots contain no p
 confirmation, and only successful reversible writes create one snapshot. This is a runtime
 ownership and orchestration change only: no schema, persistence format, Provider route, A+ Journal
 contract, or visible confirmation-card product contract changes.
+
+## 2026-08-08: Fail Closed on Stale Agent Requested Actions
+
+Decision: Agent `request_confirmation` actions reuse the domain preflight for design-definition
+application and carry the state facts needed by status-changing actions. Applying a design
+definition checks that its proposal is still pending and its source/base review is still valid;
+direction actions bind the captured direction status; default-reference actions bind the exact
+previous default image identity, including the no-default case.
+
+Boundary: these checks run before A+ acknowledgement and before an undo snapshot. A stale,
+processed, source-changed, base-superseded, or state-drifted confirmation remains visible and
+does not write the workspace. The execution boundary also propagates a domain `blocked` result
+instead of reporting a failed domain write as successful. This adds no schema or Provider
+contract change and does not alter explicit user confirmation for a fresh action.

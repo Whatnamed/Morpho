@@ -182,8 +182,11 @@ Important module boundaries:
   acknowledgement leaves the confirmation card and workspace unchanged. Default-reference
   confirmations bind the exact target, previous default, and review image/collection IDs;
   Agent proposal confirmations bind source objects and, when based on the current design
-  definition, its exact ID and revision. Project/readiness transitions clear the slot and stale
-  callbacks fail closed, while same-project rerenders preserve it. Successful reversible writes
+  definition, its exact ID and revision. Agent requested actions also bind the applicable
+  design-definition review state, previous default-reference identity, or concept-direction
+  status, so stale confirmations are rejected before acknowledgement and undo. Project/readiness
+  transitions clear the slot and stale callbacks fail closed, while same-project rerenders preserve
+  it. Successful reversible writes
   create one object-operation undo entry; request, cancel, blocked, and failed-ack paths do not
   include or restore pending confirmation state. `WorkspaceClient.tsx` now only composes the
   controllers and dispatches Compare versus generic confirmation callbacks. No schema,
