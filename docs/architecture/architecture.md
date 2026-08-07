@@ -95,6 +95,17 @@ Important module boundaries:
   and keep same-project ready updates intact. `WorkspaceClient.tsx` remains responsible for
   canvas Trace, surface coordination, domain mutations, AI state, confirmations, and component
   composition. No visible UI, schema, persistence format, or domain contract changed.
+- WorkspaceClient decomposition phase 6-A moves Visual Generation Execution into the React-free
+  `workspaceVisualGenerationExecution.ts` core and the
+  `useWorkspaceVisualGenerationController.ts` React wiring layer. The core owns plan validation,
+  operation and A+ recovery identity, placement and pending slots, provider concurrency, request
+  persistence, local asset saving, result commits, partial/failure/cancel handling, and final
+  selection/focus. The controller supplies workspace commits, transient status updates, asset
+  storage, and browser fetch services while preserving the existing
+  `ExecuteAgentVisualGenerationPlan` return contract. `WorkspaceClient.tsx` keeps the Agent Turn
+  Host and Phase 6-B runtime lifecycle, and remains responsible for page composition and the
+  surrounding AI confirmation flow. No schema, provider route, or visible image-generation
+  behavior changed.
 - `src/domain/morpho/` owns product-domain types, the generated case-study fixture, deterministic domain actions, import helpers, generation helpers, and queries.
 - `src/infrastructure/persistence/` owns browser localStorage project catalog and workspace access.
 - `src/infrastructure/assets/` owns browser IndexedDB Blob storage and asset-save workflow.
