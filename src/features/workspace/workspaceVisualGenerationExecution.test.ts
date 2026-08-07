@@ -10,6 +10,7 @@ import {
   createAPlusImageRestoredActionCursor,
   hashAPlusExternalActionBody
 } from "./agentExternalActionClientAPlus";
+import * as aPlusExternalActionClient from "./agentExternalActionClientAPlus";
 import {
   IMAGE_GENERATION_MAX_CONCURRENCY,
   mapWithConcurrency
@@ -302,6 +303,18 @@ describe("workspace visual generation execution core", () => {
     expect(harness.imageTaskStatuses.at(-1)).toMatchObject({ state: "failed" });
   });
 
+  it("fails closed when a new A+ action has no intent persistence callback", async () => {
+    const harness = createExecutionHarness();
+
+    await expect(executeWorkspaceVisualGenerationPlan(
+      createAPlusInput(harness, 1),
+      resolveGenerationSettings({ aspectRatio: "1:1" }),
+      harness.ports
+    )).rejects.toMatchObject({ code: "external_action_intent_persistence_unavailable" });
+    expect(harness.requests).toHaveLength(0);
+    expect(harness.imageTaskStatuses.at(-1)).toMatchObject({ state: "failed" });
+  });
+
   it("does not mark an A+ running response as failed or cancelled", async () => {
     const harness = createExecutionHarness({
       respond: () => new Response(JSON.stringify({ replayed: true }), {
@@ -383,6 +396,43 @@ describe("workspace visual generation execution core", () => {
 
     expect(harness.requests[0]?.body).toBe(requestBody);
     expect(readReferenceAsset).not.toHaveBeenCalled();
+  });
+
+  it("does not consume a restored action when the local result commit fails", async () => {
+    const consumeAfterLocalCommit = vi.fn(() => true);
+    const createCursor = aPlusExternalActionClient.createAPlusImageRestoredActionCursor;
+    const cursorFactory = vi.spyOn(
+      aPlusExternalActionClient,
+      "createAPlusImageRestoredActionCursor"
+    ).mockImplementation((restoredAction) => {
+      const cursor = createCursor(restoredAction);
+      return {
+        ...cursor,
+        consumeAfterLocalCommit
+      };
+    });
+    const harness = createExecutionHarness({ failCommitAt: 3 });
+    const childActionId = await buildAPlusImageChildActionId("parent-call", "item-a");
+    const requestBody = JSON.stringify({ input: { images: [], referenceObjectIds: [] } });
+
+    try {
+      await expect(executeWorkspaceVisualGenerationPlan(
+        createAPlusInput(harness, 1, {
+          restoredExternalAction: {
+            actionId: childActionId,
+            actionKind: "image",
+            requestBody,
+            requestHash: await hashAPlusExternalActionBody(requestBody),
+            callId: "parent-call"
+          }
+        }),
+        resolveGenerationSettings({ aspectRatio: "1:1" }),
+        harness.ports
+      )).rejects.toThrow("injected local result commit failure");
+      expect(consumeAfterLocalCommit).not.toHaveBeenCalled();
+    } finally {
+      cursorFactory.mockRestore();
+    }
   });
 
   it("fails closed on a restored request hash mismatch without fetching", async () => {
@@ -694,6 +744,7 @@ function createExecutionHarness(options: {
   onFetch?: (request: ExecutionRequest) => void;
   readReferenceAsset?: (storageKey: string) => Promise<Blob | null>;
   saveGeneratedAsset?: (file: File) => Promise<{ status: "ok"; asset: AssetRecord } | { status: "failed"; reason: string }>;
+  failCommitAt?: number;
 } = {}): ExecutionHarness {
   let currentWorkspace = createTestWorkspace();
   let pendingImageGenerationSlots: PendingImageGenerationSlot[] = [];
@@ -749,6 +800,9 @@ function createExecutionHarness(options: {
     commitWorkspace: <T,>(transform: WorkspaceCommitTransform<T>) => {
       events.push("workspace:commit");
       commitCount += 1;
+      if (options.failCommitAt === commitCount) {
+        throw new Error("injected local result commit failure");
+      }
       const result = transform(currentWorkspace);
       currentWorkspace = result.workspace;
       return result.value;

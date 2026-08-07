@@ -4,10 +4,13 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createTestWorkspace } from "@/domain/morpho/workspace";
+import { createBlankWorkspace, createTestWorkspace } from "@/domain/morpho/workspace";
 import type { AssetRecord, MorphoWorkspace } from "@/domain/morpho/types";
 import { resolveGenerationSettings } from "./imageGenerationSettings";
-import type { WorkspaceVisualGenerationPlanInput } from "./workspaceVisualGenerationExecution";
+import type {
+  ImageTaskStatus,
+  WorkspaceVisualGenerationPlanInput
+} from "./workspaceVisualGenerationExecution";
 import type { PendingImageGenerationSlot } from "./pendingImageGenerationSlots";
 import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
 import {
@@ -78,26 +81,92 @@ describe("useWorkspaceVisualGenerationController", () => {
     await expect(execution).resolves.toMatchObject({ createdObjectIds: expect.any(Array) });
     expect(harness.requests).toHaveLength(1);
   });
+
+  it("rejects a stale Project A result throughout a staged Project B transition", async () => {
+    const harness = createControllerHarness(workspaceForProject("project-a"));
+    const settings = resolveGenerationSettings({ aspectRatio: "1:1" });
+    const initialInput = createInput(harness, settings);
+    const rendered = await renderController(initialInput);
+    const execution = rendered.current().executeVisualGenerationPlan(createPlanInput(harness));
+    await waitFor(() => harness.requests.length === 1);
+    const statusCountBeforeTransition = harness.statuses.length;
+
+    await rendered.rerender({ ...initialInput, projectId: "project-b", workspaceReady: false });
+    harness.workspace = createBlankWorkspace("project-b");
+    await rendered.rerender({ ...initialInput, projectId: "project-b", workspaceReady: false });
+    harness.workspace = workspaceForProject("project-b");
+    await rendered.rerender({ ...initialInput, projectId: "project-b", workspaceReady: true });
+
+    harness.response.resolve(controllerImageResponse());
+    await expect(execution).rejects.toMatchObject({ code: "stale_visual_generation_execution" });
+
+    expect(harness.workspace.project.id).toBe("project-b");
+    expect(Object.values(harness.workspace.operations).filter((operation) => operation.type === "imageGeneration")).toEqual([]);
+    expect(Object.values(harness.workspace.objects).some(
+      (object) => object.type === "image" && object.generation?.operationId
+    )).toBe(false);
+    expect(harness.selected).toEqual([]);
+    expect(harness.focused).toBeNull();
+    expect(harness.pending).toEqual([]);
+    expect(harness.statuses).toHaveLength(statusCountBeforeTransition);
+    expect(harness.assetsSaved).toBe(0);
+  });
+
+  it("allows an in-flight execution to continue across an ordinary same-project rerender", async () => {
+    const harness = createControllerHarness(workspaceForProject("project-a"));
+    const settings = resolveGenerationSettings({ aspectRatio: "1:1" });
+    const input = createInput(harness, settings);
+    const rendered = await renderController(input);
+    const execution = rendered.current().executeVisualGenerationPlan(createPlanInput(harness));
+    await waitFor(() => harness.requests.length === 1);
+
+    await rendered.rerender(input);
+    harness.response.resolve(controllerImageResponse());
+    const result = await execution;
+
+    expect(result.createdObjectIds).toHaveLength(1);
+    expect(harness.selected).toEqual(result.createdObjectIds);
+    expect(harness.focused).toBe(result.createdObjectIds[0]);
+  });
+
+  it("fails closed before any side effect when the current project is not ready", async () => {
+    const harness = createControllerHarness(workspaceForProject("project-a"));
+    const rendered = await renderController(createInput(
+      harness,
+      resolveGenerationSettings({ aspectRatio: "1:1" }),
+      createServices(harness),
+      { workspaceReady: false }
+    ));
+
+    await expect(rendered.current().executeVisualGenerationPlan(createPlanInput(harness)))
+      .rejects.toMatchObject({ code: "stale_visual_generation_execution" });
+    expect(harness.requests).toHaveLength(0);
+    expect(harness.pending).toEqual([]);
+    expect(harness.selected).toEqual([]);
+    expect(harness.focused).toBeNull();
+  });
 });
 
 type ControllerHarness = {
   workspace: MorphoWorkspace;
   pending: PendingImageGenerationSlot[];
-  statuses: unknown[];
+  statuses: ImageTaskStatus[];
   requests: Array<{ body: string }>;
   selected: string[];
   focused: string | null;
+  assetsSaved: number;
   response: ReturnType<typeof deferred<Response>>;
 };
 
-function createControllerHarness(): ControllerHarness {
+function createControllerHarness(workspace: MorphoWorkspace = workspaceForProject("project-a")): ControllerHarness {
   const harness = {
-    workspace: createTestWorkspace(),
+    workspace,
     pending: [],
-    statuses: [],
+    statuses: [] as ImageTaskStatus[],
     requests: [],
     selected: [],
     focused: null,
+    assetsSaved: 0,
     response: deferred<Response>()
   } satisfies ControllerHarness;
   return harness;
@@ -106,17 +175,17 @@ function createControllerHarness(): ControllerHarness {
 function createInput(
   harness: ControllerHarness,
   effectiveImageGenerationSettings: ReturnType<typeof resolveGenerationSettings>,
-  services = createServices(harness)
+  services = createServices(harness),
+  options: { projectId?: string; workspaceReady?: boolean } = {}
 ): UseWorkspaceVisualGenerationControllerInput {
   return {
+    projectId: options.projectId ?? harness.workspace.project.id,
+    workspaceReady: options.workspaceReady ?? true,
     effectiveImageGenerationSettings,
     commitWorkspace: <T,>(transform: WorkspaceCommitTransform<T>) => {
       const result = transform(harness.workspace);
       harness.workspace = result.workspace;
       return result.value;
-    },
-    updateWorkspace: (update) => {
-      harness.workspace = update(harness.workspace);
     },
     setPendingImageGenerationSlots: (update) => {
       harness.pending = update(harness.pending);
@@ -140,10 +209,13 @@ function createServices(harness: ControllerHarness): NonNullable<UseWorkspaceVis
       harness.requests.push({ body: typeof init?.body === "string" ? init.body : "" });
       return harness.response.promise;
     },
-    saveGeneratedAsset: async () => ({
-      status: "ok",
-      asset: controllerAsset()
-    }),
+    saveGeneratedAsset: async () => {
+      harness.assetsSaved += 1;
+      return {
+        status: "ok",
+        asset: controllerAsset()
+      };
+    },
     readReferenceAsset: async () => null,
     now: () => 1_700_000_000_000 + harness.requests.length,
     randomSuffix: () => `controller-${harness.requests.length}`
@@ -217,6 +289,17 @@ function controllerAsset(): AssetRecord {
     width: 320,
     height: 240,
     aspectRatio: 4 / 3
+  };
+}
+
+function workspaceForProject(projectId: string): MorphoWorkspace {
+  const workspace = createTestWorkspace();
+  return {
+    ...workspace,
+    project: {
+      ...workspace.project,
+      id: projectId
+    }
   };
 }
 
