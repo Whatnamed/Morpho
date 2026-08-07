@@ -85,9 +85,10 @@ type ImportedWorkspaceResult = Readonly<{
 
 export async function executeWorkspaceImport(
   request: WorkspaceImportRequest,
-  ports: WorkspaceImportExecutionPorts
+  ports: WorkspaceImportExecutionPorts,
+  expectedSession: WorkspaceImportExecutionSession = ports.getCurrentSession()
 ): Promise<void> {
-  const session = ports.getCurrentSession();
+  const session = expectedSession;
   assertExecutionSession(session, ports);
 
   const successfulAssets: AssetRecord[] = [];

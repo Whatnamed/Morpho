@@ -123,7 +123,10 @@ import {
   useWorkspaceSelectionNavigationController
 } from "./useWorkspaceSelectionNavigationController";
 import { useWorkspaceObjectHistoryController } from "./useWorkspaceObjectHistoryController";
-import { useWorkspaceImportController } from "./useWorkspaceImportController";
+import {
+  useWorkspaceImportController,
+  type WorkspaceImportSessionHandle
+} from "./useWorkspaceImportController";
 import { resolveComparisonWritebackSourceObjectIds } from "./comparisonDecision";
 import {
   applyResearchExtractionSelection,
@@ -224,6 +227,12 @@ export function readConversationTokenLimitsOverride(): ConversationTokenLimits |
 
 type WorkspaceClientProps = {
   projectId: string;
+};
+
+type PendingImportPicker = {
+  projectId: string;
+  session: WorkspaceImportSessionHandle;
+  position?: { x: number; y: number };
 };
 
 type SaveResearchKeyConclusionInput = {
@@ -415,7 +424,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     () => commitWorkspaceNow((current) => ({ workspace: current, value: current })),
     [commitWorkspaceNow]
   );
-  const { importRequest } = useWorkspaceImportController({
+  const { importRequest, captureImportSession } = useWorkspaceImportController({
     projectId,
     workspaceReady,
     commitWorkspace: commitWorkspaceNow,
@@ -423,7 +432,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   });
   const assetUrls = useWorkspaceAssetUrls(workspace.assets);
   const railImportInputRef = useRef<HTMLInputElement | null>(null);
-  const pendingImportPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const pendingImportPickerRef = useRef<PendingImportPicker | null>(null);
+  const pendingTopImportSessionRef = useRef<{
+    projectId: string;
+    session: WorkspaceImportSessionHandle;
+  } | null>(null);
+  useEffect(() => {
+    pendingImportPickerRef.current = null;
+    pendingTopImportSessionRef.current = null;
+  }, [projectId, workspaceReady]);
   const [aiInputFocusNonce, setAiInputFocusNonce] = useState(0);
   const [manualSaveNotice, setManualSaveNotice] = useState<string | null>(null);
   const manualSaveNoticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -769,31 +786,73 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   }, [observeCanvasView]);
 
   const handleRailAddToCanvas = useCallback(() => {
+    const importSession = captureImportSession();
+    if (!importSession) {
+      return;
+    }
+    pendingImportPickerRef.current = {
+      projectId,
+      session: importSession
+    };
     railImportInputRef.current?.click();
-  }, []);
+  }, [captureImportSession, projectId]);
   const handleRailImportFiles = useCallback(
     (files: FileList | null) => {
       const selectedFiles = files ? Array.from(files) : [];
+      const pendingPicker = pendingImportPickerRef.current;
+      pendingImportPickerRef.current = null;
       if (selectedFiles.length === 0) {
         return;
       }
+      if (!pendingPicker || pendingPicker.projectId !== projectId) {
+        return;
+      }
 
-      const position = pendingImportPositionRef.current ?? {
+      const position = pendingPicker.position ?? {
         x: workspace.canvas.view.x + 180,
         y: workspace.canvas.view.y + 180
       };
-      pendingImportPositionRef.current = null;
 
-      void importRequest({
+      void pendingPicker.session.importRequest({
         files: selectedFiles,
         position
       });
     },
-    [importRequest, workspace.canvas.view.x, workspace.canvas.view.y]
+    [projectId, workspace.canvas.view.x, workspace.canvas.view.y]
+  );
+
+  const handleTopImportStart = useCallback(() => {
+    const importSession = captureImportSession();
+    pendingTopImportSessionRef.current = importSession
+      ? { projectId, session: importSession }
+      : null;
+  }, [captureImportSession, projectId]);
+
+  const handleTopImportFiles = useCallback(
+    (files: File[]) => {
+      const pendingSession = pendingTopImportSessionRef.current;
+      pendingTopImportSessionRef.current = null;
+      if (!pendingSession || pendingSession.projectId !== projectId || files.length === 0) {
+        return;
+      }
+
+      void pendingSession.session.importRequest({
+        files,
+        position: {
+          x: workspace.canvas.view.x + 160,
+          y: workspace.canvas.view.y + 160
+        }
+      });
+    },
+    [projectId, workspace.canvas.view.x, workspace.canvas.view.y]
   );
 
   const handleContextMenuPaste = useCallback(
     async (pagePosition?: { x: number; y: number }) => {
+      const importSession = captureImportSession();
+      if (!importSession) {
+        return;
+      }
       const latestCanvasView = getLatestCanvasView();
       const position = pagePosition ?? {
         x: latestCanvasView.x + 160,
@@ -809,24 +868,32 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         showWorkspaceNotice("剪贴板里没有可粘贴的图片、链接或文本", 2000);
         return;
       }
-      await importRequest({
+      await importSession.importRequest({
         position,
         files: result.files,
         url: result.url,
         text: result.text
       });
     },
-    [getLatestCanvasView, importRequest, showWorkspaceNotice]
+    [captureImportSession, getLatestCanvasView, showWorkspaceNotice]
   );
 
   const handleContextMenuImportFiles = useCallback((pagePosition?: { x: number; y: number }) => {
+    const importSession = captureImportSession();
+    if (!importSession) {
+      return;
+    }
     const latestCanvasView = getLatestCanvasView();
-    pendingImportPositionRef.current = pagePosition ?? {
-      x: latestCanvasView.x + 180,
-      y: latestCanvasView.y + 180
+    pendingImportPickerRef.current = {
+      projectId,
+      session: importSession,
+      position: pagePosition ?? {
+        x: latestCanvasView.x + 180,
+        y: latestCanvasView.y + 180
+      }
     };
     railImportInputRef.current?.click();
-  }, [getLatestCanvasView]);
+  }, [captureImportSession, getLatestCanvasView, projectId]);
 
   const handleSelectAllVisibleObjects = useCallback(() => {
     requestCanvasSelection(activeCanvasObjectIds);
@@ -2816,7 +2883,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             setAiOpen(true);
             setAiInputFocusNonce((current) => current + 1);
           }}
-          onImport={() => railImportInputRef.current?.click()}
+          onImport={handleRailAddToCanvas}
         />
       ) : null}
 
@@ -2893,15 +2960,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             ? persistenceState.error
             : undefined
         }
-        onImportFiles={(files) =>
-          importRequest({
-            files,
-            position: {
-              x: workspace.canvas.view.x + 160,
-              y: workspace.canvas.view.y + 160
-            }
-          })
-        }
+        onImportFiles={handleTopImportFiles}
+        onImportStart={handleTopImportStart}
         onSearch={() => changeDrawer("search")}
         onFocusOverview={() => focusArea("overview")}
         onOpenDeliveryPreparation={() => openDeliveryPreparationFromSelection()}

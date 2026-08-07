@@ -16,7 +16,8 @@ import {
   useWorkspaceImportController,
   type UseWorkspaceImportControllerInput,
   type WorkspaceImportController,
-  type WorkspaceImportControllerServices
+  type WorkspaceImportControllerServices,
+  type WorkspaceImportSessionHandle
 } from "./useWorkspaceImportController";
 
 const roots: Root[] = [];
@@ -97,6 +98,52 @@ describe("useWorkspaceImportController", () => {
     await expect(execution).resolves.toBeUndefined();
 
     expect(harness.workspace).toEqual(projectBBefore);
+    expect(harness.selected).toEqual([]);
+  });
+
+  it("binds clipboard-like delayed payloads to the session captured before the await", async () => {
+    const harness = createHarness();
+    const rendered = await renderController(createInput(harness));
+    const importSession = rendered.current().captureImportSession();
+    if (!importSession) throw new Error("Expected a ready import session.");
+    const delayedPayload = deferred<Parameters<WorkspaceImportSessionHandle["importRequest"]>[0]>();
+    const execution = delayedPayload.promise.then((request) => importSession.importRequest(request));
+
+    await rendered.rerender(createInput(harness, {
+      projectId: "project-b",
+      workspaceReady: false
+    }));
+    harness.workspace = createBlankWorkspace("project-b");
+    await rendered.rerender(createInput(harness, {
+      projectId: "project-b",
+      workspaceReady: true
+    }));
+    const projectBBefore = structuredClone(harness.workspace);
+    delayedPayload.resolve(imageImportRequest());
+
+    await expect(execution).resolves.toBeUndefined();
+
+    expect(harness.workspace).toEqual(projectBBefore);
+    expect(harness.saveCalls).toBe(0);
+    expect(harness.selected).toEqual([]);
+  });
+
+  it("does not revive a captured A1 handle after leaving and returning to Project A", async () => {
+    const harness = createHarness();
+    const rendered = await renderController(createInput(harness));
+    const importSession = rendered.current().captureImportSession();
+    if (!importSession) throw new Error("Expected a ready import session.");
+
+    harness.workspace = createBlankWorkspace("project-b");
+    await rendered.rerender(createInput(harness, { projectId: "project-b" }));
+    harness.workspace = createBlankWorkspace("project-a");
+    await rendered.rerender(createInput(harness, { projectId: "project-a" }));
+    const projectA2Before = structuredClone(harness.workspace);
+
+    await expect(importSession.importRequest(imageImportRequest())).resolves.toBeUndefined();
+
+    expect(harness.workspace).toEqual(projectA2Before);
+    expect(harness.saveCalls).toBe(0);
     expect(harness.selected).toEqual([]);
   });
 

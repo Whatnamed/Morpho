@@ -43,6 +43,11 @@ export type UseWorkspaceImportControllerInput = Readonly<{
 
 export type WorkspaceImportController = Readonly<{
   importRequest: (request: WorkspaceImportRequest) => Promise<void>;
+  captureImportSession: () => WorkspaceImportSessionHandle | null;
+}>;
+
+export type WorkspaceImportSessionHandle = Readonly<{
+  importRequest: (request: WorkspaceImportRequest) => Promise<void>;
 }>;
 
 const defaultServices: WorkspaceImportControllerServices = {
@@ -143,10 +148,13 @@ export function useWorkspaceImportController({
     [assertCurrentSession, commitWorkspace, selectObjects, services]
   );
 
-  const importRequest = useCallback(
-    async (request: WorkspaceImportRequest): Promise<void> => {
+  const executeImportRequest = useCallback(
+    async (
+      request: WorkspaceImportRequest,
+      expectedSession: WorkspaceImportExecutionSession
+    ): Promise<void> => {
       try {
-        await executeWorkspaceImport(request, ports);
+        await executeWorkspaceImport(request, ports, expectedSession);
       } catch (error) {
         if (isStaleWorkspaceImportExecutionError(error)) {
           return;
@@ -157,5 +165,21 @@ export function useWorkspaceImportController({
     [ports]
   );
 
-  return { importRequest };
+  const importRequest = useCallback(
+    (request: WorkspaceImportRequest): Promise<void> =>
+      executeImportRequest(request, ports.getCurrentSession()),
+    [executeImportRequest, ports]
+  );
+
+  const captureImportSession = useCallback((): WorkspaceImportSessionHandle | null => {
+    const expectedSession = ports.getCurrentSession();
+    if (!isCurrentSession(expectedSession)) {
+      return null;
+    }
+    return {
+      importRequest: (request) => executeImportRequest(request, expectedSession)
+    };
+  }, [executeImportRequest, isCurrentSession, ports]);
+
+  return { importRequest, captureImportSession };
 }

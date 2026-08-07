@@ -6,6 +6,7 @@ import { useRef } from "react";
 type TopControlsProps = {
   projectTitle: string;
   onImportFiles: (files: File[]) => void;
+  onImportStart?: () => void;
   onSearch: () => void;
   onFocusOverview: () => void;
   onOpenDeliveryPreparation: () => void;
@@ -23,6 +24,7 @@ type TopControlsProps = {
 export function TopControls({
   projectTitle,
   onImportFiles,
+  onImportStart,
   onSearch,
   onFocusOverview,
   onOpenDeliveryPreparation,
@@ -37,6 +39,10 @@ export function TopControls({
   persistenceError
 }: TopControlsProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const openImportPicker = () => {
+    onImportStart?.();
+    fileInputRef.current?.click();
+  };
 
   return (
     <>
@@ -80,7 +86,7 @@ export function TopControls({
               <Archive size={14} />
               项目归档与恢复
             </button>
-            <button className="project-menu-action" type="button" onClick={() => fileInputRef.current?.click()}>
+            <button className="project-menu-action" type="button" onClick={openImportPicker}>
               <Import size={14} />
               导入资料
             </button>
@@ -111,7 +117,7 @@ export function TopControls({
               event.currentTarget.value = "";
             }}
           />
-          <button className="plain-button" type="button" onClick={() => fileInputRef.current?.click()}>
+          <button className="plain-button" type="button" onClick={openImportPicker}>
             <Import size={14} />
             导入
           </button>
