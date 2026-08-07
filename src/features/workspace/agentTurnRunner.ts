@@ -20,7 +20,11 @@ import {
 } from "./agentTurnCoordinator";
 import { createAgentTurnCoordinatorHttpHost } from "./agentTurnCoordinatorHttpHost";
 import { createAgentTurnDisplayAdapterAPlus } from "./agentTurnDisplayAdapterAPlus";
-import { showAgentTurnRecoveryPending, type AgentTurnHost } from "./agentTurnHost";
+import {
+  isAgentTurnHostSessionDetachedError,
+  showAgentTurnRecoveryPending,
+  type AgentTurnHost
+} from "./agentTurnHost";
 import type { AgentTurnLifecycleState } from "./agentTurnLifecycle";
 import { finalizeAgentTurn } from "./agentTurnMessages";
 import { appendAgentTurnMessages } from "./agentTurnMessages";
@@ -531,6 +535,9 @@ function driveSessionSerialized(session: APlusSession): Promise<void> {
 
 async function driveSession(session: APlusSession): Promise<void> {
   for (let step = 0; step < MAX_PROVIDER_STEPS; step += 1) {
+    if (isAgentTurnHostSessionDetachedError(session.prepared.controller.signal.reason)) {
+      return;
+    }
     const lifecycle = session.coordinator.getLifecycleSnapshot();
     if (!lifecycle) return;
     if (lifecycle.phase === "terminal") {
@@ -749,6 +756,9 @@ async function driveSession(session: APlusSession): Promise<void> {
       if (batch.status === "externalActionRunning") {
         session.host.ui.setStreaming(false);
         showAgentTurnRecoveryPending(session.host.ui);
+        return;
+      }
+      if (isAgentTurnHostSessionDetachedError(session.prepared.controller.signal.reason)) {
         return;
       }
       if (session.prepared.controller.signal.aborted) {
@@ -1223,6 +1233,12 @@ function recordAssistantFailureDetail(
 }
 
 async function terminateUnexpectedSession(session: APlusSession, error: unknown): Promise<void> {
+  if (
+    isAgentTurnHostSessionDetachedError(error) ||
+    isAgentTurnHostSessionDetachedError(session.prepared.controller.signal.reason)
+  ) {
+    return;
+  }
   const message = error instanceof Error ? error.message : "A+ Runtime 执行失败。";
   await terminateDeniedSession(session, {
     status: "denied",

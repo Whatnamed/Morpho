@@ -10,7 +10,10 @@ import {
   type APlusExternalActionDescriptor
 } from "./agentExternalActionClientAPlus";
 import { AgentTurnCoordinator, type AgentTurnCoordinatorHost } from "./agentTurnCoordinator";
-import type { AgentTurnHost } from "./agentTurnHost";
+import {
+  createAgentTurnHostSessionDetachedError,
+  type AgentTurnHost
+} from "./agentTurnHost";
 import { createAgentTurnHostFake } from "./agentTurnHostFake";
 import type { AgentTurnCompactionMode } from "./agentTurnLifecycle";
 
@@ -72,6 +75,46 @@ describe("A+ unified Compaction orchestrator", () => {
       outcome: { kind: "cancelled" },
       compactions: []
     });
+  });
+
+  it("does not turn a detached Compaction recovery into server cancellation", async () => {
+    const fixture = await createFixture({ runningOnce: true });
+    const first = await runAgentCompaction({
+      mode: "manual",
+      actionId: "compact:manual:detached",
+      coordinator: fixture.coordinator,
+      host: fixture.host,
+      localProjectId: "project-test",
+      force: true,
+      signal: new AbortController().signal
+    });
+    if (first.status !== "running") throw new Error("Expected a durable running Compaction action.");
+
+    const controller = new AbortController();
+    controller.abort(createAgentTurnHostSessionDetachedError());
+    const host: AgentTurnHost = {
+      ...fixture.host,
+      fetch: async (input, init) => {
+        if (init?.signal?.aborted) {
+          throw new DOMException("detached", "AbortError");
+        }
+        return fixture.host.fetch(input, init);
+      }
+    };
+
+    await expect(runAgentCompaction({
+      mode: "manual",
+      actionId: "compact:manual:detached",
+      coordinator: fixture.coordinator,
+      host,
+      localProjectId: "project-test",
+      signal: controller.signal,
+      restoredExternalAction: first.externalAction
+    })).rejects.toMatchObject({ code: "agent_turn_host_session_detached" });
+
+    expect(fixture.cancelCalls).toBe(0);
+    expect(fixture.requestBodies).toHaveLength(1);
+    expect(fixture.coordinator.getLifecycleSnapshot()?.phase).toBe("compacting");
   });
 
   it("records the applied Summary Revision in Recovery before durable Workspace save", async () => {
@@ -346,6 +389,7 @@ async function createFixture(options: {
   let running = options.runningOnce === true;
   let ambiguous = options.ambiguousOnce === true;
   let externalExecutionCount = 0;
+  let cancelCalls = 0;
   const requestBodies: string[] = [];
   fake.setFetchRoute(
     `/api/ai/agent/turns/${TURN_ID}/actions/compaction`,
@@ -412,7 +456,10 @@ async function createFixture(options: {
     executeExternalRequest: async () => {
       throw new Error("Provider should not run during this compaction test.");
     },
-    queryServerTurn: async ({ localProjectId }) => createdSnapshot(localProjectId)
+    queryServerTurn: async ({ localProjectId }) => createdSnapshot(localProjectId),
+    cancelExternalRequest: async () => {
+      cancelCalls += 1;
+    }
   };
   const coordinator = new AgentTurnCoordinator({
     localProjectId: "project-test",
@@ -427,6 +474,9 @@ async function createFixture(options: {
     host,
     coordinator,
     requestBodies,
+    get cancelCalls() {
+      return cancelCalls;
+    },
     get externalExecutionCount() {
       return externalExecutionCount;
     }

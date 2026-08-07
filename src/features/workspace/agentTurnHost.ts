@@ -4,6 +4,28 @@ import type { ExecuteAgentVisualGenerationPlan } from "./agentToolExecutors";
 import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
 import type { WorkspacePersistenceState } from "./workspacePersistence";
 
+export const AGENT_TURN_HOST_SESSION_DETACHED_CODE = "agent_turn_host_session_detached" as const;
+
+export type AgentTurnHostSessionDetachedError = Error & {
+  code: typeof AGENT_TURN_HOST_SESSION_DETACHED_CODE;
+};
+
+export function createAgentTurnHostSessionDetachedError(): AgentTurnHostSessionDetachedError {
+  const error = new Error("Agent 页面会话已脱离当前项目。") as AgentTurnHostSessionDetachedError;
+  error.name = "AgentTurnHostSessionDetachedError";
+  error.code = AGENT_TURN_HOST_SESSION_DETACHED_CODE;
+  return error;
+}
+
+export function isAgentTurnHostSessionDetachedError(
+  value: unknown
+): value is AgentTurnHostSessionDetachedError {
+  return (
+    value instanceof Error &&
+    (value as Partial<AgentTurnHostSessionDetachedError>).code === AGENT_TURN_HOST_SESSION_DETACHED_CODE
+  );
+}
+
 export type MutableSlot<T> = {
   get: () => T;
   set: (value: T) => void;

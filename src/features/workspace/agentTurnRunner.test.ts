@@ -10,7 +10,10 @@ import type {
   AgentTurnCoordinatorExecutionHandshake,
   AgentTurnCoordinatorHost
 } from "./agentTurnCoordinator";
-import type { AgentTurnHost } from "./agentTurnHost";
+import {
+  createAgentTurnHostSessionDetachedError,
+  type AgentTurnHost
+} from "./agentTurnHost";
 import { createAgentTurnHostFake } from "./agentTurnHostFake";
 import {
   detachMorphoAgentTurnForPageUnload,
@@ -191,24 +194,38 @@ describe("A+ Agent turn runner", () => {
     expect(fixture.coordinatorHost.executions).toHaveLength(1);
   });
 
-  it("currently allows a stale host to finalize into a newly opened workspace", async () => {
+  it("detaches a stale host without finalizing a failed turn into the new workspace", async () => {
     const fixture = createFixture([
       { status: "externallyCompleted", outputText: "旧页面结果" }
     ]);
+    const host: AgentTurnHost = {
+      ...fixture.host,
+      commitWorkspace: <T,>(transform) => {
+        if (fixture.fake.getWorkspace().project.id !== LOCAL_PROJECT_ID) {
+          throw createAgentTurnHostSessionDetachedError();
+        }
+        return fixture.host.commitWorkspace(transform);
+      }
+    };
     const releaseCompletion = fixture.coordinatorHost.deferNextCompletion();
-    const run = runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    const run = runMorphoAgentTurn(fixture.input, host, fixture.dependencies);
 
     await waitForCondition(() => fixture.coordinatorHost.executions.length === 1);
     const current = fixture.fake.getWorkspace();
     current.project = { ...current.project, id: "project-new" };
+    detachMorphoAgentTurnForPageUnload(LOCAL_PROJECT_ID);
+    host.abortSlot.get()?.abort(createAgentTurnHostSessionDetachedError());
     releaseCompletion();
-    await run;
+    await expect(run).resolves.toBeUndefined();
 
     expect(fixture.fake.getWorkspace().project.id).toBe("project-new");
     expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
-      body: "旧页面结果",
-      agentTurnOutcome: "success"
+      body: "",
+      status: "streaming"
     });
+    expect(latestAssistant(fixture.fake.getWorkspace())?.agentTurnOutcome).toBeUndefined();
+    expect(fixture.store.record).toBeDefined();
+    expect(fixture.coordinatorHost.cancelCalls).toBe(0);
   });
 
   it("resumes an active provider-running session on the same page and permits the next Turn", async () => {

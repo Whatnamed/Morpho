@@ -8,7 +8,10 @@ import {
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 import { hashSourceMessageIds } from "@/shared/agentProductHash";
 import type { AgentTurnCoordinator, AgentTurnCoordinatorActionResult } from "./agentTurnCoordinator";
-import type { AgentTurnHost } from "./agentTurnHost";
+import {
+  isAgentTurnHostSessionDetachedError,
+  type AgentTurnHost
+} from "./agentTurnHost";
 import type { AgentTurnCompactionMode } from "./agentTurnLifecycle";
 import {
   createAPlusExternalActionRunningError,
@@ -65,6 +68,7 @@ export async function runAgentCompaction(input: Readonly<{
     revisionId: string;
   }>) => Promise<boolean> | boolean;
 }>): Promise<AgentCompactionAPlusResult> {
+  throwIfSessionDetached(input.signal);
   const workspace = input.host.readWorkspace();
   const plan = input.restoredExternalAction
     ? undefined
@@ -170,6 +174,7 @@ export async function runAgentCompaction(input: Readonly<{
       requestHash: await hashAPlusExternalActionBody(generatedRequestBody),
       compactionApplyBoundary: toPersistedApplyBoundary(executionBoundary)
     };
+    throwIfSessionDetached(input.signal);
     if (input.onExternalActionIntent && !await input.onExternalActionIntent(externalAction)) {
       return fail(
         input,
@@ -181,6 +186,7 @@ export async function runAgentCompaction(input: Readonly<{
   const requestBody = externalAction.requestBody;
   let response: Response;
   try {
+    throwIfSessionDetached(input.signal);
     response = await postAPlusExternalAction({
       fetch: input.host.fetch,
       url: `/api/ai/agent/turns/${encodeURIComponent(server.serverTurnId)}/actions/compaction`,
@@ -191,6 +197,9 @@ export async function runAgentCompaction(input: Readonly<{
       message: "Compaction 请求响应丢失，服务器状态未知；本地只进行同身份查询，不重复压缩。"
     });
   } catch (error) {
+    if (isAgentTurnHostSessionDetachedError(input.signal.reason)) {
+      throw input.signal.reason;
+    }
     if (input.signal.aborted || isAbortError(error)) {
       requireOk(input.coordinator.cancelCompaction(input.actionId, "用户取消了 Compaction。"));
       return { status: "cancelled", actionId: input.actionId };
@@ -204,6 +213,7 @@ export async function runAgentCompaction(input: Readonly<{
     }
     return fail(input, "compaction_transport_failed", "Compaction 网络请求失败。");
   }
+  throwIfSessionDetached(input.signal);
   const body = await readJson(response);
   if (response.status === 202) {
     const running = await createAPlusExternalActionRunningError({
@@ -294,6 +304,12 @@ export async function runAgentCompaction(input: Readonly<{
   }
   requireOk(input.coordinator.markLocalPersistenceSucceeded());
   return { status: "applied", actionId: input.actionId, revisionId: applied.revision.id };
+}
+
+function throwIfSessionDetached(signal: AbortSignal): void {
+  if (isAgentTurnHostSessionDetachedError(signal.reason)) {
+    throw signal.reason;
+  }
 }
 
 async function parseRestoredCompactionRequest(input: Readonly<{
