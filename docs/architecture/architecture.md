@@ -135,9 +135,12 @@ Important module boundaries:
   updater before writing assets, objects, parse state, or selection. Canvas, top Rail, context
   menu, and other import entry points share this one execution path; selection is delegated to
   the existing project-scoped selection controller rather than duplicated here. Same-project
-  rerenders keep an import alive, while project/readiness transitions fail closed. IndexedDB
-  writes cannot be physically cancelled by this boundary, so a stale completed blob may remain
-  orphaned; object-level Blob garbage collection is intentionally outside this phase.
+  rerenders keep an import alive, while project/readiness transitions fail closed. Browser-level
+  async entry points such as clipboard reads and file pickers capture this handle before their
+  first await or picker handoff, and context-menu file-picker positions are tagged to the
+  initiating project and invalidated on cancel or lifecycle transition. IndexedDB writes cannot
+  be physically cancelled by this boundary, so a stale completed blob may remain orphaned;
+  object-level Blob garbage collection is intentionally outside this phase.
 - `src/domain/morpho/` owns product-domain types, the generated case-study fixture, deterministic domain actions, import helpers, generation helpers, and queries.
 - `src/infrastructure/persistence/` owns browser localStorage project catalog and workspace access.
 - `src/infrastructure/assets/` owns browser IndexedDB Blob storage and asset-save workflow.
