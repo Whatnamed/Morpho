@@ -81,6 +81,10 @@ describe("MorphoCanvas focus navigation", () => {
     expect(shouldApplyFocusRequest({ nonce: 0 }, null)).toBe(false);
   });
 
+  it("accepts a new project's first focus when its nonce follows the previous project", () => {
+    expect(shouldApplyFocusRequest({ objectId: "object-b", nonce: 2 }, 1)).toBe(true);
+  });
+
   it("opens the Morpho context menu on right button press instead of waiting for a drag contextmenu", () => {
     expect(shouldOpenCanvasContextMenuFromPointerDown({ button: 2 })).toBe(true);
     expect(shouldOpenCanvasContextMenuFromPointerDown({ button: 0 })).toBe(false);

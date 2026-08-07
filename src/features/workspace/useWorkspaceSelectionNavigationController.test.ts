@@ -162,6 +162,7 @@ describe("useWorkspaceSelectionNavigationController", () => {
       harness.current().requestCanvasSelection(["old-request"]);
       harness.current().observeCanvasView({ x: 99, y: 99, zoom: 2 });
     });
+    const oldFocusNonce = harness.current().focusRequest.nonce;
     const staleRequest = harness.current().requestCanvasSelection;
     const staleFocus = harness.current().focusObject;
     const staleSetSelectedObjectIds = harness.current().setSelectedObjectIds;
@@ -196,8 +197,26 @@ describe("useWorkspaceSelectionNavigationController", () => {
     const realWorkspace = withSelection(blankWorkspace, ["new-persisted"]);
     await harness.rerender({ projectId: "project-new", workspace: realWorkspace, workspaceReady: true });
     expect(harness.current().selectedObjectIds).toEqual(["new-persisted"]);
-    expect(harness.current().focusRequest).toEqual({ nonce: 0 });
+    expect(harness.current().focusRequest).toEqual({ nonce: oldFocusNonce });
     expect(harness.current().undoDetailNavigation()).toBe(false);
+  });
+
+  it("keeps focus request nonces monotonic across project sessions", async () => {
+    const harness = await renderController(createInput());
+
+    act(() => harness.current().focusObject("object-a"));
+    const oldFocusNonce = harness.current().focusRequest.nonce;
+    expect(oldFocusNonce).toBe(1);
+
+    const oldWorkspace = harness.workspace();
+    await harness.rerender({ projectId: "project-b", workspace: oldWorkspace, workspaceReady: false });
+    await harness.rerender({ projectId: "project-b", workspace: createBlankWorkspace("project-b"), workspaceReady: false });
+    await harness.rerender({ projectId: "project-b", workspace: createBlankWorkspace("project-b"), workspaceReady: true });
+
+    act(() => harness.current().focusObject("object-b"));
+
+    expect(harness.current().focusRequest.nonce).toBeGreaterThan(oldFocusNonce);
+    expect(harness.current().focusRequest).toMatchObject({ objectId: "object-b" });
   });
 
   it("keeps the session history during ready updates within the same project", async () => {

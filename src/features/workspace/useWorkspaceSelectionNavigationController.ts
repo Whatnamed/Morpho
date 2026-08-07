@@ -122,7 +122,7 @@ export function useWorkspaceSelectionNavigationController({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectionSession({ projectId, objectIds: [] });
     setSelectionRequestState({ objectIds: [], nonce: 0 });
-    setFocusRequestState({ nonce: 0 });
+    setFocusRequestState((current) => ({ nonce: current.nonce }));
     latestCanvasViewRef.current = { ...workspace.canvas.view };
     detailNavigationUndoStackRef.current = [];
     hydratedProjectIdRef.current = null;
