@@ -12,7 +12,7 @@ import type {
   APlusAgentProviderRequest
 } from "@/shared/agentTurnJournalProtocol";
 import { hashSourceMessageIds } from "@/shared/agentProductHash";
-import type { PendingAiConfirmation } from "./components/AiConversationPanel";
+import type { PendingAiConfirmation } from "./workspaceConfirmation";
 import type { AgentTurnCoordinatorRecoverySnapshot } from "./agentTurnCoordinator";
 import type { AgentTurnCompactionMode } from "./agentTurnLifecycle";
 import type { MorphoAgentTurnMode } from "./morphoAgent";

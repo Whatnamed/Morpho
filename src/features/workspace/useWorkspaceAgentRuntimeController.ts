@@ -2,7 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 
 import type { AiTaskMode, MorphoWorkspace } from "@/domain/morpho/types";
 import { interruptActiveOperations } from "@/domain/operations/operations";
-import type { PendingAiConfirmation } from "./components/AiConversationPanel";
+import type {
+  PendingAiConfirmation,
+  PendingConfirmationRequestResult
+} from "./workspaceConfirmation";
 import { updateAiMessage } from "./aiConversationMessages";
 import { completeAgentTrace } from "./agentMessageTrace";
 import {
@@ -53,7 +56,7 @@ export type UseWorkspaceAgentRuntimeControllerInput = {
   setDraft: (value: string) => void;
   setTaskMode: (value: AiTaskMode) => void;
   openConversation: () => void;
-  setPendingConfirmation: (value: PendingAiConfirmation | null) => void;
+  requestPendingConfirmation: (value: PendingAiConfirmation) => PendingConfirmationRequestResult;
   selectObjects: (objectIds: string[]) => void;
   focusObject: (objectId: string) => void;
   openProposal: (proposalId: string) => void;
@@ -112,7 +115,7 @@ export function useWorkspaceAgentRuntimeController(
     setDraft,
     setTaskMode,
     openConversation,
-    setPendingConfirmation,
+    requestPendingConfirmation,
     selectObjects,
     focusObject,
     openProposal,
@@ -288,7 +291,10 @@ export function useWorkspaceAgentRuntimeController(
         showRecoveryPending: () => guard(() => {
           updateRuntimeDisplay(session, { showFailure: false, showRecoveryPending: true });
         }, undefined),
-        setPendingConfirmation: (value) => guard(() => setPendingConfirmation(value), undefined),
+        requestPendingConfirmation: (value) => guard(
+          () => requestPendingConfirmation(value),
+          { status: "rejected", code: "confirmation_session_stale", origin: "agent" }
+        ),
         selectObjects: (objectIds) => guard(() => selectObjects(objectIds), undefined),
         focusObject: (objectId) => guard(() => focusObject(objectId), undefined),
         openProposal: (proposalId) => guard(() => openProposal(proposalId), undefined)
@@ -318,7 +324,7 @@ export function useWorkspaceAgentRuntimeController(
     session,
     setContextWarningInput,
     setDraft,
-    setPendingConfirmation,
+    requestPendingConfirmation,
     setTaskMode,
     updateRuntimeDisplay
   ]);

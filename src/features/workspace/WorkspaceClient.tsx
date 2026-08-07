@@ -76,7 +76,7 @@ import {
 import type { AssignableKeyConclusionCategory, CanvasInstance, MorphoWorkspace } from "@/domain/morpho/types";
 import { readClipboardAsImportPayload } from "./canvasClipboardImport";
 import { AiConversationPanel } from "./components/AiConversationPanel";
-import type { PendingAiConfirmation } from "./components/AiConversationPanel";
+import type { PendingAiConfirmation } from "./workspaceConfirmation";
 import { BottomDetailBar } from "./components/BottomDetailBar";
 import { ConceptDirectionDetail } from "./components/ConceptDirectionDetail";
 import { DesignDefinitionDetail } from "./components/DesignDefinitionDetail";
@@ -160,6 +160,7 @@ import { rejectArtifactProposalWorkflow } from "./workspaceProposalWorkflow";
 import {
   useWorkspaceVisualGenerationController
 } from "./useWorkspaceVisualGenerationController";
+import { useWorkspaceConfirmationController } from "./useWorkspaceConfirmationController";
 import type { PendingImageGenerationSlot } from "./pendingImageGenerationSlots";
 import type {
   ImageTaskStatus
@@ -233,7 +234,6 @@ type ObjectOperationUndoEntry = {
   workspace: MorphoWorkspace;
   selectedObjectIds: string[];
   localEditObjectId: string | null;
-  pendingConfirmation: PendingAiConfirmation | null;
 };
 
 type WorkspaceTextPrompt =
@@ -372,7 +372,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const workIntent = workspace.ui.workIntent;
   const [aiOpen, setAiOpen] = useState(true);
   const [localEditObjectId, setLocalEditObjectId] = useState<string | null>(null);
-  const [pendingConfirmation, setPendingConfirmation] = useState<PendingAiConfirmation | null>(null);
+  const {
+    pendingConfirmation,
+    requestPendingConfirmation,
+    updatePendingConfirmation,
+    clearPendingConfirmation
+  } = useWorkspaceConfirmationController({
+    projectId,
+    workspace,
+    workspaceReady
+  });
   const [textPrompt, setTextPrompt] = useState<WorkspaceTextPrompt | null>(null);
   const [detailHoverObjectId, setDetailHoverObjectId] = useState<string | null>(null);
   const [traceStartObjectId, setTraceStartObjectId] = useState<string | null>(null);
@@ -653,6 +662,18 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }, durationMs);
   }, []);
 
+  const requestLocalPendingConfirmation = useCallback(
+    (value: PendingAiConfirmation): boolean => {
+      const result = requestPendingConfirmation(value);
+      if (result.status !== "accepted") {
+        showWorkspaceNotice("请先处理当前待确认操作，再发起新的确认。");
+        return false;
+      }
+      return true;
+    },
+    [requestPendingConfirmation, showWorkspaceNotice]
+  );
+
   const handleManualSave = useCallback(() => {
     const result = flushWorkspace();
     if (result.phase === "readOnly") {
@@ -684,10 +705,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     (): ObjectOperationUndoEntry => ({
       workspace,
       selectedObjectIds,
-      localEditObjectId,
-      pendingConfirmation
+      localEditObjectId
     }),
-    [localEditObjectId, pendingConfirmation, selectedObjectIds, workspace]
+    [localEditObjectId, selectedObjectIds, workspace]
   );
 
   const applyObjectOperationSnapshot = useCallback(
@@ -695,7 +715,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setWorkspace(entry.workspace);
       requestCanvasSelection(entry.selectedObjectIds);
       setLocalEditObjectId(entry.localEditObjectId);
-      setPendingConfirmation(entry.pendingConfirmation);
       closeCanvasContextMenu();
     },
     [closeCanvasContextMenu, requestCanvasSelection, setWorkspace]
@@ -721,7 +740,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     workspace,
     workspaceReady,
     pendingConfirmation,
-    setPendingConfirmation,
+    requestPendingConfirmation,
+    updatePendingConfirmation,
+    clearPendingConfirmation,
     commitWorkspace: commitWorkspaceNow,
     pushUndoSnapshot: pushObjectOperationUndo,
     setSelectedObjectIds,
@@ -1005,7 +1026,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setDraft: setAiDraft,
     setTaskMode,
     openConversation: () => setAiOpen(true),
-    setPendingConfirmation,
+    requestPendingConfirmation,
     selectObjects: setSelectedObjectIds,
     focusObject: requestObjectFocus,
     openProposal: activateProposal,
@@ -1317,7 +1338,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     if (previousReference && previousReference.id !== target.id) {
       // 替换已有锚点：按产品规则先给出“只替换 / 替换并标记待复核”两个选项，不直接改状态。
       const reviewTargets = collectDefaultReferenceReviewTargets(workspace, previousReference.id, target.id);
-      setPendingConfirmation({
+      if (!requestLocalPendingConfirmation({
         kind: "setDefaultReference",
         targetObjectId: target.id,
         targetTitle: target.title,
@@ -1325,7 +1346,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         previousReferenceTitle: previousReference.title,
         reviewImageCount: reviewTargets.imageIds.length,
         reviewCollectionCount: reviewTargets.collectionIds.length
-      });
+      })) {
+        return;
+      }
       setAiOpen(true);
       return;
     }
@@ -1337,7 +1360,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       })
     );
     showWorkspaceNotice(`已设「${target.title}」为后续默认参考`);
-  }, [pushObjectOperationUndo, selectedObjects, setWorkspace, showWorkspaceNotice, workspace]);
+  }, [pushObjectOperationUndo, requestLocalPendingConfirmation, selectedObjects, setWorkspace, showWorkspaceNotice, workspace]);
 
   const handleConfirmPending = useCallback(async () => {
     if (!pendingConfirmation) {
@@ -1354,7 +1377,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       if (!localTask) {
         return;
       }
-      setPendingConfirmation(null);
+      clearPendingConfirmation(pendingConfirmation);
       setAiDraft("");
       setImageTaskStatus({
         state: "preparing",
@@ -1451,7 +1474,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         });
         return applied.workspace;
       });
-      setPendingConfirmation(null);
+      clearPendingConfirmation(pendingConfirmation);
       setAiDraft("");
       return;
     }
@@ -1504,7 +1527,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }
         return nextWorkspace;
       });
-      setPendingConfirmation(null);
+      clearPendingConfirmation(pendingConfirmation);
       setAiDraft("");
       return;
     }
@@ -1551,7 +1574,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           placed.proposal.id
         );
       });
-      setPendingConfirmation(null);
+      clearPendingConfirmation(pendingConfirmation);
       setAiDraft("");
       return;
     }
@@ -1582,7 +1605,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         }
         return applyComparisonAnalysis(current, validation.analysis);
       });
-      setPendingConfirmation(null);
+      clearPendingConfirmation(pendingConfirmation);
       setAiDraft("");
       return;
     }
@@ -1600,7 +1623,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         if (!localTask) {
           return;
         }
-        setPendingConfirmation(null);
+        clearPendingConfirmation(pendingConfirmation);
         setAiDraft("");
         try {
           const result = await executeVisualGenerationPlan({
@@ -1620,7 +1643,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           finishLocalAbortableTask(localTask.controller);
         }
       }
-      setPendingConfirmation(null);
+      clearPendingConfirmation(pendingConfirmation);
       setAiDraft("");
       return;
     }
@@ -1632,7 +1655,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           reason: "用户在默认参考确认卡中明确只替换后续默认参考。"
         })
       );
-      setPendingConfirmation(null);
+      clearPendingConfirmation(pendingConfirmation);
       setAiDraft("");
       showWorkspaceNotice(`已替换后续默认参考为「${pendingConfirmation.targetTitle}」`);
       return;
@@ -1661,7 +1684,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
       setWorkspace(result.workspace);
       requestFocusObject(result.keyConclusion.id);
-      setPendingConfirmation(null);
+      clearPendingConfirmation(pendingConfirmation);
       setAiDraft("");
       setTaskMode("chatAnalysis");
       return;
@@ -1677,11 +1700,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     });
     setSelectedObjectIds((current) => current.filter((selectedId) => selectedId !== pendingConfirmation.targetObjectId));
     setLocalEditObjectId((current) => (current === pendingConfirmation.targetObjectId ? null : current));
-    setPendingConfirmation(null);
+    clearPendingConfirmation(pendingConfirmation);
     setAiDraft("");
   }, [
     acknowledgePendingConfirmation,
     beginLocalAbortableTask,
+    clearPendingConfirmation,
     comparisonDecision,
     executeVisualGenerationPlan,
     finishLocalAbortableTask,
@@ -1708,7 +1732,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       })
     );
     void acknowledgePendingConfirmation();
-    setPendingConfirmation(null);
+    clearPendingConfirmation(pendingConfirmation);
     setAiDraft("");
     showWorkspaceNotice(`已替换默认参考为「${pendingConfirmation.targetTitle}」，直接延展素材已标记待复核`);
   }, [acknowledgePendingConfirmation, pendingConfirmation, pushObjectOperationUndo, setWorkspace, showWorkspaceNotice]);
@@ -1807,13 +1831,26 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const removedIds = [...objectIds, ...proposalObjects.map((object) => object.id)];
     setSelectedObjectIds((current) => current.filter((selectedId) => !removedIds.includes(selectedId)));
     setLocalEditObjectId((current) => (current && removedIds.includes(current) ? null : current));
-    setPendingConfirmation((current) =>
-      current?.kind === "deleteObject" && removedIds.includes(current.targetObjectId) ? null : current
-    );
+    if (
+      pendingConfirmation?.kind === "deleteObject" &&
+      removedIds.includes(pendingConfirmation.targetObjectId)
+    ) {
+      clearPendingConfirmation(pendingConfirmation);
+    }
     clearActiveProposalIf(removedIds);
     closeProposalDetailIf(removedIds);
     closeCanvasContextMenu();
-  }, [clearActiveProposalIf, closeCanvasContextMenu, closeProposalDetailIf, pushObjectOperationUndo, selectedObjects, setSelectedObjectIds, setWorkspace]);
+  }, [
+    clearActiveProposalIf,
+    closeCanvasContextMenu,
+    clearPendingConfirmation,
+    closeProposalDetailIf,
+    pendingConfirmation,
+    pushObjectOperationUndo,
+    selectedObjects,
+    setSelectedObjectIds,
+    setWorkspace
+  ]);
 
   const handleEliminateDirection = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "conceptDirection");
@@ -1992,18 +2029,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const handleUpdatePendingKeyConclusion = useCallback(
     (patch: Partial<Extract<PendingAiConfirmation, { kind: "createKeyConclusion" }>>) => {
-      setPendingConfirmation((current) => {
-        if (!current || current.kind !== "createKeyConclusion") {
-          return current;
-        }
-
-        return {
-          ...current,
-          ...patch
-        };
-      });
+      updatePendingConfirmation((current) =>
+        current.kind === "createKeyConclusion"
+          ? {
+              ...current,
+              ...patch
+            }
+          : current
+      );
     },
-    []
+    [updatePendingConfirmation]
   );
 
   const handleViewCreatedDocumentFragment = useCallback(
@@ -2689,7 +2724,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             return;
           }
           void acknowledgePendingConfirmation();
-          setPendingConfirmation(null);
+          if (pendingConfirmation) {
+            clearPendingConfirmation(pendingConfirmation);
+          }
         }}
         onFailureRetry={retryRecovery}
         onOpenProjectRecords={openProjectRecords}

@@ -241,7 +241,13 @@ export async function recoverMorphoAgentTurn(
   installActiveSession(session);
   try {
     if (record.metadata.pendingConfirmation) {
-      host.ui.setPendingConfirmation(record.metadata.pendingConfirmation.value);
+      const requested = host.ui.requestPendingConfirmation(record.metadata.pendingConfirmation.value);
+      if (requested.status !== "accepted") {
+        // Keep the durable A+ Recovery Record and expose a retry affordance. A
+        // local/Compare confirmation already occupying the slot must never be
+        // overwritten by a recovered Agent card.
+        showAgentTurnRecoveryPending(host.ui);
+      }
     }
     if (restored.coordinator.getLifecycleSnapshot()?.phase === "terminal") {
       await finalizeSession(session);

@@ -558,7 +558,10 @@ function hostFromFake(fake: ReturnType<typeof createAgentTurnHostFake>): AgentTu
       setTaskMode: fake.createUiRecorder("taskMode"),
       openConversation: fake.createUiRecorder("openConversation"),
       showFailure: fake.createUiRecorder("failure"),
-      setPendingConfirmation: fake.createUiRecorder("confirmation"),
+      requestPendingConfirmation: (value) => {
+        fake.createUiRecorder("confirmation")(value);
+        return { status: "accepted", origin: "agent" };
+      },
       selectObjects: fake.createUiRecorder("selection"),
       focusObject: fake.createUiRecorder("focus"),
       openProposal: fake.createUiRecorder("proposal")

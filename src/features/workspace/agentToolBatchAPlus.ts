@@ -1,5 +1,5 @@
 import { compileVisualGenerationPlan } from "@/domain/operations/imagePromptCompiler";
-import type { PendingAiConfirmation } from "./components/AiConversationPanel";
+import type { PendingAiConfirmation } from "./workspaceConfirmation";
 import type { APlusAgentContinuationItem, APlusToolCall } from "@/shared/agentTurnJournalProtocol";
 import { buildPendingAgentActionConfirmation, buildRequestedAgentActionConfirmation } from "./agentConfirmation";
 import { finishAgentToolActivityInWorkspace, startLocalAgentToolActivity } from "./agentMessageTrace";
@@ -267,15 +267,29 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
           documentFragmentExtractObjectIds: input.prepared.context.documentFragmentExtracts.map((item) => item.objectId)
         });
         const confirmationId = `${input.externalRequest.serverTurnId}:${callId}`;
-        input.host.ui.setPendingConfirmation(confirmationValue);
-        terminal = {
-          status: "pendingConfirmation",
-          callId,
-          confirmationId,
-          unresolvedWorkIds: []
-        };
-        providerResult = { status: "pendingConfirmation", confirmationId };
-        pendingConfirmation = { confirmationId, callId, value: confirmationValue };
+        const requested = input.host.ui.requestPendingConfirmation(confirmationValue);
+        if (requested.status !== "accepted") {
+          terminal = {
+            status: "failed",
+            callId,
+            error: {
+              kind: "terminal",
+              code: requested.code,
+              message: "当前已有待确认操作，未隐藏或覆盖新的 Agent 确认。",
+              recoverable: false
+            }
+          };
+          providerResult = { status: "failed", code: requested.code };
+        } else {
+          terminal = {
+            status: "pendingConfirmation",
+            callId,
+            confirmationId,
+            unresolvedWorkIds: []
+          };
+          providerResult = { status: "pendingConfirmation", confirmationId };
+          pendingConfirmation = { confirmationId, callId, value: confirmationValue };
+        }
         stopRemaining = true;
       } else if (executionPolicy === "requireExplicitUserCommand") {
         terminal = {
@@ -318,15 +332,30 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
               throw new Error("Tool 返回 Pending Confirmation，但没有可持久化的确认内容。");
             }
             const confirmationId = `${input.externalRequest.serverTurnId}:${callId}`;
-            input.host.ui.setPendingConfirmation(confirmationValue);
-            terminal = {
-              status: "pendingConfirmation",
-              callId,
-              confirmationId,
-              unresolvedWorkIds: []
-            };
-            pendingConfirmation = { confirmationId, callId, value: confirmationValue };
-            stopRemaining = true;
+            const requested = input.host.ui.requestPendingConfirmation(confirmationValue);
+            if (requested.status !== "accepted") {
+              terminal = {
+                status: "failed",
+                callId,
+                error: {
+                  kind: "terminal",
+                  code: requested.code,
+                  message: "当前已有待确认操作，未隐藏或覆盖新的 Agent 确认。",
+                  recoverable: false
+                }
+              };
+              providerResult = { status: "failed", code: requested.code };
+              stopRemaining = true;
+            } else {
+              terminal = {
+                status: "pendingConfirmation",
+                callId,
+                confirmationId,
+                unresolvedWorkIds: []
+              };
+              pendingConfirmation = { confirmationId, callId, value: confirmationValue };
+              stopRemaining = true;
+            }
           } else {
             const effect = getAgentToolEffect(entry.parsed.name);
             const didProduceLocalEffect = Boolean(

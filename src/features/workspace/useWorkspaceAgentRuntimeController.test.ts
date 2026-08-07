@@ -300,7 +300,7 @@ function createInput(options: {
     setDraft: vi.fn(),
     setTaskMode: vi.fn(),
     openConversation: vi.fn(),
-    setPendingConfirmation: vi.fn(),
+    requestPendingConfirmation: vi.fn(() => ({ status: "accepted" as const, origin: "agent" as const })),
     selectObjects: vi.fn(),
     focusObject: vi.fn(),
     openProposal: vi.fn(),

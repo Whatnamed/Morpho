@@ -1,9 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction
+} from "react";
 
 import type { AiTaskMode, MorphoWorkspace } from "@/domain/morpho/types";
-import type { PendingAiConfirmation } from "./components/AiConversationPanel";
+import type { PendingAiConfirmation } from "./workspaceConfirmation";
+import type {
+  PendingConfirmationRequestResult
+} from "./workspaceConfirmation";
 import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
 import {
   applyConfirmedComparisonDecision,
@@ -33,7 +45,12 @@ export type UseWorkspaceComparisonDecisionControllerInput = Readonly<{
   workspace: MorphoWorkspace;
   workspaceReady: boolean;
   pendingConfirmation: PendingAiConfirmation | null;
-  setPendingConfirmation: Dispatch<SetStateAction<PendingAiConfirmation | null>>;
+  requestPendingConfirmation: (value: PendingAiConfirmation) => PendingConfirmationRequestResult;
+  updatePendingConfirmation: (
+    updater: (current: PendingAiConfirmation) => PendingAiConfirmation,
+    expected?: PendingAiConfirmation
+  ) => boolean;
+  clearPendingConfirmation: (expected?: PendingAiConfirmation) => boolean;
   commitWorkspace: <T>(transform: WorkspaceCommitTransform<T>) => T;
   pushUndoSnapshot: () => void;
   setSelectedObjectIds: Dispatch<SetStateAction<string[]>>;
@@ -57,7 +74,9 @@ export function useWorkspaceComparisonDecisionController({
   workspace,
   workspaceReady,
   pendingConfirmation,
-  setPendingConfirmation,
+  requestPendingConfirmation,
+  updatePendingConfirmation,
+  clearPendingConfirmation,
   commitWorkspace: commitWorkspaceInput,
   pushUndoSnapshot,
   setSelectedObjectIds,
@@ -80,6 +99,7 @@ export function useWorkspaceComparisonDecisionController({
   const latestPendingConfirmationRef = useRef<PendingAiConfirmation | null>(pendingConfirmation);
   const pendingOwnerSessionRef = useRef<ComparisonDecisionSession | null>(null);
   const previousSessionRef = useRef<ComparisonDecisionSession>(session);
+  const resolvingConfirmationRef = useRef<PendingComparisonConfirmation | null>(null);
   const [pendingOwnerSessionState, setPendingOwnerSessionState] = useState<ComparisonDecisionSession | null>(null);
 
   useLayoutEffect(() => {
@@ -96,9 +116,10 @@ export function useWorkspaceComparisonDecisionController({
     previousSessionRef.current = session;
     pendingOwnerSessionRef.current = null;
     setPendingOwnerSessionState(null);
-    // Compare confirmation is the only transient state owned here; other confirmation kinds remain in WorkspaceClient.
-    setPendingConfirmation((current) => (isComparisonPendingConfirmation(current) ? null : current));
-  }, [session, setPendingConfirmation]);
+    if (isComparisonPendingConfirmation(pendingConfirmation)) {
+      clearPendingConfirmation(pendingConfirmation);
+    }
+  }, [clearPendingConfirmation, pendingConfirmation, session]);
 
   const isCurrentSession = useCallback((expectedSession: ComparisonDecisionSession): boolean => {
     const currentSession = currentSessionRef.current;
@@ -164,12 +185,16 @@ export function useWorkspaceComparisonDecisionController({
         return;
       }
 
+      const requested = requestPendingConfirmation(prepared.confirmation);
+      if (requested.status !== "accepted") {
+        showNotice("请先处理当前待确认操作，再发起 Compare 决策。");
+        return;
+      }
       pendingOwnerSessionRef.current = session;
       setPendingOwnerSessionState(session);
-      setPendingConfirmation(prepared.confirmation);
       openAiPanel();
     },
-    [isCurrentSession, openAiPanel, session, setPendingConfirmation, showNotice]
+    [isCurrentSession, openAiPanel, requestPendingConfirmation, session, showNotice]
   );
 
   const updatePendingReason = useCallback(
@@ -183,16 +208,18 @@ export function useWorkspaceComparisonDecisionController({
         return;
       }
 
-      setPendingConfirmation((current) =>
-        current && isComparisonPendingConfirmation(current)
-          ? {
-              ...current,
-              userReason: patch.userReason
-            }
-          : current
+      updatePendingConfirmation(
+        (current) =>
+          isComparisonPendingConfirmation(current)
+            ? {
+                ...current,
+                userReason: patch.userReason
+              }
+            : current,
+        pendingConfirmation
       );
     },
-    [isCurrentSession, ownsPendingConfirmation, pendingConfirmation, session, setPendingConfirmation]
+    [isCurrentSession, ownsPendingConfirmation, pendingConfirmation, session, updatePendingConfirmation]
   );
 
   const confirm = useCallback(() => {
@@ -204,6 +231,9 @@ export function useWorkspaceComparisonDecisionController({
     ) {
       return;
     }
+    if (resolvingConfirmationRef.current === pendingConfirmation) {
+      return;
+    }
 
     const preflight = applyConfirmedComparisonDecision(latestWorkspaceRef.current, pendingConfirmation);
     if (preflight.status === "blocked") {
@@ -211,6 +241,7 @@ export function useWorkspaceComparisonDecisionController({
       return;
     }
 
+    resolvingConfirmationRef.current = pendingConfirmation;
     // The preflight is synchronous and uses the same current workspace that will be committed.
     // The functional commit below still revalidates against the authoritative state boundary.
     pushUndoSnapshot();
@@ -222,6 +253,7 @@ export function useWorkspaceComparisonDecisionController({
       };
     });
     if (!result || result.status === "blocked") {
+      resolvingConfirmationRef.current = null;
       if (result?.status === "blocked") {
         showNotice(result.reason);
       }
@@ -230,7 +262,8 @@ export function useWorkspaceComparisonDecisionController({
 
     pendingOwnerSessionRef.current = null;
     setPendingOwnerSessionState(null);
-    setPendingConfirmation((current) => (current === pendingConfirmation ? null : current));
+    clearPendingConfirmation(pendingConfirmation);
+    resolvingConfirmationRef.current = null;
     setAiDraft("");
     setTaskMode("chatAnalysis");
     if (result.selectionObjectIds) {
@@ -249,7 +282,7 @@ export function useWorkspaceComparisonDecisionController({
     requestObjectFocus,
     session,
     setAiDraft,
-    setPendingConfirmation,
+    clearPendingConfirmation,
     setSelectedObjectIds,
     setTaskMode,
     showNotice
@@ -264,11 +297,14 @@ export function useWorkspaceComparisonDecisionController({
     ) {
       return;
     }
+    if (resolvingConfirmationRef.current === pendingConfirmation) {
+      return;
+    }
 
     pendingOwnerSessionRef.current = null;
     setPendingOwnerSessionState(null);
-    setPendingConfirmation((current) => (current === pendingConfirmation ? null : current));
-  }, [isCurrentSession, ownsPendingConfirmation, pendingConfirmation, session, setPendingConfirmation]);
+    clearPendingConfirmation(pendingConfirmation);
+  }, [clearPendingConfirmation, isCurrentSession, ownsPendingConfirmation, pendingConfirmation, session]);
 
   const visiblePendingConfirmation =
     pendingConfirmation &&

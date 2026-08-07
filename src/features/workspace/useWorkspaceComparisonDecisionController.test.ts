@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { AiTaskMode, ComparisonAnalysis, MorphoWorkspace } from "@/domain/morpho/types";
 import { createInitialWorkspace, hideObject } from "@/domain/morpho/workspace";
-import type { PendingAiConfirmation } from "./components/AiConversationPanel";
+import type { PendingAiConfirmation } from "./workspaceConfirmation";
 import {
   useWorkspaceComparisonDecisionController,
   type UseWorkspaceComparisonDecisionControllerInput,
@@ -230,8 +230,26 @@ function createInput(
     workspace: harness.workspace,
     workspaceReady: options.workspaceReady ?? true,
     pendingConfirmation: harness.pending,
-    setPendingConfirmation: (action) => {
-      harness.pending = typeof action === "function" ? action(harness.pending) : action;
+    requestPendingConfirmation: (value) => {
+      if (harness.pending) {
+        return { status: "rejected", code: "confirmation_slot_occupied", origin: "compare" };
+      }
+      harness.pending = value;
+      return { status: "accepted", origin: "compare" };
+    },
+    updatePendingConfirmation: (updater, expected) => {
+      if (!harness.pending || (expected && harness.pending !== expected)) {
+        return false;
+      }
+      harness.pending = updater(harness.pending);
+      return true;
+    },
+    clearPendingConfirmation: (expected) => {
+      if (!harness.pending || (expected && harness.pending !== expected)) {
+        return false;
+      }
+      harness.pending = null;
+      return true;
     },
     commitWorkspace: <T,>(transform: WorkspaceCommitTransform<T>): T => {
       harness.commitCalls += 1;

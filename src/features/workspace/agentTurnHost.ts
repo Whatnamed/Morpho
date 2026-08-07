@@ -1,5 +1,8 @@
 import type { AiTaskMode, MorphoWorkspace } from "@/domain/morpho/types";
-import type { PendingAiConfirmation } from "./components/AiConversationPanel";
+import type {
+  PendingAiConfirmation,
+  PendingConfirmationRequestResult
+} from "./workspaceConfirmation";
 import type { ExecuteAgentVisualGenerationPlan } from "./agentToolExecutors";
 import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
 import type { WorkspacePersistenceState } from "./workspacePersistence";
@@ -41,7 +44,7 @@ export type AgentTurnUiPort = {
   showFailure: () => void;
   /** Keep a query-only external action visible without presenting it as terminal failure. */
   showRecoveryPending?: () => void;
-  setPendingConfirmation: (value: PendingAiConfirmation) => void;
+  requestPendingConfirmation: (value: PendingAiConfirmation) => PendingConfirmationRequestResult;
   selectObjects: (objectIds: string[]) => void;
   focusObject: (objectId: string) => void;
   openProposal: (proposalId: string) => void;
