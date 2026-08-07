@@ -457,6 +457,60 @@ describe("A+ Agent turn runner", () => {
     ]));
   });
 
+  it("does not let a detached old session release a newer same-project owner", async () => {
+    const first = createFixture([
+      { status: "externallyCompleted", outputText: "旧页面结果" }
+    ]);
+    const releaseFirstCompletion = first.coordinatorHost.deferNextCompletion();
+    const firstRun = runMorphoAgentTurn(first.input, first.host, first.dependencies);
+
+    await waitForCondition(() => first.coordinatorHost.executions.length === 1);
+    detachMorphoAgentTurnForPageUnload(first.fake.getWorkspace().project.id);
+
+    const second = createFixture([{ status: "providerRunning" }]);
+    await runMorphoAgentTurn(second.input, second.host, second.dependencies);
+    expect(second.coordinatorHost.executions).toHaveLength(1);
+
+    // Remove durable recovery so a successful resume proves the in-memory
+    // second owner survived the first owner's late finalization.
+    second.store.record = undefined;
+    releaseFirstCompletion();
+    await expect(firstRun).resolves.toBeUndefined();
+
+    await expect(resumeMorphoAgentTurn(
+      second.fake.getWorkspace().project.id,
+      second.host,
+      second.dependencies
+    )).resolves.toBe("pending");
+    await expect(cancelMorphoAgentTurn(
+      second.fake.getWorkspace().project.id,
+      "用户停止了第二个 Provider Stream。"
+    )).resolves.toBe(true);
+    expect(second.coordinatorHost.cancelCalls).toBe(1);
+  });
+
+  it("releases a terminal cancellation so the next Turn can start immediately", async () => {
+    const fixture = createFixture([
+      { status: "providerRunning" },
+      { status: "externallyCompleted", outputText: "第二回合已完成。" }
+    ]);
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+
+    await expect(cancelMorphoAgentTurn(
+      fixture.fake.getWorkspace().project.id,
+      "用户停止了 Provider Stream。"
+    )).resolves.toBe(true);
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(fixture.coordinatorHost.executions).toHaveLength(2);
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      body: "第二回合已完成。",
+      agentTurnOutcome: "success"
+    });
+  });
+
   it("gives every invalid Tool call one failed result and continues with bounded output", async () => {
     const fixture = createFixture([
       {
