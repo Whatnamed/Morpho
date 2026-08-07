@@ -334,8 +334,12 @@ export function useWorkspaceAgentRuntimeController(
     expectedSession: WorkspaceAgentRuntimeSession,
     expectedHost: AgentTurnHost
   ): void => {
-    const flush = expectedHost.streamFlushSlot.get();
-    const controller = expectedHost.abortSlot.get();
+    const flush = streamFlushSlotRef.current?.session === expectedSession
+      ? streamFlushSlotRef.current.value
+      : null;
+    const controller = abortSlotRef.current?.session === expectedSession
+      ? abortSlotRef.current.value
+      : null;
     currentSessionRef.current = null;
     flush?.();
     expectedHost.streamFlushSlot.set(null);

@@ -139,7 +139,7 @@ describe("useWorkspaceAgentRuntimeController", () => {
     runnerMocks.recover.mockResolvedValue("none");
     const harness = await renderController(createInput({ projectId: "project-a" }));
     const oldHost = runnerMocks.recover.mock.calls[0]?.[1] as AgentTurnHost;
-    const oldFlush = vi.fn();
+    const oldFlush = vi.fn(() => oldHost.ui.setStreaming(true));
     const newFlush = vi.fn();
     oldHost.streamFlushSlot.set(oldFlush);
 
@@ -149,6 +149,7 @@ describe("useWorkspaceAgentRuntimeController", () => {
     oldHost.streamFlushSlot.set(null);
 
     expect(oldFlush).toHaveBeenCalledTimes(1);
+    expect(harness.current().isStreaming).toBe(false);
     expect(newHost.streamFlushSlot.get()).toBe(newFlush);
   });
 
