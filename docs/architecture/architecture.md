@@ -154,6 +154,20 @@ Important module boundaries:
   controller, selection/focus ownership stays with the Selection controller, and discussion or
   regeneration only opens the existing AI draft/task/work-intent flow without sending or applying
   a proposal. No schema, provider, A+ runtime, persistence, or visible product contract changed.
+- WorkspaceClient decomposition phase 6-E moves Compare decision preparation and writeback into the
+  React-free `comparisonDecision.ts` core and the
+  `useWorkspaceComparisonDecisionController.ts` React wiring layer. All seven Compare actions
+  (`setPrimary`, `setAlternative`, `eliminate`, `restoreAlternative`, `setDefaultReference`,
+  `clearDefaultReference`, and `createKeyConclusion`) follow one request -> explicit pending
+  confirmation -> current-workspace revalidation -> domain writeback path. Requests do not mutate
+  workspace state or acknowledge an Agent/provider action; required reasons are enforced locally,
+  and optional-reason actions still require confirmation. Final metadata uses the current saved
+  analysis, while a key conclusion keeps only its candidate text-evidence sources. The controller
+  owns a project-scoped session so A/B/A2 stale callbacks fail closed, same-project rerenders keep
+  pending confirmation, and a successful confirmation creates exactly one undo snapshot before
+  applying the existing domain action. Compare elimination no longer uses the comparison-specific
+  text prompt; ordinary canvas elimination remains on its existing prompt path. No schema,
+  provider, or A+ runtime contract changed.
 - `src/domain/morpho/` owns product-domain types, the generated case-study fixture, deterministic domain actions, import helpers, generation helpers, and queries.
 - `src/infrastructure/persistence/` owns browser localStorage project catalog and workspace access.
 - `src/infrastructure/assets/` owns browser IndexedDB Blob storage and asset-save workflow.
