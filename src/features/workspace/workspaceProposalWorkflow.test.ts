@@ -94,6 +94,41 @@ describe("workspace proposal workflow core", () => {
     ]);
   });
 
+  it("keeps Concept Direction placement anchored to a moved proposal draft", () => {
+    const recorded = recordConceptDirectionProposal(createBlankWorkspace("project-direction-placement"), {
+      proposalId: "proposal-direction-placement",
+      operationId: "operation-direction-placement",
+      title: "概念方向草案",
+      summary: "概念方向摘要",
+      applicationMode: "create",
+      parentDirectionIds: [],
+      directions: [createDirectionDraft("方向 A"), createDirectionDraft("方向 B")],
+      sourceObjectIds: [],
+      citations: []
+    });
+    const expectedPosition = { x: 1440, y: 980 };
+    const movedWorkspace: MorphoWorkspace = {
+      ...recorded.workspace,
+      canvas: {
+        ...recorded.workspace.canvas,
+        instances: recorded.workspace.canvas.instances.map((instance) =>
+          instance.objectId === recorded.proposal.id ? { ...instance, position: expectedPosition } : instance
+        )
+      }
+    };
+
+    const result = applyArtifactProposalWorkflow(movedWorkspace, recorded.proposal.id);
+
+    if (result.status !== "applied") {
+      throw new Error(`Expected concept-direction apply, received ${result.status}.`);
+    }
+    const firstDirectionId = result.selectionObjectIds[0];
+    const firstDirectionInstance = result.workspace.canvas.instances.find(
+      (instance) => instance.objectId === firstDirectionId
+    );
+    expect(firstDirectionInstance?.position).toEqual(expectedPosition);
+  });
+
   it("keeps sourceChanged blocked until the user explicitly allows it", () => {
     const workspace = createBlankWorkspace("project-source-review");
     workspace.objects["source-text"] = {

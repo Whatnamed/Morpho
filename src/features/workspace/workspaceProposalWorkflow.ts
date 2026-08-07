@@ -112,7 +112,7 @@ export function applyArtifactProposalWorkflow(
   switch (proposal.type) {
     case "researchAnalysis": {
       const result = applyResearchAnalysisProposal(workspace, proposal.id, {
-        position: getProposalFallbackPosition(workspace, 220, 180),
+        position: resolveProposalDraftPosition(workspace, proposal.id, getProposalFallbackPosition(workspace, 220, 180)),
         allowSourceChanged: options.allowSourceChanged
       });
       if (result.status === "blocked") {
@@ -157,7 +157,7 @@ export function applyArtifactProposalWorkflow(
     }
     case "conceptDirection": {
       const result = applyConceptDirectionProposal(workspace, proposal.id, {
-        position: getProposalFallbackPosition(workspace, 260, 220),
+        position: resolveProposalDraftPosition(workspace, proposal.id, getProposalFallbackPosition(workspace, 260, 220)),
         allowSourceChanged: options.allowSourceChanged
       });
       if (result.status === "blocked") {
@@ -241,6 +241,14 @@ function getProposalFallbackPosition(workspace: MorphoWorkspace, xOffset: number
     x: workspace.canvas.view.x + xOffset,
     y: workspace.canvas.view.y + yOffset
   };
+}
+
+function resolveProposalDraftPosition(
+  workspace: MorphoWorkspace,
+  proposalId: string,
+  fallback: { x: number; y: number }
+): { x: number; y: number } {
+  return workspace.canvas.instances.find((instance) => instance.objectId === proposalId)?.position ?? fallback;
 }
 
 function appendProposalAssistantFailure(
