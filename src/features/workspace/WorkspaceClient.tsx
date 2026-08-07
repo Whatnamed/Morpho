@@ -76,7 +76,7 @@ import {
 import type { AssignableKeyConclusionCategory, CanvasInstance, MorphoWorkspace } from "@/domain/morpho/types";
 import { readClipboardAsImportPayload } from "./canvasClipboardImport";
 import { AiConversationPanel } from "./components/AiConversationPanel";
-import type { PendingAiConfirmation, PendingComparisonConfirmation } from "./components/AiConversationPanel";
+import type { PendingAiConfirmation } from "./components/AiConversationPanel";
 import { BottomDetailBar } from "./components/BottomDetailBar";
 import { ConceptDirectionDetail } from "./components/ConceptDirectionDetail";
 import { DesignDefinitionDetail } from "./components/DesignDefinitionDetail";
@@ -116,21 +116,17 @@ import {
   useWorkspaceSelectionNavigationController
 } from "./useWorkspaceSelectionNavigationController";
 import { useWorkspaceObjectHistoryController } from "./useWorkspaceObjectHistoryController";
+import { isComparisonPendingConfirmation } from "./comparisonDecision";
+import { useWorkspaceComparisonDecisionController } from "./useWorkspaceComparisonDecisionController";
 import {
   useWorkspaceImportController,
   type WorkspaceImportSessionHandle
 } from "./useWorkspaceImportController";
-import { resolveComparisonWritebackSourceObjectIds } from "./comparisonDecision";
 import {
   applyResearchExtractionSelection,
   constrainResearchEvidence,
   getResearchExtractionRecommendationKeys
 } from "./researchExtraction";
-import {
-  validateComparisonActionTarget,
-  validateComparisonKeyConclusionSources,
-  type ComparisonActionKind
-} from "./comparisonAction";
 import {
   buildTaskContext,
   type TaskContextDefaultReference
@@ -141,7 +137,6 @@ import {
   buildComparisonAuthorization,
   validateComparisonAnalysis
 } from "@/domain/morpho/comparisonAnalysis";
-import type { ComparisonDecisionMetadata } from "@/domain/morpho/types";
 import { applyResearchProposalWithSemanticPatch } from "./researchSemanticPatch";
 import {
   getPlacementNearObjects,
@@ -268,26 +263,7 @@ type WorkspaceTextPrompt =
       label: string;
       initialValue: string;
       allowEmpty: true;
-      comparison?: ComparisonDecisionMetadata;
     };
-
-function isComparisonPendingConfirmation(
-  confirmation: PendingAiConfirmation
-): confirmation is PendingComparisonConfirmation {
-  return (
-    confirmation.kind === "compareSetPrimary" ||
-    confirmation.kind === "compareSetAlternative" ||
-    confirmation.kind === "compareEliminate" ||
-    confirmation.kind === "compareRestoreAlternative" ||
-    confirmation.kind === "compareSetDefaultReference" ||
-    confirmation.kind === "compareClearDefaultReference" ||
-    confirmation.kind === "compareCreateKeyConclusion"
-  );
-}
-
-function buildComparisonDecisionReason(confirmation: PendingComparisonConfirmation): string {
-  return confirmation.userReason.trim() || "用户已明确确认此 Compare 决定。";
-}
 
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const router = useRouter();
@@ -738,6 +714,22 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     undoDetailNavigation,
     closeCanvasContextMenu,
     showNotice: showWorkspaceNotice
+  });
+
+  const comparisonDecision = useWorkspaceComparisonDecisionController({
+    projectId,
+    workspace,
+    workspaceReady,
+    pendingConfirmation,
+    setPendingConfirmation,
+    commitWorkspace: commitWorkspaceNow,
+    pushUndoSnapshot: pushObjectOperationUndo,
+    setSelectedObjectIds,
+    requestObjectFocus,
+    showNotice: showWorkspaceNotice,
+    setAiDraft,
+    setTaskMode,
+    openAiPanel: () => setAiOpen(true)
   });
 
   const handleSelectionChange = useCallback(
@@ -1213,23 +1205,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           return result.workspace;
         });
       } else {
-        const reason =
-          trimmedValue ||
-          (textPrompt.comparison
-            ? "用户从 Compare 明确淘汰该方向。"
-            : "用户明确淘汰该方向。");
+        const reason = trimmedValue || "用户明确淘汰该方向。";
         pushObjectOperationUndo();
-        setWorkspace((current) =>
-          eliminateDirection(current, textPrompt.directionId, {
-            reason,
-            comparison: textPrompt.comparison
-              ? {
-                  ...textPrompt.comparison,
-                  userReason: trimmedValue || undefined
-                }
-              : undefined
-          })
-        );
+        setWorkspace((current) => eliminateDirection(current, textPrompt.directionId, { reason }));
         const direction = workspace.objects[textPrompt.directionId];
         showWorkspaceNotice(
           direction?.type === "conceptDirection" ? `已淘汰方向「${direction.title}」` : "已淘汰方向"
@@ -1363,6 +1341,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const handleConfirmPending = useCallback(async () => {
     if (!pendingConfirmation) {
+      return;
+    }
+    if (isComparisonPendingConfirmation(pendingConfirmation)) {
+      comparisonDecision.confirm();
       return;
     }
     await acknowledgePendingConfirmation();
@@ -1643,96 +1625,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
-    if (isComparisonPendingConfirmation(pendingConfirmation)) {
-      if (pendingConfirmation.reasonRequired && !pendingConfirmation.userReason.trim()) {
-        return;
-      }
-
-      const comparisonMetadata: ComparisonDecisionMetadata = {
-        comparisonAnalysisId: pendingConfirmation.comparisonAnalysisId,
-        comparisonAssistantMessageId: pendingConfirmation.comparisonAssistantMessageId,
-        comparisonSourceObjectIds: [...pendingConfirmation.comparisonSourceObjectIds],
-        userReason: pendingConfirmation.userReason.trim() || undefined
-      };
-      setWorkspace((current) => {
-        const validation = validatePendingComparisonConfirmation(current, pendingConfirmation);
-        if (validation.status !== "ok") {
-          return current;
-        }
-
-        if (pendingConfirmation.kind === "compareSetPrimary") {
-          return setConceptDirectionStatus(
-            current,
-            pendingConfirmation.targetObjectId,
-            "primary",
-            buildComparisonDecisionReason(pendingConfirmation),
-            comparisonMetadata
-          );
-        }
-
-        if (pendingConfirmation.kind === "compareSetAlternative") {
-          return setConceptDirectionStatus(
-            current,
-            pendingConfirmation.targetObjectId,
-            "alternative",
-            buildComparisonDecisionReason(pendingConfirmation),
-            comparisonMetadata
-          );
-        }
-
-        if (pendingConfirmation.kind === "compareEliminate") {
-          return eliminateDirection(current, pendingConfirmation.targetObjectId, {
-            reason: buildComparisonDecisionReason(pendingConfirmation),
-            comparison: comparisonMetadata
-          });
-        }
-
-        if (pendingConfirmation.kind === "compareRestoreAlternative") {
-          return setConceptDirectionStatus(
-            current,
-            pendingConfirmation.targetObjectId,
-            "alternative",
-            buildComparisonDecisionReason(pendingConfirmation),
-            comparisonMetadata
-          );
-        }
-
-        if (pendingConfirmation.kind === "compareSetDefaultReference") {
-          return setDefaultReference(current, pendingConfirmation.targetObjectId, {
-            reason: buildComparisonDecisionReason(pendingConfirmation),
-            comparison: comparisonMetadata
-          });
-        }
-
-        if (pendingConfirmation.kind === "compareClearDefaultReference") {
-          return clearDefaultReference(current, pendingConfirmation.targetObjectId, {
-            reason: buildComparisonDecisionReason(pendingConfirmation),
-            comparison: comparisonMetadata
-          });
-        }
-
-        const keyConclusionDraft = pendingConfirmation.keyConclusionDraft;
-        const result = createKeyConclusion(current, {
-          title: keyConclusionDraft.title,
-          body: keyConclusionDraft.body,
-          summary: keyConclusionDraft.summary,
-          sourceObjectIds: resolveComparisonWritebackSourceObjectIds(pendingConfirmation),
-          category: keyConclusionDraft.category,
-          confidence: keyConclusionDraft.confidence,
-          note: pendingConfirmation.userReason.trim() || undefined,
-          position: {
-            x: current.canvas.view.x + 240,
-            y: current.canvas.view.y + 180
-          },
-          comparison: comparisonMetadata
-        });
-        return result.workspace;
-      });
-      setPendingConfirmation(null);
-      setAiDraft("");
-      return;
-    }
-
     if (pendingConfirmation.kind === "setDefaultReference") {
       pushObjectOperationUndo();
       setWorkspace((current) =>
@@ -1790,6 +1682,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   }, [
     acknowledgePendingConfirmation,
     beginLocalAbortableTask,
+    comparisonDecision,
     executeVisualGenerationPlan,
     finishLocalAbortableTask,
     pendingConfirmation,
@@ -2111,173 +2004,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       });
     },
     []
-  );
-
-  const handleUpdatePendingComparison = useCallback(
-    (patch: Pick<PendingComparisonConfirmation, "userReason">) => {
-      setPendingConfirmation((current) => {
-        if (!current || !isComparisonPendingConfirmation(current)) {
-          return current;
-        }
-
-        return {
-          ...current,
-          userReason: patch.userReason
-        };
-      });
-    },
-    []
-  );
-
-  const handleRequestComparisonAction = useCallback(
-    (analysisId: string, action: ComparisonActionKind, objectId?: string) => {
-      const analysis = workspace.ai.comparisonAnalyses?.[analysisId];
-      if (!analysis) {
-        return;
-      }
-
-      const validation = validateComparisonActionTarget(workspace, analysisId, action, objectId);
-      if (validation.status !== "ok") {
-        showWorkspaceNotice(validation.reason);
-        return;
-      }
-
-      const comparisonMetadata: ComparisonDecisionMetadata = {
-        comparisonAnalysisId: analysis.id,
-        comparisonAssistantMessageId: analysis.assistantMessageId,
-        comparisonSourceObjectIds: [...analysis.sourceObjectIds]
-      };
-
-      if (action === "createKeyConclusion") {
-        const keyConclusionCandidate = analysis.keyConclusionCandidate;
-        if (!keyConclusionCandidate) {
-          return;
-        }
-        if (!isAssignableKeyConclusionCategory(keyConclusionCandidate.category)) {
-          showWorkspaceNotice("Compare 候选关键结论仍是待分类状态，不能直接保存。");
-          return;
-        }
-
-        const sourceCheck = validateComparisonKeyConclusionSources(
-          workspace,
-          analysisId,
-          keyConclusionCandidate.sourceObjectIds
-        );
-        if (sourceCheck.status !== "ok") {
-          showWorkspaceNotice(sourceCheck.reason);
-          return;
-        }
-
-        pushObjectOperationUndo();
-        const result = createKeyConclusion(workspace, {
-          title: keyConclusionCandidate.title,
-          body: keyConclusionCandidate.body,
-          summary: keyConclusionCandidate.summary,
-          sourceObjectIds: [...keyConclusionCandidate.sourceObjectIds],
-          category: keyConclusionCandidate.category,
-          confidence: keyConclusionCandidate.confidence,
-          note: keyConclusionCandidate.note,
-          position: {
-            x: workspace.canvas.view.x + 240,
-            y: workspace.canvas.view.y + 180
-          },
-          comparison: comparisonMetadata
-        });
-        setWorkspace(result.workspace);
-       requestFocusObject(result.keyConclusion.id);
-        showWorkspaceNotice(`已保存关键结论「${result.keyConclusion.title}」`);
-        return;
-      }
-
-      if (!objectId) {
-        return;
-      }
-
-      const targetObject = validation.targetObject;
-      if (!targetObject) {
-        return;
-      }
-
-      if (action === "eliminate" && targetObject.type === "conceptDirection") {
-        setTextPrompt({
-          kind: "eliminateDirection",
-          directionId: targetObject.id,
-          title: "淘汰方向",
-          body: "从 Compare 结果淘汰该方向。淘汰不会隐藏或删除方向。理由可选，不填也可直接淘汰。",
-          label: "淘汰理由（可选）",
-          initialValue: "",
-          allowEmpty: true,
-          comparison: comparisonMetadata
-        });
-        return;
-      }
-
-      pushObjectOperationUndo();
-
-      if (action === "setPrimary" && targetObject.type === "conceptDirection") {
-        setWorkspace((current) =>
-          setConceptDirectionStatus(
-            current,
-            targetObject.id,
-            "primary",
-            "用户从 Compare 明确将该方向设为主方向。",
-            comparisonMetadata
-          )
-        );
-        showWorkspaceNotice(`已将「${targetObject.title}」设为主方向`);
-        return;
-      }
-
-      if (action === "setAlternative" && targetObject.type === "conceptDirection") {
-        setWorkspace((current) =>
-          setConceptDirectionStatus(
-            current,
-            targetObject.id,
-            "alternative",
-            "用户从 Compare 明确将该方向设为备选方向。",
-            comparisonMetadata
-          )
-        );
-        showWorkspaceNotice(`已将「${targetObject.title}」设为备选方向`);
-        return;
-      }
-
-      if (action === "restoreAlternative" && targetObject.type === "conceptDirection") {
-        setWorkspace((current) =>
-          setConceptDirectionStatus(
-            current,
-            targetObject.id,
-            "alternative",
-            "用户从 Compare 明确将该方向恢复为备选。",
-            comparisonMetadata
-          )
-        );
-        showWorkspaceNotice(`已将「${targetObject.title}」恢复为备选方向`);
-        return;
-      }
-
-      if (action === "setDefaultReference" && targetObject.type === "image") {
-        setWorkspace((current) =>
-          setDefaultReference(current, targetObject.id, {
-            reason: "用户从 Compare 明确设为后续默认参考。",
-            comparison: comparisonMetadata
-          })
-        );
-        showWorkspaceNotice(`已设「${targetObject.title}」为后续默认参考`);
-        return;
-      }
-
-      if (action === "clearDefaultReference" && targetObject.type === "image") {
-        setWorkspace((current) =>
-          clearDefaultReference(current, targetObject.id, {
-            reason: "用户从 Compare 明确取消后续默认参考。",
-            comparison: comparisonMetadata
-          })
-        );
-        showWorkspaceNotice(`已取消「${targetObject.title}」的后续默认参考`);
-      }
-    },
-    [pushObjectOperationUndo, requestFocusObject, setWorkspace, showWorkspaceNotice, workspace]
   );
 
   const handleViewCreatedDocumentFragment = useCallback(
@@ -2929,7 +2655,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         isStreaming={isAiStreaming}
         imageGenerationSettings={effectiveImageGenerationSettings}
         directionPreviewCount={directionPreviewCount}
-        pendingConfirmation={pendingConfirmation}
+        pendingConfirmation={comparisonDecision.pendingConfirmation}
         showFailure={showFailure}
         showRecoveryPending={showRecoveryPending}
         imageTaskStatus={imageTaskStatus}
@@ -2952,12 +2678,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onSaveDesignDefinitionProposalDraft={saveDesignDefinitionDraft}
         onSaveConceptDirectionProposalDraft={saveConceptDirectionDraft}
         onUpdatePendingKeyConclusion={handleUpdatePendingKeyConclusion}
-        onUpdatePendingComparison={handleUpdatePendingComparison}
-        onRequestComparisonAction={handleRequestComparisonAction}
+        onUpdatePendingComparison={comparisonDecision.updatePendingReason}
+        onRequestComparisonAction={comparisonDecision.requestAction}
         onLocateObject={focusObject}
         onConfirmPending={handleConfirmPending}
         onConfirmPendingSecondary={handleConfirmPendingWithReviewMarks}
         onCancelPending={() => {
+          if (pendingConfirmation && isComparisonPendingConfirmation(pendingConfirmation)) {
+            comparisonDecision.cancel();
+            return;
+          }
           void acknowledgePendingConfirmation();
           setPendingConfirmation(null);
         }}
@@ -3362,44 +3092,5 @@ function truncateForTitle(input: string, fallback: string): string {
   }
 
   return trimmed.length > 28 ? `${trimmed.slice(0, 28)}…` : trimmed;
-}
-
-function validatePendingComparisonConfirmation(
-  current: MorphoWorkspace,
-  confirmation: PendingComparisonConfirmation
-): ReturnType<typeof validateComparisonActionTarget> {
-  const targetValidation = validateComparisonActionTarget(
-    current,
-    confirmation.comparisonAnalysisId,
-    comparisonActionFromPending(confirmation),
-    "targetObjectId" in confirmation ? confirmation.targetObjectId : undefined
-  );
-  if (targetValidation.status !== "ok" || confirmation.kind !== "compareCreateKeyConclusion") {
-    return targetValidation;
-  }
-  return validateComparisonKeyConclusionSources(
-    current,
-    confirmation.comparisonAnalysisId,
-    confirmation.keyConclusionSourceObjectIds
-  );
-}
-
-function comparisonActionFromPending(confirmation: PendingComparisonConfirmation): ComparisonActionKind {
-  switch (confirmation.kind) {
-    case "compareSetPrimary":
-      return "setPrimary";
-    case "compareSetAlternative":
-      return "setAlternative";
-    case "compareEliminate":
-      return "eliminate";
-    case "compareRestoreAlternative":
-      return "restoreAlternative";
-    case "compareSetDefaultReference":
-      return "setDefaultReference";
-    case "compareClearDefaultReference":
-      return "clearDefaultReference";
-    case "compareCreateKeyConclusion":
-      return "createKeyConclusion";
-  }
 }
 

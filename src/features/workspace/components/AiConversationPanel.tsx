@@ -42,14 +42,10 @@ import type {
 import type { ProviderCitation } from "@/server/ai/types";
 import { AgentProcessDisclosure } from "./AgentProcessDisclosure";
 import { getKeyConclusionCategoryLabel } from "../workspaceUi";
-
-type PendingKeyConclusionDraft = {
-  title: string;
-  body: string;
-  summary: string;
-  category: AssignableKeyConclusionCategory;
-  confidence: "supported" | "partial" | "needsVerification";
-};
+import type {
+  ComparisonActionRequest,
+  PendingComparisonConfirmation
+} from "../comparisonDecision";
 
 export type PendingAiConfirmation =
   | {
@@ -160,101 +156,6 @@ export type PendingAiConfirmation =
       selectedImageIds: string[];
     }
   | PendingComparisonConfirmation;
-
-export type PendingComparisonConfirmation =
-  | {
-      kind: "compareSetPrimary";
-      targetObjectId: string;
-      targetTitle: string;
-      comparisonAnalysisId: string;
-      comparisonAssistantMessageId: string;
-      comparisonSourceObjectIds: string[];
-      summary: string;
-      userReason: string;
-      reasonRequired: boolean;
-      keyConclusionDraft?: PendingKeyConclusionDraft;
-    }
-  | {
-      kind: "compareSetAlternative";
-      targetObjectId: string;
-      targetTitle: string;
-      comparisonAnalysisId: string;
-      comparisonAssistantMessageId: string;
-      comparisonSourceObjectIds: string[];
-      summary: string;
-      userReason: string;
-      reasonRequired: boolean;
-      keyConclusionDraft?: PendingKeyConclusionDraft;
-    }
-  | {
-      kind: "compareEliminate";
-      targetObjectId: string;
-      targetTitle: string;
-      comparisonAnalysisId: string;
-      comparisonAssistantMessageId: string;
-      comparisonSourceObjectIds: string[];
-      summary: string;
-      userReason: string;
-      reasonRequired: boolean;
-      keyConclusionDraft?: PendingKeyConclusionDraft;
-    }
-  | {
-      kind: "compareRestoreAlternative";
-      targetObjectId: string;
-      targetTitle: string;
-      comparisonAnalysisId: string;
-      comparisonAssistantMessageId: string;
-      comparisonSourceObjectIds: string[];
-      summary: string;
-      userReason: string;
-      reasonRequired: boolean;
-      keyConclusionDraft?: PendingKeyConclusionDraft;
-    }
-  | {
-      kind: "compareSetDefaultReference";
-      targetObjectId: string;
-      targetTitle: string;
-      comparisonAnalysisId: string;
-      comparisonAssistantMessageId: string;
-      comparisonSourceObjectIds: string[];
-      summary: string;
-      userReason: string;
-      reasonRequired: boolean;
-      keyConclusionDraft?: PendingKeyConclusionDraft;
-    }
-  | {
-      kind: "compareClearDefaultReference";
-      targetObjectId: string;
-      targetTitle: string;
-      comparisonAnalysisId: string;
-      comparisonAssistantMessageId: string;
-      comparisonSourceObjectIds: string[];
-      summary: string;
-      userReason: string;
-      reasonRequired: boolean;
-      keyConclusionDraft?: PendingKeyConclusionDraft;
-    }
-  | {
-      kind: "compareCreateKeyConclusion";
-      targetTitle: string;
-      comparisonAnalysisId: string;
-      comparisonAssistantMessageId: string;
-      comparisonSourceObjectIds: string[];
-      keyConclusionSourceObjectIds: string[];
-      summary: string;
-      userReason: string;
-      reasonRequired: boolean;
-      keyConclusionDraft: PendingKeyConclusionDraft;
-    };
-
-export type ComparisonActionRequest =
-  | "setPrimary"
-  | "setAlternative"
-  | "eliminate"
-  | "restoreAlternative"
-  | "setDefaultReference"
-  | "clearDefaultReference"
-  | "createKeyConclusion";
 
 type AiConversationPanelProps = {
   workspace: MorphoWorkspace;

@@ -2,7 +2,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ComponentProps } from "react";
-import type { PendingAiConfirmation, PendingComparisonConfirmation } from "./AiConversationPanel";
+import type { PendingAiConfirmation } from "./AiConversationPanel";
+import type { PendingComparisonConfirmation } from "../comparisonDecision";
 
 import { AiConversationPanel, getVisibleAiMessageBody, parseMarkdownBlocks } from "./AiConversationPanel";
 import { buildAiConversationPanelProps } from "./aiConversationPanelProps";
