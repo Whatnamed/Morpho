@@ -100,7 +100,12 @@ Important module boundaries:
   `useWorkspaceVisualGenerationController.ts` React wiring layer. The core owns plan validation,
   operation and A+ recovery identity, placement and pending slots, provider concurrency, request
   persistence, local asset saving, result commits, partial/failure/cancel handling, and final
-  selection/focus. The controller supplies workspace commits, transient status updates, asset
+  selection/focus. Each execution captures a project/readiness session token; the controller
+  checks that token and the current workspace project ID inside the same functional workspace
+  commit, and gates pending slots, task status, selection, and focus with the same identity.
+  Project/readiness lifecycle changes abort the local Agent execution slot and reset visual
+  transient state, while A+ Recovery descriptors remain durable for query-only recovery. The
+  controller supplies the guarded workspace commit boundary, transient status updates, asset
   storage, and browser fetch services while preserving the existing
   `ExecuteAgentVisualGenerationPlan` return contract. `WorkspaceClient.tsx` keeps the Agent Turn
   Host and Phase 6-B runtime lifecycle, and remains responsible for page composition and the
