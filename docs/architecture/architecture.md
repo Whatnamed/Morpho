@@ -125,6 +125,19 @@ Important module boundaries:
   `imageTaskStatus`, and visual-confirmation business rules. The Runner, Provider protocol,
   Recovery format, persistence/schema, and Context/Compaction strategy are unchanged apart from
   recognizing detached Host sessions as non-failure page teardown. No visible UI contract changed.
+- WorkspaceClient decomposition phase 6-C moves Import/Asset Ingestion execution into the
+  React-free `workspaceImportExecution.ts` core and the
+  `useWorkspaceImportController.ts` React wiring layer. The core owns file classification,
+  IndexedDB asset-save delegation, partial-success reporting, import-domain writes, document
+  parse/extract continuation, and parse-failure persistence. Each execution captures
+  `{ projectId, workspaceReady, generation }`; every async boundary rechecks that session, and
+  the controller rechecks the current workspace project ID inside the same functional commit
+  updater before writing assets, objects, parse state, or selection. Canvas, top Rail, context
+  menu, and other import entry points share this one execution path; selection is delegated to
+  the existing project-scoped selection controller rather than duplicated here. Same-project
+  rerenders keep an import alive, while project/readiness transitions fail closed. IndexedDB
+  writes cannot be physically cancelled by this boundary, so a stale completed blob may remain
+  orphaned; object-level Blob garbage collection is intentionally outside this phase.
 - `src/domain/morpho/` owns product-domain types, the generated case-study fixture, deterministic domain actions, import helpers, generation helpers, and queries.
 - `src/infrastructure/persistence/` owns browser localStorage project catalog and workspace access.
 - `src/infrastructure/assets/` owns browser IndexedDB Blob storage and asset-save workflow.
@@ -137,8 +150,9 @@ Implemented server-side state and deployment:
 
 - Supabase provides account identity, closed-test qualification, AI daily quota, and the Server
   Turn/Request/External Action Journals through narrow `SECURITY DEFINER` RPCs. Forward-only SQL
-  lives in `supabase/migrations/`. The checked-in Stage 4 cleanup Migration would remove the retired
-  B Lease table and RPCs; it remains unapplied until the separately authorized Phase C gate.
+  lives in `supabase/migrations/`. Phase C cleanup is complete: the retired Runtime B lease table
+  and RPC contract have been removed. Historical migration names and acceptance evidence remain
+  only in the phase ledger and recovery records.
 - Supabase stores no project content. Projects, canvases, files, images, and backups stay in browser localStorage and IndexedDB.
 - Vercel is the current production deployment path (`npm run build`). Cloudflare Workers via `@opennextjs/cloudflare` and `wrangler` is a retained opt-in backup path behind the `cf:*` scripts.
 - `.github/workflows/quality.yml` runs lint, typecheck, test, and build on `main` and pull requests, without provider keys or deployment.
@@ -462,6 +476,20 @@ Parseable imported files are extracted locally after import:
 - text-layer PDFs are extracted with `pdfjs-dist`;
 - PPTX slide text is extracted with `fflate`;
 - unsupported or failed parses leave the original file object imported and marked with a parse error.
+
+Import execution boundary:
+
+- `workspaceImportExecution.ts` is the single semantic path for image/file, URL, text, batch, and
+  mixed imports. It preserves successful assets when another asset fails and records an explicit
+  failure message for each failed file.
+- `useWorkspaceImportController.ts` owns browser services and the project/readiness session
+  guard. Its functional workspace commit boundary checks both the session identity and the
+  current workspace project before each mutation, including document parsing, extract-asset
+  persistence, and parse-status updates.
+- `WorkspaceClient.tsx` only wires entry-point events, canvas/viewport positions, and the existing
+  selection port. It does not aggregate `AssetRecord`s, save Blobs, or orchestrate parse/extract
+  continuation. A stale physical Blob write may be left behind after a project switch; no new
+  cleanup or garbage-collection semantics are inferred from that outcome.
 
 Asset panel and search are real workspace queries:
 
