@@ -14,7 +14,6 @@ import {
 import type {
   AiTaskMode,
   AiWorkIntent,
-  AssetRecord,
   CanvasView,
   ContinuityManualState,
   MorphoObject
@@ -37,8 +36,6 @@ import {
   type StageRegionRecord
 } from "@/domain/morpho/stageRegions";
 import { collectPrimaryCanvasTrace } from "./tldraw/primaryCanvasTrace";
-import { createDocumentExtractFile, parseDocumentFile, shouldAttemptDocumentParse } from "@/domain/morpho/documentParsing";
-import { importAssetBackedObjects, importTextObject, importUrlObject } from "@/domain/morpho/imports";
 import {
   applyConceptDirectionProposal,
   applyDesignDefinitionProposal,
@@ -59,7 +56,6 @@ import type { ConceptDirectionProposal, OperationRecord } from "@/domain/operati
 import { normalizeResearchItems } from "@/domain/operations/researchItems";
 import {
   archiveVisualBranch,
-  attachDocumentExtractToFileObject,
   assignImageToVisualBranch,
   buildKeyConclusionDraftFromResearchSource,
   createKeyConclusion,
@@ -72,8 +68,6 @@ import {
   eliminateDirection,
   createVisualBranch,
   hideObjects,
-  markFileObjectParseFailed,
-  markFileObjectParsing,
   removeImageFromVisualBranch,
   renameVisualBranch,
   reorderCanvasInstances,
@@ -113,7 +107,6 @@ import { getFloatingMenuPlacement, type SelectionToolbarPlacement } from "./sele
 import { resolveWorkspaceShortcut } from "./workspaceShortcuts";
 import type { DeliveryReferenceReaderTransition } from "./deliveryPreparationUi";
 import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
-import { readImageBlobDimensions, saveBlobAsLocalAsset } from "@/infrastructure/assets/localAssetWorkflow";
 import {
   getAvailableAiWorkIntents,
   recommendAiTaskMode,
@@ -130,6 +123,7 @@ import {
   useWorkspaceSelectionNavigationController
 } from "./useWorkspaceSelectionNavigationController";
 import { useWorkspaceObjectHistoryController } from "./useWorkspaceObjectHistoryController";
+import { useWorkspaceImportController } from "./useWorkspaceImportController";
 import { resolveComparisonWritebackSourceObjectIds } from "./comparisonDecision";
 import {
   applyResearchExtractionSelection,
@@ -177,7 +171,7 @@ import type { PendingImageGenerationSlot } from "./pendingImageGenerationSlots";
 import type {
   ImageTaskStatus
 } from "./workspaceVisualGenerationExecution";
-import type { CanvasImportRequest, FocusArea } from "./tldraw/MorphoCanvas";
+import type { FocusArea } from "./tldraw/MorphoCanvas";
 
 const MorphoCanvas = dynamic(() => import("./tldraw/MorphoCanvas").then((mod) => mod.MorphoCanvas), {
   ssr: false,
@@ -421,6 +415,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     () => commitWorkspaceNow((current) => ({ workspace: current, value: current })),
     [commitWorkspaceNow]
   );
+  const { importRequest } = useWorkspaceImportController({
+    projectId,
+    workspaceReady,
+    commitWorkspace: commitWorkspaceNow,
+    selectObjects: requestCanvasSelection
+  });
   const assetUrls = useWorkspaceAssetUrls(workspace.assets);
   const railImportInputRef = useRef<HTMLInputElement | null>(null);
   const pendingImportPositionRef = useRef<{ x: number; y: number } | null>(null);
@@ -768,94 +768,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     observeCanvasView(view);
   }, [observeCanvasView]);
 
-  const handleImportRequest = useCallback(
-    async (request: CanvasImportRequest) => {
-      const successfulAssets: AssetRecord[] = [];
-      const successfulAssetFiles: Array<{ asset: AssetRecord; file: File }> = [];
-      const failureReasons: string[] = [];
-
-      for (const file of request.files ?? []) {
-        const sourceType = file.type.startsWith("image/") ? "originalImage" : "originalFile";
-        const saved = await saveBlobAsLocalAsset(indexedDbBlobStore, file, sourceType, {
-          readImageDimensions: readImageBlobDimensions
-        });
-        if (saved.status === "ok") {
-          successfulAssets.push(saved.asset);
-          successfulAssetFiles.push({ asset: saved.asset, file });
-        } else {
-          failureReasons.push(`${file.name}: ${saved.reason}`);
-        }
-      }
-
-      let nextSelection: string[] = [];
-      let parseTargets: Array<{ objectId: string; file: File }> = [];
-      setWorkspace((current) => {
-        let next = current;
-
-        if (successfulAssets.length > 0) {
-          const imported = importAssetBackedObjects(next, {
-            assets: successfulAssets,
-            position: request.position
-          });
-          next = imported.workspace;
-          nextSelection = imported.objectIds;
-          const fileByAssetId = new Map(successfulAssetFiles.map((entry) => [entry.asset.id, entry.file]));
-          parseTargets = imported.objectIds
-            .map((objectId) => next.objects[objectId])
-            .filter((object) => object?.type === "file")
-            .map((object) => ({
-              objectId: object.id,
-              file: object.assetId ? fileByAssetId.get(object.assetId) : undefined
-            }))
-            .filter((target): target is { objectId: string; file: File } => Boolean(target.file));
-        } else if (request.url) {
-          const imported = importUrlObject(next, {
-            url: request.url,
-            position: request.position
-          });
-          next = imported.workspace;
-          nextSelection = imported.objectIds;
-        } else if (request.text) {
-          const imported = importTextObject(next, {
-            text: request.text,
-            position: request.position
-          });
-          next = imported.workspace;
-          nextSelection = imported.objectIds;
-        }
-
-        if (failureReasons.length === 0) {
-          return next;
-        }
-
-        return {
-          ...next,
-          ai: {
-            ...next.ai,
-            messages: [
-              ...next.ai.messages,
-              {
-                id: `ai-import-error-${Date.now()}`,
-                role: "assistant",
-                body: `有 ${failureReasons.length} 个资产没有导入成功：${failureReasons.join("；")}`,
-                status: "failed",
-                createdAt: new Date().toISOString()
-              }
-            ]
-          }
-        };
-      });
-
-      if (nextSelection.length > 0) {
-        requestCanvasSelection(nextSelection);
-      }
-
-      if (parseTargets.length > 0) {
-        void parseImportedDocuments(parseTargets, setWorkspace);
-      }
-    },
-    [requestCanvasSelection, setWorkspace]
-  );
   const handleRailAddToCanvas = useCallback(() => {
     railImportInputRef.current?.click();
   }, []);
@@ -872,12 +784,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       };
       pendingImportPositionRef.current = null;
 
-      void handleImportRequest({
+      void importRequest({
         files: selectedFiles,
         position
       });
     },
-    [handleImportRequest, workspace.canvas.view.x, workspace.canvas.view.y]
+    [importRequest, workspace.canvas.view.x, workspace.canvas.view.y]
   );
 
   const handleContextMenuPaste = useCallback(
@@ -897,14 +809,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         showWorkspaceNotice("剪贴板里没有可粘贴的图片、链接或文本", 2000);
         return;
       }
-      await handleImportRequest({
+      await importRequest({
         position,
         files: result.files,
         url: result.url,
         text: result.text
       });
     },
-    [getLatestCanvasView, handleImportRequest, showWorkspaceNotice]
+    [getLatestCanvasView, importRequest, showWorkspaceNotice]
   );
 
   const handleContextMenuImportFiles = useCallback((pagePosition?: { x: number; y: number }) => {
@@ -2879,7 +2791,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onStageRegionsChange={handleStageRegionsChange}
         onViewChange={handleCanvasViewChange}
         onLiveViewChange={handleCanvasLiveViewChange}
-        onImportRequest={handleImportRequest}
+        onImportRequest={importRequest}
         onContextMenuRequest={(request) => {
           openCanvasContextMenu({
             x: request.x,
@@ -2982,7 +2894,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             : undefined
         }
         onImportFiles={(files) =>
-          handleImportRequest({
+          importRequest({
             files,
             position: {
               x: workspace.canvas.view.x + 160,
@@ -3402,50 +3314,6 @@ function getProposalDraftCanvasPosition(
   fallback: { x: number; y: number }
 ): { x: number; y: number } {
   return workspace.canvas.instances.find((instance) => instance.objectId === proposalId)?.position ?? fallback;
-}
-
-async function parseImportedDocuments(
-  targets: Array<{ objectId: string; file: File }>,
-  setWorkspace: (updater: (current: MorphoWorkspace) => MorphoWorkspace) => void
-): Promise<void> {
-  for (const target of targets) {
-    if (!shouldAttemptDocumentParse(target.file)) {
-      continue;
-    }
-
-    setWorkspace((current) => markFileObjectParsing(current, target.objectId));
-    const parsed = await parseDocumentFile(target.file);
-    if (parsed.status === "failed") {
-      setWorkspace((current) =>
-        markFileObjectParseFailed(current, {
-          fileObjectId: target.objectId,
-          reason: parsed.reason
-        })
-      );
-      continue;
-    }
-
-    const extractFile = createDocumentExtractFile(target.file, parsed.text);
-    const saved = await saveBlobAsLocalAsset(indexedDbBlobStore, extractFile, "documentExtract");
-    if (saved.status === "failed") {
-      setWorkspace((current) =>
-        markFileObjectParseFailed(current, {
-          fileObjectId: target.objectId,
-          reason: saved.reason
-        })
-      );
-      continue;
-    }
-
-    setWorkspace((current) =>
-      attachDocumentExtractToFileObject(current, {
-        fileObjectId: target.objectId,
-        extractAsset: saved.asset,
-        extractedCharCount: parsed.text.length,
-        extractedPageCount: parsed.pageCount
-      })
-    );
-  }
 }
 
 function resolveConceptDirectionApplicationScope(
