@@ -192,14 +192,15 @@ Important module boundaries:
   include or restore pending confirmation state. `WorkspaceClient.tsx` now only composes the
   controllers and dispatches Compare versus generic confirmation callbacks. No schema,
   persistence format, Provider, A+ protocol, or visible confirmation-card contract changed.
-- WorkspaceClient decomposition Phase 6-G Final Audit: COMPLETE. The final audit verified that
-  the Phase 1–6-F controllers and React-free cores are the active authorities, that the page keeps
-  only composition, thin dispatch, and page-local UI behavior, and that project/readiness sessions
-  plus functional current-workspace commits protect all asynchronous write paths. The audit fixed
-  the Document Reader recovery boundary so a stale Project A reader cannot update Project B, while
-  preserving same-project rerenders and the existing Reader contract. Phase 1–6-F are closed;
-  there is no planned Phase 6-H or 6-I decomposition. Future work must come from a real new
-  product requirement or a reproducible regression.
+- WorkspaceClient decomposition Phase 6-G Final Audit: COMPLETE. The audit verified that the
+  Phase 1–6-F controllers and React-free cores are the active authorities, that the page keeps only
+  composition, thin dispatch, and page-local UI behavior, and that project/readiness sessions plus
+  functional current-workspace commits protect asynchronous write paths. The Document Reader
+  recovery boundary, Delivery Preparation/Output and Project Bundle operations, Surface/Selection/
+  History callbacks, and canvas Proposal rejection routing all fail closed across A/B/A2 transitions;
+  same-project rerenders remain valid. Phase 1–6-G are closed; there is no planned Phase 6-H or 6-I
+  decomposition. Future work must come from a real new product requirement or a reproducible
+  regression.
 - `src/domain/morpho/` owns product-domain types, the generated case-study fixture, deterministic domain actions, import helpers, generation helpers, and queries.
 - `src/infrastructure/persistence/` owns browser localStorage project catalog and workspace access.
 - `src/infrastructure/assets/` owns browser IndexedDB Blob storage and asset-save workflow.
