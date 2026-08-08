@@ -1673,6 +1673,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     extractFragment: handleExtractDocumentFragment,
     viewCreatedFragment: handleViewCreatedDocumentFragmentFromReader
   } = useDocumentReaderController({
+    projectId,
+    workspaceReady,
     workspace,
     updateWorkspace: setWorkspace,
     blobStore: indexedDbBlobStore,

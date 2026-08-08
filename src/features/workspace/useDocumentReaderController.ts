@@ -1,6 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction
+} from "react";
 
 import type { AssetRecord, MorphoWorkspace } from "@/domain/morpho/types";
 import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
@@ -43,6 +52,8 @@ export type DocumentReaderControllerServices = {
 };
 
 export type UseDocumentReaderControllerInput = {
+  projectId: string;
+  workspaceReady: boolean;
   workspace: MorphoWorkspace;
   updateWorkspace: Dispatch<SetStateAction<MorphoWorkspace>>;
   blobStore?: BlobStore;
@@ -75,6 +86,12 @@ type DocumentSourcePreviewLease = {
   released: boolean;
 };
 
+type DocumentReaderSession = Readonly<{
+  projectId: string;
+  workspaceReady: boolean;
+  generation: symbol;
+}>;
+
 function releasePreviewLease(lease: DocumentSourcePreviewLease | null): void {
   if (!lease || lease.released) {
     return;
@@ -85,18 +102,30 @@ function releasePreviewLease(lease: DocumentSourcePreviewLease | null): void {
 }
 
 export function useDocumentReaderController({
+  projectId,
+  workspaceReady,
   workspace,
   updateWorkspace,
   blobStore = indexedDbBlobStore,
   services = defaultServices,
   onViewCreatedFragment
 }: UseDocumentReaderControllerInput): DocumentReaderController {
+  const session = useMemo<DocumentReaderSession>(
+    () => ({
+      projectId,
+      workspaceReady,
+      generation: Symbol("document-reader-session")
+    }),
+    [projectId, workspaceReady]
+  );
   const [state, setState] = useState<DocumentReaderControllerState | null>(null);
   const stateRef = useRef<DocumentReaderControllerState | null>(null);
   const requestIdRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
   const ownedSourcePreviewRef = useRef<DocumentSourcePreviewLease | null>(null);
   const mountedRef = useRef(true);
+  const currentSessionRef = useRef<DocumentReaderSession>(session);
+  const latestWorkspaceRef = useRef<MorphoWorkspace>(workspace);
 
   const replaceState = useCallback((next: DocumentReaderControllerState | null) => {
     stateRef.current = next;
@@ -135,13 +164,37 @@ export function useDocumentReaderController({
     [releaseOwnedSourcePreview, replaceState]
   );
 
+  const isCurrentSession = useCallback((expectedSession: DocumentReaderSession): boolean => {
+    const currentSession = currentSessionRef.current;
+    return (
+      currentSession === expectedSession &&
+      expectedSession.workspaceReady &&
+      latestWorkspaceRef.current.project.id === expectedSession.projectId
+    );
+  }, []);
+
+  useLayoutEffect(() => {
+    const sessionChanged = currentSessionRef.current !== session;
+    currentSessionRef.current = session;
+    latestWorkspaceRef.current = workspace;
+    if (sessionChanged || !session.workspaceReady) {
+      invalidateReader(true);
+    }
+  }, [invalidateReader, session, workspace]);
+
   const close = useCallback(() => {
     invalidateReader(true);
   }, [invalidateReader]);
 
   const isCurrentRequest = useCallback(
-    (fileObjectId: string, requestId: number, abortController: AbortController) =>
+    (
+      expectedSession: DocumentReaderSession,
+      fileObjectId: string,
+      requestId: number,
+      abortController: AbortController
+    ) =>
       mountedRef.current &&
+      isCurrentSession(expectedSession) &&
       abortControllerRef.current === abortController &&
       shouldAcceptDocumentReaderLoadResult(
         {
@@ -151,11 +204,16 @@ export function useDocumentReaderController({
         { fileObjectId, requestId }
       ) &&
       requestIdRef.current === requestId,
-    []
+    [isCurrentSession]
   );
 
   const open = useCallback(
     (fileObjectId: string, initialLocation?: DocumentReaderInitialLocation | null) => {
+      const expectedSession = session;
+      if (!isCurrentSession(expectedSession)) {
+        return;
+      }
+
       abortControllerRef.current?.abort();
       abortControllerRef.current = null;
       releaseOwnedSourcePreview();
@@ -173,6 +231,17 @@ export function useDocumentReaderController({
       });
 
       const workspaceSnapshot = workspace;
+      const applySessionWorkspaceUpdate = (updater: (current: MorphoWorkspace) => MorphoWorkspace): void => {
+        if (!isCurrentSession(expectedSession)) {
+          return;
+        }
+        updateWorkspace((current) => {
+          if (!isCurrentSession(expectedSession) || current.project.id !== expectedSession.projectId) {
+            return current;
+          }
+          return updater(current);
+        });
+      };
       let sourcePreviewLease: DocumentSourcePreviewLease | null = null;
       const sourcePreviewPromise = services
         .loadDocumentSourcePreview(
@@ -188,7 +257,7 @@ export function useDocumentReaderController({
               released: false
             };
             sourcePreviewLease = lease;
-            if (isCurrentRequest(fileObjectId, requestId, abortController)) {
+            if (isCurrentRequest(expectedSession, fileObjectId, requestId, abortController)) {
               ownedSourcePreviewRef.current = lease;
             } else {
               releasePreviewLease(lease);
@@ -203,12 +272,12 @@ export function useDocumentReaderController({
           fileObjectId,
           blobStore,
           abortController.signal,
-          updateWorkspace
+          applySessionWorkspaceUpdate
         ),
         sourcePreviewPromise
       ])
         .then(([result, sourcePreview]) => {
-          if (!isCurrentRequest(fileObjectId, requestId, abortController)) {
+          if (!isCurrentRequest(expectedSession, fileObjectId, requestId, abortController)) {
             releasePreviewLease(sourcePreviewLease);
             return;
           }
@@ -251,7 +320,7 @@ export function useDocumentReaderController({
           if (error instanceof DOMException && error.name === "AbortError") {
             return;
           }
-          if (!isCurrentRequest(fileObjectId, requestId, abortController)) {
+          if (!isCurrentRequest(expectedSession, fileObjectId, requestId, abortController)) {
             return;
           }
 
@@ -270,7 +339,18 @@ export function useDocumentReaderController({
           );
         });
     },
-    [blobStore, isCurrentRequest, releaseOwnedSourcePreview, replaceState, services, updateState, updateWorkspace, workspace]
+    [
+      blobStore,
+      isCurrentRequest,
+      isCurrentSession,
+      releaseOwnedSourcePreview,
+      replaceState,
+      services,
+      session,
+      updateState,
+      updateWorkspace,
+      workspace
+    ]
   );
 
   const extractFragment = useCallback(
@@ -280,11 +360,20 @@ export function useDocumentReaderController({
       summary: string;
     }): DocumentReaderExtractFragmentResult => {
       const reader = stateRef.current;
-      if (!reader || reader.status !== "loaded") {
+      if (!isCurrentSession(session) || !reader || reader.status !== "loaded") {
         return { status: "blocked", reason: "Document reader is not ready." };
       }
 
       const result = commitWorkspaceStateNow<DocumentReaderExtractFragmentResult>(updateWorkspace, (current) => {
+        if (!isCurrentSession(session) || current.project.id !== session.projectId) {
+          return {
+            workspace: current,
+            value: {
+              status: "blocked" as const,
+              reason: "Document reader session is no longer current."
+            }
+          };
+        }
         const file = current.objects[reader.fileObjectId];
         if (!file || file.type !== "file") {
           return {
@@ -349,7 +438,7 @@ export function useDocumentReaderController({
       });
       return result;
     },
-    [updateState, updateWorkspace]
+    [isCurrentSession, session, updateState, updateWorkspace]
   );
 
   const viewCreatedFragment = useCallback(

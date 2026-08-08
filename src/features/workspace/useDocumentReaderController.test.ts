@@ -472,6 +472,53 @@ describe("useDocumentReaderController", () => {
     expect(harness.current().state).toMatchObject({ status: "loaded", text: SOURCE_TEXT });
   });
 
+  it("drops a stale Project A recovery after switching to Project B", async () => {
+    const workspaceA = createReaderWorkspace("project-a", "file-a");
+    const workspaceB = createReaderWorkspace("project-b", "file-a");
+    const extraction = deferred<DocumentReaderLoadResult>();
+    let applyRecoveryUpdate: ((updater: (current: MorphoWorkspace) => MorphoWorkspace) => void) | undefined;
+    const services = createServices({
+      loadExtract: vi.fn(async (_snapshot, _fileObjectId, _store, _signal, applyWorkspaceUpdate) => {
+        applyRecoveryUpdate = applyWorkspaceUpdate;
+        return extraction.promise;
+      }),
+      loadPreview: vi.fn(async () => readyPreview("file-a"))
+    });
+    const harness = await renderController({ initialWorkspace: workspaceA, services });
+
+    act(() => harness.current().open("file-a"));
+    expect(applyRecoveryUpdate).toBeDefined();
+
+    await act(async () => {
+      harness.switchProject({
+        initialWorkspace: workspaceB,
+        projectId: "project-b",
+        workspaceReady: true,
+        services
+      });
+      await settleAsyncWork();
+    });
+
+    expect(harness.current().state).toBeNull();
+    act(() => {
+      applyRecoveryUpdate?.((current) => ({
+        ...current,
+        project: { ...current.project, title: "stale Project A recovery" }
+      }));
+    });
+    expect(harness.workspace().project.id).toBe("project-b");
+    expect(harness.workspace().project.title).toBe(workspaceB.project.title);
+
+    await act(async () => {
+      extraction.resolve(loadedResult(workspaceA, "file-a", "stale A text"));
+      await settleAsyncWork();
+    });
+
+    expect(harness.current().state).toBeNull();
+    expect(harness.workspace().project.id).toBe("project-b");
+    expect(harness.workspace().project.title).toBe(workspaceB.project.title);
+  });
+
   it("closes and revokes before notifying the page to view a created fragment", async () => {
     const workspace = createReaderWorkspace("project-view", "file-a");
     const onViewCreatedFragment = vi.fn();
@@ -499,25 +546,38 @@ describe("useDocumentReaderController", () => {
   });
 });
 
-type RenderControllerInput = Omit<UseDocumentReaderControllerInput, "workspace" | "updateWorkspace"> & {
+type RenderControllerInput = Omit<
+  UseDocumentReaderControllerInput,
+  "projectId" | "workspaceReady" | "workspace" | "updateWorkspace"
+> & {
   initialWorkspace: MorphoWorkspace;
+  projectId?: string;
+  workspaceReady?: boolean;
 };
 
 async function renderController(initialInput: RenderControllerInput) {
   let controller: DocumentReaderController | null = null;
   let workspace = initialInput.initialWorkspace;
   let updateWorkspace: Dispatch<SetStateAction<MorphoWorkspace>> | null = null;
+  let switchProject: ((nextInput: RenderControllerInput) => void) | null = null;
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   roots.push(root);
 
   function Harness({ input }: { input: RenderControllerInput }) {
+    const [currentInput, setCurrentInput] = useState(input);
     const [currentWorkspace, setCurrentWorkspace] = useState(input.initialWorkspace);
     workspace = currentWorkspace;
     updateWorkspace = setCurrentWorkspace;
+    switchProject = (nextInput) => {
+      setCurrentInput(nextInput);
+      setCurrentWorkspace(nextInput.initialWorkspace);
+    };
     controller = useDocumentReaderController({
-      ...input,
+      ...currentInput,
+      projectId: currentInput.projectId ?? currentWorkspace.project.id,
+      workspaceReady: currentInput.workspaceReady ?? true,
       workspace: currentWorkspace,
       updateWorkspace: setCurrentWorkspace
     });
@@ -541,6 +601,12 @@ async function renderController(initialInput: RenderControllerInput) {
         throw new Error("Workspace setter is unavailable.");
       }
       updateWorkspace(action);
+    },
+    switchProject: (nextInput: RenderControllerInput) => {
+      if (!switchProject) {
+        throw new Error("Project switcher is unavailable.");
+      }
+      switchProject(nextInput);
     },
     unmount: async () => {
       const index = roots.indexOf(root);
