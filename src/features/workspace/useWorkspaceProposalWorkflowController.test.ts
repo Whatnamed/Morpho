@@ -136,6 +136,34 @@ describe("useWorkspaceProposalWorkflowController", () => {
     expect(harness.closedProposalDetailIf).toEqual([["proposal-1"]]);
   });
 
+  it("rejects a batch of canvas proposals through the controller-owned workflow", async () => {
+    const first = createProposalWorkspace("researchAnalysis");
+    const second = recordResearchAnalysisProposal(first, {
+      proposalId: "proposal-2",
+      operationId: "operation-research-2",
+      workIntent: "discussion",
+      title: "第二个研究草案",
+      summary: "第二个研究摘要",
+      findings: ["第二个发现"],
+      opportunities: [],
+      constraints: [],
+      openQuestions: [],
+      sourceObjectIds: [],
+      citations: []
+    }).workspace;
+    const harness = createHarness(second);
+    harness.selected = ["proposal-1", "proposal-2", "other-object"];
+    const rendered = await renderController(createInput(harness));
+
+    rendered.current().rejectProposals(["proposal-1", "proposal-2"]);
+    await rendered.rerender(createInput(harness));
+
+    expect(harness.workspace.artifactProposals["proposal-1"]?.status).toBe("rejected");
+    expect(harness.workspace.artifactProposals["proposal-2"]?.status).toBe("rejected");
+    expect(harness.selected).toEqual(["other-object"]);
+    expect(harness.closedProposalDetailIf).toEqual([["proposal-1", "proposal-2"]]);
+  });
+
   it("saves each draft type while keeping it pending and active", async () => {
     const cases = [
       {

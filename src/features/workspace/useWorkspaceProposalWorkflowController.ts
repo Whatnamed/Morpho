@@ -59,6 +59,7 @@ export type WorkspaceProposalWorkflowController = Readonly<{
   applyActiveProposal: (allowSourceChanged?: boolean) => void;
   applyProposal: (proposalId: string, options?: ProposalApplyWorkflowOptions) => void;
   rejectProposal: (proposalId: string, rejectedReason?: string) => void;
+  rejectProposals: (proposalIds: string[], rejectedReason?: string) => void;
   saveResearchDraft: (proposalId: string, input: ResearchProposalDraftInput) => void;
   saveDesignDefinitionDraft: (proposalId: string, input: DesignDefinitionProposalDraftInput) => void;
   saveConceptDirectionDraft: (proposalId: string, input: ConceptDirectionProposalDraftInput) => void;
@@ -230,30 +231,50 @@ export function useWorkspaceProposalWorkflowController({
     [activeProposalState, applyProposal, session]
   );
 
-  const rejectProposal = useCallback(
-    (proposalId: string, rejectedReason = "用户明确放弃当前草案。") => {
+  const rejectProposals = useCallback(
+    (proposalIds: string[], rejectedReason = "用户明确放弃当前草案。") => {
       if (!isCurrentSession(session)) {
         return;
       }
 
-      const result = commitWorkflow(session, (current) => {
-        const workflowResult = rejectArtifactProposalWorkflow(current, proposalId, rejectedReason);
+      const uniqueProposalIds = [...new Set(proposalIds)];
+      if (uniqueProposalIds.length === 0) {
+        return;
+      }
+
+      const rejectedIds = commitWorkflow(session, (current) => {
+        let nextWorkspace = current;
+        const committedIds: string[] = [];
+        for (const proposalId of uniqueProposalIds) {
+          const workflowResult = rejectArtifactProposalWorkflow(nextWorkspace, proposalId, rejectedReason);
+          if (workflowResult.status === "rejected") {
+            nextWorkspace = workflowResult.workspace;
+            committedIds.push(proposalId);
+          }
+        }
         return {
-          workspace: workflowResult.workspace,
-          value: workflowResult
+          workspace: nextWorkspace,
+          value: committedIds
         };
       });
-      if (!result || result.status !== "rejected") {
+      if (!rejectedIds || rejectedIds.length === 0) {
         return;
       }
 
       setActiveProposalState((current) =>
-        current?.session === session && current.proposalId === proposalId ? null : current
+        current?.session === session && rejectedIds.includes(current.proposalId) ? null : current
       );
-      closeProposalDetailIf([proposalId]);
-      setSelectedObjectIds((current) => current.filter((selectedId) => selectedId !== proposalId));
+      closeProposalDetailIf(rejectedIds);
+      setSelectedObjectIds((current) => current.filter((selectedId) => !rejectedIds.includes(selectedId)));
     },
     [closeProposalDetailIf, commitWorkflow, isCurrentSession, session, setSelectedObjectIds]
+  );
+
+  const rejectProposal = useCallback(
+    (proposalId: string, rejectedReason = "用户明确放弃当前草案。") => {
+      rejectProposals([proposalId], rejectedReason);
+    },
+    [rejectProposals]
   );
 
   const saveDraft = useCallback(
@@ -354,6 +375,7 @@ export function useWorkspaceProposalWorkflowController({
     applyActiveProposal,
     applyProposal,
     rejectProposal,
+    rejectProposals,
     saveResearchDraft,
     saveDesignDefinitionDraft,
     saveConceptDirectionDraft,

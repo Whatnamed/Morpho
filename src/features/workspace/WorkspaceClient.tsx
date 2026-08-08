@@ -134,7 +134,6 @@ import {
 import { commitWorkspaceStateNow } from "./workspaceCommitBoundary";
 import { useWorkspaceAgentRuntimeController } from "./useWorkspaceAgentRuntimeController";
 import { useWorkspaceProposalWorkflowController } from "./useWorkspaceProposalWorkflowController";
-import { rejectArtifactProposalWorkflow } from "./workspaceProposalWorkflow";
 import {
   useWorkspaceVisualGenerationController
 } from "./useWorkspaceVisualGenerationController";
@@ -602,6 +601,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     applyActiveProposal,
     applyProposal,
     rejectProposal,
+    rejectProposals,
     saveResearchDraft,
     saveDesignDefinitionDraft,
     saveConceptDirectionDraft,
@@ -1414,21 +1414,28 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const objectIds = selectedObjects.filter((object) => object.type !== "proposalDraft").map((object) => object.id);
     if (objectIds.length > 0) {
       pushObjectOperationUndo();
+      setWorkspace((current) => hideObjects(current, objectIds));
     }
-    setWorkspace((current) => {
-      const hidden = objectIds.length > 0 ? hideObjects(current, objectIds) : current;
-      return proposalObjects.reduce(
-        (next, object) => rejectArtifactProposalWorkflow(next, object.proposalId, "用户从画布隐藏并放弃当前草案。").workspace,
-        hidden
-      );
-    });
+    rejectProposals(
+      proposalObjects.map((object) => object.proposalId),
+      "用户从画布隐藏并放弃当前草案。"
+    );
     const removedIds = [...objectIds, ...proposalObjects.map((object) => object.id)];
     setSelectedObjectIds((current) => current.filter((selectedId) => !removedIds.includes(selectedId)));
     setLocalEditObjectId((current) => (current && removedIds.includes(current) ? null : current));
     clearActiveProposalIf(removedIds);
     closeProposalDetailIf(removedIds);
     closeCanvasContextMenu();
-  }, [clearActiveProposalIf, closeCanvasContextMenu, closeProposalDetailIf, pushObjectOperationUndo, selectedObjects, setSelectedObjectIds, setWorkspace]);
+  }, [
+    clearActiveProposalIf,
+    closeCanvasContextMenu,
+    closeProposalDetailIf,
+    pushObjectOperationUndo,
+    rejectProposals,
+    selectedObjects,
+    setSelectedObjectIds,
+    setWorkspace
+  ]);
 
   const handleRestoreObject = useCallback(
     (objectId: string) => {
@@ -1448,20 +1455,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const objectIds = selectedObjects.filter((object) => object.type !== "proposalDraft").map((object) => object.id);
     if (objectIds.length > 0) {
       pushObjectOperationUndo();
-    }
-    setWorkspace((current) => {
-      const deleted =
-        objectIds.length > 0
-          ? deleteObjects(current, objectIds, {
-              confirmed: true,
-              reason: "用户在对象详情栏直接删除该对象。"
-            }).workspace
-          : current;
-      return proposalObjects.reduce(
-        (next, object) => rejectArtifactProposalWorkflow(next, object.proposalId, "用户从画布删除并放弃当前草案。").workspace,
-        deleted
+      setWorkspace((current) =>
+        deleteObjects(current, objectIds, {
+          confirmed: true,
+          reason: "用户在对象详情栏直接删除该对象。"
+        }).workspace
       );
-    });
+    }
+    rejectProposals(
+      proposalObjects.map((object) => object.proposalId),
+      "用户从画布删除并放弃当前草案。"
+    );
     const removedIds = [...objectIds, ...proposalObjects.map((object) => object.id)];
     setSelectedObjectIds((current) => current.filter((selectedId) => !removedIds.includes(selectedId)));
     setLocalEditObjectId((current) => (current && removedIds.includes(current) ? null : current));
@@ -1481,6 +1485,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     closeProposalDetailIf,
     pendingConfirmation,
     pushObjectOperationUndo,
+    rejectProposals,
     selectedObjects,
     setSelectedObjectIds,
     setWorkspace
