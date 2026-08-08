@@ -6,6 +6,7 @@ import {
   startTransition,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState
@@ -51,11 +52,8 @@ import {
   clearDefaultReference,
   clearVisualReviewMark,
   collectDefaultReferenceReviewTargets,
-  eliminateDirection,
-  createVisualBranch,
   hideObjects,
   removeImageFromVisualBranch,
-  renameVisualBranch,
   reorderCanvasInstances,
   restoreObject,
   restoreVisualBranch,
@@ -132,6 +130,15 @@ import {
   type MorphoAgentTurnMode
 } from "./morphoAgent";
 import { commitWorkspaceStateNow } from "./workspaceCommitBoundary";
+import {
+  applyWorkspaceTextPromptIfCurrent,
+  createWorkspaceTextPromptSession,
+  isWorkspaceTextPromptSessionCurrent,
+  type WorkspaceTextPrompt,
+  type WorkspaceTextPromptCommitResult,
+  type WorkspaceTextPromptSession,
+  type WorkspaceTextPromptState
+} from "./workspaceTextPrompt";
 import { useWorkspaceAgentRuntimeController } from "./useWorkspaceAgentRuntimeController";
 import { useWorkspaceProposalWorkflowController } from "./useWorkspaceProposalWorkflowController";
 import {
@@ -213,35 +220,6 @@ type ObjectOperationUndoEntry = {
   selectedObjectIds: string[];
   localEditObjectId: string | null;
 };
-
-type WorkspaceTextPrompt =
-  | {
-      kind: "createVisualBranch";
-      directionId: string;
-      title: string;
-      body: string;
-      label: string;
-      initialValue: string;
-      allowEmpty?: false;
-    }
-  | {
-      kind: "renameVisualBranch";
-      branchId: string;
-      title: string;
-      body: string;
-      label: string;
-      initialValue: string;
-      allowEmpty?: false;
-    }
-  | {
-      kind: "eliminateDirection";
-      directionId: string;
-      title: string;
-      body: string;
-      label: string;
-      initialValue: string;
-      allowEmpty: true;
-    };
 
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const router = useRouter();
@@ -363,7 +341,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     workspace,
     workspaceReady
   });
-  const [textPrompt, setTextPrompt] = useState<WorkspaceTextPrompt | null>(null);
+  const [textPrompt, setTextPrompt] = useState<WorkspaceTextPromptState | null>(null);
+  const textPromptSession = useMemo<WorkspaceTextPromptSession>(
+    () => createWorkspaceTextPromptSession(projectId, workspace.project.id, workspaceReady),
+    [projectId, workspace.project.id, workspaceReady]
+  );
+  const activeTextPromptSessionRef = useRef(textPromptSession);
+  useLayoutEffect(() => {
+    if (activeTextPromptSessionRef.current === textPromptSession) {
+      return;
+    }
+
+    activeTextPromptSessionRef.current = textPromptSession;
+    setTextPrompt((current) => (current?.session === textPromptSession ? current : null));
+  }, [textPromptSession]);
   const [detailHoverObjectId, setDetailHoverObjectId] = useState<string | null>(null);
   const [traceStartObjectId, setTraceStartObjectId] = useState<string | null>(null);
   const [canvasTraceMode, setCanvasTraceMode] = useState<"direct" | "chain">("direct");
@@ -1169,82 +1160,116 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   }, [handleWorkIntentChange, selectedObjects]);
 
   const handleCreateVisualBranch = useCallback(() => {
+    if (!isWorkspaceTextPromptSessionCurrent(textPromptSession, activeTextPromptSessionRef.current, workspace)) {
+      return;
+    }
     const target = selectedObjects.find((object) => object.type === "conceptDirection");
     if (!target) {
       return;
     }
     setTextPrompt({
-      kind: "createVisualBranch",
-      directionId: target.id,
-      title: "新视觉分支",
-      body: "为当前方向创建一条可继续发展的视觉路线。创建分支不会移动、删除或改写现有图片。",
-      label: "分支名称",
-      initialValue: "未分组视觉探索"
+      session: textPromptSession,
+      prompt: {
+        kind: "createVisualBranch",
+        directionId: target.id,
+        title: "新视觉分支",
+        body: "为当前方向创建一条可继续发展的视觉路线。创建分支不会移动、删除或改写现有图片。",
+        label: "分支名称",
+        initialValue: "未分组视觉探索"
+      }
     });
-  }, [selectedObjects]);
+  }, [selectedObjects, textPromptSession, workspace]);
 
   const handleRenameVisualBranch = useCallback(
     (branchId: string) => {
+      if (!isWorkspaceTextPromptSessionCurrent(textPromptSession, activeTextPromptSessionRef.current, workspace)) {
+        return;
+      }
       const branch = workspace.visualBranches[branchId];
       if (!branch) {
         return;
       }
       setTextPrompt({
-        kind: "renameVisualBranch",
-        branchId,
-        title: "重命名视觉分支",
-        body: "只更新分支名称，不改变图片、方向、版本或交付引用。",
-        label: "分支名称",
-        initialValue: branch.label
+        session: textPromptSession,
+        prompt: {
+          kind: "renameVisualBranch",
+          branchId,
+          title: "重命名视觉分支",
+          body: "只更新分支名称，不改变图片、方向、版本或交付引用。",
+          label: "分支名称",
+          initialValue: branch.label
+        }
       });
     },
-    [workspace.visualBranches]
+    [textPromptSession, workspace]
   );
 
   const handleSubmitTextPrompt = useCallback(
     (value: string) => {
-      if (!textPrompt) {
+      const promptState = textPrompt;
+      if (!promptState) {
+        return;
+      }
+      if (!isWorkspaceTextPromptSessionCurrent(promptState.session, activeTextPromptSessionRef.current, workspace)) {
+        setTextPrompt((current) => (current?.session === promptState.session ? null : current));
         return;
       }
       const trimmedValue = value.trim();
-      if (!trimmedValue && !textPrompt.allowEmpty) {
+      if (!trimmedValue && !promptState.prompt.allowEmpty) {
         return;
       }
 
-      if (textPrompt.kind === "createVisualBranch") {
-        setWorkspace((current) => {
-          const result = createVisualBranch(current, {
-            directionId: textPrompt.directionId,
-            label: trimmedValue
-          });
-          if (result.status === "blocked") {
-            setContextWarning(result.reason);
-            return current;
-          }
-          return result.workspace;
-        });
-      } else if (textPrompt.kind === "renameVisualBranch") {
-        setWorkspace((current) => {
-          const result = renameVisualBranch(current, textPrompt.branchId, trimmedValue);
-          if (result.status === "blocked") {
-            setContextWarning(result.reason);
-            return current;
-          }
-          return result.workspace;
-        });
-      } else {
-        const reason = trimmedValue || "用户明确淘汰该方向。";
+      if (promptState.prompt.kind === "eliminateDirection") {
+        const currentWorkspace = readWorkspaceNow();
+        if (
+          !isWorkspaceTextPromptSessionCurrent(
+            promptState.session,
+            activeTextPromptSessionRef.current,
+            currentWorkspace
+          )
+        ) {
+          setTextPrompt((current) => (current?.session === promptState.session ? null : current));
+          return;
+        }
         pushObjectOperationUndo();
-        setWorkspace((current) => eliminateDirection(current, textPrompt.directionId, { reason }));
-        const direction = workspace.objects[textPrompt.directionId];
-        showWorkspaceNotice(
-          direction?.type === "conceptDirection" ? `已淘汰方向「${direction.title}」` : "已淘汰方向"
-        );
       }
 
-      setTextPrompt(null);
+      const result = commitWorkspaceNow<WorkspaceTextPromptCommitResult>((current) => {
+        const applied = applyWorkspaceTextPromptIfCurrent(
+          current,
+          promptState,
+          activeTextPromptSessionRef.current,
+          trimmedValue
+        );
+        if (applied.status === "stale") {
+          return { workspace: current, value: applied };
+        }
+        if (applied.status === "blocked") {
+          return { workspace: current, value: applied };
+        }
+        return { workspace: applied.workspace, value: applied };
+      });
+
+      if (result.status === "stale") {
+        setTextPrompt((current) => (current?.session === promptState.session ? null : current));
+        return;
+      }
+      if (result.status === "blocked") {
+        setContextWarning(result.reason);
+      } else if (result.notice) {
+        showWorkspaceNotice(result.notice);
+      }
+      setTextPrompt((current) => (current?.session === promptState.session ? null : current));
     },
-    [pushObjectOperationUndo, setWorkspace, showWorkspaceNotice, textPrompt, workspace.objects]
+    [
+      commitWorkspaceNow,
+      pushObjectOperationUndo,
+      readWorkspaceNow,
+      setContextWarning,
+      showWorkspaceNotice,
+      textPrompt,
+      workspace
+    ]
   );
 
   const handleArchiveVisualBranch = useCallback(
@@ -1492,20 +1517,26 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   ]);
 
   const handleEliminateDirection = useCallback(() => {
+    if (!isWorkspaceTextPromptSessionCurrent(textPromptSession, activeTextPromptSessionRef.current, workspace)) {
+      return;
+    }
     const target = selectedObjects.find((object) => object.type === "conceptDirection");
     if (!target) {
       return;
     }
     setTextPrompt({
-      kind: "eliminateDirection",
-      directionId: target.id,
-      title: "淘汰方向",
-      body: "淘汰不会隐藏、删除方向，也不会移除图片、修订或 lineage。理由可选，不填也可直接淘汰。",
-      label: "淘汰理由（可选）",
-      initialValue: "",
-      allowEmpty: true
+      session: textPromptSession,
+      prompt: {
+        kind: "eliminateDirection",
+        directionId: target.id,
+        title: "淘汰方向",
+        body: "淘汰不会隐藏、删除方向，也不会移除图片、修订或 lineage。理由可选，不填也可直接淘汰。",
+        label: "淘汰理由（可选）",
+        initialValue: "",
+        allowEmpty: true
+      }
     });
-  }, [selectedObjects]);
+  }, [selectedObjects, textPromptSession, workspace]);
 
   const handleSetDirectionPrimary = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "conceptDirection");
@@ -2056,10 +2087,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         </aside>
       ) : null}
 
-      {textPrompt ? (
+      {textPrompt?.session === textPromptSession && textPromptSession.workspaceReady ? (
         <WorkspaceTextPromptDialog
-          prompt={textPrompt}
-          onCancel={() => setTextPrompt(null)}
+          prompt={textPrompt.prompt}
+          onCancel={() =>
+            setTextPrompt((current) => (current?.session === textPrompt.session ? null : current))
+          }
           onSubmit={handleSubmitTextPrompt}
         />
       ) : null}
