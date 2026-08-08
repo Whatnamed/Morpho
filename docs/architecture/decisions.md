@@ -1019,3 +1019,22 @@ processed, source-changed, base-superseded, or state-drifted confirmation remain
 does not write the workspace. The execution boundary also propagates a domain `blocked` result
 instead of reporting a failed domain write as successful. This adds no schema or Provider
 contract change and does not alter explicit user confirmation for a fresh action.
+
+## 2026-08-08: Close WorkspaceClient Decomposition Phase 6-G Final Audit
+
+Decision: declare the WorkspaceClient decomposition complete after a system-wide audit of the
+page composition, controller/core authorities, project/readiness lifecycle guards, current-
+workspace commit boundaries, Confirmation/Compare/Proposal/Visual/Agent/Import/Reader/Undo
+interactions, historical Runtime B residue, and architecture documentation.
+
+Finding: the audit identified one direct lifecycle regression in the Document Reader recovery
+path. Its recovery continuation could retain a Project A `updateWorkspace` callback while the
+page had moved to Project B. Commit `9b28905` gives the Reader a project/readiness session,
+invalidates it on transition, and rechecks that session and the current project inside recovery
+updates and fragment creation; the regression test reuses the same file identity across A and B
+to prove the stale continuation is dropped. Same-project rerenders remain valid.
+
+Boundary: Phase 1–6-F are closed. `WorkspaceClient.tsx` remains a composition root with thin
+dispatch and page-local UI/domain wiring; the audit does not create a new controller, schema,
+Provider, persistence, A+ protocol, or product contract. There is no follow-up decomposition
+Phase 6-H or 6-I; future work requires a real product requirement or a reproducible regression.
