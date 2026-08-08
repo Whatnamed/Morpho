@@ -1050,9 +1050,9 @@ rejection to `useWorkspaceProposalWorkflowController`, preserving one proposal w
 
 Finding: these guards cover the four blockers from the initial final audit without changing the
 workspace schema, backup/import formats, Provider routes, A+ protocol, or visible product contract.
-The follow-up retains existing current-workspace functional commit boundaries and domain actions;
-stale asynchronous results may finish externally but cannot update the active project UI, download,
-restore, or workspace state.
+The follow-up retains existing current-workspace functional commit boundaries and domain actions.
+A stale restore may finish creating its isolated restored-project copy, but it cannot update the
+active-project UI, trigger navigation, or mutate the currently active workspace.
 
 Boundary: Phase 1–6-G are closed. `WorkspaceClient.tsx` remains a composition root with thin
 dispatch and page-local UI/domain wiring. There is no planned Phase 6-H or 6-I decomposition;
