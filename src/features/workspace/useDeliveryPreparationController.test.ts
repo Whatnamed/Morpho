@@ -522,10 +522,42 @@ describe("useDeliveryPreparationController", () => {
     expect(harness.current().activeSectionId).toBeNull();
     expect(harness.current().pendingDraftTarget).toBeNull();
   });
+
+  it("blocks stale domain operations after A to B to A2", async () => {
+    const harness = await renderController({ initialWorkspace: createInitialWorkspace() });
+    const staleCreateDelivery = harness.current().createDelivery;
+    const staleCreateSection = harness.current().createSection;
+
+    act(() => {
+      harness.switchProject("project-delivery-b", createBlankWorkspace("project-delivery-b"));
+    });
+    const projectA2 = createBlankWorkspace("project-delivery-a2");
+    act(() => {
+      harness.switchProject("project-delivery-a2", projectA2);
+    });
+    const before = harness.workspace();
+
+    let createDeliveryResult!: ReturnType<DeliveryPreparationController["createDelivery"]>;
+    let createSectionResult!: ReturnType<DeliveryPreparationController["createSection"]>;
+    act(() => {
+      createDeliveryResult = staleCreateDelivery({ title: "stale", format: "board" });
+      createSectionResult = staleCreateSection({
+        deliveryObjectId: "delivery-board-a1",
+        title: "stale section",
+        purpose: "stale"
+      });
+    });
+
+    expect(createDeliveryResult.status).toBe("blocked");
+    expect(createSectionResult.status).toBe("blocked");
+    expect(harness.workspace()).toBe(before);
+  });
 });
 
-type RenderControllerInput = Omit<UseDeliveryPreparationControllerInput, "workspace" | "updateWorkspace"> & {
+type RenderControllerInput = Omit<UseDeliveryPreparationControllerInput, "projectId" | "workspace" | "updateWorkspace" | "workspaceReady"> & {
   initialWorkspace: MorphoWorkspace;
+  projectId?: string;
+  workspaceReady?: boolean;
 };
 
 type ControllerSnapshot = { projectId: string } &
@@ -551,6 +583,7 @@ async function renderController(initialInput: RenderControllerInput) {
     const currentController = useDeliveryPreparationController({
       ...input,
       projectId: currentProjectId,
+      workspaceReady: input.workspaceReady ?? true,
       workspace: currentWorkspace,
       updateWorkspace: setCurrentWorkspace
     });

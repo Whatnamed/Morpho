@@ -323,7 +323,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     toggle: toggleDeliveryOutput,
     inspect: inspectDeliveryOutput,
     exportPackage: exportDeliveryOutput
-  } = useDeliveryOutputController({ workspace });
+  } = useDeliveryOutputController({ projectId, workspaceReady, workspace });
   const {
     isOpen: isProjectBundleOpen,
     archiveIncludeFullChat,
@@ -341,6 +341,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     clearInspectedBackup,
     restoreBackup
   } = useProjectBundleController({
+    projectId,
+    workspaceReady,
     workspace,
     onWorkspaceRestored: handleProjectBundleWorkspaceRestored
   });
@@ -430,6 +432,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   );
   const deliveryPreparation = useDeliveryPreparationController({
     projectId,
+    workspaceReady,
     workspace,
     updateWorkspace: setWorkspace,
     onBlocked: setContextWarning,

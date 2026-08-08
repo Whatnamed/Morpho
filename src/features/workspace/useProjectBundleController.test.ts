@@ -235,6 +235,100 @@ describe("useProjectBundleController", () => {
     expect(currentWorkspace.project.id).toBe("project-current");
   });
 
+  it("ignores an inspect completion from an older project session", async () => {
+    const firstBackup = await createInspectedBackup("project-a-backup");
+    const pending = deferred<Awaited<ReturnType<ProjectBundleControllerServices["inspectEditableProjectBackupBundle"]>>>();
+    const inspect = vi.fn(() => pending.promise);
+    const harness = await renderController(createInput({
+      workspace: createBlankWorkspace("project-a"),
+      inspect
+    }));
+    let inspectRun!: Promise<void>;
+
+    await act(async () => {
+      inspectRun = harness.current().inspectBackup(new File(["a"], "a.zip"));
+    });
+    await harness.rerender(createInput({ workspace: createBlankWorkspace("project-b"), inspect }));
+    await harness.rerender(createInput({ workspace: createBlankWorkspace("project-a"), inspect }));
+
+    await act(async () => {
+      pending.resolve(successfulInspection(firstBackup));
+      await inspectRun;
+    });
+
+    expect(harness.current().inspectedBackup).toBeNull();
+    expect(harness.current().message).toBeNull();
+    expect(harness.current().busyLabel).toBeNull();
+  });
+
+  it("does not download an export completed by an older project session", async () => {
+    const pending = deferred<Awaited<ReturnType<ProjectBundleControllerServices["exportEditableProjectBackupBundle"]>>>();
+    const exportEditable = vi.fn(() => pending.promise);
+    const download = vi.fn();
+    const harness = await renderController(createInput({
+      workspace: createBlankWorkspace("project-a"),
+      exportEditable,
+      download
+    }));
+    let exportRun!: Promise<void>;
+
+    await act(async () => {
+      exportRun = harness.current().exportEditableBackup();
+    });
+    await harness.rerender(createInput({ workspace: createBlankWorkspace("project-b"), exportEditable, download }));
+    await harness.rerender(createInput({ workspace: createBlankWorkspace("project-a"), exportEditable, download }));
+
+    await act(async () => {
+      pending.resolve({
+        status: "ok",
+        file: new File(["backup"], "backup.zip", { type: "application/zip" }),
+        diagnostics: []
+      });
+      await exportRun;
+    });
+
+    expect(download).not.toHaveBeenCalled();
+    expect(harness.current().message).toBeNull();
+    expect(harness.current().busyLabel).toBeNull();
+  });
+
+  it("does not report a restore completed by an older project session", async () => {
+    const backup = await createInspectedBackup("project-source");
+    const pending = deferred<Awaited<ReturnType<ProjectBundleControllerServices["restoreEditableProjectBackupBundle"]>>>();
+    const restore = vi.fn(() => pending.promise);
+    const onWorkspaceRestored = vi.fn();
+    const harness = await renderController(createInput({
+      workspace: createBlankWorkspace("project-a"),
+      inspect: vi.fn(async () => successfulInspection(backup)),
+      restore,
+      onWorkspaceRestored
+    }));
+
+    await act(async () => {
+      await harness.current().inspectBackup(new File(["backup"], "backup.zip"));
+    });
+    let restoreRun!: Promise<void>;
+    await act(async () => {
+      restoreRun = harness.current().restoreBackup();
+    });
+    await harness.rerender(createInput({ workspace: createBlankWorkspace("project-b"), restore, onWorkspaceRestored }));
+    await harness.rerender(createInput({ workspace: createBlankWorkspace("project-a"), restore, onWorkspaceRestored }));
+
+    await act(async () => {
+      pending.resolve({
+        status: "ok",
+        projectId: "project-restored",
+        workspace: createBlankWorkspace("project-restored"),
+        diagnostics: []
+      });
+      await restoreRun;
+    });
+
+    expect(onWorkspaceRestored).not.toHaveBeenCalled();
+    expect(harness.current().message).toBeNull();
+    expect(harness.current().busyLabel).toBeNull();
+  });
+
   it("blocks duplicate restore and clears busy state after a thrown client error", async () => {
     const backup = await createInspectedBackup("project-source");
     const pending = deferred<Awaited<ReturnType<ProjectBundleControllerServices["restoreEditableProjectBackupBundle"]>>>();
@@ -281,6 +375,8 @@ function createInput(
   } = {}
 ): UseProjectBundleControllerInput {
   return {
+    projectId: (overrides.workspace ?? createBlankWorkspace("project-current")).project.id,
+    workspaceReady: true,
     workspace: overrides.workspace ?? createBlankWorkspace("project-current"),
     blobStore: nullBlobStore,
     storage: window.localStorage,

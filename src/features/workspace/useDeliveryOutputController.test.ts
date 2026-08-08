@@ -118,7 +118,8 @@ describe("useDeliveryOutputController", () => {
     const inspectResult = successfulPreflight(workspace, "delivery-b");
     const exportPackage = vi.fn(() => exportPending.promise);
     const inspect = vi.fn(async () => inspectResult);
-    const harness = await renderController(createInput({ workspace, inspect, exportPackage }));
+    const download = vi.fn();
+    const harness = await renderController(createInput({ workspace, inspect, exportPackage, download }));
     let exportRun!: Promise<void>;
 
     await act(async () => {
@@ -138,6 +139,55 @@ describe("useDeliveryOutputController", () => {
     expect(harness.current().preflight).toBe(inspectResult);
     expect(harness.current().message).toBeNull();
     expect(harness.current().busyLabel).toBeNull();
+    expect(download).not.toHaveBeenCalled();
+  });
+
+  it("ignores an inspect completion after A to B to A2", async () => {
+    const workspaceA = createDeliveryWorkspace("project-a", "delivery-a");
+    const pending = deferred<InspectDeliveryOutputResult>();
+    const inspect = vi.fn(() => pending.promise);
+    const harness = await renderController(createInput({ workspace: workspaceA, inspect }));
+    let inspectRun!: Promise<void>;
+
+    await act(async () => {
+      inspectRun = harness.current().inspect("delivery-a");
+    });
+    await harness.rerender(createInput({ workspace: createDeliveryWorkspace("project-b", "delivery-a"), inspect }));
+    await harness.rerender(createInput({ workspace: createDeliveryWorkspace("project-a", "delivery-a"), inspect }));
+
+    await act(async () => {
+      pending.resolve(successfulPreflight(workspaceA, "delivery-a"));
+      await inspectRun;
+    });
+
+    expect(harness.current().preflight).toBeNull();
+    expect(harness.current().message).toBeNull();
+    expect(harness.current().busyLabel).toBeNull();
+  });
+
+  it("does not apply an export result after A to B to A2", async () => {
+    const workspaceA = createDeliveryWorkspace("project-a", "delivery-a");
+    const pending = deferred<ExportDeliveryOutputResult>();
+    const exportPackage = vi.fn(() => pending.promise);
+    const download = vi.fn();
+    const harness = await renderController(createInput({ workspace: workspaceA, exportPackage, download }));
+    let exportRun!: Promise<void>;
+
+    await act(async () => {
+      exportRun = harness.current().exportPackage("delivery-a");
+    });
+    await harness.rerender(createInput({ workspace: createDeliveryWorkspace("project-b", "delivery-a"), exportPackage }));
+    await harness.rerender(createInput({ workspace: createDeliveryWorkspace("project-a", "delivery-a"), exportPackage }));
+
+    await act(async () => {
+      pending.resolve(successfulExport(workspaceA, "delivery-a"));
+      await exportRun;
+    });
+
+    expect(harness.current().preflight).toBeNull();
+    expect(harness.current().message).toBeNull();
+    expect(harness.current().busyLabel).toBeNull();
+    expect(download).not.toHaveBeenCalled();
   });
 
   it("exports with the latest rendered workspace", async () => {
@@ -166,7 +216,7 @@ describe("useDeliveryOutputController", () => {
     expect(exportPackage.mock.calls[0]?.[1]).toMatchObject({
       deliveryObjectId: "delivery-a",
       blobStore: nullBlobStore,
-      download: true
+      download: false
     });
   });
 
@@ -203,6 +253,7 @@ function createInput(
     workspace?: MorphoWorkspace;
     inspect?: DeliveryOutputControllerServices["inspectDeliveryOutputPackage"];
     exportPackage?: DeliveryOutputControllerServices["exportDeliveryOutputPackage"];
+    download?: DeliveryOutputControllerServices["downloadDeliveryOutputFile"];
   } = {}
 ): UseDeliveryOutputControllerInput {
   const workspace = overrides.workspace ?? createDeliveryWorkspace("project-a", "delivery-a");
@@ -212,6 +263,8 @@ function createInput(
     diagnostics: []
   };
   return {
+    projectId: workspace.project.id,
+    workspaceReady: true,
     workspace,
     blobStore: nullBlobStore,
     services: {
@@ -224,7 +277,8 @@ function createInput(
             _workspace: MorphoWorkspace,
             _options: Parameters<DeliveryOutputControllerServices["exportDeliveryOutputPackage"]>[1]
           ) => defaultExportResult
-        )
+        ),
+      downloadDeliveryOutputFile: overrides.download ?? vi.fn()
     }
   };
 }

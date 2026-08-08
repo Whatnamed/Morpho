@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction
+} from "react";
 
 import type { DeliveryObject, DeliveryReferenceId, MorphoObjectId, MorphoWorkspace } from "@/domain/morpho/types";
 import {
@@ -52,7 +60,8 @@ export type DeliverySectionDraftRequestResult =
   | { status: "blocked"; reason: string };
 
 export type DeliveryPreparationControllerInput = {
-  projectId?: string;
+  projectId: string;
+  workspaceReady: boolean;
   workspace: MorphoWorkspace;
   updateWorkspace: Dispatch<SetStateAction<MorphoWorkspace>>;
   onBlocked?: (reason: string | undefined) => void;
@@ -131,14 +140,28 @@ type DeliveryDomainOperationResult =
 
 type DeliveryDomainOperationPublicResult<T> = T extends { workspace: MorphoWorkspace } ? Omit<T, "workspace"> : never;
 
+type DeliveryPreparationSession = Readonly<{
+  projectId: string;
+  workspaceReady: boolean;
+  generation: symbol;
+}>;
+
 export function useDeliveryPreparationController({
   projectId,
+  workspaceReady,
   workspace,
   updateWorkspace,
   onBlocked,
   onDeliveryCreated
 }: UseDeliveryPreparationControllerInput): DeliveryPreparationController {
-  const currentProjectId = projectId ?? workspace.project.id;
+  const session = useMemo<DeliveryPreparationSession>(
+    () => ({
+      projectId,
+      workspaceReady,
+      generation: Symbol("delivery-preparation-session")
+    }),
+    [projectId, workspaceReady]
+  );
   const [isOpenState, setIsOpenState] = useState(false);
   const [requestedActiveDeliveryObjectId, setRequestedActiveDeliveryObjectId] = useState<string | null>(null);
   const [activeSectionIdState, setActiveSectionIdState] = useState<string | null>(null);
@@ -146,9 +169,31 @@ export function useDeliveryPreparationController({
     deliveryObjectId: string;
     sectionId: string;
   } | null>(null);
-  const projectIdRef = useRef(currentProjectId);
+  const currentSessionRef = useRef<DeliveryPreparationSession>(session);
+  const latestWorkspaceRef = useRef<MorphoWorkspace>(workspace);
 
-  const workspaceMatchesProject = workspace.project.id === currentProjectId;
+  const isCurrentSession = useCallback((expectedSession: DeliveryPreparationSession): boolean => {
+    return (
+      currentSessionRef.current === expectedSession &&
+      expectedSession.workspaceReady &&
+      latestWorkspaceRef.current.project.id === expectedSession.projectId
+    );
+  }, []);
+
+  useLayoutEffect(() => {
+    const sessionChanged = currentSessionRef.current !== session;
+    currentSessionRef.current = session;
+    latestWorkspaceRef.current = workspace;
+    if (sessionChanged || !session.workspaceReady) {
+      setIsOpenState(false);
+      setRequestedActiveDeliveryObjectId(null);
+      setActiveSectionIdState(null);
+      setPendingDraftTargetState(null);
+      onBlocked?.(undefined);
+    }
+  }, [onBlocked, session, workspace]);
+
+  const workspaceMatchesProject = workspace.project.id === projectId;
   const deliveryObjects = useMemo(
     () => (workspaceMatchesProject ? getDeliveryObjects(workspace) : []),
     [workspace, workspaceMatchesProject]
@@ -167,9 +212,9 @@ export function useDeliveryPreparationController({
     const delivery = deliveryObjects.find((candidate) => candidate.id === activeDeliveryObjectId);
     return delivery?.sections.some((section) => section.id === activeSectionIdState) ? activeSectionIdState : null;
   }, [activeDeliveryObjectId, activeSectionIdState, deliveryObjects]);
-  // The ref marks the project whose session reset effect has committed; it is not a render data source.
+  // The ref marks the project/readiness session whose reset effect has committed; it is not a render data source.
   // eslint-disable-next-line react-hooks/refs
-  const sessionMatchesProject = projectIdRef.current === currentProjectId && workspaceMatchesProject;
+  const sessionMatchesProject = currentSessionRef.current === session && session.workspaceReady && workspaceMatchesProject;
 
   const readLatestWorkspace = useCallback(
     () => commitWorkspaceStateNow(updateWorkspace, (current) => ({ workspace: current, value: current })),
@@ -180,7 +225,19 @@ export function useDeliveryPreparationController({
     <T extends DeliveryDomainOperationResult>(
       operation: (current: MorphoWorkspace) => T
     ): DeliveryDomainOperationPublicResult<T> => {
+      const expectedSession = session;
+      const blockedReason = "交付准备会话已失效。";
+      if (!isCurrentSession(expectedSession)) {
+        onBlocked?.(blockedReason);
+        return { status: "blocked", reason: blockedReason } as DeliveryDomainOperationPublicResult<T>;
+      }
       const committed = commitWorkspaceStateNow(updateWorkspace, (current) => {
+        if (!isCurrentSession(expectedSession) || current.project.id !== expectedSession.projectId) {
+          return {
+            workspace: current,
+            value: { status: "blocked", workspace: current, reason: blockedReason } as T
+          };
+        }
         const operationResult = operation(current);
         return {
           workspace: operationResult.status === "updated" ? operationResult.workspace : current,
@@ -192,32 +249,47 @@ export function useDeliveryPreparationController({
       void committedWorkspace;
       return publicResult as DeliveryDomainOperationPublicResult<T>;
     },
-    [onBlocked, updateWorkspace]
+    [isCurrentSession, onBlocked, session, updateWorkspace]
   );
 
   const open = useCallback((deliveryObjectId?: string) => {
+    if (!isCurrentSession(session)) {
+      return;
+    }
     if (deliveryObjectId !== undefined) {
       setRequestedActiveDeliveryObjectId(deliveryObjectId);
     }
     setIsOpenState(true);
-  }, []);
+  }, [isCurrentSession, session]);
 
   const close = useCallback(() => {
+    if (!isCurrentSession(session)) {
+      return;
+    }
     setIsOpenState(false);
-  }, []);
+  }, [isCurrentSession, session]);
 
   const selectDelivery = useCallback((deliveryObjectId: string) => {
+    if (!isCurrentSession(session)) {
+      return;
+    }
     setRequestedActiveDeliveryObjectId(deliveryObjectId);
     setActiveSectionIdState(null);
-  }, []);
+  }, [isCurrentSession, session]);
 
   const selectSection = useCallback((sectionId: string | null) => {
+    if (!isCurrentSession(session)) {
+      return;
+    }
     setActiveSectionIdState(sectionId);
-  }, []);
+  }, [isCurrentSession, session]);
 
   const clearPendingDraftTarget = useCallback(() => {
+    if (!isCurrentSession(session)) {
+      return;
+    }
     setPendingDraftTargetState(null);
-  }, []);
+  }, [isCurrentSession, session]);
 
   const createDelivery = useCallback(
     (input: { title: string; format: DeliveryObject["format"] }): DeliveryCreatedResult => {
@@ -339,7 +411,17 @@ export function useDeliveryPreparationController({
 
   const requestSectionDraft = useCallback(
     (input: { deliveryObjectId: string; sectionId: string }): DeliverySectionDraftRequestResult => {
+      if (!isCurrentSession(session)) {
+        const reason = "交付准备会话已失效。";
+        onBlocked?.(reason);
+        return { status: "blocked", reason };
+      }
       const current = readLatestWorkspace();
+      if (!isCurrentSession(session)) {
+        const reason = "交付准备会话已失效。";
+        onBlocked?.(reason);
+        return { status: "blocked", reason };
+      }
       const delivery = current.objects[input.deliveryObjectId];
       if (!delivery || delivery.type !== "delivery") {
         const reason = "交付准备包不可用。";
@@ -361,20 +443,8 @@ export function useDeliveryPreparationController({
         prompt: `请基于“${context.sectionTitle}”这一节的交付引用快照，生成一份本节说明草稿，并给出必要的图注和待补内容建议。`
       };
     },
-    [onBlocked, readLatestWorkspace]
+    [isCurrentSession, onBlocked, readLatestWorkspace, session]
   );
-
-  useEffect(() => {
-    if (projectIdRef.current === currentProjectId) {
-      return;
-    }
-    projectIdRef.current = currentProjectId;
-    setIsOpenState(false);
-    setRequestedActiveDeliveryObjectId(null);
-    setActiveSectionIdState(null);
-    setPendingDraftTargetState(null);
-    onBlocked?.(undefined);
-  }, [currentProjectId, onBlocked]);
 
   return {
     isOpen: sessionMatchesProject ? isOpenState : false,

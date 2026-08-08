@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 import {
@@ -28,6 +28,8 @@ export type ProjectBundleControllerServices = {
 };
 
 export type UseProjectBundleControllerInput = {
+  projectId: string;
+  workspaceReady: boolean;
   workspace: MorphoWorkspace;
   onWorkspaceRestored: (result: { projectId: string; workspace: MorphoWorkspace }) => void;
   blobStore?: BlobStore;
@@ -59,6 +61,12 @@ type ActiveOperation = {
   token: symbol;
 };
 
+type ProjectBundleSession = Readonly<{
+  projectId: string;
+  workspaceReady: boolean;
+  generation: symbol;
+}>;
+
 const defaultServices: ProjectBundleControllerServices = {
   downloadProjectBundleFile,
   exportEditableProjectBackupBundle,
@@ -68,12 +76,22 @@ const defaultServices: ProjectBundleControllerServices = {
 };
 
 export function useProjectBundleController({
+  projectId,
+  workspaceReady,
   workspace,
   onWorkspaceRestored,
   blobStore = indexedDbBlobStore,
   storage,
   services = defaultServices
 }: UseProjectBundleControllerInput): ProjectBundleController {
+  const session = useMemo<ProjectBundleSession>(
+    () => ({
+      projectId,
+      workspaceReady,
+      generation: Symbol("project-bundle-session")
+    }),
+    [projectId, workspaceReady]
+  );
   const [isOpen, setIsOpen] = useState(false);
   const [archiveIncludeFullChat, setArchiveIncludeFullChat] = useState(false);
   const [archiveIncludeContinuity, setArchiveIncludeContinuity] = useState(false);
@@ -83,35 +101,101 @@ export function useProjectBundleController({
   const inspectedBackupRef = useRef<InspectedEditableProjectBackupBundle | null>(null);
   const inspectRequestRef = useRef(0);
   const activeOperationRef = useRef<ActiveOperation | null>(null);
+  const currentSessionRef = useRef<ProjectBundleSession>(session);
+  const latestWorkspaceRef = useRef<MorphoWorkspace>(workspace);
+  const [committedSession, commitSession] = useReducer(
+    (_current: ProjectBundleSession, next: ProjectBundleSession) => next,
+    session
+  );
+
+  const isCurrentSession = useCallback((expectedSession: ProjectBundleSession): boolean => {
+    return (
+      currentSessionRef.current === expectedSession &&
+      expectedSession.workspaceReady &&
+      latestWorkspaceRef.current.project.id === expectedSession.projectId
+    );
+  }, []);
+
+  const sessionIsVisible =
+    committedSession === session && session.workspaceReady && workspace.project.id === session.projectId;
 
   const setInspectedBackup = useCallback((next: InspectedEditableProjectBackupBundle | null) => {
     inspectedBackupRef.current = next;
     setInspectedBackupState(next);
   }, []);
 
+  useLayoutEffect(() => {
+    const sessionChanged = currentSessionRef.current !== session;
+    currentSessionRef.current = session;
+    latestWorkspaceRef.current = workspace;
+    if (sessionChanged || !session.workspaceReady) {
+      activeOperationRef.current = null;
+      inspectRequestRef.current += 1;
+      setIsOpen(false);
+      setArchiveIncludeFullChat(false);
+      setArchiveIncludeContinuity(false);
+      setBusyLabel(null);
+      setMessage(null);
+      setInspectedBackup(null);
+    }
+    if (committedSession !== session) {
+      commitSession(session);
+    }
+  }, [committedSession, commitSession, session, setInspectedBackup, workspace]);
+
   const open = useCallback(() => {
+    if (!isCurrentSession(session)) {
+      return;
+    }
     setMessage(null);
     setIsOpen(true);
-  }, []);
+  }, [isCurrentSession, session]);
 
   const close = useCallback(() => {
+    if (!isCurrentSession(session)) {
+      return;
+    }
     setIsOpen(false);
-  }, []);
+  }, [isCurrentSession, session]);
 
   const toggle = useCallback(() => {
+    if (!isCurrentSession(session)) {
+      return;
+    }
     setMessage(null);
     setIsOpen((current) => !current);
-  }, []);
+  }, [isCurrentSession, session]);
 
-  const beginExclusiveOperation = useCallback((kind: ActiveOperation["kind"], label: string) => {
-    if (activeOperationRef.current) {
-      return null;
-    }
-    const operation: ActiveOperation = { kind, token: Symbol(`project-bundle-${kind}`) };
-    activeOperationRef.current = operation;
-    setBusyLabel(label);
-    return operation;
-  }, []);
+  const setArchiveIncludeFullChatSafe = useCallback(
+    (include: boolean) => {
+      if (isCurrentSession(session)) {
+        setArchiveIncludeFullChat(include);
+      }
+    },
+    [isCurrentSession, session]
+  );
+
+  const setArchiveIncludeContinuitySafe = useCallback(
+    (include: boolean) => {
+      if (isCurrentSession(session)) {
+        setArchiveIncludeContinuity(include);
+      }
+    },
+    [isCurrentSession, session]
+  );
+
+  const beginExclusiveOperation = useCallback(
+    (kind: ActiveOperation["kind"], label: string) => {
+      if (!isCurrentSession(session) || activeOperationRef.current) {
+        return null;
+      }
+      const operation: ActiveOperation = { kind, token: Symbol(`project-bundle-${kind}`) };
+      activeOperationRef.current = operation;
+      setBusyLabel(label);
+      return operation;
+    },
+    [isCurrentSession, session]
+  );
 
   const finishOperation = useCallback((operation: ActiveOperation) => {
     if (activeOperationRef.current?.token === operation.token) {
@@ -121,6 +205,7 @@ export function useProjectBundleController({
   }, []);
 
   const exportReadableArchive = useCallback(async () => {
+    const expectedSession = session;
     const operation = beginExclusiveOperation("archive", "正在导出可读归档…");
     if (!operation) {
       return;
@@ -133,6 +218,9 @@ export function useProjectBundleController({
         chat: archiveIncludeFullChat ? "full" : "none",
         projectContinuity: archiveIncludeContinuity ? "current" : "none"
       });
+      if (!isCurrentSession(expectedSession) || activeOperationRef.current?.token !== operation.token) {
+        return;
+      }
       if (result.status !== "ok") {
         setMessage({
           tone: result.status === "blocked" ? "warning" : "error",
@@ -146,12 +234,17 @@ export function useProjectBundleController({
         text: summarizeBundleDiagnostics("归档已导出。", result.diagnostics)
       });
     } catch {
+      if (!isCurrentSession(expectedSession) || activeOperationRef.current?.token !== operation.token) {
+        return;
+      }
       setMessage({
         tone: "error",
         text: "归档导出失败，请稍后重试。"
       });
     } finally {
-      finishOperation(operation);
+      if (isCurrentSession(expectedSession)) {
+        finishOperation(operation);
+      }
     }
   }, [
     archiveIncludeContinuity,
@@ -159,12 +252,15 @@ export function useProjectBundleController({
     beginExclusiveOperation,
     blobStore,
     finishOperation,
+    isCurrentSession,
     services,
     setInspectedBackup,
+    session,
     workspace
   ]);
 
   const exportEditableBackup = useCallback(async () => {
+    const expectedSession = session;
     const operation = beginExclusiveOperation("backup", "正在导出可编辑备份…");
     if (!operation) {
       return;
@@ -177,6 +273,9 @@ export function useProjectBundleController({
         chat: "full",
         projectContinuity: "current"
       });
+      if (!isCurrentSession(expectedSession) || activeOperationRef.current?.token !== operation.token) {
+        return;
+      }
       if (result.status !== "ok") {
         setMessage({
           tone: result.status === "blocked" ? "warning" : "error",
@@ -190,17 +289,35 @@ export function useProjectBundleController({
         text: summarizeBundleDiagnostics("备份已导出。", result.diagnostics)
       });
     } catch {
+      if (!isCurrentSession(expectedSession) || activeOperationRef.current?.token !== operation.token) {
+        return;
+      }
       setMessage({
         tone: "error",
         text: "备份导出失败，请稍后重试。"
       });
     } finally {
-      finishOperation(operation);
+      if (isCurrentSession(expectedSession)) {
+        finishOperation(operation);
+      }
     }
-  }, [beginExclusiveOperation, blobStore, finishOperation, services, setInspectedBackup, workspace]);
+  }, [
+    beginExclusiveOperation,
+    blobStore,
+    finishOperation,
+    isCurrentSession,
+    services,
+    setInspectedBackup,
+    session,
+    workspace
+  ]);
 
   const inspectBackup = useCallback(
     async (file: File) => {
+      const expectedSession = session;
+      if (!isCurrentSession(expectedSession)) {
+        return;
+      }
       if (activeOperationRef.current && activeOperationRef.current.kind !== "inspect") {
         return;
       }
@@ -216,7 +333,7 @@ export function useProjectBundleController({
       setInspectedBackup(null);
       try {
         const result = await services.inspectEditableProjectBackupBundle(file);
-        if (inspectRequestRef.current !== requestId) {
+        if (!isCurrentSession(expectedSession) || inspectRequestRef.current !== requestId) {
           return;
         }
         if (result.status !== "ok") {
@@ -232,7 +349,7 @@ export function useProjectBundleController({
               : "备份已读取。请确认后恢复为新项目副本。"
         });
       } catch {
-        if (inspectRequestRef.current !== requestId) {
+        if (!isCurrentSession(expectedSession) || inspectRequestRef.current !== requestId) {
           return;
         }
         setMessage({
@@ -240,15 +357,18 @@ export function useProjectBundleController({
           text: "无法读取备份包。文件可能损坏，或不是 Morpho 可编辑备份。"
         });
       } finally {
-        if (inspectRequestRef.current === requestId) {
+        if (isCurrentSession(expectedSession) && inspectRequestRef.current === requestId) {
           finishOperation(operation);
         }
       }
     },
-    [finishOperation, services, setInspectedBackup]
+    [finishOperation, isCurrentSession, services, session, setInspectedBackup]
   );
 
   const clearInspectedBackup = useCallback(() => {
+    if (!isCurrentSession(session)) {
+      return;
+    }
     inspectRequestRef.current += 1;
     if (activeOperationRef.current?.kind === "inspect") {
       activeOperationRef.current = null;
@@ -256,9 +376,13 @@ export function useProjectBundleController({
     }
     setInspectedBackup(null);
     setMessage(null);
-  }, [setInspectedBackup]);
+  }, [isCurrentSession, session, setInspectedBackup]);
 
   const restoreBackup = useCallback(async () => {
+    const expectedSession = session;
+    if (!isCurrentSession(expectedSession)) {
+      return;
+    }
     const backup = inspectedBackupRef.current;
     if (!backup) {
       setMessage({
@@ -277,6 +401,9 @@ export function useProjectBundleController({
         blobStore,
         storage: resolveStorage(storage)
       });
+      if (!isCurrentSession(expectedSession) || activeOperationRef.current?.token !== operation.token) {
+        return;
+      }
       if (result.status !== "ok") {
         setMessage({ tone: "error", text: result.reason });
         return;
@@ -292,35 +419,42 @@ export function useProjectBundleController({
         workspace: result.workspace
       });
     } catch {
+      if (!isCurrentSession(expectedSession) || activeOperationRef.current?.token !== operation.token) {
+        return;
+      }
       setMessage({
         tone: "error",
         text: "恢复备份失败，请重新选择备份包后再试。"
       });
     } finally {
-      finishOperation(operation);
+      if (isCurrentSession(expectedSession)) {
+        finishOperation(operation);
+      }
     }
   }, [
     beginExclusiveOperation,
     blobStore,
     finishOperation,
+    isCurrentSession,
     onWorkspaceRestored,
     services,
     setInspectedBackup,
+    session,
     storage
   ]);
 
   return {
-    isOpen,
-    archiveIncludeFullChat,
-    archiveIncludeContinuity,
-    busyLabel,
-    message,
-    inspectedBackup,
+    isOpen: sessionIsVisible ? isOpen : false,
+    archiveIncludeFullChat: sessionIsVisible ? archiveIncludeFullChat : false,
+    archiveIncludeContinuity: sessionIsVisible ? archiveIncludeContinuity : false,
+    busyLabel: sessionIsVisible ? busyLabel : null,
+    message: sessionIsVisible ? message : null,
+    inspectedBackup: sessionIsVisible ? inspectedBackup : null,
     open,
     close,
     toggle,
-    setArchiveIncludeFullChat,
-    setArchiveIncludeContinuity,
+    setArchiveIncludeFullChat: setArchiveIncludeFullChatSafe,
+    setArchiveIncludeContinuity: setArchiveIncludeContinuitySafe,
     exportEditableBackup,
     exportReadableArchive,
     inspectBackup,
