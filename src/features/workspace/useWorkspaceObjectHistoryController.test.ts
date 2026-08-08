@@ -208,6 +208,31 @@ describe("useWorkspaceObjectHistoryController", () => {
     expect(harness.current().undo()).toBe(false);
   });
 
+  it("blocks stale history callbacks after A to B to A2", async () => {
+    const harness = await renderController({
+      projectId: "project-a",
+      workspace: createBlankWorkspace("project-a"),
+      workspaceReady: true
+    });
+    const stalePushUndoSnapshot = harness.current().pushUndoSnapshot;
+
+    await harness.rerender({
+      projectId: "project-b",
+      workspace: createBlankWorkspace("project-b"),
+      workspaceReady: true
+    });
+    await harness.rerender({
+      projectId: "project-a",
+      workspace: createBlankWorkspace("project-a"),
+      workspaceReady: true
+    });
+
+    act(() => stalePushUndoSnapshot());
+
+    expect(harness.current().undo()).toBe(false);
+    expect(harness.applied()).toHaveLength(0);
+  });
+
   it("removes its global keyboard listener on unmount", async () => {
     const removeListener = vi.spyOn(window, "removeEventListener");
     const harness = await renderController({ projectId: "project-a", workspace: createBlankWorkspace("project-a"), workspaceReady: true });

@@ -1,6 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction
+} from "react";
 
 import type { CanvasView, MorphoWorkspace } from "@/domain/morpho/types";
 
@@ -50,16 +60,13 @@ export type WorkspaceSelectionNavigationController = {
   selectAllCanvasObjects: (objectIds: string[]) => boolean;
 };
 
-type SelectionSession = {
-  projectId: string;
-  objectIds: string[];
-};
-
-type CommittedSelectionSession = {
+type SelectionSession = Readonly<{
   projectId: string;
   workspaceId: string;
   workspaceReady: boolean;
-};
+  generation: symbol;
+  objectIds: string[];
+}>;
 
 export function useWorkspaceSelectionNavigationController({
   projectId,
@@ -67,66 +74,63 @@ export function useWorkspaceSelectionNavigationController({
   workspaceReady,
   updateWorkspace
 }: UseWorkspaceSelectionNavigationControllerInput): WorkspaceSelectionNavigationController {
+  const session = useMemo<SelectionSession>(
+    () => ({
+      projectId,
+      workspaceId: workspace.project.id,
+      workspaceReady,
+      generation: Symbol("workspace-selection-session"),
+      objectIds: []
+    }),
+    [projectId, workspace.project.id, workspaceReady]
+  );
   const [selectionSession, setSelectionSession] = useState<SelectionSession>(() => ({
     projectId,
+    workspaceId: workspace.project.id,
+    workspaceReady,
+    generation: Symbol("workspace-selection-state"),
     objectIds: workspaceReady && workspace.project.id === projectId ? [...workspace.ui.lastSelectionIds] : []
   }));
   const [selectionRequestState, setSelectionRequestState] = useState<CanvasSelectionRequest>({ objectIds: [], nonce: 0 });
   const [focusRequestState, setFocusRequestState] = useState<WorkspaceFocusRequest>({ nonce: 0 });
   const [committedSession, commitSession] = useReducer(
-    (_current: CommittedSelectionSession, next: CommittedSelectionSession) => next,
-    { projectId, workspaceId: workspace.project.id, workspaceReady }
+    (_current: SelectionSession, next: SelectionSession) => next,
+    session
   );
   const latestCanvasViewRef = useRef<CanvasView>({ ...workspace.canvas.view });
   const detailNavigationUndoStackRef = useRef<DetailNavigationSnapshot[]>([]);
   const hydratedProjectIdRef = useRef<string | null>(null);
-  const activeSessionRef = useRef<CommittedSelectionSession>({
-    projectId,
-    workspaceId: workspace.project.id,
-    workspaceReady
-  });
+  const activeSessionRef = useRef<SelectionSession>(session);
 
   const sessionMatchesProject =
-    committedSession.projectId === projectId &&
-    committedSession.workspaceId === workspace.project.id &&
-    committedSession.workspaceReady &&
+    committedSession === session &&
+    session.workspaceReady &&
     workspaceReady &&
-    workspace.project.id === projectId;
+    workspace.project.id === projectId &&
+    workspace.project.id === session.workspaceId;
 
   const isCurrentSession = useCallback(
-    () =>
-      sessionMatchesProject &&
-      activeSessionRef.current.projectId === projectId &&
-      activeSessionRef.current.workspaceId === workspace.project.id &&
-      activeSessionRef.current.workspaceReady === workspaceReady,
-    [projectId, sessionMatchesProject, workspace.project.id, workspaceReady]
+    (expectedSession: SelectionSession) => {
+      return activeSessionRef.current === expectedSession && expectedSession.workspaceReady;
+    },
+    []
   );
 
-  useEffect(() => {
-    if (
-      committedSession.projectId === projectId &&
-      committedSession.workspaceId === workspace.project.id &&
-      committedSession.workspaceReady === workspaceReady
-    ) {
+  useLayoutEffect(() => {
+    if (committedSession === session && activeSessionRef.current === session) {
       return;
     }
 
-    const nextSession = {
-      projectId,
-      workspaceId: workspace.project.id,
-      workspaceReady
-    };
-    activeSessionRef.current = nextSession;
-    commitSession(nextSession);
+    activeSessionRef.current = session;
+    commitSession(session);
     // The external workspace session changed; discard transient selection and navigation state.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSelectionSession({ projectId, objectIds: [] });
+    setSelectionSession({ ...session, objectIds: [] });
     setSelectionRequestState({ objectIds: [], nonce: 0 });
     setFocusRequestState((current) => ({ nonce: current.nonce }));
     latestCanvasViewRef.current = { ...workspace.canvas.view };
     detailNavigationUndoStackRef.current = [];
     hydratedProjectIdRef.current = null;
-  }, [committedSession, projectId, workspace.canvas.view, workspace.project.id, workspaceReady]);
+  }, [committedSession, projectId, session, workspace.canvas.view]);
 
   useEffect(() => {
     if (!sessionMatchesProject) {
@@ -145,12 +149,12 @@ export function useWorkspaceSelectionNavigationController({
 
     const persistedSelection = [...workspace.ui.lastSelectionIds];
     hydratedProjectIdRef.current = workspace.project.id;
-    setSelectionSession({ projectId: workspace.project.id, objectIds: [...persistedSelection] });
+    setSelectionSession({ ...session, objectIds: [...persistedSelection] });
     setSelectionRequestState((current) => ({
       objectIds: [...persistedSelection],
       nonce: current.nonce + 1
     }));
-  }, [sessionMatchesProject, workspace.project.id, workspace.ui.lastSelectionIds, workspaceReady]);
+  }, [session, sessionMatchesProject, workspace.project.id, workspace.ui.lastSelectionIds, workspaceReady]);
 
   const selectedObjectIds = useMemo(
     () =>
@@ -184,22 +188,22 @@ export function useWorkspaceSelectionNavigationController({
 
   const setSelectedObjectIds = useCallback(
     (action: SetStateAction<string[]>) => {
-      if (!isCurrentSession()) {
+      if (!isCurrentSession(session)) {
         return;
       }
 
       setSelectionSession((current) => {
         const currentObjectIds = current.projectId === projectId ? current.objectIds : [];
         const nextObjectIds = typeof action === "function" ? action([...currentObjectIds]) : action;
-        return { projectId, objectIds: [...nextObjectIds] };
+        return { ...session, objectIds: [...nextObjectIds] };
       });
     },
-    [isCurrentSession, projectId]
+    [isCurrentSession, projectId, session]
   );
 
   const requestCanvasSelection = useCallback(
     (objectIds: string[]) => {
-      if (!isCurrentSession()) {
+      if (!isCurrentSession(session)) {
         return;
       }
 
@@ -209,19 +213,19 @@ export function useWorkspaceSelectionNavigationController({
         nonce: current.nonce + 1
       }));
     },
-    [isCurrentSession]
+    [isCurrentSession, session]
   );
 
   const acceptCanvasSelection = useCallback(
     (objectIds: string[]) => {
-      if (!isCurrentSession()) {
+      if (!isCurrentSession(session)) {
         return;
       }
 
       const nextObjectIds = [...objectIds];
       setSelectedObjectIds(nextObjectIds);
       updateWorkspace((current) => {
-        if (!isCurrentSession() || current.project.id !== projectId) {
+        if (!isCurrentSession(session) || current.project.id !== projectId) {
           return current;
         }
         if (areSelectionIdsEqual(current.ui.lastSelectionIds, nextObjectIds)) {
@@ -236,32 +240,32 @@ export function useWorkspaceSelectionNavigationController({
         };
       });
     },
-    [isCurrentSession, projectId, setSelectedObjectIds, updateWorkspace]
+    [isCurrentSession, projectId, session, setSelectedObjectIds, updateWorkspace]
   );
 
   const focusArea = useCallback(
     (area: FocusArea) => {
-      if (!isCurrentSession()) {
+      if (!isCurrentSession(session)) {
         return;
       }
       setFocusRequestState((current) => ({ area, nonce: current.nonce + 1 }));
     },
-    [isCurrentSession]
+    [isCurrentSession, session]
   );
 
   const requestObjectFocus = useCallback(
     (objectId: string) => {
-      if (!isCurrentSession()) {
+      if (!isCurrentSession(session)) {
         return;
       }
       setFocusRequestState((current) => ({ objectId, nonce: current.nonce + 1 }));
     },
-    [isCurrentSession]
+    [isCurrentSession, session]
   );
 
   const focusObject = useCallback(
     (objectId: string, options: { rememberView?: boolean } = {}) => {
-      if (!isCurrentSession()) {
+      if (!isCurrentSession(session)) {
         return;
       }
 
@@ -274,7 +278,7 @@ export function useWorkspaceSelectionNavigationController({
       setSelectedObjectIds([objectId]);
       requestObjectFocus(objectId);
     },
-    [isCurrentSession, requestObjectFocus, selectedObjectIds, setSelectedObjectIds]
+    [isCurrentSession, requestObjectFocus, selectedObjectIds, session, setSelectedObjectIds]
   );
 
   const locateObjectFromDetail = useCallback(
@@ -285,7 +289,7 @@ export function useWorkspaceSelectionNavigationController({
   );
 
   const undoDetailNavigation = useCallback(() => {
-    if (!isCurrentSession()) {
+    if (!isCurrentSession(session)) {
       return false;
     }
 
@@ -298,34 +302,34 @@ export function useWorkspaceSelectionNavigationController({
     const restoredSelection = [...restored.snapshot.selectedObjectIds];
     detailNavigationUndoStackRef.current = restored.history;
     latestCanvasViewRef.current = restoredView;
-    setSelectionSession({ projectId, objectIds: [...restoredSelection] });
+    setSelectionSession({ ...session, objectIds: [...restoredSelection] });
     setFocusRequestState((current) => ({
       view: { ...restoredView },
       selectionObjectIds: [...restoredSelection],
       nonce: current.nonce + 1
     }));
     return true;
-  }, [isCurrentSession, projectId]);
+  }, [isCurrentSession, session]);
 
   const observeCanvasView = useCallback(
     (view: CanvasView) => {
-      if (!isCurrentSession()) {
+      if (!isCurrentSession(session)) {
         return;
       }
       latestCanvasViewRef.current = { ...view };
     },
-    [isCurrentSession]
+    [isCurrentSession, session]
   );
 
   const commitCanvasView = useCallback(
     (view: CanvasView) => {
-      if (!isCurrentSession()) {
+      if (!isCurrentSession(session)) {
         return;
       }
 
       latestCanvasViewRef.current = { ...view };
       updateWorkspace((current) => {
-        if (!isCurrentSession() || current.project.id !== projectId) {
+        if (!isCurrentSession(session) || current.project.id !== projectId) {
           return current;
         }
         if (
@@ -346,24 +350,24 @@ export function useWorkspaceSelectionNavigationController({
         };
       });
     },
-    [isCurrentSession, projectId, updateWorkspace]
+    [isCurrentSession, projectId, session, updateWorkspace]
   );
 
   const getLatestCanvasView = useCallback(
-    () => (isCurrentSession() ? { ...latestCanvasViewRef.current } : { ...workspace.canvas.view }),
-    [isCurrentSession, workspace.canvas.view]
+    () => (isCurrentSession(session) ? { ...latestCanvasViewRef.current } : { ...workspace.canvas.view }),
+    [isCurrentSession, session, workspace.canvas.view]
   );
 
   const clearCanvasSelection = useCallback(() => {
-    if (!isCurrentSession() || selectedObjectIds.length === 0) {
+    if (!isCurrentSession(session) || selectedObjectIds.length === 0) {
       return false;
     }
 
     const nextObjectIds: string[] = [];
-    setSelectionSession({ projectId, objectIds: [] });
+    setSelectionSession({ ...session, objectIds: [] });
     setSelectionRequestState((current) => ({ objectIds: [], nonce: current.nonce + 1 }));
     updateWorkspace((current) => {
-      if (!isCurrentSession() || current.project.id !== projectId) {
+      if (!isCurrentSession(session) || current.project.id !== projectId) {
         return current;
       }
       if (areSelectionIdsEqual(current.ui.lastSelectionIds, nextObjectIds)) {
@@ -372,11 +376,11 @@ export function useWorkspaceSelectionNavigationController({
       return { ...current, ui: { ...current.ui, lastSelectionIds: [] } };
     });
     return true;
-  }, [isCurrentSession, projectId, selectedObjectIds.length, updateWorkspace]);
+  }, [isCurrentSession, projectId, selectedObjectIds.length, session, updateWorkspace]);
 
   const selectAllCanvasObjects = useCallback(
     (objectIds: string[]) => {
-      if (!isCurrentSession() || objectIds.length === 0) {
+      if (!isCurrentSession(session) || objectIds.length === 0) {
         return false;
       }
 
@@ -386,7 +390,7 @@ export function useWorkspaceSelectionNavigationController({
         nonce: current.nonce + 1
       }));
       updateWorkspace((current) => {
-        if (!isCurrentSession() || current.project.id !== projectId) {
+        if (!isCurrentSession(session) || current.project.id !== projectId) {
           return current;
         }
         if (areSelectionIdsEqual(current.ui.lastSelectionIds, nextObjectIds)) {
@@ -396,7 +400,7 @@ export function useWorkspaceSelectionNavigationController({
       });
       return true;
     },
-    [isCurrentSession, projectId, updateWorkspace]
+    [isCurrentSession, projectId, session, updateWorkspace]
   );
 
   return {

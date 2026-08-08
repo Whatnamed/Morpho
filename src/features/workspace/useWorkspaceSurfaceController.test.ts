@@ -408,6 +408,30 @@ describe("useWorkspaceSurfaceController", () => {
     await harness.rerender(createInput({ projectId: "project-a", projectTitle: "项目 A" }));
     expect(snapshotSurface(harness.current(), "project-a")).toEqual(before);
   });
+
+  it("blocks stale surface callbacks after A to B to A2", async () => {
+    const harness = await renderController(createInput({ projectId: "project-a" }));
+    const staleOpenDrawer = harness.current().openDrawer;
+    const staleOpenProjectRecords = harness.current().openProjectRecords;
+    const staleOpenContextMenu = harness.current().openCanvasContextMenu;
+    const staleOpenProposal = harness.current().openProposalDetail;
+
+    await harness.rerender(createInput({ projectId: "project-b", projectTitle: "项目 B" }));
+    await harness.rerender(createInput({ projectId: "project-a", projectTitle: "项目 A2" }));
+    act(() => {
+      staleOpenDrawer("records");
+      staleOpenProjectRecords(["stale-record"]);
+      staleOpenContextMenu(makeContextRequest());
+      staleOpenProposal("stale-proposal");
+    });
+
+    expect(harness.current()).toMatchObject({
+      activeDrawer: null,
+      highlightedContinuityEntryIds: [],
+      canvasContextMenu: null,
+      detailProposalId: null
+    });
+  });
 });
 
 function createInput(

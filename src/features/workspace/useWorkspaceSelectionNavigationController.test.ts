@@ -231,6 +231,33 @@ describe("useWorkspaceSelectionNavigationController", () => {
 
     expect(harness.current().undoDetailNavigation()).toBe(true);
   });
+
+  it("blocks stale selection callbacks after A to B to A2", async () => {
+    const harness = await renderController(createInput());
+    const staleAccept = harness.current().acceptCanvasSelection;
+    const staleFocus = harness.current().focusObject;
+
+    await harness.rerender({
+      projectId: "project-b",
+      workspace: createBlankWorkspace("project-b"),
+      workspaceReady: true
+    });
+    await harness.rerender({
+      projectId: "project-a",
+      workspace: createBlankWorkspace("project-a"),
+      workspaceReady: true
+    });
+    const before = harness.workspace();
+
+    act(() => {
+      staleAccept(["stale-object"]);
+      staleFocus("stale-focus");
+    });
+
+    expect(harness.workspace()).toBe(before);
+    expect(harness.current().selectedObjectIds).toEqual([]);
+    expect(harness.current().focusRequest).toEqual({ nonce: 0 });
+  });
 });
 
 type SelectionTestInput = Omit<UseWorkspaceSelectionNavigationControllerInput, "updateWorkspace">;

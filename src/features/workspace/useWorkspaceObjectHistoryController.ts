@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useReducer } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useReducer } from "react";
 
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 
@@ -30,11 +30,12 @@ export type WorkspaceObjectHistoryController<TEntry extends WorkspaceSnapshotEnt
   clearHistory: () => void;
 };
 
-type CommittedObjectHistorySession = {
+type ObjectHistorySession = Readonly<{
   projectId: string;
   workspaceId: string;
   workspaceReady: boolean;
-};
+  generation: symbol;
+}>;
 
 export function isEditableDomTarget(target: EventTarget | null): boolean {
   return (
@@ -53,57 +54,49 @@ export function useWorkspaceObjectHistoryController<TEntry extends WorkspaceSnap
   closeCanvasContextMenu,
   showNotice
 }: UseWorkspaceObjectHistoryControllerInput<TEntry>): WorkspaceObjectHistoryController<TEntry> {
-  const historyRef = useRef(createSnapshotHistory<TEntry>());
-  const activeSessionRef = useRef<CommittedObjectHistorySession>({
-    projectId,
-    workspaceId: workspace.project.id,
-    workspaceReady
-  });
-  const [committedSession, commitSession] = useReducer(
-    (_current: CommittedObjectHistorySession, next: CommittedObjectHistorySession) => next,
-    { projectId, workspaceId: workspace.project.id, workspaceReady }
+  const session = useMemo<ObjectHistorySession>(
+    () => ({
+      projectId,
+      workspaceId: workspace.project.id,
+      workspaceReady,
+      generation: Symbol("workspace-object-history-session")
+    }),
+    [projectId, workspace.project.id, workspaceReady]
   );
-
-  const sessionMatchesProject =
-    committedSession.projectId === projectId &&
-    committedSession.workspaceId === workspace.project.id &&
-    committedSession.workspaceReady &&
-    workspaceReady &&
-    workspace.project.id === projectId;
+  const historyRef = useRef(createSnapshotHistory<TEntry>());
+  const activeSessionRef = useRef<ObjectHistorySession>(session);
+  const [committedSession, commitSession] = useReducer(
+    (_current: ObjectHistorySession, next: ObjectHistorySession) => next,
+    session
+  );
 
   const isCurrentSession = useCallback(
-    () =>
-      sessionMatchesProject &&
-      activeSessionRef.current.projectId === projectId &&
-      activeSessionRef.current.workspaceId === workspace.project.id &&
-      activeSessionRef.current.workspaceReady === workspaceReady,
-    [projectId, sessionMatchesProject, workspace.project.id, workspaceReady]
+    (expectedSession: ObjectHistorySession) => {
+      return activeSessionRef.current === expectedSession && expectedSession.workspaceReady;
+    },
+    []
   );
 
-  useEffect(() => {
-    if (
-      committedSession.projectId === projectId &&
-      committedSession.workspaceId === workspace.project.id &&
-      committedSession.workspaceReady === workspaceReady
-    ) {
+  useLayoutEffect(() => {
+    if (committedSession === session && activeSessionRef.current === session) {
       return;
     }
 
-    activeSessionRef.current = { projectId, workspaceId: workspace.project.id, workspaceReady };
+    activeSessionRef.current = session;
     historyRef.current = createSnapshotHistory<TEntry>();
-    commitSession({ projectId, workspaceId: workspace.project.id, workspaceReady });
-  }, [committedSession, projectId, workspace.project.id, workspaceReady]);
+    commitSession(session);
+  }, [committedSession, session]);
 
   const pushUndoSnapshot = useCallback(() => {
-    if (!isCurrentSession()) {
+    if (!isCurrentSession(session)) {
       return;
     }
 
     historyRef.current = pushSnapshotHistoryEntry(historyRef.current, captureCurrent());
-  }, [captureCurrent, isCurrentSession]);
+  }, [captureCurrent, isCurrentSession, session]);
 
   const undo = useCallback(() => {
-    if (!isCurrentSession()) {
+    if (!isCurrentSession(session)) {
       return false;
     }
 
@@ -125,10 +118,10 @@ export function useWorkspaceObjectHistoryController<TEntry extends WorkspaceSnap
     historyRef.current = result.history;
     applyEntry(result.entry);
     return true;
-  }, [applyEntry, captureCurrent, closeCanvasContextMenu, isCurrentSession, showNotice, undoDetailNavigation, workspace]);
+  }, [applyEntry, captureCurrent, closeCanvasContextMenu, isCurrentSession, session, showNotice, undoDetailNavigation, workspace]);
 
   const redo = useCallback(() => {
-    if (!isCurrentSession()) {
+    if (!isCurrentSession(session)) {
       return false;
     }
 
@@ -146,14 +139,14 @@ export function useWorkspaceObjectHistoryController<TEntry extends WorkspaceSnap
     historyRef.current = result.history;
     applyEntry(result.entry);
     return true;
-  }, [applyEntry, captureCurrent, closeCanvasContextMenu, isCurrentSession, showNotice, workspace]);
+  }, [applyEntry, captureCurrent, closeCanvasContextMenu, isCurrentSession, session, showNotice, workspace]);
 
   const clearHistory = useCallback(() => {
-    if (!isCurrentSession()) {
+    if (!isCurrentSession(session)) {
       return;
     }
     historyRef.current = createSnapshotHistory<TEntry>();
-  }, [isCurrentSession]);
+  }, [isCurrentSession, session]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
