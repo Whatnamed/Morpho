@@ -25,7 +25,7 @@ export type AvailableAiWorkIntentInput = {
 };
 
 const EXPLICIT_IMAGE_GENERATION_PATTERN =
-  /继续发展(?:这张|图像|图片)?|生成(?:(?:一张|几张|每个方向|每条方向|各方向|这些方向|这几个方向).*(?:图|图片|预览)|场景图|角度图|cmf图|细节图|预览图|效果图|新视觉方案)|出图|分别.*(?:生成|出).*(?:图|预览)|图像生成|图像任务|方向预览|改成.*场景/i;
+  /继续发展(?:这张|图像|图片)?|生成(?:(?:[一二两三四五六七八九十\d]+张|几张|每个方向|每条方向|各方向|这些方向|这几个方向).*(?:图|图片|预览)|场景图|角度图|cmf图|细节图|预览图|效果图|新视觉方案)|出图|分别.*(?:生成|出).*(?:图|预览)|图像生成|图像任务|方向预览|改成.*场景/i;
 const GENERIC_TEXT_GENERATION_PATTERN = /生成(?:一段|一份|文案|说明|文字|摘要|标题|图注|交付说明)/i;
 const IMAGE_ANALYSIS_PATTERN = /分析这张图|比较这几张图|提取.*形态|视觉分析|看图|图片.*问题/i;
 const RESEARCH_PATTERN = /调研|研究|整理研究|联网补充|补充来源|查资料|搜索资料|分析这些(?:资料|文件|pdf|pptx?|markdown)|看看这些(?:资料|文件)|帮我梳理|基于这些(?:材料|资料)|验证一下|查一下/i;
@@ -42,8 +42,6 @@ const DELIVERY_SECTION_DRAFT_PATTERN = /交付准备|交付说明|本节说明|�
 export function recommendAiTaskMode(draft: string, selectedObjectTypes: readonly string[]): AiTaskMode {
   const text = draft.trim();
   const hasMaterialSelection = selectedObjectTypes.some((type) => MATERIAL_OBJECT_TYPES.has(type));
-  const selectedDirectionCount = selectedObjectTypes.filter((type) => type === "conceptDirection").length;
-  const hasImageSelection = selectedObjectTypes.includes("image");
 
   if (!text) {
     return "chatAnalysis";
@@ -57,11 +55,7 @@ export function recommendAiTaskMode(draft: string, selectedObjectTypes: readonly
     return "chatAnalysis";
   }
 
-  if (
-    !GENERIC_TEXT_GENERATION_PATTERN.test(text) &&
-    EXPLICIT_IMAGE_GENERATION_PATTERN.test(text) &&
-    (selectedDirectionCount > 0 || hasImageSelection || /图|预览|场景|cmf|细节/i.test(text))
-  ) {
+  if (isExplicitImageGenerationRequest(text, selectedObjectTypes)) {
     return "imageGeneration";
   }
 
@@ -70,6 +64,24 @@ export function recommendAiTaskMode(draft: string, selectedObjectTypes: readonly
   }
 
   return "chatAnalysis";
+}
+
+/**
+ * This check is deliberately bound to the current user draft and current
+ * selection. Project files, prior assistant text, and model Tool Calls never
+ * participate, so they cannot mint authority for a paid image action.
+ */
+export function isExplicitImageGenerationRequest(
+  draft: string,
+  selectedObjectTypes: readonly string[]
+): boolean {
+  const text = draft.trim();
+  if (!text || GENERIC_TEXT_GENERATION_PATTERN.test(text)) return false;
+  const hasVisualSelection = selectedObjectTypes.some(
+    (type) => type === "conceptDirection" || type === "image"
+  );
+  return EXPLICIT_IMAGE_GENERATION_PATTERN.test(text) &&
+    (hasVisualSelection || /图|预览|场景|cmf|细节/i.test(text));
 }
 
 export function resolveTaskModeForSend(input: ResolveTaskModeInput): AiTaskMode {

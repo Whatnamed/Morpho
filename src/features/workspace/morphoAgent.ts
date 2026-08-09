@@ -281,6 +281,9 @@ export function resolveAgentToolExecutionPolicy(input: {
   if ((effect.memoryWrite || effect.highImpactStateChange) && !input.explicitUserCommand) {
     return "requireExplicitUserCommand";
   }
+  if (effect.externalCost && !input.explicitUserCommand) {
+    return "requireConfirmation";
+  }
   if (effect.highImpactStateChange) {
     return "requireConfirmation";
   }

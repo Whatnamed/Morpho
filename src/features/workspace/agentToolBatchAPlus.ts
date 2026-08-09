@@ -18,6 +18,7 @@ import type { AgentTurnHost } from "./agentTurnHost";
 import type { ToolCallTerminalResult } from "./agentTurnLifecycle";
 import type { PreparedAgentTurnAPlus, RunMorphoAgentTurnAPlusInput } from "./agentTurnProductPreparationAPlus";
 import { buildAgentVisualGenerationBatch, resolveExpectedVisualGenerationCount } from "./agentVisualGenerationBatch";
+import { isExplicitImageGenerationRequest } from "./aiTaskRouting";
 import {
   getAgentToolEffect,
   parseMorphoAgentToolCallBatch,
@@ -246,7 +247,13 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
         name: entry.parsed.name,
         mode: input.turnInput.agentTurnMode,
         explicitUserCommand:
-          entry.parsed.name !== "submit_memory_update" || input.prepared.requiredMemoryUpdates.length > 0
+          entry.parsed.name === "generate_visuals"
+            ? isExplicitImageGenerationRequest(
+                input.turnInput.draft,
+                input.turnInput.selectedObjects.map((object) => object.type)
+              )
+            : entry.parsed.name !== "submit_memory_update" ||
+              input.prepared.requiredMemoryUpdates.length > 0
       });
       if (executionPolicy === "requireConfirmation") {
         const confirmationValue = buildPendingAgentActionConfirmation({

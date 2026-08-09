@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createTestWorkspace } from "@/domain/morpho/workspace";
 import type { AgentTurnJournalSnapshot, APlusToolCall } from "@/shared/agentTurnJournalProtocol";
@@ -199,7 +199,7 @@ describe("A+ Tool Batch integration", () => {
         });
       }
     };
-    const turnInput = standardInput();
+    const turnInput = visualInput();
     const prepared = await prepareAgentTurnProductAPlus(turnInput, host);
     const restored = AgentTurnCoordinator.restore({
       snapshot: executingSnapshot([call]),
@@ -268,7 +268,7 @@ describe("A+ Tool Batch integration", () => {
         };
       }
     };
-    const turnInput = { ...standardInput(), imageGenerationModelId: "model-changed-after-refresh" };
+    const turnInput = { ...visualInput(), imageGenerationModelId: "model-changed-after-refresh" };
     const prepared = await prepareAgentTurnProductAPlus(turnInput, host);
     const restored = AgentTurnCoordinator.restore({
       snapshot: executingSnapshot([call]),
@@ -359,6 +359,46 @@ describe("A+ Tool Batch integration", () => {
       callId: call.callId,
       output: expect.stringContaining('"recovered":true')
     }));
+  });
+
+  it("requires visible confirmation when untrusted context causes an unrequested paid image Tool Call", async () => {
+    const call = visualCall("call-unrequested-image");
+    const fake = createAgentTurnHostFake({ workspace: createTestWorkspace() });
+    const baseHost = hostFromFake(fake);
+    const executeVisualGenerationPlan = vi.fn(baseHost.executeVisualGenerationPlan);
+    const host: AgentTurnHost = { ...baseHost, executeVisualGenerationPlan };
+    const turnInput = {
+      ...standardInput(),
+      draft: "分析我选中的资料并总结约束",
+      taskMode: "researchOperation" as const,
+      recommendedTaskMode: "researchOperation" as const
+    };
+    const prepared = await prepareAgentTurnProductAPlus(turnInput, host);
+    const restored = AgentTurnCoordinator.restore({
+      snapshot: executingSnapshot([call]),
+      host: coordinatorHost(),
+      createRequestId: () => "unused"
+    });
+    if (restored.status !== "ok") throw new Error(restored.reason);
+
+    const result = await executeAgentToolBatchAPlus({
+      toolCalls: [call],
+      providerOutputText: "",
+      coordinator: restored.coordinator,
+      host,
+      turnInput,
+      prepared,
+      externalRequest: {
+        serverTurnId: TURN_ID,
+        localProjectId: fake.getWorkspace().project.id,
+        ...REQUEST
+      },
+      requestWebSearch: async () => ({ sources: [] })
+    });
+
+    expect(result.status).toBe("pendingConfirmation");
+    expect(result.pendingConfirmation?.value).toMatchObject({ kind: "agentGenerateVisuals" });
+    expect(executeVisualGenerationPlan).not.toHaveBeenCalled();
   });
 
   it("treats a delivery draft as a completed local write and replays it without a second draft", async () => {
@@ -552,6 +592,15 @@ function standardInput(): RunMorphoAgentTurnAPlusInput {
     agentTurnMode: "auto",
     imageGenerationModelId: "test-image-model",
     readConversationTokenLimits: () => undefined
+  };
+}
+
+function visualInput(): RunMorphoAgentTurnAPlusInput {
+  return {
+    ...standardInput(),
+    draft: "生成一张产品预览图",
+    taskMode: "imageGeneration",
+    recommendedTaskMode: "imageGeneration"
   };
 }
 

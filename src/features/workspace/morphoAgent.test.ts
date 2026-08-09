@@ -52,6 +52,11 @@ describe("agent conversation context", () => {
     expect(resolveAgentToolExecutionPolicy({
       name: "generate_visuals",
       mode: "auto",
+      explicitUserCommand: false
+    })).toBe("requireConfirmation");
+    expect(resolveAgentToolExecutionPolicy({
+      name: "generate_visuals",
+      mode: "auto",
       explicitUserCommand: true
     })).toBe("execute");
     expect(resolveAgentToolExecutionPolicy({

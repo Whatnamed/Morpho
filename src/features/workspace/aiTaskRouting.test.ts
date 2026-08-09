@@ -4,6 +4,7 @@ import {
   expectsConceptDirectionProposal,
   expectsDesignDefinitionProposal,
   getAvailableAiWorkIntents,
+  isExplicitImageGenerationRequest,
   recommendAiTaskMode,
   recommendAiWorkIntent,
   resolveAiContextTask,
@@ -41,6 +42,12 @@ describe("workspace AI task routing", () => {
 
   it("does not treat generic text generation as image generation", () => {
     expect(recommendAiTaskMode("生成一段交付说明文字", ["image"])).toBe("chatAnalysis");
+  });
+
+  it("derives paid image authority only from the current explicit user draft", () => {
+    expect(isExplicitImageGenerationRequest("给这个方向生成两张预览图", ["conceptDirection"])).toBe(true);
+    expect(isExplicitImageGenerationRequest("分析这份资料，告诉我约束", ["file"])).toBe(false);
+    expect(isExplicitImageGenerationRequest("生成一段图片说明文字", ["image"])).toBe(false);
   });
 
   it("recommends research only for explicit research intent", () => {
