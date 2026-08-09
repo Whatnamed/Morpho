@@ -49,6 +49,20 @@ describe("resolveAuthRouteDecision", () => {
     });
   });
 
+  it("fails closed after URLSearchParams decodes an encoded backslash target", () => {
+    expect(
+      resolveAuthRouteDecision({
+        auth: loadAuthRuntimeConfig(configuredEnvironment),
+        pathname: "/login",
+        search: "?next=%2F%255C%255Cevil.example%2Fprojects%2Fproject-a",
+        session: "authenticated"
+      })
+    ).toEqual({
+      type: "redirect-after-login",
+      nextPath: "/"
+    });
+  });
+
   it("fails closed when required authentication lacks public Supabase configuration", () => {
     const auth = loadAuthRuntimeConfig({ MORPHO_AUTH_REQUIRED: "true" });
 
