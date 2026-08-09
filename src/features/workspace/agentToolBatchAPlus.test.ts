@@ -401,6 +401,46 @@ describe("A+ Tool Batch integration", () => {
     expect(executeVisualGenerationPlan).not.toHaveBeenCalled();
   });
 
+  it("requires visible confirmation when the current user explicitly rejects image generation", async () => {
+    const call = visualCall("call-negated-image");
+    const fake = createAgentTurnHostFake({ workspace: createTestWorkspace() });
+    const baseHost = hostFromFake(fake);
+    const executeVisualGenerationPlan = vi.fn(baseHost.executeVisualGenerationPlan);
+    const host: AgentTurnHost = { ...baseHost, executeVisualGenerationPlan };
+    const turnInput = {
+      ...standardInput(),
+      draft: "不要生成预览图，只分析我选中的资料",
+      taskMode: "chatAnalysis" as const,
+      recommendedTaskMode: "chatAnalysis" as const
+    };
+    const prepared = await prepareAgentTurnProductAPlus(turnInput, host);
+    const restored = AgentTurnCoordinator.restore({
+      snapshot: executingSnapshot([call]),
+      host: coordinatorHost(),
+      createRequestId: () => "unused"
+    });
+    if (restored.status !== "ok") throw new Error(restored.reason);
+
+    const result = await executeAgentToolBatchAPlus({
+      toolCalls: [call],
+      providerOutputText: "",
+      coordinator: restored.coordinator,
+      host,
+      turnInput,
+      prepared,
+      externalRequest: {
+        serverTurnId: TURN_ID,
+        localProjectId: fake.getWorkspace().project.id,
+        ...REQUEST
+      },
+      requestWebSearch: async () => ({ sources: [] })
+    });
+
+    expect(result.status).toBe("pendingConfirmation");
+    expect(result.pendingConfirmation?.value).toMatchObject({ kind: "agentGenerateVisuals" });
+    expect(executeVisualGenerationPlan).not.toHaveBeenCalled();
+  });
+
   it("treats a delivery draft as a completed local write and replays it without a second draft", async () => {
     const fake = createAgentTurnHostFake({ workspace: createTestWorkspace() });
     const host = hostFromFake(fake);

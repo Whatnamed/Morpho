@@ -50,6 +50,17 @@ describe("workspace AI task routing", () => {
     expect(isExplicitImageGenerationRequest("生成一段图片说明文字", ["image"])).toBe(false);
   });
 
+  it("does not mint paid image authority from explicitly negated generation language", () => {
+    expect(isExplicitImageGenerationRequest("不要生成预览图，只分析问题", ["image"])).toBe(false);
+    expect(isExplicitImageGenerationRequest("先分析，暂不出图", ["conceptDirection"])).toBe(false);
+    expect(isExplicitImageGenerationRequest("我不生成图片，只比较现有方案", ["image"])).toBe(false);
+    expect(isExplicitImageGenerationRequest("先梳理约束，别出图", ["conceptDirection"])).toBe(false);
+    expect(isExplicitImageGenerationRequest("无需继续发展这张图片", ["image"])).toBe(false);
+    expect(isExplicitImageGenerationRequest("不要把这张图改成夜间场景", ["image"])).toBe(false);
+    expect(isExplicitImageGenerationRequest("基于这些方向分别生成预览", ["conceptDirection"])).toBe(true);
+    expect(isExplicitImageGenerationRequest("不要分析，生成两张预览图", ["conceptDirection"])).toBe(true);
+  });
+
   it("recommends research only for explicit research intent", () => {
     expect(recommendAiTaskMode("基于已选资料做调研，整理机会点", ["file", "link"])).toBe("researchOperation");
     expect(recommendAiTaskMode("解释一下这个文件标题是什么意思", ["file"])).toBe("chatAnalysis");

@@ -121,7 +121,7 @@ Image generation uses the GrsAI `MORPHO_GRS_*` group defined in `.env.example`.
 `MORPHO_GRS_IMAGE_HOST_ALLOWLIST` is a comma-separated list of exact HTTPS hostnames that may
 serve generated-image bytes. The configured primary and fallback Provider hosts are included
 automatically. Add a separate CDN hostname only after verifying it is controlled by the Provider;
-redirects are rechecked and private/IP-literal targets, non-image responses, oversized bodies, and
+redirects are rechecked and IP-literal/local-name targets, non-image responses, oversized bodies, and
 slow bodies are rejected.
 
 `MORPHO_GRS_DEFAULT_MODEL` (example value `gpt-image-2`) is the **server-side default / compatibility fallback** used when a request omits a model or needs a catalog default. It does **not** mean every Morpho image task is fixed to that model. `MORPHO_GRS_IMAGE_MODEL` remains a legacy fallback for existing local environments.
