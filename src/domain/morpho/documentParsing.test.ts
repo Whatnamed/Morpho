@@ -67,6 +67,19 @@ describe("document parsing", () => {
     });
   });
 
+  it("rejects a high-ratio PPTX slide before materializing its expanded XML", async () => {
+    const pptx = new File([toArrayBuffer(zipSync({
+      "ppt/slides/slide1.xml": strToU8(`<a:t>${"A".repeat(3 * 1024 * 1024)}</a:t>`)
+    }))], "bomb.pptx", {
+      type: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    });
+
+    await expect(parseDocumentFile(pptx)).resolves.toMatchObject({
+      status: "failed",
+      reason: expect.stringContaining("安全解压预算")
+    });
+  });
+
   it("creates a text extract file and identifies its asset source", () => {
     const original = new File(["brief"], "brief.pptx", {
       type: "application/vnd.openxmlformats-officedocument.presentationml.presentation"

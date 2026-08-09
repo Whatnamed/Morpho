@@ -1,4 +1,4 @@
-import { strFromU8, unzipSync, zipSync } from "fflate";
+import { strFromU8, zipSync } from "fflate";
 
 import {
   createEditableProjectBackupManifest,
@@ -19,6 +19,7 @@ import {
 import type { EditableProjectBackupManifest } from "@/domain/morpho/projectArchive";
 import type { AssetId, AssetRecord, MorphoWorkspace } from "@/domain/morpho/types";
 import type { BlobStore } from "@/infrastructure/assets/localAssetWorkflow";
+import { BoundedZipError, unzipWithBudget } from "@/shared/boundedZip";
 import {
   createCatalog,
   deleteProjectWorkspace,
@@ -122,6 +123,7 @@ type InspectBackupResult =
 
 const UNREADABLE_BACKUP_BUNDLE_REASON = "无法读取备份包。文件可能损坏，或不是 Morpho 可编辑备份。";
 const RESTORE_PROJECT_ID_ATTEMPT_LIMIT = 10;
+const MAX_BACKUP_COMPRESSED_BYTES = 256 * 1024 * 1024;
 
 export async function exportHumanReadableArchiveBundle(
   workspace: MorphoWorkspace,
@@ -186,11 +188,33 @@ export async function exportEditableProjectBackupBundle(
 }
 
 export async function inspectEditableProjectBackupBundle(file: File | Blob): Promise<InspectBackupResult> {
+  if (file.size > MAX_BACKUP_COMPRESSED_BYTES) {
+    return unreadableBackupBundleFailure("备份包超过 256 MiB 安全上限。");
+  }
+
   let zipped: Record<string, Uint8Array>;
   try {
-    zipped = unzipSync(new Uint8Array(await file.arrayBuffer()));
-  } catch {
-    return unreadableBackupBundleFailure();
+    const compressed = new Uint8Array(await file.arrayBuffer());
+    const bootstrapFiles = await unzipWithBudget(compressed, {
+      ...backupZipBudget(),
+      maxIncludedEntries: 1,
+      maxEntryUncompressedBytes: 2 * 1024 * 1024,
+      maxTotalUncompressedBytes: 2 * 1024 * 1024,
+      include: (entry) => entry.name === "bundle.json"
+    });
+    const bundleValue = parseJsonFile(bootstrapFiles["bundle.json"]);
+    const declaredPaths = resolveDeclaredBundlePaths(bundleValue);
+    if (!declaredPaths) return unreadableBackupBundleFailure();
+    zipped = await unzipWithBudget(compressed, {
+      ...backupZipBudget(),
+      include: (entry) => declaredPaths.has(entry.name)
+    });
+  } catch (error) {
+    return unreadableBackupBundleFailure(
+      error instanceof BoundedZipError && error.code !== "invalid_zip"
+        ? `备份包超过安全解压预算：${error.message}`
+        : undefined
+    );
   }
 
   const bundleValue = parseJsonFile(zipped["bundle.json"]);
@@ -501,18 +525,47 @@ function buildEditableBackupInspectionPreview(
   };
 }
 
-function unreadableBackupBundleFailure(): Extract<InspectBackupResult, { status: "failed" }> {
+function unreadableBackupBundleFailure(detail?: string): Extract<InspectBackupResult, { status: "failed" }> {
   return {
     status: "failed",
-    reason: UNREADABLE_BACKUP_BUNDLE_REASON,
+    reason: detail ? `${UNREADABLE_BACKUP_BUNDLE_REASON} ${detail}` : UNREADABLE_BACKUP_BUNDLE_REASON,
     diagnostics: [
       {
         code: "unreadable_backup_bundle",
         severity: "error",
-        message: UNREADABLE_BACKUP_BUNDLE_REASON
+        message: detail ? `${UNREADABLE_BACKUP_BUNDLE_REASON} ${detail}` : UNREADABLE_BACKUP_BUNDLE_REASON
       }
     ]
   };
+}
+
+function backupZipBudget() {
+  return {
+    maxCompressedBytes: MAX_BACKUP_COMPRESSED_BYTES,
+    maxEntries: 4_096,
+    maxIncludedEntries: 2_048,
+    maxEntryUncompressedBytes: 128 * 1024 * 1024,
+    maxTotalUncompressedBytes: 512 * 1024 * 1024,
+    maxCompressionRatio: 200,
+    timeoutMs: 15_000
+  } as const;
+}
+
+function resolveDeclaredBundlePaths(bundleValue: unknown): Set<string> | undefined {
+  if (!isRecord(bundleValue) || !Array.isArray(bundleValue.files) || bundleValue.files.length > 2_048) {
+    return undefined;
+  }
+  const paths = new Set<string>(["bundle.json"]);
+  for (const entry of bundleValue.files) {
+    if (!isRecord(entry) || typeof entry.path !== "string" || entry.path.length > 512) {
+      return undefined;
+    }
+    paths.add(entry.path);
+  }
+  if (typeof bundleValue.manifestPath !== "string" || !paths.has(bundleValue.manifestPath)) {
+    return undefined;
+  }
+  return paths;
 }
 
 function ensureUnreadableDiagnostic(diagnostics: ProjectBundleDiagnostic[]): ProjectBundleDiagnostic[] {
@@ -615,4 +668,8 @@ function createProjectId(): string {
     return `project-${crypto.randomUUID()}`;
   }
   return `project-${Date.now().toString(36)}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

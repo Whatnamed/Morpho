@@ -1,4 +1,6 @@
-import { unzipSync, strFromU8 } from "fflate";
+import { strFromU8 } from "fflate";
+
+import { BoundedZipError, unzipWithBudget } from "@/shared/boundedZip";
 
 import type { AssetSourceType } from "./types";
 
@@ -17,6 +19,7 @@ export type DocumentParseResult =
 
 const SUPPORTED_TEXT_EXTENSIONS = new Set(["md", "txt"]);
 const MAX_EXTRACT_CHARS = 120_000;
+const MAX_PPTX_COMPRESSED_BYTES = 64 * 1024 * 1024;
 
 export function shouldAttemptDocumentParse(file: File): boolean {
   if (file.type.startsWith("image/")) {
@@ -152,7 +155,19 @@ async function parsePdfDocument(file: File): Promise<DocumentParseResult> {
 
 async function parsePptxDocument(file: File): Promise<DocumentParseResult> {
   try {
-    const files = unzipSync(new Uint8Array(await file.arrayBuffer()));
+    if (file.size > MAX_PPTX_COMPRESSED_BYTES) {
+      throw new BoundedZipError("compressed_size_limit", "PPTX 文件超过 64 MiB 上限。");
+    }
+    const files = await unzipWithBudget(new Uint8Array(await file.arrayBuffer()), {
+      maxCompressedBytes: MAX_PPTX_COMPRESSED_BYTES,
+      maxEntries: 2_048,
+      maxIncludedEntries: 512,
+      maxEntryUncompressedBytes: 2 * 1024 * 1024,
+      maxTotalUncompressedBytes: 32 * 1024 * 1024,
+      maxCompressionRatio: 200,
+      timeoutMs: 10_000,
+      include: (entry) => /^ppt\/slides\/slide\d+\.xml$/i.test(entry.name)
+    });
     const slideEntries = Object.keys(files)
       .filter((path) => /^ppt\/slides\/slide\d+\.xml$/i.test(path))
       .sort(compareSlidePaths);
@@ -190,7 +205,11 @@ async function parsePptxDocument(file: File): Promise<DocumentParseResult> {
   } catch (error) {
     return {
       status: "failed",
-      reason: error instanceof Error ? `PPTX 解析失败：${error.message}` : "PPTX 解析失败。"
+      reason: error instanceof BoundedZipError
+        ? `PPTX 解析失败：文件超过安全解压预算（${error.message}）`
+        : error instanceof Error
+          ? `PPTX 解析失败：${error.message}`
+          : "PPTX 解析失败。"
     };
   }
 }

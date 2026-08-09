@@ -226,6 +226,31 @@ describe("project bundle client", () => {
     });
   });
 
+  test("rejects backup ZIP bombs and excessive entry counts before restore", async () => {
+    const highRatio = new File([zipSync({
+      "bundle.json": new TextEncoder().encode("0".repeat(3 * 1024 * 1024))
+    })], "high-ratio.zip", { type: "application/zip" });
+    await expect(inspectEditableProjectBackupBundle(highRatio)).resolves.toMatchObject({
+      status: "failed",
+      reason: expect.stringContaining("安全解压预算")
+    });
+
+    const tooManyEntries = Object.fromEntries(
+      Array.from({ length: 4_097 }, (_value, index) => [
+        index === 0 ? "bundle.json" : `extra-${index}.txt`,
+        new Uint8Array()
+      ])
+    );
+    await expect(inspectEditableProjectBackupBundle(new File(
+      [zipSync(tooManyEntries)],
+      "too-many.zip",
+      { type: "application/zip" }
+    ))).resolves.toMatchObject({
+      status: "failed",
+      reason: expect.stringContaining("安全解压预算")
+    });
+  });
+
   test("restores the same inspected backup twice with distinct project ids and runtime storage keys", async () => {
     const workspace = createBundleFixtureWorkspace();
     const blobStore = new MemoryBlobStore({
