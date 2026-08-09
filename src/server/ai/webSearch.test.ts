@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { parseDuckDuckGoResults, searchWebEvidence } from "./webSearch";
+import {
+  WEB_SEARCH_QUERY_MAX_RESPONSE_BYTES,
+  parseDuckDuckGoResults,
+  searchWebEvidence
+} from "./webSearch";
 
 describe("web search parsing", () => {
   afterEach(() => {
@@ -39,7 +43,7 @@ describe("web search parsing", () => {
           ["Source A", "https://example.com/a"],
           ["Source B", "https://example.com/b"],
           ["Source C", "https://example.com/c"]
-        ]), { status: 200 });
+        ]), { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } });
       }
       if (url.endsWith("example.com/a")) {
         return new Response("Useful excerpt A", { status: 200 });
@@ -69,6 +73,94 @@ describe("web search parsing", () => {
     expect(result.sources[1]).toMatchObject({ url: "https://example.com/b" });
     expect(result.sources[2]).toMatchObject({ url: "https://example.com/c" });
     expect(result).toMatchObject({ failedSourceCount: 1, timedOutSourceCount: 1 });
+  });
+
+  it("keeps the deadline active after headers and cancels a stalled source body", async () => {
+    vi.useFakeTimers();
+    const cancel = vi.fn();
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.startsWith("https://html.duckduckgo.com")) {
+        return new Response(searchResultHtml([["Source A", "https://example.com/a"]]), {
+          status: 200,
+          headers: { "Content-Type": "text/html" }
+        });
+      }
+      return new Response(new ReadableStream<Uint8Array>({ cancel }), {
+        status: 200,
+        headers: { "Content-Type": "text/plain" }
+      });
+    }));
+
+    const resultPromise = searchWebEvidence({
+      queries: ["ocean buoy"],
+      queryTimeoutMs: 100,
+      sourceTimeoutMs: 100
+    });
+    await vi.advanceTimersByTimeAsync(101);
+    const result = await resultPromise;
+
+    expect(result.sources).toHaveLength(1);
+    expect(result).toMatchObject({ failedSourceCount: 0, timedOutSourceCount: 1 });
+    expect(cancel).toHaveBeenCalled();
+  });
+
+  it("cancels a chunked query response as soon as it exceeds the byte ceiling", async () => {
+    const cancel = vi.fn();
+    const chunk = new Uint8Array(Math.floor(WEB_SEARCH_QUERY_MAX_RESPONSE_BYTES / 2) + 1);
+    let sent = 0;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent < 2) {
+          sent += 1;
+          controller.enqueue(chunk);
+        }
+      },
+      cancel
+    }), { status: 200, headers: { "Content-Type": "text/html" } })));
+
+    const result = await searchWebEvidence({ queries: ["ocean buoy"] });
+
+    expect(result).toEqual({ sources: [], failedSourceCount: 1, timedOutSourceCount: 0 });
+    expect(cancel).toHaveBeenCalledWith("response_read_failed");
+  });
+
+  it("rejects an unexpected fixed-origin response content type", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    })));
+
+    await expect(searchWebEvidence({ queries: ["ocean buoy"] })).resolves.toEqual({
+      sources: [],
+      failedSourceCount: 1,
+      timedOutSourceCount: 0
+    });
+  });
+
+  it("enforces one aggregate byte budget across query and excerpt fan-out", async () => {
+    const queryBody = `${searchResultHtml([
+      ["Source A", "https://example.com/a"],
+      ["Source B", "https://example.com/b"],
+      ["Source C", "https://example.com/c"],
+      ["Source D", "https://example.com/d"],
+      ["Source E", "https://example.com/e"]
+    ])}<!--${"q".repeat(900 * 1024)}-->`;
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      return url.startsWith("https://html.duckduckgo.com")
+        ? new Response(queryBody, { status: 200, headers: { "Content-Type": "text/html" } })
+        : new Response("e".repeat(500 * 1024), {
+            status: 200,
+            headers: { "Content-Type": "text/plain" }
+          });
+    }));
+
+    const result = await searchWebEvidence({ queries: ["one", "two", "three"], maxSources: 5 });
+
+    expect(result.sources).toHaveLength(5);
+    expect(result.failedSourceCount).toBe(1);
+    expect(result.timedOutSourceCount).toBe(0);
   });
 
   it("propagates an overall abort instead of converting it into partial success", async () => {
