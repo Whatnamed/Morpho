@@ -82,6 +82,23 @@ describe("A+ External Action Journal adapter", () => {
     });
   });
 
+  it.each(["pending", "blocked"])("maps current %s access to 403", async (reason) => {
+    const client = fakeClient(() => actionRow("denied", reason));
+    const result = await acquireAgentTurnExternalActionForClient(client, {
+      serverTurnId: TURN_ID,
+      localProjectId: "project-test",
+      requestId: "request-1",
+      stepSequence: 1,
+      actionId: "call-search-1",
+      actionKind: "webSearch",
+      actionHash: "a".repeat(64),
+      claimCallId: "call-search-1",
+      claimHash: "b".repeat(64)
+    });
+
+    expect(result).toMatchObject({ status: "denied", httpStatus: 403, code: reason });
+  });
+
   it("canonicalizes object key order but refuses undefined hash input", () => {
     expect(hashAgentTurnExternalActionContract({ b: 2, a: 1 })).toBe(
       hashAgentTurnExternalActionContract({ a: 1, b: 2 })

@@ -214,6 +214,25 @@ describe("A+ Server Turn Journal service", () => {
     });
   });
 
+  it.each(["pending", "blocked"])("maps %s access to an explicit 403", async (reason) => {
+    const mock = client(row({ decision: "denied", denial_reason: reason }));
+    await expect(createAgentTurnJournalForClient(mock, {
+      localProjectId: "project-a",
+      creationIdempotencyKey: "create-a"
+    })).resolves.toMatchObject({ status: "denied", httpStatus: 403, code: reason });
+  });
+
+  it.each(["active_turn_limit", "creation_rate_limit", "journal_capacity_limit"])(
+    "maps %s admission capacity to 429",
+    async (reason) => {
+      const mock = client(row({ decision: "denied", denial_reason: reason }));
+      await expect(createAgentTurnJournalForClient(mock, {
+        localProjectId: "project-a",
+        creationIdempotencyKey: "create-a"
+      })).resolves.toMatchObject({ status: "denied", httpStatus: 429, code: reason });
+    }
+  );
+
   it("settles only the matching latest Request and maps the explicit status vocabulary", async () => {
     const mock = client(row({
       decision: "updated",

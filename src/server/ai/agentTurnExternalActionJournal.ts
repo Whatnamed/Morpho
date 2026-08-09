@@ -22,7 +22,7 @@ export type AgentTurnExternalActionJournalClient = {
 
 export type AgentTurnExternalActionDenial = Readonly<{
   status: "denied";
-  httpStatus: 401 | 404 | 409 | 429 | 503;
+  httpStatus: 401 | 403 | 404 | 409 | 429 | 503;
   code: string;
   error: string;
   recoverable: false;
@@ -290,6 +290,17 @@ async function requireUser(
 
 function denialFromReason(reason: string | null): AgentTurnExternalActionDenial {
   if (reason === "invalid_turn" || reason === "not_found") return notFound();
+  if (reason === "pending" || reason === "blocked") {
+    return {
+      status: "denied",
+      httpStatus: 403,
+      code: reason,
+      error: reason === "blocked"
+        ? "当前测试资格不可用。如需继续使用，请联系项目管理员。"
+        : "当前账号尚未获得测试资格，请联系项目管理员。",
+      recoverable: false
+    };
+  }
   if (reason === "quota_exceeded" || reason === "action_limit") {
     return { status: "denied", httpStatus: 429, code: reason, error: "本轮外部动作或今日额度已达上限。", recoverable: false };
   }

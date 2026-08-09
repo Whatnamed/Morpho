@@ -323,7 +323,16 @@ Migration order is fixed:
 ```text
 20260729012105_add_agent_turn_journal.sql
 20260729093000_add_agent_turn_external_actions.sql
+20260729190000_remove_agent_runtime_b_proofs.sql
+20260810025000_harden_agent_turn_admission.sql
 ```
+
+`20260810025000_harden_agent_turn_admission.sql` is a later forward-only security migration. It
+requires current `active` access for Turn creation and every External Action acquisition, applies
+transactional per-user active/rate/retained Journal limits, opportunistically prunes terminal
+history after 30 days and abandoned non-terminal Turns after 24 hours, and invalidates outstanding
+claims when access is revoked. Applying this migration to a remote environment remains a separate
+operator action; a checked-in migration is not evidence that a remote database has been upgraded.
 
 Never edit the remote migration ledger and never rely on changed contents of an already recorded
 Migration. In particular, do not modify or reapply
@@ -704,6 +713,7 @@ The final remote state is:
 - `20260729012105_add_agent_turn_journal.sql`: applied and database-verified;
 - `20260729093000_add_agent_turn_external_actions.sql`: applied and database-verified;
 - `20260729190000_remove_agent_runtime_b_proofs.sql`: applied exactly once and database-verified;
+- `20260810025000_harden_agent_turn_admission.sql`: checked in for the next controlled database migration; remote application is not claimed by this repository state;
 - Remote Migration History: 16;
 - Phase A, Phase B, Phase C Observation, and Phase C Cleanup: complete;
 - Runtime B Lease table and seven Runtime B RPCs: removed;

@@ -24,7 +24,7 @@ export type AgentTurnJournalClient = {
 
 export type AgentTurnJournalDenial = Readonly<{
   status: "denied";
-  httpStatus: 401 | 404 | 409 | 429 | 503;
+  httpStatus: 401 | 403 | 404 | 409 | 429 | 503;
   code: string;
   error: string;
   recoverable: false;
@@ -412,9 +412,27 @@ function denialFromReason(reason: string | null): AgentTurnJournalDenial {
         error: "本轮 Agent Provider 调用次数已达到安全上限。",
         recoverable: false
       };
+    case "active_turn_limit":
+    case "creation_rate_limit":
+    case "journal_capacity_limit":
+      return {
+        status: "denied",
+        httpStatus: 429,
+        code: reason,
+        error: "Server Turn Journal 已达到安全容量上限，请稍后重试。",
+        recoverable: false
+      };
     case "pending":
     case "blocked":
-      return notFound();
+      return {
+        status: "denied",
+        httpStatus: 403,
+        code: reason,
+        error: reason === "blocked"
+          ? "当前测试资格不可用。如需继续使用，请联系项目管理员。"
+          : "当前账号尚未获得测试资格，请联系项目管理员。",
+        recoverable: false
+      };
     case "creation_key_conflict":
     case "request_id_conflict":
     case "sequence_conflict":

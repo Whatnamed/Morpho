@@ -40,6 +40,9 @@ This ledger records that the two additive migrations
 `20260729093000_add_agent_turn_external_actions.sql` were applied and verified, followed by the
 irreversible `20260729190000_remove_agent_runtime_b_proofs.sql` cleanup exactly once. Phase C
 observation and cleanup are complete; do not rerun, repair, or recreate the cleanup migration.
+The later forward-only `20260810025000_harden_agent_turn_admission.sql` security migration is
+checked in but is not recorded here as remotely applied; deployment still requires the controlled
+database procedure in the runbook.
 
 ## Historical milestones and audit evidence
 
