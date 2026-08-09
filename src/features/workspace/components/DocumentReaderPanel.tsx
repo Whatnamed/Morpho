@@ -319,7 +319,7 @@ function SourcePreview({ preview }: { preview?: DocumentSourcePreview }) {
     );
   }
 
-  if (preview.mimeType.startsWith("image/")) {
+  if (preview.kind === "image") {
     return (
       <div className="document-source-preview" aria-label="源文件预览">
         <strong>源文件视窗 · {preview.fileName}</strong>
@@ -330,11 +330,16 @@ function SourcePreview({ preview }: { preview?: DocumentSourcePreview }) {
     );
   }
 
-  if (preview.mimeType === "application/pdf" || preview.mimeType.startsWith("text/")) {
+  if (preview.kind === "pdf") {
     return (
       <div className="document-source-preview" aria-label="源文件预览">
         <strong>源文件视窗 · {preview.fileName}</strong>
-        <iframe src={preview.url} title={`源文件预览：${preview.fileName}`} />
+        <iframe
+          src={preview.url}
+          title={`源文件预览：${preview.fileName}`}
+          sandbox=""
+          referrerPolicy="no-referrer"
+        />
       </div>
     );
   }

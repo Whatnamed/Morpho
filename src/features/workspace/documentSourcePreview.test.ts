@@ -32,12 +32,11 @@ afterEach(() => {
 
 describe("document source preview", () => {
   it.each([
-    ["image/png", "image"],
-    ["text/markdown", "text"],
-    ["application/pdf", "PDF"]
-  ])("creates a browser-local preview for %s", async (mimeType, label) => {
+    ["image/png", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), "image"],
+    ["application/pdf", new TextEncoder().encode("%PDF-1.7\n"), "pdf"]
+  ])("creates a browser-local preview for verified %s", async (mimeType, bytes, kind) => {
     const workspace = workspaceWithOriginalFile(mimeType);
-    const blob = new Blob([`${label} source`], { type: mimeType });
+    const blob = new Blob([bytes], { type: mimeType });
     const store = new TrackingBlobStore({ "blob:original": blob });
 
     const result = await loadDocumentSourcePreview(
@@ -49,12 +48,56 @@ describe("document source preview", () => {
 
     expect(result).toEqual({
       status: "ready",
+      kind,
       url: "blob:document-source",
       mimeType,
       fileName: "brief.source"
     });
     expect(store.get).toHaveBeenCalledWith("blob:original");
-    expect(createObjectURL).toHaveBeenCalledWith(blob);
+    expect(createObjectURL).toHaveBeenCalledWith(expect.objectContaining({ type: mimeType }));
+  });
+
+  it.each(["text/plain", "text/markdown", "text/html", "image/svg+xml"])(
+    "rejects active or non-raster browser document type %s before reading the Blob",
+    async (mimeType) => {
+      const workspace = workspaceWithOriginalFile(mimeType);
+      const store = new TrackingBlobStore({
+        "blob:original": new Blob(["<script>parent.localStorage.clear()</script>"], { type: mimeType })
+      });
+
+      const result = await loadDocumentSourcePreview(
+        workspace,
+        "file-1",
+        store,
+        new AbortController().signal
+      );
+
+      expect(result).toMatchObject({ status: "unsupported", mimeType });
+      expect(store.get).not.toHaveBeenCalled();
+      expect(createObjectURL).not.toHaveBeenCalled();
+    }
+  );
+
+  it("rejects manifest MIME spoofing after checking the actual Blob signature", async () => {
+    const workspace = workspaceWithOriginalFile("application/pdf");
+    const store = new TrackingBlobStore({
+      "blob:original": new Blob(["<script>parent.localStorage.clear()</script>"], {
+        type: "application/pdf"
+      })
+    });
+
+    const result = await loadDocumentSourcePreview(
+      workspace,
+      "file-1",
+      store,
+      new AbortController().signal
+    );
+
+    expect(result).toMatchObject({
+      status: "unsupported",
+      message: expect.stringContaining("内容与可安全预览的格式不一致")
+    });
+    expect(createObjectURL).not.toHaveBeenCalled();
   });
 
   it("reports unsupported Office MIME without reading the Blob or creating a URL", async () => {
@@ -131,6 +174,7 @@ describe("document source preview", () => {
   it("revokes ready previews and ignores unsupported or missing previews", () => {
     revokeDocumentSourcePreview({
       status: "ready",
+      kind: "pdf",
       url: "blob:ready",
       mimeType: "application/pdf",
       fileName: "brief.pdf"

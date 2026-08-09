@@ -729,6 +729,7 @@ function loadedResult(
 function readyPreview(fileObjectId: string): DocumentSourcePreview {
   return {
     status: "ready",
+    kind: "pdf",
     url: `blob:${fileObjectId}`,
     mimeType: "application/pdf",
     fileName: `${fileObjectId}.pdf`

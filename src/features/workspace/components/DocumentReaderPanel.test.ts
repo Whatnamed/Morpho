@@ -36,6 +36,7 @@ describe("DocumentReaderPanel selection helpers", () => {
         file,
         sourcePreview: {
           status: "ready",
+          kind: "pdf",
           url: "blob:http://localhost/source-preview",
           mimeType: "application/pdf",
           fileName: file.fileName ?? file.title
@@ -50,6 +51,8 @@ describe("DocumentReaderPanel selection helpers", () => {
     expect(html).toContain("源文件与解析文本");
     expect(html).toContain("源文件视窗");
     expect(html).toContain("Parsed local text");
+    expect(html).toContain('sandbox=""');
+    expect(html).toContain('referrerPolicy="no-referrer"');
   });
 
   it("states unsupported original previews honestly while keeping parsed text readable", () => {
