@@ -123,6 +123,7 @@ describe("GrsAI image provider adapter", () => {
       {
         apiKey: "key",
         baseUrl: "https://grs.example",
+        imageHostAllowlist: ["cdn.example"],
         model: "nano-banana-fast"
       },
       {
@@ -158,6 +159,7 @@ describe("GrsAI image provider adapter", () => {
       {
         apiKey: "key",
         baseUrl: "https://grs.example",
+        imageHostAllowlist: ["cdn.example"],
         model: "nano-banana-fast"
       },
       {
@@ -226,6 +228,7 @@ describe("GrsAI image provider adapter", () => {
         apiKey: "key",
         baseUrl: "https://grs-primary.example",
         fallbackBaseUrls: ["https://grs-fallback.example"],
+        imageHostAllowlist: ["cdn.example"],
         model: "nano-banana-2-lite"
       },
       {
@@ -264,6 +267,7 @@ describe("GrsAI image provider adapter", () => {
         apiKey: "key",
         baseUrl: "https://grs-primary.example",
         fallbackBaseUrls: ["https://grs-fallback.example"],
+        imageHostAllowlist: ["cdn.example"],
         model: "nano-banana-2-lite"
       },
       {
@@ -312,6 +316,36 @@ describe("GrsAI image provider adapter", () => {
       status: "failed",
       reason: "GrsAI image task failed: temporary upstream capacity limit"
     });
+  });
+
+  it("rejects a provider-returned private image URL without requesting it", async () => {
+    const requestedUrls: string[] = [];
+    const result = await resolveGrsImageResult(
+      {
+        apiKey: "key",
+        baseUrl: "https://grs.example",
+        imageHostAllowlist: ["127.0.0.1"],
+        model: "nano-banana-fast"
+      },
+      {
+        modelId: "nano-banana-fast",
+        prompt: "test",
+        images: [],
+        aspectRatio: "1:1",
+        referenceObjectIds: []
+      },
+      {
+        fetchImpl: async (input) => {
+          requestedUrls.push(String(input));
+          return jsonResponse({ status: "succeeded", url: "https://127.0.0.1/internal.png" });
+        },
+        maxPolls: 1,
+        pollDelayMs: 0
+      }
+    );
+
+    expect(result.status).toBe("failed");
+    expect(requestedUrls).toEqual(["https://grs.example/v1/api/generate"]);
   });
 });
 

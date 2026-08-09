@@ -1,10 +1,12 @@
 import { getGrsRequestProfile } from "./profile";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
+import { buildAllowedImageHosts, downloadSecureProviderImage } from "./secureImageDownload";
 
 export type GrsImageConfig = {
   apiKey: string;
   baseUrl: string;
   fallbackBaseUrls?: string[];
+  imageHostAllowlist?: string[];
   model: string;
 };
 
@@ -173,7 +175,8 @@ export async function resolveGrsImageResult(
   }
 
   const generatePayload = await readJson(generateResponse.response);
-  const immediate = await resolvePayload(fetchImpl, generatePayload, signal, extractTaskId(generatePayload));
+  const allowedImageHosts = buildAllowedImageHosts(config);
+  const immediate = await resolvePayload(fetchImpl, generatePayload, signal, extractTaskId(generatePayload), allowedImageHosts);
   if (immediate.status !== "pending") {
     return immediate;
   }
@@ -204,7 +207,7 @@ export async function resolveGrsImageResult(
     }
 
     const resultPayload = await readJson(resultResponse.response);
-    const resolved = await resolvePayload(fetchImpl, resultPayload, signal, taskId);
+    const resolved = await resolvePayload(fetchImpl, resultPayload, signal, taskId, allowedImageHosts);
     if (resolved.status !== "pending") {
       return resolved;
     }
@@ -221,7 +224,8 @@ async function resolvePayload(
   fetchImpl: typeof fetch,
   payload: unknown,
   signal: AbortSignal | undefined,
-  providerTaskId: string | undefined
+  providerTaskId: string | undefined,
+  allowedImageHosts: ReadonlySet<string>
 ): Promise<GrsImageResult | { status: "pending" }> {
   const status = extractStatus(payload);
   if (isFailureStatus(status)) {
@@ -234,7 +238,7 @@ async function resolvePayload(
 
   const imageUrl = extractImageUrl(payload);
   if (imageUrl) {
-    return downloadImage(fetchImpl, imageUrl, signal, providerTaskId);
+    return downloadImage(fetchImpl, imageUrl, signal, providerTaskId, allowedImageHosts);
   }
 
   if (isPendingStatus(status) || extractTaskId(payload)) {
@@ -248,29 +252,15 @@ async function downloadImage(
   fetchImpl: typeof fetch,
   imageUrl: string,
   signal: AbortSignal | undefined,
-  providerTaskId: string | undefined
+  providerTaskId: string | undefined,
+  allowedImageHosts: ReadonlySet<string>
 ): Promise<GrsImageResult> {
-  const response = await safeFetch(fetchImpl, imageUrl, { method: "GET", signal });
-
-  if (response.status === "cancelled") {
-    return response;
-  }
-
-  if (!response.response.ok) {
-    return { status: "failed", reason: `Generated image URL returned ${response.response.status}.` };
-  }
-
-  const blob = await response.response.blob();
-  if (blob.size === 0) {
-    return { status: "failed", reason: "Generated image download was empty." };
-  }
-
-  return {
-    status: "ok",
-    blob,
-    mimeType: response.response.headers.get("Content-Type") ?? (blob.type || "image/png"),
-    providerTaskId
-  };
+  const result = await downloadSecureProviderImage(imageUrl, {
+    fetchImpl,
+    allowedHosts: allowedImageHosts,
+    signal
+  });
+  return result.status === "ok" ? { ...result, providerTaskId } : result;
 }
 
 async function safeFetch(

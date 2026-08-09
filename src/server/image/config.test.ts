@@ -58,6 +58,20 @@ describe("GrsAI image config", () => {
     });
   });
 
+  it("reads an explicit result-image host allowlist", () => {
+    const result = loadGrsImageConfig({
+      MORPHO_GRS_API_KEY: "secret",
+      MORPHO_GRS_BASE_URL: "https://grs.example",
+      MORPHO_GRS_IMAGE_HOST_ALLOWLIST: "cdn-one.example, CDN-TWO.EXAMPLE.",
+      MORPHO_GRS_DEFAULT_MODEL: "nano-banana-fast"
+    });
+
+    expect(result).toMatchObject({
+      status: "ok",
+      config: { imageHostAllowlist: ["cdn-one.example", "cdn-two.example"] }
+    });
+  });
+
   it("fails clearly when required GrsAI environment variables are missing", () => {
     const result = loadGrsImageConfig({});
 

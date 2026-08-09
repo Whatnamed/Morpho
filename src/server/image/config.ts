@@ -17,6 +17,10 @@ export function loadGrsImageConfig(env: Partial<NodeJS.ProcessEnv>): GrsImageCon
     .split(",")
     .map((value) => value.trim().replace(/\/$/, ""))
     .filter((value) => value && value !== baseUrl?.replace(/\/$/, ""));
+  const imageHostAllowlist = (env.MORPHO_GRS_IMAGE_HOST_ALLOWLIST ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase().replace(/\.+$/, ""))
+    .filter(Boolean);
   const model = env.MORPHO_GRS_DEFAULT_MODEL || env.MORPHO_GRS_IMAGE_MODEL;
 
   if (!apiKey || !baseUrl || !model) {
@@ -33,6 +37,9 @@ export function loadGrsImageConfig(env: Partial<NodeJS.ProcessEnv>): GrsImageCon
       apiKey,
       baseUrl,
       ...(fallbackBaseUrls.length > 0 ? { fallbackBaseUrls: [...new Set(fallbackBaseUrls)] } : {}),
+      ...(imageHostAllowlist.length > 0
+        ? { imageHostAllowlist: [...new Set(imageHostAllowlist)] }
+        : {}),
       model
     }
   };

@@ -113,6 +113,7 @@ export function createAgentTurnImageActionPostHandler(
       provider: {
         baseUrl: config.config.baseUrl.replace(/\/$/, ""),
         fallbackBaseUrls: config.config.fallbackBaseUrls ?? [],
+        imageHostAllowlist: config.config.imageHostAllowlist ?? [],
         configuredModel: config.config.model
       },
       request: {
