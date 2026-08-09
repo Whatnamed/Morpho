@@ -11,12 +11,15 @@ import {
   readBoundedJsonBody,
   unknownKeys
 } from "@/server/ai/agentTurnRouteSupport";
+import { requireAiRouteUser, type AiRouteUserAccessResult } from "@/server/auth/aiAccess";
 
 export const runtime = "nodejs";
+const MAX_CANCELLATION_BODY_BYTES = 16 * 1024;
 
 type RouteContext = { params: Promise<{ turnId: string }> };
 
 export type AgentTurnCancellationRouteDependencies = Readonly<{
+  authenticate: () => Promise<AiRouteUserAccessResult>;
   readTurn: (input: {
     serverTurnId: string;
     localProjectId: string;
@@ -29,6 +32,7 @@ export type AgentTurnCancellationRouteDependencies = Readonly<{
 }>;
 
 const defaultDependencies: AgentTurnCancellationRouteDependencies = {
+  authenticate: requireAiRouteUser,
   readTurn: readAgentTurnJournal,
   cancelExternal: requestAgentTurnExternalCancellation
 };
@@ -39,7 +43,18 @@ export function createAgentTurnCancellationPostHandler(
   return async function POST(request: Request, context: RouteContext): Promise<Response> {
     const { turnId } = await context.params;
     if (!isUuid(turnId)) return invalidRequestResponse("serverTurnId 格式无效。");
-    const parsed = await readBoundedJsonBody(request);
+    const auth = await dependencies.authenticate();
+    if (auth.status === "denied") {
+      return NextResponse.json(
+        {
+          error: auth.error,
+          code: auth.httpStatus === 401 ? "unauthenticated" : "auth_unavailable",
+          recoverable: false
+        },
+        { status: auth.httpStatus }
+      );
+    }
+    const parsed = await readBoundedJsonBody(request, MAX_CANCELLATION_BODY_BYTES);
     if (parsed.status === "failed") return parsed.response;
     if (!isRecord(parsed.value)) return invalidRequestResponse("取消请求必须是对象。");
     const unknown = unknownKeys(parsed.value, ["localProjectId", "requestId", "stepSequence"]);

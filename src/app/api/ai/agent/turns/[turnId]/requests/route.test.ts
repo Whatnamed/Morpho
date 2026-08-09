@@ -31,7 +31,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
     const handler = makeHandler(store, provider, {
       authenticate: async () => ({ status: "denied", httpStatus: 401, error: "login" })
     });
-    const response = await call(handler, validBody());
+    const response = await callRaw(handler, "{not-json");
     expect(response.status).toBe(401);
     expect(store.acquire).not.toHaveBeenCalled();
     expect(provider).not.toHaveBeenCalled();
@@ -652,6 +652,19 @@ function call(
     new Request(`http://localhost/api/ai/agent/turns/${TURN_ID}/requests`, {
       method: "POST",
       body: JSON.stringify(body)
+    }),
+    { params: Promise.resolve({ turnId: TURN_ID }) }
+  );
+}
+
+function callRaw(
+  handler: ReturnType<typeof createAgentTurnRequestPostHandler>,
+  body: string
+): Promise<Response> {
+  return handler(
+    new Request(`http://localhost/api/ai/agent/turns/${TURN_ID}/requests`, {
+      method: "POST",
+      body
     }),
     { params: Promise.resolve({ turnId: TURN_ID }) }
   );

@@ -1,7 +1,21 @@
 import { isKeyConclusionCategory } from "@/domain/morpho/types";
 import type { AiWorkIntent, KeyConclusionCategory } from "@/domain/morpho/types";
+import { inspectSafeImageDataUrl, validateImageInputCollection } from "@/server/image/imageInputBounds";
 
 import type { ProviderChatMessage, ProviderWebSearchOptions } from "./types";
+
+const MAX_DRAFT_CHARS = 16_000;
+const MAX_RAW_MESSAGES = 64;
+const MAX_MESSAGE_BODY_CHARS = 24_000;
+const MAX_RAW_OBJECT_SUMMARIES = 64;
+const MAX_RAW_ATTACHMENTS = 16;
+const MAX_READY_IMAGE_ATTACHMENTS = 4;
+const MAX_RAW_DOCUMENT_EXTRACTS = 16;
+const MAX_DOCUMENT_EXTRACT_CHARS = 120_000;
+const MAX_DOCUMENT_EXTRACT_UTF8_BYTES = 768 * 1024;
+const MAX_DOCUMENT_FRAGMENT_CHARS = 24_000;
+const MAX_PROVIDER_TEXT_UTF8_BYTES = 1024 * 1024;
+const UTF8_ENCODER = new TextEncoder();
 
 export type AiRouteObjectSummary = {
   id: string;
@@ -263,20 +277,27 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
     return { status: "failed", reason: "请求格式无效。" };
   }
 
-  if (typeof value.draft !== "string" || !value.draft.trim()) {
-    return { status: "failed", reason: "消息内容为空。" };
+  if (
+    typeof value.draft !== "string" ||
+    !value.draft.trim() ||
+    value.draft.length > MAX_DRAFT_CHARS
+  ) {
+    return { status: "failed", reason: "消息内容为空或超过 16000 字符。" };
   }
-
   const taskMode = isTaskMode(value.taskMode) ? value.taskMode : "chatAnalysis";
   const workIntent = isWorkIntent(value.workIntent) ? value.workIntent : "discussion";
   const isDeliverySectionPreparation = workIntent === "prepareDeliverySection";
+  const boundaryFailure = validateRawAiRouteBoundary(value, isDeliverySectionPreparation);
+  if (boundaryFailure) return { status: "failed", reason: boundaryFailure };
   const messages = isDeliverySectionPreparation
     ? []
-    : Array.isArray(value.messages) ? value.messages.filter(isMessage).slice(-12) : [];
+    : Array.isArray(value.messages)
+      ? value.messages.filter(isMessage).slice(-12).map(normalizeMessage)
+      : [];
   const objectSummaries = isDeliverySectionPreparation
     ? []
     : Array.isArray(value.objectSummaries)
-    ? value.objectSummaries.filter(isObjectSummary).slice(0, 16)
+    ? value.objectSummaries.filter(isObjectSummary).slice(0, 16).map(normalizeObjectSummary)
     : [];
   const attachments = isDeliverySectionPreparation
     ? []
@@ -286,29 +307,36 @@ export function validateAiRouteRequest(value: unknown): AiRouteValidationResult 
   const documentExtracts =
     isDeliverySectionPreparation || !Array.isArray(value.documentExtracts)
       ? []
-      : value.documentExtracts.filter(isDocumentExtract).slice(0, 8);
+      : value.documentExtracts.filter(isDocumentExtract).slice(0, 8).map(normalizeDocumentExtract);
   const taskContext = isDeliverySectionPreparation ? undefined : normalizeTaskContext(value.taskContext);
   const comparisonContext = isDeliverySectionPreparation ? undefined : normalizeComparisonContext(value.comparisonContext);
   const comparisonBackgroundContext = isDeliverySectionPreparation ? undefined : normalizeComparisonBackgroundContext(value.comparisonBackgroundContext);
   const deliverySectionContext = normalizeDeliverySectionContext(value.deliverySectionContext);
+  const normalized: AiRouteRequest = {
+    draft: value.draft,
+    task: typeof value.task === "string" ? trimString(value.task, 160) : "general",
+    taskMode,
+    workIntent,
+    messages,
+    objectSummaries,
+    attachments,
+    documentExtracts,
+    webSearch: isDeliverySectionPreparation ? undefined : normalizeWebSearch(value.webSearch, taskMode),
+    defaultReferenceStatus:
+      !isDeliverySectionPreparation && typeof value.defaultReferenceStatus === "string"
+        ? trimString(value.defaultReferenceStatus, 240)
+        : undefined,
+    taskContext,
+    comparisonContext,
+    comparisonBackgroundContext,
+    deliverySectionContext
+  };
+  if (exceedsProviderTextBudget(normalized)) {
+    return { status: "failed", reason: "AI 请求文本总量超过允许大小。" };
+  }
   return {
     status: "ok",
-    value: {
-      draft: value.draft,
-      task: typeof value.task === "string" ? value.task : "general",
-      taskMode,
-      workIntent,
-      messages,
-      objectSummaries,
-      attachments,
-      documentExtracts,
-      webSearch: isDeliverySectionPreparation ? undefined : normalizeWebSearch(value.webSearch, taskMode),
-      defaultReferenceStatus: !isDeliverySectionPreparation && typeof value.defaultReferenceStatus === "string" ? value.defaultReferenceStatus : undefined,
-      taskContext,
-      comparisonContext,
-      comparisonBackgroundContext,
-      deliverySectionContext
-    }
+    value: normalized
   };
 }
 
@@ -731,8 +759,99 @@ function buildStructuredProposalInstruction(request: AiRouteRequest): string {
   return "";
 }
 
+function validateRawAiRouteBoundary(
+  value: Record<string, unknown>,
+  ignoresGeneralContext: boolean
+): string | undefined {
+  if (ignoresGeneralContext) return undefined;
+  if (Array.isArray(value.messages)) {
+    if (value.messages.length > MAX_RAW_MESSAGES) return "历史消息数量超过允许上限。";
+    if (value.messages.some((message) =>
+      isRecord(message) &&
+      typeof message.body === "string" &&
+      message.body.length > MAX_MESSAGE_BODY_CHARS
+    )) return "单条历史消息超过 24000 字符。";
+  }
+  if (Array.isArray(value.objectSummaries) && value.objectSummaries.length > MAX_RAW_OBJECT_SUMMARIES) {
+    return "对象摘要数量超过允许上限。";
+  }
+  if (Array.isArray(value.attachments)) {
+    if (value.attachments.length > MAX_RAW_ATTACHMENTS) return "附件数量超过允许上限。";
+    const readyImageDataUrls = value.attachments
+      .filter((attachment) => isRecord(attachment) && attachment.status === "ready")
+      .map((attachment) => attachment.dataUrl);
+    const imageBoundary = validateImageInputCollection(readyImageDataUrls, {
+      maxCount: MAX_READY_IMAGE_ATTACHMENTS
+    });
+    if (imageBoundary.status === "failed") return `图片附件无效：${imageBoundary.reason}`;
+  }
+  if (Array.isArray(value.documentExtracts)) {
+    if (value.documentExtracts.length > MAX_RAW_DOCUMENT_EXTRACTS) {
+      return "文档摘录数量超过允许上限。";
+    }
+    let documentBytes = 0;
+    for (const extract of value.documentExtracts) {
+      if (!isRecord(extract) || typeof extract.text !== "string") continue;
+      if (extract.text.length > MAX_DOCUMENT_EXTRACT_CHARS) {
+        return "单个文档摘录超过 120000 字符。";
+      }
+      documentBytes += UTF8_ENCODER.encode(extract.text).byteLength;
+      if (documentBytes > MAX_DOCUMENT_EXTRACT_UTF8_BYTES) {
+        return "文档摘录文本总量超过允许大小。";
+      }
+    }
+  }
+
+  const taskFragments = isRecord(value.taskContext) ? value.taskContext.documentFragmentExtracts : undefined;
+  const comparisonFragments = isRecord(value.comparisonContext)
+    ? value.comparisonContext.documentFragmentExtracts
+    : undefined;
+  for (const fragments of [taskFragments, comparisonFragments]) {
+    if (!Array.isArray(fragments)) continue;
+    if (fragments.length > 16) return "文档片段数量超过允许上限。";
+    if (fragments.some((fragment) =>
+      isRecord(fragment) &&
+      typeof fragment.text === "string" &&
+      fragment.text.length > MAX_DOCUMENT_FRAGMENT_CHARS
+    )) return "单个文档片段超过 24000 字符。";
+  }
+
+  return undefined;
+}
+
+function exceedsProviderTextBudget(value: AiRouteRequest): boolean {
+  const stack: Array<{ value: unknown; key?: string }> = [{ value }];
+  let totalBytes = 0;
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    if (typeof current.value === "string") {
+      if (current.key === "dataUrl") continue;
+      totalBytes += UTF8_ENCODER.encode(current.value).byteLength;
+      if (totalBytes > MAX_PROVIDER_TEXT_UTF8_BYTES) return true;
+      continue;
+    }
+    if (Array.isArray(current.value)) {
+      for (const item of current.value) stack.push({ value: item });
+      continue;
+    }
+    if (isRecord(current.value)) {
+      for (const [key, nested] of Object.entries(current.value)) {
+        stack.push({ value: nested, key });
+      }
+    }
+  }
+  return false;
+}
+
 function isMessage(value: unknown): value is AiRouteRequest["messages"][number] {
-  return isRecord(value) && (value.role === "user" || value.role === "assistant") && typeof value.body === "string";
+  return isRecord(value) &&
+    (value.role === "user" || value.role === "assistant") &&
+    typeof value.body === "string" &&
+    value.body.length <= MAX_MESSAGE_BODY_CHARS;
+}
+
+function normalizeMessage(value: AiRouteRequest["messages"][number]): AiRouteRequest["messages"][number] {
+  return { role: value.role, body: value.body };
 }
 
 function isObjectSummary(value: unknown): value is AiRouteObjectSummary {
@@ -744,6 +863,16 @@ function isObjectSummary(value: unknown): value is AiRouteObjectSummary {
     typeof value.summary === "string" &&
     (value.category === undefined || isKeyConclusionCategory(value.category))
   );
+}
+
+function normalizeObjectSummary(value: AiRouteObjectSummary): AiRouteObjectSummary {
+  return {
+    id: trimString(value.id, 160),
+    type: trimString(value.type, 80),
+    title: trimString(value.title, 160),
+    summary: trimString(value.summary, 500),
+    ...(value.category ? { category: value.category } : {})
+  };
 }
 
 function isAttachment(value: unknown): value is AiRouteAttachment {
@@ -758,10 +887,23 @@ function isDocumentExtract(value: unknown): value is AiRouteDocumentExtract {
     typeof value.text === "string" &&
     typeof value.charCount === "number" &&
     value.text.length > 0 &&
+    value.text.length <= MAX_DOCUMENT_EXTRACT_CHARS &&
     (value.fileName === undefined || typeof value.fileName === "string") &&
     (value.pageCount === undefined || typeof value.pageCount === "number") &&
     typeof value.truncated === "boolean"
   );
+}
+
+function normalizeDocumentExtract(value: AiRouteDocumentExtract): AiRouteDocumentExtract {
+  return {
+    objectId: trimString(value.objectId, 160),
+    title: trimString(value.title, 240),
+    fileName: typeof value.fileName === "string" ? trimString(value.fileName, 240) : undefined,
+    text: value.text,
+    charCount: value.text.length,
+    pageCount: typeof value.pageCount === "number" ? numberValue(value.pageCount) : undefined,
+    truncated: value.truncated
+  };
 }
 
 function isDocumentFragmentExtract(value: unknown): value is AiRouteTaskContext["documentFragmentExtracts"][number] {
@@ -770,6 +912,7 @@ function isDocumentFragmentExtract(value: unknown): value is AiRouteTaskContext[
     typeof value.objectId === "string" &&
     typeof value.title === "string" &&
     typeof value.text === "string" &&
+    value.text.length <= MAX_DOCUMENT_FRAGMENT_CHARS &&
     typeof value.charCount === "number" &&
     typeof value.truncated === "boolean" &&
     typeof value.sourceFileObjectId === "string" &&
@@ -782,6 +925,23 @@ function isDocumentFragmentExtract(value: unknown): value is AiRouteTaskContext[
       value.sourceAvailability === "assetMissing" ||
       value.sourceAvailability === "assetMismatch")
   );
+}
+
+function normalizeDocumentFragmentExtract(
+  value: AiRouteDocumentFragmentExtract
+): AiRouteDocumentFragmentExtract {
+  return {
+    objectId: trimString(value.objectId, 160),
+    title: trimString(value.title, 240),
+    text: value.text,
+    charCount: value.text.length,
+    truncated: value.truncated,
+    sourceFileObjectId: trimString(value.sourceFileObjectId, 160),
+    sourceFileTitle: trimString(value.sourceFileTitle, 240),
+    sourceStartOffset: numberValue(value.sourceStartOffset),
+    sourceEndOffset: numberValue(value.sourceEndOffset),
+    sourceAvailability: value.sourceAvailability
+  };
 }
 
 function isAttachmentSummary(value: unknown): value is AiRouteAttachmentSummary {
@@ -805,36 +965,36 @@ function isImageAttachment(value: unknown): value is AiRouteImageAttachment {
     typeof value.objectId === "string" &&
     typeof value.mimeType === "string" &&
     value.status === "ready" &&
-    typeof value.dataUrl === "string" &&
+    inspectSafeImageDataUrl(value.dataUrl) !== undefined &&
     isOptionalStringArray(value.objectIds) &&
-    isOptionalRepresentation(value.representation) &&
-    /^data:image\/(?:png|jpeg|jpg|webp);base64,/i.test(value.dataUrl)
+    isOptionalRepresentation(value.representation)
   );
 }
 
 function normalizeAttachment(value: AiRouteAttachment): AiRouteAttachment {
   if (value.status === "ready") {
+    const inspected = inspectSafeImageDataUrl(value.dataUrl)!;
     return {
-      id: value.id,
+      id: trimString(value.id, 160),
       kind: "image",
-      objectId: value.objectId,
-      objectIds: value.objectIds,
-      mimeType: value.mimeType,
+      objectId: trimString(value.objectId, 160),
+      objectIds: value.objectIds?.slice(0, 16).map((item) => trimString(item, 160)),
+      mimeType: inspected.mimeType === "image/jpg" ? "image/jpeg" : inspected.mimeType,
       dataUrl: value.dataUrl,
-      width: typeof value.width === "number" ? value.width : undefined,
-      height: typeof value.height === "number" ? value.height : undefined,
-      byteSize: typeof value.byteSize === "number" ? value.byteSize : undefined,
+      width: typeof value.width === "number" ? numberValue(value.width) : undefined,
+      height: typeof value.height === "number" ? numberValue(value.height) : undefined,
+      byteSize: inspected.decodedBytes,
       representation: value.representation,
       status: "ready"
     };
   }
 
   return {
-    id: value.id,
+    id: trimString(value.id, 160),
     kind: value.kind,
-    objectId: value.objectId,
-    objectIds: value.objectIds,
-    mimeType: value.mimeType,
+    objectId: trimString(value.objectId, 160),
+    objectIds: value.objectIds?.slice(0, 16).map((item) => trimString(item, 160)),
+    mimeType: trimString(value.mimeType, 120),
     representation: value.representation,
     status: value.status
   };
@@ -871,7 +1031,10 @@ function normalizeTaskContext(value: unknown): AiRouteTaskContext | undefined {
     imageObjectIds: stringArray(value.imageObjectIds).slice(0, 16),
     documentObjectIds: stringArray(value.documentObjectIds).slice(0, 8),
     documentFragmentExtracts: Array.isArray(value.documentFragmentExtracts)
-      ? value.documentFragmentExtracts.filter(isDocumentFragmentExtract).slice(0, 8)
+      ? value.documentFragmentExtracts
+          .filter(isDocumentFragmentExtract)
+          .slice(0, 8)
+          .map(normalizeDocumentFragmentExtract)
       : [],
     truncated: value.truncated === true,
     defaultReference: typeof value.defaultReference === "string" ? trimString(value.defaultReference, 240) : undefined,
@@ -898,7 +1061,10 @@ function normalizeComparisonContext(value: unknown): AiRouteComparisonContext | 
     unavailableDocumentObjectIds: stringArray(value.unavailableDocumentObjectIds).slice(0, 4),
     backgroundObjectIds: stringArray(value.backgroundObjectIds).slice(0, 8),
     documentFragmentExtracts: Array.isArray(value.documentFragmentExtracts)
-      ? value.documentFragmentExtracts.filter(isDocumentFragmentExtract).slice(0, 4)
+      ? value.documentFragmentExtracts
+          .filter(isDocumentFragmentExtract)
+          .slice(0, 4)
+          .map(normalizeDocumentFragmentExtract)
       : []
   };
 }

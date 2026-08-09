@@ -23,6 +23,7 @@ import { withServerPromptCacheHint } from "@/server/ai/providerPromptCacheHint";
 import { requireAiRouteUser, type AiRouteUserAccessResult } from "@/server/auth/aiAccess";
 
 export const runtime = "nodejs";
+const MAX_COMPACTION_ACTION_BODY_BYTES = 4 * 1024 * 1024;
 
 type RouteContext = { params: Promise<{ turnId: string }> };
 
@@ -60,7 +61,7 @@ export function createAgentTurnCompactionActionPostHandler(
         { status: auth.httpStatus }
       );
     }
-    const parsed = await readBoundedJsonBody(request);
+    const parsed = await readBoundedJsonBody(request, MAX_COMPACTION_ACTION_BODY_BYTES);
     if (parsed.status === "failed") return parsed.response;
     const body = parseCompactionBody(parsed.value);
     if (!body) return invalidRequestResponse("Compaction Action 合同无效。", "invalid_compaction_request");

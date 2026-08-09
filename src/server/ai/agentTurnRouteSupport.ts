@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 
+import {
+  readBoundedJsonBody as readBoundedJsonRequestBody,
+  type BoundedJsonBodyResult
+} from "@/server/http/boundedJsonBody";
 import type {
   AgentTurnJournalDenial
 } from "./agentTurnJournal";
@@ -8,32 +12,14 @@ export const MAX_A_PLUS_AGENT_REQUEST_BODY_BYTES = 36 * 1024 * 1024;
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9._:-]+$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export async function readBoundedJsonBody(request: Request): Promise<
-  | { status: "ok"; value: unknown }
-  | { status: "failed"; response: NextResponse }
-> {
-  const contentLength = Number(request.headers.get("content-length"));
-  if (Number.isFinite(contentLength) && contentLength > MAX_A_PLUS_AGENT_REQUEST_BODY_BYTES) {
-    return {
-      status: "failed",
-      response: NextResponse.json({ error: "A+ Agent 请求体超过允许大小。", code: "body_too_large" }, { status: 413 })
-    };
-  }
-  try {
-    const raw = await request.text();
-    if (Buffer.byteLength(raw, "utf8") > MAX_A_PLUS_AGENT_REQUEST_BODY_BYTES) {
-      return {
-        status: "failed",
-        response: NextResponse.json({ error: "A+ Agent 请求体超过允许大小。", code: "body_too_large" }, { status: 413 })
-      };
-    }
-    return { status: "ok", value: JSON.parse(raw) as unknown };
-  } catch {
-    return {
-      status: "failed",
-      response: NextResponse.json({ error: "请求不是有效 JSON。", code: "invalid_json" }, { status: 400 })
-    };
-  }
+export function readBoundedJsonBody(
+  request: Request,
+  maxBytes = MAX_A_PLUS_AGENT_REQUEST_BODY_BYTES
+): Promise<BoundedJsonBodyResult> {
+  return readBoundedJsonRequestBody(request, {
+    maxBytes,
+    tooLargeError: "A+ Agent 请求体超过允许大小。"
+  });
 }
 
 export function journalDeniedResponse(denial: AgentTurnJournalDenial): NextResponse {

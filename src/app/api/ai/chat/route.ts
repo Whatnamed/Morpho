@@ -18,19 +18,24 @@ import {
 } from "@/server/ai/request";
 import type { AiRouteRequest } from "@/server/ai/request";
 import type { ProviderChatMessage } from "@/server/ai/types";
-import { aiAccessDeniedResponse, guardAiRoute } from "@/server/auth/aiAccess";
+import { aiAccessDeniedResponse, guardAiRoute, requireAiRouteUser } from "@/server/auth/aiAccess";
+import { readBoundedJsonBody } from "@/server/http/boundedJsonBody";
 
 export const runtime = "nodejs";
+const MAX_CHAT_REQUEST_BODY_BYTES = 36 * 1024 * 1024;
 
 export async function POST(request: Request) {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "请求不是有效 JSON。" }, { status: 400 });
+  const authenticated = await requireAiRouteUser();
+  if (authenticated.status === "denied") {
+    return aiAccessDeniedResponse(authenticated);
   }
+  const parsed = await readBoundedJsonBody(request, {
+    maxBytes: MAX_CHAT_REQUEST_BODY_BYTES,
+    tooLargeError: "AI 对话请求体超过允许大小。"
+  });
+  if (parsed.status === "failed") return parsed.response;
 
-  const validated = validateAiRouteRequest(body);
+  const validated = validateAiRouteRequest(parsed.value);
   if (validated.status === "failed") {
     return NextResponse.json({ error: validated.reason }, { status: 400 });
   }

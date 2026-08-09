@@ -21,9 +21,11 @@ vi.mock("@/server/ai/openaiCompatibleConfig", () => ({
 }));
 
 const guardAiRouteMock = vi.fn();
+const requireAiRouteUserMock = vi.fn();
 
 vi.mock("@/server/auth/aiAccess", () => ({
   guardAiRoute: (...args: unknown[]) => guardAiRouteMock(...args),
+  requireAiRouteUser: (...args: unknown[]) => requireAiRouteUserMock(...args),
   aiAccessDeniedResponse: (result: { error: string; httpStatus: number }) =>
     Response.json({ error: result.error }, { status: result.httpStatus })
 }));
@@ -44,6 +46,8 @@ vi.mock("@/server/ai/openaiCompatibleProvider", () => ({
 
 describe("AI chat route", () => {
   beforeEach(() => {
+    requireAiRouteUserMock.mockReset();
+    requireAiRouteUserMock.mockResolvedValue({ status: "allowed", userId: "user-a" });
     guardAiRouteMock.mockReset();
     guardAiRouteMock.mockResolvedValue({
       status: "allowed",
@@ -78,16 +82,17 @@ describe("AI chat route", () => {
   });
 
   it("returns JSON 401 for unauthenticated requests before provider execution", async () => {
-    guardAiRouteMock.mockResolvedValueOnce({
+    requireAiRouteUserMock.mockResolvedValueOnce({
       status: "denied",
       httpStatus: 401,
       error: "please sign in"
     });
 
-    const response = await POST(makeRequest({ draft: "continue", messages: [], objectSummaries: [], attachments: [] }));
+    const response = await POST(rawRequest("{not-json"));
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({ error: "please sign in" });
+    expect(guardAiRouteMock).not.toHaveBeenCalled();
     expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
   });
 
@@ -103,6 +108,19 @@ describe("AI chat route", () => {
     expect(response.status).toBe(429);
     await expect(response.json()).resolves.toEqual({ error: "quota exhausted" });
     expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a declared oversized body after authentication but before quota reservation", async () => {
+    const response = await POST(new Request("http://localhost/api/ai/chat", {
+      method: "POST",
+      headers: { "Content-Length": String(36 * 1024 * 1024 + 1) },
+      body: "{}"
+    }));
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({ code: "body_too_large" });
+    expect(requireAiRouteUserMock).toHaveBeenCalledOnce();
+    expect(guardAiRouteMock).not.toHaveBeenCalled();
   });
 
   it("routes chat, image input, and web-search intent through the AiJWS-compatible provider", async () => {
@@ -198,6 +216,10 @@ function makeRequest(body: unknown): Request {
     method: "POST",
     body: JSON.stringify(body)
   });
+}
+
+function rawRequest(body: string): Request {
+  return new Request("http://localhost/api/ai/chat", { method: "POST", body });
 }
 
 function makeImageRequest(): Request {

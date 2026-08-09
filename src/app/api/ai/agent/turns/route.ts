@@ -15,6 +15,7 @@ import {
 import { requireAiRouteUser, type AiRouteUserAccessResult } from "@/server/auth/aiAccess";
 
 export const runtime = "nodejs";
+const MAX_TURN_CREATION_BODY_BYTES = 16 * 1024;
 
 export type CreateAgentTurnRouteDependencies = Readonly<{
   authenticate: () => Promise<AiRouteUserAccessResult>;
@@ -30,7 +31,18 @@ export function createAgentTurnPostHandler(
   dependencies: CreateAgentTurnRouteDependencies = defaultDependencies
 ) {
   return async function POST(request: Request): Promise<Response> {
-    const parsed = await readBoundedJsonBody(request);
+    const auth = await dependencies.authenticate();
+    if (auth.status === "denied") {
+      return NextResponse.json(
+        {
+          error: auth.error,
+          code: auth.httpStatus === 401 ? "unauthenticated" : "auth_unavailable",
+          recoverable: false
+        },
+        { status: auth.httpStatus }
+      );
+    }
+    const parsed = await readBoundedJsonBody(request, MAX_TURN_CREATION_BODY_BYTES);
     if (parsed.status === "failed") return parsed.response;
     if (!isRecord(parsed.value)) {
       return invalidRequestResponse("Server Turn 创建请求必须是对象。");
@@ -44,13 +56,6 @@ export function createAgentTurnPostHandler(
       !isBoundedIdentifier(parsed.value.creationIdempotencyKey)
     ) {
       return invalidRequestResponse("localProjectId 或 creationIdempotencyKey 格式无效。");
-    }
-    const auth = await dependencies.authenticate();
-    if (auth.status === "denied") {
-      return NextResponse.json(
-        { error: auth.error, code: "unauthenticated", recoverable: false },
-        { status: auth.httpStatus }
-      );
     }
     const created: CreateAgentTurnJournalResult = await dependencies.createJournal({
       localProjectId: parsed.value.localProjectId,

@@ -6,9 +6,24 @@ import { createAgentTurnCancellationPostHandler } from "./route";
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 
 describe("A+ explicit Provider cancellation route", () => {
+  it("authenticates before reading the cancellation body", async () => {
+    const readTurn = vi.fn();
+    const handler = createAgentTurnCancellationPostHandler({
+      authenticate: async () => ({ status: "denied", httpStatus: 401, error: "login" }),
+      readTurn,
+      cancelExternal: vi.fn()
+    });
+
+    const response = await handler(rawCancelRequest("{not-json"), routeContext());
+
+    expect(response.status).toBe(401);
+    expect(readTurn).not.toHaveBeenCalled();
+  });
+
   it("cancels only the authenticated latest running Request", async () => {
     const cancelExternal = vi.fn(() => true);
     const handler = createAgentTurnCancellationPostHandler({
+      authenticate: async () => ({ status: "allowed", userId: "user-a" }),
       readTurn: async () => ({ status: "ok", snapshot: snapshot("providerRunning") }),
       cancelExternal
     });
@@ -31,6 +46,7 @@ describe("A+ explicit Provider cancellation route", () => {
   it("rejects a stale Request identity and does not infer cancellation", async () => {
     const cancelExternal = vi.fn();
     const handler = createAgentTurnCancellationPostHandler({
+      authenticate: async () => ({ status: "allowed", userId: "user-a" }),
       readTurn: async () => ({ status: "ok", snapshot: snapshot("providerRunning") }),
       cancelExternal
     });
@@ -48,6 +64,7 @@ describe("A+ explicit Provider cancellation route", () => {
   it("reports an already terminal Server status without rewriting it", async () => {
     const cancelExternal = vi.fn();
     const handler = createAgentTurnCancellationPostHandler({
+      authenticate: async () => ({ status: "allowed", userId: "user-a" }),
       readTurn: async () => ({ status: "ok", snapshot: snapshot("externallyCompleted") }),
       cancelExternal
     });
@@ -74,6 +91,10 @@ function cancelRequest(requestId: string, stepSequence: number): Request {
       stepSequence
     })
   });
+}
+
+function rawCancelRequest(body: string): Request {
+  return new Request(`http://morpho.test/${TURN_ID}`, { method: "POST", body });
 }
 
 function routeContext() {

@@ -70,6 +70,17 @@ export function createAgentTurnRequestPostHandler(
     if (!isUuid(turnId)) {
       return invalidRequestResponse("serverTurnId 格式无效。");
     }
+    const auth = await dependencies.authenticate();
+    if (auth.status === "denied") {
+      return NextResponse.json(
+        {
+          error: auth.error,
+          code: auth.httpStatus === 401 ? "unauthenticated" : "auth_unavailable",
+          recoverable: false
+        },
+        { status: auth.httpStatus }
+      );
+    }
     const parsedBody = await readBoundedJsonBody(request);
     if (parsedBody.status === "failed") return parsedBody.response;
     if (!isRecord(parsedBody.value)) {
@@ -110,17 +121,6 @@ export function createAgentTurnRequestPostHandler(
       );
     }
 
-    const auth = await dependencies.authenticate();
-    if (auth.status === "denied") {
-      return NextResponse.json(
-        {
-          error: auth.error,
-          code: auth.httpStatus === 401 ? "unauthenticated" : "auth_unavailable",
-          recoverable: false
-        },
-        { status: auth.httpStatus }
-      );
-    }
     const config = dependencies.loadConfig();
     if (config.status === "failed") {
       return NextResponse.json(

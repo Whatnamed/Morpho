@@ -18,26 +18,45 @@ const SNAPSHOT: AgentTurnJournalSnapshot = {
 describe("POST /api/ai/agent/turns", () => {
   it("returns 401 before Journal creation when no Session user exists", async () => {
     const createJournal = vi.fn();
+    const authenticate = vi.fn(async () => ({
+      status: "denied" as const,
+      httpStatus: 401 as const,
+      error: "请先登录 Morpho。"
+    }));
     const handler = createAgentTurnPostHandler({
-      authenticate: vi.fn(async () => ({
-        status: "denied" as const,
-        httpStatus: 401 as const,
-        error: "请先登录 Morpho。"
-      })),
+      authenticate,
       createJournal
     });
-    const response = await handler(request(validBody()));
+    const response = await handler(rawRequest("{not-json"));
     expect(response.status).toBe(401);
+    expect(authenticate).toHaveBeenCalledOnce();
     expect(createJournal).not.toHaveBeenCalled();
   });
 
-  it("rejects a client-forged userId and never reaches Auth or Journal", async () => {
-    const authenticate = vi.fn();
+  it("rejects a client-forged userId after authentication and never reaches Journal", async () => {
+    const authenticate = vi.fn(async () => ({ status: "allowed", userId: "user-a" } as const));
     const createJournal = vi.fn();
     const handler = createAgentTurnPostHandler({ authenticate, createJournal });
     const response = await handler(request({ ...validBody(), userId: "user-forged" }));
     expect(response.status).toBe(400);
-    expect(authenticate).not.toHaveBeenCalled();
+    expect(authenticate).toHaveBeenCalledOnce();
+    expect(createJournal).not.toHaveBeenCalled();
+  });
+
+  it("rejects a false-Content-Length body while streaming past the small route limit", async () => {
+    const createJournal = vi.fn();
+    const handler = createAgentTurnPostHandler({
+      authenticate: vi.fn(async () => ({ status: "allowed", userId: "user-a" } as const)),
+      createJournal
+    });
+    const response = await handler(new Request("http://localhost/api/ai/agent/turns", {
+      method: "POST",
+      headers: { "Content-Length": "1" },
+      body: JSON.stringify({ ...validBody(), padding: "x".repeat(17_000) })
+    }));
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({ code: "body_too_large" });
     expect(createJournal).not.toHaveBeenCalled();
   });
 
@@ -100,4 +119,8 @@ function request(body: Record<string, unknown>): Request {
     method: "POST",
     body: JSON.stringify(body)
   });
+}
+
+function rawRequest(body: string): Request {
+  return new Request("http://localhost/api/ai/agent/turns", { method: "POST", body });
 }

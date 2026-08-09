@@ -92,6 +92,46 @@ describe("AiJWS chat route request conversion", () => {
     }
   });
 
+  it("rejects oversized independent-chat fields and aggregate provider input", () => {
+    const base = {
+      draft: "继续分析",
+      messages: [],
+      objectSummaries: [],
+      attachments: []
+    };
+
+    expect(validateAiRouteRequest({ ...base, draft: "x".repeat(16_001) }).status).toBe("failed");
+    expect(validateAiRouteRequest({
+      ...base,
+      messages: Array.from({ length: 65 }, () => ({ role: "user", body: "x" }))
+    }).status).toBe("failed");
+    expect(validateAiRouteRequest({
+      ...base,
+      messages: [{ role: "user", body: "x".repeat(24_001) }]
+    }).status).toBe("failed");
+    expect(validateAiRouteRequest({
+      ...base,
+      attachments: Array.from({ length: 5 }, (_, index) => ({
+        id: `asset-${index}`,
+        kind: "image",
+        objectId: `image-${index}`,
+        mimeType: "image/png",
+        dataUrl: "data:image/png;base64,YQ==",
+        status: "ready"
+      }))
+    }).status).toBe("failed");
+    expect(validateAiRouteRequest({
+      ...base,
+      documentExtracts: Array.from({ length: 3 }, (_, index) => ({
+        objectId: `file-${index}`,
+        title: `资料 ${index}`,
+        text: "汉".repeat(100_000),
+        charCount: 100_000,
+        truncated: false
+      }))
+    }).status).toBe("failed");
+  });
+
   it("converts ready image attachments to OpenAI-compatible image_url parts", () => {
     const messages = buildProviderMessages({
       draft: "Analyze this image",

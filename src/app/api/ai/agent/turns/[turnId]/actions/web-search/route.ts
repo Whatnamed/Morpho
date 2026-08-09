@@ -22,6 +22,7 @@ import {
 import { requireAiRouteUser, type AiRouteUserAccessResult } from "@/server/auth/aiAccess";
 
 export const runtime = "nodejs";
+const MAX_WEB_SEARCH_ACTION_BODY_BYTES = 16 * 1024;
 
 type RouteContext = { params: Promise<{ turnId: string }> };
 type SearchResult = Awaited<ReturnType<typeof searchWebEvidence>>;
@@ -69,7 +70,7 @@ export function createAgentTurnWebSearchActionPostHandler(
         { status: 403 }
       );
     }
-    const parsed = await readBoundedJsonBody(request);
+    const parsed = await readBoundedJsonBody(request, MAX_WEB_SEARCH_ACTION_BODY_BYTES);
     if (parsed.status === "failed") return parsed.response;
     if (!isRecord(parsed.value)) return invalidRequestResponse("Search Action 必须是对象。");
     const unknown = unknownKeys(parsed.value, [

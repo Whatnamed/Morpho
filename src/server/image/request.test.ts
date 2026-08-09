@@ -9,10 +9,10 @@ describe("GrsAI image route request validation", () => {
       modelId: "nano-banana-2",
       prompt: "继续发展转角细节",
       images: [
-        "data:image/png;base64,a",
-        "data:image/png;base64,b",
-        "data:image/png;base64,c",
-        "data:image/png;base64,d"
+        "data:image/png;base64,YQ",
+        "data:image/png;base64,Yg",
+        "data:image/png;base64,Yw",
+        "data:image/png;base64,ZA"
       ],
       aspectRatio: "3:4",
       sizeOption: "4K",
@@ -70,5 +70,17 @@ describe("GrsAI image route request validation", () => {
     const result = validateGrsImageRouteRequest({ prompt: " " });
 
     expect(result.status).toBe("failed");
+  });
+
+  it("rejects oversized prompts, active image formats, and unbounded object identities", () => {
+    expect(validateGrsImageRouteRequest({ prompt: "x".repeat(16_001) }).status).toBe("failed");
+    expect(validateGrsImageRouteRequest({
+      prompt: "生成参考图",
+      images: ["data:image/svg+xml;base64,PHN2Zz4="]
+    }).status).toBe("failed");
+    expect(validateGrsImageRouteRequest({
+      prompt: "生成参考图",
+      referenceObjectIds: ["x".repeat(161)]
+    }).status).toBe("failed");
   });
 });

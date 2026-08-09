@@ -3,19 +3,24 @@ import { NextResponse } from "next/server";
 import { loadGrsImageConfig } from "@/server/image/config";
 import { resolveGrsImageResult } from "@/server/image/grsProvider";
 import { validateGrsImageRouteRequest } from "@/server/image/request";
-import { aiAccessDeniedResponse, guardAiRoute } from "@/server/auth/aiAccess";
+import { aiAccessDeniedResponse, guardAiRoute, requireAiRouteUser } from "@/server/auth/aiAccess";
+import { readBoundedJsonBody } from "@/server/http/boundedJsonBody";
 
 export const runtime = "nodejs";
+const MAX_IMAGE_REQUEST_BODY_BYTES = 36 * 1024 * 1024;
 
 export async function POST(request: Request) {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "请求不是有效 JSON。" }, { status: 400 });
+  const authenticated = await requireAiRouteUser();
+  if (authenticated.status === "denied") {
+    return aiAccessDeniedResponse(authenticated);
   }
+  const parsed = await readBoundedJsonBody(request, {
+    maxBytes: MAX_IMAGE_REQUEST_BODY_BYTES,
+    tooLargeError: "AI 图像请求体超过允许大小。"
+  });
+  if (parsed.status === "failed") return parsed.response;
 
-  const validated = validateGrsImageRouteRequest(body);
+  const validated = validateGrsImageRouteRequest(parsed.value);
   if (validated.status === "failed") {
     return NextResponse.json({ error: validated.reason }, { status: 400 });
   }
