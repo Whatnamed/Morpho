@@ -18,6 +18,33 @@ export type WorkspacePersistenceState = {
   failureKind?: StorageWriteFailureKind;
 };
 
+export type WorkspaceMutationCapabilityInput = Readonly<{
+  persistence: WorkspacePersistenceState;
+  isWorkspaceLoaded: boolean;
+  routeProjectId: string;
+  workspaceProjectId: string;
+  migrationError?: string;
+}>;
+
+/**
+ * Reading a loaded project and mutating it are separate capabilities. Only a
+ * tab with a live writer may cross the workspace mutation boundary.
+ */
+export function canMutateWorkspace({
+  persistence,
+  isWorkspaceLoaded,
+  routeProjectId,
+  workspaceProjectId,
+  migrationError
+}: WorkspaceMutationCapabilityInput): boolean {
+  return (
+    isWorkspaceLoaded &&
+    !migrationError &&
+    routeProjectId === workspaceProjectId &&
+    (persistence.phase === "idle" || persistence.phase === "saving" || persistence.phase === "saved")
+  );
+}
+
 export type WorkspacePersistenceWriteResult =
   | {
       status: "ok";

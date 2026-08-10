@@ -46,6 +46,25 @@ afterEach(async () => {
 });
 
 describe("useDocumentReaderController", () => {
+  it("keeps read-only document viewing on the non-recovery path and blocks fragment creation", async () => {
+    const workspace = createReaderWorkspace("project-reader", "file-a");
+    const recoveryLoad = vi.fn(async () => loadedResult(workspace, "file-a", SOURCE_TEXT));
+    const readOnlyLoad = vi.fn(async () => loadedResult(workspace, "file-a", SOURCE_TEXT));
+    const services = createServices({ loadExtract: recoveryLoad, loadReadOnlyExtract: readOnlyLoad });
+    const harness = await renderController({ initialWorkspace: workspace, services, canMutateWorkspace: false });
+
+    act(() => harness.current().open("file-a"));
+    await act(settleAsyncWork);
+
+    expect(readOnlyLoad).toHaveBeenCalledTimes(1);
+    expect(recoveryLoad).not.toHaveBeenCalled();
+    expect(harness.current().state).toMatchObject({ status: "loaded", text: SOURCE_TEXT });
+    expect(harness.current().extractFragment({ blockIds: [], title: "blocked", summary: "" })).toEqual({
+      status: "blocked",
+      reason: "Document reader is not ready."
+    });
+  });
+
   it("opens into loading and preserves the loaded extract, preview, and initial location", async () => {
     const workspace = createReaderWorkspace("project-reader", "file-a");
     const extract = deferred<DocumentReaderLoadResult>();
@@ -639,9 +658,13 @@ async function renderLoadedController(
 
 function createServices(overrides: {
   loadExtract?: DocumentReaderControllerServices["loadDocumentReaderExtractWithRecovery"];
+  loadReadOnlyExtract?: DocumentReaderControllerServices["loadDocumentReaderExtract"];
   loadPreview?: DocumentReaderControllerServices["loadDocumentSourcePreview"];
 } = {}): DocumentReaderControllerServices {
   return {
+    loadDocumentReaderExtract:
+      overrides.loadReadOnlyExtract ??
+      vi.fn(async (workspace, fileObjectId) => loadedResult(workspace, fileObjectId, SOURCE_TEXT)),
     loadDocumentReaderExtractWithRecovery:
       overrides.loadExtract ??
       vi.fn(async (workspace, fileObjectId) => loadedResult(workspace, fileObjectId, SOURCE_TEXT)),

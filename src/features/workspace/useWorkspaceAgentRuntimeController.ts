@@ -6,7 +6,7 @@ import type {
   PendingAiConfirmation,
   PendingConfirmationRequestResult
 } from "./workspaceConfirmation";
-import { updateAiMessage } from "./aiConversationMessages";
+import { getLatestFailedAgentTurnDraft, updateAiMessage } from "./aiConversationMessages";
 import { completeAgentTrace } from "./agentMessageTrace";
 import {
   createAgentTurnHostSessionDetachedError,
@@ -70,6 +70,7 @@ export type WorkspaceAgentRuntimeController = {
   showRecoveryPending: boolean;
   send: (input: RunMorphoAgentTurnAPlusInput) => Promise<void>;
   retryRecovery: () => Promise<void>;
+  editFailedTurn: () => boolean;
   cancel: () => Promise<void>;
   acknowledgePendingConfirmation: () => Promise<boolean>;
   beginLocalAbortableTask: () => {
@@ -160,6 +161,7 @@ export function useWorkspaceAgentRuntimeController(
   const renderedHostRef = useRef<AgentTurnHost | null>(null);
   const abortSlotRef = useRef<OwnedSlot<AbortController> | null>(null);
   const streamFlushSlotRef = useRef<OwnedSlot<() => void> | null>(null);
+  const lastSubmittedTurnRef = useRef<OwnedSlot<{ draft: string; taskMode: AiTaskMode }> | null>(null);
 
   const updateRuntimeDisplay = useCallback(
     (expectedSession: WorkspaceAgentRuntimeSession, patch: RuntimeDisplayPatch): void => {
@@ -397,6 +399,10 @@ export function useWorkspaceAgentRuntimeController(
     const draft = input.draft.trim();
     if (!draft || runtimeStateRef.current.isStreaming) return;
     const turnInput = { ...input, draft };
+    lastSubmittedTurnRef.current = {
+      session: expectedSession,
+      value: { draft, taskMode: input.taskMode }
+    };
 
     try {
       if (runtimeStateRef.current.showRecoveryPending) {
@@ -441,6 +447,25 @@ export function useWorkspaceAgentRuntimeController(
       throw error;
     }
   }, [updateRuntimeDisplay]);
+
+  const editFailedTurn = useCallback((): boolean => {
+    const expectedSession = currentSessionRef.current;
+    const expectedHost = activeHostRef.current;
+    if (!expectedSession || !expectedSession.workspaceReady || !expectedHost || showRecoveryPending) return false;
+    const failedTurn = getLatestFailedAgentTurnDraft(expectedHost.readWorkspace());
+    const fallback = lastSubmittedTurnRef.current?.session === expectedSession
+      ? lastSubmittedTurnRef.current.value
+      : null;
+    const draft = failedTurn?.draft ?? fallback?.draft;
+    const taskMode = failedTurn?.taskMode ?? fallback?.taskMode;
+    if (!draft || !taskMode) return false;
+
+    setDraft(draft);
+    setTaskMode(taskMode);
+    openConversation();
+    updateRuntimeDisplay(expectedSession, { showFailure: false, showRecoveryPending: false });
+    return true;
+  }, [openConversation, setDraft, setTaskMode, showRecoveryPending, updateRuntimeDisplay]);
 
   const cancel = useCallback(async (): Promise<void> => {
     const expectedSession = currentSessionRef.current;
@@ -533,6 +558,7 @@ export function useWorkspaceAgentRuntimeController(
     showRecoveryPending,
     send,
     retryRecovery,
+    editFailedTurn,
     cancel,
     acknowledgePendingConfirmation,
     beginLocalAbortableTask,

@@ -3,9 +3,33 @@ import { describe, expect, it, vi } from "vitest";
 import { createBlankWorkspace } from "@/domain/morpho/workspace";
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 import {
+  canMutateWorkspace,
   createWorkspacePersistenceController,
   type WorkspacePersistenceWriter
 } from "./workspacePersistence";
+
+describe("workspace mutation capability", () => {
+  const input = {
+    persistence: { phase: "idle" as const, isDirty: false },
+    isWorkspaceLoaded: true,
+    routeProjectId: "project-a",
+    workspaceProjectId: "project-a"
+  };
+
+  it.each(["idle", "saving", "saved"] as const)("allows mutation while the owned writer is %s", (phase) => {
+    expect(canMutateWorkspace({ ...input, persistence: { phase, isDirty: phase === "saving" } })).toBe(true);
+  });
+
+  it.each(["loading", "error", "readOnly"] as const)("blocks mutation in the unsafe %s phase", (phase) => {
+    expect(canMutateWorkspace({ ...input, persistence: { phase, isDirty: false } })).toBe(false);
+  });
+
+  it("blocks detached, mismatched, and migration-failed workspaces", () => {
+    expect(canMutateWorkspace({ ...input, isWorkspaceLoaded: false })).toBe(false);
+    expect(canMutateWorkspace({ ...input, workspaceProjectId: "project-b" })).toBe(false);
+    expect(canMutateWorkspace({ ...input, migrationError: "migration failed" })).toBe(false);
+  });
+});
 
 describe("workspace persistence controller", () => {
   it("coalesces rapid updates and saves the newest workspace after debounce", () => {

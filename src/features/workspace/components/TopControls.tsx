@@ -5,6 +5,7 @@ import { useRef } from "react";
 
 type TopControlsProps = {
   projectTitle: string;
+  canMutateWorkspace?: boolean;
   onImportFiles: (files: File[]) => void;
   onImportStart?: () => void;
   onSearch: () => void;
@@ -23,6 +24,7 @@ type TopControlsProps = {
 
 export function TopControls({
   projectTitle,
+  canMutateWorkspace = true,
   onImportFiles,
   onImportStart,
   onSearch,
@@ -40,6 +42,7 @@ export function TopControls({
 }: TopControlsProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const openImportPicker = () => {
+    if (!canMutateWorkspace) return;
     onImportStart?.();
     fileInputRef.current?.click();
   };
@@ -72,10 +75,11 @@ export function TopControls({
               <span>重命名项目</span>
               <input
                 value={projectRenameDraft}
+                disabled={!canMutateWorkspace}
                 onChange={(event) => onProjectRenameDraftChange?.(event.currentTarget.value)}
               />
             </label>
-            <button className="project-menu-action" type="button" onClick={onProjectRenameConfirm}>
+            <button className="project-menu-action" type="button" disabled={!canMutateWorkspace} onClick={onProjectRenameConfirm}>
               保存名称
             </button>
             <button className="project-menu-action" type="button" onClick={onOpenProjectHome}>
@@ -86,7 +90,7 @@ export function TopControls({
               <Archive size={14} />
               项目归档与恢复
             </button>
-            <button className="project-menu-action" type="button" onClick={openImportPicker}>
+            <button className="project-menu-action" type="button" disabled={!canMutateWorkspace} onClick={openImportPicker}>
               <Import size={14} />
               导入资料
             </button>
@@ -109,6 +113,7 @@ export function TopControls({
             className="sr-only"
             type="file"
             multiple
+            disabled={!canMutateWorkspace}
             onChange={(event) => {
               const files = Array.from(event.currentTarget.files ?? []);
               if (files.length > 0) {
@@ -117,7 +122,7 @@ export function TopControls({
               event.currentTarget.value = "";
             }}
           />
-          <button className="plain-button" type="button" onClick={openImportPicker}>
+          <button className="plain-button" type="button" disabled={!canMutateWorkspace} onClick={openImportPicker}>
             <Import size={14} />
             导入
           </button>

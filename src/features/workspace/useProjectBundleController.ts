@@ -30,6 +30,7 @@ export type ProjectBundleControllerServices = {
 export type UseProjectBundleControllerInput = {
   projectId: string;
   workspaceReady: boolean;
+  canMutateWorkspace?: boolean;
   workspace: MorphoWorkspace;
   onWorkspaceRestored: (result: { projectId: string; workspace: MorphoWorkspace }) => void;
   blobStore?: BlobStore;
@@ -78,6 +79,7 @@ const defaultServices: ProjectBundleControllerServices = {
 export function useProjectBundleController({
   projectId,
   workspaceReady,
+  canMutateWorkspace = true,
   workspace,
   onWorkspaceRestored,
   blobStore = indexedDbBlobStore,
@@ -380,7 +382,7 @@ export function useProjectBundleController({
 
   const restoreBackup = useCallback(async () => {
     const expectedSession = session;
-    if (!isCurrentSession(expectedSession)) {
+    if (!canMutateWorkspace || !isCurrentSession(expectedSession)) {
       return;
     }
     const backup = inspectedBackupRef.current;
@@ -434,6 +436,7 @@ export function useProjectBundleController({
   }, [
     beginExclusiveOperation,
     blobStore,
+    canMutateWorkspace,
     finishOperation,
     isCurrentSession,
     onWorkspaceRestored,

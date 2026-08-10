@@ -15,7 +15,7 @@ import type { AssetRecord, MorphoWorkspace } from "@/domain/morpho/types";
 import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
 import type { BlobStore } from "@/infrastructure/assets/localAssetWorkflow";
 
-import { shouldAcceptDocumentReaderLoadResult } from "./documentReader";
+import { loadDocumentReaderExtract, shouldAcceptDocumentReaderLoadResult } from "./documentReader";
 import { loadDocumentReaderExtractWithRecovery } from "./documentReaderRecovery";
 import {
   buildDocumentFragmentDraft,
@@ -47,6 +47,7 @@ export type DocumentReaderControllerState = {
 };
 
 export type DocumentReaderControllerServices = {
+  loadDocumentReaderExtract: typeof loadDocumentReaderExtract;
   loadDocumentReaderExtractWithRecovery: typeof loadDocumentReaderExtractWithRecovery;
   loadDocumentSourcePreview: typeof loadDocumentSourcePreview;
 };
@@ -54,6 +55,7 @@ export type DocumentReaderControllerServices = {
 export type UseDocumentReaderControllerInput = {
   projectId: string;
   workspaceReady: boolean;
+  canMutateWorkspace?: boolean;
   workspace: MorphoWorkspace;
   updateWorkspace: Dispatch<SetStateAction<MorphoWorkspace>>;
   blobStore?: BlobStore;
@@ -75,6 +77,7 @@ export type DocumentReaderController = {
 };
 
 const defaultServices: DocumentReaderControllerServices = {
+  loadDocumentReaderExtract,
   loadDocumentReaderExtractWithRecovery,
   loadDocumentSourcePreview
 };
@@ -104,6 +107,7 @@ function releasePreviewLease(lease: DocumentSourcePreviewLease | null): void {
 export function useDocumentReaderController({
   projectId,
   workspaceReady,
+  canMutateWorkspace = true,
   workspace,
   updateWorkspace,
   blobStore = indexedDbBlobStore,
@@ -267,13 +271,20 @@ export function useDocumentReaderController({
         });
 
       void Promise.all([
-        services.loadDocumentReaderExtractWithRecovery(
-          workspaceSnapshot,
-          fileObjectId,
-          blobStore,
-          abortController.signal,
-          applySessionWorkspaceUpdate
-        ),
+        canMutateWorkspace
+          ? services.loadDocumentReaderExtractWithRecovery(
+              workspaceSnapshot,
+              fileObjectId,
+              blobStore,
+              abortController.signal,
+              applySessionWorkspaceUpdate
+            )
+          : services.loadDocumentReaderExtract(
+              workspaceSnapshot,
+              fileObjectId,
+              blobStore,
+              abortController.signal
+            ),
         sourcePreviewPromise
       ])
         .then(([result, sourcePreview]) => {
@@ -341,6 +352,7 @@ export function useDocumentReaderController({
     },
     [
       blobStore,
+      canMutateWorkspace,
       isCurrentRequest,
       isCurrentSession,
       releaseOwnedSourcePreview,
@@ -360,7 +372,7 @@ export function useDocumentReaderController({
       summary: string;
     }): DocumentReaderExtractFragmentResult => {
       const reader = stateRef.current;
-      if (!isCurrentSession(session) || !reader || reader.status !== "loaded") {
+      if (!canMutateWorkspace || !isCurrentSession(session) || !reader || reader.status !== "loaded") {
         return { status: "blocked", reason: "Document reader is not ready." };
       }
 
@@ -438,7 +450,7 @@ export function useDocumentReaderController({
       });
       return result;
     },
-    [isCurrentSession, session, updateState, updateWorkspace]
+    [canMutateWorkspace, isCurrentSession, session, updateState, updateWorkspace]
   );
 
   const viewCreatedFragment = useCallback(

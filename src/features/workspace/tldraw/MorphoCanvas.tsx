@@ -82,6 +82,7 @@ type FocusRequest = {
 
 type MorphoCanvasProps = {
   workspace: MorphoWorkspace;
+  readOnly?: boolean;
   annotatedObjectId: string | null;
   /** Full primary-chain highlight payload for canvas (not only object ids). */
   canvasTrace: PrimaryCanvasTrace | null;
@@ -187,6 +188,7 @@ export function shouldApplyFocusRequest(focusRequest: FocusRequest, lastAppliedN
 
 export function MorphoCanvas({
   workspace,
+  readOnly = false,
   annotatedObjectId,
   canvasTrace,
   highlightedObjectId,
@@ -263,6 +265,7 @@ export function MorphoCanvas({
       InFrontOfTheCanvas: () => (
         <CanvasSelectionToolbar
           workspace={workspace}
+          readOnly={readOnly}
           floatingChromeKey={floatingChromeKey}
           renderToolbar={renderSelectionToolbar}
           onStageRegionsChange={onStageRegionsChange}
@@ -281,6 +284,7 @@ export function MorphoCanvas({
       secondaryTraceObjectIds,
       traceEdgeKeySet,
       workspace,
+      readOnly,
       onStageRegionsChange
     ]
   );
@@ -688,6 +692,7 @@ export function MorphoCanvas({
 
       event.preventDefault();
       event.stopPropagation();
+      if (readOnly) return;
       onImportRequest({
         position: getPagePoint(event.clientX, event.clientY),
         files,
@@ -695,7 +700,7 @@ export function MorphoCanvas({
         text: text.trim() || undefined
       });
     },
-    [getPagePoint, onImportRequest]
+    [getPagePoint, onImportRequest, readOnly]
   );
 
   const handlePasteCapture = useCallback(
@@ -714,6 +719,7 @@ export function MorphoCanvas({
 
       event.preventDefault();
       event.stopPropagation();
+      if (readOnly) return;
       const editor = editorRef.current;
       const point = editor?.inputs.getCurrentPagePoint() ?? {
         x: workspace.canvas.view.x + 160,
@@ -726,8 +732,21 @@ export function MorphoCanvas({
         text: files.length === 0 && !url ? text.trim() : undefined
       });
     },
-    [onImportRequest, workspace.canvas.view.x, workspace.canvas.view.y]
+    [onImportRequest, readOnly, workspace.canvas.view.x, workspace.canvas.view.y]
   );
+
+  useLayoutEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.updateInstanceState({ isReadonly: readOnly });
+    if (!readOnly) return;
+    pendingInstancesRef.current = null;
+    pendingStageRegionsRef.current = null;
+    if (instancesPersistTimerRef.current !== null) window.clearTimeout(instancesPersistTimerRef.current);
+    if (stageRegionsPersistTimerRef.current !== null) window.clearTimeout(stageRegionsPersistTimerRef.current);
+    instancesPersistTimerRef.current = null;
+    stageRegionsPersistTimerRef.current = null;
+  }, [editorReadyEpoch, readOnly]);
 
   const openContextMenuAt = useCallback(
     (clientX: number, clientY: number) => {
@@ -1021,6 +1040,7 @@ export function MorphoCanvas({
           // World-space dot grid that pans/zooms with the camera (replaces CSS screen grid).
           editor.updateInstanceState({ isGridMode: true });
           syncWorkspaceToEditor(editor);
+          editor.updateInstanceState({ isReadonly: readOnly });
           latestViewRef.current = workspace.canvas.view;
           lastPersistedViewKeyRef.current = getCanvasViewKey(workspace.canvas.view);
           editor.setCamera({ x: workspace.canvas.view.x, y: workspace.canvas.view.y, z: workspace.canvas.view.zoom });
@@ -1173,12 +1193,14 @@ const SELECTION_TOOLBAR_GAP = 12;
 
 const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
   workspace,
+  readOnly,
   floatingChromeKey,
   renderToolbar,
   onStageRegionsChange,
   onStageOpacityPreviewChange
 }: {
   workspace: MorphoWorkspace;
+  readOnly: boolean;
   floatingChromeKey: string;
   renderToolbar?: (
     selectedObjects: MorphoObject[],
@@ -1288,6 +1310,7 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
     isDragging,
     isPanning
   });
+  if (readOnly) return null;
   // Opacity slider drag can flip tldraw isDragging; keep stage chrome if a popover is open.
   if (
     !shouldKeepStageToolbarVisible({

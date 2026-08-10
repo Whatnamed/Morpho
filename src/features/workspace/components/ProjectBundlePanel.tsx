@@ -6,6 +6,7 @@ import { useRef } from "react";
 import type { EditableProjectBackupInspectionPreview } from "@/features/archive/projectBundleClient";
 
 type ProjectBundlePanelProps = {
+  canMutateWorkspace?: boolean;
   archiveIncludeFullChat: boolean;
   archiveIncludeContinuity: boolean;
   restorePreview: EditableProjectBackupInspectionPreview | null;
@@ -25,6 +26,7 @@ type ProjectBundlePanelProps = {
 };
 
 export function ProjectBundlePanel({
+  canMutateWorkspace = true,
   archiveIncludeFullChat,
   archiveIncludeContinuity,
   restorePreview,
@@ -103,6 +105,7 @@ export function ProjectBundlePanel({
             className="sr-only"
             type="file"
             accept=".zip,application/zip"
+            disabled={!canMutateWorkspace}
             onChange={(event) => {
               const selected = event.currentTarget.files?.[0];
               if (selected) {
@@ -111,7 +114,7 @@ export function ProjectBundlePanel({
               event.currentTarget.value = "";
             }}
           />
-          <button className="plain-button archive-action" type="button" disabled={isBusy} onClick={() => restoreInputRef.current?.click()}>
+          <button className="plain-button archive-action" type="button" disabled={isBusy || !canMutateWorkspace} onClick={() => restoreInputRef.current?.click()}>
             <Upload size={14} />
             恢复备份
           </button>
@@ -155,7 +158,7 @@ export function ProjectBundlePanel({
               <button className="plain-button" type="button" disabled={isBusy} onClick={onCancelRestorePreview}>
                 取消
               </button>
-              <button className="brand-button" type="button" disabled={isBusy} onClick={onConfirmRestoreBackup}>
+              <button className="brand-button" type="button" disabled={isBusy || !canMutateWorkspace} onClick={onConfirmRestoreBackup}>
                 确认恢复
               </button>
             </div>

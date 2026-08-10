@@ -5,9 +5,56 @@ import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 
 import { readStoredWorkspace, seedProject, seedTextOnlyProject, shapeSelector } from "./fixtures/seed";
-import { selectObject } from "./fixtures/canvas";
+import { clickShape, selectObject, shapeCentre } from "./fixtures/canvas";
 
 test.describe("项目持久化", () => {
+  test("第二个标签页只能查看，关闭写入标签页并刷新后恢复编辑", async ({ page, context }) => {
+    const seed = await seedProject(page);
+    await page.goto(`/projects/${seed.seedProjectId}`);
+    await expect(page.locator(shapeSelector(seed.objectIds.keyConclusion))).toBeVisible();
+
+    const readOnlyPage = await context.newPage();
+    const aiRequests: string[] = [];
+    readOnlyPage.on("request", (request) => {
+      if (request.url().includes("/api/ai/")) aiRequests.push(request.url());
+    });
+    await readOnlyPage.goto(`/projects/${seed.seedProjectId}`);
+    await expect(readOnlyPage.getByText("这里仅供查看，不能编辑、导入或发起 AI 操作。", { exact: false })).toBeVisible();
+    await expect(readOnlyPage.locator(shapeSelector(seed.objectIds.keyConclusion))).toBeVisible();
+
+    const storedBefore = await readStoredWorkspace(readOnlyPage, seed.seedProjectId);
+    await clickShape(readOnlyPage, seed.objectIds.keyConclusion);
+    await expect(readOnlyPage.locator('[aria-label="对象详情"]')).toBeVisible();
+
+    const beforeZoom = await shapeCentre(readOnlyPage, seed.objectIds.keyConclusion);
+    await readOnlyPage.mouse.move(600, 500);
+    await readOnlyPage.mouse.wheel(0, -240);
+    await expect.poll(async () => {
+      const afterZoom = await shapeCentre(readOnlyPage, seed.objectIds.keyConclusion);
+      return Math.abs(afterZoom.x - beforeZoom.x) + Math.abs(afterZoom.y - beforeZoom.y);
+    }).toBeGreaterThan(1);
+
+    await readOnlyPage.keyboard.press("Delete");
+    await expect(readOnlyPage.locator(shapeSelector(seed.objectIds.keyConclusion))).toBeVisible();
+    await expect(readOnlyPage.getByRole("button", { name: "导入", exact: true })).toBeDisabled();
+    await expect(readOnlyPage.locator(".ai-input textarea")).toBeDisabled();
+    await expect(readOnlyPage.getByRole("button", { name: "发送" })).toBeDisabled();
+    expect(aiRequests).toEqual([]);
+    expect(await readStoredWorkspace(readOnlyPage, seed.seedProjectId)).toEqual(storedBefore);
+
+    await page.close();
+    await readOnlyPage.reload();
+    await expect(readOnlyPage.getByText("这里仅供查看", { exact: false })).toHaveCount(0);
+    await expect(readOnlyPage.getByRole("button", { name: "导入", exact: true })).toBeEnabled();
+    await expect(readOnlyPage.locator(".ai-input textarea")).toBeEnabled();
+
+    await readOnlyPage.locator(".project-menu-trigger").click();
+    const renamed = `${storedBefore.project.title} 可编辑`;
+    await readOnlyPage.locator(".project-menu-field input").fill(renamed);
+    await readOnlyPage.getByRole("button", { name: "保存名称" }).click();
+    await expect.poll(async () => (await readStoredWorkspace(readOnlyPage, seed.seedProjectId)).project.title).toBe(renamed);
+  });
+
   test("刷新后恢复项目内容、画布视图与选择", async ({ page }) => {
     const seed = await seedProject(page);
     await page.goto(`/projects/${seed.seedProjectId}`);

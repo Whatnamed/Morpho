@@ -70,6 +70,22 @@ describe("useWorkspaceAgentRuntimeController", () => {
     expect(runnerMocks.recover).toHaveBeenCalledTimes(1);
   });
 
+  it("fails closed before any Agent turn, recovery, tool host, or local task when mutation is unavailable", async () => {
+    const harness = await renderController(createInput({ workspaceReady: false }));
+
+    await act(async () => {
+      await harness.current().send(createTurnInput("不应发送"));
+      await harness.current().retryRecovery();
+    });
+
+    expect(harness.current().beginLocalAbortableTask()).toBeNull();
+    expect(runnerMocks.recover).not.toHaveBeenCalled();
+    expect(runnerMocks.resume).not.toHaveBeenCalled();
+    expect(runnerMocks.run).not.toHaveBeenCalled();
+    expect(runnerMocks.manual).not.toHaveBeenCalled();
+    expect(harness.commit).not.toHaveBeenCalled();
+  });
+
   it("keeps an old recovery result from changing the next project session", async () => {
     const oldRecovery = deferred<void>();
     runnerMocks.recover
@@ -216,6 +232,69 @@ describe("useWorkspaceAgentRuntimeController", () => {
 
     await act(async () => harness.current().retryRecovery());
     expect(harness.current()).toMatchObject({ showFailure: false, showRecoveryPending: false });
+  });
+
+  it("restores the failed turn draft for editing without resume, fetch, quota, or automatic send", async () => {
+    runnerMocks.recover.mockResolvedValue("none");
+    runnerMocks.run.mockResolvedValue(undefined);
+    const workspace = createBlankWorkspace("project-a");
+    workspace.ai.messages = [
+      {
+        id: "user-failed",
+        role: "user",
+        body: "保留这个原始要求",
+        status: "done",
+        taskMode: "researchOperation",
+        agentTurnId: "turn-failed",
+        pairedMessageId: "assistant-failed"
+      },
+      {
+        id: "assistant-failed",
+        role: "assistant",
+        body: "服务暂时不可用",
+        status: "failed",
+        taskMode: "researchOperation",
+        agentTurnId: "turn-failed",
+        pairedMessageId: "user-failed"
+      }
+    ];
+    const input = createInput({ workspace });
+    const harness = await renderController(input);
+    const host = runnerMocks.recover.mock.calls[0]?.[1] as AgentTurnHost;
+
+    act(() => host.ui.showFailure());
+    let restored = false;
+    act(() => {
+      restored = harness.current().editFailedTurn();
+    });
+
+    expect(restored).toBe(true);
+    expect(input.setDraft).toHaveBeenCalledWith("保留这个原始要求");
+    expect(input.setTaskMode).toHaveBeenCalledWith("researchOperation");
+    expect(harness.current()).toMatchObject({ showFailure: false, showRecoveryPending: false });
+    expect(runnerMocks.resume).not.toHaveBeenCalled();
+    expect(runnerMocks.run).not.toHaveBeenCalled();
+    expect(harness.workspace().ai.messages).toEqual(workspace.ai.messages);
+
+    await act(async () => {
+      await harness.current().send(createTurnInput("修改后的新要求"));
+    });
+    expect(runnerMocks.run).toHaveBeenCalledWith(
+      expect.objectContaining({ draft: "修改后的新要求" }),
+      expect.anything()
+    );
+  });
+
+  it("does not turn recovery-pending '再次检查' into edit-and-resend", async () => {
+    runnerMocks.recover.mockResolvedValue("none");
+    const input = createInput();
+    const harness = await renderController(input);
+    const host = runnerMocks.recover.mock.calls[0]?.[1] as AgentTurnHost;
+
+    act(() => host.ui.showRecoveryPending?.());
+    expect(harness.current().editFailedTurn()).toBe(false);
+    expect(input.setDraft).not.toHaveBeenCalled();
+    expect(runnerMocks.resume).not.toHaveBeenCalled();
   });
 
   it("dispatches manual compaction and ordinary turns through the same Controller boundary", async () => {

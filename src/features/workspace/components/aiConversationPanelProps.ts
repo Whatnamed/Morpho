@@ -61,6 +61,7 @@ export function buildAiConversationPanelProps(
     onConfirmPending: () => undefined,
     onCancelPending: () => undefined,
     onFailureRetry: () => undefined,
+    onFailureEdit: () => undefined,
     onOpenProjectRecords: () => undefined,
     ...overrides
   };

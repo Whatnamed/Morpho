@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "./route";
 
 const loadGrsImageConfigMock = vi.hoisted(() =>
-  vi.fn(() => ({
+  vi.fn<() => unknown>(() => ({
     status: "ok",
     config: {
       apiKey: "test-key",
@@ -52,7 +52,31 @@ describe("AI image route auth guard", () => {
       }
     });
     resolveGrsImageResultMock.mockReset();
-    loadGrsImageConfigMock.mockClear();
+    loadGrsImageConfigMock.mockReset();
+    loadGrsImageConfigMock.mockReturnValue({
+      status: "ok",
+      config: {
+        apiKey: "test-key",
+        baseUrl: "https://image.example.test",
+        model: "nano-banana-fast"
+      }
+    });
+  });
+
+  it("returns 503 for invalid provider config without reserving image quota", async () => {
+    loadGrsImageConfigMock.mockReturnValueOnce({ status: "failed", reason: "missing image config" });
+
+    const response = await POST(
+      new Request("http://localhost/api/ai/image", {
+        method: "POST",
+        body: JSON.stringify({ prompt: "生成柔光轨道产品图", images: [], aspectRatio: "1:1" })
+      })
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ error: "missing image config" });
+    expect(guardAiRouteMock).not.toHaveBeenCalled();
+    expect(resolveGrsImageResultMock).not.toHaveBeenCalled();
   });
 
   it("returns JSON 401 for unauthenticated requests before image provider execution", async () => {

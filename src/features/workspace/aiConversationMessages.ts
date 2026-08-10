@@ -1,4 +1,6 @@
 import type {
+  AiMessage,
+  AiTaskMode,
   AgentTrace,
   MorphoWorkspace,
   ProviderOutputSnapshot,
@@ -6,6 +8,42 @@ import type {
   StageRecordKey
 } from "@/domain/morpho/types";
 import type { ProviderCitation } from "@/server/ai/types";
+
+export type FailedAgentTurnDraft = Readonly<{
+  draft: string;
+  taskMode: AiTaskMode;
+  userMessageId: string;
+  assistantMessageId: string;
+  agentTurnId?: string;
+}>;
+
+/** Restores saved local input without resuming or creating a Provider request. */
+export function getLatestFailedAgentTurnDraft(workspace: MorphoWorkspace): FailedAgentTurnDraft | null {
+  const failedAssistant = [...workspace.ai.messages]
+    .reverse()
+    .find((message) => message.role === "assistant" && message.status === "failed");
+  if (!failedAssistant) return null;
+
+  const pairedUser = findPairedUserMessage(workspace.ai.messages, failedAssistant);
+  if (!pairedUser?.body.trim()) return null;
+
+  return {
+    draft: pairedUser.body,
+    taskMode: pairedUser.taskMode ?? failedAssistant.taskMode ?? "chatAnalysis",
+    userMessageId: pairedUser.id,
+    assistantMessageId: failedAssistant.id,
+    ...(failedAssistant.agentTurnId ? { agentTurnId: failedAssistant.agentTurnId } : {})
+  };
+}
+
+function findPairedUserMessage(messages: AiMessage[], assistant: AiMessage): AiMessage | undefined {
+  const direct = assistant.pairedMessageId
+    ? messages.find((message) => message.id === assistant.pairedMessageId && message.role === "user")
+    : undefined;
+  if (direct) return direct;
+  if (!assistant.agentTurnId) return undefined;
+  return messages.find((message) => message.role === "user" && message.agentTurnId === assistant.agentTurnId);
+}
 
 export function updateAiMessage(
   workspace: MorphoWorkspace,

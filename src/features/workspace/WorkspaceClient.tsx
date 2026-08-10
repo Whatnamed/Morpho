@@ -9,7 +9,8 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
-  useState
+  useState,
+  type SetStateAction
 } from "react";
 
 import type {
@@ -129,7 +130,11 @@ import {
 import {
   type MorphoAgentTurnMode
 } from "./morphoAgent";
-import { commitWorkspaceStateNow } from "./workspaceCommitBoundary";
+import {
+  commitWorkspaceStateNow,
+  createWorkspaceMutationBlockedError
+} from "./workspaceCommitBoundary";
+import { canMutateWorkspace as resolveCanMutateWorkspace } from "./workspacePersistence";
 import {
   applyWorkspaceTextPromptIfCurrent,
   createWorkspaceTextPromptSession,
@@ -223,8 +228,28 @@ type ObjectOperationUndoEntry = {
 
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const router = useRouter();
-  const [workspace, setWorkspace, persistenceState, flushWorkspace] = usePersistentWorkspace(projectId);
+  const [workspace, setPersistentWorkspace, persistenceState, flushWorkspace] = usePersistentWorkspace(projectId);
   const workspaceReady = persistenceState.isWorkspaceLoaded && workspace.project.id === projectId;
+  const canMutateWorkspace = resolveCanMutateWorkspace({
+    persistence: persistenceState,
+    isWorkspaceLoaded: persistenceState.isWorkspaceLoaded,
+    routeProjectId: projectId,
+    workspaceProjectId: workspace.project.id,
+    migrationError: persistenceState.migrationError
+  });
+  const canMutateWorkspaceRef = useRef(canMutateWorkspace);
+  const workspaceRef = useRef(workspace);
+  useLayoutEffect(() => {
+    canMutateWorkspaceRef.current = canMutateWorkspace;
+    workspaceRef.current = workspace;
+  }, [canMutateWorkspace, workspace]);
+  const setWorkspace = useCallback(
+    (action: SetStateAction<MorphoWorkspace>) => {
+      if (!canMutateWorkspaceRef.current) return;
+      setPersistentWorkspace(action);
+    },
+    [setPersistentWorkspace]
+  );
   const workspaceSurface = useWorkspaceSurfaceController({
     projectId,
     projectTitle: workspace.project.title,
@@ -320,6 +345,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   } = useProjectBundleController({
     projectId,
     workspaceReady,
+    canMutateWorkspace,
     workspace,
     onWorkspaceRestored: handleProjectBundleWorkspaceRestored
   });
@@ -339,12 +365,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   } = useWorkspaceConfirmationController({
     projectId,
     workspace,
-    workspaceReady
+    workspaceReady: canMutateWorkspace
   });
   const [textPrompt, setTextPrompt] = useState<WorkspaceTextPromptState | null>(null);
   const textPromptSession = useMemo<WorkspaceTextPromptSession>(
-    () => createWorkspaceTextPromptSession(projectId, workspace.project.id, workspaceReady),
-    [projectId, workspace.project.id, workspaceReady]
+    () => createWorkspaceTextPromptSession(projectId, workspace.project.id, canMutateWorkspace),
+    [canMutateWorkspace, projectId, workspace.project.id]
   );
   const activeTextPromptSessionRef = useRef(textPromptSession);
   useLayoutEffect(() => {
@@ -367,17 +393,21 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [directionPreviewCount, setDirectionPreviewCount] = useState<1 | 2 | 4 | 6>(2);
   const [imageGenerationAspectMode, setImageGenerationAspectMode] = useState<"auto" | "manual">("auto");
   const commitWorkspaceNow = useCallback(
-    <T,>(transform: (current: MorphoWorkspace) => { workspace: MorphoWorkspace; value: T }): T =>
-      commitWorkspaceStateNow(setWorkspace, transform),
-    [setWorkspace]
+    <T,>(transform: (current: MorphoWorkspace) => { workspace: MorphoWorkspace; value: T }): T => {
+      if (!canMutateWorkspaceRef.current) throw createWorkspaceMutationBlockedError();
+      return commitWorkspaceStateNow(setPersistentWorkspace, (current) => {
+        if (!canMutateWorkspaceRef.current || current.project.id !== projectId) {
+          throw createWorkspaceMutationBlockedError();
+        }
+        return transform(current);
+      });
+    },
+    [projectId, setPersistentWorkspace]
   );
-  const readWorkspaceNow = useCallback(
-    () => commitWorkspaceNow((current) => ({ workspace: current, value: current })),
-    [commitWorkspaceNow]
-  );
+  const readWorkspaceNow = useCallback(() => workspaceRef.current, []);
   const { importRequest, captureImportSession } = useWorkspaceImportController({
     projectId,
-    workspaceReady,
+    workspaceReady: canMutateWorkspace,
     commitWorkspace: commitWorkspaceNow,
     selectObjects: requestCanvasSelection
   });
@@ -422,7 +452,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   );
   const deliveryPreparation = useDeliveryPreparationController({
     projectId,
-    workspaceReady,
+    workspaceReady: canMutateWorkspace,
     workspace,
     updateWorkspace: setWorkspace,
     onBlocked: setContextWarning,
@@ -651,7 +681,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const handleManualSave = useCallback(() => {
     const result = flushWorkspace();
     if (result.phase === "readOnly") {
-      showWorkspaceNotice("这个标签页是只读的，改动不会保存。", 2600);
+      showWorkspaceNotice("这个标签页仅供查看，不能修改项目。", 2600);
       return;
     }
     showWorkspaceNotice(result.phase === "error" ? "本地保存失败" : "已保存", 1400);
@@ -969,7 +999,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const visualGeneration = useWorkspaceVisualGenerationController({
     projectId,
-    workspaceReady,
+    workspaceReady: canMutateWorkspace,
     effectiveImageGenerationSettings,
     commitWorkspace: commitWorkspaceNow,
     setPendingImageGenerationSlots,
@@ -984,13 +1014,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     showRecoveryPending,
     send: sendAgentTurn,
     retryRecovery,
+    editFailedTurn,
     cancel: cancelAiRequest,
     acknowledgePendingConfirmation,
     beginLocalAbortableTask,
     finishLocalAbortableTask
   } = useWorkspaceAgentRuntimeController({
     projectId,
-    workspaceReady,
+    workspaceReady: canMutateWorkspace,
     commitWorkspace: commitWorkspaceNow,
     readWorkspace: readWorkspaceNow,
     persistWorkspace: flushWorkspace,
@@ -1010,7 +1041,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const confirmationExecution = useWorkspaceConfirmationExecutionController({
     projectId,
     workspace,
-    workspaceReady,
+    workspaceReady: canMutateWorkspace,
     pendingConfirmation,
     ownsPendingConfirmation: confirmationControllerOwnsPendingConfirmation,
     updatePendingConfirmation,
@@ -1714,6 +1745,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   } = useDocumentReaderController({
     projectId,
     workspaceReady,
+    canMutateWorkspace,
     workspace,
     updateWorkspace: setWorkspace,
     blobStore: indexedDbBlobStore,
@@ -1946,7 +1978,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         <div className="workspace-banner" role="status">
           <strong>这个项目已在另一个标签页打开</strong>
           <span>
-            为了不让两个标签页互相覆盖，这里暂时只读：改动不会保存。关闭另一个标签页后刷新本页，即可继续编辑。
+            为了不让两个标签页互相覆盖，这里仅供查看，不能编辑、导入或发起 AI 操作。关闭另一个标签页后刷新本页，即可继续编辑。
           </span>
         </div>
       ) : persistenceState.storageDurability === "bestEffort" && !isStorageNoticeDismissed ? (
@@ -1963,6 +1995,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         className="sr-only"
         type="file"
         multiple
+        disabled={!canMutateWorkspace}
         tabIndex={-1}
         onChange={(event) => {
           handleRailImportFiles(event.currentTarget.files);
@@ -1976,6 +2009,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       ) : null}
       <MorphoCanvas
         workspace={workspace}
+        readOnly={!canMutateWorkspace}
         annotatedObjectId={localEditObjectId}
         canvasTrace={canvasTrace}
         highlightedObjectId={detailHoverObjectId}
@@ -1994,7 +2028,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           detailDesignDefinition ? "def" : "x",
           detailConceptDirection ? "concept" : "x"
         ].join(":")}
-        renderSelectionToolbar={renderSelectionToolbar}
+        renderSelectionToolbar={canMutateWorkspace ? renderSelectionToolbar : undefined}
         onSelectionChange={handleSelectionChange}
         onInstancesChange={handleInstancesChange}
         onStageRegionsChange={handleStageRegionsChange}
@@ -2002,6 +2036,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onLiveViewChange={handleCanvasLiveViewChange}
         onImportRequest={importRequest}
         onContextMenuRequest={(request) => {
+          if (!canMutateWorkspace) return;
           openCanvasContextMenu({
             x: request.x,
             y: request.y,
@@ -2099,6 +2134,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
       <TopControls
         projectTitle={workspace.project.title}
+        canMutateWorkspace={canMutateWorkspace}
         persistenceError={
           persistenceState.phase === "error" && persistenceState.error && !persistenceState.migrationError
             ? persistenceState.error
@@ -2139,6 +2175,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       ) : null}
       {isProjectBundleOpen ? (
         <ProjectBundlePanel
+          canMutateWorkspace={canMutateWorkspace}
           archiveIncludeFullChat={archiveIncludeFullChat}
           archiveIncludeContinuity={archiveIncludeContinuity}
           restorePreview={inspectedBackup?.preview ?? null}
@@ -2364,6 +2401,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         imageTaskStatus={imageTaskStatus}
         contextWarning={contextWarning}
         migrationError={persistenceState.migrationError}
+        canMutateWorkspace={canMutateWorkspace}
         focusInputRequestNonce={aiInputFocusNonce}
         onToggleOpen={() => setAiOpen((open) => !open)}
         onDraftChange={setAiDraft}
@@ -2394,6 +2432,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           void confirmationExecution.cancel();
         }}
         onFailureRetry={retryRecovery}
+        onFailureEdit={editFailedTurn}
         onOpenProjectRecords={openProjectRecords}
       />
 

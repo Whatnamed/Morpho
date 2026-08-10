@@ -25,14 +25,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: validated.reason }, { status: 400 });
   }
 
-  const access = await guardAiRoute("image");
-  if (access.status === "denied") {
-    return aiAccessDeniedResponse(access);
-  }
-
   const config = loadGrsImageConfig(process.env);
   if (config.status === "failed") {
     return NextResponse.json({ error: config.reason }, { status: 503 });
+  }
+
+  const access = await guardAiRoute("image");
+  if (access.status === "denied") {
+    return aiAccessDeniedResponse(access);
   }
 
   try {

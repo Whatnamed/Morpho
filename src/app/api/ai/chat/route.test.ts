@@ -2,22 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { POST } from "./route";
 
+const loadOpenAiCompatibleConfigMock = vi.hoisted(() => vi.fn());
+
 vi.mock("@/server/ai/openaiCompatibleConfig", () => ({
-  loadOpenAiCompatibleConfig: () => ({
-    status: "ok",
-    config: {
-      apiKey: "test-key",
-      baseUrl: "https://api.aijws.com/v1",
-      model: "gpt-5.4",
-      webSearchEnabled: true,
-      promptCache: {
-        supportsPromptCacheKey: true,
-        supportsPromptCacheRetention: true,
-        promptCacheKeyEnabled: true,
-        promptCacheRetention: "24h"
-      }
-    }
-  })
+  loadOpenAiCompatibleConfig: () => loadOpenAiCompatibleConfigMock()
 }));
 
 const guardAiRouteMock = vi.fn();
@@ -46,6 +34,22 @@ vi.mock("@/server/ai/openaiCompatibleProvider", () => ({
 
 describe("AI chat route", () => {
   beforeEach(() => {
+    loadOpenAiCompatibleConfigMock.mockReset();
+    loadOpenAiCompatibleConfigMock.mockReturnValue({
+      status: "ok",
+      config: {
+        apiKey: "test-key",
+        baseUrl: "https://api.aijws.com/v1",
+        model: "gpt-5.4",
+        webSearchEnabled: true,
+        promptCache: {
+          supportsPromptCacheKey: true,
+          supportsPromptCacheRetention: true,
+          promptCacheKeyEnabled: true,
+          promptCacheRetention: "24h"
+        }
+      }
+    });
     requireAiRouteUserMock.mockReset();
     requireAiRouteUserMock.mockResolvedValue({ status: "allowed", userId: "user-a" });
     guardAiRouteMock.mockReset();
@@ -92,6 +96,18 @@ describe("AI chat route", () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({ error: "please sign in" });
+    expect(guardAiRouteMock).not.toHaveBeenCalled();
+    expect(loadOpenAiCompatibleConfigMock).not.toHaveBeenCalled();
+    expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 for invalid provider config without reserving text quota", async () => {
+    loadOpenAiCompatibleConfigMock.mockReturnValueOnce({ status: "failed", reason: "missing AI config" });
+
+    const response = await POST(makeRequest({ draft: "continue", messages: [], objectSummaries: [], attachments: [] }));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ error: "missing AI config" });
     expect(guardAiRouteMock).not.toHaveBeenCalled();
     expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
   });

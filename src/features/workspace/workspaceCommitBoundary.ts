@@ -7,6 +7,16 @@ export type WorkspaceCommitTransform<T> = (
   current: MorphoWorkspace
 ) => { workspace: MorphoWorkspace; value: T };
 
+export type WorkspaceMutationBlockedError = Error & {
+  code: "workspace_mutation_blocked";
+};
+
+export function createWorkspaceMutationBlockedError(): WorkspaceMutationBlockedError {
+  return Object.assign(new Error("This workspace session is view-only."), {
+    code: "workspace_mutation_blocked" as const
+  });
+}
+
 export function commitWorkspaceStateNow<T>(
   setWorkspace: Dispatch<SetStateAction<MorphoWorkspace>>,
   transform: WorkspaceCommitTransform<T>,

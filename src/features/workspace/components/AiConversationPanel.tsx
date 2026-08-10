@@ -65,6 +65,7 @@ type AiConversationPanelProps = {
   } | null;
   contextWarning?: string;
   migrationError?: string;
+  canMutateWorkspace?: boolean;
   focusInputRequestNonce?: number;
   onToggleOpen: () => void;
   onDraftChange: (draft: string) => void;
@@ -119,6 +120,7 @@ type AiConversationPanelProps = {
   onConfirmPendingSecondary?: () => void;
   onCancelPending: () => void;
   onFailureRetry: () => void;
+  onFailureEdit: () => void;
   onOpenProjectRecords: (entryIds?: string[]) => void;
 };
 
@@ -141,6 +143,7 @@ export function AiConversationPanel({
   imageTaskStatus,
   contextWarning,
   migrationError,
+  canMutateWorkspace = true,
   focusInputRequestNonce = 0,
   onToggleOpen,
   onDraftChange,
@@ -158,6 +161,7 @@ export function AiConversationPanel({
   onConfirmPendingSecondary,
   onCancelPending,
   onFailureRetry,
+  onFailureEdit,
   onOpenProjectRecords
 }: AiConversationPanelProps) {
   const confirmationTitle = pendingConfirmation ? getPendingConfirmationTitle(pendingConfirmation) : null;
@@ -172,7 +176,7 @@ export function AiConversationPanel({
   const directionPreviewTotal = selectedDirectionCount * directionPreviewCount;
   const isAiBusy = isStreaming || Boolean(activeOperation);
   const hasDraftContent = draft.trim().length > 0;
-  const canSubmitDraft = hasDraftContent;
+  const canSubmitDraft = hasDraftContent && canMutateWorkspace;
   const isImageTaskActive = Boolean(
     !isStreaming &&
     imageTaskStatus && !["succeeded", "failed", "cancelled"].includes(imageTaskStatus.state)
@@ -484,7 +488,7 @@ export function AiConversationPanel({
               <strong>外部任务仍在执行</strong>
               <p>服务端还没有报告终态。再次检查只会查询同一个任务，不会重复执行或重复计费。</p>
               <div className="failure-actions">
-                <button className="plain-button" type="button" onClick={onFailureRetry}>
+                <button className="plain-button" type="button" disabled={!canMutateWorkspace} onClick={onFailureRetry}>
                   再次检查
                 </button>
               </div>
@@ -496,10 +500,10 @@ export function AiConversationPanel({
               <strong>{failureCopy?.title}</strong>
               <p>{failureCopy?.body}</p>
               <div className="failure-actions">
-                <button className="plain-button" type="button" onClick={onFailureRetry}>
+                <button className="plain-button" type="button" disabled={!canMutateWorkspace} onClick={onFailureRetry}>
                   重试
                 </button>
-                <button className="plain-button" type="button" onClick={onFailureRetry}>
+                <button className="plain-button" type="button" disabled={!canMutateWorkspace} onClick={onFailureEdit}>
                   修改后重试
                 </button>
               </div>
@@ -634,6 +638,7 @@ export function AiConversationPanel({
               ref={draftTextareaRef}
               rows={1}
               value={draft}
+              disabled={!canMutateWorkspace}
               onChange={(event) => {
                 onDraftChange(event.currentTarget.value);
                 resizeDraftTextarea(event.currentTarget);
@@ -655,7 +660,7 @@ export function AiConversationPanel({
               className={`send-button ${isAiBusy ? "stop" : ""}`}
               type="button"
               aria-label={isAiBusy ? "停止当前任务" : "发送"}
-              disabled={!isAiBusy && !canSubmitDraft}
+              disabled={!canMutateWorkspace || (!isAiBusy && !canSubmitDraft)}
               onClick={isAiBusy ? onCancelRequest : onSendMessage}
             >
               {isAiBusy ? <Square size={13} fill="currentColor" /> : <Send size={15} />}

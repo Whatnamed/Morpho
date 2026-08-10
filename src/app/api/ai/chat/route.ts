@@ -40,14 +40,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: validated.reason }, { status: 400 });
   }
 
-  const access = await guardAiRoute("text");
-  if (access.status === "denied") {
-    return aiAccessDeniedResponse(access);
-  }
-
   const config = loadOpenAiCompatibleConfig(process.env);
   if (config.status === "failed") {
     return NextResponse.json({ error: config.reason }, { status: 503 });
+  }
+
+  const access = await guardAiRoute("text");
+  if (access.status === "denied") {
+    return aiAccessDeniedResponse(access);
   }
 
   const webSearch = config.config.webSearchEnabled ? validated.value.webSearch : undefined;
