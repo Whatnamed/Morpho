@@ -1,5 +1,9 @@
 import { createServerSupabaseClient } from "@/infrastructure/supabase/server";
 import {
+  createPrivilegedServerSupabaseClient
+} from "@/infrastructure/supabase/privilegedServer";
+import { loadSupabasePrivilegedConfig } from "@/infrastructure/supabase/privilegedEnv";
+import {
   isServerExternalExecutionStatus,
   type AgentTurnJournalSnapshot,
   type ServerExternalExecutionStatus
@@ -21,6 +25,8 @@ export type AgentTurnJournalClient = {
     single(): Promise<{ data: unknown; error: unknown }>;
   };
 };
+
+export type AgentTurnJournalPrivilegedClient = Pick<AgentTurnJournalClient, "rpc">;
 
 export type AgentTurnJournalDenial = Readonly<{
   status: "denied";
@@ -57,6 +63,10 @@ export type SettleAgentTurnRequestResult =
       replayed: boolean;
       snapshot: AgentTurnJournalSnapshot;
     }>
+  | AgentTurnJournalDenial;
+
+export type AgentTurnClaimSettlementAvailability =
+  | Readonly<{ status: "ok" }>
   | AgentTurnJournalDenial;
 
 type JournalSnapshotRow = {
@@ -122,6 +132,7 @@ export async function acquireAgentTurnRequest(input: {
 }
 
 export async function settleAgentTurnRequest(input: {
+  actorUserId: string;
   serverTurnId: string;
   localProjectId: string;
   requestId: string;
@@ -130,10 +141,40 @@ export async function settleAgentTurnRequest(input: {
   failureCode?: string;
   toolClaims?: readonly APlusExternalToolActionClaim[];
 }): Promise<SettleAgentTurnRequestResult> {
+  if (input.toolClaims !== undefined) {
+    if (!isUuid(input.actorUserId)) {
+      return conflict("invalid_actor_user", "Provider claims settlement actor 无效。");
+    }
+    const privilegedClient = createPrivilegedServerSupabaseClient();
+    if (privilegedClient.status === "failed") {
+      return unavailable("privileged_journal_unavailable", "A+ Provider claims settlement 暂时不可用。");
+    }
+    return settleAgentTurnRequestWithVerifiedClaimsForClient(
+      privilegedClient.client as unknown as AgentTurnJournalPrivilegedClient,
+      {
+        actorUserId: input.actorUserId,
+        serverTurnId: input.serverTurnId,
+        localProjectId: input.localProjectId,
+        requestId: input.requestId,
+        stepSequence: input.stepSequence,
+        status: input.status,
+        ...(input.failureCode !== undefined ? { failureCode: input.failureCode } : {}),
+        toolClaims: input.toolClaims
+      }
+    );
+  }
+
   const client = await createJournalClient();
   return client.status === "denied"
     ? client
     : settleAgentTurnRequestForClient(client.client, input);
+}
+
+export function checkAgentTurnClaimSettlementAvailability(): AgentTurnClaimSettlementAvailability {
+  const config = loadSupabasePrivilegedConfig(process.env);
+  return config.status === "failed"
+    ? unavailable("privileged_journal_unavailable", "A+ Provider claims settlement 暂时不可用。")
+    : { status: "ok" };
 }
 
 export async function createAgentTurnJournalForClient(
@@ -246,7 +287,6 @@ export async function settleAgentTurnRequestForClient(
     stepSequence: number;
     status: Exclude<ServerExternalExecutionStatus, "created" | "providerRunning">;
     failureCode?: string;
-    toolClaims?: readonly APlusExternalToolActionClaim[];
   }
 ): Promise<SettleAgentTurnRequestResult> {
   const auth = await requireUser(client);
@@ -258,34 +298,66 @@ export async function settleAgentTurnRequestForClient(
     !Number.isSafeInteger(input.stepSequence) ||
     input.stepSequence < 1 ||
     !isSettleStatus(input.status) ||
-    (input.failureCode !== undefined && !isBoundedFailureCode(input.failureCode)) ||
-    (input.toolClaims !== undefined && !isToolClaims(input.toolClaims, input.status))
+    (input.failureCode !== undefined && !isBoundedFailureCode(input.failureCode))
   ) {
     return conflict("invalid_settlement", "A+ Provider Request 终态参数无效。");
   }
-  const result = await client.rpc(
-    input.toolClaims === undefined
-      ? "settle_agent_turn_request"
-      : "settle_agent_turn_request_with_action_claims",
-    {
+  const result = await client.rpc("settle_agent_turn_request", {
+    p_server_turn_id: input.serverTurnId,
+    p_local_project_id: input.localProjectId,
+    p_request_id: input.requestId,
+    p_step_sequence: input.stepSequence,
+    p_status: toDatabaseStatus(input.status),
+    p_failure_code: input.failureCode ?? null
+  }).single();
+  return settleAgentTurnRequestRpcResult(result);
+}
+
+export async function settleAgentTurnRequestWithVerifiedClaimsForClient(
+  client: AgentTurnJournalPrivilegedClient,
+  input: {
+    actorUserId: string;
+    serverTurnId: string;
+    localProjectId: string;
+    requestId: string;
+    stepSequence: number;
+    status: Exclude<ServerExternalExecutionStatus, "created" | "providerRunning">;
+    failureCode?: string;
+    toolClaims: readonly APlusExternalToolActionClaim[];
+  }
+): Promise<SettleAgentTurnRequestResult> {
+  if (
+    !isUuid(input.actorUserId) ||
+    !isUuid(input.serverTurnId) ||
+    !isIdentifier(input.localProjectId) ||
+    !isIdentifier(input.requestId) ||
+    !Number.isSafeInteger(input.stepSequence) ||
+    input.stepSequence < 1 ||
+    !isSettleStatus(input.status) ||
+    (input.failureCode !== undefined && !isBoundedFailureCode(input.failureCode)) ||
+    !isToolClaims(input.toolClaims, input.status)
+  ) {
+    return conflict("invalid_settlement", "A+ Provider Request 终态参数无效。");
+  }
+  const result = await client.rpc("settle_agent_turn_request_with_verified_action_claims", {
+    p_actor_user_id: input.actorUserId,
     p_server_turn_id: input.serverTurnId,
     p_local_project_id: input.localProjectId,
     p_request_id: input.requestId,
     p_step_sequence: input.stepSequence,
     p_status: toDatabaseStatus(input.status),
     p_failure_code: input.failureCode ?? null,
-    ...(input.toolClaims !== undefined
-      ? {
-          p_claims: input.toolClaims.map((claim) => ({
-            toolCallId: claim.toolCallId,
-            actionKind: claim.actionKind === "webSearch" ? "web_search" : "image",
-            claimHash: claim.claimHash,
-            maxActionCount: claim.maxActionCount
-          }))
-        }
-      : {})
-    }
-  ).single();
+    p_claims: input.toolClaims.map((claim) => ({
+      toolCallId: claim.toolCallId,
+      actionKind: claim.actionKind === "webSearch" ? "web_search" : "image",
+      claimHash: claim.claimHash,
+      maxActionCount: claim.maxActionCount
+    }))
+  }).single();
+  return settleAgentTurnRequestRpcResult(result);
+}
+
+function settleAgentTurnRequestRpcResult(result: { data: unknown; error: unknown }): SettleAgentTurnRequestResult {
   if (isMissingRpcError(result.error)) {
     return unavailable("journal_contract_missing", "数据库尚未升级到 A+ Request Journal 契约。");
   }

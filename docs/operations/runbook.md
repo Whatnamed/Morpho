@@ -81,9 +81,18 @@ Supabase email/password authentication for closed-test access:
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 MORPHO_AUTH_REQUIRED=true
+SUPABASE_SECRET_KEY=
 ```
 
-The two `NEXT_PUBLIC_SUPABASE_*` values are public browser configuration, not secrets. Never use a Supabase service-role key in this application. Supabase stores account identity, tester eligibility, AI daily-quota state, and the minimal A+ Server Turn / Request / External Action Journals. It does not store projects, canvases, files, images, chat bodies, project memory, or the overall local Turn Outcome; projects and backups remain local in browser localStorage / IndexedDB and are not cloud-synced.
+The two `NEXT_PUBLIC_SUPABASE_*` values are public browser configuration, not secrets.
+`SUPABASE_SECRET_KEY` is a server-only Supabase Secret Key for the A+ Provider-derived Tool claim
+settlement boundary. It must never be placed in `NEXT_PUBLIC_*`, browser code, client logs, or a
+committed `.env` file. Morpho uses it only through the cookie-free privileged server client and the
+service-role-only verified-claims RPC; it is not a general browser database credential. Supabase
+stores account identity, tester eligibility, AI daily-quota state, and the minimal A+ Server Turn /
+Request / External Action Journals. It does not store projects, canvases, files, images, chat bodies,
+project memory, or the overall local Turn Outcome; projects and backups remain local in browser
+localStorage / IndexedDB and are not cloud-synced.
 
 With `MORPHO_AUTH_REQUIRED=true`, missing public Supabase configuration fails closed: `/login` renders the configuration error with no variable values, while `/` and `/projects/*` redirect to `/login` instead of rendering protected content. `/api/ai/*` retains its 503 configuration failure behavior. Set `MORPHO_AUTH_REQUIRED=false` only for explicit local authentication bypass.
 
@@ -369,6 +378,7 @@ from information_schema.routines
 where routine_schema = 'public'
   and routine_name in (
     'settle_agent_turn_request_with_action_claims',
+    'settle_agent_turn_request_with_verified_action_claims',
     'acquire_agent_turn_external_action',
     'read_agent_turn_external_action',
     'settle_agent_turn_external_action'
@@ -380,6 +390,7 @@ from information_schema.routine_privileges
 where routine_schema = 'public'
   and routine_name in (
     'settle_agent_turn_request_with_action_claims',
+    'settle_agent_turn_request_with_verified_action_claims',
     'acquire_agent_turn_external_action',
     'read_agent_turn_external_action',
     'settle_agent_turn_external_action'
@@ -388,10 +399,51 @@ order by routine_name, grantee;
 ```
 
 Both tables must have RLS enabled and no direct `public`, `anon`, or `authenticated` table grants.
-All four routines must be `SECURITY DEFINER` with fixed empty `search_path`; only `authenticated`
-has `EXECUTE`. The functions derive the user from `auth.uid()` and bind every operation to that
-user's Server Turn and the Turn's client-supplied local project ID. This is not browser-local project
-ownership and adds no project registry or cloud Workspace.
+The legacy external-action routines remain `SECURITY DEFINER` with fixed empty `search_path` and
+authenticated-only execution. The F02 claims settlement boundary below revokes the old claims grant
+and uses a service-role-only verified-claims wrapper. The functions derive or validate the user and
+bind every operation to that user's Server Turn and the Turn's client-supplied local project ID. This
+is not browser-local project ownership and adds no project registry or cloud Workspace.
+
+### F02 Provider claim-settlement authority boundary
+
+The checked-in F02 change is a later forward-only migration plus a server-only application path:
+
+```text
+supabase/migrations/20260812090000_harden_agent_tool_claim_settlement_boundary.sql
+SUPABASE_SECRET_KEY=<server-only Supabase Secret Key>
+```
+
+The application reads `SUPABASE_SECRET_KEY` only in the Node.js route/Journaling layer and creates a
+separate `@supabase/supabase-js` client with no cookies, session persistence, or auto-refresh. The
+old `settle_agent_turn_request_with_action_claims` RPC is revoked from `public`, `anon`,
+`authenticated`, and `service_role`. The new
+`settle_agent_turn_request_with_verified_action_claims` wrapper is `SECURITY DEFINER` with an empty
+`search_path`, accepts the server-authenticated actor ID, re-checks Turn/user/project ownership,
+then delegates to the existing bounded state machine. Only `service_role` may execute it; the
+Supabase Secret Key maps to that backend role and must remain server-only.
+
+This task does not apply the migration or change Vercel environments. Before a controlled rollout:
+
+1. Set `SUPABASE_SECRET_KEY` in Vercel Preview/Production server environments. Do not expose it as
+   a `NEXT_PUBLIC_*` variable, and do not print it while checking configuration.
+2. Pause new Agent Requests and finish or cancel active Server Turns; the migration revokes the old
+   claims grant, so an old application instance must not keep settling Tool claims during the cutover.
+3. From the exact release commit, inspect the linked project and migration dry run read-only. Apply
+   this one later migration only after the project ref and pending list are independently verified;
+   never edit an applied migration, reset history, or use an unrestricted `db push`.
+4. In the SQL editor, verify the old claims function has no `EXECUTE` for `public`, `anon`,
+   `authenticated`, or `service_role`; verify the new wrapper has `EXECUTE` only for `service_role`,
+   `SECURITY DEFINER`, and `search_path = ''`. Verify the private Journal tables remain RLS-protected.
+5. Deploy the matching application commit, then run one authenticated no-Tool A+ Request and one
+   low-cost Tool Call. Confirm the first settles normally, the second creates claims only through the
+   privileged wrapper, and a repeated settlement is idempotent without another Provider call.
+6. Verify recovery and the fail-closed gate: if `SUPABASE_SECRET_KEY` is missing, the route returns
+   `503` before Request acquisition, quota reservation, `provider_running`, or Provider execution.
+
+Until the migration is applied and these remote grants/routine checks are recorded, F02 is a
+repository-ready fix, not a production-closed finding. A static migration test or a checked-in
+environment example is not remote database evidence.
 
 The sole formal Agent resources are:
 
@@ -717,6 +769,9 @@ The final remote state is:
 - `20260729093000_add_agent_turn_external_actions.sql`: applied and database-verified;
 - `20260729190000_remove_agent_runtime_b_proofs.sql`: applied exactly once and database-verified;
 - `20260810025000_harden_agent_turn_admission.sql`: checked in for the next controlled database migration; remote application is not claimed by this repository state;
+- `20260812090000_harden_agent_tool_claim_settlement_boundary.sql`: checked in for the F02
+  server-only claims boundary; remote application and grant verification are not claimed by this
+  repository state;
 - Remote Migration History: 16;
 - Phase A, Phase B, Phase C Observation, and Phase C Cleanup: complete;
 - Runtime B Lease table and seven Runtime B RPCs: removed;
@@ -731,6 +786,10 @@ supabase/migrations/20260729012105_add_agent_turn_journal.sql
 supabase/migrations/20260729093000_add_agent_turn_external_actions.sql
 supabase/migrations/20260729190000_remove_agent_runtime_b_proofs.sql
 ```
+
+The F02 boundary migration is intentionally excluded from the historical remote-state claims above.
+Do not report F02 as production-closed until its later migration is applied and the old/new routine
+grants are verified in the target project.
 
 Historical Phase A pre-write state: Stage 4 had not applied these files remotely. Supabase CLI
 `db push` applies every pending local Migration and has no supported "stop at this version" option.

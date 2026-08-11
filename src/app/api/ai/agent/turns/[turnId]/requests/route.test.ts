@@ -25,15 +25,18 @@ const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   it("returns 401 without acquiring, counting, or invoking Provider", async () => {
     const store = new FakeJournal();
+    const checkPrivilegedSettlement = vi.fn(() => ({ status: "ok" as const }));
     const provider = vi.fn<AgentTurnRequestRouteDependencies["streamProvider"]>(
       async () => providerResult()
     );
     const handler = makeHandler(store, provider, {
-      authenticate: async () => ({ status: "denied", httpStatus: 401, error: "login" })
+      authenticate: async () => ({ status: "denied", httpStatus: 401, error: "login" }),
+      checkPrivilegedSettlement
     });
     const response = await callRaw(handler, "{not-json");
     expect(response.status).toBe(401);
     expect(store.acquire).not.toHaveBeenCalled();
+    expect(checkPrivilegedSettlement).not.toHaveBeenCalled();
     expect(provider).not.toHaveBeenCalled();
     expect(store.snapshot.counters.provider).toBe(0);
   });
@@ -49,6 +52,30 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
     const response = await call(handler, validBody());
     expect(response.status).toBe(503);
     expect(store.acquire).not.toHaveBeenCalled();
+    expect(provider).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 for missing privileged settlement config before acquisition or Provider", async () => {
+    const store = new FakeJournal();
+    const provider = vi.fn<AgentTurnRequestRouteDependencies["streamProvider"]>(
+      async () => providerResult()
+    );
+    const settleCheck = vi.fn(() => ({
+      status: "denied" as const,
+      httpStatus: 503 as const,
+      code: "privileged_journal_unavailable",
+      error: "claims settlement unavailable",
+      recoverable: false as const
+    }));
+    const handler = makeHandler(store, provider, { checkPrivilegedSettlement: settleCheck });
+
+    const response = await call(handler, validBody());
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: "privileged_journal_unavailable" });
+    expect(settleCheck).toHaveBeenCalledTimes(1);
+    expect(store.acquire).not.toHaveBeenCalled();
+    expect(store.settle).not.toHaveBeenCalled();
     expect(provider).not.toHaveBeenCalled();
   });
 
@@ -233,7 +260,10 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
       type: "serverStatus",
       status: "externallyCompleted"
     }));
-    expect(store.settle).toHaveBeenCalledWith(expect.objectContaining({ status: "externallyCompleted" }));
+    expect(store.settle).toHaveBeenCalledWith(expect.objectContaining({
+      actorUserId: "user-a",
+      status: "externallyCompleted"
+    }));
   });
 
   it("retries transient Journal settlement failures within a fixed bound", async () => {
@@ -310,6 +340,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
       }]
     }));
     expect(store.settle).toHaveBeenCalledWith(expect.objectContaining({
+      actorUserId: "user-a",
       status: "awaitingNextRequest",
       toolClaims: [{
         toolCallId: "call-search",
@@ -318,6 +349,36 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
         maxActionCount: 1
       }]
     }));
+  });
+
+  it("does not rerun Provider or duplicate claims when privileged settlement fails", async () => {
+    const store = new FakeJournal();
+    const provider = vi.fn(async () => providerResult({
+      outputText: "",
+      functionCalls: [{
+        id: "item-search",
+        callId: "call-search",
+        name: "search_web_evidence",
+        argumentsText: JSON.stringify({ queries: ["local-first workspace"] })
+      }]
+    }));
+    const settleRequest = vi.fn<AgentTurnRequestRouteDependencies["settleRequest"]>(async () => ({
+      status: "denied",
+      httpStatus: 503,
+      code: "privileged_journal_unavailable",
+      error: "claims settlement unavailable",
+      recoverable: false
+    }));
+
+    const response = await call(makeHandler(store, provider, {
+      settleRequest,
+      waitForSettlementRetry: vi.fn(async () => undefined)
+    }), validBody());
+
+    await response.text();
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(settleRequest).toHaveBeenCalledTimes(3);
+    expect(settleRequest.mock.calls.every(([input]) => input.toolClaims?.[0]?.toolCallId === "call-search")).toBe(true);
   });
 
   it("treats SSE consumer cancellation as display detach rather than external cancellation", async () => {
@@ -526,6 +587,7 @@ class FakeJournal {
   });
 
   readonly settle = vi.fn(async (input: {
+    actorUserId: string;
     serverTurnId: string;
     localProjectId: string;
     requestId: string;
@@ -564,6 +626,7 @@ function makeHandler(
   return createAgentTurnRequestPostHandler({
     authenticate: async () => ({ status: "allowed", userId: "user-a" }),
     loadConfig: config,
+    checkPrivilegedSettlement: () => ({ status: "ok" as const }),
     acquireRequest: store.acquire,
     settleRequest: store.settle,
     streamProvider: provider,

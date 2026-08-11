@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 
 import {
   acquireAgentTurnRequest,
+  checkAgentTurnClaimSettlementAvailability,
   settleAgentTurnRequest,
   type AcquireAgentTurnRequestResult,
+  type AgentTurnClaimSettlementAvailability,
   type SettleAgentTurnRequestResult
 } from "@/server/ai/agentTurnJournal";
 import {
@@ -46,6 +48,7 @@ export const runtime = "nodejs";
 export type AgentTurnRequestRouteDependencies = Readonly<{
   authenticate: () => Promise<AiRouteUserAccessResult>;
   loadConfig: () => OpenAiCompatibleConfigResult;
+  checkPrivilegedSettlement: () => AgentTurnClaimSettlementAvailability;
   acquireRequest: typeof acquireAgentTurnRequest;
   settleRequest: typeof settleAgentTurnRequest;
   streamProvider: typeof streamOpenAiCompatibleResponse;
@@ -57,6 +60,7 @@ type RouteContext = { params: Promise<{ turnId: string }> };
 const defaultDependencies: AgentTurnRequestRouteDependencies = {
   authenticate: requireAiRouteUser,
   loadConfig: () => loadOpenAiCompatibleConfig(process.env),
+  checkPrivilegedSettlement: checkAgentTurnClaimSettlementAvailability,
   acquireRequest: acquireAgentTurnRequest,
   settleRequest: settleAgentTurnRequest,
   streamProvider: streamOpenAiCompatibleResponse
@@ -121,6 +125,11 @@ export function createAgentTurnRequestPostHandler(
       );
     }
 
+    const privilegedSettlement = dependencies.checkPrivilegedSettlement();
+    if (privilegedSettlement.status === "denied") {
+      return journalDeniedResponse(privilegedSettlement);
+    }
+
     const config = dependencies.loadConfig();
     if (config.status === "failed") {
       return NextResponse.json(
@@ -161,6 +170,7 @@ export function createAgentTurnRequestPostHandler(
       providerRequest: externalProviderRequest
     });
     const identity = {
+      actorUserId: auth.userId,
       serverTurnId: turnId,
       localProjectId: parsedBody.value.localProjectId,
       requestId: parsedBody.value.requestId,
@@ -188,6 +198,7 @@ export const POST = createAgentTurnRequestPostHandler();
 
 function createProviderStreamResponse(input: {
   identity: {
+    actorUserId: string;
     serverTurnId: string;
     localProjectId: string;
     requestId: string;
@@ -330,6 +341,7 @@ function createProviderStreamResponse(input: {
 function settle(
   input: {
     identity: {
+      actorUserId: string;
       serverTurnId: string;
       localProjectId: string;
       requestId: string;
@@ -347,6 +359,7 @@ function settle(
 async function settleWithBoundedRetry(
   input: {
     identity: {
+      actorUserId: string;
       serverTurnId: string;
       localProjectId: string;
       requestId: string;

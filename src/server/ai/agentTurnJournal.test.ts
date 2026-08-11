@@ -8,12 +8,14 @@ import {
   fromDatabaseStatus,
   readAgentTurnJournalForClient,
   settleAgentTurnRequestForClient,
+  settleAgentTurnRequestWithVerifiedClaimsForClient,
   toDatabaseStatus,
   type AgentTurnJournalClient
 } from "./agentTurnJournal";
 
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 const MIGRATION = "20260729012105_add_agent_turn_journal.sql";
+const CLAIM_BOUNDARY_MIGRATION = "20260812090000_harden_agent_tool_claim_settlement_boundary.sql";
 
 function row(overrides: Record<string, unknown> = {}) {
   return {
@@ -54,6 +56,12 @@ function client(
 
 function readMigration(): string {
   return readFileSync(resolve(process.cwd(), "supabase/migrations", MIGRATION), "utf8")
+    .split("\r\n")
+    .join("\n");
+}
+
+function readClaimBoundaryMigration(): string {
+  return readFileSync(resolve(process.cwd(), "supabase/migrations", CLAIM_BOUNDARY_MIGRATION), "utf8")
     .split("\r\n")
     .join("\n");
 }
@@ -296,7 +304,8 @@ describe("A+ Server Turn Journal service", () => {
     }));
     const claimHash = "b".repeat(64);
 
-    await expect(settleAgentTurnRequestForClient(mock, {
+    await expect(settleAgentTurnRequestWithVerifiedClaimsForClient(mock, {
+      actorUserId: "019fa9c0-7b9d-7a20-8f31-2c676296c9d1",
       serverTurnId: TURN_ID,
       localProjectId: "project-a",
       requestId: "request-a",
@@ -313,8 +322,9 @@ describe("A+ Server Turn Journal service", () => {
       snapshot: { status: "awaitingNextRequest" }
     });
     expect(mock.rpc).toHaveBeenCalledWith(
-      "settle_agent_turn_request_with_action_claims",
+      "settle_agent_turn_request_with_verified_action_claims",
       expect.objectContaining({
+        p_actor_user_id: "019fa9c0-7b9d-7a20-8f31-2c676296c9d1",
         p_claims: [{
           toolCallId: "call-images",
           actionKind: "image",
@@ -443,5 +453,25 @@ describe("A+ Server Turn Journal SQL contract", () => {
     expect(sql).not.toMatch(/pending_confirmation|partially_completed|local_tool_failed|overall_completed/i);
     expect(sql).toContain("latest_request_hash text");
     expect(sql).toContain("bounded_failure_code text");
+  });
+
+  it("moves Provider claim settlement behind a service_role-only verified-actor wrapper", () => {
+    const sql = readClaimBoundaryMigration();
+    expect(sql).toContain(
+      "revoke all on function public.settle_agent_turn_request_with_action_claims(\n  uuid, text, text, integer, text, text, jsonb\n)\nfrom public, anon, authenticated, service_role"
+    );
+    expect(sql).toContain("create or replace function public.settle_agent_turn_request_with_verified_action_claims");
+    expect(sql).toContain("p_actor_user_id uuid");
+    expect(sql).toContain("journal.user_id = p_actor_user_id");
+    expect(sql).toContain("journal.local_project_id = p_local_project_id");
+    expect(sql).toContain("set_config('request.jwt.claim.sub', p_actor_user_id::text, true)");
+    expect(sql).toContain("from public.settle_agent_turn_request_with_action_claims");
+    expect(sql).toContain("security definer");
+    expect(sql).toContain("set search_path = ''");
+    expect(sql).toContain(
+      "grant execute on function public.settle_agent_turn_request_with_verified_action_claims(\n  uuid, uuid, text, text, integer, text, text, jsonb\n)\nto service_role"
+    );
+    expect(sql).not.toMatch(/grant execute[\s\S]*settle_agent_turn_request_with_action_claims[\s\S]*to authenticated/i);
+    expect(sql).not.toMatch(/create table|runtime b|agent_turn_leases/i);
   });
 });
