@@ -41,6 +41,7 @@ import {
 type OverlayDrawersProps = {
   mode: DrawerMode;
   workspace: MorphoWorkspace;
+  canMutateWorkspace?: boolean;
   highlightedRecordIds: string[];
   onClose: () => void;
   onFocusArea: (area: "research" | "definition" | "visual" | "delivery" | "overview") => void;
@@ -60,6 +61,7 @@ const mapItems = [
 export function OverlayDrawers({
   mode,
   workspace,
+  canMutateWorkspace = true,
   highlightedRecordIds,
   onClose,
   onFocusArea,
@@ -164,6 +166,7 @@ export function OverlayDrawers({
         onClose={onClose}
         onLocateObject={onLocateObject}
         onSetContinuityEntryManualState={onSetContinuityEntryManualState}
+        canMutateWorkspace={canMutateWorkspace}
         panelRef={panelRef}
         style={anchoredStyle}
       />
@@ -177,7 +180,12 @@ export function OverlayDrawers({
       <Drawer title="已隐藏内容" onClose={onClose} panelRef={panelRef} style={anchoredStyle}>
         <p className="drawer-muted">隐藏内容没有被删除，也不会作为 AI 默认输入。恢复后才会重新出现在画布中。</p>
         {hiddenObjects.length > 0 ? (
-          <ObjectRows objects={hiddenObjects} onObjectAction={onRestoreObject} actionLabel="恢复并定位" />
+          <ObjectRows
+            objects={hiddenObjects}
+            onObjectAction={onRestoreObject}
+            actionDisabled={!canMutateWorkspace}
+            actionLabel="恢复并定位"
+          />
         ) : (
           <p className="drawer-muted">当前没有隐藏对象。</p>
         )}
@@ -247,6 +255,7 @@ function ProjectRecordDrawer({
   onClose,
   onLocateObject,
   onSetContinuityEntryManualState,
+  canMutateWorkspace,
   panelRef,
   style
 }: {
@@ -255,6 +264,7 @@ function ProjectRecordDrawer({
   onClose: () => void;
   onLocateObject: (objectId: string) => void;
   onSetContinuityEntryManualState: (entryId: string, manualState: ContinuityManualState) => void;
+  canMutateWorkspace: boolean;
   panelRef: React.RefObject<HTMLElement | null>;
   style: React.CSSProperties;
 }) {
@@ -316,6 +326,7 @@ function ProjectRecordDrawer({
               highlightedRecordIds={highlighted}
               onLocateObject={onLocateObject}
               onSetContinuityEntryManualState={onSetContinuityEntryManualState}
+              canMutateWorkspace={canMutateWorkspace}
             />
           ) : (
             <p className="drawer-muted">当前没有待复核或来源不可用的记录。</p>
@@ -339,6 +350,7 @@ function ProjectRecordDrawer({
               highlightedRecordIds={highlighted}
               onLocateObject={onLocateObject}
               onSetContinuityEntryManualState={onSetContinuityEntryManualState}
+              canMutateWorkspace={canMutateWorkspace}
             />
           ) : (
             <p className="drawer-muted">当前还没有保存的项目记录。</p>
@@ -506,12 +518,14 @@ function ContinuityEntryRows({
   entries,
   highlightedRecordIds,
   onLocateObject,
-  onSetContinuityEntryManualState
+  onSetContinuityEntryManualState,
+  canMutateWorkspace
 }: {
   entries: ContinuityRecordEntry[];
   onLocateObject: (objectId: string) => void;
   highlightedRecordIds: Set<string>;
   onSetContinuityEntryManualState: (entryId: string, manualState: ContinuityManualState) => void;
+  canMutateWorkspace: boolean;
 }) {
   return (
     <div className="continuity-record-list">
@@ -542,7 +556,7 @@ function ContinuityEntryRows({
                 <button
                   className="plain-button"
                   type="button"
-                  disabled={entry.manualState === "notApplicable"}
+                  disabled={!canMutateWorkspace || entry.manualState === "notApplicable"}
                   onClick={() => onSetContinuityEntryManualState(entry.id, "notApplicable")}
                 >
                   不再适用
@@ -550,7 +564,7 @@ function ContinuityEntryRows({
                 <button
                   className="plain-button"
                   type="button"
-                  disabled={entry.manualState === "withdrawn"}
+                  disabled={!canMutateWorkspace || entry.manualState === "withdrawn"}
                   onClick={() => onSetContinuityEntryManualState(entry.id, "withdrawn")}
                 >
                   撤回记录
@@ -558,7 +572,7 @@ function ContinuityEntryRows({
                 <button
                   className="plain-button"
                   type="button"
-                  disabled={entry.manualState === "active"}
+                  disabled={!canMutateWorkspace || entry.manualState === "active"}
                   onClick={() => onSetContinuityEntryManualState(entry.id, "active")}
                 >
                   恢复为当前有效
@@ -722,11 +736,13 @@ function ObjectRows({
   objects,
   rowClassName = "asset-row",
   onObjectAction,
+  actionDisabled = false,
   actionLabel
 }: {
   objects: MorphoObject[];
   rowClassName?: string;
   onObjectAction?: (objectId: string) => void;
+  actionDisabled?: boolean;
   actionLabel?: string;
 }) {
   return (
@@ -744,7 +760,7 @@ function ObjectRows({
               <span>{object.visibility === "hidden" ? "不参与默认 AI 语境" : "画布对象"}</span>
             </div>
             {onObjectAction ? (
-              <button className="plain-button row-action" type="button" onClick={() => onObjectAction(object.id)}>
+              <button className="plain-button row-action" type="button" disabled={actionDisabled} onClick={() => onObjectAction(object.id)}>
                 {actionLabel}
               </button>
             ) : null}

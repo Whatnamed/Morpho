@@ -240,6 +240,44 @@ describe("useWorkspaceProposalWorkflowController", () => {
     expect(harness.aiDraft).toContain("不要直接应用");
     expect(harness.commitCalls).toBe(0);
   });
+
+  it("keeps pending proposals readable while blocking every write and AI action in read-only mode", async () => {
+    const harness = createHarness(createProposalWorkspace("researchAnalysis"));
+    const rendered = await renderController(createInput(harness, { canMutateWorkspace: false }));
+
+    await act(async () => {
+      rendered.current().openProposal("proposal-1");
+      rendered.current().activateProposal("proposal-1");
+    });
+    expect(rendered.current().activeProposal?.id).toBe("proposal-1");
+
+    await act(async () => {
+      rendered.current().applyProposal("proposal-1");
+      rendered.current().rejectProposal("proposal-1");
+      rendered.current().saveResearchDraft("proposal-1", {
+        title: "只读草案",
+        summary: "不应写入",
+        findings: [],
+        opportunities: [],
+        constraints: [],
+        openQuestions: [],
+        evidence: []
+      });
+      rendered.current().continueDiscussion("proposal-1");
+      rendered.current().regenerate("proposal-1");
+    });
+
+    expect(harness.workspace.artifactProposals["proposal-1"]?.status).toBe("pending");
+    expect(harness.commitCalls).toBe(0);
+    expect(harness.aiOpenCalls).toBe(0);
+    expect(harness.selected).toEqual([]);
+    expect(rendered.current().activeProposal?.id).toBe("proposal-1");
+
+    await rendered.rerender(createInput(harness, { canMutateWorkspace: true }));
+    rendered.current().applyProposal("proposal-1");
+    expect(harness.workspace.artifactProposals["proposal-1"]?.status).toBe("applied");
+    expect(harness.commitCalls).toBe(1);
+  });
 });
 
 type ProposalKind = "researchAnalysis" | "designDefinition" | "conceptDirection";
@@ -274,12 +312,13 @@ function createHarness(workspace: MorphoWorkspace): ProposalControllerHarness {
 
 function createInput(
   harness: ProposalControllerHarness,
-  options: { projectId?: string; workspaceReady?: boolean } = {}
+  options: { canMutateWorkspace?: boolean; projectId?: string; workspaceReady?: boolean } = {}
 ): UseWorkspaceProposalWorkflowControllerInput {
   return {
     projectId: options.projectId ?? harness.workspace.project.id,
     workspace: harness.workspace,
     workspaceReady: options.workspaceReady ?? true,
+    canMutateWorkspace: options.canMutateWorkspace ?? true,
     commitWorkspace: <T,>(transform: WorkspaceCommitTransform<T>): T => {
       harness.commitCalls += 1;
       const result = transform(harness.workspace);

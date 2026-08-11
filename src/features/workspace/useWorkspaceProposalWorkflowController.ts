@@ -40,6 +40,7 @@ export type UseWorkspaceProposalWorkflowControllerInput = Readonly<{
   projectId: string;
   workspace: MorphoWorkspace;
   workspaceReady: boolean;
+  canMutateWorkspace?: boolean;
   commitWorkspace: <T>(transform: WorkspaceCommitTransform<T>) => T;
   setSelectedObjectIds: Dispatch<SetStateAction<string[]>>;
   requestObjectFocus: (objectId: string) => void;
@@ -72,6 +73,7 @@ export function useWorkspaceProposalWorkflowController({
   projectId,
   workspace,
   workspaceReady,
+  canMutateWorkspace = true,
   commitWorkspace: commitWorkspaceInput,
   setSelectedObjectIds,
   requestObjectFocus,
@@ -93,12 +95,14 @@ export function useWorkspaceProposalWorkflowController({
   );
   const currentSessionRef = useRef<ProposalWorkflowSession>(session);
   const latestWorkspaceRef = useRef<MorphoWorkspace>(workspace);
+  const canMutateWorkspaceRef = useRef(canMutateWorkspace);
   const [activeProposalState, setActiveProposalState] = useState<ActiveProposalState | null>(null);
 
   useLayoutEffect(() => {
     currentSessionRef.current = session;
     latestWorkspaceRef.current = workspace;
-  }, [session, workspace]);
+    canMutateWorkspaceRef.current = canMutateWorkspace;
+  }, [canMutateWorkspace, session, workspace]);
 
   useEffect(() => {
     // A project/readiness transition invalidates the active Proposal attention; ordinary rerenders keep it.
@@ -111,12 +115,18 @@ export function useWorkspaceProposalWorkflowController({
     return currentSession === expectedSession && expectedSession.workspaceReady;
   }, []);
 
+  const isCurrentMutationSession = useCallback(
+    (expectedSession: ProposalWorkflowSession): boolean =>
+      isCurrentSession(expectedSession) && canMutateWorkspaceRef.current,
+    [isCurrentSession]
+  );
+
   const commitWorkflow = useCallback(
     <T,>(
       expectedSession: ProposalWorkflowSession,
       transform: (current: MorphoWorkspace) => { workspace: MorphoWorkspace; value: T }
     ): T | undefined => {
-      if (!isCurrentSession(expectedSession)) {
+      if (!isCurrentMutationSession(expectedSession)) {
         return undefined;
       }
 
@@ -140,7 +150,7 @@ export function useWorkspaceProposalWorkflowController({
 
       return committed.committed ? committed.result : undefined;
     },
-    [commitWorkspaceInput, isCurrentSession]
+    [commitWorkspaceInput, isCurrentMutationSession, isCurrentSession]
   );
 
   const activateProposal = useCallback(
@@ -166,7 +176,7 @@ export function useWorkspaceProposalWorkflowController({
 
   const applyProposal = useCallback(
     (proposalId: string, options: ProposalApplyWorkflowOptions = {}) => {
-      if (!isCurrentSession(session)) {
+      if (!isCurrentMutationSession(session)) {
         return;
       }
 
@@ -212,7 +222,7 @@ export function useWorkspaceProposalWorkflowController({
     [
       closeProposalDetail,
       commitWorkflow,
-      isCurrentSession,
+      isCurrentMutationSession,
       requestObjectFocus,
       session,
       setAiDraft,
@@ -233,7 +243,7 @@ export function useWorkspaceProposalWorkflowController({
 
   const rejectProposals = useCallback(
     (proposalIds: string[], rejectedReason = "用户明确放弃当前草案。") => {
-      if (!isCurrentSession(session)) {
+      if (!isCurrentMutationSession(session)) {
         return;
       }
 
@@ -267,7 +277,7 @@ export function useWorkspaceProposalWorkflowController({
       closeProposalDetailIf(rejectedIds);
       setSelectedObjectIds((current) => current.filter((selectedId) => !rejectedIds.includes(selectedId)));
     },
-    [closeProposalDetailIf, commitWorkflow, isCurrentSession, session, setSelectedObjectIds]
+    [closeProposalDetailIf, commitWorkflow, isCurrentMutationSession, session, setSelectedObjectIds]
   );
 
   const rejectProposal = useCallback(
@@ -279,7 +289,7 @@ export function useWorkspaceProposalWorkflowController({
 
   const saveDraft = useCallback(
     (update: Parameters<typeof updateArtifactProposalDraft>[1]) => {
-      if (!isCurrentSession(session)) {
+      if (!isCurrentMutationSession(session)) {
         return;
       }
 
@@ -291,7 +301,7 @@ export function useWorkspaceProposalWorkflowController({
         setActiveProposalState({ session, proposalId: update.proposalId });
       }
     },
-    [commitWorkflow, isCurrentSession, session]
+    [commitWorkflow, isCurrentMutationSession, session]
   );
 
   const saveResearchDraft = useCallback(
@@ -313,7 +323,7 @@ export function useWorkspaceProposalWorkflowController({
   const continueDiscussion = useCallback(
     (proposalId: string) => {
       const proposal = getPendingProposal(latestWorkspaceRef.current, proposalId);
-      if (!isCurrentSession(session) || !proposal) {
+      if (!isCurrentMutationSession(session) || !proposal) {
         return;
       }
 
@@ -323,13 +333,13 @@ export function useWorkspaceProposalWorkflowController({
       setActiveProposalState({ session, proposalId });
       setAiDraft(buildProposalDiscussionDraft(proposal));
     },
-    [isCurrentSession, openAiPanel, session, setAiDraft, setTaskMode, setWorkIntent]
+    [isCurrentMutationSession, openAiPanel, session, setAiDraft, setTaskMode, setWorkIntent]
   );
 
   const regenerate = useCallback(
     (proposalId: string) => {
       const proposal = getPendingProposal(latestWorkspaceRef.current, proposalId);
-      if (!isCurrentSession(session) || !proposal) {
+      if (!isCurrentMutationSession(session) || !proposal) {
         return;
       }
 
@@ -339,7 +349,7 @@ export function useWorkspaceProposalWorkflowController({
       setActiveProposalState({ session, proposalId });
       setAiDraft(buildProposalRegenerationDraft(proposal));
     },
-    [isCurrentSession, openAiPanel, session, setAiDraft, setTaskMode, setWorkIntent]
+    [isCurrentMutationSession, openAiPanel, session, setAiDraft, setTaskMode, setWorkIntent]
   );
 
   const clearActiveProposalIf = useCallback(

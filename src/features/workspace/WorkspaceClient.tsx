@@ -135,6 +135,7 @@ import {
   createWorkspaceMutationBlockedError
 } from "./workspaceCommitBoundary";
 import { canMutateWorkspace as resolveCanMutateWorkspace } from "./workspacePersistence";
+import { ensureWorkspaceStageRegionsIfWritable } from "./workspaceNormalization";
 import {
   applyWorkspaceTextPromptIfCurrent,
   createWorkspaceTextPromptSession,
@@ -604,6 +605,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     projectId,
     workspace,
     workspaceReady,
+    canMutateWorkspace,
     commitWorkspace: commitWorkspaceNow,
     setSelectedObjectIds,
     requestObjectFocus,
@@ -699,10 +701,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const handleSetContinuityEntryManualState = useCallback(
     (entryId: string, manualState: ContinuityManualState) => {
+      if (!canMutateWorkspace) return;
       setWorkspace((current) => setConversationSemanticEntryManualState(current, entryId, manualState));
       openProjectRecords([entryId]);
     },
-    [openProjectRecords, setWorkspace]
+    [canMutateWorkspace, openProjectRecords, setWorkspace]
   );
 
   const captureObjectOperationSnapshot = useCallback(
@@ -992,10 +995,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   useEffect(() => {
     setWorkspace((current) => {
-      const next = ensureStageRegions(current);
-      return next === current ? current : next;
+      return ensureWorkspaceStageRegionsIfWritable(current, canMutateWorkspace);
     });
-  }, [setWorkspace, workspace.project.id, workspace.objects]);
+  }, [canMutateWorkspace, setWorkspace, workspace.objects, workspace.project.id]);
 
   const visualGeneration = useWorkspaceVisualGenerationController({
     projectId,
@@ -1462,7 +1464,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   );
 
   const handleHideSelected = useCallback(() => {
-    if (selectedObjects.length === 0) {
+    if (!canMutateWorkspace || selectedObjects.length === 0) {
       return;
     }
 
@@ -1490,20 +1492,22 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     rejectProposals,
     selectedObjects,
     setSelectedObjectIds,
+    canMutateWorkspace,
     setWorkspace
   ]);
 
   const handleRestoreObject = useCallback(
     (objectId: string) => {
+      if (!canMutateWorkspace) return;
       setWorkspace((current) => restoreObject(current, objectId));
       setSelectedObjectIds([objectId]);
       focusObject(objectId);
     },
-    [focusObject, setSelectedObjectIds, setWorkspace]
+    [canMutateWorkspace, focusObject, setSelectedObjectIds, setWorkspace]
   );
 
   const handleDeleteSelected = useCallback(() => {
-    if (selectedObjects.length === 0) {
+    if (!canMutateWorkspace || selectedObjects.length === 0) {
       return;
     }
 
@@ -1544,6 +1548,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     rejectProposals,
     selectedObjects,
     setSelectedObjectIds,
+    canMutateWorkspace,
     setWorkspace
   ]);
 
@@ -1828,7 +1833,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       let handled = false;
       switch (shortcut) {
         case "deleteSelection":
-          if (!canvasContextMenu && selectedObjects.length > 0) {
+          if (!canMutateWorkspace) {
+            handled = true;
+          } else if (!canvasContextMenu && selectedObjects.length > 0) {
             handleDeleteSelected();
             handled = true;
           }
@@ -1863,6 +1870,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [
     canvasContextMenu,
+    canMutateWorkspace,
     closeTopWorkspaceSurface,
     handleDeleteSelected,
     handleManualSave,
@@ -2199,6 +2207,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       <OverlayDrawers
         mode={activeDrawer}
         workspace={workspace}
+        canMutateWorkspace={canMutateWorkspace}
         highlightedRecordIds={highlightedContinuityEntryIds}
         onClose={() => changeDrawer(null)}
         onFocusArea={focusArea}

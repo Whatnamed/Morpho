@@ -1,10 +1,27 @@
-import { describe, expect, it } from "vitest";
-import { createElement } from "react";
+// @vitest-environment happy-dom
+
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { createInitialWorkspace } from "../../../domain/morpho/workspace";
 import type { ContinuityRecordEntry, MorphoWorkspace } from "../../../domain/morpho/types";
 import { OverlayDrawers } from "./OverlayDrawers";
+
+const roots: Root[] = [];
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+afterEach(async () => {
+  while (roots.length > 0) {
+    const root = roots.pop();
+    if (root) {
+      await act(async () => root.unmount());
+    }
+  }
+  document.body.replaceChildren();
+});
 
 describe("OverlayDrawers project records", () => {
   it("defaults to current project memory and keeps history controls in a separate tab", () => {
@@ -168,6 +185,70 @@ describe("OverlayDrawers project records", () => {
     expect(html).not.toContain("查看来源");
     expect(html).not.toContain("查看版本");
     expect(html).not.toContain("查看用于哪里");
+  });
+
+  it("disables hidden restore and continuity manual-state actions in read-only mode", async () => {
+    const seedWorkspace = createInitialWorkspace();
+    const workspace = withContinuityEntries(
+      {
+        ...seedWorkspace,
+        objects: {
+          ...seedWorkspace.objects,
+          "image-soft-rail-v2": {
+            ...seedWorkspace.objects["image-soft-rail-v2"],
+            visibility: "hidden"
+          }
+        }
+      },
+      [makeSemanticEntry({ id: "continuity-readonly" })]
+    );
+
+    const hiddenHtml = renderToStaticMarkup(
+      createElement(OverlayDrawers, {
+        mode: "hidden",
+        workspace,
+        canMutateWorkspace: false,
+        highlightedRecordIds: [],
+        onClose: () => undefined,
+        onFocusArea: () => undefined,
+        onRestoreObject: () => undefined,
+        onLocateObject: () => undefined,
+        onSetContinuityEntryManualState: () => undefined
+      })
+    );
+    expect(hiddenHtml).toMatch(/<button[^>]*disabled=""[^>]*>恢复并定位<\/button>/);
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        createElement(OverlayDrawers, {
+          mode: "records",
+          workspace,
+          canMutateWorkspace: false,
+          highlightedRecordIds: [],
+          onClose: () => undefined,
+          onFocusArea: () => undefined,
+          onRestoreObject: () => undefined,
+          onLocateObject: () => undefined,
+          onSetContinuityEntryManualState: () => undefined
+        })
+      );
+    });
+
+    const historyTab = [...container.querySelectorAll("button")].find((button) => button.textContent === "历史与来源");
+    expect(historyTab).toBeDefined();
+    await act(async () => {
+      historyTab?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const manualStateButtons = [...container.querySelectorAll("button")].filter((button) =>
+      ["不再适用", "撤回记录", "恢复为当前有效"].includes(button.textContent ?? "")
+    );
+    expect(manualStateButtons.length).toBeGreaterThan(0);
+    expect(manualStateButtons.every((button) => button.hasAttribute("disabled"))).toBe(true);
   });
 });
 
