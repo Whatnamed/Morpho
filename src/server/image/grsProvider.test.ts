@@ -347,6 +347,110 @@ describe("GrsAI image provider adapter", () => {
     expect(result.status).toBe("failed");
     expect(requestedUrls).toEqual(["https://grs.example/v1/api/generate"]);
   });
+
+  it("bounds a successful generate JSON response before parsing it", async () => {
+    const oversized = oversizedStreamingResponse();
+    let calls = 0;
+    const result = await resolveGrsImageResult(
+      {
+        apiKey: "key",
+        baseUrl: "https://grs.example",
+        imageHostAllowlist: ["cdn.example"],
+        model: "nano-banana-fast"
+      },
+      {
+        modelId: "nano-banana-fast",
+        prompt: "test oversized generate response",
+        images: [],
+        aspectRatio: "1:1",
+        referenceObjectIds: []
+      },
+      {
+        fetchImpl: async () => {
+          calls += 1;
+          return oversized.response;
+        },
+        generateAttempts: 1,
+        maxPolls: 1,
+        pollDelayMs: 0
+      }
+    );
+
+    expect(result).toEqual({
+      status: "failed",
+      reason: "GrsAI generate response exceeded the 256 KiB limit."
+    });
+    expect(oversized.wasCancelled()).toBe(true);
+    expect(calls).toBe(1);
+  });
+
+  it("bounds a polling result JSON response before parsing it", async () => {
+    const oversized = oversizedStreamingResponse();
+    let calls = 0;
+    const result = await resolveGrsImageResult(
+      {
+        apiKey: "key",
+        baseUrl: "https://grs.example",
+        imageHostAllowlist: ["cdn.example"],
+        model: "nano-banana-fast"
+      },
+      {
+        modelId: "nano-banana-fast",
+        prompt: "test oversized result response",
+        images: [],
+        aspectRatio: "1:1",
+        referenceObjectIds: []
+      },
+      {
+        fetchImpl: async () => {
+          calls += 1;
+          return calls === 1
+            ? jsonResponse({ id: "task-oversized", status: "pending" })
+            : oversized.response;
+        },
+        generateAttempts: 1,
+        maxPolls: 1,
+        pollDelayMs: 0
+      }
+    );
+
+    expect(result).toEqual({
+      status: "failed",
+      reason: "GrsAI result response exceeded the 256 KiB limit."
+    });
+    expect(oversized.wasCancelled()).toBe(true);
+    expect(calls).toBe(2);
+  });
+
+  it("bounds an error response instead of buffering or reflecting its full body", async () => {
+    const oversized = oversizedStreamingResponse(400);
+    const result = await resolveGrsImageResult(
+      {
+        apiKey: "key",
+        baseUrl: "https://grs.example",
+        model: "nano-banana-fast"
+      },
+      {
+        modelId: "nano-banana-fast",
+        prompt: "test oversized error response",
+        images: [],
+        aspectRatio: "1:1",
+        referenceObjectIds: []
+      },
+      {
+        fetchImpl: async () => oversized.response,
+        generateAttempts: 1,
+        maxPolls: 1,
+        pollDelayMs: 0
+      }
+    );
+
+    expect(result).toEqual({
+      status: "failed",
+      reason: "GrsAI generate response exceeded the 256 KiB limit."
+    });
+    expect(oversized.wasCancelled()).toBe(true);
+  });
 });
 
 function jsonResponse(value: unknown): Response {
@@ -354,4 +458,26 @@ function jsonResponse(value: unknown): Response {
     status: 200,
     headers: { "Content-Type": "application/json" }
   });
+}
+
+function oversizedStreamingResponse(status = 200): {
+  response: Response;
+  wasCancelled(): boolean;
+} {
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(300 * 1024).fill(97));
+    },
+    cancel() {
+      cancelled = true;
+    }
+  });
+  return {
+    response: new Response(body, {
+      status,
+      headers: { "Content-Type": "application/json" }
+    }),
+    wasCancelled: () => cancelled
+  };
 }

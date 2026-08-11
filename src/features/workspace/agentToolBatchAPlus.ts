@@ -18,7 +18,6 @@ import type { AgentTurnHost } from "./agentTurnHost";
 import type { ToolCallTerminalResult } from "./agentTurnLifecycle";
 import type { PreparedAgentTurnAPlus, RunMorphoAgentTurnAPlusInput } from "./agentTurnProductPreparationAPlus";
 import { buildAgentVisualGenerationBatch, resolveExpectedVisualGenerationCount } from "./agentVisualGenerationBatch";
-import { isExplicitImageGenerationRequest } from "./aiTaskRouting";
 import {
   getAgentToolEffect,
   parseMorphoAgentToolCallBatch,
@@ -248,10 +247,8 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
         mode: input.turnInput.agentTurnMode,
         explicitUserCommand:
           entry.parsed.name === "generate_visuals"
-            ? isExplicitImageGenerationRequest(
-                input.turnInput.draft,
-                input.turnInput.selectedObjects.map((object) => object.type)
-              )
+            ? input.turnInput.taskMode === "imageGeneration" &&
+              input.prepared.executionTaskMode === "imageGeneration"
             : entry.parsed.name !== "submit_memory_update" ||
               input.prepared.requiredMemoryUpdates.length > 0
       });

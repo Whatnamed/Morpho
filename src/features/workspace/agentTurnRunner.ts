@@ -73,6 +73,8 @@ type ActiveAPlusSession = Readonly<{
   resume: () => Promise<"recovered" | "pending" | "failed">;
 }>;
 
+type RequestReconciliationResult = "usable" | "pending" | "failed";
+
 const activeSessions = new Map<string, ActiveAPlusSession>();
 const driveQueues = new WeakMap<AgentTurnCoordinator, Promise<void>>();
 
@@ -161,8 +163,7 @@ export async function runMorphoAgentTurn(
       return;
     }
     const started = await coordinator.startInitialRequest(prepared.providerRequest);
-    const usable = await reconcileRequestResult(session, started, true);
-    if (!usable) return;
+    if (await reconcileRequestResult(session, started, true) !== "usable") return;
     await driveSessionSerialized(session);
   } catch (error) {
     await terminateUnexpectedSession(session, error);
@@ -259,8 +260,8 @@ export async function recoverMorphoAgentTurn(
       const snapshot = restored.coordinator.exportRecoverySnapshot();
       if (snapshot?.activeRequest || snapshot?.lastRequest) {
         const queried = await restored.coordinator.recoverServerExecutionStatus();
-        const usable = await reconcileRequestResult(session, queried, true);
-        if (!usable) return "pending";
+        const reconciliation = await reconcileRequestResult(session, queried, true);
+        if (reconciliation !== "usable") return reconciliation;
       }
     }
     await driveSessionSerialized(session);
@@ -567,7 +568,7 @@ async function driveSession(session: APlusSession): Promise<void> {
     }
     if (lifecycle.phase === "recovering") {
       const recovered = await session.coordinator.recoverServerExecutionStatus();
-      if (!await reconcileRequestResult(session, recovered, false)) return;
+      if (await reconcileRequestResult(session, recovered, false) !== "usable") return;
       continue;
     }
     if (lifecycle.phase === "compacting") {
@@ -792,7 +793,7 @@ async function driveSession(session: APlusSession): Promise<void> {
         session.recovery.metadata.runtime
       );
       const continued = await session.coordinator.startContinuation(continuationRequest);
-      if (!await reconcileRequestResult(session, continued, true)) return;
+      if (await reconcileRequestResult(session, continued, true) !== "usable") return;
       continue;
     }
     if (
@@ -809,7 +810,7 @@ async function driveSession(session: APlusSession): Promise<void> {
       const continued = await session.coordinator.startContinuation(
         continuationProviderRequest(session.recovery.metadata.runtime)
       );
-      if (!await reconcileRequestResult(session, continued, true)) return;
+      if (await reconcileRequestResult(session, continued, true) !== "usable") return;
       continue;
     }
     if (
@@ -819,7 +820,7 @@ async function driveSession(session: APlusSession): Promise<void> {
       const started = await session.coordinator.startInitialRequest(
         session.recovery.metadata.runtime.providerBaseRequest
       );
-      if (!await reconcileRequestResult(session, started, true)) return;
+      if (await reconcileRequestResult(session, started, true) !== "usable") return;
       continue;
     }
     await terminateDeniedSession(session, {
@@ -844,15 +845,19 @@ async function reconcileRequestResult(
   session: APlusSession,
   result: AgentTurnCoordinatorActionResult,
   allowExactRetry: boolean
-): Promise<boolean> {
+): Promise<RequestReconciliationResult> {
   syncRecoveryRuntimeFacts(session);
   await session.recovery.flush();
-  if (result.status === "ok") return true;
+  if (result.status === "ok") return "usable";
   if (result.code === "request_not_observed" && result.recoverable && allowExactRetry) {
     const retried = await session.coordinator.retryActiveRequest();
     await session.recovery.flush();
-    if (retried.status === "ok") return true;
+    if (retried.status === "ok") return "usable";
     return reconcileRequestResult(session, retried, false);
+  }
+  if (result.code === "server_turn_not_found") {
+    await terminateMissingServerTurnSession(session, result);
+    return "failed";
   }
   if (
     result.recoverable &&
@@ -865,10 +870,10 @@ async function reconcileRequestResult(
     // later, but it must not look like an endlessly streaming turn.
     session.host.ui.setStreaming(false);
     showAgentTurnRecoveryPending(session.host.ui);
-    return false;
+    return "pending";
   }
   await terminateDeniedSession(session, result);
-  return false;
+  return "failed";
 }
 
 function syncRecoveryRuntimeFacts(session: APlusSession): void {
@@ -1202,6 +1207,57 @@ async function terminateDeniedSession(
   await session.recovery.flush();
 }
 
+async function terminateMissingServerTurnSession(
+  session: APlusSession,
+  denied: Extract<AgentTurnCoordinatorActionResult, { status: "denied" }>
+): Promise<void> {
+  const detail = denied.error.trim().slice(0, 800) || "Server Turn 已不可恢复。";
+  const completedAt = new Date(session.host.now()).toISOString();
+  session.host.commitWorkspace((current) => {
+    const assistant = current.ai.messages.find(
+      (message) => message.id === session.prepared.assistantMessageId
+    );
+    const previous = assistant?.body.trim() ?? "";
+    const body = previous.includes(detail)
+      ? previous
+      : [previous, detail].filter(Boolean).join("\n\n");
+    return {
+      workspace: finalizeAgentTurn(current, {
+        agentTurnId: session.prepared.localAgentTurnId,
+        userMessageId: session.prepared.userMessageId,
+        assistantMessageId: session.prepared.assistantMessageId,
+        outcome: session.prepared.runtimeState.hasAgentToolResult
+          ? "partialSuccess"
+          : "failedDuringProvider",
+        assistantBody: body,
+        assistantStatus: "failed",
+        traceStatus: "failed",
+        summary: detail,
+        completedAt
+      }),
+      value: undefined
+    };
+  });
+  const persisted = session.host.persistWorkspace?.();
+  const finalizedLocally = !session.host.persistWorkspace ||
+    (persisted?.phase === "saved" && !persisted.isDirty);
+  session.prepared.controller.abort(new DOMException(detail, "AbortError"));
+  session.host.abortSlot.set(null);
+  session.host.streamFlushSlot.set(null);
+  session.host.ui.setStreaming(false);
+  session.host.ui.showFailure();
+  if (finalizedLocally) {
+    await session.recovery.clear();
+  } else {
+    session.recovery.updateMetadata((metadata) => ({
+      ...metadata,
+      localPersistence: "failed"
+    }));
+    await session.recovery.flush();
+  }
+  releaseActiveSession(session.localProjectId, session.coordinator);
+}
+
 function recordAssistantFailureDetail(
   session: APlusSession,
   rawDetail: string,
@@ -1378,9 +1434,8 @@ async function resumeActiveSession(
   try {
     if (lifecycle.phase !== "compacting" && lifecycle.phase !== "executingTools") {
       const reconciled = await session.coordinator.recoverServerExecutionStatus();
-      if (!await reconcileRequestResult(session, reconciled, false)) {
-        return "pending";
-      }
+      const reconciliation = await reconcileRequestResult(session, reconciled, false);
+      if (reconciliation !== "usable") return reconciliation;
     }
     await driveSessionSerialized(session);
     const next = session.coordinator.getLifecycleSnapshot();

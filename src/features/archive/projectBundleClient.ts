@@ -123,7 +123,7 @@ type InspectBackupResult =
 
 const UNREADABLE_BACKUP_BUNDLE_REASON = "无法读取备份包。文件可能损坏，或不是 Morpho 可编辑备份。";
 const RESTORE_PROJECT_ID_ATTEMPT_LIMIT = 10;
-const MAX_BACKUP_COMPRESSED_BYTES = 256 * 1024 * 1024;
+const MAX_BACKUP_COMPRESSED_BYTES = 128 * 1024 * 1024;
 
 export async function exportHumanReadableArchiveBundle(
   workspace: MorphoWorkspace,
@@ -189,7 +189,7 @@ export async function exportEditableProjectBackupBundle(
 
 export async function inspectEditableProjectBackupBundle(file: File | Blob): Promise<InspectBackupResult> {
   if (file.size > MAX_BACKUP_COMPRESSED_BYTES) {
-    return unreadableBackupBundleFailure("备份包超过 256 MiB 安全上限。");
+    return unreadableBackupBundleFailure("备份包超过 128 MiB 安全上限。");
   }
 
   let zipped: Record<string, Uint8Array>;
@@ -544,8 +544,8 @@ function backupZipBudget() {
     maxCompressedBytes: MAX_BACKUP_COMPRESSED_BYTES,
     maxEntries: 4_096,
     maxIncludedEntries: 2_048,
-    maxEntryUncompressedBytes: 128 * 1024 * 1024,
-    maxTotalUncompressedBytes: 512 * 1024 * 1024,
+    maxEntryUncompressedBytes: 64 * 1024 * 1024,
+    maxTotalUncompressedBytes: 256 * 1024 * 1024,
     maxCompressionRatio: 200,
     timeoutMs: 15_000
   } as const;

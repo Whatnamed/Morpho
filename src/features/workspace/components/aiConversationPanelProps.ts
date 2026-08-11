@@ -24,6 +24,7 @@ export function buildAiConversationPanelProps(
     draft: "",
     isOpen: true,
     isImageTaskContext: false,
+    isImageGenerationAuthorized: false,
     turnMode: "auto" as const,
     isStreaming: false,
     imageGenerationSettings: {
@@ -42,6 +43,7 @@ export function buildAiConversationPanelProps(
     onToggleOpen: () => undefined,
     onDraftChange: () => undefined,
     onTurnModeChange: () => undefined,
+    onImageGenerationAuthorizationChange: () => undefined,
     onImageGenerationSettingsChange: () => undefined,
     onDirectionPreviewCountChange: () => undefined,
     onSuggestionClick: () => undefined,

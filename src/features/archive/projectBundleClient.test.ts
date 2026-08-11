@@ -1,5 +1,5 @@
 import { unzipSync, strFromU8, zipSync } from "fflate";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import type { BlobStore } from "@/infrastructure/assets/localAssetWorkflow";
 import { CATALOG_STORAGE_KEY, getProjectWorkspaceStorageKey, loadProjectWorkspace } from "@/infrastructure/persistence/localProjectStore";
@@ -249,6 +249,20 @@ describe("project bundle client", () => {
       status: "failed",
       reason: expect.stringContaining("安全解压预算")
     });
+  });
+
+  test("rejects an oversized compressed backup before reading it into memory", async () => {
+    const arrayBuffer = vi.fn(async () => new ArrayBuffer(0));
+    const oversized = {
+      size: 128 * 1024 * 1024 + 1,
+      arrayBuffer
+    } as unknown as Blob;
+
+    await expect(inspectEditableProjectBackupBundle(oversized)).resolves.toMatchObject({
+      status: "failed",
+      reason: expect.stringContaining("128 MiB")
+    });
+    expect(arrayBuffer).not.toHaveBeenCalled();
   });
 
   test("restores the same inspected backup twice with distinct project ids and runtime storage keys", async () => {

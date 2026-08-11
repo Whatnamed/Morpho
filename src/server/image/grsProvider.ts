@@ -64,6 +64,7 @@ const DEFAULT_MAX_POLLS = 12;
 const DEFAULT_POLL_DELAY_MS = 1500;
 const DEFAULT_GENERATE_ATTEMPTS = 2;
 const DEFAULT_RETRY_DELAY_MS = 500;
+const MAX_GRS_JSON_RESPONSE_BYTES = 256 * 1024;
 
 export function createGrsGenerateRequest(config: GrsImageConfig, input: GrsGenerateInput): GrsGenerateRequest {
   const baseUrl = config.baseUrl.replace(/\/$/, "");
@@ -157,16 +158,19 @@ export async function resolveGrsImageResult(
   }
 
   if (!generateResponse.response.ok) {
-    // Try to extract detailed error message from GrsAI response
     let detail = "";
     try {
-      const errorBody = await generateResponse.response.text();
+      const errorBody = await readBoundedResponseText(generateResponse.response);
       if (errorBody) {
-        const parsed = JSON.parse(errorBody);
-        detail = parsed.message || parsed.error || parsed.msg || errorBody.substring(0, 200);
+        try {
+          const parsed = JSON.parse(errorBody) as unknown;
+          detail = extractFailureDetail(parsed) ?? errorBody.substring(0, 200);
+        } catch {
+          detail = errorBody.substring(0, 200);
+        }
       }
-    } catch {
-      // Ignore parse errors
+    } catch (error) {
+      return responseReadFailure("generate", error);
     }
     const reason = detail
       ? `GrsAI generate returned ${generateResponse.response.status}: ${detail}`
@@ -174,7 +178,12 @@ export async function resolveGrsImageResult(
     return { status: "failed", reason };
   }
 
-  const generatePayload = await readJson(generateResponse.response);
+  let generatePayload: unknown;
+  try {
+    generatePayload = await readJson(generateResponse.response);
+  } catch (error) {
+    return responseReadFailure("generate", error);
+  }
   const allowedImageHosts = buildAllowedImageHosts(config);
   const immediate = await resolvePayload(fetchImpl, generatePayload, signal, extractTaskId(generatePayload), allowedImageHosts);
   if (immediate.status !== "pending") {
@@ -206,7 +215,12 @@ export async function resolveGrsImageResult(
       return { status: "failed", reason: `GrsAI result returned ${resultResponse.response.status}.` };
     }
 
-    const resultPayload = await readJson(resultResponse.response);
+    let resultPayload: unknown;
+    try {
+      resultPayload = await readJson(resultResponse.response);
+    } catch (error) {
+      return responseReadFailure("result", error);
+    }
     const resolved = await resolvePayload(fetchImpl, resultPayload, signal, taskId, allowedImageHosts);
     if (resolved.status !== "pending") {
       return resolved;
@@ -280,10 +294,86 @@ async function safeFetch(
 }
 
 async function readJson(response: Response): Promise<unknown> {
+  const text = await readBoundedResponseText(response);
+  if (!text) {
+    return null;
+  }
   try {
-    return (await response.json()) as unknown;
+    return JSON.parse(text) as unknown;
   } catch {
     return null;
+  }
+}
+
+async function readBoundedResponseText(
+  response: Response,
+  maxBytes = MAX_GRS_JSON_RESPONSE_BYTES
+): Promise<string> {
+  const declaredLength = readContentLength(response.headers.get("content-length"));
+  if (declaredLength !== undefined && declaredLength > maxBytes) {
+    await cancelResponseBody(response);
+    throw new GrsProviderResponseTooLargeError(maxBytes);
+  }
+
+  if (!response.body) {
+    return "";
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let byteLength = 0;
+  let text = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        return text + decoder.decode();
+      }
+      byteLength += value.byteLength;
+      if (byteLength > maxBytes) {
+        await reader.cancel();
+        throw new GrsProviderResponseTooLargeError(maxBytes);
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function cancelResponseBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The connection may already be closed; the size check still fails closed.
+  }
+}
+
+function readContentLength(value: string | null): number | undefined {
+  if (!value || !/^\d+$/.test(value)) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
+}
+
+function responseReadFailure(scope: "generate" | "result", error: unknown): GrsImageResult {
+  if (isAbortError(error)) {
+    return { status: "cancelled", reason: "GrsAI image request was cancelled." };
+  }
+  if (error instanceof GrsProviderResponseTooLargeError) {
+    return {
+      status: "failed",
+      reason: `GrsAI ${scope} response exceeded the ${Math.floor(error.maxBytes / 1024)} KiB limit.`
+    };
+  }
+  return { status: "failed", reason: `GrsAI ${scope} response could not be read.` };
+}
+
+class GrsProviderResponseTooLargeError extends Error {
+  constructor(readonly maxBytes: number) {
+    super("GrsAI response exceeded the configured byte limit.");
+    this.name = "GrsProviderResponseTooLargeError";
   }
 }
 

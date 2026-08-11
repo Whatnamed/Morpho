@@ -31,15 +31,21 @@ export function loadGrsImageConfig(env: Partial<NodeJS.ProcessEnv>): GrsImageCon
     };
   }
 
+  if (imageHostAllowlist.length === 0) {
+    return {
+      status: "failed",
+      reason:
+        "GrsAI 配置缺失：请在 .env.local 设置 MORPHO_GRS_IMAGE_HOST_ALLOWLIST；未明确允许结果图片主机前不会发起付费生图请求。"
+    };
+  }
+
   return {
     status: "ok",
     config: {
       apiKey,
       baseUrl,
       ...(fallbackBaseUrls.length > 0 ? { fallbackBaseUrls: [...new Set(fallbackBaseUrls)] } : {}),
-      ...(imageHostAllowlist.length > 0
-        ? { imageHostAllowlist: [...new Set(imageHostAllowlist)] }
-        : {}),
+      imageHostAllowlist: [...new Set(imageHostAllowlist)],
       model
     }
   };

@@ -118,11 +118,13 @@ AiJWS text behavior:
 
 Image generation uses the GrsAI `MORPHO_GRS_*` group defined in `.env.example`.
 
-`MORPHO_GRS_IMAGE_HOST_ALLOWLIST` is a comma-separated list of exact HTTPS hostnames that may
-serve generated-image bytes. The configured primary and fallback Provider hosts are included
-automatically. Add a separate CDN hostname only after verifying it is controlled by the Provider;
-redirects are rechecked and IP-literal/local-name targets, non-image responses, oversized bodies, and
-slow bodies are rejected.
+`MORPHO_GRS_IMAGE_HOST_ALLOWLIST` is required and contains comma-separated exact HTTPS hostnames
+that may serve generated-image bytes. The current documented `/v1/api/generate` contract returns
+`file1.aitohumanize.com`, which is the example value in `.env.example`; re-verify that Provider
+contract before changing the list. The configured primary and fallback Provider hosts are included
+automatically. Missing result-host configuration blocks the paid request before it starts. Redirects
+are rechecked and IP-literal/local-name targets, non-image responses, oversized bodies, and slow
+bodies are rejected. Generate, result-poll, and error JSON bodies are each capped at 256 KiB.
 
 `MORPHO_GRS_DEFAULT_MODEL` (example value `gpt-image-2`) is the **server-side default / compatibility fallback** used when a request omits a model or needs a catalog default. It does **not** mean every Morpho image task is fixed to that model. `MORPHO_GRS_IMAGE_MODEL` remains a legacy fallback for existing local environments.
 
@@ -329,9 +331,10 @@ Migration order is fixed:
 
 `20260810025000_harden_agent_turn_admission.sql` is a later forward-only security migration. It
 requires current `active` access for Turn creation and every External Action acquisition, applies
-transactional per-user active/rate/retained Journal limits, opportunistically prunes terminal
-history after 30 days and abandoned non-terminal Turns after 24 hours, and invalidates outstanding
-claims when access is revoked. Applying this migration to a remote environment remains a separate
+transactional per-user active/rate/retained Journal limits, converges abandoned non-terminal Turns
+to terminal `externally_failed` tombstones after 24 hours, invalidates their outstanding claims, and
+physically prunes terminal history only after 30 days. This preserves a durable recovery answer while
+the tombstone is retained. Applying this migration to a remote environment remains a separate
 operator action; a checked-in migration is not evidence that a remote database has been upgraded.
 
 Never edit the remote migration ledger and never rely on changed contents of an already recorded

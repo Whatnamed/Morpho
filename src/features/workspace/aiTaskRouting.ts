@@ -69,9 +69,9 @@ export function recommendAiTaskMode(draft: string, selectedObjectTypes: readonly
 }
 
 /**
- * This check is deliberately bound to the current user draft and current
- * selection. Project files, prior assistant text, and model Tool Calls never
- * participate, so they cannot mint authority for a paid image action.
+ * Recommendation-only heuristic for the composer. It may expose image
+ * settings, but it must never mint authority for a paid image action. Paid
+ * execution is authorized only by the explicit send-time task selection.
  */
 export function isExplicitImageGenerationRequest(
   draft: string,

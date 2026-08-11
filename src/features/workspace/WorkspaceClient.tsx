@@ -2389,6 +2389,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         draft={aiDraft}
         isOpen={aiOpen}
         isImageTaskContext={taskMode === "imageGeneration" || recommendedTaskMode === "imageGeneration"}
+        isImageGenerationAuthorized={taskMode === "imageGeneration"}
         turnMode={agentTurnMode}
         activeProposal={activeProposal}
         activeOperation={activeOperation}
@@ -2406,6 +2407,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onToggleOpen={() => setAiOpen((open) => !open)}
         onDraftChange={setAiDraft}
         onTurnModeChange={setAgentTurnMode}
+        onImageGenerationAuthorizationChange={(authorized) =>
+          setTaskMode(authorized ? "imageGeneration" : "chatAnalysis")
+        }
         onImageGenerationSettingsChange={updateImageGenerationSettings}
         onDirectionPreviewCountChange={setDirectionPreviewCount}
         onSuggestionClick={handleSuggestionClick}

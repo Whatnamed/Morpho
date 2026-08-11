@@ -662,6 +662,23 @@ describe("A+ AgentTurnCoordinator", () => {
     expect(host.queryServerTurn).toHaveBeenCalledTimes(2);
   });
 
+  it("treats a missing retained Server Turn as terminal and never reruns Provider", async () => {
+    const host = new FakeHost();
+    host.queryOverride = async () => {
+      throw Object.assign(new Error("Server Turn no longer exists."), { code: "not_found" });
+    };
+    host.queueStarted({ status: "providerRunning", output: false, interrupted: true });
+    const coordinator = await initializedCoordinator(host, ["request-1"]);
+
+    await expect(coordinator.startInitialRequest(providerRequest())).resolves.toMatchObject({
+      status: "denied",
+      code: "server_turn_not_found",
+      recoverable: false,
+      lifecycle: { phase: "requestingProvider", serverExecutionStatus: "providerRunning" }
+    });
+    expect(host.executions).toHaveLength(1);
+  });
+
   it("fails deterministically on a Journal Turn/Project binding mismatch", async () => {
     const host = new FakeHost();
     host.queueStarted({ status: "providerRunning", output: false, interrupted: true });

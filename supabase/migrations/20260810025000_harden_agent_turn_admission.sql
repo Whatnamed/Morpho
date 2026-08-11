@@ -45,6 +45,7 @@ declare
   active_turn_count bigint;
   recent_creation_count bigint;
   retained_turn_count bigint;
+  abandoned_turn_ids uuid[] := array[]::uuid[];
   denial text;
   observed_at timestamptz := now();
 begin
@@ -71,14 +72,55 @@ begin
     pg_catalog.hashtextextended(current_user_id::text, 0)
   );
 
-  -- Terminal history is retained for 30 days. Non-terminal turns untouched for
-  -- 24 hours are abandoned browser work and can no longer represent live work.
+  -- A stale non-terminal Turn is first converged to a terminal tombstone. Its
+  -- identity must remain queryable so a durable browser Recovery Record can
+  -- close deterministically without replaying external work. Tombstones and
+  -- other terminal history are physically removed only after 30 days.
+  select coalesce(array_agg(stale.server_turn_id), array[]::uuid[])
+  into abandoned_turn_ids
+  from (
+    select journal.server_turn_id
+    from private.agent_turn_journal as journal
+    where journal.user_id = current_user_id
+      and journal.terminal_at is null
+      and journal.updated_at < observed_at - interval '24 hours'
+    for update
+  ) as stale;
+
+  update private.agent_turn_external_action_journal as action
+  set execution_status = 'externally_failed',
+      bounded_failure_code = 'turn_abandoned',
+      result_receipt = null,
+      receipt_expires_at = null,
+      terminal_at = observed_at,
+      updated_at = observed_at
+  where action.server_turn_id = any(abandoned_turn_ids)
+    and action.execution_status = 'running';
+
+  delete from private.agent_turn_external_action_claim as claim
+  where claim.server_turn_id = any(abandoned_turn_ids);
+
+  update private.agent_turn_request_journal as request
+  set execution_status = 'externally_failed',
+      bounded_failure_code = 'turn_abandoned',
+      terminal_at = observed_at,
+      updated_at = observed_at
+  where request.server_turn_id = any(abandoned_turn_ids)
+    and request.execution_status in ('provider_running', 'awaiting_next_request');
+
+  update private.agent_turn_journal as journal
+  set server_execution_status = 'externally_failed',
+      bounded_failure_code = 'turn_abandoned',
+      terminal_at = observed_at,
+      updated_at = observed_at,
+      revision = journal.revision + 1
+  where journal.server_turn_id = any(abandoned_turn_ids)
+    and journal.terminal_at is null;
+
   delete from private.agent_turn_journal as journal
   where journal.user_id = current_user_id
-    and (
-      (journal.terminal_at is not null and journal.terminal_at < observed_at - interval '30 days') or
-      (journal.terminal_at is null and journal.updated_at < observed_at - interval '24 hours')
-    );
+    and journal.terminal_at is not null
+    and journal.terminal_at < observed_at - interval '30 days';
 
   select journal.* into existing_row
   from private.agent_turn_journal as journal

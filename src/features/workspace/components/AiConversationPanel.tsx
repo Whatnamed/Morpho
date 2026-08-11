@@ -50,6 +50,7 @@ type AiConversationPanelProps = {
   draft: string;
   isOpen: boolean;
   isImageTaskContext: boolean;
+  isImageGenerationAuthorized: boolean;
   turnMode: MorphoAgentTurnMode;
   activeProposal?: ArtifactProposal;
   activeOperation?: OperationRecord | null;
@@ -70,6 +71,7 @@ type AiConversationPanelProps = {
   onToggleOpen: () => void;
   onDraftChange: (draft: string) => void;
   onTurnModeChange: (mode: MorphoAgentTurnMode) => void;
+  onImageGenerationAuthorizationChange: (authorized: boolean) => void;
   onImageGenerationSettingsChange: (patch: {
     modelId?: string;
     aspectRatio?: GrsImageAspectRatio;
@@ -131,6 +133,7 @@ export function AiConversationPanel({
   draft,
   isOpen,
   isImageTaskContext,
+  isImageGenerationAuthorized,
   turnMode,
   activeProposal,
   activeOperation,
@@ -148,6 +151,7 @@ export function AiConversationPanel({
   onToggleOpen,
   onDraftChange,
   onTurnModeChange,
+  onImageGenerationAuthorizationChange,
   onImageGenerationSettingsChange,
   onDirectionPreviewCountChange,
   onSuggestionClick,
@@ -571,6 +575,21 @@ export function AiConversationPanel({
 
           {isImageTaskContext ? (
             <div className="image-settings" aria-label="图像生成设置">
+              <div className="image-settings-note">
+                <span>
+                  {isImageGenerationAuthorized
+                    ? "本轮已明确允许图像生成；自动执行可能产生费用"
+                    : "当前仅识别到可能的生图意图；未明确允许前会先确认"}
+                </span>
+                <button
+                  className="plain-button"
+                  type="button"
+                  aria-pressed={isImageGenerationAuthorized}
+                  onClick={() => onImageGenerationAuthorizationChange(!isImageGenerationAuthorized)}
+                >
+                  {isImageGenerationAuthorized ? "改为仅分析" : "本轮允许生图"}
+                </button>
+              </div>
               <label>
                 <span>比例</span>
                 <select

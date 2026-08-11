@@ -619,6 +619,28 @@ describe("AiConversationPanel", () => {
     expect(html).not.toContain("当前任务正在进行");
   });
 
+  it("distinguishes an image recommendation from explicit paid-image authorization", () => {
+    const recommendedOnly = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        isImageTaskContext: true,
+        isImageGenerationAuthorized: false
+      }))
+    );
+    const authorized = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        isImageTaskContext: true,
+        isImageGenerationAuthorized: true
+      }))
+    );
+
+    expect(recommendedOnly).toContain("未明确允许前会先确认");
+    expect(recommendedOnly).toContain("本轮允许生图");
+    expect(recommendedOnly).toContain('aria-pressed="false"');
+    expect(authorized).toContain("自动执行可能产生费用");
+    expect(authorized).toContain("改为仅分析");
+    expect(authorized).toContain('aria-pressed="true"');
+  });
+
   it("turns only the primary input action into a stop action while streaming", () => {
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({

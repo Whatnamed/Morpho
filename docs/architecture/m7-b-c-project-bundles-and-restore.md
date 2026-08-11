@@ -128,6 +128,8 @@ Restore is now split into two public client stages:
 - `inspectEditableProjectBackupBundle(file)` reads the selected zip in memory, parses `bundle.json` and the declared `backup-manifest.json`, validates the editable-backup bundle, and returns preview metadata. It does not write blobs, workspace JSON, or catalog data.
 - `restoreEditableProjectBackupBundle(inspectedBackup, options)` accepts only the inspected backup payload and performs the write-stage restore after explicit user confirmation.
 
+Because inspection still expands selected entries in browser memory, it fails closed above 128 MiB compressed input, 64 MiB for any single expanded entry, or 256 MiB total expanded bytes. These are safety ceilings, not recommended backup sizes; a future streaming restore path would be a separate architecture change.
+
 The restore preview exposes the source project title, export time, chat scope, project-continuity scope, asset totals, embedded/reference-only/missing/size-mismatch counts, diagnostics, and warning count. The UI states that restore creates a new independent project copy and does not overwrite current projects.
 
 Unreadable zip files, malformed JSON, missing `bundle.json`, missing manifest paths, missing manifest files, and human-readable archive packages are rejected during inspection with a readable failed result before any write begins.

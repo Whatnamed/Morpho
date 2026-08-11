@@ -24,7 +24,7 @@ describe("A+ admission hardening migration", () => {
     expect(sql).toContain("revoke all on function private.acquire_agent_turn_external_action_unchecked_20260729");
   });
 
-  it("serializes creation limits, preserves exact replay, and prunes only bounded retention windows", () => {
+  it("serializes creation limits, preserves exact replay, and tombstones stale active Turns", () => {
     const sql = readMigration();
     expect(sql).toContain("pg_advisory_xact_lock");
     expect(sql.indexOf("creation_idempotency_key = p_creation_idempotency_key")).toBeLessThan(
@@ -34,6 +34,14 @@ describe("A+ admission hardening migration", () => {
     expect(sql).toContain("retained_turn_count >= 2000");
     expect(sql).toContain("terminal_at < observed_at - interval '30 days'");
     expect(sql).toContain("updated_at < observed_at - interval '24 hours'");
+    expect(sql).toContain("bounded_failure_code = 'turn_abandoned'");
+    expect(sql).toContain("server_execution_status = 'externally_failed'");
+    expect(sql).toContain("request.execution_status in ('provider_running', 'awaiting_next_request')");
+    expect(sql).toContain("action.execution_status = 'running'");
+    expect(sql).toContain("delete from private.agent_turn_external_action_claim");
+    expect(sql).not.toMatch(
+      /delete from private\.agent_turn_journal[\s\S]*terminal_at is null[\s\S]*interval '24 hours'/
+    );
     expect(sql).toContain("'created', 'provider_running', 'awaiting_next_request'");
   });
 

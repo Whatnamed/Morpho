@@ -441,6 +441,58 @@ describe("A+ Tool Batch integration", () => {
     expect(executeVisualGenerationPlan).not.toHaveBeenCalled();
   });
 
+  it("does not treat a quoted image command as paid-action authority", async () => {
+    const firstCall = visualCall("call-quoted-image-command");
+    const firstArguments = JSON.parse(firstCall.argumentsText) as { items: Array<Record<string, unknown>> };
+    const call: APlusToolCall = {
+      ...firstCall,
+      argumentsText: JSON.stringify({
+        ...firstArguments,
+        items: [
+          firstArguments.items[0],
+          { ...firstArguments.items[0], id: "visual-quoted-second", title: "引用命令中的第二张图" }
+        ]
+      })
+    };
+    const fake = createAgentTurnHostFake({ workspace: createTestWorkspace() });
+    const baseHost = hostFromFake(fake);
+    const executeVisualGenerationPlan = vi.fn(baseHost.executeVisualGenerationPlan);
+    const host: AgentTurnHost = { ...baseHost, executeVisualGenerationPlan };
+    const turnInput = {
+      ...standardInput(),
+      draft: "请解释文档里的‘生成两张预览图’是什么意思，只做分析。",
+      taskMode: "chatAnalysis" as const,
+      recommendedTaskMode: "imageGeneration" as const
+    };
+    const prepared = await prepareAgentTurnProductAPlus(turnInput, host);
+    const restored = AgentTurnCoordinator.restore({
+      snapshot: executingSnapshot([call]),
+      host: coordinatorHost(),
+      createRequestId: () => "unused"
+    });
+    if (restored.status !== "ok") throw new Error(restored.reason);
+
+    const result = await executeAgentToolBatchAPlus({
+      toolCalls: [call],
+      providerOutputText: "",
+      coordinator: restored.coordinator,
+      host,
+      turnInput,
+      prepared,
+      externalRequest: {
+        serverTurnId: TURN_ID,
+        localProjectId: fake.getWorkspace().project.id,
+        ...REQUEST
+      },
+      requestWebSearch: async () => ({ sources: [] })
+    });
+
+    expect(prepared.executionTaskMode).toBe("imageGeneration");
+    expect(result.status).toBe("pendingConfirmation");
+    expect(result.pendingConfirmation?.value).toMatchObject({ kind: "agentGenerateVisuals" });
+    expect(executeVisualGenerationPlan).not.toHaveBeenCalled();
+  });
+
   it("treats a delivery draft as a completed local write and replays it without a second draft", async () => {
     const fake = createAgentTurnHostFake({ workspace: createTestWorkspace() });
     const host = hostFromFake(fake);

@@ -601,7 +601,14 @@ export class AgentTurnCoordinator {
         serverTurnId: lifecycle.turnId,
         localProjectId: this.input.localProjectId
       });
-    } catch {
+    } catch (error) {
+      if (readErrorCode(error) === "not_found") {
+        return this.denied(
+          "server_turn_not_found",
+          "Server Turn 已超过保留期或不可见；旧外部请求不会重放，请重新发起本轮任务。",
+          false
+        );
+      }
       return this.denied("journal_query_failed", "Server Turn Journal 查询失败，可安全重试状态查询。", true);
     }
     if (generation !== this.syncGeneration) {
@@ -1087,6 +1094,10 @@ function isBoundedStepSequence(value: unknown): value is number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readErrorCode(value: unknown): string | undefined {
+  return isRecord(value) && typeof value.code === "string" ? value.code : undefined;
 }
 
 function cloneSnapshot(snapshot: AgentTurnJournalSnapshot): AgentTurnJournalSnapshot {

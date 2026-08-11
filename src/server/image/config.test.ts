@@ -7,6 +7,7 @@ describe("GrsAI image config", () => {
     const result = loadGrsImageConfig({
       MORPHO_GRS_API_KEY: "secret",
       MORPHO_GRS_BASE_URL: "https://grs.example",
+      MORPHO_GRS_IMAGE_HOST_ALLOWLIST: "file1.aitohumanize.com",
       MORPHO_GRS_DEFAULT_MODEL: "nano-banana-fast",
       MORPHO_GRS_IMAGE_MODEL: "legacy-image-model"
     });
@@ -16,6 +17,7 @@ describe("GrsAI image config", () => {
       config: {
         apiKey: "secret",
         baseUrl: "https://grs.example",
+        imageHostAllowlist: ["file1.aitohumanize.com"],
         model: "nano-banana-fast"
       }
     });
@@ -25,6 +27,7 @@ describe("GrsAI image config", () => {
     const result = loadGrsImageConfig({
       MORPHO_GRS_API_KEY: "secret",
       MORPHO_GRS_BASE_URL: "https://grs.example",
+      MORPHO_GRS_IMAGE_HOST_ALLOWLIST: "file1.aitohumanize.com",
       MORPHO_GRS_IMAGE_MODEL: "legacy-image-model"
     });
 
@@ -33,6 +36,7 @@ describe("GrsAI image config", () => {
       config: {
         apiKey: "secret",
         baseUrl: "https://grs.example",
+        imageHostAllowlist: ["file1.aitohumanize.com"],
         model: "legacy-image-model"
       }
     });
@@ -44,6 +48,7 @@ describe("GrsAI image config", () => {
       MORPHO_GRS_BASE_URL: "https://grs-primary.example",
       MORPHO_GRS_FALLBACK_BASE_URLS:
         "https://grs-fallback.example, https://grs-primary.example, https://grs-second.example",
+      MORPHO_GRS_IMAGE_HOST_ALLOWLIST: "file1.aitohumanize.com",
       MORPHO_GRS_DEFAULT_MODEL: "nano-banana-2-lite"
     });
 
@@ -53,6 +58,7 @@ describe("GrsAI image config", () => {
         apiKey: "secret",
         baseUrl: "https://grs-primary.example",
         fallbackBaseUrls: ["https://grs-fallback.example", "https://grs-second.example"],
+        imageHostAllowlist: ["file1.aitohumanize.com"],
         model: "nano-banana-2-lite"
       }
     });
@@ -80,5 +86,18 @@ describe("GrsAI image config", () => {
       expect(result.reason).toContain("MORPHO_GRS_API_KEY");
       expect(result.reason).not.toContain("secret");
     }
+  });
+
+  it("fails before a paid request when the result-image host allowlist is missing", () => {
+    const result = loadGrsImageConfig({
+      MORPHO_GRS_API_KEY: "secret",
+      MORPHO_GRS_BASE_URL: "https://grs.example",
+      MORPHO_GRS_DEFAULT_MODEL: "nano-banana-fast"
+    });
+
+    expect(result).toEqual({
+      status: "failed",
+      reason: expect.stringContaining("MORPHO_GRS_IMAGE_HOST_ALLOWLIST")
+    });
   });
 });

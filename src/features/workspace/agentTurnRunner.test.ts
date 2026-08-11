@@ -195,6 +195,42 @@ describe("A+ Agent turn runner", () => {
     expect(fixture.coordinatorHost.executions).toHaveLength(1);
   });
 
+  it("closes stale local recovery when the retained Server Turn no longer exists", async () => {
+    const fixture = createFixture([{ status: "providerRunning" }]);
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(fixture.store.record).toBeDefined();
+    detachMorphoAgentTurnForPageUnload(fixture.fake.getWorkspace().project.id);
+    fixture.coordinatorHost.queryError = Object.assign(new Error("Server Turn no longer exists."), {
+      code: "not_found"
+    });
+
+    await expect(
+      recoverMorphoAgentTurn(
+        fixture.fake.getWorkspace().project.id,
+        fixture.host,
+        fixture.dependencies
+      )
+    ).resolves.toBe("failed");
+
+    expect(fixture.store.record).toBeUndefined();
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      status: "failed",
+      agentTurnOutcome: "failedDuringProvider"
+    });
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+
+    fixture.coordinatorHost.queryError = undefined;
+    fixture.coordinatorHost.appendScripts([{ status: "externallyCompleted", outputText: "新请求完成。" }]);
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    expect(fixture.coordinatorHost.executions).toHaveLength(2);
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      body: "新请求完成。",
+      agentTurnOutcome: "success"
+    });
+  });
+
   it("keeps A+ recovery recoverable when a local confirmation already occupies the slot", async () => {
     const fixture = createFixture([{
       status: "awaitingNextRequest",
@@ -620,6 +656,8 @@ describe("A+ Agent turn runner", () => {
       }
     });
     fixture.input.draft = "生成两张方向图";
+    fixture.input.taskMode = "imageGeneration";
+    fixture.input.recommendedTaskMode = "imageGeneration";
     fixture.input.directionPreviewCount = 2;
 
     await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
@@ -716,6 +754,7 @@ class CoordinatorHostFake implements AgentTurnCoordinatorHost {
   readonly executions: Array<Parameters<AgentTurnCoordinatorHost["executeExternalRequest"]>[0]> = [];
   cancelCalls = 0;
   createError: Error | undefined;
+  queryError: Error | undefined;
   private deferredCompletion: { promise: Promise<void>; resolve: () => void } | undefined;
   private index = 0;
   private snapshot: AgentTurnJournalSnapshot = snapshotFor("created", null, 0, 0);
@@ -800,6 +839,7 @@ class CoordinatorHostFake implements AgentTurnCoordinatorHost {
   }
 
   async queryServerTurn(): Promise<AgentTurnJournalSnapshot> {
+    if (this.queryError) throw this.queryError;
     return structuredClone(this.snapshot);
   }
 
