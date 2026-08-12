@@ -66,10 +66,6 @@ The first deployment uses the Worker name `morpho-cf-preview` and the default `w
 | `MORPHO_AI_MODEL` | Yes | Yes | No | Yes | No | No |
 | `MORPHO_AI_REASONING_EFFORT` | Yes | Yes | No | Yes | No | No |
 | `MORPHO_AI_WEB_SEARCH_ENABLED` | Yes | Yes | No | Yes | No | No |
-| `MORPHO_AI_CONTEXT_WINDOW_TOKENS` | Yes | Yes | No | Yes | No | No |
-| `MORPHO_AI_CONTEXT_PREPARE_TOKENS` | Yes | Yes | No | Yes | No | No |
-| `MORPHO_AI_CONTEXT_COMPACT_TOKENS` | Yes | Yes | No | Yes | No | No |
-| `MORPHO_AI_CONTEXT_TARGET_TOKENS` | Yes | Yes | No | Yes | No | No |
 | `MORPHO_GRS_BASE_URL` | Yes | Yes | No | Yes | No | No |
 | `MORPHO_GRS_FALLBACK_BASE_URLS` | Yes | Yes | No | Yes | No | No |
 | `MORPHO_GRS_DEFAULT_MODEL` | Yes | Yes | No | Yes | No | No |
@@ -79,6 +75,10 @@ The first deployment uses the Worker name `morpho-cf-preview` and the default `w
 | `MORPHO_GRS_API_KEY` | Yes | Yes | No | No | Yes | No |
 
 `AIJWS_API_KEY`, `AIJWS_BASE_URL`, and `AIJWS_MODEL` remain accepted compatibility aliases in the current server configuration. New Worker configuration should use the canonical `MORPHO_AI_*` names above. Never put either AI key in a `NEXT_PUBLIC_*` variable, a build variable, source code, documentation examples, or Git.
+
+The production Agent Context Policy is fixed in `src/domain/morpho/agentContextPolicy.ts`. Legacy
+`MORPHO_AI_CONTEXT_*` threshold variables are ignored by the runtime and must not be configured in
+`.env.local`, `.dev.vars`, Workers Builds, or Cloudflare runtime settings.
 
 Cloudflare separates build and runtime configuration. The two `NEXT_PUBLIC_SUPABASE_*` values are browser-safe, but the current Edge-compatible `middleware.ts` and server-side Supabase client also read them at Worker runtime, so they must be set in both places. The tldraw public key is only required at build time for the browser bundle.
 
