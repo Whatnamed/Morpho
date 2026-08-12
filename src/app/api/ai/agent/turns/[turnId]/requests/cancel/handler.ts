@@ -102,4 +102,3 @@ export function createAgentTurnCancellationPostHandler(
     return NextResponse.json({ accepted: true, observed, status: journal.snapshot.status });
   };
 }
-

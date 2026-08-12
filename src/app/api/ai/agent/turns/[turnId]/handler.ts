@@ -49,4 +49,3 @@ export function createAgentTurnGetHandler(
       : NextResponse.json(read.snapshot);
   };
 }
-
