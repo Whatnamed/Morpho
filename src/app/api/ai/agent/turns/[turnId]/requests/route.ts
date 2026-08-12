@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 
 import {
   acquireAgentTurnRequest,
-  checkAgentTurnClaimSettlementAvailability,
+  checkAgentTurnSettlementAvailability,
   settleAgentTurnRequest,
   type AcquireAgentTurnRequestResult,
-  type AgentTurnClaimSettlementAvailability,
+  type AgentTurnSettlementAvailability,
   type SettleAgentTurnRequestResult
 } from "@/server/ai/agentTurnJournal";
 import {
@@ -48,7 +48,7 @@ export const runtime = "nodejs";
 export type AgentTurnRequestRouteDependencies = Readonly<{
   authenticate: () => Promise<AiRouteUserAccessResult>;
   loadConfig: () => OpenAiCompatibleConfigResult;
-  checkPrivilegedSettlement: () => AgentTurnClaimSettlementAvailability;
+  checkPrivilegedSettlement: () => AgentTurnSettlementAvailability;
   acquireRequest: typeof acquireAgentTurnRequest;
   settleRequest: typeof settleAgentTurnRequest;
   streamProvider: typeof streamOpenAiCompatibleResponse;
@@ -60,7 +60,7 @@ type RouteContext = { params: Promise<{ turnId: string }> };
 const defaultDependencies: AgentTurnRequestRouteDependencies = {
   authenticate: requireAiRouteUser,
   loadConfig: () => loadOpenAiCompatibleConfig(process.env),
-  checkPrivilegedSettlement: checkAgentTurnClaimSettlementAvailability,
+  checkPrivilegedSettlement: checkAgentTurnSettlementAvailability,
   acquireRequest: acquireAgentTurnRequest,
   settleRequest: settleAgentTurnRequest,
   streamProvider: streamOpenAiCompatibleResponse

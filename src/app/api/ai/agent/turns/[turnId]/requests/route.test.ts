@@ -64,7 +64,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
       status: "denied" as const,
       httpStatus: 503 as const,
       code: "privileged_journal_unavailable",
-      error: "claims settlement unavailable",
+      error: "settlement unavailable",
       recoverable: false as const
     }));
     const handler = makeHandler(store, provider, { checkPrivilegedSettlement: settleCheck });
@@ -311,7 +311,11 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
       toolCallIds: ["call-a"]
     }));
     expect(store.snapshot.status).toBe("awaitingNextRequest");
-    expect(store.settle).toHaveBeenCalledWith(expect.objectContaining({ status: "awaitingNextRequest" }));
+    expect(store.settle).toHaveBeenCalledWith(expect.objectContaining({
+      actorUserId: "user-a",
+      status: "awaitingNextRequest",
+      toolClaims: []
+    }));
     expect(JSON.stringify(store)).not.toContain("toolResult");
   });
 
@@ -366,7 +370,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
       status: "denied",
       httpStatus: 503,
       code: "privileged_journal_unavailable",
-      error: "claims settlement unavailable",
+      error: "settlement unavailable",
       recoverable: false
     }));
 

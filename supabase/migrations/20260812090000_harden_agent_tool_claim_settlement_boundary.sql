@@ -1,14 +1,19 @@
--- F02: provider-derived Tool claims must cross a server-only authority boundary.
--- The old claims RPC remains the state-machine implementation, but is no longer
--- callable by browser roles (including service_role). The wrapper below is the
--- only privileged entry point and re-checks the authenticated actor explicitly.
+-- F02: every Provider settlement must cross one server-only authority boundary.
+-- The existing routines remain the bounded state-machine implementation, but
+-- are no longer callable by browser roles. The wrapper below is the only
+-- privileged entry point and re-checks the authenticated actor explicitly.
+
+revoke all on function public.settle_agent_turn_request(
+  uuid, text, text, integer, text, text
+)
+from public, anon, authenticated, service_role;
 
 revoke all on function public.settle_agent_turn_request_with_action_claims(
   uuid, text, text, integer, text, text, jsonb
 )
 from public, anon, authenticated, service_role;
 
-create or replace function public.settle_agent_turn_request_with_verified_action_claims(
+create or replace function public.settle_agent_turn_request_with_verified_authority(
   p_actor_user_id uuid,
   p_server_turn_id uuid,
   p_local_project_id text,
@@ -93,12 +98,12 @@ begin
 end;
 $$;
 
-revoke all on function public.settle_agent_turn_request_with_verified_action_claims(
+revoke all on function public.settle_agent_turn_request_with_verified_authority(
   uuid, uuid, text, text, integer, text, text, jsonb
 )
 from public, anon, authenticated, service_role;
 
-grant execute on function public.settle_agent_turn_request_with_verified_action_claims(
+grant execute on function public.settle_agent_turn_request_with_verified_authority(
   uuid, uuid, text, text, integer, text, text, jsonb
 )
 to service_role;

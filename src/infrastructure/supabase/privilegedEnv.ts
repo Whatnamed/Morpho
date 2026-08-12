@@ -16,7 +16,7 @@ export function loadSupabasePrivilegedConfig(
   const url = env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const secretKey = env.SUPABASE_SECRET_KEY?.trim();
 
-  if (!url || !secretKey) {
+  if (!url || !secretKey || secretKey.startsWith("sb_publishable_")) {
     return {
       status: "failed",
       reason: "Supabase privileged server configuration is unavailable."

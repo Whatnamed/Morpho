@@ -7,8 +7,7 @@ import {
   createAgentTurnJournalForClient,
   fromDatabaseStatus,
   readAgentTurnJournalForClient,
-  settleAgentTurnRequestForClient,
-  settleAgentTurnRequestWithVerifiedClaimsForClient,
+  settleAgentTurnRequestWithVerifiedAuthorityForClient,
   toDatabaseStatus,
   type AgentTurnJournalClient
 } from "./agentTurnJournal";
@@ -241,7 +240,7 @@ describe("A+ Server Turn Journal service", () => {
     }
   );
 
-  it("settles only the matching latest Request and maps the explicit status vocabulary", async () => {
+  it("settles an ordinary Provider terminal state through the verified server authority", async () => {
     const mock = client(row({
       decision: "updated",
       status_name: "externally_completed",
@@ -250,7 +249,8 @@ describe("A+ Server Turn Journal service", () => {
       provider_call_count: 1,
       terminal_at: "2026-07-29T01:01:00.000Z"
     }));
-    await expect(settleAgentTurnRequestForClient(mock, {
+    await expect(settleAgentTurnRequestWithVerifiedAuthorityForClient(mock, {
+      actorUserId: "019fa9c0-7b9d-7a20-8f31-2c676296c9d1",
       serverTurnId: TURN_ID,
       localProjectId: "project-a",
       requestId: "request-a",
@@ -261,13 +261,15 @@ describe("A+ Server Turn Journal service", () => {
       replayed: false,
       snapshot: { status: "externallyCompleted" }
     });
-    expect(mock.rpc).toHaveBeenCalledWith("settle_agent_turn_request", {
+    expect(mock.rpc).toHaveBeenCalledWith("settle_agent_turn_request_with_verified_authority", {
+      p_actor_user_id: "019fa9c0-7b9d-7a20-8f31-2c676296c9d1",
       p_server_turn_id: TURN_ID,
       p_local_project_id: "project-a",
       p_request_id: "request-a",
       p_step_sequence: 1,
       p_status: "externally_completed",
-      p_failure_code: null
+      p_failure_code: null,
+      p_claims: []
     });
   });
 
@@ -281,7 +283,8 @@ describe("A+ Server Turn Journal service", () => {
       terminal_at: "2026-07-29T01:01:00.000Z",
       failure_code: "provider_http_503"
     }));
-    await expect(settleAgentTurnRequestForClient(mock, {
+    await expect(settleAgentTurnRequestWithVerifiedAuthorityForClient(mock, {
+      actorUserId: "019fa9c0-7b9d-7a20-8f31-2c676296c9d1",
       serverTurnId: TURN_ID,
       localProjectId: "project-a",
       requestId: "request-a",
@@ -304,7 +307,7 @@ describe("A+ Server Turn Journal service", () => {
     }));
     const claimHash = "b".repeat(64);
 
-    await expect(settleAgentTurnRequestWithVerifiedClaimsForClient(mock, {
+    await expect(settleAgentTurnRequestWithVerifiedAuthorityForClient(mock, {
       actorUserId: "019fa9c0-7b9d-7a20-8f31-2c676296c9d1",
       serverTurnId: TURN_ID,
       localProjectId: "project-a",
@@ -322,7 +325,7 @@ describe("A+ Server Turn Journal service", () => {
       snapshot: { status: "awaitingNextRequest" }
     });
     expect(mock.rpc).toHaveBeenCalledWith(
-      "settle_agent_turn_request_with_verified_action_claims",
+      "settle_agent_turn_request_with_verified_authority",
       expect.objectContaining({
         p_actor_user_id: "019fa9c0-7b9d-7a20-8f31-2c676296c9d1",
         p_claims: [{
@@ -332,6 +335,30 @@ describe("A+ Server Turn Journal service", () => {
           maxActionCount: 3
         }]
       })
+    );
+  });
+
+  it("allows a local-only Tool continuation without paid-action claims", async () => {
+    const mock = client(row({
+      decision: "updated",
+      status_name: "awaiting_next_request",
+      latest_request_id: "request-a",
+      latest_step_sequence: 1,
+      provider_call_count: 1
+    }));
+
+    await expect(settleAgentTurnRequestWithVerifiedAuthorityForClient(mock, {
+      actorUserId: "019fa9c0-7b9d-7a20-8f31-2c676296c9d1",
+      serverTurnId: TURN_ID,
+      localProjectId: "project-a",
+      requestId: "request-a",
+      stepSequence: 1,
+      status: "awaitingNextRequest",
+      toolClaims: []
+    })).resolves.toMatchObject({ status: "ok", snapshot: { status: "awaitingNextRequest" } });
+    expect(mock.rpc).toHaveBeenCalledWith(
+      "settle_agent_turn_request_with_verified_authority",
+      expect.objectContaining({ p_claims: [] })
     );
   });
 
@@ -455,12 +482,15 @@ describe("A+ Server Turn Journal SQL contract", () => {
     expect(sql).toContain("bounded_failure_code text");
   });
 
-  it("moves Provider claim settlement behind a service_role-only verified-actor wrapper", () => {
+  it("moves every Provider settlement behind one service_role-only verified-actor wrapper", () => {
     const sql = readClaimBoundaryMigration();
     expect(sql).toContain(
       "revoke all on function public.settle_agent_turn_request_with_action_claims(\n  uuid, text, text, integer, text, text, jsonb\n)\nfrom public, anon, authenticated, service_role"
     );
-    expect(sql).toContain("create or replace function public.settle_agent_turn_request_with_verified_action_claims");
+    expect(sql).toContain(
+      "revoke all on function public.settle_agent_turn_request(\n  uuid, text, text, integer, text, text\n)\nfrom public, anon, authenticated, service_role"
+    );
+    expect(sql).toContain("create or replace function public.settle_agent_turn_request_with_verified_authority");
     expect(sql).toContain("p_actor_user_id uuid");
     expect(sql).toContain("journal.user_id = p_actor_user_id");
     expect(sql).toContain("journal.local_project_id = p_local_project_id");
@@ -469,9 +499,10 @@ describe("A+ Server Turn Journal SQL contract", () => {
     expect(sql).toContain("security definer");
     expect(sql).toContain("set search_path = ''");
     expect(sql).toContain(
-      "grant execute on function public.settle_agent_turn_request_with_verified_action_claims(\n  uuid, uuid, text, text, integer, text, text, jsonb\n)\nto service_role"
+      "grant execute on function public.settle_agent_turn_request_with_verified_authority(\n  uuid, uuid, text, text, integer, text, text, jsonb\n)\nto service_role"
     );
     expect(sql).not.toMatch(/grant execute[\s\S]*settle_agent_turn_request_with_action_claims[\s\S]*to authenticated/i);
+    expect(sql).not.toMatch(/grant execute[\s\S]*settle_agent_turn_request\([\s\S]*to authenticated/i);
     expect(sql).not.toMatch(/create table|runtime b|agent_turn_leases/i);
   });
 });
