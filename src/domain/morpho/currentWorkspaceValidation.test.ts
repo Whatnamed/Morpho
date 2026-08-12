@@ -443,7 +443,12 @@ describe("current workspace deep validation", () => {
     }
   });
 
-  it("normalizes retired proposal lineage aliases on read but rejects them at the current validation boundary", () => {
+  it.each([
+    ["variant", "derivedFromDirection"],
+    ["split", "splitFromDirection"],
+    ["merge", "mergedFromDirection"],
+    ["revision", "supersedesDirection"]
+  ] as const)("normalizes retired proposal lineage alias %s on read but rejects it at the current validation boundary", (alias, canonical) => {
     const stored = createObjectContractWorkspace() as unknown as Record<string, unknown>;
     const proposals = stored.artifactProposals as Record<string, unknown>;
     proposals.proposal = {
@@ -469,7 +474,7 @@ describe("current workspace deep validation", () => {
         risks: [],
         openQuestions: [],
         basedOnDirectionId: "direction",
-        lineageKind: "split"
+        lineageKind: alias
       }]
     };
 
@@ -486,7 +491,7 @@ describe("current workspace deep validation", () => {
     const proposal = parsed.workspace.artifactProposals.proposal;
     expect(proposal?.type).toBe("conceptDirection");
     if (proposal?.type !== "conceptDirection") throw new Error("Expected concept-direction proposal.");
-    expect(proposal.directions[0]?.lineageKind).toBe("splitFromDirection");
+    expect(proposal.directions[0]?.lineageKind).toBe(canonical);
     expect(validateCurrentMorphoWorkspace(parsed.workspace)).toMatchObject({ status: "ok" });
   });
 });

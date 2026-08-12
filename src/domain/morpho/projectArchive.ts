@@ -25,6 +25,7 @@ import type {
   VisualBranchRecord
 } from "./types";
 import { validateCurrentMorphoWorkspace } from "./currentWorkspaceValidation";
+import { canonicalizeEditableBackupWorkspaceCompatibility } from "./editableBackupCompatibility";
 import { migrateWorkspaceToCurrentSchema } from "./workspace";
 
 export const HUMAN_READABLE_ARCHIVE_FORMAT = "morpho-human-readable-archive";
@@ -684,7 +685,7 @@ function validateBackupWorkspaceDeep(
   workspaceSnapshot: Record<string, unknown>
 ): ProjectArchiveDiagnostic[] {
   const portableAssets = isRecord(workspaceSnapshot.assets) ? workspaceSnapshot.assets : {};
-  const candidate: Record<string, unknown> = {
+  const candidate = canonicalizeEditableBackupWorkspaceCompatibility({
     ...workspaceSnapshot,
     assets: Object.fromEntries(
       Object.entries(portableAssets).map(([assetId, asset]) => [
@@ -692,7 +693,7 @@ function validateBackupWorkspaceDeep(
         isRecord(asset) ? { ...asset, storageKey: `validation:${assetId}` } : asset
       ])
     )
-  };
+  });
 
   if (candidate.schemaVersion === 17) {
     const direct = validateCurrentMorphoWorkspace(candidate);

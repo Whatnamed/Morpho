@@ -535,6 +535,122 @@ describe("project bundle client", () => {
   });
 
   test.each([
+    ["variant", "derivedFromDirection"],
+    ["split", "splitFromDirection"],
+    ["merge", "mergedFromDirection"],
+    ["revision", "supersedesDirection"]
+  ] as const)("restores legacy lineage alias %s and persists %s", async (alias, canonical) => {
+    const workspace = createBundleFixtureWorkspace();
+    addLineageProposal(workspace, "derivedFromDirection");
+    const blobStore = new TrackingMemoryBlobStore({
+      "blob:asset-cover": "cover-bytes",
+      "blob:asset-brief": "brief-bytes"
+    });
+    const storage = createMemoryStorage();
+    const exported = await exportEditableProjectBackupBundle(workspace, {
+      blobStore,
+      createdAt: NOW,
+      chat: "full",
+      projectContinuity: "current"
+    });
+    expect(exported.status).toBe("ok");
+    if (exported.status !== "ok") throw new Error("Expected a valid backup fixture.");
+
+    const legacyFile = rewriteBackupManifest(exported.file, (snapshot) => {
+      setLineageKind(snapshot, alias);
+    });
+    const inspected = await inspectEditableProjectBackupBundle(await legacyFile);
+    expect(inspected.status).toBe("ok");
+    if (inspected.status !== "ok") throw new Error("Expected the legacy backup to pass inspection.");
+
+    blobStore.putCalls.length = 0;
+    const restored = await restoreEditableProjectBackupBundle(inspected, {
+      blobStore,
+      storage,
+      now: () => NOW,
+      createProjectId: () => `project-legacy-${alias}`,
+      createRuntimeStorageKey: (assetId, projectId) => `blob:${projectId}:${assetId}`
+    });
+
+    expect(restored.status).toBe("ok");
+    if (restored.status !== "ok") throw new Error("Expected the legacy backup to restore.");
+    expect(lineageKindFromWorkspace(restored.workspace)).toBe(canonical);
+    const persisted = loadProjectWorkspace(storage, `project-legacy-${alias}`);
+    expect(persisted.status).toBe("ok");
+    if (persisted.status === "ok") {
+      expect(lineageKindFromWorkspace(persisted.workspace)).toBe(canonical);
+    }
+  });
+
+  test("rejects a legacy lineage alias combined with another malformed required field before any restore write", async () => {
+    const workspace = createBundleFixtureWorkspace();
+    addLineageProposal(workspace, "derivedFromDirection");
+    workspace.objects.delivery = {
+      id: "delivery",
+      type: "delivery",
+      title: "Delivery",
+      summary: "Restore validation fixture",
+      createdBy: "user",
+      visibility: "active",
+      format: "board",
+      sections: [{
+        id: "hero",
+        title: "Hero",
+        order: 0,
+        referenceIds: [],
+        createdAt: NOW,
+        updatedAt: NOW
+      }],
+      gaps: [],
+      references: []
+    };
+    const blobStore = new TrackingMemoryBlobStore({
+      "blob:asset-cover": "cover-bytes",
+      "blob:asset-brief": "brief-bytes"
+    });
+    const storage = createMemoryStorage();
+    const exported = await exportEditableProjectBackupBundle(workspace, {
+      blobStore,
+      createdAt: NOW,
+      chat: "full",
+      projectContinuity: "current"
+    });
+    expect(exported.status).toBe("ok");
+    if (exported.status !== "ok") throw new Error("Expected a valid backup fixture.");
+    const inspected = await inspectEditableProjectBackupBundle(exported.file);
+    expect(inspected.status).toBe("ok");
+    if (inspected.status !== "ok") throw new Error("Expected an inspected backup fixture.");
+
+    const snapshot = inspected.backup.manifest.workspaceSnapshot as unknown as Record<string, unknown>;
+    setLineageKind(snapshot, "split");
+    const objects = snapshot.objects as Record<string, Record<string, unknown>>;
+    const sections = objects.delivery.sections as Array<Record<string, unknown>>;
+    delete sections[0]?.createdAt;
+    blobStore.putCalls.length = 0;
+
+    const restored = await restoreEditableProjectBackupBundle(inspected, {
+      blobStore,
+      storage,
+      now: () => NOW,
+      createProjectId: () => "project-invalid-legacy",
+      createRuntimeStorageKey: (assetId, projectId) => `blob:${projectId}:${assetId}`
+    });
+
+    expect(restored.status).toBe("failed");
+    if (restored.status === "failed") {
+      expect(restored.diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          code: "invalid_workspace_snapshot",
+          path: "workspaceSnapshot.objects.delivery.sections.0.createdAt"
+        })
+      ]));
+    }
+    expect(blobStore.putCalls).toEqual([]);
+    expect(storage.getItem(getProjectWorkspaceStorageKey("project-invalid-legacy"))).toBeNull();
+    expect(storage.getItem(CATALOG_STORAGE_KEY)).toBeNull();
+  });
+
+  test.each([
     {
       label: "nested object container",
       tamper: (snapshot: Record<string, unknown>) => {
@@ -747,6 +863,68 @@ class MemoryBlobStore implements BlobStore {
   async delete(storageKey: string) {
     this.blobs.delete(storageKey);
   }
+}
+
+function addLineageProposal(
+  workspace: MorphoWorkspace,
+  lineageKind: "derivedFromDirection" | "splitFromDirection" | "mergedFromDirection" | "supersedesDirection"
+): void {
+  workspace.artifactProposals["legacy-lineage"] = {
+    id: "legacy-lineage",
+    type: "conceptDirection",
+    status: "pending",
+    sourceSnapshots: [],
+    sourceObjectIds: [],
+    citationIds: [],
+    createdAt: NOW,
+    title: "Legacy direction proposal",
+    summary: "Compatibility fixture",
+    applicationMode: "create",
+    parentDirectionIds: [],
+    directions: [{
+      title: "Legacy direction",
+      summary: "Compatibility fixture",
+      conceptStatement: "Preserve a retired lineage value.",
+      keywords: [],
+      strategy: "Restore without widening validation.",
+      differentiators: [],
+      visualSignals: [],
+      risks: [],
+      openQuestions: [],
+      lineageKind
+    }]
+  };
+}
+
+async function rewriteBackupManifest(
+  file: File,
+  rewrite: (snapshot: Record<string, unknown>) => void
+): Promise<File> {
+  const files = unzipSync(new Uint8Array(await file.arrayBuffer()));
+  const manifest = JSON.parse(strFromU8(files["backup-manifest.json"])) as Record<string, unknown>;
+  rewrite(manifest.workspaceSnapshot as Record<string, unknown>);
+  const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest));
+  files["backup-manifest.json"] = manifestBytes;
+  const envelope = JSON.parse(strFromU8(files["bundle.json"])) as {
+    files: Array<{ path: string; byteLength?: number }>;
+  };
+  const descriptor = envelope.files.find((entry) => entry.path === "backup-manifest.json");
+  if (!descriptor) throw new Error("Expected the backup manifest descriptor.");
+  descriptor.byteLength = manifestBytes.byteLength;
+  files["bundle.json"] = new TextEncoder().encode(JSON.stringify(envelope));
+  return new File([zipSync(files)], "legacy-lineage-backup.zip", { type: "application/zip" });
+}
+
+function setLineageKind(snapshot: Record<string, unknown>, lineageKind: string): void {
+  const proposals = snapshot.artifactProposals as Record<string, Record<string, unknown>>;
+  const directions = proposals["legacy-lineage"].directions as Array<Record<string, unknown>>;
+  if (!directions[0]) throw new Error("Expected a lineage proposal direction.");
+  directions[0].lineageKind = lineageKind;
+}
+
+function lineageKindFromWorkspace(workspace: MorphoWorkspace): unknown {
+  const proposal = workspace.artifactProposals["legacy-lineage"];
+  return proposal?.type === "conceptDirection" ? proposal.directions[0]?.lineageKind : undefined;
 }
 
 class TrackingMemoryBlobStore extends MemoryBlobStore {

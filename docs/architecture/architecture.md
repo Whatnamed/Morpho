@@ -510,7 +510,8 @@ Bundle and restore layer:
 - editable backup bundle output includes only the files required for restore and is blocked when required binaries are missing or mismatched;
 - restore writes every new binary before writing workspace/catalog state, removes newly written blobs on failure, creates a new project id and new runtime storage keys, and never merges into the source project;
 - editable-backup inspection and restore planning share `validateCurrentMorphoWorkspace(...)`: current v17
-  snapshots are deep-validated before tolerant normalization, historical snapshots use the existing migration
+  snapshots first canonicalize only the four retired Concept Direction proposal-lineage aliases, then are
+  deep-validated before tolerant normalization; every other malformed current field still fails closed. Historical snapshots use the existing migration
   chain and then the same current validator, and a restore-stage revalidation runs before any Blob/localStorage
   write. Validation covers bounded structure, all Morpho object variants, finite canvas geometry, key/id and
   revision ownership, and critical live references while preserving stable delivery snapshots whose source was

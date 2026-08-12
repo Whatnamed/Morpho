@@ -11,6 +11,7 @@ import {
 import type { AssetId, AssetRecord, KeyConclusionCategory, MorphoWorkspace } from "./types";
 import { migrateWorkspaceToCurrentSchema } from "./workspace";
 import { validateCurrentMorphoWorkspace } from "./currentWorkspaceValidation";
+import { canonicalizeEditableBackupWorkspaceCompatibility } from "./editableBackupCompatibility";
 
 export const PROJECT_BUNDLE_FORMAT = "morpho-project-bundle";
 export const PROJECT_BUNDLE_VERSION = "1";
@@ -267,10 +268,30 @@ export function planEditableProjectBackupRestore(
     }
   }
 
-  const migrated = migrateWorkspaceToCurrentSchema({
-    ...manifest.workspaceSnapshot,
+  const compatibleSnapshot = canonicalizeEditableBackupWorkspaceCompatibility(
+    manifest.workspaceSnapshot as unknown as Record<string, unknown>
+  );
+  const restoreSourceCandidate: Record<string, unknown> = {
+    ...compatibleSnapshot,
     assets: restoredAssets
-  });
+  };
+  if (restoreSourceCandidate.schemaVersion === 17) {
+    const directValidation = validateCurrentMorphoWorkspace(restoreSourceCandidate);
+    if (directValidation.status !== "ok") {
+      return {
+        status: "failed",
+        reason: "Editable backup workspace failed deep current-schema validation.",
+        diagnostics: directValidation.issues.slice(0, 16).map((issue) => ({
+          code: "invalid_workspace_snapshot" as const,
+          severity: "error" as const,
+          message: issue.message,
+          path: `workspaceSnapshot.${issue.path.replace(/^workspace\.?/, "")}`.replace(/\.$/, "")
+        }))
+      };
+    }
+  }
+
+  const migrated = migrateWorkspaceToCurrentSchema(restoreSourceCandidate);
   if (migrated.status !== "ok") {
     return {
       status: "failed",
