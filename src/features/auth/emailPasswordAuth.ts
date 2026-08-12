@@ -2,6 +2,7 @@ export type EmailPasswordAuthMode = "sign-in" | "sign-up";
 
 type AuthError = {
   message: string;
+  code?: string;
 };
 
 type AuthResponse = {
@@ -30,8 +31,11 @@ export type EmailPasswordAuthInput = {
 
 export type EmailPasswordAuthOutcome =
   | { status: "authenticated" }
-  | { status: "confirmation-required" }
+  | { status: "signup-submitted"; message: string }
   | { status: "error"; message: string };
+
+export const GENERIC_SIGNUP_MESSAGE =
+  "如果该邮箱可以用于注册或需要进一步确认，请检查邮箱；你也可以尝试登录。";
 
 export async function submitEmailPasswordAuth(
   client: EmailPasswordAuthClient,
@@ -49,18 +53,21 @@ export async function submitEmailPasswordAuth(
       : await client.auth.signUp({ email, password: input.password });
 
   if (response.error) {
+    if (input.mode === "sign-up" && isExistingIdentitySignupError(response.error)) {
+      return { status: "signup-submitted", message: GENERIC_SIGNUP_MESSAGE };
+    }
     return { status: "error", message: mapAuthError(response.error.message, input.mode) };
-  }
-
-  if (input.mode === "sign-up" && response.data.user?.identities?.length === 0) {
-    return { status: "error", message: "这个邮箱已经注册，请直接登录。" };
   }
 
   if (response.data.session) {
     return { status: "authenticated" };
   }
 
-  return { status: "confirmation-required" };
+  if (input.mode === "sign-up") {
+    return { status: "signup-submitted", message: GENERIC_SIGNUP_MESSAGE };
+  }
+
+  return { status: "error", message: "服务暂时不可用，请稍后重试。" };
 }
 
 export function navigateAfterAuthentication(navigate: (path: string) => void, nextPath: string): void {
@@ -94,12 +101,12 @@ function validateEmailPasswordAuth(
 
 function mapAuthError(message: string, mode: EmailPasswordAuthMode): string {
   const normalized = message.toLowerCase();
-  if (mode === "sign-up" && (normalized.includes("already") || normalized.includes("registered") || normalized.includes("exists"))) {
-    return "这个邮箱已经注册，请直接登录。";
-  }
-
   if (normalized.includes("password") && (normalized.includes("weak") || normalized.includes("least") || normalized.includes("short"))) {
     return "密码不符合 Supabase 当前的安全要求，请调整后重试。";
+  }
+
+  if (mode === "sign-up" && normalized.includes("email") && (normalized.includes("invalid") || normalized.includes("format"))) {
+    return "邮箱格式无效，请检查后重试。";
   }
 
   if (mode === "sign-in" && (normalized.includes("invalid") || normalized.includes("credential") || normalized.includes("password"))) {
@@ -111,4 +118,11 @@ function mapAuthError(message: string, mode: EmailPasswordAuthMode): string {
   }
 
   return "服务暂时不可用，请稍后重试。";
+}
+
+function isExistingIdentitySignupError(error: AuthError): boolean {
+  const code = error.code?.trim().toLowerCase();
+  if (code === "user_already_exists" || code === "email_exists") return true;
+  const message = error.message.toLowerCase();
+  return message.includes("already") && (message.includes("registered") || message.includes("exists"));
 }

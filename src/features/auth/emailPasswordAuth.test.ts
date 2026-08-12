@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   isAuthSubmissionDisabled,
+  GENERIC_SIGNUP_MESSAGE,
   navigateAfterAuthentication,
   submitEmailPasswordAuth,
   type EmailPasswordAuthClient
@@ -65,22 +66,28 @@ describe("submitEmailPasswordAuth", () => {
     expect(client.auth.signUp).not.toHaveBeenCalled();
   });
 
-  it("reports the email-confirmation configuration fallback when signup has no session", async () => {
-    const client = createClient({
+  it("returns the same signup envelope for a new account awaiting confirmation and an obfuscated existing account", async () => {
+    const newAccountClient = createClient({
       signUp: vi.fn().mockResolvedValue({ data: { session: null, user: { identities: [{}] } }, error: null })
     });
+    const obfuscatedExistingClient = createClient({
+      signUp: vi.fn().mockResolvedValue({ data: { session: null, user: { identities: [] } }, error: null })
+    });
+    const input = {
+      mode: "sign-up" as const,
+      email: "tester@example.com",
+      password: "password",
+      passwordConfirmation: "password"
+    };
 
-    await expect(
-      submitEmailPasswordAuth(client, {
-        mode: "sign-up",
-        email: "tester@example.com",
-        password: "password",
-        passwordConfirmation: "password"
-      })
-    ).resolves.toEqual({ status: "confirmation-required" });
+    const newAccountOutcome = await submitEmailPasswordAuth(newAccountClient, input);
+    const existingAccountOutcome = await submitEmailPasswordAuth(obfuscatedExistingClient, input);
+
+    expect(newAccountOutcome).toEqual({ status: "signup-submitted", message: GENERIC_SIGNUP_MESSAGE });
+    expect(existingAccountOutcome).toEqual(newAccountOutcome);
   });
 
-  it("maps existing-email errors to a Chinese sign-in prompt", async () => {
+  it("normalizes an explicit existing-email error to the same signup envelope", async () => {
     const client = createClient({
       signUp: vi.fn().mockResolvedValue({ data: { session: null, user: null }, error: { message: "User already registered" } })
     });
@@ -92,7 +99,46 @@ describe("submitEmailPasswordAuth", () => {
         password: "password",
         passwordConfirmation: "password"
       })
-    ).resolves.toEqual({ status: "error", message: "这个邮箱已经注册，请直接登录。" });
+    ).resolves.toEqual({ status: "signup-submitted", message: GENERIC_SIGNUP_MESSAGE });
+  });
+
+  it("normalizes alternate duplicate wording without relying on one provider message", async () => {
+    const client = createClient({
+      signUp: vi.fn().mockResolvedValue({
+        data: { session: null, user: null },
+        error: { message: "A user with this email address has already been registered" }
+      })
+    });
+
+    await expect(
+      submitEmailPasswordAuth(client, {
+        mode: "sign-up",
+        email: "tester@example.com",
+        password: "password",
+        passwordConfirmation: "password"
+      })
+    ).resolves.toEqual({ status: "signup-submitted", message: GENERIC_SIGNUP_MESSAGE });
+  });
+
+  it("keeps weak-password failures actionable without exposing account existence", async () => {
+    const client = createClient({
+      signUp: vi.fn().mockResolvedValue({
+        data: { session: null, user: null },
+        error: { message: "Password should be at least 8 characters", code: "weak_password" }
+      })
+    });
+
+    await expect(
+      submitEmailPasswordAuth(client, {
+        mode: "sign-up",
+        email: "tester@example.com",
+        password: "short",
+        passwordConfirmation: "short"
+      })
+    ).resolves.toEqual({
+      status: "error",
+      message: "密码不符合 Supabase 当前的安全要求，请调整后重试。"
+    });
   });
 });
 

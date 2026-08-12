@@ -53,8 +53,8 @@ export function LoginClient({ nextPath, configError }: LoginClientProps) {
           return;
         }
 
-        if (result.status === "confirmation-required") {
-          setError("账号已创建，但 Supabase 当前仍要求邮箱确认。请检查 Authentication 的 Confirm email 设置。");
+        if (result.status === "signup-submitted") {
+          setError(result.message);
           return;
         }
 
