@@ -22,6 +22,11 @@ import { resolveGrsImageResult } from "@/server/image/grsProvider";
 import { validateGrsImageRouteRequest } from "@/server/image/request";
 import { requireAiRouteUser, type AiRouteUserAccessResult } from "@/server/auth/aiAccess";
 import { hashAPlusExternalToolActionClaim } from "@/server/ai/agentTurnProviderRequest";
+import {
+  IMAGE_PROVIDER_CANCELLED,
+  IMAGE_PROVIDER_FAILED,
+  IMAGE_PROVIDER_UNAVAILABLE
+} from "@/server/ai/publicProviderError";
 
 type RouteContext = { params: Promise<{ turnId: string }> };
 
@@ -93,7 +98,11 @@ export function createAgentTurnImageActionPostHandler(
     const config = dependencies.loadConfig(process.env);
     if (config.status === "failed") {
       return NextResponse.json(
-        { error: config.reason, code: "image_provider_unavailable", recoverable: false },
+        {
+          error: IMAGE_PROVIDER_UNAVAILABLE.message,
+          code: IMAGE_PROVIDER_UNAVAILABLE.code,
+          recoverable: IMAGE_PROVIDER_UNAVAILABLE.recoverable
+        },
         { status: 503 }
       );
     }
@@ -156,7 +165,12 @@ export function createAgentTurnImageActionPostHandler(
         });
         if (settled.status === "denied") return journalDeniedResponse(settled);
         return NextResponse.json(
-          { error: result.reason, code: "image_cancelled", recoverable: false, action: settled.snapshot },
+          {
+            error: IMAGE_PROVIDER_CANCELLED.message,
+            code: IMAGE_PROVIDER_CANCELLED.code,
+            recoverable: IMAGE_PROVIDER_CANCELLED.recoverable,
+            action: settled.snapshot
+          },
           { status: 499 }
         );
       }
@@ -169,7 +183,12 @@ export function createAgentTurnImageActionPostHandler(
         });
         if (settled.status === "denied") return journalDeniedResponse(settled);
         return NextResponse.json(
-          { error: result.reason, code: "image_generation_failed", recoverable: false, action: settled.snapshot },
+          {
+            error: IMAGE_PROVIDER_FAILED.message,
+            code: IMAGE_PROVIDER_FAILED.code,
+            recoverable: IMAGE_PROVIDER_FAILED.recoverable,
+            action: settled.snapshot
+          },
           { status: 502 }
         );
       }

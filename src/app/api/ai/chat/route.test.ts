@@ -108,7 +108,11 @@ describe("AI chat route", () => {
     const response = await POST(makeRequest({ draft: "continue", messages: [], objectSummaries: [], attachments: [] }));
 
     expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toEqual({ error: "missing AI config" });
+    await expect(response.json()).resolves.toEqual({
+      error: "文本 AI 服务暂时不可用，请稍后重试。",
+      code: "provider_unavailable",
+      recoverable: false
+    });
     expect(guardAiRouteMock).not.toHaveBeenCalled();
     expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
   });
@@ -265,6 +269,31 @@ describe("AI chat route", () => {
       expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledOnce();
     }
   );
+
+  it("returns a stable public error envelope without upstream diagnostics", async () => {
+    const secretDiagnostic = "internal-host.local api_key=secret raw upstream body /private/path";
+    const { OpenAiCompatibleProviderError } = await import("@/server/ai/openaiCompatibleProvider");
+    streamOpenAiCompatibleResponseMock.mockRejectedValueOnce(
+      new OpenAiCompatibleProviderError(502, secretDiagnostic)
+    );
+
+    const response = await POST(makeRequest({
+      draft: "continue",
+      messages: [],
+      objectSummaries: [],
+      attachments: []
+    }));
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(body).toContain('"type":"error"');
+    expect(body).toContain('"code":"provider_http_502"');
+    expect(body).toContain('"recoverable":true');
+    expect(body).not.toContain(secretDiagnostic);
+    expect(body).not.toContain("internal-host.local");
+    expect(body).not.toContain("api_key=secret");
+    expect(body).not.toContain("/private/path");
+  });
 });
 
 function makeRequest(body: unknown): Request {

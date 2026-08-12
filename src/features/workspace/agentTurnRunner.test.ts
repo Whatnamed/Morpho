@@ -82,9 +82,11 @@ describe("A+ Agent turn runner", () => {
   });
 
   it("keeps a bounded stream failure detail in the failed assistant message", async () => {
+    const secretDiagnostic = "internal-host.local api_key=secret raw upstream body /private/path";
     const fixture = createFixture([{
       status: "externallyFailed",
-      externalErrorCode: "模型返回异常，本轮未完成。"
+      externalErrorCode: "provider_execution_failed",
+      externalErrorMessage: secretDiagnostic
     }]);
 
     await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
@@ -94,6 +96,8 @@ describe("A+ Agent turn runner", () => {
       status: "failed",
       agentTurnOutcome: "failedDuringProvider"
     });
+    expect(JSON.stringify(fixture.fake.getWorkspace())).not.toContain(secretDiagnostic);
+    expect(JSON.stringify(fixture.store.record ?? null)).not.toContain(secretDiagnostic);
   });
 
   it("keeps a successful local Tool effect when the Provider continuation fails", async () => {
@@ -105,6 +109,7 @@ describe("A+ Agent turn runner", () => {
       },
       { status: "externallyFailed" }
     ]);
+    fixture.input.draft = "创建研究分析。";
 
     await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
 
@@ -156,6 +161,7 @@ describe("A+ Agent turn runner", () => {
       toolCalls: [researchToolCall("call-confirm")]
     }]);
     fixture.input.agentTurnMode = "confirm";
+    fixture.input.draft = "创建研究分析，并在执行前向我确认。";
 
     await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
     expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
@@ -238,6 +244,7 @@ describe("A+ Agent turn runner", () => {
       toolCalls: [researchToolCall("call-confirm-collision")]
     }]);
     fixture.input.agentTurnMode = "confirm";
+    fixture.input.draft = "创建研究分析，并在执行前向我确认。";
 
     await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
     const occupiedHost: AgentTurnHost = {
@@ -360,6 +367,7 @@ describe("A+ Agent turn runner", () => {
       },
       { status: "externallyCompleted", outputText: "Search Receipt 已恢复。" }
     ]);
+    fixture.input.draft = "请联网搜索当前资料。";
     let running = true;
     const requestBodies: string[] = [];
     fixture.fake.setFetchRoute(
@@ -410,6 +418,7 @@ describe("A+ Agent turn runner", () => {
       },
       { status: "externallyCompleted", outputText: "Search 已从发送前快照恢复。" }
     ]);
+    fixture.input.draft = "请联网搜索当前资料。";
     const requestBodies: string[] = [];
     fixture.fake.setFetchRoute(
       `/api/ai/agent/turns/${TURN_ID}/actions/web-search`,
@@ -463,6 +472,7 @@ describe("A+ Agent turn runner", () => {
       },
       { status: "externallyCompleted", outputText: "研究草案已完成。" }
     ]);
+    fixture.input.draft = "请联网搜索并创建研究分析。";
     fixture.fake.setFetchRoute(
       `/api/ai/agent/turns/${TURN_ID}/actions/web-search`,
       () => Response.json({
@@ -727,6 +737,7 @@ describe("A+ Agent turn runner", () => {
     ], {
       persistenceStates: [savedPersistence(), failedPersistence()]
     });
+    fixture.input.draft = "创建研究分析。";
 
     await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
 
@@ -748,6 +759,7 @@ type Script =
       outputText?: string;
       toolCalls?: readonly APlusToolCall[];
       externalErrorCode?: string;
+      externalErrorMessage?: string;
     }>;
 
 class CoordinatorHostFake implements AgentTurnCoordinatorHost {
@@ -821,7 +833,9 @@ class CoordinatorHostFake implements AgentTurnCoordinatorHost {
             type: "externalError",
             requestId: input.requestId,
             stepSequence: input.stepSequence,
-            code: script.externalErrorCode
+            code: script.externalErrorCode,
+            message: script.externalErrorMessage ?? "文本 AI 服务暂时不可用，请稍后重试。",
+            recoverable: true
           });
         }
         this.snapshot = snapshotFor(

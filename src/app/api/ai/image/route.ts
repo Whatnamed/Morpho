@@ -5,6 +5,11 @@ import { resolveGrsImageResult } from "@/server/image/grsProvider";
 import { validateGrsImageRouteRequest } from "@/server/image/request";
 import { aiAccessDeniedResponse, guardAiRoute, requireAiRouteUser } from "@/server/auth/aiAccess";
 import { readBoundedJsonBody } from "@/server/http/boundedJsonBody";
+import {
+  IMAGE_PROVIDER_CANCELLED,
+  IMAGE_PROVIDER_FAILED,
+  IMAGE_PROVIDER_UNAVAILABLE
+} from "@/server/ai/publicProviderError";
 
 export const runtime = "nodejs";
 const MAX_IMAGE_REQUEST_BODY_BYTES = 36 * 1024 * 1024;
@@ -27,7 +32,14 @@ export async function POST(request: Request) {
 
   const config = loadGrsImageConfig(process.env);
   if (config.status === "failed") {
-    return NextResponse.json({ error: config.reason }, { status: 503 });
+    return NextResponse.json(
+      {
+        error: IMAGE_PROVIDER_UNAVAILABLE.message,
+        code: IMAGE_PROVIDER_UNAVAILABLE.code,
+        recoverable: IMAGE_PROVIDER_UNAVAILABLE.recoverable
+      },
+      { status: 503 }
+    );
   }
 
   const access = await guardAiRoute("image");
@@ -41,11 +53,25 @@ export async function POST(request: Request) {
     });
 
     if (result.status === "cancelled") {
-      return NextResponse.json({ error: result.reason }, { status: 499 });
+      return NextResponse.json(
+        {
+          error: IMAGE_PROVIDER_CANCELLED.message,
+          code: IMAGE_PROVIDER_CANCELLED.code,
+          recoverable: IMAGE_PROVIDER_CANCELLED.recoverable
+        },
+        { status: 499 }
+      );
     }
 
     if (result.status === "failed") {
-      return NextResponse.json({ error: result.reason }, { status: 502 });
+      return NextResponse.json(
+        {
+          error: IMAGE_PROVIDER_FAILED.message,
+          code: IMAGE_PROVIDER_FAILED.code,
+          recoverable: IMAGE_PROVIDER_FAILED.recoverable
+        },
+        { status: 502 }
+      );
     }
 
     return new Response(result.blob, {
@@ -58,6 +84,13 @@ export async function POST(request: Request) {
       }
     });
   } catch {
-    return NextResponse.json({ error: "GrsAI 图像任务失败，请检查网络、模型配置或稍后重试。" }, { status: 502 });
+    return NextResponse.json(
+      {
+        error: IMAGE_PROVIDER_FAILED.message,
+        code: IMAGE_PROVIDER_FAILED.code,
+        recoverable: IMAGE_PROVIDER_FAILED.recoverable
+      },
+      { status: 502 }
+    );
   }
 }

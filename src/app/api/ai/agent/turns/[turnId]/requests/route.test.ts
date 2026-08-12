@@ -442,13 +442,21 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
     expect(store.snapshot.status).toBe("externallyCancelled");
   });
 
-  it("records only a bounded failure code when Provider execution fails", async () => {
+  it("exposes and records only a stable public envelope when Provider execution fails", async () => {
     const store = new FakeJournal();
+    const secretDiagnostic = "internal-host.local api_key=secret raw upstream body /private/path";
     const provider = vi.fn(async () => {
-      throw new Error("raw upstream body must not be stored");
+      throw new Error(secretDiagnostic);
     });
     const response = await call(makeHandler(store, provider), validBody());
-    const events = parseSse(await response.text());
+    const responseBody = await response.text();
+    const events = parseSse(responseBody);
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "externalError",
+      code: "provider_execution_failed",
+      message: "文本 AI 服务暂时不可用，请稍后重试。",
+      recoverable: true
+    }));
     expect(events).toContainEqual(expect.objectContaining({
       type: "serverStatus",
       status: "externallyFailed"
@@ -457,7 +465,9 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
       status: "externallyFailed",
       failureCode: "provider_execution_failed"
     });
-    expect(JSON.stringify(store.snapshot)).not.toContain("raw upstream body");
+    expect(responseBody).not.toContain(secretDiagnostic);
+    expect(responseBody).not.toContain("api_key=secret");
+    expect(JSON.stringify(store.snapshot)).not.toContain(secretDiagnostic);
   });
 
   it.each([

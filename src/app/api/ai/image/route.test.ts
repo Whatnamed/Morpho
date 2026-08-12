@@ -74,7 +74,11 @@ describe("AI image route auth guard", () => {
     );
 
     expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toEqual({ error: "missing image config" });
+    await expect(response.json()).resolves.toEqual({
+      error: "图像服务暂时不可用，请稍后重试。",
+      code: "image_provider_unavailable",
+      recoverable: false
+    });
     expect(guardAiRouteMock).not.toHaveBeenCalled();
     expect(resolveGrsImageResultMock).not.toHaveBeenCalled();
   });
@@ -134,5 +138,27 @@ describe("AI image route auth guard", () => {
     await expect(response.json()).resolves.toMatchObject({ code: "body_too_large" });
     expect(guardAiRouteMock).not.toHaveBeenCalled();
     expect(resolveGrsImageResultMock).not.toHaveBeenCalled();
+  });
+
+  it("does not expose an upstream image task failure reason", async () => {
+    const secretReason = "internal-host.local api_key=secret raw upstream body /private/path";
+    resolveGrsImageResultMock.mockResolvedValueOnce({ status: "failed", reason: secretReason });
+
+    const response = await POST(
+      new Request("http://localhost/api/ai/image", {
+        method: "POST",
+        body: JSON.stringify({ prompt: "生成柔光轨道产品图", images: [], aspectRatio: "1:1" })
+      })
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(502);
+    expect(JSON.parse(body)).toEqual({
+      error: "图像任务失败，请稍后重试。",
+      code: "image_generation_failed",
+      recoverable: false
+    });
+    expect(body).not.toContain(secretReason);
+    expect(body).not.toContain("api_key=secret");
   });
 });

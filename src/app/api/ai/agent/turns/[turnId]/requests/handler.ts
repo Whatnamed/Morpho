@@ -31,11 +31,14 @@ import {
 } from "@/server/ai/openaiCompatibleConfig";
 import { withServerPromptCacheHint } from "@/server/ai/providerPromptCacheHint";
 import {
-  OpenAiCompatibleProviderError,
   streamOpenAiCompatibleResponse,
   type OpenAiCompatibleStreamHandlers
 } from "@/server/ai/openaiCompatibleProvider";
 import { registerAgentTurnExternalRequest } from "@/server/ai/agentTurnExternalCancellation";
+import {
+  getPublicTextProviderError,
+  TEXT_PROVIDER_UNAVAILABLE
+} from "@/server/ai/publicProviderError";
 import { requireAiRouteUser, type AiRouteUserAccessResult } from "@/server/auth/aiAccess";
 import {
   encodeAgentTurnRequestSse,
@@ -131,7 +134,11 @@ export function createAgentTurnRequestPostHandler(
     const config = dependencies.loadConfig();
     if (config.status === "failed") {
       return NextResponse.json(
-        { error: config.reason, code: "provider_unavailable", recoverable: false },
+        {
+          error: TEXT_PROVIDER_UNAVAILABLE.message,
+          code: TEXT_PROVIDER_UNAVAILABLE.code,
+          recoverable: TEXT_PROVIDER_UNAVAILABLE.recoverable
+        },
         { status: 503 }
       );
     }
@@ -284,20 +291,25 @@ function createProviderStreamResponse(input: {
               type: "externalError",
               requestId: input.identity.requestId,
               stepSequence: input.identity.stepSequence,
-              code: "journal_settlement_failed"
+              code: "journal_settlement_failed",
+              message: "服务端状态暂未完成写入，请稍后再次检查。",
+              recoverable: true
             });
           }
         } catch (error) {
           const cancelled = abortController.signal.aborted ||
             (error instanceof Error && error.name === "AbortError");
           const nextStatus = cancelled ? "externallyCancelled" as const : "externallyFailed" as const;
-          const failureCode = cancelled ? undefined : boundedProviderFailureCode(error);
+          const publicError = cancelled ? undefined : getPublicTextProviderError(error);
+          const failureCode = publicError?.code;
           const settled = await settle(input, nextStatus, failureCode);
           enqueue({
             type: "externalError",
             requestId: input.identity.requestId,
             stepSequence: input.identity.stepSequence,
-            code: cancelled ? "provider_cancelled" : failureCode ?? "provider_failed"
+            code: cancelled ? "provider_cancelled" : failureCode ?? "provider_execution_failed",
+            message: cancelled ? "模型请求已取消。" : publicError?.message ?? "文本 AI 服务暂时不可用，请稍后重试。",
+            recoverable: cancelled ? false : publicError?.recoverable ?? true
           });
           if (settled.status === "ok") {
             enqueue({
@@ -400,15 +412,4 @@ async function settleWithBoundedRetry(
 
 function wait(delayMs: number): Promise<void> {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, delayMs));
-}
-
-function boundedProviderFailureCode(error: unknown): string {
-  if (error instanceof OpenAiCompatibleProviderError) {
-    if (error.code === "context_limit") return "provider_context_limit";
-    if (error.code === "function_call_limit") return "provider_function_call_limit";
-    if (error.code === "provider_deadline_exceeded") return "provider_deadline_exceeded";
-    if (error.code === "provider_response_too_large") return "provider_response_too_large";
-    return `provider_http_${Math.max(0, Math.min(999, error.status))}`;
-  }
-  return "provider_execution_failed";
 }

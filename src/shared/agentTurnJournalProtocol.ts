@@ -114,6 +114,8 @@ export type AgentTurnRequestStreamEvent =
       requestId: string;
       stepSequence: number;
       code: string;
+      message: string;
+      recoverable: boolean;
     }>;
 
 export function encodeAgentTurnRequestSse(event: AgentTurnRequestStreamEvent): Uint8Array {

@@ -83,11 +83,12 @@ function appendAssistantFailureDetail(
 }
 
 function externalErrorCopy(code: string): string | undefined {
-  const bounded = code.trim().slice(0, 500);
+  const bounded = code.trim().slice(0, 100);
   if (!bounded || bounded === "provider_cancelled") return undefined;
-  if (/[\u3400-\u9fff]/u.test(bounded)) return bounded;
   if (bounded === "provider_context_limit") return "模型上下文超出限制，本轮未完成。";
   if (bounded === "provider_function_call_limit") return "模型返回的工具调用过多，本轮未完成。";
+  if (bounded === "provider_response_too_large") return "模型响应超过安全上限，本轮未完成。";
+  if (bounded === "provider_deadline_exceeded") return "模型响应超时，本轮未完成。";
   if (bounded === "journal_settlement_failed") return "服务端状态暂未完成写入，请稍后再次检查。";
   const httpStatus = /^provider_http_(\d{3})$/.exec(bounded)?.[1];
   if (httpStatus) return `模型返回异常（HTTP ${httpStatus}），本轮未完成。`;

@@ -20,6 +20,10 @@ import type { AiRouteRequest } from "@/server/ai/request";
 import type { ProviderChatMessage } from "@/server/ai/types";
 import { aiAccessDeniedResponse, guardAiRoute, requireAiRouteUser } from "@/server/auth/aiAccess";
 import { readBoundedJsonBody } from "@/server/http/boundedJsonBody";
+import {
+  getPublicTextProviderError,
+  TEXT_PROVIDER_UNAVAILABLE
+} from "@/server/ai/publicProviderError";
 
 export const runtime = "nodejs";
 const MAX_CHAT_REQUEST_BODY_BYTES = 36 * 1024 * 1024;
@@ -42,7 +46,14 @@ export async function POST(request: Request) {
 
   const config = loadOpenAiCompatibleConfig(process.env);
   if (config.status === "failed") {
-    return NextResponse.json({ error: config.reason }, { status: 503 });
+    return NextResponse.json(
+      {
+        error: TEXT_PROVIDER_UNAVAILABLE.message,
+        code: TEXT_PROVIDER_UNAVAILABLE.code,
+        recoverable: TEXT_PROVIDER_UNAVAILABLE.recoverable
+      },
+      { status: 503 }
+    );
   }
 
   const access = await guardAiRoute("text");
@@ -206,13 +217,12 @@ function createNdjsonChatStream(input: {
 
         writeEvent({ type: "done" });
       } catch (error) {
+        const publicError = getPublicTextProviderError(error);
         writeEvent({
           type: "error",
-          message: getOpenAiCompatibleChatRouteErrorMessage(error, {
-            imageInputCount: input.originalRequest.attachments.filter((attachment) => attachment.status === "ready").length,
-            webSearchEnabled: input.originalRequest.webSearch?.enabled === true,
-            diagnostic: error instanceof OpenAiCompatibleProviderError ? error.diagnostic : undefined
-          })
+          code: publicError.code,
+          message: publicError.message,
+          recoverable: publicError.recoverable
         });
       } finally {
         controller.close();
@@ -271,27 +281,4 @@ function stripImageInputsFromAiRouteRequest(request: AiRouteRequest): AiRouteReq
         }
       : request.comparisonContext
   };
-}
-
-function getOpenAiCompatibleChatRouteErrorMessage(
-  error: unknown,
-  context: { imageInputCount: number; webSearchEnabled: boolean; diagnostic?: string }
-): string {
-  if (error instanceof OpenAiCompatibleProviderError) {
-    if (error.status === 401 || error.status === 403) {
-      return "AiJWS 鉴权失败，请检查 MORPHO_AI_API_KEY。";
-    }
-
-    if (error.status === 400) {
-      const imageHint = context.imageInputCount > 0 ? `本次包含图片输入 ${context.imageInputCount} 个；` : "";
-      const searchHint = context.webSearchEnabled ? "本次启用了联网搜索；" : "";
-      return `${imageHint}${searchHint}AiJWS 请求格式不兼容，请检查模型、tools 或图片输入。`;
-    }
-
-    if (context.diagnostic) {
-      return `AiJWS 调用失败：${context.diagnostic}`;
-    }
-  }
-
-  return "AiJWS 网络调用失败，请稍后重试。";
 }

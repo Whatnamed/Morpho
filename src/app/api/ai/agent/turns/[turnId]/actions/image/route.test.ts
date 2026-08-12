@@ -116,6 +116,58 @@ describe("A+ image action route", () => {
     expect(generate).not.toHaveBeenCalled();
     expect(settle).not.toHaveBeenCalled();
   });
+
+  it("settles a failed image action without exposing its upstream reason", async () => {
+    const secretReason = "internal-host.local api_key=secret raw upstream body /private/path";
+    const settle = vi.fn(async () => ({
+      status: "ok" as const,
+      replayed: false,
+      snapshot: { ...actionSnapshot("externallyFailed"), failureCode: "image_generation_failed" }
+    }));
+    const handler = createAgentTurnImageActionPostHandler({
+      authenticate: async () => ({ status: "allowed", userId: "user-a" }),
+      acquire: async () => ({
+        status: "ok",
+        executionGranted: true,
+        replayed: false,
+        snapshot: actionSnapshot("running")
+      }),
+      settle,
+      loadConfig: () => ({
+        status: "ok",
+        config: { apiKey: "test", baseUrl: "https://images.test", model: "gpt-image-2" }
+      }),
+      generate: async () => ({ status: "failed", reason: secretReason })
+    });
+
+    const response = await handler(new Request(`http://morpho.test/${TURN_ID}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        localProjectId: "project-test",
+        requestId: "request-1",
+        stepSequence: 1,
+        actionId: "img:child-1",
+        claimCallId: "call-image-1",
+        input: { prompt: "A warm industrial-design concept", images: [] }
+      })
+    }), { params: Promise.resolve({ turnId: TURN_ID }) });
+    const body = await response.text();
+
+    expect(response.status).toBe(502);
+    expect(JSON.parse(body)).toMatchObject({
+      error: "图像任务失败，请稍后重试。",
+      code: "image_generation_failed",
+      recoverable: false
+    });
+    expect(body).not.toContain(secretReason);
+    expect(body).not.toContain("api_key=secret");
+    expect(settle).toHaveBeenCalledWith(expect.objectContaining({
+      status: "externallyFailed",
+      failureCode: "image_generation_failed"
+    }));
+    expect(JSON.stringify(settle.mock.calls)).not.toContain(secretReason);
+  });
 });
 
 function actionSnapshot(

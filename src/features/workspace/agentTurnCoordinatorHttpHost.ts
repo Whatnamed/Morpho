@@ -244,7 +244,9 @@ function isAgentTurnRequestStreamEvent(value: unknown): value is AgentTurnReques
     return isServerExternalExecutionStatus(value.status) && value.status !== "created";
   }
   if (value.type === "externalError") {
-    return typeof value.code === "string";
+    return typeof value.code === "string" && value.code.length <= 100 &&
+      typeof value.message === "string" && value.message.length <= 500 &&
+      typeof value.recoverable === "boolean";
   }
   return false;
 }

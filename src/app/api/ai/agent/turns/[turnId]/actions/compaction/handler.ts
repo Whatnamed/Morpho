@@ -21,6 +21,7 @@ import { loadOpenAiCompatibleConfig, type OpenAiCompatibleConfigResult } from "@
 import { executeOpenAiCompatibleResponse } from "@/server/ai/openaiCompatibleProvider";
 import { withServerPromptCacheHint } from "@/server/ai/providerPromptCacheHint";
 import { requireAiRouteUser, type AiRouteUserAccessResult } from "@/server/auth/aiAccess";
+import { TEXT_PROVIDER_UNAVAILABLE } from "@/server/ai/publicProviderError";
 
 const MAX_COMPACTION_ACTION_BODY_BYTES = 4 * 1024 * 1024;
 
@@ -67,7 +68,11 @@ export function createAgentTurnCompactionActionPostHandler(
     const config = dependencies.loadConfig();
     if (config.status === "failed") {
       return NextResponse.json(
-        { error: config.reason, code: "provider_unavailable", recoverable: false },
+        {
+          error: TEXT_PROVIDER_UNAVAILABLE.message,
+          code: TEXT_PROVIDER_UNAVAILABLE.code,
+          recoverable: TEXT_PROVIDER_UNAVAILABLE.recoverable
+        },
         { status: 503 }
       );
     }

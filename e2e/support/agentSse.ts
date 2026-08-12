@@ -49,7 +49,9 @@ export function turnErrorScript(message = "模型返回异常，本轮未完成�
       type: "externalError",
       requestId: REQUEST_ID,
       stepSequence: STEP_SEQUENCE,
-      code: message
+      code: "provider_execution_failed",
+      message,
+      recoverable: true
     },
     status("externallyFailed")
   ]);
