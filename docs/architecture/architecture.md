@@ -603,7 +603,7 @@ Text Agent:
 - Explicit history, memory, and progress questions are guarded: the Agent must complete `search_project_conversation`, `read_project_memory`, and/or `read_stage_record` as required before a final answer can be accepted.
 - Task Strategy resolves discussion, research, design definition, concept direction, direction preview, visual development, comparison, delivery preparation, and history/memory. A versioned Prompt Registry composes shared authority, continuity, memory, and task policies.
 - `submit_memory_update` accepts only locally validated candidates backed by an exact quote from the persisted current user message. Deterministic projections remain authoritative; AI suggestions and one-off generation requests do not become user preferences.
-- Citation snapshots come only from provider citation/annotation fields or local web-search results. Morpho never fabricates citations from assistant prose.
+- Citation snapshots come only from provider citation/annotation fields or local web-search results. A shared pure navigation policy accepts only credential-free public HTTP(S) destinations, derives display identity from the normalized URL, and rejects local/private/link-local/loopback addresses without DNS or network probes. Citation and Markdown renderers reapply the same policy so unsafe legacy snapshots remain inert. Morpho never fabricates citations from assistant prose.
 
 Image generation:
 

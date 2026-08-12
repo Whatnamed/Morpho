@@ -25,6 +25,7 @@ import {
   type ProviderResponseBoundaryCode
 } from "./providerResponseBoundary";
 import { visitProviderResponseRecords } from "./providerResponseTraversal";
+import { normalizeSafeExternalNavigationUrl } from "@/shared/externalNavigationPolicy";
 
 type OpenAiCompatibleProviderConfig = Pick<
   OpenAiCompatibleConfig,
@@ -638,8 +639,10 @@ function extractCitations(value: unknown): ProviderCitation[] {
 }
 
 function normalizeCitationRecord(record: Record<string, unknown>): ProviderCitation | undefined {
-  const url = typeof record.url === "string" && looksLikeHttpUrl(record.url) ? record.url : undefined;
-  if (!url) {
+  const destination = typeof record.url === "string"
+    ? normalizeSafeExternalNavigationUrl(record.url)
+    : undefined;
+  if (!destination) {
     return undefined;
   }
 
@@ -648,28 +651,16 @@ function normalizeCitationRecord(record: Record<string, unknown>): ProviderCitat
       stringFromUnknown(record.title) ??
       stringFromUnknown(record.name) ??
       stringFromUnknown(record.site_name) ??
-      domainFromUrl(url) ??
+      destination.hostname ??
       "未命名来源",
-    url,
-    domain: stringFromUnknown(record.domain) ?? domainFromUrl(url),
+    url: destination.url,
+    domain: destination.hostname,
     snippet: stringFromUnknown(record.snippet) ?? stringFromUnknown(record.content) ?? stringFromUnknown(record.text)
   };
 }
 
 function stringFromUnknown(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function looksLikeHttpUrl(value: string): boolean {
-  return value.startsWith("http://") || value.startsWith("https://");
-}
-
-function domainFromUrl(url: string): string | undefined {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return undefined;
-  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

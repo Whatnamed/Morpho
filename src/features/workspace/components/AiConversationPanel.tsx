@@ -36,6 +36,7 @@ import type {
 } from "../morphoAgent";
 import { AgentProcessDisclosure } from "./AgentProcessDisclosure";
 import { getKeyConclusionCategoryLabel } from "../workspaceUi";
+import { normalizeSafeExternalNavigationUrl } from "@/shared/externalNavigationPolicy";
 import type {
   ComparisonActionRequest,
   PendingComparisonConfirmation
@@ -328,21 +329,39 @@ export function AiConversationPanel({
                     {message.citationIds
                       .map((citationId) => workspace.citationSnapshots[citationId])
                       .filter((citation) => Boolean(citation))
-                      .map((citation, citationIndex) => (
-                        <a
-                          className="citation-link citation-link-line"
-                          href={citation.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          key={citation.id}
-                        >
-                          <span className="citation-index">{citationIndex + 1}</span>
-                          <span className="citation-copy">
-                            <span className="citation-title">{citation.title}</span>
-                            {citation.domain ? <small>{citation.domain}</small> : null}
+                      .map((citation, citationIndex) => {
+                        const destination = citation.url
+                          ? normalizeSafeExternalNavigationUrl(citation.url)
+                          : undefined;
+                        const content = (
+                          <>
+                            <span className="citation-index">{citationIndex + 1}</span>
+                            <span className="citation-copy">
+                              <span className="citation-title">{citation.title}</span>
+                              <small>{destination?.hostname ?? "不可用来源"}</small>
+                            </span>
+                          </>
+                        );
+                        return destination ? (
+                          <a
+                            className="citation-link citation-link-line"
+                            href={destination.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            key={citation.id}
+                          >
+                            {content}
+                          </a>
+                        ) : (
+                          <span
+                            className="citation-link citation-link-line citation-link-disabled"
+                            aria-disabled="true"
+                            key={citation.id}
+                          >
+                            {content}
                           </span>
-                        </a>
-                      ))}
+                        );
+                      })}
                   </div>
                 ) : null}
               </div>
@@ -1320,11 +1339,16 @@ function renderInlineMarkdown(text: string): ReactNode[] {
     } else {
       const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(token);
       if (link) {
-        parts.push(
-          <a key={parts.length} href={link[2]} target="_blank" rel="noreferrer">
-            {link[1]}
+        const destination = normalizeSafeExternalNavigationUrl(link[2]);
+        parts.push(destination ? (
+          <a key={parts.length} href={destination.url} target="_blank" rel="noopener noreferrer">
+            {link[1]} · {destination.hostname}
           </a>
-        );
+        ) : (
+          <span key={parts.length} aria-disabled="true" className="external-link-disabled">
+            {link[1]}
+          </span>
+        ));
       }
     }
 

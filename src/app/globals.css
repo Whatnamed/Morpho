@@ -4099,6 +4099,16 @@ button:disabled {
   object-fit: contain;
 }
 
+.citation-link-disabled,
+.external-link-disabled {
+  cursor: default;
+  color: var(--text-muted);
+}
+
+.citation-link-disabled:hover .citation-title {
+  text-decoration: none;
+}
+
 .morpho-image-placeholder {
   display: flex;
   width: 100%;

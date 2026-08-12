@@ -7,6 +7,7 @@ import {
 import { buildToolResultOutput } from "./morphoAgent";
 import type { ResponseFunctionToolOutput } from "@/server/ai/openaiCompatibleProvider";
 import { assertAgentFunctionCallCount } from "@/shared/agentFunctionCallLimits";
+import { normalizeSafeExternalNavigationUrl } from "@/shared/externalNavigationPolicy";
 
 export const AGENT_WEB_SEARCH_MAX_SOURCES_PER_CALL = 5;
 export const AGENT_TURN_EMERGENCY_MODEL_TURN_CEILING = 28;
@@ -139,20 +140,15 @@ export function mergeAgentSearchCitations(
 }
 
 export function webSearchSourcesToCitations(sources: WebSearchSource[]): ProviderCitation[] {
-  return sources.map((source) => ({
-    title: source.title,
-    url: source.url,
-    domain: source.domain ?? domainFromUrl(source.url),
-    snippet: source.snippet ?? source.excerpt
-  }));
-}
-
-function domainFromUrl(url: string): string | undefined {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return undefined;
-  }
+  return sources.flatMap((source) => {
+    const destination = normalizeSafeExternalNavigationUrl(source.url);
+    return destination ? [{
+      title: source.title,
+      url: destination.url,
+      domain: destination.hostname,
+      snippet: source.snippet ?? source.excerpt
+    }] : [];
+  });
 }
 
 function buildAgentToolCallSignature(tool: MorphoAgentToolArguments): string {

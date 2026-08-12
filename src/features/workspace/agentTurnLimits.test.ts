@@ -101,6 +101,15 @@ describe("agent turn limits", () => {
         snippet: "Short snippet"
       }
     ]);
+    expect(webSearchSourcesToCitations([
+      { title: "Spoofed", url: "https://actual.example/report", domain: "trusted.example" },
+      { title: "Local", url: "http://127.0.0.1/private", domain: "trusted.example" }
+    ])).toEqual([{
+      title: "Spoofed",
+      url: "https://actual.example/report",
+      domain: "actual.example",
+      snippet: undefined
+    }]);
   });
 
   it("deduplicates citations across repeated hosted and local search results", () => {

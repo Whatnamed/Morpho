@@ -90,6 +90,38 @@ describe("openai-compatible provider adapter", () => {
     }
   });
 
+  it("drops unsafe citation URLs and ignores provider-supplied display domains", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = async () => jsonResponse({
+      id: "resp_citations",
+      output: [{
+        type: "message",
+        content: [{
+          type: "output_text",
+          text: "sources",
+          annotations: [
+            { type: "url_citation", url_citation: { title: "safe", url: "https://actual.example/a", domain: "spoofed.example" } },
+            { type: "url_citation", url_citation: { title: "local", url: "http://127.0.0.1/admin", domain: "trusted.example" } },
+            { type: "url_citation", url_citation: { title: "script", url: "javascript:alert(1)" } }
+          ]
+        }]
+      }]
+    });
+
+    try {
+      const result = await executeOpenAiCompatibleResponse(config(), request());
+      expect(result.citations).toEqual([
+        expect.objectContaining({
+          title: "safe",
+          url: "https://actual.example/a",
+          domain: "actual.example"
+        })
+      ]);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it("fails before exposing or executing a Provider response with more than 64 calls", async () => {
     const originalFetch = global.fetch;
     global.fetch = async () => jsonResponse({

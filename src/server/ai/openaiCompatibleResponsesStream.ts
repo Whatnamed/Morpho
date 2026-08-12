@@ -19,6 +19,7 @@ import {
   type ProviderRequestBudget
 } from "./providerResponseBoundary";
 import { visitProviderResponseRecords } from "./providerResponseTraversal";
+import { normalizeSafeExternalNavigationUrl } from "@/shared/externalNavigationPolicy";
 
 type MessagePhase = "commentary" | "final";
 
@@ -814,13 +815,14 @@ function extractCitations(
 function citationFromUnknown(value: unknown): ProviderCitation | undefined {
   const record = asRecord(value);
   const url = stringValue(record?.url);
-  if (!url || !looksLikeHttpUrl(url)) {
+  const destination = url ? normalizeSafeExternalNavigationUrl(url) : undefined;
+  if (!destination) {
     return undefined;
   }
   return {
-    title: stringValue(record?.title) ?? stringValue(record?.name) ?? domainFromUrl(url) ?? "未命名来源",
-    url,
-    domain: stringValue(record?.domain) ?? domainFromUrl(url),
+    title: stringValue(record?.title) ?? stringValue(record?.name) ?? destination.hostname ?? "未命名来源",
+    url: destination.url,
+    domain: destination.hostname,
     snippet: stringValue(record?.snippet) ?? stringValue(record?.content) ?? stringValue(record?.text)
   };
 }
@@ -851,16 +853,4 @@ function stringValue(value: unknown): string | undefined {
 
 function numberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
-}
-
-function looksLikeHttpUrl(value: string): boolean {
-  return value.startsWith("http://") || value.startsWith("https://");
-}
-
-function domainFromUrl(value: string): string | undefined {
-  try {
-    return new URL(value).hostname;
-  } catch {
-    return undefined;
-  }
 }

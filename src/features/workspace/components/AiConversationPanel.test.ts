@@ -152,6 +152,77 @@ describe("AiConversationPanel", () => {
     expect(html).not.toContain("citation-link-minimal");
   });
 
+  it("derives citation identity from the destination and keeps unsafe stored citations inert", () => {
+    const workspace = createInitialWorkspace();
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        workspace: {
+          ...workspace,
+          citationSnapshots: {
+            safe: {
+              id: "safe",
+              operationId: "operation-citations",
+              title: "OpenAI",
+              url: "https://evil.example/phish",
+              domain: "openai.com",
+              retrievedAt: "2026-08-13T00:00:00.000Z"
+            },
+            unsafe: {
+              id: "unsafe",
+              operationId: "operation-citations",
+              title: "Local service",
+              url: "http://127.0.0.1/admin",
+              domain: "trusted.example",
+              retrievedAt: "2026-08-13T00:00:00.000Z"
+            }
+          },
+          ai: {
+            ...workspace.ai,
+            messages: [{
+              id: "assistant-citation-navigation",
+              role: "assistant",
+              body: "Sources",
+              status: "done",
+              citationIds: ["safe", "unsafe"]
+            }]
+          }
+        }
+      }))
+    );
+
+    expect(html).toContain("evil.example");
+    expect(html).not.toContain("openai.com");
+    expect(html).not.toContain("trusted.example");
+    expect(html).not.toContain('href="http://127.0.0.1/admin"');
+    expect(html).toContain('aria-disabled="true"');
+    expect(html).toContain('rel="noopener noreferrer"');
+  });
+
+  it("shows the actual hostname for Markdown links and renders unsafe schemes inert", () => {
+    const workspace = createInitialWorkspace();
+    const html = renderToStaticMarkup(
+      createElement(AiConversationPanel, makeProps({
+        workspace: {
+          ...workspace,
+          ai: {
+            ...workspace.ai,
+            messages: [{
+              id: "assistant-markdown-links",
+              role: "assistant",
+              body: "[OpenAI 官网](https://evil.example/path) [运行](javascript:alert(1))",
+              status: "done"
+            }]
+          }
+        }
+      }))
+    );
+
+    expect(html).toContain("OpenAI 官网 · evil.example");
+    expect(html).toContain('href="https://evil.example/path"');
+    expect(html).not.toContain('href="javascript:');
+    expect(html).toContain('class="external-link-disabled"');
+  });
+
   it("does not expose deprecated conversation checkpoint feedback", () => {
     const workspace = createInitialWorkspace();
     const html = renderToStaticMarkup(
