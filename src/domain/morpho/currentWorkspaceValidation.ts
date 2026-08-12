@@ -1,4 +1,5 @@
 import type { MorphoObject, MorphoWorkspace } from "./types";
+import { validateCurrentWorkspaceContract } from "./currentWorkspaceContractValidation";
 
 export type CurrentWorkspaceValidationIssue = Readonly<{
   path: string;
@@ -24,11 +25,16 @@ const CREATED_BY = new Set(["user", "ai"]);
 
 export function validateCurrentMorphoWorkspace(value: unknown): CurrentWorkspaceValidationResult {
   const issues: CurrentWorkspaceValidationIssue[] = [];
+  const issuePaths = new Set<string>();
   const add = (path: string, message: string) => {
-    if (issues.length < MAX_ISSUES) issues.push({ path, message });
+    if (issues.length < MAX_ISSUES && !issuePaths.has(path)) {
+      issuePaths.add(path);
+      issues.push({ path, message });
+    }
   };
 
   validateSafeStructure(value, add);
+  validateCurrentWorkspaceContract(value, add);
   if (!isRecord(value)) {
     add("workspace", "Current workspace must be an object.");
     return failed(issues);

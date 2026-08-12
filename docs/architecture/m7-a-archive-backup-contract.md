@@ -13,8 +13,10 @@ This note records the M7-A domain contract for Morpho project archive and editab
 - A sanitization boundary for backup snapshots that excludes transient UI state from long-lived project facts.
 - A restore gate where backup creation is blocked when restore-critical integrity problems are already known.
 - Authoritative deep validation of current-schema editable snapshots, including bounded primitive/container
-  structure, discriminated Morpho objects, record key/id consistency, finite canvas geometry, current
-  revision ownership, and restore-critical references.
+  structure, every required field and present optional nested shape in the persisted Workspace contract,
+  real discriminated-union/enum values, record key/id consistency, finite canvas geometry, current revision
+  ownership, and restore-critical references. Structural contract validation is separate from reference and
+  historical-consistency validation so frozen delivery snapshots and legitimate deleted-source history remain readable.
 
 ## What M7-A does not add
 

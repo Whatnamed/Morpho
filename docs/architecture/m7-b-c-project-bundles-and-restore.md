@@ -119,7 +119,8 @@ Browser localStorage and IndexedDB are not transactional together, so restore us
 
 - all validation happens before any write
 - inspection and pre-restore revalidation both run the same deep current-schema boundary, so an inspected
-  payload changed in memory is rejected before Blob, workspace, or catalog writes
+  payload changed in memory is rejected before Blob, workspace, or catalog writes; this includes missing
+  required variant fields, malformed present optional metadata, and invalid discriminated-union/enum values
 - all blobs write to fresh storage keys
 - written keys are tracked during restore
 - any blob-write failure aborts restore and deletes newly written blobs

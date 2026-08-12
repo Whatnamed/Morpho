@@ -562,6 +562,31 @@ describe("project bundle client", () => {
         canvas.view.x = Number.POSITIVE_INFINITY;
       },
       expectedPath: "workspaceSnapshot.canvas.view.x"
+    },
+    {
+      label: "incomplete required object variant",
+      tamper: (snapshot: Record<string, unknown>) => {
+        const objects = snapshot.objects as Record<string, unknown>;
+        objects.delivery = {
+          id: "delivery",
+          type: "delivery",
+          title: "Delivery",
+          summary: "Malformed required section metadata",
+          createdBy: "user",
+          visibility: "active",
+          format: "board",
+          sections: [{
+            id: "hero",
+            title: "Hero",
+            order: 0,
+            referenceIds: [],
+            updatedAt: NOW
+          }],
+          gaps: [],
+          references: []
+        };
+      },
+      expectedPath: "workspaceSnapshot.objects.delivery.sections.0.createdAt"
     }
   ])("revalidates a tampered current backup $label before any restore write", async ({ tamper, expectedPath }) => {
     const workspace = createBundleFixtureWorkspace();
