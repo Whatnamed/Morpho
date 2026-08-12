@@ -155,7 +155,7 @@ describe("AiJWS chat route request conversion", () => {
     });
 
     expect(messages[0]?.content).toEqual([
-      { type: "text", text: "Analyze this image" },
+      { type: "text", text: "<current_user_instruction>\nAnalyze this image\n</current_user_instruction>" },
       { type: "image_url", image_url: { url: "data:image/jpeg;base64,abc123" } }
     ]);
   });
@@ -472,7 +472,10 @@ describe("AiJWS chat route request conversion", () => {
     expect(result.value.taskContext).toBeUndefined();
     expect(result.value.comparisonContext).toBeUndefined();
     expect(result.value.comparisonBackgroundContext).toBeUndefined();
-    expect(buildProviderMessages(result.value)).toEqual([{ role: "user", content: result.value.draft }]);
+    expect(buildProviderMessages(result.value)).toEqual([{
+      role: "user",
+      content: `<current_user_instruction>\n${result.value.draft}\n</current_user_instruction>`
+    }]);
     expect(JSON.stringify(result.value.deliverySectionContext)).not.toContain("must-not-survive");
     const prompt = buildMorphoSystemPrompt(result.value);
     expect(prompt).toContain("Delivery section preparation context");

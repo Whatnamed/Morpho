@@ -158,6 +158,32 @@ describe("A+ Provider continuation contract", () => {
 });
 
 describe("A+ Provider Tool boundary", () => {
+  it("omits web search unless server capability and current-turn authority are both present", () => {
+    const denied = parseAPlusAgentProviderRequest(providerRequestWithOutput('{"status":"completed"}'));
+    expect(denied.status).toBe("ok");
+    if (denied.status === "failed") return;
+    expect(buildAPlusAgentProviderContract({
+      localProjectId: "project-local",
+      request: denied.value,
+      webSearchEnabled: true
+    }).effectiveToolProfile).toBe("standard");
+
+    const authorizedRequest = {
+      ...denied.value,
+      capabilityIntent: { ...denied.value.capabilityIntent, webSearch: true }
+    };
+    expect(buildAPlusAgentProviderContract({
+      localProjectId: "project-local",
+      request: authorizedRequest,
+      webSearchEnabled: true
+    }).effectiveToolProfile).toBe("standardWithWebSearch");
+    expect(buildAPlusAgentProviderContract({
+      localProjectId: "project-local",
+      request: authorizedRequest,
+      webSearchEnabled: false
+    }).effectiveToolProfile).toBe("standard");
+  });
+
   it("derives only bounded Search and Image authorization claims from server-observed calls", () => {
     const claims = buildAPlusExternalToolActionClaims([
       {

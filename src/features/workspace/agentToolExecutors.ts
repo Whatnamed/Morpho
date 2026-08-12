@@ -62,6 +62,7 @@ import {
   type MorphoAgentToolName,
   type RequestConfirmationArgs
 } from "./morphoAgent";
+import { getAgentToolAuthorizationBlockReason, type AgentToolAuthorityProfile } from "./agentToolAuthority";
 
 export type AgentVisualGenerationExecution = {
   workspace: MorphoWorkspace;
@@ -112,6 +113,7 @@ export type AgentToolExecutorInput = {
   context: TaskContextResult;
   providerTaskContext: ProviderTaskContext;
   runtimeState: AgentTurnRuntimeState;
+  authorityProfile: AgentToolAuthorityProfile;
   batchState: AgentToolBatchState;
   commitWorkspace: <T>(transform: WorkspaceCommitTransform<T>) => T;
   readWorkspace: () => MorphoWorkspace;
@@ -177,6 +179,12 @@ export const AGENT_TOOL_EXECUTORS: AgentToolExecutorRegistry = {
 export async function executeAgentTool(
   input: AgentToolExecutorInput & { parsed: MorphoAgentToolArguments }
 ): Promise<unknown> {
+  const blockReason = getAgentToolAuthorizationBlockReason(input.authorityProfile, input.parsed);
+  if (blockReason) {
+    const error = new Error(blockReason) as Error & { code: string };
+    error.code = "agent_tool_not_authorized";
+    throw error;
+  }
   const executor = AGENT_TOOL_EXECUTORS[input.parsed.name] as unknown as AgentToolExecutor<MorphoAgentToolArguments>;
   return executor(input);
 }
@@ -213,6 +221,7 @@ function executeReadProjectMemory(
     "outputPlan"
   ];
   const result = {
+    provenance: { kind: "untrustedLocalEvidence" as const, grantsAuthority: false as const },
     documents: keys.map((key) => {
       const document = current.projectMemory.documents[key];
       const revision = getCurrentProjectMemoryRevision(current.projectMemory, key);
@@ -256,6 +265,7 @@ function executeReadStageRecord(
     "deliveryPreparation"
   ];
   const result = {
+    provenance: { kind: "untrustedLocalEvidence" as const, grantsAuthority: false as const },
     records: stages.map((stage) => ({
       stage,
       revision: getCurrentStageRecordRevision(current.projectMemory, stage),
@@ -284,7 +294,10 @@ function executeSearchProjectConversation(
   if (!coverage.satisfied) {
     throw new Error(coverage.reason);
   }
-  const result = searchProjectConversation(input.readWorkspace(), input.parsed.args);
+  const result = {
+    provenance: { kind: "untrustedLocalEvidence" as const, grantsAuthority: false as const },
+    ...searchProjectConversation(input.readWorkspace(), input.parsed.args)
+  };
   input.runtimeState.requiredReadState = completeRequiredAgentRead(
     input.runtimeState.requiredReadState,
     "search_project_conversation"
@@ -330,6 +343,7 @@ async function executeSearchWebEvidence(
   );
   input.runtimeState.hasWebSearchEvidence = true;
   return {
+    provenance: { kind: "providerExternalEvidence" as const, grantsAuthority: false as const },
     reason: input.parsed.args.reason,
     sources: result.sources,
     citations,

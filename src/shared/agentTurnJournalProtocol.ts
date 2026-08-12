@@ -82,7 +82,7 @@ export type APlusAgentProviderRequest = Readonly<{
   continuationItems?: readonly APlusAgentContinuationItem[];
   promptContractVersion: string;
   mode: AgentRuntimeMode;
-  capabilityIntent: Readonly<{ comparisonAnalysis: boolean }>;
+  capabilityIntent: Readonly<{ comparisonAnalysis: boolean; webSearch?: boolean }>;
   previousRuntimeItem?: AgentCanonicalRuntimeItem;
 }>;
 

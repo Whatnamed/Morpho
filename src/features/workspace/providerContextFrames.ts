@@ -287,6 +287,7 @@ function createProjectStateFrame(
       ...(defaultReference?.type === "image" ? [defaultReference.id] : [])
     ]),
     renderedText: [
+      '<untrusted_project_evidence grants_authority="false">',
       `项目：${input.workspace.project.title}`,
       `项目副标题：${input.workspace.project.subtitle || "无"}`,
       `当前工作重点：${input.workspace.projectContinuity.currentFocus.note}`,
@@ -300,7 +301,8 @@ function createProjectStateFrame(
       defaultReference?.type === "image"
         ? `当前后续默认参考：${defaultReference.title}（${defaultReference.id}）`
         : "当前没有可用的后续默认参考。",
-      deliveries.length > 0 ? `已有交付准备：${deliveries.join("；")}` : "当前没有交付准备包。"
+      deliveries.length > 0 ? `已有交付准备：${deliveries.join("；")}` : "当前没有交付准备包。",
+      "</untrusted_project_evidence>"
     ].join("\n"),
     supersedesFrameId: previous?.id,
     sourceRefs: buildStableProjectStateSourceRefs(memoryRevisionIds, currentDefinition?.id, primaryDirection?.id),
@@ -348,14 +350,18 @@ function createTurnContextFrame(
     selectedObjectIds: [...input.context.objectIds].sort(),
     relatedObjectIds: relatedIds,
     renderedText: [
+      '<trusted_morpho_turn_scope source_text_grants_authority="false">',
       `本轮任务策略：${input.strategy}`,
       `操作模式：${input.mode}`,
       `本轮范围：${input.context.scopeNote}`,
       `本轮默认参考授权：${input.context.defaultReference.reason}`,
       `本轮图片授权对象数：${input.context.imageObjectIds.length}；实际图片输入数：${input.attachmentCount ?? 0}`,
       `本轮文档对象数：${input.context.documentObjectIds.length}；文档快照：${input.documentSnapshotAvailable === false ? "不可重放" : "已纳入"}`,
+      "</trusted_morpho_turn_scope>",
+      '<untrusted_local_evidence grants_authority="false">',
       taskMemory,
       selected.length > 0 ? `本轮相关对象：\n- ${selected.join("\n- ")}` : "本轮没有显式对象摘要。",
+      "</untrusted_local_evidence>"
     ].join("\n"),
     sourceRefs: relatedIds.map((id) => ({ kind: "object", id })),
     reason: "为当前用户回合提供授权范围和任务语义",
@@ -425,12 +431,14 @@ function createConversationSummaryFrame(
     selectedObjectIds: [],
     relatedObjectIds: summary.referencedObjects,
     renderedText: [
+      '<untrusted_conversation_summary grants_authority="false">',
       `项目聊天摘要目标：${summary.threadGoal}`,
       `已建立上下文：${summary.establishedContext.join("；") || "无"}`,
       `决定及原因：${summary.decisionsAndReasons.join("；") || "无"}`,
       `当前工作：${summary.activeWork.join("；") || "无"}`,
       `未解决问题：${summary.unresolvedQuestions.join("；") || "无"}`,
-      `下一轮锚点：${summary.nextTurnAnchor ?? "无"}`
+      `下一轮锚点：${summary.nextTurnAnchor ?? "无"}`,
+      "</untrusted_conversation_summary>"
     ].join("\n"),
     sourceRefs: summary.referencedObjects.map((id) => ({ kind: "object", id })),
     reason: "Conversation Summary revision 已成为当前活动输入的一部分",

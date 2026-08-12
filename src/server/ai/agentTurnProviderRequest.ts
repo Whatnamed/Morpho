@@ -55,7 +55,7 @@ export type ValidatedAPlusAgentProviderRequest = Readonly<{
   continuationItems: readonly APlusAgentContinuationItem[];
   promptContractVersion: typeof MORPHO_AGENT_PROMPT_CONTRACT_VERSION;
   mode: AgentRuntimeMode;
-  capabilityIntent: Readonly<{ comparisonAnalysis: boolean }>;
+  capabilityIntent: Readonly<{ comparisonAnalysis: boolean; webSearch: boolean }>;
   previousRuntimeItem?: AgentCanonicalRuntimeItem;
 }>;
 
@@ -98,8 +98,9 @@ export function parseAPlusAgentProviderRequest(value: unknown):
   }
   if (
     !isRecord(value.capabilityIntent) ||
-    unknownKeys(value.capabilityIntent, ["comparisonAnalysis"]).length > 0 ||
-    typeof value.capabilityIntent.comparisonAnalysis !== "boolean"
+    unknownKeys(value.capabilityIntent, ["comparisonAnalysis", "webSearch"]).length > 0 ||
+    typeof value.capabilityIntent.comparisonAnalysis !== "boolean" ||
+    (value.capabilityIntent.webSearch !== undefined && typeof value.capabilityIntent.webSearch !== "boolean")
   ) {
     return failed("capabilityIntent 格式无效。");
   }
@@ -129,7 +130,8 @@ export function parseAPlusAgentProviderRequest(value: unknown):
       promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
       mode: value.mode,
       capabilityIntent: {
-        comparisonAnalysis: value.capabilityIntent.comparisonAnalysis
+        comparisonAnalysis: value.capabilityIntent.comparisonAnalysis,
+        webSearch: value.capabilityIntent.webSearch === true
       },
       ...(previousRuntimeItem ? { previousRuntimeItem } : {})
     }
@@ -141,7 +143,7 @@ export function buildAPlusAgentProviderContract(input: {
   request: ValidatedAPlusAgentProviderRequest;
   webSearchEnabled: boolean;
 }): APlusAgentProviderContract {
-  const tools = buildMorphoAgentTools(input.webSearchEnabled);
+  const tools = buildMorphoAgentTools(input.webSearchEnabled && input.request.capabilityIntent.webSearch);
   const effectiveToolProfile: AgentToolProfile = tools.some(
     (tool) => tool.type === "function" && tool.name === "search_web_evidence"
   )

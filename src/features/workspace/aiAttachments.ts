@@ -1,5 +1,6 @@
 import type { MorphoObject, MorphoWorkspace } from "../../domain/morpho/types";
 import { indexedDbBlobStore } from "../../infrastructure/assets/indexedDbAssetStore";
+import { hasCurrentTurnWebSearchAuthority } from "../../shared/webSearchAuthority";
 
 export type AiProviderImageAttachmentRepresentation = "single" | "contactSheet";
 
@@ -44,9 +45,6 @@ const CONTACT_SHEET_MAX_SIDE = 1600;
 const MAX_AI_PROVIDER_IMAGE_SIDE = 1600;
 const TARGET_AI_PROVIDER_IMAGE_BYTES = 1.5 * 1024 * 1024;
 
-const FORCED_WEB_SEARCH_PATTERN =
-  /必须联网|请联网|联网|搜索|查一下|最新|当前|验证|核实|来源|引用|source|search|verify|latest|current/i;
-
 export function shouldAttachImagesForAiProvider(input: {
   draft: string;
   taskMode: "chatAnalysis" | "imageGeneration" | "researchOperation";
@@ -82,7 +80,7 @@ export function buildWebSearchOptions(input: {
     return undefined;
   }
 
-  const forceSearch = FORCED_WEB_SEARCH_PATTERN.test(input.draft);
+  const forceSearch = hasCurrentTurnWebSearchAuthority(input);
   if (!forceSearch) {
     return undefined;
   }

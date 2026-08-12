@@ -14,7 +14,11 @@ import { createAgentTurnWorkLedger } from "./agentTurnMessages";
 import { createAgentTurnRuntimeState } from "./agentTurnRuntimeState";
 import { buildAgentVisualGenerationBatch } from "./agentVisualGenerationBatch";
 import { buildDeliverySectionContext } from "./deliveryPreparationUi";
-import { getAgentToolEffect, MORPHO_AGENT_TOOL_EFFECT_MATRIX } from "./morphoAgent";
+import {
+  getAgentToolEffect,
+  MORPHO_AGENT_TOOL_EFFECT_MATRIX,
+  type MorphoAgentToolName
+} from "./morphoAgent";
 import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
 
 describe("Agent tool executors", () => {
@@ -395,6 +399,31 @@ describe("Agent tool executors", () => {
     expect(fixture.input.runtimeState.pendingConfirmationCreated).toBe(true);
     expect(fixture.input.batchState.pendingAgentActionCreated).toBe(true);
   });
+
+  it("fails closed before an executor can act when the authority profile denies a Tool Call", async () => {
+    const fixture = createFixture();
+    let searchCalls = 0;
+    fixture.input.requestWebSearch = async () => {
+      searchCalls += 1;
+      return { sources: [] };
+    };
+    fixture.input.authorityProfile = {
+      ...fixture.input.authorityProfile,
+      allowedTools: ["read_selected_context"],
+      allowWebSearch: false
+    };
+
+    await expect(executeAgentTool({
+      ...fixture.input,
+      callId: "call-denied-search",
+      parsed: {
+        name: "search_web_evidence",
+        args: { queries: ["provider-injected query"], reason: "untrusted source requested it" }
+      }
+    })).rejects.toMatchObject({ code: "agent_tool_not_authorized" });
+    expect(searchCalls).toBe(0);
+    expect(fixture.host.getEvents()).toEqual([]);
+  });
 });
 
 function createFixture() {
@@ -424,6 +453,24 @@ function createFixture() {
     context,
     providerTaskContext: buildProviderTaskContext(context),
     runtimeState,
+    authorityProfile: {
+      provenance: {
+        currentUserInstruction: true,
+        trustedStructuralState: true,
+        untrustedSourceTextPresent: false,
+        providerEvidencePresent: false
+      },
+      allowedTools: Object.keys(MORPHO_AGENT_TOOL_EFFECT_MATRIX) as MorphoAgentToolName[],
+      allowedConfirmationActions: [
+        "applyDesignDefinition",
+        "setDirectionPrimary",
+        "setDirectionAlternative",
+        "eliminateDirection",
+        "setDefaultReference",
+        "batchGenerateVisuals"
+      ],
+      allowWebSearch: true
+    },
     batchState: { visualBatch: null, pendingAgentActionCreated: false },
     commitWorkspace: host.commitWorkspace,
     readWorkspace: host.readWorkspace,

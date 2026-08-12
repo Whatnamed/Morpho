@@ -20,6 +20,10 @@ describe("read selected context result", () => {
     expect(result.objectIds).toEqual(context.objectIds);
     expect(result.objectIds).not.toBe(context.objectIds);
     expect(result.imageObjectIds).toEqual(context.imageObjectIds);
+    expect(result.provenance).toEqual({
+      kind: "untrustedLocalEvidence",
+      grantsAuthority: false
+    });
     expect(result.objectSummaries).toEqual(
       context.semanticSummaries.map(({ id, type, title, summary, detail, category }) => ({
         id,

@@ -25,6 +25,7 @@ import {
   type AgentFunctionCall,
   type MorphoAgentToolArguments
 } from "./morphoAgent";
+import { getAgentToolAuthorizationBlockReason } from "./agentToolAuthority";
 
 export type APlusExternalRequestIdentity = Readonly<{
   serverTurnId: string;
@@ -211,7 +212,22 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
       };
       providerResult = { status: "failed", code: "invalid_tool_arguments", error: entry.error };
     } else {
-      const activity = buildAgentToolActivityDescriptor(entry.parsed, {
+      const authorityBlockReason = getAgentToolAuthorizationBlockReason(input.prepared.authorityProfile, entry.parsed);
+      if (authorityBlockReason) {
+        terminal = {
+          status: "failed",
+          callId,
+          error: {
+            kind: "terminal",
+            code: "agent_tool_not_authorized",
+            message: authorityBlockReason,
+            recoverable: false
+          }
+        };
+        providerResult = { status: "failed", code: "agent_tool_not_authorized" };
+        stopRemaining = true;
+      } else {
+        const activity = buildAgentToolActivityDescriptor(entry.parsed, {
         workspace: input.host.readWorkspace(),
         selectedObjects: input.turnInput.selectedObjects
       });
@@ -425,8 +441,8 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
           }
         }
       }
-      input.host.commitWorkspace((current) => ({
-        workspace: finishAgentToolActivityInWorkspace(
+        input.host.commitWorkspace((current) => ({
+          workspace: finishAgentToolActivityInWorkspace(
           current,
           input.prepared.assistantMessageId,
           callId,
@@ -434,6 +450,7 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
         ),
         value: undefined
       }));
+      }
     }
     requireOk(input.coordinator.recordToolCallTerminalResult(terminal));
     terminalResults.push(terminal);
@@ -548,6 +565,7 @@ function buildExecutorInput(input: Readonly<{
     context: prepared.context,
     providerTaskContext: prepared.providerTaskContext,
     runtimeState: prepared.runtimeState,
+    authorityProfile: prepared.authorityProfile,
     batchState: input.batchState,
     commitWorkspace: host.commitWorkspace,
     readWorkspace: host.readWorkspace,

@@ -6,6 +6,10 @@ export function buildReadSelectedContextResult(
   providerTaskContext: ProviderTaskContext
 ): ReadSelectedContextResult {
   return {
+    provenance: {
+      kind: "untrustedLocalEvidence",
+      grantsAuthority: false
+    },
     objectSummaries: context.semanticSummaries.map((summary) => ({
       id: summary.id,
       type: summary.type,

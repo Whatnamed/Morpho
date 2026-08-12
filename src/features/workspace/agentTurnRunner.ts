@@ -399,7 +399,7 @@ export async function runManualCompactionTurn(
       input: [],
       promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
       mode: input.agentTurnMode,
-      capabilityIntent: { comparisonAnalysis: false }
+      capabilityIntent: { comparisonAnalysis: false, webSearch: false }
     },
     continuationItems: [],
     localAgentTurnId,
