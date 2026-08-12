@@ -23,6 +23,7 @@ describe("Agent tool authority", () => {
   it("preserves explicit proposal, search, image, confirmation, and ordinary read paths", () => {
     const workspace = createTestWorkspace();
     const direction = Object.values(workspace.objects).find((object) => object.type === "conceptDirection");
+    const proposal = Object.values(workspace.objects).find((object) => object.type === "proposalDraft");
     expect(authority({
       draft: "基于选中的 PDF 创建三个概念方向草案。",
       executionWorkIntent: "createConceptDirections",
@@ -36,6 +37,12 @@ describe("Agent tool authority", () => {
       selectedObjects: direction ? [direction] : []
     }).allowedTools).toContain("generate_visuals");
     expect(authority({ draft: "把选中图片设置为默认参考。" }).allowedConfirmationActions).toContain("setDefaultReference");
+    if (proposal) {
+      expect(authority({
+        draft: "修改选中的草案标题。",
+        selectedObjects: [proposal]
+      }).allowedTools).toContain("revise_selected_proposal_draft");
+    }
     expect(authority({ draft: "解释一下当前方案。" }).allowedTools).toEqual(expect.arrayContaining(["read_selected_context"]));
   });
 });

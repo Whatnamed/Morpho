@@ -46,7 +46,7 @@ export function resolveAgentToolAuthority(input: Readonly<{
   if (["createConceptDirections", "reviseConceptDirection", "splitConceptDirection", "mergeConceptDirections"].includes(input.executionWorkIntent)) {
     allowed.add("create_concept_direction_proposal");
   }
-  if (input.selectedObjects.some((object) => object.type === "proposal") && /修改|修订|调整|改写|重写|缩短|改名|rename|rewrite|revise/i.test(input.draft)) {
+  if (input.selectedObjects.some((object) => object.type === "proposalDraft") && /修改|修订|调整|改写|重写|缩短|改名|rename|rewrite|revise/i.test(input.draft)) {
     allowed.add("revise_selected_proposal_draft");
   }
   if (input.taskMode === "imageGeneration" && input.executionTaskMode === "imageGeneration") allowed.add("generate_visuals");
