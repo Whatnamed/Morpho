@@ -485,6 +485,36 @@ describe("Morpho agent tool argument validation", () => {
     });
   });
 
+  it("accepts only canonical concept-direction lineage kinds at the Agent tool boundary", () => {
+    const direction = {
+      title: "Soft rail",
+      summary: "Continuous support language.",
+      conceptStatement: "A warmer continuous support rail.",
+      keywords: ["warm", "continuous"],
+      strategy: "Keep the route legible.",
+      differentiators: ["Quieter visual hierarchy"],
+      visualSignals: ["Low glowing rail"],
+      risks: ["Corner complexity"],
+      openQuestions: ["How should corners resolve?"],
+      basedOnDirectionId: "direction-source"
+    };
+    const parsed = parseMorphoAgentToolArguments(makeCall("create_concept_direction_proposal", {
+      title: "Split direction",
+      summary: "Create a traceable split.",
+      directions: [{ ...direction, lineageKind: "splitFromDirection" }]
+    }));
+
+    expect(parsed).toMatchObject({
+      name: "create_concept_direction_proposal",
+      args: { directions: [{ lineageKind: "splitFromDirection" }] }
+    });
+    expect(() => parseMorphoAgentToolArguments(makeCall("create_concept_direction_proposal", {
+      title: "Legacy split",
+      summary: "Do not persist the retired alias.",
+      directions: [{ ...direction, lineageKind: "split" }]
+    }))).toThrow("lineageKind");
+  });
+
   it("parses a selected research draft revision without accepting evidence rewrites", () => {
     const parsed = parseMorphoAgentToolArguments(makeCall("revise_selected_proposal_draft", {
       proposalId: "proposal-research-a",

@@ -2971,11 +2971,36 @@ function normalizeArtifactProposals(
             proposal.targetDirectionId ??
             (applicationMode === "revise" ? proposal.directions[0]?.basedOnDirectionId : undefined),
           parentDirectionIds,
+          directions: proposal.directions.map((direction) => ({
+            ...direction,
+            lineageKind: normalizeDirectionLineageKind(direction.lineageKind)
+          })),
           sourceSnapshots
         }
       ];
     })
   );
+}
+
+function normalizeDirectionLineageKind(
+  value: unknown
+): Extract<ArtifactProposal, { type: "conceptDirection" }>["directions"][number]["lineageKind"] {
+  switch (value) {
+    case "variant":
+    case "derivedFromDirection":
+      return "derivedFromDirection";
+    case "split":
+    case "splitFromDirection":
+      return "splitFromDirection";
+    case "merge":
+    case "mergedFromDirection":
+      return "mergedFromDirection";
+    case "revision":
+    case "supersedesDirection":
+      return "supersedesDirection";
+    default:
+      return undefined;
+  }
 }
 
 function inferParentDirectionIds(proposal: Extract<ArtifactProposal, { type: "conceptDirection" }>): MorphoObjectId[] {

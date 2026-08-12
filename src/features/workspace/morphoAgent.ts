@@ -441,7 +441,10 @@ export function buildMorphoAgentTools(
                 risks: stringArraySchema(),
                 openQuestions: stringArraySchema(),
                 basedOnDirectionId: { type: "string" },
-                lineageKind: { type: "string", enum: ["variant", "split", "merge", "revision"] }
+                lineageKind: {
+                  type: "string",
+                  enum: ["derivedFromDirection", "splitFromDirection", "mergedFromDirection", "supersedesDirection"]
+                }
               }
             }
           }
@@ -594,7 +597,10 @@ export function buildMorphoAgentTools(
                 risks: stringArraySchema(),
                 openQuestions: stringArraySchema(),
                 basedOnDirectionId: { type: "string" },
-                lineageKind: { type: "string", enum: ["variant", "split", "merge", "revision"] }
+                lineageKind: {
+                  type: "string",
+                  enum: ["derivedFromDirection", "splitFromDirection", "mergedFromDirection", "supersedesDirection"]
+                }
               }
             }
           }
@@ -1328,10 +1334,10 @@ function validateCreateConceptDirectionProposalArgs(
     requireStringArray(`${toolName}.directions[${index}]`, direction, "openQuestions");
     requireOptionalString(`${toolName}.directions[${index}]`, direction, "basedOnDirectionId");
     requireOptionalEnum(`${toolName}.directions[${index}]`, direction, "lineageKind", [
-      "variant",
-      "split",
-      "merge",
-      "revision"
+      "derivedFromDirection",
+      "splitFromDirection",
+      "mergedFromDirection",
+      "supersedesDirection"
     ]);
   });
 }
@@ -1570,7 +1576,12 @@ function validateConceptDirectionDraft(toolName: string, value: unknown): void {
   requireStringArray(toolName, direction, "risks");
   requireStringArray(toolName, direction, "openQuestions");
   requireOptionalString(toolName, direction, "basedOnDirectionId");
-  requireOptionalEnum(toolName, direction, "lineageKind", ["variant", "split", "merge", "revision"]);
+  requireOptionalEnum(toolName, direction, "lineageKind", [
+    "derivedFromDirection",
+    "splitFromDirection",
+    "mergedFromDirection",
+    "supersedesDirection"
+  ]);
 }
 
 function validateGenerateVisualsArgs(toolName: string, value: unknown): asserts value is GenerateVisualsArgs {

@@ -1694,6 +1694,47 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.workspace.objects["insight-continuous-support"]).toMatchObject({ category: "unknown" });
   });
 
+  it("normalizes retired concept-direction proposal lineage aliases on read", () => {
+    const currentWorkspace = createBlankWorkspace("project-lineage-compatibility");
+    (currentWorkspace.artifactProposals as unknown as Record<string, unknown>)["proposal-lineage"] = {
+      id: "proposal-lineage",
+      type: "conceptDirection",
+      status: "pending",
+      sourceSnapshots: [],
+      sourceObjectIds: [],
+      citationIds: [],
+      createdAt: "2026-08-12T00:00:00.000Z",
+      title: "Split direction",
+      summary: "Legacy proposal",
+      applicationMode: "split",
+      parentDirectionIds: ["direction-source"],
+      directions: [{
+        title: "Split",
+        summary: "Legacy split",
+        conceptStatement: "A split direction.",
+        keywords: [],
+        strategy: "Explore a variant.",
+        differentiators: [],
+        visualSignals: [],
+        risks: [],
+        openQuestions: [],
+        basedOnDirectionId: "direction-source",
+        lineageKind: "split"
+      }]
+    };
+
+    const first = migrateWorkspaceToCurrentSchema(currentWorkspace);
+    expect(first.status).toBe("ok");
+    if (first.status !== "ok") throw new Error(first.reason);
+    const proposal = first.workspace.artifactProposals["proposal-lineage"];
+    expect(proposal?.type).toBe("conceptDirection");
+    if (proposal?.type !== "conceptDirection") throw new Error("Expected concept-direction proposal.");
+    expect(proposal.directions[0]?.lineageKind).toBe("splitFromDirection");
+
+    const second = migrateWorkspaceToCurrentSchema(first.workspace);
+    expect(second).toEqual({ status: "ok", workspace: first.workspace, didMigrate: false });
+  });
+
   it("treats a key conclusion category change as a source semantic change even when its body is unchanged", () => {
     const workspace = createInitialWorkspace();
     const created = createArtifactProposalOperation(workspace, {
