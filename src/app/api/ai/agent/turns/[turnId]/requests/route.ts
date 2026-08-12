@@ -409,6 +409,8 @@ function boundedProviderFailureCode(error: unknown): string {
   if (error instanceof OpenAiCompatibleProviderError) {
     if (error.code === "context_limit") return "provider_context_limit";
     if (error.code === "function_call_limit") return "provider_function_call_limit";
+    if (error.code === "provider_deadline_exceeded") return "provider_deadline_exceeded";
+    if (error.code === "provider_response_too_large") return "provider_response_too_large";
     return `provider_http_${Math.max(0, Math.min(999, error.status))}`;
   }
   return "provider_execution_failed";

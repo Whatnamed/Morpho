@@ -25,7 +25,8 @@ vi.mock("@/server/ai/openaiCompatibleProvider", () => ({
   OpenAiCompatibleProviderError: class OpenAiCompatibleProviderError extends Error {
     constructor(
       readonly status: number,
-      readonly diagnostic?: string
+      readonly diagnostic?: string,
+      readonly code?: string
     ) {
       super(`provider ${status}`);
     }
@@ -225,6 +226,22 @@ describe("AI chat route", () => {
       promptCacheRetention: "24h"
     });
   });
+
+  it.each(["provider_response_too_large", "provider_deadline_exceeded"] as const)(
+    "does not retry image input as text-only after %s",
+    async (code) => {
+      const { OpenAiCompatibleProviderError } = await import("@/server/ai/openaiCompatibleProvider");
+      streamOpenAiCompatibleResponseMock.mockRejectedValueOnce(
+        new OpenAiCompatibleProviderError(502, "bad gateway", code)
+      );
+
+      const response = await POST(makeImageRequest());
+
+      expect(response.status).toBe(200);
+      await response.text();
+      expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledOnce();
+    }
+  );
 });
 
 function makeRequest(body: unknown): Request {

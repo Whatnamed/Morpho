@@ -238,6 +238,9 @@ function shouldRetryTextOnlyAfterImageFailure(error: unknown, request: AiRouteRe
   if (!hasReadyImages || !(error instanceof OpenAiCompatibleProviderError)) {
     return false;
   }
+  if (error.code === "provider_response_too_large" || error.code === "provider_deadline_exceeded") {
+    return false;
+  }
 
   const diagnostic = (error.diagnostic ?? "").toLowerCase();
   return (

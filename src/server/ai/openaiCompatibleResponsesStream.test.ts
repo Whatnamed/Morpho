@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   parseOpenAiResponsesStream
@@ -191,6 +191,27 @@ describe("OpenAI-compatible Responses SSE parser", () => {
       )
     ).rejects.toMatchObject({ kind: "failed" });
   });
+
+  it("cancels a stream whose unfinished frame exceeds the pending-byte limit", async () => {
+    const cancelled = vi.fn();
+    const stream = cancellableStream(["data: " + "x".repeat(40)], cancelled);
+
+    await expect(parseOpenAiResponsesStream(stream, { maxPendingBytes: 32 })).rejects.toMatchObject({
+      code: "provider_response_too_large"
+    });
+    expect(cancelled).toHaveBeenCalledOnce();
+  });
+
+  it("cancels multiple legal frames when cumulative SSE bytes exceed the total limit", async () => {
+    const cancelled = vi.fn();
+    const frame = 'data: {"type":"provider.extension"}\n\n';
+    const stream = cancellableStream([frame, frame, frame], cancelled);
+
+    await expect(parseOpenAiResponsesStream(stream, { maxPendingBytes: 128, maxTotalBytes: frame.length * 2 })).rejects.toMatchObject({
+      code: "provider_response_too_large"
+    });
+    expect(cancelled).toHaveBeenCalledOnce();
+  });
 });
 
 function streamFixture(filename: string, chunkSizes: number[]): ReadableStream<Uint8Array> {
@@ -223,4 +244,14 @@ function streamFromString(value: string, chunkSizes = [value.length]): ReadableS
 
 function responseFrames(events: Array<Record<string, unknown>>): ReadableStream<Uint8Array> {
   return streamFromString(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), [3, 11, 2]);
+}
+
+function cancellableStream(chunks: string[], cancelled: () => void): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      chunks.forEach((chunk) => controller.enqueue(encoder.encode(chunk)));
+    },
+    cancel: cancelled
+  });
 }

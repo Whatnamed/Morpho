@@ -8,7 +8,10 @@ import type {
   ReadAgentTurnJournalResult,
   SettleAgentTurnRequestResult
 } from "@/server/ai/agentTurnJournal";
-import type { OpenAiCompatibleResponseResult } from "@/server/ai/openaiCompatibleProvider";
+import {
+  OpenAiCompatibleProviderError,
+  type OpenAiCompatibleResponseResult
+} from "@/server/ai/openaiCompatibleProvider";
 import type {
   AgentTurnJournalSnapshot,
   ServerExternalExecutionStatus
@@ -455,6 +458,24 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
       failureCode: "provider_execution_failed"
     });
     expect(JSON.stringify(store.snapshot)).not.toContain("raw upstream body");
+  });
+
+  it.each([
+    ["provider_deadline_exceeded", "provider_deadline_exceeded"],
+    ["provider_response_too_large", "provider_response_too_large"]
+  ] as const)("settles internal Provider boundary %s as externallyFailed", async (code, failureCode) => {
+    const store = new FakeJournal();
+    const provider = vi.fn(async () => {
+      throw new OpenAiCompatibleProviderError(502, "bounded diagnostic", code);
+    });
+    const response = await call(makeHandler(store, provider), validBody());
+    const events = parseSse(await response.text());
+
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "serverStatus",
+      status: "externallyFailed"
+    }));
+    expect(store.snapshot).toMatchObject({ status: "externallyFailed", failureCode });
   });
 
   it("allows only one of two concurrent identical requests to execute", async () => {

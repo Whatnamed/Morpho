@@ -1,12 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   executeOpenAiCompatibleResponse,
   OpenAiCompatibleProviderError,
   streamOpenAiCompatibleResponse
 } from "./openaiCompatibleProvider";
+import {
+  PROVIDER_BUFFERED_RESPONSE_MAX_BYTES,
+  PROVIDER_OVERALL_DEADLINE_MS,
+  PROVIDER_SSE_PENDING_MAX_BYTES
+} from "./providerResponseBoundary";
 
 describe("openai-compatible provider adapter", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
   it("extracts text, tool calls, citations, and usage from a Responses result", async () => {
     const originalFetch = global.fetch;
     global.fetch = async () =>
@@ -494,6 +502,222 @@ describe("openai-compatible provider adapter", () => {
         status: 400,
         code: "context_limit"
       });
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("rejects an oversized buffered JSON response from Content-Length before parsing it", async () => {
+    const originalFetch = global.fetch;
+    const cancelled = vi.fn();
+    const fetchMock = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("{}"));
+      },
+      cancel: cancelled
+    }), {
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": String(PROVIDER_BUFFERED_RESPONSE_MAX_BYTES + 1)
+      }
+    }));
+    global.fetch = fetchMock;
+
+    try {
+      await expect(executeOpenAiCompatibleResponse(config(), request())).rejects.toMatchObject({
+        code: "provider_response_too_large"
+      });
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(cancelled).toHaveBeenCalledOnce();
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("turns malformed buffered JSON below the size limit into a controlled Provider error", async () => {
+    const originalFetch = global.fetch;
+    const fetchMock = vi.fn(async () => new Response("{invalid", {
+      headers: { "Content-Type": "application/json" }
+    }));
+    global.fetch = fetchMock;
+
+    try {
+      await expect(executeOpenAiCompatibleResponse(config(), request())).rejects.toMatchObject({
+        status: 502,
+        diagnostic: "Responses endpoint returned invalid JSON."
+      });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("does not start buffered fallback when an SSE frame exceeds the pending-byte limit", async () => {
+    const originalFetch = global.fetch;
+    const cancelled = vi.fn();
+    const fetchMock = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("data: " + "x".repeat(PROVIDER_SSE_PENDING_MAX_BYTES + 1)));
+      },
+      cancel: cancelled
+    }), { headers: { "Content-Type": "text/event-stream" } }));
+    global.fetch = fetchMock;
+
+    try {
+      await expect(streamOpenAiCompatibleResponse(config(), request(), {})).rejects.toMatchObject({
+        code: "provider_response_too_large"
+      });
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(cancelled).toHaveBeenCalledOnce();
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("applies the internal deadline to a fetch that never resolves without retrying", async () => {
+    vi.useFakeTimers();
+    const originalFetch = global.fetch;
+    const fetchMock = vi.fn(() => new Promise<Response>(() => undefined));
+    global.fetch = fetchMock;
+
+    try {
+      const pending = executeOpenAiCompatibleResponse(config(), request());
+      const rejected = expect(pending).rejects.toMatchObject({ code: "provider_deadline_exceeded" });
+      await vi.advanceTimersByTimeAsync(PROVIDER_OVERALL_DEADLINE_MS);
+
+      await rejected;
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("cancels an SSE reader stuck after fetch and does not start buffered fallback at the deadline", async () => {
+    vi.useFakeTimers();
+    const originalFetch = global.fetch;
+    const cancelled = vi.fn();
+    const fetchMock = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+      pull: () => new Promise<void>(() => undefined),
+      cancel: cancelled
+    }), { headers: { "Content-Type": "text/event-stream" } }));
+    global.fetch = fetchMock;
+
+    try {
+      const pending = streamOpenAiCompatibleResponse(config(), request(), {});
+      const rejected = expect(pending).rejects.toMatchObject({ code: "provider_deadline_exceeded" });
+      await vi.advanceTimersByTimeAsync(PROVIDER_OVERALL_DEADLINE_MS);
+
+      await rejected;
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(cancelled).toHaveBeenCalledOnce();
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("preserves an external AbortError instead of translating it to the internal deadline", async () => {
+    const originalFetch = global.fetch;
+    const fetchMock = vi.fn(() => new Promise<Response>(() => undefined));
+    global.fetch = fetchMock;
+    const controller = new AbortController();
+
+    try {
+      const pending = executeOpenAiCompatibleResponse(config(), request(), controller.signal);
+      controller.abort();
+
+      await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("does not issue a transient retry after the shared deadline expires during backoff", async () => {
+    vi.useFakeTimers();
+    const originalFetch = global.fetch;
+    let resolveFirst!: (response: Response) => void;
+    const first = new Promise<Response>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const fetchMock = vi.fn(() => first);
+    global.fetch = fetchMock;
+
+    try {
+      const pending = executeOpenAiCompatibleResponse(config(), request());
+      const rejected = expect(pending).rejects.toMatchObject({ code: "provider_deadline_exceeded" });
+      await vi.advanceTimersByTimeAsync(PROVIDER_OVERALL_DEADLINE_MS - 100);
+      resolveFirst(new Response("bad gateway", { status: 502 }));
+      await vi.advanceTimersByTimeAsync(100);
+
+      await rejected;
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("shares the original deadline with stream-to-buffered fallback", async () => {
+    vi.useFakeTimers();
+    const originalFetch = global.fetch;
+    let resolveStream!: (response: Response) => void;
+    const first = new Promise<Response>((resolve) => {
+      resolveStream = resolve;
+    });
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => first)
+      .mockImplementationOnce(() => new Promise<Response>(() => undefined));
+    global.fetch = fetchMock;
+
+    try {
+      const pending = streamOpenAiCompatibleResponse(config(), request(), {});
+      const rejected = expect(pending).rejects.toMatchObject({ code: "provider_deadline_exceeded" });
+      await vi.advanceTimersByTimeAsync(PROVIDER_OVERALL_DEADLINE_MS - 100);
+      resolveStream(sseResponse([responseEvent("response.created", { response: { id: "incomplete" } })]));
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+      await vi.advanceTimersByTimeAsync(100);
+
+      await rejected;
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("shares the original deadline with the prompt-cache compatibility retry", async () => {
+    vi.useFakeTimers();
+    const originalFetch = global.fetch;
+    let resolveFirst!: (response: Response) => void;
+    const first = new Promise<Response>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => first)
+      .mockImplementationOnce(() => new Promise<Response>(() => undefined));
+    global.fetch = fetchMock;
+
+    try {
+      const pending = executeOpenAiCompatibleResponse(
+        {
+          ...config(),
+          promptCache: {
+            supportsPromptCacheKey: true,
+            supportsPromptCacheRetention: false,
+            promptCacheKeyEnabled: true
+          }
+        },
+        { ...request(), promptCacheKey: "morpho:shared-budget" }
+      );
+      const rejected = expect(pending).rejects.toMatchObject({ code: "provider_deadline_exceeded" });
+      await vi.advanceTimersByTimeAsync(PROVIDER_OVERALL_DEADLINE_MS - 100);
+      resolveFirst(new Response(JSON.stringify({ error: { message: "Unknown field prompt_cache_key" } }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      }));
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+      await vi.advanceTimersByTimeAsync(100);
+
+      await rejected;
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     } finally {
       global.fetch = originalFetch;
     }

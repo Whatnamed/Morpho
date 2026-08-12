@@ -8,6 +8,13 @@ import type {
 import type { AgentStreamActivityKind } from "@/shared/agentStreamProtocol";
 import { normalizeProviderTokenUsage } from "./providerTokenUsage";
 import { assertAgentFunctionCallCount } from "@/shared/agentFunctionCallLimits";
+import {
+  createProviderRequestBudget,
+  PROVIDER_SSE_PENDING_MAX_BYTES,
+  PROVIDER_SSE_TOTAL_MAX_BYTES,
+  ProviderResponseBoundaryError,
+  type ProviderRequestBudget
+} from "./providerResponseBoundary";
 
 type MessagePhase = "commentary" | "final";
 
@@ -54,49 +61,77 @@ export async function parseOpenAiResponsesStream(
   options: {
     signal?: AbortSignal;
     onEvent?: (event: OpenAiCompatibleAgentStreamEvent) => void;
+    budget?: ProviderRequestBudget;
+    maxPendingBytes?: number;
+    maxTotalBytes?: number;
   } = {}
 ): Promise<OpenAiCompatibleResponseResult> {
   const accumulator = createOpenAiCompatibleResponseAccumulator(options.onEvent);
   const reader = stream.getReader();
   const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  const ownsBudget = !options.budget;
+  const budget = options.budget ?? createProviderRequestBudget(options.signal);
+  const maxPendingBytes = options.maxPendingBytes ?? PROVIDER_SSE_PENDING_MAX_BYTES;
+  const maxTotalBytes = options.maxTotalBytes ?? PROVIDER_SSE_TOTAL_MAX_BYTES;
   let buffer = "";
-  let aborted = options.signal?.aborted === true;
-  const abortReader = () => {
-    aborted = true;
-    void reader.cancel().catch(() => undefined);
-  };
-  if (aborted) {
-    abortReader();
-  } else {
-    options.signal?.addEventListener("abort", abortReader, { once: true });
-  }
+  let pendingBytes = 0;
+  let totalBytes = 0;
+  let completed = false;
 
   try {
     while (true) {
-      if (aborted) {
-        throw createAbortError();
-      }
-
-      const next = await reader.read();
-      if (aborted) {
-        throw createAbortError();
-      }
+      const next = await budget.race(reader.read());
       if (next.value) {
+        totalBytes += next.value.byteLength;
+        pendingBytes += next.value.byteLength;
+        if (totalBytes > maxTotalBytes) {
+          throw new ProviderResponseBoundaryError("provider_response_too_large");
+        }
         buffer += decoder.decode(next.value, { stream: !next.done });
         const parsed = consumeSseFrames(buffer);
+        if (parsed.consumedCharacters > 0) {
+          pendingBytes = Math.max(
+            0,
+            pendingBytes - encoder.encode(buffer.slice(0, parsed.consumedCharacters)).byteLength
+          );
+        }
         buffer = parsed.remainder;
+        if (pendingBytes > maxPendingBytes) {
+          throw new ProviderResponseBoundaryError("provider_response_too_large");
+        }
         parsed.events.forEach((event) => accumulator.consume(event));
       }
 
       if (next.done) {
         const parsed = consumeSseFrames(`${buffer}\n\n`);
         parsed.events.forEach((event) => accumulator.consume(event));
-        return accumulator.finish();
+        const result = accumulator.finish();
+        completed = true;
+        return result;
       }
     }
+  } catch (error) {
+    try {
+      void reader.cancel().catch(() => undefined);
+    } catch {
+      // The parser error remains authoritative if transport cancellation races it.
+    }
+    throw error;
   } finally {
-    options.signal?.removeEventListener("abort", abortReader);
-    reader.releaseLock();
+    if (!completed) {
+      try {
+        void reader.cancel().catch(() => undefined);
+      } catch {
+        // Best-effort reader cleanup after a failed or cancelled parse.
+      }
+    }
+    try {
+      reader.releaseLock();
+    } catch {
+      // A timed-out pending read may release only after cancellation reaches the transport.
+    }
+    if (ownsBudget) budget.dispose();
   }
 }
 
@@ -500,7 +535,11 @@ type ParsedSseFrame = {
   data: string;
 };
 
-function consumeSseFrames(value: string): { events: ParsedSseFrame[]; remainder: string } {
+function consumeSseFrames(value: string): {
+  events: ParsedSseFrame[];
+  remainder: string;
+  consumedCharacters: number;
+} {
   const events: ParsedSseFrame[] = [];
   let cursor = 0;
   while (cursor < value.length) {
@@ -514,7 +553,7 @@ function consumeSseFrames(value: string): { events: ParsedSseFrame[]; remainder:
     }
     cursor = delimiter.end;
   }
-  return { events, remainder: value.slice(cursor) };
+  return { events, remainder: value.slice(cursor), consumedCharacters: cursor };
 }
 
 function findSseFrameDelimiter(value: string, fromIndex: number): { start: number; end: number } | undefined {
@@ -751,8 +790,4 @@ function domainFromUrl(value: string): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-function createAbortError(): DOMException {
-  return new DOMException("The stream was aborted.", "AbortError");
 }

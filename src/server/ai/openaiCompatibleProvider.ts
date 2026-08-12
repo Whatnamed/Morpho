@@ -14,6 +14,16 @@ import {
   AgentFunctionCallLimitError,
   assertAgentFunctionCallCount
 } from "@/shared/agentFunctionCallLimits";
+import {
+  assertProviderContentLengthWithinLimit,
+  createProviderRequestBudget,
+  PROVIDER_SSE_TOTAL_MAX_BYTES,
+  ProviderResponseBoundaryError,
+  readBoundedProviderDiagnostic,
+  readBoundedProviderJson,
+  type ProviderRequestBudget,
+  type ProviderResponseBoundaryCode
+} from "./providerResponseBoundary";
 
 type OpenAiCompatibleProviderConfig = Pick<
   OpenAiCompatibleConfig,
@@ -120,12 +130,12 @@ export type AgentOutputItem = {
 };
 
 export class OpenAiCompatibleProviderError extends Error {
-  readonly code?: "context_limit" | "function_call_limit";
+  readonly code?: "context_limit" | "function_call_limit" | ProviderResponseBoundaryCode;
 
   constructor(
     readonly status: number,
     readonly diagnostic?: string,
-    code?: "context_limit" | "function_call_limit"
+    code?: "context_limit" | "function_call_limit" | ProviderResponseBoundaryCode
   ) {
     super(`OpenAI-compatible provider error (${status})`);
     this.name = "OpenAiCompatibleProviderError";
@@ -138,38 +148,56 @@ export async function executeOpenAiCompatibleResponse(
   request: OpenAiCompatibleResponseRequest,
   signal?: AbortSignal
 ): Promise<OpenAiCompatibleResponseResult> {
+  const budget = createProviderRequestBudget(signal);
+  try {
+    return await executeOpenAiCompatibleResponseWithBudget(config, request, budget);
+  } catch (error) {
+    throw translateProviderBoundaryError(error);
+  } finally {
+    budget.dispose();
+  }
+}
+
+async function executeOpenAiCompatibleResponseWithBudget(
+  config: OpenAiCompatibleProviderConfig,
+  request: OpenAiCompatibleResponseRequest,
+  budget: ProviderRequestBudget
+): Promise<OpenAiCompatibleResponseResult> {
   const response = await fetchProviderResponse(`${config.baseUrl}/responses`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify(buildProviderRequestBody(config, request)),
-    signal
-  });
+    body: JSON.stringify(buildProviderRequestBody(config, request))
+  }, budget);
 
   if (!response.ok) {
-    const diagnostic = await safeReadDiagnostic(response);
+    const diagnostic = await safeReadDiagnostic(response, budget);
     if (shouldRetryWithoutUnsupportedPromptCache(config, request, response.status, diagnostic)) {
+      budget.throwIfUnavailable();
       const retry = await fetchProviderResponse(`${config.baseUrl}/responses`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${config.apiKey}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(buildProviderRequestBody(config, withoutPromptCacheFields(request))),
-        signal
-      });
+        body: JSON.stringify(buildProviderRequestBody(config, withoutPromptCacheFields(request)))
+      }, budget);
       if (retry.ok) {
-        return resultFromRawResponse((await retry.json()) as RawResponse, request.diagnostics, "unavailable");
+        return resultFromRawResponse(
+          await readRawResponse(retry, budget),
+          request.diagnostics,
+          "unavailable"
+        );
       }
-      const retryDiagnostic = await safeReadDiagnostic(retry);
+      const retryDiagnostic = await safeReadDiagnostic(retry, budget);
       throw new OpenAiCompatibleProviderError(retry.status, retryDiagnostic);
     }
     throw new OpenAiCompatibleProviderError(response.status, diagnostic);
   }
 
-  return resultFromRawResponse((await response.json()) as RawResponse, request.diagnostics);
+  return resultFromRawResponse(await readRawResponse(response, budget), request.diagnostics);
 }
 
 export async function streamOpenAiCompatibleResponse(
@@ -178,23 +206,38 @@ export async function streamOpenAiCompatibleResponse(
   handlers: OpenAiCompatibleStreamHandlers,
   signal?: AbortSignal
 ): Promise<OpenAiCompatibleResponseResult> {
+  const budget = createProviderRequestBudget(signal);
+  try {
+    return await streamOpenAiCompatibleResponseWithBudget(config, request, handlers, budget);
+  } catch (error) {
+    throw translateProviderBoundaryError(error);
+  } finally {
+    budget.dispose();
+  }
+}
+
+async function streamOpenAiCompatibleResponseWithBudget(
+  config: OpenAiCompatibleProviderConfig,
+  request: OpenAiCompatibleResponseRequest,
+  handlers: OpenAiCompatibleStreamHandlers,
+  budget: ProviderRequestBudget
+): Promise<OpenAiCompatibleResponseResult> {
   const response = await fetchProviderResponse(`${config.baseUrl}/responses`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ ...buildProviderRequestBody(config, request), stream: true }),
-    signal
-  });
+    body: JSON.stringify({ ...buildProviderRequestBody(config, request), stream: true })
+  }, budget);
 
   if (!response.ok) {
-    const diagnostic = await safeReadDiagnostic(response);
+    const diagnostic = await safeReadDiagnostic(response, budget);
     if (shouldRetryWithoutUnsupportedPromptCache(config, request, response.status, diagnostic)) {
-      return executeBufferedResponsesFallback(config, withoutPromptCacheFields(request), handlers, signal, "unavailable");
+      return executeBufferedResponsesFallback(config, withoutPromptCacheFields(request), handlers, budget, "unavailable");
     }
     if (shouldUseBufferedResponsesFallback(response.status)) {
-      return executeBufferedResponsesFallback(config, request, handlers, signal);
+      return executeBufferedResponsesFallback(config, request, handlers, budget);
     }
     throw new OpenAiCompatibleProviderError(response.status, diagnostic);
   }
@@ -202,7 +245,7 @@ export async function streamOpenAiCompatibleResponse(
   const contentType = response.headers.get("Content-Type")?.toLowerCase() ?? "";
   if (!response.body || !contentType.includes("text/event-stream")) {
     if (contentType.includes("application/json")) {
-      const raw = (await response.json()) as RawResponse;
+      const raw = await readRawResponse(response, budget);
       if (!isRawResponsesResult(raw)) {
         throw new OpenAiCompatibleProviderError(502, "Responses endpoint returned an incompatible JSON payload.");
       }
@@ -210,13 +253,15 @@ export async function streamOpenAiCompatibleResponse(
       emitBufferedResult(result, handlers);
       return result;
     }
+    await discardProviderResponse(response, budget);
     throw new OpenAiCompatibleProviderError(502, "Responses endpoint did not return an event stream.");
   }
+  await assertProviderContentLengthWithinLimit(response, PROVIDER_SSE_TOTAL_MAX_BYTES);
 
   let semanticEventsEmitted = false;
   try {
     const result = await parseOpenAiResponsesStream(response.body, {
-      signal,
+      budget,
       onEvent: (event) => {
         if (event.type !== "unknown") {
           semanticEventsEmitted = true;
@@ -250,7 +295,8 @@ export async function streamOpenAiCompatibleResponse(
     }
     if (error instanceof OpenAiCompatibleStreamError) {
       handlers.onBufferedFallback?.({ semanticEventsEmitted });
-      return executeBufferedResponsesFallback(config, request, handlers, signal);
+      budget.throwIfUnavailable();
+      return executeBufferedResponsesFallback(config, request, handlers, budget);
     }
     throw error;
   }
@@ -260,10 +306,11 @@ async function executeBufferedResponsesFallback(
   config: OpenAiCompatibleProviderConfig,
   request: OpenAiCompatibleResponseRequest,
   handlers: OpenAiCompatibleStreamHandlers,
-  signal?: AbortSignal,
+  budget: ProviderRequestBudget,
   cacheStatus?: "unavailable"
 ): Promise<OpenAiCompatibleResponseResult> {
-  const result = await executeOpenAiCompatibleResponse(config, request, signal);
+  budget.throwIfUnavailable();
+  const result = await executeOpenAiCompatibleResponseWithBudget(config, request, budget);
   if (cacheStatus) {
     result.providerDiagnostics = { ...result.providerDiagnostics, cacheStatus };
   }
@@ -271,32 +318,64 @@ async function executeBufferedResponsesFallback(
   return result;
 }
 
-async function safeReadDiagnostic(response: Response): Promise<string | undefined> {
+async function safeReadDiagnostic(
+  response: Response,
+  budget: ProviderRequestBudget
+): Promise<string | undefined> {
   try {
-    const text = await response.text();
-    return text.trim().slice(0, 800) || undefined;
-  } catch {
+    return await readBoundedProviderDiagnostic(response, budget);
+  } catch (error) {
+    if (error instanceof ProviderResponseBoundaryError || isAbortError(error)) throw error;
     return undefined;
   }
 }
 
-async function fetchProviderResponse(url: string, init: RequestInit): Promise<Response> {
+async function readRawResponse(
+  response: Response,
+  budget: ProviderRequestBudget
+): Promise<RawResponse> {
+  let value: unknown;
+  try {
+    value = await readBoundedProviderJson(response, budget);
+  } catch (error) {
+    if (error instanceof ProviderResponseBoundaryError || isAbortError(error)) throw error;
+    throw new OpenAiCompatibleProviderError(502, "Responses endpoint returned invalid JSON.");
+  }
+  return isRecord(value) ? value : {};
+}
+
+function translateProviderBoundaryError(error: unknown): unknown {
+  return error instanceof ProviderResponseBoundaryError
+    ? new OpenAiCompatibleProviderError(502, error.message, error.code)
+    : error;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+async function fetchProviderResponse(
+  url: string,
+  init: RequestInit,
+  budget: ProviderRequestBudget
+): Promise<Response> {
   let lastNetworkError: unknown;
   for (let attempt = 0; attempt <= TRANSIENT_RESPONSE_RETRY_DELAYS_MS.length; attempt += 1) {
     try {
-      const response = await fetch(url, init);
+      budget.throwIfUnavailable();
+      const response = await budget.race(fetch(url, { ...init, signal: budget.signal }));
       if (!isTransientProviderResponse(response.status) || attempt === TRANSIENT_RESPONSE_RETRY_DELAYS_MS.length) {
         return response;
       }
-      await discardProviderResponse(response);
+      await discardProviderResponse(response, budget);
     } catch (error) {
-      if (init.signal?.aborted || attempt === TRANSIENT_RESPONSE_RETRY_DELAYS_MS.length) {
+      if (budget.signal.aborted || attempt === TRANSIENT_RESPONSE_RETRY_DELAYS_MS.length) {
         throw error;
       }
       lastNetworkError = error;
     }
 
-    await waitForTransientRetry(TRANSIENT_RESPONSE_RETRY_DELAYS_MS[attempt], init.signal);
+    await budget.wait(TRANSIENT_RESPONSE_RETRY_DELAYS_MS[attempt]);
   }
 
   throw lastNetworkError ?? new Error("Provider request did not produce a response.");
@@ -310,31 +389,16 @@ function isTransientProviderResponse(status: number): boolean {
   return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
 }
 
-async function discardProviderResponse(response: Response): Promise<void> {
+async function discardProviderResponse(
+  response: Response,
+  budget: ProviderRequestBudget
+): Promise<void> {
   try {
-    await response.body?.cancel();
-  } catch {
+    if (response.body) await budget.race(response.body.cancel());
+  } catch (error) {
+    if (error instanceof ProviderResponseBoundaryError || isAbortError(error)) throw error;
     // The response is being retried, so an unread diagnostic body is not useful.
   }
-}
-
-function waitForTransientRetry(delayMs: number, signal: AbortSignal | null | undefined): Promise<void> {
-  if (signal?.aborted) {
-    return Promise.reject(signal.reason ?? createAbortError());
-  }
-
-  return new Promise((resolve, reject) => {
-    const abort = () => {
-      clearTimeout(timeout);
-      signal?.removeEventListener("abort", abort);
-      reject(signal?.reason ?? createAbortError());
-    };
-    const timeout = setTimeout(() => {
-      signal?.removeEventListener("abort", abort);
-      resolve();
-    }, delayMs);
-    signal?.addEventListener("abort", abort, { once: true });
-  });
 }
 
 function buildProviderRequestBody(
@@ -623,10 +687,6 @@ function domainFromUrl(url: string): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function createAbortError(): DOMException {
-  return new DOMException("The provider stream was aborted.", "AbortError");
 }
 
 function isContextLimitDiagnostic(diagnostic: string | undefined): boolean {
