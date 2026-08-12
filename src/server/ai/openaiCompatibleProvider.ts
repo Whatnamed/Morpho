@@ -24,6 +24,7 @@ import {
   type ProviderRequestBudget,
   type ProviderResponseBoundaryCode
 } from "./providerResponseBoundary";
+import { visitProviderResponseRecords } from "./providerResponseTraversal";
 
 type OpenAiCompatibleProviderConfig = Pick<
   OpenAiCompatibleConfig,
@@ -610,7 +611,7 @@ function extractOutputItems(output: unknown[] | undefined): AgentOutputItem[] {
 
 function extractCitations(value: unknown): ProviderCitation[] {
   const citations: ProviderCitation[] = [];
-  visitRecords(value, (record) => {
+  visitProviderResponseRecords(value, (record) => {
     if (isRecord(record.url_citation)) {
       const citation = normalizeCitationRecord(record.url_citation);
       if (citation) {
@@ -653,20 +654,6 @@ function normalizeCitationRecord(record: Record<string, unknown>): ProviderCitat
     domain: stringFromUnknown(record.domain) ?? domainFromUrl(url),
     snippet: stringFromUnknown(record.snippet) ?? stringFromUnknown(record.content) ?? stringFromUnknown(record.text)
   };
-}
-
-function visitRecords(value: unknown, visitor: (record: Record<string, unknown>) => void): void {
-  if (Array.isArray(value)) {
-    value.forEach((item) => visitRecords(item, visitor));
-    return;
-  }
-
-  if (!isRecord(value)) {
-    return;
-  }
-
-  visitor(value);
-  Object.values(value).forEach((item) => visitRecords(item, visitor));
 }
 
 function stringFromUnknown(value: unknown): string | undefined {

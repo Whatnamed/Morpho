@@ -1,6 +1,13 @@
 import { getGrsRequestProfile } from "./profile";
 import type { GrsImageAspectRatio } from "@/domain/morpho/grsImageModels";
 import { buildAllowedImageHosts, downloadSecureProviderImage } from "./secureImageDownload";
+import {
+  createProviderRequestBudget,
+  PROVIDER_OVERALL_DEADLINE_MS,
+  ProviderResponseBoundaryError,
+  type ProviderRequestBudget
+} from "../ai/providerResponseBoundary";
+import { visitProviderResponseRecords } from "../ai/providerResponseTraversal";
 
 export type GrsImageConfig = {
   apiKey: string;
@@ -57,6 +64,7 @@ export type ResolveGrsImageOptions = {
   pollDelayMs?: number;
   generateAttempts?: number;
   retryDelayMs?: number;
+  overallDeadlineMs?: number;
   signal?: AbortSignal;
 };
 
@@ -100,6 +108,31 @@ export async function resolveGrsImageResult(
   input: GrsGenerateInput,
   options: ResolveGrsImageOptions = {}
 ): Promise<GrsImageResult> {
+  const budget = createProviderRequestBudget(
+    options.signal,
+    options.overallDeadlineMs ?? PROVIDER_OVERALL_DEADLINE_MS
+  );
+  try {
+    return await resolveGrsImageResultWithBudget(config, input, options, budget);
+  } catch (error) {
+    if (options.signal?.aborted || isAbortError(error)) {
+      return { status: "cancelled", reason: "GrsAI image request was cancelled." };
+    }
+    if (error instanceof ProviderResponseBoundaryError && error.code === "provider_deadline_exceeded") {
+      return { status: "failed", reason: "GrsAI image request exceeded its overall safety deadline." };
+    }
+    return { status: "failed", reason: "GrsAI image request failed." };
+  } finally {
+    budget.dispose();
+  }
+}
+
+async function resolveGrsImageResultWithBudget(
+  config: GrsImageConfig,
+  input: GrsGenerateInput,
+  options: ResolveGrsImageOptions,
+  budget: ProviderRequestBudget
+): Promise<GrsImageResult> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const maxPolls = options.maxPolls ?? DEFAULT_MAX_POLLS;
   const pollDelayMs = options.pollDelayMs ?? DEFAULT_POLL_DELAY_MS;
@@ -122,11 +155,12 @@ export async function resolveGrsImageResult(
         method: "POST",
         headers: request.headers,
         body: JSON.stringify(request.body),
-        signal
-      });
+        signal: budget.signal
+      }, budget);
     } catch (error) {
+      if (error instanceof ProviderResponseBoundaryError) throw error;
       if (attempt < attemptBaseUrls.length - 1 && !signal?.aborted) {
-        await delay(retryDelayMs, signal);
+        await budget.wait(retryDelayMs);
         continue;
       }
       const detail = error instanceof Error && error.message ? `: ${error.message}` : "";
@@ -142,7 +176,7 @@ export async function resolveGrsImageResult(
       isTransientHttpStatus(generateResponse.response.status) &&
       attempt < attemptBaseUrls.length - 1
     ) {
-      await delay(retryDelayMs, signal);
+      await budget.wait(retryDelayMs);
       continue;
     }
     activeBaseUrl = attemptBaseUrl;
@@ -160,7 +194,7 @@ export async function resolveGrsImageResult(
   if (!generateResponse.response.ok) {
     let detail = "";
     try {
-      const errorBody = await readBoundedResponseText(generateResponse.response);
+      const errorBody = await readBoundedResponseText(generateResponse.response, budget);
       if (errorBody) {
         try {
           const parsed = JSON.parse(errorBody) as unknown;
@@ -180,11 +214,12 @@ export async function resolveGrsImageResult(
 
   let generatePayload: unknown;
   try {
-    generatePayload = await readJson(generateResponse.response);
+    generatePayload = await readJson(generateResponse.response, budget);
   } catch (error) {
     return responseReadFailure("generate", error);
   }
   const allowedImageHosts = buildAllowedImageHosts(config);
+  budget.throwIfUnavailable();
   const immediate = await resolvePayload(fetchImpl, generatePayload, signal, extractTaskId(generatePayload), allowedImageHosts);
   if (immediate.status !== "pending") {
     return immediate;
@@ -201,11 +236,12 @@ export async function resolveGrsImageResult(
       return { status: "cancelled", reason: "GrsAI image request was cancelled." };
     }
 
+    budget.throwIfUnavailable();
     const resultResponse = await safeFetch(fetchImpl, resultUrl, {
       method: "GET",
       headers: { Authorization: `Bearer ${config.apiKey}` },
-      signal
-    });
+      signal: budget.signal
+    }, budget);
 
     if (resultResponse.status === "cancelled") {
       return resultResponse;
@@ -217,17 +253,18 @@ export async function resolveGrsImageResult(
 
     let resultPayload: unknown;
     try {
-      resultPayload = await readJson(resultResponse.response);
+      resultPayload = await readJson(resultResponse.response, budget);
     } catch (error) {
       return responseReadFailure("result", error);
     }
+    budget.throwIfUnavailable();
     const resolved = await resolvePayload(fetchImpl, resultPayload, signal, taskId, allowedImageHosts);
     if (resolved.status !== "pending") {
       return resolved;
     }
 
     if (attempt < maxPolls - 1) {
-      await delay(pollDelayMs, signal);
+      await budget.wait(pollDelayMs);
     }
   }
 
@@ -280,10 +317,11 @@ async function downloadImage(
 async function safeFetch(
   fetchImpl: typeof fetch,
   input: RequestInfo | URL,
-  init: RequestInit
+  init: RequestInit,
+  budget: ProviderRequestBudget
 ): Promise<{ status: "ok"; response: Response } | { status: "cancelled"; reason: string }> {
   try {
-    return { status: "ok", response: await fetchImpl(input, init) };
+    return { status: "ok", response: await budget.race(fetchImpl(input, init)) };
   } catch (error) {
     if (isAbortError(error)) {
       return { status: "cancelled", reason: "GrsAI image request was cancelled." };
@@ -293,8 +331,8 @@ async function safeFetch(
   }
 }
 
-async function readJson(response: Response): Promise<unknown> {
-  const text = await readBoundedResponseText(response);
+async function readJson(response: Response, budget: ProviderRequestBudget): Promise<unknown> {
+  const text = await readBoundedResponseText(response, budget);
   if (!text) {
     return null;
   }
@@ -307,6 +345,7 @@ async function readJson(response: Response): Promise<unknown> {
 
 async function readBoundedResponseText(
   response: Response,
+  budget: ProviderRequestBudget,
   maxBytes = MAX_GRS_JSON_RESPONSE_BYTES
 ): Promise<string> {
   const declaredLength = readContentLength(response.headers.get("content-length"));
@@ -325,7 +364,7 @@ async function readBoundedResponseText(
   let text = "";
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await budget.race(reader.read());
       if (done) {
         return text + decoder.decode();
       }
@@ -336,6 +375,13 @@ async function readBoundedResponseText(
       }
       text += decoder.decode(value, { stream: true });
     }
+  } catch (error) {
+    try {
+      await reader.cancel();
+    } catch {
+      // The deadline or size boundary remains authoritative if cancellation races the body.
+    }
+    throw error;
   } finally {
     reader.releaseLock();
   }
@@ -358,6 +404,9 @@ function readContentLength(value: string | null): number | undefined {
 }
 
 function responseReadFailure(scope: "generate" | "result", error: unknown): GrsImageResult {
+  if (error instanceof ProviderResponseBoundaryError) {
+    throw error;
+  }
   if (isAbortError(error)) {
     return { status: "cancelled", reason: "GrsAI image request was cancelled." };
   }
@@ -395,22 +444,7 @@ function extractStatus(value: unknown): string | undefined {
 }
 
 function extractTaskId(value: unknown): string | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  for (const key of ["id", "taskId", "task_id"]) {
-    const item = value[key];
-    if (typeof item === "string" && item) {
-      return item;
-    }
-  }
-
-  if (isRecord(value.data)) {
-    return extractTaskId(value.data);
-  }
-
-  return undefined;
+  return findProviderString(value, ["id", "taskId", "task_id"]);
 }
 
 function extractImageUrl(value: unknown): string | undefined {
@@ -418,37 +452,7 @@ function extractImageUrl(value: unknown): string | undefined {
     return value;
   }
 
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  for (const key of ["url", "imageUrl", "image_url", "outputUrl"]) {
-    const item = value[key];
-    if (typeof item === "string" && isHttpUrl(item)) {
-      return item;
-    }
-  }
-
-  for (const key of ["result", "output", "data"]) {
-    const nested = extractImageUrl(value[key]);
-    if (nested) {
-      return nested;
-    }
-  }
-
-  for (const key of ["images", "results"]) {
-    const item = value[key];
-    if (Array.isArray(item)) {
-      for (const entry of item) {
-        const nested = extractImageUrl(entry);
-        if (nested) {
-          return nested;
-        }
-      }
-    }
-  }
-
-  return undefined;
+  return findProviderString(value, ["url", "imageUrl", "image_url", "outputUrl"], isHttpUrl);
 }
 
 function isPendingStatus(status: string | undefined): boolean {
@@ -460,27 +464,30 @@ function isFailureStatus(status: string | undefined): boolean {
 }
 
 function extractFailureDetail(value: unknown): string | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
+  return findProviderString(
+    value,
+    ["message", "error", "msg", "reason"],
+    (candidate) => candidate.trim().length > 0
+  )?.trim();
+}
 
-  for (const key of ["message", "error", "msg", "reason"]) {
-    const detail = value[key];
-    if (typeof detail === "string" && detail.trim()) {
-      return detail.trim();
-    }
-    if (isRecord(detail)) {
-      const nested = extractFailureDetail(detail);
-      if (nested) {
-        return nested;
+function findProviderString(
+  value: unknown,
+  keys: readonly string[],
+  accept: (candidate: string) => boolean = (candidate) => candidate.length > 0
+): string | undefined {
+  let match: string | undefined;
+  visitProviderResponseRecords(value, (record) => {
+    if (match) return;
+    for (const key of keys) {
+      const candidate = record[key];
+      if (typeof candidate === "string" && accept(candidate)) {
+        match = candidate;
+        return;
       }
     }
-  }
-
-  if (isRecord(value.data)) {
-    return extractFailureDetail(value.data);
-  }
-  return undefined;
+  });
+  return match;
 }
 
 function isTransientHttpStatus(status: number): boolean {
@@ -493,24 +500,6 @@ function uniqueBaseUrls(primary: string, fallbacks: readonly string[] | undefine
 
 function isHttpUrl(value: string): boolean {
   return value.startsWith("http://") || value.startsWith("https://");
-}
-
-function delay(ms: number, signal: AbortSignal | undefined): Promise<void> {
-  if (ms <= 0) {
-    return Promise.resolve();
-  }
-
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => resolve(), ms);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timeout);
-        resolve();
-      },
-      { once: true }
-    );
-  });
 }
 
 function isAbortError(error: unknown): boolean {

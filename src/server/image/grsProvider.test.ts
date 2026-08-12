@@ -1,8 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createGrsGenerateRequest, resolveGrsImageResult } from "./grsProvider";
 
 describe("GrsAI image provider adapter", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
   it("sends nano-banana-2-lite with the lightweight nano-banana request shape", () => {
     const request = createGrsGenerateRequest(
       {
@@ -451,7 +454,160 @@ describe("GrsAI image provider adapter", () => {
     });
     expect(oversized.wasCancelled()).toBe(true);
   });
+
+  it("fails closed on deeply nested provider JSON instead of recursing through it", async () => {
+    let nested: unknown = { status: "pending" };
+    for (let index = 0; index < 80; index += 1) {
+      nested = { data: nested };
+    }
+
+    await expect(
+      resolveGrsImageResult(grsConfig(), grsInput(), {
+        fetchImpl: async () => jsonResponse(nested),
+        generateAttempts: 1,
+        maxPolls: 1,
+        pollDelayMs: 0
+      })
+    ).resolves.toEqual({ status: "failed", reason: "GrsAI image request failed." });
+  });
+
+  it("fails an internally timed-out generate fetch without reporting user cancellation", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn<typeof fetch>(() => new Promise<Response>(() => undefined));
+    const resultPromise = resolveGrsImageResult(grsConfig(), grsInput(), {
+      fetchImpl,
+      generateAttempts: 1,
+      overallDeadlineMs: 25
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    await expect(resultPromise).resolves.toEqual({
+      status: "failed",
+      reason: "GrsAI image request exceeded its overall safety deadline."
+    });
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it("applies the same deadline while reading generate and result JSON bodies", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(new ReadableStream<Uint8Array>({})));
+    const resultPromise = resolveGrsImageResult(grsConfig(), grsInput(), {
+      fetchImpl,
+      generateAttempts: 1,
+      overallDeadlineMs: 25
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    await expect(resultPromise).resolves.toEqual({
+      status: "failed",
+      reason: "GrsAI image request exceeded its overall safety deadline."
+    });
+  });
+
+  it("applies the same deadline while reading a polling result body", async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      calls += 1;
+      return calls === 1
+        ? jsonResponse({ id: "task-hanging-result", status: "pending" })
+        : new Response(new ReadableStream<Uint8Array>({}));
+    });
+    const resultPromise = resolveGrsImageResult(grsConfig(), grsInput(), {
+      fetchImpl,
+      generateAttempts: 1,
+      maxPolls: 1,
+      pollDelayMs: 0,
+      overallDeadlineMs: 25
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    await expect(resultPromise).resolves.toEqual({
+      status: "failed",
+      reason: "GrsAI image request exceeded its overall safety deadline."
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not start a retry after the overall deadline expires during backoff", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      throw new TypeError("network down");
+    });
+    const resultPromise = resolveGrsImageResult(grsConfig(), grsInput(), {
+      fetchImpl,
+      generateAttempts: 2,
+      retryDelayMs: 100,
+      overallDeadlineMs: 25
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    await expect(resultPromise).resolves.toEqual({
+      status: "failed",
+      reason: "GrsAI image request exceeded its overall safety deadline."
+    });
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it("keeps an explicit caller abort distinct from the internal safety deadline", async () => {
+    const controller = new AbortController();
+    const fetchImpl = vi.fn<typeof fetch>(() => new Promise<Response>(() => undefined));
+    const resultPromise = resolveGrsImageResult(grsConfig(), grsInput(), {
+      fetchImpl,
+      signal: controller.signal,
+      overallDeadlineMs: 60_000
+    });
+
+    controller.abort();
+
+    await expect(resultPromise).resolves.toEqual({
+      status: "cancelled",
+      reason: "GrsAI image request was cancelled."
+    });
+  });
+
+  it("disposes the safety deadline after a completed request", async () => {
+    vi.useFakeTimers();
+    const fetchImpl: typeof fetch = async (input) =>
+      String(input).includes("/generate")
+        ? jsonResponse({ status: "succeeded", url: "https://cdn.example/result.png" })
+        : new Response(new Blob(["png"], { type: "image/png" }), {
+            headers: { "Content-Type": "image/png" }
+          });
+
+    await expect(
+      resolveGrsImageResult(grsConfig(), grsInput(), {
+        fetchImpl,
+        generateAttempts: 1,
+        overallDeadlineMs: 25
+      })
+    ).resolves.toMatchObject({ status: "ok" });
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
+
+function grsConfig() {
+  return {
+    apiKey: "key",
+    baseUrl: "https://grs.example",
+    imageHostAllowlist: ["cdn.example"],
+    model: "nano-banana-fast"
+  };
+}
+
+function grsInput() {
+  return {
+    modelId: "nano-banana-fast",
+    prompt: "deadline test",
+    images: [],
+    aspectRatio: "1:1" as const,
+    referenceObjectIds: []
+  };
+}
 
 function jsonResponse(value: unknown): Response {
   return new Response(JSON.stringify(value), {

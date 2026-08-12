@@ -202,6 +202,54 @@ describe("OpenAI-compatible Responses SSE parser", () => {
     expect(cancelled).toHaveBeenCalledOnce();
   });
 
+  it("counts unfinished SSE bytes from the raw transport after malformed UTF-8 frames", async () => {
+    const cancelled = vi.fn();
+    const encoder = new TextEncoder();
+    const malformedCompleteFrame = new Uint8Array([
+      ...encoder.encode('data: {"type":"provider.extension","value":"'),
+      0xc0,
+      0xaf,
+      ...encoder.encode('"}\n\n')
+    ]);
+    const unfinished = encoder.encode(`data: ${"x".repeat(40)}`);
+    const stream = cancellableByteStream([malformedCompleteFrame, unfinished], cancelled);
+
+    await expect(parseOpenAiResponsesStream(stream, { maxPendingBytes: 32 })).rejects.toMatchObject({
+      code: "provider_response_too_large"
+    });
+    expect(cancelled).toHaveBeenCalledOnce();
+  });
+
+  it("bounds a stream made from excessive tiny frames", async () => {
+    const cancelled = vi.fn();
+    const frame = 'data: {"type":"provider.extension"}\n\n';
+    const stream = cancellableStream([frame, frame, frame], cancelled);
+
+    await expect(parseOpenAiResponsesStream(stream, { maxEventCount: 2 })).rejects.toMatchObject({
+      code: "provider_response_too_large"
+    });
+    expect(cancelled).toHaveBeenCalledOnce();
+  });
+
+  it("fails closed on provider output that exceeds the structural depth budget", async () => {
+    let nested: unknown = { url: "https://example.com" };
+    for (let index = 0; index < 12; index += 1) {
+      nested = { nested };
+    }
+
+    await expect(
+      parseOpenAiResponsesStream(
+        responseFrames([
+          {
+            type: "response.completed",
+            response: { id: "response-deep", output: [{ id: "item-deep", type: "message", content: [nested] }] }
+          }
+        ]),
+        { maxStructureDepth: 8 }
+      )
+    ).rejects.toMatchObject({ code: "provider_response_too_large" });
+  });
+
   it("cancels multiple legal frames when cumulative SSE bytes exceed the total limit", async () => {
     const cancelled = vi.fn();
     const frame = 'data: {"type":"provider.extension"}\n\n';
@@ -248,9 +296,13 @@ function responseFrames(events: Array<Record<string, unknown>>): ReadableStream<
 
 function cancellableStream(chunks: string[], cancelled: () => void): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
+  return cancellableByteStream(chunks.map((chunk) => encoder.encode(chunk)), cancelled);
+}
+
+function cancellableByteStream(chunks: Uint8Array[], cancelled: () => void): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
     start(controller) {
-      chunks.forEach((chunk) => controller.enqueue(encoder.encode(chunk)));
+      chunks.forEach((chunk) => controller.enqueue(chunk));
     },
     cancel: cancelled
   });

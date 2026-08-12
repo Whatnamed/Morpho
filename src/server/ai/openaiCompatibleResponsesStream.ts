@@ -10,11 +10,15 @@ import { normalizeProviderTokenUsage } from "./providerTokenUsage";
 import { assertAgentFunctionCallCount } from "@/shared/agentFunctionCallLimits";
 import {
   createProviderRequestBudget,
+  PROVIDER_RESPONSE_MAX_STRUCTURE_DEPTH,
+  PROVIDER_RESPONSE_MAX_STRUCTURE_NODES,
+  PROVIDER_SSE_MAX_EVENT_COUNT,
   PROVIDER_SSE_PENDING_MAX_BYTES,
   PROVIDER_SSE_TOTAL_MAX_BYTES,
   ProviderResponseBoundaryError,
   type ProviderRequestBudget
 } from "./providerResponseBoundary";
+import { visitProviderResponseRecords } from "./providerResponseTraversal";
 
 type MessagePhase = "commentary" | "final";
 
@@ -64,48 +68,53 @@ export async function parseOpenAiResponsesStream(
     budget?: ProviderRequestBudget;
     maxPendingBytes?: number;
     maxTotalBytes?: number;
+    maxEventCount?: number;
+    maxStructureDepth?: number;
+    maxStructureNodes?: number;
   } = {}
 ): Promise<OpenAiCompatibleResponseResult> {
-  const accumulator = createOpenAiCompatibleResponseAccumulator(options.onEvent);
+  const accumulator = createOpenAiCompatibleResponseAccumulator(options.onEvent, {
+    maxStructureDepth: options.maxStructureDepth,
+    maxStructureNodes: options.maxStructureNodes
+  });
   const reader = stream.getReader();
   const decoder = new TextDecoder();
-  const encoder = new TextEncoder();
   const ownsBudget = !options.budget;
   const budget = options.budget ?? createProviderRequestBudget(options.signal);
   const maxPendingBytes = options.maxPendingBytes ?? PROVIDER_SSE_PENDING_MAX_BYTES;
   const maxTotalBytes = options.maxTotalBytes ?? PROVIDER_SSE_TOTAL_MAX_BYTES;
-  let buffer = "";
-  let pendingBytes = 0;
+  const maxEventCount = options.maxEventCount ?? PROVIDER_SSE_MAX_EVENT_COUNT;
+  const pending = new SseByteBuffer();
   let totalBytes = 0;
+  let eventCount = 0;
   let completed = false;
+
+  const consumeFrame = (frame: ParsedSseFrame | undefined): void => {
+    if (!frame) return;
+    eventCount += 1;
+    if (eventCount > maxEventCount) {
+      throw new ProviderResponseBoundaryError("provider_response_too_large");
+    }
+    accumulator.consume(frame);
+  };
 
   try {
     while (true) {
       const next = await budget.race(reader.read());
       if (next.value) {
         totalBytes += next.value.byteLength;
-        pendingBytes += next.value.byteLength;
         if (totalBytes > maxTotalBytes) {
           throw new ProviderResponseBoundaryError("provider_response_too_large");
         }
-        buffer += decoder.decode(next.value, { stream: !next.done });
-        const parsed = consumeSseFrames(buffer);
-        if (parsed.consumedCharacters > 0) {
-          pendingBytes = Math.max(
-            0,
-            pendingBytes - encoder.encode(buffer.slice(0, parsed.consumedCharacters)).byteLength
-          );
-        }
-        buffer = parsed.remainder;
-        if (pendingBytes > maxPendingBytes) {
+        pending.append(next.value);
+        pending.consumeCompleteFrames(decoder, consumeFrame);
+        if (pending.byteLength > maxPendingBytes) {
           throw new ProviderResponseBoundaryError("provider_response_too_large");
         }
-        parsed.events.forEach((event) => accumulator.consume(event));
       }
 
       if (next.done) {
-        const parsed = consumeSseFrames(`${buffer}\n\n`);
-        parsed.events.forEach((event) => accumulator.consume(event));
+        consumeFrame(pending.consumeRemainder(decoder));
         const result = accumulator.finish();
         completed = true;
         return result;
@@ -136,7 +145,8 @@ export async function parseOpenAiResponsesStream(
 }
 
 export function createOpenAiCompatibleResponseAccumulator(
-  onEvent?: (event: OpenAiCompatibleAgentStreamEvent) => void
+  onEvent?: (event: OpenAiCompatibleAgentStreamEvent) => void,
+  limits: { maxStructureDepth?: number; maxStructureNodes?: number } = {}
 ) {
   const itemById = new Map<string, AgentOutputItem>();
   const messagePhaseById = new Map<string, MessagePhase>();
@@ -402,7 +412,7 @@ export function createOpenAiCompatibleResponseAccumulator(
         responseId,
         outputText: extractOutputText(outputItems, messagePhaseById),
         functionCalls: collectFunctionCalls(outputItems, functionByItemId),
-        citations: dedupeCitations([...citations, ...extractCitations(outputItems)]),
+        citations: dedupeCitations([...citations, ...extractCitations(outputItems, limits)]),
         outputItems,
         webSearchCallCount: outputItems.filter((item) => item.type === "web_search_call").length,
         ...(usage ? { usage } : {})
@@ -534,6 +544,76 @@ type ParsedSseFrame = {
   event?: string;
   data: string;
 };
+
+class SseByteBuffer {
+  private bytes = new Uint8Array(1024);
+  private start = 0;
+  private end = 0;
+  private scanFrom = 0;
+
+  get byteLength(): number {
+    return this.end - this.start;
+  }
+
+  append(chunk: Uint8Array): void {
+    this.ensureCapacity(chunk.byteLength);
+    this.bytes.set(chunk, this.end);
+    this.end += chunk.byteLength;
+  }
+
+  consumeCompleteFrames(decoder: TextDecoder, consume: (frame: ParsedSseFrame | undefined) => void): void {
+    let cursor = Math.max(this.start, this.scanFrom - 3);
+    while (cursor < this.end - 1) {
+      const delimiterLength = this.delimiterLengthAt(cursor);
+      if (delimiterLength === 0) {
+        cursor += 1;
+        continue;
+      }
+      consume(parseSseFrame(decoder.decode(this.bytes.subarray(this.start, cursor))));
+      this.start = cursor + delimiterLength;
+      cursor = this.start;
+    }
+    this.scanFrom = this.end;
+  }
+
+  consumeRemainder(decoder: TextDecoder): ParsedSseFrame | undefined {
+    if (this.byteLength === 0) return undefined;
+    const frame = parseSseFrame(decoder.decode(this.bytes.subarray(this.start, this.end)));
+    this.start = this.end;
+    this.scanFrom = this.end;
+    return frame;
+  }
+
+  private delimiterLengthAt(index: number): number {
+    if (this.bytes[index] === 0x0a && this.bytes[index + 1] === 0x0a) return 2;
+    return this.bytes[index] === 0x0d &&
+      this.bytes[index + 1] === 0x0a &&
+      this.bytes[index + 2] === 0x0d &&
+      this.bytes[index + 3] === 0x0a
+      ? 4
+      : 0;
+  }
+
+  private ensureCapacity(additionalBytes: number): void {
+    const liveBytes = this.byteLength;
+    if (this.end + additionalBytes <= this.bytes.byteLength) return;
+    if (liveBytes + additionalBytes <= this.bytes.byteLength) {
+      this.bytes.copyWithin(0, this.start, this.end);
+      this.scanFrom = Math.max(0, this.scanFrom - this.start);
+      this.start = 0;
+      this.end = liveBytes;
+      return;
+    }
+    let capacity = this.bytes.byteLength;
+    while (capacity < liveBytes + additionalBytes) capacity *= 2;
+    const expanded = new Uint8Array(capacity);
+    expanded.set(this.bytes.subarray(this.start, this.end));
+    this.scanFrom = Math.max(0, this.scanFrom - this.start);
+    this.start = 0;
+    this.end = liveBytes;
+    this.bytes = expanded;
+  }
+}
 
 function consumeSseFrames(value: string): {
   events: ParsedSseFrame[];
@@ -714,13 +794,19 @@ function extractMessageItemText(item: Record<string, unknown>): string {
     .join("");
 }
 
-function extractCitations(value: unknown): ProviderCitation[] {
+function extractCitations(
+  value: unknown,
+  limits: { maxStructureDepth?: number; maxStructureNodes?: number }
+): ProviderCitation[] {
   const citations: ProviderCitation[] = [];
-  visitRecords(value, (record) => {
+  visitProviderResponseRecords(value, (record) => {
     const citation = citationFromUnknown(record.url_citation ?? record);
     if (citation) {
       citations.push(citation);
     }
+  }, {
+    maxDepth: limits.maxStructureDepth ?? PROVIDER_RESPONSE_MAX_STRUCTURE_DEPTH,
+    maxNodes: limits.maxStructureNodes ?? PROVIDER_RESPONSE_MAX_STRUCTURE_NODES
   });
   return dedupeCitations(citations);
 }
@@ -749,19 +835,6 @@ function dedupeCitations(citations: ProviderCitation[]): ProviderCitation[] {
     seen.add(key);
     return true;
   });
-}
-
-function visitRecords(value: unknown, visitor: (record: Record<string, unknown>) => void): void {
-  if (Array.isArray(value)) {
-    value.forEach((item) => visitRecords(item, visitor));
-    return;
-  }
-  const record = asRecord(value);
-  if (!record) {
-    return;
-  }
-  visitor(record);
-  Object.values(record).forEach((entry) => visitRecords(entry, visitor));
 }
 
 function toOutputItem(value: Record<string, unknown>): AgentOutputItem {
