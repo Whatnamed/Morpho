@@ -759,108 +759,108 @@
     {
       "key": "contextFrames",
       "label": "空白项目 + 120 个真实回合产生的 Context Frame",
-      "utf16Length": 247060,
-      "utf8Bytes": 359114,
-      "quotaBytes": 494220,
+      "utf16Length": 268988,
+      "utf8Bytes": 381042,
+      "quotaBytes": 538076,
       "structuralOverheadUtf16": 583,
       "segments": [
         {
           "path": "project",
           "utf16Length": 197,
           "utf8Bytes": 239,
-          "share": 0.0007973771553468793,
+          "share": 0.0007323746784243163,
           "count": 6
         },
         {
           "path": "workingState",
           "utf16Length": 293,
           "utf8Bytes": 293,
-          "share": 0.0011859467335869828,
+          "share": 0.0010892679227326126,
           "count": 12
         },
         {
           "path": "projectContinuity",
           "utf16Length": 229,
           "utf8Bytes": 263,
-          "share": 0.0009269003480935805,
+          "share": 0.0008513390931937484,
           "count": 4
         },
         {
           "path": "projectMemory.documents",
           "utf16Length": 483,
           "utf8Bytes": 547,
-          "share": 0.001954990690520521,
+          "share": 0.0017956191354261157,
           "count": 7
         },
         {
           "path": "projectMemory.revisions",
           "utf16Length": 355,
           "utf8Bytes": 447,
-          "share": 0.0014368979195337164,
+          "share": 0.0013197614763483872,
           "count": 1
         },
         {
           "path": "projectMemory.stageRecords",
           "utf16Length": 131,
           "utf8Bytes": 131,
-          "share": 0.0005302355703068081,
+          "share": 0.00048701057296236263,
           "count": 1
         },
         {
           "path": "projectMemory.stageRevisions",
           "utf16Length": 219,
           "utf8Bytes": 253,
-          "share": 0.0008864243503602364,
+          "share": 0.0008141627135783009,
           "count": 1
         },
         {
           "path": "projectMemory.updatedAt",
           "utf16Length": 26,
           "utf8Bytes": 26,
-          "share": 0.00010523759410669473
+          "share": 0.00009665858700016357
         },
         {
           "path": "canvas.view",
           "utf16Length": 22,
           "utf8Bytes": 22,
-          "share": 0.00008904719501335708,
+          "share": 0.00008178803515398457,
           "count": 3
         },
         {
           "path": "ai.conversationCompaction",
           "utf16Length": 25,
           "utf8Bytes": 25,
-          "share": 0.00010118999433336031,
+          "share": 0.00009294094903861882,
           "count": 1
         },
         {
           "path": "ai.providerContextFrames",
-          "utf16Length": 244343,
-          "utf8Bytes": 356131,
-          "share": 0.9890026714158504,
+          "utf16Length": 266271,
+          "utf8Bytes": 378059,
+          "share": 0.9898991776584829,
           "count": 121
         },
         {
           "path": "ui",
           "utf16Length": 119,
           "utf8Bytes": 119,
-          "share": 0.00048166437302679514,
+          "share": 0.0004423989174238256,
           "count": 5
         }
       ],
       "hotFields": [
         {
           "path": "ai.providerContextFrames[].renderedText",
-          "utf16Length": 97470,
-          "utf8Bytes": 204470,
-          "share": 0.3945195499069052,
+          "utf16Length": 119398,
+          "utf8Bytes": 226398,
+          "share": 0.4438785373325204,
           "count": 121
         },
         {
           "path": "projectMemory.revisions[].sections",
           "utf16Length": 143,
           "utf8Bytes": 235,
-          "share": 0.000578806767586821,
+          "share": 0.0005316222285008997,
           "count": 1
         }
       ],
@@ -868,17 +868,17 @@
         "baselineKey": "blank",
         "units": 120,
         "unitLabel": "个回合",
-        "quotaBytesPerUnit": 4072,
+        "quotaBytesPerUnit": 4438,
         "topDeltas": [
           {
             "path": "ai.providerContextFrames",
-            "utf16Delta": 244341,
-            "quotaBytesPerUnit": 4072
+            "utf16Delta": 266269,
+            "quotaBytesPerUnit": 4438
           },
           {
             "path": "ai.providerContextFrames[].renderedText",
-            "utf16Delta": 97468,
-            "quotaBytesPerUnit": 1624
+            "utf16Delta": 119396,
+            "quotaBytesPerUnit": 1990
           }
         ]
       }
