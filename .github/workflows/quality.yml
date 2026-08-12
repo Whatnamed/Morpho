@@ -71,3 +71,23 @@ jobs:
           name: playwright-artifacts
           path: e2e/.artifacts
           retention-days: 7
+
+  cloudflare:
+    name: Cloudflare backup build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build backup Worker bundle
+        run: npm run cf:build
