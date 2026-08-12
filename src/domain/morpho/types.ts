@@ -426,6 +426,8 @@ export type FileObject = MorphoObjectBase & {
   extractedAssetId?: AssetId;
   extractedCharCount?: number;
   extractedPageCount?: number;
+  sourcePageCount?: number;
+  extractionTruncated?: boolean;
   parsedAt?: string;
   parseError?: string;
 };

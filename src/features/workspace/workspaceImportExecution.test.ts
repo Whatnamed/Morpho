@@ -17,6 +17,71 @@ import {
 import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
 
 describe("workspace import execution", () => {
+  it("rejects an oversized batch before decode, asset persistence, or workspace commit", async () => {
+    const harness = createHarness();
+    let saveCalls = 0;
+    let decodeCalls = 0;
+    harness.saveAsset = async (file, sourceType) => {
+      saveCalls += 1;
+      return okAsset(`asset-${file.name}`, file.name, sourceType);
+    };
+    harness.readImageDimensions = async () => {
+      decodeCalls += 1;
+      return { width: 100, height: 100, aspectRatio: 1 };
+    };
+    const files = Array.from({ length: 33 }, (_, index) =>
+      new File(["x"], `image-${index}.png`, { type: "image/png" })
+    );
+
+    await expect(executeWorkspaceImport({ files, position: { x: 0, y: 0 } }, harness.ports))
+      .rejects.toMatchObject({ code: "import_resource_policy_rejected" });
+    expect(saveCalls).toBe(0);
+    expect(decodeCalls).toBe(0);
+    expect(harness.commitCalls).toBe(0);
+    expect(harness.workspace.objects).toEqual({});
+  });
+
+  it("rejects a decoded-pixel excess before persisting any file in the batch", async () => {
+    const harness = createHarness();
+    let saveCalls = 0;
+    harness.saveAsset = async (file, sourceType) => {
+      saveCalls += 1;
+      return okAsset(`asset-${file.name}`, file.name, sourceType);
+    };
+    harness.readImageDimensions = async (file) => file.name === "huge.png"
+      ? { width: 10_000, height: 10_000, aspectRatio: 1 }
+      : { width: 100, height: 100, aspectRatio: 1 };
+
+    await expect(executeWorkspaceImport({
+      files: [
+        new File(["ok"], "ok.png", { type: "image/png" }),
+        new File(["huge"], "huge.png", { type: "image/png" })
+      ],
+      position: { x: 0, y: 0 }
+    }, harness.ports)).rejects.toMatchObject({ code: "import_resource_policy_rejected" });
+
+    expect(saveCalls).toBe(0);
+    expect(harness.commitCalls).toBe(0);
+    expect(harness.workspace.objects).toEqual({});
+  });
+
+  it("removes only newly saved import blobs when the workspace commit fails", async () => {
+    const harness = createHarness();
+    const originalCommit = harness.ports.commitWorkspace;
+    harness.ports = {
+      ...harness.ports,
+      commitWorkspace: () => {
+        throw new Error("workspace commit failed");
+      }
+    };
+
+    await expect(executeWorkspaceImport(importRequest("brief.pdf"), harness.ports))
+      .rejects.toThrow("workspace commit failed");
+    expect(harness.deletedStorageKeys).toEqual(["blob:asset-brief.pdf"]);
+    expect(harness.workspace.objects).toEqual({});
+    harness.ports = { ...harness.ports, commitWorkspace: originalCommit };
+  });
+
   it("drops a pending asset success after switching from Project A to Project B", async () => {
     const harness = createHarness();
     const saveStarted = deferred<void>();
@@ -163,7 +228,7 @@ describe("workspace import execution", () => {
     ]);
     expect(harness.workspace.ai.messages.at(-1)).toMatchObject({
       status: "failed",
-      body: expect.stringContaining("broken.pdf: quota exceeded")
+      body: expect.stringContaining("文件“broken.pdf”保存失败")
     });
     expect(harness.selectedObjectIds).toHaveLength(1);
   });
@@ -213,7 +278,7 @@ describe("workspace import execution", () => {
     await executeWorkspaceImport(importRequest("extract-failed.pdf"), extractFailureHarness.ports);
     expect(Object.values(extractFailureHarness.workspace.objects).find((object) => object.type === "file")).toMatchObject({
       parseStatus: "failed",
-      parseError: "extract asset quota exceeded"
+      parseError: "文档摘录保存失败。"
     });
   });
 
@@ -248,7 +313,10 @@ type ImportHarness = {
   session: WorkspaceImportExecutionSession;
   selectedObjectIds: string[];
   renderCount: number;
+  commitCalls: number;
+  deletedStorageKeys: string[];
   saveAsset: WorkspaceImportExecutionPorts["saveAsset"];
+  readImageDimensions: WorkspaceImportExecutionPorts["readImageDimensions"];
   parseDocumentFile: WorkspaceImportExecutionPorts["parseDocumentFile"];
   saveDocumentExtract: WorkspaceImportExecutionPorts["saveDocumentExtract"];
   ports: WorkspaceImportExecutionPorts;
@@ -261,8 +329,11 @@ function createHarness(): ImportHarness {
     session: createSession("project-a"),
     selectedObjectIds: [],
     renderCount: 0,
+    commitCalls: 0,
+    deletedStorageKeys: [],
     saveAsset: async (file: File, sourceType: AssetSourceType) =>
       okAsset(`asset-${file.name}`, file.name, sourceType),
+    readImageDimensions: async () => ({ width: 100, height: 100, aspectRatio: 1 }),
     parseDocumentFile: async (file: File) => ({
       status: "parsed" as const,
       text: `parsed:${file.name}`,
@@ -290,6 +361,7 @@ function createHarness(): ImportHarness {
       expectedSession: WorkspaceImportExecutionSession,
       transform: WorkspaceCommitTransform<T>
     ) => {
+      harness.commitCalls += 1;
       harness.ports.assertCurrentSession(expectedSession);
       const committed = transform(harness.workspace);
       harness.ports.assertCurrentSession(expectedSession);
@@ -301,6 +373,10 @@ function createHarness(): ImportHarness {
       harness.selectedObjectIds = [...objectIds];
     },
     saveAsset: (...args) => harness.saveAsset(...args),
+    readImageDimensions: (...args) => harness.readImageDimensions(...args),
+    deleteAsset: async (storageKey) => {
+      harness.deletedStorageKeys.push(storageKey);
+    },
     parseDocumentFile: (...args) => harness.parseDocumentFile(...args),
     saveDocumentExtract: (...args) => harness.saveDocumentExtract(...args),
     now: () => 1_754_000_000_000

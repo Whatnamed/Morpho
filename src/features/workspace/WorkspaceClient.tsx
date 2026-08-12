@@ -410,7 +410,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     projectId,
     workspaceReady: canMutateWorkspace,
     commitWorkspace: commitWorkspaceNow,
-    selectObjects: requestCanvasSelection
+    selectObjects: requestCanvasSelection,
+    onImportRejected: setContextWarning
   });
   const assetUrls = useWorkspaceAssetUrls(workspace.assets);
   const railImportInputRef = useRef<HTMLInputElement | null>(null);

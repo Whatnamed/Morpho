@@ -544,8 +544,19 @@ Parseable imported files are extracted locally after import:
 Import execution boundary:
 
 - `workspaceImportExecution.ts` is the single semantic path for image/file, URL, text, batch, and
-  mixed imports. It preserves successful assets when another asset fails and records an explicit
-  failure message for each failed file.
+  mixed imports. `importResourcePolicy.ts` runs a whole-batch metadata and decoded-image preflight
+  before the first Blob or Workspace write. The fixed ceilings are 32 files and 128 MiB raw bytes
+  per batch; 64 MiB per PDF, image, or other file; 8 MiB per text file; 40 million decoded pixels
+  per image and 100 million per batch; 200 PDF pages parsed; and 120,000 extracted characters.
+  These limits bound browser memory while retaining the existing local-first file workflow.
+- File-count, raw-byte, invalid-image, and decoded-pixel violations reject the entire batch before
+  persistence. Valid source files may still be imported when normal document parsing fails. PDF
+  extraction processes pages and text items incrementally, records source/processed page counts,
+  and marks capped output as partial instead of claiming a complete parse.
+- Image dimensions decoded during preflight are reused by asset persistence. If a later Workspace
+  commit fails, only Blob keys newly written by that import are deleted best-effort; this is import
+  compensation, not a project-wide garbage collector. Successful source assets remain authoritative
+  once their Workspace objects commit, even if later parsing fails.
 - `useWorkspaceImportController.ts` owns browser services and the project/readiness session
   guard. Its functional workspace commit boundary checks both the session identity and the
   current workspace project before each mutation, including document parsing, extract-asset

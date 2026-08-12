@@ -24,6 +24,7 @@ export type ImageAssetDimensions = {
 
 export type SaveLocalAssetOptions = {
   readImageDimensions?: (blob: Blob) => Promise<ImageAssetDimensions>;
+  knownImageDimensions?: ImageAssetDimensions;
 };
 
 export async function saveBlobAsLocalAsset(
@@ -34,7 +35,9 @@ export async function saveBlobAsLocalAsset(
 ): Promise<SaveLocalAssetResult> {
   const assetId = createAssetId(file.name);
   const storageKey = `blob:${assetId}`;
-  const dimensionsResult = await readDimensionsIfNeeded(file, sourceType, options);
+  const dimensionsResult = options.knownImageDimensions
+    ? { status: "ok" as const, dimensions: options.knownImageDimensions }
+    : await readDimensionsIfNeeded(file, sourceType, options);
   if (dimensionsResult.status === "failed") {
     return dimensionsResult;
   }

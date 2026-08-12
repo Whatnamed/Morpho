@@ -20,6 +20,12 @@ import {
   importUrlObject
 } from "@/domain/morpho/imports";
 import type { SaveLocalAssetResult } from "@/infrastructure/assets/localAssetWorkflow";
+import type { ImageAssetDimensions } from "@/infrastructure/assets/localAssetWorkflow";
+import {
+  createImportResourcePolicyError,
+  preflightImportResourceMetadata,
+  validateImportImageDimensions
+} from "@/domain/morpho/importResourcePolicy";
 import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
 
 export type WorkspaceImportRequest = Readonly<{
@@ -66,8 +72,11 @@ export type WorkspaceImportExecutionPorts = Readonly<{
   ) => void;
   saveAsset: (
     file: File,
-    sourceType: AssetSourceType
+    sourceType: AssetSourceType,
+    dimensions?: ImageAssetDimensions
   ) => Promise<SaveLocalAssetResult>;
+  readImageDimensions: (file: File) => Promise<ImageAssetDimensions>;
+  deleteAsset: (storageKey: string) => Promise<void>;
   parseDocumentFile: (file: File) => Promise<DocumentParseResult>;
   saveDocumentExtract: (file: File) => Promise<SaveLocalAssetResult>;
   now: () => number;
@@ -76,6 +85,12 @@ export type WorkspaceImportExecutionPorts = Readonly<{
 type SuccessfulAssetFile = Readonly<{
   asset: AssetRecord;
   file: File;
+}>;
+
+type PreparedImportFile = Readonly<{
+  file: File;
+  sourceType: AssetSourceType;
+  dimensions?: ImageAssetDimensions;
 }>;
 
 type ImportedWorkspaceResult = Readonly<{
@@ -91,26 +106,45 @@ export async function executeWorkspaceImport(
   const session = expectedSession;
   assertExecutionSession(session, ports);
 
+  const descriptors = preflightImportResourceMetadata(request.files ?? []);
+  const preparedFiles: PreparedImportFile[] = [];
+  let decodedPixels = 0;
+  for (const descriptor of descriptors) {
+    ports.assertCurrentSession(session);
+    if (descriptor.kind !== "image") {
+      preparedFiles.push({ file: descriptor.file, sourceType: "originalFile" });
+      continue;
+    }
+    let dimensions: ImageAssetDimensions;
+    try {
+      dimensions = await ports.readImageDimensions(descriptor.file);
+    } catch {
+      throw createImportResourcePolicyError("图片分辨率过高或无法读取，未导入。");
+    }
+    ports.assertCurrentSession(session);
+    decodedPixels = validateImportImageDimensions(descriptor.file, dimensions, decodedPixels);
+    preparedFiles.push({ file: descriptor.file, sourceType: "originalImage", dimensions });
+  }
+
   const successfulAssets: AssetRecord[] = [];
   const successfulAssetFiles: SuccessfulAssetFile[] = [];
   const failureReasons: string[] = [];
 
-  for (const file of request.files ?? []) {
-    ports.assertCurrentSession(session);
-    const sourceType: AssetSourceType = file.type.startsWith("image/")
-      ? "originalImage"
-      : "originalFile";
-    const saved = await ports.saveAsset(file, sourceType);
-    ports.assertCurrentSession(session);
-    if (saved.status === "ok") {
-      successfulAssets.push(saved.asset);
-      successfulAssetFiles.push({ asset: saved.asset, file });
-    } else {
-      failureReasons.push(`${file.name}: ${saved.reason}`);
+  let assetsCommitted = false;
+  try {
+    for (const prepared of preparedFiles) {
+      ports.assertCurrentSession(session);
+      const saved = await ports.saveAsset(prepared.file, prepared.sourceType, prepared.dimensions);
+      if (saved.status === "ok") {
+        successfulAssets.push(saved.asset);
+        successfulAssetFiles.push({ asset: saved.asset, file: prepared.file });
+      } else {
+        failureReasons.push(`文件“${boundedDisplayName(prepared.file.name)}”保存失败。`);
+      }
+      ports.assertCurrentSession(session);
     }
-  }
 
-  const imported = ports.commitWorkspace(session, (current) => {
+    const imported = ports.commitWorkspace(session, (current) => {
     ports.assertCurrentSession(session);
     let next = current;
     let objectIds: string[] = [];
@@ -161,7 +195,7 @@ export async function executeWorkspaceImport(
             {
               id: `ai-import-error-${timestamp}`,
               role: "assistant",
-              body: `有 ${failureReasons.length} 个资产没有导入成功：${failureReasons.join("；")}`,
+              body: formatImportFailureMessage(failureReasons),
               status: "failed",
               createdAt: new Date(timestamp).toISOString()
             }
@@ -174,14 +208,21 @@ export async function executeWorkspaceImport(
       workspace: next,
       value: { objectIds, parseTargets }
     };
-  });
+    });
+    assetsCommitted = true;
 
-  if (imported.objectIds.length > 0) {
-    ports.selectObjects(session, imported.objectIds);
-  }
+    if (imported.objectIds.length > 0) {
+      ports.selectObjects(session, imported.objectIds);
+    }
 
-  if (imported.parseTargets.length > 0) {
-    await parseImportedDocuments(session, imported.parseTargets, ports);
+    if (imported.parseTargets.length > 0) {
+      await parseImportedDocuments(session, imported.parseTargets, ports);
+    }
+  } catch (error) {
+    if (!assetsCommitted) {
+      await cleanupAssets(successfulAssets, ports);
+    }
+    throw error;
   }
 }
 
@@ -206,7 +247,7 @@ async function parseImportedDocuments(
     } catch (error) {
       parsed = {
         status: "failed",
-        reason: error instanceof Error ? error.message : "文档解析失败。"
+        reason: "文档解析失败，源文件已保留。"
       };
     }
     ports.assertCurrentSession(session);
@@ -224,28 +265,52 @@ async function parseImportedDocuments(
 
     const extractFile = createDocumentExtractFile(target.file, parsed.text);
     const saved = await ports.saveDocumentExtract(extractFile);
-    ports.assertCurrentSession(session);
     if (saved.status === "failed") {
       ports.commitWorkspace(session, (current) => ({
         workspace: markFileObjectParseFailed(current, {
           fileObjectId: target.objectId,
-          reason: saved.reason
+          reason: "文档摘录保存失败。"
         }),
         value: undefined
       }));
       continue;
     }
 
-    ports.commitWorkspace(session, (current) => ({
-      workspace: attachDocumentExtractToFileObject(current, {
-        fileObjectId: target.objectId,
-        extractAsset: saved.asset,
-        extractedCharCount: parsed.text.length,
-        extractedPageCount: parsed.pageCount
-      }),
-      value: undefined
-    }));
+    try {
+      ports.assertCurrentSession(session);
+      ports.commitWorkspace(session, (current) => ({
+        workspace: attachDocumentExtractToFileObject(current, {
+          fileObjectId: target.objectId,
+          extractAsset: saved.asset,
+          extractedCharCount: parsed.text.length,
+          extractedPageCount: parsed.pageCount,
+          sourcePageCount: parsed.sourcePageCount,
+          extractionTruncated: parsed.truncated
+        }),
+        value: undefined
+      }));
+    } catch (error) {
+      await cleanupAssets([saved.asset], ports);
+      throw error;
+    }
   }
+}
+
+async function cleanupAssets(assets: readonly AssetRecord[], ports: WorkspaceImportExecutionPorts): Promise<void> {
+  await Promise.allSettled(assets.map((asset) => ports.deleteAsset(asset.storageKey)));
+}
+
+function formatImportFailureMessage(reasons: readonly string[]): string {
+  const visible = reasons.slice(0, 3);
+  const remaining = reasons.length - visible.length;
+  return `有 ${reasons.length} 个资产没有导入成功：${visible.join("；")}${
+    remaining > 0 ? `；另有 ${remaining} 个文件未列出` : ""
+  }`;
+}
+
+function boundedDisplayName(fileName: string): string {
+  const normalized = fileName.replace(/[\u0000-\u001f\u007f]/g, " ").trim() || "未命名文件";
+  return normalized.length > 80 ? `${normalized.slice(0, 77)}...` : normalized;
 }
 
 function assertExecutionSession(

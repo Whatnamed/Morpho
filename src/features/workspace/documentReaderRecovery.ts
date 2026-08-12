@@ -99,7 +99,9 @@ export async function loadDocumentReaderExtractWithRecovery(
       fileObjectId,
       extractAsset: saved.asset,
       extractedCharCount: parsed.text.length,
-      extractedPageCount: parsed.pageCount
+      extractedPageCount: parsed.pageCount,
+      sourcePageCount: parsed.sourcePageCount,
+      extractionTruncated: parsed.truncated
     })
   );
 

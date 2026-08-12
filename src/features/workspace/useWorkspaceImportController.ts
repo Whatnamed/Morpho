@@ -3,6 +3,8 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 
 import type { AssetSourceType } from "@/domain/morpho/types";
+import type { ImageAssetDimensions } from "@/infrastructure/assets/localAssetWorkflow";
+import { isImportResourcePolicyError } from "@/domain/morpho/importResourcePolicy";
 import {
   parseDocumentFile,
   type DocumentParseResult
@@ -26,8 +28,11 @@ import {
 export type WorkspaceImportControllerServices = Readonly<{
   saveAsset: (
     file: File,
-    sourceType: AssetSourceType
+    sourceType: AssetSourceType,
+    dimensions?: ImageAssetDimensions
   ) => Promise<SaveLocalAssetResult>;
+  readImageDimensions: (file: File) => Promise<ImageAssetDimensions>;
+  deleteAsset: (storageKey: string) => Promise<void>;
   parseDocumentFile: (file: File) => Promise<DocumentParseResult>;
   saveDocumentExtract: (file: File) => Promise<SaveLocalAssetResult>;
   now: () => number;
@@ -38,6 +43,7 @@ export type UseWorkspaceImportControllerInput = Readonly<{
   workspaceReady: boolean;
   commitWorkspace: <T>(transform: WorkspaceCommitTransform<T>) => T;
   selectObjects: (objectIds: string[]) => void;
+  onImportRejected?: (message: string) => void;
   services?: Partial<WorkspaceImportControllerServices>;
 }>;
 
@@ -51,10 +57,12 @@ export type WorkspaceImportSessionHandle = Readonly<{
 }>;
 
 const defaultServices: WorkspaceImportControllerServices = {
-  saveAsset: (file, sourceType) =>
+  saveAsset: (file, sourceType, dimensions) =>
     saveBlobAsLocalAsset(indexedDbBlobStore, file, sourceType, {
-      readImageDimensions: readImageBlobDimensions
+      knownImageDimensions: dimensions
     }),
+  readImageDimensions: readImageBlobDimensions,
+  deleteAsset: (storageKey) => indexedDbBlobStore.delete(storageKey),
   parseDocumentFile,
   saveDocumentExtract: (file) =>
     saveBlobAsLocalAsset(indexedDbBlobStore, file, "documentExtract"),
@@ -66,6 +74,7 @@ export function useWorkspaceImportController({
   workspaceReady,
   commitWorkspace: commitWorkspaceInput,
   selectObjects: selectObjectsInput,
+  onImportRejected,
   services: serviceOverrides
 }: UseWorkspaceImportControllerInput): WorkspaceImportController {
   const session = useMemo<WorkspaceImportExecutionSession>(
@@ -141,6 +150,8 @@ export function useWorkspaceImportController({
       commitWorkspace,
       selectObjects,
       saveAsset: services.saveAsset,
+      readImageDimensions: services.readImageDimensions,
+      deleteAsset: services.deleteAsset,
       parseDocumentFile: services.parseDocumentFile,
       saveDocumentExtract: services.saveDocumentExtract,
       now: services.now
@@ -159,10 +170,14 @@ export function useWorkspaceImportController({
         if (isStaleWorkspaceImportExecutionError(error)) {
           return;
         }
+        if (isImportResourcePolicyError(error)) {
+          onImportRejected?.(error.message);
+          return;
+        }
         throw error;
       }
     },
-    [ports]
+    [onImportRejected, ports]
   );
 
   const importRequest = useCallback(

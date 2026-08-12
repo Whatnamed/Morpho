@@ -460,6 +460,8 @@ export function attachDocumentExtractToFileObject(
     extractAsset: AssetRecord;
     extractedCharCount: number;
     extractedPageCount?: number;
+    sourcePageCount?: number;
+    extractionTruncated?: boolean;
     parsedAt?: string;
   }
 ): MorphoWorkspace {
@@ -471,13 +473,19 @@ export function attachDocumentExtractToFileObject(
   const parsedAt = input.parsedAt ?? new Date().toISOString();
   const updatedFile: FileObject = {
     ...object,
-    summary: `${object.mimeType || "未知类型"} · ${formatFileSize(object.size ?? 0)} · 已解析 ${input.extractedCharCount} 字符${
-      input.extractedPageCount ? ` · ${input.extractedPageCount} 页/张` : ""
-    }`,
+    summary: `${object.mimeType || "未知类型"} · ${formatFileSize(object.size ?? 0)} · ${
+      input.extractionTruncated ? "部分解析" : "已解析"
+    } ${input.extractedCharCount} 字符${input.extractedPageCount ? ` · ${input.extractedPageCount}${
+      input.sourcePageCount && input.sourcePageCount !== input.extractedPageCount
+        ? `/${input.sourcePageCount}`
+        : ""
+    } 页/张` : ""}`,
     parseStatus: "parsed",
     extractedAssetId: input.extractAsset.id,
     extractedCharCount: input.extractedCharCount,
     extractedPageCount: input.extractedPageCount,
+    sourcePageCount: input.sourcePageCount,
+    extractionTruncated: input.extractionTruncated,
     parsedAt,
     parseError: undefined,
     updatedAt: parsedAt

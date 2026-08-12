@@ -67,6 +67,61 @@ describe("document parsing", () => {
     });
   });
 
+  it("rejects an oversized PDF before reading its bytes", async () => {
+    const pdf = new File(["small placeholder"], "oversized.pdf", { type: "application/pdf" });
+    Object.defineProperty(pdf, "size", { value: 64 * 1024 * 1024 + 1 });
+    let arrayBufferCalls = 0;
+    Object.defineProperty(pdf, "arrayBuffer", {
+      value: async () => {
+        arrayBufferCalls += 1;
+        return new ArrayBuffer(0);
+      }
+    });
+
+    await expect(parseDocumentFile(pdf)).resolves.toMatchObject({
+      status: "failed",
+      reason: expect.stringContaining("64 MiB")
+    });
+    expect(arrayBufferCalls).toBe(0);
+  });
+
+  it("rejects oversized plain text before reading its contents", async () => {
+    const text = new File(["small placeholder"], "oversized.txt", { type: "text/plain" });
+    Object.defineProperty(text, "size", { value: 8 * 1024 * 1024 + 1 });
+    let textCalls = 0;
+    Object.defineProperty(text, "text", {
+      value: async () => {
+        textCalls += 1;
+        return "should not be read";
+      }
+    });
+
+    await expect(parseDocumentFile(text)).resolves.toMatchObject({
+      status: "failed",
+      reason: expect.stringContaining("8 MiB")
+    });
+    expect(textCalls).toBe(0);
+  });
+
+  it("parses no more than 200 PDF pages and marks the extract partial", async () => {
+    const pages = Array.from({ length: 201 }, (_, index) => `Page ${index + 1}`);
+    const pdf = new File([toArrayBuffer(makeMultiPageTextPdf(pages))], "long.pdf", {
+      type: "application/pdf"
+    });
+
+    const result = await parseDocumentFile(pdf);
+
+    expect(result.status).toBe("parsed");
+    if (result.status === "parsed") {
+      expect(result.pageCount).toBe(200);
+      expect(result.sourcePageCount).toBe(201);
+      expect(result.truncated).toBe(true);
+      expect(result.text).toContain("Page 200");
+      expect(result.text).not.toContain("Page 201");
+      expect(result.text).toContain("[已截断]");
+    }
+  });
+
   it("rejects a high-ratio PPTX slide before materializing its expanded XML", async () => {
     const pptx = new File([toArrayBuffer(zipSync({
       "ppt/slides/slide1.xml": strToU8(`<a:t>${"A".repeat(3 * 1024 * 1024)}</a:t>`)
@@ -107,13 +162,25 @@ function escapeXml(value: string): string {
 }
 
 function makeMinimalTextPdf(text: string): Uint8Array {
-  const safeText = text.replace(/[()\\]/g, "\\$&");
+  return makeMultiPageTextPdf([text]);
+}
+
+function makeMultiPageTextPdf(pageTexts: string[]): Uint8Array {
+  const pageObjectIds = pageTexts.map((_, index) => 4 + index * 2);
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    `<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageTexts.length} >>`,
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    `<< /Length ${safeText.length + 42} >>\nstream\nBT /F1 18 Tf 40 80 Td (${safeText}) Tj ET\nendstream`
+    ...pageTexts.flatMap((text, index) => {
+      const safeText = text.replace(/[()\\]/g, "\\$&");
+      const pageId = 4 + index * 2;
+      const contentId = pageId + 1;
+      const stream = `BT /F1 18 Tf 40 80 Td (${safeText}) Tj ET`;
+      return [
+        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentId} 0 R >>`,
+        `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`
+      ];
+    })
   ];
   const encoder = new TextEncoder();
   const header = "%PDF-1.4\n";

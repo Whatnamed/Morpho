@@ -157,6 +157,7 @@ describe("useWorkspaceImportController", () => {
     await expect(rendered.current().importRequest(imageImportRequest())).resolves.toBeUndefined();
 
     expect(harness.saveCalls).toBe(0);
+    expect(harness.decodeCalls).toBe(0);
     expect(harness.workspace).toEqual(workspaceBefore);
     expect(harness.selected).toEqual([]);
   });
@@ -166,6 +167,7 @@ type ImportControllerHarness = {
   workspace: MorphoWorkspace;
   selected: string[];
   saveCalls: number;
+  decodeCalls: number;
   saveAsset: WorkspaceImportControllerServices["saveAsset"];
   services: WorkspaceImportControllerServices;
   commitWorkspace: <T>(transform: WorkspaceCommitTransform<T>) => T;
@@ -177,6 +179,7 @@ function createHarness(): ImportControllerHarness {
   harness.workspace = createBlankWorkspace("project-a");
   harness.selected = [];
   harness.saveCalls = 0;
+  harness.decodeCalls = 0;
   harness.saveAsset = async (file: File, sourceType: AssetSourceType) => {
     harness.saveCalls += 1;
     return okAsset(`asset-${file.name}`, file.name, sourceType);
@@ -192,6 +195,11 @@ function createHarness(): ImportControllerHarness {
   };
   harness.services = {
     saveAsset: (...args) => harness.saveAsset(...args),
+    readImageDimensions: async () => {
+      harness.decodeCalls += 1;
+      return { width: 100, height: 100, aspectRatio: 1 };
+    },
+    deleteAsset: async () => undefined,
     parseDocumentFile: async (file) => ({
       status: "parsed" as const,
       text: `parsed:${file.name}`,

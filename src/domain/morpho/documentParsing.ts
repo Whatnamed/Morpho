@@ -1,6 +1,7 @@
 import { strFromU8 } from "fflate";
 
 import { BoundedZipError, unzipWithBudget } from "@/shared/boundedZip";
+import { IMPORT_RESOURCE_POLICY } from "./importResourcePolicy";
 
 import type { AssetSourceType } from "./types";
 
@@ -9,6 +10,8 @@ export type DocumentParseResult =
       status: "parsed";
       text: string;
       pageCount?: number;
+      sourcePageCount?: number;
+      truncated?: boolean;
       mimeType: string;
       extractFileName: string;
     }
@@ -18,7 +21,7 @@ export type DocumentParseResult =
     };
 
 const SUPPORTED_TEXT_EXTENSIONS = new Set(["md", "txt"]);
-const MAX_EXTRACT_CHARS = 120_000;
+const MAX_EXTRACT_CHARS = IMPORT_RESOURCE_POLICY.maxPdfExtractedChars;
 const MAX_PPTX_COMPRESSED_BYTES = 64 * 1024 * 1024;
 
 export function shouldAttemptDocumentParse(file: File): boolean {
@@ -80,6 +83,12 @@ export function isDocumentExtractAssetSource(sourceType: AssetSourceType): boole
 }
 
 async function parsePlainTextDocument(file: File, mimeType: string): Promise<DocumentParseResult> {
+  if (file.size > IMPORT_RESOURCE_POLICY.maxBytesByKind.text) {
+    return {
+      status: "failed",
+      reason: "文本文件超过 8 MiB 解析上限。"
+    };
+  }
   const text = limitExtractText(normalizeExtractText(await file.text()));
   if (!text) {
     return {
@@ -98,6 +107,12 @@ async function parsePlainTextDocument(file: File, mimeType: string): Promise<Doc
 
 async function parsePdfDocument(file: File): Promise<DocumentParseResult> {
   try {
+    if (file.size > IMPORT_RESOURCE_POLICY.maxBytesByKind.pdf) {
+      return {
+        status: "failed",
+        reason: "PDF 文件超过 64 MiB 解析上限。"
+      };
+    }
     const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
     if (typeof window !== "undefined") {
       pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -111,44 +126,68 @@ async function parsePdfDocument(file: File): Promise<DocumentParseResult> {
       data,
       useSystemFonts: true
     });
-    const pdf = await loadingTask.promise;
-    const pages: string[] = [];
+    try {
+      const pdf = await loadingTask.promise;
+      const sourcePageCount = pdf.numPages;
+      const pageLimit = Math.min(sourcePageCount, IMPORT_RESOURCE_POLICY.maxPdfPagesToParse);
+      let text = "";
+      let processedPageCount = 0;
+      let truncated = sourcePageCount > pageLimit;
 
-    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-      const page = await pdf.getPage(pageNumber);
-      const content = await page.getTextContent();
-      const text = content.items
-        .map((item) => ("str" in item ? item.str : ""))
-        .join(" ")
-        .replace(/\s+/g, " ")
-        .trim();
-      if (text) {
-        pages.push(`--- PDF 第 ${pageNumber} 页 ---\n${text}`);
+      for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber += 1) {
+        const page = await pdf.getPage(pageNumber);
+        try {
+          const content = await page.getTextContent();
+          processedPageCount = pageNumber;
+          const pagePrefix = `${text ? "\n\n" : ""}--- PDF 第 ${pageNumber} 页 ---\n`;
+          let hasPageText = false;
+          for (const item of content.items) {
+            const itemText = "str" in item ? normalizePdfTextItem(item.str) : "";
+            if (!itemText) continue;
+            const chunk = `${hasPageText ? " " : pagePrefix}${itemText}`;
+            const remaining = IMPORT_RESOURCE_POLICY.maxPdfExtractedChars - text.length;
+            if (chunk.length > remaining) {
+              text += chunk.slice(0, Math.max(0, remaining));
+              truncated = true;
+              break;
+            }
+            text += chunk;
+            hasPageText = true;
+          }
+        } finally {
+          page.cleanup();
+        }
+        if (text.length >= IMPORT_RESOURCE_POLICY.maxPdfExtractedChars) {
+          if (pageNumber < sourcePageCount) truncated = true;
+          break;
+        }
       }
-      page.cleanup();
-    }
 
-    await loadingTask.destroy();
+      text = normalizeExtractText(text);
+      if (truncated && text) text = appendTruncationMarker(text);
+      if (!text) {
+        return {
+          status: "failed",
+          reason: "当前仅支持文本型 PDF；扫描件或图片型 PDF 没有可提取文字。"
+        };
+      }
 
-    const text = limitExtractText(normalizeExtractText(pages.join("\n\n")));
-    if (!text) {
       return {
-        status: "failed",
-        reason: "当前仅支持文本型 PDF；扫描件或图片型 PDF 没有可提取文字。"
+        status: "parsed",
+        text,
+        pageCount: processedPageCount,
+        sourcePageCount,
+        truncated,
+        mimeType: "application/pdf",
+        extractFileName: makeExtractFileName(file)
       };
+    } finally {
+      await loadingTask.destroy();
     }
-
-    return {
-      status: "parsed",
-      text,
-      pageCount: pdf.numPages,
-      mimeType: "application/pdf",
-      extractFileName: makeExtractFileName(file)
-    };
   } catch (error) {
     return {
       status: "failed",
-      reason: error instanceof Error ? `PDF 解析失败：${error.message}` : "PDF 解析失败。"
+      reason: "PDF 解析失败，源文件已保留。"
     };
   }
 }
@@ -207,9 +246,7 @@ async function parsePptxDocument(file: File): Promise<DocumentParseResult> {
       status: "failed",
       reason: error instanceof BoundedZipError
         ? `PPTX 解析失败：文件超过安全解压预算（${error.message}）`
-        : error instanceof Error
-          ? `PPTX 解析失败：${error.message}`
-          : "PPTX 解析失败。"
+        : "PPTX 解析失败，源文件已保留。"
     };
   }
 }
@@ -243,7 +280,18 @@ function normalizeExtractText(value: string): string {
 }
 
 function limitExtractText(value: string): string {
-  return value.length > MAX_EXTRACT_CHARS ? `${value.slice(0, MAX_EXTRACT_CHARS)}\n\n[已截断]` : value;
+  return value.length > MAX_EXTRACT_CHARS ? appendTruncationMarker(value.slice(0, MAX_EXTRACT_CHARS)) : value;
+}
+
+function normalizePdfTextItem(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function appendTruncationMarker(value: string): string {
+  const marker = "\n\n[已截断]";
+  return value.length + marker.length <= MAX_EXTRACT_CHARS
+    ? `${value}${marker}`
+    : `${value.slice(0, Math.max(0, MAX_EXTRACT_CHARS - marker.length))}${marker}`;
 }
 
 function getFileExtension(fileName: string): string {
