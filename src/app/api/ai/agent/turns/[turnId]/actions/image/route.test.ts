@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { AgentTurnExternalActionSnapshot } from "@/shared/agentTurnExternalActionProtocol";
-import { createAgentTurnImageActionPostHandler } from "./route";
+import { createAgentTurnImageActionPostHandler } from "./handler";
 
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 

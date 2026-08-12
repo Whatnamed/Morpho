@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { AgentTurnJournalSnapshot } from "@/shared/agentTurnJournalProtocol";
-import { createAgentTurnPostHandler } from "./route";
+import { createAgentTurnPostHandler } from "./handler";
 
 const SNAPSHOT: AgentTurnJournalSnapshot = {
   serverTurnId: "019fa9c0-7b9d-7a20-8f31-2c676296c9d1",

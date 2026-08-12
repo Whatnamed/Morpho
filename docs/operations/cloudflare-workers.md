@@ -11,7 +11,7 @@ Morpho uses Next.js with `@opennextjs/cloudflare` to package the complete App Ro
 The Cloudflare integration is independent from Vercel:
 
 - `npm run build` remains the normal Next.js build used by Vercel.
-- `npm run cf:build` runs the Cloudflare-only Webpack/standalone Next build, then creates the OpenNext Worker bundle in `.open-next/`.
+- `npm run cf:build` runs the Cloudflare-only Webpack/standalone Next build, then creates the OpenNext Worker bundle in `.open-next/`. It temporarily moves an existing standard `.next`, removes the Cloudflare-only `.next` in `finally`, and restores the original directory after either success or failure.
 - `npm run cf:preview` builds and starts a local Wrangler/workerd preview.
 - `npm run cf:deploy` builds and deploys the Worker.
 
@@ -33,6 +33,8 @@ Morpho project data is still browser-local. Cloudflare deployment does not migra
 The local preview uses real Wrangler/workerd. It does not require a Cloudflare login. It will not call paid AI routes unless a signed-in user makes such a request, which is outside the default smoke test scope.
 
 The Cloudflare-only build uses `next build --webpack` with standalone output before OpenNext packages the Worker. This is deliberately separate from `npm run build`: OpenNext 1.20.1 produced missing Turbopack server-runtime chunks in the current Windows local preview, while the Webpack bundle runs correctly in workerd. The script is platform-neutral and can also be used by Workers Builds.
+
+App Router `route.ts` files export only supported Route Module fields and HTTP handlers. Testable dependency factories live in adjacent `handler.ts` modules. GitHub Actions runs `cf:build` as an independent backup-build gate; it does not deploy or require Cloudflare credentials.
 
 `npm.cmd run cf:typegen` refreshes the local `worker-configuration.d.ts` file from `wrangler.jsonc`. It is generated and ignored by Git because the current application does not import Cloudflare bindings directly.
 

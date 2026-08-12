@@ -6,7 +6,7 @@ import type { AgentTurnExternalActionSnapshot } from "@/shared/agentTurnExternal
 import {
   createAgentTurnCompactionActionPostHandler,
   type AgentTurnCompactionActionDependencies
-} from "./route";
+} from "./handler";
 
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 const ACTION_ID = "compact:manual:1";
