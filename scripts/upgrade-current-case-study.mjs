@@ -14,13 +14,23 @@ const server = await createServer({
 
 try {
   const currentCase = await server.ssrLoadModule("/src/domain/morpho/caseStudy/currentCaseStudy.ts");
-  const workspace = currentCase.currentCaseStudyWorkspace;
+  const fingerprint = await server.ssrLoadModule("/src/domain/morpho/caseStudy/caseStudyFingerprint.ts");
+  const loadedWorkspace = currentCase.currentCaseStudyWorkspace;
+  const workspace = {
+    ...loadedWorkspace,
+    operations: Object.fromEntries(
+      Object.entries(loadedWorkspace.operations).map(([operationId, operation]) => [
+        operationId,
+        { ...operation, projectId: loadedWorkspace.project.id }
+      ])
+    )
+  };
   const diagnostics = JSON.parse(await readFile(diagnosticsPath, "utf8"));
   const memoryDocuments = Object.values(workspace.projectMemory.documents).filter((document) => document.currentRevisionId);
   const stageRecords = Object.values(workspace.projectMemory.stageRecords).filter((record) => record.currentRevisionId);
 
   diagnostics.project.workspaceSchemaVersion = workspace.schemaVersion;
-  diagnostics.workspaceFingerprint = currentCase.CURRENT_CASE_STUDY_FINGERPRINT;
+  diagnostics.workspaceFingerprint = fingerprint.fingerprintCaseStudyWorkspace(workspace);
   delete diagnostics.chat.checkpointCount;
   diagnostics.chat.summaryRevisionCount = Object.keys(workspace.ai.conversationSummaryRevisions).length;
   diagnostics.projectMemory = {

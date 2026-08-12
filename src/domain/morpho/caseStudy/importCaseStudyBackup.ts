@@ -151,7 +151,10 @@ export function prepareCurrentCaseStudyImport(input: {
   }
 
   const cleanedCategories = new Set<string>();
-  const sanitizedWorkspaceSnapshot = sanitizeWorkspaceSnapshot(manifest.workspaceSnapshot, cleanedCategories);
+  const sanitizedWorkspaceSnapshot = sanitizeWorkspaceSnapshot({
+    ...manifest.workspaceSnapshot,
+    operations: restorePlan.workspace.operations
+  }, cleanedCategories);
   const runtimeAssets = Object.fromEntries(
     Object.entries(sanitizedWorkspaceSnapshot.assets).map(([assetId, asset]) => [
       assetId,

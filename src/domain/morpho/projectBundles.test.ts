@@ -153,6 +153,7 @@ describe("project bundle domain contracts", () => {
     expect(plan.workspace.assets["asset-cover"]?.storageKey).toBe("blob:restored:asset-cover");
     expect(plan.workspace.assets["asset-brief"]?.storageKey).toBe("blob:restored:asset-brief");
     expect(plan.workspace.assets["asset-link"]?.storageKey).toBe("blob:restored:asset-link");
+    expect(plan.workspace.operations["operation-research"]?.projectId).toBe("project-restored");
     expect(plan.workspace.objects["conclusion-safety"]).toMatchObject({ category: "finding" });
     expect(plan.assetWrites.map((item) => item.assetId).sort()).toEqual(["asset-brief", "asset-cover"]);
     expect(new TextDecoder().decode(plan.assetWrites[0]?.bytes ?? new Uint8Array())).not.toHaveLength(0);
@@ -544,6 +545,29 @@ function createBundleFixtureWorkspace(): MorphoWorkspace {
         }
       }
     ],
+    operations: {
+      "operation-research": {
+        id: "operation-research",
+        type: "research",
+        projectId: workspace.project.id,
+        createdAt: NOW,
+        updatedAt: NOW,
+        status: "succeeded",
+        userInput: "Review the night mobility evidence.",
+        inputSnapshot: {
+          userInput: "Review the night mobility evidence.",
+          selectedObjectIds: [research.id],
+          sourceSnapshots: [],
+          objectSnapshots: []
+        },
+        allowedCapabilities: { webSearch: true, imagePixels: false },
+        steps: [],
+        events: [],
+        sourceIds: [research.id],
+        proposalIds: [],
+        retryable: false
+      }
+    },
     citationSnapshots: {
       "citation-night": {
         id: "citation-night",

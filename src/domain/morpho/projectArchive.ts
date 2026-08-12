@@ -24,6 +24,8 @@ import type {
   TextObject,
   VisualBranchRecord
 } from "./types";
+import { validateCurrentMorphoWorkspace } from "./currentWorkspaceValidation";
+import { migrateWorkspaceToCurrentSchema } from "./workspace";
 
 export const HUMAN_READABLE_ARCHIVE_FORMAT = "morpho-human-readable-archive";
 export const EDITABLE_PROJECT_BACKUP_FORMAT = "morpho-editable-project-backup";
@@ -673,8 +675,54 @@ function validateBackupSnapshot(
   }
 
   diagnostics.push(...validateEditableBackupScope(options, workspaceSnapshot));
+  diagnostics.push(...validateBackupWorkspaceDeep(workspaceSnapshot));
 
   return diagnostics;
+}
+
+function validateBackupWorkspaceDeep(
+  workspaceSnapshot: Record<string, unknown>
+): ProjectArchiveDiagnostic[] {
+  const portableAssets = isRecord(workspaceSnapshot.assets) ? workspaceSnapshot.assets : {};
+  const candidate: Record<string, unknown> = {
+    ...workspaceSnapshot,
+    assets: Object.fromEntries(
+      Object.entries(portableAssets).map(([assetId, asset]) => [
+        assetId,
+        isRecord(asset) ? { ...asset, storageKey: `validation:${assetId}` } : asset
+      ])
+    )
+  };
+
+  if (candidate.schemaVersion === 17) {
+    const direct = validateCurrentMorphoWorkspace(candidate);
+    if (direct.status !== "ok") {
+      return invalidCurrentWorkspaceDiagnostics(direct.issues);
+    }
+  }
+
+  const migrated = migrateWorkspaceToCurrentSchema(candidate);
+  if (migrated.status !== "ok") {
+    return [{
+      code: "invalid_workspace_snapshot",
+      severity: "error",
+      message: "Editable backup workspace could not be migrated to the current schema.",
+      path: "workspaceSnapshot"
+    }];
+  }
+  const current = validateCurrentMorphoWorkspace(migrated.workspace);
+  return current.status === "ok" ? [] : invalidCurrentWorkspaceDiagnostics(current.issues);
+}
+
+function invalidCurrentWorkspaceDiagnostics(
+  issues: readonly { path: string; message: string }[]
+): ProjectArchiveDiagnostic[] {
+  return issues.slice(0, 16).map((issue) => ({
+    code: "invalid_workspace_snapshot" as const,
+    severity: "error" as const,
+    message: issue.message,
+    path: `workspaceSnapshot.${issue.path.replace(/^workspace\.?/, "")}`.replace(/\.$/, "")
+  }));
 }
 
 function validateEditableBackupScope(

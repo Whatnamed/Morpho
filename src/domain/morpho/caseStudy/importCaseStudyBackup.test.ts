@@ -15,6 +15,7 @@ describe("case-study backup import", () => {
 
     expect(first.workspace.project.id).toBe("project-morpho-case-study");
     expect(first.workspace.project.title).toBe("Import fixture");
+    expect(first.workspace.operations["operation-import"]?.projectId).toBe("project-morpho-case-study");
     expect(first.assetManifest).toEqual(second.assetManifest);
     expect(first.workspace).toEqual(second.workspace);
   });
@@ -191,6 +192,29 @@ function createFixtureWorkspace(options: { includeReferenceOnlyLink?: boolean; t
             }
           }
         : {})
+    },
+    operations: {
+      "operation-import": {
+        id: "operation-import",
+        type: "research",
+        projectId: workspace.project.id,
+        createdAt,
+        updatedAt: createdAt,
+        status: "succeeded",
+        userInput: "Review the imported brief.",
+        inputSnapshot: {
+          userInput: "Review the imported brief.",
+          selectedObjectIds: ["text-note"],
+          sourceSnapshots: [],
+          objectSnapshots: []
+        },
+        allowedCapabilities: { webSearch: false, imagePixels: false },
+        steps: [],
+        events: [],
+        sourceIds: ["text-note"],
+        proposalIds: [],
+        retryable: false
+      }
     },
     ...(options.includeReferenceOnlyLink
       ? {

@@ -12,12 +12,16 @@ This note records the M7-A domain contract for Morpho project archive and editab
 - Structural validation for external manifests with readable failure diagnostics.
 - A sanitization boundary for backup snapshots that excludes transient UI state from long-lived project facts.
 - A restore gate where backup creation is blocked when restore-critical integrity problems are already known.
+- Authoritative deep validation of current-schema editable snapshots, including bounded primitive/container
+  structure, discriminated Morpho objects, record key/id consistency, finite canvas geometry, current
+  revision ownership, and restore-critical references.
 
 ## What M7-A does not add
 
 - No download UI, export buttons, zip/bundle generation, Blob downloads, or IndexedDB binary export.
 - No restore write path, restore UI, import wizard, cloud sync, or merge flow.
-- No schema upgrade. Workspace schema remains v13.
+- No schema upgrade is introduced by this validation work. The current Workspace schema remains v17 and
+  the manifest version remains `1`.
 
 ## Manifest families
 
@@ -101,6 +105,12 @@ This note records the M7-A domain contract for Morpho project archive and editab
 - It must require a fully valid manifest before starting restore.
 - It must restore into a new independent project copy, regenerate runtime asset storage keys, and keep asset/reference remapping consistent across the workspace snapshot.
 - If backup validation fails, M7-C must stop before any restore write begins.
+- Current-schema snapshots are validated before normalization can fill or coerce malformed fields. Historical
+  snapshots first use the existing Workspace migration chain and then pass the same current-schema validator.
+  This is one current Workspace contract, not a second backup-only schema.
+- Stable delivery snapshots may retain a deleted or hidden upstream source. Current canvas instances,
+  working-state selections, document-fragment source/extract links, revision owners, proposal targets,
+  delivery package/section links, and delivery-draft references must resolve according to their live semantics.
 
 ## Historical boundary note
 

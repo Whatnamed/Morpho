@@ -10,6 +10,7 @@ import {
 } from "./projectArchive";
 import type { AssetId, AssetRecord, KeyConclusionCategory, MorphoWorkspace } from "./types";
 import { migrateWorkspaceToCurrentSchema } from "./workspace";
+import { validateCurrentMorphoWorkspace } from "./currentWorkspaceValidation";
 
 export const PROJECT_BUNDLE_FORMAT = "morpho-project-bundle";
 export const PROJECT_BUNDLE_VERSION = "1";
@@ -283,8 +284,22 @@ export function planEditableProjectBackupRestore(
     };
   }
 
-  const workspace: MorphoWorkspace = {
-    ...migrated.workspace,
+  const currentValidation = validateCurrentMorphoWorkspace(migrated.workspace);
+  if (currentValidation.status !== "ok") {
+    return {
+      status: "failed",
+      reason: "Editable backup workspace failed deep current-schema validation.",
+      diagnostics: currentValidation.issues.slice(0, 16).map((issue) => ({
+        code: "invalid_workspace_snapshot" as const,
+        severity: "error" as const,
+        message: issue.message,
+        path: `workspaceSnapshot.${issue.path.replace(/^workspace\.?/, "")}`.replace(/\.$/, "")
+      }))
+    };
+  }
+
+  const restoreCandidate: MorphoWorkspace = {
+    ...currentValidation.workspace,
     project: {
       ...migrated.workspace.project,
       id: options.projectId,
@@ -292,12 +307,32 @@ export function planEditableProjectBackupRestore(
       createdAt: options.restoredAt,
       updatedAt: options.restoredAt,
       lastOpenedAt: options.restoredAt
-    }
+    },
+    operations: Object.fromEntries(
+      Object.entries(currentValidation.workspace.operations).map(([operationId, operation]) => [
+        operationId,
+        { ...operation, projectId: options.projectId }
+      ])
+    )
   };
+
+  const restoreValidation = validateCurrentMorphoWorkspace(restoreCandidate);
+  if (restoreValidation.status !== "ok") {
+    return {
+      status: "failed",
+      reason: "Editable backup restore candidate failed deep current-schema validation.",
+      diagnostics: restoreValidation.issues.slice(0, 16).map((issue) => ({
+        code: "invalid_workspace_snapshot" as const,
+        severity: "error" as const,
+        message: issue.message,
+        path: `workspaceSnapshot.${issue.path.replace(/^workspace\.?/, "")}`.replace(/\.$/, "")
+      }))
+    };
+  }
 
   return {
     status: "ok",
-    workspace,
+    workspace: restoreValidation.workspace,
     assetWrites
   };
 }

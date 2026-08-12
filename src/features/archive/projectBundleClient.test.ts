@@ -109,6 +109,52 @@ describe("project bundle client", () => {
     expect(await blobStore.get("blob:project-restored:asset-cover")).toBeNull();
   });
 
+  test("rejects a structurally declared but deeply malformed current backup during inspection", async () => {
+    const workspace = createBundleFixtureWorkspace();
+    const blobStore = new MemoryBlobStore({
+      "blob:asset-cover": "cover-bytes",
+      "blob:asset-brief": "brief-bytes"
+    });
+    const exported = await exportEditableProjectBackupBundle(workspace, {
+      blobStore,
+      createdAt: NOW,
+      chat: "full",
+      projectContinuity: "current"
+    });
+    expect(exported.status).toBe("ok");
+    if (exported.status !== "ok") throw new Error("Expected a valid backup fixture.");
+
+    const files = unzipSync(new Uint8Array(await exported.file.arrayBuffer()));
+    const manifest = JSON.parse(strFromU8(files["backup-manifest.json"])) as Record<string, unknown>;
+    const snapshot = manifest.workspaceSnapshot as { canvas: { view: { x: unknown } } };
+    snapshot.canvas.view.x = "not-a-finite-number";
+    const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest));
+    files["backup-manifest.json"] = manifestBytes;
+    const envelope = JSON.parse(strFromU8(files["bundle.json"])) as {
+      files: Array<{ path: string; byteLength?: number }>;
+    };
+    const descriptor = envelope.files.find((entry) => entry.path === "backup-manifest.json");
+    if (!descriptor) throw new Error("Expected the backup manifest descriptor.");
+    descriptor.byteLength = manifestBytes.byteLength;
+    files["bundle.json"] = new TextEncoder().encode(JSON.stringify(envelope));
+    const tamperedZip = new File([zipSync(files)], "tampered-current-backup.zip", {
+      type: "application/zip"
+    });
+
+    const inspected = await inspectEditableProjectBackupBundle(tamperedZip);
+
+    expect(inspected.status).toBe("failed");
+    if (inspected.status === "failed") {
+      expect(inspected.reason).toBe("无法读取备份包。文件可能损坏，或不是 Morpho 可编辑备份。");
+      expect(inspected.diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          code: "invalid_workspace_snapshot",
+          path: "workspaceSnapshot.canvas.view.x"
+        })
+      ]));
+    }
+  });
+
   test("restores an editable backup only after confirm-stage restore receives an inspected backup", async () => {
     const workspace = createBundleFixtureWorkspace();
     const blobStore = new MemoryBlobStore({
@@ -488,6 +534,80 @@ describe("project bundle client", () => {
     expect(storage.getItem(CATALOG_STORAGE_KEY)).toBeNull();
   });
 
+  test.each([
+    {
+      label: "nested object container",
+      tamper: (snapshot: Record<string, unknown>) => {
+        snapshot.objects = [];
+      },
+      expectedPath: "workspaceSnapshot"
+    },
+    {
+      label: "critical canvas reference",
+      tamper: (snapshot: Record<string, unknown>) => {
+        const canvas = snapshot.canvas as { instances: unknown[] };
+        canvas.instances.push({
+          id: "canvas-missing",
+          objectId: "missing-object",
+          position: { x: 0, y: 0 },
+          size: { w: 100, h: 100 }
+        });
+      },
+      expectedPath: expect.stringMatching(/workspaceSnapshot\.canvas\.instances\.\d+\.objectId/)
+    },
+    {
+      label: "non-finite canvas geometry",
+      tamper: (snapshot: Record<string, unknown>) => {
+        const canvas = snapshot.canvas as { view: { x: number } };
+        canvas.view.x = Number.POSITIVE_INFINITY;
+      },
+      expectedPath: "workspaceSnapshot.canvas.view.x"
+    }
+  ])("revalidates a tampered current backup $label before any restore write", async ({ tamper, expectedPath }) => {
+    const workspace = createBundleFixtureWorkspace();
+    const blobStore = new TrackingMemoryBlobStore({
+      "blob:asset-cover": "cover-bytes",
+      "blob:asset-brief": "brief-bytes"
+    });
+    const storage = createMemoryStorage();
+    const exported = await exportEditableProjectBackupBundle(workspace, {
+      blobStore,
+      createdAt: NOW,
+      chat: "full",
+      projectContinuity: "current"
+    });
+    expect(exported.status).toBe("ok");
+    if (exported.status !== "ok") throw new Error("Expected a valid backup fixture.");
+    const inspected = await inspectEditableProjectBackupBundle(exported.file);
+    expect(inspected.status).toBe("ok");
+    if (inspected.status !== "ok") throw new Error("Expected an inspected backup fixture.");
+
+    const tampered = structuredClone(inspected);
+    tamper(tampered.backup.manifest.workspaceSnapshot as unknown as Record<string, unknown>);
+    blobStore.putCalls.length = 0;
+    const catalogBefore = storage.getItem(CATALOG_STORAGE_KEY);
+
+    const restored = await restoreEditableProjectBackupBundle(tampered, {
+      blobStore,
+      storage,
+      now: () => NOW,
+      createProjectId: () => "project-invalid-deep",
+      createRuntimeStorageKey: (assetId, projectId) => `blob:${projectId}:${assetId}`
+    });
+
+    expect(restored.status).toBe("failed");
+    if (restored.status === "failed") {
+      expect(restored.reason).toBe("备份包在恢复前验证失败。");
+      expect(restored.diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: "invalid_workspace_snapshot", path: expectedPath })
+      ]));
+    }
+    expect(blobStore.putCalls).toEqual([]);
+    expect(storage.getItem(getProjectWorkspaceStorageKey("project-invalid-deep"))).toBeNull();
+    expect(storage.getItem(CATALOG_STORAGE_KEY)).toBe(catalogBefore);
+    expect(storage.getItem(getProjectWorkspaceStorageKey(workspace.project.id))).toBeNull();
+  });
+
   test("cleans up newly written blobs and does not persist a project when restore persistence fails", async () => {
     const workspace = createBundleFixtureWorkspace();
     const blobStore = new MemoryBlobStore({
@@ -601,6 +721,15 @@ class MemoryBlobStore implements BlobStore {
 
   async delete(storageKey: string) {
     this.blobs.delete(storageKey);
+  }
+}
+
+class TrackingMemoryBlobStore extends MemoryBlobStore {
+  readonly putCalls: string[] = [];
+
+  override async put(storageKey: string, blob: Blob) {
+    this.putCalls.push(storageKey);
+    await super.put(storageKey, blob);
   }
 }
 

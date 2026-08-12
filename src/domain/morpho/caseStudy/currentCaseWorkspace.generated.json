@@ -3785,7 +3785,7 @@
     "operation-research": {
       "id": "operation-research",
       "type": "research",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-07T08:15:22.556Z",
       "updatedAt": "2026-07-07T08:15:22.557Z",
       "status": "succeeded",
@@ -3934,7 +3934,7 @@
     "operation-research-2": {
       "id": "operation-research-2",
       "type": "research",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-07T09:22:05.896Z",
       "updatedAt": "2026-07-07T09:22:05.897Z",
       "status": "succeeded",
@@ -4083,7 +4083,7 @@
     "operation-research-3": {
       "id": "operation-research-3",
       "type": "research",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-07T11:00:35.914Z",
       "updatedAt": "2026-07-07T11:00:35.915Z",
       "status": "succeeded",
@@ -4148,7 +4148,7 @@
     "operation-research-4": {
       "id": "operation-research-4",
       "type": "research",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-07T12:30:45.958Z",
       "updatedAt": "2026-07-07T12:30:45.960Z",
       "status": "succeeded",
@@ -4297,7 +4297,7 @@
     "operation-designDefinition-1783431536318-f8habk": {
       "id": "operation-designDefinition-1783431536318-f8habk",
       "type": "designDefinition",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-07T13:38:56.318Z",
       "updatedAt": "2026-07-07T13:50:30.897Z",
       "status": "succeeded",
@@ -4455,7 +4455,7 @@
     "operation-designDefinition-1783433914702-dzpkqb": {
       "id": "operation-designDefinition-1783433914702-dzpkqb",
       "type": "designDefinition",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-07T14:18:34.702Z",
       "updatedAt": "2026-07-07T14:26:22.295Z",
       "status": "cancelled",
@@ -4649,7 +4649,7 @@
     "operation-designDefinition-1783436463514-cmi6oc": {
       "id": "operation-designDefinition-1783436463514-cmi6oc",
       "type": "designDefinition",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-07T15:01:03.514Z",
       "updatedAt": "2026-07-07T15:01:03.515Z",
       "status": "waiting_for_user",
@@ -4828,7 +4828,7 @@
     "operation-designDefinition-1783491915333-gronlg": {
       "id": "operation-designDefinition-1783491915333-gronlg",
       "type": "designDefinition",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-08T06:25:15.333Z",
       "updatedAt": "2026-07-08T06:25:15.334Z",
       "status": "succeeded",
@@ -5007,7 +5007,7 @@
     "operation-conceptDirection-1783503160642-jxmg2y": {
       "id": "operation-conceptDirection-1783503160642-jxmg2y",
       "type": "conceptDirection",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-08T09:32:40.642Z",
       "updatedAt": "2026-07-08T09:32:40.642Z",
       "status": "succeeded",
@@ -5084,7 +5084,7 @@
     "operation-designDefinition-1783666931191-2231h8": {
       "id": "operation-designDefinition-1783666931191-2231h8",
       "type": "designDefinition",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-10T07:02:11.191Z",
       "updatedAt": "2026-07-10T07:02:11.192Z",
       "status": "succeeded",
@@ -5263,7 +5263,7 @@
     "operation-designDefinition-1783668841684-rmafx7": {
       "id": "operation-designDefinition-1783668841684-rmafx7",
       "type": "designDefinition",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-10T07:34:01.684Z",
       "updatedAt": "2026-07-10T07:34:01.685Z",
       "status": "succeeded",
@@ -5348,7 +5348,7 @@
     "operation-designDefinition-1783669222058-fi72ya": {
       "id": "operation-designDefinition-1783669222058-fi72ya",
       "type": "designDefinition",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-10T07:40:22.058Z",
       "updatedAt": "2026-07-10T07:40:22.059Z",
       "status": "succeeded",
@@ -5527,7 +5527,7 @@
     "operation-conceptDirection-1783671299081-wgn547": {
       "id": "operation-conceptDirection-1783671299081-wgn547",
       "type": "conceptDirection",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-10T08:14:59.082Z",
       "updatedAt": "2026-07-10T08:14:59.082Z",
       "status": "succeeded",
@@ -5604,7 +5604,7 @@
     "operation-image-1783682031023-1fg5cv": {
       "id": "operation-image-1783682031023-1fg5cv",
       "type": "imageGeneration",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-10T11:13:51.023Z",
       "updatedAt": "2026-07-10T11:18:07.795Z",
       "status": "succeeded",
@@ -5837,7 +5837,7 @@
     "operation-image-1783684021816-pej7jr": {
       "id": "operation-image-1783684021816-pej7jr",
       "type": "imageGeneration",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-10T11:47:01.816Z",
       "updatedAt": "2026-07-10T12:04:43.036Z",
       "status": "interrupted",
@@ -6044,7 +6044,7 @@
     "operation-image-1783686468463-ouu2iq": {
       "id": "operation-image-1783686468463-ouu2iq",
       "type": "imageGeneration",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-10T12:27:48.463Z",
       "updatedAt": "2026-07-10T12:28:07.543Z",
       "status": "succeeded",
@@ -6255,7 +6255,7 @@
     "operation-image-1783686507065-fh61f9": {
       "id": "operation-image-1783686507065-fh61f9",
       "type": "imageGeneration",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-10T12:28:27.065Z",
       "updatedAt": "2026-07-10T12:33:56.370Z",
       "status": "succeeded",
@@ -6466,7 +6466,7 @@
     "operation-image-1783696442449-sbqoe2": {
       "id": "operation-image-1783696442449-sbqoe2",
       "type": "imageGeneration",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-10T15:14:02.449Z",
       "updatedAt": "2026-07-10T15:14:21.354Z",
       "status": "succeeded",
@@ -6613,7 +6613,7 @@
     "operation-image-1783696479592-f39ql2": {
       "id": "operation-image-1783696479592-f39ql2",
       "type": "imageGeneration",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-10T15:14:39.592Z",
       "updatedAt": "2026-07-10T15:17:51.934Z",
       "status": "succeeded",
@@ -6760,7 +6760,7 @@
     "operation-image-1783696881931-azg5l3": {
       "id": "operation-image-1783696881931-azg5l3",
       "type": "imageGeneration",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-10T15:21:21.931Z",
       "updatedAt": "2026-07-10T15:22:17.592Z",
       "status": "succeeded",
@@ -6907,7 +6907,7 @@
     "operation-image-1783696956308-lbvpwi": {
       "id": "operation-image-1783696956308-lbvpwi",
       "type": "imageGeneration",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-10T15:22:36.308Z",
       "updatedAt": "2026-07-10T15:22:53.470Z",
       "status": "succeeded",
@@ -7054,7 +7054,7 @@
     "operation-image-1783855268126-o6a3kx": {
       "id": "operation-image-1783855268126-o6a3kx",
       "type": "imageGeneration",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-12T11:21:08.128Z",
       "updatedAt": "2026-07-12T11:22:34.056Z",
       "status": "succeeded",
@@ -7202,7 +7202,7 @@
     "operation-image-1783855373229-t1376u": {
       "id": "operation-image-1783855373229-t1376u",
       "type": "imageGeneration",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-12T11:22:53.229Z",
       "updatedAt": "2026-07-12T11:23:54.693Z",
       "status": "succeeded",
@@ -7350,7 +7350,7 @@
     "operation-image-1783860462857-5lqor9": {
       "id": "operation-image-1783860462857-5lqor9",
       "type": "imageGeneration",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-12T12:47:42.857Z",
       "updatedAt": "2026-07-12T12:48:54.083Z",
       "status": "succeeded",
@@ -7504,7 +7504,7 @@
     "operation-image-1783860534085-yoq0of": {
       "id": "operation-image-1783860534085-yoq0of",
       "type": "imageGeneration",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-12T12:48:54.085Z",
       "updatedAt": "2026-07-12T12:53:29.839Z",
       "status": "succeeded",
@@ -7658,7 +7658,7 @@
     "operation-research-5": {
       "id": "operation-research-5",
       "type": "research",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-12T20:28:13.411Z",
       "updatedAt": "2026-07-12T20:28:13.412Z",
       "status": "succeeded",
@@ -7705,7 +7705,7 @@
     "operation-research-6": {
       "id": "operation-research-6",
       "type": "research",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-12T20:28:14.794Z",
       "updatedAt": "2026-07-12T20:28:14.794Z",
       "status": "succeeded",
@@ -7752,7 +7752,7 @@
     "operation-research-7": {
       "id": "operation-research-7",
       "type": "research",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-12T20:31:26.820Z",
       "updatedAt": "2026-07-12T20:31:26.821Z",
       "status": "succeeded",
@@ -7831,7 +7831,7 @@
     "operation-image-1783888430081-3hq8ac": {
       "id": "operation-image-1783888430081-3hq8ac",
       "type": "imageGeneration",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-12T20:33:50.081Z",
       "updatedAt": "2026-07-12T20:44:58.012Z",
       "status": "interrupted",
@@ -7939,7 +7939,7 @@
     "operation-image-1783889211791-rivcoj": {
       "id": "operation-image-1783889211791-rivcoj",
       "type": "imageGeneration",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-12T20:46:51.791Z",
       "updatedAt": "2026-07-12T20:46:53.003Z",
       "status": "succeeded",
@@ -8051,7 +8051,7 @@
     "operation-image-1783889910968-moy113": {
       "id": "operation-image-1783889910968-moy113",
       "type": "imageGeneration",
-      "projectId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
+      "projectId": "project-morpho-case-study",
       "createdAt": "2026-07-12T20:58:30.968Z",
       "updatedAt": "2026-07-12T20:58:32.335Z",
       "status": "succeeded",

@@ -99,13 +99,17 @@ Implemented sequence:
 3. parse the declared backup manifest file
 4. validate bundle envelope and backup manifest
 5. validate required asset presence and byte lengths
-6. generate a new local project id
-7. generate a new restored project title such as `原标题（恢复副本）`
-8. generate new runtime storage keys for every restored asset
-9. write every new binary blob first
-10. write the restored workspace JSON
-11. write the updated project catalog
-12. open the restored project
+6. for current schema v17, deep-validate the unnormalized snapshot; for historical schemas, use the existing
+   migration chain and deep-validate the migrated current Workspace
+7. validate current key/id, discriminated-object, finite-geometry, revision-ownership, and critical-reference
+   invariants without treating AI/message content as proof of authenticity
+8. generate a new local project id
+9. generate a new restored project title such as `原标题（恢复副本）`
+10. remap operation ownership and runtime storage keys to the new project identity, then deep-validate the final restore plan again
+11. write every new binary blob first
+12. write the restored workspace JSON
+13. write the updated project catalog
+14. open the restored project
 
 The restore path never overwrites the source project, never merges into the current workspace, and never reuses the original runtime storage keys.
 
@@ -114,6 +118,8 @@ The restore path never overwrites the source project, never merges into the curr
 Browser localStorage and IndexedDB are not transactional together, so restore uses a visible near-atomic sequence:
 
 - all validation happens before any write
+- inspection and pre-restore revalidation both run the same deep current-schema boundary, so an inspected
+  payload changed in memory is rejected before Blob, workspace, or catalog writes
 - all blobs write to fresh storage keys
 - written keys are tracked during restore
 - any blob-write failure aborts restore and deletes newly written blobs
@@ -135,3 +141,11 @@ The restore preview exposes the source project title, export time, chat scope, p
 Unreadable zip files, malformed JSON, missing `bundle.json`, missing manifest paths, missing manifest files, and human-readable archive packages are rejected during inspection with a readable failed result before any write begins.
 
 Restore project id generation retries up to 10 candidates. A candidate is rejected when it equals the source project id, already exists in the local catalog, or already has a workspace storage key. If every candidate collides, restore fails before writing any blob, workspace, or catalog data.
+
+Deep Workspace validation reports a bounded list of stable field paths and generic reasons. It rejects malformed
+nested containers, mismatched record keys and IDs, invalid Morpho object variants, dangling live references,
+duplicate canvas/message IDs, non-finite numbers, and non-positive rendered sizes. Infinite-canvas positions remain
+unbounded when finite. Stable delivery-reference snapshots are allowed to outlive their source object or source
+asset. Revision owners and processed proposal bases may likewise outlive deleted objects; existing live objects
+must still own their declared current revisions. Historical message/source snapshots are checked for safe
+structure rather than treated as live authority.
