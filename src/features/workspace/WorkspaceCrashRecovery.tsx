@@ -95,6 +95,7 @@ export function WorkspaceCrashRecovery({
           ) : null}
           {/* A hard navigation, not a router push: the client router is part of
               the tree that just failed, so it is not something to rely on here. */}
+          {/* eslint-disable-next-line @next/next/no-location-assign-relative-destination -- crash recovery must bypass the failed client router */}
           <button className="plain-button" type="button" onClick={() => window.location.assign("/")}>
             返回项目列表
           </button>
