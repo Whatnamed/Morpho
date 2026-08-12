@@ -444,30 +444,42 @@ below are pending and must be applied in this fixed order from the same reviewed
 
 Before a controlled rollout:
 
-1. Set `SUPABASE_SECRET_KEY` in Vercel Preview/Production server environments. Do not expose it as
-   a `NEXT_PUBLIC_*` variable, and do not print it while checking configuration.
-2. Pause new Agent Requests and finish or cancel active Server Turns. The authority migration revokes
-   both old settlement grants, so neither an old browser nor an old application instance may continue
-   settling Provider status during the cutover.
-3. From the exact release commit, inspect the linked project and migration list read-only. Confirm the
-   remote anchor is exactly `20260729190000`, the only pending files are the two listed above, and the
-   local `20260810025000` file still matches the reviewed repository version. Apply both pending
-   migrations in timestamp order as one maintenance action; never skip admission hardening, edit an
-   applied migration, reset history, or use an unreviewed migration set.
-4. In the SQL editor, verify both old settlement functions have no `EXECUTE` for `public`, `anon`,
+1. Pause or otherwise block all new Agent Provider requests before changing database grants or
+   application configuration. Keep the block in place for the entire maintenance window.
+2. Query the Server Turn Journal read-only and finish or explicitly cancel every non-terminal Turn.
+   Re-query this state during the actual rollout; a count observed during an earlier review or chat is
+   not rollout evidence. The authority migration revokes both old settlement grants, so neither an old
+   browser nor an old application instance may continue settling Provider status during the cutover.
+3. From the exact release commit, inspect the linked project read-only and confirm the remote migration
+   anchor is exactly `20260729190000`.
+4. Inspect the local/remote migration list read-only. Confirm the only pending files are
+   `20260810025000_harden_agent_turn_admission.sql` and
+   `20260812090000_harden_agent_tool_claim_settlement_boundary.sql`, and that both still match their
+   reviewed repository versions.
+5. Apply those two migrations in timestamp order as one maintenance action. Never skip admission
+   hardening, edit or reapply an applied migration, reset migration history, or use an unreviewed
+   migration set.
+6. In the SQL editor, verify both old settlement functions have no `EXECUTE` for `public`, `anon`,
    `authenticated`, or `service_role`; verify the new wrapper has `EXECUTE` only for `service_role`,
    `SECURITY DEFINER`, and `search_path = ''`. Verify the private Journal tables remain RLS-protected.
-5. Deploy the matching application commit, then run one authenticated no-Tool A+ Request and one
-   low-cost Tool Call. Confirm the first settles normally, the second creates claims only through the
-   privileged wrapper, and a repeated settlement is idempotent without another Provider call.
-6. Verify recovery and the fail-closed gate: if `SUPABASE_SECRET_KEY` is missing, the route returns
-   `503` before Request acquisition, quota reservation, `provider_running`, or Provider execution.
+7. Only after the database routine/grant boundary passes verification, set or confirm
+   `SUPABASE_SECRET_KEY` in Vercel Preview/Production server environments. Do not expose it as a
+   `NEXT_PUBLIC_*` variable, and do not print it while checking configuration.
+8. Deploy the matching application commit while Agent Provider requests remain blocked.
+9. Run one authenticated no-Tool A+ Request, one local-Tool path, and one low-cost bounded external
+   Tool Call. Confirm settlement uses only the privileged wrapper and does not duplicate Provider work.
+10. Verify recovery, quota, settlement, and idempotency. In particular, a repeated settlement must not
+    cause another Provider call, and a missing `SUPABASE_SECRET_KEY` must return `503` before Request
+    acquisition, quota reservation, `provider_running`, or Provider execution.
+11. Resume Agent Provider requests only after all database checks, matching-application deployment,
+    smoke checks, and recovery/settlement checks pass.
 
 If either migration or grant verification fails, keep Agent Requests paused and do not deploy the
 matching application release. Database migration rollback is not performed by deleting migration
 history; prepare a later reviewed forward-only repair if a database defect is found. If application
 smoke tests fail after the database checks pass, roll the application back while keeping requests
-paused, then assess compatibility before resuming traffic.
+paused, then assess compatibility before resuming traffic. A database/application contract mismatch
+must remain fail-closed; never reopen traffic while the database boundary is known to be incorrect.
 
 Until both migrations are applied and these remote grants/routine checks are recorded, F02 is a
 repository-ready fix, not a production-closed finding. A static migration test or a checked-in
