@@ -31,6 +31,7 @@ describe("user instruction authority conflict resolution", () => {
     ["不要创建概念方向，只分析现有概念方向", "conceptDirection"],
     ["不要修改设计定义，只解释设计原则", "designDefinition"],
     ["不要修改这个草案，只分析这个修改记录", "reviseSelectedProposalDraft"],
+    ["不要创建研究分析，只分析当前创建研究分析", "createResearchAnalysis"],
     ["不要生成预览图，只分析生成记录", "batchGenerateVisuals"]
   ] as const)("ignores topic references after a prohibition: %s", (draft, action) => {
     expect(isUserActionExplicitlyDisallowed(draft, action)).toBe(true);

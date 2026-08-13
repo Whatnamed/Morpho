@@ -44,7 +44,7 @@ const TOPIC_PREFIX_PATTERN =
 const REQUEST_PREFIX_PATTERN =
   /(?:请|帮我|创建|形成|生成|产出|保存|修改|修订|更新|调整|拆分|合并|重写|改写|提出|设计|做|应用|采纳|确认采用|改为|改成)(?:一个|该|这个|新的|选中的|选定的|当前|多个|几个|各个|这几个|[一二两三四五六七八九十\d]+个?)?\s*$/;
 const TOPIC_NOUN_PATTERN = /^(?:资料|材料|信息|来源|内容|记录|数据|文档|文件|证据|历史|痕迹|日志|结果|说明|原因|意见|建议|版本)/;
-const TOPIC_REFERENCE_SUFFIX_PATTERN = /^(?:的|是否|如何|怎么|原因|理由|条件|影响|案例|标准|规范|报告|研究|分析|结论|约束|草案|版本|资料|材料|信息|来源|内容|记录|数据|文档|文件|证据|历史|痕迹|日志|结果|说明|意见|建议)/;
+const TOPIC_REFERENCE_SUFFIX_PATTERN = /^(?:的|是否|如何|怎么|原因|理由|条件|影响|案例|标准|规范|报告|研究|分析|结论|约束|草案|版本|资料|材料|信息|来源|内容|记录|数据|文档|文件|证据|历史|痕迹|日志|结果|说明|意见|建议|需要|应该|可以|能够|已经|仍然|仍需|存在|包括|包含|属于|是|为|与|和|及|后|前|时|问题|优缺点|边界|要点|表现|关系|变化)/;
 const VISUAL_REFERENCE_PATTERN = /^(?:预览图|效果图|场景图|角度图|cmf图|细节图|图片|图像)/i;
 const CONTRAST_PATTERN = /(?:而是|改为|改成|转而|但是|但)/g;
 
@@ -71,7 +71,8 @@ function isTopicReferenceContext(before: string, after: string): boolean {
   return TOPIC_PREFIX_PATTERN.test(nearBefore) && (
     nearAfter.length === 0 ||
     TOPIC_REFERENCE_SUFFIX_PATTERN.test(nearAfter) ||
-    VISUAL_REFERENCE_PATTERN.test(nearAfter)
+    VISUAL_REFERENCE_PATTERN.test(nearAfter) ||
+    /^(?:并|并且|以及|同时|然后|再|且|而且)/.test(nearAfter)
   );
 }
 
@@ -185,11 +186,8 @@ function isTopicOccurrence(action: UserInstructionAction, matchText: string, bef
       return isTopicReferenceContext(before, after);
     }
     case "reviseSelectedProposalDraft": {
-      return (
-        /^(?:修改|修订|调整|改写|重写|缩短|改名)$/i.test(matchText) &&
-        (TOPIC_NOUN_PATTERN.test(nearAfter) || nearAfter.length === 0) &&
-        TOPIC_PREFIX_PATTERN.test(nearBefore)
-      );
+      return /^(?:修改|修订|调整|改写|重写|缩短|改名)$/i.test(matchText) &&
+        isTopicReferenceContext(before, after);
     }
     case "batchGenerateVisuals": {
       return isTopicReferenceContext(before, after);
