@@ -3,15 +3,23 @@ import { describe, expect, it } from "vitest";
 import { hasCurrentTurnWebSearchAuthority } from "./webSearchAuthority";
 
 describe("current-turn web search authority", () => {
-  it("allows explicit current-user search and research mode", () => {
+  it("allows explicit current-user search and a user-selected research mode", () => {
     expect(hasCurrentTurnWebSearchAuthority({
       draft: "请联网核实这些材料的最新标准。",
       taskMode: "chatAnalysis"
     })).toBe(true);
     expect(hasCurrentTurnWebSearchAuthority({
       draft: "研究这个市场的约束。",
-      taskMode: "researchOperation"
+      taskMode: "researchOperation",
+      executionModeSource: "userSelected"
     })).toBe(true);
+  });
+
+  it("fails closed when a research caller omits execution provenance", () => {
+    expect(hasCurrentTurnWebSearchAuthority({
+      draft: "研究这个市场的约束。",
+      taskMode: "researchOperation"
+    })).toBe(false);
   });
 
   it("does not treat a summary request or image mode as network authority", () => {
@@ -33,7 +41,7 @@ describe("current-turn web search authority", () => {
     expect(hasCurrentTurnWebSearchAuthority({
       draft: "不要联网，但请搜索官方来源核实这一点。",
       taskMode: "chatAnalysis"
-    })).toBe(true);
+    })).toBe(false);
     expect(hasCurrentTurnWebSearchAuthority({
       draft: "不联网，只总结本地材料。",
       taskMode: "researchOperation"

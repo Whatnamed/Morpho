@@ -110,6 +110,8 @@ describe("A+ Agent turn runner", () => {
       { status: "externallyFailed" }
     ]);
     fixture.input.draft = "创建研究分析。";
+    fixture.input.taskMode = "researchOperation";
+    fixture.input.recommendedTaskMode = "researchOperation";
 
     await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
 
@@ -162,6 +164,8 @@ describe("A+ Agent turn runner", () => {
     }]);
     fixture.input.agentTurnMode = "confirm";
     fixture.input.draft = "创建研究分析，并在执行前向我确认。";
+    fixture.input.taskMode = "researchOperation";
+    fixture.input.recommendedTaskMode = "researchOperation";
 
     await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
     expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
@@ -245,6 +249,8 @@ describe("A+ Agent turn runner", () => {
     }]);
     fixture.input.agentTurnMode = "confirm";
     fixture.input.draft = "创建研究分析，并在执行前向我确认。";
+    fixture.input.taskMode = "researchOperation";
+    fixture.input.recommendedTaskMode = "researchOperation";
 
     await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
     const occupiedHost: AgentTurnHost = {
@@ -473,6 +479,8 @@ describe("A+ Agent turn runner", () => {
       { status: "externallyCompleted", outputText: "研究草案已完成。" }
     ]);
     fixture.input.draft = "请联网搜索并创建研究分析。";
+    fixture.input.taskMode = "researchOperation";
+    fixture.input.recommendedTaskMode = "researchOperation";
     fixture.fake.setFetchRoute(
       `/api/ai/agent/turns/${TURN_ID}/actions/web-search`,
       () => Response.json({
@@ -738,6 +746,8 @@ describe("A+ Agent turn runner", () => {
       persistenceStates: [savedPersistence(), failedPersistence()]
     });
     fixture.input.draft = "创建研究分析。";
+    fixture.input.taskMode = "researchOperation";
+    fixture.input.recommendedTaskMode = "researchOperation";
 
     await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
 

@@ -561,6 +561,10 @@ describe("A+ Tool Batch integration", () => {
       const turnInput: RunMorphoAgentTurnAPlusInput = {
         ...standardInput(),
         draft: "总结这份资料，只回答要点。",
+        taskMode: "chatAnalysis",
+        recommendedTaskMode: "chatAnalysis",
+        workIntent: "discussion",
+        recommendedWorkIntent: "discussion",
         selectedObjectIds: [untrustedSource.id],
         selectedObjects: [untrustedSource]
       };
@@ -794,9 +798,9 @@ function journalSnapshot(): AgentTurnJournalSnapshot {
 
 function standardInput(): RunMorphoAgentTurnAPlusInput {
   return {
-    draft: "记录研究草案",
-    taskMode: "chatAnalysis",
-    recommendedTaskMode: "chatAnalysis",
+    draft: "研究这份材料并创建研究草案",
+    taskMode: "researchOperation",
+    recommendedTaskMode: "researchOperation",
     workIntent: "discussion",
     recommendedWorkIntent: "discussion",
     selectedObjectIds: [],

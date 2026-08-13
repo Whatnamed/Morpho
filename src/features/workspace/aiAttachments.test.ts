@@ -102,6 +102,11 @@ describe("workspace AI provider attachment planning", () => {
       maxKeyword: 2,
       limit: 3
     });
+    expect(buildWebSearchOptions({
+      draft: "研究一下这份 PDF。",
+      taskMode: "researchOperation",
+      executionModeSource: "autoRecommended"
+    })).toBeUndefined();
     expect(buildWebSearchOptions({ draft: "please verify latest source", taskMode: "imageGeneration" })).toBeUndefined();
   });
 });

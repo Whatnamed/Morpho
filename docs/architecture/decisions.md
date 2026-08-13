@@ -1,5 +1,30 @@
 # Morpho Technical Decisions
 
+## 2026-08-14: Separate Routing Recommendation from Effect Authority (F06)
+
+Decision: keep Auto Mode as a UX routing recommendation, but mint one runtime-only
+`AgentToolAuthorityProfile` from send-time execution state before Provider output exists.
+`executionTaskMode` and `executionWorkIntent` are the authoritative effect inputs; each carries
+`userSelected` or `autoRecommended` provenance. Auto Routing may recommend a local reversible
+proposal only when a small positive mutation cue is present; a bare topic, comparison, or analysis
+prompt remains discussion/read-only. The authority layer does not re-parse the whole sentence to
+reconstruct work intent.
+
+External and high-impact effects keep separate gates. Web search is allowed for a user-selected
+Research mode or an auto-routed Research turn with a clear current-user network cue. Image
+generation still requires the send-time user-selected image task and existing cost/confirmation
+policy. Memory writes require the existing required-update guard and the exact current-user
+evidence quote. High-impact changes can only produce a confirmation request from a small explicit
+action allowlist and never execute directly. Read tools remain default local reads; proposal,
+comparison, delivery, and research writes require their structured target/state checks.
+
+Imported documents, extracted text, historical context, Provider output, and Tool arguments are
+untrusted evidence. They cannot change the profile. `AgentToolBatchAPlus` and `AgentToolExecutors`
+both enforce the same frozen profile before activity, confirmation, external action, persistence,
+or workspace mutation. Contradictory or ambiguous same-turn language fails closed; the user can
+send a new explicit request or choose a manual mode. These provenance fields are runtime recovery
+state only: no workspace schema bump, Supabase write, or F02 Production rollout is part of F06.
+
 ## Reading status
 
 This is a chronological decision ledger. The latest A+ entries and the current implementation

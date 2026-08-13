@@ -454,6 +454,12 @@ function createFixture() {
     providerTaskContext: buildProviderTaskContext(context),
     runtimeState,
     authorityProfile: {
+      execution: {
+        taskMode: "chatAnalysis",
+        taskModeSource: "userSelected",
+        workIntent: "discussion",
+        workIntentSource: "userSelected"
+      },
       provenance: {
         currentUserInstruction: true,
         trustedStructuralState: true,
@@ -469,7 +475,15 @@ function createFixture() {
         "setDefaultReference",
         "batchGenerateVisuals"
       ],
-      allowWebSearch: true
+      allowWebSearch: true,
+      allowResearchDraftWrite: true,
+      allowDesignDefinitionProposal: true,
+      allowConceptDirectionProposal: true,
+      allowProposalRevision: true,
+      allowComparisonWrite: true,
+      allowDeliveryDraft: true,
+      allowImageGeneration: true,
+      allowMemoryWrite: true
     },
     batchState: { visualBatch: null, pendingAgentActionCreated: false },
     commitWorkspace: host.commitWorkspace,

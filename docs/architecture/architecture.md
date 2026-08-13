@@ -619,6 +619,21 @@ AI authority boundary:
 - Current-user text and trusted UI routing produce a runtime-only Tool authority profile before Provider output exists. Imported/local documents, object summaries, historical conversation, memory, Provider evidence, Tool arguments, and model commentary are explicitly marked as untrusted evidence and cannot expand that profile.
 - A+ omits `search_web_evidence` from the server-owned Tool Registry unless both server capability and the precomputed current-turn profile allow search. Independent Chat applies the same current-user/UI search classifier on the server before exposing hosted web search. A document cannot enable networking by asking for it inside its content.
 - Every parsed Tool Call is checked against the profile before Tool activity, recovery intent, external action, confirmation, workspace persistence, or execution. A mismatch returns stable `agent_tool_not_authorized` and stops the batch.
+
+Current F06 authority layering:
+
+- Composer text and selected objects feed `recommendedTaskMode` / `recommendedWorkIntent` only. At
+  send time, `taskMode` / `workIntent` resolve to `executionTaskMode` / `executionWorkIntent`, with
+  runtime-only `executionModeSource` provenance (`userSelected` or `autoRecommended`). The frozen
+  `AgentToolAuthorityProfile` is the only effect decision presented to Provider Tool execution.
+- Auto mutation routing requires a positive mutation verb; topic-only prompts such as “解释当前
+  设计定义” and “基于现有概念方向总结” stay discussion/read-only. Local reversible proposals
+  may use the resulting structured execution intent, while external Search, paid Image, Memory,
+  and high-impact confirmation keep their independent deterministic grants.
+- Web Search is not implied by `researchOperation` when it was auto-recommended. It requires either
+  a manual Research selection or a clear current-user network cue. Paid Image requires the
+  send-time user-selected image task; Memory and confirmation retain their existing required-update
+  and action-allowlist gates. Ambiguous same-turn requests fail closed.
 - Applied design definitions, direction status, default reference, important delivery decisions, and other high-impact actions keep their existing confirmation/authorization boundaries.
 - Project Memory contains source-driven current projections and revision history; it is not a second fact source and is not exposed as user-managed files.
 - Delivery section generation creates a pending draft from frozen section references. Applying that draft remains the explicit write boundary for narrative, captions, gaps, decisions, and continuity events.

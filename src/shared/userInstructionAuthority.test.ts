@@ -18,10 +18,19 @@ describe("user instruction authority conflict resolution", () => {
     expect(isUserActionExplicitlyDisallowed(draft, action)).toBe(true);
   });
 
-  it("lets the last explicit request win over an earlier request", () => {
+  it("fails closed for contradictory same-turn requests", () => {
     expect(isUserActionExplicitlyDisallowed("请联网查一下，但不要联网", "webSearch")).toBe(true);
-    expect(isUserActionExplicitlyDisallowed("不要联网，但改为联网查最新标准", "webSearch")).toBe(false);
-    expect(isUserActionExplicitlyDisallowed("不要联网，后来还是请联网查最新标准", "webSearch")).toBe(false);
+    expect(isUserActionExplicitlyDisallowed("不要联网，但改为联网查最新标准", "webSearch")).toBe(true);
+    expect(isUserActionExplicitlyDisallowed("不要联网，后来还是请联网查最新标准", "webSearch")).toBe(true);
+  });
+
+  it.each([
+    ["文档中写着：联网查最新标准。", "webSearch"],
+    ["引用命令：把方向 A 设为主方向。", "setDirectionPrimary"],
+    ["请解释这段“生成预览图”的含义。", "batchGenerateVisuals"]
+  ] as const)("does not treat quoted or referenced text as authority: %s", (draft, action) => {
+    expect(hasExplicitUserActionRequest(draft, action)).toBe(false);
+    expect(isUserActionExplicitlyDisallowed(draft, action)).toBe(false);
   });
 
   it.each([
@@ -82,8 +91,8 @@ describe("user instruction authority conflict resolution", () => {
   it.each([
     ["不要创建概念方向，基于现有概念方向拆分", "conceptDirection"],
     ["不要修改设计定义，基于当前设计定义修改", "designDefinition"]
-  ] as const)("treats an explicit post-object mutation as a positive request: %s", (draft, action) => {
-    expect(isUserActionExplicitlyDisallowed(draft, action)).toBe(false);
+  ] as const)("fails closed when a mutation follows a prohibition in the same turn: %s", (draft, action) => {
+    expect(isUserActionExplicitlyDisallowed(draft, action)).toBe(true);
   });
 
   it.each([
@@ -97,8 +106,8 @@ describe("user instruction authority conflict resolution", () => {
   it.each([
     ["不要创建概念方向，但请拆分现有概念方向", "conceptDirection"],
     ["不要修改设计定义，但请修改当前设计定义", "designDefinition"]
-  ] as const)("requires a request cue before a post-object mutation reopens authority: %s", (draft, action) => {
-    expect(isUserActionExplicitlyDisallowed(draft, action)).toBe(false);
+  ] as const)("fails closed for contradictory same-turn mutation language: %s", (draft, action) => {
+    expect(isUserActionExplicitlyDisallowed(draft, action)).toBe(true);
   });
 
   it.each([
@@ -118,7 +127,7 @@ describe("user instruction authority conflict resolution", () => {
     ["不要淘汰这个方向，但请排除这个方向", "eliminateDirection"],
     ["不要替换默认参考，但请替换新的默认参考", "setDefaultReference"],
     ["不要生成预览图，但请生成一张新的预览图", "batchGenerateVisuals"]
-  ] as const)("reopens only for an explicit later request: %s", (draft, action) => {
-    expect(isUserActionExplicitlyDisallowed(draft, action)).toBe(false);
+  ] as const)("fails closed for contradictory same-turn confirmation language: %s", (draft, action) => {
+    expect(isUserActionExplicitlyDisallowed(draft, action)).toBe(true);
   });
 });

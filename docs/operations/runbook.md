@@ -1056,6 +1056,26 @@ deleting migration history, editing an applied file, or pasting old SQL manually
 
 ## Agent Runtime Validation
 
+### F06 authority-boundary checks
+
+The Authority Profile is created once at send time and is reused during recovery. When reviewing a
+Tool trace, verify that `executionTaskMode` / `executionWorkIntent` and their
+`userSelected`/`autoRecommended` provenance are present before Provider output. A document or
+Provider instruction must never add a Tool to `allowedTools`.
+
+Use the focused boundary suite without real Provider, Search, Image, GrsAI, or Production Supabase
+traffic:
+
+```powershell
+npm.cmd exec vitest run src/shared/userInstructionAuthority.test.ts src/shared/webSearchAuthority.test.ts src/features/workspace/aiTaskRouting.test.ts src/features/workspace/agentToolAuthority.test.ts src/features/workspace/agentToolBatchAPlus.test.ts src/features/workspace/agentToolExecutors.test.ts
+```
+
+The expected hostile cases are: summary-only turns cannot search or write; an auto-routed Research
+turn cannot search without a current network cue; a pure topic cannot create a proposal; imported
+instructions cannot create Memory or confirmation authority; and both Batch and Executor return
+`agent_tool_not_authorized` before any external action or workspace mutation. Contradictory language
+is intentionally fail-closed. Do not add live flags or production database commands to this check.
+
 Run from PowerShell 7 without paid Provider flags:
 
 ```powershell
