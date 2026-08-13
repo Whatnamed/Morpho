@@ -45,6 +45,46 @@ describe("Agent tool authority", () => {
     }
     expect(authority({ draft: "解释一下当前方案。" }).allowedTools).toEqual(expect.arrayContaining(["read_selected_context"]));
   });
+
+  it("does not let negated actions become authority through routing or tool arguments", () => {
+    const workspace = createTestWorkspace();
+    const proposal = Object.values(workspace.objects).find((object) => object.type === "proposalDraft");
+    const profile = authority({
+      draft: "研究这份 PDF，但不要联网，也不要创建研究分析、创建概念方向；不要修改这个草案，只总结本地内容。",
+      taskMode: "chatAnalysis",
+      executionTaskMode: "researchOperation",
+      executionWorkIntent: "createConceptDirections",
+      selectedObjects: proposal ? [proposal] : [],
+      hasDocumentExtracts: true
+    });
+
+    expect(profile.allowWebSearch).toBe(false);
+    expect(profile.allowedTools).not.toContain("search_web_evidence");
+    expect(profile.allowedTools).not.toContain("create_research_analysis");
+    expect(profile.allowedTools).not.toContain("create_concept_direction_proposal");
+    expect(profile.allowedTools).not.toContain("revise_selected_proposal_draft");
+  });
+
+  it("keeps explicit contrast clauses available", () => {
+    const proposal = {
+      id: "proposal-hostile-test",
+      type: "proposalDraft" as const,
+      title: "草案",
+      summary: "用于 authority 测试",
+      createdBy: "user" as const,
+      visibility: "active" as const,
+      proposalId: "proposal-hostile-test",
+      proposalType: "conceptDirection" as const
+    };
+    const profile = authority({
+      draft: "不要修改这个草案，而是重写标题并创建一个概念方向草案。",
+      executionWorkIntent: "createConceptDirections",
+      selectedObjects: [proposal]
+    });
+
+    expect(profile.allowedTools).toContain("create_concept_direction_proposal");
+    expect(profile.allowedTools).toContain("revise_selected_proposal_draft");
+  });
 });
 
 function authority(overrides: Partial<Parameters<typeof resolveAgentToolAuthority>[0]> = {}) {

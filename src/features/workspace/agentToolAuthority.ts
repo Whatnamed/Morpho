@@ -1,5 +1,6 @@
 import type { AiTaskMode, AiWorkIntent, MorphoObject } from "@/domain/morpho/types";
 import { hasCurrentTurnWebSearchAuthority } from "@/shared/webSearchAuthority";
+import { isUserActionExplicitlyDisallowed } from "@/shared/userInstructionAuthority";
 import type { MorphoAgentToolArguments, MorphoAgentToolName, RequestConfirmationArgs } from "./morphoAgent";
 
 export type AgentToolAuthorityProfile = Readonly<{
@@ -37,16 +38,29 @@ export function resolveAgentToolAuthority(input: Readonly<{
     taskMode: input.executionTaskMode
   });
   if (allowWebSearch) allowed.add("search_web_evidence");
-  if (input.executionTaskMode === "researchOperation" || /(?:创建|形成|整理|记录|生成|产出|保存).{0,16}(?:研究|调研|分析)(?:对象|草案|结果|报告)?/i.test(input.draft)) {
+  if (
+    !isUserActionExplicitlyDisallowed(input.draft, "createResearchAnalysis") &&
+    (input.executionTaskMode === "researchOperation" || /(?:创建|形成|整理|记录|生成|产出|保存).{0,16}(?:研究|调研|分析)(?:对象|草案|结果|报告)?/i.test(input.draft))
+  ) {
     allowed.add("create_research_analysis");
   }
-  if (["createDesignDefinition", "reviseDesignDefinition"].includes(input.executionWorkIntent)) {
+  if (
+    !isUserActionExplicitlyDisallowed(input.draft, "designDefinition") &&
+    ["createDesignDefinition", "reviseDesignDefinition"].includes(input.executionWorkIntent)
+  ) {
     allowed.add("create_design_definition_proposal");
   }
-  if (["createConceptDirections", "reviseConceptDirection", "splitConceptDirection", "mergeConceptDirections"].includes(input.executionWorkIntent)) {
+  if (
+    !isUserActionExplicitlyDisallowed(input.draft, "conceptDirection") &&
+    ["createConceptDirections", "reviseConceptDirection", "splitConceptDirection", "mergeConceptDirections"].includes(input.executionWorkIntent)
+  ) {
     allowed.add("create_concept_direction_proposal");
   }
-  if (input.selectedObjects.some((object) => object.type === "proposalDraft") && /修改|修订|调整|改写|重写|缩短|改名|rename|rewrite|revise/i.test(input.draft)) {
+  if (
+    input.selectedObjects.some((object) => object.type === "proposalDraft") &&
+    !isUserActionExplicitlyDisallowed(input.draft, "reviseSelectedProposalDraft") &&
+    /修改|修订|调整|改写|重写|缩短|改名|rename|rewrite|revise/i.test(input.draft)
+  ) {
     allowed.add("revise_selected_proposal_draft");
   }
   if (input.taskMode === "imageGeneration" && input.executionTaskMode === "imageGeneration") allowed.add("generate_visuals");
@@ -82,11 +96,11 @@ export function getAgentToolAuthorizationBlockReason(profile: AgentToolAuthority
 
 function explicitConfirmationActions(draft: string): RequestConfirmationArgs["action"][] {
   const actions: RequestConfirmationArgs["action"][] = [];
-  if (/应用|采纳|确认采用/.test(draft) && /设计定义/.test(draft)) actions.push("applyDesignDefinition");
-  if (/设为|设置|确定/.test(draft) && /主方向/.test(draft)) actions.push("setDirectionPrimary");
-  if (/设为|设置|确定/.test(draft) && /备选方向/.test(draft)) actions.push("setDirectionAlternative");
-  if (/淘汰|排除/.test(draft) && /方向/.test(draft)) actions.push("eliminateDirection");
-  if (/设为|设置|替换/.test(draft) && /默认参考/.test(draft)) actions.push("setDefaultReference");
-  if (/生成|出图|预览图|效果图/.test(draft) && /确认|先问我|经我同意/.test(draft)) actions.push("batchGenerateVisuals");
+  if (!isUserActionExplicitlyDisallowed(draft, "applyDesignDefinition") && /应用|采纳|确认采用/.test(draft) && /设计定义/.test(draft)) actions.push("applyDesignDefinition");
+  if (!isUserActionExplicitlyDisallowed(draft, "setDirectionPrimary") && /设为|设置|确定/.test(draft) && /主方向/.test(draft)) actions.push("setDirectionPrimary");
+  if (!isUserActionExplicitlyDisallowed(draft, "setDirectionAlternative") && /设为|设置|确定/.test(draft) && /备选方向/.test(draft)) actions.push("setDirectionAlternative");
+  if (!isUserActionExplicitlyDisallowed(draft, "eliminateDirection") && /淘汰|排除/.test(draft) && /方向/.test(draft)) actions.push("eliminateDirection");
+  if (!isUserActionExplicitlyDisallowed(draft, "setDefaultReference") && /设为|设置|替换/.test(draft) && /默认参考/.test(draft)) actions.push("setDefaultReference");
+  if (!isUserActionExplicitlyDisallowed(draft, "batchGenerateVisuals") && /生成|出图|预览图|效果图/.test(draft) && /确认|先问我|经我同意/.test(draft)) actions.push("batchGenerateVisuals");
   return [...new Set(actions)];
 }

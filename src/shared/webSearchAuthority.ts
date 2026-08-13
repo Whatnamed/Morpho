@@ -1,3 +1,5 @@
+import { isUserActionExplicitlyDisallowed } from "./userInstructionAuthority";
+
 export type WebSearchAuthorityInput = Readonly<{
   draft: string;
   taskMode: "chatAnalysis" | "imageGeneration" | "researchOperation";
@@ -12,5 +14,6 @@ const EXPLICIT_WEB_SEARCH_PATTERN =
  */
 export function hasCurrentTurnWebSearchAuthority(input: WebSearchAuthorityInput): boolean {
   if (input.taskMode === "imageGeneration") return false;
+  if (isUserActionExplicitlyDisallowed(input.draft, "webSearch")) return false;
   return input.taskMode === "researchOperation" || EXPLICIT_WEB_SEARCH_PATTERN.test(input.draft);
 }

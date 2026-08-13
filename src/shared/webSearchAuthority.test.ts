@@ -24,4 +24,15 @@ describe("current-turn web search authority", () => {
       taskMode: "imageGeneration"
     })).toBe(false);
   });
+
+  it("lets an explicit negation override research-mode capability", () => {
+    expect(hasCurrentTurnWebSearchAuthority({
+      draft: "研究这份 PDF，但不要联网，只总结本地内容。",
+      taskMode: "researchOperation"
+    })).toBe(false);
+    expect(hasCurrentTurnWebSearchAuthority({
+      draft: "不要联网，但请搜索官方来源核实这一点。",
+      taskMode: "chatAnalysis"
+    })).toBe(true);
+  });
 });
