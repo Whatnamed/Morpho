@@ -50,7 +50,7 @@ describe("Agent tool authority", () => {
     const workspace = createTestWorkspace();
     const proposal = Object.values(workspace.objects).find((object) => object.type === "proposalDraft");
     const profile = authority({
-      draft: "研究这份 PDF，但不要联网，也不要创建研究分析、创建概念方向；不要修改这个草案，只总结本地内容。",
+      draft: "研究这份 PDF，但不要联网，也不要创建研究分析、创建概念方向；不要修改这个草案，也不要把这个设为主方向，只总结本地内容。",
       taskMode: "chatAnalysis",
       executionTaskMode: "researchOperation",
       executionWorkIntent: "createConceptDirections",
@@ -63,6 +63,7 @@ describe("Agent tool authority", () => {
     expect(profile.allowedTools).not.toContain("create_research_analysis");
     expect(profile.allowedTools).not.toContain("create_concept_direction_proposal");
     expect(profile.allowedTools).not.toContain("revise_selected_proposal_draft");
+    expect(profile.allowedConfirmationActions).not.toContain("setDirectionPrimary");
   });
 
   it("keeps explicit contrast clauses available", () => {
