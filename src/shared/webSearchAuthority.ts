@@ -1,12 +1,15 @@
-import { isUserActionExplicitlyDisallowed } from "./userInstructionAuthority";
+import {
+  hasExplicitUserActionRequest,
+  isUserActionExplicitlyDisallowed
+} from "./userInstructionAuthority";
+
+export type WebSearchExecutionSource = "userSelected" | "autoRecommended";
 
 export type WebSearchAuthorityInput = Readonly<{
   draft: string;
   taskMode: "chatAnalysis" | "imageGeneration" | "researchOperation";
+  executionModeSource?: WebSearchExecutionSource;
 }>;
-
-const EXPLICIT_WEB_SEARCH_PATTERN =
-  /必须联网|请联网|联网|上网|搜索(?:网页|网络|外部|资料)?|查证|查一下|核实|验证(?:来源|事实|最新|当前)|外部来源|补充来源|最新(?:资料|信息|案例)|\b(?:web search|search(?: the web| online| for)?|verify online|latest source)\b/i;
 
 /**
  * Network authority comes only from the current user draft or the trusted UI
@@ -15,5 +18,8 @@ const EXPLICIT_WEB_SEARCH_PATTERN =
 export function hasCurrentTurnWebSearchAuthority(input: WebSearchAuthorityInput): boolean {
   if (input.taskMode === "imageGeneration") return false;
   if (isUserActionExplicitlyDisallowed(input.draft, "webSearch")) return false;
-  return input.taskMode === "researchOperation" || EXPLICIT_WEB_SEARCH_PATTERN.test(input.draft);
+  if (hasExplicitUserActionRequest(input.draft, "webSearch")) return true;
+  // A missing provenance flag is not a manual grant. Compatibility callers
+  // must provide a current network cue or an explicit user-selected mode.
+  return input.taskMode === "researchOperation" && input.executionModeSource === "userSelected";
 }

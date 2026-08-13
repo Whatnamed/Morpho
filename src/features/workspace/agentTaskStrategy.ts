@@ -8,7 +8,10 @@ import type {
   StageRecordKey
 } from "@/domain/morpho/types";
 import type { TaskContextKind } from "./taskContext";
-import { isUserActionExplicitlyDisallowed } from "@/shared/userInstructionAuthority";
+import {
+  isUserActionExplicitlyDisallowed,
+  stripUntrustedInstructionSegments
+} from "@/shared/userInstructionAuthority";
 
 export type AgentTaskStrategy = {
   kind: AgentTaskStrategyKind;
@@ -244,7 +247,7 @@ export function resolveAgentTaskStrategy(input: {
   workspace: Pick<MorphoWorkspace, "workingState">;
   hasDeliveryDraftTarget?: boolean;
 }): AgentTaskStrategy {
-  const text = input.draft.trim();
+  const text = stripUntrustedInstructionSegments(input.draft).trim();
   const selectedDirections = input.selectedObjects.filter((object) => object.type === "conceptDirection");
   const selectedImages = input.selectedObjects.filter((object) => object.type === "image");
   const hasDirectionContext =
@@ -305,27 +308,31 @@ function isExplicitComparison(text: string): boolean {
 }
 
 function isResearchRequest(text: string): boolean {
-  if (isUserActionExplicitlyDisallowed(text, "createResearchAnalysis")) return false;
-  return /调研|研究|查证|验证来源|补充案例|竞品分析|事实依据/i.test(text);
+  return /调研|研究|查证|验证来源|补充案例|竞品分析|事实依据/i.test(text) &&
+    !/(?:不要|别|无需|不需要|禁止|不得|不能)\s*(?:联网|研究|调研|查证|验证)/i.test(text);
 }
 
 function isDesignDefinitionIntent(workIntent: AiWorkIntent, text: string): boolean {
-  if (isUserActionExplicitlyDisallowed(text, "designDefinition")) return false;
+  if (isUserActionExplicitlyDisallowed(text, "designDefinition")) {
+    return false;
+  }
   return (
     workIntent === "createDesignDefinition" ||
     workIntent === "reviseDesignDefinition" ||
-    /设计定义|design brief|核心问题|设计原则/i.test(text)
+    /(?:创建|形成|修改|修订|更新|调整|重写|改写).{0,16}(?:设计定义|design brief|核心问题|设计原则)|(?:设计定义|design brief|核心问题|设计原则).{0,16}(?:修改|修订|更新|调整|重写|改写)/i.test(text)
   );
 }
 
 function isConceptDirectionIntent(workIntent: AiWorkIntent, text: string): boolean {
-  if (isUserActionExplicitlyDisallowed(text, "conceptDirection")) return false;
+  if (isUserActionExplicitlyDisallowed(text, "conceptDirection")) {
+    return false;
+  }
   return (
     workIntent === "createConceptDirections" ||
     workIntent === "reviseConceptDirection" ||
     workIntent === "splitConceptDirection" ||
     workIntent === "mergeConceptDirections" ||
-    /概念方向|方向方案|拆分方向|合并方向/i.test(text)
+    /(?:创建|形成|修改|修订|更新|调整|拆分|拆成|合并|整合|重写|改写).{0,16}(?:概念方向|方向方案|方向|方案)|(?:概念方向|方向方案|方向|方案).{0,16}(?:修改|修订|更新|调整|拆分|拆成|合并|整合|重写|改写)/i.test(text)
   );
 }
 

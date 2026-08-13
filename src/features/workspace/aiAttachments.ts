@@ -1,6 +1,9 @@
 import type { MorphoObject, MorphoWorkspace } from "../../domain/morpho/types";
 import { indexedDbBlobStore } from "../../infrastructure/assets/indexedDbAssetStore";
-import { hasCurrentTurnWebSearchAuthority } from "../../shared/webSearchAuthority";
+import {
+  hasCurrentTurnWebSearchAuthority,
+  type WebSearchExecutionSource
+} from "../../shared/webSearchAuthority";
 
 export type AiProviderImageAttachmentRepresentation = "single" | "contactSheet";
 
@@ -68,6 +71,7 @@ export function resolveAiProviderImageObjectIds(input: {
 export function buildWebSearchOptions(input: {
   draft: string;
   taskMode: "chatAnalysis" | "imageGeneration" | "researchOperation";
+  executionModeSource?: WebSearchExecutionSource;
 }):
   | {
       enabled: true;

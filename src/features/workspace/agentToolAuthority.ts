@@ -1,9 +1,22 @@
 import type { AiTaskMode, AiWorkIntent, MorphoObject } from "@/domain/morpho/types";
+import {
+  hasExplicitProposalRevisionRequest,
+  type ExecutionModeSource
+} from "./aiTaskRouting";
 import { hasCurrentTurnWebSearchAuthority } from "@/shared/webSearchAuthority";
-import { isUserActionExplicitlyDisallowed } from "@/shared/userInstructionAuthority";
+import {
+  hasExplicitUserActionRequest,
+  isUserActionExplicitlyDisallowed
+} from "@/shared/userInstructionAuthority";
 import type { MorphoAgentToolArguments, MorphoAgentToolName, RequestConfirmationArgs } from "./morphoAgent";
 
 export type AgentToolAuthorityProfile = Readonly<{
+  execution: Readonly<{
+    taskMode: AiTaskMode;
+    taskModeSource: ExecutionModeSource;
+    workIntent: AiWorkIntent;
+    workIntentSource: ExecutionModeSource;
+  }>;
   provenance: Readonly<{
     currentUserInstruction: true;
     trustedStructuralState: true;
@@ -13,17 +26,31 @@ export type AgentToolAuthorityProfile = Readonly<{
   allowedTools: readonly MorphoAgentToolName[];
   allowedConfirmationActions: readonly RequestConfirmationArgs["action"][];
   allowWebSearch: boolean;
+  allowResearchDraftWrite: boolean;
+  allowDesignDefinitionProposal: boolean;
+  allowConceptDirectionProposal: boolean;
+  allowProposalRevision: boolean;
+  allowComparisonWrite: boolean;
+  allowDeliveryDraft: boolean;
+  allowImageGeneration: boolean;
+  allowMemoryWrite: boolean;
 }>;
 
 const READ_TOOLS = [
   "read_selected_context", "read_project_memory", "read_stage_record", "search_project_conversation"
 ] as const satisfies readonly MorphoAgentToolName[];
 
+const DESIGN_DEFINITION_INTENTS = new Set<AiWorkIntent>(["createDesignDefinition", "reviseDesignDefinition"]);
+const CONCEPT_DIRECTION_INTENTS = new Set<AiWorkIntent>([
+  "createConceptDirections", "reviseConceptDirection", "splitConceptDirection", "mergeConceptDirections"
+]);
+
 export function resolveAgentToolAuthority(input: Readonly<{
   draft: string;
-  taskMode: AiTaskMode;
   executionTaskMode: AiTaskMode;
+  executionTaskModeSource: ExecutionModeSource;
   executionWorkIntent: AiWorkIntent;
+  executionWorkIntentSource: ExecutionModeSource;
   selectedObjects: readonly MorphoObject[];
   hasDeliveryDraftTarget: boolean;
   hasDocumentExtracts: boolean;
@@ -32,44 +59,45 @@ export function resolveAgentToolAuthority(input: Readonly<{
   allowStructuredComparison: boolean;
 }>): AgentToolAuthorityProfile {
   const allowed = new Set<MorphoAgentToolName>(READ_TOOLS);
-  const confirmations = explicitConfirmationActions(input.draft);
+  const confirmationActions = explicitConfirmationActions(input.draft);
   const allowWebSearch = hasCurrentTurnWebSearchAuthority({
     draft: input.draft,
-    taskMode: input.executionTaskMode
+    taskMode: input.executionTaskMode,
+    executionModeSource: input.executionTaskModeSource
   });
+  const allowResearchDraftWrite = input.executionTaskMode === "researchOperation" &&
+    !isUserActionExplicitlyDisallowed(input.draft, "createResearchAnalysis");
+  const allowDesignDefinitionProposal = DESIGN_DEFINITION_INTENTS.has(input.executionWorkIntent) &&
+    !isUserActionExplicitlyDisallowed(input.draft, "designDefinition");
+  const allowConceptDirectionProposal = CONCEPT_DIRECTION_INTENTS.has(input.executionWorkIntent) &&
+    !isUserActionExplicitlyDisallowed(input.draft, "conceptDirection");
+  const allowProposalRevision = input.selectedObjects.some((object) => object.type === "proposalDraft") &&
+    hasExplicitProposalRevisionRequest(input.draft) &&
+    !isUserActionExplicitlyDisallowed(input.draft, "reviseSelectedProposalDraft");
+  const allowImageGeneration = input.executionTaskMode === "imageGeneration" &&
+    input.executionTaskModeSource === "userSelected";
+  const allowComparisonWrite = input.allowStructuredComparison && input.selectedObjects.length >= 2;
+  const allowDeliveryDraft = input.hasDeliveryDraftTarget && input.executionWorkIntent === "prepareDeliverySection";
+  const allowMemoryWrite = input.hasRequiredMemoryUpdates;
+
   if (allowWebSearch) allowed.add("search_web_evidence");
-  if (
-    !isUserActionExplicitlyDisallowed(input.draft, "createResearchAnalysis") &&
-    (input.executionTaskMode === "researchOperation" || /(?:创建|形成|整理|记录|生成|产出|保存).{0,16}(?:研究|调研|分析)(?:对象|草案|结果|报告)?/i.test(input.draft))
-  ) {
-    allowed.add("create_research_analysis");
-  }
-  if (
-    !isUserActionExplicitlyDisallowed(input.draft, "designDefinition") &&
-    ["createDesignDefinition", "reviseDesignDefinition"].includes(input.executionWorkIntent)
-  ) {
-    allowed.add("create_design_definition_proposal");
-  }
-  if (
-    !isUserActionExplicitlyDisallowed(input.draft, "conceptDirection") &&
-    ["createConceptDirections", "reviseConceptDirection", "splitConceptDirection", "mergeConceptDirections"].includes(input.executionWorkIntent)
-  ) {
-    allowed.add("create_concept_direction_proposal");
-  }
-  if (
-    input.selectedObjects.some((object) => object.type === "proposalDraft") &&
-    !isUserActionExplicitlyDisallowed(input.draft, "reviseSelectedProposalDraft") &&
-    /修改|修订|调整|改写|重写|缩短|改名|rename|rewrite|revise/i.test(input.draft)
-  ) {
-    allowed.add("revise_selected_proposal_draft");
-  }
-  if (input.taskMode === "imageGeneration" && input.executionTaskMode === "imageGeneration") allowed.add("generate_visuals");
-  if (input.allowStructuredComparison && input.selectedObjects.length >= 2) allowed.add("create_comparison_analysis");
-  if (input.hasDeliveryDraftTarget && input.executionWorkIntent === "prepareDeliverySection") allowed.add("prepare_delivery_section_draft");
-  if (input.hasRequiredMemoryUpdates) allowed.add("submit_memory_update");
-  if (confirmations.length > 0) allowed.add("request_confirmation");
+  if (allowResearchDraftWrite) allowed.add("create_research_analysis");
+  if (allowDesignDefinitionProposal) allowed.add("create_design_definition_proposal");
+  if (allowConceptDirectionProposal) allowed.add("create_concept_direction_proposal");
+  if (allowProposalRevision) allowed.add("revise_selected_proposal_draft");
+  if (allowImageGeneration) allowed.add("generate_visuals");
+  if (allowComparisonWrite) allowed.add("create_comparison_analysis");
+  if (allowDeliveryDraft) allowed.add("prepare_delivery_section_draft");
+  if (allowMemoryWrite) allowed.add("submit_memory_update");
+  if (confirmationActions.length > 0) allowed.add("request_confirmation");
 
   return {
+    execution: {
+      taskMode: input.executionTaskMode,
+      taskModeSource: input.executionTaskModeSource,
+      workIntent: input.executionWorkIntent,
+      workIntentSource: input.executionWorkIntentSource
+    },
     provenance: {
       currentUserInstruction: true,
       trustedStructuralState: true,
@@ -79,8 +107,16 @@ export function resolveAgentToolAuthority(input: Readonly<{
       providerEvidencePresent: false
     },
     allowedTools: [...allowed],
-    allowedConfirmationActions: confirmations,
-    allowWebSearch
+    allowedConfirmationActions: confirmationActions,
+    allowWebSearch,
+    allowResearchDraftWrite,
+    allowDesignDefinitionProposal,
+    allowConceptDirectionProposal,
+    allowProposalRevision,
+    allowComparisonWrite,
+    allowDeliveryDraft,
+    allowImageGeneration,
+    allowMemoryWrite
   };
 }
 
@@ -95,12 +131,28 @@ export function getAgentToolAuthorizationBlockReason(profile: AgentToolAuthority
 }
 
 function explicitConfirmationActions(draft: string): RequestConfirmationArgs["action"][] {
+  const candidates: Array<[UserConfirmationAction, string]> = [
+    ["applyDesignDefinition", "设计定义"],
+    ["setDirectionPrimary", "主方向"],
+    ["setDirectionAlternative", "备选方向"],
+    ["eliminateDirection", "方向"],
+    ["setDefaultReference", "默认参考"]
+  ];
   const actions: RequestConfirmationArgs["action"][] = [];
-  if (!isUserActionExplicitlyDisallowed(draft, "applyDesignDefinition") && /应用|采纳|确认采用/.test(draft) && /设计定义/.test(draft)) actions.push("applyDesignDefinition");
-  if (!isUserActionExplicitlyDisallowed(draft, "setDirectionPrimary") && /设为|设置|确定/.test(draft) && /主方向/.test(draft)) actions.push("setDirectionPrimary");
-  if (!isUserActionExplicitlyDisallowed(draft, "setDirectionAlternative") && /设为|设置|确定/.test(draft) && /备选方向/.test(draft)) actions.push("setDirectionAlternative");
-  if (!isUserActionExplicitlyDisallowed(draft, "eliminateDirection") && /淘汰|排除/.test(draft) && /方向/.test(draft)) actions.push("eliminateDirection");
-  if (!isUserActionExplicitlyDisallowed(draft, "setDefaultReference") && /设为|设置|替换/.test(draft) && /默认参考/.test(draft)) actions.push("setDefaultReference");
-  if (!isUserActionExplicitlyDisallowed(draft, "batchGenerateVisuals") && /生成|出图|预览图|效果图/.test(draft) && /确认|先问我|经我同意/.test(draft)) actions.push("batchGenerateVisuals");
+  for (const [action, target] of candidates) {
+    if (!isUserActionExplicitlyDisallowed(draft, action) && hasExplicitUserActionRequest(draft, action) && draft.includes(target)) {
+      actions.push(action);
+    }
+  }
+  if (!isUserActionExplicitlyDisallowed(draft, "batchGenerateVisuals") &&
+    hasExplicitUserActionRequest(draft, "batchGenerateVisuals") &&
+    /确认|先问我|经我同意/.test(draft)) {
+    actions.push("batchGenerateVisuals");
+  }
   return [...new Set(actions)];
 }
+
+type UserConfirmationAction = Extract<
+  MorphoAgentToolArguments,
+  { name: "request_confirmation" }
+>["args"]["action"];

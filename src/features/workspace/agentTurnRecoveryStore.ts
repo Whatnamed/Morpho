@@ -16,6 +16,7 @@ import type { PendingAiConfirmation } from "./workspaceConfirmation";
 import type { AgentTurnCoordinatorRecoverySnapshot } from "./agentTurnCoordinator";
 import type { AgentTurnCompactionMode } from "./agentTurnLifecycle";
 import type { MorphoAgentTurnMode } from "./morphoAgent";
+import type { ExecutionModeSource } from "./aiTaskRouting";
 import type {
   APlusCompactionApplyBoundary,
   APlusExternalActionKind,
@@ -77,7 +78,9 @@ export type APlusTurnRecoveryRuntime = Readonly<{
   localAgentTurnId: string;
   createdAt: string;
   executionTaskMode: AiTaskMode;
+  executionTaskModeSource: ExecutionModeSource;
   executionWorkIntent: AiWorkIntent;
+  executionWorkIntentSource: ExecutionModeSource;
   imageAttachmentObjectIds: readonly string[];
   documentExtractObjectIds: readonly string[];
   allowStructuredComparison: boolean;
@@ -688,7 +691,9 @@ function isRecoveryRuntime(value: unknown): value is APlusTurnRecoveryRuntime {
     isIdentifier(value.localAgentTurnId) &&
     typeof value.createdAt === "string" &&
     typeof value.executionTaskMode === "string" &&
+    (value.executionTaskModeSource === "userSelected" || value.executionTaskModeSource === "autoRecommended") &&
     typeof value.executionWorkIntent === "string" &&
+    (value.executionWorkIntentSource === "userSelected" || value.executionWorkIntentSource === "autoRecommended") &&
     Array.isArray(value.imageAttachmentObjectIds) &&
     value.imageAttachmentObjectIds.every(isIdentifier) &&
     Array.isArray(value.documentExtractObjectIds) &&

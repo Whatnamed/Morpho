@@ -1,5 +1,5 @@
 import type { AiContextTask, AiTaskMode, AiWorkIntent, MorphoObject } from "@/domain/morpho/types";
-import { isUserActionExplicitlyDisallowed } from "@/shared/userInstructionAuthority";
+import { stripUntrustedInstructionSegments } from "@/shared/userInstructionAuthority";
 
 type ObjectTypeOnly = Pick<MorphoObject, "type">;
 
@@ -7,6 +7,8 @@ export type ResolveTaskModeInput = {
   currentTaskMode: AiTaskMode;
   recommendedTaskMode: AiTaskMode;
 };
+
+export type ExecutionModeSource = "userSelected" | "autoRecommended";
 
 export type ResolveWorkIntentInput = {
   currentWorkIntent: AiWorkIntent;
@@ -34,16 +36,18 @@ const IMAGE_ANALYSIS_PATTERN = /分析这张图|比较这几张图|提取.*形�
 const RESEARCH_PATTERN = /调研|研究|整理研究|联网补充|补充来源|查资料|搜索资料|分析这些(?:资料|文件|pdf|pptx?|markdown)|看看这些(?:资料|文件)|帮我梳理|基于这些(?:材料|资料)|验证一下|查一下/i;
 const MATERIAL_OBJECT_TYPES = new Set(["file", "text", "link", "research"]);
 const COMPARISON_PATTERN = /比较|对比|compare/i;
-const DESIGN_DEFINITION_PATTERN = /设计定义|定义|原则|边界|核心问题/i;
+const DESIGN_DEFINITION_MUTATION_PATTERN = /(?:形成|创建|生成|提炼|修改|修订|更新|调整|重写|改写|draft|rewrite|revise).{0,16}(?:设计定义|设计原则|核心问题)|(?:设计定义|设计原则|核心问题).{0,16}(?:修改|修订|更新|调整|重写|改写|rewrite|revise)/i;
 const REVISE_PATTERN = /更新|修订|修改|调整|rewrite|revise/i;
 const CREATE_PATTERN = /形成|创建|生成|提炼|draft/i;
-const CONCEPT_DIRECTION_PATTERN = /方向|概念方向|概念|方案|路线/i;
+const CONCEPT_DIRECTION_MUTATION_PATTERN = /(?:形成|创建|生成|提炼|发展|修改|修订|更新|调整|拆分|拆成|分成|合并|整合|重写|改写|扩展|draft|rewrite|revise).{0,16}(?:概念方向|方向方案|方向|方案|概念|路线)|(?:概念方向|方向方案|方向|方案|概念|路线).{0,16}(?:修改|修订|更新|调整|拆分|拆成|分成|合并|整合|重写|改写|扩展|rewrite|revise)/i;
 const SPLIT_PATTERN = /拆分|split/i;
 const MERGE_PATTERN = /合并|merge/i;
 const DELIVERY_SECTION_DRAFT_PATTERN = /交付准备|交付说明|本节说明|章节说明|图注|待补内容|delivery/i;
+const RESEARCH_NEGATION_PATTERN = /(?:不要|别|无需|无须|不必|不用|不需要|禁止|不得|不能|暂不|先不要|先别)\s*(?:联网|上网|研究|调研|查证|验证|搜索)/i;
+const NEGATED_MUTATION_PATTERN = /(?:不要|别|无需|无须|不必|不用|不需要|禁止|不得|不能|暂不|先不要|先别)\s*(?:创建|形成|生成|提炼|发展|修改|修订|更新|调整|拆分|拆成|分成|合并|整合|重写|改写|扩展|draft|rewrite|revise)/i;
 
 export function recommendAiTaskMode(draft: string, selectedObjectTypes: readonly string[]): AiTaskMode {
-  const text = draft.trim();
+  const text = stripUntrustedInstructionSegments(draft).trim();
   const hasMaterialSelection = selectedObjectTypes.some((type) => MATERIAL_OBJECT_TYPES.has(type));
 
   if (!text) {
@@ -52,8 +56,7 @@ export function recommendAiTaskMode(draft: string, selectedObjectTypes: readonly
 
   if (
     hasMaterialSelection &&
-    RESEARCH_PATTERN.test(text) &&
-    !isUserActionExplicitlyDisallowed(text, "createResearchAnalysis")
+    isResearchTaskRequest(text)
   ) {
     return "researchOperation";
   }
@@ -67,9 +70,8 @@ export function recommendAiTaskMode(draft: string, selectedObjectTypes: readonly
   }
 
   if (
-    RESEARCH_PATTERN.test(text) &&
-    /联网|搜索|查一下|验证|调研|研究/i.test(text) &&
-    !isUserActionExplicitlyDisallowed(text, "createResearchAnalysis")
+    isResearchTaskRequest(text) &&
+    /联网|搜索|查一下|验证|调研|研究/i.test(text)
   ) {
     return "researchOperation";
   }
@@ -86,7 +88,7 @@ export function isExplicitImageGenerationRequest(
   draft: string,
   selectedObjectTypes: readonly string[]
 ): boolean {
-  const text = draft.trim();
+  const text = stripUntrustedInstructionSegments(draft).trim();
   if (
     !text ||
     GENERIC_TEXT_GENERATION_PATTERN.test(text) ||
@@ -107,11 +109,27 @@ export function resolveTaskModeForSend(input: ResolveTaskModeInput): AiTaskMode 
   return input.recommendedTaskMode;
 }
 
+export function resolveTaskModeSource(input: ResolveTaskModeInput): ExecutionModeSource {
+  return input.currentTaskMode !== "chatAnalysis" ? "userSelected" : "autoRecommended";
+}
+
+export function isResearchTaskRequest(draft: string): boolean {
+  const text = stripUntrustedInstructionSegments(draft).trim();
+  return Boolean(text) && !RESEARCH_NEGATION_PATTERN.test(text) && RESEARCH_PATTERN.test(text);
+}
+
 export function recommendAiWorkIntent(input: RecommendAiWorkIntentInput): AiWorkIntent {
-  const text = input.draft.trim();
+  const text = stripUntrustedInstructionSegments(input.draft).trim();
   const directionCount = input.selectedObjects.filter((object) => object.type === "conceptDirection").length;
 
   if (!text) {
+    return "discussion";
+  }
+
+  // Auto routing only recommends mutation for a positive action. Any direct
+  // negation keeps this turn in discussion; execution authority still makes
+  // the final structured-state decision at send time.
+  if (NEGATED_MUTATION_PATTERN.test(text)) {
     return "discussion";
   }
 
@@ -123,7 +141,7 @@ export function recommendAiWorkIntent(input: RecommendAiWorkIntentInput): AiWork
     return "splitConceptDirection";
   }
 
-  if (directionCount === 1 && REVISE_PATTERN.test(text) && CONCEPT_DIRECTION_PATTERN.test(text)) {
+  if (directionCount === 1 && REVISE_PATTERN.test(text) && CONCEPT_DIRECTION_MUTATION_PATTERN.test(text)) {
     return "reviseConceptDirection";
   }
 
@@ -135,7 +153,7 @@ export function recommendAiWorkIntent(input: RecommendAiWorkIntentInput): AiWork
     return "prepareDeliverySection";
   }
 
-  if (DESIGN_DEFINITION_PATTERN.test(text) && !isUserActionExplicitlyDisallowed(text, "designDefinition")) {
+  if (DESIGN_DEFINITION_MUTATION_PATTERN.test(text)) {
     if (input.hasCurrentDesignDefinition) {
       return "reviseDesignDefinition";
     }
@@ -146,9 +164,8 @@ export function recommendAiWorkIntent(input: RecommendAiWorkIntentInput): AiWork
   }
 
   if (
-    CONCEPT_DIRECTION_PATTERN.test(text) &&
-    input.hasCurrentDesignDefinition &&
-    !isUserActionExplicitlyDisallowed(text, "conceptDirection")
+    CONCEPT_DIRECTION_MUTATION_PATTERN.test(text) &&
+    input.hasCurrentDesignDefinition
   ) {
     if (directionCount > 1 && MERGE_PATTERN.test(text)) {
       return "mergeConceptDirections";
@@ -174,6 +191,16 @@ export function resolveWorkIntentForSend(input: ResolveWorkIntentInput): AiWorkI
   }
 
   return input.recommendedWorkIntent;
+}
+
+export function resolveWorkIntentSource(input: ResolveWorkIntentInput): ExecutionModeSource {
+  return input.currentWorkIntent !== "discussion" ? "userSelected" : "autoRecommended";
+}
+
+export function hasExplicitProposalRevisionRequest(draft: string): boolean {
+  return /(?:修改|修订|更新|调整|改写|重写|缩短|改名|rename|rewrite|revise).{0,20}(?:草案|提案|标题|名称|摘要|方向|方案|设计定义|概念方向|内容|正文|描述|prompt|draft|proposal)/i.test(
+    stripUntrustedInstructionSegments(draft)
+  );
 }
 
 export function getAvailableAiWorkIntents(input: AvailableAiWorkIntentInput): AiWorkIntent[] {

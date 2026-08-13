@@ -27,7 +27,13 @@ import {
   resolveAiProviderImageObjectIds,
   shouldAttachImagesForAiProvider
 } from "./aiAttachments";
-import { resolveTaskModeForSend, resolveWorkIntentForSend } from "./aiTaskRouting";
+import {
+  resolveTaskModeForSend,
+  resolveTaskModeSource,
+  resolveWorkIntentForSend,
+  resolveWorkIntentSource,
+  type ExecutionModeSource
+} from "./aiTaskRouting";
 import { appendAgentTurnMessages, createAgentTurnWorkLedger } from "./agentTurnMessages";
 import { createAgentTrace } from "./agentMessageTrace";
 import { resolveRequiredAgentMemoryUpdates } from "./agentMemoryUpdateGuard";
@@ -86,7 +92,9 @@ export type PreparedAgentTurnAPlus = Readonly<{
   assistantMessageId: string;
   createdAt: string;
   executionTaskMode: AiTaskMode;
+  executionTaskModeSource: ExecutionModeSource;
   executionWorkIntent: AiWorkIntent;
+  executionWorkIntentSource: ExecutionModeSource;
   context: TaskContextResult;
   providerTaskContext: ProviderTaskContext;
   runtimeState: AgentTurnRuntimeState;
@@ -192,6 +200,18 @@ export async function prepareAgentTurnProductAPlus(
   const executionWorkIntent = input.pendingDeliveryDraftTarget
     ? "prepareDeliverySection"
     : resolveWorkIntentForSend({
+        currentWorkIntent: input.workIntent,
+        recommendedWorkIntent: input.recommendedWorkIntent
+      });
+  const executionTaskModeSource = input.pendingDeliveryDraftTarget
+    ? "userSelected"
+    : resolveTaskModeSource({
+        currentTaskMode: input.taskMode,
+        recommendedTaskMode: input.recommendedTaskMode
+      });
+  const executionWorkIntentSource = input.pendingDeliveryDraftTarget
+    ? "userSelected"
+    : resolveWorkIntentSource({
         currentWorkIntent: input.workIntent,
         recommendedWorkIntent: input.recommendedWorkIntent
       });
@@ -369,9 +389,10 @@ export async function prepareAgentTurnProductAPlus(
   const allowStructuredComparison = isExplicitComparisonRequest(input.draft);
   const authorityProfile = resolveAgentToolAuthority({
     draft: input.draft,
-    taskMode: input.taskMode,
     executionTaskMode,
+    executionTaskModeSource,
     executionWorkIntent,
+    executionWorkIntentSource,
     selectedObjects: input.selectedObjects,
     hasDeliveryDraftTarget: Boolean(input.pendingDeliveryDraftTarget),
     hasDocumentExtracts: documentResult.extracts.length > 0,
@@ -420,7 +441,9 @@ export async function prepareAgentTurnProductAPlus(
     assistantMessageId,
     createdAt,
     executionTaskMode,
+    executionTaskModeSource,
     executionWorkIntent,
+    executionWorkIntentSource,
     context,
     providerTaskContext,
     runtimeState,
@@ -531,7 +554,9 @@ export function restorePreparedAgentTurnProductAPlus(
     assistantMessageId,
     createdAt: runtime.createdAt,
     executionTaskMode: runtime.executionTaskMode,
+    executionTaskModeSource: runtime.executionTaskModeSource,
     executionWorkIntent: runtime.executionWorkIntent,
+    executionWorkIntentSource: runtime.executionWorkIntentSource,
     context,
     providerTaskContext,
     runtimeState,
@@ -542,9 +567,10 @@ export function restorePreparedAgentTurnProductAPlus(
     allowStructuredComparison: runtime.allowStructuredComparison,
     authorityProfile: resolveAgentToolAuthority({
       draft: turnInput.draft,
-      taskMode: turnInput.taskMode,
       executionTaskMode: runtime.executionTaskMode,
+      executionTaskModeSource: runtime.executionTaskModeSource,
       executionWorkIntent: runtime.executionWorkIntent,
+      executionWorkIntentSource: runtime.executionWorkIntentSource,
       selectedObjects,
       hasDeliveryDraftTarget: Boolean(turnInput.pendingDeliveryDraftTarget),
       hasDocumentExtracts: runtime.documentExtractObjectIds.length > 0,
