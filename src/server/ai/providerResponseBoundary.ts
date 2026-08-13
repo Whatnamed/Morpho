@@ -25,6 +25,8 @@ export class ProviderResponseBoundaryError extends Error {
 
 export type ProviderRequestBudget = {
   readonly signal: AbortSignal;
+  /** Aborts only when this budget's internal deadline expires. */
+  readonly deadlineSignal: AbortSignal;
   race<T>(operation: Promise<T>): Promise<T>;
   wait(delayMs: number): Promise<void>;
   throwIfUnavailable(): void;
@@ -36,7 +38,9 @@ export function createProviderRequestBudget(
   deadlineMs = PROVIDER_OVERALL_DEADLINE_MS
 ): ProviderRequestBudget {
   const controller = new AbortController();
+  const deadlineController = new AbortController();
   let abortKind: "external" | "deadline" | undefined;
+  let deadlineError: ProviderResponseBoundaryError | undefined;
   let disposed = false;
 
   const abortFromExternal = () => {
@@ -53,12 +57,14 @@ export function createProviderRequestBudget(
   const deadline = setTimeout(() => {
     if (abortKind) return;
     abortKind = "deadline";
-    controller.abort(new ProviderResponseBoundaryError("provider_deadline_exceeded"));
+    deadlineError = new ProviderResponseBoundaryError("provider_deadline_exceeded");
+    deadlineController.abort(deadlineError);
+    controller.abort(deadlineError);
   }, deadlineMs);
 
   const abortReason = (): unknown => {
     if (abortKind === "external") return externalAbortReason(externalSignal);
-    if (abortKind === "deadline") return new ProviderResponseBoundaryError("provider_deadline_exceeded");
+    if (abortKind === "deadline") return deadlineError ?? new ProviderResponseBoundaryError("provider_deadline_exceeded");
     return controller.signal.reason ?? createAbortError();
   };
 
@@ -68,6 +74,7 @@ export function createProviderRequestBudget(
 
   return {
     signal: controller.signal,
+    deadlineSignal: deadlineController.signal,
     race<T>(operation: Promise<T>): Promise<T> {
       try {
         throwIfUnavailable();

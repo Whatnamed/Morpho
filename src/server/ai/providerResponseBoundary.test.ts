@@ -102,11 +102,13 @@ describe("provider response transport boundary", () => {
     vi.useFakeTimers();
     const external = new AbortController();
     const budget = createProviderRequestBudget(external.signal, 100);
+    expect(budget.deadlineSignal.aborted).toBe(false);
     const pending = budget.race(new Promise<never>(() => undefined));
 
     external.abort();
 
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(budget.deadlineSignal.aborted).toBe(false);
     budget.dispose();
   });
 
@@ -121,6 +123,8 @@ describe("provider response transport boundary", () => {
     await vi.advanceTimersByTimeAsync(100);
 
     await rejected;
+    expect(budget.deadlineSignal).toBeInstanceOf(AbortSignal);
+    expect(budget.deadlineSignal.aborted).toBe(true);
     budget.dispose();
   });
 

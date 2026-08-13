@@ -532,6 +532,32 @@ describe("GrsAI image provider adapter", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it("applies the same deadline to the final image download", async () => {
+    vi.useFakeTimers();
+    let imageSignal: AbortSignal | undefined;
+    const fetchImpl = vi.fn<typeof fetch>((input, init) => {
+      if (String(input).includes("/generate")) {
+        return Promise.resolve(jsonResponse({ status: "succeeded", url: "https://cdn.example/result.png" }));
+      }
+      imageSignal = init?.signal as AbortSignal | undefined;
+      return new Promise<Response>(() => undefined);
+    });
+    const resultPromise = resolveGrsImageResult(grsConfig(), grsInput(), {
+      fetchImpl,
+      generateAttempts: 1,
+      overallDeadlineMs: 25
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    await expect(resultPromise).resolves.toEqual({
+      status: "failed",
+      reason: "GrsAI image request exceeded its overall safety deadline."
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(imageSignal?.aborted).toBe(true);
+  });
+
   it("does not start a retry after the overall deadline expires during backoff", async () => {
     vi.useFakeTimers();
     const fetchImpl = vi.fn<typeof fetch>(async () => {

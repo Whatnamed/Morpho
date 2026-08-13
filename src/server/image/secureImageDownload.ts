@@ -2,6 +2,8 @@ export type SecureImageDownloadOptions = Readonly<{
   fetchImpl: typeof fetch;
   allowedHosts: ReadonlySet<string>;
   signal?: AbortSignal;
+  /** Internal workflow deadline; kept distinct from caller cancellation. */
+  deadlineSignal?: AbortSignal;
   timeoutMs?: number;
   maxBytes?: number;
   maxRedirects?: number;
@@ -28,10 +30,33 @@ export async function downloadSecureProviderImage(
   options: SecureImageDownloadOptions
 ): Promise<SecureImageDownloadResult> {
   const controller = new AbortController();
+  let abortKind: "parent" | "deadline" | "timeout" | undefined;
   let timedOut = false;
-  const abortFromParent = () => controller.abort(options.signal?.reason);
-  options.signal?.addEventListener("abort", abortFromParent, { once: true });
+  const abortFromParent = () => {
+    if (abortKind) return;
+    abortKind = "parent";
+    controller.abort(options.signal?.reason ?? createAbortError());
+  };
+  const abortFromDeadline = () => {
+    if (abortKind) return;
+    abortKind = "deadline";
+    controller.abort(options.deadlineSignal?.reason ?? createAbortError());
+  };
+  if (options.signal?.aborted) {
+    abortFromParent();
+  } else {
+    options.signal?.addEventListener("abort", abortFromParent, { once: true });
+  }
+  if (!controller.signal.aborted) {
+    if (options.deadlineSignal?.aborted) {
+      abortFromDeadline();
+    } else {
+      options.deadlineSignal?.addEventListener("abort", abortFromDeadline, { once: true });
+    }
+  }
   const timeout = setTimeout(() => {
+    if (abortKind) return;
+    abortKind = "timeout";
     timedOut = true;
     controller.abort();
   }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
@@ -42,16 +67,16 @@ export async function downloadSecureProviderImage(
 
     const maxRedirects = options.maxRedirects ?? DEFAULT_MAX_REDIRECTS;
     for (let redirectCount = 0; ; redirectCount += 1) {
-      const response = await options.fetchImpl(current, {
+      const response = await raceWithSignal(options.fetchImpl(current, {
         method: "GET",
         redirect: "manual",
         credentials: "omit",
         headers: { Accept: "image/png,image/jpeg,image/webp,image/gif,image/avif" },
         signal: controller.signal
-      });
+      }), controller.signal);
 
       if (isRedirect(response.status)) {
-        await response.body?.cancel();
+        void response.body?.cancel().catch(() => undefined);
         if (redirectCount >= maxRedirects) return failed("Generated image URL 重定向次数超过上限。");
         const location = response.headers.get("location");
         if (!location) return failed("Generated image URL 返回了无目标重定向。");
@@ -61,24 +86,24 @@ export async function downloadSecureProviderImage(
       }
 
       if (!response.ok) {
-        await response.body?.cancel();
+        void response.body?.cancel().catch(() => undefined);
         return failed(`Generated image URL returned ${response.status}.`);
       }
 
       const mimeType = normalizeImageMimeType(response.headers.get("content-type"));
       if (!mimeType || !SAFE_IMAGE_MIME_TYPES.has(mimeType)) {
-        await response.body?.cancel();
+        void response.body?.cancel().catch(() => undefined);
         return failed("Generated image URL 未返回受支持的图片类型。");
       }
       const maximumBytes = options.maxBytes ?? MAX_REMOTE_IMAGE_BYTES;
       const declaredLength = readContentLength(response.headers.get("content-length"));
       if (declaredLength !== undefined && declaredLength > maximumBytes) {
-        await response.body?.cancel();
+        void response.body?.cancel().catch(() => undefined);
         return failed("Generated image download 超过允许大小。");
       }
       if (!response.body) return failed("Generated image download 没有响应体。");
 
-      const bytes = await readBoundedBody(response.body, maximumBytes);
+      const bytes = await readBoundedBody(response.body, maximumBytes, (operation) => raceWithSignal(operation, controller.signal));
       if (bytes.byteLength === 0) return failed("Generated image download was empty.");
       const blobBuffer = new ArrayBuffer(bytes.byteLength);
       new Uint8Array(blobBuffer).set(bytes);
@@ -89,10 +114,13 @@ export async function downloadSecureProviderImage(
       };
     }
   } catch (error) {
-    if (options.signal?.aborted) {
+    if (abortKind === "parent") {
       return { status: "cancelled", reason: "GrsAI image request was cancelled." };
     }
-    if (timedOut) return failed("Generated image download timed out.");
+    if (abortKind === "deadline") {
+      throw options.deadlineSignal?.reason ?? createAbortError();
+    }
+    if (timedOut || abortKind === "timeout") return failed("Generated image download timed out.");
     if (error instanceof ImageBodyTooLargeError) {
       return failed("Generated image download 超过允许大小。");
     }
@@ -100,6 +128,7 @@ export async function downloadSecureProviderImage(
   } finally {
     clearTimeout(timeout);
     options.signal?.removeEventListener("abort", abortFromParent);
+    options.deadlineSignal?.removeEventListener("abort", abortFromDeadline);
   }
 }
 
@@ -146,24 +175,36 @@ function parseTrustedImageUrl(value: string, allowedHosts: ReadonlySet<string>):
 
 async function readBoundedBody(
   stream: ReadableStream<Uint8Array>,
-  maximumBytes: number
+  maximumBytes: number,
+  read: <T>(operation: Promise<T>) => Promise<T>
 ): Promise<Uint8Array> {
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
   try {
     for (;;) {
-      const { done, value } = await reader.read();
+      const { done, value } = await read(reader.read());
       if (done) break;
       total += value.byteLength;
       if (total > maximumBytes) {
-        await reader.cancel("image body too large");
+        void reader.cancel("image body too large").catch(() => undefined);
         throw new ImageBodyTooLargeError();
       }
       chunks.push(value);
     }
+  } catch (error) {
+    try {
+      void reader.cancel(error).catch(() => undefined);
+    } catch {
+      // The abort or size boundary remains authoritative if stream cancellation races it.
+    }
+    throw error;
   } finally {
-    reader.releaseLock();
+    try {
+      reader.releaseLock();
+    } catch {
+      // A raced pending read may still own the stream lock.
+    }
   }
   const joined = new Uint8Array(total);
   let offset = 0;
@@ -172,6 +213,30 @@ async function readBoundedBody(
     offset += chunk.byteLength;
   }
   return joined;
+}
+
+function raceWithSignal<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) {
+    return Promise.reject(signal.reason ?? createAbortError());
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => {
+      signal.removeEventListener("abort", abort);
+      reject(signal.reason ?? createAbortError());
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    operation.then(
+      (value) => {
+        signal.removeEventListener("abort", abort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", abort);
+        reject(error);
+      }
+    );
+  });
 }
 
 function normalizeImageMimeType(value: string | null): string | undefined {
@@ -211,3 +276,7 @@ function failed(reason: string): Extract<SecureImageDownloadResult, { status: "f
 }
 
 class ImageBodyTooLargeError extends Error {}
+
+function createAbortError(): DOMException {
+  return new DOMException("The image request was aborted.", "AbortError");
+}

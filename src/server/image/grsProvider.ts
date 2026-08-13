@@ -220,7 +220,14 @@ async function resolveGrsImageResultWithBudget(
   }
   const allowedImageHosts = buildAllowedImageHosts(config);
   budget.throwIfUnavailable();
-  const immediate = await resolvePayload(fetchImpl, generatePayload, signal, extractTaskId(generatePayload), allowedImageHosts);
+  const immediate = await resolvePayload(
+    fetchImpl,
+    generatePayload,
+    signal,
+    budget.deadlineSignal,
+    extractTaskId(generatePayload),
+    allowedImageHosts
+  );
   if (immediate.status !== "pending") {
     return immediate;
   }
@@ -258,7 +265,7 @@ async function resolveGrsImageResultWithBudget(
       return responseReadFailure("result", error);
     }
     budget.throwIfUnavailable();
-    const resolved = await resolvePayload(fetchImpl, resultPayload, signal, taskId, allowedImageHosts);
+    const resolved = await resolvePayload(fetchImpl, resultPayload, signal, budget.deadlineSignal, taskId, allowedImageHosts);
     if (resolved.status !== "pending") {
       return resolved;
     }
@@ -275,6 +282,7 @@ async function resolvePayload(
   fetchImpl: typeof fetch,
   payload: unknown,
   signal: AbortSignal | undefined,
+  deadlineSignal: AbortSignal,
   providerTaskId: string | undefined,
   allowedImageHosts: ReadonlySet<string>
 ): Promise<GrsImageResult | { status: "pending" }> {
@@ -289,7 +297,7 @@ async function resolvePayload(
 
   const imageUrl = extractImageUrl(payload);
   if (imageUrl) {
-    return downloadImage(fetchImpl, imageUrl, signal, providerTaskId, allowedImageHosts);
+    return downloadImage(fetchImpl, imageUrl, signal, deadlineSignal, providerTaskId, allowedImageHosts);
   }
 
   if (isPendingStatus(status) || extractTaskId(payload)) {
@@ -303,13 +311,15 @@ async function downloadImage(
   fetchImpl: typeof fetch,
   imageUrl: string,
   signal: AbortSignal | undefined,
+  deadlineSignal: AbortSignal,
   providerTaskId: string | undefined,
   allowedImageHosts: ReadonlySet<string>
 ): Promise<GrsImageResult> {
   const result = await downloadSecureProviderImage(imageUrl, {
     fetchImpl,
     allowedHosts: allowedImageHosts,
-    signal
+    signal,
+    deadlineSignal
   });
   return result.status === "ok" ? { ...result, providerTaskId } : result;
 }
