@@ -44,6 +44,19 @@ Decision: use `eslint@^9.39.0` with `eslint-config-next@16.2.9`.
 
 Reason: `eslint@10.5.0` installed by `latest` triggered a runtime incompatibility in the React rule stack used by `eslint-config-next`. ESLint 9 satisfies Next's peer dependency and lint runs successfully.
 
+## 2026-08-13: Resolve Next dependency artifacts from the official npm registry
+
+Decision: keep the current official stable `next@16.3.0` and `eslint-config-next@16.3.0`,
+and resolve the project lockfile through `https://registry.npmjs.org/` rather than a mirror.
+
+Reason: the prior lockfile recorded Next and its platform artifacts from a mirror, which made
+the security fix and artifact provenance harder to verify independently. The official npm
+metadata now marks `16.3.0` as the stable `latest` release; the regenerated lockfile pins its
+integrities and official tarball URLs, and `npm audit` reports no vulnerabilities.
+
+Boundary: this is a package-source and lockfile reproducibility decision only. It does not
+change provider credentials, deployment configuration, or the application's runtime routing.
+
 ## 2026-06-23: Use Schema Version 2 for Core Workspace Semantics
 
 Decision: introduce visibility, delivery references, and scoped decision records.
