@@ -47,6 +47,17 @@ describe("Agent task strategy and prompt registry", () => {
     });
   });
 
+  it("does not route explicitly negated proposal actions into proposal strategies", () => {
+    expect(resolve({
+      draft: "不要形成设计定义，只总结当前结论。",
+      workIntent: "discussion"
+    })).toMatchObject({ kind: "discussion" });
+    expect(resolve({
+      draft: "不要创建概念方向，只分析这些材料。",
+      workIntent: "discussion"
+    })).toMatchObject({ kind: "discussion" });
+  });
+
   it("uses current project direction and default reference when selection is empty", () => {
     expect(resolve({ draft: "给当前方向生成预览", taskMode: "imageGeneration" })).toMatchObject({
       kind: "directionPreview",

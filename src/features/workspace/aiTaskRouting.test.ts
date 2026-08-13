@@ -66,6 +66,19 @@ describe("workspace AI task routing", () => {
     expect(recommendAiTaskMode("解释一下这个文件标题是什么意思", ["file"])).toBe("chatAnalysis");
   });
 
+  it("does not recommend proposal-writing intents for explicitly negated clauses", () => {
+    expect(recommendAiWorkIntent({
+      draft: "不要形成设计定义，只总结这些结论。",
+      selectedObjects: [{ type: "keyConclusion" }],
+      hasCurrentDesignDefinition: false
+    })).toBe("discussion");
+    expect(recommendAiWorkIntent({
+      draft: "不要创建概念方向，只比较现有材料。",
+      selectedObjects: [{ type: "research" }],
+      hasCurrentDesignDefinition: true
+    })).toBe("discussion");
+  });
+
   it("auto-routes from the default chat mode while respecting explicit manual modes", () => {
     expect(
       resolveTaskModeForSend({

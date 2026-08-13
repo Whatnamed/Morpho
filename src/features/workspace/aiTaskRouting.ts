@@ -1,4 +1,5 @@
 import type { AiContextTask, AiTaskMode, AiWorkIntent, MorphoObject } from "@/domain/morpho/types";
+import { isUserActionExplicitlyDisallowed } from "@/shared/userInstructionAuthority";
 
 type ObjectTypeOnly = Pick<MorphoObject, "type">;
 
@@ -126,7 +127,7 @@ export function recommendAiWorkIntent(input: RecommendAiWorkIntentInput): AiWork
     return "prepareDeliverySection";
   }
 
-  if (DESIGN_DEFINITION_PATTERN.test(text)) {
+  if (DESIGN_DEFINITION_PATTERN.test(text) && !isUserActionExplicitlyDisallowed(text, "designDefinition")) {
     if (input.hasCurrentDesignDefinition) {
       return "reviseDesignDefinition";
     }
@@ -136,7 +137,11 @@ export function recommendAiWorkIntent(input: RecommendAiWorkIntentInput): AiWork
     }
   }
 
-  if (CONCEPT_DIRECTION_PATTERN.test(text) && input.hasCurrentDesignDefinition) {
+  if (
+    CONCEPT_DIRECTION_PATTERN.test(text) &&
+    input.hasCurrentDesignDefinition &&
+    !isUserActionExplicitlyDisallowed(text, "conceptDirection")
+  ) {
     if (directionCount > 1 && MERGE_PATTERN.test(text)) {
       return "mergeConceptDirections";
     }

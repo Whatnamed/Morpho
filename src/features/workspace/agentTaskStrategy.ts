@@ -8,6 +8,7 @@ import type {
   StageRecordKey
 } from "@/domain/morpho/types";
 import type { TaskContextKind } from "./taskContext";
+import { isUserActionExplicitlyDisallowed } from "@/shared/userInstructionAuthority";
 
 export type AgentTaskStrategy = {
   kind: AgentTaskStrategyKind;
@@ -308,6 +309,7 @@ function isResearchRequest(text: string): boolean {
 }
 
 function isDesignDefinitionIntent(workIntent: AiWorkIntent, text: string): boolean {
+  if (isUserActionExplicitlyDisallowed(text, "designDefinition")) return false;
   return (
     workIntent === "createDesignDefinition" ||
     workIntent === "reviseDesignDefinition" ||
@@ -316,6 +318,7 @@ function isDesignDefinitionIntent(workIntent: AiWorkIntent, text: string): boole
 }
 
 function isConceptDirectionIntent(workIntent: AiWorkIntent, text: string): boolean {
+  if (isUserActionExplicitlyDisallowed(text, "conceptDirection")) return false;
   return (
     workIntent === "createConceptDirections" ||
     workIntent === "reviseConceptDirection" ||

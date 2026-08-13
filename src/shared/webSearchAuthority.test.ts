@@ -34,5 +34,9 @@ describe("current-turn web search authority", () => {
       draft: "不要联网，但请搜索官方来源核实这一点。",
       taskMode: "chatAnalysis"
     })).toBe(true);
+    expect(hasCurrentTurnWebSearchAuthority({
+      draft: "不联网，只总结本地材料。",
+      taskMode: "researchOperation"
+    })).toBe(false);
   });
 });
