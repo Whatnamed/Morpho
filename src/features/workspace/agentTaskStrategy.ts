@@ -305,6 +305,7 @@ function isExplicitComparison(text: string): boolean {
 }
 
 function isResearchRequest(text: string): boolean {
+  if (isUserActionExplicitlyDisallowed(text, "createResearchAnalysis")) return false;
   return /调研|研究|查证|验证来源|补充案例|竞品分析|事实依据/i.test(text);
 }
 

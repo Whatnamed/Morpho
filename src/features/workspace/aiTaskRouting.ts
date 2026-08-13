@@ -50,7 +50,11 @@ export function recommendAiTaskMode(draft: string, selectedObjectTypes: readonly
     return "chatAnalysis";
   }
 
-  if (hasMaterialSelection && RESEARCH_PATTERN.test(text)) {
+  if (
+    hasMaterialSelection &&
+    RESEARCH_PATTERN.test(text) &&
+    !isUserActionExplicitlyDisallowed(text, "createResearchAnalysis")
+  ) {
     return "researchOperation";
   }
 
@@ -62,7 +66,11 @@ export function recommendAiTaskMode(draft: string, selectedObjectTypes: readonly
     return "imageGeneration";
   }
 
-  if (RESEARCH_PATTERN.test(text) && /联网|搜索|查一下|验证|调研|研究/i.test(text)) {
+  if (
+    RESEARCH_PATTERN.test(text) &&
+    /联网|搜索|查一下|验证|调研|研究/i.test(text) &&
+    !isUserActionExplicitlyDisallowed(text, "createResearchAnalysis")
+  ) {
     return "researchOperation";
   }
 

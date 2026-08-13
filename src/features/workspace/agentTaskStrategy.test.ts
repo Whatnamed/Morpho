@@ -56,6 +56,10 @@ describe("Agent task strategy and prompt registry", () => {
       draft: "不要创建概念方向，只分析这些材料。",
       workIntent: "discussion"
     })).toMatchObject({ kind: "discussion" });
+    expect(resolve({
+      draft: "研究这份 PDF，但不要联网，也不要创建研究分析，只总结本地内容。",
+      workIntent: "discussion"
+    })).toMatchObject({ kind: "discussion" });
   });
 
   it("uses current project direction and default reference when selection is empty", () => {

@@ -64,6 +64,10 @@ describe("workspace AI task routing", () => {
   it("recommends research only for explicit research intent", () => {
     expect(recommendAiTaskMode("基于已选资料做调研，整理机会点", ["file", "link"])).toBe("researchOperation");
     expect(recommendAiTaskMode("解释一下这个文件标题是什么意思", ["file"])).toBe("chatAnalysis");
+    expect(recommendAiTaskMode(
+      "研究这份 PDF，但不要联网，也不要创建研究分析，只总结本地内容。",
+      ["file"]
+    )).toBe("chatAnalysis");
   });
 
   it("does not recommend proposal-writing intents for explicitly negated clauses", () => {
