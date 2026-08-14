@@ -22,7 +22,7 @@ const NEGATION_PREFIX = "(?:不|不要|别|无需|无须|不必|不用|不需要
 const ACTION_GAP = "[^，,。.!！?？；;：:\n]{0,20}";
 const ACTION_RULES: Record<UserInstructionAction, ActionRule> = {
   webSearch: explicitRule(
-    /(?:联网|上网|搜索(?:网页|网络|资料)?|查证|查一下|核实|验证|补充(?:外部)?来源|查最新(?:资料|信息|标准)?|最新(?:资料|信息|标准)|web\s+search|\bsearch(?:\s+(?:the\s+web|online|for))?|verify\s+online|latest\s+source)/i,
+    /(?:联网|上网|搜索(?:网页|网络)|查最新(?:资料|信息|标准)|核实(?:外部)?来源|验证(?:来源|事实)|补充外部来源|web\s+search|search\s+(?:the\s+)?web|search\s+(?:online|for)|verify\s+online|latest\s+source)/i,
     false
   ),
   createResearchAnalysis: explicitRule(
