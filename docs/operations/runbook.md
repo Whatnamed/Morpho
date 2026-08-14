@@ -501,6 +501,11 @@ production-closed for this rollout scope. Do not rerun either applied migration,
 perform another Production write without a new reviewed forward-only change and explicit
 authorization.
 
+The final read-only in-flight gate found zero non-terminal Turns, `provider_running` Requests,
+running External Actions, or outstanding claims. Three retained `awaiting_next_request` request rows
+belong to `externally_completed` parent Turns from 2026-08-07; they are historical journal rows, not
+active settlement work, and were not modified.
+
 The sole formal Agent resources are:
 
 ```text
