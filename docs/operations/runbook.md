@@ -432,9 +432,10 @@ must carry its exact bounded claim, and non-`awaiting_next_request` terminal sta
 Only `service_role` may execute the wrapper; the Supabase Secret Key maps to that backend role and
 must remain server-only.
 
-This task does not apply the migrations or change Vercel environments. As last verified on
-2026-08-12, Production ends at `20260729190000_remove_agent_runtime_b_proofs.sql`; both later files
-below are pending and must be applied in this fixed order from the same reviewed release commit:
+The pre-apply gate was completed on 2026-08-14 from the reviewed release commit
+`8055c9c0275b79fb29ad7f5349876c85d462b402`. At that gate, Production ended at
+`20260729190000_remove_agent_runtime_b_proofs.sql`; the two later files below were the only pending
+migrations and were applied in this fixed order:
 
 ```text
 20260729190000  Production anchor
@@ -481,9 +482,20 @@ smoke tests fail after the database checks pass, roll the application back while
 paused, then assess compatibility before resuming traffic. A database/application contract mismatch
 must remain fail-closed; never reopen traffic while the database boundary is known to be incorrect.
 
-Until both migrations are applied and these remote grants/routine checks are recorded, F02 is a
-repository-ready fix, not a production-closed finding. A static migration test or a checked-in
-environment example is not remote database evidence.
+The controlled F02 Production rollout completed on 2026-08-14. The remote history now records both
+migrations (18 total), the verified-authority wrapper is `SECURITY DEFINER` with an empty
+`search_path` and `service_role`-only execution, both legacy settlement RPCs have no execution grant
+for `public`, `anon`, `authenticated`, or `service_role`, and all four A+ Journal/External Action
+tables remain present with the expected RLS/ACL boundary. The Runtime B lease table and seven RPCs
+remain absent. Vercel Production deployment `dpl_EzjQWsYa5uPDTv1XxPG1AtwB1g45` is Ready at the
+matching SHA, and the server-only `SUPABASE_SECRET_KEY` is configured for Production without being
+exposed as a `NEXT_PUBLIC_*` variable. The no-cost `/login` Production health check returned HTTP
+200 with no secret literal in the HTML; no Provider, Search, Image, or GrsAI smoke was run per the
+rollout authorization. Focused boundary tests (7 files, 98 tests), lint, and typecheck passed.
+
+F02 is production-closed for this rollout scope. Do not rerun either applied migration, repair
+history, or perform another Production write without a new reviewed forward-only change and explicit
+authorization.
 
 The sole formal Agent resources are:
 
@@ -808,11 +820,11 @@ The final remote state is:
 - `20260729012105_add_agent_turn_journal.sql`: applied and database-verified;
 - `20260729093000_add_agent_turn_external_actions.sql`: applied and database-verified;
 - `20260729190000_remove_agent_runtime_b_proofs.sql`: applied exactly once and database-verified;
-- `20260810025000_harden_agent_turn_admission.sql`: checked in for the next controlled database migration; remote application is not claimed by this repository state;
-- `20260812090000_harden_agent_tool_claim_settlement_boundary.sql`: checked in for the F02
-  server-only claims boundary; remote application and grant verification are not claimed by this
-  repository state;
-- Remote Migration History: 16;
+- `20260810025000_harden_agent_turn_admission.sql`: applied exactly once and database-verified in the
+  controlled F02 Production rollout;
+- `20260812090000_harden_agent_tool_claim_settlement_boundary.sql`: applied exactly once and
+  database-verified, including the old/new settlement grant boundary;
+- Remote Migration History: 18;
 - Phase A, Phase B, Phase C Observation, and Phase C Cleanup: complete;
 - Runtime B Lease table and seven Runtime B RPCs: removed;
 - A+ four-table Journal/External Action contract: retained and healthy.
@@ -827,9 +839,9 @@ supabase/migrations/20260729093000_add_agent_turn_external_actions.sql
 supabase/migrations/20260729190000_remove_agent_runtime_b_proofs.sql
 ```
 
-The F02 boundary migration is intentionally excluded from the historical remote-state claims above.
-Do not report F02 as production-closed until its later migration is applied and the old/new routine
-grants are verified in the target project.
+The F02 boundary migration is now included in the current remote-state claims above. Its Production
+rollout evidence is recorded in the F02 section; the Phase A, Phase B, and Phase C subsections below
+remain historical records and must not be rerun.
 
 Historical Phase A pre-write state: Stage 4 had not applied these files remotely. Supabase CLI
 `db push` applies every pending local Migration and has no supported "stop at this version" option.
