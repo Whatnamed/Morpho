@@ -494,13 +494,12 @@ exposed as a `NEXT_PUBLIC_*` variable. The no-cost `/login` Production health ch
 rollout authorization. Focused boundary tests (7 files, 98 tests), lint, and typecheck passed.
 
 The migration-aligned deployment `dpl_EzjQWsYa5uPDTv1XxPG1AtwB1g45` was Ready at the reviewed
-application SHA `8055c9c0275b79fb29ad7f5349876c85d462b402`. After this rollout record was pushed,
-Vercel automatically created the current Production deployment
-`dpl_7znbqqjNCWZnZaTJier5AnSPqmBn` at SHA `766ff504adddaa63d449d723f6654b0e87dc4502`; the diff
-between those SHAs contains only the two rollout-document updates recorded here, with no application
-or migration changes. F02 is production-closed for this rollout scope. Do not rerun either applied
-migration, repair history, or perform another Production write without a new reviewed forward-only
-change and explicit authorization.
+application SHA `8055c9c0275b79fb29ad7f5349876c85d462b402`. Subsequent Vercel Production deployments
+were created automatically for the rollout-document commits; the source changes after that reviewed
+application SHA are documentation-only, with no application or migration changes. F02 is
+production-closed for this rollout scope. Do not rerun either applied migration, repair history, or
+perform another Production write without a new reviewed forward-only change and explicit
+authorization.
 
 The sole formal Agent resources are:
 
