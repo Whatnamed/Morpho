@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   IMPORT_RESOURCE_POLICY,
   preflightImportResourceMetadata,
-  validateImportImageDimensions
+  validateImportImageDimensions,
+  validateImportText
 } from "./importResourcePolicy";
 
 describe("import resource policy", () => {
@@ -39,6 +40,12 @@ describe("import resource policy", () => {
       height: 5_000,
       aspectRatio: 1.5
     }, 70_000_000)).toThrow(/总分辨率/);
+  });
+
+  it("rejects oversized clipboard text at the shared import policy boundary", () => {
+    expect(() => validateImportText("x".repeat(IMPORT_RESOURCE_POLICY.maxClipboardTextChars + 1)))
+      .toThrow(/字符导入上限/);
+    expect(() => validateImportText("x".repeat(IMPORT_RESOURCE_POLICY.maxClipboardTextChars))).not.toThrow();
   });
 });
 

@@ -5,6 +5,7 @@ const MIB = 1024 * 1024;
 export const IMPORT_RESOURCE_POLICY = Object.freeze({
   maxFilesPerBatch: 32,
   maxRawBytesPerBatch: 128 * MIB,
+  maxClipboardTextChars: 120_000,
   maxBytesByKind: Object.freeze({
     image: 64 * MIB,
     pdf: 64 * MIB,
@@ -61,6 +62,14 @@ export function preflightImportResourceMetadata(files: readonly File[]): ImportR
     }
     return { file, kind };
   });
+}
+
+export function validateImportText(text: string): void {
+  if (text.length > IMPORT_RESOURCE_POLICY.maxClipboardTextChars) {
+    throw createImportResourcePolicyError(
+      `粘贴文字超过 ${IMPORT_RESOURCE_POLICY.maxClipboardTextChars.toLocaleString("en-US")} 字符导入上限，未导入。`
+    );
+  }
 }
 
 export function validateImportImageDimensions(

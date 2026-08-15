@@ -24,7 +24,8 @@ import type { ImageAssetDimensions } from "@/infrastructure/assets/localAssetWor
 import {
   createImportResourcePolicyError,
   preflightImportResourceMetadata,
-  validateImportImageDimensions
+  validateImportImageDimensions,
+  validateImportText
 } from "@/domain/morpho/importResourcePolicy";
 import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
 
@@ -106,6 +107,9 @@ export async function executeWorkspaceImport(
   const session = expectedSession;
   assertExecutionSession(session, ports);
 
+  if (request.text) {
+    validateImportText(request.text);
+  }
   const descriptors = preflightImportResourceMetadata(request.files ?? []);
   const preparedFiles: PreparedImportFile[] = [];
   let decodedPixels = 0;

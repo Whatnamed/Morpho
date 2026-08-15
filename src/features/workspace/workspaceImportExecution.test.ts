@@ -65,6 +65,16 @@ describe("workspace import execution", () => {
     expect(harness.workspace.objects).toEqual({});
   });
 
+  it("rejects oversized clipboard text before mutating the workspace", async () => {
+    const harness = createHarness();
+    const text = "x".repeat(120_001);
+
+    await expect(executeWorkspaceImport({ text, position: { x: 0, y: 0 } }, harness.ports))
+      .rejects.toMatchObject({ code: "import_resource_policy_rejected" });
+    expect(harness.commitCalls).toBe(0);
+    expect(harness.workspace.objects).toEqual({});
+  });
+
   it("removes only newly saved import blobs when the workspace commit fails", async () => {
     const harness = createHarness();
     const originalCommit = harness.ports.commitWorkspace;
