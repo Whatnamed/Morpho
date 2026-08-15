@@ -40,11 +40,19 @@ export type CatalogLoadResult =
       status: "ok";
       catalog: LocalProjectCatalog;
       didMigrate: boolean;
+      /** Workspace materialized only in memory when a read-only migration cannot persist it. */
+      migratedWorkspace?: MorphoWorkspace;
     }
   | {
       status: "failed";
       reason: string;
     };
+
+export type LocalProjectStoreMode = "writer" | "readOnly";
+
+export type LocalProjectStoreOptions = Readonly<{
+  mode?: LocalProjectStoreMode;
+}>;
 
 export type CatalogSnapshotResult =
   | {
@@ -115,10 +123,14 @@ export function getProjectWorkspaceStorageKey(projectId: string): string {
   return `morpho.project.${projectId}.workspace.v1`;
 }
 
-export function initializeLocalProjectCatalog(storage: Storage): CatalogLoadResult {
+export function initializeLocalProjectCatalog(
+  storage: Storage,
+  options: LocalProjectStoreOptions = {}
+): CatalogLoadResult {
+  const mode = options.mode ?? "writer";
   const existingCatalog = loadCatalog(storage);
   if (existingCatalog.status === "ok") {
-    return migrateExistingCatalog(storage, existingCatalog.catalog);
+    return migrateExistingCatalog(storage, existingCatalog.catalog, mode);
   }
 
   if (existingCatalog.status === "failed") {
@@ -136,30 +148,42 @@ export function initializeLocalProjectCatalog(storage: Storage): CatalogLoadResu
     }
 
     if (isPristineLegacyNightrailWorkspace(migrated.workspace)) {
-      safeRemoveItem(storage, LEGACY_WORKSPACE_STORAGE_KEY);
+      if (mode === "writer") {
+        safeRemoveItem(storage, LEGACY_WORKSPACE_STORAGE_KEY);
+      }
       return installCurrentCaseStudy(storage, {
         obsoleteStorageKeys: [...LEGACY_NIGHTRAIL_OBSOLETE_STORAGE_KEYS]
-      });
+      }, mode);
     }
 
-    saveProjectWorkspace(storage, migrated.workspace);
+    if (mode === "writer") {
+      saveProjectWorkspace(storage, migrated.workspace);
+    }
     const catalog = createCatalog([summarizeProject(migrated.workspace)], migrated.workspace.project.id);
-    saveCatalog(storage, catalog);
+    if (mode === "writer") {
+      saveCatalog(storage, catalog);
+    }
     return {
       status: "ok",
       catalog,
-      didMigrate: true
+      didMigrate: true,
+      migratedWorkspace: migrated.workspace
     };
   }
 
-  return installCurrentCaseStudy(storage);
+  return installCurrentCaseStudy(storage, {}, mode);
 }
 
 export function loadLocalProjectCatalogSnapshot(storage: Storage): CatalogSnapshotResult {
   return loadCatalog(storage);
 }
 
-export function loadProjectWorkspace(storage: Storage, projectId: string): ProjectWorkspaceLoadResult {
+export function loadProjectWorkspace(
+  storage: Storage,
+  projectId: string,
+  options: LocalProjectStoreOptions = {}
+): ProjectWorkspaceLoadResult {
+  const mode = options.mode ?? "writer";
   const key = getProjectWorkspaceStorageKey(projectId);
   const raw = safeGetItem(storage, key);
   if (!raw) {
@@ -177,7 +201,7 @@ export function loadProjectWorkspace(storage: Storage, projectId: string): Proje
     };
   }
 
-  if (parsed.didMigrate) {
+  if (parsed.didMigrate && mode === "writer") {
     safeSetItem(storage, key, serializeWorkspace(parsed.workspace));
   }
 
@@ -403,19 +427,25 @@ function safeRemoveItem(storage: Storage, key: string): void {
   }
 }
 
-function migrateExistingCatalog(storage: Storage, catalog: LocalProjectCatalog): CatalogLoadResult {
+function migrateExistingCatalog(
+  storage: Storage,
+  catalog: LocalProjectCatalog,
+  mode: LocalProjectStoreMode
+): CatalogLoadResult {
   if (catalog.projects.length === 0) {
-    const recoveredWorkspaces = recoverCataloglessProjectWorkspaces(storage);
+    const recoveredWorkspaces = recoverCataloglessProjectWorkspaces(storage, mode);
     if (recoveredWorkspaces.length > 0) {
       if (
         recoveredWorkspaces.length === 1 &&
         recoveredWorkspaces[0]?.project.id === LEGACY_NIGHTRAIL_PROJECT_ID &&
         isPristineLegacyNightrailWorkspace(recoveredWorkspaces[0])
       ) {
-        deleteProjectWorkspace(storage, LEGACY_NIGHTRAIL_PROJECT_ID);
+        if (mode === "writer") {
+          deleteProjectWorkspace(storage, LEGACY_NIGHTRAIL_PROJECT_ID);
+        }
         return installCurrentCaseStudy(storage, {
           obsoleteStorageKeys: [...LEGACY_NIGHTRAIL_OBSOLETE_STORAGE_KEYS]
-        });
+        }, mode);
       }
 
       const recoveredCatalog = createCatalog(
@@ -424,7 +454,9 @@ function migrateExistingCatalog(storage: Storage, catalog: LocalProjectCatalog):
           ? catalog.recentProjectId
           : recoveredWorkspaces[0]?.project.id
       );
-      saveCatalog(storage, recoveredCatalog);
+      if (mode === "writer") {
+        saveCatalog(storage, recoveredCatalog);
+      }
       return {
         status: "ok",
         catalog: recoveredCatalog,
@@ -443,16 +475,18 @@ function migrateExistingCatalog(storage: Storage, catalog: LocalProjectCatalog):
       };
     }
 
-    return installCurrentCaseStudy(storage);
+    return installCurrentCaseStudy(storage, {}, mode);
   }
 
   if (catalog.projects.length === 1 && catalog.projects[0]?.id === LEGACY_NIGHTRAIL_PROJECT_ID) {
-    const legacyWorkspace = loadProjectWorkspace(storage, LEGACY_NIGHTRAIL_PROJECT_ID);
+    const legacyWorkspace = loadProjectWorkspace(storage, LEGACY_NIGHTRAIL_PROJECT_ID, { mode });
     if (legacyWorkspace.status === "ok" && isPristineLegacyNightrailWorkspace(legacyWorkspace.workspace)) {
-      deleteProjectWorkspace(storage, LEGACY_NIGHTRAIL_PROJECT_ID);
+      if (mode === "writer") {
+        deleteProjectWorkspace(storage, LEGACY_NIGHTRAIL_PROJECT_ID);
+      }
       return installCurrentCaseStudy(storage, {
         obsoleteStorageKeys: [...LEGACY_NIGHTRAIL_OBSOLETE_STORAGE_KEYS]
-      });
+      }, mode);
     }
   }
 
@@ -460,17 +494,22 @@ function migrateExistingCatalog(storage: Storage, catalog: LocalProjectCatalog):
   const currentCaseSummary = catalog.projects.find((project) => project.id === CURRENT_CASE_STUDY_ID);
   const legacySummary = catalog.projects.find((project) => project.id === LEGACY_NIGHTRAIL_PROJECT_ID);
   if (!currentCaseSummary && legacySummary) {
-    const legacyWorkspace = loadProjectWorkspace(storage, LEGACY_NIGHTRAIL_PROJECT_ID);
+    const legacyWorkspace = loadProjectWorkspace(storage, LEGACY_NIGHTRAIL_PROJECT_ID, { mode });
     if (legacyWorkspace.status === "ok" && !isPristineLegacyNightrailWorkspace(legacyWorkspace.workspace)) {
       const next = createCurrentCaseStudyWorkspace();
-      saveProjectWorkspace(storage, next);
+      if (mode === "writer") {
+        saveProjectWorkspace(storage, next);
+      }
       const nextCatalog = createCatalog([summarizeProject(next), ...catalog.projects], CURRENT_CASE_STUDY_ID);
-      saveCatalog(storage, nextCatalog);
-      writeCaseStudyMarker(storage);
+      if (mode === "writer") {
+        saveCatalog(storage, nextCatalog);
+        writeCaseStudyMarker(storage);
+      }
       return {
         status: "ok",
         catalog: nextCatalog,
-        didMigrate: true
+        didMigrate: true,
+        migratedWorkspace: next
       };
     }
   }
@@ -481,20 +520,25 @@ function migrateExistingCatalog(storage: Storage, catalog: LocalProjectCatalog):
     marker.projectId === CURRENT_CASE_STUDY_ID &&
     marker.installedVersion !== CURRENT_CASE_STUDY_VERSION
   ) {
-    const currentCase = loadProjectWorkspace(storage, CURRENT_CASE_STUDY_ID);
+    const currentCase = loadProjectWorkspace(storage, CURRENT_CASE_STUDY_ID, { mode });
     if (currentCase.status === "ok" && fingerprintCaseStudyWorkspace(currentCase.workspace) === marker.workspaceFingerprint) {
       const next = createCurrentCaseStudyWorkspace();
-      saveProjectWorkspace(storage, next);
+      if (mode === "writer") {
+        saveProjectWorkspace(storage, next);
+      }
       const nextCatalog = createCatalog(
         [summarizeProject(next), ...catalog.projects.filter((project) => project.id !== CURRENT_CASE_STUDY_ID)],
         CURRENT_CASE_STUDY_ID
       );
-      saveCatalog(storage, nextCatalog);
-      writeCaseStudyMarker(storage);
+      if (mode === "writer") {
+        saveCatalog(storage, nextCatalog);
+        writeCaseStudyMarker(storage);
+      }
       return {
         status: "ok",
         catalog: nextCatalog,
-        didMigrate: true
+        didMigrate: true,
+        migratedWorkspace: next
       };
     }
   }
@@ -506,7 +550,7 @@ function migrateExistingCatalog(storage: Storage, catalog: LocalProjectCatalog):
   };
 }
 
-function recoverCataloglessProjectWorkspaces(storage: Storage): MorphoWorkspace[] {
+function recoverCataloglessProjectWorkspaces(storage: Storage, mode: LocalProjectStoreMode): MorphoWorkspace[] {
   const workspaces: MorphoWorkspace[] = [];
 
   for (let index = 0; index < storage.length; index += 1) {
@@ -526,7 +570,7 @@ function recoverCataloglessProjectWorkspaces(storage: Storage): MorphoWorkspace[
       continue;
     }
 
-    if (parsed.didMigrate) {
+    if (parsed.didMigrate && mode === "writer") {
       safeSetItem(storage, storageKey, serializeWorkspace(parsed.workspace));
     }
     workspaces.push(parsed.workspace);
@@ -544,17 +588,23 @@ function installCurrentCaseStudy(
   storage: Storage,
   options: {
     obsoleteStorageKeys?: string[];
-  } = {}
+  } = {},
+  mode: LocalProjectStoreMode = "writer"
 ): CatalogLoadResult {
   const workspace = createCurrentCaseStudyWorkspace();
-  saveProjectWorkspace(storage, workspace);
+  if (mode === "writer") {
+    saveProjectWorkspace(storage, workspace);
+  }
   const catalog = createCatalog([summarizeProject(workspace)], CURRENT_CASE_STUDY_ID);
-  saveCatalog(storage, catalog);
-  writeCaseStudyMarker(storage, options.obsoleteStorageKeys);
+  if (mode === "writer") {
+    saveCatalog(storage, catalog);
+    writeCaseStudyMarker(storage, options.obsoleteStorageKeys);
+  }
   return {
     status: "ok",
     catalog,
-    didMigrate: true
+    didMigrate: true,
+    migratedWorkspace: workspace
   };
 }
 

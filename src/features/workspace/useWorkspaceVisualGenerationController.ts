@@ -22,6 +22,7 @@ import type { PendingImageGenerationSlot } from "./pendingImageGenerationSlots";
 export type WorkspaceVisualGenerationControllerServices = {
   fetch: typeof fetch;
   saveGeneratedAsset: (file: File) => Promise<SaveLocalAssetResult>;
+  deleteAsset: (storageKey: string) => Promise<void>;
   readReferenceAsset: (storageKey: string) => Promise<Blob | null>;
   now: () => number;
   randomSuffix: () => string;
@@ -51,6 +52,7 @@ const defaultServices: WorkspaceVisualGenerationControllerServices = {
     saveBlobAsLocalAsset(indexedDbBlobStore, file, "aiGeneratedImage", {
       readImageDimensions: readImageBlobDimensions
     }),
+  deleteAsset: (storageKey) => indexedDbBlobStore.delete(storageKey),
   readReferenceAsset: (storageKey) => indexedDbBlobStore.get(storageKey),
   now: () => Date.now(),
   randomSuffix: () => Math.random().toString(36).slice(2, 8)
@@ -83,14 +85,16 @@ export function useWorkspaceVisualGenerationController(
   const serviceRandomSuffix = input.services?.randomSuffix;
   const serviceReadReferenceAsset = input.services?.readReferenceAsset;
   const serviceSaveGeneratedAsset = input.services?.saveGeneratedAsset;
+  const serviceDeleteAsset = input.services?.deleteAsset;
   const services = useMemo(
-    () => serviceFetch || serviceNow || serviceRandomSuffix || serviceReadReferenceAsset || serviceSaveGeneratedAsset
+    () => serviceFetch || serviceNow || serviceRandomSuffix || serviceReadReferenceAsset || serviceSaveGeneratedAsset || serviceDeleteAsset
       ? resolveServices({
           ...(serviceFetch ? { fetch: serviceFetch } : {}),
           ...(serviceNow ? { now: serviceNow } : {}),
           ...(serviceRandomSuffix ? { randomSuffix: serviceRandomSuffix } : {}),
           ...(serviceReadReferenceAsset ? { readReferenceAsset: serviceReadReferenceAsset } : {}),
-          ...(serviceSaveGeneratedAsset ? { saveGeneratedAsset: serviceSaveGeneratedAsset } : {})
+          ...(serviceSaveGeneratedAsset ? { saveGeneratedAsset: serviceSaveGeneratedAsset } : {}),
+          ...(serviceDeleteAsset ? { deleteAsset: serviceDeleteAsset } : {})
         })
       : defaultServices,
     [
@@ -98,7 +102,8 @@ export function useWorkspaceVisualGenerationController(
       serviceNow,
       serviceRandomSuffix,
       serviceReadReferenceAsset,
-      serviceSaveGeneratedAsset
+      serviceSaveGeneratedAsset,
+      serviceDeleteAsset
     ]
   );
 
@@ -190,6 +195,7 @@ export function useWorkspaceVisualGenerationController(
       updatePendingImageGenerationSlots,
       setImageTaskStatus,
       saveGeneratedAsset: services.saveGeneratedAsset,
+      deleteAsset: services.deleteAsset,
       readReferenceAsset: services.readReferenceAsset,
       selectObjects,
       focusObject,

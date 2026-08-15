@@ -4,58 +4,21 @@ import { useCallback, useEffect, useRef, useState, type SetStateAction } from "r
 
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 import { reconcileProjectMemoryAfterWorkspaceChange } from "@/domain/morpho/projectMemory";
-import { CURRENT_CASE_STUDY_ID } from "@/domain/morpho/caseStudy/currentCaseStudy";
 import { createBlankWorkspace } from "@/domain/morpho/workspace";
-import { interruptActiveOperations } from "@/domain/operations/operations";
-import { ensureCurrentCaseStudyAssets } from "@/infrastructure/assets/currentCaseStudyAssetInstaller";
-import {
-  initializeLocalProjectCatalog,
-  loadProjectWorkspace,
-  persistProjectWorkspaceAndSummary
-} from "@/infrastructure/persistence/localProjectStore";
+import { persistProjectWorkspaceAndSummary } from "@/infrastructure/persistence/localProjectStore";
 import {
   requestStorageDurability,
   type StorageDurabilityStatus
 } from "@/infrastructure/persistence/storageDurability";
-import { acquireProjectWriteLease } from "@/infrastructure/persistence/projectWriteLock";
 import {
   createWorkspacePersistenceController,
   type WorkspacePersistenceController,
   type WorkspacePersistenceState
 } from "./workspacePersistence";
-
-type PersistentWorkspaceLoadResult = {
-  workspace: MorphoWorkspace;
-  migrationError?: string;
-};
-
-async function loadWorkspace(projectId: string): Promise<PersistentWorkspaceLoadResult> {
-  if (typeof window === "undefined") {
-    return { workspace: createBlankWorkspace(projectId) };
-  }
-
-  const catalog = initializeLocalProjectCatalog(window.localStorage);
-  if (catalog.status === "failed") {
-    return {
-      workspace: createBlankWorkspace(projectId),
-      migrationError: catalog.reason
-    };
-  }
-
-  if (projectId === CURRENT_CASE_STUDY_ID) {
-    await ensureCurrentCaseStudyAssets();
-  }
-
-  const loaded = loadProjectWorkspace(window.localStorage, projectId);
-  if (loaded.status === "ok") {
-    return { workspace: interruptActiveOperations(loaded.workspace, "browserReload") };
-  }
-
-  return {
-    workspace: createBlankWorkspace(projectId),
-    migrationError: loaded.reason
-  };
-}
+import {
+  acquireLeaseThenLoadWorkspace,
+  type PersistentWorkspaceLoadResult
+} from "./workspaceInitialization";
 
 export function usePersistentWorkspace(projectId: string) {
   const [loadResult, setLoadResult] = useState<PersistentWorkspaceLoadResult>(() => ({
@@ -103,22 +66,9 @@ export function usePersistentWorkspace(projectId: string) {
       setWorkspace(blankWorkspace);
       setPersistence({ phase: "loading", isDirty: false });
       void (async () => {
-        const loaded = await loadWorkspace(projectId);
-        if (isCancelled) {
-          return;
-        }
-        setLoadResult(loaded);
-        setWorkspace(loaded.workspace);
-        setHasLoaded(true);
-        if (loaded.migrationError) {
-          setPersistence({ phase: "error", isDirty: false, error: loaded.migrationError });
-          return;
-        }
-
-        // Two tabs on one project do not merge: the second tab's write replaces
-        // everything the first tab did. Whichever tab loses the lease stops
-        // writing entirely rather than racing for last-write-wins.
-        const lease = await acquireProjectWriteLease(projectId);
+        // Decide the cross-tab writer before any catalog migration, workspace
+        // repair, case-study seeding, or other shared persistence work.
+        const { lease, loaded } = await acquireLeaseThenLoadWorkspace(projectId);
         if (isCancelled) {
           if (lease.status === "granted") {
             lease.release();
@@ -126,6 +76,21 @@ export function usePersistentWorkspace(projectId: string) {
           return;
         }
 
+        setLoadResult(loaded);
+        setWorkspace(loaded.workspace);
+        if (loaded.migrationError) {
+          if (lease.status === "granted") {
+            lease.release();
+          }
+          setHasLoaded(true);
+          setPersistence({ phase: "error", isDirty: false, error: loaded.migrationError });
+          return;
+        }
+        setHasLoaded(true);
+
+        // Two tabs on one project do not merge: the second tab's write replaces
+        // everything the first tab did. Whichever tab loses the lease stops
+        // writing entirely rather than racing for last-write-wins.
         if (lease.status === "heldElsewhere") {
           setPersistence({ phase: "readOnly", isDirty: false });
           return;

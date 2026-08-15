@@ -105,6 +105,7 @@ export type WorkspaceVisualGenerationExecutionPorts = {
     status: ImageTaskStatus | null
   ) => void;
   saveGeneratedAsset: (file: File) => Promise<SaveLocalAssetResult>;
+  deleteAsset: (storageKey: string) => Promise<void>;
   readReferenceAsset: (storageKey: string) => Promise<Blob | null>;
   selectObjects: (
     expectedSession: WorkspaceVisualGenerationExecutionSession,
@@ -407,6 +408,7 @@ async function executeVisualGenerationItem(
   }
 
   state.inFlightCount += 1;
+  let provisionalStorageKey: string | undefined;
   try {
     publishVisualGenerationProgress(context, state, input, ports);
     const restoredAction = context.externalAction && aPlusActionId
@@ -546,6 +548,7 @@ async function executeVisualGenerationItem(
     if (saved.status === "failed") {
       throw new Error(saved.reason);
     }
+    provisionalStorageKey = saved.asset.storageKey;
     ports.assertCurrentSession(context.session);
 
     return {
@@ -558,6 +561,9 @@ async function executeVisualGenerationItem(
       providerTaskId
     };
   } catch (itemError) {
+    if (provisionalStorageKey && isStaleVisualGenerationExecutionError(itemError)) {
+      await deleteProvisionalAsset(provisionalStorageKey, ports);
+    }
     if (
       isStaleVisualGenerationExecutionError(itemError) ||
       isAbortError(itemError) ||
@@ -587,8 +593,8 @@ async function applyVisualGenerationItemResult(
   result: VisualGenerationItemResult,
   ports: WorkspaceVisualGenerationExecutionPorts
 ): Promise<void> {
-  ports.assertCurrentSession(context.session);
   if (result.status === "existing") {
+    ports.assertCurrentSession(context.session);
     if (!state.createdObjectIds.includes(result.objectId)) {
       state.createdObjectIds.push(result.objectId);
     }
@@ -608,55 +614,62 @@ async function applyVisualGenerationItemResult(
       };
     });
   } else if (result.status === "ok") {
-    const createdObjectId = ports.commitWorkspace(context.session, (current) => {
-      const committed = applyImageGenerationResultCommit(current, {
-        status: "succeeded",
-        operationId: context.operationId,
-        providerTaskId: result.providerTaskId ?? state.lastProviderTaskId,
-        asset: result.asset,
-        generation: {
-          modelId: context.generationSettings.modelId,
-          modelLabel: context.generationSettings.modelLabel,
-          aspectRatio: context.generationSettings.aspectRatio,
-          sizeOption: context.generationSettings.sizeOption,
-          prompt: result.item.prompt,
-          compiledPrompt: result.item.prompt,
-          promptContractVersion: result.item.promptContractVersion,
-          editMode: result.item.editMode,
-          referenceObjectIds: result.item.referenceObjectIds,
-          referenceResolution: result.item.referenceResolution,
-          directionId: result.item.targetDirectionId,
-          visualBranchId: result.item.visualBranchId,
+    try {
+      ports.assertCurrentSession(context.session);
+      const createdObjectId = ports.commitWorkspace(context.session, (current) => {
+        const committed = applyImageGenerationResultCommit(current, {
+          status: "succeeded",
           operationId: context.operationId,
-          clientRequestId: `${context.clientRequestId}-${result.item.id}`,
           providerTaskId: result.providerTaskId ?? state.lastProviderTaskId,
+          asset: result.asset,
+          generation: {
+            modelId: context.generationSettings.modelId,
+            modelLabel: context.generationSettings.modelLabel,
+            aspectRatio: context.generationSettings.aspectRatio,
+            sizeOption: context.generationSettings.sizeOption,
+            prompt: result.item.prompt,
+            compiledPrompt: result.item.prompt,
+            promptContractVersion: result.item.promptContractVersion,
+            editMode: result.item.editMode,
+            referenceObjectIds: result.item.referenceObjectIds,
+            referenceResolution: result.item.referenceResolution,
+            directionId: result.item.targetDirectionId,
+            visualBranchId: result.item.visualBranchId,
+            operationId: context.operationId,
+            clientRequestId: `${context.clientRequestId}-${result.item.id}`,
+            providerTaskId: result.providerTaskId ?? state.lastProviderTaskId,
+            title: result.item.title,
+            purpose: result.item.purpose,
+            role: result.item.role,
+            visualIntent: result.item.visualIntent,
+            visualPlan: context.validatedPlan.plan,
+            createdAt: new Date().toISOString()
+          },
+          sourceObjectIds: result.sourceObjectIds,
+          directionObjectId: result.item.targetDirectionId,
+          visualBranchId: result.item.visualBranchId,
           title: result.item.title,
-          purpose: result.item.purpose,
+          summary: result.item.purpose,
           role: result.item.role,
-          visualIntent: result.item.visualIntent,
-          visualPlan: context.validatedPlan.plan,
-          createdAt: new Date().toISOString()
-        },
-        sourceObjectIds: result.sourceObjectIds,
-        directionObjectId: result.item.targetDirectionId,
-        visualBranchId: result.item.visualBranchId,
-        title: result.item.title,
-        summary: result.item.purpose,
-        role: result.item.role,
-        position: getGeneratedImagePlacement(
-          current,
-          result.item,
-          result.index,
-          context.placementMap.get(result.item.id)
-        ),
-        canvasSize: context.plannedImageSize
+          position: getGeneratedImagePlacement(
+            current,
+            result.item,
+            result.index,
+            context.placementMap.get(result.item.id)
+          ),
+          canvasSize: context.plannedImageSize
+        });
+        return { workspace: committed.workspace, value: committed.createdObjectId };
       });
-      return { workspace: committed.workspace, value: committed.createdObjectId };
-    });
-    if (createdObjectId) {
-      state.createdObjectIds.push(createdObjectId);
+      if (createdObjectId) {
+        state.createdObjectIds.push(createdObjectId);
+      }
+    } catch (error) {
+      await deleteProvisionalAsset(result.asset.storageKey, ports);
+      throw error;
     }
   } else {
+    ports.assertCurrentSession(context.session);
     state.failedItems.push(`${result.item.title}: ${result.reason}`);
     ports.commitWorkspace(context.session, (current) => {
       const committed = applyImageGenerationResultCommit(current, {
@@ -679,6 +692,18 @@ async function applyVisualGenerationItemResult(
       context.externalAction.actionId,
       result.aPlusActionId
     );
+  }
+}
+
+async function deleteProvisionalAsset(
+  storageKey: string,
+  ports: WorkspaceVisualGenerationExecutionPorts
+): Promise<void> {
+  try {
+    await ports.deleteAsset(storageKey);
+  } catch {
+    // Cleanup is best effort; preserve the stale/commit error that stopped the
+    // workspace mutation so callers still fail closed.
   }
 }
 

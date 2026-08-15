@@ -25,7 +25,10 @@ import type {
   WorkspaceVisualGenerationExecutionSession,
   WorkspaceVisualGenerationPlanInput
 } from "./workspaceVisualGenerationExecution";
-import { executeWorkspaceVisualGenerationPlan } from "./workspaceVisualGenerationExecution";
+import {
+  createStaleVisualGenerationExecutionError,
+  executeWorkspaceVisualGenerationPlan
+} from "./workspaceVisualGenerationExecution";
 import type { PendingImageGenerationSlot } from "./pendingImageGenerationSlots";
 import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
 
@@ -662,6 +665,46 @@ describe("workspace visual generation execution core", () => {
     )).toBe(false);
   });
 
+  it("deletes a provisional blob when the session turns stale before the workspace commit", async () => {
+    const harness = createExecutionHarness({
+      saveGeneratedAsset: async () => ({
+        status: "ok",
+        asset: makeAsset("generated-stale")
+      })
+    });
+    harness.onAssetSaved = () => harness.invalidateSession();
+
+    await expect(executeWorkspaceVisualGenerationPlan(
+      createDirectionInput(harness),
+      resolveGenerationSettings({ aspectRatio: "1:1" }),
+      harness.ports
+    )).rejects.toMatchObject({ code: "stale_visual_generation_execution" });
+    expect(harness.deletedStorageKeys).toEqual(["blob:generated-stale"]);
+    expect(harness.commitCount).toBeGreaterThanOrEqual(1);
+    expect(Object.values(harness.workspace.objects).some(
+      (object) => object.type === "image" && object.assetId === "generated-stale"
+    )).toBe(false);
+  });
+
+  it("does not delete a generated blob after its workspace commit succeeds", async () => {
+    const harness = createExecutionHarness({
+      saveGeneratedAsset: async () => ({
+        status: "ok",
+        asset: makeAsset("generated-committed")
+      })
+    });
+
+    await expect(executeWorkspaceVisualGenerationPlan(
+      createDirectionInput(harness),
+      resolveGenerationSettings({ aspectRatio: "1:1" }),
+      harness.ports
+    )).resolves.toMatchObject({ createdObjectIds: expect.any(Array) });
+    expect(harness.deletedStorageKeys).toEqual([]);
+    expect(Object.values(harness.workspace.objects)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ assetId: "generated-committed" })])
+    );
+  });
+
   it("rejects an A+ deterministic operation type conflict before fetch", async () => {
     const harness = createExecutionHarness();
     const identity = await buildAPlusImageBatchIdentity("turn-1", "parent-call");
@@ -750,6 +793,9 @@ type ExecutionHarness = {
   readonly events: string[];
   readonly commitCount: number;
   readonly maximumInFlight: number;
+  readonly deletedStorageKeys: string[];
+  onAssetSaved?: () => void;
+  readonly invalidateSession: () => void;
 };
 
 function createExecutionHarness(options: {
@@ -769,11 +815,13 @@ function createExecutionHarness(options: {
   const imageTaskStatuses: ImageTaskStatus[] = [];
   const selectedObjectIds: string[] = [];
   const events: string[] = [];
+  const deletedStorageKeys: string[] = [];
   const session: WorkspaceVisualGenerationExecutionSession = {
     projectId: currentWorkspace.project.id,
     workspaceReady: true,
     generation: Symbol("test-visual-generation-session")
   };
+  let currentSession = session;
 
   const fakeFetch: typeof fetch = async (input, init) => {
     const url = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
@@ -806,6 +854,14 @@ function createExecutionHarness(options: {
       return focusedObjectId;
     },
     events,
+    onAssetSaved: undefined as (() => void) | undefined,
+    deletedStorageKeys,
+    invalidateSession: () => {
+      currentSession = {
+        ...session,
+        generation: Symbol("invalidated-visual-generation-session")
+      };
+    },
     get commitCount() {
       return commitCount;
     },
@@ -816,18 +872,18 @@ function createExecutionHarness(options: {
 
   const ports: WorkspaceVisualGenerationExecutionPorts = {
     fetch: fakeFetch,
-    getCurrentSession: () => session,
+    getCurrentSession: () => currentSession,
     assertCurrentSession: (expectedSession) => {
-      if (expectedSession !== session) {
-        throw new Error("test session changed");
+      if (expectedSession !== currentSession) {
+        throw createStaleVisualGenerationExecutionError();
       }
     },
     commitWorkspace: <T,>(
       expectedSession: WorkspaceVisualGenerationExecutionSession,
       transform: WorkspaceCommitTransform<T>
     ) => {
-      if (expectedSession !== session) {
-        throw new Error("test session changed");
+      if (expectedSession !== currentSession) {
+        throw createStaleVisualGenerationExecutionError();
       }
       events.push("workspace:commit");
       commitCount += 1;
@@ -839,35 +895,42 @@ function createExecutionHarness(options: {
       return result.value;
     },
     updatePendingImageGenerationSlots: (expectedSession, update) => {
-      if (expectedSession !== session) {
-        throw new Error("test session changed");
+      if (expectedSession !== currentSession) {
+        throw createStaleVisualGenerationExecutionError();
       }
       events.push("pending:update");
       pendingImageGenerationSlots = update(pendingImageGenerationSlots);
     },
     setImageTaskStatus: (expectedSession, status) => {
-      if (expectedSession !== session) {
-        throw new Error("test session changed");
+      if (expectedSession !== currentSession) {
+        throw createStaleVisualGenerationExecutionError();
       }
       if (status) imageTaskStatuses.push(status);
     },
-    saveGeneratedAsset: options.saveGeneratedAsset ?? (async (_file) => {
+    saveGeneratedAsset: async (file) => {
+      const result = options.saveGeneratedAsset
+        ? await options.saveGeneratedAsset(file)
+        : {
+            status: "ok" as const,
+            asset: makeAsset(`generated-${requests.length}`)
+          };
       events.push("asset:save");
-      return {
-        status: "ok",
-        asset: makeAsset(`generated-${requests.length}`)
-      };
-    }),
+      harness.onAssetSaved?.();
+      return result;
+    },
+    deleteAsset: async (storageKey) => {
+      deletedStorageKeys.push(storageKey);
+    },
     readReferenceAsset: options.readReferenceAsset ?? (async () => null),
     selectObjects: (expectedSession, objectIds) => {
-      if (expectedSession !== session) {
-        throw new Error("test session changed");
+      if (expectedSession !== currentSession) {
+        throw createStaleVisualGenerationExecutionError();
       }
       selectedObjectIds.splice(0, selectedObjectIds.length, ...objectIds);
     },
     focusObject: (expectedSession, objectId) => {
-      if (expectedSession !== session) {
-        throw new Error("test session changed");
+      if (expectedSession !== currentSession) {
+        throw createStaleVisualGenerationExecutionError();
       }
       focusedObjectId = objectId;
     },
