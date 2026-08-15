@@ -139,9 +139,10 @@ Important module boundaries:
   rerenders keep an import alive, while project/readiness transitions fail closed. Browser-level
   async entry points such as clipboard reads and file pickers capture this handle before their
   first await or picker handoff, and context-menu file-picker positions are tagged to the
-  initiating project and invalidated on cancel or lifecycle transition. IndexedDB writes cannot
-  be physically cancelled by this boundary, so a stale completed blob may remain orphaned;
-  object-level Blob garbage collection is intentionally outside this phase.
+  initiating project and invalidated on cancel or lifecycle transition. IndexedDB writes cannot be physically
+  cancelled by this boundary. Import and visual-generation execution treat newly written assets as provisional
+  and delete them best-effort when a stale session or failed local commit prevents the Workspace reference from
+  becoming durable; generic object-level Blob garbage collection remains intentionally outside this phase.
 - WorkspaceClient decomposition phase 6-D moves Proposal review orchestration into the React-free
   `workspaceProposalWorkflow.ts` core and the
   `useWorkspaceProposalWorkflowController.ts` React wiring layer. The core delegates apply,
@@ -477,6 +478,12 @@ Binary files are not stored in localStorage. Imported images/files and generated
 - workspace objects reference assets by `assetId`;
 - assets contain filename, MIME type, size, creation time, storage key, source type, and optional intrinsic image dimensions.
 
+`usePersistentWorkspace` acquires the cross-tab project write lease before catalog initialization, workspace
+migration/repair, or current-case-study asset seeding. A granted lease uses writer initialization and may persist those changes;
+`heldElsewhere` uses read-only initialization that only parses and migrates in memory, including a deterministic
+case-study fallback, and performs no shared localStorage or IndexedDB seed writes. Browsers without an enforceable
+lease keep the existing `unsupported` compatibility path.
+
 Project deletion implements previewed, ownership-checked cleanup of Blobs used exclusively by that project. Deleting a canvas object does not delete Blob data, and object-level or orphan-sweep garbage collection is not implemented. The prerequisites and fail-closed design are recorded in [`asset-gc-evaluation.md`](asset-gc-evaluation.md).
 
 The deployable starter is `project-morpho-case-study`, generated from an editable backup. Its public case-study assets are hash-addressed under `public/case-study/current/assets/`; first use fetches, verifies, and writes them into the same IndexedDB BlobStore used by ordinary projects. The installer is idempotent and only removes the two known legacy Nightrail seed keys after a confirmed pristine replacement.
@@ -554,8 +561,8 @@ Import execution boundary:
 - `workspaceImportExecution.ts` is the single semantic path for image/file, URL, text, batch, and
   mixed imports. `importResourcePolicy.ts` runs a whole-batch metadata and decoded-image preflight
   before the first Blob or Workspace write. The fixed ceilings are 32 files and 128 MiB raw bytes
-  per batch; 64 MiB per PDF, image, or other file; 8 MiB per text file; 40 million decoded pixels
-  per image and 100 million per batch; 200 PDF pages parsed; and 120,000 extracted characters.
+  per batch; 64 MiB per PDF, image, or other file; 8 MiB per text file; 120,000 clipboard characters;
+  40 million decoded pixels per image and 100 million per batch; 200 PDF pages parsed; and 120,000 extracted characters.
   These limits bound browser memory while retaining the existing local-first file workflow.
 - File-count, raw-byte, invalid-image, and decoded-pixel violations reject the entire batch before
   persistence. Valid source files may still be imported when normal document parsing fails. PDF
@@ -571,8 +578,8 @@ Import execution boundary:
   persistence, and parse-status updates.
 - `WorkspaceClient.tsx` only wires entry-point events, canvas/viewport positions, and the existing
   selection port. It does not aggregate `AssetRecord`s, save Blobs, or orchestrate parse/extract
-  continuation. A stale physical Blob write may be left behind after a project switch; no new
-  cleanup or garbage-collection semantics are inferred from that outcome.
+  continuation. If a stale physical Blob write occurs outside the guarded import execution, no project-wide
+  garbage-collection semantics are inferred from that outcome.
 
 Asset panel and search are real workspace queries:
 
