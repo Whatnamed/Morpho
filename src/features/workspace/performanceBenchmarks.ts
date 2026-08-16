@@ -211,6 +211,46 @@ export const PERFORMANCE_TARGETS: BenchmarkTarget[] = [
     }
   },
   {
+    key: "renderConversation:streamTick",
+    label: "AiConversationPanel 流式批次重渲染（仅末条消息变化，SSR 全量上限）",
+    unit: "ms/次",
+    // Phase 5: the per-48ms-batch cost during streaming. SSR renders the whole panel
+    // fresh, so this number is the UPPER BOUND of one batch — in the browser, per
+    // message memoization already skips unchanged content subtrees, and the gap
+    // between this figure and the browser's measured batch cost is what the wrapper
+    // reconciliation adds. It exists to attribute long-chat streaming, not to gate
+    // memoization (SSR cannot see memo hits by construction).
+    prepare: (scenario) => {
+      const messages = scenario.workspace.ai.messages;
+      const target = messages.at(-1);
+      if (messages.length === 0 || !target) {
+        return null;
+      }
+      const baseProps = buildAiConversationPanelProps({ workspace: scenario.workspace });
+      const tickProps = buildAiConversationPanelProps({
+        workspace: {
+          ...scenario.workspace,
+          ai: {
+            ...scenario.workspace.ai,
+            messages: messages.map((message) =>
+              message.id === target.id ? { ...message, body: `${message.body} 流式增量` } : message
+            )
+          }
+        }
+      });
+      let streaming = false;
+      return {
+        run: () => {
+          // Alternate base/tick so each run re-renders with a changed tail, the way
+          // consecutive 48ms batches do.
+          streaming = !streaming;
+          return renderToStaticMarkup(createElement(AiConversationPanel, streaming ? tickProps : baseProps));
+        },
+        verify: (output) => typeof output === "string" && output.length > 0
+      };
+    }
+  },
+  {
     key: "renderTrace",
     label: "AgentProcessDisclosure SSR 渲染（全部 trace part）",
     unit: "ms/次",

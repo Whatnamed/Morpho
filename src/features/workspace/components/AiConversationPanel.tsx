@@ -199,6 +199,8 @@ export function AiConversationPanel({
   const modeSummary = turnMode === "auto" ? "自动执行" : "先确认";
   const failureCopy = showFailure ? getFailureCopy(getLatestFailedAssistantMessage(workspace)) : null;
   const visibleContextWarning = contextWarning && dismissedContextWarning !== contextWarning ? contextWarning : undefined;
+  const historyMessages = workspace.ai.messages.slice(0, -1);
+  const streamingTailMessage = workspace.ai.messages.at(-1);
   const updateScrollBottomVisibility = () => {
     const element = scrollRef.current;
     if (!element) {
@@ -300,74 +302,30 @@ export function AiConversationPanel({
 
         <div className="ai-scroll-shell">
           <div className="ai-scroll" ref={scrollRef} onScroll={updateScrollBottomVisibility}>
-            {workspace.ai.messages.map((message) => {
-              const projectRecordFeedback = getProjectRecordFeedback(message);
-
-              return (
-              <div className={`ai-message ${message.role}`} key={message.id} data-message-id={message.id}>
-                <AiMessageContent message={message} />
-                {message.comparisonAnalysisId ? (
-                  <ComparisonAnalysisCard
-                    analysis={workspace.ai.comparisonAnalyses?.[message.comparisonAnalysisId]}
-                    sourceRefs={workspace.ai.comparisonAnalyses?.[message.comparisonAnalysisId] ? resolveStoredComparisonSourceRefs(workspace, workspace.ai.comparisonAnalyses[message.comparisonAnalysisId]) : []}
-                    workspace={workspace}
-                    onRequestAction={onRequestComparisonAction}
-                    onLocateObject={onLocateObject}
-                  />
-                ) : null}
-                {projectRecordFeedback ? (
-                  <button
-                    className="continuity-feedback"
-                    type="button"
-                    onClick={() => onOpenProjectRecords(message.continuityEntryIds)}
-                  >
-                    {projectRecordFeedback}
-                  </button>
-                ) : null}
-                {message.citationIds && message.citationIds.length > 0 ? (
-                  <div className="citation-list" aria-label="来源引用">
-                    {message.citationIds
-                      .map((citationId) => workspace.citationSnapshots[citationId])
-                      .filter((citation) => Boolean(citation))
-                      .map((citation, citationIndex) => {
-                        const destination = citation.url
-                          ? normalizeSafeExternalNavigationUrl(citation.url)
-                          : undefined;
-                        const content = (
-                          <>
-                            <span className="citation-index">{citationIndex + 1}</span>
-                            <span className="citation-copy">
-                              <span className="citation-title">{citation.title}</span>
-                              <small>{destination?.hostname ?? "不可用来源"}</small>
-                            </span>
-                          </>
-                        );
-                        return destination ? (
-                          <a
-                            className="citation-link citation-link-line"
-                            href={destination.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            key={citation.id}
-                          >
-                            {content}
-                          </a>
-                        ) : (
-                          <span
-                            className="citation-link citation-link-line citation-link-disabled"
-                            aria-disabled="true"
-                            key={citation.id}
-                          >
-                            {content}
-                          </span>
-                        );
-                      })}
-                  </div>
-                ) : null}
-              </div>
-              );
-            })}
-
+            {/*
+              History/tail split: every streaming batch replaces only the last
+              message's identity (updateAiMessage keeps the others referentially
+              equal), so a memoized history segment skips reconciling the whole
+              list on every ~48ms flush while the tail re-renders alone. Any change
+              to a historical message — or to the records the rows read
+              (objects / citations / comparison analyses) — fails the comparator
+              and re-renders the segment, so the split cannot hide a real change.
+            */}
+            <AiMessageHistory
+              messages={historyMessages}
+              workspace={workspace}
+              onRequestComparisonAction={onRequestComparisonAction}
+              onLocateObject={onLocateObject}
+              onOpenProjectRecords={onOpenProjectRecords}
+            />
+            {streamingTailMessage
+              ? renderAiMessageRow(streamingTailMessage, {
+                  workspace,
+                  onRequestComparisonAction,
+                  onLocateObject,
+                  onOpenProjectRecords
+                })
+              : null}
           {suggestions.length > 0 ? (
             <div className="suggestions" aria-label="可选建议">
               {suggestions.map((suggestion) => (
@@ -795,6 +753,136 @@ const AiMessageContent = memo(function AiMessageContent({ message }: { message: 
 
 function renderAgentProcessText(text: string): ReactNode {
   return <MarkdownContent body={text} />;
+}
+
+/**
+ * Everything one message row reads beyond the message itself. The history memo's
+ * comparator compares exactly these identities, so any record a row depends on
+ * still re-renders the segment when it changes.
+ */
+type AiMessageRowSharedInputs = {
+  workspace: MorphoWorkspace;
+  onRequestComparisonAction?: (analysisId: string, action: ComparisonActionRequest, objectId?: string) => void;
+  onLocateObject?: (objectId: string) => void;
+  onOpenProjectRecords: (entryIds?: string[]) => void;
+};
+
+function renderAiMessageRow(message: AiMessage, shared: AiMessageRowSharedInputs): ReactNode {
+  const { workspace, onRequestComparisonAction, onLocateObject, onOpenProjectRecords } = shared;
+  const projectRecordFeedback = getProjectRecordFeedback(message);
+
+  return (
+    <div className={`ai-message ${message.role}`} key={message.id} data-message-id={message.id}>
+      <AiMessageContent message={message} />
+      {message.comparisonAnalysisId ? (
+        <ComparisonAnalysisCard
+          analysis={workspace.ai.comparisonAnalyses?.[message.comparisonAnalysisId]}
+          sourceRefs={workspace.ai.comparisonAnalyses?.[message.comparisonAnalysisId] ? resolveStoredComparisonSourceRefs(workspace, workspace.ai.comparisonAnalyses[message.comparisonAnalysisId]) : []}
+          workspace={workspace}
+          onRequestAction={onRequestComparisonAction}
+          onLocateObject={onLocateObject}
+        />
+      ) : null}
+      {projectRecordFeedback ? (
+        <button
+          className="continuity-feedback"
+          type="button"
+          onClick={() => onOpenProjectRecords(message.continuityEntryIds)}
+        >
+          {projectRecordFeedback}
+        </button>
+      ) : null}
+      {message.citationIds && message.citationIds.length > 0 ? (
+        <div className="citation-list" aria-label="来源引用">
+          {message.citationIds
+            .map((citationId) => workspace.citationSnapshots[citationId])
+            .filter((citation) => Boolean(citation))
+            .map((citation, citationIndex) => {
+              const destination = citation.url
+                ? normalizeSafeExternalNavigationUrl(citation.url)
+                : undefined;
+              const content = (
+                <>
+                  <span className="citation-index">{citationIndex + 1}</span>
+                  <span className="citation-copy">
+                    <span className="citation-title">{citation.title}</span>
+                    <small>{destination?.hostname ?? "不可用来源"}</small>
+                  </span>
+                </>
+              );
+              return destination ? (
+                <a
+                  className="citation-link citation-link-line"
+                  href={destination.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  key={citation.id}
+                >
+                  {content}
+                </a>
+              ) : (
+                <span
+                  className="citation-link citation-link-line citation-link-disabled"
+                  aria-disabled="true"
+                  key={citation.id}
+                >
+                  {content}
+                </span>
+              );
+            })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+type AiMessageHistoryProps = AiMessageRowSharedInputs & {
+  messages: readonly AiMessage[];
+};
+
+/**
+ * The memoized history segment of the conversation list.
+ *
+ * Comparator, in words: re-render only when a message identity changed, the list
+ * length changed, or one of the records the rows read (objects, citation
+ * snapshots, comparison analyses) or the row callbacks changed. Messages are
+ * replaced rather than mutated throughout the workspace code, so element
+ * identity is a complete change signal for a row.
+ */
+const AiMessageHistory = memo(function AiMessageHistory({
+  messages,
+  workspace,
+  onRequestComparisonAction,
+  onLocateObject,
+  onOpenProjectRecords
+}: AiMessageHistoryProps) {
+  return (
+    <>
+      {messages.map((message) =>
+        renderAiMessageRow(message, { workspace, onRequestComparisonAction, onLocateObject, onOpenProjectRecords })
+      )}
+    </>
+  );
+}, areAiMessageHistoryPropsEqual);
+
+/** Exported for the render-isolation guard test; production callers never use it directly. */
+export function areAiMessageHistoryPropsEqual(prev: AiMessageHistoryProps, next: AiMessageHistoryProps): boolean {
+  if (prev.messages.length !== next.messages.length) {
+    return false;
+  }
+  for (let index = 0; index < prev.messages.length; index += 1) {
+    if (prev.messages[index] !== next.messages[index]) {
+      return false;
+    }
+  }
+  return (
+    prev.workspace.objects === next.workspace.objects &&
+    prev.workspace.citationSnapshots === next.workspace.citationSnapshots &&
+    prev.workspace.ai.comparisonAnalyses === next.workspace.ai.comparisonAnalyses &&
+    prev.onRequestComparisonAction === next.onRequestComparisonAction &&
+    prev.onLocateObject === next.onLocateObject &&
+    prev.onOpenProjectRecords === next.onOpenProjectRecords
+  );
 }
 
 function ProposalChatNote({ proposal }: { proposal: ArtifactProposal }) {
