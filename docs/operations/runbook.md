@@ -1182,6 +1182,23 @@ Outputs `docs/operations/performance-node.generated.json` and
 `docs/operations/performance-browser.generated.json`. The prose baseline that
 phase 4C is required to cite is `docs/architecture/performance-baseline.md`.
 
+# Phase 5 interaction latency atlas
+
+The phase 5 half measures real user interactions end to end — project open/switch,
+canvas operations, AI conversation at three history sizes, projects with real
+regenerated PNG binaries in IndexedDB, real PDF/PPTX/PNG imports through the file
+picker, archive exports — with first-feedback latency measured in page time and
+optional localStorage/IndexedDB/object-URL attribution, all injected from the test.
+
+```powershell
+npm run measure:perf5:browser
+```
+
+Same requirements as the 4A browser half: production build first, idle machine,
+`--workers=1 --retries=0` are pinned by the script. Outputs
+`docs/operations/performance-phase5.generated.json`; the prose report that phase 5
+decisions must cite is `docs/architecture/performance-phase5.md`.
+
 To isolate one target — useful because an allocation-heavy target can otherwise
 push its garbage collection into a neighbour's measurement:
 

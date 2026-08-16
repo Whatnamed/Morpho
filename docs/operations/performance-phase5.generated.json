@@ -1,0 +1,3628 @@
+{
+  "generatedAt": "2026-08-16T16:45:48.108Z",
+  "gitCommit": "f861353df4f927087a615907bef23b68a320ea9d",
+  "note": "Phase 5 真实交互延迟图谱。插桩全部由测试注入（perfProbe 含可选 localStorage/IndexedDB/objectURL 归因），产品代码零改动。资产档位带真实再生命周期的 PNG 二进制（确定性 PRNG + OffscreenCanvas，不入库）。feedback 首反馈 = 输入事件时间到首个 DOM 变化，均为页内时间。slowEvent* 只包含 >=16ms 事件（Event Timing 下限）。mock Agent SSE 用于隔离 client/runtime 成本，不代表 provider 网络。",
+  "fixtureLimitations": [
+    "objects500/chatLong/caseStudy 档位不含图片二进制（与 4A 基线可比）。",
+    "assets 档位的 PNG 为合成渐变+噪声，解码成本接近照片但压缩特性不同。",
+    "Agent 流为本地 mock SSE：网络/TTFT 不在本图谱内，只测 client 段。",
+    "指针流为 Playwright 合成，快于真人；实际达成速率记录在 pointerRateHz。"
+  ],
+  "seedProjects": {
+    "objects": 500,
+    "messages": 46,
+    "assets": 0,
+    "contextFrames": 13,
+    "continuityEntries": 32
+  },
+  "entries": [
+    {
+      "area": "lifecycle",
+      "project": "objects500",
+      "phase": "openProject(load)",
+      "scale": {
+        "objects": 500,
+        "messages": 46,
+        "assets": 0,
+        "contextFrames": 13,
+        "continuityEntries": 32
+      },
+      "samples": {
+        "commitCount": 33,
+        "commitTimestamps": [
+          197.20000000298023,
+          202.60000000149012,
+          212.89999999850988,
+          214.10000000149012,
+          215.5,
+          246.89999999850988,
+          316.30000000447035,
+          331.80000000447035,
+          391.20000000298023,
+          394.6000000014901,
+          401.1000000014901,
+          418.3999999985099,
+          418.70000000298023,
+          418.80000000447035,
+          465.5,
+          522.8999999985099,
+          528.6000000014901,
+          597.3999999985099,
+          600.8999999985099,
+          612.8000000044703,
+          685,
+          738.7000000029802,
+          739.8999999985099,
+          772,
+          799,
+          800,
+          804.5,
+          989.6000000014901,
+          999.7000000029802,
+          1000.2000000029802,
+          1003.3000000044703,
+          1412,
+          1412.7000000029802
+        ],
+        "loafCount": 4,
+        "longestLoafMs": 176.29999999701977,
+        "longestBlockingMs": 125,
+        "totalLoafMs": 421.29999999701977,
+        "totalBlockingMs": 166.5,
+        "slowEventCount": 0,
+        "slowEventProcessingP95Ms": 0,
+        "slowEventProcessingMaxMs": 0,
+        "slowEventTotalProcessingMs": 0,
+        "firstSlowEventMs": null,
+        "lastSlowEventMs": null,
+        "pointerMoveCount": 0,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 0,
+        "windowMs": 2134.8000000044703
+      },
+      "io": {
+        "localStorageReads": {
+          "count": 12,
+          "totalMs": 0.3999999910593033,
+          "maxMs": 0.19999999552965164,
+          "totalChars": 4134949
+        },
+        "localStorageWrites": {
+          "count": 6,
+          "totalMs": 12.800000004470348,
+          "maxMs": 6.600000001490116,
+          "totalChars": 2851898
+        },
+        "idbOps": [],
+        "objectUrlCreations": {
+          "count": 18,
+          "totalMs": 2.1000000312924385,
+          "maxMs": 0.20000000298023224
+        },
+        "objectUrlRevocations": 0,
+        "marks": [],
+        "inputEvents": []
+      },
+      "extra": {
+        "firstShapeAtMs": 529
+      }
+    },
+    {
+      "area": "lifecycle",
+      "project": "objects500",
+      "phase": "backToProjectList",
+      "scale": {
+        "objects": 500
+      },
+      "samples": {
+        "commitCount": 5,
+        "commitTimestamps": [
+          2197.8000000044703,
+          2198.5,
+          2572.5,
+          2587.89999999851,
+          2594.5
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 27,
+        "slowEventProcessingP95Ms": 1.7000000029802322,
+        "slowEventProcessingMaxMs": 8.600000001490116,
+        "slowEventTotalProcessingMs": 12.00000000745058,
+        "firstSlowEventMs": 2187.60000000149,
+        "lastSlowEventMs": 2486.7000000029802,
+        "pointerMoveCount": 2,
+        "keyPressCount": 0,
+        "pointerRateHz": 6.700167504187605,
+        "frameCount": 26,
+        "windowMs": 461.29999999701977
+      },
+      "feedback": {
+        "armedAt": 2143.2000000029802,
+        "firstInputAt": 2189.10000000149,
+        "lastInputAt": 2488,
+        "firstChangeAt": 2198.60000000149,
+        "matchedTextAt": null
+      }
+    },
+    {
+      "area": "lifecycle",
+      "project": "switchB",
+      "phase": "openFromList",
+      "scale": {
+        "objects": 60
+      },
+      "samples": {
+        "commitCount": 19,
+        "commitTimestamps": [
+          2643.10000000149,
+          2714.8000000044703,
+          2718.5,
+          2722.10000000149,
+          2722.3000000044703,
+          2722.39999999851,
+          2729.3000000044703,
+          2751.60000000149,
+          2751.89999999851,
+          2760.5,
+          2772.8000000044703,
+          2785,
+          2790.5,
+          2791,
+          2808.3000000044703,
+          2809.89999999851,
+          2810.89999999851,
+          2815.89999999851,
+          2816.8000000044703
+        ],
+        "loafCount": 1,
+        "longestLoafMs": 50.30000000447035,
+        "longestBlockingMs": 0.3,
+        "totalLoafMs": 50.30000000447035,
+        "totalBlockingMs": 0.3,
+        "slowEventCount": 25,
+        "slowEventProcessingP95Ms": 0.20000000298023224,
+        "slowEventProcessingMaxMs": 0.5,
+        "slowEventTotalProcessingMs": 0.9999999925494194,
+        "firstSlowEventMs": 2723.39999999851,
+        "lastSlowEventMs": 2766.5,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 10,
+        "windowMs": 190.80000000447035
+      },
+      "feedback": {
+        "armedAt": 2643.2000000029802,
+        "firstInputAt": 2697.7000000029802,
+        "lastInputAt": 2697.7000000029802,
+        "firstChangeAt": null,
+        "matchedTextAt": null
+      }
+    },
+    {
+      "area": "lifecycle",
+      "project": "switchA",
+      "phase": "directSwitchBtoA",
+      "scale": {
+        "objects": 60
+      },
+      "samples": {
+        "commitCount": 28,
+        "commitTimestamps": [
+          99,
+          102.39999999850988,
+          121.69999999552965,
+          126.69999999552965,
+          134,
+          134.29999999701977,
+          134.39999999850988,
+          147.39999999850988,
+          167.10000000149012,
+          167.39999999850988,
+          189.69999999552965,
+          210.39999999850988,
+          217,
+          217.29999999701977,
+          230.5,
+          232,
+          232.79999999701977,
+          237.5,
+          238.69999999552965,
+          239.79999999701977,
+          243.79999999701977,
+          347.5,
+          411.5,
+          414.69999999552965,
+          415,
+          426.6000000014901,
+          822.3999999985099,
+          822.8999999985099
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 0,
+        "slowEventProcessingP95Ms": 0,
+        "slowEventProcessingMaxMs": 0,
+        "slowEventTotalProcessingMs": 0,
+        "firstSlowEventMs": null,
+        "lastSlowEventMs": null,
+        "pointerMoveCount": 0,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 0,
+        "windowMs": 1041.6999999955297
+      },
+      "io": {
+        "localStorageReads": {
+          "count": 9,
+          "totalMs": 0.09999999403953552,
+          "maxMs": 0.09999999403953552,
+          "totalChars": 622855
+        },
+        "localStorageWrites": {
+          "count": 4,
+          "totalMs": 0.8000000044703484,
+          "maxMs": 0.8000000044703484,
+          "totalChars": 325664
+        },
+        "idbOps": [],
+        "objectUrlCreations": {
+          "count": 18,
+          "totalMs": 1.8000000044703484,
+          "maxMs": 0.20000000298023224
+        },
+        "objectUrlRevocations": 0,
+        "marks": [],
+        "inputEvents": []
+      }
+    },
+    {
+      "area": "canvas",
+      "project": "objects500",
+      "phase": "selection",
+      "scale": {
+        "clicks": 6
+      },
+      "samples": {
+        "commitCount": 39,
+        "commitTimestamps": [
+          2081.10000000149,
+          2092.60000000149,
+          2093.2000000029802,
+          2105.8000000044703,
+          2106.5,
+          2111.10000000149,
+          2130.9000000059605,
+          2139.8000000044703,
+          2140.2000000029802,
+          2150.2000000029802,
+          2155.60000000149,
+          2155.9000000059605,
+          2159.2000000029802,
+          2159.7000000029802,
+          2165.2000000029802,
+          2185.2000000029802,
+          2193.7000000029802,
+          2194.2000000029802,
+          2209.60000000149,
+          2220.3000000044703,
+          2220.8000000044703,
+          2224.60000000149,
+          2225.2000000029802,
+          2229.60000000149,
+          2254,
+          2261.2000000029802,
+          2261.60000000149,
+          2269.8000000044703,
+          2277,
+          2277.4000000059605,
+          2280.3000000044703,
+          2280.8000000044703,
+          2284.7000000029802,
+          2303,
+          2309.8000000044703,
+          2310.10000000149,
+          2314.5,
+          2315.10000000149,
+          2319.2000000029802
+        ],
+        "loafCount": 3,
+        "longestLoafMs": 58.5,
+        "longestBlockingMs": 2.2,
+        "totalLoafMs": 162.20000000298023,
+        "totalBlockingMs": 2.2,
+        "slowEventCount": 134,
+        "slowEventProcessingP95Ms": 14.399999998509884,
+        "slowEventProcessingMaxMs": 23.299999997019768,
+        "slowEventTotalProcessingMs": 138.69999998807907,
+        "firstSlowEventMs": 2063.3000000044703,
+        "lastSlowEventMs": 2245.4000000059605,
+        "pointerMoveCount": 6,
+        "keyPressCount": 0,
+        "pointerRateHz": 26.17801047171477,
+        "frameCount": 11,
+        "windowMs": 266.6000000014901
+      }
+    },
+    {
+      "area": "canvas",
+      "project": "objects500",
+      "phase": "drag",
+      "scale": {
+        "steps": 60
+      },
+      "samples": {
+        "commitCount": 65,
+        "commitTimestamps": [
+          2345.7000000029802,
+          2353,
+          2353.4000000059605,
+          2359.60000000149,
+          2380.2000000029802,
+          2417.60000000149,
+          2458.10000000149,
+          2492.9000000059605,
+          2533.3000000044703,
+          2566.4000000059605,
+          2684.5,
+          2718.2000000029802,
+          2768.5,
+          2769,
+          2799.3000000044703,
+          2833.7000000029802,
+          2882.4000000059605,
+          2906.4000000059605,
+          2950.3000000044703,
+          2974.10000000149,
+          3016.3000000044703,
+          3039.9000000059605,
+          3166,
+          3199.60000000149,
+          3249.7000000029802,
+          3366.10000000149,
+          3399,
+          3449.3000000044703,
+          3482.7000000029802,
+          3515.60000000149,
+          3548.9000000059605,
+          3600.2000000029802,
+          3634,
+          3666,
+          3699.10000000149,
+          3767.4000000059605,
+          3836,
+          3883,
+          3906.4000000059605,
+          3949.10000000149,
+          4118.5,
+          4124,
+          4124.4000000059605,
+          4129.20000000298,
+          4167.70000000298,
+          4201.20000000298,
+          4249.4000000059605,
+          4299.20000000298,
+          4398.60000000149,
+          4404.5,
+          4428.80000000447,
+          4500.9000000059605,
+          4554.10000000149,
+          4554.5,
+          4567,
+          4629.4000000059605,
+          4665.80000000447,
+          4696.30000000447,
+          4701.60000000149,
+          4702,
+          4708.70000000298,
+          4709.30000000447,
+          4713.20000000298,
+          5128.4000000059605,
+          5129.80000000447
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 42,
+        "slowEventProcessingP95Ms": 14.899999998509884,
+        "slowEventProcessingMaxMs": 19.399999998509884,
+        "slowEventTotalProcessingMs": 54.49999999254942,
+        "firstSlowEventMs": 2293.7000000029802,
+        "lastSlowEventMs": 4689.80000000447,
+        "pointerMoveCount": 61,
+        "keyPressCount": 0,
+        "pointerRateHz": 26.223024675402737,
+        "frameCount": 340,
+        "windowMs": 2886.60000000149
+      },
+      "extra": {
+        "achievedPointerRateHz": 26
+      }
+    },
+    {
+      "area": "canvas",
+      "project": "objects500",
+      "phase": "boxSelect",
+      "samples": {
+        "commitCount": 32,
+        "commitTimestamps": [
+          5240.70000000298,
+          5248,
+          5250.10000000149,
+          5257.30000000447,
+          5259.70000000298,
+          5497.4000000059605,
+          5526.5,
+          5552.20000000298,
+          5565.80000000447,
+          5580.9000000059605,
+          5597.70000000298,
+          5615.10000000149,
+          5631.70000000298,
+          5663.30000000447,
+          5664.10000000149,
+          5669.30000000447,
+          5693.5,
+          5707.70000000298,
+          5724.5,
+          5742.80000000447,
+          5759.70000000298,
+          5775.10000000149,
+          5788.9000000059605,
+          5804.30000000447,
+          5813.70000000298,
+          5820.5,
+          5821.5,
+          5823.20000000298,
+          5863.5,
+          6119.20000000298,
+          6123.4000000059605,
+          6123.70000000298
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 30,
+        "slowEventProcessingP95Ms": 15.899999998509884,
+        "slowEventProcessingMaxMs": 17.200000002980232,
+        "slowEventTotalProcessingMs": 35.1000000089407,
+        "firstSlowEventMs": 5221.20000000298,
+        "lastSlowEventMs": 5825.20000000298,
+        "pointerMoveCount": 13,
+        "keyPressCount": 0,
+        "pointerRateHz": 23.998523167673024,
+        "frameCount": 219,
+        "windowMs": 1209.3000000044703
+      }
+    },
+    {
+      "area": "canvas",
+      "project": "objects500",
+      "phase": "selectAll",
+      "samples": {
+        "commitCount": 5,
+        "commitTimestamps": [
+          6438.70000000298,
+          6512.4000000059605,
+          6515.4000000059605,
+          6863.80000000447,
+          6865.4000000059605
+        ],
+        "loafCount": 1,
+        "longestLoafMs": 93.69999999552965,
+        "longestBlockingMs": 38.7,
+        "totalLoafMs": 93.69999999552965,
+        "totalBlockingMs": 38.7,
+        "slowEventCount": 4,
+        "slowEventProcessingP95Ms": 81.80000000447035,
+        "slowEventProcessingMaxMs": 81.80000000447035,
+        "slowEventTotalProcessingMs": 82.80000000447035,
+        "firstSlowEventMs": 6432.5,
+        "lastSlowEventMs": 6517.10000000149,
+        "pointerMoveCount": 0,
+        "keyPressCount": 2,
+        "pointerRateHz": null,
+        "frameCount": 204,
+        "windowMs": 902
+      }
+    },
+    {
+      "area": "canvas",
+      "project": "objects500",
+      "phase": "pan",
+      "samples": {
+        "commitCount": 73,
+        "commitTimestamps": [
+          7382.80000000447,
+          7398,
+          7430,
+          7463,
+          7489.10000000149,
+          7530.70000000298,
+          7580.4000000059605,
+          7605.20000000298,
+          7647.20000000298,
+          7697,
+          7721.20000000298,
+          7764.10000000149,
+          7764.60000000149,
+          7814,
+          7830.80000000447,
+          7880.30000000447,
+          7914.60000000149,
+          7946.60000000149,
+          7997,
+          8021.4000000059605,
+          8062.70000000298,
+          8097,
+          8129.9000000059605,
+          8158.9000000059605,
+          8197,
+          8221.30000000447,
+          8248.90000000596,
+          8296.90000000596,
+          8324.20000000298,
+          8364.10000000149,
+          8413,
+          8438.10000000149,
+          8471.70000000298,
+          8475.70000000298,
+          8476,
+          8476.5,
+          8481.5,
+          8505.90000000596,
+          8514.10000000149,
+          8534.40000000596,
+          8549.30000000447,
+          8565.60000000149,
+          8583.30000000447,
+          8599.10000000149,
+          8613.20000000298,
+          8630.20000000298,
+          8647.5,
+          8664.5,
+          8681.60000000149,
+          8699.30000000447,
+          8714.80000000447,
+          8731.60000000149,
+          8748.70000000298,
+          8765.80000000447,
+          8783,
+          8799.80000000447,
+          8815.10000000149,
+          8836.5,
+          8853.70000000298,
+          8867.90000000596,
+          8886,
+          8908.30000000447,
+          8908.90000000596,
+          8910,
+          8921.80000000447,
+          8940.20000000298,
+          8955.80000000447,
+          8969.60000000149,
+          8984.60000000149,
+          8998.80000000447,
+          9014.5,
+          9031,
+          9081.40000000596
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 31,
+        "slowEventProcessingP95Ms": 9.799999997019768,
+        "slowEventProcessingMaxMs": 11.599999994039536,
+        "slowEventTotalProcessingMs": 26.5,
+        "firstSlowEventMs": 7334.70000000298,
+        "lastSlowEventMs": 8479.90000000596,
+        "pointerMoveCount": 31,
+        "keyPressCount": 0,
+        "pointerRateHz": 29.314420803782507,
+        "frameCount": 103,
+        "windowMs": 1728.5
+      },
+      "extra": {
+        "achievedPointerRateHz": 29
+      }
+    },
+    {
+      "area": "canvas",
+      "project": "objects500",
+      "phase": "zoomSingle",
+      "samples": {
+        "commitCount": 5,
+        "commitTimestamps": [
+          9131.60000000149,
+          9197.80000000447,
+          9434.5,
+          9439,
+          9439.30000000447
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 21,
+        "slowEventProcessingP95Ms": 0.10000000149011612,
+        "slowEventProcessingMaxMs": 0.5999999940395355,
+        "slowEventTotalProcessingMs": 0.7999999970197678,
+        "firstSlowEventMs": 9087.30000000447,
+        "lastSlowEventMs": 9145.80000000447,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 78,
+        "windowMs": 656.6000000014901
+      }
+    },
+    {
+      "area": "canvas",
+      "project": "objects500",
+      "phase": "zoomContinuous",
+      "samples": {
+        "commitCount": 22,
+        "commitTimestamps": [
+          9765.30000000447,
+          9814,
+          9856.5,
+          9857.20000000298,
+          9880.70000000298,
+          9881.30000000447,
+          9947.10000000149,
+          9947.70000000298,
+          10014.80000000447,
+          10015.5,
+          10063.40000000596,
+          10130.20000000298,
+          10130.90000000596,
+          10179.70000000298,
+          10248,
+          10248.60000000149,
+          10313.40000000596,
+          10314,
+          10363.70000000298,
+          10430.10000000149,
+          10430.70000000298,
+          10496.80000000447
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 8,
+        "slowEventProcessingP95Ms": 0.20000000298023224,
+        "slowEventProcessingMaxMs": 0.20000000298023224,
+        "slowEventTotalProcessingMs": 0.29999999701976776,
+        "firstSlowEventMs": 9780.5,
+        "lastSlowEventMs": 9780.5,
+        "pointerMoveCount": 0,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 240,
+        "windowMs": 1326.6000000014901
+      }
+    },
+    {
+      "area": "canvas",
+      "project": "objects500",
+      "phase": "addObjectPasteText",
+      "scale": {
+        "shapesBefore": 500
+      },
+      "samples": {
+        "commitCount": 8,
+        "commitTimestamps": [
+          11089.80000000447,
+          11096.40000000596,
+          11110.60000000149,
+          11111.10000000149,
+          11114.90000000596,
+          11121.60000000149,
+          11128.30000000447,
+          11132.60000000149
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 0,
+        "slowEventProcessingP95Ms": 0,
+        "slowEventProcessingMaxMs": 0,
+        "slowEventTotalProcessingMs": 0,
+        "firstSlowEventMs": null,
+        "lastSlowEventMs": null,
+        "pointerMoveCount": 0,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 8,
+        "windowMs": 78.5
+      },
+      "io": {
+        "localStorageReads": {
+          "count": 0,
+          "totalMs": 0,
+          "maxMs": 0,
+          "totalChars": 0
+        },
+        "localStorageWrites": {
+          "count": 0,
+          "totalMs": 0,
+          "maxMs": 0,
+          "totalChars": 0
+        },
+        "idbOps": [],
+        "objectUrlCreations": {
+          "count": 0,
+          "totalMs": 0,
+          "maxMs": 0
+        },
+        "objectUrlRevocations": 0,
+        "marks": [],
+        "inputEvents": [
+          {
+            "kind": "paste",
+            "at": 11078
+          }
+        ]
+      },
+      "feedback": {
+        "armedAt": 11076.90000000596,
+        "firstInputAt": 11078,
+        "lastInputAt": 11078,
+        "firstChangeAt": 11128.60000000149,
+        "matchedTextAt": null
+      },
+      "extra": {
+        "objectVisibleAtMs": 11149.1
+      }
+    },
+    {
+      "area": "canvas",
+      "project": "objects500",
+      "phase": "deleteObject",
+      "scale": {
+        "shapesBefore": 501
+      },
+      "samples": {
+        "commitCount": 11,
+        "commitTimestamps": [
+          11679.40000000596,
+          11691.90000000596,
+          11699,
+          11699.30000000447,
+          11703.70000000298,
+          11876.5,
+          11882,
+          11882.5,
+          11885.60000000149,
+          12299.10000000149,
+          12299.60000000149
+        ],
+        "loafCount": 1,
+        "longestLoafMs": 51.099999994039536,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 51.099999994039536,
+        "totalBlockingMs": 0,
+        "slowEventCount": 32,
+        "slowEventProcessingP95Ms": 20.200000002980232,
+        "slowEventProcessingMaxMs": 35.100000001490116,
+        "slowEventTotalProcessingMs": 74.30000001192093,
+        "firstSlowEventMs": 11605.20000000298,
+        "lastSlowEventMs": 11700,
+        "pointerMoveCount": 0,
+        "keyPressCount": 1,
+        "pointerRateHz": null,
+        "frameCount": 75,
+        "windowMs": 1252.7999999970198
+      },
+      "feedback": {
+        "armedAt": 11662.90000000596,
+        "firstInputAt": 11664.20000000298,
+        "lastInputAt": 11664.20000000298,
+        "firstChangeAt": 11699.30000000447,
+        "matchedTextAt": null
+      }
+    },
+    {
+      "area": "canvas",
+      "project": "objects500",
+      "phase": "toolbarHideObject",
+      "samples": {
+        "commitCount": 5,
+        "commitTimestamps": [
+          13424.60000000149,
+          13432.60000000149,
+          13437.90000000596,
+          13438.30000000447,
+          13444.10000000149
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 58,
+        "slowEventProcessingP95Ms": 1.7999999970197678,
+        "slowEventProcessingMaxMs": 14,
+        "slowEventTotalProcessingMs": 21.700000002980232,
+        "firstSlowEventMs": 13322.60000000149,
+        "lastSlowEventMs": 13332.90000000596,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 4,
+        "windowMs": 83.10000000149012
+      },
+      "feedback": {
+        "armedAt": 13370.20000000298,
+        "firstInputAt": 13405.30000000447,
+        "lastInputAt": 13405.30000000447,
+        "firstChangeAt": 13438.30000000447,
+        "matchedTextAt": null
+      }
+    },
+    {
+      "area": "ai",
+      "project": "caseStudy",
+      "phase": "typing",
+      "scale": {
+        "messages": 184,
+        "objects": 42
+      },
+      "samples": {
+        "commitCount": 91,
+        "commitTimestamps": [
+          1840.5,
+          1841.6000000014901,
+          1887.1000000014901,
+          1888.1000000014901,
+          1931.5,
+          1932.2000000029802,
+          1978.1000000014901,
+          1978.8999999985099,
+          2022.5,
+          2023.2000000029802,
+          2057.7000000029802,
+          2058.39999999851,
+          2104.89999999851,
+          2105.60000000149,
+          2152.39999999851,
+          2152.89999999851,
+          2200.2000000029802,
+          2200.89999999851,
+          2245.39999999851,
+          2246,
+          2290.60000000149,
+          2291.2000000029802,
+          2336.7000000029802,
+          2337.39999999851,
+          2383.60000000149,
+          2384.5,
+          2427.5,
+          2428.10000000149,
+          2473.2999999970198,
+          2473.89999999851,
+          2522.60000000149,
+          2523.39999999851,
+          2557.39999999851,
+          2558,
+          2604.2999999970198,
+          2604.89999999851,
+          2642.2000000029802,
+          2642.7999999970198,
+          2687.39999999851,
+          2688,
+          2722.2999999970198,
+          2723,
+          2756.5,
+          2757.10000000149,
+          2802.7000000029802,
+          2803.2999999970198,
+          2848.7000000029802,
+          2849.2999999970198,
+          2889.10000000149,
+          2890,
+          2923.7000000029802,
+          2924.5,
+          2970.2999999970198,
+          2971.2000000029802,
+          3008.10000000149,
+          3008.7999999970198,
+          3054.5,
+          3055.5,
+          3092.89999999851,
+          3093.7000000029802,
+          3138.2999999970198,
+          3139.5,
+          3185.10000000149,
+          3185.7999999970198,
+          3225.7999999970198,
+          3226.60000000149,
+          3271.5,
+          3272.2000000029802,
+          3320.39999999851,
+          3321.2000000029802,
+          3355.7999999970198,
+          3356.60000000149,
+          3404.60000000149,
+          3405.5,
+          3449.2999999970198,
+          3450,
+          3490.2999999970198,
+          3491.10000000149,
+          3531.5,
+          3532.2000000029802,
+          3533.2999999970198,
+          3571.39999999851,
+          3572.10000000149,
+          3619,
+          3619.7999999970198,
+          3658.39999999851,
+          3659.10000000149,
+          3705.2999999970198,
+          3706.2000000029802,
+          3739.89999999851,
+          3740.89999999851
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 106,
+        "slowEventProcessingP95Ms": 4.299999997019768,
+        "slowEventProcessingMaxMs": 6.300000004470348,
+        "slowEventTotalProcessingMs": 160.10000000149012,
+        "firstSlowEventMs": 1785.8999999985099,
+        "lastSlowEventMs": 3737.2999999970198,
+        "pointerMoveCount": 0,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 147,
+        "windowMs": 2464.8000000044703
+      },
+      "extra": {
+        "characters": 45
+      }
+    },
+    {
+      "area": "ai",
+      "project": "caseStudy",
+      "phase": "sendAndStream",
+      "scale": {
+        "messages": 184,
+        "objects": 42
+      },
+      "samples": {
+        "commitCount": 31,
+        "commitTimestamps": [
+          4275,
+          4279.29999999702,
+          4279.60000000149,
+          4294,
+          4296,
+          4296.20000000298,
+          4300.79999999702,
+          4302.39999999851,
+          4337.79999999702,
+          4338.10000000149,
+          5563.29999999702,
+          5565.70000000298,
+          5565.89999999851,
+          5595.20000000298,
+          5597.70000000298,
+          5598,
+          5621.10000000149,
+          5623.60000000149,
+          5623.89999999851,
+          5647.29999999702,
+          5649.60000000149,
+          5649.70000000298,
+          5680.10000000149,
+          5682.39999999851,
+          5682.60000000149,
+          5721.10000000149,
+          5723.39999999851,
+          5723.70000000298,
+          5744.60000000149,
+          5745,
+          6524.79999999702
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 2,
+        "slowEventProcessingP95Ms": 41.80000000447035,
+        "slowEventProcessingMaxMs": 41.80000000447035,
+        "slowEventTotalProcessingMs": 42,
+        "firstSlowEventMs": 4261.29999999702,
+        "lastSlowEventMs": 4303.70000000298,
+        "pointerMoveCount": 0,
+        "keyPressCount": 1,
+        "pointerRateHz": null,
+        "frameCount": 440,
+        "windowMs": 3759.10000000149
+      },
+      "feedback": {
+        "armedAt": 4260.60000000149,
+        "firstInputAt": 4261.5,
+        "lastInputAt": 4261.5,
+        "firstChangeAt": 4302.5,
+        "matchedTextAt": null
+      },
+      "extra": {
+        "requestDispatchedAtMs": 4303
+      }
+    },
+    {
+      "area": "ai",
+      "project": "caseStudy",
+      "phase": "autoScrollAtRest",
+      "scale": {
+        "messages": 184,
+        "objects": 42
+      },
+      "samples": {
+        "commitCount": 0,
+        "commitTimestamps": [],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 0,
+        "slowEventProcessingP95Ms": 0,
+        "slowEventProcessingMaxMs": 0,
+        "slowEventTotalProcessingMs": 0,
+        "firstSlowEventMs": null,
+        "lastSlowEventMs": null,
+        "pointerMoveCount": 0,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 0,
+        "windowMs": 0
+      },
+      "extra": {
+        "pinnedToBottom": false
+      }
+    },
+    {
+      "area": "ai",
+      "project": "caseStudy",
+      "phase": "toolCallTurn",
+      "scale": {
+        "messages": 184,
+        "objects": 42
+      },
+      "samples": {
+        "commitCount": 41,
+        "commitTimestamps": [
+          8071.20000000298,
+          8073.70000000298,
+          8073.89999999851,
+          8084.79999999702,
+          8086.60000000149,
+          8086.70000000298,
+          8089.39999999851,
+          8090.39999999851,
+          8163.20000000298,
+          8163.5,
+          8238.10000000149,
+          8241.70000000298,
+          8241.89999999851,
+          8307.60000000149,
+          8309.70000000298,
+          8309.89999999851,
+          8315.79999999702,
+          8318.39999999851,
+          8318.70000000298,
+          8369.89999999851,
+          8372,
+          8372.29999999702,
+          8395.89999999851,
+          8398.20000000298,
+          8398.39999999851,
+          8417.70000000298,
+          8420.10000000149,
+          8420.29999999702,
+          8444,
+          8446.10000000149,
+          8446.39999999851,
+          8465.10000000149,
+          8467.10000000149,
+          8467.20000000298,
+          8495.39999999851,
+          8497.70000000298,
+          8497.89999999851,
+          8515.79999999702,
+          8516.10000000149,
+          9298.20000000298,
+          9301.39999999851
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 4,
+        "slowEventProcessingP95Ms": 28.200000002980232,
+        "slowEventProcessingMaxMs": 28.200000002980232,
+        "slowEventTotalProcessingMs": 31.100000008940697,
+        "firstSlowEventMs": 8055.70000000298,
+        "lastSlowEventMs": 8091.29999999702,
+        "pointerMoveCount": 0,
+        "keyPressCount": 1,
+        "pointerRateHz": null,
+        "frameCount": 81,
+        "windowMs": 1359.2999999970198
+      },
+      "feedback": {
+        "armedAt": 8061.60000000149,
+        "firstInputAt": 8062.39999999851,
+        "lastInputAt": 8062.39999999851,
+        "firstChangeAt": 8090.39999999851,
+        "matchedTextAt": null
+      },
+      "extra": {
+        "requestCount": 2,
+        "requestGapMs": 156.1
+      }
+    },
+    {
+      "area": "ai",
+      "project": "caseStudy",
+      "phase": "scrollUpDuringStream",
+      "scale": {
+        "messages": 184,
+        "objects": 42
+      },
+      "samples": {
+        "commitCount": 0,
+        "commitTimestamps": [],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 0,
+        "slowEventProcessingP95Ms": 0,
+        "slowEventProcessingMaxMs": 0,
+        "slowEventTotalProcessingMs": 0,
+        "firstSlowEventMs": null,
+        "lastSlowEventMs": null,
+        "pointerMoveCount": 0,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 0,
+        "windowMs": 0
+      },
+      "extra": {
+        "scrollTopWhileHeld": 0,
+        "scrollTopAfterStream": 0,
+        "userNotYankedBack": true
+      }
+    },
+    {
+      "area": "ai",
+      "project": "chatLong",
+      "phase": "typing",
+      "scale": {
+        "messages": 560,
+        "objects": 40
+      },
+      "samples": {
+        "commitCount": 90,
+        "commitTimestamps": [
+          1821.6999999955297,
+          1822.6999999955297,
+          1867.5,
+          1868.1999999955297,
+          1913.7999999970198,
+          1914.3999999985099,
+          1952.3999999985099,
+          1953.1999999955297,
+          1997.2999999970198,
+          1997.7999999970198,
+          2034.2999999970198,
+          2034.6999999955297,
+          2080.89999999851,
+          2081.39999999851,
+          2127.1999999955297,
+          2127.89999999851,
+          2173.5999999940395,
+          2174.0999999940395,
+          2220,
+          2220.39999999851,
+          2268,
+          2268.5999999940395,
+          2314.39999999851,
+          2315,
+          2362.6999999955297,
+          2363.2999999970198,
+          2409.0999999940395,
+          2409.5,
+          2449.2999999970198,
+          2449.7999999970198,
+          2497.0999999940395,
+          2497.6999999955297,
+          2534.6999999955297,
+          2535.0999999940395,
+          2569,
+          2569.7999999970198,
+          2615.7999999970198,
+          2616.1999999955297,
+          2663.1999999955297,
+          2663.6999999955297,
+          2700.5,
+          2701.0999999940395,
+          2734.39999999851,
+          2735,
+          2781.5,
+          2781.89999999851,
+          2832.39999999851,
+          2833.0999999940395,
+          2869.5,
+          2870.0999999940395,
+          2916.89999999851,
+          2918.5,
+          2953.39999999851,
+          2954.2999999970198,
+          3001.5999999940395,
+          3002.5999999940395,
+          3047.89999999851,
+          3048.89999999851,
+          3084.0999999940395,
+          3085,
+          3130.39999999851,
+          3131.7999999970198,
+          3170,
+          3171,
+          3215.6999999955297,
+          3216.5999999940395,
+          3265.7999999970198,
+          3267.1999999955297,
+          3302.1999999955297,
+          3303.0999999940395,
+          3350.89999999851,
+          3351.89999999851,
+          3386.39999999851,
+          3387.1999999955297,
+          3432.0999999940395,
+          3433,
+          3481.39999999851,
+          3482.2999999970198,
+          3530,
+          3531,
+          3567.5,
+          3568.5,
+          3604,
+          3604.89999999851,
+          3649.6999999955297,
+          3650.6999999955297,
+          3686.0999999940395,
+          3687.1999999955297,
+          3734.89999999851,
+          3735.7999999970198
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 106,
+        "slowEventProcessingP95Ms": 4.5,
+        "slowEventProcessingMaxMs": 5.899999998509884,
+        "slowEventTotalProcessingMs": 168.00000002235174,
+        "firstSlowEventMs": 1765.7999999970198,
+        "lastSlowEventMs": 3731.5999999940395,
+        "pointerMoveCount": 0,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 149,
+        "windowMs": 2475.6999999955297
+      },
+      "extra": {
+        "characters": 45
+      }
+    },
+    {
+      "area": "ai",
+      "project": "chatLong",
+      "phase": "sendAndStream",
+      "scale": {
+        "messages": 560,
+        "objects": 40
+      },
+      "samples": {
+        "commitCount": 33,
+        "commitTimestamps": [
+          4265.69999999553,
+          4269.69999999553,
+          4270,
+          4281.0999999940395,
+          4282.89999999851,
+          4283.0999999940395,
+          4290.5,
+          4292,
+          4299.5999999940395,
+          4319.5,
+          4319.69999999553,
+          4828.79999999702,
+          5579.5,
+          5582.5999999940395,
+          5582.89999999851,
+          5606.79999999702,
+          5657.5,
+          5657.79999999702,
+          5723.19999999553,
+          5726.19999999553,
+          5726.5,
+          5750.5,
+          5752.5999999940395,
+          5752.79999999702,
+          5777.79999999702,
+          5780,
+          5780.19999999553,
+          5822.5,
+          5825.89999999851,
+          5826.19999999553,
+          5842.39999999851,
+          5842.79999999702,
+          6628.69999999553
+        ],
+        "loafCount": 10,
+        "longestLoafMs": 124.79999999701977,
+        "longestBlockingMs": 13.3,
+        "totalLoafMs": 730.7999999895692,
+        "totalBlockingMs": 92.69999999999999,
+        "slowEventCount": 2,
+        "slowEventProcessingP95Ms": 38.79999999701977,
+        "slowEventProcessingMaxMs": 38.79999999701977,
+        "slowEventTotalProcessingMs": 39.099999994039536,
+        "firstSlowEventMs": 4253.89999999851,
+        "lastSlowEventMs": 4293.5999999940395,
+        "pointerMoveCount": 0,
+        "keyPressCount": 1,
+        "pointerRateHz": null,
+        "frameCount": 392,
+        "windowMs": 3771.89999999851
+      },
+      "feedback": {
+        "armedAt": 4253.0999999940395,
+        "firstInputAt": 4254,
+        "lastInputAt": 4254,
+        "firstChangeAt": 4292.0999999940395,
+        "matchedTextAt": null
+      },
+      "extra": {
+        "requestDispatchedAtMs": 4292.7
+      }
+    },
+    {
+      "area": "ai",
+      "project": "chatLong",
+      "phase": "autoScrollAtRest",
+      "scale": {
+        "messages": 560,
+        "objects": 40
+      },
+      "samples": {
+        "commitCount": 0,
+        "commitTimestamps": [],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 0,
+        "slowEventProcessingP95Ms": 0,
+        "slowEventProcessingMaxMs": 0,
+        "slowEventTotalProcessingMs": 0,
+        "firstSlowEventMs": null,
+        "lastSlowEventMs": null,
+        "pointerMoveCount": 0,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 0,
+        "windowMs": 0
+      },
+      "extra": {
+        "pinnedToBottom": false
+      }
+    },
+    {
+      "area": "ai",
+      "project": "chatLong",
+      "phase": "toolCallTurn",
+      "scale": {
+        "messages": 560,
+        "objects": 40
+      },
+      "samples": {
+        "commitCount": 41,
+        "commitTimestamps": [
+          8079.89999999851,
+          8082.89999999851,
+          8083.0999999940395,
+          8090.39999999851,
+          8092.79999999702,
+          8093,
+          8096.0999999940395,
+          8097,
+          8187.79999999702,
+          8188,
+          8353.69999999553,
+          8358.29999999702,
+          8358.69999999553,
+          8407.19999999553,
+          8409.59999999404,
+          8409.79999999702,
+          8482.09999999404,
+          8485.19999999553,
+          8485.5,
+          8534.29999999702,
+          8536.39999999851,
+          8536.69999999553,
+          8559.19999999553,
+          8563,
+          8563.39999999851,
+          8584.19999999553,
+          8586.5,
+          8586.69999999553,
+          8612.09999999404,
+          8614.09999999404,
+          8614.19999999553,
+          8634.5,
+          8636.5,
+          8636.69999999553,
+          8672.39999999851,
+          8675.89999999851,
+          8676.19999999553,
+          8691.5,
+          8691.79999999702,
+          9480.59999999404,
+          9498.09999999404
+        ],
+        "loafCount": 4,
+        "longestLoafMs": 77,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 261.09999999403954,
+        "totalBlockingMs": 0,
+        "slowEventCount": 4,
+        "slowEventProcessingP95Ms": 23.600000001490116,
+        "slowEventProcessingMaxMs": 23.600000001490116,
+        "slowEventTotalProcessingMs": 26.700000002980232,
+        "firstSlowEventMs": 8067.19999999553,
+        "lastSlowEventMs": 8098.19999999553,
+        "pointerMoveCount": 0,
+        "keyPressCount": 1,
+        "pointerRateHz": null,
+        "frameCount": 85,
+        "windowMs": 1543.6000000014901
+      },
+      "feedback": {
+        "armedAt": 8073,
+        "firstInputAt": 8073.79999999702,
+        "lastInputAt": 8073.79999999702,
+        "firstChangeAt": 8097.0999999940395,
+        "matchedTextAt": null
+      },
+      "extra": {
+        "requestCount": 2,
+        "requestGapMs": 230.1
+      }
+    },
+    {
+      "area": "ai",
+      "project": "chatLong",
+      "phase": "scrollUpDuringStream",
+      "scale": {
+        "messages": 560,
+        "objects": 40
+      },
+      "samples": {
+        "commitCount": 0,
+        "commitTimestamps": [],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 0,
+        "slowEventProcessingP95Ms": 0,
+        "slowEventProcessingMaxMs": 0,
+        "slowEventTotalProcessingMs": 0,
+        "firstSlowEventMs": null,
+        "lastSlowEventMs": null,
+        "pointerMoveCount": 0,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 0,
+        "windowMs": 0
+      },
+      "extra": {
+        "scrollTopWhileHeld": 0,
+        "scrollTopAfterStream": 0,
+        "userNotYankedBack": true
+      }
+    },
+    {
+      "area": "ai",
+      "project": "objects500",
+      "phase": "typing",
+      "scale": {
+        "messages": 46,
+        "objects": 500
+      },
+      "samples": {
+        "commitCount": 91,
+        "commitTimestamps": [
+          1619.3999999985099,
+          1620.6999999955297,
+          1664.0999999940395,
+          1664.8999999985099,
+          1712.0999999940395,
+          1712.7999999970198,
+          1750.5999999940395,
+          1751.3999999985099,
+          1796.5,
+          1797.3999999985099,
+          1841.5999999940395,
+          1842.2999999970198,
+          1880.0999999940395,
+          1881.1999999955297,
+          1926,
+          1926.6999999955297,
+          1966.5,
+          1967.2999999970198,
+          2011.1999999955297,
+          2011.8999999985099,
+          2051.89999999851,
+          2052.5999999940395,
+          2097,
+          2097.6999999955297,
+          2144,
+          2145.1999999955297,
+          2186.5,
+          2187.2999999970198,
+          2230.5,
+          2231.0999999940395,
+          2278.5,
+          2279.2999999970198,
+          2319.6999999955297,
+          2320.6999999955297,
+          2365.1999999955297,
+          2366.1999999955297,
+          2412.0999999940395,
+          2412.7999999970198,
+          2458,
+          2458.5999999940395,
+          2496.1999999955297,
+          2497,
+          2546.2999999970198,
+          2547.0999999940395,
+          2593.39999999851,
+          2594.1999999955297,
+          2631.5,
+          2632.1999999955297,
+          2677.1999999955297,
+          2678.0999999940395,
+          2716.5,
+          2717.5,
+          2762.5999999940395,
+          2763.5,
+          2799.39999999851,
+          2800.1999999955297,
+          2845.0999999940395,
+          2846,
+          2890.7999999970198,
+          2891.5999999940395,
+          2937,
+          2937.7999999970198,
+          2977.1999999955297,
+          2978,
+          3026.89999999851,
+          3027.5999999940395,
+          3077.0999999940395,
+          3077.89999999851,
+          3127.5,
+          3128.5999999940395,
+          3181.2999999970198,
+          3182,
+          3227.6999999955297,
+          3228.5999999940395,
+          3277.0999999940395,
+          3277.89999999851,
+          3314.2999999970198,
+          3315.0999999940395,
+          3364.5,
+          3365.1999999955297,
+          3410.2999999970198,
+          3411,
+          3449.7999999970198,
+          3450.7999999970198,
+          3496.0999999940395,
+          3496.7999999970198,
+          3542.1999999955297,
+          3543.0999999940395,
+          3593.5999999940395,
+          3594.5,
+          3784.1999999955297
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 106,
+        "slowEventProcessingP95Ms": 6.300000004470348,
+        "slowEventProcessingMaxMs": 9.600000001490116,
+        "slowEventTotalProcessingMs": 250.50000001490116,
+        "firstSlowEventMs": 1560.8999999985099,
+        "lastSlowEventMs": 3589.39999999851,
+        "pointerMoveCount": 0,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 152,
+        "windowMs": 2531
+      },
+      "extra": {
+        "characters": 45
+      }
+    },
+    {
+      "area": "ai",
+      "project": "objects500",
+      "phase": "sendAndStream",
+      "scale": {
+        "messages": 46,
+        "objects": 500
+      },
+      "samples": {
+        "commitCount": 32,
+        "commitTimestamps": [
+          4126.5,
+          4133,
+          4133.5,
+          4154.69999999553,
+          4161.5,
+          4161.79999999702,
+          4167.5,
+          4169,
+          4174.89999999851,
+          4207.5,
+          4208,
+          5426.19999999553,
+          5430.5,
+          5431.29999999702,
+          5459.89999999851,
+          5464.39999999851,
+          5464.79999999702,
+          5494.29999999702,
+          5500,
+          5500.5,
+          5527.29999999702,
+          5532.79999999702,
+          5533.19999999553,
+          5563.29999999702,
+          5567.69999999553,
+          5568.39999999851,
+          5606.29999999702,
+          5610.39999999851,
+          5610.79999999702,
+          5636.0999999940395,
+          5636.5,
+          6407.5999999940395
+        ],
+        "loafCount": 1,
+        "longestLoafMs": 72.10000000149012,
+        "longestBlockingMs": 15.4,
+        "totalLoafMs": 72.10000000149012,
+        "totalBlockingMs": 15.4,
+        "slowEventCount": 2,
+        "slowEventProcessingP95Ms": 64.79999999701977,
+        "slowEventProcessingMaxMs": 64.79999999701977,
+        "slowEventTotalProcessingMs": 64.89999999850988,
+        "firstSlowEventMs": 4104.79999999702,
+        "lastSlowEventMs": 4170.19999999553,
+        "pointerMoveCount": 0,
+        "keyPressCount": 1,
+        "pointerRateHz": null,
+        "frameCount": 450,
+        "windowMs": 3793.39999999851
+      },
+      "feedback": {
+        "armedAt": 4104.0999999940395,
+        "firstInputAt": 4105,
+        "lastInputAt": 4105,
+        "firstChangeAt": 4169.0999999940395,
+        "matchedTextAt": null
+      },
+      "extra": {
+        "requestDispatchedAtMs": 4169.6
+      }
+    },
+    {
+      "area": "ai",
+      "project": "objects500",
+      "phase": "autoScrollAtRest",
+      "scale": {
+        "messages": 46,
+        "objects": 500
+      },
+      "samples": {
+        "commitCount": 0,
+        "commitTimestamps": [],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 0,
+        "slowEventProcessingP95Ms": 0,
+        "slowEventProcessingMaxMs": 0,
+        "slowEventTotalProcessingMs": 0,
+        "firstSlowEventMs": null,
+        "lastSlowEventMs": null,
+        "pointerMoveCount": 0,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 0,
+        "windowMs": 0
+      },
+      "extra": {
+        "pinnedToBottom": false
+      }
+    },
+    {
+      "area": "ai",
+      "project": "objects500",
+      "phase": "toolCallTurn",
+      "scale": {
+        "messages": 46,
+        "objects": 500
+      },
+      "samples": {
+        "commitCount": 41,
+        "commitTimestamps": [
+          7949.5,
+          7958.5,
+          7959,
+          7971.0999999940395,
+          7974.89999999851,
+          7975.29999999702,
+          7979.0999999940395,
+          7980.19999999553,
+          8034.5,
+          8034.89999999851,
+          8090.39999999851,
+          8095.29999999702,
+          8095.69999999553,
+          8149.5999999940395,
+          8154.39999999851,
+          8154.79999999702,
+          8164.5,
+          8169.5,
+          8170,
+          8218.79999999702,
+          8222.69999999553,
+          8223,
+          8247.09999999404,
+          8251.59999999404,
+          8252,
+          8273.39999999851,
+          8277.19999999553,
+          8277.79999999702,
+          8303.09999999404,
+          8306.89999999851,
+          8307.39999999851,
+          8328.89999999851,
+          8333.09999999404,
+          8333.59999999404,
+          8369.09999999404,
+          8373.5,
+          8373.89999999851,
+          8399,
+          8399.5,
+          9174.29999999702,
+          9191.69999999553
+        ],
+        "loafCount": 1,
+        "longestLoafMs": 50.899999998509884,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 50.899999998509884,
+        "totalBlockingMs": 0,
+        "slowEventCount": 4,
+        "slowEventProcessingP95Ms": 47.100000001490116,
+        "slowEventProcessingMaxMs": 47.100000001490116,
+        "slowEventTotalProcessingMs": 52.99999999254942,
+        "firstSlowEventMs": 7922.19999999553,
+        "lastSlowEventMs": 7981.19999999553,
+        "pointerMoveCount": 0,
+        "keyPressCount": 1,
+        "pointerRateHz": null,
+        "frameCount": 83,
+        "windowMs": 1424.3000000044703
+      },
+      "feedback": {
+        "armedAt": 7931.79999999702,
+        "firstInputAt": 7933.5,
+        "lastInputAt": 7933.5,
+        "firstChangeAt": 7980.29999999702,
+        "matchedTextAt": null
+      },
+      "extra": {
+        "requestCount": 2,
+        "requestGapMs": 131.1
+      }
+    },
+    {
+      "area": "ai",
+      "project": "objects500",
+      "phase": "scrollUpDuringStream",
+      "scale": {
+        "messages": 46,
+        "objects": 500
+      },
+      "samples": {
+        "commitCount": 0,
+        "commitTimestamps": [],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 0,
+        "slowEventProcessingP95Ms": 0,
+        "slowEventProcessingMaxMs": 0,
+        "slowEventTotalProcessingMs": 0,
+        "firstSlowEventMs": null,
+        "lastSlowEventMs": null,
+        "pointerMoveCount": 0,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 0,
+        "windowMs": 0
+      },
+      "extra": {
+        "scrollTopWhileHeld": 0,
+        "scrollTopAfterStream": 0,
+        "userNotYankedBack": true
+      }
+    },
+    {
+      "area": "assets",
+      "project": "assets10",
+      "phase": "openWithBinaries",
+      "scale": {
+        "objects": 20,
+        "messages": 40,
+        "assets": 10,
+        "contextFrames": 0,
+        "continuityEntries": 0
+      },
+      "samples": {
+        "commitCount": 29,
+        "commitTimestamps": [
+          126.60000000149012,
+          131.39999999850988,
+          134.29999999701977,
+          135.20000000298023,
+          137.79999999701977,
+          158,
+          213,
+          217.89999999850988,
+          287.29999999701977,
+          292.79999999701977,
+          298.20000000298023,
+          314.20000000298023,
+          314.5,
+          314.6000000014901,
+          332,
+          357.20000000298023,
+          358.5,
+          416.3999999985099,
+          417.20000000298023,
+          425.5,
+          475.70000000298023,
+          570,
+          574.2000000029802,
+          574.3999999985099,
+          578.7999999970198,
+          740.1000000014901,
+          743.1000000014901,
+          743.6000000014901,
+          745.6000000014901
+        ],
+        "loafCount": 3,
+        "longestLoafMs": 102.60000000149012,
+        "longestBlockingMs": 46.4,
+        "totalLoafMs": 242.4560000014901,
+        "totalBlockingMs": 70.5,
+        "slowEventCount": 0,
+        "slowEventProcessingP95Ms": 0,
+        "slowEventProcessingMaxMs": 0,
+        "slowEventTotalProcessingMs": 0,
+        "firstSlowEventMs": null,
+        "lastSlowEventMs": null,
+        "pointerMoveCount": 0,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 0,
+        "windowMs": 936.8999999985099
+      },
+      "io": {
+        "localStorageReads": {
+          "count": 6,
+          "totalMs": 0,
+          "maxMs": 0,
+          "totalChars": 45100
+        },
+        "localStorageWrites": {
+          "count": 2,
+          "totalMs": 0.10000000149011612,
+          "maxMs": 0.10000000149011612,
+          "totalChars": 158
+        },
+        "idbOps": [
+          {
+            "store": "asset-blobs",
+            "op": "get",
+            "count": 10,
+            "totalMs": 82.09999997913837,
+            "maxMs": 71.29999999701977,
+            "lastAt": 289.3999999985099
+          }
+        ],
+        "objectUrlCreations": {
+          "count": 28,
+          "totalMs": 4.200000010430813,
+          "maxMs": 0.5
+        },
+        "objectUrlRevocations": 0,
+        "marks": [],
+        "inputEvents": []
+      },
+      "extra": {
+        "firstShapeAtMs": 359,
+        "imagesSettledAtMs": 430.4,
+        "imagesSettledAfterFirstShapeMs": 71.4
+      }
+    },
+    {
+      "area": "assets",
+      "project": "assets10",
+      "phase": "assetDrawerFirstOpen",
+      "scale": {
+        "objects": 20,
+        "messages": 40,
+        "assets": 10,
+        "contextFrames": 0,
+        "continuityEntries": 0
+      },
+      "samples": {
+        "commitCount": 5,
+        "commitTimestamps": [
+          992.2999999970198,
+          993.1000000014901,
+          997.7000000029802,
+          1157.3999999985099,
+          1157.6000000014901
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 15,
+        "slowEventProcessingP95Ms": 10.600000001490116,
+        "slowEventProcessingMaxMs": 10.600000001490116,
+        "slowEventTotalProcessingMs": 12.00000000745058,
+        "firstSlowEventMs": 979.5,
+        "lastSlowEventMs": 979.7999999970198,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 38,
+        "windowMs": 675.1000000014901
+      },
+      "feedback": {
+        "armedAt": 943.2000000029802,
+        "firstInputAt": 981.7999999970198,
+        "lastInputAt": 981.7999999970198,
+        "firstChangeAt": 993.1000000014901,
+        "matchedTextAt": null
+      }
+    },
+    {
+      "area": "assets",
+      "project": "assets10",
+      "phase": "assetFilter",
+      "scale": {
+        "objects": 20,
+        "messages": 40,
+        "assets": 10,
+        "contextFrames": 0,
+        "continuityEntries": 0
+      },
+      "samples": {
+        "commitCount": 1,
+        "commitTimestamps": [
+          1648.6000000014901
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 16,
+        "slowEventProcessingP95Ms": 0.7000000029802322,
+        "slowEventProcessingMaxMs": 0.7000000029802322,
+        "slowEventTotalProcessingMs": 2.0000000074505806,
+        "firstSlowEventMs": 1645.6000000014901,
+        "lastSlowEventMs": 1645.7000000029802,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 74,
+        "windowMs": 643.3000000044703
+      },
+      "feedback": {
+        "armedAt": 1622.7000000029802,
+        "firstInputAt": 1646.5,
+        "lastInputAt": 1646.5,
+        "firstChangeAt": 1648.7000000029802,
+        "matchedTextAt": null
+      }
+    },
+    {
+      "area": "assets",
+      "project": "assets10",
+      "phase": "assetDrawerReopen",
+      "scale": {
+        "objects": 20,
+        "messages": 40,
+        "assets": 10,
+        "contextFrames": 0,
+        "continuityEntries": 0
+      },
+      "samples": {
+        "commitCount": 2,
+        "commitTimestamps": [
+          2751.89999999851,
+          2752.2000000029802
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 20,
+        "slowEventProcessingP95Ms": 0.4000000059604645,
+        "slowEventProcessingMaxMs": 3.9000000059604645,
+        "slowEventTotalProcessingMs": 4.700000010430813,
+        "firstSlowEventMs": 2746.60000000149,
+        "lastSlowEventMs": 2746.7000000029802,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 35,
+        "windowMs": 654.6999999955297
+      },
+      "feedback": {
+        "armedAt": 2713.60000000149,
+        "firstInputAt": 2747.89999999851,
+        "lastInputAt": 2747.89999999851,
+        "firstChangeAt": 2752.2000000029802,
+        "matchedTextAt": null
+      }
+    },
+    {
+      "area": "assets",
+      "project": "assets10",
+      "phase": "selectImageDetail",
+      "scale": {
+        "objects": 20,
+        "messages": 40,
+        "assets": 10,
+        "contextFrames": 0,
+        "continuityEntries": 0
+      },
+      "samples": {
+        "commitCount": 6,
+        "commitTimestamps": [
+          3727.2000000029802,
+          3729.5,
+          3729.7999999970198,
+          3740.2000000029802,
+          3740.60000000149,
+          3742.89999999851
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 0,
+        "slowEventProcessingP95Ms": 0,
+        "slowEventProcessingMaxMs": 0,
+        "slowEventTotalProcessingMs": 0,
+        "firstSlowEventMs": null,
+        "lastSlowEventMs": null,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 2,
+        "windowMs": 28.899999998509884
+      },
+      "feedback": {
+        "armedAt": 3721,
+        "firstInputAt": 3722.89999999851,
+        "lastInputAt": 3722.89999999851,
+        "firstChangeAt": 3729.89999999851,
+        "matchedTextAt": null
+      }
+    },
+    {
+      "area": "assets",
+      "project": "assets30",
+      "phase": "openWithBinaries",
+      "scale": {
+        "objects": 40,
+        "messages": 40,
+        "assets": 30,
+        "contextFrames": 0,
+        "continuityEntries": 0
+      },
+      "samples": {
+        "commitCount": 21,
+        "commitTimestamps": [
+          135.30000000447035,
+          140,
+          142.30000000447035,
+          143.30000000447035,
+          146,
+          166.89999999850988,
+          223.20000000298023,
+          227.5,
+          293.6000000014901,
+          304.3999999985099,
+          310.3999999985099,
+          326.6000000014901,
+          327,
+          327,
+          349.8999999985099,
+          376.6000000014901,
+          378.30000000447035,
+          424.5,
+          482.70000000298023,
+          634.1000000014901,
+          634.6000000014901
+        ],
+        "loafCount": 4,
+        "longestLoafMs": 78.89999999850988,
+        "longestBlockingMs": 18.3,
+        "totalLoafMs": 279.3219999925494,
+        "totalBlockingMs": 44,
+        "slowEventCount": 0,
+        "slowEventProcessingP95Ms": 0,
+        "slowEventProcessingMaxMs": 0,
+        "slowEventTotalProcessingMs": 0,
+        "firstSlowEventMs": null,
+        "lastSlowEventMs": null,
+        "pointerMoveCount": 0,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 0,
+        "windowMs": 993.6000000014901
+      },
+      "io": {
+        "localStorageReads": {
+          "count": 9,
+          "totalMs": 0.20000000298023224,
+          "maxMs": 0.10000000149011612,
+          "totalChars": 125287
+        },
+        "localStorageWrites": {
+          "count": 4,
+          "totalMs": 0.10000000149011612,
+          "maxMs": 0.10000000149011612,
+          "totalChars": 64461
+        },
+        "idbOps": [
+          {
+            "store": "asset-blobs",
+            "op": "get",
+            "count": 30,
+            "totalMs": 167.60000000149012,
+            "maxMs": 68.59999999403954,
+            "lastAt": 300.30000000447035
+          }
+        ],
+        "objectUrlCreations": {
+          "count": 48,
+          "totalMs": 6.0999999940395355,
+          "maxMs": 0.3999999985098839
+        },
+        "objectUrlRevocations": 0,
+        "marks": [],
+        "inputEvents": []
+      },
+      "extra": {
+        "firstShapeAtMs": 378.70000000298023,
+        "imagesSettledAtMs": 488.9,
+        "imagesSettledAfterFirstShapeMs": 110.2
+      }
+    },
+    {
+      "area": "assets",
+      "project": "assets30",
+      "phase": "assetDrawerFirstOpen",
+      "scale": {
+        "objects": 40,
+        "messages": 40,
+        "assets": 30,
+        "contextFrames": 0,
+        "continuityEntries": 0
+      },
+      "samples": {
+        "commitCount": 3,
+        "commitTimestamps": [
+          1039.3000000044703,
+          1040.1000000014901,
+          1043.5
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 15,
+        "slowEventProcessingP95Ms": 14.700000002980232,
+        "slowEventProcessingMaxMs": 14.700000002980232,
+        "slowEventTotalProcessingMs": 16.100000008940697,
+        "firstSlowEventMs": 1022.7000000029802,
+        "lastSlowEventMs": 1022.8999999985099,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 36,
+        "windowMs": 659.5
+      },
+      "feedback": {
+        "armedAt": 997.8000000044703,
+        "firstInputAt": 1024.5,
+        "lastInputAt": 1024.5,
+        "firstChangeAt": 1040.2000000029802,
+        "matchedTextAt": null
+      }
+    },
+    {
+      "area": "assets",
+      "project": "assets30",
+      "phase": "assetDrawerShowAll",
+      "scale": {
+        "objects": 40,
+        "messages": 40,
+        "assets": 30,
+        "contextFrames": 0,
+        "continuityEntries": 0
+      },
+      "samples": {
+        "commitCount": 1,
+        "commitTimestamps": [
+          1694
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 25,
+        "slowEventProcessingP95Ms": 0.5,
+        "slowEventProcessingMaxMs": 0.6999999955296516,
+        "slowEventTotalProcessingMs": 1.7000000029802322,
+        "firstSlowEventMs": 1691.6000000014901,
+        "lastSlowEventMs": 1703.8999999985099,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 60,
+        "windowMs": 542.3999999985099
+      },
+      "feedback": {
+        "armedAt": 1661.7000000029802,
+        "firstInputAt": 1692.5,
+        "lastInputAt": 1692.5,
+        "firstChangeAt": 1694,
+        "matchedTextAt": null
+      },
+      "extra": {
+        "assetRows": 30
+      }
+    },
+    {
+      "area": "assets",
+      "project": "assets30",
+      "phase": "assetFilter",
+      "scale": {
+        "objects": 40,
+        "messages": 40,
+        "assets": 30,
+        "contextFrames": 0,
+        "continuityEntries": 0
+      },
+      "samples": {
+        "commitCount": 1,
+        "commitTimestamps": [
+          2241.60000000149
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 16,
+        "slowEventProcessingP95Ms": 0.7000000029802322,
+        "slowEventProcessingMaxMs": 0.7000000029802322,
+        "slowEventTotalProcessingMs": 1.3000000044703484,
+        "firstSlowEventMs": 2239.5,
+        "lastSlowEventMs": 2239.60000000149,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 37,
+        "windowMs": 644.5
+      },
+      "feedback": {
+        "armedAt": 2207.5,
+        "firstInputAt": 2240.3000000044703,
+        "lastInputAt": 2240.3000000044703,
+        "firstChangeAt": 2241.7000000029802,
+        "matchedTextAt": null
+      }
+    },
+    {
+      "area": "assets",
+      "project": "assets30",
+      "phase": "assetDrawerReopen",
+      "scale": {
+        "objects": 40,
+        "messages": 40,
+        "assets": 30,
+        "contextFrames": 0,
+        "continuityEntries": 0
+      },
+      "samples": {
+        "commitCount": 2,
+        "commitTimestamps": [
+          3365.10000000149,
+          3365.60000000149
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 20,
+        "slowEventProcessingP95Ms": 0.30000000447034836,
+        "slowEventProcessingMaxMs": 5.200000002980232,
+        "slowEventTotalProcessingMs": 5.9000000059604645,
+        "firstSlowEventMs": 3358.60000000149,
+        "lastSlowEventMs": 3358.60000000149,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 36,
+        "windowMs": 654.7999999970198
+      },
+      "feedback": {
+        "armedAt": 3323.3000000044703,
+        "firstInputAt": 3359.89999999851,
+        "lastInputAt": 3359.89999999851,
+        "firstChangeAt": 3365.60000000149,
+        "matchedTextAt": null
+      }
+    },
+    {
+      "area": "assets",
+      "project": "assets30",
+      "phase": "selectImageDetail",
+      "scale": {
+        "objects": 40,
+        "messages": 40,
+        "assets": 30,
+        "contextFrames": 0,
+        "continuityEntries": 0
+      },
+      "samples": {
+        "commitCount": 5,
+        "commitTimestamps": [
+          4325.89999999851,
+          4330.30000000447,
+          4330.60000000149,
+          4340.70000000298,
+          4341.20000000298
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 0,
+        "slowEventProcessingP95Ms": 0,
+        "slowEventProcessingMaxMs": 0,
+        "slowEventTotalProcessingMs": 0,
+        "firstSlowEventMs": null,
+        "lastSlowEventMs": null,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 2,
+        "windowMs": 33.600000001490116
+      },
+      "feedback": {
+        "armedAt": 4315.60000000149,
+        "firstInputAt": 4321.39999999851,
+        "lastInputAt": 4321.39999999851,
+        "firstChangeAt": 4330.60000000149,
+        "matchedTextAt": null
+      }
+    },
+    {
+      "area": "assets",
+      "project": "assets80",
+      "phase": "openWithBinaries",
+      "scale": {
+        "objects": 90,
+        "messages": 40,
+        "assets": 80,
+        "contextFrames": 0,
+        "continuityEntries": 0
+      },
+      "samples": {
+        "commitCount": 21,
+        "commitTimestamps": [
+          136.89999999850988,
+          142.10000000149012,
+          144.29999999701977,
+          145.89999999850988,
+          150,
+          171.29999999701977,
+          229.70000000298023,
+          234.89999999850988,
+          304.3999999985099,
+          324.8999999985099,
+          330.6000000014901,
+          347.29999999701977,
+          347.6000000014901,
+          347.79999999701977,
+          376.79999999701977,
+          406.29999999701977,
+          408.1000000014901,
+          475.3999999985099,
+          532.2000000029802,
+          635.1000000014901,
+          635.7000000029802
+        ],
+        "loafCount": 4,
+        "longestLoafMs": 92.59999999403954,
+        "longestBlockingMs": 24.2,
+        "totalLoafMs": 289.33999998658896,
+        "totalBlockingMs": 53.7,
+        "slowEventCount": 0,
+        "slowEventProcessingP95Ms": 0,
+        "slowEventProcessingMaxMs": 0,
+        "slowEventTotalProcessingMs": 0,
+        "firstSlowEventMs": null,
+        "lastSlowEventMs": null,
+        "pointerMoveCount": 0,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 0,
+        "windowMs": 995.8999999985099
+      },
+      "io": {
+        "localStorageReads": {
+          "count": 9,
+          "totalMs": 0,
+          "maxMs": 0,
+          "totalChars": 186543
+        },
+        "localStorageWrites": {
+          "count": 4,
+          "totalMs": 0.29999999701976776,
+          "maxMs": 0.29999999701976776,
+          "totalChars": 95564
+        },
+        "idbOps": [
+          {
+            "store": "asset-blobs",
+            "op": "get",
+            "count": 80,
+            "totalMs": 712.3000000044703,
+            "maxMs": 74.60000000149012,
+            "lastAt": 320.29999999701977
+          }
+        ],
+        "objectUrlCreations": {
+          "count": 98,
+          "totalMs": 9.300000004470348,
+          "maxMs": 0.30000000447034836
+        },
+        "objectUrlRevocations": 0,
+        "marks": [],
+        "inputEvents": []
+      },
+      "extra": {
+        "firstShapeAtMs": 408.3999999985099,
+        "imagesSettledAtMs": 484.1,
+        "imagesSettledAfterFirstShapeMs": 75.7
+      }
+    },
+    {
+      "area": "assets",
+      "project": "assets80",
+      "phase": "assetDrawerFirstOpen",
+      "scale": {
+        "objects": 90,
+        "messages": 40,
+        "assets": 80,
+        "contextFrames": 0,
+        "continuityEntries": 0
+      },
+      "samples": {
+        "commitCount": 3,
+        "commitTimestamps": [
+          1049.6000000014901,
+          1050.7000000029802,
+          1054.7000000029802
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 15,
+        "slowEventProcessingP95Ms": 13.799999997019768,
+        "slowEventProcessingMaxMs": 13.799999997019768,
+        "slowEventTotalProcessingMs": 15.299999997019768,
+        "firstSlowEventMs": 1033.2000000029802,
+        "lastSlowEventMs": 1033.3999999985099,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 36,
+        "windowMs": 670.8000000044703
+      },
+      "feedback": {
+        "armedAt": 1000.3999999985099,
+        "firstInputAt": 1035.7999999970198,
+        "lastInputAt": 1035.7999999970198,
+        "firstChangeAt": 1050.7999999970198,
+        "matchedTextAt": null
+      }
+    },
+    {
+      "area": "assets",
+      "project": "assets80",
+      "phase": "assetDrawerShowAll",
+      "scale": {
+        "objects": 90,
+        "messages": 40,
+        "assets": 80,
+        "contextFrames": 0,
+        "continuityEntries": 0
+      },
+      "samples": {
+        "commitCount": 1,
+        "commitTimestamps": [
+          1703.6000000014901
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 25,
+        "slowEventProcessingP95Ms": 0.5999999940395355,
+        "slowEventProcessingMaxMs": 1.6000000014901161,
+        "slowEventTotalProcessingMs": 2.6999999955296516,
+        "firstSlowEventMs": 1700.5,
+        "lastSlowEventMs": 1714.5,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 60,
+        "windowMs": 552.2000000029802
+      },
+      "feedback": {
+        "armedAt": 1677,
+        "firstInputAt": 1701.2000000029802,
+        "lastInputAt": 1701.2000000029802,
+        "firstChangeAt": 1703.6000000014901,
+        "matchedTextAt": null
+      },
+      "extra": {
+        "assetRows": 80
+      }
+    },
+    {
+      "area": "assets",
+      "project": "assets80",
+      "phase": "assetFilter",
+      "scale": {
+        "objects": 90,
+        "messages": 40,
+        "assets": 80,
+        "contextFrames": 0,
+        "continuityEntries": 0
+      },
+      "samples": {
+        "commitCount": 1,
+        "commitTimestamps": [
+          2270
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 16,
+        "slowEventProcessingP95Ms": 2.2000000029802322,
+        "slowEventProcessingMaxMs": 2.2000000029802322,
+        "slowEventTotalProcessingMs": 2.7000000029802322,
+        "firstSlowEventMs": 2266.7000000029802,
+        "lastSlowEventMs": 2266.7999999970198,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 37,
+        "windowMs": 652.8999999985099
+      },
+      "feedback": {
+        "armedAt": 2233.39999999851,
+        "firstInputAt": 2267.39999999851,
+        "lastInputAt": 2267.39999999851,
+        "firstChangeAt": 2270.10000000149,
+        "matchedTextAt": null
+      }
+    },
+    {
+      "area": "assets",
+      "project": "assets80",
+      "phase": "assetDrawerReopen",
+      "scale": {
+        "objects": 90,
+        "messages": 40,
+        "assets": 80,
+        "contextFrames": 0,
+        "continuityEntries": 0
+      },
+      "samples": {
+        "commitCount": 2,
+        "commitTimestamps": [
+          3376.10000000149,
+          3376.7000000029802
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 20,
+        "slowEventProcessingP95Ms": 0.29999999701976776,
+        "slowEventProcessingMaxMs": 9.100000001490116,
+        "slowEventTotalProcessingMs": 9.899999998509884,
+        "firstSlowEventMs": 3365.7999999970198,
+        "lastSlowEventMs": 3365.7999999970198,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 36,
+        "windowMs": 653
+      },
+      "feedback": {
+        "armedAt": 3333.2999999970198,
+        "firstInputAt": 3367,
+        "lastInputAt": 3367,
+        "firstChangeAt": 3376.7000000029802,
+        "matchedTextAt": null
+      }
+    },
+    {
+      "area": "assets",
+      "project": "assets80",
+      "phase": "selectImageDetail",
+      "scale": {
+        "objects": 90,
+        "messages": 40,
+        "assets": 80,
+        "contextFrames": 0,
+        "continuityEntries": 0
+      },
+      "samples": {
+        "commitCount": 5,
+        "commitTimestamps": [
+          4335.5,
+          4342.89999999851,
+          4343.39999999851,
+          4358.39999999851,
+          4358.89999999851
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 0,
+        "slowEventProcessingP95Ms": 0,
+        "slowEventProcessingMaxMs": 0,
+        "slowEventTotalProcessingMs": 0,
+        "firstSlowEventMs": null,
+        "lastSlowEventMs": null,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 3,
+        "windowMs": 37.599999994039536
+      },
+      "feedback": {
+        "armedAt": 4328.60000000149,
+        "firstInputAt": 4330,
+        "lastInputAt": 4330,
+        "firstChangeAt": 4343.39999999851,
+        "matchedTextAt": null
+      }
+    },
+    {
+      "area": "import",
+      "project": "importBase",
+      "phase": "imagePng",
+      "scale": {
+        "files": 1,
+        "bytes": 171104
+      },
+      "samples": {
+        "commitCount": 14,
+        "commitTimestamps": [
+          1600.3000000044703,
+          1603.3999999985099,
+          1605.6000000014901,
+          1605.8000000044703,
+          1615.2000000029802,
+          1630.2000000029802,
+          1631.8000000044703,
+          1635.5,
+          1645.1000000014901,
+          1646.8999999985099,
+          1661.7000000029802,
+          2010.3999999985099,
+          2010.8999999985099,
+          4654.10000000149
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 14,
+        "slowEventProcessingP95Ms": 0.7000000029802322,
+        "slowEventProcessingMaxMs": 0.7000000029802322,
+        "slowEventTotalProcessingMs": 1.5000000074505806,
+        "firstSlowEventMs": 1568.3000000044703,
+        "lastSlowEventMs": 1568.5,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 246,
+        "windowMs": 4128.89999999851
+      },
+      "io": {
+        "localStorageReads": {
+          "count": 3,
+          "totalMs": 0.10000000149011612,
+          "maxMs": 0.10000000149011612,
+          "totalChars": 234972
+        },
+        "localStorageWrites": {
+          "count": 2,
+          "totalMs": 0.9999999925494194,
+          "maxMs": 0.7999999970197678,
+          "totalChars": 231066
+        },
+        "idbOps": [
+          {
+            "store": "asset-blobs",
+            "op": "put",
+            "count": 1,
+            "totalMs": 0.20000000298023224,
+            "maxMs": 0.20000000298023224,
+            "lastAt": 1596.1000000014901
+          },
+          {
+            "store": "asset-blobs",
+            "op": "get",
+            "count": 1,
+            "totalMs": 0.20000000298023224,
+            "maxMs": 0.20000000298023224,
+            "lastAt": 1641.6000000014901
+          }
+        ],
+        "objectUrlCreations": {
+          "count": 2,
+          "totalMs": 0.29999999701976776,
+          "maxMs": 0.19999999552965164
+        },
+        "objectUrlRevocations": 1,
+        "marks": [],
+        "inputEvents": [
+          {
+            "kind": "change",
+            "at": 1590.8000000044703
+          }
+        ]
+      },
+      "feedback": {
+        "armedAt": 1534.3000000044703,
+        "firstInputAt": 1569.5,
+        "lastInputAt": 1590.8000000044703,
+        "firstChangeAt": 1605.8999999985099,
+        "matchedTextAt": null
+      },
+      "extra": {
+        "objectsVisibleAtMs": 1649.8,
+        "visibleAfterChangeMs": 59,
+        "fileNames": [
+          "p5-import.png"
+        ]
+      }
+    },
+    {
+      "area": "import",
+      "project": "importBase",
+      "phase": "pdf30p",
+      "scale": {
+        "files": 1,
+        "bytes": 145276
+      },
+      "samples": {
+        "commitCount": 18,
+        "commitTimestamps": [
+          5731.10000000149,
+          5737,
+          5740.89999999851,
+          5741.5,
+          5745.10000000149,
+          5753.70000000298,
+          5755.20000000298,
+          5760.70000000298,
+          5762.20000000298,
+          5765.30000000447,
+          6004.60000000149,
+          6009,
+          6010.20000000298,
+          6014.30000000447,
+          6015.70000000298,
+          6018.80000000447,
+          6422,
+          6422.70000000298
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 5,
+        "slowEventProcessingP95Ms": 0.5,
+        "slowEventProcessingMaxMs": 0.5,
+        "slowEventTotalProcessingMs": 0.7000000029802322,
+        "firstSlowEventMs": 5702.30000000447,
+        "lastSlowEventMs": 5702.30000000447,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 366,
+        "windowMs": 6152.79999999702
+      },
+      "io": {
+        "localStorageReads": {
+          "count": 3,
+          "totalMs": 0,
+          "maxMs": 0,
+          "totalChars": 245421
+        },
+        "localStorageWrites": {
+          "count": 2,
+          "totalMs": 1.2000000029802322,
+          "maxMs": 1.2000000029802322,
+          "totalChars": 241460
+        },
+        "idbOps": [
+          {
+            "store": "asset-blobs",
+            "op": "put",
+            "count": 2,
+            "totalMs": 0.4000000059604645,
+            "maxMs": 0.30000000447034836,
+            "lastAt": 5997.5
+          }
+        ],
+        "objectUrlCreations": {
+          "count": 0,
+          "totalMs": 0,
+          "maxMs": 0
+        },
+        "objectUrlRevocations": 0,
+        "marks": [],
+        "inputEvents": [
+          {
+            "kind": "change",
+            "at": 5721.39999999851
+          }
+        ]
+      },
+      "feedback": {
+        "armedAt": 5669.5,
+        "firstInputAt": 5702.89999999851,
+        "lastInputAt": 5721.39999999851,
+        "firstChangeAt": 5756.60000000149,
+        "matchedTextAt": null
+      },
+      "extra": {
+        "objectsVisibleAtMs": 5811.4,
+        "visibleAfterChangeMs": 90,
+        "fileNames": [
+          "p5-fixture-30p.pdf"
+        ]
+      }
+    },
+    {
+      "area": "import",
+      "project": "importBase",
+      "phase": "pptx40",
+      "scale": {
+        "files": 1,
+        "bytes": 23702
+      },
+      "samples": {
+        "commitCount": 23,
+        "commitTimestamps": [
+          11904.5,
+          11908.60000000149,
+          11911.60000000149,
+          11912.10000000149,
+          11914.89999999851,
+          11918,
+          11919.60000000149,
+          11923.80000000447,
+          11924.89999999851,
+          11926.10000000149,
+          11934.60000000149,
+          11942.20000000298,
+          11946.10000000149,
+          11946.89999999851,
+          11950.89999999851,
+          11951.60000000149,
+          11960.20000000298,
+          12129.30000000447,
+          12132.5,
+          12133,
+          12134.89999999851,
+          12538.30000000447,
+          12538.89999999851
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 5,
+        "slowEventProcessingP95Ms": 0.5,
+        "slowEventProcessingMaxMs": 0.5,
+        "slowEventTotalProcessingMs": 0.7000000029802322,
+        "firstSlowEventMs": 11885.20000000298,
+        "lastSlowEventMs": 11885.20000000298,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 363,
+        "windowMs": 6090.39999999851
+      },
+      "io": {
+        "localStorageReads": {
+          "count": 3,
+          "totalMs": 0,
+          "maxMs": 0,
+          "totalChars": 256932
+        },
+        "localStorageWrites": {
+          "count": 2,
+          "totalMs": 0.7999999970197678,
+          "maxMs": 0.7999999970197678,
+          "totalChars": 252967
+        },
+        "idbOps": [
+          {
+            "store": "asset-blobs",
+            "op": "put",
+            "count": 2,
+            "totalMs": 0.30000000447034836,
+            "maxMs": 0.20000000298023224,
+            "lastAt": 11937.10000000149
+          }
+        ],
+        "objectUrlCreations": {
+          "count": 0,
+          "totalMs": 0,
+          "maxMs": 0
+        },
+        "objectUrlRevocations": 0,
+        "marks": [],
+        "inputEvents": [
+          {
+            "kind": "change",
+            "at": 11894.70000000298
+          }
+        ]
+      },
+      "feedback": {
+        "armedAt": 11851.20000000298,
+        "firstInputAt": 11885.5,
+        "lastInputAt": 11894.70000000298,
+        "firstChangeAt": 11920.20000000298,
+        "matchedTextAt": null
+      },
+      "extra": {
+        "objectsVisibleAtMs": 11927.8,
+        "visibleAfterChangeMs": 33.1,
+        "fileNames": [
+          "p5-fixture-40slides.pptx"
+        ]
+      }
+    },
+    {
+      "area": "import",
+      "project": "importBase",
+      "phase": "pdf150p",
+      "scale": {
+        "files": 1,
+        "bytes": 721087
+      },
+      "samples": {
+        "commitCount": 18,
+        "commitTimestamps": [
+          18054.20000000298,
+          18057.39999999851,
+          18059.89999999851,
+          18060.30000000447,
+          18063.5,
+          18066.30000000447,
+          18067.30000000447,
+          18071.89999999851,
+          18072.89999999851,
+          18084.20000000298,
+          18231.89999999851,
+          18235.10000000149,
+          18235.70000000298,
+          18240.30000000447,
+          18241.39999999851,
+          18248.70000000298,
+          18654.70000000298,
+          18655.10000000149
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 5,
+        "slowEventProcessingP95Ms": 0.5,
+        "slowEventProcessingMaxMs": 0.5,
+        "slowEventTotalProcessingMs": 0.7000000029802322,
+        "firstSlowEventMs": 17984.60000000149,
+        "lastSlowEventMs": 17984.70000000298,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 725,
+        "windowMs": 12146
+      },
+      "io": {
+        "localStorageReads": {
+          "count": 3,
+          "totalMs": 0,
+          "maxMs": 0,
+          "totalChars": 268678
+        },
+        "localStorageWrites": {
+          "count": 2,
+          "totalMs": 0.8999999985098839,
+          "maxMs": 0.7999999970197678,
+          "totalChars": 264707
+        },
+        "idbOps": [
+          {
+            "store": "asset-blobs",
+            "op": "put",
+            "count": 2,
+            "totalMs": 1.0000000074505806,
+            "maxMs": 0.8000000044703484,
+            "lastAt": 18227.10000000149
+          }
+        ],
+        "objectUrlCreations": {
+          "count": 0,
+          "totalMs": 0,
+          "maxMs": 0
+        },
+        "objectUrlRevocations": 0,
+        "marks": [],
+        "inputEvents": [
+          {
+            "kind": "change",
+            "at": 18048.20000000298
+          }
+        ]
+      },
+      "feedback": {
+        "armedAt": 17950.30000000447,
+        "firstInputAt": 17984.89999999851,
+        "lastInputAt": 18048.20000000298,
+        "firstChangeAt": 18067.80000000447,
+        "matchedTextAt": null
+      },
+      "extra": {
+        "objectsVisibleAtMs": 18079.1,
+        "visibleAfterChangeMs": 30.9,
+        "fileNames": [
+          "p5-fixture-150p.pdf"
+        ]
+      }
+    },
+    {
+      "area": "import",
+      "project": "importBase",
+      "phase": "mixedBatch",
+      "scale": {
+        "files": 4,
+        "bytes": 169110
+      },
+      "samples": {
+        "commitCount": 34,
+        "commitTimestamps": [
+          30232.60000000149,
+          30243.39999999851,
+          30246.70000000298,
+          30247.80000000447,
+          30250.60000000149,
+          30255.60000000149,
+          30258.20000000298,
+          30258.60000000149,
+          30260.70000000298,
+          30261.80000000447,
+          30279.80000000447,
+          30282,
+          30288.39999999851,
+          30292.20000000298,
+          30292.80000000447,
+          30296.70000000298,
+          30299.30000000447,
+          30299.80000000447,
+          30304.20000000298,
+          30305.39999999851,
+          30306.80000000447,
+          30319.39999999851,
+          30412.20000000298,
+          30415.5,
+          30416.10000000149,
+          30419.5,
+          30420.20000000298,
+          30421.39999999851,
+          30584.30000000447,
+          30587.20000000298,
+          30587.70000000298,
+          30599.80000000447,
+          30999,
+          30999.60000000149
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 5,
+        "slowEventProcessingP95Ms": 0.3999999985098839,
+        "slowEventProcessingMaxMs": 0.3999999985098839,
+        "slowEventTotalProcessingMs": 0.7999999970197678,
+        "firstSlowEventMs": 30200.89999999851,
+        "lastSlowEventMs": 30200.89999999851,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 486,
+        "windowMs": 8119.79999999702
+      },
+      "io": {
+        "localStorageReads": {
+          "count": 3,
+          "totalMs": 0,
+          "maxMs": 0,
+          "totalChars": 295183
+        },
+        "localStorageWrites": {
+          "count": 2,
+          "totalMs": 1.1000000014901161,
+          "maxMs": 1.1000000014901161,
+          "totalChars": 291217
+        },
+        "idbOps": [
+          {
+            "store": "asset-blobs",
+            "op": "put",
+            "count": 6,
+            "totalMs": 8.700000010430813,
+            "maxMs": 7.300000004470348,
+            "lastAt": 30408.20000000298
+          },
+          {
+            "store": "asset-blobs",
+            "op": "get",
+            "count": 2,
+            "totalMs": 1.7999999970197678,
+            "maxMs": 1,
+            "lastAt": 30276.20000000298
+          }
+        ],
+        "objectUrlCreations": {
+          "count": 4,
+          "totalMs": 0.7000000029802322,
+          "maxMs": 0.20000000298023224
+        },
+        "objectUrlRevocations": 2,
+        "marks": [],
+        "inputEvents": [
+          {
+            "kind": "change",
+            "at": 30220.5
+          }
+        ]
+      },
+      "feedback": {
+        "armedAt": 30166.20000000298,
+        "firstInputAt": 30201.10000000149,
+        "lastInputAt": 30220.5,
+        "firstChangeAt": 30258.89999999851,
+        "matchedTextAt": null
+      },
+      "extra": {
+        "objectsVisibleAtMs": 30275.4,
+        "visibleAfterChangeMs": 54.9,
+        "fileNames": [
+          "p5-mixed-1.png",
+          "p5-mixed-2.png",
+          "p5-mixed-notes.md",
+          "p5-mixed-8p.pdf"
+        ]
+      }
+    },
+    {
+      "area": "surfaces",
+      "project": "caseStudy",
+      "phase": "searchDrawerOpen",
+      "scale": {
+        "objects": 42,
+        "messages": 184,
+        "assets": 0,
+        "contextFrames": 0,
+        "continuityEntries": 64
+      },
+      "samples": {
+        "commitCount": 2,
+        "commitTimestamps": [
+          2171.89999999851,
+          2172.39999999851
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 0,
+        "slowEventProcessingP95Ms": 0,
+        "slowEventProcessingMaxMs": 0,
+        "slowEventTotalProcessingMs": 0,
+        "firstSlowEventMs": null,
+        "lastSlowEventMs": null,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 3,
+        "windowMs": 50.19999999552965
+      },
+      "feedback": {
+        "armedAt": 2136.60000000149,
+        "firstInputAt": 2166.8000000044703,
+        "lastInputAt": 2166.8000000044703,
+        "firstChangeAt": 2172.60000000149,
+        "matchedTextAt": null
+      }
+    },
+    {
+      "area": "surfaces",
+      "project": "caseStudy",
+      "phase": "searchQuery",
+      "scale": {
+        "objects": 42,
+        "messages": 184,
+        "assets": 0,
+        "contextFrames": 0,
+        "continuityEntries": 64
+      },
+      "samples": {
+        "commitCount": 1,
+        "commitTimestamps": [
+          2194.7000000029802
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 16,
+        "slowEventProcessingP95Ms": 4.799999997019768,
+        "slowEventProcessingMaxMs": 4.799999997019768,
+        "slowEventTotalProcessingMs": 7.299999997019768,
+        "firstSlowEventMs": 2165.5,
+        "lastSlowEventMs": 2193.7000000029802,
+        "pointerMoveCount": 0,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 78,
+        "windowMs": 741.3999999985099
+      },
+      "extra": {
+        "resultGroups": [
+          "画布内容 · 3",
+          "交付引用 · 0"
+        ]
+      }
+    },
+    {
+      "area": "surfaces",
+      "project": "caseStudy",
+      "phase": "recordsDrawerOpen",
+      "scale": {
+        "objects": 42,
+        "messages": 184,
+        "assets": 0,
+        "contextFrames": 0,
+        "continuityEntries": 64
+      },
+      "samples": {
+        "commitCount": 4,
+        "commitTimestamps": [
+          3400.60000000149,
+          3404,
+          3408.8000000044703,
+          3723.5
+        ],
+        "loafCount": 3,
+        "longestLoafMs": 76.39999999850988,
+        "longestBlockingMs": 22.8,
+        "totalLoafMs": 183.69999999552965,
+        "totalBlockingMs": 22.8,
+        "slowEventCount": 19,
+        "slowEventProcessingP95Ms": 70.39999999850988,
+        "slowEventProcessingMaxMs": 70.39999999850988,
+        "slowEventTotalProcessingMs": 71.60000000149012,
+        "firstSlowEventMs": 3331.2000000029802,
+        "lastSlowEventMs": 3331.3000000044703,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 35,
+        "windowMs": 826.5999999940395
+      },
+      "feedback": {
+        "armedAt": 3295.39999999851,
+        "firstInputAt": 3332.89999999851,
+        "lastInputAt": 3332.89999999851,
+        "firstChangeAt": 3404,
+        "matchedTextAt": null
+      }
+    },
+    {
+      "area": "surfaces",
+      "project": "caseStudy",
+      "phase": "deliveryPrepOpen",
+      "scale": {
+        "objects": 42,
+        "messages": 184,
+        "assets": 0,
+        "contextFrames": 0,
+        "continuityEntries": 64
+      },
+      "samples": {
+        "commitCount": 2,
+        "commitTimestamps": [
+          4470.30000000447,
+          4470.70000000298
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 16,
+        "slowEventProcessingP95Ms": 4.600000001490116,
+        "slowEventProcessingMaxMs": 4.600000001490116,
+        "slowEventTotalProcessingMs": 5.100000001490116,
+        "firstSlowEventMs": 4464.5,
+        "lastSlowEventMs": 4464.60000000149,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 50,
+        "windowMs": 965.0999999940395
+      },
+      "feedback": {
+        "armedAt": 4438.5,
+        "firstInputAt": 4465.30000000447,
+        "lastInputAt": 4465.30000000447,
+        "firstChangeAt": 4470.70000000298,
+        "matchedTextAt": null
+      }
+    },
+    {
+      "area": "surfaces",
+      "project": "builtinCaseStudy",
+      "phase": "archivePanelOpen",
+      "samples": {
+        "commitCount": 2,
+        "commitTimestamps": [
+          2575.89999999851,
+          2576.3000000044703
+        ],
+        "loafCount": 0,
+        "longestLoafMs": 0,
+        "longestBlockingMs": 0,
+        "totalLoafMs": 0,
+        "totalBlockingMs": 0,
+        "slowEventCount": 14,
+        "slowEventProcessingP95Ms": 4.600000001490116,
+        "slowEventProcessingMaxMs": 4.600000001490116,
+        "slowEventTotalProcessingMs": 5.500000007450581,
+        "firstSlowEventMs": 2569.89999999851,
+        "lastSlowEventMs": 2570.10000000149,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 32,
+        "windowMs": 560.7999999970198
+      }
+    },
+    {
+      "area": "surfaces",
+      "project": "builtinCaseStudy",
+      "phase": "archiveExportBackupZip",
+      "samples": {
+        "commitCount": 4,
+        "commitTimestamps": [
+          3160.60000000149,
+          3160.89999999851,
+          3865.2000000029802,
+          3865.5
+        ],
+        "loafCount": 1,
+        "longestLoafMs": 136.69999999552965,
+        "longestBlockingMs": 85,
+        "totalLoafMs": 136.69999999552965,
+        "totalBlockingMs": 85,
+        "slowEventCount": 17,
+        "slowEventProcessingP95Ms": 25.69999999552965,
+        "slowEventProcessingMaxMs": 25.69999999552965,
+        "slowEventTotalProcessingMs": 26.5,
+        "firstSlowEventMs": 3133.7000000029802,
+        "lastSlowEventMs": 3133.89999999851,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 37,
+        "windowMs": 784
+      },
+      "extra": {
+        "wallMs": 781.7,
+        "suggestedFilename": "morpho-backup-project-2026-08-16.zip"
+      }
+    },
+    {
+      "area": "surfaces",
+      "project": "builtinCaseStudy",
+      "phase": "archiveExportHumanZip",
+      "samples": {
+        "commitCount": 4,
+        "commitTimestamps": [
+          3923.7000000029802,
+          3924.10000000149,
+          4623.30000000447,
+          4623.60000000149
+        ],
+        "loafCount": 1,
+        "longestLoafMs": 124.70000000298023,
+        "longestBlockingMs": 70.6,
+        "totalLoafMs": 124.70000000298023,
+        "totalBlockingMs": 70.6,
+        "slowEventCount": 15,
+        "slowEventProcessingP95Ms": 4.600000001490116,
+        "slowEventProcessingMaxMs": 4.600000001490116,
+        "slowEventTotalProcessingMs": 5.200000002980232,
+        "firstSlowEventMs": 3918.10000000149,
+        "lastSlowEventMs": 3918.3000000044703,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 74,
+        "windowMs": 755.1000000014901
+      },
+      "extra": {
+        "wallMs": 752.9,
+        "suggestedFilename": "morpho-archive-project-2026-08-16.zip"
+      }
+    },
+    {
+      "area": "surfaces",
+      "project": "builtinCaseStudy",
+      "phase": "deletionPreview",
+      "samples": {
+        "commitCount": 1,
+        "commitTimestamps": [
+          175.89999999850988
+        ],
+        "loafCount": 1,
+        "longestLoafMs": 95.89999999850988,
+        "longestBlockingMs": 27.5,
+        "totalLoafMs": 95.89999999850988,
+        "totalBlockingMs": 27.5,
+        "slowEventCount": 23,
+        "slowEventProcessingP95Ms": 0.29999999701976776,
+        "slowEventProcessingMaxMs": 13.899999998509884,
+        "slowEventTotalProcessingMs": 14.599999986588955,
+        "firstSlowEventMs": 160.20000000298023,
+        "lastSlowEventMs": 181.70000000298023,
+        "pointerMoveCount": 1,
+        "keyPressCount": 0,
+        "pointerRateHz": null,
+        "frameCount": 54,
+        "windowMs": 1392.5
+      },
+      "feedback": {
+        "armedAt": 131.60000000149012,
+        "firstInputAt": 161.60000000149012,
+        "lastInputAt": 161.60000000149012,
+        "firstChangeAt": 176,
+        "matchedTextAt": null
+      }
+    }
+  ]
+}

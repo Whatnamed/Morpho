@@ -451,6 +451,9 @@ export async function collectIoStats(page: Page): Promise<PerfIoStats> {
  */
 export type FeedbackResult = {
   armedAt: number;
+  /** Earliest tracked input at/after arming — the initiating input. */
+  firstInputAt: number | null;
+  /** Latest tracked input at/after arming — the last input inside the window. */
   lastInputAt: number | null;
   firstChangeAt: number | null;
   matchedTextAt: number | null;
@@ -469,6 +472,7 @@ export async function armFeedback(
       }
       const record = {
         armedAt: performance.now(),
+        firstInputAt: null as number | null,
         lastInputAt: null as number | null,
         firstChangeAt: null as number | null,
         matchedTextAt: null as number | null
@@ -513,7 +517,10 @@ export async function readFeedback(page: Page): Promise<FeedbackResult> {
         inputs.push(...state.io.inputs.map((entry) => entry.at));
       }
       const afterArm = inputs.filter((at) => at >= handle.record.armedAt);
-      handle.record.lastInputAt = afterArm.length === 0 ? null : Math.max(...afterArm);
+      if (afterArm.length > 0) {
+        handle.record.firstInputAt = Math.min(...afterArm);
+        handle.record.lastInputAt = Math.max(...afterArm);
+      }
     }
     return handle.record;
   });

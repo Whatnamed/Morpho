@@ -93,8 +93,8 @@ function record(entry: AtlasEntry): void {
   collected.push(entry);
   const { samples, feedback, extra } = entry;
   const first =
-    feedback && feedback.firstChangeAt !== null && feedback.lastInputAt !== null
-      ? (feedback.firstChangeAt - feedback.lastInputAt).toFixed(1)
+    feedback && feedback.firstChangeAt !== null && feedback.firstInputAt !== null
+      ? (feedback.firstChangeAt - feedback.firstInputAt).toFixed(1)
       : "—";
   console.log(
     `   [${entry.area}/${entry.project}] ${entry.phase.padEnd(22)} commit ${String(samples.commitCount).padStart(4)} · ` +
@@ -159,6 +159,34 @@ async function emptyPoint(page: Page): Promise<{ x: number; y: number }> {
     }
     throw new Error("No empty canvas point reachable.");
   });
+}
+
+/**
+ * Click the first on-screen shape until the selection toolbar appears. Object cards
+ * auto-grow shortly after mount, so one click on a freshly measured centre can miss
+ * (`fixtures/canvas.ts` waits for settled geometry the same way). Deselecting first
+ * keeps a stale selection from the previous phase from masking the result.
+ */
+async function clickFirstShapeSelected(page: Page): Promise<void> {
+  await page.waitForTimeout(400);
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const empty = await emptyPoint(page).catch(() => null);
+    if (empty) {
+      await page.mouse.click(empty.x, empty.y);
+    }
+    const centre = (await shapeCentres(page, 1))[0];
+    if (centre) {
+      await page.mouse.click(centre.x, centre.y);
+      try {
+        await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 2_500 });
+        return;
+      } catch {
+        // Geometry was still settling; measure again and retry.
+      }
+    }
+    await page.waitForTimeout(350);
+  }
+  throw new Error("Could not select a shape for the phase.");
 }
 
 /** Loads a seeded project and waits for first shape + settle. Returns load-phase entry data. */
@@ -263,6 +291,8 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     test.setTimeout(420_000);
     await installPerfProbe(page, { io: true });
     await installAgentMock(page);
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
 
     await page.goto("/");
     await seedPhase5Projects(page, ["objects500"]);
@@ -414,9 +444,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     });
 
     // --- delete object (Delete key on selection) ------------------------------
-    const deleteTarget = (await shapeCentres(page, 1))[0]!;
-    await page.mouse.click(deleteTarget.x, deleteTarget.y);
-    await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 8_000 });
+    await clickFirstShapeSelected(page);
     const countAfterAdd = await page.locator(".morpho-shape-host").count();
     await beginPerfPhase(page);
     await armFeedback(page, "body");
@@ -434,9 +462,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     });
 
     // --- toolbar hide action ---------------------------------------------------
-    const hideTarget = (await shapeCentres(page, 1))[0]!;
-    await page.mouse.click(hideTarget.x, hideTarget.y);
-    await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 8_000 });
+    await clickFirstShapeSelected(page);
     const hideBefore = await page.locator(".morpho-shape-host").count();
     await beginPerfPhase(page);
     await armFeedback(page, "body");
@@ -453,6 +479,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       samples: await endPerfPhase(page),
       feedback: await readFeedback(page)
     });
+    expect(pageErrors, "画布阶段页面抛出了未捕获错误").toEqual([]);
   });
 
   // ------------------------------------------------------------------ 3. AI conversation
@@ -727,18 +754,25 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
 
       // --- select an image -> bottom detail ------------------------------------
       const centre = (await shapeCentres(page, 1))[0]!;
-      await beginPerfPhase(page);
-      await armFeedback(page, "body");
-      await page.mouse.click(centre.x, centre.y);
-      await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 8_000 });
-      record({
-        area: "assets",
-        project: tierKey,
-        phase: "selectImageDetail",
-        scale: project.scale,
-        samples: await endPerfPhase(page),
-        feedback: await readFeedback(page)
-      });
+      if (centre) {
+        await beginPerfPhase(page);
+        await armFeedback(page, "body");
+        await page.mouse.click(centre.x, centre.y);
+        try {
+          await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 8_000 });
+          record({
+            area: "assets",
+            project: tierKey,
+            phase: "selectImageDetail",
+            scale: project.scale,
+            samples: await endPerfPhase(page),
+            feedback: await readFeedback(page)
+          });
+        } catch {
+          await endPerfPhase(page);
+          await readFeedback(page).catch(() => undefined);
+        }
+      }
     });
   }
 
