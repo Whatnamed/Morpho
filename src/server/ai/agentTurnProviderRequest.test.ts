@@ -202,7 +202,7 @@ describe("A+ Provider continuation contract", () => {
     expect(messageText(methodItem)).toContain("参考图解读");
     // The stable prefix stays untouched: system[0] is the stable prompt and
     // system[1] the runtime item.
-    expect(messageText(systemItems[0])).toContain("Prompt contract: morpho-agent-v3.4-2026-08-13");
+    expect(messageText(systemItems[0])).toContain("Prompt contract: morpho-agent-v3.5-2026-08-17");
     expect(messageText(systemItems[1])).toContain("[Morpho Canonical Runtime | trusted server item]");
   });
 
