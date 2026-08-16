@@ -1,0 +1,1035 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { dirname, resolve } from "node:path";
+
+import { expect, test, type Page } from "@playwright/test";
+
+import {
+  installAgentMock,
+  releaseAgentStream,
+  setAgentRequestScript,
+  setAgentResponse,
+  agentCalls
+} from "./fixtures/agentMock";
+import {
+  armFeedback,
+  beginPerfPhase,
+  collectIoStats,
+  endPerfPhase,
+  installPerfProbe,
+  readFeedback,
+  readProbeSupport,
+  type PerfIoStats,
+  type PerfPhaseSamples,
+  type FeedbackResult
+} from "./fixtures/perfProbe";
+import { phase5Project, seedPhase5AssetBlobs, seedPhase5Projects } from "./fixtures/phase5Seed";
+import { textAnswerScript, toolCallTurnScript } from "./support/agentSse";
+import { buildPdf, buildPng, buildPptx, buildTextFile } from "./support/importFiles";
+
+/**
+ * Phase 5 browser half: the real-interaction latency atlas.
+ *
+ * Like `performance-baseline.spec.ts` this spec MEASURES and does not judge; the
+ * three kinds of assertion are the same anti-fake guards (seed wrote, canvas
+ * mounted, probes produced data), plus behavioural safety checks the task asks to
+ * keep true while measuring (streaming auto-scroll, scroll-up not forced back).
+ *
+ * What is new in Phase 5, and why:
+ * - operation windows open at the input handoff (`armFeedback`) and close at the
+ *   first DOM change, so first-feedback latency is measured in page time, not CDP
+ *   round-trip time;
+ * - browser-API IO attribution (localStorage / IndexedDB / object URLs) is enabled
+ *   for every project here, so a phase can say which side of the fence the time
+ *   went to;
+ * - asset tiers carry real regenerated PNG binaries in the real BlobStore;
+ * - import phases drive the real file-chooser handoff with generated PDF/PPTX/PNG;
+ * - project switch, asset drawer, search, records, archive export are first-class
+ *   phases.
+ *
+ * Never runs in CI (config excludes it from the chromium project).
+ */
+
+const REPORT_PATH = resolve(process.cwd(), "docs/operations/performance-phase5.generated.json");
+
+const DRAG_STEPS = 60;
+const DRAG_INTERVAL_MS = 16;
+const TYPING_TEXT = "把这个方向再往结构化收一收，重点说明它和现有设计定义之间的关系，并给出可以继续展开的角度。";
+
+type AtlasEntry = {
+  area: string;
+  project: string;
+  phase: string;
+  /** Absent when the phase itself carries the scale (e.g. click counts in extra). */
+  scale?: Record<string, number>;
+  samples: PerfPhaseSamples;
+  io?: PerfIoStats;
+  feedback?: FeedbackResult | null;
+  extra?: Record<string, unknown>;
+};
+
+const collected: AtlasEntry[] = [];
+
+function readGitCommit(): string | null {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: process.cwd(), encoding: "utf8" }).trim();
+  } catch {
+    return null;
+  }
+}
+
+/** Placeholder samples for behavioural-only entries (no window was measured). */
+function zeroSamples(): PerfPhaseSamples {
+  return {
+    commitCount: 0, commitTimestamps: [], loafCount: 0, longestLoafMs: 0, longestBlockingMs: 0,
+    totalLoafMs: 0, totalBlockingMs: 0, slowEventCount: 0, slowEventProcessingP95Ms: 0,
+    slowEventProcessingMaxMs: 0, slowEventTotalProcessingMs: 0, firstSlowEventMs: null,
+    lastSlowEventMs: null, pointerMoveCount: 0, keyPressCount: 0, pointerRateHz: null,
+    frameCount: 0, windowMs: 0
+  };
+}
+
+function record(entry: AtlasEntry): void {
+  collected.push(entry);
+  const { samples, feedback, extra } = entry;
+  const first =
+    feedback && feedback.firstChangeAt !== null && feedback.lastInputAt !== null
+      ? (feedback.firstChangeAt - feedback.lastInputAt).toFixed(1)
+      : "—";
+  console.log(
+    `   [${entry.area}/${entry.project}] ${entry.phase.padEnd(22)} commit ${String(samples.commitCount).padStart(4)} · ` +
+      `最长阻塞 ${samples.longestBlockingMs.toFixed(1).padStart(7)} ms · 累计阻塞 ${samples.totalBlockingMs.toFixed(1).padStart(8)} ms · ` +
+      `慢事件p95 ${samples.slowEventProcessingP95Ms.toFixed(1).padStart(6)} ms · 首反馈 ${first} ms` +
+      (extra && Object.keys(extra).length > 0 ? ` · ${JSON.stringify(extra)}` : "")
+  );
+}
+
+async function pageNow(page: Page): Promise<number> {
+  return page.evaluate(() => performance.now());
+}
+
+async function markNow(page: Page, name: string): Promise<void> {
+  await page.evaluate((markName) => window.__morphoPerfMark?.(markName), name);
+}
+
+/** In-page wait until more morpho shapes exist than `previous`; returns page time. */
+async function waitForShapeCountAbove(page: Page, previous: number): Promise<number> {
+  await page.waitForFunction(
+    (prev) => document.querySelectorAll(".morpho-shape-host").length > prev,
+    previous
+  );
+  return pageNow(page);
+}
+
+async function shapeCentres(page: Page, count: number): Promise<{ x: number; y: number }[]> {
+  return page.evaluate((wanted: number) => {
+    const centres: { x: number; y: number }[] = [];
+    for (const host of Array.from(document.querySelectorAll(".morpho-shape-host"))) {
+      const rect = host.getBoundingClientRect();
+      if (rect.width > 0 && rect.top > 80 && rect.bottom < window.innerHeight - 80 && rect.right < 960) {
+        centres.push({ x: Math.round(rect.x + rect.width / 2), y: Math.round(rect.y + rect.height / 2) });
+      }
+      if (centres.length >= wanted) {
+        break;
+      }
+    }
+    return centres;
+  }, count);
+}
+
+async function emptyPoint(page: Page): Promise<{ x: number; y: number }> {
+  return page.evaluate(() => {
+    const canvas = document.querySelector(".tl-container");
+    if (!canvas) {
+      throw new Error("tldraw container is not mounted.");
+    }
+    const canvasRect = canvas.getBoundingClientRect();
+    const blocked = Array.from(
+      document.querySelectorAll(".tl-shape, .ai-panel, .ai-toggle, .floating-cluster, .rail, .selection-toolbar")
+    ).map((node) => node.getBoundingClientRect());
+    for (let y = canvasRect.bottom - 24; y > canvasRect.top + 24; y -= 12) {
+      for (let x = canvasRect.right - 24; x > canvasRect.left + 24; x -= 12) {
+        const clear = blocked.every(
+          (rect) => x < rect.left - 12 || x > rect.right + 12 || y < rect.top - 12 || y > rect.bottom + 12
+        );
+        if (clear) {
+          return { x: Math.round(x), y: Math.round(y) };
+        }
+      }
+    }
+    throw new Error("No empty canvas point reachable.");
+  });
+}
+
+/** Loads a seeded project and waits for first shape + settle. Returns load-phase entry data. */
+async function openProjectAndMeasureLoad(page: Page, key: string, area: string): Promise<void> {
+  const project = phase5Project(key);
+  await page.goto(`/projects/${project.projectId}`);
+  await expect(page.locator(".morpho-shape-host").first()).toBeVisible({ timeout: 120_000 });
+  await page.waitForTimeout(1_500);
+
+  const support = await readProbeSupport(page);
+  expect(support.injected, "React DevTools hook never received a renderer").toBeGreaterThan(0);
+  expect(support.loaf, "此浏览器不支持 long-animation-frame").toBe(true);
+  expect(support.event, "此浏览器不支持 Event Timing").toBe(true);
+  expect(support.firstShapeAtMs, "首个 shape 从未出现").not.toBeNull();
+
+  const samples = await endPerfPhase(page);
+  const io = await collectIoStats(page);
+  record({
+    area,
+    project: key,
+    phase: "openProject(load)",
+    scale: project.scale,
+    samples,
+    io,
+    extra: { firstShapeAtMs: support.firstShapeAtMs }
+  });
+}
+
+test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", () => {
+  test.describe.configure({ mode: "serial" });
+
+  // ------------------------------------------------------------------ 1. lifecycle
+  test("1 生命周期：打开大项目、切回列表、打开项目 B、A→B 直切", async ({ page }) => {
+    test.setTimeout(420_000);
+    await installPerfProbe(page, { io: true });
+    await installAgentMock(page);
+
+    await page.goto("/");
+    await seedPhase5Projects(page, ["objects500", "switchA", "switchB"]);
+
+    await openProjectAndMeasureLoad(page, "objects500", "lifecycle");
+
+    const shapeCount = await page.locator(".morpho-shape-host").count();
+    expect(shapeCount, "画布没有挂载任何 shape").toBeGreaterThan(0);
+
+    // --- big project -> project home --------------------------------------
+    await beginPerfPhase(page);
+    await armFeedback(page, "main");
+    await page.locator("button.project-name").click();
+    await page.locator('[aria-label="项目操作"] button', { hasText: "返回项目首页" }).click();
+    await expect(page.locator(".phome-shelf", { hasText: "全部项目" })).toBeVisible({ timeout: 30_000 });
+    const backSamples = await endPerfPhase(page);
+    const backFeedback = await readFeedback(page);
+    record({
+      area: "lifecycle",
+      project: "objects500",
+      phase: "backToProjectList",
+      scale: { objects: 500 },
+      samples: backSamples,
+      feedback: backFeedback
+    });
+
+    // --- from list -> open project B ---------------------------------------
+    const switchB = phase5Project("switchB");
+    await beginPerfPhase(page);
+    await armFeedback(page, "main");
+    await page.locator(".phome-grid").getByText("P5 switchB").first().click();
+    await expect(page.locator(".morpho-shape-host").first()).toBeVisible({ timeout: 60_000 });
+    const openBSamples = await endPerfPhase(page);
+    const openBFeedback = await readFeedback(page);
+    record({
+      area: "lifecycle",
+      project: "switchB",
+      phase: "openFromList",
+      scale: { objects: 60 },
+      samples: openBSamples,
+      feedback: openBFeedback
+    });
+
+    // --- direct URL switch B -> A (same component tree, no remount) --------
+    const switchA = phase5Project("switchA");
+    await beginPerfPhase(page);
+    await page.goto(`/projects/${switchA.projectId}`);
+    await expect(page.locator(".morpho-shape-host").first()).toBeVisible({ timeout: 60_000 });
+    await page.waitForTimeout(800);
+    const switchSamples = await endPerfPhase(page);
+    const switchIo = await collectIoStats(page);
+    record({
+      area: "lifecycle",
+      project: "switchA",
+      phase: "directSwitchBtoA",
+      scale: { objects: 60 },
+      samples: switchSamples,
+      io: switchIo
+    });
+    const shapesA = await page.locator(".morpho-shape-host").count();
+    expect(shapesA, "切换后画布为空").toBeGreaterThan(0);
+  });
+
+  // ------------------------------------------------------------------ 2. canvas
+  test("2 画布：选择/拖动/框选/pan/zoom/新增/删除/工具栏", async ({ page }) => {
+    test.setTimeout(420_000);
+    await installPerfProbe(page, { io: true });
+    await installAgentMock(page);
+
+    await page.goto("/");
+    await seedPhase5Projects(page, ["objects500"]);
+    await page.goto(`/projects/${phase5Project("objects500").projectId}`);
+    await expect(page.locator(".morpho-shape-host").first()).toBeVisible({ timeout: 120_000 });
+    await page.waitForTimeout(1_500);
+
+    const centres = await shapeCentres(page, 20);
+    expect(centres.length, "视口内没有可点击的 shape").toBeGreaterThan(0);
+    const origin = centres[0]!;
+    const empty = await emptyPoint(page);
+
+    // --- continuous selection ----------------------------------------------
+    await beginPerfPhase(page);
+    for (const centre of centres) {
+      await page.mouse.click(centre.x, centre.y);
+      await page
+        .locator('[aria-label="选中对象工具"]')
+        .waitFor({ state: "visible", timeout: 4_000 })
+        .catch(() => undefined);
+    }
+    record({
+      area: "canvas",
+      project: "objects500",
+      phase: "selection",
+      scale: { clicks: centres.length },
+      samples: await endPerfPhase(page)
+    });
+
+    // --- high-frequency drag ------------------------------------------------
+    await beginPerfPhase(page);
+    await page.mouse.move(origin.x, origin.y);
+    await page.mouse.down();
+    for (let step = 1; step <= DRAG_STEPS; step += 1) {
+      await page.mouse.move(origin.x + step * 4, origin.y + step * 2);
+      await page.waitForTimeout(DRAG_INTERVAL_MS);
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(500);
+    const dragSamples = await endPerfPhase(page);
+    record({
+      area: "canvas",
+      project: "objects500",
+      phase: "drag",
+      scale: { steps: DRAG_STEPS },
+      samples: dragSamples,
+      extra: { achievedPointerRateHz: dragSamples.pointerRateHz === null ? null : Math.round(dragSamples.pointerRateHz) }
+    });
+
+    // --- box multi-select ---------------------------------------------------
+    await beginPerfPhase(page);
+    await page.mouse.move(empty.x, empty.y);
+    await page.mouse.down();
+    for (let step = 1; step <= 12; step += 1) {
+      await page.mouse.move(empty.x - step * 40, empty.y - step * 25);
+      await page.waitForTimeout(16);
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(600);
+    record({
+      area: "canvas",
+      project: "objects500",
+      phase: "boxSelect",
+      samples: await endPerfPhase(page)
+    });
+
+    // --- select all (ctrl+a) -------------------------------------------------
+    await beginPerfPhase(page);
+    await page.keyboard.press("Control+a");
+    await page.waitForTimeout(800);
+    record({
+      area: "canvas",
+      project: "objects500",
+      phase: "selectAll",
+      samples: await endPerfPhase(page)
+    });
+    await page.keyboard.press("Escape");
+
+    // --- pan (middle drag) ---------------------------------------------------
+    await beginPerfPhase(page);
+    await page.mouse.move(empty.x, empty.y);
+    await page.mouse.down({ button: "middle" });
+    for (let step = 1; step <= 30; step += 1) {
+      await page.mouse.move(empty.x - step * 8, empty.y - step * 5);
+      await page.waitForTimeout(16);
+    }
+    await page.mouse.up({ button: "middle" });
+    await page.waitForTimeout(600);
+    const panSamples = await endPerfPhase(page);
+    record({
+      area: "canvas",
+      project: "objects500",
+      phase: "pan",
+      samples: panSamples,
+      extra: { achievedPointerRateHz: panSamples.pointerRateHz === null ? null : Math.round(panSamples.pointerRateHz) }
+    });
+
+    // --- zoom (wheel), single then continuous --------------------------------
+    await beginPerfPhase(page);
+    await page.mouse.move(700, 450);
+    await page.mouse.wheel(0, -600);
+    await page.waitForTimeout(600);
+    record({
+      area: "canvas",
+      project: "objects500",
+      phase: "zoomSingle",
+      samples: await endPerfPhase(page)
+    });
+
+    await beginPerfPhase(page);
+    for (let step = 0; step < 12; step += 1) {
+      await page.mouse.wheel(0, step % 2 === 0 ? -220 : 220);
+      await page.waitForTimeout(30);
+    }
+    await page.waitForTimeout(600);
+    record({
+      area: "canvas",
+      project: "objects500",
+      phase: "zoomContinuous",
+      samples: await endPerfPhase(page)
+    });
+
+    // --- add object via paste (real paste handoff) ----------------------------
+    const beforeCount = await page.locator(".morpho-shape-host").count();
+    await beginPerfPhase(page);
+    await armFeedback(page, "body");
+    await page.evaluate(() => {
+      const transfer = new DataTransfer();
+      transfer.setData("text/plain", "性能测量：这是一段通过真实粘贴事件导入的文本对象内容。".repeat(3));
+      const container = document.querySelector(".tl-container");
+      if (!container) {
+        throw new Error("tldraw container missing for paste.");
+      }
+      container.dispatchEvent(new ClipboardEvent("paste", { clipboardData: transfer, bubbles: true, cancelable: true }));
+    });
+    const addVisibleAt = await waitForShapeCountAbove(page, beforeCount);
+    const addSamples = await endPerfPhase(page);
+    const addFeedback = await readFeedback(page);
+    const addIo = await collectIoStats(page);
+    record({
+      area: "canvas",
+      project: "objects500",
+      phase: "addObjectPasteText",
+      scale: { shapesBefore: beforeCount },
+      samples: addSamples,
+      io: addIo,
+      feedback: addFeedback,
+      extra: { objectVisibleAtMs: Number(addVisibleAt.toFixed(1)) }
+    });
+
+    // --- delete object (Delete key on selection) ------------------------------
+    const deleteTarget = (await shapeCentres(page, 1))[0]!;
+    await page.mouse.click(deleteTarget.x, deleteTarget.y);
+    await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 8_000 });
+    const countAfterAdd = await page.locator(".morpho-shape-host").count();
+    await beginPerfPhase(page);
+    await armFeedback(page, "body");
+    await page.keyboard.press("Delete");
+    await page.waitForTimeout(1_200);
+    const deleteSamples = await endPerfPhase(page);
+    const deleteFeedback = await readFeedback(page);
+    record({
+      area: "canvas",
+      project: "objects500",
+      phase: "deleteObject",
+      scale: { shapesBefore: countAfterAdd },
+      samples: deleteSamples,
+      feedback: deleteFeedback
+    });
+
+    // --- toolbar hide action ---------------------------------------------------
+    const hideTarget = (await shapeCentres(page, 1))[0]!;
+    await page.mouse.click(hideTarget.x, hideTarget.y);
+    await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 8_000 });
+    const hideBefore = await page.locator(".morpho-shape-host").count();
+    await beginPerfPhase(page);
+    await armFeedback(page, "body");
+    await page.locator('[aria-label="隐藏对象"]').click();
+    await page.waitForFunction(
+      (prev) => document.querySelectorAll(".morpho-shape-host").length < prev,
+      hideBefore,
+      { timeout: 10_000 }
+    );
+    record({
+      area: "canvas",
+      project: "objects500",
+      phase: "toolbarHideObject",
+      samples: await endPerfPhase(page),
+      feedback: await readFeedback(page)
+    });
+  });
+
+  // ------------------------------------------------------------------ 3. AI conversation
+  for (const tierKey of ["caseStudy", "chatLong", "objects500"] as const) {
+    test(`3 AI 对话：${tierKey}`, async ({ page }) => {
+      test.setTimeout(420_000);
+      await installPerfProbe(page, { io: true });
+      await installAgentMock(page);
+
+      await page.goto("/");
+      await seedPhase5Projects(page, [tierKey]);
+      await page.goto(`/projects/${phase5Project(tierKey).projectId}`);
+      await expect(page.locator(".morpho-shape-host").first()).toBeVisible({ timeout: 120_000 });
+      await page.waitForTimeout(1_000);
+
+      const project = phase5Project(tierKey);
+      const scale = { messages: project.scale.messages ?? 0, objects: project.scale.objects ?? 0 };
+
+      // --- typing ------------------------------------------------------------
+      const input = page.locator('.ai-panel textarea');
+      await input.click();
+      await beginPerfPhase(page);
+      await input.type(TYPING_TEXT, { delay: 30 });
+      await page.waitForTimeout(500);
+      record({
+        area: "ai",
+        project: tierKey,
+        phase: "typing",
+        scale,
+        samples: await endPerfPhase(page),
+        extra: { characters: TYPING_TEXT.length }
+      });
+
+      // --- send -> first feedback -> streaming -------------------------------
+      await setAgentResponse(page, {
+        kind: "stream",
+        chunks: textAnswerScript({ text: "已经理解，这里是回应。" }).chunks,
+        chunkDelayMs: 20,
+        holdAfterChunks: 1
+      });
+      await beginPerfPhase(page);
+      await armFeedback(page, ".ai-panel");
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(1_200);
+      await releaseAgentStream(page);
+      await page.waitForTimeout(2_500);
+      const streamSamples = await endPerfPhase(page);
+      const streamFeedback = await readFeedback(page);
+      const calls = await agentCalls(page);
+      const turnPost = calls.find((call) => call.url.includes("/api/ai/agent/turns") && call.method === "POST");
+      record({
+        area: "ai",
+        project: tierKey,
+        phase: "sendAndStream",
+        scale,
+        samples: streamSamples,
+        feedback: streamFeedback,
+        extra: turnPost
+          ? { requestDispatchedAtMs: Number(turnPost.at.toFixed(1)) }
+          : {}
+      });
+      await expect(page.locator(".ai-panel")).toContainText("已经理解，这里是回应。", { timeout: 20_000 });
+
+      // --- auto-scroll behaviour: at rest after stream, near bottom -----------
+      const nearBottom = await page.evaluate(() => {
+        const scroller = document.querySelector(".ai-scroll");
+        if (!scroller) {
+          return null;
+        }
+        return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 120;
+      });
+      record({
+        area: "ai",
+        project: tierKey,
+        phase: "autoScrollAtRest",
+        scale,
+        samples: zeroSamples(),
+        extra: { pinnedToBottom: nearBottom }
+      });
+
+      // --- tool call turn: request1 tool -> local effect -> continuation -----
+      await setAgentRequestScript(page, [
+        { kind: "stream", chunks: toolCallTurnScript().first, chunkDelayMs: 15 },
+        { kind: "stream", chunks: toolCallTurnScript().second, chunkDelayMs: 15 }
+      ]);
+      const callsBeforeTool = (await agentCalls(page)).length;
+      await beginPerfPhase(page);
+      await armFeedback(page, ".ai-panel");
+      await input.fill("请读取项目记忆并总结当前重点。");
+      await page.keyboard.press("Enter");
+      await expect(page.locator(".ai-panel")).toContainText("工具结果已读取", { timeout: 30_000 });
+      await page.waitForTimeout(1_000);
+      const toolSamples = await endPerfPhase(page);
+      const toolFeedback = await readFeedback(page);
+      const allCalls = await agentCalls(page);
+      const newCalls = allCalls.slice(callsBeforeTool);
+      const requestPosts = newCalls.filter(
+        (call) => new URL(call.url, "http://localhost").pathname.endsWith("/requests") && call.method === "POST"
+      );
+      record({
+        area: "ai",
+        project: tierKey,
+        phase: "toolCallTurn",
+        scale,
+        samples: toolSamples,
+        feedback: toolFeedback,
+        extra: {
+          requestCount: requestPosts.length,
+          requestGapMs: requestPosts.length >= 2 ? Number((requestPosts[1]!.at - requestPosts[0]!.at).toFixed(1)) : null
+        }
+      });
+
+      // --- scroll up during stream, then delta: must not be yanked back ------
+      await setAgentResponse(page, {
+        kind: "stream",
+        chunks: textAnswerScript({ text: "第二条流式回应，用于检验用户翻阅旧消息时的滚动语义。" }).chunks,
+        chunkDelayMs: 20,
+        holdAfterChunks: 1
+      });
+      await input.fill("再来一条会边流边翻旧消息的回应。");
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(600);
+      await page.evaluate(() => {
+        const scroller = document.querySelector(".ai-scroll");
+        if (scroller) {
+          scroller.scrollTop = 0;
+        }
+      });
+      await page.waitForTimeout(400);
+      const scrollWhileHeld = await page.evaluate(() => {
+        const scroller = document.querySelector(".ai-scroll");
+        return scroller ? scroller.scrollTop : null;
+      });
+      await releaseAgentStream(page);
+      await expect(page.locator(".ai-panel")).toContainText("第二条流式回应", { timeout: 20_000 });
+      const scrollAfter = await page.evaluate(() => {
+        const scroller = document.querySelector(".ai-scroll");
+        return scroller ? scroller.scrollTop : null;
+      });
+      record({
+        area: "ai",
+        project: tierKey,
+        phase: "scrollUpDuringStream",
+        scale,
+        samples: zeroSamples(),
+        extra: {
+          scrollTopWhileHeld: scrollWhileHeld,
+          scrollTopAfterStream: scrollAfter,
+          userNotYankedBack: scrollAfter !== null && scrollAfter < 400
+        }
+      });
+      expect(scrollAfter, "流式期间用户翻到顶部后被强拉回底部（滚动语义被破坏）").toBeLessThan(400);
+    });
+  }
+
+  // ------------------------------------------------------------------ 4. assets
+  for (const tierKey of ["assets10", "assets30", "assets80"] as const) {
+    test(`4 资产：${tierKey}`, async ({ page }) => {
+      test.setTimeout(420_000);
+      await installPerfProbe(page, { io: true });
+      await installAgentMock(page);
+
+      const project = phase5Project(tierKey);
+      await page.goto("/");
+      await seedPhase5Projects(page, [tierKey]);
+      await seedPhase5AssetBlobs(page, project);
+      await markNow(page, "blobsSeeded");
+
+      // --- open with real binaries -------------------------------------------
+      await page.goto(`/projects/${project.projectId}`);
+      await expect(page.locator(".morpho-shape-host").first()).toBeVisible({ timeout: 120_000 });
+      const support = await readProbeSupport(page);
+      const imagesSettledAt = await page.evaluate(async () => {
+        const started = performance.now();
+        const deadline = started + 60_000;
+        while (performance.now() < deadline) {
+          const images = Array.from(document.querySelectorAll(".morpho-shape-host img"));
+          if (images.length > 0 && images.every((img) => (img as HTMLImageElement).complete)) {
+            return performance.now();
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 100));
+        }
+        return null;
+      });
+      await page.waitForTimeout(500);
+      const loadSamples = await endPerfPhase(page);
+      const loadIo = await collectIoStats(page);
+      record({
+        area: "assets",
+        project: tierKey,
+        phase: "openWithBinaries",
+        scale: project.scale,
+        samples: loadSamples,
+        io: loadIo,
+        extra: {
+          firstShapeAtMs: support.firstShapeAtMs,
+          imagesSettledAtMs: imagesSettledAt === null ? null : Number(imagesSettledAt.toFixed(1)),
+          imagesSettledAfterFirstShapeMs:
+            imagesSettledAt === null || support.firstShapeAtMs === null
+              ? null
+              : Number((imagesSettledAt - support.firstShapeAtMs).toFixed(1))
+        }
+      });
+      expect(imagesSettledAt, "图片没有全部完成解码").not.toBe(null);
+
+      // --- asset drawer: first open -------------------------------------------
+      await beginPerfPhase(page);
+      await armFeedback(page, "body");
+      await page.locator('[aria-label="资产"]').click();
+      await expect(page.locator('section[aria-label="资产"]')).toBeVisible({ timeout: 10_000 });
+      await page.waitForTimeout(600);
+      record({
+        area: "assets",
+        project: tierKey,
+        phase: "assetDrawerFirstOpen",
+        scale: project.scale,
+        samples: await endPerfPhase(page),
+        feedback: await readFeedback(page)
+      });
+
+      // --- show-all expansion (only exists when >10 assets) --------------------
+      const showAll = page.locator("button.drawer-more-button", { hasText: "显示全部" });
+      if (await showAll.count() > 0) {
+        await beginPerfPhase(page);
+        await armFeedback(page, 'section[aria-label="资产"]');
+        await showAll.click();
+        await page.locator(".asset-row").nth(20).waitFor({ state: "visible", timeout: 10_000 });
+        await page.waitForTimeout(500);
+        record({
+          area: "assets",
+          project: tierKey,
+          phase: "assetDrawerShowAll",
+          scale: project.scale,
+          samples: await endPerfPhase(page),
+          feedback: await readFeedback(page),
+          extra: { assetRows: await page.locator(".asset-row").count() }
+        });
+      }
+
+      // --- asset filter chip ------------------------------------------------------
+      await beginPerfPhase(page);
+      await armFeedback(page, 'section[aria-label="资产"]');
+      await page.locator('[aria-label="资产筛选"] button', { hasText: "原始资料" }).click();
+      await page.waitForTimeout(600);
+      record({
+        area: "assets",
+        project: tierKey,
+        phase: "assetFilter",
+        scale: project.scale,
+        samples: await endPerfPhase(page),
+        feedback: await readFeedback(page)
+      });
+
+      // --- asset drawer: reopen -------------------------------------------------
+      await page.locator('[aria-label="关闭资产"]').click();
+      await page.waitForTimeout(400);
+      await beginPerfPhase(page);
+      await armFeedback(page, "body");
+      await page.locator('[aria-label="资产"]').click();
+      await expect(page.locator('section[aria-label="资产"]')).toBeVisible({ timeout: 10_000 });
+      await page.waitForTimeout(600);
+      record({
+        area: "assets",
+        project: tierKey,
+        phase: "assetDrawerReopen",
+        scale: project.scale,
+        samples: await endPerfPhase(page),
+        feedback: await readFeedback(page)
+      });
+      await page.locator('[aria-label="关闭资产"]').click();
+      await page.waitForTimeout(300);
+
+      // --- select an image -> bottom detail ------------------------------------
+      const centre = (await shapeCentres(page, 1))[0]!;
+      await beginPerfPhase(page);
+      await armFeedback(page, "body");
+      await page.mouse.click(centre.x, centre.y);
+      await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 8_000 });
+      record({
+        area: "assets",
+        project: tierKey,
+        phase: "selectImageDetail",
+        scale: project.scale,
+        samples: await endPerfPhase(page),
+        feedback: await readFeedback(page)
+      });
+    });
+  }
+
+  // ------------------------------------------------------------------ 5. import
+  test("5 导入：文本/图片/PDF/PPTX/混合批次", async ({ page }) => {
+    test.setTimeout(420_000);
+    await installPerfProbe(page, { io: true });
+    await installAgentMock(page);
+
+    const project = phase5Project("importBase");
+    await page.goto("/");
+    await seedPhase5Projects(page, ["importBase"]);
+    await page.goto(`/projects/${project.projectId}`);
+    await expect(page.locator(".morpho-shape-host").first()).toBeVisible({ timeout: 60_000 });
+    await page.waitForTimeout(1_000);
+
+    const importButton = page.locator('.toolbar-group[aria-label="资料与交付"] button', { hasText: "导入" });
+
+    async function runImport(
+      phase: string,
+      files: { name: string; mimeType: string; buffer: Buffer }[],
+      settleMs = 4_000
+    ): Promise<void> {
+      const before = await page.locator(".morpho-shape-host").count();
+      await beginPerfPhase(page);
+      await armFeedback(page, "body");
+      const [chooser] = await Promise.all([
+        page.waitForEvent("filechooser"),
+        importButton.click()
+      ]);
+      await chooser.setFiles(files);
+      const visibleAt = await waitForShapeCountAbove(page, before + files.length - 1);
+      await page.waitForTimeout(settleMs);
+      const samples = await endPerfPhase(page);
+      const feedback = await readFeedback(page);
+      const io = await collectIoStats(page);
+      const changeAt = io.inputEvents.find((event) => event.kind === "change")?.at ?? null;
+      record({
+        area: "import",
+        project: "importBase",
+        phase,
+        scale: { files: files.length, bytes: files.reduce((total, file) => total + file.buffer.length, 0) },
+        samples,
+        io,
+        feedback,
+        extra: {
+          objectsVisibleAtMs: Number(visibleAt.toFixed(1)),
+          visibleAfterChangeMs: changeAt === null ? null : Number((visibleAt - changeAt).toFixed(1)),
+          fileNames: files.map((file) => file.name)
+        }
+      });
+    }
+
+    await runImport("imagePng", [
+      { name: "p5-import.png", mimeType: "image/png", buffer: buildPng(1280, 960) }
+    ]);
+
+    await runImport("pdf30p", [
+      { name: "p5-fixture-30p.pdf", mimeType: "application/pdf", buffer: buildPdf(30) }
+    ], 6_000);
+
+    await runImport("pptx40", [
+      {
+        name: "p5-fixture-40slides.pptx",
+        mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        buffer: buildPptx(40)
+      }
+    ], 6_000);
+
+    await runImport("pdf150p", [
+      { name: "p5-fixture-150p.pdf", mimeType: "application/pdf", buffer: buildPdf(150) }
+    ], 12_000);
+
+    await runImport("mixedBatch", [
+      { name: "p5-mixed-1.png", mimeType: "image/png", buffer: buildPng(800, 600, 11) },
+      { name: "p5-mixed-2.png", mimeType: "image/png", buffer: buildPng(800, 600, 12) },
+      { name: "p5-mixed-notes.md", mimeType: "text/markdown", buffer: buildTextFile(60) },
+      { name: "p5-mixed-8p.pdf", mimeType: "application/pdf", buffer: buildPdf(8, 20) }
+    ], 8_000);
+
+    // Parse outcomes verified once, after all measured windows are closed.
+    const stored = await page.evaluate((key: string) => window.localStorage.getItem(key), project.workspaceKey);
+    expect(stored, "导入后工作区未持久化").not.toBe(null);
+    const parsed = JSON.parse(stored!) as {
+      objects: Record<string, { type: string; parseStatus?: string; parseError?: string }>;
+    };
+    const fileObjects = Object.values(parsed.objects).filter((object) => object.type === "file");
+    const parsedOk = fileObjects.filter((object) => object.parseStatus === "parsed").length;
+    const failed = fileObjects.filter((object) => object.parseStatus === "failed");
+    console.log(
+      `   [import] 文件对象 ${fileObjects.length} 个，parsed ${parsedOk} 个，failed ${failed.length} 个` +
+        (failed.length > 0 ? `（${failed.map((object) => object.parseError).join("；")}）` : "")
+    );
+    expect(fileObjects.length, "没有生成文件对象").toBeGreaterThanOrEqual(3);
+  });
+
+  // ------------------------------------------------------------------ 6. other surfaces
+  test("6 其他交互：搜索/记录/交付准备/归档导出/默认参考确认", async ({ page }) => {
+    test.setTimeout(420_000);
+    await installPerfProbe(page, { io: true });
+    await installAgentMock(page);
+
+    const project = phase5Project("caseStudy");
+    await page.goto("/");
+    await seedPhase5Projects(page, ["caseStudy"]);
+    await page.goto(`/projects/${project.projectId}`);
+    await expect(page.locator(".morpho-shape-host").first()).toBeVisible({ timeout: 120_000 });
+    await page.waitForTimeout(1_500);
+
+    // --- search drawer ---------------------------------------------------------
+    await beginPerfPhase(page);
+    await armFeedback(page, "body");
+    await page.locator('[aria-label="项目内搜索"]').click();
+    await expect(page.locator('section[aria-label="项目内搜索"]')).toBeVisible({ timeout: 10_000 });
+    record({
+      area: "surfaces",
+      project: "caseStudy",
+      phase: "searchDrawerOpen",
+      scale: project.scale,
+      samples: await endPerfPhase(page),
+      feedback: await readFeedback(page)
+    });
+
+    await beginPerfPhase(page);
+    await page.locator('[aria-label="搜索关键词"]').fill("设计");
+    await page.waitForTimeout(700);
+    const searchSamples = await endPerfPhase(page);
+    const searchResults = await page.locator('section[aria-label="项目内搜索"] li, section[aria-label="项目内搜索"] .search-result')
+      .count()
+      .catch(() => 0);
+    record({
+      area: "surfaces",
+      project: "caseStudy",
+      phase: "searchQuery",
+      scale: project.scale,
+      samples: searchSamples,
+      extra: { resultRows: searchResults }
+    });
+    await page.locator('[aria-label="关闭搜索"]').click();
+    await page.waitForTimeout(300);
+
+    // --- records drawer ----------------------------------------------------------
+    await beginPerfPhase(page);
+    await armFeedback(page, "body");
+    await page.locator('[aria-label="项目记录"]').click();
+    await expect(page.locator("section.side-drawer").first()).toBeVisible({ timeout: 10_000 });
+    await page.waitForTimeout(700);
+    record({
+      area: "surfaces",
+      project: "caseStudy",
+      phase: "recordsDrawerOpen",
+      scale: project.scale,
+      samples: await endPerfPhase(page),
+      feedback: await readFeedback(page)
+    });
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+
+    // --- delivery preparation panel ------------------------------------------------
+    await beginPerfPhase(page);
+    await armFeedback(page, "body");
+    await page.locator('button', { hasText: "交付准备" }).click();
+    await page.waitForTimeout(900);
+    record({
+      area: "surfaces",
+      project: "caseStudy",
+      phase: "deliveryPrepOpen",
+      scale: project.scale,
+      samples: await endPerfPhase(page),
+      feedback: await readFeedback(page)
+    });
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+
+    // --- archive: editable backup export (zip on main thread) ----------------------
+    await beginPerfPhase(page);
+    await page.locator('button', { hasText: "归档" }).click();
+    await expect(page.locator('section[aria-label="项目归档与恢复"]')).toBeVisible({ timeout: 10_000 });
+    await page.waitForTimeout(500);
+    record({
+      area: "surfaces",
+      project: "caseStudy",
+      phase: "archivePanelOpen",
+      scale: project.scale,
+      samples: await endPerfPhase(page)
+    });
+
+    await beginPerfPhase(page);
+    const exportStartedAt = await pageNow(page);
+    const [download] = await Promise.all([
+      page.waitForEvent("download", { timeout: 120_000 }),
+      page.locator('button', { hasText: "导出备份" }).click()
+    ]);
+    const downloadAt = await pageNow(page);
+    const exportSamples = await endPerfPhase(page);
+    const suggested = download.suggestedFilename();
+    record({
+      area: "surfaces",
+      project: "caseStudy",
+      phase: "archiveExportBackupZip",
+      scale: project.scale,
+      samples: exportSamples,
+      extra: {
+        wallMs: Number((downloadAt - exportStartedAt).toFixed(1)),
+        suggestedFilename: suggested
+      }
+    });
+    await page.locator('[aria-label="关闭归档面板"]').click();
+    await page.waitForTimeout(300);
+
+    // --- default reference confirmation (compare/decision family) -------------------
+    const centres = await shapeCentres(page, 2);
+    if (centres.length >= 2) {
+      await page.mouse.click(centres[1]!.x, centres[1]!.y);
+      await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 8_000 });
+      const setReference = page.locator('[aria-label="设为后续默认参考"]');
+      if (await setReference.count() > 0) {
+        await beginPerfPhase(page);
+        await armFeedback(page, "body");
+        await setReference.click();
+        await expect(page.locator(".confirm-card").first()).toBeVisible({ timeout: 10_000 });
+        record({
+          area: "surfaces",
+          project: "caseStudy",
+          phase: "defaultReferenceConfirm",
+          scale: project.scale,
+          samples: await endPerfPhase(page),
+          feedback: await readFeedback(page)
+        });
+        // Leave workspace unchanged: cancel the confirmation.
+        await page.locator(".confirm-card").getByRole("button", { name: "取消" }).click().catch(() => undefined);
+      }
+    }
+
+    // --- project deletion preview (home page) ----------------------------------------
+    const deleteSeed = phase5Project("switchA");
+    await seedPhase5Projects(page, ["switchA"]);
+    await page.goto("/");
+    await expect(page.locator(".phome-shelf")).toBeVisible({ timeout: 30_000 });
+    const deleteButton = page.locator(`[aria-label="删除项目：P5 switchA"]`);
+    if (await deleteButton.count() > 0) {
+      await beginPerfPhase(page);
+      await armFeedback(page, "main");
+      await deleteButton.click();
+      await page.waitForTimeout(900);
+      record({
+        area: "surfaces",
+        project: "switchA",
+        phase: "deletionPreview",
+        scale: deleteSeed.scale,
+        samples: await endPerfPhase(page),
+        feedback: await readFeedback(page)
+      });
+      // Cancel: this project must survive for nothing — it is reseeded per run.
+      await page.getByRole("button", { name: /取消/ }).click().catch(() => undefined);
+      await page.keyboard.press("Escape").catch(() => undefined);
+    }
+  });
+
+  test.afterAll(async () => {
+    if (collected.length === 0) {
+      return;
+    }
+    const payloadProjects = phase5Project("objects500");
+    await mkdir(dirname(REPORT_PATH), { recursive: true });
+    await writeFile(
+      REPORT_PATH,
+      `${JSON.stringify(
+        {
+          generatedAt: new Date().toISOString(),
+          gitCommit: readGitCommit(),
+          note:
+            "Phase 5 真实交互延迟图谱。插桩全部由测试注入（perfProbe 含可选 localStorage/IndexedDB/objectURL 归因），产品代码零改动。" +
+            "资产档位带真实再生命周期的 PNG 二进制（确定性 PRNG + OffscreenCanvas，不入库）。" +
+            "feedback 首反馈 = 输入事件时间到首个 DOM 变化，均为页内时间。" +
+            "slowEvent* 只包含 >=16ms 事件（Event Timing 下限）。" +
+            "mock Agent SSE 用于隔离 client/runtime 成本，不代表 provider 网络。",
+          fixtureLimitations: [
+            "objects500/chatLong/caseStudy 档位不含图片二进制（与 4A 基线可比）。",
+            "assets 档位的 PNG 为合成渐变+噪声，解码成本接近照片但压缩特性不同。",
+            "Agent 流为本地 mock SSE：网络/TTFT 不在本图谱内，只测 client 段。",
+            "指针流为 Playwright 合成，快于真人；实际达成速率记录在 pointerRateHz。"
+          ],
+          seedProjects: payloadProjects.scale,
+          entries: collected
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+    console.log(`\nPhase 5 报告已写入 ${REPORT_PATH}`);
+  });
+});

@@ -40,6 +40,76 @@ export function openEndedScript(): MockAgentScript {
   ]);
 }
 
+/**
+ * A two-request tool-call turn: request 1 returns a `providerOutput` carrying one
+ * local tool call (client executes it and issues the continuation), request 2 is a
+ * normal text answer. Read tools (`read_project_memory`) are allowed by every
+ * authority profile, so this exercises the real tool -> local effect ->
+ * continuation path without authorization plumbing.
+ */
+export function toolCallTurnScript(options: {
+  toolName?: string;
+  argumentsText?: string;
+  finalText?: string;
+} = {}): { first: string[]; second: string[] } {
+  const toolName = options.toolName ?? "read_project_memory";
+  const argumentsText = options.argumentsText ?? "{}";
+  const finalText = options.finalText ?? "工具结果已读取，这里是最终回答。";
+  const callId = "call-e2e-tool-1";
+
+  const first: AgentTurnRequestStreamEvent[] = [
+    status("providerRunning"),
+    activity(
+      {
+        type: "provider-tool-start",
+        toolCallId: callId,
+        toolName: toolName,
+        activityKind: "contextRead",
+        label: "读取项目记忆"
+      },
+      1
+    ),
+    {
+      type: "providerOutput",
+      requestId: REQUEST_ID,
+      stepSequence: STEP_SEQUENCE,
+      outputText: "",
+      producedUserVisibleEffect: true,
+      toolCallIds: [callId],
+      toolCalls: [{ callId, name: toolName, argumentsText }]
+    },
+    {
+      type: "serverStatus",
+      requestId: REQUEST_ID,
+      stepSequence: STEP_SEQUENCE,
+      status: "awaitingNextRequest"
+    }
+  ];
+
+  const second: AgentTurnRequestStreamEvent[] = [
+    status("providerRunning"),
+    activity({ type: "final-start", partId: "part-final-tool" }, 1),
+    activity({ type: "final-delta", partId: "part-final-tool", delta: finalText.slice(0, Math.ceil(finalText.length / 2)) }, 2),
+    activity({ type: "final-delta", partId: "part-final-tool", delta: finalText.slice(Math.ceil(finalText.length / 2)) }, 3),
+    activity({ type: "final-end", partId: "part-final-tool" }, 4),
+    {
+      type: "providerOutput",
+      requestId: REQUEST_ID,
+      stepSequence: STEP_SEQUENCE,
+      outputText: finalText,
+      producedUserVisibleEffect: true,
+      toolCallIds: [],
+      toolCalls: []
+    },
+    status("externallyCompleted")
+  ];
+
+  return {
+    first: first.map((event) => decoder.decode(encodeAgentTurnRequestSse(event))),
+    second: second.map((event) => decoder.decode(encodeAgentTurnRequestSse(event)))
+  };
+}
+
 export function turnErrorScript(message = "模型返回异常，本轮未完成。"): MockAgentScript {
   return script([
     status("providerRunning"),

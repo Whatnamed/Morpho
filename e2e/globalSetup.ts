@@ -5,6 +5,7 @@ import { createServer } from "vite";
 
 export const SEED_PAYLOAD_PATH = resolve(process.cwd(), "e2e/.seed/seed.json");
 export const PERF_SEED_PAYLOAD_PATH = resolve(process.cwd(), "e2e/.seed/perf-seed.json");
+export const PHASE5_SEED_PAYLOAD_PATH = resolve(process.cwd(), "e2e/.seed/phase5-seed.json");
 
 /**
  * Builds the acceptance seed through Vite so it comes from the real domain code.
@@ -12,15 +13,17 @@ export const PERF_SEED_PAYLOAD_PATH = resolve(process.cwd(), "e2e/.seed/perf-see
  * fixture uses, so the seed is materialized here once per run and read back as
  * plain JSON by the specs.
  *
- * The performance seed is built the same way but written separately, because it is
- * several megabytes and only the `perf` project reads it. Both land in `e2e/.seed/`,
- * which is gitignored.
+ * The performance seeds are built the same way but written separately, because they
+ * are several megabytes and only the perf projects read them. Both land in
+ * `e2e/.seed/`, which is gitignored.
  */
 export default async function globalSetup(config: FullConfig): Promise<void> {
   // `--project=perf` filters config.projects, so this is how the setup knows whether
   // the several-second, several-megabyte perf seed is worth building. No env var and
   // no extra dependency to set one on Windows.
-  const needsPerfSeed = config.projects.some((project) => project.name === "perf");
+  const projectNames = config.projects.map((project) => project.name);
+  const needsPerfSeed = projectNames.includes("perf");
+  const needsPhase5Seed = projectNames.includes("perf5");
 
   const server = await createServer({
     appType: "custom",
@@ -40,6 +43,13 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
       const perfModule = await server.ssrLoadModule("/e2e/support/perfSeedWorkspace.ts");
       const perfPayload = (perfModule as { buildPerfSeedPayload: () => unknown }).buildPerfSeedPayload();
       await writeFile(PERF_SEED_PAYLOAD_PATH, `${JSON.stringify(perfPayload)}\n`, "utf8");
+    }
+
+    // Phase 5 interaction atlas: project tiers plus the synthetic asset manifest.
+    if (needsPhase5Seed) {
+      const phase5Module = await server.ssrLoadModule("/e2e/support/phase5SeedWorkspace.ts");
+      const phase5Payload = (phase5Module as { buildPhase5SeedPayload: () => unknown }).buildPhase5SeedPayload();
+      await writeFile(PHASE5_SEED_PAYLOAD_PATH, `${JSON.stringify(phase5Payload)}\n`, "utf8");
     }
   } finally {
     await server.close();

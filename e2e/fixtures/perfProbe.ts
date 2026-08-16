@@ -55,6 +55,26 @@ export type PerfPhaseSamples = {
   windowMs: number;
 };
 
+/**
+ * Phase 5 additions (opt-in via `{ io: true }`): browser-API-level attribution so a
+ * single phase window can answer "was the time spent in localStorage, IndexedDB,
+ * object-URL creation, or React?" without touching one line of product code.
+ *
+ * Everything patched is a browser API (localStorage, IDBObjectStore,
+ * URL.createObjectURL), installed before app scripts run. Overhead is one closure
+ * per call; the old baseline spec does not enable it and measures the same page as
+ * before.
+ */
+export type PerfIoStats = {
+  localStorageReads: { count: number; totalMs: number; maxMs: number; totalChars: number };
+  localStorageWrites: { count: number; totalMs: number; maxMs: number; totalChars: number };
+  idbOps: { store: string; op: string; count: number; totalMs: number; maxMs: number; lastAt: number | null }[];
+  objectUrlCreations: { count: number; totalMs: number; maxMs: number };
+  objectUrlRevocations: number;
+  marks: { name: string; at: number }[];
+  inputEvents: { kind: string; at: number }[];
+};
+
 declare global {
   interface Window {
     __morphoPerf?: {
@@ -68,26 +88,131 @@ declare global {
       firstShapeAtMs: number | null;
       pointerMoves: number[];
       keyPresses: number[];
+      pointerDowns: number[];
+      io?: {
+        enabled: boolean;
+        lsReads: { key: string; ms: number; chars: number }[];
+        lsWrites: { key: string; ms: number; chars: number }[];
+        idb: Map<string, { store: string; op: string; count: number; totalMs: number; maxMs: number; lastAt: number | null }>;
+        urlCreates: number[];
+        urlRevokes: number;
+        marks: { name: string; at: number }[];
+        inputs: { kind: string; at: number }[];
+      };
     };
+    __morphoPerfMark?: (name: string) => void;
   }
 }
 
 /** Installs the probe. Must run before any app script, i.e. via addInitScript. */
-export async function installPerfProbe(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const state = {
-      commits: [] as number[],
-      loaf: [] as { duration: number; blockingDuration: number }[],
-      events: [] as { processing: number; start: number }[],
-      frames: [] as number[],
+export async function installPerfProbe(page: Page, options: { io?: boolean } = {}): Promise<void> {
+  const io = options.io === true;
+  await page.addInitScript((ioEnabled: boolean) => {
+    const state: NonNullable<Window["__morphoPerf"]> = {
+      commits: [],
+      loaf: [],
+      events: [],
+      frames: [],
       rafActive: false,
       injected: 0,
       supported: { loaf: false, event: false },
-      firstShapeAtMs: null as number | null,
-      pointerMoves: [] as number[],
-      keyPresses: [] as number[]
+      firstShapeAtMs: null,
+      pointerMoves: [],
+      keyPresses: [],
+      pointerDowns: []
     };
     window.__morphoPerf = state;
+
+    if (ioEnabled) {
+      state.io = {
+        enabled: true,
+        lsReads: [],
+        lsWrites: [],
+        idb: new Map(),
+        urlCreates: [],
+        urlRevokes: 0,
+        marks: [],
+        inputs: []
+      };
+
+      window.__morphoPerfMark = (name: string) => {
+        state.io?.marks.push({ name, at: performance.now() });
+      };
+
+      // Input handoff timestamps (change/paste are not covered by the raw pointer/key
+      // listeners below, and they are exactly the handoff of a file-picker import).
+      for (const kind of ["change", "paste"] as const) {
+        window.addEventListener(
+          kind,
+          () => state.io?.inputs.push({ kind, at: performance.now() }),
+          { capture: true, passive: true }
+        );
+      }
+
+      const lsProto = window.localStorage.constructor.prototype;
+      const originalGetItem = lsProto.getItem;
+      const originalSetItem = lsProto.setItem;
+      // Instance-level patch: Storage.prototype methods are what app code calls.
+      Object.defineProperty(window.localStorage, "getItem", {
+        value: function getItem(key: string) {
+          const started = performance.now();
+          const value = originalGetItem.call(this, key);
+          state.io?.lsReads.push({ key: key.slice(0, 48), ms: performance.now() - started, chars: value?.length ?? 0 });
+          return value;
+        }
+      });
+      Object.defineProperty(window.localStorage, "setItem", {
+        value: function setItem(key: string, value: string) {
+          const started = performance.now();
+          originalSetItem.call(this, key, value);
+          state.io?.lsWrites.push({ key: key.slice(0, 48), ms: performance.now() - started, chars: value.length });
+        }
+      });
+
+      // IndexedDB op durations: wrap the request's success event so the measured span
+      // covers actual IDB work, not just scheduling.
+      const storeProto = IDBObjectStore.prototype;
+      for (const op of ["get", "put", "delete"] as const) {
+        const original = storeProto[op] as (...args: unknown[]) => IDBRequest;
+        storeProto[op] = function patched(this: IDBObjectStore, ...args: unknown[]) {
+          const request = original.apply(this, args);
+          const started = performance.now();
+          const storeName = this.name;
+          const finish = () => {
+            const bucket = `${storeName}:${op}`;
+            const io = window.__morphoPerf?.io;
+            if (!io) return;
+            const entry = io.idb.get(bucket);
+            const ms = performance.now() - started;
+            const at = performance.now();
+            if (entry) {
+              entry.count += 1;
+              entry.totalMs += ms;
+              entry.maxMs = Math.max(entry.maxMs, ms);
+              entry.lastAt = at;
+            } else {
+              io.idb.set(bucket, { store: storeName, op, count: 1, totalMs: ms, maxMs: ms, lastAt: at });
+            }
+          };
+          request.addEventListener("success", finish, { once: true });
+          request.addEventListener("error", finish, { once: true });
+          return request;
+        } as never;
+      }
+
+      const originalCreateObjectURL = URL.createObjectURL;
+      URL.createObjectURL = function patchedCreateObjectURL(blob: Blob | MediaSource) {
+        const started = performance.now();
+        const url = originalCreateObjectURL.call(this, blob);
+        state.io?.urlCreates.push(performance.now() - started);
+        return url;
+      };
+      const originalRevokeObjectURL = URL.revokeObjectURL;
+      URL.revokeObjectURL = function patchedRevokeObjectURL(url: string) {
+        state.io!.urlRevokes += 1;
+        return originalRevokeObjectURL.call(this, url);
+      };
+    }
 
     // Raw input counters, because Event Timing cannot answer "how many events were
     // there". Its `durationThreshold` is clamped to a 16 ms minimum by spec, so those
@@ -98,6 +223,10 @@ export async function installPerfProbe(page: Page): Promise<void> {
       passive: true
     });
     window.addEventListener("keydown", () => state.keyPresses.push(performance.now()), {
+      capture: true,
+      passive: true
+    });
+    window.addEventListener("pointerdown", () => state.pointerDowns.push(performance.now()), {
       capture: true,
       passive: true
     });
@@ -183,7 +312,7 @@ export async function installPerfProbe(page: Page): Promise<void> {
     } catch {
       state.supported.event = false;
     }
-  });
+  }, io);
 }
 
 /** Clears every buffer and opens the frame sampler. Call immediately before a phase. */
@@ -199,6 +328,16 @@ export async function beginPerfPhase(page: Page): Promise<void> {
     state.frames.length = 0;
     state.pointerMoves.length = 0;
     state.keyPresses.length = 0;
+    state.pointerDowns.length = 0;
+    if (state.io) {
+      state.io.lsReads.length = 0;
+      state.io.lsWrites.length = 0;
+      state.io.idb.clear();
+      state.io.urlCreates.length = 0;
+      state.io.urlRevokes = 0;
+      state.io.marks.length = 0;
+      state.io.inputs.length = 0;
+    }
     state.rafActive = true;
     const tick = () => {
       if (!state.rafActive) {
@@ -270,4 +409,106 @@ export async function readProbeSupport(
     injected: window.__morphoPerf?.injected ?? 0,
     firstShapeAtMs: window.__morphoPerf?.firstShapeAtMs ?? null
   }));
+}
+
+/** Drains the opt-in IO buffers into an aggregate. Requires `installPerfProbe(page, { io: true })`. */
+export async function collectIoStats(page: Page): Promise<PerfIoStats> {
+  return page.evaluate(() => {
+    const io = window.__morphoPerf?.io;
+    if (!io) {
+      throw new Error("IO instrumentation was not enabled for this probe.");
+    }
+    const summarizeLs = (entries: { ms: number; chars: number }[]) => ({
+      count: entries.length,
+      totalMs: entries.reduce((total, entry) => total + entry.ms, 0),
+      maxMs: entries.length === 0 ? 0 : Math.max(...entries.map((entry) => entry.ms)),
+      totalChars: entries.reduce((total, entry) => total + entry.chars, 0)
+    });
+    return {
+      localStorageReads: summarizeLs(io.lsReads),
+      localStorageWrites: summarizeLs(io.lsWrites),
+      idbOps: [...io.idb.values()],
+      objectUrlCreations: {
+        count: io.urlCreates.length,
+        totalMs: io.urlCreates.reduce((total, ms) => total + ms, 0),
+        maxMs: io.urlCreates.length === 0 ? 0 : Math.max(...io.urlCreates)
+      },
+      objectUrlRevocations: io.urlRevokes,
+      marks: io.marks.slice(),
+      inputEvents: io.inputs.slice()
+    } satisfies PerfIoStats;
+  });
+}
+
+/**
+ * Arms a one-shot DOM-change tracker for first-feedback latency.
+ *
+ * `armFeedback` records the latest input handoff timestamp (pointer/key/change/paste)
+ * and the first mutation inside `rootSelector` after arming. The trigger runs between
+ * the two calls; `readFeedback` then closes the window. `requireText` (optional)
+ * ignores mutations until some text content matching it appears anywhere under the
+ * root, for "first meaningful feedback" rather than "first DOM touch".
+ */
+export type FeedbackResult = {
+  armedAt: number;
+  lastInputAt: number | null;
+  firstChangeAt: number | null;
+  matchedTextAt: number | null;
+};
+
+export async function armFeedback(
+  page: Page,
+  rootSelector: string,
+  requireText?: string
+): Promise<void> {
+  await page.evaluate(
+    ({ rootSelector, requireText }) => {
+      const state = window.__morphoPerf;
+      if (!state) {
+        throw new Error("Perf probe was not installed before navigation.");
+      }
+      const record = {
+        armedAt: performance.now(),
+        lastInputAt: null as number | null,
+        firstChangeAt: null as number | null,
+        matchedTextAt: null as number | null
+      };
+      const inputs = [...state.pointerDowns, ...state.keyPresses, ...state.pointerMoves];
+      if (state.io) {
+        inputs.push(...state.io.inputs.map((entry) => entry.at));
+      }
+      record.lastInputAt = inputs.length === 0 ? null : Math.max(...inputs);
+      const root = document.querySelector(rootSelector);
+      if (!root) {
+        throw new Error(`feedback root not found: ${rootSelector}`);
+      }
+      const observer = new MutationObserver(() => {
+        if (record.firstChangeAt === null) {
+          record.firstChangeAt = performance.now();
+        }
+        if (requireText && record.matchedTextAt === null && root.textContent?.includes(requireText)) {
+          record.matchedTextAt = performance.now();
+          observer.disconnect();
+        }
+      });
+      observer.observe(root, { childList: true, subtree: true, characterData: true });
+      (window as unknown as { __morphoFeedback?: { record: typeof record; observer: MutationObserver } }).__morphoFeedback = {
+        record,
+        observer
+      };
+    },
+    { rootSelector, requireText: requireText ?? null }
+  );
+}
+
+export async function readFeedback(page: Page): Promise<FeedbackResult> {
+  return page.evaluate(() => {
+    const handle = (window as unknown as { __morphoFeedback?: { record: FeedbackResult; observer: MutationObserver } }).__morphoFeedback;
+    if (!handle) {
+      throw new Error("readFeedback called without armFeedback.");
+    }
+    handle.observer.disconnect();
+    (window as unknown as { __morphoFeedback?: unknown }).__morphoFeedback = undefined;
+    return handle.record;
+  });
 }

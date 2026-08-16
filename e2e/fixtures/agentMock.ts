@@ -20,6 +20,8 @@ export type AgentMockCall = {
   url: string;
   method: string;
   body: unknown;
+  /** performance.now() at fetch time, so a spec can time request boundaries. */
+  at: number;
 };
 
 type MockJournal = {
@@ -43,6 +45,12 @@ declare global {
       held: boolean;
       journal?: MockJournal;
       turnCount: number;
+      /**
+       * Phase 5: per-POST `/requests` response queue. When set, each provider
+       * request shifts the next entry; `response` is only the fallback. This is
+       * what lets one mocked turn exercise tool call -> continuation.
+       */
+      requestScript?: AgentMockResponse[];
     };
   }
 }
@@ -82,7 +90,7 @@ export async function installAgentMock(page: Page): Promise<void> {
     }
 
     function record(url: string, init: RequestInit | undefined, body: unknown): void {
-      state.calls.push({ url, method: init?.method ?? "GET", body });
+      state.calls.push({ url, method: init?.method ?? "GET", body, at: performance.now() });
     }
 
     function updateJournal(
@@ -111,7 +119,7 @@ export async function installAgentMock(page: Page): Promise<void> {
       const body = readBody(init);
       record(url, init, body);
 
-      if (state.response.kind === "httpError") {
+      if (state.response.kind === "httpError" && !state.requestScript) {
         return json({ error: state.response.error }, state.response.status);
       }
 
@@ -151,23 +159,27 @@ export async function installAgentMock(page: Page): Promise<void> {
           counters: { ...state.journal.counters, provider: state.journal.counters.provider + 1 }
         });
 
+        const active = state.requestScript?.shift() ?? state.response;
         const signal = init.signal ?? undefined;
         if (signal?.aborted) throw abortError();
-        if (state.response.kind === "hang") {
+        if (active.kind === "httpError") {
+          return json({ error: active.error }, active.status);
+        }
+        if (active.kind === "hang") {
           return new Promise<Response>((_resolve, reject) => {
             signal?.addEventListener("abort", () => reject(abortError()), { once: true });
           });
         }
 
         const encoder = new TextEncoder();
-        const terminalStatus: MockJournal["status"] = state.response.chunks.some((chunk) =>
+        const terminalStatus: MockJournal["status"] = active.chunks.some((chunk) =>
           chunk.includes('"status":"externallyFailed"')
         ) ? "externallyFailed" : "externallyCompleted";
-        const chunks = state.response.chunks.map((chunk) => chunk
+        const chunks = active.chunks.map((chunk) => chunk
           .replace(/"requestId":"[^"]+"/g, `"requestId":${JSON.stringify(requestId)}`)
           .replace(/"stepSequence":\d+/g, `"stepSequence":${stepSequence}`));
-        const delay = state.response.chunkDelayMs ?? 30;
-        const holdAfter = state.response.holdAfterChunks;
+        const delay = active.chunkDelayMs ?? 30;
+        const holdAfter = active.holdAfterChunks;
         let emitted = 0;
         const stream = new ReadableStream<Uint8Array>({
           async pull(controller) {
@@ -218,8 +230,30 @@ export async function setAgentResponse(page: Page, response: AgentMockResponse):
       throw new Error("Agent mock was not installed before navigation.");
     }
     window.__morphoAgentMock.response = next;
+    window.__morphoAgentMock.requestScript = undefined;
     window.__morphoAgentMock.held = next.kind === "stream" && next.holdAfterChunks !== undefined;
   }, response);
+}
+
+/**
+ * Queues one response per provider POST `/requests` (the last entry repeats if the
+ * turn issues more requests than scripted). Used to exercise tool-call turns:
+ * request 1 returns a `providerOutput` with tool calls, request 2 answers the
+ * continuation.
+ */
+export async function setAgentRequestScript(
+  page: Page,
+  script: AgentMockResponse[]
+): Promise<void> {
+  await page.evaluate((next: AgentMockResponse[]) => {
+    if (!window.__morphoAgentMock) {
+      throw new Error("Agent mock was not installed before navigation.");
+    }
+    window.__morphoAgentMock.requestScript = next;
+    window.__morphoAgentMock.held = next.some(
+      (response) => response.kind === "stream" && response.holdAfterChunks !== undefined
+    );
+  }, script);
 }
 
 export async function releaseAgentStream(page: Page): Promise<void> {

@@ -22,7 +22,8 @@
     "test:e2e": "playwright test --project=chromium",
     "test:e2e:build": "npm run build && playwright test",
     "test:prompt-cache": "node scripts/test-prompt-cache-compatibility.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "measure:perf5:browser": "playwright test --project=perf5 --workers=1 --retries=0"
   },
   "keywords": [],
   "author": "",
