@@ -826,9 +826,11 @@ type AiMessageRowProps = AiMessageRowSharedInputs & {
 };
 
 /**
- * Test-only render counter for the render-isolation guard test: it counts how
- * many rows actually executed a render. Production code never reads it; the cost
- * is one property write per rendered row.
+ * Render counter for the render-isolation guard test. The increment runs only
+ * when NODE_ENV is "test"; Next's production build replaces the comparison with
+ * a constant, so the branch — and with it any side effect in the render path —
+ * is dead-code eliminated from the shipped bundle. Production code never reads
+ * this object.
  */
 export const aiMessageRowRenderCount = { current: 0 };
 
@@ -840,7 +842,9 @@ export const aiMessageRowRenderCount = { current: 0 };
  * complete change signal for a row's own inputs.
  */
 const AiMessageRow = memo(function AiMessageRow(props: AiMessageRowProps) {
-  aiMessageRowRenderCount.current += 1;
+  if (process.env.NODE_ENV === "test") {
+    aiMessageRowRenderCount.current += 1;
+  }
   return renderAiMessageRow(props.message, props);
 }, areAiMessageRowPropsEqual);
 

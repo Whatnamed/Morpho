@@ -991,12 +991,34 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     // the viewport (acceptance specs wait the same way).
     await expect(page.locator(".morpho-shape-host").first()).toBeAttached({ timeout: 120_000 });
     await expect(page.locator(".morpho-shape-host img").first()).toBeAttached({ timeout: 60_000 });
-    // Wait until the asset installer has finished writing every built-in binary.
-    // An early export can race a partial install and measure a much smaller
-    // bundle than the project really has (the round-1 backup export did).
-    const installCount = await page.evaluate(async () => {
-      const countKeys = () =>
-        new Promise<number>((resolve, reject) => {
+    // Deterministic readiness: every storageKey the case-study WORKSPACE itself
+    // declares must be present in the BlobStore before any export is measured.
+    // A stability heuristic once let an export race a partial install and produced
+    // a wrong "small backup bundle" conclusion; extra keys beyond the expected set
+    // are tolerated, a missing expected key is not.
+    const installCheck = await page.evaluate(async () => {
+      const readExpectedKeys = (): string[] => {
+        try {
+          const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
+          if (!raw) {
+            return [];
+          }
+          const workspace = JSON.parse(raw) as { assets?: Record<string, { storageKey?: string }> };
+          return Object.values(workspace.assets ?? {})
+            .map((asset) => asset.storageKey)
+            .filter((key): key is string => typeof key === "string");
+        } catch {
+          return [];
+        }
+      };
+
+      const expected = readExpectedKeys();
+      if (expected.length === 0) {
+        return { ok: false, expectedCount: 0, presentCount: -1, missing: ["workspace-not-in-localStorage"] };
+      }
+
+      const presentKeys = (): Promise<Set<string>> =>
+        new Promise((resolve, reject) => {
           const request = indexedDB.open("morpho-assets-v1", 1);
           request.onsuccess = () => {
             const db = request.result;
@@ -1004,7 +1026,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
             const keys = tx.objectStore("asset-blobs").getAllKeys();
             keys.onsuccess = () => {
               db.close();
-              resolve(keys.result.length);
+              resolve(new Set(keys.result.map(String)));
             };
             keys.onerror = () => {
               db.close();
@@ -1013,25 +1035,24 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
           };
           request.onerror = () => reject(request.error);
         });
+
       const deadline = performance.now() + 120_000;
-      let previous = -1;
-      let stableSince = -1;
+      let present = new Set<string>();
+      let missing: string[] = expected;
       while (performance.now() < deadline) {
-        const count = await countKeys().catch(() => -1);
-        if (count === previous && count > 0) {
-          if (stableSince < 0) {
-            stableSince = performance.now();
-          } else if (performance.now() - stableSince > 1_500) {
-            return count;
-          }
-        } else {
-          stableSince = -1;
-          previous = count;
+        present = await presentKeys().catch(() => new Set<string>());
+        missing = expected.filter((key) => !present.has(key));
+        if (missing.length === 0) {
+          return { ok: true, expectedCount: expected.length, presentCount: present.size, missing: [] };
         }
         await new Promise((resolve) => window.setTimeout(resolve, 250));
       }
-      return previous;
+      return { ok: false, expectedCount: expected.length, presentCount: present.size, missing: missing.slice(0, 3) };
     });
+    expect(
+      installCheck.ok,
+      `内置案例资产安装未完成（期望 ${installCheck.expectedCount} 个 storageKey，实际 ${installCheck.presentCount}，缺失示例 ${installCheck.missing.join(", ")}）——导出测量必须等待完整安装`
+    ).toBe(true);
     await page.waitForTimeout(500);
 
     await beginPerfPhase(page);
@@ -1063,7 +1084,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
         wallMs: Number((downloadAt - exportStartedAt).toFixed(1)),
         suggestedFilename: download.suggestedFilename(),
         zipBytes: backupZipBytes,
-        installedAssetBlobs: installCount
+        installedAssetBlobs: installCheck.presentCount
       }
     });
 
@@ -1086,6 +1107,8 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       extra: {
         wallMs: Number((archiveDownloadAt - archiveStartedAt).toFixed(1)),
         suggestedFilename: archiveDownload.suggestedFilename(),
+        zipBytes: humanZipBytes,
+        installedAssetBlobs: installCheck.presentCount
       }
     });
     await page.locator('[aria-label="关闭归档面板"]').click();

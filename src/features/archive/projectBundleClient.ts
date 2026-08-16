@@ -1,4 +1,4 @@
-import { strFromU8, unzipSync, zip, zipSync } from "fflate";
+import { strFromU8, zip, zipSync } from "fflate";
 
 import {
   createEditableProjectBackupManifest,

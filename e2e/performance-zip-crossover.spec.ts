@@ -1,47 +1,67 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { dirname, resolve } from "node:path";
 
 import { expect, test } from "@playwright/test";
 
 /**
  * ZIP sync/async crossover measurement for the Phase 5 hybrid decision.
  *
- * The archive export path must pick between fflate `zipSync` (blocks the main
- * thread for the whole compression) and the async `zip` (compresses in Workers
- * but pays a per-call main-thread handoff that showed up as an ~85 ms frame on
- * the small editable-backup bundle). This spec measures both paths on the same
- * deterministic bundles in a real browser and records wall time, long-frame
- * blocking, input/compressed bytes — and whether the two paths produce
- * byte-identical archives.
+ * The archive export path picks between fflate `zipSync` (blocks the main thread
+ * for the whole compression) and the async `zip` (compresses in Workers but pays
+ * a per-call main-thread handoff). This spec measures both paths on the same
+ * deterministic bundles in a real browser.
  *
- * Records, never asserts thresholds. Runs under the perf5 project only.
+ * LoAF attribution rules (hardened after a review caught a polluted window):
+ * - every measurement starts after TWO rAFs, so no long frame from a previous
+ *   tier/rep can still be running when the window opens;
+ * - each run records its own [startedAt, endedAt] and only Long Animation Frames
+ *   genuinely overlapping that window are attributed to it;
+ * - the headline figure is `blockingDuration`, not the raw frame `duration`;
+ * - the window closes after two more rAFs so buffered entries get delivered.
+ *
+ * Records to docs/operations/performance-zip-crossover.generated.json; asserts
+ * only measurement sanity (real archives were produced), never thresholds.
+ * Runs under the perf5 project only.
  */
 
 const FFLATE_BROWSER_ESM = resolve(process.cwd(), "node_modules/fflate/esm/browser.js");
+const REPORT_PATH = resolve(process.cwd(), "docs/operations/performance-zip-crossover.generated.json");
 
 type CrossoverRow = {
   tierMiB: number;
   inputBytes: number;
   syncWallMs: number;
+  syncLongestBlockingMs: number;
+  syncTotalBlockingMs: number;
   asyncWallMs: number;
   asyncFirstCallMs: number;
-  asyncLongestFrameMs: number;
-  asyncTotalFrameMs: number;
+  asyncLongestBlockingMs: number;
+  asyncTotalBlockingMs: number;
   syncCompressedBytes: number;
   asyncCompressedBytes: number;
   byteIdentical: boolean;
 };
 
+function readGitCommit(): string | null {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: process.cwd(), encoding: "utf8" }).trim();
+  } catch {
+    return null;
+  }
+}
+
 test.describe("ZIP 同步/异步 crossover（记录，不断言阈值）", () => {
   test("zipSync vs async zip across bundle sizes", async ({ page }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(240_000);
     const fflateSource = readFileSync(FFLATE_BROWSER_ESM, "utf8");
     await page.route("**/__perf_fflate.mjs", (route) =>
       route.fulfill({ contentType: "text/javascript", body: fflateSource })
     );
 
     await page.goto("/");
-    const rows = await page.evaluate(async (): Promise<CrossoverRow[]> => {
+    const { rows, machine } = await page.evaluate(async () => {
       // Fulfilled by the page.route above; the specifier is deliberately dynamic
       // so TypeScript does not try to resolve a runtime-injected URL.
       const moduleUrl = "/__perf_fflate.mjs";
@@ -65,7 +85,6 @@ test.describe("ZIP 同步/异步 crossover（记录，不断言阈值）", () =>
         const textBytes = Math.floor(totalBytes * 0.2);
         const noiseBytes = totalBytes - textBytes;
         const chunkCount = Math.max(1, Math.floor(noiseBytes / (256 * 1024)));
-        let remainingText = textBytes;
         let remainingNoise = noiseBytes;
         for (let index = 0; index < chunkCount; index += 1) {
           const size = Math.floor(noiseBytes / chunkCount);
@@ -78,6 +97,7 @@ test.describe("ZIP 同步/异步 crossover（记录，不断言阈值）", () =>
           entries[`assets/synthetic-${index}.png`] = chunk;
         }
         const textParts: string[] = [];
+        let remainingText = textBytes;
         let textSeed = 1;
         while (remainingText > 0) {
           const part = JSON.stringify({ index: textSeed, note: "Morpho crossover 夹具的 JSON 文本内容。", values: Array.from({ length: 24 }, (_, i) => (textSeed * 31 + i) % 997) });
@@ -89,47 +109,85 @@ test.describe("ZIP 同步/异步 crossover（记录，不断言阈值）", () =>
         return entries;
       };
 
-      const runSync = (entries: Record<string, Uint8Array>): { wallMs: number; output: Uint8Array } => {
-        const started = performance.now();
-        const output = zipSync(entries, { level: 6 });
-        return { wallMs: performance.now() - started, output };
-      };
+      /** Two rAFs = one frame boundary has passed; no old long frame can still run. */
+      const cleanFrame = () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        );
 
-      const runAsync = (entries: Record<string, Uint8Array>): Promise<{ wallMs: number; output: Uint8Array; frames: { duration: number; start: number }[] }> => {
-        const frames: { duration: number; start: number }[] = [];
+      type LoafEntry = { startTime: number; duration: number; blockingDuration: number };
+
+      /**
+       * Runs one measured operation. Only Long Animation Frames whose
+       * [startTime, startTime+duration] intersects the run's own [startedAt,
+       * endedAt] window are attributed to it.
+       */
+      async function measure(op: () => Promise<Uint8Array> | Uint8Array): Promise<{
+        wallMs: number;
+        longestBlockingMs: number;
+        totalBlockingMs: number;
+        output: Uint8Array;
+      }> {
+        await cleanFrame();
+        const frames: LoafEntry[] = [];
         const observer = new PerformanceObserver((list) => {
           for (const entry of list.getEntries()) {
-            frames.push({ duration: entry.duration, start: entry.startTime });
+            const loaf = entry as PerformanceEntry & { blockingDuration?: number };
+            frames.push({
+              startTime: loaf.startTime,
+              duration: loaf.duration,
+              blockingDuration: loaf.blockingDuration ?? 0
+            });
           }
         });
         observer.observe({ type: "long-animation-frame" } as PerformanceObserverInit);
-        const started = performance.now();
-        return new Promise((resolve, reject) => {
-          zip(entries, { level: 6 }, (error: Error | null, data: Uint8Array) => {
-            const wallMs = performance.now() - started;
-            observer.disconnect();
-            if (error) {
-              reject(error);
-              return;
-            }
-            // Give the observer a moment to deliver buffered entries.
-            setTimeout(() => resolve({ wallMs, output: data, frames }), 30);
-          });
-        });
-      };
+        const startedAt = performance.now();
+        const output = await op();
+        const endedAt = performance.now();
+        // Let frame-end entries for any frame that overlapped the window arrive.
+        await cleanFrame();
+        await new Promise((resolve) => window.setTimeout(resolve, 30));
+        observer.disconnect();
+        const overlapping = frames.filter(
+          (frame) => frame.startTime < endedAt && frame.startTime + frame.duration > startedAt
+        );
+        return {
+          wallMs: endedAt - startedAt,
+          longestBlockingMs: overlapping.length === 0 ? 0 : Math.max(...overlapping.map((f) => f.blockingDuration)),
+          totalBlockingMs: overlapping.reduce((total, f) => total + f.blockingDuration, 0),
+          output
+        };
+      }
+
+      const runSync = (entries: Record<string, Uint8Array>) =>
+        measure(() => zipSync(entries, { level: 6 }));
+
+      const runAsync = (entries: Record<string, Uint8Array>) =>
+        measure(
+          () =>
+            new Promise<Uint8Array>((resolve, reject) => {
+              zip(entries, { level: 6 }, (error: Error | null, data: Uint8Array) => {
+                if (error) {
+                  reject(error);
+                  return;
+                }
+                resolve(data);
+              });
+            })
+        );
 
       const median = (values: number[]) => {
         const sorted = [...values].sort((a, b) => a - b);
         return sorted[Math.floor(sorted.length / 2)] ?? 0;
       };
 
-      const tiers = [0.2, 1, 4, 8, 16];
+      const tiers = [0.2, 1, 2, 4, 8, 16];
       const rows: CrossoverRow[] = [];
 
       // JIT warm on the smallest tier, discarded.
       {
         const warm = makeEntries(0.2 * 1024 * 1024);
-        runSync(warm);
+        await runSync(warm);
         await runAsync(warm);
       }
 
@@ -137,19 +195,17 @@ test.describe("ZIP 同步/异步 crossover（记录，不断言阈值）", () =>
         const entries = makeEntries(tierMiB * 1024 * 1024);
         const inputBytes = Object.values(entries).reduce((total, chunk) => total + chunk.length, 0);
 
-        const syncRuns = [runSync(entries), runSync(entries), runSync(entries)];
+        const syncRuns = [await runSync(entries), await runSync(entries), await runSync(entries)];
         const asyncFirst = await runAsync(entries);
         const asyncRuns = [asyncFirst, await runAsync(entries), await runAsync(entries)];
 
-        const sync = syncRuns[1] ?? syncRuns[0]!;
+        const syncMedianOutput = syncRuns[1]?.output ?? syncRuns[0]!.output;
         const asyncMedianOutput = asyncRuns[2]?.output ?? asyncFirst.output;
-        const windowStart = Math.min(...asyncRuns.flatMap((run) => run.frames.map((frame) => frame.start)), Infinity);
-        const frameDurations = asyncRuns.flatMap((run) => run.frames.filter((frame) => frame.start >= windowStart - 50).map((frame) => frame.duration));
 
-        let byteIdentical = sync.output.length === asyncMedianOutput.length;
+        let byteIdentical = syncMedianOutput.length === asyncMedianOutput.length;
         if (byteIdentical) {
-          for (let offset = 0; offset < sync.output.length; offset += 1) {
-            if (sync.output[offset] !== asyncMedianOutput[offset]) {
+          for (let offset = 0; offset < syncMedianOutput.length; offset += 1) {
+            if (syncMedianOutput[offset] !== asyncMedianOutput[offset]) {
               byteIdentical = false;
               break;
             }
@@ -160,35 +216,72 @@ test.describe("ZIP 同步/异步 crossover（记录，不断言阈值）", () =>
           tierMiB,
           inputBytes,
           syncWallMs: median(syncRuns.map((run) => run.wallMs)),
+          syncLongestBlockingMs: median(syncRuns.map((run) => run.longestBlockingMs)),
+          syncTotalBlockingMs: median(syncRuns.map((run) => run.totalBlockingMs)),
           asyncWallMs: median(asyncRuns.map((run) => run.wallMs)),
           asyncFirstCallMs: asyncFirst.wallMs,
-          asyncLongestFrameMs: frameDurations.length === 0 ? 0 : Math.max(...frameDurations),
-          asyncTotalFrameMs: frameDurations.reduce((total, duration) => total + duration, 0),
-          syncCompressedBytes: sync.output.length,
+          asyncLongestBlockingMs: median(asyncRuns.map((run) => run.longestBlockingMs)),
+          asyncTotalBlockingMs: median(asyncRuns.map((run) => run.totalBlockingMs)),
+          syncCompressedBytes: syncMedianOutput.length,
           asyncCompressedBytes: asyncMedianOutput.length,
           byteIdentical
         });
       }
 
-      return rows;
+      return {
+        rows,
+        machine: {
+          userAgent: navigator.userAgent,
+          hardwareConcurrency: navigator.hardwareConcurrency
+        }
+      };
     });
 
-    console.log("\nZIP crossover（同机同浏览器，3 次取中位，level 6，20% 文本 + 80% 噪声）：");
+    console.log("\nZIP crossover（同机同浏览器，3 次取中位，level 6，20% 文本 + 80% 噪声，净帧启动 + 窗口重叠归因）：");
     for (const row of rows) {
       console.log(
         `  ${String(row.tierMiB).padStart(5)} MiB 输入 ${(row.inputBytes / 1024 / 1024).toFixed(2)} MiB · ` +
-          `zipSync wall ${row.syncWallMs.toFixed(1).padStart(7)} ms · ` +
-          `async wall ${row.asyncWallMs.toFixed(1).padStart(7)} ms（首调 ${row.asyncFirstCallMs.toFixed(1)} ms）· ` +
-          `async 最长帧 ${row.asyncLongestFrameMs.toFixed(1).padStart(6)} ms · 帧合计 ${row.asyncTotalFrameMs.toFixed(1).padStart(7)} ms · ` +
+          `sync wall ${row.syncWallMs.toFixed(1).padStart(7)} ms（最长阻塞 ${row.syncLongestBlockingMs.toFixed(1).padStart(6)}）· ` +
+          `async wall ${row.asyncWallMs.toFixed(1).padStart(7)} ms（首调 ${row.asyncFirstCallMs.toFixed(1)} ms，最长阻塞 ${row.asyncLongestBlockingMs.toFixed(1).padStart(6)}，合计 ${row.asyncTotalBlockingMs.toFixed(1).padStart(7)}）· ` +
           `压缩后 ${(row.syncCompressedBytes / 1024).toFixed(0)} KiB / ${(row.asyncCompressedBytes / 1024).toFixed(0)} KiB · 字节一致 ${row.byteIdentical}`
       );
     }
-    // Measurement sanity only: both paths must have produced real archives.
+
+    await mkdir(dirname(REPORT_PATH), { recursive: true });
+    await writeFile(
+      REPORT_PATH,
+      `${JSON.stringify(
+        {
+          generatedAt: new Date().toISOString(),
+          // Both fields mean "the code commit that was measured", captured at run
+          // time; the commit that adds this generated file is a later evidence
+          // commit and can never equal a hash of content that includes itself.
+          gitCommit: readGitCommit(),
+          measuredCodeCommit: readGitCommit(),
+          note:
+            "zipSync 与异步 zip 在真实浏览器内的 crossover。每次测量前双 rAF 进入净帧，只归因与该次运行窗口真正重叠的 Long Animation Frame，头条数字为 blockingDuration。" +
+            "3 次取中位；JIT 预热档已丢弃。20% JSON 文本 + 80% 伪噪声（PNG 形态），level 6。" +
+            "字节一致列是逐字节比对结果——两条路径逻辑内容一致但字节不保证相等。",
+          machine,
+          rows
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+    console.log(`\nZIP crossover 报告已写入 ${REPORT_PATH}`);
+
+    // Measurement sanity only: both paths must have produced real archives on
+    // every tier, and every wall/blocking figure must be a real number.
     for (const row of rows) {
       expect(row.syncCompressedBytes).toBeGreaterThan(1000);
       expect(row.asyncCompressedBytes).toBeGreaterThan(1000);
       expect(row.syncWallMs).toBeGreaterThan(0);
       expect(row.asyncWallMs).toBeGreaterThan(0);
+      expect(Number.isFinite(row.syncLongestBlockingMs)).toBe(true);
+      expect(Number.isFinite(row.asyncLongestBlockingMs)).toBe(true);
     }
+    expect(rows.some((row) => row.tierMiB === 2), "2 MiB 阈值档位必须直接测量").toBe(true);
   });
 });
