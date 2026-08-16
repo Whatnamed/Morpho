@@ -34,6 +34,7 @@ import {
   resolveWorkIntentSource,
   type ExecutionModeSource
 } from "./aiTaskRouting";
+import { resolveDesignMethodPackIds } from "@/shared/designMethodPack";
 import { appendAgentTurnMessages, createAgentTurnWorkLedger } from "./agentTurnMessages";
 import { createAgentTrace } from "./agentMessageTrace";
 import { resolveRequiredAgentMemoryUpdates } from "./agentMemoryUpdateGuard";
@@ -434,7 +435,13 @@ export async function prepareAgentTurnProductAPlus(
       input: providerMessages,
       promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
       mode: input.agentTurnMode,
-      capabilityIntent: { comparisonAnalysis: allowStructuredComparison, webSearch: authorityProfile.allowWebSearch }
+      capabilityIntent: {
+        comparisonAnalysis: allowStructuredComparison,
+        webSearch: authorityProfile.allowWebSearch
+      },
+      strategy: strategy.kind,
+      strategyAnchorMessageId: userMessageId,
+      methodPacks: resolveDesignMethodPackIds({ strategy: strategy.kind, draft: input.draft })
     },
     localAgentTurnId,
     userMessageId,

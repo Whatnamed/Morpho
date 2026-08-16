@@ -893,6 +893,11 @@ function copyProviderRequest(request: APlusAgentProviderRequest): APlusAgentProv
     capabilityIntent: {
       comparisonAnalysis: request.capabilityIntent.comparisonAnalysis
     },
+    ...(request.strategy ? { strategy: request.strategy } : {}),
+    ...(request.strategyAnchorMessageId
+      ? { strategyAnchorMessageId: request.strategyAnchorMessageId }
+      : {}),
+    ...(request.methodPacks ? { methodPacks: [...request.methodPacks] } : {}),
     ...(request.previousRuntimeItem
       ? {
           previousRuntimeItem: {
@@ -1071,7 +1076,13 @@ function isProviderRequestShape(value: unknown): value is APlusAgentProviderRequ
     typeof value.promptContractVersion === "string" &&
     (value.mode === "auto" || value.mode === "confirm") &&
     isRecord(value.capabilityIntent) &&
-    typeof value.capabilityIntent.comparisonAnalysis === "boolean";
+    typeof value.capabilityIntent.comparisonAnalysis === "boolean" &&
+    (value.strategy === undefined || typeof value.strategy === "string") &&
+    (value.strategyAnchorMessageId === undefined || typeof value.strategyAnchorMessageId === "string") &&
+    (value.methodPacks === undefined ||
+      (Array.isArray(value.methodPacks) &&
+        value.methodPacks.length <= 3 &&
+        value.methodPacks.every((item) => typeof item === "string")));
 }
 
 function restoreFailure(reason: string): { status: "failed"; reason: string } {

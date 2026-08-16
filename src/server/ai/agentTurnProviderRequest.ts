@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { MORPHO_AGENT_CONTEXT_POLICY } from "@/domain/morpho/agentContextPolicy";
+import type { AgentTaskStrategyKind } from "@/domain/morpho/types";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
 import {
   buildMorphoAgentStableSystemPrompt,
@@ -23,6 +24,13 @@ import {
   type AgentRuntimeMode,
   type AgentToolProfile
 } from "@/shared/agentRuntimeItem";
+import { canonicalAgentStrategyMessage, isAgentTaskStrategyKind } from "@/shared/agentStrategyItem";
+import {
+  canonicalDesignMethodMessage,
+  isDesignMethodPackId,
+  MAX_METHOD_PACKS_PER_TURN,
+  type DesignMethodPackId
+} from "@/shared/designMethodPack";
 import { estimateProviderInputTokens } from "@/shared/providerInputBudget";
 
 import type {
@@ -57,6 +65,9 @@ export type ValidatedAPlusAgentProviderRequest = Readonly<{
   mode: AgentRuntimeMode;
   capabilityIntent: Readonly<{ comparisonAnalysis: boolean; webSearch: boolean }>;
   previousRuntimeItem?: AgentCanonicalRuntimeItem;
+  strategy?: AgentTaskStrategyKind;
+  strategyAnchorMessageId?: string;
+  methodPacks?: readonly DesignMethodPackId[];
 }>;
 
 export type APlusAgentProviderContract = Readonly<{
@@ -85,7 +96,10 @@ export function parseAPlusAgentProviderRequest(value: unknown):
     "promptContractVersion",
     "mode",
     "capabilityIntent",
-    "previousRuntimeItem"
+    "previousRuntimeItem",
+    "strategy",
+    "strategyAnchorMessageId",
+    "methodPacks"
   ]);
   if (unknown.length > 0) {
     return failed(`providerRequest 包含不允许的字段：${unknown.join("、")}。`);
@@ -103,6 +117,25 @@ export function parseAPlusAgentProviderRequest(value: unknown):
     (value.capabilityIntent.webSearch !== undefined && typeof value.capabilityIntent.webSearch !== "boolean")
   ) {
     return failed("capabilityIntent 格式无效。");
+  }
+  if (value.strategy !== undefined && !isAgentTaskStrategyKind(value.strategy)) {
+    return failed("strategy 不是有效的任务策略。");
+  }
+  if (
+    value.strategyAnchorMessageId !== undefined &&
+    !isBoundedIdentifier(value.strategyAnchorMessageId)
+  ) {
+    return failed("strategyAnchorMessageId 格式无效。");
+  }
+  if (value.methodPacks !== undefined) {
+    if (
+      !Array.isArray(value.methodPacks) ||
+      value.methodPacks.length > MAX_METHOD_PACKS_PER_TURN ||
+      !value.methodPacks.every(isDesignMethodPackId) ||
+      new Set(value.methodPacks).size !== value.methodPacks.length
+    ) {
+      return failed("methodPacks 包含无效、重复或超量的方法包。");
+    }
   }
   if (!Array.isArray(value.input) || value.input.length < 1 || value.input.length > MAX_INPUT_ITEMS) {
     return failed(`input 必须包含 1-${MAX_INPUT_ITEMS} 个 bounded message。`);
@@ -133,7 +166,11 @@ export function parseAPlusAgentProviderRequest(value: unknown):
         comparisonAnalysis: value.capabilityIntent.comparisonAnalysis,
         webSearch: value.capabilityIntent.webSearch === true
       },
-      ...(previousRuntimeItem ? { previousRuntimeItem } : {})
+      ...(previousRuntimeItem ? { previousRuntimeItem } : {}),
+      ...(isAgentTaskStrategyKind(value.strategy)
+        ? { strategy: value.strategy, ...(value.strategyAnchorMessageId ? { strategyAnchorMessageId: value.strategyAnchorMessageId } : {}) }
+        : {}),
+      ...(Array.isArray(value.methodPacks) ? { methodPacks: [...value.methodPacks] as DesignMethodPackId[] } : {})
     }
   };
 }
@@ -164,6 +201,16 @@ export function buildAPlusAgentProviderContract(input: {
         content: [{ type: "input_text", text: stableSystemPrompt }]
       },
       canonicalAgentRuntimeMessage(runtimeItem),
+      ...(input.request.strategy
+        ? [canonicalAgentStrategyMessage({
+            type: "morpho_strategy",
+            strategy: input.request.strategy,
+            anchorMessageId: input.request.strategyAnchorMessageId ?? "turn"
+          })]
+        : []),
+      ...(input.request.methodPacks && input.request.methodPacks.length > 0
+        ? [canonicalDesignMethodMessage(input.request.methodPacks)]
+        : []),
       ...input.request.input.map(copyProviderMessage),
       ...input.request.continuationItems.map(copyContinuationItem)
     ],
