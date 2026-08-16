@@ -151,6 +151,39 @@ describe("Agent memory update guard", () => {
     ]);
   });
 
+  it("lets shared quantitative constraint phrases through the message gate", () => {
+    expect(
+      resolveRequiredAgentMemoryUpdates("这次预算上限 500 元")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["constraint", "这次预算上限 500 元"]
+    ]);
+    expect(
+      resolveRequiredAgentMemoryUpdates("这次成本封顶 300 元")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["constraint", "这次成本封顶 300 元"]
+    ]);
+    expect(
+      resolveRequiredAgentMemoryUpdates("这次预算最多 500 元")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["constraint", "这次预算最多 500 元"]
+    ]);
+    expect(
+      resolveRequiredAgentMemoryUpdates("这次成本控制在 300 元以内")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["constraint", "这次成本控制在 300 元以内"]
+    ]);
+    expect(
+      resolveRequiredAgentMemoryUpdates("这次预算低于 500 元")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["constraint", "这次预算低于 500 元"]
+    ]);
+  });
+
   it("keeps turn-referencing clauses when the user states an explicit long-term scope", () => {
     expect(
       resolveRequiredAgentMemoryUpdates("这张图不要高反光，以后整个项目都保持低饱和")

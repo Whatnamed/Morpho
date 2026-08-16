@@ -80,6 +80,13 @@ const QUANTITATIVE_CONSTRAINT_PHRASES = [
 
 const QUANTITATIVE_CONSTRAINT_PHRASE_ALTERNATION = QUANTITATIVE_CONSTRAINT_PHRASES.join("|");
 
+/** Shared compiled form used by the message-level gate (and the classifiers). */
+const QUANTITATIVE_CONSTRAINT_PHRASE_PATTERN = new RegExp(QUANTITATIVE_CONSTRAINT_PHRASE_ALTERNATION);
+
+/** Ordinary memory cues that are not quantitative constraint phrases. */
+const NORMAL_MEMORY_CUE_PATTERN =
+  /必须|不得|不要|避免|待确认|还需确认|记住|记录|不能|不允许|不低于|至少|至多|小于|大于|限制|约束|尺寸|高度|宽度|重量/;
+
 /**
  * Clauses that only address this turn's concrete image, object, version,
  * background, or scope (without an explicit long-term scope marker) are
@@ -155,7 +162,15 @@ export function resolveRequiredAgentMemoryUpdates(draft: string): RequiredAgentM
   if (hasOneOffMarker && !hasLongTermScopeMarker) {
     return [];
   }
-  if (!hasLongTermScopeMarker && !/(?:必须|不得|不要|避免|待确认|还需确认|记住|记录|不能|不允许|不超过|不低于|至少|至多|小于|大于|限制|约束|尺寸|高度|宽度|重量|别(?:再)?超过)/.test(draft)) {
+  // The message-level gate reuses the SAME shared cue patterns as the
+  // clause-level classifiers (ordinary memory cues OR quantitative constraint
+  // phrases), so a constraint like "这次预算上限 500 元" is never dropped
+  // before it reaches clause-level evaluation.
+  if (
+    !hasLongTermScopeMarker &&
+    !NORMAL_MEMORY_CUE_PATTERN.test(draft) &&
+    !QUANTITATIVE_CONSTRAINT_PHRASE_PATTERN.test(draft)
+  ) {
     return [];
   }
 
