@@ -69,6 +69,27 @@ describe("Design Method Packs", () => {
     ).toEqual(["conceptRefinement"]);
   });
 
+  it("reads 优化/改进 as refinement while keeping fresh-direction requests divergent", () => {
+    expect(resolveDesignMethodPackIds({ strategy: "conceptDirection", draft: "优化这个方向" })).toEqual([
+      "conceptRefinement"
+    ]);
+    expect(resolveDesignMethodPackIds({ strategy: "conceptDirection", draft: "改进一下方案 A" })).toEqual([
+      "conceptRefinement"
+    ]);
+    expect(resolveDesignMethodPackIds({ strategy: "conceptDirection", draft: "把这个方案优化一下" })).toEqual([
+      "conceptRefinement"
+    ]);
+    expect(resolveDesignMethodPackIds({ strategy: "conceptDirection", draft: "再给我三个新方向" })).toEqual([
+      "conceptDivergence"
+    ]);
+    expect(resolveDesignMethodPackIds({ strategy: "conceptDirection", draft: "重新想几个完全不同的方向" })).toEqual([
+      "conceptDivergence"
+    ]);
+    expect(resolveDesignMethodPackIds({ strategy: "conceptDirection", draft: "基于这个做一个全新的方向" })).toEqual([
+      "conceptDivergence"
+    ]);
+  });
+
   it("selects form, CMF, or scenario packs plus optional reference interpretation", () => {
     expect(resolveDesignMethodPackIds({ strategy: "visualDevelopment", draft: "继续发展轮廓和分件" })).toEqual([
       "formDevelopment"

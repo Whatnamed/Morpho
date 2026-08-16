@@ -199,4 +199,57 @@ describe("Agent memory update guard", () => {
       ["preference", "这次调整后以后都保持低饱和"]
     ]);
   });
+
+  it("recalls stable preference intent without any long-term scope word", () => {
+    expect(
+      resolveRequiredAgentMemoryUpdates("我喜欢低饱和配色。")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["preference", "我喜欢低饱和配色"]
+    ]);
+    expect(
+      resolveRequiredAgentMemoryUpdates("默认用暖灰色。")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["preference", "默认用暖灰色"]
+    ]);
+    expect(
+      resolveRequiredAgentMemoryUpdates("我偏好哑光材质。")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["preference", "我偏好哑光材质"]
+    ]);
+    expect(
+      resolveRequiredAgentMemoryUpdates("以后所有方向都不要高反光。")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["avoidance", "以后所有方向都不要高反光"]
+    ]);
+    expect(
+      resolveRequiredAgentMemoryUpdates("以后这类主图都不要高反光。")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["avoidance", "以后这类主图都不要高反光"]
+    ]);
+  });
+
+  it("does not let bare 统一/稳定 or one-off preference wording bypass the one-off guard", () => {
+    expect(resolveRequiredAgentMemoryUpdates("这张图统一一下配色。")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这张图颜色改成蓝色。")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这版保持哑光。")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这次产品不要用蓝色。")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这次尺寸不要改。")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这次产品图不要高反光。")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("本轮配色先别用蓝色。")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这次预算那段不要写。")).toEqual([]);
+  });
+
+  it("keeps only the legal clause from a mixed one-off + project-constraint message", () => {
+    expect(
+      resolveRequiredAgentMemoryUpdates("这次先把背景换白色；预算不能超过 500 元。")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["constraint", "预算不能超过 500 元"]
+    ]);
+  });
 });

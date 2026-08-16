@@ -37,7 +37,10 @@ import {
 import { resolveDesignMethodPackIds } from "@/shared/designMethodPack";
 import { appendAgentTurnMessages, createAgentTurnWorkLedger } from "./agentTurnMessages";
 import { createAgentTrace } from "./agentMessageTrace";
-import { resolveRequiredAgentMemoryUpdates } from "./agentMemoryUpdateGuard";
+import {
+  buildRequiredAgentMemoryUpdateReminder,
+  resolveRequiredAgentMemoryUpdates
+} from "./agentMemoryUpdateGuard";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
 import {
   createRequiredAgentReadState,
@@ -387,6 +390,24 @@ export async function prepareAgentTurnProductAPlus(
   );
 
   const requiredMemoryUpdates = resolveRequiredAgentMemoryUpdates(input.draft);
+  // Deterministic memory final check: when the current user message produced
+  // legal long-term memory candidates, the Provider input carries ONE transient
+  // runtime-control reminder (never persisted to workspace messages) telling
+  // the model to either submit_memory_update with verbatim evidence or skip
+  // with items: [] + skippedReason before ending the turn. The A+ Journal
+  // settles a no-Tool answer as terminal (externallyCompleted) and a
+  // continuation requires non-empty Tool items, so the reminder rides the
+  // exact provider request body: it survives retry, refresh and recovery
+  // verbatim and is never regenerated differently.
+  if (requiredMemoryUpdates.length > 0) {
+    providerMessages.push({
+      role: "user",
+      content: [{
+        type: "input_text",
+        text: buildRequiredAgentMemoryUpdateReminder(requiredMemoryUpdates)
+      }]
+    });
+  }
   const allowStructuredComparison = isExplicitComparisonRequest(input.draft);
   const authorityProfile = resolveAgentToolAuthority({
     draft: input.draft,
@@ -419,6 +440,11 @@ export async function prepareAgentTurnProductAPlus(
     contextBudgetState: createAgentContextBudgetState(conversation.estimatedInputTokens),
     agentWorkLedger: createAgentTurnWorkLedger()
   });
+  if (requiredMemoryUpdates.length > 0) {
+    // The reminder is armed exactly once; the flag lives in Recovery facts so
+    // refresh/retry never re-arms or regenerates it.
+    runtimeState.memoryUpdateReminderInserted = true;
+  }
   const deliveryCandidate = input.pendingDeliveryDraftTarget
     ? preparedWorkspace.objects[input.pendingDeliveryDraftTarget.deliveryObjectId]
     : undefined;

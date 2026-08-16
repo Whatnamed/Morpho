@@ -9,7 +9,7 @@ import type {
 } from "./types";
 import { resolveVisualReferences } from "./visualReferenceResolver";
 
-export const IMAGE_PROMPT_CONTRACT_VERSION = "morpho-image-prompt-v2";
+export const IMAGE_PROMPT_CONTRACT_VERSION = "morpho-image-prompt-v3";
 
 export type CompiledImagePrompt = {
   prompt: string;

@@ -4,6 +4,7 @@ import { createTestWorkspace } from "@/domain/morpho/workspace";
 import type {
   AgentTurnJournalSnapshot,
   AgentTurnRequestStreamEvent,
+  APlusAgentProviderMessage,
   APlusToolCall
 } from "@/shared/agentTurnJournalProtocol";
 import type {
@@ -155,6 +156,7 @@ describe("A+ Agent turn runner", () => {
       agentTurnOutcome: "success"
     });
   });
+
   it("preserves the webSearch authority bit from Preparation to the Coordinator host and Recovery", async () => {
     const fixture = createFixture([
       { status: "providerRunning" },
@@ -222,6 +224,119 @@ describe("A+ Agent turn runner", () => {
     expect(fixture.coordinatorHost.executions).toHaveLength(2);
     expect(fixture.coordinatorHost.executions[0]?.providerRequest.capabilityIntent.webSearch).toBe(true);
     expect(fixture.coordinatorHost.executions[1]?.providerRequest.capabilityIntent.webSearch).toBe(true);
+  });
+
+  it("arms the deterministic memory final check only when the turn has candidates", async () => {
+    const fixture = createFixture([
+      { status: "providerRunning" },
+      { status: "externallyCompleted", outputText: "完成。" }
+    ]);
+    // No candidates: no reminder anywhere.
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    const reminderText = (message: APlusAgentProviderMessage) =>
+      message.content.some((part) => part.type === "input_text" && part.text.includes("确定性补检"));
+    expect(fixture.coordinatorHost.executions[0]?.providerRequest.input.some(reminderText)).toBe(false);
+    expect(fixture.store.record?.metadata.runtime.facts.memoryUpdateReminderInserted).toBe(false);
+
+    detachMorphoAgentTurnForPageUnload(fixture.fake.getWorkspace().project.id);
+    fixture.store.clear();
+    const fixture2 = createFixture([
+      { status: "providerRunning" },
+      { status: "externallyCompleted", outputText: "完成。" }
+    ]);
+    fixture2.input.draft = "预算不能超过 500 元。";
+    await runMorphoAgentTurn(fixture2.input, fixture2.host, fixture2.dependencies);
+    expect(fixture2.coordinatorHost.executions[0]?.providerRequest.input.some(reminderText)).toBe(true);
+    expect(fixture2.store.record?.metadata.runtime.facts.memoryUpdateReminderInserted).toBe(true);
+    expect(
+      fixture2.store.record?.metadata.runtime.providerBaseRequest.input.filter(reminderText)
+    ).toHaveLength(1);
+  });
+
+  it("reminds exactly once when the model would end without handling a candidate", async () => {
+    const fixture = createFixture([
+      { status: "externallyCompleted", outputText: "好的，我会注意预算。" }
+    ]);
+    fixture.input.draft = "预算不能超过 500 元。";
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      body: "好的，我会注意预算。",
+      agentTurnOutcome: "success"
+    });
+    const reminderText = (message: APlusAgentProviderMessage) =>
+      message.content.some((part) => part.type === "input_text" && part.text.includes("确定性补检"));
+    const reminders = fixture.coordinatorHost.executions[0]?.providerRequest.input.filter(reminderText) ?? [];
+    expect(reminders).toHaveLength(1);
+    expect(reminders[0]?.content[0]).toMatchObject({
+      type: "input_text",
+      text: expect.stringContaining("submit_memory_update")
+    });
+  });
+
+  it("completes normally when the model submits the candidate via the tool", async () => {
+    const fixture = createFixture([
+      {
+        status: "awaitingNextRequest",
+        outputText: "我先记录预算约束。",
+        toolCalls: [memoryConstraintToolCall("call-memory-budget")]
+      },
+      { status: "externallyCompleted", outputText: "已记录预算约束。" }
+    ]);
+    fixture.input.draft = "预算不能超过 500 元。";
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      agentTurnOutcome: "success"
+    });
+    // The candidate is handled; the reminder is still the same single transient
+    // message (never regenerated) and no second reminder round occurs.
+    expect(fixture.coordinatorHost.executions).toHaveLength(2);
+    const reminderText = (message: APlusAgentProviderMessage) =>
+      message.content.some((part) => part.type === "input_text" && part.text.includes("确定性补检"));
+    expect(fixture.coordinatorHost.executions[1]?.providerRequest.input.filter(reminderText)).toHaveLength(1);
+  });
+
+  it("marks candidates handled when the model skips with items: [] and skippedReason", async () => {
+    const fixture = createFixture([
+      {
+        status: "awaitingNextRequest",
+        outputText: "这条先不写入长期记忆。",
+        toolCalls: [memorySkipToolCall("call-memory-skip")]
+      },
+      { status: "externallyCompleted", outputText: "已跳过。" }
+    ]);
+    fixture.input.draft = "预算不能超过 500 元。";
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
+      agentTurnOutcome: "success"
+    });
+    expect(fixture.fake.getWorkspace().projectContinuity.recordEntries.length).toBeGreaterThanOrEqual(0);
+  });
+
+  it("keeps one-off turns free of both memory authority and the reminder", async () => {
+    const fixture = createFixture([
+      {
+        status: "awaitingNextRequest",
+        outputText: "尝试写入。",
+        toolCalls: [memoryConstraintToolCall("call-memory-one-off")]
+      },
+      { status: "externallyCompleted", outputText: "已说明不可写入。" }
+    ]);
+    fixture.input.draft = "这张图不要高反光。";
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    const reminderText = (message: APlusAgentProviderMessage) =>
+      message.content.some((part) => part.type === "input_text" && part.text.includes("确定性补检"));
+    expect(fixture.coordinatorHost.executions[0]?.providerRequest.input.some(reminderText)).toBe(false);
+    // The un-authorized submit call is blocked locally; nothing was written.
+    expect(fixture.fake.getWorkspace().projectContinuity.recordEntries).toHaveLength(0);
   });
 
   it("restores a terminal Pending Confirmation card without reopening the old Turn", async () => {
@@ -1171,6 +1286,33 @@ function searchToolCall(callId: string): APlusToolCall {
     argumentsText: JSON.stringify({
       reason: "验证 Search 恢复",
       queries: ["Morpho A+ runtime"]
+    })
+  };
+}
+
+function memoryConstraintToolCall(callId: string): APlusToolCall {
+  return {
+    callId,
+    name: "submit_memory_update",
+    argumentsText: JSON.stringify({
+      items: [{
+        kind: "constraint",
+        scope: "project",
+        evidenceQuote: "预算不能超过 500 元",
+        relatedObjectIds: [],
+        relatedRevisionIds: []
+      }]
+    })
+  };
+}
+
+function memorySkipToolCall(callId: string): APlusToolCall {
+  return {
+    callId,
+    name: "submit_memory_update",
+    argumentsText: JSON.stringify({
+      items: [],
+      skippedReason: "审慎判断该候选不需要写入长期记忆"
     })
   };
 }

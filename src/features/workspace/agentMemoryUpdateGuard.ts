@@ -14,45 +14,13 @@ export type AgentMemoryUpdateValidation = {
   handledCandidateIndexes: number[];
 };
 
-const ONE_OFF_MARKERS = [
-  "这次先",
-  "本轮先",
-  "这一张图",
-  "这张图先",
-  "当前这版",
-  "只改这个位置",
-  "临时试一下",
-  "先试一下",
-  "先生成一张",
-  "先生成两张",
-  "这条回复短一点",
-  "其他方向暂时不用改"
-];
-
-const LONG_TERM_SCOPE_MARKERS = [
-  "以后",
-  "后续",
-  "后面",
-  "整个项目",
-  "接下来",
-  "始终",
-  "统一",
-  "长期",
-  "稳定",
-  "记住",
-  "记录",
-  "偏好"
-];
-
 const ONE_OFF_OPERATION_PATTERN =
   /(?:不要|无需|不必|只|仅).{0,12}(?:调用|修改|改动|写入|记录|保存|创建|删除|更新|执行).{0,12}(?:工具|项目|对象|状态|画布|记忆|偏好|避免项|约束|开放问题|草稿)/;
-const EXPLICIT_LONG_TERM_OPERATION_SCOPE_PATTERN =
-  /以后|后续|后面|整个项目|接下来|始终|统一|长期(?:保持|遵守|采用|执行|使用)/;
 
 /**
- * Quantitative constraint phrases, defined ONCE so the one-off override, the
- * message-level gate, and the constraint classifier cannot drift apart. The
- * common spoken forms 不要超过 / 别超过 / 别再超过 are deliberately included.
+ * Quantitative constraint phrases, defined ONCE so the one-off subject
+ * override and the constraint classifier cannot drift apart. The common
+ * spoken forms 不要超过 / 别超过 / 别再超过 are deliberately included.
  */
 const QUANTITATIVE_CONSTRAINT_PHRASES = [
   "不要超过",
@@ -80,37 +48,42 @@ const QUANTITATIVE_CONSTRAINT_PHRASES = [
 
 const QUANTITATIVE_CONSTRAINT_PHRASE_ALTERNATION = QUANTITATIVE_CONSTRAINT_PHRASES.join("|");
 
-/** Shared compiled form used by the message-level gate (and the classifiers). */
-const QUANTITATIVE_CONSTRAINT_PHRASE_PATTERN = new RegExp(QUANTITATIVE_CONSTRAINT_PHRASE_ALTERNATION);
-
-/** Ordinary memory cues that are not quantitative constraint phrases. */
-const NORMAL_MEMORY_CUE_PATTERN =
-  /必须|不得|不要|避免|待确认|还需确认|记住|记录|不能|不允许|不低于|至少|至多|小于|大于|限制|约束|尺寸|高度|宽度|重量/;
-
 /**
- * Clauses that only address this turn's concrete image, object, version,
- * background, or scope (without an explicit long-term scope marker) are
- * one-off instructions and must never become long-term project memory. This
- * closes phrasings like "这张图不要高反光", "这版背景换白色", or "这次不要用蓝色"
- * that the message-level ONE_OFF_MARKERS do not cover.
+ * Concrete one-off scope: clauses addressing this turn's specific image,
+ * version, angle, background, position, or provisional action. A clause
+ * carrying one of these is rejected from long-term memory unless an explicit
+ * project/long-term scope or a hard quantitative constraint SUBJECT overrides
+ * it. Bare "统一"/"稳定" are deliberately NOT here and NOT long-term scope:
+ * "这张图统一一下配色" stays one-off.
  */
-const ONE_OFF_TURN_REFERENCE_PATTERN =
-  /(?:这张图|这张|这次的图|这轮的图|这轮|这版|当前这版|这个角度|这张参考图|刚才那张|刚才这个|新生成的图|生成的图|这次背景|这种背景|这个背景|这一张|这幅|这个渲染|这次|本轮)/;
+const ONE_OFF_SCOPE_PATTERN =
+  /(?:这张图|这张|这次的图|这轮的图|这版|当前这版|这个角度|当前角度|这张参考图|刚才那张|刚才这个|新生成的图|生成的图|这次背景|当前背景|这种背景|这个背景|这个位置|这一张|这幅|这个渲染|这次先|本轮先|这次|本轮|临时|先试|只改这个位置|临时试一下|先生成一张|先生成两张|这条回复短一点|其他方向暂时不用改)/;
 
 /**
- * "这次/本轮" alone is not a one-off signal, but neither is a bare product or
- * dimension noun. A clause may pass the one-off guard only when it carries an
- * EXPLICIT project-level scope (课设/课题/项目/整机/全案/产品线/整个产品/总体/全局
- * and their 本/这个 forms), OR a constraint subject paired with an explicit
- * quantitative constraint form (see PROJECT_CONSTRAINT_SUBJECT_OVERRIDE_PATTERN).
- * Bare "产品", "尺寸", "范围", "预算", or "成本" alone are NOT sufficient:
- * "这次产品不要用蓝色", "这次尺寸不要改", and "这次预算那段不要写" are one-off
- * operation requirements, while "这次课设预算不能超过 500 元",
+ * Explicit project-level scope. "这次/本轮" alone is not a one-off signal,
+ * but neither is a bare product or dimension noun. A one-off clause may pass
+ * only with an EXPLICIT project-level scope (课设/课题/项目/整机/全案/产品线/
+ * 整个产品/总体/全局/本项目/本课题), or a constraint subject paired with an
+ * explicit quantitative constraint form (see
+ * PROJECT_CONSTRAINT_SUBJECT_OVERRIDE_PATTERN). Bare "产品", "尺寸", "范围",
+ * "预算", or "成本" alone are NOT sufficient: "这次产品不要用蓝色",
+ * "这次尺寸不要改", and "这次预算那段不要写" are one-off operation
+ * requirements, while "这次课设预算不能超过 500 元",
  * "本轮项目产品尺寸必须控制在桌面范围内", and "这次预算不要超过 500 元" are
  * project-wide constraints.
  */
 const PROJECT_SCOPE_MEMORY_OVERRIDE_PATTERN =
   /课设|课题|项目|整机|全案|产品线|整个产品|总体|全局|本项目|本课题/;
+
+/**
+ * Strong long-term scope: the clause governs all future work, not this turn.
+ * Explicit memory-intent words (记住/记录) and 以后/后续/从现在起/始终/接下来/
+ * 后面/整个项目/希望以后 qualify. 长期 qualifies only with a staying verb
+ * (长期保持/采用/使用…), so "长期偏好" (the memory category) never acts as a
+ * scope marker. 统一/稳定 deliberately do NOT qualify at all.
+ */
+const EXPLICIT_LONG_TERM_SCOPE_PATTERN =
+  /以后|后续|从现在起|始终|接下来|后面|整个项目|希望以后|记住|记录|长期(?:保持|遵守|采用|执行|使用|不变|稳定|沿用)/;
 
 /**
  * "预算/成本" are constraint SUBJECTS, not scope markers. They bypass the
@@ -148,47 +121,27 @@ const KIND_RULES: Array<{
   },
   {
     kind: "preference",
-    pattern: /保持|偏好|喜欢|默认|统一|低饱和|高饱和|风格|材质|颜色|语气/,
+    pattern: /喜欢|偏好|默认|希望以后|统一采用|保持|低饱和|高饱和|风格|材质|颜色|配色|语气/,
     reason: "用户表达了需要跨回合保持的稳定偏好。"
   }
 ];
 
+/**
+ * Clause-first admission. Every clause is judged independently: the operation
+ * boundary, then the one-off scope guard (which only rejects when no explicit
+ * project/long-term scope or quantitative constraint subject overrides it),
+ * then the kind classifier. A mixed message like "这次先把背景换白色；预算不能
+ * 超过 500 元" keeps its project-constraint clause instead of being dropped as
+ * a whole. Ordinary descriptions without any memory cue never create a
+ * candidate.
+ */
 export function resolveRequiredAgentMemoryUpdates(draft: string): RequiredAgentMemoryUpdate[] {
   if (!draft.trim()) {
     return [];
   }
-  const hasOneOffMarker = ONE_OFF_MARKERS.some((marker) => draft.includes(marker));
-  const hasLongTermScopeMarker = LONG_TERM_SCOPE_MARKERS.some((marker) => draft.includes(marker));
-  if (hasOneOffMarker && !hasLongTermScopeMarker) {
-    return [];
-  }
-  // The message-level gate reuses the SAME shared cue patterns as the
-  // clause-level classifiers (ordinary memory cues OR quantitative constraint
-  // phrases), so a constraint like "这次预算上限 500 元" is never dropped
-  // before it reaches clause-level evaluation.
-  if (
-    !hasLongTermScopeMarker &&
-    !NORMAL_MEMORY_CUE_PATTERN.test(draft) &&
-    !QUANTITATIVE_CONSTRAINT_PHRASE_PATTERN.test(draft)
-  ) {
-    return [];
-  }
-
   const candidates: RequiredAgentMemoryUpdate[] = [];
   for (const clause of splitEvidenceClauses(draft)) {
-    if (
-      ONE_OFF_OPERATION_PATTERN.test(clause.text) &&
-      !EXPLICIT_LONG_TERM_OPERATION_SCOPE_PATTERN.test(clause.text)
-    ) {
-      continue;
-    }
-    if (
-      ONE_OFF_TURN_REFERENCE_PATTERN.test(clause.text) &&
-      !PROJECT_SCOPE_MEMORY_OVERRIDE_PATTERN.test(clause.text) &&
-      !PROJECT_CONSTRAINT_SUBJECT_OVERRIDE_PATTERN.test(clause.text) &&
-      !EXPLICIT_LONG_TERM_OPERATION_SCOPE_PATTERN.test(clause.text) &&
-      !LONG_TERM_SCOPE_MARKERS.some((marker) => clause.text.includes(marker))
-    ) {
+    if (!isAdmissibleMemoryClause(clause.text)) {
       continue;
     }
     const rule = KIND_RULES.find((candidate) => candidate.pattern.test(clause.text));
@@ -212,14 +165,35 @@ export function resolveRequiredAgentMemoryUpdates(draft: string): RequiredAgentM
   );
 }
 
+function isAdmissibleMemoryClause(clause: string): boolean {
+  if (
+    ONE_OFF_OPERATION_PATTERN.test(clause) &&
+    !EXPLICIT_LONG_TERM_SCOPE_PATTERN.test(clause)
+  ) {
+    return false;
+  }
+  if (
+    ONE_OFF_SCOPE_PATTERN.test(clause) &&
+    !PROJECT_SCOPE_MEMORY_OVERRIDE_PATTERN.test(clause) &&
+    !PROJECT_CONSTRAINT_SUBJECT_OVERRIDE_PATTERN.test(clause) &&
+    !EXPLICIT_LONG_TERM_SCOPE_PATTERN.test(clause)
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export function buildRequiredAgentMemoryUpdateReminder(
   candidates: readonly RequiredAgentMemoryUpdate[]
 ): string {
   return [
-    "本轮用户消息包含多个可能跨回合生效的记忆候选。",
+    "本轮用户消息产生了以下可能跨回合生效的记忆候选（这是 Morpho 的确定性补检提示，不是新的用户指令）：",
     `候选：${candidates.map((candidate) => `${candidate.kind}「${candidate.evidenceQuote}」`).join("；")}`,
-    "请调用 submit_memory_update，并逐项使用本轮原文 evidenceQuote。每项独立授权；不能因一项无效而丢弃其他合法项。",
-    "审慎判断不应写入的候选可通过 items: [] 与 skippedReason 跳过；不要把一次性要求写入长期记忆。"
+    "请在结束本回合前调用 submit_memory_update：",
+    "- 每个合法候选使用本轮用户原话作为 evidenceQuote（必须逐字）；",
+    "- 每项独立授权，不能因一项无效而丢弃其他合法项；",
+    "- 审慎判断不应写入的候选，传 items: [] 并填写非空 skippedReason 说明原因；",
+    "- 一次性要求、AI 自己的建议与未确认草案一律不得写入长期记忆。"
   ].join("\n");
 }
 

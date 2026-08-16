@@ -262,7 +262,7 @@ function isConceptRefinementRequest(text: string): boolean {
   ) {
     return false;
   }
-  return /拆分|合并|修订|调整|深化|迭代|沿用|继续(?:发展|优化|做|改)?|在(?:这个|当前|原|已有)(?:方向|方案|设计|基础)/.test(text);
+  return /拆分|合并|修订|调整|深化|迭代|沿用|优化|改进|继续(?:发展|优化|做|改)?|在(?:这个|当前|原|已有)(?:方向|方案|设计|基础)/.test(text);
 }
 
 function isScenarioRequest(text: string): boolean {
