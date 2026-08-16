@@ -126,6 +126,7 @@ describe("Design Method Packs", () => {
     expect(resolveDesignMethodPackIds({ strategy: "discussion", draft: "当前方案值得继续推进吗" })).toEqual([]);
     expect(resolveDesignMethodPackIds({ strategy: "discussion", draft: "当前方向值得继续做吗" })).toEqual([]);
     expect(resolveDesignMethodPackIds({ strategy: "discussion", draft: "刚才那个方案值得继续推进吗" })).toEqual([]);
+    expect(resolveDesignMethodPackIds({ strategy: "discussion", draft: "这些方向值得继续推进吗" })).toEqual([]);
   });
 
   it("bounds the per-turn pack count and validates ids", () => {

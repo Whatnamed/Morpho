@@ -126,6 +126,24 @@ describe("Agent memory update guard", () => {
       ["constraint", "这次预算不得超过 500 元"]
     ]);
     expect(
+      resolveRequiredAgentMemoryUpdates("这次预算不要超过 500 元")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["constraint", "这次预算不要超过 500 元"]
+    ]);
+    expect(
+      resolveRequiredAgentMemoryUpdates("这次预算别超过 500 元")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["constraint", "这次预算别超过 500 元"]
+    ]);
+    expect(
+      resolveRequiredAgentMemoryUpdates("整个项目预算别再超过 500 元")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["constraint", "整个项目预算别再超过 500 元"]
+    ]);
+    expect(
       resolveRequiredAgentMemoryUpdates("整个项目预算不要超过 500 元")
         .map((candidate) => [candidate.kind, candidate.evidenceQuote])
     ).toEqual([

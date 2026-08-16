@@ -50,6 +50,37 @@ const EXPLICIT_LONG_TERM_OPERATION_SCOPE_PATTERN =
   /以后|后续|后面|整个项目|接下来|始终|统一|长期(?:保持|遵守|采用|执行|使用)/;
 
 /**
+ * Quantitative constraint phrases, defined ONCE so the one-off override, the
+ * message-level gate, and the constraint classifier cannot drift apart. The
+ * common spoken forms 不要超过 / 别超过 / 别再超过 are deliberately included.
+ */
+const QUANTITATIVE_CONSTRAINT_PHRASES = [
+  "不要超过",
+  "别超过",
+  "别再超过",
+  "不得超过",
+  "不能超过",
+  "不允许超过",
+  "不超过",
+  "上限",
+  "封顶",
+  "必须控制在",
+  "控制在",
+  "最多",
+  "不得高于",
+  "不能高于",
+  "低于",
+  "少于",
+  "限制在",
+  "不能超出",
+  "不得超出",
+  "必须低于",
+  "必须少于"
+] as const;
+
+const QUANTITATIVE_CONSTRAINT_PHRASE_ALTERNATION = QUANTITATIVE_CONSTRAINT_PHRASES.join("|");
+
+/**
  * Clauses that only address this turn's concrete image, object, version,
  * background, or scope (without an explicit long-term scope marker) are
  * one-off instructions and must never become long-term project memory. This
@@ -68,7 +99,7 @@ const ONE_OFF_TURN_REFERENCE_PATTERN =
  * Bare "产品", "尺寸", "范围", "预算", or "成本" alone are NOT sufficient:
  * "这次产品不要用蓝色", "这次尺寸不要改", and "这次预算那段不要写" are one-off
  * operation requirements, while "这次课设预算不能超过 500 元",
- * "本轮项目产品尺寸必须控制在桌面范围内", and "这次预算不得超过 500 元" are
+ * "本轮项目产品尺寸必须控制在桌面范围内", and "这次预算不要超过 500 元" are
  * project-wide constraints.
  */
 const PROJECT_SCOPE_MEMORY_OVERRIDE_PATTERN =
@@ -77,11 +108,12 @@ const PROJECT_SCOPE_MEMORY_OVERRIDE_PATTERN =
 /**
  * "预算/成本" are constraint SUBJECTS, not scope markers. They bypass the
  * one-off guard only when the clause carries an explicit quantitative
- * constraint form around them ("预算不得超过 500", "成本上限 300",
+ * constraint form around them ("预算不要超过 500", "成本上限 300",
  * "总成本必须控制在…以内"). "这次预算那段不要写" / "这次成本不要考虑" stay one-off.
  */
-const PROJECT_CONSTRAINT_SUBJECT_OVERRIDE_PATTERN =
-  /(?:预算|成本).{0,12}(?:不得超过|不能超过|不允许超过|不超过|上限|封顶|必须控制在|控制在|最多|不得高于|不能高于|低于|少于|限制在|不能超出|不得超出|必须低于|必须少于)|(?:不得超过|不能超过|不允许超过|不超过|上限|封顶|必须控制在|控制在|最多|不得高于|不能高于).{0,12}(?:预算|成本)/;
+const PROJECT_CONSTRAINT_SUBJECT_OVERRIDE_PATTERN = new RegExp(
+  `(?:预算|成本).{0,12}(?:${QUANTITATIVE_CONSTRAINT_PHRASE_ALTERNATION})|(?:${QUANTITATIVE_CONSTRAINT_PHRASE_ALTERNATION}).{0,12}(?:预算|成本)`
+);
 
 const KIND_RULES: Array<{
   kind: RequiredAgentMemoryUpdateKind;
@@ -95,12 +127,16 @@ const KIND_RULES: Array<{
   },
   {
     kind: "avoidance",
-    pattern: /不要(?!超过|低于|少于|高于|多于|大于|小于)|避免|不使用|不做|禁止|别(?:再)?(?!超过|低于|少于|高于|多于|大于|小于)/,
+    // Negative lookahead covers the optional 再 so that 别超过 / 别再超过 can
+    // never backtrack into a bare 别 avoidance match.
+    pattern: /不要(?!再?(?:超过|低于|少于|高于|多于|大于|小于))|避免|不使用|不做|禁止|别(?!再?(?:超过|低于|少于|高于|多于|大于|小于))/,
     reason: "用户表达了跨本轮生效的明确避免项。"
   },
   {
     kind: "constraint",
-    pattern: /必须|不得|不能|不超过|不低于|至少|至多|小于|大于|限制|约束|尺寸|高度|宽度|重量|不要超过|别超过|不允许|高于|低于|少于|多于/,
+    pattern: new RegExp(
+      `必须|不得|不能|不超过|不低于|至少|至多|小于|大于|限制|约束|尺寸|高度|宽度|重量|不允许|高于|低于|少于|多于|${QUANTITATIVE_CONSTRAINT_PHRASE_ALTERNATION}`
+    ),
     reason: "用户表达了会约束后续方案的长期项目规则。"
   },
   {
@@ -119,7 +155,7 @@ export function resolveRequiredAgentMemoryUpdates(draft: string): RequiredAgentM
   if (hasOneOffMarker && !hasLongTermScopeMarker) {
     return [];
   }
-  if (!hasLongTermScopeMarker && !/(?:必须|不得|不要|避免|待确认|还需确认|记住|记录|不能|不允许|不超过|不低于|至少|至多|小于|大于|限制|约束|尺寸|高度|宽度|重量)/.test(draft)) {
+  if (!hasLongTermScopeMarker && !/(?:必须|不得|不要|避免|待确认|还需确认|记住|记录|不能|不允许|不超过|不低于|至少|至多|小于|大于|限制|约束|尺寸|高度|宽度|重量|别(?:再)?超过)/.test(draft)) {
     return [];
   }
 

@@ -287,13 +287,14 @@ function isResearchSynthesisRequest(text: string): boolean {
   // Eval B form: the user points at a BODY of current/prior content without
   // naming it as material ("帮我看看这里真正值得继续做的点"). Requires ALL
   // three of: a collective/content anchor (一组待综合内容 — not a bare 当前 or
-  // 刚才), an extraction target (点/地方/内容/发现/问题/机会/方向/重点…), and a
-  // worth-pursuing phrase. "当前方案值得继续推进吗" is a single-object value
-  // judgment and must not load the pack.
+  // 刚才), an extraction target (点/地方/内容/发现/问题/机会/重点…; a bare 方向
+  // is deliberately NOT one — "这些方向值得继续推进吗" is a single-object value
+  // judgment), and a worth-pursuing phrase. "当前方案值得继续推进吗" and
+  // "这些方向值得继续推进吗" must not load the pack.
   const collectiveAnchor =
     /这里|这些|前面(?:这些|的)?|上面(?:这些|的)?|上述(?:内容|讨论)?|之前(?:的)?(?:讨论|内容|分析)|当前(?:资料|内容|研究|发现|讨论|材料)|现有(?:资料|内容|材料)/.test(text);
   const extractTarget =
-    /的?(?:点|地方|内容|发现|问题|机会|方向|重点)(?:是|有|在|：|:|？)?/.test(text) ||
+    /的?(?:点|地方|内容|发现|问题|机会|重点)(?:是|有|在|：|:|？)?/.test(text) ||
     /哪里|哪些/.test(text);
   const worthPursuing = /(?:真正)?值得(?:继续)?(?:做|推进|深耕|投入)/.test(text);
   return collectiveAnchor && extractTarget && worthPursuing;
