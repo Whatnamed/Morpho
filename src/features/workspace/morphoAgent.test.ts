@@ -724,6 +724,85 @@ describe("Morpho agent tool argument validation", () => {
   });
 });
 
+describe("Morpho agent persona and prompt contract", () => {
+  it("bumps the prompt contract version for the persona and method layer", () => {
+    expect(buildMorphoAgentSystemPrompt({
+      mode: "auto",
+      strategy: "discussion",
+      workspace: createInitialWorkspace(),
+      selectedObjects: [],
+      context: buildTaskContext(createInitialWorkspace(), {
+        kind: "general",
+        draft: "继续",
+        selectedObjectIds: []
+      }),
+      providerTaskContext: buildProviderTaskContext(
+        buildTaskContext(createInitialWorkspace(), {
+          kind: "general",
+          draft: "继续",
+          selectedObjectIds: []
+        })
+      )
+    })).toContain("morpho-agent-v3.4-2026-08-13");
+  });
+
+  it("carries the continuous design-partner persona in the stable prompt", () => {
+    const prompt = buildMorphoAgentSystemPrompt({
+      mode: "auto",
+      strategy: "discussion",
+      workspace: createInitialWorkspace(),
+      selectedObjects: [],
+      context: buildTaskContext(createInitialWorkspace(), {
+        kind: "general",
+        draft: "聊聊",
+        selectedObjectIds: []
+      }),
+      providerTaskContext: buildProviderTaskContext(
+        buildTaskContext(createInitialWorkspace(), {
+          kind: "general",
+          draft: "聊聊",
+          selectedObjectIds: []
+        })
+      )
+    });
+
+    expect(prompt).toContain("连续设计搭档");
+    expect(prompt).toContain("尊重用户已有工作与判断");
+    expect(prompt).toContain("区分证据、推断、假设、设计机会、提议与决定");
+    expect(prompt).toContain("只换颜色、背景或形容词不算新方向");
+    expect(prompt).toContain("视觉输出是设计探索工具");
+    expect(prompt).toContain("用户拥有最终设计判断权");
+    expect(prompt).toContain("只针对本轮具体图、对象或文本的一次性要求");
+  });
+
+  it("keeps the stable prompt byte-identical across strategies while the persona is present", () => {
+    const build = (strategy: "discussion" | "research") => {
+      const workspace = createInitialWorkspace();
+      const context = buildTaskContext(workspace, {
+        kind: strategy === "research" ? "research" : "general",
+        draft: strategy === "research" ? "调研竞品" : "聊聊下一步",
+        selectedObjectIds: []
+      });
+      return buildMorphoAgentSystemPrompt({
+        mode: "auto",
+        strategy,
+        workspace,
+        selectedObjects: [],
+        context,
+        providerTaskContext: buildProviderTaskContext(context)
+      });
+    };
+
+    expect(build("discussion")).toBe(build("research"));
+  });
+
+  it("tells the model that turn-specific image instructions are not stable memory", () => {
+    const tools = JSON.stringify(buildMorphoAgentTools(true));
+    expect(tools).toContain("只针对本轮具体图、对象或文本的一次性要求");
+    expect(tools).not.toContain("若系统提示本轮需要确认记忆更新");
+  });
+});
+
 function makeCall(name: string, args: unknown): AgentFunctionCall {
   return {
     id: `fc-${name}`,

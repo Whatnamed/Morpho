@@ -699,7 +699,7 @@ export function buildMorphoAgentTools(
     }),
     functionTool({
       name: "submit_memory_update",
-      description: "只提交当前用户消息中明确表达的稳定偏好、约束、避免项或开放问题。evidenceQuote 必须逐字来自当前用户消息。若系统提示本轮需要确认记忆更新但没有可写入内容，传 items: [] 和 skippedReason 说明原因。",
+      description: "只提交当前用户消息中明确表达的稳定偏好、约束、避免项或开放问题。evidenceQuote 必须逐字来自当前用户消息。只针对本轮具体图、对象或文本的一次性要求（如“这张图做成红色”“这次背景换白色”）不属于稳定记忆，不要写入；没有可写入内容时传 items: [] 和 skippedReason 说明原因。",
       parameters: {
         type: "object",
         additionalProperties: false,
