@@ -55,7 +55,7 @@ contract with a separate server prompt.
 | 12–18 | Research / Definition / Direction / Visual / Preview / Compare / Delivery behavior | **C/D** | Professional method exists only as 1–2 line strategy policies that never arrive, plus image role policies. No per-turn professional method layer. |
 | 19–23 | Visual intent / compiler / roles / adapters / reference resolution | **A−** | Complete structured pipeline with role policies and task templates. Minor: no explicit "design intent > rendering decoration" principle; scenario role lacks human scale/action grounding. |
 | 24 | Suggestion behavior | — | UI-owned; not part of the prompt layer. |
-| 25 | Prompt Contract / cache stability | **A** | Stable prefix genuinely stable; budget estimator mirrors server prefix; contract versioned. |
+| 25 | Prompt Contract / cache stability | **A** | Stable prefix genuinely stable; shared exact-budget helper models the full server prefix (incl. strategy/method items) at helper level — production compaction wiring stays the separately tracked G1 debt; contract versioned. |
 | 26 | Prompt injection / untrusted evidence | **A** | Frames are untrusted envelopes; stable policy hard-codes injection resistance; compaction treats user content as untrusted. |
 | 27 | Tests / fixtures | **A−** | Extensive; gaps: strategy-delivery composition, method layer, one-off memory clauses. |
 
@@ -191,9 +191,11 @@ guidance.
   project-scope long-term memory.
 - After: the clause is rejected as a one-off turn reference unless an explicit
   long-term scope marker ("以后/整个项目/始终…") is present. Bare "这次/本轮"
-  alone is not a one-off signal: clauses pairing a turn-scope word with
-  project-level vocabulary ("这次课设预算不能超过 500 元", "本轮项目产品尺寸必须
-  控制在桌面范围内") stay eligible for long-term memory.
+  alone is not a one-off signal, but neither is a bare product/dimension noun:
+  a clause passes the one-off guard only with an EXPLICIT project-level scope
+  ("这次课设预算不能超过 500 元", "本轮项目产品尺寸必须控制在桌面范围内" — 课设/项目/
+  预算/成本/整机/全案/产品线/整个产品/总体/全局). "这次产品不要用蓝色", "这次尺寸
+  不要改" remain one-off and are rejected.
 
 **Compaction (was: field names only)**
 

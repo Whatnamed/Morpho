@@ -60,13 +60,16 @@ const ONE_OFF_TURN_REFERENCE_PATTERN =
   /(?:这张图|这张|这次的图|这轮的图|这轮|这版|当前这版|这个角度|这张参考图|刚才那张|刚才这个|新生成的图|生成的图|这次背景|这种背景|这个背景|这一张|这幅|这个渲染|这次|本轮)/;
 
 /**
- * "这次/本轮" alone is not a one-off signal. A clause that pairs a bare
- * turn-scope word with project-level constraint vocabulary (course project,
- * budget, product, dimensions, scope, cost) expresses a project-wide
- * constraint ("这次课设预算不能超过 500 元", "本轮项目产品尺寸必须控制在桌面范围内")
- * and must remain eligible for long-term memory.
+ * "这次/本轮" alone is not a one-off signal, but neither is a bare product or
+ * dimension noun. A clause may pass the one-off guard only when it carries an
+ * EXPLICIT project-level scope: a project/course/budget/whole-product anchor
+ * (课设/课题/项目/预算/成本/整机/全案/产品线/整个产品/总体/全局). Bare "产品",
+ * "尺寸", or "范围" are not sufficient — "这次产品不要用蓝色" and "这次尺寸不要改"
+ * are still one-off operation requirements, while "这次课设预算不能超过 500 元"
+ * and "本轮项目产品尺寸必须控制在桌面范围内" are project-wide constraints.
  */
-const PROJECT_SCOPE_MEMORY_OVERRIDE_PATTERN = /课设|预算|项目|产品|尺寸|范围|成本|整机|全案/;
+const PROJECT_SCOPE_MEMORY_OVERRIDE_PATTERN =
+  /课设|课题|项目|预算|成本|整机|全案|产品线|整个产品|总体|全局/;
 
 const KIND_RULES: Array<{
   kind: RequiredAgentMemoryUpdateKind;

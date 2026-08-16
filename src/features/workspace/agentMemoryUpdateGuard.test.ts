@@ -97,6 +97,12 @@ describe("Agent memory update guard", () => {
     expect(resolveRequiredAgentMemoryUpdates("这次生成的图不要高反光")).toEqual([]);
   });
 
+  it("treats bare product or dimension nouns as one-off without an explicit project scope", () => {
+    expect(resolveRequiredAgentMemoryUpdates("这次产品不要用蓝色")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这次尺寸不要改")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这次产品图不要高反光")).toEqual([]);
+  });
+
   it("keeps project-level constraints even when they start with a bare turn-scope word", () => {
     expect(
       resolveRequiredAgentMemoryUpdates("这次课设预算不能超过 500 元")

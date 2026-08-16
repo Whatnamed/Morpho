@@ -284,8 +284,11 @@ function isResearchSynthesisRequest(text: string): boolean {
   ) {
     return true;
   }
-  // Eval B form: no material noun at all, but the request asks to find the
-  // points worth pursuing from the current content ("帮我看看这里真正值得继续做的点").
-  return /(?:帮我)?(?:看看|梳理一下|分析一下)?(?:这里|这些|当前)?(?:真正)?值得(?:继续)?做(?:的(?:点|地方|方向)?)?/.test(text) ||
-    /值得(?:继续)?(?:做|推进|深耕|投入)/.test(text);
+  // Eval B form: the user points at a body of current/prior content without
+  // naming it as material ("帮我看看这里真正值得继续做的点"). Requires BOTH a
+  // deictic anchor to that content (这里/这些/前面/上面/当前/刚才) AND a
+  // worth-pursuing phrase. A bare "这个方向值得做吗" is a judgment/discussion,
+  // not a synthesis request, and must not load the pack.
+  return /(?:这里|这些|前面|上面|当前|刚才|上述|之前的)/.test(text) &&
+    /(?:真正)?值得(?:继续)?(?:做|推进|深耕|投入)(?:的(?:点|地方|方向)?)?/.test(text);
 }
