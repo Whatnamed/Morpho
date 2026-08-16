@@ -339,6 +339,7 @@ describe("Agent tool executors", () => {
       .filter((object) => object.visibility === "active" && (object.type === "image" || object.type === "research"))
       .slice(0, 2);
     if (sources.length !== 2) throw new Error("Fixture 缺少两个可 Compare 对象。");
+    fixture.input.draft = "把这两个比较一下，并保留比较记录";
     fixture.input.selectedObjectIds = sources.map((object) => object.id);
     fixture.input.selectedObjects = sources;
     fixture.input.allowStructuredComparison = true;
@@ -366,6 +367,44 @@ describe("Agent tool executors", () => {
     expect(first).toMatchObject({ status: "created", analysisId: "comparison-message-assistant" });
     expect(second).toEqual(first);
     expect(Object.keys(fixture.host.getWorkspace().ai.comparisonAnalyses ?? {})).toEqual(["comparison-message-assistant"]);
+  });
+
+  it("fails closed locally when a plain comparison tries to write a Compare record", async () => {
+    const fixture = createFixture();
+    const workspace = fixture.host.getWorkspace();
+    const sources = Object.values(workspace.objects)
+      .filter((object) => object.visibility === "active" && (object.type === "image" || object.type === "research"))
+      .slice(0, 2);
+    if (sources.length !== 2) throw new Error("Fixture 缺少两个可 Compare 对象。");
+    // Ordinary comparison: analysis is allowed, but the record write is not.
+    fixture.input.draft = "把这两个比较一下";
+    fixture.input.selectedObjectIds = sources.map((object) => object.id);
+    fixture.input.selectedObjects = sources;
+    fixture.input.allowStructuredComparison = true;
+    const parsed = {
+      name: "create_comparison_analysis" as const,
+      args: {
+        comparisonGoal: "比较目标与风险",
+        conclusionSummary: "保持当前可验证方向。",
+        objectComparisons: sources.map((object) => ({
+          objectId: object.id,
+          title: object.title,
+          evidenceBasis: "objectSummary" as const,
+          summary: "对象摘要",
+          strengths: ["清晰"],
+          risks: ["待验证"],
+          evidence: []
+        })),
+        recommendedQuestions: [],
+        evidenceLimits: []
+      }
+    };
+    await expect(executeAgentTool({
+      ...fixture.input,
+      callId: "call-compare-plain",
+      parsed
+    })).rejects.toThrow("没有明确要求保存/保留比较记录");
+    expect(fixture.host.getWorkspace().ai.comparisonAnalyses ?? {}).toEqual({});
   });
 
   it("routes explicit confirmation through the UI port and stops the batch", async () => {

@@ -35,8 +35,8 @@ const strategyPolicies: Record<AgentTaskStrategyKind, readonly string[]> = {
     "用户本轮显式参考和允许变化优先；用户说不使用默认参考时必须设置 excludeDefaultReference。"
   ],
   comparison: [
-    "Compare 只分析明确选择对象，不自动排序成项目决定，不自动改变方向、默认参考或设计定义。",
-    "只有用户明确要求比较时才创建 Compare analysis。"
+    "Compare 只分析明确选择对象，默认直接在聊天中给出差异、权衡与建议，不创建 Compare 记录。",
+    "只有用户明确要求保存/保留比较记录时才调用 create_comparison_analysis；比较建议不是项目决定，绝不自动改变主方向、备选方向、淘汰状态、默认参考或设计定义。"
   ],
   deliveryPreparation: [
     "交付章节草稿只能通过 prepare_delivery_section_draft，并只使用当前章节稳定引用快照。",

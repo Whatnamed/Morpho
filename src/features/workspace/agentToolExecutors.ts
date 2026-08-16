@@ -58,6 +58,7 @@ import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
 import {
   getComparisonToolExecutionBlockReason,
   getDesignDefinitionDrafts,
+  isExplicitComparisonRecordRequest,
   type MorphoAgentToolArguments,
   type MorphoAgentToolName,
   type RequestConfirmationArgs
@@ -649,7 +650,8 @@ function executeCreateComparisonAnalysis(
 ) {
   const blockReason = getComparisonToolExecutionBlockReason({
     explicitComparisonRequested: input.allowStructuredComparison,
-    selectedObjectCount: input.selectedObjectIds.length
+    selectedObjectCount: input.selectedObjectIds.length,
+    explicitComparisonRecordRequested: isExplicitComparisonRecordRequest(input.draft)
   });
   if (blockReason) {
     throw new Error(blockReason);

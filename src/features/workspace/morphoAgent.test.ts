@@ -13,6 +13,7 @@ import {
   MORPHO_AGENT_TOOL_EFFECT_MATRIX,
   getDesignDefinitionDrafts,
   isExplicitComparisonRequest,
+  isExplicitComparisonRecordRequest,
   normalizeGenerateVisualsForSelectedDirections,
   parseMorphoAgentToolCallBatch,
   parseMorphoAgentToolArguments,
@@ -301,16 +302,44 @@ describe("Morpho agent tool argument validation", () => {
   it("blocks an unsolicited or selection-free Compare tool call locally", () => {
     expect(getComparisonToolExecutionBlockReason({
       explicitComparisonRequested: false,
-      selectedObjectCount: 3
+      selectedObjectCount: 3,
+      explicitComparisonRecordRequested: true
     })).toContain("用户未明确要求比较");
     expect(getComparisonToolExecutionBlockReason({
       explicitComparisonRequested: true,
-      selectedObjectCount: 1
+      selectedObjectCount: 1,
+      explicitComparisonRecordRequested: true
     })).toContain("至少两个");
     expect(getComparisonToolExecutionBlockReason({
       explicitComparisonRequested: true,
-      selectedObjectCount: 2
+      selectedObjectCount: 2,
+      explicitComparisonRecordRequested: true
     })).toBeUndefined();
+    expect(getComparisonToolExecutionBlockReason({
+      explicitComparisonRequested: true,
+      selectedObjectCount: 2,
+      explicitComparisonRecordRequested: false
+    })).toContain("没有明确要求保存/保留比较记录");
+  });
+
+  it("separates ordinary comparison from persisted comparison record authority", () => {
+    // Ordinary comparisons never grant a Workspace Compare write.
+    expect(isExplicitComparisonRecordRequest("把这两个比较一下")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较这些方案")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("对比这两个方案，分析差异")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("这个方案比较省钱，记录一下预算")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("把这两个方案的设计记录比较一下")).toBe(false);
+    // Explicit save/persist intent grants.
+    expect(isExplicitComparisonRecordRequest("把这两个比较一下，并保留比较记录")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("保存这次比较")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("创建比较记录")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("把比较结果留在项目里")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("对比这两个方案，把结论存档")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("把这两个比较一下，记录一下结果")).toBe(true);
+    // Explicit negation is fail-closed.
+    expect(isExplicitComparisonRecordRequest("比较一下，但不要保存记录")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("不要创建比较记录，只讨论")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果不要保存")).toBe(false);
   });
 
   it("normalizes direction preview visual roles before operation validation", () => {
@@ -743,7 +772,7 @@ describe("Morpho agent persona and prompt contract", () => {
           selectedObjectIds: []
         })
       )
-    })).toContain("morpho-agent-v3.5-2026-08-17");
+    })).toContain("morpho-agent-v3.6-2026-08-17");
   });
 
   it("carries the continuous design-partner persona in the stable prompt", () => {

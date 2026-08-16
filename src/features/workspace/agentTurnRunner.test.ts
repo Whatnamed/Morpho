@@ -155,6 +155,74 @@ describe("A+ Agent turn runner", () => {
       agentTurnOutcome: "success"
     });
   });
+  it("preserves the webSearch authority bit from Preparation to the Coordinator host and Recovery", async () => {
+    const fixture = createFixture([
+      { status: "providerRunning" },
+      { status: "externallyCompleted", outputText: "已核实。" }
+    ]);
+    fixture.input.draft = "查一下最新的行业标准，联网核实。";
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    // Preparation → Coordinator start: the host captures webSearch:true.
+    expect(fixture.coordinatorHost.executions[0]?.providerRequest.capabilityIntent.webSearch).toBe(true);
+    // Recovery export keeps the bit in both the active request and the base request.
+    expect(fixture.store.record?.coordinator.activeRequest?.providerRequest.capabilityIntent.webSearch).toBe(true);
+    expect(fixture.store.record?.metadata.runtime.providerBaseRequest.capabilityIntent.webSearch).toBe(true);
+    // Restore reconciles the same authority without regenerating a different bit.
+    fixture.coordinatorHost.setJournalStatus("externallyCompleted");
+    const resumed = await resumeMorphoAgentTurn(
+      fixture.fake.getWorkspace().project.id,
+      fixture.host,
+      fixture.dependencies
+    );
+    expect(resumed).toBe("recovered");
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+  });
+
+  it("keeps webSearch absent/false across the whole chain when the turn is not authorized", async () => {
+    const fixture = createFixture([{ status: "providerRunning" }]);
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    expect(fixture.coordinatorHost.executions[0]?.providerRequest.capabilityIntent.webSearch).not.toBe(true);
+    expect(fixture.store.record?.coordinator.activeRequest?.providerRequest.capabilityIntent.webSearch).not.toBe(true);
+    expect(fixture.store.record?.metadata.runtime.providerBaseRequest.capabilityIntent.webSearch).not.toBe(true);
+  });
+
+  it("reuses the exact webSearch authority on an exact retry", async () => {
+    const fixture = createFixture([
+      { status: "transportFailure" },
+      { status: "externallyCompleted", outputText: "重试完成。" }
+    ]);
+    fixture.input.draft = "查一下最新的行业标准，联网核实。";
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    expect(fixture.coordinatorHost.executions).toHaveLength(2);
+    expect(fixture.coordinatorHost.executions[1]).toEqual(fixture.coordinatorHost.executions[0]);
+    expect(fixture.coordinatorHost.executions[0]?.providerRequest.capabilityIntent.webSearch).toBe(true);
+  });
+
+  it("keeps the webSearch authority on the continuation request", async () => {
+    const fixture = createFixture([
+      {
+        status: "awaitingNextRequest",
+        outputText: "我先建立研究草案。",
+        toolCalls: [researchToolCall("call-research-searchable")]
+      },
+      { status: "externallyCompleted", outputText: "完成。" }
+    ]);
+    fixture.input.draft = "联网查最新标准，并创建研究分析。";
+    fixture.input.taskMode = "researchOperation";
+    fixture.input.recommendedTaskMode = "researchOperation";
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    expect(fixture.coordinatorHost.executions).toHaveLength(2);
+    expect(fixture.coordinatorHost.executions[0]?.providerRequest.capabilityIntent.webSearch).toBe(true);
+    expect(fixture.coordinatorHost.executions[1]?.providerRequest.capabilityIntent.webSearch).toBe(true);
+  });
 
   it("restores a terminal Pending Confirmation card without reopening the old Turn", async () => {
     const fixture = createFixture([{

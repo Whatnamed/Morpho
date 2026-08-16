@@ -9,6 +9,7 @@ import {
   isUserActionExplicitlyDisallowed
 } from "@/shared/userInstructionAuthority";
 import type { MorphoAgentToolArguments, MorphoAgentToolName, RequestConfirmationArgs } from "./morphoAgent";
+import { isExplicitComparisonRecordRequest } from "./morphoAgent";
 
 export type AgentToolAuthorityProfile = Readonly<{
   execution: Readonly<{
@@ -76,7 +77,13 @@ export function resolveAgentToolAuthority(input: Readonly<{
     !isUserActionExplicitlyDisallowed(input.draft, "reviseSelectedProposalDraft");
   const allowImageGeneration = input.executionTaskMode === "imageGeneration" &&
     input.executionTaskModeSource === "userSelected";
-  const allowComparisonWrite = input.allowStructuredComparison && input.selectedObjects.length >= 2;
+  // Workspace Compare writes need a SEPARATE explicit save intent on top of
+  // the explicit comparison request: ordinary "把这两个比较一下" is chat-only.
+  // A model calling create_comparison_analysis without this authority is
+  // blocked locally (fail-closed) even if the server tool gate passed.
+  const allowComparisonWrite = input.allowStructuredComparison &&
+    input.selectedObjects.length >= 2 &&
+    isExplicitComparisonRecordRequest(input.draft);
   const allowDeliveryDraft = input.hasDeliveryDraftTarget && input.executionWorkIntent === "prepareDeliverySection";
   const allowMemoryWrite = input.hasRequiredMemoryUpdates;
 

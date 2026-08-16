@@ -630,7 +630,7 @@ export function buildMorphoAgentTools(
     }),
     functionTool({
       name: "create_comparison_analysis",
-      description: "基于当前显式选择对象创建 Compare analysis，不自动改变主方向、默认参考或淘汰状态。",
+      description: "普通比较默认直接在聊天中给出差异、权衡与建议，不创建 Compare 记录；只有用户明确要求保存/保留比较记录（如“保留比较记录”“保存这次比较”“创建比较记录”）时才调用本工具。比较建议不是项目决定，绝不自动改变主方向、备选方向、淘汰状态、默认参考或设计定义。",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -795,9 +795,13 @@ export function buildMorphoAgentTools(
 export function getComparisonToolExecutionBlockReason(input: {
   explicitComparisonRequested: boolean;
   selectedObjectCount: number;
+  explicitComparisonRecordRequested: boolean;
 }): string | undefined {
   if (!input.explicitComparisonRequested) {
     return "Compare 已阻止：用户未明确要求比较，本轮只进行普通分析。";
+  }
+  if (!input.explicitComparisonRecordRequested) {
+    return "Compare 已阻止：用户只要求比较分析，没有明确要求保存/保留比较记录；请直接在聊天中给出差异、权衡与建议，不要写入 Workspace。";
   }
   if (input.selectedObjectCount < 2) {
     return "Compare 已阻止：需要至少两个当前显式选择且可用的对象。";
@@ -887,6 +891,39 @@ export function isExplicitComparisonRequest(draft: string): boolean {
     return false;
   }
   return /比较|对比|compare/i.test(text);
+}
+
+const COMPARE_RECORD_SAVE_WORD =
+  /保存|保留|创建|写入|存档|留下|记下|存为|存进|留在|放进|记录(?:一下|下来|到|在|为|成|进|上|入)/;
+const COMPARE_RECORD_TARGET_WORD =
+  /结果|结论|存档|保存|保留|留下|写入|存进|留在|记录(?:一下|下来|到|在|为|成|进|上|入)/;
+
+/**
+ * Persisting a Compare requires a SEPARATE authority from asking for a
+ * comparison. Ordinary "把这两个比较一下" is chat-only analysis; only an
+ * explicit save/persist intent ("保留比较记录", "保存这次比较",
+ * "创建比较记录", "把比较结果留在项目里") may create a Workspace
+ * ComparisonAnalysis. Fail-closed: any nearby negation of the save intent
+ * denies, and the adverb usage of 比较 ("比较省钱") never grants.
+ */
+export function isExplicitComparisonRecordRequest(draft: string): boolean {
+  const text = draft.trim();
+  if (
+    /(?:不|不要|别|无需|无须|不必|不用|不需要|禁止|暂不|先不要|先别|没).{0,12}(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|留在|放进).{0,12}(?:比较|对比|compare)/i.test(text) ||
+    /(?:比较|对比|compare).{0,12}(?:不要|别|无需|无须|不必|不用|不需要|禁止|暂不|先不要|先别|不|没).{0,8}(?:保存|保留|记录|创建|写入|存档|留下|存为)/i.test(text)
+  ) {
+    return false;
+  }
+  // "比较省钱 / 比较方便" is an adverb, not a compare action; strip it so it
+  // can never pair with a save word inside the adjacency gap.
+  const scrubbed = text.replace(
+    /比较(?:省钱|方便|好用|好|更好|快|更快|轻|小|大|便宜|贵|适合|合适|稳妥|安全|简单|容易|划算|重要|明显)/g,
+    ""
+  );
+  return new RegExp(
+    `(?:${COMPARE_RECORD_SAVE_WORD.source}).{0,12}(?:比较|对比|compare)|(?:比较|对比|compare).{0,12}(?:${COMPARE_RECORD_TARGET_WORD.source})`,
+    "i"
+  ).test(scrubbed);
 }
 
 export function buildAgentHistoryMessages(messages: Array<{ role: "user" | "assistant"; body: string }>): ResponseMessageInput[] {

@@ -1,7 +1,7 @@
 import type { AgentTaskStrategyKind } from "@/domain/morpho/types";
 import { buildAgentStrategyPolicyBlocks } from "@/shared/agentStrategyItem";
 
-export const MORPHO_AGENT_PROMPT_CONTRACT_VERSION = "morpho-agent-v3.5-2026-08-17";
+export const MORPHO_AGENT_PROMPT_CONTRACT_VERSION = "morpho-agent-v3.6-2026-08-17";
 
 const coreAgentPolicy = [
   "你是 Morpho 项目工作台中的唯一连续 Agent，以产品/工业设计概念阶段的连续设计搭档身份工作。用户与 Agent 在一个项目会话中持续工作。",

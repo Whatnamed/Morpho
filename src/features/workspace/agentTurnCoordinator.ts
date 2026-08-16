@@ -891,7 +891,10 @@ function copyProviderRequest(request: APlusAgentProviderRequest): APlusAgentProv
     promptContractVersion: request.promptContractVersion,
     mode: request.mode,
     capabilityIntent: {
-      comparisonAnalysis: request.capabilityIntent.comparisonAnalysis
+      comparisonAnalysis: request.capabilityIntent.comparisonAnalysis,
+      ...(request.capabilityIntent.webSearch === undefined
+        ? {}
+        : { webSearch: request.capabilityIntent.webSearch })
     },
     ...(request.strategy ? { strategy: request.strategy } : {}),
     ...(request.strategyAnchorMessageId
@@ -1077,6 +1080,8 @@ function isProviderRequestShape(value: unknown): value is APlusAgentProviderRequ
     (value.mode === "auto" || value.mode === "confirm") &&
     isRecord(value.capabilityIntent) &&
     typeof value.capabilityIntent.comparisonAnalysis === "boolean" &&
+    (value.capabilityIntent.webSearch === undefined ||
+      typeof value.capabilityIntent.webSearch === "boolean") &&
     (value.strategy === undefined || typeof value.strategy === "string") &&
     (value.strategyAnchorMessageId === undefined || typeof value.strategyAnchorMessageId === "string") &&
     (value.methodPacks === undefined ||

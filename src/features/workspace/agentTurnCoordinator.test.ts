@@ -735,6 +735,83 @@ describe("A+ AgentTurnCoordinator", () => {
     expect(JSON.stringify(sent)).not.toMatch(/workspace|toolResult|"memory"|"summary"/i);
   });
 
+  it("preserves the webSearch authority bit across copy, continuation and recovery restore", async () => {
+    const host = new FakeHost();
+    host.queueStarted({ status: "awaitingNextRequest", output: true, toolCallIds: ["call-a"] });
+    host.queueStarted({ status: "externallyCompleted", output: true });
+    const coordinator = await initializedCoordinator(host, ["request-1", "request-2"]);
+    await coordinator.startInitialRequest({
+      ...providerRequest(),
+      capabilityIntent: { comparisonAnalysis: true, webSearch: true }
+    });
+    // Initial request: the bit survives the Coordinator copy into the host.
+    expect(host.executions[0]?.providerRequest.capabilityIntent.webSearch).toBe(true);
+    // Continuation: the copy preserves the caller-provided bit (the Runner
+    // rebuilds continuations from providerBaseRequest, which carries it).
+    await coordinator.startContinuation({
+      ...providerRequest("tool continuation"),
+      capabilityIntent: { comparisonAnalysis: true, webSearch: true }
+    });
+    expect(host.executions[1]?.providerRequest.capabilityIntent.webSearch).toBe(true);
+    // Recovery export → restore: an in-flight active request keeps the bit.
+    const runningHost = new FakeHost();
+    runningHost.queueStarted({ status: "providerRunning", output: true });
+    const running = await initializedCoordinator(runningHost, ["request-3"]);
+    await running.startInitialRequest({
+      ...providerRequest(),
+      capabilityIntent: { comparisonAnalysis: false, webSearch: true }
+    });
+    const snapshot = running.exportRecoverySnapshot();
+    expect(snapshot?.activeRequest?.providerRequest.capabilityIntent.webSearch).toBe(true);
+    const restored = AgentTurnCoordinator.restore({
+      snapshot,
+      host: new FakeHost(),
+      createRequestId: () => "request-4"
+    });
+    expect(restored.status).toBe("ok");
+    if (restored.status !== "ok") return;
+    expect(restored.coordinator.exportRecoverySnapshot()?.activeRequest?.providerRequest.capabilityIntent.webSearch)
+      .toBe(true);
+  });
+
+  it("keeps an explicit webSearch:false bit (and an absent bit) through the copy", async () => {
+    const host = new FakeHost();
+    host.queueStarted({ status: "externallyCompleted", output: true });
+    const coordinator = await initializedCoordinator(host, ["request-1"]);
+    await coordinator.startInitialRequest({
+      ...providerRequest(),
+      capabilityIntent: { comparisonAnalysis: false, webSearch: false }
+    });
+    expect(host.executions[0]?.providerRequest.capabilityIntent.webSearch).toBe(false);
+    expect(host.executions[0]?.providerRequest.capabilityIntent.comparisonAnalysis).toBe(false);
+  });
+
+  it("fails closed when the recovery shape carries a non-boolean webSearch bit", async () => {
+    const host = new FakeHost();
+    host.queueStarted({ status: "providerRunning", output: true });
+    const coordinator = await initializedCoordinator(host, ["request-1"]);
+    await coordinator.startInitialRequest(providerRequest());
+    const snapshot = coordinator.exportRecoverySnapshot();
+    expect(snapshot?.activeRequest).toBeDefined();
+    if (!snapshot?.activeRequest) return;
+    const corrupted = {
+      ...snapshot,
+      activeRequest: {
+        ...snapshot.activeRequest,
+        providerRequest: {
+          ...snapshot.activeRequest.providerRequest,
+          capabilityIntent: { comparisonAnalysis: false, webSearch: "yes" }
+        }
+      }
+    };
+    const restored = AgentTurnCoordinator.restore({
+      snapshot: corrupted,
+      host: new FakeHost(),
+      createRequestId: () => "request-2"
+    });
+    expect(restored.status).toBe("failed");
+  });
+
   it("starts a new Turn without inheriting the previous Turn Fault", async () => {
     const failedHost = new FakeHost();
     failedHost.queueHandshake({

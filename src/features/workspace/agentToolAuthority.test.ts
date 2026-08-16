@@ -139,6 +139,44 @@ describe("Agent tool authority", () => {
     expect(profile.allowedTools).toContain("create_concept_direction_proposal");
     expect(profile.allowedTools).not.toContain("revise_selected_proposal_draft");
   });
+
+  it("grants Compare writes only to an explicit persist request, never to a plain comparison", () => {
+    const workspace = createTestWorkspace();
+    const sources = Object.values(workspace.objects)
+      .filter((object) => object.visibility === "active" && (object.type === "image" || object.type === "research"))
+      .slice(0, 2);
+    if (sources.length !== 2) throw new Error("Fixture 缺少两个可 Compare 对象。");
+    // Ordinary comparison: analysis capability yes, Workspace write no.
+    const plain = authority({
+      draft: "把这两个比较一下。",
+      allowStructuredComparison: true,
+      selectedObjects: sources
+    });
+    expect(plain.allowComparisonWrite).toBe(false);
+    expect(plain.allowedTools).not.toContain("create_comparison_analysis");
+    // Explicit persist request: the write is authorized.
+    const persisted = authority({
+      draft: "把这两个比较一下，并保留比较记录。",
+      allowStructuredComparison: true,
+      selectedObjects: sources
+    });
+    expect(persisted.allowComparisonWrite).toBe(true);
+    expect(persisted.allowedTools).toContain("create_comparison_analysis");
+    // Negated save intent stays closed even with an explicit comparison.
+    const negated = authority({
+      draft: "比较一下，但不要保存记录。",
+      allowStructuredComparison: true,
+      selectedObjects: sources
+    });
+    expect(negated.allowComparisonWrite).toBe(false);
+    // Fewer than two selections never writes, regardless of save intent.
+    const single = authority({
+      draft: "把这两个比较一下，并保留比较记录。",
+      allowStructuredComparison: true,
+      selectedObjects: sources.slice(0, 1)
+    });
+    expect(single.allowComparisonWrite).toBe(false);
+  });
 });
 
 function authority(overrides: Partial<Parameters<typeof resolveAgentToolAuthority>[0]> = {}) {
