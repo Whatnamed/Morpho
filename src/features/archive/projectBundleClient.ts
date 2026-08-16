@@ -1,4 +1,4 @@
-import { strFromU8, unzipSync, zip } from "fflate";
+import { strFromU8, unzipSync, zip, zipSync } from "fflate";
 
 import {
   createEditableProjectBackupManifest,
@@ -460,15 +460,35 @@ function missingResolvedAsset(entry: {
 }
 
 /**
- * Zip compression runs off the main thread when the platform provides Workers.
+ * Bundles at or below this many input bytes compress synchronously.
  *
- * Measured on the built-in case study (Phase 5 atlas): `zipSync` froze the page for
- * ~890 ms during the human-readable archive export because that bundle embeds every
- * readable local binary. `zip` produces the same bytes at the same level; it only
- * changes where the compression runs.
+ * Measured in a real browser on the Phase 5 machine (performance-zip-crossover):
+ * zipSync costs ~7 ms at 0.2 MiB and ~22 ms at 1 MiB of mixed text/noise input,
+ * crossing a 50 ms single-frame budget around 2–4 MiB; the async `zip` path
+ * avoids exactly that freeze for the human-readable archive (~890 ms → 63–71 ms
+ * on the built-in case study) but pays a per-call Worker handoff that showed up
+ * as an ~85 ms frame on the small editable-backup bundle, which used to show no
+ * long frame at all. The threshold keeps small bundles on the path that is
+ * faster in wall time AND free of the handoff frame, while large bundles keep
+ * the async win. Same library and compression level on both paths; the two
+ * paths produce the same logical archive contents (byte-identical on most
+ * measured sizes, but not guaranteed byte-for-byte).
  */
+const SYNC_ZIP_MAX_INPUT_BYTES = 2 * 1024 * 1024;
+
+function bundleToZipEntries(bundle: BuiltProjectBundle): Record<string, Uint8Array> {
+  return Object.fromEntries(bundle.files.map((entry) => [entry.path, entry.bytes]));
+}
+
+function bundleInputBytes(bundle: BuiltProjectBundle): number {
+  return bundle.files.reduce((total, entry) => total + entry.bytes.byteLength, 0);
+}
+
 async function bundleToZipFile(bundle: BuiltProjectBundle): Promise<File> {
-  const entries = Object.fromEntries(bundle.files.map((entry) => [entry.path, entry.bytes]));
+  const entries = bundleToZipEntries(bundle);
+  if (bundleInputBytes(bundle) <= SYNC_ZIP_MAX_INPUT_BYTES) {
+    return new File([zipSync(entries, { level: 6 })], bundle.fileName, { type: "application/zip" });
+  }
   // fflate hands back a freshly allocated, exactly sized buffer; the cast only
   // re-narrows the library's ArrayBufferLike-wide element type for the File part.
   const zipped = await new Promise<Uint8Array<ArrayBuffer>>((resolve, reject) => {

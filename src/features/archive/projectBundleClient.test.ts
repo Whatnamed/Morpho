@@ -68,6 +68,50 @@ describe("project bundle client", () => {
     }
   });
 
+  test("bundles above the sync-zip threshold export through the async path and stay inspectable", async () => {
+    const workspace = createBundleFixtureWorkspace();
+    // Push the bundle input past SYNC_ZIP_MAX_INPUT_BYTES (2 MiB) so the export
+    // takes the async Worker zip path; the asset record's size must match the
+    // actual blob for "embedded" availability. Pseudo-random bytes keep the
+    // compression ratio near 1:1 — all-zero padding would trip the restore-side
+    // zip-bomb compression-ratio budget.
+    const bigBytes = new Uint8Array(2 * 1024 * 1024 + 512 * 1024);
+    let state = 0x5eed0000;
+    for (let index = 0; index < bigBytes.length; index += 1) {
+      // mulberry32-style mixing: taking low bits of a raw LCG cycles with a short
+      // period and compresses like mad, which the zip-bomb budget rejects.
+      state = (state + 0x6d2b79f5) | 0;
+      let mixed = Math.imul(state ^ (state >>> 15), 1 | state);
+      mixed = (mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)) ^ mixed;
+      bigBytes[index] = (mixed ^ (mixed >>> 14)) & 0xff;
+    }
+    const blobStore = new MemoryBlobStore({ "blob:asset-brief": "brief-bytes" });
+    await blobStore.put("blob:asset-cover", new Blob([bigBytes]));
+    workspace.assets["asset-cover"]!.size = bigBytes.byteLength;
+
+    const exported = await exportEditableProjectBackupBundle(workspace, {
+      blobStore,
+      createdAt: NOW,
+      chat: "full",
+      projectContinuity: "current"
+    });
+
+    expect(exported.status).toBe("ok");
+    if (exported.status !== "ok") {
+      throw new Error("large-bundle export should be ready for inspection");
+    }
+
+    const inspected = await inspectEditableProjectBackupBundle(exported.file);
+    if (inspected.status !== "ok") {
+      throw new Error(`large-bundle inspection failed: ${inspected.reason}`);
+    }
+    expect(inspected.status).toBe("ok");
+    if (inspected.status === "ok") {
+      expect(inspected.preview.assets.embedded).toBe(2);
+      expect(inspected.preview.assets.missing).toBe(0);
+    }
+  });
+
   test("inspects an editable backup and does not write blobs, workspace, or catalog", async () => {
     const workspace = createBundleFixtureWorkspace();
     const blobStore = new MemoryBlobStore({
@@ -75,7 +119,6 @@ describe("project bundle client", () => {
       "blob:asset-brief": "brief-bytes"
     });
     const storage = createMemoryStorage();
-
     const exported = await exportEditableProjectBackupBundle(workspace, {
       blobStore,
       createdAt: NOW,

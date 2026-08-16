@@ -199,8 +199,6 @@ export function AiConversationPanel({
   const modeSummary = turnMode === "auto" ? "自动执行" : "先确认";
   const failureCopy = showFailure ? getFailureCopy(getLatestFailedAssistantMessage(workspace)) : null;
   const visibleContextWarning = contextWarning && dismissedContextWarning !== contextWarning ? contextWarning : undefined;
-  const historyMessages = workspace.ai.messages.slice(0, -1);
-  const streamingTailMessage = workspace.ai.messages.at(-1);
   const updateScrollBottomVisibility = () => {
     const element = scrollRef.current;
     if (!element) {
@@ -303,29 +301,21 @@ export function AiConversationPanel({
         <div className="ai-scroll-shell">
           <div className="ai-scroll" ref={scrollRef} onScroll={updateScrollBottomVisibility}>
             {/*
-              History/tail split: every streaming batch replaces only the last
-              message's identity (updateAiMessage keeps the others referentially
-              equal), so a memoized history segment skips reconciling the whole
-              list on every ~48ms flush while the tail re-renders alone. Any change
-              to a historical message — or to the records the rows read
-              (objects / citations / comparison analyses) — fails the comparator
-              and re-renders the segment, so the split cannot hide a real change.
+              One keyed list owns every row for the panel's whole lifetime: a
+              message that stops being the streaming tail stays at the same key in
+              the same parent, so its row — and any local UI state inside it, such
+              as a manually expanded Agent Process — is never unmounted. Isolation
+              comes from two memo layers: the list comparator skips the whole map
+              when nothing it reads changed, and each row comparator skips
+              unchanged rows, so a streaming tick re-renders exactly one row.
             */}
-            <AiMessageHistory
-              messages={historyMessages}
+            <AiMessageList
+              messages={workspace.ai.messages}
               workspace={workspace}
               onRequestComparisonAction={onRequestComparisonAction}
               onLocateObject={onLocateObject}
               onOpenProjectRecords={onOpenProjectRecords}
             />
-            {streamingTailMessage
-              ? renderAiMessageRow(streamingTailMessage, {
-                  workspace,
-                  onRequestComparisonAction,
-                  onLocateObject,
-                  onOpenProjectRecords
-                })
-              : null}
           {suggestions.length > 0 ? (
             <div className="suggestions" aria-label="可选建议">
               {suggestions.map((suggestion) => (
@@ -755,11 +745,6 @@ function renderAgentProcessText(text: string): ReactNode {
   return <MarkdownContent body={text} />;
 }
 
-/**
- * Everything one message row reads beyond the message itself. The history memo's
- * comparator compares exactly these identities, so any record a row depends on
- * still re-renders the segment when it changes.
- */
 type AiMessageRowSharedInputs = {
   workspace: MorphoWorkspace;
   onRequestComparisonAction?: (analysisId: string, action: ComparisonActionRequest, objectId?: string) => void;
@@ -772,7 +757,7 @@ function renderAiMessageRow(message: AiMessage, shared: AiMessageRowSharedInputs
   const projectRecordFeedback = getProjectRecordFeedback(message);
 
   return (
-    <div className={`ai-message ${message.role}`} key={message.id} data-message-id={message.id}>
+    <div className={`ai-message ${message.role}`} data-message-id={message.id}>
       <AiMessageContent message={message} />
       {message.comparisonAnalysisId ? (
         <ComparisonAnalysisCard
@@ -836,37 +821,79 @@ function renderAiMessageRow(message: AiMessage, shared: AiMessageRowSharedInputs
   );
 }
 
-type AiMessageHistoryProps = AiMessageRowSharedInputs & {
+type AiMessageRowProps = AiMessageRowSharedInputs & {
+  message: AiMessage;
+};
+
+/**
+ * Test-only render counter for the render-isolation guard test: it counts how
+ * many rows actually executed a render. Production code never reads it; the cost
+ * is one property write per rendered row.
+ */
+export const aiMessageRowRenderCount = { current: 0 };
+
+/**
+ * One memoized row. The comparator re-renders only when this message's identity
+ * changed or one of the records the row reads (objects, citation snapshots,
+ * comparison analyses) or the row callbacks changed. Messages are replaced
+ * rather than mutated throughout the workspace code, so element identity is a
+ * complete change signal for a row's own inputs.
+ */
+const AiMessageRow = memo(function AiMessageRow(props: AiMessageRowProps) {
+  aiMessageRowRenderCount.current += 1;
+  return renderAiMessageRow(props.message, props);
+}, areAiMessageRowPropsEqual);
+
+function areAiMessageRowPropsEqual(prev: AiMessageRowProps, next: AiMessageRowProps): boolean {
+  return (
+    prev.message === next.message &&
+    prev.workspace.objects === next.workspace.objects &&
+    prev.workspace.citationSnapshots === next.workspace.citationSnapshots &&
+    prev.workspace.ai.comparisonAnalyses === next.workspace.ai.comparisonAnalyses &&
+    prev.onRequestComparisonAction === next.onRequestComparisonAction &&
+    prev.onLocateObject === next.onLocateObject &&
+    prev.onOpenProjectRecords === next.onOpenProjectRecords
+  );
+}
+
+type AiMessageListProps = AiMessageRowSharedInputs & {
   messages: readonly AiMessage[];
 };
 
 /**
- * The memoized history segment of the conversation list.
+ * The single owner of the message rows.
  *
- * Comparator, in words: re-render only when a message identity changed, the list
- * length changed, or one of the records the rows read (objects, citation
- * snapshots, comparison analyses) or the row callbacks changed. Messages are
- * replaced rather than mutated throughout the workspace code, so element
- * identity is a complete change signal for a row.
+ * Comparator, in words: re-render the list only when a message identity changed,
+ * the list length changed, or one of the records the rows read or the row
+ * callbacks changed. Individual unchanged rows are then skipped by the row memo,
+ * so a streaming tick re-renders exactly the streaming row while every other row
+ * keeps its mounted instance, DOM node, and local UI state.
  */
-const AiMessageHistory = memo(function AiMessageHistory({
+const AiMessageList = memo(function AiMessageList({
   messages,
   workspace,
   onRequestComparisonAction,
   onLocateObject,
   onOpenProjectRecords
-}: AiMessageHistoryProps) {
+}: AiMessageListProps) {
   return (
     <>
-      {messages.map((message) =>
-        renderAiMessageRow(message, { workspace, onRequestComparisonAction, onLocateObject, onOpenProjectRecords })
-      )}
+      {messages.map((message) => (
+        <AiMessageRow
+          key={message.id}
+          message={message}
+          workspace={workspace}
+          onRequestComparisonAction={onRequestComparisonAction}
+          onLocateObject={onLocateObject}
+          onOpenProjectRecords={onOpenProjectRecords}
+        />
+      ))}
     </>
   );
-}, areAiMessageHistoryPropsEqual);
+}, areAiMessageListPropsEqual);
 
 /** Exported for the render-isolation guard test; production callers never use it directly. */
-export function areAiMessageHistoryPropsEqual(prev: AiMessageHistoryProps, next: AiMessageHistoryProps): boolean {
+export function areAiMessageListPropsEqual(prev: AiMessageListProps, next: AiMessageListProps): boolean {
   if (prev.messages.length !== next.messages.length) {
     return false;
   }

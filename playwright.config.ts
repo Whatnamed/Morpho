@@ -40,7 +40,7 @@ export default defineConfig({
       // The performance baselines are measurement, not acceptance. They never run in
       // CI: a perf number from a shared, virtualized runner would be worse than no
       // number because it would look official.
-      testIgnore: /performance-baseline\.spec\.ts|performance-phase5\.spec\.ts/,
+      testIgnore: /performance-baseline\.spec\.ts|performance-phase5\.spec\.ts|performance-zip-crossover\.spec\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         // Wide enough that the selection toolbar has somewhere to go without
@@ -61,10 +61,10 @@ export default defineConfig({
       }
     },
     {
-      // Phase 5 real-interaction latency atlas. Run via
+      // Phase 5 real-interaction latency atlas + zip crossover. Run via
       // `npm run measure:perf5:browser`, also pinned to --workers=1 --retries=0.
       name: "perf5",
-      testMatch: /performance-phase5\.spec\.ts/,
+      testMatch: /performance-phase5\.spec\.ts|performance-zip-crossover\.spec\.ts/,
       timeout: 600_000,
       use: {
         ...devices["Desktop Chrome"],

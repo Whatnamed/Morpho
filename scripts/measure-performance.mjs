@@ -314,7 +314,11 @@ try {
 
   const report = {
     generatedAt: new Date().toISOString(),
+    // Both fields mean "the code commit that was measured", captured at run time.
+    // The commit that adds this generated file is a later evidence commit and can
+    // never equal a hash of content that includes itself.
     gitCommit: readGitCommit(),
+    measuredCodeCommit: readGitCommit(),
     trusted: !anyUntrusted,
     protocol: {
       roundCount: ROUND_COUNT,

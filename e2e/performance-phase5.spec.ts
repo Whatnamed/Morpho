@@ -1,8 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
+import { stat } from "node:fs/promises";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Download, type Page } from "@playwright/test";
 
 import {
   installAgentMock,
@@ -108,6 +109,19 @@ async function pageNow(page: Page): Promise<number> {
   return page.evaluate(() => performance.now());
 }
 
+/** Compressed size of a produced archive download, for the zip crossover story. */
+async function downloadBytes(download: Download): Promise<number | null> {
+  try {
+    const path = await download.path();
+    if (!path) {
+      return null;
+    }
+    return (await stat(path)).size;
+  } catch {
+    return null;
+  }
+}
+
 async function markNow(page: Page, name: string): Promise<void> {
   await page.evaluate((markName) => window.__morphoPerfMark?.(markName), name);
 }
@@ -164,16 +178,17 @@ async function emptyPoint(page: Page): Promise<{ x: number; y: number }> {
 /**
  * Click the first on-screen shape until the selection toolbar appears. Object cards
  * auto-grow shortly after mount, so one click on a freshly measured centre can miss
- * (`fixtures/canvas.ts` waits for settled geometry the same way). Deselecting first
- * keeps a stale selection from the previous phase from masking the result.
+ * (`fixtures/canvas.ts` waits for settled geometry the same way). Escape first
+ * closes any shape edit session (a freshly pasted text object auto-opens one and
+ * swallows canvas clicks). When the pan/zoom phases of this test have drifted the
+ * camera so far that no shape sits clear of the right-side AI panel, the
+ * overview button resets the view (visual camera state only) and the retry
+ * continues.
  */
 async function clickFirstShapeSelected(page: Page): Promise<void> {
   await page.waitForTimeout(400);
   for (let attempt = 0; attempt < 6; attempt += 1) {
-    const empty = await emptyPoint(page).catch(() => null);
-    if (empty) {
-      await page.mouse.click(empty.x, empty.y);
-    }
+    await page.keyboard.press("Escape").catch(() => undefined);
     const centre = (await shapeCentres(page, 1))[0];
     if (centre) {
       await page.mouse.click(centre.x, centre.y);
@@ -182,6 +197,12 @@ async function clickFirstShapeSelected(page: Page): Promise<void> {
         return;
       } catch {
         // Geometry was still settling; measure again and retry.
+      }
+    } else if (attempt >= 1) {
+      const overview = page.locator('[aria-label="回到项目概览"]');
+      if (await overview.count() > 0) {
+        await overview.click();
+        await page.waitForTimeout(800);
       }
     }
     await page.waitForTimeout(350);
@@ -970,7 +991,48 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     // the viewport (acceptance specs wait the same way).
     await expect(page.locator(".morpho-shape-host").first()).toBeAttached({ timeout: 120_000 });
     await expect(page.locator(".morpho-shape-host img").first()).toBeAttached({ timeout: 60_000 });
-    await page.waitForTimeout(1_500);
+    // Wait until the asset installer has finished writing every built-in binary.
+    // An early export can race a partial install and measure a much smaller
+    // bundle than the project really has (the round-1 backup export did).
+    const installCount = await page.evaluate(async () => {
+      const countKeys = () =>
+        new Promise<number>((resolve, reject) => {
+          const request = indexedDB.open("morpho-assets-v1", 1);
+          request.onsuccess = () => {
+            const db = request.result;
+            const tx = db.transaction("asset-blobs", "readonly");
+            const keys = tx.objectStore("asset-blobs").getAllKeys();
+            keys.onsuccess = () => {
+              db.close();
+              resolve(keys.result.length);
+            };
+            keys.onerror = () => {
+              db.close();
+              reject(keys.error);
+            };
+          };
+          request.onerror = () => reject(request.error);
+        });
+      const deadline = performance.now() + 120_000;
+      let previous = -1;
+      let stableSince = -1;
+      while (performance.now() < deadline) {
+        const count = await countKeys().catch(() => -1);
+        if (count === previous && count > 0) {
+          if (stableSince < 0) {
+            stableSince = performance.now();
+          } else if (performance.now() - stableSince > 1_500) {
+            return count;
+          }
+        } else {
+          stableSince = -1;
+          previous = count;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 250));
+      }
+      return previous;
+    });
+    await page.waitForTimeout(500);
 
     await beginPerfPhase(page);
     await page.locator('button', { hasText: "归档" }).click();
@@ -991,6 +1053,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     ]);
     const downloadAt = await pageNow(page);
     const exportSamples = await endPerfPhase(page);
+    const backupZipBytes = await downloadBytes(download);
     record({
       area: "surfaces",
       project: "builtinCaseStudy",
@@ -998,7 +1061,9 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       samples: exportSamples,
       extra: {
         wallMs: Number((downloadAt - exportStartedAt).toFixed(1)),
-        suggestedFilename: download.suggestedFilename()
+        suggestedFilename: download.suggestedFilename(),
+        zipBytes: backupZipBytes,
+        installedAssetBlobs: installCount
       }
     });
 
@@ -1012,6 +1077,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     ]);
     const archiveDownloadAt = await pageNow(page);
     const archiveSamples = await endPerfPhase(page);
+    const humanZipBytes = await downloadBytes(archiveDownload);
     record({
       area: "surfaces",
       project: "builtinCaseStudy",
@@ -1019,7 +1085,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       samples: archiveSamples,
       extra: {
         wallMs: Number((archiveDownloadAt - archiveStartedAt).toFixed(1)),
-        suggestedFilename: archiveDownload.suggestedFilename()
+        suggestedFilename: archiveDownload.suggestedFilename(),
       }
     });
     await page.locator('[aria-label="关闭归档面板"]').click();
@@ -1082,7 +1148,11 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       `${JSON.stringify(
         {
           generatedAt: new Date().toISOString(),
+          // Both fields mean "the code commit that was measured", captured at run
+          // time. The commit that adds this generated file is a later evidence
+          // commit and can never equal a hash of content that includes itself.
           gitCommit: readGitCommit(),
+          measuredCodeCommit: readGitCommit(),
           note:
             "Phase 5 真实交互延迟图谱。插桩全部由测试注入（perfProbe 含可选 localStorage/IndexedDB/objectURL 归因），产品代码零改动。" +
             "资产档位带真实再生命周期的 PNG 二进制（确定性 PRNG + OffscreenCanvas，不入库）。" +
