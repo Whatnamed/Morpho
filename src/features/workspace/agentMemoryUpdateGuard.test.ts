@@ -94,6 +94,22 @@ describe("Agent memory update guard", () => {
     expect(resolveRequiredAgentMemoryUpdates("新生成的图保持低饱和")).toEqual([]);
     expect(resolveRequiredAgentMemoryUpdates("这次不要用蓝色")).toEqual([]);
     expect(resolveRequiredAgentMemoryUpdates("本轮不要高反光")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这次生成的图不要高反光")).toEqual([]);
+  });
+
+  it("keeps project-level constraints even when they start with a bare turn-scope word", () => {
+    expect(
+      resolveRequiredAgentMemoryUpdates("这次课设预算不能超过 500 元")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["constraint", "这次课设预算不能超过 500 元"]
+    ]);
+    expect(
+      resolveRequiredAgentMemoryUpdates("本轮项目产品尺寸必须控制在桌面范围内")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["constraint", "本轮项目产品尺寸必须控制在桌面范围内"]
+    ]);
   });
 
   it("keeps turn-referencing clauses when the user states an explicit long-term scope", () => {

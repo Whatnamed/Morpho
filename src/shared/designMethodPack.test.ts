@@ -57,6 +57,18 @@ describe("Design Method Packs", () => {
     ]);
   });
 
+  it("treats a fresh direction request as divergence even when it mentions a basis", () => {
+    expect(
+      resolveDesignMethodPackIds({ strategy: "conceptDirection", draft: "基于这个 Brief 给我三个全新的概念方向" })
+    ).toEqual(["conceptDivergence"]);
+    expect(
+      resolveDesignMethodPackIds({ strategy: "conceptDirection", draft: "根据设计定义再做两个方向" })
+    ).toEqual(["conceptDivergence"]);
+    expect(
+      resolveDesignMethodPackIds({ strategy: "conceptDirection", draft: "基于当前方案继续调整比例" })
+    ).toEqual(["conceptRefinement"]);
+  });
+
   it("selects form, CMF, or scenario packs plus optional reference interpretation", () => {
     expect(resolveDesignMethodPackIds({ strategy: "visualDevelopment", draft: "继续发展轮廓和分件" })).toEqual([
       "formDevelopment"
@@ -86,6 +98,19 @@ describe("Design Method Packs", () => {
       "researchSynthesis"
     ]);
     expect(resolveDesignMethodPackIds({ strategy: "discussion", draft: "讲个笑话" })).toEqual([]);
+  });
+
+  it("loads research synthesis for the Eval B form without a material noun", () => {
+    expect(
+      resolveDesignMethodPackIds({ strategy: "discussion", draft: "帮我看看这里真正值得继续做的点" })
+    ).toEqual(["researchSynthesis"]);
+    expect(
+      resolveDesignMethodPackIds({ strategy: "discussion", draft: "这些内容里值得继续推进的是什么" })
+    ).toEqual(["researchSynthesis"]);
+    expect(resolveDesignMethodPackIds({ strategy: "discussion", draft: "这个方向值得做" })).toEqual([
+      "researchSynthesis"
+    ]);
+    expect(resolveDesignMethodPackIds({ strategy: "discussion", draft: "把这张图颜色调暗一点" })).toEqual([]);
   });
 
   it("bounds the per-turn pack count and validates ids", () => {

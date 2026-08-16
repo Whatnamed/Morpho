@@ -96,9 +96,10 @@ contract with a separate server prompt.
 - **Persona** → stays in the Stable System Prompt as a compact behavior
   block (design partner, maturity-adapted depth, evidence layering, real
   design variables, visual-as-design-tool, no jargon/lecturing, user
-  authority). Bumped contract to `morpho-agent-v3.4-2026-08-13` (date aligned with the
-  mainline contract after the rebase integration; the mainline prompt contract takes
-  precedence).
+  authority). Bumped contract to `morpho-agent-v3.5-2026-08-17`. Note: the
+  rebase integration temporarily kept the mainline `v3.4-2026-08-13` label
+  while the stable prompt already differed; the v3.5 bump restores the rule
+  that the version identifies the actual prompt contract content.
 - **Strategy** → keeps its role ("what kind of work is this turn?"). Delivery
   restored: client sends `strategy` + `strategyAnchorMessageId`; server
   validates the kind and materializes the existing
@@ -189,7 +190,10 @@ guidance.
 - Before: "这张图不要高反光" produced an `avoidance` memory candidate eligible for
   project-scope long-term memory.
 - After: the clause is rejected as a one-off turn reference unless an explicit
-  long-term scope marker ("以后/整个项目/始终…") is present.
+  long-term scope marker ("以后/整个项目/始终…") is present. Bare "这次/本轮"
+  alone is not a one-off signal: clauses pairing a turn-scope word with
+  project-level vocabulary ("这次课设预算不能超过 500 元", "本轮项目产品尺寸必须
+  控制在桌面范围内") stay eligible for long-term memory.
 
 **Compaction (was: field names only)**
 

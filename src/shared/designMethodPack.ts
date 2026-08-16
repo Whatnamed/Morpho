@@ -174,7 +174,7 @@ export function resolveDesignMethodPackIds(input: {
       pushUnique("designDefinition");
       break;
     case "conceptDirection":
-      if (/拆分|合并|修订|调整|深化|继续|基于/.test(text)) {
+      if (isConceptRefinementRequest(text)) {
         pushUnique("conceptRefinement");
       } else {
         pushUnique("conceptDivergence");
@@ -247,6 +247,24 @@ function isCmfRequest(text: string): boolean {
   return /cmf|材质|颜色|配色|工艺|表面|光泽|哑光|纹理|涂层|喷砂|阳极|电镀/i.test(text);
 }
 
+/**
+ * Concept work is refinement when it operates on an existing direction or
+ * proposal (split/merge/revise/deepen/continue on it); otherwise the default
+ * for conceptDirection work is divergence. A bare "基于" (based on) is NOT a
+ * refinement signal: "基于这个 Brief 给我三个全新的概念方向" is a fresh
+ * divergence task, while "基于方向 A 继续深化" refines.
+ */
+function isConceptRefinementRequest(text: string): boolean {
+  if (
+    /全新|新的(?:方向|方案)|新方向|另(?:外|一组|起)|再来|重新|从零|另起|再多|多给|加一个/.test(text) ||
+    /(?:给|做|生成|提供).{0,6}\d+个/.test(text) ||
+    /(?:基于|根据|围绕|结合).{0,12}(?:brief|设计定义|资料|需求).{0,12}(?:新|全新|另|多|几|两个|三个|多个)/i.test(text)
+  ) {
+    return false;
+  }
+  return /拆分|合并|修订|调整|深化|迭代|沿用|继续(?:发展|优化|做|改)?|在(?:这个|当前|原|已有)(?:方向|方案|设计|基础)/.test(text);
+}
+
 function isScenarioRequest(text: string): boolean {
   return /场景|使用情境|使用场景|环境|人在用|操作方式|居家|办公|户外|厨房|洗手间|浴室/i.test(text);
 }
@@ -260,6 +278,14 @@ function isCritiqueRequest(text: string): boolean {
 }
 
 function isResearchSynthesisRequest(text: string): boolean {
-  return /(?:资料|调研|研究|报告|文档|文章|访谈|问卷)/.test(text) &&
-    /(?:看看|提炼|筛|值得|重点|价值|总结|分析|归纳)/.test(text);
+  if (
+    /(?:资料|调研|研究|报告|文档|文章|访谈|问卷|材料|文件|内容)/.test(text) &&
+    /(?:看看|提炼|筛|值得|重点|价值|总结|分析|归纳|梳理)/.test(text)
+  ) {
+    return true;
+  }
+  // Eval B form: no material noun at all, but the request asks to find the
+  // points worth pursuing from the current content ("帮我看看这里真正值得继续做的点").
+  return /(?:帮我)?(?:看看|梳理一下|分析一下)?(?:这里|这些|当前)?(?:真正)?值得(?:继续)?做(?:的(?:点|地方|方向)?)?/.test(text) ||
+    /值得(?:继续)?(?:做|推进|深耕|投入)/.test(text);
 }

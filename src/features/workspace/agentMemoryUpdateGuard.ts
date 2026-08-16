@@ -59,6 +59,15 @@ const EXPLICIT_LONG_TERM_OPERATION_SCOPE_PATTERN =
 const ONE_OFF_TURN_REFERENCE_PATTERN =
   /(?:这张图|这张|这次的图|这轮的图|这轮|这版|当前这版|这个角度|这张参考图|刚才那张|刚才这个|新生成的图|生成的图|这次背景|这种背景|这个背景|这一张|这幅|这个渲染|这次|本轮)/;
 
+/**
+ * "这次/本轮" alone is not a one-off signal. A clause that pairs a bare
+ * turn-scope word with project-level constraint vocabulary (course project,
+ * budget, product, dimensions, scope, cost) expresses a project-wide
+ * constraint ("这次课设预算不能超过 500 元", "本轮项目产品尺寸必须控制在桌面范围内")
+ * and must remain eligible for long-term memory.
+ */
+const PROJECT_SCOPE_MEMORY_OVERRIDE_PATTERN = /课设|预算|项目|产品|尺寸|范围|成本|整机|全案/;
+
 const KIND_RULES: Array<{
   kind: RequiredAgentMemoryUpdateKind;
   pattern: RegExp;
@@ -95,7 +104,7 @@ export function resolveRequiredAgentMemoryUpdates(draft: string): RequiredAgentM
   if (hasOneOffMarker && !hasLongTermScopeMarker) {
     return [];
   }
-  if (!hasLongTermScopeMarker && !/(?:必须|不得|不要|避免|待确认|还需确认|记住|记录)/.test(draft)) {
+  if (!hasLongTermScopeMarker && !/(?:必须|不得|不要|避免|待确认|还需确认|记住|记录|不能|不允许|不超过|不低于|至少|至多|小于|大于|限制|约束|尺寸|高度|宽度|重量)/.test(draft)) {
     return [];
   }
 
@@ -109,6 +118,7 @@ export function resolveRequiredAgentMemoryUpdates(draft: string): RequiredAgentM
     }
     if (
       ONE_OFF_TURN_REFERENCE_PATTERN.test(clause.text) &&
+      !PROJECT_SCOPE_MEMORY_OVERRIDE_PATTERN.test(clause.text) &&
       !EXPLICIT_LONG_TERM_OPERATION_SCOPE_PATTERN.test(clause.text) &&
       !LONG_TERM_SCOPE_MARKERS.some((marker) => clause.text.includes(marker))
     ) {
