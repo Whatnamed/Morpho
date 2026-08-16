@@ -539,9 +539,9 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
         { kind: "stream", chunks: toolCallTurnScript().second, chunkDelayMs: 15 }
       ]);
       const callsBeforeTool = (await agentCalls(page)).length;
+      await input.fill("请读取项目记忆并总结当前重点。");
       await beginPerfPhase(page);
       await armFeedback(page, ".ai-panel");
-      await input.fill("请读取项目记忆并总结当前重点。");
       await page.keyboard.press("Enter");
       await expect(page.locator(".ai-panel")).toContainText("工具结果已读取", { timeout: 30_000 });
       await page.waitForTimeout(1_000);
@@ -832,7 +832,11 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       `   [import] 文件对象 ${fileObjects.length} 个，parsed ${parsedOk} 个，failed ${failed.length} 个` +
         (failed.length > 0 ? `（${failed.map((object) => object.parseError).join("；")}）` : "")
     );
-    expect(fileObjects.length, "没有生成文件对象").toBeGreaterThanOrEqual(3);
+    // Four parseable documents were imported this run (pdf30p, pptx40, md, pdf8p).
+    // Extra file objects come from the tier seed (cloned from the case study) and
+    // may legitimately carry their own historical parse status.
+    expect(fileObjects.length, "没有生成文件对象").toBeGreaterThanOrEqual(5);
+    expect(parsedOk, "本轮导入的可解析文档没有完成解析").toBeGreaterThanOrEqual(4);
   });
 
   // ------------------------------------------------------------------ 6. other surfaces
@@ -843,7 +847,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
 
     const project = phase5Project("caseStudy");
     await page.goto("/");
-    await seedPhase5Projects(page, ["caseStudy"]);
+    await seedPhase5Projects(page, ["caseStudy", "objects500"]);
     await page.goto(`/projects/${project.projectId}`);
     await expect(page.locator(".morpho-shape-host").first()).toBeVisible({ timeout: 120_000 });
     await page.waitForTimeout(1_500);
@@ -864,18 +868,17 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
 
     await beginPerfPhase(page);
     await page.locator('[aria-label="搜索关键词"]').fill("设计");
+    await expect(page.locator('section[aria-label="项目内搜索"] .result-group-title').first()).toBeVisible({ timeout: 10_000 });
     await page.waitForTimeout(700);
     const searchSamples = await endPerfPhase(page);
-    const searchResults = await page.locator('section[aria-label="项目内搜索"] li, section[aria-label="项目内搜索"] .search-result')
-      .count()
-      .catch(() => 0);
+    const searchResultRows = await page.locator('section[aria-label="项目内搜索"] .result-group-title').allInnerTexts();
     record({
       area: "surfaces",
       project: "caseStudy",
       phase: "searchQuery",
       scale: project.scale,
       samples: searchSamples,
-      extra: { resultRows: searchResults }
+      extra: { resultGroups: searchResultRows }
     });
     await page.locator('[aria-label="关闭搜索"]').click();
     await page.waitForTimeout(300);
@@ -913,16 +916,36 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     await page.keyboard.press("Escape");
     await page.waitForTimeout(300);
 
-    // --- archive: editable backup export (zip on main thread) ----------------------
+    // --- archive: editable backup + human-readable export (zip on main thread) ----
+    // Scaled fixtures keep dangling references by design, and a backup with
+    // restore-critical integrity issues is blocked by design — so this phase runs
+    // against the REAL built-in case study (fresh storage -> real first-open path
+    // with real binaries), which is exactly the project a backup is for.
+    await page.goto("/");
+    await page.evaluate(async () => {
+      window.localStorage.clear();
+      await new Promise<void>((resolve) => {
+        const request = indexedDB.deleteDatabase("morpho-assets-v1");
+        request.onsuccess = () => resolve();
+        request.onerror = () => resolve();
+        request.onblocked = () => resolve();
+      });
+    });
+    await page.goto("/projects/project-morpho-case-study");
+    // toBeAttached, not toBeVisible: the case study's first shape can sit outside
+    // the viewport (acceptance specs wait the same way).
+    await expect(page.locator(".morpho-shape-host").first()).toBeAttached({ timeout: 120_000 });
+    await expect(page.locator(".morpho-shape-host img").first()).toBeAttached({ timeout: 60_000 });
+    await page.waitForTimeout(1_500);
+
     await beginPerfPhase(page);
     await page.locator('button', { hasText: "归档" }).click();
     await expect(page.locator('section[aria-label="项目归档与恢复"]')).toBeVisible({ timeout: 10_000 });
     await page.waitForTimeout(500);
     record({
       area: "surfaces",
-      project: "caseStudy",
+      project: "builtinCaseStudy",
       phase: "archivePanelOpen",
-      scale: project.scale,
       samples: await endPerfPhase(page)
     });
 
@@ -934,16 +957,35 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     ]);
     const downloadAt = await pageNow(page);
     const exportSamples = await endPerfPhase(page);
-    const suggested = download.suggestedFilename();
     record({
       area: "surfaces",
-      project: "caseStudy",
+      project: "builtinCaseStudy",
       phase: "archiveExportBackupZip",
-      scale: project.scale,
       samples: exportSamples,
       extra: {
         wallMs: Number((downloadAt - exportStartedAt).toFixed(1)),
-        suggestedFilename: suggested
+        suggestedFilename: download.suggestedFilename()
+      }
+    });
+
+    // Human-readable archive carries every readable local asset binary, so it is
+    // the heavier zip of the two.
+    await beginPerfPhase(page);
+    const archiveStartedAt = await pageNow(page);
+    const [archiveDownload] = await Promise.all([
+      page.waitForEvent("download", { timeout: 120_000 }),
+      page.locator('button', { hasText: "导出归档" }).click()
+    ]);
+    const archiveDownloadAt = await pageNow(page);
+    const archiveSamples = await endPerfPhase(page);
+    record({
+      area: "surfaces",
+      project: "builtinCaseStudy",
+      phase: "archiveExportHumanZip",
+      samples: archiveSamples,
+      extra: {
+        wallMs: Number((archiveDownloadAt - archiveStartedAt).toFixed(1)),
+        suggestedFilename: archiveDownload.suggestedFilename()
       }
     });
     await page.locator('[aria-label="关闭归档面板"]').click();
@@ -974,11 +1016,9 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     }
 
     // --- project deletion preview (home page) ----------------------------------------
-    const deleteSeed = phase5Project("switchA");
-    await seedPhase5Projects(page, ["switchA"]);
     await page.goto("/");
     await expect(page.locator(".phome-shelf")).toBeVisible({ timeout: 30_000 });
-    const deleteButton = page.locator(`[aria-label="删除项目：P5 switchA"]`);
+    const deleteButton = page.locator(`[aria-label="删除项目：测试"]`);
     if (await deleteButton.count() > 0) {
       await beginPerfPhase(page);
       await armFeedback(page, "main");
@@ -986,13 +1026,12 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       await page.waitForTimeout(900);
       record({
         area: "surfaces",
-        project: "switchA",
+        project: "builtinCaseStudy",
         phase: "deletionPreview",
-        scale: deleteSeed.scale,
         samples: await endPerfPhase(page),
         feedback: await readFeedback(page)
       });
-      // Cancel: this project must survive for nothing — it is reseeded per run.
+      // Cancel: nothing is deleted.
       await page.getByRole("button", { name: /取消/ }).click().catch(() => undefined);
       await page.keyboard.press("Escape").catch(() => undefined);
     }

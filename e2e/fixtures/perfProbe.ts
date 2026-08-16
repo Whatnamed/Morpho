@@ -473,11 +473,6 @@ export async function armFeedback(
         firstChangeAt: null as number | null,
         matchedTextAt: null as number | null
       };
-      const inputs = [...state.pointerDowns, ...state.keyPresses, ...state.pointerMoves];
-      if (state.io) {
-        inputs.push(...state.io.inputs.map((entry) => entry.at));
-      }
-      record.lastInputAt = inputs.length === 0 ? null : Math.max(...inputs);
       const root = document.querySelector(rootSelector);
       if (!root) {
         throw new Error(`feedback root not found: ${rootSelector}`);
@@ -509,6 +504,17 @@ export async function readFeedback(page: Page): Promise<FeedbackResult> {
     }
     handle.observer.disconnect();
     (window as unknown as { __morphoFeedback?: unknown }).__morphoFeedback = undefined;
+    const state = window.__morphoPerf;
+    // The triggering input arrives AFTER arming, so lastInputAt must be resolved at
+    // read time: the latest pointerdown/keydown/change/paste at or after armedAt.
+    if (state) {
+      const inputs = [...state.pointerDowns, ...state.keyPresses];
+      if (state.io) {
+        inputs.push(...state.io.inputs.map((entry) => entry.at));
+      }
+      const afterArm = inputs.filter((at) => at >= handle.record.armedAt);
+      handle.record.lastInputAt = afterArm.length === 0 ? null : Math.max(...afterArm);
+    }
     return handle.record;
   });
 }

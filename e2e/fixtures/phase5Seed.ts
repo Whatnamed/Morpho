@@ -94,9 +94,12 @@ export async function seedPhase5Projects(page: Page, keys: readonly string[]): P
  * noise plus index label lands photo-adjacent PNG sizes (recorded per run; the
  * report prints actual totals rather than assuming them).
  */
-export async function seedPhase5AssetBlobs(page: Page, project: Phase5SeedProject): Promise<void> {
+export async function seedPhase5AssetBlobs(
+  page: Page,
+  project: Phase5SeedProject
+): Promise<{ count: number; totalBytes: number }> {
   if (project.assets.length === 0) {
-    return;
+    return { count: 0, totalBytes: 0 };
   }
   const result = await page.evaluate(async (manifest: Phase5AssetManifestEntry[]) => {
     const mulberry32 = (seed: number) => {
@@ -165,24 +168,29 @@ export async function seedPhase5AssetBlobs(page: Page, project: Phase5SeedProjec
     });
 
     try {
+      // All blobs are generated BEFORE the transaction opens: an IDB transaction
+      // auto-commits once no request is pending, so awaiting canvas encoding inside
+      // it would silently drop every put.
+      const blobs = await Promise.all(manifest.map((entry) => generate(entry)));
+      const bytes = blobs.reduce((total, blob) => total + blob.size, 0);
       await new Promise<void>((resolveTx, rejectTx) => {
         const tx = db.transaction("asset-blobs", "readwrite");
         const store = tx.objectStore("asset-blobs");
-        for (const entry of manifest) {
-          void generate(entry).then((blob) => store.put(blob, entry.storageKey));
-        }
+        manifest.forEach((entry, index) => {
+          store.put(blobs[index], entry.storageKey);
+        });
         tx.oncomplete = () => resolveTx();
         tx.onerror = () => rejectTx(tx.error);
         tx.onabort = () => rejectTx(tx.error);
       });
+      return { count: manifest.length, totalBytes: bytes };
     } finally {
       db.close();
     }
-
-    return { count: manifest.length };
   }, project.assets);
 
   if (result.count !== project.assets.length) {
     throw new Error(`合成图片写入数量不符：${result.count} / ${project.assets.length}`);
   }
+  return result;
 }

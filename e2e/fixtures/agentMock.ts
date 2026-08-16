@@ -172,9 +172,17 @@ export async function installAgentMock(page: Page): Promise<void> {
         }
 
         const encoder = new TextEncoder();
+        // The client treats SSE status as display-only and queries the Journal when
+        // the stream ends, so the journal status must reflect what the chunks said —
+        // including `awaitingNextRequest`, which is what lets a tool-call turn
+        // proceed to local execution and the continuation request.
         const terminalStatus: MockJournal["status"] = active.chunks.some((chunk) =>
           chunk.includes('"status":"externallyFailed"')
-        ) ? "externallyFailed" : "externallyCompleted";
+        )
+          ? "externallyFailed"
+          : active.chunks.some((chunk) => chunk.includes('"status":"awaitingNextRequest"'))
+            ? "awaitingNextRequest"
+            : "externallyCompleted";
         const chunks = active.chunks.map((chunk) => chunk
           .replace(/"requestId":"[^"]+"/g, `"requestId":${JSON.stringify(requestId)}`)
           .replace(/"stepSequence":\d+/g, `"stepSequence":${stepSequence}`));
