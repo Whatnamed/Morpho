@@ -110,13 +110,22 @@ describe("Design Method Packs", () => {
     expect(
       resolveDesignMethodPackIds({ strategy: "discussion", draft: "前面这些讨论里值得继续做的点" })
     ).toEqual(["researchSynthesis"]);
+    expect(
+      resolveDesignMethodPackIds({ strategy: "discussion", draft: "当前资料里值得做的点" })
+    ).toEqual(["researchSynthesis"]);
+    expect(
+      resolveDesignMethodPackIds({ strategy: "discussion", draft: "这里真正值得继续做的点是什么" })
+    ).toEqual(["researchSynthesis"]);
     expect(resolveDesignMethodPackIds({ strategy: "discussion", draft: "把这张图颜色调暗一点" })).toEqual([]);
   });
 
-  it("does not treat a bare worth-doing judgment as research synthesis", () => {
+  it("does not treat single-object value judgments as research synthesis", () => {
     expect(resolveDesignMethodPackIds({ strategy: "discussion", draft: "这个方向值得做吗" })).toEqual([]);
     expect(resolveDesignMethodPackIds({ strategy: "discussion", draft: "这个方向值得做" })).toEqual([]);
     expect(resolveDesignMethodPackIds({ strategy: "discussion", draft: "方案 A 值得继续推进" })).toEqual([]);
+    expect(resolveDesignMethodPackIds({ strategy: "discussion", draft: "当前方案值得继续推进吗" })).toEqual([]);
+    expect(resolveDesignMethodPackIds({ strategy: "discussion", draft: "当前方向值得继续做吗" })).toEqual([]);
+    expect(resolveDesignMethodPackIds({ strategy: "discussion", draft: "刚才那个方案值得继续推进吗" })).toEqual([]);
   });
 
   it("bounds the per-turn pack count and validates ids", () => {

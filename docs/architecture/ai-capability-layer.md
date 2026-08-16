@@ -191,11 +191,16 @@ guidance.
   project-scope long-term memory.
 - After: the clause is rejected as a one-off turn reference unless an explicit
   long-term scope marker ("以后/整个项目/始终…") is present. Bare "这次/本轮"
-  alone is not a one-off signal, but neither is a bare product/dimension noun:
-  a clause passes the one-off guard only with an EXPLICIT project-level scope
-  ("这次课设预算不能超过 500 元", "本轮项目产品尺寸必须控制在桌面范围内" — 课设/项目/
-  预算/成本/整机/全案/产品线/整个产品/总体/全局). "这次产品不要用蓝色", "这次尺寸
-  不要改" remain one-off and are rejected.
+  alone is not a one-off signal, but neither is a bare product/dimension/
+  budget/cost noun: a clause passes the one-off guard only with an EXPLICIT
+  project-level scope (课设/课题/项目/整机/全案/产品线/整个产品/总体/全局/本项目/
+  本课题), or a constraint SUBJECT (预算/成本) paired with an explicit
+  quantitative constraint form ("预算不得超过 500", "成本上限 300").
+  "这次产品不要用蓝色", "这次尺寸不要改", and "这次预算那段不要写" remain one-off
+  and are rejected, while "这次课设预算不能超过 500 元", "本轮项目产品尺寸必须控制
+  在桌面范围内", and "这次预算不得超过 500 元" stay project-wide constraints.
+  Quantitative constraint forms ("不要超过", "不得低于"…) classify as
+  `constraint`, not `avoidance`.
 
 **Compaction (was: field names only)**
 

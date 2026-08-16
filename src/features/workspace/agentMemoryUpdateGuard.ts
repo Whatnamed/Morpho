@@ -62,14 +62,26 @@ const ONE_OFF_TURN_REFERENCE_PATTERN =
 /**
  * "这次/本轮" alone is not a one-off signal, but neither is a bare product or
  * dimension noun. A clause may pass the one-off guard only when it carries an
- * EXPLICIT project-level scope: a project/course/budget/whole-product anchor
- * (课设/课题/项目/预算/成本/整机/全案/产品线/整个产品/总体/全局). Bare "产品",
- * "尺寸", or "范围" are not sufficient — "这次产品不要用蓝色" and "这次尺寸不要改"
- * are still one-off operation requirements, while "这次课设预算不能超过 500 元"
- * and "本轮项目产品尺寸必须控制在桌面范围内" are project-wide constraints.
+ * EXPLICIT project-level scope (课设/课题/项目/整机/全案/产品线/整个产品/总体/全局
+ * and their 本/这个 forms), OR a constraint subject paired with an explicit
+ * quantitative constraint form (see PROJECT_CONSTRAINT_SUBJECT_OVERRIDE_PATTERN).
+ * Bare "产品", "尺寸", "范围", "预算", or "成本" alone are NOT sufficient:
+ * "这次产品不要用蓝色", "这次尺寸不要改", and "这次预算那段不要写" are one-off
+ * operation requirements, while "这次课设预算不能超过 500 元",
+ * "本轮项目产品尺寸必须控制在桌面范围内", and "这次预算不得超过 500 元" are
+ * project-wide constraints.
  */
 const PROJECT_SCOPE_MEMORY_OVERRIDE_PATTERN =
-  /课设|课题|项目|预算|成本|整机|全案|产品线|整个产品|总体|全局/;
+  /课设|课题|项目|整机|全案|产品线|整个产品|总体|全局|本项目|本课题/;
+
+/**
+ * "预算/成本" are constraint SUBJECTS, not scope markers. They bypass the
+ * one-off guard only when the clause carries an explicit quantitative
+ * constraint form around them ("预算不得超过 500", "成本上限 300",
+ * "总成本必须控制在…以内"). "这次预算那段不要写" / "这次成本不要考虑" stay one-off.
+ */
+const PROJECT_CONSTRAINT_SUBJECT_OVERRIDE_PATTERN =
+  /(?:预算|成本).{0,12}(?:不得超过|不能超过|不允许超过|不超过|上限|封顶|必须控制在|控制在|最多|不得高于|不能高于|低于|少于|限制在|不能超出|不得超出|必须低于|必须少于)|(?:不得超过|不能超过|不允许超过|不超过|上限|封顶|必须控制在|控制在|最多|不得高于|不能高于).{0,12}(?:预算|成本)/;
 
 const KIND_RULES: Array<{
   kind: RequiredAgentMemoryUpdateKind;
@@ -83,12 +95,12 @@ const KIND_RULES: Array<{
   },
   {
     kind: "avoidance",
-    pattern: /不要|避免|不使用|不做|禁止|别(?:再)?/,
+    pattern: /不要(?!超过|低于|少于|高于|多于|大于|小于)|避免|不使用|不做|禁止|别(?:再)?(?!超过|低于|少于|高于|多于|大于|小于)/,
     reason: "用户表达了跨本轮生效的明确避免项。"
   },
   {
     kind: "constraint",
-    pattern: /必须|不得|不能|不超过|不低于|至少|至多|小于|大于|限制|约束|尺寸|高度|宽度|重量/,
+    pattern: /必须|不得|不能|不超过|不低于|至少|至多|小于|大于|限制|约束|尺寸|高度|宽度|重量|不要超过|别超过|不允许|高于|低于|少于|多于/,
     reason: "用户表达了会约束后续方案的长期项目规则。"
   },
   {
@@ -122,6 +134,7 @@ export function resolveRequiredAgentMemoryUpdates(draft: string): RequiredAgentM
     if (
       ONE_OFF_TURN_REFERENCE_PATTERN.test(clause.text) &&
       !PROJECT_SCOPE_MEMORY_OVERRIDE_PATTERN.test(clause.text) &&
+      !PROJECT_CONSTRAINT_SUBJECT_OVERRIDE_PATTERN.test(clause.text) &&
       !EXPLICIT_LONG_TERM_OPERATION_SCOPE_PATTERN.test(clause.text) &&
       !LONG_TERM_SCOPE_MARKERS.some((marker) => clause.text.includes(marker))
     ) {

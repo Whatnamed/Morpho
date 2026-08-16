@@ -101,6 +101,9 @@ describe("Agent memory update guard", () => {
     expect(resolveRequiredAgentMemoryUpdates("这次产品不要用蓝色")).toEqual([]);
     expect(resolveRequiredAgentMemoryUpdates("这次尺寸不要改")).toEqual([]);
     expect(resolveRequiredAgentMemoryUpdates("这次产品图不要高反光")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这次预算那段不要写")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这次成本不要考虑")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("本轮预算不要写进去")).toEqual([]);
   });
 
   it("keeps project-level constraints even when they start with a bare turn-scope word", () => {
@@ -115,6 +118,18 @@ describe("Agent memory update guard", () => {
         .map((candidate) => [candidate.kind, candidate.evidenceQuote])
     ).toEqual([
       ["constraint", "本轮项目产品尺寸必须控制在桌面范围内"]
+    ]);
+    expect(
+      resolveRequiredAgentMemoryUpdates("这次预算不得超过 500 元")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["constraint", "这次预算不得超过 500 元"]
+    ]);
+    expect(
+      resolveRequiredAgentMemoryUpdates("整个项目预算不要超过 500 元")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["constraint", "整个项目预算不要超过 500 元"]
     ]);
   });
 
