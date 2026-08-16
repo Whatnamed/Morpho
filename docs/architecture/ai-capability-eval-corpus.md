@@ -110,11 +110,14 @@ Morpho-compatible.
 - **Expected strategy**: `comparison` (explicit comparison signal).
 - **Method pack**: `comparisonDecision`.
 - **Expected reads/tools**: both selected objects; `create_comparison_analysis`
-  only when the user explicitly asks to keep a record.
+  is gated on an explicit comparison request AND at least two selected objects
+  (`getComparisonToolExecutionBlockReason`); when the gate passes the analysis
+  is created as a local Compare record with bounded evidence bases.
 - **Desired behavior**: explicit differences and trade-offs; recommendation
   allowed but not elevated into a project decision.
-- **Must-not**: silently set primary/alternative direction, default reference,
-  or elimination status.
+- **Must-not**: run Compare without an explicit request or with fewer than two
+  selected objects; silently set primary/alternative direction, default
+  reference, or elimination status.
 - **Quality points**: User-controlled, Evidence-aware, Morpho-compatible.
 
 ## I. Delivery preparation — "我要开始做三张展板了，看看还缺什么。"
@@ -154,14 +157,19 @@ Morpho-compatible.
 
 ## L. Tiny question — "把那张图放到画布右边。"
 
+Morpho's Agent has no canvas-movement tool, so this case tests honest
+capability boundaries rather than execution.
+
 - **Expected strategy**: `discussion`.
 - **Method pack**: none.
-- **Expected reads/tools**: none required.
-- **Desired behavior**: do the small operation (or answer) directly without
-  methodology exposition.
-- **Must-not**: produce a design-methodology essay because of pack loading;
-  add unnecessary questions.
-- **Quality points**: Non-dogmatic, Flexible, User-controlled.
+- **Expected reads/tools**: none; no tool call that claims a canvas move.
+- **Desired behavior**: answer the small request directly and briefly; when
+  the requested action is not an Agent capability (moving a canvas object),
+  say so plainly and offer what IS available (e.g. select/continue/generate),
+  without methodology exposition.
+- **Must-not**: falsely claim the image was moved; produce a
+  design-methodology essay because of pack loading; invent a tool or action.
+- **Quality points**: Non-dogmatic, Flexible, User-controlled, Honest.
 
 ---
 
@@ -174,5 +182,6 @@ Morpho-compatible.
 | Strategy + method delivery | `src/server/ai/agentTurnProviderRequest.test.ts` (new), `src/features/workspace/agentToolBatchAPlus.test.ts` (new) |
 | Persona + contract version | `src/features/workspace/morphoAgent.test.ts` (new) |
 | One-off memory guard (cases E, L) | `src/features/workspace/agentMemoryUpdateGuard.test.ts` (new) |
+| Shared exact-budget helper models the full server prefix incl. strategy + method items (helper-level parity only; production compaction wiring is the separately tracked G1 debt) | `src/shared/providerInputBudget.test.ts` (new) |
 | Image compiler principles (cases E, F) | `src/domain/operations/imagePromptCompiler.test.ts` (new) |
 | Injection envelope (case K) | existing frame tests (`providerContextFrame.test.ts`, `providerContextFrames.test.ts`) |
