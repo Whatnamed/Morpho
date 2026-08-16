@@ -212,6 +212,20 @@ guidance.
   explicit quantitative constraint form ("预算不得超过 500", "成本上限 300")
   overrides it. Bare "统一"/"稳定" are deliberately NOT scope markers: "这张图
   统一一下配色" stays one-off.
+- Current-turn agent/tool operation commands are not project memory: an
+  operational-instruction gate rejects clauses pairing a behavior directive
+  (不要/别/无需/只/仅/先/就/直接/再) with an agent action verb (比较/对比/联网/
+  搜索/保存/存档/写入/创建/生成/总结/分析/修改/删除/更新/执行/记录…) — "不要
+  保存记录", "不要比较", "不要联网", "不要创建研究分析", "不要生成图片",
+  "必须先联网查一下", "先生成两张", "只总结不要写入" produce no candidate.
+  An explicit long-term or project scope PRECEDING the operation overrides the
+  gate ("以后这个项目都不要联网", "整个项目不要自动保存比较记录" are legitimate
+  cross-turn behavior preferences); a scope noun AFTER the verb is the
+  operation's object, not a scope ("不要保存项目"). Preference stance verbs
+  (使用/采用/用/保持/沿用), the memory-intent verb 记住, and normative
+  constraint markers (必须/不能/不得) are deliberately outside the gate, so
+  "不使用镜面金属", "不要高反光", "尺寸必须小于 200mm", "记住这个尺寸" keep
+  classifying as avoidance/constraint.
 - Kind classification is declaration-based, not keyword-based: the resolver
   answers "is the user explicitly stating information that should stay true",
   so a long-term scope word alone (后续怎么做？) is not a preference, a
@@ -248,6 +262,13 @@ guidance.
 - Persisted results must be Compare-owned: "比较这两个方案，把这个研究结论保存
   一下" / "比较两个方案，然后记录一下测试结果" stay closed — foreign-domain
   nouns (研究/测试/调研/实验结论…) never attach to the Compare record.
+- The immediate-ellipsis inference is a BARE-result positive proof: only a bare
+  结果/结论 directly bound to the compare persist action is Compare-owned
+  ("比较一下，记录一下结果", "对比这两个方案，把结论存档"). Any semantic
+  modifier — a possessive 的 ("把研究的结论存档", "把测试后的结论保存") or a
+  foreign-domain noun prefix ("把研究结论存档") — disables the inference
+  instead of being matched against an ever-growing foreign noun blacklist.
+  Explicit Compare-owned forms ("把这次比较的结论存档") remain authorized.
 - The canonical comparison strategy text and the tool description state the
   chat-only default, and the strategy resolver shares the same compare-action
   recognition (the adverb "比较省钱" is not a compare action).

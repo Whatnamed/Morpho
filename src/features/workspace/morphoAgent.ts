@@ -974,25 +974,38 @@ const FOREIGN_OWNED_RESULT_PREFIX =
   /研究|测试|调研|实验|预算|访谈|评估|检测|测量|分析|方案|方向|产品|材料|用户|项目|成本|市场|竞品|需求|性能|收益|效果|防水|耐候|尺寸|重量/;
 
 /**
- * 紧邻省略指代（非常保守）：compare action 的同一句内立即出现 结果/结论 +
- * 持久化动词，且结果/结论 不得被外来领域名词修饰。支持两种顺序：
- * "比较一下，记录一下结果"（动词在结果前）与 "对比这两个方案，把结论存档"
- * （结果后跟存档动词）。"比较两个方案，然后记录一下测试结果" /
- * "把这个研究结论保存一下" 因 ownership 不属于 Compare 而拒绝。
+ * 紧邻省略指代（bare result 正向证明）：compare action 的同一句内立即出现
+ * bare 结果/结论 + 持久化动词才允许。bare 的含义是结果词不被任何语义修饰，
+ * 因此被持久化的就是本次比较的产物：
+ * - verbThenResult（"比较一下，记录一下结果"）中动词与结果之间只允许动词自身
+ *   后缀（一下/下来/的），被修饰的结果（"记录一下研究的结果"）无法匹配，天然
+ *   bare；
+ * - resultThenVerb（"对比这两个方案，把结论存档"）中结果词紧前不得出现"的"
+ *   领属修饰（研究的结论/测试后的结论）或外来领域名词（研究结论/测试结果）。
+ * "比较两个方案，把研究的结论存档" / "把调研的结果保存" 是被修饰的结果，不做
+ * 省略推定，拒绝。显式 Compare-owned 形式（把这次比较的结论存档）不受影响。
  */
 function hasImmediateCompareResultPersistence(text: string): boolean {
   const verbThenResult = /(?:比较|对比|compare)([^。；!?！？\n]{0,16})(?:然后|再|并|并且|同时|就)?(?:记录(?:一下|下来)?|存档|保存|保留|留下|留在|写入|放进|存为|存进)(?:的)?(?:结果|结论)/i;
   const resultThenVerb = /(?:比较|对比|compare)([^。；!?！？\n]{0,20})(?:结果|结论)(?:存档|保存|保留|留下|留在|写入|放进|记录(?:一下|下来)?)/i;
-  for (const pattern of [verbThenResult, resultThenVerb]) {
-    const match = pattern.exec(text);
-    if (!match) continue;
-    // 紧贴 结果/结论 之前 2 个字符内不得出现外来领域名词（研究/测试/调研/实验…）：
-    // 那意味着被持久化的是"研究结论/测试结果"，不属于 Compare。比较对象名
-    // （"这两个方案，把"）不会紧贴结果词，因此不受影响。
-    const tail = (match[1] ?? "").slice(-2);
-    if (!FOREIGN_OWNED_RESULT_PREFIX.test(tail)) return true;
+  if (verbThenResult.test(text)) {
+    return true;
   }
-  return false;
+  const match = resultThenVerb.exec(text);
+  if (!match) {
+    return false;
+  }
+  const gap = match[1] ?? "";
+  // 结果词紧前是"的"（研究的结论/测试后的结论）→ 被领属修饰，拒绝省略推定。
+  if (gap.slice(-1) === "的") {
+    return false;
+  }
+  // 结果词紧前 2 个字符是外来领域名词（研究结论/测试结果/调研结果）→ 不属于
+  // Compare。比较对象名（"这两个方案，把"）不会紧贴结果词，因此不受影响。
+  if (FOREIGN_OWNED_RESULT_PREFIX.test(gap.slice(-2))) {
+    return false;
+  }
+  return true;
 }
 
 /**

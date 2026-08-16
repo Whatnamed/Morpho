@@ -309,6 +309,51 @@ describe("Agent memory update guard", () => {
     ]);
   });
 
+  it("treats agent/tool operation commands as current-turn instructions, not memory", () => {
+    for (const draft of [
+      "比较一下，但不要保存记录。",
+      "不要保存记录，只比较一下。",
+      "不要保存记录。",
+      "不要比较，只分析。",
+      "不要联网，只总结本地内容。",
+      "不要创建研究分析。",
+      "不要创建比较记录，只讨论。",
+      "不要生成图片。",
+      "必须先联网查一下。",
+      "必须先比较这两个方案。",
+      "先生成两张。",
+      "只总结不要写入。"
+    ]) {
+      expect(resolveRequiredAgentMemoryUpdates(draft)).toEqual([]);
+    }
+  });
+
+  it("lets an explicit long-term or project scope override the operational gate", () => {
+    expect(
+      resolveRequiredAgentMemoryUpdates("以后这个项目都不要联网。")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["avoidance", "以后这个项目都不要联网"]
+    ]);
+    expect(
+      resolveRequiredAgentMemoryUpdates("整个项目不要自动保存比较记录。")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["avoidance", "整个项目不要自动保存比较记录"]
+    ]);
+    expect(
+      resolveRequiredAgentMemoryUpdates("以后都不要保存比较记录。")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["avoidance", "以后都不要保存比较记录"]
+    ]);
+    // 项目 after the operation verb is the operation object, not a scope:
+    // it does not override the gate (covered here by the one-off target guard
+    // and, for non-listed targets, by the gate itself).
+    expect(resolveRequiredAgentMemoryUpdates("不要保存项目。")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("不要保存这个方案。")).toEqual([]);
+  });
+
   it("keeps high-confidence normative constraints and explicit preference stance", () => {
     expect(
       resolveRequiredAgentMemoryUpdates("尺寸必须小于 200 mm")

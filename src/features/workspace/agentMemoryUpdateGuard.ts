@@ -18,6 +18,35 @@ const ONE_OFF_OPERATION_PATTERN =
   /(?:不要|无需|不必|只|仅).{0,12}(?:调用|修改|改动|写入|记录|保存|创建|删除|更新|执行).{0,12}(?:工具|项目|对象|状态|画布|记忆|偏好|避免项|约束|开放问题|草稿)/;
 
 /**
+ * Agent/tool 操作指令 gate。识别"本轮 Agent 该怎么执行"的行为指令：操作指示词
+ * （不要/别/无需/只/仅/先/就/直接/再…）紧跟动作动词（比较/对比/联网/搜索/保存/
+ * 存档/写入/创建/生成/总结/分析/修改/删除/更新/执行/记录…）。这类 clause 是当前
+ * 任务的操作边界，不是跨回合项目声明——"不要保存记录""不要比较""不要联网"
+ * "不要创建研究分析""必须先联网查一下""先生成两张"都不得成为记忆候选。
+ * 动词集刻意排除 使用/采用/用/保持/沿用（偏好立场词）、记住（记忆意图词）与
+ * 超过/低于/小于 等数量关系词，指示词集排除 必须/不能/不得（规范性约束标记），
+ * 因此"不使用镜面金属""不要高反光""尺寸必须小于 200mm""记住这个尺寸"不受影响。
+ */
+const OPERATIONAL_DIRECTIVE_PATTERN =
+  /不要|别|无需|无须|不必|不用|不需要|禁止|不做|不再|只|仅|先|就|直接|再/;
+
+const OPERATIONAL_ACTION_VERB_PATTERN =
+  /比较|对比|联网|搜索|检索|查询|查找|保存|存档|写入|创建|新建|生成|绘制|渲染|总结|分析|修改|调整|删除|更新|执行|导出|上传|下载|输出|发送|记录/;
+
+const OPERATIONAL_INSTRUCTION_PATTERN = new RegExp(
+  `(?:${OPERATIONAL_DIRECTIVE_PATTERN.source}).{0,8}(?:${OPERATIONAL_ACTION_VERB_PATTERN.source})`
+);
+
+/**
+ * 显式 long-term/project scope 可以越过操作指令 gate（"以后这个项目都不要联网"、
+ * "整个项目不要自动保存比较记录"是跨回合行为偏好）。刻意不含 记录——否则
+ * "不要保存记录"里的宾语"记录"会被误当成记忆意图。范围词只在与操作相邻且
+ * 位于操作之前时有效，因此"不要保存项目"里的"项目"是操作宾语，不是范围。
+ */
+const OPERATIONAL_SCOPE_PREFIX_PATTERN =
+  /以后|后续|从现在起|始终|接下来|后面|整个项目|希望以后|长期(?:保持|遵守|采用|执行|使用|不变|稳定|沿用)|记住|课设|课题|项目|整机|全案|产品线|整个产品|总体|全局|本项目|本课题/;
+
+/**
  * Quantitative constraint phrases, defined ONCE so the one-off subject
  * override and the constraint classifier cannot drift apart. The common
  * spoken forms 不要超过 / 别超过 / 别再超过 are deliberately included.
@@ -203,12 +232,15 @@ function isExplicitPreferenceDeclaration(clause: string): boolean {
 
 /**
  * Clause-first admission. Every clause is judged independently: the operation
- * boundary, then the one-off scope guard (which only rejects when no explicit
- * project/long-term scope or quantitative constraint subject overrides it),
- * then the declaration classifier. A mixed message like "这次先把背景换白色；预算
- * 不能超过 500 元" keeps its project-constraint clause instead of being dropped
- * as a whole. Questions, temporary instructions, structured-state commands and
- * ordinary design discussion never create a candidate.
+ * boundary, then the agent/tool operational-instruction gate (current-turn
+ * commands like 不要保存记录/不要联网/先生成两张 are not project declarations
+ * unless an explicit long-term/project scope precedes them), then the one-off
+ * scope guard (which only rejects when no explicit project/long-term scope or
+ * quantitative constraint subject overrides it), then the declaration
+ * classifier. A mixed message like "这次先把背景换白色；预算不能超过 500 元"
+ * keeps its project-constraint clause instead of being dropped as a whole.
+ * Questions, temporary instructions, structured-state commands and ordinary
+ * design discussion never create a candidate.
  */
 export function resolveRequiredAgentMemoryUpdates(draft: string): RequiredAgentMemoryUpdate[] {
   if (!draft.trim()) {
@@ -255,7 +287,23 @@ function isAdmissibleMemoryClause(clause: string): boolean {
   ) {
     return false;
   }
+  if (isCurrentTurnOperationalInstruction(clause)) {
+    return false;
+  }
   return true;
+}
+
+/**
+ * 操作指令裁决：gate 命中且操作之前没有显式 long-term/project scope 时，
+ * 判定为当前任务操作指令（拒绝记忆）。范围词必须位于操作之前才有效。
+ */
+function isCurrentTurnOperationalInstruction(clause: string): boolean {
+  const match = OPERATIONAL_INSTRUCTION_PATTERN.exec(clause);
+  if (!match || match.index === undefined) {
+    return false;
+  }
+  const prefix = clause.slice(0, match.index);
+  return !OPERATIONAL_SCOPE_PREFIX_PATTERN.test(prefix);
 }
 
 export function buildRequiredAgentMemoryUpdateReminder(

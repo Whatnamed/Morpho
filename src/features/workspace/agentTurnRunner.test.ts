@@ -258,15 +258,19 @@ describe("A+ Agent turn runner", () => {
       message.content.some((part) => part.type === "input_text" && part.text.includes("确定性补检"));
     // Representative negatives: scope-only question, ordinary design
     // discussion, threshold question, open-question query, temporary
-    // avoidance. None may produce a candidate, a reminder, or memory
-    // authority.
+    // avoidance, and current-turn agent/tool operation commands. None may
+    // produce a candidate, a reminder, or memory authority.
     let fixture = createFixture([{ status: "providerRunning" }]);
     for (const draft of [
       "后续怎么做？",
       "这个材质怎么样？",
       "高度低于多少合适？",
       "有哪些待确认问题？",
-      "先别用蓝色。"
+      "先别用蓝色。",
+      "不要比较，只分析。",
+      "不要联网，只总结本地内容。",
+      "不要创建研究分析。",
+      "必须先联网查一下。"
     ]) {
       detachMorphoAgentTurnForPageUnload(fixture.fake.getWorkspace().project.id);
       fixture.store.clear();
@@ -278,6 +282,26 @@ describe("A+ Agent turn runner", () => {
       expect(run.store.record?.metadata.runtime.facts.handledMemoryCandidateIndexes).toEqual([]);
       fixture = run;
     }
+  });
+
+  it("keeps a persist-negation clause free of memory authority end to end", async () => {
+    // The clause 但不要保存记录 is a current-turn operation boundary, never a
+    // long-term avoidance: no candidate, no reminder, no memory authority.
+    // The identical clause inside "比较一下，但不要保存记录" cannot run e2e yet:
+    // comparison turns crash earlier at the pre-existing comparison context
+    // preparation path (buildProviderTaskContext rejects comparison
+    // contextKind — main-chain debt, recorded not fixed), so the memory side
+    // is proven here through a discussion draft carrying the same clause; the
+    // compare-side authorities for that sentence are locked by the
+    // task-strategy and tool-authority suites.
+    const fixture = createFixture([{ status: "providerRunning" }]);
+    fixture.input.draft = "先讨论现有方案，但不要保存记录。";
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    const reminderText = (message: APlusAgentProviderMessage) =>
+      message.content.some((part) => part.type === "input_text" && part.text.includes("确定性补检"));
+    expect(fixture.coordinatorHost.executions[0]?.providerRequest.input.some(reminderText)).toBe(false);
+    expect(fixture.store.record?.metadata.runtime.facts.memoryUpdateReminderInserted).toBe(false);
+    expect(fixture.store.record?.metadata.runtime.facts.handledMemoryCandidateIndexes).toEqual([]);
   });
 
   it("reminds exactly once when the model would end without handling a candidate", async () => {
