@@ -95,6 +95,31 @@ const PROJECT_CONSTRAINT_SUBJECT_OVERRIDE_PATTERN = new RegExp(
   `(?:预算|成本).{0,12}(?:${QUANTITATIVE_CONSTRAINT_PHRASE_ALTERNATION})|(?:${QUANTITATIVE_CONSTRAINT_PHRASE_ALTERNATION}).{0,12}(?:预算|成本)`
 );
 
+/**
+ * 规范性语法：约束立场必须由这些词表达，裸设计名词（尺寸/高度/宽度/重量）不是
+ * 约束。"这个尺寸合适吗？" 没有规范性词，不得成为 constraint candidate；
+ * "尺寸必须小于 200 mm" / "预算不能超过 500 元" 才有。
+ */
+const CONSTRAINT_NORMATIVE_PATTERN = new RegExp(
+  `必须|不得|不能|不允许|不超过|不低于|至少|至多|小于|大于|高于|低于|少于|多于|上限|封顶|控制在|限制在|${QUANTITATIVE_CONSTRAINT_PHRASE_ALTERNATION}`
+);
+
+/**
+ * 约束主语：只有与规范性语法（或显式记忆意图 记住/记录）相邻出现时才能构成
+ * constraint。"记住这个尺寸" 是记录约束的请求；"这个尺寸合适吗？" 不是。
+ */
+const CONSTRAINT_SUBJECT_PATTERN = /尺寸|高度|宽度|重量|约束|限制/;
+
+/**
+ * 偏好立场：真正表达"跨回合保持"的立场词。裸设计属性（材质/颜色/风格）不是
+ * 偏好："这个材质怎么样？" 不得成为 preference candidate；"我偏好哑光材质" /
+ * "默认用暖灰色" 才是。
+ */
+const PREFERENCE_STANCE_PATTERN =
+  /我喜欢|我偏好|偏好|默认|以后|后续|始终|长期|统一采用|统一沿用|希望(?:一直|始终|以后|保持|用|采用|延续|沿用|维持)/;
+
+const PREFERENCE_ATTRIBUTE_PATTERN = /低饱和|高饱和|风格|材质|颜色|配色|语气/;
+
 const KIND_RULES: Array<{
   kind: RequiredAgentMemoryUpdateKind;
   pattern: RegExp;
@@ -115,13 +140,15 @@ const KIND_RULES: Array<{
   {
     kind: "constraint",
     pattern: new RegExp(
-      `必须|不得|不能|不超过|不低于|至少|至多|小于|大于|限制|约束|尺寸|高度|宽度|重量|不允许|高于|低于|少于|多于|${QUANTITATIVE_CONSTRAINT_PHRASE_ALTERNATION}`
+      `(?:${CONSTRAINT_NORMATIVE_PATTERN.source})|(?:${CONSTRAINT_SUBJECT_PATTERN.source}).{0,6}(?:${CONSTRAINT_NORMATIVE_PATTERN.source}|记住|记录)|(?:记住|记录).{0,6}(?:${CONSTRAINT_SUBJECT_PATTERN.source})`
     ),
     reason: "用户表达了会约束后续方案的长期项目规则。"
   },
   {
     kind: "preference",
-    pattern: /喜欢|偏好|默认|希望以后|统一采用|保持|低饱和|高饱和|风格|材质|颜色|配色|语气/,
+    pattern: new RegExp(
+      `(?:${PREFERENCE_STANCE_PATTERN.source})|(?:${PREFERENCE_STANCE_PATTERN.source}).{0,6}(?:${PREFERENCE_ATTRIBUTE_PATTERN.source})|(?:${PREFERENCE_ATTRIBUTE_PATTERN.source}).{0,6}(?:${PREFERENCE_STANCE_PATTERN.source})`
+    ),
     reason: "用户表达了需要跨回合保持的稳定偏好。"
   }
 ];

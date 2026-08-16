@@ -329,17 +329,36 @@ describe("Morpho agent tool argument validation", () => {
     expect(isExplicitComparisonRecordRequest("对比这两个方案，分析差异")).toBe(false);
     expect(isExplicitComparisonRecordRequest("这个方案比较省钱，记录一下预算")).toBe(false);
     expect(isExplicitComparisonRecordRequest("把这两个方案的设计记录比较一下")).toBe(false);
+    // Asking about a comparison OUTCOME is not a save request.
+    expect(isExplicitComparisonRecordRequest("比较结果怎么样？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结论是什么？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("对比结果再解释一下")).toBe(false);
+    // A save verb bound to something else never grants.
+    expect(isExplicitComparisonRecordRequest("创建两个方案然后比较一下")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("记录一下预算，再比较两个方案")).toBe(false);
     // Explicit save/persist intent grants.
     expect(isExplicitComparisonRecordRequest("把这两个比较一下，并保留比较记录")).toBe(true);
     expect(isExplicitComparisonRecordRequest("保存这次比较")).toBe(true);
     expect(isExplicitComparisonRecordRequest("创建比较记录")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("记录一下比较结果")).toBe(true);
     expect(isExplicitComparisonRecordRequest("把比较结果留在项目里")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("把比较结论存档")).toBe(true);
     expect(isExplicitComparisonRecordRequest("对比这两个方案，把结论存档")).toBe(true);
     expect(isExplicitComparisonRecordRequest("把这两个比较一下，记录一下结果")).toBe(true);
     // Explicit negation is fail-closed.
     expect(isExplicitComparisonRecordRequest("比较一下，但不要保存记录")).toBe(false);
     expect(isExplicitComparisonRecordRequest("不要创建比较记录，只讨论")).toBe(false);
     expect(isExplicitComparisonRecordRequest("比较结果不要保存")).toBe(false);
+  });
+
+  it("uses one shared compare-action recognition for request and record detectors", () => {
+    // 副词"比较"不是比较动作：不进入 comparison，也不授权记录。
+    expect(isExplicitComparisonRequest("这个方案比较省钱")).toBe(false);
+    expect(isExplicitComparisonRequest("这个颜色比较好看")).toBe(false);
+    expect(isExplicitComparisonRequest("这个方案比较省钱，对比一下这两个")).toBe(true);
+    expect(isExplicitComparisonRequest("对比这三个方案")).toBe(true);
+    expect(isExplicitComparisonRequest("分析这三个方案")).toBe(false);
+    expect(isExplicitComparisonRequest("不要做对比卡片，只根据内容分析")).toBe(false);
   });
 
   it("normalizes direction preview visual roles before operation validation", () => {

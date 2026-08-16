@@ -47,6 +47,18 @@ describe("Agent task strategy and prompt registry", () => {
     });
   });
 
+  it("does not treat the adverb 比较 as a comparison action", () => {
+    expect(resolve({ draft: "这个方案比较省钱，你觉得怎么样", selectedObjects: [object("image-soft-rail-v2")] })).toMatchObject({
+      kind: "discussion"
+    });
+    expect(resolve({ draft: "这个颜色比较好看", selectedObjects: [object("image-soft-rail-v2")] })).toMatchObject({
+      kind: "discussion"
+    });
+    expect(resolve({ draft: "这个方案比较省钱，对比一下这两个", selectedObjects: [object("image-soft-rail-v2")] })).toMatchObject({
+      kind: "comparison"
+    });
+  });
+
   it("does not route explicitly negated proposal actions into proposal strategies", () => {
     expect(resolve({
       draft: "不要形成设计定义，只总结当前结论。",

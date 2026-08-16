@@ -213,9 +213,14 @@ guidance.
   markers: "这张图统一一下配色" stays one-off. Stable preference intent is
   recalled WITHOUT any scope word ("我喜欢低饱和配色", "默认用暖灰色",
   "我偏好哑光材质", "以后所有方向都不要高反光"), while one-off preference
-  wording ("这版保持哑光") stays rejected. Mixed messages keep their legal
-  clauses: "这次先把背景换白色；预算不能超过 500 元" retains only the
-  project-constraint clause. Quantitative constraint forms ("不要超过",
+  wording ("这版保持哑光") stays rejected. Kind classification additionally
+  requires high-confidence stance: constraint needs normative syntax
+  (必须/不得/不能/不超过/至少/上限/控制在/限制在…) and preference needs an
+  explicit stance (我喜欢/我偏好/默认/以后/统一采用/希望保持…), so ordinary
+  design discussion ("这个材质怎么样？", "这个尺寸合适吗？", "颜色换哪个更
+  好？") never produces a candidate or memory authority. Mixed messages keep
+  their legal clauses: "这次先把背景换白色；预算不能超过 500 元" retains only
+  the project-constraint clause. Quantitative constraint forms ("不要超过",
   "不得低于"…) classify as `constraint`, not `avoidance`.
 
 **Compare authority (was: one authority for analysis and record)**
@@ -224,12 +229,16 @@ guidance.
   `create_comparison_analysis` (a Workspace Compare write) even for "把这两个
   比较一下".
 - After: ordinary comparison is chat-only. A persisted Compare record needs an
-  EXPLICIT save intent ("保留比较记录", "保存这次比较", "创建比较记录",
-  "把比较结果留在项目里") on top of the explicit comparison request, enforced
+  EXPLICIT save intent BOUND to the Compare record ("保存这次比较",
+  "保留比较记录", "创建比较记录", "记录一下比较结果", "把比较结果留在项目里",
+  "把比较结论存档") on top of the explicit comparison request, enforced
   locally and fail-closed: the tool is absent from `allowedTools` for plain
   comparisons and the executor blocks the write even if the model calls it.
-  The canonical comparison strategy text and the tool description state the
-  chat-only default.
+  Proximity alone never grants — "比较结果怎么样？", "创建两个方案然后比较一
+  下", "记录一下预算，再比较两个方案" stay closed. The canonical comparison
+  strategy text and the tool description state the chat-only default, and the
+  strategy resolver shares the same compare-action recognition (the adverb
+  "比较省钱" is not a compare action).
 
 **Web Search authority (was: lost in Coordinator copy)**
 

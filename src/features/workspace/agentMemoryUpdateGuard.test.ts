@@ -252,4 +252,39 @@ describe("Agent memory update guard", () => {
       ["constraint", "预算不能超过 500 元"]
     ]);
   });
+
+  it("does not turn ordinary design discussion into memory candidates", () => {
+    expect(resolveRequiredAgentMemoryUpdates("这个材质怎么样？")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("颜色换哪个更好？")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这个尺寸合适吗？")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("高度大概多少比较合适？")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("我想看看不同风格")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("怎么保持结构稳定？")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这个方案的约束是什么？")).toEqual([]);
+  });
+
+  it("keeps high-confidence normative constraints and explicit preference stance", () => {
+    expect(
+      resolveRequiredAgentMemoryUpdates("尺寸必须小于 200 mm")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["constraint", "尺寸必须小于 200 mm"]
+    ]);
+    expect(
+      resolveRequiredAgentMemoryUpdates("记住这个尺寸")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["constraint", "记住这个尺寸"]
+    ]);
+    expect(
+      resolveRequiredAgentMemoryUpdates("希望保持哑光材质")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["preference", "希望保持哑光材质"]
+    ]);
+    expect(resolveRequiredAgentMemoryUpdates("我喜欢低饱和配色")).not.toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("默认用暖灰色")).not.toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("我偏好哑光材质")).not.toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("预算不能超过 500 元")).not.toEqual([]);
+  });
 });
