@@ -1,6 +1,9 @@
 # Morpho AI Capability Layer — Audit, Design & Implementation
 
-> Status: implemented on branch `feat/ai-capability-layer` (2026-08-16).
+> Status: implemented on branch `feat/ai-capability-layer` (2026-08-16),
+> closure pass 2026-08-17 (Web Search authority preservation, Compare
+> authority split, clause-first memory semantics, deterministic memory final
+> check, compaction/image prompt contract identity).
 > Scope: the AI behavior and professional-capability layer of Morpho — persona,
 > per-turn method guidance, strategy delivery, memory guard, compaction prompt,
 > image compiler. Runtime, authority, memory kernel, and context-frame
@@ -86,20 +89,26 @@ contract with a separate server prompt.
   persistence-consistency gap, not a wire bug).
 - Prompt-cache-hint key omits mode/runtime-item text (hint only, not
   correctness).
-- Memory-candidate reminder prompt is dead code; wiring it means mid-turn
-  runtime surgery — recorded, not done. The stable policy + tool description
-  were updated instead so capture relies on the model contract, not a runtime
-  injection.
+- The memory final check is delivered as ONE transient runtime-control
+  Provider-input message armed at preparation when candidates exist (see the
+  closure section): it never enters `workspace.ai.messages`, rides the exact
+  request body through retry/refresh/recovery, and is never regenerated. A
+  post-hoc continuation after a no-Tool final answer is impossible under the
+  A+ Journal contract (no-Tool answers settle `externallyCompleted`
+  terminal; continuations require `awaitingNextRequest` plus non-empty Tool
+  items), so the reminder is proactive, not reactive.
 
 ## 3. Architecture Proposal (as implemented)
 
 - **Persona** → stays in the Stable System Prompt as a compact behavior
   block (design partner, maturity-adapted depth, evidence layering, real
   design variables, visual-as-design-tool, no jargon/lecturing, user
-  authority). Bumped contract to `morpho-agent-v3.5-2026-08-17`. Note: the
+  authority). Bumped contract to `morpho-agent-v3.6-2026-08-17`. Note: the
   rebase integration temporarily kept the mainline `v3.4-2026-08-13` label
-  while the stable prompt already differed; the v3.5 bump restores the rule
-  that the version identifies the actual prompt contract content.
+  while the stable prompt already differed; the v3.5 bump restored the rule
+  that the version identifies the actual prompt contract content, and the
+  v3.6 bump covers the canonical comparison strategy text change (chat-only
+  Compare by default, persisted Compare only on explicit save intent).
 - **Strategy** → keeps its role ("what kind of work is this turn?"). Delivery
   restored: client sends `strategy` + `strategyAnchorMessageId`; server
   validates the kind and materializes the existing
@@ -109,8 +118,8 @@ contract with a separate server prompt.
   resolver in `src/shared/designMethodPack.ts`), answering "what professional
   judgment does this work need now?". The client selects ids; the server
   validates ids against the fixed registry and materializes the pack *text*
-  as one trusted System item. 11 packs for v1; 0–2 packs per turn; ordinary
-  discussion gets none.
+  as one trusted System item. 11 packs for v1; 0–3 packs per turn (real code
+  contract `MAX_METHOD_PACKS_PER_TURN = 3`); ordinary discussion gets none.
 - **Cache** → stable prefix (system prompt + runtime item) untouched; the
   strategy and method items sit between the runtime item and dynamic input,
   are stable within a turn and per strategy, and never contain project data.
@@ -145,8 +154,14 @@ guidance.
 - Memory: `src/features/workspace/agentMemoryUpdateGuard.ts` (one-off clause
   guard), memory policy + `submit_memory_update` tool description.
 - Compaction: `src/app/api/ai/agent/turns/[turnId]/actions/compaction/route.ts`
-  (field semantics, contract `morpho-agent-compaction-v2-2026-08-16`).
-- Image: `src/domain/operations/imagePromptCompiler.ts`.
+  (field semantics, contract `morpho-agent-compaction-v3-2026-08-17`).
+- Image: `src/domain/operations/imagePromptCompiler.ts` (contract
+  `morpho-image-prompt-v3`).
+- Closure pass: `agentTurnCoordinator.ts` (webSearch copy + fail-closed shape),
+  `morphoAgent.ts` + `agentToolAuthority.ts` + `agentToolExecutors.ts`
+  (Compare record authority), `agentMemoryUpdateGuard.ts` (clause-first
+  semantics), `agentTurnProductPreparationAPlus.ts` (memory final-check
+  reminder), `agentStrategyItem.ts` (comparison policy), prompt contract v3.6.
 - Tests: `src/shared/designMethodPack.test.ts`, additions to
   `agentTurnProviderRequest.test.ts`, `agentMemoryUpdateGuard.test.ts`,
   `morphoAgent.test.ts`, `imagePromptCompiler.test.ts`,
@@ -189,34 +204,77 @@ guidance.
 
 - Before: "这张图不要高反光" produced an `avoidance` memory candidate eligible for
   project-scope long-term memory.
-- After: the clause is rejected as a one-off turn reference unless an explicit
-  long-term scope marker ("以后/整个项目/始终…") is present. Bare "这次/本轮"
-  alone is not a one-off signal, but neither is a bare product/dimension/
-  budget/cost noun: a clause passes the one-off guard only with an EXPLICIT
-  project-level scope (课设/课题/项目/整机/全案/产品线/整个产品/总体/全局/本项目/
-  本课题), or a constraint SUBJECT (预算/成本) paired with an explicit
-  quantitative constraint form ("预算不得超过 500", "成本上限 300").
-  "这次产品不要用蓝色", "这次尺寸不要改", and "这次预算那段不要写" remain one-off
-  and are rejected, while "这次课设预算不能超过 500 元", "本轮项目产品尺寸必须控制
-  在桌面范围内", and "这次预算不得超过 500 元" stay project-wide constraints.
-  Quantitative constraint forms ("不要超过", "不得低于"…) classify as
-  `constraint`, not `avoidance`.
+- After: clause-first admission — every clause is judged independently. A
+  clause carrying a concrete one-off scope (这张图/这版/这个角度/这次/本轮/临时/
+  先试…) is rejected unless an EXPLICIT project-level scope (课设/课题/项目/整机/
+  全案/产品线/整个产品/总体/全局/本项目/本课题) or a constraint SUBJECT (预算/
+  成本) paired with an explicit quantitative constraint form ("预算不得超过 500",
+  "成本上限 300") overrides it. Bare "统一"/"稳定" are deliberately NOT scope
+  markers: "这张图统一一下配色" stays one-off. Stable preference intent is
+  recalled WITHOUT any scope word ("我喜欢低饱和配色", "默认用暖灰色",
+  "我偏好哑光材质", "以后所有方向都不要高反光"), while one-off preference
+  wording ("这版保持哑光") stays rejected. Mixed messages keep their legal
+  clauses: "这次先把背景换白色；预算不能超过 500 元" retains only the
+  project-constraint clause. Quantitative constraint forms ("不要超过",
+  "不得低于"…) classify as `constraint`, not `avoidance`.
+
+**Compare authority (was: one authority for analysis and record)**
+
+- Before: explicit comparison + ≥2 selected objects allowed
+  `create_comparison_analysis` (a Workspace Compare write) even for "把这两个
+  比较一下".
+- After: ordinary comparison is chat-only. A persisted Compare record needs an
+  EXPLICIT save intent ("保留比较记录", "保存这次比较", "创建比较记录",
+  "把比较结果留在项目里") on top of the explicit comparison request, enforced
+  locally and fail-closed: the tool is absent from `allowedTools` for plain
+  comparisons and the executor blocks the write even if the model calls it.
+  The canonical comparison strategy text and the tool description state the
+  chat-only default.
+
+**Web Search authority (was: lost in Coordinator copy)**
+
+- Before: `capabilityIntent.webSearch` was dropped by
+  `AgentTurnCoordinator.copyProviderRequest()`; after any Coordinator copy the
+  server normalized it to false, so an authorized turn never exposed
+  `search_web_evidence`.
+- After: the bit survives copy, active-request restore, recovery
+  export/restore, exact retry, and continuation; recovery shape validation is
+  fail-closed (only `undefined | boolean` legal). The server contract
+  (global web-search enabled AND current-turn user authority) is unchanged.
+
+**Deterministic memory final check (was: dead code)**
+
+- Before: `buildRequiredAgentMemoryUpdateReminder` /
+  `shouldPromptForMemoryUpdate` / `memoryUpdateReminderInserted` /
+  `handledMemoryCandidateIndexes` existed but no production path delivered the
+  reminder.
+- After: when the current user message produces legal long-term candidates,
+  the initial Provider input carries ONE transient runtime-control message
+  (never persisted to `workspace.ai.messages`) requiring the model to either
+  call `submit_memory_update` with verbatim evidence or skip with
+  `items: []` + non-empty `skippedReason` before ending the turn;
+  `memoryUpdateReminderInserted` enters Recovery facts, so refresh/retry never
+  re-arms or regenerates it, and an unanswered reminder never loops (the flag
+  is set once at preparation).
 
 **Compaction (was: field names only)**
 
 - Before: the directive listed JSON field names without semantics; summaries
   depended on unguided model inference.
 - After: the directive defines each field (threadGoal, establishedContext,
-  decisionsAndReasons *with why*, activeWork *including explored-but-unconfirmed
-  directions and rejected alternatives*, unresolvedQuestions, referencedObjects,
-  nextTurnAnchor); schema and non-authoritative status unchanged.
+  decisionsAndReasons *with why, including confirmed rejections and
+  eliminations*, activeWork *explored-but-unconfirmed candidates and current
+  explorations only — confirmed rejected/eliminated directions must never be
+  listed in activeWork*, unresolvedQuestions, referencedObjects,
+  nextTurnAnchor) under contract `morpho-agent-compaction-v3-2026-08-17`;
+  schema and non-authoritative status unchanged.
 
 **Image compiler (was: role policies only)**
 
 - Before: every compiled prompt started directly with task and role sections.
 - After: compilation asserts "设计意图优先于渲染装饰" and scenario visuals are
   grounded in scale, action, and human-product relationships ("不是把产品放进漂亮
-  背景").
+  背景"), under contract `morpho-image-prompt-v3`.
 
 ## 6. Verification
 

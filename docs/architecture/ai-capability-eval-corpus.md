@@ -109,15 +109,29 @@ Morpho-compatible.
 
 - **Expected strategy**: `comparison` (explicit comparison signal).
 - **Method pack**: `comparisonDecision`.
+- **Expected reads/tools**: both selected objects; `read_selected_context` if
+  the selection is not yet in context. `create_comparison_analysis` is NOT
+  authorized: ordinary comparison is chat-only per the product contract.
+- **Desired behavior**: explicit differences and trade-offs in the chat;
+  recommendation allowed but not elevated into a project decision.
+- **Must-not**: create a Compare record for a plain comparison (locally
+  fail-closed even if the model calls the tool); run Compare without an
+  explicit request or with fewer than two selected objects; silently set
+  primary/alternative direction, default reference, or elimination status.
+- **Quality points**: User-controlled, Evidence-aware, Morpho-compatible.
+
+## H2. Persisted comparison — "把这两个比较一下，并保留比较记录。"
+
+- **Expected strategy**: `comparison` (explicit comparison signal).
+- **Method pack**: `comparisonDecision`.
 - **Expected reads/tools**: both selected objects; `create_comparison_analysis`
-  is gated on an explicit comparison request AND at least two selected objects
-  (`getComparisonToolExecutionBlockReason`); when the gate passes the analysis
-  is created as a local Compare record with bounded evidence bases.
-- **Desired behavior**: explicit differences and trade-offs; recommendation
-  allowed but not elevated into a project decision.
-- **Must-not**: run Compare without an explicit request or with fewer than two
-  selected objects; silently set primary/alternative direction, default
-  reference, or elimination status.
+  IS authorized — explicit save intent ("保留比较记录"/"保存这次比较"/
+  "创建比较记录"/"把比较结果留在项目里") plus ≥2 selected objects.
+- **Desired behavior**: create the bounded Compare record with evidence bases;
+  still no automatic change to primary/alternative direction, default
+  reference, elimination status, or Design Definition.
+- **Must-not**: create the record without the explicit save intent; treat the
+  recommendation as a project decision.
 - **Quality points**: User-controlled, Evidence-aware, Morpho-compatible.
 
 ## I. Delivery preparation — "我要开始做三张展板了，看看还缺什么。"
@@ -181,7 +195,9 @@ capability boundaries rather than execution.
 | Method pack selection | `src/shared/designMethodPack.test.ts` (new) |
 | Strategy + method delivery | `src/server/ai/agentTurnProviderRequest.test.ts` (new), `src/features/workspace/agentToolBatchAPlus.test.ts` (new) |
 | Persona + contract version | `src/features/workspace/morphoAgent.test.ts` (new) |
-| One-off memory guard (cases E, L) | `src/features/workspace/agentMemoryUpdateGuard.test.ts` (new) |
+| One-off memory guard (cases E, L) + preference recall + mixed-clause | `src/features/workspace/agentMemoryUpdateGuard.test.ts` (new) |
+| Deterministic memory final check (runner level: one reminder, handled/skip/ignore, no loop, no authority for one-off turns) | `src/features/workspace/agentTurnRunner.test.ts` (new) |
+| Compare record authority (chat-only vs persisted; fail-closed executor; coordinator copy + recovery for webSearch) | `src/features/workspace/morphoAgent.test.ts`, `agentToolAuthority.test.ts`, `agentToolExecutors.test.ts`, `agentTurnCoordinator.test.ts`, `agentTurnRunner.test.ts` (new) |
 | Shared exact-budget helper models the full server prefix incl. strategy + method items (helper-level parity only; production compaction wiring is the separately tracked G1 debt) | `src/shared/providerInputBudget.test.ts` (new) |
 | Image compiler principles (cases E, F) | `src/domain/operations/imagePromptCompiler.test.ts` (new) |
 | Injection envelope (case K) | existing frame tests (`providerContextFrame.test.ts`, `providerContextFrames.test.ts`) |
