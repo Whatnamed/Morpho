@@ -1097,3 +1097,21 @@ active-project UI, trigger navigation, or mutate the currently active workspace.
 Boundary: Phase 1–6-G are closed. `WorkspaceClient.tsx` remains a composition root with thin
 dispatch and page-local UI/domain wiring. There is no planned Phase 6-H or 6-I decomposition;
 future work requires a real product requirement or a reproducible regression.
+
+## 2026-08-16: Design Method Packs And Trusted Strategy Delivery
+
+Decision: add a lightweight runtime-owned professional method layer and restore trusted task-strategy delivery in the A+ Agent contract.
+
+Persona: the Stable System Prompt gains a compact design-partner persona (respect existing user work, maturity-adapted depth, evidence vs inference, real design variables, visual output as a design tool, no jargon/lecturing, user decision authority) under Prompt Contract `morpho-agent-v3.4-2026-08-13` (date aligned with the mainline contract after rebase integration; mainline version takes precedence). This is behavior defaults, not a design textbook; the stable prefix stays versioned and byte-identical across turns.
+
+Strategy delivery: the client sends `strategy` + `strategyAnchorMessageId` in the A+ provider request; the server validates the kind and materializes the existing canonical strategy System item (from `src/shared/agentStrategyItem.ts`) after the canonical Runtime item. This restores the documented "strategy policy materialized by the server as a canonical System item" contract that the A+ migration had dropped; strategy policy text previously never reached the model.
+
+Method Packs: `src/shared/designMethodPack.ts` is a fixed registry of short judgment principles (research synthesis, design definition, concept divergence/refinement, critique, reference interpretation, form/CMF/scenario development, comparison decision support, delivery narrative). The client resolves 0-3 pack ids deterministically from strategy and draft; the server validates ids against the registry and materializes the pack text as a trusted System item. Packs are injected per turn only when relevant, never pollute the stable prefix, and ordinary discussion gets none.
+
+Memory guard: `submit_memory_update` candidates that address only this turn's concrete image/object/version (e.g. "这张图不要高反光") are rejected unless an explicit long-term scope marker is present, closing the one-off-to-long-term leak. The stable memory policy and the tool description state the one-off rule; the memory-candidate reminder remains unwired (recorded, not changed).
+
+Compaction: the compaction directive gains per-field semantics (threadGoal, establishedContext, decisionsAndReasons with why, activeWork including explored-but-unconfirmed directions and rejected alternatives, unresolvedQuestions, referencedObjects, nextTurnAnchor) under contract `morpho-agent-compaction-v2-2026-08-16`; the summary schema is unchanged and summaries remain non-authoritative.
+
+Image compiler: compilation now asserts design intent over rendering decoration and grounds scenario visuals in scale, action, and human-product relationship. The structured intent to deterministic compiler pipeline is unchanged.
+
+Boundary: no runtime, lifecycle, database, authentication, asset persistence, context-frame architecture, task-strategy taxonomy, or visual UI change. Known runtime gaps (item-count pressure wiring, frame timeline filter usage, runtimeConfiguration frame creation in the A+ flow, cache-hint key completeness) are recorded in `ai-capability-layer.md` and intentionally not fixed here.
