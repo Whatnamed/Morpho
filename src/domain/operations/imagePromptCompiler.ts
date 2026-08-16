@@ -45,6 +45,7 @@ export function compileImagePrompt(input: {
   const sections = [
     `任务：${input.intent.title}`,
     `目的：${input.intent.purpose}`,
+    "设计意图优先于渲染装饰：先保证结构、比例、部件关系和使用情境正确，再谈灯光、背景与风格；不要无意义地堆砌 studio lighting、premium render、futuristic 之类的装饰词。",
     `图片角色：${rolePolicy.label}`,
     `图像编辑能力：${editModeLabel(editMode)}`,
     rolePolicy.instruction,
@@ -186,7 +187,7 @@ function imageRolePolicy(role: VisualIntentItem["role"]): { label: string; instr
     case "sceneVisual":
       return {
         label: "使用场景",
-        instruction: "让环境、人物和光线解释真实使用情境，同时保持产品主体可辨识且不改变核心结构。"
+        instruction: "让环境、人物和光线解释真实使用情境，同时保持产品主体可辨识且不改变核心结构。场景要体现尺度、动作和人与产品的真实关系（谁在用、在哪里、怎么拿/放/操作），不是把产品放进漂亮背景。"
       };
     case "cmfStudy":
       return {

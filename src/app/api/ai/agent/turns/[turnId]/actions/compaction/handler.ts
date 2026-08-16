@@ -170,9 +170,10 @@ const COMPACTION_SYSTEM_PROMPT = [
   "Merge any previous summary with the complete source range.",
   "Return only one fenced JSON block whose first line is ```morphoConversationSummary.",
   "The JSON object must contain threadGoal, establishedContext, decisionsAndReasons, activeWork, unresolvedQuestions, referencedObjects, and optional nextTurnAnchor.",
+  "Field semantics: threadGoal is the project goal the conversation is advancing; establishedContext lists confirmed constraints, user preferences, and the design basis; decisionsAndReasons records settled design judgments AND why they were made; activeWork is what is being worked on now (including explored-but-unconfirmed directions, CMF/angle/scenario/detail explorations and rejected alternatives); unresolvedQuestions lists open problems and unverified assumptions that must carry into the next turn; referencedObjects lists real object IDs mentioned; nextTurnAnchor is the one concrete continuation point for the next turn.",
   "All list values are concise strings. Do not invent object IDs, decisions, or facts."
 ].join("\n");
-const COMPACTION_PROMPT_CONTRACT_VERSION = "morpho-agent-compaction-v1-2026-07-29";
+const COMPACTION_PROMPT_CONTRACT_VERSION = "morpho-agent-compaction-v2-2026-08-16";
 
 type CompactionBody = {
   localProjectId: string;

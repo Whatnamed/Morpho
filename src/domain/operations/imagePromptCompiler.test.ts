@@ -172,6 +172,46 @@ describe("Image Prompt Compiler and reference resolver", () => {
     expect(nanoPrompt).toContain("保持指令紧凑直接");
     expect(gptPrompt).not.toBe(nanoPrompt);
   });
+
+  it("prioritizes design intent over rendering decoration for every role", () => {
+    const workspace = withImageAssets(createInitialWorkspace());
+    for (const role of ["preview", "sceneVisual", "cmfStudy", "detailStudy", "primaryVisual"] as const) {
+      const visualIntent = intent({ title: `生成${role}`, purpose: "验证表达", changeGoals: ["验证表达"], role });
+      const referenceResolution = resolveVisualReferences({
+        workspace,
+        intent: visualIntent,
+        selectedSourceObjectIds: ["image-soft-rail-v2"]
+      });
+      const compiled = compileImagePrompt({
+        workspace,
+        intent: visualIntent,
+        referenceResolution,
+        modelId: "gpt-image-2",
+        currentUserInput: "按当前要求生成"
+      });
+      expect(compiled.prompt).toContain("设计意图优先于渲染装饰");
+    }
+  });
+
+  it("grounds scenario visuals in scale, action, and human-product relationship", () => {
+    const workspace = withImageAssets(createInitialWorkspace());
+    const visualIntent = intent({ title: "使用场景图", purpose: "说明夜间使用情境", role: "sceneVisual" });
+    const referenceResolution = resolveVisualReferences({
+      workspace,
+      intent: visualIntent,
+      selectedSourceObjectIds: ["image-soft-rail-v2"]
+    });
+    const compiled = compileImagePrompt({
+      workspace,
+      intent: visualIntent,
+      referenceResolution,
+      modelId: "gpt-image-2",
+      currentUserInput: "做一张使用场景图"
+    });
+
+    expect(compiled.prompt).toContain("体现尺度、动作和人与产品的真实关系");
+    expect(compiled.prompt).toContain("不是把产品放进漂亮背景");
+  });
 });
 
 function intent(overrides: Partial<VisualIntentItem> = {}): VisualIntentItem {

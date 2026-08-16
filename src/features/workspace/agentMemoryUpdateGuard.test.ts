@@ -85,4 +85,22 @@ describe("Agent memory update guard", () => {
     ]);
     expect(resolveRequiredAgentMemoryUpdates("这张图先不要高反光")).toEqual([]);
   });
+
+  it("blocks turn-specific image and version instructions without an explicit long-term scope", () => {
+    expect(resolveRequiredAgentMemoryUpdates("这张图不要高反光")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这版背景换白色")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这次背景用暖光")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这个角度必须保留")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("新生成的图保持低饱和")).toEqual([]);
+  });
+
+  it("keeps turn-referencing clauses when the user states an explicit long-term scope", () => {
+    expect(
+      resolveRequiredAgentMemoryUpdates("这张图不要高反光，以后整个项目都保持低饱和")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["preference", "以后整个项目都保持低饱和"]
+    ]);
+    expect(resolveRequiredAgentMemoryUpdates("这张图的配色以后统一沿用")).not.toEqual([]);
+  });
 });

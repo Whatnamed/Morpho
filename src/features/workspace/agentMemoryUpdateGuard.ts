@@ -49,6 +49,16 @@ const ONE_OFF_OPERATION_PATTERN =
 const EXPLICIT_LONG_TERM_OPERATION_SCOPE_PATTERN =
   /以后|后续|后面|整个项目|接下来|始终|统一|长期(?:保持|遵守|采用|执行|使用)/;
 
+/**
+ * Clauses that only address this turn's concrete image, object, version, or
+ * background (without an explicit long-term scope marker) are one-off
+ * instructions and must never become long-term project memory. This closes
+ * phrasings like "这张图不要高反光" or "这版背景换白色" that the message-level
+ * ONE_OFF_MARKERS do not cover.
+ */
+const ONE_OFF_TURN_REFERENCE_PATTERN =
+  /(?:这张图|这张|这次的图|这轮的图|这轮|这版|当前这版|这个角度|这张参考图|刚才那张|刚才这个|新生成的图|生成的图|这次背景|这种背景|这个背景|这一张|这幅|这个渲染)/;
+
 const KIND_RULES: Array<{
   kind: RequiredAgentMemoryUpdateKind;
   pattern: RegExp;
@@ -94,6 +104,13 @@ export function resolveRequiredAgentMemoryUpdates(draft: string): RequiredAgentM
     if (
       ONE_OFF_OPERATION_PATTERN.test(clause.text) &&
       !EXPLICIT_LONG_TERM_OPERATION_SCOPE_PATTERN.test(clause.text)
+    ) {
+      continue;
+    }
+    if (
+      ONE_OFF_TURN_REFERENCE_PATTERN.test(clause.text) &&
+      !EXPLICIT_LONG_TERM_OPERATION_SCOPE_PATTERN.test(clause.text) &&
+      !LONG_TERM_SCOPE_MARKERS.some((marker) => clause.text.includes(marker))
     ) {
       continue;
     }
