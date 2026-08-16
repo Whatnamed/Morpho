@@ -253,6 +253,33 @@ describe("A+ Agent turn runner", () => {
     ).toHaveLength(1);
   });
 
+  it("keeps non-declarations free of reminder and memory authority end to end", async () => {
+    const reminderText = (message: APlusAgentProviderMessage) =>
+      message.content.some((part) => part.type === "input_text" && part.text.includes("确定性补检"));
+    // Representative negatives: scope-only question, ordinary design
+    // discussion, threshold question, open-question query, temporary
+    // avoidance. None may produce a candidate, a reminder, or memory
+    // authority.
+    let fixture = createFixture([{ status: "providerRunning" }]);
+    for (const draft of [
+      "后续怎么做？",
+      "这个材质怎么样？",
+      "高度低于多少合适？",
+      "有哪些待确认问题？",
+      "先别用蓝色。"
+    ]) {
+      detachMorphoAgentTurnForPageUnload(fixture.fake.getWorkspace().project.id);
+      fixture.store.clear();
+      const run = createFixture([{ status: "providerRunning" }]);
+      run.input.draft = draft;
+      await runMorphoAgentTurn(run.input, run.host, run.dependencies);
+      expect(run.coordinatorHost.executions[0]?.providerRequest.input.some(reminderText)).toBe(false);
+      expect(run.store.record?.metadata.runtime.facts.memoryUpdateReminderInserted).toBe(false);
+      expect(run.store.record?.metadata.runtime.facts.handledMemoryCandidateIndexes).toEqual([]);
+      fixture = run;
+    }
+  });
+
   it("reminds exactly once when the model would end without handling a candidate", async () => {
     const fixture = createFixture([
       { status: "externallyCompleted", outputText: "好的，我会注意预算。" }

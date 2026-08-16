@@ -39,6 +39,10 @@ describe("Design Method Packs", () => {
     expect(resolveDesignMethodPackIds({ strategy: "comparison", draft: "比较两个方案" })).toEqual([
       "comparisonDecision"
     ]);
+    // "不要保存" only closes persist authority; the comparison method still loads.
+    expect(resolveDesignMethodPackIds({ strategy: "comparison", draft: "比较一下，但不要保存记录" })).toEqual([
+      "comparisonDecision"
+    ]);
     expect(resolveDesignMethodPackIds({ strategy: "deliveryPreparation", draft: "生成本节说明" })).toEqual([
       "deliveryNarrative"
     ]);

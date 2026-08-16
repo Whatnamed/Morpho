@@ -105,62 +105,110 @@ const CONSTRAINT_NORMATIVE_PATTERN = new RegExp(
 );
 
 /**
- * 约束主语：只有与规范性语法（或显式记忆意图 记住/记录）相邻出现时才能构成
- * constraint。"记住这个尺寸" 是记录约束的请求；"这个尺寸合适吗？" 不是。
+ * 约束主语：只有与显式记忆意图 记住/记录 相邻出现时才能构成 constraint
+ * （规范性语法本身已经由 CONSTRAINT_NORMATIVE_PATTERN 覆盖）。
+ * "记住这个尺寸" 是记录约束的请求；"这个尺寸合适吗？" 不是。
  */
 const CONSTRAINT_SUBJECT_PATTERN = /尺寸|高度|宽度|重量|约束|限制/;
 
 /**
- * 偏好立场：真正表达"跨回合保持"的立场词。裸设计属性（材质/颜色/风格）不是
- * 偏好："这个材质怎么样？" 不得成为 preference candidate；"我偏好哑光材质" /
- * "默认用暖灰色" 才是。
+ * 偏好声明立场：真正表达"跨回合保持"的主观立场。单独的 scope 词（以后/后续/
+ * 始终/长期）不是立场——"以后这个方向怎么发展？" 是疑问，"长期采用低饱和" 才是
+ * 声明。裸设计属性（材质/颜色/风格）也不是偏好。
  */
-const PREFERENCE_STANCE_PATTERN =
-  /我喜欢|我偏好|偏好|默认|以后|后续|始终|长期|统一采用|统一沿用|希望(?:一直|始终|以后|保持|用|采用|延续|沿用|维持)/;
+const PREFERENCE_STRONG_STANCE_PATTERN =
+  /我喜欢|我偏好|我更喜欢|默认(?:用|采用|保持)|希望(?:保持|一直|以后|始终|用|采用|延续|沿用|维持)|统一采用|统一沿用|(?:以后|后续|从现在起).{0,6}(?:都|用|保持|统一|采用|沿用)|(?:始终|长期).{0,6}(?:用|保持|采用|使用|沿用)/;
 
 const PREFERENCE_ATTRIBUTE_PATTERN = /低饱和|高饱和|风格|材质|颜色|配色|语气/;
 
-const KIND_RULES: Array<{
-  kind: RequiredAgentMemoryUpdateKind;
-  pattern: RegExp;
-  reason: string;
-}> = [
-  {
-    kind: "openQuestion",
-    pattern: /待确认|还需确认|仍需确认|需要确认|未解决|开放问题|尚不确定|还不确定/,
-    reason: "用户明确保留了后续需要确认的开放问题。"
-  },
-  {
-    kind: "avoidance",
-    // Negative lookahead covers the optional 再 so that 别超过 / 别再超过 can
-    // never backtrack into a bare 别 avoidance match.
-    pattern: /不要(?!再?(?:超过|低于|少于|高于|多于|大于|小于))|避免|不使用|不做|禁止|别(?!再?(?:超过|低于|少于|高于|多于|大于|小于))/,
-    reason: "用户表达了跨本轮生效的明确避免项。"
-  },
-  {
-    kind: "constraint",
-    pattern: new RegExp(
-      `(?:${CONSTRAINT_NORMATIVE_PATTERN.source})|(?:${CONSTRAINT_SUBJECT_PATTERN.source}).{0,6}(?:${CONSTRAINT_NORMATIVE_PATTERN.source}|记住|记录)|(?:记住|记录).{0,6}(?:${CONSTRAINT_SUBJECT_PATTERN.source})`
-    ),
-    reason: "用户表达了会约束后续方案的长期项目规则。"
-  },
-  {
-    kind: "preference",
-    pattern: new RegExp(
-      `(?:${PREFERENCE_STANCE_PATTERN.source})|(?:${PREFERENCE_STANCE_PATTERN.source}).{0,6}(?:${PREFERENCE_ATTRIBUTE_PATTERN.source})|(?:${PREFERENCE_ATTRIBUTE_PATTERN.source}).{0,6}(?:${PREFERENCE_STANCE_PATTERN.source})`
-    ),
-    reason: "用户表达了需要跨回合保持的稳定偏好。"
-  }
-];
+/**
+ * 临时/试探性 scope：明确限定"这一轮先这样"的指令，不能成为稳定避免项或长期
+ * 规则。与 ONE_OFF_SCOPE_PATTERN 语义一致（该列表覆盖"这次/本轮/临时/先试"，
+ * 这里补充"先别/先不要/暂时/暂且"等 avoidance 场景的临时标记）。
+ */
+const TEMPORARY_SCOPE_PATTERN =
+  /先别|先不要|暂时|暂且|临时|这轮先|本轮先|这次先|先试|先不|先看看/;
+
+/**
+ * 疑问句：询问已有状态或意见，不是声明。openQuestion 有自己的例外处理
+ * （"是否支持单手操作还需确认" 是声明，不由本模式拦截）。
+ */
+const INTERROGATIVE_QUERY_PATTERN =
+  /是不是|是否|哪些|什么|哪个|哪张|多少|怎么|如何|吗|呢|行不行|好不好|能不能|要不要|可不可以|怎么样|咋样|为什么/;
+
+/**
+ * openQuestion 的查询形式：询问"还有哪些未决问题"，不是声明未决问题。
+ * "是否(?:还|仍)?(?:需|需要|待)确认" 精确匹配"是否还需确认？"这类查询，
+ * 但不会误伤"是否支持单手操作还需确认"（声明）。
+ */
+const OPEN_QUESTION_QUERY_PATTERN =
+  /哪些|什么|吗|呢|多少|怎么|如何|哪个|要不要|需不需要|是否(?:还|仍)?(?:需|需要|待)确认/;
+
+const MEMORY_KIND_REASONS: Record<RequiredAgentMemoryUpdateKind, string> = {
+  openQuestion: "用户明确陈述了后续需要确认的开放问题。",
+  avoidance: "用户明确陈述了跨本轮生效的稳定避免项。",
+  constraint: "用户明确陈述了会约束后续方案的长期项目规则。",
+  preference: "用户明确陈述了需要跨回合保持的稳定偏好。"
+};
+
+/**
+ * Declaration-based kind classification。判断的是"用户在明确陈述一条以后应该
+ * 继续成立的信息"，而不是"这句话里出现了什么词"：
+ * - openQuestion：unresolved subject + declarative unresolved tail（X 还需确认 /
+ *   X 尚不确定 / X 仍未解决），查询已有未决问题的疑问句被拒绝；
+ * - avoidance：稳定禁止（不要/避免/禁止/不使用），临时（先别/暂时/暂且）与
+ *   疑问（哪些颜色不要用？）被拒绝；
+ * - constraint：规范性规则陈述（必须/不得/不能/不超过/上限/控制在…），阈值
+ *   疑问句（高度低于多少合适？）被拒绝；
+ * - preference：明确偏好立场（我喜欢/默认用/希望保持/以后都用…），scope 词
+ *   单独出现、疑问句、结构化状态命令（默认参考改成这张）被拒绝。
+ */
+function classifyMemoryDeclaration(clause: string):
+  | RequiredAgentMemoryUpdateKind
+  | undefined {
+  if (isExplicitOpenQuestionDeclaration(clause)) return "openQuestion";
+  if (isExplicitStableAvoidanceDeclaration(clause)) return "avoidance";
+  if (isExplicitConstraintDeclaration(clause)) return "constraint";
+  if (isExplicitPreferenceDeclaration(clause)) return "preference";
+  return undefined;
+}
+
+function isExplicitOpenQuestionDeclaration(clause: string): boolean {
+  if (OPEN_QUESTION_QUERY_PATTERN.test(clause)) return false;
+  return /(?:还需|仍需|仍待|尚待|还待|需要|待)确认|尚不确定|仍未解决|仍未定|待验证|仍需验证|还需验证/.test(clause);
+}
+
+function isExplicitStableAvoidanceDeclaration(clause: string): boolean {
+  if (INTERROGATIVE_QUERY_PATTERN.test(clause)) return false;
+  if (TEMPORARY_SCOPE_PATTERN.test(clause)) return false;
+  // Negative lookahead covers the optional 再 so that 别超过 / 别再超过 can
+  // never backtrack into a bare 别 avoidance match.
+  return /不要(?!再?(?:超过|低于|少于|高于|多于|大于|小于))|避免|不使用|不做|禁止|别(?!再?(?:超过|低于|少于|高于|多于|大于|小于))/.test(clause);
+}
+
+function isExplicitConstraintDeclaration(clause: string): boolean {
+  if (INTERROGATIVE_QUERY_PATTERN.test(clause)) return false;
+  if (TEMPORARY_SCOPE_PATTERN.test(clause)) return false;
+  if (CONSTRAINT_NORMATIVE_PATTERN.test(clause)) return true;
+  return CONSTRAINT_SUBJECT_PATTERN.test(clause) && /记住|记录/.test(clause);
+}
+
+function isExplicitPreferenceDeclaration(clause: string): boolean {
+  if (INTERROGATIVE_QUERY_PATTERN.test(clause)) return false;
+  if (TEMPORARY_SCOPE_PATTERN.test(clause)) return false;
+  if (PREFERENCE_STRONG_STANCE_PATTERN.test(clause)) return true;
+  return PREFERENCE_ATTRIBUTE_PATTERN.test(clause) &&
+    /喜欢|偏好|默认|希望|统一|沿用|采用|保持/.test(clause);
+}
 
 /**
  * Clause-first admission. Every clause is judged independently: the operation
  * boundary, then the one-off scope guard (which only rejects when no explicit
  * project/long-term scope or quantitative constraint subject overrides it),
- * then the kind classifier. A mixed message like "这次先把背景换白色；预算不能
- * 超过 500 元" keeps its project-constraint clause instead of being dropped as
- * a whole. Ordinary descriptions without any memory cue never create a
- * candidate.
+ * then the declaration classifier. A mixed message like "这次先把背景换白色；预算
+ * 不能超过 500 元" keeps its project-constraint clause instead of being dropped
+ * as a whole. Questions, temporary instructions, structured-state commands and
+ * ordinary design discussion never create a candidate.
  */
 export function resolveRequiredAgentMemoryUpdates(draft: string): RequiredAgentMemoryUpdate[] {
   if (!draft.trim()) {
@@ -171,13 +219,13 @@ export function resolveRequiredAgentMemoryUpdates(draft: string): RequiredAgentM
     if (!isAdmissibleMemoryClause(clause.text)) {
       continue;
     }
-    const rule = KIND_RULES.find((candidate) => candidate.pattern.test(clause.text));
-    if (!rule) {
+    const kind = classifyMemoryDeclaration(clause.text);
+    if (!kind) {
       continue;
     }
     candidates.push({
-      kind: rule.kind,
-      reason: rule.reason,
+      kind,
+      reason: MEMORY_KIND_REASONS[kind],
       evidenceQuote: clause.text,
       evidenceStart: clause.start,
       evidenceEnd: clause.end

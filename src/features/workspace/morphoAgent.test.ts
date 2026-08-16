@@ -332,23 +332,49 @@ describe("Morpho agent tool argument validation", () => {
     // Asking about a comparison OUTCOME is not a save request.
     expect(isExplicitComparisonRecordRequest("比较结果怎么样？")).toBe(false);
     expect(isExplicitComparisonRecordRequest("比较结论是什么？")).toBe(false);
-    expect(isExplicitComparisonRecordRequest("对比结果再解释一下")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("对比结果再解释一下。")).toBe(false);
     // A save verb bound to something else never grants.
-    expect(isExplicitComparisonRecordRequest("创建两个方案然后比较一下")).toBe(false);
-    expect(isExplicitComparisonRecordRequest("记录一下预算，再比较两个方案")).toBe(false);
-    // Explicit save/persist intent grants.
+    expect(isExplicitComparisonRecordRequest("创建两个方案然后比较一下。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("记录一下预算，再比较两个方案。")).toBe(false);
+    // Foreign-domain results are NOT Compare-owned and never grant.
+    expect(isExplicitComparisonRecordRequest("比较这两个方案，把这个研究结论保存一下。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较两个方案，然后记录一下测试结果。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较一下，然后把调研结果存档。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("对比两个方向，把实验结论保留下来。")).toBe(false);
+    // Explicit save/persist intent BOUND to the Compare grants.
     expect(isExplicitComparisonRecordRequest("把这两个比较一下，并保留比较记录")).toBe(true);
-    expect(isExplicitComparisonRecordRequest("保存这次比较")).toBe(true);
-    expect(isExplicitComparisonRecordRequest("创建比较记录")).toBe(true);
-    expect(isExplicitComparisonRecordRequest("记录一下比较结果")).toBe(true);
-    expect(isExplicitComparisonRecordRequest("把比较结果留在项目里")).toBe(true);
-    expect(isExplicitComparisonRecordRequest("把比较结论存档")).toBe(true);
-    expect(isExplicitComparisonRecordRequest("对比这两个方案，把结论存档")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("保存这次比较。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("保留这次对比。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("创建比较记录。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("记录一下比较结果。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("把比较结果留在项目里。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("把比较结论存档。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("把这次比较的结论存档。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("比较一下，记录一下结果。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("对比这两个方案，把结论存档。")).toBe(true);
     expect(isExplicitComparisonRecordRequest("把这两个比较一下，记录一下结果")).toBe(true);
     // Explicit negation is fail-closed.
-    expect(isExplicitComparisonRecordRequest("比较一下，但不要保存记录")).toBe(false);
-    expect(isExplicitComparisonRecordRequest("不要创建比较记录，只讨论")).toBe(false);
-    expect(isExplicitComparisonRecordRequest("比较结果不要保存")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较一下，但不要保存记录。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("不要创建比较记录，只讨论。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果不要保存。")).toBe(false);
+  });
+
+  it("negates only the compare action itself, never the save intent", () => {
+    // "不要保存" closes only persist authority; the comparison stays on.
+    expect(isExplicitComparisonRequest("比较一下，但不要保存记录。")).toBe(true);
+    expect(isExplicitComparisonRequest("不要保存记录，只比较一下。")).toBe(true);
+    expect(isExplicitComparisonRequest("对比这两个方案，但别创建比较记录。")).toBe(true);
+    expect(isExplicitComparisonRequest("先比较差异，不需要把结果留在项目里。")).toBe(true);
+    expect(isExplicitComparisonRequest("这个方案比较省钱，但还是对比一下这两个。")).toBe(true);
+    // Negating the compare action itself closes the comparison.
+    expect(isExplicitComparisonRequest("不要比较，只分析。")).toBe(false);
+    expect(isExplicitComparisonRequest("别对比了，直接总结。")).toBe(false);
+    expect(isExplicitComparisonRequest("无需比较，分别说明即可。")).toBe(false);
+    expect(isExplicitComparisonRequest("不是让你比较，我只是想问这个方案怎么样。")).toBe(false);
+    expect(isExplicitComparisonRequest("比较就不用了，直接给结论。")).toBe(false);
+    // 副词"比较"不是比较动作。
+    expect(isExplicitComparisonRequest("这个方案比较省钱。")).toBe(false);
+    expect(isExplicitComparisonRequest("这个颜色比较好看。")).toBe(false);
   });
 
   it("uses one shared compare-action recognition for request and record detectors", () => {

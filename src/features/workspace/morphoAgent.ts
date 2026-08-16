@@ -893,16 +893,43 @@ function scrubComparativeAdverb(text: string): string {
   return text.replace(COMPARE_ADVERBIAL_USAGE_PATTERN, "");
 }
 
-export function isExplicitComparisonRequest(draft: string): boolean {
-  const text = draft.trim();
-  if (
-    /(?:不要|别|无需|不需要|不是).{0,16}(?:比较|对比|compare)|(?:比较|对比|compare).{0,16}(?:不要|别|无需|不需要|不是)/i.test(
-      text
-    )
-  ) {
-    return false;
+const COMPARE_ACTION_WORD = /比较|对比|compare/i;
+
+/**
+ * 直接否定比较动作本身：否定词紧贴比较词（中间最多 4 个字符）。
+ * "不要比较" / "别对比了" / "不是让你比较" / "无需比较" 都命中；
+ * "比较一下，但不要保存记录" 中"不要保存"与比较词之间隔着转折与另一动作，
+ * 由 clause 拆分隔离，不会否定比较动作。
+ */
+const COMPARE_ACTION_PREFIX_NEGATION =
+  /(?:不要|别|无需|无须|不必|不用|不需要|禁止|不是|没|暂不|先别|先不要|停止|不做|不再|别做|算了).{0,4}(?:比较|对比|compare)/i;
+
+/**
+ * 比较动作后紧跟的否定收尾（"比较就不用了"）；中间不允许出现转折词，
+ * 所以"比较一下但不要保存记录"不会命中。
+ */
+const COMPARE_ACTION_SUFFIX_NEGATION =
+  /(?:比较|对比|compare)(?:[^但,，。；;!?！？\n]{0,4})(?:就)?(?:不用|不必|不要|别|算了|免了)/i;
+
+/**
+ * Clause-level compare-action resolver。否定只针对比较动作所在的 clause：
+ * 其他 clause 里的"不要保存/别创建记录"只关闭 persist authority，不关闭
+ * chat comparison。"比较一下，但不要保存记录" 与 "不要保存记录，只比较一下"
+ * 都是 comparison = true；只有"不要比较，只分析"才是 comparison = false。
+ */
+function hasPositiveComparisonAction(text: string): boolean {
+  const scrubbed = scrubComparativeAdverb(text);
+  for (const clause of scrubbed.split(/[，。；,;!?！？\n]+/)) {
+    if (!COMPARE_ACTION_WORD.test(clause)) continue;
+    if (COMPARE_ACTION_PREFIX_NEGATION.test(clause)) continue;
+    if (COMPARE_ACTION_SUFFIX_NEGATION.test(clause)) continue;
+    return true;
   }
-  return /比较|对比|compare/i.test(scrubComparativeAdverb(text));
+  return false;
+}
+
+export function isExplicitComparisonRequest(draft: string): boolean {
+  return hasPositiveComparisonAction(draft.trim());
 }
 
 /**
@@ -914,7 +941,7 @@ const COMPARE_RECORD_SAVE_VERB =
   /保存|保留|创建|写入|存档|留下|记下|存为|存进|放进|记录(?:一下|下来|到|在|为|成|进|上|入)/;
 
 /**
- * 持久化动词直接绑定比较动作：保存这次比较 / 保留比较记录 / 创建比较记录 /
+ * 持久化动词直接绑定比较名词：保存这次比较 / 保留这次对比 / 创建比较记录 /
  * 记录一下比较结果。动词与比较词之间只允许窄限定词，因此"创建两个方案然后
  * 比较一下"与"记录一下预算，再比较两个方案"不会获得授权。
  */
@@ -924,44 +951,58 @@ const COMPARE_RECORD_VERB_TO_COMPARE_PATTERN = new RegExp(
 );
 
 /**
- * "把…比较(结果/结论/记录)…" 结构：把比较结果留在项目里 / 把比较结论存档 /
- * 把这次比较保存下来 / 把比较记录下来。
+ * 显式 Compare-owned 名词 + 持久化动词（"把"字结构）：把比较结果留在项目里 /
+ * 把比较结论存档 / 把这次比较保存下来 / 把这次比较的结论存档 / 把比较记录下来。
  */
 const COMPARE_RECORD_BA_CONSTRUCTION_PATTERN = new RegExp(
-  `把(?:这次|本轮|当前|这个)?(?:的)?(?:比较|对比)(?:结果|结论|记录)?(?:留下|留在|保存|保留|写入|存档|放进|记下|存为|存进|落|记录(?:一下|下来)?)`,
+  `把(?:这次|本轮|当前|这个)?(?:的)?(?:比较|对比)(?:的)?(?:结果|结论|记录)?(?:留下|留在|保存|保留|写入|存档|放进|记下|存为|存进|落|记录(?:一下|下来)?)`,
   "i"
 );
 
 /**
- * "把(这…)?结论/结果…(存档/保存/留下…)" 结构（结论指代比较结论），仅在句中
- * 存在真实比较动作时成立："对比这两个方案，把结论存档"。单独"把结论存档"
- * 或"比较结论是什么？"都不授权。
+ * Persist authority for an explicit Compare noun: ownership is written into the
+ * request itself (verb → compare noun, or 把…比较…留下/存档). No proximity
+ * inference across unrelated nouns.
  */
-const COMPARE_RECORD_BA_RESULT_PATTERN = new RegExp(
-  `把(?:这[^，。；!?！？]{0,8})?(?:结论|结果)(?:存档|保存|保留|留下|留在|写入|放进|记录(?:一下|下来)?)`,
-  "i"
-);
+function hasExplicitCompareRecordNounPersistence(text: string): boolean {
+  return COMPARE_RECORD_VERB_TO_COMPARE_PATTERN.test(text) ||
+    COMPARE_RECORD_BA_CONSTRUCTION_PATTERN.test(text);
+}
+
+/** 外来领域名词修饰的结果/结论（研究结论/测试结果/调研结果/实验结论…），不属于 Compare。 */
+const FOREIGN_OWNED_RESULT_PREFIX =
+  /研究|测试|调研|实验|预算|访谈|评估|检测|测量|分析|方案|方向|产品|材料|用户|项目|成本|市场|竞品|需求|性能|收益|效果|防水|耐候|尺寸|重量/;
 
 /**
- * 比较动作之后的结果绑定："比较一下，记录一下结果"（记录动作在结果前）与
- * "比较一下，把结果记录下来"（结果后跟存档动词）。"比较结果怎么样？" /
- * "对比结果再解释一下" 的结果后面不是存档动词，不匹配。
+ * 紧邻省略指代（非常保守）：compare action 的同一句内立即出现 结果/结论 +
+ * 持久化动词，且结果/结论 不得被外来领域名词修饰。支持两种顺序：
+ * "比较一下，记录一下结果"（动词在结果前）与 "对比这两个方案，把结论存档"
+ * （结果后跟存档动词）。"比较两个方案，然后记录一下测试结果" /
+ * "把这个研究结论保存一下" 因 ownership 不属于 Compare 而拒绝。
  */
-const COMPARE_RECORD_RESULT_BOUND_PATTERN = new RegExp(
-  `(?:比较|对比|compare).{0,16}(?:记录(?:一下|下来)?).{0,6}(?:结果|结论)|(?:比较|对比|compare).{0,16}(?:结果|结论).{0,6}(?:记录(?:一下|下来)?|存档|保存|保留|留下|留在|写入|放进|存为|存进)`,
-  "i"
-);
+function hasImmediateCompareResultPersistence(text: string): boolean {
+  const verbThenResult = /(?:比较|对比|compare)([^。；!?！？\n]{0,16})(?:然后|再|并|并且|同时|就)?(?:记录(?:一下|下来)?|存档|保存|保留|留下|留在|写入|放进|存为|存进)(?:的)?(?:结果|结论)/i;
+  const resultThenVerb = /(?:比较|对比|compare)([^。；!?！？\n]{0,20})(?:结果|结论)(?:存档|保存|保留|留下|留在|写入|放进|记录(?:一下|下来)?)/i;
+  for (const pattern of [verbThenResult, resultThenVerb]) {
+    const match = pattern.exec(text);
+    if (!match) continue;
+    // 紧贴 结果/结论 之前 2 个字符内不得出现外来领域名词（研究/测试/调研/实验…）：
+    // 那意味着被持久化的是"研究结论/测试结果"，不属于 Compare。比较对象名
+    // （"这两个方案，把"）不会紧贴结果词，因此不受影响。
+    const tail = (match[1] ?? "").slice(-2);
+    if (!FOREIGN_OWNED_RESULT_PREFIX.test(tail)) return true;
+  }
+  return false;
+}
 
 /**
  * Persisting a Compare requires a SEPARATE authority from asking for a
- * comparison. Ordinary "把这两个比较一下" is chat-only analysis; only an
- * explicit save/persist intent that is BOUND to the Compare record ("保存这次
- * 比较", "保留比较记录", "创建比较记录", "记录一下比较结果",
- * "把比较结果留在项目里", "把比较结论存档") may create a Workspace
- * ComparisonAnalysis. Proximity alone is not enough: "比较结果怎么样？",
- * "创建两个方案然后比较一下" and "记录一下预算，再比较两个方案" stay closed.
- * Any nearby negation of the save intent denies (fail-closed), and the adverb
- * usage of 比较 ("比较省钱") never grants.
+ * comparison, and the persisted result must be OWNED by the Compare: either
+ * the request names the Compare noun explicitly, or the result follows the
+ * compare action immediately without a foreign domain noun. "比较结果怎么
+ * 样？"、"创建两个方案然后比较一下"、"比较两个方案，然后记录一下测试结果" stay
+ * closed. Any nearby negation of the save intent denies (fail-closed), and the
+ * adverb usage of 比较 ("比较省钱") never grants.
  */
 export function isExplicitComparisonRecordRequest(draft: string): boolean {
   const text = draft.trim();
@@ -972,11 +1013,8 @@ export function isExplicitComparisonRecordRequest(draft: string): boolean {
     return false;
   }
   const scrubbed = scrubComparativeAdverb(text);
-  return COMPARE_RECORD_VERB_TO_COMPARE_PATTERN.test(scrubbed) ||
-    COMPARE_RECORD_BA_CONSTRUCTION_PATTERN.test(scrubbed) ||
-    COMPARE_RECORD_RESULT_BOUND_PATTERN.test(scrubbed) ||
-    (COMPARE_RECORD_BA_RESULT_PATTERN.test(scrubbed) &&
-      /比较|对比|compare/i.test(scrubbed));
+  return hasExplicitCompareRecordNounPersistence(scrubbed) ||
+    hasImmediateCompareResultPersistence(scrubbed);
 }
 
 export function buildAgentHistoryMessages(messages: Array<{ role: "user" | "assistant"; body: string }>): ResponseMessageInput[] {

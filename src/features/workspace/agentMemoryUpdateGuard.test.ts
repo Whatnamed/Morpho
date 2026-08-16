@@ -263,6 +263,52 @@ describe("Agent memory update guard", () => {
     expect(resolveRequiredAgentMemoryUpdates("这个方案的约束是什么？")).toEqual([]);
   });
 
+  it("treats scope words, preference queries and threshold questions as non-declarations", () => {
+    // Scope word alone is not a preference declaration.
+    expect(resolveRequiredAgentMemoryUpdates("后续怎么做？")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("以后这个方向怎么发展？")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("长期来看还有什么风险？")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("后续还有哪些方案？")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("始终是什么意思？")).toEqual([]);
+    // Preference queries read state or ask opinions, they do not declare.
+    expect(resolveRequiredAgentMemoryUpdates("默认方案是什么？")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("默认参考是哪张？")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("你说的偏好是什么？")).toEqual([]);
+    // Threshold questions are not rule statements.
+    expect(resolveRequiredAgentMemoryUpdates("高度低于多少合适？")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("尺寸小于 200 会怎么样？")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("重量高于多少会有问题？")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("预算低于多少才合理？")).toEqual([]);
+    // Structured-state commands are handled by real workspace state, not memory.
+    expect(resolveRequiredAgentMemoryUpdates("默认参考改成这张。")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("把这张设为默认参考。")).toEqual([]);
+  });
+
+  it("rejects temporary avoidance and avoidance questions", () => {
+    expect(resolveRequiredAgentMemoryUpdates("先别用蓝色。")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("先不要高反光。")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("暂时不要蓝色。")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("暂且不用镜面材质。")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这轮先别改结构。")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这次先不要加文字。")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("哪些颜色不要用？")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("是不是不要高反光？")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这个是不是应该避免？")).toEqual([]);
+  });
+
+  it("rejects open-question queries while keeping unresolved declarations", () => {
+    expect(resolveRequiredAgentMemoryUpdates("有哪些待确认问题？")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("现在还有什么未解决？")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这个还需要确认吗？")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("哪些地方尚不确定？")).toEqual([]);
+    expect(
+      resolveRequiredAgentMemoryUpdates("是否支持单手操作还需确认")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["openQuestion", "是否支持单手操作还需确认"]
+    ]);
+  });
+
   it("keeps high-confidence normative constraints and explicit preference stance", () => {
     expect(
       resolveRequiredAgentMemoryUpdates("尺寸必须小于 200 mm")
@@ -286,5 +332,16 @@ describe("Agent memory update guard", () => {
     expect(resolveRequiredAgentMemoryUpdates("默认用暖灰色")).not.toEqual([]);
     expect(resolveRequiredAgentMemoryUpdates("我偏好哑光材质")).not.toEqual([]);
     expect(resolveRequiredAgentMemoryUpdates("预算不能超过 500 元")).not.toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("以后都用低饱和配色")).not.toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("后续保持低饱和")).not.toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("高度不得超过 1.2 米")).not.toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("成本上限 300 元")).not.toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("重量控制在 2 kg 内")).not.toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("不要高反光")).not.toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("避免医疗器械感")).not.toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("不使用镜面金属")).not.toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("以后所有方向都不要高反光")).not.toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("跌倒求助方式还需确认")).not.toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("材料耐候性尚不确定")).not.toEqual([]);
   });
 });

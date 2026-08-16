@@ -169,6 +169,7 @@ describe("Agent tool authority", () => {
       selectedObjects: sources
     });
     expect(negated.allowComparisonWrite).toBe(false);
+    expect(negated.allowedTools).not.toContain("create_comparison_analysis");
     // Fewer than two selections never writes, regardless of save intent.
     const single = authority({
       draft: "把这两个比较一下，并保留比较记录。",
@@ -176,6 +177,14 @@ describe("Agent tool authority", () => {
       selectedObjects: sources.slice(0, 1)
     });
     expect(single.allowComparisonWrite).toBe(false);
+    // A foreign-domain result is not Compare-owned and never writes.
+    const foreign = authority({
+      draft: "比较这两个方案，把这个研究结论保存一下。",
+      allowStructuredComparison: true,
+      selectedObjects: sources
+    });
+    expect(foreign.allowComparisonWrite).toBe(false);
+    expect(foreign.allowedTools).not.toContain("create_comparison_analysis");
   });
 });
 

@@ -206,22 +206,29 @@ guidance.
   project-scope long-term memory.
 - After: clause-first admission — every clause is judged independently. A
   clause carrying a concrete one-off scope (这张图/这版/这个角度/这次/本轮/临时/
-  先试…) is rejected unless an EXPLICIT project-level scope (课设/课题/项目/整机/
-  全案/产品线/整个产品/总体/全局/本项目/本课题) or a constraint SUBJECT (预算/
-  成本) paired with an explicit quantitative constraint form ("预算不得超过 500",
-  "成本上限 300") overrides it. Bare "统一"/"稳定" are deliberately NOT scope
-  markers: "这张图统一一下配色" stays one-off. Stable preference intent is
-  recalled WITHOUT any scope word ("我喜欢低饱和配色", "默认用暖灰色",
-  "我偏好哑光材质", "以后所有方向都不要高反光"), while one-off preference
-  wording ("这版保持哑光") stays rejected. Kind classification additionally
-  requires high-confidence stance: constraint needs normative syntax
-  (必须/不得/不能/不超过/至少/上限/控制在/限制在…) and preference needs an
-  explicit stance (我喜欢/我偏好/默认/以后/统一采用/希望保持…), so ordinary
-  design discussion ("这个材质怎么样？", "这个尺寸合适吗？", "颜色换哪个更
-  好？") never produces a candidate or memory authority. Mixed messages keep
-  their legal clauses: "这次先把背景换白色；预算不能超过 500 元" retains only
-  the project-constraint clause. Quantitative constraint forms ("不要超过",
-  "不得低于"…) classify as `constraint`, not `avoidance`.
+  先试… or the temporary markers 先别/暂时/暂且/先不要) is rejected unless an
+  EXPLICIT project-level scope (课设/课题/项目/整机/全案/产品线/整个产品/总体/
+  全局/本项目/本课题) or a constraint SUBJECT (预算/成本) paired with an
+  explicit quantitative constraint form ("预算不得超过 500", "成本上限 300")
+  overrides it. Bare "统一"/"稳定" are deliberately NOT scope markers: "这张图
+  统一一下配色" stays one-off.
+- Kind classification is declaration-based, not keyword-based: the resolver
+  answers "is the user explicitly stating information that should stay true",
+  so a long-term scope word alone (后续怎么做？) is not a preference, a
+  question is never a declaration (这个材质怎么样？/高度低于多少合适？/哪些待确
+  认问题？/是不是不要高反光？), a temporary instruction is not an avoidance
+  (先别用蓝色), and a structured-state command is not a memory write
+  (默认参考改成这张 — handled by real workspace state). Preference requires an
+  explicit stance (我喜欢/我偏好/默认用/希望保持/以后都用/统一采用…), constraint
+  requires normative syntax (必须/不得/不能/不超过/上限/控制在/限制在…), and
+  openQuestion requires a declarative unresolved tail (X 还需确认/X 尚不确定)
+  while queries about existing unresolved items are rejected.
+- Mixed messages keep their legal clauses: "这次先把背景换白色；预算不能超过
+  500 元" retains only the project-constraint clause. Quantitative constraint
+  forms ("不要超过", "不得低于"…) classify as `constraint`, not `avoidance`.
+  The resolver is only an authority precondition: it never writes memory
+  itself, and candidates still require verbatim evidence through
+  `submit_memory_update`.
 
 **Compare authority (was: one authority for analysis and record)**
 
@@ -234,11 +241,16 @@ guidance.
   "把比较结论存档") on top of the explicit comparison request, enforced
   locally and fail-closed: the tool is absent from `allowedTools` for plain
   comparisons and the executor blocks the write even if the model calls it.
-  Proximity alone never grants — "比较结果怎么样？", "创建两个方案然后比较一
-  下", "记录一下预算，再比较两个方案" stay closed. The canonical comparison
-  strategy text and the tool description state the chat-only default, and the
-  strategy resolver shares the same compare-action recognition (the adverb
-  "比较省钱" is not a compare action).
+- Negation is decoupled at clause level: "不要保存/别创建记录" closes only the
+  persist authority, never the chat comparison ("比较一下，但不要保存记录" →
+  comparison on, persist off); only a clause negating the compare action
+  itself ("不要比较，只分析") closes the comparison.
+- Persisted results must be Compare-owned: "比较这两个方案，把这个研究结论保存
+  一下" / "比较两个方案，然后记录一下测试结果" stay closed — foreign-domain
+  nouns (研究/测试/调研/实验结论…) never attach to the Compare record.
+- The canonical comparison strategy text and the tool description state the
+  chat-only default, and the strategy resolver shares the same compare-action
+  recognition (the adverb "比较省钱" is not a compare action).
 
 **Web Search authority (was: lost in Coordinator copy)**
 
