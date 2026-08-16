@@ -92,6 +92,8 @@ describe("Agent memory update guard", () => {
     expect(resolveRequiredAgentMemoryUpdates("这次背景用暖光")).toEqual([]);
     expect(resolveRequiredAgentMemoryUpdates("这个角度必须保留")).toEqual([]);
     expect(resolveRequiredAgentMemoryUpdates("新生成的图保持低饱和")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("这次不要用蓝色")).toEqual([]);
+    expect(resolveRequiredAgentMemoryUpdates("本轮不要高反光")).toEqual([]);
   });
 
   it("keeps turn-referencing clauses when the user states an explicit long-term scope", () => {
@@ -102,5 +104,11 @@ describe("Agent memory update guard", () => {
       ["preference", "以后整个项目都保持低饱和"]
     ]);
     expect(resolveRequiredAgentMemoryUpdates("这张图的配色以后统一沿用")).not.toEqual([]);
+    expect(
+      resolveRequiredAgentMemoryUpdates("这次调整后以后都保持低饱和")
+        .map((candidate) => [candidate.kind, candidate.evidenceQuote])
+    ).toEqual([
+      ["preference", "这次调整后以后都保持低饱和"]
+    ]);
   });
 });
