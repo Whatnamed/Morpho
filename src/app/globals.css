@@ -67,6 +67,17 @@ input:focus-visible {
   inset: 0;
 }
 
+.workspace-canvas-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 43;
+  pointer-events: none;
+}
+
+.workspace-canvas-overlay > * {
+  pointer-events: auto;
+}
+
 .workspace-save-toast {
   position: fixed;
   top: 78px;

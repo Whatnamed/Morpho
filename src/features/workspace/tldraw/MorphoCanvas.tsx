@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Tldraw, Vec, track, useEditor, type Editor, type TLShape, type TLShapeId, type TLShapePartial } from "tldraw";
 
 import {
@@ -208,6 +209,10 @@ export function MorphoCanvas({
 }: MorphoCanvasProps) {
   const editorRef = useRef<Editor | null>(null);
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
+  const [canvasOverlayHost, setCanvasOverlayHost] = useState<HTMLDivElement | null>(null);
+  const setCanvasOverlayHostRef = useCallback((node: HTMLDivElement | null) => {
+    setCanvasOverlayHost(node);
+  }, []);
   const lastSelectionRef = useRef("");
   const pendingInstancesRef = useRef<CanvasInstance[] | null>(null);
   const instancesPersistTimerRef = useRef<number | null>(null);
@@ -267,6 +272,7 @@ export function MorphoCanvas({
           workspace={workspace}
           readOnly={readOnly}
           floatingChromeKey={floatingChromeKey}
+          canvasOverlayHost={canvasOverlayHost}
           renderToolbar={renderSelectionToolbar}
           onStageRegionsChange={onStageRegionsChange}
           onStageOpacityPreviewChange={(stageId) => {
@@ -284,6 +290,7 @@ export function MorphoCanvas({
       secondaryTraceObjectIds,
       traceEdgeKeySet,
       workspace,
+      canvasOverlayHost,
       readOnly,
       onStageRegionsChange
     ]
@@ -1093,6 +1100,7 @@ export function MorphoCanvas({
           };
         }}
       />
+      <div ref={setCanvasOverlayHostRef} className="workspace-canvas-overlay" />
     </div>
   );
 }
@@ -1195,6 +1203,7 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
   workspace,
   readOnly,
   floatingChromeKey,
+  canvasOverlayHost,
   renderToolbar,
   onStageRegionsChange,
   onStageOpacityPreviewChange
@@ -1202,6 +1211,7 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
   workspace: MorphoWorkspace;
   readOnly: boolean;
   floatingChromeKey: string;
+  canvasOverlayHost: HTMLDivElement | null;
   renderToolbar?: (
     selectedObjects: MorphoObject[],
     placement: SelectionToolbarPlacement,
@@ -1375,9 +1385,12 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
     return null;
   }
 
+  const renderOverlay = (content: ReactNode): ReactNode =>
+    canvasOverlayHost ? createPortal(content, canvasOverlayHost) : null;
+
   if (selectedObjects.length > 0) {
     return renderToolbar
-      ? <>{renderToolbar(selectedObjects, resolvedPlacement, reportObjectToolbarSize, !measuredObjectSize)}</>
+      ? renderOverlay(renderToolbar(selectedObjects, resolvedPlacement, reportObjectToolbarSize, !measuredObjectSize))
       : null;
   }
 
@@ -1397,7 +1410,7 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
     setStageChrome({ stageId: region.id, openPopover: next });
   };
 
-  return (
+  return renderOverlay(
     <CanvasStageRegionToolbar
       key={region.id}
       workspace={workspace}

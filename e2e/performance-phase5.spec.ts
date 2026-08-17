@@ -367,8 +367,99 @@ async function moveCanvasObjectTowardCentre(page: Page, objectId: string): Promi
   }
 }
 
-async function selectImageObject(page: Page, excludedObjectIds: readonly string[] = []): Promise<string> {
-  const target = await page.evaluate((excluded) => {
+async function findReviewableImagePair(page: Page): Promise<{
+  previousObjectId: string;
+  nextObjectId: string;
+}> {
+  const pair = await page.evaluate(() => {
+    type PersistedImage = {
+      type?: string;
+      visibility?: string;
+      role?: string;
+      title?: string;
+      generation?: { referenceObjectIds?: string[] };
+    };
+    type PersistedRelation = {
+      kind?: string;
+      fromObjectId?: string;
+      toObjectId?: string;
+    };
+    const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
+    if (!raw) {
+      throw new Error("Built-in case study workspace is not persisted.");
+    }
+    const workspace = JSON.parse(raw) as {
+      objects?: Record<string, PersistedImage>;
+      relations?: PersistedRelation[];
+      canvas?: { instances?: Array<{ objectId?: string }> };
+    };
+    const directDerivativeRoles = new Set([
+      "conceptImage",
+      "primaryVisual",
+      "sceneVisual",
+      "cmfStudy",
+      "detailStudy",
+      "structureDiagram",
+      "interactionDiagram"
+    ]);
+    const derivativeRelationKinds = new Set(["source", "usesReference", "version"]);
+    const canvasOrder = new Map<string, number>();
+    for (const [index, instance] of (workspace.canvas?.instances ?? []).entries()) {
+      if (instance.objectId) {
+        canvasOrder.set(instance.objectId, index);
+      }
+    }
+    const images = Object.entries(workspace.objects ?? {})
+      .map(([id, object]) => ({ id, ...object }))
+      .filter(
+        (object): object is PersistedImage & { id: string; title: string } =>
+          object.type === "image" &&
+          object.visibility === "active" &&
+          Boolean(object.title?.trim()) &&
+          canvasOrder.has(object.id)
+      );
+    const relations = workspace.relations ?? [];
+    const candidates = images
+      .map((previous) => {
+        const children = images.filter(
+          (next) =>
+            next.id !== previous.id &&
+            directDerivativeRoles.has(next.role ?? "") &&
+            ((next.generation?.referenceObjectIds ?? []).includes(previous.id) ||
+              relations.some(
+                (relation) =>
+                  derivativeRelationKinds.has(relation.kind ?? "") &&
+                  relation.fromObjectId === previous.id &&
+                  relation.toObjectId === next.id
+              ))
+        );
+        return { previous, children };
+      })
+      .filter((candidate) => candidate.children.length > 0)
+      .sort(
+        (left, right) =>
+          right.children.length - left.children.length ||
+          (canvasOrder.get(left.previous.id) ?? Number.MAX_SAFE_INTEGER) -
+            (canvasOrder.get(right.previous.id) ?? Number.MAX_SAFE_INTEGER)
+      );
+    const selected = candidates[0];
+    const next = selected?.children[0];
+    return selected && next
+      ? { previousObjectId: selected.previous.id, nextObjectId: next.id }
+      : null;
+  });
+  if (!pair) {
+    throw new Error("Built-in case study has no canvas image pair with direct derivative material.");
+  }
+  return pair;
+}
+
+async function selectImageObject(
+  page: Page,
+  excludedObjectIds: readonly string[] = [],
+  preferredObjectId?: string
+): Promise<string> {
+  const target = await page.evaluate(({ excluded, preferred }) => {
     const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
     if (!raw) {
       throw new Error("Built-in case study workspace is not persisted.");
@@ -392,8 +483,11 @@ async function selectImageObject(page: Page, excludedObjectIds: readonly string[
     for (const candidate of candidates) {
       titleCounts.set(candidate.title, (titleCounts.get(candidate.title) ?? 0) + 1);
     }
-    return candidates.find((candidate) => titleCounts.get(candidate.title) === 1) ?? candidates[0] ?? null;
-  }, [...excludedObjectIds]);
+    return candidates.find((candidate) => candidate.objectId === preferred) ??
+      candidates.find((candidate) => titleCounts.get(candidate.title) === 1) ??
+      candidates[0] ??
+      null;
+  }, { excluded: [...excludedObjectIds], preferred: preferredObjectId });
   if (!target) {
     throw new Error("Workspace has no eligible active image object.");
   }
@@ -1559,11 +1653,15 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     await page.locator('[aria-label="关闭归档面板"]').click();
     await page.waitForTimeout(300);
 
-    // --- default reference confirmation (compare/decision family) -------------------
-    // The built-in case study intentionally has no default reference. Select image
-    // objects by their rendered morpho type and persisted canvas instance, not by
-    // document order: file cards and images share the same shape host.
-    const initialReferenceObjectId = await selectImageObject(page);
+    // The built-in case study intentionally has no default reference. Select a real
+    // generated-chain pair so replacement confirmation also exercises the direct
+    // derivative review scope; search/locate still performs the actual UI setup.
+    const reviewableImagePair = await findReviewableImagePair(page);
+    const initialReferenceObjectId = await selectImageObject(
+      page,
+      [],
+      reviewableImagePair.previousObjectId
+    );
     const initialSetReference = page.locator('[aria-label="设为后续默认参考"]');
     await expect(initialSetReference, "内置案例没有可设为默认参考的图像").toHaveCount(1);
     await initialSetReference.click();
@@ -1574,7 +1672,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       return raw ? (JSON.parse(raw) as { workingState?: { currentDefaultReferenceId?: string } }).workingState?.currentDefaultReferenceId : undefined;
     }).toBe(initialReferenceObjectId);
 
-    await selectImageObject(page, [initialReferenceObjectId]);
+    await selectImageObject(page, [initialReferenceObjectId], reviewableImagePair.nextObjectId);
     const setReference = page.locator('[aria-label="设为后续默认参考"]');
     await expect(setReference, "内置案例第二张图像缺少默认参考操作").toHaveCount(1);
     const builtinScale = await page.evaluate(() => {
@@ -1605,11 +1703,12 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     });
     await beginPerfPhase(page);
     await armFeedback(page, "body");
+    const replaceOnly = page.getByRole("button", { name: "只替换默认参考", exact: true });
+    const replaceAndReview = page.getByRole("button", { name: "替换并标记相关素材待复核", exact: true });
+    const confirmCard = replaceOnly.locator("xpath=ancestor::div[contains(@class, 'confirm-card')]");
     await setReference.click();
-    const confirmCard = page.locator(".confirm-card:visible").first();
-    await expect(confirmCard).toBeVisible({ timeout: 10_000 });
-    await expect(confirmCard.getByRole("button", { name: "只替换默认参考" })).toBeVisible();
-    await expect(confirmCard.getByRole("button", { name: "替换并标记相关素材待复核" })).toBeVisible();
+    await expect(replaceOnly).toBeVisible({ timeout: 10_000 });
+    await expect(replaceAndReview).toBeVisible();
     const duringConfirmation = await page.evaluate(() => {
       const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
       return raw ? (JSON.parse(raw) as { workingState?: { currentDefaultReferenceId?: string } }) : null;
@@ -1628,7 +1727,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
         stateUnchangedBeforeChoice: true
       }
     });
-    await confirmCard.getByRole("button", { name: "取消" }).click();
+    await confirmCard.getByRole("button", { name: "取消", exact: true }).click();
     const afterCancel = await page.evaluate(() => {
       const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
       return raw ? (JSON.parse(raw) as { workingState?: { currentDefaultReferenceId?: string } }) : null;
