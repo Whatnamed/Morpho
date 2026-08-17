@@ -364,7 +364,9 @@ async function emptyPoint(page: Page): Promise<{ x: number; y: number }> {
 
 /**
  * Uses the real project-search locate path to select and focus an active canvas
- * object. The preceding pan/zoom phases can leave a 500-object overview below the
+ * image. Fixed-size image cards remain suitable for toolbar actions after focus;
+ * content-adaptive file cards can fill the viewport and leave no legal toolbar
+ * placement. The preceding pan/zoom phases can leave a 500-object overview below the
  * toolbar's minimum visible size, so a raw screen-coordinate click is not a stable
  * setup action. Search locate drives the production focus request, zoom-to-selection,
  * editor selection, and persisted `lastSelectionIds` path before the measured action.
@@ -386,16 +388,16 @@ async function focusFirstShapeSelected(page: Page, workspaceKey: string): Promis
       throw new Error(`Workspace not found at ${storageKey}.`);
     }
     const workspace = JSON.parse(raw) as {
-      objects?: Record<string, { title?: string; visibility?: string }>;
+      objects?: Record<string, { title?: string; type?: string; visibility?: string }>;
       canvas?: { instances?: Array<{ objectId?: string }> };
     };
     for (const instance of workspace.canvas?.instances ?? []) {
       const object = instance.objectId ? workspace.objects?.[instance.objectId] : undefined;
-      if (object?.visibility === "active" && object.title?.trim()) {
+      if (object?.type === "image" && object.visibility === "active" && object.title?.trim()) {
         return object.title;
       }
     }
-    throw new Error("Workspace has no searchable active canvas object.");
+    throw new Error("Workspace has no searchable active canvas image.");
   }, workspaceKey);
 
   await page.locator('[aria-label="项目内搜索"]').click();
@@ -412,14 +414,15 @@ async function focusFirstShapeSelected(page: Page, workspaceKey: string): Promis
       return null;
     }
     const workspace = JSON.parse(raw) as {
-      objects?: Record<string, { visibility?: string }>;
+      objects?: Record<string, { type?: string; visibility?: string }>;
       canvas?: { instances?: Array<{ objectId?: string }> };
       ui?: { lastSelectionIds?: string[] };
     };
     const selectedIds = workspace.ui?.lastSelectionIds ?? [];
     const selectedId = selectedIds.length === 1 ? selectedIds[0] : undefined;
     return selectedId &&
-      workspace.objects?.[selectedId]?.visibility === "active" &&
+      workspace.objects?.[selectedId]?.type === "image" &&
+      workspace.objects[selectedId]?.visibility === "active" &&
       workspace.canvas?.instances?.some((instance) => instance.objectId === selectedId)
       ? selectedId
       : null;
