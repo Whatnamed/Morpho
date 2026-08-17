@@ -194,6 +194,15 @@ describe("Agent tool authority", () => {
     });
     expect(possessedForeign.allowComparisonWrite).toBe(false);
     expect(possessedForeign.allowedTools).not.toContain("create_comparison_analysis");
+    // Any lexical modifier before 结果/结论 disables the inference — not just
+    // the possessive 的: 研究最终结论 is never Compare-owned.
+    const modifiedForeign = authority({
+      draft: "比较这两个方案，把研究最终结论存档。",
+      allowStructuredComparison: true,
+      selectedObjects: sources
+    });
+    expect(modifiedForeign.allowComparisonWrite).toBe(false);
+    expect(modifiedForeign.allowedTools).not.toContain("create_comparison_analysis");
   });
 });
 

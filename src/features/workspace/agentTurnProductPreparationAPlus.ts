@@ -63,7 +63,7 @@ import {
   providerContextFrameMessage,
   type ProviderContextFrameBuildInput
 } from "./providerContextFrames";
-import { buildProviderTaskContext, buildTaskContext, type ProviderTaskContext, type TaskContextResult } from "./taskContext";
+import { buildProviderComparisonTaskContext, buildProviderTaskContext, buildTaskContext, type ProviderTaskContext, type TaskContextResult } from "./taskContext";
 import type {
   APlusTurnRecoveryFacts,
   APlusTurnRecoveryRuntime
@@ -232,7 +232,9 @@ export async function prepareAgentTurnProductAPlus(
     draft: input.draft,
     selectedObjectIds: input.pendingDeliveryDraftTarget ? [] : input.selectedObjectIds
   });
-  const providerTaskContext = buildProviderTaskContext(context);
+  const providerTaskContext = context.kind === "comparison"
+    ? buildProviderComparisonTaskContext(context)
+    : buildProviderTaskContext(context);
   const controller = new AbortController();
   const createdAt = new Date(host.now()).toISOString();
   const suffix = host.randomSuffix();
@@ -541,7 +543,9 @@ export function restorePreparedAgentTurnProductAPlus(
       ? []
       : turnInput.selectedObjectIds
   });
-  const providerTaskContext = buildProviderTaskContext(context);
+  const providerTaskContext = context.kind === "comparison"
+    ? buildProviderComparisonTaskContext(context)
+    : buildProviderTaskContext(context);
   const conversation = buildContinuousConversationContext({
     workspace,
     limits: runtime.input.conversationTokenLimits

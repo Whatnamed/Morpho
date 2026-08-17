@@ -969,51 +969,46 @@ function hasExplicitCompareRecordNounPersistence(text: string): boolean {
     COMPARE_RECORD_BA_CONSTRUCTION_PATTERN.test(text);
 }
 
-/** 外来领域名词修饰的结果/结论（研究结论/测试结果/调研结果/实验结论…），不属于 Compare。 */
-const FOREIGN_OWNED_RESULT_PREFIX =
-  /研究|测试|调研|实验|预算|访谈|评估|检测|测量|分析|方案|方向|产品|材料|用户|项目|成本|市场|竞品|需求|性能|收益|效果|防水|耐候|尺寸|重量/;
-
 /**
- * 紧邻省略指代（bare result 正向证明）：compare action 的同一句内立即出现
- * bare 结果/结论 + 持久化动词才允许。bare 的含义是结果词不被任何语义修饰，
- * 因此被持久化的就是本次比较的产物：
- * - verbThenResult（"比较一下，记录一下结果"）中动词与结果之间只允许动词自身
- *   后缀（一下/下来/的），被修饰的结果（"记录一下研究的结果"）无法匹配，天然
- *   bare；
- * - resultThenVerb（"对比这两个方案，把结论存档"）中结果词紧前不得出现"的"
- *   领属修饰（研究的结论/测试后的结论）或外来领域名词（研究结论/测试结果）。
- * "比较两个方案，把研究的结论存档" / "把调研的结果保存" 是被修饰的结果，不做
- * 省略推定，拒绝。显式 Compare-owned 形式（把这次比较的结论存档）不受影响。
+ * 紧邻省略指代（bare-result 正向结构证明）：只有结构上真正 bare 的 结果/结论
+ * 才能推定指向本次比较，不需要任何外来领域名词黑名单：
+ * - verbThenResult（"比较一下，记录一下结果"）：动词与结果之间只允许动词自身
+ *   后缀（一下/下来/的），被修饰的结果无法匹配，天然 bare；
+ * - resultThenVerb：结果词要么紧跟比较词构成显式 Compare 复合名词（"比较结果
+ *   保存"），要么紧前是处置标记 把/将（"对比这两个方案，把结论存档"）。
+ * 结果词前存在任何其他 lexical modifier（研究的结论/研究结论/研究最终结论/
+ * 研究所得结论/测试最终结果/调研形成的结果/用户研究结论）时，不做省略
+ * ownership 推定，全部拒绝。显式 Compare-owned 形式（把这次比较的结论存档）
+ * 由显式名词模式覆盖，不受影响。
  */
 function hasImmediateCompareResultPersistence(text: string): boolean {
   const verbThenResult = /(?:比较|对比|compare)([^。；!?！？\n]{0,16})(?:然后|再|并|并且|同时|就)?(?:记录(?:一下|下来)?|存档|保存|保留|留下|留在|写入|放进|存为|存进)(?:的)?(?:结果|结论)/i;
-  const resultThenVerb = /(?:比较|对比|compare)([^。；!?！？\n]{0,20})(?:结果|结论)(?:存档|保存|保留|留下|留在|写入|放进|记录(?:一下|下来)?)/i;
   if (verbThenResult.test(text)) {
     return true;
   }
+  const resultThenVerb = /(?:比较|对比|compare)([^。；!?！？\n]{0,20})(?:结果|结论)(?:存档|保存|保留|留下|留在|写入|放进|记录(?:一下|下来)?)/i;
   const match = resultThenVerb.exec(text);
   if (!match) {
     return false;
   }
   const gap = match[1] ?? "";
-  // 结果词紧前是"的"（研究的结论/测试后的结论）→ 被领属修饰，拒绝省略推定。
-  if (gap.slice(-1) === "的") {
-    return false;
+  // gap 为空：结果词紧跟比较词，"比较结果保存"是显式 Compare 复合名词。
+  if (gap === "") {
+    return true;
   }
-  // 结果词紧前 2 个字符是外来领域名词（研究结论/测试结果/调研结果）→ 不属于
-  // Compare。比较对象名（"这两个方案，把"）不会紧贴结果词，因此不受影响。
-  if (FOREIGN_OWNED_RESULT_PREFIX.test(gap.slice(-2))) {
-    return false;
-  }
-  return true;
+  // 结构 bare：结果词紧前只能是处置标记 把/将（"…，把结论存档"）。任何其他
+  // 结尾字符（的/究/终/得/试…）都说明结果被修饰，拒绝省略推定。
+  return /[把将]$/.test(gap);
 }
 
 /**
  * Persisting a Compare requires a SEPARATE authority from asking for a
  * comparison, and the persisted result must be OWNED by the Compare: either
- * the request names the Compare noun explicitly, or the result follows the
- * compare action immediately without a foreign domain noun. "比较结果怎么
- * 样？"、"创建两个方案然后比较一下"、"比较两个方案，然后记录一下测试结果" stay
+ * the request names the Compare noun explicitly, or a structurally bare
+ * 结果/结论 is bound to the compare persist action ("比较一下，记录一下结果" /
+ * "对比这两个方案，把结论存档"). Any modified result (研究的结论/研究最终结论/
+ * 测试最终结果…) is never inferred as Compare-owned. "比较结果怎么样？"、
+ * "创建两个方案然后比较一下"、"比较两个方案，然后记录一下测试结果" stay
  * closed. Any nearby negation of the save intent denies (fail-closed), and the
  * adverb usage of 比较 ("比较省钱") never grants.
  */

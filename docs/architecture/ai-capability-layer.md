@@ -262,13 +262,27 @@ guidance.
 - Persisted results must be Compare-owned: "比较这两个方案，把这个研究结论保存
   一下" / "比较两个方案，然后记录一下测试结果" stay closed — foreign-domain
   nouns (研究/测试/调研/实验结论…) never attach to the Compare record.
-- The immediate-ellipsis inference is a BARE-result positive proof: only a bare
-  结果/结论 directly bound to the compare persist action is Compare-owned
-  ("比较一下，记录一下结果", "对比这两个方案，把结论存档"). Any semantic
-  modifier — a possessive 的 ("把研究的结论存档", "把测试后的结论保存") or a
-  foreign-domain noun prefix ("把研究结论存档") — disables the inference
-  instead of being matched against an ever-growing foreign noun blacklist.
-  Explicit Compare-owned forms ("把这次比较的结论存档") remain authorized.
+- The immediate-ellipsis inference is a BARE-result positive proof, structural
+  rather than blacklist-based: only a structurally bare 结果/结论 directly bound
+  to the compare persist action is Compare-owned — "比较一下，记录一下结果"
+  (verb-then-result, suffix-only gap), "对比这两个方案，把结论存档" (the
+  disposal marker 把/将 sits directly before the result word), or the explicit
+  Compare compound noun "比较结果保存". Any lexical modifier between the
+  disposal context and the result word ("把研究的结论存档", "把研究最终结论
+  存档", "把研究所得结论存档", "把测试最终结果保存", "把调研形成的结果存档")
+  disables the inference — no foreign-noun blacklist to grow. Explicit
+  Compare-owned forms ("把这次比较的结论存档") remain authorized.
+- A+ execution integration: comparison turns previously crashed at client
+  preparation because `buildProviderTaskContext` refuses the comparison
+  context kind (its guard predates the A+ chain and the comparison builder
+  `buildProviderComparisonBackgroundContext` had no production caller). The
+  A+ preparation now routes comparison contexts through
+  `buildProviderComparisonTaskContext` — the comparison background
+  (defaultReference/designDefinition/projectContinuity) plus the selected
+  object lists and document extracts — so explicit comparison turns reach the
+  provider with strategy `comparison` and the `comparisonDecision` pack. The
+  comparison-only scope (explicit selected objects, no default-reference
+  auto-inclusion) still rides in the task context and the trusted turn frame.
 - The canonical comparison strategy text and the tool description state the
   chat-only default, and the strategy resolver shares the same compare-action
   recognition (the adverb "比较省钱" is not a compare action).

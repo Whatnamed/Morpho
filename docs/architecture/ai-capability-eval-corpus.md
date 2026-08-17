@@ -131,11 +131,12 @@ Morpho-compatible.
   still no automatic change to primary/alternative direction, default
   reference, elimination status, or Design Definition.
 - **Must-not**: create the record without the explicit save intent; create it
-  from a modified or foreign-domain result (把研究的结论存档/把测试后的结论保存
-  — only a bare Compare result or an explicit Compare noun authorizes); turn
-  the persist negation into a long-term memory item ("比较一下，但不要保存记录"
-  must produce no memory candidate); treat the recommendation as a project
-  decision.
+  from a modified or foreign-domain result (把研究的结论存档/把研究最终结论存档/
+  把测试后的结论保存 — the ellipsis inference is structural: only a bare
+  结果/结论 bound to the compare persist action, or an explicit Compare noun,
+  authorizes); turn the persist negation into a long-term memory item
+  ("比较一下，但不要保存记录" must produce no memory candidate); treat the
+  recommendation as a project decision.
 - **Quality points**: User-controlled, Evidence-aware, Morpho-compatible.
 
 ## I. Delivery preparation — "我要开始做三张展板了，看看还缺什么。"

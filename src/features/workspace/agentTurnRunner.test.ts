@@ -284,19 +284,49 @@ describe("A+ Agent turn runner", () => {
     }
   });
 
-  it("keeps a persist-negation clause free of memory authority end to end", async () => {
-    // The clause 但不要保存记录 is a current-turn operation boundary, never a
-    // long-term avoidance: no candidate, no reminder, no memory authority.
-    // The identical clause inside "比较一下，但不要保存记录" cannot run e2e yet:
-    // comparison turns crash earlier at the pre-existing comparison context
-    // preparation path (buildProviderTaskContext rejects comparison
-    // contextKind — main-chain debt, recorded not fixed), so the memory side
-    // is proven here through a discussion draft carrying the same clause; the
-    // compare-side authorities for that sentence are locked by the
-    // task-strategy and tool-authority suites.
-    const fixture = createFixture([{ status: "providerRunning" }]);
-    fixture.input.draft = "先讨论现有方案，但不要保存记录。";
+  it("executes an explicit comparison turn through the provider end to end", async () => {
+    // H: comparison turns must reach the provider with comparison strategy,
+    // the comparisonDecision pack and comparisonAnalysis intent, and settle
+    // like any completed turn (chat-only; no memory candidates from a plain
+    // comparison).
+    const fixture = createFixture([{ status: "externallyCompleted", outputText: "比较完成。" }]);
+    const sources = selectComparableSources(fixture);
+    fixture.input.selectedObjectIds = sources.map((object) => object.id);
+    fixture.input.selectedObjects = sources;
+    fixture.input.draft = "把这两个比较一下。";
+
     await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+    const request = fixture.coordinatorHost.executions[0]?.providerRequest;
+    expect(request?.strategy).toBe("comparison");
+    expect(request?.capabilityIntent.comparisonAnalysis).toBe(true);
+    expect(request?.methodPacks).toContain("comparisonDecision");
+    const reminderText = (message: APlusAgentProviderMessage) =>
+      message.content.some((part) => part.type === "input_text" && part.text.includes("确定性补检"));
+    expect(fixture.coordinatorHost.executions[0]?.providerRequest.input.some(reminderText)).toBe(false);
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({ body: "比较完成。" });
+  });
+
+  it("keeps a compare-without-persist request free of memory authority end to end", async () => {
+    // The clause 但不要保存记录 is a current-turn operation boundary, never a
+    // long-term avoidance: comparison stays on (strategy + pack) while the
+    // memory side produces no candidate, no reminder and no submit authority.
+    // providerRunning keeps the turn in recovery so the runtime facts remain
+    // readable, like the other memory-authority e2e rows.
+    const fixture = createFixture([{ status: "providerRunning" }]);
+    const sources = selectComparableSources(fixture);
+    fixture.input.selectedObjectIds = sources.map((object) => object.id);
+    fixture.input.selectedObjects = sources;
+    fixture.input.draft = "比较一下，但不要保存记录。";
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+    const request = fixture.coordinatorHost.executions[0]?.providerRequest;
+    expect(request?.strategy).toBe("comparison");
+    expect(request?.capabilityIntent.comparisonAnalysis).toBe(true);
+    expect(request?.methodPacks).toContain("comparisonDecision");
     const reminderText = (message: APlusAgentProviderMessage) =>
       message.content.some((part) => part.type === "input_text" && part.text.includes("确定性补检"));
     expect(fixture.coordinatorHost.executions[0]?.providerRequest.input.some(reminderText)).toBe(false);
@@ -1259,6 +1289,14 @@ function snapshotFor(
 
 function latestAssistant(workspace: ReturnType<typeof createTestWorkspace>) {
   return [...workspace.ai.messages].reverse().find((message) => message.role === "assistant");
+}
+
+function selectComparableSources(fixture: ReturnType<typeof createFixture>) {
+  const objects = Object.values(fixture.fake.getWorkspace().objects)
+    .filter((object) => object.visibility === "active" && (object.type === "image" || object.type === "research"))
+    .slice(0, 2);
+  if (objects.length !== 2) throw new Error("Fixture 缺少两个可 Compare 对象。");
+  return objects;
 }
 
 function researchToolCall(callId: string): APlusToolCall {
