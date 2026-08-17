@@ -247,6 +247,95 @@ async function shapeCentres(page: Page, count: number): Promise<{ x: number; y: 
   }, count);
 }
 
+type ImageShapeTarget = {
+  objectId: string;
+  x: number;
+  y: number;
+};
+
+async function imageShapeTargets(page: Page, excludedObjectIds: readonly string[] = []): Promise<ImageShapeTarget[]> {
+  return page.evaluate((excluded) => {
+    const workspaceKey = "morpho.project.project-morpho-case-study.workspace.v1";
+    const raw = window.localStorage.getItem(workspaceKey);
+    if (!raw) {
+      return [];
+    }
+    const workspace = JSON.parse(raw) as {
+      canvas?: { instances?: Array<{ id?: string; objectId?: string }> };
+    };
+    const objectByInstanceId = new Map(
+      (workspace.canvas?.instances ?? [])
+        .filter((instance): instance is { id: string; objectId: string } => Boolean(instance.id && instance.objectId))
+        .map((instance) => [instance.id, instance.objectId])
+    );
+    const excludedIds = new Set(excluded);
+    const aiPanel = document.querySelector(".ai-panel")?.getBoundingClientRect();
+    const rightBoundary = Math.min(
+      window.innerWidth - 12,
+      aiPanel && aiPanel.left > 0 ? aiPanel.left - 16 : window.innerWidth - 12
+    );
+    const targets: ImageShapeTarget[] = [];
+    for (const shape of Array.from(document.querySelectorAll<HTMLElement>(".tl-shape"))) {
+      if (!shape.querySelector(".morpho-object-image")) {
+        continue;
+      }
+      const shapeId = shape.getAttribute("data-shape-id");
+      const instanceId = shapeId?.replace(/^shape:/, "");
+      const objectId = instanceId ? objectByInstanceId.get(instanceId) : undefined;
+      if (!objectId || excludedIds.has(objectId)) {
+        continue;
+      }
+      const rect = shape.getBoundingClientRect();
+      const left = Math.max(rect.left + 12, 12);
+      const right = Math.min(rect.right - 12, rightBoundary);
+      const top = Math.max(rect.top + 12, 80);
+      const bottom = Math.min(rect.bottom - 12, window.innerHeight - 80);
+      if (right - left < 24 || bottom - top < 24) {
+        continue;
+      }
+      targets.push({
+        objectId,
+        x: Math.round((left + right) / 2),
+        y: Math.round((top + bottom) / 2)
+      });
+    }
+    return targets;
+  }, [...excludedObjectIds]);
+}
+
+async function selectImageObject(page: Page, excludedObjectIds: readonly string[] = []): Promise<string> {
+  const toolbar = page.locator('[aria-label="选中对象工具"]');
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    await page.keyboard.press("Escape").catch(() => undefined);
+    const targets = await imageShapeTargets(page, excludedObjectIds);
+    for (const target of targets) {
+      await page.mouse.click(target.x, target.y);
+      try {
+        await expect
+          .poll(async () => page.evaluate((objectId) => {
+            const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
+            if (!raw) {
+              return false;
+            }
+            const workspace = JSON.parse(raw) as { ui?: { lastSelectionIds?: string[] } };
+            return workspace.ui?.lastSelectionIds?.length === 1 && workspace.ui.lastSelectionIds[0] === objectId;
+          }, target.objectId), { timeout: 2_500 })
+          .toBe(true);
+        await expect(toolbar).toBeVisible({ timeout: 2_500 });
+        return target.objectId;
+      } catch {
+        await page.keyboard.press("Escape").catch(() => undefined);
+      }
+    }
+    const overview = page.locator('[aria-label="回到项目概览"]');
+    if (targets.length === 0 && await overview.count() > 0) {
+      await overview.click();
+    }
+    await page.waitForTimeout(500);
+  }
+  throw new Error("Could not select an eligible image object for the phase.");
+}
+
 async function emptyPoint(page: Page): Promise<{ x: number; y: number }> {
   return page.evaluate(() => {
     const canvas = document.querySelector(".tl-container");
@@ -1300,24 +1389,21 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     await page.waitForTimeout(300);
 
     // --- default reference confirmation (compare/decision family) -------------------
-    const centres = await shapeCentres(page, 2);
-    expect(centres.length, "内置案例没有两个可比较图像").toBeGreaterThanOrEqual(2);
-    // The built-in case study intentionally has no default reference. Establish one
-    // through the real UI first, then measure the replacement confirmation on the
-    // second image; this keeps the measured path identical to a user replacing an anchor.
-    await page.mouse.click(centres[0]!.x, centres[0]!.y);
-    await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 8_000 });
-    await page.locator('[aria-label="设为后续默认参考"]').click();
+    // The built-in case study intentionally has no default reference. Select image
+    // objects by their rendered morpho type and persisted canvas instance, not by
+    // document order: file cards and images share the same shape host.
+    const initialReferenceObjectId = await selectImageObject(page);
+    const initialSetReference = page.locator('[aria-label="设为后续默认参考"]');
+    await expect(initialSetReference, "内置案例没有可设为默认参考的图像").toHaveCount(1);
+    await initialSetReference.click();
     await expect.poll(async () => {
       const raw = await page.evaluate(() => window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1"));
       return raw ? (JSON.parse(raw) as { workingState?: { currentDefaultReferenceId?: string } }).workingState?.currentDefaultReferenceId : undefined;
-    }).not.toBeUndefined();
-    const replacementCentres = await shapeCentres(page, 2);
-    await page.keyboard.press("Escape");
-    await page.mouse.click(replacementCentres[1]!.x, replacementCentres[1]!.y);
-    await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 8_000 });
+    }).toBe(initialReferenceObjectId);
+
+    await selectImageObject(page, [initialReferenceObjectId]);
     const setReference = page.locator('[aria-label="设为后续默认参考"]');
-    await expect(setReference, "内置案例选中图像缺少默认参考操作").toHaveCount(1);
+    await expect(setReference, "内置案例第二张图像缺少默认参考操作").toHaveCount(1);
     const builtinScale = await page.evaluate(() => {
       const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
       if (!raw) throw new Error("内置案例工作区未持久化");
