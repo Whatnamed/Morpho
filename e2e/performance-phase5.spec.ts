@@ -303,6 +303,70 @@ async function imageShapeTargets(page: Page, excludedObjectIds: readonly string[
   }, [...excludedObjectIds]);
 }
 
+async function canvasObjectCentre(page: Page, objectId: string): Promise<{ x: number; y: number } | null> {
+  return page.evaluate((targetObjectId) => {
+    const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
+    if (!raw) {
+      return null;
+    }
+    const workspace = JSON.parse(raw) as {
+      canvas?: { instances?: Array<{ id?: string; objectId?: string }> };
+    };
+    const instanceIds = new Set(
+      (workspace.canvas?.instances ?? [])
+        .filter((instance) => instance.objectId === targetObjectId && instance.id)
+        .map((instance) => instance.id)
+    );
+    for (const shape of Array.from(document.querySelectorAll<HTMLElement>(".tl-shape"))) {
+      const instanceId = shape.getAttribute("data-shape-id")?.replace(/^shape:/, "");
+      if (!instanceId || !instanceIds.has(instanceId)) {
+        continue;
+      }
+      const rect = shape.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      }
+    }
+    return null;
+  }, objectId);
+}
+
+async function panCanvasBy(page: Page, delta: { x: number; y: number }): Promise<void> {
+  const start = { x: 820, y: 440 };
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.move(start.x + delta.x, start.y + delta.y, { steps: 20 });
+  await page.mouse.up({ button: "middle" });
+  await page.waitForTimeout(500);
+}
+
+async function moveCanvasObjectTowardCentre(page: Page, objectId: string): Promise<void> {
+  const desired = { x: 480, y: 360 };
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const before = await canvasObjectCentre(page, objectId);
+    if (!before) {
+      return;
+    }
+    const requested = {
+      x: Math.max(-260, Math.min(260, desired.x - before.x)),
+      y: Math.max(-260, Math.min(260, desired.y - before.y))
+    };
+    if (Math.abs(requested.x) < 20 && Math.abs(requested.y) < 20) {
+      return;
+    }
+    await panCanvasBy(page, requested);
+    const after = await canvasObjectCentre(page, objectId);
+    if (!after) {
+      return;
+    }
+    const beforeDistance = Math.hypot(before.x - desired.x, before.y - desired.y);
+    const afterDistance = Math.hypot(after.x - desired.x, after.y - desired.y);
+    if (afterDistance > beforeDistance) {
+      await panCanvasBy(page, { x: -requested.x * 2, y: -requested.y * 2 });
+    }
+  }
+}
+
 async function selectImageObject(page: Page, excludedObjectIds: readonly string[] = []): Promise<string> {
   const target = await page.evaluate((excluded) => {
     const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
@@ -357,16 +421,8 @@ async function selectImageObject(page: Page, excludedObjectIds: readonly string[
   await result.getByRole("button", { name: "定位", exact: true }).click();
   await expect(search).toBeHidden({ timeout: 10_000 });
 
+  await moveCanvasObjectTowardCentre(page, target.objectId);
   const toolbar = page.locator('[aria-label="选中对象工具"]');
-  for (let panAttempt = 0; panAttempt < 2 && !(await toolbar.isVisible()); panAttempt += 1) {
-    const panX = 820;
-    const panY = 440;
-    await page.mouse.move(panX, panY);
-    await page.mouse.down({ button: "middle" });
-    await page.mouse.move(panX, panY - 320, { steps: 20 });
-    await page.mouse.up({ button: "middle" });
-    await page.waitForTimeout(500);
-  }
   for (let zoomAttempt = 0; zoomAttempt < 5 && !(await toolbar.isVisible()); zoomAttempt += 1) {
     const visibleTarget = (await imageShapeTargets(page)).find((item) => item.objectId === target.objectId);
     await page.mouse.move(visibleTarget?.x ?? 480, visibleTarget?.y ?? 420);
