@@ -1606,7 +1606,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     await beginPerfPhase(page);
     await armFeedback(page, "body");
     await setReference.click();
-    const confirmCard = page.locator(".confirm-card").first();
+    const confirmCard = page.locator(".confirm-card:visible").first();
     await expect(confirmCard).toBeVisible({ timeout: 10_000 });
     await expect(confirmCard.getByRole("button", { name: "只替换默认参考" })).toBeVisible();
     await expect(confirmCard.getByRole("button", { name: "替换并标记相关素材待复核" })).toBeVisible();
