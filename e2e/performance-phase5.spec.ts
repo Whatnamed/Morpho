@@ -358,6 +358,14 @@ async function selectImageObject(page: Page, excludedObjectIds: readonly string[
   await expect(search).toBeHidden({ timeout: 10_000 });
 
   const toolbar = page.locator('[aria-label="选中对象工具"]');
+  for (let panAttempt = 0; panAttempt < 2 && !(await toolbar.isVisible()); panAttempt += 1) {
+    const panPoint = await emptyPoint(page);
+    await page.mouse.move(panPoint.x, panPoint.y);
+    await page.mouse.down({ button: "middle" });
+    await page.mouse.move(panPoint.x, panPoint.y - 320, { steps: 20 });
+    await page.mouse.up({ button: "middle" });
+    await page.waitForTimeout(500);
+  }
   for (let zoomAttempt = 0; zoomAttempt < 5 && !(await toolbar.isVisible()); zoomAttempt += 1) {
     await page.mouse.move(480, 420);
     await page.mouse.wheel(0, 600);
