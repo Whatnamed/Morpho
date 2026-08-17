@@ -363,44 +363,85 @@ async function emptyPoint(page: Page): Promise<{ x: number; y: number }> {
 }
 
 /**
- * Click the first on-screen shape until the selection toolbar appears. Object cards
- * auto-grow shortly after mount, so one click on a freshly measured centre can miss
- * (`fixtures/canvas.ts` waits for settled geometry the same way). Escape first
- * closes any shape edit session (a freshly pasted text object auto-opens one and
- * swallows canvas clicks). When the pan/zoom phases of this test have drifted the
- * camera so far that no shape sits clear of the right-side AI panel, the
- * overview button resets the view (visual camera state only) and the retry
- * continues.
+ * Uses the real project-search locate path to select and focus an active canvas
+ * object. The preceding pan/zoom phases can leave a 500-object overview below the
+ * toolbar's minimum visible size, so a raw screen-coordinate click is not a stable
+ * setup action. Search locate drives the production focus request, zoom-to-selection,
+ * editor selection, and persisted `lastSelectionIds` path before the measured action.
  */
-async function clickFirstShapeSelected(page: Page): Promise<void> {
-  await page.waitForTimeout(400);
-  const overview = page.locator('[aria-label="回到项目概览"]');
+async function focusFirstShapeSelected(page: Page, workspaceKey: string): Promise<string> {
+  await page.keyboard.press("Escape").catch(() => undefined);
   const collapseAi = page.locator('[aria-label="收起 AI 面板"]');
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    await page.keyboard.press("Escape").catch(() => undefined);
-    if (await collapseAi.isVisible()) {
-      await collapseAi.click();
-      await page.waitForTimeout(350);
+  if (await collapseAi.isVisible()) {
+    await collapseAi.click();
+  }
+  const dismissStorageNotice = page.getByRole("button", { name: "知道了", exact: true });
+  if (await dismissStorageNotice.isVisible()) {
+    await dismissStorageNotice.click();
+  }
+
+  const targetTitle = await page.evaluate((storageKey) => {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) {
+      throw new Error(`Workspace not found at ${storageKey}.`);
     }
-    if (await overview.count() > 0) {
-      await overview.click();
-      await page.waitForTimeout(800);
-    }
-    const centre = (await shapeCentres(page, 1))[0];
-    if (centre) {
-      await page.mouse.click(centre.x, centre.y);
-      try {
-        await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 2_500 });
-        return;
-      } catch {
-        // The selection may be valid while its floating toolbar has no placement;
-        // clear it and retry after the camera/obstacle state settles.
-        await page.keyboard.press("Escape").catch(() => undefined);
+    const workspace = JSON.parse(raw) as {
+      objects?: Record<string, { title?: string; visibility?: string }>;
+      canvas?: { instances?: Array<{ objectId?: string }> };
+    };
+    for (const instance of workspace.canvas?.instances ?? []) {
+      const object = instance.objectId ? workspace.objects?.[instance.objectId] : undefined;
+      if (object?.visibility === "active" && object.title?.trim()) {
+        return object.title;
       }
     }
-    await page.waitForTimeout(350);
-  }
-  throw new Error("Could not select a shape for the phase.");
+    throw new Error("Workspace has no searchable active canvas object.");
+  }, workspaceKey);
+
+  await page.locator('[aria-label="项目内搜索"]').click();
+  const search = page.locator('section[aria-label="项目内搜索"]');
+  await expect(search).toBeVisible({ timeout: 10_000 });
+  await search.locator('[aria-label="搜索关键词"]').fill(targetTitle);
+  const result = search.locator(".result-row").first();
+  await expect(result).toBeVisible({ timeout: 10_000 });
+  await result.getByRole("button", { name: "定位", exact: true }).click();
+
+  await expect.poll(async () => page.evaluate((storageKey) => {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) {
+      return null;
+    }
+    const workspace = JSON.parse(raw) as {
+      objects?: Record<string, { visibility?: string }>;
+      canvas?: { instances?: Array<{ objectId?: string }> };
+      ui?: { lastSelectionIds?: string[] };
+    };
+    const selectedIds = workspace.ui?.lastSelectionIds ?? [];
+    const selectedId = selectedIds.length === 1 ? selectedIds[0] : undefined;
+    return selectedId &&
+      workspace.objects?.[selectedId]?.visibility === "active" &&
+      workspace.canvas?.instances?.some((instance) => instance.objectId === selectedId)
+      ? selectedId
+      : null;
+  }, workspaceKey), { timeout: 10_000 }).not.toBeNull();
+
+  const selectedObjectId = await page.evaluate((storageKey) => {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) {
+      throw new Error(`Workspace not found at ${storageKey}.`);
+    }
+    const workspace = JSON.parse(raw) as { ui?: { lastSelectionIds?: string[] } };
+    const selectedObjectId = workspace.ui?.lastSelectionIds?.[0];
+    if (!selectedObjectId) {
+      throw new Error("Located object was not persisted as the canvas selection.");
+    }
+    return selectedObjectId;
+  }, workspaceKey);
+
+  await search.locator('[aria-label="关闭搜索"]').click();
+  await expect(search).toBeHidden({ timeout: 10_000 });
+  await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 10_000 });
+  return selectedObjectId;
 }
 
 /** Loads a seeded project and waits for first shape + settle. Returns load-phase entry data. */
@@ -666,7 +707,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     });
 
     // --- delete object (Delete key on selection) ------------------------------
-    await clickFirstShapeSelected(page);
+    await focusFirstShapeSelected(page, phase5Project("objects500").workspaceKey);
     const countAfterAdd = await page.locator(".morpho-shape-host").count();
     await beginPerfPhase(page);
     await armFeedback(page, "body");
@@ -684,7 +725,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     });
 
     // --- toolbar hide action ---------------------------------------------------
-    await clickFirstShapeSelected(page);
+    await focusFirstShapeSelected(page, phase5Project("objects500").workspaceKey);
     const hideBefore = await page.locator(".morpho-shape-host").count();
     await beginPerfPhase(page);
     await armFeedback(page, "body");
