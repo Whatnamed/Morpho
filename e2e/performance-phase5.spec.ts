@@ -343,7 +343,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
 
     await page.goto("/");
     buildIdentity = await page.evaluate(async () => {
-      const response = await fetch("/__test/build-provenance");
+      const response = await fetch("/api/build-provenance");
       if (!response.ok) throw new Error(`Build provenance endpoint unavailable: ${response.status}`);
       return response.json() as Promise<BuildIdentity>;
     });

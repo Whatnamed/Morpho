@@ -62,7 +62,7 @@ test.describe("ZIP 同步/异步 crossover（记录，不断言阈值）", () =>
 
     await page.goto("/");
     const buildIdentity = await page.evaluate(async () => {
-      const response = await fetch("/__test/build-provenance");
+      const response = await fetch("/api/build-provenance");
       if (!response.ok) {
         throw new Error(`Build provenance endpoint unavailable: ${response.status}`);
       }
