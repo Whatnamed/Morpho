@@ -45,12 +45,14 @@ declare global {
       held: boolean;
       journal?: MockJournal;
       turnCount: number;
-      /**
-       * Phase 5: per-POST `/requests` response queue. When set, each provider
-       * request shifts the next entry; `response` is only the fallback. This is
-       * what lets one mocked turn exercise tool call -> continuation.
-       */
-      requestScript?: AgentMockResponse[];
+      /** Phase 5: finite per-POST `/requests` script and its consumption ledger. */
+      requestScript?: {
+        queue: AgentMockResponse[];
+        total: number;
+        consumed: number;
+        remaining: number;
+        overrun: number;
+      };
     };
   }
 }
@@ -159,7 +161,30 @@ export async function installAgentMock(page: Page): Promise<void> {
           counters: { ...state.journal.counters, provider: state.journal.counters.provider + 1 }
         });
 
-        const active = state.requestScript?.shift() ?? state.response;
+        let active: AgentMockResponse;
+        if (state.requestScript) {
+          const scripted = state.requestScript.queue.shift();
+          if (!scripted) {
+            state.requestScript.overrun += 1;
+            state.requestScript.remaining = 0;
+            updateJournal("externallyFailed", { failureCode: "agent_mock_script_exhausted" });
+            return json({
+              error: "Agent mock request script exhausted.",
+              code: "agent_mock_script_exhausted",
+              script: {
+                total: state.requestScript.total,
+                consumed: state.requestScript.consumed,
+                remaining: state.requestScript.remaining,
+                overrun: state.requestScript.overrun
+              }
+            }, 500);
+          }
+          state.requestScript.consumed += 1;
+          state.requestScript.remaining = state.requestScript.queue.length;
+          active = scripted;
+        } else {
+          active = state.response;
+        }
         const signal = init.signal ?? undefined;
         if (signal?.aborted) throw abortError();
         if (active.kind === "httpError") {
@@ -244,10 +269,10 @@ export async function setAgentResponse(page: Page, response: AgentMockResponse):
 }
 
 /**
- * Queues one response per provider POST `/requests` (the last entry repeats if the
- * turn issues more requests than scripted). Used to exercise tool-call turns:
- * request 1 returns a `providerOutput` with tool calls, request 2 answers the
- * continuation.
+ * Queues a finite response per provider POST `/requests`. Script exhaustion is a
+ * structured mock failure; it never repeats the last response or falls back silently.
+ * Used to exercise tool-call turns: request 1 returns tool calls, request 2 answers
+ * the continuation.
  */
 export async function setAgentRequestScript(
   page: Page,
@@ -257,7 +282,13 @@ export async function setAgentRequestScript(
     if (!window.__morphoAgentMock) {
       throw new Error("Agent mock was not installed before navigation.");
     }
-    window.__morphoAgentMock.requestScript = next;
+    window.__morphoAgentMock.requestScript = {
+      queue: [...next],
+      total: next.length,
+      consumed: 0,
+      remaining: next.length,
+      overrun: 0
+    };
     window.__morphoAgentMock.held = next.some(
       (response) => response.kind === "stream" && response.holdAfterChunks !== undefined
     );
@@ -279,4 +310,22 @@ export async function agentTurnCallCount(page: Page): Promise<number> {
   return calls.filter((call) =>
     new URL(call.url, "http://localhost").pathname.endsWith("/requests") && call.method === "POST"
   ).length;
+}
+
+export async function agentRequestScriptState(page: Page): Promise<{
+  total: number;
+  consumed: number;
+  remaining: number;
+  overrun: number;
+} | null> {
+  return page.evaluate(() => {
+    const script = window.__morphoAgentMock?.requestScript;
+    if (!script) return null;
+    return {
+      total: script.total,
+      consumed: script.consumed,
+      remaining: script.remaining,
+      overrun: script.overrun
+    };
+  });
 }

@@ -97,9 +97,9 @@ export async function seedPhase5Projects(page: Page, keys: readonly string[]): P
 export async function seedPhase5AssetBlobs(
   page: Page,
   project: Phase5SeedProject
-): Promise<{ count: number; totalBytes: number }> {
+): Promise<{ count: number; totalBytes: number; sizes: Record<string, number> }> {
   if (project.assets.length === 0) {
-    return { count: 0, totalBytes: 0 };
+    return { count: 0, totalBytes: 0, sizes: {} };
   }
   const result = await page.evaluate(async (manifest: Phase5AssetManifestEntry[]) => {
     const mulberry32 = (seed: number) => {
@@ -172,6 +172,7 @@ export async function seedPhase5AssetBlobs(
       // auto-commits once no request is pending, so awaiting canvas encoding inside
       // it would silently drop every put.
       const blobs = await Promise.all(manifest.map((entry) => generate(entry)));
+      const sizes = Object.fromEntries(manifest.map((entry, index) => [entry.assetId, blobs[index]!.size]));
       const bytes = blobs.reduce((total, blob) => total + blob.size, 0);
       await new Promise<void>((resolveTx, rejectTx) => {
         const tx = db.transaction("asset-blobs", "readwrite");
@@ -183,14 +184,42 @@ export async function seedPhase5AssetBlobs(
         tx.onerror = () => rejectTx(tx.error);
         tx.onabort = () => rejectTx(tx.error);
       });
-      return { count: manifest.length, totalBytes: bytes };
+      return { count: manifest.length, totalBytes: bytes, sizes };
     } finally {
       db.close();
     }
   }, project.assets);
 
-  if (result.count !== project.assets.length) {
+  if (result.count !== project.assets.length || Object.keys(result.sizes).length !== project.assets.length) {
     throw new Error(`合成图片写入数量不符：${result.count} / ${project.assets.length}`);
+  }
+
+  const updated = await page.evaluate(
+    ({ storageKey, sizes }) => {
+      const raw = window.localStorage.getItem(storageKey);
+      if (!raw) return { ok: false, reason: "workspace-missing" };
+      const workspace = JSON.parse(raw) as { assets?: Record<string, { size?: number }> };
+      for (const [assetId, size] of Object.entries(sizes)) {
+        const asset = workspace.assets?.[assetId];
+        if (!asset) return { ok: false, reason: `asset-missing:${assetId}` };
+        asset.size = size;
+      }
+      const next = JSON.stringify(workspace);
+      window.localStorage.setItem(storageKey, next);
+      const readBack = window.localStorage.getItem(storageKey);
+      if (!readBack) return { ok: false, reason: "workspace-write-missing" };
+      const verified = JSON.parse(readBack) as { assets?: Record<string, { size?: number }> };
+      for (const [assetId, size] of Object.entries(sizes)) {
+        if (verified.assets?.[assetId]?.size !== size) {
+          return { ok: false, reason: `size-mismatch:${assetId}` };
+        }
+      }
+      return { ok: true, reason: "" };
+    },
+    { storageKey: project.workspaceKey, sizes: result.sizes }
+  );
+  if (!updated.ok) {
+    throw new Error(`合成图片实际 Blob size 未回写工作区：${updated.reason}`);
   }
   return result;
 }

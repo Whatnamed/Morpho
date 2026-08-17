@@ -460,19 +460,11 @@ function missingResolvedAsset(entry: {
 }
 
 /**
- * Bundles at or below this many input bytes compress synchronously.
- *
- * Measured in a real browser on the Phase 5 machine (performance-zip-crossover):
- * zipSync costs ~7 ms at 0.2 MiB and ~22 ms at 1 MiB of mixed text/noise input,
- * crossing a 50 ms single-frame budget around 2–4 MiB; the async `zip` path
- * avoids exactly that freeze for the human-readable archive (~890 ms → 63–71 ms
- * on the built-in case study) but pays a per-call Worker handoff that showed up
- * as an ~85 ms frame on the small editable-backup bundle, which used to show no
- * long frame at all. The threshold keeps small bundles on the path that is
- * faster in wall time AND free of the handoff frame, while large bundles keep
- * the async win. Same library and compression level on both paths; the two
- * paths produce the same logical archive contents (byte-identical on most
- * measured sizes, but not guaranteed byte-for-byte).
+ * Raw bundle input-byte cutoff for the hybrid archive path. At or below 2 MiB the
+ * synchronous compressor preserves the low-overhead small-bundle path; strictly above
+ * 2 MiB uses asynchronous compression so large binary bundles do not monopolize the
+ * main thread. This is an engineering threshold selected from a measured transition
+ * range, not a claim that compression has one universal crossover point.
  */
 const SYNC_ZIP_MAX_INPUT_BYTES = 2 * 1024 * 1024;
 

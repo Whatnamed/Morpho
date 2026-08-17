@@ -10,7 +10,8 @@ import {
   releaseAgentStream,
   setAgentRequestScript,
   setAgentResponse,
-  agentCalls
+  agentCalls,
+  agentRequestScriptState
 } from "./fixtures/agentMock";
 import {
   armFeedback,
@@ -688,6 +689,9 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       const requestPosts = newCalls.filter(
         (call) => new URL(call.url, "http://localhost").pathname.endsWith("/requests") && call.method === "POST"
       );
+      const scriptState = await agentRequestScriptState(page);
+      expect(requestPosts.length, "tool-call turn 必须精确产生两次 provider request").toBe(2);
+      expect(scriptState).toMatchObject({ total: 2, consumed: 2, remaining: 0, overrun: 0 });
       record({
         area: "ai",
         project: tierKey,
@@ -697,7 +701,8 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
         feedback: toolFeedback,
         extra: {
           requestCount: requestPosts.length,
-          requestGapMs: requestPosts.length >= 2 ? Number((requestPosts[1]!.at - requestPosts[0]!.at).toFixed(1)) : null
+          requestGapMs: Number((requestPosts[1]!.at - requestPosts[0]!.at).toFixed(1)),
+          requestScript: scriptState
         }
       });
 
@@ -754,7 +759,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       const project = phase5Project(tierKey);
       await page.goto("/");
       await seedPhase5Projects(page, [tierKey]);
-      await seedPhase5AssetBlobs(page, project);
+      const seededAssets = await seedPhase5AssetBlobs(page, project);
       await markNow(page, "blobsSeeded");
 
       // --- open with real binaries -------------------------------------------
@@ -785,6 +790,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
         io: loadIo,
         extra: {
           firstShapeAtMs: support.firstShapeAtMs,
+          seededAssetBytes: seededAssets,
           imagesSettledAtMs: imagesSettledAt === null ? null : Number(imagesSettledAt.toFixed(1)),
           imagesSettledAfterFirstShapeMs:
             imagesSettledAt === null || support.firstShapeAtMs === null

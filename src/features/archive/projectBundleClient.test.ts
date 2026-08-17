@@ -1,4 +1,4 @@
-import { unzipSync, strFromU8, zipSync } from "fflate";
+import { unzipSync, strFromU8, zip, zipSync } from "fflate";
 import { describe, expect, test, vi } from "vitest";
 
 import type { BlobStore } from "@/infrastructure/assets/localAssetWorkflow";
@@ -12,6 +12,15 @@ import {
   inspectEditableProjectBackupBundle,
   restoreEditableProjectBackupBundle
 } from "./projectBundleClient";
+
+vi.mock("fflate", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("fflate")>();
+  return {
+    ...actual,
+    zipSync: vi.fn(actual.zipSync),
+    zip: vi.fn(actual.zip)
+  };
+});
 
 const NOW = "2026-07-02T13:00:00.000Z";
 
@@ -66,6 +75,24 @@ describe("project bundle client", () => {
     if (result.status === "blocked") {
       expect(result.diagnostics.some((diagnostic) => diagnostic.code === "asset_binary_missing")).toBe(true);
     }
+  });
+
+  test("uses sync compression at exactly 2 MiB of raw bundle input", async () => {
+    const targetInputBytes = 2 * 1024 * 1024;
+    const prepared = await exportFixtureAtRawInput(targetInputBytes);
+    expect(prepared.inputBytes).toBe(targetInputBytes);
+    expect(vi.mocked(zipSync)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(zip)).not.toHaveBeenCalled();
+    expect(prepared.exported.status).toBe("ok");
+  });
+
+  test("uses async compression one byte above the raw 2 MiB cutoff", async () => {
+    const targetInputBytes = 2 * 1024 * 1024 + 1;
+    const prepared = await exportFixtureAtRawInput(targetInputBytes);
+    expect(prepared.inputBytes).toBe(targetInputBytes);
+    expect(vi.mocked(zipSync)).not.toHaveBeenCalled();
+    expect(vi.mocked(zip)).toHaveBeenCalledTimes(1);
+    expect(prepared.exported.status).toBe("ok");
   });
 
   test("bundles above the sync-zip threshold export through the async path and stay inspectable", async () => {
@@ -832,6 +859,49 @@ describe("project bundle client", () => {
     expect(storage.getItem(getProjectWorkspaceStorageKey("project-failed"))).toBeNull();
   });
 });
+
+async function exportFixtureAtRawInput(targetInputBytes: number) {
+  let assetBytes = targetInputBytes;
+  let exported: Awaited<ReturnType<typeof exportEditableProjectBackupBundle>>;
+  let inputBytes = 0;
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const workspace = createBundleFixtureWorkspace();
+    const bytes = new Uint8Array(Math.max(0, assetBytes));
+    let state = 0x5eed0000;
+    for (let index = 0; index < bytes.length; index += 1) {
+      state = (state + 0x6d2b79f5) | 0;
+      let mixed = Math.imul(state ^ (state >>> 15), 1 | state);
+      mixed = (mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)) ^ mixed;
+      bytes[index] = (mixed ^ (mixed >>> 14)) & 0xff;
+    }
+    const blobStore = new MemoryBlobStore({ "blob:asset-brief": "brief-bytes" });
+    await blobStore.put("blob:asset-cover", new Blob([bytes]));
+    workspace.assets["asset-cover"]!.size = bytes.byteLength;
+    vi.mocked(zipSync).mockClear();
+    vi.mocked(zip).mockClear();
+    exported = await exportEditableProjectBackupBundle(workspace, {
+      blobStore,
+      createdAt: NOW,
+      chat: "full",
+      projectContinuity: "current"
+    });
+    const syncCall = vi.mocked(zipSync).mock.calls.at(-1);
+    const asyncCall = vi.mocked(zip).mock.calls.at(-1);
+    const entries = syncCall?.[0] ?? asyncCall?.[0];
+    if (!entries || typeof entries !== "object") {
+      throw new Error("Archive compressor was not called while measuring raw input bytes.");
+    }
+    inputBytes = Object.values(entries as Record<string, Uint8Array>)
+      .reduce((total, entry) => total + entry.byteLength, 0);
+    if (inputBytes === targetInputBytes) {
+      return { inputBytes, exported };
+    }
+    assetBytes += targetInputBytes - inputBytes;
+  }
+
+  throw new Error(`Could not construct exact raw-input fixture: ${inputBytes} / ${targetInputBytes}`);
+}
 
 function createBundleFixtureWorkspace(): MorphoWorkspace {
   const workspace = createBlankWorkspace("project-night-study");
