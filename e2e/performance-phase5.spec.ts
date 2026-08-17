@@ -1557,6 +1557,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     const initialSetReference = page.locator('[aria-label="设为后续默认参考"]');
     await expect(initialSetReference, "内置案例没有可设为默认参考的图像").toHaveCount(1);
     await initialSetReference.click();
+    await page.keyboard.press("Control+s");
     await expect.poll(async () => {
       const raw = await page.evaluate(() => window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1"));
       return raw ? (JSON.parse(raw) as { workingState?: { currentDefaultReferenceId?: string } }).workingState?.currentDefaultReferenceId : undefined;
