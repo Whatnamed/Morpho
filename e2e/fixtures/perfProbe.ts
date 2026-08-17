@@ -400,7 +400,8 @@ export async function beginPerfPhase(page: Page): Promise<void> {
     if (state.io) {
       state.io.lsReads.length = 0;
       state.io.lsWrites.length = 0;
-      state.io.idbRequests.length = 0;
+      // Keep settled requests from previous phases until their own interval has been
+      // collected; an old request may legally finish after the next phase begins.
       state.io.urlCreates.length = 0;
       state.io.urlRevokes = 0;
       state.io.marks.length = 0;
@@ -603,7 +604,7 @@ export type FeedbackResult = {
   firstChangeAt: number | null;
   matchedTextAt: number | null;
   valid: boolean;
-  invalidReason: "change_before_input" | "no_input" | null;
+  invalidReason: "change_before_input" | "change_after_phase" | "no_input" | null;
 };
 
 export async function armFeedback(
@@ -707,6 +708,12 @@ export async function readFeedback(page: Page): Promise<FeedbackResult> {
     ) {
       handle.record.valid = false;
       handle.record.invalidReason = "change_before_input";
+    } else if (
+      handle.record.firstChangeAt !== null &&
+      handle.record.firstChangeAt > phaseEnd
+    ) {
+      handle.record.valid = false;
+      handle.record.invalidReason = "change_after_phase";
     }
     return handle.record;
   });

@@ -1318,6 +1318,27 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 8_000 });
     const setReference = page.locator('[aria-label="设为后续默认参考"]');
     await expect(setReference, "内置案例选中图像缺少默认参考操作").toHaveCount(1);
+    const builtinScale = await page.evaluate(() => {
+      const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
+      if (!raw) throw new Error("内置案例工作区未持久化");
+      const workspace = JSON.parse(raw) as {
+        objects?: Record<string, unknown>;
+        assets?: Record<string, unknown>;
+        ai?: { messages?: unknown[]; providerContextFrames?: unknown[] };
+        canvas?: { instances?: unknown[] };
+        decisionRecords?: Record<string, unknown>;
+        projectContinuity?: { recordEntries?: unknown[] };
+      };
+      return {
+        objects: Object.keys(workspace.objects ?? {}).length,
+        assets: Object.keys(workspace.assets ?? {}).length,
+        messages: workspace.ai?.messages?.length ?? 0,
+        contextFrames: workspace.ai?.providerContextFrames?.length ?? 0,
+        canvasInstances: workspace.canvas?.instances?.length ?? 0,
+        decisionRecords: Object.keys(workspace.decisionRecords ?? {}).length,
+        continuityEntries: workspace.projectContinuity?.recordEntries?.length ?? 0
+      };
+    });
     const beforeReference = await page.evaluate(() => {
       const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
       if (!raw) throw new Error("内置案例工作区未持久化");
@@ -1340,7 +1361,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       area: "surfaces",
       project: "builtinCaseStudy",
       phase: "defaultReferenceConfirm",
-      scale: { ...phase5Project("caseStudy").scale },
+      scale: builtinScale,
       samples: await endPerfPhase(page),
       feedback: await readFeedback(page),
       extra: {
