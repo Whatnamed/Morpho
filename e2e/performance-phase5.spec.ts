@@ -344,7 +344,9 @@ async function emptyPoint(page: Page): Promise<{ x: number; y: number }> {
     }
     const canvasRect = canvas.getBoundingClientRect();
     const blocked = Array.from(
-      document.querySelectorAll(".tl-shape, .ai-panel, .ai-toggle, .floating-cluster, .rail, .selection-toolbar")
+      document.querySelectorAll(
+        ".tl-shape, .ai-panel, .ai-toggle, .floating-cluster, .rail, .selection-toolbar, .detail-popover, .workspace-banner"
+      )
     ).map((node) => node.getBoundingClientRect());
     for (let y = canvasRect.bottom - 24; y > canvasRect.top + 24; y -= 12) {
       for (let x = canvasRect.right - 24; x > canvasRect.left + 24; x -= 12) {
@@ -372,8 +374,18 @@ async function emptyPoint(page: Page): Promise<{ x: number; y: number }> {
  */
 async function clickFirstShapeSelected(page: Page): Promise<void> {
   await page.waitForTimeout(400);
+  const overview = page.locator('[aria-label="回到项目概览"]');
+  const collapseAi = page.locator('[aria-label="收起 AI 面板"]');
   for (let attempt = 0; attempt < 6; attempt += 1) {
     await page.keyboard.press("Escape").catch(() => undefined);
+    if (await collapseAi.count() > 0) {
+      await collapseAi.click();
+      await page.waitForTimeout(350);
+    }
+    if (await overview.count() > 0) {
+      await overview.click();
+      await page.waitForTimeout(800);
+    }
     const centre = (await shapeCentres(page, 1))[0];
     if (centre) {
       await page.mouse.click(centre.x, centre.y);
@@ -381,13 +393,9 @@ async function clickFirstShapeSelected(page: Page): Promise<void> {
         await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 2_500 });
         return;
       } catch {
-        // Geometry was still settling; measure again and retry.
-      }
-    } else if (attempt >= 1) {
-      const overview = page.locator('[aria-label="回到项目概览"]');
-      if (await overview.count() > 0) {
-        await overview.click();
-        await page.waitForTimeout(800);
+        // The selection may be valid while its floating toolbar has no placement;
+        // clear it and retry after the camera/obstacle state settles.
+        await page.keyboard.press("Escape").catch(() => undefined);
       }
     }
     await page.waitForTimeout(350);
