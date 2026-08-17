@@ -378,7 +378,7 @@ async function clickFirstShapeSelected(page: Page): Promise<void> {
   const collapseAi = page.locator('[aria-label="收起 AI 面板"]');
   for (let attempt = 0; attempt < 6; attempt += 1) {
     await page.keyboard.press("Escape").catch(() => undefined);
-    if (await collapseAi.count() > 0) {
+    if (await collapseAi.isVisible()) {
       await collapseAi.click();
       await page.waitForTimeout(350);
     }
