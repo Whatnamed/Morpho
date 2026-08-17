@@ -69,7 +69,87 @@ type AtlasEntry = {
   extra?: Record<string, unknown>;
 };
 
+type PersistedWorkspaceSnapshot = {
+  objects: Record<string, {
+    type: string;
+    assetId?: string;
+    fileName?: string;
+    mimeType?: string;
+    size?: number;
+    parseStatus?: string;
+    parseError?: string;
+    parsedAt?: string;
+    extractedAssetId?: string;
+    extractedCharCount?: number;
+    extractedPageCount?: number;
+    sourcePageCount?: number;
+    extractionTruncated?: boolean;
+  }>;
+  assets: Record<string, {
+    id?: string;
+    fileName?: string;
+    mimeType?: string;
+    size?: number;
+    sourceType?: string;
+  }>;
+};
+
+type ImportedFileEvidence = {
+  fileName: string;
+  objectId: string;
+  assetId: string;
+  mimeType: string | null;
+  size: number | null;
+  parseStatus: string | null;
+  parsedAt: string | null;
+  parseError: string | null;
+  extractedAssetId: string | null;
+  extractedCharCount: number | null;
+  extractedPageCount: number | null;
+  sourcePageCount: number | null;
+  extractionTruncated: boolean | null;
+  extractedAssetSourceType: string | null;
+};
+
+const PARSEABLE_IMPORT_FILENAMES = [
+  "p5-fixture-30p.pdf",
+  "p5-fixture-40slides.pptx",
+  "p5-fixture-150p.pdf",
+  "p5-mixed-notes.md",
+  "p5-mixed-8p.pdf"
+] as const;
+
 const collected: AtlasEntry[] = [];
+const importedFileEvidence = new Map<string, ImportedFileEvidence>();
+
+const MANDATORY_PHASE_KEYS = new Set([
+  "lifecycle/objects500/openProject(load)",
+  "lifecycle/objects500/backToProjectList",
+  "lifecycle/switchB/openFromList",
+  "lifecycle/switchA/directSwitchBtoA",
+  ...[
+    "selection", "drag", "boxSelect", "selectAll", "pan", "zoomSingle", "zoomContinuous",
+    "addObjectPasteText", "deleteObject", "toolbarHideObject"
+  ].map((phase) => `canvas/objects500/${phase}`),
+  ...["caseStudy", "chatLong", "objects500"].flatMap((project) =>
+    ["typing", "sendAndStream", "autoScrollAtRest", "toolCallTurn", "scrollUpDuringStream"]
+      .map((phase) => `ai/${project}/${phase}`)
+  ),
+  ...["assets10", "assets30", "assets80"].flatMap((project) =>
+    ["openWithBinaries", "assetDrawerFirstOpen", "assetFilter", "assetDrawerReopen", "selectImageDetail"]
+      .map((phase) => `assets/${project}/${phase}`)
+  ),
+  "assets/assets30/assetDrawerShowAll",
+  "assets/assets80/assetDrawerShowAll",
+  ...["imagePng", "pdf30p", "pptx40", "pdf150p", "mixedBatch"]
+    .map((phase) => `import/importBase/${phase}`),
+  ...["searchDrawerOpen", "searchQuery", "recordsDrawerOpen", "deliveryPrepOpen"]
+    .map((phase) => `surfaces/caseStudy/${phase}`),
+  ...["archivePanelOpen", "archiveExportBackupZip", "archiveExportHumanZip", "defaultReferenceConfirm", "deletionPreview"]
+    .map((phase) => `surfaces/builtinCaseStudy/${phase}`)
+]);
+
+const OPTIONAL_PHASE_KEYS = new Set(["assets/assets10/assetDrawerShowAll"]);
 
 function readGitCommit(): string | null {
   try {
@@ -90,7 +170,15 @@ function zeroSamples(): PerfPhaseSamples {
   };
 }
 
+function phaseKey(entry: Pick<AtlasEntry, "area" | "project" | "phase">): string {
+  return `${entry.area}/${entry.project}/${entry.phase}`;
+}
+
 function record(entry: AtlasEntry): void {
+  const key = phaseKey(entry);
+  if (collected.some((existing) => phaseKey(existing) === key)) {
+    throw new Error(`Phase 5 phase key was recorded twice: ${key}`);
+  }
   collected.push(entry);
   const { samples, feedback, extra } = entry;
   const first =
@@ -723,7 +811,11 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
 
       // --- show-all expansion (only exists when >10 assets) --------------------
       const showAll = page.locator("button.drawer-more-button", { hasText: "显示全部" });
-      if (await showAll.count() > 0) {
+      const showAllAvailable = await showAll.count() > 0;
+      if (tierKey !== "assets10") {
+        expect(showAllAvailable, `${tierKey} 应提供显示全部入口`).toBe(true);
+      }
+      if (showAllAvailable) {
         await beginPerfPhase(page);
         await armFeedback(page, 'section[aria-label="资产"]');
         await showAll.click();
@@ -774,26 +866,20 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       await page.waitForTimeout(300);
 
       // --- select an image -> bottom detail ------------------------------------
-      const centre = (await shapeCentres(page, 1))[0]!;
-      if (centre) {
-        await beginPerfPhase(page);
-        await armFeedback(page, "body");
-        await page.mouse.click(centre.x, centre.y);
-        try {
-          await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 8_000 });
-          record({
-            area: "assets",
-            project: tierKey,
-            phase: "selectImageDetail",
-            scale: project.scale,
-            samples: await endPerfPhase(page),
-            feedback: await readFeedback(page)
-          });
-        } catch {
-          await endPerfPhase(page);
-          await readFeedback(page).catch(() => undefined);
-        }
-      }
+      const centre = (await shapeCentres(page, 1))[0];
+      expect(centre, `${tierKey} 没有可选图片`).toBeDefined();
+      await beginPerfPhase(page);
+      await armFeedback(page, "body");
+      await page.mouse.click(centre!.x, centre!.y);
+      await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 8_000 });
+      record({
+        area: "assets",
+        project: tierKey,
+        phase: "selectImageDetail",
+        scale: project.scale,
+        samples: await endPerfPhase(page),
+        feedback: await readFeedback(page)
+      });
     });
   }
 
@@ -812,12 +898,82 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
 
     const importButton = page.locator('.toolbar-group[aria-label="资料与交付"] button', { hasText: "导入" });
 
+    async function readPersistedWorkspace(): Promise<PersistedWorkspaceSnapshot> {
+      const raw = await page.evaluate((storageKey) => window.localStorage.getItem(storageKey), project.workspaceKey);
+      if (!raw) {
+        throw new Error(`导入阶段找不到工作区 ${project.workspaceKey}`);
+      }
+      return JSON.parse(raw) as PersistedWorkspaceSnapshot;
+    }
+
+    async function waitForImportedFiles(
+      fileNames: readonly string[],
+      beforeObjectIds: ReadonlySet<string>,
+      beforeAssetIds: ReadonlySet<string>
+    ): Promise<ImportedFileEvidence[]> {
+      await expect.poll(async () => {
+        const snapshot = await readPersistedWorkspace();
+        return fileNames.every((fileName) => {
+          const candidates = Object.entries(snapshot.objects).filter(([objectId, object]) =>
+            object.type === "file" &&
+            object.fileName === fileName &&
+            !beforeObjectIds.has(objectId) &&
+            object.assetId !== undefined &&
+            !beforeAssetIds.has(object.assetId)
+          );
+          return candidates.length === 1 &&
+            (candidates[0]?.[1].parseStatus === "parsed" || candidates[0]?.[1].parseStatus === "failed");
+        });
+      }, { timeout: 120_000, message: `等待本轮导入文档进入 terminal parse state：${fileNames.join(", ")}` }).toBe(true);
+
+      const snapshot = await readPersistedWorkspace();
+      const evidence = fileNames.map((fileName) => {
+        const matchingObjects = Object.entries(snapshot.objects).filter(([objectId, object]) =>
+          object.type === "file" &&
+          object.fileName === fileName &&
+          !beforeObjectIds.has(objectId) &&
+          object.assetId !== undefined &&
+          !beforeAssetIds.has(object.assetId)
+        );
+        if (matchingObjects.length !== 1) {
+          throw new Error(`本轮导入文件对象不唯一：${fileName}（${matchingObjects.length} 个）`);
+        }
+        const objectEntry = matchingObjects[0];
+        if (!objectEntry) {
+          throw new Error(`本轮导入未找到唯一文件对象：${fileName}`);
+        }
+        const [objectId, object] = objectEntry;
+        const assetId = object.assetId!;
+        const asset = snapshot.assets[assetId];
+        return {
+          fileName,
+          objectId,
+          assetId,
+          mimeType: object.mimeType ?? asset?.mimeType ?? null,
+          size: object.size ?? asset?.size ?? null,
+          parseStatus: object.parseStatus ?? null,
+          parsedAt: object.parsedAt ?? null,
+          parseError: object.parseError ?? null,
+          extractedAssetId: object.extractedAssetId ?? null,
+          extractedCharCount: object.extractedCharCount ?? null,
+          extractedPageCount: object.extractedPageCount ?? null,
+          sourcePageCount: object.sourcePageCount ?? null,
+          extractionTruncated: object.extractionTruncated ?? null,
+          extractedAssetSourceType: object.extractedAssetId ? snapshot.assets[object.extractedAssetId]?.sourceType ?? null : null
+        } satisfies ImportedFileEvidence;
+      });
+      return evidence;
+    }
+
     async function runImport(
       phase: string,
       files: { name: string; mimeType: string; buffer: Buffer }[],
       settleMs = 4_000
     ): Promise<void> {
       const before = await page.locator(".morpho-shape-host").count();
+      const beforeWorkspace = await readPersistedWorkspace();
+      const beforeObjectIds = new Set(Object.keys(beforeWorkspace.objects));
+      const beforeAssetIds = new Set(Object.keys(beforeWorkspace.assets));
       await beginPerfPhase(page);
       await armFeedback(page, "body");
       const [chooser] = await Promise.all([
@@ -830,6 +986,16 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       const samples = await endPerfPhase(page);
       const feedback = await readFeedback(page);
       const io = await collectIoStats(page);
+      const importedDocuments = await waitForImportedFiles(
+        files.map((file) => file.name).filter((name): name is typeof PARSEABLE_IMPORT_FILENAMES[number] =>
+          (PARSEABLE_IMPORT_FILENAMES as readonly string[]).includes(name)
+        ),
+        beforeObjectIds,
+        beforeAssetIds
+      );
+      for (const imported of importedDocuments) {
+        importedFileEvidence.set(imported.fileName, imported);
+      }
       const changeAt = io.inputEvents.find((event) => event.kind === "change")?.at ?? null;
       record({
         area: "import",
@@ -842,7 +1008,8 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
         extra: {
           objectsVisibleAtMs: Number(visibleAt.toFixed(1)),
           visibleAfterChangeMs: changeAt === null ? null : Number((visibleAt - changeAt).toFixed(1)),
-          fileNames: files.map((file) => file.name)
+          fileNames: files.map((file) => file.name),
+          importedDocuments
         }
       });
     }
@@ -874,24 +1041,21 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       { name: "p5-mixed-8p.pdf", mimeType: "application/pdf", buffer: buildPdf(8, 20) }
     ], 8_000);
 
-    // Parse outcomes verified once, after all measured windows are closed.
-    const stored = await page.evaluate((key: string) => window.localStorage.getItem(key), project.workspaceKey);
-    expect(stored, "导入后工作区未持久化").not.toBe(null);
-    const parsed = JSON.parse(stored!) as {
-      objects: Record<string, { type: string; parseStatus?: string; parseError?: string }>;
-    };
-    const fileObjects = Object.values(parsed.objects).filter((object) => object.type === "file");
-    const parsedOk = fileObjects.filter((object) => object.parseStatus === "parsed").length;
-    const failed = fileObjects.filter((object) => object.parseStatus === "failed");
-    console.log(
-      `   [import] 文件对象 ${fileObjects.length} 个，parsed ${parsedOk} 个，failed ${failed.length} 个` +
-        (failed.length > 0 ? `（${failed.map((object) => object.parseError).join("；")}）` : "")
-    );
-    // Four parseable documents were imported this run (pdf30p, pptx40, md, pdf8p).
-    // Extra file objects come from the tier seed (cloned from the case study) and
-    // may legitimately carry their own historical parse status.
-    expect(fileObjects.length, "没有生成文件对象").toBeGreaterThanOrEqual(5);
-    expect(parsedOk, "本轮导入的可解析文档没有完成解析").toBeGreaterThanOrEqual(4);
+    const parsedEvidence = PARSEABLE_IMPORT_FILENAMES.map((fileName) => importedFileEvidence.get(fileName));
+    expect(parsedEvidence.every(Boolean), "五份本轮可解析文档没有全部建立精确证据").toBe(true);
+    for (const evidence of parsedEvidence) {
+      if (!evidence) {
+        throw new Error("缺少本轮文档解析证据。");
+      }
+      expect(evidence.parseStatus, `${evidence.fileName} 未完成解析`).toBe("parsed");
+      expect(evidence.parseError, `${evidence.fileName} 不应有 parseError`).toBeNull();
+      expect(evidence.parsedAt, `${evidence.fileName} 缺少 parsedAt`).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(evidence.extractedAssetId, `${evidence.fileName} 缺少 extractedAssetId`).not.toBeNull();
+      expect(evidence.extractedAssetSourceType, `${evidence.fileName} extract 不是 documentExtract`).toBe("documentExtract");
+      expect(evidence.extractedCharCount, `${evidence.fileName} 缺少 extractedCharCount`).toBeGreaterThan(0);
+      expect(evidence.size, `${evidence.fileName} 缺少原文件 size`).toBeGreaterThan(0);
+    }
+    console.log(`   [import] 本轮文档 5/5 parsed：${JSON.stringify(parsedEvidence)}`);
   });
 
   // ------------------------------------------------------------------ 6. other surfaces
@@ -1116,32 +1280,67 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
 
     // --- default reference confirmation (compare/decision family) -------------------
     const centres = await shapeCentres(page, 2);
-    if (centres.length >= 2) {
-      await page.mouse.click(centres[1]!.x, centres[1]!.y);
-      await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 8_000 });
-      const setReference = page.locator('[aria-label="设为后续默认参考"]');
-      if (await setReference.count() > 0) {
-        await beginPerfPhase(page);
-        await armFeedback(page, "body");
-        await setReference.click();
-        await expect(page.locator(".confirm-card").first()).toBeVisible({ timeout: 10_000 });
-        record({
-          area: "surfaces",
-          project: "caseStudy",
-          phase: "defaultReferenceConfirm",
-          scale: project.scale,
-          samples: await endPerfPhase(page),
-          feedback: await readFeedback(page)
-        });
-        // Leave workspace unchanged: cancel the confirmation.
-        await page.locator(".confirm-card").getByRole("button", { name: "取消" }).click().catch(() => undefined);
+    expect(centres.length, "内置案例没有两个可比较图像").toBeGreaterThanOrEqual(2);
+    // The built-in case study intentionally has no default reference. Establish one
+    // through the real UI first, then measure the replacement confirmation on the
+    // second image; this keeps the measured path identical to a user replacing an anchor.
+    await page.mouse.click(centres[0]!.x, centres[0]!.y);
+    await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[aria-label="设为后续默认参考"]').click();
+    await expect.poll(async () => {
+      const raw = await page.evaluate(() => window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1"));
+      return raw ? (JSON.parse(raw) as { workingState?: { currentDefaultReferenceId?: string } }).workingState?.currentDefaultReferenceId : undefined;
+    }).not.toBeUndefined();
+    const replacementCentres = await shapeCentres(page, 2);
+    await page.keyboard.press("Escape");
+    await page.mouse.click(replacementCentres[1]!.x, replacementCentres[1]!.y);
+    await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 8_000 });
+    const setReference = page.locator('[aria-label="设为后续默认参考"]');
+    await expect(setReference, "内置案例选中图像缺少默认参考操作").toHaveCount(1);
+    const beforeReference = await page.evaluate(() => {
+      const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
+      if (!raw) throw new Error("内置案例工作区未持久化");
+      return JSON.parse(raw) as { workingState?: { currentDefaultReferenceId?: string } };
+    });
+    await beginPerfPhase(page);
+    await armFeedback(page, "body");
+    await setReference.click();
+    const confirmCard = page.locator(".confirm-card").first();
+    await expect(confirmCard).toBeVisible({ timeout: 10_000 });
+    await expect(confirmCard.getByRole("button", { name: "只替换默认参考" })).toBeVisible();
+    await expect(confirmCard.getByRole("button", { name: "替换并标记相关素材待复核" })).toBeVisible();
+    const duringConfirmation = await page.evaluate(() => {
+      const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
+      return raw ? (JSON.parse(raw) as { workingState?: { currentDefaultReferenceId?: string } }) : null;
+    });
+    expect(duringConfirmation?.workingState?.currentDefaultReferenceId)
+      .toBe(beforeReference.workingState?.currentDefaultReferenceId);
+    record({
+      area: "surfaces",
+      project: "builtinCaseStudy",
+      phase: "defaultReferenceConfirm",
+      scale: { ...phase5Project("caseStudy").scale },
+      samples: await endPerfPhase(page),
+      feedback: await readFeedback(page),
+      extra: {
+        options: ["只替换默认参考", "替换并标记相关素材待复核"],
+        stateUnchangedBeforeChoice: true
       }
-    }
+    });
+    await confirmCard.getByRole("button", { name: "取消" }).click();
+    const afterCancel = await page.evaluate(() => {
+      const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
+      return raw ? (JSON.parse(raw) as { workingState?: { currentDefaultReferenceId?: string } }) : null;
+    });
+    expect(afterCancel?.workingState?.currentDefaultReferenceId)
+      .toBe(beforeReference.workingState?.currentDefaultReferenceId);
 
     // --- project deletion preview (home page) ----------------------------------------
     await page.goto("/");
     await expect(page.locator(".phome-shelf")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("测试", { exact: true }).first()).toBeVisible();
     const deleteButton = page.locator(`[aria-label="删除项目：测试"]`);
+    await expect(deleteButton, "内置案例项目删除预览入口缺失").toHaveCount(1);
     if (await deleteButton.count() > 0) {
       await beginPerfPhase(page);
       await armFeedback(page, "main");
@@ -1164,6 +1363,23 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     if (collected.length === 0) {
       return;
     }
+    const observedKeys = new Set(collected.map(phaseKey));
+    const expectedKeys = new Set([...MANDATORY_PHASE_KEYS, ...OPTIONAL_PHASE_KEYS]);
+    const missingMandatory = [...MANDATORY_PHASE_KEYS].filter((key) => !observedKeys.has(key));
+    const missingOptional = [...OPTIONAL_PHASE_KEYS].filter((key) => !observedKeys.has(key));
+    const unexpectedKeys = [...observedKeys].filter((key) => !expectedKeys.has(key));
+    const completeness = {
+      expectedCount: expectedKeys.size,
+      observedCount: observedKeys.size,
+      expectedKeys: [...expectedKeys].sort(),
+      observedKeys: [...observedKeys].sort(),
+      missingMandatory: missingMandatory.sort(),
+      missingOptional: missingOptional.sort(),
+      unexpectedKeys: unexpectedKeys.sort(),
+      mandatoryPassed: missingMandatory.length === 0 && unexpectedKeys.length === 0
+    };
+    expect(missingMandatory, `Phase 5 mandatory phases missing: ${missingMandatory.join(", ")}`).toEqual([]);
+    expect(unexpectedKeys, `Phase 5 unexpected phases recorded: ${unexpectedKeys.join(", ")}`).toEqual([]);
     const payloadProjects = phase5Project("objects500");
     await mkdir(dirname(REPORT_PATH), { recursive: true });
     await writeFile(
@@ -1189,6 +1405,8 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
             "指针流为 Playwright 合成，快于真人；实际达成速率记录在 pointerRateHz。"
           ],
           seedProjects: payloadProjects.scale,
+          completeness,
+          parseableImportEvidence: Object.fromEntries(importedFileEvidence.entries()),
           entries: collected
         },
         null,
