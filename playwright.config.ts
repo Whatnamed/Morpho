@@ -85,7 +85,9 @@ export default defineConfig({
       // real key must never be required for the app to boot.
       MORPHO_AI_API_KEY: "",
       MORPHO_GRS_API_KEY: "",
-      MORPHO_ALLOW_PAID_SMOKE_TESTS: "false"
+      MORPHO_ALLOW_PAID_SMOKE_TESTS: "false",
+      MORPHO_E2E_BUILD_PROVENANCE: "true",
+      MORPHO_REQUIRE_CLEAN_BUILD: "true"
     }
   }
 });

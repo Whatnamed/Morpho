@@ -61,6 +61,16 @@ test.describe("ZIP 同步/异步 crossover（记录，不断言阈值）", () =>
     );
 
     await page.goto("/");
+    const buildIdentity = await page.evaluate(async () => {
+      const response = await fetch("/__test/build-provenance");
+      if (!response.ok) {
+        throw new Error(`Build provenance endpoint unavailable: ${response.status}`);
+      }
+      return response.json() as Promise<{ sourceSha: string | null; buildId: string | null; artifactSha256: string | null }>;
+    });
+    expect(buildIdentity.sourceSha, "served build missing source SHA").toBe(readGitCommit());
+    expect(buildIdentity.buildId, "served build missing build ID").toBeTruthy();
+    expect(buildIdentity.artifactSha256, "served build missing artifact digest").toMatch(/^[a-f0-9]{64}$/);
     const { rows, machine } = await page.evaluate(async () => {
       // Fulfilled by the page.route above; the specifier is deliberately dynamic
       // so TypeScript does not try to resolve a runtime-injected URL.
@@ -263,6 +273,7 @@ test.describe("ZIP 同步/异步 crossover（记录，不断言阈值）", () =>
             "3 次取中位；JIT 预热档已丢弃。20% JSON 文本 + 80% 伪噪声（PNG 形态），level 6。" +
             "字节一致列是逐字节比对结果——两条路径逻辑内容一致但字节不保证相等。",
           machine,
+          buildIdentity,
           rows
         },
         null,

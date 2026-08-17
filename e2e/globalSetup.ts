@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { execFileSync } from "node:child_process";
 import type { FullConfig } from "@playwright/test";
 import { createServer } from "vite";
 
@@ -18,6 +19,10 @@ export const PHASE5_SEED_PAYLOAD_PATH = resolve(process.cwd(), "e2e/.seed/phase5
  * `e2e/.seed/`, which is gitignored.
  */
 export default async function globalSetup(config: FullConfig): Promise<void> {
+  const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  if (process.env.MORPHO_EXPECTED_BUILD_SOURCE_SHA && process.env.MORPHO_EXPECTED_BUILD_SOURCE_SHA !== sourceSha) {
+    throw new Error(`Expected build source SHA ${process.env.MORPHO_EXPECTED_BUILD_SOURCE_SHA} does not match HEAD ${sourceSha}.`);
+  }
   // `--project=perf` filters config.projects, so this is how the setup knows whether
   // the several-second, several-megabyte perf seed is worth building. No env var and
   // no extra dependency to set one on Windows.

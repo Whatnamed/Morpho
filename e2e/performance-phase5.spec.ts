@@ -95,6 +95,12 @@ type PersistedWorkspaceSnapshot = {
   }>;
 };
 
+type BuildIdentity = {
+  sourceSha: string | null;
+  buildId: string | null;
+  artifactSha256: string | null;
+};
+
 type ImportedFileEvidence = {
   fileName: string;
   objectId: string;
@@ -122,6 +128,7 @@ const PARSEABLE_IMPORT_FILENAMES = [
 
 const collected: AtlasEntry[] = [];
 const importedFileEvidence = new Map<string, ImportedFileEvidence>();
+let buildIdentity: BuildIdentity | null = null;
 
 const MANDATORY_PHASE_KEYS = new Set([
   "lifecycle/objects500/openProject(load)",
@@ -335,6 +342,14 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     await installAgentMock(page);
 
     await page.goto("/");
+    buildIdentity = await page.evaluate(async () => {
+      const response = await fetch("/__test/build-provenance");
+      if (!response.ok) throw new Error(`Build provenance endpoint unavailable: ${response.status}`);
+      return response.json() as Promise<BuildIdentity>;
+    });
+    expect(buildIdentity.sourceSha, "served build missing source SHA").toBe(readGitCommit());
+    expect(buildIdentity.buildId, "served build missing build ID").toBeTruthy();
+    expect(buildIdentity.artifactSha256, "served build missing artifact digest").toMatch(/^[a-f0-9]{64}$/);
     await seedPhase5Projects(page, ["objects500", "switchA", "switchB"]);
 
     await openProjectAndMeasureLoad(page, "objects500", "lifecycle");
@@ -1387,6 +1402,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     expect(missingMandatory, `Phase 5 mandatory phases missing: ${missingMandatory.join(", ")}`).toEqual([]);
     expect(unexpectedKeys, `Phase 5 unexpected phases recorded: ${unexpectedKeys.join(", ")}`).toEqual([]);
     const payloadProjects = phase5Project("objects500");
+    expect(buildIdentity, "Phase 5 evidence missing served build provenance").not.toBeNull();
     await mkdir(dirname(REPORT_PATH), { recursive: true });
     await writeFile(
       REPORT_PATH,
@@ -1411,6 +1427,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
             "指针流为 Playwright 合成，快于真人；实际达成速率记录在 pointerRateHz。"
           ],
           seedProjects: payloadProjects.scale,
+          buildIdentity,
           completeness,
           parseableImportEvidence: Object.fromEntries(importedFileEvidence.entries()),
           entries: collected

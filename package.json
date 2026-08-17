@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "next build",
+    "build": "node ./scripts/build-production.mjs",
     "cf:build": "node ./scripts/build-cloudflare.mjs",
     "cf:preview": "npm run cf:build && opennextjs-cloudflare preview",
     "cf:deploy": "npm run cf:build && opennextjs-cloudflare deploy",
@@ -17,10 +17,10 @@
     "measure:perf": "node ./scripts/measure-performance.mjs",
     "measure:perf:browser": "playwright test --project=perf --workers=1 --retries=0",
     "measure:storage": "node ./scripts/measure-storage-footprint.mjs",
-    "start": "next start",
+    "start": "node ./scripts/start-production.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test --project=chromium",
-    "test:e2e:build": "npm run build && playwright test",
+    "test:e2e:build": "npm run build && npm run test:e2e",
     "test:prompt-cache": "node scripts/test-prompt-cache-compatibility.mjs",
     "typecheck": "tsc --noEmit",
     "measure:perf5:browser": "playwright test --project=perf5 --workers=1 --retries=0"
