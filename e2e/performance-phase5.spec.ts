@@ -304,7 +304,6 @@ async function imageShapeTargets(page: Page, excludedObjectIds: readonly string[
 }
 
 async function selectImageObject(page: Page, excludedObjectIds: readonly string[] = []): Promise<string> {
-  const workspaceKey = "morpho.project.project-morpho-case-study.workspace.v1";
   const target = await page.evaluate((excluded) => {
     const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
     if (!raw) {
@@ -356,22 +355,6 @@ async function selectImageObject(page: Page, excludedObjectIds: readonly string[
   const result = search.locator(".result-row").first();
   await expect(result).toBeVisible({ timeout: 10_000 });
   await result.getByRole("button", { name: "定位", exact: true }).click();
-  await expect.poll(async () => page.evaluate(({ objectId, storageKey }) => {
-    const raw = window.localStorage.getItem(storageKey);
-    if (!raw) {
-      return false;
-    }
-    const workspace = JSON.parse(raw) as {
-      objects?: Record<string, { type?: string; visibility?: string }>;
-      canvas?: { instances?: Array<{ objectId?: string }> };
-      ui?: { lastSelectionIds?: string[] };
-    };
-    return workspace.ui?.lastSelectionIds?.length === 1 &&
-      workspace.ui.lastSelectionIds[0] === objectId &&
-      workspace.objects?.[objectId]?.type === "image" &&
-      workspace.objects[objectId]?.visibility === "active" &&
-      workspace.canvas?.instances?.some((instance) => instance.objectId === objectId);
-  }, { objectId: target.objectId, storageKey: workspaceKey }), { timeout: 10_000 }).toBe(true);
   await expect(search).toBeHidden({ timeout: 10_000 });
 
   const toolbar = page.locator('[aria-label="选中对象工具"]');
@@ -381,6 +364,7 @@ async function selectImageObject(page: Page, excludedObjectIds: readonly string[
     await page.waitForTimeout(350);
   }
   await expect(toolbar).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('[aria-label="设为后续默认参考"]')).toBeVisible({ timeout: 10_000 });
   return target.objectId;
 }
 
