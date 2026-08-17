@@ -304,7 +304,37 @@ async function imageShapeTargets(page: Page, excludedObjectIds: readonly string[
 }
 
 async function selectImageObject(page: Page, excludedObjectIds: readonly string[] = []): Promise<string> {
-  const toolbar = page.locator('[aria-label="选中对象工具"]');
+  const workspaceKey = "morpho.project.project-morpho-case-study.workspace.v1";
+  const target = await page.evaluate((excluded) => {
+    const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
+    if (!raw) {
+      throw new Error("Built-in case study workspace is not persisted.");
+    }
+    const workspace = JSON.parse(raw) as {
+      objects?: Record<string, { type?: string; visibility?: string; title?: string }>;
+      canvas?: { instances?: Array<{ objectId?: string }> };
+    };
+    const excludedIds = new Set(excluded);
+    const candidates = (workspace.canvas?.instances ?? [])
+      .map((instance) => {
+        const objectId = instance.objectId;
+        const object = objectId ? workspace.objects?.[objectId] : undefined;
+        return objectId && object?.type === "image" && object.visibility === "active" && object.title?.trim()
+          ? { objectId, title: object.title.trim() }
+          : null;
+      })
+      .filter((candidate): candidate is { objectId: string; title: string } => candidate !== null)
+      .filter((candidate) => !excludedIds.has(candidate.objectId));
+    const titleCounts = new Map<string, number>();
+    for (const candidate of candidates) {
+      titleCounts.set(candidate.title, (titleCounts.get(candidate.title) ?? 0) + 1);
+    }
+    return candidates.find((candidate) => titleCounts.get(candidate.title) === 1) ?? candidates[0] ?? null;
+  }, [...excludedObjectIds]);
+  if (!target) {
+    throw new Error("Workspace has no eligible active image object.");
+  }
+
   await page.keyboard.press("Escape").catch(() => undefined);
   const collapseAi = page.locator('[aria-label="收起 AI 面板"]');
   if (await collapseAi.isVisible()) {
@@ -314,40 +344,44 @@ async function selectImageObject(page: Page, excludedObjectIds: readonly string[
   if (await dismissStorageNotice.isVisible()) {
     await dismissStorageNotice.click();
   }
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    await page.keyboard.press("Escape").catch(() => undefined);
-    const targets = await imageShapeTargets(page, excludedObjectIds);
-    for (const target of targets) {
-      await page.mouse.click(target.x, target.y);
-      try {
-        await expect
-          .poll(async () => page.evaluate((objectId) => {
-            const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
-            if (!raw) {
-              return false;
-            }
-            const workspace = JSON.parse(raw) as { ui?: { lastSelectionIds?: string[] } };
-            return workspace.ui?.lastSelectionIds?.length === 1 && workspace.ui.lastSelectionIds[0] === objectId;
-          }, target.objectId), { timeout: 2_500 })
-          .toBe(true);
-        for (let zoomAttempt = 0; zoomAttempt < 5 && !(await toolbar.isVisible()); zoomAttempt += 1) {
-          await page.mouse.move(480, 420);
-          await page.mouse.wheel(0, 600);
-          await page.waitForTimeout(350);
-        }
-        await expect(toolbar).toBeVisible({ timeout: 2_500 });
-        return target.objectId;
-      } catch {
-        await page.keyboard.press("Escape").catch(() => undefined);
-      }
-    }
-    const overview = page.locator('[aria-label="回到项目概览"]');
-    if (targets.length === 0 && await overview.count() > 0) {
-      await overview.click();
-    }
-    await page.waitForTimeout(500);
+  const openSearch = page.locator('[aria-label="项目内搜索"]');
+  const search = page.locator('section[aria-label="项目内搜索"]');
+  if (await search.isVisible()) {
+    await search.locator('[aria-label="关闭搜索"]').click();
+    await expect(search).toBeHidden({ timeout: 10_000 });
   }
-  throw new Error("Could not select an eligible image object for the phase.");
+  await openSearch.click();
+  await expect(search).toBeVisible({ timeout: 10_000 });
+  await search.locator('[aria-label="搜索关键词"]').fill(target.title);
+  const result = search.locator(".result-row").first();
+  await expect(result).toBeVisible({ timeout: 10_000 });
+  await result.getByRole("button", { name: "定位", exact: true }).click();
+  await expect.poll(async () => page.evaluate(({ objectId, storageKey }) => {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) {
+      return false;
+    }
+    const workspace = JSON.parse(raw) as {
+      objects?: Record<string, { type?: string; visibility?: string }>;
+      canvas?: { instances?: Array<{ objectId?: string }> };
+      ui?: { lastSelectionIds?: string[] };
+    };
+    return workspace.ui?.lastSelectionIds?.length === 1 &&
+      workspace.ui.lastSelectionIds[0] === objectId &&
+      workspace.objects?.[objectId]?.type === "image" &&
+      workspace.objects[objectId]?.visibility === "active" &&
+      workspace.canvas?.instances?.some((instance) => instance.objectId === objectId);
+  }, { objectId: target.objectId, storageKey: workspaceKey }), { timeout: 10_000 }).toBe(true);
+  await expect(search).toBeHidden({ timeout: 10_000 });
+
+  const toolbar = page.locator('[aria-label="选中对象工具"]');
+  for (let zoomAttempt = 0; zoomAttempt < 5 && !(await toolbar.isVisible()); zoomAttempt += 1) {
+    await page.mouse.move(480, 420);
+    await page.mouse.wheel(0, 600);
+    await page.waitForTimeout(350);
+  }
+  await expect(toolbar).toBeVisible({ timeout: 10_000 });
+  return target.objectId;
 }
 
 async function emptyPoint(page: Page): Promise<{ x: number; y: number }> {
