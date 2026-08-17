@@ -446,7 +446,15 @@ async function focusFirstShapeSelected(page: Page, workspaceKey: string): Promis
     await closeSearch.click();
   }
   await expect(search).toBeHidden({ timeout: 10_000 });
-  await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 10_000 });
+  const toolbar = page.locator('[aria-label="选中对象工具"]');
+  for (let attempt = 0; attempt < 5 && !(await toolbar.isVisible()); attempt += 1) {
+    // Search locate zooms the target into view. Reduce that visual zoom in setup
+    // only; the measured hide/delete action still starts from a stable selection.
+    await page.mouse.move(480, 420);
+    await page.mouse.wheel(0, 600);
+    await page.waitForTimeout(350);
+  }
+  await expect(toolbar).toBeVisible({ timeout: 10_000 });
   return selectedObjectId;
 }
 
