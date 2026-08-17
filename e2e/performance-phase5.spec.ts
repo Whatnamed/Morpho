@@ -438,7 +438,10 @@ async function focusFirstShapeSelected(page: Page, workspaceKey: string): Promis
     return selectedObjectId;
   }, workspaceKey);
 
-  await search.locator('[aria-label="关闭搜索"]').click();
+  const closeSearch = search.locator('[aria-label="关闭搜索"]');
+  if (await closeSearch.isVisible()) {
+    await closeSearch.click();
+  }
   await expect(search).toBeHidden({ timeout: 10_000 });
   await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 10_000 });
   return selectedObjectId;
