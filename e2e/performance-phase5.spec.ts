@@ -305,6 +305,15 @@ async function imageShapeTargets(page: Page, excludedObjectIds: readonly string[
 
 async function selectImageObject(page: Page, excludedObjectIds: readonly string[] = []): Promise<string> {
   const toolbar = page.locator('[aria-label="选中对象工具"]');
+  await page.keyboard.press("Escape").catch(() => undefined);
+  const collapseAi = page.locator('[aria-label="收起 AI 面板"]');
+  if (await collapseAi.isVisible()) {
+    await collapseAi.click();
+  }
+  const dismissStorageNotice = page.getByRole("button", { name: "知道了", exact: true });
+  if (await dismissStorageNotice.isVisible()) {
+    await dismissStorageNotice.click();
+  }
   for (let attempt = 0; attempt < 8; attempt += 1) {
     await page.keyboard.press("Escape").catch(() => undefined);
     const targets = await imageShapeTargets(page, excludedObjectIds);
@@ -321,6 +330,11 @@ async function selectImageObject(page: Page, excludedObjectIds: readonly string[
             return workspace.ui?.lastSelectionIds?.length === 1 && workspace.ui.lastSelectionIds[0] === objectId;
           }, target.objectId), { timeout: 2_500 })
           .toBe(true);
+        for (let zoomAttempt = 0; zoomAttempt < 5 && !(await toolbar.isVisible()); zoomAttempt += 1) {
+          await page.mouse.move(480, 420);
+          await page.mouse.wheel(0, 600);
+          await page.waitForTimeout(350);
+        }
         await expect(toolbar).toBeVisible({ timeout: 2_500 });
         return target.objectId;
       } catch {
