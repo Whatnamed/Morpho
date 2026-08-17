@@ -94,10 +94,12 @@ describe("useWorkspaceSelectionNavigationController", () => {
 
     act(() => harness.current().focusObject("object-b", { rememberView: true }));
     expect(harness.current().selectedObjectIds).toEqual(["object-b"]);
+    expect(harness.workspace().ui.lastSelectionIds).toEqual(["object-b"]);
     expect(harness.current().focusRequest).toMatchObject({ objectId: "object-b" });
 
     act(() => harness.current().locateObjectFromDetail("object-c"));
     expect(harness.current().selectedObjectIds).toEqual(["object-c"]);
+    expect(harness.workspace().ui.lastSelectionIds).toEqual(["object-c"]);
 
     act(() => expect(harness.current().undoDetailNavigation()).toBe(true));
     expect(harness.current().selectedObjectIds).toEqual(["object-b"]);

@@ -201,22 +201,7 @@ export function useWorkspaceSelectionNavigationController({
     [isCurrentSession, projectId, session]
   );
 
-  const requestCanvasSelection = useCallback(
-    (objectIds: string[]) => {
-      if (!isCurrentSession(session)) {
-        return;
-      }
-
-      const nextObjectIds = [...objectIds];
-      setSelectionRequestState((current) => ({
-        objectIds: [...nextObjectIds],
-        nonce: current.nonce + 1
-      }));
-    },
-    [isCurrentSession, session]
-  );
-
-  const acceptCanvasSelection = useCallback(
+  const commitSelection = useCallback(
     (objectIds: string[]) => {
       if (!isCurrentSession(session)) {
         return;
@@ -241,6 +226,28 @@ export function useWorkspaceSelectionNavigationController({
       });
     },
     [isCurrentSession, projectId, session, setSelectedObjectIds, updateWorkspace]
+  );
+
+  const requestCanvasSelection = useCallback(
+    (objectIds: string[]) => {
+      if (!isCurrentSession(session)) {
+        return;
+      }
+
+      const nextObjectIds = [...objectIds];
+      setSelectionRequestState((current) => ({
+        objectIds: [...nextObjectIds],
+        nonce: current.nonce + 1
+      }));
+    },
+    [isCurrentSession, session]
+  );
+
+  const acceptCanvasSelection = useCallback(
+    (objectIds: string[]) => {
+      commitSelection(objectIds);
+    },
+    [commitSelection]
   );
 
   const focusArea = useCallback(
@@ -275,10 +282,10 @@ export function useWorkspaceSelectionNavigationController({
           selectedObjectIds: [...selectedObjectIds]
         });
       }
-      setSelectedObjectIds([objectId]);
+      commitSelection([objectId]);
       requestObjectFocus(objectId);
     },
-    [isCurrentSession, requestObjectFocus, selectedObjectIds, session, setSelectedObjectIds]
+    [commitSelection, isCurrentSession, requestObjectFocus, selectedObjectIds, session]
   );
 
   const locateObjectFromDetail = useCallback(

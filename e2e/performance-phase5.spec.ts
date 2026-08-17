@@ -421,6 +421,16 @@ async function selectImageObject(page: Page, excludedObjectIds: readonly string[
   await result.getByRole("button", { name: "定位", exact: true }).click();
   await expect(search).toBeHidden({ timeout: 10_000 });
 
+  await expect.poll(async () => page.evaluate((targetObjectId) => {
+    const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
+    if (!raw) {
+      return null;
+    }
+    const workspace = JSON.parse(raw) as { ui?: { lastSelectionIds?: string[] } };
+    const selectedIds = workspace.ui?.lastSelectionIds ?? [];
+    return selectedIds.length === 1 ? selectedIds[0] : null;
+  }, target.objectId), { timeout: 10_000 }).toBe(target.objectId);
+
   await moveCanvasObjectTowardCentre(page, target.objectId);
   const toolbar = page.locator('[aria-label="选中对象工具"]');
   for (let zoomAttempt = 0; zoomAttempt < 5 && !(await toolbar.isVisible()); zoomAttempt += 1) {
