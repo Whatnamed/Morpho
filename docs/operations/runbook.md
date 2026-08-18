@@ -1226,7 +1226,10 @@ npm run measure:perf5:browser
 
 Same requirements as the 4A browser half: production build first, idle machine,
 `--workers=1 --retries=0` are pinned by the script. Outputs
-`docs/operations/performance-phase5.generated.json`; the prose report that phase 5
+`docs/operations/performance-phase5.generated.json` (interaction atlas, completeness,
+exact import evidence, build identity, and mock request metadata) and
+`docs/operations/performance-zip-crossover.generated.json` (raw-byte transition
+measurements and the same served-build identity); the prose report that phase 5
 decisions must cite is `docs/architecture/performance-phase5.md`.
 
 To isolate one target — useful because an allocation-heavy target can otherwise

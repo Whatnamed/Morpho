@@ -3,7 +3,8 @@
 本文件是 Phase 5 的裁决记录：哪些操作真的让用户觉得慢、慢在哪一段、哪些已修、哪些没有证据所以没动。机器数据在 [`docs/operations/performance-phase5.generated.json`](../operations/performance-phase5.generated.json)（浏览器交互图谱）、[`docs/operations/performance-zip-crossover.generated.json`](../operations/performance-zip-crossover.generated.json)（ZIP transition 测量）与 [`docs/operations/performance-node.generated.json`](../operations/performance-node.generated.json)（Node 侧目标与校准）。
 
 - Baseline SHA：`204857b`（origin/main，任务开始时）
-- **历史 measured code SHA：`1b6b61b`**（旧 evidence 的字段；该轮 harness 在本次审查后已废止，不能与修正版 harness 的新数据做严格百分比比较）
+- 本轮最终裁决以修正版 harness 生成的两个 JSON artifact 为准：其中 `buildIdentity.sourceSha`、`buildId`、`artifactSha256` 是实际 served build 的 provenance；`measuredCodeCommit` 仅作辅助字段。
+- **历史 measured code SHA：`1b6b61b`**（旧 evidence 的字段；仅保留为历史参考，不能与修正版 harness 的新数据做严格百分比比较）
 - 修正版 harness 必须在 clean tracked worktree 上执行 production build，并同时记录 source SHA、Next build ID、`.next` artifact SHA-256、artifact file count 和 runtime marker；`measuredCodeCommit` 单独存在不再被视为 build provenance。
 - 采集机器：12th Gen Intel Core i5-12400 · 16 GB · Windows 10 (26200) · Node v22.23.2 · Chromium（Playwright 1.62，Desktop Chrome 1440×900）
 - 生产构建（非 dev）。插桩全部由测试注入（`e2e/fixtures/perfProbe.ts` 可选 IO 归因 + 首反馈追踪），产品代码零遥测；render-isolation 计数器只在 `NODE_ENV === "test"` 分支存在，生产包中已消除。
@@ -19,9 +20,9 @@
 - 夹具：objects500 / chatLong(560 消息) / caseStudy(184 消息) / switchA/B / importBase 无图片二进制（与 4A 可比）；assets10/30/80 带真实再生命周期 PNG（确定性 PRNG + OffscreenCanvas，写入真实 IndexedDB BlobStore）；PDF(30/150 页)/PPTX(40 页)/PNG/文本由 Node 现场生成，不入库。
 - 采样规则沿用 4A 可信门；浏览器交互项为单轮完整操作窗口（含 settle），关键字段在多轮对照中复现才用于裁决优化。Node 侧未过可信门的样本标记为不可信且不被引用（本轮 chatLong/compound500 的 renderConversation 尾部 GC 噪声即属此类）。
 
-## 一、Latency Atlas（历史参考；修正版 harness 重跑前不作最终账本）
+## 一、Latency Atlas（历史方向性参考；最终证据以本轮 artifact 为准）
 
-下面的表和后续 before/after 数字保留为历史方向性参考，但来自旧 phase-boundary 协议。它们不能与修正版 harness 的结果做严格百分比比较；修正版报告生成后，以新 artifact 的 `completeness`、build provenance 和 exact import acceptance 为准。
+下面的表和后续 before/after 数字保留为历史方向性参考，但来自旧 phase-boundary 协议。它们不能与修正版 harness 的结果做严格百分比比较。本轮最终判断以 [`performance-phase5.generated.json`](../operations/performance-phase5.generated.json) 的 completeness、build provenance、精确导入验收和各 phase 原始样本为准；ZIP transition 则以 [`performance-zip-crossover.generated.json`](../operations/performance-zip-crossover.generated.json) 为准。
 
 完整数据见 generated JSON。`—` 表示该操作无单一输入事件（如装载）或不适用。
 
@@ -88,23 +89,23 @@
 2. **一律 async zip（Phase 5 首版）**：人读归档阻塞降至 63–71ms；但当时测得「备份 0→~85ms 阻塞」，被视为小包回归。
 3. **按输入体积分流（现行为，`SYNC_ZIP_MAX_INPUT_BYTES = 2 MiB`）**：≤2 MiB 走 `zipSync`（crossover 实测小档位 async wall 承担 Worker 调度成本），>2 MiB 走异步 `zip`，以把大包的主线程 `blockingDuration` 降到接近零。
 
-**crossover 实测**（`e2e/performance-zip-crossover.spec.ts`，真实浏览器内运行真实 fflate，3 次取中位，level 6，20% 文本 + 80% 噪声输入；每次测量前双 rAF 进入净帧，只归因与该次 `[startedAt, endedAt]` 窗口重叠的 Long Animation Frame，头条帧数字为 `blockingDuration`）：
+**本轮 ZIP transition 实测**（`e2e/performance-zip-crossover.spec.ts`，真实浏览器内运行真实 fflate，3 次取中位，level 6，20% 文本 + 80% 噪声输入；每次测量前双 rAF 进入净帧，只归因与该次 `[startedAt, endedAt]` 窗口重叠的 Long Animation Frame，头条帧数字为 `blockingDuration`）：
 
 | 输入 | zipSync wall | zipSync 最长阻塞 | async wall（首调） | async 最长阻塞 | 字节一致 |
 |---|---:|---:|---:|---:|---|
-| 0.2 MiB | 8.6ms | 0ms | 29.0ms（29.0） | 0ms | 是 |
-| 1 MiB | 39.8ms | 0ms | 57.9ms（71.8） | 0ms | 是 |
-| 2 MiB | 68.9ms | 19.0ms | 64.9ms（76.1） | 0ms | 是 |
-| 4 MiB | 149.3ms | 99.6ms | 172.1ms（180.1） | 0ms | 是 |
-| 8 MiB | 285.5ms | 235.7ms | 282.0ms（287.3） | 0ms | 否 |
-| 16 MiB | 546.0ms | 496.3ms | 434.0ms（537.1） | 4.7ms | 否 |
+| 0.2 MiB | 6.2ms | 0ms | 16.8ms（16.8） | 0ms | 是 |
+| 1 MiB | 24.0ms | 0ms | 30.0ms（34.2） | 0ms | 是 |
+| 2 MiB | 47.4ms | 0ms | 43.4ms（42.1） | 0ms | 是 |
+| 4 MiB | 101.7ms | 51.8ms | 88.9ms（88.9） | 0ms | 否 |
+| 8 MiB | 177.3ms | 127.5ms | 177.4ms（175.8） | 0ms | 是 |
+| 16 MiB | 357.1ms | 307.2ms | 372.2ms（372.2） | 0ms | 否 |
 
-结论：生产实现按原始输入字节执行 **`<= 2 * 1024 * 1024` 使用 `zipSync`，严格 `> 2 * 1024 * 1024` 使用异步 `zip`**。这是从 0.2–16 MiB transition 区间选出的工程阈值，不是声称存在一个精确 universal crossover 点。小档位 async wall 承担 Worker 调度成本；4 MiB 档同步阻塞已达 99.6ms，8 MiB 达 235.7ms，16 MiB 达 496.3ms，而 async 的窗口内阻塞分别为 0ms、0ms、4.7ms。异步 wall 不是零成本，超大包的整体缓冲装配仍属于 Bundle Pipeline v2 后续议题。两条路径同库同 level，产物逻辑内容一致；字节级并非保证一致，因此不宣称 byte-for-byte 相等。
+结论：生产实现按原始输入字节执行 **`<= 2 * 1024 * 1024` 使用 `zipSync`，严格 `> 2 * 1024 * 1024` 使用异步 `zip`**。这是从 0.2–16 MiB transition 区间选出的工程阈值，不是声称存在一个精确 universal crossover 点。小档位 async wall 承担 Worker 调度成本；4 MiB 档同步阻塞已达 51.8ms，8 MiB 达 127.5ms，16 MiB 达 307.2ms，而 async 的窗口内阻塞均为 0ms。异步 wall 不是零成本，超大包的整体缓冲装配仍属于 Bundle Pipeline v2 后续议题。两条路径同库同 level，产物逻辑内容一致；字节级并非保证一致，因此不宣称 byte-for-byte 相等（本轮 4 MiB 与 16 MiB 逐字节比较为否，其他档位为是）。
 
-**round-1「备份 0ms 阻塞」的修正（历史证据）**：合并前复测发现内置案例的资产安装（26 个文件 / 40 MiB 写入 IndexedDB）在 round-1 测量时**尚未完成**——备份导出抢跑在部分安装之上，测到的是缩小版包。现在等待 workspace JSON 声明的全部 expected `storageKey` 出现在 BlobStore（本轮实测 28 个 blob）后再导出：最终备份 zip **29,669,157 bytes**，人读归档 **29,570,547 bytes**；两者均超过 2 MiB，走异步路径。本轮浏览器实测备份最长阻塞 **136.6ms**、人读归档最长阻塞 **103.4ms**；890ms 只作为同一主要二进制负载的同步压缩 proxy，不把它当作当前人读归档实测值。**因此「小备份包 0→85ms 回归」的原始叙事不成立**——真实内置案例的备份是大包，异步路径相对同步 proxy 是显著改善；hybrid 阈值保护的是真正的小包（小项目、测试夹具、无图项目），其收益由 crossover 数据与单测双路径覆盖。规范已加入确定性的 expected-key 安装等待，消除该测量竞态。
+**本轮完整安装下的浏览器实测**：内置案例备份 zip **29,669,157 bytes**，人读归档 **29,570,555 bytes**；两者均超过 2 MiB，走异步路径。备份 phase 的最长 `blockingDuration` 为 **99.9ms**、wall **893.5ms**；人读归档最长 `blockingDuration` 为 **77.6ms**、wall **857.9ms**。890ms 只作为历史同步压缩 proxy，不把它当作当前人读归档实测值。真实内置案例的备份是大包；hybrid 阈值保护的是真正的小包（小项目、测试夹具、无图项目），其收益由 crossover 数据与单测双路径覆盖。规范已加入确定性的 expected-key 安装等待，消除测量竞态。
 
 - 为什么安全：同库同 level；≤2MiB 路径即原始 `zipSync` 行为；>2MiB 路径产物为合法 zip，既有解压回环、恢复验收（含恢复成独立项目副本）与新增 >2MiB 导出/inspect 回环测试通过。
-- 最终数字（同机、完整安装、`1b6b61b`）：人读归档最长阻塞 **103.4ms**，备份最长阻塞 **136.6ms**；二者分别 `zipBytes` **29,570,547** 与 **29,669,157**，均由异步路径处理。原始同步人读归档 **890ms** 仅作为相同主要二进制负载下 full-backup 同步压缩成本的 proxy；本轮导出 wall 分别约 **1.53s** 与 **1.59s**。
+- 历史同步压缩 proxy：旧轮人读归档约 **890ms**；本轮完整安装的实际结果以上一段和 regenerated ZIP artifact 为准。
 
 ### 3.2 长聊天渲染隔离（热点 2；含合并前硬化）
 
@@ -112,17 +113,9 @@
 1. **history/tail 切分（Phase 5 首版）**：`messages.slice(0, -1)` 进 memo 组件，尾条在组件外内联渲染。性能达标（chatLong 流式累计阻塞 368→73–93ms），但**审查发现并被测试实证**：尾条渲染在 memo 组件之外，追加下一条消息时该行跨父级迁移——**行被真实卸载重挂**，用户手动展开的 Agent 过程折叠、DOM 节点被替换（红测试：`rowAfter` ≠ `rowBefore`）。
 2. **单一 owner + 行级 memo（现行为）**：全部消息由一个 keyed 列表组件 `AiMessageList` 持有，每行是 memo 化 `AiMessageRow`（比较器 = 消息引用 + 行读取的记录引用 + 回调引用）。消息从尾转历史时 key 与父级不变，**不卸载、不重挂**；隔离由两层 memo 保证——列表比较器（长度 + 逐元素 + 记录 + 回调）拦截整体无关重渲染，行比较器使流式批次只渲染正在流式的那一行。
 - 语义保持：历史完整挂载（非窗口化）、滚动契约、锚点、复制行为不变；比较器对任何记录变化回退全量渲染。守卫测试三段式：A 比较器契约（跳过/失效方向）；B **渲染计数实证**（8 行挂载 → tick 恰好 +1、无关重渲染 +0、单条历史变化 +1、记录变化全部行重渲染）；C 状态保持（尾条手动展开 Agent 过程 → 追加消息 → DOM 同一节点且仍展开）。
-- 数字（chatLong，560 消息；同机多轮区间）：
+- 本轮最终 artifact 记录的 chatLong 560 消息单轮样本：`sendAndStream` 最长 `blockingDuration` **0ms**、累计 **0ms**，首反馈 **41.9ms**（输入到首 DOM mutation）；`toolCallTurn` 最长 LoAF **83.6ms**、窗口内 blockingDuration **0ms**、工具→续接请求间隔 **265.4ms**；打字 phase 的窗口包含输入尾部噪声，最长 LoAF **79.5ms**、累计 blockingDuration **145.8ms**，不将其当作稳定回归结论。完整原始样本、IO 归因和反馈 validity 见 generated JSON。
 
-| 指标 | Before | 首版 after | 最终（`1b6b61b`） |
-|---|---:|---:|---:|
-| 流式最长阻塞 | 70.3ms | 13–22ms | 本轮 chatLong 16.6ms（单轮） |
-| 流式累计阻塞 | 368.4ms | 73–93ms | 本轮 chatLong 45.0ms（单轮） |
-| 发送首反馈 | 49.7ms | 35–38ms | 本轮 chatLong 42.2ms（单轮） |
-| 工具→续接间隔 | 454.3ms | 227–230ms | 本轮 chatLong 223.3ms（单轮） |
-| 打字阻塞 | 24.2ms | 0–10.5ms | 本轮 chatLong 91.9ms（含输入窗口尾部噪声） |
-
-（多轮波动如实记录；所有轮次均与 before 保持同一数量级改善，未回退。）
+（本轮报告是单次完整浏览器运行；多轮 before/after 数字仍仅作历史方向性参考，不与本轮做严格百分比比较。）
 
 ## 四、明确放弃的优化（有归因、不动手）
 
@@ -152,7 +145,7 @@
 | `npm test`（vitest） | **215 文件 / 1966 项全部通过**（含三段式守卫 7 项、>2MiB zip 回环 1 项） |
 | `npm run build` | 通过 |
 | `playwright test --project=chromium` | **19/19 通过** |
-| `npm run measure:perf5:browser` | **11/11 通过**（10 项交互图谱 + zip crossover），产物含 `measuredCodeCommit` |
+| `npm run measure:perf5:browser` | **11/11 通过**（修正版 perf5 suite；报告含 `buildIdentity`、completeness、精确导入证据和 mock request script metadata；ZIP crossover 另有独立 artifact） |
 | `npm run measure:perf` | 通过（chatLong/compound 的 renderConversation 尾部样本未过可信门，未引用） |
 
 ## 七、遗留性能债（仅列有证据项）
@@ -169,10 +162,10 @@
 ## 八、后续任务裁决
 
 ### A. Project Bundle Pipeline v2 — **DEFER**
-最尖锐症状（原始同步人读归档 890ms 冻结）已由体积分流消除：本轮完整安装下人读归档最长阻塞 103.4ms、备份最长阻塞 136.6ms，890ms 仅作为相同主要二进制负载的同步压缩 proxy。剩余证据：异步 wall/首调随体积增长（172–434ms / 180–537ms @4–16MiB）、整体缓冲装配仍全内存、交付输出未分流但无长帧证据。触发重评：更大项目实测再现 >300ms 的窗口内主线程阻塞。
+最尖锐症状（原始同步人读归档 890ms 冻结）已由体积分流消除：本轮完整安装下人读归档最长窗口内阻塞 **77.6ms**、备份 **99.9ms**，890ms 仅作为历史同步压缩 proxy。剩余证据：异步 wall / 首调随体积增长（本轮 crossover @4–16MiB 为 **88.9–372.2ms**）、整体缓冲装配仍全内存、交付输出未分流但本轮无该路径长帧证据。触发重评：更大项目实测再现 >300ms 的窗口内主线程阻塞。
 
-### B. Document Parsing Worker — **UNRESOLVED — rerun required**
-旧轮导入窗口曾记录 LoAF 0，但验收只要求全 workspace `parsedOk >= 4`，漏算 150 页 PDF 并可能混入 seed 中历史 file object；同时旧 probe 存在 phase delivery 污染边界。因此在修正版 harness 完成五个 filename 的 5/5 精确 object/asset 映射、terminal parse state、`documentExtract` provenance 和 parsed metadata 断言前，不对 Document Parsing Worker 做“无证据”结论。新轮通过 exact acceptance 后，才能重新判断 PDF/PPTX 主线程工作是否值得 Worker 化。
+### B. Document Parsing Worker — **DEFERRED — no browser hotspot evidence in this run**
+本轮修正版验收对五个预期文件逐一完成了新 object/asset 精确映射、terminal `parsed` 状态、`documentExtract` provenance、解析时间和提取统计断言；5/5 均通过，且对应 import phase 的 LoAF / `blockingDuration` 均为 0。当前证据不支持为 Document Parsing Worker 做结构性改造。后续只有在更大文档或新的真实交互证据显示解析成为主线程热点时才重评；本轮不把 Node 侧未过 trusted gate 的目标数字引用为结论。
 
 ### C. Agent request/context/cache latency — **DEFERRED TO NEXT PHASE**
 旧轮全部档位发送首反馈 39–62ms，其中约 50ms 在 journal POST 之前；这些数字来自旧 phase-boundary 协议，只作为后续方向线索，不是本轮最终账本。Agent request/context/cache latency 保留为下一阶段范围；本轮不开始 pipeline optimization，也不将旧数字写成修正版 before/after 结论。
