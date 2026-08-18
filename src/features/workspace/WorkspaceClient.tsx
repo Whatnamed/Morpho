@@ -1440,6 +1440,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       showWorkspaceNotice
     ]
   );
+  const latestReferenceIntentRef = useRef(handleReferenceIntent);
+  useLayoutEffect(() => {
+    latestReferenceIntentRef.current = handleReferenceIntent;
+  }, [handleReferenceIntent]);
 
   const handleKeepReviewedVisual = useCallback(
     (objectId: string) => {
@@ -1948,7 +1952,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       onOpenDocumentReader={() => { const primary = toolbarObjects[0]; if (primary?.type === "file") handleOpenDocumentReader(primary.id); else if (primary?.type === "documentFragment") handleOpenDocumentReader(primary.source.fileObjectId); }}
       onOpenDeliveryPreparation={() => openDeliveryPreparationFromSelection(toolbarObjects[0]?.type === "delivery" ? toolbarObjects[0].id : undefined)}
       onLocalEdit={handleLocalEdit}
-      onReferenceIntent={() => handleReferenceIntent(toolbarObjects)}
+      onReferenceIntent={() => latestReferenceIntentRef.current(toolbarObjects)}
       onHide={handleHideSelected}
       onDelete={handleDeleteSelected}
        onOpenProposalDetail={() => { const object = toolbarObjects.find((item) => item.type === "proposalDraft"); if (object?.type === "proposalDraft") openProposal(object.proposalId); }}
