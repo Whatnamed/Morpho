@@ -1381,54 +1381,57 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setAiDraft("基于原图进行定向修改：仅修改我指定的部件；尽量保留其余结构、比例、材质和构图。");
   }, [selectedObjects]);
 
-  const handleReferenceIntent = useCallback(() => {
-    const target = selectedObjects.find((object) => object.type === "image");
-    if (!target) {
-      return;
-    }
-
-    if (target.isDefaultReference) {
-      pushObjectOperationUndo();
-      setWorkspace((current) =>
-        clearDefaultReference(current, target.id, {
-          reason: "用户在画布上明确取消后续默认参考。"
-        })
-      );
-      showWorkspaceNotice(`已取消「${target.title}」的后续默认参考`);
-      return;
-    }
-
-    const previousReference = Object.values(workspace.objects).find(
-      (object) => object.type === "image" && object.visibility === "active" && object.isDefaultReference
-    );
-    if (previousReference && previousReference.id !== target.id) {
-      // 替换已有锚点：按产品规则先给出“只替换 / 替换并标记待复核”两个选项，不直接改状态。
-      const reviewTargets = collectDefaultReferenceReviewTargets(workspace, previousReference.id, target.id);
-      if (!requestLocalPendingConfirmation({
-        kind: "setDefaultReference",
-        targetObjectId: target.id,
-        targetTitle: target.title,
-        previousReferenceObjectId: previousReference.id,
-        previousReferenceTitle: previousReference.title,
-        reviewImageCount: reviewTargets.imageIds.length,
-        reviewCollectionCount: reviewTargets.collectionIds.length,
-        reviewImageIds: [...reviewTargets.imageIds],
-        reviewCollectionIds: [...reviewTargets.collectionIds]
-      })) {
+  const handleReferenceIntent = useCallback(
+    (actionObjects?: MorphoObject[]) => {
+      const target = (actionObjects ?? selectedObjects).find((object) => object.type === "image");
+      if (!target) {
         return;
       }
-      setAiOpen(true);
-      return;
-    }
 
-    pushObjectOperationUndo();
-    setWorkspace((current) =>
-      setDefaultReference(current, target.id, {
-        reason: "用户在画布上明确设为后续默认参考。"
-      })
-    );
-    showWorkspaceNotice(`已设「${target.title}」为后续默认参考`);
-  }, [pushObjectOperationUndo, requestLocalPendingConfirmation, selectedObjects, setWorkspace, showWorkspaceNotice, workspace]);
+      if (target.isDefaultReference) {
+        pushObjectOperationUndo();
+        setWorkspace((current) =>
+          clearDefaultReference(current, target.id, {
+            reason: "用户在画布上明确取消后续默认参考。"
+          })
+        );
+        showWorkspaceNotice(`已取消「${target.title}」的后续默认参考`);
+        return;
+      }
+
+      const previousReference = Object.values(workspace.objects).find(
+        (object) => object.type === "image" && object.visibility === "active" && object.isDefaultReference
+      );
+      if (previousReference && previousReference.id !== target.id) {
+        // 替换已有锚点：按产品规则先给出“只替换 / 替换并标记待复核”两个选项，不直接改状态。
+        const reviewTargets = collectDefaultReferenceReviewTargets(workspace, previousReference.id, target.id);
+        if (!requestLocalPendingConfirmation({
+          kind: "setDefaultReference",
+          targetObjectId: target.id,
+          targetTitle: target.title,
+          previousReferenceObjectId: previousReference.id,
+          previousReferenceTitle: previousReference.title,
+          reviewImageCount: reviewTargets.imageIds.length,
+          reviewCollectionCount: reviewTargets.collectionIds.length,
+          reviewImageIds: [...reviewTargets.imageIds],
+          reviewCollectionIds: [...reviewTargets.collectionIds]
+        })) {
+          return;
+        }
+        setAiOpen(true);
+        return;
+      }
+
+      pushObjectOperationUndo();
+      setWorkspace((current) =>
+        setDefaultReference(current, target.id, {
+          reason: "用户在画布上明确设为后续默认参考。"
+        })
+      );
+      showWorkspaceNotice(`已设「${target.title}」为后续默认参考`);
+    },
+    [pushObjectOperationUndo, requestLocalPendingConfirmation, selectedObjects, setWorkspace, showWorkspaceNotice, workspace]
+  );
 
   const handleKeepReviewedVisual = useCallback(
     (objectId: string) => {
@@ -1937,7 +1940,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       onOpenDocumentReader={() => { const primary = toolbarObjects[0]; if (primary?.type === "file") handleOpenDocumentReader(primary.id); else if (primary?.type === "documentFragment") handleOpenDocumentReader(primary.source.fileObjectId); }}
       onOpenDeliveryPreparation={() => openDeliveryPreparationFromSelection(toolbarObjects[0]?.type === "delivery" ? toolbarObjects[0].id : undefined)}
       onLocalEdit={handleLocalEdit}
-      onReferenceIntent={handleReferenceIntent}
+      onReferenceIntent={() => handleReferenceIntent(toolbarObjects)}
       onHide={handleHideSelected}
       onDelete={handleDeleteSelected}
        onOpenProposalDetail={() => { const object = toolbarObjects.find((item) => item.type === "proposalDraft"); if (object?.type === "proposalDraft") openProposal(object.proposalId); }}
