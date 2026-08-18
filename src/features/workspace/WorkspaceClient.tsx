@@ -1388,17 +1388,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         currentWorkspace.objects,
         currentWorkspace.ui.lastSelectionIds
       );
-      console.info(
-        "[debug/reference-state]",
-        JSON.stringify({
-          actionObjectIds: actionObjects?.map((object) => object.id) ?? null,
-          persistedSelectionIds: currentWorkspace.ui.lastSelectionIds,
-          currentSelectionIds: currentSelectionObjects.map((object) => object.id),
-          defaultReferenceIds: Object.values(currentWorkspace.objects)
-            .filter((object) => object.type === "image" && object.isDefaultReference)
-            .map((object) => object.id)
-        })
-      );
       const selectedTarget = (currentSelectionObjects.length > 0 ? currentSelectionObjects : actionObjects ?? selectedObjects)
         .find((object) => object.type === "image");
       const target = selectedTarget ? currentWorkspace.objects[selectedTarget.id] : undefined;
@@ -1963,7 +1952,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       onOpenDocumentReader={() => { const primary = toolbarObjects[0]; if (primary?.type === "file") handleOpenDocumentReader(primary.id); else if (primary?.type === "documentFragment") handleOpenDocumentReader(primary.source.fileObjectId); }}
       onOpenDeliveryPreparation={() => openDeliveryPreparationFromSelection(toolbarObjects[0]?.type === "delivery" ? toolbarObjects[0].id : undefined)}
       onLocalEdit={handleLocalEdit}
-      onReferenceIntent={handleReferenceIntent}
+      onReferenceIntent={() => handleReferenceIntent()}
       onHide={handleHideSelected}
       onDelete={handleDeleteSelected}
        onOpenProposalDetail={() => { const object = toolbarObjects.find((item) => item.type === "proposalDraft"); if (object?.type === "proposalDraft") openProposal(object.proposalId); }}
