@@ -1383,8 +1383,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const handleReferenceIntent = useCallback(
     (actionObjects?: MorphoObject[]) => {
-      const target = (actionObjects ?? selectedObjects).find((object) => object.type === "image");
-      if (!target) {
+      const currentWorkspace = workspaceRef.current;
+      const selectedTarget = (actionObjects ?? selectedObjects).find((object) => object.type === "image");
+      const target = selectedTarget ? currentWorkspace.objects[selectedTarget.id] : undefined;
+      if (!target || target.type !== "image" || target.visibility !== "active") {
         return;
       }
 
@@ -1399,12 +1401,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return;
       }
 
-      const previousReference = Object.values(workspace.objects).find(
+      const previousReference = Object.values(currentWorkspace.objects).find(
         (object) => object.type === "image" && object.visibility === "active" && object.isDefaultReference
       );
       if (previousReference && previousReference.id !== target.id) {
         // 替换已有锚点：按产品规则先给出“只替换 / 替换并标记待复核”两个选项，不直接改状态。
-        const reviewTargets = collectDefaultReferenceReviewTargets(workspace, previousReference.id, target.id);
+        const reviewTargets = collectDefaultReferenceReviewTargets(currentWorkspace, previousReference.id, target.id);
         if (!requestLocalPendingConfirmation({
           kind: "setDefaultReference",
           targetObjectId: target.id,
@@ -1430,7 +1432,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       );
       showWorkspaceNotice(`已设「${target.title}」为后续默认参考`);
     },
-    [pushObjectOperationUndo, requestLocalPendingConfirmation, selectedObjects, setWorkspace, showWorkspaceNotice, workspace]
+    [
+      pushObjectOperationUndo,
+      requestLocalPendingConfirmation,
+      selectedObjects,
+      setWorkspace,
+      showWorkspaceNotice
+    ]
   );
 
   const handleKeepReviewedVisual = useCallback(
