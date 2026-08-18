@@ -1703,10 +1703,19 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     });
     await beginPerfPhase(page);
     await armFeedback(page, "body");
+    const debugReferenceMessages: string[] = [];
+    const debugReferenceListener = (message: { type(): string; text(): string }) => {
+      if (message.type() === "log" && message.text().includes("[debug/reference-")) {
+        debugReferenceMessages.push(message.text());
+      }
+    };
+    page.on("console", debugReferenceListener);
     const replaceOnly = page.getByRole("button", { name: "只替换默认参考", exact: true });
     const replaceAndReview = page.getByRole("button", { name: "替换并标记相关素材待复核", exact: true });
     const confirmCard = replaceOnly.locator("xpath=ancestor::div[contains(@class, 'confirm-card')]");
     await setReference.click();
+    console.log(`[debug/reference-e2e] ${JSON.stringify(debugReferenceMessages)}`);
+    page.off("console", debugReferenceListener);
     await expect(replaceOnly).toBeVisible({ timeout: 10_000 });
     await expect(replaceAndReview).toBeVisible();
     const duringConfirmation = await page.evaluate(() => {

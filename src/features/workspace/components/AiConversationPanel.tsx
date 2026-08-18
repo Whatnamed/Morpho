@@ -172,6 +172,10 @@ export function AiConversationPanel({
   const confirmationTitle = pendingConfirmation ? getPendingConfirmationTitle(pendingConfirmation) : null;
   const confirmationBody = pendingConfirmation ? getPendingConfirmationBody(pendingConfirmation) : null;
   const confirmationActionLabel = pendingConfirmation ? getPendingConfirmationActionLabel(pendingConfirmation) : null;
+  console.info(
+    "[debug/reference-panel]",
+    JSON.stringify({ pendingKind: pendingConfirmation?.kind ?? null, isOpen })
+  );
   const confirmationSecondaryActionLabel = pendingConfirmation
     ? getPendingConfirmationSecondaryActionLabel(pendingConfirmation)
     : null;

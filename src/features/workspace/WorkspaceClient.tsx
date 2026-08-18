@@ -672,6 +672,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const requestLocalPendingConfirmation = useCallback(
     (value: PendingAiConfirmation): boolean => {
       const result = requestPendingConfirmation(value);
+      console.info(
+        "[debug/reference-request]",
+        JSON.stringify({ kind: value.kind, status: result.status, code: result.status === "rejected" ? result.code : null })
+      );
       if (result.status !== "accepted") {
         showWorkspaceNotice("请先处理当前待确认操作，再发起新的确认。");
         return false;
@@ -1384,6 +1388,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const handleReferenceIntent = useCallback(
     (actionObjects?: MorphoObject[]) => {
       const currentWorkspace = workspaceRef.current;
+      console.info(
+        "[debug/reference-handler]",
+        JSON.stringify({
+          actionObjectIds: actionObjects?.map((object) => object.id) ?? null,
+          persistedSelectionIds: currentWorkspace.ui.lastSelectionIds,
+          defaultReferenceIds: Object.values(currentWorkspace.objects)
+            .filter((object) => object.type === "image" && object.isDefaultReference)
+            .map((object) => object.id)
+        })
+      );
       const currentSelectionObjects = compactObjectList(
         currentWorkspace.objects,
         currentWorkspace.ui.lastSelectionIds

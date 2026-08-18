@@ -1267,6 +1267,7 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
       .filter(isMorphoShape)
       .map((shape) => workspace.objects[shape.props.objectId])
       .filter((object): object is MorphoObject => Boolean(object));
+    console.info("[debug/reference-editor]", JSON.stringify({ objectIds: currentObjects.map((object) => object.id) }));
     onReferenceIntent(currentObjects.map((object) => object.id));
   }, [editor, onReferenceIntent, workspace.objects]);
   const selectedStageShapes = selectedShapes.filter(isStageRegionShape);
