@@ -280,15 +280,19 @@ export function SelectionToolbar({
                 label={primary.isDefaultReference ? "取消后续默认参考" : "设为后续默认参考"}
                 active={primary.isDefaultReference}
                 pressed={primary.isDefaultReference}
-                onPointerDown={(event) => {
-                  event.currentTarget.setPointerCapture(event.pointerId);
+                onPointerDownCapture={(event) => {
+                  if (event.button !== 0) {
+                    return;
+                  }
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onReferenceIntent();
                 }}
-                onPointerUp={(event) => {
-                  if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                    event.currentTarget.releasePointerCapture(event.pointerId);
+                onClick={(event) => {
+                  if (event.detail === 0) {
+                    onReferenceIntent();
                   }
                 }}
-                onClick={onReferenceIntent}
               >
             {primary.isDefaultReference ? <PinOff size={15} /> : <Pin size={15} />}
           </CanvasIconButton>
