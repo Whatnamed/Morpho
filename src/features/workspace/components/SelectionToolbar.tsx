@@ -276,12 +276,20 @@ export function SelectionToolbar({
           <CanvasIconButton label="局部编辑" onClick={onLocalEdit}>
             <PenLine size={15} />
           </CanvasIconButton>
-          <CanvasIconButton
-            label={primary.isDefaultReference ? "取消后续默认参考" : "设为后续默认参考"}
-            active={primary.isDefaultReference}
-            pressed={primary.isDefaultReference}
-            onClick={onReferenceIntent}
-          >
+              <CanvasIconButton
+                label={primary.isDefaultReference ? "取消后续默认参考" : "设为后续默认参考"}
+                active={primary.isDefaultReference}
+                pressed={primary.isDefaultReference}
+                onPointerDown={(event) => {
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                }}
+                onPointerUp={(event) => {
+                  if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                    event.currentTarget.releasePointerCapture(event.pointerId);
+                  }
+                }}
+                onClick={onReferenceIntent}
+              >
             {primary.isDefaultReference ? <PinOff size={15} /> : <Pin size={15} />}
           </CanvasIconButton>
         </div>
