@@ -1705,16 +1705,28 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     await armFeedback(page, "body");
     const debugReferenceMessages: string[] = [];
     const debugReferenceListener = (message: { type(): string; text(): string }) => {
-      if (message.type() === "log" && message.text().includes("[debug/reference-")) {
-        debugReferenceMessages.push(message.text());
+      if (message.text().includes("[debug/reference-")) {
+        debugReferenceMessages.push(`${message.type()}:${message.text()}`);
       }
     };
     page.on("console", debugReferenceListener);
+    await page.evaluate(() => {
+      const events = ["pointerdown", "pointerup", "mousedown", "mouseup", "click"];
+      const trace: string[] = [];
+      for (const type of events) {
+        document.addEventListener(type, (event) => {
+          const target = event.target instanceof Element ? event.target : null;
+          trace.push(`${type}:${target?.tagName ?? "?"}.${target?.className ?? ""}`);
+          document.documentElement.dataset.referenceDebugEvents = JSON.stringify(trace);
+        }, true);
+      }
+    });
     const replaceOnly = page.getByRole("button", { name: "只替换默认参考", exact: true });
     const replaceAndReview = page.getByRole("button", { name: "替换并标记相关素材待复核", exact: true });
     const confirmCard = replaceOnly.locator("xpath=ancestor::div[contains(@class, 'confirm-card')]");
     await setReference.click();
-    console.log(`[debug/reference-e2e] ${JSON.stringify(debugReferenceMessages)}`);
+    const debugReferenceEvents = await page.evaluate(() => document.documentElement.dataset.referenceDebugEvents ?? "[]");
+    console.log(`[debug/reference-e2e] ${JSON.stringify({ messages: debugReferenceMessages, events: JSON.parse(debugReferenceEvents) })}`);
     page.off("console", debugReferenceListener);
     await expect(replaceOnly).toBeVisible({ timeout: 10_000 });
     await expect(replaceAndReview).toBeVisible();
