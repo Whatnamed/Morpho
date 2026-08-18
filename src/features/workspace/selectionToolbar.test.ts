@@ -153,6 +153,7 @@ describe("selection toolbar placement", () => {
     expect(SELECTION_TOOLBAR_OBSTACLE_SELECTORS).toContain(".detail-popover");
     expect(SELECTION_TOOLBAR_OBSTACLE_SELECTORS).toContain(".side-drawer");
     expect(SELECTION_TOOLBAR_OBSTACLE_SELECTORS).toContain(".project-map");
+    expect(SELECTION_TOOLBAR_OBSTACLE_SELECTORS).toContain(".workspace-banner");
     expect(
       screenRectsFromClientRects([
         { left: 10, top: 20, width: 100, height: 50 },

@@ -85,7 +85,8 @@ export const SELECTION_TOOLBAR_OBSTACLE_SELECTORS = [
   ".archive-panel",
   ".document-reader-panel",
   ".proposal-detail-dialog",
-  ".ai-queue"
+  ".ai-queue",
+  ".workspace-banner"
 ] as const;
 
 /**
