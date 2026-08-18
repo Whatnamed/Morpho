@@ -101,8 +101,10 @@ type MorphoCanvasProps = {
     selectedObjects: MorphoObject[],
     placement: SelectionToolbarPlacement,
     onMeasure?: (size: { w: number; h: number }) => void,
-    isMeasuring?: boolean
+    isMeasuring?: boolean,
+    onReferenceIntent?: () => void
   ) => ReactNode;
+  onReferenceIntent: (objectIds: string[]) => void;
   onSelectionChange: (objectIds: string[]) => void;
   onInstancesChange: (instances: CanvasInstance[]) => void;
   onStageRegionsChange: (regions: StageRegionRecord[]) => void;
@@ -204,6 +206,7 @@ export function MorphoCanvas({
   onStageRegionsChange,
   onViewChange,
   onLiveViewChange,
+  onReferenceIntent,
   onImportRequest,
   onContextMenuRequest
 }: MorphoCanvasProps) {
@@ -227,6 +230,7 @@ export function MorphoCanvas({
   const lastContextMenuOpenAtRef = useRef(0);
   const latestWorkspaceRef = useRef(workspace);
   const onLiveViewChangeRef = useRef(onLiveViewChange);
+  const onReferenceIntentRef = useRef(onReferenceIntent);
   const didSendStagesToBackRef = useRef(false);
   const lastAppliedEditorSyncInputsRef = useRef<CanvasEditorSyncInputs | null>(null);
   const stageOpacityPreviewRef = useRef<string | null>(null);
@@ -254,7 +258,8 @@ export function MorphoCanvas({
   }, [editorSyncInputs, workspace]);
   useLayoutEffect(() => {
     onLiveViewChangeRef.current = onLiveViewChange;
-  }, [onLiveViewChange]);
+    onReferenceIntentRef.current = onReferenceIntent;
+  }, [onLiveViewChange, onReferenceIntent]);
   const canvasComponents = useMemo(
     () => ({
       OnTheCanvas: () => (
@@ -274,6 +279,7 @@ export function MorphoCanvas({
           floatingChromeKey={floatingChromeKey}
           canvasOverlayHost={canvasOverlayHost}
           renderToolbar={renderSelectionToolbar}
+          onReferenceIntent={(objectIds) => onReferenceIntentRef.current(objectIds)}
           onStageRegionsChange={onStageRegionsChange}
           onStageOpacityPreviewChange={(stageId) => {
             stageOpacityPreviewRef.current = stageId;
@@ -1205,6 +1211,7 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
   floatingChromeKey,
   canvasOverlayHost,
   renderToolbar,
+  onReferenceIntent,
   onStageRegionsChange,
   onStageOpacityPreviewChange
 }: {
@@ -1216,8 +1223,10 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
     selectedObjects: MorphoObject[],
     placement: SelectionToolbarPlacement,
     onMeasure?: (size: { w: number; h: number }) => void,
-    isMeasuring?: boolean
+    isMeasuring?: boolean,
+    onReferenceIntent?: () => void
   ) => ReactNode;
+  onReferenceIntent: (objectIds: string[]) => void;
   onStageRegionsChange: (regions: StageRegionRecord[]) => void;
   onStageOpacityPreviewChange: (stageId: string | null) => void;
 }) {
@@ -1252,6 +1261,14 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
     .filter(isMorphoShape)
     .map((shape) => workspace.objects[shape.props.objectId])
     .filter((object): object is MorphoObject => Boolean(object));
+  const handleReferenceIntent = useCallback(() => {
+    const currentObjects = editor
+      .getSelectedShapes()
+      .filter(isMorphoShape)
+      .map((shape) => workspace.objects[shape.props.objectId])
+      .filter((object): object is MorphoObject => Boolean(object));
+    onReferenceIntent(currentObjects.map((object) => object.id));
+  }, [editor, onReferenceIntent, workspace.objects]);
   const selectedStageShapes = selectedShapes.filter(isStageRegionShape);
   const selectedStageId =
     selectedStageShapes.length === 1 && selectedObjects.length === 0
@@ -1390,7 +1407,7 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
 
   if (selectedObjects.length > 0) {
     return renderToolbar
-      ? renderOverlay(renderToolbar(selectedObjects, resolvedPlacement, reportObjectToolbarSize, !measuredObjectSize))
+      ? renderOverlay(renderToolbar(selectedObjects, resolvedPlacement, reportObjectToolbarSize, !measuredObjectSize, handleReferenceIntent))
       : null;
   }
 

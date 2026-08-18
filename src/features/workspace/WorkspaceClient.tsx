@@ -1388,7 +1388,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         currentWorkspace.objects,
         currentWorkspace.ui.lastSelectionIds
       );
-      const selectedTarget = (currentSelectionObjects.length > 0 ? currentSelectionObjects : actionObjects ?? selectedObjects)
+      const selectedTarget = (actionObjects ?? (currentSelectionObjects.length > 0 ? currentSelectionObjects : selectedObjects))
         .find((object) => object.type === "image");
       const target = selectedTarget ? currentWorkspace.objects[selectedTarget.id] : undefined;
       if (!target || target.type !== "image" || target.visibility !== "active") {
@@ -1937,7 +1937,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     toolbarObjects: MorphoObject[],
     placement: SelectionToolbarPlacement,
     onMeasure?: (size: { w: number; h: number }) => void,
-    isMeasuring?: boolean
+    isMeasuring?: boolean,
+    onReferenceIntent?: () => void
   ) => (
     <SelectionToolbar
       selectedObjects={toolbarObjects}
@@ -1952,7 +1953,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       onOpenDocumentReader={() => { const primary = toolbarObjects[0]; if (primary?.type === "file") handleOpenDocumentReader(primary.id); else if (primary?.type === "documentFragment") handleOpenDocumentReader(primary.source.fileObjectId); }}
       onOpenDeliveryPreparation={() => openDeliveryPreparationFromSelection(toolbarObjects[0]?.type === "delivery" ? toolbarObjects[0].id : undefined)}
       onLocalEdit={handleLocalEdit}
-      onReferenceIntent={() => handleReferenceIntent()}
+      onReferenceIntent={onReferenceIntent ?? (() => handleReferenceIntent(toolbarObjects))}
       onHide={handleHideSelected}
       onDelete={handleDeleteSelected}
        onOpenProposalDetail={() => { const object = toolbarObjects.find((item) => item.type === "proposalDraft"); if (object?.type === "proposalDraft") openProposal(object.proposalId); }}
@@ -2053,6 +2054,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           detailConceptDirection ? "concept" : "x"
         ].join(":")}
         renderSelectionToolbar={canMutateWorkspace ? renderSelectionToolbar : undefined}
+        onReferenceIntent={(objectIds) => {
+          const actionObjects = compactObjectList(workspaceRef.current.objects, objectIds);
+          handleReferenceIntent(actionObjects);
+        }}
         onSelectionChange={handleSelectionChange}
         onInstancesChange={handleInstancesChange}
         onStageRegionsChange={handleStageRegionsChange}
