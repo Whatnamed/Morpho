@@ -1435,6 +1435,11 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
 
   // ------------------------------------------------------------------ 6. other surfaces
   test("6 其他交互：搜索/记录/交付准备/归档导出/默认参考确认", async ({ page }) => {
+    page.on("console", (message) => {
+      if (message.type() === "info" && message.text().includes("[debug/reference-state]")) {
+        console.log(`   ${message.text()}`);
+      }
+    });
     test.setTimeout(420_000);
     await installPerfProbe(page, { io: true });
     await installAgentMock(page);

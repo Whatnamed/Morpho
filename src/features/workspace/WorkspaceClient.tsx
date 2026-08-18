@@ -1388,6 +1388,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         currentWorkspace.objects,
         currentWorkspace.ui.lastSelectionIds
       );
+      console.info(
+        "[debug/reference-state]",
+        JSON.stringify({
+          actionObjectIds: actionObjects?.map((object) => object.id) ?? null,
+          persistedSelectionIds: currentWorkspace.ui.lastSelectionIds,
+          currentSelectionIds: currentSelectionObjects.map((object) => object.id),
+          defaultReferenceIds: Object.values(currentWorkspace.objects)
+            .filter((object) => object.type === "image" && object.isDefaultReference)
+            .map((object) => object.id)
+        })
+      );
       const selectedTarget = (currentSelectionObjects.length > 0 ? currentSelectionObjects : actionObjects ?? selectedObjects)
         .find((object) => object.type === "image");
       const target = selectedTarget ? currentWorkspace.objects[selectedTarget.id] : undefined;
