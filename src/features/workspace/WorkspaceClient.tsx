@@ -672,14 +672,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const requestLocalPendingConfirmation = useCallback(
     (value: PendingAiConfirmation): boolean => {
       const result = requestPendingConfirmation(value);
-      console.info(
-        "[debug/reference-request]",
-        JSON.stringify({
-          kind: value.kind,
-          status: result.status,
-          code: result.status === "rejected" ? result.code : null
-        })
-      );
       if (result.status !== "accepted") {
         showWorkspaceNotice("请先处理当前待确认操作，再发起新的确认。");
         return false;
@@ -1391,9 +1383,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const handleReferenceIntent = useCallback(
     (actionObjects?: MorphoObject[]) => {
-      console.info("[debug/reference-handler]", JSON.stringify({ actionObjectIds: actionObjects?.map((object) => object.id) ?? null }));
       const currentWorkspace = workspaceRef.current;
-      const selectedTarget = (actionObjects ?? selectedObjects).find((object) => object.type === "image");
+      const currentSelectionObjects = compactObjectList(
+        currentWorkspace.objects,
+        currentWorkspace.ui.lastSelectionIds
+      );
+      const selectedTarget = (currentSelectionObjects.length > 0 ? currentSelectionObjects : actionObjects ?? selectedObjects)
+        .find((object) => object.type === "image");
       const target = selectedTarget ? currentWorkspace.objects[selectedTarget.id] : undefined;
       if (!target || target.type !== "image" || target.visibility !== "active") {
         return;
@@ -1449,11 +1445,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       showWorkspaceNotice
     ]
   );
-  const latestReferenceIntentRef = useRef(handleReferenceIntent);
-  useLayoutEffect(() => {
-    latestReferenceIntentRef.current = handleReferenceIntent;
-  }, [handleReferenceIntent]);
-
   const handleKeepReviewedVisual = useCallback(
     (objectId: string) => {
       const target = workspace.objects[objectId];
@@ -1961,7 +1952,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       onOpenDocumentReader={() => { const primary = toolbarObjects[0]; if (primary?.type === "file") handleOpenDocumentReader(primary.id); else if (primary?.type === "documentFragment") handleOpenDocumentReader(primary.source.fileObjectId); }}
       onOpenDeliveryPreparation={() => openDeliveryPreparationFromSelection(toolbarObjects[0]?.type === "delivery" ? toolbarObjects[0].id : undefined)}
       onLocalEdit={handleLocalEdit}
-      onReferenceIntent={() => latestReferenceIntentRef.current(toolbarObjects)}
+      onReferenceIntent={handleReferenceIntent}
       onHide={handleHideSelected}
       onDelete={handleDeleteSelected}
        onOpenProposalDetail={() => { const object = toolbarObjects.find((item) => item.type === "proposalDraft"); if (object?.type === "proposalDraft") openProposal(object.proposalId); }}

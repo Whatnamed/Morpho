@@ -77,21 +77,9 @@ export function useWorkspaceConfirmationController({
     (value: PendingAiConfirmation): PendingConfirmationRequestResult => {
       const origin = getPendingConfirmationOrigin(value);
       if (!isCurrentSession(session)) {
-        console.info(
-          "[debug/reference-session]",
-          JSON.stringify({
-            expectedProjectId: session.projectId,
-            currentProjectId: currentSessionRef.current.projectId,
-            expectedReady: session.workspaceReady,
-            currentReady: currentSessionRef.current.workspaceReady,
-            sameSession: currentSessionRef.current === session,
-            latestWorkspaceProjectId: latestWorkspaceRef.current.project.id
-          })
-        );
         return { status: "rejected", code: "confirmation_session_stale", origin };
       }
       if (pendingConfirmationRef.current !== null) {
-        console.info("[debug/reference-slot]", JSON.stringify({ pendingKind: pendingConfirmationRef.current.kind }));
         return { status: "rejected", code: "confirmation_slot_occupied", origin };
       }
 

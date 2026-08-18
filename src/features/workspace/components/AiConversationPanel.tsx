@@ -169,13 +169,6 @@ export function AiConversationPanel({
   onFailureEdit,
   onOpenProjectRecords
 }: AiConversationPanelProps) {
-  console.info(
-    "[debug/reference-panel]",
-    JSON.stringify({
-      pendingKind: pendingConfirmation?.kind ?? null,
-      isOpen
-    })
-  );
   const confirmationTitle = pendingConfirmation ? getPendingConfirmationTitle(pendingConfirmation) : null;
   const confirmationBody = pendingConfirmation ? getPendingConfirmationBody(pendingConfirmation) : null;
   const confirmationActionLabel = pendingConfirmation ? getPendingConfirmationActionLabel(pendingConfirmation) : null;
