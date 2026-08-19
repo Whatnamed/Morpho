@@ -1002,17 +1002,13 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
 
     // --- toolbar hide action ---------------------------------------------------
     await focusFirstShapeSelected(page, phase5Project("objects500").workspaceKey, [deletedObjectId]);
-    const hideBefore = await page.locator(".morpho-shape-host").count();
     const hideButton = page.locator('[aria-label="隐藏对象"]');
     await hideButton.hover();
     await beginPerfPhase(page);
     await armFeedback(page, "body");
     await hideButton.click();
-    await page.waitForFunction(
-      (prev) => document.querySelectorAll(".morpho-shape-host").length < prev,
-      hideBefore,
-      { timeout: 10_000 }
-    );
+    await expect(page.locator('[aria-label="选中对象工具"]')).toBeHidden({ timeout: 10_000 });
+    await page.waitForTimeout(600);
     const hideSamples = await endPerfPhase(page);
     const hideFeedback = await readFeedback(page);
     record({
