@@ -677,6 +677,7 @@ async function focusFirstShapeSelected(
     await page.waitForTimeout(350);
   }
   await expect(toolbar).toBeVisible({ timeout: 10_000 });
+  await page.waitForTimeout(500);
   return target.objectId;
 }
 
@@ -1003,6 +1004,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     // --- toolbar hide action ---------------------------------------------------
     await focusFirstShapeSelected(page, phase5Project("objects500").workspaceKey, [deletedObjectId]);
     const hideButton = page.locator('[aria-label="隐藏对象"]');
+    await expect(hideButton, "隐藏对象按钮未显示").toBeVisible({ timeout: 10_000 });
     await hideButton.hover();
     await beginPerfPhase(page);
     await armFeedback(page, "body");
