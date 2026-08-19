@@ -27,6 +27,8 @@ import type { Page } from "@playwright/test";
  */
 
 export type PerfPhaseSamples = {
+  phaseStartedAt: number;
+  phaseEndedAt: number;
   commitCount: number;
   commitTimestamps: number[];
   loafCount: number;
@@ -380,15 +382,29 @@ export async function installPerfProbe(page: Page, options: { io?: boolean } = {
 
 /** Clears every buffer and opens a generation-scoped frame sampler. */
 export async function beginPerfPhase(page: Page): Promise<void> {
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const state = window.__morphoPerf;
     if (!state) {
       throw new Error("Perf probe was not installed before navigation.");
     }
 
+    // Wait two animation frames so the previous operation's render frame settles cleanly
+    await new Promise<void>((resolve) => {
+      let count = 0;
+      const tick = () => {
+        count += 1;
+        if (count >= 2) {
+          resolve();
+          return;
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+
     // Records queued before this phase belong to the previous document/operation.
     // Drain them before clearing so a later callback cannot be mistaken for fresh data;
-    // the timestamp filter in endPerfPhase is the second boundary guard.
+    // the entry start timestamp filter in endPerfPhase is the second boundary guard.
     state.drainObservers();
     state.commits.length = 0;
     state.loaf.length = 0;
@@ -465,11 +481,11 @@ export async function endPerfPhase(page: Page): Promise<PerfPhaseSamples> {
     state.drainObservers();
 
     const inWindow = (at: number) => at >= startedAt && at <= endedAt;
-    const overlap = (start: number, duration: number) => start < endedAt && start + duration > startedAt;
+    const isPhaseEntry = (start: number) => start >= startedAt && start < endedAt;
     const commits = state.commits.filter(inWindow);
-    const loaf = state.loaf.filter((entry) => overlap(entry.start, entry.duration));
+    const loaf = state.loaf.filter((entry) => isPhaseEntry(entry.start));
     const events = state.events
-      .filter((entry) => overlap(entry.start, entry.duration))
+      .filter((entry) => isPhaseEntry(entry.start))
       .sort((a, b) => a.start - b.start);
     const frames = state.frames.filter(inWindow);
     const pointerMoves = state.pointerMoves.filter(inWindow);
@@ -486,6 +502,8 @@ export async function endPerfPhase(page: Page): Promise<PerfPhaseSamples> {
         : (pointerMoves[pointerMoves.length - 1] as number) - (pointerMoves[0] as number);
 
     return {
+      phaseStartedAt: startedAt,
+      phaseEndedAt: endedAt,
       commitCount: commits.length,
       commitTimestamps: commits,
       loafCount: loaf.length,
@@ -690,12 +708,9 @@ export async function readFeedback(page: Page): Promise<FeedbackResult> {
       const afterArm = inputs
         .filter((at) => at >= handle.record.armedAt && at >= phaseStart && at <= phaseEnd)
         .sort((a, b) => a - b);
-      const initiating = handle.record.firstChangeAt === null
-        ? afterArm
-        : afterArm.filter((at) => at <= handle.record.firstChangeAt!);
-      if (initiating.length > 0) {
-        handle.record.firstInputAt = initiating[0] ?? null;
-        handle.record.lastInputAt = initiating[initiating.length - 1] ?? null;
+      if (afterArm.length > 0) {
+        handle.record.firstInputAt = afterArm[0] ?? null;
+        handle.record.lastInputAt = afterArm[afterArm.length - 1] ?? null;
       } else {
         handle.record.valid = false;
         handle.record.invalidReason = "no_input";
@@ -714,6 +729,9 @@ export async function readFeedback(page: Page): Promise<FeedbackResult> {
     ) {
       handle.record.valid = false;
       handle.record.invalidReason = "change_after_phase";
+    } else if (handle.record.firstInputAt !== null && handle.record.firstChangeAt !== null) {
+      handle.record.valid = true;
+      handle.record.invalidReason = null;
     }
     return handle.record;
   });

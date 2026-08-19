@@ -94,15 +94,16 @@ describe("useWorkspaceSelectionNavigationController", () => {
 
     act(() => harness.current().focusObject("object-b", { rememberView: true }));
     expect(harness.current().selectedObjectIds).toEqual(["object-b"]);
-    expect(harness.workspace().ui.lastSelectionIds).toEqual(["object-b"]);
+    expect(harness.workspace().ui.lastSelectionIds).toEqual(["object-a"]);
     expect(harness.current().focusRequest).toMatchObject({ objectId: "object-b" });
 
     act(() => harness.current().locateObjectFromDetail("object-c"));
     expect(harness.current().selectedObjectIds).toEqual(["object-c"]);
-    expect(harness.workspace().ui.lastSelectionIds).toEqual(["object-c"]);
+    expect(harness.workspace().ui.lastSelectionIds).toEqual(["object-a"]);
 
     act(() => expect(harness.current().undoDetailNavigation()).toBe(true));
     expect(harness.current().selectedObjectIds).toEqual(["object-b"]);
+    expect(harness.workspace().ui.lastSelectionIds).toEqual(["object-a"]);
     expect(harness.current().focusRequest).toMatchObject({
       view: liveView,
       selectionObjectIds: ["object-b"]
@@ -110,6 +111,7 @@ describe("useWorkspaceSelectionNavigationController", () => {
 
     act(() => expect(harness.current().undoDetailNavigation()).toBe(true));
     expect(harness.current().selectedObjectIds).toEqual(["object-a"]);
+    expect(harness.workspace().ui.lastSelectionIds).toEqual(["object-a"]);
     expect(harness.current().focusRequest).toMatchObject({
       view: liveView,
       selectionObjectIds: ["object-a"]
@@ -259,6 +261,43 @@ describe("useWorkspaceSelectionNavigationController", () => {
     expect(harness.workspace()).toBe(before);
     expect(harness.current().selectedObjectIds).toEqual([]);
     expect(harness.current().focusRequest).toEqual({ nonce: 0 });
+  });
+
+  it("isolates programmatic focus and locate from persisted lastSelectionIds through undo and reload", async () => {
+    const initialWorkspace = withSelection(createBlankWorkspace("project-a"), ["object-a"]);
+    const harness = await renderController({
+      projectId: "project-a",
+      workspace: initialWorkspace,
+      workspaceReady: true
+    });
+
+    expect(harness.current().selectedObjectIds).toEqual(["object-a"]);
+    expect(harness.workspace().ui.lastSelectionIds).toEqual(["object-a"]);
+
+    act(() => harness.current().focusObject("object-b", { rememberView: true }));
+    expect(harness.current().selectedObjectIds).toEqual(["object-b"]);
+    expect(harness.workspace().ui.lastSelectionIds).toEqual(["object-a"]);
+
+    act(() => harness.current().locateObjectFromDetail("object-c"));
+    expect(harness.current().selectedObjectIds).toEqual(["object-c"]);
+    expect(harness.workspace().ui.lastSelectionIds).toEqual(["object-a"]);
+
+    act(() => expect(harness.current().undoDetailNavigation()).toBe(true));
+    expect(harness.current().selectedObjectIds).toEqual(["object-b"]);
+    expect(harness.workspace().ui.lastSelectionIds).toEqual(["object-a"]);
+
+    act(() => expect(harness.current().undoDetailNavigation()).toBe(true));
+    expect(harness.current().selectedObjectIds).toEqual(["object-a"]);
+    expect(harness.workspace().ui.lastSelectionIds).toEqual(["object-a"]);
+
+    // Fresh render/session reload of the project hydrates the intact persisted selection
+    const reloadedHarness = await renderController({
+      projectId: "project-a",
+      workspace: harness.workspace(),
+      workspaceReady: true
+    });
+    expect(reloadedHarness.current().selectedObjectIds).toEqual(["object-a"]);
+    expect(reloadedHarness.workspace().ui.lastSelectionIds).toEqual(["object-a"]);
   });
 });
 

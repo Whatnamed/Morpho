@@ -13,7 +13,14 @@ const sourceSha = gitSourceSha(projectRoot);
 if (provenance.sourceSha !== sourceSha) {
   throw new Error(`Served build source SHA ${provenance.sourceSha} does not match HEAD ${sourceSha}. Rebuild first.`);
 }
-if (process.env.MORPHO_REQUIRE_CLEAN_BUILD === "true") {
+const isStrict =
+  process.argv.includes("--strict") ||
+  process.env.MORPHO_REQUIRE_CLEAN_BUILD === "true";
+
+if (isStrict) {
+  if (provenance.isDirty) {
+    throw new Error("Served build was created from a dirty tracked worktree. Clean build required for evidence.");
+  }
   assertCleanTrackedWorktree(projectRoot);
 }
 const artifact = await nextArtifactDigest(projectRoot);
@@ -21,14 +28,16 @@ if (artifact.digest !== provenance.artifactSha256 || artifact.fileCount !== prov
   throw new Error("Served .next artifact does not match its provenance marker. Rebuild first.");
 }
 
+const forwardedArgs = process.argv.slice(2).filter((arg) => arg !== "--strict");
 const nextBin = resolve(projectRoot, "node_modules", "next", "dist", "bin", "next");
-const result = spawnSync(process.execPath, [nextBin, "start", ...process.argv.slice(2)], {
+const result = spawnSync(process.execPath, [nextBin, "start", ...forwardedArgs], {
   cwd: projectRoot,
   env: {
     ...process.env,
     MORPHO_BUILD_SOURCE_SHA: provenance.sourceSha,
     MORPHO_BUILD_ID: provenance.buildId,
-    MORPHO_BUILD_ARTIFACT_SHA256: provenance.artifactSha256
+    MORPHO_BUILD_ARTIFACT_SHA256: provenance.artifactSha256,
+    MORPHO_BUILD_IS_DIRTY: String(Boolean(provenance.isDirty))
   },
   shell: false,
   stdio: "inherit"

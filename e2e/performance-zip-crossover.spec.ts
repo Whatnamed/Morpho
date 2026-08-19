@@ -66,8 +66,14 @@ test.describe("ZIP 同步/异步 crossover（记录，不断言阈值）", () =>
       if (!response.ok) {
         throw new Error(`Build provenance endpoint unavailable: ${response.status}`);
       }
-      return response.json() as Promise<{ sourceSha: string | null; buildId: string | null; artifactSha256: string | null }>;
+      return response.json() as Promise<{
+        sourceSha: string | null;
+        buildId: string | null;
+        artifactSha256: string | null;
+        isDirty: boolean;
+      }>;
     });
+    expect(buildIdentity.isDirty, "Performance evidence requires a clean tracked build").toBe(false);
     expect(buildIdentity.sourceSha, "served build missing source SHA").toBe(readGitCommit());
     expect(buildIdentity.buildId, "served build missing build ID").toBeTruthy();
     expect(buildIdentity.artifactSha256, "served build missing artifact digest").toMatch(/^[a-f0-9]{64}$/);

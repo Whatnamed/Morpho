@@ -13,6 +13,14 @@ export function gitSourceSha(projectRoot = process.cwd()) {
   }).trim();
 }
 
+export function isTrackedWorktreeClean(projectRoot = process.cwd()) {
+  const status = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], {
+    cwd: projectRoot,
+    encoding: "utf8"
+  }).trim();
+  return status.length === 0;
+}
+
 export function assertCleanTrackedWorktree(projectRoot = process.cwd()) {
   const status = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], {
     cwd: projectRoot,

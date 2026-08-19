@@ -24,3 +24,5 @@ e2e/.artifacts/
 e2e/.seed/
 playwright-report/
 test-results/
+.zcode/
+

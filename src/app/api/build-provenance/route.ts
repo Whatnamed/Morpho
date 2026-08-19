@@ -10,7 +10,8 @@ export function GET() {
     {
       sourceSha: process.env.MORPHO_BUILD_SOURCE_SHA ?? null,
       buildId: process.env.MORPHO_BUILD_ID ?? null,
-      artifactSha256: process.env.MORPHO_BUILD_ARTIFACT_SHA256 ?? null
+      artifactSha256: process.env.MORPHO_BUILD_ARTIFACT_SHA256 ?? null,
+      isDirty: process.env.MORPHO_BUILD_IS_DIRTY === "true"
     },
     { headers: { "Cache-Control": "no-store" } }
   );

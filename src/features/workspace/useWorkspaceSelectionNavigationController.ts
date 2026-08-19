@@ -282,10 +282,10 @@ export function useWorkspaceSelectionNavigationController({
           selectedObjectIds: [...selectedObjectIds]
         });
       }
-      commitSelection([objectId]);
+      setSelectedObjectIds([objectId]);
       requestObjectFocus(objectId);
     },
-    [commitSelection, isCurrentSession, requestObjectFocus, selectedObjectIds, session]
+    [isCurrentSession, requestObjectFocus, selectedObjectIds, session, setSelectedObjectIds]
   );
 
   const locateObjectFromDetail = useCallback(

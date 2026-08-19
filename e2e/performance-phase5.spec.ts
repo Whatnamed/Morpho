@@ -58,6 +58,9 @@ const DRAG_STEPS = 60;
 const DRAG_INTERVAL_MS = 16;
 const TYPING_TEXT = "把这个方向再往结构化收一收，重点说明它和现有设计定义之间的关系，并给出可以继续展开的角度。";
 
+export type FeedbackApplicability = "required" | "optional" | "notApplicable";
+export type FeedbackValidity = "valid" | "invalid" | "notApplicable";
+
 type AtlasEntry = {
   area: string;
   project: string;
@@ -67,6 +70,8 @@ type AtlasEntry = {
   samples: PerfPhaseSamples;
   io?: PerfIoStats;
   feedback?: FeedbackResult | null;
+  feedbackApplicability: FeedbackApplicability;
+  feedbackValidity: FeedbackValidity;
   extra?: Record<string, unknown>;
 };
 
@@ -99,6 +104,7 @@ type BuildIdentity = {
   sourceSha: string | null;
   buildId: string | null;
   artifactSha256: string | null;
+  isDirty?: boolean;
 };
 
 type ImportedFileEvidence = {
@@ -170,11 +176,26 @@ function readGitCommit(): string | null {
 /** Placeholder samples for behavioural-only entries (no window was measured). */
 function zeroSamples(): PerfPhaseSamples {
   return {
-    commitCount: 0, commitTimestamps: [], loafCount: 0, longestLoafMs: 0, longestBlockingMs: 0,
-    totalLoafMs: 0, totalBlockingMs: 0, slowEventCount: 0, slowEventProcessingP95Ms: 0,
-    slowEventProcessingMaxMs: 0, slowEventTotalProcessingMs: 0, firstSlowEventMs: null,
-    lastSlowEventMs: null, pointerMoveCount: 0, keyPressCount: 0, pointerRateHz: null,
-    frameCount: 0, windowMs: 0
+    phaseStartedAt: 0,
+    phaseEndedAt: 0,
+    commitCount: 0,
+    commitTimestamps: [],
+    loafCount: 0,
+    longestLoafMs: 0,
+    longestBlockingMs: 0,
+    totalLoafMs: 0,
+    totalBlockingMs: 0,
+    slowEventCount: 0,
+    slowEventProcessingP95Ms: 0,
+    slowEventProcessingMaxMs: 0,
+    slowEventTotalProcessingMs: 0,
+    firstSlowEventMs: null,
+    lastSlowEventMs: null,
+    pointerMoveCount: 0,
+    keyPressCount: 0,
+    pointerRateHz: null,
+    frameCount: 0,
+    windowMs: 0
   };
 }
 
@@ -187,16 +208,31 @@ function record(entry: AtlasEntry): void {
   if (collected.some((existing) => phaseKey(existing) === key)) {
     throw new Error(`Phase 5 phase key was recorded twice: ${key}`);
   }
+  if (entry.feedbackApplicability === "required") {
+    if (!entry.feedback || !entry.feedback.valid) {
+      throw new Error(
+        `Phase ${key} requires valid first-feedback, but received invalid feedback: ${JSON.stringify(entry.feedback)}`
+      );
+    }
+  }
+  if (entry.samples.firstSlowEventMs !== null && entry.samples.phaseStartedAt > 0) {
+    if (entry.samples.firstSlowEventMs < entry.samples.phaseStartedAt) {
+      throw new Error(
+        `Phase ${key} attributed firstSlowEvent (${entry.samples.firstSlowEventMs}) before phaseStartedAt (${entry.samples.phaseStartedAt})`
+      );
+    }
+  }
   collected.push(entry);
   const { samples, feedback, extra } = entry;
   const first =
-    feedback && feedback.firstChangeAt !== null && feedback.firstInputAt !== null
+    feedback && feedback.firstChangeAt !== null && feedback.firstInputAt !== null && feedback.valid
       ? (feedback.firstChangeAt - feedback.firstInputAt).toFixed(1)
       : "—";
   console.log(
     `   [${entry.area}/${entry.project}] ${entry.phase.padEnd(22)} commit ${String(samples.commitCount).padStart(4)} · ` +
       `最长阻塞 ${samples.longestBlockingMs.toFixed(1).padStart(7)} ms · 累计阻塞 ${samples.totalBlockingMs.toFixed(1).padStart(8)} ms · ` +
-      `慢事件p95 ${samples.slowEventProcessingP95Ms.toFixed(1).padStart(6)} ms · 首反馈 ${first} ms` +
+      `慢事件p95 ${samples.slowEventProcessingP95Ms.toFixed(1).padStart(6)} ms · 首反馈 ${first} ms · ` +
+      `feedback[${entry.feedbackApplicability}/${entry.feedbackValidity}]` +
       (extra && Object.keys(extra).length > 0 ? ` · ${JSON.stringify(extra)}` : "")
   );
 }
@@ -515,16 +551,6 @@ async function selectImageObject(
   await result.getByRole("button", { name: "定位", exact: true }).click();
   await expect(search).toBeHidden({ timeout: 10_000 });
 
-  await expect.poll(async () => page.evaluate((targetObjectId) => {
-    const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
-    if (!raw) {
-      return null;
-    }
-    const workspace = JSON.parse(raw) as { ui?: { lastSelectionIds?: string[] } };
-    const selectedIds = workspace.ui?.lastSelectionIds ?? [];
-    return selectedIds.length === 1 ? selectedIds[0] : null;
-  }, target.objectId), { timeout: 10_000 }).toBe(target.objectId);
-
   await moveCanvasObjectTowardCentre(page, target.objectId);
   const toolbar = page.locator('[aria-label="选中对象工具"]');
   for (let zoomAttempt = 0; zoomAttempt < 5 && !(await toolbar.isVisible()); zoomAttempt += 1) {
@@ -571,7 +597,7 @@ async function emptyPoint(page: Page): Promise<{ x: number; y: number }> {
  * placement. The preceding pan/zoom phases can leave a 500-object overview below the
  * toolbar's minimum visible size, so a raw screen-coordinate click is not a stable
  * setup action. Search locate drives the production focus request, zoom-to-selection,
- * editor selection, and persisted `lastSelectionIds` path before the measured action.
+ * and editor selection before the measured action.
  */
 async function focusFirstShapeSelected(page: Page, workspaceKey: string): Promise<string> {
   await page.keyboard.press("Escape").catch(() => undefined);
@@ -584,7 +610,7 @@ async function focusFirstShapeSelected(page: Page, workspaceKey: string): Promis
     await dismissStorageNotice.click();
   }
 
-  const targetTitle = await page.evaluate((storageKey) => {
+  const target = await page.evaluate((storageKey) => {
     const raw = window.localStorage.getItem(storageKey);
     if (!raw) {
       throw new Error(`Workspace not found at ${storageKey}.`);
@@ -594,9 +620,10 @@ async function focusFirstShapeSelected(page: Page, workspaceKey: string): Promis
       canvas?: { instances?: Array<{ objectId?: string }> };
     };
     for (const instance of workspace.canvas?.instances ?? []) {
-      const object = instance.objectId ? workspace.objects?.[instance.objectId] : undefined;
-      if (object?.type === "image" && object.visibility === "active" && object.title?.trim()) {
-        return object.title;
+      const objectId = instance.objectId;
+      const object = objectId ? workspace.objects?.[objectId] : undefined;
+      if (objectId && object?.type === "image" && object.visibility === "active" && object.title?.trim()) {
+        return { objectId, title: object.title.trim() };
       }
     }
     throw new Error("Workspace has no searchable active canvas image.");
@@ -605,43 +632,10 @@ async function focusFirstShapeSelected(page: Page, workspaceKey: string): Promis
   await page.locator('[aria-label="项目内搜索"]').click();
   const search = page.locator('section[aria-label="项目内搜索"]');
   await expect(search).toBeVisible({ timeout: 10_000 });
-  await search.locator('[aria-label="搜索关键词"]').fill(targetTitle);
+  await search.locator('[aria-label="搜索关键词"]').fill(target.title);
   const result = search.locator(".result-row").first();
   await expect(result).toBeVisible({ timeout: 10_000 });
   await result.getByRole("button", { name: "定位", exact: true }).click();
-
-  await expect.poll(async () => page.evaluate((storageKey) => {
-    const raw = window.localStorage.getItem(storageKey);
-    if (!raw) {
-      return null;
-    }
-    const workspace = JSON.parse(raw) as {
-      objects?: Record<string, { type?: string; visibility?: string }>;
-      canvas?: { instances?: Array<{ objectId?: string }> };
-      ui?: { lastSelectionIds?: string[] };
-    };
-    const selectedIds = workspace.ui?.lastSelectionIds ?? [];
-    const selectedId = selectedIds.length === 1 ? selectedIds[0] : undefined;
-    return selectedId &&
-      workspace.objects?.[selectedId]?.type === "image" &&
-      workspace.objects[selectedId]?.visibility === "active" &&
-      workspace.canvas?.instances?.some((instance) => instance.objectId === selectedId)
-      ? selectedId
-      : null;
-  }, workspaceKey), { timeout: 10_000 }).not.toBeNull();
-
-  const selectedObjectId = await page.evaluate((storageKey) => {
-    const raw = window.localStorage.getItem(storageKey);
-    if (!raw) {
-      throw new Error(`Workspace not found at ${storageKey}.`);
-    }
-    const workspace = JSON.parse(raw) as { ui?: { lastSelectionIds?: string[] } };
-    const selectedObjectId = workspace.ui?.lastSelectionIds?.[0];
-    if (!selectedObjectId) {
-      throw new Error("Located object was not persisted as the canvas selection.");
-    }
-    return selectedObjectId;
-  }, workspaceKey);
 
   const closeSearch = search.locator('[aria-label="关闭搜索"]');
   if (await closeSearch.isVisible()) {
@@ -657,7 +651,7 @@ async function focusFirstShapeSelected(page: Page, workspaceKey: string): Promis
     await page.waitForTimeout(350);
   }
   await expect(toolbar).toBeVisible({ timeout: 10_000 });
-  return selectedObjectId;
+  return target.objectId;
 }
 
 /** Loads a seeded project and waits for first shape + settle. Returns load-phase entry data. */
@@ -682,6 +676,9 @@ async function openProjectAndMeasureLoad(page: Page, key: string, area: string):
     scale: project.scale,
     samples,
     io,
+    feedback: null,
+    feedbackApplicability: "notApplicable",
+    feedbackValidity: "notApplicable",
     extra: { firstShapeAtMs: support.firstShapeAtMs }
   });
 }
@@ -701,6 +698,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       if (!response.ok) throw new Error(`Build provenance endpoint unavailable: ${response.status}`);
       return response.json() as Promise<BuildIdentity>;
     });
+    expect(buildIdentity.isDirty, "Performance evidence requires a clean tracked build").toBe(false);
     expect(buildIdentity.sourceSha, "served build missing source SHA").toBe(readGitCommit());
     expect(buildIdentity.buildId, "served build missing build ID").toBeTruthy();
     expect(buildIdentity.artifactSha256, "served build missing artifact digest").toMatch(/^[a-f0-9]{64}$/);
@@ -725,7 +723,9 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       phase: "backToProjectList",
       scale: { objects: 500 },
       samples: backSamples,
-      feedback: backFeedback
+      feedback: backFeedback,
+      feedbackApplicability: "required",
+      feedbackValidity: backFeedback.valid ? "valid" : "invalid"
     });
 
     // --- from list -> open project B ---------------------------------------
@@ -742,7 +742,9 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       phase: "openFromList",
       scale: { objects: 60 },
       samples: openBSamples,
-      feedback: openBFeedback
+      feedback: openBFeedback,
+      feedbackApplicability: "required",
+      feedbackValidity: openBFeedback.valid ? "valid" : "invalid"
     });
 
     // --- direct URL switch B -> A (same component tree, no remount) --------
@@ -759,7 +761,10 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       phase: "directSwitchBtoA",
       scale: { objects: 60 },
       samples: switchSamples,
-      io: switchIo
+      io: switchIo,
+      feedback: null,
+      feedbackApplicability: "notApplicable",
+      feedbackValidity: "notApplicable"
     });
     const shapesA = await page.locator(".morpho-shape-host").count();
     expect(shapesA, "切换后画布为空").toBeGreaterThan(0);
@@ -798,7 +803,10 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       project: "objects500",
       phase: "selection",
       scale: { clicks: centres.length },
-      samples: await endPerfPhase(page)
+      samples: await endPerfPhase(page),
+      feedback: null,
+      feedbackApplicability: "notApplicable",
+      feedbackValidity: "notApplicable"
     });
 
     // --- high-frequency drag ------------------------------------------------
@@ -818,6 +826,9 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       phase: "drag",
       scale: { steps: DRAG_STEPS },
       samples: dragSamples,
+      feedback: null,
+      feedbackApplicability: "notApplicable",
+      feedbackValidity: "notApplicable",
       extra: { achievedPointerRateHz: dragSamples.pointerRateHz === null ? null : Math.round(dragSamples.pointerRateHz) }
     });
 
@@ -835,7 +846,10 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       area: "canvas",
       project: "objects500",
       phase: "boxSelect",
-      samples: await endPerfPhase(page)
+      samples: await endPerfPhase(page),
+      feedback: null,
+      feedbackApplicability: "notApplicable",
+      feedbackValidity: "notApplicable"
     });
 
     // --- select all (ctrl+a) -------------------------------------------------
@@ -846,7 +860,10 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       area: "canvas",
       project: "objects500",
       phase: "selectAll",
-      samples: await endPerfPhase(page)
+      samples: await endPerfPhase(page),
+      feedback: null,
+      feedbackApplicability: "notApplicable",
+      feedbackValidity: "notApplicable"
     });
     await page.keyboard.press("Escape");
 
@@ -866,6 +883,9 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       project: "objects500",
       phase: "pan",
       samples: panSamples,
+      feedback: null,
+      feedbackApplicability: "notApplicable",
+      feedbackValidity: "notApplicable",
       extra: { achievedPointerRateHz: panSamples.pointerRateHz === null ? null : Math.round(panSamples.pointerRateHz) }
     });
 
@@ -878,7 +898,10 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       area: "canvas",
       project: "objects500",
       phase: "zoomSingle",
-      samples: await endPerfPhase(page)
+      samples: await endPerfPhase(page),
+      feedback: null,
+      feedbackApplicability: "notApplicable",
+      feedbackValidity: "notApplicable"
     });
 
     await beginPerfPhase(page);
@@ -891,7 +914,10 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       area: "canvas",
       project: "objects500",
       phase: "zoomContinuous",
-      samples: await endPerfPhase(page)
+      samples: await endPerfPhase(page),
+      feedback: null,
+      feedbackApplicability: "notApplicable",
+      feedbackValidity: "notApplicable"
     });
 
     // --- add object via paste (real paste handoff) ----------------------------
@@ -919,6 +945,8 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       samples: addSamples,
       io: addIo,
       feedback: addFeedback,
+      feedbackApplicability: "required",
+      feedbackValidity: addFeedback.valid ? "valid" : "invalid",
       extra: { objectVisibleAtMs: Number(addVisibleAt.toFixed(1)) }
     });
 
@@ -937,7 +965,9 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       phase: "deleteObject",
       scale: { shapesBefore: countAfterAdd },
       samples: deleteSamples,
-      feedback: deleteFeedback
+      feedback: deleteFeedback,
+      feedbackApplicability: "required",
+      feedbackValidity: deleteFeedback.valid ? "valid" : "invalid"
     });
 
     // --- toolbar hide action ---------------------------------------------------
@@ -951,12 +981,16 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       hideBefore,
       { timeout: 10_000 }
     );
+    const hideSamples = await endPerfPhase(page);
+    const hideFeedback = await readFeedback(page);
     record({
       area: "canvas",
       project: "objects500",
       phase: "toolbarHideObject",
-      samples: await endPerfPhase(page),
-      feedback: await readFeedback(page)
+      samples: hideSamples,
+      feedback: hideFeedback,
+      feedbackApplicability: "required",
+      feedbackValidity: hideFeedback.valid ? "valid" : "invalid"
     });
     expect(pageErrors, "画布阶段页面抛出了未捕获错误").toEqual([]);
   });
@@ -989,6 +1023,9 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
         phase: "typing",
         scale,
         samples: await endPerfPhase(page),
+        feedback: null,
+        feedbackApplicability: "notApplicable",
+        feedbackValidity: "notApplicable",
         extra: { characters: TYPING_TEXT.length }
       });
 
@@ -1016,6 +1053,8 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
         scale,
         samples: streamSamples,
         feedback: streamFeedback,
+        feedbackApplicability: "required",
+        feedbackValidity: streamFeedback.valid ? "valid" : "invalid",
         extra: turnPost
           ? { requestDispatchedAtMs: Number(turnPost.at.toFixed(1)) }
           : {}
@@ -1036,6 +1075,9 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
         phase: "autoScrollAtRest",
         scale,
         samples: zeroSamples(),
+        feedback: null,
+        feedbackApplicability: "notApplicable",
+        feedbackValidity: "notApplicable",
         extra: { pinnedToBottom: nearBottom }
       });
 
@@ -1068,6 +1110,8 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
         scale,
         samples: toolSamples,
         feedback: toolFeedback,
+        feedbackApplicability: "required",
+        feedbackValidity: toolFeedback.valid ? "valid" : "invalid",
         extra: {
           requestCount: requestPosts.length,
           requestGapMs: Number((requestPosts[1]!.at - requestPosts[0]!.at).toFixed(1)),
@@ -1108,6 +1152,9 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
         phase: "scrollUpDuringStream",
         scale,
         samples: zeroSamples(),
+        feedback: null,
+        feedbackApplicability: "notApplicable",
+        feedbackValidity: "notApplicable",
         extra: {
           scrollTopWhileHeld: scrollWhileHeld,
           scrollTopAfterStream: scrollAfter,
@@ -1157,6 +1204,9 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
         scale: project.scale,
         samples: loadSamples,
         io: loadIo,
+        feedback: null,
+        feedbackApplicability: "notApplicable",
+        feedbackValidity: "notApplicable",
         extra: {
           firstShapeAtMs: support.firstShapeAtMs,
           seededAssetBytes: seededAssets,
@@ -1175,13 +1225,17 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       await page.locator('[aria-label="资产"]').click();
       await expect(page.locator('section[aria-label="资产"]')).toBeVisible({ timeout: 10_000 });
       await page.waitForTimeout(600);
+      const firstOpenSamples = await endPerfPhase(page);
+      const firstOpenFeedback = await readFeedback(page);
       record({
         area: "assets",
         project: tierKey,
         phase: "assetDrawerFirstOpen",
         scale: project.scale,
-        samples: await endPerfPhase(page),
-        feedback: await readFeedback(page)
+        samples: firstOpenSamples,
+        feedback: firstOpenFeedback,
+        feedbackApplicability: "required",
+        feedbackValidity: firstOpenFeedback.valid ? "valid" : "invalid"
       });
 
       // --- show-all expansion (only exists when >10 assets) --------------------
@@ -1196,13 +1250,17 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
         await showAll.click();
         await page.locator(".asset-row").nth(20).waitFor({ state: "visible", timeout: 10_000 });
         await page.waitForTimeout(500);
+        const showAllSamples = await endPerfPhase(page);
+        const showAllFeedback = await readFeedback(page);
         record({
           area: "assets",
           project: tierKey,
           phase: "assetDrawerShowAll",
           scale: project.scale,
-          samples: await endPerfPhase(page),
-          feedback: await readFeedback(page),
+          samples: showAllSamples,
+          feedback: showAllFeedback,
+          feedbackApplicability: "required",
+          feedbackValidity: showAllFeedback.valid ? "valid" : "invalid",
           extra: { assetRows: await page.locator(".asset-row").count() }
         });
       }
@@ -1212,13 +1270,17 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       await armFeedback(page, 'section[aria-label="资产"]');
       await page.locator('[aria-label="资产筛选"] button', { hasText: "原始资料" }).click();
       await page.waitForTimeout(600);
+      const filterSamples = await endPerfPhase(page);
+      const filterFeedback = await readFeedback(page);
       record({
         area: "assets",
         project: tierKey,
         phase: "assetFilter",
         scale: project.scale,
-        samples: await endPerfPhase(page),
-        feedback: await readFeedback(page)
+        samples: filterSamples,
+        feedback: filterFeedback,
+        feedbackApplicability: "required",
+        feedbackValidity: filterFeedback.valid ? "valid" : "invalid"
       });
 
       // --- asset drawer: reopen -------------------------------------------------
@@ -1229,13 +1291,17 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       await page.locator('[aria-label="资产"]').click();
       await expect(page.locator('section[aria-label="资产"]')).toBeVisible({ timeout: 10_000 });
       await page.waitForTimeout(600);
+      const reopenSamples = await endPerfPhase(page);
+      const reopenFeedback = await readFeedback(page);
       record({
         area: "assets",
         project: tierKey,
         phase: "assetDrawerReopen",
         scale: project.scale,
-        samples: await endPerfPhase(page),
-        feedback: await readFeedback(page)
+        samples: reopenSamples,
+        feedback: reopenFeedback,
+        feedbackApplicability: "required",
+        feedbackValidity: reopenFeedback.valid ? "valid" : "invalid"
       });
       await page.locator('[aria-label="关闭资产"]').click();
       await page.waitForTimeout(300);
@@ -1247,13 +1313,17 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       await armFeedback(page, "body");
       await page.mouse.click(centre!.x, centre!.y);
       await expect(page.locator('[aria-label="选中对象工具"]')).toBeVisible({ timeout: 8_000 });
+      const selectDetailSamples = await endPerfPhase(page);
+      const selectDetailFeedback = await readFeedback(page);
       record({
         area: "assets",
         project: tierKey,
         phase: "selectImageDetail",
         scale: project.scale,
-        samples: await endPerfPhase(page),
-        feedback: await readFeedback(page)
+        samples: selectDetailSamples,
+        feedback: selectDetailFeedback,
+        feedbackApplicability: "required",
+        feedbackValidity: selectDetailFeedback.valid ? "valid" : "invalid"
       });
     });
   }
@@ -1343,12 +1413,18 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     async function runImport(
       phase: string,
       files: { name: string; mimeType: string; buffer: Buffer }[],
-      settleMs = 4_000
+      settleMs = 2_000
     ): Promise<void> {
       const before = await page.locator(".morpho-shape-host").count();
       const beforeWorkspace = await readPersistedWorkspace();
       const beforeObjectIds = new Set(Object.keys(beforeWorkspace.objects));
       const beforeAssetIds = new Set(Object.keys(beforeWorkspace.assets));
+      const parseableNames = files
+        .map((file) => file.name)
+        .filter((name): name is typeof PARSEABLE_IMPORT_FILENAMES[number] =>
+          (PARSEABLE_IMPORT_FILENAMES as readonly string[]).includes(name)
+        );
+
       await beginPerfPhase(page);
       await armFeedback(page, "body");
       const [chooser] = await Promise.all([
@@ -1357,14 +1433,54 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       ]);
       await chooser.setFiles(files);
       const visibleAt = await waitForShapeCountAbove(page, before + files.length - 1);
-      await page.waitForTimeout(settleMs);
+
+      let parseTerminalAtMs: number | null = null;
+      if (parseableNames.length > 0) {
+        await page.waitForFunction(
+          ({ targetNames, beforeObjIds, beforeAstIds, storageKey }) => {
+            const raw = window.localStorage.getItem(storageKey);
+            if (!raw) return false;
+            const ws = JSON.parse(raw) as PersistedWorkspaceSnapshot;
+            const beforeObjs = new Set(beforeObjIds);
+            const beforeAsts = new Set(beforeAstIds);
+            return targetNames.every((fileName) => {
+              const candidates = Object.entries(ws.objects).filter(([objectId, object]) =>
+                object.type === "file" &&
+                object.fileName === fileName &&
+                !beforeObjs.has(objectId) &&
+                object.assetId !== undefined &&
+                !beforeAsts.has(object.assetId)
+              );
+              return candidates.length === 1 &&
+                (candidates[0]?.[1].parseStatus === "parsed" || candidates[0]?.[1].parseStatus === "failed");
+            });
+          },
+          {
+            targetNames: parseableNames,
+            beforeObjIds: [...beforeObjectIds],
+            beforeAstIds: [...beforeAssetIds],
+            storageKey: project.workspaceKey
+          },
+          { polling: 250, timeout: 120_000 }
+        );
+        parseTerminalAtMs = await pageNow(page);
+      } else {
+        await page.waitForTimeout(settleMs);
+      }
+
       const samples = await endPerfPhase(page);
       const feedback = await readFeedback(page);
       const io = await collectIoStats(page);
+
+      if (parseTerminalAtMs !== null) {
+        expect(parseTerminalAtMs, "Parse terminal must fall within the measured phase window")
+          .toBeLessThanOrEqual(samples.phaseEndedAt);
+        expect(parseTerminalAtMs, "Parse terminal must occur after phase start")
+          .toBeGreaterThanOrEqual(samples.phaseStartedAt);
+      }
+
       const importedDocuments = await waitForImportedFiles(
-        files.map((file) => file.name).filter((name): name is typeof PARSEABLE_IMPORT_FILENAMES[number] =>
-          (PARSEABLE_IMPORT_FILENAMES as readonly string[]).includes(name)
-        ),
+        parseableNames,
         beforeObjectIds,
         beforeAssetIds
       );
@@ -1380,9 +1496,13 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
         samples,
         io,
         feedback,
+        feedbackApplicability: "required",
+        feedbackValidity: feedback.valid ? "valid" : "invalid",
         extra: {
           objectsVisibleAtMs: Number(visibleAt.toFixed(1)),
           visibleAfterChangeMs: changeAt === null ? null : Number((visibleAt - changeAt).toFixed(1)),
+          parseTerminalAtMs: parseTerminalAtMs === null ? null : Number(parseTerminalAtMs.toFixed(1)),
+          parseDurationMs: parseTerminalAtMs === null || changeAt === null ? null : Number((parseTerminalAtMs - changeAt).toFixed(1)),
           fileNames: files.map((file) => file.name),
           importedDocuments
         }
@@ -1451,13 +1571,17 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     await armFeedback(page, "body");
     await page.locator('[aria-label="项目内搜索"]').click();
     await expect(page.locator('section[aria-label="项目内搜索"]')).toBeVisible({ timeout: 10_000 });
+    const searchDrawerSamples = await endPerfPhase(page);
+    const searchDrawerFeedback = await readFeedback(page);
     record({
       area: "surfaces",
       project: "caseStudy",
       phase: "searchDrawerOpen",
       scale: project.scale,
-      samples: await endPerfPhase(page),
-      feedback: await readFeedback(page)
+      samples: searchDrawerSamples,
+      feedback: searchDrawerFeedback,
+      feedbackApplicability: "required",
+      feedbackValidity: searchDrawerFeedback.valid ? "valid" : "invalid"
     });
 
     await beginPerfPhase(page);
@@ -1472,6 +1596,9 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       phase: "searchQuery",
       scale: project.scale,
       samples: searchSamples,
+      feedback: null,
+      feedbackApplicability: "notApplicable",
+      feedbackValidity: "notApplicable",
       extra: { resultGroups: searchResultRows }
     });
     await page.locator('[aria-label="关闭搜索"]').click();
@@ -1483,13 +1610,17 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     await page.locator('[aria-label="项目记录"]').click();
     await expect(page.locator("section.side-drawer").first()).toBeVisible({ timeout: 10_000 });
     await page.waitForTimeout(700);
+    const recordsSamples = await endPerfPhase(page);
+    const recordsFeedback = await readFeedback(page);
     record({
       area: "surfaces",
       project: "caseStudy",
       phase: "recordsDrawerOpen",
       scale: project.scale,
-      samples: await endPerfPhase(page),
-      feedback: await readFeedback(page)
+      samples: recordsSamples,
+      feedback: recordsFeedback,
+      feedbackApplicability: "required",
+      feedbackValidity: recordsFeedback.valid ? "valid" : "invalid"
     });
     await page.keyboard.press("Escape");
     await page.waitForTimeout(300);
@@ -1499,13 +1630,17 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     await armFeedback(page, "body");
     await page.locator('button', { hasText: "交付准备" }).click();
     await page.waitForTimeout(900);
+    const deliverySamples = await endPerfPhase(page);
+    const deliveryFeedback = await readFeedback(page);
     record({
       area: "surfaces",
       project: "caseStudy",
       phase: "deliveryPrepOpen",
       scale: project.scale,
-      samples: await endPerfPhase(page),
-      feedback: await readFeedback(page)
+      samples: deliverySamples,
+      feedback: deliveryFeedback,
+      feedbackApplicability: "required",
+      feedbackValidity: deliveryFeedback.valid ? "valid" : "invalid"
     });
     await page.keyboard.press("Escape");
     await page.waitForTimeout(300);
@@ -1602,7 +1737,10 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       area: "surfaces",
       project: "builtinCaseStudy",
       phase: "archivePanelOpen",
-      samples: await endPerfPhase(page)
+      samples: await endPerfPhase(page),
+      feedback: null,
+      feedbackApplicability: "notApplicable",
+      feedbackValidity: "notApplicable"
     });
 
     await beginPerfPhase(page);
@@ -1619,6 +1757,9 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       project: "builtinCaseStudy",
       phase: "archiveExportBackupZip",
       samples: exportSamples,
+      feedback: null,
+      feedbackApplicability: "notApplicable",
+      feedbackValidity: "notApplicable",
       extra: {
         wallMs: Number((downloadAt - exportStartedAt).toFixed(1)),
         suggestedFilename: download.suggestedFilename(),
@@ -1643,6 +1784,9 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       project: "builtinCaseStudy",
       phase: "archiveExportHumanZip",
       samples: archiveSamples,
+      feedback: null,
+      feedbackApplicability: "notApplicable",
+      feedbackValidity: "notApplicable",
       extra: {
         wallMs: Number((archiveDownloadAt - archiveStartedAt).toFixed(1)),
         suggestedFilename: archiveDownload.suggestedFilename(),
@@ -1715,13 +1859,17 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     });
     expect(duringConfirmation?.workingState?.currentDefaultReferenceId)
       .toBe(beforeReference.workingState?.currentDefaultReferenceId);
+    const referenceSamples = await endPerfPhase(page);
+    const referenceFeedback = await readFeedback(page);
     record({
       area: "surfaces",
       project: "builtinCaseStudy",
       phase: "defaultReferenceConfirm",
       scale: builtinScale,
-      samples: await endPerfPhase(page),
-      feedback: await readFeedback(page),
+      samples: referenceSamples,
+      feedback: referenceFeedback,
+      feedbackApplicability: "required",
+      feedbackValidity: referenceFeedback.valid ? "valid" : "invalid",
       extra: {
         options: ["只替换默认参考", "替换并标记相关素材待复核"],
         stateUnchangedBeforeChoice: true
@@ -1746,12 +1894,16 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       await armFeedback(page, "main");
       await deleteButton.click();
       await page.waitForTimeout(900);
+      const deletePreviewSamples = await endPerfPhase(page);
+      const deletePreviewFeedback = await readFeedback(page);
       record({
         area: "surfaces",
         project: "builtinCaseStudy",
         phase: "deletionPreview",
-        samples: await endPerfPhase(page),
-        feedback: await readFeedback(page)
+        samples: deletePreviewSamples,
+        feedback: deletePreviewFeedback,
+        feedbackApplicability: "required",
+        feedbackValidity: deletePreviewFeedback.valid ? "valid" : "invalid"
       });
       // Cancel: nothing is deleted.
       await page.getByRole("button", { name: /取消/ }).click().catch(() => undefined);
@@ -1768,6 +1920,9 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     const missingMandatory = [...MANDATORY_PHASE_KEYS].filter((key) => !observedKeys.has(key));
     const missingOptional = [...OPTIONAL_PHASE_KEYS].filter((key) => !observedKeys.has(key));
     const unexpectedKeys = [...observedKeys].filter((key) => !expectedKeys.has(key));
+    const invalidRequiredFeedback = collected
+      .filter((entry) => entry.feedbackApplicability === "required" && entry.feedbackValidity !== "valid")
+      .map(phaseKey);
     const completeness = {
       expectedCount: expectedKeys.size,
       observedCount: observedKeys.size,
@@ -1776,10 +1931,12 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       missingMandatory: missingMandatory.sort(),
       missingOptional: missingOptional.sort(),
       unexpectedKeys: unexpectedKeys.sort(),
-      mandatoryPassed: missingMandatory.length === 0 && unexpectedKeys.length === 0
+      invalidRequiredFeedback: invalidRequiredFeedback.sort(),
+      mandatoryPassed: missingMandatory.length === 0 && unexpectedKeys.length === 0 && invalidRequiredFeedback.length === 0
     };
     expect(missingMandatory, `Phase 5 mandatory phases missing: ${missingMandatory.join(", ")}`).toEqual([]);
     expect(unexpectedKeys, `Phase 5 unexpected phases recorded: ${unexpectedKeys.join(", ")}`).toEqual([]);
+    expect(invalidRequiredFeedback, `Phase 5 required first-feedback invalid: ${invalidRequiredFeedback.join(", ")}`).toEqual([]);
     const payloadProjects = phase5Project("objects500");
     expect(buildIdentity, "Phase 5 evidence missing served build provenance").not.toBeNull();
     await mkdir(dirname(REPORT_PATH), { recursive: true });

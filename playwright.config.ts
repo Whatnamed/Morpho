@@ -87,7 +87,7 @@ export default defineConfig({
       MORPHO_GRS_API_KEY: "",
       MORPHO_ALLOW_PAID_SMOKE_TESTS: "false",
       MORPHO_E2E_BUILD_PROVENANCE: "true",
-      MORPHO_REQUIRE_CLEAN_BUILD: "true"
+      MORPHO_REQUIRE_CLEAN_BUILD: process.env.MORPHO_REQUIRE_CLEAN_BUILD ?? "false"
     }
   }
 });
