@@ -211,7 +211,20 @@ describe("Agent tool authority", () => {
       "对比结论存档了吗？",
       "这个比较结果有没有保存？",
       "这次比较记录是不是已经保存了？",
-      "比较结果之前存档过吗？"
+      "比较结果之前存档过吗？",
+      "比较结果保存没有？",
+      "比较结果保存没有",
+      "比较结果保存没？",
+      "比较结果保存没",
+      "比较结果存档没有？",
+      "比较结果存档没？",
+      "比较结果保存了吧？",
+      "比较结果保存过吧？",
+      "比较结果保存了对吧？",
+      "比较结果保存了是不是？",
+      "比较结果保存吗？",
+      "比较结果保存没保存？",
+      "比较结果存没存？"
     ];
     for (const draft of statusQueryExamples) {
       const statusQuery = authority({
@@ -223,7 +236,7 @@ describe("Agent tool authority", () => {
       expect(statusQuery.allowedTools).not.toContain("create_comparison_analysis");
     }
 
-    // Polite current save requests grant Compare write authority when preconditions hold.
+    // Polite current save requests & past-context requests grant Compare write authority when preconditions hold.
     const politeActionExamples = [
       "能不能把比较结果保存一下？",
       "可以帮我保存比较记录吗？",
@@ -232,7 +245,11 @@ describe("Agent tool authority", () => {
       "请创建比较记录。",
       "保存比较结果。",
       "把比较结果保存下来。",
-      "把这次比较的结论存档。"
+      "把这次比较的结论存档。",
+      "已经决定好了，帮我保存比较结果。",
+      "已经决定好了，现在帮我保存比较结果。",
+      "之前讨论过了，这次把比较结果保存下来。",
+      "刚才比较完了，请创建比较记录。"
     ];
     for (const draft of politeActionExamples) {
       const politeAction = authority({
