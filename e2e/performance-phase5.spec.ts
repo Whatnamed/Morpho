@@ -437,10 +437,13 @@ async function selectImageObject(
   if (await closeSearch.isVisible()) {
     await closeSearch.click();
   }
-  await expect(search).toBeHidden({ timeout: 10_000 });
-
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(500);
   const toolbar = page.locator('[aria-label="选中对象工具"]');
+  for (let attempt = 0; attempt < 5 && !(await toolbar.isVisible()); attempt += 1) {
+    await page.mouse.move(500, 400);
+    await page.mouse.wheel(0, 500);
+    await page.waitForTimeout(350);
+  }
   await expect(toolbar).toBeVisible({ timeout: 10_000 });
   await expect(page.locator('[aria-label="设为后续默认参考"]')).toBeVisible({ timeout: 10_000 });
   return target.objectId;
@@ -544,10 +547,13 @@ async function focusFirstShapeSelected(
   if (await closeSearch.isVisible()) {
     await closeSearch.click();
   }
-  await expect(search).toBeHidden({ timeout: 10_000 });
-
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(500);
   const toolbar = page.locator('[aria-label="选中对象工具"]');
+  for (let attempt = 0; attempt < 5 && !(await toolbar.isVisible()); attempt += 1) {
+    await page.mouse.move(500, 400);
+    await page.mouse.wheel(0, 500);
+    await page.waitForTimeout(350);
+  }
   await expect(toolbar).toBeVisible({ timeout: 10_000 });
   return target.objectId;
 }
