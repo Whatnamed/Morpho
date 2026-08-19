@@ -203,11 +203,13 @@ describe("Agent tool authority", () => {
     });
     expect(modifiedForeign.allowComparisonWrite).toBe(false);
     expect(modifiedForeign.allowedTools).not.toContain("create_comparison_analysis");
-    // Foreign target in active save requests and hypothetical/conditional mentions must NOT grant.
+    // Foreign target in active save requests, past-action statements, bare ellipsis, and hypothetical/conditional mentions must NOT grant.
     const nonAuthorizingExamples = [
       "把这两个比较一下。比较结果保存了吗？请保存测试结果。",
       "比较结果保存了吗？请保存研究结论。",
       "比较两个方案，然后记录一下测试结果",
+      "比较结果保存了吗？如果没有，请保存一下。",
+      "我把比较结果保存好了。",
       "如果要保存比较记录，请先问我。",
       "如果需要保存比较记录，先确认一下。"
     ];
@@ -278,7 +280,6 @@ describe("Agent tool authority", () => {
       "已经决定好了，现在帮我保存比较结果。",
       "之前讨论过了，这次把比较结果保存下来。",
       "刚才比较完了，请创建比较记录。",
-      "比较结果保存了吗？如果没有，请保存一下。",
       "比较结果保存了吗？如果没有，请保存比较结果。",
       "把这两个比较一下；请保存比较记录。"
     ];
