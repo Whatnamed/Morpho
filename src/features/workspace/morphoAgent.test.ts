@@ -16,6 +16,8 @@ import {
   isExplicitComparisonRecordRequest,
   isRetrospectiveComparisonPersistenceQuery,
   isClauseRetrospectivePersistenceQuery,
+  classifyPersistenceClauseIntent,
+  classifyPersistenceTargetOwnership,
   normalizeGenerateVisualsForSelectedDirections,
   parseMorphoAgentToolCallBatch,
   parseMorphoAgentToolArguments,
@@ -405,6 +407,17 @@ describe("Morpho agent tool argument validation", () => {
     expect(isExplicitComparisonRecordRequest("比较一下，记录一下结果。")).toBe(true);
     expect(isExplicitComparisonRecordRequest("对比这两个方案，把结论存档。")).toBe(true);
     expect(isExplicitComparisonRecordRequest("把这两个比较一下，记录一下结果")).toBe(true);
+    // Foreign target in an active save request does NOT grant Compare write authority.
+    expect(isExplicitComparisonRecordRequest("把这两个比较一下。比较结果保存了吗？请保存测试结果。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果保存了吗？请保存研究结论。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较这两个方案，把研究的结论存档。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较这两个方案，把研究最终结论存档。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较两个方案，然后记录一下测试结果")).toBe(false);
+
+    // Hypothetical or conditional mentions of saving do NOT grant Compare write authority.
+    expect(isExplicitComparisonRecordRequest("如果要保存比较记录，请先问我。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("如果需要保存比较记录，先确认一下。")).toBe(false);
+
     // Modal cue in an unrelated clause does NOT lend authority to a status query.
     expect(isExplicitComparisonRecordRequest("比较结果保存吗？能不能告诉我？")).toBe(false);
     expect(isExplicitComparisonRecordRequest("比较结果保存吗？可以帮我确认一下吗？")).toBe(false);
@@ -414,8 +427,12 @@ describe("Morpho agent tool argument validation", () => {
     expect(isExplicitComparisonRecordRequest("比较结果保存了吗？如果没有，请告诉我。")).toBe(false);
     expect(isExplicitComparisonRecordRequest("对比结论存档了吗？麻烦确认下。")).toBe(false);
     expect(isExplicitComparisonRecordRequest("保存比较结果了吗？请告诉我。")).toBe(false);
+
     // Explicit save request in a distinct clause grants write authority.
     expect(isExplicitComparisonRecordRequest("比较结果保存了吗？如果没有，请保存一下。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("比较结果保存了吗？如果没有，请保存比较结果。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("把这两个比较一下；请保存比较记录。")).toBe(true);
+
     // Polite modal action requests are positive save requests, not status queries.
     expect(isExplicitComparisonRecordRequest("能不能把比较结果保存一下？")).toBe(true);
     expect(isExplicitComparisonRecordRequest("可以帮我保存比较记录吗？")).toBe(true);
@@ -426,11 +443,13 @@ describe("Morpho agent tool argument validation", () => {
     expect(isExplicitComparisonRecordRequest("麻烦保存一下比较记录。")).toBe(true);
     expect(isExplicitComparisonRecordRequest("可以把这次比较的结果存下来吗？")).toBe(true);
     expect(isExplicitComparisonRecordRequest("麻烦把比较结果保存一下")).toBe(true);
+
     // Past-context preceding an explicit current save request must grant.
     expect(isExplicitComparisonRecordRequest("已经决定好了，帮我保存比较结果。")).toBe(true);
     expect(isExplicitComparisonRecordRequest("已经决定好了，现在帮我保存比较结果。")).toBe(true);
     expect(isExplicitComparisonRecordRequest("之前讨论过了，这次把比较结果保存下来。")).toBe(true);
     expect(isExplicitComparisonRecordRequest("刚才比较完了，请创建比较记录。")).toBe(true);
+
     // Explicit negation is fail-closed.
     expect(isExplicitComparisonRecordRequest("比较一下，但不要保存记录。")).toBe(false);
     expect(isExplicitComparisonRecordRequest("不要创建比较记录，只讨论。")).toBe(false);
@@ -488,6 +507,36 @@ describe("Morpho agent tool argument validation", () => {
     expect(isRetrospectiveComparisonPersistenceQuery("之前讨论过了，这次把比较结果保存下来。")).toBe(false);
     expect(isRetrospectiveComparisonPersistenceQuery("刚才比较完了，请创建比较记录。")).toBe(false);
     expect(isRetrospectiveComparisonPersistenceQuery("比较结果保存了吗？如果没有，请保存一下。")).toBe(false);
+  });
+
+  it("classifies persistence clause intent and target ownership correctly", () => {
+    // Clause Intent classification:
+    expect(classifyPersistenceClauseIntent("把这两个比较一下")).toBe("none");
+    expect(classifyPersistenceClauseIntent("如果没有")).toBe("none");
+    expect(classifyPersistenceClauseIntent("能不能告诉我")).toBe("none");
+    expect(classifyPersistenceClauseIntent("不要保存记录")).toBe("negated");
+    expect(classifyPersistenceClauseIntent("别创建比较记录")).toBe("negated");
+    expect(classifyPersistenceClauseIntent("比较结果不要保存")).toBe("negated");
+    expect(classifyPersistenceClauseIntent("如果要保存比较记录")).toBe("hypotheticalOrConditional");
+    expect(classifyPersistenceClauseIntent("如果需要保存比较记录")).toBe("hypotheticalOrConditional");
+    expect(classifyPersistenceClauseIntent("要是打算存下来")).toBe("hypotheticalOrConditional");
+    expect(classifyPersistenceClauseIntent("比较结果保存了吗")).toBe("statusQuery");
+    expect(classifyPersistenceClauseIntent("对比结论存档了吗")).toBe("statusQuery");
+    expect(classifyPersistenceClauseIntent("比较结果保存吗")).toBe("statusQuery");
+    expect(classifyPersistenceClauseIntent("请保存比较记录")).toBe("activeRequest");
+    expect(classifyPersistenceClauseIntent("帮我把比较结果保存下来")).toBe("activeRequest");
+    expect(classifyPersistenceClauseIntent("请保存测试结果")).toBe("activeRequest");
+    expect(classifyPersistenceClauseIntent("请保存一下")).toBe("activeRequest");
+
+    // Target Ownership classification:
+    expect(classifyPersistenceTargetOwnership("请保存比较记录")).toBe("explicitCompare");
+    expect(classifyPersistenceTargetOwnership("把比较结果保存下来")).toBe("explicitCompare");
+    expect(classifyPersistenceTargetOwnership("麻烦保存一下比较记录")).toBe("explicitCompare");
+    expect(classifyPersistenceTargetOwnership("请保存测试结果")).toBe("foreignTarget");
+    expect(classifyPersistenceTargetOwnership("把研究结论存档")).toBe("foreignTarget");
+    expect(classifyPersistenceTargetOwnership("把研究最终结论存档")).toBe("foreignTarget");
+    expect(classifyPersistenceTargetOwnership("请保存一下")).toBe("bareOrEllipsis");
+    expect(classifyPersistenceTargetOwnership("把结论存档")).toBe("bareOrEllipsis");
   });
 
   it("negates only the compare action itself, never the save intent", () => {
