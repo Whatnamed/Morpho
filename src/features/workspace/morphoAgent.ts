@@ -942,11 +942,11 @@ const COMPARE_RECORD_SAVE_VERB =
 
 /**
  * 持久化动词直接绑定比较名词：保存这次比较 / 保留这次对比 / 创建比较记录 /
- * 记录一下比较结果。动词与比较词之间只允许窄限定词，因此"创建两个方案然后
+ * 记录一下比较结果 / 保存一下比较记录。动词与比较词之间只允许窄限定词，因此"创建两个方案然后
  * 比较一下"与"记录一下预算，再比较两个方案"不会获得授权。
  */
 const COMPARE_RECORD_VERB_TO_COMPARE_PATTERN = new RegExp(
-  `(?:${COMPARE_RECORD_SAVE_VERB.source})(?:这次|本轮|当前|这个|这一|一份|一个|的|结果|结论|记录)?(?:比较|对比|compare)`,
+  `(?:${COMPARE_RECORD_SAVE_VERB.source})(?:一下|下)?(?:这次|本轮|当前|这个|这一|一份|一个|的|结果|结论|记录)?(?:比较|对比|compare)`,
   "i"
 );
 
@@ -1002,20 +1002,20 @@ function hasImmediateCompareResultPersistence(text: string): boolean {
 }
 
 /**
- * 识别针对 Compare 记录持久化状态的回溯/状态查询语气（"保存了吗？" / "保存没有？" /
- * "保存没？" / "保存了吧？" / "是否已存档？" / "保存没保存？" / "比较结果保存吗？"），
- * 防止将状态查询或真值确认误判为当前 Workspace 写入请求。
- *
- * 核心原则：
- * 1. 状态查询/回溯/真值确认（Query / Ambiguous）一律拒绝（fail-closed，无写入权限）；
- * 2. 礼貌情态请求与带前置历史上下文的主动请求（"能不能保存一下？" / "已经决定好了，帮我保存比较结果"）
- *    精准识别为即时操作，保留写入权限。
+ * 检查单个子句是否针对持久化动作表达回溯、状态查询、确认疑问或无情态前缀的裸疑问语气。
  */
-export function isRetrospectiveComparisonPersistenceQuery(text: string): boolean {
-  const trimmed = text.trim();
+export function isClauseRetrospectivePersistenceQuery(clause: string): boolean {
+  const trimmed = clause.trim();
   if (!trimmed) return false;
 
-  // 1. 正反疑问句（A-not-A）：保存没保存 / 存没存 / 存档没存档 / 建没建 / 有没有保存 / 是否保存 / 是不是创建
+  // 1. 查验/询问动词针对持久化状态：查一下是否保存 / 确认有没有存档 / 看看保存了没有
+  if (
+    /(?:查|查看|查询|看|确认|问|想知道|知道|核实|核对|检查).{0,6}(?:一下|下|下看|看)?.{0,10}(?:是否|有没有|是不是|有无|可曾|算不算)?.{0,10}(?:保存|保留|记录|创建|写入|存档|留下|记下|存进|存入|存上|存下来|存|建档|建)/i.test(trimmed)
+  ) {
+    return true;
+  }
+
+  // 2. 正反疑问句（A-not-A）：保存没保存 / 存没存 / 存档没存档 / 建没建 / 有没有保存 / 是否保存 / 是不是创建
   if (
     /(?:保存没保存|存没存|存档没存档|建没建|记没记|写入没写入)/i.test(trimmed) ||
     /(?:有没有|有无|是否|是不是|可曾|算不算).{0,8}(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|存入|存上|存下来|存|建档|建)/i.test(trimmed)
@@ -1023,17 +1023,10 @@ export function isRetrospectiveComparisonPersistenceQuery(text: string): boolean
     return true;
   }
 
-  // 2. 查验/询问动词针对持久化状态：查一下是否保存 / 确认比较结果有没有存档 / 看看保存了没有
-  if (
-    /(?:查|查看|查询|看|确认|问|想知道|知道|核实|核对|检查).{0,6}(?:一下|下|下看|看)?.{0,10}(?:是否|有没有|是不是|有无|可曾|算不算)?.{0,10}(?:保存|保留|记录|创建|写入|存档|留下|记下|存进|存入|存上|存下来|存|建档|建)/i.test(trimmed)
-  ) {
-    return true;
-  }
-
   // 3. 持久化动词 + 疑问完成态/经验态/否定询问后缀：
   // 保存没有 / 保存没 / 存档没有 / 存档没 / 保存了吗 / 存档过吗 / 保存了没 / 保存了没有 / 存过没有 / 保存过了吗 / 存上了吗
   if (
-    /(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|存入|存上|存下来|存|建档|建).{0,8}(?:没有|没|了吗|了么|了没|了没有|过吗|过么|过没|过没有|过了吗|过没有\?|过没\?)(?:[?？\s]*$|[，。；,;!?！？\n])/i.test(trimmed)
+    /(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|存入|存上|存下来|存|建档|建).{0,8}(?:没有|没|了吗|了么|了没|了没有|过吗|过么|过没|过没有|过了吗|过没有\?|过没\?)(?:[?？\s]*$)/i.test(trimmed)
   ) {
     return true;
   }
@@ -1046,13 +1039,13 @@ export function isRetrospectiveComparisonPersistenceQuery(text: string): boolean
     return true;
   }
 
-  // 5. 裸谓词疑问句（无情态请求/祈使前缀，以 "保存吗/存档吗/创建吗" 结尾或带问号）：
-  // 例如："比较结果保存吗？" / "对比结论存档吗？"
-  // 对比有请求前缀的正例："能不能把比较结果保存一下？" / "可以帮我保存比较记录吗？" / "请保存比较结果"
-  const hasModalRequestPrefix =
+  // 5. 裸谓词疑问句：在该子句本身不含情态请求/祈使前缀时，以 "保存吗/存档吗/创建吗" 结尾或带问号
+  // 注意：情态/祈使前缀必须在当前子句内部，例如 "能不能把比较结果保存一下？" 内含 "能不能"，属于正向情态请求；
+  // 而 "比较结果保存吗？" 自身不含情态前缀，即属于状态询问；后接 "能不能告诉我？" 也无法借出 authority。
+  const hasClauseModalRequest =
     /(?:能不能|能否|可否|可不可以|可以帮我|能否帮我|可否帮我|能不能帮我|可以|可不可以|请|帮我|麻烦|劳驾|务必)/i.test(trimmed);
 
-  if (!hasModalRequestPrefix) {
+  if (!hasClauseModalRequest) {
     if (
       /(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|存入|存上|存下来|存|建档|建).{0,4}(?:吗|么)[?？\s]*$/i.test(trimmed)
     ) {
@@ -1060,19 +1053,68 @@ export function isRetrospectiveComparisonPersistenceQuery(text: string): boolean
     }
   }
 
-  // 6. 过去时态副词修饰持久化动词（且该子句不含即时执行指令）：
+  // 6. 过去时态副词修饰持久化动词（且本子句不含即时执行指令）：
   // 例如："比较记录已经创建了" / "比较结果之前已经保存"
-  // 反例（需放行）："已经决定好了，帮我保存比较结果" / "之前讨论过了，这次把比较结果保存下来"
-  const clauses = trimmed.split(/[，。；,;!?！？\n]+/);
+  const hasPastAdverb = /(?:已经|已|此前|之前|刚才|早前|上次|过去|曾|曾经)/i.test(trimmed);
+  const hasSaveVerb = /(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|存入|存上|存下来|存|建档|建)/i.test(trimmed);
+  const hasImmediateAction = /(?:帮我|请|麻烦|劳驾|务必|现在|这次|立刻|马上)/i.test(trimmed);
+  if (hasPastAdverb && hasSaveVerb && !hasImmediateAction) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * 识别针对 Compare 记录持久化状态的回溯/状态查询语气（"保存了吗？" / "保存没有？" /
+ * "保存没？" / "保存了吧？" / "是否已存档？" / "保存没保存？" / "比较结果保存吗？"），
+ * 防止将状态查询或真值确认误判为当前 Workspace 写入请求。
+ *
+ * 核心原则：
+ * 1. 状态查询/回溯/真值确认（Query / Ambiguous）一律拒绝（fail-closed，无写入权限）；
+ * 2. 礼貌情态请求与祈使指令必须在其作用的子句局部绑定（Clause-local binding），其他子句
+ *    中的请求（如 "能不能告诉我？" / "请确认一下"）不得跨子句为状态查询出借写权限；
+ * 3. 若存在独立的即时保存请求子句（如 "比较结果保存了吗？如果没有，请保存一下" 中的 "请保存一下"），
+ *    则精准识别为正向即时操作，保留写入权限。
+ */
+export function isRetrospectiveComparisonPersistenceQuery(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+
+  const clauses = trimmed.split(/[，。；,;!?！？\n]+/).map((c) => c.trim()).filter(Boolean);
+  if (clauses.length === 0) return false;
+
+  const PERSISTENCE_VERBS_PATTERN =
+    /(?:保存|保留|记录|创建|写入|存档|留下|留下来|记下|存为|存进|存入|存上|存下来|存|建档|建)/i;
+
+  const persistenceClauses = clauses.filter((clause) => PERSISTENCE_VERBS_PATTERN.test(clause));
+  if (persistenceClauses.length === 0) {
+    return false;
+  }
+
+  // 如果所有涉及持久化动作的子句全都是回溯/状态查询，则整条请求属于查询，不授权写入；
+  // 如果存在至少一个子句是正向即时请求（例如："比较结果保存了吗？如果没有，请保存一下" 中的 "请保存一下"），
+  // 则该正向子句持有写入意图，不判定为纯回溯查询。
+  return persistenceClauses.every((clause) => isClauseRetrospectivePersistenceQuery(clause));
+}
+
+function hasExplicitCompareSaveNegation(text: string): boolean {
+  const clauses = text.split(/[，。；,;!?！？\n]+/);
   for (const clause of clauses) {
-    const hasPastAdverb = /(?:已经|已|此前|之前|刚才|早前|上次|过去|曾|曾经)/i.test(clause);
-    const hasSaveVerb = /(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|存入|存上|存下来|存|建档|建)/i.test(clause);
-    const hasImmediateAction = /(?:帮我|请|麻烦|劳驾|务必|现在|这次|立刻|马上)/i.test(clause);
-    if (hasPastAdverb && hasSaveVerb && !hasImmediateAction) {
+    const trimmed = clause.trim();
+    if (!trimmed) continue;
+    // 条件从句（"如果没有" / "要是没存" / "若未保存"）不视为对保存意图的否定
+    if (/^(?:如果|要是|若|若是|假若|万一|假设)/i.test(trimmed)) {
+      continue;
+    }
+    if (
+      /(?:不|不要|别|无需|无须|不必|不用|不需要|禁止|暂不|先不要|先别|切勿).{0,12}(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|留在|放进).{0,12}(?:比较|对比|compare)/i.test(trimmed) ||
+      /(?:比较|对比|compare).{0,12}(?:不要|别|无需|无须|不必|不用|不需要|禁止|暂不|先不要|先别|切勿|不).{0,8}(?:保存|保留|记录|创建|写入|存档|留下|存为|存进|存下来|存)/i.test(trimmed) ||
+      /(?:不要|别|无需|无须|不必|不用|不需要|禁止|暂不|先不要|先别|切勿).{0,4}(?:保存|保留|记录|创建|写入|存档|留下|存为|存进|存下来|存)/i.test(trimmed)
+    ) {
       return true;
     }
   }
-
   return false;
 }
 
@@ -1091,10 +1133,7 @@ export function isRetrospectiveComparisonPersistenceQuery(text: string): boolean
  */
 export function isExplicitComparisonRecordRequest(draft: string): boolean {
   const text = draft.trim();
-  if (
-    /(?:不|不要|别|无需|无须|不必|不用|不需要|禁止|暂不|先不要|先别|没).{0,12}(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|留在|放进).{0,12}(?:比较|对比|compare)/i.test(text) ||
-    /(?:比较|对比|compare).{0,12}(?:不要|别|无需|无须|不必|不用|不需要|禁止|暂不|先不要|先别|不|没).{0,8}(?:保存|保留|记录|创建|写入|存档|留下|存为)/i.test(text)
-  ) {
+  if (hasExplicitCompareSaveNegation(text)) {
     return false;
   }
   if (isRetrospectiveComparisonPersistenceQuery(text)) {
