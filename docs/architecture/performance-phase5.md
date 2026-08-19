@@ -134,7 +134,7 @@
 |---|---|
 | `npm run lint` | 通过 |
 | `npm run typecheck` | 通过（0 错误） |
-| `npm test`（vitest） | **215 文件 / 1968 项全部通过**（含三段式守卫、>2MiB zip 回环和默认参考 review 测试） |
+| `npm test`（vitest） | **216 文件 / 1972 项全部通过**（含三段式守卫、>2MiB zip 回环和默认参考 review 测试） |
 | `npm run build` | 通过；production marker 记录 served source/build/artifact identity |
 | `playwright test --project=chromium` | **19/19 通过** |
 | `npm run measure:perf5:browser` | **11/11 通过**（修正版 perf5 suite；报告含 `buildIdentity`、completeness、精确导入证据和 mock request script metadata；ZIP crossover 另有独立 artifact） |
