@@ -425,6 +425,8 @@ async function selectImageObject(
     await search.locator('[aria-label="关闭搜索"]').click();
     await expect(search).toBeHidden({ timeout: 10_000 });
   }
+  await openSearch.click();
+  await expect(search).toBeVisible({ timeout: 10_000 });
   await search.locator('[aria-label="搜索关键词"]').fill(target.title);
   await page.waitForTimeout(300);
   const row = search.locator(`.result-row[data-object-id="${target.objectId}"]`);
