@@ -551,8 +551,16 @@ async function selectImageObject(
   await result.getByRole("button", { name: "定位", exact: true }).click();
   await expect(search).toBeHidden({ timeout: 10_000 });
 
-  await moveCanvasObjectTowardCentre(page, target.objectId);
   const toolbar = page.locator('[aria-label="选中对象工具"]');
+  for (let panAttempt = 0; panAttempt < 2 && !(await toolbar.isVisible()); panAttempt += 1) {
+    const panX = 820;
+    const panY = 440;
+    await page.mouse.move(panX, panY);
+    await page.mouse.down({ button: "middle" });
+    await page.mouse.move(panX, panY - 320, { steps: 20 });
+    await page.mouse.up({ button: "middle" });
+    await page.waitForTimeout(500);
+  }
   for (let zoomAttempt = 0; zoomAttempt < 5 && !(await toolbar.isVisible()); zoomAttempt += 1) {
     const visibleTarget = (await imageShapeTargets(page)).find((item) => item.objectId === target.objectId);
     await page.mouse.move(visibleTarget?.x ?? 480, visibleTarget?.y ?? 420);
