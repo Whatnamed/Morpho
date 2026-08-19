@@ -933,12 +933,12 @@ export function isExplicitComparisonRequest(draft: string): boolean {
 }
 
 /**
- * 与 Compare Record 真正绑定的持久化动词：保存/保留/创建/写入/存档/留下/记下/
- * 存为/存进/放进，以及带动作后缀的"记录(一下/下来/到/在/为/成/进/上/入)"。
+ * 与 Compare Record 真正绑定的持久化动词：保存/保留/创建/写入/存档/留下/留下来/
+ * 记下/存为/存进/存下来/放进，以及带动作后缀的"记录(一下/下来/到/在/为/成/进/上/入)"。
  * 裸"记录"（如"设计记录"）不是持久化动作。
  */
 const COMPARE_RECORD_SAVE_VERB =
-  /保存|保留|创建|写入|存档|留下|记下|存为|存进|放进|记录(?:一下|下来|到|在|为|成|进|上|入)/;
+  /保存|保留|创建|写入|存档|留下|留下来|记下|存为|存进|存下来|放进|记录(?:一下|下来|到|在|为|成|进|上|入)/;
 
 /**
  * 持久化动词直接绑定比较名词：保存这次比较 / 保留这次对比 / 创建比较记录 /
@@ -955,7 +955,7 @@ const COMPARE_RECORD_VERB_TO_COMPARE_PATTERN = new RegExp(
  * 把比较结论存档 / 把这次比较保存下来 / 把这次比较的结论存档 / 把比较记录下来。
  */
 const COMPARE_RECORD_BA_CONSTRUCTION_PATTERN = new RegExp(
-  `把(?:这次|本轮|当前|这个)?(?:的)?(?:比较|对比)(?:的)?(?:结果|结论|记录)?(?:留下|留在|保存|保留|写入|存档|放进|记下|存为|存进|落|记录(?:一下|下来)?)`,
+  `把(?:这次|本轮|当前|这个)?(?:的)?(?:比较|对比)(?:的)?(?:结果|结论|记录)?(?:留下|留在|留下来|保存|保留|写入|存档|放进|记下|存为|存进|存下来|落|记录(?:一下|下来)?)`,
   "i"
 );
 
@@ -982,11 +982,11 @@ function hasExplicitCompareRecordNounPersistence(text: string): boolean {
  * 由显式名词模式覆盖，不受影响。
  */
 function hasImmediateCompareResultPersistence(text: string): boolean {
-  const verbThenResult = /(?:比较|对比|compare)([^。；!?！？\n]{0,16})(?:然后|再|并|并且|同时|就)?(?:记录(?:一下|下来)?|存档|保存|保留|留下|留在|写入|放进|存为|存进)(?:的)?(?:结果|结论)/i;
+  const verbThenResult = /(?:比较|对比|compare)([^。；!?！？\n]{0,16})(?:然后|再|并|并且|同时|就)?(?:记录(?:一下|下来)?|存档|保存|保留|留下|留下来|留在|写入|放进|存为|存进|存下来)(?:的)?(?:结果|结论)/i;
   if (verbThenResult.test(text)) {
     return true;
   }
-  const resultThenVerb = /(?:比较|对比|compare)([^。；!?！？\n]{0,20})(?:结果|结论)(?:存档|保存|保留|留下|留在|写入|放进|记录(?:一下|下来)?)/i;
+  const resultThenVerb = /(?:比较|对比|compare)([^。；!?！？\n]{0,20})(?:结果|结论)(?:存档|保存|保留|留下|留下来|留在|写入|放进|存下来|记录(?:一下|下来)?)/i;
   const match = resultThenVerb.exec(text);
   if (!match) {
     return false;
@@ -1002,6 +1002,58 @@ function hasImmediateCompareResultPersistence(text: string): boolean {
 }
 
 /**
+ * 识别针对 Compare 记录持久化状态的回溯/查询语气（"保存了吗？" / "是否已存档？" /
+ * "有没有保存比较结果？"），防止将状态查询误判为当前 Workspace 写入请求。
+ *
+ * 与礼貌的即时操作请求（"能不能把比较结果保存一下？" / "可以帮我保存比较记录吗？" /
+ * "能否把这次比较存档？"）严格区分：
+ * - 回溯/状态查询：关注过去/当前状态是否已发生（已经/过/了吗/有没有/是否/是不是/查一下），不授权写入；
+ * - 即时操作请求：关注当前执行动作（能不能/可以/能否/请/帮我/保存下来），在满足前置条件时授权写入。
+ */
+export function isRetrospectiveComparisonPersistenceQuery(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+
+  // 1. 过去/完成/经验态副词修饰持久化动词：已经创建 / 之前存档 / 刚才保存 / 曾经记录
+  if (
+    /(?:已经|已|此前|之前|刚才|早前|上次|过去|曾|曾经).{0,12}(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|存入|存上|存|建档)/i.test(trimmed)
+  ) {
+    return true;
+  }
+
+  // 2. 状态/存在/真值疑问助词修饰持久化动词：有没有保存 / 是否存档 / 是不是创建 / 有无记录
+  // 注意：排除 能否 / 能不能 / 可否 / 可不可以（这些是情态操作请求，不是状态查询）
+  if (
+    /(?:有没有|有无|是否|是不是|可曾|算不算).{0,12}(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|存入|存上|存|建档)/i.test(trimmed)
+  ) {
+    return true;
+  }
+
+  // 3. 查验/询问动词针对持久化状态：查一下是否保存 / 确认比较结果有没有存档 / 看看保存了没有
+  if (
+    /(?:查|查看|查询|看|确认|问|想知道|知道|核实|核对|检查).{0,6}(?:一下|下|下看|看)?.{0,10}(?:是否|有没有|是不是|有无|可曾|算不算)?.{0,10}(?:保存|保留|记录|创建|写入|存档|留下|记下|存进|存入|存上|存|建档)/i.test(trimmed)
+  ) {
+    return true;
+  }
+
+  // 4. 持久化动词 + 疑问完成态/经验态后缀：保存了吗 / 存档过吗 / 创建了吗 / 存过没有 / 保存了没
+  if (
+    /(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|存入|存上|存|建档).{0,12}(?:了吗|了么|了没|了没有|过吗|过么|过没|过没有|过了吗)/i.test(trimmed)
+  ) {
+    return true;
+  }
+
+  // 5. 持久化动词 + 完成态 "了/过" 且以问号结尾的确认句：比较结果存了？ / 这次对比记录保存过了？ / 结论存档了？
+  if (
+    /(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|存入|存上|存|建档).{0,10}(?:了|过)[?？]/i.test(trimmed)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Persisting a Compare requires a SEPARATE authority from asking for a
  * comparison, and the persisted result must be OWNED by the Compare: either
  * the request names the Compare noun explicitly, or a structurally bare
@@ -1009,8 +1061,10 @@ function hasImmediateCompareResultPersistence(text: string): boolean {
  * "对比这两个方案，把结论存档"). Any modified result (研究的结论/研究最终结论/
  * 测试最终结果…) is never inferred as Compare-owned. "比较结果怎么样？"、
  * "创建两个方案然后比较一下"、"比较两个方案，然后记录一下测试结果" stay
- * closed. Any nearby negation of the save intent denies (fail-closed), and the
- * adverb usage of 比较 ("比较省钱") never grants.
+ * closed. Retrospective status queries ("比较结果保存了吗？" / "是否已经存档？")
+ * are not write requests and stay closed. Any nearby negation of the save
+ * intent denies (fail-closed), and the adverb usage of 比较 ("比较省钱") never
+ * grants.
  */
 export function isExplicitComparisonRecordRequest(draft: string): boolean {
   const text = draft.trim();
@@ -1018,6 +1072,9 @@ export function isExplicitComparisonRecordRequest(draft: string): boolean {
     /(?:不|不要|别|无需|无须|不必|不用|不需要|禁止|暂不|先不要|先别|没).{0,12}(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|留在|放进).{0,12}(?:比较|对比|compare)/i.test(text) ||
     /(?:比较|对比|compare).{0,12}(?:不要|别|无需|无须|不必|不用|不需要|禁止|暂不|先不要|先别|不|没).{0,8}(?:保存|保留|记录|创建|写入|存档|留下|存为)/i.test(text)
   ) {
+    return false;
+  }
+  if (isRetrospectiveComparisonPersistenceQuery(text)) {
     return false;
   }
   const scrubbed = scrubComparativeAdverb(text);

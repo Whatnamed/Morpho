@@ -203,6 +203,46 @@ describe("Agent tool authority", () => {
     });
     expect(modifiedForeign.allowComparisonWrite).toBe(false);
     expect(modifiedForeign.allowedTools).not.toContain("create_comparison_analysis");
+    // Retrospective status queries are inquiries, not Workspace write requests.
+    const statusQueryExamples = [
+      "比较结果保存了吗？",
+      "保存比较结果了吗？",
+      "比较记录已经创建了吗？",
+      "对比结论存档了吗？",
+      "这个比较结果有没有保存？",
+      "这次比较记录是不是已经保存了？",
+      "比较结果之前存档过吗？"
+    ];
+    for (const draft of statusQueryExamples) {
+      const statusQuery = authority({
+        draft,
+        allowStructuredComparison: true,
+        selectedObjects: sources
+      });
+      expect(statusQuery.allowComparisonWrite).toBe(false);
+      expect(statusQuery.allowedTools).not.toContain("create_comparison_analysis");
+    }
+
+    // Polite current save requests grant Compare write authority when preconditions hold.
+    const politeActionExamples = [
+      "能不能把比较结果保存一下？",
+      "可以帮我保存比较记录吗？",
+      "能否把这次比较存档？",
+      "帮我把这次比较的结论保存下来。",
+      "请创建比较记录。",
+      "保存比较结果。",
+      "把比较结果保存下来。",
+      "把这次比较的结论存档。"
+    ];
+    for (const draft of politeActionExamples) {
+      const politeAction = authority({
+        draft,
+        allowStructuredComparison: true,
+        selectedObjects: sources
+      });
+      expect(politeAction.allowComparisonWrite).toBe(true);
+      expect(politeAction.allowedTools).toContain("create_comparison_analysis");
+    }
   });
 });
 
