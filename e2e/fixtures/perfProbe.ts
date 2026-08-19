@@ -636,6 +636,7 @@ export async function armFeedback(
       if (!state) {
         throw new Error("Perf probe was not installed before navigation.");
       }
+      const mutations: Array<{ at: number; textMatched: boolean }> = [];
       const record = {
         armedAt: performance.now(),
         firstInputAt: null as number | null,
@@ -643,7 +644,7 @@ export async function armFeedback(
         firstChangeAt: null as number | null,
         matchedTextAt: null as number | null,
         valid: true,
-        invalidReason: null as "change_before_input" | "no_input" | null
+        invalidReason: null as "change_before_input" | "change_after_phase" | "no_input" | null
       };
       const root = document.querySelector(rootSelector);
       if (!root) {
@@ -652,15 +653,9 @@ export async function armFeedback(
       const processMutations = () => {
         const changedAt = performance.now();
         const textMatched = !requireText || root.textContent?.includes(requireText) === true;
-        if (requireText && !textMatched) {
-          return;
-        }
-        if (record.firstChangeAt === null) {
-          record.firstChangeAt = changedAt;
-        }
-        if (requireText && record.matchedTextAt === null) {
+        mutations.push({ at: changedAt, textMatched });
+        if (requireText && textMatched && record.matchedTextAt === null) {
           record.matchedTextAt = changedAt;
-          observer.disconnect();
         }
       };
       const observer = new MutationObserver(() => processMutations());
@@ -671,11 +666,19 @@ export async function armFeedback(
         characterData: true
       });
       (window as unknown as {
-        __morphoFeedback?: { record: typeof record; observer: MutationObserver; process: () => void };
+        __morphoFeedback?: {
+          record: typeof record;
+          observer: MutationObserver;
+          process: () => void;
+          mutations: typeof mutations;
+          requireText: string | null;
+        };
       }).__morphoFeedback = {
         record,
         observer,
-        process: processMutations
+        process: processMutations,
+        mutations,
+        requireText
       };
     },
     { rootSelector, requireText: requireText ?? null }
@@ -685,7 +688,13 @@ export async function armFeedback(
 export async function readFeedback(page: Page): Promise<FeedbackResult> {
   return page.evaluate(() => {
     const handle = (window as unknown as {
-      __morphoFeedback?: { record: FeedbackResult; observer: MutationObserver; process: () => void };
+      __morphoFeedback?: {
+        record: FeedbackResult;
+        observer: MutationObserver;
+        process: () => void;
+        mutations: Array<{ at: number; textMatched: boolean }>;
+        requireText: string | null;
+      };
     }).__morphoFeedback;
     if (!handle) {
       throw new Error("readFeedback called without armFeedback.");
@@ -716,22 +725,32 @@ export async function readFeedback(page: Page): Promise<FeedbackResult> {
         handle.record.invalidReason = "no_input";
       }
     }
-    if (
-      handle.record.firstInputAt !== null &&
-      handle.record.firstChangeAt !== null &&
-      handle.record.firstChangeAt < handle.record.firstInputAt - 0.1
-    ) {
-      handle.record.valid = false;
-      handle.record.invalidReason = "change_before_input";
-    } else if (
-      handle.record.firstChangeAt !== null &&
-      handle.record.firstChangeAt > phaseEnd
-    ) {
-      handle.record.valid = false;
-      handle.record.invalidReason = "change_after_phase";
-    } else if (handle.record.firstInputAt !== null && handle.record.firstChangeAt !== null) {
-      handle.record.valid = true;
-      handle.record.invalidReason = null;
+
+    const firstInput = handle.record.firstInputAt;
+    if (firstInput !== null) {
+      const eligibleMutations = handle.mutations.filter(
+        (m) => m.at >= firstInput - 0.1 && m.at <= phaseEnd && (!handle.requireText || m.textMatched)
+      );
+      if (eligibleMutations.length > 0) {
+        handle.record.firstChangeAt = eligibleMutations[0]!.at;
+        handle.record.valid = true;
+        handle.record.invalidReason = null;
+      } else {
+        const anyPostInput = handle.mutations.filter((m) => m.at >= firstInput - 0.1);
+        if (anyPostInput.length > 0 && anyPostInput[0]!.at > phaseEnd) {
+          handle.record.firstChangeAt = anyPostInput[0]!.at;
+          handle.record.valid = false;
+          handle.record.invalidReason = "change_after_phase";
+        } else if (handle.mutations.length > 0) {
+          handle.record.firstChangeAt = handle.mutations[0]!.at;
+          handle.record.valid = false;
+          handle.record.invalidReason = "change_before_input";
+        } else {
+          handle.record.firstChangeAt = null;
+          handle.record.valid = false;
+          handle.record.invalidReason = "no_input";
+        }
+      }
     }
     return handle.record;
   });
