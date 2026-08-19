@@ -23,12 +23,16 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   if (process.env.MORPHO_EXPECTED_BUILD_SOURCE_SHA && process.env.MORPHO_EXPECTED_BUILD_SOURCE_SHA !== sourceSha) {
     throw new Error(`Expected build source SHA ${process.env.MORPHO_EXPECTED_BUILD_SOURCE_SHA} does not match HEAD ${sourceSha}.`);
   }
-  // `--project=perf` filters config.projects, so this is how the setup knows whether
-  // the several-second, several-megabyte perf seed is worth building. No env var and
-  // no extra dependency to set one on Windows.
   const projectNames = config.projects.map((project) => project.name);
   const needsPerfSeed = projectNames.includes("perf");
   const needsPhase5Seed = projectNames.includes("perf5");
+
+  if (needsPhase5Seed || process.env.MORPHO_REQUIRE_CLEAN_BUILD === "true") {
+    const status = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], { encoding: "utf8" }).trim();
+    if (status) {
+      throw new Error(`Performance evidence requires a clean tracked worktree at measurement time:\n${status}`);
+    }
+  }
 
   const server = await createServer({
     appType: "custom",

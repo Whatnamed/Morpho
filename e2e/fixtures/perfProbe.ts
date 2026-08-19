@@ -197,6 +197,9 @@ export async function installPerfProbe(page: Page, options: { io?: boolean } = {
       const lsProto = window.localStorage.constructor.prototype;
       const originalGetItem = lsProto.getItem;
       const originalSetItem = lsProto.setItem;
+      (window as unknown as { __morphoRawStorage?: { getItem: (key: string) => string | null } }).__morphoRawStorage = {
+        getItem: (key: string) => originalGetItem.call(window.localStorage, key)
+      };
       // Instance-level patch: Storage.prototype methods are what app code calls.
       Object.defineProperty(window.localStorage, "getItem", {
         value: function getItem(key: string) {
@@ -524,6 +527,80 @@ export async function endPerfPhase(page: Page): Promise<PerfPhaseSamples> {
       windowMs: endedAt - startedAt
     };
   });
+}
+
+export function isPhaseEntry(start: number, startedAt: number, endedAt: number): boolean {
+  return start >= startedAt && start < endedAt;
+}
+
+export function isTimestampInWindow(at: number, startedAt: number, endedAt: number): boolean {
+  return at >= startedAt && at <= endedAt;
+}
+
+export type RawLoafEntry = { start: number; duration: number; blockingDuration: number };
+export type RawEventEntry = {
+  start: number;
+  duration: number;
+  processing: number;
+  processingStart: number;
+  processingEnd: number;
+};
+
+export function calculatePhaseSamples(input: {
+  startedAt: number;
+  endedAt: number;
+  commits: number[];
+  loaf: RawLoafEntry[];
+  events: RawEventEntry[];
+  frames: number[];
+  pointerMoves: number[];
+  keyPresses: number[];
+}): PerfPhaseSamples {
+  const { startedAt, endedAt } = input;
+  const inWindow = (at: number) => isTimestampInWindow(at, startedAt, endedAt);
+  const isEntry = (start: number) => isPhaseEntry(start, startedAt, endedAt);
+
+  const commits = input.commits.filter(inWindow);
+  const loaf = input.loaf.filter((entry) => isEntry(entry.start));
+  const events = input.events
+    .filter((entry) => isEntry(entry.start))
+    .sort((a, b) => a.start - b.start);
+  const frames = input.frames.filter(inWindow);
+  const pointerMoves = input.pointerMoves.filter(inWindow);
+  const keyPresses = input.keyPresses.filter(inWindow);
+  const processing = events.map((event) => event.processing).sort((a, b) => a - b);
+  const percentile = (fraction: number) =>
+    processing.length === 0
+      ? 0
+      : (processing[Math.min(processing.length - 1, Math.max(0, Math.ceil(fraction * processing.length) - 1))] as number);
+  const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
+  const pointerSpanMs =
+    pointerMoves.length < 2
+      ? null
+      : (pointerMoves[pointerMoves.length - 1] as number) - (pointerMoves[0] as number);
+
+  return {
+    phaseStartedAt: startedAt,
+    phaseEndedAt: endedAt,
+    commitCount: commits.length,
+    commitTimestamps: commits,
+    loafCount: loaf.length,
+    longestLoafMs: loaf.length === 0 ? 0 : Math.max(...loaf.map((entry) => entry.duration)),
+    longestBlockingMs: loaf.length === 0 ? 0 : Math.max(...loaf.map((entry) => entry.blockingDuration)),
+    totalLoafMs: sum(loaf.map((entry) => entry.duration)),
+    totalBlockingMs: sum(loaf.map((entry) => entry.blockingDuration)),
+    slowEventCount: processing.length,
+    slowEventProcessingP95Ms: percentile(0.95),
+    slowEventProcessingMaxMs: processing.length === 0 ? 0 : (processing[processing.length - 1] as number),
+    slowEventTotalProcessingMs: sum(processing),
+    firstSlowEventMs: events.length === 0 ? null : (events[0]?.start ?? null),
+    lastSlowEventMs: events.length === 0 ? null : (events[events.length - 1]?.start ?? null),
+    pointerMoveCount: pointerMoves.length,
+    keyPressCount: keyPresses.length,
+    pointerRateHz: pointerSpanMs !== null && pointerSpanMs > 0 ? (pointerMoves.length / pointerSpanMs) * 1000 : null,
+    frameCount: frames.length,
+    windowMs: endedAt - startedAt
+  };
 }
 
 /** Whether the browser supports the two observers, so a spec can fail loudly if not. */

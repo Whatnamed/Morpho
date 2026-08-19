@@ -1261,7 +1261,10 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     const importButton = page.locator('.toolbar-group[aria-label="资料与交付"] button', { hasText: "导入" });
 
     async function readPersistedWorkspace(): Promise<PersistedWorkspaceSnapshot> {
-      const raw = await page.evaluate((storageKey) => window.localStorage.getItem(storageKey), project.workspaceKey);
+      const raw = await page.evaluate((storageKey) => {
+        const rawStorage = (window as unknown as { __morphoRawStorage?: { getItem: (key: string) => string | null } }).__morphoRawStorage;
+        return rawStorage ? rawStorage.getItem(storageKey) : window.localStorage.getItem(storageKey);
+      }, project.workspaceKey);
       if (!raw) {
         throw new Error(`导入阶段找不到工作区 ${project.workspaceKey}`);
       }
@@ -1343,7 +1346,6 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
         );
 
       await beginPerfPhase(page);
-      await armFeedback(page, "body");
       const [chooser] = await Promise.all([
         page.waitForEvent("filechooser"),
         importButton.click()
@@ -1355,7 +1357,8 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       if (parseableNames.length > 0) {
         await page.waitForFunction(
           ({ targetNames, beforeObjIds, beforeAstIds, storageKey }) => {
-            const raw = window.localStorage.getItem(storageKey);
+            const rawStorage = (window as unknown as { __morphoRawStorage?: { getItem: (key: string) => string | null } }).__morphoRawStorage;
+            const raw = rawStorage ? rawStorage.getItem(storageKey) : window.localStorage.getItem(storageKey);
             if (!raw) return false;
             const ws = JSON.parse(raw) as PersistedWorkspaceSnapshot;
             const beforeObjs = new Set(beforeObjIds);
@@ -1386,7 +1389,6 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       }
 
       const samples = await endPerfPhase(page);
-      const feedback = await readFeedback(page);
       const io = await collectIoStats(page);
 
       if (parseTerminalAtMs !== null) {
@@ -1412,9 +1414,9 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
         scale: { files: files.length, bytes: files.reduce((total, file) => total + file.buffer.length, 0) },
         samples,
         io,
-        feedback,
-        feedbackApplicability: "required",
-        feedbackValidity: feedback.valid ? "valid" : "invalid",
+        feedback: null,
+        feedbackApplicability: "notApplicable",
+        feedbackValidity: "notApplicable",
         extra: {
           objectsVisibleAtMs: Number(visibleAt.toFixed(1)),
           visibleAfterChangeMs: changeAt === null ? null : Number((visibleAt - changeAt).toFixed(1)),

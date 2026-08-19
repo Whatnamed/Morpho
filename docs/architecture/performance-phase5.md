@@ -9,14 +9,14 @@
 - 采集机器：12th Gen Intel Core i5-12400 · 16 GB · Windows 10 (26200) · Node v22.23.2 · Chromium（Playwright 1.62，Desktop Chrome 1440×900）
 - 生产构建（非 dev）。插桩全部由测试注入（`e2e/fixtures/perfProbe.ts` 可选 IO 归因 + 首反馈追踪），产品代码零遥测；render-isolation 计数器只在 `NODE_ENV === "test"` 分支存在，生产包中已消除。
 - Node 侧校准负载 p50：2.55 ms（`JSON.stringify(caseStudy)`）；本轮 Node 目标产物未通过 trusted gate，因此不引用其不可信目标数字。
-- 本轮 regenerated artifact 的 completeness 为 `expectedCount=61`、`observedCount=60`、`missingMandatory=[]`、`missingOptional=["assets/assets10/assetDrawerShowAll"]`、`unexpectedKeys=[]`；这个 optional 分支的缺失被显式记录，不是静默跳过。五个 filename 的导入验收均为唯一新对象、`parseStatus=parsed`、无 `parseError`，并带 `documentExtract` provenance。
+- 本轮 regenerated artifact 的 completeness 为 `expectedCount=61`、`observedCount=60`、`missingMandatory=[]`、`missingOptional=["assets/assets10/assetDrawerShowAll"]`、`unexpectedKeys=[]`；这个 optional 分支的缺失被显式记录，不是静默跳过。五个 filename 的导入验收均为唯一新对象、`parseStatus=parsed`、无 `parseError`，PDF 按照 Morpho 120,000 字符预算完成 bounded extraction（`extractedCharCount=120000`，`extractedPageCount=29`，`extractionTruncated=true`），并带 `documentExtract` provenance。
 
 ## 测量方法与语义
 
-- **首反馈**（First Feedback）= 修正版 harness 中，phase 内 initiating input（pointerdown/keydown/input/change/paste，`performance.now()`）到操作根节点首个有效 DOM mutation（含 child/text/attribute）的页内时间。不含 CDP 往返；读取时会排空 MutationObserver records，并拒绝 change-before-input、无 initiating input 或跨 phase 样本。旧 evidence 没有这些边界保证，不能继续作为严格最终数字。
+- **首反馈**（First Feedback）= 修正版 harness 中，phase 内 initiating input（pointerdown/keydown/input/change/paste，`performance.now()`）到操作根节点首个有效 DOM mutation（含 child/text/attribute）的页内时间。不含 CDP 往返；读取时会排空 MutationObserver records，并拒绝 change-before-input、无 initiating input 或跨 phase 样本。旧 evidence 没有这些边界保证，不能继续作为严格最终数字。文件导入阶段因涉及原生文件选择框与异步 Worker 流，不适用单一 DOM 首反馈，指标直接以 `visibleAfterChangeMs`（文件 change 到 shape 落地）与 `parseDurationMs`（文件 change 到解析完成）为准。
 - **阻塞**（Blocking）= Long Animation Frame 的 `blockingDuration`；**慢事件 p95** 只含 ≥16ms 事件（Event Timing 规范下限），是尾部而非全部输入。
 - **React commit** 数与时间戳来自注入的 DevTools hook。
-- **IO 归因**（可选启用）：localStorage 读写、IndexedDB 每操作时长、object URL 创建计数，均为浏览器 API 补丁，产品代码零改动。IndexedDB request 捕获发起时的 phase generation 和完整 start/end interval，跨 phase 完成不会归入下一阶段。LoAF/Event Timing 也按完整 interval 与 phase window 重叠归因；rAF sampler 使用 generation token。
+- **IO 归因**（可选启用）：localStorage 读写、IndexedDB 每操作时长、object URL 创建计数，均为浏览器 API 补丁，产品代码零改动。测试端状态轮询走未插桩的 `__morphoRawStorage` 避免污染 `localStorageReads`。IndexedDB request 捕获发起时的 phase generation 和完整 start/end interval，跨 phase 完成不会归入下一阶段。LoAF/Event Timing 按 start timestamp 落在 `[phaseStartedAt, phaseEndedAt)` 窗口内归因（start-owned 语义，彻底排除 phase 前发生的慢事件）；rAF sampler 使用 generation token。
 - Agent 走 mock SSE（生产编码器产出的真实帧 + 完整 Coordinator/reducer/落库路径），隔离 client 段成本；**provider 网络/TTFT 不在本图谱内**。
 - 夹具：objects500 / chatLong(560 消息) / caseStudy(184 消息) / switchA/B / importBase 无图片二进制（与 4A 可比）；assets10/30/80 带真实再生命周期 PNG（确定性 PRNG + OffscreenCanvas，写入真实 IndexedDB BlobStore）；PDF(30/150 页)/PPTX(40 页)/PNG/文本由 Node 现场生成，不入库。
 - 采样规则沿用 4A 可信门；浏览器交互项为单轮完整操作窗口（含 settle），关键字段在多轮对照中复现才用于裁决优化。Node 侧未过可信门的样本标记为不可信且不被引用（本轮 chatLong/compound500 的 renderConversation 尾部 GC 噪声即属此类）。
@@ -94,7 +94,7 @@
 
 精确的 `inputBytes`、sync/async wall、首调时间、窗口内 blockingDuration、压缩后大小和 `byteIdentical` 结果只在 [`performance-zip-crossover.generated.json`](../operations/performance-zip-crossover.generated.json) 中作权威记录；它们是一次真实浏览器运行的观测值，不复制成容易漂移的第二份数字表。
 
-结论：生产实现按原始输入字节执行 **`<= 2 * 1024 * 1024` 使用 `zipSync`，严格 `> 2 * 1024 * 1024` 使用异步 `zip`**。这是从 0.2–16 MiB transition 区间选出的工程阈值，不是声称存在一个精确 universal crossover 点。同步路径的大包会产生可观测主线程阻塞，而异步路径的窗口内 `blockingDuration` 在本轮各档位均为 0ms；异步 wall 和首调仍不是零成本，超大包的整体缓冲装配仍属于 Bundle Pipeline v2 后续议题。两条路径逻辑内容一致，但字节级结果不保证一致，`byteIdentical` 必须以本轮 JSON artifact 为准。
+结论：生产实现按原始输入字节执行 **`<= 2 * 1024 * 1024` 使用 `zipSync`，严格 `> 2 * 1024 * 1024` 使用异步 `zip`**。这是从 0.2–16 MiB transition 区间选出的工程阈值，不是声称存在一个精确 universal crossover 点。同步路径的大包会产生可观测主线程阻塞（16 MiB 同步阻塞 381.4ms），而异步路径将主线程阻塞大幅削减至近零（4 MiB / 8 MiB 为 0ms，16 MiB 仅 3.3ms）；异步 wall 和首调仍不是零成本，超大包的整体缓冲装配仍属于 Bundle Pipeline v2 后续议题。两条路径逻辑内容一致，但字节级结果不保证一致，`byteIdentical` 必须以本轮 JSON artifact 为准。
 
 **本轮完整安装下的浏览器实测**：备份与人读归档均安装了 28 个 asset blobs，且都超过 2 MiB、走异步路径；精确 `zipBytes`、wall 和 `blockingDuration` 由 `performance-phase5.generated.json` 的对应 entries 权威记录。890ms 只作为历史同步压缩 proxy，不把它当作当前人读归档实测值。真实内置案例的备份是大包；hybrid 阈值保护的是真正的小包（小项目、测试夹具、无图项目），其收益由 crossover 数据与单测双路径覆盖。规范已加入确定性的 expected-key 安装等待，消除测量竞态。
 
@@ -164,12 +164,12 @@
 
 ## 九、如何复现
 
-先按 [runbook](../operations/runbook.md#build-provenance-for-browser-evidence) 在 clean tracked worktree 上构建并核对 source/build/runtime identity；不要直接用旧 `.next`。
+先按 [runbook](../operations/runbook.md#build-provenance-for-browser-evidence) 在 clean tracked worktree 上执行严格证据构建并核对 source/build/runtime identity；不要直接用旧 `.next`。
 
 ```powershell
-npm run build
-npm run test:e2e:build       # build + chromium acceptance only
-npm run measure:perf5:browser   # 修正版 harness；perf5 project，--workers=1 --retries=0
+npm run build:evidence          # strict clean worktree build + provenance marker
+npm run test:e2e:build          # build + chromium acceptance
+npm run measure:perf5:browser   # 修正版 harness（跨平台 runner 校验 clean worktree 并执行 perf5）
 npm run measure:perf            # Node 侧目标 + 校准
 npm run measure:perf -- --target=renderConversation:streamTick   # 单项目隔离
 ```

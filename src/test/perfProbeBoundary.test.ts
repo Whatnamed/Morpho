@@ -1,50 +1,103 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import type { PerfPhaseSamples } from "../../e2e/fixtures/perfProbe";
+import {
+  calculatePhaseSamples,
+  isPhaseEntry,
+  isTimestampInWindow,
+  type RawEventEntry,
+  type RawLoafEntry
+} from "../../e2e/fixtures/perfProbe";
 
-describe("perfProbe phase boundary semantics", () => {
-  it("filters out events and frames starting before phaseStartedAt", () => {
+describe("perfProbe phase boundary semantics and sample calculation", () => {
+  it("uses start-owned window logic via isPhaseEntry and isTimestampInWindow", () => {
     const startedAt = 1000.0;
     const endedAt = 2000.0;
 
-    const rawEvents = [
-      { start: 950.0, duration: 100.0, processing: 80.0, processingStart: 960.0, processingEnd: 1040.0 }, // starts before phase (overlaps startedAt)
-      { start: 1000.0, duration: 50.0, processing: 30.0, processingStart: 1010.0, processingEnd: 1040.0 }, // exactly at start
-      { start: 1500.0, duration: 40.0, processing: 20.0, processingStart: 1510.0, processingEnd: 1530.0 }, // inside phase
-      { start: 2000.0, duration: 30.0, processing: 15.0, processingStart: 2005.0, processingEnd: 2020.0 }, // at/after end
-      { start: 2050.0, duration: 20.0, processing: 10.0, processingStart: 2055.0, processingEnd: 2065.0 } // after end
-    ];
+    // Events before start
+    expect(isPhaseEntry(950.0, startedAt, endedAt)).toBe(false);
+    expect(isTimestampInWindow(950.0, startedAt, endedAt)).toBe(false);
 
-    const isPhaseEntry = (start: number) => start >= startedAt && start < endedAt;
-    const filteredEvents = rawEvents.filter((entry) => isPhaseEntry(entry.start));
+    // Events exactly at start
+    expect(isPhaseEntry(1000.0, startedAt, endedAt)).toBe(true);
+    expect(isTimestampInWindow(1000.0, startedAt, endedAt)).toBe(true);
 
-    expect(filteredEvents).toHaveLength(2);
-    expect(filteredEvents[0]?.start).toBe(1000.0);
-    expect(filteredEvents[1]?.start).toBe(1500.0);
-    expect(filteredEvents.every((e) => e.start >= startedAt && e.start < endedAt)).toBe(true);
+    // Events strictly inside window
+    expect(isPhaseEntry(1500.0, startedAt, endedAt)).toBe(true);
+    expect(isTimestampInWindow(1500.0, startedAt, endedAt)).toBe(true);
+
+    // Events at end boundary (start-owned excludes end, timestamp includes end)
+    expect(isPhaseEntry(2000.0, startedAt, endedAt)).toBe(false);
+    expect(isTimestampInWindow(2000.0, startedAt, endedAt)).toBe(true);
+
+    // Events strictly after end
+    expect(isPhaseEntry(2050.0, startedAt, endedAt)).toBe(false);
+    expect(isTimestampInWindow(2050.0, startedAt, endedAt)).toBe(false);
   });
 
-  it("attributes LoAF entries starting inside phase window and delivered at phase end", () => {
-    const startedAt = 500.0;
-    const endedAt = 1200.0;
+  it("calculates phase samples accurately with start-owned entry filtering", () => {
+    const startedAt = 1000.0;
+    const endedAt = 2000.0;
 
-    const rawLoaf = [
-      { start: 400.0, duration: 200.0, blockingDuration: 150.0 }, // started before phase -> excluded
-      { start: 600.0, duration: 300.0, blockingDuration: 250.0 }, // started inside phase -> included
-      { start: 1100.0, duration: 200.0, blockingDuration: 100.0 }, // started inside phase, ends after endedAt -> included
-      { start: 1200.0, duration: 100.0, blockingDuration: 50.0 }  // started at endedAt -> excluded
+    const rawEvents: RawEventEntry[] = [
+      { start: 950.0, duration: 100.0, processing: 80.0, processingStart: 960.0, processingEnd: 1040.0 }, // started before phase -> excluded
+      { start: 1000.0, duration: 50.0, processing: 30.0, processingStart: 1010.0, processingEnd: 1040.0 }, // exactly at start -> included
+      { start: 1500.0, duration: 40.0, processing: 20.0, processingStart: 1510.0, processingEnd: 1530.0 }, // inside phase -> included
+      { start: 2000.0, duration: 30.0, processing: 15.0, processingStart: 2005.0, processingEnd: 2020.0 }  // at/after end -> excluded
     ];
 
-    const isPhaseEntry = (start: number) => start >= startedAt && start < endedAt;
-    const filteredLoaf = rawLoaf.filter((entry) => isPhaseEntry(entry.start));
+    const rawLoaf: RawLoafEntry[] = [
+      { start: 800.0, duration: 300.0, blockingDuration: 200.0 }, // started before phase -> excluded
+      { start: 1200.0, duration: 150.0, blockingDuration: 80.0 },  // inside phase -> included
+      { start: 1600.0, duration: 250.0, blockingDuration: 120.0 }, // inside phase -> included
+      { start: 2000.0, duration: 100.0, blockingDuration: 40.0 }   // at/after end -> excluded
+    ];
 
-    expect(filteredLoaf).toHaveLength(2);
-    expect(filteredLoaf[0]?.start).toBe(600.0);
-    expect(filteredLoaf[1]?.start).toBe(1100.0);
-    expect(filteredLoaf.every((l) => l.start >= startedAt && l.start < endedAt)).toBe(true);
+    const commits = [900.0, 1000.0, 1500.0, 2000.0, 2100.0];
+    const frames = [950.0, 1050.0, 1550.0, 2000.0, 2050.0];
+    const pointerMoves = [1050.0, 1250.0, 1450.0, 1650.0, 1850.0];
+    const keyPresses = [1100.0, 1300.0];
+
+    const samples = calculatePhaseSamples({
+      startedAt,
+      endedAt,
+      commits,
+      loaf: rawLoaf,
+      events: rawEvents,
+      frames,
+      pointerMoves,
+      keyPresses
+    });
+
+    expect(samples.phaseStartedAt).toBe(1000.0);
+    expect(samples.phaseEndedAt).toBe(2000.0);
+    expect(samples.windowMs).toBe(1000.0);
+
+    // Commits in [1000, 2000]
+    expect(samples.commitCount).toBe(3);
+    expect(samples.commitTimestamps).toEqual([1000.0, 1500.0, 2000.0]);
+
+    // LoAF: only start in [1000, 2000)
+    expect(samples.loafCount).toBe(2);
+    expect(samples.longestLoafMs).toBe(250.0);
+    expect(samples.longestBlockingMs).toBe(120.0);
+    expect(samples.totalLoafMs).toBe(400.0);
+    expect(samples.totalBlockingMs).toBe(200.0);
+
+    // Events: only start in [1000, 2000)
+    expect(samples.slowEventCount).toBe(2);
+    expect(samples.firstSlowEventMs).toBe(1000.0);
+    expect(samples.lastSlowEventMs).toBe(1500.0);
+    expect(samples.slowEventProcessingMaxMs).toBe(30.0);
+    expect(samples.slowEventTotalProcessingMs).toBe(50.0);
+
+    // Frames and pointer rates
+    expect(samples.frameCount).toBe(3);
+    expect(samples.pointerMoveCount).toBe(5);
+    expect(samples.keyPressCount).toBe(2);
+    expect(samples.pointerRateHz).toBeCloseTo(6.25, 2);
   });
 
-  it("isolates phase generations so old IDB requests and rAF ticks do not cross phases", () => {
+  it("isolates phase generations so old IDB requests do not cross phases", () => {
     type IdbRecord = { store: string; op: string; start: number; end: number; generation: number | null };
     const phase1Gen = 2;
     const phase2Gen = 3;
