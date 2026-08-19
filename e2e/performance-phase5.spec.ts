@@ -740,7 +740,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     const backBtn = page.locator('[aria-label="项目操作"] button', { hasText: "返回项目首页" });
     await backBtn.hover();
     await beginPerfPhase(page);
-    await armFeedback(page, "main");
+    await armFeedback(page, "body");
     await backBtn.click();
     await expect(page.locator(".phome-shelf", { hasText: "全部项目" })).toBeVisible({ timeout: 30_000 });
     const backSamples = await endPerfPhase(page);
@@ -761,7 +761,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     const switchBCard = page.locator(".phome-grid").getByText("P5 switchB").first();
     await switchBCard.hover();
     await beginPerfPhase(page);
-    await armFeedback(page, "main");
+    await armFeedback(page, "body");
     await switchBCard.click();
     await expect(page.locator(".morpho-shape-host").first()).toBeVisible({ timeout: 60_000 });
     const openBSamples = await endPerfPhase(page);
@@ -1939,7 +1939,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     if (await deleteButton.count() > 0) {
       await deleteButton.hover();
       await beginPerfPhase(page);
-      await armFeedback(page, "main");
+      await armFeedback(page, "body");
       await deleteButton.click();
       await page.waitForTimeout(900);
       const deletePreviewSamples = await endPerfPhase(page);
