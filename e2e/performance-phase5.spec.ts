@@ -1734,8 +1734,8 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     await page.keyboard.press("Control+s");
     await expect.poll(async () => {
       const raw = await page.evaluate(() => window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1"));
-      return raw ? (JSON.parse(raw) as { workingState?: { currentDefaultReferenceId?: string } }).workingState?.currentDefaultReferenceId : undefined;
-    }).toBe(initialReferenceObjectId);
+      return raw ? (JSON.parse(raw) as { objects?: Record<string, { isDefaultReference?: boolean }> }).objects?.[initialReferenceObjectId]?.isDefaultReference : undefined;
+    }).toBe(true);
 
     await selectImageObject(page, [initialReferenceObjectId], reviewableImagePair.nextObjectId);
     const setReference = page.locator('[aria-label="设为后续默认参考"]');
@@ -1764,7 +1764,8 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     const beforeReference = await page.evaluate(() => {
       const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
       if (!raw) throw new Error("内置案例工作区未持久化");
-      return JSON.parse(raw) as { workingState?: { currentDefaultReferenceId?: string } };
+      const workspace = JSON.parse(raw) as { objects?: Record<string, { isDefaultReference?: boolean }> };
+      return Object.entries(workspace.objects ?? {}).find(([, o]) => o.isDefaultReference)?.[0] ?? null;
     });
     await setReference.hover();
     await beginPerfPhase(page);
@@ -1777,10 +1778,11 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     await expect(replaceAndReview).toBeVisible();
     const duringConfirmation = await page.evaluate(() => {
       const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
-      return raw ? (JSON.parse(raw) as { workingState?: { currentDefaultReferenceId?: string } }) : null;
+      if (!raw) return null;
+      const workspace = JSON.parse(raw) as { objects?: Record<string, { isDefaultReference?: boolean }> };
+      return Object.entries(workspace.objects ?? {}).find(([, o]) => o.isDefaultReference)?.[0] ?? null;
     });
-    expect(duringConfirmation?.workingState?.currentDefaultReferenceId)
-      .toBe(beforeReference.workingState?.currentDefaultReferenceId);
+    expect(duringConfirmation).toBe(beforeReference);
     const referenceSamples = await endPerfPhase(page);
     const referenceFeedback = await readFeedback(page);
     record({
@@ -1800,10 +1802,11 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     await confirmCard.getByRole("button", { name: "取消", exact: true }).click();
     const afterCancel = await page.evaluate(() => {
       const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
-      return raw ? (JSON.parse(raw) as { workingState?: { currentDefaultReferenceId?: string } }) : null;
+      if (!raw) return null;
+      const workspace = JSON.parse(raw) as { objects?: Record<string, { isDefaultReference?: boolean }> };
+      return Object.entries(workspace.objects ?? {}).find(([, o]) => o.isDefaultReference)?.[0] ?? null;
     });
-    expect(afterCancel?.workingState?.currentDefaultReferenceId)
-      .toBe(beforeReference.workingState?.currentDefaultReferenceId);
+    expect(afterCancel).toBe(beforeReference);
 
     // --- project deletion preview (home page) ----------------------------------------
     await page.goto("/");
