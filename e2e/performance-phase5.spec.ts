@@ -549,6 +549,10 @@ async function selectImageObject(
   const locateBtn = search.locator(".result-row").getByRole("button", { name: "定位", exact: true }).first();
   await expect(locateBtn).toBeVisible({ timeout: 10_000 });
   await locateBtn.click();
+  const closeSearch = search.locator('[aria-label="关闭搜索"]');
+  if (await closeSearch.isVisible()) {
+    await closeSearch.click();
+  }
   await expect(search).toBeHidden({ timeout: 10_000 });
 
   await moveCanvasObjectTowardCentre(page, target.objectId);
