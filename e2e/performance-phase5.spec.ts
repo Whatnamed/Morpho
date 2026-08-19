@@ -283,125 +283,7 @@ async function shapeCentres(page: Page, count: number): Promise<{ x: number; y: 
   }, count);
 }
 
-type ImageShapeTarget = {
-  objectId: string;
-  x: number;
-  y: number;
-};
 
-async function imageShapeTargets(page: Page, excludedObjectIds: readonly string[] = []): Promise<ImageShapeTarget[]> {
-  return page.evaluate((excluded) => {
-    const workspaceKey = "morpho.project.project-morpho-case-study.workspace.v1";
-    const raw = window.localStorage.getItem(workspaceKey);
-    if (!raw) {
-      return [];
-    }
-    const workspace = JSON.parse(raw) as {
-      canvas?: { instances?: Array<{ id?: string; objectId?: string }> };
-    };
-    const objectByInstanceId = new Map(
-      (workspace.canvas?.instances ?? [])
-        .filter((instance): instance is { id: string; objectId: string } => Boolean(instance.id && instance.objectId))
-        .map((instance) => [instance.id, instance.objectId])
-    );
-    const excludedIds = new Set(excluded);
-    const aiPanel = document.querySelector(".ai-panel")?.getBoundingClientRect();
-    const rightBoundary = Math.min(
-      window.innerWidth - 12,
-      aiPanel && aiPanel.left > 0 ? aiPanel.left - 16 : window.innerWidth - 12
-    );
-    const targets: ImageShapeTarget[] = [];
-    for (const shape of Array.from(document.querySelectorAll<HTMLElement>(".tl-shape"))) {
-      if (!shape.querySelector(".morpho-object-image")) {
-        continue;
-      }
-      const shapeId = shape.getAttribute("data-shape-id");
-      const instanceId = shapeId?.replace(/^shape:/, "");
-      const objectId = instanceId ? objectByInstanceId.get(instanceId) : undefined;
-      if (!objectId || excludedIds.has(objectId)) {
-        continue;
-      }
-      const rect = shape.getBoundingClientRect();
-      const left = Math.max(rect.left + 12, 12);
-      const right = Math.min(rect.right - 12, rightBoundary);
-      const top = Math.max(rect.top + 12, 80);
-      const bottom = Math.min(rect.bottom - 12, window.innerHeight - 80);
-      if (right - left < 24 || bottom - top < 24) {
-        continue;
-      }
-      targets.push({
-        objectId,
-        x: Math.round((left + right) / 2),
-        y: Math.round((top + bottom) / 2)
-      });
-    }
-    return targets;
-  }, [...excludedObjectIds]);
-}
-
-async function canvasObjectCentre(page: Page, objectId: string): Promise<{ x: number; y: number } | null> {
-  return page.evaluate((targetObjectId) => {
-    const raw = window.localStorage.getItem("morpho.project.project-morpho-case-study.workspace.v1");
-    if (!raw) {
-      return null;
-    }
-    const workspace = JSON.parse(raw) as {
-      canvas?: { instances?: Array<{ id?: string; objectId?: string }> };
-    };
-    const instanceIds = new Set(
-      (workspace.canvas?.instances ?? [])
-        .filter((instance) => instance.objectId === targetObjectId && instance.id)
-        .map((instance) => instance.id)
-    );
-    for (const shape of Array.from(document.querySelectorAll<HTMLElement>(".tl-shape"))) {
-      const instanceId = shape.getAttribute("data-shape-id")?.replace(/^shape:/, "");
-      if (!instanceId || !instanceIds.has(instanceId)) {
-        continue;
-      }
-      const rect = shape.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-      }
-    }
-    return null;
-  }, objectId);
-}
-
-async function panCanvasBy(page: Page, delta: { x: number; y: number }): Promise<void> {
-  const start = { x: 820, y: 440 };
-  await page.mouse.move(start.x, start.y);
-  await page.mouse.down({ button: "middle" });
-  await page.mouse.move(start.x + delta.x, start.y + delta.y, { steps: 20 });
-  await page.mouse.up({ button: "middle" });
-  await page.waitForTimeout(500);
-}
-
-async function moveCanvasObjectTowardCentre(page: Page, objectId: string): Promise<void> {
-  const desired = { x: 480, y: 360 };
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    const before = await canvasObjectCentre(page, objectId);
-    if (!before) {
-      return;
-    }
-    const requested = {
-      x: Math.max(-260, Math.min(260, desired.x - before.x)),
-      y: Math.max(-260, Math.min(260, desired.y - before.y))
-    };
-    if (Math.abs(requested.x) < 20 && Math.abs(requested.y) < 20) {
-      return;
-    }
-    await panCanvasBy(page, requested);
-    const after = await canvasObjectCentre(page, objectId);
-    if (!after) {
-      return;
-    }
-    const beforeDistance = Math.hypot(before.x - desired.x, before.y - desired.y);
-    const afterDistance = Math.hypot(after.x - desired.x, after.y - desired.y);
-    if (afterDistance > beforeDistance) {
-      await panCanvasBy(page, { x: -requested.x * 2, y: -requested.y * 2 });
-    }
-  }
-}
 
 async function findReviewableImagePair(page: Page): Promise<{
   previousObjectId: string;
@@ -543,9 +425,8 @@ async function selectImageObject(
     await search.locator('[aria-label="关闭搜索"]').click();
     await expect(search).toBeHidden({ timeout: 10_000 });
   }
-  await openSearch.click();
-  await expect(search).toBeVisible({ timeout: 10_000 });
   await search.locator('[aria-label="搜索关键词"]').fill(target.title);
+  await page.waitForTimeout(300);
   const row = search.locator(`.result-row[data-object-id="${target.objectId}"]`);
   const locateBtn = (await row.count()) > 0
     ? row.getByRole("button", { name: "定位", exact: true })
@@ -558,16 +439,9 @@ async function selectImageObject(
   }
   await expect(search).toBeHidden({ timeout: 10_000 });
 
-  await moveCanvasObjectTowardCentre(page, target.objectId);
+  await page.waitForTimeout(800);
   const toolbar = page.locator('[aria-label="选中对象工具"]');
-  for (let zoomAttempt = 0; zoomAttempt < 5 && !(await toolbar.isVisible()); zoomAttempt += 1) {
-    const visibleTarget = (await imageShapeTargets(page)).find((item) => item.objectId === target.objectId);
-    await page.mouse.move(visibleTarget?.x ?? 480, visibleTarget?.y ?? 420);
-    await page.mouse.wheel(0, 600);
-    await page.waitForTimeout(350);
-  }
   await expect(toolbar).toBeVisible({ timeout: 10_000 });
-  await page.waitForTimeout(500);
   await expect(page.locator('[aria-label="设为后续默认参考"]')).toBeVisible({ timeout: 10_000 });
   return target.objectId;
 }
@@ -658,6 +532,7 @@ async function focusFirstShapeSelected(
   const search = page.locator('section[aria-label="项目内搜索"]');
   await expect(search).toBeVisible({ timeout: 10_000 });
   await search.locator('[aria-label="搜索关键词"]').fill(target.title);
+  await page.waitForTimeout(300);
   const row = search.locator(`.result-row[data-object-id="${target.objectId}"]`);
   const locateBtn = (await row.count()) > 0
     ? row.getByRole("button", { name: "定位", exact: true })
@@ -671,16 +546,9 @@ async function focusFirstShapeSelected(
   }
   await expect(search).toBeHidden({ timeout: 10_000 });
 
-  await moveCanvasObjectTowardCentre(page, target.objectId);
+  await page.waitForTimeout(800);
   const toolbar = page.locator('[aria-label="选中对象工具"]');
-  for (let attempt = 0; attempt < 5 && !(await toolbar.isVisible()); attempt += 1) {
-    const visibleTarget = (await imageShapeTargets(page)).find((item) => item.objectId === target.objectId);
-    await page.mouse.move(visibleTarget?.x ?? 480, visibleTarget?.y ?? 420);
-    await page.mouse.wheel(0, 600);
-    await page.waitForTimeout(350);
-  }
   await expect(toolbar).toBeVisible({ timeout: 10_000 });
-  await page.waitForTimeout(500);
   return target.objectId;
 }
 
