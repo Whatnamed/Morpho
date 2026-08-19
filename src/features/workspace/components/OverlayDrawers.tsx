@@ -787,7 +787,11 @@ function SearchRows({
       {results.map((result) => {
         const source = result.kind === "object" ? result.source : undefined;
         return (
-          <div className="result-row" key={result.kind === "object" ? result.objectId : result.referenceId}>
+          <div
+            className="result-row"
+            data-object-id={result.kind === "object" ? result.objectId : undefined}
+            key={result.kind === "object" ? result.objectId : result.referenceId}
+          >
             <div className="asset-kind-mark">{result.kind === "object" ? "对象" : "交付"}</div>
             <div className="asset-row-body">
               <div className="row-title-line">

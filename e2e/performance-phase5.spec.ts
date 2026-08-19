@@ -546,7 +546,10 @@ async function selectImageObject(
   await openSearch.click();
   await expect(search).toBeVisible({ timeout: 10_000 });
   await search.locator('[aria-label="搜索关键词"]').fill(target.title);
-  const locateBtn = search.locator(".result-row").getByRole("button", { name: "定位", exact: true }).first();
+  const row = search.locator(`.result-row[data-object-id="${target.objectId}"]`);
+  const locateBtn = (await row.count()) > 0
+    ? row.getByRole("button", { name: "定位", exact: true })
+    : search.locator(".result-row").getByRole("button", { name: "定位", exact: true }).first();
   await expect(locateBtn).toBeVisible({ timeout: 10_000 });
   await locateBtn.click();
   const closeSearch = search.locator('[aria-label="关闭搜索"]');
@@ -655,9 +658,12 @@ async function focusFirstShapeSelected(
   const search = page.locator('section[aria-label="项目内搜索"]');
   await expect(search).toBeVisible({ timeout: 10_000 });
   await search.locator('[aria-label="搜索关键词"]').fill(target.title);
-  const result = search.locator(".result-row").first();
-  await expect(result).toBeVisible({ timeout: 10_000 });
-  await result.getByRole("button", { name: "定位", exact: true }).click();
+  const row = search.locator(`.result-row[data-object-id="${target.objectId}"]`);
+  const locateBtn = (await row.count()) > 0
+    ? row.getByRole("button", { name: "定位", exact: true })
+    : search.locator(".result-row").getByRole("button", { name: "定位", exact: true }).first();
+  await expect(locateBtn).toBeVisible({ timeout: 10_000 });
+  await locateBtn.click();
 
   const closeSearch = search.locator('[aria-label="关闭搜索"]');
   if (await closeSearch.isVisible()) {
