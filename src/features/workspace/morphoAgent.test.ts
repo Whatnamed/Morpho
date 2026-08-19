@@ -343,10 +343,7 @@ describe("Morpho agent tool argument validation", () => {
     expect(isExplicitComparisonRecordRequest("比较两个方案，然后记录一下测试结果。")).toBe(false);
     expect(isExplicitComparisonRecordRequest("比较一下，然后把调研结果存档。")).toBe(false);
     expect(isExplicitComparisonRecordRequest("对比两个方向，把实验结论保留下来。")).toBe(false);
-    // Modified (non-bare) results never take the ellipsis inference, with or
-    // without 的: the persisted thing is the foreign domain's result, not the
-    // Compare's. The bare-proof is structural — only a bare 结果/结论 directly
-    // bound to the compare persist action is Compare-owned.
+    // Foreign-domain or non-Compare results are not Compare-owned and stay closed.
     expect(isExplicitComparisonRecordRequest("比较这两个方案，把研究的结论存档。")).toBe(false);
     expect(isExplicitComparisonRecordRequest("比较这两个方案，把调研的结果保存。")).toBe(false);
     expect(isExplicitComparisonRecordRequest("比较两个方案，把测试的结果保存。")).toBe(false);
@@ -354,8 +351,6 @@ describe("Morpho agent tool argument validation", () => {
     expect(isExplicitComparisonRecordRequest("比较两个方案，把研究得到的结论存档。")).toBe(false);
     expect(isExplicitComparisonRecordRequest("比较两个方案，把测试后的结论保存。")).toBe(false);
     expect(isExplicitComparisonRecordRequest("比较一下，把调研中形成的结果存档。")).toBe(false);
-    // Any lexical modifier before 结果/结论 — no blacklist, no suffix window:
-    // the disposal marker 把/将 must sit directly before the result word.
     expect(isExplicitComparisonRecordRequest("比较这两个方案，把研究最终结论存档。")).toBe(false);
     expect(isExplicitComparisonRecordRequest("比较这两个方案，把测试最终结果保存。")).toBe(false);
     expect(isExplicitComparisonRecordRequest("比较这两个方案，把研究所得结论存档。")).toBe(false);

@@ -125,18 +125,20 @@ Morpho-compatible.
 - **Expected strategy**: `comparison` (explicit comparison signal).
 - **Method pack**: `comparisonDecision`.
 - **Expected reads/tools**: both selected objects; `create_comparison_analysis`
-  IS authorized — explicit save intent ("保留比较记录"/"保存这次比较"/
-  "创建比较记录"/"把比较结果留在项目里") plus ≥2 selected objects.
+  IS authorized — explicit Compare-owned save intent ("保留比较记录"/
+  "保存这次比较"/"创建比较记录"/"把比较结果留在项目里"/"把比较结论存档"/
+  "把这次比较的结论存档"/"保存比较结果"/"记录一下比较结果") plus ≥2 selected
+  objects.
 - **Desired behavior**: create the bounded Compare record with evidence bases;
   still no automatic change to primary/alternative direction, default
   reference, elimination status, or Design Definition.
-- **Must-not**: create the record without the explicit save intent; create it
-  from a modified or foreign-domain result (把研究的结论存档/把研究最终结论存档/
-  把测试后的结论保存 — the ellipsis inference is structural: only a bare
-  结果/结论 bound to the compare persist action, or an explicit Compare noun,
-  authorizes); turn the persist negation into a long-term memory item
-  ("比较一下，但不要保存记录" must produce no memory candidate); treat the
-  recommendation as a project decision.
+- **Must-not**: create the record without explicit Compare-owned save intent;
+  create it from a foreign-domain or ambiguous bare result (把研究的结论存档/
+  把研究最终结论存档/把测试后的结论保存/比较一下，记录一下结果/比较结果保存了吗？如果没有，请保存一下
+  — ambiguous bare nouns and elliptical requests without naming Compare fail-closed
+  per F06; only explicit Compare-owned expressions authorize); turn the persist
+  negation into a long-term memory item ("比较一下，但不要保存记录" must produce no
+  memory candidate); treat the recommendation as a project decision.
 - **Quality points**: User-controlled, Evidence-aware, Morpho-compatible.
 
 ## I. Delivery preparation — "我要开始做三张展板了，看看还缺什么。"

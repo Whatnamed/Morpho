@@ -185,8 +185,7 @@ describe("Agent tool authority", () => {
     });
     expect(foreign.allowComparisonWrite).toBe(false);
     expect(foreign.allowedTools).not.toContain("create_comparison_analysis");
-    // A modified result (研究的结论) is not the bare Compare result either:
-    // the ellipsis inference is bare-only, so the write stays closed.
+    // Foreign-domain results (研究的结论 / 研究最终结论) are not Compare-owned and stay closed.
     const possessedForeign = authority({
       draft: "比较这两个方案，把研究的结论存档。",
       allowStructuredComparison: true,
@@ -194,8 +193,7 @@ describe("Agent tool authority", () => {
     });
     expect(possessedForeign.allowComparisonWrite).toBe(false);
     expect(possessedForeign.allowedTools).not.toContain("create_comparison_analysis");
-    // Any lexical modifier before 结果/结论 disables the inference — not just
-    // the possessive 的: 研究最终结论 is never Compare-owned.
+
     const modifiedForeign = authority({
       draft: "比较这两个方案，把研究最终结论存档。",
       allowStructuredComparison: true,

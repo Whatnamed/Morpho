@@ -250,11 +250,12 @@ guidance.
   `create_comparison_analysis` (a Workspace Compare write) even for "把这两个
   比较一下".
 - After: ordinary comparison is chat-only. A persisted Compare record needs an
-  EXPLICIT save intent BOUND to the Compare record ("保存这次比较",
+  EXPLICIT save intent BOUND to the Compare entity ("保存这次比较",
   "保留比较记录", "创建比较记录", "记录一下比较结果", "把比较结果留在项目里",
-  "把比较结论存档") on top of the explicit comparison request, enforced
-  locally and fail-closed: the tool is absent from `allowedTools` for plain
-  comparisons and the executor blocks the write even if the model calls it.
+  "把比较结论存档", "把这次比较的结论存档", "保存比较结果", "把比较结果保存下来")
+  on top of the explicit comparison request, enforced locally and fail-closed:
+  the tool is absent from `allowedTools` for plain comparisons and the executor
+  blocks the write even if the model calls it.
 - Negation is decoupled at clause level: "不要保存/别创建记录" closes only the
   persist authority, never the chat comparison ("比较一下，但不要保存记录" →
   comparison on, persist off); only a clause negating the compare action
@@ -262,16 +263,14 @@ guidance.
 - Persisted results must be Compare-owned: "比较这两个方案，把这个研究结论保存
   一下" / "比较两个方案，然后记录一下测试结果" stay closed — foreign-domain
   nouns (研究/测试/调研/实验结论…) never attach to the Compare record.
-- The immediate-ellipsis inference is a BARE-result positive proof, structural
-  rather than blacklist-based: only a structurally bare 结果/结论 directly bound
-  to the compare persist action is Compare-owned — "比较一下，记录一下结果"
-  (verb-then-result, suffix-only gap), "对比这两个方案，把结论存档" (the
-  disposal marker 把/将 sits directly before the result word), or the explicit
-  Compare compound noun "比较结果保存". Any lexical modifier between the
-  disposal context and the result word ("把研究的结论存档", "把研究最终结论
-  存档", "把研究所得结论存档", "把测试最终结果保存", "把调研形成的结果存档")
-  disables the inference — no foreign-noun blacklist to grow. Explicit
-  Compare-owned forms ("把这次比较的结论存档") remain authorized.
+- Ambiguous bare results and elliptical requests fail-closed per F06: expressions
+  without an explicit Compare entity name ("比较一下，记录一下结果", "对比这两个
+  方案，把结论存档", "比较结果保存了吗？如果没有，请保存一下") fail closed,
+  avoiding complex multi-layer coreference/antecedent parsers in favor of a
+  small, deterministic, provable authority gate. If users desire a persistent
+  Workspace Compare record, they can provide an unambiguous follow-up (e.g.
+  "那就保存比较记录"). Explicit Compare-owned forms ("把这次比较的结论存档",
+  "比较结果保存了吗？如果没有，请保存比较结果") remain fully authorized.
 - A+ execution integration: comparison turns previously crashed at client
   preparation because `buildProviderTaskContext` refuses the comparison
   context kind (its guard predates the A+ chain and the comparison builder
