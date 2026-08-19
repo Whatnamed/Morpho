@@ -1388,8 +1388,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         currentWorkspace.objects,
         currentWorkspace.ui.lastSelectionIds
       );
-      const selectedTarget = (actionObjects ?? (currentSelectionObjects.length > 0 ? currentSelectionObjects : selectedObjects))
-        .find((object) => object.type === "image");
+      const selectedTarget = (
+        actionObjects && actionObjects.length > 0
+          ? actionObjects
+          : selectedObjects.length > 0
+            ? selectedObjects
+            : currentSelectionObjects
+      ).find((object) => object.type === "image");
       const target = selectedTarget ? currentWorkspace.objects[selectedTarget.id] : undefined;
       if (!target || target.type !== "image" || target.visibility !== "active") {
         return;
