@@ -710,10 +710,12 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     expect(shapeCount, "画布没有挂载任何 shape").toBeGreaterThan(0);
 
     // --- big project -> project home --------------------------------------
+    await page.locator("button.project-name").click();
+    const backBtn = page.locator('[aria-label="项目操作"] button', { hasText: "返回项目首页" });
+    await backBtn.hover();
     await beginPerfPhase(page);
     await armFeedback(page, "main");
-    await page.locator("button.project-name").click();
-    await page.locator('[aria-label="项目操作"] button', { hasText: "返回项目首页" }).click();
+    await backBtn.click();
     await expect(page.locator(".phome-shelf", { hasText: "全部项目" })).toBeVisible({ timeout: 30_000 });
     const backSamples = await endPerfPhase(page);
     const backFeedback = await readFeedback(page);
@@ -730,9 +732,11 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
 
     // --- from list -> open project B ---------------------------------------
     const switchB = phase5Project("switchB");
+    const switchBCard = page.locator(".phome-grid").getByText("P5 switchB").first();
+    await switchBCard.hover();
     await beginPerfPhase(page);
     await armFeedback(page, "main");
-    await page.locator(".phome-grid").getByText("P5 switchB").first().click();
+    await switchBCard.click();
     await expect(page.locator(".morpho-shape-host").first()).toBeVisible({ timeout: 60_000 });
     const openBSamples = await endPerfPhase(page);
     const openBFeedback = await readFeedback(page);
@@ -973,9 +977,11 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     // --- toolbar hide action ---------------------------------------------------
     await focusFirstShapeSelected(page, phase5Project("objects500").workspaceKey);
     const hideBefore = await page.locator(".morpho-shape-host").count();
+    const hideButton = page.locator('[aria-label="隐藏对象"]');
+    await hideButton.hover();
     await beginPerfPhase(page);
     await armFeedback(page, "body");
-    await page.locator('[aria-label="隐藏对象"]').click();
+    await hideButton.click();
     await page.waitForFunction(
       (prev) => document.querySelectorAll(".morpho-shape-host").length < prev,
       hideBefore,
@@ -1220,9 +1226,11 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       expect(imagesSettledAt, "图片没有全部完成解码").not.toBe(null);
 
       // --- asset drawer: first open -------------------------------------------
+      const assetDrawerBtn = page.locator('[aria-label="资产"]');
+      await assetDrawerBtn.hover();
       await beginPerfPhase(page);
       await armFeedback(page, "body");
-      await page.locator('[aria-label="资产"]').click();
+      await assetDrawerBtn.click();
       await expect(page.locator('section[aria-label="资产"]')).toBeVisible({ timeout: 10_000 });
       await page.waitForTimeout(600);
       const firstOpenSamples = await endPerfPhase(page);
@@ -1245,6 +1253,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
         expect(showAllAvailable, `${tierKey} 应提供显示全部入口`).toBe(true);
       }
       if (showAllAvailable) {
+        await showAll.hover();
         await beginPerfPhase(page);
         await armFeedback(page, 'section[aria-label="资产"]');
         await showAll.click();
@@ -1266,9 +1275,11 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       }
 
       // --- asset filter chip ------------------------------------------------------
+      const filterBtn = page.locator('[aria-label="资产筛选"] button', { hasText: "原始资料" });
+      await filterBtn.hover();
       await beginPerfPhase(page);
       await armFeedback(page, 'section[aria-label="资产"]');
-      await page.locator('[aria-label="资产筛选"] button', { hasText: "原始资料" }).click();
+      await filterBtn.click();
       await page.waitForTimeout(600);
       const filterSamples = await endPerfPhase(page);
       const filterFeedback = await readFeedback(page);
@@ -1286,9 +1297,11 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       // --- asset drawer: reopen -------------------------------------------------
       await page.locator('[aria-label="关闭资产"]').click();
       await page.waitForTimeout(400);
+      const reopenBtn = page.locator('[aria-label="资产"]');
+      await reopenBtn.hover();
       await beginPerfPhase(page);
       await armFeedback(page, "body");
-      await page.locator('[aria-label="资产"]').click();
+      await reopenBtn.click();
       await expect(page.locator('section[aria-label="资产"]')).toBeVisible({ timeout: 10_000 });
       await page.waitForTimeout(600);
       const reopenSamples = await endPerfPhase(page);
@@ -1309,6 +1322,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       // --- select an image -> bottom detail ------------------------------------
       const centre = (await shapeCentres(page, 1))[0];
       expect(centre, `${tierKey} 没有可选图片`).toBeDefined();
+      await page.mouse.move(centre!.x, centre!.y);
       await beginPerfPhase(page);
       await armFeedback(page, "body");
       await page.mouse.click(centre!.x, centre!.y);
@@ -1567,9 +1581,11 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     await page.waitForTimeout(1_500);
 
     // --- search drawer ---------------------------------------------------------
+    const searchDrawerBtn = page.locator('[aria-label="项目内搜索"]');
+    await searchDrawerBtn.hover();
     await beginPerfPhase(page);
     await armFeedback(page, "body");
-    await page.locator('[aria-label="项目内搜索"]').click();
+    await searchDrawerBtn.click();
     await expect(page.locator('section[aria-label="项目内搜索"]')).toBeVisible({ timeout: 10_000 });
     const searchDrawerSamples = await endPerfPhase(page);
     const searchDrawerFeedback = await readFeedback(page);
@@ -1605,9 +1621,11 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     await page.waitForTimeout(300);
 
     // --- records drawer ----------------------------------------------------------
+    const recordsBtn = page.locator('[aria-label="项目记录"]');
+    await recordsBtn.hover();
     await beginPerfPhase(page);
     await armFeedback(page, "body");
-    await page.locator('[aria-label="项目记录"]').click();
+    await recordsBtn.click();
     await expect(page.locator("section.side-drawer").first()).toBeVisible({ timeout: 10_000 });
     await page.waitForTimeout(700);
     const recordsSamples = await endPerfPhase(page);
@@ -1626,9 +1644,11 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     await page.waitForTimeout(300);
 
     // --- delivery preparation panel ------------------------------------------------
+    const deliveryBtn = page.locator('button', { hasText: "交付准备" });
+    await deliveryBtn.hover();
     await beginPerfPhase(page);
     await armFeedback(page, "body");
-    await page.locator('button', { hasText: "交付准备" }).click();
+    await deliveryBtn.click();
     await page.waitForTimeout(900);
     const deliverySamples = await endPerfPhase(page);
     const deliveryFeedback = await readFeedback(page);
@@ -1845,6 +1865,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       if (!raw) throw new Error("内置案例工作区未持久化");
       return JSON.parse(raw) as { workingState?: { currentDefaultReferenceId?: string } };
     });
+    await setReference.hover();
     await beginPerfPhase(page);
     await armFeedback(page, "body");
     const replaceOnly = page.getByRole("button", { name: "只替换默认参考", exact: true });
@@ -1890,6 +1911,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     const deleteButton = page.locator(`[aria-label="删除项目：测试"]`);
     await expect(deleteButton, "内置案例项目删除预览入口缺失").toHaveCount(1);
     if (await deleteButton.count() > 0) {
+      await deleteButton.hover();
       await beginPerfPhase(page);
       await armFeedback(page, "main");
       await deleteButton.click();

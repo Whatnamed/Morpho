@@ -719,7 +719,7 @@ export async function readFeedback(page: Page): Promise<FeedbackResult> {
     if (
       handle.record.firstInputAt !== null &&
       handle.record.firstChangeAt !== null &&
-      handle.record.firstChangeAt < handle.record.firstInputAt
+      handle.record.firstChangeAt < handle.record.firstInputAt - 0.1
     ) {
       handle.record.valid = false;
       handle.record.invalidReason = "change_before_input";
