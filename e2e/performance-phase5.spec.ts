@@ -546,9 +546,9 @@ async function selectImageObject(
   await openSearch.click();
   await expect(search).toBeVisible({ timeout: 10_000 });
   await search.locator('[aria-label="搜索关键词"]').fill(target.title);
-  const result = search.locator(".result-row").first();
-  await expect(result).toBeVisible({ timeout: 10_000 });
-  await result.getByRole("button", { name: "定位", exact: true }).click();
+  const locateBtn = search.locator(".result-row").getByRole("button", { name: "定位", exact: true }).first();
+  await expect(locateBtn).toBeVisible({ timeout: 10_000 });
+  await locateBtn.click();
   await expect(search).toBeHidden({ timeout: 10_000 });
 
   await moveCanvasObjectTowardCentre(page, target.objectId);
