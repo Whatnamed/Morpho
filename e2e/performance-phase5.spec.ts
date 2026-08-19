@@ -599,7 +599,11 @@ async function emptyPoint(page: Page): Promise<{ x: number; y: number }> {
  * setup action. Search locate drives the production focus request, zoom-to-selection,
  * and editor selection before the measured action.
  */
-async function focusFirstShapeSelected(page: Page, workspaceKey: string): Promise<string> {
+async function focusFirstShapeSelected(
+  page: Page,
+  workspaceKey: string,
+  excludedObjectIds: readonly string[] = []
+): Promise<string> {
   await page.keyboard.press("Escape").catch(() => undefined);
   const collapseAi = page.locator('[aria-label="收起 AI 面板"]');
   if (await collapseAi.isVisible()) {
@@ -610,7 +614,7 @@ async function focusFirstShapeSelected(page: Page, workspaceKey: string): Promis
     await dismissStorageNotice.click();
   }
 
-  const target = await page.evaluate((storageKey) => {
+  const target = await page.evaluate(({ storageKey, excluded }) => {
     const raw = window.localStorage.getItem(storageKey);
     if (!raw) {
       throw new Error(`Workspace not found at ${storageKey}.`);
@@ -619,15 +623,28 @@ async function focusFirstShapeSelected(page: Page, workspaceKey: string): Promis
       objects?: Record<string, { title?: string; type?: string; visibility?: string }>;
       canvas?: { instances?: Array<{ objectId?: string }> };
     };
-    for (const instance of workspace.canvas?.instances ?? []) {
-      const objectId = instance.objectId;
-      const object = objectId ? workspace.objects?.[objectId] : undefined;
-      if (objectId && object?.type === "image" && object.visibility === "active" && object.title?.trim()) {
-        return { objectId, title: object.title.trim() };
-      }
+    const excludedSet = new Set(excluded);
+    const candidates = (workspace.canvas?.instances ?? [])
+      .map((instance) => {
+        const objectId = instance.objectId;
+        const object = objectId ? workspace.objects?.[objectId] : undefined;
+        return objectId && object?.type === "image" && object.visibility === "active" && object.title?.trim()
+          ? { objectId, title: object.title.trim() }
+          : null;
+      })
+      .filter((candidate): candidate is { objectId: string; title: string } => candidate !== null)
+      .filter((candidate) => !excludedSet.has(candidate.objectId));
+    const titleCounts = new Map<string, number>();
+    for (const candidate of candidates) {
+      titleCounts.set(candidate.title, (titleCounts.get(candidate.title) ?? 0) + 1);
     }
+    return candidates.find((candidate) => titleCounts.get(candidate.title) === 1) ??
+      candidates[0] ??
+      null;
+  }, { storageKey: workspaceKey, excluded: [...excludedObjectIds] });
+  if (!target) {
     throw new Error("Workspace has no searchable active canvas image.");
-  }, workspaceKey);
+  }
 
   await page.locator('[aria-label="项目内搜索"]').click();
   const search = page.locator('section[aria-label="项目内搜索"]');
@@ -642,11 +659,12 @@ async function focusFirstShapeSelected(page: Page, workspaceKey: string): Promis
     await closeSearch.click();
   }
   await expect(search).toBeHidden({ timeout: 10_000 });
+
+  await moveCanvasObjectTowardCentre(page, target.objectId);
   const toolbar = page.locator('[aria-label="选中对象工具"]');
   for (let attempt = 0; attempt < 5 && !(await toolbar.isVisible()); attempt += 1) {
-    // Search locate zooms the target into view. Reduce that visual zoom in setup
-    // only; the measured hide/delete action still starts from a stable selection.
-    await page.mouse.move(480, 420);
+    const visibleTarget = (await imageShapeTargets(page)).find((item) => item.objectId === target.objectId);
+    await page.mouse.move(visibleTarget?.x ?? 480, visibleTarget?.y ?? 420);
     await page.mouse.wheel(0, 600);
     await page.waitForTimeout(350);
   }
@@ -955,7 +973,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     });
 
     // --- delete object (Delete key on selection) ------------------------------
-    await focusFirstShapeSelected(page, phase5Project("objects500").workspaceKey);
+    const deletedObjectId = await focusFirstShapeSelected(page, phase5Project("objects500").workspaceKey);
     const countAfterAdd = await page.locator(".morpho-shape-host").count();
     await beginPerfPhase(page);
     await armFeedback(page, "body");
@@ -975,7 +993,7 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
     });
 
     // --- toolbar hide action ---------------------------------------------------
-    await focusFirstShapeSelected(page, phase5Project("objects500").workspaceKey);
+    await focusFirstShapeSelected(page, phase5Project("objects500").workspaceKey, [deletedObjectId]);
     const hideBefore = await page.locator(".morpho-shape-host").count();
     const hideButton = page.locator('[aria-label="隐藏对象"]');
     await hideButton.hover();
