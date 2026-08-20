@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
+import type { ResponseMessageInput } from "./openaiCompatibleProvider";
 
 import {
   buildAPlusAgentProviderContract,
@@ -10,6 +11,21 @@ import {
   normalizeAPlusProviderToolCalls,
   parseAPlusAgentProviderRequest
 } from "./agentTurnProviderRequest";
+
+function systemMessageItems(items: readonly unknown[]): ResponseMessageInput[] {
+  return items.filter(
+    (item): item is ResponseMessageInput =>
+      typeof item === "object" && item !== null && (item as { role?: unknown }).role === "system"
+  );
+}
+
+function messageText(item: ResponseMessageInput): string {
+  const part = item.content[0];
+  if (part.type !== "input_text" && part.type !== "output_text") {
+    return "";
+  }
+  return part.text;
+}
 
 function providerRequestWithOutput(output: string): unknown {
   return {
@@ -154,6 +170,105 @@ describe("A+ Provider continuation contract", () => {
         promptCacheRetention: "24h"
       }
     }));
+  });
+
+  it("materializes the trusted canonical strategy and method items after the runtime item", () => {
+    const parsed = parseAPlusAgentProviderRequest({
+      ...(providerRequestWithOutput('{"status":"completed"}') as Record<string, unknown>),
+      strategy: "visualDevelopment",
+      strategyAnchorMessageId: "user-visual-dev",
+      methodPacks: ["formDevelopment", "referenceInterpretation"]
+    });
+    expect(parsed.status).toBe("ok");
+    if (parsed.status === "failed") return;
+    expect(parsed.value.strategy).toBe("visualDevelopment");
+    expect(parsed.value.strategyAnchorMessageId).toBe("user-visual-dev");
+    expect(parsed.value.methodPacks).toEqual(["formDevelopment", "referenceInterpretation"]);
+
+    const contract = buildAPlusAgentProviderContract({
+      localProjectId: "project-local",
+      request: parsed.value,
+      webSearchEnabled: false
+    });
+    const systemItems = systemMessageItems(contract.request.input);
+    expect(systemItems).toHaveLength(4);
+    const strategyItem = systemItems[2];
+    const methodItem = systemItems[3];
+    expect(messageText(strategyItem)).toContain("[Morpho Canonical Strategy | trusted server item]");
+    expect(messageText(strategyItem)).toContain("Task strategy: visualDevelopment");
+    expect(messageText(strategyItem)).toContain("视觉意图必须区分改变目标、必须保留");
+    expect(messageText(methodItem)).toContain("[Morpho Canonical Design Method | trusted server item]");
+    expect(messageText(methodItem)).toContain("形态发展");
+    expect(messageText(methodItem)).toContain("参考图解读");
+    // The stable prefix stays untouched: system[0] is the stable prompt and
+    // system[1] the runtime item.
+    expect(messageText(systemItems[0])).toContain("Prompt contract: morpho-agent-v3.6-2026-08-17");
+    expect(messageText(systemItems[1])).toContain("[Morpho Canonical Runtime | trusted server item]");
+  });
+
+  it("keeps the strategy out of the request when the client does not send it", () => {
+    const parsed = parseAPlusAgentProviderRequest(providerRequestWithOutput('{"status":"completed"}'));
+    expect(parsed.status).toBe("ok");
+    if (parsed.status === "failed") return;
+    expect(parsed.value.strategy).toBeUndefined();
+    const contract = buildAPlusAgentProviderContract({
+      localProjectId: "project-local",
+      request: parsed.value,
+      webSearchEnabled: false
+    });
+    expect(systemMessageItems(contract.request.input)).toHaveLength(2);
+  });
+
+  it("rejects invalid strategy, method pack ids, duplicates, and over-limit packs", () => {
+    const base = providerRequestWithOutput('{"status":"completed"}') as Record<string, unknown>;
+    expect(parseAPlusAgentProviderRequest({ ...base, strategy: "notAStrategy" })).toMatchObject({
+      status: "failed"
+    });
+    expect(parseAPlusAgentProviderRequest({ ...base, strategy: "research", strategyAnchorMessageId: "bad id!" }))
+      .toMatchObject({ status: "failed" });
+    expect(parseAPlusAgentProviderRequest({ ...base, methodPacks: ["not-a-pack"] })).toMatchObject({
+      status: "failed"
+    });
+    expect(parseAPlusAgentProviderRequest({ ...base, methodPacks: ["formDevelopment", "formDevelopment"] }))
+      .toMatchObject({ status: "failed" });
+    expect(parseAPlusAgentProviderRequest({
+      ...base,
+      methodPacks: ["researchSynthesis", "designDefinition", "conceptDivergence", "formDevelopment"]
+    })).toMatchObject({ status: "failed" });
+  });
+
+  it("includes strategy and method items in the external request hash", () => {
+    const research = parseAPlusAgentProviderRequest({
+      ...(providerRequestWithOutput('{"status":"completed"}') as Record<string, unknown>),
+      strategy: "research",
+      methodPacks: ["researchSynthesis"]
+    });
+    const visual = parseAPlusAgentProviderRequest({
+      ...(providerRequestWithOutput('{"status":"completed"}') as Record<string, unknown>),
+      strategy: "visualDevelopment",
+      methodPacks: ["formDevelopment"]
+    });
+    expect(research.status).toBe("ok");
+    expect(visual.status).toBe("ok");
+    if (research.status === "failed" || visual.status === "failed") return;
+
+    const researchHash = hashAPlusAgentExternalRequest({
+      model: "provider-test-model",
+      providerRequest: buildAPlusAgentProviderContract({
+        localProjectId: "project-local",
+        request: research.value,
+        webSearchEnabled: false
+      }).request
+    });
+    const visualHash = hashAPlusAgentExternalRequest({
+      model: "provider-test-model",
+      providerRequest: buildAPlusAgentProviderContract({
+        localProjectId: "project-local",
+        request: visual.value,
+        webSearchEnabled: false
+      }).request
+    });
+    expect(researchHash).not.toBe(visualHash);
   });
 });
 

@@ -66,6 +66,12 @@ descriptions were true at their recorded baseline:
   [`m9-a-local-runtime-reliability.md`](./m9-a-local-runtime-reliability.md)
 - Audit and measurement evidence: [`ai-continuity-convergence-audit.md`](./ai-continuity-convergence-audit.md),
   [`performance-baseline.md`](./performance-baseline.md), and [`asset-gc-evaluation.md`](./asset-gc-evaluation.md)
+- AI capability layer (2026-08-16): [`ai-capability-layer.md`](./ai-capability-layer.md) (audit,
+  gap analysis, architecture proposal, and implementation record for the design-partner persona,
+  trusted strategy delivery, Design Method Packs, memory one-off guard, compaction prompt
+  semantics, and image-compiler principles) and
+  [`ai-capability-eval-corpus.md`](./ai-capability-eval-corpus.md) (A–L acceptance cases with
+  expected strategy, method packs, reads/tools, desired and must-not behavior, and quality points)
 
 Historical documents explain what was built or considered. They do not authorize runtime changes,
 remote database actions, or Phase C cleanup.

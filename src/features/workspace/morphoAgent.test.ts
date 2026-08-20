@@ -13,6 +13,9 @@ import {
   MORPHO_AGENT_TOOL_EFFECT_MATRIX,
   getDesignDefinitionDrafts,
   isExplicitComparisonRequest,
+  isExplicitComparisonRecordRequest,
+  isRetrospectiveComparisonPersistenceQuery,
+  isClauseRetrospectivePersistenceQuery,
   normalizeGenerateVisualsForSelectedDirections,
   parseMorphoAgentToolCallBatch,
   parseMorphoAgentToolArguments,
@@ -301,16 +304,236 @@ describe("Morpho agent tool argument validation", () => {
   it("blocks an unsolicited or selection-free Compare tool call locally", () => {
     expect(getComparisonToolExecutionBlockReason({
       explicitComparisonRequested: false,
-      selectedObjectCount: 3
+      selectedObjectCount: 3,
+      explicitComparisonRecordRequested: true
     })).toContain("用户未明确要求比较");
     expect(getComparisonToolExecutionBlockReason({
       explicitComparisonRequested: true,
-      selectedObjectCount: 1
+      selectedObjectCount: 1,
+      explicitComparisonRecordRequested: true
     })).toContain("至少两个");
     expect(getComparisonToolExecutionBlockReason({
       explicitComparisonRequested: true,
-      selectedObjectCount: 2
+      selectedObjectCount: 2,
+      explicitComparisonRecordRequested: true
     })).toBeUndefined();
+    expect(getComparisonToolExecutionBlockReason({
+      explicitComparisonRequested: true,
+      selectedObjectCount: 2,
+      explicitComparisonRecordRequested: false
+    })).toContain("没有明确要求保存/保留比较记录");
+  });
+
+  it("separates ordinary comparison from persisted comparison record authority", () => {
+    // Ordinary comparisons never grant a Workspace Compare write.
+    expect(isExplicitComparisonRecordRequest("把这两个比较一下")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较这些方案")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("对比这两个方案，分析差异")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("这个方案比较省钱，记录一下预算")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("把这两个方案的设计记录比较一下")).toBe(false);
+    // Asking about a comparison OUTCOME is not a save request.
+    expect(isExplicitComparisonRecordRequest("比较结果怎么样？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结论是什么？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("对比结果再解释一下。")).toBe(false);
+    // A save verb bound to something else never grants.
+    expect(isExplicitComparisonRecordRequest("创建两个方案然后比较一下。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("记录一下预算，再比较两个方案。")).toBe(false);
+    // Foreign-domain results are NOT Compare-owned and never grant.
+    expect(isExplicitComparisonRecordRequest("比较这两个方案，把这个研究结论保存一下。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较两个方案，然后记录一下测试结果。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较一下，然后把调研结果存档。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("对比两个方向，把实验结论保留下来。")).toBe(false);
+    // Foreign-domain or non-Compare results are not Compare-owned and stay closed.
+    expect(isExplicitComparisonRecordRequest("比较这两个方案，把研究的结论存档。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较这两个方案，把调研的结果保存。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较两个方案，把测试的结果保存。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("对比两个方向，把实验的结论保留下来。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较两个方案，把研究得到的结论存档。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较两个方案，把测试后的结论保存。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较一下，把调研中形成的结果存档。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较这两个方案，把研究最终结论存档。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较这两个方案，把测试最终结果保存。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较这两个方案，把研究所得结论存档。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较这两个方案，把用户研究结论存档。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较一下，把调研形成的结果存档。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较这两个方案，把这次的结论存档。")).toBe(false);
+    // Retrospective status queries are inquiries, not Workspace write requests.
+    expect(isExplicitComparisonRecordRequest("比较结果保存了吗？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("保存比较结果了吗？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较记录已经创建了吗？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("对比结论存档了吗？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("这个比较结果有没有保存？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("这次比较记录是不是已经保存了？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果之前存档过吗？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果存了吗？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("对比结论存档了么？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("这次比较结果存上了吗？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("确认一下比较记录是否保存了")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("看看比较结果有没有存下来")).toBe(false);
+    // Aspectual inquiry suffixes, A-not-A, confirmation and bare interrogative forms stay closed.
+    expect(isExplicitComparisonRecordRequest("比较结果保存没有？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果保存没有")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果保存没？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果保存没")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果存档没有？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果存档没？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果保存了吧？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果保存过吧？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果保存了对吧？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果保存了是不是？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果保存吗？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果保存没保存？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果存没存？")).toBe(false);
+    // Explicit Compare compound nouns and explicit save requests stay authorized.
+    expect(isExplicitComparisonRecordRequest("比较结果保存。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("对比结论存档。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("把这两个比较一下，并保留比较记录")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("保存这次比较。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("保留这次对比。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("创建比较记录。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("记录一下比较结果。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("把比较结果留在项目里。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("把比较结论存档。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("把这次比较的结论存档。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("把比较结果保存下来。")).toBe(true);
+
+    // Ambiguous bare results without explicitly naming Compare fail-closed.
+    expect(isExplicitComparisonRecordRequest("比较这两个方案，将结论存档。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较一下，记录一下结果。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("对比这两个方案，把结论存档。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("把这两个比较一下，记录一下结果")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果保存了吗？如果没有，请保存一下。")).toBe(false);
+
+    // Foreign target in an active save request does NOT grant Compare write authority.
+    expect(isExplicitComparisonRecordRequest("把这两个比较一下。比较结果保存了吗？请保存测试结果。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果保存了吗？请保存研究结论。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较这两个方案，把研究的结论存档。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较这两个方案，把研究最终结论存档。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较两个方案，然后记录一下测试结果")).toBe(false);
+
+    // Past user action statement does NOT grant.
+    expect(isExplicitComparisonRecordRequest("我把比较结果保存好了。")).toBe(false);
+
+    // Hypothetical or conditional mentions of saving do NOT grant Compare write authority.
+    expect(isExplicitComparisonRecordRequest("如果要保存比较记录，请先问我。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("如果需要保存比较记录，先确认一下。")).toBe(false);
+
+    // Modal cue in an unrelated clause does NOT lend authority to a status query.
+    expect(isExplicitComparisonRecordRequest("比较结果保存吗？能不能告诉我？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果保存吗？可以帮我确认一下吗？")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果存档吗？请告诉我。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果保存吗？麻烦确认一下。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果保存吗？帮我看看。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果保存了吗？如果没有，请告诉我。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("对比结论存档了吗？麻烦确认下。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("保存比较结果了吗？请告诉我。")).toBe(false);
+
+    // Explicit save request in a distinct clause grants write authority.
+    expect(isExplicitComparisonRecordRequest("比较结果保存了吗？如果没有，请保存比较结果。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("把这两个比较一下；请保存比较记录。")).toBe(true);
+
+    // Polite modal action requests are positive save requests, not status queries.
+    expect(isExplicitComparisonRecordRequest("能不能把比较结果保存一下？")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("可以帮我保存比较记录吗？")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("能否把这次比较存档？")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("帮我把这次比较的结论保存下来。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("请创建比较记录。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("请把比较结果保存下来。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("麻烦保存一下比较记录。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("可以把这次比较的结果存下来吗？")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("麻烦把比较结果保存一下")).toBe(true);
+
+    // Past-context preceding an explicit current save request must grant.
+    expect(isExplicitComparisonRecordRequest("已经决定好了，帮我保存比较结果。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("已经决定好了，现在帮我保存比较结果。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("之前讨论过了，这次把比较结果保存下来。")).toBe(true);
+    expect(isExplicitComparisonRecordRequest("刚才比较完了，请创建比较记录。")).toBe(true);
+
+    // Explicit negation is fail-closed.
+    expect(isExplicitComparisonRecordRequest("比较一下，但不要保存记录。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("不要创建比较记录，只讨论。")).toBe(false);
+    expect(isExplicitComparisonRecordRequest("比较结果不要保存。")).toBe(false);
+  });
+
+  it("distinguishes retrospective comparison status queries from active requests", () => {
+    // Retrospective queries check past/current state.
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果保存了吗？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("保存比较结果了吗？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较记录已经创建了吗？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("对比结论存档了吗？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("这个比较结果有没有保存？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("这次比较记录是不是已经保存了？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果之前存档过吗？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果存了吗？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较记录建过了吗？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("查一下比较结果是否保存了")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("确认比较结论有没有存档")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果保存没有？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果保存没有")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果保存没？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果保存没")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果存档没有？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果存档没？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果保存了吧？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果保存过吧？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果保存了对吧？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果保存了是不是？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果保存吗？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果保存没保存？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果存没存？")).toBe(true);
+    // Unrelated modal cues in another clause do not remove retrospective status.
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果保存吗？能不能告诉我？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果保存吗？可以帮我确认一下吗？")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果存档吗？请告诉我。")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果保存吗？麻烦确认一下。")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果保存吗？帮我看看。")).toBe(true);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果保存了吗？如果没有，请告诉我。")).toBe(true);
+
+    // Active action requests are NOT retrospective queries.
+    expect(isRetrospectiveComparisonPersistenceQuery("保存比较结果")).toBe(false);
+    expect(isRetrospectiveComparisonPersistenceQuery("把比较结果保存下来")).toBe(false);
+    expect(isRetrospectiveComparisonPersistenceQuery("创建比较记录")).toBe(false);
+    expect(isRetrospectiveComparisonPersistenceQuery("把这次比较的结论存档")).toBe(false);
+    expect(isRetrospectiveComparisonPersistenceQuery("能不能把比较结果保存一下？")).toBe(false);
+    expect(isRetrospectiveComparisonPersistenceQuery("可以帮我保存比较记录吗？")).toBe(false);
+    expect(isRetrospectiveComparisonPersistenceQuery("能否把这次比较存档？")).toBe(false);
+    expect(isRetrospectiveComparisonPersistenceQuery("帮我把这次比较的结论保存下来。")).toBe(false);
+    expect(isRetrospectiveComparisonPersistenceQuery("请创建比较记录。")).toBe(false);
+    expect(isRetrospectiveComparisonPersistenceQuery("请把比较结果保存下来。")).toBe(false);
+    expect(isRetrospectiveComparisonPersistenceQuery("麻烦保存一下比较记录。")).toBe(false);
+    expect(isRetrospectiveComparisonPersistenceQuery("已经决定好了，帮我保存比较结果。")).toBe(false);
+    expect(isRetrospectiveComparisonPersistenceQuery("已经决定好了，现在帮我保存比较结果。")).toBe(false);
+    expect(isRetrospectiveComparisonPersistenceQuery("之前讨论过了，这次把比较结果保存下来。")).toBe(false);
+    expect(isRetrospectiveComparisonPersistenceQuery("刚才比较完了，请创建比较记录。")).toBe(false);
+    expect(isRetrospectiveComparisonPersistenceQuery("比较结果保存了吗？如果没有，请保存比较结果。")).toBe(false);
+  });
+
+  it("negates only the compare action itself, never the save intent", () => {
+    // "不要保存" closes only persist authority; the comparison stays on.
+    expect(isExplicitComparisonRequest("比较一下，但不要保存记录。")).toBe(true);
+    expect(isExplicitComparisonRequest("不要保存记录，只比较一下。")).toBe(true);
+    expect(isExplicitComparisonRequest("对比这两个方案，但别创建比较记录。")).toBe(true);
+    expect(isExplicitComparisonRequest("先比较差异，不需要把结果留在项目里。")).toBe(true);
+    expect(isExplicitComparisonRequest("这个方案比较省钱，但还是对比一下这两个。")).toBe(true);
+    // Negating the compare action itself closes the comparison.
+    expect(isExplicitComparisonRequest("不要比较，只分析。")).toBe(false);
+    expect(isExplicitComparisonRequest("别对比了，直接总结。")).toBe(false);
+    expect(isExplicitComparisonRequest("无需比较，分别说明即可。")).toBe(false);
+    expect(isExplicitComparisonRequest("不是让你比较，我只是想问这个方案怎么样。")).toBe(false);
+    expect(isExplicitComparisonRequest("比较就不用了，直接给结论。")).toBe(false);
+    // 副词"比较"不是比较动作。
+    expect(isExplicitComparisonRequest("这个方案比较省钱。")).toBe(false);
+    expect(isExplicitComparisonRequest("这个颜色比较好看。")).toBe(false);
+  });
+
+  it("uses one shared compare-action recognition for request and record detectors", () => {
+    // 副词"比较"不是比较动作：不进入 comparison，也不授权记录。
+    expect(isExplicitComparisonRequest("这个方案比较省钱")).toBe(false);
+    expect(isExplicitComparisonRequest("这个颜色比较好看")).toBe(false);
+    expect(isExplicitComparisonRequest("这个方案比较省钱，对比一下这两个")).toBe(true);
+    expect(isExplicitComparisonRequest("对比这三个方案")).toBe(true);
+    expect(isExplicitComparisonRequest("分析这三个方案")).toBe(false);
+    expect(isExplicitComparisonRequest("不要做对比卡片，只根据内容分析")).toBe(false);
   });
 
   it("normalizes direction preview visual roles before operation validation", () => {
@@ -721,6 +944,85 @@ describe("Morpho agent tool argument validation", () => {
 
   it("rejects unsupported tool names", () => {
     expect(() => parseMorphoAgentToolArguments(makeCall("delete_everything", {}))).toThrow("未支持的 Agent 工具");
+  });
+});
+
+describe("Morpho agent persona and prompt contract", () => {
+  it("bumps the prompt contract version for the persona and method layer", () => {
+    expect(buildMorphoAgentSystemPrompt({
+      mode: "auto",
+      strategy: "discussion",
+      workspace: createInitialWorkspace(),
+      selectedObjects: [],
+      context: buildTaskContext(createInitialWorkspace(), {
+        kind: "general",
+        draft: "继续",
+        selectedObjectIds: []
+      }),
+      providerTaskContext: buildProviderTaskContext(
+        buildTaskContext(createInitialWorkspace(), {
+          kind: "general",
+          draft: "继续",
+          selectedObjectIds: []
+        })
+      )
+    })).toContain("morpho-agent-v3.6-2026-08-17");
+  });
+
+  it("carries the continuous design-partner persona in the stable prompt", () => {
+    const prompt = buildMorphoAgentSystemPrompt({
+      mode: "auto",
+      strategy: "discussion",
+      workspace: createInitialWorkspace(),
+      selectedObjects: [],
+      context: buildTaskContext(createInitialWorkspace(), {
+        kind: "general",
+        draft: "聊聊",
+        selectedObjectIds: []
+      }),
+      providerTaskContext: buildProviderTaskContext(
+        buildTaskContext(createInitialWorkspace(), {
+          kind: "general",
+          draft: "聊聊",
+          selectedObjectIds: []
+        })
+      )
+    });
+
+    expect(prompt).toContain("连续设计搭档");
+    expect(prompt).toContain("尊重用户已有工作与判断");
+    expect(prompt).toContain("区分证据、推断、假设、设计机会、提议与决定");
+    expect(prompt).toContain("只换颜色、背景或形容词不算新方向");
+    expect(prompt).toContain("视觉输出是设计探索工具");
+    expect(prompt).toContain("用户拥有最终设计判断权");
+    expect(prompt).toContain("只针对本轮具体图、对象或文本的一次性要求");
+  });
+
+  it("keeps the stable prompt byte-identical across strategies while the persona is present", () => {
+    const build = (strategy: "discussion" | "research") => {
+      const workspace = createInitialWorkspace();
+      const context = buildTaskContext(workspace, {
+        kind: strategy === "research" ? "research" : "general",
+        draft: strategy === "research" ? "调研竞品" : "聊聊下一步",
+        selectedObjectIds: []
+      });
+      return buildMorphoAgentSystemPrompt({
+        mode: "auto",
+        strategy,
+        workspace,
+        selectedObjects: [],
+        context,
+        providerTaskContext: buildProviderTaskContext(context)
+      });
+    };
+
+    expect(build("discussion")).toBe(build("research"));
+  });
+
+  it("tells the model that turn-specific image instructions are not stable memory", () => {
+    const tools = JSON.stringify(buildMorphoAgentTools(true));
+    expect(tools).toContain("只针对本轮具体图、对象或文本的一次性要求");
+    expect(tools).not.toContain("若系统提示本轮需要确认记忆更新");
   });
 });
 

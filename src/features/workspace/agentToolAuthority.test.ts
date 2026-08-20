@@ -139,6 +139,158 @@ describe("Agent tool authority", () => {
     expect(profile.allowedTools).toContain("create_concept_direction_proposal");
     expect(profile.allowedTools).not.toContain("revise_selected_proposal_draft");
   });
+
+  it("grants Compare writes only to an explicit persist request, never to a plain comparison", () => {
+    const workspace = createTestWorkspace();
+    const sources = Object.values(workspace.objects)
+      .filter((object) => object.visibility === "active" && (object.type === "image" || object.type === "research"))
+      .slice(0, 2);
+    if (sources.length !== 2) throw new Error("Fixture 缺少两个可 Compare 对象。");
+    // Ordinary comparison: analysis capability yes, Workspace write no.
+    const plain = authority({
+      draft: "把这两个比较一下。",
+      allowStructuredComparison: true,
+      selectedObjects: sources
+    });
+    expect(plain.allowComparisonWrite).toBe(false);
+    expect(plain.allowedTools).not.toContain("create_comparison_analysis");
+    // Explicit persist request: the write is authorized.
+    const persisted = authority({
+      draft: "把这两个比较一下，并保留比较记录。",
+      allowStructuredComparison: true,
+      selectedObjects: sources
+    });
+    expect(persisted.allowComparisonWrite).toBe(true);
+    expect(persisted.allowedTools).toContain("create_comparison_analysis");
+    // Negated save intent stays closed even with an explicit comparison.
+    const negated = authority({
+      draft: "比较一下，但不要保存记录。",
+      allowStructuredComparison: true,
+      selectedObjects: sources
+    });
+    expect(negated.allowComparisonWrite).toBe(false);
+    expect(negated.allowedTools).not.toContain("create_comparison_analysis");
+    // Fewer than two selections never writes, regardless of save intent.
+    const single = authority({
+      draft: "把这两个比较一下，并保留比较记录。",
+      allowStructuredComparison: true,
+      selectedObjects: sources.slice(0, 1)
+    });
+    expect(single.allowComparisonWrite).toBe(false);
+    // A foreign-domain result is not Compare-owned and never writes.
+    const foreign = authority({
+      draft: "比较这两个方案，把这个研究结论保存一下。",
+      allowStructuredComparison: true,
+      selectedObjects: sources
+    });
+    expect(foreign.allowComparisonWrite).toBe(false);
+    expect(foreign.allowedTools).not.toContain("create_comparison_analysis");
+    // Foreign-domain results (研究的结论 / 研究最终结论) are not Compare-owned and stay closed.
+    const possessedForeign = authority({
+      draft: "比较这两个方案，把研究的结论存档。",
+      allowStructuredComparison: true,
+      selectedObjects: sources
+    });
+    expect(possessedForeign.allowComparisonWrite).toBe(false);
+    expect(possessedForeign.allowedTools).not.toContain("create_comparison_analysis");
+
+    const modifiedForeign = authority({
+      draft: "比较这两个方案，把研究最终结论存档。",
+      allowStructuredComparison: true,
+      selectedObjects: sources
+    });
+    expect(modifiedForeign.allowComparisonWrite).toBe(false);
+    expect(modifiedForeign.allowedTools).not.toContain("create_comparison_analysis");
+    // Foreign target in active save requests, past-action statements, bare ellipsis, and hypothetical/conditional mentions must NOT grant.
+    const nonAuthorizingExamples = [
+      "把这两个比较一下。比较结果保存了吗？请保存测试结果。",
+      "比较结果保存了吗？请保存研究结论。",
+      "比较两个方案，然后记录一下测试结果",
+      "比较结果保存了吗？如果没有，请保存一下。",
+      "我把比较结果保存好了。",
+      "如果要保存比较记录，请先问我。",
+      "如果需要保存比较记录，先确认一下。"
+    ];
+    for (const draft of nonAuthorizingExamples) {
+      const nonAuth = authority({
+        draft,
+        allowStructuredComparison: true,
+        selectedObjects: sources
+      });
+      expect(nonAuth.allowComparisonWrite).toBe(false);
+      expect(nonAuth.allowedTools).not.toContain("create_comparison_analysis");
+    }
+
+    // Retrospective status queries are inquiries, not Workspace write requests.
+    const statusQueryExamples = [
+      "比较结果保存了吗？",
+      "保存比较结果了吗？",
+      "比较记录已经创建了吗？",
+      "对比结论存档了吗？",
+      "这个比较结果有没有保存？",
+      "这次比较记录是不是已经保存了？",
+      "比较结果之前存档过吗？",
+      "比较结果保存没有？",
+      "比较结果保存没有",
+      "比较结果保存没？",
+      "比较结果保存没",
+      "比较结果存档没有？",
+      "比较结果存档没？",
+      "比较结果保存了吧？",
+      "比较结果保存过吧？",
+      "比较结果保存了对吧？",
+      "比较结果保存了是不是？",
+      "比较结果保存吗？",
+      "比较结果保存没保存？",
+      "比较结果存没存？",
+      "比较结果保存吗？能不能告诉我？",
+      "比较结果保存吗？可以帮我确认一下吗？",
+      "比较结果存档吗？请告诉我。",
+      "比较结果保存吗？麻烦确认一下。",
+      "比较结果保存吗？帮我看看。",
+      "比较结果保存了吗？如果没有，请告诉我。",
+      "对比结论存档了吗？麻烦确认下。",
+      "保存比较结果了吗？请告诉我。"
+    ];
+    for (const draft of statusQueryExamples) {
+      const statusQuery = authority({
+        draft,
+        allowStructuredComparison: true,
+        selectedObjects: sources
+      });
+      expect(statusQuery.allowComparisonWrite).toBe(false);
+      expect(statusQuery.allowedTools).not.toContain("create_comparison_analysis");
+    }
+
+    // Polite current save requests & past-context requests grant Compare write authority when preconditions hold.
+    const politeActionExamples = [
+      "能不能把比较结果保存一下？",
+      "可以帮我保存比较记录吗？",
+      "能否把这次比较存档？",
+      "帮我把这次比较的结论保存下来。",
+      "请创建比较记录。",
+      "请把比较结果保存下来。",
+      "麻烦保存一下比较记录。",
+      "保存比较结果。",
+      "把比较结果保存下来。",
+      "把这次比较的结论存档。",
+      "已经决定好了，帮我保存比较结果。",
+      "已经决定好了，现在帮我保存比较结果。",
+      "之前讨论过了，这次把比较结果保存下来。",
+      "刚才比较完了，请创建比较记录。",
+      "比较结果保存了吗？如果没有，请保存比较结果。",
+      "把这两个比较一下；请保存比较记录。"
+    ];
+    for (const draft of politeActionExamples) {
+      const politeAction = authority({
+        draft,
+        allowStructuredComparison: true,
+        selectedObjects: sources
+      });
+      expect(politeAction.allowComparisonWrite).toBe(true);
+      expect(politeAction.allowedTools).toContain("create_comparison_analysis");
+    }
+  });
 });
 
 function authority(overrides: Partial<Parameters<typeof resolveAgentToolAuthority>[0]> = {}) {

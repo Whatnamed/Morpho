@@ -782,6 +782,38 @@ function coordinatorHost(): AgentTurnCoordinatorHost {
   };
 }
 
+describe("A+ strategy and method pack delivery", () => {
+  it("sends the resolved strategy and deterministic method packs in the provider request", async () => {
+    const fake = createAgentTurnHostFake({ workspace: createTestWorkspace() });
+    const host = hostFromFake(fake);
+    const prepared = await prepareAgentTurnProductAPlus(
+      { ...standardInput(), draft: "只研究 CMF，结构别动", taskMode: "imageGeneration" },
+      host
+    );
+
+    expect(prepared.providerRequest.strategy).toBe("visualDevelopment");
+    expect(prepared.providerRequest.strategyAnchorMessageId).toBe(prepared.userMessageId);
+    expect(prepared.providerRequest.methodPacks).toEqual(["cmfExploration"]);
+  });
+
+  it("keeps tiny discussion turns free of method packs", async () => {
+    const fake = createAgentTurnHostFake({ workspace: createTestWorkspace() });
+    const host = hostFromFake(fake);
+    const prepared = await prepareAgentTurnProductAPlus(
+      {
+        ...standardInput(),
+        draft: "好的，谢谢",
+        taskMode: "chatAnalysis",
+        recommendedTaskMode: "chatAnalysis"
+      },
+      host
+    );
+
+    expect(prepared.providerRequest.strategy).toBe("discussion");
+    expect(prepared.providerRequest.methodPacks).toEqual([]);
+  });
+});
+
 function journalSnapshot(): AgentTurnJournalSnapshot {
   return {
     serverTurnId: TURN_ID,

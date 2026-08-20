@@ -28,7 +28,7 @@ function generation(operationId: string, title: string): ImageGenerationMetadata
     aspectRatio: "16:9",
     prompt: title,
     compiledPrompt: `compiled:${title}`,
-    promptContractVersion: "morpho-image-prompt-v2",
+    promptContractVersion: "morpho-image-prompt-v3",
     referenceObjectIds: ["image-soft-rail-v2"],
     referenceResolution: {
       resolvedObjectIds: ["image-soft-rail-v2"],
@@ -122,7 +122,7 @@ describe("image generation result commits", () => {
       expect(firstGenerated.generation).toMatchObject({
         modelId: "nano-banana-fast",
         compiledPrompt: "compiled:第一张",
-        promptContractVersion: "morpho-image-prompt-v2",
+        promptContractVersion: "morpho-image-prompt-v3",
         referenceObjectIds: ["image-soft-rail-v2"],
         visualIntent: { title: "第一张" }
       });

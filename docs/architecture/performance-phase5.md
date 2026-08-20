@@ -94,7 +94,7 @@
 
 精确的 `inputBytes`、sync/async wall、首调时间、窗口内 blockingDuration、压缩后大小和 `byteIdentical` 结果只在 [`performance-zip-crossover.generated.json`](../operations/performance-zip-crossover.generated.json) 中作权威记录；它们是一次真实浏览器运行的观测值，不复制成容易漂移的第二份数字表。
 
-结论：生产实现按原始输入字节执行 **`<= 2 * 1024 * 1024` 使用 `zipSync`，严格 `> 2 * 1024 * 1024` 使用异步 `zip`**。这是从 0.2–16 MiB transition 区间选出的工程阈值，不是声称存在一个精确 universal crossover 点。同步路径的大包会产生可观测主线程阻塞（16 MiB 同步阻塞 381.4ms），而异步路径将主线程阻塞大幅削减至近零（4 MiB / 8 MiB 为 0ms，16 MiB 仅 3.3ms）；异步 wall 和首调仍不是零成本，超大包的整体缓冲装配仍属于 Bundle Pipeline v2 后续议题。两条路径逻辑内容一致，但字节级结果不保证一致，`byteIdentical` 必须以本轮 JSON artifact 为准。
+结论：生产实现按原始输入字节执行 **`<= 2 * 1024 * 1024` 使用 `zipSync`，严格 `> 2 * 1024 * 1024` 使用异步 `zip`**。这是从 0.2–16 MiB transition 区间选出的工程阈值，不是声称存在一个精确 universal crossover 点。同步路径的大包会产生明显主线程阻塞，而异步路径将主线程阻塞大幅削减至近零；精确的 sync/async wall、首调时间、blockingDuration、压缩后大小和 byteIdentical 数值以 [`performance-zip-crossover.generated.json`](../operations/performance-zip-crossover.generated.json) 为权威来源。异步 wall 和首调仍不是零成本，超大包的整体缓冲装配仍属于 Bundle Pipeline v2 后续议题。两条路径逻辑内容一致，但字节级结果不保证一致，`byteIdentical` 必须以本轮 JSON artifact 为准。
 
 **本轮完整安装下的浏览器实测**：备份与人读归档均安装了 28 个 asset blobs，且都超过 2 MiB、走异步路径；精确 `zipBytes`、wall 和 `blockingDuration` 由 `performance-phase5.generated.json` 的对应 entries 权威记录。890ms 只作为历史同步压缩 proxy，不把它当作当前人读归档实测值。真实内置案例的备份是大包；hybrid 阈值保护的是真正的小包（小项目、测试夹具、无图项目），其收益由 crossover 数据与单测双路径覆盖。规范已加入确定性的 expected-key 安装等待，消除测量竞态。
 

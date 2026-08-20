@@ -448,7 +448,7 @@ export async function beginPerfPhase(page: Page): Promise<void> {
 
 /** Closes the sampler, waits for observer delivery, and summarizes only this phase. */
 export async function endPerfPhase(page: Page): Promise<PerfPhaseSamples> {
-  return page.evaluate(async () => {
+  const raw = await page.evaluate(async () => {
     const state = window.__morphoPerf;
     if (!state) {
       throw new Error("Perf probe was not installed before navigation.");
@@ -483,50 +483,19 @@ export async function endPerfPhase(page: Page): Promise<PerfPhaseSamples> {
     await Promise.all([twoFrames, timeout]);
     state.drainObservers();
 
-    const inWindow = (at: number) => at >= startedAt && at <= endedAt;
-    const isPhaseEntry = (start: number) => start >= startedAt && start < endedAt;
-    const commits = state.commits.filter(inWindow);
-    const loaf = state.loaf.filter((entry) => isPhaseEntry(entry.start));
-    const events = state.events
-      .filter((entry) => isPhaseEntry(entry.start))
-      .sort((a, b) => a.start - b.start);
-    const frames = state.frames.filter(inWindow);
-    const pointerMoves = state.pointerMoves.filter(inWindow);
-    const keyPresses = state.keyPresses.filter(inWindow);
-    const processing = events.map((event) => event.processing).sort((a, b) => a - b);
-    const percentile = (fraction: number) =>
-      processing.length === 0
-        ? 0
-        : (processing[Math.min(processing.length - 1, Math.max(0, Math.ceil(fraction * processing.length) - 1))] as number);
-    const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
-    const pointerSpanMs =
-      pointerMoves.length < 2
-        ? null
-        : (pointerMoves[pointerMoves.length - 1] as number) - (pointerMoves[0] as number);
-
     return {
-      phaseStartedAt: startedAt,
-      phaseEndedAt: endedAt,
-      commitCount: commits.length,
-      commitTimestamps: commits,
-      loafCount: loaf.length,
-      longestLoafMs: loaf.length === 0 ? 0 : Math.max(...loaf.map((entry) => entry.duration)),
-      longestBlockingMs: loaf.length === 0 ? 0 : Math.max(...loaf.map((entry) => entry.blockingDuration)),
-      totalLoafMs: sum(loaf.map((entry) => entry.duration)),
-      totalBlockingMs: sum(loaf.map((entry) => entry.blockingDuration)),
-      slowEventCount: processing.length,
-      slowEventProcessingP95Ms: percentile(0.95),
-      slowEventProcessingMaxMs: processing.length === 0 ? 0 : (processing[processing.length - 1] as number),
-      slowEventTotalProcessingMs: sum(processing),
-      firstSlowEventMs: events.length === 0 ? null : (events[0]?.start ?? null),
-      lastSlowEventMs: events.length === 0 ? null : (events[events.length - 1]?.start ?? null),
-      pointerMoveCount: pointerMoves.length,
-      keyPressCount: keyPresses.length,
-      pointerRateHz: pointerSpanMs !== null && pointerSpanMs > 0 ? (pointerMoves.length / pointerSpanMs) * 1000 : null,
-      frameCount: frames.length,
-      windowMs: endedAt - startedAt
+      startedAt,
+      endedAt,
+      commits: state.commits,
+      loaf: state.loaf,
+      events: state.events,
+      frames: state.frames,
+      pointerMoves: state.pointerMoves,
+      keyPresses: state.keyPresses
     };
   });
+
+  return calculatePhaseSamples(raw);
 }
 
 export function isPhaseEntry(start: number, startedAt: number, endedAt: number): boolean {

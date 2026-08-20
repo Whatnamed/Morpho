@@ -540,6 +540,21 @@ running External Actions, or outstanding claims. Three retained `awaiting_next_r
 belong to `externally_completed` parent Turns from 2026-08-07; they are historical journal rows, not
 active settlement work, and were not modified.
 
+### Prompt Contract rollout boundary (agent v3.6 / compaction v3 / image prompt v3)
+
+The Prompt Contract version is content identity: the server rejects requests whose
+`promptContractVersion` does not exactly match the deployed prompt content
+(`morpho-agent-v3.6-2026-08-17` for the Agent stable prefix and canonical strategy/method items,
+`morpho-agent-compaction-v3-2026-08-17` for the compaction directive,
+`morpho-image-prompt-v3` for compiled image prompts). There is deliberately no multi-version
+compatibility layer: after deploying these versions, any in-flight local Recovery Record that was
+created under an older Agent contract cannot continue its Turn (the client rebuilds the request
+against the new version and the server rejects the old version fail-closed, ending the Turn, after
+which the local recovery record is cleared by the normal terminal path). Before deploying an
+application build that contains a bumped Prompt Contract, finish or explicitly cancel every
+non-terminal Turn (the same gate as the F02 database rollout above), then deploy.
+Journal/External Action schema is unaffected by these bumps.
+
 The sole formal Agent resources are:
 
 ```text

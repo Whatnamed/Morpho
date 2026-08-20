@@ -370,6 +370,37 @@ export function buildProviderComparisonBackgroundContext(context: TaskContextRes
   };
 }
 
+/**
+ * Comparison turns are deliberately excluded from buildProviderTaskContext
+ * (which throws for the comparison kind): the comparison TaskContext has no
+ * direction revisions or visual branches and carries a comparison-only scope
+ * (explicit selected objects, no default-reference auto-inclusion). This
+ * builder assembles the provider-facing shape for the A+ turn from the
+ * long-standing comparison background context (defaultReference /
+ * designDefinition / projectContinuity) plus the selected-object lists and
+ * document extracts. kind is "general" because no consumer branches on
+ * ProviderTaskContext.kind — comparison semantics ride in the TaskContextResult
+ * itself (scopeNote / defaultReference reason), in the trusted turn frame's
+ * taskStrategy, and in the comparison strategy policy.
+ */
+export function buildProviderComparisonTaskContext(context: TaskContextResult): ProviderTaskContext {
+  const background = buildProviderComparisonBackgroundContext(context);
+  return {
+    kind: "general",
+    objectIds: context.objectIds,
+    imageObjectIds: context.imageObjectIds,
+    documentObjectIds: context.documentObjectIds,
+    documentFragmentExtracts: context.documentFragmentExtracts,
+    truncated: context.truncated,
+    defaultReference: background.defaultReference,
+    designDefinition: background.designDefinition,
+    directions: [],
+    visualBranches: [],
+    projectContinuity: background.projectContinuity,
+    skipped: context.skipped
+  };
+}
+
 function addObjectIfAvailable(
   workspace: MorphoWorkspace,
   objectIds: MorphoObjectId[],

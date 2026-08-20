@@ -630,7 +630,7 @@ export function buildMorphoAgentTools(
     }),
     functionTool({
       name: "create_comparison_analysis",
-      description: "基于当前显式选择对象创建 Compare analysis，不自动改变主方向、默认参考或淘汰状态。",
+      description: "普通比较默认直接在聊天中给出差异、权衡与建议，不创建 Compare 记录；只有用户明确要求保存/保留比较记录（如“保留比较记录”“保存这次比较”“创建比较记录”）时才调用本工具。比较建议不是项目决定，绝不自动改变主方向、备选方向、淘汰状态、默认参考或设计定义。",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -699,7 +699,7 @@ export function buildMorphoAgentTools(
     }),
     functionTool({
       name: "submit_memory_update",
-      description: "只提交当前用户消息中明确表达的稳定偏好、约束、避免项或开放问题。evidenceQuote 必须逐字来自当前用户消息。若系统提示本轮需要确认记忆更新但没有可写入内容，传 items: [] 和 skippedReason 说明原因。",
+      description: "只提交当前用户消息中明确表达的稳定偏好、约束、避免项或开放问题。evidenceQuote 必须逐字来自当前用户消息。只针对本轮具体图、对象或文本的一次性要求（如“这张图做成红色”“这次背景换白色”）不属于稳定记忆，不要写入；没有可写入内容时传 items: [] 和 skippedReason 说明原因。",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -795,9 +795,13 @@ export function buildMorphoAgentTools(
 export function getComparisonToolExecutionBlockReason(input: {
   explicitComparisonRequested: boolean;
   selectedObjectCount: number;
+  explicitComparisonRecordRequested: boolean;
 }): string | undefined {
   if (!input.explicitComparisonRequested) {
     return "Compare 已阻止：用户未明确要求比较，本轮只进行普通分析。";
+  }
+  if (!input.explicitComparisonRecordRequested) {
+    return "Compare 已阻止：用户只要求比较分析，没有明确要求保存/保留比较记录；请直接在聊天中给出差异、权衡与建议，不要写入 Workspace。";
   }
   if (input.selectedObjectCount < 2) {
     return "Compare 已阻止：需要至少两个当前显式选择且可用的对象。";
@@ -877,16 +881,205 @@ export function buildMorphoAgentInitialTools(): ResponseTool[] {
   return buildMorphoAgentTools(true);
 }
 
+/**
+ * 副词用法："这个方案比较省钱" 里的"比较"是程度副词，不是比较动作。
+ * 该 scrub 由 isExplicitComparisonRequest 与 isExplicitComparisonRecordRequest
+ * 共享，保证两处对 compare-action 的识别一致。
+ */
+const COMPARE_ADVERBIAL_USAGE_PATTERN =
+  /比较(?:省钱|方便|好用|好|更好|快|更快|轻|小|大|便宜|贵|适合|合适|稳妥|安全|简单|容易|划算|重要|明显|实用|耐用|轻便|省心|省事|靠谱|复杂|难)/g;
+
+function scrubComparativeAdverb(text: string): string {
+  return text.replace(COMPARE_ADVERBIAL_USAGE_PATTERN, "");
+}
+
+const COMPARE_ACTION_WORD = /比较|对比|compare/i;
+
+/**
+ * 直接否定比较动作本身：否定词紧贴比较词（中间最多 4 个字符）。
+ * "不要比较" / "别对比了" / "不是让你比较" / "无需比较" 都命中；
+ * "比较一下，但不要保存记录" 中"不要保存"与比较词之间隔着转折与另一动作，
+ * 由 clause 拆分隔离，不会否定比较动作。
+ */
+const COMPARE_ACTION_PREFIX_NEGATION =
+  /(?:不要|别|无需|无须|不必|不用|不需要|禁止|不是|没|暂不|先别|先不要|停止|不做|不再|别做|算了).{0,4}(?:比较|对比|compare)/i;
+
+/**
+ * 比较动作后紧跟的否定收尾（"比较就不用了"）；中间不允许出现转折词，
+ * 所以"比较一下但不要保存记录"不会命中。
+ */
+const COMPARE_ACTION_SUFFIX_NEGATION =
+  /(?:比较|对比|compare)(?:[^但,，。；;!?！？\n]{0,4})(?:就)?(?:不用|不必|不要|别|算了|免了)/i;
+
+function hasPositiveComparisonAction(text: string): boolean {
+  const scrubbed = scrubComparativeAdverb(text);
+  for (const clause of scrubbed.split(/[，。；,;!?！？\n]+/)) {
+    if (!COMPARE_ACTION_WORD.test(clause)) continue;
+    if (COMPARE_ACTION_PREFIX_NEGATION.test(clause)) continue;
+    if (COMPARE_ACTION_SUFFIX_NEGATION.test(clause)) continue;
+    return true;
+  }
+  return false;
+}
+
 export function isExplicitComparisonRequest(draft: string): boolean {
-  const text = draft.trim();
+  return hasPositiveComparisonAction(draft.trim());
+}/**
+ * 检查单个子句是否针对持久化动作表达回溯、状态查询、确认疑问或无情态前缀的裸疑问语气。
+ */
+export function isClauseRetrospectivePersistenceQuery(clause: string): boolean {
+  const trimmed = clause.trim();
+  if (!trimmed) return false;
+
+  // 1. 查验/询问动词针对持久化状态：查一下是否保存 / 确认有没有存档 / 看看保存了没有
   if (
-    /(?:不要|别|无需|不需要|不是).{0,16}(?:比较|对比|compare)|(?:比较|对比|compare).{0,16}(?:不要|别|无需|不需要|不是)/i.test(
-      text
-    )
+    /(?:查|查看|查询|看|确认|问|想知道|知道|核实|核对|检查).{0,6}(?:一下|下|下看|看)?.{0,10}(?:是否|有没有|是不是|有无|可曾|算不算)?.{0,10}(?:保存|保留|记录|创建|写入|存档|留下|记下|存进|存入|存上|存下来|存|建档|建)/i.test(trimmed)
   ) {
+    return true;
+  }
+
+  // 2. 正反疑问句（A-not-A）：保存没保存 / 存没存 / 存档没存档 / 建没建 / 有没有保存 / 是否保存 / 是不是创建
+  if (
+    /(?:保存没保存|存没存|存档没存档|建没建|记没记|写入没写入)/i.test(trimmed) ||
+    /(?:有没有|有无|是否|是不是|可曾|算不算).{0,8}(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|存入|存上|存下来|存|建档|建)/i.test(trimmed)
+  ) {
+    return true;
+  }
+
+  // 3. 持久化动词 + 疑问完成态/经验态/否定询问后缀：
+  // 保存没有 / 保存没 / 存档没有 / 存档没 / 保存了吗 / 存档过吗 / 保存了没 / 保存了没有 / 存过没有 / 保存过了吗 / 存上了吗
+  if (
+    /(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|存入|存上|存下来|存|建档|建).{0,8}(?:没有|没|了吗|了么|了没|了没有|过吗|过么|过没|过没有|过了吗|过没有\?|过没\?)(?:[?？\s]*$)/i.test(trimmed)
+  ) {
+    return true;
+  }
+
+  // 4. 持久化动词 + 确认疑问助词（吧/对吧/对不对/是不是/是吧/了？）：
+  // 保存了吧 / 保存过吧 / 保存了对吧 / 保存了是不是 / 保存了对不对 / 存档了吧 / 比较结果存了？ / 结论存档了？
+  if (
+    /(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|存入|存上|存下来|存|建档|建).{0,8}(?:了吧|过吧|了对吧|了是不是|了对不对|了是吧|(?:了|过)[?？])/i.test(trimmed)
+  ) {
+    return true;
+  }
+
+  // 5. 裸谓词疑问句：在该子句本身不含情态请求/祈使前缀时，以 "保存吗/存档吗/创建吗" 结尾或带问号
+  // 注意：情态/祈使前缀必须在当前子句内部，例如 "能不能把比较结果保存一下？" 内含 "能不能"，属于正向情态请求；
+  // 而 "比较结果保存吗？" 自身不含情态前缀，即属于状态询问；后接 "能不能告诉我？" 也无法借出 authority。
+  const hasClauseModalRequest =
+    /(?:能不能|能否|可否|可不可以|可以帮我|能否帮我|可否帮我|能不能帮我|可以|可不可以|请|帮我|麻烦|劳驾|务必)/i.test(trimmed);
+
+  if (!hasClauseModalRequest) {
+    if (
+      /(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|存入|存上|存下来|存|建档|建).{0,4}(?:吗|么)[?？\s]*$/i.test(trimmed)
+    ) {
+      return true;
+    }
+  }
+
+  // 6. 过去时态副词修饰持久化动词（且本子句不含即时执行指令）：
+  // 例如："比较记录已经创建了" / "比较结果之前已经保存"
+  const hasPastAdverb = /(?:已经|已|此前|之前|刚才|早前|上次|过去|曾|曾经)/i.test(trimmed);
+  const hasSaveVerb = /(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|存入|存上|存下来|存|建档|建)/i.test(trimmed);
+  const hasImmediateAction = /(?:帮我|请|麻烦|劳驾|务必|现在|这次|立刻|马上)/i.test(trimmed);
+  if (hasPastAdverb && hasSaveVerb && !hasImmediateAction) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * 识别针对 Compare 记录持久化状态的回溯/状态查询语气（"保存了吗？" / "保存没有？" /
+ * "保存没？" / "保存了吧？" / "是否已存档？" / "保存没保存？" / "比较结果保存吗？"），
+ * 防止将状态查询或真值确认误判为当前 Workspace 写入请求。
+ */
+export function isRetrospectiveComparisonPersistenceQuery(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+
+  const clauses = trimmed.split(/[，。；,;!?！？\n]+/).map((c) => c.trim()).filter(Boolean);
+  if (clauses.length === 0) return false;
+
+  const persistenceClauses = clauses.filter((clause) =>
+    /(?:保存|保留|创建|写入|存档|留下|留在|留下来|记下|存为|存进|存入|存上|存下来|放进|落|存|建档|建|记录)/i.test(clause)
+  );
+  if (persistenceClauses.length === 0) {
     return false;
   }
-  return /比较|对比|compare/i.test(text);
+
+  return persistenceClauses.every((clause) => isClauseRetrospectivePersistenceQuery(clause));
+}
+
+/**
+ * 显式 Compare 持久化动作的正向匹配规则（Explicit Compare-owned Persistence）：
+ * 必须明确将持久化动词绑定到比较名词（"保存比较记录" / "保留这次比较" / "创建比较记录" /
+ * "把比较结果保存下来" / "把比较结论存档" / "把这次比较的结论存档" / "保存比较结果" /
+ * "记录一下比较结果" / "把比较结果留在项目里" / "把这次比较记录下来"）。
+ */
+const EXPLICIT_COMPARE_RECORD_SAVE_PATTERN =
+  /(?:保存|保留|创建|写入|存档|留下|留在|留下来|记下|存为|存进|存入|存上|存下来|放进|记录(?:一下|下来)?)\s*(?:一下|下)?\s*(?:这次|本轮|当前|这个|这一|一份|一个|的)?\s*(?:比较|对比|compare)(?:的)?(?:结果|结论|记录)|(?:保存|保留|创建|写入|存档|留下|留在|留下来|记下|存为|存进|存入|存上|存下来|放进)\s*(?:一下|下)?\s*(?:这次|本轮|当前|这个|这一|一份|一个|的)?\s*(?:比较|对比|compare)|把\s*(?:这次|本轮|当前|这个)?\s*(?:的)?\s*(?:比较|对比)(?:的)?(?:结果|结论|记录)?\s*(?:留下|留在|留下来|保存|保留|写入|存档|放进|记下|存为|存进|存下来|落|记录(?:一下|下来)?)|(?:比较|对比|compare)(?:的)?(?:结果|结论|记录)\s*(?:留下|留在|留下来|保存|保留|写入|存档|放进|记下|存为|存进|存下来|落|记录(?:一下|下来)?)/i;
+
+/**
+ * 显式 Compare 持久化动作的否定规则：
+ * 任何显式否定（"不要保存比较记录" / "别创建比较记录" / "比较结果不要保存"）直接关闭写权限。
+ */
+const EXPLICIT_COMPARE_RECORD_NEGATION_PATTERN =
+  /(?:不|不要|别|无需|无须|不必|不用|不需要|禁止|暂不|先不要|先别|切勿)\s*(?:直接|自动|再|先|立即|当前|现在)?\s*(?:保存|保留|记录|创建|写入|存档|留下|留下来|记下|存为|存进|存入|存上|存下来|存)\s*(?:这次|本轮|当前|这个|这一|一份|一个|的)?\s*(?:比较|对比|compare)|(?:比较|对比|compare)[^，,。.!！?？；;：:\n]{0,12}(?:不要|别|无需|无须|不必|不用|不需要|禁止|暂不|先不要|先别|切勿|不)\s*(?:保存|保留|记录|创建|写入|存档|留下|存为|存进|存下来|存)/i;
+
+/**
+ * 假设与条件提及（"如果要保存比较记录" / "如果需要保存比较记录"）：
+ */
+const COMPARE_RECORD_HYPOTHETICAL_PATTERN =
+  /^(?:如果|要是|若|若是|假若|万一|假设|假如|一旦).{0,6}(?:要|需要|需|打算|准备|想)?.{0,4}(?:保存|保留|记录|创建|写入|存档|留下|记下|存为|存进|存入|存上|存下来|存)/i;
+
+/**
+ * 判定当前用户草稿是否包含经过正向证明的 Compare 持久化写入请求（Positive Active-Save Proof）。
+ *
+ * 核心架构原则（F06 架构收敛）：
+ * 1. 显式否定直接拒绝（fail-closed）；
+ * 2. 假设/条件从句（"如果要保存比较记录，请先问我"）不提供即时写入授权；
+ * 3. 状态查询（"比较结果保存了吗？"）不提供写入授权；
+ * 4. 显式要求用户说清楚：持久化动作必须明确绑定归属于 Compare 的实体名词（"保存比较记录" / "把比较结果保存下来"）；
+ * 5. 外来实体目标（"请保存测试结果" / "把研究结论存档"）绝不授权 Compare 写权限；
+ * 6. 模糊省略全部 fail-closed，保证规则小、窄、可证明，无需维护复杂的跨子句指代推理机。
+ */
+export function isExplicitComparisonRecordRequest(draft: string): boolean {
+  const text = draft.trim();
+  if (!text) return false;
+
+  const clauses = text.split(/[，。；,;!?！？\n]+/).map((c) => c.trim()).filter(Boolean);
+  if (clauses.length === 0) return false;
+
+  let hasPositiveExplicitRequest = false;
+
+  for (const clause of clauses) {
+    // 1. 显式否定判断：任何子句显式否定比较持久化，立即 fail-closed
+    if (EXPLICIT_COMPARE_RECORD_NEGATION_PATTERN.test(clause)) {
+      return false;
+    }
+
+    // 2. 检查是否匹配显式 Compare 持久化动作
+    if (EXPLICIT_COMPARE_RECORD_SAVE_PATTERN.test(clause)) {
+      // 排除状态查询、真值确认
+      if (isClauseRetrospectivePersistenceQuery(clause)) {
+        continue;
+      }
+      // 排除纯假设/条件从句（"如果要保存比较记录，请先问我"）
+      if (COMPARE_RECORD_HYPOTHETICAL_PATTERN.test(clause)) {
+        continue;
+      }
+      // 排除非祈使的完成陈述句（如 "我把比较结果保存好了"）
+      if (/(?:保存|存|留|记)(?:好|好了|完|完了|过|过了)(?:了)?(?:[。！!\s]*$)/.test(clause)) {
+        const hasModalOrImperative = /(?:请|帮我|麻烦|劳驾|务必|能不能|可以|能否)/i.test(clause);
+        if (!hasModalOrImperative) {
+          continue;
+        }
+      }
+      hasPositiveExplicitRequest = true;
+    }
+  }
+
+  return hasPositiveExplicitRequest;
 }
 
 export function buildAgentHistoryMessages(messages: Array<{ role: "user" | "assistant"; body: string }>): ResponseMessageInput[] {

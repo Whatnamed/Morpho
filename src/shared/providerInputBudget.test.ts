@@ -155,6 +155,58 @@ describe("provider input timeline budget", () => {
     expect(dynamicOnlyBudget.totalInputTokens).toBeLessThan(serverBudget.inputTokens);
   });
 
+  it("models the full server prefix including canonical Strategy and Method items", () => {
+    const stableSystemPrompt = "Morpho 稳定系统规则";
+    const runtimeItemText = "canonical runtime item";
+    const strategyItemText = "canonical strategy item";
+    const methodPackItemText = "canonical method pack item";
+    const dynamicInput = [
+      { role: "user", content: [{ type: "input_text", text: "继续发展当前方案" }] }
+    ];
+    const tools = [{ type: "function", name: "generate_visuals" }];
+
+    // Exact order the server builds in buildAPlusAgentProviderContract.
+    const serverPayload = [
+      { role: "system", content: [{ type: "input_text", text: stableSystemPrompt }] },
+      { role: "system", content: [{ type: "input_text", text: runtimeItemText }] },
+      { role: "system", content: [{ type: "input_text", text: strategyItemText }] },
+      { role: "system", content: [{ type: "input_text", text: methodPackItemText }] },
+      ...dynamicInput
+    ];
+    const serverBudget = estimateProviderInputTokens({
+      input: serverPayload,
+      tools,
+      responseReserveTokens: 0
+    });
+    const clientBudget = estimateProviderInputTimelineBudget({
+      input: [
+        ...buildServerManagedPrefixItems({
+          stableSystemPrompt,
+          runtimeItemText,
+          strategyItemText,
+          methodPackItemText
+        }),
+        ...dynamicInput
+      ],
+      tools,
+      responseReserveTokens: 0
+    });
+    const withoutStrategyMethodBudget = estimateProviderInputTimelineBudget({
+      input: [
+        ...buildServerManagedPrefixItems({ stableSystemPrompt, runtimeItemText }),
+        ...dynamicInput
+      ],
+      tools,
+      responseReserveTokens: 0
+    });
+
+    expect(clientBudget.totalInputTokens).toBe(serverBudget.inputTokens);
+    expect(clientBudget.projectedInputItemCount).toBe(serverPayload.length);
+    // Omitting the two canonical items under-counts both tokens and items.
+    expect(withoutStrategyMethodBudget.totalInputTokens).toBeLessThan(serverBudget.inputTokens);
+    expect(withoutStrategyMethodBudget.projectedInputItemCount).toBe(serverPayload.length - 2);
+  });
+
   it("projects the Provider input item count alongside tokens", () => {
     const items = Array.from({ length: 40 }, (_value, index) => ({
       role: index % 2 === 0 ? "user" : "assistant",

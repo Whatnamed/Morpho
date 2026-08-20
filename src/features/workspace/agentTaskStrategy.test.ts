@@ -47,6 +47,33 @@ describe("Agent task strategy and prompt registry", () => {
     });
   });
 
+  it("does not treat the adverb 比较 as a comparison action", () => {
+    expect(resolve({ draft: "这个方案比较省钱，你觉得怎么样", selectedObjects: [object("image-soft-rail-v2")] })).toMatchObject({
+      kind: "discussion"
+    });
+    expect(resolve({ draft: "这个颜色比较好看", selectedObjects: [object("image-soft-rail-v2")] })).toMatchObject({
+      kind: "discussion"
+    });
+    expect(resolve({ draft: "这个方案比较省钱，对比一下这两个", selectedObjects: [object("image-soft-rail-v2")] })).toMatchObject({
+      kind: "comparison"
+    });
+  });
+
+  it("keeps comparison strategy when only the save intent is negated", () => {
+    expect(resolve({ draft: "比较一下，但不要保存记录", selectedObjects: [object("image-soft-rail-v2")] })).toMatchObject({
+      kind: "comparison"
+    });
+    expect(resolve({ draft: "不要保存记录，只比较一下", selectedObjects: [object("image-soft-rail-v2")] })).toMatchObject({
+      kind: "comparison"
+    });
+    expect(resolve({ draft: "不要比较，只分析", selectedObjects: [object("image-soft-rail-v2")] })).toMatchObject({
+      kind: "discussion"
+    });
+    expect(resolve({ draft: "别对比了，直接总结", selectedObjects: [object("image-soft-rail-v2")] })).toMatchObject({
+      kind: "discussion"
+    });
+  });
+
   it("does not route explicitly negated proposal actions into proposal strategies", () => {
     expect(resolve({
       draft: "不要形成设计定义，只总结当前结论。",

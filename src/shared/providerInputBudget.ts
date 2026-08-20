@@ -119,18 +119,29 @@ export function estimateProviderInputTimelineBudget(input: {
 }
 
 /**
- * The server prepends a stable System prompt and the canonical Runtime item to
- * every Provider request. The client must include them when it decides whether to
- * compact, otherwise it under-counts the payload it is about to cause.
+ * The server prepends a stable System prompt, the canonical Runtime item, and
+ * — for Agent turns — the canonical Strategy item and the canonical Design
+ * Method item to every Provider request. The client must include all of them
+ * when it decides whether to compact, otherwise it under-counts the payload
+ * it is about to cause. Order matches `buildAPlusAgentProviderContract`:
+ * Stable System → Runtime → Strategy → Method Pack → dynamic client input.
  */
 export function buildServerManagedPrefixItems(input: {
   stableSystemPrompt: string;
   runtimeItemText?: string;
+  strategyItemText?: string;
+  methodPackItemText?: string;
 }): unknown[] {
   return [
     { role: "system", content: [{ type: "input_text", text: input.stableSystemPrompt }] },
     ...(input.runtimeItemText
       ? [{ role: "system", content: [{ type: "input_text", text: input.runtimeItemText }] }]
+      : []),
+    ...(input.strategyItemText
+      ? [{ role: "system", content: [{ type: "input_text", text: input.strategyItemText }] }]
+      : []),
+    ...(input.methodPackItemText
+      ? [{ role: "system", content: [{ type: "input_text", text: input.methodPackItemText }] }]
       : [])
   ];
 }

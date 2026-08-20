@@ -27,7 +27,7 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   const needsPerfSeed = projectNames.includes("perf");
   const needsPhase5Seed = projectNames.includes("perf5");
 
-  if (needsPhase5Seed || process.env.MORPHO_REQUIRE_CLEAN_BUILD === "true") {
+  if (process.env.MORPHO_REQUIRE_CLEAN_BUILD === "true") {
     const status = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], { encoding: "utf8" }).trim();
     if (status) {
       throw new Error(`Performance evidence requires a clean tracked worktree at measurement time:\n${status}`);

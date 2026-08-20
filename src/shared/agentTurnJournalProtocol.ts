@@ -2,6 +2,8 @@ import type {
   AgentCanonicalRuntimeItem,
   AgentRuntimeMode
 } from "./agentRuntimeItem";
+import type { AgentTaskStrategyKind } from "@/domain/morpho/types";
+import type { DesignMethodPackId } from "./designMethodPack";
 
 export const SERVER_EXTERNAL_EXECUTION_STATUSES = [
   "created",
@@ -84,6 +86,20 @@ export type APlusAgentProviderRequest = Readonly<{
   mode: AgentRuntimeMode;
   capabilityIntent: Readonly<{ comparisonAnalysis: boolean; webSearch?: boolean }>;
   previousRuntimeItem?: AgentCanonicalRuntimeItem;
+  /**
+   * Deterministic task strategy resolved by the client. The server validates
+   * the kind and materializes the trusted canonical strategy System item, so
+   * strategy policy reaches the model without polluting the stable prefix.
+   * Optional for in-flight compatibility; new turns always send it.
+   */
+  strategy?: AgentTaskStrategyKind;
+  /** Anchor user message id referenced by the canonical strategy item. */
+  strategyAnchorMessageId?: string;
+  /**
+   * Deterministic design method pack selection. The server validates the ids
+   * against the fixed registry and materializes trusted method text.
+   */
+  methodPacks?: readonly DesignMethodPackId[];
 }>;
 
 export type AgentTurnRequestStreamEvent =

@@ -4,7 +4,7 @@ import { createInitialWorkspace, hideObject } from "../../domain/morpho/workspac
 import type { MorphoWorkspace } from "../../domain/morpho/types";
 import { recordDesignDefinitionProposal } from "../../domain/operations/operations";
 
-import { buildProviderTaskContext, buildTaskContext, TASK_CONTEXT_LIMITS } from "./taskContext";
+import { buildProviderComparisonTaskContext, buildProviderTaskContext, buildTaskContext, TASK_CONTEXT_LIMITS } from "./taskContext";
 import { buildDocumentReaderBlocks } from "./documentReader";
 import { buildDocumentFragmentDraft, createDocumentFragment, resolveDocumentFragmentSelection } from "./documentFragments";
 
@@ -132,7 +132,7 @@ describe("workspace task context assembly", () => {
     expect(JSON.stringify(providerContext)).not.toContain("data:image");
   });
 
-  it("keeps comparison context limited to explicit selection and never converts it to provider task context", () => {
+  it("keeps comparison context limited to explicit selection and converts it through the comparison builder", () => {
     const workspace = withParsedFile(createInitialWorkspace(), "file-course-brief");
     const context = buildTaskContext(workspace, {
       kind: "comparison",
@@ -146,7 +146,21 @@ describe("workspace task context assembly", () => {
       reason: "Compare never auto-includes default reference."
     });
     expect(context.scopeNote).toContain("explicit selected objects");
+    // The generic provider builder still refuses comparison contexts; the A+
+    // preparation must pick the comparison builder explicitly.
     expect(() => buildProviderTaskContext(context)).toThrow(/Comparison task context/);
+    const providerContext = buildProviderComparisonTaskContext(context);
+    expect(providerContext).toMatchObject({
+      kind: "general",
+      objectIds: ["direction-soft-rail", "file-course-brief"],
+      imageObjectIds: [],
+      documentObjectIds: ["file-course-brief"],
+      defaultReference: expect.stringContaining("notIncluded"),
+      directions: [],
+      visualBranches: []
+    });
+    expect(providerContext.projectContinuity).toBeDefined();
+    expect(JSON.stringify(providerContext)).not.toContain("data:image");
   });
 
   it("includes document fragments only when explicitly selected and sends bounded fragment body, not source file text", () => {

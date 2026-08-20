@@ -12,6 +12,7 @@ import {
   isUserActionExplicitlyDisallowed,
   stripUntrustedInstructionSegments
 } from "@/shared/userInstructionAuthority";
+import { isExplicitComparisonRequest } from "./morphoAgent";
 
 export type AgentTaskStrategy = {
   kind: AgentTaskStrategyKind;
@@ -266,7 +267,7 @@ export function resolveAgentTaskStrategy(input: {
   if (input.hasDeliveryDraftTarget || input.workIntent === "prepareDeliverySection") {
     return strategy("deliveryPreparation", "general", "当前有明确交付章节草稿目标");
   }
-  if (input.workIntent === "comparison" || isExplicitComparison(text)) {
+  if (input.workIntent === "comparison" || isExplicitComparisonRequest(text)) {
     return strategy("comparison", "comparison", "用户明确要求比较当前对象");
   }
   if (input.taskMode === "researchOperation" || (input.taskMode !== "imageGeneration" && isResearchRequest(text))) {
@@ -298,13 +299,6 @@ export function resolveAgentTaskStrategy(input: {
 
 function strategy(kind: AgentTaskStrategyKind, contextKind: TaskContextKind, reason: string): AgentTaskStrategy {
   return { kind, contextKind, reason };
-}
-
-function isExplicitComparison(text: string): boolean {
-  if (/(?:不要|别|无需|不是).{0,12}(?:比较|对比|compare)/i.test(text)) {
-    return false;
-  }
-  return /比较|对比|compare/i.test(text);
 }
 
 function isResearchRequest(text: string): boolean {
