@@ -159,8 +159,8 @@
 ### B. Document Parsing Worker — **DEFERRED — no browser hotspot evidence in this run**
 本轮修正版验收对五个预期文件逐一完成了新 object/asset 精确映射、terminal `parsed` 状态、`documentExtract` provenance、解析时间和提取统计断言；5/5 均通过，且对应 import phase 的 LoAF / `blockingDuration` 均为 0。当前证据不支持为 Document Parsing Worker 做结构性改造。后续只有在更大文档或新的真实交互证据显示解析成为主线程热点时才重评；本轮不把 Node 侧未过 trusted gate 的目标数字引用为结论。
 
-### C. Agent request/context/cache latency — **DEFERRED TO NEXT PHASE**
-旧轮全部档位发送首反馈 39–62ms，其中约 50ms 在 journal POST 之前；这些数字来自旧 phase-boundary 协议，只作为后续方向线索，不是本轮最终账本。Agent request/context/cache latency 保留为下一阶段范围；本轮不开始 pipeline optimization，也不将旧数字写成修正版 before/after 结论。
+### C. Agent request/context/cache latency — **NEXT PHASE STARTED 2026-08-20**
+本 Phase 5 文档中的旧轮 39–62ms 仍只作历史方向线索。下一阶段已经先在 `70bd14c` 的 clean production build 上重建严格浏览器基线，再在不提前乐观提交用户消息、不改变失败恢复/Tool 续接/Journal 权威的边界内处理恢复 preflight 与重复 Context/Memory prepare。当前阶段的基线、实现边界和复测协议见 [`performance-agent-latency.md`](performance-agent-latency.md)；不得用这里的旧 phase-boundary 数字计算新阶段百分比。
 
 ## 九、如何复现
 

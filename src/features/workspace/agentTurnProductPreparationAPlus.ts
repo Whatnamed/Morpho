@@ -2,7 +2,7 @@ import {
   buildContinuousConversationContext,
   type ConversationTokenLimits
 } from "@/domain/morpho/conversationCompaction";
-import { buildAgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
+import { buildAgentDefaultMemoryContexts } from "@/domain/morpho/projectMemory";
 import {
   createProviderInputSnapshot,
   hashProviderImageDataUrl
@@ -242,28 +242,41 @@ export async function prepareAgentTurnProductAPlus(
   const userMessageId = `ai-user-a-plus-${host.now()}-${suffix}`;
   const assistantMessageId = `ai-assistant-a-plus-${host.now()}-${suffix}`;
 
-  const attachmentResult = !input.pendingDeliveryDraftTarget && shouldAttachImagesForAiProvider({
-    draft: input.draft,
-    taskMode: executionTaskMode,
-    selectedObjects: input.selectedObjects
-  })
-    ? await collectAiProviderImageAttachments(
-        workspace,
-        resolveAiProviderImageObjectIds({
-          contextImageObjectIds: context.imageObjectIds,
+  const emptyAttachmentResult: Awaited<ReturnType<typeof collectAiProviderImageAttachments>> = {
+    attachments: [],
+    skippedObjectIds: [],
+    entries: [],
+    warning: undefined
+  };
+  const emptyDocumentResult: Awaited<ReturnType<typeof collectDocumentExtractsForAi>> = {
+    extracts: [],
+    skipped: [],
+    warning: undefined
+  };
+  const [attachmentResult, documentResult] = input.pendingDeliveryDraftTarget
+    ? [emptyAttachmentResult, emptyDocumentResult]
+    : await Promise.all([
+        shouldAttachImagesForAiProvider({
+          draft: input.draft,
+          taskMode: executionTaskMode,
           selectedObjects: input.selectedObjects
-        }),
-        controller.signal
-      )
-    : { attachments: [], skippedObjectIds: [], entries: [], warning: undefined };
-  const documentResult = input.pendingDeliveryDraftTarget
-    ? { extracts: [], skipped: [], warning: undefined }
-    : await collectDocumentExtractsForAi(
-        workspace,
-        context.documentObjectIds,
-        indexedDbBlobStore,
-        controller.signal
-      );
+        })
+          ? collectAiProviderImageAttachments(
+              workspace,
+              resolveAiProviderImageObjectIds({
+                contextImageObjectIds: context.imageObjectIds,
+                selectedObjects: input.selectedObjects
+              }),
+              controller.signal
+            )
+          : Promise.resolve(emptyAttachmentResult),
+        collectDocumentExtractsForAi(
+          workspace,
+          context.documentObjectIds,
+          indexedDbBlobStore,
+          controller.signal
+        )
+      ]);
 
   const userInput = buildMorphoAgentUserInput({
     draft: input.draft,
@@ -334,12 +347,17 @@ export async function prepareAgentTurnProductAPlus(
     value: undefined
   }));
 
-  const conversationBeforeFrames = buildContinuousConversationContext({
-    workspace: host.readWorkspace(),
+  const workspaceWithMessages = host.readWorkspace();
+  const conversation = buildContinuousConversationContext({
+    workspace: workspaceWithMessages,
     limits: input.readConversationTokenLimits()
   });
+  const [defaultMemoryContext, stableMemoryContext] = buildAgentDefaultMemoryContexts(
+    workspaceWithMessages,
+    [strategy.kind, "historyAndMemory"]
+  );
   const frameInput: ProviderContextFrameBuildInput = {
-    workspace: host.readWorkspace(),
+    workspace: workspaceWithMessages,
     projectId: workspace.project.id,
     strategy: strategy.kind,
     mode: input.agentTurnMode,
@@ -347,8 +365,9 @@ export async function prepareAgentTurnProductAPlus(
     userMessageId,
     context,
     providerTaskContext,
-    defaultMemoryContext: buildAgentDefaultMemoryContext(host.readWorkspace(), strategy.kind),
-    summaryRevision: conversationBeforeFrames.summaryRevision,
+    defaultMemoryContext,
+    stableMemoryContext,
+    summaryRevision: conversation.summaryRevision,
     framePlacement: "beforeUser",
     attachmentCount: attachmentResult.attachments.length,
     documentSnapshotAvailable: documentResult.skipped.length === 0
@@ -358,10 +377,6 @@ export async function prepareAgentTurnProductAPlus(
     value: undefined
   }));
   const preparedWorkspace = host.readWorkspace();
-  const conversation = buildContinuousConversationContext({
-    workspace: preparedWorkspace,
-    limits: input.readConversationTokenLimits()
-  });
   const history = conversation.messages
     .filter((message) => message.id !== userMessageId)
     .map<APlusAgentProviderMessage>((message) => ({

@@ -85,8 +85,14 @@ export async function runMorphoAgentTurn(
 ): Promise<void> {
   const localProjectId = host.readWorkspace().project.id;
   if (activeSessions.has(localProjectId)) return;
-  const recovered = await recoverMorphoAgentTurn(localProjectId, host, dependencies);
-  if (recovered !== "none") return;
+  const recoveryStore = dependencies.recoveryStore ?? createAgentTurnRecoveryStore();
+  if (recoveryStore.hasPersistedRecord(localProjectId)) {
+    const recovered = await recoverMorphoAgentTurn(localProjectId, host, {
+      ...dependencies,
+      recoveryStore
+    });
+    if (recovered !== "none") return;
+  }
 
   let prepared: PreparedAgentTurnAPlus;
   try {
@@ -99,7 +105,7 @@ export async function runMorphoAgentTurn(
   const creationIdempotencyKey = createId();
   const runtime = buildRecoveryRuntime(input, prepared);
   const recovery = new RecoveryWriter(
-    dependencies.recoveryStore ?? createAgentTurnRecoveryStore(),
+    recoveryStore,
     localProjectId,
     creationIdempotencyKey,
     {

@@ -98,6 +98,32 @@ describe("Provider Context Frames", () => {
     )?.renderedText).toContain("[category=unknown]");
   });
 
+  it("adds provider frames without changing conversation messages or compaction state", () => {
+    const workspace = createInitialWorkspace();
+    const context = buildTaskContext(workspace, {
+      kind: "general",
+      draft: "继续讨论",
+      selectedObjectIds: []
+    });
+    const messages = workspace.ai.messages;
+    const compaction = workspace.ai.conversationCompaction;
+
+    const next = appendAgentProviderContextFrames(workspace, {
+      workspace,
+      projectId: workspace.project.id,
+      strategy: "discussion",
+      mode: "auto",
+      promptContractVersion: "morpho-agent-test",
+      userMessageId: "user-conversation-invariant",
+      context,
+      providerTaskContext: buildProviderTaskContext(context),
+      defaultMemoryContext: buildAgentDefaultMemoryContext(workspace, "discussion")
+    });
+
+    expect(next.ai.messages).toBe(messages);
+    expect(next.ai.conversationCompaction).toBe(compaction);
+  });
+
   it("serializes a frame as untrusted product data without a B context marker proof", () => {
     const frame = createProviderContextFrame(frameInput());
     const text = providerContextFrameMessage(frame).content[0].text;

@@ -126,6 +126,18 @@ Important module boundaries:
   `imageTaskStatus`, and visual-confirmation business rules. The Runner, Provider protocol,
   Recovery format, persistence/schema, and Context/Compaction strategy are unchanged apart from
   recognizing detached Host sessions as non-failure page teardown. No visible UI contract changed.
+- The Agent request-latency follow-up keeps those A+ boundaries but shortens the fresh-Turn path.
+  `agentTurnRunner.ts` creates one Recovery Store per send and uses its synchronous metadata-only
+  preflight before Preparation. An existing v2 record, any legacy v1 record, malformed metadata,
+  or an invalid project identity still enters the original full `load`/validate/clear/query-only
+  recovery path; only a confirmed absence skips its Promise/IndexedDB reconstruction path.
+  Non-Delivery Preparation starts independent image-attachment and document-extract reads together, captures
+  the post-message Workspace once, builds continuous conversation Context once, and derives the
+  task and stable four-document Project State Memory Contexts from one reconciliation.
+  Provider Context Frames do not mutate messages or the compaction boundary, so that conversation
+  result remains authoritative after frame append. The user/assistant message commit and Context
+  Frame commit remain separate synchronous boundaries: preparation failure, user-message
+  retention, exact recovery body, Tool continuation, and Journal authority semantics are unchanged.
 - WorkspaceClient decomposition phase 6-C moves Import/Asset Ingestion execution into the
   React-free `workspaceImportExecution.ts` core and the
   `useWorkspaceImportController.ts` React wiring layer. The core owns file classification,

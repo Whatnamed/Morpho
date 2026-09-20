@@ -16,8 +16,10 @@ import {
 } from "@/domain/morpho/providerContextFrame";
 import type { TaskContextResult, ProviderTaskContext } from "./taskContext";
 import type { MorphoAgentTurnMode } from "./morphoAgent";
-import { buildAgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
-import type { AgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
+import {
+  buildAgentDefaultMemoryContext,
+  type AgentDefaultMemoryContext
+} from "@/domain/morpho/projectMemory";
 import type { AgentCanonicalRuntimeItem } from "@/shared/agentRuntimeItem";
 
 export type ProviderContextFrameBuildInput = {
@@ -33,6 +35,8 @@ export type ProviderContextFrameBuildInput = {
   context: TaskContextResult;
   providerTaskContext: ProviderTaskContext;
   defaultMemoryContext: AgentDefaultMemoryContext;
+  /** Optional precomputed historyAndMemory view from the same reconciled Workspace. */
+  stableMemoryContext?: AgentDefaultMemoryContext;
   summaryRevision?: ConversationSummaryRevision;
   framePlacement?: ProviderContextFramePlacement;
   attachmentCount?: number;
@@ -53,6 +57,7 @@ export function appendAgentProviderContextFrames(
   input: ProviderContextFrameBuildInput
 ): MorphoWorkspace {
   const previousFrames = workspace.ai.providerContextFrames ?? [];
+  const stableMemoryContext = input.stableMemoryContext ?? buildStableProjectMemoryContext(input.workspace);
   let next = workspace;
   if (input.summaryRevision) {
     next = ensureAgentConversationSummaryBaselines(next, {
@@ -61,18 +66,24 @@ export function appendAgentProviderContextFrames(
       summaryRevision: input.summaryRevision,
       mode: input.mode,
       toolProfile: input.toolProfile,
-      runtimeItem: input.runtimeItem
+      runtimeItem: input.runtimeItem,
+      stableMemoryContext
     });
   }
-  next = appendAgentProviderStateFrames(next, {
-    ...input,
-    workspace: next,
-    framePlacement: input.framePlacement ?? "beforeUser"
-  });
+  next = appendAgentProviderStateFramesWithMemory(
+    next,
+    {
+      ...input,
+      workspace: next,
+      framePlacement: input.framePlacement ?? "beforeUser"
+    },
+    stableMemoryContext
+  );
   const nextFrames = next.ai.providerContextFrames ?? previousFrames;
   const turnContext = createTurnContextFrame(
     input,
-    nextFrames
+    nextFrames,
+    stableMemoryContext
   );
   const appendedFrames = appendProviderContextFrame(nextFrames, turnContext);
   return appendedFrames.length === nextFrames.length
@@ -84,8 +95,20 @@ export function appendAgentProviderStateFrames(
   workspace: MorphoWorkspace,
   input: ProviderContextFrameBuildInput
 ): MorphoWorkspace {
+  return appendAgentProviderStateFramesWithMemory(
+    workspace,
+    input,
+    input.stableMemoryContext ?? buildStableProjectMemoryContext(input.workspace)
+  );
+}
+
+function appendAgentProviderStateFramesWithMemory(
+  workspace: MorphoWorkspace,
+  input: ProviderContextFrameBuildInput,
+  stableMemoryContext: AgentDefaultMemoryContext
+): MorphoWorkspace {
   const previousFrames = workspace.ai.providerContextFrames ?? [];
-  const projectState = createProjectStateFrame(input, previousFrames);
+  const projectState = createProjectStateFrame(input, previousFrames, stableMemoryContext);
   const runtimeConfiguration = createRuntimeConfigurationFrame(input, previousFrames);
   const additions = [projectState, runtimeConfiguration]
     .filter((frame): frame is ProviderContextFrame => Boolean(frame));
@@ -107,6 +130,7 @@ export function ensureAgentConversationSummaryBaselines(
     mode?: MorphoAgentTurnMode;
     toolProfile?: ProviderToolProfile;
     runtimeItem?: AgentCanonicalRuntimeItem;
+    stableMemoryContext?: AgentDefaultMemoryContext;
   }
 ): MorphoWorkspace {
   const previousFrames = workspace.ai.providerContextFrames ?? [];
@@ -142,7 +166,8 @@ export function ensureAgentConversationSummaryBaselines(
           framePlacement: "conversationBaseline",
           summaryRevisionId: input.summaryRevision.id
         },
-        frames
+        frames,
+        input.stableMemoryContext ?? buildStableProjectMemoryContext(workspace)
       )
     );
   }
@@ -244,9 +269,9 @@ function createProjectStateFrame(
     summaryRevisionId?: string;
     runtimeItem?: AgentCanonicalRuntimeItem;
   },
-  previousFrames: readonly ProviderContextFrame[]
+  previousFrames: readonly ProviderContextFrame[],
+  stableMemoryContext: AgentDefaultMemoryContext
 ): ProviderContextFrame {
-  const stableMemoryContext = buildStableProjectMemoryContext(input.workspace);
   const memoryRevisionIds = stableMemoryContext.documents
     .map((document) => document.revisionId)
     .filter((id): id is string => Boolean(id))
@@ -316,7 +341,8 @@ function createProjectStateFrame(
 
 function createTurnContextFrame(
   input: ProviderContextFrameBuildInput,
-  previousFrames: readonly ProviderContextFrame[]
+  previousFrames: readonly ProviderContextFrame[],
+  stableMemoryContext: AgentDefaultMemoryContext
 ): ProviderContextFrame {
   const selected = [...input.context.semanticSummaries]
     .sort((left, right) => left.id.localeCompare(right.id))
@@ -328,7 +354,6 @@ function createTurnContextFrame(
     ...input.context.visualBranches.map((branch) => branch.id)
   ]);
   const sequence = nextProviderContextFrameSequence(previousFrames);
-  const stableMemoryContext = buildStableProjectMemoryContext(input.workspace);
   const taskMemoryContext = buildAgentMemoryDeltaContext(input.defaultMemoryContext, stableMemoryContext);
   const taskMemory = renderMemoryContext(taskMemoryContext);
   return createProviderContextFrame({
@@ -447,8 +472,11 @@ function createConversationSummaryFrame(
 }
 
 function buildStableProjectMemoryContext(workspace: MorphoWorkspace): AgentDefaultMemoryContext {
-  const core = buildAgentDefaultMemoryContext(workspace, "historyAndMemory");
-  return { documents: core.documents, stageRecords: [] };
+  const context = buildAgentDefaultMemoryContext(workspace, "historyAndMemory");
+  return {
+    documents: context.documents,
+    stageRecords: []
+  };
 }
 
 export function buildAgentMemoryDeltaContext(

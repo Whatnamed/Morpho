@@ -33,6 +33,24 @@ describe("A+ local Recovery Store", () => {
     });
   });
 
+  it("preflights only metadata presence while preserving legacy and malformed records for full recovery", () => {
+    const fixture = createFixture();
+
+    expect(fixture.store.hasPersistedRecord("project-test")).toBe(false);
+    fixture.storageValues.set(
+      "morpho.agent-runtime-a-plus.recovery.v1.project-test",
+      "{broken"
+    );
+    expect(fixture.store.hasPersistedRecord("project-test")).toBe(true);
+    fixture.storageValues.clear();
+    fixture.storageValues.set(
+      "morpho.agent-runtime-a-plus.recovery.v2.project-test",
+      "{broken"
+    );
+    expect(fixture.store.hasPersistedRecord("project-test")).toBe(true);
+    expect(fixture.store.hasPersistedRecord("../invalid-project")).toBe(true);
+  });
+
   it("stores a large observed Tool payload behind a verified IndexedDB reference", async () => {
     const fixture = createFixture();
     const record = recoveryRecordWithLargeProviderOutput();

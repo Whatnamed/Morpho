@@ -309,7 +309,26 @@ export function buildAgentDefaultMemoryContext(
   workspace: MorphoWorkspace,
   strategy: AgentTaskStrategyKind
 ): AgentDefaultMemoryContext {
+  return buildAgentDefaultMemoryContexts(workspace, [strategy])[0]!;
+}
+
+/** Reconciles once when one caller needs several strategy projections. */
+export function buildAgentDefaultMemoryContexts<
+  const Strategies extends readonly AgentTaskStrategyKind[]
+>(
+  workspace: MorphoWorkspace,
+  strategies: Strategies
+): { [Index in keyof Strategies]: AgentDefaultMemoryContext } {
   const resolved = reconcileProjectMemory(resolveContinuityValidity(workspace));
+  return strategies.map(
+    (strategy) => buildAgentDefaultMemoryContextFromResolved(resolved, strategy)
+  ) as { [Index in keyof Strategies]: AgentDefaultMemoryContext };
+}
+
+function buildAgentDefaultMemoryContextFromResolved(
+  resolved: MorphoWorkspace,
+  strategy: AgentTaskStrategyKind
+): AgentDefaultMemoryContext {
   const documentKeys = new Set<ProjectMemoryKey>([
     "projectOverview",
     "designBrief",

@@ -4,6 +4,7 @@ import { buildSemanticPatchAuthorization } from "./conversationSemanticPatch";
 import { applyConversationSemanticPatch } from "./projectContinuity";
 import {
   buildAgentDefaultMemoryContext,
+  buildAgentDefaultMemoryContexts,
   getCurrentProjectMemoryRevision,
   getCurrentStageRecordRevision,
   getProjectMemoryHistory,
@@ -134,6 +135,18 @@ describe("Project Memory Kernel", () => {
     ]);
     expect(context.stageRecords).toHaveLength(1);
     expect(context.stageRecords[0]?.stage).toBe("directionAndVisual");
+  });
+
+  it("builds several strategy contexts from one reconciliation without changing their values", () => {
+    const workspace = createInitialWorkspace();
+
+    const [discussion, stable] = buildAgentDefaultMemoryContexts(
+      workspace,
+      ["discussion", "historyAndMemory"]
+    );
+
+    expect(discussion).toEqual(buildAgentDefaultMemoryContext(workspace, "discussion"));
+    expect(stable).toEqual(buildAgentDefaultMemoryContext(workspace, "historyAndMemory"));
   });
 
   it("derives overview reviewRequired from real source gaps instead of an unreachable filtered entry", () => {

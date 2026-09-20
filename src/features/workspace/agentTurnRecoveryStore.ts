@@ -191,6 +191,14 @@ export type AgentTurnRecoveryPayloadStore = Readonly<{
 }>;
 
 export type AgentTurnRecoveryStore = Readonly<{
+  /**
+   * Synchronous, metadata-only preflight for the common fresh-Turn path.
+   *
+   * `true` deliberately includes malformed v2 metadata and legacy v1 records:
+   * callers must still run `load()` so the existing invalid-record recovery
+   * semantics remain authoritative. No IndexedDB payload is touched here.
+   */
+  hasPersistedRecord(localProjectId: string): boolean;
   save(record: APlusTurnRecoveryRecord): Promise<void>;
   load(localProjectId: string): Promise<
     | { status: "none" }
@@ -208,6 +216,12 @@ export function createAgentTurnRecoveryStore(options: Readonly<{
   const payloadStore = options.payloadStore ?? indexedDbRecoveryPayloadStore;
 
   return {
+    hasPersistedRecord(localProjectId) {
+      if (!isIdentifier(localProjectId)) return true;
+      if (storage.getItem(recoveryKey(localProjectId)) !== null) return true;
+      return storage.getItem(legacyRecoveryKey(localProjectId)) !== null;
+    },
+
     async save(record) {
       validateRecordIdentity(record);
       const previous = readPersisted(storage, record.localProjectId);

@@ -54,6 +54,7 @@ describe("A+ Agent turn runner", () => {
     });
     expect(fixture.coordinatorHost.executions).toHaveLength(1);
     expect(fixture.store.record).toBeUndefined();
+    expect(fixture.store.loadCalls).toBe(0);
     expect(fixture.fake.getEvents().filter((event) => event.name === "persist").length).toBeGreaterThan(0);
   });
 
@@ -467,6 +468,25 @@ describe("A+ Agent turn runner", () => {
 
     expect(recovered).toBe("pending");
     expect(fixture.coordinatorHost.executions).toHaveLength(1);
+  });
+
+  it("routes a persisted recovery record through the full loader without appending a duplicate user message", async () => {
+    const fixture = createFixture([{ status: "providerRunning" }]);
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    const userMessageIds = fixture.fake.getWorkspace().ai.messages
+      .filter((message) => message.role === "user")
+      .map((message) => message.id);
+    detachMorphoAgentTurnForPageUnload(fixture.fake.getWorkspace().project.id);
+
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+
+    expect(fixture.store.loadCalls).toBe(1);
+    expect(fixture.fake.getWorkspace().ai.messages
+      .filter((message) => message.role === "user")
+      .map((message) => message.id)).toEqual(userMessageIds);
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+    expect(fixture.fake.getEvents().filter((event) => event.name === "recoveryPending")).not.toHaveLength(0);
   });
 
   it("closes stale local recovery when the retained Server Turn no longer exists", async () => {
@@ -1155,6 +1175,11 @@ class CoordinatorHostFake implements AgentTurnCoordinatorHost {
 
 class MemoryRecoveryStore implements AgentTurnRecoveryStore {
   record: APlusTurnRecoveryRecord | undefined;
+  loadCalls = 0;
+
+  hasPersistedRecord(localProjectId: string): boolean {
+    return this.record?.localProjectId === localProjectId;
+  }
 
   async save(record: APlusTurnRecoveryRecord): Promise<void> {
     this.record = structuredClone(record);
@@ -1164,6 +1189,7 @@ class MemoryRecoveryStore implements AgentTurnRecoveryStore {
     | { status: "none" }
     | { status: "ok"; record: APlusTurnRecoveryRecord }
   > {
+    this.loadCalls += 1;
     return this.record?.localProjectId === localProjectId
       ? { status: "ok", record: structuredClone(this.record) }
       : { status: "none" };
