@@ -25,7 +25,8 @@
     "test:e2e:build": "npm run build && npm run test:e2e",
     "test:prompt-cache": "node scripts/test-prompt-cache-compatibility.mjs",
     "typecheck": "tsc --noEmit",
-    "measure:perf5:browser": "node ./scripts/measure-perf5-browser.mjs"
+    "measure:perf5:browser": "node ./scripts/measure-perf5-browser.mjs",
+    "measure:perf5:browser:worktree": "node ./scripts/measure-perf5-browser.mjs --allow-dirty-exact"
   },
   "keywords": [],
   "author": "",

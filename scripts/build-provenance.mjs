@@ -39,6 +39,42 @@ export function sha256Bytes(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+/**
+ * Hashes the exact tracked + untracked, non-ignored source tree that a local
+ * build can read. Local evidence output is excluded because it is produced by
+ * measurement and is never a build input.
+ */
+export async function worktreeSourceDigest(projectRoot = process.cwd()) {
+  const listed = execFileSync(
+    "git",
+    ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+    { cwd: projectRoot, encoding: "buffer", maxBuffer: 64 * 1024 * 1024 }
+  );
+  const files = listed
+    .toString("utf8")
+    .split("\0")
+    .filter(Boolean)
+    .map((path) => path.replaceAll("\\", "/"))
+    .filter((path) => !path.startsWith("output/"))
+    .sort();
+  const hash = createHash("sha256");
+  for (const path of files) {
+    hash.update(path);
+    hash.update("\0");
+    try {
+      hash.update(await readFile(resolve(projectRoot, path)));
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        hash.update("<deleted>");
+      } else {
+        throw error;
+      }
+    }
+    hash.update("\0");
+  }
+  return { digest: hash.digest("hex"), fileCount: files.length };
+}
+
 async function listFiles(root, current = root) {
   const entries = await readdir(current, { withFileTypes: true });
   const files = [];

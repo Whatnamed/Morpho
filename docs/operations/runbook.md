@@ -229,6 +229,7 @@ Performance runs remain explicit and single-worker/no-retry:
 ```bash
 npm.cmd run measure:perf:browser
 npm.cmd run measure:perf5:browser
+npm.cmd run measure:perf5:browser:worktree
 ```
 
 ### Build provenance for browser evidence
@@ -239,21 +240,27 @@ enforces that clean worktree gate, records `isDirty: false`, and writes the igno
 `.next/morpho-build-provenance.json` marker containing:
 
 - source commit SHA;
+- SHA-256 digest and file count of the exact tracked plus non-ignored untracked source tree
+  (local `output/` evidence is excluded because it is not a build input);
 - Next build ID;
 - deterministic SHA-256 digest and file count of the served `.next` artifact;
 - Node version, build timestamp, and `isDirty: boolean`.
 
 Normal development builds (`npm.cmd run build`) permit dirty worktrees for fast local iterations while
-accurately recording `isDirty: true`. Evidence test runs (`measure:perf5:browser`) assert `isDirty === false`.
+accurately recording `isDirty: true`. Commit-grade evidence runs (`measure:perf5:browser`) still require
+`isDirty === false`. For a deliberately uncommitted implementation review,
+`measure:perf5:browser:worktree` accepts a dirty build only when its recorded source-tree digest,
+file count, dirty state, HEAD, and served `.next` artifact all match the current checkout exactly.
 
-The production start wrapper verifies the marker source SHA and artifact digest before launching
+The production start wrapper verifies the marker source SHA, source-tree digest, and artifact digest before launching
 Next. The test-only `/api/build-provenance` route is enabled only by the Playwright environment,
 and returns the same source/build/digest identity without exposing it in product UI. Phase 5 and
-ZIP crossover fail if the served source SHA differs from the measured checkout or if the runtime
-marker is missing or marked dirty. Do not use a runtime `git rev-parse` value by itself as build provenance.
+ZIP crossover fail if the served identity differs from the measured checkout. The commit-grade
+mode also rejects dirty markers; the explicit worktree mode accepts only an exact dirty-source
+digest match. Do not use a runtime `git rev-parse` value by itself as build provenance.
 
 If source changes after a build, rebuild before measuring. Never edit the marker to make a stale
-build appear current; rerun the build and the evidence from the new clean SHA.
+build appear current; rerun the build and choose the clean or exact-worktree evidence gate explicitly.
 
 Expected results:
 
@@ -1241,6 +1248,8 @@ optional localStorage/IndexedDB/object-URL attribution, all injected from the te
 
 ```powershell
 npm run measure:perf5:browser
+# Uncommitted review only; exact dirty source-tree identity is mandatory:
+npm run measure:perf5:browser:worktree
 ```
 
 Same requirements as the 4A browser half: production build first, idle machine,

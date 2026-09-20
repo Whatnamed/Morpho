@@ -102,6 +102,7 @@ type PersistedWorkspaceSnapshot = {
 
 type BuildIdentity = {
   sourceSha: string | null;
+  sourceTreeSha256: string | null;
   buildId: string | null;
   artifactSha256: string | null;
   isDirty?: boolean;
@@ -604,8 +605,13 @@ test.describe("Phase 5 真实交互延迟图谱（记录，不断言阈值）", 
       if (!response.ok) throw new Error(`Build provenance endpoint unavailable: ${response.status}`);
       return response.json() as Promise<BuildIdentity>;
     });
-    expect(buildIdentity.isDirty, "Performance evidence requires a clean tracked build").toBe(false);
+    expect(buildIdentity.isDirty, "served build dirty-state mismatch").toBe(
+      process.env.MORPHO_EXPECTED_BUILD_IS_DIRTY === "true"
+    );
     expect(buildIdentity.sourceSha, "served build missing source SHA").toBe(readGitCommit());
+    expect(buildIdentity.sourceTreeSha256, "served build source-tree digest mismatch").toBe(
+      process.env.MORPHO_EXPECTED_BUILD_SOURCE_TREE_SHA256
+    );
     expect(buildIdentity.buildId, "served build missing build ID").toBeTruthy();
     expect(buildIdentity.artifactSha256, "served build missing artifact digest").toMatch(/^[a-f0-9]{64}$/);
     await seedPhase5Projects(page, ["objects500", "switchA", "switchB"]);

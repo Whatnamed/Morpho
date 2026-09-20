@@ -4,7 +4,8 @@ import {
   assertCleanTrackedWorktree,
   gitSourceSha,
   nextArtifactDigest,
-  readBuildProvenance
+  readBuildProvenance,
+  worktreeSourceDigest
 } from "./build-provenance.mjs";
 
 const projectRoot = process.cwd();
@@ -12,6 +13,15 @@ const provenance = await readBuildProvenance(projectRoot);
 const sourceSha = gitSourceSha(projectRoot);
 if (provenance.sourceSha !== sourceSha) {
   throw new Error(`Served build source SHA ${provenance.sourceSha} does not match HEAD ${sourceSha}. Rebuild first.`);
+}
+if (provenance.sourceTreeSha256) {
+  const sourceTree = await worktreeSourceDigest(projectRoot);
+  if (
+    sourceTree.digest !== provenance.sourceTreeSha256 ||
+    sourceTree.fileCount !== provenance.sourceTreeFileCount
+  ) {
+    throw new Error("Served build source-tree digest does not match the current working tree. Rebuild first.");
+  }
 }
 const isStrict =
   process.argv.includes("--strict") ||
@@ -35,6 +45,7 @@ const result = spawnSync(process.execPath, [nextBin, "start", ...forwardedArgs],
   env: {
     ...process.env,
     MORPHO_BUILD_SOURCE_SHA: provenance.sourceSha,
+    MORPHO_BUILD_SOURCE_TREE_SHA256: provenance.sourceTreeSha256 ?? "",
     MORPHO_BUILD_ID: provenance.buildId,
     MORPHO_BUILD_ARTIFACT_SHA256: provenance.artifactSha256,
     MORPHO_BUILD_IS_DIRTY: String(Boolean(provenance.isDirty))

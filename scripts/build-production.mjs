@@ -6,6 +6,7 @@ import {
   gitSourceSha,
   isTrackedWorktreeClean,
   nextArtifactDigest,
+  worktreeSourceDigest,
   writeBuildProvenance
 } from "./build-provenance.mjs";
 
@@ -21,6 +22,7 @@ if (isStrict) {
 
 const isDirty = !isTrackedWorktreeClean(projectRoot);
 const sourceSha = gitSourceSha(projectRoot);
+const sourceTree = await worktreeSourceDigest(projectRoot);
 const environment = {
   ...process.env,
   MORPHO_BUILD_SOURCE_SHA: sourceSha,
@@ -38,8 +40,10 @@ if (result.status !== 0) process.exit(result.status ?? 1);
 
 const artifact = await nextArtifactDigest(projectRoot);
 await writeBuildProvenance({
-  schemaVersion: 1,
+  schemaVersion: 2,
   sourceSha,
+  sourceTreeSha256: sourceTree.digest,
+  sourceTreeFileCount: sourceTree.fileCount,
   buildId: (await readFile(resolve(projectRoot, ".next", "BUILD_ID"), "utf8")).trim(),
   artifactSha256: artifact.digest,
   artifactFileCount: artifact.fileCount,
