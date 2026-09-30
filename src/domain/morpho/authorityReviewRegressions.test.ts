@@ -93,7 +93,8 @@ describe("P1B-1 review: object incarnation", () => {
     expect(qualifyEvidence(workspace, evidence).confidence).toBe("needsVerification");
     const first = migrateWorkspaceToCurrentSchema({ ...workspace, schemaVersion });
     if (first.status !== "ok") throw new Error(first.reason);
-    expect(first.workspace.objects[id].incarnationId).toBeUndefined();
+    if (schemaVersion === 17) expect(first.workspace.objects[id].incarnationId).toEqual(expect.any(String));
+    else expect(first.workspace.objects[id].incarnationId).toBeUndefined();
     const again = parseWorkspace(serializeWorkspace(first.workspace));
     if (again.status !== "ok") throw new Error(again.reason);
     expect(again.workspace).toEqual(first.workspace);

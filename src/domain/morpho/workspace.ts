@@ -1802,10 +1802,10 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
     const migratedLegacyWorkspace = value.schemaVersion === 17 ? value : migrateLegacyWorkspaceToSchema17(migrateLegacyKeyConclusionCategories(value));
     return {
       status: "ok",
-      workspace: normalizeCurrentWorkspace({
+      workspace: establishForwardObjectIncarnations(normalizeCurrentWorkspace({
         ...migratedLegacyWorkspace,
         schemaVersion: CURRENT_SCHEMA_VERSION
-      }),
+      })),
       didMigrate: true
     };
   }
@@ -1813,7 +1813,7 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
   if (value.schemaVersion === 4) {
     return {
       status: "ok",
-      workspace: migrateV4Workspace(value),
+      workspace: establishForwardObjectIncarnations(migrateV4Workspace(value)),
       didMigrate: true
     };
   }
@@ -1821,7 +1821,7 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
   if (value.schemaVersion === 3) {
     return {
       status: "ok",
-      workspace: migrateV4Workspace(migrateV3WorkspaceToV4(value)),
+      workspace: establishForwardObjectIncarnations(migrateV4Workspace(migrateV3WorkspaceToV4(value))),
       didMigrate: true
     };
   }
@@ -1829,7 +1829,7 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
   if (value.schemaVersion === 2) {
     return {
       status: "ok",
-      workspace: migrateV4Workspace(migrateV2WorkspaceToV4(value)),
+      workspace: establishForwardObjectIncarnations(migrateV4Workspace(migrateV2WorkspaceToV4(value))),
       didMigrate: true
     };
   }
@@ -1852,8 +1852,20 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
 
   return {
     status: "ok",
-    workspace: migrateV4Workspace(migrateV2WorkspaceToV4(migrated)),
+    workspace: establishForwardObjectIncarnations(migrateV4Workspace(migrateV2WorkspaceToV4(migrated))),
     didMigrate: true
+  };
+}
+
+function establishForwardObjectIncarnations(workspace: MorphoWorkspace): MorphoWorkspace {
+  // This checkpoint identifies surviving objects only from the upgrade onward.
+  // It never restores a past identity or fills any historical binding.
+  return {
+    ...workspace,
+    objects: Object.fromEntries(Object.entries(workspace.objects).map(([id, object]) => [
+      id,
+      object.incarnationId ? object : { ...object, incarnationId: createObjectIncarnationId() }
+    ]))
   };
 }
 

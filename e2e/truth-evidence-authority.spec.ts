@@ -33,6 +33,7 @@ test("schema 17 Research remains review-required and an unbound item inherits no
     if (localStorage.getItem(seed.textOnly.workspaceKey) !== null) return;
     const workspace = JSON.parse(seed.textOnly.workspaceValue);
     workspace.schemaVersion = 17;
+    for (const object of Object.values(workspace.objects)) delete (object as { incarnationId?: string }).incarnationId;
     const research = workspace.objects[seed.textOnly.objectIds.research];
     research.provenance = { operationId: "historical-research", proposalId: "historical-proposal", sourceObjectIds: [], citationIds: ["historical-unbound-citation"], didUseWebSearch: true };
     localStorage.setItem(seed.catalogKey, seed.textOnly.catalogValue);
@@ -63,6 +64,15 @@ test("schema 17 Research remains review-required and an unbound item inherits no
     }) as { confidence?: string; citationIds?: string[] } | undefined;
     return { schemaVersion: workspace.schemaVersion, confidence: conclusion?.confidence, citationIds: conclusion?.citationIds };
   }, { key: seed.textOnly.workspaceKey, existingId: seed.textOnly.objectIds.keyConclusion, researchId: seed.textOnly.objectIds.research })).toEqual({ schemaVersion: 18, confidence: "needsVerification", citationIds: [] });
+  const identities = () => page.evaluate((key) => {
+    const workspace = JSON.parse(localStorage.getItem(key)!);
+    return Object.fromEntries(Object.entries(workspace.objects).map(([id, object]) => [id, (object as { incarnationId?: string }).incarnationId]));
+  }, seed.textOnly.workspaceKey);
+  const beforeReload = await identities();
+  expect(Object.values(beforeReload).every((identity) => typeof identity === "string" && identity.length > 0)).toBe(true);
+  await page.reload();
+  await expect(page.getByRole("button", { name: "项目记录", exact: true })).toBeVisible();
+  expect(await identities()).toEqual(beforeReload);
 });
 
 test("a user resolves and restores an open question through the domain UI and persists its provenance", async ({ page }) => {
