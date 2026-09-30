@@ -25,6 +25,21 @@ import {
 import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
 
 describe("Agent tool executors", () => {
+  it("filters current Memory and Stage reads using the same scoped item qualification", async () => {
+    const fixture = createFixture();
+    const quote = "仅在柔光轨道保留紫色节点";
+    const base = createInitialWorkspace();
+    const workspace = { ...base, ai: { ...base.ai, messages: [...base.ai.messages, { id: "scoped-user", role: "user" as const, body: quote, createdAt: fixture.input.userMessageCreatedAt }] } };
+    const created = applyConversationSemanticPatch(workspace, buildSemanticPatchAuthorization({ taskMode: "chatAnalysis", draft: quote, userMessageId: "scoped-user", userMessageCreatedAt: fixture.input.userMessageCreatedAt, currentFocusArea: "directionAndVisual", objectIds: ["direction-soft-rail"], revisionIds: [], decisionIds: [] }), [{ kind: "preference", scope: "direction", evidenceQuote: quote, relatedObjectIds: ["direction-soft-rail"], relatedRevisionIds: [], relatedDecisionIds: [] }]);
+    fixture.host.commitWorkspace(() => ({ workspace: created.workspace, value: undefined }));
+    for (const target of ["direction-soft-rail", "direction-support-island"]) {
+      const context = buildTaskContext(created.workspace, { kind: "visualDevelopment", draft: "研究节点", selectedObjectIds: [], targetDirectionIds: [target] });
+      for (const name of ["read_project_memory", "read_stage_record"] as const) {
+        const read = await executeAgentTool({ ...fixture.input, context, parsed: { name, args: {} } });
+        expect(JSON.stringify(read).includes(quote)).toBe(target === "direction-soft-rail");
+      }
+    }
+  });
   it("reads scoped semantic fact IDs and resolves an explicit question through the authorized Tool/domain path", async () => {
     const fixture = createFixture();
     const question = "单手操作问题待确认";

@@ -1,3 +1,4 @@
+import { reconcileProjectMemory } from "@/domain/morpho/projectMemory";
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 
 export const SNAPSHOT_HISTORY_LIMIT = 20;
@@ -86,6 +87,7 @@ export function redoSnapshotHistory<T extends WorkspaceSnapshotEntry>(
 }
 
 export function shouldBlockSnapshotUndo(snapshot: MorphoWorkspace, current: MorphoWorkspace): boolean {
+  const projected = reconcileProjectMemory(current).projectMemory;
   return (
     hasNewRecord(Object.keys(snapshot.objects), Object.keys(current.objects)) ||
     hasNewRecord(snapshot.canvas.instances.map((instance) => instance.id), current.canvas.instances.map((instance) => instance.id)) ||
@@ -97,8 +99,8 @@ export function shouldBlockSnapshotUndo(snapshot: MorphoWorkspace, current: Morp
     hasChangedRecords(snapshot.deliverySectionDrafts, current.deliverySectionDrafts) ||
     hasChangedRecords(snapshot.designDefinitionRevisions, current.designDefinitionRevisions) ||
     hasChangedRecords(snapshot.directionRevisions, current.directionRevisions) ||
-    hasChangedRecords(snapshot.projectMemory.revisions, current.projectMemory.revisions) ||
-    hasChangedRecords(snapshot.projectMemory.stageRevisions, current.projectMemory.stageRevisions) ||
+    hasChangedProjectionRecords(snapshot.projectMemory.revisions, current.projectMemory.revisions, Object.values(projected.documents).map((document) => document.currentRevisionId)) ||
+    hasChangedProjectionRecords(snapshot.projectMemory.stageRevisions, current.projectMemory.stageRevisions, Object.values(projected.stageRecords).map((record) => record.currentRevisionId)) ||
     hasChangedHistory(snapshot.decisionRecords, current.decisionRecords) ||
     hasChangedHistory(snapshot.directionLineage, current.directionLineage) ||
     hasChangedHistory(snapshot.projectContinuity.recordEntries, current.projectContinuity.recordEntries) ||
@@ -144,4 +146,12 @@ function sameValue(left: unknown, right: unknown): boolean {
 function hasNewRecord(snapshotIds: string[], currentIds: string[]): boolean {
   const snapshotIdSet = new Set(snapshotIds);
   return currentIds.some((id) => !snapshotIdSet.has(id));
+}
+
+// Domain actions now produce their deterministic current projections before returning.
+// Those new current revisions are not independent writes; their authority is guarded above.
+// Existing historical edits and unrelated added historical revisions still block restore.
+function hasChangedProjectionRecords<T>(snapshot: Record<string, T>, current: Record<string, T>, currentIds: Array<string | undefined>): boolean {
+  const derivedCurrent = new Set(currentIds);
+  return Object.entries(current).some(([id, record]) => id in snapshot ? !sameValue(snapshot[id], record) : !derivedCurrent.has(id));
 }

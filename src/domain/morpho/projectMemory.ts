@@ -1,3 +1,4 @@
+import { resolveCurrentDesignDefinition } from "./currentDesignDefinition";
 import type {
   ConceptDirectionObject,
   ContinuityRecordEntry,
@@ -10,13 +11,14 @@ import type {
   ProjectMemoryKey,
   ProjectMemoryRevision,
   ProjectMemorySection,
+  ProjectionItemMetadata,
   ProjectMemoryState,
   StageRecordKey,
   StageRecordRevision,
   StageRecordSectionKey,
   StageRecordSections
 } from "./types";
-import { getContinuityEntryEligibility, resolveContinuityValidity } from "./projectContinuity";
+import { createProjectionTaskScope, getContinuityEntryEligibility, resolveContinuityValidity, isSemanticEntryScopeRelevantToTaskContext, type SemanticEntryTaskScope } from "./continuityAuthority";
 import { classifyDecisionRecords } from "./decisionRecords";
 
 export const PROJECT_MEMORY_KEYS: readonly ProjectMemoryKey[] = [
@@ -133,6 +135,7 @@ export type AgentDefaultStageRecord = {
   reviewRequired: boolean;
   empty: boolean;
   sections: StageRecordSections;
+  itemMetadata?: StageRecordRevision["itemMetadata"];
   sourceRefs: Array<{ kind: ContinuitySourceRef["kind"]; id: string; title?: string }>;
 };
 
@@ -170,6 +173,7 @@ type ProjectedDocument = {
 
 type ProjectedStage = {
   sections: StageRecordSections;
+  itemMetadata?: StageRecordRevision["itemMetadata"];
   sourceRefs: ContinuitySourceRef[];
   reviewRequired: boolean;
 };
@@ -206,8 +210,9 @@ export function normalizeProjectMemoryState(
 }
 
 export function reconcileProjectMemory(workspace: MorphoWorkspace, now = new Date().toISOString()): MorphoWorkspace {
-  const projectMemory = reconcileProjectMemoryState(workspace, workspace.projectMemory, now);
-  return projectMemory === workspace.projectMemory ? workspace : { ...workspace, projectMemory };
+  const resolved = resolveContinuityValidity(workspace);
+  const projectMemory = reconcileProjectMemoryState(resolved, workspace.projectMemory, now);
+  return projectMemory === resolved.projectMemory ? resolved : { ...resolved, projectMemory };
 }
 
 export function hasProjectMemoryProjectionInputChange(
@@ -262,7 +267,12 @@ export function reconcileProjectMemoryState(
   let next = current;
 
   for (const key of PROJECT_MEMORY_KEYS) {
-    next = applyProjectedDocument(next, key, projectDocument(workspace, resolved, key), now);
+    const projected = projectDocument(workspace, resolved, key);
+    projected.sections = projected.sections.map((section) => ({
+      ...section,
+      itemMetadata: section.itemMetadata ?? section.items.map(() => deterministicMetadata(projected.sourceRefs))
+    }));
+    next = applyProjectedDocument(next, key, projected, now);
   }
 
   const projectedStages = projectStages(workspace, resolved);
@@ -312,9 +322,10 @@ export function getStageRecordHistory(state: ProjectMemoryState, stage: StageRec
 
 export function buildAgentDefaultMemoryContext(
   workspace: MorphoWorkspace,
-  strategy: AgentTaskStrategyKind
+  strategy: AgentTaskStrategyKind,
+  scope?: Partial<SemanticEntryTaskScope>
 ): AgentDefaultMemoryContext {
-  return buildAgentDefaultMemoryContexts(workspace, [strategy])[0]!;
+  return buildAgentDefaultMemoryContexts(workspace, [strategy], scope)[0]!;
 }
 
 /** Reconciles once when one caller needs several strategy projections. */
@@ -322,17 +333,19 @@ export function buildAgentDefaultMemoryContexts<
   const Strategies extends readonly AgentTaskStrategyKind[]
 >(
   workspace: MorphoWorkspace,
-  strategies: Strategies
+  strategies: Strategies,
+  scope?: Partial<SemanticEntryTaskScope>
 ): { [Index in keyof Strategies]: AgentDefaultMemoryContext } {
   const resolved = reconcileProjectMemory(resolveContinuityValidity(workspace));
   return strategies.map(
-    (strategy) => buildAgentDefaultMemoryContextFromResolved(resolved, strategy)
+    (strategy) => buildAgentDefaultMemoryContextFromResolved(resolved, strategy, scope)
   ) as { [Index in keyof Strategies]: AgentDefaultMemoryContext };
 }
 
 function buildAgentDefaultMemoryContextFromResolved(
   resolved: MorphoWorkspace,
-  strategy: AgentTaskStrategyKind
+  strategy: AgentTaskStrategyKind,
+  scope?: Partial<SemanticEntryTaskScope>
 ): AgentDefaultMemoryContext {
   const documentKeys = new Set<ProjectMemoryKey>([
     "projectOverview",
@@ -344,10 +357,16 @@ function buildAgentDefaultMemoryContextFromResolved(
     documentKeys.add(key);
   }
 
+  const taskScope = createProjectionTaskScope(resolved, {
+    taskKind: strategy === "discussion" ? "general" : strategy,
+    directObjectIds: [], directRevisionIds: [], directBranchIds: [], directDecisionIds: [], targetDirectionIds: [],
+    ...scope
+  });
+  const scoped = scopeProjectMemoryState(resolved.projectMemory, taskScope);
   return {
-    documents: [...documentKeys].map((key) => compactDefaultMemoryDocument(resolved.projectMemory, key)),
+    documents: [...documentKeys].map((key) => compactDefaultMemoryDocument(scoped, key)),
     stageRecords: defaultStageKeysForStrategy(strategy, resolved.projectContinuity.currentFocus.area).map((stage) =>
-      compactDefaultStageRecord(resolved.projectMemory, stage)
+      compactDefaultStageRecord(scoped, stage)
     ),
     ...(isVisualStrategy(strategy) ? { defaultReference: compactDefaultReference(resolved) } : {})
   };
@@ -412,6 +431,7 @@ function compactDefaultStageRecord(state: ProjectMemoryState, stage: StageRecord
     reviewRequired: revision?.reviewRequired ?? false,
     empty: !revision || stageSectionItemCount(revision.sections) === 0,
     sections: revision ? compactStageSectionsForAgent(revision.sections) : {},
+    itemMetadata: revision?.itemMetadata,
     sourceRefs: revision ? compactSourceRefsForAgent(revision.sourceRefs) : []
   };
 }
@@ -433,7 +453,8 @@ function compactMemorySectionsForAgent(
   let totalChars = 0;
   for (const { section } of ranked) {
     const items: string[] = [];
-    for (const item of section.items.slice(0, AGENT_DEFAULT_MEMORY_LIMITS.maxItemsPerSection)) {
+    const itemMetadata: ProjectionItemMetadata[] = [];
+    for (const [index, item] of section.items.slice(0, AGENT_DEFAULT_MEMORY_LIMITS.maxItemsPerSection).entries()) {
       if (totalItems >= AGENT_DEFAULT_MEMORY_LIMITS.maxTotalItems) {
         break;
       }
@@ -442,11 +463,12 @@ function compactMemorySectionsForAgent(
         continue;
       }
       items.push(compacted);
+      if (section.itemMetadata?.[index]) itemMetadata.push(section.itemMetadata[index]!);
       totalItems += 1;
       totalChars += compacted.length;
     }
     if (items.length > 0) {
-      result.push({ key: section.key, title: section.title, items });
+      result.push({ key: section.key, title: section.title, items, itemMetadata: section.itemMetadata ? itemMetadata : undefined });
     }
     if (totalItems >= AGENT_DEFAULT_MEMORY_LIMITS.maxTotalItems) {
       break;
@@ -553,7 +575,7 @@ function projectOverview(workspace: ProjectionWorkspace, resolved: MorphoWorkspa
   );
   const currentDefinitionMissing = Boolean(
     workspace.workingState.currentDesignDefinitionId &&
-      (!workspace.objects[workspace.workingState.currentDesignDefinitionId] || !currentDefinition)
+      (!workspace.objects[workspace.workingState.currentDesignDefinitionId] || !resolveCurrentDesignDefinition(workspace as MorphoWorkspace))
   );
   const primaryDirectionMissing = Boolean(
     workspace.workingState.primaryDirectionId && !workspace.objects[workspace.workingState.primaryDirectionId]
@@ -563,17 +585,17 @@ function projectOverview(workspace: ProjectionWorkspace, resolved: MorphoWorkspa
   );
   const stableResults = uniqueText([
     currentDefinition ? `当前设计定义：${currentDefinition.title}` : "",
-    primaryDirection?.type === "conceptDirection" ? `当前主方向：${primaryDirection.title}` : "",
+    primaryDirection?.type === "conceptDirection" && primaryDirection.visibility === "active" ? `当前主方向：${primaryDirection.title}` : "",
     deliveries.length > 0 ? `已有 ${deliveries.length} 个交付准备对象` : ""
   ]);
 
   return {
     sections: compactSections([
-      section("projectStart", "项目起点与目标", [workspace.project.subtitle || workspace.project.title]),
-      section("currentFocus", "当前工作重点", [resolved.projectContinuity.currentFocus.note]),
-      section("stableResults", "主要成果", stableResults),
-      section("mainRoute", "当前主路线", primaryDirection ? [primaryDirection.title] : []),
-      section("recentChange", "最近重要变化", recentEntry ? [recentEntry.summary] : [])
+      section("projectStart", "项目起点与目标", [workspace.project.subtitle || workspace.project.title], [deterministicMetadata([])]),
+      section("currentFocus", "当前工作重点", [resolved.projectContinuity.currentFocus.note], [deterministicMetadata(focusSourceRefs(workspace))]),
+      section("stableResults", "主要成果", stableResults, stableResults.map((text) => deterministicMetadata(text.startsWith("当前设计定义") && currentDefinition ? [objectRef(workspace.objects[currentDefinition.designDefinitionId])!, revisionRef(currentDefinition.id, currentDefinition.title)] : text.startsWith("当前主方向") && primaryDirection ? [objectRef(primaryDirection)!] : deliveries.map((delivery) => objectRef(delivery)!)))),
+      section("mainRoute", "当前主路线", primaryDirection?.visibility === "active" ? [primaryDirection.title] : [], primaryDirection ? [deterministicMetadata([objectRef(primaryDirection)!])] : []),
+      section("recentChange", "最近重要变化", recentEntry ? [recentEntry.summary] : [], recentEntry ? [metadataFromEntry(recentEntry)] : [])
     ]),
     sourceRefs: uniqueSourceRefs([
       ...focusSourceRefs(workspace),
@@ -623,17 +645,17 @@ function projectUserPreferences(resolved: MorphoWorkspace): ProjectedDocument {
     preferenceSection(
       "projectAvoids",
       "项目范围明确避免",
-      entries.filter((entry) => entry.scope === "project" && entry.semanticKind === "avoidance")
+      entries.filter((entry) => (entry.scope ?? "project") === "project" && entry.semanticKind === "avoidance")
     ),
     preferenceSection(
       "projectConstraints",
       "项目范围明确约束",
-      entries.filter((entry) => entry.scope === "project" && entry.semanticKind === "constraint")
+      entries.filter((entry) => (entry.scope ?? "project") === "project" && entry.semanticKind === "constraint")
     ),
     preferenceSection(
       "projectPreferences",
       "项目范围稳定偏好",
-      entries.filter((entry) => entry.scope === "project" && entry.semanticKind === "preference")
+      entries.filter((entry) => (entry.scope ?? "project") === "project" && entry.semanticKind === "preference")
     ),
     preferenceSection("designDefinition", "设计定义范围", entries.filter((entry) => entry.scope === "designDefinition")),
     preferenceSection("direction", "方向范围", entries.filter((entry) => entry.scope === "direction")),
@@ -665,7 +687,8 @@ function projectDecisionLog(workspace: ProjectionWorkspace): ProjectedDocument {
           return [decision.summary, category, decision.reason ? `原因：${decision.reason}` : "", `时间：${decision.createdAt}`]
             .filter(Boolean)
             .join("；");
-        })
+        }),
+        currentDecisions.map((decision) => deterministicMetadata([decisionRef(decision.id, decision.summary, decision.kind), ...decision.relatedObjectIds.map((id) => objectRef(workspace.objects[id])).filter(isSourceRef)]))
       )
     ]),
     sourceRefs: uniqueSourceRefs(
@@ -696,7 +719,7 @@ function projectRejectedDirections(workspace: ProjectionWorkspace): ProjectedDoc
   });
 
   return {
-    sections: compactSections([section("directions", "当前已淘汰方向", entries.map((entry) => entry.text))]),
+    sections: compactSections([section("directions", "当前已淘汰方向", entries.map((entry) => entry.text), entries.map((entry) => deterministicMetadata(entry.refs)))]),
     sourceRefs: uniqueSourceRefs(entries.flatMap((entry) => entry.refs)),
     basis: "deterministic",
     reviewRequired: false
@@ -704,80 +727,48 @@ function projectRejectedDirections(workspace: ProjectionWorkspace): ProjectedDoc
 }
 
 function projectOpenQuestions(workspace: ProjectionWorkspace, resolved: MorphoWorkspace): ProjectedDocument {
-  const revision = currentDefinitionRevision(workspace);
-  const directionQuestions = objectsOfType(workspace, "conceptDirection").flatMap((direction) => {
-    const directionRevision = workspace.directionRevisions[direction.currentRevisionId];
-    return directionRevision?.openQuestions ?? [];
-  });
-  const researchQuestions = objectsOfType(workspace, "research").flatMap((research) => research.openQuestions);
-  const deliveryQuestions = objectsOfType(workspace, "delivery").flatMap((delivery) =>
-    delivery.gaps.filter((gap) => gap.status !== "resolved").map((gap) => `${delivery.title}：${gap.label}`)
-  );
-  const semanticEntries = resolved.projectContinuity.recordEntries.filter(
-    (entry) => entry.semanticKind === "openQuestion" && isCurrentEligibleEntry(entry)
-  );
-  const sections = [
-    section("blocking", "阻塞当前任务", semanticEntries.filter((entry) => entry.scope === "project").map(semanticEntryText)),
-    section("designDefinition", "影响设计定义", revision?.openQuestions ?? []),
-    section("direction", "影响方向", directionQuestions),
-    section("delivery", "影响交付", deliveryQuestions),
-    section("exploration", "普通探索问题", researchQuestions)
-  ].filter((candidate) => candidate.items.length > 0);
-
-  return {
-    sections: compactSections(sections),
-    sourceRefs: uniqueSourceRefs([
-      ...(revision ? [revisionRef(revision.id, revision.title)] : []),
-      ...objectsOfType(workspace, "conceptDirection").map(objectRef),
-      ...objectsOfType(workspace, "research").map(objectRef),
-      ...semanticEntries.flatMap((entry) => entry.sourceRefs)
-    ]),
-    basis: semanticEntries.length > 0 ? "mixed" : "deterministic",
-    reviewRequired: false
+  const groups = new Map<string, ProjectMemorySection>();
+  const add = (key: string, title: string, text: string, metadata: ProjectionItemMetadata) => {
+    const group = groups.get(key) ?? { key, title, items: [], itemMetadata: [] };
+    group.items.push(text); group.itemMetadata!.push(metadata); groups.set(key, group);
   };
+  const revision = currentDefinitionRevision(workspace);
+  if (revision) for (const question of revision.openQuestions) add("designDefinition", "影响设计定义", question, deterministicMetadata([objectRef(workspace.objects[revision.designDefinitionId])!, revisionRef(revision.id, revision.title)]));
+  for (const direction of objectsOfType(workspace, "conceptDirection")) {
+    const revision = workspace.directionRevisions[direction.currentRevisionId];
+    for (const question of revision?.openQuestions ?? []) add("direction", "影响方向", question, { ...deterministicMetadata([objectRef(direction)!, revisionRef(revision!.id, revision!.title)]), scope: "direction" });
+  }
+  for (const research of objectsOfType(workspace, "research")) for (const question of research.openQuestions) add("exploration", "普通探索问题", question, deterministicMetadata([objectRef(research)!]));
+  for (const delivery of objectsOfType(workspace, "delivery")) for (const gap of delivery.gaps.filter((gap) => gap.status !== "resolved")) add("delivery", "影响交付", `${delivery.title}：${gap.label}`, deterministicMetadata([objectRef(delivery)!]));
+  const semantic = resolved.projectContinuity.recordEntries.filter((entry) => entry.semanticKind === "openQuestion" && isCurrentEligibleEntry(entry));
+  for (const entry of semantic) add(entry.scope === "project" ? "blocking" : entry.scope ?? "blocking", "待确认问题", semanticEntryText(entry), metadataFromEntry(entry));
+  const sections = [...groups.values()];
+  return { sections, sourceRefs: uniqueSourceRefs(sections.flatMap((section) => section.itemMetadata!.flatMap((item) => item.sourceRefs))), basis: semantic.length ? "mixed" : "deterministic", reviewRequired: false };
 }
 
 function projectOutputPlan(workspace: ProjectionWorkspace): ProjectedDocument {
   const deliveries = objectsOfType(workspace, "delivery");
-  const sectionItems = deliveries.flatMap((delivery) =>
-    delivery.sections.map((sectionItem) => `${delivery.title} / ${sectionItem.title}：${sectionItem.narrative || "待整理"}`)
-  );
-  const gaps = deliveries.flatMap((delivery) =>
-    delivery.gaps.filter((gap) => gap.status !== "resolved").map((gap) => `${delivery.title}：${gap.label}`)
-  );
-  const references = deliveries.flatMap((delivery) =>
-    delivery.references
-      .map((referenceId) => workspace.deliveryReferences[referenceId])
-      .filter(Boolean)
-      .map((reference) => `${delivery.title}：${reference.snapshot.title}`)
-  );
-  const completed = deliveries.flatMap((delivery) =>
-    delivery.sections
-      .filter((sectionItem) => Boolean(sectionItem.narrative?.trim()))
-      .map((sectionItem) => `${delivery.title}：${sectionItem.title}`)
-  );
-
-  return {
-    sections: compactSections([
-      section("formats", "输出形式", deliveries.map((delivery) => delivery.title)),
-      section("gaps", "待补内容", gaps),
-      section("sections", "章节结构", sectionItems),
-      section("references", "稳定引用", references),
-      section("completed", "已完成内容", completed)
-    ]),
-    sourceRefs: uniqueSourceRefs([
-      ...deliveries.map(objectRef),
-      ...Object.values(workspace.deliveryReferences).map((reference) => ({
-        kind: "deliveryReference" as const,
-        id: reference.id,
-        snapshot: { title: reference.snapshot.title, summarySnippet: reference.snapshot.summary }
-      }))
-    ]),
-    basis: "deterministic",
-    reviewRequired: Object.values(workspace.deliveryReferences).some(
-      (reference) => Boolean(reference.sourceObjectId && !workspace.objects[reference.sourceObjectId])
-    )
+  const groups = new Map<string, ProjectMemorySection>();
+  const add = (key: string, title: string, text: string, refs: ContinuitySourceRef[]) => {
+    const group = groups.get(key) ?? { key, title, items: [], itemMetadata: [] };
+    group.items.push(text); group.itemMetadata!.push(deterministicMetadata(refs)); groups.set(key, group);
   };
+  for (const delivery of deliveries) {
+    const refs = [objectRef(delivery)!];
+    add("formats", "输出形式", delivery.title, refs);
+    for (const gap of delivery.gaps.filter((gap) => gap.status !== "resolved")) add("gaps", "待补内容", `${delivery.title}：${gap.label}`, refs);
+    for (const item of delivery.sections) {
+      add("sections", "章节结构", `${delivery.title} / ${item.title}：${item.narrative || "待整理"}`, refs);
+      if (item.narrative?.trim()) add("completed", "已完成内容", `${delivery.title}：${item.title}`, refs);
+    }
+    for (const id of delivery.references) {
+      const reference = workspace.deliveryReferences[id];
+      if (reference) add("references", "稳定引用", `${delivery.title}：${reference.snapshot.title}`, [...refs, { kind: "deliveryReference", id, snapshot: { title: reference.snapshot.title, summarySnippet: reference.snapshot.summary } }]);
+    }
+  }
+  const sections = [...groups.values()];
+  return { sections, sourceRefs: uniqueSourceRefs(sections.flatMap((section) => section.itemMetadata!.flatMap((item) => item.sourceRefs))), basis: "deterministic",
+    reviewRequired: Object.values(workspace.deliveryReferences).some((reference) => Boolean(reference.sourceObjectId && !workspace.objects[reference.sourceObjectId])) };
 }
 
 function projectStages(
@@ -789,7 +780,7 @@ function projectStages(
     ContinuityRecordEntry[]
   >;
   for (const entry of resolved.projectContinuity.recordEntries) {
-    if (entry.manualState === "active" && entry.validity !== "superseded") {
+    if (getContinuityEntryEligibility(entry).canEnterMemory || getContinuityEntryEligibility(entry).canEnterReviewList) {
       stageEntries[entry.stage].push(entry);
     }
   }
@@ -798,27 +789,41 @@ function projectStages(
   for (const stage of STAGE_RECORD_KEYS) {
     const entries = stageEntries[stage];
     const sections: StageRecordSections = {};
+    const itemMetadata: NonNullable<StageRecordRevision["itemMetadata"]> = {};
     for (const entry of entries) {
-      const sectionKey = stageSectionForCategory(entry.category);
+      const sectionKey = getContinuityEntryEligibility(entry).canEnterReviewList ? "openRisks" : stageSectionForCategory(entry.category);
       if (!sectionKey) {
         continue;
       }
-      sections[sectionKey] = uniqueText([...(sections[sectionKey] ?? []), entry.summary]);
+      const text = getContinuityEntryEligibility(entry).canEnterReviewList ? `待复核：${entry.summary}` : entry.summary;
+      if (!(itemMetadata[sectionKey] ?? []).some((metadata) => metadata.sourceEntryId === entry.id)) {
+        sections[sectionKey] = [...(sections[sectionKey] ?? []), text];
+        itemMetadata[sectionKey] = [...(itemMetadata[sectionKey] ?? []), metadataFromEntry(entry)];
+      }
     }
 
     if (resolved.projectContinuity.currentFocus.area === stage) {
-      sections.goalAndStatus = uniqueText([
-        ...(sections.goalAndStatus ?? []),
-        resolved.projectContinuity.currentFocus.note
-      ]);
+      const note = resolved.projectContinuity.currentFocus.note;
+      const matching = resolved.projectContinuity.recordEntries.find((entry) => entry.stage === stage && entry.summary === note && entry.updatedAt === resolved.projectContinuity.currentFocus.updatedAt);
+      const focusMetadata = matching ? metadataFromEntry(matching) : deterministicMetadata(focusSourceRefs(workspace));
+      if (focusMetadata.canEnterMemory && !(sections.goalAndStatus ?? []).includes(note)) {
+        sections.goalAndStatus = [...(sections.goalAndStatus ?? []), note];
+        itemMetadata.goalAndStatus = [...(itemMetadata.goalAndStatus ?? []), focusMetadata];
+      }
     }
 
-    addInferredStageContent(workspace, stage, sections);
+    addInferredStageContent(workspace, stage, sections, itemMetadata);
     if (stageSectionItemCount(sections) === 0) {
       continue;
     }
+    for (const [key, items] of Object.entries(sections)) {
+      const sectionKey = key as StageRecordSectionKey;
+      const metadata = itemMetadata[sectionKey] ?? [];
+      itemMetadata[sectionKey] = items!.map((_, index) => metadata[index] ?? deterministicMetadata(inferredStageSourceRefs(workspace, stage)));
+    }
     result[stage] = {
       sections,
+      itemMetadata,
       sourceRefs: uniqueSourceRefs([
         ...entries.flatMap((entry) => entry.sourceRefs),
         ...inferredStageSourceRefs(workspace, stage)
@@ -832,56 +837,40 @@ function projectStages(
 function addInferredStageContent(
   workspace: ProjectionWorkspace,
   stage: StageRecordKey,
-  sections: StageRecordSections
+  sections: StageRecordSections,
+  metadata: NonNullable<StageRecordRevision["itemMetadata"]>
 ): void {
-  if (stage === "startAndInput") {
-    const inputs = Object.values(workspace.objects).filter((object) =>
-      ["file", "link", "text"].includes(object.type)
-    );
-    if (inputs.length > 0) {
-      sections.outputs = uniqueText([...(sections.outputs ?? []), ...inputs.map((object) => object.title)]);
-    }
+  const append = (key: StageRecordSectionKey, text: string, refs: ContinuitySourceRef[], scope: ProjectionItemMetadata["scope"] = "project") => {
+    if (!text || (sections[key] ?? []).includes(text)) return;
+    // Focus text may already exist without a semantic source entry.
+    metadata[key] = (sections[key] ?? []).map((_, index) => metadata[key]?.[index] ?? deterministicMetadata(focusSourceRefs(workspace)));
+    sections[key] = [...(sections[key] ?? []), text];
+    metadata[key] = [...metadata[key]!, { ...deterministicMetadata(refs), scope }];
+  };
+  if (stage === "startAndInput") for (const object of Object.values(workspace.objects)) {
+    if (object.visibility === "active" && ["file", "link", "text"].includes(object.type)) append("outputs", object.title, [objectRef(object)!]);
   }
-  if (stage === "research") {
-    const research = objectsOfType(workspace, "research");
-    if (research.length > 0) {
-      sections.outputs = uniqueText([...(sections.outputs ?? []), ...research.map((object) => object.title)]);
-      sections.openRisks = uniqueText([
-        ...(sections.openRisks ?? []),
-        ...research.flatMap((object) => object.openQuestions)
-      ]);
-    }
+  if (stage === "research") for (const research of objectsOfType(workspace, "research")) {
+    append("outputs", research.title, [objectRef(research)!]);
+    for (const question of research.openQuestions) append("openRisks", question, [objectRef(research)!]);
   }
   if (stage === "designDefinition") {
     const revision = currentDefinitionRevision(workspace);
     if (revision) {
-      sections.outputs = uniqueText([...(sections.outputs ?? []), `${revision.title}（r${revision.revisionNumber}）`]);
-      sections.constraints = uniqueText([...(sections.constraints ?? []), ...revision.constraints]);
-      sections.openRisks = uniqueText([...(sections.openRisks ?? []), ...revision.openQuestions]);
+      const refs = [objectRef(workspace.objects[revision.designDefinitionId])!, revisionRef(revision.id, revision.title)];
+      append("outputs", `${revision.title}（r${revision.revisionNumber}）`, refs);
+      for (const constraint of revision.constraints) append("constraints", constraint, refs);
+      for (const question of revision.openQuestions) append("openRisks", question, refs);
     }
   }
   if (stage === "directionAndVisual") {
-    const directions = objectsOfType(workspace, "conceptDirection");
+    for (const direction of objectsOfType(workspace, "conceptDirection")) append("outputs", `${direction.title}（${direction.status}）`, [objectRef(direction)!], "direction");
     const images = anchoredGeneratedImages(workspace);
-    if (directions.length > 0 || images.length > 0) {
-      sections.outputs = uniqueText([
-        ...(sections.outputs ?? []),
-        ...directions.map((direction) => `${direction.title}（${direction.status}）`),
-        ...(images.length > 0 ? [`已生成 ${images.length} 个视觉对象`] : [])
-      ]);
-    }
+    if (images.length) append("outputs", `已生成 ${images.length} 个视觉对象`, images.map((image) => objectRef(image)!));
   }
-  if (stage === "deliveryPreparation") {
-    const deliveries = objectsOfType(workspace, "delivery");
-    if (deliveries.length > 0) {
-      sections.outputs = uniqueText([...(sections.outputs ?? []), ...deliveries.map((delivery) => delivery.title)]);
-      sections.openRisks = uniqueText([
-        ...(sections.openRisks ?? []),
-        ...deliveries.flatMap((delivery) =>
-          delivery.gaps.filter((gap) => gap.status !== "resolved").map((gap) => gap.label)
-        )
-      ]);
-    }
+  if (stage === "deliveryPreparation") for (const delivery of objectsOfType(workspace, "delivery")) {
+    append("outputs", delivery.title, [objectRef(delivery)!]);
+    for (const gap of delivery.gaps.filter((gap) => gap.status !== "resolved")) append("openRisks", gap.label, [objectRef(delivery)!]);
   }
 }
 
@@ -889,7 +878,7 @@ function inferredStageSourceRefs(workspace: ProjectionWorkspace, stage: StageRec
   switch (stage) {
     case "startAndInput":
       return Object.values(workspace.objects)
-        .filter((object) => ["file", "link", "text"].includes(object.type))
+        .filter((object) => object.visibility === "active" && ["file", "link", "text"].includes(object.type))
         .map(objectRef)
         .filter(isSourceRef);
     case "exploration":
@@ -918,6 +907,10 @@ function applyProjectedDocument(
 ): ProjectMemoryState {
   const document = state.documents[key] ?? { key, title: PROJECT_MEMORY_TITLES[key] };
   const currentRevision = document.currentRevisionId ? state.revisions[document.currentRevisionId] : undefined;
+  if (projected.sections.length === 0 && document.currentRevisionId) {
+    const { currentRevisionId: _current, ...cleared } = document;
+    return { ...state, documents: { ...state.documents, [key]: { ...cleared, updatedAt: now } }, updatedAt: now };
+  }
   if (!currentRevision && projected.sections.length === 0) {
     return document === state.documents[key]
       ? state
@@ -929,11 +922,17 @@ function applyProjectedDocument(
     return state;
   }
 
-  const revisionId = `memory-${key}-${stableHash(`${currentRevision?.id ?? "root"}|${signature}`)}`;
+  const history = currentRevision ? [] : getProjectMemoryHistory(state, key);
+  const predecessorIds = new Set(history.map((revision) => revision.previousRevisionId));
+  const previousRevision = currentRevision ?? history.find((revision) => !predecessorIds.has(revision.id));
+  if (!currentRevision && previousRevision && revisionSignature(previousRevision) === signature) {
+    return { ...state, documents: { ...state.documents, [key]: { ...document, currentRevisionId: previousRevision.id, updatedAt: now } }, updatedAt: now };
+  }
+  const revisionId = `memory-${key}-${stableHash(`${previousRevision?.id ?? "root"}|${signature}`)}`;
   const revision: ProjectMemoryRevision = {
     id: revisionId,
     documentKey: key,
-    previousRevisionId: currentRevision?.id,
+    previousRevisionId: previousRevision?.id,
     sections: projected.sections,
     sourceRefs: projected.sourceRefs,
     basis: projected.basis,
@@ -982,6 +981,7 @@ function applyProjectedStage(
     stage,
     previousRevisionId: previousRevision?.id,
     sections: projected.sections,
+    itemMetadata: projected.itemMetadata,
     sourceRefs: projected.sourceRefs,
     createdAt: now,
     reviewRequired: projected.reviewRequired
@@ -1077,17 +1077,16 @@ function collapseEquivalentCurrentRevisions(state: ProjectMemoryState): ProjectM
 }
 
 function currentDefinitionRevision(workspace: ProjectionWorkspace) {
-  const definitionId = workspace.workingState.currentDesignDefinitionId;
-  const object = definitionId ? workspace.objects[definitionId] : undefined;
-  return object?.type === "designDefinition" ? workspace.designDefinitionRevisions[object.currentRevisionId] : undefined;
+  const current = resolveCurrentDesignDefinition(workspace as MorphoWorkspace);
+  return current?.availability === "available" ? current.revision : undefined;
 }
 
 function focusSourceRefs(workspace: ProjectionWorkspace): ContinuitySourceRef[] {
-  return workspace.projectContinuity.currentFocus.sourceObjectIds.map((objectId) => objectRef(workspace.objects[objectId])).filter(isSourceRef);
+  return workspace.projectContinuity.currentFocus.sourceObjectIds.map((objectId) => objectRef(workspace.objects[objectId]) ?? { kind: "object", id: objectId, sourceAvailability: "missing" });
 }
 
-function section(key: string, title: string, items: readonly string[]): ProjectMemorySection {
-  return { key, title, items: uniqueText(items) };
+function section(key: string, title: string, items: readonly string[], itemMetadata?: ProjectionItemMetadata[]): ProjectMemorySection {
+  return { key, title, items: uniqueText(items), ...(itemMetadata ? { itemMetadata } : {}) };
 }
 
 function preferenceSection(
@@ -1095,15 +1094,11 @@ function preferenceSection(
   title: string,
   entries: readonly ContinuityRecordEntry[]
 ): ProjectMemorySection {
-  return section(
-    key,
-    title,
-    entries.map((entry) => {
-      const prefix = entry.semanticKind === "avoidance" ? "避免" : entry.semanticKind === "constraint" ? "约束" : "偏好";
-      const review = getContinuityEntryEligibility(entry).canEnterReviewList ? "（待复核）" : "";
-      return `${prefix}${review}：${semanticEntryText(entry)}`;
-    })
-  );
+  const items = entries.map((entry) => {
+    const prefix = entry.semanticKind === "avoidance" ? "避免" : entry.semanticKind === "constraint" ? "约束" : "偏好";
+    return `${prefix}：${semanticEntryText(entry)}`;
+  });
+  return { key, title, items, itemMetadata: entries.map(metadataFromEntry) };
 }
 
 function compactSections(sections: ProjectMemorySection[]): ProjectMemorySection[] {
@@ -1249,10 +1244,12 @@ function revisionSignature(value: {
   sections: ProjectMemorySection[] | StageRecordSections;
   sourceRefs: ContinuitySourceRef[];
   basis?: MemoryRevisionBasis;
+  itemMetadata?: StageRecordRevision["itemMetadata"];
   reviewRequired: boolean;
 }): string {
   return stableJson({
     sections: value.sections,
+    itemMetadata: value.itemMetadata,
     sourceRefs: value.sourceRefs.map((ref) => ({
       kind: ref.kind,
       id: ref.id,
@@ -1289,4 +1286,50 @@ function stableHash(value: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function metadataFromEntry(entry: ContinuityRecordEntry): ProjectionItemMetadata {
+  const eligibility = getContinuityEntryEligibility(entry);
+  return { sourceEntryId: entry.id, origin: entry.origin, scope: entry.scope ?? "project", sourceRefs: entry.sourceRefs,
+    validity: entry.validity, canEnterMemory: eligibility.canEnterMemory, canEnterDefaultContext: eligibility.canEnterDefaultContext,
+    canEnterReviewList: eligibility.canEnterReviewList, reason: eligibility.reason };
+}
+
+function deterministicMetadata(sourceRefs: ContinuitySourceRef[]): ProjectionItemMetadata {
+  const missing = sourceRefs.some((ref) => ref.sourceAvailability === "missing");
+  const hidden = sourceRefs.some((ref) => ref.sourceAvailability === "hidden");
+  return { origin: "deterministicEvent", scope: "project", sourceRefs, validity: missing ? "sourceUnavailable" : "current",
+    canEnterMemory: !missing && !hidden, canEnterDefaultContext: !missing && !hidden, canEnterReviewList: missing, reason: missing ? "sourceUnavailable" : hidden ? "sourceAvailability=hidden" : "eligible" };
+}
+
+export function projectionItemMatchesScope(metadata: ProjectionItemMetadata | undefined, scope: SemanticEntryTaskScope): boolean {
+  return Boolean(metadata?.canEnterDefaultContext && isSemanticEntryScopeRelevantToTaskContext(metadata, scope));
+}
+
+/** Read projection: never writes filtered content back to durable revision history. */
+export function scopeProjectMemoryState(state: ProjectMemoryState, scope: SemanticEntryTaskScope): ProjectMemoryState {
+  const revisions = { ...state.revisions };
+  for (const document of Object.values(state.documents)) {
+    const revision = document.currentRevisionId ? state.revisions[document.currentRevisionId] : undefined;
+    if (!revision) continue;
+    const sections = revision.sections.flatMap((section) => {
+      const indices = section.items.map((_, index) => index).filter((index) => projectionItemMatchesScope(section.itemMetadata?.[index], scope));
+      return indices.length ? [{ ...section, items: indices.map((index) => section.items[index]!), itemMetadata: indices.map((index) => section.itemMetadata![index]!) }] : [];
+    });
+    revisions[revision.id] = { ...revision, sections, sourceRefs: uniqueSourceRefs(sections.flatMap((section) => section.itemMetadata.flatMap((item) => item.sourceRefs))) };
+  }
+  const stageRevisions = { ...state.stageRevisions };
+  for (const record of Object.values(state.stageRecords)) {
+    const revision = record.currentRevisionId ? state.stageRevisions[record.currentRevisionId] : undefined;
+    if (!revision) continue;
+    const sections: StageRecordSections = {};
+    const itemMetadata: NonNullable<StageRecordRevision["itemMetadata"]> = {};
+    for (const [key, items] of Object.entries(revision.sections)) {
+      const sectionKey = key as StageRecordSectionKey;
+      const indices = items!.map((_, index) => index).filter((index) => projectionItemMatchesScope(revision.itemMetadata?.[sectionKey]?.[index], scope));
+      if (indices.length) { sections[sectionKey] = indices.map((index) => items![index]!); itemMetadata[sectionKey] = indices.map((index) => revision.itemMetadata![sectionKey]![index]!); }
+    }
+    stageRevisions[revision.id] = { ...revision, sections, itemMetadata, sourceRefs: uniqueSourceRefs(Object.values(itemMetadata).flatMap((items) => items!.flatMap((item) => item.sourceRefs))) };
+  }
+  return { ...state, revisions, stageRevisions };
 }

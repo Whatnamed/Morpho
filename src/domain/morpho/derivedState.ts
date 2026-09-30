@@ -1,3 +1,6 @@
+import { projectCurrentDesignDefinitionObject } from "./currentDesignDefinition";
+export { resolveCurrentDesignDefinition } from "./currentDesignDefinition";
+import { reconcileProjectMemory } from "./projectMemory";
 import type {
   ConceptDirectionObject,
   DesignDefinitionObject,
@@ -42,10 +45,10 @@ export function reconcileWorkspaceDerivedState(
   };
   const workingState = deriveProjectWorkingState(normalizedWorkspace, now);
 
-  return {
+  return reconcileProjectMemory({
     ...normalizedWorkspace,
     workingState
-  };
+  }, now);
 }
 
 function reconcileLegacyMultiReferenceVersionRelations(
@@ -149,23 +152,6 @@ export function getCurrentDesignDefinitionRevision(
   }
 
   return workspace.designDefinitionRevisions[object.currentRevisionId];
-}
-
-/** Project-current object authority is distinct from each object's revision.isCurrent. */
-export function resolveCurrentDesignDefinition(workspace: MorphoWorkspace):
-  | { object: DesignDefinitionObject; revision: DesignDefinitionRevision; availability: "available" | "hidden" }
-  | undefined {
-  const object = projectCurrentDesignDefinitionObject(workspace);
-  if (!object) return undefined;
-  const revision = workspace.designDefinitionRevisions[object.currentRevisionId];
-  if (!revision || revision.designDefinitionId !== object.id) return undefined;
-  return { object, revision, availability: object.visibility === "hidden" ? "hidden" : "available" };
-}
-
-function projectCurrentDesignDefinitionObject(workspace: MorphoWorkspace): DesignDefinitionObject | undefined {
-  return Object.values(workspace.objects).find(
-    (candidate): candidate is DesignDefinitionObject => candidate.type === "designDefinition" && candidate.isCurrentEffective
-  );
 }
 
 export function hasPendingDesignDefinitionRevisionProposal(

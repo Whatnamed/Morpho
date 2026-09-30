@@ -72,10 +72,24 @@ export type ProjectMemoryKey =
   | "openQuestions"
   | "outputPlan";
 
+/** Derived per-item provenance; legacy revisions may omit it and remain historical. */
+export type ProjectionItemMetadata = {
+  sourceEntryId?: string;
+  origin: ContinuityRecordOrigin;
+  scope: SemanticPatchScope;
+  sourceRefs: ContinuitySourceRef[];
+  validity: ContinuityValidity;
+  canEnterMemory: boolean;
+  canEnterDefaultContext: boolean;
+  canEnterReviewList: boolean;
+  reason: string;
+};
+
 export type ProjectMemorySection = {
   key: string;
   title: string;
   items: string[];
+  itemMetadata?: ProjectionItemMetadata[];
 };
 
 export type MemoryRevisionBasis = "deterministic" | "userExplicit" | "userConfirmed" | "mixed";
@@ -121,6 +135,7 @@ export type StageRecordRevision = {
   stage: StageRecordKey;
   previousRevisionId?: string;
   sections: StageRecordSections;
+  itemMetadata?: Partial<Record<StageRecordSectionKey, ProjectionItemMetadata[]>>;
   sourceRefs: ContinuitySourceRef[];
   createdAt: string;
   reviewRequired: boolean;
@@ -236,6 +251,7 @@ export type ProjectMemoryViewKey =
   | "deliveryPlan";
 
 export type ProjectMemoryItem = {
+  metadata?: ProjectionItemMetadata;
   id: string;
   title: string;
   summary: string;

@@ -19,6 +19,16 @@ type TestEntry = {
   label: string;
 };
 
+it("blocks an unrelated newly pointed-to Memory revision instead of treating every current pointer as derived", () => {
+  const before = createInitialWorkspace();
+  const current = structuredClone(before);
+  const originalId = current.projectMemory.documents.projectOverview.currentRevisionId!;
+  const original = current.projectMemory.revisions[originalId]!;
+  current.projectMemory.revisions["unrelated-projection"] = { ...original, id: "unrelated-projection", previousRevisionId: originalId, sections: [{ key: "unrelated", title: "独立内容", items: ["不能随人工撤销丢失"] }] };
+  current.projectMemory.documents.projectOverview.currentRevisionId = "unrelated-projection";
+  expect(shouldBlockSnapshotUndo(before, current)).toBe(true);
+});
+
 function renameProject(workspace: MorphoWorkspace, title: string): MorphoWorkspace {
   return {
     ...workspace,

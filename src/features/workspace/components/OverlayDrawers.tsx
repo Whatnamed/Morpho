@@ -457,7 +457,12 @@ function CurrentProjectMemory({
                 {revision.sections.map((section) => (
                   <section key={section.key}>
                     <div className="result-group-title">{section.title}</div>
-                    {section.items.map((item) => <p className="continuity-record-summary" key={item}>{item}</p>)}
+                    {section.items.map((item, index) => (
+                      <div key={`${section.key}:${index}`}>
+                        <p className="continuity-record-summary">{item}{section.itemMetadata?.[index]?.scope === "direction" ? "（仅适用关联方向）" : section.itemMetadata?.[index]?.scope === "visual" ? "（仅适用关联视觉范围）" : ""}</p>
+                        {section.itemMetadata?.[index] ? <ContinuitySourceRefs refs={section.itemMetadata[index]!.sourceRefs} onLocateObject={onLocateObject} /> : null}
+                      </div>
+                    ))}
                   </section>
                 ))}
                 <ContinuitySourceRefs refs={revision.sourceRefs} onLocateObject={onLocateObject} />
@@ -502,7 +507,13 @@ function CurrentStageRecords({
             ? Object.entries(revision.sections).map(([section, items]) => (
                 <section key={section}>
                   <div className="result-group-title">{stageSectionLabel(section)}</div>
-                  {items?.map((item) => <p className="continuity-record-summary" key={item}>{item}</p>)}
+                  {items?.map((item, index) => {
+                    const metadata = revision.itemMetadata?.[section as keyof typeof revision.sections]?.[index];
+                    return <div key={`${section}:${index}`}>
+                      <p className="continuity-record-summary">{item}{metadata?.scope === "direction" ? "（仅适用关联方向）" : metadata?.scope === "visual" ? "（仅适用关联视觉范围）" : ""}</p>
+                      {metadata ? <ContinuitySourceRefs refs={metadata.sourceRefs} onLocateObject={onLocateObject} /> : null}
+                    </div>;
+                  })}
                 </section>
               ))
             : null}

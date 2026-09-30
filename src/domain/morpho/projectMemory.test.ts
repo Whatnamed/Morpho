@@ -262,8 +262,8 @@ describe("Project Memory Kernel", () => {
       { ...workspace, ai: { ...workspace.ai, messages: workspace.ai.messages.filter((entry) => entry.id !== "user-pref-remove") } },
       "2026-07-13T12:02:00.000Z"
     );
-    expect(getCurrentProjectMemoryRevision(removed.projectMemory, "userPreferences")?.sections).toEqual([]);
-    expect(getProjectMemoryHistory(removed.projectMemory, "userPreferences")).toHaveLength(2);
+    expect(getCurrentProjectMemoryRevision(removed.projectMemory, "userPreferences")).toBeUndefined();
+    expect(getProjectMemoryHistory(removed.projectMemory, "userPreferences")).toHaveLength(1);
   });
 
   it("keeps unanchored one-off generations out of project memory sources", () => {

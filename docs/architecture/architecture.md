@@ -533,6 +533,31 @@ Session-only snapshot Undo/Redo remains conservative. It compares persisted AI m
 
 No new runtime dependency or external service was introduced for schema v17.
 
+### P1B-2 projection ownership and consumer qualification (2026-10-01)
+
+- `continuityAuthority.ts` owns source availability, semantic eligibility and scope queries below
+  event writing and projection. It consumes P1B-1 Decision classification and source resolution;
+  `currentDesignDefinition.ts` supplies the shared current-effective definition query below derived
+  state and Memory;
+  `projectMemory.ts` no longer imports the Continuity orchestration module.
+- Domain derived-state completion and Continuity event/semantic mutations reconcile Memory and
+  Stage before returning. The persistence setter remains a defensive adapter for raw/legacy callers.
+- String sections remain readable and backward compatible. Optional `itemMetadata` retains each
+  item's semantic identity, scope, sources, validity and specific eligibility/review reason. Current
+  legacy projections rebuild from authority on normalization; historical revisions are not enriched
+  with fabricated metadata. Workspace schema remains 18 and Memory schema remains 1.
+- UI reads current projections with per-item source links and scope labels. Continuity Context,
+  default Memory, Provider frames, explicit Memory/Stage Tool reads and the image compiler consume
+  the same item scope/qualification. Scope filtering produces transient read views, including filtered
+  source lists; it never overwrites durable revisions or changes frozen DeliveryReferences.
+- Hidden current definitions clear the current Brief without falling back. Review records remain
+  labeled Stage risk diagnostics, not default claims. Superseded/historical Decision events remain
+  history. Empty Memory/Stage descriptors clear, preserving revisions; equivalent replay does not
+  append, and restoring an equivalent cleared projection reuses its historical value.
+- Snapshot Undo recognizes newly produced current projections as derived from already guarded
+  authority. Edits to existing historical revisions and unrelated added historical revisions still
+  block restore; this is compatibility with eager projection completion, not P6H change-set history.
+
 ## Local-First Persistence
 
 Project catalog and structured workspace JSON use localStorage:

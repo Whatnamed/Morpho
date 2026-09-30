@@ -1215,3 +1215,26 @@ compatibility guard excludes only forward live-object incarnation metadata, reta
 content/history guards. Storage fixtures were remeasured: blank remains 2,719 UTF-16 characters;
 case study is 875,732 and restored Backup is 876,321. These replace the previous schema-18 size
 anchors and measure the added identity fields, not storage capacity or performance.
+
+
+## 2026-10-01 — P1B-2 per-item projection contract and domain completion
+
+Keep seven Memory documents and six Stage records as deterministic reading projections, consuming
+P1B-1 authority. Extract qualification into `continuityAuthority.ts` below projection/event/context
+composition; do not introduce a Truth service or another fact store. Add optional per-item metadata
+alongside existing strings, validated when present. This additive derived shape does not require a
+Workspace schema bump: schema 18/Memory schema 1 remain, old historical revisions remain readable,
+and current projections rebuild on normalization and domain completion. Direction target scope takes
+precedence over incidental reference objects; revision-only bindings resolve through the target owner.
+Provider and image inputs filter both text and provenance, so excluded A facts cannot leak through a
+B frame's aggregate source snapshots.
+
+Memory/Stage completion now happens before domain mutation returns rather than relying on React or
+persistence. The existing snapshot safety guard allows newly derived current projection revisions
+while retaining guards for authority/runtime writes and historical revision edits. This remains the
+P1A stop-loss model, not a P6H implementation.
+
+Storage fixtures were regenerated with the existing measurement script after this contract change:
+blank 3,355 UTF-16 characters, current case study 1,091,025, restored Backup 1,091,614. These supersede
+the preceding size anchors and include per-item provenance plus retained pre-contract history; they
+are serialized fixture measurements, not a new storage capacity or latency claim.

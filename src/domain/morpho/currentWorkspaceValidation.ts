@@ -651,6 +651,7 @@ function validateMemory(value: Record<string, unknown>, add: AddIssue): void {
     validateArray(revision.sections, `${path}.sections`, add, (rawSection, sectionPath) => {
       const section = requireRecord(rawSection, sectionPath, add); if (!section) return;
       requireString(section.key, `${sectionPath}.key`, add); requireString(section.title, `${sectionPath}.title`, add); validateStringArray(section.items, `${sectionPath}.items`, add);
+      validateProjectionMetadata(section.itemMetadata, section.items, `${sectionPath}.itemMetadata`, add);
     });
     validateArray(revision.sourceRefs, `${path}.sourceRefs`, add, (rawRef, refPath) => validateContinuitySourceRef(rawRef, refPath, add));
     validateOptionalRef(revision.previousRevisionId, `${path}.previousRevisionId`, revisions, "Previous memory revision", add);
@@ -667,7 +668,11 @@ function validateMemory(value: Record<string, unknown>, add: AddIssue): void {
   if (stageRevisions) for (const [id, raw] of Object.entries(stageRevisions)) {
     const path = `projectMemory.stageRevisions.${id}`; const revision = requireRecord(raw, path, add); if (!revision) continue;
     requireKeyId(id, revision.id, path, add); requireString(revision.stage, `${path}.stage`, add); requireString(revision.createdAt, `${path}.createdAt`, add);
-    requireBoolean(revision.reviewRequired, `${path}.reviewRequired`, add); requireRecord(revision.sections, `${path}.sections`, add);
+    requireBoolean(revision.reviewRequired, `${path}.reviewRequired`, add); const sections = requireRecord(revision.sections, `${path}.sections`, add);
+    if (revision.itemMetadata !== undefined) {
+      const metadata = requireRecord(revision.itemMetadata, `${path}.itemMetadata`, add);
+      if (metadata) for (const [key, items] of Object.entries(metadata)) validateProjectionMetadata(items, sections?.[key], `${path}.itemMetadata.${key}`, add);
+    }
     validateArray(revision.sourceRefs, `${path}.sourceRefs`, add, (rawRef, refPath) => validateContinuitySourceRef(rawRef, refPath, add));
     validateOptionalRef(revision.previousRevisionId, `${path}.previousRevisionId`, stageRevisions, "Previous stage revision", add);
   }
@@ -770,3 +775,20 @@ function validateObjectRef(value: unknown, path: string, objects: Record<string,
 function validateOptionalObjectRef(value: unknown, path: string, objects: Record<string, unknown> | null, expectedType: MorphoObject["type"], add: AddIssue): void { if (value !== undefined) validateObjectRef(value, path, objects, expectedType, add); }
 function validateHistoricalObjectRef(value: unknown, path: string, objects: Record<string, unknown> | null, expectedType: MorphoObject["type"], add: AddIssue): void { requireId(value, path, add); if (typeof value !== "string" || !objects) return; const object = objects[value]; if (object && (!isRecord(object) || object.type !== expectedType)) add(path, `Referenced object must be ${expectedType}.`); }
 function validateOptionalHistoricalObjectRef(value: unknown, path: string, objects: Record<string, unknown> | null, expectedType: MorphoObject["type"], add: AddIssue): void { if (value !== undefined) validateHistoricalObjectRef(value, path, objects, expectedType, add); }
+
+function validateProjectionMetadata(value: unknown, items: unknown, path: string, add: AddIssue): void {
+  if (value === undefined) return; // Legacy historical revisions have no per-item contract.
+  if (!Array.isArray(value) || !Array.isArray(items) || value.length !== items.length) { add(path, "Projection metadata must align with each section item."); return; }
+  validateArray(value, path, add, (raw, itemPath) => {
+    const item = requireRecord(raw, itemPath, add); if (!item) return;
+    requireEnum(item.origin, `${itemPath}.origin`, ["deterministicEvent", "conversationSemanticPatch"], add);
+    requireEnum(item.scope, `${itemPath}.scope`, ["project", "designDefinition", "direction", "visual"], add);
+    requireEnum(item.validity, `${itemPath}.validity`, ["current", "reviewRequired", "superseded", "sourceUnavailable"], add);
+    requireBoolean(item.canEnterMemory, `${itemPath}.canEnterMemory`, add);
+    requireBoolean(item.canEnterDefaultContext, `${itemPath}.canEnterDefaultContext`, add);
+    requireBoolean(item.canEnterReviewList, `${itemPath}.canEnterReviewList`, add);
+    requireString(item.reason, `${itemPath}.reason`, add);
+    validateArray(item.sourceRefs, `${itemPath}.sourceRefs`, add, (rawRef, refPath) => validateContinuitySourceRef(rawRef, refPath, add));
+    if (item.sourceEntryId !== undefined) requireString(item.sourceEntryId, `${itemPath}.sourceEntryId`, add);
+  });
+}

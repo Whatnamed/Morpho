@@ -1,4 +1,4 @@
-import { getCurrentProjectMemoryRevision } from "../morpho/projectMemory";
+import { buildAgentDefaultMemoryContext } from "../morpho/projectMemory";
 import type { GrsImageEditMode } from "../morpho/grsImageModels";
 import type { MorphoWorkspace } from "../morpho/types";
 import type {
@@ -25,8 +25,13 @@ export function compileImagePrompt(input: {
   modelId: string;
   currentUserInput: string;
 }): CompiledImagePrompt {
-  const designBrief = getCurrentProjectMemoryRevision(input.workspace.projectMemory, "designBrief");
-  const userPreferences = getCurrentProjectMemoryRevision(input.workspace.projectMemory, "userPreferences");
+  const memory = buildAgentDefaultMemoryContext(input.workspace, "visualDevelopment", {
+    targetDirectionIds: input.intent.targetDirectionId ? [input.intent.targetDirectionId] : [],
+    directObjectIds: input.referenceResolution.resolvedObjectIds,
+    directBranchIds: input.intent.visualBranchId ? [input.intent.visualBranchId] : []
+  });
+  const designBrief = memory.documents.find((document) => document.key === "designBrief");
+  const userPreferences = memory.documents.find((document) => document.key === "userPreferences");
   const direction = input.intent.targetDirectionId
     ? input.workspace.objects[input.intent.targetDirectionId]
     : undefined;

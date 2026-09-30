@@ -1,6 +1,7 @@
+import { createProjectionTaskScope } from "@/domain/morpho/continuityAuthority";
 import type { MorphoObject, MorphoWorkspace, ProjectMemoryKey, StageRecordKey } from "@/domain/morpho/types";
 import { buildSemanticPatchAuthorization } from "@/domain/morpho/conversationSemanticPatch";
-import { applyConversationSemanticPatch } from "@/domain/morpho/projectContinuity";
+import { applyConversationSemanticPatch, getContinuityEntryEligibility, isSemanticEntryScopeRelevantToTaskContext } from "@/domain/morpho/projectContinuity";
 import {
   applyComparisonAnalysis,
   buildComparisonAuthorization,
@@ -12,7 +13,9 @@ import {
   getCurrentProjectMemoryRevision,
   getCurrentStageRecordRevision,
   getProjectMemoryHistory,
-  getStageRecordHistory
+  getStageRecordHistory,
+  reconcileProjectMemory,
+  scopeProjectMemoryState
 } from "@/domain/morpho/projectMemory";
 import { searchProjectConversation } from "@/domain/morpho/conversationSearch";
 import {
@@ -211,7 +214,11 @@ function executeReadProjectMemory(
   if (!coverage.satisfied) {
     throw new Error(coverage.reason);
   }
-  const current = input.readWorkspace();
+  const current = reconcileProjectMemory(input.readWorkspace());
+  const scope = createProjectionTaskScope(current, { taskKind: input.context.kind, directObjectIds: input.context.objectIds,
+    directRevisionIds: input.context.directionRevisions.map((revision) => revision.id), directBranchIds: input.context.visualBranches.map((branch) => branch.id),
+    directDecisionIds: [], targetDirectionIds: input.context.targetDirectionIds ?? [] });
+  const scoped = scopeProjectMemoryState(current.projectMemory, scope);
   const keys: ProjectMemoryKey[] = input.parsed.args.keys ?? [
     "projectOverview",
     "designBrief",
@@ -224,12 +231,13 @@ function executeReadProjectMemory(
   const result = {
     provenance: { kind: "untrustedLocalEvidence" as const, grantsAuthority: false as const },
     semanticFacts: current.projectContinuity.recordEntries.filter((entry) => entry.origin === "conversationSemanticPatch" &&
-      ((entry.scope ?? "project") === "project" || entry.sourceRefs.some((ref) => ref.kind === "object" && input.context.objectIds.includes(ref.id))) &&
-      (input.parsed.args.includeHistory || (entry.manualState === "active" && !entry.supersededByEntryId))
+      isSemanticEntryScopeRelevantToTaskContext(entry, scope) &&
+      (input.parsed.args.includeHistory || getContinuityEntryEligibility(entry).canEnterDefaultContext)
     ).slice(0, 40),
+    reviewRequiredFacts: current.projectContinuity.recordEntries.filter((entry) => getContinuityEntryEligibility(entry).canEnterReviewList && isSemanticEntryScopeRelevantToTaskContext(entry, scope)).slice(0, 20),
     documents: keys.map((key) => {
       const document = current.projectMemory.documents[key];
-      const revision = getCurrentProjectMemoryRevision(current.projectMemory, key);
+      const revision = getCurrentProjectMemoryRevision(scoped, key);
       return {
         key,
         title: document.title,
@@ -260,7 +268,11 @@ function executeReadStageRecord(
   if (!coverage.satisfied) {
     throw new Error(coverage.reason);
   }
-  const current = input.readWorkspace();
+  const current = reconcileProjectMemory(input.readWorkspace());
+  const scope = createProjectionTaskScope(current, { taskKind: input.context.kind, directObjectIds: input.context.objectIds,
+    directRevisionIds: input.context.directionRevisions.map((revision) => revision.id), directBranchIds: input.context.visualBranches.map((branch) => branch.id),
+    directDecisionIds: [], targetDirectionIds: input.context.targetDirectionIds ?? [] });
+  const scoped = scopeProjectMemoryState(current.projectMemory, scope);
   const stages: StageRecordKey[] = input.parsed.args.stages ?? [
     "startAndInput",
     "exploration",
@@ -273,7 +285,7 @@ function executeReadStageRecord(
     provenance: { kind: "untrustedLocalEvidence" as const, grantsAuthority: false as const },
     records: stages.map((stage) => ({
       stage,
-      revision: getCurrentStageRecordRevision(current.projectMemory, stage),
+      revision: getCurrentStageRecordRevision(scoped, stage),
       history: input.parsed.args.includeHistory
         ? getStageRecordHistory(current.projectMemory, stage).slice(0, 5)
         : undefined

@@ -302,15 +302,15 @@ function createProjectStateFrame(
     projectMemoryRevisionIds: memoryRevisionIds,
     stageRecordRevisionIds: stageRevisionIds,
     ...(currentDefinition ? { designDefinitionRevisionId: currentDefinition.id } : {}),
-    directionRevisionIds: primaryDirection?.type === "conceptDirection" && primaryDirection.currentRevisionId
+    directionRevisionIds: primaryDirection?.type === "conceptDirection" && primaryDirection.visibility === "active" && primaryDirection.currentRevisionId
       ? [primaryDirection.currentRevisionId]
       : [],
-    ...(defaultReference?.type === "image" ? { defaultReferenceObjectId: defaultReference.id } : {}),
+    ...(defaultReference?.type === "image" && defaultReference.visibility === "active" && Boolean(defaultReference.assetId) ? { defaultReferenceObjectId: defaultReference.id } : {}),
     selectedObjectIds: [],
     relatedObjectIds: uniqueIds([
       ...(currentDefinition?.sourceObjectIds ?? []),
       ...(primaryDirection ? [primaryDirection.id] : []),
-      ...(defaultReference?.type === "image" ? [defaultReference.id] : [])
+      ...(defaultReference?.type === "image" && defaultReference.visibility === "active" && Boolean(defaultReference.assetId) ? [defaultReference.id] : [])
     ]),
     renderedText: [
       '<untrusted_project_evidence grants_authority="false">',
@@ -323,10 +323,10 @@ function createProjectStateFrame(
         : definition?.availability === "hidden"
           ? "当前设计定义已隐藏，不可用于默认 Context。"
           : "当前没有已应用设计定义。",
-      primaryDirection?.type === "conceptDirection"
+      primaryDirection?.type === "conceptDirection" && primaryDirection.visibility === "active"
         ? `当前主方向：${primaryDirection.title}（${primaryDirection.summary}）`
         : "当前没有已确定主方向。",
-      defaultReference?.type === "image"
+      defaultReference?.type === "image" && defaultReference.visibility === "active" && Boolean(defaultReference.assetId)
         ? `当前后续默认参考：${defaultReference.title}（${defaultReference.id}）`
         : "当前没有可用的后续默认参考。",
       deliveries.length > 0 ? `已有交付准备：${deliveries.join("；")}` : "当前没有交付准备包。",

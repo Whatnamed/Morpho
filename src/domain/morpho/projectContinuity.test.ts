@@ -396,7 +396,7 @@ describe("project continuity runtime", () => {
   });
 
 
-  it("keeps hidden design-definition memories current without marking them review required", () => {
+  it("clears hidden design-definition current memory without exposing its historical content", () => {
     const hidden = resolveContinuityValidity(hideObject(createInitialWorkspace(), "definition-current"));
     const views = deriveProjectMemoryViews(hidden);
     const designDefinitionItem = views.designDefinition.items[0];
@@ -405,8 +405,7 @@ describe("project continuity runtime", () => {
       selectedObjectIds: []
     });
 
-    expect(designDefinitionItem?.validity).toBe("current");
-    expect(designDefinitionItem?.sourceRefs[0]?.sourceAvailability).toBe("hidden");
+    expect(designDefinitionItem).toBeUndefined();
     expect(context.relevantProjectMemoryViews.flatMap((view) => view.items).map((item) => item.id)).not.toContain(
       designDefinitionItem?.id
     );
@@ -749,7 +748,7 @@ describe("project continuity runtime", () => {
     expect(hasSummary(generalDirectionA, "方向 A 不要过度科技化")).toBe(true);
   });
 
-  it("marks removed message sources missing and excludes their entries from memory, context, and review lists", () => {
+  it("marks removed message sources missing and keeps only a review diagnostic plus history", () => {
     const userMessage = {
       id: "ai-user-message-lifecycle",
       role: "user" as const,
@@ -799,7 +798,7 @@ describe("project continuity runtime", () => {
     expect(entry?.sourceRefs[0]?.snapshot?.summarySnippet).toBe("Keep the night light warm");
     expect(memory.preferencesAndAvoids.items.map((item) => item.id)).not.toContain(entry?.id);
     expect(context.relevantStageRecords.map((candidate) => candidate.id)).not.toContain(entry?.id);
-    expect(context.reviewRequiredItems.map((candidate) => candidate.id)).not.toContain(entry?.id);
+    expect(context.reviewRequiredItems.map((candidate) => candidate.id)).toContain(entry?.id);
     expect(groups[entry?.stage ?? "startAndInput"].entries.map((candidate) => candidate.id)).toContain(entry?.id);
   });
 

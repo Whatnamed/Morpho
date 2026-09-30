@@ -354,7 +354,9 @@ export async function prepareAgentTurnProductAPlus(
   });
   const [defaultMemoryContext, stableMemoryContext] = buildAgentDefaultMemoryContexts(
     workspaceWithMessages,
-    [strategy.kind, "historyAndMemory"]
+    [strategy.kind, "historyAndMemory"],
+    { directObjectIds: context.objectIds, directRevisionIds: context.directionRevisions.map((revision) => revision.id),
+      directBranchIds: context.visualBranches.map((branch) => branch.id), targetDirectionIds: context.targetDirectionIds ?? [] }
   );
   const frameInput: ProviderContextFrameBuildInput = {
     workspace: workspaceWithMessages,

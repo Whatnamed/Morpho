@@ -88,6 +88,7 @@ export type TaskContextSkip = {
 };
 
 export type TaskContextResult = {
+  targetDirectionIds?: MorphoObjectId[];
   sourceSnapshots?: import("../../domain/operations/types").SourceSemanticSnapshot[];
   kind: TaskContextKind;
   objectIds: MorphoObjectId[];
@@ -233,6 +234,7 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
 
     return {
       kind: input.kind,
+      targetDirectionIds: input.targetDirectionIds,
       objectIds: budgeted.objectIds,
       sourceSnapshots: captureSourceSnapshots(workspace, budgeted.objectIds),
       semanticSummaries: budgeted.objectIds
@@ -298,6 +300,7 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
 
   return {
     kind: input.kind,
+    targetDirectionIds: input.targetDirectionIds,
     objectIds: budgeted.objectIds,
     sourceSnapshots: captureSourceSnapshots(workspace, budgeted.objectIds),
     semanticSummaries: budgeted.objectIds

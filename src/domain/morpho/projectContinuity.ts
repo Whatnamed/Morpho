@@ -1,3 +1,6 @@
+import { createProjectionTaskScope, resolveContinuityValidity, getContinuityEntryEligibility, isSemanticEntryScopeRelevantToTaskContext, type SemanticEntryTaskScope } from "./continuityAuthority";
+export { resolveContinuityValidity, getContinuityEntryEligibility, isSemanticEntryScopeRelevantToTaskContext } from "./continuityAuthority";
+export type { ContinuityEntryEligibility, SemanticEntryTaskScope } from "./continuityAuthority";
 import type {
   AiMessage,
   ConceptDirectionObject,
@@ -22,7 +25,9 @@ import type {
 import {
   getCurrentProjectMemoryRevision,
   getCurrentStageRecordRevision,
-  reconcileProjectMemory
+  reconcileProjectMemory,
+  scopeProjectMemoryState,
+  projectionItemMatchesScope
 } from "./projectMemory";
 import {
   buildSemanticPatchSummary,
@@ -164,14 +169,6 @@ export type BuildProjectContinuityContextInput = {
   includeHistorical?: boolean;
 };
 
-export type SemanticEntryTaskScope = {
-  taskKind: BuildProjectContinuityContextInput["taskKind"];
-  directObjectIds: readonly string[];
-  directRevisionIds: readonly string[];
-  directBranchIds: readonly string[];
-  directDecisionIds: readonly string[];
-  targetDirectionIds: readonly string[];
-};
 
 export type ProjectContinuityContext = {
   currentFocus: CurrentProjectFocus;
@@ -190,13 +187,6 @@ export type ApplyConversationSemanticPatchResult = {
   rejected: Array<{ evidenceQuote?: string; reason: string }>;
 };
 
-export type ContinuityEntryEligibility = {
-  canEnterMemory: boolean;
-  canEnterDefaultContext: boolean;
-  canEnterReviewList: boolean;
-  uiLabel: string;
-  reason: string;
-};
 
 export const PROJECT_CONTINUITY_CONTEXT_LIMITS = {
   maxStageRecords: 6,
@@ -370,14 +360,14 @@ export function applyProjectContinuityEvent(workspace: MorphoWorkspace, event: P
   const resolved = resolveContinuityValidity(workspace);
   const dedupeKey = getEventDedupeKey(event);
   if (resolved.projectContinuity.recordEntries.some((entry) => entry.dedupeKey === dedupeKey)) {
-    return resolved;
+    return reconcileProjectMemory(resolved);
   }
 
   const now = event.createdAt ?? new Date().toISOString();
   const entry = createRecordEntry(resolved, event, dedupeKey, now);
   const currentFocus = shouldPreserveCurrentFocus(event) ? resolved.projectContinuity.currentFocus : createFocusForEvent(event, entry, now);
 
-  return {
+  return reconcileProjectMemory({
     ...resolved,
     projectContinuity: {
       ...resolved.projectContinuity,
@@ -385,7 +375,7 @@ export function applyProjectContinuityEvent(workspace: MorphoWorkspace, event: P
       recordEntries: [...resolved.projectContinuity.recordEntries, entry],
       updatedAt: now
     }
-  };
+  }, now);
 }
 
 function shouldPreserveCurrentFocus(event: ProjectContinuityEvent): boolean {
@@ -471,37 +461,9 @@ export function applyConversationSemanticPatch(
     };
   }
 
-  return { workspace: resolveContinuityValidity(nextWorkspace), entries, rejected };
+  return { workspace: reconcileProjectMemory(nextWorkspace), entries, rejected };
 }
 
-export function resolveContinuityValidity(workspace: MorphoWorkspace): MorphoWorkspace {
-  const recordEntries = workspace.projectContinuity.recordEntries.map((entry) => {
-    const reasons = getInvalidationReasons(workspace, entry);
-    const sourceRefs = entry.sourceRefs.map((ref) => resolveSourceRefAvailability(workspace, ref));
-    const resolvedReasons = [
-      ...reasons,
-      ...(sourceRefs.some((ref) => ref.sourceAvailability === "missing") ? ["sourceDeleted:sourceRef"] : [])
-    ];
-    const validity = validityFromReasons(resolvedReasons);
-    return {
-      ...entry,
-      summary: normalizeDeterministicEntrySummary(workspace, entry),
-      validity,
-      sourceRefs,
-      invalidationReasons: resolvedReasons.length > 0 ? [...new Set(resolvedReasons)] : undefined
-    };
-  });
-  const currentFocus = normalizeCurrentFocusSummary(workspace.projectContinuity.currentFocus, recordEntries);
-
-  return {
-    ...workspace,
-    projectContinuity: {
-      ...workspace.projectContinuity,
-      currentFocus,
-      recordEntries
-    }
-  };
-}
 
 export function getContinuityRecordGroups(workspace: MorphoWorkspace): Record<StageRecordKey, ContinuityRecordGroup> {
   const resolved = resolveContinuityValidity(workspace);
@@ -538,11 +500,12 @@ export function deriveProjectMemoryViews(workspace: MorphoWorkspace): ProjectMem
       const items = revision
         ? revision.sections.flatMap((section) =>
             section.items.map((summary, itemIndex) => ({
-              id: `${revision.id}:${section.key}:${itemIndex}`,
+              id: section.itemMetadata?.[itemIndex]?.sourceEntryId ?? `${revision.id}:${section.key}:${itemIndex}`,
+              metadata: section.itemMetadata?.[itemIndex],
               title: viewKey === "rejectedDirections" ? summary.split("；")[0] ?? section.title : section.title,
               summary: truncateText(summary),
-              sourceRefs: revision.sourceRefs,
-              validity: revision.reviewRequired ? ("reviewRequired" as const) : ("current" as const)
+              sourceRefs: section.itemMetadata?.[itemIndex]?.sourceRefs ?? revision.sourceRefs,
+              validity: section.itemMetadata?.[itemIndex]?.validity ?? (revision.reviewRequired ? ("reviewRequired" as const) : ("current" as const))
             }))
           )
         : [];
@@ -556,7 +519,7 @@ export function buildProjectContinuityContext(
   input: BuildProjectContinuityContextInput
 ): ProjectContinuityContext {
   const resolved = resolveContinuityValidity(workspace);
-  const taskScope = normalizeSemanticEntryTaskScope(input);
+  const taskScope = createProjectionTaskScope(resolved, normalizeSemanticEntryTaskScope(input));
   const selected = new Set([
     ...taskScope.directObjectIds,
     ...taskScope.directRevisionIds,
@@ -599,13 +562,12 @@ export function buildProjectContinuityContext(
       items: view.items.slice(0, PROJECT_CONTINUITY_CONTEXT_LIMITS.maxItemsPerMemoryView)
     }));
   const reviewRequiredItems = rankedEntries
-    .filter((entry) => entry.validity === "reviewRequired")
     .filter((entry) => getContinuityEntryEligibility(entry).canEnterReviewList)
     .filter((entry) => isSemanticEntryScopeRelevantToTaskContext(entry, taskScope))
     .slice(0, PROJECT_CONTINUITY_CONTEXT_LIMITS.maxReviewRequiredItems)
     .map(limitEntrySummary);
   const currentStageRecords = CONTEXT_STAGE_RELEVANCE[input.taskKind]
-    .map((stage) => getCurrentStageRecordRevision(memoryWorkspace.projectMemory, stage))
+    .map((stage) => getCurrentStageRecordRevision(scopeProjectMemoryState(memoryWorkspace.projectMemory, taskScope), stage))
     .filter((revision): revision is StageRecordRevision => Boolean(revision));
 
   return {
@@ -620,112 +582,6 @@ export function buildProjectContinuityContext(
   };
 }
 
-export function isSemanticEntryScopeRelevantToTaskContext(
-  entry: ContinuityRecordEntry,
-  taskScope: SemanticEntryTaskScope
-): boolean {
-  if (entry.origin !== "conversationSemanticPatch") {
-    return true;
-  }
-
-  const scope = entry.scope ?? "project";
-  if (scope === "project") {
-    return true;
-  }
-
-  const hasDirectMatch = hasTypedDirectSourceMatch(entry, taskScope);
-  if (scope === "designDefinition") {
-    if (hasDirectMatch) {
-      return true;
-    }
-    return taskScope.taskKind === "designDefinition" || taskScope.taskKind === "conceptDirection" || taskScope.taskKind === "directionPreview" || taskScope.taskKind === "visualDevelopment";
-  }
-
-  if (scope === "direction") {
-    if (!isDirectionScopedTask(taskScope.taskKind)) {
-      return false;
-    }
-    return hasDirectMatch;
-  }
-
-  if (scope === "visual") {
-    if (!isVisualScopedTask(taskScope.taskKind)) {
-      return false;
-    }
-    return hasDirectMatch;
-  }
-
-  return false;
-}
-
-export function getContinuityEntryEligibility(entry: ContinuityRecordEntry): ContinuityEntryEligibility {
-  if (entry.supersededByEntryId || entry.manualState === "resolved") return { canEnterMemory: false, canEnterDefaultContext: false, canEnterReviewList: false, uiLabel: entry.supersededByEntryId ? "已被替代" : "已解决", reason: entry.supersededByEntryId ? "semanticSuperseded" : "manualState=resolved" };
-  if (entry.manualState === "withdrawn") {
-    return {
-      canEnterMemory: false,
-      canEnterDefaultContext: false,
-      canEnterReviewList: false,
-      uiLabel: "已撤回",
-      reason: "manualState=withdrawn"
-    };
-  }
-  if (entry.manualState === "notApplicable") {
-    return {
-      canEnterMemory: false,
-      canEnterDefaultContext: false,
-      canEnterReviewList: false,
-      uiLabel: "当前不适用",
-      reason: "manualState=notApplicable"
-    };
-  }
-
-  const hasHiddenSource = entry.sourceRefs.some((ref) => ref.sourceAvailability === "hidden");
-  const hasMissingSource = entry.sourceRefs.some((ref) => ref.sourceAvailability === "missing");
-  if (hasMissingSource || entry.validity === "sourceUnavailable") {
-    return {
-      canEnterMemory: false,
-      canEnterDefaultContext: false,
-      canEnterReviewList: true,
-      uiLabel: "来源不可用",
-      reason: "sourceUnavailable"
-    };
-  }
-  if (hasHiddenSource) {
-    return {
-      canEnterMemory: false,
-      canEnterDefaultContext: false,
-      canEnterReviewList: false,
-      uiLabel: entry.validity === "current" ? "当前有效 · 来源已隐藏" : `${validityUiLabel(entry.validity)} · 来源已隐藏`,
-      reason: "sourceAvailability=hidden"
-    };
-  }
-  if (entry.validity === "reviewRequired") {
-    return {
-      canEnterMemory: false,
-      canEnterDefaultContext: false,
-      canEnterReviewList: true,
-      uiLabel: "待复核",
-      reason: "validity=reviewRequired"
-    };
-  }
-  if (entry.validity === "superseded") {
-    return {
-      canEnterMemory: false,
-      canEnterDefaultContext: false,
-      canEnterReviewList: false,
-      uiLabel: "已被更新替代",
-      reason: "validity=superseded"
-    };
-  }
-
-  return {
-    canEnterMemory: true,
-    canEnterDefaultContext: true,
-    canEnterReviewList: false,
-    uiLabel: "当前有效",
-    reason: "eligible"
-  };
-}
 
 export function setConversationSemanticEntryManualState(
   workspace: MorphoWorkspace,
@@ -751,7 +607,7 @@ export function transitionSemanticFact(
   }
   if (target.manualState === input.manualState && target.lifecycleEvidence?.sourceMessageId === input.evidence.sourceMessageId) return { status: "updated", workspace };
   const recordEntries = workspace.projectContinuity.recordEntries.map((entry) => entry.id === entryId ? { ...entry, manualState: input.manualState, lifecycleEvidence: input.evidence, updatedAt: input.evidence.createdAt } : entry);
-  return { status: "updated", workspace: resolveContinuityValidity({ ...workspace, projectContinuity: { ...workspace.projectContinuity, recordEntries, updatedAt: input.evidence.createdAt } }) };
+  return { status: "updated", workspace: reconcileProjectMemory({ ...workspace, projectContinuity: { ...workspace.projectContinuity, recordEntries, updatedAt: input.evidence.createdAt } }) };
 }
 
 
@@ -1044,46 +900,7 @@ function defaultReferenceEventSummary(
   return wasCleared ? `已清除「${title}」的后续默认参考。` : `已将「${title}」设为后续默认参考。`;
 }
 
-function normalizeDeterministicEntrySummary(workspace: MorphoWorkspace, entry: ContinuityRecordEntry): string {
-  if (entry.origin !== "deterministicEvent" || !entry.dedupeKey.startsWith("defaultReferenceChanged:")) {
-    return entry.summary;
-  }
-  const decisionRef = entry.sourceRefs.find((ref) => ref.kind === "decision");
-  const decision = decisionRef
-    ? workspace.decisionRecords.find((record) => record.id === decisionRef.id)
-    : undefined;
-  if (decision?.kind !== "setDefaultReference") {
-    return entry.summary;
-  }
-  const objectRef = entry.sourceRefs.find((ref) => ref.kind === "object");
-  const title = objectRef?.snapshot?.title ?? (objectRef ? workspace.objects[objectRef.id]?.title : undefined);
-  if (!title) {
-    return entry.summary;
-  }
-  return decision.summary.startsWith("清除后续默认参考")
-    ? `已清除「${title}」的后续默认参考。`
-    : `已将「${title}」设为后续默认参考。`;
-}
 
-function normalizeCurrentFocusSummary(
-  currentFocus: CurrentProjectFocus,
-  entries: ContinuityRecordEntry[]
-): CurrentProjectFocus {
-  const sourceObjectIds = [...currentFocus.sourceObjectIds].sort();
-  const matchingEntry = [...entries].reverse().find((entry) => {
-    if (entry.stage !== currentFocus.area || entry.updatedAt !== currentFocus.updatedAt) {
-      return false;
-    }
-    const entryObjectIds = entry.sourceRefs
-      .filter((ref) => ref.kind === "object")
-      .map((ref) => ref.id)
-      .sort();
-    return entryObjectIds.length === sourceObjectIds.length && entryObjectIds.every((id, index) => id === sourceObjectIds[index]);
-  });
-  return matchingEntry && matchingEntry.summary !== currentFocus.note
-    ? { ...currentFocus, note: matchingEntry.summary }
-    : currentFocus;
-}
 
 function getEventDedupeKey(event: ProjectContinuityEvent): string {
   switch (event.type) {
@@ -1192,66 +1009,7 @@ function createDeliveryReferenceRef(workspace: Pick<MorphoWorkspace, "deliveryRe
   };
 }
 
-function getInvalidationReasons(workspace: MorphoWorkspace, entry: ContinuityRecordEntry): string[] {
-  const reasons: string[] = entry.supersededByEntryId ? [`semanticSuperseded:${entry.supersededByEntryId}`] : [];
 
-  for (const ref of entry.sourceRefs) {
-    if (ref.kind === "object") {
-      const object = workspace.objects[ref.id];
-      if (!object) {
-        reasons.push(`sourceDeleted:${ref.id}`);
-      } else if (object.type === "image" && ref.snapshot?.status === "defaultReference" && !object.isDefaultReference) {
-        reasons.push(`defaultReferenceSuperseded:${ref.id}`);
-      }
-      continue;
-    }
-
-    if (ref.kind === "revision") {
-      const definitionRevision = workspace.designDefinitionRevisions[ref.id];
-      if (definitionRevision) {
-        const owner = workspace.objects[definitionRevision.designDefinitionId];
-        if (owner?.type === "designDefinition" && owner.currentRevisionId !== ref.id) {
-          reasons.push(`definitionRevisionSuperseded:${ref.id}`);
-        }
-        continue;
-      }
-      const directionRevision = workspace.directionRevisions[ref.id];
-      if (directionRevision) {
-        const owner = workspace.objects[directionRevision.directionId];
-        if (owner?.type === "conceptDirection" && owner.currentRevisionId !== ref.id) {
-          reasons.push(`directionRevisionSuperseded:${ref.id}`);
-        }
-        continue;
-      }
-      reasons.push(`sourceDeleted:${ref.id}`);
-      continue;
-    }
-
-    if (ref.kind === "branch") {
-      const branch = workspace.visualBranches[ref.id];
-      if (!branch) {
-        reasons.push(`sourceDeleted:${ref.id}`);
-      } else if (branch.archivedAt) {
-        reasons.push(`branchArchived:${ref.id}`);
-      }
-    }
-  }
-
-  return [...new Set(reasons)];
-}
-
-function validityFromReasons(reasons: string[]): ContinuityValidity {
-  if (reasons.some((reason) => reason.startsWith("sourceDeleted:"))) {
-    return "sourceUnavailable";
-  }
-  if (reasons.some((reason) => reason.includes("Superseded"))) {
-    return "superseded";
-  }
-  if (reasons.length > 0) {
-    return "reviewRequired";
-  }
-  return "current";
-}
 
 function createMemoryView(key: ProjectMemoryViewKey, items: ProjectMemoryItem[]): ProjectMemoryView {
   return {
@@ -1375,6 +1133,7 @@ function shouldIncludeEntryInContext(
   currentFocus: ProjectFocusArea,
   includeHistorical: boolean
 ): { include: true } | { include: false; reason: string } {
+  if (entry.sourceRefs.some((ref) => ref.sourceAvailability === "hidden")) return { include: false, reason: "sourceAvailability=hidden" };
   const hasDirectMatch = hasDirectSourceMatch(entry, selected);
   const eligibility = getContinuityEntryEligibility(entry);
   if (entry.manualState !== "active") {
@@ -1421,7 +1180,7 @@ function filterProjectMemoryItemsForTaskContext(
 ): ProjectMemoryItem[] {
   const entryById = new Map(recordEntries.map((entry) => [entry.id, entry]));
   return items.filter((item) => {
-    if (!hasOnlyActiveSources(item)) {
+    if (!projectionItemMatchesScope(item.metadata, taskScope) || !hasOnlyActiveSources(item)) {
       return false;
     }
     const entry = entryById.get(item.id);
@@ -1440,36 +1199,8 @@ function normalizeSemanticEntryTaskScope(input: BuildProjectContinuityContextInp
   };
 }
 
-function hasTypedDirectSourceMatch(entry: ContinuityRecordEntry, taskScope: SemanticEntryTaskScope): boolean {
-  const directObjectIds = new Set([...taskScope.directObjectIds, ...taskScope.targetDirectionIds]);
-  const directRevisionIds = new Set(taskScope.directRevisionIds);
-  const directBranchIds = new Set(taskScope.directBranchIds);
-  const directDecisionIds = new Set(taskScope.directDecisionIds);
 
-  return entry.sourceRefs.some((ref) => {
-    if (ref.kind === "object") {
-      return directObjectIds.has(ref.id);
-    }
-    if (ref.kind === "revision") {
-      return directRevisionIds.has(ref.id);
-    }
-    if (ref.kind === "branch") {
-      return directBranchIds.has(ref.id);
-    }
-    if (ref.kind === "decision") {
-      return directDecisionIds.has(ref.id);
-    }
-    return false;
-  });
-}
 
-function isDirectionScopedTask(taskKind: BuildProjectContinuityContextInput["taskKind"]): boolean {
-  return taskKind === "conceptDirection" || taskKind === "directionPreview" || taskKind === "visualDevelopment" || taskKind === "general";
-}
-
-function isVisualScopedTask(taskKind: BuildProjectContinuityContextInput["taskKind"]): boolean {
-  return taskKind === "directionPreview" || taskKind === "visualDevelopment" || taskKind === "general";
-}
 
 function uniqueStrings(values: readonly string[]): string[] {
   return [...new Set(values.filter(Boolean))];
@@ -1484,20 +1215,22 @@ function withSourceAvailability(
 
 function isStageRelevantToTask(
   stage: StageRecordKey,
-  taskKind: BuildProjectContinuityContextInput["taskKind"],
+  taskKind: SemanticEntryTaskScope["taskKind"],
   currentFocus: ProjectFocusArea
 ): boolean {
   if (taskKind === "general") {
     return stage === currentFocus;
   }
 
-  const includedStages: Record<Exclude<BuildProjectContinuityContextInput["taskKind"], "general">, StageRecordKey[]> = {
+  const includedStages: Record<Exclude<SemanticEntryTaskScope["taskKind"], "general">, StageRecordKey[]> = {
     research: ["research", "startAndInput", "designDefinition"],
     designDefinition: ["designDefinition", "research", "startAndInput"],
     conceptDirection: ["designDefinition", "directionAndVisual", "research"],
     directionPreview: ["directionAndVisual", "designDefinition", "research"],
     visualDevelopment: ["directionAndVisual", "designDefinition"],
-    comparison: ["directionAndVisual", "designDefinition", "research"]
+    comparison: ["directionAndVisual", "designDefinition", "research"],
+    deliveryPreparation: ["deliveryPreparation"],
+    historyAndMemory: []
   };
 
   return includedStages[taskKind].includes(stage);
@@ -1543,44 +1276,6 @@ function createObjectRef(workspace: Pick<MorphoWorkspace, "objects">, objectId: 
   };
 }
 
-function resolveSourceRefAvailability(workspace: MorphoWorkspace, ref: ContinuitySourceRef): ContinuitySourceRef {
-  if (ref.kind === "message") {
-    return {
-      ...ref,
-      sourceAvailability: workspace.ai.messages.some((message) => message.id === ref.id) ? "active" : "missing"
-    };
-  }
-
-  if (ref.kind === "object") {
-    const object = workspace.objects[ref.id];
-    return {
-      ...ref,
-      sourceAvailability: !object ? "missing" : object.visibility === "hidden" ? "hidden" : "active"
-    };
-  }
-
-  if (ref.kind === "revision") {
-    const definitionRevision = workspace.designDefinitionRevisions[ref.id];
-    if (definitionRevision) {
-      return { ...ref, sourceAvailability: "active" };
-    }
-    const directionRevision = workspace.directionRevisions[ref.id];
-    if (directionRevision) {
-      return { ...ref, sourceAvailability: "active" };
-    }
-    return { ...ref, sourceAvailability: "missing" };
-  }
-
-  if (ref.kind === "branch") {
-    return { ...ref, sourceAvailability: workspace.visualBranches[ref.id] ? "active" : "missing" };
-  }
-
-  if (ref.kind === "deliveryReference") {
-    return { ...ref, sourceAvailability: workspace.deliveryReferences[ref.id] ? "active" : "missing" };
-  }
-
-  return { ...ref, sourceAvailability: "active" };
-}
 
 function createRevisionRef(
   workspace: Pick<MorphoWorkspace, "designDefinitionRevisions" | "directionRevisions">,
@@ -1898,18 +1593,6 @@ function isContinuityValidity(value: unknown): value is ContinuityValidity {
   return value === "current" || value === "reviewRequired" || value === "superseded" || value === "sourceUnavailable";
 }
 
-function validityUiLabel(validity: ContinuityValidity): string {
-  switch (validity) {
-    case "current":
-      return "当前有效";
-    case "reviewRequired":
-      return "待复核";
-    case "superseded":
-      return "已被更新替代";
-    case "sourceUnavailable":
-      return "来源不可用";
-  }
-}
 
 function normalizeForDedupe(value: string): string {
   return value.replace(/\s+/g, "").toLowerCase();
