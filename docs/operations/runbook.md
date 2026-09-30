@@ -125,6 +125,14 @@ AiJWS text behavior:
 - the client and server share `src/shared/providerInputBudget.ts`, including active frames and tools in the 256k / 80% / 90% budget while keeping the 16k response reserve separate; prepare does not drop valid history;
 - cache status is `unavailable`, `miss`, `partialHit`, or `fullHit`. Retention is absent by default, `in_memory` is ignored, and only explicit capability-verified `24h` is forwarded. Without a live probe, AiJWS cache-field compatibility remains unverified.
 
+Paid submission stop-loss (P3S):
+
+- Text and Compaction do not resend `/responses` after network errors, HTTP 408/429/5xx, lost/unreadable responses, or safety deadlines. A disconnected/incomplete SSE stream preserves partial observations and never starts a buffered generation.
+- GrsAI sends one `/v1/api/generate` POST on the configured primary host. Ambiguous submission does not retry that host or submit to a fallback host. Existing known-task GET `/v1/api/result?id=...` polling and secure downloads remain allowed, as do Journal acquisition/replay, exact local replay/dedupe, settlement retries, read-only Search retries, and local persistence retries.
+- A `400` cache compatibility correction is allowed once only when its diagnostic explicitly identifies an optional cache field actually sent as unsupported. It removes only optional cache fields; generic `unknown field` / unrelated field errors do not qualify. Independent Chat retains image-to-text compatibility only after confirmed 400/413/415/422 rejection, never 408/429/5xx or execution uncertainty.
+- Unknown execution uses public code and A+ Journal `failureCode: external_execution_state_unknown` with `recoverable: false`. The row may be `externallyFailed`, but this does not establish Provider failure or billing state. Query/exact replay does not grant a second paid execution. No task registry/result escrow or exactly-once guarantee is implied.
+- Deterministic adapter, route, Journal, and Runner regressions use mocks/fakes. P3S verification needs no live paid Provider call or production migration; future Provider reconciliation/retention contracts belong to P3A/P3B.
+
 Image generation uses the GrsAI `MORPHO_GRS_*` group defined in `.env.example`.
 
 `MORPHO_GRS_IMAGE_HOST_ALLOWLIST` is required and contains comma-separated exact HTTPS hostnames

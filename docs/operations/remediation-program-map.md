@@ -284,7 +284,8 @@ P0 普通叶子修复、P3、P7 无需把七份原审计作为日常输入。P3 
 | Package / milestone | Status | Owner | Base SHA / contract | Plan path | Accepted commit | Acceptance source / limits |
 |---|---|---|---|---|---|---|
 | P0 | accepted | Codex | `a0abc30`（绑定远端 `main`） | `temp/prompts/p0-deterministic-correctness.md`（一次性 ignored prompt，非 canonical Plan） | `540d734` | Evidence: Delivery Gap ID 确定性回归；PPTX 真实播放顺序与提取覆盖元数据回归；parser/context/A+ 序列化截断披露回归；Web Search 多 query 确定性 round-robin 回归；真实 Chromium IndexedDB request-success → transaction-abort 产品链路回归；Chromium 持久化回归；`typecheck`、`lint`、生产 `build` 均通过且 Vercel 部署成功。Limits: 未执行 paid Provider 调用；无生产 Supabase 迁移/状态变更；均不阻断 P0 验收。 |
-| P1A, P1B-1, P1B-2, P2A, P2B, P3S, P3A, P3B, P4, P5, P6H, P6I, P7 | not_started | 未分配 | `0c04ec8`（planning code baseline，待各自开工绑定新 main） | — | — | 本地图仅完成规划 |
+| P3S | validating | Codex | `619e99b5cc5b61a7658f70c0af5846fdbbeaa6e2`（执行时远端 main） | `temp/prompts/p3s-paid-submission-stop-loss.md`（一次性 ignored prompt） | — | `codex/p3s-paid-submission-stop-loss` 已实现 paid POST stop-loss、typed unknown 传播及安全 observation/settlement 保留；15 个 targeted 文件 / 320 项 deterministic tests、`typecheck`、`lint`、`build` 通过。等待网页 Chat 复审实际 pushed diff，尚未 accepted；无 paid Provider 调用或生产 migration，不扩展 P3A/P3B。 |
+| P1A, P1B-1, P1B-2, P2A, P2B, P3A, P3B, P4, P5, P6H, P6I, P7 | not_started | 未分配 | `0c04ec8`（planning code baseline，待各自开工绑定新 main） | — | — | 本地图仅完成规划 |
 | P3-Facts | not_started（D） | 未分配 | EXT 中明确的未知项 | — | — | 不阻止止损 |
 | O1（CI enforcement / branch protection） | optional_process_decision | — | 见第 7.3 节 | — | — | 可选流程加固；不阻塞任何 remediation package |
 | Deferred Infrastructure | deferred | Program owner 跟踪 trigger | 见第 7 节 | — | — | 无迁移开工条件 |

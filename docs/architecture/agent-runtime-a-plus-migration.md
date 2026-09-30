@@ -226,7 +226,7 @@ could be removed.
 | Project Memory — `src/domain/morpho/projectMemory.ts` | Yes | No | No | Local current projections and revisions remain formal product state. |
 | Stage Records — `projectMemory.ts` | Yes | No | No | Stage projections and their histories remain formal product state. |
 | Summary Revision — `conversationCompaction.ts` and `conversationSummaryAgentRequest.ts` | Yes | Split | No | Preserve summary planning, validation, persistence, and revision history; remove proof-only wrapping later. |
-| Provider adapter — `src/server/ai/openaiCompatibleProvider.ts` | Yes | No | No | Provider execution and bounded retry remain server responsibilities. |
+| Provider adapter — `src/server/ai/openaiCompatibleProvider.ts` | Yes | No | No | Provider execution remains server-owned. P3S forbids automatic paid POST retry after ambiguity; bounded observation/read/settlement retries remain allowed. |
 | Provider SSE parsing — `openaiCompatibleResponsesStream.ts` | Yes | No | No | Reasoning, commentary, text, and tool parsing remain needed. |
 | Client SSE framing and process parsing — `agentStreamProtocol.ts` and `agentStreamClient.ts` | Yes | Yes | No | Keep display framing and parsing; change proof-heavy events and terminal authority. |
 | Trace — `agentMessageTrace.ts` and `agentProcessUi.ts` | Yes | No | No | Diagnostics and process visibility are preserved behavior. |
