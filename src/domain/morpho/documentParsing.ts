@@ -325,9 +325,11 @@ async function parsePptxDocument(file: File): Promise<DocumentParseResult> {
       if (!bytes) continue;
       const xml = strFromU8(bytes);
       const textRuns = extractPptxTextRuns(xml);
-      if (textRuns.length === 0) continue;
-
       const slidePageNumber = index + 1;
+      if (textRuns.length === 0) {
+        processedPageCount = slidePageNumber;
+        continue;
+      }
       const slidePrefix = `${text ? "\n\n" : ""}--- PPTX 第 ${slidePageNumber} 页 ---\n`;
       const slideBody = textRuns.join("\n");
       const chunk = `${slidePrefix}${slideBody}`;

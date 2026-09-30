@@ -60,10 +60,10 @@ function openAssetsDatabase(): Promise<IDBDatabase> {
   });
 }
 
-export function runTransaction<T>(
+function runTransaction<T>(
   database: IDBDatabase,
   mode: IDBTransactionMode,
-  operation: (store: IDBObjectStore, transaction: IDBTransaction) => IDBRequest<T>
+  operation: (store: IDBObjectStore) => IDBRequest<T>
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -84,7 +84,7 @@ export function runTransaction<T>(
     try {
       const transaction = database.transaction(BLOB_STORE_NAME, mode);
       const store = transaction.objectStore(BLOB_STORE_NAME);
-      const request = operation(store, transaction);
+      const request = operation(store);
 
       request.onsuccess = () => {
         result = request.result;

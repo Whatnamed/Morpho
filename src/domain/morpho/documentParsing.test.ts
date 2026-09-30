@@ -179,6 +179,27 @@ describe("document parsing", () => {
     }
   });
 
+  it("counts presentation slides without extractable text towards coverage without claiming truncation", async () => {
+    const pptx = new File([toArrayBuffer(makeOoxmlPptxBytes([
+      { fileNumber: 1, text: "第一页有真实文本" },
+      { fileNumber: 2, text: "" }
+    ], [1, 2]))], "has-blank-slide.pptx", {
+      type: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    });
+
+    const result = await parseDocumentFile(pptx);
+
+    expect(result.status).toBe("parsed");
+    if (result.status === "parsed") {
+      expect(result.pageCount).toBe(2);
+      expect(result.sourcePageCount).toBe(2);
+      expect(result.truncated).toBe(false);
+      expect(result.text).toContain("--- PPTX 第 1 页 ---\n第一页有真实文本");
+      expect(result.text).not.toContain("--- PPTX 第 2 页 ---");
+      expect(result.text).not.toContain("[已截断]");
+    }
+  });
+
   it("extracts text from a minimal text PDF and reports page count", async () => {
     const pdf = new File([toArrayBuffer(makeMinimalTextPdf("Nightrail source"))], "source.pdf", { type: "application/pdf" });
 
