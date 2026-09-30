@@ -65,6 +65,12 @@ export function isPristineLegacyNightrailWorkspace(workspace: MorphoWorkspace): 
   } = workspace.ai;
   const fingerprint = fingerprintStructuredValue({
     ...withoutMemory,
+    // Forward migration identities are runtime metadata, not legacy fixture edits.
+    // Strip only live-object identities here; historical bindings stay in the guard.
+    objects: Object.fromEntries(Object.entries(workspace.objects).map(([id, object]) => {
+      const { incarnationId: _incarnationId, ...legacyObject } = object;
+      return [id, legacyObject];
+    })),
     schemaVersion: 14,
     ai: legacyAi
   });

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { CURRENT_CASE_STUDY_ID } from "../../domain/morpho/caseStudy/currentCaseStudy";
+import { fingerprintCaseStudyWorkspace } from "../../domain/morpho/caseStudy/caseStudyFingerprint";
+import { CASE_STUDY_INSTALLATION_STORAGE_KEY } from "../../domain/morpho/caseStudy/caseStudyInstallation";
 import { createBlankWorkspace, createTestWorkspace, serializeWorkspace } from "../../domain/morpho/workspace";
 import {
   CATALOG_STORAGE_KEY,
@@ -29,6 +31,14 @@ describe("local project catalog persistence", () => {
     expect(storage.getItem(getProjectWorkspaceStorageKey("project-nightrail"))).toBeNull();
     expect(storage.getItem(getProjectWorkspaceStorageKey(CURRENT_CASE_STUDY_ID))).toBeTruthy();
     expect(storage.getItem(LEGACY_WORKSPACE_STORAGE_KEY)).toBeNull();
+    const loaded = loadProjectWorkspace(storage, CURRENT_CASE_STUDY_ID);
+    if (loaded.status !== "ok") throw new Error("Installed workspace missing");
+    expect(JSON.parse(storage.getItem(CASE_STUDY_INSTALLATION_STORAGE_KEY)!)).toMatchObject({ workspaceFingerprint: fingerprintCaseStudyWorkspace(loaded.workspace) });
+    const identities = Object.values(loaded.workspace.objects).map((object) => object.incarnationId);
+    initializeLocalProjectCatalog(storage);
+    const reloaded = loadProjectWorkspace(storage, CURRENT_CASE_STUDY_ID);
+    if (reloaded.status !== "ok") throw new Error("Reloaded workspace missing");
+    expect(Object.values(reloaded.workspace.objects).map((object) => object.incarnationId)).toEqual(identities);
   });
 
   it("still recognizes pristine Nightrail after only view and selection state changes", () => {

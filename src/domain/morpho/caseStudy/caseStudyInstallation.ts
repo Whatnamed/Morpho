@@ -111,7 +111,7 @@ export async function installCurrentCaseStudyAssets(
       assetManifestVersion: CURRENT_CASE_STUDY_ASSET_MANIFEST_VERSION,
       installedVersion: CURRENT_CASE_STUDY_VERSION,
       projectId: CURRENT_CASE_STUDY_ID,
-      workspaceFingerprint: fingerprintCaseStudyWorkspace(currentCaseStudyWorkspace)
+      workspaceFingerprint: previousMarker?.workspaceFingerprint ?? fingerprintCaseStudyWorkspace(currentCaseStudyWorkspace)
     });
   }
 

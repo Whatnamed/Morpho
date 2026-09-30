@@ -2,7 +2,6 @@ import type { MorphoWorkspace } from "../../domain/morpho/types";
 import { createCurrentCaseStudyWorkspace, parseWorkspace, serializeWorkspace } from "../../domain/morpho/workspace";
 import {
   CURRENT_CASE_STUDY_ASSET_MANIFEST_VERSION,
-  CURRENT_CASE_STUDY_FINGERPRINT,
   CURRENT_CASE_STUDY_ID,
   CURRENT_CASE_STUDY_VERSION
 } from "../../domain/morpho/caseStudy/currentCaseStudy";
@@ -503,7 +502,7 @@ function migrateExistingCatalog(
       const nextCatalog = createCatalog([summarizeProject(next), ...catalog.projects], CURRENT_CASE_STUDY_ID);
       if (mode === "writer") {
         saveCatalog(storage, nextCatalog);
-        writeCaseStudyMarker(storage);
+        writeCaseStudyMarker(storage, next);
       }
       return {
         status: "ok",
@@ -532,7 +531,7 @@ function migrateExistingCatalog(
       );
       if (mode === "writer") {
         saveCatalog(storage, nextCatalog);
-        writeCaseStudyMarker(storage);
+        writeCaseStudyMarker(storage, next);
       }
       return {
         status: "ok",
@@ -598,7 +597,7 @@ function installCurrentCaseStudy(
   const catalog = createCatalog([summarizeProject(workspace)], CURRENT_CASE_STUDY_ID);
   if (mode === "writer") {
     saveCatalog(storage, catalog);
-    writeCaseStudyMarker(storage, options.obsoleteStorageKeys);
+    writeCaseStudyMarker(storage, workspace, options.obsoleteStorageKeys);
   }
   return {
     status: "ok",
@@ -645,7 +644,7 @@ function readCaseStudyMarker(storage: Storage): {
   }
 }
 
-function writeCaseStudyMarker(storage: Storage, obsoleteStorageKeys?: string[]): void {
+function writeCaseStudyMarker(storage: Storage, workspace: MorphoWorkspace, obsoleteStorageKeys?: string[]): void {
   safeSetItem(
     storage,
     CASE_STUDY_INSTALLATION_STORAGE_KEY,
@@ -653,7 +652,7 @@ function writeCaseStudyMarker(storage: Storage, obsoleteStorageKeys?: string[]):
       assetManifestVersion: CURRENT_CASE_STUDY_ASSET_MANIFEST_VERSION,
       installedVersion: CURRENT_CASE_STUDY_VERSION,
       projectId: CURRENT_CASE_STUDY_ID,
-      workspaceFingerprint: CURRENT_CASE_STUDY_FINGERPRINT,
+      workspaceFingerprint: fingerprintCaseStudyWorkspace(workspace),
       obsoleteStorageKeys
     })
   );

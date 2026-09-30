@@ -5,10 +5,21 @@ import { describe, expect, it } from "vitest";
 
 import type { BlobStore } from "@/infrastructure/assets/localAssetWorkflow";
 
-import { currentCaseStudyAssetManifest } from "./currentCaseStudy";
-import { installCurrentCaseStudyAssets } from "./caseStudyInstallation";
+import { CURRENT_CASE_STUDY_ASSET_MANIFEST_VERSION, CURRENT_CASE_STUDY_ID, CURRENT_CASE_STUDY_VERSION, currentCaseStudyAssetManifest } from "./currentCaseStudy";
+import { installCurrentCaseStudyAssets, readCaseStudyInstallationMarker, writeCaseStudyInstallationMarker } from "./caseStudyInstallation";
+import { createCurrentCaseStudyWorkspace } from "../workspace";
+import { fingerprintCaseStudyWorkspace } from "./caseStudyFingerprint";
+import { createMemoryStorage } from "@/infrastructure/persistence/memoryStorage";
 
 describe("current case-study asset installation", () => {
+  it("preserves the installed workspace fingerprint when its forward identities differ from another template parse", async () => {
+    const storage = createMemoryStorage();
+    const workspaceFingerprint = fingerprintCaseStudyWorkspace(createCurrentCaseStudyWorkspace());
+    writeCaseStudyInstallationMarker(storage, { assetManifestVersion: CURRENT_CASE_STUDY_ASSET_MANIFEST_VERSION, installedVersion: CURRENT_CASE_STUDY_VERSION, projectId: CURRENT_CASE_STUDY_ID, workspaceFingerprint });
+    const result = await installCurrentCaseStudyAssets(createMemoryBlobStore(), { fetchAsset: fetchPublicCaseAsset, storage });
+    expect(result.diagnostics).toEqual([]);
+    expect(readCaseStudyInstallationMarker(storage)?.workspaceFingerprint).toBe(workspaceFingerprint);
+  });
   it("installs assets, then skips verified blobs on a later run", async () => {
     const store = createMemoryBlobStore();
 
