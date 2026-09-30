@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 
 import type { MorphoWorkspace, ResearchObject } from "@/domain/morpho/types";
 import { getResearchItemParts } from "@/domain/operations/researchItems";
+import { evidenceConfidenceLabel } from "@/domain/morpho/evidenceAuthority";
 import { getResearchExtractionItems, type ResearchExtractionItem } from "../researchExtraction";
 
 type ResearchDetailPanelProps = {
@@ -83,6 +84,7 @@ export function ResearchDetailPanel({ workspace, research, onClose, onApplySelec
                             {selected ? <Check size={13} /> : null}
                           </span>
                           <ResearchPanelItemText text={item.text} />
+                          <span className="research-panel-item-state muted">{evidenceConfidenceLabel(item.confidence)}</span>
                           {item.activeObjectId ? <span className="research-panel-item-state">已在画布</span> : null}
                           {!item.activeObjectId && item.hiddenObjectId ? (
                             <span className="research-panel-item-state muted">可恢复</span>

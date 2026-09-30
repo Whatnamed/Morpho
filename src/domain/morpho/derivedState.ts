@@ -10,6 +10,7 @@ import type {
   ResearchObject,
   ImageObject
 } from "./types";
+import { qualifyObjectEvidence } from "./evidenceAuthority";
 
 const MAX_RECENT_RESEARCH = 3;
 
@@ -31,7 +32,8 @@ export function reconcileWorkspaceDerivedState(
   workspace: MorphoWorkspace,
   now = new Date().toISOString()
 ): MorphoWorkspace {
-  const objects = reconcileCurrentEffectiveDesignDefinitions(workspace);
+  const qualifiedObjects = Object.fromEntries(Object.entries(workspace.objects).map(([id, object]) => [id, qualifyObjectEvidence(workspace, object)]));
+  const objects = reconcileCurrentEffectiveDesignDefinitions({ ...workspace, objects: qualifiedObjects });
   const relations = reconcileLegacyMultiReferenceVersionRelations(workspace, objects);
   const normalizedWorkspace = {
     ...workspace,

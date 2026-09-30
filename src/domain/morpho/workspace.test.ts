@@ -192,7 +192,7 @@ describe("Morpho workspace domain boundaries", () => {
   it("creates a blank schema v17 project without depending on Nightrail seed object ids", () => {
     const workspace = createBlankWorkspace("project-empty-local");
 
-    expect(workspace.schemaVersion).toBe(17);
+    expect(workspace.schemaVersion).toBe(18);
     expect(workspace.project.id).toBe("project-empty-local");
     expect(workspace.objects["image-soft-rail-v2"]).toBeUndefined();
     expect(workspace.canvas.instances).toEqual([]);
@@ -365,7 +365,7 @@ describe("Morpho workspace domain boundaries", () => {
       throw new Error("Expected evidence draft to be ready.");
     }
     expect(evidenceDraft.draft.summary).toBe("证据 B：转角区域需要更柔和的触达线索。");
-    expect(evidenceDraft.draft.sourceObjectIds).toEqual(["file-path-references"]);
+    expect(evidenceDraft.draft.sourceObjectIds).toEqual(["research-night-path", "file-path-references"]);
     expect(evidenceDraft.draft.citationIds).toEqual(["citation-research-b"]);
     expect(evidenceDraft.draft.confidence).toBe("needsVerification");
     expect(evidenceDraft.draft.state).toBe("needsVerification");
@@ -1062,7 +1062,7 @@ describe("Morpho workspace domain boundaries", () => {
     expect(result.status).toBe("ok");
     expect(legacyWorkspace).toEqual(before);
     if (result.status === "ok") {
-      expect(result.workspace.schemaVersion).toBe(17);
+      expect(result.workspace.schemaVersion).toBe(18);
       expect(result.workspace.ai).not.toHaveProperty("conversationCheckpoints");
       expect(result.workspace.objects["image-a"]?.visibility).toBe("active");
       expect(result.workspace.objects["image-a"]).toMatchObject({
@@ -1132,7 +1132,7 @@ describe("Morpho workspace domain boundaries", () => {
       throw new Error(result.reason);
     }
     expect(result.didMigrate).toBe(true);
-    expect(result.workspace.schemaVersion).toBe(17);
+    expect(result.workspace.schemaVersion).toBe(18);
     expect(result.workspace.ai).not.toHaveProperty("conversationCheckpoints");
     expect(result.workspace.projectContinuity.schemaVersion).toBe(2);
     expect(result.workspace.projectContinuity.recordEntries).toEqual([
@@ -1212,7 +1212,7 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(17);
+    expect(result.workspace.schemaVersion).toBe(18);
     expect(Object.values(result.workspace.objects).filter((object) => object.type === "documentFragment")).toHaveLength(
       documentFragmentCountBefore
     );
@@ -1281,7 +1281,7 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(17);
+    expect(result.workspace.schemaVersion).toBe(18);
     expect(result.workspace.ai.messages[0]).toMatchObject({
       id: "assistant-trace",
       body: "完成。",
@@ -1328,7 +1328,7 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(17);
+    expect(result.workspace.schemaVersion).toBe(18);
     expect(result.workspace.ai).not.toHaveProperty("conversationCheckpoints");
     expect(result.workspace.ai.messages).toEqual(v9Workspace.ai.messages);
     expect(result.workspace.ai.messages[0]).not.toHaveProperty("conversationLaneKey");
@@ -1653,7 +1653,7 @@ describe("Morpho workspace domain boundaries", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.workspace.schemaVersion).toBe(17);
+    expect(result.workspace.schemaVersion).toBe(18);
     for (const [category] of structuredCategories) {
       expect(result.workspace.objects[`legacy-structured-${category}`]).toMatchObject({ category });
     }
@@ -1677,7 +1677,7 @@ describe("Morpho workspace domain boundaries", () => {
   it("does not use legacy notes to normalize an already-current workspace", () => {
     const currentWorkspace = JSON.parse(JSON.stringify(createInitialWorkspace())) as Record<string, unknown>;
     const objects = currentWorkspace.objects as Record<string, Record<string, unknown>>;
-    currentWorkspace.schemaVersion = 17;
+    currentWorkspace.schemaVersion = 18;
     objects["insight-continuous-support"] = {
       ...objects["insight-continuous-support"],
       category: "invalid-category",

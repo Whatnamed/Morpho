@@ -558,6 +558,7 @@ export function restorePreparedAgentTurnProductAPlus(
       ? []
       : turnInput.selectedObjectIds
   });
+  context.sourceSnapshots = runtime.sourceSnapshots?.map((snapshot) => ({ ...snapshot })) ?? context.objectIds.map((objectId) => ({ objectId, objectType: "unknown", visibility: "unknown", semanticFingerprint: "unknown" }));
   const providerTaskContext = context.kind === "comparison"
     ? buildProviderComparisonTaskContext(context)
     : buildProviderTaskContext(context);

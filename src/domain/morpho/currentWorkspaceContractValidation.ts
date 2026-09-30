@@ -95,7 +95,7 @@ const CONTINUITY_ORIGINS = values<ContinuityRecordOrigin>([
   "deterministicEvent", "conversationSemanticPatch"
 ]);
 const CONTINUITY_MANUAL_STATES = values<ContinuityManualState>([
-  "active", "notApplicable", "withdrawn"
+  "active", "notApplicable", "withdrawn", "resolved"
 ]);
 const SEMANTIC_PATCH_KINDS = values<SemanticPatchKind>([
   "preference", "constraint", "avoidance", "openQuestion", "decisionReason", "rejectionReason"
@@ -167,7 +167,7 @@ export function validateCurrentWorkspaceContract(
   const workspace = record(value, "workspace", add);
   if (!workspace) return;
 
-  if (workspace.schemaVersion !== 17) add("schemaVersion", "Expected schemaVersion 17.");
+  if (workspace.schemaVersion !== 18) add("schemaVersion", "Expected schemaVersion 18.");
   validateProject(workspace.project, "project", add);
   recordValues(workspace.assets, "assets", add, validateAsset);
   recordValues(workspace.objects, "objects", add, validateMorphoObject);
@@ -281,6 +281,13 @@ function validateMorphoObject(value: unknown, path: string, add: WorkspaceContra
       string(item.confirmedAt, `${path}.confirmedAt`, add);
       optionalId(item.supersededById, `${path}.supersededById`, add);
       optionalString(item.note, `${path}.note`, add);
+      optionalEnum(item.reportedConfidence, `${path}.reportedConfidence`, ["supported", "partial", "needsVerification"], add);
+      optionalArray(item.evidence, `${path}.evidence`, add, validateResearchEvidence);
+      optional(item.researchOrigin, `${path}.researchOrigin`, add, (raw, originPath, issue) => {
+        const origin = record(raw, originPath, issue); if (!origin) return;
+        id(origin.researchObjectId, `${originPath}.researchObjectId`, issue);
+        validateResearchEvidenceItem(origin.item, `${originPath}.item`, issue);
+      });
       break;
     case "documentFragment":
       string(item.body, `${path}.body`, add);
@@ -348,6 +355,31 @@ function validateResearchEvidence(value: unknown, path: string, add: WorkspaceCo
   idArray(item.sourceObjectIds, `${path}.sourceObjectIds`, add);
   idArray(item.citationIds, `${path}.citationIds`, add);
   enumValue(item.confidence, `${path}.confidence`, ["supported", "partial", "needsVerification"], add);
+  optionalEnum(item.reportedConfidence, `${path}.reportedConfidence`, ["supported", "partial", "needsVerification"], add);
+  optional(item.item, `${path}.item`, add, validateResearchEvidenceItem);
+  optional(item.basis, `${path}.basis`, add, (raw, basisPath, issue) => {
+    const basis = record(raw, basisPath, issue); if (!basis) return;
+    enumValue(basis.confidence, `${basisPath}.confidence`, ["supported", "partial", "needsVerification"], issue);
+    array(basis.sourceSnapshots, `${basisPath}.sourceSnapshots`, issue, validateSourceSemanticSnapshot);
+    array(basis.citationSnapshots, `${basisPath}.citationSnapshots`, issue, validateCitation);
+    if (Array.isArray(basis.sourceSnapshots) && Array.isArray(item.sourceObjectIds)) {
+      const ids = basis.sourceSnapshots.map((source) => typeof source === "object" && source !== null && "objectId" in source ? source.objectId : undefined);
+      if (ids.length !== item.sourceObjectIds.length || item.sourceObjectIds.some((id) => !ids.includes(id))) issue(`${basisPath}.sourceSnapshots`, "Evidence basis source IDs must match the claim's sources.");
+    }
+    if (Array.isArray(basis.citationSnapshots) && Array.isArray(item.citationIds)) {
+      const ids = basis.citationSnapshots.map((citation) => typeof citation === "object" && citation !== null && "id" in citation ? citation.id : undefined);
+      const citationIds = item.citationIds;
+      if (ids.some((id) => !citationIds.includes(id))) issue(`${basisPath}.citationSnapshots`, "Evidence basis may not add unbound citations.");
+    }
+  });
+}
+
+function validateResearchEvidenceItem(value: unknown, path: string, add: WorkspaceContractIssueAdder): void {
+  const item = record(value, path, add); if (!item) return;
+  enumValue(item.kind, `${path}.kind`, ["finding", "opportunity", "constraint", "openQuestion"], add);
+  nonNegativeNumber(item.index, `${path}.index`, add);
+  if (!Number.isInteger(item.index)) add(`${path}.index`, "Expected an integer item index.");
+  string(item.text, `${path}.text`, add);
 }
 
 function validateResearchProvenance(value: unknown, path: string, add: WorkspaceContractIssueAdder): void {
@@ -542,6 +574,24 @@ function validateDecisionRecord(value: unknown, path: string, add: WorkspaceCont
   string(item.createdAt, `${path}.createdAt`, add);
   string(item.summary, `${path}.summary`, add);
   optionalString(item.reason, `${path}.reason`, add);
+  optional(item.effect, `${path}.effect`, add, (raw, effectPath, issue) => {
+    const effect = record(raw, effectPath, issue); if (!effect) return;
+    if (effect.kind !== item.kind) issue(`${effectPath}.kind`, "Decision kind and effect kind must match.");
+    enumValue(effect.kind, `${effectPath}.kind`, ["setDirectionStatus", "setDefaultReference", "applyDesignDefinition", "applyConceptDirection", "setImageRole", "createKeyConclusion", "setKeyConclusionCategory", "setKeyConclusionState", "deleteObject"], issue);
+    {
+      id(effect.targetObjectId, `${effectPath}.targetObjectId`, issue);
+      if (effect.kind === "setDirectionStatus") enumValue(effect.status, `${effectPath}.status`, ["pendingPreview", "primary", "alternative", "eliminated", "needsReview"], issue);
+      if (effect.kind === "setDefaultReference" && effect.referenceObjectId !== null) id(effect.referenceObjectId, `${effectPath}.referenceObjectId`, issue);
+      if (effect.kind === "applyDesignDefinition" || effect.kind === "applyConceptDirection") id(effect.revisionId, `${effectPath}.revisionId`, issue);
+      if (effect.kind === "setImageRole") enumValue(effect.role, `${effectPath}.role`, IMAGE_ROLES, issue);
+      if (effect.kind === "setKeyConclusionCategory") enumValue(effect.category, `${effectPath}.category`, ["finding", "opportunity", "constraint", "openQuestion"], issue);
+      if (effect.kind === "setKeyConclusionState") {
+        enumValue(effect.state, `${effectPath}.state`, ["active", "needsVerification", "superseded", "archived"], issue);
+        optionalId(effect.supersededById, `${effectPath}.supersededById`, issue);
+        if (effect.state === "superseded" && !effect.supersededById) issue(`${effectPath}.supersededById`, "A superseding conclusion must be identified.");
+      }
+    }
+  });
   optional(item.objectSnapshot, `${path}.objectSnapshot`, add, (raw, snapshotPath, issue) => {
     const snapshot = record(raw, snapshotPath, issue); if (!snapshot) return;
     id(snapshot.id, `${snapshotPath}.id`, issue);
@@ -704,6 +754,7 @@ function validateSourceSemanticSnapshot(value: unknown, path: string, add: Works
   string(item.objectType, `${path}.objectType`, add);
   string(item.visibility, `${path}.visibility`, add);
   string(item.semanticFingerprint, `${path}.semanticFingerprint`, add);
+  optionalEnum(item.fingerprintVersion, `${path}.fingerprintVersion`, [2], add);
 }
 
 function validateCitation(value: unknown, path: string, add: WorkspaceContractIssueAdder): void {
@@ -816,6 +867,15 @@ function validateContinuityEntry(value: unknown, path: string, add: WorkspaceCon
   optionalEnum(item.semanticKind, `${path}.semanticKind`, SEMANTIC_PATCH_KINDS, add);
   optionalId(item.sourceMessageId, `${path}.sourceMessageId`, add);
   optionalString(item.evidenceQuote, `${path}.evidenceQuote`, add);
+  optionalId(item.supersededByEntryId, `${path}.supersededByEntryId`, add);
+  optional(item.lifecycleEvidence, `${path}.lifecycleEvidence`, add, (raw, evidencePath, issue) => {
+    const evidence = record(raw, evidencePath, issue); if (!evidence) return;
+    enumValue(evidence.action, `${evidencePath}.action`, ["supersede", "retract", "resolve", "restore", "notApplicable"], issue);
+    enumValue(evidence.origin, `${evidencePath}.origin`, ["userMessage", "userAction"], issue);
+    optionalId(evidence.sourceMessageId, `${evidencePath}.sourceMessageId`, issue);
+    if (evidence.origin === "userMessage" && !evidence.sourceMessageId) issue(`${evidencePath}.sourceMessageId`, "User-message lifecycle requires provenance.");
+    string(evidence.evidenceQuote, `${evidencePath}.evidenceQuote`, issue); string(evidence.createdAt, `${evidencePath}.createdAt`, issue);
+  });
   optionalEnum(item.scope, `${path}.scope`, SEMANTIC_PATCH_SCOPES, add);
   if (item.invalidationReasons !== undefined) stringArray(item.invalidationReasons, `${path}.invalidationReasons`, add);
 }

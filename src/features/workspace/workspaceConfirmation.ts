@@ -61,6 +61,7 @@ export type PendingAiConfirmation =
     }
   | {
       kind: "agentCreateResearchAnalysis";
+      sourceSnapshots?: import("@/domain/operations/types").SourceSemanticSnapshot[];
       targetTitle: string;
       reason: string;
       impact: string;
@@ -71,6 +72,7 @@ export type PendingAiConfirmation =
     }
   | {
       kind: "agentCreateDesignDefinitionProposal";
+      sourceSnapshots?: import("@/domain/operations/types").SourceSemanticSnapshot[];
       targetTitle: string;
       reason: string;
       impact: string;
@@ -83,6 +85,7 @@ export type PendingAiConfirmation =
     }
   | {
       kind: "agentCreateConceptDirectionProposal";
+      sourceSnapshots?: import("@/domain/operations/types").SourceSemanticSnapshot[];
       targetTitle: string;
       reason: string;
       impact: string;

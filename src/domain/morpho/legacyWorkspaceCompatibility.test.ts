@@ -74,7 +74,7 @@ describe("Schema 17 legacy workspace compatibility", () => {
     }
 
     expect(legacy).toEqual(JSON.parse(before));
-    expect(result.workspace.schemaVersion).toBe(17);
+    expect(result.workspace.schemaVersion).toBe(18);
     expect(result.workspace.ai).not.toHaveProperty("conversationCheckpoints");
     expect(result.workspace.ai.messages.map((message) => ({
       id: message.id,
@@ -251,7 +251,7 @@ describe("Schema 17 legacy workspace compatibility", () => {
     expect(second).toEqual({ status: "ok", workspace: first.workspace, didMigrate: false });
   });
 
-  it("does not interpret retired checkpoint fields on an already-current schema 17 workspace", () => {
+  it("does not reinterpret retired checkpoint fields while upgrading schema 17", () => {
     const current = createLegacyWorkspace();
     current.schemaVersion = 17;
     const result = migrateWorkspaceToCurrentSchema(current);
@@ -260,7 +260,7 @@ describe("Schema 17 legacy workspace compatibility", () => {
     if (result.status !== "ok") {
       throw new Error(result.reason);
     }
-    expect(result.didMigrate).toBe(false);
+    expect(result.didMigrate).toBe(true);
     expect(result.workspace.ai.conversationSummaryRevisions).toEqual({});
     expect(result.workspace.ai.conversationCompaction).toMatchObject({ coveredMessageCount: 0 });
     expect(result.workspace.ai).not.toHaveProperty("conversationCheckpoints");

@@ -1680,6 +1680,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         confidence: draftResult.draft.confidence,
         state: draftResult.draft.state,
         note: draftResult.draft.note,
+        evidence: draftResult.draft.evidence,
+        researchOrigin: draftResult.draft.researchOrigin,
         position: {
           x: workspace.canvas.view.x + 240,
           y: workspace.canvas.view.y + 180

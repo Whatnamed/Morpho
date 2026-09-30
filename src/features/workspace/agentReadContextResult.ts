@@ -16,7 +16,8 @@ export function buildReadSelectedContextResult(
       title: summary.title,
       summary: summary.summary,
       category: summary.category,
-      detail: summary.detail
+      detail: summary.detail,
+      ...(summary.evidenceQualification ? { evidenceQualification: summary.evidenceQualification.map((item) => ({ ...item, issues: [...item.issues], usableObjectIds: [...item.usableObjectIds], usableCitationIds: [...item.usableCitationIds] })) } : {})
     })),
     directDocumentTitles: context.documentFragmentExtracts.map((extract) => extract.title),
     proposalDrafts: context.proposalDrafts,

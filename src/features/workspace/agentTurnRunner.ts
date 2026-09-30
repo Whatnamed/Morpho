@@ -1346,6 +1346,7 @@ function buildRecoveryRuntime(
         : {})
     },
     providerBaseRequest: cloneProviderRequest(prepared.providerRequest),
+    sourceSnapshots: prepared.context.sourceSnapshots?.map((snapshot) => ({ ...snapshot })),
     continuationItems: [],
     localAgentTurnId: prepared.localAgentTurnId,
     createdAt: prepared.createdAt,

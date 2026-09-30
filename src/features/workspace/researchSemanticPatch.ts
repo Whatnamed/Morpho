@@ -41,7 +41,7 @@ export type ApplyResearchProposalWithSemanticPatchResult =
 export function applyResearchProposalWithSemanticPatch(
   input: ApplyResearchProposalWithSemanticPatchInput
 ): ApplyResearchProposalWithSemanticPatchResult {
-  const proposed = recordResearchAnalysisProposal(input.workspace, input.proposal);
+  const proposed = recordResearchAnalysisProposal(input.workspace, { ...input.proposal, sourceSnapshots: input.proposal.sourceSnapshots ?? input.context.sourceSnapshots });
   const applied = applyResearchAnalysisProposal(proposed.workspace, proposed.proposal.id, {
     position: input.position
   });

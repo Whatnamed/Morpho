@@ -425,10 +425,33 @@ export function applyConversationSemanticPatch(
       continue;
     }
 
+    const target = item.targetEntryId ? nextWorkspace.projectContinuity.recordEntries.find((entry) => entry.id === item.targetEntryId) : undefined;
+    if (item.action && item.action !== "assert") {
+      const targetIds = target?.sourceRefs.filter((ref) => ref.kind === "object" || ref.kind === "revision" || ref.kind === "decision").map((ref) => ref.id) ?? [];
+      const itemIds = [...item.relatedObjectIds, ...item.relatedRevisionIds, ...item.relatedDecisionIds];
+      if (!target || target.origin !== "conversationSemanticPatch" || target.scope !== item.scope || target.semanticKind !== item.kind || targetIds.some((id) => !itemIds.includes(id)) || itemIds.some((id) => !targetIds.includes(id))) {
+        rejected.push({ evidenceQuote: item.evidenceQuote, reason: "Lifecycle target must be a semantic fact of the same kind and exact scope." });
+        continue;
+      }
+      if (item.action !== "supersede") {
+        const transitioned = transitionSemanticFact(nextWorkspace, target.id, {
+          manualState: item.action === "retract" ? "withdrawn" : "resolved",
+          evidence: { action: item.action, origin: "userMessage", sourceMessageId: authorization.userMessageId, evidenceQuote: item.evidenceQuote, createdAt: authorization.userMessageCreatedAt }
+        });
+        if (transitioned.status === "blocked") rejected.push({ evidenceQuote: item.evidenceQuote, reason: transitioned.reason });
+        else { nextWorkspace = transitioned.workspace; entries.push(nextWorkspace.projectContinuity.recordEntries.find((entry) => entry.id === target.id)!); }
+        continue;
+      }
+      if (target.manualState !== "active" || target.supersededByEntryId || target.validity !== "current") {
+        const replay = target.supersededByEntryId && nextWorkspace.projectContinuity.recordEntries.find((entry) => entry.id === target.supersededByEntryId && entry.sourceMessageId === authorization.userMessageId && entry.evidenceQuote === item.evidenceQuote);
+        if (!replay) rejected.push({ evidenceQuote: item.evidenceQuote, reason: "Only a current semantic fact can be superseded." });
+        continue;
+      }
+    }
     const dedupeKey = getConversationSemanticPatchDedupeKey(validation.item, validation.summary, authorization.userMessageId);
     if (
       nextWorkspace.projectContinuity.recordEntries.some((entry) => entry.dedupeKey === dedupeKey) ||
-      hasEquivalentCurrentSemanticEntry(nextWorkspace.projectContinuity.recordEntries, validation.item, validation.summary)
+      (!target && hasEquivalentCurrentSemanticEntry(nextWorkspace.projectContinuity.recordEntries, validation.item, validation.summary))
     ) {
       continue;
     }
@@ -439,13 +462,16 @@ export function applyConversationSemanticPatch(
       ...nextWorkspace,
       projectContinuity: {
         ...nextWorkspace.projectContinuity,
-        recordEntries: [...nextWorkspace.projectContinuity.recordEntries, entry],
+        recordEntries: [...nextWorkspace.projectContinuity.recordEntries.map((prior) => prior.id === target?.id ? {
+          ...prior, supersededByEntryId: entry.id, validity: "superseded" as const, updatedAt: authorization.userMessageCreatedAt,
+          lifecycleEvidence: { action: "supersede" as const, origin: "userMessage" as const, sourceMessageId: authorization.userMessageId, evidenceQuote: item.evidenceQuote, createdAt: authorization.userMessageCreatedAt }
+        } : prior), entry],
         updatedAt: authorization.userMessageCreatedAt
       }
     };
   }
 
-  return { workspace: nextWorkspace, entries, rejected };
+  return { workspace: resolveContinuityValidity(nextWorkspace), entries, rejected };
 }
 
 export function resolveContinuityValidity(workspace: MorphoWorkspace): MorphoWorkspace {
@@ -633,6 +659,7 @@ export function isSemanticEntryScopeRelevantToTaskContext(
 }
 
 export function getContinuityEntryEligibility(entry: ContinuityRecordEntry): ContinuityEntryEligibility {
+  if (entry.supersededByEntryId || entry.manualState === "resolved") return { canEnterMemory: false, canEnterDefaultContext: false, canEnterReviewList: false, uiLabel: entry.supersededByEntryId ? "已被替代" : "已解决", reason: entry.supersededByEntryId ? "semanticSuperseded" : "manualState=resolved" };
   if (entry.manualState === "withdrawn") {
     return {
       canEnterMemory: false,
@@ -706,27 +733,27 @@ export function setConversationSemanticEntryManualState(
   manualState: ContinuityRecordEntry["manualState"],
   updatedAt = new Date().toISOString()
 ): MorphoWorkspace {
-  const recordEntries = workspace.projectContinuity.recordEntries.map((entry) => {
-    if (entry.id !== entryId || entry.origin !== "conversationSemanticPatch") {
-      return entry;
-    }
-
-    return {
-      ...entry,
-      manualState,
-      updatedAt
-    };
-  });
-
-  return {
-    ...workspace,
-    projectContinuity: {
-      ...workspace.projectContinuity,
-      recordEntries,
-      updatedAt
-    }
-  };
+  const action = manualState === "withdrawn" ? "retract" : manualState === "resolved" ? "resolve" : manualState === "notApplicable" ? "notApplicable" : "restore";
+  return transitionSemanticFact(workspace, entryId, { manualState, evidence: { action, origin: "userAction", evidenceQuote: action, createdAt: updatedAt } }).workspace;
 }
+
+export function transitionSemanticFact(
+  workspace: MorphoWorkspace,
+  entryId: string,
+  input: { manualState: ContinuityRecordEntry["manualState"]; evidence: NonNullable<ContinuityRecordEntry["lifecycleEvidence"]> }
+): { status: "updated"; workspace: MorphoWorkspace } | { status: "blocked"; workspace: MorphoWorkspace; reason: string } {
+  const target = workspace.projectContinuity.recordEntries.find((entry) => entry.id === entryId);
+  if (!target || target.origin !== "conversationSemanticPatch" || target.supersededByEntryId) return { status: "blocked", workspace, reason: "Only an unreplaced semantic fact can be changed." };
+  if (input.manualState === "resolved" && target.semanticKind !== "openQuestion") return { status: "blocked", workspace, reason: "Only an open question can be resolved." };
+  if (input.evidence.origin === "userMessage") {
+    const message = workspace.ai.messages.find((message) => message.id === input.evidence.sourceMessageId);
+    if (!message || message.role !== "user" || !message.body.includes(input.evidence.evidenceQuote)) return { status: "blocked", workspace, reason: "Lifecycle evidence must come from a persisted user message." };
+  }
+  if (target.manualState === input.manualState && target.lifecycleEvidence?.sourceMessageId === input.evidence.sourceMessageId) return { status: "updated", workspace };
+  const recordEntries = workspace.projectContinuity.recordEntries.map((entry) => entry.id === entryId ? { ...entry, manualState: input.manualState, lifecycleEvidence: input.evidence, updatedAt: input.evidence.createdAt } : entry);
+  return { status: "updated", workspace: resolveContinuityValidity({ ...workspace, projectContinuity: { ...workspace.projectContinuity, recordEntries, updatedAt: input.evidence.createdAt } }) };
+}
+
 
 function createRecordEntry(
   workspace: MorphoWorkspace,
@@ -925,7 +952,8 @@ function getConversationSemanticPatchDedupeKey(item: ParsedConversationSemanticP
     item.kind,
     item.scope,
     normalizeForDedupe(summary),
-    stableIds([...item.relatedObjectIds, ...item.relatedRevisionIds, ...item.relatedDecisionIds]).join("+") || "no-source"
+    stableIds([...item.relatedObjectIds, ...item.relatedRevisionIds, ...item.relatedDecisionIds]).join("+") || "no-source",
+    ...(item.action && item.action !== "assert" ? [item.action, item.targetEntryId ?? ""] : [])
   ].join(":");
 }
 
@@ -1165,7 +1193,7 @@ function createDeliveryReferenceRef(workspace: Pick<MorphoWorkspace, "deliveryRe
 }
 
 function getInvalidationReasons(workspace: MorphoWorkspace, entry: ContinuityRecordEntry): string[] {
-  const reasons: string[] = [];
+  const reasons: string[] = entry.supersededByEntryId ? [`semanticSuperseded:${entry.supersededByEntryId}`] : [];
 
   for (const ref of entry.sourceRefs) {
     if (ref.kind === "object") {
@@ -1774,6 +1802,8 @@ function normalizeRecordEntry(value: unknown): ContinuityRecordEntry | undefined
     sourceMessageId: typeof value.sourceMessageId === "string" ? value.sourceMessageId : undefined,
     evidenceQuote: typeof value.evidenceQuote === "string" ? value.evidenceQuote : undefined,
     scope: isSemanticPatchScope(value.scope) ? value.scope : undefined,
+    supersededByEntryId: typeof value.supersededByEntryId === "string" ? value.supersededByEntryId : undefined,
+    lifecycleEvidence: isRecord(value.lifecycleEvidence) ? value.lifecycleEvidence as ContinuityRecordEntry["lifecycleEvidence"] : undefined,
     invalidationReasons: Array.isArray(value.invalidationReasons)
       ? value.invalidationReasons.filter((item): item is string => typeof item === "string")
       : undefined
@@ -1825,7 +1855,7 @@ function isRecordOrigin(value: unknown): value is ContinuityRecordEntry["origin"
 }
 
 function isManualState(value: unknown): value is ContinuityRecordEntry["manualState"] {
-  return value === "active" || value === "notApplicable" || value === "withdrawn";
+  return value === "active" || value === "notApplicable" || value === "withdrawn" || value === "resolved";
 }
 
 function isSemanticPatchKind(value: unknown): value is NonNullable<ContinuityRecordEntry["semanticKind"]> {

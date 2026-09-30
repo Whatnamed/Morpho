@@ -1,5 +1,4 @@
 import type { DecisionRecord, DecisionKind, MorphoWorkspace } from "./types";
-import { isAssignableKeyConclusionCategory } from "./types";
 
 export type DecisionRecordState = "current" | "superseded" | "historical" | "reviewRequired";
 
@@ -19,152 +18,41 @@ export function classifyDecisionRecord(
   workspace: Pick<MorphoWorkspace, "objects" | "workingState" | "decisionRecords">,
   record: DecisionRecord
 ): ClassifiedDecisionRecord {
-  const targetId = record.objectSnapshot?.id ?? record.relatedObjectIds[0];
-  const target = targetId ? workspace.objects[targetId] : undefined;
-
-  switch (record.kind) {
-    case "setDirectionStatus": {
-      if (!target || target.type !== "conceptDirection") {
-        return review(record, "决策目标方向已不存在，无法确认当前状态。");
-      }
-      const desiredStatus = parseDirectionStatus(record.summary);
-      if (!desiredStatus) {
-        return review(record, "决策记录没有可识别的方向状态。");
-      }
-      if (target.visibility !== "active") {
-        return review(record, "方向当前不可见，无法确认这条决定仍是有效约束。");
-      }
-      return target.status === desiredStatus
-        ? current(record)
-        : superseded(record, "方向状态已被后续决定改变。");
-    }
-    case "setDefaultReference": {
-      if (!target || target.type !== "image") {
-        return review(record, "默认参考决策的目标图片已不存在。");
-      }
-      if (target.visibility !== "active" || !target.assetId) {
-        return review(record, "默认参考目标图片当前不可用，无法确认这条决定仍有效。");
-      }
-      const cleared = record.summary.startsWith("清除后续默认参考") || /(?:clear|remove|unset)/i.test(record.summary);
-      if (cleared) {
-        return workspace.workingState.currentDefaultReferenceId
-          ? superseded(record, "项目后来设置了新的默认参考。")
-          : current(record);
-      }
-      return workspace.workingState.currentDefaultReferenceId === target.id
-        ? current(record)
-        : superseded(record, "项目后来替换了默认参考。");
-    }
-    case "applyDesignDefinition": {
-      if (!target || target.type !== "designDefinition") {
-        return review(record, "设计定义决策的目标对象已不存在。");
-      }
-      if (target.visibility !== "active") {
-        return review(record, "当前设计定义不可见，无法确认这条决定仍有效。");
-      }
-      return workspace.workingState.currentDesignDefinitionId === target.id || target.isCurrentEffective
-        ? current(record)
-        : superseded(record, "当前设计定义已切换到另一个对象。");
-    }
-    case "applyConceptDirection": {
-      if (!target || target.type !== "conceptDirection") {
-        return review(record, "概念方向决策的目标对象已不存在。");
-      }
-      return target.visibility === "active"
-        ? current(record)
-        : superseded(record, "该概念方向已不再是当前有效对象。");
-    }
-    case "setImageRole": {
-      if (!target || target.type !== "image") {
-        return review(record, "图片角色决策的目标对象已不存在。");
-      }
-      if (target.visibility !== "active") {
-        return review(record, "图片当前不可见，无法确认这条角色决定仍有效。");
-      }
-      const desiredRole = parseImageRole(record.summary);
-      if (!desiredRole) {
-        return review(record, "图片角色决策没有可识别的目标角色。");
-      }
-      return target.role === desiredRole
-        ? current(record)
-        : superseded(record, "图片角色已被后续决定改变。");
-    }
-    case "setKeyConclusionCategory": {
-      if (!target || target.type !== "keyConclusion") {
-        return review(record, "关键结论决策的目标对象已不存在。");
-      }
-      if (target.visibility !== "active") {
-        return review(record, "关键结论当前不可见，无法确认这条决定仍有效。");
-      }
-      const desiredCategory = parseKeyConclusionCategory(record.summary);
-      if (!desiredCategory) {
-        return review(record, "关键结论类别决策没有可识别的目标类别。");
-      }
-      return target.category === desiredCategory
-        ? current(record)
-        : superseded(record, "关键结论类别已被后续决定改变。");
-    }
-    case "createKeyConclusion":
-    case "setKeyConclusionState": {
-      if (!target || target.type !== "keyConclusion") {
-        return review(record, "关键结论决策的目标对象已不存在。");
-      }
-      if (target.visibility !== "active") {
-        return review(record, "关键结论当前不可见，无法确认这条决定仍有效。");
-      }
-      const desiredState = parseKeyConclusionState(record.summary);
-      if (record.kind === "setKeyConclusionState" && !desiredState) {
-        return review(record, "关键结论状态决策没有可识别的目标状态。");
-      }
-      if (desiredState && target.state !== desiredState) {
-        return superseded(record, "关键结论状态已被后续决定改变。");
-      }
-      return target.state === "superseded"
-        ? superseded(record, "关键结论已被另一条结论替代。")
-        : current(record);
-    }
-    case "deleteObject":
-      return target ? review(record, "删除决策尚未反映到当前对象状态。") : current(record);
-    default:
-      return classifyTraceableDecision(workspace, record, targetId);
+  const effect = record.effect;
+  if (!effect) {
+    return record.kind === "createDeliveryReference"
+      ? historical(record)
+      : review(record, "历史决定缺少可靠的结构化 effect / revision，不能从当前状态或文案还原。");
   }
-}
-
-function classifyTraceableDecision(
-  workspace: Pick<MorphoWorkspace, "objects" | "workingState" | "decisionRecords">,
-  record: DecisionRecord,
-  targetId: string | undefined
-): ClassifiedDecisionRecord {
-  const missingRelatedObject = record.relatedObjectIds.some((objectId) => !workspace.objects[objectId]);
-  if (missingRelatedObject || (targetId !== undefined && !workspace.objects[targetId] && record.kind !== "deleteObject")) {
-    return review(record, "决策来源对象已不存在，需要人工复核。");
+  const index = workspace.decisionRecords.findIndex((item) => item.id === record.id);
+  const later = index < 0 ? [] : workspace.decisionRecords.slice(index + 1);
+  if (later.some((item) => item.effect && effectSlots(effect).some((slot) => effectSlots(item.effect!).includes(slot)))) {
+    return superseded(record, "该决定的 effect 已被后来的明确决定替代。");
   }
-  return historical(record);
+  const target = workspace.objects[effect.targetObjectId];
+  if (effect.kind === "deleteObject") return target ? review(record, "删除目标后来恢复，需要复核。") : historical(record);
+  if (effect.kind === "setDefaultReference" && effect.referenceObjectId === null) {
+    return workspace.workingState.currentDefaultReferenceId ? superseded(record, "项目后来设置了默认参考。") : current(record);
+  }
+  if (!target) return review(record, "决定目标已不存在，历史决定仍保留。");
+  if (target.visibility !== "active") return review(record, "决定目标当前不可见。");
+  let matches = false;
+  switch (effect.kind) {
+    case "setDirectionStatus": matches = target.type === "conceptDirection" && target.status === effect.status; break;
+    case "setDefaultReference": matches = target.type === "image" && Boolean(target.assetId) && workspace.workingState.currentDefaultReferenceId === effect.referenceObjectId; break;
+    case "applyDesignDefinition": matches = target.type === "designDefinition" && target.isCurrentEffective && target.currentRevisionId === effect.revisionId; break;
+    case "applyConceptDirection": matches = target.type === "conceptDirection" && target.currentRevisionId === effect.revisionId; break;
+    case "setImageRole": matches = target.type === "image" && target.role === effect.role; break;
+    case "createKeyConclusion": matches = target.type === "keyConclusion" && target.state !== "superseded" && target.state !== "archived"; break;
+    case "setKeyConclusionCategory": matches = target.type === "keyConclusion" && target.category === effect.category; break;
+    case "setKeyConclusionState": matches = target.type === "keyConclusion" && target.state === effect.state && target.supersededById === effect.supersededById; break;
+  }
+  return matches ? current(record) : superseded(record, "当前领域状态或版本已不再对应此 effect。");
 }
 
-function parseDirectionStatus(summary: string): "primary" | "alternative" | "eliminated" | "needsReview" | "pendingPreview" | undefined {
-  const value = summary.toLocaleLowerCase();
-  if (value.includes("primary") || value.includes("主方向")) return "primary";
-  if (value.includes("alternative") || value.includes("备选")) return "alternative";
-  if (value.includes("eliminated") || value.includes("已淘汰")) return "eliminated";
-  if (value.includes("needsreview") || value.includes("待复核")) return "needsReview";
-  if (value.includes("pendingpreview") || value.includes("待预览")) return "pendingPreview";
-  return undefined;
-}
-
-function parseImageRole(summary: string): string | undefined {
-  const match = summary.match(/(?:->|→)\s*([a-zA-Z][a-zA-Z0-9]*)\s*$/);
-  return match?.[1];
-}
-
-function parseKeyConclusionState(summary: string): "active" | "superseded" | "needsVerification" | undefined {
-  const match = summary.match(/(?:->|→)\s*(active|superseded|needsVerification)\s*$/i);
-  return match?.[1] as "active" | "superseded" | "needsVerification" | undefined;
-}
-
-function parseKeyConclusionCategory(summary: string) {
-  const match = summary.match(/(?:->|→)\s*([a-zA-Z][a-zA-Z0-9]*)\s*$/);
-  return match && isAssignableKeyConclusionCategory(match[1]) ? match[1] : undefined;
+function effectSlots(effect: NonNullable<DecisionRecord["effect"]>): string[] {
+  if (effect.kind === "applyDesignDefinition" || effect.kind === "setDefaultReference") return [effect.kind];
+  return [`${effect.kind}:${effect.targetObjectId}`];
 }
 
 function current(record: DecisionRecord): ClassifiedDecisionRecord {

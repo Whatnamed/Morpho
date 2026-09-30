@@ -695,8 +695,8 @@ function validateBackupWorkspaceDeep(
     )
   });
 
-  if (candidate.schemaVersion === 17) {
-    const direct = validateCurrentMorphoWorkspace(candidate);
+  if (candidate.schemaVersion === 17 || candidate.schemaVersion === 18) {
+    const direct = validateCurrentMorphoWorkspace({ ...candidate, schemaVersion: 18 });
     if (direct.status !== "ok") {
       return invalidCurrentWorkspaceDiagnostics(direct.issues);
     }

@@ -85,7 +85,10 @@ export function buildSemanticPatchAuthorizationInput(
     currentFocusArea: input.workspace.projectContinuity.currentFocus.area,
     objectIds: input.context.objectIds,
     revisionIds: collectAuthorizedRevisionIds(input.context),
-    decisionIds: collectAuthorizedDecisionIds(input.context)
+    decisionIds: collectAuthorizedDecisionIds(input.context),
+    entryIds: input.workspace.projectContinuity.recordEntries.filter((entry) => entry.origin === "conversationSemanticPatch" &&
+      ((entry.scope ?? "project") === "project" || entry.sourceRefs.some((ref) => ref.kind === "object" && input.context.objectIds.includes(ref.id)))
+    ).map((entry) => entry.id)
   };
 }
 

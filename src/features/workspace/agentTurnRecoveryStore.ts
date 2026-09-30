@@ -57,6 +57,7 @@ export type APlusTurnRecoveryFacts = Readonly<{
 }>;
 
 export type APlusTurnRecoveryRuntime = Readonly<{
+  sourceSnapshots?: readonly import("@/domain/operations/types").SourceSemanticSnapshot[];
   input: Readonly<{
     draft: string;
     taskMode: AiTaskMode;
@@ -691,6 +692,7 @@ function isRecoveryRuntime(value: unknown): value is APlusTurnRecoveryRuntime {
     return false;
   }
   const input = value.input;
+  if (value.sourceSnapshots !== undefined && (!Array.isArray(value.sourceSnapshots) || !value.sourceSnapshots.every((snapshot) => isRecord(snapshot) && isIdentifier(snapshot.objectId) && typeof snapshot.objectType === "string" && typeof snapshot.visibility === "string" && typeof snapshot.semanticFingerprint === "string" && (snapshot.fingerprintVersion === undefined || snapshot.fingerprintVersion === 2)))) return false;
   return typeof input.draft === "string" && input.draft.length <= 24_000 &&
     typeof input.taskMode === "string" &&
     typeof input.recommendedTaskMode === "string" &&

@@ -188,7 +188,7 @@ describe("project bundle domain contracts", () => {
 
     expect(legacyPlan.status).toBe("ok");
     if (legacyPlan.status === "ok") {
-      expect(legacyPlan.workspace.schemaVersion).toBe(17);
+      expect(legacyPlan.workspace.schemaVersion).toBe(18);
       expect(legacyPlan.workspace.objects["conclusion-safety"]).toMatchObject({ category: "finding" });
     }
 
@@ -253,7 +253,7 @@ describe("project bundle domain contracts", () => {
 
     expect(restoredLegacyConversation.status).toBe("ok");
     if (restoredLegacyConversation.status === "ok") {
-      expect(restoredLegacyConversation.workspace.schemaVersion).toBe(17);
+      expect(restoredLegacyConversation.workspace.schemaVersion).toBe(18);
       expect(restoredLegacyConversation.workspace.ai).not.toHaveProperty("conversationCheckpoints");
       expect(Object.keys(restoredLegacyConversation.workspace.ai.conversationSummaryRevisions)).toHaveLength(1);
       expect(restoredLegacyConversation.workspace.ai.conversationCompaction.summaryRevisionId).toBeDefined();

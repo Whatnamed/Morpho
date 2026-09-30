@@ -47,7 +47,7 @@ describe("stage region membership", () => {
       canvas: { ...workspace.canvas, stageRegions: undefined }
     };
     const ensured = ensureStageRegions(withoutRegions);
-    expect(ensured.schemaVersion).toBe(17);
+    expect(ensured.schemaVersion).toBe(18);
     expect(ensured.canvas.stageRegions).toHaveLength(4);
   });
 

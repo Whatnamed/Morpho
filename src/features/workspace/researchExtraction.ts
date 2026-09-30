@@ -12,6 +12,7 @@ export type ResearchExtractionItem = {
   index: number;
   label: string;
   text: string;
+  confidence: import("@/domain/operations/types").ResearchEvidence["confidence"];
   activeObjectId?: MorphoObjectId;
   hiddenObjectId?: MorphoObjectId;
 };
@@ -35,11 +36,13 @@ export function constrainResearchEvidence(
     citations.map((citation) => citation.url).filter((url): url is string => Boolean(url))
   );
 
-  return args.evidence.map((entry) => ({
-    ...entry,
-    sourceObjectIds: entry.sourceObjectIds.filter((objectId) => allowedObjectIds.has(objectId)),
-    citationUrls: entry.citationUrls.filter((url) => allowedCitationUrls.has(url))
-  }));
+  return args.evidence.map((entry) => {
+    const sourceObjectIds = entry.sourceObjectIds.filter((id) => allowedObjectIds.has(id));
+    const citationUrls = entry.citationUrls.filter((url) => allowedCitationUrls.has(url));
+    const removed = sourceObjectIds.length !== entry.sourceObjectIds.length || citationUrls.length !== entry.citationUrls.length;
+    const confidence = sourceObjectIds.length + citationUrls.length === 0 ? "needsVerification" : removed && entry.confidence === "supported" ? "partial" : entry.confidence;
+    return { ...entry, sourceObjectIds, citationUrls, confidence };
+  });
 }
 
 const researchSectionConfigs: Array<{
@@ -68,6 +71,8 @@ export function getResearchExtractionItems(workspace: MorphoWorkspace, researchI
       const linkedObjects = findLinkedKeyConclusions(workspace, research, section.kind, index, text);
       const activeObjectId = linkedObjects.find((object) => object.visibility === "active")?.id;
       const hiddenObjectId = linkedObjects.find((object) => object.visibility === "hidden")?.id;
+      const draft = buildKeyConclusionDraftFromResearchSource(workspace, researchId, { kind: section.kind, index });
+      const confidence = draft.status === "ready" ? draft.draft.confidence : "needsVerification";
 
       return [{
         key: getResearchExtractionKey(section.kind, index),
@@ -75,6 +80,7 @@ export function getResearchExtractionItems(workspace: MorphoWorkspace, researchI
         index,
         label: section.label,
         text,
+        confidence,
         activeObjectId,
         hiddenObjectId
       }];
@@ -175,6 +181,8 @@ export function applyResearchExtractionSelection(
         confidence: draft.draft.confidence,
         state: draft.draft.state,
         note: draft.draft.note,
+        evidence: draft.draft.evidence,
+        researchOrigin: draft.draft.researchOrigin,
         position: getResearchExtractionPosition(nextWorkspace, researchId),
         size: cardSize
       });

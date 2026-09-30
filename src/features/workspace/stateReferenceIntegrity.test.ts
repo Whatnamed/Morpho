@@ -200,7 +200,7 @@ function assertRestorable(workspace: MorphoWorkspace): MorphoWorkspace {
   const roundTrip = migrateWorkspaceToCurrentSchema(JSON.parse(JSON.stringify(projected)));
   if (roundTrip.status !== "ok") throw new Error(roundTrip.reason);
   expect(roundTrip.didMigrate).toBe(false);
-  expect(roundTrip.workspace.schemaVersion).toBe(17);
+  expect(roundTrip.workspace.schemaVersion).toBe(18);
   expect(validateCurrentMorphoWorkspace(roundTrip.workspace)).toMatchObject({ status: "ok" });
   for (const value of [workspace, roundTrip.workspace]) {
     const backup = createEditableProjectBackupManifest(value);

@@ -168,7 +168,7 @@ export type SemanticPatchKind =
 
 export type SemanticPatchScope = "project" | "designDefinition" | "direction" | "visual";
 
-export type ContinuityManualState = "active" | "notApplicable" | "withdrawn";
+export type ContinuityManualState = "active" | "notApplicable" | "withdrawn" | "resolved";
 
 export type ContinuitySourceRefKind =
   | "object"
@@ -216,6 +216,14 @@ export type ContinuityRecordEntry = {
   evidenceQuote?: string;
   scope?: SemanticPatchScope;
   invalidationReasons?: string[];
+  supersededByEntryId?: string;
+  lifecycleEvidence?: {
+    action: "supersede" | "retract" | "resolve" | "restore" | "notApplicable";
+    origin: "userMessage" | "userAction";
+    sourceMessageId?: string;
+    evidenceQuote: string;
+    createdAt: string;
+  };
 };
 
 export type ProjectMemoryViewKey =
@@ -480,6 +488,9 @@ export type KeyConclusionObject = MorphoObjectBase & {
   confirmedAt: string;
   supersededById?: MorphoObjectId;
   note?: string;
+  evidence?: ResearchEvidence[];
+  researchOrigin?: { researchObjectId: MorphoObjectId; item: import("../operations/types").ResearchEvidenceItem };
+  reportedConfidence?: ResearchEvidence["confidence"];
 };
 
 export type DocumentFragmentObject = MorphoObjectBase & {
@@ -762,6 +773,17 @@ export type ComparisonDecisionMetadata = {
   userReason?: string;
 };
 
+export type DecisionEffect =
+  | { kind: "setDirectionStatus"; targetObjectId: MorphoObjectId; status: ConceptDirectionStatus }
+  | { kind: "setDefaultReference"; targetObjectId: MorphoObjectId; referenceObjectId: MorphoObjectId | null }
+  | { kind: "applyDesignDefinition"; targetObjectId: MorphoObjectId; revisionId: DesignDefinitionRevisionId }
+  | { kind: "applyConceptDirection"; targetObjectId: MorphoObjectId; revisionId: string }
+  | { kind: "setImageRole"; targetObjectId: MorphoObjectId; role: ImageRole }
+  | { kind: "createKeyConclusion"; targetObjectId: MorphoObjectId }
+  | { kind: "setKeyConclusionCategory"; targetObjectId: MorphoObjectId; category: AssignableKeyConclusionCategory }
+  | { kind: "setKeyConclusionState"; targetObjectId: MorphoObjectId; state: KeyConclusionState; supersededById?: MorphoObjectId }
+  | { kind: "deleteObject"; targetObjectId: MorphoObjectId };
+
 export type DecisionRecord = {
   id: DecisionRecordId;
   kind: DecisionKind;
@@ -771,6 +793,7 @@ export type DecisionRecord = {
   objectSnapshot?: ObjectSnapshot;
   relatedObjectIds: MorphoObjectId[];
   comparison?: ComparisonDecisionMetadata;
+  effect?: DecisionEffect;
 };
 
 export type AgentActivityKind =
@@ -1053,7 +1076,7 @@ export type ProjectWorkingState = {
 };
 
 export type MorphoWorkspace = {
-  schemaVersion: 17;
+  schemaVersion: 18;
   project: {
     id: string;
     title: string;

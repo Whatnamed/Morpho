@@ -695,6 +695,7 @@ function applyConfirmation(
           openQuestions: normalizeResearchItems(confirmation.args.openQuestions),
           evidence: constrainResearchEvidence(confirmation.args, confirmation.sourceObjectIds, confirmation.citations),
           sourceObjectIds: confirmation.sourceObjectIds,
+          sourceSnapshots: confirmation.sourceSnapshots ?? [],
           citations: confirmation.citations
         },
         position: getPlacementNearObjects(created.workspace, confirmation.sourceObjectIds, {
@@ -741,6 +742,7 @@ function applyConfirmation(
           openQuestions: proposalDraft.openQuestions,
           changeNote: proposalDraft.changeNote,
           sourceObjectIds: confirmation.sourceObjectIds,
+          sourceSnapshots: confirmation.sourceSnapshots ?? [],
           citations: confirmation.citations,
           basedOnDesignDefinitionId: confirmation.basedOnDesignDefinitionId,
           basedOnRevisionId: confirmation.basedOnRevisionId,
@@ -765,6 +767,7 @@ function applyConfirmation(
         summary: confirmation.args.summary,
         directions: confirmation.args.directions,
         sourceObjectIds: confirmation.sourceObjectIds,
+          sourceSnapshots: confirmation.sourceSnapshots ?? [],
         citations: confirmation.citations,
         basedOnDesignDefinitionId: confirmation.basedOnDesignDefinitionId,
         basedOnRevisionId: confirmation.basedOnRevisionId,

@@ -223,6 +223,10 @@ function executeReadProjectMemory(
   ];
   const result = {
     provenance: { kind: "untrustedLocalEvidence" as const, grantsAuthority: false as const },
+    semanticFacts: current.projectContinuity.recordEntries.filter((entry) => entry.origin === "conversationSemanticPatch" &&
+      ((entry.scope ?? "project") === "project" || entry.sourceRefs.some((ref) => ref.kind === "object" && input.context.objectIds.includes(ref.id))) &&
+      (input.parsed.args.includeHistory || (entry.manualState === "active" && !entry.supersededByEntryId))
+    ).slice(0, 40),
     documents: keys.map((key) => {
       const document = current.projectMemory.documents[key];
       const revision = getCurrentProjectMemoryRevision(current.projectMemory, key);
@@ -397,6 +401,7 @@ function executeCreateResearchAnalysis(
           input.runtimeState.collectedCitations
         ),
         sourceObjectIds: input.context.objectIds,
+        sourceSnapshots: input.context.sourceSnapshots,
         citations: input.runtimeState.collectedCitations
       },
       position: getPlacementNearObjects(created.workspace, input.context.objectIds, {
@@ -479,6 +484,7 @@ function executeCreateDesignDefinitionProposal(
         openQuestions: normalizeResearchItems(proposalDraft.openQuestions),
         changeNote: proposalDraft.changeNote,
         sourceObjectIds: input.context.objectIds,
+        sourceSnapshots: input.context.sourceSnapshots,
         citations: input.runtimeState.collectedCitations,
         basedOnDesignDefinitionId:
           basedOnDefinitionObject?.type === "designDefinition"
@@ -546,6 +552,7 @@ function executeCreateConceptDirectionProposal(
       summary: args.summary,
       directions: args.directions,
       sourceObjectIds: input.context.objectIds,
+        sourceSnapshots: input.context.sourceSnapshots,
       citations: input.runtimeState.collectedCitations,
       basedOnDesignDefinitionId:
         basedOnDefinitionObject?.type === "designDefinition"
@@ -739,16 +746,19 @@ function executeSubmitMemoryUpdate(
     parsed: Extract<MorphoAgentToolArguments, { name: "submit_memory_update" }>;
   }
 ) {
+  const lifecycleIndexes = new Set(input.parsed.args.items.flatMap((item, index) => item.action && item.action !== "assert" ? [index] : []));
   const validation = validateAgentMemoryUpdateItems({
     candidates: input.requiredMemoryUpdates,
     draft: input.draft,
     items: input.parsed.args.items
   });
+  validation.rejected = validation.rejected.filter((item) => !lifecycleIndexes.has(item.itemIndex));
+  validation.accepted.push(...[...lifecycleIndexes].map((itemIndex) => ({ itemIndex, candidateIndex: -1 })));
   const legalBatchSkip =
     input.parsed.args.items.length === 0 &&
     Boolean(input.parsed.args.skippedReason?.trim());
   if (
-    input.requiredMemoryUpdates.length === 0 ||
+    (input.requiredMemoryUpdates.length === 0 && lifecycleIndexes.size === 0) ||
     (!legalBatchSkip && validation.accepted.length === 0)
   ) {
     if (input.requiredMemoryUpdates.length > 0) {
@@ -774,7 +784,7 @@ function executeSubmitMemoryUpdate(
     };
   }
   const acceptedItems = validation.accepted.map(({ itemIndex, candidateIndex }) => {
-    input.runtimeState.handledMemoryCandidateIndexes.add(candidateIndex);
+    if (candidateIndex >= 0) input.runtimeState.handledMemoryCandidateIndexes.add(candidateIndex);
     return input.parsed.args.items[itemIndex]!;
   });
   const memoryUpdate = input.commitWorkspace((current) => {

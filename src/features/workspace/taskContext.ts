@@ -10,6 +10,8 @@ import type {
   VisualBranchRecord
 } from "../../domain/morpho/types";
 import type { ArtifactProposal } from "../../domain/operations/types";
+import { captureSourceSnapshots } from "../../domain/morpho/sourceResolution";
+import { qualifyEvidence, qualifyObjectEvidence, type EvidenceQualification } from "../../domain/morpho/evidenceAuthority";
 import { GRS_REFERENCE_IMAGE_LIMIT } from "../../domain/morpho/imageLimits";
 import { buildProjectContinuityContext, type ProjectContinuityContext } from "../../domain/morpho/projectContinuity";
 import { resolveDocumentFragmentSourceAvailability } from "./documentFragments";
@@ -29,6 +31,7 @@ export type TaskContextSummary = {
   summary: string;
   category?: KeyConclusionCategory;
   detail?: string;
+  evidenceQualification?: Array<EvidenceQualification & { claim: string }>;
 };
 
 export type TaskContextDocumentFragmentExtract = {
@@ -85,6 +88,7 @@ export type TaskContextSkip = {
 };
 
 export type TaskContextResult = {
+  sourceSnapshots?: import("../../domain/operations/types").SourceSemanticSnapshot[];
   kind: TaskContextKind;
   objectIds: MorphoObjectId[];
   semanticSummaries: TaskContextSummary[];
@@ -230,8 +234,9 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
     return {
       kind: input.kind,
       objectIds: budgeted.objectIds,
+      sourceSnapshots: captureSourceSnapshots(workspace, budgeted.objectIds),
       semanticSummaries: budgeted.objectIds
-        .map((objectId) => summarizeObject(workspace.objects[objectId]))
+        .map((objectId) => summarizeObject(workspace.objects[objectId], workspace))
         .filter((summary): summary is TaskContextSummary => Boolean(summary)),
       imageObjectIds: budgetedImages,
       documentObjectIds: budgetedDocuments,
@@ -294,8 +299,9 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
   return {
     kind: input.kind,
     objectIds: budgeted.objectIds,
+    sourceSnapshots: captureSourceSnapshots(workspace, budgeted.objectIds),
     semanticSummaries: budgeted.objectIds
-      .map((objectId) => summarizeObject(workspace.objects[objectId]))
+      .map((objectId) => summarizeObject(workspace.objects[objectId], workspace))
       .filter((summary): summary is TaskContextSummary => Boolean(summary)),
     imageObjectIds: budgetedImages,
     documentObjectIds: budgetedDocuments,
@@ -666,17 +672,19 @@ function summarizeProposalDraft(proposal: ArtifactProposal): TaskContextProposal
   }
 }
 
-function summarizeObject(object: MorphoObject | undefined): TaskContextSummary | undefined {
+function summarizeObject(object: MorphoObject | undefined, workspace: MorphoWorkspace): TaskContextSummary | undefined {
   if (!object) {
     return undefined;
   }
+  object = qualifyObjectEvidence(workspace, object);
   return {
     id: object.id,
     type: object.type,
     title: object.title,
     summary: object.summary,
     ...(object.type === "keyConclusion" ? { category: object.category } : {}),
-    detail: detailForObject(object)
+    detail: detailForObject(object),
+    ...((object.type === "research" || object.type === "keyConclusion") ? { evidenceQualification: (object.evidence ?? []).map((entry) => ({ claim: entry.claim, ...qualifyEvidence(workspace, entry) })) } : {})
   };
 }
 
@@ -685,7 +693,7 @@ function detailForObject(object: MorphoObject): string | undefined {
     case "text":
       return object.body.slice(0, 800);
     case "keyConclusion":
-      return `category=${object.category} / ${object.body}`;
+      return `category=${object.category} / adoption=${object.state} / evidence=${object.confidence} / ${object.body}`;
     case "documentFragment":
       return [
         object.body.slice(0, 800),

@@ -3,6 +3,11 @@ import { describe, expect, it } from "vitest";
 import { hashSourceMessageIds } from "@/shared/agentProductHash";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
 import { hashAPlusExternalActionBody } from "./agentExternalActionClientAPlus";
+import { createBlankWorkspace } from "@/domain/morpho/workspace";
+import { captureSourceSnapshots } from "@/domain/morpho/sourceResolution";
+import { restorePreparedAgentTurnProductAPlus } from "./agentTurnProductPreparationAPlus";
+import { createAgentTurnHostFake } from "./agentTurnHostFake";
+import type { AgentTurnHost } from "./agentTurnHost";
 import {
   createAgentTurnLifecycleState,
   reduceAgentTurnLifecycle
@@ -18,6 +23,40 @@ import {
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 
 describe("A+ local Recovery Store", () => {
+  it("restores the original Proposal baseline instead of recapturing changed workspace sources", () => {
+    const workspace = createBlankWorkspace("project-test");
+    workspace.objects.source = { id: "source", type: "text", title: "资料", summary: "资料", body: "原始输入", createdBy: "user", visibility: "active" };
+    const sourceSnapshots = captureSourceSnapshots(workspace, ["source"]);
+    const original = recoveryRecord("original Provider body").metadata.runtime;
+    workspace.objects.source = { ...workspace.objects.source, body: "执行期间编辑后的资料" };
+    workspace.ai.messages = [{ id: "user-1", agentTurnId: original.localAgentTurnId, role: "user", body: original.input.draft, createdAt: original.createdAt }, { id: "assistant-1", agentTurnId: original.localAgentTurnId, role: "assistant", body: "", createdAt: original.createdAt }];
+    const fake = createAgentTurnHostFake({ workspace });
+    const host: AgentTurnHost = {
+      ...fake, randomSuffix: () => "recovery",
+      executeVisualGenerationPlan: async ({ workspaceSnapshot }) => ({ workspace: workspaceSnapshot, createdObjectIds: [], failedItems: [] }),
+      ui: { setContextWarning: () => undefined, clearPendingDeliveryDraftTarget: () => undefined, setStreaming: () => undefined, setDraft: () => undefined, setTaskMode: () => undefined, openConversation: () => undefined, showFailure: () => undefined, requestPendingConfirmation: () => { throw new Error("Recovery preparation must not request confirmation."); }, selectObjects: () => undefined, focusObject: () => undefined, openProposal: () => undefined }
+    };
+    const runtime = { ...original, input: { ...original.input, selectedObjectIds: ["source"] }, sourceSnapshots };
+    const restored = restorePreparedAgentTurnProductAPlus(runtime, host);
+    expect(restored.prepared.context.sourceSnapshots).toEqual(sourceSnapshots);
+    expect(restored.prepared.context.sourceSnapshots).not.toEqual(captureSourceSnapshots(workspace, ["source"]));
+    expect(restored.prepared.providerRequest).toEqual(original.providerBaseRequest);
+    const legacy = restorePreparedAgentTurnProductAPlus({ ...original, input: runtime.input }, host);
+    expect(legacy.prepared.context.sourceSnapshots?.[0]).toMatchObject({ objectId: "source", semanticFingerprint: "unknown" });
+  });
+  it("preserves frozen proposal source dependencies across save/load while keeping legacy runtimes readable", async () => {
+    const fixture = createFixture();
+    const original = recoveryRecord("input");
+    const sourceSnapshots = [{ objectId: "source-file", objectType: "file", visibility: "active", fingerprintVersion: 2 as const, semanticFingerprint: "v2:original" }];
+    const record = { ...original, metadata: { ...original.metadata, runtime: { ...original.metadata.runtime, sourceSnapshots } } };
+    await fixture.store.save(record);
+    const loaded = await fixture.store.load("project-test");
+    expect(loaded).toMatchObject({ status: "ok", record: { metadata: { runtime: { sourceSnapshots } } } });
+    await fixture.store.save(original);
+    const legacy = await fixture.store.load("project-test");
+    expect(legacy).toMatchObject({ status: "ok" });
+    if (legacy.status === "ok") expect(legacy.record.metadata.runtime.sourceSnapshots).toBeUndefined();
+  });
   it("keeps exact Provider payloads out of localStorage and verifies them on load", async () => {
     const fixture = createFixture();
     const record = recoveryRecord("large ".repeat(50_000));

@@ -515,7 +515,7 @@ describe("project continuity runtime", () => {
     expect(context.currentFocus.area).toBe("directionAndVisual");
     expect(context.relevantStageRecords[0]?.stage).toBe("directionAndVisual");
     expect(context.relevantProjectMemoryViews.map((view) => view.key)).toEqual(
-      expect.arrayContaining(["designDefinition", "decisionLog", "openQuestions"])
+      expect.arrayContaining(["designDefinition", "openQuestions"])
     );
     expect(context.relevantProjectMemoryViews.map((view) => view.key)).not.toContain("preferencesAndAvoids");
     expect(context.omitted.some((item) => item.reason.includes("not relevant"))).toBe(true);

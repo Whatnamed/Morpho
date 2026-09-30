@@ -73,6 +73,22 @@ export type ResearchEvidence = {
   sourceObjectIds: OperationObjectId[];
   citationIds: SourceCitationId[];
   confidence: "supported" | "partial" | "needsVerification";
+  basis?: EvidenceBasis;
+  item?: ResearchEvidenceItem;
+  reportedConfidence?: ResearchEvidence["confidence"];
+};
+
+export type ResearchEvidenceItem = {
+  kind: "finding" | "opportunity" | "constraint" | "openQuestion";
+  index: number;
+  text: string;
+};
+
+// A basis records what was supplied as evidence, not proof that a claim is true.
+export type EvidenceBasis = {
+  confidence: ResearchEvidence["confidence"];
+  sourceSnapshots: SourceSemanticSnapshot[];
+  citationSnapshots: SourceCitation[];
 };
 
 export type ProposalStatus = "pending" | "applied" | "rejected" | "expired";
@@ -98,6 +114,7 @@ export type SourceSemanticSnapshot = {
   objectType: string;
   visibility: string;
   semanticFingerprint: string;
+  fingerprintVersion?: 2;
 };
 
 export type ArtifactProposalBase = {

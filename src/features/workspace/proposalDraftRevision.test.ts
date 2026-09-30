@@ -112,7 +112,8 @@ describe("selected proposal draft revision", () => {
       evidence: [
         {
           claim: "Original evidence",
-          confidence: "partial",
+          confidence: "needsVerification",
+          basis: { confidence: "partial" },
           citationIds: [],
           sourceObjectIds: ["research-night-path"]
         }

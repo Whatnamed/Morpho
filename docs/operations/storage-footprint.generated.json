@@ -98,232 +98,232 @@
     {
       "key": "caseStudy",
       "label": "内置案例（project-morpho-case-study）",
-      "utf16Length": 872672,
-      "utf8Bytes": 1203648,
-      "quotaBytes": 1745450,
+      "utf16Length": 873422,
+      "utf8Bytes": 1204398,
+      "quotaBytes": 1746950,
       "structuralOverheadUtf16": 3347,
       "segments": [
         {
           "path": "project",
           "utf16Length": 197,
           "utf8Bytes": 233,
-          "share": 0.00022574346375270433,
+          "share": 0.00022554961977142777,
           "count": 7
         },
         {
           "path": "objects.conceptDirection",
           "utf16Length": 1790,
           "utf8Bytes": 2292,
-          "share": 0.002051171574199699,
+          "share": 0.0020494102507150037,
           "count": 3
         },
         {
           "path": "objects.delivery",
           "utf16Length": 2850,
           "utf8Bytes": 3374,
-          "share": 0.0032658318360162812,
+          "share": 0.0032630274941551738,
           "count": 2
         },
         {
           "path": "objects.designDefinition",
           "utf16Length": 2707,
           "utf8Bytes": 5037,
-          "share": 0.00310196729126178,
+          "share": 0.003099303658483528,
           "count": 3
         },
         {
           "path": "objects.file",
           "utf16Length": 1788,
           "utf8Bytes": 1947,
-          "share": 0.002048879762384951,
+          "share": 0.002047120406859456,
           "count": 3
         },
         {
           "path": "objects.image",
           "utf16Length": 59015,
           "utf8Bytes": 66889,
-          "share": 0.0676256371236845,
+          "share": 0.06756756756756757,
           "count": 21
         },
         {
           "path": "objects.keyConclusion",
-          "utf16Length": 5804,
-          "utf8Bytes": 8388,
-          "share": 0.006650837886399472,
+          "utf16Length": 6050,
+          "utf8Bytes": 8634,
+          "share": 0.006926777663031158,
           "count": 6
         },
         {
           "path": "objects.research",
-          "utf16Length": 5769,
-          "utf8Bytes": 9467,
-          "share": 0.006610731179641377,
+          "utf16Length": 6015,
+          "utf8Bytes": 9713,
+          "share": 0.006886705395559077,
           "count": 4
         },
         {
           "path": "assets",
           "utf16Length": 12459,
           "utf8Bytes": 12505,
-          "share": 0.014276841699974332,
+          "share": 0.01426458229813309,
           "count": 28
         },
         {
           "path": "relations",
           "utf16Length": 26223,
           "utf8Bytes": 29007,
-          "share": 0.030049090609071908,
+          "share": 0.030023287712010918,
           "count": 74
         },
         {
           "path": "deliveryReferences",
           "utf16Length": 883,
           "utf8Bytes": 1027,
-          "share": 0.0010118349162113601,
+          "share": 0.001010966062224217,
           "count": 1
         },
         {
           "path": "decisionRecords",
           "utf16Length": 37704,
           "utf8Bytes": 53568,
-          "share": 0.04320523633163434,
+          "share": 0.043168136364781284,
           "count": 89
         },
         {
           "path": "operations",
           "utf16Length": 150988,
           "utf8Bytes": 191855,
-          "share": 0.1730180411426057,
+          "share": 0.17286947203070221,
           "count": 31
         },
         {
           "path": "artifactProposals",
           "utf16Length": 88715,
           "utf8Bytes": 154506,
-          "share": 0.10165904257269627,
+          "share": 0.1015717488224478,
           "count": 28
         },
         {
           "path": "citationSnapshots",
           "utf16Length": 46930,
           "utf8Bytes": 47015,
-          "share": 0.053777364233068094,
+          "share": 0.053731186070421856,
           "count": 33
         },
         {
           "path": "designDefinitionRevisions",
           "utf16Length": 16828,
           "utf8Bytes": 35146,
-          "share": 0.01928330460929192,
+          "share": 0.019266746200576584,
           "count": 10
         },
         {
           "path": "directionRevisions",
           "utf16Length": 7100,
           "utf8Bytes": 13219,
-          "share": 0.00813593194235635,
+          "share": 0.00812894568719359,
           "count": 6
         },
         {
           "path": "workingState",
           "utf16Length": 2126,
           "utf8Bytes": 2126,
-          "share": 0.002436195959077408,
+          "share": 0.002434104018446982,
           "count": 12
         },
         {
           "path": "projectContinuity",
           "utf16Length": 121781,
           "utf8Bytes": 160361,
-          "share": 0.13954956730592938,
+          "share": 0.13942973728621447,
           "count": 4
         },
         {
           "path": "projectMemory.documents",
           "utf16Length": 838,
           "utf8Bytes": 902,
-          "share": 0.0009602691503795241,
+          "share": 0.0009594445754743984,
           "count": 7
         },
         {
           "path": "projectMemory.revisions",
-          "utf16Length": 77897,
-          "utf8Bytes": 131513,
-          "share": 0.08926263246672289,
-          "count": 9
+          "utf16Length": 78155,
+          "utf8Bytes": 131771,
+          "share": 0.08948137326515705,
+          "count": 10
         },
         {
           "path": "projectMemory.stageRecords",
           "utf16Length": 681,
           "utf8Bytes": 681,
-          "share": 0.000780361922921785,
+          "share": 0.0007796918328139204,
           "count": 5
         },
         {
           "path": "projectMemory.stageRevisions",
           "utf16Length": 77809,
           "utf8Bytes": 103642,
-          "share": 0.08916179274687397,
+          "share": 0.08908523027814734,
           "count": 7
         },
         {
           "path": "projectMemory.updatedAt",
           "utf16Length": 26,
           "utf8Bytes": 26,
-          "share": 0.000029793553591727476
+          "share": 0.000029767970122117372
         },
         {
           "path": "canvas.view",
           "utf16Length": 74,
           "utf8Bytes": 74,
-          "share": 0.0000847970371456859,
+          "share": 0.00008472422265525714,
           "count": 3
         },
         {
           "path": "canvas.instances",
           "utf16Length": 10065,
           "utf8Bytes": 10113,
-          "share": 0.011533542957720655,
+          "share": 0.011523639203042745,
           "count": 42
         },
         {
           "path": "canvas.stageRegions",
           "utf16Length": 3868,
           "utf8Bytes": 3928,
-          "share": 0.0044323640497231495,
+          "share": 0.004428558016628846,
           "count": 4
         },
         {
           "path": "ai.messages",
           "utf16Length": 102587,
           "utf8Bytes": 144789,
-          "share": 0.11755504931979026,
+          "share": 0.11745410580452519,
           "count": 184
         },
         {
           "path": "ai.conversationCompaction",
           "utf16Length": 219,
           "utf8Bytes": 219,
-          "share": 0.00025095339371493527,
+          "share": 0.0002507379021824502,
           "count": 6
         },
         {
           "path": "ai.conversationSummaryRevisions",
           "utf16Length": 724,
           "utf8Bytes": 964,
-          "share": 0.0008296358769388728,
+          "share": 0.0008289234757081914,
           "count": 1
         },
         {
           "path": "ai.comparisonAnalyses",
           "utf16Length": 2698,
           "utf8Bytes": 5282,
-          "share": 0.003091654138095413,
+          "share": 0.0030889993611335643,
           "count": 1
         },
         {
           "path": "ui",
           "utf16Length": 171,
           "utf8Bytes": 171,
-          "share": 0.00019594991016097686,
+          "share": 0.0001957816496493104,
           "count": 5
         }
       ],
@@ -332,22 +332,22 @@
           "path": "ai.messages[].body",
           "utf16Length": 20836,
           "utf8Bytes": 53642,
-          "share": 0.02387609548604745,
+          "share": 0.023855593287093753,
           "count": 184
         },
         {
           "path": "ai.messages[].agentTrace",
           "utf16Length": 25878,
           "utf8Bytes": 34672,
-          "share": 0.02965375307102783,
+          "share": 0.029628289646928974,
           "count": 22
         },
         {
           "path": "projectMemory.revisions[].sections",
-          "utf16Length": 22260,
-          "utf8Bytes": 52131,
-          "share": 0.025507865498148215,
-          "count": 9
+          "utf16Length": 22263,
+          "utf8Bytes": 52134,
+          "share": 0.02548939687802689,
+          "count": 10
         }
       ]
     },
@@ -759,108 +759,108 @@
     {
       "key": "contextFrames",
       "label": "空白项目 + 120 个真实回合产生的 Context Frame",
-      "utf16Length": 268988,
-      "utf8Bytes": 381042,
-      "quotaBytes": 538076,
+      "utf16Length": 278855,
+      "utf8Bytes": 395143,
+      "quotaBytes": 557810,
       "structuralOverheadUtf16": 583,
       "segments": [
         {
           "path": "project",
           "utf16Length": 197,
           "utf8Bytes": 239,
-          "share": 0.0007323746784243163,
+          "share": 0.0007064603467752058,
           "count": 6
         },
         {
           "path": "workingState",
           "utf16Length": 293,
           "utf8Bytes": 293,
-          "share": 0.0010892679227326126,
+          "share": 0.001050725287335712,
           "count": 12
         },
         {
           "path": "projectContinuity",
           "utf16Length": 229,
           "utf8Bytes": 263,
-          "share": 0.0008513390931937484,
+          "share": 0.0008212153269620412,
           "count": 4
         },
         {
           "path": "projectMemory.documents",
           "utf16Length": 483,
           "utf8Bytes": 547,
-          "share": 0.0017956191354261157,
+          "share": 0.0017320829821950475,
           "count": 7
         },
         {
           "path": "projectMemory.revisions",
           "utf16Length": 355,
           "utf8Bytes": 447,
-          "share": 0.0013197614763483872,
+          "share": 0.0012730630614477057,
           "count": 1
         },
         {
           "path": "projectMemory.stageRecords",
           "utf16Length": 131,
           "utf8Bytes": 131,
-          "share": 0.00048701057296236263,
+          "share": 0.0004697782001398576,
           "count": 1
         },
         {
           "path": "projectMemory.stageRevisions",
           "utf16Length": 219,
           "utf8Bytes": 253,
-          "share": 0.0008141627135783009,
+          "share": 0.0007853543956536552,
           "count": 1
         },
         {
           "path": "projectMemory.updatedAt",
           "utf16Length": 26,
           "utf8Bytes": 26,
-          "share": 0.00009665858700016357
+          "share": 0.00009323842140180381
         },
         {
           "path": "canvas.view",
           "utf16Length": 22,
           "utf8Bytes": 22,
-          "share": 0.00008178803515398457,
+          "share": 0.00007889404887844938,
           "count": 3
         },
         {
           "path": "ai.conversationCompaction",
           "utf16Length": 25,
           "utf8Bytes": 25,
-          "share": 0.00009294094903861882,
+          "share": 0.0000896523282709652,
           "count": 1
         },
         {
           "path": "ai.providerContextFrames",
-          "utf16Length": 266271,
-          "utf8Bytes": 378059,
-          "share": 0.9898991776584829,
+          "utf16Length": 276138,
+          "utf8Bytes": 392160,
+          "share": 0.9902565849635115,
           "count": 121
         },
         {
           "path": "ui",
           "utf16Length": 119,
           "utf8Bytes": 119,
-          "share": 0.0004423989174238256,
+          "share": 0.00042674508256979434,
           "count": 5
         }
       ],
       "hotFields": [
         {
           "path": "ai.providerContextFrames[].renderedText",
-          "utf16Length": 119398,
-          "utf8Bytes": 226398,
-          "share": 0.4438785373325204,
+          "utf16Length": 129265,
+          "utf8Bytes": 240499,
+          "share": 0.46355632855785267,
           "count": 121
         },
         {
           "path": "projectMemory.revisions[].sections",
           "utf16Length": 143,
           "utf8Bytes": 235,
-          "share": 0.0005316222285008997,
+          "share": 0.0005128113177099209,
           "count": 1
         }
       ],
@@ -868,17 +868,17 @@
         "baselineKey": "blank",
         "units": 120,
         "unitLabel": "个回合",
-        "quotaBytesPerUnit": 4438,
+        "quotaBytesPerUnit": 4602,
         "topDeltas": [
           {
             "path": "ai.providerContextFrames",
-            "utf16Delta": 266269,
-            "quotaBytesPerUnit": 4438
+            "utf16Delta": 276136,
+            "quotaBytesPerUnit": 4602
           },
           {
             "path": "ai.providerContextFrames[].renderedText",
-            "utf16Delta": 119396,
-            "quotaBytesPerUnit": 1990
+            "utf16Delta": 129263,
+            "quotaBytesPerUnit": 2154
           }
         ]
       }
@@ -886,141 +886,141 @@
     {
       "key": "objects",
       "label": "空白项目 + 600 个对象及画布实例",
-      "utf16Length": 1207839,
-      "utf8Bytes": 1459672,
-      "quotaBytes": 2415778,
+      "utf16Length": 1215014,
+      "utf8Bytes": 1466847,
+      "quotaBytes": 2430128,
       "structuralOverheadUtf16": 14265,
       "segments": [
         {
           "path": "project",
           "utf16Length": 197,
           "utf8Bytes": 239,
-          "share": 0.00016310120802524178,
+          "share": 0.00016213804943811347,
           "count": 6
         },
         {
           "path": "objects.conceptDirection",
           "utf16Length": 24033,
           "utf8Bytes": 31061,
-          "share": 0.019897519454165662,
+          "share": 0.019780018995665893,
           "count": 42
         },
         {
           "path": "objects.delivery",
           "utf16Length": 42848,
           "utf8Bytes": 50348,
-          "share": 0.035474926707947003,
+          "share": 0.035265437270681654,
           "count": 30
         },
         {
           "path": "objects.designDefinition",
           "utf16Length": 36521,
           "utf8Bytes": 69141,
-          "share": 0.03023664577812109,
+          "share": 0.030058089865631177,
           "count": 42
         },
         {
           "path": "objects.file",
           "utf16Length": 24889,
           "utf8Bytes": 27274,
-          "share": 0.02060622318040732,
+          "share": 0.020484537626726935,
           "count": 45
         },
         {
           "path": "objects.image",
           "utf16Length": 808652,
           "utf8Bytes": 918994,
-          "share": 0.669503137421461,
+          "share": 0.6655495327625854,
           "count": 299
         },
         {
           "path": "objects.keyConclusion",
-          "utf16Length": 82540,
-          "utf8Bytes": 119116,
-          "share": 0.0683369223878348,
+          "utf16Length": 86025,
+          "utf8Bytes": 122601,
+          "share": 0.0708016533142828,
           "count": 85
         },
         {
           "path": "objects.research",
-          "utf16Length": 82524,
-          "utf8Bytes": 137640,
-          "share": 0.06832367558921346,
+          "utf16Length": 86214,
+          "utf8Bytes": 141330,
+          "share": 0.07095720707744932,
           "count": 57
         },
         {
           "path": "workingState",
           "utf16Length": 293,
           "utf8Bytes": 293,
-          "share": 0.0002425819997532784,
+          "share": 0.00024114948469729566,
           "count": 12
         },
         {
           "path": "projectContinuity",
           "utf16Length": 229,
           "utf8Bytes": 263,
-          "share": 0.00018959480526792064,
+          "share": 0.00018847519452450755,
           "count": 4
         },
         {
           "path": "projectMemory.documents",
           "utf16Length": 483,
           "utf8Bytes": 547,
-          "share": 0.00039988773338168413,
+          "share": 0.00039752628364776043,
           "count": 7
         },
         {
           "path": "projectMemory.revisions",
           "utf16Length": 355,
           "utf8Bytes": 447,
-          "share": 0.0002939133444109687,
+          "share": 0.0002921777033021842,
           "count": 1
         },
         {
           "path": "projectMemory.stageRecords",
           "utf16Length": 131,
           "utf8Bytes": 131,
-          "share": 0.0001084581637122166,
+          "share": 0.00010781768769742571,
           "count": 1
         },
         {
           "path": "projectMemory.stageRevisions",
           "utf16Length": 219,
           "utf8Bytes": 253,
-          "share": 0.0001813155561295835,
+          "share": 0.0001802448366850094,
           "count": 1
         },
         {
           "path": "projectMemory.updatedAt",
           "utf16Length": 26,
           "utf8Bytes": 26,
-          "share": 0.000021526047759676578
+          "share": 0.00002139893038269518
         },
         {
           "path": "canvas.view",
           "utf16Length": 22,
           "utf8Bytes": 22,
-          "share": 0.00001821434810434172,
+          "share": 0.00001810678724689592,
           "count": 3
         },
         {
           "path": "canvas.instances",
           "utf16Length": 89433,
           "utf8Bytes": 89433,
-          "share": 0.0740438088188906,
+          "share": 0.07360655926598376,
           "count": 600
         },
         {
           "path": "ai.conversationCompaction",
           "utf16Length": 25,
           "utf8Bytes": 25,
-          "share": 0.000020698122845842864,
+          "share": 0.000020575894598745365,
           "count": 1
         },
         {
           "path": "ui",
           "utf16Length": 119,
           "utf8Bytes": 119,
-          "share": 0.00009852306474621203,
+          "share": 0.00009794125829002793,
           "count": 5
         }
       ],
@@ -1029,7 +1029,7 @@
           "path": "projectMemory.revisions[].sections",
           "utf16Length": 143,
           "utf8Bytes": 235,
-          "share": 0.00011839326267822119,
+          "share": 0.00011769411710482348,
           "count": 1
         }
       ],
@@ -1037,7 +1037,7 @@
         "baselineKey": "blank",
         "units": 600,
         "unitLabel": "个对象",
-        "quotaBytesPerUnit": 4017,
+        "quotaBytesPerUnit": 4041,
         "topDeltas": [
           {
             "path": "objects.image",
@@ -1050,14 +1050,14 @@
             "quotaBytesPerUnit": 298
           },
           {
-            "path": "objects.keyConclusion",
-            "utf16Delta": 82540,
-            "quotaBytesPerUnit": 275
+            "path": "objects.research",
+            "utf16Delta": 86214,
+            "quotaBytesPerUnit": 287
           },
           {
-            "path": "objects.research",
-            "utf16Delta": 82524,
-            "quotaBytesPerUnit": 275
+            "path": "objects.keyConclusion",
+            "utf16Delta": 86025,
+            "quotaBytesPerUnit": 287
           },
           {
             "path": "objects.delivery",
@@ -1085,94 +1085,94 @@
     {
       "key": "memoryRevisions",
       "label": "空白项目 + 200 条项目记忆修订",
-      "utf16Length": 1726514,
-      "utf8Bytes": 2908776,
-      "quotaBytes": 3453128,
+      "utf16Length": 1571402,
+      "utf8Bytes": 2643896,
+      "quotaBytes": 3142904,
       "structuralOverheadUtf16": 583,
       "segments": [
         {
           "path": "project",
           "utf16Length": 197,
           "utf8Bytes": 239,
-          "share": 0.0001141027527144292,
+          "share": 0.00012536575618460457,
           "count": 6
         },
         {
           "path": "workingState",
           "utf16Length": 293,
           "utf8Bytes": 293,
-          "share": 0.00016970612459557235,
+          "share": 0.00018645769828471646,
           "count": 12
         },
         {
           "path": "projectContinuity",
           "utf16Length": 229,
           "utf8Bytes": 263,
-          "share": 0.0001326372100081436,
+          "share": 0.00014572973688464186,
           "count": 4
         },
         {
           "path": "projectMemory.documents",
           "utf16Length": 483,
           "utf8Bytes": 547,
-          "share": 0.0002797544647770015,
+          "share": 0.0003073688336911879,
           "count": 7
         },
         {
           "path": "projectMemory.revisions",
-          "utf16Length": 1724150,
-          "utf8Bytes": 2906238,
-          "share": 0.9986307669674268,
+          "utf16Length": 1569038,
+          "utf8Bytes": 2641358,
+          "share": 0.9984956109257848,
           "count": 200
         },
         {
           "path": "projectMemory.stageRecords",
           "utf16Length": 131,
           "utf8Bytes": 131,
-          "share": 0.00007587543454614326,
+          "share": 0.00008336504599077766,
           "count": 1
         },
         {
           "path": "projectMemory.stageRevisions",
           "utf16Length": 219,
           "utf8Bytes": 253,
-          "share": 0.00012684519210385783,
+          "share": 0.0001393659929158802,
           "count": 1
         },
         {
           "path": "projectMemory.updatedAt",
           "utf16Length": 26,
           "utf8Bytes": 26,
-          "share": 0.000015059246551142938
+          "share": 0.0000165457343187803
         },
         {
           "path": "canvas.view",
           "utf16Length": 22,
           "utf8Bytes": 22,
-          "share": 0.00001274243938942864,
+          "share": 0.000014000236731275638,
           "count": 3
         },
         {
           "path": "ai.conversationCompaction",
           "utf16Length": 25,
           "utf8Bytes": 25,
-          "share": 0.000014480044760714365,
+          "share": 0.000015909359921904133,
           "count": 1
         },
         {
           "path": "ui",
           "utf16Length": 119,
           "utf8Bytes": 119,
-          "share": 0.00006892501306100037,
+          "share": 0.00007572855322826367,
           "count": 5
         }
       ],
       "hotFields": [
         {
           "path": "projectMemory.revisions[].sections",
-          "utf16Length": 491426,
-          "utf8Bytes": 1150554,
-          "share": 0.2846348190631527,
+          "utf16Length": 445241,
+          "utf8Bytes": 1042661,
+          "share": 0.28333997283954077,
           "count": 200
         }
       ],
@@ -1180,17 +1180,17 @@
         "baselineKey": "blank",
         "units": 200,
         "unitLabel": "条修订",
-        "quotaBytesPerUnit": 17238,
+        "quotaBytesPerUnit": 15687,
         "topDeltas": [
           {
             "path": "projectMemory.revisions",
-            "utf16Delta": 1723795,
-            "quotaBytesPerUnit": 17238
+            "utf16Delta": 1568683,
+            "quotaBytesPerUnit": 15687
           },
           {
             "path": "projectMemory.revisions[].sections",
-            "utf16Delta": 491283,
-            "quotaBytesPerUnit": 4913
+            "utf16Delta": 445098,
+            "quotaBytesPerUnit": 4451
           }
         ]
       }
@@ -1198,232 +1198,232 @@
     {
       "key": "restoredBackup",
       "label": "内置案例经可编辑备份还原后",
-      "utf16Length": 873261,
-      "utf8Bytes": 1204237,
-      "quotaBytes": 1746630,
+      "utf16Length": 874011,
+      "utf8Bytes": 1204987,
+      "quotaBytes": 1748130,
       "structuralOverheadUtf16": 3347,
       "segments": [
         {
           "path": "project",
           "utf16Length": 198,
           "utf8Bytes": 234,
-          "share": 0.00022673633655917303,
+          "share": 0.00022654177121340577,
           "count": 7
         },
         {
           "path": "objects.conceptDirection",
           "utf16Length": 1790,
           "utf8Bytes": 2292,
-          "share": 0.002049788093135958,
+          "share": 0.002048029143797961,
           "count": 3
         },
         {
           "path": "objects.delivery",
           "utf16Length": 2850,
           "utf8Bytes": 3374,
-          "share": 0.0032636290868365814,
+          "share": 0.003260828525041447,
           "count": 2
         },
         {
           "path": "objects.designDefinition",
           "utf16Length": 2707,
           "utf8Bytes": 5037,
-          "share": 0.0030998750659882897,
+          "share": 0.0030972150236095427,
           "count": 3
         },
         {
           "path": "objects.file",
           "utf16Length": 1788,
           "utf8Bytes": 1947,
-          "share": 0.002047497827110108,
+          "share": 0.002045740843078634,
           "count": 3
         },
         {
           "path": "objects.image",
           "utf16Length": 59015,
           "utf8Bytes": 66889,
-          "share": 0.06758002475777573,
+          "share": 0.06752203347555122,
           "count": 21
         },
         {
           "path": "objects.keyConclusion",
-          "utf16Length": 5804,
-          "utf8Bytes": 8388,
-          "share": 0.006646352007017375,
+          "utf16Length": 6050,
+          "utf8Bytes": 8634,
+          "share": 0.006922109675965176,
           "count": 6
         },
         {
           "path": "objects.research",
-          "utf16Length": 5769,
-          "utf8Bytes": 9467,
-          "share": 0.006606272351564996,
+          "utf16Length": 6015,
+          "utf8Bytes": 9713,
+          "share": 0.006882064413376948,
           "count": 4
         },
         {
           "path": "assets",
           "utf16Length": 13047,
           "utf8Bytes": 13093,
-          "share": 0.014940550419633993,
+          "share": 0.014927729742531844,
           "count": 28
         },
         {
           "path": "relations",
           "utf16Length": 26223,
           "utf8Bytes": 29007,
-          "share": 0.030028822997935325,
+          "share": 0.030003054881460302,
           "count": 74
         },
         {
           "path": "deliveryReferences",
           "utf16Length": 883,
           "utf8Bytes": 1027,
-          "share": 0.0010111524504128778,
+          "share": 0.0010102847675830166,
           "count": 1
         },
         {
           "path": "decisionRecords",
           "utf16Length": 37704,
           "utf8Bytes": 53568,
-          "share": 0.043176095119328586,
+          "share": 0.043139045160758845,
           "count": 89
         },
         {
           "path": "operations",
           "utf16Length": 150988,
           "utf8Bytes": 191855,
-          "share": 0.17290134335553747,
+          "share": 0.17275297450489754,
           "count": 31
         },
         {
           "path": "artifactProposals",
           "utf16Length": 88715,
           "utf8Bytes": 154506,
-          "share": 0.1015904752416517,
+          "share": 0.1015032991575621,
           "count": 28
         },
         {
           "path": "citationSnapshots",
           "utf16Length": 46930,
           "utf8Bytes": 47015,
-          "share": 0.053741092296575706,
+          "share": 0.053694976379015824,
           "count": 33
         },
         {
           "path": "designDefinitionRevisions",
           "utf16Length": 16828,
           "utf8Bytes": 35146,
-          "share": 0.019270298341503858,
+          "share": 0.019253762252420165,
           "count": 10
         },
         {
           "path": "directionRevisions",
           "utf16Length": 7100,
           "utf8Bytes": 13219,
-          "share": 0.008130444391768327,
+          "share": 0.008123467553612025,
           "count": 6
         },
         {
           "path": "workingState",
           "utf16Length": 2126,
           "utf8Bytes": 2126,
-          "share": 0.0024345527854787974,
+          "share": 0.002432463664644953,
           "count": 11
         },
         {
           "path": "projectContinuity",
           "utf16Length": 121781,
           "utf8Bytes": 160361,
-          "share": 0.1394554434470336,
+          "share": 0.13933577495020086,
           "count": 4
         },
         {
           "path": "projectMemory.documents",
           "utf16Length": 838,
           "utf8Bytes": 902,
-          "share": 0.0009596214648312475,
+          "share": 0.0009587980013981517,
           "count": 7
         },
         {
           "path": "projectMemory.revisions",
-          "utf16Length": 77897,
-          "utf8Bytes": 131513,
-          "share": 0.08920242630782779,
-          "count": 9
+          "utf16Length": 78155,
+          "utf8Bytes": 131771,
+          "share": 0.08942107135951378,
+          "count": 10
         },
         {
           "path": "projectMemory.stageRecords",
           "utf16Length": 681,
           "utf8Bytes": 681,
-          "share": 0.0007798355818020042,
+          "share": 0.0007791663949309563,
           "count": 5
         },
         {
           "path": "projectMemory.stageRevisions",
           "utf16Length": 77809,
           "utf8Bytes": 103642,
-          "share": 0.08910165460269037,
+          "share": 0.08902519533507015,
           "count": 7
         },
         {
           "path": "projectMemory.updatedAt",
           "utf16Length": 26,
           "utf8Bytes": 26,
-          "share": 0.000029773458336053024
+          "share": 0.000029747909351255305
         },
         {
           "path": "canvas.view",
           "utf16Length": 74,
           "utf8Bytes": 74,
-          "share": 0.00008473984295645861,
+          "share": 0.00008466712661511125,
           "count": 3
         },
         {
           "path": "canvas.instances",
           "utf16Length": 10065,
           "utf8Bytes": 10113,
-          "share": 0.011525763775091296,
+          "share": 0.011515873370014794,
           "count": 42
         },
         {
           "path": "canvas.stageRegions",
           "utf16Length": 3868,
           "utf8Bytes": 3928,
-          "share": 0.00442937449399435,
+          "share": 0.004425573591179058,
           "count": 4
         },
         {
           "path": "ai.messages",
           "utf16Length": 102587,
           "utf8Bytes": 144789,
-          "share": 0.1174757603969489,
+          "share": 0.11737495294681646,
           "count": 184
         },
         {
           "path": "ai.conversationCompaction",
           "utf16Length": 219,
           "utf8Bytes": 219,
-          "share": 0.00025078412983060047,
+          "share": 0.00025056892876634275,
           "count": 5
         },
         {
           "path": "ai.conversationSummaryRevisions",
           "utf16Length": 724,
           "utf8Bytes": 964,
-          "share": 0.0008290763013577842,
+          "share": 0.0008283648603964939,
           "count": 1
         },
         {
           "path": "ai.comparisonAnalyses",
           "utf16Length": 2698,
           "utf8Bytes": 5282,
-          "share": 0.003089568868871964,
+          "share": 0.0030869176703725697,
           "count": 1
         },
         {
           "path": "ui",
           "utf16Length": 171,
           "utf8Bytes": 171,
-          "share": 0.0001958177452101949,
+          "share": 0.0001956497115024868,
           "count": 5
         }
       ],
@@ -1432,22 +1432,22 @@
           "path": "ai.messages[].body",
           "utf16Length": 20836,
           "utf8Bytes": 53642,
-          "share": 0.023859991457307723,
+          "share": 0.023839516893952136,
           "count": 184
         },
         {
           "path": "ai.messages[].agentTrace",
           "utf16Length": 25878,
           "utf8Bytes": 34672,
-          "share": 0.02963375210847616,
+          "share": 0.029608323007376338,
           "count": 22
         },
         {
           "path": "projectMemory.revisions[].sections",
-          "utf16Length": 22260,
-          "utf8Bytes": 52131,
-          "share": 0.02549066086771309,
-          "count": 9
+          "utf16Length": 22263,
+          "utf8Bytes": 52134,
+          "share": 0.025472219457192188,
+          "count": 10
         }
       ],
       "growth": {

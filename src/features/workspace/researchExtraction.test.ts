@@ -39,7 +39,7 @@ describe("researchExtraction", () => {
         claim: "Claim",
         sourceObjectIds: ["allowed-object"],
         citationUrls: ["https://allowed.example/source"],
-        confidence: "supported"
+        confidence: "partial"
       }
     ]);
   });

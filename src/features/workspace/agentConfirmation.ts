@@ -13,6 +13,7 @@ export function buildPendingAgentActionConfirmation(input: {
   compiledVisualPlan?: VisualGenerationPlan;
   draft: string;
   contextObjectIds: string[];
+  sourceSnapshots?: import("@/domain/operations/types").SourceSemanticSnapshot[];
   citations: ProviderCitation[];
   selectedObjects: MorphoObject[];
   selectedObjectIds: string[];
@@ -32,6 +33,7 @@ export function buildPendingAgentActionConfirmation(input: {
         draft: input.draft,
         args: input.parsed.args,
         sourceObjectIds: [...input.contextObjectIds],
+        sourceSnapshots: input.sourceSnapshots,
         citations: [...input.citations]
       };
     case "create_design_definition_proposal":
@@ -43,6 +45,7 @@ export function buildPendingAgentActionConfirmation(input: {
         draft: input.draft,
         args: input.parsed.args,
         sourceObjectIds: [...input.contextObjectIds],
+        sourceSnapshots: input.sourceSnapshots,
         citations: [...input.citations],
         ...getDesignDefinitionBase(input.workspace)
       };
@@ -55,6 +58,7 @@ export function buildPendingAgentActionConfirmation(input: {
         draft: input.draft,
         args: input.parsed.args,
         sourceObjectIds: [...input.contextObjectIds],
+        sourceSnapshots: input.sourceSnapshots,
         citations: [...input.citations],
         ...getDesignDefinitionBase(input.workspace)
       };

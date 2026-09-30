@@ -19,6 +19,8 @@ export type SemanticPatchKind =
 export type SemanticPatchScope = "project" | "designDefinition" | "direction" | "visual";
 
 export type ParsedConversationSemanticPatchItem = {
+  action?: "assert" | "supersede" | "retract" | "resolve";
+  targetEntryId?: string;
   kind: SemanticPatchKind;
   scope: SemanticPatchScope;
   evidenceQuote: string;
@@ -46,6 +48,7 @@ export type ParseProjectContinuityPatchResult =
     };
 
 export type SemanticPatchAuthorization = {
+  allowedEntryIds: Set<string>;
   taskMode: Extract<AiTaskMode, "chatAnalysis" | "researchOperation">;
   draft: string;
   normalizedDraft: string;
@@ -58,6 +61,7 @@ export type SemanticPatchAuthorization = {
 };
 
 export type BuildSemanticPatchAuthorizationInput = {
+  entryIds?: string[];
   taskMode: AiTaskMode;
   draft: string;
   userMessageId: string;
@@ -79,12 +83,17 @@ export type ValidateConversationSemanticPatchResult =
       reason: string;
     };
 
+export function hasSemanticLifecycleRequest(draft: string): boolean {
+  return /(?:撤回|取消|替代|取代|改为|改成|不再沿用).{0,40}(?:偏好|约束|预算|上限|避免|问题)|(?:偏好|约束|预算|上限|避免|问题).{0,40}(?:撤回|取消|替代|取代|改为|改成|已解决|解决了|已确认)|(?:retract|withdraw|replace|supersede|resolved|answered).{0,40}(?:preference|constraint|question)|(?:preference|constraint|question).{0,40}(?:retracted|withdrawn|replaced|superseded|resolved|answered)/i.test(draft);
+}
+
 export function buildSemanticPatchAuthorization(input: BuildSemanticPatchAuthorizationInput): SemanticPatchAuthorization {
   if (input.taskMode !== "chatAnalysis" && input.taskMode !== "researchOperation") {
     throw new Error("Semantic patches are only authorized for chatAnalysis and researchOperation.");
   }
 
   return {
+    allowedEntryIds: new Set(input.entryIds ?? []),
     taskMode: input.taskMode,
     draft: input.draft,
     normalizedDraft: normalizeForQuoteMatch(input.draft),
@@ -166,21 +175,34 @@ export function validateConversationSemanticPatch(
   if (looksUnsafeForContinuity(item.evidenceQuote)) {
     return { status: "failed", reason: "evidenceQuote contains content that cannot be stored in continuity records." };
   }
+  if (item.action && item.action !== "assert") {
+    if (!item.targetEntryId || !authorization.allowedEntryIds.has(item.targetEntryId)) {
+      return { status: "failed", reason: "Semantic lifecycle requires an authorized targetEntryId." };
+    }
+    const explicit = item.action === "supersede" ? /替代|取代|改为|改成|调整为|不再沿用|replace|supersede/i
+      : item.action === "retract" ? /撤回|取消|不再|retract|withdraw/i : /已解决|解决了|已确认|已经确认|resolved|answered/i;
+    if (!explicit.test(item.evidenceQuote)) return { status: "failed", reason: "Semantic lifecycle requires explicit user evidence for the requested action." };
+  } else if (item.targetEntryId) {
+    return { status: "failed", reason: "An assertion cannot silently modify a target entry." };
+  }
 
   const sourceIds = [...item.relatedObjectIds, ...item.relatedRevisionIds, ...item.relatedDecisionIds];
   if (sourceIds.length === 0 && item.scope !== "project") {
     return { status: "failed", reason: "Non-project semantic patches require an authorized direct source." };
   }
 
-  const unauthorizedObject = item.relatedObjectIds.find((id) => !authorization.allowedObjectIds.has(id));
+  // Retracting/resolving an authorized fact does not consume its old sources as new evidence.
+  // The use case checks exact target scope; historical missing sources need not be re-authorized.
+  const retiresFact = item.action === "retract" || item.action === "resolve";
+  const unauthorizedObject = !retiresFact && item.relatedObjectIds.find((id) => !authorization.allowedObjectIds.has(id));
   if (unauthorizedObject) {
     return { status: "failed", reason: `unauthorized object source: ${unauthorizedObject}` };
   }
-  const unauthorizedRevision = item.relatedRevisionIds.find((id) => !authorization.allowedRevisionIds.has(id));
+  const unauthorizedRevision = !retiresFact && item.relatedRevisionIds.find((id) => !authorization.allowedRevisionIds.has(id));
   if (unauthorizedRevision) {
     return { status: "failed", reason: `unauthorized revision source: ${unauthorizedRevision}` };
   }
-  const unauthorizedDecision = item.relatedDecisionIds.find((id) => !authorization.allowedDecisionIds.has(id));
+  const unauthorizedDecision = !retiresFact && item.relatedDecisionIds.find((id) => !authorization.allowedDecisionIds.has(id));
   if (unauthorizedDecision) {
     return { status: "failed", reason: `unauthorized decision source: ${unauthorizedDecision}` };
   }
@@ -231,7 +253,9 @@ function parsePatchItem(value: unknown): ParsedConversationSemanticPatchItem | u
     return undefined;
   }
 
-  const allowedKeys = ["kind", "scope", "evidenceQuote", "relatedObjectIds", "relatedRevisionIds", "relatedDecisionIds", "summary"];
+  if (value.action !== undefined && !["assert", "supersede", "retract", "resolve"].includes(String(value.action))) return undefined;
+  if (value.targetEntryId !== undefined && typeof value.targetEntryId !== "string") return undefined;
+  const allowedKeys = ["kind", "scope", "evidenceQuote", "relatedObjectIds", "relatedRevisionIds", "relatedDecisionIds", "summary", "action", "targetEntryId"];
   if (!hasOnlyAllowedKeys(value, allowedKeys)) {
     return undefined;
   }
@@ -242,6 +266,8 @@ function parsePatchItem(value: unknown): ParsedConversationSemanticPatchItem | u
   }
 
   return {
+    ...(value.action === undefined ? {} : { action: value.action as ParsedConversationSemanticPatchItem["action"] }),
+    ...(typeof value.targetEntryId === "string" ? { targetEntryId: value.targetEntryId } : {}),
     kind: value.kind,
     scope: value.scope,
     evidenceQuote: value.evidenceQuote.trim(),

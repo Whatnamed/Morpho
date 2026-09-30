@@ -561,7 +561,7 @@ function updateDirectionField(
 
 function cloneEvidence(evidence: ResearchEvidence): ResearchEvidence {
   return {
-    claim: evidence.claim,
+    ...evidence,
     confidence: evidence.confidence,
     citationIds: [...evidence.citationIds],
     sourceObjectIds: [...evidence.sourceObjectIds]

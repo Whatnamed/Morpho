@@ -128,7 +128,6 @@ describe("Project Memory Kernel", () => {
     expect(MEMORY_KEYS.filter((key) => getCurrentProjectMemoryRevision(workspace.projectMemory, key))).toEqual([
       "projectOverview",
       "designBrief",
-      "decisionLog",
       "rejectedDirections",
       "openQuestions",
       "outputPlan"

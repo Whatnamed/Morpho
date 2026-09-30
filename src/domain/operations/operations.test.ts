@@ -741,7 +741,7 @@ describe("Morpho Operation Runtime", () => {
 
     expect(applied.status).toBe("updated");
     if (applied.status === "updated") {
-      expect(applied.researchObject.evidence).toEqual([
+      expect(applied.researchObject.evidence).toMatchObject([
         {
           claim: "Finding A",
           sourceObjectIds: ["text-source"],

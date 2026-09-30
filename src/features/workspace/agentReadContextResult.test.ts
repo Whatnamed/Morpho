@@ -25,13 +25,14 @@ describe("read selected context result", () => {
       grantsAuthority: false
     });
     expect(result.objectSummaries).toEqual(
-      context.semanticSummaries.map(({ id, type, title, summary, detail, category }) => ({
+      context.semanticSummaries.map(({ id, type, title, summary, detail, category, evidenceQualification }) => ({
         id,
         type,
         title,
         summary,
         detail,
-        category
+        category,
+        ...(evidenceQualification ? { evidenceQualification } : {})
       }))
     );
   });

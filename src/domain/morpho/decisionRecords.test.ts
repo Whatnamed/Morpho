@@ -28,7 +28,8 @@ describe("decision record classification", () => {
   });
 
   it("marks an old default reference as superseded when the project replaces it", () => {
-    const workspace = withAvailableImages(createInitialWorkspace());
+    const fixture = withAvailableImages(createInitialWorkspace());
+    const workspace = setDefaultReference(fixture, "image-soft-rail-v2", { reason: "选择第一张参考图" });
     const firstDefaultId = workspace.workingState.currentDefaultReferenceId;
     if (!firstDefaultId) {
       throw new Error("Expected the case-study workspace to have a default reference.");
@@ -38,7 +39,7 @@ describe("decision record classification", () => {
     });
     const classified = classifyDecisionRecords(changed);
 
-    expect(classified.find((item) => item.record.objectSnapshot?.id === firstDefaultId)).toMatchObject({
+    expect(classified.find((item) => item.record.objectSnapshot?.id === firstDefaultId && Boolean(item.record.effect))).toMatchObject({
       state: "superseded"
     });
     expect(classified.find((item) => item.record.objectSnapshot?.id === "image-support-island-preview")).toMatchObject({

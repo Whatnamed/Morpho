@@ -61,6 +61,7 @@ export type CreateResearchAnalysisArgs = {
     sourceObjectIds: string[];
     citationUrls: string[];
     confidence: "supported" | "partial" | "needsVerification";
+    item?: { kind: "finding" | "opportunity" | "constraint" | "openQuestion"; index: number };
   }>;
 };
 
@@ -157,6 +158,8 @@ export type SearchProjectConversationArgs = {
 
 export type SubmitMemoryUpdateArgs = {
   items: Array<{
+    action?: "assert" | "supersede" | "retract" | "resolve";
+    targetEntryId?: string;
     kind: "preference" | "constraint" | "avoidance" | "openQuestion";
     scope: "project" | "designDefinition" | "direction" | "visual";
     evidenceQuote: string;
@@ -311,6 +314,7 @@ export type ReadSelectedContextResult = {
     grantsAuthority: false;
   };
   objectSummaries: Array<{
+    evidenceQualification?: import("./taskContext").TaskContextSummary["evidenceQualification"];
     id: string;
     type: MorphoObject["type"];
     title: string;
@@ -483,6 +487,7 @@ export function buildMorphoAgentTools(
               required: ["claim", "sourceObjectIds", "citationUrls", "confidence"],
               properties: {
                 claim: { type: "string" },
+                item: { type: "object", additionalProperties: false, required: ["kind", "index"], properties: { kind: { type: "string", enum: ["finding", "opportunity", "constraint", "openQuestion"] }, index: { type: "integer", minimum: 0 } }, description: "Explicitly binds this evidence to one research item; omit when unbound. Never copy whole-card citations to unrelated items." },
                 sourceObjectIds: stringArraySchema(),
                 citationUrls: stringArraySchema(),
                 confidence: {
@@ -713,6 +718,8 @@ export function buildMorphoAgentTools(
               additionalProperties: false,
               required: ["kind", "scope", "evidenceQuote", "relatedObjectIds", "relatedRevisionIds"],
               properties: {
+                action: { type: "string", enum: ["assert", "supersede", "retract", "resolve"], description: "Only explicit current-user evidence can replace/retract/resolve a fact. Read semanticFacts first; resolve applies only to openQuestion." },
+                targetEntryId: { type: "string", description: "Existing semantic fact ID from read_project_memory; required for a lifecycle action." },
                 kind: { type: "string", enum: ["preference", "constraint", "avoidance", "openQuestion"] },
                 scope: { type: "string", enum: ["project", "designDefinition", "direction", "visual"] },
                 evidenceQuote: { type: "string" },
@@ -1285,7 +1292,12 @@ function validateCreateResearchAnalysisArgs(toolName: string, value: unknown): a
       "sourceObjectIds",
       "citationUrls",
       "confidence"
-    ]);
+    ], ["item"]);
+    if (evidence.item !== undefined) {
+      const binding = requireExactObject(`${toolName}.evidence[${index}].item`, evidence.item, ["kind", "index"]);
+      requireEnum(toolName, binding, "kind", ["finding", "opportunity", "constraint", "openQuestion"]);
+      if (!Number.isInteger(binding.index) || Number(binding.index) < 0) throw new Error("Research evidence item index must be a non-negative integer.");
+    }
     requireString(`${toolName}.evidence[${index}]`, evidence, "claim");
     requireStringArray(`${toolName}.evidence[${index}]`, evidence, "sourceObjectIds");
     requireStringArray(`${toolName}.evidence[${index}]`, evidence, "citationUrls");
@@ -1953,7 +1965,10 @@ function validateSubmitMemoryUpdateArgs(toolName: string, value: unknown): asser
       "evidenceQuote",
       "relatedObjectIds",
       "relatedRevisionIds"
-    ]);
+    ], ["action", "targetEntryId"]);
+    if (item.action !== undefined) requireEnum(toolName, item, "action", ["assert", "supersede", "retract", "resolve"]);
+    requireOptionalString(toolName, item, "targetEntryId");
+    if (item.action && item.action !== "assert" && !item.targetEntryId) throw new Error("Semantic lifecycle requires targetEntryId.");
     requireEnum(`${toolName}.items[${index}]`, item, "kind", [
       "preference",
       "constraint",

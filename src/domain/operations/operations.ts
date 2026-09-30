@@ -28,6 +28,9 @@ import type {
   SourceCitation
 } from "./types";
 
+import { captureSourceSnapshots, resolveSource } from "../morpho/sourceResolution";
+import { captureEvidenceBasis, qualifyEvidence } from "../morpho/evidenceAuthority";
+
 const DESIGN_DEFINITION_CANDIDATE_STACK_SLOT_HEIGHT = 288;
 const DESIGN_DEFINITION_CANDIDATE_GAP = 32;
 const DESIGN_DEFINITION_BATCH_ALIGNMENT_TOLERANCE = 24;
@@ -55,6 +58,7 @@ export type CreateResearchOperationResult = {
 };
 
 export type RecordResearchProposalInput = {
+  sourceSnapshots?: SourceSemanticSnapshot[];
   proposalId?: string;
   operationId: string;
   workIntent?: ResearchAnalysisProposal["workIntent"];
@@ -69,6 +73,7 @@ export type RecordResearchProposalInput = {
     sourceObjectIds: string[];
     citationUrls: string[];
     confidence: ResearchEvidence["confidence"];
+    item?: { kind: "finding" | "opportunity" | "constraint" | "openQuestion"; index: number };
   }>;
   sourceObjectIds: string[];
   citations: Array<{
@@ -87,6 +92,7 @@ export type RecordResearchProposalResult = {
 };
 
 export type RecordDesignDefinitionProposalInput = {
+  sourceSnapshots?: SourceSemanticSnapshot[];
   proposalId?: string;
   operationId?: string;
   workIntent?: DesignDefinitionProposal["workIntent"];
@@ -133,6 +139,7 @@ export type ApplyDesignDefinitionProposalResult =
     };
 
 export type RecordConceptDirectionProposalInput = {
+  sourceSnapshots?: SourceSemanticSnapshot[];
   proposalId?: string;
   operationId?: string;
   workIntent?: ConceptDirectionProposal["workIntent"];
@@ -907,12 +914,20 @@ export function recordResearchAnalysisProposal(
       : nextRecordId(workspace.artifactProposals, `proposal-research-${input.operationId}`);
   const citationEntries = materializeCitationSnapshots(workspace, proposalId, input.operationId, input.citations, now);
   const citationIdByUrl = new Map(citationEntries.filter((citation) => citation.url).map((citation) => [citation.url, citation.id]));
-  const evidence: ResearchEvidence[] = (input.evidence ?? []).map((item) => ({
-    claim: item.claim,
-    sourceObjectIds: item.sourceObjectIds.filter((sourceObjectId) => input.sourceObjectIds.includes(sourceObjectId)),
-    citationIds: item.citationUrls.map((url) => citationIdByUrl.get(url)).filter((id): id is string => Boolean(id)),
-    confidence: item.confidence
-  }));
+  const sourceSnapshots = proposalSourceSnapshots(workspace, input);
+  const evidenceWorkspace = { ...workspace, citationSnapshots: { ...workspace.citationSnapshots, ...Object.fromEntries(citationEntries.map((citation) => [citation.id, citation])) } };
+  const evidence: ResearchEvidence[] = (input.evidence ?? []).map((item) => {
+    const sourceObjectIds = [...new Set(item.sourceObjectIds.filter((id) => input.sourceObjectIds.includes(id)))];
+    const citationIds = [...new Set(item.citationUrls.map((url) => citationIdByUrl.get(url)).filter((id): id is string => Boolean(id)))];
+    const lostSource = sourceObjectIds.length !== new Set(item.sourceObjectIds).size || citationIds.length !== new Set(item.citationUrls).size;
+    const entry: ResearchEvidence = { claim: item.claim, sourceObjectIds, citationIds, confidence: lostSource && item.confidence === "supported" ? "partial" : item.confidence };
+    const texts = item.item ? input[({ finding: "findings", opportunity: "opportunities", constraint: "constraints", openQuestion: "openQuestions" } as const)[item.item.kind]] : undefined;
+    const text = item.item && Number.isInteger(item.item.index) && item.item.index >= 0 ? texts?.[item.item.index] : undefined;
+    if (item.item && text) entry.item = { ...item.item, text };
+    const basis = captureEvidenceBasis(evidenceWorkspace, entry);
+    entry.basis = { ...basis, sourceSnapshots: sourceSnapshots.filter((snapshot) => sourceObjectIds.includes(snapshot.objectId)) };
+    return { ...entry, confidence: qualifyEvidence(evidenceWorkspace, entry).confidence };
+  });
   const proposal: ResearchAnalysisProposal = {
     id: proposalId,
     type: "researchAnalysis",
@@ -927,7 +942,7 @@ export function recordResearchAnalysisProposal(
     openQuestions: [...input.openQuestions],
     evidence,
     sourceObjectIds: [...input.sourceObjectIds],
-    sourceSnapshots: buildSourceSemanticSnapshots(workspace, input.sourceObjectIds),
+    sourceSnapshots,
     citationIds: citationEntries.map((citation) => citation.id),
     sourceChangedWarning: input.sourceChangedWarning,
     createdAt: now,
@@ -995,7 +1010,7 @@ export function recordDesignDefinitionProposal(
     status: "pending",
     reviewState: "ready",
     sourceObjectIds: [...input.sourceObjectIds],
-    sourceSnapshots: buildSourceSemanticSnapshots(workspace, input.sourceObjectIds),
+    sourceSnapshots: proposalSourceSnapshots(workspace, input),
     citationIds: citationEntries.map((citation) => citation.id),
     createdAt: now,
     canvasPlacement: input.position,
@@ -1242,6 +1257,7 @@ export function applyDesignDefinitionProposal(
         {
           id: `decision-apply-design-definition-${workspace.decisionRecords.length + 1}`,
           kind: "applyDesignDefinition",
+          effect: { kind: "applyDesignDefinition", targetObjectId: definitionId, revisionId },
           createdAt: now,
           summary: `应用设计定义：${proposal.title}`,
           reason: proposal.changeNote,
@@ -1327,6 +1343,7 @@ export function setCurrentDesignDefinition(
           "decision-set-current-design-definition"
         ),
         kind: "applyDesignDefinition",
+        effect: { kind: "applyDesignDefinition", targetObjectId: target.id, revisionId: target.currentRevisionId },
         createdAt: now,
         summary: `设为当前设计定义：${target.title}`,
         reason,
@@ -1407,7 +1424,7 @@ export function recordConceptDirectionProposal(
     status: "pending",
     reviewState: "ready",
     sourceObjectIds: [...input.sourceObjectIds],
-    sourceSnapshots: buildSourceSemanticSnapshots(workspace, input.sourceObjectIds),
+    sourceSnapshots: proposalSourceSnapshots(workspace, input),
     citationIds: citationEntries.map((citation) => citation.id),
     createdAt: now,
     canvasPlacement: input.position,
@@ -1830,24 +1847,19 @@ export function applyConceptDirectionProposal(
       },
       decisionRecords: [
         ...workspace.decisionRecords,
-        {
-          id: `decision-apply-concept-direction-${workspace.decisionRecords.length + 1}`,
-          kind: "applyConceptDirection",
+        ...appliedDirections.map((direction, index) => ({
+          id: `decision-apply-concept-direction-${workspace.decisionRecords.length + index + 1}`,
+          kind: "applyConceptDirection" as const,
+          effect: { kind: "applyConceptDirection" as const, targetObjectId: direction.id, revisionId: direction.currentRevisionId },
           createdAt: now,
-          summary: buildConceptDirectionDecisionSummary(proposal),
-          objectSnapshot: appliedDirections[0]
-            ? {
-                id: appliedDirections[0].id,
-                type: "conceptDirection",
-                title: appliedDirections[0].title
-              }
-            : undefined,
+          summary: `${buildConceptDirectionDecisionSummary(proposal)}：${direction.title}`,
+          objectSnapshot: { id: direction.id, type: "conceptDirection" as const, title: direction.title },
           relatedObjectIds: [
             ...appliedDirections.map((direction) => direction.id),
             ...proposal.parentDirectionIds,
             ...(proposal.targetDirectionId ? [proposal.targetDirectionId] : [])
           ]
-        }
+        }))
       ],
       canvas: {
         ...workspace.canvas,
@@ -2081,7 +2093,8 @@ export function updateResearchAnalysisProposalDraft(
         constraints: [...input.constraints],
         openQuestions: [...input.openQuestions],
         evidence: input.evidence.map((item) => ({
-          claim: item.claim,
+          ...item,
+          basis: proposal.evidence.find((prior) => prior.claim === item.claim && JSON.stringify(prior.sourceObjectIds) === JSON.stringify(item.sourceObjectIds) && JSON.stringify(prior.citationIds) === JSON.stringify(item.citationIds))?.basis,
           confidence: item.confidence,
           citationIds: [...item.citationIds],
           sourceObjectIds: [...item.sourceObjectIds]
@@ -2529,111 +2542,30 @@ function markProposalOperationFinal(
 }
 
 function buildSourceSemanticSnapshots(workspace: MorphoWorkspace, objectIds: string[]): SourceSemanticSnapshot[] {
-  return objectIds
-    .map((objectId) => createSourceSemanticSnapshot(workspace.objects[objectId]))
-    .filter((snapshot): snapshot is SourceSemanticSnapshot => Boolean(snapshot));
+  return captureSourceSnapshots(workspace, objectIds);
 }
 
-function createSourceSemanticSnapshot(object: MorphoObject | undefined): SourceSemanticSnapshot | undefined {
-  if (!object) {
-    return undefined;
-  }
-
-  return {
-    objectId: object.id,
-    objectType: object.type,
-    visibility: object.visibility,
-    semanticFingerprint: buildSemanticFingerprint(object)
-  };
+function proposalSourceSnapshots(workspace: MorphoWorkspace, input: { sourceObjectIds: string[]; sourceSnapshots?: SourceSemanticSnapshot[]; operationId?: string }): SourceSemanticSnapshot[] {
+  const baseline = input.sourceSnapshots ?? (input.operationId ? workspace.operations[input.operationId]?.inputSnapshot.sourceSnapshots : undefined);
+  return [...new Set(input.sourceObjectIds)].map((objectId) => baseline
+    ? baseline.find((item) => item.objectId === objectId) ?? { objectId, objectType: "unknown", visibility: "unknown", semanticFingerprint: "unknown" }
+    : captureSourceSnapshots(workspace, [objectId])[0]!);
 }
 
-function evaluateSourceReviewDetails(
-  workspace: MorphoWorkspace,
-  snapshots: SourceSemanticSnapshot[]
-): ProposalReviewDetails[] {
+function evaluateSourceReviewDetails(workspace: MorphoWorkspace, snapshots: SourceSemanticSnapshot[]): ProposalReviewDetails[] {
   return snapshots.flatMap((snapshot): ProposalReviewDetails[] => {
-    const current = workspace.objects[snapshot.objectId];
-    if (!current) {
-      return [
-        {
-          objectId: snapshot.objectId,
-          objectTitle: snapshot.objectId,
-          reason: "sourceUnavailable" as const,
-          message: "来源对象已被删除，不能继续作为未复核依据。"
-        }
-      ];
-    }
-
-    if (current.visibility !== "active") {
-      return [
-        {
-          objectId: current.id,
-          objectTitle: current.title,
-          reason: "sourceInactive" as const,
-          message: "来源对象已被隐藏，默认不会进入当前 AI Context。"
-        }
-      ];
-    }
-
-    if (buildSemanticFingerprint(current) !== snapshot.semanticFingerprint) {
-      return [
-        {
-          objectId: current.id,
-          objectTitle: current.title,
-          reason: "sourceContentChanged" as const,
-          message: "来源对象的语义内容已变化，需要复核后才能应用。"
-        }
-      ];
-    }
-
+    const source = resolveSource(workspace, snapshot.objectId, snapshot);
+    const objectTitle = workspace.objects[snapshot.objectId]?.title ?? snapshot.objectId;
+    const detail = { objectId: snapshot.objectId, objectTitle };
+    if (source.existence === "missing") return [{ ...detail, reason: "sourceUnavailable", message: "来源对象已被删除，需要复核。" }];
+    if (source.visibility !== "active") return [{ ...detail, reason: "sourceInactive", message: "来源对象已被隐藏，需要复核。" }];
+    if (source.freshness !== "current") return [{ ...detail, reason: "sourceContentChanged", message: source.freshness === "unknown" ? "旧草案没有可靠的来源基线，需要复核。" : "来源对象的语义内容已变化；版本或提取依据需要复核。" }];
     return [];
   });
 }
 
-function buildSemanticFingerprint(object: MorphoObject): string {
-  switch (object.type) {
-    case "text":
-      return stableStringify({ body: object.body });
-    case "research":
-      return stableStringify({
-        findings: object.findings,
-        opportunities: object.opportunities,
-        constraints: object.constraints,
-        openQuestions: object.openQuestions,
-        evidence: object.evidence ?? [],
-        provenanceCitationIds: object.provenance?.citationIds ?? []
-      });
-    case "keyConclusion":
-      return stableStringify({
-        body: object.body,
-        category: object.category,
-        state: object.state,
-        supersededById: object.supersededById,
-        confidence: object.confidence
-      });
-    case "designDefinition":
-      return stableStringify({
-        currentRevisionId: object.currentRevisionId,
-        isCurrentEffective: object.isCurrentEffective
-      });
-    case "conceptDirection":
-      return stableStringify({
-        currentRevisionId: object.currentRevisionId,
-        status: object.status
-      });
-    case "image":
-      return stableStringify({ assetId: object.assetId });
-    default:
-      return stableStringify({ type: object.type });
-  }
-}
-
 function buildReviewReasonMessage(details: ProposalReviewDetails[]): string {
   return `草案需要复核：${details.map((detail) => `${detail.objectTitle}：${detail.message}`).join("；")}`;
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(value);
 }
 
 export function recordImageGenerationPlan(

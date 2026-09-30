@@ -266,7 +266,7 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
             ? input.turnInput.taskMode === "imageGeneration" &&
               input.prepared.executionTaskMode === "imageGeneration"
             : entry.parsed.name !== "submit_memory_update" ||
-              input.prepared.requiredMemoryUpdates.length > 0
+              input.prepared.authorityProfile.allowMemoryWrite
       });
       if (executionPolicy === "requireConfirmation") {
         const confirmationValue = buildPendingAgentActionConfirmation({
@@ -278,6 +278,7 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
               : undefined,
           draft: input.turnInput.draft,
           contextObjectIds: input.prepared.context.objectIds,
+          sourceSnapshots: input.prepared.context.sourceSnapshots,
           citations: input.prepared.runtimeState.collectedCitations,
           selectedObjects: input.turnInput.selectedObjects,
           selectedObjectIds: input.turnInput.selectedObjectIds,

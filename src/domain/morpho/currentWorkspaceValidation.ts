@@ -39,7 +39,7 @@ export function validateCurrentMorphoWorkspace(value: unknown): CurrentWorkspace
     add("workspace", "Current workspace must be an object.");
     return failed(issues);
   }
-  if (value.schemaVersion !== 17) add("schemaVersion", "Current workspace schemaVersion must be 17.");
+  if (value.schemaVersion !== 18) add("schemaVersion", "Current workspace schemaVersion must be 18.");
 
   const project = requireRecord(value.project, "project", add);
   const objects = requireRecord(value.objects, "objects", add);
@@ -79,10 +79,50 @@ export function validateCurrentMorphoWorkspace(value: unknown): CurrentWorkspace
   if (canvas) validateCanvas(canvas, objects, add);
   if (ai) validateAi(ai, objects, add);
   if (ui) validateUi(ui, objects, add);
+  if (issues.length === 0) validateAuthorityReferences(value as MorphoWorkspace, add);
 
   return issues.length === 0
     ? { status: "ok", workspace: value as MorphoWorkspace }
     : failed(issues);
+}
+
+function validateAuthorityReferences(workspace: MorphoWorkspace, add: AddIssue): void {
+  for (const [index, record] of workspace.decisionRecords.entries()) {
+    const effect = record.effect;
+    if (!effect) continue;
+    const path = `decisionRecords[${index}].effect`;
+    if (effect.kind === "applyDesignDefinition") {
+      const revision = workspace.designDefinitionRevisions[effect.revisionId];
+      if (revision && revision.designDefinitionId !== effect.targetObjectId) add(`${path}.revisionId`, "Decision revision belongs to another definition.");
+    }
+    if (effect.kind === "applyConceptDirection") {
+      const revision = workspace.directionRevisions[effect.revisionId];
+      if (revision && revision.directionId !== effect.targetObjectId) add(`${path}.revisionId`, "Decision revision belongs to another direction.");
+    }
+    if (record.objectSnapshot && record.objectSnapshot.id !== effect.targetObjectId) add(`${path}.targetObjectId`, "Decision effect and target snapshot must identify the same object.");
+  }
+  const entries = new Map(workspace.projectContinuity.recordEntries.map((entry) => [entry.id, entry]));
+  for (const [index, entry] of workspace.projectContinuity.recordEntries.entries()) {
+    const path = `projectContinuity.recordEntries[${index}]`;
+    if ((entry.lifecycleEvidence || entry.supersededByEntryId || entry.manualState === "resolved") && entry.origin !== "conversationSemanticPatch") add(path, "Only semantic facts can carry a semantic lifecycle.");
+    if (entry.manualState === "resolved" && entry.semanticKind !== "openQuestion") add(`${path}.manualState`, "Only open questions can be resolved.");
+    if (entry.supersededByEntryId) {
+      const replacement = entries.get(entry.supersededByEntryId);
+      if (!replacement || replacement.origin !== "conversationSemanticPatch" || replacement.semanticKind !== entry.semanticKind || replacement.scope !== entry.scope) add(`${path}.supersededByEntryId`, "Replacement must identify a semantic fact of the same kind and scope.");
+      const visited = new Set([entry.id]);
+      let current = replacement;
+      while (current) {
+        if (visited.has(current.id)) { add(`${path}.supersededByEntryId`, "Semantic replacement chain cannot contain a cycle."); break; }
+        visited.add(current.id);
+        current = current.supersededByEntryId ? entries.get(current.supersededByEntryId) : undefined;
+      }
+    }
+    const evidence = entry.lifecycleEvidence;
+    if (evidence?.origin === "userMessage") {
+      const message = workspace.ai.messages.find((message) => message.id === evidence.sourceMessageId);
+      if (message && (message.role !== "user" || !message.body.includes(evidence.evidenceQuote))) add(`${path}.lifecycleEvidence`, "Lifecycle evidence must match the bound user message.");
+    }
+  }
 }
 
 function validateProject(project: Record<string, unknown>, assets: Record<string, unknown> | null, add: AddIssue): void {
@@ -582,7 +622,7 @@ function validateContinuity(value: Record<string, unknown>, add: AddIssue): void
     const entry = requireRecord(item, path, add); if (!entry) return;
     requireId(entry.id, `${path}.id`, add); requireString(entry.dedupeKey, `${path}.dedupeKey`, add);
     requireEnum(entry.origin, `${path}.origin`, ["deterministicEvent", "conversationSemanticPatch"], add);
-    requireEnum(entry.manualState, `${path}.manualState`, ["active", "notApplicable", "withdrawn"], add);
+    requireEnum(entry.manualState, `${path}.manualState`, ["active", "notApplicable", "withdrawn", "resolved"], add);
     requireEnum(entry.stage, `${path}.stage`, ["startAndInput", "exploration", "research", "designDefinition", "directionAndVisual", "deliveryPreparation"], add);
     requireEnum(entry.category, `${path}.category`, ["output", "decision", "rejection", "preference", "constraint", "openQuestion", "nextFocus", "systemNote"], add);
     requireString(entry.summary, `${path}.summary`, add); requireString(entry.createdAt, `${path}.createdAt`, add); requireString(entry.updatedAt, `${path}.updatedAt`, add);

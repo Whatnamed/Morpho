@@ -1,3 +1,4 @@
+import { hasSemanticLifecycleRequest } from "@/domain/morpho/conversationSemanticPatch";
 import type { AiTaskMode, AiWorkIntent, MorphoObject } from "@/domain/morpho/types";
 import {
   hasExplicitProposalRevisionRequest,
@@ -85,7 +86,7 @@ export function resolveAgentToolAuthority(input: Readonly<{
     input.selectedObjects.length >= 2 &&
     isExplicitComparisonRecordRequest(input.draft);
   const allowDeliveryDraft = input.hasDeliveryDraftTarget && input.executionWorkIntent === "prepareDeliverySection";
-  const allowMemoryWrite = input.hasRequiredMemoryUpdates;
+  const allowMemoryWrite = input.hasRequiredMemoryUpdates || hasSemanticLifecycleRequest(input.draft);
 
   if (allowWebSearch) allowed.add("search_web_evidence");
   if (allowResearchDraftWrite) allowed.add("create_research_analysis");

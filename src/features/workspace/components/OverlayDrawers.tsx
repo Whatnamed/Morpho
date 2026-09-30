@@ -569,10 +569,11 @@ function ContinuityEntryRows({
                 >
                   撤回记录
                 </button>
+                {entry.semanticKind === "openQuestion" ? <button className="plain-button" type="button" disabled={!canMutateWorkspace || entry.manualState === "resolved" || Boolean(entry.supersededByEntryId)} onClick={() => onSetContinuityEntryManualState(entry.id, "resolved")}>标记已解决</button> : null}
                 <button
                   className="plain-button"
                   type="button"
-                  disabled={!canMutateWorkspace || entry.manualState === "active"}
+                  disabled={!canMutateWorkspace || Boolean(entry.supersededByEntryId) || entry.manualState === "active"}
                   onClick={() => onSetContinuityEntryManualState(entry.id, "active")}
                 >
                   恢复为当前有效
@@ -1035,6 +1036,8 @@ function manualStateLabel(state: ContinuityManualState): string {
       return "当前有效";
     case "notApplicable":
       return "不再适用";
+    case "resolved":
+      return "已解决";
     case "withdrawn":
       return "已撤回";
   }

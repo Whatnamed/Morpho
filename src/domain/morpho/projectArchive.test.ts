@@ -40,8 +40,8 @@ describe("M7-A project archive and backup manifests", () => {
     expect(backup.manifest.createdAt).toBe(NOW);
     expect(archive.manifest.sourceProject.id).toBe("project-blank");
     expect(backup.manifest.sourceProject.id).toBe(seeded.project.id);
-    expect(archive.manifest.workspaceSchemaVersion).toBe(17);
-    expect(backup.manifest.workspaceSchemaVersion).toBe(17);
+    expect(archive.manifest.workspaceSchemaVersion).toBe(18);
+    expect(backup.manifest.workspaceSchemaVersion).toBe(18);
     expect(archive.manifest.archive).toBeDefined();
     expect(backup.manifest.workspaceSnapshot).toBeDefined();
     expect(backup.manifest.workspaceSnapshot.objects["insight-continuous-support"]).toMatchObject({ category: "unknown" });

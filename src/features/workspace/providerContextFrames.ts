@@ -349,7 +349,7 @@ function createTurnContextFrame(
 ): ProviderContextFrame {
   const selected = [...input.context.semanticSummaries]
     .sort((left, right) => left.id.localeCompare(right.id))
-    .map((summary) => `${summary.title}（${summary.id}）${summary.category ? ` [category=${summary.category}]` : ""}：${summary.summary}`);
+    .map((summary) => `${summary.title}（${summary.id}）${summary.category ? ` [category=${summary.category}]` : ""}：${summary.summary}${summary.evidenceQualification ? `；证据资格：${summary.evidenceQualification.length ? summary.evidenceQualification.map((item) => `${item.claim}: ${item.confidence}${item.issues.length ? ` (${item.issues.join(", ")})` : ""}`).join("；") : "unknown / needsVerification"}` : ""}`);
   const relatedIds = uniqueIds([
     ...input.context.objectIds,
     ...input.context.documentObjectIds,

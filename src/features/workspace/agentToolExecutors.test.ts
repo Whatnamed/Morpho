@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { createInitialWorkspace, createTestWorkspace } from "@/domain/morpho/workspace";
 import { recordDesignDefinitionProposal } from "@/domain/operations/operations";
+import { applyConversationSemanticPatch } from "@/domain/morpho/projectContinuity";
+import { buildSemanticPatchAuthorization } from "@/domain/morpho/conversationSemanticPatch";
+import { resolveAgentToolAuthority } from "./agentToolAuthority";
 import { createAgentContextBudgetState } from "@/shared/providerInputBudget";
 import { createRequiredAgentReadState } from "./agentTaskStrategy";
 import {
@@ -22,6 +25,28 @@ import {
 import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
 
 describe("Agent tool executors", () => {
+  it("reads scoped semantic fact IDs and resolves an explicit question through the authorized Tool/domain path", async () => {
+    const fixture = createFixture();
+    const question = "单手操作问题待确认";
+    const firstWorkspace = fixture.host.getWorkspace();
+    const initial = { ...firstWorkspace, ai: { ...firstWorkspace.ai, messages: [...firstWorkspace.ai.messages, { id: "question-user", role: "user" as const, body: question, createdAt: fixture.input.userMessageCreatedAt }] } };
+    const created = applyConversationSemanticPatch(initial, buildSemanticPatchAuthorization({ taskMode: "chatAnalysis", draft: question, userMessageId: "question-user", userMessageCreatedAt: fixture.input.userMessageCreatedAt, currentFocusArea: "research", objectIds: [], revisionIds: [], decisionIds: [] }), [{ kind: "openQuestion", scope: "project", evidenceQuote: question, relatedObjectIds: [], relatedRevisionIds: [], relatedDecisionIds: [] }]);
+    const draft = "单手操作问题已解决";
+    fixture.host.commitWorkspace(() => ({ workspace: { ...created.workspace, ai: { ...created.workspace.ai, messages: [...created.workspace.ai.messages, { id: "message-user", role: "user", body: draft, createdAt: fixture.input.userMessageCreatedAt }] } }, value: undefined }));
+    fixture.input.draft = draft;
+    fixture.input.context = buildTaskContext(fixture.host.getWorkspace(), { kind: "general", draft, selectedObjectIds: [] });
+    fixture.input.authorityProfile = resolveAgentToolAuthority({ draft, executionTaskMode: "chatAnalysis", executionTaskModeSource: "userSelected", executionWorkIntent: "discussion", executionWorkIntentSource: "userSelected", selectedObjects: [], hasDeliveryDraftTarget: false, hasDocumentExtracts: false, hasDocumentFragments: false, hasRequiredMemoryUpdates: false, allowStructuredComparison: false });
+    expect(fixture.input.authorityProfile.allowMemoryWrite).toBe(true);
+    const read = await executeAgentTool({ ...fixture.input, parsed: { name: "read_project_memory", args: { keys: ["openQuestions"] } } });
+    expect(read).toMatchObject({ semanticFacts: [expect.objectContaining({ id: created.entries[0].id })] });
+    const parsed = { name: "submit_memory_update" as const, args: { items: [{ kind: "openQuestion" as const, scope: "project" as const, action: "resolve" as const, targetEntryId: created.entries[0].id, evidenceQuote: draft, relatedObjectIds: [], relatedRevisionIds: [] }] } };
+    const output = await executeAgentTool({ ...fixture.input, parsed });
+    expect(output).toMatchObject({ status: "recorded", entryIds: [created.entries[0].id] });
+    expect(fixture.host.getWorkspace().projectContinuity.recordEntries.find((entry) => entry.id === created.entries[0].id)).toMatchObject({ manualState: "resolved", lifecycleEvidence: { origin: "userMessage", sourceMessageId: "message-user" } });
+    const replay = await executeAgentTool({ ...fixture.input, parsed });
+    expect(replay).toMatchObject({ status: "recorded" });
+    expect(fixture.host.getWorkspace().projectContinuity.recordEntries).toHaveLength(created.workspace.projectContinuity.recordEntries.length);
+  });
   it("registers exactly the tools described by the effect matrix", () => {
     expect(Object.keys(AGENT_TOOL_EXECUTORS).sort()).toEqual(
       Object.keys(MORPHO_AGENT_TOOL_EFFECT_MATRIX).sort()

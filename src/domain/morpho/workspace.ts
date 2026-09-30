@@ -84,7 +84,9 @@ import type {
 } from "./types";
 
 const DEFAULT_REFERENCE_HIDDEN_MESSAGE = "当前后续默认参考已隐藏，请先恢复或替换后再用于相关生成。";
-const CURRENT_SCHEMA_VERSION = 17;
+import { captureEvidenceBasis, qualifyEvidence } from "./evidenceAuthority";
+
+const CURRENT_SCHEMA_VERSION = 18;
 
 export type DeleteObjectResult =
   | {
@@ -138,6 +140,8 @@ export type KeyConclusionDraftFromResearchResult =
         confidence: KeyConclusionObject["confidence"];
         state?: "active" | "needsVerification";
         note: string;
+        evidence?: import("../operations/types").ResearchEvidence[];
+        researchOrigin?: KeyConclusionObject["researchOrigin"];
       };
     }
   | {
@@ -694,6 +698,7 @@ export function deleteObject(
         {
           id: makeDecisionId(workspace, "deleteObject", objectId),
           kind: "deleteObject" as const,
+        effect: { kind: "deleteObject" as const, targetObjectId: objectId },
           createdAt: new Date().toISOString(),
           summary: `删除 ${object.title}`,
           reason: options.reason,
@@ -797,6 +802,7 @@ export function setConceptDirectionStatus(
       {
         id: decisionId,
         kind: "setDirectionStatus",
+        effect: { kind: "setDirectionStatus", targetObjectId: objectId, status },
         createdAt: now,
         summary: `${object.title} -> ${status}`,
         reason,
@@ -849,6 +855,7 @@ export function setImageRole(
       {
         id: makeDecisionId(workspace, "setImageRole", objectId),
         kind: "setImageRole",
+        effect: { kind: "setImageRole", targetObjectId: objectId, role },
         createdAt: now,
         summary: `${object.title} -> ${role}`,
         reason: options.reason,
@@ -1238,6 +1245,7 @@ export function setDefaultReference(
       {
         id: decisionId,
         kind: "setDefaultReference",
+        effect: { kind: "setDefaultReference", targetObjectId: objectId, referenceObjectId: objectId },
         createdAt: now,
         summary:
           markedCount > 0
@@ -1326,6 +1334,7 @@ export function clearDefaultReference(
       {
         id: decisionId,
         kind: "setDefaultReference",
+        effect: { kind: "setDefaultReference", targetObjectId: objectId, referenceObjectId: null },
         createdAt: now,
         summary: `清除后续默认参考：${object.title}`,
         reason: options.reason,
@@ -1360,10 +1369,18 @@ export function createKeyConclusion(
     position: CanvasPoint;
     size?: CanvasSize;
     comparison?: ComparisonDecisionMetadata;
+    evidence?: import("../operations/types").ResearchEvidence[];
+    researchOrigin?: KeyConclusionObject["researchOrigin"];
   }
 ): CreateKeyConclusionResult {
   const now = new Date().toISOString();
   const objectId = nextAvailableId(workspace.objects, "key-conclusion");
+  const evidence = input.evidence ?? (() => {
+    const entry = { claim: input.body, sourceObjectIds: input.sourceObjectIds, citationIds: input.citationIds ?? [], confidence: input.confidence };
+    return [{ ...entry, basis: captureEvidenceBasis(workspace, entry) }];
+  })();
+  const qualifications = evidence.map((entry) => qualifyEvidence(workspace, entry));
+  const confidence = qualifications.length === 0 || qualifications.some((entry) => entry.confidence === "needsVerification") ? "needsVerification" : qualifications.every((entry) => entry.confidence === "supported") ? "supported" : "partial";
   const keyConclusion: KeyConclusionObject = {
     id: objectId,
     type: "keyConclusion",
@@ -1374,7 +1391,9 @@ export function createKeyConclusion(
     createdBy: "user",
     visibility: "active",
     state: input.state ?? "active",
-    confidence: input.confidence,
+    confidence,
+    evidence,
+    researchOrigin: input.researchOrigin,
     sourceObjectIds: [...input.sourceObjectIds],
     citationIds: [...(input.citationIds ?? [])],
     confirmedAt: now,
@@ -1408,6 +1427,7 @@ export function createKeyConclusion(
       {
         id: makeDecisionId(workspace, "createKeyConclusion", objectId),
         kind: "createKeyConclusion",
+        effect: { kind: "createKeyConclusion", targetObjectId: objectId },
         createdAt: now,
         summary: `保留关键结论：${input.title}`,
         reason: input.note,
@@ -1459,55 +1479,26 @@ export function buildKeyConclusionDraftFromResearchSource(
     };
   }
 
-  if (source.kind === "evidence") {
-    const evidence = research.evidence?.[source.index];
-    if (!evidence) {
-      return {
-        status: "blocked",
-        reason: "指定证据不存在。"
-      };
-    }
-
-    return {
-      status: "ready",
-      draft: {
-        title: truncateForTitle(evidence.claim, "关键结论"),
-        summary: evidence.claim,
-        body: evidence.claim,
-        category: source.category,
-        sourceObjectIds: evidence.sourceObjectIds.filter((sourceObjectId) => Boolean(workspace.objects[sourceObjectId])),
-        citationIds: [...evidence.citationIds],
-        confidence: evidence.confidence,
-        state: evidence.confidence === "needsVerification" ? "needsVerification" : "active",
-        note: `用户从研究对象“${research.title}”的第 ${source.index + 1} 条证据中保留关键结论。`
-      }
-    };
-  }
-
-  const content = getResearchListItem(research, source.kind, source.index);
-  if (!content) {
-    return {
-      status: "blocked",
-      reason: "指定研究条目不存在。"
-    };
-  }
-
-  const confidence = source.kind === "openQuestion" ? "needsVerification" : "partial";
-
+  const content = source.kind === "evidence" ? research.evidence?.[source.index]?.claim : getResearchListItem(research, source.kind, source.index);
+  if (!content) return { status: "blocked", reason: "指定研究条目不存在。" };
+  const item = source.kind === "evidence" ? undefined : { kind: source.kind, index: source.index, text: content };
+  const inherited = source.kind === "evidence"
+    ? [research.evidence![source.index]!]
+    : (research.evidence ?? []).filter((entry) => item && entry.item && entry.item.kind === item.kind && entry.item.index === item.index && entry.item.text === content);
+  const qualifications = inherited.map((entry) => qualifyEvidence(workspace, entry));
+  const confidence = source.kind === "openQuestion" || qualifications.length === 0 || qualifications.some((entry) => entry.confidence === "needsVerification")
+    ? "needsVerification" : qualifications.every((entry) => entry.confidence === "supported") ? "supported" : "partial";
   return {
     status: "ready",
     draft: {
-      title: truncateForTitle(content, "关键结论"),
-      summary: content,
-      body: content,
-      category: source.kind,
-      sourceObjectIds: [research.id],
-      citationIds: [...(research.provenance?.citationIds ?? [])],
-      confidence,
-      state: confidence === "needsVerification" ? "needsVerification" : "active",
-      note: `用户从研究对象“${research.title}”的${formatResearchSourceKind(source.kind)}第 ${
-        source.index + 1
-      }条中保留关键结论。`
+      title: truncateForTitle(content, "关键结论"), summary: content, body: content,
+      category: source.kind === "evidence" ? source.category : source.kind,
+      sourceObjectIds: [...new Set([research.id, ...inherited.flatMap((entry) => entry.sourceObjectIds)])],
+      citationIds: [...new Set(inherited.flatMap((entry) => entry.citationIds))],
+      confidence, state: confidence === "needsVerification" ? "needsVerification" : "active",
+      evidence: inherited.map((entry) => ({ ...entry })),
+      ...(item ? { researchOrigin: { researchObjectId: research.id, item } } : {}),
+      note: `用户从研究对象“${research.title}”的第 ${source.index + 1} 条候选中保留关键结论。`
     }
   };
 }
@@ -1560,6 +1551,7 @@ export function setKeyConclusionCategory(
       {
         id: makeDecisionId(workspace, "setKeyConclusionCategory", target.id),
         kind: "setKeyConclusionCategory",
+        effect: { kind: "setKeyConclusionCategory", targetObjectId: target.id, category: nextCategory },
         createdAt: now,
         summary: `更新关键结论类别：${target.title} → ${nextCategory}`,
         reason: options.reason,
@@ -1632,6 +1624,7 @@ export function setKeyConclusionState(
       {
         id: makeDecisionId(workspace, "setKeyConclusionState", target.id),
         kind: "setKeyConclusionState",
+        effect: { kind: "setKeyConclusionState", targetObjectId: target.id, state: nextState, supersededById: nextState === "superseded" ? options.supersededById : undefined },
         createdAt: now,
         summary: `更新关键结论状态：${target.title} → ${nextState}`,
         reason: options.reason,
@@ -1665,19 +1658,6 @@ function getResearchListItem(
       return research.constraints[index];
     case "openQuestion":
       return research.openQuestions[index];
-  }
-}
-
-function formatResearchSourceKind(kind: Exclude<ResearchKeyConclusionSource["kind"], "evidence">): string {
-  switch (kind) {
-    case "finding":
-      return "发现";
-    case "opportunity":
-      return "机会点";
-    case "constraint":
-      return "约束";
-    case "openQuestion":
-      return "待验证问题";
   }
 }
 
@@ -1816,10 +1796,8 @@ export function migrateWorkspaceToCurrentSchema(value: unknown): WorkspaceMigrat
     };
   }
 
-  if (typeof value.schemaVersion === "number" && value.schemaVersion >= 5 && value.schemaVersion <= 16) {
-    const migratedLegacyWorkspace = migrateLegacyWorkspaceToSchema17(
-      migrateLegacyKeyConclusionCategories(value)
-    );
+  if (typeof value.schemaVersion === "number" && value.schemaVersion >= 5 && value.schemaVersion <= 17) {
+    const migratedLegacyWorkspace = value.schemaVersion === 17 ? value : migrateLegacyWorkspaceToSchema17(migrateLegacyKeyConclusionCategories(value));
     return {
       status: "ok",
       workspace: normalizeCurrentWorkspace({
@@ -2990,7 +2968,7 @@ function normalizeArtifactProposals(
       const sourceSnapshots =
         Array.isArray(proposal.sourceSnapshots) && proposal.sourceSnapshots.length > 0
           ? proposal.sourceSnapshots
-          : proposal.sourceObjectIds.map((objectId) => createSourceSemanticSnapshot(objects, objectId)).filter(Boolean);
+          : proposal.sourceObjectIds.map((objectId) => ({ objectId, objectType: objects[objectId]?.type ?? "unknown", visibility: "unknown", semanticFingerprint: "unknown" }));
 
       if (proposal.type !== "conceptDirection") {
         return [

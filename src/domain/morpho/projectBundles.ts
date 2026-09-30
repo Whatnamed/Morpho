@@ -275,8 +275,8 @@ export function planEditableProjectBackupRestore(
     ...compatibleSnapshot,
     assets: restoredAssets
   };
-  if (restoreSourceCandidate.schemaVersion === 17) {
-    const directValidation = validateCurrentMorphoWorkspace(restoreSourceCandidate);
+  if (restoreSourceCandidate.schemaVersion === 17 || restoreSourceCandidate.schemaVersion === 18) {
+    const directValidation = validateCurrentMorphoWorkspace({ ...restoreSourceCandidate, schemaVersion: 18 });
     if (directValidation.status !== "ok") {
       return {
         status: "failed",

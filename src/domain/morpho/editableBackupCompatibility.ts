@@ -8,7 +8,7 @@ const RETIRED_DIRECTION_LINEAGE_ALIASES = {
 export function canonicalizeEditableBackupWorkspaceCompatibility(
   workspaceSnapshot: Record<string, unknown>
 ): Record<string, unknown> {
-  if (workspaceSnapshot.schemaVersion !== 17 || !isRecord(workspaceSnapshot.artifactProposals)) {
+  if ((workspaceSnapshot.schemaVersion !== 17 && workspaceSnapshot.schemaVersion !== 18) || !isRecord(workspaceSnapshot.artifactProposals)) {
     return workspaceSnapshot;
   }
 

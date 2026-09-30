@@ -29,6 +29,9 @@ const LEGACY_NIGHTRAIL_OBJECT_IDS = [
 
 const LEGACY_NIGHTRAIL_ASSET_IDS = ["asset-course-brief", "asset-course-brief-extract"] as const;
 const LEGACY_NIGHTRAIL_PRISTINE_FINGERPRINT = "d1471aac";
+// The exact same untouched fixture after schema 18 marks legacy evidence unknown.
+// Keep exact fingerprints: user changes must never qualify for automatic replacement.
+const SCHEMA18_LEGACY_NIGHTRAIL_PRISTINE_FINGERPRINT = "7355e9e5";
 
 export const LEGACY_NIGHTRAIL_OBSOLETE_STORAGE_KEYS = ["seed:course-brief", "seed:course-brief-extract"] as const;
 
@@ -65,7 +68,7 @@ export function isPristineLegacyNightrailWorkspace(workspace: MorphoWorkspace): 
     schemaVersion: 14,
     ai: legacyAi
   });
-  return fingerprint === LEGACY_NIGHTRAIL_PRISTINE_FINGERPRINT;
+  return fingerprint === LEGACY_NIGHTRAIL_PRISTINE_FINGERPRINT || fingerprint === SCHEMA18_LEGACY_NIGHTRAIL_PRISTINE_FINGERPRINT;
 }
 
 function sameSortedIds(actual: string[], expected: readonly string[]): boolean {
