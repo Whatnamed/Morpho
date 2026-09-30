@@ -1,6 +1,47 @@
 import { expect, test } from "@playwright/test";
 import { seedPayload } from "./fixtures/seed";
 
+test("scoped Memory exposes per-item provenance and clears current content after withdrawal and reload", async ({ page }) => {
+  const seed = seedPayload();
+  const quote = "仅关联方向保留紫色连接节点";
+  await page.addInitScript(({ key, value, catalogKey, catalogValue, quote }) => {
+    if (localStorage.getItem(key) !== null) return;
+    const workspace = JSON.parse(value);
+    const createdAt = "2026-10-01T00:00:00.000Z";
+    const direction = { id: "direction-projection", incarnationId: "direction-projection-incarnation", type: "conceptDirection", title: "投影验收方向", summary: "投影验收方向", visibility: "active", createdBy: "user", createdAt, status: "alternative", keywords: [], currentRevisionId: "direction-projection-r1", revisionIds: ["direction-projection-r1"], lineageRootId: "direction-projection" };
+    workspace.objects[direction.id] = direction;
+    workspace.directionRevisions[direction.currentRevisionId] = { id: direction.currentRevisionId, directionId: direction.id, revisionNumber: 1, title: direction.title, summary: direction.summary, conceptStatement: "投影验收", strategy: "投影验收", keywords: [], differentiators: [], visualSignals: [], risks: [], openQuestions: [], sourceObjectIds: [], citationIds: [], createdAt, isCurrent: true };
+    workspace.ai.messages.push({ id: "scoped-preference-user", role: "user", body: quote, createdAt });
+    workspace.projectContinuity.recordEntries.push({ id: "scoped-preference", dedupeKey: "scoped-preference", origin: "conversationSemanticPatch", manualState: "active", stage: "directionAndVisual", category: "preference", semanticKind: "preference", scope: "direction", summary: `偏好：${quote}`, evidenceQuote: quote, sourceMessageId: "scoped-preference-user", sourceRefs: [{ kind: "message", id: "scoped-preference-user" }, { kind: "object", id: direction.id }], createdAt, updatedAt: createdAt, validity: "current" });
+    localStorage.setItem(catalogKey, catalogValue);
+    localStorage.setItem(key, JSON.stringify(workspace));
+  }, { key: seed.textOnly.workspaceKey, value: seed.textOnly.workspaceValue, catalogKey: seed.catalogKey, catalogValue: seed.textOnly.catalogValue, quote });
+  await page.goto(`/projects/${seed.textOnly.projectId}`);
+  await page.getByRole("button", { name: "项目记录", exact: true }).click();
+  await page.getByRole("tab", { name: "当前项目记忆" }).click();
+  const preferences = page.locator("article.continuity-record").filter({ hasText: "偏好与避免项" });
+  await expect(preferences).toContainText(`${quote}（仅适用关联方向）`);
+  const readState = () => page.evaluate((key) => {
+    const workspace = JSON.parse(localStorage.getItem(key)!);
+    const document = workspace.projectMemory.documents.userPreferences;
+    return { current: document.currentRevisionId ?? null, history: Object.keys(workspace.projectMemory.revisions).filter((id) => workspace.projectMemory.revisions[id].documentKey === "userPreferences") };
+  }, seed.textOnly.workspaceKey);
+  await expect.poll(async () => (await readState()).current).not.toBeNull();
+  const before = await readState();
+  await page.getByRole("tab", { name: "历史与来源" }).click();
+  const row = page.locator("article.continuity-record").filter({ hasText: quote });
+  await row.getByRole("button", { name: "撤回记录" }).click();
+  await expect.poll(async () => (await readState()).current).toBeNull();
+  expect((await readState()).history).toEqual(before.history);
+  await page.getByRole("tab", { name: "当前项目记忆" }).click();
+  await expect(preferences).not.toContainText(quote);
+  await page.reload();
+  await page.getByRole("button", { name: "项目记录", exact: true }).click();
+  await page.getByRole("tab", { name: "当前项目记忆" }).click();
+  await expect(preferences).not.toContainText(quote);
+  expect((await readState()).history).toEqual(before.history);
+});
+
 test("Delivery action history does not request review while a reused-ID Decision does", async ({ page }) => {
   const seed = seedPayload();
   await page.addInitScript(({ key, value, catalogKey, catalogValue, conclusionId }) => {

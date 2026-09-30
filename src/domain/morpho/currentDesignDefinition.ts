@@ -16,4 +16,3 @@ export function projectCurrentDesignDefinitionObject(workspace: MorphoWorkspace)
     (candidate): candidate is DesignDefinitionObject => candidate.type === "designDefinition" && candidate.isCurrentEffective
   );
 }
-
