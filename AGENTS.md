@@ -121,19 +121,28 @@ The anchor HTML is not production code. Do not copy its fixed layout, absolute p
 * If a command cannot run, state exactly what blocked it and do not claim success.
 * Do not treat manual visual inspection as proof that relationship or state logic is correct.
 
-## 10. Git and change discipline
+## 10. Git, commit, push, and worktree discipline
 
 * Keep each change focused on one coherent concern.
 * Do not rewrite, delete, or reformat unrelated files.
 * Do not use destructive Git commands that discard user work.
-* Do not commit or push unless the user explicitly requests it.
+* A completed implementation task must not be left only in the local worktree. Unless the user explicitly asks to keep the work local or uncommitted, split the completed work into coherent commits and push the current task branch to the configured remote before reporting completion.
+* Do not combine unrelated concerns into one giant commit merely to finish the task. Prefer a small number of logical commits whose messages explain the implemented concern.
+* Before reporting a task as complete, verify and report the commit SHA(s), branch, and push status in addition to the implementation and test results.
+* The primary Morpho worktree is `D:\\Morpho`.
+* Additional Morpho worktrees must remain in a user-visible project location, currently `D:\\Morpho Work Tree\\<task-or-branch>`, unless the user explicitly chooses another location. Do not create or move project worktrees into harness-managed hidden directories such as `.codex` worktree storage.
+* Before creating a new worktree, inspect `git worktree list --porcelain` and reuse an existing suitable clean worktree when appropriate rather than accumulating redundant worktrees.
+* Never remove a worktree just because it appears old. Before cleanup, verify its path, branch/HEAD, tracked and untracked changes, and whether unique commits remain unmerged or unpushed. Preserve anything uncertain.
+* Remove a confirmed obsolete worktree through normal Git worktree commands, then prune stale administrative entries. Do not manually delete a worktree directory first.
 * Before finishing a task, report:
 
   * what changed;
   * which files changed;
   * which commands were run;
   * what passed;
-  * what remains unverified.
+  * what remains unverified;
+  * the commit SHA(s) and branch;
+  * whether the branch was pushed successfully.
 
 ## 11. Documentation discipline
 
