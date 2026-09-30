@@ -1149,3 +1149,34 @@ Deletion follows reference roles rather than universal cascade or universal tole
 Snapshot restoration fails closed on new or changed protected AI/runtime/history values, including same-ID changes. A successful restoration's session-only baseline removes the deterministic Redo false positive caused by objects restored by Undo. Without operation ownership, some manual history-producing actions conservatively block; no operation-scoped change sets are introduced.
 
 Boundary: No Workspace schema bump, persisted event-shape migration, Truth Service, Decision/evidence schema, full Memory consumer convergence, Draft stale redesign or P6H history. P1A acceptance remains pending review of the pushed GitHub diff.
+
+## 2026-10-01: P1B-1 Truth / Evidence Authority
+
+Decision: evolve the browser-local Workspace to schema 18 while preserving schema 1–17 projects
+and Editable Backups. New domain writes record structured Decision effects and exact adopted
+revision targets. Currentness uses domain state and later effects, never titles or summary parsing.
+Old unstructured Decisions remain historical/review-required; migration does not infer old adoption
+or confirmation from present state.
+
+Source resolution reports existence, visibility, content availability and fingerprint freshness
+separately. Version-2 bounded semantic fingerprints cover file parsing/extraction identity, link
+fields, fragment content/ranges and source-file dependencies. They are change detectors, not
+cryptographic evidence or proof that a Blob was read. Evidence bases freeze each claim's sources,
+citations and requested confidence. Qualification only narrows support; adoption does not validate
+the claim. Research items inherit only explicit kind/index/text bindings, with independent Research
+lineage. Legacy `reportedConfidence` remains inspectable without a fabricated evidence basis.
+
+Semantic facts support explicit replacement, withdrawal and question resolution with scoped targets
+and user provenance. UI and Tool paths call the same domain transitions. Proposal dependency
+snapshots travel from original Context/Operation input through A+ recovery and pending confirmation
+to apply-time checking. Missing legacy baselines stay unknown. The Prompt/Tool contract is
+`morpho-agent-v3.7-2026-09-30`; Recovery v2 gains optional frozen source snapshots and remains
+compatible without recreating Provider requests.
+
+Schema-dependent storage fixtures were measured with `npm.cmd run measure:storage`: blank 2,719
+UTF-16 characters, current case study 873,422. The generated report and test anchors move together;
+this is serialization evidence, not a new storage-capacity or performance claim.
+
+Boundary: no universal Truth Service/isValid, fabricated history, new dependency or server migration.
+P1B-2 retains full Memory/Stage/Continuity consumer and projection convergence; P2, P5 and P6H are
+not implemented here. Package acceptance remains with the user/reviewer.

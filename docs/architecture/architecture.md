@@ -236,7 +236,36 @@ Implemented server-side state and deployment:
 
 ## Data Model
 
-Structured workspace data is schema version `17`.
+Structured workspace data is schema version `18`.
+
+Truth / evidence authority (P1B-1):
+
+- Domain commands persist typed `DecisionEffect` targets, state changes and adopted revision IDs.
+  `decisionRecords.ts` classifies from those effects, later effects and domain pointers. Legacy
+  unstructured records remain history/review-required; labels never reconstruct historical effects.
+- `sourceResolution.ts` separates existence, visibility, content availability and fingerprint
+  freshness. Version-2 fingerprints include file extraction identity/status, link content fields,
+  fragment text/range and its source-file extraction dependency. They are bounded change detectors,
+  not Blob hashes; actual binary readability remains an asset-reader concern.
+- `evidenceAuthority.ts` qualifies each claim against its frozen `EvidenceBasis`. Unknown, changed,
+  hidden, missing, candidate-only and unverified sources cannot establish `supported`. User adoption
+  remains separate from evidence confidence. `reportedConfidence` retains unsupported legacy claims
+  without fabricating a historical basis. Current object compatibility views, Research extraction,
+  selected-context Tool output and Turn Context Frames consume these queries.
+- A Research evidence item explicitly binds kind/index/text. Conclusion extraction inherits only
+  that item's evidence, with a separate Research origin; unbound legacy items inherit no whole-card
+  citations. Editing list text detaches the old binding; editing adopted text cannot certify new claims.
+- Controlled semantic writes support explicit supersede/retract/resolve, scoped target IDs and
+  persisted user evidence. UI withdrawal/resolution/restoration and Tool writes share the domain
+  transition. Replaced facts cannot be restored as current. No automatic contradiction matching is
+  used to decide which old fact to replace.
+- Proposal dependencies are frozen from task Context or Operation input before execution and checked
+  at Apply. Local A+ recovery and pending confirmations preserve those snapshots; old recovery without
+  them remains unknown. Schema 1–17 projects/backups remain readable, migration is idempotent, and
+  old incomplete Proposal baselines require explicit review rather than being recaptured.
+
+P1B-2 still owns full Memory / Stage / Continuity consumer convergence and projection ownership.
+P2 execution/input fulfillment, P5 Delivery Draft baselines and P6H manual history are unchanged.
 
 Current workspace state includes:
 
@@ -279,8 +308,8 @@ evidence is not enough. New writes use only the four assignable categories and n
 `unknown`; current runtime code never infers category from title, body, or note. It strips old
 checkpoint collections and message metadata, removes `imageVariant` without inferring an image
 role, and migrates at most one structurally valid legacy checkpoint range into a deterministic
-project-wide summary only when no valid current summary exists. An already-current schema-17
-workspace only strips retired fields and never interprets them. It also drops old
+project-wide summary only when no valid current summary exists. Schema-17 and schema-18
+workspaces only strip retired fields and never interpret them. It also drops old
 Closure Recovery, signed terminal Outcome, and Provider Request State records while preserving raw
 chat, Summary Revisions, Provider Context Frames, Provider input/output snapshots, Agent traces,
 project data, and assets. Those dropped fields are not part of the canonical type or archive format

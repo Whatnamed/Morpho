@@ -6,7 +6,7 @@ As of the final documentation closeout, the repository contains one formal A+ Ag
 current source of truth is the code on `main` plus the documents listed below; historical milestone
 documents are not alternate implementation guides.
 
-- `schemaVersion` is 17 and project data remains browser-local first.
+- `schemaVersion` is 18 and project data remains browser-local first.
 - A+ Phase A, Phase B, Phase C Observation, and Phase C Cleanup are complete.
 - A+ is the sole Production Agent Runtime.
 - The Runtime B database table/RPC contract has been removed; historical B Migrations, archive

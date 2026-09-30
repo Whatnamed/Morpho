@@ -193,7 +193,7 @@ AI continuity and Project Memory:
 - `submit_memory_update` accepts only locally authorized exact quotes from the current persisted user message. AI suggestions and one-off requests are rejected as stable preferences;
 - deterministic project facts project into seven current Memory documents and only actually occurred Stage Records. Current versions, source refs, revision chains, and `reviewRequired` are visible under `项目记录`;
 - successful writes show only specific feedback such as `已更新项目偏好`, `已记录设计决定`, or `已更新方向与视觉发展记录`; no write means no feedback;
-- schema 1-16 backups may contain retired checkpoint/lane/image compatibility fields, but restore inspects and migrates them into the schema-17 canonical workspace before the new copy is returned; current backups never emit those fields.
+- schema 1-16 backups may contain retired checkpoint/lane/image compatibility fields, but restore inspects and migrates them into the schema-18 canonical workspace before the new copy is returned; schema 17 upgrades without reinterpreting retired fields; current backups never emit those fields.
 
 
 Delivery preparation drafts:
@@ -817,12 +817,20 @@ Legacy single-project key read for a one-time pristine-Nightrail migration:
 morpho.workspace.nightrail.v1
 ```
 
-Current structured workspace data is schema version `17`. v1 through v16 reads are pure and
-idempotent. Schema 17 strips old `conversationCheckpoints`, message lane/checkpoint metadata, and
+Current structured workspace data is schema version `18`. v1 through v17 reads are pure and
+idempotent. Schema 1–16 upgrades strip old `conversationCheckpoints`, message lane/checkpoint metadata, and
 `imageVariant`; a valid old checkpoint range becomes one deterministic project-wide summary only
-when no valid current summary exists. Current schema 17 loading never interprets retired fields.
+when no valid current summary exists. Schema 17 and current schema 18 loading never interpret retired fields.
 Editable backup restore follows inspect -> restore as a new copy -> migrate, while `chat: none`
 clears messages, compaction, summary revisions, provider frames, and Compare analyses.
+
+Schema 18 adds structured Decision effects, per-claim evidence bases and explicit Research item
+bindings, versioned Proposal dependency fingerprints, and semantic supersede/retract/resolve
+provenance. Migration never reconstructs old effects or evidence from current objects. Legacy
+reported confidence is retained separately and qualifies as unknown/review-required. Missing old
+Proposal or in-flight recovery baselines are not recaptured; Apply requires source review. A+ local
+recovery v2 stays readable with optional frozen `sourceSnapshots`; the original Provider body is
+unchanged. These are browser-local contracts with no server Journal/database migration.
 
 The following paragraph is historical schema detail retained for migration traceability:
 
