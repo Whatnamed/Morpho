@@ -120,7 +120,7 @@ function hasChangedRuntimeObjectContent(snapshot: MorphoWorkspace, current: Morp
   return Object.values(current.objects).some((object) => {
     const previous = snapshot.objects[object.id];
     if (object.type === "file" && previous?.type === "file") {
-      const runtimeFields = ["assetId", "extractedAssetId", "parseStatus", "parseError", "extractedCharCount", "extractedPageCount", "sourcePageCount", "extractionTruncated"] as const;
+      const runtimeFields = ["assetId", "extractedAssetId", "parseStatus", "parseError", "parsedAt", "extractedCharCount", "extractedPageCount", "sourcePageCount", "extractionTruncated"] as const;
       return runtimeFields.some((field) => !sameValue(previous[field], object[field]));
     }
     return object.type === "image" && previous?.type === "image" &&

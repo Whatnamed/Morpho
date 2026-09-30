@@ -107,6 +107,7 @@ describe("workspace object-operation undo history", () => {
     if (file.type !== "file") throw new Error("Expected file.");
     const current: MorphoWorkspace = { ...before, objects: { ...before.objects, [file.id]: { ...file, parseStatus: "parsed", extractedCharCount: 123 } } };
     expect(shouldBlockSnapshotUndo(before, current)).toBe(true);
+    expect(shouldBlockSnapshotUndo(before, { ...before, objects: { ...before.objects, [file.id]: { ...file, parsedAt: "2026-09-30T00:00:00.000Z" } } })).toBe(true);
     expect(shouldBlockSnapshotUndo(before, { ...before, objects: { ...before.objects, [file.id]: { ...file, title: "手动标题" } } })).toBe(false);
   });
 

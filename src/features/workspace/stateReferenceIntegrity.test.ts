@@ -35,7 +35,15 @@ describe("P1A state and reference integrity acceptance", () => {
     expect(restored.artifactProposals[pending.proposal.id].sourceSnapshots).toEqual(pending.proposal.sourceSnapshots);
   });
   it("deletes a direction root without deleting its images, generation metadata, child lineage or historical revisions", () => {
-    const base = createInitialWorkspace();
+    const seeded = createInitialWorkspace();
+    const generatedImage = seeded.objects["image-soft-rail-v2"];
+    if (generatedImage.type !== "image") throw new Error("Expected generated image.");
+    const generation = {
+      operationId: "p1a-image-operation", modelId: "gpt-image-2", modelLabel: "GPT Image 2", aspectRatio: "1:1",
+      prompt: "保留方向来源", referenceObjectIds: ["direction-soft-rail"], directionId: "direction-soft-rail",
+      visualBranchId: generatedImage.visualBranchId, createdAt: "2026-09-30T00:00:00.000Z"
+    };
+    const base: MorphoWorkspace = { ...seeded, objects: { ...seeded.objects, [generatedImage.id]: { ...generatedImage, generation } } };
     const direction = base.objects["direction-soft-rail"];
     if (direction.type !== "conceptDirection") throw new Error("Expected direction.");
     const proposal = recordConceptDirectionProposal(base, {
@@ -70,6 +78,7 @@ describe("P1A state and reference integrity acceptance", () => {
     expect(after.projectContinuity.recordEntries.map((entry) => entry.id)).toEqual(before.projectContinuity.recordEntries.map((entry) => entry.id));
     for (const child of applied.directions) expect(after.objects[child.id]).toMatchObject({ lineageRootId: direction.id });
     const restored = assertRestorable(after);
+    expect(restored.objects[generatedImage.id]).toMatchObject({ generation });
     expect(restored.directionLineage).toEqual(before.directionLineage);
     expect(restored.directionRevisions).toEqual(before.directionRevisions);
     expect(restored.artifactProposals[proposal.proposal.id]).toEqual(after.artifactProposals[proposal.proposal.id]);
