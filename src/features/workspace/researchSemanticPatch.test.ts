@@ -28,6 +28,7 @@ describe("research success semantic patch", () => {
         comparisonAnalyses: {}
       }
     };
+    workspaceWithMessage.objects["file-course-brief"].incarnationId = "created-course-brief";
     const created = createResearchOperation(workspaceWithMessage, {
       userInput: draft,
       selectedObjectIds: ["file-course-brief"],

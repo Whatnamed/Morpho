@@ -1,3 +1,4 @@
+import { createObjectIncarnationId } from "../../domain/morpho/objectIdentity";
 import type {
   CanvasPoint,
   DocumentFragmentObject,
@@ -201,6 +202,7 @@ export function buildDocumentFragmentDraft(
       visibility: "active",
       source: {
         fileObjectId: file.id,
+        fileIncarnationId: file.incarnationId,
         fileTitle: file.title,
         fileName: file.fileName,
         sourceExtractAssetId: selection.extractAssetId,
@@ -219,6 +221,7 @@ export function createDocumentFragment(workspace: MorphoWorkspace, draft: Docume
   const fragment: DocumentFragmentObject = {
     ...draft,
     id: fragmentId,
+    incarnationId: createObjectIncarnationId(),
     createdAt: now,
     updatedAt: now
   };

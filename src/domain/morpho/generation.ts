@@ -1,3 +1,4 @@
+import { createObjectIncarnationId } from "./objectIdentity";
 import { reconcileWorkspaceDerivedState } from "./derivedState";
 import { getImageCanvasSize } from "./imageSizing";
 import { findAvailableCanvasPosition } from "./canvasPlacement";
@@ -97,6 +98,7 @@ export function createGeneratedImageFromAsset(
   });
   const generatedImage: ImageObject = {
     id: objectId,
+    incarnationId: createObjectIncarnationId(),
     type: "image",
     title: input.title ?? input.generation.title ?? "GrsAI 生成结果",
     summary: input.summary ?? input.generation.purpose ?? input.generation.prompt,

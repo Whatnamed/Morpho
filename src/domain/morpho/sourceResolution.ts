@@ -3,6 +3,7 @@ import type { SourceSemanticSnapshot } from "../operations/types";
 
 export type SourceResolution = {
   objectId: string;
+  identity: "same" | "different" | "unknown";
   existence: "present" | "missing";
   visibility: "active" | "hidden" | "unknown";
   content: "available" | "referenceOnly" | "unavailable";
@@ -16,6 +17,7 @@ export function captureSourceSnapshot(workspace: MorphoWorkspace, objectId: stri
   const object = workspace.objects[objectId];
   return {
     objectId,
+    incarnationId: object?.incarnationId,
     objectType: object?.type ?? "unknown",
     visibility: object?.visibility ?? "missing",
     fingerprintVersion: 2,
@@ -29,8 +31,11 @@ export function captureSourceSnapshots(workspace: MorphoWorkspace, objectIds: st
 
 export function resolveSource(workspace: MorphoWorkspace, objectId: string, baseline?: SourceSemanticSnapshot): SourceResolution {
   const object = workspace.objects[objectId];
-  if (!object) return { objectId, existence: "missing", visibility: "unknown", content: "unavailable", freshness: baseline ? "changed" : "unknown", binaryAvailability: "notChecked" };
+  if (!object) return { objectId, identity: "unknown", existence: "missing", visibility: "unknown", content: "unavailable", freshness: baseline ? "changed" : "unknown", binaryAvailability: "notChecked" };
   const snapshot = captureSourceSnapshot(workspace, objectId);
+  const identity: SourceResolution["identity"] = baseline?.objectId === objectId && baseline.incarnationId && object.incarnationId
+    ? baseline.incarnationId === object.incarnationId ? "same" : "different"
+    : "unknown";
   let content: SourceResolution["content"] = "available";
   if (object.type === "file") {
     content = object.parseStatus === "parsed" && object.extractedAssetId && workspace.assets[object.extractedAssetId] ? "available" : "unavailable";
@@ -38,15 +43,15 @@ export function resolveSource(workspace: MorphoWorkspace, objectId: string, base
     content = "referenceOnly";
   } else if (object.type === "documentFragment") {
     const file = workspace.objects[object.source.fileObjectId];
-    content = file?.type === "file" && file.visibility === "active" && file.extractedAssetId === object.source.sourceExtractAssetId && workspace.assets[object.source.sourceExtractAssetId] ? "available" : "unavailable";
+    content = file?.type === "file" && Boolean(file.incarnationId) && file.incarnationId === object.source.fileIncarnationId && file.visibility === "active" && file.extractedAssetId === object.source.sourceExtractAssetId && workspace.assets[object.source.sourceExtractAssetId] ? "available" : "unavailable";
   } else if (object.type === "image") {
     content = object.assetId && workspace.assets[object.assetId] ? "available" : "unavailable";
   } else if (object.type === "proposalDraft" || object.type === "imageCollection") {
     content = "referenceOnly";
   }
   return {
-    objectId, existence: "present", visibility: object.visibility, content,
-    freshness: baseline?.fingerprintVersion === 2
+    objectId, identity, existence: "present", visibility: object.visibility, content,
+    freshness: identity === "different" ? "changed" : identity === "same" && baseline?.fingerprintVersion === 2
       ? baseline.semanticFingerprint === snapshot.semanticFingerprint && baseline.objectType === snapshot.objectType ? "current" : "changed"
       : "unknown",
     binaryAvailability: "notChecked", snapshot
@@ -61,7 +66,7 @@ function semanticContent(workspace: MorphoWorkspace, object: MorphoObject): unkn
     case "link": return { ...common, url: object.url, domain: object.domain, editableTitle: object.editableTitle, description: object.description, assetId: object.assetId };
     case "documentFragment": {
       const file = workspace.objects[object.source.fileObjectId];
-      return { ...common, body: object.body, source: object.source, file: file?.type === "file" ? { visibility: file.visibility, ...fileContent(workspace, file) } : { missing: true } };
+      return { ...common, body: object.body, source: object.source, file: file?.type === "file" ? { incarnationId: file.incarnationId, visibility: file.visibility, ...fileContent(workspace, file) } : { missing: true } };
     }
     case "research": return { ...common, findings: object.findings, opportunities: object.opportunities, constraints: object.constraints, openQuestions: object.openQuestions, evidence: object.evidence, provenance: object.provenance };
     case "keyConclusion": return { ...common, body: object.body, category: object.category, state: object.state, confidence: object.confidence, supersededById: object.supersededById, evidence: object.evidence, researchOrigin: object.researchOrigin };

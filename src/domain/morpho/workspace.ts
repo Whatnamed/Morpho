@@ -1,3 +1,4 @@
+import { createObjectIncarnationId } from "./objectIdentity";
 import { reconcileWorkspaceDerivedState, createEmptyProjectWorkingState } from "./derivedState";
 import {
   createDeliveryReferenceSnapshot as createStableDeliveryReferenceSnapshot,
@@ -698,7 +699,7 @@ export function deleteObject(
         {
           id: makeDecisionId(workspace, "deleteObject", objectId),
           kind: "deleteObject" as const,
-        effect: { kind: "deleteObject" as const, targetObjectId: objectId },
+        effect: { kind: "deleteObject" as const, targetObjectId: objectId, targetIncarnationId: object.incarnationId },
           createdAt: new Date().toISOString(),
           summary: `删除 ${object.title}`,
           reason: options.reason,
@@ -802,7 +803,7 @@ export function setConceptDirectionStatus(
       {
         id: decisionId,
         kind: "setDirectionStatus",
-        effect: { kind: "setDirectionStatus", targetObjectId: objectId, status },
+        effect: { kind: "setDirectionStatus", targetObjectId: objectId, targetIncarnationId: object.incarnationId, status },
         createdAt: now,
         summary: `${object.title} -> ${status}`,
         reason,
@@ -855,7 +856,7 @@ export function setImageRole(
       {
         id: makeDecisionId(workspace, "setImageRole", objectId),
         kind: "setImageRole",
-        effect: { kind: "setImageRole", targetObjectId: objectId, role },
+        effect: { kind: "setImageRole", targetObjectId: objectId, targetIncarnationId: object.incarnationId, role },
         createdAt: now,
         summary: `${object.title} -> ${role}`,
         reason: options.reason,
@@ -1245,7 +1246,7 @@ export function setDefaultReference(
       {
         id: decisionId,
         kind: "setDefaultReference",
-        effect: { kind: "setDefaultReference", targetObjectId: objectId, referenceObjectId: objectId },
+        effect: { kind: "setDefaultReference", targetObjectId: objectId, targetIncarnationId: object.incarnationId, referenceObjectId: objectId },
         createdAt: now,
         summary:
           markedCount > 0
@@ -1334,7 +1335,7 @@ export function clearDefaultReference(
       {
         id: decisionId,
         kind: "setDefaultReference",
-        effect: { kind: "setDefaultReference", targetObjectId: objectId, referenceObjectId: null },
+        effect: { kind: "setDefaultReference", targetObjectId: objectId, targetIncarnationId: object.incarnationId, referenceObjectId: null },
         createdAt: now,
         summary: `清除后续默认参考：${object.title}`,
         reason: options.reason,
@@ -1383,6 +1384,7 @@ export function createKeyConclusion(
   const confidence = qualifications.length === 0 || qualifications.some((entry) => entry.confidence === "needsVerification") ? "needsVerification" : qualifications.every((entry) => entry.confidence === "supported") ? "supported" : "partial";
   const keyConclusion: KeyConclusionObject = {
     id: objectId,
+    incarnationId: createObjectIncarnationId(),
     type: "keyConclusion",
     title: input.title,
     summary: input.summary ?? input.body,
@@ -1427,7 +1429,7 @@ export function createKeyConclusion(
       {
         id: makeDecisionId(workspace, "createKeyConclusion", objectId),
         kind: "createKeyConclusion",
-        effect: { kind: "createKeyConclusion", targetObjectId: objectId },
+        effect: { kind: "createKeyConclusion", targetObjectId: objectId, targetIncarnationId: keyConclusion.incarnationId },
         createdAt: now,
         summary: `保留关键结论：${input.title}`,
         reason: input.note,
@@ -1551,7 +1553,7 @@ export function setKeyConclusionCategory(
       {
         id: makeDecisionId(workspace, "setKeyConclusionCategory", target.id),
         kind: "setKeyConclusionCategory",
-        effect: { kind: "setKeyConclusionCategory", targetObjectId: target.id, category: nextCategory },
+        effect: { kind: "setKeyConclusionCategory", targetObjectId: target.id, targetIncarnationId: target.incarnationId, category: nextCategory },
         createdAt: now,
         summary: `更新关键结论类别：${target.title} → ${nextCategory}`,
         reason: options.reason,
@@ -1624,7 +1626,7 @@ export function setKeyConclusionState(
       {
         id: makeDecisionId(workspace, "setKeyConclusionState", target.id),
         kind: "setKeyConclusionState",
-        effect: { kind: "setKeyConclusionState", targetObjectId: target.id, state: nextState, supersededById: nextState === "superseded" ? options.supersededById : undefined },
+        effect: { kind: "setKeyConclusionState", targetObjectId: target.id, targetIncarnationId: target.incarnationId, state: nextState, supersededById: nextState === "superseded" ? options.supersededById : undefined },
         createdAt: now,
         summary: `更新关键结论状态：${target.title} → ${nextState}`,
         reason: options.reason,

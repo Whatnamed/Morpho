@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { classifyDecisionRecords } from "./decisionRecords";
-import { createInitialWorkspace, setConceptDirectionStatus, setDefaultReference, setKeyConclusionCategory } from "./workspace";
+import { createInitialWorkspace as createLegacyFixture, setConceptDirectionStatus, setDefaultReference, setKeyConclusionCategory } from "./workspace";
 
 describe("decision record classification", () => {
   it("marks an earlier direction status as superseded after a later status change", () => {
@@ -130,4 +130,11 @@ function getUnknownKeyConclusion(workspace: ReturnType<typeof createInitialWorks
     },
     object
   };
+}
+
+// Model newly created objects for authority tests; compatibility tests use raw legacy data.
+function createInitialWorkspace() {
+  const workspace = createLegacyFixture();
+  for (const object of Object.values(workspace.objects)) object.incarnationId = `created-${object.id}`;
+  return workspace;
 }

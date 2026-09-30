@@ -1737,6 +1737,7 @@ describe("Morpho workspace domain boundaries", () => {
 
   it("treats a key conclusion category change as a source semantic change even when its body is unchanged", () => {
     const workspace = createInitialWorkspace();
+    workspace.objects["insight-continuous-support"].incarnationId = "created-conclusion";
     const created = createArtifactProposalOperation(workspace, {
       operationId: "operation-key-conclusion-category-fingerprint",
       type: "designDefinition",

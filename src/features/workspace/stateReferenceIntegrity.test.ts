@@ -36,6 +36,7 @@ describe("P1A state and reference integrity acceptance", () => {
   });
   it("deletes a direction root without deleting its images, generation metadata, child lineage or historical revisions", () => {
     const seeded = createInitialWorkspace();
+    seeded.objects["direction-soft-rail"].incarnationId = "created-soft-rail";
     const generatedImage = seeded.objects["image-soft-rail-v2"];
     if (generatedImage.type !== "image") throw new Error("Expected generated image.");
     const generation = {

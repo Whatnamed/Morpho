@@ -47,7 +47,7 @@ describe("A+ local Recovery Store", () => {
   it("preserves frozen proposal source dependencies across save/load while keeping legacy runtimes readable", async () => {
     const fixture = createFixture();
     const original = recoveryRecord("input");
-    const sourceSnapshots = [{ objectId: "source-file", objectType: "file", visibility: "active", fingerprintVersion: 2 as const, semanticFingerprint: "v2:original" }];
+    const sourceSnapshots = [{ objectId: "source-file", incarnationId: "created-source-file", objectType: "file", visibility: "active", fingerprintVersion: 2 as const, semanticFingerprint: "v2:original" }];
     const record = { ...original, metadata: { ...original.metadata, runtime: { ...original.metadata.runtime, sourceSnapshots } } };
     await fixture.store.save(record);
     const loaded = await fixture.store.load("project-test");

@@ -111,6 +111,7 @@ export type ProposalReviewDetails = {
 
 export type SourceSemanticSnapshot = {
   objectId: OperationObjectId;
+  incarnationId?: string;
   objectType: string;
   visibility: string;
   semanticFingerprint: string;
@@ -126,6 +127,7 @@ export type ArtifactProposalBase = {
   reviewState?: ProposalReviewState;
   reviewDetails?: ProposalReviewDetails[];
   sourceSnapshots: SourceSemanticSnapshot[];
+  targetIdentitySnapshots?: Array<Pick<SourceSemanticSnapshot, "objectId" | "incarnationId">>;
   sourceObjectIds: OperationObjectId[];
   citationIds: SourceCitationId[];
   createdAt: string;

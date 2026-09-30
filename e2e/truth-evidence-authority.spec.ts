@@ -1,6 +1,32 @@
 import { expect, test } from "@playwright/test";
 import { seedPayload } from "./fixtures/seed";
 
+test("Delivery action history does not request review while a reused-ID Decision does", async ({ page }) => {
+  const seed = seedPayload();
+  await page.addInitScript(({ key, value, catalogKey, catalogValue, conclusionId }) => {
+    if (localStorage.getItem(key) !== null) return;
+    const workspace = JSON.parse(value);
+    workspace.objects[conclusionId].incarnationId = "later-created-conclusion";
+    const createdAt = "2026-10-01T00:00:00Z";
+    const kinds = ["createDeliveryPreparation", "removeDeliveryReference", "refreshDeliveryReference", "applyDeliverySectionDraft"];
+    workspace.decisionRecords = kinds.map((kind, index) => ({ id: `delivery-event-${index}`, kind, summary: `Delivery 动作 ${index}`, createdAt, relatedObjectIds: [] }));
+    workspace.decisionRecords.push({ id: "previous-conclusion-decision", kind: "createKeyConclusion", summary: "原对象保留结论", createdAt, relatedObjectIds: [conclusionId], effect: { kind: "createKeyConclusion", targetObjectId: conclusionId, targetIncarnationId: "original-created-conclusion" } });
+    localStorage.setItem(catalogKey, catalogValue);
+    localStorage.setItem(key, JSON.stringify(workspace));
+  }, { key: seed.textOnly.workspaceKey, value: seed.textOnly.workspaceValue, catalogKey: seed.catalogKey, catalogValue: seed.textOnly.catalogValue, conclusionId: seed.textOnly.objectIds.keyConclusion });
+  await page.goto(`/projects/${seed.textOnly.projectId}`);
+  await page.getByRole("button", { name: "项目记录", exact: true }).click();
+  await page.getByRole("tab", { name: "历史与来源" }).click();
+  for (let index = 0; index < 4; index += 1) {
+    const row = page.locator("article.continuity-record").filter({ hasText: `Delivery 动作 ${index}` });
+    await expect(row.getByText("历史记录", { exact: true })).toBeVisible();
+    await expect(row.getByText("待复核", { exact: true })).toHaveCount(0);
+  }
+  const old = page.locator("article.continuity-record").filter({ hasText: "原对象保留结论" });
+  await expect(old.getByText("待复核", { exact: true })).toBeVisible();
+  await expect(old).toContainText("同 ID 新对象不能继承旧决定");
+});
+
 test("schema 17 Research remains review-required and an unbound item inherits no whole-card citations", async ({ page }) => {
   const seed = seedPayload();
   await page.addInitScript((seed) => {

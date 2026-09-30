@@ -1,3 +1,4 @@
+import { createObjectIncarnationId } from "./objectIdentity";
 import type {
   AssetRecord,
   CanvasPoint,
@@ -34,6 +35,7 @@ export function importTextObject(
   const objectId = nextObjectId(workspace, "text-import");
   const object: TextObject = {
     id: objectId,
+    incarnationId: createObjectIncarnationId(),
     type: "text",
     title: body.length > 28 ? `${body.slice(0, 28)}...` : body,
     summary: body,
@@ -73,6 +75,7 @@ export function importUrlObject(
   };
   const object: LinkObject = {
     id: objectId,
+    incarnationId: createObjectIncarnationId(),
     type: "link",
     title: input.title ?? parsed.hostname,
     summary: parsed.href,
@@ -127,6 +130,7 @@ export function importAssetBackedObjects(
   const collectionId = nextObjectId(placed.workspace, "image-collection");
   const collection: ImageCollectionObject = {
     id: collectionId,
+    incarnationId: createObjectIncarnationId(),
     type: "imageCollection",
     title: `图片合集 · ${imageObjectIds.length} 张`,
     summary: "批量导入形成的初始展开合集；成员仍是独立对象。",
@@ -154,6 +158,7 @@ function createObjectForAsset(workspace: MorphoWorkspace, asset: AssetRecord, in
   if (isImage) {
     return {
       id: objectId,
+      incarnationId: createObjectIncarnationId(),
       type: "image",
       title: asset.fileName,
       summary: asset.sourceType === "aiGeneratedImage" ? "AI 生成图片，已保存为本地资产。" : "用户导入的原始图片。",
@@ -166,6 +171,7 @@ function createObjectForAsset(workspace: MorphoWorkspace, asset: AssetRecord, in
 
   return {
     id: objectId,
+    incarnationId: createObjectIncarnationId(),
     type: "file",
     title: asset.fileName,
     summary: `${asset.mimeType || "未知类型"} · ${formatSize(asset.size)} · 尚未解析`,

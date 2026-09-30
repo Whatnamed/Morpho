@@ -19,6 +19,9 @@ function fixture(): MorphoWorkspace {
   workspace.assets.extract = { id: "extract", fileName: "extract.txt", mimeType: "text/plain", size: 100, storageKey: "extract", createdAt: "2026-09-30T00:00:00Z", sourceType: "documentExtract" };
   workspace.objects.file = { id: "file", type: "file", fileKind: "pdf", sourceLabel: "本地文件", title: "文档", summary: "文档资料", fileName: "source.pdf", parseStatus: "parsed", extractedAssetId: "extract", extractedCharCount: 100, visibility: "active", createdBy: "user" };
   workspace.objects.fragment = { id: "fragment", type: "documentFragment", title: "摘录", summary: "摘录资料", body: "摘录正文", source: { fileObjectId: "file", fileTitle: "文档", sourceExtractAssetId: "extract", startOffset: 0, endOffset: 4, blockIds: [] }, visibility: "active", createdBy: "user" };
+  // This fixture models fresh creations, not legacy normalization.
+  for (const object of Object.values(workspace.objects)) object.incarnationId = `created-${object.id}`;
+  workspace.objects.fragment.source.fileIncarnationId = workspace.objects.file.incarnationId;
   return reconcileWorkspaceDerivedState(workspace, "2026-09-30T00:00:00Z");
 }
 
@@ -45,7 +48,7 @@ describe("P1B-1 source and proposal authority", () => {
     const changed = { ...workspace, objects: { ...workspace.objects, link: { ...link, [key]: "changed" } } };
     expect(resolveSource(changed, "link", baseline)).toMatchObject({ existence: "present", freshness: "changed", content: "referenceOnly" });
   });
-  it.each(["body", "range", "extraction", "fileDeleted", "fileHidden", "assetMissing"])("detects fragment %s dependency changes", (change) => {
+  it.each(["body", "range", "extraction", "fileDeleted", "fileRecreated", "fileHidden", "assetMissing"])("detects fragment %s dependency changes", (change) => {
     const workspace = fixture(); const baseline = captureSourceSnapshot(workspace, "fragment");
     const next = structuredClone(workspace); const fragment = next.objects.fragment; const file = next.objects.file;
     if (fragment.type !== "documentFragment" || file.type !== "file") throw new Error("fixture");
@@ -53,9 +56,11 @@ describe("P1B-1 source and proposal authority", () => {
     if (change === "range") fragment.source.endOffset = 5;
     if (change === "extraction") file.extractedAssetId = "new-extract";
     if (change === "fileDeleted") delete next.objects.file;
+    if (change === "fileRecreated") file.incarnationId = "recreated-file";
     if (change === "fileHidden") file.visibility = "hidden";
     if (change === "assetMissing") delete next.assets.extract;
     expect(resolveSource(next, "fragment", baseline).freshness).toBe("changed");
+    if (change === "fileRecreated") expect(resolveSource(next, "fragment", captureSourceSnapshot(next, "fragment")).content).toBe("unavailable");
   });
   it("retains an unknown old fingerprint without manufacturing a current baseline", () => {
     const recorded = research(fixture(), ["file"]);
@@ -166,7 +171,7 @@ describe("P1B-1 structured decisions", () => {
     expect(records[1].record.effect).toMatchObject({ revisionId: second.revision.id });
   });
   it("never parses a misleading title and never revives an earlier A-B-A Decision", () => {
-    const workspace = fixture(); workspace.objects.direction = { id: "direction", type: "conceptDirection", keywords: [], lineageRootId: "direction", title: "Primary alternative 候选", summary: "方向", status: "alternative", visibility: "active", createdBy: "user", currentRevisionId: "r1", revisionIds: ["r1"] };
+    const workspace = fixture(); workspace.objects.direction = { id: "direction", incarnationId: "created-direction", type: "conceptDirection", keywords: [], lineageRootId: "direction", title: "Primary alternative 候选", summary: "方向", status: "alternative", visibility: "active", createdBy: "user", currentRevisionId: "r1", revisionIds: ["r1"] };
     const first = setConceptDirectionStatus(workspace, "direction", "eliminated", "淘汰");
     expect(classifyDecisionRecords(first)[0].state).toBe("current");
     const second = setConceptDirectionStatus(first, "direction", "alternative", "恢复");

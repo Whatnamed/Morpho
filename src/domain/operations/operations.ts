@@ -1,3 +1,4 @@
+import { createObjectIncarnationId } from "../morpho/objectIdentity";
 import type {
   CanvasInstance,
   CanvasPoint,
@@ -848,6 +849,7 @@ function attachProposalDraftObject(
   });
   const draftObject: ProposalDraftObject = {
     id: proposal.id,
+    incarnationId: workspace.objects[proposal.id] ? workspace.objects[proposal.id].incarnationId : createObjectIncarnationId(),
     type: "proposalDraft",
     proposalId: proposal.id,
     proposalType: proposal.type,
@@ -1025,10 +1027,11 @@ export function recordDesignDefinitionProposal(
     avoidDirections: [...input.avoidDirections],
     opportunities: [...input.opportunities],
     openQuestions: [...input.openQuestions],
-    basedOnDesignDefinitionId: input.basedOnDesignDefinitionId,
+    basedOnDesignDefinitionId: input.basedOnDesignDefinitionId ?? (input.workIntent !== "createDesignDefinition" ? workspace.workingState.currentDesignDefinitionId : undefined),
     basedOnRevisionId: input.basedOnRevisionId,
     changeNote: input.changeNote
   };
+  proposal.targetIdentitySnapshots = captureProposalTargetIdentities(workspace, proposal, input);
   const workspaceWithDraftObject = attachProposalDraftObject(workspace, proposal, now);
   const updatedOperation = input.operationId
     ? markProposalOperationCompleted(workspace.operations[input.operationId], proposal.id, now, "设计定义草案已放到画布，可稍后查看、应用、修改或放弃。")
@@ -1145,6 +1148,7 @@ export function applyDesignDefinitionProposal(
 
   const designDefinitionObject: DesignDefinitionObject = {
     id: definitionId,
+    incarnationId: currentDefinition ? currentDefinition.incarnationId : createObjectIncarnationId(),
     type: "designDefinition",
     title: proposal.title,
     summary: proposal.summary,
@@ -1257,7 +1261,7 @@ export function applyDesignDefinitionProposal(
         {
           id: `decision-apply-design-definition-${workspace.decisionRecords.length + 1}`,
           kind: "applyDesignDefinition",
-          effect: { kind: "applyDesignDefinition", targetObjectId: definitionId, revisionId },
+          effect: { kind: "applyDesignDefinition", targetObjectId: definitionId, targetIncarnationId: designDefinitionObject.incarnationId, revisionId },
           createdAt: now,
           summary: `应用设计定义：${proposal.title}`,
           reason: proposal.changeNote,
@@ -1343,7 +1347,7 @@ export function setCurrentDesignDefinition(
           "decision-set-current-design-definition"
         ),
         kind: "applyDesignDefinition",
-        effect: { kind: "applyDesignDefinition", targetObjectId: target.id, revisionId: target.currentRevisionId },
+        effect: { kind: "applyDesignDefinition", targetObjectId: target.id, targetIncarnationId: target.incarnationId, revisionId: target.currentRevisionId },
         createdAt: now,
         summary: `设为当前设计定义：${target.title}`,
         reason,
@@ -1444,6 +1448,7 @@ export function recordConceptDirectionProposal(
     basedOnDesignDefinitionId: input.basedOnDesignDefinitionId,
     basedOnRevisionId: input.basedOnRevisionId
   };
+  proposal.targetIdentitySnapshots = captureProposalTargetIdentities(workspace, proposal, input);
   const workspaceWithDraftObject = attachProposalDraftObject(workspace, proposal, now);
   const updatedOperation = input.operationId
     ? markProposalOperationCompleted(workspace.operations[input.operationId], proposal.id, now, "概念方向草案已放到画布，可稍后查看、应用、修改或放弃。")
@@ -1722,6 +1727,7 @@ export function applyConceptDirectionProposal(
     const revisionId = createRevisionFromDraft(directionId, 1, draft);
     const directionObject: ConceptDirectionObject = {
       id: directionId,
+      incarnationId: createObjectIncarnationId(),
       type: "conceptDirection",
       title: draft.title,
       summary: draft.summary,
@@ -1850,7 +1856,7 @@ export function applyConceptDirectionProposal(
         ...appliedDirections.map((direction, index) => ({
           id: `decision-apply-concept-direction-${workspace.decisionRecords.length + index + 1}`,
           kind: "applyConceptDirection" as const,
-          effect: { kind: "applyConceptDirection" as const, targetObjectId: direction.id, revisionId: direction.currentRevisionId },
+          effect: { kind: "applyConceptDirection" as const, targetObjectId: direction.id, targetIncarnationId: direction.incarnationId, revisionId: direction.currentRevisionId },
           createdAt: now,
           summary: `${buildConceptDirectionDecisionSummary(proposal)}：${direction.title}`,
           objectSnapshot: { id: direction.id, type: "conceptDirection" as const, title: direction.title },
@@ -1965,6 +1971,7 @@ export function applyResearchAnalysisProposal(
   );
   const researchObject: ResearchObject = {
     id: objectId,
+    incarnationId: createObjectIncarnationId(),
     type: "research",
     title: proposal.title,
     summary: proposal.summary,
@@ -2285,7 +2292,7 @@ function evaluateDesignDefinitionProposalReviewState(
     };
   }
 
-  const sourceReviewDetails = evaluateSourceReviewDetails(workspace, proposal.sourceSnapshots);
+  const sourceReviewDetails = [...evaluateSourceReviewDetails(workspace, proposal.sourceSnapshots), ...evaluateTargetIdentityReviewDetails(workspace, proposal)];
   if (sourceReviewDetails.length > 0) {
     return {
       state: "sourceChanged",
@@ -2334,7 +2341,7 @@ function evaluateConceptDirectionProposalReviewState(
     };
   }
 
-  const sourceReviewDetails = evaluateSourceReviewDetails(workspace, proposal.sourceSnapshots);
+  const sourceReviewDetails = [...evaluateSourceReviewDetails(workspace, proposal.sourceSnapshots), ...evaluateTargetIdentityReviewDetails(workspace, proposal)];
   if (sourceReviewDetails.length > 0) {
     return {
       state: "sourceChanged",
@@ -2561,6 +2568,26 @@ function evaluateSourceReviewDetails(workspace: MorphoWorkspace, snapshots: Sour
     if (source.visibility !== "active") return [{ ...detail, reason: "sourceInactive", message: "来源对象已被隐藏，需要复核。" }];
     if (source.freshness !== "current") return [{ ...detail, reason: "sourceContentChanged", message: source.freshness === "unknown" ? "旧草案没有可靠的来源基线，需要复核。" : "来源对象的语义内容已变化；版本或提取依据需要复核。" }];
     return [];
+  });
+}
+
+function proposalTargetIds(proposal: ArtifactProposal, workspace: MorphoWorkspace): string[] {
+  if (proposal.type === "designDefinition") return proposal.workIntent === "createDesignDefinition" ? [] : [proposal.basedOnDesignDefinitionId ?? workspace.workingState.currentDesignDefinitionId].filter((id): id is string => Boolean(id));
+  if (proposal.type !== "conceptDirection") return [];
+  return [...new Set([proposal.targetDirectionId, proposal.basedOnDesignDefinitionId, ...proposal.parentDirectionIds, ...proposal.directions.map((direction) => direction.basedOnDirectionId)].filter((id): id is string => Boolean(id)))];
+}
+
+function captureProposalTargetIdentities(workspace: MorphoWorkspace, proposal: ArtifactProposal, input: { sourceSnapshots?: SourceSemanticSnapshot[]; operationId?: string }) {
+  return proposalSourceSnapshots(workspace, { ...input, sourceObjectIds: proposalTargetIds(proposal, workspace) })
+    .map(({ objectId, incarnationId }) => ({ objectId, incarnationId }));
+}
+
+function evaluateTargetIdentityReviewDetails(workspace: MorphoWorkspace, proposal: ArtifactProposal): ProposalReviewDetails[] {
+  return proposalTargetIds(proposal, workspace).flatMap((objectId): ProposalReviewDetails[] => {
+    const object = workspace.objects[objectId];
+    const baseline = proposal.targetIdentitySnapshots?.find((snapshot) => snapshot.objectId === objectId);
+    if (object?.incarnationId && baseline?.incarnationId === object.incarnationId) return [];
+    return [{ objectId, objectTitle: object?.title ?? objectId, reason: "sourceContentChanged", message: "草案目标或依赖的对象身份未知或已变化，需要复核。" }];
   });
 }
 

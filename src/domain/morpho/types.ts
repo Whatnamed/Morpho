@@ -369,6 +369,8 @@ export type DeliveryGap = {
 
 export type MorphoObjectBase = {
   id: MorphoObjectId;
+  // Absent on legacy data; never reconstruct an incarnation from current content.
+  incarnationId?: string;
   type: MorphoObjectType;
   title: string;
   summary: string;
@@ -498,6 +500,7 @@ export type DocumentFragmentObject = MorphoObjectBase & {
   body: string;
   source: {
     fileObjectId: MorphoObjectId;
+    fileIncarnationId?: string;
     fileTitle: string;
     fileName?: string;
     sourceExtractAssetId: AssetId;
@@ -773,7 +776,7 @@ export type ComparisonDecisionMetadata = {
   userReason?: string;
 };
 
-export type DecisionEffect =
+export type DecisionEffect = { targetIncarnationId?: string } & (
   | { kind: "setDirectionStatus"; targetObjectId: MorphoObjectId; status: ConceptDirectionStatus }
   | { kind: "setDefaultReference"; targetObjectId: MorphoObjectId; referenceObjectId: MorphoObjectId | null }
   | { kind: "applyDesignDefinition"; targetObjectId: MorphoObjectId; revisionId: DesignDefinitionRevisionId }
@@ -782,7 +785,7 @@ export type DecisionEffect =
   | { kind: "createKeyConclusion"; targetObjectId: MorphoObjectId }
   | { kind: "setKeyConclusionCategory"; targetObjectId: MorphoObjectId; category: AssignableKeyConclusionCategory }
   | { kind: "setKeyConclusionState"; targetObjectId: MorphoObjectId; state: KeyConclusionState; supersededById?: MorphoObjectId }
-  | { kind: "deleteObject"; targetObjectId: MorphoObjectId };
+  | { kind: "deleteObject"; targetObjectId: MorphoObjectId });
 
 export type DecisionRecord = {
   id: DecisionRecordId;

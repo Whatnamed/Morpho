@@ -1,3 +1,4 @@
+import { createObjectIncarnationId } from "./objectIdentity";
 import { applyProjectContinuityEvent } from "./projectContinuity";
 import { reconcileWorkspaceDerivedState } from "./derivedState";
 import type {
@@ -152,6 +153,7 @@ export function createDeliveryPreparation(
   const sections = defaultSections(input.format, deliveryObjectId, now);
   const deliveryObject: DeliveryObject = {
     id: deliveryObjectId,
+    incarnationId: createObjectIncarnationId(),
     type: "delivery",
     title,
     summary: "交付准备包用于组织章节、稳定引用、说明文字和待补内容，不是最终排版文件。",

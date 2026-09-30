@@ -20,7 +20,7 @@ export function classifyDecisionRecord(
 ): ClassifiedDecisionRecord {
   const effect = record.effect;
   if (!effect) {
-    return record.kind === "createDeliveryReference"
+    return isHistoricalDecisionKind(record.kind)
       ? historical(record)
       : review(record, "历史决定缺少可靠的结构化 effect / revision，不能从当前状态或文案还原。");
   }
@@ -30,7 +30,9 @@ export function classifyDecisionRecord(
     return superseded(record, "该决定的 effect 已被后来的明确决定替代。");
   }
   const target = workspace.objects[effect.targetObjectId];
-  if (effect.kind === "deleteObject") return target ? review(record, "删除目标后来恢复，需要复核。") : historical(record);
+  if (effect.kind === "deleteObject") return target && effect.targetIncarnationId && target.incarnationId === effect.targetIncarnationId ? review(record, "删除目标后来恢复，需要复核。") : historical(record);
+  if (!effect.targetIncarnationId) return review(record, "历史决定缺少可靠的对象身份，不能绑定当前同 ID 对象。");
+  if (target && (!target.incarnationId || target.incarnationId !== effect.targetIncarnationId)) return review(record, "决定目标的对象身份未知或已变化，同 ID 新对象不能继承旧决定。");
   if (effect.kind === "setDefaultReference" && effect.referenceObjectId === null) {
     return workspace.workingState.currentDefaultReferenceId ? superseded(record, "项目后来设置了默认参考。") : current(record);
   }
@@ -52,7 +54,22 @@ export function classifyDecisionRecord(
 
 function effectSlots(effect: NonNullable<DecisionRecord["effect"]>): string[] {
   if (effect.kind === "applyDesignDefinition" || effect.kind === "setDefaultReference") return [effect.kind];
-  return [`${effect.kind}:${effect.targetObjectId}`];
+  return [`${effect.kind}:${effect.targetObjectId}:${effect.targetIncarnationId ?? "unknown"}`];
+}
+
+// These kinds describe occurrences, not ongoing authority over current state.
+function isHistoricalDecisionKind(kind: DecisionKind): boolean {
+  switch (kind) {
+    case "createDeliveryPreparation":
+    case "createDeliveryReference":
+    case "replaceDeliveryReference":
+    case "removeDeliveryReference":
+    case "refreshDeliveryReference":
+    case "applyDeliverySectionDraft": return true;
+    case "updateDeliverySection":
+    case "setDeliveryGapStatus": return true;
+    default: return false;
+  }
 }
 
 function current(record: DecisionRecord): ClassifiedDecisionRecord {

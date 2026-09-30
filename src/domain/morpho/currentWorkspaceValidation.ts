@@ -87,6 +87,12 @@ export function validateCurrentMorphoWorkspace(value: unknown): CurrentWorkspace
 }
 
 function validateAuthorityReferences(workspace: MorphoWorkspace, add: AddIssue): void {
+  const incarnations = new Set<string>();
+  for (const object of Object.values(workspace.objects)) {
+    if (!object.incarnationId) continue;
+    if (incarnations.has(object.incarnationId)) add(`objects.${object.id}.incarnationId`, "Object incarnation must be unique within the workspace.");
+    incarnations.add(object.incarnationId);
+  }
   for (const [index, record] of workspace.decisionRecords.entries()) {
     const effect = record.effect;
     if (!effect) continue;

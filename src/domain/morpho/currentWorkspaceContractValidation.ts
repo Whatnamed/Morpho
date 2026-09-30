@@ -221,6 +221,7 @@ function validateMorphoObject(value: unknown, path: string, add: WorkspaceContra
   const item = record(value, path, add); if (!item) return;
   id(item.id, `${path}.id`, add);
   enumValue(item.type, `${path}.type`, OBJECT_TYPES, add);
+  optionalId(item.incarnationId, `${path}.incarnationId`, add);
   string(item.title, `${path}.title`, add);
   string(item.summary, `${path}.summary`, add);
   enumValue(item.createdBy, `${path}.createdBy`, ["user", "ai"], add);
@@ -394,6 +395,7 @@ function validateResearchProvenance(value: unknown, path: string, add: Workspace
 function validateDocumentFragmentSource(value: unknown, path: string, add: WorkspaceContractIssueAdder): void {
   const item = record(value, path, add); if (!item) return;
   id(item.fileObjectId, `${path}.fileObjectId`, add);
+  optionalId(item.fileIncarnationId, `${path}.fileIncarnationId`, add);
   string(item.fileTitle, `${path}.fileTitle`, add);
   optionalString(item.fileName, `${path}.fileName`, add);
   id(item.sourceExtractAssetId, `${path}.sourceExtractAssetId`, add);
@@ -580,6 +582,7 @@ function validateDecisionRecord(value: unknown, path: string, add: WorkspaceCont
     enumValue(effect.kind, `${effectPath}.kind`, ["setDirectionStatus", "setDefaultReference", "applyDesignDefinition", "applyConceptDirection", "setImageRole", "createKeyConclusion", "setKeyConclusionCategory", "setKeyConclusionState", "deleteObject"], issue);
     {
       id(effect.targetObjectId, `${effectPath}.targetObjectId`, issue);
+      optionalId(effect.targetIncarnationId, `${effectPath}.targetIncarnationId`, issue);
       if (effect.kind === "setDirectionStatus") enumValue(effect.status, `${effectPath}.status`, ["pendingPreview", "primary", "alternative", "eliminated", "needsReview"], issue);
       if (effect.kind === "setDefaultReference" && effect.referenceObjectId !== null) id(effect.referenceObjectId, `${effectPath}.referenceObjectId`, issue);
       if (effect.kind === "applyDesignDefinition" || effect.kind === "applyConceptDirection") id(effect.revisionId, `${effectPath}.revisionId`, issue);
@@ -680,6 +683,11 @@ function validateImageGenerationOperationMetadata(value: unknown, path: string, 
 
 function validateArtifactProposal(value: unknown, path: string, add: WorkspaceContractIssueAdder): void {
   const item = record(value, path, add); if (!item) return;
+  optionalArray(item.targetIdentitySnapshots, `${path}.targetIdentitySnapshots`, add, (raw, identityPath, issue) => {
+    const identity = record(raw, identityPath, issue); if (!identity) return;
+    id(identity.objectId, `${identityPath}.objectId`, issue);
+    optionalId(identity.incarnationId, `${identityPath}.incarnationId`, issue);
+  });
   id(item.id, `${path}.id`, add);
   enumValue(item.type, `${path}.type`, ["researchAnalysis", "designDefinition", "conceptDirection", "deliveryPlan"], add);
   optionalId(item.operationId, `${path}.operationId`, add);
@@ -755,6 +763,7 @@ function validateSourceSemanticSnapshot(value: unknown, path: string, add: Works
   string(item.visibility, `${path}.visibility`, add);
   string(item.semanticFingerprint, `${path}.semanticFingerprint`, add);
   optionalEnum(item.fingerprintVersion, `${path}.fingerprintVersion`, [2], add);
+  optionalId(item.incarnationId, `${path}.incarnationId`, add);
 }
 
 function validateCitation(value: unknown, path: string, add: WorkspaceContractIssueAdder): void {

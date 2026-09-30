@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createBlankWorkspace, createInitialWorkspace, migrateWorkspaceToCurrentSchema } from "../morpho/workspace";
+import { createBlankWorkspace, createInitialWorkspace as createLegacyFixture, migrateWorkspaceToCurrentSchema } from "../morpho/workspace";
 import { validateCurrentMorphoWorkspace } from "../morpho/currentWorkspaceValidation";
 import { createEditableProjectBackupManifest } from "../morpho/projectArchive";
 import type { MorphoWorkspace } from "../morpho/types";
@@ -509,6 +509,7 @@ describe("Morpho Operation Runtime", () => {
       objects: {
         "text-source": {
           id: "text-source",
+          incarnationId: "created-text-source",
           type: "text" as const,
           title: "课程说明",
           summary: "夜间居家安全要求。",
@@ -695,6 +696,7 @@ describe("Morpho Operation Runtime", () => {
       objects: {
         "text-source": {
           id: "text-source",
+          incarnationId: "created-text-source",
           type: "text" as const,
           title: "Source",
           summary: "Original summary",
@@ -882,6 +884,7 @@ describe("Morpho Operation Runtime", () => {
       objects: {
         "text-source": {
           id: "text-source",
+          incarnationId: "created-text-source",
           type: "text" as const,
           title: "Source",
           summary: "Original summary",
@@ -1755,4 +1758,11 @@ function assertRevisionRoundTrip(workspace: MorphoWorkspace): MorphoWorkspace {
   expect(validateCurrentMorphoWorkspace(restored.workspace)).toMatchObject({ status: "ok" });
   expect(createEditableProjectBackupManifest(restored.workspace).status).toBe("ok");
   return restored.workspace;
+}
+
+// Model newly created objects for authority tests; compatibility tests use raw legacy data.
+function createInitialWorkspace() {
+  const workspace = createLegacyFixture();
+  for (const object of Object.values(workspace.objects)) object.incarnationId = `created-${object.id}`;
+  return workspace;
 }
