@@ -56,9 +56,11 @@ For implementation facts, current code is authoritative. For intended product be
 
 - Keep changes focused. Do not rewrite, delete, or reformat unrelated files, and do not use destructive Git commands that discard user work.
 - A completed task must not remain only in the local worktree unless the user explicitly asks for that. Split distinct concerns into a small number of coherent commits, push the task branch to the configured remote, and report the real commit SHA(s), branch, and push status.
-- The primary Morpho worktree is `D:\Morpho`.
+- By default, use the primary Morpho worktree `D:\Morpho`, develop on a dedicated task branch, and merge into `main` after the task is accepted.
+- Ordinary serial tasks do not automatically need an extra worktree; task size, importance, or risk alone is not a reason to create one. Create an extra worktree only for an explicit isolation need: parallel development, multiple Agents operating concurrently, a primary worktree occupied long-term, preserving an independent working state, or running different versions side by side.
 - Additional Morpho worktrees belong under `D:\Morpho-Worktrees\<task-or-branch>` unless the user explicitly chooses another visible project location. Do not create project worktrees inside harness-managed hidden directories such as `.codex`.
 - Before creating or removing a worktree, inspect `git worktree list --porcelain`. Reuse a suitable clean worktree when appropriate. Before removal, verify tracked/untracked state and that no unique unmerged or unpushed commits need preservation; remove through normal Git worktree commands and then prune stale entries.
+- If actual Git/worktree state differs from a Plan's assumptions, use the current repository state instead of forcing obsolete branch/worktree steps.
 - Before reporting completion, summarize what changed, affected files, verification performed, anything still unverified, and the pushed commit/branch state.
 
 ## 7. Plans and documentation
