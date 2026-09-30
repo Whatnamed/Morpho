@@ -1,156 +1,70 @@
 # Morpho — Project Instructions
 
-## 1. Project purpose
+## 1. Project purpose and sources of truth
 
-Morpho is an AI-assisted workspace for product and industrial-design concept development.
+Morpho is an AI-assisted workspace for product and industrial-design concept development. It is a continuous design-project workspace, not a generic dashboard, node-workflow editor, model console, or replacement for Figma, PowerPoint, CAD, BOM, or PLM tools.
 
-It is not:
+Before changing code, read this file first, then read only the task-relevant canonical material:
 
-* a generic SaaS dashboard;
-* a node-workflow editor;
-* a Figma or PowerPoint replacement;
-* a CAD, engineering, manufacturing, BOM, or PLM tool;
-* a model-control console.
+- Product behavior and semantics: `docs/product/README_本次更新说明.md` and the relevant `docs/product/00–05` document.
+- Visual and interaction rules: `docs/design/README.md`, then the relevant design-system or UI document.
+- Current implemented architecture and decisions: `docs/architecture/README.md`.
+- Real run/test/deploy procedures: `docs/operations/README.md` and `docs/operations/runbook.md`.
+- Remediation work: `docs/operations/remediation-program-map.md` plus the current package Plan when one exists.
+- `docs/archive/`, `docs/design/archive/`, historical milestone documents, and research/audit reports are evidence or history, not alternate current requirements.
 
-The product must preserve a continuous project workspace in which materials, research, conclusions, design definition, concept directions, images, and delivery preparation coexist on one canvas.
+For implementation facts, current code is authoritative. For intended product behavior, current product documents are authoritative. Treat disagreement between them as an explicit gap to resolve in the task; do not silently choose an old document or archived prototype.
 
-## 2. Required reading order
+## 2. Non-negotiable product boundaries
 
-Before changing code, read this file first.
+- Preserve one continuous project workspace with the canvas as the dominant surface. Canvas coordinates, grouping, or proximity must never determine business semantics, status, relationships, design-definition membership, default reference, or delivery inclusion.
+- Keep one continuous AI conversation surface. Stages are internal context/spatial landmarks, not mandatory workflow gates; Compare is a local operation, not a persistent stage or thread.
+- AI suggestions and generated semantic content are editable proposals. They must not silently send, mutate authoritative project state, promote candidate analysis to key conclusions, replace an applied definition, choose a main direction, set a default reference, or make important delivery decisions without the required user authority/confirmation.
+- Hide, delete, and eliminate are distinct actions and must remain distinct in data and UI.
+- Every generated image is a new object. Replacing a default reference or editing an upstream source must not silently rewrite existing images, historical relations, or stable DeliveryReferences.
+- Delivery preparation organizes content and references; it must not become a Figma/Keynote/PPT editor.
+- Do not expose project-memory files, stage-record internals, Context frames, model routing, prompt internals, queues, or storage mechanics as normal product UI.
 
-Then read only the documents relevant to the task:
+## 3. Engineering and data boundaries
 
-### Product rules
+- Keep canvas rendering/interaction separate from Morpho domain logic. Do not infer domain meaning from visual placement.
+- Keep domain types/state transitions, persistence, AI orchestration, server/provider access, and UI responsibilities separated. Avoid files that combine unrelated database, provider, state-transition, and large rendering concerns.
+- Preserve stable identities. Assets, canvas instances, semantic objects, revisions, relations, DeliveryReferences, and AI tasks are different concepts and must not be collapsed.
+- Prefer deterministic structured state changes and explicit inputs/outputs.
+- Use TypeScript strictly; do not introduce `any` to bypass incomplete modeling.
+- Avoid speculative abstractions, unnecessary global state, and dependencies without a demonstrated need.
+- Do not silently replace a core dependency or external service. Record confirmed core technical decisions in `docs/architecture/decisions.md`.
+- Never commit API keys, tokens, credentials, copied real `.env` files, or secrets. Public environment-variable names belong in `.env.example`.
 
-* `docs/product/README_本次更新说明.md`
-* `docs/product/00_Morpho_v3_规则继承、覆盖与完整性账本.md`
-* `docs/product/01_Morpho_产品定义与总体流程.md`
-* `docs/product/02_Morpho_工作台、画布与对象规则.md`
-* `docs/product/03_Morpho_AI工作流程、阶段Context与连续性机制.md`
-* `docs/product/04_Morpho_状态、版本、项目记录与记忆.md`
-* `docs/product/05_Morpho_项目入口、资产、搜索、导入与归档.md`
+## 4. Visual implementation boundaries
 
-### Design rules
+- Follow `docs/design/design-system/docs/DESIGN-SYSTEM.md` for visual work.
+- Preserve a warm, calm, light-mode, image-led workspace in which the canvas remains primary and controls/panels float above it.
+- Do not turn the product into a permanent three-column dashboard, equal-card grid, stage-progress UI, or node/workflow-wire editor.
+- Use the existing design tokens instead of re-declaring arbitrary global tokens. Use Chinese as the default product UI language unless a surface intentionally requires otherwise.
+- Motion should explain state changes, not decorate them.
 
-* `docs/design/README.md`
-* `docs/design/design-system/docs/DESIGN-SYSTEM.md` (current design system; tokens in `design-system/tokens/*.css`)
-* `docs/design/Morpho_UI_原型设计说明_v1.md`
+## 5. Testing and verification
 
-### Historical materials
+- Add or update automated tests when changing domain rules, state transitions, object/revision relations, DeliveryReferences, AI authority/action boundaries, persistence contracts, or API validation.
+- For meaningful changes, run the relevant subset of formatting/linting, type checking, unit tests, build, and browser-level checks. Use the runbook when the task reaches release/deployment boundaries.
+- Do not add low-value visual snapshot tests merely to create coverage.
+- If a check cannot run, state the exact blocker and do not claim it passed.
+- Manual visual inspection does not prove state or relationship correctness.
 
-* `docs/archive/` and `docs/design/archive/` are historical reference only.
-* Do not use archived v1, v2, or trial prototype files as current product requirements.
-* Do not reuse the `Nightfield`, “安静的仪器”, tactical-tool, or compact-field-tool content from the anchor HTML as official Morpho demo content.
-* The deployable built-in project is `project-morpho-case-study`, generated from a real editable Morpho backup. Its content is intentionally real and may remain in progress.
-* `夜航 / Nightrail` is no longer official demo content. It survives only as a v1 illustration inside `Morpho_UI_原型设计说明_v1.md`, as the domain test fixture behind `createTestWorkspace()`, and as a guarded one-time migration fingerprint for the legacy `morpho.workspace.nightrail.v1` key. Do not write new Nightrail demo content or treat it as current product material.
+## 6. Git, commit, push, and worktree discipline
 
-## 3. Priority when documents conflict
+- Keep changes focused. Do not rewrite, delete, or reformat unrelated files, and do not use destructive Git commands that discard user work.
+- A completed task must not remain only in the local worktree unless the user explicitly asks for that. Split distinct concerns into a small number of coherent commits, push the task branch to the configured remote, and report the real commit SHA(s), branch, and push status.
+- The primary Morpho worktree is `D:\Morpho`.
+- Additional Morpho worktrees belong under `D:\Morpho-Worktrees\<task-or-branch>` unless the user explicitly chooses another visible project location. Do not create project worktrees inside harness-managed hidden directories such as `.codex`.
+- Before creating or removing a worktree, inspect `git worktree list --porcelain`. Reuse a suitable clean worktree when appropriate. Before removal, verify tracked/untracked state and that no unique unmerged or unpushed commits need preservation; remove through normal Git worktree commands and then prune stale entries.
+- Before reporting completion, summarize what changed, affected files, verification performed, anything still unverified, and the pushed commit/branch state.
 
-1. Explicit current product rules in `docs/product/00–05`
-2. `README_本次更新说明.md`
-3. UI behavior and required states in `Morpho_UI_原型设计说明_v1.md`
-4. Visual system and tokens in `docs/design/design-system/` (`docs/DESIGN-SYSTEM.md` + `tokens/*.css`; mirrors the shipped `src/app/globals.css` — the code wins on conflict)
-5. `references/morpho_workspace_anchor_v2.html` for visual and interaction feeling only
-6. Archived documents and earlier prototypes
+## 7. Plans and documentation
 
-The anchor HTML is not production code. Do not copy its fixed layout, absolute positions, mock data, or hand-written interaction logic into the application.
-
-## 4. Non-negotiable product behavior
-
-* The workspace is one continuous project space: floating UI layers over a dominant canvas.
-* Canvas position is visual organization only. It must never determine object semantics, status, relationships, design-definition inclusion, default reference, or delivery inclusion.
-* The right side is a continuous AI conversation surface, never a full-height object inspector.
-* The left navigation locates regions on the canvas. It must not switch the user into separate stage pages or separate AI chats.
-* The bottom detail surface appears only when needed and shows direct information, source, version, relation, or decision context.
-* Clicking an AI suggestion fills editable natural language into the input. It must not automatically send, generate, mutate project state, or switch context.
-* Stages are internal context and spatial landmarks, not mandatory step-by-step gates or progress tracking.
-* Compare is a local operation, not a dedicated workflow stage or persistent thread.
-* Any image can be continued, locally modified, used as a reference, or developed into an angle, scenario, CMF, detail, or explanatory image.
-* “后续默认参考” is optional. Replacing it must not silently replace existing images, delivery references, or unrelated work.
-* Hide, delete, and eliminate are different actions and must remain different in data and UI.
-* Delivery preparation organizes materials, references, captions, descriptions, and gaps. It must not become a Figma, Keynote, or PPT editor.
-* Do not expose project memory files, stage records, Context internals, model routing, prompt details, task queues, or internal storage mechanics as product UI.
-
-## 5. Engineering boundaries
-
-* Keep canvas rendering and interaction separate from Morpho domain logic.
-* Do not infer business meaning from canvas coordinates, visual grouping, or visual proximity.
-* Keep domain types, persistence, AI orchestration, and UI components in separate modules.
-* Do not put database access, model API calls, complex state transitions, and large visual components in one file.
-* Prefer small focused modules with explicit inputs and outputs.
-* Use TypeScript strictly. Do not introduce `any` to bypass incomplete modeling.
-* Do not create fake production abstractions for future features that have no current use.
-* Avoid unnecessary global state. Keep UI-local state close to the component that owns it.
-* Do not add a dependency merely because it looks convenient.
-
-## 6. Core data principles
-
-* Every meaningful project object needs a stable identity independent of its visual placement.
-* Assets, canvas instances, semantic objects, versions, relations, delivery references, and AI tasks must not be treated as the same thing.
-* Every AI-generated image creates a new object. It must not overwrite the original image.
-* Delivery references are stable instances. Editing, replacing, or deleting their upstream source must not silently mutate the delivery reference.
-* Structured state changes should be deterministic when possible.
-* AI may summarize or draft semantic content, but it must not silently convert candidate analysis into key conclusions, replace an applied design definition, choose a main direction, set a default reference, or make important delivery decisions.
-
-## 7. Visual implementation rules
-
-* Follow `docs/design/design-system/docs/DESIGN-SYSTEM.md`.
-* Preserve a warm, calm, light-mode, image-led workspace.
-* The canvas should read as the primary surface. Top controls, left rail, AI conversation, and detail surfaces should float above it.
-* Do not build a permanent three-column shell that narrows the canvas.
-* Do not create equal-width card grids, dashboard metric panels, stage progress widgets, colorful badge stacks, workflow wires, node ports, or large dashed stage boxes.
-* Different object types must retain different visual treatments.
-* Use design tokens rather than scattering arbitrary colors, spacing, shadows, and radii. Tokens are declared once in `src/design-system/tokens/*.css` (imported by `globals.css`); do not re-declare them in `:root` elsewhere.
-* Use Chinese as the default product UI language unless a specific interface intentionally needs bilingual content.
-* Motion should explain state changes, not decorate.
-
-## 8. Dependencies and external services
-
-* Before adding a core dependency or external service, record the decision in `docs/architecture/decisions.md` once that file exists.
-* A core dependency includes a framework, canvas engine, database, authentication provider, file-storage provider, AI provider, state-management foundation, or major UI component system.
-* Do not silently replace an existing core dependency.
-* Before adding a non-trivial dependency, check whether the current stack can solve the problem cleanly.
-* Never commit API keys, tokens, database secrets, local credentials, or copied `.env` files.
-* Keep public environment-variable names in `.env.example` once integrations are introduced; never put real values there.
-
-## 9. Testing and verification
-
-* For domain rules, object relations, state changes, version behavior, delivery references, AI action boundaries, and API validation: add or update automated tests.
-* For visual exploration, do not create low-value snapshot tests before the interaction is stable.
-* After a meaningful change, run the relevant formatting, linting, type-checking, unit tests, build, and any browser-level checks available in the project.
-* If a command cannot run, state exactly what blocked it and do not claim success.
-* Do not treat manual visual inspection as proof that relationship or state logic is correct.
-
-## 10. Git, commit, push, and worktree discipline
-
-* Keep each change focused on one coherent concern.
-* Do not rewrite, delete, or reformat unrelated files.
-* Do not use destructive Git commands that discard user work.
-* A completed implementation task must not be left only in the local worktree. Unless the user explicitly asks to keep the work local or uncommitted, split the completed work into coherent commits and push the current task branch to the configured remote before reporting completion.
-* Do not combine unrelated concerns into one giant commit merely to finish the task. Prefer a small number of logical commits whose messages explain the implemented concern.
-* Before reporting a task as complete, verify and report the commit SHA(s), branch, and push status in addition to the implementation and test results.
-* The primary Morpho worktree is `D:\\Morpho`.
-* Additional Morpho worktrees must remain in a user-visible project location, currently `D:\\Morpho Work Tree\\<task-or-branch>`, unless the user explicitly chooses another location. Do not create or move project worktrees into harness-managed hidden directories such as `.codex` worktree storage.
-* Before creating a new worktree, inspect `git worktree list --porcelain` and reuse an existing suitable clean worktree when appropriate rather than accumulating redundant worktrees.
-* Never remove a worktree just because it appears old. Before cleanup, verify its path, branch/HEAD, tracked and untracked changes, and whether unique commits remain unmerged or unpushed. Preserve anything uncertain.
-* Remove a confirmed obsolete worktree through normal Git worktree commands, then prune stale administrative entries. Do not manually delete a worktree directory first.
-* Before finishing a task, report:
-
-  * what changed;
-  * which files changed;
-  * which commands were run;
-  * what passed;
-  * what remains unverified;
-  * the commit SHA(s) and branch;
-  * whether the branch was pushed successfully.
-
-## 11. Documentation discipline
-
-* Do not create empty planning documents merely to make the repository look complete.
-* When implementation begins, maintain:
-
-  * `docs/architecture/architecture.md` for current implemented architecture;
-  * `docs/architecture/decisions.md` for confirmed technical decisions;
-  * `docs/operations/runbook.md` for real install, run, test, build, and deployment commands.
-* Update these documents only when code or confirmed decisions make the content true.
-* Do not duplicate the product definition in technical documents.
+- One-off Implementation Plans, long execution prompts, and similar coding-agent task material belong under the project-root `temp\prompts\`. They are transient execution material, not long-term canonical documentation.
+- Do not create empty planning documents merely to make the repository appear complete, and do not promote temporary Plans into `docs/` just because they are long.
+- After an implementation is accepted, durable facts should live in code, the appropriate canonical document, the remediation Program Map when applicable, and Git history.
+- Keep `docs/architecture/architecture.md` aligned with implemented architecture, `docs/architecture/decisions.md` with confirmed technical decisions, and `docs/operations/runbook.md` with real operational procedures.
+- Update documentation only when code or a confirmed decision makes the statement true. Do not duplicate the product definition across technical documents.
