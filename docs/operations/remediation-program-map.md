@@ -1,7 +1,7 @@
 # Morpho Remediation Program Map
 
 > 规划基线：2026-09-21，v1。范围、归属、依赖与停止规则在本文件收敛；所有 implementation package 均尚未开始。
-> 当前 GitHub `main`：`0c04ec8e4c2a88023e845b731a2ae9bebbeb31d6`；本地 HEAD 相同，开始时工作区干净。
+> Program planning code baseline：`0c04ec8e4c2a88023e845b731a2ae9bebbeb31d6`（与前一审计基线 `2e801ed` 相比仅新增两份 research 文档，无源码、测试、依赖或 migration 变化，故用作规划输入；Program Map 自身在后续 commit 提交，不硬编码动荡的“当前 main”；各 package 启动时重新绑定当时最新 `main`）。
 > 本文件是未来整改的执行地图，不是已实施架构，不是代码审计，也不是各 package 的完整 Implementation Plan。
 
 ## 1. 最终裁决与范围
@@ -14,7 +14,7 @@
 4. **P3 独立为止损、执行身份与观察、结果交付三个 Plan。** Provider／宿主事实取证并行进行；不能让能力未知阻止安全止损，也不能把结果恢复并回整个 A+ 重写。
 5. **P6 的人工历史与交互合同分开；P7 从第一包就提供验收规则，最后才建立正式 baseline。** 不把 Eval 平台建设放在开发前面。
 
-共 **14 个可分别交付的主 Plan 单元**，另有一张 P3 事实前置清单、一项小型运维待办及 Deferred 清单。早期止损是所属 package 的有界里程碑，不重复登记为新缺陷或长期子系统。
+共 **14 个可分别交付的主 Plan 单元**，另有一张 P3 事实前置清单、一项可选流程决策（O1，非阻塞）及 Deferred 清单。早期止损是所属 package 的有界里程碑，不重复登记为新缺陷或长期子系统。
 
 Program goal：让既有产品任务在当前事实、实际输入、授权效果、本地保存、外部执行和交付之间保持一致；每个 package 能独立执行、复核和收口。
 
@@ -30,15 +30,15 @@ Program goal：让既有产品任务在当前事实、实际输入、授权效�
 
 | Source ID | 材料与基线 | 用途 |
 |---|---|---|
-| CROSS | [Cross-Domain / C1–C11](../../temp/prompts/cross-domain-audit/Cross-Domain.md)，`2e801ed` | 去重问题、authority、引用生命周期、分阶段修复与兼容边界 |
-| EXT | [External Side-Effect 完整报告](C:/Users/hasee/.codex/automations/1/audit-2026-09-21/review.md)，`2e801ed` | P3 的主要架构依据；优先于较早材料对外部幂等／取消的概括 |
+| CROSS | [Cross-Domain / C1–C11](../research/remediation-audits/cross-domain-coherence-remediation.md)，`2e801ed`（原产生位置：`temp/prompts/cross-domain-audit/Cross-Domain.md`） | 去重问题、authority、引用生命周期、分阶段修复与兼容边界 |
+| EXT | [External Side-Effect 完整报告](../research/remediation-audits/external-side-effect-provider-reliability.md)，`2e801ed`（原产生位置：`C:/Users/hasee/.codex/automations/1/audit-2026-09-21/review.md`） | P3 的主要架构依据；优先于较早材料对外部幂等／取消的概括 |
 | EVAL | [Real-World Project Eval](../research/real-world-project-eval-acceptance-architecture.md)，`2e801ed` | T1–T4、L0–L4、故障注入、归因、预算与停止条件；尚非已执行 gate |
 | DESIGN | [Design Intelligence Review](../research/design-intelligence-capability-orchestration-review.md)，审查 `3e77491`，在 `0c04ec8` 入库 | F1–F7、Turn Task Contract 候选方向与正向可执行性 |
-| TECH-A | [Foundational Review](C:/Users/hasee/.codex/visualizations/2026/09/20/01a0c00c-b6d3-7a01-b216-6f89bbf6f900/morpho-foundational-review-2026-09-21.md)，`2e801ed` | 事务 ACK 的实证、存储与提交边界演进、宿主限制 |
-| TECH-B | [dr1.md](D:/Obsidian/Git/1/Morpho/dr1.md)，声明基线 `2e801ed` | 技术路线与 trigger 的第二判断；其中历史 filecite 标记不作为可独立追溯证据 |
+| TECH-A | [Foundational Review](../research/remediation-audits/foundational-technology-architecture-review.md)，`2e801ed`（原产生位置：`C:/Users/hasee/.codex/visualizations/.../morpho-foundational-review-2026-09-21.md`） | 事务 ACK 的实证、存储与提交边界演进、宿主限制 |
+| TECH-B | [Foundational Review dr1](../research/remediation-audits/foundational-technology-architecture-review-dr1.md)，声明基线 `2e801ed`（原产生位置：`D:/Obsidian/Git/1/Morpho/dr1.md`） | 技术路线与 trigger 的第二判断；其中历史 filecite 标记不作为可独立追溯证据 |
 | CANON | [Product index](../product/README_本次更新说明.md)、[Architecture index](../architecture/README.md)、[runbook](./runbook.md) | 产品 authority、现有实现与真实操作规范 |
 
-外部／ignored 材料以本机路径定位，尚不具备另一台机器直接读取的条件。后续 session 在本机无需重索取；跨机器移交只携带当次 Plan 所需材料，不复制所有审计进本地图。精确文件指纹见文末。
+核心调查与审计材料已归档至仓库 `docs/research/remediation-audits/`，未来仅 clone GitHub 仓库即可完整解析。原始生成位置作为历史 provenance 记录备查。精确文件指纹见文末。
 
 两份底座报告的分歧裁决：TECH-A 建议较积极演进结构化存储，TECH-B 要求实测 trigger。共同确定的是当前事务 ACK 必须修复。近期采用“**ACK 立即修；整体迁移有优先级地暂缓**”。已知容量天花板与隔离容量实验不能等同于当前生产瓶颈；也不能把存储演进永久丢入无 owner 的 backlog。较旧性能数据不用于决定本轮迁移。
 
@@ -204,12 +204,18 @@ P3B 的 bounded result retention 是本次可靠性需求的组成部分，不�
 | OPFS / SQLite、Desktop/PWA、CRDT/cloud sync | **E** | 对应文件 I/O、查询、原生能力、离线入口或协作成为实际需求；不能仅由“项目复杂”触发 |
 | durable worker / workflow | **E** | 关页后必须持续执行／回收将过期结果，或已验证单 invocation 无法满足现有效果保障；最小 worker 可独立评估，不默认迁整个 A+ |
 
-### 7.3 已知运维缺项：CI enforcement
+### 7.3 可选流程加固：CI enforcement 与 Branch Protection（O1）
 
-TECH-B 已提出 branch protection 缺失。本轮 GitHub API 仍返回 `main.protected=false`，分支适用 rules 列表为空；`.github/workflows/quality.yml` 已包含工程、浏览器、Cloudflare backup build。这是已有发现的现状核验，没有扩展安全审计。
+TECH-B 已提出 branch protection 缺失。核验确认 GitHub API 返回 `main.protected=false`，分支适用 rules 列表为空；`.github/workflows/quality.yml` 已包含工程、浏览器、Cloudflare backup build。这是已有发现的现状核验，没有扩展安全审计。
 
-将它登记为 **O1：S / A / 普通模型，一次独立运维配置任务**：确认现有 checks 名称与合并方式，再配置对应 enforcement。它不是新架构包，也不阻塞本地 remediation；各包仍以已有检查结果作为验收证据。本轮只读核验，不修改 GitHub 设置。
+**降级裁决：登记为 O1（可选流程决策 / optional process decision / future workflow hardening），不纳入默认执行队列，不阻塞 P0 或任何产品 remediation package。**
 
+原因：
+- 当前为个人项目，实际工作流允许 coding Agent 直接 push，由 Chat 复审真实 commit 与 diff；
+- CI 已存在且正常运行；
+- 强制 branch protection / PR workflow 会改变当前开发方式，而不是修复产品 correctness。
+
+**启用 trigger**：只有未来出现多人协作、需要强制 PR、需要阻止 Agent 直接写 main、或 release governance 明确要求时再启用。本轮保持只读核验，不修改 GitHub 设置。
 ## 8. 覆盖账本与未来应读取的原报告
 
 ### 8.1 已知问题没有遗失，也不重复建账
@@ -234,21 +240,21 @@ TECH-B 已提出 branch protection 缺失。本轮 GitHub API 仍返回 `main.pr
 | TECH-A/B ACK | P0 | 本地 assets、restore、Recovery 与 P3B local ACK |
 | CROSS 叶子问题 | Gap/PPTX/truncation/query allocation → P0；reference order/archive reason/Delivery metadata → P5 | archive reason 在 P1B 结构化 Decision 后读取正确原因，不延续 summary 猜测 |
 | EVAL T1–T4、stopping | P7，自各包开始使用 | 不用评估平台替代整改 |
-| TECH-B CI enforcement | O1 | 单独运维项，不变成新的审计主题 |
+| TECH-B CI enforcement | O1 | 可选流程决策（非阻塞），未来协作/治理需要时启用 |
 
 ### 8.2 原专项按需读取
 
-七份原专项已在本机 `temp/prompts/cross-domain-audit/`，本轮只核验索引与存在性，没有重新阅读七份全文。Cross 足以做本地图；未来 Plan 对需要的细节定点回读：
+七份原专项与 Cross 已归档至仓库 `docs/research/remediation-audits/`（原始生成位置在 `temp/prompts/cross-domain-audit/`），本轮只核验索引与存在性，没有重新阅读七份全文。Cross 足以做本地图；未来 Plan 对需要的细节定点回读：
 
 | 原专项 | 真正需要回读的 Plan | 为什么 |
 |---|---|---|
-| [02 Project Truth](../../temp/prompts/cross-domain-audit/02_project-truth-audit.md) | P1A、P1B-1/2 | 历史记录、revision、Decision、来源及迁移的具体反例 |
-| [05 Research / Evidence](../../temp/prompts/cross-domain-audit/05_research-evidence-audit.md) | P1B-1、P2B；P0 的 parser 部分按需 | item/evidence 身份、promotion、长文/fragment 与提取覆盖细节 |
-| [01 Agent Harness](../../temp/prompts/cross-domain-audit/01_agent-harness-audit.md) | P2A/2B | 原 required reads、continuation、input/trace 场景；与 DESIGN 的新合同方向合看 |
-| [04 Visual Intelligence](../../temp/prompts/cross-domain-audit/04_visual-intelligence-audit.md) | P4 | parent/branch/多参考/历史 Trace 的反例与兼容边界 |
-| [07 Delivery / Handoff](../../temp/prompts/cross-domain-audit/07_delivery-handoff-audit.md) | P5 | 基线、冻结引用、review/freshness、输出及 archive 的完整场景 |
-| [06 Workspace / Canvas](../../temp/prompts/cross-domain-audit/06_workspace-canvas-audit.md) | P6H/P6I | Undo 支持矩阵、DOM/快捷键/selection、Region/阅读返回等交互细节 |
-| [03 Modularity](../../temp/prompts/cross-domain-audit/03_modularity-dependency-audit.md) | 一般无需全文重读；仅 P1B/P2 真遇到依赖提取疑点时定点查 | Cross 已明确要做的 ownership 修复，并否决完整目录树搬迁；不恢复旧拆目录建议 |
+| [02 Project Truth](../research/remediation-audits/02-project-truth-audit.md) | P1A、P1B-1/2 | 历史记录、revision、Decision、来源及迁移的具体反例 |
+| [05 Research / Evidence](../research/remediation-audits/05-research-evidence-audit.md) | P1B-1、P2B；P0 的 parser 部分按需 | item/evidence 身份、promotion、长文/fragment 与提取覆盖细节 |
+| [01 Agent Harness](../research/remediation-audits/01-agent-harness-audit.md) | P2A/2B | 原 required reads、continuation、input/trace 场景；与 DESIGN 的新合同方向合看 |
+| [04 Visual Intelligence](../research/remediation-audits/04-visual-intelligence-audit.md) | P4 | parent/branch/多参考/历史 Trace 的反例与兼容边界 |
+| [07 Delivery / Handoff](../research/remediation-audits/07-delivery-handoff-audit.md) | P5 | 基线、冻结引用、review/freshness、输出及 archive 的完整场景 |
+| [06 Workspace / Canvas](../research/remediation-audits/06-workspace-canvas-audit.md) | P6H/P6I | Undo 支持矩阵、DOM/快捷键/selection、Region/阅读返回等交互细节 |
+| [03 Modularity](../research/remediation-audits/03-modularity-dependency-audit.md) | 一般无需全文重读；仅 P1B/P2 真遇到依赖提取疑点时定点查 | Cross 已明确要做的 ownership 修复，并否决完整目录树搬迁；不恢复旧拆目录建议 |
 
 P0 普通叶子修复、P3、P7 无需把七份原审计作为日常输入。P3 以 EXT 为主；P7 以 EVAL 为主；已关闭的原审计条目保留来源链接即可。未来遇到报告与新 `main` 不一致，只核对该 package 的调用链和反例。
 
@@ -277,9 +283,9 @@ P0 普通叶子修复、P3、P7 无需把七份原审计作为日常输入。P3 
 
 | Package / milestone | Status | Owner | Base SHA / contract | Plan path | Accepted commit | Acceptance source / limits |
 |---|---|---|---|---|---|---|
-| P0, P1A, P1B-1, P1B-2, P2A, P2B, P3S, P3A, P3B, P4, P5, P6H, P6I, P7 | not_started | 未分配 | `0c04ec8`，待各自开工再绑定 | — | — | 本地图仅完成规划 |
+| P0, P1A, P1B-1, P1B-2, P2A, P2B, P3S, P3A, P3B, P4, P5, P6H, P6I, P7 | not_started | 未分配 | `0c04ec8`（planning code baseline，待各自开工绑定新 main） | — | — | 本地图仅完成规划 |
 | P3-Facts | not_started（D） | 未分配 | EXT 中明确的未知项 | — | — | 不阻止止损 |
-| O1 | not_started | 未分配 | 本轮只读核验 | — | — | 未修改远端设置 |
+| O1（CI enforcement / branch protection） | optional_process_decision | — | 见第 7.3 节 | — | — | 可选流程加固；不阻塞任何 remediation package |
 | Deferred Infrastructure | deferred | Program owner 跟踪 trigger | 见第 7 节 | — | — | 无迁移开工条件 |
 
 实际推进后按 ID 拆成独立行，保留 early slice 的 accepted commit。建议状态限于 `not_started / planning / ready / implementing / validating / accepted / accepted_with_limits / blocked / deferred`。`accepted_with_limits` 必须列出不影响该包承诺的剩余限制；关键证据缺失不允许伪装为有限验收。
@@ -300,11 +306,11 @@ P0 普通叶子修复、P3、P7 无需把七份原审计作为日常输入。P3 
 
 没有修改代码、测试、依赖、产品规则、数据库或部署；没有执行 paid Provider、重新运行审计测试、lint/typecheck/build/浏览器测试。本文新增后的检查仅覆盖文档链接、问题覆盖和 diff 格式，不算整改或产品验收。
 
-| 文件 | SHA-256（2026-09-21 本轮读取） |
-|---|---|
-| CROSS | `87999813c9190dcfca8715afb5cdcd2e9c8d7cd729bcd059746987e326c58f3f` |
-| EXT | `beab16efcd1f536cca8f6ea758a6ab0a7d4ec7910982a6e56fc4ee1dc1fb8bba` |
-| TECH-A | `86a41297911999cbe4760377d3638a0af91b9ad9f1472a72f0c54788b319491d` |
-| TECH-B | `27d93e6ae93e0d69a10f1fdadcea7fd4bdca20fc2aab00cbab3311dfcb6918ad` |
+| 文件 | SHA-256（2026-09-21 读取与归档核验） | 仓库归档位置 |
+|---|---|---|
+| CROSS | `87999813c9190dcfca8715afb5cdcd2e9c8d7cd729bcd059746987e326c58f3f` | [`docs/research/remediation-audits/cross-domain-coherence-remediation.md`](../research/remediation-audits/cross-domain-coherence-remediation.md) |
+| EXT | `beab16efcd1f536cca8f6ea758a6ab0a7d4ec7910982a6e56fc4ee1dc1fb8bba` | [`docs/research/remediation-audits/external-side-effect-provider-reliability.md`](../research/remediation-audits/external-side-effect-provider-reliability.md) |
+| TECH-A | `86a41297911999cbe4760377d3638a0af91b9ad9f1472a72f0c54788b319491d` | [`docs/research/remediation-audits/foundational-technology-architecture-review.md`](../research/remediation-audits/foundational-technology-architecture-review.md) |
+| TECH-B | `27d93e6ae93e0d69a10f1fdadcea7fd4bdca20fc2aab00cbab3311dfcb6918ad` | [`docs/research/remediation-audits/foundational-technology-architecture-review-dr1.md`](../research/remediation-audits/foundational-technology-architecture-review-dr1.md) |
 
-EVAL 与 DESIGN 按本文件首部 Git SHA 的仓库内容定位。EXT 的实际文件是 `audit-2026-09-21/review.md`，不是最初提供的 `review/.md`。
+EVAL 与 DESIGN 位于 `docs/research/` 根目录。EXT 原始报告对应会话写入产物 `audit-2026-09-21/review.md`，已按原样完整归档入库。
