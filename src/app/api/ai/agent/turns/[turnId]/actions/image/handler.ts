@@ -23,6 +23,7 @@ import { validateGrsImageRouteRequest } from "@/server/image/request";
 import { requireAiRouteUser, type AiRouteUserAccessResult } from "@/server/auth/aiAccess";
 import { hashAPlusExternalToolActionClaim } from "@/server/ai/agentTurnProviderRequest";
 import {
+  EXTERNAL_EXECUTION_STATE_UNKNOWN,
   IMAGE_PROVIDER_CANCELLED,
   IMAGE_PROVIDER_FAILED,
   IMAGE_PROVIDER_UNAVAILABLE
@@ -175,18 +176,20 @@ export function createAgentTurnImageActionPostHandler(
         );
       }
       if (result.status === "failed") {
+        const publicError = result.failureCode === EXTERNAL_EXECUTION_STATE_UNKNOWN.code
+          ? EXTERNAL_EXECUTION_STATE_UNKNOWN : IMAGE_PROVIDER_FAILED;
         const settled = await settleWithRetry(dependencies, {
           ...identity,
           actionHash,
           status: "externallyFailed",
-          failureCode: "image_generation_failed"
+          failureCode: publicError.code
         });
         if (settled.status === "denied") return journalDeniedResponse(settled);
         return NextResponse.json(
           {
-            error: IMAGE_PROVIDER_FAILED.message,
-            code: IMAGE_PROVIDER_FAILED.code,
-            recoverable: IMAGE_PROVIDER_FAILED.recoverable,
+            error: publicError.message,
+            code: publicError.code,
+            recoverable: publicError.recoverable,
             action: settled.snapshot
           },
           { status: 502 }

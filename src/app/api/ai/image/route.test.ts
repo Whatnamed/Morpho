@@ -161,4 +161,14 @@ describe("AI image route auth guard", () => {
     expect(body).not.toContain(secretReason);
     expect(body).not.toContain("api_key=secret");
   });
+  it("exposes a stable unknown submission envelope without resubmitting or leaking diagnostics", async () => {
+    resolveGrsImageResultMock.mockResolvedValueOnce({ status: "failed", reason: "private-host secret-key", failureCode: "external_execution_state_unknown" });
+    const response = await POST(new Request("http://localhost/api/ai/image", { method: "POST", body: JSON.stringify({ prompt: "test", images: [] }) }));
+    const body = await response.text();
+    expect(response.status).toBe(502);
+    expect(JSON.parse(body)).toEqual({ code: "external_execution_state_unknown", error: "无法确认外部请求是否已经执行，Morpho 未自动提交第二次请求。", recoverable: false });
+    expect(body).not.toContain("secret-key");
+    expect(resolveGrsImageResultMock).toHaveBeenCalledOnce();
+  });
+
 });

@@ -52,6 +52,7 @@ export type GrsImageResult =
   | {
       status: "failed";
       reason: string;
+      failureCode?: "external_execution_state_unknown";
     }
   | {
       status: "cancelled";
@@ -62,16 +63,12 @@ export type ResolveGrsImageOptions = {
   fetchImpl?: typeof fetch;
   maxPolls?: number;
   pollDelayMs?: number;
-  generateAttempts?: number;
-  retryDelayMs?: number;
   overallDeadlineMs?: number;
   signal?: AbortSignal;
 };
 
 const DEFAULT_MAX_POLLS = 12;
 const DEFAULT_POLL_DELAY_MS = 1500;
-const DEFAULT_GENERATE_ATTEMPTS = 2;
-const DEFAULT_RETRY_DELAY_MS = 500;
 const MAX_GRS_JSON_RESPONSE_BYTES = 256 * 1024;
 
 export function createGrsGenerateRequest(config: GrsImageConfig, input: GrsGenerateInput): GrsGenerateRequest {
@@ -112,16 +109,17 @@ export async function resolveGrsImageResult(
     options.signal,
     options.overallDeadlineMs ?? PROVIDER_OVERALL_DEADLINE_MS
   );
+  const observation = { submitted: false, resultKnown: false };
   try {
-    return await resolveGrsImageResultWithBudget(config, input, options, budget);
+    return await resolveGrsImageResultWithBudget(config, input, options, budget, observation);
   } catch (error) {
-    if (options.signal?.aborted || isAbortError(error)) {
+    if (options.signal?.aborted) {
       return { status: "cancelled", reason: "GrsAI image request was cancelled." };
     }
     if (error instanceof ProviderResponseBoundaryError && error.code === "provider_deadline_exceeded") {
-      return { status: "failed", reason: "GrsAI image request exceeded its overall safety deadline." };
+      return failedObservation("GrsAI image request exceeded its overall safety deadline.", observation);
     }
-    return { status: "failed", reason: "GrsAI image request failed." };
+    return failedObservation("GrsAI image request failed.", observation);
   } finally {
     budget.dispose();
   }
@@ -131,67 +129,26 @@ async function resolveGrsImageResultWithBudget(
   config: GrsImageConfig,
   input: GrsGenerateInput,
   options: ResolveGrsImageOptions,
-  budget: ProviderRequestBudget
+  budget: ProviderRequestBudget,
+  observation: { submitted: boolean; resultKnown: boolean }
 ): Promise<GrsImageResult> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const maxPolls = options.maxPolls ?? DEFAULT_MAX_POLLS;
   const pollDelayMs = options.pollDelayMs ?? DEFAULT_POLL_DELAY_MS;
-  const generateAttempts = Math.max(1, options.generateAttempts ?? DEFAULT_GENERATE_ATTEMPTS);
-  const retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
   const signal = options.signal;
-  const baseUrls = uniqueBaseUrls(config.baseUrl, config.fallbackBaseUrls);
-  const attemptBaseUrls =
-    baseUrls.length > 1
-      ? baseUrls.slice(0, Math.max(generateAttempts, baseUrls.length))
-      : Array.from({ length: generateAttempts }, () => config.baseUrl);
-
-  let generateResponse: Awaited<ReturnType<typeof safeFetch>> | undefined;
-  let activeBaseUrl = config.baseUrl;
-  for (let attempt = 0; attempt < attemptBaseUrls.length; attempt += 1) {
-    const attemptBaseUrl = attemptBaseUrls[attempt] ?? config.baseUrl;
-    const request = createGrsGenerateRequest({ ...config, baseUrl: attemptBaseUrl }, input);
-    try {
-      generateResponse = await safeFetch(fetchImpl, request.url, {
-        method: "POST",
-        headers: request.headers,
-        body: JSON.stringify(request.body),
-        signal: budget.signal
-      }, budget);
-    } catch (error) {
-      if (error instanceof ProviderResponseBoundaryError) throw error;
-      if (attempt < attemptBaseUrls.length - 1 && !signal?.aborted) {
-        await budget.wait(retryDelayMs);
-        continue;
-      }
-      const detail = error instanceof Error && error.message ? `: ${error.message}` : "";
-      return {
-        status: "failed",
-        reason: `GrsAI network request failed after ${attempt + 1} attempts${detail}`
-      };
-    }
-
-    if (
-      generateResponse.status === "ok" &&
-      !generateResponse.response.ok &&
-      isTransientHttpStatus(generateResponse.response.status) &&
-      attempt < attemptBaseUrls.length - 1
-    ) {
-      await budget.wait(retryDelayMs);
-      continue;
-    }
-    activeBaseUrl = attemptBaseUrl;
-    break;
-  }
-
-  if (!generateResponse) {
-    return { status: "failed", reason: "GrsAI image request did not start." };
-  }
-
-  if (generateResponse.status === "cancelled") {
-    return generateResponse;
-  }
+  const request = createGrsGenerateRequest(config, input);
+  budget.throwIfUnavailable();
+  observation.submitted = true;
+  const generateResponse = await safeFetch(fetchImpl, request.url, {
+    method: "POST",
+    headers: request.headers,
+    body: JSON.stringify(request.body),
+    signal: budget.signal
+  }, budget);
+  if (generateResponse.status === "cancelled") return generateResponse;
 
   if (!generateResponse.response.ok) {
+    observation.resultKnown = ![408, 429].includes(generateResponse.response.status) && generateResponse.response.status < 500;
     let detail = "";
     try {
       const errorBody = await readBoundedResponseText(generateResponse.response, budget);
@@ -204,20 +161,25 @@ async function resolveGrsImageResultWithBudget(
         }
       }
     } catch (error) {
-      return responseReadFailure("generate", error);
+      return responseReadFailure("generate", error, !observation.resultKnown, signal);
     }
     const reason = detail
       ? `GrsAI generate returned ${generateResponse.response.status}: ${detail}`
       : `GrsAI generate returned ${generateResponse.response.status}.`;
-    return { status: "failed", reason };
+    return {
+      status: "failed",
+      reason,
+      ...(!observation.resultKnown ? { failureCode: "external_execution_state_unknown" as const } : {})
+    };
   }
 
   let generatePayload: unknown;
   try {
     generatePayload = await readJson(generateResponse.response, budget);
   } catch (error) {
-    return responseReadFailure("generate", error);
+    return responseReadFailure("generate", error, true, signal);
   }
+  observation.resultKnown = Boolean(extractImageUrl(generatePayload)) || isFailureStatus(extractStatus(generatePayload));
   const allowedImageHosts = buildAllowedImageHosts(config);
   budget.throwIfUnavailable();
   const immediate = await resolvePayload(
@@ -234,10 +196,10 @@ async function resolveGrsImageResultWithBudget(
 
   const taskId = extractTaskId(generatePayload);
   if (!taskId) {
-    return { status: "failed", reason: "GrsAI did not return an image URL or task id." };
+    return failedObservation("GrsAI did not return an image URL or task id.", observation);
   }
 
-  const resultUrl = `${activeBaseUrl.replace(/\/$/, "")}/v1/api/result?id=${encodeURIComponent(taskId)}`;
+  const resultUrl = `${config.baseUrl.replace(/\/$/, "")}/v1/api/result?id=${encodeURIComponent(taskId)}`;
   for (let attempt = 0; attempt < maxPolls; attempt += 1) {
     if (signal?.aborted) {
       return { status: "cancelled", reason: "GrsAI image request was cancelled." };
@@ -255,15 +217,16 @@ async function resolveGrsImageResultWithBudget(
     }
 
     if (!resultResponse.response.ok) {
-      return { status: "failed", reason: `GrsAI result returned ${resultResponse.response.status}.` };
+      return failedObservation(`GrsAI result returned ${resultResponse.response.status}.`, observation);
     }
 
     let resultPayload: unknown;
     try {
       resultPayload = await readJson(resultResponse.response, budget);
     } catch (error) {
-      return responseReadFailure("result", error);
+      return responseReadFailure("result", error, true, signal);
     }
+    observation.resultKnown = Boolean(extractImageUrl(resultPayload)) || isFailureStatus(extractStatus(resultPayload));
     budget.throwIfUnavailable();
     const resolved = await resolvePayload(fetchImpl, resultPayload, signal, budget.deadlineSignal, taskId, allowedImageHosts);
     if (resolved.status !== "pending") {
@@ -275,7 +238,7 @@ async function resolveGrsImageResultWithBudget(
     }
   }
 
-  return { status: "failed", reason: "GrsAI image task did not finish before the polling limit." };
+  return failedObservation("GrsAI image task did not finish before the polling limit.", observation);
 }
 
 async function resolvePayload(
@@ -304,7 +267,7 @@ async function resolvePayload(
     return { status: "pending" };
   }
 
-  return { status: "failed", reason: "GrsAI response did not include a usable image URL." };
+  return { status: "failed", reason: "GrsAI response did not include a usable image URL.", failureCode: "external_execution_state_unknown" };
 }
 
 async function downloadImage(
@@ -333,7 +296,7 @@ async function safeFetch(
   try {
     return { status: "ok", response: await budget.race(fetchImpl(input, init)) };
   } catch (error) {
-    if (isAbortError(error)) {
+    if (isAbortError(error) && budget.signal.aborted) {
       return { status: "cancelled", reason: "GrsAI image request was cancelled." };
     }
 
@@ -413,20 +376,30 @@ function readContentLength(value: string | null): number | undefined {
   return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
-function responseReadFailure(scope: "generate" | "result", error: unknown): GrsImageResult {
+function responseReadFailure(
+  scope: "generate" | "result",
+  error: unknown,
+  executionUnknown: boolean,
+  signal: AbortSignal | undefined
+): GrsImageResult {
   if (error instanceof ProviderResponseBoundaryError) {
     throw error;
   }
-  if (isAbortError(error)) {
+  if (isAbortError(error) && signal?.aborted) {
     return { status: "cancelled", reason: "GrsAI image request was cancelled." };
   }
   if (error instanceof GrsProviderResponseTooLargeError) {
     return {
       status: "failed",
+      ...(executionUnknown ? { failureCode: "external_execution_state_unknown" as const } : {}),
       reason: `GrsAI ${scope} response exceeded the ${Math.floor(error.maxBytes / 1024)} KiB limit.`
     };
   }
-  return { status: "failed", reason: `GrsAI ${scope} response could not be read.` };
+  return {
+    status: "failed",
+    reason: `GrsAI ${scope} response could not be read.`,
+    ...(executionUnknown ? { failureCode: "external_execution_state_unknown" as const } : {})
+  };
 }
 
 class GrsProviderResponseTooLargeError extends Error {
@@ -500,12 +473,16 @@ function findProviderString(
   return match;
 }
 
-function isTransientHttpStatus(status: number): boolean {
-  return status === 429 || status === 502 || status === 503 || status === 504;
-}
-
-function uniqueBaseUrls(primary: string, fallbacks: readonly string[] | undefined): string[] {
-  return [...new Set([primary, ...(fallbacks ?? [])].map((value) => value.replace(/\/$/, "")).filter(Boolean))];
+function failedObservation(
+  reason: string,
+  observation: { submitted: boolean; resultKnown: boolean }
+): GrsImageResult {
+  return {
+    status: "failed",
+    reason,
+    ...(observation.submitted && !observation.resultKnown
+      ? { failureCode: "external_execution_state_unknown" as const } : {})
+  };
 }
 
 function isHttpUrl(value: string): boolean {

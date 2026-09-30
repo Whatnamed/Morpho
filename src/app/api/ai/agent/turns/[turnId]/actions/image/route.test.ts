@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { resolveGrsImageResult } from "@/server/image/grsProvider";
 import type { AgentTurnExternalActionSnapshot } from "@/shared/agentTurnExternalActionProtocol";
 import { createAgentTurnImageActionPostHandler } from "./handler";
 
@@ -168,6 +169,38 @@ describe("A+ image action route", () => {
     }));
     expect(JSON.stringify(settle.mock.calls)).not.toContain(secretReason);
   });
+  it("settles ambiguous generate as unknown and replay never submits again", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => { throw new TypeError("accepted but lost"); });
+    let terminal = false;
+    const settle = vi.fn(async () => {
+      terminal = true;
+      return { status: "ok" as const, replayed: false, snapshot: { ...actionSnapshot("externallyFailed"), failureCode: "external_execution_state_unknown" } };
+    });
+    const generate = vi.fn<typeof resolveGrsImageResult>((config, input, options) => resolveGrsImageResult(config, input, { ...options, fetchImpl }));
+    const handler = createAgentTurnImageActionPostHandler({
+      authenticate: async () => ({ status: "allowed", userId: "user-a" }),
+      acquire: async () => ({ status: "ok", executionGranted: !terminal, replayed: terminal,
+        snapshot: { ...actionSnapshot(terminal ? "externallyFailed" : "running"), ...(terminal ? { failureCode: "external_execution_state_unknown" } : {}) } }),
+      settle,
+      loadConfig: () => ({ status: "ok", config: { apiKey: "test", baseUrl: "https://images.test", fallbackBaseUrls: ["https://fallback.test"], model: "gpt-image-2" } }),
+      generate
+    });
+    const request = () => new Request("http://morpho.test", { method: "POST", body: JSON.stringify({
+      localProjectId: "project-test", requestId: "request-1", stepSequence: 1, actionId: "img:child-1", claimCallId: "call-image-1",
+      input: { prompt: "A warm industrial-design concept", images: [] }
+    }) });
+    const context = () => ({ params: Promise.resolve({ turnId: TURN_ID }) });
+    const response = await handler(request(), context());
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ code: "external_execution_state_unknown", recoverable: false });
+    expect(settle).toHaveBeenCalledWith(expect.objectContaining({ status: "externallyFailed", failureCode: "external_execution_state_unknown" }));
+    const replay = await handler(request(), context());
+    expect(replay.status).toBe(409);
+    expect(await replay.json()).toMatchObject({ code: "external_execution_state_unknown" });
+    expect(generate).toHaveBeenCalledOnce();
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
 });
 
 function actionSnapshot(

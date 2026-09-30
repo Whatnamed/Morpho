@@ -6,6 +6,7 @@ import { validateGrsImageRouteRequest } from "@/server/image/request";
 import { aiAccessDeniedResponse, guardAiRoute, requireAiRouteUser } from "@/server/auth/aiAccess";
 import { readBoundedJsonBody } from "@/server/http/boundedJsonBody";
 import {
+  EXTERNAL_EXECUTION_STATE_UNKNOWN,
   IMAGE_PROVIDER_CANCELLED,
   IMAGE_PROVIDER_FAILED,
   IMAGE_PROVIDER_UNAVAILABLE
@@ -64,11 +65,13 @@ export async function POST(request: Request) {
     }
 
     if (result.status === "failed") {
+      const publicError = result.failureCode === EXTERNAL_EXECUTION_STATE_UNKNOWN.code
+        ? EXTERNAL_EXECUTION_STATE_UNKNOWN : IMAGE_PROVIDER_FAILED;
       return NextResponse.json(
         {
-          error: IMAGE_PROVIDER_FAILED.message,
-          code: IMAGE_PROVIDER_FAILED.code,
-          recoverable: IMAGE_PROVIDER_FAILED.recoverable
+          error: publicError.message,
+          code: publicError.code,
+          recoverable: publicError.recoverable
         },
         { status: 502 }
       );

@@ -136,7 +136,7 @@ describe("GrsAI image provider adapter", () => {
         aspectRatio: "4:3",
         referenceObjectIds: []
       },
-      { fetchImpl, maxPolls: 1, pollDelayMs: 0, retryDelayMs: 0 }
+      { fetchImpl, maxPolls: 1, pollDelayMs: 0 }
     );
 
     expect(result.status).toBe("ok");
@@ -175,7 +175,7 @@ describe("GrsAI image provider adapter", () => {
       { fetchImpl, maxPolls: 2, pollDelayMs: 0 }
     );
 
-    expect(result.status).toBe("failed");
+    expect(result).toMatchObject({ status: "failed", failureCode: "external_execution_state_unknown" });
     expect(calls).toBe(3);
   });
 
@@ -208,7 +208,7 @@ describe("GrsAI image provider adapter", () => {
     expect(result.status).toBe("failed");
   });
 
-  it("retries one transient generate network failure before succeeding", async () => {
+  it("does not repeat a generate POST after a network failure", async () => {
     let generateCalls = 0;
     const fetchImpl: typeof fetch = async (input) => {
       const url = String(input);
@@ -241,14 +241,14 @@ describe("GrsAI image provider adapter", () => {
         aspectRatio: "1:1",
         referenceObjectIds: []
       },
-      { fetchImpl, maxPolls: 1, pollDelayMs: 0, retryDelayMs: 0 }
+      { fetchImpl, maxPolls: 1, pollDelayMs: 0 }
     );
 
-    expect(result.status).toBe("ok");
-    expect(generateCalls).toBe(2);
+    expect(result).toMatchObject({ status: "failed", failureCode: "external_execution_state_unknown" });
+    expect(generateCalls).toBe(1);
   });
 
-  it("uses the configured fallback host after the primary host has a network failure", async () => {
+  it("does not use the configured fallback host after primary response loss", async () => {
     const requestedUrls: string[] = [];
     const fetchImpl: typeof fetch = async (input) => {
       const url = String(input);
@@ -280,14 +280,11 @@ describe("GrsAI image provider adapter", () => {
         aspectRatio: "1:1",
         referenceObjectIds: []
       },
-      { fetchImpl, maxPolls: 1, pollDelayMs: 0, retryDelayMs: 0 }
+      { fetchImpl, maxPolls: 1, pollDelayMs: 0 }
     );
 
-    expect(result.status).toBe("ok");
-    expect(requestedUrls.slice(0, 2)).toEqual([
-      "https://grs-primary.example/v1/api/generate",
-      "https://grs-fallback.example/v1/api/generate"
-    ]);
+    expect(result).toMatchObject({ status: "failed", failureCode: "external_execution_state_unknown" });
+    expect(requestedUrls).toEqual(["https://grs-primary.example/v1/api/generate"]);
   });
 
   it("returns provider failure detail instead of a generic task failure", async () => {
@@ -373,7 +370,7 @@ describe("GrsAI image provider adapter", () => {
           calls += 1;
           return oversized.response;
         },
-        generateAttempts: 1,
+
         maxPolls: 1,
         pollDelayMs: 0
       }
@@ -381,7 +378,8 @@ describe("GrsAI image provider adapter", () => {
 
     expect(result).toEqual({
       status: "failed",
-      reason: "GrsAI generate response exceeded the 256 KiB limit."
+      reason: "GrsAI generate response exceeded the 256 KiB limit.",
+      failureCode: "external_execution_state_unknown"
     });
     expect(oversized.wasCancelled()).toBe(true);
     expect(calls).toBe(1);
@@ -411,7 +409,7 @@ describe("GrsAI image provider adapter", () => {
             ? jsonResponse({ id: "task-oversized", status: "pending" })
             : oversized.response;
         },
-        generateAttempts: 1,
+
         maxPolls: 1,
         pollDelayMs: 0
       }
@@ -419,7 +417,8 @@ describe("GrsAI image provider adapter", () => {
 
     expect(result).toEqual({
       status: "failed",
-      reason: "GrsAI result response exceeded the 256 KiB limit."
+      reason: "GrsAI result response exceeded the 256 KiB limit.",
+      failureCode: "external_execution_state_unknown"
     });
     expect(oversized.wasCancelled()).toBe(true);
     expect(calls).toBe(2);
@@ -442,7 +441,7 @@ describe("GrsAI image provider adapter", () => {
       },
       {
         fetchImpl: async () => oversized.response,
-        generateAttempts: 1,
+
         maxPolls: 1,
         pollDelayMs: 0
       }
@@ -464,11 +463,11 @@ describe("GrsAI image provider adapter", () => {
     await expect(
       resolveGrsImageResult(grsConfig(), grsInput(), {
         fetchImpl: async () => jsonResponse(nested),
-        generateAttempts: 1,
+
         maxPolls: 1,
         pollDelayMs: 0
       })
-    ).resolves.toEqual({ status: "failed", reason: "GrsAI image request failed." });
+    ).resolves.toEqual({ status: "failed", reason: "GrsAI image request failed.", failureCode: "external_execution_state_unknown" });
   });
 
   it("fails an internally timed-out generate fetch without reporting user cancellation", async () => {
@@ -476,7 +475,7 @@ describe("GrsAI image provider adapter", () => {
     const fetchImpl = vi.fn<typeof fetch>(() => new Promise<Response>(() => undefined));
     const resultPromise = resolveGrsImageResult(grsConfig(), grsInput(), {
       fetchImpl,
-      generateAttempts: 1,
+
       overallDeadlineMs: 25
     });
 
@@ -484,6 +483,7 @@ describe("GrsAI image provider adapter", () => {
 
     await expect(resultPromise).resolves.toEqual({
       status: "failed",
+      failureCode: "external_execution_state_unknown",
       reason: "GrsAI image request exceeded its overall safety deadline."
     });
     expect(fetchImpl).toHaveBeenCalledOnce();
@@ -494,7 +494,7 @@ describe("GrsAI image provider adapter", () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => new Response(new ReadableStream<Uint8Array>({})));
     const resultPromise = resolveGrsImageResult(grsConfig(), grsInput(), {
       fetchImpl,
-      generateAttempts: 1,
+
       overallDeadlineMs: 25
     });
 
@@ -502,6 +502,7 @@ describe("GrsAI image provider adapter", () => {
 
     await expect(resultPromise).resolves.toEqual({
       status: "failed",
+      failureCode: "external_execution_state_unknown",
       reason: "GrsAI image request exceeded its overall safety deadline."
     });
   });
@@ -517,7 +518,7 @@ describe("GrsAI image provider adapter", () => {
     });
     const resultPromise = resolveGrsImageResult(grsConfig(), grsInput(), {
       fetchImpl,
-      generateAttempts: 1,
+
       maxPolls: 1,
       pollDelayMs: 0,
       overallDeadlineMs: 25
@@ -527,6 +528,7 @@ describe("GrsAI image provider adapter", () => {
 
     await expect(resultPromise).resolves.toEqual({
       status: "failed",
+      failureCode: "external_execution_state_unknown",
       reason: "GrsAI image request exceeded its overall safety deadline."
     });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
@@ -544,7 +546,7 @@ describe("GrsAI image provider adapter", () => {
     });
     const resultPromise = resolveGrsImageResult(grsConfig(), grsInput(), {
       fetchImpl,
-      generateAttempts: 1,
+
       overallDeadlineMs: 25
     });
 
@@ -558,15 +560,15 @@ describe("GrsAI image provider adapter", () => {
     expect(imageSignal?.aborted).toBe(true);
   });
 
-  it("does not start a retry after the overall deadline expires during backoff", async () => {
+  it("returns unknown immediately after response loss without backoff", async () => {
     vi.useFakeTimers();
     const fetchImpl = vi.fn<typeof fetch>(async () => {
       throw new TypeError("network down");
     });
     const resultPromise = resolveGrsImageResult(grsConfig(), grsInput(), {
       fetchImpl,
-      generateAttempts: 2,
-      retryDelayMs: 100,
+
+
       overallDeadlineMs: 25
     });
 
@@ -574,7 +576,8 @@ describe("GrsAI image provider adapter", () => {
 
     await expect(resultPromise).resolves.toEqual({
       status: "failed",
-      reason: "GrsAI image request exceeded its overall safety deadline."
+      reason: "GrsAI image request failed.",
+      failureCode: "external_execution_state_unknown"
     });
     expect(fetchImpl).toHaveBeenCalledOnce();
   });
@@ -594,6 +597,7 @@ describe("GrsAI image provider adapter", () => {
       status: "cancelled",
       reason: "GrsAI image request was cancelled."
     });
+    expect(fetchImpl).toHaveBeenCalledOnce();
   });
 
   it("disposes the safety deadline after a completed request", async () => {
@@ -608,12 +612,66 @@ describe("GrsAI image provider adapter", () => {
     await expect(
       resolveGrsImageResult(grsConfig(), grsInput(), {
         fetchImpl,
-        generateAttempts: 1,
+
         overallDeadlineMs: 25
       })
     ).resolves.toMatchObject({ status: "ok" });
     expect(vi.getTimerCount()).toBe(0);
   });
+  it.each([408, 429, 500, 502, 503, 504])("does not repeat/fail over a generate POST after HTTP %s", async (status) => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response("ambiguous status", { status }));
+    const result = await resolveGrsImageResult({ ...grsConfig(), fallbackBaseUrls: ["https://fallback.example"] }, grsInput(), { fetchImpl });
+    expect(result).toMatchObject({ status: "failed", failureCode: "external_execution_state_unknown" });
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe("https://grs.example/v1/api/generate");
+    expect(fetchImpl.mock.calls[0]?.[1]?.method).toBe("POST");
+  });
+
+  it("polls only the known task, then downloads the same result without new generation", async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ id: "task/same", status: "pending" }))
+      .mockResolvedValueOnce(jsonResponse({ id: "task/same", status: "running" }))
+      .mockResolvedValueOnce(jsonResponse({ id: "task/same", status: "succeeded", url: "https://cdn.example/result.png" }))
+      .mockResolvedValueOnce(new Response(null, { status: 302, headers: { location: "https://cdn.example/result-final.png" } }))
+      .mockResolvedValueOnce(new Response("png", { headers: { "Content-Type": "image/png" } }));
+    const result = await resolveGrsImageResult(grsConfig(), grsInput(), { fetchImpl, maxPolls: 2, pollDelayMs: 0 });
+    expect(result).toMatchObject({ status: "ok", providerTaskId: "task/same" });
+    expect(fetchImpl.mock.calls.map(([url, init]) => [String(url), init?.method])).toEqual([
+      ["https://grs.example/v1/api/generate", "POST"],
+      ["https://grs.example/v1/api/result?id=task%2Fsame", "GET"],
+      ["https://grs.example/v1/api/result?id=task%2Fsame", "GET"],
+      ["https://cdn.example/result.png", "GET"],
+      ["https://cdn.example/result-final.png", "GET"]
+    ]);
+  });
+
+  it("keeps a confirmed known-task failure distinct from submission unknown", async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ id: "task-failed", status: "pending" }))
+      .mockResolvedValueOnce(jsonResponse({ id: "task-failed", status: "failed", message: "generation failed" }));
+    const result = await resolveGrsImageResult(grsConfig(), grsInput(), { fetchImpl, maxPolls: 1, pollDelayMs: 0 });
+    expect(result).toEqual({ status: "failed", reason: "GrsAI image task failed: generation failed" });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not submit when the caller signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const fetchImpl = vi.fn<typeof fetch>();
+    const result = await resolveGrsImageResult(grsConfig(), grsInput(), { fetchImpl, signal: controller.signal });
+    expect(result.status).toBe("cancelled");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("reports successful-POST body loss and malformed JSON as unknown without regenerating", async () => {
+    for (const response of [new Response("invalid JSON"), new Response(new ReadableStream<Uint8Array>({ start(controller) { controller.error(new TypeError("body lost")); } }))]) {
+      const fetchImpl = vi.fn<typeof fetch>(async () => response);
+      const result = await resolveGrsImageResult(grsConfig(), grsInput(), { fetchImpl });
+      expect(result).toMatchObject({ status: "failed", failureCode: "external_execution_state_unknown" });
+      expect(fetchImpl).toHaveBeenCalledOnce();
+    }
+  });
+
 });
 
 function grsConfig() {
