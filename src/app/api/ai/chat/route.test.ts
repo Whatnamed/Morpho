@@ -223,6 +223,32 @@ describe("AI chat route", () => {
     });
   });
 
+  it.each(["unsupported tool", "bad gateway"])("does not strip ready images and resubmit for unrelated 400: %s", async (diagnostic) => {
+    const { OpenAiCompatibleProviderError } = await import("@/server/ai/openaiCompatibleProvider");
+    streamOpenAiCompatibleResponseMock.mockRejectedValueOnce(new OpenAiCompatibleProviderError(400, diagnostic));
+
+    const response = await POST(makeImageRequest());
+    expect(await response.text()).toContain('"type":"error"');
+    expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledOnce();
+    expect(JSON.stringify(streamOpenAiCompatibleResponseMock.mock.calls[0][1])).toContain("input_image");
+  });
+
+  it("honestly stops after an allowed image compatibility fallback becomes unknown", async () => {
+    const { OpenAiCompatibleProviderError } = await import("@/server/ai/openaiCompatibleProvider");
+    streamOpenAiCompatibleResponseMock
+      .mockRejectedValueOnce(new OpenAiCompatibleProviderError(400, "unsupported image input"))
+      .mockRejectedValueOnce(new OpenAiCompatibleProviderError(502, "corrected response lost"));
+
+    const response = await POST(makeImageRequest());
+    const body = await response.text();
+    expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(streamOpenAiCompatibleResponseMock.mock.calls[1][1])).not.toContain("input_image");
+    expect(body).toContain('"code":"external_execution_state_unknown"');
+    expect(body).toContain("无法确认外部请求是否已经执行；Morpho 已停止自动重试，不会基于该不确定状态继续提交新请求。");
+    expect(body).toContain('"recoverable":false');
+    expect(body).not.toContain("未自动提交第二次请求");
+  });
+
   it("does not expose hosted web search when only imported document text asks for it", async () => {
     const response = await POST(makeRequest({
       draft: "总结这份文档，只回答要点。",

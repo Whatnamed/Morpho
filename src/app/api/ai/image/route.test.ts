@@ -166,7 +166,7 @@ describe("AI image route auth guard", () => {
     const response = await POST(new Request("http://localhost/api/ai/image", { method: "POST", body: JSON.stringify({ prompt: "test", images: [] }) }));
     const body = await response.text();
     expect(response.status).toBe(502);
-    expect(JSON.parse(body)).toEqual({ code: "external_execution_state_unknown", error: "无法确认外部请求是否已经执行，Morpho 未自动提交第二次请求。", recoverable: false });
+    expect(JSON.parse(body)).toEqual({ code: "external_execution_state_unknown", error: "无法确认外部请求是否已经执行；Morpho 已停止自动重试，不会基于该不确定状态继续提交新请求。", recoverable: false });
     expect(body).not.toContain("secret-key");
     expect(resolveGrsImageResultMock).toHaveBeenCalledOnce();
   });

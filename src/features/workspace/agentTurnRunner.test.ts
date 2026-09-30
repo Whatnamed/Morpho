@@ -105,7 +105,7 @@ describe("A+ Agent turn runner", () => {
   it("displays honest unknown execution copy without automatically running another request", async () => {
     const fixture = createFixture([{ status: "externallyFailed", externalErrorCode: "external_execution_state_unknown" }]);
     await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
-    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({ body: "无法确认外部请求是否已经执行，Morpho 未自动提交第二次请求。", status: "failed" });
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({ body: "无法确认外部请求是否已经执行；Morpho 已停止自动重试，不会基于该不确定状态继续提交新请求。", status: "failed" });
     expect(fixture.coordinatorHost.executions).toHaveLength(1);
   });
 

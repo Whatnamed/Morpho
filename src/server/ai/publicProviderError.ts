@@ -8,7 +8,7 @@ export type PublicProviderError = Readonly<{
 
 export const EXTERNAL_EXECUTION_STATE_UNKNOWN: PublicProviderError = {
   code: "external_execution_state_unknown",
-  message: "无法确认外部请求是否已经执行，Morpho 未自动提交第二次请求。",
+  message: "无法确认外部请求是否已经执行；Morpho 已停止自动重试，不会基于该不确定状态继续提交新请求。",
   recoverable: false
 };
 
