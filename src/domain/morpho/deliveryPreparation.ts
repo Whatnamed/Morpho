@@ -201,6 +201,7 @@ export function createDeliveryPreparation(
     }),
     {
       type: "deliveryPreparationChanged",
+      occurrenceId: crypto.randomUUID(),
       action: "created",
       deliveryObjectId,
       decisionId,
@@ -468,6 +469,7 @@ export function addObjectsToDeliverySection(
     }),
     {
       type: "deliveryPreparationChanged",
+      occurrenceId: crypto.randomUUID(),
       action: "referenceAdded",
       deliveryObjectId: target.id,
       sectionId: section.id,
@@ -521,6 +523,7 @@ export function removeDeliveryReference(
     }),
     {
       type: "deliveryPreparationChanged",
+      occurrenceId: crypto.randomUUID(),
       action: "referenceRemoved",
       deliveryObjectId: target.id,
       referenceIds: [input.referenceId],
@@ -719,6 +722,7 @@ export function refreshDeliveryReferenceSnapshot(
     }),
     {
       type: "deliveryPreparationChanged",
+      occurrenceId: crypto.randomUUID(),
       action: "referenceRefreshed",
       deliveryObjectId: target.id,
       referenceIds: [reference.id],
@@ -1000,6 +1004,7 @@ export function applyDeliverySectionDraft(
     }),
     {
       type: "deliveryPreparationChanged",
+      occurrenceId: crypto.randomUUID(),
       action: "draftApplied",
       deliveryObjectId: target.id,
       sectionId: section.id,
@@ -1299,6 +1304,7 @@ function updatedWithDeliveryEvent(
     reconcileWorkspaceDerivedState({ ...workspace, objects: { ...workspace.objects, [delivery.id]: delivery } }),
     {
       type: "deliveryPreparationChanged",
+      occurrenceId: crypto.randomUUID(),
       action,
       deliveryObjectId: delivery.id,
       sectionId: options.sectionId,

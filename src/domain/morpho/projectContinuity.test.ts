@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createInitialWorkspace, deleteObject, hideObject } from "./workspace";
+import { createInitialWorkspace, deleteObject, hideObject, archiveVisualBranch, restoreVisualBranch } from "./workspace";
 import type { MorphoWorkspace } from "./types";
 import {
   applyConversationSemanticPatch,
@@ -16,6 +16,33 @@ import {
 import { buildSemanticPatchAuthorization } from "./conversationSemanticPatch";
 
 describe("project continuity runtime", () => {
+  afterEach(() => vi.useRealTimers());
+  it("dedupes the exact branch occurrence replay but retains archive, restore, archive at the same timestamp", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-09-30T00:00:00.000Z");
+    const base = createInitialWorkspace();
+    const branch = Object.values(base.visualBranches)[0]!;
+    const first = archiveVisualBranch(base, branch.id);
+    if (first.status !== "updated") throw new Error(first.reason);
+    const entry = first.workspace.projectContinuity.recordEntries.at(-1)!;
+    const occurrenceId = entry.dedupeKey.split(":occurrence:")[1]!;
+    expect(occurrenceId).toBeTruthy();
+    const replay = applyProjectContinuityEvent(first.workspace, {
+      type: "visualBranchChanged", action: "archived", branchId: branch.id,
+      directionId: branch.directionId, occurrenceId, createdAt: entry.createdAt
+    });
+    expect(replay.projectContinuity.recordEntries.map((item) => item.id)).toEqual(first.workspace.projectContinuity.recordEntries.map((item) => item.id));
+    const restored = restoreVisualBranch(replay, branch.id);
+    if (restored.status !== "updated") throw new Error(restored.reason);
+    const again = archiveVisualBranch(restored.workspace, branch.id);
+    if (again.status !== "updated") throw new Error(again.reason);
+    const events = again.workspace.projectContinuity.recordEntries.slice(base.projectContinuity.recordEntries.length);
+    expect(events).toHaveLength(3);
+    expect(new Set(events.map((item) => item.createdAt)).size).toBe(1);
+    expect(new Set(events.map((item) => item.dedupeKey)).size).toBe(3);
+    expect(again.workspace.visualBranches[branch.id]?.archivedAt).toBeDefined();
+    expect(restoreVisualBranch(restored.workspace, branch.id).workspace).toBe(restored.workspace);
+  });
   it("builds stable unique IDs when long dedupe keys share the old slug prefix", () => {
     const sharedPrefix = "default-reference:".padEnd(120, "x");
     const first = `${sharedPrefix}:first-tail`;

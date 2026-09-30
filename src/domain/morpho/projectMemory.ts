@@ -272,7 +272,7 @@ export function reconcileProjectMemoryState(
       if (next.stageRecords[stage]) {
         const stageRecords = { ...next.stageRecords };
         delete stageRecords[stage];
-        next = { ...next, stageRecords };
+        next = { ...next, stageRecords, updatedAt: now };
       }
       continue;
     }
@@ -964,11 +964,23 @@ function applyProjectedStage(
     return state;
   }
 
-  const revisionId = `stage-${stage}-${stableHash(`${currentRevision?.id ?? "root"}|${signature}`)}`;
+  const history = currentRevision ? [] : getStageRecordHistory(state, stage);
+  const predecessorIds = new Set(history.map((revision) => revision.previousRevisionId));
+  const previousRevision = currentRevision ?? history.find((revision) => !predecessorIds.has(revision.id));
+  // Clearing current does not clear history. Reactivating the same projection
+  // can reuse its historical value without overwriting its original timestamp.
+  if (!currentRevision && previousRevision && revisionSignature(previousRevision) === signature) {
+    return {
+      ...state,
+      stageRecords: { ...state.stageRecords, [stage]: { ...record, currentRevisionId: previousRevision.id, updatedAt: now } },
+      updatedAt: now
+    };
+  }
+  const revisionId = `stage-${stage}-${stableHash(`${previousRevision?.id ?? "root"}|${signature}`)}`;
   const revision: StageRecordRevision = {
     id: revisionId,
     stage,
-    previousRevisionId: currentRevision?.id,
+    previousRevisionId: previousRevision?.id,
     sections: projected.sections,
     sourceRefs: projected.sourceRefs,
     createdAt: now,

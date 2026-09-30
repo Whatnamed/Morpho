@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { buildSemanticPatchAuthorization } from "./conversationSemanticPatch";
 import { applyConversationSemanticPatch, applyProjectContinuityEvent } from "./projectContinuity";
 import { migrateWorkspaceToCurrentSchema } from "./workspace";
+import { validateCurrentMorphoWorkspace } from "./currentWorkspaceValidation";
+import { createEditableProjectBackupManifest } from "./projectArchive";
 import {
   buildAgentDefaultMemoryContext,
   buildAgentDefaultMemoryContexts,
@@ -52,6 +54,11 @@ describe("Project Memory Kernel", () => {
     if (roundTrip.status !== "ok") throw new Error("Expected current-schema round-trip.");
     expect(getCurrentStageRecordRevision(roundTrip.workspace.projectMemory, "exploration")).toBeUndefined();
     expect(getStageRecordHistory(roundTrip.workspace.projectMemory, "exploration")).toEqual([historical]);
+    expect(validateCurrentMorphoWorkspace(roundTrip.workspace).status).toBe("ok");
+    expect(createEditableProjectBackupManifest(roundTrip.workspace).status).toBe("ok");
+    const reactivated = reconcileProjectMemory({ ...cleared, projectContinuity: projected.projectContinuity });
+    expect(getCurrentStageRecordRevision(reactivated.projectMemory, "exploration")).toEqual(historical);
+    expect(getStageRecordHistory(reactivated.projectMemory, "exploration")).toEqual([historical]);
   });
   it("skips projection work for canvas, UI, and existing-message body updates", () => {
     const workspace = reconcileProjectMemory(createInitialWorkspace(), "2026-07-13T12:00:00.000Z");

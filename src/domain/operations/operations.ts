@@ -1754,7 +1754,7 @@ export function applyConceptDirectionProposal(
     const previousRevision = nextDirectionRevisions[previousRevisionId];
     for (const revision of Object.values(nextDirectionRevisions)) {
       if (revision.directionId === targetDirection.id) {
-        revision.isCurrent = false;
+        nextDirectionRevisions[revision.id] = { ...revision, isCurrent: false };
       }
     }
     const revisionId = createRevisionFromDraft(

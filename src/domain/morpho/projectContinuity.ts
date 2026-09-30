@@ -97,6 +97,7 @@ export type ProjectContinuityEvent =
     }
   | {
       type: "visualBranchChanged";
+      occurrenceId?: string;
       action: "created" | "archived" | "restored";
       branchId: string;
       directionId: MorphoObjectId;
@@ -126,6 +127,7 @@ export type ProjectContinuityEvent =
     }
   | {
       type: "deliveryPreparationChanged";
+      occurrenceId?: string;
       action:
         | "created"
         | "sectionChanged"
@@ -1072,7 +1074,7 @@ function getEventDedupeKey(event: ProjectContinuityEvent): string {
     case "visualGenerationCompleted":
       return `visualGenerationCompleted:${event.operationId}`;
     case "visualBranchChanged":
-      return `visualBranchChanged:${event.action}:${event.branchId}`;
+      return `visualBranchChanged:${event.action}:${event.branchId}${event.occurrenceId ? `:occurrence:${event.occurrenceId}` : ""}`;
     case "defaultReferenceChanged":
       return `defaultReferenceChanged:${event.imageObjectId}:${event.previousImageObjectId ?? "none"}:${event.decisionId ?? "no-decision"}`;
     case "explorationRecorded":
@@ -1087,7 +1089,7 @@ function getEventDedupeKey(event: ProjectContinuityEvent): string {
         event.sectionId ?? "no-section",
         event.gapId ?? "no-gap",
         stableIds(event.referenceIds ?? []).join("+") || "no-reference",
-        event.decisionId ?? "no-decision"
+        event.decisionId ?? event.occurrenceId ?? "no-decision"
       ].join(":");
   }
 }

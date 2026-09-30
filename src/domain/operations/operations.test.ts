@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { createBlankWorkspace, createInitialWorkspace } from "../morpho/workspace";
+import { createBlankWorkspace, createInitialWorkspace, migrateWorkspaceToCurrentSchema } from "../morpho/workspace";
+import { validateCurrentMorphoWorkspace } from "../morpho/currentWorkspaceValidation";
+import { createEditableProjectBackupManifest } from "../morpho/projectArchive";
+import type { MorphoWorkspace } from "../morpho/types";
 import {
   applyConceptDirectionProposal,
   applyDesignDefinitionProposal,
@@ -1040,8 +1043,15 @@ describe("Morpho Operation Runtime", () => {
       changeNote: "把当前定义收紧为更明确的连续支撑边界。"
     });
 
+    const heldMap = proposed.workspace.designDefinitionRevisions;
+    const heldRevision = heldMap[currentDefinition!.currentRevisionId];
+    const inputJson = JSON.stringify(proposed.workspace);
+    const revisionJson = JSON.stringify(heldRevision);
     const applied = applyDesignDefinitionProposal(proposed.workspace, proposed.proposal.id);
 
+    expect(JSON.stringify(proposed.workspace)).toBe(inputJson);
+    expect(JSON.stringify(heldRevision)).toBe(revisionJson);
+    expect(proposed.workspace.designDefinitionRevisions).toBe(heldMap);
     expect(applied.status).toBe("updated");
     if (applied.status === "updated") {
       expect(applied.designDefinitionObject.id).toBe("definition-current");
@@ -1054,6 +1064,8 @@ describe("Morpho Operation Runtime", () => {
       });
       expect(applied.workspace.workingState.currentDesignDefinitionId).toBe("definition-current");
       expect(applied.workspace.decisionRecords.at(-1)?.kind).toBe("applyDesignDefinition");
+      const restored = assertRevisionRoundTrip(applied.workspace);
+      expect(restored.designDefinitionRevisions).toEqual(applied.workspace.designDefinitionRevisions);
     }
   });
 
@@ -1516,10 +1528,16 @@ describe("Morpho Operation Runtime", () => {
       ]
     });
 
+    const inputJson = JSON.stringify(proposed.workspace);
+    const revisionJson = JSON.stringify(previousRevision);
+    const heldMap = proposed.workspace.directionRevisions;
     const applied = applyConceptDirectionProposal(proposed.workspace, proposed.proposal.id, {
       position: { x: 1480, y: 980 }
     });
 
+    expect(JSON.stringify(proposed.workspace)).toBe(inputJson);
+    expect(JSON.stringify(previousRevision)).toBe(revisionJson);
+    expect(proposed.workspace.directionRevisions).toBe(heldMap);
     expect(applied.status).toBe("updated");
     if (applied.status === "updated") {
       const revised = applied.workspace.objects[target.id];
@@ -1543,6 +1561,8 @@ describe("Morpho Operation Runtime", () => {
         isCurrent: true
       });
       expect(applied.workspace.directionLineage).toHaveLength(workspace.directionLineage.length);
+      const restored = assertRevisionRoundTrip(applied.workspace);
+      expect(restored.directionRevisions).toEqual(applied.workspace.directionRevisions);
     }
   });
 
@@ -1726,3 +1746,13 @@ describe("Morpho Operation Runtime", () => {
     }
   });
 });
+
+function assertRevisionRoundTrip(workspace: MorphoWorkspace): MorphoWorkspace {
+  expect(validateCurrentMorphoWorkspace(workspace)).toMatchObject({ status: "ok" });
+  const restored = migrateWorkspaceToCurrentSchema(JSON.parse(JSON.stringify(workspace)));
+  if (restored.status !== "ok") throw new Error(restored.reason);
+  expect(restored.didMigrate).toBe(false);
+  expect(validateCurrentMorphoWorkspace(restored.workspace)).toMatchObject({ status: "ok" });
+  expect(createEditableProjectBackupManifest(restored.workspace).status).toBe("ok");
+  return restored.workspace;
+}
