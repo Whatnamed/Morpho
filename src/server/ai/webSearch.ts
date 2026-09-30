@@ -52,6 +52,7 @@ export async function searchWebEvidence(input: SearchWebEvidenceInput): Promise<
     distinctQueries.map((query) => searchDuckDuckGo(query, input.signal, queryTimeoutMs, responseBudget))
   );
   throwIfAborted(input.signal);
+  const perQueryResults: WebSearchSource[][] = [];
   for (const result of queryResults) {
     if (result.status === "rejected") {
       if (result.reason instanceof WebSearchTimeoutError) {
@@ -59,21 +60,35 @@ export async function searchWebEvidence(input: SearchWebEvidenceInput): Promise<
       } else {
         failedSourceCount += 1;
       }
-      continue;
+      perQueryResults.push([]);
+    } else {
+      perQueryResults.push(result.value);
     }
-    const searchResults = result.value;
-    for (const result of searchResults) {
-      if (seenUrls.has(result.url)) {
-        continue;
+  }
+
+  const queryIndices = new Array<number>(perQueryResults.length).fill(0);
+  let hasMore = true;
+  while (aggregated.length < maxSources && hasMore) {
+    hasMore = false;
+    for (let q = 0; q < perQueryResults.length; q += 1) {
+      const results = perQueryResults[q]!;
+      let index = queryIndices[q]!;
+      while (index < results.length) {
+        const candidate = results[index]!;
+        index += 1;
+        if (!seenUrls.has(candidate.url)) {
+          seenUrls.add(candidate.url);
+          aggregated.push(candidate);
+          break;
+        }
       }
-      seenUrls.add(result.url);
-      aggregated.push(result);
+      queryIndices[q] = index;
+      if (index < results.length) {
+        hasMore = true;
+      }
       if (aggregated.length >= maxSources) {
         break;
       }
-    }
-    if (aggregated.length >= maxSources) {
-      break;
     }
   }
 

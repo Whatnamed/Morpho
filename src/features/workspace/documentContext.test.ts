@@ -59,6 +59,54 @@ describe("AI document extract context", () => {
     expect(JSON.stringify(workspace)).not.toContain("真实资料进入 Morpho");
   });
 
+  it("preserves parser-level extraction truncation in AI extract context", async () => {
+    const sourceAsset: AssetRecord = {
+      id: "asset-file-large",
+      fileName: "large.pdf",
+      mimeType: "application/pdf",
+      size: 100,
+      createdAt: "2026-06-26T00:00:00.000Z",
+      storageKey: "blob:asset-file-large",
+      sourceType: "originalFile"
+    };
+    const extractAsset: AssetRecord = {
+      id: "asset-extract-large",
+      fileName: "large.extract.txt",
+      mimeType: "text/plain",
+      size: 100,
+      createdAt: "2026-06-26T00:00:00.000Z",
+      storageKey: "blob:asset-extract-large",
+      sourceType: "documentExtract"
+    };
+    const imported = importAssetBackedObjects(createBlankWorkspace("project-doc-context-2"), {
+      assets: [sourceAsset],
+      position: { x: 100, y: 100 }
+    });
+    const fileObjectId = imported.objectIds[0] ?? "";
+    const workspace = attachDocumentExtractToFileObject(imported.workspace, {
+      fileObjectId,
+      extractAsset,
+      extractedCharCount: 5_000,
+      extractedPageCount: 10,
+      extractionTruncated: true,
+      parsedAt: "2026-06-26T00:00:00.000Z"
+    });
+    const store = new MemoryBlobStore({
+      [extractAsset.storageKey]: new Blob(["已截断的PDF文字提取内容"], { type: "text/plain" })
+    });
+
+    const result = await collectDocumentExtractsForAi(workspace, [fileObjectId], store);
+
+    expect(result.extracts).toHaveLength(1);
+    expect(result.extracts[0]).toMatchObject({
+      objectId: fileObjectId,
+      truncated: true,
+      extractionTruncated: true,
+      charCount: 5_000
+    });
+    expect(result.warning).toContain("按上下文长度截断");
+  });
+
   it("skips unparsed and failed files instead of pretending they were read", async () => {
     const sourceAsset: AssetRecord = {
       id: "asset-file-unparsed",

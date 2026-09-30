@@ -9,6 +9,7 @@ export type AiDocumentExtract = {
   charCount: number;
   pageCount?: number;
   truncated: boolean;
+  extractionTruncated?: boolean;
 };
 
 export type CollectDocumentExtractsResult = {
@@ -74,6 +75,8 @@ export async function collectDocumentExtractsForAi(
     const allowed = Math.min(MAX_CHARS_PER_DOCUMENT, remaining);
     const text = rawText.slice(0, allowed);
     remaining -= text.length;
+    const parserTruncated = Boolean(object.extractionTruncated);
+    const collectorTruncated = text.length < rawText.length;
     extracts.push({
       objectId,
       title: object.title,
@@ -81,7 +84,8 @@ export async function collectDocumentExtractsForAi(
       text,
       charCount: object.extractedCharCount ?? rawText.length,
       pageCount: object.extractedPageCount,
-      truncated: text.length < rawText.length
+      truncated: collectorTruncated || parserTruncated,
+      ...(parserTruncated ? { extractionTruncated: true } : {})
     });
   }
 

@@ -178,6 +178,126 @@ describe("web search parsing", () => {
 
     await expect(result).rejects.toMatchObject({ name: "AbortError" });
   });
+
+  it("allocates sources across two successful queries using deterministic round-robin rather than first-query monopolization", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("q=query-one")) {
+        return new Response(searchResultHtml([
+          ["Q1 Result 1", "https://example.com/q1-1"],
+          ["Q1 Result 2", "https://example.com/q1-2"],
+          ["Q1 Result 3", "https://example.com/q1-3"],
+          ["Q1 Result 4", "https://example.com/q1-4"],
+          ["Q1 Result 5", "https://example.com/q1-5"]
+        ]), { status: 200, headers: { "Content-Type": "text/html" } });
+      }
+      if (url.includes("q=query-two")) {
+        return new Response(searchResultHtml([
+          ["Q2 Result 1", "https://example.com/q2-1"],
+          ["Q2 Result 2", "https://example.com/q2-2"],
+          ["Q2 Result 3", "https://example.com/q2-3"],
+          ["Q2 Result 4", "https://example.com/q2-4"],
+          ["Q2 Result 5", "https://example.com/q2-5"]
+        ]), { status: 200, headers: { "Content-Type": "text/html" } });
+      }
+      return new Response("excerpt content", { status: 200, headers: { "Content-Type": "text/plain" } });
+    }));
+
+    const result = await searchWebEvidence({
+      queries: ["query-one", "query-two"],
+      maxSources: 5
+    });
+
+    expect(result.sources).toHaveLength(5);
+    expect(result.sources.map((s) => s.url)).toEqual([
+      "https://example.com/q1-1",
+      "https://example.com/q2-1",
+      "https://example.com/q1-2",
+      "https://example.com/q2-2",
+      "https://example.com/q1-3"
+    ]);
+  });
+
+  it("interleaves three successful queries across source slots and skips global duplicate URLs", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("q=alpha")) {
+        return new Response(searchResultHtml([
+          ["Alpha 1", "https://example.com/shared-lead"],
+          ["Alpha 2", "https://example.com/alpha-2"]
+        ]), { status: 200, headers: { "Content-Type": "text/html" } });
+      }
+      if (url.includes("q=beta")) {
+        return new Response(searchResultHtml([
+          ["Beta 1", "https://example.com/shared-lead"], // Duplicate of Alpha 1!
+          ["Beta 2", "https://example.com/beta-2"]
+        ]), { status: 200, headers: { "Content-Type": "text/html" } });
+      }
+      if (url.includes("q=gamma")) {
+        return new Response(searchResultHtml([
+          ["Gamma 1", "https://example.com/gamma-1"],
+          ["Gamma 2", "https://example.com/gamma-2"]
+        ]), { status: 200, headers: { "Content-Type": "text/html" } });
+      }
+      return new Response("excerpt", { status: 200, headers: { "Content-Type": "text/plain" } });
+    }));
+
+    const result = await searchWebEvidence({
+      queries: ["alpha", "beta", "gamma"],
+      maxSources: 5
+    });
+
+    expect(result.sources).toHaveLength(5);
+    // Round 1:
+    // - alpha picks shared-lead
+    // - beta sees shared-lead as duplicate, advances to beta-2
+    // - gamma picks gamma-1
+    // Round 2:
+    // - alpha picks alpha-2
+    // - beta has no more unique results
+    // - gamma picks gamma-2
+    expect(result.sources.map((s) => s.url)).toEqual([
+      "https://example.com/shared-lead",
+      "https://example.com/beta-2",
+      "https://example.com/gamma-1",
+      "https://example.com/alpha-2",
+      "https://example.com/gamma-2"
+    ]);
+  });
+
+  it("allows healthy queries to fill all available slots when one query fails", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("q=broken")) {
+        throw new Error("Network failure");
+      }
+      if (url.includes("q=healthy")) {
+        return new Response(searchResultHtml([
+          ["H1", "https://example.com/h1"],
+          ["H2", "https://example.com/h2"],
+          ["H3", "https://example.com/h3"],
+          ["H4", "https://example.com/h4"],
+          ["H5", "https://example.com/h5"]
+        ]), { status: 200, headers: { "Content-Type": "text/html" } });
+      }
+      return new Response("healthy excerpt", { status: 200, headers: { "Content-Type": "text/plain" } });
+    }));
+
+    const result = await searchWebEvidence({
+      queries: ["broken", "healthy"],
+      maxSources: 5
+    });
+
+    expect(result.sources).toHaveLength(5);
+    expect(result.sources.map((s) => s.url)).toEqual([
+      "https://example.com/h1",
+      "https://example.com/h2",
+      "https://example.com/h3",
+      "https://example.com/h4",
+      "https://example.com/h5"
+    ]);
+    expect(result.failedSourceCount).toBe(1);
+  });
 });
 
 function searchResultHtml(results: Array<[string, string]>): string {
