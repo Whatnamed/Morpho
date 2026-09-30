@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { buildSemanticPatchAuthorization } from "./conversationSemanticPatch";
-import { applyConversationSemanticPatch } from "./projectContinuity";
+import { applyConversationSemanticPatch, applyProjectContinuityEvent } from "./projectContinuity";
+import { migrateWorkspaceToCurrentSchema } from "./workspace";
 import {
   buildAgentDefaultMemoryContext,
   buildAgentDefaultMemoryContexts,
@@ -28,6 +29,30 @@ const MEMORY_KEYS: ProjectMemoryKey[] = [
 ];
 
 describe("Project Memory Kernel", () => {
+  it("clears an empty current Stage without appending or removing historical revisions, including round-trip", () => {
+    const base = createBlankWorkspace("project-empty-stage");
+    const withFact = applyProjectContinuityEvent(base, {
+      type: "explorationRecorded", objectIds: [], summary: "探索路径", createdAt: "2026-09-30T00:00:00.000Z"
+    });
+    const projected = reconcileProjectMemory(withFact);
+    const historical = getCurrentStageRecordRevision(projected.projectMemory, "exploration")!;
+    expect(historical).toBeDefined();
+    const cleared = reconcileProjectMemory({
+      ...projected,
+      projectContinuity: {
+        ...projected.projectContinuity,
+        currentFocus: { ...base.projectContinuity.currentFocus },
+        recordEntries: projected.projectContinuity.recordEntries.map((entry) => ({ ...entry, manualState: "withdrawn" }))
+      }
+    });
+    expect(getCurrentStageRecordRevision(cleared.projectMemory, "exploration")).toBeUndefined();
+    expect(getStageRecordHistory(cleared.projectMemory, "exploration")).toEqual([historical]);
+    expect(reconcileProjectMemory(cleared).projectMemory).toEqual(cleared.projectMemory);
+    const roundTrip = migrateWorkspaceToCurrentSchema(JSON.parse(JSON.stringify(cleared)));
+    if (roundTrip.status !== "ok") throw new Error("Expected current-schema round-trip.");
+    expect(getCurrentStageRecordRevision(roundTrip.workspace.projectMemory, "exploration")).toBeUndefined();
+    expect(getStageRecordHistory(roundTrip.workspace.projectMemory, "exploration")).toEqual([historical]);
+  });
   it("skips projection work for canvas, UI, and existing-message body updates", () => {
     const workspace = reconcileProjectMemory(createInitialWorkspace(), "2026-07-13T12:00:00.000Z");
     const targetMessage = workspace.ai.messages.at(-1);

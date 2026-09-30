@@ -78,13 +78,12 @@ function reconcileLegacyMultiReferenceVersionRelations(
 }
 
 export function deriveProjectWorkingState(workspace: MorphoWorkspace, now = new Date().toISOString()): ProjectWorkingState {
-  const designDefinitions = Object.values(workspace.objects).filter(isDesignDefinitionObject);
   const directions = Object.values(workspace.objects).filter(isConceptDirectionObject);
   const keyConclusions = Object.values(workspace.objects).filter(isKeyConclusionObject);
   const researchObjects = Object.values(workspace.objects).filter(isResearchObject);
   const images = Object.values(workspace.objects).filter((object) => object.type === "image");
 
-  const currentDesignDefinition = designDefinitions.find((object) => object.isCurrentEffective);
+  const currentDesignDefinition = projectCurrentDesignDefinitionObject(workspace);
   const currentDesignDefinitionAvailability =
     currentDesignDefinition?.visibility === "active"
       ? "available"
@@ -148,6 +147,23 @@ export function getCurrentDesignDefinitionRevision(
   }
 
   return workspace.designDefinitionRevisions[object.currentRevisionId];
+}
+
+/** Project-current object authority is distinct from each object's revision.isCurrent. */
+export function resolveCurrentDesignDefinition(workspace: MorphoWorkspace):
+  | { object: DesignDefinitionObject; revision: DesignDefinitionRevision; availability: "available" | "hidden" }
+  | undefined {
+  const object = projectCurrentDesignDefinitionObject(workspace);
+  if (!object) return undefined;
+  const revision = workspace.designDefinitionRevisions[object.currentRevisionId];
+  if (!revision || revision.designDefinitionId !== object.id) return undefined;
+  return { object, revision, availability: object.visibility === "hidden" ? "hidden" : "available" };
+}
+
+function projectCurrentDesignDefinitionObject(workspace: MorphoWorkspace): DesignDefinitionObject | undefined {
+  return Object.values(workspace.objects).find(
+    (candidate): candidate is DesignDefinitionObject => candidate.type === "designDefinition" && candidate.isCurrentEffective
+  );
 }
 
 export function hasPendingDesignDefinitionRevisionProposal(

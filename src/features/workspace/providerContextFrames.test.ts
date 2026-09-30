@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { resolveCurrentDesignDefinition } from "@/domain/morpho/derivedState";
+import { applyDesignDefinitionProposal, recordDesignDefinitionProposal } from "@/domain/operations/operations";
+import { deleteObject, hideObjects } from "@/domain/morpho/workspace";
+import type { MorphoWorkspace } from "@/domain/morpho/types";
 
 import {
   createProviderContextFrame,
@@ -41,6 +45,37 @@ function frameInput(overrides: Partial<ProviderContextFrameInput> = {}): Provide
 }
 
 describe("Provider Context Frames", () => {
+  it("reads independent definition B after A, preserves hidden-current identity, and never falls back after deletion", () => {
+    let workspace = createBlankWorkspace("project-definition-integrity");
+    for (const title of ["Definition A", "Definition B"]) {
+      const proposed = recordDesignDefinitionProposal(workspace, {
+        proposalId: title, workIntent: "createDesignDefinition", title, summary: title,
+        projectGoal: title, targetUsers: [], primaryScenarios: [], coreProblem: title,
+        designPrinciples: [], constraints: [], avoidDirections: [], opportunities: [],
+        openQuestions: [], sourceObjectIds: [], citations: []
+      });
+      const applied = applyDesignDefinitionProposal(proposed.workspace, proposed.proposal.id);
+      if (applied.status !== "updated") throw new Error("Expected definition application.");
+      workspace = applied.workspace;
+    }
+    const current = resolveCurrentDesignDefinition(workspace)!;
+    expect(current.object.id).toBe(workspace.workingState.currentDesignDefinitionId);
+    expect(current.revision.title).toBe("Definition B");
+    expect(projectFrame(workspace)).toMatchObject({ designDefinitionRevisionId: current.object.currentRevisionId });
+    expect(projectFrame(workspace)?.renderedText).toContain("当前设计定义：Definition B");
+
+    const hidden = hideObjects(workspace, [current.object.id]);
+    expect(resolveCurrentDesignDefinition(hidden)).toMatchObject({ object: { id: current.object.id }, availability: "hidden" });
+    expect(projectFrame(hidden)?.designDefinitionRevisionId).toBeUndefined();
+    expect(projectFrame(hidden)?.renderedText).toContain("当前设计定义已隐藏");
+    expect(projectFrame(hidden)?.renderedText).not.toContain("当前设计定义：Definition A");
+
+    const deleted = deleteObject(hidden, current.object.id, { confirmed: true });
+    if (deleted.status !== "updated") throw new Error("Expected deletion.");
+    expect(resolveCurrentDesignDefinition(deleted.workspace)).toBeUndefined();
+    expect(projectFrame(deleted.workspace)?.designDefinitionRevisionId).toBeUndefined();
+    expect(projectFrame(deleted.workspace)?.renderedText).toContain("当前没有已应用设计定义");
+  });
   it("keeps task strategy policy out of the untrusted turn context frame", () => {
     const workspace = createInitialWorkspace();
     const context = buildTaskContext(workspace, {
@@ -210,6 +245,16 @@ describe("Provider Context Frames", () => {
     expect(estimateProviderSerializedTokens(delta)).toBeLessThan(estimateProviderSerializedTokens(task));
   });
 });
+
+function projectFrame(workspace: MorphoWorkspace) {
+  const context = buildTaskContext(workspace, { kind: "general", draft: "继续", selectedObjectIds: [] });
+  return appendAgentProviderContextFrames(workspace, {
+    workspace, projectId: workspace.project.id, strategy: "historyAndMemory", mode: "auto",
+    promptContractVersion: "morpho-agent-test", userMessageId: "definition-integrity-user",
+    context, providerTaskContext: buildProviderTaskContext(context),
+    defaultMemoryContext: buildAgentDefaultMemoryContext(workspace, "historyAndMemory")
+  }).ai.providerContextFrames?.filter((frame) => frame.kind === "projectState").at(-1);
+}
 
 function memoryDocument(
   key: "projectOverview" | "outputPlan",

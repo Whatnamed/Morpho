@@ -269,6 +269,11 @@ export function reconcileProjectMemoryState(
   for (const stage of STAGE_RECORD_KEYS) {
     const projected = projectedStages[stage];
     if (!projected || stageSectionItemCount(projected.sections) === 0) {
+      if (next.stageRecords[stage]) {
+        const stageRecords = { ...next.stageRecords };
+        delete stageRecords[stage];
+        next = { ...next, stageRecords };
+      }
       continue;
     }
     next = applyProjectedStage(next, stage, projected, now);

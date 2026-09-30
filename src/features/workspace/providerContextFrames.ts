@@ -1,4 +1,4 @@
-
+import { resolveCurrentDesignDefinition } from "@/domain/morpho/derivedState";
 import type {
   AgentTaskStrategyKind,
   ConversationSummaryRevision,
@@ -277,7 +277,8 @@ function createProjectStateFrame(
     .filter((id): id is string => Boolean(id))
     .sort();
   const stageRevisionIds: string[] = [];
-  const currentDefinition = Object.values(input.workspace.designDefinitionRevisions).find((revision) => revision.isCurrent);
+  const definition = resolveCurrentDesignDefinition(input.workspace);
+  const currentDefinition = definition?.availability === "available" ? definition.revision : undefined;
   const primaryDirection = input.workspace.workingState.primaryDirectionId
     ? input.workspace.objects[input.workspace.workingState.primaryDirectionId]
     : undefined;
@@ -319,7 +320,9 @@ function createProjectStateFrame(
       renderMemoryContext(stableMemoryContext),
       currentDefinition
         ? `当前设计定义：${currentDefinition.title}（${currentDefinition.summary}）`
-        : "当前没有已应用设计定义。",
+        : definition?.availability === "hidden"
+          ? "当前设计定义已隐藏，不可用于默认 Context。"
+          : "当前没有已应用设计定义。",
       primaryDirection?.type === "conceptDirection"
         ? `当前主方向：${primaryDirection.title}（${primaryDirection.summary}）`
         : "当前没有已确定主方向。",
