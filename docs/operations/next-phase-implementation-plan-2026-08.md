@@ -2,6 +2,10 @@
 
 Date: 2026-08-22
 
+> **Status: Superseded / Historical Milestone Reference (2026-08-22)**
+> This operational plan has been superseded for future work ordering by [`docs/operations/remediation-program-map.md`](./remediation-program-map.md).
+> It is preserved as a historical milestone record of the August 2026 post-migration state. Its forward-looking suggestions (such as "下一步继续审计") are not current execution instructions.
+
 ## Current assessment
 
 Morpho has completed the major architecture migration work. The repository is currently beyond foundation development and is in the hardening and product-capability refinement stage.

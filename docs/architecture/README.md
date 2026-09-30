@@ -26,6 +26,7 @@ runtime names, model defaults, or deployment claims into current work without re
 |---|---|---|
 | [`architecture.md`](./architecture.md) | Current implemented module boundaries, routes, persistence, providers, and deployment paths | Historical migration narrative or live deployment evidence beyond what it explicitly records |
 | [`decisions.md`](./decisions.md) | Confirmed technical decisions and explicit supersession boundaries | Treating an old dated entry as the current implementation when a later A+ entry supersedes it |
+| [`ai-operation-runtime.md`](./ai-operation-runtime.md) | Controlled AI Operation Runtime boundaries (research, imageGeneration, designDefinition, conceptDirection) and Proposal/Draft contracts | Outdated pre-A+ references from initial Milestone 3 notes |
 | [`../operations/runbook.md`](../operations/runbook.md) | Real install, local checks, release gates, database safeguards, and deployment/observation procedure | Authorization to run remote writes or Phase C |
 | [`../product/README_本次更新说明.md`](../product/README_本次更新说明.md) | Current product-rule document index and v3.2 status | Backend or deployment architecture |
 
@@ -65,7 +66,8 @@ descriptions were true at their recorded baseline:
   [`m8-delivery-output-package.md`](./m8-delivery-output-package.md),
   [`m9-a-local-runtime-reliability.md`](./m9-a-local-runtime-reliability.md)
 - Audit and measurement evidence: [`ai-continuity-convergence-audit.md`](./ai-continuity-convergence-audit.md),
-  [`performance-baseline.md`](./performance-baseline.md), and [`asset-gc-evaluation.md`](./asset-gc-evaluation.md)
+  [`performance-baseline.md`](./performance-baseline.md), [`asset-gc-evaluation.md`](./asset-gc-evaluation.md),
+  [`performance-phase5.md`](./performance-phase5.md), and [`performance-agent-latency.md`](./performance-agent-latency.md)
 - AI capability layer (2026-08-16): [`ai-capability-layer.md`](./ai-capability-layer.md) (audit,
   gap analysis, architecture proposal, and implementation record for the design-partner persona,
   trusted strategy delivery, Design Method Packs, memory one-off guard, compaction prompt

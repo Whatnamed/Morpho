@@ -135,14 +135,23 @@ npm.cmd run build
 - [`docs/design/Morpho_UI_原型设计说明_v1.md`](docs/design/Morpho_UI_原型设计说明_v1.md)
 - [`docs/design/references/morpho_workspace_anchor_v2.html`](docs/design/references/morpho_workspace_anchor_v2.html)
 
-### 工程文档
+### 工程与架构
 
 - [`docs/architecture/architecture.md`](docs/architecture/architecture.md)
 - [`docs/architecture/decisions.md`](docs/architecture/decisions.md)
 - [`docs/architecture/README.md`](docs/architecture/README.md)
 - [`docs/architecture/agent-runtime-a-plus-migration.md`](docs/architecture/agent-runtime-a-plus-migration.md)
-- [`docs/operations/runbook.md`](docs/operations/runbook.md)
 
+### 运维与修复程序
+
+- [`docs/operations/README.md`](docs/operations/README.md)
+- [`docs/operations/runbook.md`](docs/operations/runbook.md)
+- [`docs/operations/remediation-program-map.md`](docs/operations/remediation-program-map.md)
+
+### 调研与审计证据
+
+- [`docs/research/README.md`](docs/research/README.md)
+- [`docs/research/remediation-audits/`](docs/research/remediation-audits/README.md)
 ## 官方示例项目
 
 当前内置案例项目来自真实 Morpho 可编辑备份：
