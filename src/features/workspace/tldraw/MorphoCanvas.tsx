@@ -921,7 +921,10 @@ export function MorphoCanvas({
 
   useEffect(() => {
     // Single flush path for instances + stage regions + camera (no duplicate onMount listeners).
-    const flushInteractionState = () => {
+    const flushInteractionState = (event?: Event) => {
+      // Toolbar pointerup must reach its native click before persistence can
+      // remount canvas chrome. Pending canvas writes still have their timers.
+      if (event?.type === "pointerup" && event.target instanceof Element && event.target.closest(".selection-toolbar")) return;
       flushPendingInstances();
       flushPendingStageRegions();
       flushViewPersist();
