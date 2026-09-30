@@ -193,7 +193,7 @@ function validateObjectVariant(
       requireString(object.body, `${path}.body`, add);
       const source = requireRecord(object.source, `${path}.source`, add);
       if (source) {
-        validateObjectRef(source.fileObjectId, `${path}.source.fileObjectId`, objects, "file", add);
+        validateHistoricalObjectRef(source.fileObjectId, `${path}.source.fileObjectId`, objects, "file", add);
         requireString(source.fileTitle, `${path}.source.fileTitle`, add);
         validateRequiredRef(source.sourceExtractAssetId, `${path}.source.sourceExtractAssetId`, assets, "Document extract asset", add);
         requireFiniteNonNegative(source.startOffset, `${path}.source.startOffset`, add);
@@ -215,7 +215,7 @@ function validateObjectVariant(
       validateStringArray(object.keywords, `${path}.keywords`, add);
       validateRequiredRef(object.currentRevisionId, `${path}.currentRevisionId`, directions, "Direction revision", add);
       validateIdArray(object.revisionIds, `${path}.revisionIds`, add, (id, itemPath) => validateRequiredRef(id, itemPath, directions, "Direction revision", add));
-      validateObjectRef(object.lineageRootId, `${path}.lineageRootId`, objects, "conceptDirection", add); break;
+      validateHistoricalObjectRef(object.lineageRootId, `${path}.lineageRootId`, objects, "conceptDirection", add); break;
     case "delivery": {
       requireEnum(object.format, `${path}.format`, ["board", "presentation"], add);
       validateArray(object.sections, `${path}.sections`, add, (section, sectionPath) => {
@@ -556,7 +556,7 @@ function validateRelation(raw: unknown, path: string, objects: Record<string, un
 
 function validateDirectionLineage(raw: unknown, path: string, objects: Record<string, unknown> | null, add: AddIssue): void {
   const item = requireRecord(raw, path, add); if (!item) return; requireId(item.id, `${path}.id`, add);
-  validateObjectRef(item.fromDirectionId, `${path}.fromDirectionId`, objects, "conceptDirection", add); validateObjectRef(item.toDirectionId, `${path}.toDirectionId`, objects, "conceptDirection", add);
+  validateHistoricalObjectRef(item.fromDirectionId, `${path}.fromDirectionId`, objects, "conceptDirection", add); validateHistoricalObjectRef(item.toDirectionId, `${path}.toDirectionId`, objects, "conceptDirection", add);
 }
 
 function validateVisualBranches(branches: Record<string, unknown>, objects: Record<string, unknown> | null, add: AddIssue): void {

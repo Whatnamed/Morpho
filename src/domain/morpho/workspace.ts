@@ -654,6 +654,36 @@ export function deleteObject(
   }
 
   const objects = omitRecordKey(workspace.objects, objectId);
+  // Branch ownership and image membership are live organizational state;
+  // generation metadata, revisions and lineage remain historical provenance.
+  const removedBranchIds = new Set(
+    Object.values(workspace.visualBranches).filter((branch) => branch.directionId === objectId).map((branch) => branch.id)
+  );
+  const visualBranches = Object.fromEntries(
+    Object.entries(workspace.visualBranches)
+      .filter(([id]) => !removedBranchIds.has(id))
+      .map(([id, branch]) => {
+        if (branch.rootObjectId !== objectId) return [id, branch];
+        const { rootObjectId: _rootObjectId, ...withoutRoot } = branch;
+        return [id, withoutRoot];
+      })
+  );
+  for (const candidate of Object.values(objects)) {
+    if (candidate.type === "image" && (candidate.directionId === objectId || removedBranchIds.has(candidate.visualBranchId ?? ""))) {
+      const updated = { ...candidate };
+      if (updated.directionId === objectId) delete updated.directionId;
+      if (removedBranchIds.has(updated.visualBranchId ?? "")) delete updated.visualBranchId;
+      objects[candidate.id] = updated;
+    } else if (candidate.type === "imageCollection" && candidate.memberObjectIds.includes(objectId)) {
+      objects[candidate.id] = { ...candidate, memberObjectIds: candidate.memberObjectIds.filter((id) => id !== objectId) };
+    }
+  }
+  const deliveryReferences = Object.fromEntries(
+    Object.entries(workspace.deliveryReferences).filter(([, reference]) => reference.deliveryObjectId !== objectId)
+  );
+  const deliverySectionDrafts = Object.fromEntries(
+    Object.entries(workspace.deliverySectionDrafts).filter(([, draft]) => draft.deliveryObjectId !== objectId)
+  );
   const relations = workspace.relations.filter(
     (relation) => relation.fromObjectId !== objectId && relation.toObjectId !== objectId
   );
@@ -679,11 +709,20 @@ export function deleteObject(
       ...workspace,
       objects,
       relations,
+      visualBranches,
+      deliveryReferences,
+      deliverySectionDrafts,
       decisionRecords,
       canvas: {
         ...workspace.canvas,
-        instances: canvasInstances
-      }
+        instances: canvasInstances,
+        ...(workspace.canvas.stageRegions ? {
+          stageRegions: workspace.canvas.stageRegions.map((region) => ({
+            ...region, memberObjectIds: region.memberObjectIds.filter((id) => id !== objectId)
+          }))
+        } : {})
+      },
+      ui: { ...workspace.ui, lastSelectionIds: workspace.ui.lastSelectionIds.filter((id) => id !== objectId) }
     }))
   };
 }
@@ -865,6 +904,7 @@ export function createVisualBranch(
     workspace: applyProjectContinuityEvent(nextWorkspace, {
       type: "visualBranchChanged",
       action: "created",
+      occurrenceId: branchId,
       branchId,
       directionId: direction.id,
       createdAt: now
@@ -929,6 +969,7 @@ export function archiveVisualBranch(
     workspace: applyProjectContinuityEvent(nextWorkspace, {
       type: "visualBranchChanged",
       action: "archived",
+      occurrenceId: crypto.randomUUID(),
       branchId,
       directionId: branch.directionId,
       createdAt: now
@@ -946,6 +987,7 @@ export function restoreVisualBranch(
   }
 
   const { archivedAt: _archivedAt, ...restoredBranch } = branch;
+  if (!branch.archivedAt) return { status: "updated", workspace };
   const now = new Date().toISOString();
   const nextWorkspace = {
     ...workspace,
@@ -959,6 +1001,7 @@ export function restoreVisualBranch(
     workspace: applyProjectContinuityEvent(nextWorkspace, {
       type: "visualBranchChanged",
       action: "restored",
+      occurrenceId: crypto.randomUUID(),
       branchId,
       directionId: restoredBranch.directionId,
       createdAt: now
