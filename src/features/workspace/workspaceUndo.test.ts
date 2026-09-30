@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createInitialWorkspace, deleteObject } from "@/domain/morpho/workspace";
 import type { AssetRecord, MorphoWorkspace } from "@/domain/morpho/types";
 import type { ArtifactProposal, OperationRecord, SourceCitation } from "@/domain/operations/types";
 import { popDetailNavigation, pushDetailNavigation } from "./workspaceNavigation";
@@ -55,6 +55,76 @@ function historyWith(entries: TestEntry[]): SnapshotHistory<TestEntry> {
 }
 
 describe("workspace object-operation undo history", () => {
+  it.each(["body", "status", "trace"])("blocks same-ID AI message %s changes and retains history", (field) => {
+    const before = appendAiMessage(createInitialWorkspace(), "p1a-existing-message");
+    const current: MorphoWorkspace = { ...before, ai: { ...before.ai, messages: before.ai.messages.map((message) => {
+      if (message.id !== "p1a-existing-message") return message;
+      if (field === "body") return { ...message, body: "后来独立生成的完整回复" };
+      if (field === "status") return { ...message, status: "failed" };
+      return { ...message, agentTrace: { startedAt: "2026-09-30T00:00:00.000Z", parts: [], status: "done" } };
+    }) } };
+    const history = historyWith([{ workspace: before, label: "before" }]);
+    const blocked = undoSnapshotHistory(history, current, () => ({ workspace: current, label: "current" }));
+    expect(blocked).toEqual({ status: "blocked", history });
+    expect(undoSnapshotHistory(history, current, () => ({ workspace: current, label: "current" }))).toEqual(blocked);
+  });
+
+  it("blocks mutations to existing operation, proposal and citation IDs", () => {
+    const base = createInitialWorkspace();
+    const operation = createAiOperation(base.project.id);
+    const proposal = createAiProposal(operation.id);
+    const citation = createAiCitation(operation.id);
+    const before: MorphoWorkspace = {
+      ...base, operations: { [operation.id]: operation }, artifactProposals: { [proposal.id]: proposal }, citationSnapshots: { [citation.id]: citation }
+    };
+    const cases: MorphoWorkspace[] = [
+      { ...before, operations: { [operation.id]: { ...operation, status: "failed", updatedAt: "2026-09-30T00:00:00.000Z" } } },
+      { ...before, artifactProposals: { [proposal.id]: { ...proposal, summary: "Later AI artifact" } } },
+      { ...before, citationSnapshots: { [citation.id]: { ...citation, snippet: "Later citation content" } } }
+    ];
+    const history = historyWith([{ workspace: before, label: "before" }]);
+    for (const current of cases) {
+      expect(undoSnapshotHistory(history, current, () => ({ workspace: current, label: "current" }))).toEqual({ status: "blocked", history });
+    }
+  });
+
+  it("protects appended revisions and Decision/history plus same-ID history changes", () => {
+    const before = createInitialWorkspace();
+    const revision = Object.values(before.directionRevisions)[0]!;
+    const decision = before.decisionRecords[0]!;
+    const cases: MorphoWorkspace[] = [
+      { ...before, directionRevisions: { ...before.directionRevisions, [revision.id]: { ...revision, summary: "Later revision content" } } },
+      { ...before, directionRevisions: { ...before.directionRevisions, "p1a-new-revision": { ...revision, id: "p1a-new-revision" } } },
+      { ...before, decisionRecords: [...before.decisionRecords, { ...decision, id: "p1a-new-decision" }] },
+      { ...before, decisionRecords: before.decisionRecords.map((record) => record.id === decision.id ? { ...record, reason: "Later reason" } : record) }
+    ];
+    for (const current of cases) expect(shouldBlockSnapshotUndo(before, current)).toBe(true);
+  });
+
+  it("blocks existing-file asynchronous parse results without blocking ordinary title edits", () => {
+    const before = createInitialWorkspace();
+    const file = before.objects["file-course-brief"];
+    if (file.type !== "file") throw new Error("Expected file.");
+    const current: MorphoWorkspace = { ...before, objects: { ...before.objects, [file.id]: { ...file, parseStatus: "parsed", extractedCharCount: 123 } } };
+    expect(shouldBlockSnapshotUndo(before, current)).toBe(true);
+    expect(shouldBlockSnapshotUndo(before, { ...before, objects: { ...before.objects, [file.id]: { ...file, title: "手动标题" } } })).toBe(false);
+  });
+
+  it("allows delete → Undo → Redo using the restore baseline, then blocks an independent same-ID update", () => {
+    const before = createInitialWorkspace();
+    const deletion = deleteObject(before, "image-night-scenario", { confirmed: true });
+    if (deletion.status !== "updated") throw new Error("Expected deletion.");
+    const after = deletion.workspace;
+    const undone = undoSnapshotHistory(historyWith([{ workspace: before, label: "before" }]), after, () => ({ workspace: after, label: "after" }));
+    if (undone.status !== "restored") throw new Error("Expected safe Undo.");
+    const redo = redoSnapshotHistory(undone.history, undone.entry.workspace, () => ({ workspace: undone.entry.workspace, label: "before" }));
+    expect(redo.status).toBe("restored");
+    if (redo.status !== "restored") throw new Error("Expected safe Redo.");
+    expect(redo.entry.workspace.objects["image-night-scenario"]).toBeUndefined();
+    expect(undoSnapshotHistory(redo.history, redo.entry.workspace, () => ({ workspace: redo.entry.workspace, label: "after" })).status).toBe("restored");
+    const changed = { ...undone.entry.workspace, ai: { ...before.ai, messages: before.ai.messages.map((message, index) => index === 0 ? { ...message, body: `${message.body} later` } : message) } };
+    expect(redoSnapshotHistory(undone.history, changed, () => ({ workspace: changed, label: "changed" }))).toEqual({ status: "blocked", history: undone.history });
+  });
   it("restores the latest manual snapshot and moves the current state onto the redo stack", () => {
     const before = createInitialWorkspace();
     const after = renameProject(before, "手动改名后的项目");

@@ -90,7 +90,7 @@ describe("useWorkspaceObjectHistoryController", () => {
     expect(harness.closedContextMenuCount()).toBe(1);
     expect(harness.notices()).toEqual([
       {
-        message: "撤销已暂停：此步早于 AI 生成的内容，AI 结果不进入撤销；撤销历史已保留。",
+        message: "撤销已暂停：恢复快照可能覆盖后来的 AI、运行结果或历史内容；撤销历史已保留。",
         durationMs: 2600
       }
     ]);
@@ -110,7 +110,7 @@ describe("useWorkspaceObjectHistoryController", () => {
     expect(harness.current().redo()).toBe(true);
     expect(harness.notices()).toEqual([
       {
-        message: "重做已暂停：撤销之后已有新内容创建，重做不会移除它们；历史已保留。",
+        message: "重做已暂停：恢复快照可能覆盖后来的 AI、运行结果或历史内容；重做历史已保留。",
         durationMs: 2600
       }
     ]);

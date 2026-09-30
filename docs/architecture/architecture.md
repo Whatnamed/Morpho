@@ -455,6 +455,23 @@ Schema v17 is the current runtime contract and supersedes lane-local checkpoint 
 - `ConversationCompactionState` points to a revisioned project-wide summary boundary, while all original `ai.messages` remain persisted and searchable;
 - `ProjectMemoryState` contains seven document descriptors, current revision pointers, immutable history, source refs, basis, and `reviewRequired`;
 - stage records use six possible project areas but create current revisions only for stages with real content; Compare writes back to the relevant stage and never becomes a stage;
+- `resolveCurrentDesignDefinition(...)` in `derivedState.ts` resolves the current-effective definition object and only its owned `currentRevisionId`. Provider Project State Frames use it; hidden current definitions are explicitly unavailable and never select an older object's `isCurrent` revision.
+- An empty Stage projection removes its current descriptor, retains `stageRevisions`, and creates no empty revision. Reactivating equivalent content reuses the historical value without rewriting it; changed content continues the retained revision chain. Design Definition and Concept Direction revision writes use copy-on-write and preserve the input Workspace/revision values.
+- Repeatable Visual Branch and Delivery mutations create occurrence identity at the owning mutation boundary. Continuity dedupes replay of that occurrence, while later repeated actions remain separate. Existing revision/operation/Decision identities and legacy persisted `dedupeKey` records remain readable; no Workspace schema change is required.
+
+P1A deletion/reference roles use the existing v17 shapes:
+
+| Reference | Role and deletion contract |
+|---|---|
+| Relations, CanvasInstances, Stage Region/collection members, UI selection | Current membership: remove the deleted object ID. |
+| Visual Branch direction/root; Image direction/branch | Live organization: direction deletion removes its owned branches and unbinds surviving images; image deletion clears branch roots. Image assets and immutable generation provenance remain. |
+| Direction revision owner, lineage endpoints and `lineageRootId` | Historical identity: retain revisions and lineage. Missing endpoints are legal; existing endpoints must still have the correct type. |
+| DeliveryReference/DeliverySectionDraft owner | Current ownership/pending application: owner deletion removes owned references and drafts, preserving upstream sources. |
+| DeliveryReference source and snapshot | Stable snapshot: upstream deletion preserves the reference and snapshot; source availability reports missing. |
+| DocumentFragment source File | Historical source identity: retain extracted body, file identity/title and extract asset; a missing File is legal, an existing wrong-type endpoint is rejected. Queries report missing availability. |
+| Artifact Proposal sources/targets; Decision/Continuity sources | Existing historical source snapshots remain readable; existing application/review rules are retained, without a new dependency schema. |
+
+Session-only snapshot Undo/Redo remains conservative. It compares persisted AI message content/status/trace, summaries/compaction/Provider frames/Compare records, operations, assets, citations, proposals, pending Delivery drafts, revisions, Decisions, lineage, Memory/Stage history and file/image runtime output fields. New or changed protected content blocks restoration and preserves the history entry. A successful restore records a session-only baseline so an unchanged restored object is not mistaken for new independent content by Redo. Ordinary safe snapshots remain supported; manual changes that add protected history may also block when ownership cannot be distinguished. This is stop-loss, not P6H operation-scoped history.
 - deterministic projection and controlled semantic entries meet in one Memory Kernel, with consecutive equivalent revisions collapsed during migration so reload is idempotent;
 - Agent messages record prompt-contract version, task strategy, specific memory/stage update keys, citations, and Agent Trace provenance;
 - `src/domain/morpho/agentContextPolicy.ts` is the only production Context Policy source: 256,000 window, 204,800 prepare, 230,400 compact, 16,000 uncompressed-tail target, and a separate 16,000 response reserve. `prepare` never trims history; only `compact` advances a validated summary boundary;

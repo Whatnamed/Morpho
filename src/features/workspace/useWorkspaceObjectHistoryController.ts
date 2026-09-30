@@ -111,7 +111,7 @@ export function useWorkspaceObjectHistoryController<TEntry extends WorkspaceSnap
 
     if (result.status === "blocked") {
       closeCanvasContextMenu();
-      showNotice("撤销已暂停：此步早于 AI 生成的内容，AI 结果不进入撤销；撤销历史已保留。", 2600);
+      showNotice("撤销已暂停：恢复快照可能覆盖后来的 AI、运行结果或历史内容；撤销历史已保留。", 2600);
       return true;
     }
 
@@ -132,7 +132,7 @@ export function useWorkspaceObjectHistoryController<TEntry extends WorkspaceSnap
 
     if (result.status === "blocked") {
       closeCanvasContextMenu();
-      showNotice("重做已暂停：撤销之后已有新内容创建，重做不会移除它们；历史已保留。", 2600);
+      showNotice("重做已暂停：恢复快照可能覆盖后来的 AI、运行结果或历史内容；重做历史已保留。", 2600);
       return true;
     }
 
