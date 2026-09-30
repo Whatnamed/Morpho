@@ -836,8 +836,14 @@ Schema 18 also supports optional object `incarnationId`, source snapshot `incarn
 effect `targetIncarnationId`, Proposal `targetIdentitySnapshots` and fragment source
 `fileIncarnationId`. New object creation generates a fresh identity; edits and revisions preserve it.
 Old schema 18 as well as earlier projects/Backups remain readable without these fields. Never fill
-missing historical identities from a live object, timestamps or fingerprints. A missing identity
-remains unknown and requires review; identical content after same-ID recreation does not restore
+missing historical identities from a live object, timestamps or fingerprints. Schema 1–17 upgrades
+assign fresh random forward identities to surviving identity-less live objects; these identify the
+object only from the upgrade onward. They never fill old Decision effects, EvidenceBasis, source or
+target snapshots, Fragment source metadata or other historical bindings. Persist the migrated schema
+18 workspace: later serialize/parse/normalization and Editable Backup restore preserve the assigned
+identities. New post-migration Operations, Proposals, EvidenceBasis and Fragment drafts can capture
+these live identities. Missing historical bindings (and identity-less older schema 18 data) remain
+unknown and require review; identical content after same-ID recreation does not restore
 old evidence support or Proposal readiness. Recovery v2 preserves and validates optional snapshot
 identities without changing the Provider request. Delivery action Decisions describe historical
 occurrences and require no structured current-state effect.

@@ -303,6 +303,16 @@ Delivery action/event Decision 按明确 kind 分类为 historical，不再污�
 Chromium 全量 26 项通过，包含 Delivery 历史动作与同 ID 旧 Decision 的 UI 分类；`typecheck`、`lint`、production `build`、`git diff --check` 通过。
 继续使用 `codex/p1b1-truth-evidence-authority`；状态仍为 validating，无 accepted commit，不 merge main，不开始其它 package。
 
+P1B-1 最后一个迁移 blocker 修复（2026-10-01，`01464113e325dd3d9028592ea6d7c0befaf80306`；
+受影响的样本兼容及测量 fixture：`f9239381263bddf176ce74fa1bb85e00205642a8`）：
+Schema 1–17 → 18 时只为仍存活且缺身份的 live objects 建立随机 forward incarnation，已有身份保留；
+旧 Decision/EvidenceBasis/Proposal source/target/Fragment source 等 historical binding 不回填，继续 unknown/review-required。
+迁移后的新 Operation/Proposal/EvidenceBasis 可得到 same/current、正常 apply/support；同 ID 同内容重建后旧 new-era baseline 变为 different/changed。
+迁移 File → 新 Fragment、serialize/parse 幂等身份及真实 Editable Backup restore 保留身份均有回归。
+`forwardIncarnationMigration.test.ts` 覆盖 schema 1–17 和集成轨迹；全量 unit 223 文件/2200 项通过，末次完整迁移轨迹 20 项通过；
+Chromium 全量 26 项通过，包括真实 schema 17 装载、持久化及刷新后身份保持；`typecheck`、`lint`、production `build`、storage fixture 重测、`git diff --check` 通过。
+Workspace schema 仍为 18；同一 task branch，状态仍为 validating；未 merge main、未标记 accepted、未开始 P1B-2/P5 或其它 package。
+
 ### 9.4 所有包共同的 compatibility 与停止条件
 
 1. 写 Plan 时绑定新的 `main`，明确原失败、范围、必跑相邻变体、允许结束状态与测试预算；对照前包 accepted commit，不沿用旧行号盲改。

@@ -243,8 +243,12 @@ Truth / evidence authority (P1B-1):
 - New object creation persists a random `incarnationId`, preserved through edits, revision changes,
   visibility changes, persistence and Backup. Reusing an object ID creates a different incarnation.
   Source baselines/evidence bases and Decision targets bind both IDs; content equality cannot revive
-  old authority. Fragments also bind their source file incarnation. Missing legacy identities remain
-  unknown/review-required; normalization never backfills objects or historical bindings.
+  old authority. Fragments also bind their source file incarnation. Schema 1–17 upgrades establish
+  random forward identities for surviving live objects only; existing identities are preserved.
+  Historical bindings without identities remain unknown/review-required and are never backfilled.
+  Schema 18 normalization and Backup restore preserve established identities without regenerating
+  them. Identity-less older schema 18 objects remain unknown unless newly created through a domain
+  creation boundary.
 - Delivery action Decision kinds represent historical occurrences without effects. Only kinds with
   ongoing current semantics require structured effects; Decision Memory and history UI share this
   classification. Proposal targets and parent dependencies have separately frozen identity bindings.

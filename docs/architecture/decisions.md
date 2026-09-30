@@ -1195,3 +1195,23 @@ application and gap actions describe historical occurrences. They classify as `h
 an effect. Kinds that assert ongoing current state still require a structured effect and known
 target incarnation. This corrects classification at the shared domain reader used by Decision
 Memory and history UI, without inventing persistent Delivery authority or starting P5/P1B-2.
+
+P1B-1 migration review correction (2026-10-01): distinguish historical bindings from surviving
+live objects at upgrade. Schema 1–17 migration establishes a random forward incarnation for each
+identity-less object still in `workspace.objects`, including hidden objects. This checkpoint says
+only that the same live object continues from migration completion; it does not recover a past
+identity. Existing identities are preserved. Old Decision effects, evidence/source/target snapshots,
+Fragment source metadata and other historical bindings are never backfilled. New post-migration
+captures can use the live identity normally; delete/recreate still creates a different identity.
+Schema stays 18; current-schema normalization and Editable Backup restore preserve the persisted
+forward identity, and do not mint replacements. Identity-less older schema 18 data retains the
+previous unknown behavior. This supersedes the earlier review's restriction on assigning identities
+to surviving pre-18 objects; the restriction on reconstructing historical bindings is unchanged.
+
+Migration compatibility checks also keep the case-study installation marker bound to the actual
+persisted Workspace fingerprint; asset installation preserves that marker instead of substituting
+another template parse with independently generated identities. The exact pristine Nightrail
+compatibility guard excludes only forward live-object incarnation metadata, retaining the existing
+content/history guards. Storage fixtures were remeasured: blank remains 2,719 UTF-16 characters;
+case study is 875,732 and restored Backup is 876,321. These replace the previous schema-18 size
+anchors and measure the added identity fields, not storage capacity or performance.
