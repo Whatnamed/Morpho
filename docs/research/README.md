@@ -28,7 +28,7 @@
 
 | 文档 | 说明 | 状态与用途 |
 |---|---|---|
-| [`real-world-project-eval-acceptance-architecture.md`](./real-world-project-eval-acceptance-architecture.md) | 真实项目评测与验收架构设计（4 层 Eval 体系、离线快照、确定性打分） | 评测套件设计输入 |
+| [`real-world-project-eval-acceptance-architecture.md`](./real-world-project-eval-acceptance-architecture.md) | 真实项目评测与验收架构设计（L0–L4 分层 Eval、项目轨迹、故障归因、真实 Provider 与 designer acceptance） | 评测套件设计输入 |
 | [`design-intelligence-capability-orchestration-review.md`](./design-intelligence-capability-orchestration-review.md) | 设计智能能力编排、策略路由与模型协同审查 | 能力层演化参考 |
 
 ---

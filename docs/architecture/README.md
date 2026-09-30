@@ -26,7 +26,6 @@ runtime names, model defaults, or deployment claims into current work without re
 |---|---|---|
 | [`architecture.md`](./architecture.md) | Current implemented module boundaries, routes, persistence, providers, and deployment paths | Historical migration narrative or live deployment evidence beyond what it explicitly records |
 | [`decisions.md`](./decisions.md) | Confirmed technical decisions and explicit supersession boundaries | Treating an old dated entry as the current implementation when a later A+ entry supersedes it |
-| [`ai-operation-runtime.md`](./ai-operation-runtime.md) | Controlled AI Operation Runtime boundaries (research, imageGeneration, designDefinition, conceptDirection) and Proposal/Draft contracts | Outdated pre-A+ references from initial Milestone 3 notes |
 | [`../operations/runbook.md`](../operations/runbook.md) | Real install, local checks, release gates, database safeguards, and deployment/observation procedure | Authorization to run remote writes or Phase C |
 | [`../product/README_本次更新说明.md`](../product/README_本次更新说明.md) | Current product-rule document index and v3.2 status | Backend or deployment architecture |
 
@@ -51,6 +50,11 @@ verification evidence and deployment identity are recorded in the operations run
 The following documents preserve implementation milestones and audit evidence. They may contain
 old `/api/ai/agent`, `/api/ai/chat`, MiMo, lane, checkpoint, or pre-v3.2 descriptions because those
 descriptions were true at their recorded baseline:
+- M3 supplemental runtime boundary: [`ai-operation-runtime.md`](./ai-operation-runtime.md)
+  (supplemental runtime boundary / historical implementation record for controlled Operation
+  boundaries, Proposal workflows, and local-first draft contracts; contains an A+ addendum, but
+  preserves substantial Milestone 3 historical text — current implementation truth is defined by
+  current code, `architecture.md`, and `decisions.md`)
 
 - M4 documents: [`m4-2-main-flow-demo.md`](./m4-2-main-flow-demo.md),
   [`m4-3-context-runtime.md`](./m4-3-context-runtime.md)

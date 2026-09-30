@@ -26,6 +26,4 @@ playwright-report/
 test-results/
 output/playwright/
 .zcode/
-.claude/worktrees/
-.codex/
 
