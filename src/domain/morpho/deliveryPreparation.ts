@@ -942,18 +942,22 @@ export function applyDeliverySectionDraft(
     };
   }
 
-  const newGaps: DeliveryGap[] = draft.suggestedGaps.map((gap, index) => ({
-    id: nextAvailableId(
-      Object.fromEntries([...target.gaps, ...draft.suggestedGaps.slice(0, index).map((item) => ({ id: `gap-${slugify(item.label)}` }))].map((item) => [item.id, item])),
-      `gap-${slugify(gap.label)}`
-    ),
-    label: gap.label,
-    sectionId: section.id,
-    status: "open",
-    origin: "deliveryDraft",
-    createdAt: now,
-    updatedAt: now
-  }));
+  const allocatedGapIds: Record<string, boolean> = Object.fromEntries(
+    target.gaps.map((existingGap) => [existingGap.id, true])
+  );
+  const newGaps: DeliveryGap[] = draft.suggestedGaps.map((gap) => {
+    const nextId = nextAvailableId(allocatedGapIds, `gap-${slugify(gap.label)}`);
+    allocatedGapIds[nextId] = true;
+    return {
+      id: nextId,
+      label: gap.label,
+      sectionId: section.id,
+      status: "open",
+      origin: "deliveryDraft",
+      createdAt: now,
+      updatedAt: now
+    };
+  });
   const updatedDelivery: DeliveryObject = {
     ...target,
     sections: target.sections.map((candidate) =>

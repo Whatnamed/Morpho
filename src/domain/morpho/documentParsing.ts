@@ -89,7 +89,7 @@ async function parsePlainTextDocument(file: File, mimeType: string): Promise<Doc
       reason: "文本文件超过 8 MiB 解析上限。"
     };
   }
-  const text = limitExtractText(normalizeExtractText(await file.text()));
+  const { text, truncated } = limitExtractText(normalizeExtractText(await file.text()));
   if (!text) {
     return {
       status: "failed",
@@ -100,6 +100,7 @@ async function parsePlainTextDocument(file: File, mimeType: string): Promise<Doc
   return {
     status: "parsed",
     text,
+    truncated,
     mimeType,
     extractFileName: makeExtractFileName(file)
   };
@@ -205,27 +206,126 @@ async function parsePptxDocument(file: File): Promise<DocumentParseResult> {
       maxTotalUncompressedBytes: 32 * 1024 * 1024,
       maxCompressionRatio: 200,
       timeoutMs: 10_000,
-      include: (entry) => /^ppt\/slides\/slide\d+\.xml$/i.test(entry.name)
+      include: (entry) => {
+        const normalized = entry.name.toLowerCase().replace(/\\/g, "/");
+        return (
+          normalized === "ppt/presentation.xml" ||
+          normalized === "ppt/_rels/presentation.xml.rels" ||
+          /^ppt\/slides\/[a-z0-9_\-.]+\.xml$/i.test(normalized)
+        );
+      }
     });
-    const slideEntries = Object.keys(files)
-      .filter((path) => /^ppt\/slides\/slide\d+\.xml$/i.test(path))
-      .sort(compareSlidePaths);
 
-    if (slideEntries.length === 0) {
+    const fileMap = new Map<string, Uint8Array>();
+    for (const [name, bytes] of Object.entries(files)) {
+      fileMap.set(name.toLowerCase().replace(/\\/g, "/"), bytes);
+    }
+
+    let orderedSlidePaths: string[] = [];
+    const presentationBytes = fileMap.get("ppt/presentation.xml");
+
+    if (presentationBytes) {
+      const presentationXml = strFromU8(presentationBytes);
+      const sldIdLstMatch = presentationXml.match(/<(?:\w+:)?sldIdLst\b[^>]*>([\s\S]*?)<\/(?:\w+:)?sldIdLst>/i);
+      if (!sldIdLstMatch) {
+        return {
+          status: "failed",
+          reason: "PPTX 中没有可读取的幻灯片文本。"
+        };
+      }
+
+      const sldIdEntries = Array.from(sldIdLstMatch[1].matchAll(/<(?:\w+:)?sldId\b([^>]*?)\/?>/gi));
+      if (sldIdEntries.length === 0) {
+        return {
+          status: "failed",
+          reason: "PPTX 中没有可读取的幻灯片文本。"
+        };
+      }
+
+      const relIds: string[] = [];
+      for (const entry of sldIdEntries) {
+        const attrs = entry[1] ?? "";
+        const relIdMatch =
+          attrs.match(/\b(?:\w+:id)\s*=\s*["']([^"']+)["']/i) ??
+          attrs.match(/\bid\s*=\s*["'](rId[^"']+)["']/i) ??
+          attrs.match(/\br:id\s*=\s*["']([^"']+)["']/i);
+        if (!relIdMatch?.[1]) {
+          return {
+            status: "failed",
+            reason: "PPTX 解析失败：幻灯片顺序定义缺失或损坏。"
+          };
+        }
+        relIds.push(relIdMatch[1]);
+      }
+
+      const relsBytes = fileMap.get("ppt/_rels/presentation.xml.rels");
+      if (!relsBytes) {
+        return {
+          status: "failed",
+          reason: "PPTX 解析失败：幻灯片关系文件缺失。"
+        };
+      }
+
+      const relsXml = strFromU8(relsBytes);
+      const relationships = new Map<string, { target: string; targetMode?: string }>();
+      for (const match of relsXml.matchAll(/<Relationship\b([^>]*?)\/?>/gi)) {
+        const attrs = match[1] ?? "";
+        const id = attrs.match(/\bId\s*=\s*["']([^"']+)["']/i)?.[1];
+        const target = attrs.match(/\bTarget\s*=\s*["']([^"']+)["']/i)?.[1];
+        const targetMode = attrs.match(/\bTargetMode\s*=\s*["']([^"']+)["']/i)?.[1];
+        if (id && target) {
+          relationships.set(id, { target, targetMode });
+        }
+      }
+
+      for (const relId of relIds) {
+        const rel = relationships.get(relId);
+        if (!rel) {
+          return {
+            status: "failed",
+            reason: "PPTX 解析失败：幻灯片关系缺失或损坏。"
+          };
+        }
+        if (rel.targetMode?.toLowerCase() === "external") {
+          return {
+            status: "failed",
+            reason: "PPTX 解析失败：不支持外部幻灯片引用。"
+          };
+        }
+        const resolvedPath = resolvePartPath("ppt", rel.target);
+        if (!resolvedPath || !fileMap.has(resolvedPath)) {
+          return {
+            status: "failed",
+            reason: "PPTX 解析失败：幻灯片目标文件缺失或路径无效。"
+          };
+        }
+        orderedSlidePaths.push(resolvedPath);
+      }
+    } else {
+      orderedSlidePaths = Array.from(fileMap.keys())
+        .filter((path) => /^ppt\/slides\/slide\d+\.xml$/i.test(path))
+        .sort(compareSlidePaths);
+    }
+
+    if (orderedSlidePaths.length === 0) {
       return {
         status: "failed",
         reason: "PPTX 中没有可读取的幻灯片文本。"
       };
     }
 
-    const slides = slideEntries
+    const slides = orderedSlidePaths
       .map((path, index) => {
-        const xml = strFromU8(files[path]);
+        const bytes = fileMap.get(path);
+        if (!bytes) return "";
+        const xml = strFromU8(bytes);
         const textRuns = extractPptxTextRuns(xml);
         return textRuns.length > 0 ? `--- PPTX 第 ${index + 1} 页 ---\n${textRuns.join("\n")}` : "";
       })
       .filter(Boolean);
-    const text = limitExtractText(normalizeExtractText(slides.join("\n\n")));
+
+    const rawText = normalizeExtractText(slides.join("\n\n"));
+    const { text, truncated } = limitExtractText(rawText);
 
     if (!text) {
       return {
@@ -237,7 +337,9 @@ async function parsePptxDocument(file: File): Promise<DocumentParseResult> {
     return {
       status: "parsed",
       text,
-      pageCount: slideEntries.length,
+      pageCount: orderedSlidePaths.length,
+      sourcePageCount: orderedSlidePaths.length,
+      truncated,
       mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       extractFileName: makeExtractFileName(file)
     };
@@ -249,6 +351,31 @@ async function parsePptxDocument(file: File): Promise<DocumentParseResult> {
         : "PPTX 解析失败，源文件已保留。"
     };
   }
+}
+
+function resolvePartPath(baseDir: string, target: string): string | null {
+  if (target.includes("://") || target.startsWith("//")) {
+    return null;
+  }
+  const cleanTarget = target.replace(/\\/g, "/");
+  const rawPath = cleanTarget.startsWith("/")
+    ? cleanTarget.slice(1)
+    : `${baseDir}/${cleanTarget}`;
+
+  const segments = rawPath.split("/");
+  const resolved: string[] = [];
+  for (const seg of segments) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") {
+      if (resolved.length === 0) {
+        return null;
+      }
+      resolved.pop();
+    } else {
+      resolved.push(seg);
+    }
+  }
+  return resolved.join("/").toLowerCase();
 }
 
 function extractPptxTextRuns(xml: string): string[] {
@@ -279,8 +406,14 @@ function normalizeExtractText(value: string): string {
   return value.replace(/\u0000/g, "").replace(/\r\n?/g, "\n").trim();
 }
 
-function limitExtractText(value: string): string {
-  return value.length > MAX_EXTRACT_CHARS ? appendTruncationMarker(value.slice(0, MAX_EXTRACT_CHARS)) : value;
+function limitExtractText(value: string): { text: string; truncated: boolean } {
+  if (value.length > MAX_EXTRACT_CHARS) {
+    return {
+      text: appendTruncationMarker(value.slice(0, MAX_EXTRACT_CHARS)),
+      truncated: true
+    };
+  }
+  return { text: value, truncated: false };
 }
 
 function normalizePdfTextItem(value: string): string {

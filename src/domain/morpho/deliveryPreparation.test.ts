@@ -654,6 +654,82 @@ describe("delivery preparation domain operations", () => {
     );
   });
 
+  it("allocates unique, deterministic gap IDs when draft contains repeated labels and collides with existing gaps", () => {
+    const base = createInitialWorkspace();
+    const delivery = base.objects["delivery-board-a1"] as DeliveryObject;
+    const sectionId = delivery.sections[0]?.id ?? "";
+    const added = addObjectsToDeliverySection(base, {
+      deliveryObjectId: delivery.id,
+      sectionId,
+      sourceObjectIds: ["image-soft-rail-v2"],
+      now: "2026-07-02T08:39:00.000Z"
+    });
+    expect(added.status).toBe("updated");
+    if (added.status !== "updated") throw new Error(added.reason);
+
+    const withGap1 = addDeliveryGap(added.workspace, {
+      deliveryObjectId: delivery.id,
+      sectionId,
+      label: "验证防尘密封",
+      origin: "manual",
+      now: "2026-07-02T08:40:00.000Z"
+    });
+
+    const withGap2 = addDeliveryGap(withGap1.workspace, {
+      deliveryObjectId: delivery.id,
+      sectionId,
+      label: "验证防尘密封",
+      origin: "manual",
+      now: "2026-07-02T08:41:00.000Z"
+    });
+    expect(withGap2.status).toBe("updated");
+    if (withGap2.status !== "updated") throw new Error(withGap2.reason);
+
+    const draftResult = createDeliverySectionDraft(withGap2.workspace, {
+      deliveryObjectId: delivery.id,
+      sectionId,
+      userMessageId: "user-msg-repeat-gaps",
+      assistantMessageId: "asst-msg-repeat-gaps",
+      narrative: "测试重复 gap 标签",
+      captions: [],
+      suggestedGaps: [
+        { label: "验证防尘密封" },
+        { label: "验证防尘密封" },
+        { label: "验证防尘密封" },
+        { label: "结构限位测试" }
+      ],
+      now: "2026-07-02T08:42:00.000Z"
+    });
+    expect(draftResult.status).toBe("updated");
+    if (draftResult.status !== "updated") throw new Error(draftResult.reason);
+
+    const applied = applyDeliverySectionDraft(draftResult.workspace, {
+      deliveryObjectId: delivery.id,
+      draftId: draftResult.draftId,
+      now: "2026-07-02T08:43:00.000Z"
+    });
+    expect(applied.status).toBe("updated");
+    if (applied.status !== "updated") throw new Error(applied.reason);
+
+    const appliedDelivery = applied.workspace.objects[delivery.id] as DeliveryObject;
+    expect(appliedDelivery.gaps).toHaveLength(delivery.gaps.length + 6);
+
+    const gapIds = appliedDelivery.gaps.map((g) => g.id);
+    const uniqueIds = new Set(gapIds);
+    expect(uniqueIds.size).toBe(delivery.gaps.length + 6);
+
+    const newGaps = appliedDelivery.gaps.slice(delivery.gaps.length + 2);
+    expect(newGaps.map((g) => g.id)).toEqual([
+      "gap-验证防尘密封-3",
+      "gap-验证防尘密封-4",
+      "gap-验证防尘密封-5",
+      "gap-结构限位测试"
+    ]);
+
+    expect(appliedDelivery.sections.length).toBe(delivery.sections.length);
+    expect(appliedDelivery.references).toEqual((added.workspace.objects[delivery.id] as DeliveryObject).references);
+  });
+
   it("removes references without deleting source objects", () => {
     const base = createInitialWorkspace();
     const delivery = base.objects["delivery-board-a1"] as DeliveryObject;
