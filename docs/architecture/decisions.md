@@ -1180,3 +1180,18 @@ this is serialization evidence, not a new storage-capacity or performance claim.
 Boundary: no universal Truth Service/isValid, fabricated history, new dependency or server migration.
 P1B-2 retains full Memory/Stage/Continuity consumer and projection convergence; P2, P5 and P6H are
 not implemented here. Package acceptance remains with the user/reviewer.
+
+P1B-1 review correction (2026-10-01): keep schema 18 and add optional incarnation bindings.
+Object creation uses a random UUID independent of object ID/content/time; mutations and revisions
+preserve that identity. Source snapshots/EvidenceBasis and Decision effects bind the incarnation,
+and Proposal mutation targets/parent dependencies carry separately frozen identity snapshots.
+Fragment source metadata binds its file incarnation, so recapturing a fragment cannot certify a
+later same-ID file as the original. Legacy missing fields remain unknown/review-required;
+normalization and Backup restore never reconstruct an original identity. The source fingerprint
+stays version 2 and measures content separately from identity; Recovery v2 remains compatible.
+
+Decision kinds for Delivery creation, reference create/replace/remove/refresh, section updates/draft
+application and gap actions describe historical occurrences. They classify as `historical` without
+an effect. Kinds that assert ongoing current state still require a structured effect and known
+target incarnation. This corrects classification at the shared domain reader used by Decision
+Memory and history UI, without inventing persistent Delivery authority or starting P5/P1B-2.

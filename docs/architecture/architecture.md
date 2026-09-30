@@ -240,6 +240,14 @@ Structured workspace data is schema version `18`.
 
 Truth / evidence authority (P1B-1):
 
+- New object creation persists a random `incarnationId`, preserved through edits, revision changes,
+  visibility changes, persistence and Backup. Reusing an object ID creates a different incarnation.
+  Source baselines/evidence bases and Decision targets bind both IDs; content equality cannot revive
+  old authority. Fragments also bind their source file incarnation. Missing legacy identities remain
+  unknown/review-required; normalization never backfills objects or historical bindings.
+- Delivery action Decision kinds represent historical occurrences without effects. Only kinds with
+  ongoing current semantics require structured effects; Decision Memory and history UI share this
+  classification. Proposal targets and parent dependencies have separately frozen identity bindings.
 - Domain commands persist typed `DecisionEffect` targets, state changes and adopted revision IDs.
   `decisionRecords.ts` classifies from those effects, later effects and domain pointers. Legacy
   unstructured records remain history/review-required; labels never reconstruct historical effects.

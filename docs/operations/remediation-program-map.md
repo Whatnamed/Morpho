@@ -294,6 +294,15 @@ P0 普通叶子修复、P3、P7 无需把七份原审计作为日常输入。P3 
 
 实际推进后按 ID 拆成独立行，保留 early slice 的 accepted commit。建议状态限于 `not_started / planning / ready / implementing / validating / accepted / accepted_with_limits / blocked / deferred`。`accepted_with_limits` 必须列出不影响该包承诺的剩余限制；关键证据缺失不允许伪装为有限验收。
 
+P1B-1 网页 Chat 复审修复（2026-10-01，`85b2636de632c609bc3eb2e13d27495221f5790b`）：
+新增创建边界的 object incarnation，Source/EvidenceBasis/Decision/Proposal 修改目标及 Fragment 父文件按身份绑定；
+真实 `capture → delete → 同 ID 同内容 recreate` 回归证明旧 Proposal 不自动适用、旧 evidence 不恢复 supported、旧 Decision 不恢复 current。
+Schema 保持 18；旧项目/Backup/Recovery 缺身份时保持 unknown/review-required，幂等 normalization 不回填历史。
+Delivery action/event Decision 按明确 kind 分类为 historical，不再污染 Decision Memory 的 review 标记或 history UI。
+本轮证据：全量 unit 222 文件/2178 项通过；随后补充的 authority/fragment-parent/Recovery 回归 3 文件/54 项通过；
+Chromium 全量 26 项通过，包含 Delivery 历史动作与同 ID 旧 Decision 的 UI 分类；`typecheck`、`lint`、production `build`、`git diff --check` 通过。
+继续使用 `codex/p1b1-truth-evidence-authority`；状态仍为 validating，无 accepted commit，不 merge main，不开始其它 package。
+
 ### 9.4 所有包共同的 compatibility 与停止条件
 
 1. 写 Plan 时绑定新的 `main`，明确原失败、范围、必跑相邻变体、允许结束状态与测试预算；对照前包 accepted commit，不沿用旧行号盲改。
