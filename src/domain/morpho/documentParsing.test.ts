@@ -149,6 +149,36 @@ describe("document parsing", () => {
     }
   });
 
+  it("bounds slide coverage when earlier PPTX slides exhaust the character budget", async () => {
+    const slide1Text = Array.from({ length: 3_500 }, (_, i) => `【第一页详述第${i}条架构与安全约束条目】`).join("\n");
+    const slide2Text = Array.from({ length: 3_500 }, (_, i) => `【第二页详述第${i}条硬件与工艺实施规范】`).join("\n");
+    const slide3Text = "【第三页核心独有标识：本段绝不应进入最终截断提取结果】";
+
+    const pptx = new File([toArrayBuffer(makeOoxmlPptxBytes([
+      { fileNumber: 1, text: slide1Text },
+      { fileNumber: 2, text: slide2Text },
+      { fileNumber: 3, text: slide3Text }
+    ], [1, 2, 3]))], "budget-exhaustion.pptx", {
+      type: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    });
+
+    const result = await parseDocumentFile(pptx);
+
+    expect(result.status).toBe("parsed");
+    if (result.status === "parsed") {
+      expect(result.sourcePageCount).toBe(3);
+      expect(result.pageCount).toBe(2);
+      expect(result.pageCount).toBeLessThan(result.sourcePageCount!);
+      expect(result.truncated).toBe(true);
+      expect(result.text.endsWith("\n\n[已截断]")).toBe(true);
+      expect(result.text.length).toBeLessThanOrEqual(120_000);
+      expect(result.text).toContain("--- PPTX 第 1 页 ---");
+      expect(result.text).toContain("--- PPTX 第 2 页 ---");
+      expect(result.text).not.toContain("--- PPTX 第 3 页 ---");
+      expect(result.text).not.toContain(slide3Text);
+    }
+  });
+
   it("extracts text from a minimal text PDF and reports page count", async () => {
     const pdf = new File([toArrayBuffer(makeMinimalTextPdf("Nightrail source"))], "source.pdf", { type: "application/pdf" });
 

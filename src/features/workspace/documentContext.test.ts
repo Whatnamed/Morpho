@@ -104,7 +104,111 @@ describe("AI document extract context", () => {
       extractionTruncated: true,
       charCount: 5_000
     });
+    expect(result.extracts[0]?.contextTruncated).toBeUndefined();
+    expect(result.warning).toContain("在解析提取阶段已截断");
+    expect(result.warning).not.toContain("按上下文长度截断");
+  });
+
+  it("marks context-only truncation when extract text exceeds per-document budget without parser truncation", async () => {
+    const sourceAsset: AssetRecord = {
+      id: "asset-file-long",
+      fileName: "long.txt",
+      mimeType: "text/plain",
+      size: 9_000,
+      createdAt: "2026-06-26T00:00:00.000Z",
+      storageKey: "blob:asset-file-long",
+      sourceType: "originalFile"
+    };
+    const extractAsset: AssetRecord = {
+      id: "asset-extract-long",
+      fileName: "long.extract.txt",
+      mimeType: "text/plain",
+      size: 9_000,
+      createdAt: "2026-06-26T00:00:00.000Z",
+      storageKey: "blob:asset-extract-long",
+      sourceType: "documentExtract"
+    };
+    const imported = importAssetBackedObjects(createBlankWorkspace("project-doc-context-3"), {
+      assets: [sourceAsset],
+      position: { x: 100, y: 100 }
+    });
+    const fileObjectId = imported.objectIds[0] ?? "";
+    const workspace = attachDocumentExtractToFileObject(imported.workspace, {
+      fileObjectId,
+      extractAsset,
+      extractedCharCount: 9_000,
+      extractedPageCount: 1,
+      extractionTruncated: false,
+      parsedAt: "2026-06-26T00:00:00.000Z"
+    });
+    const longContent = "长文档文本".repeat(1_800); // 9,000 chars > 8,000
+    const store = new MemoryBlobStore({
+      [extractAsset.storageKey]: new Blob([longContent], { type: "text/plain" })
+    });
+
+    const result = await collectDocumentExtractsForAi(workspace, [fileObjectId], store);
+
+    expect(result.extracts).toHaveLength(1);
+    expect(result.extracts[0]).toMatchObject({
+      objectId: fileObjectId,
+      truncated: true,
+      contextTruncated: true,
+      charCount: 9_000
+    });
+    expect(result.extracts[0]?.extractionTruncated).toBeUndefined();
     expect(result.warning).toContain("按上下文长度截断");
+    expect(result.warning).not.toContain("在解析提取阶段已截断");
+  });
+
+  it("reports both parser and context truncation when a document is cut at both boundaries", async () => {
+    const sourceAsset: AssetRecord = {
+      id: "asset-file-dual",
+      fileName: "dual.pdf",
+      mimeType: "application/pdf",
+      size: 9_000,
+      createdAt: "2026-06-26T00:00:00.000Z",
+      storageKey: "blob:asset-file-dual",
+      sourceType: "originalFile"
+    };
+    const extractAsset: AssetRecord = {
+      id: "asset-extract-dual",
+      fileName: "dual.extract.txt",
+      mimeType: "text/plain",
+      size: 9_000,
+      createdAt: "2026-06-26T00:00:00.000Z",
+      storageKey: "blob:asset-extract-dual",
+      sourceType: "documentExtract"
+    };
+    const imported = importAssetBackedObjects(createBlankWorkspace("project-doc-context-4"), {
+      assets: [sourceAsset],
+      position: { x: 100, y: 100 }
+    });
+    const fileObjectId = imported.objectIds[0] ?? "";
+    const workspace = attachDocumentExtractToFileObject(imported.workspace, {
+      fileObjectId,
+      extractAsset,
+      extractedCharCount: 15_000,
+      extractedPageCount: 15,
+      extractionTruncated: true,
+      parsedAt: "2026-06-26T00:00:00.000Z"
+    });
+    const longContent = "双重截断文本".repeat(1_500); // 9,000 chars > 8,000
+    const store = new MemoryBlobStore({
+      [extractAsset.storageKey]: new Blob([longContent], { type: "text/plain" })
+    });
+
+    const result = await collectDocumentExtractsForAi(workspace, [fileObjectId], store);
+
+    expect(result.extracts).toHaveLength(1);
+    expect(result.extracts[0]).toMatchObject({
+      objectId: fileObjectId,
+      truncated: true,
+      contextTruncated: true,
+      extractionTruncated: true,
+      charCount: 15_000
+    });
+    expect(result.warning).toContain("按上下文长度截断");
+    expect(result.warning).toContain("在解析提取阶段已截断");
   });
 
   it("skips unparsed and failed files instead of pretending they were read", async () => {

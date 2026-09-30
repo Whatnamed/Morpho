@@ -692,9 +692,12 @@ export function serializeDocumentExtractEvidence(extract: AiDocumentExtract): st
     } else {
       notes.push(`模型输入收录 ${includedText.length} 字`);
     }
+    if (extract.contextTruncated) {
+      notes.push(`按上下文预算截断（已知 ${extract.charCount} 字）`);
+    }
     if (extract.extractionTruncated) {
       notes.push(`解析阶段已截断（已知 ${extract.charCount} 字）`);
-    } else if (extract.truncated) {
+    } else if (extract.truncated && !extract.contextTruncated) {
       notes.push(`前置提取已截断（已知 ${extract.charCount} 字）`);
     }
     metadata = `[部分收录：${notes.join("，")}]`;

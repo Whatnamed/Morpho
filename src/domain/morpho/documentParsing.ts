@@ -314,18 +314,43 @@ async function parsePptxDocument(file: File): Promise<DocumentParseResult> {
       };
     }
 
-    const slides = orderedSlidePaths
-      .map((path, index) => {
-        const bytes = fileMap.get(path);
-        if (!bytes) return "";
-        const xml = strFromU8(bytes);
-        const textRuns = extractPptxTextRuns(xml);
-        return textRuns.length > 0 ? `--- PPTX 第 ${index + 1} 页 ---\n${textRuns.join("\n")}` : "";
-      })
-      .filter(Boolean);
+    const sourcePageCount = orderedSlidePaths.length;
+    let text = "";
+    let processedPageCount = 0;
+    let truncated = false;
 
-    const rawText = normalizeExtractText(slides.join("\n\n"));
-    const { text, truncated } = limitExtractText(rawText);
+    for (let index = 0; index < sourcePageCount; index += 1) {
+      const path = orderedSlidePaths[index]!;
+      const bytes = fileMap.get(path);
+      if (!bytes) continue;
+      const xml = strFromU8(bytes);
+      const textRuns = extractPptxTextRuns(xml);
+      if (textRuns.length === 0) continue;
+
+      const slidePageNumber = index + 1;
+      const slidePrefix = `${text ? "\n\n" : ""}--- PPTX 第 ${slidePageNumber} 页 ---\n`;
+      const slideBody = textRuns.join("\n");
+      const chunk = `${slidePrefix}${slideBody}`;
+
+      const remaining = MAX_EXTRACT_CHARS - text.length;
+      if (chunk.length > remaining) {
+        text += chunk.slice(0, Math.max(0, remaining));
+        processedPageCount = slidePageNumber;
+        truncated = true;
+        break;
+      }
+
+      text += chunk;
+      processedPageCount = slidePageNumber;
+
+      if (text.length >= MAX_EXTRACT_CHARS) {
+        if (index + 1 < sourcePageCount) truncated = true;
+        break;
+      }
+    }
+
+    text = normalizeExtractText(text);
+    if (truncated && text) text = appendTruncationMarker(text);
 
     if (!text) {
       return {
@@ -337,8 +362,8 @@ async function parsePptxDocument(file: File): Promise<DocumentParseResult> {
     return {
       status: "parsed",
       text,
-      pageCount: orderedSlidePaths.length,
-      sourcePageCount: orderedSlidePaths.length,
+      pageCount: processedPageCount,
+      sourcePageCount,
       truncated,
       mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       extractFileName: makeExtractFileName(file)

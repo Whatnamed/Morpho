@@ -111,24 +111,3 @@ export function runTransaction<T>(
   });
 }
 
-declare global {
-  interface Window {
-    __morphoIndexedDbTestSeam?: {
-      indexedDbBlobStore: BlobStore;
-      openAssetsDatabase: () => Promise<IDBDatabase>;
-      runTransaction: typeof runTransaction;
-      DATABASE_NAME: string;
-      BLOB_STORE_NAME: string;
-    };
-  }
-}
-
-if (typeof window !== "undefined") {
-  window.__morphoIndexedDbTestSeam = {
-    indexedDbBlobStore,
-    openAssetsDatabase,
-    runTransaction,
-    DATABASE_NAME,
-    BLOB_STORE_NAME
-  };
-}

@@ -9,6 +9,7 @@ export type AiDocumentExtract = {
   charCount: number;
   pageCount?: number;
   truncated: boolean;
+  contextTruncated?: boolean;
   extractionTruncated?: boolean;
 };
 
@@ -85,22 +86,25 @@ export async function collectDocumentExtractsForAi(
       charCount: object.extractedCharCount ?? rawText.length,
       pageCount: object.extractedPageCount,
       truncated: collectorTruncated || parserTruncated,
+      ...(collectorTruncated ? { contextTruncated: true } : {}),
       ...(parserTruncated ? { extractionTruncated: true } : {})
     });
   }
 
-  const truncatedCount = extracts.filter((extract) => extract.truncated).length;
+  const contextTruncatedCount = extracts.filter((extract) => extract.contextTruncated).length;
+  const extractionTruncatedCount = extracts.filter((extract) => extract.extractionTruncated).length;
   const skippedCount = skipped.length;
-  const warning =
-    truncatedCount > 0 || skippedCount > 0
-      ? [
-          truncatedCount > 0 ? `有 ${truncatedCount} 个文档按上下文长度截断。` : "",
-          skippedCount > 0 ? `有 ${skippedCount} 个文件未进入文本上下文。` : ""
-        ]
-          .filter(Boolean)
-          .join(" ")
-      : undefined;
-
+  const warningParts: string[] = [];
+  if (contextTruncatedCount > 0) {
+    warningParts.push(`有 ${contextTruncatedCount} 个文档按上下文长度截断。`);
+  }
+  if (extractionTruncatedCount > 0) {
+    warningParts.push(`有 ${extractionTruncatedCount} 个文档在解析提取阶段已截断。`);
+  }
+  if (skippedCount > 0) {
+    warningParts.push(`有 ${skippedCount} 个文件未进入文本上下文。`);
+  }
+  const warning = warningParts.length > 0 ? warningParts.join(" ") : undefined;
   return {
     extracts,
     skipped,
