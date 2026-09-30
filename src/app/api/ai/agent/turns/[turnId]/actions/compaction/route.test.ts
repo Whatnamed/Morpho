@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { executeOpenAiCompatibleResponse } from "@/server/ai/openaiCompatibleProvider";
 import type { ConversationSummary } from "@/domain/morpho/types";
 import { loadOpenAiCompatibleConfig } from "@/server/ai/openaiCompatibleConfig";
 import type { AgentTurnExternalActionSnapshot } from "@/shared/agentTurnExternalActionProtocol";
@@ -134,6 +135,39 @@ describe("A+ compaction action route", () => {
     });
     expect(execute).not.toHaveBeenCalled();
   });
+  it("settles unknown once without a summary; settlement retry and exact replay do not infer again", async () => {
+    const originalFetch = global.fetch;
+    const fetchMock = vi.fn(async () => { throw new TypeError("response lost"); });
+    global.fetch = fetchMock;
+    let terminal = false;
+    const settle = vi.fn<AgentTurnCompactionActionDependencies["settle"]>()
+      .mockResolvedValueOnce({ status: "denied", httpStatus: 503, code: "external_action_unavailable", error: "unavailable", recoverable: false })
+      .mockImplementation(async () => {
+        terminal = true;
+        return { status: "ok", replayed: false, snapshot: { ...actionSnapshot("externallyFailed"), failureCode: "external_execution_state_unknown" } };
+      });
+    const handler = createAgentTurnCompactionActionPostHandler({
+      authenticate: async () => ({ status: "allowed", userId: "user-a" }),
+      acquire: async () => ({ status: "ok", executionGranted: !terminal, replayed: terminal,
+        snapshot: { ...actionSnapshot(terminal ? "externallyFailed" : "running"), ...(terminal ? { failureCode: "external_execution_state_unknown" } : {}) } }),
+      settle, loadConfig: validConfig, execute: executeOpenAiCompatibleResponse,
+      waitForSettlementRetry: async () => undefined
+    });
+    try {
+      const response = await handler(compactionRequest(), routeContext());
+      const body = await response.json();
+      expect(response.status).toBe(502);
+      expect(body).toMatchObject({ code: "external_execution_state_unknown", recoverable: false, action: { status: "externallyFailed", failureCode: "external_execution_state_unknown" } });
+      expect(body).not.toHaveProperty("summary");
+      expect(settle).toHaveBeenCalledTimes(2);
+      expect(settle.mock.calls.every(([input]) => input.failureCode === "external_execution_state_unknown")).toBe(true);
+      const replay = await handler(compactionRequest(), routeContext());
+      expect(replay.status).toBe(409);
+      expect(await replay.json()).toMatchObject({ code: "external_execution_state_unknown" });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally { global.fetch = originalFetch; }
+  });
+
 });
 
 function validConfig(promptCacheEnabled = false) {

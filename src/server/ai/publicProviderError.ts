@@ -6,6 +6,12 @@ export type PublicProviderError = Readonly<{
   recoverable: boolean;
 }>;
 
+export const EXTERNAL_EXECUTION_STATE_UNKNOWN: PublicProviderError = {
+  code: "external_execution_state_unknown",
+  message: "无法确认外部请求是否已经执行，Morpho 未自动提交第二次请求。",
+  recoverable: false
+};
+
 export const TEXT_PROVIDER_UNAVAILABLE: PublicProviderError = {
   code: "provider_unavailable",
   message: "文本 AI 服务暂时不可用，请稍后重试。",
@@ -32,6 +38,7 @@ export const IMAGE_PROVIDER_FAILED: PublicProviderError = {
 
 export function getPublicTextProviderError(error: unknown): PublicProviderError {
   const code = getPublicTextProviderFailureCode(error);
+  if (code === EXTERNAL_EXECUTION_STATE_UNKNOWN.code) return EXTERNAL_EXECUTION_STATE_UNKNOWN;
   if (code === "provider_context_limit") {
     return { code, message: "对话内容超过模型上下文限制，本轮未完成。", recoverable: false };
   }
@@ -55,6 +62,7 @@ export function getPublicTextProviderError(error: unknown): PublicProviderError 
 
 export function getPublicTextProviderFailureCode(error: unknown): string {
   if (error instanceof OpenAiCompatibleProviderError) {
+    if (error.executionStateUnknown) return EXTERNAL_EXECUTION_STATE_UNKNOWN.code;
     if (error.code === "context_limit") return "provider_context_limit";
     if (error.code === "function_call_limit") return "provider_function_call_limit";
     if (error.code === "provider_deadline_exceeded") return "provider_deadline_exceeded";

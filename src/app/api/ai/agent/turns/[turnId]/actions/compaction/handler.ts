@@ -21,7 +21,7 @@ import { loadOpenAiCompatibleConfig, type OpenAiCompatibleConfigResult } from "@
 import { executeOpenAiCompatibleResponse } from "@/server/ai/openaiCompatibleProvider";
 import { withServerPromptCacheHint } from "@/server/ai/providerPromptCacheHint";
 import { requireAiRouteUser, type AiRouteUserAccessResult } from "@/server/auth/aiAccess";
-import { TEXT_PROVIDER_UNAVAILABLE } from "@/server/ai/publicProviderError";
+import { EXTERNAL_EXECUTION_STATE_UNKNOWN, getPublicTextProviderFailureCode, TEXT_PROVIDER_UNAVAILABLE } from "@/server/ai/publicProviderError";
 
 const MAX_COMPACTION_ACTION_BODY_BYTES = 4 * 1024 * 1024;
 
@@ -143,17 +143,19 @@ export function createAgentTurnCompactionActionPostHandler(
       return NextResponse.json({ summary: summary.summary, action: settled.snapshot, replayed: false });
     } catch (error) {
       const cancelled = request.signal.aborted || (error instanceof Error && error.name === "AbortError");
+      const unknown = getPublicTextProviderFailureCode(error) === EXTERNAL_EXECUTION_STATE_UNKNOWN.code;
+      const failureCode = unknown ? EXTERNAL_EXECUTION_STATE_UNKNOWN.code : "compaction_failed";
       const settled = await settleWithRetry(dependencies, {
         ...identity,
         actionHash,
         status: cancelled ? "externallyCancelled" : "externallyFailed",
-        ...(cancelled ? {} : { failureCode: "compaction_failed" })
+        ...(cancelled ? {} : { failureCode })
       });
       if (settled.status === "denied") return journalDeniedResponse(settled);
       return NextResponse.json(
         {
-          error: cancelled ? "Compaction 已取消。" : "Compaction Provider 输出无效或执行失败。",
-          code: cancelled ? "compaction_cancelled" : "compaction_failed",
+          error: cancelled ? "Compaction 已取消。" : unknown ? EXTERNAL_EXECUTION_STATE_UNKNOWN.message : "Compaction Provider 输出无效或执行失败。",
+          code: cancelled ? "compaction_cancelled" : failureCode,
           recoverable: false,
           action: settled.snapshot
         },

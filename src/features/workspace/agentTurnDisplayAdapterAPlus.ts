@@ -85,6 +85,7 @@ function appendAssistantFailureDetail(
 function externalErrorCopy(code: string): string | undefined {
   const bounded = code.trim().slice(0, 100);
   if (!bounded || bounded === "provider_cancelled") return undefined;
+  if (bounded === "external_execution_state_unknown") return "无法确认外部请求是否已经执行，Morpho 未自动提交第二次请求。";
   if (bounded === "provider_context_limit") return "模型上下文超出限制，本轮未完成。";
   if (bounded === "provider_function_call_limit") return "模型返回的工具调用过多，本轮未完成。";
   if (bounded === "provider_response_too_large") return "模型响应超过安全上限，本轮未完成。";

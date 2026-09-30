@@ -415,105 +415,146 @@ describe("openai-compatible provider adapter", () => {
     }
   });
 
-  it("retries a transient Responses gateway failure before succeeding", async () => {
-    const calls: string[] = [];
+  it.each([408, 429, 500, 502, 503, 504])("does not resend an ambiguous Responses POST after HTTP %s", async (status) => {
     const originalFetch = global.fetch;
-    global.fetch = async (input) => {
-      calls.push(String(input));
-      if (calls.length === 1) {
-        return new Response("bad gateway", { status: 502 }) as unknown as Response;
-      }
-      return jsonResponse({
-        id: "resp_retried",
-        output: [{ type: "message", content: [{ type: "output_text", text: "retried response" }] }]
-      }) as unknown as Response;
-    };
-
+    const fetchMock = vi.fn(async () => new Response("ambiguous upstream status", { status }));
+    global.fetch = fetchMock;
     try {
-      const result = await executeOpenAiCompatibleResponse(config(), request());
-      expect(calls).toEqual(["https://api.example.com/v1/responses", "https://api.example.com/v1/responses"]);
-      expect(result.outputText).toBe("retried response");
-    } finally {
-      global.fetch = originalFetch;
-    }
+      await expect(executeOpenAiCompatibleResponse(config(), request())).rejects.toMatchObject({ status, executionStateUnknown: true });
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(fetchMock.mock.calls[0]).toBeDefined();
+    } finally { global.fetch = originalFetch; }
   });
 
-  it("keeps repeated Responses gateway failures on the Responses endpoint", async () => {
-    const calls: string[] = [];
+  it.each([false, true])("does not resend a network-failed Responses POST (stream=%s)", async (stream) => {
     const originalFetch = global.fetch;
-    global.fetch = async (input) => {
-      calls.push(String(input));
-      return new Response("bad gateway", { status: 502 }) as unknown as Response;
-    };
-
+    const fetchMock = vi.fn(async () => { throw new TypeError("response lost after acceptance"); });
+    global.fetch = fetchMock;
     try {
-      await expect(executeOpenAiCompatibleResponse(config(), request())).rejects.toMatchObject({ status: 502 });
-      expect(calls).toEqual([
-        "https://api.example.com/v1/responses",
-        "https://api.example.com/v1/responses",
-        "https://api.example.com/v1/responses",
-        "https://api.example.com/v1/responses"
-      ]);
-    } finally {
-      global.fetch = originalFetch;
-    }
-  }, 15_000);
+      await expect(stream ? streamOpenAiCompatibleResponse(config(), request(), {}) : executeOpenAiCompatibleResponse(config(), request()))
+        .rejects.toMatchObject({ executionStateUnknown: true });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally { global.fetch = originalFetch; }
+  });
 
-  it("falls back to a buffered Responses request after repeated stream gateway failures", async () => {
-    const calls: Array<{ url: string; stream: boolean | undefined }> = [];
+  it.each([408, 429, 500, 502, 503, 504])("does not start a buffered generation after stream HTTP %s", async (status) => {
     const originalFetch = global.fetch;
-    global.fetch = async (input, init) => {
-      const body = JSON.parse(String(init?.body)) as { stream?: boolean };
-      calls.push({ url: String(input), stream: body.stream });
-      if (body.stream) {
-        return new Response("bad gateway", { status: 502 }) as unknown as Response;
-      }
-      return jsonResponse({
-        id: "resp_buffered",
-        output: [{ type: "message", content: [{ type: "output_text", text: "buffered Responses result" }] }]
-      }) as unknown as Response;
-    };
-
+    const fetchMock = vi.fn(async () => new Response("bad gateway", { status }));
+    global.fetch = fetchMock;
     try {
-      const result = await streamOpenAiCompatibleResponse(config(), request(), {});
-      expect(calls).toEqual([
-        { url: "https://api.example.com/v1/responses", stream: true },
-        { url: "https://api.example.com/v1/responses", stream: true },
-        { url: "https://api.example.com/v1/responses", stream: true },
-        { url: "https://api.example.com/v1/responses", stream: true },
-        { url: "https://api.example.com/v1/responses", stream: undefined }
-      ]);
-      expect(result.outputText).toBe("buffered Responses result");
-    } finally {
-      global.fetch = originalFetch;
-    }
-  }, 15_000);
+      await expect(streamOpenAiCompatibleResponse(config(), request(), {})).rejects.toMatchObject({ executionStateUnknown: true });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally { global.fetch = originalFetch; }
+  });
 
-  it("falls back to a buffered Responses request when an event stream ends early", async () => {
-    const calls: Array<{ url: string; stream: boolean | undefined }> = [];
+  it.each(["early", "disconnect", "failed", "error"])("preserves partial activity without replay after SSE %s", async (ending) => {
     const originalFetch = global.fetch;
-    global.fetch = async (input, init) => {
-      const body = JSON.parse(String(init?.body)) as { stream?: boolean };
-      calls.push({ url: String(input), stream: body.stream });
-      if (body.stream) {
-        return sseResponse([responseEvent("response.created", { response: { id: "resp_incomplete" } })]) as unknown as Response;
-      }
-      return jsonResponse({
-        id: "resp_recovered",
-        output: [{ type: "message", content: [{ type: "output_text", text: "recovered Responses result" }] }]
-      }) as unknown as Response;
-    };
-
+    const events: unknown[] = [];
+    const deltas: string[] = [];
+    const frames = [
+      responseEvent("response.created", { response: { id: "resp_partial" } }),
+      responseEvent("response.output_item.added", { output_index: 0, item: { id: "msg_1", type: "message", phase: "final_answer", content: [] } }),
+      responseEvent("response.output_text.delta", { item_id: "msg_1", delta: "partial text" })
+    ];
+    if (ending === "failed") frames.push(responseEvent("response.failed", { response: { id: "resp_partial", status: "failed" } }));
+    if (ending === "error") frames.push(responseEvent("error", { message: "transport failed" }));
+    const fetchMock = vi.fn(async () => ending === "disconnect" ? new Response(new ReadableStream<Uint8Array>({
+      start(controller) { frames.forEach((frame) => controller.enqueue(new TextEncoder().encode(frame))); },
+      pull(controller) { controller.error(new TypeError("connection lost")); }
+    }), { headers: { "Content-Type": "text/event-stream" } }) : sseResponse(frames));
+    global.fetch = fetchMock;
     try {
-      const result = await streamOpenAiCompatibleResponse(config(), request(), {});
-      expect(calls).toEqual([
-        { url: "https://api.example.com/v1/responses", stream: true },
-        { url: "https://api.example.com/v1/responses", stream: undefined }
-      ]);
-      expect(result.outputText).toBe("recovered Responses result");
-    } finally {
-      global.fetch = originalFetch;
+      await expect(streamOpenAiCompatibleResponse(config(), request(), { onEvent: (event) => events.push(event), onTextDelta: (text) => deltas.push(text) }))
+        .rejects.toMatchObject({ executionStateUnknown: ending !== "failed" });
+      expect(deltas).toEqual(["partial text"]);
+      expect(events).toContainEqual(expect.objectContaining({ type: "final-delta", delta: "partial text" }));
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally { global.fetch = originalFetch; }
+  });
+
+  it("does not replay a response.created-only stream", async () => {
+    const originalFetch = global.fetch;
+    const fetchMock = vi.fn(async () => sseResponse([responseEvent("response.created", { response: { id: "incomplete" } })]));
+    global.fetch = fetchMock;
+    try {
+      await expect(streamOpenAiCompatibleResponse(config(), request(), {})).rejects.toMatchObject({ executionStateUnknown: true });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally { global.fetch = originalFetch; }
+  });
+
+  it.each([false, true])("permits only one cache-field correction and preserves the request (stream=%s)", async (stream) => {
+    const originalFetch = global.fetch;
+    const bodies: Record<string, unknown>[] = [];
+    global.fetch = vi.fn(async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      if (bodies.length === 1) return jsonResponse({ error: { message: "prompt_cache_retention is not supported" } }, 400);
+      return stream ? sseResponse([responseEvent("response.completed", { response: { id: "done", output: [] } })]) : jsonResponse({ id: "done", output: [] });
+    });
+    const cacheConfig = { ...config(), promptCache: { supportsPromptCacheKey: true, supportsPromptCacheRetention: true, promptCacheKeyEnabled: true, promptCacheRetention: "24h" as const } };
+    const cacheRequest = { ...request(), promptCacheKey: "cache", promptCacheRetention: "24h" as const };
+    try {
+      const result = await (stream ? streamOpenAiCompatibleResponse(cacheConfig, cacheRequest, {}) : executeOpenAiCompatibleResponse(cacheConfig, cacheRequest));
+      expect(bodies).toHaveLength(2);
+      const { prompt_cache_key: _key, prompt_cache_retention: _retention, ...rest } = bodies[0]!;
+      expect(bodies[1]).toEqual(rest);
+      expect(result.providerDiagnostics?.cacheStatus).toBe("unavailable");
+    } finally { global.fetch = originalFetch; }
+  });
+
+  it.each(["unknown field", "unrecognized field input", "additional properties", "prompt_cache_key has an invalid value", "unknown field tools", "unknown field input, request includes prompt_cache_key"]) (
+    "does not treat generic/unrelated 400 as permission to resend: %s", async (diagnostic) => {
+      const originalFetch = global.fetch;
+      const fetchMock = vi.fn(async () => jsonResponse({ error: { message: diagnostic } }, 400));
+      global.fetch = fetchMock;
+      const cacheConfig = { ...config(), promptCache: { supportsPromptCacheKey: true, supportsPromptCacheRetention: false, promptCacheKeyEnabled: true } };
+      try {
+        await expect(executeOpenAiCompatibleResponse(cacheConfig, { ...request(), promptCacheKey: "cache" })).rejects.toMatchObject({ status: 400, executionStateUnknown: false });
+        expect(fetchMock).toHaveBeenCalledOnce();
+        fetchMock.mockClear();
+        await expect(streamOpenAiCompatibleResponse(cacheConfig, { ...request(), promptCacheKey: "cache" }, {})).rejects.toMatchObject({ status: 400, executionStateUnknown: false });
+        expect(fetchMock).toHaveBeenCalledOnce();
+      } finally { global.fetch = originalFetch; }
     }
+  );
+
+  it.each([false, true])("does not retry again if the cache correction outcome is ambiguous (stream=%s)", async (stream) => {
+    const originalFetch = global.fetch;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "unknown field prompt_cache_key" } }, 400))
+      .mockRejectedValue(new TypeError("corrected response lost"));
+    global.fetch = fetchMock;
+    const cacheConfig = { ...config(), promptCache: { supportsPromptCacheKey: true, supportsPromptCacheRetention: false, promptCacheKeyEnabled: true } };
+    try {
+      const cacheRequest = { ...request(), promptCacheKey: "cache" };
+      await expect(stream ? streamOpenAiCompatibleResponse(cacheConfig, cacheRequest, {}) : executeOpenAiCompatibleResponse(cacheConfig, cacheRequest))
+        .rejects.toMatchObject({ executionStateUnknown: true });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally { global.fetch = originalFetch; }
+  });
+
+  it.each([false, true])("treats successful-POST body loss as unknown without resubmission (stream=%s)", async (stream) => {
+    const originalFetch = global.fetch;
+    const fetchMock = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) { controller.error(new TypeError("response body lost")); }
+    }), { headers: { "Content-Type": "application/json" } }));
+    global.fetch = fetchMock;
+    try {
+      await expect(stream ? streamOpenAiCompatibleResponse(config(), request(), {}) : executeOpenAiCompatibleResponse(config(), request()))
+        .rejects.toMatchObject({ executionStateUnknown: true });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally { global.fetch = originalFetch; }
+  });
+
+  it("does not POST when already aborted", async () => {
+    const originalFetch = global.fetch;
+    const fetchMock = vi.fn();
+    global.fetch = fetchMock;
+    const controller = new AbortController();
+    controller.abort();
+    try {
+      await expect(executeOpenAiCompatibleResponse(config(), request(), controller.signal)).rejects.toMatchObject({ name: "AbortError" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally { global.fetch = originalFetch; }
   });
 
   it("surfaces context-limit diagnostics", async () => {
@@ -659,57 +700,6 @@ describe("openai-compatible provider adapter", () => {
 
       await expect(pending).rejects.toMatchObject({ name: "AbortError" });
       expect(fetchMock).toHaveBeenCalledOnce();
-    } finally {
-      global.fetch = originalFetch;
-    }
-  });
-
-  it("does not issue a transient retry after the shared deadline expires during backoff", async () => {
-    vi.useFakeTimers();
-    const originalFetch = global.fetch;
-    let resolveFirst!: (response: Response) => void;
-    const first = new Promise<Response>((resolve) => {
-      resolveFirst = resolve;
-    });
-    const fetchMock = vi.fn(() => first);
-    global.fetch = fetchMock;
-
-    try {
-      const pending = executeOpenAiCompatibleResponse(config(), request());
-      const rejected = expect(pending).rejects.toMatchObject({ code: "provider_deadline_exceeded" });
-      await vi.advanceTimersByTimeAsync(PROVIDER_OVERALL_DEADLINE_MS - 100);
-      resolveFirst(new Response("bad gateway", { status: 502 }));
-      await vi.advanceTimersByTimeAsync(100);
-
-      await rejected;
-      expect(fetchMock).toHaveBeenCalledOnce();
-    } finally {
-      global.fetch = originalFetch;
-    }
-  });
-
-  it("shares the original deadline with stream-to-buffered fallback", async () => {
-    vi.useFakeTimers();
-    const originalFetch = global.fetch;
-    let resolveStream!: (response: Response) => void;
-    const first = new Promise<Response>((resolve) => {
-      resolveStream = resolve;
-    });
-    const fetchMock = vi.fn()
-      .mockImplementationOnce(() => first)
-      .mockImplementationOnce(() => new Promise<Response>(() => undefined));
-    global.fetch = fetchMock;
-
-    try {
-      const pending = streamOpenAiCompatibleResponse(config(), request(), {});
-      const rejected = expect(pending).rejects.toMatchObject({ code: "provider_deadline_exceeded" });
-      await vi.advanceTimersByTimeAsync(PROVIDER_OVERALL_DEADLINE_MS - 100);
-      resolveStream(sseResponse([responseEvent("response.created", { response: { id: "incomplete" } })]));
-      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-      await vi.advanceTimersByTimeAsync(100);
-
-      await rejected;
-      expect(fetchMock).toHaveBeenCalledTimes(2);
     } finally {
       global.fetch = originalFetch;
     }

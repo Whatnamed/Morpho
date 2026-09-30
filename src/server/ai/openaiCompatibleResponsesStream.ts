@@ -160,6 +160,7 @@ export function createOpenAiCompatibleResponseAccumulator(
   let usage: ProviderTokenUsage | undefined;
   let completed = false;
   let failed = false;
+  let failureUnconfirmed = false;
   let hasFunctionCall = false;
 
   const emit = (event: OpenAiCompatibleAgentStreamEvent) => onEvent?.(event);
@@ -391,8 +392,11 @@ export function createOpenAiCompatibleResponseAccumulator(
           completed = true;
           return;
         }
-        case "response.failed":
         case "error": {
+          failureUnconfirmed = true;
+          return;
+        }
+        case "response.failed": {
           failed = true;
           return;
         }
@@ -404,7 +408,7 @@ export function createOpenAiCompatibleResponseAccumulator(
       if (failed) {
         throw new OpenAiCompatibleStreamError("failed", "failed");
       }
-      if (!completed) {
+      if (failureUnconfirmed || !completed) {
         throw new OpenAiCompatibleStreamError("interrupted", "interrupted");
       }
 

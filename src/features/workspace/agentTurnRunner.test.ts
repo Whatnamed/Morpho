@@ -102,6 +102,13 @@ describe("A+ Agent turn runner", () => {
     expect(JSON.stringify(fixture.store.record ?? null)).not.toContain(secretDiagnostic);
   });
 
+  it("displays honest unknown execution copy without automatically running another request", async () => {
+    const fixture = createFixture([{ status: "externallyFailed", externalErrorCode: "external_execution_state_unknown" }]);
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({ body: "无法确认外部请求是否已经执行，Morpho 未自动提交第二次请求。", status: "failed" });
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+  });
+
   it("keeps a successful local Tool effect when the Provider continuation fails", async () => {
     const fixture = createFixture([
       {

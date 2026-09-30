@@ -10,6 +10,7 @@ import type {
 } from "@/server/ai/agentTurnJournal";
 import {
   OpenAiCompatibleProviderError,
+  streamOpenAiCompatibleResponse,
   type OpenAiCompatibleResponseResult
 } from "@/server/ai/openaiCompatibleProvider";
 import type {
@@ -471,8 +472,8 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it.each([
-    ["provider_deadline_exceeded", "provider_deadline_exceeded"],
-    ["provider_response_too_large", "provider_response_too_large"]
+    ["provider_deadline_exceeded", "external_execution_state_unknown"],
+    ["provider_response_too_large", "external_execution_state_unknown"]
   ] as const)("settles internal Provider boundary %s as externallyFailed", async (code, failureCode) => {
     const store = new FakeJournal();
     const provider = vi.fn(async () => {
@@ -486,6 +487,33 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
       status: "externallyFailed"
     }));
     expect(store.snapshot).toMatchObject({ status: "externallyFailed", failureCode });
+  });
+
+  it.each(["network", "partialStream"])("persists unknown %s and exact replay never resubmits", async (failure) => {
+    const originalFetch = global.fetch;
+    const store = new FakeJournal();
+    const fetchMock = vi.fn(async () => {
+      if (failure === "network") throw new TypeError("accepted but response lost");
+      const frames = [
+        { type: "response.created", response: { id: "response-partial" } },
+        { type: "response.output_item.added", output_index: 0, item: { id: "msg", type: "message", phase: "final_answer", content: [] } },
+        { type: "response.output_text.delta", item_id: "msg", delta: "partial observation" }
+      ];
+      return new Response(frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""), { headers: { "Content-Type": "text/event-stream" } });
+    });
+    global.fetch = fetchMock;
+    const handler = makeHandler(store, streamOpenAiCompatibleResponse);
+    try {
+      const response = await call(handler, validBody());
+      const events = parseSse(await response.text());
+      expect(events).toContainEqual(expect.objectContaining({ type: "externalError", code: "external_execution_state_unknown", recoverable: false }));
+      if (failure === "partialStream") expect(events).toContainEqual(expect.objectContaining({ type: "streamActivity", event: expect.objectContaining({ type: "final-delta", delta: "partial observation" }) }));
+      expect(events.some((event) => event.type === "providerOutput")).toBe(false);
+      expect(store.snapshot).toMatchObject({ status: "externallyFailed", failureCode: "external_execution_state_unknown" });
+      const replay = await call(handler, validBody());
+      expect(await replay.json()).toMatchObject({ replayed: true, failureCode: "external_execution_state_unknown" });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally { global.fetch = originalFetch; }
   });
 
   it("allows only one of two concurrent identical requests to execute", async () => {

@@ -245,7 +245,7 @@ function dedupeCitations(citations: ProviderCitation[]): ProviderCitation[] {
 
 function shouldRetryTextOnlyAfterImageFailure(error: unknown, request: AiRouteRequest): boolean {
   const hasReadyImages = request.attachments.some((attachment) => attachment.status === "ready");
-  if (!hasReadyImages || !(error instanceof OpenAiCompatibleProviderError)) {
+  if (!hasReadyImages || !(error instanceof OpenAiCompatibleProviderError) || error.executionStateUnknown) {
     return false;
   }
   if (error.code === "provider_response_too_large" || error.code === "provider_deadline_exceeded") {
@@ -254,13 +254,12 @@ function shouldRetryTextOnlyAfterImageFailure(error: unknown, request: AiRouteRe
 
   const diagnostic = (error.diagnostic ?? "").toLowerCase();
   return (
-    [400, 413, 415, 422, 500, 502, 503, 504].includes(error.status) &&
+    [400, 413, 415, 422].includes(error.status) &&
     (diagnostic.includes("image") ||
       diagnostic.includes("input_image") ||
       diagnostic.includes("image_url") ||
       diagnostic.includes("unsupported") ||
-      diagnostic.includes("bad gateway") ||
-      error.status === 502)
+      diagnostic.includes("bad gateway"))
   );
 }
 

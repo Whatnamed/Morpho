@@ -113,7 +113,6 @@ export type OpenAiCompatibleStreamHandlers = {
   onTextDelta?: (text: string) => void;
   onCitations?: (citations: ProviderCitation[]) => void;
   onEvent?: (event: OpenAiCompatibleAgentStreamEvent) => void;
-  onBufferedFallback?: (input: { semanticEventsEmitted: boolean }) => void;
 };
 
 export type { OpenAiCompatibleAgentStreamEvent } from "./openaiCompatibleResponsesStream";
@@ -123,8 +122,6 @@ type RawResponse = {
   output?: unknown[];
   usage?: unknown;
 };
-
-const TRANSIENT_RESPONSE_RETRY_DELAYS_MS = [750, 2_000, 4_500] as const;
 
 export type AgentOutputItem = {
   type: string;
@@ -137,7 +134,8 @@ export class OpenAiCompatibleProviderError extends Error {
   constructor(
     readonly status: number,
     readonly diagnostic?: string,
-    code?: "context_limit" | "function_call_limit" | ProviderResponseBoundaryCode
+    code?: "context_limit" | "function_call_limit" | ProviderResponseBoundaryCode,
+    readonly executionStateUnknown = status === 408 || status === 429 || status >= 500
   ) {
     super(`OpenAI-compatible provider error (${status})`);
     this.name = "OpenAiCompatibleProviderError";
@@ -154,7 +152,7 @@ export async function executeOpenAiCompatibleResponse(
   try {
     return await executeOpenAiCompatibleResponseWithBudget(config, request, budget);
   } catch (error) {
-    throw translateProviderBoundaryError(error);
+    throw translateProviderBoundaryError(error, budget);
   } finally {
     budget.dispose();
   }
@@ -212,7 +210,7 @@ export async function streamOpenAiCompatibleResponse(
   try {
     return await streamOpenAiCompatibleResponseWithBudget(config, request, handlers, budget);
   } catch (error) {
-    throw translateProviderBoundaryError(error);
+    throw translateProviderBoundaryError(error, budget);
   } finally {
     budget.dispose();
   }
@@ -236,10 +234,9 @@ async function streamOpenAiCompatibleResponseWithBudget(
   if (!response.ok) {
     const diagnostic = await safeReadDiagnostic(response, budget);
     if (shouldRetryWithoutUnsupportedPromptCache(config, request, response.status, diagnostic)) {
-      return executeBufferedResponsesFallback(config, withoutPromptCacheFields(request), handlers, budget, "unavailable");
-    }
-    if (shouldUseBufferedResponsesFallback(response.status)) {
-      return executeBufferedResponsesFallback(config, request, handlers, budget);
+      const result = await streamOpenAiCompatibleResponseWithBudget(config, withoutPromptCacheFields(request), handlers, budget);
+      result.providerDiagnostics = { ...result.providerDiagnostics, cacheStatus: "unavailable" };
+      return result;
     }
     throw new OpenAiCompatibleProviderError(response.status, diagnostic);
   }
@@ -260,14 +257,10 @@ async function streamOpenAiCompatibleResponseWithBudget(
   }
   await assertProviderContentLengthWithinLimit(response, PROVIDER_SSE_TOTAL_MAX_BYTES);
 
-  let semanticEventsEmitted = false;
   try {
     const result = await parseOpenAiResponsesStream(response.body, {
       budget,
       onEvent: (event) => {
-        if (event.type !== "unknown") {
-          semanticEventsEmitted = true;
-        }
         handlers.onEvent?.(event);
         if (event.type === "final-delta") {
           handlers.onTextDelta?.(event.delta);
@@ -296,28 +289,11 @@ async function streamOpenAiCompatibleResponseWithBudget(
       throw new OpenAiCompatibleProviderError(400, error.message, "function_call_limit");
     }
     if (error instanceof OpenAiCompatibleStreamError) {
-      handlers.onBufferedFallback?.({ semanticEventsEmitted });
-      budget.throwIfUnavailable();
-      return executeBufferedResponsesFallback(config, request, handlers, budget);
+      throw new OpenAiCompatibleProviderError(502, error.message, undefined, error.kind === "interrupted");
     }
-    throw error;
+    if (error instanceof ProviderResponseBoundaryError || isAbortError(error)) throw error;
+    throw new OpenAiCompatibleProviderError(502, "Responses stream could not be read.");
   }
-}
-
-async function executeBufferedResponsesFallback(
-  config: OpenAiCompatibleProviderConfig,
-  request: OpenAiCompatibleResponseRequest,
-  handlers: OpenAiCompatibleStreamHandlers,
-  budget: ProviderRequestBudget,
-  cacheStatus?: "unavailable"
-): Promise<OpenAiCompatibleResponseResult> {
-  budget.throwIfUnavailable();
-  const result = await executeOpenAiCompatibleResponseWithBudget(config, request, budget);
-  if (cacheStatus) {
-    result.providerDiagnostics = { ...result.providerDiagnostics, cacheStatus };
-  }
-  emitBufferedResult(result, handlers);
-  return result;
 }
 
 async function safeReadDiagnostic(
@@ -343,10 +319,16 @@ async function readRawResponse(
     if (error instanceof ProviderResponseBoundaryError || isAbortError(error)) throw error;
     throw new OpenAiCompatibleProviderError(502, "Responses endpoint returned invalid JSON.");
   }
-  return isRecord(value) ? value : {};
+  if (!isRecord(value) || !isRawResponsesResult(value)) {
+    throw new OpenAiCompatibleProviderError(502, "Responses endpoint returned an incompatible JSON payload.");
+  }
+  return value;
 }
 
-function translateProviderBoundaryError(error: unknown): unknown {
+function translateProviderBoundaryError(error: unknown, budget: ProviderRequestBudget): unknown {
+  if (isAbortError(error) && !budget.signal.aborted) {
+    return new OpenAiCompatibleProviderError(502, "Responses transport ended without caller cancellation.");
+  }
   return error instanceof ProviderResponseBoundaryError
     ? new OpenAiCompatibleProviderError(502, error.message, error.code)
     : error;
@@ -361,34 +343,13 @@ async function fetchProviderResponse(
   init: RequestInit,
   budget: ProviderRequestBudget
 ): Promise<Response> {
-  let lastNetworkError: unknown;
-  for (let attempt = 0; attempt <= TRANSIENT_RESPONSE_RETRY_DELAYS_MS.length; attempt += 1) {
-    try {
-      budget.throwIfUnavailable();
-      const response = await budget.race(fetch(url, { ...init, signal: budget.signal }));
-      if (!isTransientProviderResponse(response.status) || attempt === TRANSIENT_RESPONSE_RETRY_DELAYS_MS.length) {
-        return response;
-      }
-      await discardProviderResponse(response, budget);
-    } catch (error) {
-      if (budget.signal.aborted || attempt === TRANSIENT_RESPONSE_RETRY_DELAYS_MS.length) {
-        throw error;
-      }
-      lastNetworkError = error;
-    }
-
-    await budget.wait(TRANSIENT_RESPONSE_RETRY_DELAYS_MS[attempt]);
+  budget.throwIfUnavailable();
+  try {
+    return await budget.race(fetch(url, { ...init, signal: budget.signal }));
+  } catch (error) {
+    if (error instanceof ProviderResponseBoundaryError || isAbortError(error)) throw error;
+    throw new OpenAiCompatibleProviderError(502, "Responses submission state could not be confirmed.");
   }
-
-  throw lastNetworkError ?? new Error("Provider request did not produce a response.");
-}
-
-function shouldUseBufferedResponsesFallback(status: number): boolean {
-  return status === 502 || status === 503 || status === 504;
-}
-
-function isTransientProviderResponse(status: number): boolean {
-  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
 }
 
 async function discardProviderResponse(
@@ -399,7 +360,7 @@ async function discardProviderResponse(
     if (response.body) await budget.race(response.body.cancel());
   } catch (error) {
     if (error instanceof ProviderResponseBoundaryError || isAbortError(error)) throw error;
-    // The response is being retried, so an unread diagnostic body is not useful.
+    // The incompatible response is discarded without resubmission.
   }
 }
 
@@ -446,18 +407,16 @@ function shouldRetryWithoutUnsupportedPromptCache(
   if (status !== 400 || !request.promptCacheKey && !request.promptCacheRetention) {
     return false;
   }
-  const promptCache = config.promptCache;
-  if (!promptCache?.promptCacheKeyEnabled && !promptCache?.promptCacheRetention) {
-    return false;
-  }
+  const body = buildProviderRequestBody(config, request);
   const normalized = diagnostic?.toLowerCase() ?? "";
-  return [
-    "prompt_cache_key",
-    "prompt_cache_retention",
-    "unknown field",
-    "unrecognized field",
-    "additional properties"
-  ].some((pattern) => normalized.includes(pattern));
+  // Require an unsupported-field statement about a cache field actually sent.
+  // Merely mentioning a cache field alongside an unrelated error is insufficient.
+  return ["prompt_cache_key", "prompt_cache_retention"].some((field) =>
+    field in body && new RegExp(
+      `(?:unknown|unrecognized|unsupported|unexpected)\\s+(?:(?:request\\s+)?(?:field|parameter|argument|property)\\s*[:=]?\\s*)?["']?\\b${field}\\b|\\b${field}\\b["']?\\s+(?:is\\s+)?(?:unknown|unrecognized|unsupported|not supported|not permitted)`,
+      "i"
+    ).test(normalized)
+  );
 }
 
 function resultFromRawResponse(

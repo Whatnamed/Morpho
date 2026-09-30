@@ -20,17 +20,9 @@ vi.mock("@/server/auth/aiAccess", () => ({
 
 const streamOpenAiCompatibleResponseMock = vi.fn();
 
-vi.mock("@/server/ai/openaiCompatibleProvider", () => ({
-  streamOpenAiCompatibleResponse: (...args: unknown[]) => streamOpenAiCompatibleResponseMock(...args),
-  OpenAiCompatibleProviderError: class OpenAiCompatibleProviderError extends Error {
-    constructor(
-      readonly status: number,
-      readonly diagnostic?: string,
-      readonly code?: string
-    ) {
-      super(`provider ${status}`);
-    }
-  }
+vi.mock("@/server/ai/openaiCompatibleProvider", async () => ({
+  ...await vi.importActual<typeof import("@/server/ai/openaiCompatibleProvider")>("@/server/ai/openaiCompatibleProvider"),
+  streamOpenAiCompatibleResponse: (...args: unknown[]) => streamOpenAiCompatibleResponseMock(...args)
 }));
 
 describe("AI chat route", () => {
@@ -270,6 +262,16 @@ describe("AI chat route", () => {
     }
   );
 
+  it.each([408, 429, 500, 502, 503, 504])("does not strip images and resubmit after ambiguous HTTP %s", async (status) => {
+    const { OpenAiCompatibleProviderError } = await import("@/server/ai/openaiCompatibleProvider");
+    streamOpenAiCompatibleResponseMock.mockRejectedValueOnce(new OpenAiCompatibleProviderError(status, "input_image upstream failed"));
+    const response = await POST(makeImageRequest());
+    const body = await response.text();
+    expect(body).toContain('"code":"external_execution_state_unknown"');
+    expect(body).toContain('"recoverable":false');
+    expect(streamOpenAiCompatibleResponseMock).toHaveBeenCalledOnce();
+  });
+
   it("returns a stable public error envelope without upstream diagnostics", async () => {
     const secretDiagnostic = "internal-host.local api_key=secret raw upstream body /private/path";
     const { OpenAiCompatibleProviderError } = await import("@/server/ai/openaiCompatibleProvider");
@@ -287,8 +289,8 @@ describe("AI chat route", () => {
 
     expect(response.status).toBe(200);
     expect(body).toContain('"type":"error"');
-    expect(body).toContain('"code":"provider_http_502"');
-    expect(body).toContain('"recoverable":true');
+    expect(body).toContain('"code":"external_execution_state_unknown"');
+    expect(body).toContain('"recoverable":false');
     expect(body).not.toContain(secretDiagnostic);
     expect(body).not.toContain("internal-host.local");
     expect(body).not.toContain("api_key=secret");
