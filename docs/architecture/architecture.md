@@ -737,7 +737,7 @@ AI authority boundary:
 
 Current F06 authority layering:
 
-P2A Turn Task ownership (2026-10-01; implementation awaiting acceptance):
+P2A Turn Task ownership (2026-10-01; accepted implementation `02655e829a72aea7bd555917de9fa89519818bfd`):
 
 - `shared/turnTaskContract.ts` owns the bounded DTO, parser, common tool/confirmation projections;
   `turnTaskResolver.ts` mints activities and effect grants solely from current-user instruction and
