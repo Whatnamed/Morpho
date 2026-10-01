@@ -1,3 +1,4 @@
+import { EXTERNAL_REQUEST_MAX_BYTES } from "@/shared/externalResultProtocol";
 import { NextResponse } from "next/server";
 
 import {
@@ -8,7 +9,7 @@ import type {
   AgentTurnJournalDenial
 } from "./agentTurnJournal";
 
-export const MAX_A_PLUS_AGENT_REQUEST_BODY_BYTES = 36 * 1024 * 1024;
+export const MAX_A_PLUS_AGENT_REQUEST_BODY_BYTES = EXTERNAL_REQUEST_MAX_BYTES;
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9._:-]+$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 

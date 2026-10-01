@@ -18,6 +18,7 @@ out/
 .DS_Store
 Thumbs.db
 temp/
+supabase/.temp/
 
 # Playwright acceptance run artifacts
 e2e/.artifacts/

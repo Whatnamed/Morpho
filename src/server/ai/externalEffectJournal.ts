@@ -1,3 +1,4 @@
+import { EXTERNAL_FROZEN_REQUEST_MAX_BYTES } from "@/shared/externalResultProtocol";
 import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
@@ -95,6 +96,7 @@ export function createEffectExecution(identity: EffectIdentity, journal: EffectJ
   return {
     async beforeSubmit(body, namespace, correction) {
       const frozenRequest = typeof body === "string" ? body : JSON.stringify(body);
+      if (Buffer.byteLength(frozenRequest, "utf8") > EXTERNAL_FROZEN_REQUEST_MAX_BYTES) throw new ExternalEffectJournalError("effect_request_too_large");
       const nextAttemptId = randomUUID();
       const result = await journal.call(correction ? "correction" : "register", identity, {
         frozenRequest,

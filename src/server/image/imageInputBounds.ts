@@ -1,5 +1,6 @@
-export const MAX_INPUT_IMAGE_DECODED_BYTES = 8 * 1024 * 1024;
-export const MAX_TOTAL_INPUT_IMAGE_DECODED_BYTES = 24 * 1024 * 1024;
+import { EXTERNAL_INPUT_IMAGE_MAX_BYTES, EXTERNAL_INPUT_IMAGES_MAX_BYTES } from "@/shared/externalResultProtocol";
+export const MAX_INPUT_IMAGE_DECODED_BYTES = EXTERNAL_INPUT_IMAGE_MAX_BYTES;
+export const MAX_TOTAL_INPUT_IMAGE_DECODED_BYTES = EXTERNAL_INPUT_IMAGES_MAX_BYTES;
 
 const SAFE_IMAGE_DATA_URL = /^data:image\/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/]*={0,2})$/i;
 
@@ -28,11 +29,11 @@ export function validateImageInputCollection(
     const inspected = inspectSafeImageDataUrl(candidate);
     if (!inspected) return { status: "failed", reason: "参考图必须是受支持的 image data URL。" };
     if (inspected.decodedBytes > maxDecodedBytes) {
-      return { status: "failed", reason: "单张参考图解码后超过 8 MiB。" };
+      return { status: "failed", reason: "单张参考图解码后超过 2 MiB。" };
     }
     totalDecodedBytes += inspected.decodedBytes;
     if (totalDecodedBytes > maxTotalDecodedBytes) {
-      return { status: "failed", reason: "参考图解码后总量超过 24 MiB。" };
+      return { status: "failed", reason: "参考图解码后总量超过 2.5 MiB。" };
     }
     images.push(candidate);
   }

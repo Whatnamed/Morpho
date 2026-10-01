@@ -1,7 +1,8 @@
+import { EXTERNAL_INPUT_IMAGE_MAX_BYTES, EXTERNAL_INPUT_IMAGES_MAX_BYTES } from "@/shared/externalResultProtocol";
 /** Bounds for the complete visual payload of each Agent Provider request. */
 export const MAX_AGENT_INPUT_IMAGE_COUNT = 4;
-export const MAX_AGENT_INPUT_IMAGE_BYTES = 8 * 1024 * 1024;
-export const MAX_AGENT_TOTAL_INPUT_IMAGE_BYTES = 24 * 1024 * 1024;
+export const MAX_AGENT_INPUT_IMAGE_BYTES = EXTERNAL_INPUT_IMAGE_MAX_BYTES;
+export const MAX_AGENT_TOTAL_INPUT_IMAGE_BYTES = EXTERNAL_INPUT_IMAGES_MAX_BYTES;
 
 export function agentInputImageBytes(value: string): number | undefined {
   const match = value.match(/^data:image\/(png|jpeg|webp|gif);base64,([A-Za-z0-9+/=]+)$/);

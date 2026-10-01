@@ -1,3 +1,4 @@
+import { MAX_AGENT_INPUT_IMAGE_BYTES } from "@/shared/agentImageInputLimits";
 import { describe, expect, it } from "vitest";
 import { createTestWorkspace } from "@/domain/morpho/workspace";
 import { hashProviderImageDataUrl } from "@/domain/morpho/providerInputSnapshot";
@@ -49,14 +50,14 @@ describe("request-local continuation pixels", () => {
   });
   it.each(["single", "total"])("honors the %s byte bound with honest omitted coverage", (variant) => {
     const input = fixture(3);
-    const size = variant === "single" ? 8 * 1024 * 1024 + 1 : 8 * 1024 * 1024;
+    const size = variant === "single" ? MAX_AGENT_INPUT_IMAGE_BYTES + 1 : MAX_AGENT_INPUT_IMAGE_BYTES;
     input.base.input = input.base.input.map((message, index) => {
       const image_url = `data:image/png;base64,${Buffer.alloc(size, index + 1).toString("base64")}`;
       input.reads[index]!.contentHash = hashProviderImageDataUrl(image_url);
       return { ...message, content: [{ type: "input_image" as const, image_url }] };
     });
     const result = materializeContinuationImages(input);
-    const omitted = variant === "single" ? result.coverage.slice(0, 3) : result.coverage.slice(3);
+    const omitted = variant === "single" ? result.coverage.slice(0, 3) : result.coverage.slice(1, 3);
     expect(omitted.every((receipt) => receipt.requestImageStatus === "omitted" && receipt.imageOmissionReason === "imageBytes")).toBe(true);
     if (variant === "single") {
       const fulfillment = evaluateAgentTaskFulfillment({ contract: input.contract, workspace: input.workspace, reads: result.reads, effects: input.effects, providerCompleted: true });

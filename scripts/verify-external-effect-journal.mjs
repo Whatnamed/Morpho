@@ -36,6 +36,7 @@ try {
   const sql = await readFile(new URL("../supabase/migrations/20261001090000_add_external_effect_observation.sql", import.meta.url), "utf8");
   await db.exec(sql);
   await db.exec(sql);
+  if (process.argv[3]) await db.exec(await readFile(resolve(process.argv[3]), "utf8"));
   check((await db.query("select count(*)::int as n from public.external_effect")).rows[0].n === 0, "No legacy identity backfill");
   check((await db.query("select status from public.legacy_in_flight")).rows[0].status === "running", "Legacy in-flight remains unchanged");
   const privileges = (await db.query(`select
