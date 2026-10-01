@@ -12,6 +12,7 @@ import type { VisualIntentItem } from "../operations/types";
 import type { MorphoWorkspace } from "./types";
 import { buildTaskContext, buildProviderTaskContext } from "../../features/workspace/taskContext";
 import { appendAgentProviderStateFrames } from "../../features/workspace/providerContextFrames";
+import { applyConversationSemanticPatchFromReply, buildSemanticPatchAuthorizationInput } from "../../features/workspace/workspaceSemanticPatch";
 
 const A = "direction-soft-rail";
 const B = "direction-support-island";
@@ -33,6 +34,85 @@ function imagePrompt(workspace: MorphoWorkspace, targetDirectionId: string): str
 }
 
 describe("P1B-2 projection consumer convergence", () => {
+  it.each([
+    ["designDefinition", "research-night-path"],
+    ["designDefinition", "file-course-brief"],
+    ["designDefinition", "image-soft-rail-v2"],
+    ["direction", "image-soft-rail-v2"]
+  ] as const)("rejects a %s fact whose only authorized source is incidental %s in the formal reply path", (scope, sourceId) => {
+    const base = createInitialWorkspace();
+    const quote = "后续必须保留紫色连接节点";
+    const createdAt = "2026-10-01T00:00:00.000Z";
+    const workspace = { ...base, ai: { ...base.ai, messages: [...base.ai.messages, { id: "owner-write-user", role: "user" as const, body: quote, createdAt }] } };
+    const context = buildTaskContext(workspace, { kind: "visualDevelopment", draft: quote, selectedObjectIds: [sourceId] });
+    expect(context.objectIds).toContain(sourceId);
+    const result = applyConversationSemanticPatchFromReply({ workspace, taskMode: "chatAnalysis", context, draft: quote, userMessageId: "owner-write-user", userMessageCreatedAt: createdAt,
+      assistantText: JSON.stringify({ morphoProjectContinuityPatch: { items: [{ kind: "constraint", scope, evidenceQuote: quote, relatedObjectIds: [sourceId], relatedRevisionIds: [], relatedDecisionIds: [] }] } }) });
+    expect(result.status).toBe("skipped");
+    expect(result.workspace.projectContinuity.recordEntries).toEqual(workspace.projectContinuity.recordEntries);
+    const applied = applyConversationSemanticPatch(workspace, buildSemanticPatchAuthorization(buildSemanticPatchAuthorizationInput({ workspace, taskMode: "chatAnalysis", context, draft: quote, userMessageId: "owner-write-user", userMessageCreatedAt: createdAt })), [{ kind: "constraint", scope, evidenceQuote: quote, relatedObjectIds: [sourceId], relatedRevisionIds: [], relatedDecisionIds: [] }]);
+    expect(applied.entries).toEqual([]);
+    expect(applied.rejected[0]?.reason).toContain("scope owner is unbound");
+  });
+
+  it.each(["object", "revision"] as const)("keeps an explicitly %s-bound direction rule with incidental image evidence readable without selecting that image", (binding) => {
+    const base = createInitialWorkspace();
+    const direction = base.objects[A];
+    if (direction?.type !== "conceptDirection") throw new Error("Missing direction");
+    const quote = "后续必须保留紫色连接节点";
+    const createdAt = "2026-10-01T00:00:00.000Z";
+    const workspace = { ...base, ai: { ...base.ai, messages: [...base.ai.messages, { id: "owner-write-user", role: "user" as const, body: quote, createdAt }] } };
+    const context = buildTaskContext(workspace, { kind: "visualDevelopment", draft: quote, selectedObjectIds: ["image-soft-rail-v2"] });
+    const authorization = buildSemanticPatchAuthorization(buildSemanticPatchAuthorizationInput({ workspace, taskMode: "chatAnalysis", context, draft: quote, userMessageId: "owner-write-user", userMessageCreatedAt: createdAt }));
+    // An image Context authorizes its direction revision; direct object reads authorize the object.
+    if (binding === "object") authorization.allowedObjectIds.add(A);
+    const applied = applyConversationSemanticPatch(workspace, authorization, [{ kind: "constraint", scope: "direction", evidenceQuote: quote, relatedObjectIds: ["image-soft-rail-v2", ...(binding === "object" ? [A] : [])], relatedRevisionIds: binding === "revision" ? [direction.currentRevisionId] : [], relatedDecisionIds: [] }]);
+    expect(applied.rejected).toEqual([]);
+    const fact = applied.workspace.projectContinuity.recordEntries.find((entry) => entry.id === applied.entries[0]!.id)!;
+    expect(fact.sourceRefs).toContainEqual(expect.objectContaining({ kind: "object", id: "image-soft-rail-v2" }));
+    for (const target of [A, B]) {
+      const memory = buildAgentDefaultMemoryContext(applied.workspace, "visualDevelopment", { targetDirectionIds: [target] });
+      const context = buildProjectContinuityContext(applied.workspace, { taskKind: "visualDevelopment", selectedObjectIds: [], targetDirectionIds: [target] });
+      expect(JSON.stringify(memory).includes(quote)).toBe(target === A);
+      expect(JSON.stringify(context.relevantStageRecords).includes(quote)).toBe(target === A);
+      expect(imagePrompt(applied.workspace, target).includes(quote)).toBe(target === A);
+    }
+    const selected = buildProjectContinuityContext(applied.workspace, { taskKind: "general", selectedObjectIds: [A], includeHistorical: true });
+    expect(JSON.stringify(selected.relevantProjectMemoryViews)).toContain(quote);
+    expect(validateCurrentMorphoWorkspace(applied.workspace).status).toBe("ok");
+  });
+
+  it.each(["direction", "designDefinition"] as const)("rejects ambiguous or missing %s owners without changing prior facts", (scope) => {
+    const base = createInitialWorkspace();
+    const quote = "后续必须保留紫色连接节点";
+    const createdAt = "2026-10-01T00:00:00.000Z";
+    const definition = base.objects["definition-current"];
+    if (definition?.type !== "designDefinition") throw new Error("Missing definition");
+    const secondDefinition = { ...definition, id: "definition-other", isCurrentEffective: false, currentRevisionId: "definition-other-r1", revisionIds: ["definition-other-r1"] };
+    const workspace: MorphoWorkspace = { ...base, objects: { ...base.objects, [secondDefinition.id]: secondDefinition }, designDefinitionRevisions: { ...base.designDefinitionRevisions, [secondDefinition.currentRevisionId]: { ...base.designDefinitionRevisions[definition.currentRevisionId]!, id: secondDefinition.currentRevisionId, designDefinitionId: secondDefinition.id } }, ai: { ...base.ai, messages: [...base.ai.messages, { id: "owner-write-user", role: "user", body: quote, createdAt }] } };
+    const ids = scope === "direction" ? [A, B] : [definition.id, secondDefinition.id];
+    for (const ownerIds of [ids, ["missing-owner"]]) {
+      const applied = applyConversationSemanticPatch(workspace, buildSemanticPatchAuthorization({ taskMode: "chatAnalysis", draft: quote, userMessageId: "owner-write-user", userMessageCreatedAt: createdAt, currentFocusArea: "directionAndVisual", objectIds: ownerIds, revisionIds: [], decisionIds: [] }), [{ kind: "constraint", scope, evidenceQuote: quote, relatedObjectIds: ownerIds, relatedRevisionIds: [], relatedDecisionIds: [] }]);
+      expect(applied.entries).toEqual([]);
+      expect(applied.rejected[0]?.reason).toContain(ownerIds.length > 1 ? "scope owner is ambiguous" : "scope owner is unbound");
+      expect(applied.workspace.projectContinuity.recordEntries).toEqual(workspace.projectContinuity.recordEntries);
+    }
+  });
+
+  it("keeps legacy unbound and ambiguous scope records as review diagnostics without inventing owner references", () => {
+    const workspace = withPreference();
+    const fact = workspace.projectContinuity.recordEntries.find((entry) => entry.evidenceQuote === preference)!;
+    for (const refs of [[{ kind: "object" as const, id: "image-soft-rail-v2" }], [{ kind: "object" as const, id: A }, { kind: "object" as const, id: B }]]) {
+      const legacy = { ...fact, sourceRefs: refs };
+      const reconciled = reconcileProjectMemory({ ...workspace, projectContinuity: { ...workspace.projectContinuity, recordEntries: workspace.projectContinuity.recordEntries.map((entry) => entry.id === fact.id ? legacy : entry) } });
+      const current = reconciled.projectContinuity.recordEntries.find((entry) => entry.id === fact.id)!;
+      expect(current.sourceRefs.map(({ kind, id }) => ({ kind, id }))).toEqual(refs);
+      expect(current.validity).toBe("reviewRequired");
+      expect(current.invalidationReasons).toContain(refs.length === 1 ? "scopeOwner:unbound" : "scopeOwner:ambiguous");
+      expect(imagePrompt(reconciled, A)).not.toContain(preference);
+      expect(imagePrompt(reconciled, B)).not.toContain(preference);
+    }
+  });
   it.each(["object", "revision"] as const)("keeps a %s-bound Definition A fact valid while default consumers follow effective Definition B", (binding) => {
     const applyDefinition = (workspace: MorphoWorkspace, title: string) => {
       const proposed = recordDesignDefinitionProposal(workspace, { proposalId: title, workIntent: "createDesignDefinition", title, summary: title, projectGoal: title, targetUsers: [], primaryScenarios: [], coreProblem: title, designPrinciples: [], constraints: [], avoidDirections: [], opportunities: [], openQuestions: [], sourceObjectIds: [], citations: [] });
@@ -45,14 +125,15 @@ describe("P1B-2 projection consumer convergence", () => {
     if (definitionA?.type !== "designDefinition") throw new Error("Missing Definition A");
     const quote = "仅定义 A 使用紫色连接节点";
     const createdAt = "2026-10-01T00:00:00.000Z";
-    workspace = { ...workspace, ai: { ...workspace.ai, messages: [...workspace.ai.messages, { id: "definition-scope-user", role: "user", body: quote, createdAt }] } };
-    const objectIds = binding === "object" ? [definitionA.id] : [];
+    workspace = { ...workspace, objects: { ...workspace.objects, "definition-incidental-text": { id: "definition-incidental-text", type: "text", title: "说明来源", body: "用户说明", summary: "用户说明", createdBy: "user", visibility: "active" } }, ai: { ...workspace.ai, messages: [...workspace.ai.messages, { id: "definition-scope-user", role: "user", body: quote, createdAt }] } };
+    const objectIds = ["definition-incidental-text", ...(binding === "object" ? [definitionA.id] : [])];
     const revisionIds = binding === "revision" ? [definitionA.currentRevisionId] : [];
     const patch = applyConversationSemanticPatch(workspace, buildSemanticPatchAuthorization({ taskMode: "chatAnalysis", draft: quote, userMessageId: "definition-scope-user", userMessageCreatedAt: createdAt, currentFocusArea: "designDefinition", objectIds, revisionIds, decisionIds: [] }), [{ kind: "preference", scope: "designDefinition", evidenceQuote: quote, relatedObjectIds: objectIds, relatedRevisionIds: revisionIds, relatedDecisionIds: [] }]);
     expect(patch.rejected).toEqual([]);
     workspace = patch.workspace;
     const entryId = patch.entries[0]!.id;
     const originalFact = workspace.projectContinuity.recordEntries.find((entry) => entry.id === entryId)!;
+    expect(originalFact.sourceRefs).toContainEqual(expect.objectContaining({ kind: "object", id: "definition-incidental-text" }));
     const originalRevision = workspace.designDefinitionRevisions[definitionA.currentRevisionId]!;
     const contains = (value: unknown) => JSON.stringify(value).includes(quote);
     expect(contains(buildAgentDefaultMemoryContext(workspace, "visualDevelopment"))).toBe(true);

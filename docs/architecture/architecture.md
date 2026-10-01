@@ -535,6 +535,13 @@ No new runtime dependency or external service was introduced for schema v17.
 
 ### P1B-2 projection ownership and consumer qualification (2026-10-01)
 
+- New Definition/Direction semantic assertions require one explicit authorized owner object or
+  owned current revision at the shared domain write boundary. Incidental sources remain evidence,
+  not owner bindings; missing or conflicting owners are rejected with a correctable reason.
+  Legacy unbound/ambiguous records retain their original sources and become review diagnostics
+  (`scopeOwner:unbound` / `scopeOwner:ambiguous`), without inferring historical targets. Direction
+  reads match owner objects/revisions, retaining explicit target precedence over incidental sources.
+
 - `continuityAuthority.ts` owns source availability, semantic eligibility and scope queries below
   event writing and projection. It consumes P1B-1 Decision classification and source resolution;
   `currentDesignDefinition.ts` supplies the shared current-effective definition query below derived

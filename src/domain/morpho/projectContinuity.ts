@@ -409,7 +409,7 @@ export function applyConversationSemanticPatch(
   }
 
   for (const item of items) {
-    const validation = validateConversationSemanticPatch(item, authorization);
+    const validation = validateConversationSemanticPatch(item, authorization, nextWorkspace);
     if (validation.status === "failed") {
       rejected.push({ evidenceQuote: item.evidenceQuote, reason: validation.reason });
       continue;

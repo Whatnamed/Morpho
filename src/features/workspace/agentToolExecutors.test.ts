@@ -25,6 +25,28 @@ import {
 import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
 
 describe("Agent tool executors", () => {
+  it("reports an ownerless image-backed direction rule as retryable, then records the authorized owner revision", async () => {
+    const fixture = createFixture();
+    const draft = "后续必须保留紫色连接节点";
+    const base = createInitialWorkspace();
+    const direction = base.objects["direction-soft-rail"];
+    if (direction?.type !== "conceptDirection") throw new Error("Missing direction");
+    const workspace = { ...base, ai: { ...base.ai, messages: [...base.ai.messages, { id: "message-user", role: "user" as const, body: draft, createdAt: fixture.input.userMessageCreatedAt }] } };
+    fixture.host.commitWorkspace(() => ({ workspace, value: undefined }));
+    fixture.input.draft = draft;
+    fixture.input.context = buildTaskContext(workspace, { kind: "visualDevelopment", draft, selectedObjectIds: ["image-soft-rail-v2"], targetDirectionIds: [direction.id] });
+    fixture.input.requiredMemoryUpdates = [{ kind: "constraint", reason: "用户明确提出稳定规则。", evidenceQuote: draft, evidenceStart: 0, evidenceEnd: draft.length }];
+    const item = { kind: "constraint" as const, scope: "direction" as const, evidenceQuote: draft, relatedObjectIds: ["image-soft-rail-v2"], relatedRevisionIds: [] as string[] };
+    const rejected = await executeAgentTool({ ...fixture.input, parsed: { name: "submit_memory_update", args: { items: [item] } } });
+    expect(rejected).toMatchObject({ status: "retryable", retryable: true, rejected: [expect.objectContaining({ reason: expect.stringContaining("scope owner is unbound") })] });
+    expect(fixture.input.runtimeState.handledMemoryCandidateIndexes.size).toBe(0);
+    expect(fixture.host.getWorkspace().projectContinuity.recordEntries).toEqual(workspace.projectContinuity.recordEntries);
+    const recorded = await executeAgentTool({ ...fixture.input, parsed: { name: "submit_memory_update", args: { items: [{ ...item, relatedRevisionIds: [direction.currentRevisionId] }] } } });
+    expect(recorded).toMatchObject({ status: "recorded", retryable: false });
+    const fact = fixture.host.getWorkspace().projectContinuity.recordEntries.find((entry) => entry.evidenceQuote === draft)!;
+    expect(fact.sourceRefs).toContainEqual(expect.objectContaining({ kind: "revision", id: direction.currentRevisionId }));
+    expect(fact.sourceRefs).toContainEqual(expect.objectContaining({ kind: "object", id: "image-soft-rail-v2" }));
+  });
   it("filters current Memory and Stage reads using the same scoped item qualification", async () => {
     const fixture = createFixture();
     const quote = "仅在柔光轨道保留紫色节点";

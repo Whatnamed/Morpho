@@ -1,5 +1,7 @@
 import type {
   AiTaskMode,
+  ContinuitySourceRef,
+  MorphoWorkspace,
   ProjectFocusArea
 } from "./types";
 import {
@@ -155,7 +157,8 @@ export function parseProjectContinuityPatchPayload(text: string): ParseProjectCo
 
 export function validateConversationSemanticPatch(
   item: ParsedConversationSemanticPatchItem,
-  authorization: SemanticPatchAuthorization
+  authorization: SemanticPatchAuthorization,
+  workspace?: MorphoWorkspace
 ): ValidateConversationSemanticPatchResult {
   if (!isSemanticPatchKind(item.kind)) {
     return { status: "failed", reason: "Invalid semantic patch kind." };
@@ -210,7 +213,47 @@ export function validateConversationSemanticPatch(
     return { status: "failed", reason: `${item.kind} requires an authorized decision source.` };
   }
 
+  if (!retiresFact && (item.scope === "designDefinition" || item.scope === "direction")) {
+    if (!workspace) return { status: "failed", reason: "Owner-scoped semantic writes require Workspace owner resolution." };
+    const owner = resolveSemanticScopeOwner(workspace, item.scope, [
+      ...item.relatedObjectIds.map((id) => ({ kind: "object" as const, id })),
+      ...item.relatedRevisionIds.map((id) => ({ kind: "revision" as const, id }))
+    ]);
+    if (owner.status !== "bound") {
+      return { status: "failed", reason: `${item.scope} scope requires exactly one explicit authorized owner object / owned revision; scope owner is ${owner.status}. Incidental evidence cannot replace the owner.` };
+    }
+    const object = workspace.objects[owner.objectId];
+    if (object?.type !== "designDefinition" && object?.type !== "conceptDirection") {
+      return { status: "failed", reason: "Semantic scope owner is unavailable." };
+    }
+    const current = object.type === "designDefinition" ? workspace.designDefinitionRevisions[object.currentRevisionId] : workspace.directionRevisions[object.currentRevisionId];
+    if (object.visibility !== "active" || !current ||
+      ("designDefinitionId" in current ? current.designDefinitionId : current.directionId) !== object.id) {
+      return { status: "failed", reason: "Semantic scope owner must have an available owned current revision." };
+    }
+    if (item.relatedRevisionIds.some((id) => {
+      const revision = item.scope === "designDefinition" ? workspace.designDefinitionRevisions[id] : workspace.directionRevisions[id];
+      return revision && id !== object.currentRevisionId;
+    })) return { status: "failed", reason: "Semantic scope binding must use its owner's current revision." };
+  }
+
   return { status: "ok", item, summary: buildSemanticPatchSummary(item) };
+}
+
+/** Resolve explicit bindings only; never infer a fact's owner from incidental evidence or current focus. */
+export function resolveSemanticScopeOwner(
+  workspace: Pick<MorphoWorkspace, "objects" | "designDefinitionRevisions" | "directionRevisions">,
+  scope: "designDefinition" | "direction",
+  refs: readonly Pick<ContinuitySourceRef, "kind" | "id">[]
+): { status: "bound"; objectId: string } | { status: "unbound" | "ambiguous" } {
+  const owners = new Set<string>();
+  const type = scope === "designDefinition" ? "designDefinition" : "conceptDirection";
+  for (const ref of refs) {
+    const revision = ref.kind === "revision" ? (scope === "designDefinition" ? workspace.designDefinitionRevisions[ref.id] : workspace.directionRevisions[ref.id]) : undefined;
+    const objectId = ref.kind === "object" ? ref.id : revision ? ("designDefinitionId" in revision ? revision.designDefinitionId : revision.directionId) : undefined;
+    if (objectId && workspace.objects[objectId]?.type === type) owners.add(objectId);
+  }
+  return owners.size === 1 ? { status: "bound", objectId: [...owners][0]! } : { status: owners.size === 0 ? "unbound" : "ambiguous" };
 }
 
 export function buildSemanticPatchSummary(item: Pick<ParsedConversationSemanticPatchItem, "kind" | "evidenceQuote">): string {

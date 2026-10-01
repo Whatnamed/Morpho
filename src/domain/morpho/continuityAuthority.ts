@@ -2,6 +2,7 @@ import type { ContinuityRecordEntry, ContinuitySourceRef, ContinuityValidity, Cu
 import { resolveSource } from "./sourceResolution";
 import { resolveCurrentDesignDefinition } from "./currentDesignDefinition";
 import { classifyDecisionRecord } from "./decisionRecords";
+import { resolveSemanticScopeOwner } from "./conversationSemanticPatch";
 
 export type SemanticEntryTaskScope = {
   taskKind: "general" | "research" | "designDefinition" | "conceptDirection" | "directionPreview" | "visualDevelopment" | "deliveryPreparation" | "comparison" | "historyAndMemory";
@@ -13,6 +14,8 @@ export type SemanticEntryTaskScope = {
   targetRevisionIds?: readonly string[];
   definitionObjectIds?: readonly string[];
   definitionRevisionIds?: readonly string[];
+  directionObjectIds?: readonly string[];
+  directionRevisionIds?: readonly string[];
 };
 
 export type ContinuityEntryEligibility = {
@@ -166,6 +169,10 @@ function normalizeCurrentFocusSummary(
 
 function getInvalidationReasons(workspace: MorphoWorkspace, entry: ContinuityRecordEntry): string[] {
   const reasons: string[] = entry.supersededByEntryId ? [`semanticSuperseded:${entry.supersededByEntryId}`] : [];
+  if (entry.origin === "conversationSemanticPatch" && (entry.scope === "designDefinition" || entry.scope === "direction")) {
+    const owner = resolveSemanticScopeOwner(workspace, entry.scope, entry.sourceRefs);
+    if (owner.status !== "bound") reasons.push(`scopeOwner:${owner.status}`);
+  }
 
   for (const ref of entry.sourceRefs) {
     if (ref.kind === "decision") {
@@ -305,9 +312,10 @@ export function isSemanticEntryScopeRelevantToTaskContext(
     if (!isDirectionScopedTask(taskScope.taskKind)) {
       return false;
     }
-    return taskScope.targetDirectionIds.length > 0
-      ? entry.sourceRefs.some((ref) => (ref.kind === "object" && taskScope.targetDirectionIds.includes(ref.id)) || (ref.kind === "revision" && (taskScope.targetRevisionIds ?? []).includes(ref.id)))
-      : hasDirectMatch;
+    return entry.sourceRefs.some((ref) =>
+      (ref.kind === "object" && (taskScope.directionObjectIds ?? []).includes(ref.id)) ||
+      (ref.kind === "revision" && (taskScope.directionRevisionIds ?? []).includes(ref.id))
+    );
   }
 
   if (scope === "visual") {
@@ -356,6 +364,29 @@ export function createProjectionTaskScope(workspace: MorphoWorkspace, input: Par
   const targetDirectionIds = input.targetDirectionIds ?? [];
   const definitionObjectIds = new Set<string>();
   const definitionRevisionIds = new Set<string>();
+  const directionObjectIds = new Set<string>();
+  const directionRevisionIds = new Set<string>();
+  const addDirection = (objectId: string, revisionId?: string) => {
+    const object = workspace.objects[objectId];
+    if (object?.type !== "conceptDirection" || object.visibility !== "active") return;
+    const revision = workspace.directionRevisions[revisionId ?? object.currentRevisionId];
+    if (!revision || revision.directionId !== object.id) return;
+    directionObjectIds.add(object.id);
+    directionRevisionIds.add(revision.id);
+  };
+  if (targetDirectionIds.length > 0) {
+    for (const id of targetDirectionIds) addDirection(id);
+  } else {
+    for (const id of input.directObjectIds ?? []) {
+      const object = workspace.objects[id];
+      if (object?.type === "image" && object.directionId) addDirection(object.directionId);
+      else addDirection(id);
+    }
+    for (const id of input.directRevisionIds ?? []) {
+      const revision = workspace.directionRevisions[id];
+      if (revision) addDirection(revision.directionId, id);
+    }
+  }
   const addDefinition = (objectId: string, revisionId?: string) => {
     const object = workspace.objects[objectId];
     if (object?.type !== "designDefinition" || object.visibility !== "active") return;
@@ -375,6 +406,7 @@ export function createProjectionTaskScope(workspace: MorphoWorkspace, input: Par
   }
   return { directObjectIds: [], directRevisionIds: [], directBranchIds: [], directDecisionIds: [], ...input, targetDirectionIds,
     definitionObjectIds: [...definitionObjectIds], definitionRevisionIds: [...definitionRevisionIds],
+    directionObjectIds: [...directionObjectIds], directionRevisionIds: [...directionRevisionIds],
     targetRevisionIds: targetDirectionIds.flatMap((id) => {
       const object = workspace.objects[id];
       return object?.type === "conceptDirection" ? [object.currentRevisionId] : [];
