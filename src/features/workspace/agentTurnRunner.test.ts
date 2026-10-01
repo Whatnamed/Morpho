@@ -1713,6 +1713,41 @@ function memorySkipToolCall(callId: string): APlusToolCall {
 
 
 describe("P2B Runner structural fulfillment", () => {
+  it.each([false, true])("recomputes delivered memory completion before continuation (mutation: %s)", async (mutate) => {
+    const read = (callId: string): APlusToolCall => ({ callId, name: "read_project_memory", argumentsText: JSON.stringify({ keys: ["userPreferences"] }) });
+    const fixture = createFixture([]);
+    let continuationFacts: APlusTurnRecoveryRecord["metadata"]["runtime"]["facts"] | undefined;
+    fixture.input.draft = "请读取项目偏好；预算不能超过 500 元";
+    fixture.coordinatorHost.appendScripts([
+      { status: "awaitingNextRequest", toolCalls: [read("before-mutation")] },
+      (request) => {
+        expect(JSON.stringify(request.providerRequest.input)).not.toContain("下一步先调用");
+        return { status: "awaitingNextRequest", toolCalls: [mutate ? memoryConstraintToolCall("mutate-memory") : memorySkipToolCall("no-mutation")] };
+      },
+      () => {
+        continuationFacts = structuredClone(fixture.store.record!.metadata.runtime.facts);
+        return mutate ? { status: "awaitingNextRequest", toolCalls: [read("after-mutation")] } : { status: "externallyCompleted", outputText: "已核实原则。" };
+      },
+      { status: "externallyCompleted", outputText: "已按最新项目记忆核实原则。" }
+    ]);
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    const facts = continuationFacts!;
+    expect(facts.readReceipts?.find((item) => item.id === "before-mutation:userPreferences")?.delivered).toBe(true);
+    expect(facts.requiredReadState.completedTools.includes("read_project_memory")).toBe(!mutate);
+    expect(JSON.stringify(fixture.coordinatorHost.executions[2]!.providerRequest.input).includes("下一步先调用")).toBe(mutate);
+    expect(facts.requiredReadState.reminderInserted).toBe(mutate);
+    expect(facts.requiredReadState.repairAttempted).toBe(false);
+    expect(fixture.coordinatorHost.executions).toHaveLength(mutate ? 4 : 3);
+    const fulfillment = latestAssistant(fixture.fake.getWorkspace())?.taskFulfillment;
+    expect(fulfillment?.status).toBe("fulfilled");
+    if (mutate) {
+      const before = fulfillment!.reads.find((receipt) => receipt.id === "before-mutation:userPreferences")!;
+      const after = fulfillment!.reads.find((receipt) => receipt.id === "after-mutation:userPreferences")!;
+      expect(after.delivered).toBe(true);
+      expect(after.revisionId).not.toBe(before.revisionId);
+    }
+  });
+
   it("reports omitted reads unverified at terminal and never starts a paid repair", async () => {
     const fixture = createFixture([{ status: "externallyCompleted", outputText: "已核实当前设计原则。" }]);
     fixture.input.draft = "请读取项目记忆，告诉我当前设计原则";

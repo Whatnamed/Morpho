@@ -16,6 +16,25 @@ function fixture() {
 }
 
 describe("bounded source reads and exact coverage", () => {
+  it("invalidates current source coverage while retaining an explicit historical revision", async () => {
+    const { input } = fixture();
+    const workspace = input.workspace;
+    const direction = Object.values(workspace.objects).find((object) => object.type === "conceptDirection")!;
+    if (direction.type !== "conceptDirection") throw new Error("direction fixture");
+    const revisionId = direction.currentRevisionId;
+    const requirement = { tool: "read_workspace_source" as const, kind: "object" as const, objectId: direction.id };
+    const result = await readAgentWorkspaceSource({ ...input, readableObjectIds: [direction.id], args: { kind: "object", objectId: direction.id } });
+    const receipts = [{ ...result.receipt, delivered: true }];
+    expect(requirementCovered(requirement, receipts, workspace)).toBe(true);
+    const nextId = `${revisionId}-next`;
+    workspace.directionRevisions[nextId] = { ...workspace.directionRevisions[revisionId]!, id: nextId, summary: "new current revision" };
+    direction.currentRevisionId = nextId;
+    expect(requirementCovered(requirement, receipts, workspace)).toBe(false);
+    expect(requirementCovered({ ...requirement, revisionId }, receipts, workspace)).toBe(true);
+    direction.visibility = "hidden";
+    expect(requirementCovered({ ...requirement, revisionId }, receipts, workspace)).toBe(false);
+  });
+
   it("bounds metadata reads without treating image metadata as pixels", async () => {
     const { input } = fixture();
     const image = Object.values(input.workspace.objects).find((object) => object.type === "image")!;

@@ -1436,9 +1436,15 @@ async function freshContinuationProviderRequest(session: APlusSession): Promise<
     observations: state.observationMessages, reads: state.readReceipts, effects: state.effectReceipts,
     workspace, contract: base.taskContract, stepSequence }) : undefined;
   if (visual) state.readReceipts = visual.reads;
-  const anticipated = { ...state.requiredReadState, completedTools: new Set(state.requiredReadState.completedTools) };
+  // Completion is derived from current coverage, never retained from a read
+  // whose authority changed during the preceding tool batch.
+  state.requiredReadState.completedTools = new Set(state.requiredReadState.requiredTools.filter((tool) =>
+    state.requiredReadState.requirements.filter((requirement) => requirement.tool === tool)
+      .every((requirement) => requirementCovered(requirement, state.readReceipts, workspace))));
   const nextReceipts = state.readReceipts.map((receipt) => ({ ...receipt, delivered: true }));
-  for (const tool of anticipated.requiredTools) if (anticipated.requirements.filter((requirement) => requirement.tool === tool).every((requirement) => requirementCovered(requirement, nextReceipts, workspace))) anticipated.completedTools.add(tool);
+  const anticipated = { ...state.requiredReadState, completedTools: new Set(state.requiredReadState.requiredTools.filter((tool) =>
+    state.requiredReadState.requirements.filter((requirement) => requirement.tool === tool)
+      .every((requirement) => requirementCovered(requirement, nextReceipts, workspace)))) };
   const advanced = advanceRequiredAgentReadState(anticipated);
   state.requiredReadState = { ...advanced.state, completedTools: state.requiredReadState.completedTools };
   const reminder = advanced.action === "remind" ? `${buildRequiredAgentReadReminder(advanced.missingTools)}\n${JSON.stringify(base.taskContract.requiredReads.filter((requirement) => !requirementCovered(requirement, state.readReceipts, workspace)))}` : "";
