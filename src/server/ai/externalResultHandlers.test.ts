@@ -9,7 +9,7 @@ import type { AgentTurnJournalSnapshot } from "@/shared/agentTurnJournalProtocol
 import type { AgentTurnExternalActionSnapshot } from "@/shared/agentTurnExternalActionProtocol";
 const turnId = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 const summary = { threadGoal: "goal", establishedContext: [], decisionsAndReasons: [], activeWork: [], unresolvedQuestions: [], referencedObjects: [] };
-function fixture(kind: "image" | "text" | "compaction") {
+function fixture(kind: "image" | "text" | "compaction", retrieveImage?: () => Promise<Blob | undefined>) {
   const fake = createExternalResultFake();
   const journal: AgentTurnJournalSnapshot = { serverTurnId: turnId, localProjectId: "project", status: "created",
     latestRequestId: null, latestStepSequence: 0, counters: { provider: 0, webSearch: 0, image: 0 },
@@ -29,7 +29,7 @@ function fixture(kind: "image" | "text" | "compaction") {
     checkPrivilegedSettlement: () => ({ status: "ok" }), results: fake.port,
     acquireRequest: vi.fn(async () => ({ status: "ok" as const, executionGranted: true, replayed: false, snapshot: journal })),
     settleRequest: vi.fn(async () => ({ status: "ok" as const, replayed: false, snapshot: { ...journal, status: "externallyCompleted" as const } })), streamProvider: provider })
-    : kind === "image" ? createAgentTurnImageActionPostHandler({ authenticate: auth, acquire, settle, results: fake.port,
+    : kind === "image" ? createAgentTurnImageActionPostHandler({ authenticate: auth, acquire, settle, results: fake.port, retrieveImage,
       loadConfig: () => ({ status: "ok", config: { apiKey: "fake", baseUrl: "https://fake.test", model: "gpt-image-2" } }), generate: imageProvider })
       : createAgentTurnCompactionActionPostHandler({ authenticate: auth, acquire, settle, results: fake.port,
         loadConfig: textConfig, execute: compactionProvider });
@@ -42,6 +42,16 @@ function fixture(kind: "image" | "text" | "compaction") {
   return { fake, call, provider, imageProvider, compactionProvider, textConfig, acquire };
 }
 describe("P3B consumed handler contracts", () => {
+  it("A+ partial Image staging resumes original bound result without acquisition or generate", async () => {
+    const retrieve = vi.fn(async () => new Blob(["original image"], { type: "image/png" }));
+    const f = fixture("image", retrieve); f.fake.failNext("write");
+    expect(await (await f.call()).json()).toMatchObject({ deliveryPending: true });
+    const record = [...f.fake.records.values()][0], binding = record.binding, manifest = record.manifest;
+    expect((await f.call()).status).toBe(200);
+    expect(record.manifest).toEqual(manifest); expect(record.binding).toEqual(binding);
+    expect(binding).toMatchObject({ actionId: "action", actionHash: expect.any(String) });
+    expect(retrieve).toHaveBeenCalledOnce(); expect(f.acquire).toHaveBeenCalledOnce(); expect(f.imageProvider).toHaveBeenCalledOnce();
+  });
   it.each(["image", "text", "compaction"] as const)("%s survives response loss and config changes with one immutable result", async (kind) => {
     const f = fixture(kind);
     const first = await f.call();

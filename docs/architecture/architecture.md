@@ -950,7 +950,11 @@ Workspace schema version, scheduler, cloud Workspace, Provider guarantee or Proj
 - Image escrows securely downloaded original Provider bytes, not expiring remote URLs. New A+ and
   independent Image responses return manifests. Recovery can retrieve a known GrsAI task into
   escrow using GET only. Result reads precede current config/quota/admission. Expired escrow cannot
-  be resurrected or replaced by another image under the same identity.
+  be resurrected or replaced by another image under the same identity. Incomplete, unexpired Image
+  staging may retrieve the same trusted Provider task through P3A GET-only observation. Retrieved
+  bytes must match the entire original manifest; recovery writes without prepare/rebinding and
+  publishes using the stored Journal binding. Conflicting chunks fail closed. Delivery pending
+  retains the A+ Action across reload; it is separate from generation failure.
 - Compaction escrows a validated Summary and original source digest/endpoints/previous revision;
   original frozen local source/apply checks remain authoritative. Existing identical revisions
   survive crashes between Workspace and Recovery writes. Save failures preserve a pending same-

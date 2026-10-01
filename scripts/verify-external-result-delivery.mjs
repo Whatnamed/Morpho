@@ -84,6 +84,24 @@ try {
   check((await db.query('select count(*)::integer as n from private.agent_turn_external_action_claim where server_turn_id=$1',[turn])).rows[0].n===1,'Original Tool claim recorded');
   await call('text','text','publish',{resultId:tm.resultId});
   check((await db.query('select count(*)::integer as n from private.agent_turn_external_action_claim where server_turn_id=$1',[turn])).rows[0].n===1,'Redelivery cannot duplicate claims');
+  // Partial Image recovery writes under the existing manifest/binding; no prepare or replacement.
+  await db.query(`insert into private.agent_turn_external_action_journal(server_turn_id,request_id,step_sequence,
+    action_id,action_kind,claim_call_id,action_hash,execution_expires_at)
+    values($1,'request',1,'image-action','image','call',$2,now()+interval '15 minutes')`,[turn,hash('image-action')]);
+  const ib={serverTurnId:turn,localProjectId:'project',requestId:'request',stepSequence:1,
+    actionId:'image-action',actionHash:hash('image-action')};
+  const im=await prepare('partial-bound','image',bytes,ib);
+  const first={resultId:im.resultId,index:0,base64:bytes.subarray(0,524288).toString('base64')};
+  check(!(await call('partial-bound','image','write',first)).error,'Stage first Image chunk');
+  check((await call('partial-bound','image','publish',{resultId:im.resultId})).error==='result_incomplete','Partial bound Image unavailable');
+  check((await call('partial-bound','image','write',{...first,base64:Buffer.alloc(524288,9).toString('base64')})).error==='result_chunk_conflict','Conflicting staged chunk cannot overwrite');
+  await write('partial-bound','image',im,bytes);
+  check((await call('partial-bound','image','publish',{resultId:im.resultId})).state==='available','Fill original bound escrow without prepare');
+  check((await db.query('select binding from public.external_result where effect_id=$1',[effect('partial-bound')])).rows[0].binding.actionId==='image-action','Original A+ binding retained');
+  check((await db.query("select execution_status from private.agent_turn_external_action_journal where server_turn_id=$1 and action_id='image-action'",[turn])).rows[0].execution_status==='externally_completed','Original action settled by recovered publication');
+  await db.query("update public.external_result set expires_at=now()-interval '1 second' where effect_id=$1",[effect('partial-bound')]);
+  check((await call('partial-bound','image','write',first)).state==='expired','Expired Image rejects retrieved bytes');
+  check((await call('partial-bound','image','publish',{resultId:im.resultId})).state==='expired','Expired Image cannot republish');
   const summary=Buffer.from(JSON.stringify({summary:{threadGoal:'goal'},sourceBoundary:{sourceDigest:hash('messages')}}));
   const sm=await prepare('summary','compaction',summary);await write('summary','compaction',sm,summary);
   check((await call('summary','compaction','publish',{resultId:sm.resultId})).state==='available','Compaction result preserved');

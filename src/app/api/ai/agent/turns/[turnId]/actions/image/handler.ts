@@ -1,7 +1,7 @@
 import { externalResultStore, externalResultResponse, saveExternalResult, jsonResult, ExternalResultError, type ExternalResultPort } from "@/server/ai/externalResultStore";
 import { createHash } from "node:crypto";
 import { createEffectExecution, externalEffectId, type EffectIdentity, type EffectExecution } from "@/server/ai/externalEffectJournal";
-import { existingImageEffectResponse } from "@/server/ai/externalEffectObservation";
+import { existingImageEffectResponse, retrieveExistingImage } from "@/server/ai/externalEffectObservation";
 import { NextResponse } from "next/server";
 
 import {
@@ -41,6 +41,7 @@ export type AgentTurnImageActionDependencies = Readonly<{
   loadConfig: typeof loadGrsImageConfig;
   generate: typeof resolveGrsImageResult;
   results?: ExternalResultPort;
+  retrieveImage?: typeof retrieveExistingImage;
   createEffect?: (identity: EffectIdentity) => EffectExecution;
   observeExisting?: typeof existingImageEffectResponse;
   waitForSettlementRetry?: (delayMs: number) => Promise<void>;
@@ -53,6 +54,7 @@ const defaultDependencies: AgentTurnImageActionDependencies = {
   loadConfig: loadGrsImageConfig,
   generate: resolveGrsImageResult,
   results: externalResultStore,
+  retrieveImage: retrieveExistingImage,
   createEffect: createEffectExecution,
   observeExisting: existingImageEffectResponse
 };
@@ -101,7 +103,8 @@ export function createAgentTurnImageActionPostHandler(
     };
     try {
       if (dependencies.results) {
-        const saved = await externalResultResponse(effectIdentity, dependencies.results);
+        const saved = await externalResultResponse(effectIdentity, dependencies.results,
+          dependencies.retrieveImage ? () => dependencies.retrieveImage!(effectIdentity, request.signal) : undefined);
         if (saved) return saved;
         await dependencies.results.call("probe", effectIdentity);
       }
@@ -242,6 +245,10 @@ export function createAgentTurnImageActionPostHandler(
         }
       });
     } catch (error) {
+      if (error instanceof ExternalResultError) {
+        return NextResponse.json({ code: error.code, recoverable: false, deliveryPending: true,
+          error: "同一图像结果尚未完成交付；保留原 Action，只查询同一任务。" }, { status: 503 });
+      }
       const cancelled = request.signal.aborted || (error instanceof Error && error.name === "AbortError");
       const settled = await settleWithRetry(dependencies, {
         ...identity,

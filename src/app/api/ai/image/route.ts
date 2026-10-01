@@ -2,7 +2,7 @@ import { EXTERNAL_REQUEST_MAX_BYTES } from "@/shared/externalResultProtocol";
 import { externalResultStore, externalResultResponse, saveExternalResult, jsonResult, ExternalResultError, type ExternalResultPort } from "@/server/ai/externalResultStore";
 import { NextResponse } from "next/server";
 import { createEffectExecution, externalEffectId } from "@/server/ai/externalEffectJournal";
-import { existingImageEffectResponse } from "@/server/ai/externalEffectObservation";
+import { existingImageEffectResponse, retrieveExistingImage } from "@/server/ai/externalEffectObservation";
 
 import { loadGrsImageConfig } from "@/server/image/config";
 import { resolveGrsImageResult } from "@/server/image/grsProvider";
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   const effectIdentity = { actorUserId: authenticated.userId,
     effectId: externalEffectId("image", clientKey), kind: "image" as const };
   try {
-    const saved = await externalResultResponse(effectIdentity);
+    const saved = await externalResultResponse(effectIdentity, externalResultStore, () => retrieveExistingImage(effectIdentity, request.signal));
     if (saved) return saved;
     await externalResultStore.call("probe", effectIdentity);
     const existing = await existingImageEffectResponse(effectIdentity, request.signal);

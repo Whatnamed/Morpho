@@ -1,9 +1,12 @@
+import { createExternalResultFake } from "@/test/externalResultFake";
+import { saveExternalResult } from "@/server/ai/externalResultStore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ExternalResultError } from "@/server/ai/externalResultStore";
 import { GET, POST } from "./route";
 const auth = vi.hoisted(() => vi.fn());
 const store = vi.hoisted(() => vi.fn());
 const read = vi.hoisted(() => vi.fn());
+const retrieve = vi.hoisted(() => vi.fn());
 const observe = vi.hoisted(() => vi.fn());
 vi.mock("@/server/auth/aiAccess", () => ({ requireAiRouteUser: auth,
   aiAccessDeniedResponse: (denial: { httpStatus: number }) => new Response(null, { status: denial.httpStatus }) }));
@@ -11,16 +14,28 @@ vi.mock("@/server/ai/externalResultStore", async () => ({
   ...await vi.importActual<typeof import("@/server/ai/externalResultStore")>("@/server/ai/externalResultStore"),
   externalResultStore: { call: store }, externalResultResponse: read
 }));
-vi.mock("@/server/ai/externalEffectObservation", () => ({ observeExternalEffect: observe }));
+vi.mock("@/server/ai/externalEffectObservation", () => ({ observeExternalEffect: observe, retrieveExistingImage: retrieve }));
 const effectId = `effect:${"a".repeat(64)}`, resultId = `result:${"b".repeat(64)}`, sha256 = "c".repeat(64);
 const context = { params: Promise.resolve({ effectId }) };
 const request = (query = "kind=text", body?: unknown) => new Request(`http://localhost/api/ai/effects/${effectId}/result?${query}`,
   body === undefined ? undefined : { method: "POST", body: JSON.stringify(body) });
 beforeEach(() => {
   auth.mockReset().mockResolvedValue({ status: "allowed", userId: "verified-owner" });
-  store.mockReset().mockResolvedValue({ acknowledged: true }); read.mockReset(); observe.mockReset();
+  store.mockReset().mockResolvedValue({ acknowledged: true }); read.mockReset(); observe.mockReset(); retrieve.mockReset();
 });
 describe("result transport auth and persistence ACK boundary", () => {
+  it("Image manifest GET completes staged bytes with original binding through same-task retrieval", async () => {
+    const fake = createExternalResultFake(), id = { actorUserId: "verified-owner", effectId, kind: "image" as const };
+    const blob = new Blob(["original"], { type: "image/png" }); fake.failNext("write");
+    const binding = { serverTurnId: "original", localProjectId: "project", requestId: "request", stepSequence: 1, actionId: "action" };
+    await expect(saveExternalResult(fake.port, id, blob, binding)).rejects.toThrow();
+    const actual = await vi.importActual<typeof import("@/server/ai/externalResultStore")>("@/server/ai/externalResultStore");
+    read.mockImplementation((identity, _store, callback) => actual.externalResultResponse(identity, fake.port, callback));
+    retrieve.mockResolvedValue(blob);
+    expect((await GET(request("kind=image"), context)).status).toBe(200);
+    expect([...fake.records.values()][0].binding).toEqual(binding); expect(retrieve).toHaveBeenCalledOnce();
+    expect(fake.calls.filter(c => c.operation === "prepare")).toHaveLength(1);
+  });
   it("requires verified authentication before result reads or ACKs", async () => {
     auth.mockResolvedValue({ status: "denied", httpStatus: 401 });
     expect((await GET(request(), context)).status).toBe(401);

@@ -555,6 +555,15 @@ async function executeVisualGenerationItem(
         ...(effect ? { externalEffect: effect } : {})
       });
     }
+    if (context.externalAction && aPlusActionId && !imageResponse.ok &&
+      (imageResponse.headers.get("Content-Type") ?? "").includes("application/json")) {
+      const body: unknown = await imageResponse.clone().json().catch(() => undefined);
+      if (isWorkspaceRecord(body) && body.deliveryPending === true) {
+        throw await createAPlusExternalActionRunningError({ actionId: aPlusActionId,
+          actionKind: "image", requestBody: imageRequestBody,
+          message: "同一图像结果尚未完成交付；保留原 Action，只查询同一任务。" });
+      }
+    }
     if (imageResponseKind === "jsonError") {
       throw new Error(await readErrorResponse(imageResponse));
     }

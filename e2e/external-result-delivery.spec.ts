@@ -4,7 +4,7 @@ import { installAgentMock, setAgentRequestScript, agentCalls } from "./fixtures/
 import { toolCallTurnScript } from "./support/agentSse";
 const pixel = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jFh0AAAAASUVORK5CYII=";
 
-for (const fault of ["lost_response", "asset_abort"] as const) test(`P3B ${fault}: reload saves same escrowed image, ACK loss only repeats ACK`, async ({ page }) => {
+for (const fault of ["lost_response", "asset_abort", "partial_staging"] as const) test(`P3B ${fault}: reload saves same escrowed image, ACK loss only repeats ACK`, async ({ page }) => {
   const seed = await seedProject(page);
   await installAgentMock(page);
   await page.addInitScript(({ base64, fault }) => {
@@ -31,6 +31,9 @@ for (const fault of ["lost_response", "asset_abort"] as const) test(`P3B ${fault
         bodies.push(String(init.body)); sessionStorage.setItem("p3b-image-bodies", JSON.stringify(bodies));
         sessionStorage.setItem("p3b-agent-state", JSON.stringify(window.__morphoAgentMock));
         if (bodies.length === 1) sessionStorage.setItem("p3b-provider-count", "1");
+        if (fault === "partial_staging" && bodies.length <= 2) return Response.json({
+          code: "external_result_unavailable", deliveryPending: true, recoverable: false
+        }, { status: 503 });
         if (bodies.length === 1 && fault === "lost_response") throw new TypeError("HTTP lost after escrow publish");
         const hash = await crypto.subtle.digest("SHA-256", bytes);
         return Response.json({ result: { effectId, resultId, version: 1, kind: "image",
@@ -70,6 +73,15 @@ for (const fault of ["lost_response", "asset_abort"] as const) test(`P3B ${fault
   expect(await page.evaluate(() => sessionStorage.getItem("p3b-acks"))).toBeNull();
   expect((await agentCalls(page)).filter((c) => c.url.endsWith("/requests") && c.method === "POST")).toHaveLength(1);
   await page.reload();
+  if (fault === "partial_staging") {
+    await expect.poll(() => page.evaluate(() => JSON.parse(sessionStorage.getItem("p3b-image-bodies") ?? "[]").length)).toBe(2);
+    await expect.poll(() => page.evaluate(() => Object.entries(localStorage)
+      .filter(([k]) => k.startsWith("morpho.agent-runtime-a-plus.recovery.v2"))
+      .some(([,v]) => v.includes('"actionKind":"image"')))).toBe(true);
+    expect(Object.values((await readStoredWorkspace(page)).objects).filter(o => !before.includes(o.id) && o.type === "image")).toHaveLength(0);
+    expect(await page.evaluate(() => sessionStorage.getItem("p3b-acks"))).toBeNull();
+    await page.reload();
+  }
   await expect(page.locator(".ai-panel")).toContainText("同一结果已持久保存。", { timeout: 30_000 });
   await expect.poll(async () => Object.values((await readStoredWorkspace(page)).objects).filter((o) => !before.includes(o.id) && o.type === "image").length).toBe(1);
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("p3b-ack-after-workspace"))).toBe("true");
@@ -77,7 +89,7 @@ for (const fault of ["lost_response", "asset_abort"] as const) test(`P3B ${fault
   await expect.poll(() => page.evaluate(() => JSON.parse(sessionStorage.getItem("p3b-acks") ?? "[]").length)).toBeGreaterThanOrEqual(2);
   const facts = await page.evaluate(() => ({ bodies: JSON.parse(sessionStorage.getItem("p3b-image-bodies") ?? "[]") as string[],
     acks: JSON.parse(sessionStorage.getItem("p3b-acks") ?? "[]") as string[], provider: sessionStorage.getItem("p3b-provider-count") }));
-  expect(facts.bodies).toHaveLength(2); expect(facts.bodies[0]).toBe(facts.bodies[1]);
+  expect(facts.bodies).toHaveLength(fault === "partial_staging" ? 3 : 2); expect(new Set(facts.bodies).size).toBe(1);
   expect(new Set(facts.acks).size).toBe(1); expect(facts.provider).toBe("1");
   expect(Object.values((await readStoredWorkspace(page)).objects).filter((o) => !before.includes(o.id) && o.type === "image")).toHaveLength(1);
 });

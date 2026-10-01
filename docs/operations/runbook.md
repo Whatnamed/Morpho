@@ -1399,7 +1399,12 @@ Operational interpretation:
   Known GrsAI tasks can be downloaded into escrow once; Text/Compaction with no captured result
   remain unavailable because relay retrieval is unproven.
 - `external_result_unavailable` / incomplete / store deadline means publication is not proved.
-  Complete staged chunks can retry original publication. Never change effect/request/action IDs
+  Complete staged chunks can retry original publication. Unexpired partial Image staging can
+  query/retrieve only the P3A known task in the original Provider namespace, then compare original
+  resultId/version/SHA-256/size/MIME/chunk count before filling the same escrow. No new prepare,
+  binding, logical effect or paid POST is allowed. Missing retrieval stays unavailable; conflicting
+  bytes/chunks fail closed. Image `deliveryPending: true` keeps restored A+ Actions pending.
+  Never change effect/request/action IDs
   to compensate automatically. `external_result_expired` (410) is permanent for that result;
   reads/ACK never extend its lifetime or recreate it from the Provider.
 - Result identity/version/hash binds redelivery. ACK POST takes exactly resultId/version/hash and

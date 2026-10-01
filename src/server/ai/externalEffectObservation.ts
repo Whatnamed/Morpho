@@ -82,3 +82,8 @@ export async function existingImageEffectResponse(
     recoverable: false
   }, { status: state === "running" ? 202 : 409 });
 }
+
+/** Trusted namespace and known task only; beforeSubmit rejects paid POST. */
+export async function retrieveExistingImage(identity: EffectIdentity, signal?: AbortSignal): Promise<Blob | undefined> {
+  return (await observeExternalEffect(identity, { retrieveImage: true, signal })).image;
+}

@@ -1,3 +1,5 @@
+import { createExternalResultFake } from "@/test/externalResultFake";
+import { saveExternalResult, externalResultResponse } from "./externalResultStore";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createEffectJournalFake } from "@/test/externalEffectJournalFake";
 import { resolveGrsImageResult, type GrsImageConfig } from "@/server/image/grsProvider";
@@ -22,6 +24,28 @@ const options = (journal: ReturnType<typeof createEffectJournalFake>, fetchImpl:
 afterEach(() => vi.unstubAllGlobals());
 
 describe("P3A effect identity and cross-instance observation", () => {
+  it("partial Image escrow recovers by actual known-task GET and download with one paid POST", async () => {
+    const journal = createEffectJournalFake(), store = createExternalResultFake(), identity = journal.identity();
+    const bytes = new Uint8Array(600_000).fill(42);
+    const fetchImpl = vi.fn<typeof fetch>(async (url, init) => {
+      if (init?.method === "POST") return json({ id: "original-task", status: "running" });
+      if (String(url).includes("/result?id=")) return json({ id: "original-task", status: "succeeded", url: "https://cdn.example.test/result.png" });
+      return new Response(bytes, { headers: { "Content-Type": "image/png" } });
+    });
+    const initial = await resolveGrsImageResult(config, input, { effect: createEffectExecution(identity, journal.port), fetchImpl });
+    expect(initial.status).toBe("ok");
+    store.failNext("publish");
+    await expect(saveExternalResult(store.port, identity, new Blob([bytes], { type: "image/png" }))).rejects.toThrow();
+    const record = [...store.records.values()][0]; record.chunks.delete(1); const manifest = { ...record.manifest };
+    const before = fetchImpl.mock.calls.length;
+    const response = await externalResultResponse(identity, store.port, async () =>
+      (await observeExternalEffect(identity, { ...options(journal, fetchImpl), retrieveImage: true })).image);
+    expect(response?.status).toBe(200); expect(record.manifest).toEqual(manifest);
+    expect(fetchImpl.mock.calls.slice(before).every(([,init]) => init?.method !== "POST")).toBe(true);
+    expect(fetchImpl.mock.calls.slice(before)).toHaveLength(2);
+    expect(fetchImpl.mock.calls.filter(([,init]) => init?.method === "POST")).toHaveLength(1);
+    expect(journal.records.size).toBe(1); expect(journal.requests.size).toBe(1);
+  });
   it("registers before POST; accepted response loss with no identity remains unknown and cannot resubmit", async () => {
     const journal = createEffectJournalFake();
     const identity = journal.identity();

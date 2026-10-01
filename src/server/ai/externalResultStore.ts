@@ -47,7 +47,7 @@ export const externalResultStore: ExternalResultPort = {
 
 /** Persist before final delivery; repeated writes/publish must bind the identical bytes. */
 export async function saveExternalResult(
-  store: ExternalResultPort, identity: EffectIdentity, blob: Blob, binding?: ResultBinding
+  store: ExternalResultPort, identity: EffectIdentity, blob: Blob, binding?: ResultBinding, resume?: ExternalResultManifest
 ): Promise<ExternalResultManifest> {
   const maximum = identity.kind === "image" ? EXTERNAL_IMAGE_RESULT_MAX_BYTES : EXTERNAL_JSON_RESULT_MAX_BYTES;
   if (blob.size < 1 || blob.size > maximum) throw new ExternalResultError("result_payload_too_large");
@@ -60,9 +60,12 @@ export async function saveExternalResult(
     if (remaining <= 0) throw new ExternalResultError("result_store_deadline_exceeded");
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      return await Promise.race([store.call(operation, identity, payload), new Promise<never>((_, reject) => {
+      const row = await Promise.race([store.call(operation, identity, payload), new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(new ExternalResultError("result_store_deadline_exceeded")), remaining);
       })]);
+      if (resume && row.state === "expired") throw new ExternalResultError("external_result_expired");
+      if (resume && row.state === "absent") throw new ExternalResultError("external_result_unavailable");
+      return row;
     } finally { if (timer) clearTimeout(timer); }
   };
   const manifest = {
@@ -70,7 +73,11 @@ export async function saveExternalResult(
     byteLength: bytes.length, mimeType: blob.type,
     chunkCount: Math.ceil(bytes.length / EXTERNAL_RESULT_CHUNK_BYTES)
   };
-  await call("prepare", { manifest, binding: binding ?? null });
+  if (resume) {
+    // Never prepare/rebind during recovery; publish uses the original stored Journal binding.
+    if (identity.kind !== "image" || Object.entries(manifest).some(([key, value]) =>
+      resume[key as keyof ExternalResultManifest] !== value)) throw new ExternalResultError("result_identity_conflict");
+  } else await call("prepare", { manifest, binding: binding ?? null });
   for (let index = 0; index < manifest.chunkCount; index++) {
     await call("write", { resultId, index,
       base64: bytes.subarray(index * EXTERNAL_RESULT_CHUNK_BYTES, (index + 1) * EXTERNAL_RESULT_CHUNK_BYTES).toString("base64") });
@@ -86,19 +93,36 @@ export function jsonResult(value: unknown): Blob {
 
 /** Read-only delivery never acquires a Provider execution. Expired identities are tombstones. */
 export async function externalResultResponse(
-  identity: EffectIdentity, store: ExternalResultPort = externalResultStore
+  identity: EffectIdentity, store: ExternalResultPort = externalResultStore,
+  retrieveImage?: () => Promise<Blob | undefined>
 ): Promise<Response | undefined> {
   let row = await store.call("read", identity);
   if (row.state === "absent") return undefined;
   if (row.state === "unavailable" && isExternalResultManifest(row.manifest)) {
     // Complete chunks survive a lost publish/Journal response. Resume only stored publication.
     try { row = await store.call("publish", identity, { resultId: row.manifest.resultId }); }
-    catch { /* Incomplete or unavailable: keep the result honest and bounded. */ }
+    catch (error) {
+      // Only incomplete Image staging may retrieve the trusted same Provider task.
+      if (identity.kind === "image" && error instanceof ExternalResultError && error.code === "result_incomplete" && retrieveImage) {
+        const image = await retrieveImage().catch(() => undefined);
+        if (image) {
+          try {
+            const manifest = await saveExternalResult(store, identity, image, undefined, row.manifest as ExternalResultManifest);
+            row = { ...row, state: "available", manifest };
+          } catch (writeError) {
+            if (writeError instanceof ExternalResultError && writeError.code === "external_result_expired") row = { state: "expired" };
+            else if (!(writeError instanceof ExternalResultError) ||
+              !["result_store_unavailable", "result_store_deadline_exceeded", "external_result_unavailable"].includes(writeError.code)) throw writeError;
+            // Temporary storage failure retains the same pending manifest, never a generation failure.
+          }
+        }
+      }
+    }
   }
   if (row.state !== "available" || !isExternalResultManifest(row.manifest)) {
     return Response.json({ code: row.state === "expired" ? "external_result_expired" : "external_result_unavailable",
       error: row.state === "expired" ? "原执行结果已超过保留期，无法重新交付。" : "已执行结果尚不可交付；不会重新生成。",
-      recoverable: false }, { status: row.state === "expired" ? 410 : 503,
+      recoverable: false, ...(identity.kind === "image" && row.state === "unavailable" ? { deliveryPending: true } : {}) }, { status: row.state === "expired" ? 410 : 503,
       headers: { "Cache-Control": "no-store" } });
   }
   return Response.json({ result: row.manifest }, { headers: { "Cache-Control": "no-store",

@@ -474,3 +474,15 @@ owner isolation, independent-image asset/Workspace save failure, same-object/rev
 frozen recovery. Browser tests use real local persistence with mocked external services; they do not
 prove production PostgREST/concurrent DB sessions/cleanup schedule/hosting/Provider capabilities.
 The package remains **validating** for web review; no accepted/merge-main/Production migration/P4 action.
+
+P3B bounded Image review correction (2026-10-02; still **validating**): incomplete/unpublished
+Image staging no longer blocks trusted P3A same-task GET-only retrieval. Recovery validates the
+original immutable manifest and fills existing chunks without prepare/rebinding, retaining the
+original A+ Journal binding; expiry and conflicts remain fail closed. Image delivery pending
+preserves restored Actions across reload. Text/Compaction contracts and schema are unchanged.
+No paid Provider or Production migration; validation evidence is recorded in the review-fix commit.
+Review-fix validation: targeted result/handler/Provider/local-recovery tests passed; final full unit
+**235 files / 2361 tests**, local actual PostgreSQL P3B **49 checks** and P3A **22 checks**, Chromium
+**6 slices** (including consecutive partial-staging reloads, one local Image, identical replay body
+and persistence ACK), typecheck/lint/production build/git diff --check passed. Provider and browser
+responses are deterministic fakes; no production retrieval or hosting reliability claim is made.

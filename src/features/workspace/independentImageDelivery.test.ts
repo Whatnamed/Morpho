@@ -41,9 +41,10 @@ async function fixture() {
     kind: "image", sha256: createHash("sha256").update("original").digest("hex"), byteLength: 8,
     mimeType: "image/png", chunkCount: 1, expiresAt: "2099-01-01T00:00:00Z" };
   const session = { projectId, workspaceReady: true, generation: Symbol() };
-  let saved = false, failAsset = false, expired = false;
+  let saved = false, failAsset = false, expired = false, stagingPending = false;
   const fetch = vi.fn<typeof globalThis.fetch>(async (url, init) => {
     if (init?.method === "POST") { expect(saved).toBe(true); return Response.json({ acknowledged: true }); }
+    if (stagingPending) return Response.json({ code: "external_result_unavailable", deliveryPending: true }, { status: 503 });
     if (String(url).includes("chunk=")) return new Response("original");
     return expired ? new Response(null, { status: 410 }) : Response.json({ result: manifest }, {
       headers: { "X-Morpho-Provider-Task-Id": "original-task" }
@@ -66,10 +67,23 @@ async function fixture() {
   };
   return { ports, key, manifest, fetch, saveGeneratedAsset, workspace: () => workspace,
     saved: () => { saved = true; }, assetFailure: () => { failAsset = true; }, expire: () => { expired = true; },
+    staging: (pending: boolean) => { stagingPending = pending; },
     cancel: () => { workspace.operations[operationId]!.status = "cancelled"; } };
 }
 
 describe("independent Image bounded reload delivery", () => {
+  it("partial escrow stays pending, then repeated reload delivers one local Image by GET only", async () => {
+    const f = await fixture(); f.saved(); f.staging(true);
+    await resumeIndependentImageDeliveries(f.ports);
+    expect(blobs.has(f.key)).toBe(true); expect(f.saveGeneratedAsset).not.toHaveBeenCalled();
+    expect(f.fetch.mock.calls.every(([,init]) => init?.method !== "POST")).toBe(true);
+    f.staging(false);
+    await resumeIndependentImageDeliveries(f.ports); await resumeIndependentImageDeliveries(f.ports);
+    expect(Object.values(f.workspace().objects).filter(o => o.type === "image" && o.generation?.delivery?.resultId === f.manifest.resultId)).toHaveLength(1);
+    expect(f.saveGeneratedAsset).toHaveBeenCalledOnce();
+    expect(f.fetch.mock.calls.filter(([,init]) => init?.method === "POST")).toHaveLength(1); // ACK only
+    expect(f.fetch.mock.calls.every(([url]) => String(url).includes("/effects/"))).toBe(true);
+  });
   it("keeps failed Workspace save pending, reloads original bytes once, and ACKs after durable save", async () => {
     const f = await fixture();
     await resumeIndependentImageDeliveries(f.ports);

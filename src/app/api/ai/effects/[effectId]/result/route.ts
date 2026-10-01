@@ -1,6 +1,6 @@
 import { requireAiRouteUser, aiAccessDeniedResponse } from "@/server/auth/aiAccess";
 import { externalResultStore, externalResultResponse, ExternalResultError } from "@/server/ai/externalResultStore";
-import { observeExternalEffect } from "@/server/ai/externalEffectObservation";
+import { observeExternalEffect, retrieveExistingImage } from "@/server/ai/externalEffectObservation";
 import { saveExternalResult } from "@/server/ai/externalResultStore";
 import { readBoundedJsonBody } from "@/server/ai/agentTurnRouteSupport";
 import type { EffectIdentity } from "@/server/ai/externalEffectJournal";
@@ -40,7 +40,7 @@ export async function GET(request: Request, context: Context): Promise<Response>
         "Content-Type": "application/octet-stream", "Cache-Control": "no-store"
       } });
     }
-    const saved = await externalResultResponse(id);
+    const saved = await externalResultResponse(id, externalResultStore, id.kind === "image" ? () => retrieveExistingImage(id, request.signal) : undefined);
     if (saved) return saved;
     // A known task may retrieve its original result. No POST/re-admission or expiry resurrection.
     if (id.kind === "image") {

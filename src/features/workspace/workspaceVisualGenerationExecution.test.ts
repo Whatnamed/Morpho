@@ -341,6 +341,17 @@ describe("workspace visual generation execution core", () => {
     expect(operation?.status).toBe("running");
   });
 
+  it("keeps a restored Action pending on incomplete Image delivery instead of consuming failure", async () => {
+    const harness = createExecutionHarness({ respond: () => Response.json({ code: "external_result_unavailable", deliveryPending: true }, { status: 503 }) });
+    const actionId = await buildAPlusImageChildActionId("parent-call", "item-a");
+    const requestBody = JSON.stringify({ input: { prompt: "original", images: [], referenceObjectIds: [] } });
+    const input = createAPlusInput(harness, 1, { restoredExternalAction: { actionId, actionKind: "image", requestBody,
+      requestHash: await hashAPlusExternalActionBody(requestBody), callId: "parent-call" } });
+    await expect(executeWorkspaceVisualGenerationPlan(input, resolveGenerationSettings({ aspectRatio: "1:1" }), harness.ports))
+      .rejects.toMatchObject({ code: "external_action_running", action: expect.objectContaining({ actionId, requestBody }) });
+    expect(harness.imageTaskStatuses.at(-1)).toMatchObject({ state: "waiting" });
+  });
+
   it("reuses an existing A+ result without another fetch or generated object", async () => {
     const harness = createExecutionHarness();
     const first = await executeWorkspaceVisualGenerationPlan(

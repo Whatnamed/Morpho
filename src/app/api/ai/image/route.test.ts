@@ -6,13 +6,14 @@ import { POST } from "./route";
 const resultFake = vi.hoisted(() => ({ current: undefined as ReturnType<typeof createExternalResultFake> | undefined }));
 vi.mock("@/server/ai/externalResultStore", async () => ({
   ...await vi.importActual<typeof import("@/server/ai/externalResultStore")>("@/server/ai/externalResultStore"),
-  externalResultResponse: (identity: import("@/server/ai/externalEffectJournal").EffectIdentity) =>
-    vi.importActual<typeof import("@/server/ai/externalResultStore")>("@/server/ai/externalResultStore").then((m) => m.externalResultResponse(identity, resultFake.current!.port)),
+  externalResultResponse: (identity: import("@/server/ai/externalEffectJournal").EffectIdentity, _store: unknown, retrieve?: () => Promise<Blob | undefined>) =>
+    vi.importActual<typeof import("@/server/ai/externalResultStore")>("@/server/ai/externalResultStore").then((m) => m.externalResultResponse(identity, resultFake.current!.port, retrieve)),
   externalResultStore: { call: (...args: Parameters<import("@/server/ai/externalResultStore").ExternalResultPort["call"]>) => resultFake.current!.port.call(...args) }
 }));
 
+const retrieveMock = vi.hoisted(() => vi.fn<() => Promise<Blob | undefined>>(async () => undefined));
 const observeExistingMock = vi.hoisted(() => vi.fn<() => Promise<Response | undefined>>(async () => undefined));
-vi.mock("@/server/ai/externalEffectObservation", () => ({ existingImageEffectResponse: observeExistingMock }));
+vi.mock("@/server/ai/externalEffectObservation", () => ({ existingImageEffectResponse: observeExistingMock, retrieveExistingImage: retrieveMock }));
 
 const loadGrsImageConfigMock = vi.hoisted(() =>
   vi.fn<() => unknown>(() => ({
@@ -59,8 +60,21 @@ describe("AI image route auth guard", () => {
     expect(guardAiRouteMock).not.toHaveBeenCalled();
     expect(resolveGrsImageResultMock).not.toHaveBeenCalled();
   });
+  it("independent partial staging resumes same result before quota, config or new generation", async () => {
+    const request = () => new Request("http://localhost/api/ai/image", { method: "POST", headers: { "X-Morpho-Effect-Key": "partial", "X-Morpho-Effect-Contract": "1" },
+      body: JSON.stringify({ prompt: "original", images: [] }) });
+    const blob = new Blob(["original"], { type: "image/png" });
+    resolveGrsImageResultMock.mockResolvedValue({ status: "ok", blob, mimeType: "image/png" });
+    resultFake.current!.failNext("write"); await POST(request());
+    const record = [...resultFake.current!.records.values()][0], manifest = { ...record.manifest };
+    retrieveMock.mockResolvedValue(blob); loadGrsImageConfigMock.mockImplementation(() => { throw new Error("no new config admission"); });
+    expect((await POST(request())).status).toBe(200);
+    expect(record.manifest).toEqual(manifest); expect(record.published).toBe(true);
+    expect(retrieveMock).toHaveBeenCalledOnce(); expect(resolveGrsImageResultMock).toHaveBeenCalledOnce(); expect(guardAiRouteMock).toHaveBeenCalledOnce();
+  });
   beforeEach(() => {
     resultFake.current = createExternalResultFake();
+    retrieveMock.mockReset();
     observeExistingMock.mockReset().mockResolvedValue(undefined);
     requireAiRouteUserMock.mockReset();
     requireAiRouteUserMock.mockResolvedValue({ status: "allowed", userId: "user-a" });
