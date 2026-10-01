@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { externalEffectId, externalEffectJournal, type EffectIdentity } from "@/server/ai/externalEffectJournal";
+import type { ExternalEffectSnapshot } from "@/shared/externalEffectProtocol";
 
 import { readAgentTurnJournal, type ReadAgentTurnJournalResult } from "@/server/ai/agentTurnJournal";
 import { requestAgentTurnExternalCancellation } from "@/server/ai/agentTurnExternalCancellation";
@@ -29,13 +30,15 @@ export type AgentTurnCancellationRouteDependencies = Readonly<{
     requestId: string;
     stepSequence: number;
   }) => boolean;
-  persistCancel?: (identity: EffectIdentity) => Promise<void>;
+  readEffect: (identity: EffectIdentity) => Promise<ExternalEffectSnapshot | null>;
+  persistCancel: (identity: EffectIdentity) => Promise<void>;
 }>;
 
 const defaultDependencies: AgentTurnCancellationRouteDependencies = {
   authenticate: requireAiRouteUser,
   readTurn: readAgentTurnJournal,
   cancelExternal: requestAgentTurnExternalCancellation,
+  readEffect: async (identity) => (await externalEffectJournal.call("read", identity)).snapshot,
   persistCancel: async (identity) => { await externalEffectJournal.call("cancel", identity); }
 };
 
@@ -90,20 +93,26 @@ export function createAgentTurnCancellationPostHandler(
         { status: 409 }
       );
     }
-    if (journal.snapshot.status !== "providerRunning") {
-      return NextResponse.json({
-        accepted: false,
-        observed: false,
-        status: journal.snapshot.status
-      });
-    }
+    const identity: EffectIdentity = {
+      actorUserId: auth.userId,
+      effectId: externalEffectId("a-plus", turnId, parsed.value.localProjectId,
+        "text", parsed.value.requestId, parsed.value.stepSequence as number),
+      kind: "text"
+    };
     try {
-      await dependencies.persistCancel?.({
-        actorUserId: auth.userId,
-        effectId: externalEffectId("a-plus", turnId, parsed.value.localProjectId,
-          "text", parsed.value.requestId, parsed.value.stepSequence as number),
-        kind: "text"
-      });
+      const effect = await dependencies.readEffect(identity);
+      // Turn terminal status is administrative closure, not Provider execution truth.
+      // Only the current running Turn may create a pre-registration cancel tombstone.
+      if (effect
+        ? effect.executionState !== "unknown" && effect.executionState !== "running"
+        : journal.snapshot.status !== "providerRunning") {
+        return NextResponse.json({
+          accepted: false,
+          observed: false,
+          status: journal.snapshot.status
+        });
+      }
+      await dependencies.persistCancel(identity);
     } catch {
       return NextResponse.json({ code: "cancel_intent_unavailable", recoverable: false }, { status: 503 });
     }

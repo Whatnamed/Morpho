@@ -409,3 +409,15 @@ cancel intent / local abort + late success、重复 observation / 本地图像�
 浏览器和 Runner 的外部接口为模拟，不等于真实 Provider / 计费 / 宿主多实例验收。
 新 migration 尚未应用生产；不创建 result escrow / redelivery store / retention / hosting / local ACK，
 不标 accepted、不 merge main、不启动 P3B/P4/P5 或重设计 P2。
+
+P3A bounded review fix（2026-10-01；status 仍为 `validating`）：
+A+ Text cancel 保留 latest requestId + stepSequence 检查，并读取同一 exact logical effect；
+即使旧 Turn 已因 external_execution_state_unknown administrative terminal，现存 unknown/running
+effect 仍可持久记录 cancel intent，再尝试当前 instance-local abort。旧 Turn 不 reopen/改写；
+Provider confirmed terminals 与无 P3A effect 的 legacy terminal 不产生新 intent/identity；
+late success 与 cancelRequestedAt 共存，未恢复任何 paid POST/retry/fallback。
+Regression 覆盖上述 running/unknown、三种 confirmed terminal、legacy、latest 双字段检查、
+durable-before-abort、读写失败 fail closed；targeted cancellation / Journal / observation / Runner /
+Recovery 7 files / 190 tests、全量 unit 229 files / 2313 tests、Chromium 原有取消切片 1 条、
+typecheck / lint / production build / git diff --check 全部通过。
+本次无需 schema/migration 变更，未执行真实 paid Provider 或生产 Journal；不扩大 P3A 范围。

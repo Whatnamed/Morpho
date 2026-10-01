@@ -1303,3 +1303,10 @@ The first request and correction bodies can contain selected project input and a
 records, not cloud Workspace synchronization. No legacy backfill or old Journal cleanup replay; no
 result escrow/store/hosting/retention/ACK (P3B), scheduler/worker or exactly-once claim. Migration is
 additive/idempotent and has only local SQL-engine evidence, not production application/acceptance.
+
+P3A review correction (2026-10-01): A+ Text cancellation reads the exact latest logical effect
+before applying the administrative Turn status guard. Existing `unknown`/`running` executions
+accept durable cancel intent after a terminal Turn; confirmed Provider terminals and legacy
+terminals without identity do not create new intent or identity. Intent persistence precedes
+instance-local abort and fails closed. No Turn reopening, Provider cancel/retry, schema change or
+suppression of late success is introduced.

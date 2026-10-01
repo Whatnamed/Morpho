@@ -897,6 +897,11 @@ schema 18 and Recovery v2 are unchanged; no historical identity is invented or c
   cancellation creates a tombstone that blocks submit; cancellation checks before submit remain
   subject to the ordinary check/send race. Post-submit abort does not prove Provider cancellation,
   refund or non-execution. Only a trusted Provider cancellation observation sets `cancelled`.
+  A+ Text cancel validates the latest request ID/step sequence, then reads that exact effect.
+  An existing `unknown`/`running` effect accepts durable intent even after administrative Turn
+  closure; the Turn is never reopened. Confirmed Provider terminals and legacy terminal Turns
+  without an effect remain read-only. Local abort follows successful persistence and affects
+  only a matching execution still present in the current server instance.
 - Authenticated `/api/ai/effects/[effectId]?kind=...` GET reads/observes and can retrieve a known Image
   task's same result via `result=image`; POST records only cancel intent. Browser roles cannot call
   the observation RPC or mutate tables. Routes derive the actor from verified authentication.
