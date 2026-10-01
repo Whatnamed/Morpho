@@ -336,6 +336,14 @@ Limits: 外部 Provider / Image / Journal 为模拟；未执行真实 paid Provi
 未执行生产 Journal migration / fault injection。P3A / P3B / P4 / P5 保持后续 package；这些限制不阻止 P2B 当前合同 accepted。
 网页复审确认 P2B 正式 accepted；本次 closeout 仅更新验收记录、清理一次性 Plan，并保留已有 commits 以 ff-only 合入 main。
 
+P2B post-acceptance cross-package correction（2026-10-01；网页复审 accepted；implementation `7f0dd1ae6f9f507d41407ea2b829685a429bb03e`）：
+fresh continuation 前依据当前 Workspace + delivered receipts + requirement currentness 双向重算 required-read completion；
+same-turn authority/revision mutation 撤销 stale completion，使用既有 bounded reminder/re-read 机制，不增加 paid continuation budget。
+still-current receipt 不重复要求读取；explicit historical revision / current eligibility、frozen Recovery body 和 terminal 后不追加 paid request 的语义保留。
+Checks: targeted Runner/source-read/task-strategy 100 项、全量 unit 229 文件 / 2316 项、typecheck / lint / production build / diff-check、Chromium 相邻边界 2 项通过；Vercel success（网页复审核对）。
+mutation → stale → reminder → re-read → fulfilled 由 Runner 集成测试覆盖；未执行真实 paid Provider 或生产数据库操作。
+这是 accepted 后的 bounded integration regression correction，不重新打开 P2B、不改变其 accepted 状态，也不属于 P3B；P3B 尚未开始。
+
 P2A 有限复审修复及正式验收（2026-10-01；从 `9336cc0` 继续；final accepted implementation head `02655e829a72aea7bd555917de9fa89519818bfd`）：
 `402f50a185504dee92aa235703c035998b43f332` 修复 visual activity clause ownership；comparison 的
 “只针对 A+B”以及 exclusion/default-reference 限制不再污染独立视觉 scope。
