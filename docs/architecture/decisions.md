@@ -1238,3 +1238,20 @@ Storage fixtures were regenerated with the existing measurement script after thi
 blank 3,355 UTF-16 characters, current case study 1,091,025, restored Backup 1,091,614. These supersede
 the preceding size anchors and include per-item provenance plus retained pre-contract history; they
 are serialized fixture measurements, not a new storage capacity or latency claim.
+
+## 2026-10-01 — P2A turn-local task and effect contract
+
+Decision: keep one A+ Runner and resolve mixed activities into a small local Task Contract before
+Provider output. The deterministic resolver owns grants from the current user and trusted UI;
+Strategy is a primary-focus compatibility hint, Methods are professional perspectives, and Context
+and effect execution use independent activity scopes. Shared projections derive Provider-visible
+tools, confirmation actions and the local executable profile from the same grants. The model may
+narrow targets/reference arguments and reason about the task, but cannot edit the contract or
+increase its authority. Paid Image still requires explicit send-time Image permission; negations,
+separate Compare persistence and high-impact user authority remain enforced locally.
+
+Reuse P1B current fact/scope/evidence qualification; add no competing truth/currentness model or
+schema migration. Preserve the exact contract across continuation and Recovery. Legacy requests
+without frozen scopes retain reads only. Extract the existing tool and stable Prompt contracts to
+shared modules rather than moving the Runtime or adding a workflow/planner. P2B owns read/input/
+execution fulfillment; a successful Provider/Turn is still not proof of complete task fulfillment.

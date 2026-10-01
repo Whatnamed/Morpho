@@ -711,8 +711,8 @@ Text Agent:
 - Image child Actions are serial. A restored descriptor is consumed only after its matching child has completed local handling, after which the next child writes and flushes its own descriptor before send.
 - The client Lifecycle reducer alone derives `completed`, `partiallyCompleted`, `pendingConfirmation`, `cancelled`, or `failed` from Server status plus local Tool, confirmation, and persistence facts. The server never accepts or stores that Overall Local Agent Turn Outcome.
 - Context pressure is classified from both tokens and Provider Item count. A continuation can perform at most two additional compactions, and only a strict token or Item reduction permits another Provider request; the server and client both fail closed above 1,024 Items. Provider and local tool-batch handling share `MAX_AGENT_FUNCTION_CALLS = 64`; a 65-call response is rejected before execution or continuation signing.
-- Explicit history, memory, and progress questions are guarded: the Agent must complete `search_project_conversation`, `read_project_memory`, and/or `read_stage_record` as required before a final answer can be accepted.
-- Task Strategy resolves discussion, research, design definition, concept direction, direction preview, visual development, comparison, delivery preparation, and history/memory. A versioned Prompt Registry composes shared authority, continuity, memory, and task policies.
+- Explicit history, memory, and progress questions declare required `search_project_conversation`, `read_project_memory`, and/or `read_stage_record` reads in the Task Contract. Existing Tool calls validate and record those reads; final required-read fulfillment enforcement remains a P2B gap, not a P2A completion claim.
+- New turns resolve a turn-local Task Contract with a primary strategy and independent activities. The primary strategy is a compatibility/display hint; it does not cancel activities or own their effect scopes. The versioned Prompt Registry composes all activity policies and the bounded Method selection.
 - The stable System prefix carries a compact design-partner persona (respect existing work, maturity-adapted depth, evidence vs inference, real design variables, visual output as a design tool, user decision authority) under Prompt Contract `morpho-agent-v3.6-2026-08-17`.
 - Task strategy policy is delivered as a server-owned canonical System item: the client sends `strategy` + `strategyAnchorMessageId`; the server validates the kind and materializes the canonical strategy message after the Runtime item. The comparison policy states the chat-only default: a persisted Compare record requires an explicit save intent.
 - `capabilityIntent.webSearch` (current-turn user authority) survives every A+ request copy path (Coordinator copy, active-request restore, recovery export/restore, exact retry, continuation); recovery shape validation is fail-closed on the optional bit. The server still requires global web-search enabled AND current-turn user authority before exposing `search_web_evidence`.
@@ -731,11 +731,39 @@ Image generation:
 AI authority boundary:
 
 - AI reads through explicit tools and writes only through locally validated tools and domain operations.
-- Current-user text and trusted UI routing produce a runtime-only Tool authority profile before Provider output exists. Imported/local documents, object summaries, historical conversation, memory, Provider evidence, Tool arguments, and model commentary are explicitly marked as untrusted evidence and cannot expand that profile.
-- A+ omits `search_web_evidence` from the server-owned Tool Registry unless both server capability and the precomputed current-turn profile allow search. Independent Chat applies the same current-user/UI search classifier on the server before exposing hosted web search. A document cannot enable networking by asking for it inside its content.
+- Current-user text and trusted send-time UI inputs produce a runtime-only Turn Task Contract before Provider output exists. Its grants derive the local Tool authority profile and Provider-visible tools through the same shared functions. Imported/local documents, object summaries, historical conversation, memory, Provider evidence, Tool arguments, Method Packs, and model commentary cannot expand those grants.
+- A+ filters the shared Tool Registry to the contract allowlist, including bounded confirmation actions. An authorized Search with disabled server capability fails explicitly before Provider submission instead of creating a different executable tool set. Independent Chat retains its current-user/UI search classifier. A document cannot enable networking by asking for it inside its content.
 - Every parsed Tool Call is checked against the profile before Tool activity, recovery intent, external action, confirmation, workspace persistence, or execution. A mismatch returns stable `agent_tool_not_authorized` and stops the batch.
 
 Current F06 authority layering:
+
+P2A Turn Task ownership (2026-10-01; implementation awaiting acceptance):
+
+- `shared/turnTaskContract.ts` owns the bounded DTO, parser, common tool/confirmation projections;
+  `turnTaskResolver.ts` mints activities and effect grants solely from current-user instruction and
+  trusted UI input. `taskMode` / `workIntent` remain UI inputs, not exclusive activity routers.
+- Activities retain instruction, targets, direct sources, permitted visual references, exclusions,
+  required facts, expected outputs/count and independent grants. Named selected targets and ordinal
+  selection references bind deterministic visual scope; unresolved restrictive targets close the
+  effect tools and leave read/discussion available. Simple chat/critique/read needs one activity and
+  four read tools, no planner or paid/write permissions.
+- `buildTurnTaskContexts` reuses P1B queries and qualifications for each activity. The aggregate is
+  read/discussion context; Tool executors and pending confirmations consume their own activity
+  context. Visual compilation bounds every explicit/implicit reference to the frozen permitted set,
+  recording `taskScopeExcluded`, and uses the visual instruction rather than the comparison draft.
+- `shared/agentToolContract.ts` owns the existing tool DTO/schema/effect registry;
+  `shared/agentPromptRegistry.ts` owns stable policy/version. Feature re-exports preserve callers;
+  the Server no longer imports workspace feature code for these contracts. Methods consume activity
+  kinds/instructions and retain the existing maximum of three packs; they never create grants.
+- The request carries the frozen Task Contract through Coordinator copies, continuations and
+  Recovery. The Server validates it and renders registry-owned Strategy/Method text, but does not
+  authenticate client-owned local facts or grant provenance. Local argument, domain, persistence,
+  paid/confirmation and session gates remain required. Contract-less legacy requests/recovery use
+  only the common read tool set; no historical effect scopes are reconstructed into new authority.
+- P2A adds no Workspace/Journal schema, runtime, workflow or persistent task database. Required-read
+  fulfillment, final input coverage, document/Delivery deep reads, history trimming/compaction
+  rebuild, new-image observation, concept revise/split/merge execution and final task fulfillment
+  remain P2B. Reference roles/lineage and Delivery/History changes remain with P4/P5/P6H.
 
 - Composer text and selected objects feed `recommendedTaskMode` / `recommendedWorkIntent` only. At
   send time, `taskMode` / `workIntent` resolve to `executionTaskMode` / `executionWorkIntent`, with
